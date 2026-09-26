@@ -29,7 +29,6 @@ from app.services.cedolini_manager import (  # noqa: F401
     PAYROLL_MIN_YEAR,
     get_anagrafica_dipendenti,
     get_riepilogo_dipendente,
-    processa_cedolino_completo,
     processa_tutti_cedolini_pdf,
     riconcilia_stipendio_automatico,
 )
@@ -38,7 +37,6 @@ __all__ = [
     "PAYROLL_MIN_YEAR",
     "get_anagrafica_dipendenti",
     "get_riepilogo_dipendente",
-    "processa_cedolino_completo",
     "processa_tutti_cedolini_pdf",
     "riconcilia_stipendio_automatico",
 ]

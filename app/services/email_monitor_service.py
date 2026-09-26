@@ -708,7 +708,14 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                     source_file_hash=doc.get("file_hash"),
                 )
 
-                if res.get("success") and res.get("cedolini_processati", 0) > 0:
+                # Letto e' anche un foglio presenze, uno storico fuori periodo o
+                # una busta col netto vuoto (solo in HR): non sono errori.
+                letto = (
+                    res.get("cedolini_processati", 0) > 0
+                    or res.get("buste_senza_netto", 0) > 0
+                    or res.get("esito") in ("presenze", "fuori_periodo", "non_cedolino")
+                )
+                if res.get("success") and letto:
                     results["buste_paga"] += res.get("cedolini_processati", 0)
                     results["anagrafiche_create"] += res.get("anagrafiche_create", 0)
                     results["prima_nota_create"] += res.get("prima_nota_create", 0)
@@ -722,6 +729,7 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                             "status": "processato",
                             "processed_at": datetime.now(timezone.utc).isoformat(),
                             "cedolini_estratti": res.get("cedolini_processati", 0),
+                            "esito_motore_cedolini": res.get("esito"),
                             "parser_errors": res.get("errori", []),
                         }}
                     )

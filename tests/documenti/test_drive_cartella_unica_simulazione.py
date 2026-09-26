@@ -115,6 +115,17 @@ def test_nuova_edizione_rilegge_tutto(albero, monkeypatch):
     assert run(sim.giro(db)) == {"letti": 2, "restanti": 3}
 
 
+def test_collaudo_di_un_lettore_rilegge_solo_quel_tipo(albero, monkeypatch):
+    db = AsyncMongoMockClient()["t"]
+    for _ in range(5):
+        run(sim.giro(db))
+    monkeypatch.setenv("DRIVE_SIMULAZIONE_EDIZIONE", "2")
+    monkeypatch.setenv("DRIVE_SIMULAZIONE_SOLO_TIPO", "fattura")
+    run(sim.giro(db))                                        # inventario
+    assert run(sim.giro(db)) == {"letti": 1, "restanti": 0}  # solo fattura.xml
+    assert run(sim.giro(db)) == {"saltato": "simulazione_completata"}
+
+
 def test_spenta_senza_radice(monkeypatch):
     monkeypatch.delenv("DRIVE_SIMULAZIONE_RADICE", raising=False)
     assert "saltato" in run(sim.giro(AsyncMongoMockClient()["t"]))
@@ -181,25 +192,29 @@ def test_nuova_edizione_non_riscrive_il_registro(albero, monkeypatch):
     assert riga["letto_edizione"] == "3" and "buste_lul" not in riga
 
 
-def test_cedolino_che_l_import_non_legge_e_un_errore_previsto(monkeypatch):
+def test_cedolino_illeggibile_per_il_motore_unico_e_un_errore_previsto(monkeypatch):
     import app.routers.documenti as documenti
-    import app.services.cedolini_manager as cm
-    import app.services.libro_unico_workflow as lul
+    import app.services.cedolini_motore as motore
 
     async def anteprima(db, **_):
         return {}
 
+    def lettura(esito, buste=()):
+        return lambda _c: {"esito": esito, "buste": list(buste), "presenze": [],
+                           "fuori_periodo": [], "motivo": f"motivo {esito}"}
+
     monkeypatch.setattr(documenti, "detect_document_type", lambda *_: "cedolino")
     monkeypatch.setattr("app.services.document_import_preview.build_import_preview", anteprima)
-    monkeypatch.setattr(lul, "parse_libro_unico_completo",
-                        lambda _p: {"dipendenti": [{"foglio_presenze": {}, "busta_paga": None}]})
-    monkeypatch.setattr(cm, "_parse_multi_template_units", lambda _c: [{"codice_fiscale": "X"}])
+    monkeypatch.setattr(motore, "leggi_pdf", lettura("illeggibile"))
     esito = run(sim.esamina(AsyncMongoMockClient()["t"], "Rossi Mario - Aprile 2024.pdf", b"%PDF"))
-    assert esito["esito_previsto"] == cu.ERRORI
-    assert esito["buste_lul"] == 0 and esito["buste_canale_drive"] == 1
-    assert "nessuna busta" in esito["errori"][0]
+    assert esito["esito_previsto"] == cu.ERRORI and esito["cedolino_esito"] == "illeggibile"
+    assert "motivo illeggibile" in esito["errori"][0]
 
-    monkeypatch.setattr(lul, "parse_libro_unico_completo", lambda _p: {"dipendenti": [
-        {"busta_paga": {"dipendente": {"codice_fiscale": "X"}}}]})
+    # Un foglio presenze e una busta col netto vuoto sono letti, non errori.
+    monkeypatch.setattr(motore, "leggi_pdf", lettura("presenze"))
     esito = run(sim.esamina(AsyncMongoMockClient()["t"], "Rossi Mario - Aprile 2024.pdf", b"%PDF"))
-    assert esito["esito_previsto"] == cu.ARCHIVIO and esito["buste_lul"] == 1
+    assert esito["esito_previsto"] == cu.ARCHIVIO
+    monkeypatch.setattr(motore, "leggi_pdf", lettura("buste", [{"netto": None}, {"netto": 941.0}]))
+    esito = run(sim.esamina(AsyncMongoMockClient()["t"], "Rossi Mario - Aprile 2024.pdf", b"%PDF"))
+    assert esito["esito_previsto"] == cu.ARCHIVIO
+    assert esito["buste"] == 2 and esito["buste_senza_netto"] == 1

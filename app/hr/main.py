@@ -121,9 +121,8 @@ def register_routers():
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"], dependencies=ADMIN)
     app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=STAFF)
 
-    # Libro Unico ERP: il workflow vive in `app/services/libro_unico_workflow.py`,
-    # chiamato dalla pipeline di ingest
-    # documentale. La copia `app/hr/routers/libro_unico_parser.py`, registrata
+    # Cedolini e Libro Unico ERP: un solo motore, `app/services/cedolini_motore.py`,
+    # chiamato dalla pipeline di ingest documentale. La copia `app/hr/routers/libro_unico_parser.py`, registrata
     # qui fino al 19/09/2026, non e' mai stata usata: scriveva su collection
     # `employees`/`buste_paga`/`presenze_mensili` le cui tabelle
     # (`hr.app_employees`, `hr.app_buste_paga`, `hr.app_presenze_mensili`) non

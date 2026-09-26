@@ -203,7 +203,7 @@ def _register_invoices(app: FastAPI):
 # Restano solo i router usati da flussi NON-HR di questo gestionale:
 #   - dipendenti: anagrafica in lettura (verbali noleggio, inserimento rapido, portale)
 #   - tfr: riepilogo fondo TFR mostrato in Gestione Cespiti (contabilità)
-# Libro Unico ERP: workflow in services/libro_unico_workflow.py,
+# Cedolini e Libro Unico ERP: motore unico services/cedolini_motore.py,
 # chiamato dalla pipeline Documenti; nessuna route HTTP dedicata.
 # f24_parser: rimosso del tutto il 19/09/2026. La sua `import_f24` non aveva
 # piu' chiamanti (il workflow «F24_COMPLETO» che la usava non esiste in nessun

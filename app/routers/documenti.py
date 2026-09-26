@@ -2466,6 +2466,13 @@ def _e_cedolino_zucchetti(marker_pdf_text: str) -> bool:
     return sum(bool(c.search(marker_pdf_text)) for c in _ZUCCHETTI_CASELLE) >= 3
 
 
+def _e_contratto_di_lavoro(compact_pdf_text: str) -> bool:
+    from app.parsers.busta_paga_multi_template import RIQUADRO_NETTO
+    from app.services.cedolini_motore import _CONTRATTO
+
+    return bool(_CONTRATTO.search(compact_pdf_text) and not RIQUADRO_NETTO.search(compact_pdf_text))
+
+
 def detect_document_type(filename: str, file_content: bytes) -> str:
     """Classifica solo con prove documentali sufficienti.
 
@@ -2537,6 +2544,10 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "nota_rettifica_inps"
     if _e_cedolino_zucchetti(marker_pdf_text):
         return "cedolino"
+    if _e_contratto_di_lavoro(compact_pdf_text):
+        # Un contratto cita la busta paga ma non e' un cedolino: resta un
+        # documento da classificare, non una busta da leggere.
+        return "auto"
     # Contabile di un bonifico disposto: cita la banca del beneficiario
     # («Banca Nazionale del Lavoro») e il classificatore degli estratti la
     # prendeva per un estratto BNL, con il nome file solo «Cognome_data_EUR».
@@ -3834,40 +3845,40 @@ async def upload_documento_automatico(
                 )
 
         elif tipo_rilevato == 'cedolino':
-            # Import cedolino / Libro Unico - USA IL WORKFLOW COMPLETO
-            from app.services.libro_unico_workflow import import_libro_unico
-            import io
+            # Un solo motore per ogni cedolino (busta Zucchetti, Libro Unico,
+            # Teamsystem, CSC): lo stesso della posta e di Drive.
+            from base64 import b64encode
 
-            # Crea un nuovo UploadFile per il workflow
-            file_obj = io.BytesIO(content)
-            new_upload = UploadFile(filename=filename, file=file_obj)
+            from app.services.cedolini_manager import processa_tutti_cedolini_pdf
 
-            try:
-                lul_result = await import_libro_unico(file=new_upload, aggiorna_esistenti=True)
-                result["message"] = lul_result.get("message", "Libro Unico importato con workflow completo")
-                result["data"] = lul_result.get("data", {})
-                result["workflow"] = "LUL_COMPLETO"
-                dati_lul = result["data"] or {}
-                # ``totale_dipendenti`` sono le pagine divise per due, non
-                # buste lette: la prova e' cio' che e' stato scritto.
-                lette = (dati_lul.get("buste_importate") or 0) + (dati_lul.get("buste_aggiornate") or 0)
-                if lette:
-                    result["imported"] = 1
-                else:
-                    # Nessuna busta letta non e' un cedolino importato: senza
-                    # questo il file finiva fra le ELABORATE senza lasciare dati.
-                    result["success"] = False
-                    result["imported"] = 0
-                    result["message"] = (
-                        "Cedolino riconosciuto ma il Libro Unico non ne ha letto nessuna "
-                        "busta: niente e' stato registrato"
-                    )
-            except HTTPException as he:
+            db = Database.get_db()
+            esito = await processa_tutti_cedolini_pdf(
+                db, b64encode(content).decode("ascii"), filename,
+                source_path=filename,
+                source_file_hash=hashlib.sha256(content).hexdigest(),
+            )
+            result["workflow"] = "MOTORE_UNICO_CEDOLINI"
+            result["data"] = {k: esito.get(k) for k in (
+                "esito", "cedolini_processati", "buste_senza_netto", "fogli_presenze",
+                "prima_nota_create", "errori",
+            )}
+            scritte = (esito.get("cedolini_processati") or 0) + (esito.get("buste_senza_netto") or 0)
+            if scritte:
+                result["imported"] = 1
+                result["message"] = f"Cedolino: {scritte} buste registrate"
+            elif esito.get("esito") in ("presenze", "fuori_periodo"):
+                # Riconosciuto e letto, ma non e' una busta da registrare: il
+                # foglio presenze non ha netto, lo storico e' fuori periodo.
+                result["imported"] = 0
+                result["message"] = f"Cedolino letto, niente da registrare: {esito.get('motivo')}"
+            else:
                 result["success"] = False
-                result["message"] = f"Errore import LUL: {he.detail}"
-            except Exception as e:
-                result["success"] = False
-                result["message"] = f"Errore import LUL: {str(e)}"
+                result["imported"] = 0
+                errori = "; ".join(str(e) for e in (esito.get("errori") or [])[:3])
+                result["message"] = (
+                    f"Cedolino non registrato: {esito.get('motivo') or 'nessuna busta letta'}"
+                    + (f" ({errori})" if errori else "")
+                )
 
         elif tipo_rilevato == 'distinte_bpm':
             # Import distinte stipendi BPM - riconcilia con buste paga

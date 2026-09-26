@@ -41,7 +41,8 @@ FORMATI_GESTITI = (".pdf", ".xml", ".p7m", ".zip", ".xls", ".xlsx", ".xlsm", ".c
 # Campi dell'esito di una lettura: una nuova edizione li toglie prima di rileggere.
 _ESITO = ("tipo", "esito_previsto", "motivo", "errori", "gia_presente", "anno",
           "fuori_anno", "sha256", "pagine", "fornitore", "numero", "buste_lul",
-          "buste_canale_drive")
+          "buste_canale_drive", "cedolino_esito", "buste", "buste_senza_netto",
+          "fogli_presenze")
 
 _lock = asyncio.Lock()
 
@@ -53,6 +54,15 @@ def radice() -> Optional[str]:
 def edizione() -> str:
     """Si cambia per rileggere tutto dopo una correzione ai lettori."""
     return os.getenv("DRIVE_SIMULAZIONE_EDIZIONE", "1").strip() or "1"
+
+
+def solo_tipo() -> Optional[str]:
+    """Rilegge soltanto i file che l'edizione precedente ha dato di questo tipo.
+
+    Per collaudare un lettore corretto (es. ``cedolino``) senza riscaricare
+    tutto l'archivio. Vuoto = tutti i file.
+    """
+    return os.getenv("DRIVE_SIMULAZIONE_SOLO_TIPO", "").strip() or None
 
 
 def _batch() -> int:
@@ -133,35 +143,17 @@ async def _esame_fattura(db, nome: str, contenuto: bytes) -> Dict[str, Any]:
 
 
 def _esame_cedolino(contenuto: bytes) -> Dict[str, Any]:
-    """Quante buste leggerebbe il motore dell'import, e quante il canale Drive.
+    """Che cosa ne leggerebbe il motore unico dei cedolini, senza scrivere."""
+    from app.services.cedolini_motore import leggi_pdf
 
-    Solo parser, niente scritture: dice se un cedolino finirebbe davvero nei
-    dati o solo fra le ELABORATE.
-    """
-    import tempfile
-
-    from app.services.cedolini_manager import _parse_multi_template_units
-    from app.services.libro_unico_workflow import parse_libro_unico_completo
-
-    buste_lul = 0
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(contenuto)
-        percorso = tmp.name
-    try:
-        for dip in parse_libro_unico_completo(percorso).get("dipendenti") or []:
-            fonti = [(dip or {}).get("foglio_presenze") or {}, (dip or {}).get("busta_paga") or {}]
-            if any(((f.get("dipendente") or {}).get("codice_fiscale")) for f in fonti):
-                buste_lul += 1
-    except Exception as exc:
-        logger.info("[simulazione] Libro Unico illeggibile: %s: %s", type(exc).__name__, exc)
-    finally:
-        os.unlink(percorso)
-    try:
-        buste_canale = len(_parse_multi_template_units(contenuto))
-    except Exception as exc:
-        logger.info("[simulazione] multi-template illeggibile: %s: %s", type(exc).__name__, exc)
-        buste_canale = 0
-    return {"buste_lul": buste_lul, "buste_canale_drive": buste_canale}
+    lettura = leggi_pdf(contenuto)
+    return {
+        "cedolino_esito": lettura["esito"],
+        "motivo": lettura["motivo"],
+        "buste": len(lettura["buste"]),
+        "buste_senza_netto": sum(1 for b in lettura["buste"] if not b.get("netto")),
+        "fogli_presenze": len(lettura["presenze"]),
+    }
 
 
 async def esamina(db, nome: str, contenuto: bytes) -> Dict[str, Any]:
@@ -186,9 +178,12 @@ async def esamina(db, nome: str, contenuto: bytes) -> Dict[str, Any]:
         if fattura.get("fuori_anno"):
             esito["motivo"] = f"fattura del {fattura['anno']}: resta solo su Drive (fuori anno attivo)"
     if tipo == "cedolino":
-        cedolino = await asyncio.to_thread(_esame_cedolino, contenuto)
-        if not cedolino["buste_lul"]:
-            errori.append("il Libro Unico non ne legge nessuna busta")
+        try:
+            cedolino = await asyncio.to_thread(_esame_cedolino, contenuto)
+        except Exception as exc:
+            cedolino = {"cedolino_esito": "illeggibile", "motivo": f"{type(exc).__name__}: {exc}"[:300]}
+        if cedolino["cedolino_esito"] == "illeggibile":
+            errori.append(f"cedolino: {cedolino['motivo']}")
         esito.update(cedolino)
     esito["errori"] = errori or None
     esito["esito_previsto"] = cu.ERRORI if errori else cu.ARCHIVIO
@@ -247,6 +242,8 @@ async def _giro(db, root: str) -> Dict[str, Any]:
 
     ed = edizione()
     in_coda = {"radice": root, "letto_edizione": {"$ne": ed}}
+    if solo_tipo():
+        in_coda["tipo"] = solo_tipo()
     da_leggere = await db[REGISTRO].find(in_coda, {"_id": 0}).limit(_batch()).to_list(_batch())
     for riga in da_leggere:
         esito: Dict[str, Any]
@@ -293,8 +290,8 @@ async def riepilogo(db) -> Dict[str, Any]:
     righe = await db[REGISTRO].find(
         {"radice": root}, {"_id": 0, "id": 1, "nome": 1, "percorso": 1, "md5": 1, "stato": 1,
                            "tipo": 1, "esito_previsto": 1, "gia_presente": 1, "motivo": 1,
-                           "errori": 1, "anno": 1, "fuori_anno": 1, "buste_lul": 1,
-                           "buste_canale_drive": 1, "letto_edizione": 1},
+                           "errori": 1, "anno": 1, "fuori_anno": 1, "cedolino_esito": 1,
+                           "buste_senza_netto": 1, "letto_edizione": 1},
     ).to_list(None) if root else []
     lette = [r for r in righe if r.get("letto_edizione") == stato.get("edizione")]
     fuori_anno = Counter(r.get("anno") for r in lette if r.get("fuori_anno"))
@@ -309,15 +306,10 @@ async def riepilogo(db) -> Dict[str, Any]:
         "gia_presenti": sum(1 for r in lette if r.get("gia_presente")),
         "fatture_fuori_anno": dict(fuori_anno),
         "copie_identiche": sum(n - 1 for n in per_md5.values() if n > 1),
-        # Cedolini che il motore dell'import non legge ma quello del canale
-        # Drive si': la misura della scelta fra i due motori.
-        "cedolini": {
-            "letti_dall_import": sum(1 for r in cedolini if r.get("buste_lul")),
-            "letti_solo_dal_canale_drive": sum(
-                1 for r in cedolini if not r.get("buste_lul") and r.get("buste_canale_drive")),
-            "illeggibili": sum(
-                1 for r in cedolini if not r.get("buste_lul") and not r.get("buste_canale_drive")),
-        },
+        # Che cosa ha trovato il motore unico nei cedolini: buste, fogli
+        # presenze, storico fuori periodo, contratti, illeggibili.
+        "cedolini": dict(Counter(r.get("cedolino_esito") for r in cedolini).most_common()),
+        "cedolini_senza_netto": sum(1 for r in cedolini if r.get("buste_senza_netto")),
         "da_guardare": [
             {k: r.get(k) for k in ("nome", "percorso", "tipo", "motivo", "errori")}
             for r in lette if r.get("esito_previsto") != cu.ARCHIVIO
