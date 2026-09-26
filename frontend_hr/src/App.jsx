@@ -13,6 +13,7 @@ import {
   User, FolderOpen, Settings, LogOut, ArrowLeft, AlertTriangle,
   Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send, ShieldCheck
 } from "lucide-react";
+import { esciDalGruppo } from "../../frontend_shared/SessioneGruppo";
 import SelettoreSezioni from "./SelettoreSezioni";
 import "./App.css";
 
@@ -372,6 +373,12 @@ export default function DipendentiCloudApp({ page: pageProp }) {
             <Link to="/dipendenti/impostazioni" className="dc-gear" aria-label="Impostazioni" title="Impostazioni">
               <Settings size={20} aria-hidden="true" />
             </Link>
+          )}
+          {isAdmin && (
+            <button type="button" className="dc-gear" aria-label="Esci da tutte le app" title="Esci da tutte le app"
+              onClick={() => esciDalGruppo()}>
+              <LogOut size={20} aria-hidden="true" />
+            </button>
           )}
         </header>
 

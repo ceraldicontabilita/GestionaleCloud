@@ -8,6 +8,7 @@ import {
 import "./portale.css";
 import { LockKeyhole, Delete, X } from "lucide-react";
 import { createPinModal } from "../../frontend_shared/PinModal";
+import { esciDalGruppo } from "../../frontend_shared/SessioneGruppo";
 import { entraDalGestionale, loginGestionale } from "./sessioneGruppo.js";
 const PinModal = createPinModal(React, { LockKeyhole, Delete, X });
 
@@ -1152,7 +1153,12 @@ export default function PortaleDipendente() {
   useEffect(()=>{ if(logged) refreshBadge(); },[logged,tab,refreshBadge]);
 
   if (!logged) return <div className="pt-root"><Login onLogin={()=>setLogged(true)} /></div>;
-  const logout = () => { localStorage.removeItem(TK); localStorage.removeItem("pt_role"); localStorage.removeItem("pt_name"); setLogged(false); };
+  // L'amministratore e' entrato dalla sessione del Gestionale: «Esci» la chiude
+  // per tutte le app. Il dipendente esce solo dal proprio portale.
+  const logout = () => {
+    if (role === "admin") { esciDalGruppo(); return; }
+    localStorage.removeItem(TK); localStorage.removeItem("pt_role"); localStorage.removeItem("pt_name"); setLogged(false);
+  };
 
   const tabs = [
     { k:"timbra", l:"Timbra", icon:Clock },

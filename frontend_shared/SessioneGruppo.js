@@ -27,3 +27,17 @@ export function pulisciSessioneGruppoBrowser() {
     try { sessionStorage.removeItem(chiave); } catch { /* storage non disponibile */ }
   }
 }
+
+// «Esci» dell'amministratore da qualunque app del gruppo: con la sessione
+// unica togliere solo il token locale non fa uscire nessuno (la pagina
+// d'ingresso lo ricrea dal cookie del Gestionale). Il logout del Gestionale
+// revoca la sessione sul server, e con lei i token di HR, Lotti e Menu.
+export async function esciDalGruppo(destinazione = "/login") {
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+  } catch {
+    // La pulizia locale resta necessaria anche se il backend non risponde.
+  }
+  pulisciSessioneGruppoBrowser();
+  window.location.assign(destinazione);
+}

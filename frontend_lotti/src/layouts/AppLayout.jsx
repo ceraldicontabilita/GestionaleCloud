@@ -4,6 +4,7 @@
 import { ArrowLeft, FileText, HelpCircle, LogOut, Settings, ShieldCheck } from "lucide-react";
 import SelettoreSezioni from "../components/shared/SelettoreSezioni";
 import { isAdmin, logout } from "../auth";
+import { esciDalGruppo } from "../../../frontend_shared/SessioneGruppo";
 import { conferma } from "../utils/conferma";
 import { HACCP_TABS, IMPOSTAZIONI_TABS, PRIMARY_TABS, SECONDARY_TABS } from "../config/navigation";
 import { PAGE_META, PAGE_NAMES, TAB_HEADER_PROPRIO } from "../config/pageMeta";
@@ -99,7 +100,7 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
               <span className="g-header-btn-label" style={{ whiteSpace: "nowrap" }}>Guida</span>
             </button>
             <button
-              onClick={async () => { if (await conferma("Uscire da Lotti? Per rientrare si passa dal login del Gestionale.")) logout(); }}
+              onClick={async () => { if (await conferma("Uscire? Si chiude la sessione del Gestionale anche per HR e Menu.")) { logout(); esciDalGruppo(); } }}
               title="Esci / blocca accesso"
               aria-label="Esci"
               style={btnHeaderStyle}
