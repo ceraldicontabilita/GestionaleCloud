@@ -25,8 +25,8 @@ from app.services.bank_reconciliation_rules import classify_bank_movement
 from app.services.mapping_piano_conti import completa_conti_prima_nota
 from app.services.scadenze_rate_service import applica_quota_scadenze
 from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO, scrivi_movimento_se_assente
-from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
-from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.services.prima_nota_integrity import assorbi_righe_dichiarate, totale_pagabile_al_fornitore
+from app.services.stato_pagamento_fattura import FILTRO_DA_RISCONTRARE, FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 
@@ -334,6 +334,18 @@ async def persist_bank_invoice_allocations(
         numeri_fattura=numeri_fattura,
     )
     prima_nota_id = prima_nota_ids[0] if len(prima_nota_ids) == 1 else None
+    # Le righe che il titolare aveva dichiarato per queste fatture lasciano il
+    # posto a quella con la prova: lo stesso pagamento non esce due volte.
+    quote_per_fattura: Dict[str, float] = {}
+    for item in allocations:
+        quote_per_fattura[item["fattura_id"]] = round(
+            quote_per_fattura.get(item["fattura_id"], 0.0)
+            + int(item.get("quota_cents") or 0) / 100, 2,
+        )
+    await assorbi_righe_dichiarate(
+        db, quote_per_fattura, sostituita_da=prima_nota_ids[0] if prima_nota_ids else "",
+        movimento_id=movement_id,
+    )
 
     for item in allocations:
         invoice_id = item["fattura_id"]
@@ -617,10 +629,10 @@ async def _reconcile_unique_identity_matches(
         movement for movement in movements
         if str(movement.get("id")) not in excluded and _is_outgoing_invoice_candidate(movement)
     ]
-    invoices = await db["invoices"].find({
-        **FILTRO_NON_PAGATE,
-        "stato_pagamento": {"$ne": "pagata"},
-    }, {"_id": 0}).to_list(50000)
+    invoices = await db["invoices"].find({"$or": [
+        {**FILTRO_NON_PAGATE, "stato_pagamento": {"$ne": "pagata"}},
+        {"in_attesa_riscontro_banca": True},
+    ]}, {"_id": 0}).to_list(50000)
     invoices_by_residual: Dict[int, List[Dict[str, Any]]] = {}
     for invoice in invoices:
         residual = max(
@@ -722,11 +734,10 @@ async def reconcile_deterministic_invoice_allocations(
         ambiguous = False
         for ref in refs:
             candidates = await db["invoices"].find({
-                "$or": [
-                    {"invoice_number": ref},
-                    {"numero_fattura": ref},
+                "$and": [
+                    {"$or": [{"invoice_number": ref}, {"numero_fattura": ref}]},
+                    FILTRO_DA_RISCONTRARE,
                 ],
-                **FILTRO_NON_PAGATE,
             }, {"_id": 0}).to_list(2)
             if len(candidates) != 1:
                 ambiguous = True

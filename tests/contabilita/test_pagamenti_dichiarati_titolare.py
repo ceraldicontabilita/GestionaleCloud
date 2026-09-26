@@ -198,17 +198,124 @@ def test_cassa_dichiarata_conferma_la_riga_d_ufficio_senza_duplicarla(db):
     assert primo["conteggi"]["registrata"] >= 1
 
 
-def test_banca_dichiarata_storna_la_cassa_d_ufficio_e_aspetta_la_banca(db):
+def test_banca_dichiarata_storna_la_cassa_d_ufficio_e_va_in_prima_nota_banca(db):
     _importa_e_applica(db)
     riga = asyncio.run(db["prima_nota_cassa"].find_one({"id": "pn-ufficio-2"}))
     assert riga["status"] == "deleted"
     assert riga["deleted_reason"].endswith("pagata_con_banca")
     fattura = asyncio.run(db["invoices"].find_one({"id": "f-leasys"}))
-    assert fattura["stato_finanziario"] == "aperta_in_attesa_banca"
+    # Pagata per il titolare, in attesa del movimento che lo provi.
+    assert fattura["pagato"] is True
+    assert fattura["stato_pagamento"] == "pagata"
+    assert fattura["in_attesa_riscontro_banca"] is True
     assert fattura["metodo_pagamento_dichiarato"] == "banca"
-    assert fattura.get("pagato") is False
-    # Nessuna riga banca senza estratto conto.
-    assert asyncio.run(db["prima_nota_banca"].find_one({"fattura_id": "f-leasys"})) is None
+    righe = asyncio.run(db["prima_nota_banca"].find(
+        {"fattura_id": "f-leasys", "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0}).to_list(10))
+    # Una sola riga, anche dopo il secondo giro.
+    assert len(righe) == 1
+    assert righe[0]["dichiarato_titolare"] is True
+    assert righe[0]["importo"] == 1119.48
+    assert fattura["prima_nota_banca_id"] == righe[0]["id"]
+    # Non e' una prova bancaria: per i motori resta da riscontrare.
+    assert asyncio.run(fatture_senza_pagamento_contabile_confermato(db, [fattura]))
+
+
+def test_il_movimento_bancario_sostituisce_la_riga_dichiarata(db):
+    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+
+    _importa_e_applica(db)
+
+    async def arriva_il_bonifico():
+        await db["estratto_conto_movimenti"].insert_one({
+            "id": "ec-leasys", "data": "2026-03-10", "tipo": "uscita",
+            "importo": -1119.48, "descrizione": "SDD LEASYS ITALIA",
+        })
+        fattura = await db["invoices"].find_one({"id": "f-leasys"}, {"_id": 0})
+        return await registra_pagamento_fattura(
+            fattura, "banca", source="test",
+            movimento_bancario={"id": "ec-leasys", "data": "2026-03-10"},
+        )
+
+    esito = asyncio.run(arriva_il_bonifico())
+    assert esito["duplicato"] is False
+    attive = asyncio.run(db["prima_nota_banca"].find(
+        {"fattura_id": "f-leasys", "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0}).to_list(10))
+    assert [r["id"] for r in attive] == [esito["banca"]]
+    assert attive[0]["estratto_conto_id"] == "ec-leasys"
+    fattura = asyncio.run(db["invoices"].find_one({"id": "f-leasys"}))
+    assert fattura["in_attesa_riscontro_banca"] is False
+    assert not asyncio.run(fatture_senza_pagamento_contabile_confermato(db, [fattura]))
+    # Il giro successivo la chiude (esito definitivo), senza riscriverla.
+    giro = asyncio.run(pagamenti.applica_pagamenti_dichiarati(db, solo_pendenti=True))
+    assert giro["conteggi"]["gia_pagata"] == 1
+
+
+def test_un_pagamento_parziale_riduce_la_riga_dichiarata():
+    from app.services.prima_nota_integrity import assorbi_righe_dichiarate
+
+    database = ClientArchivioMemoria()["test_assorbi_parziale"]
+
+    async def scenario():
+        await database["invoices"].insert_one({"id": "f1", "in_attesa_riscontro_banca": True})
+        await database["prima_nota_banca"].insert_one({
+            "id": "dich", "fattura_id": "f1", "importo": 300.0,
+            "dichiarato_titolare": True, "tipo": "uscita",
+        })
+        toccate = await assorbi_righe_dichiarate(
+            database, {"f1": 100.0}, sostituita_da="prova-1", movimento_id="ec-1",
+        )
+        dopo_prima = await database["prima_nota_banca"].find_one({"id": "dich"})
+        fattura_dopo_prima = await database["invoices"].find_one({"id": "f1"})
+        await assorbi_righe_dichiarate(
+            database, {"f1": 200.0}, sostituita_da="prova-2", movimento_id="ec-2",
+        )
+        return (toccate, dopo_prima, fattura_dopo_prima,
+                await database["prima_nota_banca"].find_one({"id": "dich"}),
+                await database["invoices"].find_one({"id": "f1"}))
+
+    toccate, parziale, fattura_parziale, finale, fattura = asyncio.run(scenario())
+    assert toccate == 1
+    assert parziale["importo"] == 200.0 and parziale.get("status") != "deleted"
+    assert fattura_parziale["in_attesa_riscontro_banca"] is True
+    assert finale["status"] == "deleted" and finale["sostituita_da"] == "prova-2"
+    assert fattura["in_attesa_riscontro_banca"] is False
+
+
+def test_l_assegno_trovato_dopo_sostituisce_la_riga_dichiarata(db):
+    async def scenario():
+        await _prepara(db)
+        # L'assegno 334 non e' ancora nell'estratto conto.
+        assegno = await db["assegni"].find_one({"id": "ass-334"}, {"_id": 0})
+        addebito = await db["estratto_conto_movimenti"].find_one(
+            {"id": "ec-assegno-334"}, {"_id": 0})
+        await db["assegni"].delete_one({"id": "ass-334"})
+        await db["estratto_conto_movimenti"].delete_one({"id": "ec-assegno-334"})
+        await report_ae.importa_report_fatture_ricevute(
+            db, _xlsx(RIGHE), "fatture_pagate_2026.xlsx",
+        )
+        await pagamenti.applica_pagamenti_dichiarati(db)
+        prima = await db["prima_nota_banca"].find(
+            {"fattura_id": {"$in": ["f-siro-a1", "f-siro-a2"]},
+             "status": {"$nin": ["deleted", "archived"]}}, {"_id": 0}).to_list(10)
+        await db["assegni"].insert_one(assegno)
+        await db["estratto_conto_movimenti"].insert_one(addebito)
+        giro = await pagamenti.applica_pagamenti_dichiarati(db, solo_pendenti=True)
+        dichiarate = await db["prima_nota_banca"].find(
+            {"dichiarato_titolare": True, "fattura_id": {"$in": ["f-siro-a1", "f-siro-a2"]},
+             "status": {"$nin": ["deleted", "archived"]}}, {"_id": 0}).to_list(10)
+        fatture = await db["invoices"].find(
+            {"id": {"$in": ["f-siro-a1", "f-siro-a2"]}}, {"_id": 0}).to_list(10)
+        return prima, giro, dichiarate, fatture
+
+    prima, giro, dichiarate, fatture = asyncio.run(scenario())
+    assert sorted(r["importo"] for r in prima) == [18.15, 121.37]
+    assert all(r["dichiarato_titolare"] for r in prima)
+    assert giro["conteggi"].get("registrata") == 2
+    assert dichiarate == []
+    assert not asyncio.run(fatture_senza_pagamento_contabile_confermato(db, fatture))
+    assert all(f["in_attesa_riscontro_banca"] is False for f in fatture)
 
 
 def test_due_fatture_pagate_con_lo_stesso_assegno_vanno_sul_suo_addebito(db):
@@ -256,8 +363,8 @@ def test_fattura_arrivata_dopo_il_report_viene_chiusa_dal_giro_automatico(db):
         return await pagamenti.applica_pagamenti_dichiarati(db, solo_pendenti=True)
 
     giro = asyncio.run(arriva())
-    # Ripassa anche le due in attesa della banca (Leasys e la carta):
-    # senza movimento restano in attesa, senza scritture nuove.
+    # Ripassa anche le due in attesa della banca (Leasys e la carta): sono
+    # gia' in Prima Nota Banca come dichiarate, e non si riscrivono.
     assert giro["conteggi"] == {"registrata": 1, "in_attesa_banca": 2}
     riga = asyncio.run(db["prima_nota_cassa"].find_one({"fattura_id": "f-kimbo-10"}))
     assert riga["importo"] == 99.0
