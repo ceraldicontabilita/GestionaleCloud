@@ -79,3 +79,30 @@ def test_pendenti_carica_un_pdf_per_volta(monkeypatch):
     assert result == {"letti": 1, "associati": 0, "non_associati": 1, "errori": 0}
     assert collection.find_projections[0].get("pdf_data") is None
     assert collection.find_one_projections == [{"_id": 0, "pdf_data": 1}]
+
+
+def test_pendenti_ruotano_sui_meno_recenti(monkeypatch):
+    """Il giro prende i riletti meno di recente, non sempre i piu' vecchi creati."""
+    encoded = base64.b64encode(b"pdf").decode()
+    collection = Collection(
+        [
+            {"_id": "vecchio_appena_riletto", "created_at": "2026-01-01",
+             "updated_at": "2026-09-26T15:00"},
+            {"_id": "nuovo_mai_riletto", "created_at": "2026-09-26T11:00"},
+            {"_id": "medio", "created_at": "2026-03-01", "updated_at": "2026-09-26T09:00"},
+        ],
+        {k: encoded for k in ("vecchio_appena_riletto", "nuovo_mai_riletto", "medio")},
+    )
+    db = DB({"bonifici_transfers": collection})
+    letti = []
+
+    async def importa(_db, _content, filename, **_kwargs):
+        letti.append(filename)
+        return {"status": "duplicate", "associato": False}
+
+    monkeypatch.setattr(mod, "importa_pdf_bonifico", importa)
+    for doc in collection.metadata:
+        doc["source_file"] = doc["_id"]
+    asyncio.run(mod.riprocessa_bonifici_pendenti(db, limit=2))
+
+    assert letti == ["medio", "nuovo_mai_riletto"]
