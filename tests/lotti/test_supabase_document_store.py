@@ -161,3 +161,67 @@ def test_update_di_documento_storico_non_crea_una_seconda_identita():
     assert esito.modified_count == 1
     assert list(store.docs["ricette_cestino"]) == ["voce-1"]
     assert store.docs["ricette_cestino"]["voce-1"]["foto_drive_id"] == "drive-1"
+
+
+class StoreContato(FakeStore):
+    """Conta le chiamate di rete: upsert, cancellazioni per id, svuotamenti."""
+
+    def __init__(self):
+        super().__init__()
+        self.delete_calls = 0
+        self.svuotamenti = 0
+
+    async def delete_docs(self, collection, ids):
+        self.delete_calls += 1
+        return await super().delete_docs(collection, ids)
+
+    async def delete_collection(self, collection):
+        self.svuotamenti += 1
+        return await super().delete_collection(collection)
+
+
+def test_modifica_che_non_cambia_niente_non_scrive_su_supabase():
+    store = StoreContato()
+    db = PersistentDatabase(store, "Gestionale")
+    run(db.prodotti.insert_one({"_id": "p1", "nome": "Farina", "prezzo": 1}))
+    chiamate = store.upsert_calls
+
+    run(db.prodotti.update_one({"_id": "p1"}, {"$set": {"prezzo": 1}}))
+    run(db.prodotti.update_many({"nome": "Farina"}, {"$set": {"prezzo": 1}}))
+    run(db.prodotti.replace_one({"_id": "p1"}, {"nome": "Farina", "prezzo": 1}))
+    run(db.prodotti.find_one_and_update({"_id": "p1"}, {"$set": {"nome": "Farina"}}))
+    run(db.prodotti.update_documents_by_id([("p1", {"prezzo": 1})]))
+    assert store.upsert_calls == chiamate
+
+    run(db.prodotti.update_one({"_id": "p1"}, {"$set": {"prezzo": 2}}))
+    assert store.upsert_calls == chiamate + 1
+    assert store.docs["prodotti"]["p1"]["prezzo"] == 2
+    # l'upsert di un documento che non c'era resta una scrittura
+    run(db.prodotti.update_one({"_id": "p2"}, {"$set": {"nome": "Zucchero"}}, upsert=True))
+    assert store.docs["prodotti"]["p2"]["nome"] == "Zucchero"
+
+
+def test_bulk_write_scrive_la_differenza_e_non_svuota_mai_la_collezione():
+    from pymongo import DeleteOne, InsertOne, UpdateOne
+
+    store = StoreContato()
+    db = PersistentDatabase(store, "Gestionale")
+    run(db.prodotti.insert_many([{"_id": f"p{i}", "prezzo": i} for i in range(50)]))
+    chiamate = store.upsert_calls
+
+    run(db.prodotti.bulk_write([
+        UpdateOne({"_id": "p1"}, {"$set": {"prezzo": 100}}),
+        UpdateOne({"_id": "p2"}, {"$set": {"prezzo": 2}}),  # invariato
+        DeleteOne({"_id": "p3"}),
+        InsertOne({"_id": "nuovo", "prezzo": 7}),
+    ], ordered=False))
+
+    assert store.svuotamenti == 0
+    assert store.upsert_calls == chiamate + 1 and store.delete_calls == 1
+    remoto = store.docs["prodotti"]
+    assert remoto["p1"]["prezzo"] == 100 and remoto["nuovo"]["prezzo"] == 7
+    assert "p3" not in remoto and len(remoto) == 50
+
+    # un lotto che non cambia niente non chiama la rete
+    run(db.prodotti.bulk_write([UpdateOne({"_id": "p2"}, {"$set": {"prezzo": 2}})]))
+    assert store.upsert_calls == chiamate + 1 and store.delete_calls == 1

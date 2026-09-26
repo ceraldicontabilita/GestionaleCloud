@@ -307,17 +307,26 @@ class PersistentCollection:
         docs = await self.raw.find(query).to_list(None)
         await self.database.store.upsert_docs(self.name, docs)
 
+    async def _persisti_se_cambiato(self, before: Optional[dict]) -> bool:
+        """Scrive su Supabase il documento dopo la modifica, ma solo se e'
+        davvero cambiato. Una modifica che lascia tutto uguale (un giro che
+        riscrive gli stessi valori) non costa una chiamata di rete: erano la
+        maggior parte delle ~75 scritture al minuto di Lotti (26/09/2026)."""
+        if before is None:
+            return False
+        after = await self.raw.find_one({"_id": before["_id"]})
+        if after is None:
+            return False
+        if after != before:
+            await self.database.store.upsert_docs(self.name, [after])
+        return True
+
     async def update_one(self, query, update, *args, **kwargs):
         async with self._write_lock:
             await self._ensure_loaded()
-            before = await self.raw.find_one(query, {"_id": 1})
+            before = await self.raw.find_one(query)
             result = await self.raw.update_one(query, update, *args, **kwargs)
-            persisted = False
-            if before is not None:
-                after = await self.raw.find_one({"_id": before["_id"]})
-                if after is not None:
-                    await self.database.store.upsert_docs(self.name, [after])
-                    persisted = True
+            persisted = await self._persisti_se_cambiato(before)
             if not persisted and kwargs.get("upsert"):
                 await self._persist_matches(query)
             return result
@@ -325,12 +334,13 @@ class PersistentCollection:
     async def update_many(self, query, update, *args, **kwargs):
         async with self._write_lock:
             await self._ensure_loaded()
-            before = await self.raw.find(query, {"_id": 1}).to_list(None)
+            before = await self.raw.find(query).to_list(None)
             result = await self.raw.update_many(query, update, *args, **kwargs)
-            ids = [d["_id"] for d in before]
-            after = await self.raw.find({"_id": {"$in": ids}}).to_list(None) if ids else []
-            if after:
-                await self.database.store.upsert_docs(self.name, after)
+            prima = {d["_id"]: d for d in before}
+            after = await self.raw.find({"_id": {"$in": list(prima)}}).to_list(None) if prima else []
+            cambiati = [d for d in after if prima.get(d["_id"]) != d]
+            if cambiati:
+                await self.database.store.upsert_docs(self.name, cambiati)
             if not after and kwargs.get("upsert"):
                 await self._persist_matches(query)
             return result
@@ -348,13 +358,14 @@ class PersistentCollection:
             await self._ensure_loaded()
             docs = []
             for doc_id, fields in changes:
+                before = await self.raw.find_one({"_id": doc_id})
                 result = await self.raw.update_one(
                     {"_id": doc_id},
                     {"$set": fields},
                 )
                 if result.matched_count:
                     after = await self.raw.find_one({"_id": doc_id})
-                    if after is not None:
+                    if after is not None and after != before:
                         docs.append(after)
             if docs:
                 await self.database.store.upsert_docs(self.name, docs)
@@ -385,12 +396,10 @@ class PersistentCollection:
     async def replace_one(self, query, replacement, *args, **kwargs):
         async with self._write_lock:
             await self._ensure_loaded()
-            before = await self.raw.find_one(query, {"_id": 1})
+            before = await self.raw.find_one(query)
             result = await self.raw.replace_one(query, replacement, *args, **kwargs)
             if before is not None:
-                after = await self.raw.find_one({"_id": before["_id"]})
-                if after is not None:
-                    await self.database.store.upsert_docs(self.name, [after])
+                await self._persisti_se_cambiato(before)
             elif kwargs.get("upsert"):
                 await self._persist_matches(query)
             return result
@@ -398,12 +407,10 @@ class PersistentCollection:
     async def find_one_and_update(self, query, update, *args, **kwargs):
         async with self._write_lock:
             await self._ensure_loaded()
-            before = await self.raw.find_one(query, {"_id": 1})
+            before = await self.raw.find_one(query)
             result = await self.raw.find_one_and_update(query, update, *args, **kwargs)
             if before is not None:
-                after = await self.raw.find_one({"_id": before["_id"]})
-                if after is not None:
-                    await self.database.store.upsert_docs(self.name, [after])
+                await self._persisti_se_cambiato(before)
             elif kwargs.get("upsert"):
                 await self._persist_matches(query)
             return result
@@ -435,16 +442,37 @@ class PersistentCollection:
             return result
 
     async def bulk_write(self, requests, *args, **kwargs):
+        """Applica il lotto in memoria e manda a Supabase solo la differenza.
+
+        Fino al 26/09/2026 cancellava l'intera collezione remota e la
+        riscriveva tutta, a ogni lotto: 33 volte in una sera, e con un errore
+        fra le due chiamate la collezione restava vuota su Supabase. Ora si
+        scrivono i documenti nuovi o cambiati e si tolgono per id quelli
+        cancellati: la collezione remota non passa mai da vuota."""
         async with self._write_lock:
             await self._ensure_loaded()
-            result = await self.raw.bulk_write(requests, *args, **kwargs)
-            await self._replace_remote_from_memory()
+            prima = {d["_id"]: d for d in await self.raw.find({}).to_list(None)}
+            try:
+                result = await self.raw.bulk_write(requests, *args, **kwargs)
+            finally:
+                # Anche un lotto non ordinato fallito a meta' lascia in memoria
+                # le operazioni riuscite: vanno persistite comunque.
+                await self._persisti_differenza(prima)
             return result
 
-    async def _replace_remote_from_memory(self):
-        docs = await self.raw.find({}).to_list(None)
-        await self.database.store.delete_collection(self.name)
-        await self.database.store.upsert_docs(self.name, docs)
+    async def _persisti_differenza(self, prima: dict) -> None:
+        dopo = await self.raw.find({}).to_list(None)
+        presenti = set()
+        cambiati = []
+        for doc in dopo:
+            presenti.add(doc["_id"])
+            if prima.get(doc["_id"]) != doc:
+                cambiati.append(doc)
+        tolti = [doc_id for doc_id in prima if doc_id not in presenti]
+        if cambiati:
+            await self.database.store.upsert_docs(self.name, cambiati)
+        if tolti:
+            await self.database.store.delete_docs(self.name, tolti)
 
     async def drop(self):
         async with self._write_lock:
