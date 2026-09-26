@@ -598,6 +598,17 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] errore: {type(e).__name__}: {e}")
 
+    async def _drive_simulazione_job():
+        from app.database import Database
+        from app.services import drive_cartella_unica_simulazione as sim
+        if not sim.radice():
+            return
+        try:
+            result = await sim.giro(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-SIMULAZIONE] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-SIMULAZIONE] errore: {type(e).__name__}: {e}")
+
     async def _drive_cedolini_job():
         from app.database import Database
         from app.services import drive_cedolini_ingest
@@ -943,6 +954,17 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="drive_cartella_unica", name="Cartella unica Drive DATI SOCIETA CERALDI (ogni 15 min)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _drive_simulazione_job,
+        'interval', minutes=5,
+        next_run_time=avvio + timedelta(minutes=4),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="drive_cartella_unica_simulazione",
+        name="Simulazione migrazione cartella unica, sola lettura (ogni 5 min)",
         replace_existing=True,
     )
 
