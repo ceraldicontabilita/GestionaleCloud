@@ -152,3 +152,14 @@ def test_riepilogo_riservato_all_admin():
 
     rotta = next(r for r in router.routes if r.path == "/cartella-unica/simulazione")
     assert richiedi_admin in [d.call for d in rotta.dependant.dependencies]
+
+
+def test_nuova_edizione_toglie_gli_esiti_vecchi_in_un_colpo(albero, monkeypatch):
+    db = AsyncMongoMockClient()["t"]
+    for _ in range(5):
+        run(sim.giro(db))
+    assert run(db[sim.REGISTRO].count_documents({"tipo": {"$exists": True}})) == 5
+    monkeypatch.setenv("DRIVE_SIMULAZIONE_EDIZIONE", "3")
+    run(sim.giro(db))
+    assert run(db[sim.REGISTRO].count_documents({"tipo": {"$exists": True}})) == 0
+    assert run(db[sim.REGISTRO].count_documents({"stato": "da_leggere"})) == 5
