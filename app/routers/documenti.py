@@ -3269,6 +3269,49 @@ async def riepilogo_simulazione_cartella_unica(
     return await sim.riepilogo(Database.get_db())
 
 
+@router.get("/drive-doppioni")
+@handle_errors
+async def censimento_doppioni_drive(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Censimento della cartella GESTIONALE: copie identiche e file tecnici da eliminare."""
+    from app.services import drive_censimento_doppioni as censimento
+
+    dati = await censimento.elenco(Database.get_db())
+    return {"stato": dati["stato"], "totale": len(dati["righe"]), "righe": dati["righe"][:2000]}
+
+
+@router.get("/drive-doppioni.csv")
+async def censimento_doppioni_drive_csv(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> StreamingResponse:
+    """L'elenco completo da riguardare, una riga per file marcato."""
+    import csv
+    import io
+
+    from app.services import drive_censimento_doppioni as censimento
+
+    dati = await censimento.elenco(Database.get_db())
+    buffer = io.StringIO()
+    scrittore = csv.writer(buffer, delimiter=";")
+    scrittore.writerow(["Cartella", "Nome del file", "Tipo", "Motivo", "Originale che resta",
+                        "Cartella dell'originale", "MB", "Rinomina", "Link"])
+    for r in dati["righe"]:
+        marcatura = r.get("marcatura") or {}
+        scrittore.writerow([
+            r.get("percorso"), r.get("nome"),
+            "Duplicato" if r.get("ruolo") == "duplicato" else "File tecnico",
+            r.get("motivo") or "", r.get("originale_nome") or "", r.get("originale_percorso") or "",
+            f"{(r.get('size') or 0) / 1048576:.2f}".replace(".", ","),
+            marcatura.get("nuovo_nome") or marcatura.get("motivo") or ("gia' marcato" if r.get("gia_marcato") else "da fare"),
+            f"https://drive.google.com/file/d/{r.get('file_id')}/view",
+        ])
+    return StreamingResponse(
+        iter(["\ufeff" + buffer.getvalue()]), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="doppioni_gestionale.csv"'},
+    )
+
+
 @router.get("/originale")
 @handle_errors
 async def apri_originale_cartella_unica(

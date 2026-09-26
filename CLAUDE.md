@@ -331,6 +331,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import, sia da `DA ELABORARE` sia **sciolto nella radice** (il calderone del titolare),
   una copia byte-identica di un originale va nel Cestino (in `DOPPIONI` se il file è del titolare: Drive nega il Cestino al service account), «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Dentro `GESTIONALE` restano solo lei e `FOTO E IMMAGINI` (immagini, cartella a parte): le cartelle dei canali sotto non esistono piu', e ogni loader prova la credenziale sulla **propria** cartella, mai su quella di un altro canale. Prima di migrare, la simulazione in sola lettura (`drive_cartella_unica_simulazione.py`, `DRIVE_SIMULAZIONE_RADICE`) dice come finirà ogni file. La pausa dell'import è `DRIVE_CARTELLA_UNICA_IMPORT=false`, **mai** togliere la cartella: le credenziali si provano su di lei.
+- **Censimento doppioni** della cartella GESTIONALE (`drive_censimento_doppioni.py`, `DRIVE_CENSIMENTO_DOPPIONI`
+  off|censisci|marca): copie esatte (MD5 + dimensione Drive) e file tecnici si **rinominano soltanto**
+  («DUPLICATO DA ELIMINARE - …», «FILE TECNICO DA ELIMINARE - …»), li elimina il titolare; resta l'originale in
+  `ELABORATE`, poi il più vecchio senza «(2)». Lo smistatore e la simulazione non toccano i file marcati.
 - Il protocollo Drive (`gestionale.protocollo_drive`, tabella relazionale, non
   `documents`) riconcilia Drive con l'inventario: file nuovo → riga nuova,
   cambiato → aggiornata, sparito → `stato='rimosso'` con la data. Le impronte
@@ -515,6 +519,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   cosa. L'IVA mensile sono i codici 6001–6012, uno per mese.
 - **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è
   autorizzato.
+- **Un F24 è il suo contenuto fiscale** (contribuente, data di versamento, saldo, righe codice/periodo/importo),
+  non il PDF: `salva_f24` non crea un secondo modello da un'altra copia del file e ne annota la provenienza
+  (`f24_doppioni.py`). I doppioni vanno in quarantena reversibile (`status=eliminato`, `motivo_quarantena`,
+  `doppione_di`), la copia pagata in banca resta; `F24_QUARANTENA_DOPPIONI` accende il giro.
 
 ## Personale: un solo sistema per funzione
 

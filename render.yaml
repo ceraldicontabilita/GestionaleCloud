@@ -116,6 +116,17 @@ services:
         value: "1"
       - key: DRIVE_SIMULAZIONE_BATCH
         value: "40"
+      # Censimento doppioni della cartella GESTIONALE (stessa radice della
+      # simulazione): off | censisci (solo elenco) | marca (rinomina le copie
+      # «DUPLICATO DA ELIMINARE - …»; non cancella ne' sposta). Proprietario: titolare.
+      - key: DRIVE_CENSIMENTO_DOPPIONI
+        value: "off"
+      - key: DRIVE_CENSIMENTO_EDIZIONE
+        value: "1"
+      # Quarantena automatica degli F24 con lo stesso contenuto fiscale (copie
+      # dello stesso modello da PDF diversi). Reversibile. Proprietario: titolare.
+      - key: F24_QUARANTENA_DOPPIONI
+        value: "false"
       - key: PROCESS_ROLE
         value: "combined"
       - key: ENABLE_SCHEDULER

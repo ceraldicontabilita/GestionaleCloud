@@ -103,13 +103,21 @@ def _cartelle(service, root: str) -> Dict[str, str]:
     return {nome: _get_or_create_folder(service, root, nome) for nome in (INBOX, ARCHIVIO, ERRORI, DOPPIONI)}
 
 
-def _elenca(service, parent_id: str, campi: str, limite: Optional[int] = None) -> List[Dict[str, Any]]:
+# File che il titolare ha chiesto di riguardare ed eliminare a mano
+# (``drive_censimento_doppioni``): lo smistatore non li tocca.
+PREFISSI_DA_ELIMINARE = ("DUPLICATO DA ELIMINARE - ", "FILE TECNICO DA ELIMINARE - ")
+
+
+def _elenca(service, parent_id: str, campi: str, limite: Optional[int] = None,
+            escludi_marcati: bool = False) -> List[Dict[str, Any]]:
     """Tutti i file (non cartelle) di una cartella, paginando fino in fondo."""
     trovati: List[Dict[str, Any]] = []
     token = None
+    filtro = "".join(f" and not name contains '{p.strip()}'" for p in PREFISSI_DA_ELIMINARE) \
+        if escludi_marcati else ""
     while True:
         risposta = service.files().list(
-            q=f"'{parent_id}' in parents and trashed = false and mimeType != '{CARTELLA_MIME}'",
+            q=f"'{parent_id}' in parents and trashed = false and mimeType != '{CARTELLA_MIME}'{filtro}",
             fields=f"nextPageToken, files({campi})", pageSize=1000 if limite is None else min(limite, 1000),
             orderBy="createdTime", pageToken=token,
             supportsAllDrives=True, includeItemsFromAllDrives=True,
@@ -210,13 +218,13 @@ async def _giro(db) -> Dict[str, Any]:
         cartelle = await asyncio.to_thread(_cartelle, service, radice())
         campi = "id, name, md5Checksum, size, mimeType"
         in_coda = [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
-            _elenca, service, cartelle[INBOX], campi, _batch())]
+            _elenca, service, cartelle[INBOX], campi, _batch(), True)]
         # Anche i file lasciati sciolti nella radice sono in coda: il titolare
         # usa la cartella unica come calderone e non deve smistarli a mano in
         # DA ELABORARE. Le sottocartelle restano escluse da _elenca.
         if len(in_coda) < _batch():
             in_coda += [{**f, "_da": radice()} for f in await asyncio.to_thread(
-                _elenca, service, radice(), campi, _batch() - len(in_coda))]
+                _elenca, service, radice(), campi, _batch() - len(in_coda), True)]
         archivio = await asyncio.to_thread(_elenca, service, cartelle[ARCHIVIO], "id, md5Checksum")
     except Exception as exc:
         esito["errore"] = f"{type(exc).__name__}: {exc}"

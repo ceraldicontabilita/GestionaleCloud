@@ -250,7 +250,10 @@ async def _giro(db, root: str) -> Dict[str, Any]:
     da_leggere = await db[REGISTRO].find(in_coda, {"_id": 0}).limit(_batch()).to_list(_batch())
     for riga in da_leggere:
         esito: Dict[str, Any]
-        if str(riga.get("mime") or "").startswith(_GOOGLE_NATIVO):
+        if str(riga.get("nome") or "").startswith(cu.PREFISSI_DA_ELIMINARE):
+            esito = {"tipo": "marcato_da_eliminare", "esito_previsto": "resta_dove_e",
+                     "motivo": "marcato dal censimento doppioni: lo elimina il titolare"}
+        elif str(riga.get("mime") or "").startswith(_GOOGLE_NATIVO):
             esito = {"tipo": "documento_google", "esito_previsto": cu.ERRORI,
                      "motivo": "file nativo Google (Documenti/Fogli): va esportato in PDF o Excel"}
         elif not str(riga.get("nome") or "").lower().endswith(FORMATI_GESTITI):
