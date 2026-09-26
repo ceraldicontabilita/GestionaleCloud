@@ -1187,8 +1187,8 @@ def get_descrizione_tributo_regioni(codice: str) -> str:
         # ============================================
         # Addizionale regionale IRPEF
         # ============================================
-        "3801": "Addizionale regionale IRPEF - sostituto d'imposta",
-        "3802": "Addizionale regionale IRPEF - autotassazione saldo",
+        "3801": "Addizionale regionale IRPEF - autotassazione",
+        "3802": "Addizionale regionale IRPEF - sostituto d'imposta",
         "3803": "Addizionale regionale IRPEF - autotassazione acconto",
         "8902": "Interessi ravvedimento addizionale regionale IRPEF",
         "8903": "Sanzione pecuniaria addizionale regionale IRPEF",

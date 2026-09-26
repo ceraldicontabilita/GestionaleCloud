@@ -11,9 +11,9 @@ from typing import Dict, List, Tuple
 
 F24_ERARIO_CODES = {
     # IRES - Imposta sul Reddito delle Società
-    "2001": {"descrizione": "IRES - Saldo", "conto": "4.3.02", "tipo": "imposte"},
-    "2002": {"descrizione": "IRES - Acconto prima rata", "conto": "4.3.02", "tipo": "imposte"},
-    "2003": {"descrizione": "IRES - Acconto seconda rata", "conto": "4.3.02", "tipo": "imposte"},
+    "2001": {"descrizione": "IRES - Acconto prima rata", "conto": "4.3.02", "tipo": "imposte"},
+    "2002": {"descrizione": "IRES - Acconto seconda rata", "conto": "4.3.02", "tipo": "imposte"},
+    "2003": {"descrizione": "IRES - Saldo", "conto": "4.3.02", "tipo": "imposte"},
     "2007": {"descrizione": "IRES - Maggior acconto prima rata", "conto": "4.3.02", "tipo": "imposte"},
     "2008": {"descrizione": "IRES - Maggior acconto seconda rata", "conto": "4.3.02", "tipo": "imposte"},
     

@@ -173,17 +173,16 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "misto",
         "sezione": "REGIONI"
     },
-    # 3801/3802: testi ripristinati a quelli in uso in produzione. L'abbinamento
-    # (quale dei due è il sostituto d'imposta e quale l'autotassazione) è
-    # da verificare con la fonte ufficiale AE: qui non si riformula nulla di
-    # propria iniziativa, si tiene il valore che l'utente già vedeva.
+    # 3802 e' l'addizionale regionale trattenuta dal sostituto d'imposta
+    # (rate mensili sugli F24 delle paghe); 3801 e' l'autotassazione.
+    # Fonte: Agenzia delle Entrate.
     "3801": {
-        "descrizione": "Addizionale regionale IRPEF - sostituto d'imposta",
+        "descrizione": "Addizionale regionale IRPEF - autotassazione",
         "tipo": "debito",
         "sezione": "REGIONI"
     },
     "3802": {
-        "descrizione": "Addizionale regionale IRPEF - autotassazione",
+        "descrizione": "Addizionale regionale IRPEF - sostituto d'imposta",
         "tipo": "misto",
         "sezione": "REGIONI",
         "scadenza": "16 del mese successivo"
@@ -537,21 +536,22 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "misto",
         "sezione": "ERARIO"
     },
-    # Corretti il 19/09/2026: erano ruotati di uno. Il saldo e' il 2001, non
-    # il 2003 — cosi' com'era, ogni F24 IRES letto dal parser mostrava un
-    # acconto al posto di un saldo e viceversa. Fonte: Agenzia delle Entrate.
+    # Fonte: Agenzia delle Entrate, ricerca guidata codici tributo (IRES per
+    # autoliquidazione): 2001 acconto prima rata, 2002 acconto seconda rata o
+    # unica soluzione, 2003 saldo. La «correzione» del 19/09/2026 li aveva
+    # ruotati al contrario.
     "2001": {
-        "descrizione": "IRES saldo",
-        "tipo": "misto",
-        "sezione": "ERARIO"
-    },
-    "2002": {
         "descrizione": "IRES acconto prima rata",
         "tipo": "misto",
         "sezione": "ERARIO"
     },
-    "2003": {
+    "2002": {
         "descrizione": "IRES acconto seconda rata o unica soluzione",
+        "tipo": "misto",
+        "sezione": "ERARIO"
+    },
+    "2003": {
+        "descrizione": "IRES saldo",
         "tipo": "misto",
         "sezione": "ERARIO"
     },

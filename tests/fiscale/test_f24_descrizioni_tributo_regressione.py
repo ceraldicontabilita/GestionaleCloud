@@ -41,8 +41,11 @@ DESCRIZIONI_DIVERGENTI = {
     "1627": "Eccedenza versamenti ritenute lavoro dipendente",
     "1631": "Somme rimborsate sostituto assistenza fiscale",
     "1704": "Credito somma art.1 c.4 L. 207/2024",
-    "3801": "Addizionale regionale IRPEF - sostituto d'imposta",
-    "3802": "Addizionale regionale IRPEF - autotassazione",
+    # 3801/3802: il testo «di produzione» li aveva scambiati. Fonte Agenzia
+    # delle Entrate: 3802 e' la trattenuta del sostituto d'imposta (le rate
+    # mensili sugli F24 delle paghe), 3801 l'autotassazione.
+    "3801": "Addizionale regionale IRPEF - autotassazione",
+    "3802": "Addizionale regionale IRPEF - sostituto d'imposta",
     "3812": "IRAP acconto prima rata",
     "3813": "IRAP acconto seconda rata o unica soluzione",
     "3916": "IMU aree fabbricabili - comune",
