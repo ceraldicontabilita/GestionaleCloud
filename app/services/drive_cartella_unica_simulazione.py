@@ -40,7 +40,8 @@ FORMATI_GESTITI = (".pdf", ".xml", ".p7m", ".zip", ".xls", ".xlsx", ".xlsm", ".c
 
 # Campi dell'esito di una lettura: una nuova edizione li toglie prima di rileggere.
 _ESITO = ("tipo", "esito_previsto", "motivo", "errori", "gia_presente", "anno",
-          "fuori_anno", "sha256", "pagine", "fornitore", "numero")
+          "fuori_anno", "sha256", "pagine", "fornitore", "numero", "buste_lul",
+          "buste_canale_drive")
 
 _lock = asyncio.Lock()
 
@@ -131,6 +132,38 @@ async def _esame_fattura(db, nome: str, contenuto: bytes) -> Dict[str, Any]:
         return {"errore": f"{type(exc).__name__}: {exc}"[:300]}
 
 
+def _esame_cedolino(contenuto: bytes) -> Dict[str, Any]:
+    """Quante buste leggerebbe il motore dell'import, e quante il canale Drive.
+
+    Solo parser, niente scritture: dice se un cedolino finirebbe davvero nei
+    dati o solo fra le ELABORATE.
+    """
+    import tempfile
+
+    from app.services.cedolini_manager import _parse_multi_template_units
+    from app.services.libro_unico_workflow import parse_libro_unico_completo
+
+    buste_lul = 0
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(contenuto)
+        percorso = tmp.name
+    try:
+        for dip in parse_libro_unico_completo(percorso).get("dipendenti") or []:
+            fonti = [(dip or {}).get("foglio_presenze") or {}, (dip or {}).get("busta_paga") or {}]
+            if any(((f.get("dipendente") or {}).get("codice_fiscale")) for f in fonti):
+                buste_lul += 1
+    except Exception as exc:
+        logger.info("[simulazione] Libro Unico illeggibile: %s: %s", type(exc).__name__, exc)
+    finally:
+        os.unlink(percorso)
+    try:
+        buste_canale = len(_parse_multi_template_units(contenuto))
+    except Exception as exc:
+        logger.info("[simulazione] multi-template illeggibile: %s: %s", type(exc).__name__, exc)
+        buste_canale = 0
+    return {"buste_lul": buste_lul, "buste_canale_drive": buste_canale}
+
+
 async def esamina(db, nome: str, contenuto: bytes) -> Dict[str, Any]:
     """Cosa succederebbe a questo file nella cartella unica, senza scrivere."""
     from app.routers.documenti import detect_document_type
@@ -152,6 +185,11 @@ async def esamina(db, nome: str, contenuto: bytes) -> Dict[str, Any]:
         esito.update(fattura)
         if fattura.get("fuori_anno"):
             esito["motivo"] = f"fattura del {fattura['anno']}: resta solo su Drive (fuori anno attivo)"
+    if tipo == "cedolino":
+        cedolino = await asyncio.to_thread(_esame_cedolino, contenuto)
+        if not cedolino["buste_lul"]:
+            errori.append("il Libro Unico non ne legge nessuna busta")
+        esito.update(cedolino)
     esito["errori"] = errori or None
     esito["esito_previsto"] = cu.ERRORI if errori else cu.ARCHIVIO
     return esito
@@ -249,11 +287,13 @@ async def riepilogo(db) -> Dict[str, Any]:
     righe = await db[REGISTRO].find(
         {"radice": root}, {"_id": 0, "id": 1, "nome": 1, "percorso": 1, "md5": 1, "stato": 1,
                            "tipo": 1, "esito_previsto": 1, "gia_presente": 1, "motivo": 1,
-                           "errori": 1, "anno": 1, "fuori_anno": 1},
+                           "errori": 1, "anno": 1, "fuori_anno": 1, "buste_lul": 1,
+                           "buste_canale_drive": 1},
     ).to_list(None) if root else []
     lette = [r for r in righe if r.get("stato") == "letto"]
     fuori_anno = Counter(r.get("anno") for r in lette if r.get("fuori_anno"))
     per_md5 = Counter(r["md5"] for r in righe if r.get("md5"))
+    cedolini = [r for r in lette if r.get("tipo") == "cedolino"]
     return {
         "stato": stato,
         "file": len(righe),
@@ -263,6 +303,15 @@ async def riepilogo(db) -> Dict[str, Any]:
         "gia_presenti": sum(1 for r in lette if r.get("gia_presente")),
         "fatture_fuori_anno": dict(fuori_anno),
         "copie_identiche": sum(n - 1 for n in per_md5.values() if n > 1),
+        # Cedolini che il motore dell'import non legge ma quello del canale
+        # Drive si': la misura della scelta fra i due motori.
+        "cedolini": {
+            "letti_dall_import": sum(1 for r in cedolini if r.get("buste_lul")),
+            "letti_solo_dal_canale_drive": sum(
+                1 for r in cedolini if not r.get("buste_lul") and r.get("buste_canale_drive")),
+            "illeggibili": sum(
+                1 for r in cedolini if not r.get("buste_lul") and not r.get("buste_canale_drive")),
+        },
         "da_guardare": [
             {k: r.get(k) for k in ("nome", "percorso", "tipo", "motivo", "errori")}
             for r in lette if r.get("esito_previsto") != cu.ARCHIVIO

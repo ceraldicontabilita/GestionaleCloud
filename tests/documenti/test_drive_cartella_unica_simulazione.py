@@ -163,3 +163,27 @@ def test_nuova_edizione_toglie_gli_esiti_vecchi_in_un_colpo(albero, monkeypatch)
     run(sim.giro(db))
     assert run(db[sim.REGISTRO].count_documents({"tipo": {"$exists": True}})) == 0
     assert run(db[sim.REGISTRO].count_documents({"stato": "da_leggere"})) == 5
+
+
+def test_cedolino_che_l_import_non_legge_e_un_errore_previsto(monkeypatch):
+    import app.routers.documenti as documenti
+    import app.services.cedolini_manager as cm
+    import app.services.libro_unico_workflow as lul
+
+    async def anteprima(db, **_):
+        return {}
+
+    monkeypatch.setattr(documenti, "detect_document_type", lambda *_: "cedolino")
+    monkeypatch.setattr("app.services.document_import_preview.build_import_preview", anteprima)
+    monkeypatch.setattr(lul, "parse_libro_unico_completo",
+                        lambda _p: {"dipendenti": [{"foglio_presenze": {}, "busta_paga": None}]})
+    monkeypatch.setattr(cm, "_parse_multi_template_units", lambda _c: [{"codice_fiscale": "X"}])
+    esito = run(sim.esamina(AsyncMongoMockClient()["t"], "Rossi Mario - Aprile 2024.pdf", b"%PDF"))
+    assert esito["esito_previsto"] == cu.ERRORI
+    assert esito["buste_lul"] == 0 and esito["buste_canale_drive"] == 1
+    assert "nessuna busta" in esito["errori"][0]
+
+    monkeypatch.setattr(lul, "parse_libro_unico_completo", lambda _p: {"dipendenti": [
+        {"busta_paga": {"dipendente": {"codice_fiscale": "X"}}}]})
+    esito = run(sim.esamina(AsyncMongoMockClient()["t"], "Rossi Mario - Aprile 2024.pdf", b"%PDF"))
+    assert esito["esito_previsto"] == cu.ARCHIVIO and esito["buste_lul"] == 1
