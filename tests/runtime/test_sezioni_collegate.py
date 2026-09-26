@@ -114,3 +114,23 @@ def test_il_selettore_e_davvero_agganciato(percorso, atteso):
     sorgente = (RADICE / percorso).read_text(encoding="utf-8")
 
     assert "SelettoreSezioni" in sorgente and atteso in sorgente
+
+
+def test_il_menu_distingue_clienti_e_gestione():
+    """Dalla gestione del Menu si deve poter aprire il menu dei clienti.
+
+    Il selettore toglie la sezione corrente: senza i collegamenti interni,
+    dall'amministrazione del Menu il menu clienti non compariva affatto.
+    """
+    menu = next(s for s in SEZIONI if s["id"] == "menu")
+    collegamenti = {c["id"]: c for c in menu["collegamenti"]}
+
+    assert collegamenti["menu-clienti"]["percorso"] == "/menu/"
+    assert collegamenti["menu-gestione"]["percorso"] == "/menu/admin"
+    for c in collegamenti.values():
+        assert c["icona"].isalpha() and c["icona"][0].isupper()
+    # HR e Lotti leggono solo `percorso`: resta il menu pubblico.
+    assert menu["percorso"] == "/menu/"
+
+    dashboard = (RADICE / "frontend_menu/src/pages/AdminDashboard.jsx").read_text(encoding="utf-8")
+    assert 'paginaCorrente="menu-gestione"' in dashboard

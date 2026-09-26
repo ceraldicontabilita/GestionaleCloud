@@ -1,4 +1,9 @@
-"""Metadati non sensibili per provare quale build serve la produzione."""
+"""Metadati non sensibili per provare quale build serve la produzione.
+
+Fonte unica del commit pubblicato per ``/api/health`` di ERP, HR, Menu e
+Lotti: lo stesso processo serve le quattro app, e un secondo meccanismo
+potrebbe dichiarare un commit diverso da quello vero.
+"""
 
 import os
 

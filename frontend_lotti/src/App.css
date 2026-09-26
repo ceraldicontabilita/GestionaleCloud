@@ -42,3 +42,12 @@ nav.g-nav-bar,
   .g-app-header .g-brand-sub { display: none !important; }
   .g-app-header .g-header-btn-label { display: none !important; }
 }
+
+/* Telefoni piccoli: resta il logo, il titolo lascia posto a «← Gestionale»
+   e all'ingranaggio Impostazioni, che non vanno mai fuori schermo. */
+@media (max-width: 480px) {
+  .g-app-header { flex-wrap: wrap !important; row-gap: 8px; }
+  .g-app-header .g-brand-title { display: none !important; }
+  .g-app-header .g-header-ingranaggio { order: 1; }
+  .g-app-header .g-header-azioni { order: 2; width: 100%; justify-content: flex-end; }
+}

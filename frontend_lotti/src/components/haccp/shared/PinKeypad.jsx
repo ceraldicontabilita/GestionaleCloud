@@ -9,7 +9,7 @@ import { createPinModal } from "../../../../../frontend_shared/PinModal";
 const PinModal = createPinModal(React, { LockKeyhole, Delete, X });
 
 export default function PinKeypad({
-  titolo, sottotitolo, colore = "#5b7a6b", soloAdmin = false, onSuccess, onCancel,
+  titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCancel,
 }) {
   const verify = async (pin) => {
     let data;
@@ -21,10 +21,6 @@ export default function PinKeypad({
     }
     const op = data?.operatore;
     if (!data?.token || !op) throw new Error("Risposta di accesso non valida");
-    // Non memorizzare un token di ruolo inadeguato prima di verificarlo.
-    if (soloAdmin && op.ruolo !== "amministratore") {
-      throw new Error("Solo l'amministratore può accedere");
-    }
     saveToken(data.token);
     saveRuolo(op.ruolo || "operatore");
     saveOperatoreNome(op.nome || "");

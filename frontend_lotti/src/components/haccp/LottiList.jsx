@@ -12,7 +12,8 @@ import {
   Search, FileText, Printer, Ban, RotateCcw, Layers, Calendar,
   AlertTriangle, PackageX, CheckCircle2, History
 } from "lucide-react";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 import { SchedaLottoModal, AzioneModal } from "./shared/SchedaLottoModal";
 import { getOperatoreNome, isAdmin } from "../../auth";
 // Refactor 25/07/2026: primitivi UI, costanti allergeni e i modali pesanti
@@ -121,7 +122,7 @@ const LottiList = ({
 
   const handleStampaRegistroASL = () => {
     const url = `${API}/registro-lotti-asl?data_inizio=${dataInizioRegistro}&data_fine=${dataFineRegistro}`;
-    window.open(withToken(url), "_blank");
+    apriDocumentoAutenticato(url);
     setShowRegistroModal(false);
   };
 
@@ -144,8 +145,7 @@ const LottiList = ({
   const handlePrint = (lotto, conNutrizionali = false) => {
     const id = lotto.numero_lotto || lotto.id;
     const url = `${API}/stampa/lotto/${encodeURIComponent(id)}${conNutrizionali ? "?mostra_nutrizionali=true" : ""}`;
-    const win = window.open(withToken(url), "_blank", "width=600,height=900");
-    if (!win) toast.error("Popup bloccato dal browser. Consenti i popup per questo sito.");
+    apriDocumentoAutenticato(url, { finestra: "width=600,height=900" });
   };
 
   const confermaRettifica = async () => {

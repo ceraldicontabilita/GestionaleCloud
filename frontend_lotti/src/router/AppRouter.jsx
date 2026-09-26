@@ -40,7 +40,7 @@ export default function AppRouter({ AppComponent }) {
   if (hash === "ricette" && getTabletSession()) return <AppComponent />;
 
   // REGOLA ACCESSI (Enzo 25/07/2026): i dipendenti vedono SOLO le card del
-  // tablet; il gestionale compare solo dopo il PIN amministratore (dalla home
+  // tablet; il gestionale compare solo al titolare entrato dal Gestionale (dalla home
   // kiosk, bottone "Gestionale — solo titolare"). Vale anche per un indirizzo
   // digitato a mano: qualunque pagina non-tablet rimanda al kiosk.
   // Questo è un filtro di comodità lato schermo — la sicurezza vera resta nel

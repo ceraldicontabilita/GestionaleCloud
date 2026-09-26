@@ -342,6 +342,16 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
 
       {/* Home più pulita: Area ufficio e Archivio (roba da scrivania, non
           quotidiana in negozio) sotto un pulsante a comparsa, chiuso di default. */}
+      {isAdmin() && (
+        <section>
+          <SectionTitle title="Amministrazione" subtitle="Configurazione sempre visibile per il titolare." />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <QuickLink icon={Settings} title="Impostazioni" subtitle="Azienda, personale, permessi e stampanti" onClick={() => navigate("personale")} />
+            <QuickLink icon={Network} title="Controllo dati" subtitle="Integrità, anomalie e manutenzione archivio" onClick={() => navigate("controllo_dati")} />
+          </div>
+        </section>
+      )}
+
       <button
         type="button"
         onClick={() => setUfficioOpen(v => !v)}
@@ -375,8 +385,6 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
           <QuickLink icon={Package} title="Materie prime" subtitle={`${fmt(stats.materie_prime)} articoli`} onClick={() => navigate("materie")} />
           <QuickLink icon={Layers} title="Lotti totali" subtitle={`${fmt(stats.lotti_totali)} registrazioni`} onClick={() => navigate("lotti")} />
           <QuickLink icon={Truck} title="Ricezione merce" subtitle="Arrivi, controlli e fornitori" onClick={() => navigate("ricezione_merce")} />
-          {isAdmin() && <QuickLink icon={Settings} title="Impostazioni" subtitle="Personale, PIN e permessi" onClick={() => navigate("personale")} />}
-          {isAdmin() && <QuickLink icon={Network} title="Controllo Dati" subtitle="Integrità dati e pulizia database" onClick={() => navigate("controllo_dati")} />}
           {isAdmin() && <QuickLink icon={ClipboardCheck} title="Collaudi da fare" subtitle="Test da spuntare dopo ogni modifica" onClick={() => navigate("collaudi")} />}
           <QuickLink icon={FileText} title="Listini e cataloghi" subtitle="Listini, cataloghi fornitori, prezzi banco e magazzino" onClick={() => navigate("prodotti")} />
         </div>

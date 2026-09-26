@@ -1,11 +1,11 @@
 // Titoli e intestazioni di pagina — UNICA fonte per document.title,
 // PageHeader e breadcrumb. Estratto da navigation.js/App.js (fase 2
 // ristrutturazione 24/07/2026): qui SOLO metadati, niente routing.
-import { PRIMARY_TABS, SECONDARY_TABS, HACCP_TABS } from "./navigation";
+import { PRIMARY_TABS, SECONDARY_TABS, HACCP_TABS, IMPOSTAZIONI_TABS } from "./navigation";
 
 export const PAGE_NAMES = (() => {
   const names = {};
-  [...PRIMARY_TABS, ...SECONDARY_TABS, ...HACCP_TABS].forEach((tab) => { names[tab.id] = tab.label; });
+  [...PRIMARY_TABS, ...SECONDARY_TABS, ...HACCP_TABS, ...IMPOSTAZIONI_TABS].forEach((tab) => { names[tab.id] = tab.label; });
   Object.assign(names, {
     backup: "Backup", ricettario: "Produzione",
     food_cost: "Produzione", listino: "Listino", magazzino_prodotti: "Giacenze",

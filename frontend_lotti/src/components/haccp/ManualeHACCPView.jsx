@@ -2,7 +2,8 @@ import { printHtml } from '../../utils/printHtml';
 import { useState } from "react";
 import { BookOpen, Download, Printer, Share2, Mail, MessageCircle, FileText } from "lucide-react";
 import Button from "../ui/Button";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { intestazioneAuth } from "../../auth";
 
 const ManualeHACCPView = () => {
   const [anno, setAnno] = useState(new Date().getFullYear());
@@ -39,10 +40,11 @@ const ManualeHACCPView = () => {
     setLoadingManuale(true);
     setShowViewer(true);
     try {
-      // withToken: con AUTH_ENFORCE attivo su Render una fetch senza token
-      // riceve 401 e il viewer mostrava il JSON "Autenticazione richiesta"
-      // al posto del manuale (l'interceptor axios non copre fetch()).
-      const res = await fetch(withToken(urlManuale), { headers: { Accept: "text/html" } });
+      // Con AUTH_ENFORCE attivo su Render una fetch senza token riceve 401 e il
+      // viewer mostrava il JSON "Autenticazione richiesta" al posto del manuale
+      // (l'interceptor axios non copre fetch()): il token va nell'header, mai
+      // nell'URL.
+      const res = await fetch(urlManuale, { headers: { Accept: "text/html", ...intestazioneAuth() } });
       if (!res.ok) throw new Error(`Il server ha risposto ${res.status}`);
       const html = await res.text();
       setManualeHtml(html);

@@ -3,7 +3,8 @@ import { conferma } from "../../utils/conferma";
 import { apiError } from "../../utils/apiError";
 import axios from "axios";
 import { toast } from "sonner";
-import { API, BACKEND_URL, withToken } from "../../utils/constants";
+import { API, BACKEND_URL } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 
 /**
  * ColazioneAcquaviva — UI ottimizzata per tablet pasticceria.
@@ -491,7 +492,7 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                 </button>
                 {/* ZIP delle foto Acquaviva già in archivio, rinominate col nome prodotto */}
                 <button
-                  onClick={() => window.open(withToken(`${API}/acquaviva/export-foto-zip`), "_blank")}
+                  onClick={() => apriDocumentoAutenticato(`${API}/acquaviva/export-foto-zip`, { scarica: true })}
                   title="Scarica uno zip con le foto dei prodotti Acquaviva, ogni file col nome del prodotto"
                   style={{
                     padding: "6px 12px", borderRadius: 999, fontWeight: 800, fontSize: 12, cursor: "pointer",

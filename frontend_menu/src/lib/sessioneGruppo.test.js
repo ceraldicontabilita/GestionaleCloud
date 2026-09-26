@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { entraDalGestionale, loginGestionale } from './sessioneGruppo';
+import { entraDalGestionale, esciDalGruppo, loginGestionale } from './sessioneGruppo';
 
 // Sessione unica: l'amministrazione del Menu si apre con la sessione del
 // Gestionale, non con un secondo PIN.
@@ -28,5 +28,23 @@ describe('ingresso amministratore Menu dal Gestionale', () => {
 
   test('il login del Gestionale riporta alla gestione del menu', () => {
     expect(loginGestionale()).toBe('/login?next=%2Fmenu%2Fadmin');
+  });
+
+  test('Esci chiude la sessione del Gestionale e i token di tutte le app', async () => {
+    ['auth_token', 'admin_token', 'pt_token', 'lotti_token'].forEach((k) => localStorage.setItem(k, 'x'));
+    const fetchFinta = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchFinta;
+    const posizione = window.location;
+    delete window.location;
+    window.location = { assign: jest.fn() };
+    try {
+      await esciDalGruppo();
+      expect(fetchFinta).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST', credentials: 'same-origin' }));
+      ['auth_token', 'admin_token', 'pt_token', 'lotti_token'].forEach((k) => expect(localStorage.getItem(k)).toBeNull());
+      expect(window.location.assign).toHaveBeenCalledWith('/login');
+    } finally {
+      window.location = posizione;
+      delete global.fetch;
+    }
   });
 });

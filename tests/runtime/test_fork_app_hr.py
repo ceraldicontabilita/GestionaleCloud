@@ -47,7 +47,6 @@ FORK_NOTO = {
     "database.py",
     "main.py",
     # Fork veri, da consolidare (vedi «Aperto» in CLAUDE.md).
-    "routers/auth.py",
     "routers/employees/dipendenti.py",
     "routers/pin_login.py",
     "routers/tfr.py",

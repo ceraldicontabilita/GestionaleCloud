@@ -6,7 +6,8 @@ import {
   FileText, ChefHat, Search, ExternalLink,
 } from "lucide-react";
 import Button from "../../ui/Button";
-import { API, withToken } from "../../../utils/constants";
+import { API } from "../../../utils/constants";
+import { apriDocumentoAutenticato } from "../../../auth";
 import { apiError } from "../../../utils/apiError";
 import { getOperatoreNome } from "../../../auth";
 import { getTabletSession } from "../../../utils/tabletSession";
@@ -223,8 +224,7 @@ export function SchedaLottoModal({ lottoId, onClose, onCambiato }) {
     if (!scheda) return;
     const id = scheda.lotto.numero_lotto || scheda.lotto.id;
     const url = `${API}/stampa/lotto/${encodeURIComponent(id)}`;
-    const win = window.open(withToken(url), "_blank", "width=600,height=900");
-    if (!win) toast.error("Popup bloccato dal browser. Consenti i popup per questo sito.");
+    apriDocumentoAutenticato(url, { finestra: "width=600,height=900" });
   };
 
   const ICONA_EVENTO = {
@@ -358,7 +358,7 @@ export function SchedaLottoModal({ lottoId, onClose, onCambiato }) {
                             </span>
                             {s.fattura_id && (
                               <button
-                                onClick={() => window.open(withToken(`${API}/fatture/${s.fattura_id}/visualizza`), "_blank")}
+                                onClick={() => apriDocumentoAutenticato(`${API}/fatture/${s.fattura_id}/visualizza`)}
                                 className="shrink-0 flex items-center gap-1 text-[#5b7a6b] font-bold hover:underline">
                                 <ExternalLink size={11} /> Apri fattura
                               </button>
@@ -435,8 +435,7 @@ export function SchedaLottoModal({ lottoId, onClose, onCambiato }) {
                     <Button size="sm" variant="secondary" onClick={stampa}><Printer size={16}/> Stampa etichetta</Button>
                     <Button size="sm" variant="secondary" onClick={() => {
                       const id = l.numero_lotto || l.id;
-                      const win = window.open(withToken(`${API}/stampa/report-lotto/${encodeURIComponent(id)}`), "_blank");
-                      if (!win) toast.error("Popup bloccato dal browser. Consenti i popup per questo sito.");
+                      apriDocumentoAutenticato(`${API}/stampa/report-lotto/${encodeURIComponent(id)}`);
                     }}><FileText size={16}/> Stampa report</Button>
                     {onCambiato && (
                       <>

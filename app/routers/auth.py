@@ -219,11 +219,23 @@ async def auth_logout(request: Request, response: Response):
             # /api/auth/logout è pubblico, altrimenti chiunque potrebbe
             # riempire token_blacklist con hash spazzatura senza scadenza
             # (review Codex su PR #65).
-            exp = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False}).get("exp")
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False})
+            exp = payload.get("exp")
         except jwt.InvalidTokenError:
             continue
         try:
             await revoca_token(Database.get_db(), token, exp=exp)
+            # HR, Lotti e Menu hanno token propri nati da questa sessione e
+            # ne portano la chiave: revocarla li chiude tutti. La registrazione
+            # dura quanto il token derivato piu' lungo (HR, 7 giorni) piu'
+            # margine, perche' la sessione sopravvive al singolo token ERP.
+            import time as _time
+            from app.services.group_session import segna_revocata
+            from app.utils.token_blacklist import chiave_sessione, revoca_chiave
+            chiave = chiave_sessione(payload, token)
+            if chiave.startswith("sid:"):
+                await revoca_chiave(Database.get_db(), chiave, exp=_time.time() + 8 * 86400)
+            segna_revocata(chiave)
         except Exception as exc:
             raise HTTPException(
                 status_code=503,

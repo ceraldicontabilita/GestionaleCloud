@@ -58,9 +58,9 @@ services:
         sync: false
       - key: SUPABASE_RUNTIME_SECRET
         sync: false
-      # --- App Lotti (HACCP) portata pari pari (app/lotti, montata a /lotti):
-      # progetto Supabase `Lotti-HACCP` (tabella lotti_documents + RPC lotti_*)
-      # e segreto JWT proprio (fallback AUTH_SECRET). Senza LOTTI_SUPABASE_URL
+      # --- App Lotti (HACCP), montata a /lotti. Le variabili namespaced
+      # puntano allo stesso archivio Supabase del gruppo; il segreto JWT resta
+      # separato per limitare l'ambito dei token. Senza LOTTI_SUPABASE_URL
       # l'archivio di Lotti resta in memoria (non persistente).
       - key: LOTTI_SUPABASE_URL
         sync: false
@@ -70,9 +70,9 @@ services:
         sync: false
       - key: LOTTI_AUTH_SECRET
         sync: false
-      # --- App Menu portata pari pari (app/menu, montata a /menu): tabelle
-      # menu_* nel progetto Supabase `Lotti-HACCP` (client PostgREST), segreto
-      # JWT del login admin e credenziali dell'unico utente amministratore.
+      # --- App Menu, montata a /menu: tabelle menu_* nello stesso archivio,
+      # con un segreto JWT dedicato. L'identita' admin deriva dalla sessione
+      # ERP: non esiste una password Menu separata.
       - key: MENU_SUPABASE_URL
         sync: false
       - key: MENU_SUPABASE_KEY
@@ -80,8 +80,6 @@ services:
       - key: MENU_JWT_SECRET
         sync: false
       - key: MENU_ADMIN_USERNAME
-        sync: false
-      - key: MENU_ADMIN_PASSWORD
         sync: false
       # --- AppDipendenti portata pari pari (app/hr, montata a /hr): DSN
       # Postgres/Supabase (asyncpg) delle tabelle app_* dell'app originale,

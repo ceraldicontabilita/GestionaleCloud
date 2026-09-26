@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import api, { setAuthToken, clearAuthToken, getAuthToken } from '../api';
+import { pulisciSessioneGruppoBrowser } from '../../../frontend_shared/SessioneGruppo';
 import {
   INTERVALLO_GUSCIO_MS,
   attesaProssimoGiro,
@@ -118,7 +119,7 @@ export function AuthProvider({ children }) {
     // locale per permettere all'utente di riprovare senza dichiarare un logout
     // sicuro che in realtà non è avvenuto.
     await api.post('/api/auth/logout');
-    clearAuthToken();
+    pulisciSessioneGruppoBrowser();
     setUser(null);
   }, []);
 

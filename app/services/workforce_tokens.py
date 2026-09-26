@@ -86,6 +86,7 @@ def create_workforce_token(
     auth_method: str,
     algorithm: str = ALGORITHM,
     email: str = "",
+    sid: str = "",
 ) -> str:
     """Crea un JWT leggibile in modo coerente sia da HR sia da Lotti."""
     if not secret:
@@ -105,4 +106,8 @@ def create_workforce_token(
     })
     if email:
         payload["email"] = email
+    if sid:
+        # Impronta della sessione del Gestionale da cui nasce il token: il
+        # logout la revoca per tutte le app (`group_session`).
+        payload["sid"] = sid
     return jwt.encode(payload, secret, algorithm=algorithm)

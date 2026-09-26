@@ -13,7 +13,8 @@ sotto-applicazione a ``/menu``:
 * ``arresta_menu`` — no-op, per simmetria con ``app.lotti.embed``.
 
 Env richieste dall'ospite: ``MENU_SUPABASE_URL``, ``MENU_SUPABASE_KEY``,
-``MENU_JWT_SECRET``, ``MENU_ADMIN_USERNAME``, ``MENU_ADMIN_PASSWORD``.
+``MENU_JWT_SECRET`` e, facoltativamente, ``MENU_ADMIN_USERNAME``. Non esiste
+una password Menu separata: l'amministratore deriva dalla sessione ERP.
 """
 
 from __future__ import annotations

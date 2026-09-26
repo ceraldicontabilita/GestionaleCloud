@@ -2,6 +2,7 @@
 Authentication service.
 Handles user registration, login, and JWT token management.
 """
+import secrets
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 import bcrypt
@@ -92,7 +93,9 @@ class AuthService:
             "name": name,
             "role": role,
             "exp": expire,
-            "iat": datetime.now(timezone.utc)
+            "iat": datetime.now(timezone.utc),
+            # sessione revocabile dal logout (vedi utils/auth_tokens.py)
+            "sid": secrets.token_hex(16),
         }
         
         token = jwt.encode(

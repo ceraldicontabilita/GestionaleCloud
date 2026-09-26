@@ -1,4 +1,4 @@
-from app.lotti.deploy_info import get_deploy_info
+from app.services.deploy_info import get_deploy_info
 
 
 def test_render_commit_ha_precedenza_ed_e_visibile():
