@@ -6,7 +6,8 @@ import {
   Bug, ChevronLeft, ChevronRight, RefreshCw, Check, AlertTriangle,
   Printer, Plus, X, Save, Edit, User, Wrench
 } from "lucide-react";
-import { API, MESI_IT, withToken } from "../../utils/constants";
+import { API, MESI_IT } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 import { giorniNelMese } from "../../utils/dateUtils";
 
 // ──────────────────────────────────────────────────────────────
@@ -307,7 +308,7 @@ const DisinfestazioneView = () => {
           <span className="font-semibold min-w-[150px] text-center">{MESI_IT[mese - 1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight size={20} /></button>
           <button
-            onClick={() => window.open(withToken(`${API}/disinfestazione/export-pdf/${anno}`), '_blank')}
+            onClick={() => apriDocumentoAutenticato(`${API}/disinfestazione/export-pdf/${anno}`)}
             className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
             <Printer size={15} /> PDF
           </button>

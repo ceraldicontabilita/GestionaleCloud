@@ -3,7 +3,8 @@ import axios from "axios";
 import { toast } from "sonner";
 import { AlertCircle, Plus, Check, Clock, X, ChevronDown, ChevronUp, RefreshCw, Refrigerator, Snowflake, Printer, ArrowLeftRight } from "lucide-react";
 import Button from "../ui/Button";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 import { apiError } from "../../utils/apiError";
 import { getOperatoreNome } from "../../auth";
 
@@ -464,7 +465,7 @@ const AnomalieView = () => {
         <div className="flex items-center gap-2">
           <Button 
             variant="secondary" 
-            onClick={() => window.open(withToken(`${API}/anomalie/report-pdf/${new Date().getFullYear()}`), '_blank')}
+            onClick={() => apriDocumentoAutenticato(`${API}/anomalie/report-pdf/${new Date().getFullYear()}`)}
             data-testid="stampa-report-anomalie-btn"
           >
             <Printer size={16}/> Report PDF

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { toast } from "sonner";
 import { API } from "./utils/constants";
 
 const TOKEN_KEY = "lotti_token";
@@ -13,14 +14,98 @@ export const clearToken = () => {
   try { localStorage.removeItem(TOKEN_KEY); } catch { /* no-op */ }
 };
 
-// Accoda il token JWT a un URL di documento aperto in nuova scheda (window.open):
-// quelle richieste non possono inviare l'header Authorization, quindi il backend
-// accetta lo stesso token via query string (?token=...).
-export const withToken = (url) => {
+// ── Documenti protetti in nuova scheda ─────────────────────────────────────
+// Il JWT non va MAI in un URL (?token=...): finirebbe nella cronologia, nei log
+// del proxy, nel Referer e nella coda di stampa. Il backend lo accetta solo
+// dall'header Authorization. Per aprire un PDF/HTML del backend in una nuova
+// scheda lo si scarica con axios (l'interceptor mette "Authorization: Bearer"),
+// lo si trasforma in un blob: URL e si apre quello.
+
+/** Header Authorization per le fetch() dirette (l'interceptor copre solo axios). */
+export const intestazioneAuth = () => {
   const t = getToken();
-  if (!t) return url;
-  return url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t);
+  return t ? { Authorization: `Bearer ${t}` } : {};
 };
+
+function _nomeDaRisposta(r) {
+  const cd = (r && r.headers && (r.headers["content-disposition"] || r.headers["Content-Disposition"])) || "";
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+  if (!m) return "";
+  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+}
+
+// Un HTML aperto da blob: non ha un indirizzo da cui risolvere i percorsi
+// relativi (immagini /lotti/api/foto/..., CSS): gli si da' la <base> del
+// documento originale.
+function _conBase(html, url) {
+  let assoluto = url;
+  try { assoluto = new URL(url, window.location.href).href; } catch { /* no-op */ }
+  const base = `<base href="${assoluto.replace(/"/g, "&quot;")}">`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (h) => h + base);
+  return base + html;
+}
+
+function _scaricaHref(href, nomeFile) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = nomeFile || "";
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
+ * Apre in una nuova scheda (o scarica) un documento protetto del backend,
+ * autenticandosi con l'header Authorization e non con l'URL.
+ *
+ * La finestra si apre SUBITO, in modo sincrono dentro il gesto del clic: dopo
+ * un await il blocco popup la rifiuterebbe. Il documento arriva dopo e la
+ * finestra viene portata sul blob. Se il popup e' comunque bloccato, il
+ * documento si scarica invece di andare perso.
+ *
+ * @param {string} url  URL del backend (anche relativo, es. /lotti/api/...)
+ * @param {object} [o]
+ * @param {boolean} [o.scarica]  true = scarica il file invece di aprirlo
+ * @param {string}  [o.nomeFile] nome del file scaricato (altrimenti dal server)
+ * @param {string}  [o.finestra] caratteristiche di window.open (es. "width=600,height=900")
+ * @returns {Promise<boolean>} true se il documento e' stato aperto o scaricato
+ */
+export async function apriDocumentoAutenticato(url, { scarica = false, nomeFile = "", finestra = "" } = {}) {
+  let win = null;
+  if (!scarica) {
+    try { win = window.open("", "_blank", finestra || undefined); } catch { win = null; }
+    if (win) {
+      // Nessun riferimento all'app dalla scheda aperta (come noopener, che pero'
+      // farebbe restituire null a window.open e non si potrebbe piu' guidarla).
+      try { win.opener = null; } catch { /* no-op */ }
+      try { win.document.title = "Caricamento documento…"; win.document.body.textContent = "Caricamento del documento…"; } catch { /* no-op */ }
+    }
+  }
+  try {
+    const r = await axios.get(url, { responseType: "blob" });
+    let blob = r.data;
+    const tipo = String((r.headers && r.headers["content-type"]) || (blob && blob.type) || "").toLowerCase();
+    if (tipo.includes("text/html") && blob && typeof blob.text === "function") {
+      blob = new Blob([_conBase(await blob.text(), url)], { type: "text/html;charset=utf-8" });
+    }
+    const href = URL.createObjectURL(blob);
+    if (win && !win.closed) {
+      win.location.href = href;
+    } else {
+      if (!scarica) toast.info("Popup bloccato dal browser: il documento e' stato scaricato.");
+      _scaricaHref(href, nomeFile || _nomeDaRisposta(r));
+    }
+    // La scheda ha il tempo di caricare il blob prima che venga liberato.
+    setTimeout(() => URL.revokeObjectURL(href), 60000);
+    return true;
+  } catch (err) {
+    if (win) { try { win.close(); } catch { /* no-op */ } }
+    const stato = err && err.response && err.response.status;
+    toast.error(stato ? `Documento non disponibile (errore ${stato})` : "Documento non raggiungibile: controlla la connessione");
+    return false;
+  }
+}
 
 // ── Cancello (richiesta Enzo, aggiornata 04/09/2026): il PIN inserito resta
 // valido su TUTTE le pagine e tra riaperture della scheda finché non si preme

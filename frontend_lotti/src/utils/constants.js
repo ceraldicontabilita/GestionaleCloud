@@ -35,18 +35,6 @@ export function fotoSrc(u) {
   return `${PUBLIC_URL}${rel}`;
 }
 
-/**
- * Accoda il token JWT a un URL aperto in nuova scheda (window.open / link a PDF):
- * quelle richieste non possono inviare l'header Authorization, quindi il backend
- * accetta lo stesso token via query string (?token=...). Senza token, URL invariato.
- */
-export function withToken(url) {
-  let t = "";
-  try { t = localStorage.getItem("lotti_token") || ""; } catch { /* no-op */ }
-  if (!t) return url;
-  return url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t);
-}
-
 export const MESI_IT = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
   "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"

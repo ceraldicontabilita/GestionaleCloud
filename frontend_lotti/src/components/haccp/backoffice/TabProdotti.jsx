@@ -8,7 +8,7 @@ import axios from "axios";
 import { toast } from "./toastBackoffice";
 // usati dal blocco prodotti: senza questi due import la pagina crasherebbe
 // a runtime (la build non se ne accorge)
-import { withToken } from "../../../utils/constants";
+import { apriDocumentoAutenticato } from "../../../auth";
 import { getOperatoreNome } from "../../../auth";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
@@ -239,7 +239,7 @@ function TabProdotti() {
           style={{padding:"7px 14px",borderRadius:10,border:"1.5px solid var(--border)",background:"var(--card)",fontFamily:"var(--font)",fontSize:13,cursor:"pointer"}}>
           🔄
         </button>
-        <button onClick={() => window.open(withToken(`${API}/magazzino-bar/report-giacenze`), "_blank")}
+        <button onClick={() => apriDocumentoAutenticato(`${API}/magazzino-bar/report-giacenze`)}
           title="Report settimanale giacenze: stock e scadenze"
           style={{padding:"7px 14px",borderRadius:10,border:"1.5px solid var(--primary)",background:"var(--primary)",color:"#fff",fontFamily:"var(--font)",fontSize:13,fontWeight:600,cursor:"pointer"}}>
           📄 Report settimanale

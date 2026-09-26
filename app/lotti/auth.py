@@ -174,16 +174,11 @@ def _enforce() -> bool:
 def _ha_token_valido(request: Request):
     header = request.headers.get("authorization", "")
     token = header[7:].strip() if header.lower().startswith("bearer ") else ""
-    # I documenti aperti in una nuova scheda (window.open: report HACCP, stampa
-    # lotto, registri PDF) non possono inviare l'header Authorization. Per loro si
-    # accetta lo stesso token JWT passato come query string (?token=...): resta
-    # un token valido, quindi la sicurezza è preservata.
-    if not token:
-        token = (
-            request.query_params.get("token")
-            or request.query_params.get("access_token")
-            or ""
-        ).strip()
+    # Il token si accetta SOLO dall'header Authorization. Un JWT in query string
+    # (?token=...) finisce nella cronologia del browser, nei log di accesso del
+    # proxy, nell'header Referer e nella coda di stampa: non autentica più.
+    # I documenti in nuova scheda il frontend li scarica con axios (header
+    # Bearer) e li apre come blob (apriDocumentoAutenticato in auth.js).
     return verify_token(token) if token else None
 
 
