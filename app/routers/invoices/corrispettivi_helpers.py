@@ -216,8 +216,17 @@ async def sostituisci_giornata_senza_documento(
     sue righe di Prima Nota escono per id e la sua scrittura a giornale, se
     c'e', si storna. Idempotente: una riga gia' ritirata non si ritocca.
     """
+    return await _ritira_corrispettivo(
+        db, vecchia, motivo="giornata sostituita dalla chiusura XML",
+        campi={"deleted_reason": "sostituita_da_chiusura_xml", "sostituito_da": nuovo_id},
+    )
+
+
+async def _ritira_corrispettivo(
+    db, vecchia: Dict[str, Any], *, motivo: str, campi: Dict[str, Any],
+) -> Dict[str, Any]:
     vecchio_id = vecchia.get("id")
-    esito = {"corrispettivo_id": vecchio_id, "sostituito_da": nuovo_id,
+    esito = {"corrispettivo_id": vecchio_id, **campi,
              "prima_nota_rimosse": 0, "giornale": None}
     if vecchio_id in (None, "") or vecchia.get("status") == "deleted":
         return esito
@@ -232,15 +241,13 @@ async def sostituisci_giornata_senza_documento(
                 esito["prima_nota_rimosse"] += 1
     from app.services.registrazione_contabile import storna_registrazione_corrispettivo
     esito["giornale"] = (await storna_registrazione_corrispettivo(
-        db, vecchio_id, "giornata sostituita dalla chiusura XML")).get("stato")
+        db, vecchio_id, motivo)).get("stato")
     await db["corrispettivi"].update_one({"id": vecchio_id}, {"$set": {
-        "status": "deleted",
-        "deleted_reason": "sostituita_da_chiusura_xml",
-        "sostituito_da": nuovo_id,
+        "status": "deleted", **campi,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }})
-    logger.info("[Corrispettivi] giornata %s senza documento (id %s) sostituita da %s: %s",
-                vecchia.get("data"), vecchio_id, nuovo_id, esito)
+    logger.info("[Corrispettivi] giornata %s (id %s) ritirata, %s: %s",
+                vecchia.get("data"), vecchio_id, motivo, esito)
     return esito
 
 
@@ -706,7 +713,8 @@ async def cleanup_duplicate_corrispettivi(db, anno: Optional[int] = None) -> Dic
     return {"gruppi_duplicati": groups, "corrispettivi_eliminati": deleted, "anno": anno}
 
 
-MARCATORE_GIORNATE_SUPERATE = "corrispettivi_giornate_superate_da_xml_20260923_v2"
+MARCATORE_GIORNATE_SUPERATE = "corrispettivi_giornate_superate_da_xml_20260926_v3"
+MOTIVI_RITIRO = ("sostituita_da_chiusura_xml", "fuori_anno_attivo")
 _task_giornate_superate = None
 
 
@@ -748,11 +756,40 @@ async def ritira_giornate_superate(db, *, dry_run: bool = True) -> Dict[str, Any
             "prima_nota_ritirate_rimosse": prima_nota_ritirate}
 
 
+async def ritira_corrispettivi_fuori_anno(db, *, dry_run: bool = True) -> Dict[str, Any]:
+    """Chiusure di un anno diverso da quello attivo entrate per errore.
+
+    Dello storico interessano solo cedolini e F24: il 26/09/2026 la chiusura
+    del 14/03/2023 e' entrata dalla cartella unica, con i contanti in cassa.
+    Si ritira come una giornata superata: riga per l'audit, cassa fuori per
+    id, scrittura stornata. L'originale resta su Drive.
+    """
+    from app.services.config_import import get_anno_importazione_attivo
+
+    anno_attivo = await get_anno_importazione_attivo(db)
+    righe = await db["corrispettivi"].find(
+        {"status": {"$nin": ["deleted", "archived"]}, "entity_status": {"$ne": "deleted"}},
+        {"_id": 0, "id": 1, "data": 1, "totale": 1, "status": 1},
+    ).to_list(None)
+    esiti = []
+    for riga in righe:
+        data = str(riga.get("data") or "")
+        if not data[:4].isdigit() or int(data[:4]) == anno_attivo:
+            continue
+        voce = {"data": data[:10], "corrispettivo_id": riga.get("id"), "totale": riga.get("totale")}
+        if not dry_run:
+            voce.update(await _ritira_corrispettivo(
+                db, riga, motivo=f"chiusura fuori dall'anno attivo {anno_attivo}",
+                campi={"deleted_reason": "fuori_anno_attivo"}))
+        esiti.append(voce)
+    return {"dry_run": dry_run, "anno_attivo": anno_attivo, "ritirate": len(esiti), "dettaglio": esiti}
+
+
 async def _pulisci_prima_nota_delle_ritirate(db) -> int:
     """Cassa e banca di una giornata ritirata escono per id: il giro della
     Prima Nota le aveva ricreate finche' leggeva anche le righe ritirate."""
     ritirate = await db["corrispettivi"].find(
-        {"deleted_reason": "sostituita_da_chiusura_xml"}, {"_id": 0, "id": 1},
+        {"deleted_reason": {"$in": list(MOTIVI_RITIRO)}}, {"_id": 0, "id": 1},
     ).to_list(None)
     rimosse = 0
     for corr in ritirate:
@@ -774,6 +811,8 @@ async def _ritira_giornate_superate_una_tantum(db) -> None:
     stato = "failed"
     try:
         risultato = await ritira_giornate_superate(db, dry_run=False)
+        risultato["fuori_anno"] = await ritira_corrispettivi_fuori_anno(db, dry_run=False)
+        risultato["prima_nota_ritirate_rimosse"] += await _pulisci_prima_nota_delle_ritirate(db)
         stato = "completed"
     except Exception as exc:  # noqa: BLE001 - l'esito resta in migration_runs
         logger.exception("Giornate corrispettivi superate non ritirate (%s)", type(exc).__name__)
