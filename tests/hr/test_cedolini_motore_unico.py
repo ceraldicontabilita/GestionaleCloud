@@ -130,7 +130,8 @@ def _lettura(esito, buste=(), presenze=()):
 
 def test_la_busta_col_netto_va_in_contabilita_quella_senza_solo_in_hr(scrittore, monkeypatch):
     buste = [
-        {"codice_fiscale": CF, "mese": 3, "anno": 2026, "netto": 941.0, "_pdf_data": "a", "_raw_text": "x"},
+        {"codice_fiscale": CF, "mese": 3, "anno": 2026, "netto": 941.0,
+         "stato_netto": "NETTO_VERIFICATO_DA_CEDOLINO", "_pdf_data": "a", "_raw_text": "x"},
         {"codice_fiscale": CF, "mese": 4, "anno": 2026, "netto": None, "_pdf_data": "b", "_raw_text": "y"},
     ]
     monkeypatch.setattr(cedolini_motore, "leggi_pdf", _lettura("buste", buste))
@@ -165,3 +166,57 @@ def test_nessun_motore_parallelo_dei_cedolini():
 def test_voci_e_stato_netto_finiscono_nel_registro():
     sorgente = Path("app/services/salari_unificati_v2.py").read_text(encoding="utf-8")
     assert '"voci", "dati_chiave"' in sorgente and 'cedolino_record["stato_netto"]' in sorgente
+
+
+def _parole(*celle):
+    """Parole PyMuPDF (x0, y0, x1, y1, testo) di una busta anonima."""
+    return [list(c) for c in celle]
+
+
+def test_il_netto_zucchetti_si_legge_dalla_cella_sotto_l_etichetta():
+    from app.parsers.busta_paga_multi_template import _netto_dalla_cella
+
+    classico = _parole((531, 712, 551, 717, "NETTO"), (461, 719, 476, 725, "0,67"),
+                       (515, 719, 560, 725, "1.018,00+"))
+    assert _netto_dalla_cella([classico]) == {"netto": 1018.0}
+    nuovo = _parole((487, 730, 534, 737, "NETTOsDELsMESE"), (519, 741, 554, 750, "941,00"))
+    assert _netto_dalla_cella([nuovo]) == {"netto": 941.0}
+    # Cella vuota: l'arrotondamento sopra l'etichetta non e' il netto.
+    vuota = _parole((487, 730, 534, 737, "NETTOsDELsMESE"), (562, 725, 578, 732, "0,35"))
+    assert _netto_dalla_cella([vuota]) == {"netto": None}
+
+
+def test_il_netto_non_si_ricalcola_mai_da_competenze_e_trattenute():
+    from app.constants.stati_netto import (
+        MULTIPLE_NETS_DA_VERIFICARE,
+        NETTO_NON_PRESENTE_O_NON_LEGGIBILE,
+        NETTO_VERIFICATO_DA_CEDOLINO,
+    )
+    from app.parsers.busta_paga_multi_template import _verifica_netto
+
+    assente = {"totali": {"competenze": 1227.09, "trattenute": 209.58}}
+    _verifica_netto(assente)
+    assert assente["totali"].get("netto") is None
+    assert assente["totali"]["stato_netto"] == NETTO_NON_PRESENTE_O_NON_LEGGIBILE
+
+    dal_testo = {"totali": {"competenze": 1227.09, "trattenute": 209.58, "netto": 0.48}}
+    _verifica_netto(dal_testo)
+    assert dal_testo["totali"]["netto"] is None and dal_testo["totali"]["netto_letto"] == 0.48
+    assert dal_testo["totali"]["stato_netto"] == MULTIPLE_NETS_DA_VERIFICARE
+
+    # La cella vince anche se competenze e trattenute sono lette male.
+    dalla_cella = {"totali": {"competenze": 909.68, "trattenute": 342.89, "netto": 1252.0,
+                              "netto_da_cella": True}}
+    _verifica_netto(dalla_cella)
+    assert dalla_cella["totali"]["netto"] == 1252.0
+    assert dalla_cella["totali"]["stato_netto"] == NETTO_VERIFICATO_DA_CEDOLINO
+    assert dalla_cella["totali"]["netto_calcolato"] == 566.79
+
+
+def test_una_busta_col_netto_da_verificare_non_va_in_prima_nota(scrittore, monkeypatch):
+    buste = [{"codice_fiscale": CF, "mese": 5, "anno": 2026, "netto": 900.0,
+              "stato_netto": "MULTIPLE_NETS_DA_VERIFICARE", "_pdf_data": "c", "_raw_text": ""}]
+    monkeypatch.setattr(cedolini_motore, "leggi_pdf", _lettura("buste", buste))
+    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(None, base64.b64encode(b"%PDF").decode(), "m.pdf"))
+    assert scrittore["v2"] == [] and len(scrittore["hr"]) == 1
+    assert esito["buste_senza_netto"] == 1

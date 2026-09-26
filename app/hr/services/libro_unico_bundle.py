@@ -114,7 +114,7 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
             "pdf_data": base64.b64encode(g["pdf_bytes"]).decode("ascii"),
             "netto": t.get("netto"), "lordo": t.get("lordo"),
             "trattenute": t.get("trattenute"), "competenze": t.get("competenze"),
-            "netto_ricostruito": t.get("netto_ricostruito"),
+            "stato_netto": t.get("stato_netto"),
             "livello": str(d["livello"]) if d.get("livello") else None,
             "retribuzione": r.get("retribuzione") or {},
             "fonte": "libro_unico_bundle",

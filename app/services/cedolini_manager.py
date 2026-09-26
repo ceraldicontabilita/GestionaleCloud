@@ -112,6 +112,7 @@ async def processa_tutti_cedolini_pdf(
             results["errori"].append(f"{filename}: {lettura['motivo']}")
         return results
 
+    from app.constants.stati_netto import alimenta_salari
     from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
     from app.services.salari_unificati_v2 import processa_cedolino_v2
 
@@ -126,7 +127,8 @@ async def processa_tutti_cedolini_pdf(
         ced_pdf_text = ced.pop("_raw_text", "")
         chi = ced.get("nome_dipendente") or ced.get("codice_fiscale") or "N/D"
 
-        if not ced.get("netto"):
+        # Solo un netto verificato dalla cella alimenta Salari (fallisce chiuso).
+        if not ced.get("netto") or not alimenta_salari(ced.get("stato_netto")):
             deposito = await deposita_cedolino_in_hr({
                 **ced, "filename": filename, "pdf_data": cedolino_pdf_data,
                 "source": "cedolino_v2",
@@ -135,7 +137,7 @@ async def processa_tutti_cedolini_pdf(
                 results["buste_senza_netto"] += 1
             else:
                 results["errori"].append(
-                    f"{chi}: busta senza netto non depositata in HR ({deposito.get('esito')})"
+                    f"{chi}: busta senza netto verificato non depositata in HR ({deposito.get('esito')})"
                 )
             continue
 

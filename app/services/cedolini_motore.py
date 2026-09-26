@@ -75,10 +75,14 @@ def _summary_cedolino(
         "lordo": summary.get("lordo"),
         "netto": summary.get("netto"),
         "netto_mese": summary.get("netto"),
-        "stato_netto": (
+        # Lo stato lo decide il lettore (`_verifica_netto`); senza, vale la
+        # sola presenza del netto letto.
+        "stato_netto": summary.get("stato_netto") or (
             NETTO_VERIFICATO_DA_CEDOLINO if summary.get("netto") is not None
             else NETTO_NON_PRESENTE_O_NON_LEGGIBILE
         ),
+        "netto_letto": summary.get("netto_letto"),
+        "netto_calcolato": summary.get("netto_calcolato"),
         "totale_trattenute": summary.get("trattenute"),
         "tfr_quota": summary.get("tfr_quota") or 0,
         "ore_lavorate": summary.get("ore_lavorate") or 0,
