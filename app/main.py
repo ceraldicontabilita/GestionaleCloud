@@ -35,7 +35,7 @@ _HEALTH_PROBE_TIMEOUT = 2.0
 # (una sola probe in volo per processo; vedi _probe_archivio).
 _PROBE_ESITO_TTL = 60.0
 _PROBE_ERRORE_TTL = 15.0
-_probe_stati: "weakref.WeakKeyDictionary[object, dict]" = weakref.WeakKeyDictionary()
+_probe_stati: "weakref.WeakKeyDictionary[object, object]" = weakref.WeakKeyDictionary()
 SALARY_RELATIONS_RECOVERY_MARKER = "recover_salary_relations_20260821_v1"
 SUPPLIER_METHODS_RECOVERY_MARKER = "recover_supplier_payment_methods_20260822_v1"
 
@@ -821,53 +821,36 @@ async def root(request: Request):
     return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "status": "online"}
 
 
-def _esito_probe(task: "asyncio.Future") -> tuple[str, str | None]:
-    if task.cancelled():
-        return "failed", "probe annullata"
-    exc = task.exception()
-    if exc is not None:
-        return "failed", str(exc)[:200]
-    return "verified", None
-
-
 async def _probe_archivio(database, health_probe) -> tuple[str, str | None]:
     """Esito della probe di scrittura Supabase: ("verified"|"failed", motivo).
 
     17/09/2026 (terzo giro): Render interroga /api/health ogni pochi secondi e
     ogni probe e' una scrittura + cancellazione su gestionale.documents
     (trigger compresi). Con il database saturo (07:45 UTC) erano 130 probe in
-    13 minuti da 7 s l'una: carico aggiunto proprio quando manca. Ora una
-    sola probe in volo per processo e l'esito riusato per
-    _PROBE_ESITO_TTL secondi (_PROBE_ERRORE_TTL se fallita). Una probe che
-    supera il budget continua in background: il giro successivo ne
-    raccoglie l'esito invece di lanciarne un'altra.
+    13 minuti da 7 s l'una: carico aggiunto proprio quando manca. Una sola
+    probe in volo per processo, esito riusato e budget fisso: il meccanismo
+    e' ``services/health_probe.ProbeUnica``, lo stesso di HR e Menu.
     """
-    import time
+    from app.services.health_probe import ProbeUnica
 
-    stato = _probe_stati.get(database)
-    if stato is None:
-        stato = {"at": 0.0, "esito": None, "task": None}
-        _probe_stati[database] = stato
-    task = stato.get("task")
-    if task is not None and task.done():
-        stato.update(esito=_esito_probe(task), at=time.monotonic(), task=None)
-        task = None
-    esito = stato.get("esito")
-    if esito is not None:
-        ttl = _PROBE_ESITO_TTL if esito[0] == "verified" else _PROBE_ERRORE_TTL
-        if time.monotonic() - stato["at"] < ttl:
-            return esito
-    if task is None:
-        task = asyncio.ensure_future(health_probe())
-        stato["task"] = task
-    try:
-        await asyncio.wait_for(asyncio.shield(task), timeout=_HEALTH_PROBE_TIMEOUT)
-    except asyncio.TimeoutError:
-        return "failed", f"probe oltre {_HEALTH_PROBE_TIMEOUT:g}s (database lento)"
-    except Exception:
-        pass
-    stato.update(esito=_esito_probe(task), at=time.monotonic(), task=None)
-    return stato["esito"]
+    probe = _probe_stati.get(database)
+    if probe is None:
+        probe = ProbeUnica("database")
+        _probe_stati[database] = probe
+    return await probe.esito(
+        health_probe,
+        timeout=_HEALTH_PROBE_TIMEOUT,
+        ttl_ok=_PROBE_ESITO_TTL,
+        ttl_errore=_PROBE_ERRORE_TTL,
+    )
+
+
+def _commit_pubblicato() -> str | None:
+    """Prefisso del commit servito, dalla stessa fonte di HR, Menu e Lotti."""
+    from app.services.deploy_info import get_deploy_info
+
+    commit = get_deploy_info()["deploy_commit"]
+    return None if commit == "unknown" else commit[:8]
 
 
 @app.get("/health")
@@ -894,7 +877,7 @@ async def health_check(strict: bool = False):
                 "status": "unhealthy",
                 "database": "disconnected",
                 "version": settings.APP_VERSION,
-                "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
+                "deploy_commit": _commit_pubblicato(),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -908,7 +891,7 @@ async def health_check(strict: bool = False):
                 "database": "unreachable",
                 "archivio": "catalogo non verificato",
                 "version": settings.APP_VERSION,
-                "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
+                "deploy_commit": _commit_pubblicato(),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -936,7 +919,7 @@ async def health_check(strict: bool = False):
                     "archivio": archivio_probe,
                     "archivio_errore": archivio_errore,
                     "version": settings.APP_VERSION,
-                    "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
+                    "deploy_commit": _commit_pubblicato(),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
@@ -976,7 +959,7 @@ async def health_check(strict: bool = False):
         "version": settings.APP_VERSION,
         # Prefisso pubblico e non sensibile: permette di verificare che
         # Render stia realmente servendo il commit atteso.
-        "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
+        "deploy_commit": _commit_pubblicato(),
         "salari_sync": salari_sync,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
