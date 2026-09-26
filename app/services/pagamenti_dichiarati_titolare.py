@@ -158,6 +158,19 @@ async def _aggiorna_fornitori(db, righe: List[Dict[str, Any]], *, dry_run: bool)
         })
         voce["metodi"].add(metodo)
 
+    # Il metodo impostato dal titolare in Fornitori vince sul file: il file
+    # dice come sono state pagate le SUE fatture, il metodo del fornitore
+    # vale per quelle dopo la data limite (regola del 26/09/2026). Si
+    # riempie solo un fornitore che il metodo non ce l'ha ancora.
+    from app.constants.metodi_pagamento import metodo_non_configurato
+    from app.routers.prima_nota_module.sync import mappa_fornitori_per_piva
+
+    metodi_attuali, _esclusi = await mappa_fornitori_per_piva(db)
+    gia_configurati = {
+        chiave for chiave, v in per_fornitore.items()
+        if v["partita_iva"] and not metodo_non_configurato(metodi_attuali.get(v["partita_iva"], ""))
+    }
+    per_fornitore = {k: v for k, v in per_fornitore.items() if k not in gia_configurati}
     dati = [
         {"nome": v["nome"], "partita_iva": v["partita_iva"],
          "metodo_pagamento": metodo_fornitore(v["metodi"])}
@@ -181,6 +194,7 @@ async def _aggiorna_fornitori(db, righe: List[Dict[str, Any]], *, dry_run: bool)
             esito["applicati"] += esito_cf.get("applicati", 0)
             esito["dettaglio"] = (esito.get("dettaglio") or []) + (esito_cf.get("dettaglio") or [])
             esito["fornitori_non_trovati"] = esito_cf.get("fornitori_non_trovati") or []
+    esito["metodi_gia_impostati_non_toccati"] = len(gia_configurati)
     esito["metodi_ricavati"] = {
         m: sum(1 for d in dati if d["metodo_pagamento"] == m)
         for m in ("cassa", "banca", "misto")

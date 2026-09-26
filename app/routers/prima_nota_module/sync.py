@@ -1736,11 +1736,41 @@ def _risolvi_rivendicazioni_movimenti(
     return provvisori
 
 
+async def data_limite_dichiarazioni(db) -> str:
+    """Ultimo giorno coperto dal report «Fatture ricevute» del titolare.
+
+    Regola del titolare (26/09/2026): per le fatture fino all'ultima
+    operazione del suo file comanda solo il file; dal giorno dopo il sistema
+    applica il metodo impostato sul fornitore. La data viene dal file stesso
+    (la data documento piu' recente delle righe con le sue colonne), non da
+    una configurazione a parte: ricaricando un report piu' nuovo si sposta."""
+    from app.services.fatture_report_ae import COLLECTION_REPORT
+
+    righe = await db[COLLECTION_REPORT].find(
+        {"pagata_titolare": {"$exists": True}},
+        {"_id": 0, "data_documento": 1},
+    ).to_list(50000)
+    date = [str(r.get("data_documento") or "")[:10] for r in righe]
+    return max((d for d in date if len(d) == 10), default="")
+
+
+def _data_fattura(fattura: Dict[str, Any]) -> str:
+    return str(
+        fattura.get("invoice_date") or fattura.get("data_documento")
+        or fattura.get("data_fattura") or ""
+    )[:10]
+
+
 def _classifica_provvisorio_fattura(
     fattura: Dict[str, Any],
     metodo_per_piva: Dict[str, str],
+    data_limite: str = "",
 ) -> tuple[str, str, str]:
-    """Classificazione condivisa fra conteggi e vista completa Provvisori."""
+    """Classificazione condivisa fra conteggi e vista completa Provvisori.
+
+    Una fattura datata entro `data_limite` (vedi `data_limite_dichiarazioni`)
+    non riceve il metodo del fornitore: il suo destino l'ha scritto il
+    titolare nel file, e se il file non la paga resta da decidere."""
     piva = str(
         fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
     ).strip()
@@ -1774,6 +1804,9 @@ def _classifica_provvisorio_fattura(
         == "operatore_prima_nota"
     ):
         return "banca", "in_attesa_estratto_conto", "operatore_prima_nota"
+    data_fattura = _data_fattura(fattura)
+    if data_limite and data_fattura and data_fattura <= data_limite:
+        return "sospesa", "in_attesa", "dichiarazione_titolare"
     if stato_pag == "sospesa":
         return "sospesa", "in_attesa", fonte_metodo
 
@@ -1841,6 +1874,7 @@ async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, 
     riepiloghi = await _riepilogo_prima_nota_per_fattura(db, fatture_tutte)
 
     metodo_per_piva, esclusi_cassa_banca = await mappa_fornitori_per_piva(db)
+    data_limite = await data_limite_dichiarazioni(db)
 
     da_decidere = 0
     attesa_banca = 0
@@ -1874,7 +1908,7 @@ async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, 
 
         aperte += 1
         suggerimento, _stato, _fonte = _classifica_provvisorio_fattura(
-            fattura, metodo_per_piva,
+            fattura, metodo_per_piva, data_limite,
         )
         if suggerimento == "banca":
             attesa_banca += 1
@@ -2028,6 +2062,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # solo in "partita_iva" — vanno letti tutti, altrimenti il metodo
     # impostato in scheda fornitore NON viene rispettato.
     metodo_per_piva, esclusi_cassa_banca = await mappa_fornitori_per_piva(db)
+    data_limite = await data_limite_dichiarazioni(db)
 
     provvisori = []
     totale_escluse_cassa_banca = 0
@@ -2055,7 +2090,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             link for link in (f.get("assegni_collegati") or []) if isinstance(link, dict)
         ]
         suggerimento, stato_match, fonte_metodo = _classifica_provvisorio_fattura(
-            f, metodo_per_piva,
+            f, metodo_per_piva, data_limite,
         )
         
         # Se banca: cerca INTELLIGENTEMENTE nell'estratto conto

@@ -702,6 +702,15 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     if not piva:
         return None
 
+    # Regola del titolare: fino all'ultima operazione del suo report
+    # «Fatture ricevute» comanda il report, non il metodo del fornitore.
+    # Una fattura con quella data che arriva dopo resta Provvisoria.
+    from app.routers.prima_nota_module.sync import _data_fattura, data_limite_dichiarazioni
+    data_limite = await data_limite_dichiarazioni(db)
+    data_fattura = _data_fattura(invoice)
+    if data_limite and data_fattura and data_fattura <= data_limite:
+        return None
+
     forn = await db["fornitori"].find_one(
         {"$or": [{"partita_iva": piva}, {"piva": piva}, {"vat_number": piva}]},
         {"_id": 0, "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1},

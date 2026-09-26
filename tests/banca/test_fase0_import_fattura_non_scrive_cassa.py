@@ -29,6 +29,15 @@ class _FakeCollection:
                 return dict(d)
         return None
 
+    def find(self, query=None, *a, **k):
+        docs = [dict(d) for d in self.docs if _matches(d, query or {})]
+
+        class _Cursore:
+            async def to_list(self, _n=None):
+                return docs
+
+        return _Cursore()
+
     async def insert_one(self, doc, *a, **k):
         self.docs.append(dict(doc))
 

@@ -606,8 +606,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   la fattura resta `sospesa`, mai con un default «bonifico» **né un ripiego in cassa**: le righe storiche di quel
   ripiego restano per audit, fuori da elenchi e saldi (`SOURCES_ESCLUSE` in `prima_nota_module/common.py`).
 - **Come è stata pagata una fattura lo dice il titolare** (report «Fatture ricevute» con colonne metodo/carta/assegno,
-  Documenti > Import): `pagamenti_dichiarati_titolare.py` usa solo i motori esistenti e ricava il metodo del fornitore
-  (uno → quello, più → `misto`). La cassa d'ufficio `metodo_fornitore_assente_provvisorio` non prova un pagamento.
+  Documenti > Import): `pagamenti_dichiarati_titolare.py` usa solo i motori esistenti; il metodo del fornitore (uno → quello, più → `misto`) lo scrive **solo se manca**.
+  Fino all'ultima data del report (`data_limite_dichiarazioni`) comanda il report, poi il fornitore. La cassa d'ufficio `metodo_fornitore_assente_provvisorio` non prova un pagamento.
 - «Metodo di pagamento non configurato» ha un vocabolario solo, `app/constants/metodi_pagamento.py`:
   `sospesa` (quello che scrive l'import), `da_configurare`, `none`, vuoto e campo assente valgono uguale.
   Chi tiene la propria lista si perde il caso più frequente.
