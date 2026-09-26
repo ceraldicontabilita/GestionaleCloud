@@ -95,3 +95,44 @@ def test_differenza_di_un_euro_non_e_riconciliazione():
         assert ec["stato_riconciliazione"] == "da_verificare"
 
     _run(scenario())
+
+
+def test_credito_sumup_chiuso_dal_payout_e_verde(monkeypatch):
+    """Il payout che copre il giorno estingue il credito: non e' «da verificare»."""
+    async def scenario():
+        db = ClientArchivioMemoria()["test_pos_payout"]
+        movimenti = [{
+            "id": "sumup-25", "source": "trasferimento_pos", "gestore": "sumup",
+            "data": "2026-09-25", "importo": 2702.40, "riconciliato": True,
+            "stato_riconciliazione": "riconciliato", "payout_id": "SUMUP PID707481962",
+        }]
+        await banca._arricchisci_riconciliazione(db, movimenti)
+        ric = movimenti[0]["riconciliazione"]
+        assert ric["verificata"] is True
+        assert ric["payout_id"] == "SUMUP PID707481962"
+        assert ric["in_attesa_accredito"] is False
+
+    _run(scenario())
+
+
+def test_credito_non_ancora_dovuto_e_in_attesa_poi_da_verificare(monkeypatch):
+    """Fino alla data del calendario POS e' un'attesa; dopo, un'anomalia."""
+    async def scenario(oggi):
+        monkeypatch.setattr(banca, "_oggi_roma", lambda: oggi)
+        db = ClientArchivioMemoria()["test_pos_attesa"]
+        movimenti = [{
+            "id": "sumup-24", "source": "trasferimento_pos", "gestore": "sumup",
+            "data": "2026-09-24", "importo": 3685.30, "riconciliato": False,
+            "stato_riconciliazione": "da_verificare",
+        }]
+        await banca._arricchisci_riconciliazione(db, movimenti)
+        return movimenti[0]["riconciliazione"]
+
+    # Giovedi' 24/09: accredito previsto venerdi' 25/09.
+    oggi = _run(scenario("2026-09-24"))
+    assert oggi["verificata"] is False
+    assert oggi["data_accredito_attesa"] == "2026-09-25"
+    assert oggi["in_attesa_accredito"] is True
+    scaduto = _run(scenario("2026-09-28"))
+    assert scaduto["in_attesa_accredito"] is False
+    assert scaduto["verificata"] is False
