@@ -561,13 +561,104 @@ async def salva_transazioni(db, grezze: Iterable[Dict[str, Any]],
     }
 
 
-async def transazioni_del_periodo(db, dal: str, al: str) -> List[Dict[str, Any]]:
-    cursore = db[COLL_TRANSAZIONI].find(
-        {"data": {"$gte": dal, "$lte": al}}, {"_id": 0}
-    )
+async def _leggi(cursore) -> List[Dict[str, Any]]:
     if hasattr(cursore, "to_list"):
         return await cursore.to_list(100000)
     return [t async for t in cursore]
+
+
+def _codice_legacy(transazione: Dict[str, Any]) -> str:
+    """Codice SumUp di una riga copiata dal vecchio archivio (``id_trans``).
+
+    Le righe ``LEGACY-SUMUP-…`` non hanno ``transaction_code``: il codice
+    della vendita sta in ``id_trans``.
+    """
+    if transazione.get("transaction_code"):
+        return ""
+    return str(transazione.get("id_trans") or "").strip()
+
+
+async def transazioni_del_periodo(db, dal: str, al: str) -> List[Dict[str, Any]]:
+    """Vendite del periodo, una volta sola ciascuna.
+
+    Il vecchio archivio ha copiato in questa collezione le vendite di agosto
+    2026 che poi l'API ha riportato con il loro codice: la stessa vendita
+    stava due volte, e il venduto, le chiusure POS e il credito verso SumUp
+    raddoppiavano. La copia d'archivio conta solo se l'API quella vendita non
+    ce l'ha; nessuna riga viene cancellata.
+    """
+    righe = await _leggi(db[COLL_TRANSAZIONI].find(
+        {"data": {"$gte": dal, "$lte": al}}, {"_id": 0}
+    ))
+    codici_legacy = {_codice_legacy(t) for t in righe} - {""}
+    if not codici_legacy:
+        return righe
+    # La gemella dell'API puo' cadere in un altro giorno (fuso orario): si
+    # cerca per codice su tutta la collezione, non solo nel periodo.
+    gemelle = {
+        str(t.get("transaction_code"))
+        for t in await _leggi(db[COLL_TRANSAZIONI].find(
+            {"transaction_code": {"$in": sorted(codici_legacy)}},
+            {"_id": 0, "transaction_code": 1},
+        ))
+    }
+    return [t for t in righe if _codice_legacy(t) not in gemelle]
+
+
+async def riallinea_chiusure_da_archivio(
+    db, dal: str, al: str, *, actor: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Riscrive le chiusure SumUp gia' registrate che l'archivio smentisce.
+
+    La sincronizzazione ordinaria ripassa solo gli ultimi trenta giorni: una
+    giornata piu' vecchia scritta con un conteggio sbagliato (le vendite
+    d'agosto contate due volte) non si correggerebbe mai. Qui si ricalcola
+    ogni giornata dall'archivio, senza chiamare le vendite all'API, e si
+    riscrive solo quella la cui chiusura dall'API e' diversa. Una giornata mai
+    chiusa non si crea da qui. Il payout che copriva la giornata si ricollega
+    subito dopo, con lo stesso motore della sincronizzazione.
+    """
+    from app.services.scritture_contabili import (
+        FONTE_API,
+        filtro_gestore_pos,
+        registra_chiusura_pos_reale,
+    )
+
+    giornate = aggrega_per_giorno(await transazioni_del_periodo(db, dal, al))
+    corrette: List[Dict[str, Any]] = []
+    for data in sorted(giornate):
+        chiusura = await db["chiusure_pos_manuali"].find_one(
+            {"data": data, **filtro_gestore_pos(GESTORE)},
+            {"_id": 0, "importo": 1, "fonte_dato": 1},
+        )
+        if not chiusura or str(chiusura.get("fonte_dato") or "").lower() != FONTE_API:
+            continue
+        registrato = round(float(chiusura.get("importo") or 0), 2)
+        corretto = round(float(giornate[data]["netto"]), 2)
+        if abs(registrato - corretto) <= 0.01:
+            continue
+        await registra_chiusura_pos_reale(
+            db, data, corretto, gestore=GESTORE, fonte=FONTE_API,
+            note=f"Riallineata dall'archivio: era {registrato:.2f}",
+            actor=actor or {"user_id": "api_sumup", "name": "Sincronizzazione SumUp"},
+        )
+        corrette.append({"data": data, "era": registrato, "ora": corretto})
+        logger.info("SumUp %s: chiusura riallineata da %.2f a %.2f", data, registrato, corretto)
+
+    payouts: Dict[str, Any] = {}
+    if corrette:
+        fine = min(
+            date.today(), date.fromisoformat(corrette[-1]["data"]) + timedelta(days=7)
+        ).isoformat()
+        try:
+            payouts = await sincronizza_payouts(db, corrette[0]["data"], fine, actor=actor)
+        except (httpx.HTTPError, ValueError, SumUpNonConfigurato) as exc:
+            logger.warning(
+                "SumUp: chiusure riallineate ma payout non ricollegati (%s: %s)",
+                type(exc).__name__, exc,
+            )
+            payouts = {"success": False, "errore": f"{type(exc).__name__}: {exc}"}
+    return {"corrette": corrette, "payouts": payouts}
 
 
 async def _transazioni_per_codici(

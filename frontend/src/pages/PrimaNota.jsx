@@ -289,8 +289,45 @@ const STILE_STATO_SUMUP = {
   'Giroconto verso BPM': [COLORS.success, COLORS.successLight],
   'Giroconto, accredito BPM atteso': [COLORS.info, COLORS.infoLight],
   "Payout non registrato dall'API": [COLORS.warning, COLORS.warningLight],
+  'Stipendio abbinato alla busta': [COLORS.success, COLORS.successLight],
+  'Fattura pagata': [COLORS.success, COLORS.successLight],
+  'Registrato in Prima Nota': [COLORS.success, COLORS.successLight],
   'Da registrare': [COLORS.warning, COLORS.warningLight],
 };
+
+/* Prima Nota della carta contro il suo estratto: ogni differenza ha un nome. */
+export function QuadraturaSumUp({ quadratura }) {
+  if (!quadratura) return null;
+  const { da_registrare: daRegistrare, prima_nota_senza_estratto: senzaEstratto } = quadratura;
+  const riga = (etichetta, valore, forte = false) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', borderTop: `1px solid ${COLORS.bgAlt}`, fontWeight: forte ? 800 : 400 }}>
+      <span>{etichetta}</span>
+      <span style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{eur(valore)}</span>
+    </div>
+  );
+  return (
+    <div data-testid="quadratura-sumup" style={{ background: 'white', border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: '12px 14px', fontSize: 13, color: COLORS.gray[700] }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 16, color: TERRACOTTA }}>Quadratura con l'estratto SumUp</h2>
+      <p style={{ margin: '0 0 8px', color: COLORS.textMuted }}>
+        Dal {formatDateIT(quadratura.dal)} al {formatDateIT(quadratura.al)}: quanto si è mosso il conto secondo l'estratto e secondo la Prima Nota.
+      </p>
+      {riga('Movimento del conto secondo l\'estratto', quadratura.variazione_estratto, true)}
+      {riga('Movimento registrato in Prima Nota', quadratura.variazione_prima_nota, true)}
+      {riga(`Righe dell'estratto ancora da registrare (${daRegistrare.numero})`, daRegistrare.importo)}
+      {riga(`Righe di Prima Nota che l'estratto non ha (${senzaEstratto.numero})`, senzaEstratto.importo)}
+      {senzaEstratto.righe.map(r => (
+        <div key={r.id} style={{ paddingLeft: 12, color: COLORS.textMuted, fontSize: 12 }}>
+          {formatDateIT(r.data)} · {r.descrizione} · {eur(r.importo)}
+        </div>
+      ))}
+      <div role="status" style={{ marginTop: 8, fontWeight: 800, color: quadratura.quadra ? COLORS.success : COLORS.danger }}>
+        {quadratura.quadra
+          ? 'Quadra al centesimo: ogni differenza è spiegata qui sopra.'
+          : `Scarto non spiegato: ${eur(quadratura.scarto_non_spiegato)}`}
+      </div>
+    </div>
+  );
+}
 
 function BadgeStatoSumUp({ stato }) {
   const [colore, sfondo] = STILE_STATO_SUMUP[stato] || [COLORS.textMuted, COLORS.bgAlt];
@@ -362,7 +399,7 @@ export function CartaSumUp({ dati, anno }) {
         <Card titolo={`Venduto con SumUp ${anno}`} valore={dati?.totale_netto_vendite || 0} colore={VERDE} />
         <Card titolo="Credito verso SumUp" valore={dati?.credito_sumup_aperto || 0} colore="#d97706" />
         <Card titolo={`Ricevuto su Mastercard ${anno}`} valore={dati?.totale_ricevuto || 0} colore={TERRACOTTA} />
-        <Card titolo="Saldo Mastercard SumUp" valore={dati?.saldo_mastercard || 0} colore="#8a6f47" />
+        <Card titolo="Saldo Mastercard in Prima Nota" valore={dati?.saldo_mastercard || 0} colore="#8a6f47" />
         {dati?.saldo_estratto_sumup != null && (
           <Card titolo="Saldo da estratto SumUp" valore={dati.saldo_estratto_sumup} colore={COLORS.info} />
         )}
@@ -377,6 +414,8 @@ export function CartaSumUp({ dati, anno }) {
           Controllo richiesto: gli accrediti SumUp superano le vendite archiviate di {eur(Math.abs(dati.credito_sumup_aperto))}. Verificare il riporto iniziale e la copertura delle sincronizzazioni; il sistema non compensa automaticamente la differenza.
         </div>
       )}
+
+      <QuadraturaSumUp quadratura={dati?.quadratura_estratto} />
 
       <MovimentiContoSumUp movimenti={dati?.movimenti_conto || []} anno={anno} />
 
