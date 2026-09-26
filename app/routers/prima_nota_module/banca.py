@@ -5,6 +5,7 @@ CRUD e operazioni per movimenti bancari.
 from fastapi import HTTPException, Query, Body
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import re
 import uuid
 
@@ -19,6 +20,11 @@ from .common import (
     aggrega_saldo_prima_nota,
     arricchisci_movimenti_fattura, saldi_finanziari,
 )
+
+
+def _oggi_roma() -> str:
+    """Data di oggi sul fuso degli scheduler (Europe/Rome), ``YYYY-MM-DD``."""
+    return datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
 
 
 POS_SOURCES = {"trasferimento_pos", "corrispettivo_pos", "corrispettivi_sync"}
@@ -159,14 +165,30 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
             # Questo ricalcolo rende corretti anche i record storici che erano
             # stati marcati verdi pur avendo importi diversi.
             quadrato = evidenza and abs(differenza) <= 0.01
+            # Il credito verso SumUp si estingue col payout che copre il
+            # giorno: sumup_payout._chiudi_crediti scrive payout_id solo se il
+            # payout copre al centesimo le vendite di quei giorni.
+            payout_id = m.get("payout_id") if m.get("stato_riconciliazione") == "riconciliato" else None
+            # L'incasso e' certo (XML o API del circuito); quello che manca e'
+            # l'accredito in banca. Fino al giorno previsto dal calendario unico
+            # dei POS non e' un'anomalia: e' un accredito non ancora dovuto.
+            data_attesa = None
+            in_attesa = False
+            if not evidenza and not payout_id:
+                from app.utils.pos_accredito import data_accredito_prevista_str
+                data_attesa = data_accredito_prevista_str(str(m.get("data") or "")[:10])
+                in_attesa = bool(data_attesa) and _oggi_roma() <= data_attesa
             m["riconciliazione"] = {
                 "tipo": "pos_trasferimento",
-                "verificata": quadrato,
+                "verificata": quadrato or bool(payout_id),
+                "payout_id": payout_id,
                 "automatica": False, "match_score": None,
                 "accreditato_ec": accreditato if evidenza else None,
                 "importo_atteso": atteso,
                 "differenza_ec": differenza if evidenza else None,
                 "accredito_trovato": evidenza,
+                "data_accredito_attesa": data_attesa,
+                "in_attesa_accredito": in_attesa,
             }
             continue
 

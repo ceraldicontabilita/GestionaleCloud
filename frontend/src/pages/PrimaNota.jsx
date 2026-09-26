@@ -807,6 +807,27 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
     const isPos = tipoRic === 'pos_trasferimento';
     const isPaypal = tipoRic === 'paypal';
     const isVersamento = tipoRic === 'versamento_contanti';
+    const { payout_id: payoutId, in_attesa_accredito: inAttesa, data_accredito_attesa: dataAttesa } = mov.riconciliazione;
+    if (verificata && isPos && payoutId && !accreditato_ec) {
+      return (
+        <span
+          title={`Credito chiuso dal payout ${payoutId}, che copre al centesimo le vendite del giorno`}
+          style={{ background: '#e2f0e7', color: '#2f7a4f', border: '1px solid #86efac', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+        >
+          ✅ Chiuso dal payout
+        </span>
+      );
+    }
+    if (isPos && inAttesa && !accredito_trovato) {
+      return (
+        <span
+          title={`Incasso certo; l'accredito del circuito è previsto per il ${formatDateIT(dataAttesa)} e non è ancora dovuto`}
+          style={{ background: COLORS.infoLight, color: COLORS.info, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+        >
+          In attesa accredito ({formatDateIT(dataAttesa)})
+        </span>
+      );
+    }
     if (verificata) {
       const importoInfo = isPos && accreditato_ec ? ` (${eur(accreditato_ec)} accreditati)` : '';
       const title = isPaypal
