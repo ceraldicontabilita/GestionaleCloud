@@ -204,14 +204,28 @@ async function run() {
         conteggiProvvisoriAttesi.totale_in_attesa_banca,
         'La SPA riceve un conteggio Attesa banca diverso dalla chiamata diretta',
       );
-      await page.getByText(
-        `Da decidere (${conteggiProvvisoriAttesi.totale_da_decidere})`,
-        { exact: false },
-      ).first().waitFor({ timeout: 10000 });
-      await page.getByText(
-        `Attesa banca (${conteggiProvvisoriAttesi.totale_in_attesa_banca})`,
-        { exact: false },
-      ).first().waitFor({ timeout: 10000 });
+      // La scheda porta un solo numero, quante fatture restano da sistemare;
+      // i due conteggi restano separati nelle pastiglie della testata.
+      const daDecidere = Number(conteggiProvvisoriAttesi.totale_da_decidere || 0);
+      const inAttesaBanca = Number(conteggiProvvisoriAttesi.totale_in_attesa_banca || 0);
+      const totaleDaSistemare = daDecidere + inAttesaBanca;
+      await page.getByRole('tab', {
+        name: totaleDaSistemare > 0 ? `Fatture da sistemare (${totaleDaSistemare})` : 'Fatture da sistemare',
+        exact: true,
+      }).waitFor({ timeout: 10000 });
+      await page.goto(`${BASE}/prima-nota#sezione=provvisori`, {
+        waitUntil: 'networkidle', timeout: 30000,
+      });
+      for (const [etichetta, atteso] of [
+        ['Da decidere', daDecidere],
+        ['In attesa della banca', inAttesaBanca],
+      ]) {
+        const pastiglia = page.locator('[data-testid="pastiglia"]', { hasText: etichetta }).first();
+        await pastiglia.waitFor({ timeout: 10000 });
+        const testo = (await pastiglia.textContent()) || '';
+        assert(testo.includes(String(atteso)),
+          `Pastiglia «${etichetta}»: attesi ${atteso}, letto «${testo}»`);
+      }
 
       for (const [sezione, testo] of [
         ['banca', 'E2E-BANCA-PROVA-001'],
