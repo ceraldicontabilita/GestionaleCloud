@@ -298,3 +298,28 @@ def test_collegamento_scrive_id_su_bonifico_e_fattura_senza_copiare_pdf():
     )
     assert relation_update.kwargs["upsert"] is True
     assert "pdf_data" not in str(relation_update)
+
+
+def test_ricevuta_bpm_con_cap_sulla_riga_del_beneficiario():
+    """«A FAVORE DI:» seguito da nome, CAP e citta' sulla stessa riga."""
+    from app.routers.bonifici_module.pdf_parser import extract_transfers_from_text
+
+    testo = "\n".join([
+        "BONIFICO", "RICEVUTA PER ORDINANTE", "CERALDI GROUP S.R.L.",
+        "DATA", "12/03/2025", "RIF. OPERAZIONE", "5034903841835071480340003400IT",
+        "REGISTRIAMO A VOSTRO DEBITO A FAVORE DI:",
+        "Rossi Mario  80100 napoli",
+        "IBAN BENEFICIARIO", "IT16I0329601601000067656035",
+        "IMPORTO", "EUR 953,00", "CAUSALE", "Rossi stip febb 2025",
+    ])
+    bonifico = extract_transfers_from_text(testo, filename="bonifico dipendente (230).pdf")[0]
+    assert bonifico["beneficiario"]["nome"] == "Rossi Mario"
+    assert bonifico["importo"] == 953.0
+
+
+def test_nome_beneficiario_su_riga_propria_resta_intero():
+    from app.routers.bonifici_module.pdf_parser import _nome_senza_indirizzo
+
+    assert _nome_senza_indirizzo("Moscato Emanuele") == "Moscato Emanuele"
+    assert _nome_senza_indirizzo("De Luca Anna Maria 80134 Napoli") == "De Luca Anna Maria"
+    assert _nome_senza_indirizzo(None) is None
