@@ -74,9 +74,12 @@ def _batch() -> int:
 
 
 def _service():
-    from app.services.drive_invoice_ingest import _load_credentials_fatture
+    # La credenziale si prova sulla radice della cartella unica, non sulla
+    # cartella di un canale: sparita la vecchia cartella fatture, il loader
+    # delle fatture falliva e fermava lo smistatore di tutto il resto.
+    from app.services.drive_credential_probe import load_credentials_for_folder
 
-    creds, errore = _load_credentials_fatture()
+    creds, errore = load_credentials_for_folder(radice())
     if creds is None:
         raise RuntimeError(f"credenziali Drive non disponibili: {errore}")
     from googleapiclient.discovery import build

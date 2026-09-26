@@ -276,7 +276,10 @@ def test_il_titolare_imposta_il_pin_da_lotti_nella_scheda_hr(basi):
     esito = run(t.imposta_pin_operatore("hr-pocci", t.PinOperatore(pin="8642"), _admin=None))
     assert esito == {"ok": True, "pin_impostato": True}
     scheda = run(hr.dipendenti.find_one({"id": "hr-pocci"}))
-    assert scheda["pin_hash"] and scheda["pin_lookup"] and "8642" not in str(scheda)
+    assert scheda["pin_hash"] and scheda["pin_lookup"]
+    # Nessun campo conserva il PIN in chiaro. Il confronto e' per valore, non per
+    # sottostringa: un hash esadecimale casuale puo' contenere "8642" per caso.
+    assert "8642" not in {str(valore) for valore in scheda.values()}
     assert run(t.login_pin(t.PinLogin(pin="8642")))["operatore"]["dipendente_id"] == "hr-pocci"
     # stesso PIN a un'altra persona in forza: rifiutato
     with pytest.raises(HTTPException) as exc:

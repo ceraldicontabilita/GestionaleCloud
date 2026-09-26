@@ -254,3 +254,20 @@ def test_originale_sparito_da_drive_diventa_rimosso(ambiente):
         assert run(cu.originale(db, drive_file_id=fid)) is None
         riga = run(db[cu.REGISTRO].find_one({"id": fid}))
         assert riga["cartella"] == "RIMOSSO" and riga["rimosso_il"]
+
+
+def test_credenziale_provata_sulla_radice_della_cartella_unica(monkeypatch):
+    """Lo smistatore non dipende dalla cartella di un canale (es. fatture)."""
+    from app.services import drive_credential_probe
+
+    provate = []
+
+    def finta_probe(folder_id):
+        provate.append(folder_id)
+        return None, "nessun accesso"
+
+    monkeypatch.setenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "radice-unica")
+    monkeypatch.setattr(drive_credential_probe, "load_credentials_for_folder", finta_probe)
+    with pytest.raises(RuntimeError):
+        cu._service()
+    assert provate == ["radice-unica"]
