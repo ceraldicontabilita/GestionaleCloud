@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { FileText, Download, ExternalLink, RefreshCw, BookOpen, Trash2 } from "lucide-react";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 
 const SEZIONI_COLORI = {
   "Ricorrenze":          "bg-[#f2f6f3] border-[#cfdfd5]",
@@ -10,14 +11,12 @@ const SEZIONI_COLORI = {
   "Aggiornato":          "bg-[#faf5ec] border-[#e6d3ab]",
 };
 
-// ── Viewer PDF: apre direttamente in nuova scheda via proxy backend ──
-const PdfViewer = ({ ricett, onClose }) => {
-  const proxyUrl = `${process.env.REACT_APP_LOTTI_BACKEND_URL}/api/saima/ricettari/pdf-proxy?url=${encodeURIComponent(ricett.url_pdf)}`;
+const urlPdfProxy = (ricett) => `${API}/saima/ricettari/pdf-proxy?url=${encodeURIComponent(ricett.url_pdf)}`;
 
-  // Apri subito in nuova scheda
-  useEffect(() => {
-    window.open(withToken(proxyUrl), "_blank");
-  }, [proxyUrl]);
+// ── Viewer PDF: il PDF si apre in nuova scheda dal clic su "Visualizza" (dentro
+// il gesto dell'utente, o il blocco popup lo fermerebbe) via proxy backend ──
+const PdfViewer = ({ ricett, onClose }) => {
+  const proxyUrl = urlPdfProxy(ricett);
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-lg">
@@ -31,14 +30,14 @@ const PdfViewer = ({ ricett, onClose }) => {
       <div className="p-8 text-center">
         <p className="text-gray-600 mb-4">Il PDF si è aperto in una nuova scheda.</p>
         <div className="flex items-center justify-center gap-3">
-          <a href={proxyUrl} target="_blank" rel="noopener noreferrer"
+          <button type="button" onClick={() => apriDocumentoAutenticato(proxyUrl)}
             className="px-4 py-2 bg-[#5b7a6b] text-white rounded-lg text-sm font-medium hover:bg-[#4d6a5c] flex items-center gap-2">
             <ExternalLink size={14} /> Apri di nuovo
-          </a>
-          <a href={proxyUrl} download={`${ricett.nome}.pdf`}
+          </button>
+          <button type="button" onClick={() => apriDocumentoAutenticato(proxyUrl, { scarica: true, nomeFile: `${ricett.nome}.pdf` })}
             className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2">
             <Download size={14} /> Scarica PDF
-          </a>
+          </button>
         </div>
       </div>
     </div>
@@ -135,21 +134,25 @@ export const SaimaRicettariView = () => {
                 </p>
                 <div className="flex gap-1.5 justify-center mt-auto">
                   <button
-                    onClick={() => setPdfAperto(pdfAperto?.id === ricett.id ? null : ricett)}
+                    onClick={() => {
+                      if (pdfAperto?.id === ricett.id) { setPdfAperto(null); return; }
+                      apriDocumentoAutenticato(urlPdfProxy(ricett));
+                      setPdfAperto(ricett);
+                    }}
                     className="text-[10px] flex-1 py-1 bg-[#5b7a6b] text-white rounded-lg font-medium hover:bg-[#4d6a5c] flex items-center justify-center gap-0.5"
                     data-testid={`btn-visualizza-pdf-${ricett.id}`}
                   >
                     <FileText size={9} /> Visualizza
                   </button>
-                  <a
-                    href={withToken(`${process.env.REACT_APP_LOTTI_BACKEND_URL}/api/saima/ricettari/pdf-proxy?url=${encodeURIComponent(ricett.url_pdf)}`)}
-                    download={`${ricett.nome}.pdf`}
-                    onClick={e => e.stopPropagation()}
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); apriDocumentoAutenticato(urlPdfProxy(ricett), { scarica: true, nomeFile: `${ricett.nome}.pdf` }); }}
                     className="text-[10px] px-2 py-1 bg-white border border-[#b8d0c2] text-[#5b7a6b] rounded-lg font-medium hover:bg-[#f2f6f3] flex items-center"
                     title="Scarica PDF"
+                    aria-label={`Scarica PDF ${ricett.nome}`}
                   >
                     <Download size={9} />
-                  </a>
+                  </button>
                   {ricett.aggiunto_manualmente && (
                     <button onClick={async e => {
                       e.stopPropagation();

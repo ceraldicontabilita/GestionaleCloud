@@ -142,12 +142,19 @@ jobs:
     name: GestionaleCloud live serve questo commit
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Render ricarica ~77.000 righe a ogni deploy: fra build, avvio e
+    # idratazione passano anche 15-20 minuti. L'attesa ha una scadenza sola
+    # (ATTESA_MINUTI) condivisa da tutti i controlli qui sotto; il job ha
+    # margine per installazioni, build e smoke.
+    timeout-minutes: 50
     concurrency:
       group: produzione-live-gestionalecloud
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          # serve la storia per dire se il commit servito contiene questo
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -161,79 +168,110 @@ jobs:
       - name: Ricostruisci il frontend del commit
         run: |
           set -euo pipefail
-          yarn --cwd frontend install --frozen-lockfile
+          # Deve essere identico al Build Command del servizio Render e usare
+          # il lockfile canonico versionato del frontend.
+          yarn --cwd frontend install --frozen-lockfile --production=false
           yarn --cwd frontend build
-      - name: Attendi il bundle del commit e controlla la salute
+      - name: Attendi il commit, il bundle e la salute delle quattro app
+        id: attesa
+        env:
+          ATTESA_MINUTI: "25"
+          PAUSA_SECONDI: "30"
         run: |
           set -euo pipefail
+          SHORT=${GITHUB_SHA:0:8}
+          SCADENZA=$(( $(date +%s) + ATTESA_MINUTI * 60 ))
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
           ATTESO=$(grep -o 'assets/index-[^"]*\.js' frontend/dist/index.html | head -1)
           if [ -z "$ATTESO" ]; then
             echo "::error::bundle atteso non trovato dopo la build"
             exit 1
           fi
-          echo "Commit $GITHUB_SHA, bundle atteso $ATTESO"
-          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
-          for i in $(seq 1 30); do
-            BODY=$(curl -sS --compressed -A "$UA" -H 'Accept: text/html' --max-time 20 "$PROD_URL/login" || true)
-            LIVE=$(printf '%s' "$BODY" | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
-            echo "Tentativo $i/30: live='$LIVE'"
-            [ "$LIVE" = "$ATTESO" ] && break
-            if [ "$i" = "30" ]; then
-              echo "::error::la produzione non serve il bundle di $GITHUB_SHA (atteso $ATTESO, live $LIVE)"
-              exit 1
-            fi
-            sleep 30
-          done
-          for i in $(seq 1 12); do
-            if curl -sSf --max-time 20 -o /dev/null "$PROD_URL/$ATTESO"; then
-              break
-            fi
-            if [ "$i" = "12" ]; then
-              echo "::error::bundle corretto rilevato ma asset non ancora servibile stabilmente"
-              exit 1
-            fi
-            echo "Asset non ancora stabile dopo deploy, ritento ($i/12)"
-            sleep 10
-          done
-          SHORT=${GITHUB_SHA:0:8}
-          for i in $(seq 1 12); do
-            HEALTH=$(curl -sSf --max-time 20 "$PROD_URL/api/health" || true)
-            if [ -n "$HEALTH" ]; then
-              printf '%s' "$HEALTH" | head -c 500
-              echo
-              break
-            fi
-            if [ "$i" = "12" ]; then
-              echo "::error::bundle corretto servito ma /api/health non e' tornato stabile"
-              exit 1
-            fi
-            echo "Health transitoriamente non disponibile dopo deploy, ritento ($i/12)"
-            sleep 10
-          done
-          echo "$HEALTH" | grep -q "\"deploy_commit\":\"$SHORT\"" || {
-            echo "::error::/api/health non dichiara deploy_commit=$SHORT"
-            echo "$HEALTH"
-            exit 1
+          echo "Commit $GITHUB_SHA ($SHORT), bundle atteso $ATTESO, attesa massima $ATTESA_MINUTI minuti"
+
+          scaduto() { [ "$(date +%s)" -ge "$SCADENZA" ]; }
+          minuti() { echo $(( (ATTESA_MINUTI * 60 - (SCADENZA - $(date +%s))) / 60 )); }
+          # deploy_commit dichiarato da un health (anche da un 503 di avvio)
+          commit_di() {
+            curl -sS --max-time 20 "$PROD_URL$1" 2>/dev/null \
+              | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("deploy_commit") or ""))' 2>/dev/null \
+              || true
           }
-          for path in /hr/api/health /menu/api/health /lotti/api/health; do
-            echo "== $PROD_URL$path"
-            OK=0
-            for i in $(seq 1 8); do
-              BODY=$(curl -sSf --max-time 20 "$PROD_URL$path" || true)
-              if [ -n "$BODY" ]; then
-                printf '%s' "$BODY" | head -c 400
+          # il commit servito e' piu' nuovo di questo e lo contiene?
+          contiene_questo() {
+            local live=$1 completo
+            [ -n "$live" ] || return 1
+            completo=$(git rev-parse --verify --quiet "${live}^{commit}" 2>/dev/null) \
+              || { git fetch --quiet origin main 2>/dev/null || true; \
+                   completo=$(git rev-parse --verify --quiet "${live}^{commit}" 2>/dev/null) || return 1; }
+            [ "$completo" != "$GITHUB_SHA" ] && git merge-base --is-ancestor "$GITHUB_SHA" "$completo"
+          }
+
+          # 1. Il backend dichiara questo commit. Finche' Render costruisce e
+          #    avvia, risponde il deploy precedente (o niente): si aspetta.
+          #    Un commit servito PIU' NUOVO che contiene questo vuol dire che
+          #    un merge successivo lo ha superato: la verifica tocca al suo run.
+          #    Qualunque altro commit alla scadenza e' un errore vero.
+          while :; do
+            LIVE=$(commit_di /api/health)
+            if [ "${LIVE:0:8}" = "$SHORT" ]; then
+              echo "Il backend dichiara $SHORT dopo $(minuti) minuti"
+              break
+            fi
+            if contiene_questo "$LIVE"; then
+              echo "::notice::la produzione serve gia' $LIVE, successivo a $SHORT e che lo contiene: questo commit e' pubblicato; le verifiche live le fa il run di $LIVE"
+              echo "superato=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if scaduto; then
+              echo "::error::dopo $ATTESA_MINUTI minuti la produzione dichiara deploy_commit='${LIVE:-nessuna risposta}' invece di $SHORT. Render non ha pubblicato questo commit (build o avvio falliti, deploy sospeso o ancora in coda): guardare gli eventi del servizio su Render."
+              exit 1
+            fi
+            echo "$(minuti) min: live '${LIVE:-nessuna risposta}', atteso $SHORT; nuovo tentativo fra ${PAUSA_SECONDI}s"
+            sleep "$PAUSA_SECONDI"
+          done
+
+          # 2. Lo stesso processo serve il frontend: il bundle deve essere il
+          #    nostro e l'asset scaricabile.
+          while :; do
+            BODY=$(curl -sS --compressed -A "$UA" -H 'Accept: text/html' --max-time 20 "$PROD_URL/login" || true)
+            LIVE_BUNDLE=$(printf '%s' "$BODY" | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
+            if [ "$LIVE_BUNDLE" = "$ATTESO" ] && curl -sSf --max-time 20 -o /dev/null "$PROD_URL/$ATTESO"; then
+              echo "Bundle $ATTESO servito"
+              break
+            fi
+            if scaduto; then
+              echo "::error::il backend e' su $SHORT ma il frontend servito e' '${LIVE_BUNDLE:-nessuno}' invece di $ATTESO (o l'asset non si scarica)"
+              exit 1
+            fi
+            echo "$(minuti) min: bundle live '${LIVE_BUNDLE:-nessuno}', atteso $ATTESO"
+            sleep 10
+          done
+
+          # 3. Le quattro app rispondono 200 e dichiarano questo commit.
+          #    Durante l'idratazione l'ERP risponde 503: si aspetta; degraded e' 200.
+          for path in /api/health /hr/api/health /menu/api/health /lotti/api/health; do
+            while :; do
+              BODY=$(curl -sSf --max-time 20 "$PROD_URL$path" 2>/dev/null || true)
+              DICHIARATO=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("deploy_commit") or ""))' 2>/dev/null || true)
+              if [ -n "$BODY" ] && [ "${DICHIARATO:0:8}" = "$SHORT" ]; then
+                echo "== $PROD_URL$path"
+                printf '%s' "$BODY" | head -c 600
                 echo
-                OK=1
                 break
               fi
-              sleep 5
+              if scaduto; then
+                echo "::error::$path non risponde 200 con deploy_commit=$SHORT entro $ATTESA_MINUTI minuti (dichiarato '${DICHIARATO:-nessuno}')"
+                printf '%s' "$BODY" | head -c 600
+                echo
+                exit 1
+              fi
+              echo "$(minuti) min: $path non ancora pronto (dichiarato '${DICHIARATO:-nessuno}')"
+              sleep 10
             done
-            if [ "$OK" != "1" ]; then
-              echo "::error::$path non risponde su GestionaleCloud"
-              exit 1
-            fi
           done
       - name: Smoke runtime
+        if: steps.attesa.outputs.superato != 'true'
         env:
           BACKEND_URL: ${{ env.PROD_URL }}
           FRONTEND_URL: ${{ env.PROD_URL }}

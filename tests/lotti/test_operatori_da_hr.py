@@ -156,11 +156,12 @@ def test_login_tablet_usa_il_pin_della_scheda_hr(basi):
     # Viviana (non in HR) non entra piu' col vecchio PIN Lotti
     with pytest.raises(HTTPException):
         run(t.login_pin(t.PinLogin(pin=PIN_B)))
-    # PIN amministratore centrale: pagine admin si', firma no
-    assert run(t.verifica_admin(t.PinAdmin(pin=PIN_ADMIN_TEST)))["ok"] is True
+    # PIN amministratore centrale: in Lotti non apre nulla, e il login del
+    # tablet non dice nemmeno che era quello giusto (nessun oracolo)
+    assert not hasattr(t, "verifica_admin")
     with pytest.raises(HTTPException) as exc:
         run(t.login_pin(t.PinLogin(pin=PIN_ADMIN_TEST)))
-    assert "personale" in exc.value.detail
+    assert exc.value.detail == "PIN non riconosciuto"
 
 
 def test_un_solo_percorso_pin_lotti():

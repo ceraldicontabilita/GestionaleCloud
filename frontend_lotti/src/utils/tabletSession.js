@@ -1,4 +1,4 @@
-import { getToken, logout } from "../auth";
+import { getToken, isAdmin, logout } from "../auth";
 
 const SESSION_KEY = "tablet_operatore";
 
@@ -60,4 +60,24 @@ export function moveTabletSessionTo(reparto) {
   const session = getTabletSession();
   if (!session) return null;
   return saveTabletSession(session, reparto);
+}
+
+/** Il titolare e' entrato dal Gestionale (token amministratore di Lotti). */
+export function sessioneTitolareAttiva() {
+  return !!getToken() && isAdmin();
+}
+
+/**
+ * Dopo l'ingresso dal Gestionale il token e' del titolare: la persona del
+ * tablet deve essere la stessa, o un dipendente rimasto identificato
+ * firmerebbe col token del titolare. Se il titolare ha una scheda HR diventa
+ * lui l'operatore; altrimenti l'operatore si azzera e la prossima card di
+ * reparto chiede il PIN.
+ */
+export function allineaSessioneTitolare(titolare, reparto) {
+  if (titolare?.dipendente_id) {
+    return saveTabletSession({ ...titolare, ruolo: "amministratore" }, reparto);
+  }
+  clearTabletSession();
+  return null;
 }

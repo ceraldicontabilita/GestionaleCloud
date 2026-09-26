@@ -38,7 +38,6 @@ from pydantic import BaseModel
 
 from app.lotti.auth import check_lock, clear_fails, ip_richiesta, make_token, register_fail, require_admin
 from app.lotti.db import database as db
-from app.services import pin_authentication
 
 router = APIRouter(prefix="/tablet-operatori", tags=["tablet_operatori"])
 
@@ -292,30 +291,17 @@ class AggiornaDipendente(BaseModel):
     libretto_sanitario_scadenza: Optional[str] = None
 
 
-class PinAdmin(BaseModel):
-    pin: str
-
-
 # ── Identita' e PIN ────────────────────────────────────────────────────────
-async def _richiedi_pin_amministratore(
-    pin: str, request: Request = None, dettaglio: str = "PIN amministratore non valido"
-) -> None:
-    ip = ip_richiesta(request) or None
-    if ip:
-        check_lock(ip)
-    if pin_authentication.admin_pin_matches(pin):
-        if ip:
-            clear_fails(ip)
-        return
-    if ip:
-        register_fail(ip)
-    raise HTTPException(403, dettaglio)
-
-
 def _op_response(doc):
     if not doc.get("dipendente_id"):
         raise HTTPException(401, "Identita' dipendente HR non disponibile")
-    op = {"dipendente_id": doc["dipendente_id"], "nome": doc.get("nome", "Operatore"), "ruolo": doc.get("ruolo", "operatore")}
+    # Il PIN personale identifica chi firma, non apre l'amministrazione: anche
+    # il titolare, entrato col suo PIN, lavora da operatore. L'amministratore
+    # entra solo dal Gestionale (`/auth/session`).
+    ruolo = doc.get("ruolo") or "operatore"
+    if ruolo == "amministratore":
+        ruolo = "operatore"
+    op = {"dipendente_id": doc["dipendente_id"], "nome": doc.get("nome", "Operatore"), "ruolo": ruolo}
     token = make_token(sub=op["dipendente_id"], nome=op["nome"], ruolo=op["ruolo"], via="pin")
     return {"ok": True, "token": token, "operatore": op}
 
@@ -365,16 +351,7 @@ async def login_pin(payload: PinLogin, request: Request = None):
         return _op_response(docs[0])
     if ip:
         register_fail(ip)
-    if pin_authentication.admin_pin_matches(pin):
-        raise HTTPException(401, "Il PIN amministratore apre le pagine riservate ma non firma: "
-                                 "per entrare sul tablet usa il tuo PIN personale (scheda HR)")
     raise HTTPException(401, "PIN non riconosciuto")
-
-
-@router.post("/verifica-admin")
-async def verifica_admin(payload: PinAdmin, request: Request = None):
-    await _richiedi_pin_amministratore(payload.pin, request)
-    return {"ok": True}
 
 
 # ── Elenco e dati HACCP ────────────────────────────────────────────────────

@@ -221,6 +221,16 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 revocato = await is_revocato(Database.get_db(), token)
             except TokenBlacklistUnavailable:
                 return errore_http(503, "Verifica sessione temporaneamente non disponibile")
+            if not revocato and payload.get("sid"):
+                # Il logout revoca la SESSIONE (sid), non solo i token che ha
+                # visto: un token piu' vecchio della stessa sessione, ancora
+                # entro la scadenza, non deve sopravvivergli.
+                from app.services.group_session import sessione_revocata
+                from app.utils.token_blacklist import chiave_sessione
+                try:
+                    revocato = await sessione_revocata(chiave_sessione(payload, token))
+                except TokenBlacklistUnavailable:
+                    return errore_http(503, "Verifica sessione temporaneamente non disponibile")
             if revocato:
                 return errore_http(401, "Sessione terminata (logout)", headers={"WWW-Authenticate": "Bearer"})
 
@@ -240,6 +250,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.user_id = user_id
             request.state.user_email = payload.get("email")
             request.state.user_role = ruolo
+            request.state.session_id = payload.get("sid")
             # /logout resta sempre permesso (serve anche in sola lettura).
             if not path.startswith("/api/auth/"):
                 if ruolo == SOLA_LETTURA and method in METODI_SCRITTURA:
@@ -277,6 +288,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                             "mfa_verified": bool(payload.get("mfa_verified")),
                             "mfa_verified_at": payload.get("mfa_verified_at"),
                             "amr": payload.get("amr") or [],
+                            # stessa sessione: il rinnovo non ne apre una nuova
+                            **({"sid": payload["sid"]} if payload.get("sid") else {}),
                         },
                         settings.SECRET_KEY,
                         algorithm=settings.ALGORITHM,

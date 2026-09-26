@@ -11,7 +11,8 @@ import {
   Thermometer, Package, AlertTriangle, Droplet, SprayCan,
   FileWarning, IdCard, Users, RefreshCw, Printer, X,
 } from "lucide-react";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 
 const SAGE = "#5b7a6b";
 const SALVIA = "#3f5a4e";
@@ -203,7 +204,7 @@ function ModalStampaRegistro({ onClose }) {
     const anno = new Date(dataDa).getFullYear();
     const url = `${API}/manuale-haccp/genera-manuale?anno=${anno}&data_da=${dataDa}&data_a=${dataA}&sezioni=${sezioni}`;
     // Apre il documento stampabile in una nuova scheda
-    window.open(withToken(url), "_blank");
+    apriDocumentoAutenticato(url);
     onClose();
   };
 

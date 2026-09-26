@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import {
   FileText, Search, ExternalLink, Check, Trash2, Plus, X, AlertCircle, Bell,
 } from "lucide-react";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 
 const SALVIA = "#3f5a4e";
 const SAGE = "#5b7a6b";
@@ -249,7 +250,7 @@ export default function SchedeTecnicheView() {
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 {p.schede.map((s, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: CREAM, border: `1px solid ${LINE}`, borderRadius: 8, padding: "4px 8px" }}>
-                    <a href={s.url?.startsWith("/lotti/api/") ? withToken(s.url) : s.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: SAGE, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
+                    <a href={s.url} target="_blank" rel="noreferrer" onClick={s.url?.startsWith("/lotti/api/") ? (e) => { e.preventDefault(); apriDocumentoAutenticato(s.url); } : undefined} style={{ fontSize: 12, color: SAGE, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
                       <ExternalLink size={12} /> {s.fonte === "email_fornitore" ? "PDF del fornitore" : s.tipo === "sicurezza" ? "Sicurezza" : "Tecnica"}
                     </a>
                     {/* l'originale arrivato dal fornitore è la prova per l'ASL: non si toglie da qui */}

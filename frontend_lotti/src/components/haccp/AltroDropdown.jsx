@@ -5,8 +5,15 @@ import { MoreHorizontal, ChevronDown } from "lucide-react";
  * AltroDropdown — Dropdown per tab secondari nella navbar principale.
  * Il menu è renderizzato in posizione "fixed" calcolata dal bottone, perché
  * la navbar ha overflow-x:auto che altrimenti taglia un dropdown "absolute".
+ *
+ * Lo stesso menu serve l'ingranaggio Impostazioni dell'intestazione: cambiano
+ * solo etichetta, icona e aspetto del bottone (`nome` compone i data-testid).
  */
-export function AltroDropdown({ tabs, activeTab, onTabChange }) {
+export function AltroDropdown({
+  tabs, activeTab, onTabChange,
+  etichetta = "Altro", icona: Icona = MoreHorizontal, nome = "altro", ariaLabel = "Altre pagine",
+  classeBottone = "g-nav-btn", stileBottone, classeEtichetta, freccia = true,
+}) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, right: 0 });
   const ref = useRef(null);
@@ -35,19 +42,21 @@ export function AltroDropdown({ tabs, activeTab, onTabChange }) {
       <button
         ref={btnRef}
         onClick={() => setOpen((o) => !o)}
-        data-testid="altro-dropdown-btn"
+        data-testid={`${nome}-dropdown-btn`}
         aria-expanded={open}
         aria-current={isActive ? "page" : undefined}
-        aria-label="Altre pagine"
-        className={`g-nav-btn${isActive ? " active" : ""}`}
-        style={{ display: "flex", alignItems: "center", gap: 4 }}
+        aria-label={ariaLabel}
+        className={`${classeBottone}${isActive ? " active" : ""}`}
+        style={{ display: "flex", alignItems: "center", gap: 4, ...stileBottone }}
       >
-        <MoreHorizontal size={13} />
-        Altro
-        <ChevronDown
-          size={11}
-          style={{ transition: "transform .15s", transform: open ? "rotate(180deg)" : "none" }}
-        />
+        <Icona size={stileBottone ? 16 : 13} aria-hidden="true" />
+        <span className={classeEtichetta}>{etichetta}</span>
+        {freccia && (
+          <ChevronDown
+            size={11}
+            style={{ transition: "transform .15s", transform: open ? "rotate(180deg)" : "none" }}
+          />
+        )}
       </button>
 
       {open && (
@@ -81,7 +90,7 @@ export function AltroDropdown({ tabs, activeTab, onTabChange }) {
                   )}
                   <button
                     onClick={() => { onTabChange(tab.id); setOpen(false); }}
-                    data-testid={`altro-menu-${tab.id}`}
+                    data-testid={`${nome}-menu-${tab.id}`}
                     aria-current={activeTab === tab.id ? "page" : undefined}
                     className={`g-dropdown-item${activeTab === tab.id ? " active" : ""}`}
                   >

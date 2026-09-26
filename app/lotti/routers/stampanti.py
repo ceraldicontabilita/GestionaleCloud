@@ -7,6 +7,7 @@ inventa nulla, la lista parte da 4 stampanti predefinite con IP vuoto.
 """
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from app.lotti.auth import require_admin
 from fastapi import Depends, APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -95,9 +96,30 @@ async def _stampante_per_categoria(categoria: str, reparto: str = "") -> dict:
     return stampanti[0] if stampanti else None
 
 
+def _senza_token(url: str) -> str:
+    """Toglie ``token``/``access_token`` dalla query di un URL.
+
+    Il JWT non autentica piu' in query string (solo header Authorization), ma un
+    frontend rimasto in cache o un lavoro accodato prima della correzione lo
+    porterebbe ancora: nella coda sarebbe leggibile da chiunque la elenchi.
+    """
+    parti = urlsplit(url or "")
+    if not parti.query:
+        return url
+    query = [(k, v) for k, v in parse_qsl(parti.query, keep_blank_values=True)
+             if k.lower() not in ("token", "access_token")]
+    return urlunsplit(parti._replace(query=urlencode(query)))
+
+
+def _job_pubblico(job: dict) -> dict:
+    if job.get("url"):
+        job["url"] = _senza_token(job["url"])
+    return job
+
+
 class JobStampa(BaseModel):
     categoria: str            # etichette|ricette|manuale|scontrini|report
-    url: str                  # URL completo del documento (con ?token=)
+    url: str                  # URL del documento, SENZA token: l'agente si autentica con il proprio header Authorization
     formato: str = "pdf"      # pdf | html
     titolo: str = ""
     reparto: str = ""
@@ -110,6 +132,7 @@ async def accoda_stampa(job: JobStampa, request: Request):
     l'instradamento passa automaticamente a ESC/POS diretto (socket :9100)."""
     st = await _stampante_per_categoria(job.categoria, job.reparto)
     d = job.dict()
+    d["url"] = _senza_token(d["url"])
     if d["url"].startswith("/"):
         # Dentro il gestionale il frontend usa URL relativi (/lotti/api/...):
         # l'agente di stampa sul PC del negozio ha bisogno dell'URL completo.
@@ -138,7 +161,7 @@ async def coda_pendenti(reparto: str = "", limit: int = 50):
     if reparto:
         q["$or"] = [{"reparto": reparto}, {"reparto": ""}]
     jobs = await CODA.find(q, {"_id": 0}).sort("creato", 1).to_list(limit)
-    return {"jobs": jobs}
+    return {"jobs": [_job_pubblico(j) for j in jobs]}
 
 
 @router.post("/coda/{job_id}/esito")
@@ -159,4 +182,5 @@ async def coda_esito(job_id: str, payload: dict):
 @router.get("/coda")
 async def coda_storico(limit: int = 50):
     """Ultimi lavori di stampa con esito (per controllo)."""
-    return await CODA.find({}, {"_id": 0}).sort("creato", -1).to_list(limit)
+    jobs = await CODA.find({}, {"_id": 0}).sort("creato", -1).to_list(limit)
+    return [_job_pubblico(j) for j in jobs]

@@ -5,8 +5,8 @@ Test PURI del modello di autenticazione (fase 2 ristrutturazione 24/07/2026):
 niente MongoDB, niente rete — AUTH_SECRET impostato via env così il secret
 non viene cercato nel DB.
 
-Coprono: token assente/scaduto/manomesso, ruolo nel token, whitelist delle
-scritture tablet, rotte pubbliche, e la protezione require_admin sugli
+Coprono: token assente/scaduto/manomesso, ruolo nel token, blocco di tutte le
+scritture anonime, rotte pubbliche, e la protezione require_admin sugli
 endpoint sensibili (a livello di firma: gli endpoint distruttivi DEVONO
 dichiarare la dipendenza).
 """
@@ -19,7 +19,6 @@ import pytest
 
 from app.lotti.auth import (
     make_token, verify_token, auth_dependency, PUBLIC_PREFIXES,
-    _scrittura_tablet_consentita,
 )
 from fastapi import HTTPException
 
@@ -49,10 +48,15 @@ def test_token_valido_roundtrip():
     assert data and data["sub"] == "op1" and data["ruolo"] == "operatore"
 
 
-def test_auth_me_restituisce_id_dipendente_del_token():
+def test_auth_me_restituisce_id_dipendente_del_token(monkeypatch):
     from app.lotti.auth import me
+    from app.services import group_session
 
-    token = make_token("hr-141", "Vincenzo", "amministratore")
+    async def _mai_revocata(chiave):
+        return False
+
+    monkeypatch.setattr(group_session, "sessione_revocata", _mai_revocata)
+    token = make_token("hr-141", "Vincenzo", "amministratore", via="sessione_erp", sid="sid:prova")
     risposta = _run(me(FintaRichiesta(token=token)))
     assert risposta["user"]["dipendente_id"] == "hr-141"
     assert risposta["user"]["ruolo"] == "amministratore"
@@ -103,21 +107,20 @@ def test_rotte_pubbliche_passano_senza_token():
     assert any(p.startswith("/api/foto") for p in PUBLIC_PREFIXES)
 
 
-def test_whitelist_tablet_solo_gesti_operativi():
-    # le registrazioni HACCP esigono una sessione: senza token erano un
-    # oracolo anonimo per indovinare i PIN (audit 25/09/2026, SEC-01)
-    for p in ("/api/temperature-positive/scheda/2026/1/registra",
-              "/api/temperature-negative/scheda/2026/1/registra",
-              "/api/sanificazione/scheda/2026/9/registra",
-              "/api/sanificazione/scheda/2026/9/giorno-completo",
-              "/api/temperature-cottura"):
-        assert not _scrittura_tablet_consentita(p, "POST"), p
-    # …ma la RICONFIGURAZIONE della scheda (limiti temperatura) NO
-    assert not _scrittura_tablet_consentita("/api/temperature-positive/scheda/2026/frigo1/config", "PUT")
-    # creazione lotto da tablet sì, cancellazione no
-    assert _scrittura_tablet_consentita("/api/lotti", "POST")
-    assert not _scrittura_tablet_consentita("/api/lotti", "DELETE")
-    assert not _scrittura_tablet_consentita("/api/fatture/dedup", "POST")
+@pytest.mark.parametrize("method,path", [
+    ("POST", "/api/magazzino-bar/richieste"),
+    ("PUT", "/api/magazzino-bar/richieste/r1/ok"),
+    ("DELETE", "/api/magazzino-bar/richieste/r1"),
+    ("POST", "/api/lotti"),
+    ("POST", "/api/gelati/produzioni"),
+    ("POST", "/api/vendita-banco/registra"),
+    ("POST", "/api/temperature-positive/scheda/2026/1/registra"),
+])
+def test_ogni_scrittura_tablet_senza_token_e_bloccata(method, path):
+    req = FintaRichiesta(method=method, path=path)
+    with pytest.raises(HTTPException) as exc:
+        _run(auth_dependency(req))
+    assert exc.value.status_code == 401
 
 
 # ── require_admin dichiarato sugli endpoint sensibili ───────────────────────
@@ -279,3 +282,59 @@ def test_scritture_di_configurazione_e_massa_solo_amministratore():
     assert not senza, f"senza require_admin: {senza}"
     # e /pulisci-operatori non esiste piu'
     assert not any(p.endswith("/pulisci-operatori") for (_m, p) in trovate)
+
+
+def test_nessuna_rotta_lotti_accetta_scritture_anonime():
+    """Censimento reale delle rotte montate, non una lista scritta a mano:
+    ogni POST/PUT/PATCH/DELETE fuori dalle rotte pubbliche esige un token."""
+    from app.lotti.server import api_router
+
+    scritture = []
+    for rotta in api_router.routes:
+        for metodo in sorted(getattr(rotta, "methods", None) or ()):
+            if metodo in ("POST", "PUT", "PATCH", "DELETE"):
+                scritture.append((metodo, rotta.path))
+    assert len(scritture) > 100, "censimento vuoto: il router non e' quello montato"
+
+    aperte = []
+    for metodo, path in scritture:
+        if any(path == p or path.startswith(p + "/") for p in PUBLIC_PREFIXES):
+            continue
+        try:
+            _run(auth_dependency(FintaRichiesta(method=metodo, path=path)))
+            aperte.append((metodo, path))
+        except HTTPException as exc:
+            assert exc.status_code == 401, (metodo, path)
+    assert aperte == []
+
+
+# ── Niente token negli URL ──────────────────────────────────────────────────
+def test_token_in_query_string_non_autentica():
+    """Un JWT valido in ?token= / ?access_token= non vale come autenticazione:
+    finirebbe in cronologia, log del proxy e Referer."""
+    t = make_token("op1", "Mario", "operatore")
+    for chiave in ("token", "access_token"):
+        req = FintaRichiesta(method="POST", path="/api/ricette", query={chiave: t})
+        with pytest.raises(HTTPException) as exc:
+            _run(auth_dependency(req))
+        assert exc.value.status_code == 401
+
+
+def test_token_in_query_string_non_da_identita():
+    from app.lotti.auth import request_actor
+
+    t = make_token("op1", "Mario", "amministratore")
+    assert request_actor(FintaRichiesta(query={"token": t})) is None
+    # lo stesso token nell'header resta valido
+    assert request_actor(FintaRichiesta(token=t))["id"] == "op1"
+
+
+def test_coda_stampa_non_conserva_token_negli_url():
+    from app.lotti.routers.stampanti import _senza_token
+
+    assert _senza_token("/lotti/api/stampa/lotto/L1?token=abc") == "/lotti/api/stampa/lotto/L1"
+    assert (
+        _senza_token("https://x.it/lotti/api/r?mese=9&access_token=abc&anno=2026")
+        == "https://x.it/lotti/api/r?mese=9&anno=2026"
+    )
+    assert _senza_token("/lotti/api/stampa/lotto/L1") == "/lotti/api/stampa/lotto/L1"

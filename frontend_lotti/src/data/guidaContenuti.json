@@ -1,15 +1,15 @@
 {
- "aggiornata_il": "01/09/2026",
+ "aggiornata_il": "26/09/2026",
  "sezioni": [
   {
    "id": "come-si-entra",
    "gruppo": "Per iniziare",
    "titolo": "Come si entra (PIN, ruoli, uscita)",
    "indirizzo": "",
-   "scopo": "L'app si apre col tuo PIN personale. Una volta inserito, puoi passare liberamente tra Pasticceria, Rosticceria, Bar, Lavagna e Magazzino senza digitarlo a ogni cambio. La persona resta identificata per due ore; le pagine di amministrazione restano riservate agli amministratori.",
+   "scopo": "Chi lavora nei reparti entra col suo PIN personale: identifica chi produce e chi firma i controlli HACCP. Una volta inserito, puoi passare liberamente tra Pasticceria, Rosticceria, Bar, Lavagna e Magazzino senza digitarlo a ogni cambio; al cambio turno si tocca «Cambia operatore». Il titolare non ha un PIN amministratore dentro Lotti: entra dal login del Gestionale e torna qui già riconosciuto.",
    "passi": [
     "Inserisci il PIN sul tastierino: con 6 cifre entra da solo, con 4 premi Conferma.",
-    "Il bottone «Esci» in alto a destra chiude tutto: al rientro serve di nuovo il PIN.",
+    "Il bottone «Esci» in alto a destra chiude tutto: al rientro il dipendente rimette il suo PIN, il titolare rientra dal Gestionale.",
     "Sui tablet il PIN identifica la persona che lavora. Per «Preleva» e «OK preso» viene chiesta una nuova conferma solo se sono trascorsi più di 10 minuti dall'ultima conferma."
    ],
    "bottoni": [
@@ -19,9 +19,14 @@
      "logout completo"
     ],
     [
-     "«🔒 Esci gestionale» (dal tablet)",
-     "esce dal kiosk verso il gestionale: serve il PIN amministratore (non richiesto se già inserito nelle ultime 2 ore)",
-     "chiude la sessione tablet nel browser"
+     "«Gestionale — solo titolare» (dal tablet)",
+     "apre la parte di amministrazione di Lotti: col Gestionale già aperto basta un tocco, altrimenti porta al login del Gestionale e poi torna qui",
+     "GET /api/auth/session"
+    ],
+    [
+     "Card «Solo titolare» (es. Ordini)",
+     "si apre subito se il titolare è entrato dal Gestionale, altrimenti porta al login del Gestionale: nessun tastierino amministratore",
+     "GET /api/auth/session"
     ]
    ]
   },
@@ -30,18 +35,23 @@
    "gruppo": "Per iniziare",
    "titolo": "Come ci si muove nell'app",
    "indirizzo": "",
-   "scopo": "In alto c'è la barra con le pagine principali: Dashboard, Ricette, Lotti, Gelati, Ordini, Fornitori. Le pagine meno usate stanno nel menu «Altro» (Configura, Dizionario, Listini, Corrispettivi, Backoffice, Controllo Dati, Cataloghi web, Collaudi, Controllo prelievi, Storico, Guida) e tutti i registri di legge stanno nel menu «Conformità HACCP». ATTENZIONE sul telefono: la barra scorre in orizzontale — se non vedi «Altro», trascina la barra verso sinistra, oppure usa le card della Home che portano alle stesse pagine.",
+   "scopo": "In alto a sinistra c'è «← Gestionale», che riporta all'ERP del gruppo; accanto, il logo riporta alla Home di Lotti. In alto a destra l'ingranaggio apre Impostazioni e amministrazione (Backoffice, Configurazione, Frigoriferi e congelatori, Dizionario, Cataloghi fornitori, Verifica dati, Attendibilità registri, Collaudi): lo vede solo il titolare, insieme alla scritta «Amministratore». Sotto c'è la barra con le pagine principali; le pagine meno usate stanno nel menu «Altro» (Gelati, Lotti da usare oggi, Storico produzioni, Materie prime, In menu, Fornitori, Listini, Corrispettivi, Mappa tracciabilità, Guida…) e tutti i registri di legge nel menu «Conformità HACCP». ATTENZIONE sul telefono: la barra scorre in orizzontale — se non vedi «Altro», trascina la barra verso sinistra, oppure usa le card della Home che portano alle stesse pagine.",
    "passi": [
-    "Il bottone «Home» ti riporta sempre alla Dashboard.",
+    "Il logo in alto a sinistra ti riporta sempre alla Home di Lotti.",
     "Il numeretto rosso su «Ordini» dice quante bozze d'ordine aspettano di essere confermate.",
     "Il bottone «Guida» apre questa guida; il «?» in basso a sinistra riavvia il giro guidato dell'app.",
-    "«Gestionale» apre l'ERP del gruppo, sullo stesso indirizzo, in una scheda nuova."
+    "«← Gestionale» riporta all'ERP del gruppo, sullo stesso indirizzo."
    ],
    "bottoni": [
     [
+     "Ingranaggio (in alto a destra, solo titolare)",
+     "Impostazioni e amministrazione",
+     "#backoffice, #configura, #attrezzature, #dizionario, #cataloghi_esterni, #controllo_dati, #attendibilita_haccp, #collaudi"
+    ],
+    [
      "Menu «Altro»",
      "apre l'elenco delle pagine secondarie",
-     "#configura, #dizionario, #prodotti, #corrispettivi, #backoffice, #controllo_dati, #cataloghi_esterni, #collaudi, #movimenti_magazzino, #storico_produzioni, #guida"
+     "#gelati, #cosa_usare_oggi, #produzione_consigliata, #storico_produzioni, #materie, #in_menu, #fornitori, #comparatore, #prodotti, #corrispettivi, #mappa_tracciabilita, #guida"
     ],
     [
      "Menu «Conformità HACCP»",
@@ -432,7 +442,7 @@
     "Saima e MePA si aggiornano da soli dal sito del fornitore («Aggiorna Catalogo»).",
     "Il Pasticcere, Tre Marie e Bindi hanno il bottone «Importa dal catalogo PDF»: carica i listini ufficiali già pronti (ripremerlo NON crea doppioni).",
     "«Ricettari SAIMA» raccoglie i PDF di ricette dei fornitori, consultabili e scaricabili.",
-    "«Cataloghi Fornitori (web)» (menu Altro, solo admin): incolli nome e sito di un fornitore nuovo e l'app prova a scaricarne il catalogo da sola."
+    "«Cataloghi fornitori» (ingranaggio Impostazioni, solo titolare): incolli nome e sito di un fornitore nuovo e l'app prova a scaricarne il catalogo da sola."
    ],
    "bottoni": [
     [
@@ -895,7 +905,6 @@
    "indirizzo": "#personale — solo admin",
    "scopo": "I dati dell'azienda (finiscono su tutti i PDF), i PIN degli operatori, i nuovi dipendenti dal gestionale da abilitare al tablet, i libretti sanitari con le scadenze (l'app avvisa 30 giorni prima), e la configurazione delle stampanti.",
    "passi": [
-    "«Mostra PIN» (col PIN amministratore) fa vedere i PIN di tutti in chiaro.",
     "I dipendenti nuovi registrati sul Gestionale Cloud compaiono qui: assegni PIN e postazione con «Abilita»."
    ],
    "bottoni": [

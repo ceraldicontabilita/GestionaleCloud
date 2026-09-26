@@ -30,11 +30,11 @@ def test_render_builds_backend_and_frontend_from_source():
     assert service["runtime"] == "python"
     assert "pip install -r backend/requirements.txt" in build_command
     # Il comando deve restare IDENTICO a quello impostato nella dashboard
-    # Render (che non recepisce render.yaml): e' `npm run build` del gestionale
-    # a compilare anche le app portate pari pari (frontend_*/) tramite lo
-    # script versionato, cosi' nessuna modifica in dashboard e' necessaria.
-    assert "npm --prefix frontend install --include=dev --legacy-peer-deps" in build_command
-    assert "npm --prefix frontend run build" in build_command
+    # Render (che non recepisce render.yaml): Yarn deve usare il lockfile
+    # canonico versionato; il build del gestionale compila anche le app portate
+    # pari pari (frontend_*/) tramite lo script versionato.
+    assert "yarn --cwd frontend install --frozen-lockfile --production=false" in build_command
+    assert "yarn --cwd frontend build" in build_command
     package = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
     assert package["scripts"]["build"] == "vite build && bash ../scripts/build_frontends.sh --apps"
     script = (ROOT / "scripts" / "build_frontends.sh").read_text(encoding="utf-8")

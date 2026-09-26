@@ -9,7 +9,8 @@ import { toast } from "sonner";
 // scheda anagrafica mostrava lo storico fatture.
 import { FileText, Eye, Printer, X } from "lucide-react";
 import { apiError } from "../../../utils/apiError";
-import { API, withToken } from "../../../utils/constants";
+import { API } from "../../../utils/constants";
+import { apriDocumentoAutenticato } from "../../../auth";
 
 const FattureList = ({ fatture }) => {
   const [filtroAnno, setFiltroAnno] = useState("tutti");

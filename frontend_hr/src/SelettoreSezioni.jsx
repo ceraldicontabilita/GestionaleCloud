@@ -9,8 +9,9 @@ import { Landmark, Boxes, Users, UtensilsCrossed, ArrowUpRight } from 'lucide-re
  * dal di dentro sembra un muro. L'unica via era riscrivere l'indirizzo.
  *
  * L'elenco arriva da `/api/sezioni`, che è l'unico posto dove sta scritto
- * quali sezioni esistono e dove vivono. L'aspetto invece è di casa: salvia su
- * crema, come il resto del portale.
+ * quali sezioni esistono e dove vivono. Sta in fondo alla barra laterale, che
+ * è salvia scuro: testo chiaro, o l'inchiostro sparisce sul verde. Il ritorno
+ * rapido al Gestionale è anche in testata (App.jsx), sempre in vista.
  *
  * Il PIN non si rifà: magazzino e portale condividono la verifica del token
  * (services/workforce_tokens.py), quindi chi è entrato resta dentro.
@@ -35,10 +36,10 @@ export default function SelettoreSezioni({ sezioneCorrente }) {
   if (!altre.length) return null;
 
   return (
-    <div style={{ padding: '14px 12px', borderTop: '1px solid #e6e0d4' }}>
+    <div style={{ padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
       <div style={{
         fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-        textTransform: 'uppercase', color: '#3f5a4e', marginBottom: 8,
+        textTransform: 'uppercase', color: 'rgba(255,255,255,0.72)', marginBottom: 8,
       }}>
         Vai a
       </div>
@@ -52,10 +53,10 @@ export default function SelettoreSezioni({ sezioneCorrente }) {
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               minHeight: 44, padding: '0 10px', borderRadius: 8,
-              color: '#2a3329', textDecoration: 'none', fontSize: 14, fontWeight: 600,
+              color: '#fffefb', textDecoration: 'none', fontSize: 14, fontWeight: 600,
             }}
           >
-            <Icona size={18} color="#5b7a6b" />
+            <Icona size={18} color="#dfe8e1" aria-hidden="true" />
             <span>{s.nome}</span>
           </a>
         );

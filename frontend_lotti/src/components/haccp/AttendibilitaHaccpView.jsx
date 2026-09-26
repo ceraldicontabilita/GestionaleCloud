@@ -9,7 +9,7 @@ import { LEGENDA_NA } from "../../utils/attendibilita";
 
 // GC-02h (decisione del titolare, strada A): le registrazioni HACCP in archivio
 // senza firma verificata si SEGNANO «n.a.», non si cancellano. Qui il titolare
-// vede l'anteprima e preme lui il bottone, entrato col suo PIN amministratore:
+// vede l'anteprima e preme lui il bottone, entrato dal login del Gestionale:
 // nessun token passa di mano. Backend: routers/haccp_attendibilita.py.
 
 const CATEGORIE = {

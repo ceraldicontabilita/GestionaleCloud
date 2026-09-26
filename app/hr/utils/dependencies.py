@@ -65,6 +65,12 @@ async def get_current_user(
         if ruolo not in RUOLI_VALIDI:
             raise AuthenticationError("Invalid token: unknown user role")
 
+        # Admin solo dalla sessione del Gestionale, e mai dopo il suo logout.
+        from app.services.group_session import token_di_gruppo_ammesso
+
+        if not await token_di_gruppo_ammesso(payload):
+            raise AuthenticationError("Sessione chiusa: rientra dal Gestionale")
+
         return {
             "user_id": user_id,
             "email": payload.get("email"),
@@ -145,7 +151,11 @@ async def get_optional_user(
         payload = verifica_token_condiviso(credentials.credentials)
         if payload is None:
             return None
-        
+        from app.services.group_session import token_di_gruppo_ammesso
+
+        if not await token_di_gruppo_ammesso(payload):
+            return None
+
         user_id = payload.get("sub")
         if not user_id:
             return None
@@ -336,13 +346,17 @@ def date_range_params(
 _bearer_strict = HTTPBearer(auto_error=True)
 
 
-def _decode_or_401(credentials: HTTPAuthorizationCredentials) -> Dict[str, Any]:
+async def _decode_or_401(credentials: HTTPAuthorizationCredentials) -> Dict[str, Any]:
     try:
+        from app.services.group_session import token_di_gruppo_ammesso
         from app.services.workforce_tokens import verifica_token_condiviso
 
         payload = verifica_token_condiviso(credentials.credentials)
         if payload is None:
             raise JWTError("token non valido per nessuna app del gruppo")
+        # Admin solo dalla sessione del Gestionale, e mai dopo il suo logout.
+        if not await token_di_gruppo_ammesso(payload):
+            raise JWTError("sessione chiusa o admin fuori dalla sessione del Gestionale")
         return payload
     except JWTError as e:
         logger.info(f"Auth strict: token rifiutato ({e})")
@@ -357,7 +371,7 @@ async def require_admin(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_strict),
 ) -> Dict[str, Any]:
     """Richiede un JWT valido con ruolo admin. Usata sulle rotte solo-admin."""
-    payload = _decode_or_401(credentials)
+    payload = await _decode_or_401(credentials)
     if payload.get("role") != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Accesso riservato all'amministratore")
     return payload
@@ -371,7 +385,7 @@ async def require_staff(
     Usata sulle rotte dell'area gestione che il responsabile turni deve poter
     raggiungere (la pagina Turni carica dati da questo stesso router).
     """
-    payload = _decode_or_401(credentials)
+    payload = await _decode_or_401(credentials)
     if payload.get("role") not in ("admin", "responsabile_turni"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Accesso riservato")
     return payload

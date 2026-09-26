@@ -7,7 +7,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 import { norm } from "../../utils/textNormalize";
 import { linkEmailOrdine, linkWhatsAppOrdine } from "../../utils/invioOrdine";
 import { getOperatoreNome } from "../../auth";
@@ -952,7 +953,7 @@ function DaInviare() {
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               <button onClick={()=>scegliCanale("email")} style={qtybtn}>Email</button>
               <button onClick={()=>scegliCanale("whatsapp")} style={qtybtn}>WhatsApp</button>
-              <button onClick={()=>window.open(withToken(`${API}/ordini-fornitori/${o.id}/pdf?fornitore=${encodeURIComponent(preparazione.fornitore)}`), "_blank")} style={qtybtn}>Scarica PDF</button>
+              <button onClick={()=>apriDocumentoAutenticato(`${API}/ordini-fornitori/${o.id}/pdf?fornitore=${encodeURIComponent(preparazione.fornitore)}`)} style={qtybtn}>Scarica PDF</button>
             </div>
             {preparazione.canale && (
               <>

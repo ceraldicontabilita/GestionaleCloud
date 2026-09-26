@@ -157,6 +157,7 @@ async def mfa_step_up(
         auth_method=admin.get("auth_method", "password"),
         mfa_verified=True,
         mfa_verified_at=datetime.now(timezone.utc),
+        sid=getattr(request.state, "session_id", None),
     )
     set_session_cookies(response, token)
     await _audit("mfa_step_up_ok", request)

@@ -556,8 +556,13 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
 
 
 async def riprocessa_bonifici_pendenti(db, limit: int = 200) -> Dict[str, int]:
-    """Rilegge i PDF non associati e ritenta esclusivamente il match certo."""
-    transfers = await db["bonifici_transfers"].find(
+    """Rilegge i PDF non associati e ritenta esclusivamente il match certo.
+
+    A giro prende i ``limit`` riletti meno di recente (``updated_at``, poi
+    ``created_at``): ordinati per sola creazione erano sempre gli stessi 200 piu'
+    vecchi, e i bonifici arrivati dopo non venivano mai riletti.
+    """
+    pendenti = await db["bonifici_transfers"].find(
         {
             "salario_associato": {"$ne": True},
             "pdf_data": {"$exists": True, "$nin": [None, ""]},
@@ -568,8 +573,11 @@ async def riprocessa_bonifici_pendenti(db, limit: int = 200) -> Dict[str, int]:
             "source_file": 1,
             "source": 1,
             "created_at": 1,
+            "updated_at": 1,
         },
-    ).sort("created_at", 1).to_list(limit)
+    ).to_list(None)
+    pendenti.sort(key=lambda t: str(t.get("updated_at") or t.get("created_at") or ""))
+    transfers = pendenti[:limit]
     stats = {"letti": 0, "associati": 0, "non_associati": 0, "errori": 0}
     for transfer in transfers:
         stats["letti"] += 1

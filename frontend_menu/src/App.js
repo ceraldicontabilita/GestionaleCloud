@@ -1,8 +1,7 @@
 import "./App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import AdminLoginPage from "./pages/AdminLoginPage";
-import AdminQRCodePage from "./pages/AdminQRCodePage";
 import AdminDashboard from "./pages/AdminDashboard";
 import OrdersPage from "./pages/admin/OrdersPage";
 import CounterPage from "./pages/admin/CounterPage";
@@ -23,7 +22,8 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/admin/login" element={<AdminLoginPage />} />
               <Route path="/admin" element={<AdminDashboard />} />
-              <Route path="/admin/qrcode" element={<AdminQRCodePage />} />
+              {/* Il QR del menu clienti sta nella dashboard: il vecchio indirizzo ci rimanda. */}
+              <Route path="/admin/qrcode" element={<Navigate to="/admin" replace />} />
               <Route path="/admin/ordini" element={<OrdersPage />} />
               <Route path="/admin/cassa" element={<CounterPage />} />
               <Route path="/admin/cucina" element={<KitchenMonitorPage />} />

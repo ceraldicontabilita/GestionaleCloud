@@ -11,10 +11,10 @@
 # Su Render il Build Command del servizio (impostato in dashboard, che NON
 # recepisce render.yaml) e' rimasto:
 #   pip install -r backend/requirements.txt &&
-#   npm --prefix frontend install --include=dev --legacy-peer-deps &&
-#   npm --prefix frontend run build
-# Per questo `npm --prefix frontend run build` (frontend/package.json)
-# richiama questo script con --apps dopo `vite build`: le app vengono
+#   yarn --cwd frontend install --frozen-lockfile --production=false &&
+#   yarn --cwd frontend build
+# Per questo `yarn --cwd frontend build` (frontend/package.json) richiama
+# questo script con --apps dopo `vite build`: le app vengono
 # compilate senza toccare la dashboard.
 set -euo pipefail
 

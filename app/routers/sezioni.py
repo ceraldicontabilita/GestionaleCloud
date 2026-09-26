@@ -49,6 +49,26 @@ SEZIONI = [
         "descrizione": "Menu pubblico, prodotti e allergeni",
         "percorso": "/menu/",
         "icona": "UtensilsCrossed",
+        # Il Menu ha due facce: quella dei clienti e la gestione. Chi e' nella
+        # gestione deve poter aprire il menu clienti dal selettore, che
+        # altrimenti toglie la sezione corrente e non offre niente. HR e Lotti
+        # continuano a usare `percorso` e ignorano questo elenco.
+        "collegamenti": [
+            {
+                "id": "menu-clienti",
+                "nome": "Menu clienti",
+                "descrizione": "Il menu pubblico, come lo vede il cliente",
+                "percorso": "/menu/",
+                "icona": "UtensilsCrossed",
+            },
+            {
+                "id": "menu-gestione",
+                "nome": "Gestione Menu",
+                "descrizione": "Prodotti, allergeni, ordini, QR code",
+                "percorso": "/menu/admin",
+                "icona": "Settings",
+            },
+        ],
     },
 ]
 

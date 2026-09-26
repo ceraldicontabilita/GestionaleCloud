@@ -32,18 +32,23 @@ export const SECONDARY_TABS = [
   { section: "Acquisti e vendita", id: "prodotti", label: "Listini e cataloghi", icon: Tag },
   { section: "Acquisti e vendita", id: "corrispettivi", label: "Corrispettivi", icon: TrendingUp },
   { section: "Analisi", id: "mappa_tracciabilita", label: "Mappa tracciabilità", icon: Network },
-  { section: "Amministrazione", id: "controllo_dati", label: "Verifica dati", icon: ShieldCheck },
-  { section: "Amministrazione", id: "cataloghi_esterni", label: "Cataloghi fornitori", icon: Globe },
-  { section: "Amministrazione", id: "dizionario", label: "Dizionario ingredienti", icon: BookMarked },
+  { section: "Supporto", id: "guida", label: "Guida", icon: HelpCircle },
+];
+
+// Impostazioni e amministrazione: si aprono dall'ingranaggio fisso in alto a
+// destra, visibile solo al titolare (26/09/2026). Non stanno più sotto «Altro».
+export const IMPOSTAZIONI_TABS = [
+  { id: "backoffice", label: "Backoffice", icon: Settings },
+  { id: "configura", label: "Configurazione", icon: ClipboardCheck },
   // 25/07/2026 — prima i nomi si cambiavano solo dall'intestazione delle
   // colonne in Temperature: qui c'è un elenco unico e trovabile.
-  { section: "Amministrazione", id: "attrezzature", label: "Frigoriferi e congelatori", icon: Refrigerator },
-  // GC-02h: il titolare segna «n.a.» lo storico HACCP senza firma, col suo PIN
-  { section: "Amministrazione", id: "attendibilita_haccp", label: "Attendibilità registri HACCP", icon: ShieldCheck },
-  { section: "Amministrazione", id: "backoffice", label: "Backoffice", icon: Settings },
-  { section: "Amministrazione", id: "configura", label: "Configurazione", icon: ClipboardCheck },
-  { section: "Amministrazione", id: "collaudi", label: "Collaudi", icon: FlaskConical },
-  { section: "Supporto", id: "guida", label: "Guida", icon: HelpCircle },
+  { id: "attrezzature", label: "Frigoriferi e congelatori", icon: Refrigerator },
+  { id: "dizionario", label: "Dizionario ingredienti", icon: BookMarked },
+  { id: "cataloghi_esterni", label: "Cataloghi fornitori", icon: Globe },
+  { id: "controllo_dati", label: "Verifica dati", icon: ShieldCheck },
+  // GC-02h: il titolare segna «n.a.» lo storico HACCP senza firma
+  { id: "attendibilita_haccp", label: "Attendibilità registri HACCP", icon: ShieldCheck },
+  { id: "collaudi", label: "Collaudi", icon: FlaskConical },
 ];
 
 export const HACCP_TABS = [
@@ -65,6 +70,7 @@ export const HACCP_TABS = [
 export const VALID_TABS = [
   ...PRIMARY_TABS.map((tab) => tab.id),
   ...SECONDARY_TABS.map((tab) => tab.id),
+  ...IMPOSTAZIONI_TABS.map((tab) => tab.id),
   ...HACCP_TABS.map((tab) => tab.id),
   "ricettario", "food_cost", "listino", "magazzino_prodotti",
   "sconti_merce", "backup", "stampanti",

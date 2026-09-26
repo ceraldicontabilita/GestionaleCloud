@@ -451,12 +451,17 @@ async def esegui_pipeline_completa(db: ArchivioDocumenti) -> Dict[str, Any]:
     else:
         risultati["f24"] = {"saltato": "canale email F24 spento (ENABLE_EMAIL_F24_SYNC)"}
 
-    # 2. Cedolini
-    try:
-        risultati["cedolini"] = await processa_cedolini_da_email(db)
-    except Exception as e:
-        logger.error(f"[PIPELINE] Errore Cedolini: {e}")
-        risultati["cedolini"] = {"errore": str(e)}
+    # 2. Cedolini — gated da ENABLE_EMAIL_CEDOLINI_SYNC
+    if getattr(settings, "ENABLE_EMAIL_CEDOLINI_SYNC", True):
+        try:
+            risultati["cedolini"] = await processa_cedolini_da_email(db)
+        except Exception as e:
+            logger.error(f"[PIPELINE] Errore Cedolini: {e}")
+            risultati["cedolini"] = {"errore": str(e)}
+    else:
+        risultati["cedolini"] = {
+            "saltato": "canale email cedolini spento (ENABLE_EMAIL_CEDOLINI_SYNC)"
+        }
 
     # 3. Verbali — gated da ENABLE_EMAIL_VERBALI_SYNC
     if getattr(settings, "ENABLE_EMAIL_VERBALI_SYNC", True):

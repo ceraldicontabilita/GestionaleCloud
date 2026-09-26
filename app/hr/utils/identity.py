@@ -37,7 +37,11 @@ async def get_identity(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> Dict[str, Any]:
     """Identità corrente dal JWT. 401 se assente/invalido (nessun bypass)."""
+    from app.services.group_session import token_di_gruppo_ammesso
+
     payload = decode_token(credentials.credentials)
+    if not await token_di_gruppo_ammesso(payload):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sessione chiusa: rientra dal Gestionale")
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token senza soggetto")

@@ -78,5 +78,14 @@ describe("navigazione kiosk senza richieste PIN inutili", () => {
     expect(container.querySelector('[data-testid="tablet-home"]')?.dataset.preselect).toBe("ordini");
     expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-1", nome: "Mario" });
   });
+
+  test("il titolare entrato dal Gestionale apre la card riservata anche senza operatore", async () => {
+    saveRuolo("amministratore");
+
+    await act(async () => root.render(<KioskLayout hash="tablet/ordini" />));
+
+    expect(container.querySelector('[data-testid="tablet-home"]')).toBeNull();
+    expect(container.textContent).toContain("Ordini");
+  });
 });
 

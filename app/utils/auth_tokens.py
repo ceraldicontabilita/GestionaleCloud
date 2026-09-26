@@ -3,6 +3,7 @@
 Le challenge MFA non sono token di sessione: hanno uno scopo esplicito,
 durano pochi minuti e non contengono segreti TOTP.
 """
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
@@ -25,7 +26,13 @@ def create_access_token(
     auth_method: str = "password",
     mfa_verified: bool = False,
     mfa_verified_at: Optional[datetime] = None,
+    sid: Optional[str] = None,
 ) -> str:
+    """Token di sessione del Gestionale.
+
+    ``sid`` identifica la sessione dal login al logout, attraverso i rinnovi:
+    un login ne apre una nuova, uno step-up MFA o un rinnovo passano quella in
+    corso. HR, Lotti e Menu lo portano nei loro token, e il logout lo revoca."""
     now = datetime.now(timezone.utc)
     payload: Dict[str, Any] = {
         "sub": str(user_id),
@@ -38,10 +45,13 @@ def create_access_token(
         "auth_method": auth_method,
         "mfa_verified": bool(mfa_verified),
         "amr": [auth_method, "otp"] if mfa_verified else [auth_method],
+        "sid": sid or secrets.token_hex(16),
     }
     if mfa_verified:
         verified_at = mfa_verified_at or now
-        payload["mfa_verified_at"] = verified_at
+        # Secondi epoch, come exp/iat: jose serializza solo quelli, e un
+        # datetime qui faceva fallire con TypeError il login MFA e lo step-up.
+        payload["mfa_verified_at"] = int(verified_at.timestamp())
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

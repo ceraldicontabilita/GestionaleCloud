@@ -59,8 +59,11 @@ const CartDrawer = ({ language = 'it' }) => {
       });
       setConfirmedOrder(order);
       toast({
-        title: t('Ordine inviato!', 'Order sent!'),
-        description: t('Il tuo ordine è stato ricevuto dal locale.', 'Your order has been received.')
+        title: t('Ordine registrato', 'Order recorded'),
+        description: t(
+          'È nell\'elenco ordini del personale. Il pagamento si fa al locale.',
+          'It is in the staff order list. Payment is made at the venue.'
+        )
       });
     } catch (err) {
       const serverDetail = err?.response?.data?.detail;
@@ -96,16 +99,38 @@ const CartDrawer = ({ language = 'it' }) => {
       </SheetTrigger>
       <SheetContent side="bottom" className="bg-[#4a5d4a] text-white border-t-[#5d7056] max-h-[85vh] overflow-y-auto">
         {confirmedOrder ? (
-          <div className="py-10 text-center">
-            <CheckCircle2 className="w-16 h-16 text-[#d4af37] mx-auto mb-4" />
-            <h2 className="text-2xl font-bold mb-2">{t('Ordine inviato', 'Order sent')}</h2>
+          // Il testo dice cio' che fa davvero il backend (POST /api/orders/):
+          // l'ordine viene salvato con stato «nuovo» e non pagato, e compare
+          // nelle schermate Ordini, Cassa e Cucina dell'amministrazione Menu.
+          // Nessuna notifica parte verso il personale e nessun pagamento
+          // avviene online; il tavolo e' quello scritto dal cliente, non
+          // verificato.
+          <div className="py-10 text-center max-w-md mx-auto" data-testid="ordine-confermato">
+            <CheckCircle2 className="w-16 h-16 text-[#d4af37] mx-auto mb-4" aria-hidden="true" />
+            <h2 className="text-2xl font-bold mb-3">{t('Ordine registrato', 'Order recorded')}</h2>
+            <p className="text-white/90 mb-3">
+              {t(
+                'Il tuo ordine è arrivato nell\'elenco ordini del personale del locale.',
+                'Your order has reached the venue staff\'s order list.'
+              )}
+            </p>
             <p className="text-white/80 mb-1">
               {t('Numero ordine', 'Order number')}: <span className="font-mono">{confirmedOrder.id}</span>
             </p>
-            <p className="text-white/80 mb-6">
-              {t('Totale', 'Total')}: <span className="text-[#d4af37] font-bold">€ {confirmedOrder.total?.toFixed(2)}</span>
+            <p className="text-white/80 mb-1">
+              {confirmedOrder.table
+                ? <>{t('Tavolo indicato', 'Table given')}: <strong>{confirmedOrder.table}</strong>{confirmedOrder.sala_nome ? ` (${confirmedOrder.sala_nome})` : ''}</>
+                : t('Non hai indicato un tavolo: comunica al personale il numero d\'ordine.', 'You did not give a table: tell the staff your order number.')}
             </p>
-            <Button onClick={closeAndReset} className="bg-[#d4af37] text-black hover:bg-[#c9a332]">
+            <p className="text-white/80 mb-1">
+              {t('Totale', 'Total')}: <span className="text-[#d4af37] font-bold">€ {Number(confirmedOrder.total || 0).toFixed(2)}</span>
+            </p>
+            <p className="text-white/80 mb-6">
+              {t('Non hai ancora pagato: paghi al locale', 'You have not paid yet: you pay at the venue')}
+              {confirmedOrder.payment_method === 'pos' ? t(' con carta / POS.', ' by card / POS.')
+                : confirmedOrder.payment_method === 'contanti' ? t(' in contanti.', ' in cash.') : '.'}
+            </p>
+            <Button onClick={closeAndReset} className="min-h-[44px] bg-[#d4af37] text-black hover:bg-[#c9a332]">
               {t('Chiudi', 'Close')}
             </Button>
           </div>
@@ -130,20 +155,23 @@ const CartDrawer = ({ language = 'it' }) => {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
-                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                        aria-label={`${t('Togli uno', 'Remove one')}: ${item.name}`}
+                        className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
                       >
                         <Minus className="w-4 h-4" />
                       </button>
                       <span className="w-6 text-center">{item.quantity}</span>
                       <button
                         onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
-                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                        aria-label={`${t('Aggiungi uno', 'Add one')}: ${item.name}`}
+                        className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => removeItem(item.product_id)}
-                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-red-500/60 flex items-center justify-center ml-1"
+                        aria-label={`${t('Elimina', 'Remove')}: ${item.name}`}
+                        className="w-11 h-11 rounded-full bg-white/10 hover:bg-[#d35f4e]/60 flex items-center justify-center ml-1"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

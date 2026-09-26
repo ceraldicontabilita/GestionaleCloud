@@ -5,7 +5,7 @@ Solo configurazione DB, registrazione router e middleware.
 
 from fastapi import FastAPI, APIRouter, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from app.lotti.deploy_info import get_deploy_info
+from app.services.deploy_info import get_deploy_info
 import asyncio
 import os
 import logging

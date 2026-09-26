@@ -3,7 +3,8 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Sparkles, ChevronLeft, ChevronRight, RefreshCw, Refrigerator, Snowflake, Check, X, Printer } from "lucide-react";
 import Button from "../ui/Button";
-import { API, MESI_IT, withToken } from "../../utils/constants";
+import { API, MESI_IT } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 import { formattaDataItaliana, giorniNelMese } from "../../utils/dateUtils";
 import { apiError } from "../../utils/apiError";
 import { CLASSE_NA, LEGENDA_NA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
@@ -146,7 +147,7 @@ const SanificazioneView = () => {
           <button onClick={() => cambaMese(-1)} className="p-2 hover:bg-gray-100 rounded"><ChevronLeft size={20}/></button>
           <span className="font-semibold min-w-[150px] text-center">{MESI_IT[mese-1]} {anno}</span>
           <button onClick={() => cambaMese(1)} className="p-2 hover:bg-gray-100 rounded"><ChevronRight size={20}/></button>
-          <Button onClick={() => window.open(withToken(`${API}/sanificazione/export-pdf/${anno}/${mese}`), '_blank')} variant="secondary" size="sm" data-testid="stampa-sanificazione-btn">
+          <Button onClick={() => apriDocumentoAutenticato(`${API}/sanificazione/export-pdf/${anno}/${mese}`)} variant="secondary" size="sm" data-testid="stampa-sanificazione-btn">
             <Printer size={16}/> PDF
           </Button>
         </div>

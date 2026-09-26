@@ -9,7 +9,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { conferma } from "../../utils/conferma";
 import axios from "axios";
-import { withToken } from "../../utils/constants";
 import { getOperatoreNome } from "../../auth";
 import { stampaDoc } from "../../utils/stampa";
 import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";

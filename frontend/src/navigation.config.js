@@ -179,6 +179,7 @@ export const NAV_GRUPPI = [
       { to: '/admin/mfa', label: 'Sicurezza MFA', Icon: ShieldCheck, adminOnly: true, perche: "Il secondo fattore di accesso per gli amministratori." },
       { to: '/admin/elaborazioni', label: 'Elaborazioni', Icon: Workflow, adminOnly: true, perche: "Le elaborazioni in sottofondo: che cosa gira, che cosa è finito, che cosa è fallito." },
       { to: '/integrazioni/mittenti-email', label: 'Mittenti email', Icon: Mail, adminOnly: true, perche: "Da quali indirizzi il gestionale accetta documenti per posta." },
+      { to: '/impostazioni-f24-email', label: 'Email automatica', Icon: Mail, adminOnly: true, perche: "Come il gestionale scarica da solo gli F24 dalla posta: casella, mittenti, ultime scansioni." },
       { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true, perche: "Come si comporta l'assistente e che cosa può leggere." },
     ],
   },

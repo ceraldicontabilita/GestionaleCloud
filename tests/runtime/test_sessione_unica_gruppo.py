@@ -38,7 +38,14 @@ def niente_revoche(monkeypatch):
     async def mai(_db, _token):
         return False
 
+    async def mai_hash(_db, _chiave):
+        return False
+
+    from app.services import group_session
+
+    group_session._azzera_cache()
     monkeypatch.setattr(tb, "is_revocato", mai)
+    monkeypatch.setattr(tb, "is_hash_revocato", mai_hash)
     monkeypatch.setattr("app.database.Database.get_db", staticmethod(lambda: None))
 
 
@@ -137,7 +144,7 @@ def test_menu_session(monkeypatch):
 
     monkeypatch.setattr(menu, "SECRET_KEY", "segreto-menu-test")
     esito = run(menu.sessione_dal_gestionale(Richiesta(f"access_token={_token_erp()}")))
-    assert esito.success and menu.verify_token(f"Bearer {esito.token}") == menu.ADMIN_USERNAME
+    assert esito.success and run(menu.verify_token(f"Bearer {esito.token}")) == menu.ADMIN_USERNAME
     with pytest.raises(HTTPException) as exc:
         run(menu.sessione_dal_gestionale(Richiesta("")))
     assert exc.value.status_code == 401

@@ -83,8 +83,9 @@ def register_routers():
     # Autenticazione strict per l'area gestione (niente bypass).
     from .utils.dependencies import require_admin, require_staff
 
-    from .routers import auth, pin_login
-    app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+    # Nessun login amministratore proprio (email/password o PIN): l'admin
+    # entra dalla sessione del Gestionale, `pin_login` espone `/session`.
+    from .routers import pin_login
     app.include_router(pin_login.router, prefix="/api/auth", tags=["PIN Login"])
 
     # Dipendenze di sicurezza riusate. STAFF = admin o responsabile_turni; ADMIN = solo admin.
@@ -148,9 +149,57 @@ def register_routers():
 register_routers()
 
 
+from app.services.health_probe import ProbeUnica, risposta_salute  # noqa: E402
+
+# Budget della liveness: Render la chiama con un timeout di pochi secondi.
+_HEALTH_TIMEOUT = 2.0
+_probe_database = ProbeUnica("database HR")
+
+
+async def _ping_database() -> None:
+    db = Database.db
+    if Database.backend == "supabase":
+        await db.ping()
+    elif Database.backend == "mongo":
+        await db.command("ping")
+    else:
+        raise RuntimeError(f"backend HR non connesso ({Database.backend or 'avvio non completato'})")
+
+
+def _auth_configurata() -> dict:
+    """Quali segreti ci sono (sì/no), mai il valore."""
+    from app.services import admin_pin
+    from .config import _env
+
+    return {
+        # Senza, i token HR sono firmati con un segreto effimero di processo:
+        # ogni riavvio butta fuori tutto il portale.
+        "jwt_secret": bool(_env("HR_JWT_SECRET", "JWT_SECRET")),
+        # PIN amministratore unico del gruppo (letto dal login ERP).
+        "pin_admin": admin_pin.configured(),
+    }
+
+
 @app.get("/api/health")
-async def health():
-    return {"status": "ok", "app": "AppDipendenti", "version": "1.0.0"}
+async def health(strict: bool = False):
+    """Salute del portale HR: commit pubblicato, database, segreti di accesso.
+
+    Risponde entro ``_HEALTH_TIMEOUT`` secondi anche con il database appeso
+    (``degraded``, HTTP 200); ``?strict=true`` rende 503 un guasto certo.
+    """
+    if Database.backend in ("supabase", "mongo"):
+        esito_db = await _probe_database.esito(_ping_database, timeout=_HEALTH_TIMEOUT)
+    elif Database.backend == "non_configurato":
+        esito_db = None  # nessuna DSN: lo dice risposta_salute
+    else:
+        esito_db = ("failed", "connessione non ancora aperta (avvio in corso)")
+    return risposta_salute(
+        "hr",
+        componenti={"database": esito_db},
+        auth=_auth_configurata(),
+        strict=strict,
+        extra={"app": "AppDipendenti", "version": "1.0.0", "database_backend": Database.backend or None},
+    )
 
 
 # Serve frontend React in produzione.
