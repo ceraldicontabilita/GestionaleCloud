@@ -892,3 +892,42 @@ describe('Movimenti del conto SumUp', () => {
     expect(screen.getByText('Saldo da estratto SumUp')).toBeInTheDocument();
   });
 });
+
+describe('Quadratura del conto SumUp', () => {
+  it('elenca le differenze con l estratto e dice se quadra', () => {
+    render(<CartaSumUp
+      anno={2026}
+      dati={{
+        quadratura_estratto: {
+          dal: '2026-08-03', al: '2026-09-26',
+          variazione_estratto: 29422.19, variazione_prima_nota: 44076.08,
+          da_registrare: { numero: 16, importo: -14654.90 },
+          prima_nota_senza_estratto: {
+            numero: 1, importo: -1.01,
+            righe: [{ id: 'r1', data: '2026-08-03', descrizione: 'Deduzione SumUp su Mastercard', importo: -1.01 }],
+          },
+          scarto_non_spiegato: 0, quadra: true,
+        },
+      }}
+    />);
+    const box = screen.getByTestId('quadratura-sumup');
+    expect(box).toHaveTextContent("Righe dell'estratto ancora da registrare (16)");
+    expect(box).toHaveTextContent('Deduzione SumUp su Mastercard');
+    expect(screen.getByRole('status')).toHaveTextContent('Quadra al centesimo');
+  });
+
+  it('segnala lo scarto che nessuna riga spiega', () => {
+    render(<CartaSumUp
+      anno={2026}
+      dati={{
+        quadratura_estratto: {
+          dal: '2026-08-03', al: '2026-09-26', variazione_estratto: 10, variazione_prima_nota: 5,
+          da_registrare: { numero: 0, importo: 0 },
+          prima_nota_senza_estratto: { numero: 0, importo: 0, righe: [] },
+          scarto_non_spiegato: 5, quadra: false,
+        },
+      }}
+    />);
+    expect(screen.getByRole('status')).toHaveTextContent('Scarto non spiegato');
+  });
+});
