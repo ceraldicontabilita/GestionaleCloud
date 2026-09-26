@@ -89,19 +89,16 @@ async function testaViewport(browser, vp) {
   });
 
   const risultati = [];
+  // Il viewer appartiene all'Archivio documenti, una pagina vera con la sua
+  // voce nella colonna di navigazione (i riquadri-scheda dentro Documenti non
+  // ci sono piu'). Sul telefono la colonna e' nascosta: si apre l'indirizzo a
+  // cui porta la voce, lo stesso per ogni viewport.
   try {
-    await page.goto(BASE + '/documenti', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(BASE + '/documenti/archivio', { waitUntil: 'networkidle', timeout: 30000 });
   } catch {
     // networkidle può non arrivare con polling: si procede comunque
   }
   await page.waitForTimeout(1500);
-
-  // /documenti apre il punto unico di caricamento. Il viewer appartiene
-  // all'Archivio: attraversiamo la stessa azione visibile usata dall'operatore.
-  // Dentro il contenuto della pagina: la stessa voce sta anche nella colonna
-  // di navigazione, e un clic senza ambito troverebbe due link.
-  await page.getByTestId('page-content').getByRole('link', { name: /Archivio documenti/i }).click();
-  await page.waitForTimeout(500);
 
   const bottoneVedi = page.getByRole('button', { name: 'Vedi', exact: true }).first();
   try {
