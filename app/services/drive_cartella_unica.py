@@ -178,7 +178,7 @@ async def _registra(db, file_id: str, **campi) -> None:
 
 
 async def giro(db) -> Dict[str, Any]:
-    """Un giro sulla cartella DA ELABORARE: al piu' ``DRIVE_CARTELLA_UNICA_BATCH`` file."""
+    """Un giro su DA ELABORARE e poi sulla radice: al piu' ``DRIVE_CARTELLA_UNICA_BATCH`` file."""
     if not attivo():
         return {"saltato": "GOOGLE_DRIVE_DATI_FOLDER_ID non impostata"}
     if _lock.locked():
@@ -196,8 +196,15 @@ async def _giro(db) -> Dict[str, Any]:
     try:
         service = await asyncio.to_thread(_service)
         cartelle = await asyncio.to_thread(_cartelle, service, radice())
-        in_coda = await asyncio.to_thread(
-            _elenca, service, cartelle[INBOX], "id, name, md5Checksum, size, mimeType", _batch())
+        campi = "id, name, md5Checksum, size, mimeType"
+        in_coda = [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
+            _elenca, service, cartelle[INBOX], campi, _batch())]
+        # Anche i file lasciati sciolti nella radice sono in coda: il titolare
+        # usa la cartella unica come calderone e non deve smistarli a mano in
+        # DA ELABORARE. Le sottocartelle restano escluse da _elenca.
+        if len(in_coda) < _batch():
+            in_coda += [{**f, "_da": radice()} for f in await asyncio.to_thread(
+                _elenca, service, radice(), campi, _batch() - len(in_coda))]
         archivio = await asyncio.to_thread(_elenca, service, cartelle[ARCHIVIO], "id, md5Checksum")
     except Exception as exc:
         esito["errore"] = f"{type(exc).__name__}: {exc}"
@@ -225,7 +232,7 @@ async def _giro(db) -> Dict[str, Any]:
                 cartella = "CESTINO"
                 if not await asyncio.to_thread(_cestina, service, fid, copia_di):
                     cartella = DOPPIONI
-                    await asyncio.to_thread(_sposta, service, fid, cartelle[INBOX], cartelle[DOPPIONI],
+                    await asyncio.to_thread(_sposta, service, fid, f["_da"], cartelle[DOPPIONI],
                                             f"copia identica di {copia_di}")
                 await _registra(db, fid, nome=nome, sha256=sha256, esito="doppione_cestinato",
                                 cartella=cartella, duplicato_di=copia_di)
@@ -238,7 +245,7 @@ async def _giro(db) -> Dict[str, Any]:
                         "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256}
             risultato = await _smista(nome, contenuto, contesto)
             destinazione, motivo = esito_del_risultato(risultato)
-            await asyncio.to_thread(_sposta, service, fid, cartelle[INBOX], cartelle[destinazione], motivo or None)
+            await asyncio.to_thread(_sposta, service, fid, f["_da"], cartelle[destinazione], motivo or None)
             riferimenti = {k: risultato[k] for k in _CHIAVI_RIFERIMENTO if risultato.get(k)}
             await _registra(
                 db, fid, nome=nome, sha256=sha256, md5=f.get("md5Checksum"),
@@ -261,7 +268,7 @@ async def _giro(db) -> Dict[str, Any]:
             esito["errori"] += 1
             esito["dettagli"].append({"file": nome, "esito": ERRORI, "motivo": motivo})
             try:
-                await asyncio.to_thread(_sposta, service, fid, cartelle[INBOX], cartelle[ERRORI], motivo)
+                await asyncio.to_thread(_sposta, service, fid, f["_da"], cartelle[ERRORI], motivo)
                 await _registra(db, fid, nome=nome, cartella=ERRORI, esito="errore", motivo=motivo)
             except Exception as exc2:
                 logger.warning("[cartella-unica] %s non spostato in ERRORI: %s: %s",
