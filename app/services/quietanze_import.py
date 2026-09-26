@@ -118,10 +118,15 @@ async def _marca_scadenze_calendario(db, f24: dict, data_pagamento: str, quietan
 
 
 def estrai_tributi_dettaglio(doc: dict) -> list:
-    """Vista legacy basata sul normalizzatore fiscale canonico."""
+    """Vista legacy basata sul normalizzatore fiscale canonico.
+
+    Le righe INAIL si confrontano come «INAIL»: il modello F24 porta la
+    causale («P») e la quietanza no, e con codici diversi lo stesso premio
+    rendeva «non corrispondente» il modello di aprile 2026 (6.469,23 EUR).
+    """
     return [
         {
-            "codice": row["tax_code"],
+            "codice": "INAIL" if row.get("section") == "INAIL" else row["tax_code"],
             "periodo": row["reference_period"] or "",
             "importo": row["debit_amount"],
             "importo_cents": row["debit_cents"],

@@ -433,7 +433,7 @@ async def _registra_banca_dichiarata(
 
 async def applica_pagamenti_dichiarati(
     db, *, dry_run: bool = False, solo_pendenti: bool = False,
-    aggiorna_fornitori: bool = True,
+    aggiorna_fornitori: bool = True, report_keys: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Porta in Prima Nota i pagamenti del report del titolare.
 
@@ -449,6 +449,8 @@ async def applica_pagamenti_dichiarati(
     filtro: Dict[str, Any] = {"metodo_pagamento_titolare": {"$nin": [None, ""]}}
     if solo_pendenti:
         filtro["pagamento_applicato.stato"] = {"$nin": sorted(ESITI_DEFINITIVI)}
+    if report_keys is not None:
+        filtro["report_key"] = {"$in": list(report_keys)}
     righe = await db[COLLECTION_REPORT].find(filtro, {"_id": 0}).to_list(20000)
     risultato: Dict[str, Any] = {"dry_run": dry_run, "righe": len(righe)}
     if not righe:
@@ -582,6 +584,39 @@ async def applica_pagamenti_dichiarati(
         "da_vedere": problemi,
     })
     return risultato
+
+
+async def applica_per_fattura_arrivata(db, fattura: Dict[str, Any]) -> Dict[str, Any]:
+    """La fattura e' appena entrata: se il report del titolare la dichiara
+    pagata, il pagamento si applica adesso, non al giro dei 30 minuti.
+
+    Guarda solo le righe ancora aperte dello stesso fornitore, le riaggancia
+    alle fatture attive e applica quelle che puntano a questa fattura.
+    """
+    from app.services.fatture_report_ae import _vat
+
+    piva = _vat(fattura.get("supplier_vat") or fattura.get("cedente_piva"))
+    fattura_id = fattura.get("id")
+    if not piva or not fattura_id:
+        return {"applicate": 0, "motivo": "fattura_senza_piva_o_id"}
+    righe = [
+        r for r in await db[COLLECTION_REPORT].find(
+            {"metodo_pagamento_titolare": {"$nin": [None, ""]},
+             "pagamento_applicato.stato": {"$nin": sorted(ESITI_DEFINITIVI)}},
+            {"_id": 0},
+        ).to_list(20000)
+        if _vat(r.get("supplier_vat")) == piva
+    ]
+    if not righe:
+        return {"applicate": 0}
+    await collega_righe_a_fatture(db, righe, salva=True)
+    chiavi = [r["report_key"] for r in righe if r.get("invoice_id") == fattura_id]
+    if not chiavi:
+        return {"applicate": 0}
+    esito = await applica_pagamenti_dichiarati(
+        db, solo_pendenti=True, report_keys=chiavi,
+    )
+    return {"applicate": len(chiavi), "esito": esito}
 
 
 async def _ricontrolla_attese(db, righe: List[Dict[str, Any]], risultato: Dict[str, Any]) -> None:
