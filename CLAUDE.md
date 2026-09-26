@@ -535,7 +535,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Un PIN per persona, nella scheda HR**: vale per il portale e per firmare in Lotti (bcrypt più impronta
   HMAC; mai due persone in forza con lo stesso PIN; mai un cessato). Il **PIN amministratore è uno solo
   per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, `app/services/admin_pin.py`) e si digita **solo nel login ERP**:
-  HR, Lotti e Menu leggono quel cookie (`group_session.py`, `/auth/session`), senza tastierino admin proprio.
+  HR, Lotti e Menu leggono quel cookie (`group_session.py`, `/auth/session`), senza login admin proprio (PIN, password,
+  Google). Il token ERP porta un `sid` stabile nei rinnovi; i token derivati lo copiano e il logout lo revoca per
+  tutte (`token_di_gruppo_ammesso`): un token admin non nato da lì non vale, il PIN personale del titolare è da operatore.
 - **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima Nota salari; l'archivio che
   si vede è **solo in HR** (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o per
   CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte).
@@ -753,10 +755,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   autenticato con il PIN di un operatore dedicato. Il fascicolo per un'ispezione si compone da
   `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore
   sa produrre — un test lo verifica) e il frontespizio con i dati dell'azienda c'è sempre.
-- **Un PIN per entrare, non per ogni sezione**: magazzino e portale dipendenti condividono la verifica
-  (`services/workforce_tokens.py`, prova `LOTTI_AUTH_SECRET` e `HR_JWT_SECRET`). L'ERP contabile resta fuori
-  di proposito. La traduzione dei ruoli è **direzionale** (`operatore`↔`dipendente`), mai verso `admin`, e
-  un token **senza** ruolo non ne riceve uno di ripiego: fallisce chiuso.
+- **Un PIN per entrare, non per ogni sezione**: magazzino e portale dipendenti condividono la verifica (`services/workforce_tokens.py`,
+  prova `LOTTI_AUTH_SECRET` e `HR_JWT_SECRET`); l'ERP contabile resta fuori. La traduzione dei ruoli è **direzionale**
+  (`operatore`↔`dipendente`), mai verso `admin`, e un token **senza** ruolo non ne riceve uno di ripiego: fallisce chiuso.
 - Piano di sanificazione per area (`/sanificazione/piano`): frequenza, prodotto, diluizione, tempo di
   contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
   non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
@@ -765,13 +766,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Menu — allergeni
 
-- Gli allergeni sono un obbligo di legge, non una cortesia: **Regolamento UE
-  1169/2011** e **D.Lgs. 231/2017** impongono di dichiarare i 14 allergeni
-  principali per ogni prodotto. Il dato vive in `menu.menu_products.allergens`
-  con i 14 id UE in `menu.menu_allergens`: **non in un file**.
-- Il menu vero si gestisce su Qromo (`ceraldicaffe.qromo.it`): la sync
-  sostituisce per intero categorie, sottocategorie e prodotti con
-  `origine IS NULL`, e riduce gli allergeni ai 14 UE.
+- Gli allergeni sono un obbligo di legge, non una cortesia: **Regolamento UE 1169/2011** e **D.Lgs. 231/2017**
+  impongono di dichiarare i 14 allergeni principali per ogni prodotto. Il dato vive in
+  `menu.menu_products.allergens` con i 14 id UE in `menu.menu_allergens`: **non in un file**.
+- Il menu vero si gestisce su Qromo (`ceraldicaffe.qromo.it`): la sync sostituisce per intero categorie,
+  sottocategorie e prodotti con `origine IS NULL`, e riduce gli allergeni ai 14 UE.
 - **È Lotti a spingere nel Menu, non il Menu a pescare dalle ricette**, ed è
   l'unica strada ricetta → prodotto (il «Collega a una ricetta» dell'admin
   Menu era un doppione dal lato sbagliato, rimosso). Ogni ricetta la replica
@@ -834,6 +833,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   IVA 2026.
 - Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. Canali Drive per sezione smontati dallo scheduler; su Render restano da cancellare a mano le loro variabili (`GOOGLE_DRIVE_*_FOLDER_ID`, `ENABLE_DRIVE_*_SYNC`, `DRIVE_F24_FOLDER_ID`, `DRIVE_*_BATCH_SIZE`). La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
+  Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social, privacy e cookie restano nascosti finché non si scrive l'URL vero in `frontend_menu/src/lib/collegamentiPubblici.js`.
 - **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
   (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
 
@@ -860,8 +860,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
 - Drill-down «Verifica campi e F24» punta al vecchio indice Drive; `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
-- Fork `app/hr/`: **cinque** sottopercorsi ancora duplicati (`routers/auth.py`, `routers/employees/dipendenti.py`, `routers/pin_login.py`, `routers/tfr.py`, `utils/dependencies.py`):
-  ogni correzione va cercata anche nel gemello.
+- Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
+  `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
 - `gestionale.blobs`: 216 PDF che **nessun documento cita**, leggibili solo da `blob_store.py`, mai importato; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
 
 ## Logica dentro al database
