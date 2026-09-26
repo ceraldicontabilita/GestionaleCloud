@@ -148,6 +148,8 @@ export const StoricoProduzioniView = () => {
   const attive = produzioni.filter(p => p.stato !== "annullata");
   const totalePezzi = attive.reduce((s, p) => s + (p.pezzi || 0), 0);
   const totaleCosto = attive.reduce((s, p) => s + (p.costo_totale || 0), 0);
+  // Produzioni col costo non calcolabile: il totale sopra non le comprende.
+  const senzaCosto = attive.filter(p => p.costo_totale === null || p.costo_totale === undefined || p.costo_totale === 0).length;
   const ricetteProdotte = new Set(attive.map(p => p.ricetta_nome)).size;
 
   const topRicette = Object.entries(
@@ -168,7 +170,7 @@ export const StoricoProduzioniView = () => {
         p.data ? p.data.slice(0, 10) : "",
         p.ricetta_nome || "",
         p.pezzi || 0,
-        (p.costo_totale || 0).toFixed(2),
+        p.costo_totale ? p.costo_totale.toFixed(2) : "da verificare",
         p.numero_lotto || "",
         p.frigo_numero || "",
         (p.lotti_fornitori_scalati || 0),
@@ -210,7 +212,7 @@ export const StoricoProduzioniView = () => {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="Produzioni" value={attive.length} sub="attive nel periodo" color="blue" />
         <StatCard label="Totale Pezzi" value={totalePezzi.toLocaleString("it-IT")} sub="unità prodotte" color="green" />
-        <StatCard label="Costo Totale" value={`€${totaleCosto.toFixed(2)}`} sub="ingredienti usati" color="amber" />
+        <StatCard label="Costo Totale" value={`€${totaleCosto.toFixed(2)}`} sub={senzaCosto ? `ingredienti usati · ${senzaCosto} da verificare, non sommate` : "ingredienti usati"} color="amber" />
         <StatCard label="Ricette Diverse" value={ricetteProdotte} sub="tipologie" color="purple" />
       </div>
 
@@ -387,7 +389,9 @@ export const StoricoProduzioniView = () => {
                     <td className="px-4 py-3 text-center">
                       {p.costo_totale ? (
                         <span className="text-green-700 font-semibold">€{p.costo_totale.toFixed(2)}</span>
-                      ) : "—"}
+                      ) : (
+                        <span className="text-xs font-semibold text-[#c4894a]" title={p.costo_da_verificare || "Costo non calcolato"}>da verificare</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {p.numero_lotto ? (

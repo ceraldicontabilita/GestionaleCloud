@@ -374,7 +374,6 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
         ricetta_id: prodotto.id,
         pezzi,
         pezzi_base: pezzi,
-        costo_totale: 0,
         data_produzione: new Date().toISOString().split("T")[0],
         operation_id: _opId("produzione"),
         destinazione,
