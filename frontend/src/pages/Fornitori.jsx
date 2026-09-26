@@ -2047,7 +2047,7 @@ export default function Fornitori() {
             data-testid="badge-totale"
           >
             <span style={{ opacity: 0.85 }}>Totale</span>
-            <span style={{ color: COLORS.accent, fontSize: 16 }}>
+            <span style={{ color: COLORS.card, fontWeight: 800, fontSize: 16 }}>
               {totaliFiltrati.totale_fornitori}
             </span>
           </Badge>
@@ -2259,7 +2259,7 @@ export default function Fornitori() {
                   style={{
                     minHeight: 30,
                     padding: '5px 8px',
-                    ...(filterAnzianita === opt.k ? { color: COLORS.accent } : {}),
+                    
                   }}
                 >
                   {opt.l}

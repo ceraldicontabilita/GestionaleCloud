@@ -776,9 +776,9 @@ export default function ControlloMensile() {
         </p>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <StatCard label="Registratore (RT)" value={formatEuro(yearTotals.posAuto)} accent="primary" />
-        <StatCard label="Chiusura serale" value={formatEuro(yearTotals.posManual)} accent="primary" />
-        <StatCard label="In banca" value={formatEuro(yearTotals.posBanca || 0)} accent="primary" />
+        <StatCard label="POS registratore" value={formatEuro(yearTotals.posAuto)} accent="primary" />
+        <StatCard label="POS chiusura serale" value={formatEuro(yearTotals.posManual)} accent="primary" />
+        <StatCard label="POS in banca" value={formatEuro(yearTotals.posBanca || 0)} accent="primary" />
       </div>
       <p style={{ margin: '0 0 16px', fontSize: 13, color: COLORS.textMuted }}>
         Fatture da registrare {(completezzaRegistro.fatture_da_registrare || 0).toLocaleString('it-IT')}
@@ -826,11 +826,11 @@ export default function ControlloMensile() {
             <thead>
               <tr>
                 <Th>Mese</Th>
-                <Th align="right">POS secondo il registratore</Th>
-                <Th align="right">POS secondo la chiusura serale</Th>
-                <Th align="right">POS accreditato in banca</Th>
-                <Th align="center">Registratore e chiusura</Th>
-                <Th align="center">Banca e chiusura</Th>
+                <Th align="right">POS registratore</Th>
+                <Th align="right">POS chiusura serale</Th>
+                <Th align="right">POS in banca</Th>
+                <Th align="center">Esito registratore</Th>
+                <Th align="center">Esito banca</Th>
                 <Th align="center"></Th>
               </tr>
             </thead>
@@ -918,19 +918,19 @@ export default function ControlloMensile() {
               <tr>
                 <Th style={{ padding: 12 }}>Data</Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS secondo il registratore
+                  POS registratore
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS secondo la chiusura serale
+                  POS chiusura serale
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS accreditato in banca
+                  POS in banca
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  Registratore meno chiusura
+                  Registratore − chiusura
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  Banca meno chiusura
+                  Banca − chiusura
                 </Th>
               </tr>
             </thead>

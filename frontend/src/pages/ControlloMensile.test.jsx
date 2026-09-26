@@ -106,8 +106,8 @@ describe('ControlloMensile', () => {
     fireEvent.click(await screen.findByTestId('view-month-1'));
 
     const table = await screen.findByTestId('monthly-table');
-    expect(within(table).getByText('POS accreditato in banca')).toBeInTheDocument();
-    expect(within(table).getByText('Banca meno chiusura')).toBeInTheDocument();
+    expect(within(table).getByText('POS in banca')).toBeInTheDocument();
+    expect(within(table).getByText('Banca − chiusura')).toBeInTheDocument();
     expect(await screen.findByTestId('row-2026-01-02')).toBeInTheDocument();
     expect(api.get.mock.calls.some(([url]) =>
       url.includes('controllo-due-fasi?data_da=2026-01-01&data_a=2026-01-31')
