@@ -23,7 +23,7 @@ os.environ.setdefault("DB_NAME", "Gestionale_Test")  # SOLO db di prova
 import asyncio
 import importlib
 import pkgutil
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient
@@ -63,7 +63,9 @@ def dbmock(monkeypatch):
     return db
 
 
-OGGI = datetime.now(timezone.utc).date()
+from app.lotti.servizi.registro_haccp import FUSO  # noqa: E402
+
+OGGI = datetime.now(FUSO).date()  # giorno di Napoli, come il registro
 ANNO = OGGI.year
 
 

@@ -296,16 +296,19 @@ async def get_lotti_fornitori(
     """Lista lotti fornitori con stato scorte"""
     query = {}
     if fornitore:
-        query["fornitore"] = {"$regex": fornitore, "$options": "i"}
+        query["fornitore"] = {"$regex": re.escape(fornitore), "$options": "i"}
     if prodotto:
-        query["prodotto_nome_norm"] = {"$regex": prodotto.lower(), "$options": "i"}
+        query["prodotto_nome_norm"] = {"$regex": re.escape(prodotto.lower()), "$options": "i"}
     if esaurito is not None:
         query["esaurito"] = esaurito
 
     # Aggiorna giorni alla scadenza
     now = datetime.now()
 
-    lotti = await db.lotti_fornitori.find(query, {"_id": 0}).to_list(500)
+    # Tutti i lotti che rispondono al filtro: prima se ne prendevano 500 in
+    # ordine casuale e poi si ordinava per scadenza, quindi i più urgenti
+    # potevano restare fuori. Il tetto `limit` vale dopo l'ordinamento.
+    lotti = await db.lotti_fornitori.find(query, {"_id": 0}).to_list(None)
 
     # Aggiorna giorni_alla_scadenza in real-time
     result = []

@@ -308,7 +308,21 @@ async def get_scheda_apparecchi(anno: int):
     Ottiene la scheda annuale di sanificazione apparecchi refrigeranti.
     Include date di pulizia per frigoriferi e congelatori con intervallo 7-10 giorni.
     """
-    scheda = await get_or_create_scheda_apparecchi(anno)
+    from app.lotti.servizi.schede_temperature import apparecchi_attivi
+
+    scheda = dict(await get_or_create_scheda_apparecchi(anno))
+    # Le colonne sono gli apparecchi censiti più chi ha registrazioni
+    # nell'anno: non più 12 fissi.
+    for tipo, chiave, etichetta, campo in (
+        ("frigo", "frigoriferi", "Frigorifero", "registrazioni_frigoriferi"),
+        ("congelatore", "congelatori", "Congelatore", "registrazioni_congelatori"),
+    ):
+        voci = {int(a["numero"]): a.get("nome") or f"{etichetta} N°{a['numero']}"
+                for a in await apparecchi_attivi(tipo) if a.get("numero") is not None}
+        for n, regs in (scheda.get(campo) or {}).items():
+            if regs and str(n).isdigit():
+                voci.setdefault(int(n), f"{etichetta} N°{n}")
+        scheda[f"apparecchi_{chiave}"] = [{"numero": n, "nome": voci[n]} for n in sorted(voci)]
     return scheda
 
 

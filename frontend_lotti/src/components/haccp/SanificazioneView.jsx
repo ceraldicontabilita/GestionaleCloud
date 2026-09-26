@@ -24,6 +24,9 @@ const SanificazioneView = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState("attrezzature"); // "attrezzature" o "apparecchi"
+  // Colonne = apparecchi censiti (dal server), non più 12 fissi.
+  const frigoriferiSan = schedaApparecchi?.apparecchi_frigoriferi || [];
+  const congelatoriSan = schedaApparecchi?.apparecchi_congelatori || [];
 
   const numGiorni = giorniNelMese(mese, anno);
 
@@ -300,9 +303,9 @@ const SanificazioneView = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[60px]">Giorno</th>
-                    {Array.from({length: 12}, (_, i) => (
-                      <th key={i+1} className="px-1 py-2 text-center font-medium text-gray-600 min-w-[55px]">
-                        <span className="text-xs">Frigo</span><br/>{i+1}
+                    {frigoriferiSan.map((a) => (
+                      <th key={a.numero} className="px-1 py-2 text-center font-medium text-gray-600 min-w-[55px]" title={a.nome}>
+                        <span className="text-xs">Frigo</span><br/>{a.numero}
                       </th>
                     ))}
                   </tr>
@@ -316,8 +319,7 @@ const SanificazioneView = () => {
                         <td className="px-3 py-1 font-medium text-gray-800 sticky left-0 bg-white">
                           {giorno}
                         </td>
-                        {Array.from({length: 12}, (_, frigoIdx) => {
-                          const numero = frigoIdx + 1;
+                        {frigoriferiSan.map(({ numero }) => {
                           const sanif = getSanificazioneGiorno("frigorifero", numero, giorno);
                           const na = apparecchioNa("frigorifero", numero, sanif);
 
@@ -360,9 +362,9 @@ const SanificazioneView = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[60px]">Giorno</th>
-                    {Array.from({length: 12}, (_, i) => (
-                      <th key={i+1} className="px-1 py-2 text-center font-medium text-gray-600 min-w-[55px]">
-                        <span className="text-xs">Cong</span><br/>{i+1}
+                    {congelatoriSan.map((a) => (
+                      <th key={a.numero} className="px-1 py-2 text-center font-medium text-gray-600 min-w-[55px]" title={a.nome}>
+                        <span className="text-xs">Cong</span><br/>{a.numero}
                       </th>
                     ))}
                   </tr>
@@ -376,8 +378,7 @@ const SanificazioneView = () => {
                         <td className="px-3 py-1 font-medium text-gray-800 sticky left-0 bg-white">
                           {giorno}
                         </td>
-                        {Array.from({length: 12}, (_, congIdx) => {
-                          const numero = congIdx + 1;
+                        {congelatoriSan.map(({ numero }) => {
                           const sanif = getSanificazioneGiorno("congelatore", numero, giorno);
                           const na = apparecchioNa("congelatore", numero, sanif);
 
