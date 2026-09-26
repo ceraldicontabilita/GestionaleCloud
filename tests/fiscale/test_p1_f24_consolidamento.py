@@ -15,6 +15,15 @@ class _Coll:
                 return {k: v for k, v in d.items() if k != "_id"}
         return None
 
+    def find(self, query=None, proj=None):
+        docs = [dict(d) for d in self.docs]
+
+        class _Cursore:
+            async def to_list(self, _n=None):
+                return docs
+
+        return _Cursore()
+
     async def insert_one(self, doc):
         self.docs.append(dict(doc))
 

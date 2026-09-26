@@ -235,6 +235,27 @@ async def salva_f24(
         await db[COLL].update_one({"f24_dedup_key": chiave}, {"$set": patch})
         return esistente.get("id")
 
+    # Lo stesso F24 arrivato da un altro PDF (copia «(2)», stampa di
+    # controllo): stesso contenuto fiscale, nessun secondo modello. Il file
+    # in piu' resta tracciato come provenienza del modello che c'e' gia'.
+    from app.services.f24_doppioni import modello_uguale
+
+    uguale = await modello_uguale(db, doc)
+    if uguale:
+        provenienza = {
+            "file_name": doc.get("file_name") or doc.get("filename"),
+            "drive_file_id": doc.get("drive_file_id"),
+            "pdf_hash": doc.get("pdf_hash") or doc.get("file_hash"),
+            "import_source": source,
+            "visto_il": datetime.now(timezone.utc).isoformat(),
+        }
+        provenienze = list(uguale.get("source_occurrences") or [])
+        if not any(p.get("drive_file_id") == provenienza["drive_file_id"]
+                   and p.get("file_name") == provenienza["file_name"] for p in provenienze):
+            provenienze.append(provenienza)
+            await db[COLL].update_one({"id": uguale["id"]}, {"$set": {"source_occurrences": provenienze}})
+        return uguale["id"]
+
     doc.setdefault("id", str(uuid4()))
     doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
     await db[COLL].insert_one(doc.copy())

@@ -602,6 +602,35 @@ def start_scheduler():
             logger.error(f"[SCHEDULER-DRIVE-SIMULAZIONE] errore: {type(e).__name__}: {e}")
 
 
+    async def _drive_censimento_doppioni_job():
+        # Censimento della cartella GESTIONALE richiesto dal titolare: elenca
+        # le copie identiche e, in modalita' «marca», le rinomina soltanto.
+        from app.database import Database
+        from app.services import drive_censimento_doppioni as censimento
+        if censimento.modalita() == "off":
+            return
+        try:
+            result = await censimento.giro(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-CENSIMENTO] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-CENSIMENTO] errore: {type(e).__name__}: {e}")
+
+
+    async def _f24_doppioni_job():
+        # Stesso F24 arrivato da due PDF: quarantena della copia (reversibile).
+        import os
+        from app.database import Database
+        from app.services.f24_doppioni import metti_in_quarantena
+        if os.getenv("F24_QUARANTENA_DOPPIONI", "false").strip().lower() not in ("true", "1", "si"):
+            return
+        try:
+            result = await metti_in_quarantena(Database.get_db(), dry_run=False)
+            logger.info("[SCHEDULER-F24-DOPPIONI] gruppi=%s in_quarantena=%s",
+                        result["gruppi"], result["in_quarantena"])
+        except Exception as e:
+            logger.error(f"[SCHEDULER-F24-DOPPIONI] errore: {type(e).__name__}: {e}")
+
+
     async def _fonti_ferme_job():
         # Una fonte che smette di arrivare non da' errori: da' silenzio. Il
         # controllo gira da solo, non piu' in coda a un import Drive.
@@ -915,6 +944,28 @@ def start_scheduler():
         coalesce=True,
         id="drive_cartella_unica_simulazione",
         name="Simulazione migrazione cartella unica, sola lettura (ogni 5 min)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _drive_censimento_doppioni_job,
+        'interval', minutes=5,
+        next_run_time=avvio + timedelta(minutes=6),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="drive_censimento_doppioni",
+        name="Censimento doppioni cartella GESTIONALE, solo rinomina (ogni 5 min)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _f24_doppioni_job,
+        'interval', hours=6,
+        next_run_time=avvio + timedelta(minutes=8),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="f24_doppioni",
+        name="Quarantena F24 con lo stesso contenuto (ogni 6 ore)",
         replace_existing=True,
     )
 
