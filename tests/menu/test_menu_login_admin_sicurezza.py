@@ -18,8 +18,10 @@ def test_token_malformato_risponde_401_non_500(monkeypatch) -> None:
     assert not hasattr(_jwt, "JWTError"), "PyJWT non espone JWTError"
     monkeypatch.setattr(qrcode_routes, "SECRET_KEY", "segreto-di-prova")
 
+    import asyncio
+
     try:
-        qrcode_routes.verify_token("Bearer non-e-un-token")
+        asyncio.run(qrcode_routes.verify_token("Bearer non-e-un-token"))
     except HTTPException as exc:
         assert exc.status_code == 401
     else:  # pragma: no cover

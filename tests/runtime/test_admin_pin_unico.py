@@ -44,10 +44,12 @@ def test_formati_non_validi(pin):
     assert verify_admin_pin(pin) is False
 
 
-def test_lotti_pin_centrale_apre_le_pagine_admin_ma_non_e_una_firma(monkeypatch):
-    """14/09/2026 (R4): il PIN amministratore centrale sblocca le pagine
-    riservate di Lotti, ma sul tablet ognuno firma col PIN personale della
-    propria scheda HR — niente identita' condivisa Vincenzo/Valerio."""
+def test_lotti_il_pin_centrale_non_apre_nulla_e_il_personale_non_e_admin(monkeypatch):
+    """Il PIN amministratore si digita solo nel login del Gestionale. In Lotti
+    non apre pagine (niente `/verifica-admin`), non e' una firma, e il login
+    del tablet non conferma nemmeno che fosse giusto. Il PIN personale del
+    titolare lo fa entrare come se stesso, da operatore: l'amministrazione di
+    Lotti si apre solo dalla sessione del Gestionale."""
     from mongomock_motor import AsyncMongoMockClient
     from app.lotti.routers import tablet_operatori as module
     from app.hr.database import Database as DatabaseHR
@@ -63,41 +65,36 @@ def test_lotti_pin_centrale_apre_le_pagine_admin_ma_non_e_una_firma(monkeypatch)
              "pin_hash": auth_dipendenti.hash_pin(OLD_PIN)},
             {"id": "hr-b", "nome": "Valerio", "cognome": "Ceraldi", "ruolo_app": "admin", "stato": "attivo", "attivo": True},
         ])
-        assert (await module.verifica_admin(module.PinAdmin(pin=PIN)))["ok"] is True
-        with pytest.raises(HTTPException):
-            await module.verifica_admin(module.PinAdmin(pin=OLD_PIN))
-        # il PIN centrale non e' un'identita' di firma
+        assert not hasattr(module, "verifica_admin")
         with pytest.raises(HTTPException) as exc:
             await module.login_pin(module.PinLogin(pin=PIN))
-        assert exc.value.status_code == 401 and "personale" in exc.value.detail
-        # il PIN personale di Vincenzo entra come Vincenzo (ruolo amministratore), senza scelta
+        assert exc.value.status_code == 401 and exc.value.detail == "PIN non riconosciuto"
         result = await module.login_pin(module.PinLogin(pin=OLD_PIN))
-        assert result["operatore"]["nome"] == "Ceraldi Vincenzo" and result["operatore"]["ruolo"] == "amministratore"
+        assert result["operatore"]["nome"] == "Ceraldi Vincenzo" and result["operatore"]["ruolo"] == "operatore"
         assert result["operatore"]["dipendente_id"] == "hr-v" and result["token"]
         from app.lotti.auth import verify_token
-        assert verify_token(result["token"])["sub"] == "hr-v"
+        dati = verify_token(result["token"])
+        assert dati["sub"] == "hr-v" and dati["ruolo"] == "operatore"
     asyncio.run(scenario())
 
 
-def test_hr_rifiuta_pin_alternativo_e_non_promuove_utente(monkeypatch):
+def test_hr_nessun_login_admin_col_pin(monkeypatch):
+    """HR non ha piu' un ramo amministratore nel login PIN: l'admin entra
+    solo dalla sessione del Gestionale (`/session`)."""
     from mongomock_motor import AsyncMongoMockClient
     from app.hr.routers import pin_login as module
     db = AsyncMongoMockClient()["hr_pin_test"]
     monkeypatch.setattr(module.Database, "get_db", lambda: db)
-    from app.utils import login_lockout
-    login_lockout.clear_failures("test")
     request = Request({"type": "http", "headers": [], "client": ("test", 1)})
 
     async def scenario():
         await db[module.Collections.USERS].insert_one({"id": "admin-test", "username": module.settings.PIN_ADMIN_USERNAME, "role": "admin", "name": "Admin test"})
-        assert (await module.pin_login(request, {"pin": PIN}))["role"] == "admin"
-        with pytest.raises(HTTPException) as exc:
-            await module.pin_login(request, {"pin": OLD_PIN})
-        assert exc.value.status_code == 401
-        await db[module.Collections.USERS].update_one({"id": "admin-test"}, {"$set": {"role": "dipendente"}})
-        with pytest.raises(HTTPException):
-            await module.pin_login(request, {"pin": PIN})
+        for pin in (PIN, OLD_PIN):
+            with pytest.raises(HTTPException) as exc:
+                await module.pin_login(request, {"pin": pin})
+            assert exc.value.status_code == 400
     asyncio.run(scenario())
+    assert not any(getattr(r, "path", "") == "/pin-login/health" for r in module.router.routes)
 
 
 @pytest.mark.parametrize("admin_pin", [PIN, "872461938274"])

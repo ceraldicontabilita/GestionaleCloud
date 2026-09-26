@@ -83,8 +83,9 @@ def register_routers():
     # Autenticazione strict per l'area gestione (niente bypass).
     from .utils.dependencies import require_admin, require_staff
 
-    from .routers import auth, pin_login
-    app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+    # Nessun login amministratore proprio (email/password o PIN): l'admin
+    # entra dalla sessione del Gestionale, `pin_login` espone `/session`.
+    from .routers import pin_login
     app.include_router(pin_login.router, prefix="/api/auth", tags=["PIN Login"])
 
     # Dipendenze di sicurezza riusate. STAFF = admin o responsabile_turni; ADMIN = solo admin.

@@ -29,7 +29,11 @@ def create_access_token(data: dict):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def verify_token(authorization: str = Header(None)):
+async def verify_token(authorization: str = Header(None)):
+    """Token del Menu, nato solo dalla sessione del Gestionale: oltre a firma e
+    scadenza si controlla che il logout del Gestionale non l'abbia revocato."""
+    from app.services.group_session import sessione_derivata_valida
+
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
     if not SECRET_KEY:
@@ -41,13 +45,17 @@ def verify_token(authorization: str = Header(None)):
         username = payload.get("sub")
         if username is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        return username
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(status_code=401, detail="Token expired") from exc
     except jwt.InvalidTokenError as exc:
         # PyJWT non ha JWTError (e' di python-jose): con quel nome un token
         # malformato usciva come AttributeError, cioe' 500 invece di 401.
         raise HTTPException(status_code=401, detail="Invalid token") from exc
+    # L'unico ingresso admin del Menu e' la sessione del Gestionale: un token
+    # del vecchio login col PIN non vale piu', anche se non e' scaduto.
+    if payload.get("auth_method") != "sessione_erp" or not await sessione_derivata_valida(payload):
+        raise HTTPException(status_code=401, detail="Sessione del Gestionale chiusa")
+    return username
 
 
 @router.get("/session", response_model=AdminLoginResponse)
@@ -60,9 +68,12 @@ async def sessione_dal_gestionale(request: Request):
 
     if not SECRET_KEY:
         raise HTTPException(status_code=503, detail="Login amministratore non configurato")
-    if not await sessione_erp(request):
+    identita = await sessione_erp(request)
+    if not identita:
         raise HTTPException(status_code=401, detail="Nessuna sessione del Gestionale")
-    token = create_access_token(data={"sub": ADMIN_USERNAME, "auth_method": "sessione_erp"})
+    token = create_access_token(
+        data={"sub": ADMIN_USERNAME, "auth_method": "sessione_erp", "sid": identita["sid"]}
+    )
     return AdminLoginResponse(success=True, token=token, message="Accesso dal Gestionale")
 
 

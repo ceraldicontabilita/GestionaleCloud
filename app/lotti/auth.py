@@ -7,8 +7,9 @@ Modello:
     `Authorization: Bearer <token>`. PIN e token non sono due fattori distinti.
   - `auth_dependency` è agganciata a TUTTO l'api_router. `AUTH_ENFORCE` è
     attivo per default; le scritture non-tablet richiedono sempre un token.
-  - Google Sign-In: verifica l'ID token contro le chiavi pubbliche Google.
-    Dormiente finché non è impostata la env `GOOGLE_CLIENT_ID`.
+  - L'amministratore entra solo dal Gestionale (`/auth/session`, cookie
+    ERP): il suo token porta il `sid` della sessione ERP e il logout del
+    Gestionale lo revoca (`group_session.sessione_derivata_valida`).
   - Anti brute-force: lockout in memoria per IP.
 
 Env usate (tutte opzionali, con default sicuri):
@@ -17,8 +18,6 @@ Env usate (tutte opzionali, con default sicuri):
   AUTH_TOKEN_TTL_H     durata token in ore (default 12)
   AUTH_MAX_FAILS       tentativi PIN prima del lock (default 8)
   AUTH_LOCK_SECONDS    durata lock in secondi (default 300)
-  GOOGLE_CLIENT_ID     abilita il login Google
-  AUTH_GOOGLE_EMAILS   email autorizzate al login Google (CSV)
 """
 
 import os
@@ -28,10 +27,8 @@ import hmac
 from datetime import timedelta
 
 import jwt
-from jwt import PyJWKClient
 from fastapi import APIRouter, HTTPException, Request
 from app.services.workforce_tokens import create_workforce_token
-from pydantic import BaseModel
 
 ALG = "HS256"
 
@@ -88,7 +85,7 @@ def _load_or_create_persistent_secret() -> str:
     return _secrets.token_hex(32)
 
 
-def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None) -> str:
+def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None, sid: str = "") -> str:
     return create_workforce_token(
         sub=sub,
         name=nome,
@@ -97,6 +94,7 @@ def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = Non
         algorithm=ALG,
         expires_in=timedelta(hours=ore if ore else _ttl_hours()),
         auth_method=via,
+        sid=sid,
     )
 
 
@@ -117,7 +115,6 @@ def verify_token(token: str):
 # ── Rotte sempre pubbliche (non richiedono token) ──────────────────────────
 PUBLIC_PREFIXES = (
     "/api/health",
-    "/api/auth/google",
     "/api/auth/config",
     "/api/auth/me",
     "/api/auth/session",  # la sessione del Gestionale (cookie ERP) apre Lotti
@@ -161,6 +158,17 @@ def _ha_token_valido(request: Request):
             or ""
         ).strip()
     return verify_token(token) if token else None
+
+
+async def _token_valido_e_non_revocato(request: Request):
+    """Token firmato, non scaduto e, se nato dalla sessione del Gestionale,
+    non revocato dal suo logout."""
+    from app.services.group_session import token_di_gruppo_ammesso
+
+    data = _ha_token_valido(request)
+    if data and await token_di_gruppo_ammesso(data):
+        return data
+    return None
 
 
 def request_actor(request: Request | None) -> dict | None:
@@ -215,7 +223,7 @@ async def auth_dependency(request: Request):
         }
         return
 
-    data = _ha_token_valido(request)
+    data = await _token_valido_e_non_revocato(request)
     if data:
         request.state.user = data
         return  # autenticato: via libera
@@ -242,7 +250,7 @@ async def require_admin(request: Request):
     Richiede il token operativo con ruolo amministratore. Il PIN personale
     viene verificato al login tablet e non viene inviato di nuovo nelle API.
     """
-    data = _ha_token_valido(request)
+    data = await _token_valido_e_non_revocato(request)
     if data and data.get("ruolo") == "amministratore":
         request.state.user = data
         return
@@ -313,71 +321,21 @@ def clear_fails(ip: str):
     _FAILS.pop(ip, None)
 
 
-# ── Google Sign-In (dormiente finché manca GOOGLE_CLIENT_ID) ───────────────
-_GOOGLE_JWKS = None
-
-
-def _google_jwks():
-    global _GOOGLE_JWKS
-    if _GOOGLE_JWKS is None:
-        _GOOGLE_JWKS = PyJWKClient("https://www.googleapis.com/oauth2/v3/certs")
-    return _GOOGLE_JWKS
-
-
-def _google_allowed_emails():
-    raw = os.environ.get("AUTH_GOOGLE_EMAILS", "")
-    return {e.strip().lower() for e in raw.split(",") if e.strip()}
-
-
-def verify_google_id_token(id_token: str):
-    cid = os.environ.get("GOOGLE_CLIENT_ID")
-    if not cid:
-        raise HTTPException(503, "Login Google non configurato (manca GOOGLE_CLIENT_ID)")
-    try:
-        signing_key = _google_jwks().get_signing_key_from_jwt(id_token).key
-        data = jwt.decode(
-            id_token,
-            signing_key,
-            algorithms=["RS256"],
-            audience=cid,
-            issuer=["https://accounts.google.com", "accounts.google.com"],
-        )
-    except Exception as exc:
-        raise HTTPException(401, "Token Google non valido") from exc
-    if not data.get("email_verified"):
-        raise HTTPException(401, "Email Google non verificata")
-    allow = _google_allowed_emails()
-    email = (data.get("email") or "").lower()
-    if allow and email not in allow:
-        raise HTTPException(403, "Questa email Google non è autorizzata")
-    return data
-
-
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-class GoogleLogin(BaseModel):
-    credential: str  # ID token restituito da Google Identity Services
-
-
-@router.post("/google")
-async def login_google(payload: GoogleLogin):
-    data = verify_google_id_token(payload.credential)
-    email = data.get("email")
-    nome = data.get("name") or email
-    token = make_token(sub=email, nome=nome, ruolo="amministratore", via="google")
-    return {"ok": True, "token": token, "operatore": {"nome": nome, "ruolo": "amministratore", "email": email}}
 
 
 @router.post("/refresh")
 async def refresh_token(request: Request):
     """Un token ancora valido viene rinnovato senza re-inserire il PIN.
     Cosi' il kiosk sempre acceso non butta fuori l'operatore allo scadere."""
-    data = _ha_token_valido(request)
+    data = await _token_valido_e_non_revocato(request)
     if not data:
         raise HTTPException(401, "Token assente o scaduto")
+    # Il rinnovo conserva il legame con la sessione del Gestionale: senza
+    # `sid` un token rinnovato sopravviverebbe al logout.
     nuovo = make_token(sub=data.get("sub", "op"), nome=data.get("nome", "Operatore"),
-                       ruolo=data.get("ruolo", "operatore"), via=data.get("via", "pin"))
+                       ruolo=data.get("ruolo", "operatore"), via=data.get("via", "pin"),
+                       sid=data.get("sid", ""))
     return {"ok": True, "token": nuovo}
 
 
@@ -404,16 +362,14 @@ async def sessione_dal_gestionale(request: Request):
     else:
         sub, nome, dipendente_id = f"erp:{identita['user_id']}", identita["name"], None
     return {
-        "token": make_token(sub, nome, "amministratore", via="sessione_erp"),
+        "token": make_token(sub, nome, "amministratore", via="sessione_erp", sid=identita["sid"]),
         "operatore": {"nome": nome, "ruolo": "amministratore", "dipendente_id": dipendente_id},
     }
 
 
 @router.get("/me")
 async def me(request: Request):
-    header = request.headers.get("authorization", "")
-    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
-    data = verify_token(token) if token else None
+    data = await _token_valido_e_non_revocato(request)
     if not data:
         raise HTTPException(401, "Token assente o non valido")
     return {"ok": True, "user": {"dipendente_id": data.get("sub"), "nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")}}
@@ -421,10 +377,5 @@ async def me(request: Request):
 
 @router.get("/config")
 async def auth_config():
-    """Il frontend lo chiama per sapere se mostrare il bottone Google e se
-    l'enforcement è attivo. Il client_id Google è per natura pubblico."""
-    return {
-        "google_enabled": bool(os.environ.get("GOOGLE_CLIENT_ID")),
-        "google_client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
-        "enforce": _enforce(),
-    }
+    """Il frontend lo chiama per sapere se l'enforcement delle letture è attivo."""
+    return {"enforce": _enforce()}

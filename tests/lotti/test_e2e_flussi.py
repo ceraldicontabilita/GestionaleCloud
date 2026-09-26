@@ -258,7 +258,19 @@ def test_require_admin_blocca_dipendente(dbmock, monkeypatch):
         run(require_admin(Req(tok_dip, "123456")))
     assert exc.value.status_code == 403
 
-    tok_admin = make_token("enzo", "Enzo", "amministratore")
+    # l'amministratore del tablet col PIN personale non apre l'amministrazione
+    tok_pin = make_token("enzo", "Enzo", "amministratore")
+    with pytest.raises(HTTPException) as exc:
+        run(require_admin(Req(tok_pin)))
+    assert exc.value.status_code == 403
+    # quello che arriva dalla sessione del Gestionale si'
+    from app.services import group_session
+
+    async def _mai_revocata(chiave):
+        return False
+
+    monkeypatch.setattr(group_session, "sessione_revocata", _mai_revocata)
+    tok_admin = make_token("enzo", "Enzo", "amministratore", via="sessione_erp", sid="sid:prova")
     assert run(require_admin(Req(tok_admin))) is None  # passa senza eccezioni
 
 

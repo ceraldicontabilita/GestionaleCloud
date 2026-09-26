@@ -48,10 +48,15 @@ def test_token_valido_roundtrip():
     assert data and data["sub"] == "op1" and data["ruolo"] == "operatore"
 
 
-def test_auth_me_restituisce_id_dipendente_del_token():
+def test_auth_me_restituisce_id_dipendente_del_token(monkeypatch):
     from app.lotti.auth import me
+    from app.services import group_session
 
-    token = make_token("hr-141", "Vincenzo", "amministratore")
+    async def _mai_revocata(chiave):
+        return False
+
+    monkeypatch.setattr(group_session, "sessione_revocata", _mai_revocata)
+    token = make_token("hr-141", "Vincenzo", "amministratore", via="sessione_erp", sid="sid:prova")
     risposta = _run(me(FintaRichiesta(token=token)))
     assert risposta["user"]["dipendente_id"] == "hr-141"
     assert risposta["user"]["ruolo"] == "amministratore"
