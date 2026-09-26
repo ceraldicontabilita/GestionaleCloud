@@ -4067,7 +4067,7 @@ async def upload_documento_automatico(
             # in ``documents_inbox`` con il messaggio "vai all'archivio": i
             # dati non venivano letti ne' associati al dipendente.
             import base64 as b64
-            from app.services.bonifici_pdf_ingest import importa_pdf_bonifico
+            from app.services.bonifici_pdf_ingest import STATO_NON_REGISTRATO, importa_pdf_bonifico
 
             doc_id = f"bonifici_{uuid.uuid4()}"
             bonifici_doc = {
@@ -4085,17 +4085,25 @@ async def upload_documento_automatico(
             ingest = await importa_pdf_bonifico(
                 db, content, filename, source="upload_manuale_import_documenti"
             )
-            await db["documents_inbox"].update_one(
-                {"id": doc_id},
-                {"$set": {
-                    "processed": ingest.get("status") in {"saved", "duplicate"},
-                    "status": "elaborato" if ingest.get("status") in {"saved", "duplicate"} else "da_verificare",
-                    "bonifico_transfer_id": ingest.get("transfer_id"),
-                    "processed_at": datetime.now(timezone.utc).isoformat(),
-                }},
-            )
+            if ingest.get("status") == STATO_NON_REGISTRATO:
+                # Accredito di un anno che non si registra: l'originale resta su
+                # Drive, la copia in inbox non serve a nessuno.
+                await db["documents_inbox"].delete_one({"id": doc_id})
+            else:
+                await db["documents_inbox"].update_one(
+                    {"id": doc_id},
+                    {"$set": {
+                        "processed": ingest.get("status") in {"saved", "duplicate"},
+                        "status": "elaborato" if ingest.get("status") in {"saved", "duplicate"} else "da_verificare",
+                        "bonifico_transfer_id": ingest.get("transfer_id"),
+                        "processed_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
 
-            if ingest.get("associato"):
+            if ingest.get("status") == STATO_NON_REGISTRATO:
+                result["non_registrato"] = True
+                result["message"] = "Accredito in entrata del 2023: non si registra (decisione del titolare)."
+            elif ingest.get("associato"):
                 result["message"] = "Bonifico letto e associato al dipendente per nome e importo esatti."
             elif ingest.get("status") == "duplicate":
                 result["message"] = "Bonifico gia' presente: duplicato saltato senza creare associazioni casuali."

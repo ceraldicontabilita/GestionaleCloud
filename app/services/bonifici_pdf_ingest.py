@@ -307,6 +307,73 @@ async def associa_transfer_documento(db, transfer: Dict[str, Any]) -> Dict[str, 
     return await associa_transfer_a_fatture(db, transfer)
 
 
+# Decisione del titolare (26/09/2026): gli accrediti in entrata di questi anni
+# (Satispay, giroconti, rimborsi del 2023) non si registrano. L'originale resta
+# su Drive; gli altri anni e tutti i bonifici disposti restano come sono.
+ANNI_ACCREDITI_NON_REGISTRATI = frozenset({2023})
+STATO_NON_REGISTRATO = "non_registrato"
+
+
+def accredito_non_registrabile(parsed: Dict[str, Any]) -> bool:
+    """Vero per un bonifico ricevuto (``direzione='entrata'``) di un anno escluso."""
+    if parsed.get("direzione") != "entrata":
+        return False
+    data = parsed.get("data")
+    anno = data.year if isinstance(data, datetime) else None
+    if anno is None and data:
+        match = re.match(r"(\d{4})-", str(data))
+        anno = int(match.group(1)) if match else None
+    return anno in ANNI_ACCREDITI_NON_REGISTRATI
+
+
+def _esito_non_registrato(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "status": STATO_NON_REGISTRATO,
+        "associato": False,
+        "motivo": "accredito in entrata di un anno che non si registra",
+        "message": "Accredito in entrata del 2023: non si registra (decisione del titolare)",
+        "importo": parsed.get("importo"),
+    }
+
+
+async def _togli_accredito_registrato(db, transfer: Dict[str, Any]) -> bool:
+    """Toglie, per id, un accredito escluso gia' registrato e la sua coda HR.
+
+    Vale solo per un transfer che nessuno ha collegato: se e' gia' associato
+    a uno stipendio o a una fattura, o in HR e' diventato un pagamento, resta
+    dov'e' e lo si dice nel log.
+    """
+    transfer_id = transfer.get("id")
+    esito_hr = (transfer.get("hr_deposito") or {}).get("esito")
+    if (
+        not transfer_id
+        or transfer.get("salario_associato")
+        or transfer.get("fattura_associata")
+        or transfer.get("fatture_associate")
+        or esito_hr in {"depositato", "arricchito"}
+    ):
+        logger.warning(
+            "Accredito escluso %s non tolto: gia' collegato (hr=%s)", transfer_id, esito_hr
+        )
+        return False
+    from app.services.hr_pagamenti_deposito import _db_hr
+
+    db_hr = _db_hr()
+    if db_hr is not None:
+        async for riga in db_hr.bonifici_da_associare.find(
+            {"gestionale_transfer_id": transfer_id}, {"_id": 0, "id": 1, "stato": 1}
+        ):
+            if riga.get("id") and riga.get("stato") == "da_associare":
+                await db_hr.bonifici_da_associare.delete_one({"id": riga["id"]})
+    async for doc in db["documents_inbox"].find(
+        {"bonifico_transfer_id": transfer_id}, {"_id": 0, "id": 1}
+    ):
+        if doc.get("id"):
+            await db["documents_inbox"].delete_one({"id": doc["id"]})
+    await db["bonifici_transfers"].delete_one({"id": transfer_id})
+    return True
+
+
 async def importa_pdf_bonifico(
     db,
     content: bytes,
@@ -338,6 +405,9 @@ async def importa_pdf_bonifico(
         if not beneficiario.get("nome"):
             beneficiario["nome"] = metadata_file.get("beneficiario_nome")
         reparsed["beneficiario"] = beneficiario
+        if accredito_non_registrabile(reparsed):
+            await _togli_accredito_registrato(db, esistente)
+            return _esito_non_registrato(reparsed)
         aggiornamento = {
             key: reparsed.get(key)
             for key in (
@@ -366,6 +436,8 @@ async def importa_pdf_bonifico(
 
     text = read_pdf_bytes(content)
     parsed = extract_transfers_from_text(text, filename=filename)[0]
+    if accredito_non_registrabile(parsed):
+        return _esito_non_registrato(parsed)
     metadata_file = extract_filename_metadata(filename)
     beneficiario = parsed.get("beneficiario") or {}
     if not beneficiario.get("nome"):
@@ -455,6 +527,9 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
                 source_path=doc.get("source_path"),
             )
             status = result.get("status")
+            if status == STATO_NON_REGISTRATO:
+                await db["documents_inbox"].delete_one(document_filter)
+                continue
             if status == "saved":
                 stats["salvati"] += 1
             elif status == "duplicate":

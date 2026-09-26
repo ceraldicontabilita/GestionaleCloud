@@ -317,6 +317,9 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     ord_nome = _value_after_label(lines, r"ordinante|disponente|intestatario\s+conto")
 
     periodo = _extract_payroll_period(caus or "")
+    # «REGISTRIAMO A VOSTRO CREDITO PER CONTO DI:» e' la ricevuta di un bonifico
+    # ricevuto (Satispay, giroconti, rimborsi): i soldi entrano, non escono.
+    direzione = "entrata" if re.search(r"A\s+VOSTRO\s+CREDITO", text, re.I) else "uscita"
     results.append({
         'data': dt,
         'importo': amt,
@@ -324,6 +327,7 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
         'ordinante': {'nome': ord_nome, 'iban': ord_iban},
         'beneficiario': {'nome': ben_nome, 'iban': ben_iban},
         'causale': caus,
+        'direzione': direzione,
         'cro_trn': cro,
         'banca': None,
         'note': None,
