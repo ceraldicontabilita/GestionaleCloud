@@ -233,13 +233,10 @@ async def _giro(db, root: str) -> Dict[str, Any]:
         nuove = [r for r in righe if r["id"] not in noti]
         if nuove:
             await db[REGISTRO].insert_many(nuove)
-        # Le righe gia' note tornano in coda con UN aggiornamento: una scrittura
-        # per riga su 23.000 file teneva il giro fermo per ore.
-        await db[REGISTRO].update_many(
-            {"radice": root},
-            {"$set": {"stato": "da_leggere", "aggiornato_il": ora},
-             "$unset": {k: "" for k in _ESITO}},
-        )
+        # Nessuna riscrittura delle righe gia' note: una riga e' da leggere
+        # finche' ``letto_edizione`` non e' l'edizione corrente. Rimettere in
+        # coda 23.000 righe con una scrittura sola teneva fermo il processo
+        # oltre il controllo di salute, e Render lo riavviava.
         for r in righe:
             if r["id"] in noti and r["id"] not in noti_radice:
                 await db[REGISTRO].update_one({"id": r["id"]}, {"$set": r})
@@ -248,9 +245,9 @@ async def _giro(db, root: str) -> Dict[str, Any]:
         await db["sistema_stato"].update_one({"chiave": CHIAVE_STATO}, {"$set": stato}, upsert=True)
         return {"inventario": len(file)}
 
-    da_leggere = await db[REGISTRO].find(
-        {"radice": root, "stato": "da_leggere"}, {"_id": 0}
-    ).limit(_batch()).to_list(_batch())
+    ed = edizione()
+    in_coda = {"radice": root, "letto_edizione": {"$ne": ed}}
+    da_leggere = await db[REGISTRO].find(in_coda, {"_id": 0}).limit(_batch()).to_list(_batch())
     for riga in da_leggere:
         esito: Dict[str, Any]
         if str(riga.get("mime") or "").startswith(_GOOGLE_NATIVO):
@@ -270,10 +267,16 @@ async def _giro(db, root: str) -> Dict[str, Any]:
             except Exception as exc:
                 esito = {"tipo": "errore_lettura", "esito_previsto": cu.ERRORI,
                          "motivo": f"{type(exc).__name__}: {exc}"[:500]}
-        await db[REGISTRO].update_one(
-            {"id": riga["id"]}, {"$set": {**esito, "stato": "letto", "aggiornato_il": _ora()}})
+        aggiornamento: Dict[str, Any] = {
+            "$set": {**esito, "stato": "letto", "letto_edizione": ed, "aggiornato_il": _ora()}}
+        # L'esito di un'edizione precedente non sopravvive a quella nuova.
+        vecchi = {k: "" for k in _ESITO if k not in esito}
+        if vecchi:
+            aggiornamento["$unset"] = vecchi
+        await db[REGISTRO].update_one({"id": riga["id"]}, aggiornamento)
+        await asyncio.sleep(0)
 
-    restanti = await db[REGISTRO].count_documents({"radice": root, "stato": "da_leggere"})
+    restanti = await db[REGISTRO].count_documents(in_coda)
     if not restanti:
         await db["sistema_stato"].update_one(
             {"chiave": CHIAVE_STATO}, {"$set": {"fase": "completata", "completata_il": _ora()}})
@@ -288,9 +291,9 @@ async def riepilogo(db) -> Dict[str, Any]:
         {"radice": root}, {"_id": 0, "id": 1, "nome": 1, "percorso": 1, "md5": 1, "stato": 1,
                            "tipo": 1, "esito_previsto": 1, "gia_presente": 1, "motivo": 1,
                            "errori": 1, "anno": 1, "fuori_anno": 1, "buste_lul": 1,
-                           "buste_canale_drive": 1},
+                           "buste_canale_drive": 1, "letto_edizione": 1},
     ).to_list(None) if root else []
-    lette = [r for r in righe if r.get("stato") == "letto"]
+    lette = [r for r in righe if r.get("letto_edizione") == stato.get("edizione")]
     fuori_anno = Counter(r.get("anno") for r in lette if r.get("fuori_anno"))
     per_md5 = Counter(r["md5"] for r in righe if r.get("md5"))
     cedolini = [r for r in lette if r.get("tipo") == "cedolino"]
