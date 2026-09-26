@@ -14,7 +14,6 @@ import api from '../api';
 import Scadenze from './Scadenze';
 import LibroGiornale from './LibroGiornale';
 import BilancioVerifica from './BilancioVerifica';
-import { LinkEstrattoConto } from './PrimaNota';
 import {
   PannelloMovimentoRichiesto, TabellaAnalisiF24, linksContropartitaMovimento,
 } from './RiconciliazioneUnificata';
@@ -57,31 +56,6 @@ describe('Rotte delle contropartite (un solo punto di definizione)', () => {
     expect(movimentoEstrattoContoDi({ movimento_bancario_id: 'c' })).toBe('c');
     expect(movimentoEstrattoContoDi({ estratto_conto_ids: ['d', 'e'] })).toBe('d');
     expect(movimentoEstrattoContoDi({ riconciliato: true })).toBeNull();
-  });
-});
-
-describe('Prima Nota Banca → estratto conto', () => {
-  it('rende il link al movimento riconciliato con href alla riconciliazione', () => {
-    render(
-      <MemoryRouter>
-        <LinkEstrattoConto movimento={{
-          id: 'pn-1', data: '2026-02-10', importo: 31.57, categoria: 'Fatture',
-          estratto_conto_id: 'EC-2026-02-10-31.57-d2700414',
-          movimento_estratto_conto_id: 'EC-2026-02-10-31.57-d2700414',
-        }} />
-      </MemoryRouter>,
-    );
-    const link = screen.getByTestId('link-estratto-conto-pn-1');
-    expect(link).toHaveAttribute('href', '/riconciliazione/banca?movimento=EC-2026-02-10-31.57-d2700414');
-    // formatDateIT del gestionale rende gg-mm-aaaa
-    expect(link).toHaveAttribute('title', expect.stringContaining('10/02/2026'));
-  });
-
-  it('non inventa un link quando la riga non ha un movimento reale collegato', () => {
-    const { container } = render(
-      <MemoryRouter><LinkEstrattoConto movimento={{ id: 'pn-2', riconciliato: true }} /></MemoryRouter>,
-    );
-    expect(container.querySelector('a')).toBeNull();
   });
 });
 

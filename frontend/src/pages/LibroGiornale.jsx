@@ -6,8 +6,78 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, formatDateIT, useIsMobile } from '../lib/utils.js';
 import { PageHeader } from '../components/ds/PageHeader';
 import LinkContropartita, {
-  PALETTE_CONTROPARTITA, rottaDocumentoOrigine,
+  PALETTE_CONTROPARTITA, ROTTE_CONTROPARTITA, rottaDocumentoOrigine,
 } from '../components/LinkContropartita';
+
+const periodoScrittura = scrittura => String(
+  scrittura?.data_documento || scrittura?.data || '',
+).slice(0, 7);
+
+const scritturaRiguardaIva = scrittura => (scrittura?.righe || []).some(riga =>
+  /\biva\b/i.test(`${riga.conto_nome || ''} ${riga.descrizione || ''}`),
+);
+
+function ProveFiscaliPeriodo({ prova, compatto = false }) {
+  if (!prova) return null;
+  const stato = {
+    PAGATA_E_VERIFICATA: 'IVA pagata e verificata',
+    VERSATA_O_COMPENSATA_CON_QUIETANZA: 'IVA versata o compensata — quietanza presente',
+    DA_VERIFICARE: 'IVA da verificare',
+    NESSUN_F24_IVA_TROVATO: 'Nessun F24 IVA trovato',
+  }[prova.stato_iva] || prova.stato_iva;
+  return (
+    <div data-testid={`prove-fiscali-${prova.periodo}`} style={{
+      padding: compatto ? 8 : 12, borderRadius: 9,
+      background: PALETTE_CONTROPARTITA.salviaChiara,
+      border: `1px solid ${PALETTE_CONTROPARTITA.bordo}`,
+      color: COLORS.text, fontSize: 12, marginBottom: compatto ? 6 : 10,
+    }}>
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>
+        {prova.periodo} · {stato}
+      </div>
+      {(prova.f24 || []).map(modello => (
+        <div key={modello.f24_id} style={{ marginBottom: 7 }}>
+          <div>{modello.messaggio}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+            <LinkContropartita to={modello.f24_url} esterno compatto>Apri F24</LinkContropartita>
+            {modello.quietanza_url && (
+              <LinkContropartita to={modello.quietanza_url} esterno compatto>Vedi quietanza</LinkContropartita>
+            )}
+            {modello.movimento_bancario_id && (
+              <LinkContropartita
+                to={ROTTE_CONTROPARTITA.primaNotaBanca(modello.movimento_bancario_id)}
+                compatto
+              >
+                Vedi movimento pagante
+              </LinkContropartita>
+            )}
+          </div>
+        </div>
+      ))}
+      {(prova.avvisi_ade || []).map(avviso => (
+        <div key={avviso.id} style={{ paddingTop: 6, borderTop: `1px solid ${PALETTE_CONTROPARTITA.bordo}` }}>
+          <strong>Lettera Agenzia delle Entrate:</strong> {avviso.filename}
+          {avviso.messaggio_pagamento && (
+            <div style={{ color: '#166534', fontWeight: 800, marginTop: 3 }}>
+              {avviso.messaggio_pagamento}
+            </div>
+          )}
+          {!avviso.associazione_certa && (
+            <div style={{ color: '#92400e', marginTop: 3 }}>
+              Periodo individuato, ma collegamento al tributo da verificare.
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+            <LinkContropartita to={avviso.url} esterno compatto>Apri lettera</LinkContropartita>
+            {avviso.quietanza_url && (
+              <LinkContropartita to={avviso.quietanza_url} esterno compatto>Vedi quietanza</LinkContropartita>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Scrittura → documento d'origine (fattura / corrispettivo). Audit
@@ -60,6 +130,8 @@ export default function LibroGiornale() {
   const [registerError, setRegisterError] = useState(null);
   const [espansa, setEspansa] = useState(null); // id scrittura espansa
   const [controllo60, setControllo60] = useState(null);
+  const [proveFiscali, setProveFiscali] = useState([]);
+  const [mostraProveFiscali, setMostraProveFiscali] = useState(false);
 
   // Deep-link dal bilancio di verifica (audit 03/09/2026 §6, PR 16):
   //   ?conto=<codice>&data_da=&data_a=  → solo le scritture di quel conto
@@ -90,14 +162,25 @@ export default function LibroGiornale() {
           });
           return null;
         });
-      const [g, m, c60] = await Promise.all([
+      const proveFiscaliPromise = api
+        .get(`/api/contabilita-gestionale/libro-giornale/prove-fiscali?anno=${anno}`)
+        .catch(e => {
+          setProveFiscali([]);
+          toast.warning('Prove fiscali non disponibili', {
+            description: e.response?.data?.detail || e.message,
+          });
+          return null;
+        });
+      const [g, m, c60, prove] = await Promise.all([
         api.get(`/api/contabilita-gestionale/libro-giornale?${range}&limit=2000${filtroConto}`),
         api.get(`/api/contabilita-gestionale/libro-mastro?${range}`),
         controlloPromise,
+        proveFiscaliPromise,
       ]);
       setGiornale(g.data);
       setMastro(m.data);
       if (c60) setControllo60(c60.data);
+      if (prove) setProveFiscali(prove.data?.periodi || []);
     } catch (e) {
       setRegisterError(e.response?.data?.detail || e.message || 'Servizio non disponibile');
       toast.error('Errore caricamento registro', {
@@ -201,6 +284,28 @@ export default function LibroGiornale() {
         Provvisoria finché non vengono confermate. L'export permette di ricostruire
         la contabilità pari pari, come registrata all'epoca dei fatti.
       </p>
+
+      <div style={{ marginBottom: 14 }}>
+        <button
+          type="button"
+          data-testid="toggle-prove-fiscali"
+          onClick={() => setMostraProveFiscali(value => !value)}
+          style={btnGhost}
+        >
+          {mostraProveFiscali ? 'Nascondi' : 'Mostra'} prove IVA, F24 e lettere ADE
+        </button>
+        {mostraProveFiscali && (
+          <div style={{ marginTop: 10 }}>
+            {proveFiscali.length > 0 ? proveFiscali.map(prova => (
+              <ProveFiscaliPeriodo key={prova.periodo} prova={prova} />
+            )) : (
+              <div style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                Nessuna prova fiscale collegabile con certezza al {anno}.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {(contoFiltro || scritturaRichiesta) && (
         <div data-testid="filtro-contropartita" style={{
@@ -321,6 +426,14 @@ export default function LibroGiornale() {
                       <div style={{ marginBottom: 6 }} onClick={e => e.stopPropagation()}>
                         <DocumentoOrigine scrittura={s} />
                       </div>
+                      {scritturaRiguardaIva(s) && (
+                        <div onClick={e => e.stopPropagation()}>
+                          <ProveFiscaliPeriodo
+                            compatto
+                            prova={proveFiscali.find(p => p.periodo === periodoScrittura(s))}
+                          />
+                        </div>
+                      )}
                       {(s.righe || []).map((r, i) => (
                         <div key={i} style={{ fontSize: 11.5, color: '#5f5c55', padding: '3px 0', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                           <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
@@ -371,6 +484,19 @@ export default function LibroGiornale() {
                       <tr style={{ background: COLORS.bgAlt, fontSize: 12 }}>
                         <td style={td}></td>
                         <td style={td} colSpan={6}><DocumentoOrigine scrittura={s} /></td>
+                      </tr>
+                    )}
+                    {espansa === s.id && scritturaRiguardaIva(s) && proveFiscali.some(
+                      prova => prova.periodo === periodoScrittura(s),
+                    ) && (
+                      <tr style={{ background: COLORS.bgAlt, fontSize: 12 }}>
+                        <td style={td}></td>
+                        <td style={td} colSpan={6}>
+                          <ProveFiscaliPeriodo
+                            compatto
+                            prova={proveFiscali.find(p => p.periodo === periodoScrittura(s))}
+                          />
+                        </td>
                       </tr>
                     )}
                     {espansa === s.id && (s.righe || []).map((r, i) => (
