@@ -158,8 +158,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12.10"
@@ -168,11 +168,10 @@ jobs:
       - name: Ricostruisci il frontend del commit
         run: |
           set -euo pipefail
-          # Deve essere identico al Build Command del servizio Render: usare
-          # un lockfile/package manager diverso produce hash del bundle diversi
-          # e rende impossibile verificare il frontend realmente pubblicato.
-          npm --prefix frontend install --include=dev --legacy-peer-deps
-          npm --prefix frontend run build
+          # Deve essere identico al Build Command del servizio Render e usare
+          # il lockfile canonico versionato del frontend.
+          yarn --cwd frontend install --frozen-lockfile
+          yarn --cwd frontend build
       - name: Attendi il commit, il bundle e la salute delle quattro app
         id: attesa
         env:
