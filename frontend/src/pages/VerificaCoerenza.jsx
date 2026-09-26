@@ -185,7 +185,7 @@ export default function VerificaCoerenza() {
                     Stato: {stato}
                   </div>
                   <div style={{ color: COLORS.textMuted, fontSize: 12 }}>
-                    Ultima verifica: {new Date(verificaCompleta.timestamp).toLocaleString('it-IT').replaceAll('/', '-')}
+                    Ultima verifica: {new Date(verificaCompleta.timestamp).toLocaleString('it-IT')}
                   </div>
                 </div>
               </div>

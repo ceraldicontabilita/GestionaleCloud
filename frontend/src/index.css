@@ -1,7 +1,7 @@
 /* ================================================================
    CERALDI ERP — STILE GLOBALE
-   Design system ufficiale: Navy #2a3329 + Oro #b8860b
-   Font di sistema · densità 13px · angoli 6–8px · ombre navy
+   Colori dell'artefatto «Gestore Attività»: crema, inchiostro, terracotta
+   Font di sistema · densità 13px · angoli 6–8px · ombre calde
    Drop-in replacement di  frontend/src/index.css
    Token allineati 1:1 a  tokens/*.css  del design system.
    ================================================================ */
@@ -11,37 +11,37 @@
 
 /* ---- Design tokens ---- */
 :root {
-  /* Brand navy */
-  --c-primary:        #2a3329;
-  --c-primary-light:  #3f5a4e;
-  --c-primary-dark:   #1a211a;
-  --c-primary-soft:   #e2efe8;
+  /* Azioni e stato attivo: terracotta */
+  --c-primary:        #c15f3c;
+  --c-primary-light:  #d4775a;
+  --c-primary-dark:   #a94f30;
+  --c-primary-soft:   #f7ebe4;
 
   /* Accent oro (sobrio, solo enfasi/attenzione) */
-  --c-accent:         #b8860b;
-  --c-accent-light:   #d4a017;
-  --c-accent-soft:    #fdf6e3;
+  --c-accent:         #b07d1a;
+  --c-accent-light:   #c99a3c;
+  --c-accent-soft:    #f7eeda;
 
   /* Stato — zero ambiguità cromatica */
-  --c-success:        #15803d;  --c-success-light: #dcfce7;
-  --c-warning:        #b45309;  --c-warning-light: #fef3c7;
-  --c-danger:         #b91c1c;  --c-danger-light:  #fee2e2;
-  --c-info:           #3f5a4e;  --c-info-light:    #e2efe8;
+  --c-success:        #2f7a4f;  --c-success-light: #e2f0e7;
+  --c-warning:        #8a6410;  --c-warning-light: #f7eeda;
+  --c-danger:         #b0362b;  --c-danger-light:  #f8e5e2;
+  --c-info:           #8a6f47;  --c-info-light:    #f2ece2;
 
-  /* Neutri / superfici (slate freddo) */
-  --c-bg:             #f1f5f9;
-  --c-bg-alt:         #f8fafc;
+  /* Neutri / superfici (crema e sabbia) */
+  --c-bg:             #faf9f5;
+  --c-bg-alt:         #f6f4ee;
   --c-card:           #ffffff;
-  --c-border:         #e2e8f0;
-  --c-border-dark:    #cbd5e1;
-  --c-text:           #0f172a;
-  --c-text-muted:     #64748b;
-  --c-text-subtle:    #94a3b8;
+  --c-border:         #e6e3d9;
+  --c-border-dark:    #d0ccbe;
+  --c-text:           #141413;
+  --c-text-muted:     #7a776e;
+  --c-text-subtle:    #a19d92;
 
-  /* Scala grigi slate */
-  --gray-50:#f8fafc; --gray-100:#f1f5f9; --gray-200:#e2e8f0; --gray-300:#cbd5e1;
-  --gray-400:#94a3b8; --gray-500:#64748b; --gray-600:#475569; --gray-700:#334155;
-  --gray-800:#1e293b; --gray-900:#0f172a;
+  /* Scala dei neutri caldi */
+  --gray-50:#f6f4ee; --gray-100:#f2f0e9; --gray-200:#e6e3d9; --gray-300:#d0ccbe;
+  --gray-400:#a19d92; --gray-500:#7a776e; --gray-600:#5f5c55; --gray-700:#4c4a44;
+  --gray-800:#2c2b28; --gray-900:#141413;
 
   /* Tipografia — stack di sistema (nessun webfont, rendering nativo) */
   /* Font unico del gruppo Ceraldi, come HR, Menu e Lotti. */
@@ -54,12 +54,12 @@
   /* Radius — contenuto (≤8px sui dati, ≤14px sui contenitori) */
   --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-full:9999px;
 
-  /* Ombre — tinta navy, mai nere pure */
-  --shadow-sm: 0 1px 2px rgba(42, 51, 41,0.06);
-  --shadow-md: 0 2px 8px rgba(42, 51, 41,0.08);
-  --shadow-lg: 0 6px 16px rgba(42, 51, 41,0.10);
-  --shadow-xl: 0 12px 32px rgba(42, 51, 41,0.14);
-  --shadow-nav: 0 2px 8px rgba(42, 51, 41,0.18);
+  /* Ombre — tinta calda, mai nere pure */
+  --shadow-sm: 0 1px 2px rgba(20, 20, 19,0.06);
+  --shadow-md: 0 2px 8px rgba(20, 20, 19,0.08);
+  --shadow-lg: 0 6px 16px rgba(20, 20, 19,0.10);
+  --shadow-xl: 0 12px 32px rgba(20, 20, 19,0.14);
+  --shadow-nav: 0 2px 8px rgba(20, 20, 19,0.18);
 
   --focus-ring: 0 0 0 3px rgba(63, 90, 78,0.12);
   --border-accent-left: 4px;
@@ -95,7 +95,7 @@ html, body, #root {
 h1, h2, h3, h4 {
   font-family: var(--font-ui);
   font-weight: 700;
-  color: var(--c-primary);
+  color: var(--c-text);
   letter-spacing: -0.3px;
   margin: 0;
 }
@@ -140,7 +140,7 @@ code {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
-::selection { background: rgba(42, 51, 41,0.14); color: var(--c-primary-dark); }
+::selection { background: rgba(20, 20, 19,0.14); color: var(--c-primary-dark); }
 
 /* ================================================================
    LAYOUT
@@ -162,13 +162,13 @@ code {
 }
 @media (max-width: 768px) { .topnav-layout .page-content { padding: 10px 12px 150px 12px; padding-top: calc(var(--topnav-height) + 8px); } }
 
-/* Top-nav navy fissa (superficie brand) */
+/* Barra in alto fissa, chiara come la colonna */
 .topnav-primary {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   height: var(--topnav-height);
-  background: var(--c-primary);
+  background: var(--c-card); border-bottom: 1px solid var(--c-border);
   display: flex; align-items: center; gap: 18px;
-  padding: 0 20px; color: #fff;
+  padding: 0 20px; color: var(--c-text);
   box-shadow: var(--shadow-nav);
 }
 
@@ -189,11 +189,11 @@ code {
 
 .card-title {
   margin: 0 0 14px 0;
-  font-size: 14px; font-weight: 700; color: var(--c-primary);
+  font-size: 14px; font-weight: 700; color: var(--c-text);
   display: flex; align-items: center; gap: 8px;
 }
 
-/* Page header — accento sinistro navy (motivo firma) */
+/* Page header — accento sinistro (motivo firma) */
 .page-header {
   display: flex; justify-content: space-between; align-items: center;
   padding: 16px 20px;
@@ -207,7 +207,7 @@ code {
 @media (max-width: 768px) { .page-header { padding: 12px 14px; } }
 
 .page-title {
-  margin: 0; font-size: 20px; font-weight: 700; color: var(--c-primary);
+  margin: 0; font-size: 20px; font-weight: 700; color: var(--c-text);
   letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px;
 }
 @media (max-width: 768px) { .page-title { font-size: 18px; } }
@@ -260,7 +260,7 @@ table td {
   padding: 10px 14px; border-bottom: 1px solid var(--c-border);
   color: var(--c-text); vertical-align: middle;
 }
-table tbody tr:hover td { background: rgba(42, 51, 41,0.025); }
+table tbody tr:hover td { background: rgba(20, 20, 19,0.025); }
 table td.text-right, table th.text-right { text-align: right; }
 @media (max-width: 768px) { table th, table td { padding: 8px 10px; } }
 
@@ -341,7 +341,7 @@ table td.text-right, table th.text-right { text-align: right; }
 .mobile-nav-topnav {
   display: none; position: fixed; bottom: 0; left: 0; right: 0;
   background: var(--c-card); border-top: 1px solid var(--c-border);
-  box-shadow: 0 -2px 8px rgba(42, 51, 41,0.08); z-index: 900;
+  box-shadow: 0 -2px 8px rgba(20, 20, 19,0.08); z-index: 900;
   padding: 6px 4px; gap: 2px; justify-content: space-around;
 }
 @media (max-width: 768px) { .mobile-nav-topnav { display: flex; } }

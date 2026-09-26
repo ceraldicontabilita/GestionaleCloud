@@ -26,23 +26,23 @@ import {
 const PAGE_SIZE = 50;
 
 const CATEGORY_COLORS = {
-  f24: { bg: '#e2efe8', text: '#3f5a4e', icon: '📋', label: 'F24' },
-  fattura: { bg: '#dcfce7', text: '#166534', icon: '🧾', label: 'Fattura' },
-  fattura_estera_pdf: { bg: '#dcfce7', text: '#166534', icon: '🌍', label: 'Fattura estera' },
-  busta_paga: { bg: '#fef3c7', text: '#92400e', icon: '📄', label: 'Cedolino' },
-  estratto_conto: { bg: '#f3e8ff', text: '#8a6f47', icon: '🏦', label: 'Estratto conto' },
-  quietanza: { bg: '#cffafe', text: '#0e7490', icon: '✅', label: 'Quietanza' },
+  f24: { bg: '#f7ebe4', text: '#4c4a44', icon: '📋', label: 'F24' },
+  fattura: { bg: '#e2f0e7', text: '#166534', icon: '🧾', label: 'Fattura' },
+  fattura_estera_pdf: { bg: '#e2f0e7', text: '#166534', icon: '🌍', label: 'Fattura estera' },
+  busta_paga: { bg: '#f7eeda', text: '#92400e', icon: '📄', label: 'Cedolino' },
+  estratto_conto: { bg: '#f7ebe4', text: '#8a6f47', icon: '🏦', label: 'Estratto conto' },
+  quietanza: { bg: '#e2f0e7', text: '#2f7a4f', icon: '✅', label: 'Quietanza' },
   bonifico: { bg: '#fce7f3', text: '#be185d', icon: '💸', label: 'Bonifico' },
-  cartella_esattoriale: { bg: '#fee2e2', text: '#b91c1c', icon: '⚠️', label: 'Cartella' },
+  cartella_esattoriale: { bg: '#f8e5e2', text: '#b0362b', icon: '⚠️', label: 'Cartella' },
   avviso_bonario: { bg: '#ffedd5', text: '#c2410c', icon: '📨', label: 'Avviso bonario' },
-  dichiarazione_iva: { bg: '#eef3ef', text: '#3f5a4e', icon: '📊', label: 'Dichiarazione IVA' },
+  dichiarazione_iva: { bg: '#eef3ef', text: '#4c4a44', icon: '📊', label: 'Dichiarazione IVA' },
   satispay: { bg: '#fce7f3', text: '#be185d', icon: '📱', label: 'Satispay' },
-  contributi_inps: { bg: '#eef3ef', text: '#3f5a4e', icon: '🏛️', label: 'INPS' },
+  contributi_inps: { bg: '#eef3ef', text: '#4c4a44', icon: '🏛️', label: 'INPS' },
   certificazione_unica: { bg: '#ecfccb', text: '#4d7c0f', icon: '👤', label: 'CU' },
-  verbale: { bg: '#fee2e2', text: '#b91c1c', icon: '🚗', label: 'Verbale' },
-  pagopa: { bg: '#eef3ef', text: '#3f5a4e', icon: '🏛️', label: 'PagoPA' },
-  paypal: { bg: '#e2efe8', text: '#3f5a4e', icon: '💳', label: 'PayPal' },
-  altro: { bg: '#f1f5f9', text: '#475569', icon: '📄', label: 'Altro' },
+  verbale: { bg: '#f8e5e2', text: '#b0362b', icon: '🚗', label: 'Verbale' },
+  pagopa: { bg: '#eef3ef', text: '#4c4a44', icon: '🏛️', label: 'PagoPA' },
+  paypal: { bg: '#f7ebe4', text: '#4c4a44', icon: '💳', label: 'PayPal' },
+  altro: { bg: '#f2f0e9', text: '#5f5c55', icon: '📄', label: 'Altro' },
 };
 
 const STATUS_LABELS = {

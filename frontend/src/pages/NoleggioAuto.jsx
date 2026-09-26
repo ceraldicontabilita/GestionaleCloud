@@ -15,6 +15,7 @@ import {
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import ModalFattura from '../components/ModalFattura';
 import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import { toast } from 'sonner';
@@ -82,9 +83,9 @@ export default function NoleggioAuto() {
 
   const categorie = [
     { key: 'canoni', label: 'Canoni', icon: '💰', color: '#4caf50' },
-    { key: 'pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#2196f3' },
+    { key: 'pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#c15f3c' },
     { key: 'verbali', label: 'Verbali', icon: '📋', color: '#f44336' },
-    { key: 'bollo', label: 'Bollo', icon: '🏷️', color: '#9c27b0' },
+    { key: 'bollo', label: 'Bollo', icon: '🏷️', color: '#c15f3c' },
     { key: 'costi_extra', label: 'Costi Extra', icon: '➕', color: '#ff9800' },
     { key: 'riparazioni', label: 'Riparazioni', icon: '🔧', color: '#795548' },
   ];
@@ -379,15 +380,7 @@ export default function NoleggioAuto() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header — stile uniforme al resto delle pagine (STYLES.header) */}
-      <div style={STYLES.header}>
-        <div>
-          <h1 style={STYLES.pageTitle}>🚗 Gestione Noleggio Auto</h1>
-          <p style={{ ...STYLES.pageSubtitle, marginTop: 4 }}>
-            Flotta aziendale • Dati estratti da fatture XML
-          </p>
-        </div>
-      </div>
+      <PageHeader title="Noleggi" style={{ marginBottom: 14 }} />
 
       {/* Pannello Controlli — cruscotto "cosa richiede attenzione".
           Compare solo se c'è almeno una segnalazione; API in errore o
@@ -775,7 +768,7 @@ export default function NoleggioAuto() {
               <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: COLORS.textMuted }}>
                 Totale {annoFiltro || 'tutti gli anni'}
               </h3>
-              <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.primary }}>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.text }}>
                 {formatEuro(selectedVeicolo.totale_generale)}
               </div>
             </div>
@@ -1834,7 +1827,7 @@ export default function NoleggioAuto() {
                 marginBottom: 8,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 18, color: COLORS.primary }}>
+              <h2 style={{ margin: 0, fontSize: 18, color: COLORS.text }}>
                 📋 Fatture Non Associate ({modalFattureNonAssociate.fatture.length})
               </h2>
               <Button

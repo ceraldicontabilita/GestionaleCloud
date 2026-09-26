@@ -47,7 +47,7 @@ export default function App() {
       <div className="topnav-layout" data-testid="topnav-layout">
         {isReadOnly && (
           <div data-testid="banner-sola-lettura" style={{
-            background: '#fef3c7', color: '#92400e', textAlign: 'center',
+            background: '#f7eeda', color: '#92400e', textAlign: 'center',
             padding: '6px 12px', fontSize: 13, fontWeight: 600,
             borderBottom: '1px solid #fcd34d',
           }}>
@@ -103,7 +103,7 @@ export default function App() {
             <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
               <div className="mobile-menu-header">
                 <div className="brand-square">CG</div>
-                <span style={{ fontWeight: 700, fontSize: 16, color: '#2a3329' }}>Ceraldi ERP</span>
+                <span style={{ fontWeight: 700, fontSize: 16, color: '#141413' }}>Ceraldi ERP</span>
                 <button
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
@@ -158,7 +158,7 @@ export default function App() {
           {/* Alert Commercialista */}
           {alertCommercialista && (
             <div style={{
-              background: '#b45309',
+              background: '#8a6410',
               color: 'white',
               padding: '12px 20px',
               display: 'flex',
@@ -247,7 +247,7 @@ export default function App() {
             align-items: center;
             gap: 12px;
             padding: 20px;
-            border-bottom: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e6e3d9;
             position: sticky;
             top: 0;
             background: white;
@@ -255,7 +255,7 @@ export default function App() {
           
           .mobile-menu-close {
             margin-left: auto;
-            background: #f1f5f9;
+            background: #f2f0e9;
             border: none;
             width: 36px;
             height: 36px;
@@ -281,7 +281,7 @@ export default function App() {
             font-size: 11px;
             font-weight: 800;
             letter-spacing: 0.06em;
-            color: #64748b;
+            color: #7a776e;
           }
 
           .mobile-menu-titolo span {
@@ -311,8 +311,8 @@ export default function App() {
             gap: 6px;
             padding: 16px 8px;
             border-radius: 12px;
-            background: #f8fafc;
-            color: #334155;
+            background: #f6f4ee;
+            color: #4c4a44;
             font-size: 12px;
             text-align: center;
             transition: all 0.2s;
@@ -321,7 +321,7 @@ export default function App() {
           
           .mobile-menu-item:hover,
           .mobile-menu-item.active {
-            background: #2a3329;
+            background: #c15f3c;
             color: white;
           }
         `}</style>

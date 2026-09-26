@@ -4,6 +4,7 @@ import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, formatDateIT, useIsMobile } from '../lib/utils.js';
+import { PageHeader } from '../components/ds/PageHeader';
 import LinkContropartita, {
   PALETTE_CONTROPARTITA, rottaDocumentoOrigine,
 } from '../components/LinkContropartita';
@@ -160,13 +161,24 @@ export default function LibroGiornale() {
   const Badge = ({ ok, children }) => (
     <span style={{
       padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 700,
-      background: ok ? '#dcfce7' : '#fee2e2', color: ok ? '#166534' : '#991b1b',
+      background: ok ? '#e2f0e7' : '#f8e5e2', color: ok ? '#166534' : '#991b1b',
     }}>{children}</span>
   );
 
   return (
     <div>
-      {/* Header azioni */}
+      <PageHeader
+        title="Libro giornale"
+        actions={
+          <button onClick={esporta} data-testid="export-giornale" style={btnGhost}
+            disabled={loading || !giornale}>
+            Esporta registro {anno}
+          </button>
+        }
+        style={{ marginBottom: 14 }}
+      />
+
+      {/* Scelta della vista */}
       <div style={{
         display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14,
       }}>
@@ -178,14 +190,9 @@ export default function LibroGiornale() {
               background: vista === v ? COLORS.primary : 'transparent',
               color: vista === v ? '#fff' : COLORS.text,
             }}>
-            {v === 'giornale' ? '📖 Libro Giornale' : '📚 Libro Mastro'}
+            {v === 'giornale' ? 'Libro Giornale' : 'Libro Mastro'}
           </button>
         ))}
-        <div style={{ flex: 1 }} />
-        <button onClick={esporta} data-testid="export-giornale" style={btnGhost}
-          disabled={loading || !giornale}>
-          📥 Esporta registro {anno}
-        </button>
       </div>
 
       <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '0 0 14px' }}>
@@ -284,25 +291,25 @@ export default function LibroGiornale() {
                   data-testid={`scrittura-${s.numero_registrazione}`}
                   style={stileRigaScrittura(s, {
                     background: 'white', borderRadius: 12, border: `1px solid ${COLORS.border}`,
-                    borderLeft: '4px solid #2a3329', boxShadow: '0 1px 2px rgba(42, 51, 41,0.06)',
+                    borderLeft: '4px solid #c15f3c', boxShadow: '0 1px 2px rgba(20, 20, 19,0.06)',
                     padding: '10px 12px', cursor: 'pointer', minWidth: 0,
                   })}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
-                      <span style={{ fontWeight: 800, color: '#2a3329', fontSize: 13 }}>
+                      <span style={{ fontWeight: 800, color: '#141413', fontSize: 13 }}>
                         n. {s.numero_registrazione}
                       </span>
-                      <span style={{ marginLeft: 8, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11.5, color: '#475569' }}>
+                      <span style={{ marginLeft: 8, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11.5, color: '#5f5c55' }}>
                         {s.data_documento || s.data}
                       </span>
-                      <span style={{ marginLeft: 8, background: '#f1f5f9', color: '#475569', padding: '2px 7px', borderRadius: 999, fontSize: 10.5, fontWeight: 600 }}>
+                      <span style={{ marginLeft: 8, background: '#f2f0e9', color: '#5f5c55', padding: '2px 7px', borderRadius: 999, fontSize: 10.5, fontWeight: 600 }}>
                         {s.tipo}
                       </span>
                     </div>
                     <span style={{ color: COLORS.textMuted, flexShrink: 0 }}>{espansa === s.id ? '▲' : '▼'}</span>
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 12.5, color: '#1e293b', overflowWrap: 'anywhere' }}>
+                  <div style={{ marginTop: 4, fontSize: 12.5, color: '#2c2b28', overflowWrap: 'anywhere' }}>
                     {s.descrizione}
                   </div>
                   <div style={{ marginTop: 6, display: 'flex', gap: 14, fontSize: 12, fontFamily: 'ui-monospace, Menlo, monospace' }}>
@@ -315,7 +322,7 @@ export default function LibroGiornale() {
                         <DocumentoOrigine scrittura={s} />
                       </div>
                       {(s.righe || []).map((r, i) => (
-                        <div key={i} style={{ fontSize: 11.5, color: '#475569', padding: '3px 0', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <div key={i} style={{ fontSize: 11.5, color: '#5f5c55', padding: '3px 0', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                           <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                             {r.conto_codice || r.conto} — {r.conto_nome}
                           </span>
@@ -410,16 +417,16 @@ export default function LibroGiornale() {
                   key={m.conto}
                   style={{
                     background: 'white', borderRadius: 12, border: `1px solid ${COLORS.border}`,
-                    borderLeft: `4px solid ${m.saldo >= 0 ? '#2a3329' : '#dc2626'}`,
-                    boxShadow: '0 1px 2px rgba(42, 51, 41,0.06)', padding: '10px 12px', minWidth: 0,
+                    borderLeft: `4px solid ${m.saldo >= 0 ? '#c15f3c' : '#dc2626'}`,
+                    boxShadow: '0 1px 2px rgba(20, 20, 19,0.06)', padding: '10px 12px', minWidth: 0,
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
-                      <span style={{ fontWeight: 800, color: '#2a3329', fontSize: 13, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                      <span style={{ fontWeight: 800, color: '#141413', fontSize: 13, fontFamily: 'ui-monospace, Menlo, monospace' }}>
                         {m.conto}
                       </span>
-                      <div style={{ fontSize: 12.5, color: '#1e293b', overflowWrap: 'anywhere' }}>{m.conto_nome}</div>
+                      <div style={{ fontSize: 12.5, color: '#2c2b28', overflowWrap: 'anywhere' }}>{m.conto_nome}</div>
                       {m.conto_ufficiale && (
                         <div style={{ fontSize: 11, color: COLORS.textMuted, overflowWrap: 'anywhere' }}>
                           CEE {m.conto_ufficiale} — {m.conto_ufficiale_nome || ''}
@@ -429,7 +436,7 @@ export default function LibroGiornale() {
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
                       <div style={{
                         fontWeight: 800, fontSize: 14.5, fontFamily: 'ui-monospace, Menlo, monospace',
-                        color: m.saldo >= 0 ? '#2a3329' : '#dc2626',
+                        color: m.saldo >= 0 ? '#141413' : '#dc2626',
                       }}>
                         € {eur(m.saldo)}
                       </div>
@@ -486,9 +493,9 @@ export default function LibroGiornale() {
   );
 }
 
-const th = { padding: '10px 12px', color: '#475569', fontWeight: 700, whiteSpace: 'nowrap' };
-const td = { padding: '9px 12px', color: '#0f172a' };
+const th = { padding: '10px 12px', color: '#5f5c55', fontWeight: 700, whiteSpace: 'nowrap' };
+const td = { padding: '9px 12px', color: '#141413' };
 const btnGhost = {
-  background: 'transparent', border: '1px solid #e2e8f0', color: '#2a3329',
+  background: 'transparent', border: '1px solid #e6e3d9', color: '#141413',
   borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
 };

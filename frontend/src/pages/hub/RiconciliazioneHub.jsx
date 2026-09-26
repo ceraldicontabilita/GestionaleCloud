@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
+import { PageHeader } from '../../components/ds/PageHeader';
 import { sezioneRiconciliazione } from './sezioneRiconciliazione';
 
 const RiconciliazioneContent = lazy(() => import('../RiconciliazioneUnificata.jsx'));
@@ -51,6 +52,12 @@ export default function RiconciliazioneHub() {
   ];
 
   const activeTab = sezione === '' ? 'bancaria' : sezione;
+  // Queste sezioni hanno gia' una testata loro (titolo, perche', pastiglie):
+  // per le altre la mette l'hub, con il nome della scheda aperta.
+  const conTestataPropria = ['movimenti-banca', 'pagopa', 'paypal', 'regole-banca'].includes(activeTab);
+  const titoloSezione = activeTab === 'bancaria'
+    ? 'Riconciliazione'
+    : (tabs.find(t => t.id === activeTab)?.label || 'Riconciliazione');
 
   useEffect(() => {
     if (activeTab !== 'paypal') return undefined;
@@ -109,6 +116,7 @@ export default function RiconciliazioneHub() {
           select:has(+ [data-testid="sync-paypal-api-btn"]) { display: none !important; }
         `}</style>
       )}
+      {!conTestataPropria && <PageHeader title={titoloSezione} style={{ marginBottom: 14 }} />}
       <HubTabs
         testIdPrefix="tab-riconciliazione"
         activeId={activeTab}

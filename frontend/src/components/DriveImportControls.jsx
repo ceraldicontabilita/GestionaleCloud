@@ -58,7 +58,7 @@ export function DriveFattureImportCard() {
       } else if (status?.sync_running) {
         setMessage({
           ok: true,
-          text: 'Sincronizzazione ancora in corso. Lo stato si aggiornera al prossimo caricamento.',
+          text: 'Sincronizzazione ancora in corso. Lo stato si aggiornerà al prossimo caricamento.',
         });
       } else {
         const last = status?.last_result || {};
@@ -66,7 +66,7 @@ export function DriveFattureImportCard() {
           ok: (last.errors || 0) === 0,
           text:
             `Completata: ${last.imported || 0} importate, ` +
-            `${last.duplicates || 0} gia presenti, ${last.errors || 0} errori ` +
+            `${last.duplicates || 0} già presenti, ${last.errors || 0} errori ` +
             `(su ${last.total || 0} file trovati).`,
         });
       }
@@ -109,53 +109,45 @@ export function DriveFattureImportCard() {
         }
       >
         <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 16 }}>
-          Importa le fatture XML e P7M dalla cartella configurata. Questa e una
-          funzione operativa di Documenti: Admin contiene soltanto la configurazione tecnica.
+          Legge le fatture XML e P7M dalla cartella di Google Drive e le importa.
+          Quelle già presenti non entrano una seconda volta.
         </p>
 
+        {/* L'esito dell'ultimo giro e' la cosa piu' importante della scheda:
+            quattro numeri con il loro nome, non una riga grigia in fondo. */}
         <div
+          data-testid="drive-ultimo-giro"
           style={{
             display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
             gap: 12,
-            marginBottom: 16,
+            marginBottom: 12,
           }}
         >
+          <StatCard accent="none" label="Trovati" value={driveStatus?.last_result?.total ?? 0} />
+          <StatCard accent="none" label="Importati" value={driveStatus?.last_result?.imported ?? 0} />
+          <StatCard accent="none" label="Già presenti" value={driveStatus?.last_result?.duplicates ?? 0} />
           <StatCard
-            accent="none"
-            label="Cartella sorgente"
-            value={
-              <span style={{ fontSize: 13, wordBreak: 'break-all' }}>
-                {driveStatus?.folder_id || 'non impostata'}
-              </span>
-            }
-          />
-          <StatCard
-            accent="none"
-            label="Ultimo aggiornamento"
-            value={
-              <span style={{ fontSize: 14 }}>
-                {driveStatus?.last_sync
-                  ? new Date(driveStatus.last_sync).toLocaleString('it-IT').replaceAll('/', '-')
-                  : 'mai eseguito'}
-              </span>
-            }
-          />
-          <StatCard
-            accent="none"
-            label="Fatture importate"
-            value={<span style={{ fontSize: 14 }}>{driveStatus?.total_imported ?? 0}</span>}
+            accent={(driveStatus?.last_result?.errors || 0) > 0 ? 'danger' : 'none'}
+            label="Errori"
+            value={driveStatus?.last_result?.errors ?? 0}
           />
         </div>
 
-        {driveStatus?.last_result && (
-          <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>
-            Ultimo giro: {driveStatus.last_result.total ?? 0} file trovati,{' '}
-            {driveStatus.last_result.imported ?? 0} importati,{' '}
-            {driveStatus.last_result.duplicates ?? 0} gia presenti,{' '}
-            {driveStatus.last_result.errors ?? 0} errori.
-          </div>
-        )}
+        <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 12 }}>
+          {driveStatus?.total_imported ?? 0} fatture importate in tutto
+          {' · '}ultimo giro: {driveStatus?.last_sync
+            ? new Date(driveStatus.last_sync).toLocaleString('it-IT', {
+              day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+            })
+            : 'mai eseguito'}
+          {' · '}
+          {/* L'id della cartella Drive e' rumore per chi legge: resta nel
+              suggerimento, per chi deve controllarlo. */}
+          <span title={driveStatus?.folder_id ? `Id della cartella: ${driveStatus.folder_id}` : undefined}>
+            {driveStatus?.folder_id ? 'cartella impostata' : 'cartella non impostata'}
+          </span>
+        </div>
 
         {message && (
           <div

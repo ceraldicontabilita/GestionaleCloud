@@ -59,12 +59,12 @@ export default function Pianificazione() {
 
   function getEventColor(type) {
     const colors = {
-      meeting: '#e2efe8',
+      meeting: '#f7ebe4',
       deadline: '#fef2f2',
-      reminder: '#fef3c7',
-      task: '#dcfce7',
+      reminder: '#f7eeda',
+      task: '#e2f0e7',
     };
-    return colors[type] || '#f1f5f9';
+    return colors[type] || '#f2f0e9';
   }
 
   function getEventIcon(type) {
@@ -75,7 +75,7 @@ export default function Pianificazione() {
   const inputStyle = {
     padding: '10px 14px',
     borderRadius: 8,
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     fontSize: 14,
     minWidth: 150,
   };
@@ -83,7 +83,7 @@ export default function Pianificazione() {
   const selectStyle = {
     padding: '10px 14px',
     borderRadius: 8,
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     fontSize: 14,
     background: 'white',
     cursor: 'pointer',
@@ -102,7 +102,7 @@ export default function Pianificazione() {
             data-testid="btn-nuovo-evento"
             style={{
               padding: '10px 16px',
-              background: '#3f5a4e',
+              background: '#a94f30',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -120,9 +120,9 @@ export default function Pianificazione() {
             onClick={loadEvents}
             style={{
               padding: '10px 16px',
-              background: '#f1f5f9',
-              color: '#475569',
-              border: '1px solid #e2e8f0',
+              background: '#f2f0e9',
+              color: '#5f5c55',
+              border: '1px solid #e6e3d9',
               borderRadius: 8,
               cursor: 'pointer',
               fontWeight: 500,
@@ -168,7 +168,7 @@ export default function Pianificazione() {
               padding: 4,
             }}
           >
-            <X size={20} color="#64748b" />
+            <X size={20} color="#7a776e" />
           </button>
 
           <form onSubmit={handleCreateEvent}>
@@ -241,9 +241,9 @@ export default function Pianificazione() {
                 onClick={() => setShowForm(false)}
                 style={{
                   padding: '10px 20px',
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  border: '1px solid #e2e8f0',
+                  background: '#f2f0e9',
+                  color: '#5f5c55',
+                  border: '1px solid #e6e3d9',
                   borderRadius: 8,
                   cursor: 'pointer',
                   fontWeight: 500,
@@ -264,10 +264,10 @@ export default function Pianificazione() {
         ) : events.length === 0 ? (
           <div style={{ padding: '40px 20px', textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: '#1e293b', marginBottom: 8 }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#2c2b28', marginBottom: 8 }}>
               Nessun evento in agenda
             </div>
-            <div style={{ fontSize: 13, color: '#64748b', maxWidth: 520, margin: '0 auto', lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13, color: '#7a776e', maxWidth: 520, margin: '0 auto', lineHeight: 1.5 }}>
               Qui puoi annotare riunioni, scadenze fiscali, promemoria e attività da fare.
               Non è un calendario condiviso né sincronizzato con Google Calendar:
               è uno spazio personale per tenere in un posto solo le date che riguardano l'azienda
@@ -288,27 +288,27 @@ export default function Pianificazione() {
                   border: '1px solid rgba(0,0,0,0.05)',
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 15, color: '#1e293b', marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 15, color: '#2c2b28', marginBottom: 8 }}>
                   {getEventIcon(ev.event_type)} {ev.title}
                 </div>
                 <div
                   style={{
                     fontSize: 13,
-                    color: '#64748b',
+                    color: '#7a776e',
                     display: 'flex',
                     gap: 12,
                     flexWrap: 'wrap',
                     alignItems: 'center',
                   }}
                 >
-                  <span>📅 {new Date(ev.scheduled_date).toLocaleString('it-IT').replaceAll('/', '-')}</span>
+                  <span>📅 {new Date(ev.scheduled_date).toLocaleString('it-IT')}</span>
                   <span>🏷️ {ev.event_type}</span>
                   <span
                     style={{
                       padding: '2px 10px',
                       borderRadius: 6,
-                      background: ev.status === 'completed' ? '#dcfce7' : '#eef3ef',
-                      color: ev.status === 'completed' ? '#166534' : '#3f5a4e',
+                      background: ev.status === 'completed' ? '#e2f0e7' : '#eef3ef',
+                      color: ev.status === 'completed' ? '#166534' : '#a94f30',
                       fontWeight: 600,
                       fontSize: 12,
                     }}
@@ -318,7 +318,7 @@ export default function Pianificazione() {
                 </div>
                 {ev.notes && (
                   <div
-                    style={{ fontSize: 13, color: '#64748b', marginTop: 10, fontStyle: 'italic' }}
+                    style={{ fontSize: 13, color: '#7a776e', marginTop: 10, fontStyle: 'italic' }}
                   >
                     💬 {ev.notes}
                   </div>

@@ -81,7 +81,7 @@ export default function ModalFattura({ fatturaId, numero, onClose }) {
         <button type="button" key={documento.id}
           onClick={() => setPagamentoSelezionato(documento)}
           aria-label={`Vedi pagamento ${index + 1}`} title={documento.nome_file || 'Vedi pagamento'}
-          style={{ minHeight: 40, padding: '0 12px', border: 0, borderRadius: 8, background: '#15803d', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+          style={{ minHeight: 40, padding: '0 12px', border: 0, borderRadius: 8, background: '#2f7a4f', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
           Pagamento {documentiPagamento.length > 1 ? index + 1 : ''}
         </button>
       ))}

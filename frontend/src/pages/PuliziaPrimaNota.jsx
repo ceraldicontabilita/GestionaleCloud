@@ -168,10 +168,10 @@ export default function PuliziaPrimaNota() {
   return (
     <PageLayout>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#2a3329' }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#141413' }}>
           🧹 Pulizia Prima Nota
         </h2>
-        <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+        <div style={{ fontSize: 13, color: '#7a776e', marginTop: 2 }}>
           Manutenzione dati Prima Nota Cassa e Banca · Anno {anno}
         </div>
       </div>
@@ -221,7 +221,7 @@ export default function PuliziaPrimaNota() {
                 <Stat label="Corrispettivi sorgente" value={diagnosi.corrispettivi_sorgente} />
                 <Stat label="Già in Prima Nota" value={diagnosi.corrispettivi_in_cassa} color="#059669" />
                 <Stat label="Mancanti in Cassa" value={diagnosi.mancanti_in_cassa} color={diagnosi.mancanti_in_cassa > 0 ? '#d97706' : '#059669'} />
-                <Stat label="Non sincronizzabili (importo 0)" value={diagnosi.non_sincronizzabili_importo_zero} color={diagnosi.non_sincronizzabili_importo_zero > 0 ? '#dc2626' : '#6b7280'} />
+                <Stat label="Non sincronizzabili (importo 0)" value={diagnosi.non_sincronizzabili_importo_zero} color={diagnosi.non_sincronizzabili_importo_zero > 0 ? '#dc2626' : '#7a776e'} />
                 <Stat label="Duplicati in Cassa" value={diagnosi.duplicati_in_cassa} color={diagnosi.duplicati_in_cassa > 0 ? '#dc2626' : '#059669'} />
               </div>
               {diagnosi.mancanti_in_cassa > 0 && (
@@ -274,7 +274,7 @@ export default function PuliziaPrimaNota() {
               </div>
               <DuplicateList title="Dettaglio Cassa" registro="cassa" groups={anteprima.cassa?.dettagli || []} />
               <DuplicateList title="Dettaglio Banca" registro="banca" groups={anteprima.banca?.dettagli || []} />
-              <div style={{ marginTop: 12, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
+              <div style={{ marginTop: 12, fontSize: 12, color: '#7a776e', fontStyle: 'italic' }}>
                 {anteprima.nota}
               </div>
             </div>
@@ -372,7 +372,7 @@ export default function PuliziaPrimaNota() {
                     <br />
                     Già presenti (quadrati): {risultatoQuadratura.quadrati}
                     <br />
-                    <span style={{ color: risultatoQuadratura.recuperati > 0 ? '#b91c1c' : '#065f46', fontWeight: 700 }}>
+                    <span style={{ color: risultatoQuadratura.recuperati > 0 ? '#b0362b' : '#065f46', fontWeight: 700 }}>
                       Recuperati (mancanti nel gestionale): {risultatoQuadratura.recuperati}
                     </span>
                     {risultatoQuadratura.errori > 0 && (
@@ -408,7 +408,7 @@ export default function PuliziaPrimaNota() {
             onClick={lanciaDiagnosiMetodi}
             disabled={isBusy}
             style={{
-              padding: '10px 18px', background: '#2a3329', color: 'white',
+              padding: '10px 18px', background: '#c15f3c', color: 'white',
               border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13,
               cursor: isBusy ? 'wait' : 'pointer', display: 'inline-flex',
               alignItems: 'center', gap: 8,
@@ -451,7 +451,7 @@ export default function PuliziaPrimaNota() {
                     >
                       <div style={{ flex: 1, minWidth: 180, fontSize: 13 }}>
                         <strong>{v.numero_fattura || v.descrizione}</strong>
-                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                        <div style={{ fontSize: 11.5, color: '#7a776e', marginTop: 2 }}>
                           Operazione del {v.data} · {formatEuroD(v.importo || 0)} · oggi in{' '}
                           <strong style={{ color: '#dc2626' }}>{v.registro_attuale.toUpperCase()}</strong>,
                           {' '}il fornitore è{' '}
@@ -462,7 +462,7 @@ export default function PuliziaPrimaNota() {
                         onClick={() => spostaDiscordante(v)}
                         disabled={spostandoId === v.movimento_id}
                         style={{
-                          padding: '7px 14px', background: '#2a3329', color: 'white',
+                          padding: '7px 14px', background: '#c15f3c', color: 'white',
                           border: 'none', borderRadius: 6, fontWeight: 700, fontSize: 12,
                           cursor: spostandoId === v.movimento_id ? 'wait' : 'pointer',
                           whiteSpace: 'nowrap',
@@ -490,7 +490,7 @@ function DuplicateList({ title, registro, groups }) {
   );
   return (
     <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: '#2a3329', marginBottom: 8 }}>{title} ({groups.length} gruppi)</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: '#141413', marginBottom: 8 }}>{title} ({groups.length} gruppi)</div>
       <div style={{ display: 'grid', gap: 10 }}>
         {groups.map((g, index) => (
           <div key={`${g.chiave}-${index}`} style={{ border: `1px solid ${g.certezza === 'certo' ? '#86efac' : '#fbbf24'}`, borderRadius: 8, padding: 12, background: g.certezza === 'certo' ? '#f0fdf4' : '#fffbeb' }}>
@@ -509,12 +509,12 @@ function DuplicateList({ title, registro, groups }) {
 
 function MovementRow({ label, registro, movement }) {
   return (
-    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #dbe3ee', fontSize: 12, lineHeight: 1.55 }}>
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #e6e3d9', fontSize: 12, lineHeight: 1.55 }}>
       <strong>{label}:</strong> {movement.data || 'data assente'} · {formatEuroD(movement.importo || 0)} · {movement.numero_fattura || movement.fattura_id || movement.riferimento || 'senza riferimento'}
       <br />{movement.descrizione || 'descrizione assente'}
-      <br /><span style={{ color: '#64748b' }}>ID {movement.id || 'assente'} · fonte {movement.source || 'non indicata'}</span>
+      <br /><span style={{ color: '#7a776e' }}>ID {movement.id || 'assente'} · fonte {movement.source || 'non indicata'}</span>
       {movement.id && (
-        <a href={`/prima-nota#sezione=${registro}&selected=${encodeURIComponent(movement.id)}`} style={{ marginLeft: 12, color: '#3f5a4e', fontWeight: 700 }}>
+        <a href={`/prima-nota#sezione=${registro}&selected=${encodeURIComponent(movement.id)}`} style={{ marginLeft: 12, color: '#4c4a44', fontWeight: 700 }}>
           Apri operazione
         </a>
       )}
@@ -527,20 +527,20 @@ function MovementRow({ label, registro, movement }) {
 function StepCard({ numero, titolo, descrizione, disabledReason, children }) {
   return (
     <div style={{
-      border: '1px solid #e5e7eb', borderRadius: 10, padding: 18, marginBottom: 14,
+      border: '1px solid #e6e3d9', borderRadius: 10, padding: 18, marginBottom: 14,
       background: '#fff',
     }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
         <div style={{
-          width: 32, height: 32, borderRadius: '50%', background: '#2a3329',
+          width: 32, height: 32, borderRadius: '50%', background: '#c15f3c',
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontWeight: 700, fontSize: 15, flexShrink: 0,
         }}>
           {numero}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: '#2a3329' }}>{titolo}</div>
-          <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{descrizione}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: '#141413' }}>{titolo}</div>
+          <div style={{ fontSize: 13, color: '#7a776e', marginTop: 2 }}>{descrizione}</div>
           {disabledReason && (
             <div style={{ fontSize: 12, color: '#d97706', marginTop: 4, fontStyle: 'italic' }}>
               {disabledReason}
@@ -553,18 +553,18 @@ function StepCard({ numero, titolo, descrizione, disabledReason, children }) {
   );
 }
 
-function Stat({ label, value, color = '#2a3329' }) {
+function Stat({ label, value, color = '#c15f3c' }) {
   return (
     <div>
-      <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
+      <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700, color }}>{value ?? '—'}</div>
     </div>
   );
 }
 
 const resultBoxStyle = {
-  marginTop: 12, padding: 12, background: '#f9fafb',
-  border: '1px solid #e5e7eb', borderRadius: 8,
+  marginTop: 12, padding: 12, background: '#f6f4ee',
+  border: '1px solid #e6e3d9', borderRadius: 8,
 };
 
 function btnStyle(variant, disabled) {
@@ -575,5 +575,5 @@ function btnStyle(variant, disabled) {
     opacity: disabled ? 0.5 : 1, transition: 'all .15s',
   };
   if (variant === 'danger') return { ...base, background: '#dc2626', color: '#fff' };
-  return { ...base, background: '#2a3329', color: '#fff' };
+  return { ...base, background: '#c15f3c', color: '#fff' };
 }

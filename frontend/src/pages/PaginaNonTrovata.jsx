@@ -25,25 +25,25 @@ export default function PaginaNonTrovata() {
         data-testid="pagina-non-trovata"
         style={{
           background: 'white',
-          border: '1px solid #e2e8f0',
+          border: '1px solid #e6e3d9',
           borderRadius: 12,
           padding: 24,
           textAlign: 'center',
         }}
       >
-        <Compass size={40} style={{ color: '#2a3329', marginBottom: 8 }} />
-        <h1 style={{ margin: '0 0 6px', fontSize: 22, color: '#2a3329' }}>Pagina non trovata</h1>
-        <p style={{ margin: '0 0 4px', color: '#475569', fontSize: 14 }}>
+        <Compass size={40} style={{ color: '#141413', marginBottom: 8 }} />
+        <h1 style={{ margin: '0 0 6px', fontSize: 22, color: '#141413' }}>Pagina non trovata</h1>
+        <p style={{ margin: '0 0 4px', color: '#5f5c55', fontSize: 14 }}>
           L'indirizzo richiesto non esiste nel gestionale:
         </p>
         <code
           style={{
             display: 'inline-block',
-            background: '#f1f5f9',
+            background: '#f2f0e9',
             borderRadius: 6,
             padding: '4px 10px',
             fontSize: 13,
-            color: '#b91c1c',
+            color: '#b0362b',
             marginBottom: 16,
             maxWidth: '100%',
             overflowWrap: 'anywhere',
@@ -51,14 +51,14 @@ export default function PaginaNonTrovata() {
         >
           {url}
         </code>
-        <p style={{ margin: '0 0 14px', color: '#64748b', fontSize: 13 }}>
+        <p style={{ margin: '0 0 14px', color: '#7a776e', fontSize: 13 }}>
           Se ci sei arrivato da un bottone o un link interno, segnalalo: è un
           collegamento da correggere, non un tuo errore.
         </p>
         {/* Le stesse sezioni, negli stessi gruppi, della colonna di navigazione */}
         {gruppiVisibili(isAdmin).map(gruppo => (
           <div key={gruppo.id} style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', color: '#64748b', marginBottom: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', color: '#7a776e', marginBottom: 6 }}>
               <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: gruppo.colore, marginRight: 6 }} />
               {gruppo.titolo}
             </div>
@@ -73,12 +73,12 @@ export default function PaginaNonTrovata() {
                     gap: 6,
                     padding: '7px 12px',
                     borderRadius: 8,
-                    border: '1px solid #e2e8f0',
-                    color: '#2a3329',
+                    border: '1px solid #e6e3d9',
+                    color: '#141413',
                     textDecoration: 'none',
                     fontSize: 13,
                     fontWeight: 600,
-                    background: '#f8fafc',
+                    background: '#f6f4ee',
                   }}
                 >
                   <i.Icon size={14} />

@@ -16,7 +16,7 @@ import { ArrowUpRight } from 'lucide-react';
  */
 export const PALETTE_CONTROPARTITA = {
   salvia: '#5b7a6b',
-  salviaScura: '#3f5a4e',
+  salviaScura: '#a94f30',
   salviaChiara: '#eef3ef',
   bordo: '#c9d6cd',
   sabbia: '#8a6f47',

@@ -27,7 +27,7 @@ const STAGES = [
     id: 'fonti',
     title: 'Fonti dati',
     subtitle: 'Drive, Gmail, banca, PayPal, manuale',
-    color: '#3f5a4e',
+    color: '#4c4a44',
     items: ['Drive fatture', 'Drive corrispettivi', 'Gmail attendibili', 'Banco BPM', 'PayPal API'],
   },
   {
@@ -41,14 +41,14 @@ const STAGES = [
     id: 'record',
     title: 'Record gestionali',
     subtitle: 'Entita e posizioni aperte',
-    color: '#0f766e',
+    color: '#2f7a4f',
     items: ['Fatture', 'Fornitori', 'F24', 'Cedolini', 'POS', 'Verbali', 'Noleggio'],
   },
   {
     id: 'movimenti',
     title: 'Movimenti',
     subtitle: 'Cassa, banca e attesi',
-    color: '#b45309',
+    color: '#8a6410',
     items: ['Prima nota cassa', 'Prima nota banca', 'Stipendi', 'POS attesi', 'Bonifici'],
   },
   {
@@ -62,7 +62,7 @@ const STAGES = [
     id: 'chiusura',
     title: 'Chiusura',
     subtitle: 'Riconciliazione, output, chat',
-    color: '#15803d',
+    color: '#2f7a4f',
     items: ['Riconciliazione', 'Commercialista', 'Consulente', 'Admin', 'Chat'],
   },
 ];
@@ -73,7 +73,7 @@ const AREAS = [
     title: 'Dashboard',
     route: '/',
     Icon: LayoutDashboard,
-    color: '#3f5a4e',
+    color: '#4c4a44',
     group: 'Controllo',
     purpose: 'Mostra KPI, alert critici, scadenze operative, POS da verificare e documenti aperti.',
     pages: ['KPI', 'Alert', 'Scadenze operative', 'POS', 'Trattenute da confermare'],
@@ -122,7 +122,7 @@ const AREAS = [
     title: 'Fornitori',
     route: '/fornitori',
     Icon: Building2,
-    color: '#9333ea',
+    color: '#c15f3c',
     group: 'Ciclo passivo',
     purpose: 'Anagrafica centrale: il metodo pagamento e manuale e decide cassa, banca o provvisoria.',
     pages: ['Anagrafica', 'Metodo pagamento', 'Fatture collegate', 'Prodotti', 'Note'],
@@ -162,7 +162,7 @@ const AREAS = [
     title: 'Prima Nota',
     route: '/prima-nota',
     Icon: BookOpen,
-    color: '#b45309',
+    color: '#8a6410',
     group: 'Movimenti',
     purpose: 'Cassa e banca con saldi progressivi; la cassa registra il corrispettivo totale e l uscita POS.',
     pages: ['Cassa', 'Banca', 'Provvisoria', 'Pulizia'],
@@ -175,7 +175,7 @@ const AREAS = [
     title: 'Riconciliazione',
     route: '/riconciliazione',
     Icon: CheckCircle2,
-    color: '#15803d',
+    color: '#2f7a4f',
     group: 'Chiusura',
     purpose:
       'Collega movimenti reali a fatture, F24, quietanze, cedolini, POS, PayPal, PagoPA e verbali. Gli F24 hanno una pagina dedicata (Altro → F24) che mostra SOLO gli F24.',
@@ -259,7 +259,7 @@ const AREAS = [
     title: 'Noleggio Auto',
     route: '/noleggio',
     Icon: Car,
-    color: '#3f5a4e',
+    color: '#4c4a44',
     group: 'Veicoli',
     purpose: 'Gestisce flotta, costi, contratti e cessazioni leggendo ultima fattura e assenza fatture oltre 35 giorni.',
     pages: ['Flotta', 'Costi', 'Contratti', 'Verbali', 'Driver'],
@@ -272,7 +272,7 @@ const AREAS = [
     title: 'PayPal',
     route: '/integrazioni',
     Icon: CreditCard,
-    color: '#0f766e',
+    color: '#2f7a4f',
     group: 'Integrazioni',
     purpose: 'Fonte primaria API con PAYPAL_CLIENT_ID e PAYPAL_CLIENT_SECRET; email solo fallback documentale.',
     pages: ['API PayPal', 'Movimenti', 'Riconciliazione', 'Log sync'],
@@ -298,7 +298,7 @@ const AREAS = [
     title: 'Contabilita',
     route: '/contabilita',
     Icon: ClipboardList,
-    color: '#475569',
+    color: '#5f5c55',
     group: 'Contabilita',
     purpose: 'Aggrega dati validati in piano conti, bilancio, IVA, budget, cespiti e chiusura.',
     pages: ['Piano conti', 'Bilancio', 'IVA', 'Budget', 'Cespiti', 'Chiusura'],
@@ -311,7 +311,7 @@ const AREAS = [
     title: 'Commercialista / Consulente',
     route: '/strumenti/commercialista',
     Icon: ShieldCheck,
-    color: '#64748b',
+    color: '#7a776e',
     group: 'Output',
     purpose: 'Prepara pacchetti per commercialista e note per consulente lavoro, incluse trattenute verbali.',
     pages: ['Prima nota', 'F24/quietanze', 'Cedolini', 'Scontrini', 'Trattenute', 'Report auto'],
@@ -324,7 +324,7 @@ const AREAS = [
     title: 'Admin',
     route: '/admin',
     Icon: Settings,
-    color: '#0f172a',
+    color: '#141413',
     group: 'Sistema',
     purpose: 'Configura mittenti, parser, regole, scontrini, differenze corrispettivi, log e reprocessing.',
     pages: ['Mittenti attendibili', 'Parser', 'Registro scontrini', 'Log', 'Learning'],
@@ -337,7 +337,7 @@ const AREAS = [
     title: 'Chat intelligente',
     route: null,
     Icon: MessageSquareText,
-    color: '#0891b2',
+    color: '#2f7a4f',
     group: 'Controllo',
     purpose: 'Interroga documenti, record, audit log, saldi, POS, cedolini, F24, verbali e riconciliazioni.',
     pages: ['Domande documentali', 'Memoria', 'Ricerche', 'Risposte con fonte'],
@@ -419,7 +419,7 @@ const GROUPS = [
   'Controllo',
 ];
 
-function Chip({ children, color = '#64748b' }) {
+function Chip({ children, color = '#7a776e' }) {
   return <span style={{ ...styles.chip, background: `${color}12`, color }}>{children}</span>;
 }
 
@@ -447,8 +447,8 @@ function AreaCard({ area, active, onClick }) {
       onClick={onClick}
       style={{
         ...styles.areaCard,
-        borderColor: active ? area.color : '#e2e8f0',
-        boxShadow: active ? `0 10px 24px ${area.color}22` : '0 2px 8px rgba(42, 51, 41, 0.06)',
+        borderColor: active ? area.color : '#e6e3d9',
+        boxShadow: active ? `0 10px 24px ${area.color}22` : '0 2px 8px rgba(20, 20, 19, 0.06)',
       }}
     >
       <div style={styles.areaCardHeader}>
@@ -463,7 +463,7 @@ function AreaCard({ area, active, onClick }) {
       <p style={styles.areaPurpose}>{area.purpose}</p>
       <div style={styles.areaFooter}>
         <Chip color={area.color}>{area.pages.length} viste</Chip>
-        <Chip color="#64748b">{area.links.length} link</Chip>
+        <Chip color="#7a776e">{area.links.length} link</Chip>
       </div>
     </button>
   );
@@ -504,8 +504,8 @@ function DetailPanel({ area, relatedAreas, onSelectArea }) {
 
       <div style={styles.detailGrid}>
         <InfoBlock title="Viste interne" items={area.pages} color={area.color} />
-        <InfoBlock title="Riceve da" items={area.inputs} color="#3f5a4e" />
-        <InfoBlock title="Alimenta" items={area.outputs} color="#15803d" />
+        <InfoBlock title="Riceve da" items={area.inputs} color="#a94f30" />
+        <InfoBlock title="Alimenta" items={area.outputs} color="#2f7a4f" />
         <div style={styles.infoBlock}>
           <h3 style={styles.infoTitle}>Collegata a</h3>
           <div style={styles.linkList}>
@@ -608,9 +608,9 @@ export default function MappaGestionale() {
               onClick={() => setGroup(g)}
               style={{
                 ...styles.groupButton,
-                background: group === g ? '#2a3329' : '#fff',
-                color: group === g ? '#fff' : '#475569',
-                borderColor: group === g ? '#2a3329' : '#e2e8f0',
+                background: group === g ? '#c15f3c' : '#fff',
+                color: group === g ? '#fff' : '#5f5c55',
+                borderColor: group === g ? '#c15f3c' : '#e6e3d9',
               }}
             >
               {g}
@@ -675,18 +675,18 @@ export default function MappaGestionale() {
 const styles = {
   page: {
     minHeight: '100vh',
-    background: '#f1f5f9',
+    background: '#f2f0e9',
     padding: 20,
-    color: '#0f172a',
+    color: '#141413',
     colorScheme: 'light',
   },
   header: {
-    background: '#2a3329',
+    background: '#c15f3c',
     color: '#fff',
     borderRadius: 8,
     padding: '22px 24px',
     marginBottom: 16,
-    boxShadow: '0 6px 18px rgba(42, 51, 41, 0.16)',
+    boxShadow: '0 6px 18px rgba(20, 20, 19, 0.16)',
   },
   eyebrow: {
     fontSize: 11,
@@ -712,11 +712,11 @@ const styles = {
   },
   flowCard: {
     background: '#fff',
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
     padding: 18,
     marginBottom: 16,
-    boxShadow: '0 2px 8px rgba(42, 51, 41, 0.06)',
+    boxShadow: '0 2px 8px rgba(20, 20, 19, 0.06)',
   },
   sectionHeader: {
     display: 'flex',
@@ -728,14 +728,14 @@ const styles = {
   sectionTitle: {
     margin: 0,
     fontSize: 17,
-    color: '#2a3329',
+    color: '#141413',
     fontWeight: 800,
   },
   sectionSubtitle: {
     margin: '4px 0 0',
     fontSize: 13,
     lineHeight: 1.45,
-    color: '#64748b',
+    color: '#7a776e',
   },
   stageRow: {
     display: 'grid',
@@ -748,10 +748,10 @@ const styles = {
   stage: {
     width: 190,
     minHeight: 156,
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
     padding: 12,
-    background: '#f8fafc',
+    background: '#f6f4ee',
   },
   stageTop: {
     display: 'flex',
@@ -775,11 +775,11 @@ const styles = {
   stageTitle: {
     fontSize: 13,
     fontWeight: 800,
-    color: '#0f172a',
+    color: '#141413',
   },
   stageSubtitle: {
     fontSize: 11,
-    color: '#64748b',
+    color: '#7a776e',
     lineHeight: 1.25,
     marginTop: 2,
   },
@@ -791,13 +791,13 @@ const styles = {
   },
   arrow: {
     alignSelf: 'center',
-    color: '#94a3b8',
+    color: '#a19d92',
     fontSize: 16,
     fontWeight: 800,
   },
   controls: {
     background: '#fff',
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
@@ -853,17 +853,17 @@ const styles = {
   areaTitle: {
     fontSize: 14,
     fontWeight: 800,
-    color: '#0f172a',
+    color: '#141413',
     textShadow: 'none',
   },
   areaGroup: {
     fontSize: 11,
-    color: '#64748b',
+    color: '#7a776e',
     marginTop: 2,
   },
   areaPurpose: {
     margin: 0,
-    color: '#475569',
+    color: '#5f5c55',
     fontSize: 12,
     lineHeight: 1.45,
   },
@@ -879,9 +879,9 @@ const styles = {
   },
   detailPanel: {
     background: '#fff',
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
-    boxShadow: '0 3px 12px rgba(42, 51, 41, 0.08)',
+    boxShadow: '0 3px 12px rgba(20, 20, 19, 0.08)',
     overflow: 'hidden',
   },
   detailHeader: {
@@ -889,8 +889,8 @@ const styles = {
     alignItems: 'center',
     gap: 12,
     padding: 16,
-    borderBottom: '1px solid #e2e8f0',
-    background: '#f8fafc',
+    borderBottom: '1px solid #e6e3d9',
+    background: '#f6f4ee',
   },
   detailIcon: {
     width: 42,
@@ -905,12 +905,12 @@ const styles = {
   detailTitle: {
     margin: 0,
     fontSize: 17,
-    color: '#2a3329',
+    color: '#141413',
   },
   detailSubtitle: {
     margin: '3px 0 0',
     fontSize: 12,
-    color: '#64748b',
+    color: '#7a776e',
     lineHeight: 1.35,
   },
   openLink: {
@@ -918,7 +918,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '7px 10px',
-    background: '#2a3329',
+    background: '#c15f3c',
     color: '#fff',
     borderRadius: 6,
     fontSize: 12,
@@ -932,7 +932,7 @@ const styles = {
     padding: 14,
   },
   infoBlock: {
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
     padding: 12,
     background: '#fff',
@@ -942,7 +942,7 @@ const styles = {
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: '#64748b',
+    color: '#7a776e',
   },
   bulletList: {
     display: 'grid',
@@ -954,7 +954,7 @@ const styles = {
     alignItems: 'flex-start',
     fontSize: 12,
     lineHeight: 1.35,
-    color: '#334155',
+    color: '#4c4a44',
   },
   dot: {
     width: 7,
@@ -979,15 +979,15 @@ const styles = {
   },
   relationSection: {
     background: '#fff',
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
     padding: 18,
     marginTop: 16,
-    boxShadow: '0 2px 8px rgba(42, 51, 41, 0.06)',
+    boxShadow: '0 2px 8px rgba(20, 20, 19, 0.06)',
   },
   tableWrap: {
     overflowX: 'auto',
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
   },
   table: {
@@ -1006,10 +1006,10 @@ const styles = {
     gap: 10,
     alignItems: 'flex-start',
     background: '#fff',
-    border: '1px solid #e2e8f0',
+    border: '1px solid #e6e3d9',
     borderRadius: 8,
     padding: 14,
-    color: '#2a3329',
+    color: '#141413',
   },
   chip: {
     display: 'inline-flex',

@@ -1,6 +1,7 @@
 /**
- * PageLayout - Wrapper di pagina con header opzionale (title/icon/subtitle/actions),
- * renderizzato tramite il design system (ds/PageHeader).
+ * PageLayout - Wrapper di pagina con la testata (ds/PageHeader): titolo, perche',
+ * pastiglie e azioni. Famiglia e perche' arrivano dalla mappa di navigazione se
+ * la pagina non li passa.
  */
 
 import React from 'react';
@@ -13,6 +14,8 @@ export function PageLayout({
   icon,
   subtitle,
   actions,
+  pastiglie,
+  famiglia,
   noPadding = false,
   className = '',
 }) {
@@ -27,7 +30,10 @@ export function PageLayout({
     >
       {title && (
         <div style={{ marginBottom: SPACING.lg }}>
-          <PageHeader title={title} icon={icon} subtitle={subtitle} actions={actions} />
+          <PageHeader
+            title={title} icon={icon} subtitle={subtitle} actions={actions}
+            pastiglie={pastiglie} famiglia={famiglia}
+          />
         </div>
       )}
       {children}

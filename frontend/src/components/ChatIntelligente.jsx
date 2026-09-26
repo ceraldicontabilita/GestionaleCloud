@@ -4,6 +4,7 @@
  */
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Bot } from 'lucide-react';
 import api from '../api';
 import { Button, Input } from './ds';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
@@ -175,9 +176,10 @@ export default function ChatIntelligente() {
           }
         `}</style>
         <Button
-          variant="info"
+          variant="primary"
           onClick={() => setIsOpen(true)}
           data-testid="chat-toggle"
+          aria-label="Apri l'assistente"
           style={{
             position: 'fixed',
             bottom: 24,
@@ -187,20 +189,20 @@ export default function ChatIntelligente() {
             padding: 0,
             borderRadius: BORDER_RADIUS.full,
             fontSize: 28,
-            boxShadow: '0 4px 20px rgba(63, 90, 78,0.4)',
+            boxShadow: '0 4px 20px rgba(20, 20, 19,0.4)',
             transition: 'transform 0.2s, box-shadow 0.2s',
             zIndex: 1000,
           }}
           onMouseEnter={e => {
-            e.target.style.transform = 'scale(1.1)';
-            e.target.style.boxShadow = '0 6px 24px rgba(63, 90, 78,0.5)';
+            e.currentTarget.style.transform = 'scale(1.1)';
+            e.currentTarget.style.boxShadow = '0 6px 24px rgba(20, 20, 19,0.5)';
           }}
           onMouseLeave={e => {
-            e.target.style.transform = 'scale(1)';
-            e.target.style.boxShadow = '0 4px 20px rgba(63, 90, 78,0.4)';
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = '0 4px 20px rgba(20, 20, 19,0.4)';
           }}
         >
-          🤖
+          <Bot size={26} aria-hidden="true" />
         </Button>
       </>
     );
@@ -252,7 +254,7 @@ export default function ChatIntelligente() {
         }}
       >
         <div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>🤖 Assistente AI</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Assistente AI</div>
           <div style={{ fontSize: 12, opacity: 0.9 }}>Interroga il gestionale</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

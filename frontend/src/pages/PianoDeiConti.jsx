@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import api from '../api';
 import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Button, Badge, StatCard, Tabs, Input, Select, Table, TableWrap, Th, Td } from '../components/ds';
@@ -243,15 +244,7 @@ export default function PianoDeiConti() {
   return (
     <PageLayout>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{ marginBottom: 20, borderLeft: `4px solid ${COLORS.primary}`, paddingLeft: 14 }}>
-          <h1 style={{ margin: 0, fontSize: 'clamp(20px, 5vw, 28px)', color: COLORS.primary }}>
-            📒 Piano dei Conti
-          </h1>
-          <p style={{ color: COLORS.textMuted, margin: '5px 0 0 0' }}>
-            Contabilità Generale - Sistema di Partita Doppia
-          </p>
-        </div>
+        <PageHeader title="Piano dei conti" style={{ marginBottom: 14 }} />
 
         {/* Bilancio Summary Cards */}
         {bilancio && (

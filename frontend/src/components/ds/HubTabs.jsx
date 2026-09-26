@@ -1,109 +1,66 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
-import { useIsMobile } from '../../lib/utils';
+import { COLORS } from '../../lib/utils';
 
 /**
- * HubTabs — barra degli hub (Fatture, Riconciliazione, Admin, …): il
- * pulsante «← Indietro» e, se l'hub ha piu' sezioni, le sue schede TUTTE
+ * HubTabs — le schede di un hub (Fatture, Riconciliazione, Admin, …), TUTTE
  * visibili, a capo quando non ci stanno.
  *
- * Niente menu' a tendina: un <select> «Vai a sezione» nascondeva
- * quattordici sezioni su quindici e non diceva quante fossero. Da quando
- * ogni sezione sta nella colonna di navigazione a sinistra, la tendina non
- * serve piu' a raggiungerle.
+ * Sono schede disegnate da schede, come nell'artefatto: una riga di testo,
+ * la sottolineatura su quella aperta, nessuna icona e nessun riquadro che
+ * prometta «ti porto altrove». Niente menu' a tendina (nascondeva quattordici
+ * sezioni su quindici) e niente «← Indietro»: con la colonna di navigazione
+ * sempre in vista, «indietro dove?» non ha risposta.
  *
- * API: tabs [{ id, label, Icon }], activeId, onSelect(tab).
+ * API: tabs [{ id, label }], activeId, onSelect(tab). Con una sola scheda
+ * non si disegna niente.
  */
 export function HubTabs({
   tabs = [], activeId, onSelect = () => {}, testIdPrefix = 'tab', style = {},
 }) {
-  const isMobile = useIsMobile();
-  const navigate = useNavigate();
+  if (tabs.length <= 1) return null;
 
   return (
     <div
+      role="tablist"
+      aria-label="Sezioni principali"
       style={{
         display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 12px',
-        background: 'white',
-        borderBottom: '1px solid #e2e8f0',
-        borderRadius: '8px 8px 0 0',
+        flexWrap: 'wrap',
+        gap: 4,
+        borderBottom: `1px solid ${COLORS.border}`,
         marginBottom: 16,
         ...style,
       }}
     >
-      <button
-        type="button"
-        onClick={() => navigate(-1)}
-        data-testid={`${testIdPrefix}-indietro`}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: isMobile ? '8px 12px' : '9px 14px',
-          minHeight: 40,
-          borderRadius: 6,
-          border: '1px solid #2a3329',
-          background: '#2a3329',
-          color: '#fff',
-          fontWeight: 700,
-          fontSize: isMobile ? 12.5 : 13,
-          cursor: 'pointer',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        <ArrowLeft size={16} />
-        Indietro
-      </button>
-
-      {tabs.length > 1 && (
-        <div
-          role="tablist"
-          aria-label="Sezioni principali"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 6,
-            flex: 1,
-          }}
-        >
-          {tabs.map(t => {
-            const active = t.id === activeId;
-            const Icon = t.Icon;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                data-testid={`${testIdPrefix}-${t.id}`}
-                onClick={() => onSelect(t)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  flex: '0 0 auto',
-                  minHeight: 40,
-                  padding: '8px 12px',
-                  borderRadius: 6,
-                  border: `1px solid ${active ? '#2a3329' : '#cbd5e1'}`,
-                  background: active ? '#2a3329' : '#fff',
-                  color: active ? '#fff' : '#2a3329',
-                  fontWeight: active ? 700 : 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {Icon ? <Icon size={15} /> : null}
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {tabs.map(t => {
+        const active = t.id === activeId;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            data-testid={`${testIdPrefix}-${t.id}`}
+            onClick={() => onSelect(t)}
+            style={{
+              flex: '0 0 auto',
+              minHeight: 44,
+              padding: '10px 12px',
+              marginBottom: -1,
+              background: 'transparent',
+              border: 'none',
+              borderBottom: `2px solid ${active ? COLORS.primary : 'transparent'}`,
+              color: active ? COLORS.text : COLORS.textMuted,
+              fontSize: 13.5,
+              fontWeight: active ? 700 : 500,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {t.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { Badge, Button, Card, StatCard } from '../components/ds';
+import { PageHeader } from '../components/ds/PageHeader';
 
 const AREAS = [
   ['tutti', 'Tutti'],
@@ -122,6 +123,7 @@ export default function AttiAmministrativi() {
 
   return (
     <div>
+      <PageHeader title="Atti amministrativi" style={{ marginBottom: 14 }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 16 }}>
         <StatCard label="Atti in archivio" value={overview.total ?? payload.total ?? 0} subtext="Apri tutti" accent="primary" onClick={() => openSection('tutti')} />
         <StatCard label="TARI" value={overviewCounts.tributi_locali || 0} subtext="Apri sezione" accent="warning" onClick={() => openSection('tributi_locali')} />
@@ -153,10 +155,10 @@ export default function AttiAmministrativi() {
       <div ref={resultsRef} />
       <Card bodyStyle={{ padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>{reviewOnly ? 'Da verificare' : selectedAreaLabel} · {selectedYear || 'tutti gli anni'} · {payload.total || 0} risultati</h3>
-        <p style={{ color: '#475569' }}>
+        <p style={{ color: '#5f5c55' }}>
           Gli avvisi indicano un'obbligazione; PEC e moduli provano la trasmissione. Nessuno di questi documenti prova da solo il pagamento o chiude automaticamente un rapporto di lavoro.
         </p>
-        {area === 'famiglia' && <p style={{ padding: 12, borderRadius: 8, background: '#eef3ef', color: '#3f5a4e' }}>
+        {area === 'famiglia' && <p style={{ padding: 12, borderRadius: 8, background: '#eef3ef', color: '#4c4a44' }}>
           Archivio personale separato: questi documenti non entrano in bilanci, costi aziendali, Prima Nota o riconciliazioni.
         </p>}
         {loading && <p>Caricamento…</p>}
@@ -164,14 +166,14 @@ export default function AttiAmministrativi() {
         {!loading && payload.items.length === 0 && !hasActiveFilters && <p>Nessun atto amministrativo disponibile nell'archivio.</p>}
         {payload.items.map(item => {
           const metadata = item.parsed_metadata || {};
-          return <article key={item.id} style={{ padding: '14px 0', borderTop: '1px solid #e2e8f0' }}>
+          return <article key={item.id} style={{ padding: '14px 0', borderTop: '1px solid #e6e3d9' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div>
                 <strong>{identityFor(item)}</strong>{' '}
                 <Badge variant={metadata.requires_review ? 'warning' : 'info'}>{item.category_label || item.category}</Badge>
                 {metadata.requires_review && <Badge variant="warning" style={{ marginLeft: 6 }}>Da verificare</Badge>}
                 {item.accounting_excluded && <Badge variant="info" style={{ marginLeft: 6 }}>Escluso dalla contabilità aziendale</Badge>}
-                <div style={{ color: '#475569', marginTop: 5 }}>{item.filename}</div>
+                <div style={{ color: '#5f5c55', marginTop: 5 }}>{item.filename}</div>
               </div>
               <Button size="sm" variant="secondary" onClick={() => openDocument(item)}>{item.source_kind === 'drive_index' ? 'Apri su Drive' : 'Apri PDF'}</Button>
             </div>
@@ -181,17 +183,17 @@ export default function AttiAmministrativi() {
               <span><small>Provenienza</small><br /><strong>{item.source_context?.archive_path || item.source_label}</strong></span>
               <span><small>Stato documentale</small><br /><strong>{item.status || 'Da verificare'}</strong></span>
             </div>
-            {item.administrative_area === 'personale' && <div style={{ marginTop: 8, color: '#334155' }}>
+            {item.administrative_area === 'personale' && <div style={{ marginTop: 8, color: '#4c4a44' }}>
               CF {metadata.lavoratore_cf || 'non estratto'} · decorrenza {metadata.data_decorrenza_recesso || 'non estratta'} · modulo {metadata.codice_modulo || 'non estratto'}
             </div>}
-            {item.administrative_area === 'tributi_locali' && <div style={{ marginTop: 8, color: '#334155' }}>
+            {item.administrative_area === 'tributi_locali' && <div style={{ marginTop: 8, color: '#4c4a44' }}>
               Anno tributo {metadata.anno_tributo || 'da verificare'} · fase {metadata.fase || 'da verificare'} · contribuente {metadata.codice_contribuente || 'non estratto'}
             </div>}
-            {item.administrative_area === 'famiglia' && <div style={{ marginTop: 8, color: '#334155' }}>
+            {item.administrative_area === 'famiglia' && <div style={{ marginTop: 8, color: '#4c4a44' }}>
               Contribuente {metadata.contribuente || 'da verificare'} · codice {metadata.codice_contribuente || 'non estratto'} · anno tributo {metadata.anno_tributo || 'da verificare'}
               {metadata.immobile && <> · immobile {metadata.immobile}</>}
             </div>}
-            {item.administrative_area === 'riscossione' && <div style={{ marginTop: 8, color: '#334155' }}>
+            {item.administrative_area === 'riscossione' && <div style={{ marginTop: 8, color: '#4c4a44' }}>
               {metadata.societa_denominazione && <>Società <strong>{metadata.societa_denominazione}</strong> · </>}
               CF società {metadata.societa_cf || metadata.contribuente_cf || 'da verificare'}
               {metadata.soggetto_richiedente_cf && <> · richiedente {metadata.soggetto_richiedente_cf}</>}

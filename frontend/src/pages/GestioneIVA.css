@@ -4,7 +4,7 @@
   margin-bottom: 10px;
   padding: 5px;
   overflow-x: auto;
-  border: 1px solid #dfe5ec;
+  border: 1px solid #e6e3d9;
   border-radius: 12px;
   background: #fff;
   scrollbar-width: thin;
@@ -18,7 +18,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #475467;
+  color: #5f5c55;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -31,11 +31,11 @@
 
 .iva-period-tabs button:hover {
   background: #eef3ef;
-  color: #2a3329;
+  color: #141413;
 }
 
 .iva-period-tabs button.is-active {
-  background: #2a3329;
+  background: #c15f3c;
   color: #fff;
   box-shadow: 0 2px 6px rgb(42, 51, 41 / 18%);
 }
@@ -47,7 +47,7 @@
   gap: 12px;
   margin-bottom: 10px;
   padding: 10px 12px;
-  border: 1px solid #dfe5ec;
+  border: 1px solid #e6e3d9;
   border-radius: 12px;
   background: #fff;
 }
@@ -59,7 +59,7 @@
 }
 
 .iva-command-bar > div:first-child span {
-  color: #667085;
+  color: #7a776e;
   font-size: 12px;
 }
 
@@ -83,14 +83,14 @@
   flex-direction: column;
   gap: 3px;
   padding: 10px 11px;
-  border: 1px solid #dfe5ec;
+  border: 1px solid #e6e3d9;
   border-radius: 10px;
   background: #fff;
 }
 
 .iva-kpi-grid span {
   overflow: hidden;
-  color: #667085;
+  color: #7a776e;
   font-size: 11px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -98,7 +98,7 @@
 }
 
 .iva-kpi-grid strong {
-  color: #2a3329;
+  color: #141413;
   font-size: 17px;
   white-space: nowrap;
 }
@@ -106,7 +106,7 @@
 .iva-detail-section {
   margin-top: 10px;
   overflow: hidden;
-  border: 1px solid #dfe5ec;
+  border: 1px solid #e6e3d9;
   border-radius: 12px;
   background: #fff;
 }
@@ -117,7 +117,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border-bottom: 1px solid #dfe5ec;
+  border-bottom: 1px solid #e6e3d9;
 }
 
 .iva-section-heading h3,
@@ -126,13 +126,13 @@
 }
 
 .iva-section-heading h3 {
-  color: #2a3329;
+  color: #141413;
   font-size: 15px;
 }
 
 .iva-section-heading p {
   margin-top: 2px;
-  color: #667085;
+  color: #7a776e;
   font-size: 12px;
 }
 
@@ -181,7 +181,7 @@
     display: block;
     margin-bottom: 7px;
     padding: 7px 10px;
-    border: 1px solid #dfe5ec;
+    border: 1px solid #e6e3d9;
     border-radius: 10px;
     background: #fff;
     box-shadow: 0 2px 8px rgb(42, 51, 41 / 7%);
@@ -201,7 +201,7 @@
   .iva-responsive-table td::before {
     content: attr(data-label);
     flex: 0 0 42%;
-    color: #667085;
+    color: #7a776e;
     font-size: 12px;
     font-weight: 650;
     text-align: left;

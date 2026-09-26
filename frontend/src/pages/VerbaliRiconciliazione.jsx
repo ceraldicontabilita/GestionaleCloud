@@ -428,7 +428,7 @@ export default function VerbaliRiconciliazione() {
                   marginBottom: 20,
                 }}
               >
-                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 'bold', color: COLORS.primary }}>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 'bold', color: COLORS.text }}>
                   🔗 Associa Targa a Driver
                 </h2>
                 <button
@@ -701,7 +701,7 @@ export default function VerbaliRiconciliazione() {
         >
           {/* Lista Verbali */}
           <Card>
-            <h2 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 'bold', color: COLORS.primary }}>
+            <h2 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 'bold', color: COLORS.text }}>
               📋 Verbali ({verbali.length})
             </h2>
 
@@ -827,7 +827,7 @@ export default function VerbaliRiconciliazione() {
                   marginBottom: 16,
                 }}
               >
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 'bold', color: COLORS.primary }}>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 'bold', color: COLORS.text }}>
                   📌 Dettaglio Verbale
                 </h2>
                 <button

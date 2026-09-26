@@ -85,9 +85,9 @@ export function ListaAdattiva({
   const stileBottone = attivo => ({
     minWidth: 34,
     padding: '7px 10px',
-    background: attivo ? '#2a3329' : 'white',
-    color: attivo ? 'white' : '#2a3329',
-    border: attivo ? '1px solid #2a3329' : `1px solid ${COLORS.border}`,
+    background: attivo ? '#c15f3c' : 'white',
+    color: attivo ? 'white' : '#c15f3c',
+    border: attivo ? '1px solid #c15f3c' : `1px solid ${COLORS.border}`,
     borderRadius: 6,
     fontWeight: 700,
     fontSize: 12.5,

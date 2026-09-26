@@ -40,8 +40,8 @@ describe('formatEuro', () => {
     expect(formatEuro(1234.567)).toBe('€ 1.234,57');
   });
 
-  it('formatta importi negativi (es. storni/note di credito)', () => {
-    expect(formatEuro(-500)).toBe('€ -500,00');
+  it('scrive i negativi fra parentesi (storni, note di credito)', () => {
+    expect(formatEuro(-500)).toBe('(€ 500,00)');
   });
 
   it('accetta stringhe numeriche (dati che arrivano spesso come stringa dal backend)', () => {
@@ -81,16 +81,16 @@ describe('formatEuroStr', () => {
 });
 
 describe('formatDateIT', () => {
-  it('converte una data ISO (aaaa-mm-gg) in gg-mm-aaaa', () => {
-    expect(formatDateIT('2026-07-19')).toBe('19-07-2026');
+  it('converte una data ISO (aaaa-mm-gg) in gg/mm/aaaa', () => {
+    expect(formatDateIT('2026-07-19')).toBe('19/07/2026');
   });
 
   it('gestisce un datetime ISO completo (con T) prendendo solo la data', () => {
-    expect(formatDateIT('2026-07-19T14:30:00Z')).toBe('19-07-2026');
+    expect(formatDateIT('2026-07-19T14:30:00Z')).toBe('19/07/2026');
   });
 
-  it('converte un formato legacy gg/mm/aaaa in gg-mm-aaaa', () => {
-    expect(formatDateIT('19/07/2026')).toBe('19-07-2026');
+  it('lascia com\'è un formato legacy gg/mm/aaaa', () => {
+    expect(formatDateIT('19/07/2026')).toBe('19/07/2026');
   });
 
   it('ritorna "-" per input assente', () => {
@@ -125,12 +125,12 @@ describe('parseDateIT', () => {
 });
 
 describe('formatDateTimeIT', () => {
-  it('formatta data e ora nel formato gg-mm-aaaa hh:mm', () => {
+  it('formatta data e ora nel formato gg/mm/aaaa hh:mm', () => {
     // Costruita in UTC così il test è deterministico a prescindere dal
     // fuso orario della macchina che esegue il test.
     const iso = new Date(Date.UTC(2026, 6, 19, 14, 30)).toISOString();
     const risultato = formatDateTimeIT(iso);
-    expect(risultato).toMatch(/^19-07-2026 \d{2}:\d{2}$/);
+    expect(risultato).toMatch(/^19\/07\/2026 \d{2}:\d{2}$/);
   });
 
   it('ritorna "-" per input assente', () => {
@@ -143,8 +143,8 @@ describe('formatDateTimeIT', () => {
 });
 
 describe('formatDateShort', () => {
-  it('formatta come gg-mm da una data ISO', () => {
-    expect(formatDateShort('2026-07-19')).toBe('19-07');
+  it('formatta come gg/mm da una data ISO', () => {
+    expect(formatDateShort('2026-07-19')).toBe('19/07');
   });
 
   it('ritorna "-" per input assente', () => {

@@ -114,7 +114,7 @@ export default function CoerenzaPOSCorrispettivi() {
       case 'differenza':
         return <AlertTriangle size={16} color={COLORS.warning} />;
       case 'extra':
-        return <FileWarning size={16} color={COLORS.purple} />;
+        return <FileWarning size={16} color={COLORS.bruno} />;
       default:
         return null;
     }
@@ -299,7 +299,7 @@ export default function CoerenzaPOSCorrispettivi() {
                     <Td align="right" style={{ color: COLORS.info }}>
                       {formatEuro(g.elettronico_xml)}
                     </Td>
-                    <Td align="right" style={{ color: COLORS.purple }}>
+                    <Td align="right" style={{ color: COLORS.bruno }}>
                       {formatEuro(g.pos_accreditato)}
                     </Td>
                     <Td
@@ -363,10 +363,10 @@ export default function CoerenzaPOSCorrispettivi() {
                     {formatEuro(m.elettronico_xml)}
                   </Td>
                   <Td align="right">{formatEuro(m.pos_terminale)}</Td>
-                  <Td align="right" style={{ color: COLORS.purple }}>
+                  <Td align="right" style={{ color: COLORS.bruno }}>
                     {formatEuroConSegno(m.differenza_xml_pos)}
                   </Td>
-                  <Td align="right" style={{ color: COLORS.purple }}>
+                  <Td align="right" style={{ color: COLORS.bruno }}>
                     {formatEuro(m.pos_accreditato)}
                   </Td>
                   <Td
@@ -397,7 +397,7 @@ export default function CoerenzaPOSCorrispettivi() {
                 <Td align="right" style={{ fontWeight: 700 }}>
                   {formatEuroConSegno(riepilogoMensile.totali.differenza_xml_pos)}
                 </Td>
-                <Td align="right" style={{ color: COLORS.purple, fontWeight: 700 }}>
+                <Td align="right" style={{ color: COLORS.bruno, fontWeight: 700 }}>
                   {formatEuro(riepilogoMensile.totali.pos_accreditato)}
                 </Td>
                 <Td
@@ -474,7 +474,7 @@ export default function CoerenzaPOSCorrispettivi() {
                     <div style={{ fontSize: 12, marginTop: 4 }}>
                       <span style={{ color: COLORS.info }}>XML: {formatEuro(a.elettronico_xml)}</span>
                       <span style={{ margin: '0 8px', color: COLORS.textSubtle }}>|</span>
-                      <span style={{ color: COLORS.purple }}>POS: {formatEuro(a.pos_accreditato)}</span>
+                      <span style={{ color: COLORS.bruno }}>POS: {formatEuro(a.pos_accreditato)}</span>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -994,7 +994,7 @@ function RigaGiornaliera({ g, even, onReload }) {
   const payoutSumUp = faseSumUp.payout;
   const diffSerColor = g.stato_serale === 'ok' ? COLORS.success :
                        g.stato_serale === 'no_dati' ? COLORS.textSubtle :
-                       g.stato_serale === 'in_attesa_xml' ? COLORS.purple : COLORS.danger;
+                       g.stato_serale === 'in_attesa_xml' ? COLORS.bruno : COLORS.danger;
   // Regola colori richiesta: differenza POSITIVA (banca ha accreditato di
   // più) → VERDE; NEGATIVA (accredito minore o mancante) → ROSSO.
   const diffAccrColor = g.stato_accredito === 'ok' ? COLORS.success :
@@ -1049,7 +1049,7 @@ function RigaGiornaliera({ g, even, onReload }) {
         }}
       >
         {g.stato_serale === 'no_dati' ? '—'
-          : g.stato_serale === 'in_attesa_xml' ? <em style={{ color: COLORS.purple, fontSize: 11 }}>attendo XML</em>
+          : g.stato_serale === 'in_attesa_xml' ? <em style={{ color: COLORS.bruno, fontSize: 11 }}>attendo XML</em>
           : formatEuroConSegno(g.diff_serale)}
       </Td>
       <Td align="right">
@@ -1330,7 +1330,7 @@ function ModalChiusuraSerale({ onClose, onSaved }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.primary }}>
+          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.text }}>
             Chiusura serale
           </h3>
           <Button
@@ -1519,7 +1519,7 @@ export function ModalImportTotaliPos({ onClose, onSaved }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.primary }}>Importa totali POS giornalieri</h3>
+          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.text }}>Importa totali POS giornalieri</h3>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Chiudi importazione POS">
             <X size={18} color={COLORS.textMuted} />
           </Button>

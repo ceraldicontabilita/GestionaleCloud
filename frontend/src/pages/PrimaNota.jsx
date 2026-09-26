@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import api, { messaggioErrore } from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
+import { COLORS, formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import ModalFattura from '../components/ModalFattura';
 import InAttesaDocumento from '../components/InAttesaDocumento';
@@ -23,6 +23,7 @@ import {
   FileText,
   Landmark,
   Pencil,
+  Plus,
   ReceiptText,
 } from 'lucide-react';
 
@@ -46,11 +47,17 @@ import {
  * Entrate, Uscite, Saldo) e il registro.
  */
 
-const BLU = '#2a3329';
-const VERDE = '#16a34a';
-const ROSSO = '#dc2626';
+// Terracotta delle azioni e dello stato attivo, verde e rosso dei giudizi:
+// gli stessi dei token (lib/utils.js), mai un colore scritto a mano.
+const TERRACOTTA = COLORS.primary;
+const VERDE = COLORS.success;
+const ROSSO = COLORS.danger;
 const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
-const RIGHE_PER_PAGINA_DEFAULT = 200;
+const MESI_INTERI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio',
+  'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+// Come nell'artefatto: 200 righe, poi «Mostra altre 200». Il saldo progressivo
+// si calcola comunque su tutto l'anno, non sulle righe mostrate.
+const RIGHE_PER_BLOCCO = 200;
 const CATEGORIA_STORICA = '__movimenti_storici__';
 
 const CATEGORIE = {
@@ -84,17 +91,20 @@ function parseImportoIT(input) {
 
 const testoRicerca = valore => String(valore ?? '').trim().toLocaleLowerCase('it-IT');
 
+/* La scheda delle fatture ancora da sistemare. Prima portava due numeri
+   diversi in un bottone solo («Da decidere (77) · Attesa banca (151)»): i
+   due conteggi stanno nelle pastiglie della testata quando la scheda e'
+   aperta, qui resta il nome della cosa e, se c'e', quante sono in tutto. */
 export function etichettaTabProvvisori(
   provvisori = [],
   attesaBanca = [],
   conteggi = undefined,
 ) {
-  if (conteggi && conteggi.caricato !== true) {
-    return '\u26a0\ufe0f Da decidere (…) · \ud83c\udfe6 Attesa banca (…)';
-  }
+  if (conteggi && conteggi.caricato !== true) return 'Fatture da sistemare';
   const daDecidere = conteggi?.totale_da_decidere ?? provvisori.length;
   const inAttesa = conteggi?.totale_in_attesa_banca ?? attesaBanca.length;
-  return `\u26a0\ufe0f Da decidere (${daDecidere}) · \ud83c\udfe6 Attesa banca (${inAttesa})`;
+  const totale = daDecidere + inAttesa;
+  return totale > 0 ? `Fatture da sistemare (${totale})` : 'Fatture da sistemare';
 }
 
 export function puoAssociareAssegno(pagamento = {}) {
@@ -201,72 +211,52 @@ export function filtraFattureProvvisorie(fatture = [], filtri = {}) {
   });
 }
 
+/* I filtri della fattura stanno nella stessa riga degli altri filtri: niente
+   etichette maiuscole impilate sopra i campi, il nome e' nel segnaposto
+   (e in aria-label per chi usa un lettore di schermo). Il contenitore e'
+   `display: contents`, quindi i campi si dispongono nella riga del padre. */
 function FiltriFattura({
   numeroFattura, numeroDdt = '', data, fornitore,
   onNumeroFattura, onNumeroDdt, onData, onFornitore,
 }) {
-  const stileCampo = {
-    display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0,
-  };
-  const stileLabel = {
-    color: '#475569', fontSize: 11, fontWeight: 800, textTransform: 'uppercase',
-  };
   const stileInput = {
-    width: '100%', minWidth: 0, boxSizing: 'border-box', minHeight: 42,
-    padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 8,
-    background: 'white', color: '#0f172a', fontSize: 13,
+    flex: '1 1 150px', minWidth: 0, boxSizing: 'border-box', minHeight: 40,
+    padding: '8px 10px', border: `1px solid ${COLORS.borderDark}`, borderRadius: 8,
+    background: COLORS.card, color: COLORS.text, fontSize: 13,
   };
   return (
-    <div
-      data-testid="filtri-fattura-prima-nota"
-      style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-        gap: 10, padding: 12, margin: '12px 0 8px', background: '#f8fafc',
-        border: '1px solid #dbe4ee', borderRadius: 12,
-      }}
-    >
-      <label style={stileCampo}>
-        <span style={stileLabel}>Numero fattura</span>
-        <input
-          aria-label="Filtra per numero fattura"
-          placeholder="Es. V1-8016"
-          value={numeroFattura}
-          onChange={e => onNumeroFattura(e.target.value)}
-          style={stileInput}
-        />
-      </label>
+    <div data-testid="filtri-fattura-prima-nota" style={{ display: 'contents' }}>
+      <input
+        aria-label="Filtra per numero fattura"
+        placeholder="Numero fattura"
+        value={numeroFattura}
+        onChange={e => onNumeroFattura(e.target.value)}
+        style={stileInput}
+      />
       {onNumeroDdt && (
-        <label style={stileCampo}>
-          <span style={stileLabel}>Numero DDT</span>
-          <input
-            aria-label="Filtra per numero DDT"
-            placeholder="Es. DDT862"
-            value={numeroDdt}
-            onChange={e => onNumeroDdt(e.target.value)}
-            style={stileInput}
-          />
-        </label>
+        <input
+          aria-label="Filtra per numero DDT"
+          placeholder="Numero DDT"
+          value={numeroDdt}
+          onChange={e => onNumeroDdt(e.target.value)}
+          style={stileInput}
+        />
       )}
-      <label style={stileCampo}>
-        <span style={stileLabel}>Data fattura</span>
-        <input
-          type="date"
-          aria-label="Filtra per data fattura"
-          value={data}
-          onChange={e => onData(e.target.value)}
-          style={stileInput}
-        />
-      </label>
-      <label style={stileCampo}>
-        <span style={stileLabel}>Nome fornitore</span>
-        <input
-          aria-label="Filtra per nome fornitore"
-          placeholder="Es. San Carlo"
-          value={fornitore}
-          onChange={e => onFornitore(e.target.value)}
-          style={stileInput}
-        />
-      </label>
+      <input
+        type="date"
+        aria-label="Filtra per data fattura"
+        title="Data della fattura"
+        value={data}
+        onChange={e => onData(e.target.value)}
+        style={{ ...stileInput, flex: '0 1 150px' }}
+      />
+      <input
+        aria-label="Filtra per nome fornitore"
+        placeholder="Fornitore"
+        value={fornitore}
+        onChange={e => onFornitore(e.target.value)}
+        style={stileInput}
+      />
     </div>
   );
 }
@@ -278,14 +268,14 @@ export function BadgeCategoria({ categoria }) {
   const testo = etichette[categoria] || categoria || '—';
   const lower = testo.toLowerCase();
   let Icona = FileText;
-  let colore = '#475569';
+  let colore = '#5f5c55';
   if (lower.includes('pos')) { Icona = CreditCard; colore = '#5b7a6b'; }
   else if (lower.includes('corrispettiv')) { Icona = ReceiptText; colore = '#16a34a'; }
   else if (lower.includes('fattur')) { Icona = FileText; colore = '#5b7a6b'; }
-  else if (lower.includes('banca') || lower.includes('f24')) { Icona = Landmark; colore = '#2a3329'; }
-  else if (lower.includes('cassa') || lower.includes('contant')) { Icona = Banknote; colore = '#15803d'; }
+  else if (lower.includes('banca') || lower.includes('f24')) { Icona = Landmark; colore = '#c15f3c'; }
+  else if (lower.includes('cassa') || lower.includes('contant')) { Icona = Banknote; colore = '#2f7a4f'; }
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 30, background: '#f1f5f9', borderRadius: 7, padding: '4px 8px', fontSize: 11, fontWeight: 650, color: colore, whiteSpace: 'nowrap' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 30, background: '#f2f0e9', borderRadius: 7, padding: '4px 8px', fontSize: 11, fontWeight: 650, color: colore, whiteSpace: 'nowrap' }}>
       <Icona size={15} aria-hidden="true" /> {testo}
     </span>
   );
@@ -296,11 +286,11 @@ function Card({ titolo, valore, colore }) {
   return (
     <div
       style={{
-        background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
+        background: 'white', borderRadius: 12, border: '1px solid #e6e3d9',
         borderLeft: `4px solid ${colore}`, padding: '10px 14px', minWidth: 0,
       }}
     >
-      <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: '#7a776e', textTransform: 'uppercase' }}>
         {titolo}
       </span>
       <div
@@ -325,11 +315,11 @@ export function CartaSumUp({ dati, anno }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
         <Card titolo={`Venduto con SumUp ${anno}`} valore={dati?.totale_netto_vendite || 0} colore={VERDE} />
         <Card titolo="Credito verso SumUp" valore={dati?.credito_sumup_aperto || 0} colore="#d97706" />
-        <Card titolo={`Ricevuto su Mastercard ${anno}`} valore={dati?.totale_ricevuto || 0} colore={BLU} />
+        <Card titolo={`Ricevuto su Mastercard ${anno}`} valore={dati?.totale_ricevuto || 0} colore={TERRACOTTA} />
         <Card titolo="Saldo Mastercard SumUp" valore={dati?.saldo_mastercard || 0} colore="#8a6f47" />
       </div>
 
-      <div style={{ background: '#eef3ef', border: '1px solid #c2ddd0', borderRadius: 10, padding: '10px 12px', color: '#3f5a4e', fontSize: 13 }}>
+      <div style={{ background: '#eef3ef', border: '1px solid #c2ddd0', borderRadius: 10, padding: '10px 12px', color: '#4c4a44', fontSize: 13 }}>
         Vendita, credito verso SumUp e accredito Mastercard sono tre passaggi distinti. Una vendita di oggi compare subito qui; il payout compare soltanto quando SumUp lo accredita davvero.
       </div>
 
@@ -339,19 +329,19 @@ export function CartaSumUp({ dati, anno }) {
         </div>
       )}
 
-      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>
-          <h2 style={{ margin: 0, fontSize: 16, color: BLU }}>Vendite SumUp acquisite</h2>
-          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>
+      <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e6e3d9' }}>
+          <h2 style={{ margin: 0, fontSize: 16, color: TERRACOTTA }}>Vendite SumUp acquisite</h2>
+          <p style={{ margin: '4px 0 0', color: '#7a776e', fontSize: 13 }}>
             Transazioni archiviate dall'ultima sincronizzazione SumUp; non sono ancora accrediti bancari.
           </p>
         </div>
         {vendite.length === 0 ? (
-          <div style={{ padding: 22, textAlign: 'center', color: '#64748b' }}>Nessuna vendita SumUp acquisita nel {anno}.</div>
+          <div style={{ padding: 22, textAlign: 'center', color: '#7a776e' }}>Nessuna vendita SumUp acquisita nel {anno}.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
-              <thead><tr style={{ background: '#f8fafc', color: '#475569', fontSize: 12 }}>
+              <thead><tr style={{ background: '#f6f4ee', color: '#5f5c55', fontSize: 12 }}>
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'left' }}>Data vendita</th>
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'center' }}>Transazioni</th>
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Vendite</th>
@@ -359,7 +349,7 @@ export function CartaSumUp({ dati, anno }) {
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Netto</th>
               </tr></thead>
               <tbody>{vendite.map(giorno => (
-                <tr key={giorno.data} style={{ borderTop: '1px solid #eef2f7', color: '#334155', fontSize: 13 }}>
+                <tr key={giorno.data} style={{ borderTop: '1px solid #f6f4ee', color: '#4c4a44', fontSize: 13 }}>
                   <td style={{ padding: '10px 14px' }}>{formatDateIT(giorno.data)}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'center' }}>{giorno.transazioni}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>{eur(giorno.vendite)}</td>
@@ -372,24 +362,24 @@ export function CartaSumUp({ dati, anno }) {
         )}
       </div>
 
-      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>
-          <h2 id="titolo-conto-sumup" style={{ margin: 0, fontSize: 16, color: BLU }}>
+      <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e6e3d9' }}>
+          <h2 id="titolo-conto-sumup" style={{ margin: 0, fontSize: 16, color: TERRACOTTA }}>
             Accrediti giornalieri Mastercard SumUp
           </h2>
-          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>
+          <p style={{ margin: '4px 0 0', color: '#7a776e', fontSize: 13 }}>
             Solo payout effettivamente ricevuti. Vendite, crediti verso SumUp e commissioni restano separati.
           </p>
         </div>
         {giorni.length === 0 ? (
-          <div style={{ padding: 22, textAlign: 'center', color: '#64748b' }}>
+          <div style={{ padding: 22, textAlign: 'center', color: '#7a776e' }}>
             Nessun payout SumUp ricevuto nel {anno}.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
-                <tr style={{ background: '#f8fafc', color: '#475569', fontSize: 12 }}>
+                <tr style={{ background: '#f6f4ee', color: '#5f5c55', fontSize: 12 }}>
                   <th scope="col" style={{ padding: '9px 14px', textAlign: 'left' }}>Data accredito</th>
                   <th scope="col" style={{ padding: '9px 14px', textAlign: 'left' }}>Riferimenti payout</th>
                   <th scope="col" style={{ padding: '9px 14px', textAlign: 'center' }}>Numero</th>
@@ -398,7 +388,7 @@ export function CartaSumUp({ dati, anno }) {
               </thead>
               <tbody>
                 {giorni.map(giorno => (
-                  <tr key={giorno.data} style={{ borderTop: '1px solid #eef2f7', color: '#334155', fontSize: 13 }}>
+                  <tr key={giorno.data} style={{ borderTop: '1px solid #f6f4ee', color: '#4c4a44', fontSize: 13 }}>
                     <td style={{ padding: '10px 14px' }}>{formatDateIT(giorno.data)}</td>
                     <td style={{ padding: '10px 14px' }}>{(giorno.payout_ids || []).join(', ') || '—'}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>{giorno.numero_payout}</td>
@@ -449,17 +439,17 @@ export function CartaNexi({ anno }) {
     <div
       data-testid="carta-nexi-widget"
       style={{
-        background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
+        background: 'white', borderRadius: 12, border: '1px solid #e6e3d9',
         borderLeft: `4px solid #d97706`, padding: '10px 14px', marginTop: 10,
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#7a776e', textTransform: 'uppercase', marginBottom: 6 }}>
         💳 Carta Nexi — addebiti da verificare
       </div>
       <div style={{ display: 'grid', gap: 6 }}>
         {daCompletare.map((d, idx) => (
           <div key={`${d.periodo}-${d.data_addebito}-${d.importo}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap' }}>
-            <span style={{ color: '#334155' }}>
+            <span style={{ color: '#4c4a44' }}>
               {d.stato === 'estratto_mancante' ? '📎 Manca lo statement' : '⚠️ Non quadra'} — periodo {d.periodo}
               {' '}(addebito {formatDateIT(d.data_addebito)})
             </span>
@@ -531,12 +521,12 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
     }
   };
 
-  const campo = { width: '100%', padding: '9px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' };
+  const campo = { width: '100%', padding: '9px 10px', border: '1px solid #d0ccbe', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' };
   return (
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1000,
+        position: 'fixed', inset: 0, background: 'rgba(20, 20, 19,0.55)', zIndex: 1000,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
       }}
     >
@@ -544,7 +534,7 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
         onClick={e => e.stopPropagation()}
         style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 420 }}
       >
-        <h3 style={{ margin: '0 0 12px', color: BLU, fontSize: 16 }}>
+        <h3 style={{ margin: '0 0 12px', color: TERRACOTTA, fontSize: 16 }}>
           {movimento ? '📝 Modifica movimento' : '➕ Nuovo movimento'} — {tipo === 'cassa' ? 'Cassa' : 'Banca'}
         </h3>
         <div style={{ display: 'grid', gap: 10 }}>
@@ -577,12 +567,12 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
           )}
           {errore && <div style={{ color: ROSSO, fontSize: 13 }}>{errore}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={onClose} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>
+            <button onClick={onClose} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #d0ccbe', background: 'white', cursor: 'pointer' }}>
               Annulla
             </button>
             <button
               onClick={salva} disabled={saving}
-              style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: BLU, color: 'white', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
+              style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: TERRACOTTA, color: 'white', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
             >
               {saving ? '⏳…' : '💾 Salva'}
             </button>
@@ -626,10 +616,9 @@ export function useStatoFonti() {
 }
 
 /* ------------------------------- registro ------------------------------- */
-function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRiporto }) {
+function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
-  const [pagina, setPagina] = useState(1);
-  const [righePerPagina, setRighePerPagina] = useState(RIGHE_PER_PAGINA_DEFAULT);
+  const [mostrate, setMostrate] = useState(RIGHE_PER_BLOCCO);
   const { fontiFerme, coperturaCategoria, errore: statoFontiErrore } = useStatoFonti();
   const coperturaSopraSoglia = !!coperturaCategoria?.sopra_soglia;
   const [cerca, setCerca] = useState(selectedId);
@@ -651,7 +640,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
   const movimenti = dati.movimenti || [];
   const riporto = dati.saldo_precedente || 0;
 
-  useEffect(() => { setPagina(1); }, [
+  useEffect(() => { setMostrate(RIGHE_PER_BLOCCO); }, [
     mese, cerca, fNumeroFattura, fDataFattura, fFornitore, fCategoria, fTipo,
   ]);
 
@@ -717,15 +706,11 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
     fNumeroFattura, fDataFattura, fFornitore,
   ]);
 
-  const limitePagina = righePerPagina === 'tutte'
-    ? Math.max(1, visibili.length)
-    : Number(righePerPagina);
-  const totPagine = Math.max(1, Math.ceil(visibili.length / limitePagina));
-  const paginaCorrente = Math.min(pagina, totPagine);
-  const primaRiga = visibili.length ? (paginaCorrente - 1) * limitePagina + 1 : 0;
-  const ultimaRiga = Math.min(paginaCorrente * limitePagina, visibili.length);
-  const righe = visibili.slice(primaRiga ? primaRiga - 1 : 0, ultimaRiga);
-  const ultimaPagina = paginaCorrente === totPagine;
+  const righe = visibili.slice(0, mostrate);
+  const rimanenti = Math.max(0, visibili.length - righe.length);
+  // La riga del riporto sta in fondo al registro: si vede quando si e' arrivati
+  // all'ultima riga, come prima sull'ultima pagina.
+  const ultimaPagina = rimanenti === 0;
 
   const categorieUsate = useMemo(() => {
     const categorie = [...new Set(movimenti.map(m => m.categoria).filter(Boolean))];
@@ -762,7 +747,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
       return (
         <span
           title={mov.allocation_conflict_reason || 'Allocazione pagamenti eccedente o incoerente'}
-          style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+          style={{ background: '#f8e5e2', color: '#b0362b', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
         >
           ⚠ Conflitto da verificare
         </span>
@@ -783,7 +768,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
       return (
         <span
           title={title}
-          style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+          style={{ background: '#e2f0e7', color: '#2f7a4f', border: '1px solid #86efac', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
         >
           ✅ Riconciliato{importoInfo}
         </span>
@@ -804,7 +789,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
           : isVersamento
           ? "Versamento registrato in cassa: in attesa del movimento reale nell'estratto conto"
           : "Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"}
-        style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+        style={{ background: '#f7eeda', color: '#8a6410', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
       >
         {testoPos || '⚠️ Da verificare'}
       </span>
@@ -871,7 +856,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
       {mov.non_modificabile ? (
         <span
           title="Dato aggiornato dalla prova SumUp archiviata; il movimento sorgente non viene riscritto"
-          style={{ color: '#3f5a4e', fontSize: 10.5, fontWeight: 800, whiteSpace: 'normal' }}
+          style={{ color: '#4c4a44', fontSize: 10.5, fontWeight: 800, whiteSpace: 'normal' }}
         >
           Dato live
         </span>
@@ -880,7 +865,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
           onClick={() => setEditing(mov)}
           title="Modifica"
           aria-label="Modifica movimento"
-          style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: 0, cursor: 'pointer' }}
+          style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f2f0e9', color: '#4c4a44', border: '1px solid #d0ccbe', borderRadius: 8, padding: 0, cursor: 'pointer' }}
         >
           <Pencil size={18} />
         </button>
@@ -898,10 +883,10 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
       }}
     >
       <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>
-        🏁 Saldo iniziale al 01/01 (riporto)
+        Saldo iniziale al 01/01 (riporto)
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: riporto >= 0 ? BLU : ROSSO }}>
+        <span style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: riporto >= 0 ? TERRACOTTA : ROSSO }}>
           {eur(riporto)}
         </span>
         <button
@@ -909,7 +894,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
           data-testid={`modifica-saldo-iniziale-${tipo}`}
           title="Modifica saldo iniziale"
           aria-label="Modifica saldo iniziale"
-          style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#92400e', border: '1px solid #d97706', borderRadius: 8, padding: 0, cursor: 'pointer' }}
+          style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f7eeda', color: '#92400e', border: '1px solid #d97706', borderRadius: 8, padding: 0, cursor: 'pointer' }}
         >
           <Pencil size={18} />
         </button>
@@ -928,26 +913,44 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
     return gruppi;
   }, [righe]);
 
-  const stileInput = { padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, minWidth: 0 };
+  const stileInput = { padding: '8px 10px', border: '1px solid #d0ccbe', borderRadius: 8, fontSize: 13, minWidth: 0 };
 
   return (
     <div>
-      <FiltriFattura
-        numeroFattura={fNumeroFattura}
-        data={fDataFattura}
-        fornitore={fFornitore}
-        onNumeroFattura={setFNumeroFattura}
-        onData={setFDataFattura}
-        onFornitore={setFFornitore}
-      />
-      {/* filtri + nuovo movimento */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
+      {/* Una sola riga di filtri, come nell'artefatto: l'etichetta di ogni
+          tendina e' la sua prima voce («Tutti i mesi», «Tutte le categorie»). */}
+      <div
+        data-testid="filtri-prima-nota"
+        style={{
+          display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '12px 0',
+          padding: 10, background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12,
+        }}
+      >
+        {onMese && (
+          <select
+            aria-label="Mese"
+            value={mese === null ? '' : String(mese)}
+            onChange={e => onMese(e.target.value)}
+            style={{ ...stileInput, minHeight: 40 }}
+          >
+            <option value="">Tutti i mesi</option>
+            {MESI_INTERI.map((m, i) => <option key={m} value={String(i)}>{m}</option>)}
+          </select>
+        )}
         <input
           aria-label="Cerca in descrizione, importo o assegno"
-          placeholder="🔍 Descrizione, importo o assegno…" value={cerca} onChange={e => setCerca(e.target.value)}
-          style={{ ...stileInput, flex: '1 1 140px' }}
+          placeholder="Cerca descrizione, importo o assegno" value={cerca} onChange={e => setCerca(e.target.value)}
+          style={{ ...stileInput, flex: '2 1 200px', minHeight: 40 }}
         />
-        <select value={fCategoria} onChange={e => setFCategoria(e.target.value)} style={stileInput}>
+        <FiltriFattura
+          numeroFattura={fNumeroFattura}
+          data={fDataFattura}
+          fornitore={fFornitore}
+          onNumeroFattura={setFNumeroFattura}
+          onData={setFDataFattura}
+          onFornitore={setFFornitore}
+        />
+        <select aria-label="Categoria" value={fCategoria} onChange={e => setFCategoria(e.target.value)} style={{ ...stileInput, minHeight: 40 }}>
           <option value="">Tutte le categorie</option>
           {categorieUsate.map(c => (
             <option key={c} value={c}>
@@ -955,17 +958,17 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
             </option>
           ))}
         </select>
-        <select value={fTipo} onChange={e => setFTipo(e.target.value)} style={stileInput}>
-          <option value="">Dare + Avere</option>
+        <select aria-label="Entrate o uscite" value={fTipo} onChange={e => setFTipo(e.target.value)} style={{ ...stileInput, minHeight: 40 }}>
+          <option value="">Entrate e uscite</option>
           <option value="entrata">Solo Dare ↑</option>
           <option value="uscita">Solo Avere ↓</option>
         </select>
         {tipo === 'cassa' && (
           <button
             onClick={() => setNuovo(true)}
-            style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 40, background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
           >
-            ➕ Nuovo
+            <Plus size={16} aria-hidden="true" /> Nuovo movimento
           </button>
         )}
       </div>
@@ -1021,55 +1024,18 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
         </div>
       )}
 
-      {/* paginazione */}
+      {/* Quante righe ci sono, detto una volta; il resto si carica in fondo. */}
       {visibili.length > 0 && (
-        <div
-          style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            background: BLU, color: 'white', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 13,
-          }}
-        >
-          <span>
-            Mostrati <b>{primaRiga}–{ultimaRiga}</b> di <b>{visibili.length}</b> movimenti
-          </span>
-          <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label htmlFor={`righe-per-pagina-${tipo}`}>Righe:</label>
-            <select
-              id={`righe-per-pagina-${tipo}`}
-              aria-label={`Righe per pagina ${tipo}`}
-              value={righePerPagina}
-              onChange={e => {
-                setRighePerPagina(e.target.value === 'tutte' ? 'tutte' : Number(e.target.value));
-                setPagina(1);
-              }}
-              style={{ padding: '7px 8px', borderRadius: 7, border: 0 }}
-            >
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={200}>200</option>
-              <option value="tutte">Tutte</option>
-            </select>
-            {totPagine > 1 && [['«', 1], ['‹', paginaCorrente - 1], ['›', paginaCorrente + 1], ['»', totPagine]].map(([s, p]) => (
-              <button
-                key={s} onClick={() => setPagina(Math.min(totPagine, Math.max(1, p)))}
-                aria-label={s === '«' ? 'Prima pagina' : s === '‹' ? 'Pagina precedente' : s === '›' ? 'Pagina successiva' : 'Ultima pagina'}
-                style={{
-                  width: 42, height: 42, border: `2px solid ${BLU}`,
-                  background: 'white', color: BLU, borderRadius: 8, padding: 0,
-                  cursor: 'pointer', fontSize: 22, fontWeight: 900,
-                  lineHeight: 1, opacity: (p < 1 || p > totPagine) ? 0.45 : 1,
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </span>
+        <div data-testid="conteggio-prima-nota" style={{ margin: '0 0 8px', fontSize: 12.5, color: COLORS.textMuted }}>
+          <b style={{ color: COLORS.text }}>{visibili.length.toLocaleString('it-IT')}</b> movimenti
+          {mese !== null ? ` a ${MESI_INTERI[mese].toLowerCase()}` : ''}
+          {rimanenti > 0 ? `, mostrati i primi ${righe.length.toLocaleString('it-IT')}` : ''}
         </div>
       )}
 
       {righe.length === 0 && (
-        <div style={{ padding: 30, textAlign: 'center', color: '#6b7280', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0' }}>
-          Nessun movimento{mese !== null ? ` a ${MESI[mese]}` : ''}.
+        <div style={{ padding: 30, textAlign: 'center', color: '#7a776e', background: 'white', borderRadius: 12, border: '1px solid #e6e3d9' }}>
+          Nessun movimento{mese !== null ? ` a ${MESI_INTERI[mese].toLowerCase()}` : ''}.
         </div>
       )}
 
@@ -1088,10 +1054,10 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                 <div
                   style={{
                     display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 11px',
-                    background: BLU, color: 'white', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                    background: TERRACOTTA, color: 'white', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
                   }}
                 >
-                  <span>📅 {formatDateIT(g.data)}</span>
+                  <span>{formatDateIT(g.data)}</span>
                   <span style={{ fontFamily: 'ui-monospace, Menlo, monospace', color: netto >= 0 ? '#86efac' : '#fca5a5' }}>
                     {netto >= 0 ? '+' : ''}{eur(netto)}
                   </span>
@@ -1101,7 +1067,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                     key={m.id}
                     data-testid={`movimento-card-${m.id}`}
                     style={{
-                      background: 'white', borderRadius: 11, border: '1px solid #e2e8f0',
+                      background: 'white', borderRadius: 11, border: '1px solid #e6e3d9',
                       borderLeft: `4px solid ${m.tipo === 'entrata' ? VERDE : ROSSO}`, padding: '9px 12px',
                     }}
                   >
@@ -1116,10 +1082,10 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                         {m.tipo === 'entrata' ? '+' : '−'}{eur(Math.abs(m.importo))}
                       </span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: '#334155', margin: '5px 0', wordBreak: 'break-word' }}>
+                    <div style={{ fontSize: 12.5, color: '#4c4a44', margin: '5px 0', wordBreak: 'break-word' }}>
                       {normalizzaDescrizioneMovimento(m.descrizione) || '—'}
                       {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
-                        <div style={{ marginTop: 3, color: '#3f5a4e', fontWeight: 700 }}>
+                        <div style={{ marginTop: 3, color: '#4c4a44', fontWeight: 700 }}>
                           Assegno n. {m.numero_assegno || m.assegno_numero}
                         </div>
                       )}
@@ -1127,21 +1093,21 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                     {(numeroFatturaMovimento(m) || nomeFornitoreMovimento(m)) && (
                       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8, margin: '5px 0 8px', fontSize: 11.5 }}>
                         <div style={{ minWidth: 0 }}>
-                          <span style={{ color: '#64748b' }}>Fornitore</span>
-                          <div style={{ fontWeight: 700, color: BLU, wordBreak: 'break-word' }}>
+                          <span style={{ color: '#7a776e' }}>Fornitore</span>
+                          <div style={{ fontWeight: 700, color: TERRACOTTA, wordBreak: 'break-word' }}>
                             {nomeFornitoreMovimento(m) || '—'}
                           </div>
                         </div>
                         <div style={{ minWidth: 0 }}>
-                          <span style={{ color: '#64748b' }}>N. fattura</span>
-                          <div style={{ fontWeight: 700, color: BLU, wordBreak: 'break-all' }}>
+                          <span style={{ color: '#7a776e' }}>N. fattura</span>
+                          <div style={{ fontWeight: 700, color: TERRACOTTA, wordBreak: 'break-all' }}>
                             {numeroFatturaMovimento(m) || '—'}
                           </div>
                         </div>
                       </div>
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 11.5, color: '#64748b' }}>
+                      <span style={{ fontSize: 11.5, color: '#7a776e' }}>
                         Saldo:{' '}
                         <b style={{ color: (saldoDi[m.id] ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>
                           {eur(saldoDi[m.id])}
@@ -1152,7 +1118,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                           <span
                             data-testid={`movimento-provvisorio-${m.id}`}
                             title="Movimento inserito senza prova dell'estratto conto: visibile, ma escluso dal saldo bancario reale"
-                            style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 800, whiteSpace: 'nowrap' }}
+                            style={{ background: '#f7eeda', color: '#92400e', border: '1px solid #f59e0b', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 800, whiteSpace: 'nowrap' }}
                           >
                             Provvisorio · fuori saldo
                           </span>
@@ -1172,10 +1138,10 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
         </div>
       ) : (
         /* ------------------------ DESKTOP: tabella ----------------------- */
-        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflowX: 'auto' }}>
+        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e6e3d9', overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+              <tr style={{ background: '#f6f4ee', borderBottom: '2px solid #e6e3d9' }}>
                 {[
                   ['Data', 'left'], ['Fornitore', 'left'], ['N. fattura', 'left'],
                   ['Categoria', 'left'], ['Descrizione', 'left'], ['Dare', 'right'],
@@ -1185,7 +1151,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                   <th
                     key={h}
                     style={{
-                      padding: '9px 10px', fontSize: 11, color: '#64748b', textTransform: 'uppercase',
+                      padding: '9px 10px', fontSize: 11, color: '#7a776e', textTransform: 'uppercase',
                       textAlign: allineamento,
                     }}
                   >
@@ -1199,8 +1165,8 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                 <React.Fragment key={m.id}>
                 {(i === 0 || righe[i - 1]?.data !== m.data) && (
                   <tr data-testid={`giorno-${m.data}`}>
-                    <td colSpan={tipo === 'cassa' ? 10 : 9} style={{ padding: '10px 12px 6px', background: '#e8eef6' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: BLU, color: 'white', borderRadius: 9, padding: '8px 12px', fontWeight: 800 }}>
+                    <td colSpan={tipo === 'cassa' ? 10 : 9} style={{ padding: '10px 12px 6px', background: '#f2f0e9' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: TERRACOTTA, color: 'white', borderRadius: 9, padding: '8px 12px', fontWeight: 800 }}>
                         <span>📅 {formatDateIT(m.data)}</span>
                         <span style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
                           {(() => {
@@ -1221,10 +1187,10 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                 <tr
                   key={m.id}
                   data-testid={`movimento-row-${m.id}`}
-                  style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 ? '#f8fafc' : 'white' }}
+                  style={{ borderBottom: '1px solid #f2f0e9', background: i % 2 ? '#f6f4ee' : 'white' }}
                 >
                   <td style={{ padding: '7px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatDateIT(m.data)}</td>
-                  <td style={{ padding: '7px 10px', minWidth: 155, maxWidth: 230, fontWeight: 700, color: BLU, wordBreak: 'break-word' }}>
+                  <td style={{ padding: '7px 10px', minWidth: 155, maxWidth: 230, fontWeight: 700, color: TERRACOTTA, wordBreak: 'break-word' }}>
                     {nomeFornitoreMovimento(m) || '—'}
                   </td>
                   <td style={{ padding: '7px 10px', minWidth: 110, maxWidth: 180, fontFamily: 'ui-monospace, Menlo, monospace', wordBreak: 'break-all' }}>
@@ -1236,7 +1202,7 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
                   <td style={{ padding: '7px 10px', minWidth: 210, maxWidth: 360, wordBreak: 'break-word' }}>
                     {normalizzaDescrizioneMovimento(m.descrizione) || '—'}
                     {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
-                      <div style={{ marginTop: 3, color: '#3f5a4e', fontWeight: 700, fontSize: 11 }}>
+                      <div style={{ marginTop: 3, color: '#4c4a44', fontWeight: 700, fontSize: 11 }}>
                         Assegno n. {m.numero_assegno || m.assegno_numero}
                       </div>
                     )}
@@ -1266,6 +1232,23 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
             </tbody>
           </table>
           {ultimaPagina && <div style={{ padding: '0 10px 10px' }}>{rigaRiporto}</div>}
+        </div>
+      )}
+
+      {rimanenti > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+          <button
+            type="button"
+            data-testid="mostra-altre-prima-nota"
+            onClick={() => setMostrate(n => n + RIGHE_PER_BLOCCO)}
+            style={{
+              minHeight: 44, padding: '10px 18px', borderRadius: 10, cursor: 'pointer',
+              background: COLORS.card, color: COLORS.text, border: `1px solid ${COLORS.borderDark}`,
+              fontSize: 13, fontWeight: 700,
+            }}
+          >
+            Mostra altre {Math.min(RIGHE_PER_BLOCCO, rimanenti)} · {rimanenti.toLocaleString('it-IT')} rimanenti
+          </button>
         </div>
       )}
 
@@ -1402,7 +1385,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       ? 'DDT non indicato nella fattura XML'
       : 'DDT non disponibile: XML originale non presente nel record';
     return (
-      <div style={{ marginTop: 3, color: '#64748b', fontSize: 11.5 }}>
+      <div style={{ marginTop: 3, color: '#7a776e', fontSize: 11.5 }}>
         {testo}
       </div>
     );
@@ -1413,7 +1396,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       onClick={() => setFatturaView({ id: p.fattura_id, numero: p.fattura_numero })}
       title="Vedi fattura"
       aria-label={`Vedi fattura ${p.fattura_numero || ''}`.trim()}
-      style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+      style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f2f0e9', color: '#4c4a44', border: '1px solid #d0ccbe', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
     >
       <Eye size={17} /> Vedi fattura
     </button>
@@ -1615,7 +1598,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       {completezza && (
         <div
           data-testid="completezza-fatture-provvisorie"
-          style={{ background: '#eef3ef', border: '1px solid #a9cbbb', borderRadius: 11, padding: '10px 13px', color: '#3f5a4e', fontSize: 12.5, lineHeight: 1.55 }}
+          style={{ background: '#eef3ef', border: '1px solid #a9cbbb', borderRadius: 11, padding: '10px 13px', color: '#4c4a44', fontSize: 12.5, lineHeight: 1.55 }}
         >
           <b>Completezza fatture {completezza.anno}:</b>{' '}
           {completezza.fatture_attive_positive} fatture dell'anno con importo positivo ={' '}
@@ -1624,7 +1607,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           {completezza.escluse_cassa_banca > 0 && (
             <> + <b>{completezza.escluse_cassa_banca} escluse dal flusso Cassa/Banca</b></>
           )}.
-          <div style={{ color: '#475569', marginTop: 2 }}>
+          <div style={{ color: '#5f5c55', marginTop: 2 }}>
             Nessuna fattura viene nascosta: usa "Tutte le fatture" per vedere
             posizione contabile, residuo e riferimenti DDT di ogni documento.
           </div>
@@ -1636,7 +1619,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           role="tab"
           aria-selected={vista === 'da_lavorare'}
           onClick={() => setVista('da_lavorare')}
-          style={{ minHeight: 42, flex: '1 1 240px', border: `1px solid ${vista === 'da_lavorare' ? BLU : '#cbd5e1'}`, borderRadius: 9, background: vista === 'da_lavorare' ? BLU : 'white', color: vista === 'da_lavorare' ? 'white' : '#334155', fontWeight: 800, cursor: 'pointer' }}
+          style={{ minHeight: 42, flex: '1 1 240px', border: `1px solid ${vista === 'da_lavorare' ? TERRACOTTA : '#d0ccbe'}`, borderRadius: 9, background: vista === 'da_lavorare' ? TERRACOTTA : 'white', color: vista === 'da_lavorare' ? 'white' : '#4c4a44', fontWeight: 800, cursor: 'pointer' }}
         >
           Da lavorare ({provvisori.length + attesaBanca.length})
         </button>
@@ -1645,24 +1628,26 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           role="tab"
           aria-selected={vista === 'tutte'}
           onClick={() => setVista('tutte')}
-          style={{ minHeight: 42, flex: '1 1 240px', border: `1px solid ${vista === 'tutte' ? BLU : '#cbd5e1'}`, borderRadius: 9, background: vista === 'tutte' ? BLU : 'white', color: vista === 'tutte' ? 'white' : '#334155', fontWeight: 800, cursor: 'pointer' }}
+          style={{ minHeight: 42, flex: '1 1 240px', border: `1px solid ${vista === 'tutte' ? TERRACOTTA : '#d0ccbe'}`, borderRadius: 9, background: vista === 'tutte' ? TERRACOTTA : 'white', color: vista === 'tutte' ? 'white' : '#4c4a44', fontWeight: 800, cursor: 'pointer' }}
         >
           Tutte le fatture ({tutteFatture.length})
         </button>
       </div>
-      <FiltriFattura
-        numeroFattura={fNumeroFattura}
-        numeroDdt={fNumeroDdt}
-        data={fDataFattura}
-        fornitore={fFornitore}
-        onNumeroFattura={setFNumeroFattura}
-        onNumeroDdt={setFNumeroDdt}
-        onData={setFDataFattura}
-        onFornitore={setFFornitore}
-      />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0 8px' }}>
+        <FiltriFattura
+          numeroFattura={fNumeroFattura}
+          numeroDdt={fNumeroDdt}
+          data={fDataFattura}
+          fornitore={fFornitore}
+          onNumeroFattura={setFNumeroFattura}
+          onNumeroDdt={setFNumeroDdt}
+          onData={setFDataFattura}
+          onFornitore={setFFornitore}
+        />
+      </div>
       {vista === 'tutte' && (
         <div data-testid="registro-completo-fatture" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap', color: '#475569', fontSize: 12.5 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap', color: '#5f5c55', fontSize: 12.5 }}>
             <span>
               Mostrate <b>{tutteFattureVisibili.length}</b> fatture.
               {tutteFattureVisibili.length > 0 && (
@@ -1670,31 +1655,31 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
               )}
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <button type="button" aria-label="Prima pagina fatture" onClick={() => setPaginaTutte(1)} disabled={paginaTutteSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&laquo;</button>
-              <button type="button" aria-label="Pagina fatture precedente" onClick={() => setPaginaTutte(p => Math.max(1, p - 1))} disabled={paginaTutteSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&lsaquo;</button>
+              <button type="button" aria-label="Prima pagina fatture" onClick={() => setPaginaTutte(1)} disabled={paginaTutteSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #d0ccbe', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&laquo;</button>
+              <button type="button" aria-label="Pagina fatture precedente" onClick={() => setPaginaTutte(p => Math.max(1, p - 1))} disabled={paginaTutteSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #d0ccbe', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&lsaquo;</button>
               <b>Pagina {paginaTutteSicura}/{pagineTutte}</b>
-              <button type="button" aria-label="Pagina fatture successiva" onClick={() => setPaginaTutte(p => Math.min(pagineTutte, p + 1))} disabled={paginaTutteSicura === pagineTutte} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&rsaquo;</button>
-              <button type="button" aria-label="Ultima pagina fatture" onClick={() => setPaginaTutte(pagineTutte)} disabled={paginaTutteSicura === pagineTutte} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&raquo;</button>
+              <button type="button" aria-label="Pagina fatture successiva" onClick={() => setPaginaTutte(p => Math.min(pagineTutte, p + 1))} disabled={paginaTutteSicura === pagineTutte} style={{ minWidth: 40, minHeight: 38, border: '1px solid #d0ccbe', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&rsaquo;</button>
+              <button type="button" aria-label="Ultima pagina fatture" onClick={() => setPaginaTutte(pagineTutte)} disabled={paginaTutteSicura === pagineTutte} style={{ minWidth: 40, minHeight: 38, border: '1px solid #d0ccbe', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&raquo;</button>
             </span>
           </div>
           {tutteFatturePagina.length === 0 && (
-            <div style={{ padding: 28, textAlign: 'center', color: '#64748b', background: 'white', border: '1px solid #e2e8f0', borderRadius: 11 }}>
+            <div style={{ padding: 28, textAlign: 'center', color: '#7a776e', background: 'white', border: '1px solid #e6e3d9', borderRadius: 11 }}>
               Nessuna fattura corrisponde ai filtri.
             </div>
           )}
           {tutteFatturePagina.map(fattura => {
             const registrata = String(fattura.stato || '').startsWith('registrata_');
-            const colore = registrata ? '#047857' : fattura.stato === 'in_attesa_banca' ? '#3f5a4e' : fattura.stato === 'anomalia_pagamento' ? '#b91c1c' : '#92400e';
+            const colore = registrata ? '#047857' : fattura.stato === 'in_attesa_banca' ? '#a94f30' : fattura.stato === 'anomalia_pagamento' ? '#b0362b' : '#92400e';
             return (
-              <div key={fattura.fattura_id} style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: `4px solid ${colore}`, borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <div key={fattura.fattura_id} style={{ background: 'white', border: '1px solid #e6e3d9', borderLeft: `4px solid ${colore}`, borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 0, flex: '1 1 430px' }}>
-                  <div style={{ color: BLU, fontSize: 13.5, fontWeight: 800 }}>{fattura.fornitore || 'Fornitore non indicato'}</div>
-                  <div style={{ color: '#475569', fontSize: 12 }}>
+                  <div style={{ color: TERRACOTTA, fontSize: 13.5, fontWeight: 800 }}>{fattura.fornitore || 'Fornitore non indicato'}</div>
+                  <div style={{ color: '#5f5c55', fontSize: 12 }}>
                     Fatt. {fattura.fattura_numero || 'senza numero'} del {formatDateIT(fattura.fattura_data)}
                   </div>
                   {dettaglioDdtCompleto(fattura)}
                   {(fattura.movimenti_prima_nota || []).length > 0 && (
-                    <div style={{ marginTop: 3, color: '#475569', fontSize: 11.5 }}>
+                    <div style={{ marginTop: 3, color: '#5f5c55', fontSize: 11.5 }}>
                       {(fattura.movimenti_prima_nota || []).map((movimento, indice) => (
                         <span key={`${movimento.id || movimento.posizione}-${indice}`}>
                           {indice > 0 && ' · '}
@@ -1711,12 +1696,12 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                     {fattura.stato_label || fattura.stato}
                   </span>
                   <span style={{ textAlign: 'right', fontSize: 12 }}>
-                    <b style={{ display: 'block', color: BLU, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(fattura.totale_fattura)}</b>
-                    {Number(fattura.importo_residuo || 0) > 0 && <span style={{ color: '#b45309' }}>Residuo {eur(fattura.importo_residuo)}</span>}
+                    <b style={{ display: 'block', color: TERRACOTTA, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(fattura.totale_fattura)}</b>
+                    {Number(fattura.importo_residuo || 0) > 0 && <span style={{ color: '#8a6410' }}>Residuo {eur(fattura.importo_residuo)}</span>}
                   </span>
                   {bottoneVedi(fattura)}
                   {fattura.richiede_azione && (
-                    <button type="button" onClick={() => setVista('da_lavorare')} style={{ minHeight: 40, background: BLU, color: 'white', border: 0, borderRadius: 8, padding: '7px 11px', fontWeight: 800, cursor: 'pointer' }}>
+                    <button type="button" onClick={() => setVista('da_lavorare')} style={{ minHeight: 40, background: TERRACOTTA, color: 'white', border: 0, borderRadius: 8, padding: '7px 11px', fontWeight: 800, cursor: 'pointer' }}>
                       Gestisci
                     </button>
                   )}
@@ -1727,7 +1712,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
         </div>
       )}
       {vista === 'da_lavorare' && <>
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start', color: '#334155', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start', color: '#4c4a44', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
         <input
           type="checkbox"
           checked={modalitaRapida}
@@ -1744,8 +1729,8 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
         </div>
       )}
       {provvisoriVisibili.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'white', borderRadius: 11, border: '1px solid #e2e8f0', padding: '9px 13px' }} data-testid="barra-conferma-multipla">
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'white', borderRadius: 11, border: '1px solid #e6e3d9', padding: '9px 13px' }} data-testid="barra-conferma-multipla">
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 700, color: '#4c4a44', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={selezionate.size > 0 && provvisoriPagina.every(p => selezionate.has(p.fattura_id))}
@@ -1759,7 +1744,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           </label>
           {selezionate.size > 0 && (
             <>
-              <span style={{ fontSize: 12.5, color: '#64748b' }}>
+              <span style={{ fontSize: 12.5, color: '#7a776e' }}>
                 {selezionate.size} selezionate ·{' '}
                 {eur(provvisoriVisibili.filter(p => selezionate.has(p.fattura_id))
                   .reduce((s, p) => s + Number(p.importo || 0), 0))}
@@ -1773,7 +1758,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
               <button
                 onClick={() => confermaMultipla('banca')} disabled={busyMultiplo}
                 title="Le sposta tra i pagamenti attesi; nessun pagamento viene registrato senza estratto conto"
-                style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busyMultiplo ? 0.5 : 1 }}
+                style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busyMultiplo ? 0.5 : 1 }}
               >
                 🏦 Attendi banca ({selezionate.size})
               </button>
@@ -1790,25 +1775,25 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
         </div>
       )}
       {provvisoriVisibili.length === 0 && (
-        <div style={{ padding: 26, textAlign: 'center', color: '#6b7280', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+        <div style={{ padding: 26, textAlign: 'center', color: '#7a776e', background: 'white', borderRadius: 12, border: '1px solid #e6e3d9' }}>
           {provvisori.length === 0
             ? 'Nessuna fattura in attesa di divisione cassa/banca.'
             : 'Nessuna fattura provvisoria corrisponde ai filtri.'}
         </div>
       )}
       {provvisoriVisibili.length > righePerPaginaDaDecidere && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: '#475569', fontSize: 12.5 }} data-testid="paginazione-da-decidere">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: '#5f5c55', fontSize: 12.5 }} data-testid="paginazione-da-decidere">
           <span>
             Documenti da associare: <b>{provvisoriVisibili.length}</b>. Righe{' '}
             {(paginaDaLavorareSicura - 1) * righePerPaginaDaDecidere + 1}-
             {Math.min(paginaDaLavorareSicura * righePerPaginaDaDecidere, provvisoriVisibili.length)}.
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <button type="button" aria-label="Prima pagina da decidere" onClick={() => setPaginaDaLavorare(1)} disabled={paginaDaLavorareSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&laquo;</button>
-            <button type="button" aria-label="Pagina da decidere precedente" onClick={() => setPaginaDaLavorare(p => Math.max(1, p - 1))} disabled={paginaDaLavorareSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&lsaquo;</button>
+            <button type="button" aria-label="Prima pagina da decidere" onClick={() => setPaginaDaLavorare(1)} disabled={paginaDaLavorareSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #d0ccbe', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&laquo;</button>
+            <button type="button" aria-label="Pagina da decidere precedente" onClick={() => setPaginaDaLavorare(p => Math.max(1, p - 1))} disabled={paginaDaLavorareSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #d0ccbe', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&lsaquo;</button>
             <b>Pagina {paginaDaLavorareSicura}/{pagineDaLavorare}</b>
-            <button type="button" aria-label="Pagina da decidere successiva" onClick={() => setPaginaDaLavorare(p => Math.min(pagineDaLavorare, p + 1))} disabled={paginaDaLavorareSicura === pagineDaLavorare} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&rsaquo;</button>
-            <button type="button" aria-label="Ultima pagina da decidere" onClick={() => setPaginaDaLavorare(pagineDaLavorare)} disabled={paginaDaLavorareSicura === pagineDaLavorare} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&raquo;</button>
+            <button type="button" aria-label="Pagina da decidere successiva" onClick={() => setPaginaDaLavorare(p => Math.min(pagineDaLavorare, p + 1))} disabled={paginaDaLavorareSicura === pagineDaLavorare} style={{ minWidth: 40, minHeight: 38, border: '1px solid #d0ccbe', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&rsaquo;</button>
+            <button type="button" aria-label="Ultima pagina da decidere" onClick={() => setPaginaDaLavorare(pagineDaLavorare)} disabled={paginaDaLavorareSicura === pagineDaLavorare} style={{ minWidth: 40, minHeight: 38, border: '1px solid #d0ccbe', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&raquo;</button>
           </span>
         </div>
       )}
@@ -1818,7 +1803,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           style={{
             background: p.anomalia_pagamento?.stato === 'aperta' ? '#fff7ed' : 'white',
             borderRadius: 11,
-            border: `1px solid ${p.anomalia_pagamento?.stato === 'aperta' ? '#fb923c' : '#e2e8f0'}`,
+            border: `1px solid ${p.anomalia_pagamento?.stato === 'aperta' ? '#fb923c' : '#e6e3d9'}`,
             borderLeft: `4px solid ${p.anomalia_pagamento?.stato === 'aperta' ? '#dc2626' : '#d97706'}`,
             padding: '10px 13px',
           }}
@@ -1833,23 +1818,23 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                 style={{ width: 17, height: 17, marginTop: 2, flexShrink: 0 }}
               />
               <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5, color: BLU }}>{p.fornitore || p.supplier_name || '—'}</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: TERRACOTTA }}>{p.fornitore || p.supplier_name || '—'}</div>
+              <div style={{ fontSize: 12, color: '#7a776e' }}>
                 Fatt. {p.fattura_numero || p.numero_fattura || p.invoice_number || '—'} del {formatDateIT(p.fattura_data || p.data || p.invoice_date)}
                 {p.suggerimento === 'sospesa' && ' — ⏸ sospesa'}
               </div>
               {dettaglioDdt(p)}
               {p.anomalia_pagamento?.stato === 'aperta' && (
-                <div role="status" style={{ marginTop: 4, color: '#b91c1c', fontSize: 11.5, fontWeight: 800 }}>
+                <div role="status" style={{ marginTop: 4, color: '#b0362b', fontSize: 11.5, fontWeight: 800 }}>
                   ⚠ Metodo di pagamento da verificare
                 </div>
               )}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: BLU }}>{eur(p.importo)}</div>
+              <div style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: TERRACOTTA }}>{eur(p.importo)}</div>
               {(p.importo_pagato_confermato || 0) > 0 && (
-                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                <div style={{ fontSize: 11.5, color: '#7a776e', marginTop: 2 }}>
                   Totale {eur(p.totale_fattura)} · già pagato {eur(p.importo_pagato_confermato)} · residuo {eur(p.importo_residuo)}
                 </div>
               )}
@@ -1866,20 +1851,20 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
             <button
               onClick={() => attendiBanca(p)} disabled={busy === p.fattura_id}
               title="Sposta tra i pagamenti attesi; non registra un pagamento senza estratto conto"
-              style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
+              style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
             >
               🏦 Attendi banca
             </button>
             <button
               onClick={() => { setParziale(p); setImportoCassa(''); setErrore(''); }}
-              style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+              style={{ background: '#f2f0e9', border: '1px solid #e6e3d9', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
             >
               ✂️ Parziale
             </button>
             {p.suggerimento !== 'sospesa' && (
               <button
                 onClick={() => conferma(p, 'sospesa')}
-                style={{ background: '#fef3c7', border: '1px solid #d97706', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}
+                style={{ background: '#f7eeda', border: '1px solid #d97706', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}
               >
                 ⏸ Sospendi
               </button>
@@ -1889,7 +1874,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
               onClick={() => segnalaDubbio(p)}
               disabled={busy === p.fattura_id || p.anomalia_pagamento?.stato === 'aperta'}
               title="Evidenzia la fattura come anomalia senza creare o cancellare pagamenti"
-              style={{ background: '#fff7ed', color: '#b91c1c', border: '1px solid #fb923c', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', opacity: p.anomalia_pagamento?.stato === 'aperta' ? 0.6 : 1 }}
+              style={{ background: '#fff7ed', color: '#b0362b', border: '1px solid #fb923c', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', opacity: p.anomalia_pagamento?.stato === 'aperta' ? 0.6 : 1 }}
             >
               ⚠ {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio sul pagamento'}
             </button>
@@ -1904,7 +1889,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
 
       {attesaBancaVisibili.length > 0 && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#7a776e', margin: '4px 0 8px' }}>
             🏦 Pagamenti previsti in banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
             Si registrano da sole quando l'addebito arriva. Puoi associare manualmente un movimento oppure correggere il metodo in qualsiasi momento.
           </div>
@@ -1927,7 +1912,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   </span>
                 )}
                 {p.strumento_bancario?.codice === 'riba' && (
-                  <span style={{ color: '#3f5a4e', fontWeight: 800 }}>
+                  <span style={{ color: '#4c4a44', fontWeight: 800 }}>
                     {' '}· RiBa identificata nell'estratto conto
                   </span>
                 )}
@@ -1954,13 +1939,13 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   </span>
                 )}
                 {(p.importo_pagato_confermato || 0) > 0 && (
-                  <span style={{ color: '#475569' }}>
+                  <span style={{ color: '#5f5c55' }}>
                     {' '}· totale {eur(p.totale_fattura)} · già pagato {eur(p.importo_pagato_confermato)} · residuo {eur(p.importo_residuo)}
                   </span>
                 )}
                 {dettaglioDdt(p)}
                 {p.anomalia_pagamento?.stato === 'aperta' && (
-                  <div role="status" style={{ marginTop: 4, color: '#b91c1c', fontSize: 11.5, fontWeight: 800 }}>
+                  <div role="status" style={{ marginTop: 4, color: '#b0362b', fontSize: 11.5, fontWeight: 800 }}>
                     ⚠ Metodo di pagamento da verificare
                   </div>
                 )}
@@ -1976,14 +1961,14 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   onClick={() => setFatturaView({ id: p.fattura_id, numero: p.fattura_numero })}
                   title="Vedi fattura"
                   aria-label={`Vedi fattura ${p.fattura_numero || ''}`.trim()}
-                  style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: 0, cursor: 'pointer' }}
+                  style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f2f0e9', color: '#4c4a44', border: '1px solid #d0ccbe', borderRadius: 8, padding: 0, cursor: 'pointer' }}
                 >
                   <Eye size={18} />
                 </button>
                 <button
                   onClick={() => setAssociaFattura(p)}
                   title="Scegli il movimento reale quando piu documenti hanno lo stesso importo o l'identita non e univoca"
-                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eef3ef', border: '1px solid #a9cbbb', color: '#3f5a4e', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eef3ef', border: '1px solid #a9cbbb', color: '#4c4a44', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
                 >
                   Associa a mano
                 </button>
@@ -2019,11 +2004,11 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   onClick={() => segnalaDubbio(p)}
                   disabled={busy === p.fattura_id || p.anomalia_pagamento?.stato === 'aperta'}
                   title="Evidenzia la fattura come anomalia e riportala tra le decisioni"
-                  style={{ minHeight: 40, background: '#fff7ed', color: '#b91c1c', border: '1px solid #fb923c', borderRadius: 8, padding: '7px 11px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', opacity: p.anomalia_pagamento?.stato === 'aperta' ? 0.6 : 1 }}
+                  style={{ minHeight: 40, background: '#fff7ed', color: '#b0362b', border: '1px solid #fb923c', borderRadius: 8, padding: '7px 11px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', opacity: p.anomalia_pagamento?.stato === 'aperta' ? 0.6 : 1 }}
                 >
                   ⚠ {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio'}
                 </button>
-                <span title={p.movimento_banca ? 'Il movimento ha prova univoca ed e in elaborazione' : (p.motivo_sospensione || 'Nessuna associazione automatica senza una prova univoca')} style={{ color: p.movimento_banca ? '#047857' : '#64748b', fontSize: 11.5, fontWeight: 700 }}>
+                <span title={p.movimento_banca ? 'Il movimento ha prova univoca ed e in elaborazione' : (p.motivo_sospensione || 'Nessuna associazione automatica senza una prova univoca')} style={{ color: p.movimento_banca ? '#047857' : '#7a776e', fontSize: 11.5, fontWeight: 700 }}>
                   {p.movimento_banca ? 'Riscontro univoco trovato' : (p.stato_match === 'ambiguo_importo_al_centesimo' ? 'Sospesa: piu fatture compatibili' : 'In attesa di riscontro univoco')}
                 </span>
               </span>
@@ -2042,33 +2027,33 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       {parziale && (
         <div
           onClick={() => setParziale(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(20, 20, 19,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
         >
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
-            <h3 style={{ margin: '0 0 6px', fontSize: 15, color: BLU }}>✂️ Pagamento parziale</h3>
-            <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 15, color: TERRACOTTA }}>✂️ Pagamento parziale</h3>
+            <div style={{ fontSize: 13, color: '#5f5c55', marginBottom: 10 }}>
               {parziale.fornitore || '—'} — totale <b>{eur(parziale.importo)}</b>
             </div>
             <input
               aria-label="Quota pagata in contanti"
               placeholder="Quota pagata in CONTANTI (es. 100,00)" inputMode="decimal" value={importoCassa}
               onChange={e => setImportoCassa(e.target.value)}
-              style={{ width: '100%', padding: '9px 10px', border: '1px solid #d1d5db', borderRadius: 8, boxSizing: 'border-box', marginBottom: 8 }}
+              style={{ width: '100%', padding: '9px 10px', border: '1px solid #d0ccbe', borderRadius: 8, boxSizing: 'border-box', marginBottom: 8 }}
             />
             {parseImportoIT(importoCassa) !== null && (
-              <div style={{ fontSize: 12.5, color: '#475569', marginBottom: 8 }}>
+              <div style={{ fontSize: 12.5, color: '#5f5c55', marginBottom: 8 }}>
                 💵 Cassa {eur(parseImportoIT(importoCassa))} + 🏦 Banca {eur((parziale.importo || 0) - parseImportoIT(importoCassa))}
               </div>
             )}
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: '#7a776e', marginBottom: 8 }}>
               La quota Cassa viene registrata ora. Il residuo Banca resta aperto finché non viene trovato e riconciliato il movimento reale dell'estratto conto.
             </div>
             {errore && <div style={{ color: ROSSO, fontSize: 13, marginBottom: 8 }}>{errore}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setParziale(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>
+              <button onClick={() => setParziale(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d0ccbe', background: 'white', cursor: 'pointer' }}>
                 Annulla
               </button>
-              <button onClick={confermaParziale} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: BLU, color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+              <button onClick={confermaParziale} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: TERRACOTTA, color: 'white', fontWeight: 700, cursor: 'pointer' }}>
                 Conferma
               </button>
             </div>
@@ -2104,11 +2089,11 @@ export function FattureAtteseNelRegistroBanca({ fatture = [], mese, onGestisci }
   const totale = visibili.reduce((somma, f) => somma + Number(f.importo || 0), 0);
   return (
     <details open={mese !== null} style={{ margin: '12px 0 0', background: '#eef3ef', border: '1px solid #a9cbbb', borderRadius: 10 }}>
-      <summary style={{ cursor: 'pointer', padding: '10px 13px', color: BLU, fontWeight: 800, fontSize: 13 }}>
+      <summary style={{ cursor: 'pointer', padding: '10px 13px', color: TERRACOTTA, fontWeight: 800, fontSize: 13 }}>
         Fatture attese in banca: {visibili.length} · {eur(totale)}
       </summary>
       <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ color: '#475569', fontSize: 12 }}>
+        <div style={{ color: '#5f5c55', fontSize: 12 }}>
           Sono visibili nel registro ma non entrano nel saldo finché non esiste un addebito reale riconciliato.
         </div>
         {visibili.map(f => (
@@ -2119,7 +2104,7 @@ export function FattureAtteseNelRegistroBanca({ fatture = [], mese, onGestisci }
             <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(f.importo)}</b>
           </div>
         ))}
-        <button type="button" onClick={onGestisci} style={{ alignSelf: 'flex-start', background: BLU, color: 'white', border: 0, borderRadius: 8, padding: '7px 11px', fontWeight: 700, cursor: 'pointer' }}>
+        <button type="button" onClick={onGestisci} style={{ alignSelf: 'flex-start', background: TERRACOTTA, color: 'white', border: 0, borderRadius: 8, padding: '7px 11px', fontWeight: 700, cursor: 'pointer' }}>
           Gestisci associazioni
         </button>
       </div>
@@ -2328,18 +2313,21 @@ export default function PrimaNota() {
     return null;
   })();
 
+  // Le schede sono schede: una riga di testo, la sottolineatura su quella
+  // aperta, nessuna icona e nessun riquadro che sembri portare altrove.
   const tab = (chiave, etichetta) => (
     <button
       key={chiave}
+      type="button"
+      role="tab"
+      aria-selected={sezione === chiave}
       onClick={() => setHs('sezione', chiave)}
       style={{
-        // flex-basis automatica: su telefono le schede vanno a capo invece di
-        // restringersi fino a tagliare il nome («Cass», «Banc»).
-        flex: '1 1 auto', padding: '11px 8px', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
-        background: sezione === chiave ? BLU : 'white',
-        color: sezione === chiave ? 'white' : '#64748b',
-        border: `1px solid ${sezione === chiave ? BLU : '#e2e8f0'}`,
-        whiteSpace: 'nowrap',
+        minHeight: 44, padding: '10px 14px', fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
+        background: 'transparent', border: 'none', marginBottom: -1,
+        borderBottom: `2px solid ${sezione === chiave ? TERRACOTTA : 'transparent'}`,
+        color: sezione === chiave ? COLORS.text : COLORS.textMuted,
+        fontWeight: sezione === chiave ? 700 : 500,
       }}
     >
       {etichetta}
@@ -2355,18 +2343,25 @@ export default function PrimaNota() {
         pastiglie={pastiglieTestata}
         style={{ marginBottom: 14 }}
       />
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {tab('cassa', `💵 Cassa ${anno}`)}
-        {tab('banca', `🏦 Banca ${anno}`)}
-        {tab('sumup', `💳 SumUp ${anno}`)}
-        {tab('soci', '👥 Soci')}
+      <div
+        role="tablist"
+        aria-label="Conto della prima nota"
+        style={{
+          display: 'flex', gap: 4, marginBottom: 14, flexWrap: 'wrap',
+          borderBottom: `1px solid ${COLORS.border}`,
+        }}
+      >
+        {tab('cassa', `Cassa ${anno}`)}
+        {tab('banca', `Banca ${anno}`)}
+        {tab('sumup', `SumUp ${anno}`)}
+        {tab('soci', 'Soci')}
         {tab('provvisori', etichettaTabProvvisori(
           provvisori, attesaBanca, conteggiProvvisori,
         ))}
       </div>
 
       {loading && sezione !== 'soci' && (
-        <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Caricamento dei movimenti…</div>
       )}
 
       {!loading && loadError && sezione !== 'soci' && (
@@ -2400,33 +2395,6 @@ export default function PrimaNota() {
           {sezione === 'banca' && <InAttesaDocumento anno={anno} onRicarica={carica} />}
           {sezione === 'banca' && <CartaNexi anno={anno} />}
 
-          {/* mese */}
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', margin: '12px 0 0' }}>
-            <button
-              onClick={() => setHs('mese', '')}
-              style={{
-                padding: '7px 12px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12.5,
-                background: mese === null ? BLU : '#f1f5f9', color: mese === null ? 'white' : '#374151',
-                fontWeight: mese === null ? 700 : 400,
-              }}
-            >
-              Tutti
-            </button>
-            {MESI.map((m, i) => (
-              <button
-                key={m}
-                onClick={() => setHs('mese', String(i))}
-                style={{
-                  padding: '7px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12.5,
-                  background: mese === i ? BLU : '#f1f5f9', color: mese === i ? 'white' : '#374151',
-                  fontWeight: mese === i ? 700 : 400,
-                }}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-
           {sezione === 'banca' && (
             <FattureAtteseNelRegistroBanca
               fatture={attesaBanca}
@@ -2439,6 +2407,7 @@ export default function PrimaNota() {
             tipo={sezione}
             dati={datiAttivi}
             mese={mese}
+            onMese={valore => setHs('mese', valore)}
             selectedId={hs.selected || ''}
             onRicarica={carica}
             onModificaRiporto={() => modificaRiporto(sezione)}
@@ -2450,33 +2419,33 @@ export default function PrimaNota() {
         <div
           onClick={() => setRiportoModal(null)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(42, 51, 41,0.55)', zIndex: 1000,
+            position: 'fixed', inset: 0, background: 'rgba(20, 20, 19,0.55)', zIndex: 1000,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
           }}
         >
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
-            <h3 style={{ margin: '0 0 6px', fontSize: 15, color: BLU }}>
-              🏁 Saldo iniziale {riportoModal.tipo === 'cassa' ? 'Cassa' : 'Banca'} al 01/01/{anno}
+            <h3 style={{ margin: '0 0 6px', fontSize: 15, color: TERRACOTTA }}>
+              Saldo iniziale {riportoModal.tipo === 'cassa' ? 'Cassa' : 'Banca'} al 01/01/{anno}
             </h3>
-            <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 10 }}>
+            <div style={{ fontSize: 12.5, color: '#7a776e', marginBottom: 10 }}>
               È il riporto dell'anno precedente: il saldo che avevi in {riportoModal.tipo} a fine {anno - 1}.
               Tutti i saldi progressivi ripartono da qui.
             </div>
             <input
               placeholder="es. 12.500,00" inputMode="decimal" value={riportoInput} autoFocus
               onChange={e => setRiportoInput(e.target.value)}
-              style={{ width: '100%', padding: '11px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 16, boxSizing: 'border-box', marginBottom: 8 }}
+              style={{ width: '100%', padding: '11px 12px', border: '1px solid #d0ccbe', borderRadius: 8, fontSize: 16, boxSizing: 'border-box', marginBottom: 8 }}
             />
             {riportoErr && <div style={{ color: ROSSO, fontSize: 13, marginBottom: 8 }}>{riportoErr}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setRiportoModal(null)} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>
+              <button onClick={() => setRiportoModal(null)} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #d0ccbe', background: 'white', cursor: 'pointer' }}>
                 Annulla
               </button>
               <button
                 onClick={salvaRiporto} disabled={riportoSaving}
-                style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: BLU, color: 'white', fontWeight: 700, cursor: 'pointer', opacity: riportoSaving ? 0.6 : 1 }}
+                style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: TERRACOTTA, color: 'white', fontWeight: 700, cursor: 'pointer', opacity: riportoSaving ? 0.6 : 1 }}
               >
-                {riportoSaving ? '⏳…' : '💾 Salva'}
+                {riportoSaving ? 'Salvataggio…' : 'Salva'}
               </button>
             </div>
           </div>

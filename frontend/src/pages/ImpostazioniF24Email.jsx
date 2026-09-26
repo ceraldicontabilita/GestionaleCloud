@@ -562,7 +562,7 @@ export default function ImpostazioniF24Email() {
                 <AlertCircle size={14} color={COLORS.danger} />
               )}
               Ultima scansione:{' '}
-              {new Date(stato.ultima_scansione.timestamp).toLocaleString('it-IT').replaceAll('/', '-')} —{' '}
+              {new Date(stato.ultima_scansione.timestamp).toLocaleString('it-IT')} —{' '}
               {stato.ultima_scansione.tipo}
             </div>
           )}
@@ -879,7 +879,7 @@ export default function ImpostazioniF24Email() {
                       <AlertCircle size={14} color={COLORS.danger} />
                     )}
                     <span style={{ color: COLORS.gray[700] }}>
-                      {new Date(log.timestamp).toLocaleString('it-IT').replaceAll('/', '-')}
+                      {new Date(log.timestamp).toLocaleString('it-IT')}
                     </span>
                     <Badge variant="neutral">{log.tipo}</Badge>
                   </div>

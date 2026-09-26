@@ -240,7 +240,7 @@ describe('Vista canonica POS e banca', () => {
     expect(screen.getByRole('button', { name: /Accrediti circuito mancanti/ })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /Saldo da verificare/ }));
     expect(await screen.findByText('1 / 2 giorni')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Solo problemi' })).toHaveStyle({ background: '#2a3329' });
+    expect(screen.getByRole('button', { name: 'Solo problemi' })).toHaveStyle({ background: '#c15f3c' });
     await waitFor(() => expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled());
   });
 });

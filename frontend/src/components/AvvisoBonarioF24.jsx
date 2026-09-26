@@ -16,11 +16,11 @@ import DocumentViewerModal from './DocumentViewerModal';
  */
 const PALETTE = {
   salvia: '#5b7a6b',
-  salviaScura: '#3f5a4e',
+  salviaScura: '#a94f30',
   crema: '#faf7f0',
   card: '#fffefb',
   bordo: '#e6e0d4',
-  inchiostro: '#2a3329',
+  inchiostro: '#c15f3c',
   sabbia: '#8a6f47',
   sabbiaScura: '#6f583a',
   terracotta: '#d35f4e',

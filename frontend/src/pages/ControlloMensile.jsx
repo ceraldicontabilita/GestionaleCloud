@@ -552,7 +552,7 @@ export default function ControlloMensile() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(42, 51, 41,0.5)',
+          background: 'rgba(20, 20, 19,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -581,7 +581,7 @@ export default function ControlloMensile() {
               marginBottom: 15,
             }}
           >
-            <h2 style={{ margin: 0, color: COLORS.primary }}>
+            <h2 style={{ margin: 0, color: COLORS.text }}>
               Dettaglio Versamenti - {monthNames[meseSelezionato - 1]} {anno}
             </h2>
             <Button
@@ -648,10 +648,7 @@ export default function ControlloMensile() {
   };
 
   return (
-    <PageLayout
-      title="Controllo POS"
-      subtitle="Registratore, chiusura serale e banca."
-    >
+    <PageLayout title="Controllo mensile">
       {fontiErrore.length > 0 && (
         <div
           style={{
@@ -779,9 +776,9 @@ export default function ControlloMensile() {
         </p>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <StatCard label="Registratore (RT)" value={formatEuro(yearTotals.posAuto)} accent="primary" />
-        <StatCard label="Chiusura serale" value={formatEuro(yearTotals.posManual)} accent="primary" />
-        <StatCard label="In banca" value={formatEuro(yearTotals.posBanca || 0)} accent="primary" />
+        <StatCard label="POS registratore" value={formatEuro(yearTotals.posAuto)} accent="primary" />
+        <StatCard label="POS chiusura serale" value={formatEuro(yearTotals.posManual)} accent="primary" />
+        <StatCard label="POS in banca" value={formatEuro(yearTotals.posBanca || 0)} accent="primary" />
       </div>
       <p style={{ margin: '0 0 16px', fontSize: 13, color: COLORS.textMuted }}>
         Fatture da registrare {(completezzaRegistro.fatture_da_registrare || 0).toLocaleString('it-IT')}
@@ -829,11 +826,11 @@ export default function ControlloMensile() {
             <thead>
               <tr>
                 <Th>Mese</Th>
-                <Th align="right">Registratore</Th>
-                <Th align="right">Chiusura</Th>
-                <Th align="right">Banca</Th>
-                <Th align="center">RT</Th>
-                <Th align="center">Banca</Th>
+                <Th align="right">POS registratore</Th>
+                <Th align="right">POS chiusura serale</Th>
+                <Th align="right">POS in banca</Th>
+                <Th align="center">Esito registratore</Th>
+                <Th align="center">Esito banca</Th>
                 <Th align="center"></Th>
               </tr>
             </thead>
@@ -841,7 +838,7 @@ export default function ControlloMensile() {
               {loading ? (
                 <tr>
                   <Td colSpan="7" align="center" style={{ padding: 40 }}>
-                    ⏳ Caricamento dati...
+                    Caricamento dei dati…
                   </Td>
                 </tr>
               ) : (
@@ -921,19 +918,19 @@ export default function ControlloMensile() {
               <tr>
                 <Th style={{ padding: 12 }}>Data</Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS RT (XML)
+                  POS registratore
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS Reale (Tuo)
+                  POS chiusura serale
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  POS Banca
+                  POS in banca
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  Diff. RT
+                  Registratore − chiusura
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  Diff. Banca
+                  Banca − chiusura
                 </Th>
               </tr>
             </thead>
@@ -941,7 +938,7 @@ export default function ControlloMensile() {
               {loading ? (
                 <tr>
                   <Td colSpan="6" align="center" style={{ padding: 40 }}>
-                    ⏳ Caricamento dati...
+                    Caricamento dei dati…
                   </Td>
                 </tr>
               ) : (

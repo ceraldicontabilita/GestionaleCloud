@@ -4,7 +4,7 @@ import { clsx } from 'clsx';
 /* ================================================================
    CERALDI ERP — DESIGN SYSTEM UNIFICATO
    Inline styles only · No Tailwind · No CSS-in-JS runtime
-   Palette: Navy + Oro sobrio (contabile / professionale)
+   Palette: crema, inchiostro e terracotta (artefatto «Gestore Attività»)
    ================================================================ */
 
 export function cn(...inputs) {
@@ -12,50 +12,48 @@ export function cn(...inputs) {
 }
 
 /* ================================================================
-   TOKEN TEMA UFFICIALE — Navy #2a3329 + Oro #b8860b
+   TOKEN TEMA UFFICIALE — i colori dell'artefatto «Gestore Attività»:
+   crema #faf9f5, inchiostro #141413, terracotta #c15f3c. Niente blu né grigi freddi
    Font di sistema · densità 13px. Non modificare i valori qui sotto
    senza aggiornare anche frontend/src/index.css (stessa fonte 1:1).
    ================================================================ */
 
 /* ---------- PALETTE CHIAVE ---------- */
 export const COLORS = {
-  /* Inchiostro del gruppo. Si chiamava «Brand navy» e il navy era rimasto
-     solo nelle tre varianti: `primary` era gia' stato portato all'inchiostro
-     verde, le altre no. Il bottone primario era quindi verde a riposo e
-     BLU al passaggio del mouse (`Button.jsx` usa primaryLight sull'hover).
-     Un nome non dice mai un colore che non contiene. */
-  primary: '#2a3329',
-  primaryLight: '#3f5a4e',
-  primaryDark: '#1a211a',
-  primarySoft: '#e2efe8',
+  /* `primary` e' il colore delle azioni e dello stato attivo: la terracotta
+     dell'artefatto. I titoli e il testo stanno in `text` (inchiostro). */
+  primary: '#c15f3c',
+  primaryLight: '#d4775a',
+  primaryDark: '#a94f30',
+  primarySoft: '#f7ebe4',
   /* Accent oro (sobrio) */
-  accent: '#b8860b',
-  accentLight: '#d4a017',
-  accentSoft: '#fdf6e3',
+  accent: '#b07d1a',
+  accentLight: '#c99a3c',
+  accentSoft: '#f7eeda',
   /* Stato — zero ambiguità cromatica */
-  success: '#15803d', successLight: '#dcfce7',
-  warning: '#b45309', warningLight: '#fef3c7',
-  danger:  '#b91c1c', dangerLight: '#fee2e2',
-  info:    '#3f5a4e', infoLight: '#e2efe8',
-  /* Neutri / superfici (slate) */
-  bg: '#f1f5f9',
-  bgAlt: '#f8fafc',
+  success: '#2f7a4f', successLight: '#e2f0e7',
+  warning: '#8a6410', warningLight: '#f7eeda',
+  danger:  '#b0362b', dangerLight: '#f8e5e2',
+  info:    '#8a6f47', infoLight: '#f2ece2',
+  /* Neutri / superfici (crema e sabbia) */
+  bg: '#faf9f5',
+  bgAlt: '#f6f4ee',
   card: '#ffffff',
-  border: '#e2e8f0',
-  borderDark: '#cbd5e1',
-  text: '#0f172a',
-  textMuted: '#64748b',
-  textSubtle: '#94a3b8',
-  /* Scala grigi slate */
+  border: '#e6e3d9',
+  borderDark: '#d0ccbe',
+  text: '#141413',
+  textMuted: '#7a776e',
+  textSubtle: '#a19d92',
+  /* Scala dei neutri caldi (il nome `gray` resta per le pagine che la usano) */
   gray: {
-    50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8',
-    500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a',
+    50: '#f6f4ee', 100: '#f2f0e9', 200: '#e6e3d9', 300: '#d0ccbe', 400: '#a19d92',
+    500: '#7a776e', 600: '#5f5c55', 700: '#4c4a44', 800: '#2c2b28', 900: '#141413',
   },
   /* Legacy aliases */
   white: '#ffffff',
-  grayLight: '#e2e8f0',
-  grayBg: '#f1f5f9',
-  purple: '#6f583a',   // non nel design system ufficiale, mantenuto per pagine legacy che lo referenziano
+  grayLight: '#e6e3d9',
+  grayBg: '#f2f0e9',
+  bruno: '#6f583a',    // bruno caldo per le pagine che volevano un colore in piu' (si chiamava «purple»)
 };
 
 /* Theme alias: usato in diverse pagine legacy */
@@ -77,16 +75,16 @@ export const THEME = {
 /* ---------- SPAZIATURE ---------- */
 export const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 };
 
-/* ---------- OMBRE (tinta navy, mai nere) ---------- */
+/* ---------- OMBRE (tinta calda, mai nere) ---------- */
 export const SHADOWS = {
-  sm: '0 1px 2px rgba(42, 51, 41,0.06)',
-  md: '0 2px 8px rgba(42, 51, 41,0.08)',
-  lg: '0 6px 16px rgba(42, 51, 41,0.10)',
-  xl: '0 12px 32px rgba(42, 51, 41,0.14)',
-  nav: '0 2px 8px rgba(42, 51, 41,0.18)',
-  // Ombra forte per modali/dialog in overlay — stessa tinta navy della scala
+  sm: '0 1px 2px rgba(20, 20, 19,0.06)',
+  md: '0 2px 8px rgba(20, 20, 19,0.08)',
+  lg: '0 6px 16px rgba(20, 20, 19,0.10)',
+  xl: '0 12px 32px rgba(20, 20, 19,0.14)',
+  nav: '0 2px 8px rgba(20, 20, 19,0.18)',
+  // Ombra forte per modali/dialog in overlay — stessa tinta calda della scala
   // sopra, non nera: prima ogni pagina la scriveva a mano come rgba(0,0,0,...).
-  modal: '0 20px 50px rgba(42, 51, 41,0.28)',
+  modal: '0 20px 50px rgba(20, 20, 19,0.28)',
 };
 
 /* ---------- RADIUS (contenuto: ≤8px dati, ≤14px contenitori) ---------- */
@@ -416,18 +414,19 @@ export function badge(type) {
 /* ================================================================
    FORMATTAZIONE ITALIANA
    ================================================================ */
-// FORMATO DATA UNICO dell'app: gg-mm-aaaa (solo visualizzazione — nel DB e
-// nelle query le date restano ISO aaaa-mm-gg).
+// FORMATO DATA UNICO dell'app: gg/mm/aaaa, come nell'artefatto e come si
+// scrive in Italia (solo visualizzazione — nel DB e nelle query le date
+// restano ISO aaaa-mm-gg).
 export function formatDateIT(dateStr) {
   if (!dateStr) return '-';
   try {
     const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-    // ISO aaaa-mm-gg → gg-mm-aaaa
+    // ISO aaaa-mm-gg → gg/mm/aaaa
     let parts = datePart.split('-');
-    if (parts.length === 3 && parts[0].length === 4) return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    // gg/mm/aaaa (record legacy) → gg-mm-aaaa
+    if (parts.length === 3 && parts[0].length === 4) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    // gg/mm/aaaa (record legacy): gia' nel formato giusto
     parts = datePart.split('/');
-    if (parts.length === 3) return `${parts[0]}-${parts[1]}-${parts[2]}`;
+    if (parts.length === 3) return `${parts[0]}/${parts[1]}/${parts[2]}`;
     return dateStr;
   } catch {
     return dateStr;
@@ -439,7 +438,7 @@ export function formatDateIT(dateStr) {
 export function formatDateGGMM(dateStr) {
   const full = formatDateIT(dateStr);
   if (!full || full === '-') return full;
-  const parts = full.split('-');
+  const parts = full.split('/');
   if (parts.length === 3) return `${parts[0]}/${parts[1]}`;
   return full;
 }
@@ -467,25 +466,31 @@ export function parseDateIT(dateStr) {
 // con 2 decimali e simbolo prima, stessa identica logica di formatEuroD
 // qui sotto: un importo contabile senza centesimi visibili nasconde
 // discrepanze reali, meglio sempre "€ 0,00" che "€ 0".
+// Un negativo si scrive fra parentesi, come si usa in contabilita' italiana e
+// come fa l'artefatto: «(€ 1.234,56)», mai «€ -1.234,56». Un importo che
+// arrotondato fa zero non porta il segno.
+function euroContabile(v) {
+  const cifre = new Intl.NumberFormat('it-IT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  }).format(Math.abs(v));
+  return v < 0 && cifre !== '0,00' ? `(€ ${cifre})` : `€ ${cifre}`;
+}
+
 export function formatEuro(amount) {
   if (amount === null || amount === undefined) return '€ 0,00';
   const v = parseFloat(amount);
   if (isNaN(v)) return '€ 0,00';
-  return `€ ${new Intl.NumberFormat('it-IT', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-    useGrouping: true,
-  }).format(v)}`;
+  return euroContabile(v);
 }
 
 // formatEuroD — con decimali, per tabelle dettaglio e tooltip
 export function formatEuroD(amount) {
   if (amount === null || amount === undefined) return '€ 0,00';
-  return `€ ${new Intl.NumberFormat('it-IT', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-    useGrouping: true,
-  }).format(parseFloat(amount))}`;
+  const v = parseFloat(amount);
+  if (isNaN(v)) return '€ NaN';
+  return euroContabile(v);
 }
 
 export function formatDateTimeIT(dateStr) {
@@ -497,7 +502,7 @@ export function formatDateTimeIT(dateStr) {
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const hh = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
-    return `${gg}-${mm}-${date.getFullYear()} ${hh}:${min}`;
+    return `${gg}/${mm}/${date.getFullYear()} ${hh}:${min}`;
   } catch {
     return dateStr;
   }
@@ -508,7 +513,7 @@ export function formatDateShort(dateStr) {
   try {
     const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
     const parts = datePart.split('-');
-    if (parts.length === 3) return `${parts[2]}-${parts[1]}`;
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
     return dateStr;
   } catch {
     return dateStr;

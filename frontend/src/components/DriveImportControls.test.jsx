@@ -35,8 +35,10 @@ describe('Controlli import Drive in Documenti', () => {
       expect(api.get).toHaveBeenCalledWith('/api/fatture/drive/status')
     );
     expect(await screen.findByText('Configurato')).toBeInTheDocument();
-    expect(screen.getByText('folder-documenti')).toBeInTheDocument();
-    expect(screen.getByText('171')).toBeInTheDocument();
+    // L'id della cartella non si legge sulla pagina: resta nel suggerimento.
+    expect(screen.queryByText('folder-documenti')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Id della cartella: folder-documenti')).toHaveTextContent('cartella impostata');
+    expect(screen.getByText(/171 fatture importate in tutto/)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 

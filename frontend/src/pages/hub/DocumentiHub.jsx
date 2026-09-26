@@ -1,11 +1,11 @@
 import { sezioneDocumenti } from './segmentiHub';
 import React, { lazy, Suspense, useEffect, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Archive, ExternalLink, FileWarning, Search, Upload } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { ExternalLink } from 'lucide-react';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
-import { useHashState } from '../../hooks/useHashState';
 import { PageLoader } from '../../components/ds';
+import { PageHeader } from '../../components/ds/PageHeader';
 import './DocumentiHub.css';
 
 const ArchivioContent = lazy(() => import('../Documenti.jsx'));
@@ -13,36 +13,24 @@ const ImportContent = lazy(() => import('../ImportDocumenti.jsx'));
 const DriveIndexContent = lazy(() => import('../DriveDocumentIndex.jsx'));
 const AttiAmministrativiContent = lazy(() => import('../AttiAmministrativi.jsx'));
 
-const TABS = [
-  {
-    id: 'atti',
-    label: 'Atti amministrativi',
-    description: 'TARI, AdeR e dimissioni con provenienza',
-    to: '/documenti/atti',
-    Icon: FileWarning,
-  },
-  {
-    id: 'import',
-    label: 'Carica documenti',
-    description: 'File singoli, multipli o ZIP con riconoscimento automatico',
-    to: '/documenti/import',
-    Icon: Upload,
-  },
-  {
-    id: 'archivio',
-    label: 'Archivio documenti',
-    description: 'Consulta documenti importati, esiti e anomalie',
-    to: '/documenti/archivio',
-    Icon: Archive,
-  },
-  {
-    id: 'drive',
-    label: 'Indice Google Drive',
-    description: 'Cerca gli originali su Drive senza copiarli nel database',
-    to: '/documenti/drive',
-    Icon: Search,
-  },
-];
+// Le quattro sezioni sono pagine vere, ognuna con la sua voce nella colonna di
+// navigazione (Atti amministrativi, Importa, Archivio documenti, Cartelle
+// Google Drive). Prima stavano anche qui come riquadri con icona e
+// sottotitolo che sembravano portare altrove e invece cambiavano scheda:
+// una sola strada per arrivarci, la colonna.
+const SEZIONI = ['atti', 'import', 'archivio', 'drive'];
+
+/* Le cartelle Drive in due elenchi con il loro nome, invece di un pallino
+   verde o blu da decifrare: quelle che il gestionale legge e fanno entrare
+   dati in contabilita', e quelle solo da consultare. Ognuno in ordine
+   alfabetico. */
+export function dividiCartelleDrive(folders = [], nomeDi = f => f.label) {
+  const perNome = (a, b) => String(nomeDi(a) || '').localeCompare(String(nomeDi(b) || ''), 'it', { sensitivity: 'base' });
+  return {
+    contabili: folders.filter(f => f.mode === 'automatico').sort(perNome),
+    consultazione: folders.filter(f => f.mode !== 'automatico').sort(perNome),
+  };
+}
 
 const getTabFromPath = sezioneDocumenti;
 
@@ -51,7 +39,6 @@ export default function DocumentiHub() {
   const location = useLocation();
   const navigate = useNavigate();
   const initTab = getTabFromPath(location.pathname);
-  const [, setHs] = useHashState({ tab: initTab });
   const activeTab = getTabFromPath(location.pathname);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([initTab]));
   const [driveCatalog, setDriveCatalog] = useState(null);
@@ -59,7 +46,6 @@ export default function DocumentiHub() {
 
   useEffect(() => {
     const tab = getTabFromPath(location.pathname);
-    setHs('tab', tab);
     setVisitedTabs(previous => new Set([...previous, tab]));
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -118,84 +104,76 @@ export default function DocumentiHub() {
 
   return (
     <div className="documenti-hub">
-      <nav className="documenti-hub__actions" aria-label="Azioni documenti">
-        {TABS.map(({ id, label, description, to, Icon }) => (
-          <NavLink
-            key={id}
-            to={to}
-            className={`documenti-hub__action ${activeTab === id ? 'is-active' : ''}`}
-          >
-            <span className="documenti-hub__icon" aria-hidden="true">
-              <Icon size={22} />
-            </span>
-            <span>
-              <strong>{label}</strong>
-              <small>{description}</small>
-            </span>
-          </NavLink>
-        ))}
-      </nav>
-
-      {activeTab === 'drive' && driveCatalog?.total > 0 && (
-        <section className="documenti-hub__drive" aria-label="Cartelle Google Drive collegate">
-          <div className="documenti-hub__drive-heading">
-            <div>
-              <strong>Google Drive collegato</strong>
-              <span>{driveCatalog.configured} cartelle censite, {driveCatalog.automatic} con parser disponibile</span>
-            </div>
-            <div className="documenti-hub__drive-controls">
-              <span className="documenti-hub__drive-total" title="Cartelle collegate">
-                {driveCatalog.total}
-              </span>
-            </div>
-          </div>
-          <div className="documenti-hub__drive-grid">
-            {driveCatalog.folders.map(folder => {
-              const link = driveFolderLinks[folder.area];
-              // Il nome live da Drive prevale su quello salvato nel registro:
-              // le cartelle su Drive non sono ancora normalizzate e possono
-              // essere state rinominate dopo la configurazione dell'area.
-              const displayLabel = link?.live_name || folder.label;
-              const renamed = link?.live_name && link.live_name !== folder.label;
-              return (
-                <button
-                  type="button"
-                  className="documenti-hub__drive-card"
-                  key={folder.area}
-                  onClick={() => {
-                    if (folder.area === 'verbali_auto' || /verbali/i.test(folder.label)) {
-                      navigate('/noleggio/verbali');
-                      return;
-                    }
-                    if (link?.url) {
-                      window.open(link.url, '_blank', 'noopener,noreferrer');
-                    } else {
-                      navigate(`/documenti/drive?folder=${encodeURIComponent(folder.label)}`);
-                    }
-                  }}
-                  aria-label={link?.url ? `Apri la cartella Drive ${displayLabel}` : `Apri indice della cartella ${displayLabel}`}
-                  title={renamed ? `Etichetta interna: ${folder.label}` : undefined}
-                >
-                  <span className={`documenti-hub__drive-dot is-${folder.status}`} aria-hidden="true" />
-                  <div>
-                    <strong>{displayLabel}</strong>
-                    <small>{folder.mode === 'automatico' ? 'Verde · dati estratti dal parser' : 'Blu · archivio da consultare'}</small>
-                  </div>
-                  {link?.url && <ExternalLink size={14} className="documenti-hub__drive-external" aria-hidden="true" />}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      {activeTab === 'drive' && driveCatalog?.total > 0 && (() => {
+        const nomeDi = folder => driveFolderLinks[folder.area]?.live_name || folder.label;
+        const { contabili, consultazione } = dividiCartelleDrive(driveCatalog.folders, nomeDi);
+        const scheda = folder => {
+          const link = driveFolderLinks[folder.area];
+          // Il nome live da Drive prevale su quello salvato nel registro:
+          // le cartelle su Drive possono essere state rinominate dopo la
+          // configurazione dell'area.
+          const displayLabel = nomeDi(folder);
+          const renamed = link?.live_name && link.live_name !== folder.label;
+          return (
+            <button
+              type="button"
+              className="documenti-hub__drive-card"
+              key={folder.area}
+              onClick={() => {
+                if (folder.area === 'verbali_auto' || /verbali/i.test(folder.label)) {
+                  navigate('/noleggio/verbali');
+                  return;
+                }
+                if (link?.url) {
+                  window.open(link.url, '_blank', 'noopener,noreferrer');
+                } else {
+                  navigate(`/documenti/drive?folder=${encodeURIComponent(folder.label)}`);
+                }
+              }}
+              aria-label={link?.url ? `Apri la cartella Drive ${displayLabel}` : `Apri indice della cartella ${displayLabel}`}
+              title={renamed ? `Etichetta interna: ${folder.label}` : undefined}
+            >
+              <div>
+                <strong>{displayLabel}</strong>
+              </div>
+              {link?.url && <ExternalLink size={14} className="documenti-hub__drive-external" aria-hidden="true" />}
+            </button>
+          );
+        };
+        return (
+          <>
+            <PageHeader
+              title="Cartelle Google Drive"
+              style={{ marginBottom: 14 }}
+              pastiglie={[
+                { etichetta: 'Cartelle', valore: String(driveCatalog.total) },
+                { etichetta: 'Alimentano la contabilità', valore: String(contabili.length) },
+                { etichetta: 'Solo da consultare', valore: String(consultazione.length) },
+              ]}
+            />
+            <section className="documenti-hub__drive" aria-label="Cartelle Google Drive collegate">
+              <h2 className="documenti-hub__drive-titolo">
+                {contabili.length} {contabili.length === 1 ? 'cartella che alimenta' : 'cartelle che alimentano'} la contabilità
+              </h2>
+              <p className="documenti-hub__drive-nota">Il gestionale legge questi documenti e ne fa entrare i dati.</p>
+              <div className="documenti-hub__drive-grid">{contabili.map(scheda)}</div>
+              <h2 className="documenti-hub__drive-titolo">
+                {consultazione.length} {consultazione.length === 1 ? 'cartella solo da consultare' : 'cartelle solo da consultare'}
+              </h2>
+              <p className="documenti-hub__drive-nota">Si aprono e si leggono, ma non entrano in contabilità.</p>
+              <div className="documenti-hub__drive-grid">{consultazione.map(scheda)}</div>
+            </section>
+          </>
+        );
+      })()}
 
       <div className="documenti-hub__content">
-        {TABS.map(tab => {
-          const Content = contents[tab.id];
+        {SEZIONI.map(id => {
+          const Content = contents[id];
           return (
-            <div key={tab.id} style={{ display: activeTab === tab.id ? 'block' : 'none' }}>
+            <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>
               <Suspense fallback={<PageLoader />}>
-                {visitedTabs.has(tab.id) && <Content key={`${tab.id}-${anno}`} />}
+                {visitedTabs.has(id) && <Content key={`${id}-${anno}`} />}
               </Suspense>
             </div>
           );

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useIsMobile } from '../hooks/useData';
 
@@ -178,15 +179,18 @@ export default function RiconciliazionePaypal() {
   return (
     <PageLayout>
       <main style={{ maxWidth: 1400, margin: '0 auto', padding: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-          <div>
-            <h1 style={{ margin: 0 }}>PayPal</h1>
-            <p style={{ margin: '6px 0 0', color: '#64748b' }}>
-              Sincronizzazione automatica all'apertura. I documenti si acquisiscono solo da Documenti.
-            </p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span data-testid="paypal-sync-status" style={{ color: '#475569', fontSize: 13 }}>
+        <PageHeader
+          title="PayPal"
+          style={{ marginBottom: 16 }}
+          pastiglie={[
+            { etichetta: 'Transazioni', valore: String(dashboard.total_transactions ?? transazioni.length) },
+            { etichetta: 'Movimenti banca', valore: String(dashboard.movimenti_banca_paypal ?? movimentiBanca.length) },
+            { etichetta: 'Riconciliati', valore: String(riconciliati), tono: 'ok' },
+            { etichetta: 'Da verificare', valore: String(daVerificare), tono: daVerificare > 0 ? 'attenzione' : 'ok' },
+          ]}
+          actions={(
+            <>
+          <span data-testid="paypal-sync-status" style={{ color: '#5f5c55', fontSize: 13 }}>
             {sincronizzazione === 'in_corso' ? 'Sincronizzazione incrementale…' :
               sincronizzazione === 'completata' ? `Aggiornato${statoApi?.ultimo_sync ? ` alle ${new Date(statoApi.ultimo_sync).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}` : ''}` :
                 sincronizzazione === 'non_configurata' ? 'API non configurata' :
@@ -195,25 +199,20 @@ export default function RiconciliazionePaypal() {
           <button type="button" onClick={riprocessaStorico} disabled={loading} style={buttonStyle}>
             Riprocessa {anno}
           </button>
-          </div>
-        </div>
+            </>
+          )}
+        />
 
         {riprocessamento && <div data-testid="paypal-reprocess-result" style={{ ...messageStyle, background: '#ecfdf5', color: '#166534' }}>{riprocessamento}</div>}
 
         {loading && <div role="status" style={messageStyle}>Caricamento dati PayPal...</div>}
         {errore && <div role="alert" style={{ ...messageStyle, background: '#fef2f2', color: '#991b1b' }}>{errore}</div>}
         {statoApi && !statoApi.api_configurata && (
-          <div style={{ ...messageStyle, background: '#eef3ef', color: '#3f5a4e' }}>
+          <div style={{ ...messageStyle, background: '#eef3ef', color: '#4c4a44' }}>
             API PayPal non configurata. Le transazioni già presenti restano consultabili e riconciliabili.
           </div>
         )}
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }}>
-          <div style={card}><small>Transazioni</small><strong style={value}>{dashboard.total_transactions ?? transazioni.length}</strong></div>
-          <div style={card}><small>Movimenti banca</small><strong style={value}>{dashboard.movimenti_banca_paypal ?? movimentiBanca.length}</strong></div>
-          <div style={card}><small>Riconciliati</small><strong style={value}>{riconciliati}</strong></div>
-          <div style={card}><small>Da verificare</small><strong style={value}>{daVerificare}</strong></div>
-        </section>
 
         <section data-testid="paypal-relation-flow" aria-label="Stato collegamenti PayPal" style={{ ...card, gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', marginBottom: 16, overflowX: 'auto' }}>
           {[
@@ -236,7 +235,7 @@ export default function RiconciliazionePaypal() {
             ['estratti', 'Movimenti banca'],
             ['documenti', 'Fonti'],
           ].map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setTab(id)} style={{ ...buttonStyle, background: tab === id ? '#2a3329' : '#fff', color: tab === id ? '#fff' : '#2a3329' }}>{label}</button>
+            <button key={id} type="button" onClick={() => setTab(id)} style={{ ...buttonStyle, background: tab === id ? '#c15f3c' : '#fff', color: tab === id ? '#fff' : '#c15f3c' }}>{label}</button>
           ))}
         </div>
 
@@ -257,7 +256,7 @@ export default function RiconciliazionePaypal() {
 
         {!loading && tab === 'estratti' && (
           <>
-            <p style={{ color: '#64748b' }}>Fonti duplicate unificate: <strong>{riepilogoBanca.duplicati_unificati || 0}</strong></p>
+            <p style={{ color: '#7a776e' }}>Fonti duplicate unificate: <strong>{riepilogoBanca.duplicati_unificati || 0}</strong></p>
             {isMobile ? <BankCards righe={movimentiBanca} /> : <BankTable righe={movimentiBanca} />}
           </>
         )}
@@ -322,14 +321,14 @@ function SourceTable({ fonti }) {
   return <div data-testid="paypal-source-table" style={tableWrap}><table style={table}><thead><tr>{['Fonte', 'Periodo', 'Transazioni', 'Pagamenti', 'Documento'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{fonti.map(fonte => <tr key={fonte.id}><td style={td}>{fonteLabel(fonte)}</td><td style={td}>{fonte.periodo_inizio || '-'} - {fonte.periodo_fine || '-'}</td><td style={td}>{fonte.totale_transazioni || 0}</td><td style={td}>{fonte.totale_pagamenti || 0}</td><td style={td}>{fonte.documento_presente === false ? 'Nessun file: fonte API' : 'Documento acquisito'}</td></tr>)}</tbody></table></div>;
 }
 
-const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, display: 'grid', gap: 6 };
+const card = { background: '#fff', border: '1px solid #e6e3d9', borderRadius: 10, padding: 14, display: 'grid', gap: 6 };
 const cards = { display: 'grid', gap: 10 };
-const value = { display: 'block', marginTop: 6, fontSize: 24, color: '#2a3329' };
-const buttonStyle = { minHeight: 40, padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontWeight: 700 };
-const inputStyle = { width: '100%', minHeight: 40, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 8 };
-const messageStyle = { padding: 12, color: '#64748b', borderRadius: 8, marginBottom: 12 };
-const tableWrap = { overflowX: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 };
+const value = { display: 'block', marginTop: 6, fontSize: 24, color: '#141413' };
+const buttonStyle = { minHeight: 40, padding: '8px 14px', borderRadius: 8, border: '1px solid #d0ccbe', background: '#fff', cursor: 'pointer', fontWeight: 700 };
+const inputStyle = { width: '100%', minHeight: 40, padding: '8px 10px', border: '1px solid #d0ccbe', borderRadius: 8 };
+const messageStyle = { padding: 12, color: '#7a776e', borderRadius: 8, marginBottom: 12 };
+const tableWrap = { overflowX: 'auto', background: '#fff', border: '1px solid #e6e3d9', borderRadius: 10 };
 const table = { width: '100%', borderCollapse: 'collapse', minWidth: 760 };
-const th = { padding: '10px 12px', textAlign: 'left', fontSize: 12, color: '#475569', background: '#f8fafc' };
-const td = { padding: '10px 12px', fontSize: 13, color: '#1e293b', borderTop: '1px solid #e2e8f0' };
-const copyButton = { minHeight: 28, padding: '2px 6px', border: '1px solid #cbd5e1', borderRadius: 5, background: '#fff', cursor: 'pointer', fontSize: 11 };
+const th = { padding: '10px 12px', textAlign: 'left', fontSize: 12, color: '#5f5c55', background: '#f6f4ee' };
+const td = { padding: '10px 12px', fontSize: 13, color: '#2c2b28', borderTop: '1px solid #e6e3d9' };
+const copyButton = { minHeight: 28, padding: '2px 6px', border: '1px solid #d0ccbe', borderRadius: 5, background: '#fff', cursor: 'pointer', fontSize: 11 };

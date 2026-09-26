@@ -30,7 +30,7 @@ function formatTs(iso) {
       month: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    }).replaceAll('/', '-');
+    });
   } catch {
     return iso;
   }
@@ -62,7 +62,7 @@ function AgenteCard({ agente, onRun }) {
           height="22"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#7dd3fc"
+          stroke="#3d8168"
           strokeWidth="2"
         >
           <circle cx="12" cy="12" r="3" />
@@ -70,7 +70,7 @@ function AgenteCard({ agente, onRun }) {
         </svg>
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', marginBottom: 4 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: '#141413', marginBottom: 4 }}>
           {agente.agente}
         </div>
         <div style={{ fontSize: 12, color: COLORS.gray }}>
@@ -123,12 +123,12 @@ function SegnalazioneCard({ s, onRisolvi }) {
           >
             <span style={badge(c.badgeType)}>{c.label}</span>
             <span style={{ fontSize: 11, color: COLORS.gray }}>{s.agente}</span>
-            <span style={{ fontSize: 11, color: '#cbd5e1' }}>{formatTs(s.created_at)}</span>
+            <span style={{ fontSize: 11, color: '#d0ccbe' }}>{formatTs(s.created_at)}</span>
           </div>
-          <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: '#1e293b' }}>{s.titolo}</p>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: 13, color: '#2c2b28' }}>{s.titolo}</p>
         </div>
       </div>
-      <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#475569', lineHeight: 1.7 }}>
+      <p style={{ margin: '0 0 8px 0', fontSize: 12, color: '#5f5c55', lineHeight: 1.7 }}>
         {s.descrizione}
       </p>
       {s.azione_suggerita && (
@@ -170,7 +170,7 @@ function PatternCard({ p }) {
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 13, color: '#1e293b' }}>{p.chiave}</div>
+          <div style={{ fontWeight: 600, fontSize: 13, color: '#2c2b28' }}>{p.chiave}</div>
           <div style={{ fontSize: 12, color: COLORS.gray, fontStyle: 'italic' }}>
             {String(p.valore).slice(0, 100)}
           </div>
@@ -245,7 +245,7 @@ function DecisioneCard({ decisione, isAdmin, onDecisione }) {
               </span>
             )}
           </div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#141413' }}>
             {decisione.objective}
           </div>
           <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 3 }}>
@@ -257,11 +257,11 @@ function DecisioneCard({ decisione, isAdmin, onDecisione }) {
         </div>
       </div>
       {decisione.explanation && (
-        <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, margin: '10px 0 6px' }}>
+        <p style={{ fontSize: 12, color: '#5f5c55', lineHeight: 1.6, margin: '10px 0 6px' }}>
           {decisione.explanation}
         </p>
       )}
-      <div style={{ fontSize: 12, background: '#f8fafc', padding: '8px 10px', borderRadius: 6 }}>
+      <div style={{ fontSize: 12, background: '#f6f4ee', padding: '8px 10px', borderRadius: 6 }}>
         <strong>Azione proposta:</strong> {azione}
       </div>
       {decisione.policy_reasons?.length > 0 && (
@@ -269,7 +269,7 @@ function DecisioneCard({ decisione, isAdmin, onDecisione }) {
           Policy: {decisione.policy_reasons.join(', ')}
         </div>
       )}
-      <details style={{ marginTop: 9, fontSize: 12, color: '#475569' }}>
+      <details style={{ marginTop: 9, fontSize: 12, color: '#5f5c55' }}>
         <summary style={{ cursor: 'pointer', fontWeight: 700, color: COLORS.primary }}>
           Fonti, regole e approvazione
         </summary>
@@ -328,7 +328,7 @@ function CashFlowPanel({ previsione }) {
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ ...STYLES.card, flex: '1 1 180px' }}>
           <div style={{ fontSize: 12, color: COLORS.gray }}>Liquidità iniziale</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.text }}>
             {formatEuro(previsione.liquidita_iniziale || 0)}
           </div>
         </div>
@@ -358,10 +358,10 @@ function CashFlowPanel({ previsione }) {
                   border: `1px solid ${anomalia.severita === 'alta' ? '#fecaca' : '#fde68a'}`,
                 }}
               >
-                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 13 }}>
+                <div style={{ fontWeight: 800, color: '#141413', fontSize: 13 }}>
                   {anomalia.titolo}
                 </div>
-                <div style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                <div style={{ color: '#5f5c55', fontSize: 12, marginTop: 3 }}>
                   {anomalia.descrizione}
                 </div>
               </div>
@@ -369,7 +369,7 @@ function CashFlowPanel({ previsione }) {
           </div>
         </PageSection>
       )}
-      <div style={{ ...STYLES.card, marginBottom: 14, fontSize: 12, color: '#475569' }}>
+      <div style={{ ...STYLES.card, marginBottom: 14, fontSize: 12, color: '#5f5c55' }}>
         <strong>Qualita dei dati:</strong>{' '}
         {qualita.record_inclusi || 0} inclusi; {qualita.senza_data_esclusi || 0} senza data;{' '}
         {qualita.senza_importo_esclusi || 0} senza importo;{' '}
@@ -385,20 +385,20 @@ function CashFlowPanel({ previsione }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
+                <tr style={{ background: '#f6f4ee', textAlign: 'left' }}>
                   {['Settimana', 'Periodo', 'Entrate', 'Uscite', 'Saldo finale'].map(label => (
-                    <th key={label} style={{ padding: 8, borderBottom: '1px solid #e2e8f0' }}>{label}</th>
+                    <th key={label} style={{ padding: 8, borderBottom: '1px solid #e6e3d9' }}>{label}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {scenario.settimane.map(riga => (
                   <tr key={riga.settimana}>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>{riga.settimana}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>{riga.dal} – {riga.al}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', color: COLORS.success }}>{formatEuro(riga.entrate)}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', color: COLORS.danger }}>{formatEuro(riga.uscite)}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', fontWeight: 700, color: riga.saldo_finale < 0 ? COLORS.danger : '#0f172a' }}>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9' }}>{riga.settimana}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9' }}>{riga.dal} – {riga.al}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9', color: COLORS.success }}>{formatEuro(riga.entrate)}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9', color: COLORS.danger }}>{formatEuro(riga.uscite)}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9', fontWeight: 700, color: riga.saldo_finale < 0 ? COLORS.danger : '#141413' }}>
                       {formatEuro(riga.saldo_finale)}
                     </td>
                   </tr>
@@ -601,7 +601,7 @@ export default function AgentiPage() {
           display: 'flex',
           gap: 4,
           marginBottom: 16,
-          background: '#f1f5f9',
+          background: '#f2f0e9',
           borderRadius: 10,
           padding: 4,
           alignItems: 'center',

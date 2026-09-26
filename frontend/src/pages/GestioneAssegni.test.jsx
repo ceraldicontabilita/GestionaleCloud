@@ -178,8 +178,8 @@ describe('Stati e resa responsive della pagina Assegni', () => {
 
     expect(await screen.findByText(/Fornitore Verificato/)).toBeInTheDocument();
     expect(screen.getByText('Fatt. 120')).toBeInTheDocument();
-    expect(screen.getByText('15-06-2026')).toBeInTheDocument();
-    expect(screen.getByText('30-06-2026')).toBeInTheDocument();
+    expect(screen.getByText('15/06/2026')).toBeInTheDocument();
+    expect(screen.getByText('30/06/2026')).toBeInTheDocument();
     expect(screen.getByText('Estratto conto')).toBeInTheDocument();
   });
 
@@ -236,7 +236,7 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(selezione).toHaveTextContent('0070021988');
     expect(selezione).not.toHaveTextContent('1/1557');
     fireEvent.change(selezione, { target: { value: 'fatt-kimbo' } });
-    expect(screen.getByText(/Data fattura:/)).toHaveTextContent('29-06-2026');
+    expect(screen.getByText(/Data fattura:/)).toHaveTextContent('29/06/2026');
 
     fireEvent.click(screen.getByTitle('Salva'));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(

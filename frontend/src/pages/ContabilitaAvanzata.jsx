@@ -93,7 +93,7 @@ const styles = {
     letterSpacing: '0.4px',
     marginBottom: 6,
   },
-  statBoxValue: { fontSize: 22, fontWeight: 700, color: COLORS.primary, fontFamily: FONT.mono },
+  statBoxValue: { fontSize: 22, fontWeight: 700, color: COLORS.text, fontFamily: FONT.mono },
 };
 
 export default function ContabilitaAvanzata() {

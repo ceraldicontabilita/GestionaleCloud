@@ -74,7 +74,7 @@ describe('Prima Nota Banca → estratto conto', () => {
     const link = screen.getByTestId('link-estratto-conto-pn-1');
     expect(link).toHaveAttribute('href', '/riconciliazione/banca?movimento=EC-2026-02-10-31.57-d2700414');
     // formatDateIT del gestionale rende gg-mm-aaaa
-    expect(link).toHaveAttribute('title', expect.stringContaining('10-02-2026'));
+    expect(link).toHaveAttribute('title', expect.stringContaining('10/02/2026'));
   });
 
   it('non inventa un link quando la riga non ha un movimento reale collegato', () => {
@@ -118,8 +118,8 @@ describe('Scadenze → movimento bancario che ha pagato la fattura', () => {
 
     const link = await screen.findByTestId('link-movimento-pagante-F-pag');
     expect(link).toHaveAttribute('href', `/riconciliazione/banca?movimento=${EC_ID}`);
-    expect(link).toHaveAttribute('title', expect.stringContaining('17-02-2026'));
-    expect(screen.getByText(/Pagata il 17-02-2026/)).toBeInTheDocument();
+    expect(link).toHaveAttribute('title', expect.stringContaining('17/02/2026'));
+    expect(screen.getByText(/Pagata il 17\/02\/2026/)).toBeInTheDocument();
     expect(screen.queryByTestId('link-movimento-pagante-F-aperta')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Paga/ })).toHaveLength(1);
   });
@@ -266,7 +266,7 @@ describe('Riconciliazione banca → fattura / prima nota, F24 → quietanza / ba
     );
     expect(screen.getByTestId('link-fattura-richiesto')).toHaveAttribute('href', '/fatture?invoice_id=F-pag');
     expect(screen.getByTestId('link-prima-nota-richiesto')).toHaveAttribute('href', '/prima-nota#sezione=banca&selected=pn-7');
-    expect(screen.getByTestId('movimento-richiesto')).toHaveTextContent('17-02-2026');
+    expect(screen.getByTestId('movimento-richiesto')).toHaveTextContent('17/02/2026');
     expect(screen.getByTestId('movimento-richiesto')).toHaveTextContent('SDD AMAZON');
   });
 

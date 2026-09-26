@@ -16,7 +16,8 @@ vi.mock('../api', () => ({
 vi.mock('../contexts/AnnoContext', () => ({
   useAnnoGlobale: () => ({ anno: 2026 }),
 }));
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router-dom', async importOriginal => ({
+  ...(await importOriginal()),
   useNavigate: () => vi.fn(),
   useLocation: () => ({ pathname: '/contabilita/bilancio' }),
   Link: ({ to, children, ...props }) => <a href={to} {...props}>{children}</a>,

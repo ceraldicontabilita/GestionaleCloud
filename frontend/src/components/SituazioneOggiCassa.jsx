@@ -46,7 +46,7 @@ export default function SituazioneOggiCassa({ giorno }) {
   const cella = (etichetta, valore) => (
     <div style={{ minWidth: 0 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7669", textTransform: "uppercase" }}>{etichetta}</div>
-      <div style={{ fontSize: 16, fontWeight: 800, color: "#2a3329", fontFamily: "ui-monospace, Menlo, monospace" }}>
+      <div style={{ fontSize: 16, fontWeight: 800, color: "#141413", fontFamily: "ui-monospace, Menlo, monospace" }}>
         {formatEuroD(valore)}
       </div>
     </div>
@@ -55,7 +55,7 @@ export default function SituazioneOggiCassa({ giorno }) {
   return (
     <section data-testid="situazione-oggi" style={box}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-        <strong style={{ color: "#2a3329" }}>Cassa di oggi</strong>
+        <strong style={{ color: "#141413" }}>Cassa di oggi</strong>
         <Link to="/prima-nota#sezione=cassa" style={{ color: "#5b7a6b", fontWeight: 700, fontSize: 13 }}>
           Apri registro
         </Link>

@@ -21,8 +21,8 @@ const S = {
     zIndex: 1000,
     display: 'flex',
     alignItems: 'center',
-    background: COLORS.primary,
-    boxShadow: '0 2px 8px rgba(42, 51, 41,0.18)',
+    background: COLORS.card,
+    borderBottom: `1px solid ${COLORS.border}`,
     padding: '0 16px',
     gap: 0,
   },
@@ -37,8 +37,7 @@ const S = {
   brandSquare: {
     width: 32,
     height: 32,
-    background: 'rgba(255,255,255,0.15)',
-    border: '1px solid rgba(255,255,255,0.3)',
+    background: COLORS.primary,
     borderRadius: 8,
     display: 'flex',
     alignItems: 'center',
@@ -49,7 +48,7 @@ const S = {
     letterSpacing: 0.5,
   },
   brandName: {
-    color: '#fff',
+    color: COLORS.text,
     fontWeight: 700,
     fontSize: 14,
     letterSpacing: 0.3,
@@ -65,11 +64,11 @@ const S = {
   annoWrap: {
     display: 'flex',
     alignItems: 'center',
-    background: 'rgba(255,255,255,0.92)',
+    background: COLORS.bgAlt,
     borderRadius: 8,
     padding: '4px 10px',
     gap: 6,
-    border: '1px solid rgba(255,255,255,0.4)',
+    border: `1px solid ${COLORS.border}`,
   },
   annoLabel: {
     fontSize: 11,
@@ -82,14 +81,14 @@ const S = {
     width: 32,
     height: 32,
     borderRadius: '50%',
-    background: 'rgba(255,255,255,0.15)',
-    border: '1px solid rgba(255,255,255,0.3)',
+    background: COLORS.bg,
+    border: `1px solid ${COLORS.border}`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontWeight: 800,
     fontSize: 12,
-    color: '#fff',
+    color: COLORS.textMuted,
     flexShrink: 0,
   },
 };
@@ -125,7 +124,7 @@ const TopNav = memo(function TopNav() {
                 background: 'transparent',
                 border: 'none',
                 borderRadius: 6,
-                color: COLORS.primaryLight,
+                color: COLORS.text,
                 fontWeight: 700,
                 fontSize: 16,
                 cursor: 'pointer',
@@ -152,8 +151,8 @@ const TopNav = memo(function TopNav() {
         </div>
       </nav>
 
-      {/* Spacer per compensare la navbar fixed */}
-      <div style={{ height: 54 }} />
+      {/* Nessuno spaziatore: lo spazio sotto la barra fissa lo riserva gia'
+          `.page-content` (padding-top = --topnav-height). */}
     </>
   );
 });
@@ -191,9 +190,9 @@ const BottoneEsci = memo(function BottoneEsci() {
         height: 34,
         padding: isMobile ? '0 9px' : '0 12px',
         borderRadius: 8,
-        background: 'rgba(255,255,255,0.1)',
-        border: '1px solid rgba(255,255,255,0.2)',
-        color: 'rgba(255,255,255,0.85)',
+        background: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        color: COLORS.textMuted,
         fontSize: 13,
         fontWeight: 600,
         cursor: inCorso ? 'wait' : 'pointer',
@@ -256,13 +255,13 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
           width: 34,
           height: 34,
           borderRadius: 8,
-          background: 'rgba(255,255,255,0.1)',
-          border: '1px solid rgba(255,255,255,0.2)',
+          background: COLORS.card,
+          border: `1px solid ${COLORS.border}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
-          color: 'rgba(255,255,255,0.85)',
+          color: COLORS.textMuted,
           transition: 'background 0.15s',
         }}
         title={hasAlerts ? `${totale} alert aperti` : 'Nessun alert'}
@@ -283,7 +282,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
               fontSize: 10,
               fontWeight: 700,
               borderRadius: 8,
-              border: `1px solid ${COLORS.primaryLight}`,
+              border: `1px solid ${COLORS.card}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

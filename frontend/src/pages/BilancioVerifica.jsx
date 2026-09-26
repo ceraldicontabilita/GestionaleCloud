@@ -840,7 +840,7 @@ export default function BilancioVerifica() {
           </div>
         </>
       ) : bvError ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#b91c1c' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: '#b0362b' }}>
           <FileText size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
           <p>Errore nel caricamento del bilancio di verifica {anno}. Riprova con «Aggiorna».</p>
         </div>

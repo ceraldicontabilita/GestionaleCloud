@@ -96,7 +96,7 @@ export default function InstallAppButton() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(15,23,42,0.55)',
+            background: 'rgba(20, 20, 19,0.55)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

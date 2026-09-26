@@ -116,7 +116,7 @@ export default function AssociaAssegnoFattura({
           alignItems: 'center',
           justifyContent: 'center',
           whiteSpace: 'nowrap',
-          background: '#f5f3ff',
+          background: '#f7ebe4',
           color: '#6f583a',
           border: '1px solid #d9c6a3',
           borderRadius: 7,
@@ -139,14 +139,14 @@ export default function AssociaAssegnoFattura({
           style={{
             position: 'fixed', inset: 0, zIndex: 1200,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16, background: 'rgba(42, 51, 41, 0.52)',
+            padding: 16, background: 'rgba(20, 20, 19, 0.52)',
           }}
         >
           <div style={{
             width: 'min(680px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
-            background: '#faf5ff', border: '1px solid #d9c6a3',
+            background: '#f7ebe4', border: '1px solid #d9c6a3',
             borderRadius: 12, padding: 16, textAlign: 'left',
-            boxShadow: '0 24px 70px rgba(42, 51, 41, 0.28)',
+            boxShadow: '0 24px 70px rgba(20, 20, 19, 0.28)',
           }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
             <div style={{ color: '#6f583a', fontWeight: 800, flex: 1 }}>
@@ -173,7 +173,7 @@ export default function AssociaAssegnoFattura({
               value={frammento}
               onChange={e => setFrammento(formattaFinaleAssegno(e.target.value))}
               style={{
-                minHeight: 40, flex: '1 1 240px', border: '1px solid #a78bfa',
+                minHeight: 40, flex: '1 1 240px', border: '1px solid #efd3c5',
                 borderRadius: 8, padding: '7px 10px', fontSize: 12.5,
               }}
             />
@@ -190,12 +190,12 @@ export default function AssociaAssegnoFattura({
               {loading ? 'Ricerca…' : 'Cerca assegno'}
             </button>
           </div>
-          <div style={{ color: '#64748b', marginTop: 6, fontSize: 11.5 }}>
+          <div style={{ color: '#7a776e', marginTop: 6, fontSize: 11.5 }}>
             Digita il finale come 328-01. Il sistema ritrova anche il numero BPM
             completo 0208769328, che nell'estratto non contiene il suffisso del
             foglio. Nessun collegamento viene creato sul solo importo.
           </div>
-          {errore && <div role="alert" style={{ color: '#b91c1c', marginTop: 7 }}>{errore}</div>}
+          {errore && <div role="alert" style={{ color: '#b0362b', marginTop: 7 }}>{errore}</div>}
           {!loading && message && (
             <div role="status" style={{ color: '#6f583a', marginTop: 7, fontWeight: 700 }}>
               {message}
@@ -217,7 +217,7 @@ export default function AssociaAssegnoFattura({
                 <span>
                   <b>Assegno {candidato.numero_completo}</b> · {formatEuroD(candidato.importo)}
                   {candidato.data ? ` · ${formatDateIT(candidato.data)}` : ''}
-                  <span style={{ color: '#64748b' }}>
+                  <span style={{ color: '#7a776e' }}>
                     {' '}· {candidato.fonte_estratto_conto
                       ? 'presente in estratto conto'
                       : 'in attesa di estratto conto'}
@@ -232,7 +232,7 @@ export default function AssociaAssegnoFattura({
                     : 'Conferma questo numero completo'}
                   aria-label={`Collega ${candidato.numero_completo}`}
                   style={{
-                    minHeight: 36, background: collegatoAltrove ? '#cbd5e1' : '#6f583a',
+                    minHeight: 36, background: collegatoAltrove ? '#d0ccbe' : '#6f583a',
                     color: 'white', border: 0, borderRadius: 7, padding: '6px 11px',
                     fontWeight: 800, cursor: collegatoAltrove ? 'not-allowed' : 'pointer',
                   }}

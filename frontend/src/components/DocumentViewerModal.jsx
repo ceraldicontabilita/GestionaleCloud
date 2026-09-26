@@ -189,16 +189,16 @@ export default function DocumentViewerModal({
   // scala CSS e lascia lo scroll interno al contenitore (§8.2 "scroll interno").
   const iframeStyle =
     fit === 'width'
-      ? { width: '100%', height: '100%', border: 'none', background: '#f8fafc' }
+      ? { width: '100%', height: '100%', border: 'none', background: '#f6f4ee' }
       : fit === 'page'
-        ? { width: '100%', height: '100%', border: 'none', background: '#f8fafc', objectFit: 'contain' }
+        ? { width: '100%', height: '100%', border: 'none', background: '#f6f4ee', objectFit: 'contain' }
         : {
             width: `${100 / zoom}%`,
             height: `${100 / zoom}%`,
             transform: `scale(${zoom})`,
             transformOrigin: 'top left',
             border: 'none',
-            background: '#f8fafc',
+            background: '#f6f4ee',
           };
 
   return createPortal(
@@ -208,7 +208,7 @@ export default function DocumentViewerModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(42, 51, 41,0.55)',
+        background: 'rgba(20, 20, 19,0.55)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -248,7 +248,7 @@ export default function DocumentViewerModal({
             justifyContent: 'space-between',
             gap: 8,
             padding: '8px 8px 8px 16px',
-            background: '#2a3329',
+            background: '#c15f3c',
             color: 'white',
             flexShrink: 0,
           }}
@@ -316,8 +316,8 @@ export default function DocumentViewerModal({
               justifyContent: 'center',
               padding: 24,
               textAlign: 'center',
-              color: '#64748b',
-              background: '#f8fafc',
+              color: '#7a776e',
+              background: '#f6f4ee',
             }}
           >
             {loadError}
@@ -330,7 +330,7 @@ export default function DocumentViewerModal({
               overflow: 'auto',
               WebkitOverflowScrolling: 'touch',
               touchAction: 'pinch-zoom',
-              background: '#f8fafc',
+              background: '#f6f4ee',
             }}
           >
             <iframe
@@ -343,8 +343,8 @@ export default function DocumentViewerModal({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#64748b',
-              background: '#f8fafc',
+              color: '#7a776e',
+              background: '#f6f4ee',
             }}
           >
             Caricamento documento…

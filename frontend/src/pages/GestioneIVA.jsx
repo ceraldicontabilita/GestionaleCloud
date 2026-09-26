@@ -853,8 +853,8 @@ const STILI = {
   },
   totale: { display: 'flex', alignItems: 'center', gap: 10 },
   msg: { padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },
-  msgOk: { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' },
-  msgErr: { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' },
+  msgOk: { background: '#e2f0e7', color: '#166534', border: '1px solid #86efac' },
+  msgErr: { background: '#f8e5e2', color: '#b0362b', border: '1px solid #fca5a5' },
   vuoto: { padding: 32, textAlign: 'center', color: COLORS.textMuted },
   tabella: { width: '100%', borderCollapse: 'collapse', background: COLORS.card, fontSize: 13 },
   th: {

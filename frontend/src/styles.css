@@ -6,28 +6,28 @@
 
 :root {
   /* Colori (coerenti con lib/utils.js COLORS) */
-  --primary:       #2a3329;
-  --primary-dark:  #1a211a;
-  --primary-light: #3f5a4e;
-  --secondary:     #64748b;
-  --success:       #15803d;
-  --warning:       #b45309;
-  --danger:        #b91c1c;
-  --info:          #3f5a4e;
+  --primary:       #c15f3c;
+  --primary-dark:  #8f4128;
+  --primary-light: #a94f30;
+  --secondary:     #7a776e;
+  --success:       #2f7a4f;
+  --warning:       #8a6410;
+  --danger:        #b0362b;
+  --info:          #a94f30;
 
-  --bg-primary:    #f1f5f9;
+  --bg-primary:    #f2f0e9;
   --bg-secondary:  #ffffff;
-  --bg-tertiary:   #f8fafc;
-  --text-primary:  #0f172a;
-  --text-secondary:#475569;
-  --text-muted:    #94a3b8;
-  --border-color:  #e2e8f0;
-  --border-light:  #f1f5f9;
+  --bg-tertiary:   #f6f4ee;
+  --text-primary:  #141413;
+  --text-secondary:#5f5c55;
+  --text-muted:    #a19d92;
+  --border-color:  #e6e3d9;
+  --border-light:  #f2f0e9;
 
   /* Ombre */
-  --shadow-sm: 0 1px 2px rgba(42, 51, 41,0.06);
-  --shadow-md: 0 2px 8px rgba(42, 51, 41,0.08);
-  --shadow-lg: 0 6px 16px rgba(42, 51, 41,0.10);
+  --shadow-sm: 0 1px 2px rgba(20, 20, 19,0.06);
+  --shadow-md: 0 2px 8px rgba(20, 20, 19,0.08);
+  --shadow-lg: 0 6px 16px rgba(20, 20, 19,0.10);
 
   /* Spaziature */
   --space-xs: 4px;
@@ -206,7 +206,7 @@
   border-bottom: 1px solid var(--border-light);
   color: var(--text-primary);
 }
-.data-table tbody tr:hover { background: rgba(42, 51, 41, 0.025); }
+.data-table tbody tr:hover { background: rgba(20, 20, 19, 0.025); }
 
 /* ================================================================
    BADGE LEGACY (colori piatti)
@@ -222,12 +222,12 @@
   letter-spacing: 0.2px;
   text-transform: uppercase;
 }
-.badge.amber  { background: #fef3c7; color: var(--warning); }
-.badge.blue   { background: #e2efe8; color: var(--info); }
-.badge.green  { background: #dcfce7; color: var(--success); }
-.badge.red    { background: #fee2e2; color: var(--danger); }
+.badge.amber  { background: #f7eeda; color: var(--warning); }
+.badge.blue   { background: #f7ebe4; color: var(--info); }
+.badge.green  { background: #e2f0e7; color: var(--success); }
+.badge.red    { background: #f8e5e2; color: var(--danger); }
 .badge.purple { background: #f3ead9; color: #8a6f47; }
-.badge.gray   { background: #f1f5f9; color: #475569; }
+.badge.gray   { background: #f2f0e9; color: #5f5c55; }
 
 /* ================================================================
    BOTTONI LEGACY

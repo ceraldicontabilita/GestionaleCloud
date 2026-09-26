@@ -3,6 +3,7 @@ import api from '../api';
 import { formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
 import { toast } from 'sonner';
 import { Button, Badge, Card, Input, Select, Tabs, StatCard } from '../components/ds';
 
@@ -73,26 +74,11 @@ export default function PrevisioniAcquisti() {
   return (
     <PageLayout>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{ marginBottom: 20 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              flexWrap: 'wrap',
-              marginBottom: 8,
-            }}
-          >
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: COLORS.text }}>
-              📊 Previsioni Acquisti
-            </h1>
-            <Badge variant="primary">{annoGlobale}</Badge>
-          </div>
-          <p style={{ margin: 0, color: COLORS.textMuted, fontSize: 13 }}>
-            Analisi degli acquisti documentati e previsioni basate sullo storico fatture
-          </p>
-        </div>
+        <PageHeader
+          title="Previsioni acquisti"
+          actions={<Badge variant="primary">{annoGlobale}</Badge>}
+          style={{ marginBottom: 14 }}
+        />
 
         {/* Tabs e Controlli */}
         <div

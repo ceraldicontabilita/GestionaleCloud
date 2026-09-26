@@ -67,12 +67,12 @@ export function AnnoSelector({ style = {} }) {
       style={{
         padding: '6px 12px',
         borderRadius: 6,
-        border: '1px solid #e2e8f0',
-        background: '#f8fafc',
+        border: '1px solid #e6e3d9',
+        background: '#f6f4ee',
         fontSize: 13,
         fontWeight: 600,
         cursor: 'pointer',
-        color: '#334155',
+        color: '#4c4a44',
         ...style
       }}
       data-testid="anno-globale-selector"

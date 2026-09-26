@@ -8,13 +8,13 @@ import React from 'react';
  */
 export function PageLoader({ label = 'Caricamento...' }) {
   return (
-    <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+    <div style={{ padding: 40, textAlign: 'center', color: '#a19d92' }}>
       <div
         style={{
           width: 32,
           height: 32,
-          border: '3px solid #e2e8f0',
-          borderTop: '3px solid #2a3329',
+          border: '3px solid #e6e3d9',
+          borderTop: '3px solid #c15f3c',
           borderRadius: '50%',
           animation: 'ds-page-loader-spin 1s linear infinite',
           margin: '0 auto 12px',

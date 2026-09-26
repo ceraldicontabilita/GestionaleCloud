@@ -21,14 +21,14 @@ import {
 // (success/danger/warning/info) senza far collassare più categorie sullo
 // stesso colore, quindi resta una palette custom di dominio (non chrome UI).
 const CATEGORIA_COLORS = {
-  acquisti_merci: { bg: '#e2efe8', text: '#3f5a4e', label: 'Acquisti Merci' },
-  acquisti_servizi: { bg: '#fef3c7', text: '#92400e', label: 'Servizi' },
+  acquisti_merci: { bg: '#f7ebe4', text: '#4c4a44', label: 'Acquisti Merci' },
+  acquisti_servizi: { bg: '#f7eeda', text: '#92400e', label: 'Servizi' },
   utenze: { bg: '#fce7f3', text: '#9d174d', label: 'Utenze' },
   affitti: { bg: '#d1fae5', text: '#065f46', label: 'Affitti' },
-  assicurazioni: { bg: '#eef3ef', text: '#3f5a4e', label: 'Assicurazioni' },
+  assicurazioni: { bg: '#eef3ef', text: '#4c4a44', label: 'Assicurazioni' },
   manutenzioni: { bg: '#fed7aa', text: '#9a3412', label: 'Manutenzioni' },
-  consulenze: { bg: '#f5d0fe', text: '#86198f', label: 'Consulenze' },
-  trasporti: { bg: '#a5f3fc', text: '#0e7490', label: 'Trasporti' },
+  consulenze: { bg: '#f7ebe4', text: '#8f4128', label: 'Consulenze' },
+  trasporti: { bg: '#3d8168', text: '#2f7a4f', label: 'Trasporti' },
   noleggi: { bg: '#fda4af', text: '#9f1239', label: 'Noleggi' },
   telefonia: { bg: '#d9c6a3', text: '#6f583a', label: 'Telefonia' },
   pubblicita: { bg: '#fde68a', text: '#92400e', label: 'Pubblicità' },
