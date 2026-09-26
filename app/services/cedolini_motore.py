@@ -21,6 +21,7 @@ Zucchetti (classico e con gli spazi scritti «s»), Libro Unico, Teamsystem
 from __future__ import annotations
 
 import base64
+import hashlib
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -84,16 +85,16 @@ def _summary_cedolino(
         "netto_letto": summary.get("netto_letto"),
         "netto_calcolato": summary.get("netto_calcolato"),
         "totale_trattenute": summary.get("trattenute"),
-        "tfr_quota": summary.get("tfr_quota") or 0,
-        "ore_lavorate": summary.get("ore_lavorate") or 0,
-        "giorni_lavorati": summary.get("giorni_lavorati") or 0,
+        "tfr_quota": summary.get("tfr_quota"),
+        "ore_lavorate": summary.get("ore_lavorate"),
+        "giorni_lavorati": summary.get("giorni_lavorati"),
         "livello": summary.get("livello"),
         "formato_rilevato": summary.get("template") or "multi_template",
         "ferie_permessi": {
-            "ferie_residuo": summary.get("ferie_residuo") or 0,
-            "ferie_godute": summary.get("ferie_godute") or 0,
-            "permessi_residuo": summary.get("permessi_residuo") or 0,
-            "permessi_goduti": summary.get("permessi_goduti") or 0,
+            "ferie_residuo": summary.get("ferie_residuo"),
+            "ferie_godute": summary.get("ferie_godute"),
+            "permessi_residuo": summary.get("permessi_residuo"),
+            "permessi_goduti": summary.get("permessi_goduti"),
         },
         "cessato": summary.get("cessato", False),
         "cessazione_diciture": summary.get("cessazione_diciture", []),
@@ -246,10 +247,23 @@ def _presenze(pagine: List[str]) -> List[Dict[str, Any]]:
 
 def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
     """Voci codificate e dati chiave letti dal corpo della stessa busta."""
-    corpo = leggi_corpo_cedolino(busta.get("_raw_text") or "")
+    from app.services.salari_unificati_v2 import estrai_ferie_rol_from_text
+
+    testo = busta.get("_raw_text") or ""
+    corpo = leggi_corpo_cedolino(testo)
     if corpo.get("voci"):
         busta["voci"] = corpo["voci"]
         busta["dati_chiave"] = corpo["dati_chiave"]
+    # Ferie, ROL, contributi e TFR letti dal testo: vanno nella scheda
+    # Markdown, cosi' la ricarica non ha bisogno del PDF.
+    extra = {k: v for k, v in (estrai_ferie_rol_from_text(testo) if testo else {}).items()
+             if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    if extra:
+        busta["dati_extra"] = extra
+    if busta.get("_pdf_data"):
+        # La chiave documentale del gestionale usa l'MD5 dei byte della busta
+        # (`chiave_cedolino`): conservarla fa ritrovare la stessa busta.
+        busta["impronta_busta"] = hashlib.md5(base64.b64decode(busta["_pdf_data"])).hexdigest()
     return busta
 
 

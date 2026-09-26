@@ -16,7 +16,7 @@ Questo processo avviene automaticamente:
 import asyncio
 import base64
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from app.services.cedolini_motore import PAYROLL_MIN_YEAR  # noqa: F401 (re-export)
 
@@ -46,6 +46,83 @@ async def riconcilia_stipendio_automatico(
     except Exception as e:
         logger.error(f"Errore riconciliazione automatica: {e}")
         return False
+
+
+async def _scrivi_scheda(db, lettura, contenuto: bytes, filename: str, source_file_hash: str,
+                         drive_file_id: str, source_path: str, results: Dict[str, Any]) -> None:
+    """Scheda Markdown della lettura (buste, presenze o storico): mai bloccante."""
+    import hashlib
+    import re
+
+    from app.services.schede_markdown import salva_scheda_cedolino
+
+    if lettura["esito"] not in ("buste", "presenze", "fuori_periodo"):
+        return
+    sha = (source_file_hash or "").lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", sha):
+        sha = hashlib.sha256(contenuto).hexdigest()
+    try:
+        scheda = await salva_scheda_cedolino(
+            db, lettura, sha256=sha, filename=filename,
+            drive_file_id=drive_file_id or "", source_path=source_path or filename,
+        )
+        results["scheda_markdown"] = scheda["id"]
+    except Exception as exc:
+        logger.warning("[Cedolini] scheda Markdown di %s non scritta: %s: %s",
+                       filename, type(exc).__name__, exc)
+        results["errori"].append(f"Scheda Markdown non scritta: {type(exc).__name__}: {exc}")
+
+
+async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Optional[str],
+                         pdf_text: str, results: Dict[str, Any]) -> None:
+    """Scrive una busta letta: in contabilita' se il netto e' verificato, altrimenti solo in HR.
+
+    E' l'unico punto di scrittura di una busta, sia dalla lettura di un PDF
+    sia dalla ricarica di una scheda Markdown (``schede_markdown``).
+    """
+    from app.constants.stati_netto import alimenta_salari
+    from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+    from app.services.salari_unificati_v2 import processa_cedolino_v2
+
+    chi = ced.get("nome_dipendente") or ced.get("codice_fiscale") or "N/D"
+
+    # Solo un netto verificato dalla cella alimenta Salari (fallisce chiuso).
+    if not ced.get("netto") or not alimenta_salari(ced.get("stato_netto")):
+        deposito = await deposita_cedolino_in_hr({
+            **ced, "filename": filename, "pdf_data": pdf_data,
+            "source": "cedolino_v2",
+        })
+        if deposito.get("esito") in ("inserito", "gia_presente"):
+            results["buste_senza_netto"] += 1
+        else:
+            results["errori"].append(
+                f"{chi}: busta senza netto verificato non depositata in HR ({deposito.get('esito')})"
+            )
+        return
+
+    try:
+        res = await processa_cedolino_v2(
+            db=db,
+            cedolino_data=ced,
+            pdf_text=pdf_text,
+            filename=filename,
+            pdf_data=pdf_data,
+        )
+    except Exception as exc:
+        logger.exception("[Cedolini] scrittura di %s (%s) fallita", filename, chi)
+        results["errori"].append(f"{chi}: scrittura fallita: {type(exc).__name__}: {exc}")
+        return
+
+    if res.get("success"):
+        results["cedolini_processati"] += 1
+        if res.get("anagrafica_creata"):
+            results["anagrafiche_create"] += 1
+        if res.get("prima_nota_creata") or res.get("prima_nota_id"):
+            results["prima_nota_create"] += 1
+        if res.get("riconciliato"):
+            results["riconciliati"] += 1
+    elif res.get("errore"):
+        results["errori"].append(f"{chi}: {res.get('errore')}")
 
 
 async def processa_tutti_cedolini_pdf(
@@ -106,15 +183,13 @@ async def processa_tutti_cedolini_pdf(
         esito=lettura["esito"], motivo=lettura["motivo"],
         fogli_presenze=len(lettura["presenze"]),
     )
+    await _scrivi_scheda(db, lettura, file_content, filename, source_file_hash, drive_file_id,
+                         source_path, results)
     if lettura["esito"] != ESITO_BUSTE:
         if lettura["esito"] == ESITO_ILLEGGIBILE:
             results["success"] = False
             results["errori"].append(f"{filename}: {lettura['motivo']}")
         return results
-
-    from app.constants.stati_netto import alimenta_salari
-    from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
-    from app.services.salari_unificati_v2 import processa_cedolino_v2
 
     for ced in lettura["buste"]:
         ced["source_path"] = source_path or filename
@@ -125,45 +200,8 @@ async def processa_tutti_cedolini_pdf(
             ced["source_file_hash"] = source_file_hash
         cedolino_pdf_data = ced.pop("_pdf_data", pdf_data)
         ced_pdf_text = ced.pop("_raw_text", "")
-        chi = ced.get("nome_dipendente") or ced.get("codice_fiscale") or "N/D"
-
-        # Solo un netto verificato dalla cella alimenta Salari (fallisce chiuso).
-        if not ced.get("netto") or not alimenta_salari(ced.get("stato_netto")):
-            deposito = await deposita_cedolino_in_hr({
-                **ced, "filename": filename, "pdf_data": cedolino_pdf_data,
-                "source": "cedolino_v2",
-            })
-            if deposito.get("esito") in ("inserito", "gia_presente"):
-                results["buste_senza_netto"] += 1
-            else:
-                results["errori"].append(
-                    f"{chi}: busta senza netto verificato non depositata in HR ({deposito.get('esito')})"
-                )
-            continue
-
-        try:
-            res = await processa_cedolino_v2(
-                db=db,
-                cedolino_data=ced,
-                pdf_text=ced_pdf_text,
-                filename=filename,
-                pdf_data=cedolino_pdf_data,
-            )
-        except Exception as exc:
-            logger.exception("[Cedolini] scrittura di %s (%s) fallita", filename, chi)
-            results["errori"].append(f"{chi}: scrittura fallita: {type(exc).__name__}: {exc}")
-            continue
-
-        if res.get("success"):
-            results["cedolini_processati"] += 1
-            if res.get("anagrafica_creata"):
-                results["anagrafiche_create"] += 1
-            if res.get("prima_nota_creata") or res.get("prima_nota_id"):
-                results["prima_nota_create"] += 1
-            if res.get("riconciliato"):
-                results["riconciliati"] += 1
-        elif res.get("errore"):
-            results["errori"].append(f"{chi}: {res.get('errore')}")
+        await registra_busta(db, ced, filename=filename, pdf_data=cedolino_pdf_data,
+                             pdf_text=ced_pdf_text, results=results)
 
     if not (results["cedolini_processati"] or results["buste_senza_netto"]):
         results["success"] = False
