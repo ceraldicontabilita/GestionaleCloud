@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { saveToken, saveRuolo, setGateOk, prendiPaginaRichiesta } from "../../auth";
 import * as authLotti from "../../auth";
 import axios from "axios";
-import { Lock } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
 import { apiError } from "../../utils/apiError";
 import { getTabletSession, moveTabletSessionTo, saveTabletSession } from "../../utils/tabletSession";
 
@@ -196,7 +196,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     // Serve anche il ruolo salvato: il gestionale ora si apre SOLO da
     // amministratore (25/07/2026), altrimenti si tornerebbe subito al kiosk.
     saveRuolo("amministratore");
-    // Apre anche il cancello del gestionale per 2 ore: senza, bastava
+    // Apre anche il cancello del gestionale: senza, bastava
     // ricaricare la pagina per ritrovarsi il tastierino "Accesso Lotti"
     // (trovato al collaudo del 25/07/2026).
     setGateOk();
@@ -251,6 +251,9 @@ export default function TabletHome({ onEntra, preselectReparto }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#1c2620", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 16px", userSelect: "none", position: "relative", overflow: "hidden" }}>
+      <a href="/" aria-label="Torna al Gestionale" style={{ position: "absolute", top: 18, left: 18, display: "inline-flex", alignItems: "center", gap: 7, minHeight: 44, padding: "0 14px", borderRadius: 10, border: "1px solid #4a5d50", color: "#f5f2ea", fontSize: 13, fontWeight: 800, textDecoration: "none", background: "rgba(255,255,255,.06)" }}>
+        <ArrowLeft size={16} /> Torna al Gestionale
+      </a>
       <div style={{ position: "absolute", top: -100, right: -100, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(63,90,78,.15) 0%, transparent 70%)", pointerEvents: "none" }} />
       <Orologio />
       <div style={{ marginBottom: 40, textAlign: "center" }}>
@@ -277,7 +280,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
         ))}
       </div>
       {erroreGestionale && <div role="alert" style={{ position: "absolute", bottom: 60, right: 20, color: "#fff" }}>{erroreGestionale}</div>}
-      <button onClick={chiediEsciAdmin} disabled={verificaGestionale} style={{ position: "absolute", bottom: 20, right: 20, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🔒 Gestionale — solo titolare</button>
+      <button onClick={chiediEsciAdmin} disabled={verificaGestionale} style={{ position: "absolute", bottom: 20, right: 20, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🔒 Gestionale — area amministratore</button>
       {repSel && (() => {
         const rep = REPARTI.find(r => r.id === repSel);
         return (

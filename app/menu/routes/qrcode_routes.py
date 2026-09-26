@@ -1,24 +1,19 @@
-from fastapi import APIRouter, HTTPException, Depends, Header, Request, status
-from app.menu.models.qrcode_models import QRCodeConfigUpdate, AdminPinLogin, AdminLoginResponse
-from datetime import datetime, timedelta
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
+from app.menu.models.qrcode_models import QRCodeConfigUpdate, AdminLoginResponse
+from datetime import UTC, datetime, timedelta
 import os
 import jwt
 from io import BytesIO
 import base64
 
 from app.menu.supabase_client import supabase
-from app.utils import login_lockout
-from app.services import pin_authentication
 
 CONFIG_ID = "qrcode_config"
 
 router = APIRouter(prefix="/api/qrcode", tags=["QR Code Management"])
 
-# Il Menu usa lo stesso PIN amministratore del gestionale principale.
-# Il valore non viene mai salvato in chiaro nel repository: Render espone
-# esclusivamente PIN_HASH_ADMIN (SHA-256 del PIN). MENU_JWT_SECRET/JWT_SECRET
-# continua a firmare il token locale del Menu, così le rotte admin esistenti
-# restano compatibili senza introdurre un secondo PIN.
+# Il Menu non possiede un login amministrativo autonomo. MENU_JWT_SECRET firma
+# soltanto il token derivato da una sessione ERP gia' autenticata.
 SECRET_KEY = os.environ.get("MENU_JWT_SECRET") or os.environ.get("JWT_SECRET") or ""
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
@@ -29,7 +24,7 @@ def create_access_token(data: dict):
     if not SECRET_KEY:
         raise HTTPException(status_code=503, detail="Login non configurato (MENU_JWT_SECRET mancante)")
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -53,41 +48,6 @@ def verify_token(authorization: str = Header(None)):
         # PyJWT non ha JWTError (e' di python-jose): con quel nome un token
         # malformato usciva come AttributeError, cioe' 500 invece di 401.
         raise HTTPException(status_code=401, detail="Invalid token") from exc
-
-
-@router.post("/login", response_model=AdminLoginResponse)
-async def admin_login(login_data: AdminPinLogin, request: Request):
-    """Accesso amministratore Menu tramite lo stesso PIN del gestionale."""
-    if not SECRET_KEY:
-        raise HTTPException(status_code=503, detail="Login amministratore non configurato")
-
-    ip = login_lockout.client_ip(request)
-    lock_sec = login_lockout.seconds_locked(ip)
-    if lock_sec > 0:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Troppi tentativi, riprova tra {lock_sec}s",
-        )
-
-    pin = str(login_data.pin or "").strip()
-    if not pin or not pin.isdigit() or len(pin) < 4 or len(pin) > 12:
-        login_lockout.register_failure(ip)
-        raise HTTPException(status_code=400, detail="PIN non valido")
-
-    if not pin_authentication.admin_pin_is_configured():
-        raise HTTPException(status_code=503, detail="PIN amministratore non configurato")
-
-    if not pin_authentication.admin_pin_matches(pin):
-        login_lockout.register_failure(ip)
-        return AdminLoginResponse(success=False, message="PIN non valido")
-
-    login_lockout.clear_failures(ip)
-    access_token = create_access_token(data={"sub": ADMIN_USERNAME, "auth_method": "pin"})
-    return AdminLoginResponse(
-        success=True,
-        token=access_token,
-        message="Accesso effettuato",
-    )
 
 
 @router.get("/session", response_model=AdminLoginResponse)
@@ -137,7 +97,7 @@ async def get_qrcode_config():
                 "security": "WPA",
                 "hidden": False,
             },
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
         supabase.table("menu_qrcode_config").insert(default_config).execute()
         return _public_config(default_config)
@@ -162,7 +122,7 @@ async def update_qrcode_config(
     if config_update.wifi is not None:
         update_data["wifi"] = config_update.wifi.dict()
 
-    update_data["updated_at"] = datetime.utcnow().isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
     update_data["updated_by"] = username
 
     supabase.table("menu_qrcode_config").update(update_data).eq("id", CONFIG_ID).execute()
