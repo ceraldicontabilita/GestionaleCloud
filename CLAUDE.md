@@ -192,8 +192,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   saltare il turno. Per lo stesso motivo `stop_scheduler` chiude con
   `shutdown(wait=False)`: i job sono coroutine dello stesso event loop, e
   aspettarli da dentro il loop impedisce allo spegnimento di arrivare in fondo.
-- Il download di un file Drive sta in un posto solo,
-  `app/services/drive_download.py`: non è specifico di una sezione.
+- Il download di un file Drive sta in un posto solo, `drive_download.py` (`scarica_originale` per id), e ogni servizio Drive che non è un canale prova la credenziale sulla cartella unica.
 - PostgREST esegue le RPC del runtime come ruolo `anon`, con
   `statement_timeout` 20 s; `authenticator` resta a 8 s. Compute **Small** (90 connessioni,
   database ~2,2 GB): i timeout si rivedono se si riduce il payload di `documents`.
@@ -421,7 +420,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
   appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca
   (Enable Banking, `services/enable_banking.py`, flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo
-  `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 19:15 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
+  `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
 - Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
   due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
   (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
@@ -503,6 +502,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   sono indeducibili, 1701/1704 sono crediti, non IVA né costo.
 - IRAP è un motore separato da IRES, non sottrae mai l'intero F24, e le
   aliquote sono versionate per periodo d'imposta.
+- **Situazione fiscale legge il registro unico F24** (`registro_fiscale_f24.py`), mai l'indice Excel su Drive; un quadro del 770 caricato da solo (`componenti_770.py`) si aggancia al 770 intero per «Identificativo dichiarazione», mai per nome o importo.
 - Il catalogo dei codici tributo è consultivo: una ricerca non crea F24,
   pagamenti o scritture. Le tabelle sono **due** —
   `services/codici_tributo_f24.py` (la legge il parser) e
@@ -859,7 +859,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non hanno importo, targa né data; bonifici al Comune e pagamenti Mooney via PayPal sono candidati senza verbale.
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
-- Drill-down «Verifica campi e F24» punta al vecchio indice Drive; `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
+- `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
 - `gestionale.blobs`: oltre ai backup di Lotti, 216 PDF che **nessun documento cita**; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.

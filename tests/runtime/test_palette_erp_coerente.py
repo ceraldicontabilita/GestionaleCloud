@@ -10,8 +10,6 @@ rimasti navy e azzurri, sotto un commento che diceva «Brand navy». Il
 risultato si vedeva: `Button.jsx` usa `primaryLight` sull'hover, quindi il
 bottone primario era verde a riposo e **blu** al passaggio del mouse.
 
-Stessa storia per `public/archivio-fiscale-drive.html`, pagina viva aperta da
-un bottone color inchiostro e disegnata in navy e blu.
 """
 import pathlib
 import re

@@ -59,6 +59,7 @@ const searchableText = item => Object.values(item || {}).filter(value => ['strin
 const itemYear = item => String(item.payment_year || item.filing_year || item.tax_year || item.year || item.notification_date || item.payment_date || '').slice(0, 4);
 const itemStatus = item => item.documentary_payment_status || item.evidence_state || item.calculated_business_status || item.business_status || item.payment_status || item.status || '';
 const PAGE_SIZES = [25, 50, 100];
+const F24_ROW = 'F24_REGISTRO_ROW';
 const F24_GROUPED_TABS = new Set(['tributi', 'tributi-pagati', 'tutti-tributi', 'f24']);
 const groupF24Rows = rows => {
   const groups = new Map();
@@ -219,14 +220,15 @@ export default function SituazioneFiscale() {
     }
   };
 
-  const openDriveDocument = async documentId => {
+  // PDF del modello F24 dal registro (endpoint autenticato, mai un link Drive).
+  const openF24Pdf = async pdfUrl => {
     try {
-      const response = await api.get(`/api/documenti/drive/index/document/${encodeURIComponent(documentId)}`);
-      const url = response.data?.drive_url;
-      if (!url) throw new Error('Link Drive non disponibile');
+      const response = await api.get(pdfUrl, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
       window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (error) {
-      toast.error('Originale Drive non disponibile', { description: error.response?.data?.detail || error.message });
+      toast.error('PDF del modello F24 non disponibile', { description: error.response?.data?.detail || error.message });
     }
   };
 
@@ -305,16 +307,16 @@ export default function SituazioneFiscale() {
     await Promise.all([worker(), worker()]);
     setCheckingAllDeclarations(false);
     if (failed) toast.warning(`Verifica completata con ${failed} documenti da riprovare`);
-    else toast.success('Registro dichiarazioni aggiornato da Drive');
+    else toast.success('Registro dichiarazioni aggiornato');
   };
 
-  const driveCounts = summary?.drive_index?.counts || {};
+  const counts = summary?.counts || {};
   const activeLabel = useMemo(() => TABS.find(([id]) => id === tab)?.[1], [tab]);
   const displayItems = useMemo(() => {
     if (!F24_GROUPED_TABS.has(tab)) return items;
-    const driveRows = items.filter(item => item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW');
-    const otherItems = items.filter(item => item.source_kind !== 'DRIVE_EXCEL_INDEX_F24_ROW');
-    return [...groupF24Rows(driveRows), ...otherItems];
+    const registroRows = items.filter(item => item.source_kind === F24_ROW);
+    const otherItems = items.filter(item => item.source_kind !== F24_ROW);
+    return [...groupF24Rows(registroRows), ...otherItems];
   }, [items, tab]);
   const listYears = useMemo(() => [...new Set(displayItems.map(itemYear).filter(year => /^20\d{2}$/.test(year)))].sort().reverse(), [displayItems]);
   const listStatuses = useMemo(() => [...new Set(displayItems.map(itemStatus).filter(Boolean))].sort(), [displayItems]);
@@ -382,37 +384,30 @@ export default function SituazioneFiscale() {
   return (
     <PageLayout title="Situazione fiscale" icon="⚖️"
       subtitle="Obblighi, pagamenti, cartelle e prove restano distinti e verificabili"
-      actions={<Button variant="secondary" onClick={load} disabled={loading}>Aggiorna da Drive</Button>}>
+      actions={<Button variant="secondary" onClick={load} disabled={loading}>Aggiorna</Button>}>
       <nav aria-label="Sezioni situazione fiscale" className="fiscal-tabs">
         {TABS.map(([id, label]) => <Link key={id} to={`/situazione-fiscale/${id}`}
           style={{ padding: '8px 12px', borderRadius: 8, textDecoration: 'none', fontWeight: 700,
             background: tab === id ? '#c15f3c' : '#e6e3d9', color: tab === id ? '#fff' : '#c15f3c' }}>{label}</Link>)}
       </nav>
       <div className="fiscal-stats">
-        <StatCard label="F24 in Drive" value={driveCounts.f24_documents || 0} accent="primary" />
-        <StatCard label="Righe tributo Drive" value={driveCounts.f24_rows || 0} accent="primary" />
-        <StatCard label="Dichiarazioni Drive" value={driveCounts.declarations || 0} accent="primary" />
-        <StatCard label="Tributi a debito Drive" value={driveCounts.tax_debit_rows || 0} accent="primary" />
-        <StatCard label="Quietanze Drive" value={driveCounts.documentary_payment_documents || 0} accent="success" />
+        <StatCard label="Modelli F24" value={counts.f24_documents || 0} accent="primary" />
+        <StatCard label="Righe tributo" value={counts.f24_rows || 0} accent="primary" />
+        <StatCard label="Dichiarazioni" value={counts.declarations || 0} accent="primary" />
+        <StatCard label="Tributi a debito" value={counts.tax_debit_rows || 0} accent="primary" />
+        <StatCard label="Quietanze con righe" value={counts.documentary_payment_documents || 0} accent="success" />
       </div>
-      {summary?.drive_index?.available === false && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 14, color: '#92400e', background: '#fffbeb' }}>
-        <strong>Indice Drive non disponibile:</strong> {summary.drive_index.warning}.
-      </Card>}
       {loadWarnings.length > 0 && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 14, color: '#92400e', background: '#fffbeb' }}>
         {loadWarnings.map(message => <div key={message}>{message}</div>)}
       </Card>}
       <Card bodyStyle={{ padding: 16 }}>
         <div className="fiscal-section-heading"><div><h3>{activeLabel}</h3><p>{filteredItems.length} {F24_GROUPED_TABS.has(tab) ? 'documenti' : 'risultati'} su {displayItems.length}{F24_GROUPED_TABS.has(tab) && ` · ${items.length} righe tributo`}</p></div></div>
-        {tabSources && (tab === 'tributi' || tab === 'f24' || tab === 'dichiarazioni' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
-          <strong>Archivio canonico:</strong> Google Drive · indice {tabSources.drive_excel_index || 0}
-          {tabSources.drive_warning && <div style={{ color: '#92400e', marginTop: 4 }}>Drive non disponibile: {tabSources.drive_warning}</div>}
-        </div>}
         {tab === 'confronto-fonti' && certaintyMeta && <div className="fiscal-stats" style={{ marginBottom: 16 }}>
           <StatCard label="Concordanti" value={certaintyMeta.certain || 0} accent="success" />
           <StatCard label="Da verificare" value={certaintyMeta.requires_review || 0} accent="warning" />
           <StatCard label="F24 commercialista" value={certaintyMeta.sources?.commercialista_f24_documents || 0} accent="primary" />
           <StatCard label="Modelli F24 senza provenienza" value={certaintyMeta.sources?.unattributed_f24_model_documents || 0} accent="warning" />
-          <StatCard label="Quietanze Drive" value={certaintyMeta.sources?.quietanza_drive_rows || 0} accent="primary" />
+          <StatCard label="Righe da quietanza" value={certaintyMeta.sources?.quietanza_drive_rows || 0} accent="primary" />
           <StatCard label="Dichiarazioni" value={certaintyMeta.declarations?.documents || 0} accent="primary" />
           <StatCard label="Identità/versione da verificare" value={certaintyMeta.declarations?.identity_or_version_review || 0} accent="warning" />
         </div>}
@@ -422,7 +417,7 @@ export default function SituazioneFiscale() {
         </div>}
         {tab === 'confronto-fonti' && (certaintyMeta?.declaration_items || []).length > 0 && <section aria-labelledby="obligation-register-heading" className="fiscal-record" style={{ marginBottom: 18 }}>
           <div className="fiscal-record-header">
-            <div><h4 id="obligation-register-heading" style={{ margin: 0 }}>Registro automatico dovuto / pagato</h4><div className="fiscal-muted">Dichiarazioni → F24 commercialista → quietanze Drive → dati gestionali disponibili</div></div>
+            <div><h4 id="obligation-register-heading" style={{ margin: 0 }}>Registro automatico dovuto / pagato</h4><div className="fiscal-muted">Dichiarazioni → F24 commercialista → quietanze → dati gestionali disponibili</div></div>
             <div className="fiscal-actions">
               <input ref={accountantF24Input} type="file" accept="application/pdf,.pdf" hidden onChange={uploadAccountantF24} disabled={uploadingF24Model} />
               <Button variant="secondary" onClick={() => accountantF24Input.current?.click()} disabled={uploadingF24Model}>
@@ -458,7 +453,7 @@ export default function SituazioneFiscale() {
           {declarationCheckProgress.failed > 0 && <div className="fiscal-muted" style={{ marginTop: 8 }}>{declarationCheckProgress.failed} documenti non elaborati: restano esplicitamente da verificare.</div>}
         </section>}
         {tab === 'confronto-fonti' && (certaintyMeta?.declaration_items || []).length > 0 && <section aria-labelledby="declaration-certainty-heading" style={{ marginBottom: 18 }}>
-          <h4 id="declaration-certainty-heading" style={{ margin: '0 0 10px' }}>Dichiarazioni → F24 Drive</h4>
+          <h4 id="declaration-certainty-heading" style={{ margin: '0 0 10px' }}>Dichiarazioni → F24</h4>
           <div style={{ display: 'grid', gap: 12 }}>
             {certaintyMeta.declaration_items.map(declaration => {
               const check = declarationChecks[declaration.document_id];
@@ -475,7 +470,7 @@ export default function SituazioneFiscale() {
                   <Button size="sm" variant="primary" disabled={!declaration.document_id || !['PRONTO_PER_VERIFICA_CAMPI', 'PRONTO_PER_VERIFICA_IDENTITA_VERSIONE'].includes(declaration.field_check_status) || checkingDeclaration === declaration.document_id} onClick={() => checkDeclarationFields(declaration.document_id)}>
                     {checkingDeclaration === declaration.document_id ? 'Verifica…' : 'Verifica campi e F24'}
                   </Button>
-                  <Button size="sm" variant="secondary" disabled={!declaration.document_id} onClick={() => openDriveDocument(declaration.document_id)}>Apri originale Drive</Button>
+                  <Button size="sm" variant="secondary" disabled={!declaration.document_id} onClick={() => openDocument(declaration.document_id)}>Apri dichiarazione</Button>
                 </div>
                 {check && <div style={{ marginTop: 12 }}>
                   <div className="fiscal-data-grid">
@@ -542,7 +537,6 @@ export default function SituazioneFiscale() {
           </select></label>
           <input ref={declarationInput} type="file" accept="application/pdf,.pdf" hidden onChange={uploadDeclaration} disabled={uploading} />
           <Button variant="primary" disabled={uploading} onClick={() => declarationInput.current?.click()}>{uploading ? 'Caricamento…' : 'Inserisci dichiarazione'}</Button>
-          <a href="/archivio-fiscale-drive.html" target="_blank" rel="noreferrer" style={{ padding: '9px 14px', borderRadius: 8, background: '#c15f3c', color: '#fff', textDecoration: 'none', fontWeight: 700 }}>Apri pagina HTML Drive</a>
         </div>}
         {tab === 'codici-tributo' && <>
           {taxCodeMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#f7ebe4', border: '1px solid #c2ddd0' }}>
@@ -619,10 +613,10 @@ export default function SituazioneFiscale() {
         </div>}
         {loading && <p>Caricamento…</p>}
         {!loading && items.length === 0 && <p>{({
-          'crosswalk-riscossione': 'Nessun collegamento di riscossione presente nell’indice Drive.',
-          riscossione: 'Nessuna cartella o posizione di riscossione presente nell’indice Drive.',
-          ader: 'Nessuno snapshot AdeR presente nell’indice Drive.',
-        }[tab] || 'Nessun documento presente nella sezione Drive corrispondente.')}</p>}
+          'crosswalk-riscossione': 'Nessun collegamento di riscossione registrato.',
+          riscossione: 'Nessuna cartella o posizione di riscossione registrata.',
+          ader: 'Nessuno snapshot AdeR registrato.',
+        }[tab] || 'Nessun documento in questa sezione.')}</p>}
         {!loading && items.length > 0 && filteredItems.length === 0 && <div className="fiscal-empty"><strong>Nessun risultato con questi filtri.</strong><Button variant="secondary" onClick={resetListFilters}>Mostra tutti</Button></div>}
         <div className="fiscal-records">
         {visibleItems.map((item, index) => {
@@ -631,7 +625,7 @@ export default function SituazioneFiscale() {
             <div className="fiscal-record-header"><strong>{item.accountant_document?.filename || item.official_document?.filename || 'Documento fiscale'}</strong><Badge variant={item.requires_review ? 'warning' : 'success'}>{String(item.status || '').replaceAll('_', ' ')}</Badge></div>
             <div className="fiscal-data-grid">
               <span><small>Fonte commercialista</small><strong>{item.accountant_document?.document_id || 'Mancante'}</strong></span>
-              <span><small>Quietanza Drive</small><strong>{item.official_document?.document_id || 'Mancante'}</strong></span>
+              <span><small>Quietanza</small><strong>{item.official_document?.document_id || 'Mancante'}</strong></span>
               <span><small>Righe fiscali</small><strong>{item.accountant_document?.row_count ?? item.official_document?.row_count ?? 0}</strong></span>
               <span><small>Candidati esatti</small><strong>{item.candidate_count || 0}</strong></span>
             </div>
@@ -659,14 +653,14 @@ export default function SituazioneFiscale() {
                   <tfoot><tr><th colSpan="3">Totali documento</th><th>{euro(item.debit_amount)}</th><th>{euro(item.credit_amount)}</th></tr><tr><th colSpan="3">Saldo delega (debiti − crediti)</th><th colSpan="2">{euro(item.net_amount)}</th></tr></tfoot>
                 </table></div>
                 <div className="fiscal-evidence"><strong>{item.documentary_payment_status === 'QUIETANZA_PRESENTE' ? 'Quietanza documentale presente' : 'Modello F24 presente'} · riscontro bancario da verificare</strong></div>
-                <div className="fiscal-actions"><Button size="sm" variant="secondary" disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri PDF Drive</Button></div>
+                {item.pdf_url && <div className="fiscal-actions"><Button size="sm" variant="secondary" onClick={() => openF24Pdf(item.pdf_url)}>Apri PDF</Button></div>}
               </div>
             </details>
           </article>;
           const technicalLabel = String(labelForClaim(item) || '');
           const title = tab === 'f24' ? `${item.tax_code || item.section || 'Riga F24'} · ${item.reference_period || 'periodo non indicato'}`
             : tab === 'dichiarazioni' ? `${item.document_type} · ${item.filing_year || 'anno da verificare'}`
-              : ((tab === 'tributi' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW') ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`
+              : ((tab === 'tributi' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && item.source_kind === F24_ROW) ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`
                 : (technicalLabel.startsWith('drive-f24-row:') ? (item.description || item.tax_code || 'Tributo F24') : (technicalLabel || item.code || item.version_id || 'Record fiscale'));
           return <article key={entityId} className="fiscal-record">
             <div className="fiscal-record-header"><strong>{title}</strong>
@@ -686,18 +680,16 @@ export default function SituazioneFiscale() {
               {item.filename && <div style={{ marginTop: 4 }}>{item.filename}</div>}
               {item.evidence_state && <div style={{ marginTop: 4 }}><strong>{item.evidence_state === 'MODELLO_F24_NON_PROVA_BANCARIA' ? 'Modello F24: pagamento bancario da verificare' : 'Quietanza documentale: banca da verificare'}</strong></div>}
             </div>}
-            {(tab === 'tributi' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW' && <div className="fiscal-record-body">
+            {(tab === 'tributi' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && item.source_kind === F24_ROW && <div className="fiscal-record-body">
               <div className="fiscal-data-grid"><span><small>Periodo</small><strong>{item.reference_period || 'Non indicato'}</strong></span><span><small>Debito</small><strong>{euro(item.debit_amount)}</strong></span><span><small>Credito</small><strong>{euro(item.credit_amount)}</strong></span><span><small>Data</small><strong>{item.payment_date || 'Non indicata'}</strong></span></div>
               <div className="fiscal-file" title={item.filename}>{item.filename || 'Nome file non disponibile'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
               <div className="fiscal-evidence"><strong>{item.documentary_payment_status === 'QUIETANZA_PRESENTE' ? 'Quietanza documentale presente' : 'Modello F24 presente'} · riscontro bancario da verificare</strong></div>
-              <div className="fiscal-actions"><Button size="sm" variant="secondary" disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri PDF Drive</Button></div>
+              {item.pdf_url && <div className="fiscal-actions"><Button size="sm" variant="secondary" onClick={() => openF24Pdf(item.pdf_url)}>Apri PDF</Button></div>}
             </div>}
             {tab === 'dichiarazioni' && <div style={{ marginTop: 8, color: '#5f5c55' }}>
               <div>Anno d'imposta {item.tax_year || 'da verificare'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
               <div>{item.filename}</div>
-              {item.source_kind === 'DRIVE_EXCEL_INDEX_DECLARATION'
-                ? <Button size="sm" variant="secondary" style={{ marginTop: 8 }} disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri originale Drive</Button>
-                : <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openDocument(item.id)}>Apri dichiarazione</Button>}
+              <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openDocument(item.id)}>Apri dichiarazione</Button>
               {(item.f24_links || []).map(link => <div key={link.f24_id} style={{ marginTop: 10, padding: 10, border: '1px solid #d0ccbe', borderRadius: 8 }}>
                 <strong>F24 {link.filename || link.f24_id}</strong>{' '}<Badge variant={link.link_status === 'CONFIRMED' ? 'success' : 'warning'}>{link.link_status === 'CONFIRMED' ? 'Collegato' : 'Candidato da verificare'}</Badge>
                 <div>{(link.tax_rows || []).map(row => `${row.tax_code} ${row.reference_period || ''}`).join(' · ')}</div>
@@ -722,7 +714,7 @@ export default function SituazioneFiscale() {
             {tab === 'riscossione' && (item.payment_evidence_ids || []).length > 0 && <div style={{ marginTop: 8, color: '#166534', fontWeight: 700 }}>
               Pagamento documentato collegato · prove: {item.payment_evidence_ids.length}
             </div>}
-            {tab === 'f24' && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri PDF Drive</Button>}
+            {tab === 'f24' && item.pdf_url && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openF24Pdf(item.pdf_url)}>Apri PDF</Button>}
           </article>;
         })}
         </div>

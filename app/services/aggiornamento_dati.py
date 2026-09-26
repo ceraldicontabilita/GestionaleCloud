@@ -145,7 +145,7 @@ async def _banca(db, ora: datetime) -> Dict[str, Any]:
         fonte["nota"] = "Lettura diretta dalla banca attiva ma conto non collegato: si collega da Prima Nota › Banca."
     else:
         fonte["nota"] = ("Lettura diretta dalla banca collegata: i movimenti nuovi entrano da soli alle 07:15 "
-                         "e alle 19:15 (Prima Nota › Banca per aggiornare subito).")
+                         "e alle 09:00 (Prima Nota › Banca per aggiornare subito).")
     return fonte
 
 

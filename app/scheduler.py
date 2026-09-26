@@ -9,6 +9,7 @@ import inspect
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger(__name__)
@@ -1285,9 +1286,12 @@ def start_scheduler():
 
     scheduler.add_job(
         enable_banking_giro_task,
-        CronTrigger(hour="7,19", minute=15, timezone=ZoneInfo("Europe/Rome")),
+        OrTrigger([
+            CronTrigger(hour=7, minute=15, timezone=ZoneInfo("Europe/Rome")),
+            CronTrigger(hour=9, minute=0, timezone=ZoneInfo("Europe/Rome")),
+        ]),
         id="enable_banking_giro",
-        name="Banco BPM: movimenti nuovi dalla banca (07:15 e 19:15 Europe/Rome)",
+        name="Banco BPM: movimenti nuovi dalla banca (07:15 e 09:00 Europe/Rome)",
         replace_existing=True,
     )
 

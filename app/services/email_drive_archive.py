@@ -58,15 +58,14 @@ def _decode_content(doc: dict[str, Any]) -> bytes:
 
 
 def _drive_service():
-    # Il loader condiviso non dipende da una singola cartella e usa le stesse
-    # credenziali gia' impiegate dagli ingest Drive del gestionale.
-    from app.services.drive_cedolini_ingest import _load_credentials_cedolini
-    creds, error = _load_credentials_cedolini()
-    if creds is None:
-        logger.warning("Archivio email Drive non disponibile: %s", error)
+    # Credenziale provata sulla cartella unica, come ogni servizio Drive
+    # generico: la cartella cedolini su cui la provava non esiste piu'.
+    from app.services.drive_cartella_unica import _service
+    try:
+        return _service()
+    except RuntimeError as exc:
+        logger.warning("Archivio email Drive non disponibile: %s: %s", type(exc).__name__, exc)
         return None
-    from googleapiclient.discovery import build
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
 def _escape_query(value: str) -> str:

@@ -2710,6 +2710,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             return "estratto_conto"
         if "BONIFICO" in content_str and ("IBAN" in content_str or "CRO" in content_str):
             return "bonifici"
+        # Un quadro del 770 stampato da solo e' un pezzo della dichiarazione
+        # gia' archiviata, non una seconda dichiarazione ne' un «da classificare».
+        from app.services.componenti_770 import TIPO as TIPO_COMPONENTE_770, quadro as quadro_770
+
+        if quadro_770(filename, pdf_text):
+            return TIPO_COMPONENTE_770
         # Dichiarazioni fiscali (770/IVA/IRAP/LIPE/Redditi SC): stesso
         # classificatore deterministico del canale Drive
         # "dichiarazione_fiscale" (app/services/drive_documenti_ingest.py),
@@ -3042,6 +3048,16 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
     }
 
 
+def _messaggio_componente_770(metadata: Dict[str, Any], *, gia_presente: bool) -> str:
+    quadro = metadata.get("quadro") or "?"
+    if metadata.get("dichiarazione_id"):
+        testo = f"Quadro {quadro} del 770 agganciato a {metadata.get('dichiarazione_filename')}"
+    else:
+        testo = (f"Quadro {quadro} del 770 conservato: manca il 770 intero "
+                 f"({metadata.get('identificativo_dichiarazione') or 'identificativo non leggibile'})")
+    return f"{testo} (era già in coda, riclassificato)" if gia_presente else testo
+
+
 async def _archive_non_payment_document(
     db, *, filename: str, content: bytes, document_type: str,
     metadata: Dict[str, Any] | None = None,
@@ -3080,6 +3096,7 @@ async def _archive_non_payment_document(
         "verbale_codice_strada": "Verbale Codice della strada",
         "visura_camerale": "Visura camerale",
         "documento_identita": "Documento di identita allegato",
+        "componente_770": "Quadro del 770",
     }
     negative_outcome = document_type == "esito_pagopa_negativo"
     evidence_roles = {
@@ -3091,6 +3108,7 @@ async def _archive_non_payment_document(
         "tari_istanza_compensazione": "istanza_amministrativa",
         "visura_camerale": "documento_anagrafico",
         "documento_identita": "allegato_identita",
+        "componente_770": "componente_dichiarazione",
     }
     if metadata is None and document_type in {
         "tari_avviso", "tari_istanza_compensazione", "visura_camerale",
@@ -3761,6 +3779,46 @@ async def upload_documento_automatico(
                 if is_duplicate
                 else "Dichiarazione fiscale archiviata e agganciata a F24/quietanze"
             )
+
+        elif tipo_rilevato == 'componente_770':
+            from app.services.componenti_770 import metadati as metadati_770
+
+            metadata = await metadati_770(
+                db, filename=filename, testo=_pdf_text_for_detection(content),
+            )
+            # Se lo stesso file e' gia' in coda come «da classificare» si
+            # riclassifica quella riga: niente seconda copia dell'originale.
+            from app.services.document_hash_lookup import find_one_by_hashes
+
+            digest = hashlib.sha256(content).hexdigest()
+            gia = await find_one_by_hashes(
+                db, "documents_inbox",
+                (("sha256", digest), ("file_hash", digest), ("file_hash", hashlib.md5(content).hexdigest())),
+                {"_id": 0, "id": 1, "filename": 1, "category": 1},
+            )
+            if gia:
+                await db["documents_inbox"].update_one({"id": gia["id"]}, {"$set": {
+                    "category": "componente_770", "document_type": "componente_770",
+                    "category_label": "Quadro del 770", "evidence_role": "componente_dichiarazione",
+                    "parsed_metadata": metadata, "obligation_status": "NON_APPLICABILE",
+                    "relation_keys": metadata["relation_keys"], "sha256": digest,
+                    "status": "archiviato" if metadata["dichiarazione_id"] else "da_verificare",
+                }})
+                return {
+                    "success": True, "duplicate": False, "imported": 0, "action": "riclassificato",
+                    "tipo_rilevato": tipo_rilevato, "doc_id": gia["id"], "filename": filename,
+                    "workflow": "COMPONENTE_DICHIARAZIONE", "payment_evidence": False,
+                    "parsed_metadata": metadata,
+                    "message": _messaggio_componente_770(metadata, gia_presente=True),
+                }
+            archived = await _archive_non_payment_document(
+                db, filename=filename, content=content, document_type=tipo_rilevato,
+                source_context=source_context, metadata=metadata,
+            )
+            if archived.get("success"):
+                archived["workflow"] = "COMPONENTE_DICHIARAZIONE"
+                archived["message"] = _messaggio_componente_770(metadata, gia_presente=False)
+            return archived
 
         elif tipo_rilevato in {
             'avviso_pagopa', 'nota_rettifica_inps', 'tari_avviso',
