@@ -216,6 +216,7 @@ def register_all_handlers():
     # --- Fase 2: Fatture ↔ Fornitori ↔ Prima Nota (Chat 9) ---
     try:
         from app.services.handlers.fattura_handlers import (
+            on_fattura_created_garantisci_fornitore,
             on_fattura_created_crea_partita,
             on_fattura_created_alert_fornitore,
             on_fattura_created_audit,
@@ -224,6 +225,9 @@ def register_all_handlers():
             on_fattura_pagata_risolvi,
             on_fornitore_aggiornato_risolvi,
         )
+        # Prima di tutto l'anagrafica: partita, alert e Prima Nota leggono il
+        # metodo del fornitore, che senza anagrafica non si puo' impostare.
+        register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_garantisci_fornitore)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_crea_partita)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_alert_fornitore)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_audit)

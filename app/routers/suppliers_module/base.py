@@ -1091,8 +1091,14 @@ def _filtro_fornitore(supplier_id: str) -> dict:
     "Fatture senza metodo" (segnalato dall'utente il 10/07).
     """
     condizioni = [{"id": supplier_id}]
+    # 180 fornitori su 188 hanno l'id salvato come NUMERO (61), mentre dalla
+    # pagina arriva come testo ("61"): il confronto testo/numero non trovava
+    # nulla e ogni cambio metodo rispondeva 404 «Fornitore non trovato».
+    testo = str(supplier_id or "").strip()
+    if testo.isdigit():
+        condizioni.append({"id": int(testo)})
     for v in _varianti_piva(supplier_id):
-        condizioni += [{"partita_iva": v}, {"piva": v}, {"vat_number": v}]
+        condizioni += [{"partita_iva": v}, {"piva": v}, {"vat_number": v}, {"vat": v}]
     return {"$or": condizioni}
 
 

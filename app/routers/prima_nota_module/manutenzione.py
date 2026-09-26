@@ -909,18 +909,11 @@ async def ripristina_provvisori_metodo_errato(
     In tutti i casi il movimento viene marcato deleted (soft, recuperabile)
     e la fattura torna NON pagata: ricompare nei Provvisori con il
     suggerimento giusto, e decide l'utente."""
-    from .sync import classifica_metodo_fornitore
+    from .sync import classifica_metodo_fornitore, mappa_fornitori_per_piva
 
     db = Database.get_db()
 
-    metodo_per_piva: Dict[str, str] = {}
-    async for s in db["fornitori"].find(
-        {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1},
-    ):
-        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
-            if k:
-                metodo_per_piva[str(k).strip()] = s.get("metodo_pagamento", "")
+    metodo_per_piva, _esclusi = await mappa_fornitori_per_piva(db)
 
     report = {"banca": [], "cassa": []}
     corretti = 0
@@ -1001,7 +994,7 @@ async def ripristina_provvisori_metodo_errato(
                 "fornitore": (fattura.get("supplier_name") or "")[:40],
                 "importo": mov.get("importo"),
                 "data": mov.get("data"),
-                "metodo_fornitore": metodo_per_piva.get(piva, "(nessuno)"),
+                "metodo_fornitore": metodo_per_piva.get(piva) or "(nessuno)",
                 "destinazione_giusta": destinazione,
             })
             corretti += 1
@@ -2079,20 +2072,9 @@ async def diagnostica_metodi_discordanti(anno: int = Query(...)) -> Dict:
 
     # Metodo canonico attuale per P.IVA (tutte le chiavi storiche; un
     # doppione senza metodo non sovrascrive il record buono)
-    metodo_per_piva: Dict[str, str] = {}
-    async for s in db["fornitori"].find(
-        {}, {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
-             "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1}
-    ):
-        metodo = (
-            normalizza_metodo_pagamento(s.get("metodo_pagamento_predefinito"))
-            or normalizza_metodo_pagamento(s.get("metodo_pagamento"))
-            or ""
-        )
-        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
-            k = (str(k) if k else "").strip()
-            if k and (metodo or k not in metodo_per_piva):
-                metodo_per_piva[k] = metodo
+    from .sync import mappa_fornitori_per_piva
+
+    metodi_grezzi, _esclusi = await mappa_fornitori_per_piva(db)
 
     discordanti = []
     per_registro = {"cassa": COLLECTION_PRIMA_NOTA_CASSA, "banca": COLLECTION_PRIMA_NOTA_BANCA}
@@ -2107,7 +2089,7 @@ async def diagnostica_metodi_discordanti(anno: int = Query(...)) -> Dict:
             piva = (mov.get("fornitore_piva") or "").strip()
             if not piva:
                 continue
-            atteso = metodo_per_piva.get(piva, "")
+            atteso = normalizza_metodo_pagamento(metodi_grezzi.get(piva, "")) or ""
             if atteso in ("cassa", "banca") and atteso != registro:
                 discordanti.append({
                     "movimento_id": mov["id"],

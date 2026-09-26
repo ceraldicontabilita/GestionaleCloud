@@ -25,6 +25,32 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # HANDLER 1: Crea partita aperta da fattura
 # ============================================================
+async def on_fattura_created_garantisci_fornitore(event: Dict[str, Any], db) -> Optional[Dict]:
+    """Ogni fattura con P.IVA ha la sua anagrafica fornitore, qualunque canale
+    l'abbia importata.
+
+    L'import principale chiama `ensure_supplier_exists`, ma un'altra strada
+    (il blocco del 14/09/2026) no: 24 fornitori con 28 fatture sono rimasti
+    senza anagrafica, quindi senza metodo impostabile e con le fatture ferme
+    fra le sospese. Qui si usa lo stesso motore, sulla fattura salvata: se
+    l'anagrafica c'e' gia' non si crea nulla (idempotente)."""
+    fattura_id = event.get("fattura_id")
+    if not fattura_id or not event.get("fornitore_piva"):
+        return None
+    from app.routers.invoices.fatture_upload import ensure_supplier_exists
+
+    fattura = await db["invoices"].find_one(
+        {"id": fattura_id},
+        {"_id": 0, "id": 1, "supplier_vat": 1, "supplier_name": 1, "fornitore": 1,
+         "cliente": 1, "sha256": 1, "document_hash": 1, "document_id": 1},
+    )
+    if not fattura:
+        return None
+    esito = await ensure_supplier_exists(db, fattura)
+    return {"fornitore_creato": bool(esito.get("supplier_created")),
+            "fornitore_id": esito.get("supplier_id")}
+
+
 async def on_fattura_created_crea_partita(event: Dict[str, Any], db) -> Optional[Dict]:
     """
     Quando arriva una fattura, crea una partita aperta nel scadenziario
