@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Database, Link2, Eye } from 'lucide-react';
+import { RefreshCw, Database, Link2, Eye, Download } from 'lucide-react';
 import api, { messaggioErrore } from '../api';
 import { COLORS } from '../lib/utils';
+import { useConfirm } from './ui/ConfirmDialog';
 
 /**
  * Riquadro «Aggiornamento dati» della Dashboard — SOLA LETTURA.
@@ -127,12 +128,13 @@ export default function AggiornamentoDati() {
 }
 
 /**
- * Lettura diretta Banco BPM (Enable Banking) in modalita' ombra: collega il
- * conto e mostra l'anteprima nuovi / gia' presenti / da verificare. Non scrive
- * movimenti: l'importazione arriva col pulsante «Aggiorna ora».
+ * Lettura diretta Banco BPM (Enable Banking): collega il conto, mostra
+ * l'anteprima e importa solo le righe certamente nuove dopo conferma.
  */
 function LetturaDiretta({ eb }) {
+  const confirm = useConfirm();
   const [anteprima, setAnteprima] = useState(null);
+  const [esitoImport, setEsitoImport] = useState(null);
   const [lavoro, setLavoro] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -166,6 +168,42 @@ function LetturaDiretta({ eb }) {
     }
   };
 
+  const importa = async () => {
+    const nuovi = Number(anteprima?.conteggi?.nuovi || 0);
+    if (!nuovi) return;
+    const dubbi = Number(anteprima?.conteggi?.da_verificare || 0);
+    const confermato = await confirm({
+      title: 'Importa i nuovi movimenti Banco BPM',
+      message: `Saranno importati ${nuovi} movimenti certamente nuovi.\n${dubbi} movimenti da verificare resteranno esclusi.\nL'importazione sarà provvisoria fino all'estratto conto ufficiale PDF.`,
+      confirmText: `Importa ${nuovi}`,
+      cancelText: 'Annulla',
+    });
+    if (!confermato) return;
+    setLavoro(true);
+    setMsg(null);
+    setEsitoImport(null);
+    try {
+      const res = await api.post(
+        '/api/banca/enable-banking/importa',
+        { conferma: true, giorni: 90 },
+        { timeout: 120000 },
+      );
+      setEsitoImport(res.data);
+      setAnteprima(prev => prev ? {
+        ...prev,
+        conteggi: {
+          ...prev.conteggi,
+          nuovi: Math.max(0, Number(prev.conteggi.nuovi || 0) - Number(res.data.importati || 0)),
+          gia_presenti: Number(prev.conteggi.gia_presenti || 0) + Number(res.data.importati || 0),
+        },
+      } : prev);
+    } catch (e) {
+      setMsg(messaggioErrore(e, 'Importazione dalla banca non riuscita'));
+    } finally {
+      setLavoro(false);
+    }
+  };
+
   return (
     <div style={S.diretta} data-testid="lettura-diretta">
       <div style={S.testo}>{stato}</div>
@@ -189,6 +227,18 @@ function LetturaDiretta({ eb }) {
           <span>nuovi: <strong>{anteprima.conteggi.nuovi}</strong></span>
           <span>già presenti: <strong>{anteprima.conteggi.gia_presenti}</strong></span>
           <span>da verificare: <strong>{anteprima.conteggi.da_verificare}</strong></span>
+          {Number(anteprima.conteggi.nuovi || 0) > 0 && (
+            <button type="button" style={S.bottone} onClick={importa} disabled={lavoro}>
+              <Download size={14} /> Importa {anteprima.conteggi.nuovi} nuovi
+            </button>
+          )}
+        </div>
+      )}
+      {esitoImport && (
+        <div style={S.successo} data-testid="esito-import-banca">
+          Importati <strong>{esitoImport.importati}</strong> movimenti.{' '}
+          Esclusi <strong>{esitoImport.da_verificare_esclusi}</strong> movimenti da verificare.
+          Restano provvisori fino al PDF ufficiale.
         </div>
       )}
     </div>
@@ -230,6 +280,10 @@ const S = {
   errore: {
     marginTop: 10, padding: 10, borderRadius: 8, background: COLORS.dangerLight,
     color: COLORS.danger, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 8,
+  },
+  successo: {
+    marginTop: 8, padding: '9px 11px', borderRadius: 8,
+    color: COLORS.success, background: COLORS.successLight, fontSize: 12,
   },
   idRichiesta: { fontSize: 11, opacity: 0.8 },
   diretta: { marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` },

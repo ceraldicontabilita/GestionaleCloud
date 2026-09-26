@@ -1,5 +1,4 @@
-"""Enable Banking in modalita' ombra: lettura, sessione cifrata, confronto
-con l'archivio col motore dei doppioni. Nessuna scrittura di movimenti."""
+"""Enable Banking: lettura, sessione cifrata, anteprima e import prudente."""
 import asyncio
 from decimal import Decimal
 
@@ -157,6 +156,34 @@ def test_anteprima_col_motore_dei_doppioni_e_nessuna_scrittura():
     assert run(db.estratto_conto_movimenti.count_documents({})) == prima
 
 
+def test_importa_solo_nuovi_esclude_dubbi_ed_e_idempotente():
+    db = AsyncMongoMockClient()["t"]
+    banca = Banca()
+    run(eb.avvia_collegamento(db, banca))
+    run(eb.completa_collegamento(db, banca, code="c", state=banca.state))
+    oggi = __import__("datetime").date.today().isoformat()
+    banca.pagine = [[
+        _tx(oggi, "10.00", True, "COMMISSIONI"),
+        _tx(oggi, "5.00", False, "ACCREDITO NUOVO", ref="RIFNUOVO123"),
+    ]]
+    run(db.estratto_conto_movimenti.insert_one({
+        "id": "esistente", "data": oggi, "importo": 10.0, "tipo": "uscita",
+        "banca": "Banco BPM", "descrizione": "SPESE TENUTA CONTO",
+    }))
+
+    primo = run(eb.importa_nuovi(db, banca, giorni=5))
+    assert primo["importati"] == 1
+    assert primo["da_verificare_esclusi"] == 1
+    importato = run(db.estratto_conto_movimenti.find_one({"fonte": "enable_banking"}))
+    assert importato["descrizione_originale"] == "ACCREDITO NUOVO"
+    assert importato["livello_evidenza"] == "provvisoria"
+    assert importato["in_attesa_estratto_ufficiale"] is True
+
+    secondo = run(eb.importa_nuovi(db, banca, giorni=5))
+    assert secondo["importati"] == 0
+    assert run(db.estratto_conto_movimenti.count_documents({"fonte": "enable_banking"})) == 1
+
+
 def test_flag_spento_per_default(monkeypatch):
     monkeypatch.delenv("ENABLE_BANKING_ENABLED")
     assert eb.attivo() is False
@@ -168,7 +195,7 @@ def test_rotte_riservate_all_admin_tranne_il_ritorno_dalla_banca():
     from app.utils.ruoli import richiedi_admin
 
     per_percorso = {r.path: r for r in router_eb.router.routes}
-    for percorso in ("/stato", "/collega", "/anteprima"):
+    for percorso in ("/stato", "/collega", "/anteprima", "/importa"):
         dipendenze = [d.call for d in per_percorso[percorso].dependant.dependencies]
         assert richiedi_admin in dipendenze, percorso
     assert "/api/banca/enable-banking/callback" in PUBLIC_PATHS

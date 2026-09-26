@@ -87,4 +87,22 @@ describe('Lettura diretta Banco BPM nella riga banca', () => {
     expect(ant).toHaveTextContent('già presenti: 514');
     expect(api.get).toHaveBeenLastCalledWith('/api/banca/enable-banking/anteprima', { timeout: 90000 });
   });
+
+  it('importa dopo conferma soltanto i nuovi e mostra gli esclusi', async () => {
+    api.get.mockResolvedValueOnce({ data: conBanca({ attivo: true, configurato: true, collegata: true, valida_fino: '2026-12-22T10:00:00+00:00' }) });
+    render(<AggiornamentoDati />);
+    await screen.findByTestId('lettura-diretta');
+    api.get.mockResolvedValueOnce({ data: { periodo: ['2026-06-27', '2026-09-24'], conteggi: { letti: 5, nuovi: 2, gia_presenti: 2, da_verificare: 1 } } });
+    fireEvent.click(screen.getByRole('button', { name: /Anteprima/ }));
+    await screen.findByRole('button', { name: /Importa 2 nuovi/ });
+    api.post.mockResolvedValueOnce({ data: { importati: 2, da_verificare_esclusi: 1 } });
+    fireEvent.click(screen.getByRole('button', { name: /Importa 2 nuovi/ }));
+    expect(await screen.findByTestId('esito-import-banca')).toHaveTextContent('Importati 2 movimenti');
+    expect(screen.getByTestId('esito-import-banca')).toHaveTextContent('Esclusi 1 movimenti da verificare');
+    expect(api.post).toHaveBeenCalledWith(
+      '/api/banca/enable-banking/importa',
+      { conferma: true, giorni: 90 },
+      { timeout: 120000 },
+    );
+  });
 });

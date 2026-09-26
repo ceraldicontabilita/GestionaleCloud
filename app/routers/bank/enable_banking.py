@@ -14,6 +14,7 @@ from typing import Any, Dict
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
 
 from app.database import Database
 from app.services import enable_banking as eb
@@ -22,6 +23,11 @@ from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class ImportaMovimentiRequest(BaseModel):
+    conferma: bool = False
+    giorni: int = Field(default=90, ge=1, le=180)
 
 MESSAGGI = {
     "non_configurato": "Mancano Application ID e chiave privata di Enable Banking nelle variabili di Render.",
@@ -111,5 +117,29 @@ async def anteprima(
     try:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
             return await eb.anteprima(Database.get_db(), client, giorni=giorni, psu=psu)
+    except eb.ErroreLettura as exc:
+        raise _errore(exc)
+
+
+@router.post("/importa")
+async def importa(
+    payload: ImportaMovimentiRequest,
+    request: Request,
+    _: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Rilegge la banca e importa i soli movimenti certamente nuovi.
+
+    La conferma esplicita evita che una semplice apertura o anteprima scriva
+    dati. Le righe ambigue restano fuori e vengono soltanto contate.
+    """
+    _richiedi_attivo()
+    if payload.conferma is not True:
+        raise HTTPException(400, "Conferma esplicita richiesta prima dell'importazione")
+    psu = eb.headers_psu(client_ip(request), request.headers.get("user-agent", ""))
+    try:
+        async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
+            return await eb.importa_nuovi(
+                Database.get_db(), client, giorni=payload.giorni, psu=psu
+            )
     except eb.ErroreLettura as exc:
         raise _errore(exc)
