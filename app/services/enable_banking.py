@@ -516,3 +516,124 @@ async def anteprima(db, client, *, giorni: int = 90, psu: Optional[Dict[str, str
         "da_verificare": [{"banca": _pubblico(c["banca"]), "archivio_id": c["archivio_id"]}
                           for c in confronto["da_verificare"]],
     }
+
+
+async def importa_nuovi(
+    db, client, *, giorni: int = 90, psu: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """Importa soltanto i movimenti che il confronto giudica realmente nuovi.
+
+    Le coppie ``DA_VERIFICARE`` restano fuori: giorno e importo non bastano per
+    decidere che una riga sia nuova o duplicata. La fonte API e' operativa e
+    resta provvisoria finche' non arriva l'estratto conto ufficiale PDF.
+    """
+    from app.routers.bank.estratto_conto import bank_operation_identity
+    from app.services.bank_evidence import campi_evidenza
+    from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
+    from app.services.regole_riconoscimento_banca import carica_regole
+
+    letti = await leggi_movimenti(db, client, giorni=giorni, psu=psu)
+    archivio = await db["estratto_conto_movimenti"].find(
+        {"data": {"$gte": letti["dal"]}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "banca": 1,
+         "descrizione": 1, "descrizione_originale": 1, "entry_reference": 1,
+         "transaction_id": 1},
+    ).to_list(None)
+    confronto = confronta_con_archivio(letti["movimenti"], archivio)
+    regole = await carica_regole(db)
+    evidenza = {
+        **campi_evidenza("enable_banking_api.json"),
+        "fonte_documento": "api_bancaria_operativa",
+    }
+    occorrenze: Counter = Counter()
+    inseriti = []
+    adesso = datetime.now(timezone.utc).isoformat()
+
+    for movimento in confronto["nuovi"]:
+        data = str(movimento.get("data") or "")[:10]
+        tipo = str(movimento.get("tipo") or "").lower()
+        importo = abs(float(movimento.get("importo") or 0))
+        descrizione = str(movimento.get("descrizione_originale") or "").strip()
+        base = (data, tipo, round(importo, 2), descrizione.upper())
+        occorrenze[base] += 1
+        operation_key, operation_id = bank_operation_identity(
+            data, tipo, importo, descrizione, occorrenze[base]
+        )
+        record_id = f"EC-EB-{operation_key[:24]}"
+        categoria = categorizza_movimento_bancario(descrizione, importo, regole=regole)
+        campi_categoria: Dict[str, Any] = {"categoria": categoria.categoria or ""}
+        if categoria.categoria or categoria.fornitore_id:
+            campi_categoria.update({
+                "categoria_auto": True,
+                "categoria_auto_motivo": categoria.motivo,
+            })
+        if categoria.codice_tributo:
+            campi_categoria["categoria_codice_tributo"] = categoria.codice_tributo
+        if categoria.fornitore_id:
+            campi_categoria.update({
+                "fornitore_id": categoria.fornitore_id,
+                "fornitore": categoria.fornitore_nome,
+                "regola_riconoscimento_id": categoria.regola_id,
+            })
+
+        record = {
+            "id": record_id,
+            "operation_id": operation_id,
+            "operation_key": operation_key,
+            "identity_version": "bank_v2",
+            "occurrence_index": occorrenze[base],
+            "data": data,
+            "data_valuta": movimento.get("data_valuta"),
+            "data_pagamento": movimento.get("data_valuta") or data,
+            "importo": importo,
+            "tipo": tipo,
+            "descrizione": descrizione,
+            "descrizione_originale": descrizione,
+            "banca": "Banco BPM",
+            "rapporto": movimento.get("conto"),
+            "divisa": movimento.get("divisa") or "EUR",
+            "entry_reference": movimento.get("entry_reference"),
+            "external_reference": movimento.get("entry_reference"),
+            "transaction_id": movimento.get("transaction_id"),
+            "hash_fonte": movimento.get("hash_fonte"),
+            "fonte": FONTE,
+            "source_filename": "Enable Banking API",
+            "riconciliato": False,
+            "created_at": adesso,
+            **campi_categoria,
+            **evidenza,
+        }
+        risultato = await db["estratto_conto_movimenti"].update_one(
+            {"id": record_id}, {"$setOnInsert": record}, upsert=True
+        )
+        if getattr(risultato, "upserted_id", None) is not None:
+            inseriti.append(record)
+
+    riconciliazione_operativa = None
+    if inseriti:
+        from app.services.riconciliazione_operativa_banca import annota_movimenti_operativi
+
+        riconciliazione_operativa = await annota_movimenti_operativi(
+            db, [record["id"] for record in inseriti]
+        )
+
+    esito = {
+        "success": True,
+        "letto_il": letti["letto_il"],
+        "periodo": confronto["periodo"],
+        "letti": len(letti["movimenti"]),
+        "importati": len(inseriti),
+        "gia_presenti": len(confronto["gia_presenti"]),
+        "da_verificare_esclusi": len(confronto["da_verificare"]),
+        "ids_importati": [record["id"] for record in inseriti],
+        "livello_evidenza": "provvisoria",
+        "riconciliazione_operativa": riconciliazione_operativa,
+    }
+    await db["sistema_stato"].update_one(
+        {"chiave": CHIAVE_SESSIONE},
+        {"$set": {"ultimo_import": adesso, "ultimo_import_esito": {
+            "importati": esito["importati"],
+            "da_verificare_esclusi": esito["da_verificare_esclusi"],
+        }}},
+    )
+    return esito
