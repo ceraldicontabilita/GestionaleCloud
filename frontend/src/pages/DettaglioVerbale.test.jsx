@@ -72,5 +72,8 @@ describe('DettaglioVerbale viewer PDF', () => {
     expect(screen.getByRole('button', { name: 'Rileggi importo dal PDF' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Importo corretto dal PDF' })).toBeInTheDocument();
     expect(screen.getByText('Associazione targa e driver')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Modifica associazione driver' }));
+    expect(await screen.findByRole('button', { name: 'Trova dalla fattura noleggio' })).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/api/dipendenti');
   });
 });

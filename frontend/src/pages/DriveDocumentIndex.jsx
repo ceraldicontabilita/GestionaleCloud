@@ -31,6 +31,7 @@ export default function DriveDocumentIndex() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const folderQuery = searchParams.get('folder') || '';
+  const isVerbaliFolder = /verbali(?:\s+auto)?/i.test(folderQuery);
   const [activeTab, setActiveTab] = useState(folderQuery ? 'documents' : 'overview');
   const [query, setQuery] = useState(folderQuery);
   const [year, setYear] = useState('');
@@ -56,7 +57,7 @@ export default function DriveDocumentIndex() {
   })[activeTab], [activeTab]);
 
   const search = useCallback(async () => {
-    if (!endpoint) return;
+    if (!endpoint || isVerbaliFolder) return;
     setLoading(true);
     setError('');
     try {
@@ -76,7 +77,7 @@ export default function DriveDocumentIndex() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, endpoint, query, taxCode, year, showRemoved, onlyDuplicates]);
+  }, [activeTab, endpoint, isVerbaliFolder, query, taxCode, year, showRemoved, onlyDuplicates]);
 
   const refreshProtocol = async () => {
     setRefreshing(true);
@@ -93,6 +94,10 @@ export default function DriveDocumentIndex() {
   };
 
   useEffect(() => {
+    if (isVerbaliFolder) {
+      navigate('/noleggio/verbali', { replace: true });
+      return undefined;
+    }
     let active = true;
     // Il protocollo vivo e l'indice Excel sono due sorgenti: se una manca,
     // l'altra resta usabile (prima un solo errore spegneva tutta la pagina).
@@ -108,13 +113,14 @@ export default function DriveDocumentIndex() {
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [isVerbaliFolder, navigate]);
 
   useEffect(() => {
+    if (isVerbaliFolder) return;
     setResults([]);
     setSelected(null);
     if (activeTab !== 'overview') search();
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, isVerbaliFolder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDocument = async documentId => {
     setOpening(documentId);
@@ -143,6 +149,10 @@ export default function DriveDocumentIndex() {
     event.preventDefault();
     search();
   };
+
+  if (isVerbaliFolder) {
+    return <p className="drive-index__empty">Apertura del fascicolo Verbali nella sezione Noleggi…</p>;
+  }
 
   const documentButton = document => (
     <div className="drive-index__row-actions">

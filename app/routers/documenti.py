@@ -699,7 +699,6 @@ async def lista_documenti(
 
 
 _ADMINISTRATIVE_CATEGORIES = {
-    "verbali": {"verbale_codice_strada", "avviso_pagopa", "esito_pagopa_negativo"},
     "tributi_locali": {"tari_avviso", "tari_istanza_compensazione"},
     "riscossione": {"ader_sospensione", "ader_definizione_agevolata", "cartella_esattoriale"},
     "personale": {"dimissioni_telematiche"},
@@ -724,10 +723,11 @@ async def lista_atti_amministrativi(
     review_only: bool = Query(False),
     limit: int = Query(200, ge=1, le=500),
 ) -> Dict[str, Any]:
-    """Vista documentale di verbali, TARI/AdeR e cessazioni.
+    """Vista documentale di TARI/AdeR e cessazioni.
 
     Gli atti restano evidenze documentali: nessun avviso o modulo viene
     promosso implicitamente a pagamento, chiusura o variazione del dipendente.
+    I verbali stradali vivono esclusivamente nel fascicolo Noleggi/Verbali.
     """
     if area and area not in _ADMINISTRATIVE_CATEGORIES:
         raise HTTPException(status_code=400, detail="Area amministrativa non valida")
@@ -751,7 +751,7 @@ async def lista_atti_amministrativi(
                 "payment_evidence_count": 0,
                 "areas": {key: sorted(value) for key, value in _ADMINISTRATIVE_CATEGORIES.items()},
             }
-    except (RuntimeError, ValueError) as exc:
+    except (RuntimeError, ValueError, ImportError) as exc:
         logger.warning("Indice Drive atti amministrativi non disponibile: %s", exc)
 
     categories = (

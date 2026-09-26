@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import api from '../api';
 import DriveDocumentIndex from './DriveDocumentIndex';
@@ -27,7 +27,12 @@ const validation = {
 
 describe('Indice documentale Drive', () => {
   const renderIndex = (route = '/documenti/drive') => render(
-    <MemoryRouter initialEntries={[route]}><DriveDocumentIndex /></MemoryRouter>
+    <MemoryRouter initialEntries={[route]}>
+      <Routes>
+        <Route path="/documenti/drive" element={<DriveDocumentIndex />} />
+        <Route path="/noleggio/verbali" element={<div>Sezione Verbali Noleggio</div>} />
+      </Routes>
+    </MemoryRouter>
   );
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,5 +104,12 @@ describe('Indice documentale Drive', () => {
     expect(await screen.findByText('Pane Giuseppina')).toBeInTheDocument();
     expect(screen.getByText('Domanda Rottamazione-quater')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Correggi / associa' })).toBeInTheDocument();
+  });
+
+  it('manda i verbali alla sezione Noleggi senza interrogare gli indici Drive', async () => {
+    renderIndex('/documenti/drive?folder=VERBALI%20AUTO');
+
+    expect(await screen.findByText('Sezione Verbali Noleggio')).toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalled();
   });
 });
