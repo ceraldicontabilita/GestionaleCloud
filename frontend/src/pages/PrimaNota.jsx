@@ -952,7 +952,7 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
       </div>
 
       {/* Banco BPM letto dalla banca: i movimenti nuovi entrano da soli (07:15 e
-          19:15) nell'archivio estratti conto; «Aggiorna ora» fa lo stesso subito. */}
+          09:00) nell'archivio estratti conto; «Aggiorna ora» fa lo stesso subito. */}
       {tipo === 'banca' && <BancaDiretta />}
 
       {/* 18/09/2026: la pagina mostrava un saldo progressivo su una prima nota

@@ -1,89 +1,119 @@
+"""Situazione fiscale legge il registro unico F24, non l'indice Excel su Drive.
+
+L'indice stava nella cartella del canale cedolini, smontata col passaggio alla
+cartella unica: ogni scheda rispondeva «Credenziali Google Drive non
+disponibili». Modelli e quietanze ora vengono da ``carica_registro``.
+"""
 import asyncio
+
 from app.routers import fiscal_control
-from app.services import drive_document_index
+from app.services import f24_controllo_incrociato as reg
+
+RIGA_2003 = {"codice_tributo": "2003", "anno": "2024", "importo_debito": "1000.00"}
+MODELLO_COPERTO = {
+    "id": "F24-COPERTO", "file_name": "f24_giugno.pdf", "status": "da_pagare",
+    "dati_generali": {"data_versamento": "2024-06-17"}, "totali": {"saldo_netto": "1000.00"},
+    "sezione_erario": [RIGA_2003],
+}
+MODELLO_APERTO = {
+    "id": "F24-APERTO", "file_name": "f24_luglio.pdf", "status": "da_pagare",
+    "dati_generali": {"data_versamento": "2024-07-16"}, "totali": {"saldo_netto": "250.00"},
+    "sezione_erario": [{"codice_tributo": "1001", "mese": "06", "anno": "2024", "importo_debito": "300.00"},
+                       {"codice_tributo": "1631", "anno": "2024", "importo_credito": "50.00"}],
+}
+QUIETANZA = {
+    "id": "Q-GIUGNO", "filename": "quietanza_giugno.pdf", "data_pagamento": "2024-06-17",
+    "protocollo_telematico": "24061712345678901", "saldo": "1000.00", "f24_associati": [],
+    "sezione_erario": [RIGA_2003],
+}
 
 
-def test_summary_exposes_verified_drive_counts_as_the_only_canonical_source(monkeypatch):
-    monkeypatch.setattr(drive_document_index, "get_overview", lambda: {
-        "validation": {"all_true": True, "counts": {
-            "documents": 941, "f24_documents": 320,
-            "f24_rows": 1297, "declarations": 60,
-        }},
-        "semantics": {"f24_model_is_not_bank_payment": True},
-    })
-
-    payload = asyncio.run(fiscal_control.summary(_admin={}))
-    assert payload["counts"] == {}
-    assert payload["canonical_source"] == "google_drive"
-    assert payload["drive_index"]["verified"] is True
-    assert payload["drive_index"]["counts"]["f24_rows"] == 1297
-
-
-def test_f24_rows_read_drive_and_keep_payment_unverified(monkeypatch):
-    monkeypatch.setattr(drive_document_index, "list_f24_rows", lambda **_kwargs: {
-        "items": [{
-            "id": "drive-row-1", "document_id": "DOC-F24", "ordinal": 1,
-            "source_kind": "DRIVE_EXCEL_INDEX_F24_ROW", "tax_code": "1704",
-            "reference_period": "2026", "debit_amount": 51.64, "credit_amount": 0,
-            "evidence_state": "MODELLO_F24_NON_PROVA_BANCARIA",
-        }],
-        "total": 1,
-    })
-
-    payload = asyncio.run(fiscal_control.f24_rows(
-        tax_code="1704", document_id=None, year=2026, credits_only=False,
-        offset=0, limit=200, _admin={},
-    ))
-    assert payload["total"] == 1
-    assert payload["sources"] == {
-        "drive_excel_index": 1, "canonical": "google_drive", "drive_warning": None,
+def _registro():
+    return {
+        "f24": [MODELLO_COPERTO, MODELLO_APERTO],
+        "quietanze": [reg._quietanza_legacy(QUIETANZA)],
+        "movimenti": [], "quietanze_per_f24": {}, "movimenti_per_f24": {},
+        "conteggi": {},
     }
-    assert payload["items"][0]["evidence_state"] == "MODELLO_F24_NON_PROVA_BANCARIA"
 
 
-def test_f24_rows_sort_mixed_date_formats_chronologically(monkeypatch):
-    monkeypatch.setattr(drive_document_index, "list_f24_rows", lambda **_kwargs: {
-        "items": [
-            {"id": "old", "document_id": "OLD", "ordinal": 1,
-             "payment_date": "31/12/2019", "tax_code": "9002"},
-            {"id": "new", "document_id": "NEW", "ordinal": 1,
-             "payment_date": "2026-04-30", "tax_code": "1704"},
-            {"id": "middle", "document_id": "MID", "ordinal": 1,
-             "payment_date": "31-10-2025", "tax_code": "9001"},
-        ],
-        "total": 3,
-    })
+class _Coll:
+    async def count_documents(self, _query):
+        return 3
 
+
+class _Db(dict):
+    def __getitem__(self, _name):
+        return _Coll()
+
+
+def _usa_registro(monkeypatch):
+    async def _carica(_db):
+        return _registro()
+
+    monkeypatch.setattr(reg, "carica_registro", _carica)
+    monkeypatch.setattr(fiscal_control.Database, "get_db", classmethod(lambda _cls: _Db()))
+
+
+def test_summary_conta_dal_registro_senza_drive(monkeypatch):
+    _usa_registro(monkeypatch)
+    payload = asyncio.run(fiscal_control.summary(_admin={}))
+    assert payload["canonical_source"] == "registro_f24"
+    assert "drive_index" not in payload
+    assert payload["counts"]["f24_documents"] == 2
+    assert payload["counts"]["f24_rows"] == 4
+    assert payload["counts"]["declarations"] == 3
+    assert payload["counts"]["documentary_payment_documents"] == 1
+
+
+def test_f24_rows_separano_modello_e_quietanza(monkeypatch):
+    _usa_registro(monkeypatch)
     payload = asyncio.run(fiscal_control.f24_rows(
         tax_code=None, document_id=None, year=None, credits_only=False,
         offset=0, limit=200, _admin={},
     ))
+    assert payload["sources"] == {"registro_f24": 4, "canonical": "registro_f24"}
+    assert payload["items"][0]["payment_date"] == "2024-07-16"
+    per_doc = {(r["document_id"], r["tax_code"]): r for r in payload["items"]}
+    modello = per_doc[("F24-COPERTO", "2003")]
+    assert modello["evidence_state"] == "MODELLO_F24_NON_PROVA_BANCARIA"
+    assert modello["pdf_url"] == "/api/f24-riconciliazione/commercialista/F24-COPERTO/pdf"
+    quietanza = per_doc[("Q-GIUGNO", "2003")]
+    assert quietanza["documentary_payment_status"] == "QUIETANZA_PRESENTE"
+    assert quietanza["bank_status"] == "DA_VERIFICARE"
+    assert per_doc[("F24-APERTO", "1631")]["credit_amount"] == 50.0
 
-    assert [item["id"] for item in payload["items"]] == ["new", "middle", "old"]
+    crediti = asyncio.run(fiscal_control.f24_rows(
+        tax_code=None, document_id=None, year=2024, credits_only=True,
+        offset=0, limit=200, _admin={},
+    ))
+    assert [r["tax_code"] for r in crediti["items"]] == ["1631"]
 
 
-def test_paid_obligations_read_documentary_payments_from_drive(monkeypatch):
-    calls = []
-    def _list_tax_obligations(**kwargs):
-        calls.append(kwargs)
-        return {
-        "items": [{
-            "id": "drive-paid-1", "document_id": "DOC-Q", "ordinal": 1,
-            "source_kind": "DRIVE_EXCEL_INDEX_F24_ROW", "tax_code": "1001",
-            "payment_status": "DOCUMENTATO_DA_QUIETANZA", "bank_status": "DA_VERIFICARE",
-        }],
-        "total": 1,
-        }
-    monkeypatch.setattr(drive_document_index, "list_tax_obligations", _list_tax_obligations)
-
-    payload = asyncio.run(fiscal_control.obligations(status="PAID_ON_TIME", limit=5000, _admin={}))
-
-    assert payload["total"] == 1
-    assert payload["sources"] == {
-        "drive_excel_index": 1, "canonical": "google_drive", "drive_warning": None,
+def test_da_pagare_esclude_il_modello_coperto_da_quietanza(monkeypatch):
+    _usa_registro(monkeypatch)
+    da_pagare = asyncio.run(fiscal_control.obligations(status="TO_PAY", limit=5000, _admin={}))
+    # la delega intera, anche la riga a credito
+    assert {(r["document_id"], r["tax_code"]) for r in da_pagare["items"]} == {
+        ("F24-APERTO", "1001"), ("F24-APERTO", "1631"),
     }
-    assert payload["items"][0]["bank_status"] == "DA_VERIFICARE"
-    assert calls == [{"status": "PAID_ON_TIME", "offset": 0, "limit": 5000}]
+    pagati = asyncio.run(fiscal_control.obligations(status="PAID_ON_TIME", limit=5000, _admin={}))
+    assert {r["document_id"] for r in pagati["items"]} == {"Q-GIUGNO"}
+
+
+def test_confronto_fonti_dal_registro(monkeypatch):
+    _usa_registro(monkeypatch)
+
+    async def _nessuna_dichiarazione(_db, *, company_id, year=None, declaration_type=None):
+        return []
+
+    monkeypatch.setattr(fiscal_control, "list_declaration_dossiers", _nessuna_dichiarazione)
+    result = asyncio.run(fiscal_control.source_certainty(year=2024, _admin={"role": "admin"}))
+    assert result["sources"]["canonical"] == "registro_f24"
+    assert result["sources"]["quietanza_drive_rows"] == 1
+    assert result["sources"]["commercialista_f24_documents"] == 2
+    coperto = [i for i in result["items"] if (i.get("accountant_document") or {}).get("document_id") == "F24-COPERTO"]
+    assert coperto and coperto[0]["status"] == "CONCORDANTE"
 
 
 def test_declarations_read_from_fiscal_documents(monkeypatch):

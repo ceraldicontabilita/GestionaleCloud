@@ -53,11 +53,11 @@ def _norm(value: Any) -> str:
 
 
 def build_drive_service():
-    creds, error = _drive._load_credentials_cedolini()
-    if creds is None:
-        raise RuntimeError(f"Credenziali Google Drive non disponibili: {error}")
-    from googleapiclient.discovery import build
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    # Credenziale provata sulla cartella unica, non sulla cartella cedolini:
+    # smontata quella, ogni pagina che apriva un file Drive dava errore.
+    from app.services.drive_cartella_unica import _service
+
+    return _service()
 
 
 def _unique_named(items: Iterable[dict[str, Any]], name: str, *, folder: bool) -> dict[str, Any]:

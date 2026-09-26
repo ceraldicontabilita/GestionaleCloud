@@ -279,17 +279,9 @@ def _inbox_contexts(service, parent_id: str) -> List[Dict[str, Any]]:
 
 async def download_file_by_id(file_id: str) -> bytes:
     """Legge un originale Drive per ID senza persisterlo in cache/database."""
-    if not file_id or not is_configured():
-        return b""
-    service = await asyncio.to_thread(_build_drive_service)
-    if service is None:
-        return b""
-    try:
-        return await asyncio.to_thread(_download_bytes, service, file_id)
-    finally:
-        close = getattr(service, "close", None)
-        if callable(close):
-            await asyncio.to_thread(close)
+    from app.services.drive_download import scarica_originale
+
+    return await scarica_originale(file_id)
 
 
 async def get_status(db) -> Dict[str, Any]:

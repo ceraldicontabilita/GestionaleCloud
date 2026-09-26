@@ -9,7 +9,7 @@ import { dataOra, giorno } from './AggiornamentoDati';
  * Banco BPM letto direttamente dalla banca (Enable Banking), in Prima Nota › Banca.
  *
  * I movimenti certamente nuovi entrano da soli due volte al giorno (07:15 e
- * 19:15, scheduler); «Aggiorna ora» fa lo stesso giro subito, dopo aver
+ * 09:00, scheduler); «Aggiorna ora» fa lo stesso giro subito, dopo aver
  * mostrato quanti sono. Finiscono nell'archivio estratti conto, mai
  * direttamente in Prima Nota: da li' li prendono riconciliazione e Prima Nota
  * Banca come per il CSV. I DA_VERIFICARE restano fuori.
@@ -107,7 +107,7 @@ export default function BancaDiretta() {
         <>
           <div style={S.testo}>
             Collegato, permesso valido fino al <strong>{giorno(stato.valida_fino)}</strong>.
-            I movimenti nuovi entrano da soli alle 07:15 e alle 19:15.
+            I movimenti nuovi entrano da soli alle 07:15 e alle 09:00.
           </div>
           <div style={S.nota}>{testoGiro}</div>
         </>

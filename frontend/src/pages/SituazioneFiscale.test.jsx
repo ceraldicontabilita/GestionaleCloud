@@ -6,10 +6,10 @@ import api from '../api';
 import SituazioneFiscale, { resolveDeclarationVersions } from './SituazioneFiscale';
 
 vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
-describe('Situazione fiscale collegata all indice Drive', () => {
+describe('Situazione fiscale dal registro F24', () => {
   it('apre per impostazione predefinita la lista da pagare', async () => {
     api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
-      ? { drive_index: { available: true, counts: {} } }
+      ? { counts: {} }
       : { items: [] } }));
 
     render(<MemoryRouter initialEntries={['/situazione-fiscale']}><SituazioneFiscale /></MemoryRouter>);
@@ -25,12 +25,11 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     api.post.mockResolvedValue({ data: { success: true, duplicate: false, payment_proven: false } });
     api.get.mockImplementation(path => {
       if (path === '/api/fiscal/summary') return Promise.resolve({ data: {
-        counts: { documents: 0, obligations: 0, payments: 0, collection_claims: 0, ader_snapshots: 0 },
-        requires_review: 0,
-        drive_index: { available: true, verified: true, counts: {
+        counts: {
           f24_documents: 320, f24_rows: 1297, tax_debit_rows: 973,
           documentary_payment_documents: 320, declarations: 60,
-        } },
+        },
+        requires_review: 0,
       } });
       if (path === '/api/fiscal/declarations/DOC-770/field-certainty') return Promise.resolve({ data: {
         source: { sha256: 'abcdef1234567890' },
@@ -48,11 +47,11 @@ describe('Situazione fiscale collegata all indice Drive', () => {
       } });
       if (path.startsWith('/api/fiscal/declarations')) return Promise.resolve({ data: {
         items: [{
-          id: 'DOC-770', document_id: 'DOC-770', source_kind: 'DRIVE_EXCEL_INDEX_DECLARATION',
+          id: 'DOC-770', document_id: 'DOC-770',
           document_type: 'MODELLO_770', filing_year: 2026, tax_year: 2025,
           filename: '770_2026.pdf', f24_links: [],
         }],
-        sources: { drive_excel_index: 1, canonical: 'google_drive' },
+        sources: { fiscal_documents: 1, canonical: 'fiscal_documents' },
       } });
       if (path === '/api/fiscal/source-certainty') return Promise.resolve({ data: {
         items: [{
@@ -75,7 +74,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     });
   });
 
-  it('mostra conteggi e dichiarazioni usando esclusivamente Drive', async () => {
+  it('mostra conteggi del registro e dichiarazioni senza avvisi Drive', async () => {
     render(<MemoryRouter initialEntries={['/situazione-fiscale/dichiarazioni']}><SituazioneFiscale /></MemoryRouter>);
 
     expect(await screen.findByText('770_2026.pdf')).toBeInTheDocument();
@@ -83,32 +82,33 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getByText('1297')).toBeInTheDocument();
     expect(screen.getByText('973')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
-    expect(screen.getByText((_content, node) => node?.textContent === 'Archivio canonico: Google Drive · indice 1')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Apri originale Drive' })).toBeEnabled();
+    expect(screen.queryByText(/Indice Drive non disponibile/)).not.toBeInTheDocument();
+    expect(screen.getByText('Modelli F24')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apri dichiarazione' })).toBeEnabled();
   });
 
-  it('mostra i tributi documentati dalle quietanze Drive senza inventare la verifica bancaria', async () => {
+  it('mostra i tributi documentati dalle quietanze senza inventare la verifica bancaria', async () => {
     api.get.mockImplementation(path => {
       if (path === '/api/fiscal/summary') return Promise.resolve({ data: {
-        counts: {}, drive_index: { available: true, counts: { documentary_payment_documents: 320 } },
+        counts: { documentary_payment_documents: 320 },
       } });
       if (path.includes('/api/fiscal/obligations')) return Promise.resolve({ data: {
         items: [{
-          id: 'drive-paid-1', document_id: 'DOC-Q', source_kind: 'DRIVE_EXCEL_INDEX_F24_ROW',
+          id: 'drive-paid-1', document_id: 'DOC-Q', source_kind: 'F24_REGISTRO_ROW',
           tax_code: '1001', description: 'Ritenute su retribuzioni', reference_period: '10/2024',
           debit_amount: 1455.21, credit_amount: 0, payment_date: '2024-11-18',
           filename: 'quietanza.pdf', protocol: '24111809324228190',
           payment_status: 'DOCUMENTATO_DA_QUIETANZA',
           documentary_payment_status: 'QUIETANZA_PRESENTE', bank_status: 'DA_VERIFICARE',
         }, {
-          id: 'drive-paid-2', document_id: 'DOC-Q', source_kind: 'DRIVE_EXCEL_INDEX_F24_ROW',
+          id: 'drive-paid-2', document_id: 'DOC-Q', source_kind: 'F24_REGISTRO_ROW',
           tax_code: '3802', description: 'Addizionale regionale IRPEF', reference_period: '10/2024',
           debit_amount: 44.79, credit_amount: 0, payment_date: '2024-11-18',
           filename: 'quietanza.pdf', protocol: '24111809324228190',
           payment_status: 'DOCUMENTATO_DA_QUIETANZA',
           documentary_payment_status: 'QUIETANZA_PRESENTE', bank_status: 'DA_VERIFICARE',
         }],
-        sources: { drive_excel_index: 1, canonical: 'google_drive' },
+        sources: { registro_f24: 2, canonical: 'registro_f24' },
       } });
       return Promise.resolve({ data: { items: [] } });
     });
@@ -122,7 +122,8 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.queryByText('drive-paid-1')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Cerca nella sezione')).toBeInTheDocument();
     expect(screen.getByText('Quietanza documentale presente · riscontro bancario da verificare')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Apri PDF Drive' })).toHaveLength(1);
+    // la quietanza non ha un PDF nel registro: nessun bottone che fallirebbe
+    expect(screen.queryByRole('button', { name: 'Apri PDF' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Cerca nella sezione'), { target: { value: 'inesistente' } });
     expect(screen.getByText('Nessun risultato con questi filtri.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Azzera filtri' }));
@@ -132,7 +133,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
   it('non dipende dal vecchio servizio di revisione', async () => {
     api.get.mockImplementation(path => {
       if (path === '/api/fiscal/summary') return Promise.resolve({ data: {
-        counts: {}, drive_index: { available: true, counts: { declarations: 60 } },
+        counts: { declarations: 60 },
       } });
       if (path.includes('/api/fiscal/obligations')) return Promise.resolve({ data: {
         items: [{ id: 'tributo-1', document_number: 'Tributo pagato verificato', payment_status: 'PAID_ON_TIME' }],
@@ -214,7 +215,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
 
   it('mostra LIPE, crediti e confronto gestionale senza creare un falso F24', async () => {
     api.get.mockImplementation(path => {
-      if (path === '/api/fiscal/summary') return Promise.resolve({ data: { drive_index: { available: true, counts: {} } } });
+      if (path === '/api/fiscal/summary') return Promise.resolve({ data: { counts: {} } });
       if (path === '/api/fiscal/source-certainty') return Promise.resolve({ data: {
         items: [], certain: 0, requires_review: 0,
         sources: { commercialista_f24_documents: 0, quietanza_drive_rows: 0 },
@@ -245,7 +246,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
 
   it('mostra saldo e credito Redditi con prova RN/RX senza inventare un F24', async () => {
     api.get.mockImplementation(path => {
-      if (path === '/api/fiscal/summary') return Promise.resolve({ data: { drive_index: { available: true, counts: {} } } });
+      if (path === '/api/fiscal/summary') return Promise.resolve({ data: { counts: {} } });
       if (path === '/api/fiscal/source-certainty') return Promise.resolve({ data: {
         items: [], sources: {}, declarations: { documents: 1, requires_review: false },
         declaration_items: [{ document_id: 'DOC-REDDITI', document_type: 'REDDITI_SC', filing_year: 2025, filename: '760_2025.pdf', field_check_status: 'PRONTO_PER_VERIFICA_CAMPI' }],
