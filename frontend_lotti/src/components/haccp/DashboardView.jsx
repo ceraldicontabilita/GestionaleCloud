@@ -374,7 +374,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
         <section>
           <SectionTitle title="Amministrazione" subtitle="Configurazione sempre visibile per il titolare." />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <QuickLink icon={Settings} title="Impostazioni" subtitle="Azienda, personale, permessi e stampanti" onClick={() => navigate("personale")} />
+            <QuickLink icon={Settings} title="Impostazioni" subtitle="Azienda, operatori, frigoriferi, stampanti, backup" onClick={() => navigate("impostazioni")} />
             <QuickLink icon={Network} title="Controllo dati" subtitle="Integrità, anomalie e manutenzione archivio" onClick={() => navigate("controllo_dati")} />
           </div>
         </section>
