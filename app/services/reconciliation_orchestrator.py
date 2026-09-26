@@ -5,8 +5,9 @@ gli stessi motori idempotenti; nessun handler implementa matching alternativo.
 """
 from __future__ import annotations
 
-import logging
+import asyncio
 import calendar
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -123,6 +124,56 @@ async def on_f24_acquisito_riprocessa(event: Dict[str, Any], db):
 
 
 async def on_estratto_conto_importato_riprocessa(event: Dict[str, Any], db):
+    """Accoda il ripasso e torna subito: l'import non aspetta la riconciliazione.
+
+    Il ripasso (`riprocessa_estratto_conto`) gira tutti i motori di aggancio e
+    su un estratto conto puo' durare decine di minuti. Il bus aspetta ogni
+    handler, quindi prima l'import restava fermo fin li': il 26/09/2026 il giro
+    della cartella Drive e' rimasto 46 minuti su un solo estratto, e ogni
+    deploy lo uccideva prima della fine — gli XML di fatture e chiusure RT in
+    coda dietro di lui non sono mai stati letti. Gli estratti che arrivano
+    mentre un ripasso gira si sommano in un ripasso solo.
+    """
+    movimenti = [m for m in event.get("movimenti") or [] if isinstance(m, dict)]
+    if not movimenti:
+        return {"action": "nessun_movimento"}
+    loop = asyncio.get_running_loop()
+    worker = _RIPASSO.get("task")
+    if worker is None or worker.done() or worker.get_loop() is not loop:
+        if worker is not None and worker.get_loop() is not loop:
+            _IN_ATTESA.clear()  # resti di un loop chiuso (test): il giro dei 30 minuti li ripassa
+        _IN_ATTESA.extend(movimenti)
+        _RIPASSO["task"] = asyncio.create_task(_svuota_ripassi(db))
+    else:
+        _IN_ATTESA.extend(movimenti)
+    return {"action": "riconciliazione_accodata", "movimenti": len(movimenti)}
+
+
+_IN_ATTESA: list = []
+_RIPASSO: Dict[str, Any] = {}
+
+
+async def _svuota_ripassi(db) -> None:
+    while _IN_ATTESA:
+        lotto = list(_IN_ATTESA)
+        _IN_ATTESA.clear()
+        try:
+            await riprocessa_estratto_conto({"movimenti": lotto}, db)
+        except Exception as exc:  # noqa: BLE001 - il motivo va scritto, non ingoiato
+            logger.warning(
+                "Ripasso dopo estratto conto non riuscito su %d movimenti: %s: %s",
+                len(lotto), type(exc).__name__, exc,
+            )
+
+
+async def attendi_riconciliazione_estratti() -> None:
+    """Attende il ripasso in coda (test, spegnimento)."""
+    worker = _RIPASSO.get("task")
+    if worker is not None and worker.get_loop() is asyncio.get_running_loop():
+        await asyncio.gather(worker, return_exceptions=True)
+
+
+async def riprocessa_estratto_conto(event: Dict[str, Any], db):
     movimenti = event.get("movimenti") or []
     ids = [m.get("id") for m in movimenti if m.get("id")]
     anni = {
