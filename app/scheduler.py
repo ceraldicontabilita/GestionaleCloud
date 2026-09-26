@@ -578,14 +578,6 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-VERBALI-LINK] errore: {e}")
 
-    async def _drive_ingest_job():
-        from app.database import Database
-        from app.services import drive_invoice_ingest
-        try:
-            result = await drive_invoice_ingest.sync(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-FATTURE] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-FATTURE] errore: {e}")
 
     async def _drive_cartella_unica_job():
         from app.database import Database
@@ -609,54 +601,11 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-SIMULAZIONE] errore: {type(e).__name__}: {e}")
 
-    async def _drive_cedolini_job():
-        from app.database import Database
-        from app.services import drive_cedolini_ingest
-        try:
-            result = await drive_cedolini_ingest.sync(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-CEDOLINI] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-CEDOLINI] errore: {e}")
 
-    async def _drive_corrispettivi_job():
+    async def _fonti_ferme_job():
+        # Una fonte che smette di arrivare non da' errori: da' silenzio. Il
+        # controllo gira da solo, non piu' in coda a un import Drive.
         from app.database import Database
-        from app.services import drive_corrispettivi_ingest
-        try:
-            result = await drive_corrispettivi_ingest.sync(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-CORRISPETTIVI] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-CORRISPETTIVI] errore: {e}")
-
-    async def _drive_f24_job():
-        from app.database import Database
-        from app.services import drive_f24_ingest
-        try:
-            result = await drive_f24_ingest.sync(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-F24] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-F24] errore: {e}")
-
-    async def _drive_quietanze_job():
-        from app.database import Database
-        from app.services import drive_quietanze_ingest
-        try:
-            result = await drive_quietanze_ingest.sync(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-QUIETANZE] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-QUIETANZE] errore: {e}")
-
-    async def _drive_estratti_conto_job():
-        from app.database import Database
-        from app.services import drive_estratti_conto_ingest
-        try:
-            result = await drive_estratti_conto_ingest.sync(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-ESTRATTI-CONTO] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-ESTRATTI-CONTO] errore: {e}")
-        # Un import che non trova nulla da importare non e' una buona notizia:
-        # puo' voler dire che la fonte si e' fermata. Il controllo gira qui,
-        # subito dopo, cosi' il silenzio diventa un avviso invece di un saldo
-        # sbagliato che nessuno mette in discussione.
         try:
             from app.services.fonti_ferme import controlla_fonti_ferme
             stato = await controlla_fonti_ferme(Database.get_db())
@@ -665,7 +614,7 @@ def start_scheduler():
             else:
                 logger.info("[SCHEDULER-FONTI-FERME] tutte aggiornate")
         except Exception as e:
-            logger.error(f"[SCHEDULER-FONTI-FERME] errore: {e}")
+            logger.error(f"[SCHEDULER-FONTI-FERME] errore: {type(e).__name__}: {e}")
 
     async def _bonifici_pdf_inbox_job():
         from app.database import Database
@@ -937,15 +886,6 @@ def start_scheduler():
         id="link_verbali_fatture", name="Link Verbali ↔ Fatture (ogni 60 min)",
         replace_existing=True,
     )
-    scheduler.add_job(
-        _drive_ingest_job,
-        'interval', minutes=15,
-        next_run_time=avvio + timedelta(minutes=1),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min)",
-        replace_existing=True,
-    )
 
     scheduler.add_job(
         _drive_cartella_unica_job,
@@ -954,6 +894,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="drive_cartella_unica", name="Cartella unica Drive DATI SOCIETA CERALDI (ogni 15 min)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _fonti_ferme_job,
+        'interval', hours=1,
+        next_run_time=avvio + timedelta(minutes=10),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="fonti_ferme", name="Fonti ferme: corrispettivi, POS, estratti (ogni ora)",
         replace_existing=True,
     )
 
@@ -968,76 +918,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    scheduler.add_job(
-        _drive_cedolini_job,
-        'interval', hours=1,
-        next_run_time=avvio + timedelta(minutes=3),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="drive_cedolini_ingest", name="Import Cedolini da Google Drive (ogni ora)",
-        replace_existing=True,
-    )
-
-    scheduler.add_job(
-        _drive_corrispettivi_job,
-        'interval', hours=1,
-        next_run_time=avvio + timedelta(minutes=5),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="drive_corrispettivi_ingest", name="Import Corrispettivi da Google Drive (ogni ora)",
-        replace_existing=True,
-    )
-
-    async def _protocollo_drive_job():
-        """Protocollo-indice vivo: riconcilia Drive con gestionale.protocollo_drive.
-        Solo lettura su Drive; i file spariti restano come 'rimosso'."""
-        from app.services.drive_protocollo import sincronizza
-        try:
-            esito = await sincronizza()
-            logger.info("[SCHEDULER-PROTOCOLLO-DRIVE] %s", esito)
-        except Exception as exc:
-            logger.error("[SCHEDULER-PROTOCOLLO-DRIVE] errore: %s", exc)
-
-    scheduler.add_job(
-        _protocollo_drive_job,
-        'interval', hours=6,
-        next_run_time=avvio + timedelta(minutes=8),
-        misfire_grace_time=600,
-        coalesce=True,
-        id="protocollo_drive", name="Protocollo-indice documenti Drive (ogni 6 ore)",
-        replace_existing=True,
-    )
-
-    scheduler.add_job(
-        _drive_f24_job,
-        'interval', hours=1,
-        next_run_time=avvio + timedelta(minutes=6),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="drive_f24_ingest", name="Import modelli F24 da Google Drive (ogni ora)",
-        replace_existing=True,
-    )
-
-    scheduler.add_job(
-        _drive_quietanze_job,
-        'interval', hours=1,
-        next_run_time=avvio + timedelta(minutes=7),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="drive_quietanze_ingest", name="Import Quietanze F24 da Google Drive (ogni ora)",
-        replace_existing=True,
-    )
-
-    scheduler.add_job(
-        _drive_estratti_conto_job,
-        'interval', minutes=5,
-        next_run_time=avvio + timedelta(minutes=2),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="drive_estratti_conto_ingest",
-        name="Import Estratti Conto da Google Drive (ogni 5 min)",
-        replace_existing=True,
-    )
 
     scheduler.add_job(
         _bonifici_pdf_inbox_job,
@@ -1187,25 +1067,7 @@ def start_scheduler():
     # Canali Drive documentali generici: bonifici dipendenti, verbali e canali
     # fiscali esplicitamente abilitati. Il resolver di ciascun canale limita la
     # scansione alla propria DA ELABORARE canonica.
-    async def _drive_documenti_job():
-        from app.database import Database
-        from app.services import drive_documenti_ingest
-        try:
-            result = await drive_documenti_ingest.sync_tutti(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-DOCUMENTI] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-DOCUMENTI] errore: {e}")
 
-    scheduler.add_job(
-        _drive_documenti_job,
-        'interval', minutes=15,
-        next_run_time=avvio + timedelta(minutes=11),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="drive_documenti_ingest",
-        name="Import canali documentali Drive configurati (ogni 15 minuti)",
-        replace_existing=True,
-    )
 
     async def _tax_code_registry_job():
         from app.database import Database
@@ -1224,49 +1086,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    async def _drive_quadratura_job():
-        from app.database import Database
-        from app.services import drive_invoice_ingest
-        try:
-            r = await drive_invoice_ingest.verifica_quadratura_elaborate(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-QUADRATURA] {r if r.get('status') != 'ok' else {k: r[k] for k in ('totale_file_elaborate', 'quadrati', 'recuperati', 'errori')}}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-QUADRATURA] errore: {e}")
-
-    scheduler.add_job(
-        _drive_quadratura_job,
-        CronTrigger(day_of_week="sun", hour=5, minute=0),
-        id="drive_fatture_quadratura",
-        name="Quadratura fatture Drive Elaborate (domenica ore 5:00)",
-        replace_existing=True,
-    )
-
-    async def _drive_ricostruzione_ripresa_job():
-        from app.database import Database
-        from app.services import drive_invoice_ingest
-        try:
-            r = await drive_invoice_ingest.riprendi_ricostruzione_se_incompleta(
-                Database.get_db(),
-            )
-            if r.get("status") != "skipped":
-                logger.info(
-                    "[SCHEDULER-DRIVE-RICOSTRUZIONE] "
-                    f"{ {k: r.get(k) for k in ('status', 'processed', 'total', 'imported', 'duplicates', 'errors')} }"
-                )
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-RICOSTRUZIONE] errore: {e}")
-
-    scheduler.add_job(
-        _drive_ricostruzione_ripresa_job,
-        'interval', minutes=2,
-        next_run_time=avvio + timedelta(seconds=90),
-        misfire_grace_time=60,
-        coalesce=True,
-        max_instances=1,
-        id="drive_fatture_ricostruzione_ripresa",
-        name="Ripresa ricostruzione fatture Drive incompleta (ogni 2 min)",
-        replace_existing=True,
-    )
 
     async def _collaudo_notturno_job():
         from app.database import Database
@@ -1286,19 +1105,14 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    async def _drive_quadratura_cedolini_job():
+    async def _cedolini_bloccati_job():
         from app.database import Database
         from app.services import drive_cedolini_ingest
         db = Database.get_db()
         try:
-            r = await drive_cedolini_ingest.verifica_quadratura_elaborate(db)
-            logger.info(f"[SCHEDULER-QUADRATURA-CEDOLINI] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-QUADRATURA-CEDOLINI] errore: {e}")
-        try:
             bloccati = await drive_cedolini_ingest.verifica_documenti_bloccati(db)
             if bloccati["totale_bloccati"] > 0:
-                logger.warning(f"[SCHEDULER-QUADRATURA-CEDOLINI] {bloccati['totale_bloccati']} documenti cedolini mai processati oltre {bloccati['soglia_ore']}h")
+                logger.warning(f"[SCHEDULER-CEDOLINI-BLOCCATI] {bloccati['totale_bloccati']} documenti cedolini mai processati oltre {bloccati['soglia_ore']}h")
                 from app.services.alert_engine import genera_alert
                 await genera_alert(
                     "CEDOLINO_MAI_PROCESSATO", "quadratura_cedolini_bloccati", "documents_inbox",
@@ -1307,55 +1121,17 @@ def start_scheduler():
                     db, extra={"bloccati": bloccati["bloccati"][:20]},
                 )
         except Exception as e:
-            logger.error(f"[SCHEDULER-QUADRATURA-CEDOLINI] errore verifica bloccati: {e}")
-
-    async def _drive_quadratura_corrispettivi_job():
-        from app.database import Database
-        from app.services import drive_corrispettivi_ingest
-        try:
-            r = await drive_corrispettivi_ingest.verifica_quadratura_elaborate(Database.get_db())
-            logger.info(f"[SCHEDULER-QUADRATURA-CORRISPETTIVI] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-QUADRATURA-CORRISPETTIVI] errore: {e}")
+            logger.error(f"[SCHEDULER-CEDOLINI-BLOCCATI] errore: {type(e).__name__}: {e}")
 
     scheduler.add_job(
-        _drive_quadratura_cedolini_job,
+        _cedolini_bloccati_job,
         CronTrigger(day_of_week="sun", hour=5, minute=15),
-        id="drive_cedolini_quadratura",
-        name="Quadratura cedolini Drive Elaborate (domenica ore 5:15)",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        _drive_quadratura_corrispettivi_job,
-        CronTrigger(day_of_week="sun", hour=5, minute=30),
-        id="drive_corrispettivi_quadratura",
-        name="Quadratura corrispettivi Drive Elaborate (domenica ore 5:30)",
+        id="cedolini_bloccati",
+        name="Cedolini arrivati ma mai elaborati (domenica ore 5:15)",
         replace_existing=True,
     )
 
-    # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 4): quadratura
-    # F24 domenicale spenta — drive_f24_ingest.verifica_quadratura_elaborate
-    # richiama f24_canonico che resetta status/pagato/riconciliato sui
-    # modelli già riconciliati (f24_canonico.py:95-97,215-219). Le altre
-    # quadrature (fatture/cedolini/corrispettivi/quietanze) non toccano
-    # stato di riconciliazione e restano attive.
 
-    async def _drive_quadratura_quietanze_job():
-        from app.database import Database
-        from app.services import drive_quietanze_ingest
-        try:
-            r = await drive_quietanze_ingest.verifica_quadratura_elaborate(Database.get_db())
-            logger.info(f"[SCHEDULER-QUADRATURA-QUIETANZE] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-QUADRATURA-QUIETANZE] errore: {e}")
-
-    scheduler.add_job(
-        _drive_quadratura_quietanze_job,
-        CronTrigger(day_of_week="sun", hour=5, minute=45),
-        id="drive_quietanze_quadratura",
-        name="Quadratura quietanze Drive Elaborate (domenica ore 5:45)",
-        replace_existing=True,
-    )
     scheduler.add_job(
         _dedup_fatture_job,
         'interval', minutes=30,

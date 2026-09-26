@@ -94,27 +94,16 @@ services:
       # HR_SUPABASE_DB_URL (stesso database).
       - key: APPDIPENDENTI_DB_URL
         sync: false
-      # --- Protocollo-indice vivo dei documenti su Drive (14/09/2026):
-      # radice GESTIONALE da percorrere e cartella di quarantena dei duplicati
-      # certi. Il giro periodico riconcilia Drive con gestionale.protocollo_drive.
-      - key: GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID
-        sync: false
-      - key: GOOGLE_DRIVE_QUARANTENA_FOLDER_ID
-        sync: false
-      # --- Fascicolo dipendente su Drive (14/09/2026): UNA radice per persona
-      # (05_PERSONALE_E_CEDOLINI/DIPENDENTI). Cedolini in <COGNOME NOME>/DA
-      # ELABORARE, bonifici in <COGNOME NOME>/BONIFICI/DA ELABORARE: le due
-      # variabili puntano alla STESSA cartella, i canali si distinguono per
-      # posizione (vedi app/services/drive_documenti_ingest.py, canale bonifico).
       # --- Cartella unica «DATI SOCIETA CERALDI» (25/09/2026): DA ELABORARE /
       # ELABORATE / ERRORI. Ogni documento passa dallo smistatore di Documenti >
       # Import e «vedi documento» legge solo da ELABORATE
-      # (app/services/drive_cartella_unica.py). Id cartella, non un segreto;
-      # vuota = giro spento. Proprietario: titolare.
+      # (app/services/drive_cartella_unica.py). E' l'unico canale Drive: i
+      # canali per sezione (fatture, cedolini, F24, estratti...) sono smontati.
+      # Id cartella, non un segreto; vuota = giro spento. Proprietario: titolare.
       - key: GOOGLE_DRIVE_DATI_FOLDER_ID
         sync: false
       - key: DRIVE_CARTELLA_UNICA_BATCH
-        value: "25"
+        value: "50"
       # Pausa del solo import della cartella unica (la cartella resta configurata,
       # simulazione e «vedi documento» continuano). Proprietario: titolare.
       - key: DRIVE_CARTELLA_UNICA_IMPORT
@@ -127,21 +116,10 @@ services:
         value: "1"
       - key: DRIVE_SIMULAZIONE_BATCH
         value: "40"
-      - key: GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
-        sync: false
-      - key: GOOGLE_DRIVE_BONIFICI_FOLDER_ID
-        sync: false
-      # radici bonifici separate da virgola: fascicoli DIPENDENTI + 03/BONIFICI
-      - key: GOOGLE_DRIVE_BONIFICI_FOLDER_IDS
-        sync: false
       - key: PROCESS_ROLE
         value: "combined"
       - key: ENABLE_SCHEDULER
         value: "true"
-      - key: DRIVE_FATTURE_BATCH_SIZE
-        value: "25"
-      - key: DRIVE_ESTRATTI_BATCH_SIZE
-        value: "1"
       - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
         sync: false
       - key: CREDENTIALS_ENCRYPTION_KEY

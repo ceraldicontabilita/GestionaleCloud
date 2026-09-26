@@ -197,7 +197,10 @@ def test_is_configured(monkeypatch):
     assert ing.is_configured() is True
 
 
-def test_scheduler_non_perde_import_cedolini_al_riavvio(monkeypatch):
+def test_scheduler_tiene_solo_la_cartella_unica_fra_i_canali_drive(monkeypatch):
+    """I canali Drive per sezione puntano a cartelle cancellate: resta la
+    cartella unica, e i controlli che vivevano dentro quei giri (fonti ferme,
+    cedolini bloccati) hanno un job proprio."""
     import app.scheduler as scheduler_mod
 
     class SchedulerFinto:
@@ -214,25 +217,18 @@ def test_scheduler_non_perde_import_cedolini_al_riavvio(monkeypatch):
     monkeypatch.setattr(scheduler_mod, "scheduler", scheduler)
     scheduler_mod.start_scheduler()
 
-    drive_job_ids = {
-        "drive_fatture_ingest",
-        "drive_cedolini_ingest",
-        "drive_corrispettivi_ingest",
-        "drive_f24_ingest",
-        "drive_quietanze_ingest",
-        "drive_estratti_conto_ingest",
+    ids = {item[2].get("id") for item in scheduler.jobs}
+    canali_smontati = {
+        "drive_fatture_ingest", "drive_cedolini_ingest", "drive_corrispettivi_ingest",
+        "drive_f24_ingest", "drive_quietanze_ingest", "drive_estratti_conto_ingest",
+        "drive_documenti_ingest", "protocollo_drive", "drive_fatture_quadratura",
+        "drive_fatture_ricostruzione_ripresa", "drive_cedolini_quadratura",
+        "drive_corrispettivi_quadratura", "drive_quietanze_quadratura",
     }
-    jobs = {
-        item[2].get("id"): item[2]
-        for item in scheduler.jobs
-        if item[2].get("id") in drive_job_ids
-    }
-
-    assert set(jobs) == drive_job_ids
-    for job in jobs.values():
-        assert job["next_run_time"] is not None
-        assert job["misfire_grace_time"] == 300
-        assert job["coalesce"] is True
+    assert not ids & canali_smontati
+    assert {"drive_cartella_unica", "fonti_ferme", "cedolini_bloccati"} <= ids
+    unica = next(item[2] for item in scheduler.jobs if item[2].get("id") == "drive_cartella_unica")
+    assert unica["next_run_time"] is not None and unica["coalesce"] is True
 
 
 def test_scheduler_allinea_subito_i_badge_documentali(monkeypatch):

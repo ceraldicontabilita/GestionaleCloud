@@ -20,10 +20,10 @@ def test_fattura_arrivata_dopo_ec_riprocessa_solo_i_candidati():
     assert "riconcilia_movimenti_banca(movimento_ids=movimento_ids)" in sorgente
 
 
-def test_scheduler_estratti_conto_gira_ogni_cinque_minuti():
+def test_scheduler_non_avvia_piu_il_canale_estratti_conto():
+    """Gli estratti conto entrano dalla cartella unica: il canale dedicato e'
+    smontato, e l'allarme fonti ferme che viveva nel suo giro ha un job proprio."""
     sorgente = Path("app/scheduler.py").read_text(encoding="utf-8")
-    blocco = sorgente.split('id="drive_estratti_conto_ingest"', 1)[0].rsplit(
-        "scheduler.add_job(", 1
-    )[1]
 
-    assert "'interval', minutes=5" in blocco
+    assert 'id="drive_estratti_conto_ingest"' not in sorgente
+    assert 'id="fonti_ferme"' in sorgente
