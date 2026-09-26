@@ -528,6 +528,47 @@ def _parse_teamsystem_layout(page_words) -> Dict[str, float]:
     return importi
 
 
+_ETICHETTA_NETTO_ZUCCHETTI = re.compile(r"^NETTO(?:sDELsMESE)?$")
+_IMPORTO_CELLA = re.compile(r"^([-+]?)(\d[\d.]*,\d{2})([+-]?)$")
+
+
+def _netto_dalla_cella(page_words) -> Dict[str, Any]:
+    """Il netto Zucchetti dalla cella sotto la sua etichetta, mai da un conto.
+
+    Nel classico la cella sta sotto «NETTO» (``1.018,00+``), nel tracciato
+    con gli spazi scritti «s» sotto «NETTOsDELsMESE» (``941,00``). Cella
+    vuota -> ``None``; due valori diversi alla stessa distanza -> ``multipli``,
+    e non si sceglie.
+    """
+    for words in page_words:
+        normalizzati = [tuple(w[:5]) for w in words]
+        for etichetta in normalizzati:
+            if not _ETICHETTA_NETTO_ZUCCHETTI.match(str(etichetta[4])):
+                continue
+            x0, x1, y1 = float(etichetta[0]) - 20, float(etichetta[2]) + 30, float(etichetta[3])
+            candidati = []
+            for w in normalizzati:
+                m = _IMPORTO_CELLA.match(str(w[4]))
+                if not m:
+                    continue
+                if not (y1 - 1 <= float(w[1]) <= y1 + 14):
+                    continue
+                if float(w[2]) < x0 or float(w[0]) > x1:
+                    continue
+                valore = parse_importo(m.group(2))
+                if "-" in (m.group(1), m.group(3)):
+                    valore = -valore
+                candidati.append((round(float(w[1]) - y1, 1), valore))
+            if not candidati:
+                continue
+            vicino = min(d for d, _ in candidati)
+            valori = sorted({v for d, v in candidati if d == vicino})
+            if len(valori) > 1:
+                return {"netto": None, "multipli": valori}
+            return {"netto": valori[0]}
+    return {"netto": None}
+
+
 def parse_template_zucchetti_classic(text: str) -> Dict[str, Any]:
     """
     Parser per Template 2: Zucchetti spa classico (2018-2022)
@@ -583,12 +624,8 @@ def parse_template_zucchetti_classic(text: str) -> Dict[str, Any]:
     if lire_match:
         lire_val = parse_importo(lire_match.group(1))
         result["totali"]["netto"] = round(lire_val / 1936.27, 2)
-    else:
-        # Calcola da competenze - trattenute
-        if "competenze" in result["totali"] and "trattenute" in result["totali"]:
-            result["totali"]["netto"] = round(
-                result["totali"]["competenze"] - result["totali"]["trattenute"], 2
-            )
+    # Senza LIRE il netto si legge dalla sua cella (`_netto_dalla_cella`),
+    # mai come competenze meno trattenute.
 
     # Ore lavorate - pattern "ORE LAVORATE" o dopo numeri
     ore_match = re.search(r'(\d{2,3})[.,]00\s+\d+\s+\d+\s+(\d{2,3})[.,]00', text)
@@ -765,12 +802,6 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
         if trattenute > 0:
             result["totali"]["trattenute"] = trattenute
 
-    # Calcola netto se mancante
-    if "netto" not in result["totali"] and "lordo" in result["totali"] and "trattenute" in result["totali"]:
-        result["totali"]["netto"] = round(
-            result["totali"]["lordo"] - result["totali"]["trattenute"], 2
-        )
-
     # Se abbiamo competenze ma non lordo, usa competenze come lordo
     if "competenze" in result["totali"] and "lordo" not in result["totali"]:
         result["totali"]["lordo"] = result["totali"]["competenze"]
@@ -939,6 +970,18 @@ def _normalize_data(d: str) -> Optional[str]:
         return d
 
 
+def _applica_cella_netto(result: Dict[str, Any], page_words) -> None:
+    """La cella stampata vince sul testo: il netto e' quello della cella."""
+    cella = _netto_dalla_cella(page_words)
+    totali = result.setdefault("totali", {})
+    if cella.get("multipli"):
+        totali["netto_candidati"] = cella["multipli"]
+        totali.pop("netto", None)
+    elif cella.get("netto") is not None:
+        totali["netto"] = cella["netto"]
+        totali["netto_da_cella"] = True
+
+
 def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
     """
     Parser principale che rileva automaticamente il template e applica
@@ -1008,8 +1051,10 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
         result = parse_template_zucchetti_presenze(text)
     elif template == "csc_napoli":
         result = parse_template_csc_napoli(cedolino_text)
+        _applica_cella_netto(result, page_words[cedolino_page_idx:])
     elif template == "zucchetti_new":
         result = parse_template_zucchetti_new(cedolino_text)
+        _applica_cella_netto(result, page_words[cedolino_page_idx:])
     elif template == "teamsystem":
         result = parse_template_teamsystem(cedolino_text)
         layout = _parse_teamsystem_layout(page_words[cedolino_page_idx:])
@@ -1020,10 +1065,12 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
             result.setdefault("totali", {})["trattenute"] = layout["trattenute"]
         if layout.get("netto") is not None:
             result.setdefault("totali", {})["netto"] = layout["netto"]
+            result["totali"]["netto_da_cella"] = True
         if layout.get("tfr_quota_mese") is not None:
             result.setdefault("tfr", {})["quota_mese"] = layout["tfr_quota_mese"]
     else:
         result = parse_template_zucchetti_classic(cedolino_text)
+        _applica_cella_netto(result, page_words[cedolino_page_idx:])
 
     # Se ci sono altre pagine di cedolino, estrai dati aggiuntivi
     # (pagina 2 dei PDF nuovi contiene ferie/permessi dettagliati)
@@ -1218,6 +1265,9 @@ def extract_summary(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         "lordo": totali.get("lordo") or totali.get("competenze"),
         "trattenute": totali.get("trattenute"),
         "netto": totali.get("netto"),
+        "stato_netto": totali.get("stato_netto"),
+        "netto_letto": totali.get("netto_letto"),
+        "netto_calcolato": totali.get("netto_calcolato"),
         "ore_lavorate": periodo.get("ore_lavorate") or ore_ferie.get("ore_lavorate_mese"),
         "giorni_lavorati": periodo.get("giorni_lavorati") or ore_ferie.get("giorni_lavorati_mese"),
         "inps_dipendente": totali.get("inps_dipendente"),
@@ -1279,28 +1329,41 @@ def _elementi_retributivi(result: Dict[str, Any], text: str) -> None:
 
 
 def _verifica_netto(result: Dict[str, Any], text: str = "") -> None:
-    """Controlla il netto con l'aritmetica della busta: competenze - trattenute.
+    """Controlla il netto con l'aritmetica della busta; non lo sostituisce mai.
 
-    Nel template zucchetti_classic il netto veniva letto dalla zona delle
-    coordinate bancarie, dove accanto all'importo vero stanno numeri piccoli:
-    usciva 0,00 o 0,48 al posto di 1.354,00, e su tutto il 2021 il netto
-    risultava nullo pur avendo il lordo corretto.
+    Il netto si legge solo dalla sua cella (CLAUDE.md, «Personale»): fino al
+    26/09/2026 qui, quando il valore letto si scostava di oltre un euro da
+    competenze meno trattenute, vinceva il calcolo e la busta diventava
+    «verificata» con un netto che nessuno aveva stampato. Ora:
 
-    Il netto di una busta e' competenze meno trattenute, a meno
-    dell'arrotondamento all'euro. Quando il valore letto si scosta di piu' di un
-    euro da quel conto — o e' assente, o supera le competenze — vince il calcolo,
-    e il documento resta marcato per sapere che il numero e' ricostruito.
+    - netto dalla cella: resta, lo scarto si annota (``netto_calcolato``);
+    - netto dal testo e scarto oltre un euro, o sopra le competenze: due
+      candidati discordanti, ``MULTIPLE_NETS_DA_VERIFICARE``, netto nullo;
+    - candidati multipli nella cella: stesso stato;
+    - niente netto: ``NETTO_NON_PRESENTE_O_NON_LEGGIBILE``.
     """
+    from app.constants.stati_netto import (
+        MULTIPLE_NETS_DA_VERIFICARE,
+        NETTO_NON_PRESENTE_O_NON_LEGGIBILE,
+        NETTO_VERIFICATO_DA_CEDOLINO,
+    )
+
     t = result.get("totali") or {}
     if result.get("tipo_documento") == "foglio_presenze":
         return
+    if t.get("netto_candidati"):
+        t["netto"] = None
+        t["stato_netto"] = MULTIPLE_NETS_DA_VERIFICARE
+        return
+    letto = t.get("netto")
+    if letto is None:
+        t["stato_netto"] = NETTO_NON_PRESENTE_O_NON_LEGGIBILE
+        return
+    t["stato_netto"] = NETTO_VERIFICATO_DA_CEDOLINO
     if re.search(r"COMPENSO\s+AMMINISTRATORE|CO\.CO\.CO", text.upper()):
-        # Cedolino di compenso amministratore (Co.Co.Co.), non busta paga
-        # dipendente: "competenze" e "trattenute" qui intercettano campi del
-        # tutto diversi (residui, arrotondamenti), non i totali del documento.
-        # Il controllo aritmetico li confronterebbe a vuoto e sovrascriverebbe
-        # un netto letto correttamente con un valore inventato — visto su
-        # Ceraldi Valerio maggio 2026: netto vero 2.000,00, "ricostruito" 38,21.
+        # Compenso amministratore (Co.Co.Co.): «competenze» e «trattenute» qui
+        # intercettano residui e arrotondamenti, il confronto sarebbe a vuoto
+        # (Ceraldi Valerio maggio 2026: netto vero 2.000,00, «calcolo» 38,21).
         return
     competenze = t.get("competenze", t.get("lordo"))
     trattenute = t.get("trattenute")
@@ -1312,12 +1375,15 @@ def _verifica_netto(result: Dict[str, Any], text: str = "") -> None:
         return
     if calcolato <= 0:
         return                  # sospensioni e mesi a saldo negativo: lasciati stare
-    letto = t.get("netto")
-    if (letto is None or abs(float(letto) - calcolato) > 1.0
-            or float(letto) > float(competenze)):
-        t["netto_letto"] = letto
-        t["netto"] = calcolato
-        t["netto_ricostruito"] = True
+    discorde = abs(float(letto) - calcolato) > 1.0 or float(letto) > float(competenze)
+    if not discorde:
+        return
+    t["netto_calcolato"] = calcolato
+    if t.get("netto_da_cella"):
+        return                  # la cella vince: lo scarto resta annotato
+    t["netto_letto"] = letto
+    t["netto"] = None
+    t["stato_netto"] = MULTIPLE_NETS_DA_VERIFICARE
 
 
 def _acconti_e_anticipazioni(result: Dict[str, Any], text: str) -> None:

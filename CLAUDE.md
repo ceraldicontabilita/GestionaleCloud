@@ -546,6 +546,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   alimenta Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`, che fallisce
   **chiuso**: uno stato assente, vuoto o sconosciuto non passa. Su un dato che diventa un bonifico
   l'assenza di prova non vale come prova.
+  Zucchetti e CSC: la cella sta **sotto** l'etichetta (`_netto_dalla_cella`) e vince sul testo; competenze
+  meno trattenute è solo un controllo (`netto_calcolato` annotato), **mai** un netto.
 - Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il femminile non esiste su nessun
   documento e un filtro che lo cerca passa sempre.
 - **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi` (identità completa, acconti,
