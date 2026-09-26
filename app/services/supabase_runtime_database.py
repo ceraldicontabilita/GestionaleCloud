@@ -25,6 +25,7 @@ import aiohttp
 
 from app.services.archivio_documenti_memoria import (
     MISSING, CursoreDocumenti, ArchivioDocumenti, CollezioneDocumenti, apply_projection, matches_filter,
+    prepara_filtro,
 )
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
@@ -467,10 +468,12 @@ class SupabaseTable(CollezioneDocumenti):
         serve il contenuto del payload (o la cache e' spenta)."""
         if not self.database._cache_enabled:
             return None, False
+        # Il filtro si prepara qui, una volta: chi lo usa lo valuta su ogni
+        # documento della collezione in memoria (``$in`` con migliaia di voci).
         if not _references_any_field(selector, self._payload_fields):
-            return (selector if selector is not None else {}), False
+            return prepara_filtro(selector if selector is not None else {}), False
         leggero = _riscrivi_presenza(selector, self._payload_fields)
-        return leggero, leggero is not None
+        return prepara_filtro(leggero), leggero is not None
 
     def _cache_can_filter(self, selector) -> bool:
         """Vero se la cache puo' decidere QUALI documenti servono."""

@@ -99,6 +99,39 @@ def _hashable_unique_value(value: Any) -> Any:
     return ("scalar", value)
 
 
+# Un filtro ``$in`` si valuta su ogni documento della collezione con la stessa
+# lista: ricostruirne l'insieme a ogni documento costava liste x documenti (il
+# salvataggio SumUp teneva fermo il processo 17 s ogni 5 minuti). Chi scorre una
+# collezione prepara il filtro una volta (``prepara_filtro``): ogni lista
+# ``$in`` diventa una copia immutabile che porta con se' l'insieme.
+class _ListaIn(tuple):
+    marcatori: frozenset
+
+    def __new__(cls, valori: Iterable[Any]) -> "_ListaIn":
+        lista = super().__new__(cls, valori)
+        lista.marcatori = frozenset(_hashable_unique_value(valore) for valore in lista)
+        return lista
+
+
+def _marcatori_in(expected: Any) -> frozenset:
+    if isinstance(expected, _ListaIn):
+        return expected.marcatori
+    return frozenset(_hashable_unique_value(candidate) for candidate in list(expected or []))
+
+
+def prepara_filtro(selector: Any) -> Any:
+    """Lo stesso filtro, con gli ``$in`` gia' pronti: da chiamare prima di un ciclo."""
+    if isinstance(selector, dict):
+        return {
+            chiave: (_ListaIn(valore) if chiave == "$in" and isinstance(valore, (list, tuple, set, frozenset))
+                     and not isinstance(valore, _ListaIn) else prepara_filtro(valore))
+            for chiave, valore in selector.items()
+        }
+    if isinstance(selector, list):
+        return [prepara_filtro(voce) for voce in selector]
+    return selector
+
+
 def _new_id() -> str:
     return uuid.uuid4().hex
 
@@ -207,10 +240,7 @@ def _matches_condition(values: list[Any], condition: Any) -> bool:
             if any(_equals(value, expected) for value in values):
                 return False
         elif operator == "$in":
-            candidates = list(expected or [])
-            candidate_markers = {
-                _hashable_unique_value(candidate) for candidate in candidates
-            }
+            candidate_markers = _marcatori_in(expected)
 
             def included(value: Any) -> bool:
                 if isinstance(value, list):
@@ -678,6 +708,7 @@ class CollezioneDocumenti:
                     raise DuplicateRecordError(f"Valore duplicato nel foglio {self.name}: {fields}")
 
     def find(self, selector: dict[str, Any] | None = None, projection: dict[str, Any] | None = None, *args, **kwargs) -> CursoreDocumenti:
+        selector = prepara_filtro(selector)
         documents = [apply_projection(document, projection) for document in self._documents if matches_filter(document, selector)]
         return CursoreDocumenti(documents)
 
@@ -689,6 +720,7 @@ class CollezioneDocumenti:
         return documents[0] if documents else None
 
     async def count_documents(self, selector: dict[str, Any] | None = None, *args, **kwargs) -> int:
+        selector = prepara_filtro(selector)
         return sum(1 for document in self._documents if matches_filter(document, selector))
 
     async def estimated_document_count(self, *args, **kwargs) -> int:
@@ -812,6 +844,7 @@ class CollezioneDocumenti:
             return InsertManyResult([document["_id"] for document in stored_documents])
 
     async def _update(self, selector: dict[str, Any], update: dict[str, Any], *, many: bool, upsert: bool) -> tuple[UpdateResult, list[dict[str, Any]], list[dict[str, Any]]]:
+        selector = prepara_filtro(selector)
         indexes = [index for index, document in enumerate(self._documents) if matches_filter(document, selector)]
         if not many:
             indexes = indexes[:1]
@@ -854,6 +887,7 @@ class CollezioneDocumenti:
         return await self.update_one(selector, _clone(replacement), upsert=upsert, **kwargs)
 
     async def _delete(self, selector: dict[str, Any], *, many: bool) -> tuple[DeleteResult, list[dict[str, Any]]]:
+        selector = prepara_filtro(selector)
         indexes = [index for index, document in enumerate(self._documents) if matches_filter(document, selector)]
         if not many:
             indexes = indexes[:1]

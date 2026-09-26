@@ -58,6 +58,11 @@ def invoice_reference_in_text(reference: Any, text: Any) -> bool:
     compact = normalize_invoice_reference(raw)
     if not compact or not narrative:
         return False
+    # Condizione necessaria e mille volte piu' economica della regex: se il
+    # numero c'e', le sue cifre e lettere compaiono di fila anche tolta la
+    # punteggiatura. Scarta subito le ~1.400 fatture che non c'entrano.
+    if compact not in normalize_invoice_reference(narrative):
+        return False
 
     parts = [re.escape(part) for part in re.findall(r"[A-Z0-9]+", raw)]
     if not parts:
