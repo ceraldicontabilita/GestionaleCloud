@@ -112,3 +112,29 @@ def test_modello_da_pagare_riceve_lo_stato_documentale():
     assert f24["quietanza_id"] == "q-apr"
     assert f24["stato_pagamento"] == "DA_VERIFICARE_BANCA"
     assert f24["pagato"] is False
+
+
+def test_il_modello_arrivato_dopo_trova_subito_la_quietanza(monkeypatch):
+    """Arrivo in ordine inverso: prima la quietanza, poi il modello F24."""
+    import app.services.parser_f24 as parser
+    from app.services.f24_canonico import importa_modello_bytes
+
+    parsed = {
+        "dati_generali": {"codice_fiscale": CF, "data_versamento": "2026-05-18"},
+        **RIGHE,
+        "totali": {"totale_debito": 6404.82, "totale_credito": 0.0, "saldo_netto": 6404.82},
+        "validazione": {"saldo_quadrato": True, "parser_version": "test-v1"},
+    }
+    monkeypatch.setattr(parser, "parse_f24_commercialista", lambda pdf_content: parsed)
+    db = _db()
+
+    async def scenario():
+        await db["quietanze_f24"].insert_one(_quietanza())
+        esito = await importa_modello_bytes(db, b"%PDF-1.4 aprile", "F24 aprile.pdf", source="test")
+        f24 = await db["f24_unificato"].find_one({"id": esito["f24_id"]})
+        return esito, f24, await db["quietanze_f24"].find_one({"id": "q-apr"})
+
+    esito, f24, quietanza = asyncio.run(scenario())
+    assert esito["controparti"]["quietanze"] == {"orfane": 1, "collegate": 1}
+    assert f24["quietanza_id"] == "q-apr"
+    assert quietanza["stato_associazione"] == "associata"
