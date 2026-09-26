@@ -2,18 +2,20 @@ import { useEffect, useState } from "react";
 import { saveToken, saveRuolo, setGateOk, prendiPaginaRichiesta } from "../../auth";
 import * as authLotti from "../../auth";
 import axios from "axios";
-import { ArrowLeft, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { apiError } from "../../utils/apiError";
-import { getTabletSession, moveTabletSessionTo, saveTabletSession } from "../../utils/tabletSession";
+import { allineaSessioneTitolare, getTabletSession, moveTabletSessionTo, saveTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 // Card del tablet.
 // REGOLA ENZO 25/07/2026: «il dipendente deve solo produrre e vedere le
-// ricette, tutto il resto lo guardo io e lo utilizzo io: metti tutto sotto
-// PIN». Quindi le card restano tutte visibili — Enzo le usa dal tablet col
-// SUO pin — ma quelle marcate `soloAdmin` chiedono il PIN da amministratore e
-// respingono il PIN di un dipendente.
+// ricette, tutto il resto lo guardo io e lo utilizzo io». Le card restano
+// tutte visibili; quelle marcate `soloAdmin` si aprono solo al titolare, e il
+// titolare si riconosce dalla sessione del Gestionale (/auth/session): il PIN
+// amministratore si digita solo nel login del Gestionale, mai qui (26/09/2026).
+// Le card di reparto chiedono il PIN personale: identifica chi firma HACCP e
+// produzioni.
 const REPARTI = [
   { id: "pasticceria", label: "Pasticceria", emoji: "🍰", grad: "linear-gradient(135deg,#fb923c,#ea580c)", shadow: "rgba(234,88,12,.5)" },
   { id: "rosticceria", label: "Rosticceria", emoji: "🥙", grad: "linear-gradient(135deg,#86efac,#22c55e)", shadow: "rgba(34,197,94,.5)" },
@@ -31,7 +33,7 @@ export const REPARTI_SOLO_ADMIN = REPARTI.filter(r => r.soloAdmin).map(r => r.id
 
 const buzz = (ms = 12) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
 
-function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCancel, maxLen = 6, onlyAdmin = false }) {
+function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCancel, maxLen = 6 }) {
   const [digits, setDigits] = useState("");
   const [errore, setErrore] = useState("");
   const [loading, setLoading] = useState(false);
@@ -61,12 +63,6 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
         const res = await axios.post(`${API}/tablet-operatori/login`, { pin }, { timeout: 15000 });
         const op = res.data?.operatore;
         if (!op) throw new Error("Operatore non valido");
-        if (onlyAdmin && op.ruolo !== "amministratore") {
-          setErrore("PIN non autorizzato");
-          setDigits("");
-          setLoading(false);
-          return;
-        }
         if (res.data?.token) saveToken(res.data.token);
         buzz(20);
         setOkNome(op?.nome || "");
@@ -157,11 +153,40 @@ function Orologio() {
 }
 
 export default function TabletHome({ onEntra, preselectReparto }) {
-  const [repSel, setRepSel] = useState(preselectReparto && REPARTI.find(r => r.id === preselectReparto) ? preselectReparto : null);
+  // Il tastierino si apre solo per le card di reparto (PIN personale).
+  const [repSel, setRepSel] = useState(REPARTI.find(r => r.id === preselectReparto && !r.soloAdmin) ? preselectReparto : null);
   const [erroreGestionale, setErroreGestionale] = useState("");
   const [verificaGestionale, setVerificaGestionale] = useState(false);
   const sessione = getTabletSession();
   const [richiesteOrdini, setRichiesteOrdini] = useState(0);
+  const [avvisoTitolare, setAvvisoTitolare] = useState("");
+
+  // Card riservata (es. Ordini): il titolare entra con la sessione del
+  // Gestionale, altrimenti va al login del Gestionale e torna qui.
+  const apriRiservata = async (rep, rimandaAlLogin = true) => {
+    if (verificaGestionale) return;
+    setVerificaGestionale(true);
+    setAvvisoTitolare("");
+    const titolare = await authLotti.entraDalGestionale();
+    setVerificaGestionale(false);
+    if (!titolare) {
+      if (rimandaAlLogin) authLotti.vaiAlLoginGestionale(`/lotti/#tablet/${rep.id}`);
+      else setAvvisoTitolare(`«${rep.label}» è riservata al titolare: entra dal Gestionale.`);
+      return;
+    }
+    allineaSessioneTitolare(titolare, rep.id);
+    window.location.hash = `tablet/${rep.id}`;
+    window.dispatchEvent(new Event("tablet-auth"));
+    onEntra?.(rep.id, titolare);
+  };
+
+  // Ritorno dal login del Gestionale su #tablet/<card riservata>: si prova la
+  // sessione una volta sola, senza rimandare di nuovo al login (niente giri).
+  useEffect(() => {
+    const rep = REPARTI.find((r) => r.id === preselectReparto);
+    if (rep?.soloAdmin) apriRiservata(rep, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectReparto]);
 
   useEffect(() => {
     if (sessione?.ruolo !== "amministratore") return;
@@ -196,7 +221,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     // Serve anche il ruolo salvato: il gestionale ora si apre SOLO da
     // amministratore (25/07/2026), altrimenti si tornerebbe subito al kiosk.
     saveRuolo("amministratore");
-    // Apre anche il cancello del gestionale: senza, bastava
+    // Apre anche il cancello del gestionale per 2 ore: senza, bastava
     // ricaricare la pagina per ritrovarsi il tastierino "Accesso Lotti"
     // (trovato al collaudo del 25/07/2026).
     setGateOk();
@@ -212,7 +237,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     setVerificaGestionale(true);
     const dalGestionale = await authLotti.entraDalGestionale();
     setVerificaGestionale(false);
-    if (dalGestionale) { handleEsciAdmin(); return; }
+    if (dalGestionale) { allineaSessioneTitolare(dalGestionale, "home"); handleEsciAdmin(); return; }
     const corrente = getTabletSession();
     if (corrente?.ruolo !== "amministratore") {
       authLotti.vaiAlLoginGestionale("/lotti/#dashboard");
@@ -240,7 +265,19 @@ export default function TabletHome({ onEntra, preselectReparto }) {
 
   const scegliReparto = (rep) => {
     const session = getTabletSession();
-    if (session && (!rep.soloAdmin || session.ruolo === "amministratore")) {
+    if (rep.soloAdmin) {
+      // Un dipendente identificato sul tablet non passa per il ruolo salvato:
+      // si riverifica la sessione del Gestionale, che riallinea la persona.
+      if (session?.ruolo === "amministratore" || (!session && sessioneTitolareAttiva())) {
+        if (session) moveTabletSessionTo(rep.id);
+        onEntra?.(rep.id, session);
+        window.location.hash = `tablet/${rep.id}`;
+        return;
+      }
+      apriRiservata(rep);
+      return;
+    }
+    if (session) {
       moveTabletSessionTo(rep.id);
       onEntra?.(rep.id, session);
       window.location.hash = rep.id === "ricette" ? "ricette" : `tablet/${rep.id}`;
@@ -251,9 +288,6 @@ export default function TabletHome({ onEntra, preselectReparto }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#1c2620", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 16px", userSelect: "none", position: "relative", overflow: "hidden" }}>
-      <a href="/" aria-label="Torna al Gestionale" style={{ position: "absolute", top: 18, left: 18, display: "inline-flex", alignItems: "center", gap: 7, minHeight: 44, padding: "0 14px", borderRadius: 10, border: "1px solid #4a5d50", color: "#f5f2ea", fontSize: 13, fontWeight: 800, textDecoration: "none", background: "rgba(255,255,255,.06)" }}>
-        <ArrowLeft size={16} /> Torna al Gestionale
-      </a>
       <div style={{ position: "absolute", top: -100, right: -100, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(63,90,78,.15) 0%, transparent 70%)", pointerEvents: "none" }} />
       <Orologio />
       <div style={{ marginBottom: 40, textAlign: "center" }}>
@@ -270,7 +304,7 @@ export default function TabletHome({ onEntra, preselectReparto }) {
               </span>
             )}
             {r.id === "ordini" && sessione?.ruolo === "amministratore" && richiesteOrdini > 0 && (
-              <span style={{ position:"absolute", top:12, left:12, background:"#dc2626", color:"#fff", borderRadius:999, padding:"5px 9px", fontSize:12, fontWeight:900 }}>
+              <span style={{ position:"absolute", top:12, left:12, background:"#d35f4e", color:"#fff", borderRadius:999, padding:"5px 9px", fontSize:12, fontWeight:900 }}>
                 {richiesteOrdini} da valutare
               </span>
             )}
@@ -279,17 +313,22 @@ export default function TabletHome({ onEntra, preselectReparto }) {
           </button>
         ))}
       </div>
+      {avvisoTitolare && (
+        <div role="status" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "center", background: "#fffefb", color: "#2a3329", borderRadius: 14, padding: "10px 16px", marginTop: -28, marginBottom: 20, fontWeight: 700 }}>
+          {avvisoTitolare}
+          <a href={authLotti.loginGestionale("/lotti/#tablet/home")} style={{ minHeight: 44, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: 10, background: "#5b7a6b", color: "#fff", textDecoration: "none" }}>Entra dal Gestionale</a>
+        </div>
+      )}
       {erroreGestionale && <div role="alert" style={{ position: "absolute", bottom: 60, right: 20, color: "#fff" }}>{erroreGestionale}</div>}
-      <button onClick={chiediEsciAdmin} disabled={verificaGestionale} style={{ position: "absolute", bottom: 20, right: 20, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🔒 Gestionale — area amministratore</button>
+      <button onClick={chiediEsciAdmin} disabled={verificaGestionale} style={{ position: "absolute", bottom: 20, right: 20, minHeight: 44, padding: "8px 16px", borderRadius: 10, border: "1px solid #4a463c", background: "transparent", color: "#8a8478", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}><Lock size={13} aria-hidden="true" /> Gestionale — solo titolare</button>
       {repSel && (() => {
         const rep = REPARTI.find(r => r.id === repSel);
         return (
           <PinKeypad
             titolo={rep?.label || repSel}
-            sottotitolo={rep?.soloAdmin ? "Riservato al titolare: serve il PIN da amministratore" : "Inserisci il tuo PIN personale"}
-            colore={rep?.soloAdmin ? "#b04a3a" : colorePin}
+            sottotitolo="Inserisci il tuo PIN personale"
+            colore={colorePin}
             maxLen={6}
-            onlyAdmin={!!rep?.soloAdmin}
             onSuccess={handleSuccess}
             onCancel={() => setRepSel(null)}
           />
@@ -298,5 +337,3 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     </div>
   );
 }
-
-export { PinKeypad };

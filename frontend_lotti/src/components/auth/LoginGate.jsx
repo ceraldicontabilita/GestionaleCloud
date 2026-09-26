@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { LogIn } from "lucide-react";
-import GoogleLoginButton from "@/components/auth/GoogleLoginButton";
-import { fetchAuthConfig, cachedAuthConfig, gateStillValid, setGateOk, clearGate, isAdmin, ricordaPaginaRichiesta, entraDalGestionale, loginGestionale } from "@/auth";
-import { getTabletSession } from "../../utils/tabletSession";
+import { fetchAuthConfig, cachedAuthConfig, gateStillValid, clearGate, isAdmin, ricordaPaginaRichiesta, entraDalGestionale, loginGestionale } from "@/auth";
+import { allineaSessioneTitolare, getTabletSession } from "../../utils/tabletSession";
 
 /**
  * Cancello di accesso. Regole (riviste 13/06/2026 dopo i bug visti da Enzo):
@@ -15,7 +14,6 @@ import { getTabletSession } from "../../utils/tabletSession";
  */
 export default function LoginGate({ children }) {
   const [state, setState] = useState("checking"); // checking | open | locked
-  const [cfg, setCfg] = useState({ enforce: false, google_enabled: false, google_client_id: "" });
 
   const isTablet = () => (window.location.hash || "").replace("#", "").startsWith("tablet");
 
@@ -24,7 +22,12 @@ export default function LoginGate({ children }) {
 
     // Sessione unica (25/09/2026): chi e' gia' entrato nel Gestionale apre
     // Lotti da amministratore senza un secondo PIN.
-    if (!(isAdmin() && gateStillValid()) && await entraDalGestionale()) { setState("open"); return; }
+    // Il tablet passa al titolare: un dipendente rimasto identificato non
+    // firmerebbe col token dell'amministratore.
+    if (!(isAdmin() && gateStillValid())) {
+      const titolare = await entraDalGestionale();
+      if (titolare) { allineaSessioneTitolare(titolare, "home"); setState("open"); return; }
+    }
 
     // Enzo 25/07/2026: chi non è amministratore non deve nemmeno vedere il
     // tastierino del gestionale — l'app si apre sulle card del tablet, che
@@ -36,24 +39,21 @@ export default function LoginGate({ children }) {
       setState("open");
       return;
     }
-    // Sessione locale valida: entra senza richiedere di nuovo il PIN,
-    // su qualunque pagina/scheda. Un vero 401 o «Esci» richiude il cancello,
-    // anche se il token tecnicamente vive ancora. (richiesta Enzo 02/07/2026)
+    // Cancello aperto finché c'è un token (vedi setGateOk in auth.js): si
+    // entra su qualunque pagina/scheda senza chiedere di nuovo l'accesso.
     if (gateStillValid()) { setState("open"); return; }
 
     const cached = cachedAuthConfig();   // null se non c'è una config REALE
-    if (cached) setCfg(cached);
 
     // Se sappiamo per certo (config reale) che l'enforcement è spento → apri.
     if (cached && cached.enforce === false) { setState("open"); return; }
 
-    // Cancello scaduto o mai aperto: PIN subito. Niente attesa, niente
-    // apertura senza PIN. (fix Enzo 14/06/2026)
+    // Cancello chiuso: si entra dal Gestionale. Niente attesa, niente
+    // apertura senza accesso. (fix Enzo 14/06/2026)
     setState("locked");
 
     // In background allineo la config vera per le sessioni future.
     fetchAuthConfig().then((c) => {
-      setCfg(c);
       if (c && c.enforce === false) {
         setState("open");
       }
@@ -97,12 +97,6 @@ export default function LoginGate({ children }) {
             <a href="#tablet/home" style={{ color: "#3f5a4e", fontWeight: 700 }}>Sono un dipendente: vai ai reparti</a>
           </p>
         </div>
-        {cfg.google_enabled && cfg.google_client_id ? (
-          <div style={{ marginTop: 20, textAlign: "center" }}>
-            <div style={{ color: "#9a917f", fontSize: 13, marginBottom: 10 }}>oppure</div>
-            <GoogleLoginButton clientId={cfg.google_client_id} onSuccess={() => { setGateOk(); setState("open"); }} />
-          </div>
-        ) : null}
       </div>
     </div>
   );
