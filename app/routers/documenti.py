@@ -2627,9 +2627,10 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "quietanza_f24"
     if re.search(r"(^|[^a-z0-9])f24([^a-z0-9]|$)", lower) or "delega_f24" in lower:
         return "f24"
-    if any(keyword in lower for keyword in (
+    if lower.endswith(".pdf") and any(keyword in lower for keyword in (
         "cedolin", "busta_paga", "busta paga", "libro_unico", "libro unico", "lul",
     )):
+        # Solo un PDF: «Indice_Cedolini_Gestionale.xlsx» non e' una busta paga.
         return "cedolino"
     if any(keyword in lower for keyword in ("bonifico", "bonifici", "sepa", "transfer")):
         return "bonifici"
