@@ -182,8 +182,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   versione leggera (senza XML/PDF/foto); una firma per tutte le collezioni al
   più ogni 15 s, poi solo i delta; finestra di grazia 120 s se la firma
   fallisce. `GC_RUNTIME_CACHE=0` / `HR_RUNTIME_CACHE=0` la spengono.
-- `/api/health` risponde entro 2 s anche con la probe appesa (`degraded`, non
-  503; `?strict=true` per il 503). Una sola probe in volo per processo.
+- `/api/health` di ERP, HR e Menu risponde entro 2 s anche con la probe appesa (`degraded`, non 503; `?strict=true`
+  per il 503), una sola probe in volo (`services/health_probe.py`); il commit per tutte e quattro da `services/deploy_info.py`.
 - Gli scheduler acquisiscono una lease distribuita su Supabase: il lock locale
   resta solo come riserva prima che la connessione sia disponibile (avvio,
   test). **La lease si restituisce allo spegnimento**
@@ -762,7 +762,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
   non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
 - Accessi: PIN valido 2 ore; i dipendenti entrano ovunque tranne le pagine di amministrazione. Sui tablet
-  condivisi il magazzino chiude la sessione dopo 10 minuti.
+  condivisi il magazzino chiude la sessione dopo 10 minuti. Il JWT solo nell'header, **mai in `?token=`**: i documenti si aprono con `apriDocumentoAutenticato` (`auth.js`).
 
 ### Menu — allergeni
 

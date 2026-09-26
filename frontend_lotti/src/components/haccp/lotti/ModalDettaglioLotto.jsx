@@ -1,5 +1,6 @@
 import { Printer, FileText } from "lucide-react";
-import { withToken } from "../../../utils/constants";
+import { API } from "../../../utils/constants";
+import { apriDocumentoAutenticato } from "../../../auth";
 import { ALLERGENI_EU_LIST, allergeniDaTesto } from "../../../utils/allergeni";
 import { Modal, Button } from "./uiLotti";
 
@@ -208,7 +209,7 @@ export default function ModalDettaglioLotto({ lotto, onClose, onPrint, onRecallI
             </div>
             <div className="pt-1">
               <Button
-                onClick={() => window.open(withToken(`${process.env.REACT_APP_LOTTI_BACKEND_URL}/api/etichette/lotto/${lotto.id}`), "_blank")}
+                onClick={() => apriDocumentoAutenticato(`${API}/etichette/lotto/${encodeURIComponent(lotto.id)}`)}
                 variant="secondary"
                 className="w-full"
               >

@@ -13,7 +13,8 @@ import {
   RefreshCw,
   XCircle,
 } from "lucide-react";
-import { API, formatDate, withToken } from "../../utils/constants";
+import { API, formatDate } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 
 const statusMeta = {
   ok: {
@@ -93,7 +94,7 @@ function SummaryTile({ label, value, tone = "slate" }) {
 function apriCampione(issue, sample, navigate) {
   // fatture: apre direttamente la fattura nel visualizzatore
   if ((issue.id === "righe_fattura_senza_link" || issue.id === "fatture_non_riconciliate") && sample.id) {
-    window.open(withToken(`${API}/fatture/${sample.id}/visualizza`), "_blank");
+    apriDocumentoAutenticato(`${API}/fatture/${sample.id}/visualizza`);
     return;
   }
   // ricette: apre la scheda della ricetta (stesso meccanismo del Supervisore)

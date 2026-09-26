@@ -943,6 +943,12 @@ class SupabaseDatabase:
             raise AttributeError(nome)
         return self[nome]
 
+    async def ping(self) -> None:
+        """Probe leggera per /hr/api/health: una connessione dal pool e
+        ``SELECT 1``, senza leggere tabelle (il budget lo mette chi chiama)."""
+        async with self._pool.acquire() as con:
+            await con.fetchval("SELECT 1")
+
     async def list_collection_names(self) -> List[str]:
         async with self._pool.acquire() as con:
             righe = await con.fetch(

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Calculator, ChartNoAxesColumn, ClipboardList, IceCreamBowl, PackageSearch, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 import TouchNumberInput from "./shared/TouchNumberInput";
 import { calcolaProduzione, scalaIngredienti } from "./gelati/calcoloProduzione";
 
@@ -763,9 +764,7 @@ export function ProdottiTab() {
     return Number.isFinite(numero) ? numero.toLocaleString("it-IT", { maximumFractionDigits: 4 }) : String(valore);
   };
   const prezzo = (valore) => valore === null || valore === undefined || valore === "" ? "—" : `${formatoNumero(valore)} €`;
-  const apriFattura = (id) => window.open(
-    withToken(`${API}/fatture/${encodeURIComponent(id)}/visualizza`), "_blank", "noopener,noreferrer"
-  );
+  const apriFattura = (id) => apriDocumentoAutenticato(`${API}/fatture/${encodeURIComponent(id)}/visualizza`);
   const provenienza = (riga) => riga.fattura_id ? (
     <button type="button" className="min-h-11 text-left font-bold text-[#3f5a4e] underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3f5a4e]" onClick={() => apriFattura(riga.fattura_id)} aria-label={`Apri fattura ${riga.numero_fattura || "senza numero"}`}>
       Fatt. {riga.numero_fattura || "—"}

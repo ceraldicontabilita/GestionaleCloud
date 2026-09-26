@@ -33,7 +33,7 @@ test("scheda illeggibile: da verificare, nessun valore inventato", () => {
   chiudi();
 });
 
-test("il link al PDF del fornitore porta il token, un link esterno no", async () => {
+test("il PDF del fornitore si apre con l'header, mai con il token nell'URL", async () => {
   const axios = (await import("axios")).default;
   localStorage.setItem("lotti_token", "tok123");
   const get = jest.spyOn(axios, "get").mockImplementation((url) => Promise.resolve({ data:
@@ -48,8 +48,20 @@ test("il link al PDF del fornitore porta il token, un link esterno no", async ()
   await act(async () => { root.render(<SchedeTecnicheView />); });
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   const hrefs = [...el.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-  expect(hrefs).toContain("/lotti/api/schede-tecniche/pdf/d1?token=tok123");
+  expect(hrefs).toContain("/lotti/api/schede-tecniche/pdf/d1");
   expect(hrefs).toContain("https://produttore.it/s.pdf");
+  expect(hrefs.some((h) => /token=/.test(h || ""))).toBe(false);
+  // il clic scarica il PDF con axios (header Bearer dall'interceptor) e apre il blob
+  const finta = { closed: false, opener: {}, document: { title: "", body: {} }, location: { href: "" }, close: jest.fn() };
+  const open = jest.spyOn(window, "open").mockReturnValue(finta);
+  URL.createObjectURL = jest.fn(() => "blob:finto");
+  URL.revokeObjectURL = jest.fn();
+  const interno = [...el.querySelectorAll("a")].find((a) => a.getAttribute("href") === "/lotti/api/schede-tecniche/pdf/d1");
+  await act(async () => { interno.click(); await new Promise((r) => setTimeout(r, 0)); });
+  expect(open).toHaveBeenCalledWith("", "_blank", undefined);
+  expect(get).toHaveBeenCalledWith("/lotti/api/schede-tecniche/pdf/d1", { responseType: "blob" });
+  expect(finta.location.href).toBe("blob:finto");
+  open.mockRestore();
   expect(el.textContent).toContain("PDF del fornitore");
   expect(el.querySelectorAll('[aria-label="Elimina scheda"]').length).toBe(1);
   act(() => root.unmount());

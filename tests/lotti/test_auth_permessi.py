@@ -306,3 +306,35 @@ def test_nessuna_rotta_lotti_accetta_scritture_anonime():
         except HTTPException as exc:
             assert exc.status_code == 401, (metodo, path)
     assert aperte == []
+
+
+# ── Niente token negli URL ──────────────────────────────────────────────────
+def test_token_in_query_string_non_autentica():
+    """Un JWT valido in ?token= / ?access_token= non vale come autenticazione:
+    finirebbe in cronologia, log del proxy e Referer."""
+    t = make_token("op1", "Mario", "operatore")
+    for chiave in ("token", "access_token"):
+        req = FintaRichiesta(method="POST", path="/api/ricette", query={chiave: t})
+        with pytest.raises(HTTPException) as exc:
+            _run(auth_dependency(req))
+        assert exc.value.status_code == 401
+
+
+def test_token_in_query_string_non_da_identita():
+    from app.lotti.auth import request_actor
+
+    t = make_token("op1", "Mario", "amministratore")
+    assert request_actor(FintaRichiesta(query={"token": t})) is None
+    # lo stesso token nell'header resta valido
+    assert request_actor(FintaRichiesta(token=t))["id"] == "op1"
+
+
+def test_coda_stampa_non_conserva_token_negli_url():
+    from app.lotti.routers.stampanti import _senza_token
+
+    assert _senza_token("/lotti/api/stampa/lotto/L1?token=abc") == "/lotti/api/stampa/lotto/L1"
+    assert (
+        _senza_token("https://x.it/lotti/api/r?mese=9&access_token=abc&anno=2026")
+        == "https://x.it/lotti/api/r?mese=9&anno=2026"
+    )
+    assert _senza_token("/lotti/api/stampa/lotto/L1") == "/lotti/api/stampa/lotto/L1"

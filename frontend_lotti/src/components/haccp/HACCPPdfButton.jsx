@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { FileText, X } from "lucide-react";
-import { API, withToken } from "../../utils/constants";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
 
 const MESI = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
 
@@ -18,7 +19,7 @@ const HACCPPdfButton = () => {
   const reportUrl = `${API}/report-haccp/mensile?mese=${mese}&anno=${anno}`;
 
   const apriReport = () => {
-    window.open(withToken(reportUrl), "_blank", "noopener,noreferrer");
+    apriDocumentoAutenticato(reportUrl);
     setOpen(false);
   };
 
