@@ -11,6 +11,7 @@ from pathlib import Path
 
 import fitz
 import pytest
+from mongomock_motor import AsyncMongoMockClient
 
 from app.constants.stati_netto import NETTO_NON_PRESENTE_O_NON_LEGGIBILE
 from app.parsers.busta_paga_multi_template import parse_template_teamsystem
@@ -135,7 +136,7 @@ def test_la_busta_col_netto_va_in_contabilita_quella_senza_solo_in_hr(scrittore,
         {"codice_fiscale": CF, "mese": 4, "anno": 2026, "netto": None, "_pdf_data": "b", "_raw_text": "y"},
     ]
     monkeypatch.setattr(cedolini_motore, "leggi_pdf", _lettura("buste", buste))
-    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(None, base64.b64encode(b"%PDF").decode(), "c.pdf"))
+    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(AsyncMongoMockClient()["t"], base64.b64encode(b"%PDF").decode(), "c.pdf"))
     assert esito["success"] and esito["cedolini_processati"] == 1 and esito["buste_senza_netto"] == 1
     assert [c["mese"] for c in scrittore["v2"]] == [3]
     assert [c["mese"] for c in scrittore["hr"]] == [4] and scrittore["hr"][0]["pdf_data"] == "b"
@@ -143,10 +144,10 @@ def test_la_busta_col_netto_va_in_contabilita_quella_senza_solo_in_hr(scrittore,
 
 def test_presenze_e_illeggibili_non_scrivono_nulla(scrittore, monkeypatch):
     monkeypatch.setattr(cedolini_motore, "leggi_pdf", _lettura("presenze", presenze=[{}]))
-    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(None, base64.b64encode(b"%PDF").decode(), "p.pdf"))
+    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(AsyncMongoMockClient()["t"], base64.b64encode(b"%PDF").decode(), "p.pdf"))
     assert esito["esito"] == "presenze" and esito["fogli_presenze"] == 1
     monkeypatch.setattr(cedolini_motore, "leggi_pdf", _lettura("illeggibile"))
-    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(None, base64.b64encode(b"%PDF").decode(), "i.pdf"))
+    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(AsyncMongoMockClient()["t"], base64.b64encode(b"%PDF").decode(), "i.pdf"))
     assert esito["success"] is False and esito["errori"]
     assert scrittore == {"v2": [], "hr": []}
 
@@ -217,6 +218,6 @@ def test_una_busta_col_netto_da_verificare_non_va_in_prima_nota(scrittore, monke
     buste = [{"codice_fiscale": CF, "mese": 5, "anno": 2026, "netto": 900.0,
               "stato_netto": "MULTIPLE_NETS_DA_VERIFICARE", "_pdf_data": "c", "_raw_text": ""}]
     monkeypatch.setattr(cedolini_motore, "leggi_pdf", _lettura("buste", buste))
-    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(None, base64.b64encode(b"%PDF").decode(), "m.pdf"))
+    esito = run(cedolini_manager.processa_tutti_cedolini_pdf(AsyncMongoMockClient()["t"], base64.b64encode(b"%PDF").decode(), "m.pdf"))
     assert scrittore["v2"] == [] and len(scrittore["hr"]) == 1
     assert esito["buste_senza_netto"] == 1

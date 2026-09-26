@@ -69,6 +69,18 @@ export const RIPARAZIONI = [
     esegui: '/api/iva/lipe/importa',
     stato: null,
   },
+  {
+    id: 'doppioni',
+    titolo: 'Doppioni di cedolini, quietanze F24, bonifici e F24',
+    spiega:
+      'La stessa busta, quietanza o bonifico entrata da piu\' PDF (Libro Unico, ' +
+      'file singolo, copie «(2)») conta gli stipendi e i pagamenti piu\' volte. ' +
+      'Le copie vanno nella cartella «da eliminare» (quarantena, recuperabile); ' +
+      'resta quella pagata o abbinata alla banca, e i collegamenti passano su di lei. ' +
+      'Anche le righe doppie della Prima Nota salari.',
+    esegui: '/api/doppioni/ripulisci',
+    stato: '/api/doppioni/stato',
+  },
 ];
 
 function Riga({ lavoro, confirm }) {

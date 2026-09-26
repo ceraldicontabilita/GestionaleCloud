@@ -219,6 +219,8 @@ def _register_employees(app: FastAPI):
     app.include_router(drive_cedolini.router, prefix="/api/cedolini", tags=["Cedolini Drive"])
     from app.routers import schede_markdown
     app.include_router(schede_markdown.router, prefix="/api/schede", tags=["Schede Markdown"])
+    from app.routers import doppioni_archivio
+    app.include_router(doppioni_archivio.router, prefix="/api/doppioni", tags=["Doppioni archivio"])
     app.include_router(drive_corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi Drive"])
     app.include_router(drive_quietanze.router, prefix="/api/f24/quietanze", tags=["Quietanze Drive"])
 

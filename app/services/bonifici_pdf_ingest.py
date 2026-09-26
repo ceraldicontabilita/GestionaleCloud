@@ -459,6 +459,14 @@ async def importa_pdf_bonifico(
     if isinstance(transfer.get("data"), datetime):
         transfer["data"] = transfer["data"].isoformat()
     transfer["dedup_key"] = build_dedup_key(transfer)
+    cro = str(transfer.get("cro_trn") or "").strip()
+    if cro:
+        # Stesso CRO/TRN e stesso importo = stesso bonifico, anche da un altro PDF.
+        stesso = await db["bonifici_transfers"].find_one(
+            {"cro_trn": cro, "importo": transfer.get("importo")}, {"_id": 0, "id": 1},
+        )
+        if stesso:
+            return {"status": "duplicate", "transfer_id": stesso["id"], "motivo": "stesso CRO/TRN"}
     transfer["parser_completo"] = bool(
         transfer.get("importo")
         and (transfer.get("beneficiario") or {}).get("nome")

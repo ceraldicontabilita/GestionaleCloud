@@ -73,6 +73,21 @@ async def _scrivi_scheda(db, lettura, contenuto: bytes, filename: str, source_fi
         results["errori"].append(f"Scheda Markdown non scritta: {type(exc).__name__}: {exc}")
 
 
+async def _busta_gia_in_archivio(db, ced: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Un cedolino con lo stesso contenuto (``doppioni_archivio.identita_cedolino``)."""
+    from app.services.doppioni_archivio import identita_cedolino
+
+    chiave = identita_cedolino(ced)
+    if chiave is None:
+        return None
+    candidati = await db["cedolini"].find(
+        {"codice_fiscale": chiave[0], "anno": chiave[1], "mese": chiave[2]},
+        {"_id": 0, "id": 1, "codice_fiscale": 1, "anno": 1, "mese": 1, "tipo_cedolino": 1,
+         "netto": 1, "netto_mese": 1, "lordo": 1, "totale_trattenute": 1},
+    ).to_list(None)
+    return next((c for c in candidati if identita_cedolino(c) == chiave), None)
+
+
 async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Optional[str],
                          pdf_text: str, results: Dict[str, Any]) -> None:
     """Scrive una busta letta: in contabilita' se il netto e' verificato, altrimenti solo in HR.
@@ -98,6 +113,17 @@ async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Op
             results["errori"].append(
                 f"{chi}: busta senza netto verificato non depositata in HR ({deposito.get('esito')})"
             )
+        return
+
+    # La stessa busta arrivata da un altro PDF (Libro Unico, «Variante 1», copia)
+    # non diventa un secondo cedolino: se ne annota solo la provenienza.
+    gia = await _busta_gia_in_archivio(db, ced)
+    if gia:
+        await db["cedolini"].update_one({"id": gia["id"]}, {"$addToSet": {"source_occurrences": {
+            "filename": filename, "drive_file_id": ced.get("drive_file_id"),
+            "source_file_hash": ced.get("source_file_hash"),
+        }}})
+        results["gia_presenti"] = results.get("gia_presenti", 0) + 1
         return
 
     try:
