@@ -31,7 +31,7 @@ services:
     # tutte le cartelle frontend_*/ delle app portate pari pari.
     buildCommand: >-
       pip install -r backend/requirements.txt &&
-      yarn --cwd frontend install --frozen-lockfile &&
+      yarn --cwd frontend install --frozen-lockfile --production=false &&
       yarn --cwd frontend build
     # Due interpreti Python completi duplicano la cache dell'archivio in
     # memoria e superano il limite di RAM del piano. FastAPI e

@@ -170,7 +170,7 @@ jobs:
           set -euo pipefail
           # Deve essere identico al Build Command del servizio Render e usare
           # il lockfile canonico versionato del frontend.
-          yarn --cwd frontend install --frozen-lockfile
+          yarn --cwd frontend install --frozen-lockfile --production=false
           yarn --cwd frontend build
       - name: Attendi il commit, il bundle e la salute delle quattro app
         id: attesa
