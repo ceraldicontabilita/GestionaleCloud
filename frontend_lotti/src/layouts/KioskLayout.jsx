@@ -8,6 +8,24 @@ import { VenditaBancoView } from "../components/haccp/VenditaBancoView";
 import MagazzinoBarView from "../components/haccp/MagazzinoBarView";
 import OrdiniView from "../components/haccp/OrdiniView";
 import { clearTabletSession, getTabletSession, moveTabletSessionTo, sessioneTitolareAttiva } from "../utils/tabletSession";
+import BarraReparto from "../components/haccp/tablet/BarraReparto";
+import ErrorBoundary from "../components/ErrorBoundary";
+
+const TITOLI = {
+  pasticceria: "Pasticceria", rosticceria: "Rosticceria", bar: "Bar",
+  vendita: "Produzioni al banco", magazzino: "Magazzino", lavagna: "Lavagna richieste", ordini: "Ordini",
+};
+
+// Ogni reparto: la stessa barra fissa sopra, e un errore di una pagina non
+// spegne il tablet (resta la barra per tornare ai reparti).
+function ConBarra({ reparto, children }) {
+  return (
+    <>
+      <BarraReparto titolo={TITOLI[reparto] || ""} />
+      <ErrorBoundary>{children}</ErrorBoundary>
+    </>
+  );
+}
 
 export default function KioskLayout({ hash }) {
   const reparto = hash.split("/")[1] || "home";
@@ -53,36 +71,22 @@ export default function KioskLayout({ hash }) {
   };
   const tornaReparti = () => { window.location.hash = "tablet/home"; };
 
-  if (reparto === "vendita") return <VenditaBancoView onBack={tornaReparti} />;
-  if (reparto === "magazzino") return <MagazzinoBarView onBack={tornaReparti} />;
+  if (reparto === "vendita") return <ConBarra reparto={reparto}><VenditaBancoView onBack={tornaReparti} /></ConBarra>;
+  if (reparto === "magazzino") return <ConBarra reparto={reparto}><MagazzinoBarView onBack={tornaReparti} /></ConBarra>;
   // Card portate nel kiosk il 25/07/2026 (il gestionale è ora solo del
   // titolare): la Lavagna delle richieste e gli Ordini ai fornitori.
-  if (reparto === "lavagna") return <MagazzinoBarView onBack={tornaReparti} soloLavagna />;
+  if (reparto === "lavagna") return <ConBarra reparto={reparto}><MagazzinoBarView onBack={tornaReparti} soloLavagna /></ConBarra>;
   if (reparto === "ordini") {
-    // OrdiniView è nata nel gestionale e non ha un "indietro": nel kiosk gliene
-    // mettiamo uno sopra, altrimenti dal tablet non si tornerebbe alle card.
-    const tornaHome = () => { window.location.hash = "tablet/home"; };
+    // OrdiniView è nata nel gestionale e non ha un "indietro": la barra fissa
+    // del reparto glielo dà (sticky, resta a portata anche scorrendo).
     return (
-      <div style={{ minHeight: "100vh", background: "#faf7f0" }}>
-        {/* sticky: OrdiniView scorre da sola all'apertura e la barra finiva
-            subito fuori schermo — il ritorno ai reparti deve restare a portata. */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-          background: "linear-gradient(135deg,#6f9180,#4f6d5f)", color: "#fff",
-          boxShadow: "0 4px 16px rgba(0,0,0,.18)",
-          position: "sticky", top: 0, zIndex: 40,
-        }}>
-          <button onClick={tornaHome} style={{
-            background: "rgba(255,255,255,.18)", border: "none", borderRadius: 10,
-            padding: "8px 14px", color: "#fff", fontWeight: 800, fontSize: 14,
-            cursor: "pointer", fontFamily: "inherit",
-          }}>← Reparti</button>
-          <span style={{ fontWeight: 900, fontSize: 16 }}>Ordini</span>
+      <ConBarra reparto={reparto}>
+        <div style={{ minHeight: "100vh", background: "#faf7f0" }}>
+          <OrdiniView />
         </div>
-        <OrdiniView />
-      </div>
+      </ConBarra>
     );
   }
   // key: cambiando reparto il cruscotto riparte da capo, senza stato vecchio.
-  return <TabletView key={reparto} reparto={reparto} onBack={esciGestionale} />;
+  return <ConBarra reparto={reparto}><TabletView key={reparto} reparto={reparto} onBack={esciGestionale} /></ConBarra>;
 }

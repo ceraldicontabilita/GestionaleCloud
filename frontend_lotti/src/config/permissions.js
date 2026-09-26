@@ -7,7 +7,7 @@
 // controllo dati, backoffice, configurazione, backup, stampanti, cataloghi,
 // collaudi. I dipendenti girano liberi su tutte le altre pagine.
 export const ADMIN_TABS = [
-  "personale", "controllo_dati", "backoffice", "configura", "backup",
+  "impostazioni", "personale", "controllo_dati", "backoffice", "configura", "backup",
   "stampanti", "cataloghi_esterni", "collaudi",
   // Rinominare un frigorifero riscrive il nome su tutti i controlli già
   // registrati: è una modifica ai registri, non una preferenza (25/07/2026).

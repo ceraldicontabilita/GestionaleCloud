@@ -762,7 +762,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
   non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
 - Accessi: token 12 h, rinnovi al massimo 7 giorni dal PIN (admin 24 h, `auth_at`); PIN sbagliati contati in `pin_tentativi`, per client **e** globali; sui tablet condivisi il magazzino chiude dopo 10 minuti. Ogni scrittura o dipende da `require_admin` o è fra le operazioni di reparto di `test_scritture_riservate.py`; un URL da fuori si scarica solo con `servizi/fetch_sicuro.py`. Il JWT solo nell'header, **mai in `?token=`**: i documenti con `apriDocumentoAutenticato`.
-- Backup Lotti: mai sul disco del servizio. Parti verificate (SHA-256) in `gestionale.blobs` più manifesto (`servizi/backup_archivio.py`, registro `backup_registro`); il ripristino è simulazione → backup di sicurezza verificato → sostituzione per id.
+- Backup Lotti: mai sul disco del servizio. Parti verificate (SHA-256) in `gestionale.blobs` più manifesto (`servizi/backup_archivio.py`, registro `backup_registro`); il ripristino è simulazione → backup di sicurezza verificato → sostituzione per id. Navigazione: ogni reparto del tablet ha la stessa `BarraReparto` (Indietro, Reparti, Gestionale solo titolare, Cambia operatore), ogni pagina il suo `ErrorBoundary`, un indirizzo sconosciuto «Pagina non trovata», la configurazione passa da `#impostazioni`.
 
 ### Menu — allergeni
 

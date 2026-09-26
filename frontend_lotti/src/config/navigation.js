@@ -38,6 +38,9 @@ export const SECONDARY_TABS = [
 // Impostazioni e amministrazione: si aprono dall'ingranaggio fisso in alto a
 // destra, visibile solo al titolare (26/09/2026). Non stanno più sotto «Altro».
 export const IMPOSTAZIONI_TABS = [
+  // Pagina unica con le 9 sezioni (audit 26/09/2026): le voci sotto restano
+  // come scorciatoie del menu a tendina.
+  { id: "impostazioni", label: "Tutte le impostazioni", icon: Settings },
   { id: "backoffice", label: "Backoffice", icon: Settings },
   { id: "configura", label: "Configurazione", icon: ClipboardCheck },
   // 25/07/2026 — prima i nomi si cambiavano solo dall'intestazione delle

@@ -80,7 +80,7 @@ describe("apertura route da hash (alias e fallback)", () => {
   const risolvi = (hash) => {
     const h = hash.replace("#", "").split("/")[0];
     if (ALIAS[h]) return ALIAS[h];
-    return VALID_TABS.includes(h) ? h : "dashboard";
+    return h || "dashboard";
   };
 
   test("hash valido apre la pagina giusta", () => {
@@ -94,8 +94,9 @@ describe("apertura route da hash (alias e fallback)", () => {
     expect(risolvi("#food_cost")).toBe("ricette");
   });
 
-  test("hash sconosciuto ricade sulla dashboard", () => {
-    expect(risolvi("#pagina-inesistente")).toBe("dashboard");
+  test("hash sconosciuto resta tale (la pagina dice «non trovata»), vuoto apre la dashboard", () => {
+    expect(risolvi("#pagina-inesistente")).toBe("pagina-inesistente");
+    expect(VALID_TABS).not.toContain("pagina-inesistente");
     expect(risolvi("")).toBe("dashboard");
   });
 
