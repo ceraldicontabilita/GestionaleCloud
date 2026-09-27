@@ -832,7 +832,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
   IVA 2026.
 - Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. Canali Drive per sezione smontati dallo scheduler; il 27/09 tolte da Render `ENABLE_DRIVE_*_SYNC` e `DRIVE_*_BATCH_SIZE` (i default di `config.py` ora sono la produzione: tutti spenti tranne `DICHIARAZIONI_FISCALI`). `GOOGLE_DRIVE_*_FOLDER_ID` e `DRIVE_F24_FOLDER_ID` restano: il registro cartelle le usa ancora (archivio email, HR, verbali); vanno via con DRV-16. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
-- Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge). Cron Render `gestionalecloud-calderone-15min`, sospeso, da cancellare dal pannello.
+- Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge).
   Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social in `collegamentiPubblici.js`, privacy e cookie sono pagine del Menu (`/menu/privacy`, `/menu/cookie`) col titolare da `/api/menu/titolare`.
 - **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
   (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
