@@ -28,6 +28,7 @@ from app.services.payment_allocation_validator import (
     validate_invoice_allocation,
 )
 from app.services.accounting_relation_writers import record_check_reconciliation
+from app.services.prima_nota_integrity import assorbi_righe_dichiarate
 
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,65 @@ def _invoice_ids_assegno(assegno: Dict[str, Any]) -> List[str]:
         if isinstance(link, dict) and link.get("fattura_id"):
             ids.append(str(link["fattura_id"]))
     return list(dict.fromkeys(ids))
+
+
+def _quote_per_fattura(
+    assegno: Dict[str, Any], fattura_id: Optional[str], importo: float,
+) -> Dict[str, float]:
+    """Quanto l'assegno paga di ogni fattura: le quote della scheda, oppure
+    l'intero importo quando la fattura e' una sola."""
+    quote: Dict[str, float] = {}
+    for link in assegno.get("fatture_collegate") or []:
+        if not isinstance(link, dict) or not link.get("fattura_id"):
+            continue
+        quota = round(_f(link.get("quota")), 2)
+        if quota > 0:
+            fid = str(link["fattura_id"])
+            quote[fid] = round(quote.get(fid, 0.0) + quota, 2)
+    if not quote and fattura_id:
+        quote[str(fattura_id)] = round(abs(_f(importo)), 2)
+    return quote
+
+
+async def _fattura_attiva_per_id(db, fattura_id: str) -> Optional[Dict[str, Any]]:
+    """La fattura attiva a cui l'id porta.
+
+    Se l'id e' di una copia archiviata dalla dedup, la copia attiva e' quella
+    indicata da ``duplicate_of`` (o ``doppione_di``), altrimenti l'unica
+    attiva con stesso numero, P.IVA e data. Se non c'e', nessuna: un
+    pagamento non va mai su una copia archiviata.
+    """
+    from app.services.fatture_report_ae import FILTRO_FATTURE_ATTIVE
+
+    attiva = await db["invoices"].find_one(
+        {"id": fattura_id, **FILTRO_FATTURE_ATTIVE}, {"_id": 0},
+    )
+    if attiva:
+        return attiva
+    copia = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0}) or {}
+    if not copia:
+        return None
+    for campo in ("duplicate_of", "doppione_di"):
+        if copia.get(campo):
+            canonica = await db["invoices"].find_one(
+                {"id": copia[campo], **FILTRO_FATTURE_ATTIVE}, {"_id": 0},
+            )
+            if canonica:
+                return canonica
+    numero = copia.get("invoice_number") or copia.get("numero_fattura")
+    piva = copia.get("supplier_vat") or copia.get("cedente_piva")
+    data = str(copia.get("invoice_date") or copia.get("data_fattura") or "")[:10]
+    if not (numero and piva and data):
+        return None
+    candidate = await db["invoices"].find(
+        {"invoice_number": numero, "supplier_vat": piva, **FILTRO_FATTURE_ATTIVE},
+        {"_id": 0},
+    ).to_list(10)
+    candidate = [
+        c for c in candidate
+        if c.get("id") != fattura_id and str(c.get("invoice_date") or "")[:10] == data
+    ]
+    return candidate[0] if len(candidate) == 1 else None
 
 
 def _invoice_date_compatibile(fattura: Dict[str, Any], data_movimento: str) -> bool:
@@ -541,8 +601,6 @@ async def collega_assegno_riconciliato_a_fatture(
     )
     # La riga che il titolare aveva dichiarato per queste fatture lascia il
     # posto a quella dell'assegno addebitato: una sola uscita.
-    from app.services.prima_nota_integrity import assorbi_righe_dichiarate
-
     quote_per_fattura: Dict[str, float] = {}
     for link in links:
         if link["quota"] > 0:
@@ -790,7 +848,9 @@ async def sincronizza_assegni_da_estratto_conto(
             fattura_ids = _invoice_ids_assegno(assegno)
             fattura = None
             if fattura_ids and not multi_fattura:
-                fattura = await db["invoices"].find_one({"id": fattura_ids[0]}, {"_id": 0})
+                # L'assegno puo' citare la copia che la dedup ha archiviato:
+                # il pagamento va alla copia attiva, mai all'archiviata.
+                fattura = await _fattura_attiva_per_id(db, fattura_ids[0])
             # Con piu' fatture la Prima Nota porta solo la prima: cercare la
             # fattura da li' riattaccava l'intero assegno a quella sola.
             if not fattura and not multi_fattura:
@@ -838,6 +898,12 @@ async def sincronizza_assegni_da_estratto_conto(
             tutte_le_fatture = _invoice_ids_assegno(assegno)
             fattura_id = (tutte_le_fatture or [None])[0]
             pn_id = await _garantisci_prima_nota(db, assegno, movimento, fattura_id, now)
+            # Come nel collegamento esplicito: la riga che il titolare aveva
+            # dichiarato per queste fatture lascia il posto all'addebito.
+            await assorbi_righe_dichiarate(
+                db, _quote_per_fattura(assegno, fattura_id, importo),
+                sostituita_da=pn_id, movimento_id=movimento.get("id"),
+            )
             for fid_collegata in tutte_le_fatture:
                 await db["invoices"].update_one({"id": fid_collegata}, {"$set": {
                     "riconciliato": True,

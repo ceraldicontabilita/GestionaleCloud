@@ -85,6 +85,31 @@ def normalizza_metodo_titolare(metodo: Any, carta: Any = None) -> str:
     return ""
 
 
+# Metodi dichiarati che non passano dal conto BPM: la carta SumUp ha il suo
+# conto (19.01.05), PayPal e la carta Nexi non hanno un conto di tesoreria
+# nel piano. Una riga dichiarata con questi metodi non e' mai BPM.
+METODI_DICHIARATI_FUORI_BPM = ("carta", "paypal", "sumup")
+
+
+def conto_metodo_dichiarato(metodo: Any, testo: Any = "") -> Optional[str]:
+    """Il conto di tesoreria del metodo dichiarato dal titolare.
+
+    Banca e assegno escono da BPM (19.01.01), la carta SumUp dalla
+    Mastercard (19.01.05). PayPal e la carta Nexi restano senza conto
+    (``None``): meglio un conto vuoto che un BPM inventato.
+    """
+    from app.services import conti_pos
+
+    metodo = str(metodo or "").strip().lower()
+    if metodo == "sumup" or (metodo == "carta" and "sumup" in str(testo or "").lower()):
+        return conti_pos.CONTO_SUMUP_MASTERCARD
+    if metodo in {"banca", "assegno"}:
+        return conti_pos.CONTO_BPM
+    if metodo == "paypal":
+        return conti_pos.conto_accredito(conti_pos.PAYPAL) or None
+    return None
+
+
 def metodo_fornitore(metodi: set) -> str:
     gruppi = {"cassa" if m == "cassa" else "banca" for m in metodi if m}
     if not gruppi:
@@ -278,7 +303,18 @@ async def _scrivi_banca_dichiarata(
             "updated_at": _oggi(),
         }})
         return pn_id, True
+    campi_conto: Dict[str, Any] = {}
+    if not esito.get("duplicato"):
+        # Riga nuova: il conto di tesoreria lo dice il metodo dichiarato, non
+        # il registro. Il writer unico la scrive su BPM; carta SumUp, PayPal
+        # e carta Nexi non sono BPM.
+        from app.services.piano_conti_ufficiale import CONTI_UFFICIALI
+
+        conto = conto_metodo_dichiarato(metodo, riga.get("metodo_pagamento_titolare_testo"))
+        campi_conto = {"conto_contabile": conto,
+                       "conto_nome": CONTI_UFFICIALI.get(conto) if conto else None}
     await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": {
+        **campi_conto,
         CAMPO_RIGA_DICHIARATA: True,
         "data": data,
         "metodo_pagamento_dichiarato": metodo,

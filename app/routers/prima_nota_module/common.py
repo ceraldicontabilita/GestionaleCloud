@@ -117,7 +117,24 @@ ESCLUSIONI_SALDO_REALE = {
     # resta in contabilita' economica, non nella tesoreria.
     "natura": {"$nin": [NATURA_CREDITO_POS, "costo"]},
     "source": {"$nin": SOURCES_ESCLUSE + SOURCES_CREDITO_POS},
+    # Un pagamento dichiarato dal titolare o una riga provvisoria (assegno
+    # senza PDF ufficiale) non ha ancora la prova della banca: resta visibile
+    # in elenco, ma nel saldo reale entra solo quando l'estratto la conferma.
+    "in_attesa_estratto_ufficiale": {"$ne": True},
 }
+
+# Stati di una riga di Prima Nota che non contano in nessun saldo: in
+# archivio convivono ``archived`` e ``archiviata``, e una riga
+# ``DA_VERIFICARE`` e' un'ipotesi, non un movimento. Le righe provvisorie
+# (banca senza estratto, pagamento dichiarato) lo scrivono in ``stato``, non
+# in ``status``: il filtro guarda tutti e due i campi.
+STATI_FUORI_SALDO = ["deleted", "archived", "archiviata", "DA_VERIFICARE"]
+STATO_DA_VERIFICARE = "DA_VERIFICARE"
+
+# ``conto`` di filtro_saldo_prima_nota: il conto BPM per difetto, oppure
+# TUTTI_I_CONTI per chi somma la liquidita' di BPM e Mastercard SumUp.
+TUTTI_I_CONTI = None
+_CONTO_PREDEFINITO = object()
 
 
 def esclusioni_saldo_per_collection(collection: str) -> Dict[str, Any]:
@@ -149,13 +166,45 @@ def esclusioni_saldo_per_collection(collection: str) -> Dict[str, Any]:
     }
 
 
-def filtro_saldo_prima_nota(collection: str, **extra: Any) -> Dict[str, Any]:
-    """Filtro canonico per qualsiasi saldo/riepilogo di Prima Nota."""
-    return {
-        "status": {"$nin": ["deleted", "archived"]},
+def _filtro_conto_banca(conto: Optional[str]) -> Dict[str, Any]:
+    """Il conto di tesoreria di una riga di Prima Nota Banca.
+
+    Le righe storiche senza ``conto_contabile`` sono tutte BPM, l'unico
+    conto esistito prima della Mastercard SumUp: BPM e' quindi «tutto
+    tranne la carta».
+    """
+    from app.services import conti_pos
+
+    if conto is TUTTI_I_CONTI:
+        return {}
+    if conto == conti_pos.CONTO_BPM:
+        return {"conto_contabile": {"$ne": conti_pos.CONTO_SUMUP_MASTERCARD}}
+    return {"conto_contabile": conto}
+
+
+def filtro_saldo_prima_nota(collection: str, conto: Any = _CONTO_PREDEFINITO,
+                            **extra: Any) -> Dict[str, Any]:
+    """Filtro canonico per qualsiasi saldo/riepilogo di Prima Nota.
+
+    Per la banca ``conto`` sceglie il conto di tesoreria: per difetto il solo
+    BPM (19.01.01), perche' la Mastercard SumUp (19.01.05) e' un conto
+    distinto con il suo saldo (``saldi_finanziari``); ``TUTTI_I_CONTI`` somma
+    BPM e carta, per chi calcola la liquidita' complessiva. Un
+    ``conto_contabile`` passato in ``extra`` vince, come sempre.
+    """
+    filtro: Dict[str, Any] = {
+        "status": {"$nin": list(STATI_FUORI_SALDO)},
+        "stato": {"$ne": STATO_DA_VERIFICARE},
         **esclusioni_saldo_per_collection(collection),
-        **extra,
     }
+    if collection == COLLECTION_PRIMA_NOTA_BANCA:
+        from app.services import conti_pos
+
+        if conto is _CONTO_PREDEFINITO:
+            conto = conti_pos.CONTO_BPM
+        filtro.update(_filtro_conto_banca(conto))
+    filtro.update(extra)
+    return filtro
 
 
 def clean_record(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -316,6 +365,12 @@ async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
     entrate, uscite = await _totali_entrate_uscite(db, collection, query)
     saldo_anno = entrate - uscite
     saldo_manuale = await get_saldo_iniziale_manuale(db, collection, anno) if anno else None
+    if query_base_precedente is None and collection == COLLECTION_PRIMA_NOTA_BANCA:
+        # Il riporto e' dello stesso conto dell'anno: BPM, carta o entrambi,
+        # come ha scelto il chiamante con filtro_saldo_prima_nota(conto=...).
+        query_base_precedente = filtro_saldo_prima_nota(collection, conto=TUTTI_I_CONTI)
+        if "conto_contabile" in query:
+            query_base_precedente["conto_contabile"] = query["conto_contabile"]
     if saldo_manuale is not None:
         saldo_precedente = saldo_manuale
     else:
@@ -375,11 +430,19 @@ async def saldi_finanziari(db, anno: int = None) -> Dict[str, Any]:
         if codice == conti_pos.CONTO_BPM:
             # Le righe storiche non hanno conto_contabile: sono tutte BPM,
             # unico conto esistito finora.
-            appartenenza = {"$or": [
-                {"conto_contabile": codice},
-                {"conto_contabile": {"$in": [None, ""]}},
-                {"conto_contabile": {"$exists": False}},
-            ]}
+            # Ma un pagamento dichiarato con carta o PayPal non e' passato
+            # da BPM anche se non ha un conto scritto.
+            from app.services.pagamenti_dichiarati_titolare import (
+                METODI_DICHIARATI_FUORI_BPM,
+            )
+            appartenenza = {
+                "$or": [
+                    {"conto_contabile": codice},
+                    {"conto_contabile": {"$in": [None, ""]}},
+                    {"conto_contabile": {"$exists": False}},
+                ],
+                "metodo_pagamento_dichiarato": {"$nin": list(METODI_DICHIARATI_FUORI_BPM)},
+            }
         else:
             appartenenza = {"conto_contabile": codice}
         conti_reali.append({

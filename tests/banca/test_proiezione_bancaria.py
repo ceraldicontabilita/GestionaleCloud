@@ -190,6 +190,27 @@ def test_la_riga_di_un_altro_canale_conta_e_non_si_tocca():
     assert [r["id"] for r in _attive(db)] == ["a-mano"]
 
 
+# Produzione, 27/09/2026: 17 stipendi in due righe. La prima era stata scritta
+# col dipendente provvisorio ``salario:nome|cognome`` e finiva in un altro
+# gruppo: la copia gemella della stessa operazione ne scriveva una seconda.
+
+def test_lo_stipendio_col_dipendente_provvisorio_non_si_raddoppia():
+    db = _db_dipendente()
+    _run(db["estratto_conto_movimenti"].insert_many([
+        _stipendio("ec-legacy", "legacy_staging_2026"), _stipendio("ec-csv", "export.csv"),
+    ]))
+    _run(db["prima_nota_banca"].insert_one({
+        "id": "pn-vecchia", "data": "2026-08-07", "tipo": "uscita", "importo": 1400.0,
+        "categoria": "Stipendi", "dipendente_id": "salario:ceraldi|valerio",
+        "source": "proiezione_semantica_ec", "estratto_conto_id": "ec-legacy",
+    }))
+    esito = _run(proietta_movimenti_bancari_semantici(db))
+    assert esito["proiettati"] == 0
+    assert [r["id"] for r in _attive(db)] == ["pn-vecchia"]
+    _run(proietta_movimenti_bancari_semantici(db))
+    assert [r["id"] for r in _attive(db)] == ["pn-vecchia"]
+
+
 def test_la_rata_del_mutuo_entra_in_banca_col_numero_e_senza_quote_inventate():
     db = _db_dipendente()
     _run(db["estratto_conto_movimenti"].insert_many([

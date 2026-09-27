@@ -19,6 +19,7 @@ import {
   nomeFornitoreMovimento,
   movimentoContaNelSaldo,
   normalizzaDescrizioneMovimento,
+  pastigliaRiporto,
   useStatoFonti,
 } from './PrimaNota';
 
@@ -86,7 +87,37 @@ describe('Movimenti banca provvisori', () => {
       provvisorio: true,
       riconciliato: false,
       estratto_conto_id: null,
+      in_attesa_estratto_ufficiale: true,
     }, 'banca')).toBe(false);
+  });
+
+  it('esclude dal saldo banca le stesse righe che esclude il backend', () => {
+    // Credito POS SumUp (15.07.02), costo del gestore, attesa POS, riga
+    // manuale senza estratto, pagamento dichiarato dal titolare.
+    for (const riga of [
+      { natura: 'credito_pos', source: 'corrispettivo_pos', conto_contabile: '15.07.02' },
+      { natura: 'costo', source: 'commissioni_sumup' },
+      { source: 'trasferimento_pos' },
+      { source: 'manuale_banca_senza_evidenza' },
+      { source: 'report_pagamenti_titolare', dichiarato_titolare: true, in_attesa_estratto_ufficiale: true },
+    ]) {
+      expect(movimentoContaNelSaldo(riga, 'banca')).toBe(false);
+    }
+    expect(movimentoContaNelSaldo({ source: 'estratto_conto', natura: 'movimento_bancario_reale' }, 'banca')).toBe(true);
+  });
+
+  it('il saldo della testata e quello del backend, non la somma delle righe elencate', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
+    expect(source).toContain('const saldoFinale = Number(datiAttivi.saldo || 0);');
+  });
+
+  it('dice quando il saldo iniziale non e impostato invece di mostrare 0', () => {
+    expect(pastigliaRiporto({ saldo_iniziale_manuale: false, saldo_precedente: 0 }, 'Cassa', 2026))
+      .toMatchObject({ valore: 'Non impostato', nota: 'Saldo iniziale non impostato' });
+    expect(pastigliaRiporto({ saldo_iniziale_manuale: false, saldo_precedente: 120 }, 'Cassa', 2026).nota)
+      .toContain('Saldo iniziale non impostato');
+    expect(pastigliaRiporto({ saldo_iniziale_manuale: true, saldo_precedente: 0 }, 'Cassa', 2026))
+      .toMatchObject({ nota: 'Saldo cassa di fine 2025' });
   });
 
   it('considera reale il movimento quando esiste evidenza di estratto conto', () => {

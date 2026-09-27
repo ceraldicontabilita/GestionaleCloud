@@ -498,13 +498,16 @@ async def registra_giroconto(db, movimento: Dict[str, Any]) -> Dict[str, Any]:
     }
     id_sumup, _ = await scrivi_movimento_se_assente(
         db, "banca", {"operation_id": operazione, "conto_contabile": CONTO_SUMUP_MASTERCARD},
+        # Un giroconto ha per contropartita l'altro conto di tesoreria.
         {**comune, "tipo": "uscita", "conto_contabile": CONTO_SUMUP_MASTERCARD,
+         "conto_contropartita": CONTO_BPM,
          "descrizione": f"Giroconto da Mastercard SumUp a Banco BPM — {causale}"},
     )
     bpm = await _entrata_bpm(
         db, importo, date.fromisoformat(str(movimento["data"])[:10]), operazione,
     )
     gamba_bpm = {**comune, "tipo": "entrata", "conto_contabile": CONTO_BPM,
+                 "conto_contropartita": CONTO_SUMUP_MASTERCARD,
                  "trasferimento_collegato_id": id_sumup,
                  "descrizione": f"Giroconto da Mastercard SumUp — {causale}"}
     if bpm:

@@ -117,14 +117,45 @@ export function numeroFatturaMovimento(movimento = {}) {
   return movimento.numero_fattura || movimento.fattura_numero || movimento.invoice_number || '';
 }
 
+// Stessa regola del saldo reale del backend (ESCLUSIONI_SALDO_REALE in
+// prima_nota_module/common.py): una regola sola sui due lati. Il credito POS
+// e il costo trattenuto dal gestore non sono denaro sul conto; l'attesa POS,
+// la riga manuale senza estratto e il pagamento dichiarato restano visibili
+// in elenco ma non entrano nel saldo finché la banca non li prova.
+const NATURE_FUORI_SALDO_BANCA = ['credito_pos', 'costo'];
+const SOURCES_FUORI_SALDO_BANCA = [
+  'chiusura_pos_mobile', 'import_manuale_pos', 'estratto_conto_sync',
+  'metodo_fornitore_assente_provvisorio', 'manuale_banca_senza_evidenza',
+  'trasferimento_pos', 'corrispettivo_pos', 'corrispettivi_sync',
+];
+const CATEGORIE_FUORI_SALDO = ['POS_DUPLICATO'];
+
 export function movimentoContaNelSaldo(movimento = {}, tipo = '') {
   if (tipo !== 'banca') return true;
   return !(
-    movimento.provvisorio === true &&
-    movimento.riconciliato !== true &&
-    !movimento.estratto_conto_id &&
-    !movimento.movimento_estratto_conto_id
+    NATURE_FUORI_SALDO_BANCA.includes(movimento.natura) ||
+    SOURCES_FUORI_SALDO_BANCA.includes(movimento.source) ||
+    CATEGORIE_FUORI_SALDO.includes(movimento.categoria) ||
+    movimento.in_attesa_estratto_ufficiale === true
   );
+}
+
+// Il saldo iniziale dell'anno è un dato del titolare: se il backend dice che
+// non è impostato, la testata lo scrive invece di mostrare uno 0 muto.
+export function pastigliaRiporto(dati = {}, conto = 'Cassa', anno = new Date().getFullYear()) {
+  const impostato = dati.saldo_iniziale_manuale === true;
+  const riporto = Number(dati.saldo_precedente || 0);
+  if (impostato) {
+    return { valore: eur(riporto), nota: `Saldo ${conto.toLowerCase()} di fine ${anno - 1}` };
+  }
+  if (riporto === 0) {
+    return { valore: 'Non impostato', nota: 'Saldo iniziale non impostato', tono: 'attenzione' };
+  }
+  return {
+    valore: eur(riporto),
+    nota: 'Saldo iniziale non impostato: riporto calcolato dai movimenti',
+    tono: 'attenzione',
+  };
 }
 
 export function nomeFornitoreMovimento(movimento = {}) {
@@ -2433,8 +2464,13 @@ export default function PrimaNota() {
   };
 
   const datiAttivi = sezione === 'banca' ? banca : cassa;
-  const saldoFinale = (datiAttivi.saldo_precedente || 0) +
-    (datiAttivi.movimenti || []).reduce((s, m) => s + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
+  // Il saldo lo calcola il backend (riporto + entrate − uscite sulle sole
+  // righe che contano): ricalcolarlo dalle righe elencate sommava anche i
+  // crediti POS e le attese, che l'elenco mostra ma il saldo esclude.
+  const saldoFinale = Number(datiAttivi.saldo || 0);
+  const riportoTestata = pastigliaRiporto(
+    datiAttivi, sezione === 'cassa' ? 'Cassa' : 'Banca', anno,
+  );
 
   // Le pastiglie della testata rispondono a «come sta questo conto?»: sono gli
   // stessi quattro numeri che prima stavano nei riquadri sotto le schede,
@@ -2447,8 +2483,7 @@ export default function PrimaNota() {
       return [
         {
           etichetta: `Riporto al 01/01/${anno}`,
-          valore: eur(datiAttivi.saldo_precedente),
-          nota: `Saldo ${conto.toLowerCase()} di fine ${anno - 1}`,
+          ...riportoTestata,
           azione: {
             etichetta: `Modifica il saldo iniziale ${conto}`,
             onClick: () => modificaRiporto(sezione),

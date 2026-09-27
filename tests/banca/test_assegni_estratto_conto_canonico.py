@@ -523,3 +523,47 @@ def test_il_giro_automatico_include_gli_assegni_provvisori():
 
     sorgente = inspect.getsource(riconciliazione_bancaria.riconcilia_movimenti_banca)
     assert "include_provvisori=True" in sorgente
+
+
+def test_l_assegno_della_copia_archiviata_paga_l_attiva_e_assorbe_la_dichiarata():
+    """Il giro dell'estratto conto trova l'assegno gia' legato alla copia che
+    la dedup ha archiviato: il pagamento va alla copia attiva, e la riga che
+    il titolare aveva dichiarato per lei lascia il posto all'addebito."""
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        fattura = {
+            "invoice_number": "FA-9", "invoice_date": "2026-05-02",
+            "supplier_vat": "01234567890", "supplier_name": "FORNITORE SRL",
+            "total_amount": 1853.02, "tipo_documento": "TD01",
+        }
+        await db.invoices.insert_many([
+            {**fattura, "id": "fatt-archiviata", "status": "archived",
+             "duplicate_of": "fatt-attiva"},
+            {**fattura, "id": "fatt-attiva", "status": "imported"},
+        ])
+        await db.assegni.insert_one({
+            "id": "ass-981", "numero": "0208770981", "importo": 1853.02,
+            "fattura_id": "fatt-archiviata", "fattura_collegata": "fatt-archiviata",
+        })
+        await db.prima_nota_banca.insert_one({
+            "id": "pn-dichiarata", "data": "2026-05-03", "tipo": "uscita",
+            "importo": 1853.02, "categoria": "Fatture", "fattura_id": "fatt-attiva",
+            "dichiarato_titolare": True, "in_attesa_estratto_ufficiale": True,
+            "source": "report_pagamenti_titolare",
+        })
+        await db.estratto_conto_movimenti.insert_one(_mov())
+        await sincronizza_assegni_da_estratto_conto(db)
+        return (
+            await db.assegni.find_one({"id": "ass-981"}, {"_id": 0}),
+            await db.prima_nota_banca.find(
+                {"status": {"$nin": ["deleted", "archived"]}}, {"_id": 0},
+            ).to_list(10),
+            await db.prima_nota_banca.find_one({"id": "pn-dichiarata"}, {"_id": 0}),
+        )
+
+    assegno, attive, dichiarata = _run(scenario())
+    assert assegno["fattura_id"] == "fatt-attiva"
+    assert [r.get("source") for r in attive] == ["assegno_estratto_conto"]
+    assert attive[0]["fattura_id"] == "fatt-attiva"
+    assert dichiarata["status"] == "deleted"
+    assert dichiarata["sostituita_da"] == attive[0]["id"]
