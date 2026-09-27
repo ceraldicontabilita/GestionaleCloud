@@ -108,11 +108,10 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
         "attese_riconciliate": {"riconciliati": 1, "ambigui": 0},
         "scan": {"apporti_nuovi": 1},
     }
-    assert result["proiezione_banca"] == {"proiettati": 4}
+    assert "proiezione_banca" not in result
     assert result["allocazioni_fatture_banca"] == {"allocati": 2}
-    # I versamenti di contante li riconosce il giro dei 30 minuti: non c'e'
-    # piu' nessun comando «ripara versamenti» da premere a mano.
-    assert result["versamenti_contanti"] == {"versamenti": 3, "prelievi": 1}
+    # Versamenti e proiezione hanno un job loro (scheduler.py): qui non girano.
+    assert "versamenti_contanti" not in result
     paypal_ranges = [
         kwargs for name, kwargs in calls if name == "paypal_fatture"
     ]

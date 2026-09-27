@@ -435,6 +435,7 @@ async def list_prima_nota_sumup(
         giorno["importo"] = round(giorno["importo"], 2)
 
     movimenti_conto = await _movimenti_conto_sumup(db, dal, al)
+    quadratura = await _quadratura_estratto_sumup(db, movimenti_conto)
 
     return {
         "anno": anno,
@@ -461,6 +462,7 @@ async def list_prima_nota_sumup(
         "saldo_estratto_sumup": (
             movimenti_conto[0]["saldo_disponibile"] if movimenti_conto else None
         ),
+        "quadratura_estratto": quadratura,
     }
 
 
@@ -497,7 +499,8 @@ async def _movimenti_conto_sumup(db, dal: str, al: str) -> list:
          "riferimento": 1, "causale": 1, "importo": 1, "saldo": 1, "pid": 1,
          "payout_id": 1, "giroconto_operation_id": 1, "estratto_bpm_id": 1,
          "iban_beneficiario": 1, "codice_transazione": 1,
-         "stipendio_id": 1, "fattura_id": 1, "fattura_ids": 1, "prima_nota_banca_id": 1},
+         "stipendio_id": 1, "fattura_id": 1, "fattura_ids": 1, "prima_nota_banca_id": 1,
+         "prima_nota_id": 1},
     )
     righe = await cursore.to_list(None) if hasattr(cursore, "to_list") else [r async for r in cursore]
     movimenti = []
@@ -518,9 +521,78 @@ async def _movimenti_conto_sumup(db, dal: str, al: str) -> list:
             "saldo_disponibile": round(float(riga.get("saldo") or 0), 2),
             "stato": stato,
             "da_registrare": stato == "Da registrare",
+            "payout_id": riga.get("payout_id"),
+            "prima_nota_ids": [i for i in (riga.get("prima_nota_banca_id"),
+                                           riga.get("prima_nota_id")) if i],
         })
     movimenti.sort(key=lambda m: (m["data"], m["ora"] or ""), reverse=True)
     return movimenti
+
+
+async def _quadratura_estratto_sumup(db, movimenti: list) -> Optional[Dict[str, Any]]:
+    """Prima Nota della carta SumUp contro il suo estratto, nello stesso periodo.
+
+    Le due cifre non coincidono finche' una riga dell'estratto aspetta il suo
+    documento, o finche' in Prima Nota c'e' una scrittura che l'estratto non
+    ha. La quadratura le elenca tutte: quello che resta dopo e' uno scarto non
+    spiegato, e va detto, non assorbito.
+    """
+    if not movimenti:
+        return None
+    dal = min(m["data"] for m in movimenti)
+    al = max(m["data"] for m in movimenti)
+    piu_vecchio = min(movimenti, key=lambda m: (m["data"], m["ora"] or ""))
+    variazione_estratto = round(
+        movimenti[0]["saldo_disponibile"]
+        - (piu_vecchio["saldo_disponibile"] - piu_vecchio["importo"]), 2)
+
+    cursore = db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        {"conto_contabile": conti_pos.CONTO_SUMUP_MASTERCARD,
+         "data": {"$gte": dal, "$lte": al},
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "data": 1, "tipo": 1, "importo": 1, "descrizione": 1,
+         "source": 1, "payout_id": 1, "estratto_conto_id": 1, "sumup_movimento_id": 1},
+    )
+    righe_pn = await cursore.to_list(None) if hasattr(cursore, "to_list") else [r async for r in cursore]
+
+    ids_estratto = {m["id"] for m in movimenti}
+    payout_estratto = {m["payout_id"] for m in movimenti if m.get("payout_id")}
+    pn_collegate = {i for m in movimenti for i in m.get("prima_nota_ids") or []}
+
+    def segno(riga):
+        importo = abs(float(riga.get("importo") or 0))
+        return importo if riga.get("tipo") == "entrata" else -importo
+
+    variazione_pn = round(sum(segno(r) for r in righe_pn), 2)
+    senza_estratto = [
+        {"id": r.get("id"), "data": str(r.get("data") or "")[:10],
+         "descrizione": r.get("descrizione"), "importo": round(segno(r), 2)}
+        for r in righe_pn
+        if not (
+            r.get("id") in pn_collegate
+            or (r.get("payout_id") and r.get("payout_id") in payout_estratto)
+            or r.get("estratto_conto_id") in ids_estratto
+            or r.get("sumup_movimento_id") in ids_estratto
+        )
+    ]
+    da_registrare = [m for m in movimenti if m["da_registrare"]]
+    somma_da_registrare = round(sum(m["importo"] for m in da_registrare), 2)
+    somma_senza_estratto = round(sum(r["importo"] for r in senza_estratto), 2)
+    scarto = round(
+        variazione_estratto - (variazione_pn + somma_da_registrare - somma_senza_estratto), 2)
+    return {
+        "dal": dal,
+        "al": al,
+        "variazione_estratto": variazione_estratto,
+        "variazione_prima_nota": variazione_pn,
+        "da_registrare": {"numero": len(da_registrare), "importo": somma_da_registrare},
+        "prima_nota_senza_estratto": {
+            "numero": len(senza_estratto), "importo": somma_senza_estratto,
+            "righe": senza_estratto,
+        },
+        "scarto_non_spiegato": scarto,
+        "quadra": abs(scarto) <= 0.01,
+    }
 
 
 async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str, str]:

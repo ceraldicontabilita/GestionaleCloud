@@ -134,6 +134,18 @@ def campi_bancari(movimento: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def testi_da_riga(riga: RigaSumUp) -> Dict[str, Any]:
+    """I campi descrittivi della riga, gli stessi che scrive ``record_movimento``."""
+    testi: Dict[str, Any] = {
+        "riferimento": riga.riferimento,
+        "causale": riga.causale,
+        "ora": riga.ora,
+    }
+    if riga.tipo_transazione.lower().startswith("bonifico"):
+        testi["iban_beneficiario"] = _iban_beneficiario(riga.riferimento)
+    return testi
+
+
 async def _payout_per_pid(db) -> Dict[str, str]:
     """``PID…`` → ``payout_id`` dei payout già registrati dall'API."""
     mappa: Dict[str, str] = {}
@@ -167,12 +179,15 @@ async def importa_estratto_sumup(
     )
     codici = [riga.codice for riga in estratto.righe]
     esistenti = {
-        doc.get("codice_transazione")
+        doc.get("codice_transazione"): doc
         async for doc in db[COLL_MOVIMENTI].find(
             {"codice_transazione": {"$in": codici}},
-            {"_id": 0, "codice_transazione": 1},
+            {"_id": 0, "id": 1, "codice_transazione": 1, "riferimento": 1,
+             "causale": 1, "ora": 1, "iban_beneficiario": 1},
         )
     }
+    da_csv = str(filename or "").lower().endswith(".csv")
+    testi_corretti = 0
     payout = await _payout_per_pid(db)
 
     nuovi = []
@@ -186,6 +201,16 @@ async def importa_estratto_sumup(
             else:
                 payout_mancanti.append(riga.pid)
         if riga.codice in esistenti:
+            # Il PDF spezza le celle lunghe («VANDEMO ORTELE», IBAN a capo):
+            # il CSV ha i testi interi e li sostituisce. Importi, saldo e
+            # collegamenti restano quelli gia' registrati.
+            if da_csv:
+                testi = testi_da_riga(riga)
+                vecchio = esistenti[riga.codice]
+                diversi = {k: v for k, v in testi.items() if vecchio.get(k) != v}
+                if diversi:
+                    await db[COLL_MOVIMENTI].update_one({"id": vecchio["id"]}, {"$set": diversi})
+                    testi_corretti += 1
             continue
         nuovi.append(record_movimento(
             riga, estratto, estratto_id=estratto_id, payout_id=payout_id,
@@ -231,6 +256,7 @@ async def importa_estratto_sumup(
         "righe": len(estratto.righe),
         "nuovi": len(nuovi),
         "gia_presenti": len(estratto.righe) - len(nuovi),
+        "testi_corretti": testi_corretti,
         "payout_collegati": payout_collegati,
         "payout_senza_api": payout_mancanti,
         "giroconti": giroconti,
