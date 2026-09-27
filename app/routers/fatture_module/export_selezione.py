@@ -58,7 +58,8 @@ def _excel(fatture: List[Dict[str, Any]]) -> BytesIO:
         for col_idx, (_label, campo) in enumerate(COLONNE, start=1):
             valore = f.get(campo)
             if campo in _CAMPI_NUMERICI:
-                valore = round(float(valore or 0), 2)
+                # None = importo da verificare: cella vuota, mai uno zero.
+                valore = round(float(valore), 2) if valore is not None else None
                 cella = ws.cell(row=row_idx, column=col_idx, value=valore)
                 cella.number_format = "#,##0.00"
             else:
@@ -86,7 +87,9 @@ def _excel(fatture: List[Dict[str, Any]]) -> BytesIO:
 
 
 def _eur(v) -> str:
-    return f"{float(v or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    if v is None:
+        return "—"  # importo da verificare: mai uno zero di comodo
+    return f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _pdf(fatture: List[Dict[str, Any]]) -> BytesIO:

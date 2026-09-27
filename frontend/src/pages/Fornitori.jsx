@@ -3310,7 +3310,8 @@ export default function Fornitori() {
                                 {formatEuro(f.iva || 0)}
                               </Td>
                               <Td align="right" mono style={{ fontWeight: 600 }}>
-                                {f.is_nota_credito ? '-' : ''} {formatEuro(f.importo_totale || 0)}
+                                {/* il backend manda la nota di credito gia' negativa */}
+                                {formatEuro(f.importo_totale || 0)}
                               </Td>
                               <Td align="center">
                                 <Badge

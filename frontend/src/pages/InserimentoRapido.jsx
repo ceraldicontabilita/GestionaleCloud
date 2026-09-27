@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import api from '../api';
+import { metodoNonConfigurato } from '../utils/metodoPagamento';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Input, Select } from '../components/ds';
 import {
@@ -207,11 +208,9 @@ export default function InserimentoRapido() {
         .get(`/api/invoices?limit=100&anno=${anno}`)
         .then(res => {
           const data = res.data?.items || res.data?.invoices || res.data || [];
-          // Filtra quelle senza metodo pagamento assegnato (stringa vuota, null, undefined, "None")
-          const daPagare = data.filter(f => {
-            const m = f.metodo_pagamento;
-            return !m || m === '' || m === 'None' || m === 'null';
-          });
+          // Filtra quelle senza metodo pagamento assegnato, col vocabolario
+          // unico (prima mancava `sospesa`, il valore che scrive l'import).
+          const daPagare = data.filter(f => metodoNonConfigurato(f.metodo_pagamento));
           setFatture(daPagare.slice(0, 30));
         })
         .catch(() => {

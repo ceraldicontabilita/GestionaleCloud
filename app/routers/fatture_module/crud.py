@@ -16,6 +16,13 @@ from app.services.payment_allocation_validator import (
     allocation_summary,
     is_credit_note,
 )
+from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
+from app.services.fatture_emesse import filtro_escludi_emesse
+from app.services.stato_pagamento_fattura import (
+    FILTRO_NON_PAGATE,
+    FILTRO_PAGATE,
+    e_pagata,
+)
 
 
 def _safe_year(value: Any) -> Optional[int]:
@@ -93,6 +100,27 @@ def _supplier_counter_key(fattura: dict) -> str:
     return f"nome:{normalized_name}" if normalized_name else ""
 
 
+def _importo_letto(doc: dict, *campi: str) -> Optional[float]:
+    """Il primo importo non nullo fra i campi (i due schemi di `invoices`).
+
+    Zero se i campi presenti dicono tutti zero; None se nessuno c'e' o non si
+    legge: mai uno zero di comodo al posto di un dato che manca.
+    """
+    presente = False
+    for campo in campi:
+        valore = doc.get(campo)
+        if valore in (None, ""):
+            continue
+        try:
+            numero = float(valore)
+        except (ValueError, TypeError):
+            continue
+        presente = True
+        if numero:
+            return numero
+    return 0.0 if presente else None
+
+
 def _normalizza_da_invoices(doc: dict) -> dict:
     """Mappa un documento della collection `invoices` nel formato unificato archivio.
 
@@ -105,24 +133,26 @@ def _normalizza_da_invoices(doc: dict) -> dict:
         importo_totale = float(doc.get("total_amount") or doc.get("importo_totale") or 0)
     except (ValueError, TypeError):
         importo_totale = 0.0
-    try:
-        imponibile = float(doc.get("taxable_amount") or doc.get("imponibile") or 0)
-    except (ValueError, TypeError):
-        imponibile = 0.0
-    try:
-        iva = float(doc.get("vat_amount") or doc.get("iva") or 0)
-    except (ValueError, TypeError):
-        iva = 0.0
-    if not imponibile and importo_totale > 0:
-        imponibile = round(importo_totale / 1.22, 2)
-        iva = round(importo_totale - imponibile, 2)
+    imponibile = _importo_letto(doc, "taxable_amount", "imponibile")
+    iva = _importo_letto(doc, "vat_amount", "iva")
+    # Un imponibile assente, o zero con un totale che zero non e', non si
+    # ricostruisce: `totale / 1.22` inventava un'aliquota al 22% e
+    # sovrascriveva l'IVA vera (una fattura al 10% o esente cambiava IVA).
+    # Resta vuoto, e la riga si dichiara da verificare.
+    importi_da_verificare = imponibile is None or (imponibile == 0 and importo_totale != 0)
+    if importi_da_verificare:
+        imponibile = None
+
+    # Nota di credito (TD04/TD08): riduce, quindi pesa in negativo. Il valore
+    # assoluto evita il doppio negativo delle note gia' scritte col meno.
+    if is_credit_note(doc):
+        importo_totale = -abs(importo_totale)
+        imponibile = -abs(imponibile) if imponibile is not None else None
+        iva = -abs(iva) if iva is not None else None
 
     stato_raw = doc.get("stato") or doc.get("status") or "importata"
-    pagato = bool(
-        doc.get("pagato")
-        or stato_raw in ("pagata", "paid")
-        or doc.get("payment_status") == "paid"
-    )
+    # «E' pagata?» si chiede in un posto solo.
+    pagato = e_pagata(doc)
     created_at = doc.get("imported_at")
     if hasattr(created_at, "isoformat"):
         created_at = created_at.isoformat()
@@ -137,6 +167,7 @@ def _normalizza_da_invoices(doc: dict) -> dict:
         "importo_totale": importo_totale,
         "imponibile": imponibile,
         "iva": iva,
+        "importi_da_verificare": importi_da_verificare,
         "fornitore_ragione_sociale": (doc.get("supplier_name")
                                       or doc.get("cedente_denominazione")
                                       or doc.get("fornitore_ragione_sociale")),
@@ -156,65 +187,6 @@ def _normalizza_da_invoices(doc: dict) -> dict:
         "created_at": created_at,
         "data_pagamento": doc.get("data_pagamento"),
         "fonte": doc.get("fonte", "aruba_pec"),
-        "document_role": "credit_note" if is_credit_note(doc) else "invoice",
-        **allocation_summary(doc),
-        "assegni_collegati": doc.get("assegni_collegati") or [],
-        "movimento_bancario_id": doc.get("movimento_bancario_id"),
-        "payment_evidence": doc.get("payment_evidence") or [],
-        "payment_document_ids": doc.get("payment_document_ids") or [],
-        "bonifico_ids": doc.get("bonifico_ids") or [],
-        "_xml_filename": doc.get("xml_filename"),   # usato solo per dedup
-    }
-
-
-def _normalizza_da_fatture_passive(doc: dict) -> dict:
-    """Mappa un documento della collection `fatture_passive` nel formato unificato archivio."""
-    try:
-        importo_totale = float(doc.get("importo_totale") or 0)
-    except (ValueError, TypeError):
-        importo_totale = 0.0
-    try:
-        imponibile = float(doc.get("imponibile") or 0)
-    except (ValueError, TypeError):
-        imponibile = 0.0
-    try:
-        iva = float(doc.get("iva") or 0)
-    except (ValueError, TypeError):
-        iva = 0.0
-    if not imponibile and importo_totale > 0:
-        imponibile = round(importo_totale / 1.22, 2)
-        iva = round(importo_totale - imponibile, 2)
-
-    stato_raw = doc.get("stato", "da_confermare")
-    pagato = bool(doc.get("pagato") or stato_raw == "pagata")
-    created_at = doc.get("created_at")
-    if hasattr(created_at, "isoformat"):
-        created_at = created_at.isoformat()
-
-    return {
-        "id": doc.get("dedup_key", ""),
-        "numero_documento": doc.get("numero"),
-        "tipo_documento": doc.get("tipo_documento") or "TD01",
-        "tipo_documento_desc": doc.get("tipo_documento_desc") or "",
-        "data_documento": doc.get("data"),
-        "importo_totale": importo_totale,
-        "imponibile": imponibile,
-        "iva": iva,
-        "fornitore_ragione_sociale": doc.get("fornitore_denominazione"),
-        "fornitore_partita_iva": doc.get("fornitore_piva"),
-        "stato": "pagata" if pagato else stato_raw,
-        "metodo_pagamento": doc.get("metodo_pagamento"),
-        "metodo_pagamento_effettivo": _metodo_reale(doc),
-        "pagato": pagato,
-        "riconciliato": bool(doc.get("riconciliato")),
-        "prima_nota_cassa_id": doc.get("prima_nota_cassa_id"),
-        "prima_nota_banca_id": doc.get("prima_nota_banca_id"),
-        "has_pdf": False,
-        "email_associata": None,
-        "anno": doc.get("anno") or _safe_year(doc.get("data")),
-        "created_at": created_at,
-        "data_pagamento": doc.get("data_pagamento"),
-        "fonte": doc.get("source", "pec_auto"),
         "document_role": "credit_note" if is_credit_note(doc) else "invoice",
         **allocation_summary(doc),
         "assegni_collegati": doc.get("assegni_collegati") or [],
@@ -251,7 +223,12 @@ async def get_archivio_fatture(
     # status/entity_status="deleted"), ma questa query non escludeva mai quello
     # stato — una fattura "eliminata" poteva ricomparire qui nonostante il
     # messaggio di conferma dicesse che l'eliminazione è irreversibile.
-    q_inv: dict = {"entity_status": {"$ne": "deleted"}, "status": {"$ne": "deleted"}}
+    # Dal 27/09/2026 il filtro e' «fattura attiva» (un posto solo): ogni
+    # fattura 2026 esiste anche come copia `archived`, e 16 di quelle copie
+    # sopravvivevano alla deduplica — 8 erano fatture EMESSE da noi, elencate
+    # fra le ricevute. Le emesse (cedente = nostra P.IVA) stanno in
+    # `fatture_emesse`, mai qui.
+    q_inv: dict = {"$and": [dict(FILTRO_FATTURA_ATTIVA), filtro_escludi_emesse()]}
     # Anno e mese vengono applicati DOPO la normalizzazione. Il filtro database
     # storico escludeva i record con sola ``data_fattura`` e, su Supabase, le
     # combinazioni annidate $and/$or non producevano la stessa vista del registro.
@@ -263,25 +240,14 @@ async def get_archivio_fatture(
             {"cedente_denominazione": {"$regex": fornitore_nome.strip(), "$options": "i"}}
         ]
     if stato:
-        # I doc di `invoices` usano DUE schemi: stato/pagato (it) e status (en).
-        # Il filtro deve coprirli entrambi, altrimenti "Importate" è sempre
-        # vuoto e "Pagate" perde le fatture marcate solo con status="paid".
+        # «Pagate» e «Importate» (= non pagate) con il criterio unico, che
+        # legge tutti e cinque i campi di stato del pagamento.
         if stato in ("pagata", "paid"):
-            q_inv.setdefault("$and", []).append({"$or": [
-                {"stato": {"$in": ["pagata", "paid"]}},
-                {"status": "paid"},
-                {"pagato": True},
-                {"stato_pagamento": "pagata"},
-            ]})
+            q_inv["$and"].append(dict(FILTRO_PAGATE))
         elif stato in ("importata", "imported"):
-            q_inv.setdefault("$and", []).append({
-                "stato": {"$nin": ["pagata", "paid"]},
-                "status": {"$ne": "paid"},
-                "pagato": {"$ne": True},
-                "stato_pagamento": {"$ne": "pagata"},
-            })
+            q_inv["$and"].append(dict(FILTRO_NON_PAGATE))
         elif stato == "anomala":
-            q_inv.setdefault("$and", []).append({"$or": [
+            q_inv["$and"].append({"$or": [
                 {"$and": [
                     {"$or": [{"total_amount": {"$lte": 0}}, {"total_amount": {"$exists": False}}]},
                     {"$or": [{"importo_totale": {"$lte": 0}}, {"importo_totale": {"$exists": False}}]},
@@ -872,10 +838,7 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
 
     # Carica la vista attiva e applica l'anno dopo la normalizzazione: i record
     # storici possono usare data_fattura/data_documento o anno come stringa.
-    query: dict = {
-        "status": {"$nin": ["deleted", "archived"]},
-        "entity_status": {"$ne": "deleted"},
-    }
+    query: dict = {"$and": [dict(FILTRO_FATTURA_ATTIVA), filtro_escludi_emesse()]}
 
     # La statistica usa la stessa vista documentale della lista: una chiave
     # contabile coincidente non nasconde una collisione senza hash/ID comune.
@@ -918,10 +881,13 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
         ), 2),
     }
 
-    # Anomale REALI (prima era 0 hardcoded): importo assente/≤0 o numero mancante
+    # Anomale REALI (prima era 0 hardcoded): importo assente, numero mancante
+    # o imponibile da verificare. Una nota di credito e' negativa di suo: non
+    # e' un'anomalia.
     anomale = sum(
-        float(fattura.get("importo_totale") or 0) <= 0
+        float(fattura.get("importo_totale") or 0) == 0
         or not str(fattura.get("numero_documento") or "").strip()
+        or bool(fattura.get("importi_da_verificare"))
         for fattura in fatture_uniche
     )
 

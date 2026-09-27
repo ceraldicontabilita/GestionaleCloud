@@ -69,6 +69,19 @@ def e_fattura_emessa(parsed: Dict[str, Any]) -> bool:
     return bool(nostra) and cedente == nostra
 
 
+def filtro_escludi_emesse() -> Dict[str, Any]:
+    """Filtro di query su `invoices`: fuori le fatture con cedente = noi.
+
+    Stesso criterio di `e_fattura_emessa`, sul campo `supplier_vat` (con e
+    senza prefisso IT). Senza P.IVA configurata non esclude niente, invece di
+    escludere tutto.
+    """
+    nostra = _piva(settings.FISCAL_COMPANY_ID)
+    if not nostra:
+        return {}
+    return {"supplier_vat": {"$nin": [nostra, f"IT{nostra}"]}}
+
+
 def _euro(valore: Any) -> float:
     try:
         return float(Decimal(str(valore or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))

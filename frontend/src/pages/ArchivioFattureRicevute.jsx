@@ -31,6 +31,7 @@ import {
 } from '../components/ds';
 import { Eye, FileText, ArrowLeftRight } from 'lucide-react';
 import { ePagata } from '../utils/statoFattura';
+import { metodoNonConfigurato } from '../utils/metodoPagamento';
 
 // Come nell'artefatto: 200 righe, poi «Mostra altre 200 · N rimanenti».
 // `pagina` conta i blocchi gia' mostrati.
@@ -342,12 +343,10 @@ export default function ArchivioFatture() {
       const res = await api.get(`/api/fatture-ricevute/archivio?${params.toString()}`);
       let items = res.data.fatture || res.data.items || [];
 
-      // Filtro client: fatture di fornitori SENZA metodo pagamento configurato
+      // Filtro client: fatture di fornitori SENZA metodo pagamento configurato,
+      // col vocabolario unico (`misto` e' un metodo vero, non un «manca»).
       if (stato === 'senza_metodo') {
-        items = items.filter(f => {
-          const m = (f.fornitore_metodo_pagamento || '').toLowerCase().trim();
-          return !m || m === 'da_configurare' || m === 'misto' || m === 'altro';
-        });
+        items = items.filter(f => metodoNonConfigurato(f.fornitore_metodo_pagamento));
       }
       setFatture(items);
       setPagina(1);
@@ -428,6 +427,9 @@ export default function ArchivioFatture() {
 
   // Usa formatEuro da utils.js (già importato)
   const formatCurrency = formatEuro;
+  // Imponibile/IVA assenti (importi da verificare) si mostrano «—», mai € 0,00:
+  // il backend non li ricostruisce piu' da `totale / 1.22`.
+  const formatImportoOVuoto = v => (v === null || v === undefined ? '—' : formatCurrency(v));
 
   // Usa formatDateIT da utils.js
   const formatDate = formatDateIT;
@@ -905,9 +907,9 @@ export default function ArchivioFatture() {
                       <FileText size={14} aria-hidden="true" /> {tipoDoc.codice}
                     </span>
                     <span style={{ whiteSpace: 'nowrap' }}>
-                      Imp. {formatCurrency(f.imponibile)}
+                      Imp. {formatImportoOVuoto(f.imponibile)}
                     </span>
-                    <span style={{ whiteSpace: 'nowrap' }}>IVA {formatCurrency(f.iva)}</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>IVA {formatImportoOVuoto(f.iva)}</span>
                   </div>
                   <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Badge variant={pagamento.variant} style={{ fontSize: 11 }} title={pagamento.title}>
@@ -1003,10 +1005,10 @@ export default function ArchivioFatture() {
                         </div>
                       </Td>
                       <Td align="right" mono style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(f.imponibile)}
+                        {formatImportoOVuoto(f.imponibile)}
                       </Td>
                       <Td align="right" mono style={{ color: COLORS.textMuted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(f.iva)}
+                        {formatImportoOVuoto(f.iva)}
                       </Td>
                       <Td align="right" mono style={{ fontWeight: 700, color: COLORS.primary, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                         {formatCurrency(f.total_amount || f.importo_totale)}
