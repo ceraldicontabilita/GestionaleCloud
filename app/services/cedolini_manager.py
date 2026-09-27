@@ -229,7 +229,10 @@ async def processa_tutti_cedolini_pdf(
         await registra_busta(db, ced, filename=filename, pdf_data=cedolino_pdf_data,
                              pdf_text=ced_pdf_text, results=results)
 
-    if not (results["cedolini_processati"] or results["buste_senza_netto"]):
+    # Una busta gia' in archivio e' un esito, non un guasto: la copia di un
+    # PDF gia' letto finiva in ERRORI come «1 buste lette» e non ne usciva.
+    if not (results["cedolini_processati"] or results["buste_senza_netto"]
+            or results.get("gia_presenti")):
         results["success"] = False
     return results
 

@@ -566,7 +566,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   **dati chiave** (ratei 13ª e 14ª, L.207/24, trattamento integrativo L.21) da `parsers/cedolino_voci.py`.
 - **Ogni PDF letto è una scheda Markdown** (`schede_markdown.py`); registro per anno riscritto a ogni scheda; ricarica dalle schede, mai dai PDF.
 - **Doppioni d'archivio** (`doppioni_archivio.py`): stessa busta (CF, periodo, tipo, netto, lordo, trattenute), quietanza
-  (protocollo) o bonifico (CRO+importo) non si riscrive; le copie vanno in `<collezione>_quarantena`, resta la pagata.
+  (protocollo) o bonifico (CRO+importo) non si riscrive; le copie vanno in `<collezione>_quarantena`, resta la pagata. Una busta già in archivio è un esito (`gia_presenti` → ELABORATE), mai un errore; la «STAMPA DI CONTROLLO» con la definitiva identica (CF, periodo, netto) va nel Cestino (`cedolini_stampe_controllo.py`).
 - Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.
 - **Pagamenti stipendio**: un solo ponte gestionale→HR (`hr_pagamenti_deposito`). Dipendente da CF → nome
   completo univoco → cognome univoco: la corrispondenza univoca **basta da sola** («il nome di un
