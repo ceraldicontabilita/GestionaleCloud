@@ -2178,6 +2178,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "cliente": parsed.get("cliente", {}),
         "linee": parsed.get("linee", []),
         "riepilogo_iva": parsed.get("riepilogo_iva", []),
+        "descrizione_righe_ai": parsed.get("descrizione_righe_ai") or [],
         "pagamento_rate": parsed.get("pagamento_rate", []),
         "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
         "importo_ritenuta": parsed.get("importo_ritenuta"),
@@ -2430,6 +2431,12 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
 
     if not parsed.get("invoice_number") and not parsed.get("total_amount"):
         return {"status": "dati_insufficienti", "filename": filename}
+    # Un fornitore italiano manda l'XML allo SDI: il suo PDF e' una copia di
+    # cortesia, non una seconda fonte (e la fattura arriverebbe due volte).
+    piva = str(parsed.get("supplier_vat") or "").upper().replace(" ", "")
+    if piva.startswith("IT") or re.fullmatch(r"\d{11}", piva):
+        return {"status": "fattura_italiana_pdf", "filename": filename,
+                "error": "fornitore italiano: la fattura arriva come XML dallo SDI"}
 
     esito = await import_parsed_invoice(db, parsed, filename, source, xml_raw=None,
                                          piva_validator=_piva_estera_plausibile)
@@ -2498,6 +2505,12 @@ def _ai_fattura_a_parsed(data: Dict[str, Any]) -> Dict[str, Any]:
         },
         "linee": [],
         "riepilogo_iva": [],
+        # Solo testo, senza importi: righe inventate per prezzo finirebbero
+        # in magazzino e in Lotti. Servono a dire COSA si e' comprato.
+        "descrizione_righe_ai": [
+            str(riga).strip() for riga in (data.get("descrizione_righe") or [])
+            if str(riga or "").strip()
+        ],
         "causali": [],
         "dati_fatture_collegate": [],
         "dati_ordine_acquisto": [],

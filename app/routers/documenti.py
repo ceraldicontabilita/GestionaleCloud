@@ -2437,6 +2437,24 @@ SUPPORTED_UPLOAD_SUFFIXES = {
 }
 
 
+_PARTITA_IVA_UE = re.compile(
+    r"\b(?:AT|BE|BG|CY|CZ|DE|DK|EE|EL|ES|FI|FR|HR|HU|IE|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK)"
+    r"\s?([0-9A-Z]{8,12})\b"
+)
+
+
+def partita_iva_estera_nel_testo(testo: str) -> bool:
+    """Una partita IVA UE non italiana nel testo (es. «IE9813461A» di SumUp).
+
+    Almeno sette cifre dopo il prefisso: un IBAN (piu' lungo) o una parola
+    in maiuscolo non bastano.
+    """
+    for trovata in _PARTITA_IVA_UE.finditer(str(testo or "").upper()):
+        if sum(c.isdigit() for c in trovata.group(1)) >= 7:
+            return True
+    return False
+
+
 def _pdf_text_for_detection(file_content: bytes, max_pages: int = 5) -> str:
     """Legge apertura e coda del PDF confrontando PyPDF e PyMuPDF."""
     from app.services.pdf_text_extraction import extract_pdf_text
@@ -3693,6 +3711,50 @@ async def upload_documento_automatico(
                 f"{esito.get('gia_presenti', 0)} gia' presenti"
                 + (f", {esito['senza_identita']} senza P.IVA ne' codice fiscale"
                    if esito.get("senza_identita") else ""))
+
+        elif tipo_rilevato == 'fattura' and content[:5] == b"%PDF-":
+            # Fattura in PDF: solo i fornitori esteri (SumUp Limited, Irlanda)
+            # la mandano cosi', lo SDI e' solo italiano. Stesso lettore unico
+            # delle fatture estere via email, che la lascia nella coda
+            # «Fatture estere da verificare» finche' il titolare non conferma.
+            import base64 as _b64
+            from app.routers.invoices.fatture_upload import process_fattura_estera_pdf
+
+            # Nella radice Drive ci sono migliaia di PDF: una copia di cortesia
+            # di una fattura italiana non va letta dall'AI (costo, doppione
+            # dell'XML). Passa solo un PDF che porta una partita IVA estera.
+            if not partita_iva_estera_nel_testo(_pdf_text_for_detection(content)):
+                result["success"] = False
+                result["tipo_rilevato"] = "fattura_pdf"
+                result["message"] = (
+                    "Fattura PDF senza partita IVA estera: le fatture italiane "
+                    "arrivano come XML dallo SDI, il PDF non si importa")
+                return result
+
+            esito = await process_fattura_estera_pdf(
+                db, _b64.b64encode(content).decode("ascii"), filename,
+                source="documenti_upload_auto",
+            )
+            result["tipo_rilevato"] = "fattura_estera_pdf"
+            result["data"] = esito
+            stato = esito.get("status")
+            if stato == "imported":
+                result["imported"] = 1
+                result["message"] = (
+                    f"Fattura estera {esito.get('invoice_number') or ''} di "
+                    f"{esito.get('supplier') or 'fornitore estero'} registrata: "
+                    "da confermare in Fatture estere da verificare")
+            elif stato == "duplicate":
+                result["duplicate"] = True
+                result["action"] = "duplicate"
+                result["imported"] = 0
+                result["message"] = "Fattura estera gia' in archivio"
+            else:
+                result["success"] = False
+                result["message"] = (
+                    "Fattura PDF non letta: "
+                    f"{esito.get('error') or stato or 'esito sconosciuto'}")
+            return result
 
         elif tipo_rilevato == 'fattura':
             # Import fattura XML

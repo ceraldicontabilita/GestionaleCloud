@@ -289,7 +289,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   ha `DA ELABORARE | ELABORATE | ERRORI`; gli id delle cartelle stanno nelle
   variabili d'ambiente di Render, non in questo file.
 - Le fatture elettroniche arrivano dal canale Drive/SDI configurato. Una
-  fattura italiana trovata per email è un'anomalia, non una seconda fonte.
+  fattura italiana trovata per email è un'anomalia, non una seconda fonte. Una fattura **estera** arriva in PDF (SumUp, Irlanda): Documenti > Import la passa al lettore unico `process_fattura_estera_pdf` solo se il testo porta una partita IVA UE non italiana, e un fornitore italiano letto dal PDF non si importa mai; resta «da verificare» e le sue righe sono solo testo (`descrizione_righe_ai`), mai importi.
 - Gmail/IMAP acquisisce F24, quietanze, cedolini, verbali e schede tecniche **solo** dai
   mittenti autorizzati, mai cablati nel codice: regole versionate su indirizzo, dominio, oggetto,
   intestazioni PEC e tipo di allegato (`app/services/mittenti.py`; i builtin sono una base rigenerabile). Un

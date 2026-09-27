@@ -254,7 +254,12 @@ CENTRI_COSTO = {
                     "stampante", "toner", "cartuccia", "cavo", "lampadina",
                     "lampada", "batterie", "pile", "caricatore", "adattatore",
                     "hub", "router", "telecamera", "utensile", "trapano",
-                    "avvitatore", "prolunga", "ciabatta elettrica"]
+                    "avvitatore", "prolunga", "ciabatta elettrica",
+                    # Terminali di pagamento: un lettore comprato da SumUp e'
+                    # un bene, non una commissione. «sumup solo» pesa piu'
+                    # del solo «sumup» delle Commissioni POS.
+                    "lettore di carte", "lettore carte", "card reader",
+                    "terminale pos", "sumup solo", "sumup air", "solo lite"]
     },
     
     # 6. AUTO AZIENDALI
