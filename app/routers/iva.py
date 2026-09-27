@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
+from app.middleware.performance import istantanea
 
 from app.database import Database
 from app.engines import iva_fatture
@@ -793,6 +794,7 @@ async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
 
 
 @router.get("/dashboard/{anno}/{mese}")
+@istantanea(ttl=300)
 async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
     """Riquadri IVA del mese (§21): attribuita, ricevuta-ma-attribuita-al-mese-
     precedente, utilizzata, non utilizzata, rinviata, indetraibile, credito
@@ -884,6 +886,7 @@ async def verifica_versamento_iva_mensile(anno: int, mese: int) -> Dict[str, Any
 
 
 @router.get("/riepilogo-annuale/{anno}")
+@istantanea(ttl=300)
 async def riepilogo_annuale(anno: int) -> Dict[str, Any]:
     """Riepilogo IVA dell'anno per categoria + calcolo annuale (§16-17)."""
     db = Database.get_db()
@@ -900,6 +903,7 @@ async def riepilogo_annuale(anno: int) -> Dict[str, Any]:
 
 
 @router.get("/anomalie")
+@istantanea(ttl=300)
 async def anomalie_iva(
     anno: int = Query(...),
     mese_corrente: Optional[str] = Query(None, description="'YYYY-MM' per l'avviso 'non usata da mesi'"),

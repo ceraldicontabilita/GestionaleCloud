@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Database } from 'lucide-react';
 import api from '../api';
+import { aggiornatoAlle, getConCopia } from '../lib/cacheGuscio';
 import { COLORS } from '../lib/utils';
 
 /**
@@ -56,11 +57,15 @@ export default function AggiornamentoDati() {
   const [errore, setErrore] = useState(null);
   const [carico, setCarico] = useState(true);
 
-  const carica = useCallback(async () => {
+  const carica = useCallback(async (rileggi = false) => {
     setCarico(true);
     setErrore(null);
     try {
-      const res = await api.get('/api/dashboard/aggiornamento-dati', { timeout: 20000 });
+      // «Rileggi» chiede al server il dato fresco, non la sua copia pronta.
+      const config = rileggi ? { timeout: 20000, headers: { 'X-Rileggi': '1' } } : { timeout: 20000 };
+      const res = await getConCopia('/api/dashboard/aggiornamento-dati', config, (copia) => {
+        if (copia && !rileggi) { setDati(copia); setCarico(false); }
+      });
       setDati(res.data);
     } catch (e) {
       setErrore(e?.response?.data?.correlation_id || e?.code || e?.response?.status || 'errore');
@@ -69,14 +74,17 @@ export default function AggiornamentoDati() {
     }
   }, []);
 
-  useEffect(() => { carica(); }, [carica]);
+  useEffect(() => { carica(false); }, [carica]);
 
   return (
     <section style={S.box} data-testid="aggiornamento-dati" aria-live="polite">
       <div style={S.testata}>
         <span style={S.icona}><Database size={16} color="#fff" /></span>
         <h2 style={S.titolo}>Aggiornamento dati</h2>
-        <button type="button" onClick={carica} disabled={carico} style={S.bottone}
+        {dati?.istantanea?.calcolata_at && (
+          <span style={S.nota}>{aggiornatoAlle(dati.istantanea.calcolata_at)}</span>
+        )}
+        <button type="button" onClick={() => carica(true)} disabled={carico} style={S.bottone}
           aria-label="Rileggi lo stato delle fonti">
           <RefreshCw size={14} /> {carico ? 'Lettura…' : 'Rileggi'}
         </button>

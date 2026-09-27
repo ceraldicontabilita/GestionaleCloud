@@ -1,5 +1,6 @@
 """Dashboard router - KPI and statistics endpoints."""
 from fastapi import APIRouter, Depends, Query
+from app.middleware.performance import istantanea
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import logging
@@ -223,6 +224,7 @@ async def get_stats(
     summary="Trend mensile entrate/uscite",
     description="Dati per grafici trend mensili - OTTIMIZZATO"
 )
+@istantanea(ttl=300)
 async def get_trend_mensile(
     anno: int = Query(None, description="Anno di riferimento")
 ) -> Dict[str, Any]:
@@ -740,6 +742,7 @@ async def get_bilancio_istantaneo(
     "/aggiornamento-dati",
     summary="Stato delle fonti dati (banca, fatture, corrispettivi, cedolini/F24, riconciliazione)",
 )
+@istantanea(ttl=60)
 async def get_aggiornamento_dati() -> Dict[str, Any]:
     """Sola lettura: ultimo giro, ultimo dato e conteggi di ogni fonte, letti
     da dove i motori li scrivono gia' (`app/services/aggiornamento_dati.py`)."""

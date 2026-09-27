@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import api, { messaggioErrore } from '../api';
+import { aggiornatoAlle, getConCopia } from '../lib/cacheGuscio';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
@@ -684,7 +685,15 @@ export function useStatoFonti() {
   const [stato, setStato] = useState({ fontiFerme: [], coperturaCategoria: null, errore: null });
   useEffect(() => {
     let vivo = true;
-    api.get('/api/prima-nota/stato-fonti')
+    getConCopia('/api/prima-nota/stato-fonti', undefined, (copia) => {
+      if (vivo && copia && Array.isArray(copia.ferme)) {
+        setStato({
+          fontiFerme: copia.ferme,
+          coperturaCategoria: copia.copertura_categoria_banca || null,
+          errore: null,
+        });
+      }
+    })
       .then((r) => {
         if (!vivo) return;
         if (!r.data || typeof r.data !== 'object' || !Array.isArray(r.data.ferme)) {
@@ -1136,6 +1145,12 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
             Finche' mancano questi documenti il saldo progressivo non e' il saldo del conto
             e gli accrediti POS restano «da verificare».
           </div>
+        </div>
+      )}
+
+      {dati.copia_at && (
+        <div data-testid="copia-prima-nota" style={{ margin: '0 0 8px', fontSize: 12.5, color: COLORS.textMuted }}>
+          Copia {aggiornatoAlle(dati.copia_at)}: aggiornamento in corso…
         </div>
       )}
 
@@ -2258,9 +2273,14 @@ export default function PrimaNota() {
 
   const caricaConteggiProvvisori = async () => {
     try {
-      const { data } = await api.get(
+      const { data } = await getConCopia(
         `/api/prima-nota/provvisori/conteggi?anno=${anno}`,
         richiestaInterattiva,
+        copia => setConteggiProvvisori({
+          caricato: true,
+          totale_da_decidere: Number(copia?.totale_da_decidere || 0),
+          totale_in_attesa_banca: Number(copia?.totale_in_attesa_banca || 0),
+        }),
       );
       setConteggiProvvisori({
         caricato: true,
@@ -2311,9 +2331,17 @@ export default function PrimaNota() {
         });
       } else {
         const endpoint = sezione === 'banca' ? 'banca' : 'cassa';
-        const risposta = await api.get(
+        // La copia di questa sessione si vede subito; la risposta fresca la sostituisce.
+        const risposta = await getConCopia(
           `/api/prima-nota/${endpoint}?${params}`,
           richiestaInterattiva,
+          (copia, at) => {
+            if (silent || richiesta !== richiestaRef.current || !copia) return;
+            const dati = { ...copia, loaded: true, copia_at: at };
+            if (endpoint === 'banca') setBanca(dati);
+            else setCassa(dati);
+            setLoading(false);
+          },
         );
         if (richiesta !== richiestaRef.current) return;
         const dati = { ...(risposta.data || { movimenti: [] }), loaded: true };

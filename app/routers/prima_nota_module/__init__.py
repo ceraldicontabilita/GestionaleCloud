@@ -9,6 +9,7 @@ Modulo suddiviso per funzionalità:
 - manutenzione: Fix, cleanup, verifica
 """
 from fastapi import APIRouter, Depends
+from app.middleware.performance import istantanea
 
 from app.utils.dependencies import get_current_admin_user
 
@@ -71,6 +72,7 @@ from .operation_index import (
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
 
 # Stats e globali
+@istantanea(ttl=300)
 async def stato_fonti_contabili():
     """Da quanti giorni ogni fonte non porta piu' documenti, e quanta banca
     dell'anno resta senza categoria.

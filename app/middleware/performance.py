@@ -8,7 +8,7 @@ Implementa:
 import time
 from typing import Any, Dict, List, Optional, Callable
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import asyncio
 import logging
 
@@ -41,9 +41,16 @@ class SimpleCache:
         async with self._lock:
             self._cache[key] = {
                 "value": value,
-                "expires": datetime.now() + timedelta(seconds=ttl_seconds)
+                "expires": datetime.now() + timedelta(seconds=ttl_seconds),
+                "set_at": time.monotonic(),
+                "set_at_iso": datetime.now(timezone.utc).isoformat(),
             }
     
+    async def get_anche_scaduta(self, key: str) -> Optional[Dict[str, Any]]:
+        """La voce anche oltre la scadenza (per le istantanee): valore e ora."""
+        async with self._lock:
+            return self._cache.get(key)
+
     async def delete(self, key: str):
         """Elimina chiave dalla cache."""
         async with self._lock:
@@ -156,6 +163,138 @@ def cached(ttl_seconds: int = 60, key_prefix: str = ""):
         
         return wrapper
     return decorator
+
+
+# ============================================
+# ISTANTANEE: RIEPILOGHI SERVITI SUBITO
+# ============================================
+#
+# Le pagine di riepilogo (stato delle fonti, aggiornamento dati, conteggi dei
+# provvisori, grafici della Dashboard, IVA) ricalcolavano tutto a ogni
+# apertura: da 3 a 35 secondi il 26/09/2026. Il dato non cambia a ogni
+# secondo: la stessa cache di sopra lo tiene con l'ora del calcolo.
+# - piu' giovane di ``ttl``: si restituisce;
+# - piu' vecchio ma entro ``max_eta``: si restituisce subito e si ricalcola in
+#   sottofondo, una volta sola anche con dieci richieste;
+# - assente o troppo vecchio: si calcola e si aspetta.
+# Ogni scrittura riuscita dall'interfaccia svuota le istantanee
+# (``IstantaneeMiddleware``): dopo un salvataggio la pagina non mostra il
+# riepilogo di prima. Solo riepiloghi in sola lettura.
+
+PREFISSO_ISTANTANEE = "istantanea:"
+_ricalcoli: Dict[str, asyncio.Task] = {}
+# Sale a ogni svuotamento: un ricalcolo partito prima di una scrittura non
+# rimette in memoria il riepilogo di prima, e nessuno si accoda a lui.
+_generazione = 0
+_TIPI_CHIAVE = (str, int, float, bool, type(None))
+
+
+def _chiave_istantanea(func: Callable, args: tuple, kwargs: dict) -> str:
+    parti = [repr(a) for a in args if isinstance(a, _TIPI_CHIAVE)]
+    parti += [f"{k}={v!r}" for k, v in sorted(kwargs.items()) if isinstance(v, _TIPI_CHIAVE)]
+    # Legata all'archivio in uso: un riepilogo di un database non vale per un altro.
+    try:
+        from app.database import Database
+        archivio = id(Database.get_db())
+    except Exception:  # noqa: BLE001 - senza archivio la chiave resta per funzione
+        archivio = 0
+    return f"{PREFISSO_ISTANTANEE}{archivio}:{func.__module__}.{func.__qualname__}:{','.join(parti)}"
+
+
+def _marca_istantanea(valore: Any, calcolata_at: str, eta: float, in_aggiornamento: bool) -> Any:
+    if isinstance(valore, dict):
+        return {**valore, "istantanea": {
+            "calcolata_at": calcolata_at,
+            "eta_secondi": round(eta, 1),
+            "in_aggiornamento": in_aggiornamento,
+        }}
+    return valore
+
+
+async def svuota_istantanee() -> None:
+    """Dopo una scrittura: via le copie e i ricalcoli gia' partiti."""
+    global _generazione
+    _generazione += 1
+    _ricalcoli.clear()
+    await cache.clear_pattern(PREFISSO_ISTANTANEE)
+
+
+def _ricalcola(chiave: str, func: Callable, args: tuple, kwargs: dict, max_eta: float) -> asyncio.Task:
+    compito = _ricalcoli.get(chiave)
+    if compito is not None and not compito.done():
+        return compito
+    generazione = _generazione
+
+    async def calcola():
+        try:
+            valore = await func(*args, **kwargs)
+            if generazione == _generazione:
+                await cache.set(chiave, valore, int(max_eta))
+            return valore
+        finally:
+            if _ricalcoli.get(chiave) is compito:
+                _ricalcoli.pop(chiave, None)
+
+    compito = asyncio.get_running_loop().create_task(calcola(), name=chiave[:80])
+    _ricalcoli[chiave] = compito
+    return compito
+
+
+def _errore_ricalcolo(compito: asyncio.Task) -> None:
+    if not compito.cancelled() and compito.exception() is not None:
+        errore = compito.exception()
+        logger.warning("[istantanee] ricalcolo non riuscito (%s: %s): resta la copia precedente",
+                       type(errore).__name__, errore)
+
+
+def istantanea(ttl: float = 120, max_eta: float = 1800):
+    """Decoratore per un endpoint di riepilogo in sola lettura."""
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            chiave = _chiave_istantanea(func, args, kwargs)
+            voce = await cache.get_anche_scaduta(chiave)
+            if voce is not None:
+                eta = time.monotonic() - voce["set_at"]
+                if eta < ttl:
+                    return _marca_istantanea(voce["value"], voce["set_at_iso"], eta, False)
+                if eta < max_eta:
+                    _ricalcola(chiave, func, args, kwargs, max_eta).add_done_callback(_errore_ricalcolo)
+                    return _marca_istantanea(voce["value"], voce["set_at_iso"], eta, True)
+            valore = await asyncio.shield(_ricalcola(chiave, func, args, kwargs, max_eta))
+            voce = await cache.get_anche_scaduta(chiave)
+            calcolata_at = voce["set_at_iso"] if voce else datetime.now(timezone.utc).isoformat()
+            return _marca_istantanea(valore, calcolata_at, 0.0, False)
+        return wrapper
+    return decorator
+
+
+class IstantaneeMiddleware:
+    """Una scrittura riuscita (POST/PUT/PATCH/DELETE) svuota le istantanee, e
+    cosi' una lettura con l'intestazione ``X-Rileggi`` (il pulsante «Rileggi»)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        if scope.get("method") in ("GET", "HEAD", "OPTIONS"):
+            # «Rileggi» chiede il dato fresco: niente copia per questa lettura.
+            if any(nome.lower() == b"x-rileggi" for nome, _ in scope.get("headers") or []):
+                await svuota_istantanee()
+            await self.app(scope, receive, send)
+            return
+
+        async def invia(messaggio):
+            # Si svuota prima che la risposta parta: la lettura che il client
+            # fa subito dopo il salvataggio non deve trovare la copia di prima.
+            if messaggio.get("type") == "http.response.start" and messaggio.get("status", 500) < 400:
+                await svuota_istantanee()
+            await send(messaggio)
+
+        await self.app(scope, receive, invia)
 
 
 # ============================================

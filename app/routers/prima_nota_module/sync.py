@@ -3,6 +3,7 @@ Prima Nota Module - Sincronizzazione e Import.
 Sync corrispettivi, fatture, import CSV/batch.
 """
 from fastapi import HTTPException, Query, Body
+from app.middleware.performance import istantanea
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 from contextlib import AsyncExitStack
@@ -1827,6 +1828,7 @@ def _classifica_provvisorio_fattura(
     return suggerimento, stato_match, fonte_metodo
 
 
+@istantanea(ttl=60)
 async def get_conteggi_fatture_provvisorie(anno: int = Query(...)) -> Dict[str, Any]:
     """Conteggi leggeri del tab Provvisori, senza DDT/XML o registro completo."""
     db = Database.get_db()
