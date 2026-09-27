@@ -135,6 +135,56 @@ def test_somma_che_non_torna_non_collega_niente():
     assert _quote(esito["t386"]) == [] and banca == []
 
 
+def test_pagamento_pos_con_la_carta_chiude_le_fatture_senza_riga_dichiarata():
+    """Mepa 123833 + 123834, pagate insieme al POS con la Mastercard SumUp.
+
+    La 123833 era in attesa di riscontro senza una riga dichiarata da
+    assorbire: restava «in attesa della banca» e candidata per un altro
+    movimento dello stesso importo.
+    """
+    from app.services.bank_payment_allocations import (
+        persist_bank_invoice_allocations, validate_bank_invoice_allocations,
+    )
+
+    db = ClientArchivioMemoria()["mepa_pos_carta"]
+    mepa = ("ME.PA. ALIMENTARI S.R.L.", "05555550635")
+    fatture = [
+        _fattura("f123833", "123833", "2026-09-01", 392.54, *mepa,
+                 in_attesa_riscontro_banca=True, provvisorio=True,
+                 residuo_da_pagare=392.54),
+        _fattura("f123834", "123834", "2026-09-01", 13.82, *mepa,
+                 provvisorio=True, stato_finanziario="pagata_dichiarata_in_attesa_banca"),
+    ]
+    mov = {
+        **_movimento("CDMVQ2WB6Z", "2026-09-01", "406.36",
+                     "MEPA ALIMENTARI SRL POZZUOLI IT", "", ""),
+        "tipo_transazione": "Pagamento POS",
+    }
+
+    async def scenario():
+        for fattura in fatture:
+            await db["invoices"].insert_one(fattura)
+        await db[COLL_MOVIMENTI].insert_one(mov)
+        allocazioni = await validate_bank_invoice_allocations(db, mov, [
+            {"id": "f123833", "quota_cents": 39254},
+            {"id": "f123834", "quota_cents": 1382},
+        ])
+        await persist_bank_invoice_allocations(db, mov, allocazioni, actor="riconciliazione_ui")
+        return {f["id"]: f for f in await db["invoices"].find({}, {"_id": 0}).to_list(None)}
+
+    esito = asyncio.run(scenario())
+    for fid in ("f123833", "f123834"):
+        fattura = esito[fid]
+        assert fattura["pagato"] is True
+        assert fattura["in_attesa_riscontro_banca"] is False
+        assert fattura["stato_finanziario"] == "riconciliato"
+        assert fattura["provvisorio"] is False
+        assert fattura["residuo_da_pagare"] == 0
+        assert fattura["riscontro_banca_movimento_id"] == "sumup_conto:CDMVQ2WB6Z"
+        # Pagata con la carta al POS, non con un bonifico.
+        assert fattura["metodo_pagamento"] == "Carta"
+
+
 def test_la_riga_del_vecchio_import_passa_sul_conto_della_carta():
     db = ClientArchivioMemoria()["vecchio_import"]
 
