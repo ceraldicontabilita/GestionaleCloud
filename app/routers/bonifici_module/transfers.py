@@ -65,10 +65,15 @@ async def list_transfers(
     return transfers
 
 
-async def count_transfers(job_id: Optional[str] = None) -> Dict[str, int]:
-    """Conta bonifici totali."""
+async def count_transfers(
+    job_id: Optional[str] = None, anno: Optional[int] = None,
+) -> Dict[str, int]:
+    """Conta i bonifici, dell'anno se richiesto (la pagina manda `anno`:
+    prima lo ignorava e il contatore diceva il totale di tutti gli anni)."""
     db = Database.get_db()
-    query = {'job_id': job_id} if job_id else {}
+    query: Dict[str, Any] = {'job_id': job_id} if job_id else {}
+    if anno:
+        query['data'] = {'$regex': f'^{int(anno)}-'}
     count = await db.bonifici_transfers.count_documents(query)
     return {'count': count}
 

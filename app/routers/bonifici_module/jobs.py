@@ -259,10 +259,9 @@ async def _auto_associate_bonifici(db, job_id: str) -> tuple:
             metadata_projection(COLL_BONIFICI_TRANSFERS)
         ).to_list(500)
 
-        from app.services.bonifici_pdf_ingest import associa_transfer_a_salario
-        from app.services.payment_document_links import (
-            collega_bonifico_fatture,
-            seleziona_fatture_bonifico,
+        from app.services.bonifici_pdf_ingest import (
+            associa_transfer_a_fatture,
+            associa_transfer_a_salario,
         )
 
         for bonifico in new_bonifici:
@@ -277,21 +276,12 @@ async def _auto_associate_bonifici(db, job_id: str) -> tuple:
                 auto_salari += 1
                 continue
 
-            # Match FATTURE
-            # La causale puo' indicare una fattura singola o una distinta con
-            # piu' numeri. Non filtriamo soltanto per importo singolo: la somma
-            # delle fatture esplicitamente citate puo' coincidere col bonifico.
-            fatture = await db.invoices.find(
-                {"bonifico_associato": {"$ne": True}},
-                {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
-                 "supplier_name": 1, "fornitore_denominazione": 1, "fornitore": 1,
-                 "cedente_denominazione": 1, "total_amount": 1, "totale": 1,
-                 "importo_totale": 1, "invoice_date": 1},
-            ).to_list(5000)
-            fatture_match = seleziona_fatture_bonifico(bonifico, fatture)
-            if fatture_match:
-                await collega_bonifico_fatture(db, bonifico, fatture_match, auto=True)
-                auto_fatture += len(fatture_match)
+            # Match FATTURE: lo stesso motore dell'import PDF (fatture attive,
+            # netto della ritenuta, somma delle fatture citate in causale).
+            # Qui ce n'era una copia che leggeva anche le copie archiviate.
+            esito = await associa_transfer_a_fatture(db, bonifico)
+            if esito.get("associato"):
+                auto_fatture += len(esito.get("fattura_ids") or [])
     except Exception as e:
         logger.error(f"Auto-association error: {e}")
 

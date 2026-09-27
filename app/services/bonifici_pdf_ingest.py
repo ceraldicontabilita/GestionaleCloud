@@ -285,12 +285,18 @@ async def associa_transfer_a_fatture(db, transfer: Dict[str, Any]) -> Dict[str, 
         seleziona_fatture_bonifico,
     )
 
+    from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
+
+    # Solo fatture attive: ogni fattura 2026 esiste anche come copia
+    # `archived`, e con due candidati identici l'abbinamento si rifiutava.
+    # I campi della ritenuta servono al netto da confrontare col bonifico.
     invoices = await db["invoices"].find(
-        {"bonifico_associato": {"$ne": True}},
+        {"$and": [dict(FILTRO_FATTURA_ATTIVA), {"bonifico_associato": {"$ne": True}}]},
         {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
          "supplier_name": 1, "fornitore_denominazione": 1, "fornitore": 1,
          "cedente_denominazione": 1, "total_amount": 1, "totale": 1,
-         "importo_totale": 1, "invoice_date": 1},
+         "importo_totale": 1, "invoice_date": 1, "importo_ritenuta": 1,
+         "pagamento_rate_totale": 1, "pagamento_rate": 1},
     ).to_list(5000)
     matched = seleziona_fatture_bonifico(transfer, invoices)
     if not matched:
