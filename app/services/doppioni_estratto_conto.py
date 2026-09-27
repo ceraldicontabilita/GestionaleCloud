@@ -156,6 +156,53 @@ def accoppia(
     return coppie
 
 
+# ── categoria dalla copia dello stesso movimento ────────────────────────────
+
+def _senza_categoria(mov: Dict[str, Any]) -> bool:
+    return not str(mov.get("categoria") or "").strip()
+
+
+async def eredita_categorie_da_copie(db, *, dry_run: bool = False) -> Dict[str, Any]:
+    """Una riga senza categoria prende quella della sua copia nello stesso conto.
+
+    Il vecchio archivio non ha categorie; il CSV della banca si'. Lo stesso
+    movimento (giorno, segno, importo, conteggio: ``accoppia``) arrivato da
+    entrambi restava «senza categoria» nella copia vecchia, e il banner di
+    Prima Nota contava 1.424 movimenti da classificare quasi tutti gia'
+    classificati. Non si cancella niente: si scrive la categoria e da dove
+    viene. Una coppia i cui riferimenti della banca si contraddicono si salta.
+    """
+    righe = await db[COLLEZIONE].find(
+        {"status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "banca": 1, "categoria": 1,
+         "descrizione": 1, "descrizione_originale": 1, "source_filename": 1, "fonte": 1},
+    ).to_list(None)
+    senza = [r for r in righe if _senza_categoria(r) and r.get("id")]
+    con = [r for r in righe if not _senza_categoria(r)]
+    esito = {"senza_categoria": len(senza), "ereditate": 0, "contraddette": 0, "dry_run": dry_run}
+    if not senza or not con:
+        return esito
+    adesso = _oggi()
+    def fonte(mov: Dict[str, Any]) -> str:
+        return str(mov.get("source_filename") or mov.get("fonte") or "")
+
+    for riga, copia in accoppia(senza, con):
+        if fonte(riga) == fonte(copia):
+            # Due righe dello stesso export sono due operazioni, non copie.
+            continue
+        if codici(riga) and codici(copia) and not stesso_riferimento(riga, copia):
+            esito["contraddette"] += 1
+            continue
+        esito["ereditate"] += 1
+        if not dry_run:
+            await db[COLLEZIONE].update_one({"id": riga["id"]}, {"$set": {
+                "categoria": copia["categoria"],
+                "categoria_ereditata_da": copia.get("id"),
+                "categoria_ereditata_at": adesso,
+            }})
+    return esito
+
+
 # ── pulizia dei doppioni gia' entrati ───────────────────────────────────────
 
 # Import autorizzati alla pulizia dal titolare (23/09/2026, in chat): il solo

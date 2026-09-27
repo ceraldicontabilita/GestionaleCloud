@@ -207,3 +207,66 @@ def test_la_rata_del_mutuo_entra_in_banca_col_numero_e_senza_quote_inventate():
     assert {r["numero_mutuo"] for r in rate} == {"1788 4851906"}
     assert all(r["ripartizione_capitale_interessi"] == "da_verificare" for r in rate)
     assert all("quota_interessi" not in r and "quota_capitale" not in r for r in rate)
+
+
+# ── quote capitale/interessi dal piano d'ammortamento o dalla quietanza ─────
+
+def _rata(id_, data, importo, scadenza):
+    return {"id": id_, "data": data, "tipo": "uscita", "importo": importo, "fonte": "export.csv",
+            "descrizione_originale": f"RIMBORSO FINANZ. - MUTUO N.1788 4851906 RATA {scadenza}"}
+
+
+def _piano(db):
+    _run(db["mutui_piani_documentali"].insert_one({
+        "id": "piano", "numero_delibera": "904851906", "rate": [
+            {"numero_rata": 47, "data_scadenza": "24/08/2026", "importo_totale": 512.36,
+             "quota_capitale": 506.53, "quota_interessi": 5.83, "stato": "Pagata"},
+            {"numero_rata": 48, "data_scadenza": "24/09/2026", "importo_totale": 512.35,
+             "quota_capitale": 506.93, "quota_interessi": 5.42, "stato": "Pagata"},
+        ]}))
+
+
+def test_la_rata_prende_capitale_e_interessi_dal_piano():
+    db = _db_dipendente()
+    _piano(db)
+    _run(db["estratto_conto_movimenti"].insert_one(_rata("r48", "2026-09-24", 512.35, "24/09/2026")))
+    _run(proietta_movimenti_bancari_semantici(db))
+    riga = _attive(db)[0]
+    assert (riga["quota_capitale"], riga["quota_interessi"]) == (506.93, 5.42)
+    assert riga["numero_rata"] == 48
+    assert riga["ripartizione_capitale_interessi"] == "piano_ammortamento"
+    assert riga["ripartizione_conti"] == [
+        {"conto": "31.03.05", "importo": 506.93}, {"conto": "75.03.05", "importo": 5.42}]
+
+
+def test_la_quietanza_vince_sul_piano_e_il_numero_ha_tre_forme():
+    db = _db_dipendente()
+    _piano(db)
+    _run(db["mutui_quietanze"].insert_one({
+        "numero_finanziamento": "1788/0004851906", "data_scadenza": "2026-08-24",
+        "importo_totale": 512.36, "quota_capitale": 506.53, "quota_interessi": 5.83, "numero_rata": 47}))
+    _run(db["estratto_conto_movimenti"].insert_one(_rata("r47", "2026-08-24", 512.36, "24/08/2026")))
+    _run(proietta_movimenti_bancari_semantici(db))
+    assert _attive(db)[0]["ripartizione_capitale_interessi"] == "quietanza"
+
+
+def test_importo_diverso_dal_piano_resta_da_verificare():
+    db = _db_dipendente()
+    _piano(db)
+    _run(db["estratto_conto_movimenti"].insert_one(_rata("r48", "2026-09-24", 512.00, "24/09/2026")))
+    _run(proietta_movimenti_bancari_semantici(db))
+    riga = _attive(db)[0]
+    assert riga["ripartizione_capitale_interessi"] == "da_verificare"
+    assert "quota_capitale" not in riga
+
+
+def test_la_rata_gia_in_banca_si_aggiorna_quando_arriva_il_piano():
+    db = _db_dipendente()
+    _run(db["estratto_conto_movimenti"].insert_one(_rata("r48", "2026-09-24", 512.35, "24/09/2026")))
+    _run(proietta_movimenti_bancari_semantici(db))
+    assert _attive(db)[0]["ripartizione_capitale_interessi"] == "da_verificare"
+    _piano(db)
+    esito = _run(proietta_movimenti_bancari_semantici(db))
+    righe = _attive(db)
+    assert len(righe) == 1 and esito["proiettati"] == 0
+    assert righe[0]["quota_interessi"] == 5.42
