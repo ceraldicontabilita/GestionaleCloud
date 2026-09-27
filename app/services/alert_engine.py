@@ -124,6 +124,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "F24 atteso ma documento non acquisito",
         "condizione_chiusura": "Documento acquisito"
     },
+    "POSTA_NON_RAGGIUNGIBILE": {
+        "modulo": "email",
+        "severita": "critical",
+        "titolo": "Il gestionale non entra nella casella di posta",
+        "condizione_chiusura": "Login IMAP riuscito al giro successivo"
+    },
     "RITENUTA_DA_VERSARE": {
         "modulo": "f24",
         "severita": "warning",

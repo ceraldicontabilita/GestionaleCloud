@@ -36,12 +36,9 @@ def get_email_credentials():
     effettivamente configurate in produzione (usate dallo scanner Gmail
     verbali) — senza, la connect falliva con "Credenziali non configurate".
     """
-    from app.config import settings
-    email_user = (settings.EMAIL_USER or settings.GMAIL_EMAIL
-                  or settings.EMAIL_ADDRESS or settings.IMAP_USER or "")
-    email_password = (settings.EMAIL_PASSWORD or settings.EMAIL_APP_PASSWORD
-                      or settings.GMAIL_APP_PASSWORD or settings.IMAP_PASSWORD or "")
-    return email_user, email_password
+    from app.services.email_full_download import get_email_credentials as canoniche
+
+    return canoniche()
 
 
 def decode_mime_header(header: str) -> str:

@@ -293,7 +293,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Gmail/IMAP acquisisce F24, quietanze, cedolini, verbali e schede tecniche **solo** dai
   mittenti autorizzati, mai cablati nel codice: regole versionate su indirizzo, dominio, oggetto,
   intestazioni PEC e tipo di allegato (`app/services/mittenti.py`; i builtin sono una base rigenerabile). Un
-  solo downloader: la scansione `ALL_FOLDERS` di `email_full_download.py`, mai uno su `INBOX`.
+  solo downloader: la scansione `ALL_FOLDERS` di `email_full_download.py`, mai uno su `INBOX`: ogni ora, cursore UID per cartella in `sistema_stato` (nuovi, poi lo storico fino al primo messaggio), cartella in sola lettura e `BODY.PEEK`; credenziali solo da `gmail_credentials.py`; login rifiutato = alert `POSTA_NON_RAGGIUNGIBILE` + Telegram.
 - Le ricerche email usano `in:anywhere`, preservano message ID, thread ID e
   SHA-256, e **non spostano né cancellano gli originali**. Mai marcare letto,
   etichettare o rispondere automaticamente. Paginare fino a esaurimento, mai
