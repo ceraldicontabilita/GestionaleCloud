@@ -629,8 +629,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   senza audit: nessun errore, nessuna traccia. Il recupero è `POST
   /api/admin/fatture/ripubblica-evento-created` (admin, background, `dry_run` per difetto), sugli stessi
   handler idempotenti.
-- Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture **con lo stesso ID**: non
-  nasce una seconda fattura.
+- Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture **con lo stesso ID**. Parcella con ritenuta: al fornitore esce il **netto** (`importo_ritenuta` dal `DatiRitenuta`), la ritenuta va in F24; una riga con prova bancaria non si declassa mai a dichiarata.
 - `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso parser dell'import.
   L'impronta del **contenuto** (`content_hash_canonico`, prefisso di versione `c2:`, insensibile a BOM, a
   capo, codifica e caratteri non ASCII) prova che due XML sono la stessa fattura. La dedup tiene la copia
