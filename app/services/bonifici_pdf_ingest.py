@@ -7,6 +7,7 @@ scelta per vicinanza, ordine del database o semplice mese.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import logging
@@ -404,7 +405,7 @@ async def importa_pdf_bonifico(
         # I documenti caricati prima della correzione possono contenere il
         # mese del nome file nel vecchio campo "periodo". Rileggiamo sempre il
         # PDF originale e correggiamo i soli metadati estratti.
-        text = read_pdf_bytes(content)
+        text = await asyncio.to_thread(read_pdf_bytes, content)
         reparsed = extract_transfers_from_text(text, filename=filename)[0]
         beneficiario = reparsed.get("beneficiario") or {}
         metadata_file = extract_filename_metadata(filename)
@@ -440,7 +441,7 @@ async def importa_pdf_bonifico(
         )
         return {"status": "duplicate", "transfer_id": esistente.get("id"), **associazione}
 
-    text = read_pdf_bytes(content)
+    text = await asyncio.to_thread(read_pdf_bytes, content)
     parsed = extract_transfers_from_text(text, filename=filename)[0]
     if accredito_non_registrabile(parsed):
         return _esito_non_registrato(parsed)
