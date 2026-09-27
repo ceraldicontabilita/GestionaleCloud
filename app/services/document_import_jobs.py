@@ -30,8 +30,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def job_id_for_sha256(sha256: str) -> str:
+    return f"DOC-IMPORT-{sha256[:32]}"
+
+
 def job_id_for_content(content: bytes) -> str:
-    return f"DOC-IMPORT-{hashlib.sha256(content).hexdigest()[:32]}"
+    return job_id_for_sha256(hashlib.sha256(content).hexdigest())
 
 
 def public_job(record: Dict[str, Any] | None) -> Dict[str, Any] | None:

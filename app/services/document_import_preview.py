@@ -74,6 +74,16 @@ async def _duplicate_sources(db, sha256: str, md5: str) -> list[dict[str, Any]]:
         )
         if existing:
             found.append({"collection": collection, **existing})
+    # Uno ZIP o un estratto conto non finisce in nessuna collezione come file
+    # intero: lo ricorda solo il registro dei caricamenti, per impronta.
+    from app.services.document_import_jobs import COLLECTION as JOBS, job_id_for_sha256
+
+    caricato = await db[JOBS].find_one(
+        {"id": job_id_for_sha256(sha256), "status": "completed"},
+        {"_id": 0, "id": 1, "filename": 1, "completed_at": 1},
+    )
+    if caricato:
+        found.append({"collection": JOBS, **caricato})
     return found
 
 
