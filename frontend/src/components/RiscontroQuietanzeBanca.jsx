@@ -29,7 +29,33 @@ const GRUPPI = [
     esito: 'intervento', testo: 'Addebito non trovato',
   },
   { chiave: 'quietanze_incomplete', etichetta: 'Quietanze illeggibili', esito: 'verificare', testo: 'Dati mancanti' },
+  {
+    chiave: 'tributi_ripetuti', etichetta: 'Stesso tributo due volte',
+    esito: 'intervento', testo: 'Versato due volte',
+  },
 ];
+
+const TIPI_VERSAMENTO = {
+  ordinario: 'Ordinario',
+  ravvedimento: 'Ravvedimento',
+  regolarizzazione: 'Regolarizzazione RC01',
+};
+
+// Da dove viene la delega: la data d'invio sta nelle prime cifre del protocollo.
+function Invio({ p }) {
+  if (!p?.inviato_il_it) return null;
+  const parti = [
+    `inviata il ${p.inviato_il_it}`,
+    p.programmato === true ? 'programmata' : p.programmato === false ? 'non programmata' : null,
+    TIPI_VERSAMENTO[p.tipo_versamento] || null,
+    p.senza_modello ? 'senza modello del commercialista' : null,
+  ].filter(Boolean);
+  return (
+    <span style={{ fontSize: 11.5, color: COLORS.textMuted }} data-testid="invio-delega">
+      {parti.join(' · ')}
+    </span>
+  );
+}
 
 const stileChip = attivo => ({
   minHeight: 44,
@@ -84,8 +110,11 @@ export default function RiscontroQuietanzeBanca({ anno }) {
       .sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
   }, [dati, gruppo]);
 
-  const quietanzeDi = r => r.quietanze || [];
-  const addebitiDi = r => (r.addebito ? [r.addebito] : r.candidati || (r.movimento_id ? [r] : []));
+  const quietanzeDi = r => r.quietanze || (r.pagamenti || []).flatMap(p => p.quietanze || []);
+  const addebitiDi = r => {
+    if (r.pagamenti) return r.pagamenti.map(p => p.addebito).filter(Boolean);
+    return r.addebito ? [r.addebito] : r.candidati || (r.movimento_id ? [r] : []);
+  };
 
   const colonne = [
     {
@@ -125,8 +154,14 @@ export default function RiscontroQuietanzeBanca({ anno }) {
             ) : null}
             <span style={{ fontSize: 11.5, color: COLORS.textMuted }}>
               {r.protocollo ? `prot. ${r.protocollo}` : qs[0].filename}
-              {qs.length > 1 ? ` · ${qs.length} copie dello stesso pagamento` : ''}
+              {qs.length > 1 && !r.pagamenti ? ` · ${qs.length} copie dello stesso pagamento` : ''}
             </span>
+            {r.pagamenti ? r.pagamenti.map(p => (
+              <span key={p.chiave} style={{ display: 'inline-flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 11.5 }}>prot. {p.protocollo} · {formatEuro(p.importo)}</span>
+                <Invio p={p} />
+              </span>
+            )) : <Invio p={r} />}
             {(r.ravvedimento_di || []).length > 0 && (
               <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
                 <Esito esito="verificare" data-testid={`ravvedimento-${r._id}`}>Ravvedimento</Esito>

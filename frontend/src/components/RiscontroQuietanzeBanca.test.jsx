@@ -22,6 +22,21 @@ const RISPOSTA = {
     addebito: { movimento_id: 'm1', data: '2026-08-20', importo: 654.33 },
     motivazione: 'importo 654.33 EUR uguale al centesimo; DATA INCASSO nella causale: 20/08/2026',
     ravvedimento_di: [{ f24_id: 'orig', pdf_url: '/api/f24-public/pdf/orig' }],
+    inviato_il_it: '20/08/2026', programmato: false, tipo_versamento: 'ravvedimento', senza_modello: false,
+  }],
+  tributi_ripetuti: [{
+    chiave: 'a||b', data: '2026-06-16', righe: '3918 2026 3574.00',
+    motivazione: 'stesse righe (3918 2026 3574.00) in 2 deleghe versate il 16/06/2026',
+    pagamenti: [
+      { chiave: 'a', protocollo: '26060212304532735/000001', importo: 1969.1, inviato_il_it: '02/06/2026',
+        programmato: true, tipo_versamento: 'ordinario', senza_modello: true,
+        quietanze: [{ id: 'qa', pdf_url: '/api/f24-public/pdf/qa' }],
+        addebito: { movimento_id: 'ma', data: '2026-06-17', importo: 1969.1 } },
+      { chiave: 'b', protocollo: '26061631545528157/000001', importo: 2179.1, inviato_il_it: '16/06/2026',
+        programmato: false, tipo_versamento: 'ordinario', senza_modello: true,
+        quietanze: [{ id: 'qb', pdf_url: '/api/f24-public/pdf/qb' }],
+        addebito: { movimento_id: 'mb', data: '2026-06-17', importo: 2179.1 } },
+    ],
   }],
   da_verificare: [],
   addebiti_senza_quietanza: [{
@@ -61,6 +76,23 @@ describe('Quietanze F24 e addebiti in banca', () => {
     await waitFor(() => expect(screen.getByTestId('ravvedimento-riscontrati:p1')).toBeTruthy());
     expect(screen.getByTestId('ravvedimento-riscontrati:p1').textContent).toBe('Ravvedimento');
     expect(screen.getByTestId('apri-originale-orig')).toBeTruthy();
+    expect(screen.getAllByTestId('invio-delega')[0].textContent)
+      .toContain('inviata il 20/08/2026 · non programmata · Ravvedimento');
+  });
+
+  it('lo stesso tributo in due deleghe mostra entrambe, con invio e addebito', async () => {
+    api.get.mockResolvedValueOnce({ data: RISPOSTA });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Versato due volte')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('filtro-tributi_ripetuti'));
+    const invii = screen.getAllByTestId('invio-delega').map(e => e.textContent);
+    expect(invii).toEqual([
+      'inviata il 02/06/2026 · programmata · Ordinario · senza modello del commercialista',
+      'inviata il 16/06/2026 · non programmata · Ordinario · senza modello del commercialista',
+    ]);
+    expect(screen.getByTestId('apri-addebito-ma')).toBeTruthy();
+    expect(screen.getByTestId('apri-addebito-mb')).toBeTruthy();
   });
 
   it('il filtro mostra un gruppo solo, il più recente per primo', async () => {
@@ -69,7 +101,7 @@ describe('Quietanze F24 e addebiti in banca', () => {
     await waitFor(() => expect(screen.getByText('Riscontrato')).toBeTruthy());
 
     const esiti = screen.getAllByTestId(/^esito-/).map(e => e.textContent);
-    expect(esiti).toEqual(['Quietanza mancante', 'Riscontrato']);
+    expect(esiti).toEqual(['Quietanza mancante', 'Riscontrato', 'Versato due volte']);
 
     fireEvent.click(screen.getByTestId('filtro-riscontrati'));
     expect(screen.queryByText('Quietanza mancante')).toBeNull();

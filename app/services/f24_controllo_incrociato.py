@@ -35,6 +35,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set
 from app.db_collections import (
     COLL_ESTRATTO_CONTO, COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_QUIETANZE_F24,
 )
+from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 from app.engines import tributi_engine as te
 from app.services.conti_pos import data_italiana
 from app.services.f24_payment_evidence import (
@@ -1015,6 +1016,35 @@ def url_pdf_quietanza(q: Dict[str, Any]) -> Optional[str]:
     return f"/api/f24-public/pdf/{q['id']}"
 
 
+def data_invio_protocollo(protocollo: Any) -> Optional[str]:
+    """Il giorno in cui la delega e' stata inviata, dalle prime cifre del protocollo.
+
+    Il protocollo telematico dell'AdE comincia con AAMMGG dell'invio
+    («26060212304532735/000001» = 02/06/2026). Una delega inviata prima del
+    giorno di versamento e' stata programmata (di norma dall'intermediario);
+    una inviata il giorno stesso no.
+    """
+    m = re.match(r"(\d{2})(\d{2})(\d{2})\d", str(protocollo or "").strip())
+    if not m:
+        return None
+    try:
+        return date(2000 + int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+    except ValueError:
+        return None
+
+
+def tipo_versamento_righe(righe: Iterable[Dict[str, Any]]) -> Optional[str]:
+    """Ordinario, ravvedimento (sanzioni o interessi) o regolarizzazione (RC01)."""
+    codici = {str(r.get("codice") or "").upper() for r in righe if r.get("codice")}
+    if not codici:
+        return None
+    if "RC01" in codici:
+        return "regolarizzazione"
+    if codici & CODICI_RAVVEDIMENTO:
+        return "ravvedimento"
+    return "ordinario"
+
+
 def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Le quietanze raggruppate per pagamento: protocollo, data e saldo uguali.
 
@@ -1033,6 +1063,9 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
     pagamenti = []
     for chiave, copie in gruppi.items():
         prima = copie[0]
+        inviato_il = data_invio_protocollo(prima.get("protocollo_originale"))
+        ravvedimento_di = sorted({str(o) for q in copie for o in (q.get("ravvedimento_di") or [])})
+        righe = prima.get("righe") or []
         pagamenti.append({
             "chiave": chiave,
             "protocollo": prima.get("protocollo_originale"),
@@ -1040,7 +1073,13 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
             "importo_cents": prima.get("importo_cents") or None,
             "quietanze": [{"id": q.get("id"), "fonte": q.get("fonte"), "filename": q.get("filename"),
                            "pdf_url": url_pdf_quietanza(q)} for q in copie],
-            "ravvedimento_di": sorted({str(o) for q in copie for o in (q.get("ravvedimento_di") or [])}),
+            "ravvedimento_di": ravvedimento_di,
+            "inviato_il": inviato_il,
+            "programmato": (inviato_il < prima["data"]) if inviato_il and prima.get("data") else None,
+            "tipo_versamento": tipo_versamento_righe(righe),
+            # Nessun modello del commercialista collegato, nemmeno come ravvedimento.
+            "senza_modello": not ravvedimento_di and not any(q.get("f24_ids") for q in copie),
+            "_righe": righe,
         })
     return pagamenti
 
@@ -1067,6 +1106,11 @@ def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
         "data_it": data_italiana(p["data"]),
         "importo": euro(p["importo_cents"]),
         "quietanze": p["quietanze"],
+        "inviato_il": p.get("inviato_il"),
+        "inviato_il_it": data_italiana(p["inviato_il"]) if p.get("inviato_il") else None,
+        "programmato": p.get("programmato"),
+        "tipo_versamento": p.get("tipo_versamento"),
+        "senza_modello": p.get("senza_modello"),
         # Pagamento di ravvedimento: gli F24 del commercialista che ravvede.
         "ravvedimento_di": [
             {"f24_id": oid, "pdf_url": f"/api/f24-public/pdf/{oid}"} for oid in p.get("ravvedimento_di") or []
@@ -1158,7 +1202,10 @@ def riscontri_quietanze_banca(
         for m in addebiti if str(m.get("id") or m.get("fingerprint")) not in usati
     ]
     ordina = lambda righe: sorted(righe, key=lambda r: r.get("data") or "", reverse=True)  # noqa: E731
+    addebito_di = {v["chiave"]: v["addebito"] for v in riscontri}
+    ripetuti = tributi_versati_due_volte(pagamenti, addebito_di)
     return {
+        "tributi_ripetuti": ordina(ripetuti),
         "riscontrati": ordina(riscontri),
         "da_verificare": ordina(da_verificare),
         "quietanze_senza_addebito": ordina(senza_addebito),
@@ -1170,12 +1217,79 @@ def riscontri_quietanze_banca(
             "da_verificare": len(da_verificare), "quietanze_senza_addebito": len(senza_addebito),
             "addebiti_senza_quietanza": len(addebiti_senza),
             "fuori_periodo_estratto": fuori_periodo, "quietanze_incomplete": len(incompleti),
+            "tributi_ripetuti": len(ripetuti),
         },
     }
 
 
+def tributi_versati_due_volte(
+    pagamenti: Iterable[Dict[str, Any]], addebito_di: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """La stessa riga a debito (sezione, codice, periodo, importo al centesimo) in
+    due deleghe diverse versate lo stesso giorno.
+
+    Le rate (RC01 mensile, avvisi rateizzati) ripetono la stessa riga in giorni
+    diversi e restano fuori; due copie della stessa quietanza sono gia' un
+    pagamento solo. Il 16/06/2026 l'IMU 3918 da 3.574,00 EUR e il credito 6099
+    da 1.604,90 EUR erano in una delega programmata il 02/06 e in una inviata il
+    giorno stesso, entrambe addebitate. Si dichiara il fatto, non si decide.
+    """
+    addebito_di = addebito_di or {}
+    per_riga: Dict[Tuple, set] = {}
+    per_chiave = {}
+    for p in pagamenti:
+        if not p.get("data"):
+            continue
+        per_chiave[p["chiave"]] = p
+        for r in p.get("_righe") or []:
+            if r.get("importo_debito_cents"):
+                k = (p["data"], r.get("sezione"), r.get("codice"), r.get("anno"), r.get("mese"),
+                     r["importo_debito_cents"])
+                per_riga.setdefault(k, set()).add(p["chiave"])
+    gruppi: Dict[Tuple[str, ...], List[Tuple]] = {}
+    for k, chiavi in per_riga.items():
+        if len(chiavi) > 1:
+            gruppi.setdefault(tuple(sorted(chiavi)), []).append(k)
+    esito = []
+    for chiavi, righe in gruppi.items():
+        coinvolti = [per_chiave[c] for c in chiavi]
+        viste = []
+        for p in coinvolti:
+            v = _vista_pagamento(p)
+            v["addebito"] = addebito_di.get(p["chiave"])
+            viste.append(v)
+        descr = ", ".join(
+            f"{codice} {_periodo(anno, mese)} {cents / 100:.2f}"
+            for _data, _sez, codice, anno, mese, cents in sorted(righe, key=str)
+        )
+        invii = ", ".join(
+            f"inviata il {v['inviato_il_it'] or '?'}"
+            + (f", addebitata il {v['addebito']['data_it']}" if v.get("addebito") else ", addebito non trovato")
+            for v in viste
+        )
+        esito.append({
+            "chiave": "||".join(chiavi),
+            "data": coinvolti[0]["data"],
+            "data_it": data_italiana(coinvolti[0]["data"]),
+            "righe": descr,
+            "pagamenti": viste,
+            "motivazione": (
+                f"stesse righe ({descr}) in {len(viste)} deleghe versate il "
+                f"{data_italiana(coinvolti[0]['data'])} ({invii}): da verificare col commercialista"
+            ),
+        })
+    return esito
+
+
+def _periodo(anno: Any, mese: Any) -> str:
+    if anno and mese:
+        return f"{int(mese):02d}/{anno}"
+    return str(anno or "")
+
+
 ALERT_QUIETANZA_SENZA_ADDEBITO = "F24_QUIETANZA_SENZA_ADDEBITO"
 ALERT_ADDEBITO_SENZA_QUIETANZA = "BNK_F24_SENZA_QUIETANZA"
+ALERT_TRIBUTO_DUE_VOLTE = "F24_TRIBUTO_VERSATO_DUE_VOLTE"
 
 
 async def applica_riscontri_quietanze(
@@ -1228,6 +1342,13 @@ async def applica_riscontri_quietanze(
             f"Quietanza F24 del {q['data_it']} ({q['importo']:.2f} EUR, protocollo "
             f"{q['protocollo'] or '-'}): {q['motivazione']}", db,
             extra={"record": [q]},
+        )
+        scritti["alert_aperti"] += int(bool(creato))
+    for t in esito.get("tributi_ripetuti") or []:
+        creato = await genera_alert(
+            ALERT_TRIBUTO_DUE_VOLTE, t["chiave"], COLL_QUIETANZE_F24,
+            f"F24 del {t['data_it']}: {t['motivazione']}", db,
+            extra={"record": t["pagamenti"]},
         )
         scritti["alert_aperti"] += int(bool(creato))
     for m in esito["addebiti_senza_quietanza"]:

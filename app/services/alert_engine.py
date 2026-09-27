@@ -326,6 +326,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Addebito F24 non riconciliato",
         "condizione_chiusura": "Match confermato"
     },
+    "F24_TRIBUTO_VERSATO_DUE_VOLTE": {
+        "modulo": "f24",
+        "severita": "warning",
+        "titolo": "Stesso tributo in due deleghe F24 dello stesso giorno",
+        "condizione_chiusura": "Verificato col commercialista (rimborso, compensazione o delega annullata)",
+    },
     "BNK_F24_SENZA_QUIETANZA": {
         "modulo": "banca",
         "severita": "warning",
