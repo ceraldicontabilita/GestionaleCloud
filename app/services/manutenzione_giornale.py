@@ -26,7 +26,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.constants.fattura_attiva import fattura_attiva
 from app.services.registrazione_contabile import (
+    FILTRO_SCRITTURA_ATTIVA,
     COLL_MOVIMENTI,
     _annota_esito,
     _audit,
@@ -45,20 +47,15 @@ _locks: Dict[str, asyncio.Lock] = {}
 _tasks: Dict[str, asyncio.Task] = {}
 _PAUSA = 0.1
 
-# Stesso predicato "fattura attiva" del recupero del pregresso: una fattura
-# archiviata o cancellata si storna ma non si registra di nuovo.
-_STATI_FATTURA_NON_ATTIVA = {"deleted", "archived", "archiviata"}
-
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _fattura_attiva(fattura: Dict[str, Any]) -> bool:
-    return (fattura.get("status") not in _STATI_FATTURA_NON_ATTIVA
-            and fattura.get("entity_status") != "deleted"
-            and fattura.get("stato_import") != "archivio_storico"
-            and fattura.get("duplicate_review_required") is not True)
+    """Criterio unico di fattura attiva, piu' la collisione ancora da
+    verificare che anche il recupero del pregresso tiene fuori: una fattura
+    archiviata o cancellata si storna ma non si registra di nuovo."""
+    return fattura_attiva(fattura) and fattura.get("duplicate_review_required") is not True
 
 
 def motivi_rettifica(scrittura: Dict[str, Any]) -> List[str]:
@@ -96,6 +93,16 @@ async def _riregistra(db, fattura_id: str) -> Dict[str, Any]:
         return {"stato": "saltato", "motivo": "fattura non piu' in archivio"}
     if not _fattura_attiva(fattura):
         return {"stato": "saltato", "motivo": "fattura non attiva: resta solo lo storno"}
+    # La fattura ha gia' un'altra scrittura valida (doppione registrato due
+    # volte, o rettifica gia' ripresa dal pregresso): una terza no.
+    valida = await db[COLL_MOVIMENTI].find_one(
+        {"tipo": "fattura_acquisto", "fattura_id": fattura_id,
+         "stato": {"$ne": "stornato"}, **FILTRO_SCRITTURA_ATTIVA},
+        {"_id": 0, "id": 1})
+    if valida:
+        await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+            "registrata_contabilita": True, "movimento_contabile_id": valida.get("id")}})
+        return {"stato": "gia_registrato", "movimento_id": valida.get("id")}
     esito = await registra_fattura(db, fattura, force=True)
     await _annota_esito(db, "invoices", fattura_id, esito)
     return esito

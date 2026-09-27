@@ -127,8 +127,19 @@ def _anno_da_data(data: Optional[str]) -> Optional[int]:
 
 
 COLL_NUMERI_PROTOCOLLO = "protocollo_registrazioni"
-_numerazione_lock = asyncio.Lock()
+_numerazione_lock: Optional[asyncio.Lock] = None
+_numerazione_loop = None
 _TENTATIVI_NUMERO = 200
+
+
+def _lock_numerazione() -> asyncio.Lock:
+    """Un lock per event loop: un ``asyncio.Lock`` conteso resta legato al
+    loop in cui e' nato (i test ne aprono uno per caso)."""
+    global _numerazione_lock, _numerazione_loop
+    loop = asyncio.get_running_loop()
+    if _numerazione_lock is None or _numerazione_loop is not loop:
+        _numerazione_lock, _numerazione_loop = asyncio.Lock(), loop
+    return _numerazione_lock
 
 
 async def _massimo_numero(db, collezione: str, campo: str, anno: Optional[int]) -> int:
@@ -157,7 +168,7 @@ async def _prossimo_numero(db, anno: Optional[int]) -> int:
     prenotazioni. `{"anno": None}` intercetta anche i documenti senza il
     campo (fallback per scritture senza data individuabile)."""
     etichetta_anno = anno if anno is not None else "senza_anno"
-    async with _numerazione_lock:
+    async with _lock_numerazione():
         numero = max(
             await _massimo_numero(db, COLL_MOVIMENTI, "numero_registrazione", anno),
             await _massimo_numero(db, COLL_NUMERI_PROTOCOLLO, "numero", anno),

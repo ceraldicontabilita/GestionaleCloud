@@ -217,6 +217,25 @@ def test_rettifica_fattura_ancora_squadrata_resta_da_verificare():
     assert "FQ" not in gia
 
 
+def test_rettifica_non_crea_una_terza_scrittura_se_ne_esiste_una_valida():
+    db = _db()
+    _run(db["invoices"].insert_one(_fattura("FD")))
+    buona = _run(motore.registra_fattura(db, _fattura("FD")))["movimento"]
+    _run(db["movimenti_contabili"].insert_one({
+        "id": "MD", "tipo": "fattura_acquisto", "fattura_id": "FD", "anno": 2026,
+        "data": "2026-05-10", "numero_registrazione": 99, "stato": "registrato",
+        "righe": [{"conto_codice": "05.01.01", "dare": 100, "avere": 0},
+                  {"conto_codice": "02.01.01", "dare": 0, "avere": 90}],
+    }))
+    esito = _run(manutenzione.rettifica_scritture_fatture(db, dry_run=False))
+    assert esito["stornate"] == 1
+    assert esito["esiti_riregistrazione"] == {"gia_registrato": 1}
+    valide = _run(db["movimenti_contabili"].find(
+        {"tipo": "fattura_acquisto", "fattura_id": "FD", "stato": {"$ne": "stornato"}},
+        {"_id": 0, "id": 1}).to_list(None))
+    assert [v["id"] for v in valide] == [buona["id"]]
+
+
 # ── Punto 4: scritture cancellate ─────────────────────────────────────────
 
 def _seed_cancellate(db):
