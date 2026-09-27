@@ -21,6 +21,7 @@ const RISPOSTA = {
     quietanze: [{ id: 'q1', pdf_url: '/api/f24-public/pdf/q1', filename: 'q1.pdf' }],
     addebito: { movimento_id: 'm1', data: '2026-08-20', importo: 654.33 },
     motivazione: 'importo 654.33 EUR uguale al centesimo; DATA INCASSO nella causale: 20/08/2026',
+    ravvedimento_di: [{ f24_id: 'orig', pdf_url: '/api/f24-public/pdf/orig' }],
   }],
   da_verificare: [],
   addebiti_senza_quietanza: [{
@@ -51,6 +52,15 @@ describe('Quietanze F24 e addebiti in banca', () => {
       .toBe('/riconciliazione/banca?movimento=m1');
     expect(screen.getByTestId('apri-quietanza-riscontrati:p1')).toBeTruthy();
     expect(screen.getByText(/234 quietanze/)).toBeTruthy();
+  });
+
+  it("un pagamento di ravvedimento porta l'etichetta e apre l'F24 del commercialista", async () => {
+    api.get.mockResolvedValueOnce({ data: RISPOSTA });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByTestId('ravvedimento-riscontrati:p1')).toBeTruthy());
+    expect(screen.getByTestId('ravvedimento-riscontrati:p1').textContent).toBe('Ravvedimento');
+    expect(screen.getByTestId('apri-originale-orig')).toBeTruthy();
   });
 
   it('il filtro mostra un gruppo solo, il più recente per primo', async () => {

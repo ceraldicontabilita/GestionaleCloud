@@ -515,11 +515,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   del titolare aprono un'attesa per periodo; la soddisfa solo l'addebito in banca, la quietanza
   la lascia `DA_VERIFICARE`. Legge il registro unico F24, non ne tiene un secondo; l'importo
   viene dal modello arrivato, mai stimato. 3802/3848 sono rate del saldo dell'anno prima.
-- Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`,
-  `mese`), non sul modello: la data in cui l'F24 è stato pagato è un'altra
-  cosa. L'IVA mensile sono i codici 6001–6012, uno per mese.
-- **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è
-  autorizzato.
+- Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`, `mese`), non sul modello: la data in cui
+  l'F24 è stato pagato è un'altra cosa. L'IVA mensile sono i codici 6001–6012.
+- **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è autorizzato.
+- **F24 ravveduto** (`f24_ravvedimento.py`): l'originale del commercialista resta; modello o quietanza con sanzioni gli si affianca
+  (RAVVEDIMENTO) se ogni riga codice+periodo torna al centesimo, o è maggiore solo nel periodo sanzionato (interessi cumulati).
 - **Un F24 è il suo contenuto fiscale** (contribuente, data di versamento, saldo, righe codice/periodo/importo),
   non il PDF: `salva_f24` non crea un secondo modello da un'altra copia del file e ne annota la provenienza
   (`f24_doppioni.py`). I doppioni vanno in quarantena reversibile (`status=eliminato`, `motivo_quarantena`,
