@@ -5,7 +5,7 @@ endpoint.
 """
 import asyncio
 
-from app.routers import f24_analisi, scadenze
+from app.routers import f24_analisi
 from app.routers.accounting import contabilita_gestionale as cg
 from app.services.riconciliazione_smart import collegamenti_movimento, semanticizza_risultato
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
@@ -77,61 +77,6 @@ def test_libro_giornale_filtra_per_conto_operativo_o_cee(monkeypatch):
     assert solo_cassa["totale_disponibile"] == 1
     assert [s["id"] for s in per_cee["scritture"]] == ["S1"]  # 02.01.01 → 33.03.01 CEE
     assert tutte["totale"] == 2
-
-
-# ── Scadenza → movimento bancario che l'ha pagata ─────────────────────────
-
-def test_movimento_da_evidenza_legge_il_formato_reale():
-    assert scadenze._movimento_da_evidenza(
-        "banca:EC-2026-02-17-11.68-4b86e9dd:0b440588-01cf-4fb1-bb93-ba08a4ab502d"
-    ) == "EC-2026-02-17-11.68-4b86e9dd"
-    assert scadenze._movimento_da_evidenza("cassa:qualcosa") is None
-    assert scadenze._movimento_da_evidenza(None) is None
-
-
-def test_scadenze_pagate_espongono_il_movimento_bancario_che_le_ha_pagate():
-    from datetime import date
-
-    db = _db("pr16-scadenze")
-    oggi = date.today()
-    anno = oggi.year
-
-    async def scenario():
-        await db["invoices"].insert_many([
-            {"id": "F-pag", "invoice_number": "IT6IKYJABEI", "invoice_date": f"{anno}-02-13",
-             "supplier_name": "Amazon Business EU", "total_amount": 11.68, "pagato": True,
-             "stato_pagamento": "pagata", "data_pagamento": f"{anno}-02-17"},
-            # aperta con scadenza (data + 30 gg) ancora futura: visibile anche senza passate
-            {"id": "F-aperta", "invoice_number": "9/2026", "invoice_date": oggi.isoformat(),
-             "supplier_name": "Fornitore", "total_amount": 50.0},
-            {"id": "F-solo-fattura", "invoice_number": "10/2026", "invoice_date": f"{anno}-02-21",
-             "supplier_name": "Fornitore", "total_amount": 70.0, "pagato": True,
-             "movimento_bancario_id": "EC-2026-02-25-70.00-abc"},
-        ])
-        await db["scadenziario_fornitori"].insert_one({
-            "id": "F-pag::0::0", "fattura_id": "F-pag", "pagato": True,
-            "data_pagamento": f"{anno}-02-17", "metodo_pagamento_effettivo": "SDD/RID",
-            "evidenze_pagamento": [{
-                "metodo": "SDD/RID", "importo": 11.68, "data_pagamento": f"{anno}-02-17",
-                "evidenza_id": "banca:EC-2026-02-17-11.68-4b86e9dd:F-pag",
-            }],
-        })
-        con_passate = await scadenze._get_fatture_in_scadenza(db, anno, True, giorni_limite=100000)
-        solo_aperte = await scadenze._get_fatture_in_scadenza(db, anno, False, giorni_limite=100000)
-        return con_passate, solo_aperte
-
-    con_passate, solo_aperte = _run(scenario())
-    per_id = {s["id"]: s for s in con_passate}
-    assert per_id["F-pag"]["pagata"] is True
-    assert per_id["F-pag"]["movimento_bancario_id"] == "EC-2026-02-17-11.68-4b86e9dd"
-    assert per_id["F-pag"]["pagamento"]["metodo"] == "SDD/RID"
-    assert per_id["F-pag"]["pagamento"]["data_pagamento"] == f"{anno}-02-17"
-    # ripiego: movimento scritto sulla fattura dalla riconciliazione
-    assert per_id["F-solo-fattura"]["movimento_bancario_id"] == "EC-2026-02-25-70.00-abc"
-    assert per_id["F-aperta"]["pagata"] is False and "pagamento" not in per_id["F-aperta"]
-    assert all("_fattura" not in s for s in con_passate)
-    # senza include_passate il comportamento storico non cambia: solo aperte
-    assert [s["id"] for s in solo_aperte] == ["F-aperta"]
 
 
 # ── F24 → quietanza / movimento bancario ──────────────────────────────────

@@ -1092,19 +1092,14 @@ export default function GestioneCespiti() {
                     {fmt(scadenzario.riepilogo.totale_da_pagare)}
                   </p>
                 </div>
-                <div style={styles.statBox('#fef2f2')}>
-                  <p style={styles.statLabel('#dc2626')}>Scaduto</p>
-                  <p style={styles.statValue('#b0362b')}>
-                    {fmt(scadenzario.riepilogo.totale_scaduto)}
-                  </p>
-                </div>
-                <div style={styles.statBox('#fffbeb')}>
-                  <p style={styles.statLabel('#d97706')}>7gg</p>
-                  <p style={styles.statValue('#8a6410')}>
-                    {scadenzario?.riepilogo?.num_prossimi_7gg}
-                  </p>
-                </div>
+                {/* Niente «Scaduto» né «7gg»: le fatture fornitore non hanno
+                    scadenza, decide il titolare quando pagarle. */}
               </div>
+              {scadenzario.nota && (
+                <p style={{ fontSize: 12, color: '#5f5c55', margin: '0 0 12px' }}>
+                  {scadenzario.nota}
+                </p>
+              )}
               <div style={styles.card}>
                 <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f0e9' }}>
                   <span style={{ fontSize: 12, fontWeight: '600' }}>Top Fornitori</span>
