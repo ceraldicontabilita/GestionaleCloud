@@ -64,6 +64,41 @@ def _coerenza_xml_pos(
     return differenza, differenza >= -abs(float(tolleranza_euro))
 
 
+def _giornate_senza_xml(
+    giorni: List[str], corr_by_date: Dict[str, Dict[str, Any]], pos_manuali: Dict[str, float],
+    *, giorni_massimi: int = 2,
+) -> tuple[Dict[str, str], Dict[str, List[str]]]:
+    """Giornate con POS e senza corrispettivo che la chiusura successiva copre.
+
+    L'RT a volte chiude due giorni in una volta (progressivi consecutivi): la
+    chiusura del giorno dopo contiene anche l'elettronico del giorno senza XML.
+    Ritorna ``{giorno senza XML: giorno della chiusura}`` e, per ogni chiusura,
+    i giorni che porta con se'. Una chiusura che copre si cerca al piu'
+    ``giorni_massimi`` giorni dopo; oltre, o se non c'e' ancora, il giorno resta
+    in attesa dell'XML e non entra nel saldo.
+    """
+    chiusa_con: Dict[str, str] = {}
+    uniti: Dict[str, List[str]] = {}
+    in_attesa: List[str] = []
+    for giorno in giorni:
+        c_row = corr_by_date.get(giorno)
+        if c_row and _importo_elettronico_xml(c_row) > 0:
+            quando = datetime.strptime(giorno, "%Y-%m-%d")
+            coperti = [g for g in in_attesa
+                       if (quando - datetime.strptime(g, "%Y-%m-%d")).days <= giorni_massimi]
+            for g in coperti:
+                chiusa_con[g] = giorno
+            if coperti:
+                uniti[giorno] = coperti
+            in_attesa = []
+        elif c_row:
+            # Una chiusura senza elettronico (solo contanti) non copre nessuno.
+            in_attesa = []
+        elif float(pos_manuali.get(giorno) or 0) > 0:
+            in_attesa.append(giorno)
+    return chiusa_con, uniti
+
+
 def _importo_elettronico_xml(corrispettivo: Dict[str, Any]) -> float:
     """Legge la quota elettronica sia dal modello canonico sia da quello Drive storico.
 
@@ -1454,6 +1489,15 @@ async def controllo_incassi_due_fasi(
             )
         gruppi_accr[d] = g
 
+    # Una giornata con POS e senza nessun corrispettivo non e' uno scarto:
+    # o l'RT l'ha chiusa col giorno dopo (una chiusura per due giorni,
+    # progressivi consecutivi), e allora si confronta insieme a quella
+    # chiusura, o l'XML non e' ancora arrivato. Contarla come «XML meno POS»
+    # pieno sommava a vuoto i giorni doppi e i giorni in attesa: il 27/09/2026
+    # il saldo diceva -4.595,30 EUR, e senza i giorni in attesa era +8.102,50.
+    chiusa_con, pos_giorni_uniti = _giornate_senza_xml(sorted(date_note), corr_by_date, pos_manuali)
+    stats["fase1_giornate_unite"] = len(chiusa_con)
+
     saldo_progressivo = 0.0
     stats["fase2_pos_totale"] = 0.0
     stats["fase2_accrediti_totale"] = 0.0
@@ -1508,7 +1552,18 @@ async def controllo_incassi_due_fasi(
         # FASE 1: solo se abbiamo entrambi i dati, altrimenti non possiamo confrontare
         # Se il corrispettivo è provvisorio/manca_xml, non abbiamo xml_elettronico
         # → stato speciale "in_attesa_xml"
-        if stato_corr in ("provvisorio", "manca_xml") and pos_man_presente:
+        giorni_uniti = pos_giorni_uniti.get(d, [])
+        if d in chiusa_con:
+            # Chiusa dall'RT col giorno dopo: il confronto sta su quella chiusura.
+            diff_serale = 0.0
+            stato_serale = "chiusa_col_giorno_dopo"
+            alert_serale = None
+        elif not c_row and pos_man > 0:
+            # Nessun XML per questo giorno e nessuna chiusura dopo che lo copra.
+            diff_serale = 0.0
+            stato_serale = "in_attesa_xml"
+            alert_serale = None
+        elif stato_corr in ("provvisorio", "manca_xml") and pos_man_presente:
             # Abbiamo il POS serale ma non i dati fiscali → aspettiamo XML
             diff_serale = 0.0
             stato_serale = "in_attesa_xml"
@@ -1516,8 +1571,10 @@ async def controllo_incassi_due_fasi(
         elif xml_el > 0 or pos_man_presente:
             # Convenzione canonica: XML - POS reale. Se l'XML e' maggiore,
             # tutti i pagamenti carta risultano coperti dagli scontrini emessi.
+            # Una chiusura che copre anche il giorno prima porta il suo POS.
+            pos_confronto = round(pos_man + sum(pos_manuali.get(g) or 0 for g in giorni_uniti), 2)
             diff_serale, xml_copre_pos = _coerenza_xml_pos(
-                xml_el, pos_man, tolleranza_euro
+                xml_el, pos_confronto, tolleranza_euro
             )
             if xml_copre_pos:
                 stato_serale = "ok"
@@ -1657,6 +1714,9 @@ async def controllo_incassi_due_fasi(
                 conti_pos.SUMUP: fonti_pos_per_circuito.get(d, {}).get(conti_pos.SUMUP),
             },
             "diff_serale": diff_serale,
+            # La chiusura che copre anche il giorno prima: quali giorni e con che POS.
+            "giorni_nella_chiusura": giorni_uniti,
+            "chiusa_con": chiusa_con.get(d),
             "stato_serale": stato_serale,
             "alert_compensazione": alert_serale,
             # Fase 2 (v4, a gruppi di accredito)

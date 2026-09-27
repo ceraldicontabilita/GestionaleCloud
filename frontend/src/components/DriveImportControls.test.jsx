@@ -56,9 +56,10 @@ describe('Controlli import Drive in Documenti', () => {
     render(<DriveFattureImportCard />);
     fireEvent.click(await screen.findByRole('button', { name: 'Importa tutto da Drive' }));
 
+    // Sul runner della CI il clic arriva al POST oltre il secondo di default.
     await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith('/api/documenti/cartella-unica/giro?tutto=true')
-    );
+      expect(api.post).toHaveBeenCalledWith('/api/documenti/cartella-unica/giro?tutto=true'),
+    { timeout: 5000 });
     expect(await screen.findByText(/In cartella restano 0 file/, {}, { timeout: 7000 }))
       .toBeInTheDocument();
   }, 10000);

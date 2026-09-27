@@ -859,6 +859,16 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] versamenti: %s: %s", type(e).__name__, e)
         try:
+            # Carta SumUp: stipendi, fatture, spese di lite e Prima Nota sul suo
+            # conto. Qui e non nel giro lungo: quello ogni deploy lo interrompe.
+            from app.services.sumup_conto import abbina_movimenti_sumup
+            r = await abbina_movimenti_sumup(db)
+            logger.info("[SCHEDULER-BANCA] carta SumUp stipendi=%s fatture=%s citate=%s",
+                        r.get("stipendi_abbinati"), r.get("fatture_abbinate"),
+                        r.get("fatture_citate_abbinate"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] carta SumUp: %s: %s", type(e).__name__, e)
+        try:
             # Prima del fascicolo: l'uscita che cita una sentenza va in Banca
             # come spesa di lite, non resta senza categoria.
             from app.services.atti_giudiziari import collega_pagamenti
