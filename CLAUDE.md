@@ -405,7 +405,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   la giornata intera, non una riga. Il totale del corrispettivo XML è l'**incassato** (contanti +
   elettronico): lo scarto verso imponibile + IVA senza voce dichiarata si scarta.
 - POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre
-  fatti distinti. Coerenza XML↔POS (`controllo-due-fasi`): un giorno con POS e **senza XML** non è uno scarto — se l'RT l'ha chiuso col giorno dopo si confronta con quella chiusura (`_giornate_senza_xml`), altrimenti resta «attendo XML», fuori dal saldo. SumUp corrente dall'API; Numia corrente dalla chiusura
+  fatti distinti. Coerenza XML↔POS (`controllo-due-fasi`): un giorno con POS e **senza XML** non è uno scarto — se l'RT l'ha chiuso col giorno dopo si confronta con quella chiusura (`_giornate_senza_xml`), altrimenti resta «attendo XML», fuori dal saldo (anche nel mensile). Un Numia senza chiusura letto dall'accredito vale per la fase 1, mai come prova contro BPM (`senza_chiusura_terminale`). SumUp corrente dall'API; Numia corrente dalla chiusura
   manuale serale; Numia storico ricostruito dagli export del gestore,
   deduplicati e accorpati per giorno. Tutte e tre creano l'attesa bancaria;
   l'estratto conto può soltanto riconciliarla. Una vendita SumUp si conta una volta: la copia `LEGACY-SUMUP-…` (codice in `id_trans`) cede alla gemella dell'API (`transazioni_del_periodo`); le chiusure oltre la finestra dei 30 giorni si riallineano ogni giorno (`riallinea_chiusure_da_archivio`), e la risincronizzazione non stacca mai una vendita dal suo `payout_id` (l'API delle vendite non lo riporta).
