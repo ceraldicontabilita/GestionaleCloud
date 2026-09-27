@@ -318,3 +318,37 @@ def test_causale_intera_dal_csv_stacca_il_rimborso_dalla_busta():
     assert banca[0]["categoria"] == "Finanziamento soci"
     assert banca[0]["riclassificata_da"] == "Stipendi"
     assert banca[0]["conto_contropartita"] == "31.03.15"
+
+
+def test_competenza_dichiarata_dal_titolare_vince_sulla_causale():
+    """«paga ottobre 2026» pagato l'11/09 con l'importo esatto della busta di
+    agosto: il titolare dice che e' agosto, e il motore gli da' ragione."""
+    db = ClientArchivioMemoria()["competenza_dichiarata"]
+
+    async def scenario():
+        await db["dipendenti"].insert_one({
+            "id": "dip-fi", "nome": "Francesco", "cognome": "Iazzetta",
+            "nome_completo": "IAZZETTA FRANCESCO",
+        })
+        await db["prima_nota_salari"].insert_one({
+            "id": "sal-fi", "dipendente_id": "dip-fi", "dipendente_nome": "IAZZETTA FRANCESCO",
+            "anno": 2026, "mese": 8, "importo_busta": 1379.00, "importo_bonifico": 0,
+            "riconciliato": False,
+        })
+        riga = _movimento("CDK4E4ZMZW", "2026-09-11", "1379.00",
+                          "Francesco Iazzetta IT84X0305801604100572599347",
+                          "iazzetta francesco paga ottobre 2026")
+        await db[COLL_MOVIMENTI].insert_one({**riga, **campi_bancari(riga)})
+        prima = await abbina_movimenti_sumup(db)
+        await db[COLL_MOVIMENTI].update_one(
+            {"id": "sumup_conto:CDK4E4ZMZW"}, {"$set": {"competenza_dichiarata": "08/2026"}},
+        )
+        dopo = await abbina_movimenti_sumup(db)
+        busta = await db["prima_nota_salari"].find_one({"id": "sal-fi"})
+        return prima, dopo, busta
+
+    prima, dopo, busta = asyncio.run(scenario())
+    assert prima["stipendi_abbinati"] == 0
+    assert dopo["stipendi_abbinati"] == 1
+    assert busta["riconciliato"] is True
+    assert busta["movimenti_bancari_ids"] == ["sumup_conto:CDK4E4ZMZW"]
