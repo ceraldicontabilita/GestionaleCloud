@@ -11,6 +11,7 @@ from app.routers.prima_nota_module.common import (
     appartenenza_conto_bpm,
     filtro_saldo_prima_nota,
     saldi_banca_per_conto,
+    TUTTI_I_CONTI,
 )
 from app.services import conti_pos
 from app.services.conto_economico_gestionale import FILTRO_CORRISPETTIVI_VALIDI
@@ -46,7 +47,9 @@ async def get_financial_summary(
     # Senza questo filtro i movimenti "eliminati" dall'utente o dal job di
     # dedup restavano comunque sommati qui, gonfiando i totali.
     prima_nota_match_cassa = filtro_saldo_prima_nota("prima_nota_cassa")
-    prima_nota_match_banca = filtro_saldo_prima_nota("prima_nota_banca")
+    # I flussi economici contano anche le uscite pagate con la Mastercard
+    # SumUp: il conto conta per il saldo, non per il costo.
+    prima_nota_match_banca = filtro_saldo_prima_nota("prima_nota_banca", conto=TUTTI_I_CONTI)
     esclusione_trasferimenti = {"$nor": [
         {"categoria": {"$regex": "versament|prelevament|trasferiment", "$options": "i"}},
         {"source": "trasferimento_interno"},
