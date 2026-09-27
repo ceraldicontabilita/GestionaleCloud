@@ -78,26 +78,50 @@ def campi_ricerca_verbale_in_fattura(numero_verbale: str) -> List[Dict[str, Any]
 
 # ===== UTILITY FUNCTIONS =====
 
+#: Le parole che dicono «qui si parla di una multa». Un codice lettera+cifre
+#: da solo non e' un verbale: i numeri di fattura Arval hanno la stessa forma
+#: (A25111540620), e cercarlo ovunque ha creato 69 «verbali» su 105 che erano
+#: numeri di fattura.
+_PAROLE_VERBALE = re.compile(r"verbal|sanzion|violazion", re.IGNORECASE)
+#: Quanto vicino alla parola deve stare il codice generico (caratteri).
+_DISTANZA_PAROLA_VERBALE = 60
+
+
+def _vicino_a_parola_verbale(testo: str, inizio: int, fine: int) -> bool:
+    finestra = testo[max(0, inizio - _DISTANZA_PAROLA_VERBALE):fine + _DISTANZA_PAROLA_VERBALE]
+    return bool(_PAROLE_VERBALE.search(finestra))
+
+
 def extract_verbale_from_description(description: str) -> Optional[str]:
-    """Estrae il numero verbale dalla descrizione fattura."""
+    """Estrae il numero verbale dalla descrizione fattura.
+
+    Prima i pattern ancorati alla parola «verbale»; poi i codici generici
+    (lettera + cifre, «Nr:», «Numero:»), accettati **solo** accanto a
+    «verbale», «sanzione» o «violazione». Il numero deve contenere almeno una
+    cifra: «Verbale del …» non e' un numero.
+    """
     if not description:
         return None
 
-    # Pattern comuni per numeri verbale
-    patterns = [
-        r'Verbale\s*(?:Nr|N\.?|Numero)?[:\s]*([A-Z0-9]+)',
-        r'N\.\s*Verbale[:\s]*([A-Z0-9]+)',
+    ancorati = [
+        r'Verbale\s*(?:Nr|N\.?|Numero)?[:\s]*([A-Z0-9]*\d[A-Z0-9]*)',
+        r'N\.\s*Verbale[:\s]*([A-Z0-9]*\d[A-Z0-9]*)',
         r'verbale[:\s]+([A-Z]\d{8,})',
-        r'([A-Z]\d{10,})',  # Pattern generico tipo A25111540620
-        r'([B]\d{10,})',    # Pattern B + 10 cifre
-        r'Nr[:\s]*([A-Z]\d{8,})',  # Nr: A25111540620
-        r'Numero[:\s]*([A-Z]\d{8,})',  # Numero: A25111540620
     ]
-
-    for pattern in patterns:
+    for pattern in ancorati:
         match = re.search(pattern, description, re.IGNORECASE)
         if match:
             return match.group(1).upper()
+
+    generici = [
+        r'\b([A-Z]\d{10,})\b',  # Pattern generico tipo A25111540620
+        r'\bNr[:\s]*([A-Z]\d{8,})',  # Nr: A25111540620
+        r'\bNumero[:\s]*([A-Z]\d{8,})',  # Numero: A25111540620
+    ]
+    for pattern in generici:
+        for match in re.finditer(pattern, description, re.IGNORECASE):
+            if _vicino_a_parola_verbale(description, match.start(), match.end()):
+                return match.group(1).upper()
 
     return None
 
@@ -513,8 +537,13 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
         # Fornitori noleggio tipici (se vuoto cerca in tutte le fatture)
         fornitori_noleggio = ["ALD", "LEASYS", "ARVAL", "LEASEPLAN", "ALPHABET"]
 
-        # Trova fatture dei noleggiatori E tutte quelle con numeri verbale
+        # Trova fatture dei noleggiatori E tutte quelle con numeri verbale,
+        # solo fra le attive: una copia archiviata o cancellata non genera
+        # verbali (erano tutti e 105 legati a fatture che non esistono piu').
+        from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
+
         fatture = await db["invoices"].find({
+            **FILTRO_FATTURA_ATTIVA,
             "$or": [
                 {"supplier_name": {"$regex": "|".join(fornitori_noleggio), "$options": "i"}},
                 {"fornitore": {"$regex": "|".join(fornitori_noleggio), "$options": "i"}},
@@ -530,7 +559,9 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
         associazioni_create = 0
 
         for fattura in fatture:
-            # Costruisci testo completo della fattura cercando in tutti i campi
+            # Costruisci testo completo della fattura cercando in tutti i campi.
+            # Mai il numero della fattura: ha la forma di un verbale
+            # (A25111540620) e diventava un «verbale» a se'.
             campi_testo = [
                 fattura.get("descrizione", "") or "",
                 fattura.get("body", "") or "",
@@ -538,7 +569,6 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                 fattura.get("notes", "") or "",
                 fattura.get("oggetto", "") or "",
                 fattura.get("subject", "") or "",
-                fattura.get("invoice_number", "") or "",
             ]
             # Aggiungi le righe fattura reali salvate dal parser (chiave "linee",
             # non "items" — "items" non esiste mai sui documenti invoices, quindi

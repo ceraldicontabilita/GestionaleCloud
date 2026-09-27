@@ -83,10 +83,14 @@ class TestDriverAllaData:
         assert r["driver"] == "Mario Attuale"
         assert r["fonte"] == "storico_assegnazioni"
 
-    def test_data_fuori_storico_fallback_attuale(self):
+    def test_data_fuori_storico_da_assegnare(self):
+        # Lo storico c'e' ma non copre la data: il costo non va a chi ha
+        # l'auto oggi, resta da assegnare.
         r = driver_alla_data(self.VEICOLO, "2023-05-01")
-        assert r["driver"] == "Mario Attuale"
-        assert r["fonte"] == "driver_attuale"
+        assert r["driver"] is None
+        assert r["driver_id"] is None
+        assert r["fonte"] == "da_assegnare"
+        assert r["motivo"] == "da assegnare"
 
     def test_senza_storico(self):
         v = {"driver": "Solo Attuale", "driver_id": "x"}

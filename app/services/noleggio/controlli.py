@@ -86,8 +86,11 @@ def driver_alla_data(veicolo: Dict[str, Any], data_evento: Optional[str]) -> Dic
 
     Usa lo storico `assegnazioni` [{driver, driver_id, dal, al}] se
     presente; l'assegnazione corrente vale come voce aperta (al=None).
-    Senza storico che copre la data → fallback al driver attuale, con
-    fonte esplicita così l'interfaccia può distinguere.
+    Se lo storico c'e' ma non copre la data, il responsabile **non si sa**:
+    ``driver=None`` con motivo «da assegnare», mai il driver di oggi (un
+    canone di un periodo scoperto finiva su chi ha l'auto adesso). Solo un
+    veicolo senza storico, o un evento senza data, ripiega sul driver
+    attuale, con fonte esplicita così l'interfaccia può distinguere.
     """
     data = (data_evento or "")[:10]
     assegnazioni = veicolo.get("assegnazioni") or []
@@ -101,6 +104,12 @@ def driver_alla_data(veicolo: Dict[str, Any], data_evento: Optional[str]) -> Dic
                     "driver_id": a.get("driver_id"),
                     "fonte": "storico_assegnazioni",
                 }
+        return {
+            "driver": None,
+            "driver_id": None,
+            "fonte": "da_assegnare",
+            "motivo": "da assegnare",
+        }
     return {
         "driver": veicolo.get("driver") or veicolo.get("driver_nome"),
         "driver_id": veicolo.get("driver_id"),

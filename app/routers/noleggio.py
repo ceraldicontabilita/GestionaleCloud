@@ -30,6 +30,8 @@ from app.services.noleggio.associations import (
 )
 
 from app.utils.error_handler import handle_errors
+from app.constants.stati_verbale import e_chiuso
+from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 router = APIRouter()
@@ -678,7 +680,6 @@ async def get_riepilogo_controlli(
     Riconciliazione bancaria e alert NOL_* aperti del motore alert.
     """
     db = Database.get_db()
-    STATI_VERBALE_CHIUSI = ("pagato", "chiuso")
 
     # ── 1) Verbali aperti: unione posta + fatture, dedup numero_verbale ──
     verbali_per_numero: Dict[str, Dict[str, Any]] = {}
@@ -697,7 +698,7 @@ async def get_riepilogo_controlli(
             "data_verbale": str(v.get("data_verbale") or v.get("created_at") or "")[:10],
             "importo": float(v.get("importo") or 0),
             "stato": stato,
-            "chiuso": stato in STATI_VERBALE_CHIUSI,
+            "chiuso": e_chiuso(stato),
             "driver": v.get("driver"),
             "fonte": "posta",
         }
@@ -720,7 +721,7 @@ async def get_riepilogo_controlli(
             "stato": esistente.get("stato") or stato_pagamento,
             # Chiuso se ALMENO UNA delle due fonti lo dà pagato/chiuso —
             # stessa semantica del flag "pagato" del motore per targa.
-            "chiuso": esistente.get("chiuso", False) or stato_pagamento in STATI_VERBALE_CHIUSI,
+            "chiuso": esistente.get("chiuso", False) or e_chiuso(stato_pagamento),
             "fonte": "posta+fattura" if esistente else "fattura",
         }
     verbali_aperti = sorted(
@@ -779,6 +780,8 @@ async def get_riepilogo_controlli(
     query_pagamenti = {
         "supplier_vat": {"$in": list(FORNITORI_NOLEGGIO.values())},
         "invoice_date": {"$regex": f"^{anno_pagamenti}"},
+        # Solo le fatture attive: le copie archiviate contavano due volte.
+        **FILTRO_FATTURA_ATTIVA,
         **FILTRO_NON_PAGATE,
         "riconciliato": {"$ne": True},
     }
