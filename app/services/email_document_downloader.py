@@ -978,7 +978,8 @@ async def download_documents_from_email(
             if not is_duplicate:
                 from app.services.deduplica import esiste_documento_cross_canale
                 altrove = await esiste_documento_cross_canale(
-                    db, doc["file_hash"], escludi_collezione="documents_inbox"
+                    db, doc["file_hash"], escludi_collezione="documents_inbox",
+                    contenuto=base64.b64decode(doc.get("pdf_data") or ""),
                 )
                 if altrove:
                     is_duplicate = True

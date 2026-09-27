@@ -66,9 +66,9 @@ export function descriviProvaFiscale(data = {}) {
   }
   if (data?.workflow === 'PAGOPA_CBILL_CANONICO') {
     const match = data?.data?.riconciliazione_fiscale || {};
-    if (!match.matched) return 'Ricevuta acquisita â€¢ collegamento AdeR da verificare';
+    if (!match.matched) return 'Ricevuta acquisita • collegamento AdeR da verificare';
     const cartelle = Array.isArray(match.linked_claim_ids) ? match.linked_claim_ids.length : 0;
-    return `Rata collegata â€¢ Cartelle collegate: ${cartelle} â€¢ ${match.bank_verified ? 'Banca verificata' : 'Banca da verificare'}`;
+    return `Rata collegata • Cartelle collegate: ${cartelle} • ${match.bank_verified ? 'Banca verificata' : 'Banca da verificare'}`;
   }
   if (data?.workflow !== 'F24_CANONICO') return '';
   const canonical = data?.data || {};

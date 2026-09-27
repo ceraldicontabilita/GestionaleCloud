@@ -236,7 +236,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
     True}}` su una chiave inesistente passa **sempre**. Prima di fidarsi di un
     filtro, contare sul database quante righe hanno davvero quella chiave.
     Vale anche fra due funzioni: `supplier_result["nuovo"]` al posto di
-    `supplier_created` dava sempre `False`, e un alert non è mai partito.
+    `supplier_created` dava sempre `False`, e un alert non è mai partito. `$in: [None, …]` comprende il campo assente, come `$eq: None`.
 12. **Su `invoices` i campi canonici sono quelli inglesi**: `invoice_date`,
     `total_amount`, `invoice_number`. `data_documento` e `totale` sono derivati
     e mancano sulle fatture che il motore IVA non ha toccato: filtrarci o
@@ -279,7 +279,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   crea l'attesa prima della prova; il reimport non duplica; la prova certa
   conserva gli ID; la prova ambigua non inventa dati; la chiusura fallisce con
   un'attesa aperta.
-- Un alert mostra sempre l'elenco dei record coinvolti. Un comando di manutenzione che l'utente deve ripetere
+- Un alert mostra sempre l'elenco dei record coinvolti (la lista ricava il link da `entita_collection`/`entita_id`); alert falsi e verbali nati da un numero di fattura li chiude o mette in quarantena `bonifiche_automatiche.py` nel job bancario corto, per id e col motivo. Un comando di manutenzione che l'utente deve ripetere
   per correggere duplicati prevedibili è un difetto: la prevenzione per ID/hash sta nel flusso di importazione.
 - **L'abbinamento parte all'arrivo del secondo pezzo, in tutti e due i sensi**, mai aspettando un giro: F24 ↔ quietanza ↔ banca (`cerca_controparti_f24`), fattura ↔ report del titolare ↔ banca (`applica_per_fattura_arrivata`, `riprocessa_estratto_dopo_import_fattura`). I giri restano solo come rete.
 
@@ -648,7 +648,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   come prove separate.
 - Stati e motore dei verbali in un posto solo: `app/constants/stati_verbale.py`
   (nove aperti — fra cui `fattura_ricevuta`, quello di tutte le righe vere — e
-  tre con prova, in maiuscolo e minuscolo: un filtro li elenca entrambi) e
+  tre con prova, in maiuscolo e minuscolo: un filtro li elenca entrambi; `quarantena` non è né aperto né pagato, `e_chiuso` li unisce) e
   `riconcilia_verbali_strict`, che esige riferimento strutturato **e** importo
   uguale al centesimo, mai solo importo o data vicina. L'importo si legge dal
   PDF. `pagato_attesa_fattura` è il legacy di `pagato_attesa_quietanza`.

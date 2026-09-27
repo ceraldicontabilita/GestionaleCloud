@@ -16,8 +16,11 @@ async def cerca_fattura_per_verbale(db: ArchivioDocumenti, numero_verbale: str) 
     """Cerca una fattura di noleggio che contenga il numero verbale in una delle linee."""
     if not numero_verbale:
         return None
+    from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
+
     pattern_regex = re.escape(numero_verbale)
-    q = {"$or": [
+    # Solo fatture attive: una copia archiviata o cancellata non e' una prova.
+    q = {**FILTRO_FATTURA_ATTIVA, "$or": [
         {"fornitore_denominazione": {"$regex": "|".join(FORNITORI_NOLEGGIO), "$options": "i"}},
         {"supplier_name": {"$regex": "|".join(FORNITORI_NOLEGGIO), "$options": "i"}},
     ]}

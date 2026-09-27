@@ -27,10 +27,13 @@ from typing import Any, Dict, Iterable, List
 __all__ = [
     "STATI_APERTI",
     "STATI_PAGATI",
+    "STATI_VERBALE_CHIUSI",
     "STATO_ATTESA_QUIETANZA_LEGACY",
+    "STATO_QUARANTENA",
     "FILTRO_STATO_APERTO",
     "FILTRO_STATO_PAGATO",
     "e_aperto",
+    "e_chiuso",
     "e_pagato",
     "varianti",
 ]
@@ -58,6 +61,15 @@ STATI_PAGATI = frozenset({
     STATO_ATTESA_QUIETANZA_LEGACY,
     "riconciliato",
 })
+
+
+#: Non e' un verbale: e' un numero di fattura letto come verbale, o un
+#: verbale nato da una fattura che non esiste piu'. Resta in archivio con
+#: ``motivo_quarantena`` (mai cancellato) e non e' ne' aperto ne' pagato.
+STATO_QUARANTENA = "quarantena"
+
+#: Il verbale non chiede piu' niente: pagato, chiuso a mano, in quarantena.
+STATI_VERBALE_CHIUSI = frozenset(STATI_PAGATI | {"chiuso", STATO_QUARANTENA})
 
 
 def varianti(stati: Iterable[str]) -> List[str]:
@@ -88,3 +100,8 @@ def e_aperto(valore: Any) -> bool:
 def e_pagato(valore: Any) -> bool:
     """`True` se questo stato dice «una prova di pagamento c'e' gia'»."""
     return str(valore or "").strip().lower() in STATI_PAGATI
+
+
+def e_chiuso(valore: Any) -> bool:
+    """`True` se il verbale non chiede piu' niente (pagato, chiuso, quarantena)."""
+    return str(valore or "").strip().lower() in STATI_VERBALE_CHIUSI

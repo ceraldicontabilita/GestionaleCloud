@@ -372,10 +372,11 @@ async def cerca_movimenti_pagopa(
         if match:
             mov["codice_bolletta_estratto"] = match.group(1)
     
-    # Raggruppa per beneficiario
+    # Raggruppa per beneficiario (i movimenti CBILL non hanno
+    # descrizione_originale: si ripiega sulla descrizione)
     beneficiari = {}
     for mov in movimenti:
-        desc = mov.get("descrizione_originale") or ""
+        desc = mov.get("descrizione_originale") or mov.get("descrizione") or ""
         if "AGENZIA DELLE ENTRATE" in desc.upper():
             ben = "Agenzia delle Entrate - Riscossione"
         elif "INPS" in desc.upper():
@@ -397,15 +398,22 @@ async def cerca_movimenti_pagopa(
     }
 
 
+def _filtro_descrizione(pattern: str) -> Dict[str, Any]:
+    """La causale bancaria sta in `descrizione_originale` o, per i CBILL, in
+    `descrizione`: il filtro le guarda entrambe."""
+    regex = {"$regex": pattern, "$options": "i"}
+    return {"$or": [{"descrizione_originale": regex}, {"descrizione": regex}]}
+
+
 @router.get("/stats")
 @handle_errors
 async def stats_pagopa(anno: int = None) -> Dict[str, Any]:
     """Statistiche PagoPA."""
     db = Database.get_db()
     
-    query_mov = {
-        "descrizione_originale": {"$regex": "CBILL|PAGOPA|AGENZIA.DELLE.ENTRATE.*R", "$options": "i"}
-    }
+    # I movimenti CBILL portano la causale in `descrizione`, non in
+    # `descrizione_originale`: filtrare su una sola dava zero movimenti.
+    query_mov = _filtro_descrizione("CBILL|PAGOPA|AGENZIA.DELLE.ENTRATE.*R")
     if anno:
         query_mov["data"] = {"$regex": f"^{anno}"}
     
@@ -428,7 +436,7 @@ async def stats_pagopa(anno: int = None) -> Dict[str, Any]:
     # Totale importi
     pipeline = [
         {"$match": {
-            "descrizione_originale": {"$regex": "CBILL|AGENZIA.DELLE.ENTRATE.*R", "$options": "i"},
+            **_filtro_descrizione("CBILL|AGENZIA.DELLE.ENTRATE.*R"),
             **({"data": {"$regex": f"^{anno}"}} if anno else {})
         }},
         {"$group": {"_id": None, "totale": {"$sum": {"$abs": "$importo"}}}}

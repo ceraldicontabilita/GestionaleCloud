@@ -1,0 +1,133 @@
+"""Bonifiche automatiche del job bancario corto: solo per id, col motivo,
+idempotenti, esito in `sistema_stato`. Niente si cancella."""
+import asyncio
+from pathlib import Path
+
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
+from app.services.bonifiche_automatiche import (
+    CHIAVE_STATO,
+    MOTIVO_FATTURE_SENZA_SCADENZA,
+    esegui_bonifiche,
+    numero_derivato_da_fattura,
+)
+
+RADICE = Path(__file__).resolve().parents[2]
+
+
+def _alert(aid, codice, entita, created="2026-09-01T00:00:00", stato="aperto"):
+    return {"id": aid, "codice": codice, "entita_id": entita, "stato": stato,
+            "created_at": created, "risolto": stato != "aperto"}
+
+
+async def _prepara(db):
+    await db["alerts"].insert_many([
+        _alert("A-FAT-1", "FAT_DA_PAGARE_SCADUTA", "inv-1"),
+        _alert("A-FAT-2", "FAT_DA_PAGARE_SCADUTA", "inv-2"),
+        # movimento riconciliato: si chiude
+        _alert("A-RIC-1", "RIC_NON_RICONCILIATO", "MOV-OK"),
+        # movimento non riconciliato con un doppione: resta il piu' vecchio
+        _alert("A-RIC-2", "RIC_MATCH_AMBIGUO", "MOV-KO", created="2026-09-01T00:00:00"),
+        _alert("A-RIC-3", "RIC_MATCH_AMBIGUO", "MOV-KO", created="2026-09-02T00:00:00"),
+        # movimento della carta SumUp, riconciliato: collezione dall'id
+        _alert("A-RIC-4", "RIC_NON_RICONCILIATO", "sumup_conto:X1"),
+        _alert("A-DOC-1", "DOC_NON_CLASSIFICATO", "doc-cedolino"),
+        _alert("A-DOC-2", "DOC_NON_CLASSIFICATO", "doc-altro"),
+        _alert("A-ALTRO", "F24_SCADUTO", "f24-1"),
+    ])
+    await db["estratto_conto_movimenti"].insert_many([
+        {"id": "MOV-OK", "riconciliato": True},
+        {"id": "MOV-KO", "riconciliato": False},
+    ])
+    await db["sumup_conto_movimenti"].insert_one({"id": "sumup_conto:X1", "riconciliato": True})
+    await db["documents_inbox"].insert_many([
+        {"id": "doc-cedolino", "category": "cedolini"},
+        {"id": "doc-altro", "category": "altro"},
+    ])
+    await db["invoices"].insert_many([
+        {"id": "FT-ARVAL", "invoice_number": "A25111540620", "status": "imported"},
+        {"id": "FT-ARCH", "invoice_number": "X1", "status": "archived"},
+        {"id": "FT-VIVA", "invoice_number": "9001", "status": "imported"},
+    ])
+    await db["verbali_noleggio"].insert_many([
+        # numero del verbale = numero della fattura collegata
+        {"_id": "v1", "numero_verbale": "A25111540620", "stato": "fattura_ricevuta",
+         "fattura_id": "FT-ARVAL"},
+        # fattura collegata che non esiste piu'
+        {"_id": "v2", "numero_verbale": "B12345678901", "stato": "fattura_ricevuta",
+         "fattura_id": "FT-SPARITA"},
+        # fattura archiviata
+        {"_id": "v3", "numero_verbale": "B99999999999", "stato": "fattura_ricevuta",
+         "fattura_associata_id": "FT-ARCH"},
+        # verbale vero, fattura attiva e numero diverso: resta
+        {"_id": "v4", "numero_verbale": "V777", "stato": "fattura_ricevuta",
+         "fattura_id": "FT-VIVA"},
+        # fattura sparita ma con prove proprie (PDF): decide una persona
+        {"_id": "v5", "numero_verbale": "C1", "stato": "salvato",
+         "fattura_id": "FT-SPARITA", "pdf_filename": "verbale.pdf"},
+    ])
+
+
+def test_bonifiche_chiudono_e_mettono_in_quarantena_solo_il_dovuto():
+    async def scenario():
+        db = ArchivioDocumenti()
+        await _prepara(db)
+        primo = await esegui_bonifiche(db)
+        secondo = await esegui_bonifiche(db)
+        alert = {a["id"]: a for a in await db["alerts"].find({}, {"_id": 0}).to_list(None)}
+        verbali = {v["_id"]: v for v in await db["verbali_noleggio"].find({}).to_list(None)}
+        stato = await db["sistema_stato"].find_one({"chiave": CHIAVE_STATO}, {"_id": 0})
+        return primo, secondo, alert, verbali, stato
+
+    primo, secondo, alert, verbali, stato = asyncio.run(scenario())
+
+    # 1. scadenze fatture fornitore
+    for aid in ("A-FAT-1", "A-FAT-2"):
+        assert alert[aid]["stato"] == "risolto"
+        assert alert[aid]["motivo_chiusura"] == MOTIVO_FATTURE_SENZA_SCADENZA
+    # 2. RIC_*: riconciliati e doppioni chiusi, l'originale resta aperto
+    assert alert["A-RIC-1"]["stato"] == "risolto"
+    assert alert["A-RIC-4"]["stato"] == "risolto"
+    assert alert["A-RIC-2"]["stato"] == "aperto"
+    assert alert["A-RIC-3"]["stato"] == "risolto"
+    assert "A-RIC-2" in alert["A-RIC-3"]["motivo_chiusura"]
+    # 3. documenti con categoria
+    assert alert["A-DOC-1"]["stato"] == "risolto"
+    assert alert["A-DOC-2"]["stato"] == "aperto"
+    # nessun altro codice toccato
+    assert alert["A-ALTRO"]["stato"] == "aperto"
+    # 4. verbali: quarantena col motivo, nessuno cancellato
+    assert len(verbali) == 5
+    for vid in ("v1", "v2", "v3"):
+        assert verbali[vid]["stato"] == "quarantena"
+        assert verbali[vid]["motivo_quarantena"]
+        assert verbali[vid]["stato_precedente"] == "fattura_ricevuta"
+    assert "A25111540620" in verbali["v1"]["motivo_quarantena"]
+    assert verbali["v4"]["stato"] == "fattura_ricevuta"
+    assert verbali["v5"]["stato"] == "salvato"
+
+    assert primo["conteggi"]["verbali_da_fattura"]["quarantena"] == 3
+    assert primo["conteggi"]["verbali_da_fattura"]["con_prove_proprie"] == 1
+    assert primo["conteggi"]["alert_movimenti"] == {
+        "aperti": 4, "doppioni_chiusi": 1, "riconciliati_chiusi": 2,
+    }
+    # idempotente: il secondo giro non tocca niente
+    assert secondo["conteggi"]["fatture_senza_scadenza"]["chiusi"] == 0
+    assert secondo["conteggi"]["alert_movimenti"]["doppioni_chiusi"] == 0
+    assert secondo["conteggi"]["alert_movimenti"]["riconciliati_chiusi"] == 0
+    assert secondo["conteggi"]["documenti_classificati"]["chiusi"] == 0
+    assert secondo["conteggi"]["verbali_da_fattura"]["quarantena"] == 0
+    assert stato["conteggi"] == secondo["conteggi"] and stato["errori"] == {}
+
+
+def test_numero_derivato_da_fattura():
+    assert numero_derivato_da_fattura("A25111540620", ["A25111540620"]) == "A25111540620"
+    assert numero_derivato_da_fattura("A25111540620", ["FT A25111540620/2026"])
+    assert numero_derivato_da_fattura("V777", ["9001"]) is None
+    assert numero_derivato_da_fattura("", ["9001"]) is None
+
+
+def test_la_bonifica_e_agganciata_al_job_bancario_corto():
+    testo = (RADICE / "app/scheduler.py").read_text(encoding="utf-8")
+    inizio = testo.index("async def _banca_versamenti_proiezione_job")
+    fine = testo.index("async def _automazioni_prima_nota_job")
+    assert "esegui_bonifiche(db)" in testo[inizio:fine]

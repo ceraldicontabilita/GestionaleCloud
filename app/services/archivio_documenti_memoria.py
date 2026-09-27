@@ -243,6 +243,12 @@ def _matches_condition(values: list[Any], condition: Any) -> bool:
             candidate_markers = _marcatori_in(expected)
 
             def included(value: Any) -> bool:
+                if value is MISSING:
+                    # Come `$eq: None` (e come Mongo): un campo assente vale
+                    # null. Senza, `{"campo": {"$in": [None, ""]}}` — «non
+                    # ancora collegato» — escludeva proprio le righe mai
+                    # collegate, che il campo non ce l'hanno.
+                    return _hashable_unique_value(None) in candidate_markers
                 if isinstance(value, list):
                     return any(
                         _hashable_unique_value(item) in candidate_markers

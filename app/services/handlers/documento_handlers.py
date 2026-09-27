@@ -10,9 +10,31 @@ Copre le specifiche di Documenti__Inbox.txt:
 - Audit trail di ogni documento acquisito
 """
 import logging
+import re
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+#: Categorie che non dicono niente: il documento e' ancora da classificare.
+CATEGORIE_NON_DECISE = frozenset({"", "altro", "auto"})
+
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def categoria_decisa(documento: Optional[Dict[str, Any]]) -> Optional[str]:
+    """La categoria gia' assegnata al documento, se dice qualcosa."""
+    categoria = str((documento or {}).get("category") or "").strip().lower()
+    return None if categoria in CATEGORIE_NON_DECISE else categoria
+
+
+def impronta_sha256(*valori: Any) -> Optional[str]:
+    """Il primo valore che e' davvero uno SHA-256: la deduplica documentale
+    non decide mai su un MD5 (CLAUDE.md, «Deduplica documentale certa»)."""
+    for valore in valori:
+        testo = str(valore or "").strip().lower()
+        if _SHA256.match(testo):
+            return testo
+    return None
 
 
 async def on_documento_acquisito(event: Dict[str, Any], db) -> Optional[Dict]:
@@ -34,11 +56,18 @@ async def on_documento_acquisito(event: Dict[str, Any], db) -> Optional[Dict]:
         return None
 
     risultati = []
+    documento = await db["documents_inbox"].find_one(
+        {"id": doc_id},
+        {"_id": 0, "id": 1, "category": 1, "sha256": 1, "file_hash": 1, "tipo_documento": 1},
+    ) or {}
 
-    # --- DEDUPLICA su hash ---
-    if hash_file:
+    # --- DEDUPLICA su SHA-256 ---
+    # Il campo `hash_file` non esiste su nessun documento (0 righe): l'impronta
+    # sta in `sha256` o in `file_hash`. Si cercano entrambi.
+    sha256 = impronta_sha256(hash_file, documento.get("sha256"), documento.get("file_hash"))
+    if sha256:
         existing = await db["documents_inbox"].find_one(
-            {"hash_file": hash_file, "id": {"$ne": doc_id}},
+            {"$or": [{"sha256": sha256}, {"file_hash": sha256}], "id": {"$ne": doc_id}},
             {"_id": 0, "id": 1}
         )
         if existing:
@@ -51,6 +80,21 @@ async def on_documento_acquisito(event: Dict[str, Any], db) -> Optional[Dict]:
             # Non blocchiamo, ma segnaliamo
 
     # --- CLASSIFICAZIONE ---
+    # Un documento che ha gia' la sua categoria (dall'import, dal classificatore
+    # del contenuto o dal titolare) non si riclassifica dal solo nome del file:
+    # prima si sovrascriveva `tipo_documento` e si apriva un «non classificato».
+    categoria = categoria_decisa(documento)
+    if categoria:
+        await log_evento(
+            modulo="documenti", azione="acquisito", entita_id=doc_id,
+            entita_collection="documents_inbox", db=db,
+            nuovo_stato={"categoria": categoria, "filename": filename},
+            fonte=origine,
+            dettaglio=f"'{filename}' da {origine} gia' classificato come {categoria}",
+        )
+        return {"action": "documento_gia_classificato", "categoria": categoria,
+                "risultati": risultati}
+
     tipo = _classifica_documento(filename, mime_type, mittente)
 
     if tipo == "fattura_xml":

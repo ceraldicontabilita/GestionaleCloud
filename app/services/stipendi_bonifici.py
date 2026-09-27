@@ -894,6 +894,9 @@ async def associa_bonifici_stipendi(
                 "data_riconciliazione": now,
             }},
         )
+        from app.services.alert_engine import chiudi_alert_movimento_riconciliato
+
+        await chiudi_alert_movimento_riconciliato(db, movimento["id"], "stipendi")
         await db["prima_nota_salari"].update_one(
             {"id": riga["id"]},
             {

@@ -192,6 +192,9 @@ async def riconcilia_f24_tributi_banca(
                 "data_riconciliazione": now,
             }},
         )
+        from app.services.alert_engine import chiudi_alert_movimento_riconciliato
+
+        await chiudi_alert_movimento_riconciliato(db, movimento_id, "f24")
 
     stats = risultato.get("stats", {})
     return {
