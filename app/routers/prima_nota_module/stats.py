@@ -3,6 +3,7 @@ Prima Nota Module - Statistiche e Export.
 Statistiche aggregate, export Excel, anni disponibili, saldo iniziale manuale.
 """
 from fastapi import HTTPException, Query, Body
+from app.middleware.performance import istantanea
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, Literal
 from datetime import datetime, timezone
@@ -129,6 +130,7 @@ async def get_anni_disponibili() -> Dict[str, Any]:
     return {"anni": sorted(list(anni), reverse=True)}
 
 
+@istantanea(ttl=60)
 async def get_prima_nota_stats(
     data_da: Optional[str] = Query(None),
     data_a: Optional[str] = Query(None)

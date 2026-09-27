@@ -181,7 +181,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `app/hr/db_supabase.py`): ogni collezione letta resta in memoria nella
   versione leggera (senza XML/PDF/foto); una firma per tutte le collezioni al
   più ogni 15 s, poi solo i delta; finestra di grazia 120 s se la firma
-  fallisce. `GC_RUNTIME_CACHE=0` / `HR_RUNTIME_CACHE=0` la spengono.
+  fallisce. `GC_RUNTIME_CACHE=0` / `HR_RUNTIME_CACHE=0` la spengono. **Istantanee**: i riepiloghi in sola lettura (`@istantanea`, `middleware/performance.py`) si servono pronti e si ricalcolano in sottofondo; ogni scrittura riuscita o «Rileggi» (`X-Rileggi`) le svuota; nel browser la copia della sessione è `getConCopia` (`lib/cacheGuscio.js`), mai un secondo meccanismo.
 - `/api/health` di ERP, HR e Menu risponde entro 2 s anche con la probe appesa (`degraded`, non 503; `?strict=true`
   per il 503), una sola probe in volo (`services/health_probe.py`); il commit per tutte e quattro da `services/deploy_info.py`.
 - Gli scheduler acquisiscono una lease distribuita su Supabase: il lock locale

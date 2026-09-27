@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Wallet, Calculator, CheckCircle2, Unlock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
+import { getConCopia } from '../lib/cacheGuscio';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, COLORS, MESI_FULL } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
@@ -95,9 +96,10 @@ export default function GestioneIVA() {
 
   const caricaRiepilogo = async () => {
     try {
+      // La copia di questa sessione si vede subito; la risposta fresca la sostituisce.
       const [r, a] = await Promise.all([
-        api.get(`/api/iva/riepilogo-annuale/${anno}`),
-        api.get(`/api/iva/anomalie?anno=${anno}`),
+        getConCopia(`/api/iva/riepilogo-annuale/${anno}`, undefined, copia => copia && setRiepilogo(copia)),
+        getConCopia(`/api/iva/anomalie?anno=${anno}`, undefined, copia => copia && setAnomalie(copia)),
       ]);
       setRiepilogo(r.data);
       setAnomalie(a.data);
@@ -109,7 +111,7 @@ export default function GestioneIVA() {
   };
 
   const caricaLiquidazione = async (p = periodo) => {
-    api.get(`/api/iva/dashboard/${anno}/${mese}`)
+    getConCopia(`/api/iva/dashboard/${anno}/${mese}`, undefined, copia => copia && setDashboard(copia))
       .then((d) => setDashboard(d.data))
       .catch((e) => {
         setDashboard(null);

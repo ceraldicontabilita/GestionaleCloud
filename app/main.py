@@ -766,7 +766,9 @@ except ImportError:
     pass
 
 from app.middleware.authentication import AuthenticationMiddleware
+from app.middleware.performance import IstantaneeMiddleware
 
+app.add_middleware(IstantaneeMiddleware)
 app.add_middleware(AuthenticationMiddleware)
 add_exception_handlers(app)
 

@@ -24,6 +24,7 @@ import {
   Clock3,
 } from 'lucide-react';
 import api from '../api';
+import { aggiornatoAlle, getConCopia } from '../lib/cacheGuscio';
 import { useAnnoGlobale, AnnoSelector } from '../contexts/AnnoContext';
 import { formatEuro, COLORS } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
@@ -68,6 +69,7 @@ export default function Dashboard() {
   const [erroreEnergia, setErroreEnergia] = useState(false);
 
   const [loading, setLoading] = useState(true);
+  const [copiaAt, setCopiaAt] = useState(null);
   const [erroriApi, setErroriApi] = useState([]);
   // Scorciatoia-domanda selezionata (mostra la risposta grande in cima).
   const [domanda, setDomanda] = useState(null);
@@ -126,24 +128,33 @@ export default function Dashboard() {
       .get(`/api/scadenze?anno=${anno}${mese ? `&mese=${mese}` : ''}&include_passate=true&limit=30`, { signal })
       .catch(conErrore('scadenze'));
 
+    // La copia di questa sessione si vede subito, con l'ora; le risposte
+    // fresche la sostituiscono.
+    const daCopia = setter => (copia, at) => {
+      if (!vivo() || copia == null) return;
+      setter(copia);
+      setCopiaAt(prec => prec || at);
+      setLoading(false);
+    };
+
     (async () => {
       setLoading(true);
       const [crRes, pnRes, ivaRes, scadRes, trendRes] = await Promise.all([
-        api
-          .get(`/api/controllo-gestione/costi-ricavi?anno=${anno}${mese ? `&mese=${mese}` : ''}`, {
-            signal,
-          })
-          .catch(conErrore('fatturato e costi')),
-        api
-          .get(`/api/prima-nota/stats?data_da=${dataDa}&data_a=${dataA}`, { signal })
-          .catch(conErrore('cassa e banca')),
+        getConCopia(
+          `/api/controllo-gestione/costi-ricavi?anno=${anno}${mese ? `&mese=${mese}` : ''}`,
+          { signal }, daCopia(setCostiRicavi),
+        ).catch(conErrore('fatturato e costi')),
+        getConCopia(
+          `/api/prima-nota/stats?data_da=${dataDa}&data_a=${dataA}`, { signal }, daCopia(setPrimaNota),
+        ).catch(conErrore('cassa e banca')),
         ivaReq,
         scadReq,
-        api
-          .get(`/api/dashboard/trend-mensile?anno=${anno}`, { signal })
-          .catch(conErrore('grafico annuale')),
+        getConCopia(
+          `/api/dashboard/trend-mensile?anno=${anno}`, { signal }, daCopia(setTrend),
+        ).catch(conErrore('grafico annuale')),
       ]);
       if (!vivo()) return;
+      setCopiaAt(null);
       setCostiRicavi(crRes.data);
       setPrimaNota(pnRes.data);
       setIva(ivaRes.data);
@@ -316,6 +327,12 @@ export default function Dashboard() {
                 : rispostaAttiva.testo(rispostaAttiva.valore)}
             </div>
           </div>
+        </div>
+      )}
+
+      {copiaAt && (
+        <div data-testid="dashboard-copia" style={{ fontSize: 12.5, color: COLORS.textMuted, margin: '0 0 8px' }}>
+          Copia {aggiornatoAlle(copiaAt)}: aggiornamento in corso…
         </div>
       )}
 
