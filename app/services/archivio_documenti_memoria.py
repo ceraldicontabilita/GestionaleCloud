@@ -686,7 +686,9 @@ class CollezioneDocumenti:
         if self.database.mutation_hook is not None and not self.database.loading:
             await self.database.mutation_hook(self.name, method, _clone(before), _clone(after))
 
-    def _check_unique(self, candidate: dict[str, Any], ignore_id: Any = MISSING) -> None:
+    def _check_unique(
+        self, candidate: dict[str, Any], ignore_id: Any = MISSING, previous: Any = MISSING,
+    ) -> None:
         for metadata in self._indexes.values():
             if not metadata.get("unique"):
                 continue
@@ -697,6 +699,15 @@ class CollezioneDocumenti:
             if partial and not matches_filter(candidate, partial):
                 continue
             values = tuple(get_path(candidate, field, MISSING) for field in fields)
+            # Un aggiornamento che non tocca la chiave di questo indice non
+            # puo' creare un doppione: il documento l'aveva gia' superato.
+            # Senza questa scorciatoia un update_many su k righe scandiva k
+            # volte l'intera collezione e fermava il loop per secondi (il sync
+            # dei payout SumUp faceva fallire l'health check di Render).
+            if previous is not MISSING and (
+                not partial or matches_filter(previous, partial)
+            ) and tuple(get_path(previous, field, MISSING) for field in fields) == values:
+                continue
             if metadata.get("sparse") and any(value is MISSING or value is None for value in values):
                 continue
             for document in self._documents:
@@ -855,7 +866,7 @@ class CollezioneDocumenti:
         for index in indexes:
             old = _clone(self._documents[index])
             new = apply_update(old, update)
-            self._check_unique(new, ignore_id=old.get("_id"))
+            self._check_unique(new, ignore_id=old.get("_id"), previous=old)
             before.append(old)
             after.append(new)
             if new != old:
