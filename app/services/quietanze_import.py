@@ -420,6 +420,16 @@ async def importa_quietanza_bytes(
             logger.exception("Errore aggiornamento ritenute dopo quietanza %s", file_id)
             risultato["ritenute_aggiornate"] = {"errore": True}
 
+    # L'addebito I24 puo' essere gia' in banca: si cerca adesso, fra i soli
+    # movimenti di pari importo, senza aspettare il giro dei 30 minuti.
+    try:
+        from app.services.f24_controllo_incrociato import riscontra_quietanza_arrivata
+
+        risultato["riscontro_banca"] = await riscontra_quietanza_arrivata(db, saldo_quietanza)
+    except Exception as exc:  # noqa: BLE001 - la quietanza resta importata
+        logger.exception("Quietanza %s: addebito in banca non cercato (%s)", file_id, type(exc).__name__)
+        risultato["riscontro_banca"] = {"errore": type(exc).__name__}
+
     return risultato
 
 

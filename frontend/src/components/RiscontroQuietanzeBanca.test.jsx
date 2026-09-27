@@ -1,0 +1,68 @@
+import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+vi.mock('../api', () => ({ default: { get: vi.fn() } }));
+
+import api from '../api';
+import RiscontroQuietanzeBanca from './RiscontroQuietanzeBanca';
+
+const source = readFileSync(resolve(process.cwd(), 'src/components/RiscontroQuietanzeBanca.jsx'), 'utf8');
+const riconciliazione = readFileSync(resolve(process.cwd(), 'src/pages/RiconciliazioneUnificata.jsx'), 'utf8');
+
+const RISPOSTA = {
+  copertura_banca: { dal: '2026-01-16', al: '2026-09-17' },
+  conteggi: { fuori_periodo_estratto: 234 },
+  riscontrati: [{
+    chiave: 'p1', data: '2026-08-20', importo: 654.33, protocollo: '26082011065626134/000001',
+    quietanze: [{ id: 'q1', pdf_url: '/api/f24-public/pdf/q1', filename: 'q1.pdf' }],
+    addebito: { movimento_id: 'm1', data: '2026-08-20', importo: 654.33 },
+    motivazione: 'importo 654.33 EUR uguale al centesimo; DATA INCASSO nella causale: 20/08/2026',
+  }],
+  da_verificare: [],
+  addebiti_senza_quietanza: [{
+    movimento_id: 'm9', data: '2026-09-17', importo: 9421.15,
+    motivazione: 'quietanza da riscaricare dal Cassetto Fiscale',
+  }],
+  quietanze_senza_addebito: [],
+  quietanze_incomplete: [],
+};
+
+describe('Quietanze F24 e addebiti in banca', () => {
+  it('è montato nella scheda F24 e non usa colori vietati né emoji', () => {
+    expect(riconciliazione.match(/<RiscontroQuietanzeBanca anno=\{anno\} \/>/g)).toHaveLength(2);
+    expect(source).toContain('/api/f24-riconciliazione/quietanze-banca');
+    expect(source).not.toMatch(/#(0f2744|2563eb|1e40af|dbeafe|4f46e5|7c3aed|64748b)/i);
+    expect(source).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+  });
+
+  it("mostra esito a parole, motivazione e i link ai due documenti", async () => {
+    api.get.mockResolvedValueOnce({ data: RISPOSTA });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByText('Riscontrato')).toBeTruthy());
+    expect(api.get).toHaveBeenCalledWith('/api/f24-riconciliazione/quietanze-banca?anno=2026');
+    expect(screen.getByText('Quietanza mancante')).toBeTruthy();
+    expect(screen.getByText(/DATA INCASSO nella causale/)).toBeTruthy();
+    expect(screen.getByTestId('apri-addebito-m1').getAttribute('href'))
+      .toBe('/riconciliazione/banca?movimento=m1');
+    expect(screen.getByTestId('apri-quietanza-riscontrati:p1')).toBeTruthy();
+    expect(screen.getByText(/234 quietanze/)).toBeTruthy();
+  });
+
+  it('il filtro mostra un gruppo solo, il più recente per primo', async () => {
+    api.get.mockResolvedValueOnce({ data: RISPOSTA });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Riscontrato')).toBeTruthy());
+
+    const esiti = screen.getAllByTestId(/^esito-/).map(e => e.textContent);
+    expect(esiti).toEqual(['Quietanza mancante', 'Riscontrato']);
+
+    fireEvent.click(screen.getByTestId('filtro-riscontrati'));
+    expect(screen.queryByText('Quietanza mancante')).toBeNull();
+    expect(screen.getByText('Riscontrato')).toBeTruthy();
+  });
+});

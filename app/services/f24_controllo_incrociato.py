@@ -919,3 +919,301 @@ async def riconcilia_addebiti(db, *, dry_run: bool = True) -> Dict[str, Any]:
         applicate["quietanze"] += 1
 
     return {"dry_run": False, **piano, "applicate": applicate}
+
+
+# ── riscontro quietanza ↔ addebito bancario ─────────────────────────────────
+#
+# Quietanza e addebito sono due prove dello stesso pagamento, e restano due
+# record distinti: qui si collegano, non si fondono, e il modello F24 non si
+# ricostruisce (se manca resta «F24 mancante»). Serve perche' il motore
+# canonico abbina la banca ai soli modelli: al 27/09/2026 242 pagamenti su 328
+# avevano la sola quietanza, e i loro addebiti I24 restavano orfani.
+#
+# Un pagamento e' il suo protocollo telematico: due copie della stessa
+# quietanza (scaricata due volte, nomi diversi) sono un pagamento solo.
+# Certo = importo uguale al centesimo, addebito 0-4 giorni dopo la data della
+# quietanza (il fine settimana sposta la contabile) e la «DATA INCASSO» scritta
+# nella causale BPM uguale alla data della quietanza. Senza quella data nella
+# causale l'abbinamento resta una proposta da verificare. Mai per solo importo,
+# mai con tolleranza sull'importo.
+
+RISCONTRO_CERTO = "RISCONTRATO_BANCA"
+RISCONTRO_DA_VERIFICARE = "DA_VERIFICARE"
+GIORNI_ADDEBITO_DOPO_QUIETANZA = 4
+_RE_ADDEBITO_DELEGA = re.compile(r"\bI24\b|\bF24\b|DELEGA\s+UNIFICATA", re.I)
+_RE_DATA_INCASSO = re.compile(r"DATA\s+INCASSO\s+(\d{2})/(\d{2})/(\d{4})", re.I)
+
+
+def data_incasso_causale(m: Dict[str, Any]) -> Optional[str]:
+    """La «DATA INCASSO gg/mm/aaaa» che la banca scrive nella causale I24."""
+    testo = str(m.get("descrizione") or m.get("descrizione_originale") or "")
+    trovata = _RE_DATA_INCASSO.search(testo)
+    return f"{trovata.group(3)}-{trovata.group(2)}-{trovata.group(1)}" if trovata else None
+
+
+def e_addebito_delega(m: Dict[str, Any]) -> bool:
+    """Un addebito di delega F24 (I24): non un bollettino CBILL/PagoPA all'Agenzia."""
+    testo = str(m.get("descrizione") or m.get("descrizione_originale") or "")
+    return bool(_RE_ADDEBITO_DELEGA.search(testo))
+
+
+def url_pdf_quietanza(q: Dict[str, Any]) -> Optional[str]:
+    """Il PDF vero della quietanza, con gli stessi lettori dell'analisi F24."""
+    if not q.get("id"):
+        return None
+    if q.get("fonte") == COLL_FISCAL_DOCUMENTS:
+        return f"/api/fiscal/documents/{q['id']}/content"
+    return f"/api/f24-public/pdf/{q['id']}"
+
+
+def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Le quietanze raggruppate per pagamento: protocollo, data e saldo uguali.
+
+    Il protocollo da solo non basta: dallo stesso PDF escono deleghe diverse
+    con lo stesso protocollo e importi diversi (5.959,18 e 12,95 EUR il
+    21/08/2023). Due copie dello stesso pagamento coincidono in tutti e tre.
+    Senza protocollo, o senza data e saldo, la quietanza fa pagamento da sola.
+    """
+    gruppi: Dict[str, List[Dict[str, Any]]] = {}
+    for q in quietanze:
+        if q.get("protocollo") and q.get("data") and q.get("importo_cents"):
+            chiave = f"{q['protocollo']}|{q['data']}|{q['importo_cents']}"
+        else:
+            chiave = f"id:{q.get('id')}"
+        gruppi.setdefault(chiave, []).append(q)
+    pagamenti = []
+    for chiave, copie in gruppi.items():
+        prima = copie[0]
+        pagamenti.append({
+            "chiave": chiave,
+            "protocollo": prima.get("protocollo_originale"),
+            "data": prima.get("data"),
+            "importo_cents": prima.get("importo_cents") or None,
+            "quietanze": [{"id": q.get("id"), "fonte": q.get("fonte"), "filename": q.get("filename"),
+                           "pdf_url": url_pdf_quietanza(q)} for q in copie],
+        })
+    return pagamenti
+
+
+def _vista_addebito(m: Dict[str, Any]) -> Dict[str, Any]:
+    data = data_movimento(m)
+    mid = str(m.get("id") or m.get("fingerprint"))
+    return {
+        "movimento_id": mid,
+        "data": data,
+        "data_it": data_italiana(data),
+        "importo": euro(importo_movimento_cents(m)),
+        "descrizione": m.get("descrizione") or m.get("descrizione_originale"),
+        "data_incasso": data_incasso_causale(m),
+        "link": f"/riconciliazione/banca?movimento={mid}",
+    }
+
+
+def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "chiave": p["chiave"],
+        "protocollo": p["protocollo"],
+        "data": p["data"],
+        "data_it": data_italiana(p["data"]),
+        "importo": euro(p["importo_cents"]),
+        "quietanze": p["quietanze"],
+    }
+
+
+def riscontri_quietanze_banca(
+    quietanze: Iterable[Dict[str, Any]], movimenti: Iterable[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Calcola, senza scrivere, il riscontro di ogni pagamento con la banca.
+
+    Ogni esito porta la sua motivazione (importo, date, causale confrontati).
+    Un pagamento o un addebito con piu' candidati resta da verificare con
+    l'elenco dei candidati: niente si sceglie a caso.
+    """
+    pagamenti = pagamenti_da_quietanze(quietanze)
+    addebiti = [m for m in movimenti if e_addebito_delega(m) and data_movimento(m)]
+    date_banca = sorted(data_movimento(m) for m in addebiti)
+    copertura = (date_banca[0], date_banca[-1]) if date_banca else (None, None)
+
+    candidati: Dict[str, List[Dict[str, Any]]] = {}
+    per_addebito: Dict[str, List[str]] = {}
+    for p in pagamenti:
+        if not p["data"] or not p["importo_cents"]:
+            continue
+        for m in addebiti:
+            if importo_movimento_cents(m) != p["importo_cents"]:
+                continue
+            giorni = (date.fromisoformat(data_movimento(m)) - date.fromisoformat(p["data"])).days
+            if not 0 <= giorni <= GIORNI_ADDEBITO_DOPO_QUIETANZA:
+                continue
+            incasso = data_incasso_causale(m)
+            if incasso and incasso != p["data"]:
+                continue  # la banca dice che e' un altro versamento
+            mid = str(m.get("id") or m.get("fingerprint"))
+            candidati.setdefault(p["chiave"], []).append({"m": m, "giorni": giorni, "incasso": incasso})
+            per_addebito.setdefault(mid, []).append(p["chiave"])
+
+    riscontri: List[Dict[str, Any]] = []
+    da_verificare: List[Dict[str, Any]] = []
+    senza_addebito: List[Dict[str, Any]] = []
+    fuori_periodo = 0
+    incompleti: List[Dict[str, Any]] = []
+    for p in pagamenti:
+        if not p["data"] or not p["importo_cents"]:
+            incompleti.append({**_vista_pagamento(p), "motivo": (
+                "data di pagamento non letta" if not p["data"] else "saldo non letto")})
+            continue
+        trovati = candidati.get(p["chiave"], [])
+        if len(trovati) == 1 and len(per_addebito[str(trovati[0]["m"].get("id") or trovati[0]["m"].get("fingerprint"))]) == 1:
+            c = trovati[0]
+            addebito = _vista_addebito(c["m"])
+            certo = c["incasso"] == p["data"]
+            motivo = (
+                f"importo {addebito['importo']:.2f} EUR uguale al centesimo; quietanza del "
+                f"{data_italiana(p['data'])}, addebito del {addebito['data_it']} "
+                f"({c['giorni']} gg dopo)"
+                + (f"; DATA INCASSO nella causale: {data_italiana(c['incasso'])}" if certo
+                   else "; la causale non riporta la data d'incasso: da verificare")
+            )
+            voce = {**_vista_pagamento(p), "addebito": addebito, "motivazione": motivo,
+                    "stato": RISCONTRO_CERTO if certo else RISCONTRO_DA_VERIFICARE}
+            (riscontri if certo else da_verificare).append(voce)
+        elif trovati:
+            da_verificare.append({
+                **_vista_pagamento(p), "stato": RISCONTRO_DA_VERIFICARE,
+                "candidati": [_vista_addebito(c["m"]) for c in trovati],
+                "motivazione": f"{len(trovati)} addebiti compatibili, oppure un addebito "
+                               "conteso da piu' quietanze: scegliere a mano",
+            })
+        elif copertura[0] and copertura[0] <= p["data"] and (
+            date.fromisoformat(p["data"]) + timedelta(days=GIORNI_ADDEBITO_DOPO_QUIETANZA)
+        ).isoformat() <= copertura[1]:
+            senza_addebito.append({**_vista_pagamento(p), "motivazione": (
+                "nessun addebito I24 di pari importo entro 4 giorni: pagato da un altro "
+                "conto, estratto conto incompleto o pagamento mai transitato")})
+        else:
+            fuori_periodo += 1
+
+    usati = set(per_addebito)
+    addebiti_senza = [
+        {**_vista_addebito(m), "motivazione": (
+            "addebito di delega F24 senza quietanza di pari importo e data: "
+            "quietanza da riscaricare dal Cassetto Fiscale")}
+        for m in addebiti if str(m.get("id") or m.get("fingerprint")) not in usati
+    ]
+    ordina = lambda righe: sorted(righe, key=lambda r: r.get("data") or "", reverse=True)  # noqa: E731
+    return {
+        "riscontrati": ordina(riscontri),
+        "da_verificare": ordina(da_verificare),
+        "quietanze_senza_addebito": ordina(senza_addebito),
+        "addebiti_senza_quietanza": ordina(addebiti_senza),
+        "quietanze_incomplete": ordina(incompleti),
+        "copertura_banca": {"dal": copertura[0], "al": copertura[1]},
+        "conteggi": {
+            "pagamenti": len(pagamenti), "riscontrati": len(riscontri),
+            "da_verificare": len(da_verificare), "quietanze_senza_addebito": len(senza_addebito),
+            "addebiti_senza_quietanza": len(addebiti_senza),
+            "fuori_periodo_estratto": fuori_periodo, "quietanze_incomplete": len(incompleti),
+        },
+    }
+
+
+ALERT_QUIETANZA_SENZA_ADDEBITO = "F24_QUIETANZA_SENZA_ADDEBITO"
+ALERT_ADDEBITO_SENZA_QUIETANZA = "BNK_F24_SENZA_QUIETANZA"
+
+
+async def applica_riscontri_quietanze(
+    db, esito: Dict[str, Any], *, con_alert: bool = True,
+) -> Dict[str, int]:
+    """Scrive i riscontri certi su quietanze e addebito; apre e chiude gli alert.
+
+    Idempotente: un riscontro gia' scritto uguale non si riscrive. Il
+    movimento non diventa «riconciliato»: e' spiegato dalla quietanza, ma il
+    modello F24 (se manca) resta da caricare.
+    """
+    from app.services.alert_engine import genera_alert, risolvi_alert
+
+    now = datetime.now(timezone.utc).isoformat()
+    scritti = {"quietanze": 0, "addebiti": 0, "alert_aperti": 0, "alert_chiusi": 0}
+    for r in esito["riscontrati"]:
+        a = r["addebito"]
+        riscontro = {
+            "stato": RISCONTRO_CERTO, "movimento_id": a["movimento_id"], "data_addebito": a["data"],
+            "importo": a["importo"], "data_incasso": a["data_incasso"], "motivazione": r["motivazione"],
+        }
+        for q in r["quietanze"]:
+            collezione = q.get("fonte") or COLL_QUIETANZE_F24
+            attuale = await db[collezione].find_one({"id": q["id"]}, {"_id": 0, "riscontro_banca": 1})
+            vecchio = {k: v for k, v in ((attuale or {}).get("riscontro_banca") or {}).items()
+                       if k != "verificato_il"}
+            if vecchio != riscontro:
+                await db[collezione].update_one({"id": q["id"]}, {"$set": {
+                    "riscontro_banca": {**riscontro, "verificato_il": now},
+                    "movimento_bancario_id": a["movimento_id"],
+                }})
+                scritti["quietanze"] += 1
+        ids = sorted(str(q["id"]) for q in r["quietanze"] if q.get("id"))
+        risultato = await db[COLL_ESTRATTO_CONTO].update_one(
+            {"$or": [{"id": a["movimento_id"]}, {"fingerprint": a["movimento_id"]}],
+             "quietanze_f24_ids": {"$ne": ids}},
+            {"$set": {"quietanze_f24_ids": ids, "quietanza_f24_protocollo": r["protocollo"],
+                      "quietanza_f24_riscontro": RISCONTRO_CERTO}},
+        )
+        scritti["addebiti"] += int(getattr(risultato, "modified_count", 0) or 0)
+        if con_alert:
+            scritti["alert_chiusi"] += await risolvi_alert(ALERT_ADDEBITO_SENZA_QUIETANZA, a["movimento_id"], db)
+            scritti["alert_chiusi"] += await risolvi_alert(ALERT_QUIETANZA_SENZA_ADDEBITO, r["chiave"], db)
+    if not con_alert:
+        return scritti
+
+    for q in esito["quietanze_senza_addebito"]:
+        creato = await genera_alert(
+            ALERT_QUIETANZA_SENZA_ADDEBITO, q["chiave"], COLL_QUIETANZE_F24,
+            f"Quietanza F24 del {q['data_it']} ({q['importo']:.2f} EUR, protocollo "
+            f"{q['protocollo'] or '-'}): {q['motivazione']}", db,
+            extra={"record": [q]},
+        )
+        scritti["alert_aperti"] += int(bool(creato))
+    for m in esito["addebiti_senza_quietanza"]:
+        creato = await genera_alert(
+            ALERT_ADDEBITO_SENZA_QUIETANZA, m["movimento_id"], COLL_ESTRATTO_CONTO,
+            f"Addebito del {m['data_it']} ({m['importo']:.2f} EUR): {m['motivazione']}", db,
+            extra={"record": [m]},
+        )
+        scritti["alert_aperti"] += int(bool(creato))
+    return scritti
+
+
+async def riscontra_quietanze_banca(db, *, dry_run: bool = False) -> Dict[str, Any]:
+    """Il giro completo: registro letto una volta, riscontri e alert."""
+    registro = await carica_registro(db)
+    esito = riscontri_quietanze_banca(registro["quietanze"], registro["movimenti"])
+    if dry_run:
+        return {"dry_run": True, **esito}
+    return {"dry_run": False, **esito, "scritti": await applica_riscontri_quietanze(db, esito)}
+
+
+async def riscontra_quietanza_arrivata(db, importo: Any) -> Dict[str, Any]:
+    """All'arrivo di una quietanza: solo quietanze e addebiti di pari importo.
+
+    L'abbinamento chiede l'importo uguale al centesimo, quindi il sottoinsieme
+    con lo stesso importo da' lo stesso risultato del giro completo, senza
+    rileggere l'intero registro a ogni file del lotto. Gli alert li apre solo
+    il giro dei 30 minuti, che conosce la copertura dell'estratto conto.
+    """
+    cents = centesimi(importo)
+    if not cents:
+        return {"saltato": "saldo non letto"}
+    valore = euro(abs(cents))
+    quietanze = await db[COLL_QUIETANZE_F24].find(
+        {"$or": [{"saldo": valore}, {"saldo": str(valore)}, {"totali.saldo_netto": valore}]},
+        {"_id": 0, "pdf_data": 0},
+    ).to_list(200)
+    movimenti = await db[COLL_ESTRATTO_CONTO].find(
+        {"importo": {"$in": [valore, -valore]}}, {"_id": 0},
+    ).to_list(200)
+    esito = riscontri_quietanze_banca(
+        [_quietanza_legacy(q) for q in quietanze if q.get("entity_status") != "deleted"],
+        [m for m in movimenti if m.get("entity_status") != "deleted"
+         and str(m.get("tipo") or "uscita").lower() != "entrata"],
+    )
+    return {**esito["conteggi"], "scritti": await applica_riscontri_quietanze(db, esito, con_alert=False)}

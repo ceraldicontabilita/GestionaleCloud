@@ -1,0 +1,243 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, FileText, RefreshCw } from 'lucide-react';
+import api from '../api';
+import { COLORS, formatEuro, formatDateIT } from '../lib/utils';
+import { Esito, ListaAdattiva } from './ds';
+import { ROTTE_CONTROPARTITA } from './LinkContropartita';
+import DocumentViewerModal from './DocumentViewerModal';
+
+/**
+ * Quietanze F24 ↔ addebiti I24 in banca.
+ *
+ * Quietanza e addebito sono due prove dello stesso pagamento: qui si vedono
+ * affiancate, con l'esito e la sua motivazione (importo, date e causale
+ * confrontati). Il motore e' uno solo, `f24_controllo_incrociato`, che scrive
+ * nel giro dei 30 minuti; questa pagina legge soltanto. Nessun giudizio
+ * fiscale: fatti e discrepanze, da verificare col commercialista.
+ */
+
+const GRUPPI = [
+  { chiave: 'riscontrati', etichetta: 'Riscontrati', esito: 'chiuso', testo: 'Riscontrato' },
+  { chiave: 'da_verificare', etichetta: 'Da verificare', esito: 'verificare', testo: 'Da verificare' },
+  {
+    chiave: 'addebiti_senza_quietanza', etichetta: 'Addebiti senza quietanza',
+    esito: 'intervento', testo: 'Quietanza mancante',
+  },
+  {
+    chiave: 'quietanze_senza_addebito', etichetta: 'Quietanze senza addebito',
+    esito: 'intervento', testo: 'Addebito non trovato',
+  },
+  { chiave: 'quietanze_incomplete', etichetta: 'Quietanze illeggibili', esito: 'verificare', testo: 'Dati mancanti' },
+];
+
+const stileChip = attivo => ({
+  minHeight: 44,
+  padding: '8px 14px',
+  borderRadius: 999,
+  border: `1px solid ${attivo ? COLORS.primary : COLORS.borderDark}`,
+  background: attivo ? COLORS.primarySoft : COLORS.card,
+  color: attivo ? COLORS.primary : COLORS.text,
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: 'pointer',
+});
+
+const stileLink = {
+  display: 'inline-flex', alignItems: 'center', gap: 4, minHeight: 32,
+  color: COLORS.primary, fontWeight: 600, fontSize: 12.5, textDecoration: 'none',
+  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+};
+
+export default function RiscontroQuietanzeBanca({ anno }) {
+  const [dati, setDati] = useState(null);
+  const [errore, setErrore] = useState(null);
+  const [caricamento, setCaricamento] = useState(false);
+  const [gruppo, setGruppo] = useState('tutti');
+  const [pdf, setPdf] = useState(null);
+
+  const carica = async () => {
+    setCaricamento(true);
+    setErrore(null);
+    try {
+      const qs = anno ? `?anno=${anno}` : '';
+      const res = await api.get(`/api/f24-riconciliazione/quietanze-banca${qs}`);
+      setDati(res.data);
+    } catch (e) {
+      setErrore(e.response?.data?.message || e.response?.data?.detail || e.message);
+    } finally {
+      setCaricamento(false);
+    }
+  };
+
+  useEffect(() => {
+    carica();
+  }, [anno]);
+
+  const righe = useMemo(() => {
+    if (!dati) return [];
+    const scelti = gruppo === 'tutti' ? GRUPPI : GRUPPI.filter(g => g.chiave === gruppo);
+    return scelti
+      .flatMap(g => (dati[g.chiave] || []).map((r, i) => ({
+        ...r, _gruppo: g, _id: `${g.chiave}:${r.chiave || r.movimento_id || i}`,
+      })))
+      .sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
+  }, [dati, gruppo]);
+
+  const quietanzeDi = r => r.quietanze || [];
+  const addebitiDi = r => (r.addebito ? [r.addebito] : r.candidati || (r.movimento_id ? [r] : []));
+
+  const colonne = [
+    {
+      key: 'data', label: 'Data', ruoloCard: 'sottotitolo',
+      render: r => formatDateIT(r.data) || '—',
+      tdStyle: { whiteSpace: 'nowrap' },
+    },
+    {
+      key: 'importo', label: 'Importo', align: 'right', mono: true, ruoloCard: 'importo',
+      render: r => (r.importo ? formatEuro(r.importo) : '—'),
+    },
+    {
+      key: 'esito', label: 'Esito', ruoloCard: 'titolo',
+      render: r => (
+        <Esito esito={r._gruppo.esito} data-testid={`esito-${r._id}`}>{r._gruppo.testo}</Esito>
+      ),
+    },
+    {
+      key: 'quietanza', label: 'Quietanza', ruoloCard: 'dettaglio',
+      render: r => {
+        const qs = quietanzeDi(r);
+        if (!qs.length) return <span style={{ color: COLORS.textMuted }}>nessuna</span>;
+        return (
+          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+            {qs[0].pdf_url ? (
+              <button
+                type="button"
+                style={stileLink}
+                data-testid={`apri-quietanza-${r._id}`}
+                onClick={() => setPdf({
+                  title: `Quietanza F24 del ${formatDateIT(r.data)}${r.protocollo ? ` · protocollo ${r.protocollo}` : ''}`,
+                  fetchUrl: qs[0].pdf_url,
+                })}
+              >
+                <FileText size={14} aria-hidden="true" /> Apri quietanza
+              </button>
+            ) : null}
+            <span style={{ fontSize: 11.5, color: COLORS.textMuted }}>
+              {r.protocollo ? `prot. ${r.protocollo}` : qs[0].filename}
+              {qs.length > 1 ? ` · ${qs.length} copie dello stesso pagamento` : ''}
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      key: 'addebito', label: 'Addebito in banca', ruoloCard: 'dettaglio',
+      render: r => {
+        const as = addebitiDi(r);
+        if (!as.length) return <span style={{ color: COLORS.textMuted }}>nessuno</span>;
+        return (
+          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+            {as.map(a => (
+              <Link
+                key={a.movimento_id}
+                to={ROTTE_CONTROPARTITA.movimentoBanca(a.movimento_id)}
+                style={stileLink}
+                data-testid={`apri-addebito-${a.movimento_id}`}
+              >
+                {formatDateIT(a.data)} · {formatEuro(a.importo)} <ArrowUpRight size={14} aria-hidden="true" />
+              </Link>
+            ))}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'motivazione', label: 'Perché', ruoloCard: 'dettaglio',
+      render: r => <span style={{ fontSize: 12.5 }}>{r.motivazione || r.motivo || '—'}</span>,
+    },
+  ];
+
+  const conteggi = dati?.conteggi || {};
+
+  return (
+    <section
+      data-testid="riscontro-quietanze-banca"
+      style={{ padding: 16, borderBottom: `1px solid ${COLORS.border}`, background: COLORS.card }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: COLORS.text }}>
+          Quietanze F24 e addebiti in banca{anno ? ` — ${anno}` : ''}
+        </h3>
+        <button
+          type="button"
+          onClick={carica}
+          disabled={caricamento}
+          style={{ ...stileChip(false), display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          data-testid="ricarica-riscontro-quietanze"
+        >
+          <RefreshCw size={14} aria-hidden="true" /> {caricamento ? 'Carico…' : 'Aggiorna'}
+        </button>
+      </div>
+      <p style={{ margin: '6px 0 10px', fontSize: 12.5, color: COLORS.textMuted, maxWidth: 820 }}>
+        Riscontrato solo con importo uguale al centesimo e la «data incasso» della causale uguale
+        alla data della quietanza. Senza quella data, o con più candidati, resta da verificare.
+        {dati?.copertura_banca?.dal && (
+          <> Estratto conto disponibile dal {formatDateIT(dati.copertura_banca.dal)} al{' '}
+            {formatDateIT(dati.copertura_banca.al)}: le {conteggi.fuori_periodo_estratto || 0} quietanze
+            fuori da queste date non si possono riscontrare.</>
+        )}
+      </p>
+
+      {errore && (
+        <div role="alert" style={{ color: COLORS.danger, fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+          {errore}
+        </div>
+      )}
+
+      {dati && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <button type="button" style={stileChip(gruppo === 'tutti')} onClick={() => setGruppo('tutti')}>
+            Tutti
+          </button>
+          {GRUPPI.map(g => (
+            <button
+              key={g.chiave}
+              type="button"
+              style={stileChip(gruppo === g.chiave)}
+              onClick={() => setGruppo(g.chiave)}
+              data-testid={`filtro-${g.chiave}`}
+            >
+              {g.etichetta} ({(dati[g.chiave] || []).length})
+            </button>
+          ))}
+        </div>
+      )}
+
+      {dati && righe.length === 0 && (
+        <div style={{ padding: 20, color: COLORS.textMuted, fontSize: 13 }}>
+          Niente da mostrare per questo filtro.
+        </div>
+      )}
+      {righe.length > 0 && (
+        <ListaAdattiva
+          colonne={colonne}
+          dati={righe}
+          pageSize={200}
+          chiave={r => r._id}
+          resetKey={`${gruppo}:${anno}`}
+          testId="lista-riscontro-quietanze"
+        />
+      )}
+
+      {pdf && (
+        <DocumentViewerModal
+          title={pdf.title}
+          fetchUrl={pdf.fetchUrl}
+          documentType="f24"
+          onClose={() => setPdf(null)}
+        />
+      )}
+    </section>
+  );
+}

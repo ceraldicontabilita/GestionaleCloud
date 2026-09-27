@@ -63,7 +63,6 @@ def _contiene(struttura, atteso) -> bool:
 def test_la_copia_hr_e_un_re_export_del_modulo_unico():
     for nome in (
         "cerca_in_estratto_conto",
-        "riconcilia_tutti_f24",
         "riconcilia_tutti_stipendi",
         "esegui_riconciliazione_paghe_completa",
     ):

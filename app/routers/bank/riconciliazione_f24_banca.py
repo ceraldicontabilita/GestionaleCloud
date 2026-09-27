@@ -388,6 +388,26 @@ async def riconcilia_f24_con_banca():
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.get("/quietanze-banca")
+async def quietanze_banca(anno: Optional[int] = None):
+    """Quietanze F24 ↔ addebiti I24: riscontri, da verificare, orfani.
+
+    Solo lettura: calcola sul momento con lo stesso motore del giro dei 30
+    minuti (`f24_controllo_incrociato.riscontra_quietanze_banca`), che e'
+    l'unico a scrivere. Ogni riga porta la motivazione del suo esito.
+    """
+    from app.services.f24_controllo_incrociato import riscontra_quietanze_banca
+
+    esito = await riscontra_quietanze_banca(Database.get_db(), dry_run=True)
+    if anno:
+        prefisso = str(int(anno))
+        for chiave in ("riscontrati", "da_verificare", "quietanze_senza_addebito",
+                       "addebiti_senza_quietanza", "quietanze_incomplete"):
+            esito[chiave] = [r for r in esito[chiave] if str(r.get("data") or "").startswith(prefisso)]
+        esito["anno"] = int(anno)
+    return esito
+
+
 @router.get("/stato-riconciliazione")
 async def get_stato_riconciliazione():
     """
