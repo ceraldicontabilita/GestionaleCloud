@@ -69,14 +69,24 @@ describe('Eccezioni da riconciliare', () => {
     expect(screen.queryByText(/Verificare Ricavi/i)).not.toBeInTheDocument();
   });
 
+  it('chiede lo stato al server invece di filtrare le sole righe caricate', async () => {
+    render(<VerificaMovimentiBanca />);
+    await screen.findByRole('button', { name: 'Classifica' });
+    expect(api.get.mock.calls[0][0]).toContain('stato=da_classificare');
+
+    fireEvent.change(screen.getByLabelText('Stato indice'), { target: { value: 'all' } });
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    expect(api.get.mock.calls[1][0]).not.toContain('stato=');
+  });
+
   it('non propone classificazione manuale per una riconciliazione gia provata da EC', async () => {
-    api.get.mockResolvedValueOnce({ data: {
+    api.get.mockImplementation((url) => Promise.resolve({ data: url.includes('stato=riconciliato_banca') ? {
       ...indexResponse,
       rows: [{
         ...indexResponse.rows[0], index_status: 'riconciliato_banca', bank_reconciled: true,
         bank_evidence: { kind: 'assegno' },
       }],
-    } });
+    } : indexResponse }));
 
     render(<VerificaMovimentiBanca />);
     fireEvent.change(screen.getByLabelText('Stato indice'), {
