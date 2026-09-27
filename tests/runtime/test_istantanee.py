@@ -195,3 +195,13 @@ def test_un_ricalcolo_partito_prima_della_scrittura_non_rimette_il_dato_vecchio(
     dopo, ancora = _run(scenario())
     assert dopo["n"] == 5
     assert ancora["n"] == 5
+
+
+def test_il_server_di_collaudo_ha_le_stesse_istantanee_della_produzione():
+    """27/09/2026: senza il middleware il collaudo E2E leggeva i conteggi di
+    prima delle scritture e aspettava un numero vecchio (5 invece di 3)."""
+    from pathlib import Path
+
+    radice = Path(__file__).resolve().parents[2]
+    for sorgente in ("app/main.py", "scripts/e2e_distruttivo_server.py"):
+        assert "app.add_middleware(IstantaneeMiddleware)" in (radice / sorgente).read_text(encoding="utf-8"), sorgente
