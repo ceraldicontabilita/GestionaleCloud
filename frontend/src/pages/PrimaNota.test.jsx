@@ -891,6 +891,25 @@ describe('Movimenti del conto SumUp', () => {
     expect(screen.getByText('Giroconto verso BPM')).toBeInTheDocument();
     expect(screen.getByText('Saldo da estratto SumUp')).toBeInTheDocument();
   });
+
+  it('accanto alla spesa di lite apre gli atti della causa', () => {
+    api.get.mockResolvedValue({ data: new Blob(['%PDF'], { type: 'application/pdf' }) });
+    render(<CartaSumUp
+      anno={2026}
+      dati={{
+        movimenti_conto: [
+          { id: 'l', data: '2026-09-04', ora: '10:00', tipo_transazione: 'Bonifico bancario in uscita',
+            controparte: 'Controparte Spa', causale: 'sentenza 1234/21', importo: -625,
+            saldo_disponibile: 100, stato: 'Spesa di lite',
+            atti_giudiziari: [{ id: 'abc', etichetta: 'Sentenza', numero_sentenza: '1234/2021',
+              tribunale: 'Napoli', ruolo_generale: '5678/2016' }] },
+        ],
+      }}
+    />);
+    expect(screen.getByText('Spesa di lite')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Vedi e scarica Sentenza 1234/2021' }));
+    expect(screen.getAllByText('Sentenza 1234/2021').length).toBeGreaterThan(0);
+  });
 });
 
 describe('Quadratura del conto SumUp', () => {

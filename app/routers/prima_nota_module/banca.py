@@ -476,6 +476,8 @@ def _stato_movimento_sumup(riga: Dict[str, Any]) -> str:
         return ("Giroconto verso BPM" if riga.get("estratto_bpm_id")
                 else "Giroconto, accredito BPM atteso")
     # Esiti di abbina_movimenti_sumup (stessi motori del conto BPM).
+    if riga.get("fascicolo_giudiziario"):
+        return "Spesa di lite"
     if riga.get("stipendio_id"):
         return "Stipendio abbinato alla busta"
     if riga.get("fattura_id") or riga.get("fattura_ids"):
@@ -500,9 +502,16 @@ async def _movimenti_conto_sumup(db, dal: str, al: str) -> list:
          "payout_id": 1, "giroconto_operation_id": 1, "estratto_bpm_id": 1,
          "iban_beneficiario": 1, "codice_transazione": 1,
          "stipendio_id": 1, "fattura_id": 1, "fattura_ids": 1, "prima_nota_banca_id": 1,
-         "prima_nota_id": 1},
+         "prima_nota_id": 1, "fascicolo_giudiziario": 1},
     )
     righe = await cursore.to_list(None) if hasattr(cursore, "to_list") else [r async for r in cursore]
+    # Accanto alla spesa di lite, gli atti della causa da aprire e scaricare.
+    from app.services.atti_giudiziari import atti_del_fascicolo
+
+    atti_per_fascicolo = {
+        fascicolo: await atti_del_fascicolo(db, fascicolo)
+        for fascicolo in {r["fascicolo_giudiziario"] for r in righe if r.get("fascicolo_giudiziario")}
+    }
     movimenti = []
     for riga in righe:
         iban = riga.get("iban_beneficiario")
@@ -522,6 +531,8 @@ async def _movimenti_conto_sumup(db, dal: str, al: str) -> list:
             "stato": stato,
             "da_registrare": stato == "Da registrare",
             "payout_id": riga.get("payout_id"),
+            "fascicolo_giudiziario": riga.get("fascicolo_giudiziario"),
+            "atti_giudiziari": atti_per_fascicolo.get(riga.get("fascicolo_giudiziario"), []),
             "prima_nota_ids": [i for i in (riga.get("prima_nota_banca_id"),
                                            riga.get("prima_nota_id")) if i],
         })
