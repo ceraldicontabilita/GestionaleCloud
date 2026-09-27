@@ -438,54 +438,35 @@ async def paypal_recupera_fatture_email_task():
 
 
 async def gmail_full_scan_task():
-    """Task eseguito ogni ora. Scansiona le cartelle Gmail per documenti amministrativi."""
+    """Ogni ora: posta di tutte le cartelle, con cursore per cartella.
+
+    Il primo giro parte dai messaggi piu' recenti e scende fino al primo della
+    casella; da li' in poi legge solo i nuovi. Il cursore sta su Supabase e il
+    giro riprende dopo un riavvio. Un login rifiutato apre un alert e manda
+    un Telegram: non e' un giro vuoto.
+    """
     from app.config import settings
     if not getattr(settings, "ENABLE_GMAIL_IMAP", True):
         logger.info("📧 [SCHEDULER-GMAIL] Scansione Gmail saltata (ENABLE_GMAIL_IMAP spento).")
         return
 
     from app.database import Database
-    from app.services.email_full_download import EmailFullDownloader
+    from app.services.email_full_download import scarica_posta_con_cursori
 
-    logger.info("📧 [SCHEDULER-GMAIL] Avvio scansione multi-cartella Gmail...")
+    db = Database.get_db()
     try:
-        db = Database.get_db()
-        downloader = EmailFullDownloader(db)
-        folder = "ALL_FOLDERS" if getattr(settings, "GMAIL_SCAN_ALL_FOLDERS", True) else "INBOX"
-        days_back = max(1, min(3650, int(getattr(settings, "GMAIL_SCAN_LOOKBACK_DAYS", 30))))
-        result = await downloader.download_all_emails(
-            folder=folder,
-            days_back=days_back,
-            batch_size=50
-        )
-        stats = result.get("stats", {})
-        logger.info(
-            f"[SCHEDULER-GMAIL] Download: "
-            f"{stats.get('cartelle_scansionate', 0)} cartelle, "
-            f"{stats.get('pdfs_downloaded', 0)} PDF"
-        )
-
-        if stats.get("pdfs_downloaded", 0) > 0:
-            try:
-                from app.services.post_download_pipeline import esegui_pipeline_completa
-                pipeline_result = await esegui_pipeline_completa(db)
-                logger.info(f"[SCHEDULER-GMAIL] Pipeline: {pipeline_result}")
-            except Exception as pipe_err:
-                logger.error(f"[SCHEDULER-GMAIL] Pipeline errore: {pipe_err}")
-
-        if stats.get("pdfs_downloaded", 0) > 0:
-            try:
-                from app.services.websocket_manager import notify_data_change
-                await notify_data_change("gmail_scan", {
-                    "pdfs_downloaded": stats.get("pdfs_downloaded", 0),
-                    "cartelle": stats.get("cartelle_con_documenti", 0)
-                }, "notifications")
-            except Exception as ws_err:
-                logger.debug(f"[SCHEDULER-GMAIL] WebSocket non disponibile: {ws_err}")
-    except asyncio.CancelledError:
-        logger.warning("[SCHEDULER-GMAIL] Scansione Gmail cancellata (timeout)")
+        esito = await scarica_posta_con_cursori(db)
     except Exception as e:
-        logger.error(f"[SCHEDULER-GMAIL] Errore scansione Gmail: {e}")
+        logger.error("[SCHEDULER-GMAIL] Errore scansione Gmail (%s): %s", type(e).__name__, e)
+        return
+    logger.info("[SCHEDULER-GMAIL] %s", {k: v for k, v in esito.items() if k != "pdf_per_categoria"})
+    if esito.get("pdf_salvati", 0) > 0:
+        try:
+            from app.services.post_download_pipeline import esegui_pipeline_completa
+            logger.info("[SCHEDULER-GMAIL] Pipeline: %s", await esegui_pipeline_completa(db))
+        except Exception as pipe_err:
+            logger.error("[SCHEDULER-GMAIL] Pipeline errore (%s): %s",
+                         type(pipe_err).__name__, pipe_err)
 
 
 def start_scheduler():
@@ -1560,7 +1541,7 @@ def start_scheduler():
         gmail_full_scan_task,
         'interval',
         hours=1,
-        next_run_time=avvio + timedelta(minutes=35),
+        next_run_time=avvio + timedelta(minutes=7),
         misfire_grace_time=300,
         coalesce=True,
         id="gmail_full_scan",

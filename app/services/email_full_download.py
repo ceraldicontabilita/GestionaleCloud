@@ -26,11 +26,16 @@ IMAP_SERVER = "imap.gmail.com"
 
 
 def get_email_credentials():
-    """Ottieni credenziali email da settings."""
-    from app.config import settings
-    email_user = settings.EMAIL_USER or settings.GMAIL_EMAIL or settings.EMAIL_ADDRESS or ""
-    email_password = settings.EMAIL_PASSWORD or settings.EMAIL_APP_PASSWORD or settings.GMAIL_APP_PASSWORD or ""
-    return email_user, email_password
+    """Credenziali dalla risoluzione canonica (``gmail_credentials``).
+
+    Questa funzione aveva una lista sua, senza ``IMAP_USER``/``IMAP_PASSWORD``:
+    proprio le variabili configurate su Render. Il downloader diceva
+    «Credenziali email non configurate» e non ha mai scaricato niente.
+    """
+    from app.services.gmail_credentials import get_gmail_environment_credentials
+
+    cred = get_gmail_environment_credentials()
+    return cred.user or "", cred.password or ""
 
 # Mapping categoria -> collezione
 CATEGORY_COLLECTIONS = {
@@ -1710,3 +1715,228 @@ async def process_cedolini_to_prima_nota(db: ArchivioDocumenti) -> Dict[str, Any
             stats["errors"].append(f"{cedolino.get('filename')}: {str(e)}")
 
     return stats
+
+
+# ============================================================================
+# SCARICO AUTOMATICO CON CURSORI (giro orario dello scheduler)
+# ============================================================================
+#
+# Ogni cartella ha il suo cursore UID su Supabase (``sistema_stato``):
+# - ``alto``: l'UID piu' alto gia' visto; a ogni giro si leggono solo i nuovi;
+# - ``basso``: fin dove e' arrivato lo storico, che si scarica all'indietro
+#   dai piu' recenti fino al primo messaggio della casella (``completo``).
+# Il giro ha un tetto di tempo e di messaggi e riprende da dove si era fermato,
+# anche dopo un riavvio. Prima si controlla la struttura del messaggio
+# (BODYSTRUCTURE, pochi byte): si scarica per intero solo chi ha allegati.
+# Le chiamate IMAP sono bloccanti e girano in un thread, per non fermare il
+# server web mentre la posta si legge.
+
+CHIAVE_CURSORI_POSTA = "gmail_cursori_cartelle"
+CODICE_ALERT_POSTA = "POSTA_NON_RAGGIUNGIBILE"
+_SEGNI_ALLEGATO = ('"NAME"', '"FILENAME"', '"ATTACHMENT"')
+
+
+def _ha_allegati(bodystructure: bytes) -> bool:
+    testo = (bodystructure or b"").decode("utf-8", errors="replace").upper()
+    return any(segno in testo for segno in _SEGNI_ALLEGATO)
+
+
+def _uid_da_risposta(risposta: Any) -> List[int]:
+    if not risposta or not risposta[0]:
+        return []
+    return sorted(int(u) for u in risposta[0].split() if u.isdigit())
+
+
+async def _salva_cursori(db, stato: Dict[str, Any]) -> None:
+    stato["chiave"] = CHIAVE_CURSORI_POSTA
+    stato["aggiornato_at"] = datetime.now(timezone.utc).isoformat()
+    await db["sistema_stato"].update_one(
+        {"chiave": CHIAVE_CURSORI_POSTA}, {"$set": stato}, upsert=True,
+    )
+
+
+async def _segnala_posta_non_raggiungibile(db, motivo: str) -> None:
+    """Il login fallito non e' un giro vuoto: alert e Telegram, una volta."""
+    try:
+        from app.services.alert_engine import genera_alert
+
+        alert = await genera_alert(
+            CODICE_ALERT_POSTA, "gmail", "sistema_stato",
+            f"Il gestionale non riesce a entrare nella casella di posta: {motivo}. "
+            "Senza posta non arrivano F24, quietanze, cedolini e verbali. "
+            "Serve una nuova password per app di Gmail nella variabile IMAP_PASSWORD su Render.",
+            db,
+        )
+        if alert:
+            from app.services.telegram_notifications import send_notification
+
+            await send_notification(
+                "<b>Posta non raggiungibile</b>\n"
+                f"Il gestionale non entra nella casella: {motivo}.\n"
+                "F24, quietanze e cedolini dalla posta sono fermi finche' non si "
+                "aggiorna la password per app (IMAP_PASSWORD su Render)."
+            )
+    except Exception as exc:
+        logger.warning("Alert posta non raggiungibile non creato (%s): %s",
+                       type(exc).__name__, exc)
+
+
+async def scarica_posta_con_cursori(
+    db, *, budget_secondi: int = 600, max_scaricati: int = 400,
+) -> Dict[str, Any]:
+    """Giro automatico: nuovi messaggi di tutte le cartelle, poi lo storico."""
+    import asyncio
+    import time
+
+    downloader = EmailFullDownloader(db)
+    inizio = time.monotonic()
+    esito: Dict[str, Any] = {
+        "cartelle": 0, "controllati": 0, "scaricati": 0, "pdf_salvati": 0,
+        "errori": 0, "storico_completo": False, "interrotto_per_tetto": False,
+    }
+    connesso = await asyncio.to_thread(downloader.connect)
+    if not connesso:
+        motivo = (downloader.stats.get("errors") or ["accesso rifiutato"])[-1]
+        await _segnala_posta_non_raggiungibile(db, str(motivo)[:200])
+        stato = await db["sistema_stato"].find_one({"chiave": CHIAVE_CURSORI_POSTA}, {"_id": 0}) or {}
+        stato["ultimo_giro"] = {**esito, "errore": str(motivo)[:200],
+                                "at": datetime.now(timezone.utc).isoformat()}
+        await _salva_cursori(db, stato)
+        return {"success": False, "error": str(motivo), **esito}
+
+    try:
+        from app.services.alert_engine import risolvi_alert
+
+        await risolvi_alert(CODICE_ALERT_POSTA, "gmail", db, resolved_by="login_riuscito")
+    except Exception as exc:
+        logger.warning("Alert posta non chiuso (%s): %s", type(exc).__name__, exc)
+
+    stato = await db["sistema_stato"].find_one({"chiave": CHIAVE_CURSORI_POSTA}, {"_id": 0}) or {}
+    cartelle_stato: Dict[str, Any] = dict(stato.get("cartelle") or {})
+    conn = downloader.connection
+
+    def tetto() -> bool:
+        return (time.monotonic() - inizio > budget_secondi
+                or esito["scaricati"] >= max_scaricati)
+
+    async def elabora(cartella: str, uid: int) -> None:
+        esito["controllati"] += 1
+        typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODYSTRUCTURE)")
+        if typ != "OK" or not dati or not _ha_allegati(
+            b" ".join(p if isinstance(p, bytes) else b" ".join(p) for p in dati if p)
+        ):
+            return
+        # BODY.PEEK e cartella in sola lettura: il messaggio non diventa «letto».
+        typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODY.PEEK[])")
+        if typ != "OK" or not dati or not isinstance(dati[0], tuple):
+            return
+        esito["scaricati"] += 1
+        msg = email.message_from_bytes(dati[0][1])
+        esito["pdf_salvati"] += await downloader.process_email(
+            str(uid).encode(), msg, source_folder=cartella,
+        )
+
+    async def seleziona(cartella: str) -> Optional[Dict[str, Any]]:
+        typ, _ = await asyncio.to_thread(conn.select, f'"{cartella}"', True)
+        if typ != "OK":
+            return None
+        validita = (conn.response("UIDVALIDITY")[1] or [None])[0]
+        validita = validita.decode() if isinstance(validita, bytes) else str(validita)
+        cur = cartelle_stato.get(cartella) or {}
+        if cur.get("uidvalidity") != validita:
+            # Cartella nuova o ricreata: i vecchi UID non valgono piu'.
+            typ, risposta = await asyncio.to_thread(conn.uid, "SEARCH", None, "ALL")
+            uid = _uid_da_risposta(risposta) if typ == "OK" else []
+            massimo = uid[-1] if uid else 0
+            cur = {"uidvalidity": validita, "alto": massimo, "basso": massimo + 1,
+                   "completo": not uid}
+            cartelle_stato[cartella] = cur
+        return cur
+
+    try:
+        cartelle = await asyncio.to_thread(downloader._list_all_folders)
+        if "INBOX" in cartelle:
+            cartelle.remove("INBOX")
+            cartelle.insert(0, "INBOX")
+        esito["cartelle"] = len(cartelle)
+
+        # 1) I messaggi arrivati dopo l'ultimo giro, in tutte le cartelle.
+        for cartella in cartelle:
+            if tetto():
+                break
+            try:
+                cur = await seleziona(cartella)
+                if cur is None:
+                    continue
+                typ, risposta = await asyncio.to_thread(
+                    conn.uid, "SEARCH", None, f"UID {int(cur['alto']) + 1}:*")
+                nuovi = [u for u in (_uid_da_risposta(risposta) if typ == "OK" else [])
+                         if u > int(cur["alto"])]
+                for uid in nuovi:
+                    if tetto():
+                        break
+                    try:
+                        await elabora(cartella, uid)
+                    except Exception as exc:
+                        esito["errori"] += 1
+                        logger.warning("[Gmail] %s UID %s non letto (%s): %s",
+                                       cartella, uid, type(exc).__name__, exc)
+                    cur["alto"] = uid
+            except Exception as exc:
+                esito["errori"] += 1
+                logger.warning("[Gmail] cartella %s saltata (%s): %s",
+                               cartella, type(exc).__name__, exc)
+            await _salva_cursori(db, {**stato, "cartelle": cartelle_stato})
+
+        # 2) Lo storico, dal piu' recente al primo messaggio della casella.
+        for cartella in cartelle:
+            if tetto():
+                break
+            cur = cartelle_stato.get(cartella)
+            if not cur or cur.get("completo"):
+                continue
+            try:
+                cur = await seleziona(cartella)
+                if cur is None:
+                    continue
+                basso = int(cur["basso"])
+                if basso <= 1:
+                    cur["completo"] = True
+                    continue
+                typ, risposta = await asyncio.to_thread(
+                    conn.uid, "SEARCH", None, f"UID 1:{basso - 1}")
+                vecchi = sorted((u for u in (_uid_da_risposta(risposta) if typ == "OK" else [])
+                                 if u < basso), reverse=True)
+                for n, uid in enumerate(vecchi, 1):
+                    if tetto():
+                        break
+                    try:
+                        await elabora(cartella, uid)
+                    except Exception as exc:
+                        esito["errori"] += 1
+                        logger.warning("[Gmail] %s UID %s non letto (%s): %s",
+                                       cartella, uid, type(exc).__name__, exc)
+                    cur["basso"] = uid
+                    if n % 50 == 0:
+                        await _salva_cursori(db, {**stato, "cartelle": cartelle_stato})
+                else:
+                    cur["completo"] = True
+            except Exception as exc:
+                esito["errori"] += 1
+                logger.warning("[Gmail] storico %s interrotto (%s): %s",
+                               cartella, type(exc).__name__, exc)
+            await _salva_cursori(db, {**stato, "cartelle": cartelle_stato})
+    finally:
+        await asyncio.to_thread(downloader.disconnect)
+
+    esito["interrotto_per_tetto"] = tetto()
+    esito["storico_completo"] = bool(cartelle_stato) and all(
+        c.get("completo") for c in cartelle_stato.values())
+    esito["storico_mancante_cartelle"] = sum(
+        1 for c in cartelle_stato.values() if not c.get("completo"))
+    esito["pdf_per_categoria"] = downloader.stats.get("pdfs_by_category", {})
+    await _salva_cursori(db, {
+        **stato, "cartelle": cartelle_stato,
+        "ultimo_giro": {**esito, "at": datetime.now(timezone.utc).isoformat()},
+    })
+    return {"success": True, **esito}
