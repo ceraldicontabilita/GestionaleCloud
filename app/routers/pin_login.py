@@ -9,7 +9,6 @@ Flow:
 
 Configurazione (variabili d'ambiente, basta UNA delle due):
   (ADMIN_PIN in chiaro NON è più supportato — audit sicurezza 18/07/2026)
-                   stessa filosofia di ADMIN_PASSWORD nel login email.
   PIN_HASH_ADMIN = SHA-256 hex del PIN, per chi preferisce non tenere il PIN
                    in chiaro nell'ambiente:
                    python -c "import hashlib;print(hashlib.sha256(b'PIN').hexdigest())"

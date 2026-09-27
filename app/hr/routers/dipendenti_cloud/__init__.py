@@ -21,8 +21,6 @@ from decimal import Decimal, InvalidOperation
 from app.hr.database import Database
 from app.hr.services import stato_rapporto
 from app.hr.utils.dependencies import require_staff
-from app.config import settings
-from app.services.drive_folder_registry import get_folder_id
 
 logger = logging.getLogger(__name__)
 
@@ -767,18 +765,6 @@ def _e_movimento_non_stipendio(text: str) -> bool:
 # DIPENDENTI/<persona>/BONIFICI e l'estratto conto e deposita in
 # pagamenti_esiti/paghe_mensili/bonifici_da_associare ogni 15 minuti.
 # `_e_movimento_non_stipendio` resta: e' riusato dal ponte.
-
-
-@router.get("/paghe/bonifici-drive-config")
-async def configurazione_cartella_bonifici_drive():
-    """Link della radice Drive dei fascicoli (DIPENDENTI/<persona>/BONIFICI),
-    la stessa letta dal ponte del gestionale: derivato sempre dalla variabile
-    canonica Render o dal registro, mai una seconda configurazione."""
-    folder = str(settings.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or get_folder_id("bonifico") or "").strip()
-    return {
-        "configured": bool(folder),
-        "drive_url": f"https://drive.google.com/drive/folders/{folder}" if folder else None,
-    }
 
 
 _MESI_IMPORT_SALARI = {

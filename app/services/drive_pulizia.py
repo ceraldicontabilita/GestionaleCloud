@@ -21,7 +21,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from app.services.drive_invoice_ingest import _load_credentials, _download_bytes
+from app.services.drive_credential_probe import load_shared_credentials as _load_credentials
+from app.services.drive_download import scarica_bytes as _download_bytes
 
 logger = logging.getLogger(__name__)
 

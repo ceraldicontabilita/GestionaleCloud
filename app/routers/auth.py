@@ -1,82 +1,26 @@
 """
 Auth Router — Ceraldi Group ERP
-Login/Logout con bcrypt + PyJWT httpOnly cookie.
-Singolo utente admin configurato via env.
+Verifica e chiusura della sessione (PyJWT, cookie httpOnly). L'ingresso e'
+solo col PIN (`pin_login.py`, PIN amministratore unico `PIN_HASH_ADMIN` in
+`app/services/admin_pin.py`): il vecchio login email + password e' stato
+tolto, nessuna pagina lo usava piu'.
 """
-import os
-import hmac
 import jwt
-import bcrypt
-from fastapi import APIRouter, Response, Request, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Response, Request, HTTPException
 from dotenv import load_dotenv
 
 from app.config import settings
-from app.utils import login_lockout
-from app.utils.auth_tokens import create_access_token, create_mfa_challenge, set_session_cookies
 
 load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
-ADMIN_EMAIL         = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (priorità)
-ADMIN_PASSWORD      = os.getenv("ADMIN_PASSWORD", "")        # chiaro (fallback solo se l'hash non è configurato)
 # IMPORTANTE: STESSA chiave del middleware di autenticazione (settings.SECRET_KEY,
 # che include il segreto condiviso in sistema_stato.auth_secret). Prima il login
 # firmava con os.getenv("SECRET_KEY") o una chiave CASUALE per processo: se
 # diversa da quella del middleware, OGNI chiamata API rispondeva 401
 # ("Authentication required" su tutte le pagine).
 SECRET_KEY          = settings.SECRET_KEY
-# Scelta utente 13/07/2026: 1 ora di inattività (poi ri-login). Il token vive
-# ACCESS_TOKEN_EXPIRE_MINUTES e il middleware lo rinnova da solo mentre l'utente
-# lavora (sessione scorrevole), quindi non cade mai durante l'uso attivo.
-TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
-
-
-def _check_password(plain: str) -> bool:
-    """Verifica password: bcrypt (se configurato) ha sempre la priorità sul
-    confronto in chiaro. ADMIN_PASSWORD resta solo un fallback per ambienti
-    senza ADMIN_PASSWORD_HASH configurato (audit sicurezza 19/07/2026: prima
-    il chiaro aveva priorità anche con l'hash presente)."""
-    if ADMIN_PASSWORD_HASH:
-        try:
-            return bcrypt.checkpw(plain.encode(), ADMIN_PASSWORD_HASH.encode())
-        except Exception:
-            return False
-    if ADMIN_PASSWORD:
-        # Confronto a tempo costante: evita timing attack sul confronto '=='.
-        return hmac.compare_digest(plain, ADMIN_PASSWORD)
-    return False
-
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-async def _audit_login(ip: str, email: str, ok: bool) -> None:
-    """Registra il tentativo di login (best-effort, non blocca mai)."""
-    try:
-        from app.database import Database
-        from app.services.audit_logger import log_sicurezza
-        await log_sicurezza(
-            Database.get_db(),
-            azione="login_ok" if ok else "login_fallito",
-            dettaglio=f"Login email {'riuscito' if ok else 'fallito'}",
-            utente=email, ip=ip,
-        )
-    except Exception:
-        pass
-
-
-def _make_token(email: str, role: str = "admin", name: str = "Admin") -> str:
-    # Il ruolo viaggia NEL token: il middleware e le dependency lo leggono da
-    # qui. L'admin via env resta 'admin' (nessun cambiamento di comportamento).
-    return create_access_token(
-        user_id=email, email=email, name=name, role=role,
-        auth_method="password", mfa_verified=False,
-    )
 
 
 async def _decode_token(request: Request) -> dict:
@@ -121,8 +65,8 @@ async def verify_token(request: Request) -> str:
 
 
 # NB: gli alias legacy /api/login, /api/logout, /api/me sono stati rimossi
-# (audit lug 2026): il frontend usa esclusivamente /api/auth/login,
-# /api/auth/logout, /api/auth/verify definiti qui sotto.
+# (audit lug 2026): il frontend usa /api/auth/pin-login (pin_login.py),
+# /api/auth/logout e /api/auth/verify definiti qui sotto.
 
 
 @router.get("/auth/verify")
@@ -150,45 +94,6 @@ async def verify(request: Request):
         },
         "email": email,
         "mfa": mfa,
-    }
-
-
-@router.post("/auth/login")
-async def auth_login(body: LoginRequest, request: Request, response: Response):
-    """Alias /api/auth/login → /api/login per compatibilità frontend."""
-    ip = login_lockout.client_ip(request)
-    lock = login_lockout.seconds_locked(ip)
-    if lock > 0:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Troppi tentativi falliti. Riprova tra {lock} secondi.",
-        )
-    if body.email.lower() != ADMIN_EMAIL.lower() or not _check_password(body.password):
-        login_lockout.register_failure(ip)
-        await _audit_login(ip, body.email, ok=False)
-        raise HTTPException(status_code=401, detail="Credenziali errate")
-    from app.database import Database
-    from app.services.mfa_service import canonical_identity, is_enabled
-    identity = canonical_identity(body.email, body.email, "admin")
-    if await is_enabled(Database.get_db(), identity):
-        login_lockout.clear_failures(ip)
-        return {
-            "ok": True,
-            "mfa_required": True,
-            "challenge_token": create_mfa_challenge(
-                {"id": body.email, "email": body.email, "name": "Admin", "role": "admin"},
-                "password",
-            ),
-        }
-    login_lockout.clear_failures(ip)
-    await _audit_login(ip, body.email, ok=True)
-    token = _make_token(body.email)
-    set_session_cookies(response, token)
-    return {
-        "ok":          True,
-        "email":       body.email,
-        "access_token": token,   # il frontend lo ignora (usa cookie)
-        "user":        {"email": body.email, "name": "Admin", "role": "admin"},
     }
 
 

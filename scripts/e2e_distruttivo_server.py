@@ -14,9 +14,9 @@ from pathlib import Path
 os.environ["ENVIRONMENT"] = "development"
 os.environ["SECRET_KEY"] = "e2e-isolato-solo-test-non-produzione"
 os.environ["ADMIN_EMAIL"] = "e2e@example.invalid"
-os.environ["ADMIN_PASSWORD"] = "e2e-password-solo-test"
+# PIN amministratore fittizio (sha256 di "246810"): l'unico ingresso e' il PIN.
+os.environ["PIN_HASH_ADMIN"] = "7c2523c985881fb2c2b4cfbe917eb12c4c4b61e898ad4e7160cfca487ca3c4f3"
 os.environ["GESTIONE_RISERVATA_CODE"] = "00000000"
-os.environ.pop("ADMIN_PASSWORD_HASH", None)
 
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse  # noqa: E402

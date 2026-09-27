@@ -98,10 +98,26 @@ def _service():
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
-def _cartelle(service, root: str) -> Dict[str, str]:
-    from app.services.drive_invoice_ingest import _get_or_create_folder
+def _cartella(service, parent_id: str, nome: str) -> Optional[str]:
+    """La sottocartella ``nome`` di ``parent_id``; se manca la crea."""
+    risposta = service.files().list(
+        q=(f"name = '{nome}' and '{parent_id}' in parents "
+           f"and mimeType = '{CARTELLA_MIME}' and trashed = false"),
+        fields="files(id)", pageSize=1,
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+    ).execute()
+    trovate = risposta.get("files", [])
+    if trovate:
+        return trovate[0]["id"]
+    creata = service.files().create(
+        body={"name": nome, "mimeType": CARTELLA_MIME, "parents": [parent_id]},
+        fields="id", supportsAllDrives=True,
+    ).execute()
+    return creata.get("id")
 
-    return {nome: _get_or_create_folder(service, root, nome) for nome in (INBOX, ARCHIVIO, ERRORI, DOPPIONI)}
+
+def _cartelle(service, root: str) -> Dict[str, str]:
+    return {nome: _cartella(service, root, nome) for nome in (INBOX, ARCHIVIO, ERRORI, DOPPIONI)}
 
 
 # File che il titolare ha chiesto di riguardare ed eliminare a mano

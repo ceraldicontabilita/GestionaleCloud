@@ -35,27 +35,28 @@ def test_scarica_originale_senza_credenziale_non_esplode(monkeypatch):
     assert asyncio.run(drive_download.scarica_originale("")) == b""
 
 
-@pytest.mark.parametrize("modulo", [
-    "app.services.drive_cedolini_ingest",
-    "app.services.drive_f24_ingest",
-    "app.services.drive_quietanze_ingest",
+@pytest.mark.parametrize(("modulo", "tipo"), [
+    ("app.services.cedolino_originale", None),
+    ("app.services.f24_originale", "f24"),
+    ("app.services.f24_originale", "quietanza"),
 ])
-def test_originali_dei_canali_passano_dalla_cartella_unica(monkeypatch, modulo):
+def test_originali_per_id_passano_dalla_cartella_unica(monkeypatch, modulo, tipo):
     import importlib
 
-    ingest = importlib.import_module(modulo)
+    lettore = importlib.import_module(modulo)
 
     async def _finto(file_id):
         return b"%PDF-" + file_id.encode()
 
     monkeypatch.setattr(drive_download, "scarica_originale", _finto)
-    assert asyncio.run(ingest.download_file_by_id("x1")) == b"%PDF-x1"
+    doc = {"drive_file_id": "x1"}
+    esito = lettore.carica_originale(doc) if tipo is None else lettore.carica_originale(doc, tipo=tipo)
+    assert asyncio.run(esito) == b"%PDF-x1"
 
 
-def test_servizio_indice_e_registro_fiscale_usano_la_cartella_unica(monkeypatch):
-    from app.services import drive_document_index, drive_fiscal_registry
+def test_servizio_indice_usa_la_cartella_unica(monkeypatch):
+    from app.services import drive_document_index
 
     sentinella = object()
     monkeypatch.setattr(cu, "_service", lambda: sentinella)
     assert drive_document_index.build_drive_service() is sentinella
-    assert drive_fiscal_registry.build_drive_service() is sentinella

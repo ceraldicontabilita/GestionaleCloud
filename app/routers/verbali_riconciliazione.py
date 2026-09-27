@@ -350,7 +350,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
         ultimi = await db["verbali_noleggio"].find({}, projection).sort("created_at", -1).limit(5).to_list(5)
 
         from app.config import settings
-        from app.services.drive_folder_registry import get_folder_id
+        from app.services import drive_cartella_unica
 
         email_user = (
             settings.GMAIL_EMAIL or settings.IMAP_USER or settings.EMAIL_USER
@@ -363,7 +363,8 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
         )
         email_configurata = bool(email_user and email_password)
         email_abilitata = bool(settings.ENABLE_EMAIL_VERBALI_SYNC)
-        drive_configurato = bool(get_folder_id("verbale"))
+        # I verbali su Drive entrano dalla cartella unica, come ogni documento.
+        drive_configurato = bool(drive_cartella_unica.radice())
         documenti_drive = await db["documents_inbox"].count_documents({
             "$or": [
                 {"tipo_documento": "verbale"},
@@ -377,7 +378,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
         elif email_configurata and not email_abilitata:
             avviso_sorgenti = "La casella email e' configurata ma la sincronizzazione automatica verbali e' disattivata."
         elif drive_configurato and documenti_drive == 0 and not email_configurata:
-            avviso_sorgenti = "La cartella Drive Verbali e' collegata ma non contiene documenti importati."
+            avviso_sorgenti = "La cartella unica Drive e' collegata ma non ha portato nessun verbale."
 
         return {
             "success": True,

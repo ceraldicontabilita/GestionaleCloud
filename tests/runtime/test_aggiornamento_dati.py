@@ -32,18 +32,11 @@ def test_stati_letti_dai_motori():
     db = AsyncMongoMockClient()["t"]
 
     async def prepara():
-        await db.sistema_stato.insert_many([
-            {"chiave": "drive_estratti_conto_last_sync",
-             "valore": (ORA - timedelta(minutes=4)).isoformat(),
-             "last_result": {"errors": [], "pending": 39}},
-            {"chiave": "drive_corrispettivi_last_sync", "valore": (ORA - timedelta(minutes=3)).isoformat()},
-            {"chiave": "drive_cedolini_last_sync", "valore": (ORA - timedelta(minutes=5)).isoformat(),
-             "last_result": {"parser_errors": 2}},
-            {"chiave": "drive_f24_last_sync", "valore": (ORA - timedelta(minutes=20)).isoformat()},
-        ])
-        await db.drive_sync_state.insert_one({
-            "_id": "fatture_drive", "last_sync": (ORA - timedelta(hours=5)).isoformat(),
-            "last_error": None, "last_result": {"imported": 0, "pending": 0}})
+        # Banca, fatture, corrispettivi, cedolini e F24 entrano tutti dalla
+        # cartella unica: il loro giro e' quello dello smistatore.
+        await db.sistema_stato.insert_one(
+            {"chiave": "drive_cartella_unica_last_sync",
+             "valore": (ORA - timedelta(minutes=10)).isoformat(), "last_error": None})
         await db.estratto_conto_movimenti.insert_many([{"data": "2026-09-21"}, {"data": "2026-09-01"}])
         await db.invoices.insert_many([{"invoice_date": "2026-09-22"}])
         await db.corrispettivi.insert_many([{"data": "2026-09-18"}, {"data": "2026-09-17"}])
@@ -54,9 +47,9 @@ def test_stati_letti_dai_motori():
 
     banca = fonti["banca"]
     assert banca["stato"] == ad.GIALLO and "21/09/2026" in banca["testo"]
-    assert banca["conteggi"] == {"movimenti": 2, "file_in_attesa": 39}
+    assert banca["conteggi"] == {"movimenti": 2}
 
-    assert fonti["fatture"]["stato"] == ad.ROSSO and "Fermo" in fonti["fatture"]["testo"]
+    assert fonti["fatture"]["stato"] == ad.VERDE
     assert fonti["fatture"]["ultimo_dato"] == "2026-09-22"
 
     corr = fonti["corrispettivi"]
@@ -64,10 +57,19 @@ def test_stati_letti_dai_motori():
     assert corr["stato"] == ad.ROSSO and "mancano 4 giorni" in corr["testo"]
     assert corr["ultimo_dato"] == "2026-09-18" and corr["conteggi"]["giornate"] == 2
 
-    ced = fonti["cedolini_f24"]
-    assert ced["stato"] == ad.GIALLO and "2 cedolini" in ced["testo"]
+    assert fonti["cedolini_f24"]["stato"] == ad.VERDE
 
     assert fonti["riconciliazione"]["stato"] == ad.NON_DISPONIBILE
+
+
+def test_giro_della_cartella_unica_fermo_ferma_le_fonti_drive():
+    db = AsyncMongoMockClient()["t"]
+    run(db.sistema_stato.insert_one(
+        {"chiave": "drive_cartella_unica_last_sync",
+         "valore": (ORA - timedelta(hours=5)).isoformat(), "last_error": None}))
+    fonti = _per_codice(run(ad.stato_fonti(db, ORA)))
+    for codice in ("banca", "fatture", "cedolini_f24"):
+        assert fonti[codice]["stato"] == ad.ROSSO and "Fermo" in fonti[codice]["testo"], codice
 
 
 def test_giro_riconciliazione_registrato_e_letto():

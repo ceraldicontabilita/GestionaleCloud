@@ -242,16 +242,6 @@ def test_quietanza_reale_1040_8948_marca_ravvedimento(monkeypatch):
     assert f24["importo_ravvedimento"] == 2.0
 
 
-def test_drive_quietanze_helpers():
-    from app.services import drive_quietanze_ingest as dq
-    assert dq.is_quietanza_filename("quietanza_giugno.PDF")
-    assert not dq.is_quietanza_filename("nota.txt")
-    # Canale Drive per sezione spento: su Render era false e la variabile e'
-    # stata tolta il 27/09/2026, quindi il default riflette la produzione.
-    from app.config import settings
-    assert settings.ENABLE_DRIVE_QUIETANZE_SYNC is False
-
-
 def test_upload_auto_endpoint_usa_il_servizio_canonico_quietanze(monkeypatch):
     """Integrazione HTTP reale: multipart -> router -> servizio -> DB fake."""
     from app.routers import documenti

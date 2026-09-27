@@ -17,7 +17,7 @@ def _safe_filename(value: str) -> str:
     return name or "dichiarazione.pdf"
 
 def _folder(service, parent_id: str, name: str) -> str:
-    matches=[x for x in index._drive._list_children(service,parent_id) if index._norm(x.get("name"))==index._norm(name) and x.get("mimeType")==FOLDER_MIME]
+    matches=[x for x in index._list_children(service,parent_id) if index._norm(x.get("name"))==index._norm(name) and x.get("mimeType")==FOLDER_MIME]
     if len(matches)>1: raise ValueError(f"Cartella Drive ambigua: {name}")
     if matches: return matches[0]["id"]
     return service.files().create(body={"name":name,"mimeType":FOLDER_MIME,"parents":[parent_id]},fields="id",supportsAllDrives=True).execute()["id"]

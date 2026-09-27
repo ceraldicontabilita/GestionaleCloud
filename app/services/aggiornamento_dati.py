@@ -1,8 +1,9 @@
 """Riquadro «Aggiornamento dati» della Dashboard: stato delle fonti, in sola lettura.
 
 Per ogni fonte si legge lo stato **dove il suo motore lo scrive gia'**
-(`sistema_stato`, `drive_sync_state`) e l'ultimo dato presente nella sua
-collezione. Nessun numero si inventa: una lettura che manca o fallisce diventa
+(`sistema_stato`) e l'ultimo dato presente nella sua collezione. Banca,
+fatture, corrispettivi, cedolini e F24 su Drive entrano tutti dalla cartella
+unica (`drive_cartella_unica`, giro ogni 15 minuti): il loro giro e' quello. Nessun numero si inventa: una lettura che manca o fallisce diventa
 ``None`` e l'interfaccia scrive «non disponibile». Lo stato ha sempre anche un
 testo, perche' il colore da solo non e' un'informazione.
 
@@ -120,11 +121,18 @@ def _fonte(ordine: int, codice: str, nome: str, *, stato: str, testo: str,
     }
 
 
-async def _banca(db, ora: datetime) -> Dict[str, Any]:
-    stato = await _stato(db, "drive_estratti_conto_last_sync")
+async def _giro_cartella_unica(db, ora: datetime) -> tuple[Optional[datetime], str, str]:
+    """Ultimo giro dello smistatore della cartella unica, l'unico ingresso Drive."""
+    from app.services.drive_cartella_unica import CHIAVE_STATO
+
+    stato = await _stato(db, CHIAVE_STATO)
     ultimo_giro = _dt(stato.get("valore"))
-    esito = stato.get("last_result") or {}
-    colore, testo = stato_giro(ultimo_giro, (esito.get("errors") or None), ora, ogni_minuti=5)
+    colore, testo = stato_giro(ultimo_giro, stato.get("last_error"), ora, ogni_minuti=15)
+    return ultimo_giro, colore, testo
+
+
+async def _banca(db, ora: datetime) -> Dict[str, Any]:
+    ultimo_giro, colore, testo = await _giro_cartella_unica(db, ora)
     ultimo_movimento = await _ultimo(db, "estratto_conto_movimenti", "data")
     giorno = _giorno(ultimo_movimento)
     if colore == VERDE and giorno and (ora.astimezone(ROMA).date() - giorno).days > 3:
@@ -133,10 +141,7 @@ async def _banca(db, ora: datetime) -> Dict[str, Any]:
     fonte = _fonte(
         1, "banca", "Banca Banco BPM", stato=colore, testo=testo,
         ultimo_aggiornamento=ultimo_giro, ultimo_dato=ultimo_movimento,
-        conteggi={
-            "movimenti": await _conta(db, "estratto_conto_movimenti"),
-            "file_in_attesa": esito.get("pending"),
-        },
+        conteggi={"movimenti": await _conta(db, "estratto_conto_movimenti")},
     )
     diretta = await _stato_enable_banking(db)
     if not diretta["attivo"]:
@@ -161,32 +166,19 @@ async def _stato_enable_banking(db) -> Dict[str, Any]:
 
 
 async def _fatture(db, ora: datetime) -> Dict[str, Any]:
-    try:
-        stato = await db["drive_sync_state"].find_one({"_id": "fatture_drive"}) or {}
-    except Exception as exc:
-        logger.warning("[aggiornamento-dati] drive_sync_state non letto: %s: %s",
-                       type(exc).__name__, exc)
-        stato = {}
-    ultimo_giro = _dt(stato.get("last_sync"))
-    colore, testo = stato_giro(ultimo_giro, stato.get("last_error"), ora, ogni_minuti=15)
-    esito = stato.get("last_result") or {}
+    ultimo_giro, colore, testo = await _giro_cartella_unica(db, ora)
     return _fonte(
-        2, "fatture", "Fatture (giro Drive ogni 15 minuti)", stato=colore, testo=testo,
+        2, "fatture", "Fatture (cartella unica Drive, giro ogni 15 minuti)", stato=colore, testo=testo,
         ultimo_aggiornamento=ultimo_giro,
         ultimo_dato=await _ultimo(db, "invoices", "invoice_date"),
-        conteggi={
-            "fatture": await _conta(db, "invoices"),
-            "importate_ultimo_giro": esito.get("imported"),
-            "in_attesa": esito.get("pending"),
-        },
+        conteggi={"fatture": await _conta(db, "invoices")},
     )
 
 
 async def _corrispettivi(db, ora: datetime) -> Dict[str, Any]:
     from app.services.chiusure_attivita import giorni_chiusi
 
-    stato = await _stato(db, "drive_corrispettivi_last_sync")
-    ultimo_giro = _dt(stato.get("valore"))
+    ultimo_giro, _colore, _testo = await _giro_cartella_unica(db, ora)
     ultima_giornata = await _ultimo(db, "corrispettivi", "data")
     giorno = _giorno(ultima_giornata)
     ieri = ora.astimezone(ROMA).date() - timedelta(days=1)
@@ -222,23 +214,13 @@ async def _corrispettivi(db, ora: datetime) -> Dict[str, Any]:
 
 
 async def _cedolini_f24(db, ora: datetime) -> Dict[str, Any]:
-    ced = await _stato(db, "drive_cedolini_last_sync")
-    f24 = await _stato(db, "drive_f24_last_sync")
-    giri = [g for g in (_dt(ced.get("valore")), _dt(f24.get("valore"))) if g]
-    # Il piu' vecchio dei due comanda: uno fermo basta a fermare la riga.
-    ultimo_giro = min(giri) if len(giri) == 2 else None
-    errore = ced.get("last_error") or f24.get("last_error")
-    colore, testo = stato_giro(ultimo_giro, errore, ora, ogni_minuti=15)
-    errori_parser = (ced.get("last_result") or {}).get("parser_errors")
-    if colore == VERDE and errori_parser:
-        colore, testo = GIALLO, f"Aggiornato, ma {errori_parser} cedolini non si leggono"
+    ultimo_giro, colore, testo = await _giro_cartella_unica(db, ora)
     return _fonte(
         4, "cedolini_f24", "Cedolini e F24", stato=colore, testo=testo,
         ultimo_aggiornamento=ultimo_giro,
         conteggi={
             "cedolini": await _conta(db, "cedolini"),
             "f24": await _conta(db, "f24_unificato"),
-            "cedolini_illeggibili": errori_parser,
         },
     )
 

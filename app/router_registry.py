@@ -51,7 +51,7 @@ def _register_auth(app: FastAPI):
     # auth.router already carries an internal prefix="/api" and its routes are
     # "/auth/...", so it must be included WITHOUT an extra prefix — otherwise the
     # paths double up to "/api/auth/api/auth/verify" and the frontend's
-    # "/api/auth/verify" / "/api/auth/login" calls 404 (logging users out on
+    # "/api/auth/verify" / "/api/auth/logout" calls 404 (logging users out on
     # refresh). pin_login.router has no internal prefix, so it keeps "/api/auth".
     app.include_router(auth.router, tags=["Authentication"])
     app.include_router(pin_login.router, prefix="/api/auth", tags=["PIN Login"])
@@ -182,7 +182,6 @@ def _register_invoices(app: FastAPI):
         invoices_main,
         invoices_emesse,
         fatture_upload,
-        fatture_drive,
         corrispettivi,
     )
     from app.routers.fatture_module import router as fatture_ricevute_router
@@ -191,7 +190,6 @@ def _register_invoices(app: FastAPI):
     app.include_router(invoices_emesse.router, prefix="/api/invoices/emesse", tags=["Invoices Emesse"])
     app.include_router(invoices_main.router, prefix="/api/invoices", tags=["Invoices"])
     app.include_router(fatture_upload.router, prefix="/api/fatture", tags=["Fatture Upload"])
-    app.include_router(fatture_drive.router, prefix="/api/fatture", tags=["Fatture Drive"])
     app.include_router(fatture_ricevute_router, prefix="/api/fatture-ricevute", tags=["Fatture Ricevute"])
     app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
     app.include_router(fatture_estera_verifica.router, prefix="/api/fatture-estere", tags=["Fatture Estere Verifica"])
@@ -212,17 +210,14 @@ def _register_invoices(app: FastAPI):
 # `services/f24_canonico.salva_f24`.
 def _register_employees(app: FastAPI):
     from app.routers.employees import dipendenti
-    from app.routers import tfr, drive_cedolini, drive_corrispettivi, drive_quietanze
+    from app.routers import tfr
 
     app.include_router(dipendenti.router, prefix="/api/dipendenti", tags=["Dipendenti"])
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"])
-    app.include_router(drive_cedolini.router, prefix="/api/cedolini", tags=["Cedolini Drive"])
     from app.routers import schede_markdown
     app.include_router(schede_markdown.router, prefix="/api/schede", tags=["Schede Markdown"])
     from app.routers import doppioni_archivio
     app.include_router(doppioni_archivio.router, prefix="/api/doppioni", tags=["Doppioni archivio"])
-    app.include_router(drive_corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi Drive"])
-    app.include_router(drive_quietanze.router, prefix="/api/f24/quietanze", tags=["Quietanze Drive"])
 
     # Documenti fiscali caricati a mano (dichiarazione IVA, cartelle
     # esattoriali, avvisi bonari): upload → id → recupero/download.

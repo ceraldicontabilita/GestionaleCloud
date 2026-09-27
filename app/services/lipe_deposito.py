@@ -124,15 +124,10 @@ async def deposita_lipe(
 
 
 def _servizio_drive():
-    """La credenziale provata sulla cartella unica, dove stanno le LIPE; senza
-    cartella unica configurata, quella del registro fiscale."""
+    """La credenziale provata sulla cartella unica, dove stanno le LIPE."""
     from app.services import drive_cartella_unica as cu
 
-    if cu.radice():
-        return cu._service()
-    from app.services.drive_fiscal_registry import build_drive_service
-
-    return build_drive_service()
+    return cu._service()
 
 
 def _lipe_nella_cartella_unica() -> List[Dict[str, str]]:

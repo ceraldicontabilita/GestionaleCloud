@@ -3,17 +3,16 @@
 l'anno che voglio importare?", un solo selettore condiviso, non uno per
 canale).
 
-Governa il filtro anno applicato SOLO ai canali di import automatico che
-lo supportano oggi (Drive fatture, Drive corrispettivi): i documenti con
+Governa il filtro anno applicato all'import di fatture e corrispettivi
+(upload e cartella unica Drive passano dallo stesso smistatore): i documenti con
 data nell'anno attivo entrano nel flusso contabile attivo (Prima Nota,
 scadenzario, alert, magazzino); gli altri anni vengono archiviati per
 sola consultazione. Non tocca l'upload manuale via UI, né AnnoContext.jsx
 (che è solo un filtro di visualizzazione lato frontend, indipendente).
 
 Persistito in `sistema_stato` (stessa collection già usata per lo stato
-dei sync Drive) così sopravvive a riavvii/deploy — un parametro simile a
-GOOGLE_DRIVE_FATTURE_FOLDER_ID ma che deve poter cambiare da UI senza
-un redeploy.
+dei sync Drive) così sopravvive a riavvii/deploy: deve poter cambiare da
+UI senza un redeploy, quindi non è una variabile d'ambiente.
 """
 import asyncio
 import logging

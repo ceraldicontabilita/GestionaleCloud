@@ -689,8 +689,8 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
             # Gli originali Drive non vengono duplicati nel JSONB. Si leggono
             # per ID soltanto durante il parsing e restano in memoria.
             if not pdf_data and doc.get("drive_file_id"):
-                from app.services.drive_cedolini_ingest import download_file_by_id
-                drive_content = await download_file_by_id(str(doc["drive_file_id"]))
+                from app.services.drive_download import scarica_originale
+                drive_content = await scarica_originale(str(doc["drive_file_id"]))
                 if drive_content:
                     pdf_data = base64.b64encode(drive_content).decode("ascii")
 

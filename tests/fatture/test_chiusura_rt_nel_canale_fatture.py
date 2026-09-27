@@ -14,7 +14,6 @@ Il file si riconosce dal **contenuto**, mai dal nome: i file RT si chiamano
 from __future__ import annotations
 
 import asyncio
-import inspect
 
 import pytest
 
@@ -178,26 +177,6 @@ def test_una_chiusura_illeggibile_resta_un_errore(monkeypatch):
     ))
     assert res["status"] == "error"
     assert "chiusura RT" in res["error"]
-
-
-# ── e i tre punti che smistano l'esito devono conoscerlo ──────────────────
-
-def test_tutti_i_giri_drive_conoscono_lo_stato_nuovo():
-    """Uno stato sconosciuto finisce nel ramo «errore»: il file andrebbe in
-    `Errori` e lo rileggeremmo per sempre. È esattamente il guasto che ha
-    tenuto 19 chiusure RT ferme per settimane, e la stessa trappola in cui
-    `skipped_altro_anno` stava per cadere il 20/09/2026."""
-    from app.services import drive_invoice_ingest
-
-    sorgente = inspect.getsource(drive_invoice_ingest)
-    # I quattro punti: giro ogni 15 minuti, ricostruzione a lotti, ricostruzione
-    # completa e quadratura. Lo stesso vale per le fatture emesse (27/09/2026).
-    for stato in ('"chiusura_rt"', '"fattura_emessa"'):
-        assert sorgente.count(stato) == 4, (
-            f"ogni punto che smista l'esito dell'import deve conoscere {stato}"
-        )
-    # e deve contarle a parte, non confonderle con le fatture importate
-    assert sorgente.count('"chiusure_rt"') >= 3
 
 
 # ── le due trappole trovate rileggendo il diff ────────────────────────────

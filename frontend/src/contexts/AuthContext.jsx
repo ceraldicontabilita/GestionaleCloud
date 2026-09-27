@@ -85,12 +85,6 @@ export function AuthProvider({ children }) {
     };
   }, [autenticato, verifica]);
 
-  const login = useCallback(async (email, password) => {
-    const res = await api.post('/api/auth/login', { email, password });
-    if (res.data.mfa_required) return res.data;
-    return applyAuthentication(res.data);
-  }, [applyAuthentication]);
-
   const loginWithPin = useCallback(async pin => {
     const res = await api.post('/api/auth/pin-login', { pin });
     if (res.data.mfa_required) return res.data;
@@ -135,7 +129,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, login, loginWithPin, logout, isAuthenticated, loading,
+      user, loginWithPin, logout, isAuthenticated, loading,
       verifyMfaLogin, applyMfaStepUp,
       role, isAdmin, isReadOnly, canWrite,
     }}>

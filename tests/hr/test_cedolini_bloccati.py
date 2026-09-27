@@ -9,7 +9,7 @@ documenti (Drive o email) mai processati oltre una soglia di ore."""
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from app.services import drive_cedolini_ingest as mod
+from app.services import cedolini_bloccati as mod
 
 
 def _run(c):

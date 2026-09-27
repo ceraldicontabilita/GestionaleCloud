@@ -120,45 +120,13 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "/api/auth/google/callback"
 
-    # Google Drive — ingest fatture XML
-    GOOGLE_DRIVE_FATTURE_FOLDER_ID: Optional[str] = None  # cartella Drive da cui leggere gli XML
+    # Google Drive: un solo service account per tutto il Drive (JSON inline
+    # o file). Le cartelle e le credenziali per sezione sono uscite con i
+    # canali (DRV-16): i documenti entrano dalla cartella unica
+    # GOOGLE_DRIVE_DATI_FOLDER_ID (app/services/drive_cartella_unica.py).
     GOOGLE_DRIVE_SA_FILE: Optional[str] = None            # path al JSON del service account
     GOOGLE_DRIVE_SA_JSON: Optional[str] = None            # oppure il JSON inline (alternativa al file)
-    # Altre cartelle Drive (specifica utente 10-07-2026): gli ID vanno nelle
-    # variabili d'ambiente su Render, MAI nel codice.
-    GOOGLE_DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None      # radice fascicoli dipendenti: <COGNOME NOME>/DA ELABORARE = cedolini
-    GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None # corrispettivi RT
-    GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None     # quietanze F24
-    GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
-    GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
-    GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # stessa radice dei fascicoli: <COGNOME NOME>/BONIFICI/DA ELABORARE = bonifici
-    GOOGLE_DRIVE_BONIFICI_FOLDER_IDS: Optional[str] = None     # piu radici bonifici separate da virgola (fascicoli + 03/BONIFICI generici)
-    # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
-    # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la
-    # client_email del service account che la legge.
-    GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID: Optional[str] = None   # dichiarazioni IVA (PDF)
-    GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID: Optional[str] = None # cartelle esattoriali (PDF)
-    GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID: Optional[str] = None       # avvisi bonari (PDF)
-    # 15/09/2026: cartella "10_BILANCI_DICHIARAZIONI/DICHIARAZIONI FISCALI"
-    # (export Cassetto Fiscale 2005-2026: 770/IVA/IRAP/LIPE/Redditi SC), con
-    # DA ELABORARE/ELABORATE/ERRORI come ogni altro canale. L'ID non e' un
-    # segreto (stesso trattamento di DRIVE_FISCAL_ROOT_FOLDER_ID qui sopra).
-    GOOGLE_DRIVE_DICHIARAZIONI_FISCALI_FOLDER_ID: str = "109em5thoiDUbaQg9tqxE7FXWEFNImXqj"
 
-    # Canali documentali ancora privi di un nome GOOGLE_DRIVE_* dedicato.
-    # Le aree principali sopra hanno invece una sola variabile canonica:
-    # non reintrodurre alias Render che puntano allo stesso folder ID.
-    DRIVE_PRESENZE_FOLDER_ID: Optional[str] = None
-    DRIVE_F24_FOLDER_ID: Optional[str] = None
-    DRIVE_CARTE_FOLDER_ID: Optional[str] = None
-    DRIVE_PAYPAL_FOLDER_ID: Optional[str] = None
-    DRIVE_NOLEGGIO_FOLDER_ID: Optional[str] = None
-    DRIVE_VERBALI_FOLDER_ID: Optional[str] = None
-    DRIVE_FOLDER_REGISTRY_JSON: Optional[str] = None
-    # Radice fiscale canonica indicata dall'amministratore. L'ID identifica
-    # soltanto la cartella contenitore: le sottocartelle operative vengono
-    # scoperte e verificate via Drive API, mai create per supposizione.
-    DRIVE_FISCAL_ROOT_FOLDER_ID: str = "1VBqAFZBGdZ4HtgfZC--DD5ad38Et5I1j"
     # Archivio documentale esterno: il gestionale legge esclusivamente
     # l'indice Excel e lascia i file originali su Google Drive.
     DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID: str = "1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h"
@@ -170,43 +138,6 @@ class Settings(BaseSettings):
     PROTOCOLLO_DRIVE_ENABLED: bool = True
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
 
-    # Service account DEDICATI per cartella (scelta utente: un account per
-    # canale). Se valorizzato, il canale usa il suo; altrimenti ricade su
-    # GOOGLE_DRIVE_SA_JSON/SA_FILE condiviso. Ogni cartella Drive deve essere
-    # condivisa con la client_email del service account che la legge.
-    GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI: Optional[str] = None
-    GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI: Optional[str] = None
-    GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE: Optional[str] = None
-    GOOGLE_SERVICE_ACCOUNT_JSON_QUIETANZE: Optional[str] = None
-    GOOGLE_SERVICE_ACCOUNT_JSON_ESTRATTI_CONTO: Optional[str] = None
-    GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI: Optional[str] = None
-
-    # Interruttori canali Drive per sezione. Default = stato reale su Render
-    # al 27/09/2026 (letto dal pannello prima di cancellare le variabili):
-    # i canali per sezione sono smontati dallo scheduler e restano spenti
-    # anche per i pulsanti manuali; resta acceso solo il Cassetto Fiscale
-    # storico. Le variabili Render corrispondenti sono state tolte, quindi
-    # questi default SONO la configurazione di produzione.
-    ENABLE_DRIVE_FATTURE_SYNC: bool = False
-    # Lotti piccoli e idempotenti se il canale venisse riacceso.
-    DRIVE_FATTURE_BATCH_SIZE: int = 25
-    ENABLE_DRIVE_CEDOLINI_SYNC: bool = False
-    ENABLE_DRIVE_CORRISPETTIVI_SYNC: bool = False
-    ENABLE_DRIVE_QUIETANZE_SYNC: bool = False
-    ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = False
-    DRIVE_ESTRATTI_BATCH_SIZE: int = 1
-    # Anno minimo dei documenti da importare dall'area Estratti conto
-    # (scelta utente 07/08/2026: "solo 2026, il resto fermo").
-    DRIVE_ESTRATTI_ANNO_MINIMO: int = 2026
-    ENABLE_DRIVE_BONIFICI_SYNC: bool = False
-    ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC: bool = False
-    ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = False
-    ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = False
-    ENABLE_DRIVE_VERBALI_SYNC: bool = False
-    # Cassetto Fiscale storico (richiesta titolare 15/09/2026): acceso in
-    # produzione; il filtro del canale scarta i quadri componenti e i
-    # documenti misfiled.
-    ENABLE_DRIVE_DICHIARAZIONI_FISCALI_SYNC: bool = True
     # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
     # (13/07/2026). Interruttore dedicato per poterli spegnere senza toccare
     # le credenziali IMAP. NB: il parser F24 email non è ancora validato su
