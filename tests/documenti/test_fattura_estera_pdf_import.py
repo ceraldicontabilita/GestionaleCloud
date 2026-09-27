@@ -128,3 +128,69 @@ def test_le_righe_lette_dall_ai_arrivano_alla_classificazione_come_testo():
     assert cdc == "5.3_PICCOLE_ATTREZZATURE"
     # Le fatture XML non cambiano: nessuna descrizione in piu'.
     assert costruisci_evento_fattura_created({"id": "f2"})["descrizione"] == ""
+
+
+RIGHE_SUMUP = [
+    "Epson TM-m30III (Wi-Fi/Bluetooth) - Terminal", "Terminal",
+    "SumUp Cassa - Cassa Plus", "SumUp Fedeltà",
+]
+
+
+def test_le_righe_vere_della_fattura_sumup_sono_terminali_non_commissioni():
+    from app.services.categorizzazione_contabile import categorizza_fattura_completa
+
+    cdc, _, _ = classifica_fattura_per_centro_costo("SumUp Limited", " · ".join(RIGHE_SUMUP), [])
+    assert cdc == "5.3_PICCOLE_ATTREZZATURE"
+    dettaglio = categorizza_fattura_completa(
+        [{"descrizione": d} for d in RIGHE_SUMUP], "SumUp Limited")["dettaglio_linee"]
+    assert [r["conto_codice"] for r in dettaglio] == ["05.01.06", "05.01.06", "05.05.02", "05.05.02"]
+
+
+def test_la_conferma_storna_la_scrittura_su_merci_e_registra_sui_terminali(monkeypatch):
+    from app.routers import fatture_estera_verifica as verifica
+
+    db = ClientArchivioMemoria()["verifica_estera"]
+
+    async def scenario():
+        await db["invoices"].insert_one({
+            "id": "f-sumup", "invoice_number": "1000492833", "invoice_date": "2026-09-22",
+            "supplier_name": "SumUp Limited", "supplier_vat": "NL858187498B01",
+            "total_amount": 454.0, "imponibile": 454.0, "iva": 0.0, "linee": [],
+            "descrizione_righe_ai": RIGHE_SUMUP, "verifica_ai": "in_attesa",
+            "status": "imported", "stato_import": "attivo",
+        })
+        # La scrittura di prima: senza righe XML era finita su Acquisto merci.
+        await db["movimenti_contabili"].insert_one({
+            "id": "mov-vecchio", "tipo": "fattura_acquisto", "fattura_id": "f-sumup",
+            "stato": "registrato", "anno": 2026, "data": "2026-09-22", "numero_registrazione": 1119,
+            "idempotency_key": "reg:fattura:f-sumup",
+            "righe": [
+                {"conto_codice": "05.01.01", "conto_nome": "Acquisto merci", "dare": 454.0, "avere": 0},
+                {"conto_codice": "02.01.01", "conto_nome": "Debiti v/fornitori", "dare": 0, "avere": 454.0},
+            ],
+            "totale_dare": 454.0, "totale_avere": 454.0,
+        })
+        monkeypatch.setattr(verifica.Database, "get_db", staticmethod(lambda: db))
+        esito = await verifica.verifica_fattura("f-sumup", {})
+        fattura = await db["invoices"].find_one({"id": "f-sumup"})
+        scritture = await db["movimenti_contabili"].find({"fattura_id": "f-sumup"}).to_list(None)
+        return esito, fattura, scritture
+
+    esito, fattura, scritture = asyncio.run(scenario())
+    assert esito["contabilita"]["giornale"] == "riregistrato", esito
+    assert fattura["centro_costo_id"] == "5.3_PICCOLE_ATTREZZATURE"
+    vecchia = next(s for s in scritture if s["id"] == "mov-vecchio")
+    assert vecchia["stato"] == "stornato"
+    valide = [s for s in scritture if s.get("tipo") == "fattura_acquisto" and s.get("stato") != "stornato"]
+    assert len(valide) == 1
+    dare = {r["conto_codice"]: r["dare"] for r in valide[0]["righe"] if r.get("dare")}
+    assert dare == {"05.01.06": 454.0}
+
+
+def test_il_canone_del_terminale_resta_un_servizio():
+    from app.services.categorizzazione_contabile import categorizza_fattura_completa
+
+    dettaglio = categorizza_fattura_completa(
+        [{"descrizione": "Canone noleggio terminale POS settembre"}], "Nexi Payments SpA",
+    )["dettaglio_linee"]
+    assert dettaglio[0]["conto_codice"] != "05.01.06"

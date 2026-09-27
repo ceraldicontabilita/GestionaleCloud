@@ -278,7 +278,11 @@ PATTERNS_DESCRIZIONE = {
             r"forchett", r"coltell.*tavola", r"portaposate",
             r"pedana.*aliment", r"pile\s+(aa|aaa|stilo)",
             r"cavo\s+(hdmi|usb|lightning)", r"mouse", r"tastiera",
-            r"led\s+faro", r"lampada\s+led", r"alimentatore"
+            r"led\s+faro", r"lampada\s+led", r"alimentatore",
+            # Terminali di pagamento e stampanti di cassa (fattura SumUp
+            # del 22/09/2026: «Epson TM-m30III (Wi-Fi/Bluetooth) - Terminal»).
+            r"\bterminal", r"\bepson\b", r"stampante\s+(scontrin|termic|fiscal)",
+            r"lettore\s+(di\s+)?carte", r"card\s+reader"
         ],
         "conto": ("05.01.06", "Acquisto piccola utensileria"),
         "categoria_fiscale": CategoriaFiscale.ATTREZZATURE_MINORI,
@@ -1047,6 +1051,18 @@ class CategorizzatoreContabile:
         if forn_lower:
             for pattern, categoria in self.patterns_fornitore.items():
                 if re.search(pattern, forn_lower, re.IGNORECASE):
+                    # Da un gestore di pagamenti si compra anche l'hardware:
+                    # un terminale descritto come tale non e' una commissione.
+                    if categoria == "spese_bancarie" and not re.search(
+                        r"canone|noleggio|affitto|locazione", desc_lower,
+                    ) and any(
+                        re.search(p, desc_lower, re.IGNORECASE)
+                        for p in self.patterns_descrizione.get(
+                            "ferramenta", {}).get("patterns", [])
+                    ):
+                        return self._build_result(
+                            "ferramenta", self.patterns_descrizione["ferramenta"],
+                            confidenza=CONFIDENZA_DESCRIZIONE)
                     if categoria in self.patterns_descrizione:
                         config = self.patterns_descrizione[categoria]
                         return self._build_result(categoria, config, confidenza=CONFIDENZA_FORNITORE)

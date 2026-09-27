@@ -259,7 +259,10 @@ CENTRI_COSTO = {
                     # un bene, non una commissione. «sumup solo» pesa piu'
                     # del solo «sumup» delle Commissioni POS.
                     "lettore di carte", "lettore carte", "card reader",
-                    "terminale pos", "sumup solo", "sumup air", "solo lite"]
+                    "terminale pos", "sumup solo", "sumup air", "solo lite",
+                    # Fattura SumUp reale (22/09/2026): «Epson TM-m30III
+                    # (Wi-Fi/Bluetooth) - Terminal», in inglese.
+                    "terminal", "epson", "stampante scontrini"]
     },
     
     # 6. AUTO AZIENDALI

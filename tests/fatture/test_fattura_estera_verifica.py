@@ -163,7 +163,9 @@ def test_correzione_numero_rigenera_invoice_key(monkeypatch):
     assert inv["invoice_key"] == "RE-999_DE123456789_2026-06-10"
 
 
-def test_correzione_data_ricalcola_scadenza(monkeypatch):
+def test_correzione_data_non_inventa_una_scadenza(monkeypatch):
+    # Le fatture fornitore non hanno scadenza (titolare, 19/09/2026): una
+    # data corretta cambia l'anno, non inventa un «+30».
     db = _FakeDb()
     db["invoices"].docs = [_invoice()]
     _patch_db(monkeypatch, db)
@@ -172,7 +174,7 @@ def test_correzione_data_ricalcola_scadenza(monkeypatch):
 
     inv = db["invoices"].docs[0]
     assert inv["invoice_date"] == "2026-05-01"
-    assert inv["data_scadenza"] == "2026-05-31"
+    assert inv["data_scadenza"] == "2026-07-10"
     assert inv["anno"] == 2026
 
 
