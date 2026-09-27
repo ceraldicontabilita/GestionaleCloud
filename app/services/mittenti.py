@@ -78,6 +78,11 @@ BUILTIN_MITTENTI = (
         "descrizione": "Studio Marotta - F24 e documenti fiscali",
     },
     {
+        "pattern": "inpscomunica@postacert.inps.gov.it",
+        "tipo_documento": "dilazione_inps",
+        "descrizione": "INPS - dilazione amministrativa (piano di ammortamento in Allegato.zip)",
+    },
+    {
         "pattern": "noreply@ordersender.biz",
         "tipo_documento": "scheda_tecnica",
         "descrizione": "ME.PA. Alimentari (Order Sender) - schede tecniche dei prodotti acquistati",

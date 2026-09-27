@@ -332,6 +332,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Stesso tributo in due deleghe F24 dello stesso giorno",
         "condizione_chiusura": "Verificato col commercialista (rimborso, compensazione o delega annullata)",
     },
+    "DILAZIONE_INPS_RATA_NON_PAGATA": {
+        "modulo": "f24",
+        "severita": "warning",
+        "titolo": "Rata della dilazione INPS non versata per intero",
+        "condizione_chiusura": "Quietanza F24 della rata (sede, causale, matricola, periodo, importo)",
+    },
     "BNK_F24_SENZA_QUIETANZA": {
         "modulo": "banca",
         "severita": "warning",
