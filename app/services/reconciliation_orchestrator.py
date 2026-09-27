@@ -36,24 +36,9 @@ async def riconcilia_documenti_e_pagamenti(
     f24 = await riconcilia_f24_tributi_banca(
         db, anno=anno, movimento_ids=movimento_ids,
     )
-    # L'F24 del commercialista e il suo ravvedimento (modello e/o quietanza AdE).
-    from app.services.f24_ravvedimento import collega_ravvedimenti
-
-    try:
-        esito_ravv = await collega_ravvedimenti(db)
-        ravvedimenti_f24 = {**esito_ravv["conteggi"], "scritti": esito_ravv["scritti"]}
-    except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
-        logger.exception("Legami F24 originale / ravvedimento non aggiornati (%s)", type(exc).__name__)
-        ravvedimenti_f24 = {"errore": f"{type(exc).__name__}: {exc}"}
-    # Quietanza e addebito I24 dello stesso pagamento, anche senza modello F24.
-    from app.services.f24_controllo_incrociato import riscontra_quietanze_banca
-
-    try:
-        esito_quietanze = await riscontra_quietanze_banca(db)
-        quietanze_banca = {**esito_quietanze["conteggi"], "scritti": esito_quietanze["scritti"]}
-    except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
-        logger.exception("Riscontro quietanze F24 con la banca non completato (%s)", type(exc).__name__)
-        quietanze_banca = {"errore": f"{type(exc).__name__}: {exc}"}
+    # Quietanze F24 ↔ addebiti I24 e F24 ravveduti non stanno piu' qui: hanno
+    # un job loro (``f24_quietanze_banca`` in scheduler.py), per lo stesso
+    # motivo dei versamenti di contante qui sotto.
     start_date = f"{anno}-01-01" if anno else None
     end_date = f"{anno}-12-31" if anno else None
     paypal = await riconcilia_paypal_importato(
@@ -92,8 +77,6 @@ async def riconcilia_documenti_e_pagamenti(
         "bonifici_pdf": bonifici_pdf,
         "salari": salari,
         "f24": f24,
-        "quietanze_f24_banca": quietanze_banca,
-        "ravvedimenti_f24": ravvedimenti_f24,
         "paypal": {
             "fatture_prima": paypal["collegamenti_prima"],
             "banca": paypal["banca"],
