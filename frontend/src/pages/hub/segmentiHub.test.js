@@ -34,3 +34,9 @@ describe('segmentiHub', () => {
     expect(tabUnificataDaPath('/riconciliazione-unificata/banca')).toBe('dashboard');
   });
 });
+
+describe('sezione fatture emesse', () => {
+  it('riconosce /fatture/emesse', () => {
+    expect(sezioneFatture('/fatture/emesse')).toBe('emesse');
+  });
+});

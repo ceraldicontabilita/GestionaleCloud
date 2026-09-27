@@ -784,6 +784,19 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-PAGAMENTI-DICHIARATI] errore: %s: %s", type(e).__name__, e)
 
+    async def _fatture_emesse_job():
+        """Rete delle fatture emesse: quelle finite fra le passive tornano al
+        loro archivio (con storno), e il corrispettivo arrivato dopo la
+        fattura si aggancia. Pochi documenti, idempotente."""
+        from app.database import Database
+        from app.services.fatture_emesse import riallinea
+        try:
+            esito = await riallinea(Database.get_db())
+            if esito.get("spostate") or esito.get("agganciate") or esito.get("errori"):
+                logger.info(f"[SCHEDULER-FATTURE-EMESSE] {esito}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-FATTURE-EMESSE] errore: {type(e).__name__}: {e}")
+
     async def _banca_versamenti_proiezione_job():
         """Assegni, versamenti di contante e proiezione dei movimenti bancari
         in Prima Nota. Pochi secondi, idempotenti: job a se', come le
@@ -1334,6 +1347,16 @@ def start_scheduler():
         coalesce=True,
         id="banca_versamenti_proiezione",
         name="Banca: assegni, versamenti contanti e proiezione in Prima Nota (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _fatture_emesse_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=3),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="fatture_emesse",
+        name="Fatture emesse: fuori dalle passive, aggancio al corrispettivo (ogni 30 min)",
         replace_existing=True,
     )
     scheduler.add_job(

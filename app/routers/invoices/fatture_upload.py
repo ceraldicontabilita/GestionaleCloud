@@ -1710,6 +1710,12 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
         )
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("error", "Errore import fattura"))
+    if result.get("status") in ("fattura_emessa", "chiusura_rt"):
+        # Non e' una fattura passiva: e' andata nel suo archivio.
+        return {"success": True, "tipo": result["status"], "esito": result,
+                "message": ("Fattura emessa: archiviata fra le fatture emesse"
+                            if result["status"] == "fattura_emessa"
+                            else "Chiusura RT: consegnata ai corrispettivi")}
 
     invoice = await db[Collections.INVOICES].find_one({"id": result["id"]}, {"_id": 0})
     return {
@@ -1971,6 +1977,19 @@ async def process_xml_bytes(
     parsed = parse_fattura_xml(xml_content)
     if parsed.get("error"):
         return {"status": "error", "filename": filename, "error": parsed["error"]}
+
+    # 2bis. Una fattura che abbiamo emesso noi non e' un acquisto: si
+    # riconosce dal cedente (la nostra P.IVA) e va nelle fatture emesse.
+    from app.services.fatture_emesse import e_fattura_emessa, registra_fattura_emessa
+
+    if e_fattura_emessa(parsed):
+        if db is None:
+            return {"status": "fattura_emessa", "filename": filename, "importato": False}
+        esito = await registra_fattura_emessa(
+            db, parsed, xml_raw=xml_content, filename=filename, source=source)
+        # Gia' in archivio o appena archiviata: per chi smista e' lavorata.
+        return {**esito, "status": "error" if esito.get("status") == "error" else "fattura_emessa",
+                "filename": filename}
 
     # Un file FatturaPA può contenere PIÙ fatture raggruppate (più
     # <FatturaElettronicaBody> sotto lo stesso header/CedentePrestatore —
@@ -2547,6 +2566,10 @@ async def upload_fatture_xml_bulk(files: List[UploadFile] = File(...)) -> Dict[s
                 "invoice_number": res.get("invoice_number"),
             })
             results["skipped_duplicates"] += 1
+        elif status in ("fattura_emessa", "chiusura_rt"):
+            # Emessa da noi o chiusura di cassa: archiviata dove deve stare.
+            results.setdefault("altri_archivi", []).append(
+                {"filename": filename, "tipo": status, "numero": res.get("numero")})
         else:
             results["errors"].append({"filename": filename, "error": res.get("error", "errore")})
             results["failed"] += 1

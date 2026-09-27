@@ -2744,6 +2744,9 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             "NETTO A PAGARE", "FORNITORE",
         )):
             return "report_fatture_ricevute"
+        from app.services.fatture_emesse import MARCATORI_REPORT_CLIENTI
+        if all(marker in content_str for marker in MARCATORI_REPORT_CLIENTI):
+            return "anagrafica_clienti"
         if (
             any(keyword in lower for keyword in ("distint", "stipend", "elenco"))
             and "BENEFICIARIO" in content_str
@@ -3630,6 +3633,19 @@ async def upload_documento_automatico(
                         result["message"] = f"Corrispettivo importato: {data_str} — totale {tot_str}€ (Prima Nota aggiornata)"
                         result["imported"] = 1
 
+        elif tipo_rilevato == 'anagrafica_clienti':
+            from app.services.fatture_emesse import importa_report_clienti
+
+            esito = await importa_report_clienti(db, content, filename)
+            result["data"] = esito
+            result["imported"] = esito.get("nuovi", 0)
+            result["duplicate"] = not esito.get("nuovi") and bool(esito.get("gia_presenti"))
+            result["message"] = (
+                f"Anagrafica clienti: {esito.get('nuovi', 0)} nuovi, "
+                f"{esito.get('gia_presenti', 0)} gia' presenti"
+                + (f", {esito['senza_identita']} senza P.IVA ne' codice fiscale"
+                   if esito.get("senza_identita") else ""))
+
         elif tipo_rilevato == 'fattura':
             # Import fattura XML
             from fastapi import HTTPException as _HTTPException
@@ -3662,6 +3678,30 @@ async def upload_documento_automatico(
             if not xml_content:
                 xml_content = invoice_content.decode('utf-8', errors='ignore')
             parsed = parse_fattura_xml(xml_content)
+
+            from app.services.fatture_emesse import e_fattura_emessa, registra_fattura_emessa
+
+            if parsed and not parsed.get("error") and e_fattura_emessa(parsed):
+                # Emessa da noi: non e' un acquisto, va fra le fatture emesse.
+                esito = await registra_fattura_emessa(
+                    db, parsed, xml_raw=xml_content, filename=filename,
+                    source="documenti_upload_auto")
+                result["tipo_rilevato"] = "fattura_emessa"
+                result["data"] = esito
+                if esito.get("status") == "error":
+                    result["success"] = False
+                    result["message"] = esito.get("error")
+                elif esito.get("status") == "duplicate":
+                    result["duplicate"] = True
+                    result["action"] = "duplicate"
+                    result["imported"] = 0
+                    result["message"] = f"Fattura emessa {esito.get('numero')} gia' in archivio"
+                else:
+                    result["imported"] = 1
+                    result["message"] = (
+                        f"Fattura emessa {esito.get('numero')} a {esito.get('cliente')}: "
+                        "archiviata, non aumenta i ricavi (gia' nel corrispettivo)")
+                return result
 
             if parsed:
                 # Un file FatturaPA può raggruppare più fatture sotto lo

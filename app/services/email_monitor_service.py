@@ -440,7 +440,7 @@ async def sync_email_documents(db, giorni: int = 30, execution_id: Optional[str]
                     res = await process_xml_bytes(db, content, fname, source="email_gmail")
                     if res.get("status") == "imported":
                         xml_processed += 1
-                    if res.get("status") in ("imported", "duplicate", "archiviata"):
+                    if res.get("status") in ("imported", "duplicate", "archiviata", "fattura_emessa"):
                         # la fattura vive in `invoices`: il file SDI grezzo
                         # non deve comparire tra i documenti scaricati
                         await db["documents_inbox"].delete_one({"id": doc["id"]})

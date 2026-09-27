@@ -440,6 +440,10 @@ async def _do_sync(db, *, target_year: Optional[int] = None) -> Dict[str, Any]:
                     result["imported"] += 1
                 elif st == "duplicate":
                     result["duplicates"] += 1
+                elif st == "fattura_emessa":
+                    # Emessa da noi: e' nelle fatture emesse, il file e' lavorato.
+                    result.setdefault("fatture_emesse", 0)
+                    result["fatture_emesse"] += 1
                 elif st == "chiusura_rt":
                     # Non e' una fattura: e' una chiusura di cassa finita nel
                     # canale sbagliato. E' stata consegnata ai corrispettivi,
@@ -639,6 +643,8 @@ async def ricostruisci_archivio_drive_lotto(
                         counters["imported"] += 1
                     elif status == "duplicate":
                         counters["duplicates"] += 1
+                    elif status == "fattura_emessa":
+                        counters["fatture_emesse"] = counters.get("fatture_emesse", 0) + 1
                     elif status == "chiusura_rt":
                         counters["chiusure_rt"] += 1
                     elif status in ("archiviata", "skipped_altro_anno"):
@@ -794,6 +800,8 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
                         result["imported"] += 1
                     elif status == "duplicate":
                         result["duplicates"] += 1
+                    elif status == "fattura_emessa":
+                        result["fatture_emesse"] = result.get("fatture_emesse", 0) + 1
                     elif status == "chiusura_rt":
                         result["chiusure_rt"] += 1
                     elif status in ("archiviata", "skipped_altro_anno"):
@@ -895,7 +903,8 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                         ),
                     )
                     st = res.get("status")
-                    if st == "duplicate":
+                    if st in ("duplicate", "fattura_emessa", "chiusura_rt"):
+                        # Gia' in archivio: fattura passiva, emessa o chiusura RT.
                         esito["quadrati"] += 1
                     elif st in ("imported", "archiviata"):
                         esito["recuperati"] += 1

@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { FileStack, Wallet } from 'lucide-react';
+import { FileOutput, FileStack, Wallet } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
@@ -8,49 +8,53 @@ import { sezioneFatture } from './segmentiHub';
 
 const ArchivioContent = lazy(() => import('../ArchivioFattureRicevute.jsx'));
 const CorrispettiviContent = lazy(() => import('../Corrispettivi.jsx'));
+const EmesseContent = lazy(() => import('../FattureEmesse.jsx'));
+
+const SEZIONI = {
+  archivio: ArchivioContent,
+  corrispettivi: CorrispettiviContent,
+  emesse: EmesseContent,
+};
 
 export default function FattureHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
   const navigate = useNavigate();
-  const isCorresp = sezioneFatture(location.pathname) === 'corrispettivi';
+  const sezione = sezioneFatture(location.pathname);
 
-  const [visitedCorresp, setVisitedCorresp] = useState(isCorresp);
-  const [visitedArchivio, setVisitedArchivio] = useState(!isCorresp);
-
-  useEffect(() => {
-    if (isCorresp) setVisitedCorresp(true);
-    else setVisitedArchivio(true);
-  }, [isCorresp]);
+  // Una sezione gia' aperta resta montata (si torna senza ricaricare);
+  // al cambio d'anno resta solo quella in vista.
+  const [visitate, setVisitate] = useState(() => new Set([sezione]));
 
   useEffect(() => {
-    setVisitedCorresp(isCorresp);
-    setVisitedArchivio(!isCorresp);
+    setVisitate(prev => (prev.has(sezione) ? prev : new Set([...prev, sezione])));
+  }, [sezione]);
+
+  useEffect(() => {
+    setVisitate(new Set([sezione]));
   }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ width: '100%' }}>
-      {/* I corrispettivi hanno la loro testata; l'archivio fatture la prende qui. */}
-      {!isCorresp && <PageHeader title="Fatture ricevute" style={{ marginBottom: 14 }} />}
+      {/* Corrispettivi e fatture emesse hanno la loro testata; l'archivio la prende qui. */}
+      {sezione === 'archivio' && <PageHeader title="Fatture ricevute" style={{ marginBottom: 14 }} />}
       <HubTabs
         testIdPrefix="tab-fatture"
-        activeId={isCorresp ? 'corrispettivi' : 'archivio'}
+        activeId={sezione}
         onSelect={tab => navigate(tab.to)}
         tabs={[
-          { id: 'archivio', label: 'Archivio fatture', Icon: FileStack, to: '/fatture' },
+          { id: 'archivio', label: 'Fatture ricevute', Icon: FileStack, to: '/fatture' },
+          { id: 'emesse', label: 'Fatture emesse', Icon: FileOutput, to: '/fatture/emesse' },
           { id: 'corrispettivi', label: 'Corrispettivi', Icon: Wallet, to: '/fatture/corrispettivi' },
         ]}
       />
-      <div style={{ display: isCorresp ? 'none' : 'block' }}>
-        <Suspense fallback={<PageLoader />}>
-          {visitedArchivio && <ArchivioContent key={`archivio-${anno}`} />}
-        </Suspense>
-      </div>
-      <div style={{ display: isCorresp ? 'block' : 'none' }}>
-        <Suspense fallback={<PageLoader />}>
-          {visitedCorresp && <CorrispettiviContent key={`corrispettivi-${anno}`} />}
-        </Suspense>
-      </div>
+      {Object.entries(SEZIONI).map(([id, Contenuto]) => (
+        <div key={id} style={{ display: sezione === id ? 'block' : 'none' }}>
+          <Suspense fallback={<PageLoader />}>
+            {visitate.has(id) && <Contenuto key={`${id}-${anno}`} />}
+          </Suspense>
+        </div>
+      ))}
     </div>
   );
 }
