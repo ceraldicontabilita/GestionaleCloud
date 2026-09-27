@@ -150,3 +150,11 @@ def test_credenziali_dalla_risoluzione_canonica(monkeypatch):
     monkeypatch.setattr(settings, "IMAP_USER", "casella@example.com", raising=False)
     monkeypatch.setattr(settings, "IMAP_PASSWORD", "segreto-di-prova", raising=False)
     assert efd.get_email_credentials() == ("casella@example.com", "segreto-di-prova")
+
+
+def test_password_per_app_incollata_con_gli_spazi(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "IMAP_USER", " casella@example.com ", raising=False)
+    monkeypatch.setattr(settings, "IMAP_PASSWORD", "abcd efgh ijkl mnop\n", raising=False)
+    assert efd.get_email_credentials() == ("casella@example.com", "abcdefghijklmnop")
