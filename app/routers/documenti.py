@@ -2514,6 +2514,13 @@ def _e_contratto_di_lavoro(compact_pdf_text: str) -> bool:
     return bool(_CONTRATTO.search(compact_pdf_text) and not RIQUADRO_NETTO.search(compact_pdf_text))
 
 
+async def rileva_tipo_documento(filename: str, file_content: bytes) -> str:
+    """``detect_document_type`` in un thread: legge il PDF e, per le scansioni,
+    avvia l'OCR, che tiene la CPU per decine di secondi. Sul loop del server
+    fermava anche ``/api/health`` e Render riavviava l'istanza (502)."""
+    return await asyncio.to_thread(detect_document_type, filename, file_content)
+
+
 def detect_document_type(filename: str, file_content: bytes) -> str:
     """Classifica solo con prove documentali sufficienti.
 
@@ -3056,7 +3063,7 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
                 continue
             from app.services.document_import_preview import create_confirmation_token
 
-            nested_type = detect_document_type(clean_name, payload)
+            nested_type = await rileva_tipo_documento(clean_name, payload)
             nested_token = create_confirmation_token(
                 hashlib.sha256(payload).hexdigest(), nested_type
             )
@@ -3269,7 +3276,7 @@ async def anteprima_upload_documento_automatico(
 
         verifica_pdf_reale(content, filename)
 
-    document_type = detect_document_type(filename, content)
+    document_type = await rileva_tipo_documento(filename, content)
     from app.services.document_import_preview import build_import_preview
 
     return await build_import_preview(
@@ -3512,7 +3519,7 @@ async def upload_documento_automatico(
         verifica_pdf_reale(content, filename)
 
     # Rileva tipo
-    tipo_rilevato = detect_document_type(filename, content)
+    tipo_rilevato = await rileva_tipo_documento(filename, content)
 
     from app.services.document_import_preview import verify_confirmation_token
     from fastapi.params import Header as HeaderParameter
@@ -3731,7 +3738,9 @@ async def upload_documento_automatico(
             # Nella radice Drive ci sono migliaia di PDF: una copia di cortesia
             # di una fattura italiana non va letta dall'AI (costo, doppione
             # dell'XML). Passa solo un PDF che porta una partita IVA estera.
-            if not partita_iva_estera_nel_testo(_pdf_text_for_detection(content)):
+            if not partita_iva_estera_nel_testo(
+                await asyncio.to_thread(_pdf_text_for_detection, content)
+            ):
                 result["success"] = False
                 result["tipo_rilevato"] = "fattura_pdf"
                 result["message"] = (
@@ -3965,14 +3974,16 @@ async def upload_documento_automatico(
 
             return await archivia_dilazione(
                 db, filename=filename, content=content,
-                testo=_pdf_text_for_detection(content), source_context=source_context,
+                testo=await asyncio.to_thread(_pdf_text_for_detection, content),
+                source_context=source_context,
             )
 
         elif tipo_rilevato == 'componente_770':
             from app.services.componenti_770 import metadati as metadati_770
 
             metadata = await metadati_770(
-                db, filename=filename, testo=_pdf_text_for_detection(content),
+                db, filename=filename,
+                testo=await asyncio.to_thread(_pdf_text_for_detection, content),
             )
             # Se lo stesso file e' gia' in coda come «da classificare» si
             # riclassifica quella riga: niente seconda copia dell'originale.
@@ -4488,7 +4499,7 @@ async def accoda_upload_documento_voluminoso(
             detail=f"File oltre il limite di {limite // (1024 * 1024)} MB: {filename}",
         )
 
-    tipo_rilevato = detect_document_type(filename, content)
+    tipo_rilevato = await rileva_tipo_documento(filename, content)
     pos = tipo_rilevato == "pos_terminal" and "commissioni_" not in filename.lower()
     if not pos and tipo_rilevato not in ELABORATORI_IN_CODA:
         raise HTTPException(
