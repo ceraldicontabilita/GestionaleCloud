@@ -8,7 +8,6 @@ e le importa nell'archivio del runtime.
 
 import re
 import pdfplumber
-from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
 import tempfile
@@ -185,132 +184,31 @@ async def parse_mutuo_pdf_endpoint(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Errore parsing PDF: {str(e)}") from e
 
 
-@router.post("/import-pdf", summary="Importa mutuo da PDF nel database")
+@router.post("/import-pdf", summary="Importa il piano di ammortamento da PDF")
 async def import_mutuo_from_pdf(
     file: UploadFile = File(...),
     nome_mutuo: Optional[str] = None,
     aggiorna_esistente: bool = False
 ):
-    """
-    Parsa un PDF di piano ammortamento e importa/aggiorna il mutuo nel database.
+    """Importa il piano di ammortamento con l'import documentale unico
+    (``services/mutui_document_import.importa_documento_mutuo``, lo stesso di
+    Documenti > Import): deduplica SHA-256 e scrittura in
+    ``mutui_piani_documentali``, la collezione che leggono la pagina Mutui e
+    la proiezione bancaria. Prima scriveva in ``mutui``, che nessuno legge
+    (audit 27/09/2026). ``nome_mutuo`` e ``aggiorna_esistente`` restano per
+    compatibilita': una nuova versione del piano e' un nuovo documento
+    (altro SHA-256) e vale la piu' recente."""
+    from app.services.mutui_document_import import importa_documento_mutuo
 
-    Parametri:
-    - file: PDF del piano ammortamento
-    - nome_mutuo: Nome descrittivo (opzionale, default dal PDF)
-    - aggiorna_esistente: Se True, aggiorna mutuo esistente con stesso numero_delibera
-    """
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
+    content = await file.read()
+    verifica_pdf_reale(content, file.filename)
     try:
-        db = Database.get_db()
-
-        # Verifica estensione
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
-
-        content = await file.read()
-        verifica_pdf_reale(content, file.filename)
-
-        # Salva temporaneamente
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
-
-        try:
-            # Parsa il PDF
-            parsed = parse_mutuo_pdf(tmp_path)
-
-            if not parsed["numero_delibera"]:
-                raise HTTPException(status_code=400, detail="Impossibile estrarre numero delibera dal PDF")
-
-            # Genera ID mutuo
-            mutuo_id = f"mutuo_{parsed['numero_delibera']}"
-
-            # Verifica se esiste già
-            existing = await db.mutui.find_one({"mutuo_id": mutuo_id})
-
-            if existing and not aggiorna_esistente:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Mutuo con delibera {parsed['numero_delibera']} già esistente. Usa aggiorna_esistente=true per aggiornare."
-                )
-
-            # Prepara documento
-            stats = parsed["statistiche"]
-            documento = {
-                "mutuo_id": mutuo_id,
-                "nome": nome_mutuo or f"Mutuo {parsed['tipo_finanziamento'] or 'Generico'}",
-                "tipo_finanziamento": parsed["tipo_finanziamento"],
-                "importo_accordato": parsed["importo_accordato"],
-                "numero_delibera": parsed["numero_delibera"],
-                "banca": "BPM - Banca Popolare di Milano",
-                "intestatario": parsed["intestatario"],
-
-                "rate": parsed["rate"],
-                "totale_rate": stats["totale_rate"],
-
-                "rate_pagate": stats["rate_pagate"],
-                "rate_da_pagare": stats["rate_da_pagare"],
-                "rate_residue_dichiarate": parsed["rate_residue_dichiarate"],
-
-                "totale_pagato_capitale": stats["totale_pagato_capitale"],
-                "totale_pagato_interessi": stats["totale_pagato_interessi"],
-                "totale_pagato": stats["totale_pagato"],
-
-                "debito_residuo_capitale": stats["debito_residuo_capitale"],
-                "debito_residuo_interessi": stats["debito_residuo_interessi"],
-                "debito_residuo_totale": stats["debito_residuo_totale"],
-
-                "prossima_data_scadenza": stats["prossima_rata"]["data_scadenza"] if stats["prossima_rata"] else None,
-                "prossimo_importo": stats["prossima_rata"]["importo_totale"] if stats["prossima_rata"] else None,
-
-                "rate_riconciliate": 0,
-                "rate_non_riconciliate": stats["rate_pagate"],
-                "percentuale_riconciliazione": 0.0,
-
-                "updated_at": datetime.now(timezone.utc),
-                "file_piano_ammortamento": file.filename,
-                "allegati": [],
-                "note": f"Importato da PDF il {datetime.now().strftime('%d-%m-%Y %H:%M')}"
-            }
-
-            if existing:
-                # Aggiorna
-                documento.pop("created_at", None)
-                await db.mutui.update_one(
-                    {"mutuo_id": mutuo_id},
-                    {"$set": documento}
-                )
-                action = "aggiornato"
-            else:
-                # Inserisci
-                documento["created_at"] = datetime.now(timezone.utc)
-                documento["created_by"] = "import_pdf"
-                await db.mutui.insert_one(documento)
-                action = "importato"
-
-            return {
-                "success": True,
-                "message": f"Mutuo {action} con successo",
-                "data": {
-                    "mutuo_id": mutuo_id,
-                    "nome": documento["nome"],
-                    "numero_delibera": parsed["numero_delibera"],
-                    "importo_accordato": parsed["importo_accordato"],
-                    "rate_totali": stats["totale_rate"],
-                    "rate_pagate": stats["rate_pagate"],
-                    "rate_da_pagare": stats["rate_da_pagare"],
-                    "totale_pagato": stats["totale_pagato"],
-                    "debito_residuo": stats["debito_residuo_totale"]
-                }
-            }
-
-        finally:
-            os.unlink(tmp_path)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Errore import PDF: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore import: {str(e)}") from e
+        esito = await importa_documento_mutuo(Database.get_db(), content, file.filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"success": True, "message": "Piano di ammortamento importato", "data": esito}
 
 
 @router.post("/parse-multiple", summary="Parsa multipli PDF")
