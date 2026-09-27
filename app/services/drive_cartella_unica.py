@@ -35,6 +35,7 @@ import hashlib
 import io
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -215,6 +216,38 @@ async def _registra(db, file_id: str, **campi) -> None:
     )
 
 
+# Motivo che lo smistatore scriveva per una busta gia' registrata (stessa
+# busta da un'altra copia del PDF): non era un errore, e quei file vanno
+# riletti. Il motore ora la dichiara «gia' in archivio» e la manda in ELABORATE.
+_BUSTE_GIA_PRESENTI = re.compile(r"^Cedolino non registrato: \d+ buste lette$")
+
+
+async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
+                                             limite: int = 200) -> int:
+    """Riporta in DA ELABORARE le buste finite in ERRORI solo perche' gia' registrate."""
+    righe = await db[REGISTRO].find(
+        {"cartella": ERRORI, "tipo": "cedolino"}, {"_id": 0, "id": 1, "nome": 1, "motivo": 1},
+    ).to_list(None)
+    rimessi = 0
+    for riga in righe:
+        if rimessi >= limite:
+            break
+        if not _BUSTE_GIA_PRESENTI.match(str(riga.get("motivo") or "")):
+            continue
+        try:
+            await asyncio.to_thread(_sposta, service, riga["id"], cartelle[ERRORI], cartelle[INBOX],
+                                    "busta gia' in archivio: da rileggere")
+            await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
+                            motivo="busta gia' in archivio, non un errore")
+            rimessi += 1
+        except Exception as exc:
+            logger.warning("[cartella-unica] %s non rimesso in coda: %s: %s",
+                           riga.get("nome") or riga["id"], type(exc).__name__, exc)
+            await _registra(db, riga["id"], cartella="SCONOSCIUTA", esito="non_trovato",
+                            motivo=f"non piu' in ERRORI: {type(exc).__name__}")
+    return rimessi
+
+
 async def giro(db) -> Dict[str, Any]:
     """Un giro sulla radice e poi su DA ELABORARE: al piu' ``DRIVE_CARTELLA_UNICA_BATCH`` file."""
     if not radice():
@@ -236,6 +269,7 @@ async def _giro(db) -> Dict[str, Any]:
     try:
         service = await asyncio.to_thread(_service)
         cartelle = await asyncio.to_thread(_cartelle, service, radice())
+        esito["buste_rimesse_in_coda"] = await rimetti_in_coda_buste_gia_presenti(db, service, cartelle)
         campi = "id, name, md5Checksum, size, mimeType, createdTime"
         # Prima i file lasciati sciolti nella radice, poi DA ELABORARE
         # (decisione del titolare, 26/09/2026): la cartella unica si usa come
