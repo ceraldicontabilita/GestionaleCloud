@@ -424,7 +424,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca. **Spese di lite** (`atti_giudiziari.py`): sentenza, precetto, relata e attestazione entrano da Documenti > Import, originale in `gestionale.blobs`, apribile accanto al pagamento; un'uscita va nel fascicolo solo se la causale cita sentenza o R.G. o il titolare la dichiara (`fascicolo_dichiarato`), mai per importo o controparte, e in Banca è «Spese legali e contenzioso» su 71.03 (da confermare col commercialista).
 - Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
   due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
-  (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
+  (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano); `unifica_copie` (job bancario corto) lo rifà su **tutto** l'archivio: una riga per movimento, copia in quarantena, Prima Nota riagganciata. Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
   creano un pagamento solo con identità, periodo e importo compatibili; altrimenti candidati.
 - Categorizzazione movimenti banca: un solo motore,
   `app/services/categorizzazione_movimenti.py` (parole chiave e causali BPM non ambigue: F24, commissioni, utenze,

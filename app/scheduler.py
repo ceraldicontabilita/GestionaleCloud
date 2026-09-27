@@ -825,6 +825,17 @@ def start_scheduler():
         from app.database import Database
         db = Database.get_db()
         try:
+            # Primo passo: una riga per movimento, qualunque export l'abbia
+            # portata (estratto scaricato la settimana scorsa e oggi, vecchio
+            # archivio, banca diretta). Tutto quello che segue legge righe uniche.
+            from app.services.doppioni_estratto_conto import unifica_copie
+            r = await unifica_copie(db)
+            if r.get("copie") or r.get("entrambe_collegate"):
+                logger.info("[SCHEDULER-BANCA] estratto conto copie unificate=%s entrambe_collegate=%s",
+                            r.get("copie"), r.get("entrambe_collegate"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] copie estratto conto: %s: %s", type(e).__name__, e)
+        try:
             from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
             r = await sincronizza_assegni_da_estratto_conto(db, include_provvisori=True)
             logger.info("[SCHEDULER-BANCA] assegni riconciliati=%s creati=%s",

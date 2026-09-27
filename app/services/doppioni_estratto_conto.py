@@ -367,3 +367,119 @@ def avvia_in_background(db) -> None:
     if db is None or (_task_avvio is not None and not _task_avvio.done()):
         return
     _task_avvio = asyncio.create_task(_applica_una_tantum(db))
+
+
+# ── unificazione permanente delle copie ──────────────────────────────────────
+
+MOTIVO_COPIA = "stesso movimento di un altro export dello stesso conto"
+_CAMPI_RIFERIMENTO_EC = (
+    "estratto_conto_id", "movimento_bancario_id", "movimento_estratto_conto_id",
+    "movimento_banca_id",
+)
+
+
+def _fonte(mov: Dict[str, Any]) -> str:
+    return str(mov.get("source_filename") or mov.get("fonte") or mov.get("fonte_documento") or "")
+
+
+def _collegato(mov: Dict[str, Any]) -> bool:
+    """La riga porta gia' un collegamento che vive sul suo id (riconciliazione,
+    fattura, allocazioni): quella si tiene, la copia nuda se ne va."""
+    return bool(
+        mov.get("riconciliato") is True or mov.get("fattura_id") or mov.get("fattura_ids")
+        or mov.get("allocazioni") or mov.get("f24_id") or mov.get("ricevuta_pagopa_id")
+    )
+
+
+def trova_copie(righe: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    """Le copie dello stesso movimento arrivate da export diversi dello stesso conto.
+
+    Il titolare scarica l'estratto conto quando vuole: quello della settimana
+    scorsa e quello di oggi riportano gli stessi movimenti, e il vecchio
+    archivio li aveva gia'. Ogni export si confronta con quello che resta
+    (``accoppia``: giorno, segno, importo al centesimo, riferimento della
+    banca, quante volte compare); due righe uguali **dello stesso export**
+    sono due operazioni e restano. Per ogni coppia si tiene la riga collegata
+    (riconciliata, con fattura); se lo sono entrambe non si decide da soli.
+    """
+    per_fonte: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for mov in righe:
+        if mov.get("id") and conto_del_movimento(mov) == "bpm":
+            per_fonte[_fonte(mov)].append(mov)
+    # Prima la fonte che ha piu' righe collegate, poi la piu' vecchia.
+    ordine = sorted(per_fonte, key=lambda f: (
+        -sum(_collegato(m) for m in per_fonte[f]),
+        min(str(m.get("created_at") or "") for m in per_fonte[f]), f))
+    tenuti: List[Dict[str, Any]] = []
+    copie: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+    entrambe_collegate: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+    for fonte in ordine:
+        accoppiati = set()
+        for nuovo, esistente in accoppia(per_fonte[fonte], list(tenuti)):
+            if codici(nuovo) and codici(esistente) and not stesso_riferimento(nuovo, esistente):
+                continue  # riferimenti della banca diversi: due operazioni
+            accoppiati.add(id(nuovo))
+            if _collegato(nuovo) and _collegato(esistente):
+                entrambe_collegate.append((nuovo, esistente))
+            elif _collegato(nuovo):
+                indice = next(i for i, m in enumerate(tenuti) if m is esistente)
+                tenuti[indice] = nuovo
+                copie.append((esistente, nuovo))
+            else:
+                copie.append((nuovo, esistente))
+        tenuti.extend(m for m in per_fonte[fonte] if id(m) not in accoppiati)
+    return {"copie": copie, "entrambe_collegate": entrambe_collegate}
+
+
+async def unifica_copie(db, *, dry_run: bool = False, actor: str = "scheduler-banca") -> Dict[str, Any]:
+    """Tiene una riga per movimento nel conto BPM, qualunque export l'abbia portata.
+
+    La copia va in ``estratto_conto_movimenti_quarantena`` (intera, con
+    ``duplicato_di``) ed esce dall'estratto conto per id; le righe di Prima
+    Nota che la citavano passano alla riga tenuta (stesso id di riga: la
+    proiezione bancaria toglie poi l'eventuale doppione per id) e gli esiti
+    stipendio nati dalla copia si stornano. Idempotente: al secondo giro non
+    ci sono copie.
+    """
+    righe = await db[COLLEZIONE].find(
+        {"status": {"$nin": ["deleted", "archived"]}}, _PROIEZIONE_LEGGERA,
+    ).to_list(None)
+    trovate = trova_copie(righe)
+    copie = trovate["copie"]
+    esito: Dict[str, Any] = {
+        "dry_run": dry_run, "copie": len(copie),
+        "entrambe_collegate": len(trovate["entrambe_collegate"]),
+        "prima_nota_riagganciate": 0,
+        "esempi": [{"copia": c.get("id"), "tenuta": t.get("id"), "data": c.get("data"),
+                    "importo": c.get("importo")} for c, t in copie[:10]],
+    }
+    if dry_run or not copie:
+        return esito
+    adesso = _oggi()
+    for copia, tenuta in copie:
+        for campo in _CAMPI_RIFERIMENTO_EC:
+            r = await db["prima_nota_banca"].update_many(
+                {campo: copia["id"]},
+                {"$set": {campo: tenuta["id"], "estratto_conto_copia_unificata": copia["id"]}},
+            )
+            esito["prima_nota_riagganciate"] += int(getattr(r, "modified_count", 0) or 0)
+        if _senza_categoria(tenuta) and not _senza_categoria(copia):
+            # Il vecchio archivio non ha categorie, il CSV si': la riga tenuta
+            # prende quella della copia prima che la copia esca.
+            await db[COLLEZIONE].update_one({"id": tenuta["id"]}, {"$set": {
+                "categoria": copia["categoria"], "categoria_ereditata_da": copia["id"],
+                "categoria_ereditata_at": adesso}})
+        await db[COLLEZIONE_QUARANTENA].update_one(
+            {"id": copia["id"]},
+            {"$set": {**copia, "duplicato_di": tenuta["id"], "motivo_quarantena": MOTIVO_COPIA,
+                      "quarantena_at": adesso, "quarantena_da": actor}},
+            upsert=True,
+        )
+        await db[COLLEZIONE].delete_one({"id": copia["id"]})
+    try:
+        esito["hr"] = await _storna_hr([c["id"] for c, _ in copie], dry_run=False)
+    except Exception as exc:  # noqa: BLE001 - l'estratto conto e' gia' unificato
+        logger.warning("Esiti stipendio delle copie non stornati: %s: %s", type(exc).__name__, exc)
+    logger.info("Estratto conto: %s copie unificate, %s righe Prima Nota riagganciate",
+                len(copie), esito["prima_nota_riagganciate"])
+    return esito
