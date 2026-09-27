@@ -77,3 +77,24 @@ def test_il_riallineamento_non_tocca_una_chiusura_scritta_a_mano():
     _run(db[sumup_sync.COLL_TRANSAZIONI].insert_one(_api("TA1", 10.0)))
     _run(registra_chiusura_pos_reale(db, "2026-08-03", 12.0, gestore="sumup", fonte=FONTE_MANUALE))
     assert _run(sumup_sync.riallinea_chiusure_da_archivio(db, "2026-08-01", "2026-08-31"))["corrette"] == []
+
+
+def test_risincronizzare_le_vendite_non_stacca_il_payout():
+    """La cronologia API non riporta il payout: il collegamento resta."""
+    db = _db()
+    grezza = {"id": "tx-1", "transaction_code": "TA9", "amount": 10.0,
+              "timestamp": "2026-09-10T10:00:00Z", "type": "PAYMENT",
+              "status": "SUCCESSFUL", "currency": "EUR"}
+    _run(sumup_sync.salva_transazioni(db, [grezza], "MFNRDMC4"))
+    _run(db[sumup_sync.COLL_TRANSAZIONI].update_one(
+        {"transaction_code": "TA9"}, {"$set": {"payout_id": "SUMUP PID9"}}))
+
+    esito = _run(sumup_sync.salva_transazioni(db, [grezza], "MFNRDMC4"))
+    riga = _run(db[sumup_sync.COLL_TRANSAZIONI].find_one({"transaction_code": "TA9"}))
+    assert riga["payout_id"] == "SUMUP PID9"
+    assert esito["invariate"] == 1
+
+    # Un rimborso cambiato dall'API si aggiorna lo stesso, payout compreso.
+    esito = _run(sumup_sync.salva_transazioni(db, [{**grezza, "refunded_amount": 2.0}], "MFNRDMC4"))
+    riga = _run(db[sumup_sync.COLL_TRANSAZIONI].find_one({"transaction_code": "TA9"}))
+    assert esito["aggiornate"] == 1 and riga["rimborsato"] == 2.0 and riga["payout_id"] == "SUMUP PID9"
