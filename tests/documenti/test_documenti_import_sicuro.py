@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import io
 import zipfile
@@ -83,6 +84,9 @@ def test_upload_generico_duplicato_non_crea_una_seconda_copia(monkeypatch):
             "id": "doc-esistente",
             "filename": "originale.bin",
             "file_hash": file_hash,
+            # Il record conserva il PDF: l'MD5 trova il candidato, lo SHA-256
+            # del contenuto salvato conferma che e' lo stesso file.
+            "pdf_data": base64.b64encode(payload).decode(),
         })
         monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
         upload = UploadFile(filename="copia.bin", file=io.BytesIO(payload))

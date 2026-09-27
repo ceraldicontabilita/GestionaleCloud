@@ -59,9 +59,41 @@ def _pdf_page_count(content: bytes) -> int | None:
         return None
 
 
-async def _duplicate_sources(db, sha256: str, md5: str) -> list[dict[str, Any]]:
+def _impronte_fattura(content: bytes | None) -> tuple[tuple[str, str | None], ...]:
+    """Le impronte con cui l'import salva una fattura XML in `invoices`.
+
+    `content_hash` e' lo SHA-256 del testo XML decodificato (senza BOM, se la
+    codifica era un'altra non coincide col file) e `content_hash_canonico`
+    l'impronta del contenuto (prefisso ``c2:``): un XML gia' importato con un
+    BOM o una codifica diversa resta riconosciuto.
+    """
+    if not content or b"FatturaElettronica" not in content[:4096]:
+        return ()
+    testo: str | None = None
+    for codifica in ("utf-8-sig", "utf-8", "windows-1252", "latin-1"):
+        try:
+            testo = content.decode(codifica)
+            break
+        except UnicodeDecodeError:
+            continue
+    if testo is None:
+        return ()
+    from app.services.fatture_identita import impronta_contenuto_fattura
+
+    return (
+        ("content_hash", hashlib.sha256(testo.encode("utf-8")).hexdigest()),
+        ("content_hash_canonico", impronta_contenuto_fattura(testo)),
+    )
+
+
+async def _duplicate_sources(
+    db, sha256: str, md5: str, content: bytes | None = None,
+) -> list[dict[str, Any]]:
     checks = (
         ("documents_inbox", (("sha256", sha256), ("file_hash", sha256), ("file_hash", md5))),
+        # Una fattura XML gia' importata finisce in `invoices`, non in
+        # `documents_inbox`: senza questa voce l'anteprima diceva «Nuovo».
+        ("invoices", (("file_hash", sha256), ("content_hash", sha256), *_impronte_fattura(content))),
         ("f24_unificato", (("pdf_hash", sha256), ("sha256", sha256))),
         ("quietanze_f24", (("pdf_hash", sha256), ("sha256", sha256))),
         ("ricevute_pagopa", (("pdf_hash", sha256), ("sha256", sha256))),
@@ -70,7 +102,7 @@ async def _duplicate_sources(db, sha256: str, md5: str) -> list[dict[str, Any]]:
     for collection, candidates in checks:
         existing = await find_one_by_hashes(
             db, collection, candidates,
-            {"_id": 0, "id": 1, "filename": 1, "file_name": 1},
+            {"_id": 0, "id": 1, "filename": 1, "file_name": 1, "invoice_number": 1},
         )
         if existing:
             found.append({"collection": collection, **existing})
@@ -199,7 +231,7 @@ async def build_import_preview(
         blocking_errors.append(str(parser_error))
     if document_type in {"f24", "quietanza_f24"} and validation.get("saldo_quadrato") is not True:
         blocking_errors.append("F24 non quadrato o non validato")
-    duplicates = await _duplicate_sources(db, sha256, md5)
+    duplicates = await _duplicate_sources(db, sha256, md5, content)
     return {
         "success": not blocking_errors,
         "preview_only": True,

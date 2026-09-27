@@ -404,7 +404,7 @@ class EmailFullDownloader:
                 logger.warning(f"Errore durante disconnessione IMAP: {e}")
             self.connection = None
 
-    async def check_duplicate(self, pdf_hash: str) -> bool:
+    async def check_duplicate(self, pdf_hash: str, pdf_content: Optional[bytes] = None) -> bool:
         """Verifica se un PDF con questo hash esiste già, anche CROSS-CANALE
         (P2-1): oltre alle collezioni allegati email, controlla `documents_inbox`
         (dove lo stesso file può essere entrato dall'altra pipeline)."""
@@ -416,7 +416,7 @@ class EmailFullDownloader:
         # Cross-canale: stesso md5 già presente in documents_inbox
         from app.services.deduplica import esiste_documento_cross_canale
         from app.db_collections import COLL_DOCUMENTS_INBOX
-        altrove = await esiste_documento_cross_canale(self.db, pdf_hash)
+        altrove = await esiste_documento_cross_canale(self.db, pdf_hash, contenuto=pdf_content)
         if altrove and altrove["collezione"] == COLL_DOCUMENTS_INBOX:
             logger.info(f"[dedup cross-canale] PDF già presente in "
                         f"{altrove['collezione']} — salto reinserimento allegato")
@@ -438,7 +438,7 @@ class EmailFullDownloader:
         pdf_hash = calculate_pdf_hash(pdf_content)
 
         # Verifica duplicato
-        if await self.check_duplicate(pdf_hash):
+        if await self.check_duplicate(pdf_hash, pdf_content):
             self.stats["pdfs_duplicates"] += 1
             logger.debug(f"PDF duplicato saltato: {filename}")
             return None
