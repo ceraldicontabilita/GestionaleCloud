@@ -60,6 +60,7 @@ import {
   Settings,
   Workflow,
   Mail,
+  Globe,
 } from 'lucide-react';
 
 export const NAV_GRUPPI = [
@@ -87,6 +88,7 @@ export const NAV_GRUPPI = [
     colore: '#2f7a4f',
     voci: [
       { to: '/fatture', label: 'Fatture', Icon: FileText, perche: "Le fatture ricevute dell'anno, con fornitore, importo e stato del pagamento." },
+      { to: '/fatture-estere-verifica', label: 'Fatture estere', Icon: Globe, perche: "Le fatture dall'estero lette dal file: si confermano qui, e la conferma rifà conto e registrazione." },
       { to: '/fatture/emesse', label: 'Fatture emesse', Icon: FileOutput, perche: "Le fatture fatte dopo lo scontrino, collegate al corrispettivo del giorno: non aumentano le entrate." },
       { to: '/fatture/corrispettivi', label: 'Corrispettivi', Icon: Wallet, perche: "Le chiusure giornaliere del registratore di cassa: l'unica fonte dei ricavi." },
       { to: '/fornitori', label: 'Fornitori', Icon: Building2, perche: "Chi ti fattura, con partita IVA, metodo di pagamento e quanto hai comprato." },
