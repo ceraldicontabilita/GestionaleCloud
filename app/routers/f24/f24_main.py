@@ -12,38 +12,10 @@ import os
 from app.database import Database
 from app.utils.dependencies import get_current_user
 from app.db_collections import COLL_F24
-from app.services.f24_payment_evidence import (
-    patch_pagamento_banca,
-    stato_evidenza_pagamento,
-)
+from app.services.f24_payment_evidence import patch_pagamento_banca
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-# ============== CODICI TRIBUTO F24 ==============
-CODICI_TRIBUTO_F24 = {
-    "1001": {"sezione": "erario", "descrizione": "Ritenute su retribuzioni, pensioni, trasferte", "tipo": "misto"},
-    "1627": {"sezione": "erario", "descrizione": "Ritenute su redditi lavoro autonomo", "tipo": "misto"},
-    "1631": {"sezione": "erario", "descrizione": "Credito d'imposta per ritenute IRPEF", "tipo": "credito"},
-    "6001": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Gennaio", "tipo": "debito"},
-    "6002": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Febbraio", "tipo": "debito"},
-    "6003": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Marzo", "tipo": "debito"},
-    "6004": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Aprile", "tipo": "debito"},
-    "6005": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Maggio", "tipo": "debito"},
-    "6006": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Giugno", "tipo": "debito"},
-    "6007": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Luglio", "tipo": "debito"},
-    "6008": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Agosto", "tipo": "debito"},
-    "6009": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Settembre", "tipo": "debito"},
-    "6010": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Ottobre", "tipo": "debito"},
-    "6011": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Novembre", "tipo": "debito"},
-    "6012": {"sezione": "erario", "descrizione": "IVA - Versamento mensile Dicembre", "tipo": "debito"},
-    "6099": {"sezione": "erario", "descrizione": "IVA - Versamento annuale", "tipo": "debito"},
-    "5100": {"sezione": "inps", "descrizione": "Contributi INPS lavoratori dipendenti", "tipo": "debito"},
-    "3802": {"sezione": "regioni", "descrizione": "Addizionale regionale IRPEF", "tipo": "debito"},
-    "3847": {"sezione": "imu", "descrizione": "Addizionale comunale IRPEF - acconto", "tipo": "debito"},
-    "3848": {"sezione": "imu", "descrizione": "Addizionale comunale IRPEF - saldo", "tipo": "debito"},
-}
 
 
 # ============== UPLOAD ZIP MASSIVO F24 ==============
@@ -643,87 +615,6 @@ async def get_alerts_scadenze(
     return alerts
 
 
-# ============== DASHBOARD ==============
-@router.get(
-    "/dashboard/summary",
-    summary="Get F24 dashboard summary"
-)
-async def get_f24_dashboard(
-    current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """
-    Get F24 dashboard summary.
-    Stats on paid/unpaid, totals by tax code.
-    """
-    db = Database.get_db()
-
-    all_f24 = await db[COLL_F24].find({}, {"_id": 0}).to_list(10000)
-
-    pagati = [f for f in all_f24 if stato_evidenza_pagamento(f)["pagato"]]
-    non_pagati = [f for f in all_f24 if not stato_evidenza_pagamento(f)["pagato"]]
-
-    totale_pagato = sum(float(f.get("importo", 0) or 0) for f in pagati)
-    totale_da_pagare = sum(float(f.get("importo", 0) or 0) for f in non_pagati)
-
-    # Group by tax code
-    per_codice = {}
-    for f24 in all_f24:
-        for codice in f24.get("codici_tributo", []):
-            cod = codice.get("codice", "ALTRO")
-            if cod not in per_codice:
-                info = CODICI_TRIBUTO_F24.get(cod, {"descrizione": "Altro"})
-                per_codice[cod] = {
-                    "codice": cod,
-                    "descrizione": info.get("descrizione", ""),
-                    "count": 0,
-                    "totale": 0,
-                    "pagato": 0,
-                    "da_pagare": 0
-                }
-            per_codice[cod]["count"] += 1
-            importo = float(codice.get("importo", 0) or f24.get("importo", 0) or 0)
-            per_codice[cod]["totale"] += importo
-            if stato_evidenza_pagamento(f24)["pagato"]:
-                per_codice[cod]["pagato"] += importo
-            else:
-                per_codice[cod]["da_pagare"] += importo
-
-    # Count active alerts
-    today = datetime.now(timezone.utc).date()
-    alert_attivi = 0
-    for f24 in non_pagati:
-        scadenza_str = f24.get("scadenza")
-        if scadenza_str:
-            try:
-                if isinstance(scadenza_str, str):
-                    if "T" in scadenza_str:
-                        scadenza = datetime.fromisoformat(scadenza_str.replace("Z", "+00:00")).date()
-                    else:
-                        try:
-                            scadenza = datetime.strptime(scadenza_str, "%d/%m/%Y").date()
-                        except ValueError:
-                            scadenza = datetime.strptime(scadenza_str, "%Y-%m-%d").date()
-                elif isinstance(scadenza_str, datetime):
-                    scadenza = scadenza_str.date()
-                else:
-                    continue
-
-                if (scadenza - today).days <= 7:
-                    alert_attivi += 1
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "[F24] scadenza non interpretabile: questa rata non entra nel "
-                    "conteggio degli alert: %s", exc)
-
-    return {
-        "totale_f24": len(all_f24),
-        "pagati": {"count": len(pagati), "totale": round(totale_pagato, 2)},
-        "da_pagare": {"count": len(non_pagati), "totale": round(totale_da_pagare, 2)},
-        "alert_attivi": alert_attivi,
-        "per_codice_tributo": list(per_codice.values())
-    }
-
-
 # ============== RICONCILIAZIONE ==============
 @router.post(
     "/riconcilia",
@@ -842,41 +733,6 @@ async def mark_f24_paid(
 
 
 # ============== CODICI TRIBUTO ==============
-@router.get(
-    "/codici/all",
-    summary="Get all tax codes"
-)
-async def get_all_codici(
-    current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Get all F24 tax codes."""
-    return {
-        "codici": CODICI_TRIBUTO_F24,
-        "sezioni": {
-            "erario": "Erario",
-            "inps": "INPS",
-            "regioni": "Regioni",
-            "imu": "IMU e tributi locali"
-        }
-    }
-
-
-@router.get(
-    "/codici/{codice}",
-    summary="Get tax code info"
-)
-async def get_codice_info(
-    codice: str = Path(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Get info for a specific tax code."""
-    return CODICI_TRIBUTO_F24.get(codice, {
-        "sezione": "sconosciuta",
-        "descrizione": f"Codice {codice} non trovato",
-        "tipo": "misto"
-    })
-
-
 # ============== PARSING QUIETANZE F24 ==============
 from app.services.f24_parser import generate_f24_summary
 

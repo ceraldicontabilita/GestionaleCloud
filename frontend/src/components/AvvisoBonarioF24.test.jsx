@@ -70,4 +70,30 @@ describe('Interroga avviso bonario (PR 11)', () => {
     expect(api.post).not.toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toContain('almeno una riga');
   });
+  it('mostra gli indizi di una riga non trovata come da verificare, mai come pagamento', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        riepilogo: { totale_avviso: 1211.9, totale_coperto: 0, totale_pagato_senza_quietanza: 0, totale_scoperto: 1211.9 },
+        fonti: { f24: 1, quietanze: 0, movimenti_f24_banca: 0 },
+        righe: [{
+          codice_tributo: '6010', periodo: '10/2024', importo: 1211.9, esito: 'NON_TROVATO', differenza: null,
+          motivazione: 'nessuna riga 6010', righe_f24: [], quietanze: [], addebiti_banca: [], cedolini_hr: null,
+          indizi: [{ tipo: 'POSSIBILE_COMPENSAZIONE_6099', f24_id: 'F-6099', file_name: 'F24.pdf', codice_tributo: '6099',
+            periodo: '2024', importo: 1211.4, a_credito: true, data_versamento_it: '16/06/2025', pagato_banca: false,
+            pdf_url: '/api/f24-riconciliazione/commercialista/F-6099/pdf' }],
+        }],
+      },
+    });
+    render(<MemoryRouter><AvvisoBonarioF24 /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Codice tributo riga 1'), { target: { value: '6010' } });
+    fireEvent.change(screen.getByLabelText('Periodo riga 1'), { target: { value: '10/2024' } });
+    fireEvent.change(screen.getByLabelText('Importo riga 1'), { target: { value: '1211,90' } });
+    fireEvent.click(screen.getByTestId('btn-interroga-avviso'));
+    await waitFor(() => expect(screen.getByTestId('avviso-indizi')).toBeTruthy());
+    const testo = screen.getByTestId('avviso-indizi').textContent;
+    expect(testo).toContain('Possibile compensazione 6099');
+    expect(testo).toContain('da verificare con il commercialista');
+    expect(testo).toContain('16/06/2025');
+    expect(testo).toContain('nessuna prova di pagamento');
+  });
 });

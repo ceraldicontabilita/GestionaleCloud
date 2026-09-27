@@ -255,6 +255,65 @@ async def quarantena_verbali_da_fattura(db) -> Dict[str, int]:
     return esito
 
 
+# ── F24: la rata non e' un mese ─────────────────────────────────────────────
+
+SEZIONI_F24 = ("sezione_erario", "sezione_regioni", "sezione_tributi_locali", "sezione_imu")
+
+
+def riga_f24_riallineata(riga: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """La riga corretta se porta una rata letta come mese, altrimenti None.
+
+    «0101» e «03/03 2021» sono rate (``tributi_engine.riga_rateizzata``): il
+    periodo resta l'anno, la rata va in ``rateazione``, il mese a «00»."""
+    from app.engines.tributi_engine import riga_rateizzata
+
+    if not riga_rateizzata(riga):
+        return None
+    periodo = str(riga.get("periodo_riferimento") or "")
+    anno = str(riga.get("anno") or "").strip()
+    if not anno:
+        m = re.search(r"(\d{4})", periodo or str(riga.get("periodo_raw") or ""))
+        anno = m.group(1) if m else ""
+    nuova = dict(riga)
+    if not nuova.get("rateazione"):
+        grezzo = str(riga.get("periodo_raw") or "").split()[0]
+        nuova["rateazione"] = grezzo.replace("/", "")
+    if nuova.get("mese") not in (None, "", "00"):
+        nuova["mese"] = "00"
+    if anno:
+        nuova["periodo_riferimento"] = anno
+    return None if nuova == riga else nuova
+
+
+async def riallinea_rate_f24(db) -> Dict[str, int]:
+    """Righe di modelli F24 e quietanze archiviate con la rata al posto del
+    mese: si riscrive la sezione, per id, conservando ogni altro campo."""
+    esito = {"documenti": 0, "righe": 0}
+    for coll in ("f24_unificato", "quietanze_f24"):
+        proiezione = {"_id": 0, "id": 1, **{s: 1 for s in SEZIONI_F24}}
+        for doc in await db[coll].find({}, proiezione).to_list(None):
+            if not doc.get("id"):
+                continue
+            aggiornamento: Dict[str, Any] = {}
+            for sezione in SEZIONI_F24:
+                righe = doc.get(sezione)
+                if not isinstance(righe, list):
+                    continue
+                nuove, cambiate = [], 0
+                for riga in righe:
+                    corretta = riga_f24_riallineata(riga) if isinstance(riga, dict) else None
+                    nuove.append(corretta or riga)
+                    cambiate += corretta is not None
+                if cambiate:
+                    aggiornamento[sezione] = nuove
+                    esito["righe"] += cambiate
+            if aggiornamento:
+                aggiornamento["rate_riallineate_at"] = _ora()
+                await db[coll].update_one({"id": doc["id"]}, {"$set": aggiornamento})
+                esito["documenti"] += 1
+    return esito
+
+
 # ── Orchestrazione ──────────────────────────────────────────────────────────
 
 PASSI = (
@@ -262,6 +321,7 @@ PASSI = (
     ("alert_movimenti", chiudi_alert_movimenti_riconciliati),
     ("documenti_classificati", chiudi_alert_documenti_classificati),
     ("verbali_da_fattura", quarantena_verbali_da_fattura),
+    ("rate_f24", riallinea_rate_f24),
 )
 
 

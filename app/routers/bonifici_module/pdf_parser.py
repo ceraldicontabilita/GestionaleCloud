@@ -259,6 +259,26 @@ def _is_invalid_person_value(value: Optional[str]) -> bool:
     return len(parole) < 2
 
 
+
+# Il riferimento interno Banco BPM («MB0B96218506») e' quello che l'estratto
+# conto ripete nella causale («NS RIF. MB0B96218506»): lega la ricevuta al
+# movimento. Non sostituisce ``cro_trn``: quello resta il TRN («RIF.
+# OPERAZIONE») quando c'e', perche' e' la chiave con cui i 660 bonifici gia'
+# archiviati si riconoscono come doppioni. Alcune ricevute stampano le due
+# etichette in fila e i valori dopo: allora vale il «NS RIF.» della riga
+# contabile, che e' lo stesso numero.
+_RIF_INTERNO_RE = re.compile(r"RIF\.?\s*INTERNO[:\s]*((?=[A-Z0-9]*\d)[A-Z]{2}[A-Z0-9]{8,14})\b", re.IGNORECASE)
+_NS_RIF_RE = re.compile(r"\bNS\.?\s*RIF\.?[:\s]*((?=[A-Z0-9]*\d)[A-Z]{2}[A-Z0-9]{8,14})\b", re.IGNORECASE)
+
+
+def estrai_rif_interno(text: str) -> str | None:
+    """Riferimento interno della banca, oppure None se la ricevuta non lo porta."""
+    for regex in (_RIF_INTERNO_RE, _NS_RIF_RE):
+        m = regex.search(text or "")
+        if m:
+            return m.group(1).upper()
+    return None
+
 def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str, Any]]:
     """Estrae bonifici dal testo PDF."""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
@@ -304,6 +324,8 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
         if segmenti:
             cro = cro + segmenti.group(0)
 
+    rif_interno = estrai_rif_interno(text)
+
     # Cerca causale
     caus = table_row.get("causale") or _value_after_label(
         lines, r"causale(?:\s+del\s+bonifico)?|motivazione"
@@ -339,6 +361,7 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
         'causale': caus,
         'direzione': direzione,
         'cro_trn': cro,
+        'rif_interno': rif_interno,
         'banca': None,
         'note': None,
         'periodo_mese': periodo.get('periodo_mese'),

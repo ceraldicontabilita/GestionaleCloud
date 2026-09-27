@@ -418,7 +418,7 @@ async def importa_pdf_bonifico(
             key: reparsed.get(key)
             for key in (
                 "data", "importo", "beneficiario", "ordinante", "causale",
-                "cro_trn", "periodo_mese", "periodo_anno",
+                "cro_trn", "rif_interno", "periodo_mese", "periodo_anno",
                 "mese_pagamento_file", "anno_pagamento_file",
             )
         }

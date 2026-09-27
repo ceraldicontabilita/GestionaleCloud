@@ -73,10 +73,13 @@ def identita_cedolino(doc: Dict[str, Any]) -> Optional[Tuple]:
 
 
 def identita_quietanza(doc: Dict[str, Any]) -> Optional[Tuple]:
+    """Stesso protocollo **e** stesso saldo: dallo stesso PDF escono deleghe
+    diverse col protocollo uguale (il ravvedimento pagato lo stesso giorno,
+    2.946,31 e 22,47 EUR il 04/11/2022), e sono due pagamenti."""
     protocollo = _testo(doc.get("protocollo_telematico"))
-    if protocollo:
-        return ("protocollo", protocollo)
     saldo = centesimi(doc.get("saldo"))
+    if protocollo:
+        return ("protocollo", protocollo, saldo)
     cf = _testo(doc.get("codice_fiscale"))
     data = str(doc.get("data_pagamento") or "")[:10]
     codici = tuple(sorted(str(c) for c in doc.get("codici_tributo") or []))

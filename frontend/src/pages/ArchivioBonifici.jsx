@@ -1018,10 +1018,19 @@ export default function ArchivioBonifici() {
                   tdStyle: sfondoRic,
                 },
                 {
+                  // Il CRO sta sempre accanto al bonifico (anche su smartphone):
+                  // il RIF. INTERNO e' quello che l'estratto conto ripete.
                   key: 'cro_trn',
-                  label: 'CRO/TRN',
-                  ruoloCard: 'omesso',
-                  render: t => t.cro_trn || '-',
+                  label: 'CRO / Rif. interno',
+                  ruoloCard: 'dettaglio',
+                  render: t => (
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {t.cro_trn || '-'}
+                      {t.rif_interno && t.rif_interno !== t.cro_trn ? (
+                        <><br />Rif. interno {t.rif_interno}</>
+                      ) : null}
+                    </span>
+                  ),
                   tdStyle: t => ({ fontSize: 10, ...sfondoRic(t) }),
                 },
                 {

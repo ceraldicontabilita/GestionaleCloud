@@ -150,22 +150,43 @@ def classifica_riga(sezione: str, codice: str) -> Dict[str, str]:
 
 # ── Periodi e scadenze (§20) ───────────────────────────────────────────────
 
-def _parse_periodo(valore: Any) -> Optional[tuple]:
-    """(mese, anno) da 'MM/YYYY', 'MM-YYYY', 'YYYY-MM' o dal formato
-    rateazione+anno di erario/regioni con anno separato da spazio
-    (es. '00/12 2024' → rata 00, mese rif. 12, anno 2024). None se ignoto.
+def mese_da_rateazione(rateazione: Any) -> str:
+    """Mese di riferimento dal campo «rateazione/mese rif.» del modello F24.
 
-    Il mese '00' indica periodo annuale (nessun mese specifico, es.
-    addizionale regionale): resta ignoto → None, per non forzare
-    associazioni a un mese non reale (regole cardine F24)."""
+    Le istruzioni dell'Agenzia delle Entrate danno due forme allo stesso campo:
+    ``00MM`` e' il mese di riferimento, ``NNRR`` (NN diverso da 00) e' la rata
+    NN di RR. «0101» su un saldo IRAP, un acconto IRES o la TARI e' la rata
+    unica, non gennaio: un tributo annuale non ha mese e resta «00».
+    """
+    valore = re.sub(r"[\s/-]", "", str(rateazione or ""))
+    if re.fullmatch(r"00(0[1-9]|1[0-2])", valore):
+        return valore[2:4]
+    return "00"
+
+
+def e_rateazione(rateazione: Any) -> bool:
+    """Vero se il campo e' una rata ``NNRR`` (NN diverso da 00), non un mese."""
+    valore = re.sub(r"[\s/-]", "", str(rateazione or ""))
+    return bool(re.fullmatch(r"(0[1-9]|[1-9]\d)\d{2}", valore))
+
+
+def _parse_periodo(valore: Any) -> Optional[tuple]:
+    """(mese, anno) da 'MM/YYYY', 'MM-YYYY', 'YYYY-MM' o dal campo
+    rateazione/mese rif. con l'anno separato da spazio ('00/12 2024' →
+    dicembre 2024). None se ignoto.
+
+    '01/01 2022' e '03/03 2021' sono **rate** (rata 1 di 1, rata 3 di 3), non
+    mesi (``mese_da_rateazione``); il mese '00' indica un periodo annuale.
+    Entrambi restano senza mese → None, per non forzare associazioni a un mese
+    non reale (regole cardine F24)."""
     if not valore:
         return None
     s = str(valore).strip()
-    # Rateazione con anno separato da spazio: 'NN/MM YYYY' o 'NNMM YYYY'
+    # Rateazione/mese rif. con anno separato da spazio: 'NN/MM YYYY' o 'NNMM YYYY'
     m = re.match(r"^(\d{2})[/-]?(\d{2})\s+(\d{4})$", s)
     if m:
-        mese, anno = int(m.group(2)), int(m.group(3))
-        return (mese, anno) if 1 <= mese <= 12 else None
+        mese = int(mese_da_rateazione(m.group(1) + m.group(2)))
+        return (mese, int(m.group(3))) if 1 <= mese <= 12 else None
     m = re.match(r"^(\d{1,2})[/-](\d{4})$", s)
     if m:
         mese, anno = int(m.group(1)), int(m.group(2))
@@ -175,6 +196,17 @@ def _parse_periodo(valore: Any) -> Optional[tuple]:
         anno, mese = int(m.group(1)), int(m.group(2))
         return (mese, anno) if 1 <= mese <= 12 else None
     return None
+
+
+def riga_rateizzata(riga: Dict[str, Any]) -> bool:
+    """Vero se la riga porta una rata ``NNRR``, non un mese: nel campo
+    ``rateazione`` del modello o nel ``periodo_raw`` della quietanza
+    ('01/01 2022'). Le righe archiviate prima della correzione hanno ancora
+    il mese sbagliato in ``mese``/``periodo_riferimento``: questo le riconosce."""
+    if e_rateazione(riga.get("rateazione")):
+        return True
+    m = re.match(r"^(\d{2})[/-]?(\d{2})\s+\d{4}$", str(riga.get("periodo_raw") or "").strip())
+    return bool(m and e_rateazione(m.group(1) + m.group(2)))
 
 
 def _parse_data(valore: Any) -> Optional[date]:
@@ -251,6 +283,8 @@ def periodo_prevalente(f24: Dict[str, Any]) -> Optional[tuple]:
     """(mese, anno) più frequente tra le righe del modello."""
     conteggio: Dict[tuple, int] = {}
     for r in _righe_f24(f24):
+        if riga_rateizzata(r):
+            continue
         p = _parse_periodo(r.get("periodo_riferimento") or r.get("periodo"))
         if p:
             conteggio[p] = conteggio.get(p, 0) + 1

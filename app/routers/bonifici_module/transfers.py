@@ -7,7 +7,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from pathlib import Path
 import io
-import csv
 import base64
 import zipfile
 import re as _re_zip
@@ -43,6 +42,7 @@ async def list_transfers(
             {'beneficiario.nome': {'$regex': safe_s, '$options': 'i'}},
             {'causale': {'$regex': safe_s, '$options': 'i'}},
             {'cro_trn': {'$regex': safe_s, '$options': 'i'}},
+            {'rif_interno': {'$regex': safe_s, '$options': 'i'}},
         ]})
     if ordinante:
         ands.append({'ordinante.nome': {'$regex': _re.escape(ordinante), '$options': 'i'}})
@@ -208,83 +208,6 @@ async def update_transfer(transfer_id: str, data: Dict[str, Any]) -> Dict[str, A
         await db.bonifici_transfers.update_one({"id": transfer_id}, {"$set": update_fields})
     
     return {"success": True, "updated": list(update_fields.keys())}
-
-
-async def export_transfers(
-    format: str = 'xlsx',
-    job_id: Optional[str] = None
-) -> StreamingResponse:
-    """Esporta bonifici in CSV o XLSX."""
-    db = Database.get_db()
-    query = {'job_id': job_id} if job_id else {}
-    transfers = await db.bonifici_transfers.find(
-        query, metadata_projection(COLL_BONIFICI_TRANSFERS)
-    ).to_list(10000)
-    
-    if format == 'csv':
-        buf = io.StringIO()
-        w = csv.writer(buf, delimiter=';')
-        headers = ['data', 'importo', 'valuta', 'ordinante', 'ordinante_iban', 'beneficiario', 'beneficiario_iban', 'causale', 'cro_trn']
-        w.writerow(headers)
-        for t in transfers:
-            ord_data = t.get('ordinante') or {}
-            ben_data = t.get('beneficiario') or {}
-            d = t.get('data', '')
-            if isinstance(d, datetime):
-                d = d.strftime('%Y-%m-%d')
-            w.writerow([
-                d,
-                t.get('importo', ''),
-                t.get('valuta', 'EUR'),
-                ord_data.get('nome', ''),
-                ord_data.get('iban', ''),
-                ben_data.get('nome', ''),
-                ben_data.get('iban', ''),
-                t.get('causale', ''),
-                t.get('cro_trn', '')
-            ])
-        buf.seek(0)
-        return StreamingResponse(
-            iter([buf.getvalue()]),
-            media_type='text/csv',
-            headers={'Content-Disposition': 'attachment; filename=bonifici_export.csv'}
-        )
-    else:
-        try:
-            import pandas as pd
-            from io import BytesIO
-        except ImportError as exc:
-            raise HTTPException(status_code=500, detail="pandas non installato") from exc
-        
-        rows = []
-        for t in transfers:
-            ord_data = t.get('ordinante') or {}
-            ben_data = t.get('beneficiario') or {}
-            d = t.get('data', '')
-            if isinstance(d, datetime):
-                d = d.strftime('%Y-%m-%d')
-            rows.append({
-                'data': d,
-                'importo': t.get('importo'),
-                'valuta': t.get('valuta', 'EUR'),
-                'ordinante': ord_data.get('nome', ''),
-                'ordinante_iban': ord_data.get('iban', ''),
-                'beneficiario': ben_data.get('nome', ''),
-                'beneficiario_iban': ben_data.get('iban', ''),
-                'causale': t.get('causale', ''),
-                'cro_trn': t.get('cro_trn', '')
-            })
-        
-        df = pd.DataFrame(rows)
-        output = BytesIO()
-        df.to_excel(output, index=False, engine='openpyxl')
-        output.seek(0)
-        
-        return StreamingResponse(
-            output,
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={'Content-Disposition': 'attachment; filename=bonifici_export.xlsx'}
-        )
 
 
 async def download_zip_by_year(year: str) -> StreamingResponse:

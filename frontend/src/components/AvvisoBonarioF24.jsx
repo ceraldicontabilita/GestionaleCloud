@@ -55,6 +55,37 @@ const stileBottone = (primario = true) => ({
   border: primario ? 'none' : `1px solid ${PALETTE.salvia}`,
 });
 
+const ETICHETTE_INDIZIO = {
+  POSSIBILE_COMPENSAZIONE_6099: 'Possibile compensazione 6099',
+  POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE: 'Possibile errore di periodo',
+};
+
+/** Dove guardare prima di dire «non pagato»: indizi, mai prove. */
+function ListaIndizi({ indizi, onApriPdf }) {
+  if (!indizi?.length) return null;
+  return (
+    <div style={{ marginTop: 8, display: 'grid', gap: 6 }} data-testid="avviso-indizi">
+      {indizi.map((i, idx) => (
+        <div key={`${i.f24_id}-${i.codice_tributo}-${idx}`}
+          style={{ padding: 8, borderRadius: 6, background: '#fdf3e7', border: `1px solid ${PALETTE.bordo}`, color: PALETTE.sabbiaScura }}>
+          <strong>{ETICHETTE_INDIZIO[i.tipo] || i.tipo}</strong> — da verificare con il commercialista
+          <div style={{ fontSize: 11.5, marginTop: 2 }}>
+            {i.codice_tributo} {i.periodo} · {formatEuro(i.importo)}{i.a_credito ? ' a credito' : ''}
+            {i.data_versamento_it ? ` · ${i.data_versamento_it}` : ''}
+            {i.pagato_banca ? ' · pagato in banca' : ' · nessuna prova di pagamento'}
+          </div>
+          {i.pdf_url && (
+            <button type="button" onClick={() => onApriPdf(i)}
+              style={{ ...stileBottone(false), minHeight: 44, marginTop: 4 }}>
+              Apri il modello
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function BadgeEsito({ esito }) {
   const stile = ESITI_AVVISO[esito] || { label: esito, bg: PALETTE.crema, color: PALETTE.grigio };
   return (
@@ -266,7 +297,10 @@ export default function AvvisoBonarioF24() {
                   <td style={{ ...stileTd, minWidth: 320 }}>
                     <ListaProve riga={r} onApriPdf={(m) => setPdfViewer({ title: `F24 ${m.file_name || m.f24_id}`, src: m.pdf_url })} />
                   </td>
-                  <td style={{ ...stileTd, minWidth: 220, color: PALETTE.grigio }}>{r.motivazione}</td>
+                  <td style={{ ...stileTd, minWidth: 220, color: PALETTE.grigio }}>
+                    {r.motivazione}
+                    <ListaIndizi indizi={r.indizi} onApriPdf={(i) => setPdfViewer({ title: `F24 ${i.file_name || i.f24_id}`, src: i.pdf_url })} />
+                  </td>
                 </tr>
               ))}
             </tbody>

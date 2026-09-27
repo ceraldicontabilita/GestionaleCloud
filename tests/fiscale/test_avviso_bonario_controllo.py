@@ -288,3 +288,56 @@ def test_route_avviso_bonario_precede_la_route_dinamica_di_f24_main():
         and "GET" in set(getattr(route, "methods", None) or ())
     )
     assert percorsi.index("/avviso-bonario/controllo") < get_dinamica
+
+
+# ── indizi prima di dire «non pagato» (cruscotto fiscale del titolare) ───────
+
+def _f24_con(id_, data, righe_erario):
+    return {
+        "id": id_, "status": "da_pagare", "file_name": f"{id_}.pdf",
+        "dati_generali": {"codice_fiscale": "04523831214", "data_versamento": data},
+        "sezione_erario": righe_erario, "sezione_regioni": [], "sezione_tributi_locali": [],
+        "sezione_inps": [], "sezione_inail": [],
+    }
+
+
+def test_riga_mancante_con_6099_quasi_identico_da_un_indizio_non_una_prova():
+    db = _db_base()
+    _run(db.f24_unificato.insert_one(_f24_con("F-6099", "2025-06-16", [
+        {"codice_tributo": "6099", "anno": "2024", "mese": "00", "periodo_riferimento": "2024",
+         "importo_debito": 0.0, "importo_credito": 1211.40},
+    ])))
+    esito = _controlla(db, [{"codice_tributo": "6010", "periodo": "10/2024", "importo": 1211.90}])["righe"][0]
+    assert esito["esito"] == ctrl.ESITO_NON_TROVATO
+    assert [i["tipo"] for i in esito["indizi"]] == [ctrl.INDIZIO_COMPENSAZIONE_6099]
+    indizio = esito["indizi"][0]
+    assert indizio["a_credito"] is True
+    assert indizio["data_versamento_it"] == "16/06/2025"
+    assert "commercialista" in indizio["spiegazione"]
+    assert indizio["pagato_banca"] is False
+
+
+def test_stesso_codice_altro_anno_da_indizio_di_periodo():
+    db = _db_base()
+    _run(db.f24_unificato.insert_one(_f24_con("F-IRAP", "2023-06-30", [
+        {"codice_tributo": "2003", "anno": "2023", "mese": "00", "periodo_riferimento": "2023",
+         "importo_debito": 5164.0, "importo_credito": 0.0},
+    ])))
+    esito = _controlla(db, [{"codice_tributo": "2003", "periodo": "2022", "importo": 5164.0}])["righe"][0]
+    assert esito["esito"] == ctrl.ESITO_NON_TROVATO
+    assert [i["tipo"] for i in esito["indizi"]] == [ctrl.INDIZIO_ERRORE_PERIODO]
+
+
+def test_importo_lontano_non_da_indizi_e_la_riga_trovata_nemmeno():
+    db = _db_base()
+    _run(db.f24_unificato.insert_one(_f24_149f()))
+    _run(db.f24_unificato.insert_one(_f24_con("F-6099", "2020-03-16", [
+        {"codice_tributo": "6099", "anno": "2019", "mese": "00", "periodo_riferimento": "2019",
+         "importo_debito": 900.0, "importo_credito": 0.0},
+    ])))
+    righe = _controlla(db, [
+        {"codice_tributo": "6010", "periodo": "10/2019", "importo": 1455.21},
+        {"codice_tributo": "1001", "periodo": "10/2019", "importo": 1455.21},
+    ])["righe"]
+    assert righe[0]["indizi"] == []
+    assert righe[1]["esito"] != ctrl.ESITO_NON_TROVATO and righe[1]["indizi"] == []
