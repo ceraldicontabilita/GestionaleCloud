@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 26/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 27/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -259,7 +259,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Nessuna entità si associa per solo importo: servono identità/provenienza coerente e importo al centesimo. Unica
   eccezione, regola del titolare: un assegno paga la fattura di pari importo emessa nei 15 giorni prima dell'addebito,
-  se è l'unica (`REGOLA_TITOLARE_GIORNI_PRECEDENTI`); il numero scritto nel report «Fatture ricevute» vince sempre. Un bonifico che **elenca più fatture** in causale le paga se il fornitore è nel movimento, ogni numero è una sua fattura da riscontrare e le quote fanno l'importo al centesimo (`_reconcile_invoice_reference_matches`).
+  se è l'unica (`REGOLA_TITOLARE_GIORNI_PRECEDENTI`); il numero scritto nel report «Fatture ricevute» vince sempre.
 - Nei casi ambigui mostra i candidati (`Scegli fattura`, `Scegli driver`,
   `Scegli verbale`) e non applicare il collegamento.
 - Fattura, disposizione, ricevuta, quietanza e movimento bancario sono prove
@@ -484,9 +484,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - F24, righe tributo, quietanza e movimento bancario sono entità distinte. La quietanza documenta il pagamento ma **non
   sostituisce la prova bancaria** né ricostruisce il modello (senza modello → alert «F24 mancante»); stato e residuo **per
-  riga tributo**. Quietanza ↔ addebito I24 (`riscontra_quietanze_banca` in `f24_controllo_incrociato.py`, giro dei 30 minuti
-  e arrivo della quietanza): pagamento = protocollo+data+saldo, certo solo con importo al centesimo e «DATA INCASSO» della
-  causale = data della quietanza, altrimenti candidati; gli orfani dei due lati aprono un alert con il record.
+  riga tributo**. Quietanza ↔ addebito I24 (`riscontra_quietanze_banca`, giro dei 30 minuti e arrivo della quietanza):
+  pagamento = protocollo+data+saldo, certo solo con importo al centesimo e «DATA INCASSO» della causale (troncata → dalla
+  copia in quarantena) = data della quietanza, altrimenti candidati; gli orfani dei due lati aprono un alert col record.
 - Il saldo F24 non è mai un costo: ritenute 1001/1002/1012, addizionali
   3802/3847/3848 e quote a carico del lavoratore sono debiti verso enti. La
   sezione INPS non è tutta deducibile: la quota datoriale viene dalle paghe.
@@ -629,8 +629,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   senza audit: nessun errore, nessuna traccia. Il recupero è `POST
   /api/admin/fatture/ripubblica-evento-created` (admin, background, `dry_run` per difetto), sugli stessi
   handler idempotenti.
-- Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture **con lo stesso ID**: non
-  nasce una seconda fattura.
+- Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture **con lo stesso ID**. Parcella con ritenuta: al fornitore esce il **netto** (`importo_ritenuta` dal `DatiRitenuta`), la ritenuta va in F24; una riga con prova bancaria non si declassa mai a dichiarata.
 - `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso parser dell'import.
   L'impronta del **contenuto** (`content_hash_canonico`, prefisso di versione `c2:`, insensibile a BOM, a
   capo, codifica e caratteri non ASCII) prova che due XML sono la stessa fattura. La dedup tiene la copia
@@ -846,7 +845,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel giro dei 30 minuti e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`). Prima Nota > SumUp mostra la quadratura con l'estratto (righe da registrare, scritture che l'estratto non ha). Aperto: i bonifici «Stipendio Agosto» aspettano le buste di agosto, la coda «Scegli fattura» non apre ancora i movimenti della carta, e la «Deduzione SumUp» di 1,01 € del 03/08 (`rettifica_payout`) scrive un'uscita sulla Mastercard che l'estratto non ha.
+- **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel giro dei 30 minuti e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`); un bonifico che cita le sue fatture in causale le paga se la somma torna al centesimo, anche in più bonifici dello stesso fornitore ripartiti per data (`reconcile_cited_invoices`), e una riga del vecchio import (`sumupbiz_…` su 19.01.01) passa sul conto della carta. Prima Nota > SumUp mostra la quadratura con l'estratto (righe da registrare, scritture che l'estratto non ha). Aperto: i bonifici «Stipendio Agosto» aspettano le buste di agosto, la coda «Scegli fattura» non apre ancora i movimenti della carta, e la «Deduzione SumUp» di 1,01 € del 03/08 (`rettifica_payout`) scrive un'uscita sulla Mastercard che l'estratto non ha.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.

@@ -1,0 +1,142 @@
+"""Prima Nota Banca: parcelle con ritenuta e righe gia' provate dalla banca.
+
+Casi reali (27/09/2026): FPR 105/26 di un professionista, 1.332,24 € lordi,
+bonifico di 1.122,24 € (la ritenuta di 210 € va in F24). Senza la ritenuta la
+fattura restava aperta per 210 €, il report del titolare la ripassava e
+declassava la riga provata dalla banca a «dichiarata, in attesa di estratto».
+"""
+import asyncio
+
+import pytest
+
+from app.database import Database
+from app.parsers.fattura_elettronica_parser import parse_fattura_xml
+from app.routers import ritenute
+from app.services import pagamenti_dichiarati_titolare as pagamenti
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
+
+PARCELLA_XML = """<?xml version="1.0" encoding="utf-8"?>
+<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+  <FatturaElettronicaHeader>
+    <CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>STUDIO TEST</Denominazione></Anagrafica></DatiAnagrafici></CedentePrestatore>
+    <CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>00000000000</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>CLIENTE TEST</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD01</TipoDocumento><Divisa>EUR</Divisa><Data>2026-08-06</Data><Numero>FPR 105/26</Numero>
+      <DatiRitenuta><TipoRitenuta>RT01</TipoRitenuta><ImportoRitenuta>210.00</ImportoRitenuta><AliquotaRitenuta>20.00</AliquotaRitenuta><CausalePagamento>A</CausalePagamento></DatiRitenuta>
+      <ImportoTotaleDocumento>1332.24</ImportoTotaleDocumento></DatiGeneraliDocumento></DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee><NumeroLinea>1</NumeroLinea><Descrizione>Consulenza</Descrizione><PrezzoUnitario>1092.00</PrezzoUnitario><PrezzoTotale>1092.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee>
+      <DatiRiepilogo><AliquotaIVA>22.00</AliquotaIVA><ImponibileImporto>1092.00</ImponibileImporto><Imposta>240.24</Imposta></DatiRiepilogo>
+    </DatiBeniServizi>
+    <DatiPagamento><CondizioniPagamento>TP02</CondizioniPagamento><DettaglioPagamento><ModalitaPagamento>MP05</ModalitaPagamento><ImportoPagamento>1122.24</ImportoPagamento></DettaglioPagamento></DatiPagamento>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>"""
+
+EC_ID = "2026-08-14_-1122.24_VOSTRA_DISPOSIZIONE_-_VSDISP"
+
+
+@pytest.fixture()
+def db(monkeypatch):
+    database = ClientArchivioMemoria()["test_pn_banca_parcelle"]
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: database))
+    return database
+
+
+def _parcella(**extra):
+    return {
+        "id": "f-parcella", "invoice_number": "FPR 105/26", "supplier_vat": "01234567890",
+        "supplier_name": "STUDIO TEST", "invoice_date": "2026-08-06",
+        "total_amount": 1332.24, "tipo_documento": "TD01", "status": "imported",
+        "pagamento_rate_totale": "1122.24", **extra,
+    }
+
+
+def test_il_parser_legge_la_ritenuta_e_il_netto_e_quello_del_bonifico():
+    parsed = parse_fattura_xml(PARCELLA_XML)
+    assert parsed["importo_ritenuta"] == 210.0
+    fattura = _parcella(importo_ritenuta=parsed["importo_ritenuta"])
+    assert totale_pagabile_al_fornitore(fattura) == 1122.24
+    # Senza ritenuta documentata le rate da sole non riducono il debito.
+    assert totale_pagabile_al_fornitore(_parcella()) == 1332.24
+
+
+def test_il_report_non_declassa_la_riga_provata_dalla_banca(db):
+    async def scenario():
+        await db["invoices"].insert_one(_parcella(importo_ritenuta=210.0))
+        riga_provata = {
+            "id": "pn-provata", "fattura_id": "f-parcella", "riferimento": "FATT-f-parcella",
+            "importo": 1122.24, "tipo": "uscita", "data": "2026-08-14",
+            "source": "riconciliazione_automatica_fattura_identita",
+            "estratto_conto_id": EC_ID, "movimento_bancario_id": EC_ID, "riconciliato": True,
+        }
+        await db["prima_nota_banca"].insert_one(dict(riga_provata))
+        fattura = await db["invoices"].find_one({"id": "f-parcella"}, {"_id": 0})
+        pn_id, gia_provata = await pagamenti._scrivi_banca_dichiarata(
+            db, fattura, {"metodo_pagamento_titolare": "banca",
+                          "data_pagamento_report": "2026-08-06"},
+        )
+        riga = await db["prima_nota_banca"].find_one({"id": "pn-provata"}, {"_id": 0})
+        fattura = await db["invoices"].find_one({"id": "f-parcella"}, {"_id": 0})
+        return pn_id, gia_provata, riga, fattura
+
+    pn_id, gia_provata, riga, fattura = asyncio.run(scenario())
+    assert pn_id == "pn-provata" and gia_provata is True
+    assert riga["riconciliato"] is True
+    assert riga["data"] == "2026-08-14"
+    for campo in ("provvisorio", "stato", "dichiarato_titolare", "in_attesa_estratto_ufficiale"):
+        assert campo not in riga
+    assert fattura["in_attesa_riscontro_banca"] is False
+
+
+def test_riparazione_righe_dichiarate(db):
+    async def scenario():
+        await db["invoices"].insert_one(_parcella(importo_ritenuta=210.0))
+        await db["invoices"].insert_one(_parcella(
+            id="f-altra", invoice_number="FPR 43/26", importo_ritenuta=210.0,
+        ))
+        # Riga provata che il vecchio giro aveva declassato.
+        await db["prima_nota_banca"].insert_one({
+            "id": "pn-rovinata", "fattura_id": "f-parcella", "importo": 1122.24,
+            "data": "2026-08-06", "date": "2026-08-14", "data_riconciliazione": "2026-08-14",
+            "estratto_conto_id": EC_ID, "dichiarato_titolare": True, "provvisorio": True,
+            "canonico": False, "stato": "DA_VERIFICARE", "riconciliato": False,
+            "in_attesa_estratto_ufficiale": True,
+            "motivo_provvisorio": "dichiarata_dal_titolare_in_attesa_estratto_conto",
+        })
+        # Riga dichiarata scritta al lordo: esce il netto.
+        await db["prima_nota_banca"].insert_one({
+            "id": "pn-lorda", "fattura_id": "f-altra", "importo": 1332.24, "amount": 1332.24,
+            "data": "2026-03-25", "dichiarato_titolare": True, "provvisorio": True,
+        })
+        primo = await pagamenti.ripara_righe_dichiarate(db)
+        secondo = await pagamenti.ripara_righe_dichiarate(db)
+        rovinata = await db["prima_nota_banca"].find_one({"id": "pn-rovinata"}, {"_id": 0})
+        lorda = await db["prima_nota_banca"].find_one({"id": "pn-lorda"}, {"_id": 0})
+        return primo, secondo, rovinata, lorda
+
+    primo, secondo, rovinata, lorda = asyncio.run(scenario())
+    assert primo == {"provate_ripristinate": 1, "importi_al_netto": 1}
+    assert secondo == {"provate_ripristinate": 0, "importi_al_netto": 0}
+    assert rovinata["riconciliato"] is True and rovinata["data"] == "2026-08-14"
+    for campo in ("provvisorio", "stato", "canonico", "dichiarato_titolare",
+                  "motivo_provvisorio", "in_attesa_estratto_ufficiale"):
+        assert campo not in rovinata
+    assert lorda["importo"] == 1122.24 and lorda["dichiarato_titolare"] is True
+
+
+def test_allineamento_ritenute_una_volta_sola(db):
+    async def scenario():
+        await db["invoices"].insert_one(_parcella(xml_raw=PARCELLA_XML))
+        primo = await ritenute.allinea_ritenute_fatture(db)
+        secondo = await ritenute.allinea_ritenute_fatture(db)
+        fattura = await db["invoices"].find_one({"id": "f-parcella"}, {"_id": 0})
+        proiezione = await db["ritenute_acconto"].find_one({"fattura_id": "f-parcella"}, {"_id": 0})
+        return primo, secondo, fattura, proiezione
+
+    primo, secondo, fattura, proiezione = asyncio.run(scenario())
+    assert primo == {"fatture": 1, "aggiornate": 1}
+    assert secondo == {"saltato": "gia_allineate"}
+    assert fattura["importo_ritenuta"] == 210.0
+    assert proiezione["importo_cents"] == 21000

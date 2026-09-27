@@ -96,7 +96,8 @@ def test_stipendio_e_fattura_pagati_con_la_carta():
     primo, secondo, movimenti, salario, fattura, banca, bpm = asyncio.run(scenario())
 
     assert primo["stipendi_abbinati"] == 1
-    assert primo["fatture_abbinate"] == 1
+    # «Cilatte fattura 397» la prende la regola delle fatture citate in causale.
+    assert primo["fatture_abbinate"] + primo["fatture_citate_abbinate"] == 1
     assert movimenti["sumup_conto:C9STIP0001"]["stipendio_id"] == "sal-1"
     assert salario["riconciliato"] is True
     assert "sumup_conto:C9STIP0001" in salario["movimenti_bancari_ids"]
@@ -115,7 +116,7 @@ def test_stipendio_e_fattura_pagati_con_la_carta():
 
     # Secondo giro: niente di nuovo.
     assert secondo["stipendi_abbinati"] == 0
-    assert secondo["fatture_abbinate"] == 0
+    assert secondo["fatture_abbinate"] + secondo["fatture_citate_abbinate"] == 0
     assert secondo["prima_nota_banca"]["scritte"] == 0
 
 

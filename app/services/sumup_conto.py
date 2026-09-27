@@ -280,7 +280,10 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
     3. Prima Nota Banca dei pagamenti con causale certa (stipendi,
        finanziamento soci) sul conto della carta.
     """
-    from app.services.bank_payment_allocations import _reconcile_unique_identity_matches
+    from app.services.bank_payment_allocations import (
+        _reconcile_unique_identity_matches,
+        reconcile_cited_invoices,
+    )
     from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
     from app.services.stipendi_bonifici import associa_bonifici_stipendi
 
@@ -304,6 +307,8 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
     from app.services.finanziamenti_soci import scan_finanziamenti_da_ec
 
     soci = await scan_finanziamenti_da_ec(db, anno=anno, collezione=COLL_MOVIMENTI)
+    vecchie = await _riallinea_righe_vecchio_import(db, movimenti)
+
     stipendi = await associa_bonifici_stipendi(
         db, anno=anno, collezione_movimenti=COLL_MOVIMENTI, ripassa_collegati=False,
     )
@@ -331,7 +336,11 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
         # Il giroconto verso BPM ha le sue due gambe (registra_giroconto).
         and not e_giroconto(m)
     ]
-    fatture = await _reconcile_unique_identity_matches(db, da_abbinare, proponi=False)
+    citate = await reconcile_cited_invoices(db, da_abbinare)
+    gia_citate = {str(c["movimento_id"]) for c in citate["collegati"]}
+    fatture = await _reconcile_unique_identity_matches(
+        db, da_abbinare, excluded_movement_ids=gia_citate, proponi=False,
+    )
 
     prima_nota = await proietta_movimenti_bancari_semantici(
         db, anno=anno, collezione=COLL_MOVIMENTI,
@@ -346,6 +355,9 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
         "rimborsi_soci_staccati": stipendi.get("rimborsi_soci_staccati", []),
         "finanziamenti_soci_nuovi": soci.get("apporti_nuovi", 0) + soci.get("rimborsi_nuovi", 0),
         "spese_contenzioso_collegate": contenzioso.get("collegati", 0),
+        "fatture_citate_abbinate": citate["collegati_count"],
+        "fatture_citate_dettaglio": citate["collegati"],
+        "vecchie_righe_riallineate": vecchie,
         "fatture_abbinate": fatture["collegati_count"],
         "fatture_dettaglio": fatture["collegati"],
         "fatture_ambigue": fatture["ambigui_movimento"] + fatture["ambigui_fattura"],
@@ -370,6 +382,41 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
         upsert=True,
     )
     return esito
+
+
+_PREFISSO_VECCHIO_IMPORT = "sumupbiz_"
+
+
+async def _riallinea_righe_vecchio_import(db, movimenti: List[Dict[str, Any]]) -> int:
+    """Righe di Prima Nota del vecchio import della carta (``sumupbiz_<codice>``).
+
+    Quell'import scriveva i pagamenti della carta sul conto BPM (19.01.01):
+    la riga resta (stesso id, stessa fattura), ma passa sul conto della carta
+    e si aggancia al movimento dell'estratto che la prova. Senza, lo stesso
+    pagamento stava in BPM e ancora «da registrare» sulla carta.
+    """
+    per_codice = {m.get("codice_transazione"): m for m in movimenti if m.get("codice_transazione")}
+    righe = await db["prima_nota_banca"].find(
+        {"estratto_conto_id": {"$regex": f"^{_PREFISSO_VECCHIO_IMPORT}"}}, {"_id": 0},
+    ).to_list(None)
+    riallineate = 0
+    for riga in righe:
+        movimento = per_codice.get(str(riga["estratto_conto_id"])[len(_PREFISSO_VECCHIO_IMPORT):])
+        if movimento is None or abs(abs(float(riga.get("importo") or 0))
+                                    - abs(float(movimento.get("importo") or 0))) > 0.01:
+            continue
+        await db["prima_nota_banca"].update_one({"id": riga["id"]}, {"$set": {
+            "estratto_conto_id": movimento["id"],
+            "conto_contabile": CONTO_SUMUP_MASTERCARD,
+            "estratto_conto_vecchio_import": riga["estratto_conto_id"],
+        }})
+        collegamento = {"prima_nota_banca_id": riga["id"], "riconciliato": True}
+        if riga.get("fattura_id"):
+            collegamento["fattura_id"] = riga["fattura_id"]
+        await db[COLL_MOVIMENTI].update_one({"id": movimento["id"]}, {"$set": collegamento})
+        movimento.update(collegamento)
+        riallineate += 1
+    return riallineate
 
 
 _ABBINAMENTI_IN_CORSO: set = set()

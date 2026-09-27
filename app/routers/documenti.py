@@ -4270,9 +4270,10 @@ async def upload_documento_automatico(
             ingest = await importa_pdf_bonifico(
                 db, content, filename, source="upload_manuale_import_documenti"
             )
-            if ingest.get("status") == STATO_NON_REGISTRATO:
-                # Accredito di un anno che non si registra: l'originale resta su
-                # Drive, la copia in inbox non serve a nessuno.
+            if ingest.get("status") in {STATO_NON_REGISTRATO, "duplicate"}:
+                # Accredito di un anno che non si registra, o ricevuta gia' in
+                # archivio: la copia appena messa in inbox non serve a nessuno,
+                # e ricaricare lo stesso ZIP la rimetterebbe ogni volta.
                 await db["documents_inbox"].delete_one({"id": doc_id})
             else:
                 await db["documents_inbox"].update_one(
@@ -4291,6 +4292,10 @@ async def upload_documento_automatico(
             elif ingest.get("associato"):
                 result["message"] = "Bonifico letto e associato al dipendente per nome e importo esatti."
             elif ingest.get("status") == "duplicate":
+                # Contato fra i doppioni, non fra gli importati: dentro uno ZIP
+                # il riepilogo dice quanti documenti erano gia' in archivio.
+                result["duplicate"] = True
+                result["action"] = "duplicate"
                 result["message"] = "Bonifico gia' presente: duplicato saltato senza creare associazioni casuali."
             else:
                 result["message"] = "Bonifico letto e archiviato; associazione lasciata da verificare perche' nome e importo non sono univoci."

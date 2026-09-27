@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
-import ImportDocumenti, { classificaEsitoUpload, descriviProvaFiscale } from './ImportDocumenti';
+import ImportDocumenti, { classificaEsitoUpload, descriviProvaFiscale, statoArchivio } from './ImportDocumenti';
 
 vi.mock('../api', () => ({ default: { post: vi.fn(), get: vi.fn() } }));
 vi.mock('../components/DriveImportControls', () => ({
@@ -307,5 +307,24 @@ describe('Import documenti - corrispettivo duplicato', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
     expect(api.post.mock.calls[0][0]).toContain('dry_run=true');
     expect(api.post.mock.calls[1][0]).toContain('dry_run=false');
+  });
+});
+
+describe('statoArchivio', () => {
+  it('dice «Nuovo» solo quando il file non c\'e\'', () => {
+    expect(statoArchivio({ duplicate: false })).toBe('Nuovo');
+  });
+
+  it('uno ZIP gia\' caricato dice quando', () => {
+    const testo = statoArchivio({
+      duplicate: true,
+      duplicate_sources: [{ collection: 'document_import_jobs', completed_at: '2026-09-26T23:38:23+00:00' }],
+    });
+    expect(testo).toMatch(/^Già caricato il \d{1,2}\/\d{1,2}\/2026 alle \d{2}:\d{2}$/);
+  });
+
+  it('un documento gia\' in archivio non e\' «Nuovo»', () => {
+    expect(statoArchivio({ duplicate: true, duplicate_sources: [{ collection: 'documents_inbox' }] }))
+      .toBe('Già in archivio');
   });
 });

@@ -24,10 +24,6 @@ from app.services.atti_giudiziari import (
     registra_atto,
     tipo_atto,
 )
-from app.services.bank_payment_allocations import (
-    _reconcile_unique_identity_matches,
-    numeri_fattura_citati,
-)
 from app.services.mapping_piano_conti import contropartita_per_categoria
 from app.services.sumup_conto import COLL_MOVIMENTI
 
@@ -144,54 +140,3 @@ def test_atto_archiviato_una_volta_e_pagamenti_nel_fascicolo():
 
 def test_contropartita_delle_spese_di_lite():
     assert contropartita_per_categoria("banca", "uscita", "Spese legali e contenzioso") == "71.03"
-
-
-def _fattura(fid, numero, data, totale, fornitore="ASCENSORI ROSSI S.R.L.", **extra):
-    return {
-        "id": fid, "invoice_number": numero, "invoice_date": data, "total_amount": totale,
-        "supplier_name": fornitore, "supplier_vat": "01234567890",
-        "pagato": False, "stato_pagamento": "da_pagare", "status": "imported", **extra,
-    }
-
-
-def test_bonifico_che_paga_piu_fatture_elencate_in_causale():
-    assert numeri_fattura_citati({"causale": "Pagamento Fatture 386, 738, 1436"}) == ["386", "738", "1436"]
-    assert numeri_fattura_citati({"causale": "Saldo fatture fvl824 fvl968"}) == ["FVL824", "FVL968"]
-    db = ClientArchivioMemoria()["fatture_in_causale"]
-    movimento = {
-        "id": "sumup_conto:C9MULTI001", "data": "2026-09-22", "tipo": "uscita",
-        "importo": "-461.16", "conto_contabile": "19.01.05",
-        "causale": "Pagamento Fatture 386, 738, 1436",
-        "descrizione": "Ascensori Rossi Srl — IT00X — Pagamento Fatture 386, 738, 1436",
-    }
-    corto = {**movimento, "id": "sumup_conto:C9MULTI002", "importo": "-307.44",
-             "causale": "Pagamento Fatture 386, 999",
-             "descrizione": "Ascensori Rossi Srl — Pagamento Fatture 386, 999"}
-
-    async def scenario():
-        await db["invoices"].insert_many([
-            _fattura("f-386", "386", "2026-02-20", 153.72),
-            # Gia' dichiarata pagata dal titolare: attende la prova della banca.
-            _fattura("f-738", "738", "2026-04-13", 153.72, stato_pagamento="pagata",
-                     pagato=True, in_attesa_riscontro_banca=True),
-            _fattura("f-1436", "1436", "2026-07-17", 153.72),
-            # Copia archiviata della stessa fattura: non conta.
-            _fattura("f-386-arch", "386", "2026-02-20", 153.72, status="archived"),
-            # Stesso numero di un altro fornitore: non conta.
-            _fattura("f-altro", "738", "2026-04-13", 153.72, fornitore="PANIFICIO BIANCHI SRL"),
-        ])
-        await db[COLL_MOVIMENTI].insert_many([movimento, corto])
-        esito = await _reconcile_unique_identity_matches(db, [dict(movimento), dict(corto)], proponi=False)
-        fatture = {f["id"]: f for f in await db["invoices"].find({}, {"_id": 0}).to_list(None)}
-        movimenti = {m["id"]: m for m in await db[COLL_MOVIMENTI].find({}, {"_id": 0}).to_list(None)}
-        return esito, fatture, movimenti
-
-    esito, fatture, movimenti = asyncio.run(scenario())
-    assert sorted(v["fattura_id"] for v in esito["collegati"]) == ["f-1436", "f-386", "f-738"]
-    for fid in ("f-386", "f-738", "f-1436"):
-        assert fatture[fid]["pagato"] is True
-        assert fatture[fid]["movimento_bancario_id"] == "sumup_conto:C9MULTI001"
-    assert fatture["f-altro"].get("movimento_bancario_id") is None
-    assert movimenti["sumup_conto:C9MULTI001"]["fattura_ids"] == ["f-386", "f-738", "f-1436"]
-    # La 999 non esiste ancora: la somma non torna e il bonifico resta com'e'.
-    assert not movimenti["sumup_conto:C9MULTI002"].get("riconciliato")
