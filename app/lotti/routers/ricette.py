@@ -3123,8 +3123,17 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict, _ruolo=Depends(req
         "ricetta_base_nome",
         "ingredienti",
         "menu_pubblico",
+        # Per quale lievitazione vale il lievito scritto in ricetta: serve a
+        # ricalcolarlo quando cambiano ore o temperatura (27/09/2026).
+        "lievitazione_riferimento",
     }
     update = {k: v for k, v in body.items() if k in campi_permessi}
+    if "lievitazione_riferimento" in update and update["lievitazione_riferimento"] is not None:
+        from app.lotti.servizi.lievitazione import DatoNonValido, condizioni
+        try:
+            update["lievitazione_riferimento"] = condizioni(update["lievitazione_riferimento"])
+        except DatoNonValido as exc:
+            raise HTTPException(400, str(exc)) from exc
     if not update:
         raise HTTPException(400, "Nessun campo valido da aggiornare")
     if "descrizione" in update:

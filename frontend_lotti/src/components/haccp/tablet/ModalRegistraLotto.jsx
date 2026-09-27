@@ -7,6 +7,7 @@ import { stampaDoc } from "../../../utils/stampa";
 import { getTabletSession } from "../../../utils/tabletSession";
 import SelettoreQuantita from "./registraLotto/SelettoreQuantita";
 import SelettorePosizione from "./registraLotto/SelettorePosizione";
+import PannelloLievito from "../shared/PannelloLievito";
 
 export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHome, onRefreshLista, frigoriferi = [], congelatori = [] }) {
   const [pezzi, setPezzi]               = useState(1);
@@ -17,6 +18,9 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
   const [loading, setLoading]           = useState(false);
   const [lottoCreato, setLottoCreato]   = useState(null);
   const [codiceLottoPreview, setCodiceLottoPreview] = useState(null);
+  // Lievitazione di oggi: il lievito cambia con ore e temperatura, il
+  // magazzino scarica e il lotto registra quello davvero usato.
+  const [lievitazione, setLievitazione] = useState(null);
 
   // La destinazione e' una scelta unica e obbligatoria: nessun ripiano,
   // nessun testo libero e nessuna preselezione che possa attribuire il lotto
@@ -386,6 +390,9 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
       if (lottiComponenti.length > 0) {
         params.lotti_componenti_json = JSON.stringify(lottiComponenti);
       }
+      if (lievitazione) {
+        params.lievitazione_json = JSON.stringify(lievitazione);
+      }
       // Scadenza (eventualmente corretta a mano); se diversa dalla proposta e
       // la spunta è attiva, il sistema ricorda la durata per questo prodotto.
       if (scadenza) {
@@ -607,6 +614,8 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
             )}
 
             <SelettoreQuantita unita={unita} setUnita={setUnita} pezzi={pezzi} setPezzi={setPezzi} />
+
+            <PannelloLievito ricetta={prodotto} pezzi={pezzi} onCambia={setLievitazione} />
 
             <SelettorePosizione
               reparto={reparto}

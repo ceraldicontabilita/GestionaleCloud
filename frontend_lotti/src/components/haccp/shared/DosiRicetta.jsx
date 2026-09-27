@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "../../../utils/constants";
 import { apiError } from "../../../utils/apiError";
+import PannelloLievito from "./PannelloLievito";
 
 // Unico calcolo di dose usato dalla scheda #ricette e dalle card di reparto.
 // Il server scala gli ingredienti; qui non si salva la ricetta ufficiale.
@@ -10,6 +11,8 @@ export default function DosiRicetta({ ricetta }) {
   const [calcolata, setCalcolata] = useState(null);
   const [errore, setErrore] = useState("");
   const [tentativo, setTentativo] = useState(0);
+  // Ore e temperature di oggi: il server ricalcola solo il lievito di birra.
+  const [lievitazione, setLievitazione] = useState(null);
   const dettaglio = Array.isArray(ricetta?.ingredienti_dettaglio) ? ricetta.ingredienti_dettaglio : [];
   const soliNomi = Array.isArray(ricetta?.ingredienti) ? ricetta.ingredienti : [];
 
@@ -29,21 +32,22 @@ export default function DosiRicetta({ ricetta }) {
     }
     let attivo = true;
     const timer = setTimeout(() => {
-      axios.post(`${API}/food-cost/ricetta/${ricetta.id}/dose-produzione`, { moltiplicatore: valore, normalizza_1kg: true })
+      axios.post(`${API}/food-cost/ricetta/${ricetta.id}/dose-produzione`, { moltiplicatore: valore, normalizza_1kg: true, ...(lievitazione ? { lievitazione } : {}) })
         .then(({ data }) => { if (attivo) { setCalcolata(data); setErrore(""); } })
         .catch((e) => { if (attivo) { setCalcolata(null); setErrore(apiError(e, "Dose non calcolabile")); } });
     }, 200);
     return () => { attivo = false; clearTimeout(timer); };
-  }, [ricetta?.id, dettaglio.length, moltiplicatore, tentativo]);
+  }, [ricetta?.id, dettaglio.length, moltiplicatore, tentativo, JSON.stringify(lievitazione)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cambia = (valore) => { setCalcolata(null); setMoltiplicatore(String(valore)); };
   const ingredienti = calcolata?.ingredienti || dettaglio;
   const righe = ingredienti.length ? ingredienti.map((i) => ({
-    nome: i?.nome || "Ingrediente",
+    nome: `${i?.nome || "Ingrediente"}${i?.lievito_ricalcolato ? " (dose di oggi)" : ""}`,
     dose: [i?.quantita, i?.unita_misura || i?.unita].filter((v) => v !== null && v !== undefined && v !== "").join(" "),
   })) : soliNomi.map((i) => ({ nome: typeof i === "string" ? i : i?.nome || "Ingrediente", dose: "" }));
 
   return <div>
+    {dettaglio.length > 0 && <PannelloLievito ricetta={ricetta} onCambia={setLievitazione} mostraDosi={false} />}
     {dettaglio.length > 0 && <div style={{ background: "#fff", border: "1px solid #e6e0d4", borderRadius: 12, padding: 12, marginBottom: 12 }}>
       <label htmlFor={`moltiplicatore-${ricetta.id}`} style={{ fontWeight: 800 }}>Dose per 1 kg dell’ingrediente principale</label>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>

@@ -22,6 +22,8 @@ export const SECONDARY_TABS = [
   { section: "Produzione e scorte", id: "cosa_usare_oggi", label: "Lotti da usare oggi", icon: AlertTriangle },
   { section: "Produzione e scorte", id: "produzione_consigliata", label: "Produzione consigliata", icon: ChefHat },
   { section: "Produzione e scorte", id: "storico_produzioni", label: "Storico produzioni", icon: FileText },
+  // 27/09/2026 — dosi di impasto e lievito da ore e temperatura
+  { section: "Produzione e scorte", id: "calcolatore_impasti", label: "Calcolatore impasti", icon: Scale },
   { section: "Produzione e scorte", id: "materie", label: "Materie prime", icon: Wheat },
   // 27/09/2026 — merce comprata e mai scaricata, ricette senza dosi
   { section: "Produzione e scorte", id: "merce_ferma", label: "Merce ferma e dosi", icon: PackageX },

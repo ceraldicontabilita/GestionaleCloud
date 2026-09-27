@@ -49,6 +49,7 @@ import ProdottiHubView from "../components/haccp/ProdottiHubView";
 import MenuVetrinaView from "../components/haccp/MenuVetrinaView";
 import ImpostazioniView from "../components/haccp/ImpostazioniView";
 import MerceFermaView from "../components/haccp/MerceFermaView";
+import CalcolatoreImpastiView from "../components/haccp/CalcolatoreImpastiView";
 
 export const ProdottiConTabFornitore = ProdottiHubView;
 
@@ -88,6 +89,7 @@ const PAGINE = {
     ),
   },
   storico_produzioni: { render: () => <StoricoProduzioniView /> },
+  calcolatore_impasti: { render: () => <CalcolatoreImpastiView /> },
   cosa_usare_oggi: { render: () => <CosaUsareOggiView /> },
   produzione_consigliata: { render: () => <ProduzioneConsigliataView /> },
   mappa_tracciabilita: { render: (ctx) => <MappaTracciabilitaView onNavigate={ctx.handleTabChange} /> },
