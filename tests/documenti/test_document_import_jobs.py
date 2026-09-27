@@ -147,11 +147,70 @@ def test_all_avvio_un_import_rimasto_in_corso_diventa_interrotto():
     async def scenario():
         await db[jobs.COLLECTION].insert_one({"id": "DOC-IMPORT-a", "status": "running"})
         await db[jobs.COLLECTION].insert_one({"id": "DOC-IMPORT-b", "status": "completed"})
-        n = await jobs.segna_interrotti_all_avvio(db)
-        return n, {j["id"]: j for j in await db[jobs.COLLECTION].find({}).to_list(10)}
+        esito = await jobs.riprendi_interrotti_all_avvio(db, {})
+        return esito, {j["id"]: j for j in await db[jobs.COLLECTION].find({}).to_list(10)}
 
-    n, righe = asyncio.run(scenario())
-    assert n == 1
+    esito, righe = asyncio.run(scenario())
+    assert esito == {"ripresi": 0}                 # senza copia non si riprende
     assert righe["DOC-IMPORT-a"]["status"] == "failed"
     assert "ricarica lo stesso file" in righe["DOC-IMPORT-a"]["error"]
     assert righe["DOC-IMPORT-b"]["status"] == "completed"
+
+
+def test_un_import_interrotto_con_la_copia_riparte_da_solo(monkeypatch):
+    """27/09/2026: un deploy a meta' perdeva lo ZIP delle fatture ricevute.
+    Con la copia in archivio il lavoro riparte all'avvio, e la copia si toglie
+    appena finisce."""
+    from app.services import document_import_jobs as jobs
+    from app.services.blob_store import MemoryBlobStore
+
+    archivio = MemoryBlobStore()
+    archivio.persistent = True
+    monkeypatch.setattr(jobs, "_archivio_contenuti", lambda: archivio)
+    db = ClientArchivioMemoria()["import_ripresi"]
+    lavorati = []
+
+    async def elabora(nome, contenuto):
+        lavorati.append((nome, contenuto))
+        return {"imported": 1}
+
+    async def scenario():
+        chiave = await jobs._conserva_contenuto(b"zip-vero")
+        await db[jobs.COLLECTION].insert_one({
+            "id": jobs.job_id_for_content(b"zip-vero"), "status": "running", "attempts": 1,
+            "document_type": "archivio_zip", "filename": "Export.zip", "contenuto_blob": chiave})
+        esito = await jobs.riprendi_interrotti_all_avvio(db, {"archivio_zip": elabora})
+        await jobs.wait_for_import_job(jobs.job_id_for_content(b"zip-vero"))
+        riga = await db[jobs.COLLECTION].find_one({"id": jobs.job_id_for_content(b"zip-vero")}, {"_id": 0})
+        return esito, riga, chiave
+
+    esito, riga, chiave = asyncio.run(scenario())
+    assert esito == {"ripresi": 1}
+    assert lavorati == [("Export.zip", b"zip-vero")]
+    assert riga["status"] == "completed" and riga["attempts"] == 2
+    assert asyncio.run(archivio.get(chiave)) is None     # finito il lavoro, la copia se ne va
+
+
+def test_dopo_tre_tentativi_non_riparte_piu(monkeypatch):
+    from app.services import document_import_jobs as jobs
+    from app.services.blob_store import MemoryBlobStore
+
+    archivio = MemoryBlobStore()
+    archivio.persistent = True
+    monkeypatch.setattr(jobs, "_archivio_contenuti", lambda: archivio)
+    db = ClientArchivioMemoria()["import_troppi"]
+
+    async def scenario():
+        chiave = await jobs._conserva_contenuto(b"zip-che-uccide")
+        await db[jobs.COLLECTION].insert_one({
+            "id": "DOC-IMPORT-x", "status": "running", "attempts": jobs.MAX_RIPRESE,
+            "document_type": "archivio_zip", "filename": "x.zip", "contenuto_blob": chiave})
+        async def elabora(nome, contenuto):
+            raise AssertionError("dopo tre tentativi non deve ripartire")
+
+        esito = await jobs.riprendi_interrotti_all_avvio(db, {"archivio_zip": elabora})
+        return esito, await db[jobs.COLLECTION].find_one({"id": "DOC-IMPORT-x"}, {"_id": 0}), chiave
+
+    esito, riga, chiave = asyncio.run(scenario())
+    assert esito == {"ripresi": 0} and riga["status"] == "failed"
+    assert asyncio.run(archivio.get(chiave)) is None
