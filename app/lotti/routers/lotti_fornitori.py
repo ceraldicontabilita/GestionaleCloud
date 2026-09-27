@@ -10,10 +10,12 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
+from pydantic import BaseModel
 from pymongo import UpdateOne
 from app.lotti.db import database as db
 from app.lotti.auth import require_admin
+from app.lotti.servizi import merce_ferma
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/lotti-fornitori", tags=["Lotti Fornitori"])
@@ -343,37 +345,88 @@ async def get_lotti_fornitori(
     return result
 
 
-@router.delete("/pulizia-scaduti")
-async def rimuovi_lotti_scaduti(giorni_grazia: int = 0, _admin=Depends(require_admin)):
-    """
-    Rimuove i lotti fornitori già scaduti (o scaduti da più di giorni_grazia giorni).
-    Chiamato dopo ogni aggiornamento fatture per tenere pulita la lista.
-    """
-    now = datetime.now()
-    lotti = await db.lotti_fornitori.find(
-        {}, {"_id": 0, "id": 1, "data_scadenza": 1, "prodotto_nome": 1}
-    ).to_list(5000)
-    eliminati = []
-    for l in lotti:
-        ds = l.get("data_scadenza", "")
-        if not ds or "/" not in ds:
-            continue
-        try:
-            dt = datetime.strptime(ds, "%d/%m/%Y")
-            giorni = (dt - now).days
-            if giorni < -giorni_grazia:
-                await db.lotti_fornitori.delete_one({"id": l["id"]})
-                eliminati.append(
-                    {
-                        "id": l["id"],
-                        "prodotto": l.get("prodotto_nome"),
-                        "scadenza": ds,
-                        "giorni": giorni,
-                    }
-                )
-        except Exception as e:
-            logger.warning(f"[lotti_fornitori] Pulizia lotto fallita: {e}")
-    return {"success": True, "eliminati": len(eliminati), "dettagli": eliminati}
+class ChiusuraMerceFerma(BaseModel):
+    prima_del: str  # aaaa-mm-gg: si chiude cio' che e' stato comprato prima
+    dry_run: bool = True
+    conferma: str = ""
+
+
+CONFERMA_CHIUSURA = "CHIUDI MERCE FERMA"
+
+
+def _data_iso(valore: str):
+    try:
+        return datetime.strptime(str(valore or "")[:10], "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Data non valida (aaaa-mm-gg)") from exc
+
+
+async def _lotti_per_merce_ferma():
+    return await db.lotti_fornitori.find(
+        {"esaurito": {"$ne": True}},
+        {"_id": 1, "id": 1, "prodotto_nome": 1, "fornitore": 1, "data_fattura": 1,
+         "quantita_disponibile": 1, "unita_misura": 1, "prezzo_unitario": 1,
+         "esaurito": 1, "chiuso_senza_scarico": 1, "storico_utilizzi": 1, "ultimo_utilizzo": 1},
+    ).to_list(None)
+
+
+@router.get("/merce-ferma")
+async def elenco_merce_ferma(prima_del: str):
+    """Materie prime disponibili, mai scaricate, comprate prima di `prima_del`.
+
+    Sola lettura: dice quanta merce il magazzino dichiara presente senza che
+    nessuna produzione l'abbia mai toccata, per mese di fattura."""
+    esito = merce_ferma.riepilogo(await _lotti_per_merce_ferma(), _data_iso(prima_del))
+    esito.pop("ids", None)
+    return esito
+
+
+@router.post("/merce-ferma/chiudi")
+async def chiudi_merce_ferma(payload: ChiusuraMerceFerma, request: Request,
+                             _admin=Depends(require_admin)):
+    """Il titolare chiude come consumata la merce ferma comprata prima di una
+    data. Simulazione per difetto; per scrivere servono `dry_run=false` e la
+    frase di conferma. Nessuna riga si cancella: diventa esaurita con motivo,
+    autore, data e la quantita' che aveva (si riapre con `/merce-ferma/riapri`)."""
+    prima_del = _data_iso(payload.prima_del)
+    lotti = await _lotti_per_merce_ferma()
+    esito = merce_ferma.riepilogo(lotti, prima_del)
+    ids = esito.pop("ids")
+    if payload.dry_run:
+        return {**esito, "dry_run": True, "chiusi": 0}
+    if payload.conferma.strip().upper() != CONFERMA_CHIUSURA:
+        raise HTTPException(status_code=400, detail=f"Per chiudere scrivi: {CONFERMA_CHIUSURA}")
+    chi = (getattr(request.state, "user", None) or {}).get("nome") or "Titolare"
+    adesso = datetime.now(timezone.utc).isoformat()
+    per_id = {l["id"]: l for l in lotti if l.get("id")}
+    modifiche = [(per_id[i]["_id"], merce_ferma.campi_chiusura(per_id[i], chi, adesso)) for i in ids]
+    from app.lotti.supabase_document_store import PersistentCollection
+
+    if isinstance(db.lotti_fornitori, PersistentCollection):
+        # un solo lotto verso Supabase, non una chiamata per riga
+        chiusi = await db.lotti_fornitori.update_documents_by_id(modifiche)
+    else:
+        chiusi = 0
+        for doc_id, campi in modifiche:
+            chiusi += (await db.lotti_fornitori.update_one({"_id": doc_id}, {"$set": campi})).modified_count
+    logger.info("[merce ferma] %s righe chiuse senza scarico (prima del %s) da %s", chiusi, prima_del, chi)
+    return {**esito, "dry_run": False, "chiusi": chiusi, "chiuso_il": adesso}
+
+
+@router.post("/merce-ferma/riapri")
+async def riapri_merce_ferma(chiuso_il: str, _admin=Depends(require_admin)):
+    """Annulla una chiusura: le righe chiuse in quel giro tornano disponibili
+    con la quantita' che avevano."""
+    righe = await db.lotti_fornitori.find(
+        {"chiuso_senza_scarico": True, "chiuso_il": chiuso_il}, {"_id": 0}
+    ).to_list(None)
+    riaperti = 0
+    for lotto in righe:
+        campi = merce_ferma.campi_riapertura(lotto)
+        if campi:
+            res = await db.lotti_fornitori.update_one({"id": lotto["id"]}, {"$set": campi})
+            riaperti += res.modified_count
+    return {"riaperti": riaperti}
 
 
 @router.delete("/{lotto_id}")

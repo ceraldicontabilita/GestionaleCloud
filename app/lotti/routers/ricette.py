@@ -573,6 +573,21 @@ def _prezzo_tavolo_deciso(valore: Any) -> bool:
     return menu_bridge.prezzo_menu(valore) is not None
 
 
+@router.get("/ricette-da-completare")
+async def ricette_da_completare(reparto: Optional[str] = None):
+    """Ricette con ingredienti senza dose: finche' mancano, produrle non
+    scala il magazzino e il costo del lotto resta «da verificare». La lista
+    serve a chi le completa (il caporeparto del reparto, o il titolare)."""
+    from app.lotti.servizi.ingredienti_ricetta import ricette_da_completare as da_completare
+
+    ricette = await db.ricette.find(
+        {"archiviata": {"$ne": True}},
+        {"_id": 0, "id": 1, "nome": 1, "reparto": 1, "ingredienti_dettaglio": 1},
+    ).to_list(None)
+    elenco = da_completare(ricette, reparto)
+    return {"totale_ricette": len(ricette), "da_completare": len(elenco), "ricette": elenco}
+
+
 @router.get("/ricette-prezzi")
 async def get_ricette_prezzi():
     ricette = await db.ricette.find({}, {"_id": 0}).sort("nome", 1).to_list(500)
