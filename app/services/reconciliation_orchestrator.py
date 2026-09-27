@@ -68,18 +68,6 @@ async def riconcilia_documenti_e_pagamenti(
     except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
         logger.exception("Abbinamento carta SumUp non completato (%s)", type(exc).__name__)
         carta_sumup = {"errore": f"{type(exc).__name__}: {exc}"}
-    # Il report del titolare dice come e' stata pagata ogni fattura: qui si
-    # ripassano solo le righe ancora in attesa (XML arrivato dopo, assegno
-    # comparso nel nuovo estratto conto).
-    from app.services.pagamenti_dichiarati_titolare import applica_pagamenti_dichiarati
-
-    try:
-        pagamenti_dichiarati = await applica_pagamenti_dichiarati(db, solo_pendenti=True)
-    except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
-        logger.exception(
-            "Pagamenti dichiarati del titolare non ripassati (%s)", type(exc).__name__,
-        )
-        pagamenti_dichiarati = {"errore": f"{type(exc).__name__}: {exc}"}
     return {
         "assegni_intenti": assegni_intenti,
         "assegni_auto": assegni_auto,
@@ -97,7 +85,6 @@ async def riconcilia_documenti_e_pagamenti(
             "scan": finanziamenti_soci,
         },
         "allocazioni_fatture_banca": allocazioni_fatture_banca,
-        "pagamenti_dichiarati": pagamenti_dichiarati,
         "carta_sumup": carta_sumup,
     }
 
