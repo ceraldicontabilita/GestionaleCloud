@@ -57,6 +57,10 @@ class _Coll:
     def find(self, q=None, proj=None):
         return _Cursor([d for d in self.docs if _match(d, q)])
 
+    async def find_one(self, q=None, proj=None, sort=None):
+        trovati = [d for d in self.docs if _match(d, q)]
+        return trovati[0] if trovati else None
+
     async def count_documents(self, q):
         return len([d for d in self.docs if _match(d, q)])
 
