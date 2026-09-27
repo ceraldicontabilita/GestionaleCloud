@@ -1,6 +1,5 @@
 """Contratto del runtime documentale Supabase senza dipendenze di rete."""
 import asyncio
-import sys
 import pytest
 
 from app.services.supabase_runtime_database import (
@@ -924,15 +923,27 @@ def test_una_scrittura_non_copia_tutta_la_collezione(monkeypatch):
     normalizzati = []
     originale = runtime_db._normalise_document
 
+    in_rilettura = []
+
     def conta(document):
-        # Solo le copie fatte da ``_mutate`` (la foto per il ripristino): la
-        # rilettura del finto Supabase senza firma e' un'altra cosa.
-        # (in 3.11 la comprensione ha un frame suo, in 3.12 no).
-        if "_mutate" in {sys._getframe(livello).f_code.co_name for livello in (1, 2)}:
+        if not in_rilettura:
             normalizzati.append(document.get("_id"))
         return originale(document)
 
+    collezione = runtime["alerts"]
+    rileggi = collezione._refresh_unlocked
+
+    async def rilettura_non_contata(*args, **kwargs):
+        # Il finto Supabase non ha la firma delle collezioni e rilegge tutto:
+        # qui conta solo cio' che copia la scrittura.
+        in_rilettura.append(True)
+        try:
+            return await rileggi(*args, **kwargs)
+        finally:
+            in_rilettura.pop()
+
     monkeypatch.setattr(runtime_db, "_normalise_document", conta)
+    monkeypatch.setattr(collezione, "_refresh_unlocked", rilettura_non_contata)
 
     async def scenario():
         await runtime["alerts"].update_many(
