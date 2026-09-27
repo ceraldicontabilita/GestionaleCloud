@@ -1,12 +1,14 @@
 """Invoices Emesse router - Issued invoices."""
-from fastapi import APIRouter, Body, Depends, Path, status
-from typing import Dict, Any, List
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from fastapi.responses import HTMLResponse, Response
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 import logging
 
 from app.database import Database
 from app.utils.dependencies import get_current_user
+from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,17 +46,142 @@ def normalizza_fattura_emessa(data: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-@router.get(
-    "",
-    summary="Get issued invoices"
-)
+# Liste leggere: il testo XML resta fuori e si legge per id (download, vista).
+_SENZA_XML = {"_id": 0, "xml_raw": 0, "righe": 0}
+
+
+@router.get("", summary="Fatture emesse, piu' recenti prima")
 async def get_invoices_emesse(
+    anno: Optional[int] = Query(None),
     current_user: Dict[str, Any] = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
-    """Get list of issued invoices."""
+) -> Dict[str, Any]:
+    """Elenco con il riepilogo delle pastiglie: quante, per quanto, quante
+    agganciate al corrispettivo e quante aspettano una scelta."""
     db = Database.get_db()
-    invoices = await db["fatture_emesse"].find({}, {"_id": 0}).sort("date", -1).to_list(500)
-    return invoices
+    filtro: Dict[str, Any] = {"anno": anno} if anno else {}
+    fatture = await db["fatture_emesse"].find(filtro, _SENZA_XML).to_list(5000)
+    fatture.sort(key=lambda f: (str(f.get("data_fattura") or f.get("date") or ""),
+                                str(f.get("numero_fattura") or "")), reverse=True)
+    per_stato: Dict[str, int] = {}
+    for f in fatture:
+        chiave = (f.get("corrispettivo") or {}).get("stato") or "ATTESO"
+        per_stato[chiave] = per_stato.get(chiave, 0) + 1
+    totale = sum(float(f.get("totale") or 0) for f in fatture)
+    return {"fatture": fatture, "riepilogo": {
+        "numero": len(fatture), "totale": round(totale, 2), "per_stato": per_stato}}
+
+
+@router.get("/clienti", summary="Anagrafica clienti")
+async def get_clienti(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    from app.services.fatture_emesse import COLL_CLIENTI
+
+    db = Database.get_db()
+    clienti = await db[COLL_CLIENTI].find({}, {"_id": 0}).to_list(5000)
+    clienti.sort(key=lambda c: str(c.get("denominazione") or "").upper())
+    fatture = await db["fatture_emesse"].find(
+        {}, {"_id": 0, "cliente_id": 1, "totale": 1}).to_list(5000)
+    per_cliente: Dict[str, Dict[str, float]] = {}
+    for f in fatture:
+        voce = per_cliente.setdefault(f.get("cliente_id") or "", {"fatture": 0, "totale": 0.0})
+        voce["fatture"] += 1
+        voce["totale"] += float(f.get("totale") or 0)
+    for c in clienti:
+        voce = per_cliente.get(c.get("id"), {"fatture": 0, "totale": 0.0})
+        c["fatture"] = int(voce["fatture"])
+        c["totale_fatturato"] = round(voce["totale"], 2)
+    return {"clienti": clienti, "numero": len(clienti)}
+
+
+@router.post("/riallinea", summary="Rete: passive sbagliate e agganci aperti")
+async def riallinea_fatture_emesse(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    from app.services.fatture_emesse import riallinea
+
+    return await riallinea(Database.get_db())
+
+
+async def _fattura_con_xml(invoice_id: str) -> Dict[str, Any]:
+    db = Database.get_db()
+    fattura = await db["fatture_emesse"].find_one({"id": invoice_id}, {"_id": 0})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura emessa non trovata")
+    if not fattura.get("xml_raw"):
+        raise HTTPException(status_code=404, detail="Questa fattura non ha l'XML originale in archivio")
+    return fattura
+
+
+def _nome_file(fattura: Dict[str, Any], estensione: str) -> str:
+    import re
+
+    numero = re.sub(r"[^A-Za-z0-9._-]+", "-", str(fattura.get("numero_fattura") or "")).strip("-")
+    return f"fattura_emessa_{numero or 'senza-numero'}_{fattura.get('data_fattura') or ''}.{estensione}"
+
+
+@router.get("/{invoice_id}/xml", summary="Scarica l'XML originale")
+async def scarica_xml_fattura_emessa(
+    invoice_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Response:
+    fattura = await _fattura_con_xml(invoice_id)
+    return Response(
+        content=fattura["xml_raw"].encode("utf-8"), media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{_nome_file(fattura, "xml")}"'})
+
+
+@router.get("/{invoice_id}/vista", summary="La fattura leggibile (foglio ASSO)")
+async def vista_fattura_emessa(
+    invoice_id: str = Path(...),
+    scarica: bool = Query(False),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> HTMLResponse:
+    from app.routers.fatture_module.crud import html_fattura_da_xml
+
+    fattura = await _fattura_con_xml(invoice_id)
+    html = html_fattura_da_xml(fattura["xml_raw"].encode("utf-8"), 0, invoice_id)
+    if not html:
+        raise HTTPException(status_code=422, detail="XML non trasformabile: scarica l'originale")
+    intestazioni = ({"Content-Disposition": f'attachment; filename="{_nome_file(fattura, "html")}"'}
+                    if scarica else None)
+    return HTMLResponse(content=html, headers=intestazioni)
+
+
+@router.get("/{invoice_id}/corrispettivi-vicini", summary="Candidati per la scelta a mano")
+async def corrispettivi_vicini(
+    invoice_id: str = Path(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """I corrispettivi da tre giorni prima a tre dopo il giorno dello scontrino."""
+    from datetime import date, timedelta
+    from app.services.fatture_emesse import corrispettivi_del_giorno
+
+    db = Database.get_db()
+    fattura = await db["fatture_emesse"].find_one({"id": invoice_id}, _SENZA_XML)
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura emessa non trovata")
+    giorno = (fattura.get("scontrino") or {}).get("data") or fattura.get("data_fattura")
+    try:
+        centro = date.fromisoformat(str(giorno)[:10])
+    except ValueError:
+        return {"giorno": giorno, "corrispettivi": []}
+    trovati: List[Dict[str, Any]] = []
+    for scarto in range(-3, 4):
+        trovati += await corrispettivi_del_giorno(db, (centro + timedelta(days=scarto)).isoformat())
+    return {"giorno": giorno, "corrispettivi": trovati}
+
+
+@router.post("/{invoice_id}/corrispettivo", summary="Il titolare sceglie il corrispettivo")
+async def scegli_corrispettivo_fattura(
+    invoice_id: str = Path(...),
+    corpo: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    from app.services.fatture_emesse import scegli_corrispettivo
+
+    esito = await scegli_corrispettivo(Database.get_db(), invoice_id, str(corpo.get("corrispettivo_id") or ""))
+    if not esito.get("success"):
+        raise HTTPException(status_code=404, detail=esito.get("errore"))
+    return esito
 
 
 @router.get(

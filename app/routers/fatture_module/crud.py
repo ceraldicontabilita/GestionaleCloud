@@ -636,6 +636,45 @@ async def download_xml_originale(fattura_id: str) -> Response:
     )
 
 
+def html_fattura_da_xml(xml_bytes: bytes, indice: int = 0, etichetta: str = "") -> Optional[str]:
+    """La fattura leggibile dal suo XML col foglio ASSO Software, oppure
+    ``None`` se la trasformazione non riesce. Un solo punto per fatture
+    ricevute ed emesse."""
+    import os
+    from lxml import etree as LET
+
+    try:
+        xsl_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "static", "FoglioStileAssoSoftware.xsl",
+        )
+        transform = LET.XSLT(LET.parse(xsl_path))
+        xml_doc = LET.fromstring(xml_bytes)
+        # File multi-body: FoglioStileAssoSoftware.xsl itera TUTTI i
+        # <FatturaElettronicaBody> del file — se xml_raw è quello
+        # dell'intero file raggruppato (condiviso da più fatture, vedi
+        # xml_body_index), aprire questa fattura renderizzerebbe anche
+        # le altre fatture dello stesso file insieme a questa. Isola
+        # SOLO il body di questa fattura prima di trasformare (bug
+        # reale, review Codex PR #71).
+        corpi = [el for el in xml_doc.iter()
+                 if (el.tag.split('}')[-1] if '}' in el.tag else el.tag) == 'FatturaElettronicaBody']
+        if len(corpi) > 1:
+            if not (0 <= indice < len(corpi)):
+                indice = 0
+            for i, corpo in enumerate(corpi):
+                if i != indice:
+                    corpo.getparent().remove(corpo)
+        html_str = LET.tostring(transform(xml_doc), pretty_print=True, encoding="unicode")
+        # Adatta l'HTML allo schermo (viewport + CSS responsive), sia che
+        # l'XSL emetta <html> sia che no.
+        return _rendi_fattura_responsive(html_str)
+    except Exception as xsl_err:  # noqa: BLE001 - il chiamante ha il suo ripiego
+        logger.warning("Errore XSLT per %s: %s: %s — fallback HTML generico",
+                       etichetta, type(xsl_err).__name__, xsl_err)
+        return None
+
+
 async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     """
     Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
@@ -644,52 +683,15 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     3. Applica la trasformazione XSLT con il foglio ASSO
     4. Restituisce l'HTML trasformato
     """
-    import os
-    from lxml import etree as LET
-
     fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
     if fattura is None:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
     # ── Applica ASSO XSL se abbiamo l'XML ────────────────────────────────────
     if xml_bytes:
-        try:
-            xsl_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                "static", "FoglioStileAssoSoftware.xsl",
-            )
-            xsl_doc = LET.parse(xsl_path)
-            transform = LET.XSLT(xsl_doc)
-
-            # Parse XML (tolera namespace con p7m cleanup)
-            xml_doc = LET.fromstring(xml_bytes)
-
-            # File multi-body: FoglioStileAssoSoftware.xsl itera TUTTI i
-            # <FatturaElettronicaBody> del file — se xml_raw è quello
-            # dell'intero file raggruppato (condiviso da più fatture, vedi
-            # xml_body_index), aprire questa fattura renderizzerebbe anche
-            # le altre fatture dello stesso file insieme a questa. Isola
-            # SOLO il body di questa fattura prima di trasformare (bug
-            # reale, review Codex PR #71).
-            corpi = [el for el in xml_doc.iter()
-                     if (el.tag.split('}')[-1] if '}' in el.tag else el.tag) == 'FatturaElettronicaBody']
-            if len(corpi) > 1:
-                indice = fattura.get("xml_body_index", 0)
-                if not (0 <= indice < len(corpi)):
-                    indice = 0
-                for i, corpo in enumerate(corpi):
-                    if i != indice:
-                        corpo.getparent().remove(corpo)
-
-            html_result = transform(xml_doc)
-            html_str = LET.tostring(html_result, pretty_print=True, encoding="unicode")
-
-            # Adatta l'HTML allo schermo (viewport + CSS responsive), sia che
-            # l'XSL emetta <html> sia che no.
-            html_str = _rendi_fattura_responsive(html_str)
+        html_str = html_fattura_da_xml(xml_bytes, fattura.get("xml_body_index", 0), fattura_id)
+        if html_str:
             return HTMLResponse(content=html_str)
-        except Exception as xsl_err:
-            logger.warning(f"Errore XSLT per {fattura_id}: {xsl_err} — fallback HTML generico")
 
     # ── Fallback: HTML generico se XML non disponibile ────────────────────────
     # ATTENZIONE (richiesta utente 19/07/2026): questo NON è il documento

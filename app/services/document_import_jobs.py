@@ -9,6 +9,7 @@ impediscono scritture duplicate.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import logging
 from datetime import datetime, timezone
@@ -181,6 +182,45 @@ async def enqueue_pos_import(
     )
 
 
+# Il file di un import accodato vive nella memoria del processo: un deploy a
+# meta' lo perdeva e il titolare doveva ricaricarlo (27/09/2026: l'export delle
+# fatture ricevute, due volte). Finche' il lavoro non finisce se ne tiene una
+# copia in ``gestionale.blobs``; all'avvio il job interrotto riparte da solo.
+PREFISSO_CONTENUTO = "import-coda:"
+MAX_RIPRESE = 3
+
+
+def _archivio_contenuti():
+    from app.database import Database
+    from app.services.blob_store import blob_store_per_runtime
+
+    return blob_store_per_runtime(Database.db)
+
+
+async def _conserva_contenuto(content: bytes) -> str | None:
+    archivio = _archivio_contenuti()
+    if not getattr(archivio, "persistent", False):
+        return None
+    chiave = PREFISSO_CONTENUTO + hashlib.sha256(content).hexdigest()
+    try:
+        if await archivio.get(chiave) is None:
+            await archivio.put(chiave, base64.b64encode(content).decode("ascii"))
+        return chiave
+    except Exception as exc:  # noqa: BLE001 - senza copia l'import va lo stesso, solo non riprende
+        logger.warning("Copia del file in coda non salvata (%s: %s): un riavvio lo perderebbe",
+                       type(exc).__name__, exc)
+        return None
+
+
+async def _libera_contenuto(chiave: str | None) -> None:
+    if not chiave:
+        return
+    try:
+        await _archivio_contenuti().delete([chiave])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Copia del file in coda %s non tolta: %s: %s", chiave, type(exc).__name__, exc)
+
+
 async def enqueue_import(
     db, *, content: bytes, filename: str, document_type: str,
     process: Callable[[str, bytes], Awaitable[Dict[str, Any]]],
@@ -190,37 +230,61 @@ async def enqueue_import(
     upload interrotto si fermava a meta'. ``process`` e' l'elaborazione
     canonica dell'upload (la stessa di sempre), passata dalla rotta per non
     importare il router da qui."""
+    chiave: Dict[str, str | None] = {}
+
+    async def lavora(job_id: str) -> None:
+        chiave["valore"] = await _conserva_contenuto(content)
+        if chiave["valore"]:
+            await _save_job(db, job_id, {"contenuto_blob": chiave["valore"]})
+        try:
+            await _run_job(db, job_id=job_id, filename=filename,
+                           runner=lambda: process(filename, content))
+        finally:
+            await _libera_contenuto(chiave.get("valore"))
+
     return await _enqueue(
-        db, content=content, filename=filename, document_type=document_type,
-        job=lambda job_id: _run_job(
-            db, job_id=job_id, filename=filename,
-            runner=lambda: process(filename, content),
-        ),
+        db, content=content, filename=filename, document_type=document_type, job=lavora,
     )
+
+
+async def riprendi_interrotti_all_avvio(
+    db, elaboratori: Dict[str, Callable[[str, bytes], Awaitable[Dict[str, Any]]]],
+) -> Dict[str, int]:
+    """Un import rimasto a meta' per un riavvio riparte dalla sua copia; i
+    documenti gia' importati si saltano da soli (dedup dell'import). Senza
+    copia, o dopo ``MAX_RIPRESE`` tentativi, resta «interrotto» col messaggio."""
+    ripresi = 0
+    for job in await db[COLLECTION].find(
+        {"status": {"$in": ["queued", "running"]}},
+        {"_id": 0, "id": 1, "contenuto_blob": 1, "document_type": 1, "filename": 1, "attempts": 1},
+    ).to_list(None):
+        if not job.get("id") or job["id"] in _ACTIVE_TASKS:
+            continue
+        elaboratore = elaboratori.get(job.get("document_type") or "")
+        if job.get("contenuto_blob") and elaboratore and int(job.get("attempts") or 0) < MAX_RIPRESE:
+            try:
+                dati = await _archivio_contenuti().get(job["contenuto_blob"])
+                if dati:
+                    await enqueue_import(db, content=base64.b64decode(dati),
+                                         filename=job.get("filename") or "", document_type=job["document_type"],
+                                         process=elaboratore)
+                    ripresi += 1
+                    logger.info("Import %s ripreso dopo il riavvio", job.get("filename"))
+                    continue
+            except Exception as exc:  # noqa: BLE001 - cade nel ramo «interrotto», che lo dice
+                logger.error("Import %s non ripreso: %s: %s", job.get("filename"), type(exc).__name__, exc)
+        await db[COLLECTION].update_one({"id": job["id"]}, {"$set": {
+            "status": "failed", "failed_at": _now(), "updated_at": _now(),
+            "error": MESSAGGIO_INTERROTTO,
+        }})
+        await _libera_contenuto(job.get("contenuto_blob"))
+    return {"ripresi": ripresi}
 
 
 MESSAGGIO_INTERROTTO = (
     "Import interrotto da un riavvio del servizio: ricarica lo stesso file, "
     "i documenti gia' importati vengono saltati."
 )
-
-
-async def segna_interrotti_all_avvio(db) -> int:
-    """Un job «in corso» all'avvio non ha piu' nessuno che lo lavora: il
-    contenuto viveva nella memoria del processo spento. Senza questo la pagina
-    lo seguiva per sempre (23/09/2026: due ZIP «running» dopo tre deploy)."""
-    interrotti = 0
-    for job in await db[COLLECTION].find(
-        {"status": {"$in": ["queued", "running"]}}, {"_id": 0, "id": 1},
-    ).to_list(None):
-        if not job.get("id") or job["id"] in _ACTIVE_TASKS:
-            continue
-        await db[COLLECTION].update_one({"id": job["id"]}, {"$set": {
-            "status": "failed", "failed_at": _now(), "updated_at": _now(),
-            "error": MESSAGGIO_INTERROTTO,
-        }})
-        interrotti += 1
-    return interrotti
 
 
 async def get_import_job(db, job_id: str) -> Dict[str, Any] | None:

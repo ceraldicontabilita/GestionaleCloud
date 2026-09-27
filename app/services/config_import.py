@@ -120,7 +120,7 @@ async def promuovi_archivio_anno(db, anno: int) -> Dict[str, Any]:
             promote_existing_id=fatt["id"],
             promote_invoice_key=fatt.get("invoice_key"),
         )
-        if esito.get("status") in ("imported", "success", "duplicate") or esito.get("success"):
+        if esito.get("status") in ("imported", "success", "duplicate", "fattura_emessa") or esito.get("success"):
             fatture_promosse += 1
         else:
             fatture_errori += 1

@@ -636,11 +636,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   capo, codifica e caratteri non ASCII) prova che due XML sono la stessa fattura. La dedup tiene la copia
   già nel giornale e **storna** la scrittura del doppione. Collisioni aperte = `stato_import` di
   collisione **e** `status` non archiviato.
-- Le note di credito ricevute (TD04/TD08, costante unica
-  `app/constants/tipi_documento.py::TIPI_NOTA_CREDITO`) non sono costi: sia il ledger di cassa/banca
-  (`prima_nota_module/sync.py`) sia il libro giornale (`registrazione_contabile.py::registra_fattura`)
-  generano la scrittura invertita rispetto a una fattura normale (riduzione di costo, IVA a credito e
-  debito v/fornitore, mai un cespite) e leggono `tipo_documento` prima di registrare.
+- Note di credito ricevute (TD04/TD08, `TIPI_NOTA_CREDITO`): non costi; ledger (`prima_nota_module/sync.py`) e giornale
+  (`registra_fattura`) leggono `tipo_documento` e scrivono l'inverso (meno costo, IVA a credito e debito, mai cespite).
+- **Fattura emessa = cedente è la nostra P.IVA** (`FISCAL_COMPANY_ID`), da ogni ingresso: `fatture_emesse`
+  (`services/fatture_emesse.py`), mai `invoices`. Fatta dopo lo scontrino: **non aumenta ricavi, IVA né crediti**; si
+  aggancia al corrispettivo del giorno dello scontrino (dalla causale, se no data fattura) se unico; clienti per P.IVA→C.F.
 
 ## PartenoPay, verbali e flotta
 

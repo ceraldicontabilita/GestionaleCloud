@@ -79,8 +79,10 @@ def test_crud_usa_solo_fatture_emesse(monkeypatch):
     assert db.colls["fatture_emesse"].docs
     assert "invoices_emesse" not in db.colls
 
-    lista = _run(mod.get_invoices_emesse(current_user=user))
+    risposta = _run(mod.get_invoices_emesse(anno=None, current_user=user))
+    lista = risposta["fatture"]
     assert len(lista) == 1 and lista[0]["cliente"] == "ACME"
+    assert risposta["riepilogo"]["numero"] == 1
 
 
 def test_nessun_riferimento_invoices_emesse_nel_sorgente():

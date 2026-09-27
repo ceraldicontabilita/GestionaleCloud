@@ -1063,7 +1063,8 @@ async def get_movimenti_per_conto(
 
     # ── CREDITI V/CLIENTI ─────────────────────────────────────────────────────
     elif any(c.startswith("01.02") for c in codici_operativi):
-        q_crediti: dict = {}
+        # Una fattura fatta dopo lo scontrino e' gia' incassata al banco: non e' un credito.
+        q_crediti: dict = {"gia_in_corrispettivi": {"$ne": True}}
         if anno:
             q_crediti["$or"] = [
                 {"data_fattura": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},

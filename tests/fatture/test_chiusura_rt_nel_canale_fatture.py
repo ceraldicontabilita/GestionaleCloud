@@ -190,10 +190,12 @@ def test_tutti_i_giri_drive_conoscono_lo_stato_nuovo():
     from app.services import drive_invoice_ingest
 
     sorgente = inspect.getsource(drive_invoice_ingest)
-    # I tre punti: giro ogni 15 minuti, ricostruzione a lotti, ricostruzione completa
-    assert sorgente.count('"chiusura_rt"') == 3, (
-        "ogni punto che smista l'esito dell'import deve conoscere `chiusura_rt`"
-    )
+    # I quattro punti: giro ogni 15 minuti, ricostruzione a lotti, ricostruzione
+    # completa e quadratura. Lo stesso vale per le fatture emesse (27/09/2026).
+    for stato in ('"chiusura_rt"', '"fattura_emessa"'):
+        assert sorgente.count(stato) == 4, (
+            f"ogni punto che smista l'esito dell'import deve conoscere {stato}"
+        )
     # e deve contarle a parte, non confonderle con le fatture importate
     assert sorgente.count('"chiusure_rt"') >= 3
 
