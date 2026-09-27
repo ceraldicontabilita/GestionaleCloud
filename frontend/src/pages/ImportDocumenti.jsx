@@ -120,6 +120,20 @@ export async function attendiImportDocumentale(jobId, maxWaitMs = 15 * 60 * 1000
  * NESSUNA SCELTA da parte dell'utente!
  */
 
+// «Nuovo» solo se il file non c'e' davvero: uno ZIP gia' caricato lo ricorda
+// il registro dei caricamenti, con la data.
+export function statoArchivio(preview) {
+  if (!preview?.duplicate) return 'Nuovo';
+  const caricato = (preview.duplicate_sources || []).find(s => s.collection === 'document_import_jobs');
+  if (caricato?.completed_at) {
+    const quando = new Date(caricato.completed_at);
+    if (!Number.isNaN(quando.getTime())) {
+      return `Già caricato il ${quando.toLocaleDateString('it-IT')} alle ${quando.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+    }
+  }
+  return 'Già in archivio';
+}
+
 export default function ImportDocumenti() {
   const confirm = useConfirm();
   const [files, setFiles] = useState([]);
@@ -776,7 +790,7 @@ export default function ImportDocumenti() {
                         {f.preview.validation?.saldo_quadrato === true
                           ? ' | Quadratura verificata'
                           : ''}
-                        {f.preview.duplicate ? ' | Duplicato rilevato' : ' | Nuovo'}
+                        {` | ${statoArchivio(f.preview)}`}
                       </div>
                     )}
                   </div>
