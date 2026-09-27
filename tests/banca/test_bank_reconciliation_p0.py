@@ -312,3 +312,32 @@ def test_bank_statement_delete_endpoints_are_blocked():
     with pytest.raises(HTTPException) as clear:
         run(estratto_conto.clear_estratto_conto(anno=2026))
     assert clear.value.status_code == 409
+
+
+def test_fattura_del_vecchio_import_con_id_numerico_si_paga(monkeypatch):
+    """Le fatture del vecchio import hanno l'id numerico: il prospetto le deve
+    trovare, e le scritture le aggiornano con l'id com'e' salvato."""
+    async def scenario():
+        db = ClientArchivioMemoria()["bank_id_numerico"]
+        await db.sumup_conto_movimenti.insert_one({
+            "id": "sumup_conto:C9NUM0001", "data": "2026-09-22", "importo": "-307.44",
+            "tipo": "uscita", "conto_contabile": "19.01.05",
+            "descrizione": "ASCENSORI PROVA — Pagamento Fatture 386, 738",
+        })
+        await db.invoices.insert_many([
+            {"id": 1785229945876, "invoice_number": "738", "invoice_date": "2026-04-13",
+             "supplier_name": "Ascensori Prova", "supplier_vat": "0123", "total_amount": 153.72},
+            {"id": "f-386", "invoice_number": "386", "invoice_date": "2026-02-20",
+             "supplier_name": "Ascensori Prova", "supplier_vat": "0123", "total_amount": 153.72},
+        ])
+        monkeypatch.setattr(smart.Database, "get_db", staticmethod(lambda: db))
+        await smart.riconcilia_manuale(smart.RiconciliaManuale(
+            movimento_id="sumup_conto:C9NUM0001", tipo="fattura_bonifico",
+            associazioni=[{"id": "1785229945876", "quota_cents": 15372},
+                          {"id": "f-386", "quota_cents": 15372}],
+        ))
+        numerica = await db.invoices.find_one({"id": 1785229945876}, {"_id": 0})
+        assert numerica["pagato"] is True
+        assert numerica["movimento_bancario_id"] == "sumup_conto:C9NUM0001"
+
+    run(scenario())
