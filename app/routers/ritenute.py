@@ -371,7 +371,64 @@ async def upsert_ritenuta_da_fattura(db, fattura: Dict[str, Any]) -> Optional[Di
     else:
         document["created_at"] = now
         await db[COLLECTION].insert_one(dict(document))
+        await avvisa_ritenuta_da_versare(db, document)
     return document
+
+
+def _data_it(data_iso: Optional[str]) -> str:
+    testo = str(data_iso or "")[:10]
+    return f"{testo[8:10]}/{testo[5:7]}/{testo[:4]}" if len(testo) == 10 else testo
+
+
+def _euro_it(cents: int) -> str:
+    intero, decimali = divmod(abs(int(cents or 0)), 100)
+    return f"{intero:,}".replace(",", ".") + f",{decimali:02d} €"
+
+
+async def avvisa_ritenuta_da_versare(db, ritenuta: Dict[str, Any]) -> None:
+    """E' arrivata una parcella con ritenuta: il fatto crea subito l'attesa.
+
+    Alert (chiuso quando l'F24 con il 1040 risulta versato) e messaggio
+    Telegram. Un avviso mancato non ferma l'import della fattura.
+    """
+    scadenza = ritenuta.get("scadenza_legale") or ritenuta.get("scadenza")
+    dettaglio = (
+        f"Parcella {ritenuta.get('numero_fattura') or '?'} di "
+        f"{ritenuta.get('fornitore') or 'fornitore sconosciuto'} del "
+        f"{_data_it(ritenuta.get('data_fattura'))}: ritenuta d'acconto "
+        f"{_euro_it(ritenuta.get('importo_cents'))} da versare con F24, codice 1040, "
+        f"entro il {_data_it(scadenza)}."
+    )
+    try:
+        from app.services.alert_engine import genera_alert
+
+        alert = await genera_alert(
+            "RITENUTA_DA_VERSARE", str(ritenuta["fattura_id"]), "invoices", dettaglio, db,
+            extra={"ritenuta_id": ritenuta.get("id"), "scadenza": scadenza,
+                   "importo_cents": ritenuta.get("importo_cents"), "codice_tributo": "1040"},
+        )
+    except Exception as exc:
+        logger.warning("Alert ritenuta non creato per la fattura %s (%s): %s",
+                       ritenuta.get("numero_fattura"), type(exc).__name__, exc)
+        return
+    if not alert:
+        return
+    try:
+        from app.services.telegram_notifications import send_notification
+
+        await send_notification(f"<b>Ritenuta da versare</b>\n{dettaglio}")
+    except Exception as exc:
+        logger.warning("Telegram ritenuta non inviato per la fattura %s (%s): %s",
+                       ritenuta.get("numero_fattura"), type(exc).__name__, exc)
+
+
+async def _chiudi_avviso_se_versata(db, ritenuta: Dict[str, Any], upd: Dict[str, Any]) -> None:
+    if upd.get("stato_obbligazione") != "VERSATA" or not ritenuta.get("fattura_id"):
+        return
+    from app.services.alert_engine import risolvi_alert
+
+    await risolvi_alert("RITENUTA_DA_VERSARE", str(ritenuta["fattura_id"]), db,
+                        resolved_by="f24_1040_versato")
 
 
 CHIAVE_ALLINEAMENTO_RITENUTE = "ritenute_fatture_allineate_v1"
@@ -432,6 +489,7 @@ async def riconcilia_ritenute_esistenti(db) -> Dict[str, Any]:
         )
         result = await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": upd})
         aggiornate += int(getattr(result, "modified_count", 0) > 0)
+        await _chiudi_avviso_se_versata(db, rit, upd)
     return {"analizzate": len(ritenute), "aggiornate": aggiornate,
             "f24_analizzati": len(f24_docs)}
 
@@ -470,6 +528,7 @@ async def scan_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
             db, rit, ritenute_periodo=ritenute_anno, f24_docs=f24_docs
         )
         await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": upd})
+        await _chiudi_avviso_se_versata(db, rit, upd)
 
     return {"anno": anno, "fatture_con_ritenuta": len(fatture),
             "nuove": nuove, "aggiornate": aggiornate,

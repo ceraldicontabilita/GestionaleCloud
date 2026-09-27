@@ -168,3 +168,48 @@ def test_riparazione_con_id_fattura_numerico(db):
     assert esito["importi_al_netto"] == 1
     assert riga["importo"] == 3206.4
     assert toccate == 1 and dopo["status"] == "deleted"
+
+
+def test_nuova_parcella_apre_avviso_ritenuta_una_volta(db, monkeypatch):
+    from app.services import telegram_notifications
+
+    messaggi = []
+
+    async def finto_invio(testo, **_):
+        messaggi.append(testo)
+        return {"success": True}
+
+    monkeypatch.setattr(telegram_notifications, "send_notification", finto_invio)
+
+    async def scenario():
+        fattura = _parcella(xml_raw=PARCELLA_XML)
+        await ritenute.upsert_ritenuta_da_fattura(db, fattura)
+        await ritenute.upsert_ritenuta_da_fattura(db, fattura)  # reimport
+        return await db["alerts"].find({"codice": "RITENUTA_DA_VERSARE"}, {"_id": 0}).to_list(10)
+
+    alerts = asyncio.run(scenario())
+    assert len(alerts) == 1 and alerts[0]["entita_id"] == "f-parcella"
+    assert "210,00 €" in alerts[0]["dettaglio"] and "1040" in alerts[0]["dettaglio"]
+    assert "16/09/2026" in alerts[0]["dettaglio"]
+    assert len(messaggi) == 1
+
+
+def test_avviso_ritenuta_si_chiude_quando_il_1040_e_versato(db):
+    async def scenario():
+        await db["alerts"].insert_one({
+            "id": "a1", "codice": "RITENUTA_DA_VERSARE", "entita_id": "f-parcella",
+            "stato": "aperto",
+        })
+        await ritenute._chiudi_avviso_se_versata(
+            db, {"fattura_id": "f-parcella"}, {"stato_obbligazione": "APERTA"},
+        )
+        ancora = await db["alerts"].find_one({"id": "a1"}, {"_id": 0})
+        await ritenute._chiudi_avviso_se_versata(
+            db, {"fattura_id": "f-parcella"}, {"stato_obbligazione": "VERSATA"},
+        )
+        chiuso = await db["alerts"].find_one({"id": "a1"}, {"_id": 0})
+        return ancora, chiuso
+
+    ancora, chiuso = asyncio.run(scenario())
+    assert ancora["stato"] == "aperto"
+    assert chiuso["stato"] == "risolto"
