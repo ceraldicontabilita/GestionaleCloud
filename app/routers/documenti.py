@@ -6,7 +6,7 @@ API per scaricare, visualizzare e processare documenti dalle email.
 from fastapi import APIRouter, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Header
 from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 from app.utils.ruoli import richiedi_admin
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from pathlib import Path

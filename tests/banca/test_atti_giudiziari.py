@@ -140,3 +140,18 @@ def test_atto_archiviato_una_volta_e_pagamenti_nel_fascicolo():
 
 def test_contropartita_delle_spese_di_lite():
     assert contropartita_per_categoria("banca", "uscita", "Spese legali e contenzioso") == "71.03"
+
+
+def test_endpoint_restituisce_l_originale(monkeypatch):
+    """Il PDF dell'atto si apre dalla Prima Nota: prima rispondeva NameError."""
+    from app.routers import documenti
+
+    db = ClientArchivioMemoria()["atti_giudiziari"]
+    pdf = _pdf(SENTENZA)
+    atto = asyncio.run(registra_atto(db, "sentenza 1234/21.pdf", pdf))
+    monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+
+    risposta = asyncio.run(documenti.scarica_atto_giudiziario(atto["id"]))
+    assert risposta.body == pdf
+    assert risposta.media_type == "application/pdf"
+    assert risposta.headers["content-disposition"] == 'inline; filename="sentenza 1234-21.pdf"'
