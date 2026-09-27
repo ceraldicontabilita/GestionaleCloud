@@ -407,7 +407,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   fatti distinti. SumUp corrente dall'API; Numia corrente dalla chiusura
   manuale serale; Numia storico ricostruito dagli export del gestore,
   deduplicati e accorpati per giorno. Tutte e tre creano l'attesa bancaria;
-  l'estratto conto può soltanto riconciliarla. Una vendita SumUp si conta una volta: la copia `LEGACY-SUMUP-…` (codice in `id_trans`) cede alla gemella dell'API (`transazioni_del_periodo`); le chiusure oltre la finestra dei 30 giorni si riallineano ogni giorno (`riallinea_chiusure_da_archivio`).
+  l'estratto conto può soltanto riconciliarla. Una vendita SumUp si conta una volta: la copia `LEGACY-SUMUP-…` (codice in `id_trans`) cede alla gemella dell'API (`transazioni_del_periodo`); le chiusure oltre la finestra dei 30 giorni si riallineano ogni giorno (`riallinea_chiusure_da_archivio`), e la risincronizzazione non stacca mai una vendita dal suo `payout_id` (l'API delle vendite non lo riporta).
 - Accredito POS in banca riconosciuto solo con causale del circuito più il
   giorno operativo `DEL gg/mm/aa`; **Numia e Nexi sono lo stesso circuito**;
   commissioni e fatture del gestore escluse; attesa mancante o multipla →

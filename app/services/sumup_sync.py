@@ -533,6 +533,14 @@ async def salva_transazioni(db, grezze: Iterable[Dict[str, Any]],
                 **transazione, "created_at": now, "updated_at": now,
             })
             continue
+        # La cronologia delle vendite non dice a quale payout appartengono: un
+        # payout_id vuoto qui non smentisce quello gia' collegato da
+        # sincronizza_payouts. Riscriverlo vuoto faceva sembrare aperte, per
+        # tutto il giro (e fino al giro dopo se un deploy lo interrompeva), le
+        # vendite gia' accreditate: il credito verso SumUp saltava a decine di
+        # migliaia di euro.
+        if not transazione.get("payout_id") and esistente.get("payout_id"):
+            transazione = {**transazione, "payout_id": esistente["payout_id"]}
         if any(esistente.get(campo) != valore
                for campo, valore in transazione.items()):
             da_aggiornare.append(transazione)
