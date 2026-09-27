@@ -188,9 +188,16 @@ async def importa_documento_mutuo(
         "source": "drive_estratti_conto_mutui",
         "updated_at": now,
     }
-    await db[collection].update_one(
-        key, {"$set": document, "$setOnInsert": {"created_at": now}}, upsert=True
-    )
+    aggiornamento = {"$set": document, "$setOnInsert": {"created_at": now}}
+    # Una scrittura per collezione, col nome scritto: la guardia delle
+    # collezioni lette e mai scritte deve vederle (le legge la proiezione
+    # bancaria per dividere la rata del mutuo in capitale e interessi).
+    if collection == "mutui_quietanze":
+        await db["mutui_quietanze"].update_one(key, aggiornamento, upsert=True)
+    elif collection == "mutui_estratti_annuali":
+        await db["mutui_estratti_annuali"].update_one(key, aggiornamento, upsert=True)
+    else:
+        await db["mutui_piani_documentali"].update_one(key, aggiornamento, upsert=True)
     await db["mutui_documenti_import"].insert_one({
         "sha256": digest, "tipo_documento": tipo, "filename": filename,
         "drive_file_id": drive_file_id, "created_at": now,

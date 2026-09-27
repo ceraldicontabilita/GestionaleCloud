@@ -417,7 +417,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `trasferimento_collegato_id`, categoria `trasferimento_interno`. È **un'operazione della banca, non una riga
   d'archivio**: le copie (vecchio archivio, CSV, Enable Banking) fanno una coppia sola, il numero vero è il massimo
   per fonte nello stesso giorno e importo (`versamenti_contanti.py`); le gambe in più dei motori si tolgono per id.
-  Lo stesso per `proiezione_bancaria.py` (stipendi, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote capitale/interessi `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale).
+  Lo stesso per `proiezione_bancaria.py` (stipendi, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote dalla quietanza o dal piano d'ammortamento a importo identico, altrimenti `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale).
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
   appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca (Enable Banking, `services/enable_banking.py`,
   flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
@@ -426,8 +426,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
   creano un pagamento solo con identità, periodo e importo compatibili; altrimenti candidati.
 - Categorizzazione movimenti banca: un solo motore,
-  `app/services/categorizzazione_movimenti.py` (parole chiave su
-  F24/Commissioni/Utenze/Fatture). Sopra le parole chiave, **regole
+  `app/services/categorizzazione_movimenti.py` (parole chiave e causali BPM non ambigue: F24, commissioni, utenze,
+  fatture, POS, assegni, versamenti, PayPal, rata mutuo; la riga senza categoria prende quella della sua copia di un altro export). Sopra le parole chiave, **regole
   imparate** dal titolare (`app/services/regole_riconoscimento_banca.py`,
   `/riconciliazione/regole-banca`): un pattern estratto da una causale reale
   vince sul generico, ma un pattern di solo vocabolario bancario comune (es.
@@ -850,7 +850,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
-- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza `fattura_id`, 1.417 movimenti banca senza categoria.
+- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza `fattura_id`, ~260 movimenti banca senza categoria (bonifici disposti e SDD: si chiudono solo abbinandoli).
 - HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10 tabelle attese dall'app
   assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.

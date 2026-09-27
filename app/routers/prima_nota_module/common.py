@@ -46,6 +46,7 @@ CATEGORIE_BANCA = [
     "Commissioni bancarie",
     "F24",
     "Stipendi",
+    "Rata mutuo",
     "Altro"
 ]
 

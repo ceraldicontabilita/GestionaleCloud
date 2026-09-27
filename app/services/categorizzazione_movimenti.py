@@ -23,10 +23,10 @@ Questo e' l'UNICO motore rimasto. Regole:
   nome completo + importo esatto + periodo + candidato univoco). Riprodurre
   qui un secondo riconoscimento stipendi via "ADD.TOT"/"VS.DISP" sarebbe
   esattamente il doppione che questo file elimina.
-- Non tocca Versamento/Prelevamento Banca, PayPal e "UTENZ*" generico: sono
-  gia' riconosciuti dalla causale in `mappa_categoria_ec()` indipendentemente
-  dal campo `categoria` salvato, quindi ripeterli qui non aggiungerebbe
-  copertura.
+- Versamento/Prelevamento Banca, PayPal e rata del mutuo si riconoscono con
+  gli stessi riconoscitori di `mappa_categoria_ec()` (non una seconda
+  regola): il campo `categoria` salvato deve dirlo, o il banner di Prima Nota
+  li conta come movimenti da classificare.
 - In caso di piu' pattern non ambigui in conflitto sulla stessa descrizione,
   il movimento resta "ambiguo" (categoria None): non si sceglie a caso.
 
@@ -77,7 +77,7 @@ _F24_KEYWORDS = (
 # con queste 344 (verificato il 19/09/2026 sul progetto Supabase di
 # produzione, sola lettura prima di scrivere).
 _COMMISSIONI_KEYWORDS = (
-    "COMMISSIONI", "COMMISSIONE", "COMM.SU", "COMM.SDD", "SPESE E COMM",
+    "COMMISSIONI", "COMMISSIONE", "COMM.SU", "COMM.SDD", "COMM.BON", "SPESE E COMM",
     "SPESE BANCARIE", "SPESE TENUTA CONTO",
     "CANONE CONTO", "CANONE MENSILE C/C", "CANONE TRIMESTRALE C/C",
     "IMPOSTA DI BOLLO", "IMPOSTA BOLLO", "IMP.BOLLO", "I.BOLLO", "BOLLO C/C",
@@ -107,12 +107,57 @@ _FATTURE_KEYWORDS = (
     "CANONE LOCAZIONE", "AFFITTO", "LOCAZIONE UFFICIO", "LOCAZIONE NEGOZIO",
 )
 
+# Causali della banca che non lasciano dubbi, verificate il 27/09/2026 sul
+# CSV «Elenco entrate/uscite» del titolare (1.943 righe 2026: ogni riga con
+# queste causali ha la stessa categoria della banca). Il vecchio archivio le
+# scrive senza categoria, e il banner di Prima Nota le contava come «da
+# classificare» anche se la causale diceva gia' tutto.
+_POS_KEYWORDS = (
+    "INC.POS CARTE CREDIT", "INCAS. TRAMITE P.O.S", "INCAS.TRAMITE P.O.S",
+    "INCASSO TRAMITE POS",
+)
+_ASSEGNI_KEYWORDS = ("PRELIEVO ASSEGNO", "VOSTRO ASSEGNO", "ADDEBITO ASSEGNO")
+
 _PATTERN_BUCKETS: Dict[str, tuple] = {
     "F24": _F24_KEYWORDS,
     "Commissioni bancarie": _COMMISSIONI_KEYWORDS,
     "Utenze": _UTENZE_KEYWORDS,
     "Fatture": _FATTURE_KEYWORDS,
+    "Corrispettivi POS": _POS_KEYWORDS,
+    "Assegni": _ASSEGNI_KEYWORDS,
 }
+
+# Il vecchio archivio scrive l'accredito POS senza prefisso: «NUMIA-INTER DEL
+# 30/08/26 PDV …». Solo con il circuito e il giorno: «FATTURA NUMIA» e le
+# commissioni del gestore non sono un incasso.
+_RE_ACCREDITO_POS = re.compile(r"\bNUMIA-[A-Z]+\s+DEL\s+\d{2}/\d{2}/\d{2}|\bREMUNERAZIONE\s+DCC\b")
+_RE_RATA_MUTUO = re.compile(r"\bMUTUO\s+N\.?\s*\d{3,5}[\s/]+[\d/]{5,}\s+RATA\b")
+
+
+def _categorie_da_causale(desc: str) -> List[str]:
+    """Le categorie che la causale dichiara da sola, con gli stessi
+    riconoscitori di Prima Nota (versamento, prelievo, PayPal, rata mutuo):
+    uno storno di versamento non e' un versamento."""
+    from app.routers.bank.estratto_conto import (
+        is_prelievo_contanti, is_storno_versamento, is_versamento_contanti,
+    )
+
+    trovate = []
+    if is_storno_versamento(desc):
+        return trovate
+    if is_versamento_contanti(desc):
+        trovate.append("Versamento Banca")
+    if is_prelievo_contanti(desc):
+        trovate.append("Prelevamento Banca")
+    if re.search(r"\bPAYPAL\b", desc):
+        trovate.append("Pagamento PayPal")
+    if _RE_RATA_MUTUO.search(desc):
+        trovate.append("Rata mutuo")
+    if _RE_ACCREDITO_POS.search(desc) and not any(
+        _kw_presente(desc, kw) for kw in _POS_KEYWORDS
+    ):
+        trovate.append("Corrispettivi POS")
+    return trovate
 
 # Codici tributo: stesso registro del parser F24 (nessun secondo elenco).
 from app.schemas.accounting_rules import F24_ERARIO_CODES, F24_INPS_CODES  # noqa: E402
@@ -197,7 +242,11 @@ def categorizza_movimento_bancario(
     trovati = [
         nome for nome, keywords in _PATTERN_BUCKETS.items()
         if any(_kw_presente(desc, kw) for kw in keywords)
-    ]
+    ] + _categorie_da_causale(desc)
+    # «COMMISSIONI - Comm.sdd ... PayPal» e' una commissione: la parola
+    # della commissione vince sul nome del circuito che la cita.
+    if "Commissioni bancarie" in trovati and "Pagamento PayPal" in trovati:
+        trovati.remove("Pagamento PayPal")
 
     if len(trovati) > 1:
         return EsitoCategorizzazione(
@@ -216,7 +265,11 @@ def categorizza_movimento_bancario(
         )
         return EsitoCategorizzazione("F24", motivo, codice_tributo=codice)
 
-    kw_match = next(kw for kw in _PATTERN_BUCKETS[categoria] if _kw_presente(desc, kw))
+    kw_match = next(
+        (kw for kw in _PATTERN_BUCKETS.get(categoria, ()) if _kw_presente(desc, kw)), None,
+    )
+    if kw_match is None:
+        return EsitoCategorizzazione(categoria, "causale bancaria")
     return EsitoCategorizzazione(categoria, f"parola chiave '{kw_match.strip()}'")
 
 
@@ -254,7 +307,7 @@ async def _movimenti_senza_categoria(db, anno: Optional[int]) -> List[Dict[str, 
 
 async def backfill_categorie_banca(
     db, *, anno: Optional[int] = 2026, dry_run: bool = False,
-    on_progress=None,
+    on_progress=None, con_stipendi: bool = True,
 ) -> Dict[str, Any]:
     """Valorizza `categoria` sui movimenti gia' importati, SOLO dove il
     riconoscimento e' certo. Non tocca i movimenti che hanno gia' una
@@ -272,7 +325,7 @@ async def backfill_categorie_banca(
     il passo 2, dichiarandolo nel risultato.
     """
     stipendi_esito: Optional[Dict[str, Any]] = None
-    if not dry_run:
+    if not dry_run and con_stipendi:
         try:
             from app.services.stipendi_bonifici import associa_bonifici_stipendi
             stipendi_esito = await associa_bonifici_stipendi(db, anno=anno)

@@ -293,6 +293,16 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     # Cerca CRO/TRN
     mcro = re.search(r"\b(?:CRO|TRN|NS\s*RIF\.?|RIF\.?\s*(?:OPERAZIONE)?)[:\s]*([A-Z0-9]*[0-9][A-Z0-9]{3,39})\b", text, re.IGNORECASE)
     cro = mcro.group(1).strip() if mcro else None
+    # Banco BPM scrive alcuni riferimenti a segmenti: «BAPPIT222026-04-0290553560».
+    # Fermarsi al primo trattino lasciava «BAPPIT222026» (il BIC con l'anno),
+    # uguale per ogni bonifico del giorno: sette stipendi da 1.000 EUR del
+    # 02/04/2026 diventavano lo stesso bonifico per la dedup CRO+importo. Solo
+    # quel caso si allunga: gli altri riferimenti restano identici a prima,
+    # o una nuova copia di un bonifico gia' archiviato non si riconoscerebbe.
+    if cro and mcro and re.fullmatch(r"[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\d{4}", cro, re.IGNORECASE):
+        segmenti = re.match(r"(?:-[A-Z0-9]{2,20})+", text[mcro.end(1):], re.IGNORECASE)
+        if segmenti:
+            cro = cro + segmenti.group(0)
 
     # Cerca causale
     caus = table_row.get("causale") or _value_after_label(

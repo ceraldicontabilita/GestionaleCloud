@@ -24,6 +24,8 @@ from app.services.conti_pos import CONTO_BPM as CONTO_BANCA_PREDEFINITO
 logger = logging.getLogger(__name__)
 
 
+logger = logging.getLogger(__name__)
+
 SOURCE = "proiezione_semantica_ec"
 _PAYPAL = re.compile(r"\bPAYPAL\b", re.IGNORECASE)
 _ADDEBITO_DIRETTO = re.compile(
@@ -194,6 +196,82 @@ def classifica_movimento_ec(
     return _classifica_paypal(doc)
 
 
+def _cifre_mutuo(numero: Any) -> str:
+    """L'identita' del mutuo nelle sue tre forme: «1788 4851906» in causale,
+    delibera «904851906» sul piano, «1788/0004851906» sulla quietanza."""
+    ultime = re.findall(r"\d+", str(numero or ""))
+    return ultime[-1].lstrip("0")[-7:] if ultime else ""
+
+
+def _data_gma(valore: Any) -> str:
+    testo = str(valore or "")[:10]
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", testo):
+        anno, mese, giorno = testo.split("-")
+        return f"{giorno}/{mese}/{anno}"
+    return testo
+
+
+async def _carica_quote_mutui(db) -> list:
+    """Righe (numero, scadenza gg/mm/aaaa, importo, capitale, interessi, fonte).
+
+    La quietanza della banca vince sul piano (prova il pagamento di quella
+    rata); il piano copre le rate senza quietanza. Nessuna quota si stima.
+    """
+    righe: list = []
+    try:
+        quietanze = await db["mutui_quietanze"].find(
+            {}, {"_id": 0, "numero_finanziamento": 1, "data_scadenza": 1, "importo_totale": 1,
+                 "quota_capitale": 1, "quota_interessi": 1, "numero_rata": 1, "sha256": 1},
+        ).to_list(None)
+        piani = await db["mutui_piani_documentali"].find(
+            {}, {"_id": 0, "id": 1, "numero_delibera": 1, "rate": 1, "sha256": 1},
+        ).to_list(None)
+    except Exception as exc:  # noqa: BLE001 - senza piano la rata resta da verificare
+        logger.warning("Piani/quietanze mutui non leggibili (%s): quote da verificare", type(exc).__name__)
+        return righe
+    for q in quietanze:
+        righe.append((_cifre_mutuo(q.get("numero_finanziamento")), _data_gma(q.get("data_scadenza")),
+                      q.get("importo_totale"), q.get("quota_capitale"), q.get("quota_interessi"),
+                      q.get("numero_rata"), "quietanza"))
+    for piano in piani:
+        for rata in piano.get("rate") or []:
+            righe.append((_cifre_mutuo(piano.get("numero_delibera")), _data_gma(rata.get("data_scadenza")),
+                          rata.get("importo_totale"), rata.get("quota_capitale"), rata.get("quota_interessi"),
+                          rata.get("numero_rata"), "piano_ammortamento"))
+    return righe
+
+
+def _quote_rata(classificazione: Dict[str, Any], importo: float, quote: list) -> Dict[str, Any]:
+    """Capitale e interessi della rata: stesso mutuo, stessa scadenza, stesso
+    importo al centesimo. Se non torna, la ripartizione resta da verificare."""
+    numero = _cifre_mutuo(classificazione.get("numero_mutuo"))
+    scadenza = classificazione.get("rata_scadenza")
+    for fonte in ("quietanza", "piano_ammortamento"):
+        for num, scad, totale, capitale, interessi, numero_rata, origine in quote:
+            if origine != fonte or num != numero or scad != scadenza:
+                continue
+            try:
+                if abs(float(totale) - importo) > 0.005:
+                    continue
+                capitale, interessi = round(float(capitale), 2), round(float(interessi), 2)
+            except (TypeError, ValueError):
+                continue
+            if abs(capitale + interessi - importo) > 0.01:
+                continue
+            return {
+                "quota_capitale": capitale,
+                "quota_interessi": interessi,
+                "numero_rata": numero_rata,
+                "ripartizione_capitale_interessi": origine,
+                # Capitale: debito verso la banca; interessi: costo (75.03.05).
+                "ripartizione_conti": [
+                    {"conto": "31.03.05", "importo": capitale},
+                    {"conto": "75.03.05", "importo": interessi},
+                ],
+            }
+    return {}
+
+
 def _chiave_operazione(data: str, importo: float, classificazione: Dict[str, Any],
                        conto: Optional[str] = None) -> tuple:
     """Conto, giorno, importo, verso, categoria e chi: la stessa operazione in ogni copia."""
@@ -358,6 +436,14 @@ async def proietta_movimenti_bancari_semantici(
             continue
         candidati.append((movimento_ec, classificazione, data, importo, ec_id))
 
+    if any(voce[1].get("tipo_classificazione_contabile") == "rata_mutuo" for voce in candidati):
+        quote = await _carica_quote_mutui(db)
+        for voce in candidati:
+            if voce[1].get("tipo_classificazione_contabile") == "rata_mutuo":
+                trovate = _quote_rata(voce[1], voce[3], quote)
+                if trovate:
+                    voce[1].update(trovate)
+
     # La stessa operazione arriva da piu' export (vecchio archivio, CSV,
     # banca diretta): una riga in Banca per operazione, non per copia. Fino al
     # 26/09/2026 ogni copia scriveva la sua: 23 stipendi contati due volte,
@@ -382,7 +468,7 @@ async def proietta_movimenti_bancari_semantici(
             {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "categoria": 1,
              "conto_contabile": 1,
              "dipendente_id": 1, "socio_id": 1, "numero_mutuo": 1, "gestore_pagamento": 1,
-             "estratto_conto_id": 1, "source": 1},
+             "estratto_conto_id": 1, "source": 1, "ripartizione_capitale_interessi": 1},
         ).to_list(None)
         for riga in righe:
             chiave = _chiave_operazione(
@@ -450,6 +536,19 @@ async def proietta_movimenti_bancari_semantici(
                 tenute.append(riga)
             prima_nota_id = riga["id"]
             tipo_classificazione = classificazione["tipo_classificazione_contabile"]
+            if (
+                gia_esistente and riga.get("source") == SOURCE
+                and classificazione.get("quota_capitale") is not None
+                and riga.get("ripartizione_capitale_interessi") != classificazione["ripartizione_capitale_interessi"]
+            ):
+                # La rata gia' in Banca prende le quote quando arriva il piano.
+                await db["prima_nota_banca"].update_one({"id": prima_nota_id}, {"$set": {
+                    k: classificazione[k] for k in (
+                        "quota_capitale", "quota_interessi", "numero_rata",
+                        "ripartizione_capitale_interessi", "ripartizione_conti",
+                    )
+                }})
+                riga["ripartizione_capitale_interessi"] = classificazione["ripartizione_capitale_interessi"]
             if movimento_ec.get("prima_nota_banca_id") != prima_nota_id or not movimento_ec.get("classificato_contabilmente"):
                 query_sorgente = (
                     {"_id": movimento_ec["_id"]}

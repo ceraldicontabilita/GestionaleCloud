@@ -787,6 +787,17 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] assegni: %s: %s", type(e).__name__, e)
         try:
+            from app.services.doppioni_estratto_conto import eredita_categorie_da_copie
+            r = await eredita_categorie_da_copie(db)
+            logger.info("[SCHEDULER-BANCA] categorie senza=%s ereditate=%s contraddette=%s",
+                        r.get("senza_categoria"), r.get("ereditate"), r.get("contraddette"))
+            from app.services.categorizzazione_movimenti import backfill_categorie_banca
+            r = await backfill_categorie_banca(db, anno=None, dry_run=False, con_stipendi=False)
+            logger.info("[SCHEDULER-BANCA] categorie da causale aggiornate=%s restano=%s",
+                        r.get("aggiornati"), r.get("non_categorizzati_totale"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] categorie: %s: %s", type(e).__name__, e)
+        try:
             from app.services.versamenti_contanti import riconosci_versamenti
             r = await riconosci_versamenti(db, dry_run=False)
             logger.info(
