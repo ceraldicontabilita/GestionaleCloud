@@ -386,19 +386,34 @@ class EmailFullDownloader:
 
     def connect(self) -> bool:
         """Connette al server IMAP."""
-        try:
-            email_user, email_password = get_email_credentials()
-            if not email_user or not email_password:
-                raise Exception("Credenziali email non configurate")
+        from app.services.gmail_credentials import (
+            candidate_gmail_credentials, ricorda_coppia_riuscita,
+        )
 
-            self.connection = imaplib.IMAP4_SSL(IMAP_SERVER)
-            self.connection.login(email_user, email_password)
-            logger.info(f"Connesso a {IMAP_SERVER} come {email_user}")
-            return True
-        except Exception as e:
-            logger.error(f"Errore connessione IMAP: {e}")
-            self.stats["errors"].append(f"Connessione: {str(e)}")
+        coppie = candidate_gmail_credentials()
+        if not coppie:
+            logger.error("Errore connessione IMAP: credenziali email non configurate")
+            self.stats["errors"].append("Connessione: credenziali email non configurate")
             return False
+        ultimo_errore = ""
+        for utente, password, var_utente, var_password in coppie:
+            try:
+                connessione = imaplib.IMAP4_SSL(IMAP_SERVER)
+                connessione.login(utente, password)
+            except Exception as e:
+                ultimo_errore = f"{type(e).__name__}: {e}"
+                logger.warning("Login IMAP rifiutato con %s + %s: %s",
+                               var_utente, var_password, ultimo_errore)
+                continue
+            self.connection = connessione
+            ricorda_coppia_riuscita(var_utente, var_password)
+            logger.info("Connesso a %s come %s (variabili %s + %s)",
+                        IMAP_SERVER, utente, var_utente, var_password)
+            return True
+        provate = ", ".join(sorted({f"{c[2]}+{c[3]}" for c in coppie}))
+        logger.error(f"Errore connessione IMAP: {ultimo_errore} (provate: {provate})")
+        self.stats["errors"].append(f"Connessione: {ultimo_errore} (provate: {provate})")
+        return False
 
     def disconnect(self):
         """Disconnette dal server IMAP."""

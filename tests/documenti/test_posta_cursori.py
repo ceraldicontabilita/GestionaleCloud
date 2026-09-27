@@ -158,3 +158,39 @@ def test_password_per_app_incollata_con_gli_spazi(monkeypatch):
     monkeypatch.setattr(settings, "IMAP_USER", " casella@example.com ", raising=False)
     monkeypatch.setattr(settings, "IMAP_PASSWORD", "abcd efgh ijkl mnop\n", raising=False)
     assert efd.get_email_credentials() == ("casella@example.com", "abcdefghijklmnop")
+
+
+def test_login_prova_la_password_per_app_anche_se_imap_password_e_vecchia(monkeypatch):
+    """La nuova password per app sta in GMAIL_APP_PASSWORD, IMAP_PASSWORD e'
+    la vecchia: il login le prova entrambe ed entra con quella giusta."""
+    from app.config import settings
+    from app.services import gmail_credentials
+
+    for nome in ("EMAIL_USER", "EMAIL_ADDRESS", "GMAIL_EMAIL", "GMAIL_ACCOUNT_AMMINISTRATIVO",
+                 "ADMIN_EMAIL", "EMAIL_APP_PASSWORD", "EMAIL_PASSWORD",
+                 "GMAIL_APP_PASSWORD_AMMINISTRATIVO"):
+        monkeypatch.setattr(settings, nome, None, raising=False)
+    monkeypatch.setattr(settings, "IMAP_USER", "casella@example.com", raising=False)
+    monkeypatch.setattr(settings, "IMAP_PASSWORD", "vecchiavecchiavv", raising=False)
+    monkeypatch.setattr(settings, "GMAIL_APP_PASSWORD", "nuov anuo vanu ovan", raising=False)
+    monkeypatch.setattr(gmail_credentials, "_coppia_riuscita", None)
+
+    tentativi = []
+
+    class FintoIMAP:
+        def __init__(self, host):
+            pass
+
+        def login(self, utente, password):
+            tentativi.append(password)
+            if password != "nuovanuovanuovan":
+                raise efd.imaplib.IMAP4.error("[AUTHENTICATIONFAILED] Invalid credentials")
+
+    monkeypatch.setattr(efd.imaplib, "IMAP4_SSL", FintoIMAP)
+    downloader = efd.EmailFullDownloader(db=None)
+    assert downloader.connect() is True
+    assert "nuovanuovanuovan" in tentativi
+    # Al giro dopo la coppia buona si prova per prima.
+    tentativi.clear()
+    assert efd.EmailFullDownloader(db=None).connect() is True
+    assert tentativi == ["nuovanuovanuovan"]
