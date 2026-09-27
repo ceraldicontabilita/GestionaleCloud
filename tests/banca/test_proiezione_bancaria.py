@@ -291,3 +291,54 @@ def test_la_rata_gia_in_banca_si_aggiorna_quando_arriva_il_piano():
     righe = _attive(db)
     assert len(righe) == 1 and esito["proiettati"] == 0
     assert righe[0]["quota_interessi"] == 5.42
+
+
+def test_stesso_bonifico_con_dipendente_diverso_nelle_copie_resta_una_riga():
+    """Produzione 27/09/2026: 17 stipendi (14.000,00 EUR) contati due volte.
+    La copia del vecchio archivio portava il dipendente provvisorio ricavato
+    dai salari, l'export quello vero: due gruppi, due righe. Il riferimento
+    della disposizione (MB…) li riconosce come lo stesso bonifico."""
+    db = _db_dipendente()
+    causale = "VS.DISP. RIF. MB0B10283131/90366939 FAVORE CERALDI VALERIO stipendio"
+    _run(db["estratto_conto_movimenti"].insert_many([
+        {**_stipendio("ec-legacy", "legacy_staging_2026", data="2026-02-03", importo=1000.0),
+         "descrizione_originale": causale, "dipendente_id": "salario:ceraldi|valerio"},
+        {**_stipendio("ec-csv", "export.csv", data="2026-02-03", importo=1000.0),
+         "descrizione_originale": "VOSTRA DISPOSIZIONE - " + causale},
+    ]))
+    comune = {"data": "2026-02-03", "tipo": "uscita", "importo": 1000.0, "categoria": "Stipendi",
+              "source": "proiezione_semantica_ec"}
+    _run(db["prima_nota_banca"].insert_many([
+        {**comune, "id": "pn-provvisoria", "dipendente_id": "salario:ceraldi|valerio",
+         "estratto_conto_id": "ec-legacy", "descrizione": causale},
+        {**comune, "id": "pn-vera", "dipendente_id": "dip-valerio",
+         "estratto_conto_id": "ec-csv", "descrizione": "VOSTRA DISPOSIZIONE - " + causale},
+    ]))
+    esito = _run(proietta_movimenti_bancari_semantici(db))
+    assert esito["doppioni_tolti"] == 1
+    assert [r["id"] for r in _attive(db)] == ["pn-vera"]
+    secondo = _run(proietta_movimenti_bancari_semantici(db))
+    assert secondo["proiettati"] == 0 and secondo["doppioni_tolti"] == 0
+    assert [r["id"] for r in _attive(db)] == ["pn-vera"]
+
+
+def test_la_commissione_del_bonifico_non_e_uno_stipendio():
+    """«VS.DISP. … FAVORE <dipendente> - ADD.SPE» da 1,10 EUR: il nome del
+    beneficiario c'e', ma e' la commissione della banca. La riga gia' scritta
+    come stipendio si riclassifica con lo stesso id."""
+    db = _db_dipendente()
+    _run(db["estratto_conto_movimenti"].insert_one({
+        "id": "ec-comm", "data": "2026-04-02", "tipo": "uscita", "importo": 1.10,
+        "fonte": "legacy_staging_2026",
+        "descrizione": "VS.DISP. RIF. MB0B39331260/90552422 FAVORE CERALDI VALERIO - ADD.SPE",
+    }))
+    _run(db["prima_nota_banca"].insert_one({
+        "id": "pn-comm", "data": "2026-04-02", "tipo": "uscita", "importo": 1.10,
+        "categoria": "Stipendi", "dipendente_id": "dip-valerio",
+        "source": "proiezione_semantica_ec", "estratto_conto_id": "ec-comm",
+    }))
+    _run(proietta_movimenti_bancari_semantici(db))
+    righe = _attive(db)
+    assert [r["id"] for r in righe] == ["pn-comm"]
+    assert righe[0]["categoria"] == "Commissioni bancarie"
+    assert not righe[0].get("dipendente_id")

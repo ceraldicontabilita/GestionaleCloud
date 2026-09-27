@@ -879,6 +879,24 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] proiezione: %s: %s", type(e).__name__, e)
         try:
+            # Conti CEE sulle righe di Prima Nota che ne sono prive (solo i
+            # campi mancanti; il conto di tesoreria segue il metodo dichiarato).
+            from app.services.bonifica_prima_nota_conti import applica as completa_conti
+            r = await completa_conti(db, actor="scheduler-banca")
+            if r.get("righe_aggiornate"):
+                logger.info("[SCHEDULER-BANCA] conti Prima Nota completati=%s", r.get("righe_aggiornate"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] conti Prima Nota: %s: %s", type(e).__name__, e)
+        try:
+            # Fatture rimaste senza detraibilita' decisa o ferme DA_VERIFICARE:
+            # a lotti, finche' l'arretrato non e' smaltito.
+            from app.services.iva_detraibilita import completa_iva_pregresso
+            r = await completa_iva_pregresso(db)
+            if r.get("candidate"):
+                logger.info("[SCHEDULER-BANCA] IVA fatture %s", r)
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] IVA fatture: %s: %s", type(e).__name__, e)
+        try:
             # Ultimo passo: chiude gli alert che i passi sopra (e gli altri
             # motori) hanno reso falsi e mette in quarantena i verbali nati
             # dai numeri di fattura. Solo per id, con il motivo scritto.

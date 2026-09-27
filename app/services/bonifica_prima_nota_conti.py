@@ -35,6 +35,8 @@ from app.services.scritture_contabili import (
 
 logger = logging.getLogger(__name__)
 
+from app.routers.prima_nota_module.common import SOURCES_ESCLUSE as _SOURCES_FUORI_SALDO  # noqa: E402
+
 MOTIVO_BONIFICA = "bonifica_conti_prima_nota_2026-09-03"
 
 
@@ -51,6 +53,42 @@ async def _righe_attive(db, collection: str) -> List[Dict[str, Any]]:
     return [riga async for riga in cursor]
 
 
+def _metodo_dichiarato(riga: Dict[str, Any]) -> str:
+    if riga.get("metodo_pagamento_dichiarato"):
+        return str(riga["metodo_pagamento_dichiarato"])
+    if str(riga.get("source") or "") == "report_pagamenti_titolare":
+        return str(riga.get("metodo_pagamento") or "")
+    return ""
+
+
+def campi_conto_mancanti(registro: str, riga: Dict[str, Any]) -> Dict[str, Any]:
+    """I campi conto da aggiungere a una riga, col conto del metodo dichiarato.
+
+    Una fattura che il titolare dichiara pagata con la carta SumUp esce dalla
+    Mastercard (19.01.05), con PayPal o carta Nexi da un conto che non e' BPM:
+    il conto di tesoreria predefinito (19.01.01) lo sposterebbe sul conto
+    sbagliato. Se il metodo non ha un conto noto la riga resta senza conto di
+    tesoreria (``conto_tesoreria_da_definire``), mai con un BPM inventato.
+    """
+    campi = completa_conti_prima_nota(registro, riga)
+    metodo = _metodo_dichiarato(riga) if registro == "banca" else ""
+    if metodo and "conto_contabile" in campi:
+        from app.services.mapping_piano_conti import CONTI_UFFICIALI
+        from app.services.pagamenti_dichiarati_titolare import conto_metodo_dichiarato
+
+        conto = conto_metodo_dichiarato(
+            metodo, " ".join(str(riga.get(k) or "") for k in ("descrizione", "note", "carta")))
+        if conto:
+            campi["conto_contabile"] = conto
+            campi["conto_nome"] = CONTI_UFFICIALI.get(conto, "")
+        else:
+            campi.pop("conto_contabile", None)
+            campi.pop("conto_nome", None)
+            if not riga.get("conto_tesoreria_da_definire"):
+                campi["conto_tesoreria_da_definire"] = True
+    return campi
+
+
 async def analizza(db) -> Dict[str, Any]:
     """Dry-run: quante righe riceverebbero quali conti, per registro/categoria."""
     registri: Dict[str, Dict[str, Any]] = {}
@@ -64,9 +102,13 @@ async def analizza(db) -> Dict[str, Any]:
             "per_categoria": defaultdict(int),
         }
         for riga in await _righe_attive(db, collection):
+            if str(riga.get("source") or "") in _SOURCES_FUORI_SALDO:
+                # Righe tenute solo per audit (es. la cassa d'ufficio senza
+                # metodo del fornitore): fuori da elenchi e saldi, niente conti.
+                continue
             conteggio["righe_attive"] += 1
             try:
-                campi = completa_conti_prima_nota(registro, riga)
+                campi = campi_conto_mancanti(registro, riga)
             except ValueError as exc:
                 conteggio["conti_non_validi"] += 1
                 non_classificabili.append({

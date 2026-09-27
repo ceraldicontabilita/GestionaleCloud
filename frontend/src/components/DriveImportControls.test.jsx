@@ -53,16 +53,27 @@ describe('Controlli import Drive in Documenti', () => {
       } });
     api.post.mockResolvedValue({ data: { avviato: true, tutto: true } });
 
-    render(<DriveFattureImportCard />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Importa tutto da Drive' }));
+    // Il componente aspetta 5 secondi veri prima di rileggere lo stato: con
+    // l'orologio finto il test non dipende dalla lentezza del runner della CI.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<DriveFattureImportCard />);
+      // Finche' lo stato non e' caricato il pulsante e' disabilitato: sul
+      // runner lento della CI il clic arrivava prima e andava perso.
+      const pulsante = await screen.findByRole('button', { name: 'Importa tutto da Drive' });
+      await waitFor(() => expect(pulsante).not.toBeDisabled(), { timeout: 5000 });
+      fireEvent.click(pulsante);
 
-    // Sul runner della CI il clic arriva al POST oltre il secondo di default.
-    await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith('/api/documenti/cartella-unica/giro?tutto=true'),
-    { timeout: 5000 });
-    expect(await screen.findByText(/In cartella restano 0 file/, {}, { timeout: 7000 }))
-      .toBeInTheDocument();
-  }, 10000);
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith('/api/documenti/cartella-unica/giro?tutto=true'),
+      { timeout: 5000 });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await screen.findByText(/In cartella restano 0 file/, {}, { timeout: 5000 }))
+        .toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 15000);
 
   it('carica l anno operativo senza importare file automaticamente', async () => {
     api.get.mockResolvedValue({ data: { anno: 2026 } });

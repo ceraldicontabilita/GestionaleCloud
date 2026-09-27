@@ -134,6 +134,11 @@ def _classifica_rata_mutuo(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+# Addebito spese di una disposizione: stessa causale del bonifico, col nome
+# del beneficiario dentro («- ADD.SPE», «COMM.SU BONIFICI»).
+_SPESE_DISPOSIZIONE = re.compile(r"ADD\.?\s*SPE\b|COMM\.?\s*SU\s*BONIFIC", re.IGNORECASE)
+
+
 def _classifica_dipendente(
     doc: Dict[str, Any], dipendenti: Iterable[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
@@ -197,6 +202,15 @@ def classifica_movimento_ec(
             "regola_bancaria": causale["rule_id"],
             "regola_versione": causale["rule_version"],
             "campi_estratti": causale.get("campi_estratti") or {},
+        }
+    if _SPESE_DISPOSIZIONE.search(_testo(doc)) and _verso(doc) == "uscita":
+        # «COMM.SU BONIFICI - VS.DISP. … FAVORE <dipendente> - ADD.SPE»: la
+        # commissione del bonifico porta il nome del beneficiario, ma e' un
+        # costo della banca, non uno stipendio.
+        return {
+            "tipo": "uscita",
+            "categoria": "Commissioni bancarie",
+            "tipo_classificazione_contabile": "commissione_bancaria:spese_disposizione",
         }
     mutuo = _classifica_rata_mutuo(doc)
     if mutuo:
@@ -283,15 +297,32 @@ def _quote_rata(classificazione: Dict[str, Any], importo: float, quote: list) ->
     return {}
 
 
+# Riferimento della disposizione BPM («RIF. MB0B10283131/…», «MBVT96918868»):
+# e' lo stesso in ogni copia dell'estratto conto.
+_RIF_DISPOSIZIONE = re.compile(r"\b(MB[A-Z0-9]{2}\d{8})")
+
+
 def _chiave_operazione(data: str, importo: float, classificazione: Dict[str, Any],
-                       conto: Optional[str] = None) -> tuple:
-    """Conto, giorno, importo, verso, categoria e chi: la stessa operazione in ogni copia."""
+                       conto: Optional[str] = None, testo: str = "") -> tuple:
+    """Conto, giorno, importo, verso, categoria e chi: la stessa operazione in ogni copia.
+
+    Per uno stipendio «chi» e' il riferimento della disposizione quando c'e':
+    una copia dell'estratto conto portava il dipendente vero, l'altra quello
+    provvisorio ricavato dai salari (``salario:nome|cognome``), e lo stesso
+    bonifico finiva in due gruppi con due righe in Banca (17 stipendi,
+    14.000,00 EUR contati due volte).
+    """
+    chi = str(classificazione.get("dipendente_id") or classificazione.get("socio_id")
+              or classificazione.get("numero_mutuo") or classificazione.get("gestore_pagamento")
+              or classificazione.get("fascicolo_giudiziario") or "")
+    if classificazione.get("dipendente_id"):
+        rif = _RIF_DISPOSIZIONE.search(testo or str(classificazione.get("descrizione") or ""))
+        if rif:
+            chi = f"rif:{rif.group(1)}"
     return (
         conto or CONTO_BANCA_PREDEFINITO,
         data, int(round(importo * 100)), classificazione.get("tipo"), classificazione.get("categoria"),
-        str(classificazione.get("dipendente_id") or classificazione.get("socio_id")
-            or classificazione.get("numero_mutuo") or classificazione.get("gestore_pagamento")
-            or classificazione.get("fascicolo_giudiziario") or ""),
+        chi,
     )
 
 
@@ -342,7 +373,7 @@ async def _riclassifica_riga_propria(db, prima_nota_id: str, documento: Dict[str
     # rimborso/apporto soci scritto come stipendio. Il resto non si ritocca
     # (fra un giro e l'altro la stessa riga puo' leggersi TFR o stipendio).
     if not str(documento.get("tipo_classificazione_contabile") or "").startswith(
-        "finanziamento_socio_"
+        ("finanziamento_socio_", "commissione_bancaria:")
     ):
         return
     riga = await db["prima_nota_banca"].find_one({"id": prima_nota_id}, {"_id": 0})
@@ -467,7 +498,7 @@ async def proietta_movimenti_bancari_semantici(
     gruppi: Dict[tuple, list] = {}
     for voce in candidati:
         gruppi.setdefault(
-            _chiave_operazione(voce[2], voce[3], voce[1], conto_contabile), [],
+            _chiave_operazione(voce[2], voce[3], voce[1], conto_contabile, _testo(voce[0])), [],
         ).append(voce)
 
     # Una riga gia' agganciata a una copia del gruppo e' quell'operazione,
@@ -482,13 +513,16 @@ async def proietta_movimenti_bancari_semantici(
     if gruppi:
         # Anche le righe scritte da altri canali (import dell'estratto conto,
         # registrazioni a mano) sono gia' l'operazione: contano, non si toccano.
+        # Anche per estratto conto: una riga scritta con la categoria sbagliata
+        # (una commissione registrata come stipendio) e' ancora quell'operazione.
         righe = await db["prima_nota_banca"].find(
-            {"categoria": {"$in": sorted({chiave[4] for chiave in gruppi})},
+            {"$or": [{"categoria": {"$in": sorted({chiave[4] for chiave in gruppi})}},
+                     {"estratto_conto_id": {"$in": sorted(gruppo_per_ec)}}],
              "status": {"$nin": ["deleted", "archived"]}},
             {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "categoria": 1,
              "conto_contabile": 1,
              "dipendente_id": 1, "socio_id": 1, "numero_mutuo": 1, "gestore_pagamento": 1,
-             "fascicolo_giudiziario": 1,
+             "fascicolo_giudiziario": 1, "descrizione": 1,
              "estratto_conto_id": 1, "source": 1, "ripartizione_capitale_interessi": 1},
         ).to_list(None)
         for riga in righe:
@@ -506,7 +540,10 @@ async def proietta_movimenti_bancari_semantici(
         tenute = sorted(
             esistenti.get(chiave, []),
             key=lambda r: (r.get("source") == SOURCE,
-                           r.get("estratto_conto_id") not in ec_del_gruppo, str(r.get("id") or "")),
+                           r.get("estratto_conto_id") not in ec_del_gruppo,
+                           # resta la riga col dipendente vero, non quello provvisorio
+                           str(r.get("dipendente_id") or "").startswith("salario:"),
+                           str(r.get("id") or "")),
         )
         if movimento_ids is None:
             for extra in tenute[n:]:
@@ -525,6 +562,12 @@ async def proietta_movimenti_bancari_semantici(
         for indice, (movimento_ec, classificazione, data, importo, ec_id) in enumerate(voci):
             riga = per_ec.get(ec_id)
             gia_esistente = riga is not None
+            if riga is not None and riga.get("categoria") != classificazione["categoria"]:
+                # La stessa riga, letta meglio: cambia categoria con lo stesso id.
+                await _riclassifica_riga_propria(db, riga["id"], _documento(
+                    movimento_ec, classificazione, data, importo, ec_id,
+                    conto_contabile if conto_contabile != CONTO_BANCA_PREDEFINITO else None,
+                ), stats)
             if riga is None and libere:
                 riga = libere.pop(0)
                 gia_esistente = True
