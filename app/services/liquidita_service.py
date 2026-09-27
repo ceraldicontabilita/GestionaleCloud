@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
+    TUTTI_I_CONTI,
     filtro_saldo_prima_nota,
 )
 
@@ -26,7 +27,8 @@ async def calcola_liquidita(
     data_inizio = f"{anno}-01-01"
     intervallo = {"$gte": data_inizio, "$lte": data_fine}
     cassa_query = filtro_saldo_prima_nota("prima_nota_cassa", data=intervallo)
-    banca_query = filtro_saldo_prima_nota("prima_nota_banca", data=intervallo)
+    banca_query = filtro_saldo_prima_nota(
+        "prima_nota_banca", conto=TUTTI_I_CONTI, data=intervallo)
     cassa = await aggrega_saldo_prima_nota(
         db, "prima_nota_cassa", cassa_query, anno,
     )

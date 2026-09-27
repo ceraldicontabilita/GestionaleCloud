@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.mapping_piano_conti import completa_conti_prima_nota
 from app.services.prima_nota_integrity import (
     CAMPI_EVIDENZA_BANCA,
     CAMPI_ID_PRIMA_NOTA,
@@ -1012,6 +1013,11 @@ async def registra_pagamento_fattura(
                 "riconciliato": True,
                 "confidenza": movimento_bancario.get("match_score", 1.0),
             })
+        # Ogni riga nuova porta conto di tesoreria e contropartita CEE, come
+        # quelle del writer unico (scritture_contabili._prepara_documento).
+        mov.update(completa_conti_prima_nota(
+            "cassa" if collection == COLLECTION_PRIMA_NOTA_CASSA else "banca", mov,
+        ))
         await db[collection].insert_one(mov.copy(), session=session)
         return (mov["id"], False)
 

@@ -14,6 +14,7 @@ from app.constants.stati_assegno import ASSEGNI_STATI_IN_PORTAFOGLIO
 from app.routers.accounting.contabilita_gestionale import _bilancio_verifica_da_registro
 from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
+    TUTTI_I_CONTI,
     filtro_saldo_prima_nota,
 )
 from app.services.registrazione_contabile import registra_scrittura_semplice
@@ -519,7 +520,8 @@ async def apertura_nuovo_esercizio(input_data: AperturaEsercizioInput) -> Dict[s
         "$lte": f"{anno_precedente}-12-31",
     }
     query_cassa = filtro_saldo_prima_nota("prima_nota_cassa", data=intervallo_prima_nota)
-    query_banca = filtro_saldo_prima_nota("prima_nota_banca", data=intervallo_prima_nota)
+    query_banca = filtro_saldo_prima_nota(
+        "prima_nota_banca", conto=TUTTI_I_CONTI, data=intervallo_prima_nota)
     saldo_cassa = (
         await aggrega_saldo_prima_nota(
             db, "prima_nota_cassa", query_cassa, anno=anno_precedente

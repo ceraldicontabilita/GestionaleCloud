@@ -46,6 +46,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.services.mapping_piano_conti import conto_tesoreria
 from app.services.scritture_contabili import scrivi_movimento_se_assente
 
 logger = logging.getLogger(__name__)
@@ -440,7 +441,10 @@ async def riconosci_versamenti(
             if b is None:
                 id_banca, _ = await scrivi_movimento_se_assente(
                     db, "banca", {"operation_id": operazione},
+                    # La contropartita di un trasferimento interno e' l'altro
+                    # conto di tesoreria: dalla categoria non si deduce.
                     {**comune, "tipo": tipo_banca,
+                     "conto_contropartita": conto_tesoreria("cassa"),
                      "descrizione": f"{tipo.capitalize()} {verso_banca} — {descrizione}".strip(" —")},
                 )
                 conteggi["gambe_banca_create"] += 1
@@ -450,6 +454,7 @@ async def riconosci_versamenti(
                 id_cassa, _ = await scrivi_movimento_se_assente(
                     db, "cassa", {"operation_id": operazione},
                     {**comune, "tipo": tipo_cassa, "trasferimento_collegato_id": id_banca,
+                     "conto_contropartita": conto_tesoreria("banca"),
                      "descrizione": f"{tipo.capitalize()} {verso_cassa} — {descrizione}".strip(" —")},
                 )
                 conteggi["gambe_cassa_create"] += 1
