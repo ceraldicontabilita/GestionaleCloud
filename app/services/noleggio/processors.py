@@ -32,11 +32,8 @@ logger = logging.getLogger(__name__)
 #: la copia `archived` dell'import XML e quella attiva da Drive, e lo scan le
 #: sommava entrambe (59 fatture per 41.681 € invece di ~33).
 #: `$nin` su un campo assente passa (regola 11): e' voluto, assente = attiva.
-FILTRO_FATTURA_ATTIVA: Dict[str, Any] = {
-    "status": {"$nin": ["archived", "archiviata", "deleted"]},
-    "stato_import": {"$nin": ["archivio_storico", "collisione_identita_da_verificare"]},
-    "deleted": {"$ne": True},
-}
+#: Criterio unico in `app/constants/fattura_attiva.py`.
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA  # noqa: E402,F401
 
 
 def scegli_veicolo_per_fattura(

@@ -34,15 +34,30 @@ def test_riepilogo_categorie_separa_senza_doppioni():
         _f(id="n", iva_detraibile=50),                        # non utilizzata
         _f(id="i", iva_detraibile=30, stato_detrazione_iva="INDETRAIBILE"),
         _f(id="r", iva_detraibile=20, stato_detrazione_iva="RINVIATA"),
-        _f(id="nc", iva_detraibile=999, tipo_documento="TD04"),  # nota credito → ignorata
+        _f(id="nc", iva_detraibile=10, tipo_documento="TD04"),  # nota credito → riduce
     ]
     cat = riep.riepilogo_categorie(fatture)
     assert cat["utilizzata"] == {"iva": 100, "conteggio": 1}
-    assert cat["non_utilizzata"] == {"iva": 50, "conteggio": 1}
+    assert cat["non_utilizzata"] == {"iva": 40, "conteggio": 2}
     assert cat["indetraibile"] == {"iva": 30, "conteggio": 1}
     assert cat["rinviata"] == {"iva": 20, "conteggio": 1}
     # disponibile = utilizzata + non utilizzata + rinviata + recuperata
-    assert cat["disponibile"]["iva"] == 170
+    assert cat["disponibile"]["iva"] == 160
+
+
+def test_riepilogo_fattura_mai_valutata_e_da_verificare_non_disponibile():
+    """Audit 27/09/2026 (punto 7): stato assente o iva_detraibile None non
+    e' IVA «non utilizzata» a 0 €: e' da verificare, con l'IVA del documento."""
+    fatture = [
+        _f(id="ok", iva_detraibile=50),
+        {"id": "mai", "iva": 22.0, "periodo_iva_attribuito": "2026-01"},
+        _f(id="nv", iva_detraibile=None, iva=11.0, stato_detrazione_iva="NON_VALUTATA"),
+        _f(id="vuoto", iva_detraibile=5.0, stato_detrazione_iva=""),
+    ]
+    cat = riep.riepilogo_categorie(fatture)
+    assert cat["non_utilizzata"] == {"iva": 50, "conteggio": 1}
+    assert cat["da_verificare"] == {"iva": 38.0, "conteggio": 3}
+    assert cat["disponibile"]["iva"] == 50
 
 
 def test_calcolo_annuale_da_liquidazioni_confermate():

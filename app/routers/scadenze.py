@@ -59,10 +59,8 @@ async def _iva_acquisti_ufficiale(db, periodo: str) -> Dict[str, Any]:
 
     fatture = await _fatture_del_periodo(db, periodo)
     incluse, _escluse = liq.seleziona_fatture_per_liquidazione(fatture, periodo)
-    iva_acquisti = round(sum(
-        round(float(f.get("iva_detraibile") or 0), 2)
-        for f in incluse
-    ), 2)
+    # Le note di credito riducono l'IVA detraibile (segno negativo).
+    iva_acquisti = liq.calcola_totali(incluse)["iva_acquisti"]
     return {"iva_acquisti": iva_acquisti, "fonte": "stima"}
 
 
