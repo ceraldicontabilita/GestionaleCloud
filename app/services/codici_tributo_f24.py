@@ -1505,6 +1505,27 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "misto",
         "sezione": "ERARIO"
     },
+    # Ris. AdE 18/E del 28/04/2023 (denominazioni ufficiali abbreviate).
+    "8950": {
+        "descrizione": "Sanzione ravvedimento addizionale regionale IRPEF trattenuta dai sostituti - lavoro dipendente",
+        "tipo": "misto",
+        "sezione": "REGIONI"
+    },
+    "8951": {
+        "descrizione": "Sanzione ravvedimento addizionale regionale IRPEF trattenuta dai sostituti - redditi diversi",
+        "tipo": "misto",
+        "sezione": "REGIONI"
+    },
+    "8952": {
+        "descrizione": "Sanzione ravvedimento addizionale comunale IRPEF trattenuta dai sostituti - lavoro dipendente",
+        "tipo": "misto",
+        "sezione": "IMU"
+    },
+    "8953": {
+        "descrizione": "Sanzione ravvedimento addizionale comunale IRPEF trattenuta dai sostituti - redditi diversi",
+        "tipo": "misto",
+        "sezione": "IMU"
+    },
     "9399": {
         "descrizione": "Regolarizzazione operazioni IVA mancata fatturazione",
         "tipo": "misto",
