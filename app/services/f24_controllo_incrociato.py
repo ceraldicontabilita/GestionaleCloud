@@ -945,10 +945,57 @@ _RE_DATA_INCASSO = re.compile(r"DATA\s+INCASSO\s+(\d{2})/(\d{2})/(\d{4})", re.I)
 
 
 def data_incasso_causale(m: Dict[str, Any]) -> Optional[str]:
-    """La «DATA INCASSO gg/mm/aaaa» che la banca scrive nella causale I24."""
-    testo = str(m.get("descrizione") or m.get("descrizione_originale") or "")
-    trovata = _RE_DATA_INCASSO.search(testo)
-    return f"{trovata.group(3)}-{trovata.group(2)}-{trovata.group(1)}" if trovata else None
+    """La «DATA INCASSO gg/mm/aaaa» che la banca scrive nella causale I24.
+
+    Se la riga tenuta ha la causale troncata (il vecchio archivio scrive solo
+    «I24 AGENZIA ENTRATE») vale quella dell'export ufficiale della banca, la
+    copia dello stesso movimento messa in quarantena come doppione
+    (``causale_export_banca``, vedi ``causali_export_banca``).
+    """
+    for campo in ("descrizione", "descrizione_originale", "causale", "causale_export_banca"):
+        trovata = _RE_DATA_INCASSO.search(str(m.get(campo) or ""))
+        if trovata:
+            return f"{trovata.group(3)}-{trovata.group(2)}-{trovata.group(1)}"
+    return None
+
+
+async def causali_export_banca(db, movimenti: List[Dict[str, Any]]) -> int:
+    """Alle righe I24 senza data d'incasso aggiunge la causale della copia in quarantena.
+
+    Quando due export dello stesso conto portano la stessa riga, resta la
+    copia gia' collegata e l'altra va in ``estratto_conto_movimenti_quarantena``
+    con ``duplicato_di`` (``doppioni_estratto_conto.ripulisci_import``): se la
+    causale completa era sull'altra, la «DATA INCASSO» spariva e un addebito
+    certo restava da verificare (8.139,63 EUR del 17/06/2026). La copia vale
+    solo con lo stesso importo al centesimo; si annota in memoria, non si scrive.
+    """
+    from app.services.doppioni_estratto_conto import COLLEZIONE_QUARANTENA
+
+    senza = {
+        str(m["id"]): m for m in movimenti
+        if m.get("id") and e_addebito_delega(m) and not data_incasso_causale(m)
+    }
+    if not senza:
+        return 0
+    copie = await db[COLLEZIONE_QUARANTENA].find(
+        {"duplicato_di": {"$in": list(senza)}},
+        {"_id": 0, "id": 1, "duplicato_di": 1, "importo": 1,
+         "descrizione": 1, "descrizione_originale": 1},
+    ).to_list(len(senza) * 4 + 10)
+    arricchiti = 0
+    for copia in copie:
+        m = senza.get(str(copia.get("duplicato_di") or ""))
+        if m is None or m.get("causale_export_banca"):
+            continue
+        cents = importo_movimento_cents(m)
+        if not cents or importo_movimento_cents(copia) != cents:
+            continue
+        testo = str(copia.get("descrizione") or copia.get("descrizione_originale") or "")
+        if _RE_DATA_INCASSO.search(testo):
+            m["causale_export_banca"] = testo
+            m["causale_export_banca_da"] = copia.get("id")
+            arricchiti += 1
+    return arricchiti
 
 
 def e_addebito_delega(m: Dict[str, Any]) -> bool:
@@ -1071,7 +1118,10 @@ def riscontri_quietanze_banca(
                 f"importo {addebito['importo']:.2f} EUR uguale al centesimo; quietanza del "
                 f"{data_italiana(p['data'])}, addebito del {addebito['data_it']} "
                 f"({c['giorni']} gg dopo)"
-                + (f"; DATA INCASSO nella causale: {data_italiana(c['incasso'])}" if certo
+                + (f"; DATA INCASSO nella causale: {data_italiana(c['incasso'])}"
+                   + (" (export ufficiale della banca, copia "
+                      f"{c['m']['causale_export_banca_da']})"
+                      if c["m"].get("causale_export_banca_da") else "") if certo
                    else "; la causale non riporta la data d'incasso: da verificare")
             )
             voce = {**_vista_pagamento(p), "addebito": addebito, "motivazione": motivo,
@@ -1186,6 +1236,7 @@ async def applica_riscontri_quietanze(
 async def riscontra_quietanze_banca(db, *, dry_run: bool = False) -> Dict[str, Any]:
     """Il giro completo: registro letto una volta, riscontri e alert."""
     registro = await carica_registro(db)
+    await causali_export_banca(db, registro["movimenti"])
     esito = riscontri_quietanze_banca(registro["quietanze"], registro["movimenti"])
     if dry_run:
         return {"dry_run": True, **esito}
@@ -1211,9 +1262,11 @@ async def riscontra_quietanza_arrivata(db, importo: Any) -> Dict[str, Any]:
     movimenti = await db[COLL_ESTRATTO_CONTO].find(
         {"importo": {"$in": [valore, -valore]}}, {"_id": 0},
     ).to_list(200)
+    movimenti = [m for m in movimenti if m.get("entity_status") != "deleted"
+                 and str(m.get("tipo") or "uscita").lower() != "entrata"]
+    await causali_export_banca(db, movimenti)
     esito = riscontri_quietanze_banca(
         [_quietanza_legacy(q) for q in quietanze if q.get("entity_status") != "deleted"],
-        [m for m in movimenti if m.get("entity_status") != "deleted"
-         and str(m.get("tipo") or "uscita").lower() != "entrata"],
+        movimenti,
     )
     return {**esito["conteggi"], "scritti": await applica_riscontri_quietanze(db, esito, con_alert=False)}
