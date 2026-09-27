@@ -470,10 +470,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   scarto è un difetto nostro. Si legge **per posizione**
   (`app/services/lipe_parser.py`): nel livello testo del PDF le celle si
   mescolano alle caselle di spunta, e in ordine `18.058,92` diventa
-  `218.058,92`. La prova non è il parser ma l'aritmetica del quadro VP —
-  `VP6 = VP5 − VP4`, `VP14 = VP6 + VP8 − VP7`: un periodo che non quadra
-  **non viene depositato** e non fa da fonte. Una comunicazione ritrasmessa
-  (protocollo più alto) sostituisce la precedente.
+  `218.058,92`. La prova è l'aritmetica del quadro VP **a segni** (credito negativo): `VP6 = VP4 − VP5`,
+  `VP14 = VP6 + VP7 − VP8 − VP9 − VP10 − VP11 + VP12 − VP13`; un periodo che non quadra **non viene
+  depositato** e non fa da fonte. VP13 si legge solo a destra (a sinistra c'è «Metodo»). Una comunicazione
+  ritrasmessa (protocollo più alto, anche in `LIPE_2024_Itrim_<prot>.pdf`) sostituisce la precedente.
 - Il confronto mensile gestionale ↔ LIPE ↔ F24 è
   `GET /api/iva/confronto-commercialista/{anno}`: non aggiusta niente, dice
   dove si diverge. Un mese che non sappiamo calcolare è un «non lo so», non

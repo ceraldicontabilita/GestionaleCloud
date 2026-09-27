@@ -3267,7 +3267,8 @@ async def stato_cartella_unica(
     conteggi = {}
     for cartella in (cu.ARCHIVIO, cu.ERRORI, cu.DOPPIONI, "CESTINO", "RIMOSSO"):
         conteggi[cartella] = await db[cu.REGISTRO].count_documents({"cartella": cartella})
-    return {"attiva": cu.attivo(), "giro_in_corso": cu._lock.locked(),
+    return {"attiva": cu.attivo(),
+            "giro_in_corso": cu._lock.locked() or cu.svuotamento_in_corso(),
             "ultimo_giro": stato, "registro": conteggi}
 
 
@@ -3275,19 +3276,21 @@ async def stato_cartella_unica(
 @handle_errors
 async def avvia_giro_cartella_unica(
     background_tasks: BackgroundTasks,
+    tutto: bool = Query(False, description="Giri uno dopo l'altro finche' la cartella e' vuota"),
     _admin: Dict[str, Any] = Depends(richiedi_admin),
 ) -> Dict[str, Any]:
-    """Un giro subito sulla cartella DA ELABORARE, in sottofondo."""
+    """Un giro subito sulla cartella DA ELABORARE, in sottofondo; con
+    ``tutto=true`` continua finche' la cartella non e' vuota."""
     from app.services import drive_cartella_unica as cu
 
     if not cu.radice():
         raise HTTPException(status_code=409, detail="GOOGLE_DRIVE_DATI_FOLDER_ID non impostata")
     if not cu.import_attivo():
         raise HTTPException(status_code=409, detail="Import in pausa (DRIVE_CARTELLA_UNICA_IMPORT=false)")
-    if cu._lock.locked():
+    if cu._lock.locked() or cu.svuotamento_in_corso():
         return {"avviato": False, "motivo": "giro_in_corso"}
-    background_tasks.add_task(cu.giro, Database.get_db())
-    return {"avviato": True}
+    background_tasks.add_task(cu.svuota if tutto else cu.giro, Database.get_db())
+    return {"avviato": True, "tutto": tutto}
 
 
 @router.get("/cartella-unica/simulazione")

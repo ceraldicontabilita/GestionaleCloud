@@ -758,6 +758,19 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-QUIETANZE-ORFANE] errore: %s: %s", type(e).__name__, e)
 
+    async def _pagamenti_dichiarati_job():
+        """Report del titolare: le righe ancora aperte (fattura arrivata dopo,
+        riga dichiarata da scrivere, assegno comparso in banca). Job a se':
+        dentro «Automazioni Prima Nota», che dura ore e riparte a ogni
+        deploy, le 182 fatture pagate in banca aspettavano senza fine."""
+        try:
+            from app.database import Database
+            from app.services.pagamenti_dichiarati_titolare import applica_pagamenti_dichiarati
+            r = await applica_pagamenti_dichiarati(Database.get_db(), solo_pendenti=True)
+            logger.info("[SCHEDULER-PAGAMENTI-DICHIARATI] %s", r.get("conteggi") or r.get("saltato"))
+        except Exception as e:
+            logger.error("[SCHEDULER-PAGAMENTI-DICHIARATI] errore: %s: %s", type(e).__name__, e)
+
     async def _banca_versamenti_proiezione_job():
         """Assegni, versamenti di contante e proiezione dei movimenti bancari
         in Prima Nota. Pochi secondi, idempotenti: job a se', come le
@@ -1277,6 +1290,16 @@ def start_scheduler():
         coalesce=True,
         id="quietanze_orfane",
         name="Quietanze F24 senza modello: ricollega al loro F24 (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _pagamenti_dichiarati_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=5),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="pagamenti_dichiarati",
+        name="Report del titolare: pagamenti dichiarati ancora aperti (ogni 30 min)",
         replace_existing=True,
     )
     scheduler.add_job(
