@@ -25,7 +25,7 @@ import aiohttp
 
 from app.services.archivio_documenti_memoria import (
     MISSING, CursoreDocumenti, ArchivioDocumenti, CollezioneDocumenti, apply_projection, matches_filter,
-    prepara_filtro,
+    filtra_e_proietta_a_rate, prepara_filtro,
 )
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
@@ -735,11 +735,9 @@ class SupabaseTable(CollezioneDocumenti):
                         return CursoreDocumenti([
                             apply_projection(document, projection) for document in documents
                         ])
-                    return CursoreDocumenti([
-                        apply_projection(_senza_stato(document), projection)
-                        for document in documents
-                        if matches_filter(document, leggero)
-                    ])
+                    return CursoreDocumenti(await filtra_e_proietta_a_rate(
+                        documents, leggero, projection, prepara=_senza_stato,
+                    ), copia=False)
             async with self._remote_operation_lock:
                 await self._refresh_unlocked(projection, selector)
                 return CollezioneDocumenti.find(self, selector, projection, *args, **kwargs)
@@ -803,7 +801,10 @@ class SupabaseTable(CollezioneDocumenti):
                 await self._prepare_insert_unlocked(documents)
             else:
                 await self._refresh_unlocked(selector=selector)
-            snapshot = [_normalise_document(document) for document in self._documents]
+            # Le scritture in memoria sostituiscono i documenti, non li
+            # modificano sul posto: per annullarle basta l'elenco. Copiarli
+            # tutti (7.485 alert per chiuderne uno) fermava il server.
+            snapshot = list(self._documents)
             try:
                 method = getattr(CollezioneDocumenti, method_name)
                 return await method(self, *args, **kwargs)
