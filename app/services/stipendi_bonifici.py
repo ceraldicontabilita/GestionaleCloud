@@ -104,9 +104,27 @@ def competenza_bonifico_stipendio(data_movimento: Any) -> Optional[Tuple[int, in
     return data.month, data.year
 
 
-def periodo_atteso_bonifico(descrizione: str, data_movimento: Any) -> Optional[Tuple[int, int]]:
-    """Periodo dichiarato in causale, altrimenti quello dedotto dalla data."""
-    return estrai_periodo_causale(descrizione) or competenza_bonifico_stipendio(data_movimento)
+def competenza_dichiarata(valore: Any) -> Optional[Tuple[int, int]]:
+    """``"MM/AAAA"`` scritto dal titolare sul movimento, se valido."""
+    trovato = re.fullmatch(r"\s*(\d{1,2})/(\d{4})\s*", str(valore or ""))
+    if not trovato:
+        return None
+    mese, anno = int(trovato.group(1)), int(trovato.group(2))
+    return (mese, anno) if 1 <= mese <= 12 else None
+
+
+def periodo_atteso_bonifico(descrizione: str, data_movimento: Any,
+                            dichiarata: Any = None) -> Optional[Tuple[int, int]]:
+    """Il periodo che il titolare ha dichiarato sul movimento vince su tutto;
+    poi quello scritto in causale; altrimenti quello dedotto dalla data.
+
+    La causale la scrive chi dispone il bonifico e puo' sbagliare («paga
+    ottobre» su una busta di agosto): la parola del titolare la corregge."""
+    return (
+        competenza_dichiarata(dichiarata)
+        or estrai_periodo_causale(descrizione)
+        or competenza_bonifico_stipendio(data_movimento)
+    )
 
 
 def _nome_riga_stipendio(riga: Dict[str, Any]) -> str:
@@ -181,6 +199,7 @@ def _candidati_univoci(
     data_movimento: str = "",
     dipendente_id: Optional[str] = None,
     allow_partial: bool = True,
+    competenza: Any = None,
 ) -> List[Dict[str, Any]]:
     """Nome completo + importo entro il residuo + periodo di competenza.
 
@@ -188,7 +207,7 @@ def _candidati_univoci(
     bonifico con la regola del giorno 25 (``competenza_bonifico_stipendio``).
     """
     nome_favore = estrai_nome_favore(descrizione)
-    periodo = periodo_atteso_bonifico(descrizione, data_movimento)
+    periodo = periodo_atteso_bonifico(descrizione, data_movimento, competenza)
     candidati: List[Dict[str, Any]] = []
     for riga in righe:
         if riga.get("riconciliato") is True:
@@ -380,7 +399,9 @@ async def riallinea_competenza_bonifici_stipendi(
         periodo_riga = _periodo_riga(riga)
         for movimento in list(movimenti):
             descrizione = movimento.get("descrizione_originale") or movimento.get("descrizione") or ""
-            atteso = periodo_atteso_bonifico(descrizione, movimento.get("data"))
+            atteso = periodo_atteso_bonifico(
+                descrizione, movimento.get("data"), movimento.get("competenza_dichiarata"),
+            )
             if atteso is None or periodo_riga is None or atteso == periodo_riga:
                 esito["coerenti"] += 1
                 continue
@@ -599,6 +620,7 @@ async def recupera_relazioni_stipendi_mancanti(
                 data_movimento=movimento.get("data") or "",
                 dipendente_id=riga.get("dipendente_id"),
                 allow_partial=True,
+                competenza=movimento.get("competenza_dichiarata"),
             )
             if len(candidati) != 1:
                 result["riferimenti_non_verificati"] += 1
@@ -845,6 +867,7 @@ async def associa_bonifici_stipendi(
             data_movimento=movimento.get("data") or "",
             dipendente_id=destinazione.get("dipendente_id"),
             allow_partial=allow_partial,
+            competenza=movimento.get("competenza_dichiarata"),
         )
         if len(candidati) != 1:
             ambigui += int(len(candidati) > 1)
@@ -971,6 +994,7 @@ async def riconciliazione_salario_verificata(db, riga: Dict[str, Any]) -> bool:
             importo,
             [riga_verifica],
             data_movimento=movimento.get("data") or "",
+            competenza=movimento.get("competenza_dichiarata"),
         )
         if len(candidati) == 1:
             totale_verificato = round(totale_verificato + importo, 2)
