@@ -69,6 +69,11 @@ MARZO_BUONO = {
     ("LIPE_2026_407141844.pdf", 407141844),
     ("LIPE_2024_358048737.pdf", 358048737),
     ("lipe 2021 296015657.PDF", 296015657),
+    # nomi veri del Cassetto Fiscale 2021-2025: il trimestre sta in mezzo
+    ("LIPE_2024_Itrim_358048737.pdf", 358048737),
+    ("LIPE_2022_IItrim_322737558.pdf", 322737558),
+    ("LIPE_2021_IVtrim_300143210.pdf", 300143210),
+    ("LIPE_2026_T1.pdf", None),
     ("qualcosa.pdf", None),
     (None, None),
 ])
