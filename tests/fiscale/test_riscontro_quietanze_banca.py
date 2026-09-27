@@ -222,3 +222,37 @@ def test_all_arrivo_della_quietanza_si_guarda_solo_il_suo_importo():
     assert esito["addebiti_senza_quietanza"] == 0  # m2 non e' stato nemmeno letto
     assert _run(db[COLL_QUIETANZE_F24].find_one({"id": "q1"}))["movimento_bancario_id"] == "m1"
     assert _run(db["alerts"].find({}).to_list(10)) == []  # gli alert li apre solo il giro
+
+
+def test_la_causale_troncata_prende_la_data_incasso_dall_export_in_quarantena():
+    """17/06/2026: resta la riga del vecchio archivio («I24 AGENZIA ENTRATE»),
+    l'export ufficiale con «DATA INCASSO 16/06/2026» e' in quarantena come suo
+    doppione. La data della banca vale lo stesso: il riscontro e' certo."""
+    tenuta = {"id": "2026-06-17_-8139.63_I24_AGENZIA_ENTRATE", "data": "2026-06-17",
+              "importo": -8139.63, "tipo": "uscita", "descrizione": "I24 AGENZIA ENTRATE",
+              "causale": "I24 AGENZIA ENTRATE", "fonte": "legacy_staging_2026"}
+    db = _db([_q("q1", "2026-06-16", 8139.63)], [tenuta])
+    export = {"id": "EC-2026-06-17-8139.63-cee432330c22", "data": "2026-06-17", "importo": 8139.63,
+              "tipo": "uscita", "duplicato_di": tenuta["id"],
+              "descrizione": "I24 AGENZIA ENTRATE - PAG.TO TELEMATICO - DATA INCASSO 16/06/2026 "
+                             "2026-06-16-22.34.20.770713000604"}
+    _run(db["estratto_conto_movimenti_quarantena"].insert_one(export))
+
+    esito = _run(reg.riscontra_quietanze_banca(db))
+
+    [r] = esito["riscontrati"]
+    assert r["addebito"]["movimento_id"] == tenuta["id"]
+    assert export["id"] in r["motivazione"]
+    m = _run(db[COLL_ESTRATTO_CONTO].find_one({"id": tenuta["id"]}))
+    assert m["descrizione"] == "I24 AGENZIA ENTRATE"  # la riga tenuta non si riscrive
+
+
+def test_una_copia_in_quarantena_di_importo_diverso_non_presta_la_data():
+    tenuta = _m("m1", "2026-06-17", -8139.63)
+    db = _db([_q("q1", "2026-06-16", 8139.63)], [tenuta])
+    _run(db["estratto_conto_movimenti_quarantena"].insert_one({
+        "id": "x", "duplicato_di": "m1", "importo": 8139.64,
+        "descrizione": "I24 AGENZIA ENTRATE - DATA INCASSO 16/06/2026"}))
+
+    esito = _run(reg.riscontra_quietanze_banca(db, dry_run=True))
+    assert esito["riscontrati"] == [] and len(esito["da_verificare"]) == 1

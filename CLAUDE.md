@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 26/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 27/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -484,9 +484,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - F24, righe tributo, quietanza e movimento bancario sono entità distinte. La quietanza documenta il pagamento ma **non
   sostituisce la prova bancaria** né ricostruisce il modello (senza modello → alert «F24 mancante»); stato e residuo **per
-  riga tributo**. Quietanza ↔ addebito I24 (`riscontra_quietanze_banca` in `f24_controllo_incrociato.py`, giro dei 30 minuti
-  e arrivo della quietanza): pagamento = protocollo+data+saldo, certo solo con importo al centesimo e «DATA INCASSO» della
-  causale = data della quietanza, altrimenti candidati; gli orfani dei due lati aprono un alert con il record.
+  riga tributo**. Quietanza ↔ addebito I24 (`riscontra_quietanze_banca`, giro dei 30 minuti e arrivo della quietanza):
+  pagamento = protocollo+data+saldo, certo solo con importo al centesimo e «DATA INCASSO» della causale (troncata → dalla
+  copia in quarantena) = data della quietanza, altrimenti candidati; gli orfani dei due lati aprono un alert col record.
 - Il saldo F24 non è mai un costo: ritenute 1001/1002/1012, addizionali
   3802/3847/3848 e quote a carico del lavoratore sono debiti verso enti. La
   sezione INPS non è tutta deducibile: la quota datoriale viene dalle paghe.
