@@ -183,6 +183,9 @@ def cached(ttl_seconds: int = 60, key_prefix: str = ""):
 
 PREFISSO_ISTANTANEE = "istantanea:"
 _ricalcoli: Dict[str, asyncio.Task] = {}
+# Sale a ogni svuotamento: un ricalcolo partito prima di una scrittura non
+# rimette in memoria il riepilogo di prima, e nessuno si accoda a lui.
+_generazione = 0
 _TIPI_CHIAVE = (str, int, float, bool, type(None))
 
 
@@ -208,18 +211,29 @@ def _marca_istantanea(valore: Any, calcolata_at: str, eta: float, in_aggiornamen
     return valore
 
 
+async def svuota_istantanee() -> None:
+    """Dopo una scrittura: via le copie e i ricalcoli gia' partiti."""
+    global _generazione
+    _generazione += 1
+    _ricalcoli.clear()
+    await cache.clear_pattern(PREFISSO_ISTANTANEE)
+
+
 def _ricalcola(chiave: str, func: Callable, args: tuple, kwargs: dict, max_eta: float) -> asyncio.Task:
     compito = _ricalcoli.get(chiave)
     if compito is not None and not compito.done():
         return compito
+    generazione = _generazione
 
     async def calcola():
         try:
             valore = await func(*args, **kwargs)
-            await cache.set(chiave, valore, int(max_eta))
+            if generazione == _generazione:
+                await cache.set(chiave, valore, int(max_eta))
             return valore
         finally:
-            _ricalcoli.pop(chiave, None)
+            if _ricalcoli.get(chiave) is compito:
+                _ricalcoli.pop(chiave, None)
 
     compito = asyncio.get_running_loop().create_task(calcola(), name=chiave[:80])
     _ricalcoli[chiave] = compito
@@ -269,19 +283,18 @@ class IstantaneeMiddleware:
         if scope.get("method") in ("GET", "HEAD", "OPTIONS"):
             # «Rileggi» chiede il dato fresco: niente copia per questa lettura.
             if any(nome.lower() == b"x-rileggi" for nome, _ in scope.get("headers") or []):
-                await cache.clear_pattern(PREFISSO_ISTANTANEE)
+                await svuota_istantanee()
             await self.app(scope, receive, send)
             return
-        esito = {}
 
         async def invia(messaggio):
-            if messaggio.get("type") == "http.response.start":
-                esito["status"] = messaggio.get("status", 500)
+            # Si svuota prima che la risposta parta: la lettura che il client
+            # fa subito dopo il salvataggio non deve trovare la copia di prima.
+            if messaggio.get("type") == "http.response.start" and messaggio.get("status", 500) < 400:
+                await svuota_istantanee()
             await send(messaggio)
 
         await self.app(scope, receive, invia)
-        if esito.get("status", 500) < 400:
-            await cache.clear_pattern(PREFISSO_ISTANTANEE)
 
 
 # ============================================

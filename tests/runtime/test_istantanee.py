@@ -142,3 +142,56 @@ def test_rileggi_chiede_il_dato_fresco():
         return await riepilogo()
 
     assert _run(scenario())["n"] == 2
+
+
+def test_la_copia_si_svuota_prima_che_parta_la_risposta_della_scrittura():
+    """Il client rilegge appena riceve la risposta: la copia deve gia' essere via."""
+    _pulisci()
+    chiamate = []
+
+    @istantanea(ttl=600)
+    async def riepilogo():
+        chiamate.append(1)
+        return {"n": len(chiamate)}
+
+    async def app_finta(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    letti_alla_partenza = []
+
+    async def invia(messaggio):
+        if messaggio["type"] == "http.response.start":
+            letti_alla_partenza.append((await riepilogo())["n"])
+
+    async def scenario():
+        await riepilogo()
+        await performance.IstantaneeMiddleware(app_finta)({"type": "http", "method": "POST"}, None, invia)
+
+    _run(scenario())
+    assert letti_alla_partenza == [2]
+
+
+def test_un_ricalcolo_partito_prima_della_scrittura_non_rimette_il_dato_vecchio():
+    _pulisci()
+    stato = {"valore": 3}
+
+    @istantanea(ttl=600)
+    async def riepilogo():
+        letto = stato["valore"]
+        await asyncio.sleep(0.05)
+        return {"n": letto}
+
+    async def scenario():
+        vecchio = asyncio.create_task(riepilogo())
+        await asyncio.sleep(0.01)
+        stato["valore"] = 5
+        await performance.svuota_istantanee()
+        dopo = await riepilogo()
+        await vecchio
+        ancora = await riepilogo()
+        return dopo, ancora
+
+    dopo, ancora = _run(scenario())
+    assert dopo["n"] == 5
+    assert ancora["n"] == 5
