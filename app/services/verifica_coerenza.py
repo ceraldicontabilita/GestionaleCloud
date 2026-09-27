@@ -364,41 +364,58 @@ class VerificaCoerenza:
         """
         Verifica che gli F24 registrati corrispondano ai pagamenti in banca.
         """
+        from app.services import f24_controllo_incrociato as registro_f24
+
         prefix = f"{anno}"
-        
-        # Totale F24 da pagare/pagati
-        pipeline_f24 = [
-            {"$match": {"data_scadenza": {"$regex": f"^{prefix}"}}},
-            {"$group": {
-                "_id": "$stato",
-                "totale": {"$sum": "$saldo_finale"},
-                "count": {"$sum": 1}
-            }}
-        ]
-        result_f24 = await self.db["f24_unificato"].aggregate(pipeline_f24).to_list(10)
-        
-        f24_totale = sum(r["totale"] for r in result_f24)
-        f24_pagati = sum(r["totale"] for r in result_f24 if r["_id"] == "pagato")
-        
-        # Pagamenti F24 in banca
-        pipeline_banca = [
-            {"$match": {
+
+        # F24 dal registro unico (modelli, quietanze, addebiti), per data di
+        # versamento. Qui c'era un filtro su ``data_scadenza`` di
+        # f24_unificato, campo che nessun F24 ha: il controllo contava zero.
+        # «Pagato» e' l'esito del registro (quietanza o addebito), non un flag.
+        registro = await registro_f24.carica_registro(self.db)
+        f24_totale_cents = 0
+        f24_pagati_cents = 0
+        for modello in registro["f24"]:
+            data_versamento = registro_f24.data_versamento_modello(modello) or ""
+            if not data_versamento.startswith(prefix):
+                continue
+            saldo_cents = registro_f24.saldo_modello_cents(modello) or 0
+            f24_totale_cents += saldo_cents
+            esito, _motivo = registro_f24._esito_da_prove(
+                registro_f24.prove_modello(modello, registro)
+            )
+            if esito != registro_f24.ESITO_DA_PAGARE:
+                f24_pagati_cents += saldo_cents
+
+        # Pagamenti F24 in banca. La causale sta in campi diversi secondo la
+        # fonte (export, CSV, banca diretta) e le righe CSV / Enable Banking
+        # portano l'importo positivo con ``tipo=uscita``: cercare solo
+        # ``descrizione_originale`` con importo negativo le perdeva.
+        testo_f24 = "F24|I24|ERARIO|INPS|TRIBUT"
+        movimenti_banca = await self.db["estratto_conto_movimenti"].find(
+            {
                 "data": {"$regex": f"^{prefix}"},
-                "$or": [
-                    {"descrizione_originale": {"$regex": "F24", "$options": "i"}},
-                    {"descrizione_originale": {"$regex": "ERARIO", "$options": "i"}},
-                    {"descrizione_originale": {"$regex": "INPS", "$options": "i"}},
-                    {"descrizione_originale": {"$regex": "tribut", "$options": "i"}}
+                "$and": [
+                    {"$or": [
+                        {campo: {"$regex": testo_f24, "$options": "i"}}
+                        for campo in ("descrizione", "descrizione_originale", "causale")
+                    ]},
+                    {"$or": [{"tipo": "uscita"}, {"importo": {"$lt": 0}}]},
                 ],
-                "importo": {"$lt": 0}  # Uscite
-            }},
-            {"$group": {"_id": None, "totale": {"$sum": {"$abs": "$importo"}}}}
-        ]
-        result_banca = await self.db["estratto_conto_movimenti"].aggregate(pipeline_banca).to_list(1)
-        pagamenti_banca = result_banca[0]["totale"] if result_banca else 0
-        
-        differenza = f24_pagati - pagamenti_banca
-        
+            },
+            {"_id": 0, "importo": 1, "entity_status": 1},
+        ).to_list(20000)
+        pagamenti_banca_cents = sum(
+            abs(registro_f24.centesimi(m.get("importo")) or 0)
+            for m in movimenti_banca
+            if m.get("entity_status") != "deleted"
+        )
+
+        f24_totale = f24_totale_cents / 100
+        f24_pagati = f24_pagati_cents / 100
+        pagamenti_banca = pagamenti_banca_cents / 100
+        differenza = (f24_pagati_cents - pagamenti_banca_cents) / 100
+
         if abs(differenza) > 1:  # Tolleranza maggiore per F24
             self._aggiungi_discrepanza(
                 categoria="F24",
