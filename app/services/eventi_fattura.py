@@ -80,6 +80,10 @@ def costruisci_evento_fattura_created(
         "stato": invoice.get("status", "imported"),
         "pagato": invoice.get("stato_pagamento") == "pagata",
         "righe_linee": invoice.get("linee", []),
+        # Solo le fatture estere lette dal PDF: senza righe XML e' l'unico
+        # testo che dice cosa si e' comprato (un lettore SumUp non e' una
+        # commissione). Vuoto per le fatture XML.
+        "descrizione": " · ".join(invoice.get("descrizione_righe_ai") or []),
         "imponibile": invoice.get("imponibile", 0),
         "iva": invoice.get("iva", 0),
         "pagamento_rate": pagamento_rate_per_evento(invoice.get("pagamento_rate", [])),
