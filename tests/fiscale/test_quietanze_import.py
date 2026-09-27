@@ -246,10 +246,10 @@ def test_drive_quietanze_helpers():
     from app.services import drive_quietanze_ingest as dq
     assert dq.is_quietanza_filename("quietanza_giugno.PDF")
     assert not dq.is_quietanza_filename("nota.txt")
-    # In sandbox senza env Drive il canale risulta non configurato ma il
-    # flag di default è ACCESO (scelta utente 10/07)
+    # Canale Drive per sezione spento: su Render era false e la variabile e'
+    # stata tolta il 27/09/2026, quindi il default riflette la produzione.
     from app.config import settings
-    assert settings.ENABLE_DRIVE_QUIETANZE_SYNC is True
+    assert settings.ENABLE_DRIVE_QUIETANZE_SYNC is False
 
 
 def test_upload_auto_endpoint_usa_il_servizio_canonico_quietanze(monkeypatch):

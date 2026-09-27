@@ -181,42 +181,32 @@ class Settings(BaseSettings):
     GOOGLE_SERVICE_ACCOUNT_JSON_ESTRATTI_CONTO: Optional[str] = None
     GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI: Optional[str] = None
 
-    # Interruttori canali Drive (accesi/spenti — regola utente): letti
-    # dall'ambiente, default = stato attuale dei canali.
-    ENABLE_DRIVE_FATTURE_SYNC: bool = True
-    # Il servizio Render Starter dispone di memoria limitata. Le fatture XML
-    # vengono quindi elaborate a lotti piccoli e idempotenti, mai caricando
-    # l'intero arretrato nello stesso ciclo. Venticinque mantiene limitato il
-    # picco di memoria senza trasformare un archivio pluriennale in settimane
-    # di cicli da un solo documento.
+    # Interruttori canali Drive per sezione. Default = stato reale su Render
+    # al 27/09/2026 (letto dal pannello prima di cancellare le variabili):
+    # i canali per sezione sono smontati dallo scheduler e restano spenti
+    # anche per i pulsanti manuali; resta acceso solo il Cassetto Fiscale
+    # storico. Le variabili Render corrispondenti sono state tolte, quindi
+    # questi default SONO la configurazione di produzione.
+    ENABLE_DRIVE_FATTURE_SYNC: bool = False
+    # Lotti piccoli e idempotenti se il canale venisse riacceso.
     DRIVE_FATTURE_BATCH_SIZE: int = 25
-    ENABLE_DRIVE_CEDOLINI_SYNC: bool = True
-    ENABLE_DRIVE_CORRISPETTIVI_SYNC: bool = True
-    # Quietanze: ACCESO su scelta esplicita dell'utente (10/07/2026)
-    ENABLE_DRIVE_QUIETANZE_SYNC: bool = True
-    ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = True
-    # Anche gli estratti vengono elaborati in lotti minimi. La radice Drive
-    # contiene anni di documenti e non deve mai essere riprocessata tutta da
-    # un singolo worker web con 512 MiB di memoria.
+    ENABLE_DRIVE_CEDOLINI_SYNC: bool = False
+    ENABLE_DRIVE_CORRISPETTIVI_SYNC: bool = False
+    ENABLE_DRIVE_QUIETANZE_SYNC: bool = False
+    ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = False
     DRIVE_ESTRATTI_BATCH_SIZE: int = 1
     # Anno minimo dei documenti da importare dall'area Estratti conto
-    # (scelta utente 07/08/2026: "solo 2026, il resto fermo"). L'inbox unico
-    # contiene un arretrato dal 2023: i documenti piu' vecchi restano dove
-    # sono, non vengono ne' importati ne' spostati. Metterlo a 0 li sblocca.
+    # (scelta utente 07/08/2026: "solo 2026, il resto fermo").
     DRIVE_ESTRATTI_ANNO_MINIMO: int = 2026
     ENABLE_DRIVE_BONIFICI_SYNC: bool = False
-    # Canali fiscali Drive: avvisi bonari e cartelle esattoriali sono abilitati,
-    # ma restano fail-closed finche' la discovery non trova una sola cartella
-    # con il nome atteso sotto la radice fiscale configurata.
     ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC: bool = False
-    ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = True
-    ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = True
-    ENABLE_DRIVE_VERBALI_SYNC: bool = True
-    # Cassetto Fiscale storico (richiesta titolare 15/09/2026): spento di
-    # default come dichiarazioni_iva (attivato via Render dopo il deploy),
-    # il filtro del canale scarta comunque i singoli quadri componenti e i
-    # documenti misfiled (assicurazioni, avvisi bonari, cartelle esattoriali).
-    ENABLE_DRIVE_DICHIARAZIONI_FISCALI_SYNC: bool = False
+    ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = False
+    ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = False
+    ENABLE_DRIVE_VERBALI_SYNC: bool = False
+    # Cassetto Fiscale storico (richiesta titolare 15/09/2026): acceso in
+    # produzione; il filtro del canale scarta i quadri componenti e i
+    # documenti misfiled.
+    ENABLE_DRIVE_DICHIARAZIONI_FISCALI_SYNC: bool = True
     # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
     # (13/07/2026). Interruttore dedicato per poterli spegnere senza toccare
     # le credenziali IMAP. NB: il parser F24 email non è ancora validato su

@@ -194,6 +194,9 @@ def test_is_configured(monkeypatch):
 
     # Cartella + credenziali: configurato
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_SA_JSON", '{"type": "service_account"}')
+    # Il canale per sezione e' spento di default in produzione (27/09/2026).
+    assert ing.is_configured() is False
+    monkeypatch.setattr(settings, "ENABLE_DRIVE_CEDOLINI_SYNC", True)
     assert ing.is_configured() is True
 
 
