@@ -100,6 +100,60 @@ describe('Bilancio', () => {
     expect(screen.getByRole('button', { name: 'Riprova' })).toBeInTheDocument();
   });
 
+  it('separa Banca BPM e Mastercard SumUp e dichiara che sono saldi di Prima Nota', async () => {
+    api.get.mockImplementation(url => {
+      if (url.startsWith('/api/bilancio/stato-patrimoniale')) {
+        return Promise.resolve({ data: {
+          ...statoPatrimoniale,
+          attivo: {
+            ...statoPatrimoniale.attivo,
+            disponibilita_liquide: {
+              cassa: 100, banca: 500, mastercard_sumup: 100, altri_conti_banca: 0, totale: 700,
+            },
+          },
+        } });
+      }
+      return rispostaApi(url);
+    });
+    render(<Bilancio />);
+
+    expect(await screen.findByText('Mastercard SumUp')).toBeInTheDocument();
+    expect(screen.getByText('Banca BPM')).toBeInTheDocument();
+    expect(screen.getByTestId('bilancio-nota-saldi-prima-nota')).toHaveTextContent(
+      'non saldi certificati'
+    );
+  });
+
+  it('mostra il personale e non dichiara un utile che non si conosce', async () => {
+    api.get.mockImplementation(url => {
+      if (url.startsWith('/api/bilancio/conto-economico')) {
+        return Promise.resolve({ data: {
+          ...contoEconomico,
+          costi: {
+            ...contoEconomico.costi,
+            personale: null,
+            personale_contributi: null,
+            personale_incompleto: true,
+            personale_motivo: 'Nessuna busta paga registrata nel periodo',
+            totale_costi: null,
+          },
+          risultato: {
+            utile_perdita: null, margine_percentuale: null,
+            tipo: 'non_determinabile', incompleto: true,
+          },
+        } });
+      }
+      return rispostaApi(url);
+    });
+    render(<Bilancio />);
+    fireEvent.click(await screen.findByTestId('tab-conto-economico'));
+
+    expect(await screen.findByText('Personale (lordo buste paga)')).toBeInTheDocument();
+    const risultato = screen.getByTestId('bilancio-risultato');
+    expect(risultato).toHaveTextContent('Dato non disponibile');
+    expect(risultato).not.toHaveTextContent('UTILE DI ESERCIZIO');
+  });
+
   it('non elimina una voce manuale senza conferma', async () => {
     render(<Bilancio />);
 

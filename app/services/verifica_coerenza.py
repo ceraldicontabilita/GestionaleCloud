@@ -585,11 +585,11 @@ class VerificaCoerenza:
         iva_debito_corrispettivi = snapshot.get("iva_vendite")
         iva_credito_cents = snapshot.get("iva_acquisti_competenza_cents")
         iva_debito_cents = snapshot.get("iva_vendite_cents")
-        saldo_gestionale_cents = (
-            int(iva_debito_cents) - int(iva_credito_cents)
-            if iva_debito_cents is not None and iva_credito_cents is not None
-            else None
-        )
+        # Il saldo e' quello della liquidazione (``saldo_cents``: confermata,
+        # oppure calcolata col credito del mese prima), None quando mancano
+        # dati. Ricalcolarlo qui come vendite meno acquisti ignorava sia il
+        # credito riportato sia lo stato «dati mancanti».
+        saldo_gestionale_cents = snapshot.get("saldo_cents")
         saldo_gestionale = (
             euros(saldo_gestionale_cents)
             if saldo_gestionale_cents is not None else None
@@ -648,6 +648,7 @@ class VerificaCoerenza:
                 "iva_da_versare": None if saldo_gestionale is None else max(saldo_gestionale, 0),
                 "iva_a_credito": None if saldo_gestionale is None else max(-saldo_gestionale, 0),
                 "saldo_cents": snapshot.get("saldo_cents"),
+                "credito_precedente_cents": snapshot.get("credito_precedente_cents"),
             },
             "f24_commercialista": {
                 **f24_iva,

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import logging
 
 from app.database import Database, Collections
+from app.services.conto_economico_gestionale import FILTRO_CORRISPETTIVI_VALIDI
 from app.utils.dependencies import get_optional_user
 
 logger = logging.getLogger(__name__)
@@ -247,8 +248,13 @@ async def get_trend_mensile(
     
     # QUERY 1: Corrispettivi (entrate + IVA debito) raggruppati per mese
     try:
+        # Corrispettivi validi: filtro unico, senza le righe con ``status``
+        # deleted (30 righe di luglio contate due volte).
         corr_pipeline = [
-            {"$match": {"data": {"$gte": data_inizio_anno, "$lte": data_fine_anno}}},
+            {"$match": {
+                **FILTRO_CORRISPETTIVI_VALIDI,
+                "data": {"$gte": data_inizio_anno, "$lte": data_fine_anno},
+            }},
             {"$addFields": {
                 "mese": {"$toInt": {"$substr": ["$data", 5, 2]}}
             }},

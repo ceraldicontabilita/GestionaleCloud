@@ -59,6 +59,35 @@ describe('Finanziaria', () => {
     expect(screen.getByText('Fatture attive non gestite da una fonte canonica.')).toBeInTheDocument();
   });
 
+  it('separa BPM e Mastercard SumUp e dice che sono saldi di Prima Nota', async () => {
+    api.get.mockResolvedValue({ data: {
+      ...summary,
+      sumup: { entrate: 20, uscite: 0, riporto: 0, saldo: 20 },
+    } });
+    render(<Finanziaria />);
+
+    expect(await screen.findByTestId('finanziaria-riga-sumup')).toHaveTextContent('Mastercard SumUp');
+    expect(screen.getByText('Banca BPM')).toBeInTheDocument();
+    expect(screen.getByTestId('finanziaria-nota-prima-nota')).toHaveTextContent(
+      'non saldi certificati'
+    );
+  });
+
+  it('IVA con fatture da classificare: nessun saldo inventato', async () => {
+    api.get.mockResolvedValue({ data: {
+      ...summary,
+      vat_credit: null,
+      vat_balance: null,
+      vat_status: 'Da classificare (3 fatture senza IVA detraibile)',
+      vat_da_classificare: 3,
+    } });
+    render(<Finanziaria />);
+
+    expect(await screen.findByTestId('finanziaria-iva-saldo')).toHaveTextContent('Dato non disponibile');
+    expect(screen.getAllByText(/Da classificare \(3 fatture/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Dato non disponibile').length).toBeGreaterThanOrEqual(3);
+  });
+
   it('mostra un errore reale senza convertirlo in valori zero', async () => {
     api.get.mockRejectedValue(new Error('servizio non disponibile'));
     render(<Finanziaria />);

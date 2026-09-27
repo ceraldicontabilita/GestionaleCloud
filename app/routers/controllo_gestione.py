@@ -7,6 +7,8 @@ from typing import Dict, Any
 import logging
 
 from app.database import Database
+from app.services.conto_economico_gestionale import costo_personale, ricavi_corrispettivi
+from app.services.fatture_report_ae import FILTRO_FATTURE_ATTIVE
 from app.utils.error_handler import handle_errors
 
 router = APIRouter()
@@ -51,69 +53,42 @@ async def get_analisi_costi_ricavi(
         periodo = str(anno)
     
     # === RICAVI ===
-    # Corrispettivi
-    corrispettivi = await db["corrispettivi"].aggregate([
-        {"$match": {
-            "data": {"$gte": data_inizio, "$lt": data_fine},
-            "entity_status": {"$ne": "deleted"},
-        }},
-        {"$group": {"_id": None, "totale": {
-            # Gli XML recenti usano ``totale_imponibile``; i documenti
-            # storici canonici usano ``imponibile``. Ignorare il secondo
-            # campo confrontava pochi giorni di ricavi con un anno di costi.
-            "$sum": {"$cond": [
-                {"$gt": [{"$ifNull": ["$totale_imponibile", 0]}, 0]},
-                "$totale_imponibile",
-                {"$cond": [
-                    {"$gt": [{"$ifNull": ["$imponibile", 0]}, 0]},
-                    "$imponibile",
-                    {"$subtract": [
-                        {"$ifNull": ["$totale", 0]},
-                        {"$ifNull": [
-                            "$totale_iva",
-                            {"$ifNull": ["$iva", 0]},
-                        ]},
-                    ]},
-                ]},
-            ]}
-        }, "prima_data": {"$min": "$data"}, "ultima_data": {"$max": "$data"},
-            "documenti": {"$sum": 1}}}
-    ]).to_list(1)
-    totale_corrispettivi = corrispettivi[0]["totale"] if corrispettivi else 0
+    # Corrispettivi validi (filtro e imponibile unici:
+    # services/conto_economico_gestionale.py). Filtrare il solo
+    # ``entity_status`` contava due volte le 30 righe di luglio con
+    # ``status: deleted``.
+    ricavi_rt = await ricavi_corrispettivi(db, {"$gte": data_inizio, "$lt": data_fine})
+    totale_corrispettivi = ricavi_rt["imponibile"]
     copertura_corrispettivi = {
-        "dal": corrispettivi[0].get("prima_data") if corrispettivi else None,
-        "al": corrispettivi[0].get("ultima_data") if corrispettivi else None,
-        "documenti": int(corrispettivi[0].get("documenti") or 0) if corrispettivi else 0,
+        "dal": ricavi_rt["dal"],
+        "al": ricavi_rt["al"],
+        "documenti": ricavi_rt["documenti"],
     }
-    
+    if ricavi_rt["senza_imponibile"]:
+        copertura_corrispettivi["senza_imponibile"] = ricavi_rt["senza_imponibile"]
+
     # Ricavi = SOLO corrispettivi: `invoices` contiene solo fatture RICEVUTE,
     # le TD01/TD24/TD26 non sono fatture emesse — contarle nei ricavi
     # gonfiava i ricavi coi costi (bug #10 audit memoria/endpoints/README.md).
     ricavi_totali = totale_corrispettivi
-    
+
     # === COSTI ===
-    # Costo personale (cedolini)
-    costo_personale = await db["cedolini"].aggregate([
-        {"$match": {"anno": anno, **({"mese": mese} if mese else {})}},
-        {"$group": {"_id": None, "totale": {"$sum": "$costo_azienda"}}}
-    ]).to_list(1)
-    totale_personale = costo_personale[0]["totale"] if costo_personale else 0
-    
-    # Se non ci sono cedolini, usa prima_nota_salari
-    if totale_personale == 0:
-        salari = await db["prima_nota_salari"].aggregate([
-            {"$match": {"anno": anno, **({"mese": mese} if mese else {})}},
-            {"$group": {"_id": None, "totale": {"$sum": "$costo_azienda"}}}
-        ]).to_list(1)
-        totale_personale = salari[0]["totale"] if salari else 0
-    
-    # Acquisti: TUTTE le fatture ricevute (prima le TD01/TD24/TD26 — la quasi
-    # totalità — erano escluse), con le note di credito dedotte
+    # Costo del personale = lordo delle buste del periodo. ``costo_azienda``
+    # non esiste su nessuna busta ne' riga salari: sommarlo dava 0 e la
+    # Dashboard mostrava un utile falso. I contributi datoriali non ci sono
+    # sui dati: None col motivo, mai 0. Senza nessun lordo il costo e' None.
+    personale = await costo_personale(db, anno, mese)
+    totale_personale = personale["lordo"]
+
+    # Acquisti: TUTTE le fatture ricevute attive (prima le TD01/TD24/TD26 —
+    # la quasi totalita' — erano escluse), con le note di credito dedotte.
+    # «Attiva» con lo stesso criterio del giornale: fuori le copie archiviate
+    # (``archived`` e ``archiviata``), le cancellate e le collisioni aperte.
     acquisti = await db["invoices"].aggregate([
         {"$match": {
+            **FILTRO_FATTURE_ATTIVE,
             "invoice_date": {"$gte": data_inizio, "$lt": data_fine},
             "tipo_documento": {"$nin": ["TD04", "TD08"]},
-            "status": {"$nin": ["deleted", "archived"]},
         }},
         {"$group": {"_id": None, "totale": {"$sum": {
             "$ifNull": ["$imponibile", {
@@ -125,9 +100,9 @@ async def get_analisi_costi_ricavi(
 
     note_credito = await db["invoices"].aggregate([
         {"$match": {
+            **FILTRO_FATTURE_ATTIVE,
             "invoice_date": {"$gte": data_inizio, "$lt": data_fine},
             "tipo_documento": {"$in": ["TD04", "TD08"]},
-            "status": {"$nin": ["deleted", "archived"]},
         }},
         {"$group": {"_id": None, "totale": {"$sum": {
             "$ifNull": ["$imponibile", {
@@ -136,18 +111,26 @@ async def get_analisi_costi_ricavi(
         }}}}
     ]).to_list(1)
     totale_acquisti -= note_credito[0]["totale"] if note_credito else 0
-    
+
     # I pagamenti in Prima Nota non sono nuovi costi: sommarli alle fatture
     # contabilizzava due volte la stessa spesa e includeva anche trasferimenti
     # Cassa/Banca/POS. Le altre uscite restano zero finche' non esiste un
     # documento di costo classificato nel registro contabile canonico.
     totale_altre_uscite = 0
-    costi_totali = totale_personale + totale_acquisti
-    
+    # Un costo che non si conosce non e' zero: senza il personale anche il
+    # totale dei costi e il margine sono «Dato non disponibile».
+    costi_totali = (
+        None if totale_personale is None
+        else totale_personale + totale_acquisti + totale_altre_uscite
+    )
+
     # Margine
-    margine = ricavi_totali - costi_totali
-    margine_percentuale = (margine / ricavi_totali * 100) if ricavi_totali > 0 else 0
-    
+    margine = None if costi_totali is None else ricavi_totali - costi_totali
+    margine_percentuale = (
+        round(margine / ricavi_totali * 100, 1)
+        if margine is not None and ricavi_totali > 0 else None
+    )
+
     return {
         "periodo": periodo,
         "anno": anno,
@@ -157,20 +140,32 @@ async def get_analisi_costi_ricavi(
             "totale": round(ricavi_totali, 2)
         },
         "costi": {
-            "personale": round(totale_personale, 2),
+            "personale": _arrotonda(totale_personale),
+            # Quota datoriale assente sui dati: dichiarata, mai stimata.
+            "personale_contributi": None,
+            "personale_contributi_motivo": personale["contributi_motivo"],
+            "personale_incompleto": personale["incompleto"],
+            "personale_motivo": personale["motivo"],
+            "personale_buste": personale["buste"],
             "acquisti_merce": round(totale_acquisti, 2),
             "altre_uscite": round(totale_altre_uscite, 2),
-            "totale": round(costi_totali, 2)
+            "totale": _arrotonda(costi_totali),
         },
         "margine": {
-            "importo": round(margine, 2),
-            "percentuale": round(margine_percentuale, 1),
-            "tipo": "utile" if margine > 0 else "perdita"
+            "importo": _arrotonda(margine),
+            "percentuale": margine_percentuale,
+            "tipo": None if margine is None else ("utile" if margine > 0 else "perdita"),
+            # Senza contributi datoriali il margine e' sovrastimato.
+            "incompleto": personale["incompleto"],
         },
         "criterio": "competenza_imponibile_senza_doppio_conteggio_pagamenti",
-        "fonti": ["corrispettivi", "invoices", "cedolini/prima_nota_salari"],
+        "fonti": ["corrispettivi", "invoices", "cedolini.lordo"],
         "copertura_corrispettivi": copertura_corrispettivi,
     }
+
+
+def _arrotonda(valore):
+    return None if valore is None else round(valore, 2)
 
 
 @router.get("/trend-mensile")
@@ -180,35 +175,44 @@ async def get_trend_mensile(anno: int) -> Dict[str, Any]:
     Trend mensile di ricavi, costi e margine.
     """
     risultati = []
-    
+    nomi = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
+            "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+
     for mese in range(1, 13):
         try:
             analisi = await get_analisi_costi_ricavi(anno=anno, mese=mese)
             risultati.append({
                 "mese": mese,
-                "mese_nome": ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", 
-                             "Lug", "Ago", "Set", "Ott", "Nov", "Dic"][mese-1],
+                "mese_nome": nomi[mese - 1],
                 "ricavi": analisi["ricavi"]["totale"],
                 "costi": analisi["costi"]["totale"],
                 "margine": analisi["margine"]["importo"]
             })
-        except Exception:
+        except Exception as exc:
+            # Un mese che non si riesce a leggere non vale zero.
+            logger.warning(
+                "[ControlloGestione] trend %s/%s non calcolato: %s: %s",
+                mese, anno, type(exc).__name__, exc,
+            )
             risultati.append({
                 "mese": mese,
-                "mese_nome": ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", 
-                             "Lug", "Ago", "Set", "Ott", "Nov", "Dic"][mese-1],
-                "ricavi": 0,
-                "costi": 0,
-                "margine": 0
+                "mese_nome": nomi[mese - 1],
+                "ricavi": None,
+                "costi": None,
+                "margine": None
             })
-    
+
+    def _somma(campo):
+        valori = [r[campo] for r in risultati]
+        return None if any(v is None for v in valori) else round(sum(valori), 2)
+
     return {
         "anno": anno,
         "trend": risultati,
         "totale_anno": {
-            "ricavi": round(sum(r["ricavi"] for r in risultati), 2),
-            "costi": round(sum(r["costi"] for r in risultati), 2),
-            "margine": round(sum(r["margine"] for r in risultati), 2)
+            "ricavi": _somma("ricavi"),
+            "costi": _somma("costi"),
+            "margine": _somma("margine"),
         }
     }
 
@@ -307,29 +311,34 @@ async def get_kpi_gestionali(anno: int) -> Dict[str, Any]:
     # Calcola KPI
     ricavi = analisi["ricavi"]["totale"]
     costi = analisi["costi"]["totale"]
-    costo_personale = analisi["costi"]["personale"]
+    lordo_personale = analisi["costi"]["personale"]
     costo_merce = analisi["costi"]["acquisti_merce"]
-    
+
+    # Senza il costo del personale margine e costi non si conoscono: None,
+    # mai uno zero che sembrerebbe un dato.
     return {
         "anno": anno,
         "kpi": {
             "margine_operativo": {
-                "valore": round(analisi["margine"]["importo"], 2),
-                "percentuale": round(analisi["margine"]["percentuale"], 1),
+                "valore": analisi["margine"]["importo"],
+                "percentuale": analisi["margine"]["percentuale"],
                 "descrizione": "Margine sui ricavi"
             },
             "incidenza_personale": {
-                "valore": round(costo_personale / ricavi * 100, 1) if ricavi > 0 else 0,
+                "valore": (
+                    round(lordo_personale / ricavi * 100, 1)
+                    if lordo_personale is not None and ricavi > 0 else None
+                ),
                 "descrizione": "% costo personale su ricavi",
                 "benchmark": "< 35%"
             },
             "incidenza_merce": {
-                "valore": round(costo_merce / ricavi * 100, 1) if ricavi > 0 else 0,
+                "valore": round(costo_merce / ricavi * 100, 1) if ricavi > 0 else None,
                 "descrizione": "% costo materie prime su ricavi",
                 "benchmark": "25-35%"
             },
             "costo_medio_giornaliero": {
-                "valore": round(costi / 365, 2),
+                "valore": None if costi is None else round(costi / 365, 2),
                 "descrizione": "Costo operativo medio giornaliero"
             },
             "ricavo_medio_giornaliero": {

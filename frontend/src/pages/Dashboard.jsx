@@ -55,6 +55,20 @@ const MESI = [
 
 const ultimoGiorno = (anno, mese) => new Date(anno, mese, 0).getDate();
 
+export const DATO_NON_DISPONIBILE = 'Dato non disponibile';
+
+/**
+ * Stato della card IVA. Un saldo che il backend non sa calcolare (mese con
+ * dati mancanti, IVA detraibile non classificata) arriva null: e' «Dato non
+ * disponibile», mai 0,00 con «Nessuna IVA da versare».
+ */
+export function statoIva(ivaDaVersare, ivaACredito) {
+  if (ivaDaVersare == null && ivaACredito == null) return { tipo: 'non_disponibile', valore: null };
+  if (ivaDaVersare != null && ivaDaVersare > 0) return { tipo: 'da_versare', valore: ivaDaVersare };
+  if (ivaACredito != null && ivaACredito > 0) return { tipo: 'a_credito', valore: ivaACredito };
+  return { tipo: 'zero', valore: 0 };
+}
+
 export default function Dashboard() {
   const { anno } = useAnnoGlobale();
   // 0 = tutto l'anno; 1..12 = mese singolo. È lo stato che comanda tutto.
@@ -253,6 +267,7 @@ export default function Dashboard() {
   );
 
   const rispostaAttiva = RISPOSTE.find(r => r.id === domanda);
+  const cardIva = statoIva(ivaDaVersare, ivaACredito);
 
   return (
     <PageLayout>
@@ -371,10 +386,20 @@ export default function Dashboard() {
             <ValoreGrande valore={costi?.totale} colore={COLORS.danger} />
             {costi && (
               <>
-                <Riga label="Personale" valore={costi.personale} />
+                <Riga label="Personale (lordo buste)" valore={costi.personale} />
                 <Riga label="Fatture acquisto nette" valore={costi.acquisti_merce} />
                 <Riga label="Altri costi documentati" valore={costi.altre_uscite} />
               </>
+            )}
+            {costi && (
+              <Nota>
+                {costi.personale == null
+                  ? `Personale: ${DATO_NON_DISPONIBILE.toLowerCase()}${
+                      costi.personale_motivo ? ` (${costi.personale_motivo})` : ''
+                    }.`
+                  : 'Personale = lordo delle buste paga.'}{' '}
+                Contributi a carico dell'azienda non disponibili: i costi sono sottostimati.
+              </Nota>
             )}
           </CardBox>
 
@@ -391,7 +416,10 @@ export default function Dashboard() {
             {margine?.percentuale != null && (
               <Riga label="Margine %" valore={`${margine.percentuale}%`} raw />
             )}
-            <Nota>Ricavi meno costi del periodo.</Nota>
+            <Nota>
+              Ricavi meno costi del periodo.
+              {margine?.incompleto && ' Senza i contributi datoriali il margine è sovrastimato.'}
+            </Nota>
           </CardBox>
 
           {/* CASSA */}
@@ -422,7 +450,10 @@ export default function Dashboard() {
                 <Riga label="Movimenti" valore={banca.movimenti} raw />
               </>
             )}
-            <Nota>Entrate meno uscite BPM del periodo, senza riporti storici non certificati.</Nota>
+            <Nota>
+              Entrate meno uscite BPM registrate in Prima Nota: non è il saldo certificato
+              dall'estratto conto.
+            </Nota>
           </CardBox>
 
           <CardBox titolo="Mastercard SumUp — movimenti periodo" Icon={CreditCard} colore={COLORS.primary}>
@@ -439,15 +470,23 @@ export default function Dashboard() {
 
           {/* IVA */}
           <CardBox titolo="IVA" Icon={Receipt} colore={COLORS.warning}>
-            {ivaDaVersare != null && ivaDaVersare > 0 ? (
+            {cardIva.tipo === 'da_versare' ? (
               <>
-                <ValoreGrande valore={ivaDaVersare} colore={COLORS.warning} />
+                <ValoreGrande valore={cardIva.valore} colore={COLORS.warning} />
                 <Nota>IVA da versare nel periodo.</Nota>
               </>
-            ) : ivaACredito != null && ivaACredito > 0 ? (
+            ) : cardIva.tipo === 'a_credito' ? (
               <>
-                <ValoreGrande valore={ivaACredito} colore={COLORS.info} />
+                <ValoreGrande valore={cardIva.valore} colore={COLORS.info} />
                 <Nota>IVA a credito nel periodo.</Nota>
+              </>
+            ) : cardIva.tipo === 'non_disponibile' ? (
+              <>
+                <ValoreGrande valore={null} colore={COLORS.textMuted} />
+                <Nota>
+                  Saldo IVA non calcolabile: mancano dati del periodo (liquidazione non
+                  calcolata o IVA detraibile da classificare).
+                </Nota>
               </>
             ) : (
               <>
@@ -546,9 +585,16 @@ function CardBox({ titolo, Icon, colore, children, fullWidth = false }) {
 }
 
 function ValoreGrande({ valore, colore }) {
+  if (valore == null) {
+    return (
+      <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.textMuted, padding: '6px 0' }}>
+        {DATO_NON_DISPONIBILE}
+      </div>
+    );
+  }
   return (
-    <div style={{ fontSize: 28, fontWeight: 800, color: valore == null ? COLORS.textMuted : colore }}>
-      {valore == null ? '—' : formatEuro(valore)}
+    <div style={{ fontSize: 28, fontWeight: 800, color: colore }}>
+      {formatEuro(valore)}
     </div>
   );
 }
@@ -558,7 +604,7 @@ function Riga({ label, valore, raw = false }) {
     <div style={STILI.riga}>
       <span style={{ color: COLORS.textMuted }}>{label}</span>
       <span style={{ fontWeight: 600, color: COLORS.text }}>
-        {valore == null ? '—' : raw ? valore : formatEuro(valore)}
+        {valore == null ? DATO_NON_DISPONIBILE : raw ? valore : formatEuro(valore)}
       </span>
     </div>
   );
