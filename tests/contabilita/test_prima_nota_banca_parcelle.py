@@ -140,3 +140,31 @@ def test_allineamento_ritenute_una_volta_sola(db):
     assert secondo == {"saltato": "gia_allineate"}
     assert fattura["importo_ritenuta"] == 210.0
     assert proiezione["importo_cents"] == 21000
+
+
+def test_riparazione_con_id_fattura_numerico(db):
+    """Fatture storiche con id numerico (1776634698467): la riparazione e
+    l'assorbimento le trovano lo stesso."""
+    from app.services.prima_nota_integrity import assorbi_righe_dichiarate
+
+    async def scenario():
+        await db["invoices"].insert_one(_parcella(
+            id=1776634698467, total_amount=3806.4, importo_ritenuta=600.0,
+            pagamento_rate_totale=None,
+        ))
+        await db["prima_nota_banca"].insert_one({
+            "id": "pn-numerica", "fattura_id": 1776634698467, "importo": 3806.4,
+            "data": "2026-02-11", "dichiarato_titolare": True, "provvisorio": True,
+        })
+        esito = await pagamenti.ripara_righe_dichiarate(db)
+        riga = await db["prima_nota_banca"].find_one({"id": "pn-numerica"}, {"_id": 0})
+        toccate = await assorbi_righe_dichiarate(
+            db, {"1776634698467": 3206.4}, sostituita_da="pn-banca", movimento_id="ec-1",
+        )
+        dopo = await db["prima_nota_banca"].find_one({"id": "pn-numerica"}, {"_id": 0})
+        return esito, riga, toccate, dopo
+
+    esito, riga, toccate, dopo = asyncio.run(scenario())
+    assert esito["importi_al_netto"] == 1
+    assert riga["importo"] == 3206.4
+    assert toccate == 1 and dopo["status"] == "deleted"

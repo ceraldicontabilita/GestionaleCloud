@@ -7,7 +7,7 @@ devono quindi usare la stessa regola, altrimenti una fattura puo' restare
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 COLLEZIONI_PRIMA_NOTA = ("prima_nota_banca", "prima_nota_cassa")
@@ -365,6 +365,16 @@ def _ha_evidenza_banca(riga: Dict[str, Any]) -> bool:
     return any(riga.get(campo) not in (None, "") for campo in CAMPI_EVIDENZA_BANCA)
 
 
+def varianti_id(valore: Any) -> List[Any]:
+    """Un id di fattura storico puo' essere salvato come numero
+    (``1776634698467``) invece che come testo: il filtro li cerca tutti e due."""
+    testo = str(valore)
+    varianti: List[Any] = [testo]
+    if testo.isdigit():
+        varianti.append(int(testo))
+    return varianti
+
+
 async def assorbi_righe_dichiarate(
     db, quote_per_fattura: Dict[str, float], *, sostituita_da: str,
     movimento_id: str,
@@ -383,7 +393,7 @@ async def assorbi_righe_dichiarate(
         if not fattura_id:
             continue
         righe = await db["prima_nota_banca"].find(
-            {"fattura_id": str(fattura_id), CAMPO_RIGA_DICHIARATA: True,
+            {"fattura_id": {"$in": varianti_id(fattura_id)}, CAMPO_RIGA_DICHIARATA: True,
              "status": {"$nin": ["deleted", "archived"]}},
             {"_id": 0},
         ).to_list(20)
@@ -410,12 +420,12 @@ async def assorbi_righe_dichiarate(
             toccate += 1
         if righe:
             ancora = await db["prima_nota_banca"].find_one(
-                {"fattura_id": str(fattura_id), CAMPO_RIGA_DICHIARATA: True,
+                {"fattura_id": {"$in": varianti_id(fattura_id)}, CAMPO_RIGA_DICHIARATA: True,
                  "status": {"$nin": ["deleted", "archived"]}},
                 {"_id": 0, "id": 1},
             )
             if not ancora:
-                await db["invoices"].update_one({"id": str(fattura_id)}, {"$set": {
+                await db["invoices"].update_one({"id": {"$in": varianti_id(fattura_id)}}, {"$set": {
                     "in_attesa_riscontro_banca": False,
                     "riscontro_banca_at": ora,
                     "riscontro_banca_movimento_id": movimento_id,
