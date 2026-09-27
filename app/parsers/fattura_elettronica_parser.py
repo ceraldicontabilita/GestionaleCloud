@@ -503,6 +503,16 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
                 "size_kb": round(len(attachment_data) * 3 / 4 / 1024, 2)  # Stima dimensione
             })
 
+    # Ritenuta d'acconto (parcelle dei professionisti): al fornitore va il
+    # netto, la ritenuta si versa con l'F24. Senza questo dato la fattura
+    # resta con un residuo aperto pari alla ritenuta e il bonifico non la chiude.
+    importo_ritenuta = Decimal("0")
+    for dati_ritenuta in find_all_elements(dati_generali, 'DatiRitenuta'):
+        try:
+            importo_ritenuta += abs(Decimal(get_text(dati_ritenuta, 'ImportoRitenuta', '0').strip() or "0"))
+        except (ArithmeticError, ValueError):
+            logger.warning("ImportoRitenuta illeggibile nella fattura %s", numero_fattura)
+
     result = {
         "invoice_number": numero_fattura,
         "invoice_date": data_fattura,
@@ -524,6 +534,7 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
         "pagamento": pagamento,
         "pagamento_rate": pagamento_rate,
         "pagamento_rate_totale": format(pagamento_rate_totale, "f"),
+        "importo_ritenuta": float(importo_ritenuta) if importo_ritenuta > 0 else None,
         "pagamento_rate_coerente": (
             abs(pagamento_rate_totale - Decimal(str(total_amount))) < Decimal("0.05")
             if pagamento_rate else None
