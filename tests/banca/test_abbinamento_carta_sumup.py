@@ -13,6 +13,7 @@ from app.services.sumup_conto import (
     abbina_movimenti_sumup,
     campi_bancari,
     collezione_del_movimento,
+    importa_estratto_sumup,
 )
 
 IBAN_DIP = "IT62Q0306903487100000000123"
@@ -225,3 +226,95 @@ def test_estratto_gia_presente_riaccoda_l_abbinamento():
     ramo = sorgente[inizio:sorgente.index("elif tipo_rilevato", inizio + 10)]
     assert "accoda_abbinamento(db)" in ramo
     assert 'if sumup_result.get("nuovi")' not in ramo
+
+
+# --- Rimborso finanziamento soci: la causale vince sul nome ------------------
+
+IBAN_SOCIO = "IT10C0503403406000000005459"
+INTESTAZIONE_CSV = (
+    "Data transazione,Codice transazione,Tipo transazione,Riferimento,Causale pagamento,"
+    "Stato,Importo di fatturazione in uscita,Importo di fatturazione in entrata,"
+    "Valuta della carta,Importo transazione in uscita,Importo transazione in entrata,"
+    "Valuta della transazione,Tasso di cambio,Commissione,Saldo disponibile"
+)
+
+
+def _socio_dipendente(db):
+    async def semina():
+        await db["dipendenti"].insert_one({
+            "id": "dip-vc", "nome": "Vincenzo", "cognome": "Ceraldi",
+            "nome_completo": "CERALDI VINCENZO",
+        })
+        await db["prima_nota_salari"].insert_one({
+            "id": "sal-vc", "dipendente_id": "dip-vc", "dipendente_nome": "CERALDI VINCENZO",
+            "anno": 2026, "mese": 8, "importo_busta": 2074.00, "importo_bonifico": 0,
+            "riconciliato": False,
+        })
+    asyncio.run(semina())
+
+
+def _rimborso(causale):
+    riga = _movimento("C9RIMB0001", "2026-09-02", "1500.00",
+                      "Vincenzo Ceraldi IT10C0503403406 000000005459", causale, IBAN_SOCIO)
+    return {**riga, **campi_bancari(riga)}
+
+
+def test_rimborso_finanziamento_al_socio_non_e_uno_stipendio():
+    db = ClientArchivioMemoria()["rimborso_socio"]
+    _socio_dipendente(db)
+
+    async def scenario():
+        await db[COLL_MOVIMENTI].insert_one(_rimborso("Rimborso finanziamento infruttifero"))
+        esito = await abbina_movimenti_sumup(db)
+        busta = await db["prima_nota_salari"].find_one({"id": "sal-vc"})
+        banca = await db["prima_nota_banca"].find({}, {"_id": 0}).to_list(None)
+        soci = await db["finanziamenti_soci_movimenti"].find({}, {"_id": 0}).to_list(None)
+        return esito, busta, banca, soci
+
+    esito, busta, banca, soci = asyncio.run(scenario())
+    assert esito["stipendi_abbinati"] == 0
+    assert busta["importo_bonifico"] == 0
+    assert [r["categoria"] for r in banca] == ["Finanziamento soci"]
+    assert banca[0]["conto_contabile"] == "19.01.05"
+    assert [(s["tipo"], s["importo"]) for s in soci] == [("rimborso", 1500.0)]
+
+
+def test_causale_intera_dal_csv_stacca_il_rimborso_dalla_busta():
+    """Il PDF aveva spezzato «finanziame nto»: il bonifico era finito sulla
+    busta. Il CSV porta il testo intero, e il giro successivo ripara."""
+    db = ClientArchivioMemoria()["rimborso_socio_riparato"]
+    _socio_dipendente(db)
+
+    async def scenario():
+        await db[COLL_MOVIMENTI].insert_one(_rimborso("Rimborso finanziame nto infruttifero"))
+        prima = await abbina_movimenti_sumup(db)
+        busta_prima = await db["prima_nota_salari"].find_one({"id": "sal-vc"})
+        csv = "\n".join([
+            INTESTAZIONE_CSV,
+            "02/09/26, 15:34,C9RIMB0001,Bonifico bancario in uscita,"
+            f"Vincenzo Ceraldi {IBAN_SOCIO},Rimborso finanziamento infruttifero,Approvato,"
+            "1500.00,0.00,EUR,1500.00,0.00,EUR,1.00,0.00,500.00",
+        ]).encode()
+        importato = await importa_estratto_sumup(db, "Resoconto.csv", csv)
+        dopo = await abbina_movimenti_sumup(db)
+        busta = await db["prima_nota_salari"].find_one({"id": "sal-vc"})
+        movimento = await db[COLL_MOVIMENTI].find_one({"id": "sumup_conto:C9RIMB0001"})
+        banca = await db["prima_nota_banca"].find(
+            {"status": {"$nin": ["deleted", "archived"]}}, {"_id": 0},
+        ).to_list(None)
+        return prima, busta_prima, importato, dopo, busta, movimento, banca
+
+    prima, busta_prima, importato, dopo, busta, movimento, banca = asyncio.run(scenario())
+    assert prima["stipendi_abbinati"] == 1 and busta_prima["importo_bonifico"] == 1500.0
+    assert importato["testi_corretti"] == 1
+    assert movimento["causale"] == "Rimborso finanziamento infruttifero"
+    assert dopo["rimborsi_soci_staccati"] == [
+        {"movimento_id": "sumup_conto:C9RIMB0001", "stipendio_id": "sal-vc"},
+    ]
+    assert busta["importo_bonifico"] == 0 and busta["riconciliato"] is False
+    assert movimento["stipendio_id"] is None
+    # Stessa riga di Prima Nota, ora rimborso soci: nessuna seconda uscita.
+    assert len(banca) == 1
+    assert banca[0]["categoria"] == "Finanziamento soci"
+    assert banca[0]["riclassificata_da"] == "Stipendi"
+    assert banca[0]["conto_contropartita"] == "31.03.15"

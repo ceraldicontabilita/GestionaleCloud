@@ -644,6 +644,73 @@ async def recupera_relazioni_stipendi_mancanti(
     return result
 
 
+MOTIVO_RIMBORSO_SOCI = "rimborso_finanziamento_soci_non_stipendio"
+
+
+def e_rimborso_soci(movimento: Dict[str, Any]) -> bool:
+    """Bonifico a un socio con causale di rimborso/finanziamento: non e' uno
+    stipendio, anche se il socio e' pure dipendente. L'esclusione vince sul nome."""
+    from app.services.finanziamenti_soci import classifica_finanziamento_ec
+
+    return classifica_finanziamento_ec(movimento) is not None
+
+
+async def stacca_rimborsi_soci_da_stipendi(
+    db, collezione_movimenti: str = "estratto_conto_movimenti",
+) -> List[Dict[str, Any]]:
+    """Toglie dalle buste i bonifici che la causale dichiara rimborso soci.
+
+    Ripara i collegamenti gia' scritti prima del veto: la busta torna al
+    residuo calcolato dai soli movimenti rimasti, la relazione viene revocata.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    staccati: List[Dict[str, Any]] = []
+    collegati = await db[collezione_movimenti].find(
+        {"stipendio_id": {"$exists": True}}, {"_id": 0},
+    ).to_list(20000)
+    for movimento in collegati:
+        stipendio = movimento.get("stipendio_id")
+        if not stipendio or not e_rimborso_soci(movimento):
+            continue
+        riga = await db["prima_nota_salari"].find_one({"id": stipendio}, {"_id": 0})
+        if riga:
+            rimasti = []
+            for altro_id in _movimento_ids_stipendio(riga):
+                if altro_id == movimento["id"]:
+                    continue
+                altro = await db[_collezione_id(altro_id)].find_one({"id": altro_id}, {"_id": 0})
+                if altro:
+                    rimasti.append(altro)
+            await db["prima_nota_salari"].update_one(
+                {"id": stipendio},
+                {"$set": campi_riga_da_movimenti_stipendio(riga, rimasti, now)},
+            )
+        await db[collezione_movimenti].update_one(
+            {"id": movimento["id"]},
+            {"$set": {
+                "riconciliato": False,
+                "stipendio_id": None,
+                "dipendente_id": None,
+                "tipo_riconciliazione": None,
+                "categoria": None,
+                "staccato_da_stipendio": MOTIVO_RIMBORSO_SOCI,
+                "staccato_da_stipendio_at": now,
+                "updated_at": now,
+            }},
+        )
+        await revoke_entity_relation(
+            db, source_type="bank_movement", source_id=str(movimento["id"]),
+            relation_type="allocates_salary_payment", target_type="salary_entry",
+            target_id=str(stipendio), actor=MOTIVO_RIMBORSO_SOCI,
+        )
+        staccati.append({"movimento_id": movimento["id"], "stipendio_id": stipendio})
+        logger.warning(
+            "Bonifico %s staccato dalla busta %s: la causale dichiara un rimborso soci",
+            movimento["id"], stipendio,
+        )
+    return staccati
+
+
 async def associa_bonifici_stipendi(
     db, stipendio_id: Optional[str] = None, anno: Optional[int] = None,
     allow_partial: bool = True,
@@ -688,6 +755,13 @@ async def associa_bonifici_stipendi(
             "riferimenti_non_verificati": 0,
             "errori": 1,
         }
+    try:
+        rimborsi_soci_staccati = await stacca_rimborsi_soci_da_stipendi(
+            db, collezione_movimenti,
+        )
+    except Exception as exc:  # noqa: BLE001 - il resto dell'abbinamento procede
+        logger.exception("Rimborsi soci non staccati dalle buste (%s)", type(exc).__name__)
+        rimborsi_soci_staccati = []
     filtro: Dict[str, Any] = {"riconciliato": {"$ne": True}, **FILTRO_MOVIMENTO_ATTIVO}
     if stipendio_id:
         filtro["id"] = stipendio_id
@@ -755,6 +829,8 @@ async def associa_bonifici_stipendi(
             or ""
         )
         if "COMM" in descrizione.upper()[:30]:
+            continue
+        if e_rimborso_soci(movimento):
             continue
         destinazione = classifica_destinazione_dipendente(movimento, dipendenti)
         if not (
@@ -851,6 +927,7 @@ async def associa_bonifici_stipendi(
         "righe_pendenti_esaminate": len(righe),
         "nomi_arricchiti_da_cedolini": nomi_arricchiti,
         "match_ambigui_ignorati": ambigui,
+        "rimborsi_soci_staccati": rimborsi_soci_staccati,
         "recupero_relazioni": recupero_relazioni,
         "riallineo_competenza": riallineo_competenza,
         "dettaglio": dettaglio,

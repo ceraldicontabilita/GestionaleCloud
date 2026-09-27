@@ -299,6 +299,11 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
             movimento.update(mancanti)
             arricchiti += 1
 
+    # Rimborsi e apporti soci prima degli stipendi: un socio e' anche
+    # dipendente, e la causale di rimborso vince sul nome.
+    from app.services.finanziamenti_soci import scan_finanziamenti_da_ec
+
+    soci = await scan_finanziamenti_da_ec(db, anno=anno, collezione=COLL_MOVIMENTI)
     stipendi = await associa_bonifici_stipendi(
         db, anno=anno, collezione_movimenti=COLL_MOVIMENTI, ripassa_collegati=False,
     )
@@ -327,6 +332,8 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
         "stipendi_abbinati": stipendi.get("bonifici_associati", 0),
         "stipendi_dettaglio": stipendi.get("dettaglio", []),
         "stipendi_ambigui": stipendi.get("match_ambigui_ignorati", 0),
+        "rimborsi_soci_staccati": stipendi.get("rimborsi_soci_staccati", []),
+        "finanziamenti_soci_nuovi": soci.get("apporti_nuovi", 0) + soci.get("rimborsi_nuovi", 0),
         "fatture_abbinate": fatture["collegati_count"],
         "fatture_dettaglio": fatture["collegati"],
         "fatture_ambigue": fatture["ambigui_movimento"] + fatture["ambigui_fattura"],
@@ -336,6 +343,7 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
             "gia_presenti": prima_nota.get("gia_presenti", 0),
             "stipendi": prima_nota.get("stipendi", 0),
             "finanziamenti_soci": prima_nota.get("finanziamenti_soci", 0),
+            "riclassificate": prima_nota.get("riclassificate", 0),
         },
     }
     logger.info("Abbinamento carta SumUp: %s", {k: v for k, v in esito.items() if k != "fatture_dettaglio"})
