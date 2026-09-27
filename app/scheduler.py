@@ -697,6 +697,23 @@ def start_scheduler():
 
         try:
             oggi = datetime.now().date()
+            # Prima il riallineamento, che legge solo il database e dura
+            # secondi: messo dopo la sincronizzazione (minuti di API), un
+            # deploy a meta' giro lo saltava ogni volta. Una volta al giorno le
+            # giornate dell'anno fuori dalla finestra dei trenta giorni si
+            # riallineano all'archivio senza doppioni.
+            if _sumup_riallineo_fatto.get("giorno") != oggi.isoformat():
+                try:
+                    esito = await sumup_sync.riallinea_chiusure_da_archivio(
+                        Database.get_db(), f"{oggi.year}-01-01",
+                        (oggi - timedelta(days=31)).isoformat(),
+                    )
+                    _sumup_riallineo_fatto["giorno"] = oggi.isoformat()
+                    if esito["corrette"]:
+                        logger.info("[SCHEDULER-SUMUP] chiusure riallineate: %s", esito["corrette"])
+                except Exception as exc:  # la sincronizzazione del mese va fatta comunque
+                    logger.error("[SCHEDULER-SUMUP] riallineamento chiusure non riuscito: %s: %s",
+                                 type(exc).__name__, exc)
             r = await sumup_sync.sincronizza(
                 Database.get_db(), (oggi - timedelta(days=30)).isoformat(), oggi.isoformat()
             )
@@ -705,16 +722,6 @@ def start_scheduler():
                 len(r.get("giornate") or []), r.get("totale_lordo", 0),
                 r.get("totale_netto", 0),
             )
-            # Una volta al giorno: le giornate dell'anno fuori dalla finestra
-            # dei trenta giorni si riallineano all'archivio senza doppioni.
-            if _sumup_riallineo_fatto.get("giorno") != oggi.isoformat():
-                esito = await sumup_sync.riallinea_chiusure_da_archivio(
-                    Database.get_db(), f"{oggi.year}-01-01",
-                    (oggi - timedelta(days=31)).isoformat(),
-                )
-                _sumup_riallineo_fatto["giorno"] = oggi.isoformat()
-                if esito["corrette"]:
-                    logger.info("[SCHEDULER-SUMUP] chiusure riallineate: %s", esito["corrette"])
         except sumup_sync.SumUpNonConfigurato:
             logger.info("[SCHEDULER-SUMUP] credenziali non configurate")
         except Exception as e:
