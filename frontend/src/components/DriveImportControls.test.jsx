@@ -58,7 +58,11 @@ describe('Controlli import Drive in Documenti', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       render(<DriveFattureImportCard />);
-      fireEvent.click(await screen.findByRole('button', { name: 'Importa tutto da Drive' }));
+      // Finche' lo stato non e' caricato il pulsante e' disabilitato: sul
+      // runner lento della CI il clic arrivava prima e andava perso.
+      const pulsante = await screen.findByRole('button', { name: 'Importa tutto da Drive' });
+      await waitFor(() => expect(pulsante).not.toBeDisabled(), { timeout: 5000 });
+      fireEvent.click(pulsante);
 
       await waitFor(() =>
         expect(api.post).toHaveBeenCalledWith('/api/documenti/cartella-unica/giro?tutto=true'),
