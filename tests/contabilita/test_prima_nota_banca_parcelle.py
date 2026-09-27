@@ -213,3 +213,39 @@ def test_avviso_ritenuta_si_chiude_quando_il_1040_e_versato(db):
     ancora, chiuso = asyncio.run(scenario())
     assert ancora["stato"] == "aperto"
     assert chiuso["stato"] == "risolto"
+
+
+def test_bonifico_netto_abbina_la_parcella_con_id_numerico(db):
+    """FPR 14/26 CARINI: id 1776634698467 numerico, bonifico di 3.206,40 €.
+    Il motore d'identita' la abbina e la riga dichiarata lascia il posto."""
+    from app.services import bank_payment_allocations as bpa
+
+    async def scenario():
+        await db["invoices"].insert_one({
+            "id": 1776634698467, "invoice_number": "FPR 14/26",
+            "supplier_name": "CARINI GIOVANNI", "supplier_vat": "01234567890",
+            "invoice_date": "2026-02-11", "total_amount": 3806.4, "importo_ritenuta": 600.0,
+            "status": "imported", "pagato": True, "paid": True, "stato_pagamento": "pagata",
+            "in_attesa_riscontro_banca": True,
+        })
+        await db["prima_nota_banca"].insert_one({
+            "id": "pn-dich", "fattura_id": 1776634698467, "importo": 3206.4, "tipo": "uscita",
+            "data": "2026-02-11", "dichiarato_titolare": True, "provvisorio": True,
+        })
+        await db["estratto_conto_movimenti"].insert_one({
+            "id": "m-carini", "data": "2026-02-13", "tipo": "uscita", "importo": -3206.4,
+            "descrizione": "VS.DISP. RIF. MBVT14361619/00094618 FAVORE CARINI GIOVANNI",
+        })
+        esito = await bpa.reconcile_deterministic_invoice_allocations(db)
+        dichiarata = await db["prima_nota_banca"].find_one({"id": "pn-dich"}, {"_id": 0})
+        attive = await db["prima_nota_banca"].find(
+            {"status": {"$ne": "deleted"}}, {"_id": 0},
+        ).to_list(10)
+        fattura = await db["invoices"].find_one({"id": 1776634698467}, {"_id": 0})
+        return esito, dichiarata, attive, fattura
+
+    esito, dichiarata, attive, fattura = asyncio.run(scenario())
+    assert esito["allocati_identita"] == 1
+    assert dichiarata["status"] == "deleted"
+    assert len(attive) == 1 and attive[0]["estratto_conto_id"] == "m-carini"
+    assert fattura["in_attesa_riscontro_banca"] is False
