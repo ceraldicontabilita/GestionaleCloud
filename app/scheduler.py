@@ -797,6 +797,31 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-FATTURE-EMESSE] errore: {type(e).__name__}: {e}")
 
+    async def _f24_quietanze_banca_job():
+        """F24 del commercialista ↔ ravvedimento, poi quietanze ↔ addebiti I24.
+
+        Pochi secondi, idempotenti. Stavano in «Automazioni Prima Nota», che
+        parte 13 minuti dopo l'avvio e dura a lungo: il 27/09/2026 i deploy
+        ravvicinati l'hanno interrotto dalle 02:47 in poi e nessun riscontro
+        arrivava ai dati. L'ordine conta: il legame di ravvedimento e' gia'
+        scritto quando il riscontro lo porta nella vista della banca."""
+        from app.database import Database
+        db = Database.get_db()
+        try:
+            from app.services.f24_ravvedimento import collega_ravvedimenti
+            r = await collega_ravvedimenti(db)
+            logger.info("[SCHEDULER-F24] ravvedimenti abbinati=%s ambigui=%s scritti=%s",
+                        r["conteggi"]["abbinati"], r["conteggi"]["ambigui"], r["scritti"])
+        except Exception as e:
+            logger.error("[SCHEDULER-F24] ravvedimenti: %s: %s", type(e).__name__, e)
+        try:
+            from app.services.f24_controllo_incrociato import riscontra_quietanze_banca
+            r = await riscontra_quietanze_banca(db)
+            logger.info("[SCHEDULER-F24] quietanze/banca riscontrati=%s da_verificare=%s scritti=%s",
+                        r["conteggi"].get("riscontrati"), r["conteggi"].get("da_verificare"), r["scritti"])
+        except Exception as e:
+            logger.error("[SCHEDULER-F24] quietanze/banca: %s: %s", type(e).__name__, e)
+
     async def _banca_versamenti_proiezione_job():
         """Assegni, versamenti di contante e proiezione dei movimenti bancari
         in Prima Nota. Pochi secondi, idempotenti: job a se', come le
@@ -1356,6 +1381,16 @@ def start_scheduler():
         coalesce=True,
         id="banca_versamenti_proiezione",
         name="Banca: assegni, versamenti contanti e proiezione in Prima Nota (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _f24_quietanze_banca_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=4),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="f24_quietanze_banca",
+        name="F24: ravvedimenti e quietanze con gli addebiti in banca (ogni 30 min)",
         replace_existing=True,
     )
     scheduler.add_job(
