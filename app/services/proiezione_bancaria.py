@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 
 SOURCE = "proiezione_semantica_ec"
+CATEGORIA_CONTENZIOSO = "Spese legali e contenzioso"
 _PAYPAL = re.compile(r"\bPAYPAL\b", re.IGNORECASE)
 _ADDEBITO_DIRETTO = re.compile(
     r"\b(?:SDD|ADDEBITO\s+DIRETTO|49RJ2252ASLM4)\b", re.IGNORECASE
@@ -157,6 +158,16 @@ def classifica_movimento_ec(
     doc: Dict[str, Any], dipendenti: Iterable[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Classifica solo identita' esplicite; nessun match per importo."""
+    fascicolo = doc.get("fascicolo_giudiziario")
+    if fascicolo and _verso(doc) == "uscita":
+        # Spese di lite: l'uscita cita la sentenza o il titolare l'ha messa nel
+        # fascicolo (``atti_giudiziari.collega_pagamenti``). Nessuna fattura.
+        return {
+            "tipo": "uscita",
+            "categoria": CATEGORIA_CONTENZIOSO,
+            "tipo_classificazione_contabile": "spese_contenzioso",
+            "fascicolo_giudiziario": fascicolo,
+        }
     finanziamento = classifica_finanziamento_ec(doc)
     if finanziamento:
         return {
@@ -279,7 +290,8 @@ def _chiave_operazione(data: str, importo: float, classificazione: Dict[str, Any
         conto or CONTO_BANCA_PREDEFINITO,
         data, int(round(importo * 100)), classificazione.get("tipo"), classificazione.get("categoria"),
         str(classificazione.get("dipendente_id") or classificazione.get("socio_id")
-            or classificazione.get("numero_mutuo") or classificazione.get("gestore_pagamento") or ""),
+            or classificazione.get("numero_mutuo") or classificazione.get("gestore_pagamento")
+            or classificazione.get("fascicolo_giudiziario") or ""),
     )
 
 
@@ -311,7 +323,7 @@ _CAMPI_CLASSIFICAZIONE = (
     "dipendente_id", "dipendente_nome", "dipendente_codice_fiscale", "motivo_classificazione",
     "socio_id", "socio_nome", "tipo_finanziamento", "numero_mutuo", "rata_scadenza",
     "ripartizione_capitale_interessi", "gestore_pagamento", "regola_bancaria",
-    "regola_versione", "campi_estratti",
+    "regola_versione", "campi_estratti", "fascicolo_giudiziario",
 )
 
 
@@ -468,6 +480,7 @@ async def proietta_movimenti_bancari_semantici(
             {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "categoria": 1,
              "conto_contabile": 1,
              "dipendente_id": 1, "socio_id": 1, "numero_mutuo": 1, "gestore_pagamento": 1,
+             "fascicolo_giudiziario": 1,
              "estratto_conto_id": 1, "source": 1, "ripartizione_capitale_interessi": 1},
         ).to_list(None)
         for riga in righe:
@@ -578,6 +591,8 @@ async def proietta_movimenti_bancari_semantici(
                 stats["commissioni_bancarie"] += 1
             elif tipo_classificazione == "rata_mutuo":
                 stats["rate_mutuo"] += 1
+            elif tipo_classificazione == "spese_contenzioso":
+                stats["spese_contenzioso"] = stats.get("spese_contenzioso", 0) + 1
             elif tipo_classificazione in {"stipendio", "tfr", "paypal_sdd"}:
                 chiave_statistica = {
                     "stipendio": "stipendi",

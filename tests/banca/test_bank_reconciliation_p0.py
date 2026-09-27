@@ -92,6 +92,35 @@ def test_manual_bank_payment_supports_many_invoices_and_is_idempotent(monkeypatc
     run(scenario())
 
 
+def test_manual_allocation_of_a_sumup_card_payment(monkeypatch):
+    """Il bonifico partito dalla carta SumUp si assegna dalla stessa schermata:
+    esito sulla collezione della carta, Prima Nota sul suo conto 19.01.05."""
+    async def scenario():
+        db = ClientArchivioMemoria()["bank_many_sumup"]
+        await db.sumup_conto_movimenti.insert_one({
+            "id": "sumup_conto:C9SPLIT001", "data": "2026-08-06", "importo": "-300.00",
+            "tipo": "uscita", "conto_contabile": "19.01.05",
+            "descrizione": "FORNITORE PROVA — FT. 1 FT. 2",
+        })
+        await db.invoices.insert_many([
+            {"id": "F1", "invoice_number": "1", "invoice_date": "2026-07-01", "supplier_name": "Prova", "supplier_vat": "0123", "total_amount": 100.0},
+            {"id": "F2", "invoice_number": "2", "invoice_date": "2026-07-02", "supplier_name": "Prova", "supplier_vat": "0123", "total_amount": 250.0},
+        ])
+        monkeypatch.setattr(smart.Database, "get_db", staticmethod(lambda: db))
+        await smart.riconcilia_manuale(smart.RiconciliaManuale(
+            movimento_id="sumup_conto:C9SPLIT001", tipo="fattura_bonifico",
+            associazioni=[{"id": "F1", "quota_cents": 10000}, {"id": "F2", "quota_cents": 20000}],
+        ))
+        movement = await db.sumup_conto_movimenti.find_one({"id": "sumup_conto:C9SPLIT001"}, {"_id": 0})
+        assert movement["fattura_ids"] == ["F1", "F2"] and movement["riconciliato"] is True
+        pn = await db.prima_nota_banca.find_one({}, {"_id": 0})
+        assert pn["conto_contabile"] == "19.01.05"
+        parziale = await db.invoices.find_one({"id": "F2"}, {"_id": 0})
+        assert parziale["importo_residuo"] == 50.0 and parziale["pagato"] is False
+
+    run(scenario())
+
+
 def test_many_invoice_allocation_rejects_non_square_total_before_writes(monkeypatch):
     async def scenario():
         db = ClientArchivioMemoria()["bank_many_invalid"]
