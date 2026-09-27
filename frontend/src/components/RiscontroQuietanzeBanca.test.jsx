@@ -80,6 +80,20 @@ describe('Quietanze F24 e addebiti in banca', () => {
       .toContain('inviata il 20/08/2026 · non programmata · Ravvedimento');
   });
 
+  it('una rata della dilazione INPS dice quale rata del piano paga', async () => {
+    const rata = {
+      ...RISPOSTA.riscontrati[0], chiave: 'r2', ravvedimento_di: [], tipo_versamento: 'regolarizzazione',
+      inviato_il_it: '06/03/2026', programmato: true, senza_modello: true,
+      dilazione_inps: { dilazione_id: 'dilazione_inps:INPS.5100.24/02/2026.0175250', rata: 2, di: 4 },
+    };
+    api.get.mockResolvedValueOnce({ data: { ...RISPOSTA, riscontrati: [rata] } });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getAllByTestId('invio-delega').length).toBeGreaterThan(0));
+    expect(screen.getAllByTestId('invio-delega')[0].textContent)
+      .toBe('inviata il 06/03/2026 · programmata · Rata 2/4 dilazione INPS');
+  });
+
   it('lo stesso tributo in due deleghe mostra entrambe, con invio e addebito', async () => {
     api.get.mockResolvedValueOnce({ data: RISPOSTA });
     render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);

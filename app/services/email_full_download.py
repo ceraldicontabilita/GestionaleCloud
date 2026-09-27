@@ -313,6 +313,44 @@ class EmailFullDownloader:
         cache[tipo_documento] = indirizzi
         return indirizzi
 
+    async def _archivia_dilazione_inps(self, msg, email_uid, subject: str, from_addr: str,
+                                       source_folder: str) -> int:
+        """PDF del piano (sciolti o in ZIP) riconosciuti dal testo, mai dal nome."""
+        from app.routers.documenti import _pdf_text_for_detection
+        from app.services.dilazioni_inps import archivia_dilazione, pdf_da_zip, riconosci
+
+        allegati: List[Tuple[str, bytes]] = []
+        for part in msg.walk():
+            nome = decode_mime_header(part.get_filename() or "")
+            if not nome.lower().endswith((".pdf", ".zip")):
+                continue
+            contenuto = part.get_payload(decode=True) or b""
+            if nome.lower().endswith(".zip"):
+                try:
+                    allegati.extend(pdf_da_zip(contenuto))
+                except Exception as e:  # noqa: BLE001 - ZIP rifiutato, email conservata in Gmail
+                    logger.warning(f"[Gmail] dilazione INPS: ZIP {nome} rifiutato: {type(e).__name__}: {e}")
+            else:
+                allegati.append((nome, contenuto))
+        salvati = 0
+        for nome, contenuto in allegati:
+            testo = _pdf_text_for_detection(contenuto)
+            if not riconosci(testo):
+                continue
+            esito = await archivia_dilazione(
+                self.db, filename=nome, content=contenuto, testo=testo,
+                source_context={"source": "email", "email_uid": email_uid.decode() if isinstance(email_uid, bytes)
+                                else str(email_uid), "email_subject": subject, "email_from": from_addr,
+                                "source_folder": source_folder},
+            )
+            if esito.get("duplicate"):
+                self.stats["pdfs_duplicates"] += 1
+            else:
+                salvati += 1
+                self.stats["pdfs_downloaded"] += 1
+            logger.info(f"[Gmail] {esito.get('message')}")
+        return salvati
+
     async def _archivia_schede_tecniche(self, msg, email_uid, subject: str, from_addr: str,
                                         date_str: str, body: str, source_folder: str) -> int:
         """Salva il PDF della scheda (dedup SHA-256) e la registra in Lotti."""
@@ -642,6 +680,16 @@ class EmailFullDownloader:
         if mittenti_schede and any(s in from_addr.lower() for s in mittenti_schede):
             return await self._archivia_schede_tecniche(
                 msg, email_uid, subject, from_addr, date_str, body, source_folder)
+
+        # Dilazione INPS (PEC «Dilazione amministrativa»): il piano sta dentro
+        # Allegato.zip, che l'estrazione dei PDF salta. Si legge e si
+        # associa alle quietanze come dal Documenti > Import.
+        mittenti_dilazione = await self._load_mittenti_per_tipo("dilazione_inps")
+        if mittenti_dilazione and any(
+            s in m for s in mittenti_dilazione
+            for m in [from_addr.lower()] + _mittenti_messaggi_annidati(msg)
+        ):
+            return await self._archivia_dilazione_inps(msg, email_uid, subject, from_addr, source_folder)
 
         # Combina testo ricercabile: oggetto + corpo + nomi allegati + NOME CARTELLA
         # Il nome della cartella è fondamentale: se l'utente ha spostato

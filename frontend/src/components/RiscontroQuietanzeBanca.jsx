@@ -47,8 +47,11 @@ function Invio({ p }) {
   const parti = [
     `inviata il ${p.inviato_il_it}`,
     p.programmato === true ? 'programmata' : p.programmato === false ? 'non programmata' : null,
-    TIPI_VERSAMENTO[p.tipo_versamento] || null,
-    p.senza_modello ? 'senza modello del commercialista' : null,
+    p.dilazione_inps
+      ? `Rata ${p.dilazione_inps.rata}/${p.dilazione_inps.di} dilazione INPS`
+        + (p.dilazione_inps.importo_diverso ? ' (importo diverso dal piano)' : '')
+      : TIPI_VERSAMENTO[p.tipo_versamento] || null,
+    p.senza_modello && !p.dilazione_inps ? 'senza modello del commercialista' : null,
   ].filter(Boolean);
   return (
     <span style={{ fontSize: 11.5, color: COLORS.textMuted }} data-testid="invio-delega">

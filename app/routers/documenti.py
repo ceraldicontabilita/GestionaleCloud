@@ -2578,6 +2578,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     # separatori rimossi conserva comunque la struttura semantica e deve
     # essere usato prima del nome file.
     marker_pdf_text = re.sub(r"[^A-Z0-9]", "", pdf_text)
+    # Piano di una dilazione INPS: cita il «mod. F24» ma e' l'obbligo che le
+    # quietanze RC01 dovranno pagare, rata per rata.
+    from app.services.dilazioni_inps import TIPO as TIPO_DILAZIONE_INPS, riconosci as e_dilazione_inps
+
+    if e_dilazione_inps(compact_pdf_text):
+        return TIPO_DILAZIONE_INPS
     if any(marker in compact_pdf_text for marker in (
         "NOTA DI RETTIFICA", "STAMPA SINTESI RETTIFICA", "MODELLO DMRA",
         "DIFFERENZE CONTRIBUTIVE",
@@ -3150,6 +3156,7 @@ async def _archive_non_payment_document(
         "visura_camerale": "Visura camerale",
         "documento_identita": "Documento di identita allegato",
         "componente_770": "Quadro del 770",
+        "dilazione_inps": "Dilazione INPS (piano di ammortamento)",
     }
     negative_outcome = document_type == "esito_pagopa_negativo"
     evidence_roles = {
@@ -3162,6 +3169,7 @@ async def _archive_non_payment_document(
         "visura_camerale": "documento_anagrafico",
         "documento_identita": "allegato_identita",
         "componente_770": "componente_dichiarazione",
+        "dilazione_inps": "obbligazione",
     }
     if metadata is None and document_type in {
         "tari_avviso", "tari_istanza_compensazione", "visura_camerale",
@@ -3950,6 +3958,14 @@ async def upload_documento_automatico(
                 "Dichiarazione fiscale già archiviata"
                 if is_duplicate
                 else "Dichiarazione fiscale archiviata e agganciata a F24/quietanze"
+            )
+
+        elif tipo_rilevato == 'dilazione_inps':
+            from app.services.dilazioni_inps import archivia_dilazione
+
+            return await archivia_dilazione(
+                db, filename=filename, content=content,
+                testo=_pdf_text_for_detection(content), source_context=source_context,
             )
 
         elif tipo_rilevato == 'componente_770':

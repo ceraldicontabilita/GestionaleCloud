@@ -815,6 +815,13 @@ def start_scheduler():
                         r["conteggi"].get("riscontrati"), r["conteggi"].get("da_verificare"), r["scritti"])
         except Exception as e:
             logger.error("[SCHEDULER-F24] quietanze/banca: %s: %s", type(e).__name__, e)
+        try:
+            # Dopo il riscontro: la rata prende l'addebito dalla sua quietanza.
+            from app.services.dilazioni_inps import collega_dilazioni
+            r = await collega_dilazioni(db)
+            logger.info("[SCHEDULER-F24] dilazioni INPS=%s scritti=%s", r["dilazioni"], r.get("scritti"))
+        except Exception as e:
+            logger.error("[SCHEDULER-F24] dilazioni INPS: %s: %s", type(e).__name__, e)
 
     async def _banca_versamenti_proiezione_job():
         """Assegni, versamenti di contante e proiezione dei movimenti bancari
@@ -1432,7 +1439,7 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="f24_quietanze_banca",
-        name="F24: ravvedimenti e quietanze con gli addebiti in banca (ogni 30 min)",
+        name="F24: ravvedimenti, quietanze con gli addebiti in banca, rate delle dilazioni INPS (ogni 30 min)",
         replace_existing=True,
     )
     scheduler.add_job(

@@ -277,6 +277,8 @@ def _quietanza_legacy(doc: Dict[str, Any]) -> Dict[str, Any]:
         "righe": righe_modello(doc),
         # F24 del commercialista che questa quietanza ravvede (f24_ravvedimento).
         "ravvedimento_di": list(doc.get("ravvedimento_di") or []),
+        # Rata del piano INPS che questa quietanza paga (dilazioni_inps).
+        "dilazione_inps": doc.get("dilazione_inps"),
     }
 
 
@@ -1079,6 +1081,7 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
             "tipo_versamento": tipo_versamento_righe(righe),
             # Nessun modello del commercialista collegato, nemmeno come ravvedimento.
             "senza_modello": not ravvedimento_di and not any(q.get("f24_ids") for q in copie),
+            "dilazione_inps": next((q["dilazione_inps"] for q in copie if q.get("dilazione_inps")), None),
             "_righe": righe,
         })
     return pagamenti
@@ -1111,6 +1114,7 @@ def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
         "programmato": p.get("programmato"),
         "tipo_versamento": p.get("tipo_versamento"),
         "senza_modello": p.get("senza_modello"),
+        "dilazione_inps": p.get("dilazione_inps"),
         # Pagamento di ravvedimento: gli F24 del commercialista che ravvede.
         "ravvedimento_di": [
             {"f24_id": oid, "pdf_url": f"/api/f24-public/pdf/{oid}"} for oid in p.get("ravvedimento_di") or []
