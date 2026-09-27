@@ -20,6 +20,16 @@ import {
   Info,
 } from 'lucide-react';
 
+export const DATO_NON_DISPONIBILE = 'Dato non disponibile';
+
+/**
+ * Un importo che il backend non sa calcolare arriva null (es. IVA a credito
+ * con fatture senza ``iva_detraibile`` classificata): non e' 0,00.
+ */
+export function euroODato(valore) {
+  return valore == null ? DATO_NON_DISPONIBILE : formatEuro(valore);
+}
+
 export default function Finanziaria() {
   const { anno: selectedYear } = useAnnoGlobale();
   const [summary, setSummary] = useState(null);
@@ -122,14 +132,14 @@ export default function Finanziaria() {
           icon={<TrendingUp size={18} />}
           label="Entrate finanziarie dell'anno"
           value={formatEuro(summary?.total_income)}
-          subtext={`Cassa: ${formatEuro(summary?.cassa?.entrate)} | Banca: ${formatEuro(summary?.banca?.entrate)}`}
+          subtext={`Cassa: ${formatEuro(summary?.cassa?.entrate)} | BPM: ${formatEuro(summary?.banca?.entrate)} | SumUp: ${formatEuro(summary?.sumup?.entrate)}`}
           accent="success"
         />
         <StatCard
           icon={<TrendingDown size={18} />}
           label="Uscite finanziarie dell'anno"
           value={formatEuro(summary?.total_expenses)}
-          subtext={`Cassa: ${formatEuro(summary?.cassa?.uscite)} | Banca: ${formatEuro(summary?.banca?.uscite)}`}
+          subtext={`Cassa: ${formatEuro(summary?.cassa?.uscite)} | BPM: ${formatEuro(summary?.banca?.uscite)} | SumUp: ${formatEuro(summary?.sumup?.uscite)}`}
           accent="danger"
         />
         <StatCard
@@ -169,7 +179,7 @@ export default function Finanziaria() {
           />
           <StatCard
             label="📥 IVA a CREDITO (Fatture)"
-            value={formatEuro(summary?.vat_credit)}
+            value={euroODato(summary?.vat_credit)}
             subtext={
               <>
                 Da {summary?.fatture?.count || 0} fatture
@@ -181,13 +191,19 @@ export default function Finanziaria() {
           />
           <StatCard
             label="⚖️ Stima saldo IVA"
-            value={formatEuro(summary?.vat_balance)}
+            value={euroODato(summary?.vat_balance)}
             subtext={
-              <Badge variant={summary?.vat_balance > 0 ? 'danger' : 'success'}>
+              <Badge
+                variant={
+                  summary?.vat_balance == null ? 'warning' : summary.vat_balance > 0 ? 'danger' : 'success'
+                }
+              >
                 {summary?.vat_status || '-'}
               </Badge>
             }
-            accent={summary?.vat_balance > 0 ? 'danger' : 'success'}
+            accent={
+              summary?.vat_balance == null ? 'warning' : summary.vat_balance > 0 ? 'danger' : 'success'
+            }
           />
         </PageGrid>
       </PageSection>
@@ -226,7 +242,7 @@ export default function Finanziaria() {
               <tr>
                 <Td>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Building2 size={16} color={COLORS.textMuted} /> Banca
+                    <Building2 size={16} color={COLORS.textMuted} /> Banca BPM
                   </span>
                 </Td>
                 <Td align="right" mono>{formatEuro(summary?.banca?.riporto)}</Td>
@@ -240,6 +256,25 @@ export default function Finanziaria() {
                   {formatEuro(summary?.banca?.saldo)}
                 </Td>
               </tr>
+              {summary?.sumup && (
+                <tr data-testid="finanziaria-riga-sumup">
+                  <Td>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Building2 size={16} color={COLORS.textMuted} /> Mastercard SumUp
+                    </span>
+                  </Td>
+                  <Td align="right" mono>{formatEuro(summary.sumup.riporto)}</Td>
+                  <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
+                    {formatEuro(summary.sumup.entrate)}
+                  </Td>
+                  <Td align="right" mono style={{ color: COLORS.danger, fontWeight: 500 }}>
+                    {formatEuro(summary.sumup.uscite)}
+                  </Td>
+                  <Td align="right" mono style={{ fontWeight: 600 }}>
+                    {formatEuro(summary.sumup.saldo)}
+                  </Td>
+                </tr>
+              )}
             </tbody>
             <tfoot>
               <tr style={{ background: COLORS.bgAlt, fontWeight: 600 }}>
@@ -271,6 +306,12 @@ export default function Finanziaria() {
         <p style={{ color: COLORS.textMuted, fontSize: 13, margin: '12px 0 0' }}>
           {summary?.financial_note} I pagamenti di salari e F24 sono già compresi nelle uscite
           bancarie e non vengono sommati una seconda volta.
+        </p>
+        <p
+          data-testid="finanziaria-nota-prima-nota"
+          style={{ color: COLORS.textMuted, fontSize: 13, margin: '6px 0 0' }}
+        >
+          I saldi sono quelli registrati in Prima Nota, non saldi certificati dall'estratto conto.
         </p>
       </PageSection>
 
@@ -328,19 +369,33 @@ export default function Finanziaria() {
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: 12,
-              background: summary?.vat_balance > 0 ? COLORS.dangerLight : COLORS.successLight,
+              background:
+                summary?.vat_balance == null
+                  ? COLORS.warningLight
+                  : summary.vat_balance > 0 ? COLORS.dangerLight : COLORS.successLight,
               borderRadius: 8,
             }}
           >
-            <span>🧾 Stima documentale IVA {summary?.vat_balance > 0 ? 'a debito' : 'a credito'}</span>
+            <span>
+              🧾 Stima documentale IVA{' '}
+              {summary?.vat_balance == null
+                ? `(${summary?.vat_status || 'non calcolabile'})`
+                : summary.vat_balance > 0 ? 'a debito' : 'a credito'}
+            </span>
             <span
+              data-testid="finanziaria-iva-saldo"
               style={{
                 fontWeight: 700,
-                fontFamily: FONT.mono,
-                color: summary?.vat_balance > 0 ? COLORS.danger : COLORS.success,
+                fontFamily: summary?.vat_balance == null ? undefined : FONT.mono,
+                color:
+                  summary?.vat_balance == null
+                    ? COLORS.textMuted
+                    : summary.vat_balance > 0 ? COLORS.danger : COLORS.success,
               }}
             >
-              {formatEuro(Math.abs(summary?.vat_balance || 0))}
+              {summary?.vat_balance == null
+                ? DATO_NON_DISPONIBILE
+                : formatEuro(Math.abs(summary.vat_balance))}
             </span>
           </div>
         </div>

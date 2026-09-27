@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
+import { COLORS } from '../lib/utils';
 import { PageLayout, PageSection, PageLoading } from '../components/PageLayout';
 import { Calendar, Plus, RefreshCw, X } from 'lucide-react';
+
+/** Il dato piu' recente si mostra per primo (regola del gestionale). */
+export function ordinaEventiRecentiPrima(eventi) {
+  const quando = ev => {
+    const t = Date.parse(ev?.scheduled_date || '');
+    return Number.isNaN(t) ? -Infinity : t;
+  };
+  return [...(eventi || [])].sort((a, b) => quando(b) - quando(a));
+}
 
 export default function Pianificazione() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [err, setErr] = useState('');
+  // Un errore di caricamento non e' un'agenda vuota.
+  const [loadErr, setLoadErr] = useState('');
   const [newEvent, setNewEvent] = useState({
     title: '',
     date: new Date().toISOString().split('T')[0],
@@ -23,10 +35,13 @@ export default function Pianificazione() {
   async function loadEvents() {
     try {
       setLoading(true);
+      setLoadErr('');
       const r = await api.get('/api/pianificazione/events');
-      setEvents(Array.isArray(r.data) ? r.data : r.data?.items || []);
+      setEvents(ordinaEventiRecentiPrima(Array.isArray(r.data) ? r.data : r.data?.items || []));
     } catch (e) {
       console.error('Error loading events:', e);
+      setEvents([]);
+      setLoadErr(e.response?.data?.detail || e.message || 'errore sconosciuto');
     } finally {
       setLoading(false);
     }
@@ -258,9 +273,42 @@ export default function Pianificazione() {
       )}
 
       {/* Lista Eventi */}
-      <PageSection title={`Eventi Pianificati (${events.length})`} icon="📋">
+      <PageSection
+        title={loadErr ? 'Eventi Pianificati' : `Eventi Pianificati (${events.length})`}
+        icon="📋"
+      >
         {loading ? (
           <PageLoading message="Caricamento eventi..." />
+        ) : loadErr ? (
+          <div
+            role="alert"
+            data-testid="pianificazione-errore"
+            style={{
+              padding: '16px 20px',
+              background: COLORS.dangerLight,
+              border: `1px solid ${COLORS.danger}`,
+              borderRadius: 10,
+              color: COLORS.danger,
+              fontSize: 14,
+            }}
+          >
+            Eventi non disponibili: {loadErr}. Non è un'agenda vuota.{' '}
+            <button
+              onClick={loadEvents}
+              style={{
+                marginLeft: 8,
+                padding: '8px 14px',
+                minHeight: 44,
+                borderRadius: 8,
+                border: '1px solid #e6e3d9',
+                background: 'white',
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              Riprova
+            </button>
+          </div>
         ) : events.length === 0 ? (
           <div style={{ padding: '40px 20px', textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
