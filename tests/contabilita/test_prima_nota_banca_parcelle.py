@@ -140,3 +140,76 @@ def test_allineamento_ritenute_una_volta_sola(db):
     assert secondo == {"saltato": "gia_allineate"}
     assert fattura["importo_ritenuta"] == 210.0
     assert proiezione["importo_cents"] == 21000
+
+
+def test_riparazione_con_id_fattura_numerico(db):
+    """Fatture storiche con id numerico (1776634698467): la riparazione e
+    l'assorbimento le trovano lo stesso."""
+    from app.services.prima_nota_integrity import assorbi_righe_dichiarate
+
+    async def scenario():
+        await db["invoices"].insert_one(_parcella(
+            id=1776634698467, total_amount=3806.4, importo_ritenuta=600.0,
+            pagamento_rate_totale=None,
+        ))
+        await db["prima_nota_banca"].insert_one({
+            "id": "pn-numerica", "fattura_id": 1776634698467, "importo": 3806.4,
+            "data": "2026-02-11", "dichiarato_titolare": True, "provvisorio": True,
+        })
+        esito = await pagamenti.ripara_righe_dichiarate(db)
+        riga = await db["prima_nota_banca"].find_one({"id": "pn-numerica"}, {"_id": 0})
+        toccate = await assorbi_righe_dichiarate(
+            db, {"1776634698467": 3206.4}, sostituita_da="pn-banca", movimento_id="ec-1",
+        )
+        dopo = await db["prima_nota_banca"].find_one({"id": "pn-numerica"}, {"_id": 0})
+        return esito, riga, toccate, dopo
+
+    esito, riga, toccate, dopo = asyncio.run(scenario())
+    assert esito["importi_al_netto"] == 1
+    assert riga["importo"] == 3206.4
+    assert toccate == 1 and dopo["status"] == "deleted"
+
+
+def test_nuova_parcella_apre_avviso_ritenuta_una_volta(db, monkeypatch):
+    from app.services import telegram_notifications
+
+    messaggi = []
+
+    async def finto_invio(testo, **_):
+        messaggi.append(testo)
+        return {"success": True}
+
+    monkeypatch.setattr(telegram_notifications, "send_notification", finto_invio)
+
+    async def scenario():
+        fattura = _parcella(xml_raw=PARCELLA_XML)
+        await ritenute.upsert_ritenuta_da_fattura(db, fattura)
+        await ritenute.upsert_ritenuta_da_fattura(db, fattura)  # reimport
+        return await db["alerts"].find({"codice": "RITENUTA_DA_VERSARE"}, {"_id": 0}).to_list(10)
+
+    alerts = asyncio.run(scenario())
+    assert len(alerts) == 1 and alerts[0]["entita_id"] == "f-parcella"
+    assert "210,00 €" in alerts[0]["dettaglio"] and "1040" in alerts[0]["dettaglio"]
+    assert "16/09/2026" in alerts[0]["dettaglio"]
+    assert len(messaggi) == 1
+
+
+def test_avviso_ritenuta_si_chiude_quando_il_1040_e_versato(db):
+    async def scenario():
+        await db["alerts"].insert_one({
+            "id": "a1", "codice": "RITENUTA_DA_VERSARE", "entita_id": "f-parcella",
+            "stato": "aperto",
+        })
+        await ritenute._chiudi_avviso_se_versata(
+            db, {"fattura_id": "f-parcella"}, {"stato_obbligazione": "APERTA"},
+        )
+        ancora = await db["alerts"].find_one({"id": "a1"}, {"_id": 0})
+        await ritenute._chiudi_avviso_se_versata(
+            db, {"fattura_id": "f-parcella"}, {"stato_obbligazione": "VERSATA"},
+        )
+        chiuso = await db["alerts"].find_one({"id": "a1"}, {"_id": 0})
+        return ancora, chiuso
+
+    ancora, chiuso = asyncio.run(scenario())
+    assert ancora["stato"] == "aperto"
+    assert chiuso["stato"] == "risolto"
