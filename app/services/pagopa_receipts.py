@@ -517,6 +517,27 @@ async def find_bank_movement(db, code: str | list[str], amount: Any):
     return exact[0] if len(exact) == 1 else None
 
 
+async def _movimento_della_ricevuta(
+    db, codes: list[str], values: dict[str, Any], amount: Any,
+) -> dict[str, Any] | None:
+    """Il movimento bancario della ricevuta: sempre per codice (IUV/CBILL o
+    gli altri riferimenti forti) e importo al centesimo.
+
+    L'importo si prova prima quello dell'operazione, poi l'addebito totale:
+    la banca addebita l'importo netto (781,60) e la commissione a parte,
+    mentre ``bank_debit_total`` lo somma (784,45) e non trovava mai niente.
+    """
+    tentati: list[Any] = []
+    for importo in (values.get("operation_amount") or amount, values.get("bank_debit_total")):
+        if importo in (None, "") or any(amounts_equal_to_cent(importo, t) for t in tentati):
+            continue
+        tentati.append(importo)
+        movement = await find_bank_movement(db, codes, importo)
+        if movement:
+            return movement
+    return None
+
+
 async def _associate_receipt_to_verbale(
     db, *, receipt_id: str, parsed: dict[str, Any], amount: Any,
 ) -> dict[str, Any]:
@@ -633,8 +654,7 @@ async def import_receipt(
         )
         if values.get(field)
     ))
-    bank_amount = values.get("bank_debit_total") or amount
-    movement = await find_bank_movement(db, strong_codes, bank_amount)
+    movement = await _movimento_della_ricevuta(db, strong_codes, values, amount)
     now = datetime.now(timezone.utc).isoformat()
     receipt = {
         "id": receipt_id, "filename": filename, "content_type": "application/pdf",
