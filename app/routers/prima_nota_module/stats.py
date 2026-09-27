@@ -15,7 +15,7 @@ from app.services import conti_pos
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
-    aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
+    aggrega_saldo_prima_nota, appartenenza_conto_bpm, filtro_saldo_prima_nota,
     saldi_finanziari, get_saldo_iniziale_manuale, calcola_saldo_anni_precedenti,
 )
 
@@ -143,11 +143,7 @@ async def get_prima_nota_stats(
     # ancora sommati, e le stats non tornavano con la Prima Nota.
     cassa_match = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA)
     banca_match = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA)
-    banca_match["$or"] = [
-        {"conto_contabile": conti_pos.CONTO_BPM},
-        {"conto_contabile": {"$in": [None, ""]}},
-        {"conto_contabile": {"$exists": False}},
-    ]
+    banca_match.update(appartenenza_conto_bpm())
     sumup_match = filtro_saldo_prima_nota(
         COLLECTION_PRIMA_NOTA_BANCA,
         conto_contabile=conti_pos.CONTO_SUMUP_MASTERCARD,

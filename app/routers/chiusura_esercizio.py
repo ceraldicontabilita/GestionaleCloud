@@ -16,12 +16,29 @@ from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
     filtro_saldo_prima_nota,
 )
+from app.services.conto_economico_gestionale import FILTRO_CORRISPETTIVI_VALIDI
 from app.services.registrazione_contabile import registra_scrittura_semplice
 from app.utils.error_handler import handle_errors
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+async def _mesi_interamente_chiusi(db, anno: int) -> set:
+    """Mesi dell'anno in cui ogni giorno e' nel registro delle chiusure."""
+    import calendar
+
+    from app.services.chiusure_attivita import giorni_chiusi
+
+    chiusi = await giorni_chiusi(db, f"{anno}-01-01", f"{anno}-12-31")
+    return {
+        mese for mese in range(1, 13)
+        if all(
+            f"{anno}-{mese:02d}-{giorno:02d}" in chiusi
+            for giorno in range(1, calendar.monthrange(anno, mese)[1] + 1)
+        )
+    }
 
 
 class ChiusuraEsercizioInput(BaseModel):
@@ -113,14 +130,26 @@ async def verifica_preliminare_chiusura(anno: int) -> Dict[str, Any]:
 
     mesi = await db["corrispettivi"].aggregate([
         {"$match": {
+            **FILTRO_CORRISPETTIVI_VALIDI,
             "data": {"$regex": f"^{anno}"},
-            "entity_status": {"$ne": "deleted"},
         }},
         {"$group": {"_id": {"$substr": ["$data", 5, 2]}}},
         {"$sort": {"_id": 1}},
     ]).to_list(12)
     mesi_registrati = sorted({int(c["_id"]) for c in mesi if str(c.get("_id", "")).isdigit()})
-    mesi_mancanti = [mese for mese in range(1, 13) if mese not in mesi_registrati]
+    # Un mese interamente chiuso (registro ``chiusure_attivita``: la
+    # ristrutturazione 26/01-08/03/2026 copre tutto febbraio) non e' un
+    # corrispettivo mancante: bloccare la chiusura per quel mese era falso.
+    mesi_chiusi = await _mesi_interamente_chiusi(db, anno)
+    mesi_mancanti = [
+        mese for mese in range(1, 13)
+        if mese not in mesi_registrati and mese not in mesi_chiusi
+    ]
+    if mesi_chiusi:
+        completamenti.append(
+            "Mesi di chiusura dell'attività (nessun corrispettivo atteso): "
+            + ", ".join(map(str, sorted(mesi_chiusi)))
+        )
     if mesi_mancanti:
         problemi.append(_problema(
             "mesi_corrispettivi_mancanti",

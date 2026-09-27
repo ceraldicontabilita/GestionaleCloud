@@ -5,6 +5,8 @@ Sistema di contabilità analitica per bar-pasticceria
 from fastapi import APIRouter, HTTPException, Query, Body
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timezone
+import calendar
+import math
 from app.database import Database, Collections
 
 router = APIRouter()
@@ -271,149 +273,188 @@ async def assegna_cdc_fatture(
 async def get_utile_obiettivo(anno: int = Query(...)) -> Dict[str, Any]:
     """
     Recupera il target di utile e calcola lo stato attuale.
+
+    Ricavi, costi e utile vengono dall'analisi costi/ricavi della Dashboard
+    (``controllo_gestione.get_analisi_costi_ricavi``): corrispettivi validi
+    all'imponibile, fatture attive al netto delle note di credito, lordo del
+    personale. Prima qui si sommava il ``totale`` lordo di tutti i
+    corrispettivi (anche cancellati) e il ``total_amount`` di tutte le
+    fatture (anche le copie archiviate, note di credito come costi), senza
+    personale. Senza un target configurato non si inventa un obiettivo: il
+    target e' None e non ci sono scostamenti.
     """
+    from app.routers.controllo_gestione import get_analisi_costi_ricavi
+
     db = Database.get_db()
-    
-    # Recupera target
-    target = await db["utile_obiettivo"].find_one({"anno": anno}, {"_id": 0})
-    
-    if not target:
-        # Default se non configurato
-        target = {
-            "anno": anno,
-            "utile_target_annuo": 50000,
-            "margine_medio_atteso": 0.35,
-            "giorni_lavorativi_anno": 300,
-            "configurato": False
-        }
-    
-    # Calcola dati reali
-    date_start = f"{anno}-01-01"
-    date_end = f"{anno}-12-31"
-    
-    # Ricavi da corrispettivi
-    ricavi_pipeline = [
-        {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
-    ]
-    ricavi_result = await db[Collections.CORRISPETTIVI].aggregate(ricavi_pipeline).to_list(1)
-    ricavi_totali = ricavi_result[0]["totale"] if ricavi_result else 0
-    
-    # Costi da fatture
-    costi_pipeline = [
-        {"$match": {"invoice_date": {"$gte": date_start, "$lte": date_end}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
-    ]
-    costi_result = await db[Collections.INVOICES].aggregate(costi_pipeline).to_list(1)
-    costi_totali = costi_result[0]["totale"] if costi_result else 0
-    
-    # Calcoli
-    utile_corrente = ricavi_totali - costi_totali
-    utile_target = target.get("utile_target_annuo", 50000)
-    scostamento = utile_corrente - utile_target
-    
+
+    target = await db["utile_obiettivo"].find_one({"anno": anno}, {"_id": 0}) or {}
+    utile_target = target.get("utile_target_annuo")
+    configurato = utile_target is not None
+
+    analisi = await get_analisi_costi_ricavi(anno=anno)
+    ricavi_totali = analisi["ricavi"]["totale"]
+    costi_totali = analisi["costi"]["totale"]
+    utile_corrente = analisi["margine"]["importo"]
+
     # Giorni trascorsi nell'anno
     oggi = date.today()
     if oggi.year == anno:
         giorni_trascorsi = (oggi - date(anno, 1, 1)).days + 1
+    elif anno < oggi.year:
+        giorni_trascorsi = 366 if calendar.isleap(anno) else 365
     else:
-        giorni_trascorsi = 365
-    
-    giorni_lavorativi = target.get("giorni_lavorativi_anno", 300)
-    giorni_lavorativi_trascorsi = int(giorni_trascorsi * (giorni_lavorativi / 365))
-    giorni_rimanenti = giorni_lavorativi - giorni_lavorativi_trascorsi
-    
-    # Utile target proporzionato
-    utile_target_ad_oggi = (utile_target / giorni_lavorativi) * giorni_lavorativi_trascorsi
-    scostamento_ad_oggi = utile_corrente - utile_target_ad_oggi
-    percentuale_target_annuo = (
-        (utile_corrente / utile_target) * 100 if utile_target > 0 else 0
+        giorni_trascorsi = 0
+
+    giorni_lavorativi = target.get("giorni_lavorativi_anno")
+    margine_medio = target.get("margine_medio_atteso")
+    giorni_lavorativi_trascorsi = (
+        int(giorni_trascorsi * (giorni_lavorativi / 365)) if giorni_lavorativi else None
     )
-    gap_target_annuo = max(utile_target - utile_corrente, 0)
-    surplus_target_annuo = max(utile_corrente - utile_target, 0)
-    
-    # Proiezione fine anno
-    if giorni_trascorsi > 0:
-        utile_proiezione = (utile_corrente / giorni_trascorsi) * 365
-    else:
-        utile_proiezione = 0
-    
-    # Calcolo azioni necessarie
-    margine_medio = target.get("margine_medio_atteso", 0.35)
-    
-    if scostamento < 0:
-        # Siamo sotto target
-        ricavi_necessari = abs(scostamento) / margine_medio
-        costi_da_tagliare = abs(scostamento)
-    else:
-        ricavi_necessari = 0
-        costi_da_tagliare = 0
-    
+    giorni_rimanenti = (
+        max(giorni_lavorativi - giorni_lavorativi_trascorsi, 0)
+        if giorni_lavorativi else None
+    )
+
+    # Proiezione fine anno: solo se l'utile corrente si conosce.
+    utile_proiezione = (
+        round((utile_corrente / giorni_trascorsi) * 365, 2)
+        if utile_corrente is not None and giorni_trascorsi > 0 else None
+    )
+
+    analisi_target: Dict[str, Any] = {
+        "scostamento_target": None,
+        "scostamento_ad_oggi": None,
+        "stato": "TARGET_NON_CONFIGURATO" if not configurato else "DATO_NON_DISPONIBILE",
+        "percentuale_raggiungimento": None,
+        "percentuale_target_annuo": None,
+        "gap_target_annuo": None,
+        "surplus_target_annuo": None,
+        "stato_target_annuo": None,
+        "utile_proiezione_fine_anno": utile_proiezione,
+    }
+    azioni: Dict[str, Any] = {
+        "ricavi_aggiuntivi_necessari": None,
+        "costi_da_ridurre": None,
+        "utile_giornaliero_necessario": None,
+    }
+    utile_target_ad_oggi = None
+
+    if configurato and utile_corrente is not None:
+        scostamento = utile_corrente - utile_target
+        if giorni_lavorativi and giorni_lavorativi_trascorsi is not None:
+            utile_target_ad_oggi = (utile_target / giorni_lavorativi) * giorni_lavorativi_trascorsi
+        scostamento_ad_oggi = (
+            utile_corrente - utile_target_ad_oggi if utile_target_ad_oggi is not None else None
+        )
+        gap_target_annuo = max(utile_target - utile_corrente, 0)
+        analisi_target.update({
+            "scostamento_target": round(scostamento, 2),
+            "scostamento_ad_oggi": (
+                round(scostamento_ad_oggi, 2) if scostamento_ad_oggi is not None else None
+            ),
+            "stato": (
+                None if scostamento_ad_oggi is None
+                else "IN_TARGET" if scostamento_ad_oggi >= 0 else "SOTTO_TARGET"
+            ),
+            "percentuale_raggiungimento": (
+                round((utile_corrente / utile_target_ad_oggi) * 100, 1)
+                if utile_target_ad_oggi else None
+            ),
+            "percentuale_target_annuo": (
+                round((utile_corrente / utile_target) * 100, 1) if utile_target > 0 else None
+            ),
+            "gap_target_annuo": round(gap_target_annuo, 2),
+            "surplus_target_annuo": round(max(utile_corrente - utile_target, 0), 2),
+            "stato_target_annuo": "RAGGIUNTO" if gap_target_annuo == 0 else "DA_RAGGIUNGERE",
+        })
+        if scostamento < 0:
+            azioni = {
+                "ricavi_aggiuntivi_necessari": (
+                    round(abs(scostamento) / margine_medio, 2) if margine_medio else None
+                ),
+                "costi_da_ridurre": round(abs(scostamento), 2),
+                "utile_giornaliero_necessario": (
+                    round(abs(scostamento) / max(giorni_rimanenti, 1), 2)
+                    if giorni_rimanenti is not None else None
+                ),
+            }
+        else:
+            azioni = {
+                "ricavi_aggiuntivi_necessari": 0,
+                "costi_da_ridurre": 0,
+                "utile_giornaliero_necessario": 0,
+            }
+
     return {
         "anno": anno,
         "target": {
             "utile_target_annuo": utile_target,
-            "utile_target_ad_oggi": round(utile_target_ad_oggi, 2),
+            "utile_target_ad_oggi": (
+                round(utile_target_ad_oggi, 2) if utile_target_ad_oggi is not None else None
+            ),
             "margine_medio_atteso": margine_medio,
             "giorni_lavorativi_anno": giorni_lavorativi,
-            "configurato": target.get("configurato", False)
+            "configurato": configurato,
         },
         "reale": {
-            "ricavi_totali": round(ricavi_totali, 2),
-            "costi_totali": round(costi_totali, 2),
-            "utile_corrente": round(utile_corrente, 2),
-            "margine_reale": round(utile_corrente / ricavi_totali, 4) if ricavi_totali > 0 else 0
+            "ricavi_totali": ricavi_totali,
+            "costi_totali": costi_totali,
+            "utile_corrente": utile_corrente,
+            "margine_reale": (
+                round(utile_corrente / ricavi_totali, 4)
+                if utile_corrente is not None and ricavi_totali > 0 else None
+            ),
+            "personale": analisi["costi"]["personale"],
+            "personale_incompleto": analisi["costi"]["personale_incompleto"],
+            "personale_motivo": analisi["costi"]["personale_motivo"],
+            "fonte": "controllo_gestione.costi_ricavi",
         },
-        "analisi": {
-            "scostamento_target": round(scostamento, 2),
-            "scostamento_ad_oggi": round(scostamento_ad_oggi, 2),
-            "stato": "IN_TARGET" if scostamento_ad_oggi >= 0 else "SOTTO_TARGET",
-            "percentuale_raggiungimento": round((utile_corrente / utile_target_ad_oggi) * 100, 1) if utile_target_ad_oggi > 0 else 0,
-            "percentuale_target_annuo": round(percentuale_target_annuo, 1),
-            "gap_target_annuo": round(gap_target_annuo, 2),
-            "surplus_target_annuo": round(surplus_target_annuo, 2),
-            "stato_target_annuo": "RAGGIUNTO" if gap_target_annuo == 0 else "DA_RAGGIUNGERE",
-            "utile_proiezione_fine_anno": round(utile_proiezione, 2)
-        },
+        "analisi": analisi_target,
         "tempo": {
             "giorni_trascorsi": giorni_trascorsi,
             "giorni_lavorativi_trascorsi": giorni_lavorativi_trascorsi,
-            "giorni_rimanenti": giorni_rimanenti
+            "giorni_rimanenti": giorni_rimanenti,
         },
-        "azioni_suggerite": {
-            "ricavi_aggiuntivi_necessari": round(ricavi_necessari, 2) if scostamento < 0 else 0,
-            "costi_da_ridurre": round(costi_da_tagliare, 2) if scostamento < 0 else 0,
-            "utile_giornaliero_necessario": round(abs(scostamento) / max(giorni_rimanenti, 1), 2) if scostamento < 0 else 0
-        }
+        "azioni_suggerite": azioni,
     }
 
 
 @router.post("/utile-obiettivo")
 async def set_utile_obiettivo(data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
-    """Imposta il target di utile per un anno."""
+    """Imposta il target di utile per un anno.
+
+    Il target lo decide il titolare: senza ``utile_target_annuo`` non si
+    salva (prima si scriveva un 50.000 € mai scelto da nessuno).
+    """
     db = Database.get_db()
-    
+
     anno = data.get("anno")
     if not anno:
         raise HTTPException(status_code=400, detail="Anno obbligatorio")
-    
+    try:
+        utile_target = float(data.get("utile_target_annuo"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Target utile annuo obbligatorio") from None
+    if not math.isfinite(utile_target):
+        raise HTTPException(status_code=400, detail="Target utile annuo non valido")
+
     target = {
         "anno": anno,
-        "utile_target_annuo": data.get("utile_target_annuo", 50000),
-        "utile_target_mensile": data.get("utile_target_annuo", 50000) / 12,
-        "margine_medio_atteso": data.get("margine_medio_atteso", 0.35),
-        "giorni_lavorativi_anno": data.get("giorni_lavorativi_anno", 300),
+        "utile_target_annuo": utile_target,
+        "utile_target_mensile": utile_target / 12,
+        "margine_medio_atteso": data.get("margine_medio_atteso"),
+        "giorni_lavorativi_anno": data.get("giorni_lavorativi_anno"),
         "note": data.get("note", ""),
         "configurato": True,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     await db["utile_obiettivo"].update_one(
         {"anno": anno},
         {"$set": target},
         upsert=True
     )
-    
+
     return {"message": f"Target utile {anno} impostato: €{target['utile_target_annuo']:,.2f}"}
 
 
@@ -432,7 +473,25 @@ async def get_suggerimenti_utile(anno: int = Query(...)) -> Dict[str, Any]:
     priorita = "NORMALE"
     
     scostamento = stato["analisi"]["scostamento_ad_oggi"]
-    
+    if scostamento is None:
+        scostamento = stato["analisi"]["scostamento_target"]
+
+    if scostamento is None:
+        # Nessun target configurato o utile non calcolabile (costo del
+        # personale assente): nessun consiglio costruito su numeri inventati.
+        motivo = (
+            "Imposta un target di utile per ricevere suggerimenti"
+            if not stato["target"]["configurato"]
+            else "Utile non calcolabile: " + str(stato["reale"].get("personale_motivo") or "dati mancanti")
+        )
+        return {
+            "anno": anno,
+            "priorita": None,
+            "suggerimenti": [{"tipo": "INFO", "messaggio": motivo, "azione": None}],
+            "stato_corrente": stato["analisi"]["stato"],
+            "percentuale_raggiungimento": None,
+        }
+
     if scostamento < 0:
         priorita = "ALTA" if abs(scostamento) > 5000 else "MEDIA"
         
@@ -446,11 +505,12 @@ async def get_suggerimenti_utile(anno: int = Query(...)) -> Dict[str, Any]:
             "azione": None
         })
         
-        suggerimenti.append({
-            "tipo": "OPZIONE_A",
-            "messaggio": f"Aumentare i ricavi di €{ricavi_necessari:,.2f} (con margine {stato['target']['margine_medio_atteso']*100:.0f}%)",
-            "azione": "incremento_vendite"
-        })
+        if ricavi_necessari is not None:
+            suggerimenti.append({
+                "tipo": "OPZIONE_A",
+                "messaggio": f"Aumentare i ricavi di €{ricavi_necessari:,.2f} (con margine {stato['target']['margine_medio_atteso']*100:.0f}%)",
+                "azione": "incremento_vendite"
+            })
         
         suggerimenti.append({
             "tipo": "OPZIONE_B",
@@ -487,7 +547,7 @@ async def get_suggerimenti_utile(anno: int = Query(...)) -> Dict[str, Any]:
         # Proiezione
         proiezione = stato["analisi"]["utile_proiezione_fine_anno"]
         target = stato["target"]["utile_target_annuo"]
-        if proiezione > target:
+        if proiezione is not None and target and proiezione > target:
             suggerimenti.append({
                 "tipo": "PROIEZIONE",
                 "messaggio": f"Proiezione fine anno: €{proiezione:,.2f} (+{((proiezione/target)-1)*100:.1f}% vs target)",

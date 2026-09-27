@@ -396,8 +396,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   tenere separati Numia, SumUp e PayPal: non sono conti nuovi.
 - Ammortamenti: scrittura semplice DARE 05.04.01 / AVERE 01.05.01; il
   risultato d'esercizio resta con segno, con guardia anti-doppia chiusura. Un cespite nasce da una riga fattura solo per parola intera («inCONDIZIONATo» non è un climatizzatore), mai da una nota di credito né da uno sconto.
-- Ricavi: **solo corrispettivi RT**. Le fatture ricevute sono costi; gli
-  accrediti POS e i payout non sono nuovi ricavi.
+- Ricavi: **solo corrispettivi RT**, all'imponibile e col filtro unico di `conto_economico_gestionale.py`, che dà anche il
+  personale (lordo buste; contributi `None`). Le fatture ricevute sono costi; accrediti POS e payout non sono ricavi.
 - Corrispettivi: in cassa entra **solo la quota contanti**, la quota POS va in Prima Nota Banca. Mai il
   totale. Il **non riscosso** (sospesi, buoni, fattura) è ricavo ma non è denaro: terza gamba del DARE sui
   crediti (`01.02.01` → CEE 15.05), e solo se il documento lo **dichiara** e cassa + POS + non riscosso fa il

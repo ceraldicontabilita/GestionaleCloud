@@ -186,36 +186,78 @@ def test_calendario_non_riapre_evidenza_f24(monkeypatch):
     assert exc.value.status_code == 409
 
 
+def _db_utile_obiettivo(monkeypatch, *, target=True):
+    db = ClientArchivioMemoria()["utile_obiettivo_test"]
+    monkeypatch.setattr(centri_costo.Database, "get_db", staticmethod(lambda: db))
+    if target:
+        _run(db["utile_obiettivo"].insert_one({
+            "anno": 2026, "utile_target_annuo": 25000,
+            "giorni_lavorativi_anno": 300, "margine_medio_atteso": .35,
+        }))
+    _run(db["corrispettivi"].insert_many([
+        {"id": "c1", "data": "2026-04-10", "totale": 427000.0,
+         "totale_imponibile": 350000.0, "totale_iva": 77000.0},
+        # Cancellato con il solo ``status``: prima entrava nei ricavi, al lordo.
+        {"id": "c-canc", "data": "2026-04-11", "totale": 50000.0,
+         "totale_imponibile": 40983.61, "status": "deleted", "entity_status": ""},
+    ]))
+    _run(db["invoices"].insert_many([
+        {"id": "f1", "invoice_date": "2026-04-12", "tipo_documento": "TD01",
+         "imponibile": 10000.0, "iva": 2200.0, "total_amount": 12200.0},
+        # Copia archiviata della stessa fattura: non e' un secondo costo.
+        {"id": "f1-arch", "invoice_date": "2026-04-12", "tipo_documento": "TD01",
+         "imponibile": 10000.0, "iva": 2200.0, "total_amount": 12200.0,
+         "status": "archiviata"},
+        # La nota di credito riduce i costi, non li aumenta.
+        {"id": "nc1", "invoice_date": "2026-04-13", "tipo_documento": "TD04",
+         "imponibile": 1000.0, "iva": 220.0, "total_amount": 1220.0},
+    ]))
+    _run(db["cedolini"].insert_one({"id": "b1", "anno": 2026, "mese": 4, "lordo": 40000.0}))
+    return db
+
+
 def test_percentuale_target_annuo_non_usa_target_prorata(monkeypatch):
-    class _Agg:
-        def __init__(self, value):
-            self.value = value
-
-        async def to_list(self, _n):
-            return [{"totale": self.value}]
-
-    class _C:
-        def __init__(self, value=0):
-            self.value = value
-
-        async def find_one(self, *args, **kwargs):
-            return {"anno": 2026, "utile_target_annuo": 25000,
-                    "giorni_lavorativi_anno": 300, "margine_medio_atteso": .35}
-
-        def aggregate(self, pipeline):
-            return _Agg(self.value)
-
-    class _TargetDb:
-        def __getitem__(self, name):
-            if name == "corrispettivi":
-                return _C(350000)
-            if name == centri_costo.Collections.INVOICES:
-                return _C(0)
-            return _C()
-
-    monkeypatch.setattr(centri_costo.Database, "get_db", staticmethod(lambda: _TargetDb()))
+    _db_utile_obiettivo(monkeypatch)
     result = _run(centri_costo.get_utile_obiettivo(2026))
 
-    assert result["analisi"]["percentuale_target_annuo"] == 1400.0
+    # 350.000 ricavi - (10.000 - 1.000 fatture + 40.000 personale) = 301.000
+    assert result["reale"]["ricavi_totali"] == 350000.0
+    assert result["reale"]["costi_totali"] == 49000.0
+    assert result["reale"]["utile_corrente"] == 301000.0
+    assert result["analisi"]["percentuale_target_annuo"] == 1204.0
     assert result["analisi"]["gap_target_annuo"] == 0
-    assert result["analisi"]["surplus_target_annuo"] == 325000
+    assert result["analisi"]["surplus_target_annuo"] == 276000.0
+
+
+def test_utile_obiettivo_senza_target_non_inventa_50000(monkeypatch):
+    _db_utile_obiettivo(monkeypatch, target=False)
+    result = _run(centri_costo.get_utile_obiettivo(2026))
+
+    assert result["target"]["utile_target_annuo"] is None
+    assert result["target"]["configurato"] is False
+    assert result["analisi"]["scostamento_target"] is None
+    assert result["analisi"]["gap_target_annuo"] is None
+    assert result["analisi"]["stato"] == "TARGET_NON_CONFIGURATO"
+    assert result["azioni_suggerite"]["costi_da_ridurre"] is None
+    # I dati reali restano visibili.
+    assert result["reale"]["utile_corrente"] == 301000.0
+
+    suggerimenti = _run(centri_costo.get_suggerimenti_utile(2026))
+    assert suggerimenti["suggerimenti"][0]["tipo"] == "INFO"
+
+
+def test_utile_obiettivo_senza_buste_e_dato_non_disponibile(monkeypatch):
+    db = _db_utile_obiettivo(monkeypatch)
+    _run(db["cedolini"].delete_one({"id": "b1"}))
+    result = _run(centri_costo.get_utile_obiettivo(2026))
+
+    assert result["reale"]["costi_totali"] is None
+    assert result["reale"]["utile_corrente"] is None
+    assert result["analisi"]["percentuale_target_annuo"] is None
+
+
+def test_salvare_utile_obiettivo_senza_target_e_rifiutato(monkeypatch):
+    _db_utile_obiettivo(monkeypatch, target=False)
+    with pytest.raises(centri_costo.HTTPException) as exc:
+        _run(centri_costo.set_utile_obiettivo({"anno": 2026}))
+    assert exc.value.status_code == 400

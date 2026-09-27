@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+from app.services.conto_economico_gestionale import FILTRO_CORRISPETTIVI_VALIDI
 
 logger = logging.getLogger(__name__)
 
@@ -698,9 +699,10 @@ _FILTRO_FATTURE_DA_REGISTRARE: Dict[str, Any] = {
     "duplicate_review_required": {"$ne": True},
     "registrata_contabilita": {"$ne": True},
 }
+# Corrispettivo valido: filtro unico di services/conto_economico_gestionale.py
+# (comprende ``archiviata``, che ``_corrispettivo_registrabile`` gia' scartava).
 _FILTRO_CORRISPETTIVI_DA_REGISTRARE: Dict[str, Any] = {
-    "status": {"$nin": ["deleted", "archived"]},
-    "entity_status": {"$ne": "deleted"},
+    **FILTRO_CORRISPETTIVI_VALIDI,
     "registrato_contabilita": {"$ne": True},
 }
 # Un corrispettivo provvisorio (chiusura manuale serale in attesa dell'XML

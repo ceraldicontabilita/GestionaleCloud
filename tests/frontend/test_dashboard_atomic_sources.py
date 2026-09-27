@@ -83,7 +83,7 @@ def test_dashboard_non_somma_fattura_iva_e_pagamento_cassa_due_volte(monkeypatch
          "total_amount": 12.2, "imponibile": 10.0, "iva": 2.2},
     ]))
     _run(db["cedolini"].insert_one({
-        "id": "ced-1", "anno": 2026, "mese": 1, "costo_azienda": 20.0,
+        "id": "ced-1", "anno": 2026, "mese": 1, "lordo": 20.0,
     }))
     _run(db["prima_nota_cassa"].insert_one({
         "id": "pagamento-fatt-1", "data": "2026-01-20", "tipo": "uscita", "importo": 61.0,

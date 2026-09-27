@@ -48,6 +48,14 @@ def test_summary_distingue_flussi_riporti_e_disponibilita(monkeypatch):
     # dedicati, qui si verifica come Finanziaria usa i valori restituiti.
     monkeypatch.setattr(finanziaria, "aggrega_saldo_prima_nota", saldi_canonici)
 
+    # La Banca passa dai saldi per conto (BPM e SumUp separati).
+    async def saldi_per_conto(_db, _data, anno):
+        bpm = await saldi_canonici(_db, "prima_nota_banca", None, anno)
+        zero = {"saldo_precedente": 0.0, "saldo": 0.0}
+        return {"bpm": bpm, "sumup": zero, "altri": zero, "totale": bpm["saldo"]}
+
+    monkeypatch.setattr(finanziaria, "saldi_banca_per_conto", saldi_per_conto)
+
     result = _run(finanziaria.get_financial_summary(anno=2026))
 
     # Il credito POS lordo da 300 resta prova di riconciliazione ma non è una

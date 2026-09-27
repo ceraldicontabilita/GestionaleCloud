@@ -260,7 +260,13 @@ async def _risposta_strategia(db, domanda: str) -> Dict[str, Any]:
     try:
         from app.routers.controllo_gestione import get_trend_mensile
         trend = await get_trend_mensile(anno=anno)
-        mesi = [m for m in trend.get("trend", []) if m.get("ricavi") or m.get("costi")]
+        # Un mese senza costo del personale ha costi e margine None (non
+        # zero): non entra nel confronto, altrimenti falserebbe le medie.
+        mesi = [
+            m for m in trend.get("trend", [])
+            if (m.get("ricavi") or m.get("costi"))
+            and m.get("costi") is not None and m.get("margine") is not None
+        ]
         if len(mesi) < 2:
             return {
                 "response": (

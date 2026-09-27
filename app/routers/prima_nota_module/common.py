@@ -334,6 +334,62 @@ async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
     }
 
 
+def appartenenza_conto_bpm() -> Dict[str, Any]:
+    """Righe di Prima Nota Banca che stanno sul conto BPM (19.01.01).
+
+    Le righe storiche senza ``conto_contabile`` sono BPM: unico conto
+    esistito prima della Mastercard SumUp.
+    """
+    from app.services import conti_pos
+    return {"$or": [
+        {"conto_contabile": conti_pos.CONTO_BPM},
+        {"conto_contabile": {"$in": [None, ""]}},
+        {"conto_contabile": {"$exists": False}},
+    ]}
+
+
+async def saldi_banca_per_conto(db, data: Dict[str, Any], anno: Optional[int]) -> Dict[str, Any]:
+    """Saldi di Prima Nota Banca separati per conto, come ``get_prima_nota_stats``.
+
+    BPM (con il riporto dell'esercizio), Mastercard SumUp 19.01.05 (senza
+    riporto: conto nato nel 2026) ed eventuali altri conti di tesoreria, mai
+    fusi in un solo «Banca». Sono saldi di Prima Nota, non saldi certificati
+    dall'estratto conto.
+    """
+    from app.services import conti_pos
+    bpm = await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_BANCA,
+        {**filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA, data=data),
+         **appartenenza_conto_bpm()},
+        anno,
+    )
+    sumup = await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_BANCA,
+        filtro_saldo_prima_nota(
+            COLLECTION_PRIMA_NOTA_BANCA, data=data,
+            conto_contabile=conti_pos.CONTO_SUMUP_MASTERCARD,
+        ),
+    )
+    # Un conto diverso non sparisce dal totale: si espone a parte.
+    altri = await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_BANCA,
+        filtro_saldo_prima_nota(
+            COLLECTION_PRIMA_NOTA_BANCA, data=data,
+            conto_contabile={"$nin": [
+                conti_pos.CONTO_BPM, conti_pos.CONTO_SUMUP_MASTERCARD, None, "",
+            ]},
+        ),
+    )
+    return {
+        "bpm": bpm,
+        "sumup": sumup,
+        "altri": altri,
+        "totale": round(bpm["saldo"] + sumup["saldo"] + altri["saldo"], 2),
+        "fonte": "prima_nota_banca",
+        "saldo_certificato": False,
+    }
+
+
 async def saldi_finanziari(db, anno: int = None) -> Dict[str, Any]:
     """Schede finanziarie separate, mai sommate in un unico numero.
 

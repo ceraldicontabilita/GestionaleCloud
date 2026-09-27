@@ -20,7 +20,10 @@ def _sp(anno, *, attivo=1000.0, immobilizzazioni=200.0, tfr=100.0):
     return {
         "anno": anno,
         "attivo": {
-            "disponibilita_liquide": {"cassa": 100.0, "banca": 600.0, "totale": 700.0},
+            "disponibilita_liquide": {
+                "cassa": 100.0, "banca": 500.0, "mastercard_sumup": 100.0,
+                "altri_conti_banca": 0.0, "totale": 700.0,
+            },
             "crediti": {"crediti_vs_clienti": 100.0, "totale": 100.0},
             "immobilizzazioni": {
                 "da_cespiti": immobilizzazioni,
@@ -39,8 +42,8 @@ def _sp(anno, *, attivo=1000.0, immobilizzazioni=200.0, tfr=100.0):
     }
 
 
-def _ce(anno, *, ricavi=800.0, costi=500.0):
-    risultato = ricavi - costi
+def _ce(anno, *, ricavi=800.0, costi=500.0, personale=0.0):
+    risultato = None if personale is None else ricavi - costi - personale
     return {
         "anno": anno,
         "ricavi": {
@@ -52,12 +55,20 @@ def _ce(anno, *, ricavi=800.0, costi=500.0):
             "acquisti": costi,
             "note_credito": 0.0,
             "costi_netti": costi,
-            "totale_costi": costi,
+            "personale": personale,
+            "personale_contributi": None,
+            "personale_incompleto": True,
+            "totale_costi": None if personale is None else costi + personale,
         },
         "risultato": {
             "utile_perdita": risultato,
-            "margine_percentuale": round(risultato / ricavi * 100, 1),
-            "tipo": "utile" if risultato >= 0 else "perdita",
+            "margine_percentuale": (
+                None if risultato is None else round(risultato / ricavi * 100, 1)
+            ),
+            "tipo": (
+                "non_determinabile" if risultato is None
+                else "utile" if risultato >= 0 else "perdita"
+            ),
         },
     }
 
@@ -134,3 +145,30 @@ def test_export_pdf_accetta_la_struttura_canonica_completa(monkeypatch):
     assert response.media_type == "application/pdf"
     assert body.startswith(b"%PDF")
     assert "bilancio_2026_06.pdf" in response.headers["content-disposition"]
+
+
+def test_export_pdf_e_confronto_senza_personale_non_inventano_il_risultato(monkeypatch):
+    """Senza buste il risultato e' «Dato non disponibile», non uno zero."""
+    async def fake_sp(anno, mese=None):
+        return _sp(anno)
+
+    async def fake_ce(anno, mese=None):
+        return _ce(anno, personale=None if anno == 2026 else 50.0)
+
+    monkeypatch.setattr(mod, "_get_stato_patrimoniale_data", fake_sp)
+    monkeypatch.setattr(mod, "_get_conto_economico_data", fake_ce)
+
+    response = _run(mod.export_bilancio_pdf(anno=2026, mese=None))
+
+    async def read_body():
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    assert _run(read_body()).startswith(b"%PDF")
+
+    confronto = _run(mod.get_confronto_annuale(anno_corrente=2026, anno_precedente=2025))
+    utile = confronto["conto_economico"]["risultato"]["utile_perdita"]
+    assert utile["attuale"] is None
+    assert utile["variazione"] is None
+    assert utile["trend"] == "non_determinabile"
+    assert confronto["sintesi"]["utile_trend"] == "Dato non disponibile"
+    assert confronto["kpi"]["crescita_costi_pct"] is None
