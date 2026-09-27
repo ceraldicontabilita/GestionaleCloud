@@ -26,8 +26,8 @@ from app.services.archivio_documenti_memoria import ClientArchivioMemoria  # noq
 from app.config import settings  # noqa: E402
 from app.database import Database  # noqa: E402
 from app.middleware.authentication import AuthenticationMiddleware  # noqa: E402
-from app.middleware.error_handler import add_exception_handlers  # noqa: E402
 from app.middleware.performance import IstantaneeMiddleware  # noqa: E402
+from app.middleware.error_handler import add_exception_handlers  # noqa: E402
 from app.router_registry import register_all_routers  # noqa: E402
 
 
@@ -188,8 +188,9 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="GestionaleCloud E2E isolato", lifespan=lifespan)
-# Stessa pila della produzione (app/main.py): senza, le scritture del collaudo
-# non svuotano le istantanee e i conteggi restano quelli di prima.
+# Come in produzione (app/main.py): una scrittura svuota le istantanee dei
+# riepiloghi. Senza, i conteggi dei Provvisori restavano quelli di prima
+# delle conferme per 60 s e il collaudo falliva a caso.
 app.add_middleware(IstantaneeMiddleware)
 app.add_middleware(AuthenticationMiddleware)
 add_exception_handlers(app)

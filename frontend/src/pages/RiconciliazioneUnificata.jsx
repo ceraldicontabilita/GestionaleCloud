@@ -1903,6 +1903,13 @@ const STILI_STATO_F24 = {
   non_pagato: { label: '❌ Non pagato', bg: '#ffedd5', color: '#9a3412' },
   in_scadenza: { label: '🕐 In scadenza', bg: '#f7ebe4', color: '#4c4a44' },
   periodo_ignoto: { label: '❓ Periodo ignoto', bg: '#f2f0e9', color: '#7a776e' },
+  // F24 del commercialista pagato con un ravvedimento (f24_ravvedimento.py).
+  ravveduto: { label: 'Ravveduto', bg: '#f7ebe4', color: '#8a6f47' },
+};
+
+const etichettaRavvedimento = {
+  display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+  background: '#f7ebe4', color: '#8a6f47', whiteSpace: 'nowrap',
 };
 
 const bottoneFile = {
@@ -2067,6 +2074,53 @@ export function TabellaAnalisiF24({ anno }) {
                       {r.tipo_versamento === 'ordinario' ? 'Ordinario'
                         : r.tipo_versamento === 'regolarizzazione' ? '🔁 Regolarizzazione'
                           : '🔁 Ravvedimento'}
+                      {/* Originale del commercialista e ravvedimento affiancati:
+                          dall'uno si apre l'altro, nessuno dei due si cancella. */}
+                      {r.etichetta === 'RAVVEDIMENTO' && (r.ravvedimento_di || []).length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                          <span style={etichettaRavvedimento} data-testid={`etichetta-ravvedimento-${r.f24_id}`}>
+                            RAVVEDIMENTO
+                          </span>
+                          {r.ravvedimento_di.map(o => (
+                            <button
+                              key={o.f24_id}
+                              type="button"
+                              style={bottoneFile}
+                              data-testid={`apri-originale-${o.f24_id}`}
+                              onClick={() => setPdfViewer({ title: 'F24 originale del commercialista', fetchUrl: o.pdf_url })}
+                            >
+                              F24 originale
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {r.ravvedimento && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                          <span style={etichettaRavvedimento} data-testid={`etichetta-ravveduto-${r.f24_id}`}>
+                            Originale · pagato con ravvedimento
+                          </span>
+                          {r.ravvedimento.f24_ravvedimento_pdf_url && (
+                            <button
+                              type="button"
+                              style={bottoneFile}
+                              data-testid={`apri-ravvedimento-${r.f24_id}`}
+                              onClick={() => setPdfViewer({ title: 'F24 di ravvedimento', fetchUrl: r.ravvedimento.f24_ravvedimento_pdf_url })}
+                            >
+                              F24 ravvedimento
+                            </button>
+                          )}
+                          {r.ravvedimento.quietanza_pdf_url && (
+                            <button
+                              type="button"
+                              style={bottoneFile}
+                              data-testid={`apri-quietanza-ravvedimento-${r.f24_id}`}
+                              onClick={() => setPdfViewer({ title: 'Quietanza AdE del ravvedimento', fetchUrl: r.ravvedimento.quietanza_pdf_url })}
+                            >
+                              Quietanza ravvedimento
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...cella, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                       {(r.causali_inps || []).join(', ') || '—'}

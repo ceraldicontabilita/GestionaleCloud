@@ -318,10 +318,21 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
             {"riconciliato": True}, {"_id": 0, "id": 1},
         )
     }
+    # Spese di lite: l'uscita che cita una sentenza (o che il titolare vi ha
+    # messo) sta nel fascicolo della causa, non cerca una fattura.
+    from app.services.atti_giudiziari import collega_pagamenti
+
+    contenzioso = await collega_pagamenti(db, collezioni=(COLL_MOVIMENTI,))
+    ids_contenzioso = {
+        doc.get("id") async for doc in db[COLL_MOVIMENTI].find(
+            {"fascicolo_giudiziario": {"$exists": True}}, {"_id": 0, "id": 1},
+        )
+    }
     da_abbinare = [
         m for m in movimenti
         if m.get("tipo") == "uscita" and not m.get("riconciliato")
         and m.get("id") not in ids_stipendio
+        and m.get("id") not in ids_contenzioso
         # Il giroconto verso BPM ha le sue due gambe (registra_giroconto).
         and not e_giroconto(m)
     ]
@@ -343,6 +354,7 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
         "stipendi_ambigui": stipendi.get("match_ambigui_ignorati", 0),
         "rimborsi_soci_staccati": stipendi.get("rimborsi_soci_staccati", []),
         "finanziamenti_soci_nuovi": soci.get("apporti_nuovi", 0) + soci.get("rimborsi_nuovi", 0),
+        "spese_contenzioso_collegate": contenzioso.get("collegati", 0),
         "fatture_citate_abbinate": citate["collegati_count"],
         "fatture_citate_dettaglio": citate["collegati"],
         "vecchie_righe_riallineate": vecchie,

@@ -182,6 +182,16 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
             motivi.append("pagato nei termini")
         elif a["stato"] == "non_pagato":
             motivi.append("scadenza naturale superata senza pagamento risultante")
+        # L'F24 del commercialista pagato con un ravvedimento non e' «non
+        # pagato»: resta com'e', col legame al modello e alla quietanza.
+        ravv = d.get("ravvedimento") or {}
+        stato_pagamento = a["stato"]
+        if ravv.get("stato") == "RAVVEDUTO":
+            stato_pagamento = "ravveduto"
+            motivi = [m for m in motivi if not m.startswith("scadenza naturale superata")]
+            motivi.append("ravveduto: " + str(ravv.get("motivazione") or ""))
+        if d.get("ravvedimento_di"):
+            motivi.append(f"ravvedimento di {len(d['ravvedimento_di'])} F24 del commercialista")
         if dup == "da_verificare":
             motivi.append("POSSIBILE DOPPIO PAGAMENTO con il modello collegato: verificare")
         elif dup == "collegato_no_duplicato":
@@ -195,7 +205,7 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
             "scadenza_naturale": a["scadenza_naturale"],
             "data_pagamento": a["data_pagamento"],
             "giorni_ritardo": a["giorni_ritardo"],
-            "stato_pagamento": a["stato"],
+            "stato_pagamento": stato_pagamento,
             "tipo_versamento": a["tipo_versamento"],
             "causali_inps": a["causali_inps"],
             "codici_tributo": sorted({
@@ -223,6 +233,20 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
                 "data_pagamento_effettivo": d.get("data_pagamento_effettivo"),
             },
             "possibile_duplicazione": dup,
+            "ravvedimento": {
+                "f24_ravvedimento_id": ravv.get("f24_ravvedimento_id"),
+                "f24_ravvedimento_pdf_url": (
+                    f"/api/f24-public/pdf/{ravv['f24_ravvedimento_id']}" if ravv.get("f24_ravvedimento_id") else None),
+                "quietanza_ids": ravv.get("quietanza_ids") or [],
+                "quietanza_pdf_url": (
+                    f"/api/f24-public/pdf/{ravv['quietanza_ids'][0]}" if ravv.get("quietanza_ids") else None),
+                "importo_ravvedimento": ravv.get("importo_ravvedimento"),
+                "data_pagamento": ravv.get("data_pagamento"),
+            } if ravv.get("stato") == "RAVVEDUTO" else None,
+            "etichetta": d.get("etichetta"),
+            "ravvedimento_di": [
+                {"f24_id": oid, "pdf_url": f"/api/f24-public/pdf/{oid}"} for oid in d.get("ravvedimento_di") or []
+            ],
             "saldo_finale": a["saldo_finale"],
             "motivazione": "; ".join(motivi) or "versamento ordinario",
         })

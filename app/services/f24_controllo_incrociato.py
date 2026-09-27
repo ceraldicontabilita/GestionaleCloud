@@ -274,6 +274,8 @@ def _quietanza_legacy(doc: Dict[str, Any]) -> Dict[str, Any]:
         "importo_cents": importo,
         "f24_ids": sorted({str(v) for v in (doc.get("f24_associati") or []) if v}),
         "righe": righe_modello(doc),
+        # F24 del commercialista che questa quietanza ravvede (f24_ravvedimento).
+        "ravvedimento_di": list(doc.get("ravvedimento_di") or []),
     }
 
 
@@ -1038,6 +1040,7 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
             "importo_cents": prima.get("importo_cents") or None,
             "quietanze": [{"id": q.get("id"), "fonte": q.get("fonte"), "filename": q.get("filename"),
                            "pdf_url": url_pdf_quietanza(q)} for q in copie],
+            "ravvedimento_di": sorted({str(o) for q in copie for o in (q.get("ravvedimento_di") or [])}),
         })
     return pagamenti
 
@@ -1064,6 +1067,10 @@ def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
         "data_it": data_italiana(p["data"]),
         "importo": euro(p["importo_cents"]),
         "quietanze": p["quietanze"],
+        # Pagamento di ravvedimento: gli F24 del commercialista che ravvede.
+        "ravvedimento_di": [
+            {"f24_id": oid, "pdf_url": f"/api/f24-public/pdf/{oid}"} for oid in p.get("ravvedimento_di") or []
+        ],
     }
 
 

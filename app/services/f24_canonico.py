@@ -82,6 +82,13 @@ async def cerca_controparti_f24(db) -> Dict[str, Any]:
         logger.exception("F24 arrivato: quietanze orfane non ripassate (%s)", type(exc).__name__)
         esito["quietanze"] = {"errore": type(exc).__name__}
     try:
+        from app.services.f24_ravvedimento import collega_ravvedimenti
+        ravv = await collega_ravvedimenti(db)
+        esito["ravvedimento"] = {**ravv["conteggi"], "scritti": ravv["scritti"]}
+    except Exception as exc:  # noqa: BLE001 - il modello resta importato
+        logger.exception("F24 arrivato: ravvedimento non cercato (%s)", type(exc).__name__)
+        esito["ravvedimento"] = {"errore": type(exc).__name__}
+    try:
         from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
         banca = await riconcilia_f24_tributi_banca(db)
         esito["banca"] = {k: banca.get(k) for k in ("f24_pagati", "f24_parziali", "movimenti_associati")}

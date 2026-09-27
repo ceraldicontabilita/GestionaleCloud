@@ -395,7 +395,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   47.01.03 corrispettivi). I 9 conti POS articolano voci già in bilancio per
   tenere separati Numia, SumUp e PayPal: non sono conti nuovi.
 - Ammortamenti: scrittura semplice DARE 05.04.01 / AVERE 01.05.01; il
-  risultato d'esercizio resta con segno, con guardia anti-doppia chiusura.
+  risultato d'esercizio resta con segno, con guardia anti-doppia chiusura. Un cespite nasce da una riga fattura solo per parola intera («inCONDIZIONATo» non è un climatizzatore), mai da una nota di credito né da uno sconto.
 - Ricavi: **solo corrispettivi RT**. Le fatture ricevute sono costi; gli
   accrediti POS e i payout non sono nuovi ricavi.
 - Corrispettivi: in cassa entra **solo la quota contanti**, la quota POS va in Prima Nota Banca. Mai il
@@ -421,7 +421,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Lo stesso per `proiezione_bancaria.py` (stipendi, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote dalla quietanza o dal piano d'ammortamento a importo identico, altrimenti `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale).
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
   appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca (Enable Banking, `services/enable_banking.py`,
-  flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca.
+  flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca. **Spese di lite** (`atti_giudiziari.py`): sentenza, precetto, relata e attestazione entrano da Documenti > Import, originale in `gestionale.blobs`, apribile accanto al pagamento; un'uscita va nel fascicolo solo se la causale cita sentenza o R.G. o il titolare la dichiara (`fascicolo_dichiarato`), mai per importo o controparte, e in Banca è «Spese legali e contenzioso» su 71.03 (da confermare col commercialista).
 - Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
   due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
   (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano). Assegni con numero o data diversi **non sono duplicati**. Le regole SDD
@@ -515,11 +515,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   del titolare aprono un'attesa per periodo; la soddisfa solo l'addebito in banca, la quietanza
   la lascia `DA_VERIFICARE`. Legge il registro unico F24, non ne tiene un secondo; l'importo
   viene dal modello arrivato, mai stimato. 3802/3848 sono rate del saldo dell'anno prima.
-- Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`,
-  `mese`), non sul modello: la data in cui l'F24 è stato pagato è un'altra
-  cosa. L'IVA mensile sono i codici 6001–6012, uno per mese.
-- **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è
-  autorizzato.
+- Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`, `mese`), non sul modello: la data in cui
+  l'F24 è stato pagato è un'altra cosa. L'IVA mensile sono i codici 6001–6012.
+- **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è autorizzato.
+- **F24 ravveduto** (`f24_ravvedimento.py`): l'originale del commercialista resta; modello o quietanza con sanzioni gli si affianca
+  (RAVVEDIMENTO) se ogni riga codice+periodo torna al centesimo, o è maggiore solo nel periodo sanzionato (interessi cumulati).
 - **Un F24 è il suo contenuto fiscale** (contribuente, data di versamento, saldo, righe codice/periodo/importo),
   non il PDF: `salva_f24` non crea un secondo modello da un'altra copia del file e ne annota la provenienza
   (`f24_doppioni.py`). I doppioni vanno in quarantena reversibile (`status=eliminato`, `motivo_quarantena`,

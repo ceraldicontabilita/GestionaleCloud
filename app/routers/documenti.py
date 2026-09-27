@@ -2544,6 +2544,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "nota_rettifica_inps"
     if _e_cedolino_zucchetti(marker_pdf_text):
         return "cedolino"
+    # Sentenza, precetto, relata e attestazione di una causa: prova del
+    # perche' di bonifici senza fattura (spese di lite), mai un pagamento.
+    from app.services.atti_giudiziari import tipo_atto
+
+    if lower.endswith(".pdf") and tipo_atto(compact_pdf_text):
+        return "atto_giudiziario"
     if _e_contratto_di_lavoro(compact_pdf_text):
         # Un contratto cita la busta paga ma non e' un cedolino: resta un
         # documento da classificare, non una busta da leggere.
@@ -3348,6 +3354,21 @@ async def censimento_doppioni_drive_csv(
         iter(["\ufeff" + buffer.getvalue()]), media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="doppioni_gestionale.csv"'},
     )
+
+
+@router.get("/atti-giudiziari/{atto_id}/file")
+@handle_errors
+async def scarica_atto_giudiziario(atto_id: str):
+    """L'originale di una sentenza, di un precetto o di una relata, com'e' stato caricato."""
+    from app.services.atti_giudiziari import contenuto
+
+    trovato = await contenuto(Database.get_db(), atto_id)
+    if not trovato:
+        raise HTTPException(status_code=404, detail="Originale dell'atto non disponibile")
+    dati, nome = trovato
+    nome_sicuro = re.sub(r"[^A-Za-z0-9._() -]+", "-", nome).strip("-") or "atto.pdf"
+    return Response(content=dati, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{nome_sicuro}"'})
 
 
 @router.get("/originale")
@@ -4195,6 +4216,29 @@ async def upload_documento_automatico(
                     if sumup_result.get("duplicate")
                     else f"Estratto SumUp importato: {sumup_result.get('nuovi', 0)} movimenti nuovi, "
                          f"{sumup_result.get('gia_presenti', 0)} già presenti."
+                ),
+            })
+
+        elif tipo_rilevato == 'atto_giudiziario':
+            from app.services.atti_giudiziari import collega_e_registra, registra_atto
+
+            atto = await registra_atto(
+                db, filename, content, drive_file_id=source_context.get("drive_file_id"),
+            )
+            if not atto.get("success"):
+                raise ValueError(atto.get("message") or "Atto giudiziario non leggibile")
+            # Il secondo pezzo arriva: i bonifici che citano la sentenza (o che
+            # il titolare vi ha messo) entrano subito nel fascicolo.
+            pagamenti = await collega_e_registra(db)
+            result.update({
+                "workflow": "ATTO_GIUDIZIARIO",
+                "duplicate": bool(atto.get("duplicate")),
+                "imported": 0 if atto.get("duplicate") else 1,
+                "data": {**atto, "pagamenti": pagamenti},
+                "message": (
+                    f"{atto['etichetta']} della sentenza {atto['numero_sentenza']}"
+                    + (" già presente" if atto.get("duplicate") else " archiviata")
+                    + f"; pagamenti collegati: {pagamenti.get('collegati', 0) + pagamenti.get('gia_collegati', 0)}."
                 ),
             })
 

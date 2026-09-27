@@ -834,6 +834,15 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] versamenti: %s: %s", type(e).__name__, e)
         try:
+            # Prima del fascicolo: l'uscita che cita una sentenza va in Banca
+            # come spesa di lite, non resta senza categoria.
+            from app.services.atti_giudiziari import collega_pagamenti
+            r = await collega_pagamenti(db, collezioni=("estratto_conto_movimenti",))
+            if r.get("collegati"):
+                logger.info("[SCHEDULER-BANCA] spese di lite collegate=%s", r.get("collegati"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] atti giudiziari: %s: %s", type(e).__name__, e)
+        try:
             from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
             r = await proietta_movimenti_bancari_semantici(db)
             logger.info("[SCHEDULER-BANCA] proiezione proiettati=%s doppioni_tolti=%s rate_mutuo=%s",

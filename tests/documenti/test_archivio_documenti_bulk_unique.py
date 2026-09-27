@@ -98,3 +98,40 @@ def test_in_query_gestisce_valori_scalari_e_array():
 
     assert by_key == [{"id": "two"}]
     assert by_tag == [{"id": "one"}]
+
+
+def test_update_many_senza_toccare_la_chiave_non_riscandisce_la_collezione(monkeypatch):
+    database = ArchivioDocumenti("test")
+    table = database["sumup_transactions"]
+    run(table.create_index([("transaction_code", 1)], unique=True))
+    run(table.insert_many([{"transaction_code": f"T{i}"} for i in range(300)]))
+
+    letture = {"n": 0}
+    import app.services.archivio_documenti_memoria as modulo
+    originale = modulo.get_path
+
+    def conta(*args, **kwargs):
+        letture["n"] += 1
+        return originale(*args, **kwargs)
+
+    monkeypatch.setattr(modulo, "get_path", conta)
+    esito = run(table.update_many(
+        {"transaction_code": {"$in": [f"T{i}" for i in range(200)]}},
+        {"$set": {"payout_id": "P1"}},
+    ))
+    assert esito.modified_count == 200
+    # Prima: 200 righe x 300 documenti di confronto. Ora: una lettura della
+    # chiave per riga, piu' una per il documento precedente.
+    assert letture["n"] < 1000
+
+
+def test_update_che_cambia_la_chiave_in_un_doppione_resta_rifiutato():
+    database = ArchivioDocumenti("test")
+    table = database["sumup_transactions"]
+    run(table.create_index([("transaction_code", 1)], unique=True))
+    run(table.insert_many([{"transaction_code": "A"}, {"transaction_code": "B"}]))
+
+    with pytest.raises(DuplicateRecordError):
+        run(table.update_one({"transaction_code": "B"}, {"$set": {"transaction_code": "A"}}))
+    run(table.update_one({"transaction_code": "B"}, {"$set": {"note": "ok"}}))
+    assert run(table.count_documents({"note": "ok"})) == 1

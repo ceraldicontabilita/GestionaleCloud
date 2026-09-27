@@ -420,6 +420,18 @@ async def importa_quietanza_bytes(
             logger.exception("Errore aggiornamento ritenute dopo quietanza %s", file_id)
             risultato["ritenute_aggiornate"] = {"errore": True}
 
+    # Una quietanza con sanzioni da ravvedimento cerca subito l'F24 del
+    # commercialista che ravvede (codici e periodi, mai l'importo).
+    if any(t["codice"] in CODICI_RAVVEDIMENTO for t in estrai_tributi_dettaglio(quietanza_doc)):
+        try:
+            from app.services.f24_ravvedimento import collega_ravvedimenti
+
+            esito_ravv = await collega_ravvedimenti(db)
+            risultato["ravvedimento"] = {**esito_ravv["conteggi"], "scritti": esito_ravv["scritti"]}
+        except Exception as exc:  # noqa: BLE001 - la quietanza resta importata
+            logger.exception("Quietanza %s: F24 ravveduto non cercato (%s)", file_id, type(exc).__name__)
+            risultato["ravvedimento"] = {"errore": type(exc).__name__}
+
     # L'addebito I24 puo' essere gia' in banca: si cerca adesso, fra i soli
     # movimenti di pari importo, senza aspettare il giro dei 30 minuti.
     try:

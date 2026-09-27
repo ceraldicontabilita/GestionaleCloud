@@ -127,6 +127,22 @@ export default function RiscontroQuietanzeBanca({ anno }) {
               {r.protocollo ? `prot. ${r.protocollo}` : qs[0].filename}
               {qs.length > 1 ? ` · ${qs.length} copie dello stesso pagamento` : ''}
             </span>
+            {(r.ravvedimento_di || []).length > 0 && (
+              <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+                <Esito esito="verificare" data-testid={`ravvedimento-${r._id}`}>Ravvedimento</Esito>
+                {r.ravvedimento_di.map(o => (
+                  <button
+                    key={o.f24_id}
+                    type="button"
+                    style={stileLink}
+                    data-testid={`apri-originale-${o.f24_id}`}
+                    onClick={() => setPdf({ title: 'F24 originale del commercialista', fetchUrl: o.pdf_url })}
+                  >
+                    <FileText size={14} aria-hidden="true" /> F24 del commercialista
+                  </button>
+                ))}
+              </span>
+            )}
           </span>
         );
       },

@@ -9,9 +9,11 @@ from datetime import date, datetime, timezone
 from uuid import uuid4
 import hashlib
 import logging
+import re
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.services.piano_conti_ufficiale import SOGLIA_CESPITE_TUIR
 
 router = APIRouter()
@@ -812,7 +814,14 @@ EXCLUDE_KEYWORDS = [
     # Un immobile o un veicolo in affitto/locazione e' un costo ricorrente,
     # non un cespite (audit 19/09/2026, nuove categorie fabbricati/automezzi).
     "affitto", "locazione",
+    # Una riga di sconto o abbuono non e' un bene, anche se la sua descrizione
+    # contiene una parola di categoria.
+    "sconto", "abbuono",
 ]
+
+
+def _inizia_parola(kw: str, testo: str) -> bool:
+    return re.search(r"(?<!\w)" + re.escape(kw), testo) is not None
 
 
 def classify_asset(descrizione: str, prezzo: float):
@@ -820,13 +829,16 @@ def classify_asset(descrizione: str, prezzo: float):
     for excl in EXCLUDE_KEYWORDS:
         if excl in desc_lower:
             return None
+    # La parola di categoria deve INIZIARE una parola della descrizione:
+    # dentro una parola piu' lunga sbaglia ("inCONDIZIONATo" non e' un
+    # climatizzatore, "imMOBILE" non e' un arredo).
     for keywords, categoria in KEYWORD_CATEGORY_MAP:
         for kw in keywords:
-            if kw in desc_lower:
+            if _inizia_parola(kw, desc_lower):
                 return categoria
     if prezzo >= 2000:
         for kw in ["supporto", "cappa", "scaffal", "contenitor"]:
-            if kw in desc_lower:
+            if _inizia_parola(kw, desc_lower):
                 return "attrezzature"
     return None
 
@@ -895,6 +907,9 @@ async def scan_fatture_per_cespiti(
             numero_fattura = inv.get("invoice_number") or inv.get("numero_fattura")
 
             if not fattura_id:
+                continue
+            # Una nota di credito riduce un costo: nessuna sua riga e' un bene acquistato.
+            if str(inv.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO:
                 continue
 
             # Se non ci sono righe, usa total_amount come riga unica
