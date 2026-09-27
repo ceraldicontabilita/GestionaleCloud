@@ -237,7 +237,7 @@ export default function PrevisioniAcquisti() {
                               Prev: {item.quantita_prevista?.toFixed(1)} {item.unita_misura}
                             </span>
                             <span>{item.media_settimanale}/sett</span>
-                            <span>{formatEuro(item.costo_stimato)}</span>
+                            <span>{item.costo_stimato == null ? 'Prezzo non noto' : formatEuro(item.costo_stimato)}</span>
                           </>
                         )}
                       </div>
@@ -324,7 +324,7 @@ export default function PrevisioniAcquisti() {
                             {item.unita_misura}
                           </div>
                           <div>
-                            <strong>Prezzo medio:</strong> {formatEuro(item.prezzo_medio)}
+                            <strong>Prezzo medio:</strong> {item.prezzo_medio == null ? '—' : formatEuro(item.prezzo_medio)}
                           </div>
                           <div>
                             <strong>Ordina ogni:</strong>{' '}
