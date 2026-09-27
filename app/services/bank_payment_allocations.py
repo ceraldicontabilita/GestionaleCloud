@@ -44,9 +44,21 @@ def evidenza_scadenza_id(movement_id: str, invoice_id: str) -> str:
     return f"banca:{movement_id}:{invoice_id}"
 
 
+def _e_spesa_con_carta(movement: Dict[str, Any]) -> bool:
+    """Pagamento con una carta (Nexi, Mastercard SumUp), non un bonifico."""
+    if movement.get("tipo") == "carta_credito" or movement.get("banca") == "Nexi":
+        return True
+    return (
+        str(movement.get("id") or "").startswith("sumup_conto:")
+        and "bonifico" not in str(movement.get("tipo_transazione") or "").lower()
+    )
+
+
 def _metodo_pagamento(movement: Dict[str, Any]) -> str:
     from app.services.riconciliazione_bancaria import classifica_strumento_bancario
 
+    if _e_spesa_con_carta(movement):
+        return "Carta"
     strumento = classifica_strumento_bancario(
         str(movement.get("descrizione_originale") or movement.get("descrizione") or "")
     )
@@ -375,9 +387,22 @@ async def persist_bank_invoice_allocations(
             for link in invoice_allocations
             if link.get("movimento_id")
         })
+        # Pagata per intero con la prova bancaria: non e' piu' provvisoria ne'
+        # in attesa di riscontro, anche se non c'era una riga dichiarata da
+        # assorbire. Lasciata in attesa, restava fra le candidate di un altro
+        # movimento dello stesso importo.
+        chiusura = {
+            "in_attesa_riscontro_banca": False,
+            "riscontro_banca_at": now,
+            "riscontro_banca_movimento_id": movement_id,
+            "stato_finanziario": "riconciliato",
+            "provvisorio": False,
+            "residuo_da_pagare": 0,
+        } if paid else {}
         await db["invoices"].update_one(
             {"id": invoice_id},
             {"$set": {
+                **chiusura,
                 "payment_allocations": invoice_allocations,
                 "importo_pagato": min(paid_cents, total_cents) / 100,
                 "importo_residuo": max(0, total_cents - paid_cents) / 100,
