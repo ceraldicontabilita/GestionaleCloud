@@ -40,6 +40,7 @@ describe('Segno differenza XML meno POS reale', () => {
       { pos_manuale_presente: true, stato_serale: 'ok', diff_serale: 11.89 },
       { pos_manuale_presente: true, stato_serale: 'ok', diff_serale: -3.00 },
       { pos_manuale_presente: true, stato_serale: 'in_attesa_xml', diff_serale: -100 },
+      { pos_manuale_presente: true, stato_serale: 'chiusa_col_giorno_dopo', diff_serale: 0 },
       { pos_manuale_presente: false, stato_serale: 'no_dati', diff_serale: 50 },
     ])).toEqual({ saldo: 8.89, direzione: 'piu', giorni: 2 });
   });

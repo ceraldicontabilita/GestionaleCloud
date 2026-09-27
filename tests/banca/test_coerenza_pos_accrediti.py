@@ -501,3 +501,50 @@ def test_le_righe_che_non_sono_accrediti_restano_escluse():
     assert riconosce("BONIFICO DA CLIENTE DEL 06/08/26") is False
     # Senza giorno operativo non si sa quale trasferimento chiuderebbe.
     assert riconosce("NEXI INCAS. TRAMITE P.O.S. senza giorno") is False
+
+
+def test_giornata_chiusa_col_giorno_dopo_si_confronta_con_quella_chiusura(monkeypatch):
+    """L'RT chiude due giorni in una volta: il giorno senza XML non e' uno
+    scarto pari a tutto il POS, e il giorno dopo non e' un eccesso pari al
+    POS del primo. I giorni senza XML e senza chiusura dopo restano in attesa
+    e fuori dal saldo."""
+    async def scenario():
+        db = ClientArchivioMemoria()["test_chiusura_doppia"]
+        await db["corrispettivi"].insert_one({
+            "data": "2026-09-09", "pagato_elettronico": 4111.80,
+            "stato": "definitivo_xml",
+        })
+        await db["chiusure_pos_manuali"].insert_many([
+            {"data": "2026-09-08", "importo": 2115.80, "gestore": "sumup",
+             "source": "api_gestore_pos"},
+            {"data": "2026-09-09", "importo": 1936.80, "gestore": "sumup",
+             "source": "api_gestore_pos"},
+            # Dopo l'ultima chiusura RT: l'XML non e' ancora arrivato.
+            {"data": "2026-09-22", "importo": 1938.00, "gestore": "sumup",
+             "source": "api_gestore_pos"},
+        ])
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+        return await pc.controllo_incassi_due_fasi(
+            data_da=None, data_a=None, anno=2026, tolleranza_euro=0.50
+        )
+
+    result = _run(scenario())
+    giorni = {g["data"]: g for g in result["giorni"]}
+    assert giorni["2026-09-08"]["stato_serale"] == "chiusa_col_giorno_dopo"
+    assert giorni["2026-09-08"]["chiusa_con"] == "2026-09-09"
+    assert giorni["2026-09-08"]["diff_serale"] == 0
+    assert giorni["2026-09-09"]["giorni_nella_chiusura"] == ["2026-09-08"]
+    assert giorni["2026-09-09"]["diff_serale"] == 59.20  # 4111,80 - (2115,80 + 1936,80)
+    assert giorni["2026-09-09"]["stato_serale"] == "ok"
+    assert giorni["2026-09-22"]["stato_serale"] == "in_attesa_xml"
+    assert giorni["2026-09-22"]["diff_serale"] == 0
+
+
+def test_chiusura_solo_contanti_non_copre_il_giorno_prima():
+    chiusa_con, uniti = pc._giornate_senza_xml(
+        ["2026-09-01", "2026-09-02", "2026-09-03"],
+        {"2026-09-02": {"pagato_elettronico": 0, "pagato_contanti": 50},
+         "2026-09-03": {"pagato_elettronico": 900}},
+        {"2026-09-01": 300.0, "2026-09-03": 900.0},
+    )
+    assert chiusa_con == {} and uniti == {}

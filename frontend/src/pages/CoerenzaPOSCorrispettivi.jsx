@@ -51,7 +51,7 @@ export function BadgeRiconciliatoBanca({ riconciliato }) {
 export function calcolaSaldoXmlPos(giorni = []) {
   const confrontabili = giorni.filter(g =>
     g.pos_manuale_presente &&
-    !['no_dati', 'in_attesa_xml'].includes(g.stato_serale)
+    !['no_dati', 'in_attesa_xml', 'chiusa_col_giorno_dopo'].includes(g.stato_serale)
   );
   const saldo = Math.round(
     confrontabili.reduce((totale, g) => totale + Number(g.diff_serale || 0), 0) * 100
@@ -460,7 +460,7 @@ function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }
       return g.stato_serale === 'ok' && g.stato_accredito === 'ok' && sumUpOk && g.stato_corrispettivo !== 'manca_xml';
     }
     // problemi: almeno una fase con problemi
-    return (g.stato_serale !== 'ok' && g.stato_serale !== 'no_dati' && g.stato_serale !== 'in_attesa_xml') ||
+    return (!['ok', 'no_dati', 'in_attesa_xml', 'chiusa_col_giorno_dopo'].includes(g.stato_serale)) ||
            (g.stato_accredito !== 'ok' && g.stato_accredito !== 'in_attesa' && g.stato_accredito !== 'no_pos_manuale') ||
            !sumUpOk ||
            g.stato_corrispettivo === 'manca_xml';
@@ -883,7 +883,7 @@ function RigaGiornaliera({ g, even, onReload }) {
   const faseSumUp = (g.fase2_per_circuito || {}).sumup || {};
   const payoutSumUp = faseSumUp.payout;
   const diffSerColor = g.stato_serale === 'ok' ? COLORS.success :
-                       g.stato_serale === 'no_dati' ? COLORS.textSubtle :
+                       g.stato_serale === 'no_dati' || g.stato_serale === 'chiusa_col_giorno_dopo' ? COLORS.textSubtle :
                        g.stato_serale === 'in_attesa_xml' ? COLORS.bruno : COLORS.danger;
   // Regola colori richiesta: differenza POSITIVA (banca ha accreditato di
   // più) → VERDE; NEGATIVA (accredito minore o mancante) → ROSSO.
@@ -940,7 +940,18 @@ function RigaGiornaliera({ g, even, onReload }) {
       >
         {g.stato_serale === 'no_dati' ? '—'
           : g.stato_serale === 'in_attesa_xml' ? <em style={{ color: COLORS.bruno, fontSize: 11 }}>attendo XML</em>
-          : formatEuroConSegno(g.diff_serale)}
+          : g.stato_serale === 'chiusa_col_giorno_dopo'
+            ? <em style={{ fontSize: 11 }}>chiusa il {formatDateIT(g.chiusa_con)}</em>
+          : (
+            <>
+              {formatEuroConSegno(g.diff_serale)}
+              {(g.giorni_nella_chiusura || []).length > 0 && (
+                <div style={{ fontSize: 11, fontWeight: 400, color: COLORS.textMuted }}>
+                  con {g.giorni_nella_chiusura.map(formatDateIT).join(', ')}
+                </div>
+              )}
+            </>
+          )}
       </Td>
       <Td align="right">
         {g.pos_totale_giornaliero !== null && g.pos_totale_giornaliero !== undefined
