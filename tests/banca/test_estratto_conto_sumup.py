@@ -141,3 +141,48 @@ def test_la_vista_mostra_ogni_movimento_del_giorno_con_il_suo_stato(db):
     ]
     assert movimenti[0]["controparte"] == "Fornitore Prova Srl"
     assert movimenti[0]["saldo_disponibile"] == 645.11
+
+
+def test_il_csv_sostituisce_i_testi_spezzati_dal_pdf(db):
+    _run(importa_estratto_sumup(db, NOME, _csv()))
+    # Come li lascia il PDF: celle a capo dentro parole e IBAN.
+    _run(db[COLL_MOVIMENTI].update_one({"codice_transazione": "COJQMJZZMJ"}, {"$set": {
+        "causale": "Pagame nto Fatture 386, 73 8, 1436",
+        "riferimento": "Ascensori Prova Srl IT60X05428111010000 00654321",
+    }}))
+    esito = _run(importa_estratto_sumup(db, "Resoconto_bis.csv", _csv()))
+    assert esito["nuovi"] == 0 and esito["testi_corretti"] == 1
+    riga = _run(db[COLL_MOVIMENTI].find_one({"codice_transazione": "COJQMJZZMJ"}))
+    assert riga["causale"] == "Pagamento Fatture 386, 738, 1436"
+    assert riga["importo"] == "-461.16"
+
+
+def test_la_quadratura_spiega_ogni_differenza_con_l_estratto(db):
+    from app.routers.prima_nota_module.banca import _quadratura_estratto_sumup
+
+    _payout(db)
+    _entrata_bpm(db)
+    # Il payout registrato dall'API e una rettifica che l'estratto non ha.
+    _run(db["prima_nota_banca"].insert_many([
+        {"id": "pn-payout", "data": "2026-09-14", "tipo": "entrata", "importo": 12000.0,
+         "conto_contabile": "19.01.05", "source": "accredito_payout", "payout_id": "SUMUP PID111"},
+        {"id": "pn-rettifica", "data": "2026-09-14", "tipo": "uscita", "importo": 1.01,
+         "conto_contabile": "19.01.05", "source": "rettifica_payout",
+         "descrizione": "Deduzione SumUp su Mastercard"},
+    ]))
+    _run(importa_estratto_sumup(db, NOME, _csv()))
+    movimenti = _run(_movimenti_conto_sumup(db, "2026-01-01", "2026-12-31"))
+    q = _run(_quadratura_estratto_sumup(db, movimenti))
+
+    assert q["variazione_estratto"] == 645.11
+    # payout 12.000 - giroconto 10.000 - rettifica 1,01
+    assert q["variazione_prima_nota"] == 1998.99
+    assert q["da_registrare"] == {"numero": 2, "importo": -1354.89}
+    assert [r["id"] for r in q["prima_nota_senza_estratto"]["righe"]] == ["pn-rettifica"]
+    assert q["scarto_non_spiegato"] == 0.0 and q["quadra"] is True
+
+
+def test_senza_estratto_non_c_e_quadratura(db):
+    from app.routers.prima_nota_module.banca import _quadratura_estratto_sumup
+
+    assert _run(_quadratura_estratto_sumup(db, [])) is None

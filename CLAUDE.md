@@ -407,7 +407,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   fatti distinti. SumUp corrente dall'API; Numia corrente dalla chiusura
   manuale serale; Numia storico ricostruito dagli export del gestore,
   deduplicati e accorpati per giorno. Tutte e tre creano l'attesa bancaria;
-  l'estratto conto può soltanto riconciliarla.
+  l'estratto conto può soltanto riconciliarla. Una vendita SumUp si conta una volta: la copia `LEGACY-SUMUP-…` (codice in `id_trans`) cede alla gemella dell'API (`transazioni_del_periodo`); le chiusure oltre la finestra dei 30 giorni si riallineano ogni giorno (`riallinea_chiusure_da_archivio`).
 - Accredito POS in banca riconosciuto solo con causale del circuito più il
   giorno operativo `DEL gg/mm/aa`; **Numia e Nexi sono lo stesso circuito**;
   commissioni e fatture del gestore escluse; attesa mancante o multipla →
@@ -470,10 +470,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   scarto è un difetto nostro. Si legge **per posizione**
   (`app/services/lipe_parser.py`): nel livello testo del PDF le celle si
   mescolano alle caselle di spunta, e in ordine `18.058,92` diventa
-  `218.058,92`. La prova non è il parser ma l'aritmetica del quadro VP —
-  `VP6 = VP5 − VP4`, `VP14 = VP6 + VP8 − VP7`: un periodo che non quadra
-  **non viene depositato** e non fa da fonte. Una comunicazione ritrasmessa
-  (protocollo più alto) sostituisce la precedente.
+  `218.058,92`. La prova è l'aritmetica del quadro VP **a segni** (credito negativo): `VP6 = VP4 − VP5`,
+  `VP14 = VP6 + VP7 − VP8 − VP9 − VP10 − VP11 + VP12 − VP13`; un periodo che non quadra **non viene
+  depositato** e non fa da fonte. VP13 si legge solo a destra (a sinistra c'è «Metodo»). Una comunicazione
+  ritrasmessa (protocollo più alto, anche in `LIPE_2024_Itrim_<prot>.pdf`) sostituisce la precedente.
 - Il confronto mensile gestionale ↔ LIPE ↔ F24 è
   `GET /api/iva/confronto-commercialista/{anno}`: non aggiusta niente, dice
   dove si diverge. Un mese che non sappiamo calcolare è un «non lo so», non
@@ -846,7 +846,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel giro dei 30 minuti e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`). Aperto: i bonifici «Stipendio Agosto» aspettano le buste di agosto, e la coda «Scegli fattura» non apre ancora i movimenti della carta.
+- **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel giro dei 30 minuti e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`). Prima Nota > SumUp mostra la quadratura con l'estratto (righe da registrare, scritture che l'estratto non ha). Aperto: i bonifici «Stipendio Agosto» aspettano le buste di agosto, la coda «Scegli fattura» non apre ancora i movimenti della carta, e la «Deduzione SumUp» di 1,01 € del 03/08 (`rettifica_payout`) scrive un'uscita sulla Mastercard che l'estratto non ha.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima
   `ripubblica-evento-created`, poi `registra-pregresso`. Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.

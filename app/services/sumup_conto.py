@@ -134,6 +134,18 @@ def campi_bancari(movimento: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def testi_da_riga(riga: RigaSumUp) -> Dict[str, Any]:
+    """I campi descrittivi della riga, gli stessi che scrive ``record_movimento``."""
+    testi: Dict[str, Any] = {
+        "riferimento": riga.riferimento,
+        "causale": riga.causale,
+        "ora": riga.ora,
+    }
+    if riga.tipo_transazione.lower().startswith("bonifico"):
+        testi["iban_beneficiario"] = _iban_beneficiario(riga.riferimento)
+    return testi
+
+
 async def _payout_per_pid(db) -> Dict[str, str]:
     """``PID…`` → ``payout_id`` dei payout già registrati dall'API."""
     mappa: Dict[str, str] = {}
@@ -166,40 +178,16 @@ async def importa_estratto_sumup(
         {"content_sha256": sha256}, {"_id": 0, "id": 1},
     )
     codici = [riga.codice for riga in estratto.righe]
-    esistenti_doc = {
+    esistenti = {
         doc.get("codice_transazione"): doc
         async for doc in db[COLL_MOVIMENTI].find(
             {"codice_transazione": {"$in": codici}},
             {"_id": 0, "id": 1, "codice_transazione": 1, "riferimento": 1,
-             "causale": 1, "importo": 1, "iban_beneficiario": 1},
+             "causale": 1, "ora": 1, "iban_beneficiario": 1},
         )
     }
-    esistenti = set(esistenti_doc)
-    # Il CSV porta il testo intero; il PDF lo spezza dove la cella va a capo
-    # («finanziame nto», «85280201 69»), e una causale spezzata non la
-    # riconosce nessuna regola. Sulla stessa riga (stesso codice) vince il CSV.
+    da_csv = str(filename or "").lower().endswith(".csv")
     testi_corretti = 0
-    if str(filename or "").lower().endswith(".csv"):
-        for riga in estratto.righe:
-            presente = esistenti_doc.get(riga.codice)
-            if not presente or (
-                presente.get("riferimento") == riga.riferimento
-                and presente.get("causale") == riga.causale
-            ):
-                continue
-            aggiornata = {
-                **presente, "riferimento": riga.riferimento, "causale": riga.causale,
-            }
-            if riga.tipo_transazione.lower().startswith("bonifico"):
-                aggiornata["iban_beneficiario"] = _iban_beneficiario(riga.riferimento)
-            campi = {
-                "riferimento": riga.riferimento, "causale": riga.causale,
-                "iban_beneficiario": aggiornata.get("iban_beneficiario"),
-                **campi_bancari(aggiornata),
-                "testo_da": "csv", "updated_at": ora_import,
-            }
-            await db[COLL_MOVIMENTI].update_one({"id": presente["id"]}, {"$set": campi})
-            testi_corretti += 1
     payout = await _payout_per_pid(db)
 
     nuovi = []
@@ -213,6 +201,16 @@ async def importa_estratto_sumup(
             else:
                 payout_mancanti.append(riga.pid)
         if riga.codice in esistenti:
+            # Il PDF spezza le celle lunghe («VANDEMO ORTELE», IBAN a capo):
+            # il CSV ha i testi interi e li sostituisce. Importi, saldo e
+            # collegamenti restano quelli gia' registrati.
+            if da_csv:
+                testi = testi_da_riga(riga)
+                vecchio = esistenti[riga.codice]
+                diversi = {k: v for k, v in testi.items() if vecchio.get(k) != v}
+                if diversi:
+                    await db[COLL_MOVIMENTI].update_one({"id": vecchio["id"]}, {"$set": diversi})
+                    testi_corretti += 1
             continue
         nuovi.append(record_movimento(
             riga, estratto, estratto_id=estratto_id, payout_id=payout_id,

@@ -141,3 +141,107 @@ def test_la_quadratura_smaschera_la_spunta_attaccata():
 
 def test_la_quadratura_smaschera_un_rigo_letto_male():
     assert mod.quadra(dict(MARZO, iva_detratta=63966.40)) is False
+
+
+# ── I segni: un credito riportato non e' un debito ────────────────────────
+#
+# LIPE_2024_Itrim_358048737.pdf, febbraio 2024: il mese chiude a debito
+# (VP6 1.442,46) e porta il credito di gennaio (VP8 131,25): da versare
+# 1.311,21. Sommando i valori assoluti veniva 1.573,71 e il periodo, vero,
+# era scartato come «non quadrato».
+
+FEBBRAIO_2024 = {
+    "iva_esigibile": 5397.94, "iva_detratta": 3955.48,
+    "iva_dovuta_o_credito": 1442.46, "iva_dovuta_o_credito_segno": "debito",
+    "debito_periodo_precedente": None, "credito_periodo_precedente": 131.25,
+    "iva_da_versare_o_credito": 1311.21, "iva_da_versare_o_credito_segno": "debito",
+}
+
+
+def test_un_credito_riportato_si_sottrae_al_debito_del_mese():
+    assert mod.quadra(FEBBRAIO_2024) is True
+
+
+def test_il_segno_sbagliato_su_vp14_non_quadra():
+    assert mod.quadra(dict(FEBBRAIO_2024, iva_da_versare_o_credito_segno="credito")) is False
+
+
+def test_vp6_nella_colonna_sbagliata_non_quadra():
+    """Il valore giusto nella colonna dei crediti e' comunque una lettura sbagliata."""
+    assert mod.quadra(dict(FEBBRAIO_2024, iva_dovuta_o_credito_segno="credito")) is False
+
+
+def test_un_credito_che_supera_il_debito_diventa_credito():
+    periodo = dict(FEBBRAIO_2024, credito_periodo_precedente=2000.00,
+                   iva_da_versare_o_credito=557.54,
+                   iva_da_versare_o_credito_segno="credito")
+    assert mod.quadra(periodo) is True
+
+
+@pytest.mark.parametrize("rigo,segno", [
+    ("debito_periodo_precedente", 1), ("credito_anno_precedente", -1),
+    ("versamenti_auto", -1), ("crediti_imposta", -1),
+    ("interessi_trimestrali", 1), ("acconto_dovuto", -1),
+])
+def test_ogni_rigo_da_vp7_a_vp13_entra_col_suo_segno(rigo, segno):
+    """VP7 e VP12 aumentano il dovuto; VP9, VP10, VP11 e VP13 lo riducono."""
+    periodo = dict(FEBBRAIO_2024, credito_periodo_precedente=None,
+                   iva_da_versare_o_credito=round(1442.46 + segno * 100.00, 2))
+    periodo[rigo] = 100.00
+    assert mod.quadra(periodo) is True
+    periodo[rigo] = None
+    assert mod.quadra(periodo) is False
+
+
+# ── VP13: la casella «Metodo» non e' l'acconto ────────────────────────────
+#
+# Parole misurate su LIPE_2023_IVtrim_348839802.pdf, dicembre 2023: metodo 3,
+# acconto 1.671,64 nella colonna di destra. Il «3» sta a x=408, sopra il
+# secondo decimale dei debiti: letto come importo dava 0,30 EUR.
+
+def _pagina_dicembre_2023():
+    def riga(top, *parole):
+        return [dict(p, top=top) for p in parole]
+    parole = []
+    parole += riga(160.0, _p("1", 160.0), _p("2", 168.0))            # mese 12
+    parole += riga(300.0, _p("VP4", 108.6), *_cella_debiti("9.436,", "2", "8"))
+    parole += riga(320.0, _p("VP5", 108.6), *_cella_debiti("5.942,", "9", "3"))
+    parole += riga(340.0, _p("VP6", 108.6), *_cella_debiti("3.493,", "3", "5"))
+    parole += riga(380.0, _p("VP8", 108.6), *_cella_debiti("417,", "9", "3"))
+    parole += riga(446.5, _p("VP13", 108.6), _p("Metodo", 376.9), _p("1", 402.0),
+                   _p("3", 408.0), _p("2", 466.8), *_cella_crediti("1.671,", "6", "4"))
+    parole += riga(470.5, _p("VP14", 108.6), _p("1", 322.8),
+                   *_cella_debiti("1.403,", "7", "8"), _p("2", 466.8))
+    return parole
+
+
+def test_l_acconto_di_vp13_si_legge_nella_colonna_di_destra(monkeypatch):
+    import sys
+    import types
+
+    class _Pagina:
+        def __init__(self, parole):
+            self._parole = parole
+
+        def extract_words(self):
+            return self._parole
+
+    class _Pdf:
+        pages = [_Pagina([dict(_p(c, 300.0 + 10 * i), top=40.0)
+                          for i, c in enumerate("2023")]),
+                 _Pagina(_pagina_dicembre_2023())]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setitem(sys.modules, "pdfplumber",
+                        types.SimpleNamespace(open=lambda _f: _Pdf()))
+    letto = mod.parse_lipe(b"%PDF finto")
+
+    dicembre = letto["periodi"][0]
+    assert dicembre["periodo"] == "2023-12"
+    assert dicembre["acconto_dovuto"] == 1671.64
+    assert dicembre["quadratura_ok"] is True

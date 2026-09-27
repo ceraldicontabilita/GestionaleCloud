@@ -201,29 +201,32 @@ def test_promozione_ignora_anni_diversi():
     assert db["corrispettivi"].docs[0]["stato_import"] == "archivio_storico"  # intoccato
 
 
-def test_import_anno_passato_esplicitamente_al_sync_fatture(monkeypatch):
+def test_import_anno_svuota_la_cartella_unica_non_i_vecchi_canali(monkeypatch):
+    """I canali Drive per sezione sono smontati: il bottone rispondeva
+    «Drive fatture non configurato». Ora svuota la cartella unica."""
     db = _Db()
     chiamate = []
 
-    async def _sync_fatture(db_, *, target_year=None):
-        chiamate.append(target_year)
-        return {"status": "ok", "imported": 0}
-
-    async def _sync_corrispettivi(db_):
-        return {"status": "ok", "imported": 0}
+    async def _svuota(db_):
+        chiamate.append("svuota")
+        return {"giri": 2, "elaborati": 60, "restanti": 0}
 
     async def _promuovi(db_, anno):
         return {"anno": anno}
 
-    monkeypatch.setattr("app.services.drive_invoice_ingest.is_configured", lambda: True)
-    monkeypatch.setattr("app.services.drive_invoice_ingest.sync", _sync_fatture)
-    monkeypatch.setattr("app.services.drive_corrispettivi_ingest.is_configured", lambda: True)
-    monkeypatch.setattr("app.services.drive_corrispettivi_ingest.sync", _sync_corrispettivi)
+    async def _vietato(*a, **k):
+        raise AssertionError("i canali per sezione non si chiamano piu'")
+
+    monkeypatch.setattr("app.services.drive_cartella_unica.attivo", lambda: True)
+    monkeypatch.setattr("app.services.drive_cartella_unica.svuota", _svuota)
+    monkeypatch.setattr("app.services.drive_invoice_ingest.sync", _vietato)
+    monkeypatch.setattr("app.services.drive_corrispettivi_ingest.sync", _vietato)
     monkeypatch.setattr(mod, "promuovi_archivio_anno", _promuovi)
 
-    _run(mod.importa_anno_da_drive(db, 2026))
+    esito = _run(mod.importa_anno_da_drive(db, 2026))
 
-    assert chiamate == [2026]
+    assert chiamate == ["svuota"]
+    assert esito["drive"]["elaborati"] == 60
 
 
 def test_job_import_anno_persiste_esito(monkeypatch):
