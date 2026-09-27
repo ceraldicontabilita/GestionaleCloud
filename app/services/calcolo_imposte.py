@@ -10,8 +10,8 @@ Riferimenti normativi:
 - TUIR (DPR 917/1986) per IRES
 - D.Lgs. 446/1997 per IRAP
 """
-from typing import Dict, Any, List
-from dataclasses import dataclass
+from typing import Dict, Any, List, Optional
+from dataclasses import dataclass, field
 import logging
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,94 @@ class CalcoloImposte:
     totale_imposte: float
     aliquota_effettiva: float
 
+    # Basi dal libro giornale (audit 27/09/2026) e cio' che manca per
+    # fidarsi del numero: un registro vuoto non e' un utile zero.
+    ricavi: Optional[float] = None
+    costi: Optional[float] = None
+    fonte: str = "movimenti_contabili"
+    avvisi: List[str] = field(default_factory=list)
+
+
+# Macro-gruppi CEE (piano_conti_ufficiale) usati dal valore della produzione
+# IRAP: B.9 costi del personale e C.17 oneri finanziari.
+_MACRO_PERSONALE = "67"
+_MACRO_ONERI_FINANZIARI = "75"
+
+
+def _anno_scrittura(scrittura: Dict[str, Any]) -> Optional[int]:
+    try:
+        return int(scrittura.get("anno"))
+    except (TypeError, ValueError):
+        data = str(scrittura.get("data_documento") or scrittura.get("data") or "")
+        try:
+            return int(data[:4])
+        except ValueError:
+            return None
+
+
+async def basi_imponibili_da_giornale(db, anno: int) -> Dict[str, Any]:
+    """Ricavi e costi dell'anno dal LIBRO GIORNALE, classificati col piano
+    ufficiale CEE (``sezione_di`` via ``mapping_piano_conti``).
+
+    Audit 27/09/2026 (punto 2): prima i costi erano il ``total_amount`` (IVA
+    compresa) di TUTTE le fatture, archiviate comprese, e i ricavi il totale
+    dei corrispettivi — cancellati compresi — diviso 1,10, un'aliquota
+    inventata. Il giornale ha gia' scorporato l'IVA dall'XML, esclude i
+    documenti non attivi e riduce i costi con le note di credito: le basi
+    vengono da li'. La chiusura d'esercizio non si somma (azzererebbe i conti
+    economici). ``costi_per_codice`` resta per codice di riga, cosi' le
+    variazioni fiscali si leggono sugli stessi alias operativi di prima.
+    """
+    from app.services.mapping_piano_conti import categoria_cee, risolvi_codice_cee
+    from app.services.registrazione_contabile import FILTRO_SCRITTURA_ATTIVA
+
+    scritture = await db["movimenti_contabili"].find(
+        dict(FILTRO_SCRITTURA_ATTIVA),
+        {"_id": 0, "righe": 1, "anno": 1, "data": 1, "data_documento": 1, "tipo": 1},
+    ).to_list(None)
+    ricavi = costi = personale = oneri_finanziari = 0.0
+    costi_per_codice: Dict[str, Dict[str, Any]] = {}
+    scritture_anno = 0
+    for scrittura in scritture:
+        if _anno_scrittura(scrittura) != anno or scrittura.get("tipo") == "chiusura_esercizio":
+            continue
+        righe = scrittura.get("righe") or []
+        if righe:
+            scritture_anno += 1
+        for riga in righe:
+            codice = str(riga.get("conto_codice") or riga.get("conto") or "").strip()
+            cee = risolvi_codice_cee(codice)
+            categoria = categoria_cee(cee) if cee else None
+            if categoria not in {"ricavi", "costi"}:
+                continue
+            try:
+                dare = float(riga.get("dare") or 0)
+                avere = float(riga.get("avere") or 0)
+            except (TypeError, ValueError):
+                logger.warning("Riga non numerica nel giornale (conto %s): esclusa dalle basi", codice)
+                continue
+            if categoria == "ricavi":
+                ricavi += avere - dare
+                continue
+            importo = dare - avere
+            costi += importo
+            voce = costi_per_codice.setdefault(codice, {"nome": riga.get("conto_nome") or "", "importo": 0.0})
+            voce["importo"] += importo
+            if cee.startswith(_MACRO_PERSONALE):
+                personale += importo
+            elif cee.startswith(_MACRO_ONERI_FINANZIARI):
+                oneri_finanziari += importo
+    for voce in costi_per_codice.values():
+        voce["importo"] = round(voce["importo"], 2)
+    return {
+        "ricavi": round(ricavi, 2),
+        "costi": round(costi, 2),
+        "costi_per_codice": costi_per_codice,
+        "costo_personale": round(personale, 2),
+        "costo_interessi": round(oneri_finanziari, 2),
+        "scritture": scritture_anno,
+    }
+
 
 class CalcolatoreImposte:
     """
@@ -123,7 +211,7 @@ class CalcolatoreImposte:
     async def calcola_imposte_da_db(self, db, anno: int = None) -> CalcoloImposte:
         """
         Calcola le imposte partendo dai dati nel database.
-        OTTIMIZZATO: Usa aggregazione Drive/Supabase per performance.
+        Le basi vengono dal libro giornale (`basi_imponibili_da_giornale`).
 
         Args:
             db: Riferimento all'archivio del runtime
@@ -140,56 +228,19 @@ class CalcolatoreImposte:
 
         logger.info(f"Calcolo imposte per anno {anno}")
 
-        # 1. Calcola totali costi usando aggregazione (molto più veloce)
-        totale_costi = 0.0
-        costi_per_tipo: Dict[str, float] = {}
-
-        # Pipeline aggregazione per fatture
-        pipeline_fatture = [
-            {"$match": {"invoice_date": {"$regex": f"^{anno}"}}},
-            {"$project": {
-                "total_amount": 1,
-                "conto_costo_codice": 1,
-                "conto_costo_nome": 1
-            }},
-            {"$group": {
-                "_id": "$conto_costo_codice",
-                "nome": {"$first": "$conto_costo_nome"},
-                "totale": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", 0]}}}
-            }}
-        ]
-
-        try:
-            risultati_fatture = await db["invoices"].aggregate(pipeline_fatture, allowDiskUse=True).to_list(500)
-
-            for r in risultati_fatture:
-                codice = r.get("_id", "05.01.01") or "05.01.01"
-                importo = r.get("totale", 0) or 0
-                if importo > 0:
-                    totale_costi += importo
-                    costi_per_tipo[codice] = {"nome": r.get("nome", ""), "importo": importo}
-        except Exception as e:
-            logger.error(f"Errore aggregazione fatture: {e}")
-
-        # 2. Calcola ricavi dai corrispettivi usando aggregazione
-        totale_ricavi = 0.0
-
-        pipeline_corr = [
-            {"$match": {"data": {"$regex": f"^{anno}"}}},
-            {"$group": {
-                "_id": None,
-                "totale": {"$sum": {"$toDouble": {"$ifNull": ["$totale", 0]}}}
-            }}
-        ]
-
-        try:
-            risultati_corr = await db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
-            if risultati_corr:
-                totale_lordo = risultati_corr[0].get("totale", 0) or 0
-                # Scorporo IVA 10% ristorazione
-                totale_ricavi = totale_lordo / 1.10
-        except Exception as e:
-            logger.error(f"Errore aggregazione corrispettivi: {e}")
+        # 1. Basi dal libro giornale (un solo sistema: quello del bilancio).
+        basi = await basi_imponibili_da_giornale(db, int(anno))
+        totale_costi = basi["costi"]
+        totale_ricavi = basi["ricavi"]
+        costi_per_tipo: Dict[str, Any] = basi["costi_per_codice"]
+        avvisi: List[str] = []
+        if not basi["scritture"]:
+            avvisi.append(
+                f"Libro giornale {anno} vuoto: nessuna base imponibile, le imposte "
+                "a zero non sono un calcolo. Registrare prima il pregresso.")
+        elif totale_ricavi <= 0:
+            avvisi.append(
+                f"Nessun ricavo registrato nel giornale {anno}: corrispettivi da registrare.")
 
         # Utile civilistico
         utile_civilistico = totale_ricavi - totale_costi
@@ -285,18 +336,11 @@ class CalcolatoreImposte:
         # Base IRAP = Valore della produzione (per società di capitali)
         # Semplificato: Ricavi - Costi (escludendo costi personale e interessi)
 
-        costo_personale = sum([
-            costi_per_tipo.get("05.03.01", {}).get("importo", 0),  # Salari
-            costi_per_tipo.get("05.03.02", {}).get("importo", 0),  # Contributi
-            costi_per_tipo.get("05.03.03", {}).get("importo", 0),  # TFR
-            costi_per_tipo.get("05.03.04", {}).get("importo", 0),  # Altri costi personale
-        ])
-
-        costo_interessi = sum([
-            costi_per_tipo.get("05.05.01", {}).get("importo", 0),  # Interessi bancari
-            costi_per_tipo.get("05.05.03", {}).get("importo", 0),  # Interessi mutui
-            costi_per_tipo.get("05.05.04", {}).get("importo", 0),  # Interessi leasing
-        ])
+        # Personale (B.9) e oneri finanziari (C.17) per conto CEE: comprendono
+        # sia gli alias operativi 05.03.x/05.05.x sia i conti CEE che il
+        # motore TFR scrive direttamente (67.01.07.01).
+        costo_personale = basi["costo_personale"]
+        costo_interessi = basi["costo_interessi"]
 
         # Valore della produzione = Utile + Costo personale + Interessi
         valore_produzione = utile_civilistico + costo_personale + costo_interessi
@@ -359,7 +403,10 @@ class CalcolatoreImposte:
             base_imponibile_irap=round(base_imponibile_irap, 2),
             irap_dovuta=round(irap_dovuta, 2),
             totale_imposte=round(totale_imposte, 2),
-            aliquota_effettiva=round(aliquota_effettiva, 2)
+            aliquota_effettiva=round(aliquota_effettiva, 2),
+            ricavi=totale_ricavi,
+            costi=totale_costi,
+            avvisi=avvisi,
         )
 
     def calcola_imposte_da_valori(

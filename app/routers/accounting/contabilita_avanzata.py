@@ -213,6 +213,11 @@ async def calcola_imposte_realtime(
         # Converti in dict per JSON
         return {
             "anno": anno,
+            "fonte": risultato.fonte,
+            "ricavi": risultato.ricavi,
+            "costi": risultato.costi,
+            "avvisi": risultato.avvisi,
+            "calcolabile": not risultato.avvisi,
             "utile_civilistico": risultato.utile_civilistico,
             "ires": {
                 "variazioni_aumento": [
@@ -248,7 +253,8 @@ async def calcola_imposte_realtime(
             "totale_imposte": risultato.totale_imposte,
             "aliquota_effettiva": risultato.aliquota_effettiva,
             "note": [
-                f"Calcolo basato su fatture e corrispettivi dell'anno {anno_label}",
+                f"Calcolo basato sul libro giornale dell'anno {anno_label}: "
+                "costi e ricavi al netto dell'IVA, note di credito sottratte",
                 "Variazioni fiscali automatiche per telefonia (20% indeducibile) e carburante auto (80% indeducibile)",
                 f"Aliquota IRAP regione {regione}: {calcolatore.aliquota_irap}%"
             ]
