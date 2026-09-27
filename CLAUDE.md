@@ -418,7 +418,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `trasferimento_collegato_id`, categoria `trasferimento_interno`. È **un'operazione della banca, non una riga
   d'archivio**: le copie (vecchio archivio, CSV, Enable Banking) fanno una coppia sola, il numero vero è il massimo
   per fonte nello stesso giorno e importo (`versamenti_contanti.py`); le gambe in più dei motori si tolgono per id.
-  Lo stesso per `proiezione_bancaria.py` (stipendi, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote dalla quietanza o dal piano d'ammortamento a importo identico, altrimenti `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale).
+  Lo stesso per `proiezione_bancaria.py` (stipendi — lo stesso bonifico nelle copie si riconosce dal riferimento `MB…`, e «ADD.SPE» è una commissione, non uno stipendio —, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote dalla quietanza o dal piano d'ammortamento a importo identico, altrimenti `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale).
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
   appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca (Enable Banking, `services/enable_banking.py`,
   flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca. **Spese di lite** (`atti_giudiziari.py`): sentenza, precetto, relata e attestazione entrano da Documenti > Import, originale in `gestionale.blobs`, apribile accanto al pagamento; un'uscita va nel fascicolo solo se la causale cita sentenza o R.G. o il titolare la dichiara (`fascicolo_dichiarato`), mai per importo o controparte, e in Banca è «Spese legali e contenzioso» su 71.03 (da confermare col commercialista).
@@ -456,7 +456,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   detraibile non classificata»), e uno `0,00` di comodo la disarma
   registrando tutta l'IVA come costo indetraibile. All'import il campo lo
   valorizza `handlers/learning.handler_classifica_cdc`, registrato sullo
-  stesso evento **dopo** il motore IVA.
+  stesso evento **dopo** il motore IVA, che subito ricalcola i campi IVA (`iva_detraibilita.py`); l'arretrato lo smaltisce il job bancario corto.
 - Regola del 15: operazione del mese precedente ricevuta **e** annotata entro
   il 15 → liquidazione del mese precedente, solo nello stesso anno solare.
   Ricevuta dopo il 15 → mese di ricezione. Operazione dell'anno precedente →

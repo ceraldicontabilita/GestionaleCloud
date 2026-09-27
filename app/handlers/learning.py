@@ -175,6 +175,11 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
 
         await db["invoices"].update_one({"id": fattura_id}, {"$set": update})
 
+        # La detraibilita' e' appena decisa: il motore IVA, girato prima di
+        # noi, l'aveva trovata vuota e lasciato la fattura DA_VERIFICARE.
+        from app.services.iva_detraibilita import ricalcola_iva_fattura
+        await ricalcola_iva_fattura(db, fattura_id)
+
         logger.info(f"[HandlerLearning] Fattura {fattura_id} → CDC: {cdc_config.get('nome')} (conf={confidence:.2f})")
         return {
             "centro_costo": cdc_config.get("nome"),
