@@ -124,6 +124,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "F24 atteso ma documento non acquisito",
         "condizione_chiusura": "Documento acquisito"
     },
+    "RITENUTA_DA_VERSARE": {
+        "modulo": "f24",
+        "severita": "warning",
+        "titolo": "Parcella con ritenuta d'acconto da versare (F24 1040)",
+        "condizione_chiusura": "F24 con il codice 1040 del periodo versato"
+    },
     "F24_NON_PAGATO": {
         "modulo": "f24",
         "severita": "warning",

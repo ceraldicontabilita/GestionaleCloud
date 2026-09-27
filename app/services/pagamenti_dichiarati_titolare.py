@@ -318,6 +318,7 @@ async def ripara_righe_dichiarate(db) -> Dict[str, int]:
     """
     from app.services.prima_nota_integrity import (
         CAMPO_RIGA_DICHIARATA, _ha_evidenza_banca, totale_pagabile_al_fornitore,
+        varianti_id,
     )
 
     righe = await db["prima_nota_banca"].find(
@@ -338,7 +339,7 @@ async def ripara_righe_dichiarate(db) -> Dict[str, int]:
                            "assegno_numero_dichiarato": ""},
             })
             if fattura_id:
-                await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+                await db["invoices"].update_one({"id": {"$in": varianti_id(fattura_id)}}, {"$set": {
                     "in_attesa_riscontro_banca": False,
                     "stato_finanziario": "riconciliato",
                     "updated_at": _oggi(),
@@ -347,7 +348,9 @@ async def ripara_righe_dichiarate(db) -> Dict[str, int]:
             continue
         if not fattura_id:
             continue
-        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0}) or {}
+        fattura = await db["invoices"].find_one(
+            {"id": {"$in": varianti_id(fattura_id)}}, {"_id": 0},
+        ) or {}
         pagabile = totale_pagabile_al_fornitore(fattura)
         importo = abs(float(riga.get("importo") or 0))
         if pagabile and importo - pagabile > 0.01:
