@@ -4119,12 +4119,16 @@ async def upload_documento_automatico(
             result["workflow"] = "MOTORE_UNICO_CEDOLINI"
             result["data"] = {k: esito.get(k) for k in (
                 "esito", "cedolini_processati", "buste_senza_netto", "fogli_presenze",
-                "prima_nota_create", "errori",
+                "prima_nota_create", "gia_presenti", "errori",
             )}
             scritte = (esito.get("cedolini_processati") or 0) + (esito.get("buste_senza_netto") or 0)
             if scritte:
                 result["imported"] = 1
                 result["message"] = f"Cedolino: {scritte} buste registrate"
+            elif esito.get("gia_presenti"):
+                result["imported"] = 0
+                result["duplicate"] = True
+                result["message"] = f"Cedolino gia' in archivio: {esito['gia_presenti']} buste"
             elif esito.get("esito") in ("presenze", "fuori_periodo"):
                 # Riconosciuto e letto, ma non e' una busta da registrare: il
                 # foglio presenze non ha netto, lo storico e' fuori periodo.
