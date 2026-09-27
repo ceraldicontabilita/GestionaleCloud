@@ -57,7 +57,14 @@ def test_sync_disabilitato_non_tocca_db():
     assert res["status"] in ("disabled", "not_configured")
 
 
-def test_sync_tutti_vuoto_se_spenti():
+def test_sync_tutti_vuoto_se_spenti(monkeypatch):
+    from app.config import settings
+
+    for nome in (
+        "BONIFICI", "DICHIARAZIONI_IVA", "CARTELLE_ESATTORIALI",
+        "AVVISI_BONARI", "VERBALI", "DICHIARAZIONI_FISCALI",
+    ):
+        monkeypatch.setattr(settings, f"ENABLE_DRIVE_{nome}_SYNC", False)
     res = _run(d.sync_tutti(None))
     assert res["status"] == "ok"
     assert res["canali"] == {}
