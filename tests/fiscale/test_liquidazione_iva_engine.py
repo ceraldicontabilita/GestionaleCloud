@@ -40,18 +40,42 @@ def test_selezione_include_solo_periodo_e_disponibili():
     assert "utilizzat" in escl[0]["motivo_esclusione"].lower()
 
 
-def test_selezione_esclude_note_credito_annullate_e_iva_nulla():
+def test_selezione_esclude_annullate_e_iva_nulla_e_riduce_con_note_credito():
     fatture = [
-        _fatt(id="nc", tipo_documento="TD04"),
+        _fatt(id="nc", tipo_documento="TD04", iva_detraibile=30.0),
         _fatt(id="ann", annullata=True),
         _fatt(id="dup", duplicata=True),
         _fatt(id="zero", iva_detraibile=0),
         _fatt(id="ok"),
     ]
     incl, escl = liq.seleziona_fatture_per_liquidazione(fatture, "2026-01")
-    assert [f["id"] for f in incl] == ["ok"]
+    # Audit 27/09/2026 (punto 8): la nota di credito entra, col segno meno.
+    assert [f["id"] for f in incl] == ["nc", "ok"]
     motivi = {e["id"]: e["motivo_esclusione"] for e in escl}
-    assert set(motivi) == {"nc", "ann", "dup", "zero"}
+    assert set(motivi) == {"ann", "dup", "zero"}
+    assert liq.calcola_totali(incl)["iva_acquisti"] == 70.0
+
+
+def test_nota_credito_con_importo_negativo_resta_negativa_una_volta():
+    nc = _fatt(id="nc", tipo_documento="TD08", iva_detraibile=-30.0)
+    assert liq.iva_detraibile_con_segno(nc) == -30.0
+    competenza, _ = liq.seleziona_fatture_per_competenza([nc, _fatt(id="ok")], "2026-01")
+    assert liq.calcola_totali(competenza)["iva_acquisti"] == 70.0
+
+
+def test_detraibilita_da_decidere():
+    assert liq.detraibilita_da_decidere({"iva": 22.0, "iva_detraibile": None})
+    assert liq.detraibilita_da_decidere(
+        {"iva": 22.0, "iva_detraibile": 22.0, "stato_detrazione_iva": "DA_VERIFICARE"})
+    # Niente IVA sul documento: nulla da decidere.
+    assert not liq.detraibilita_da_decidere({"iva": 0, "iva_detraibile": None})
+    # Deciso, gia' usato o indetraibile: non blocca.
+    assert not liq.detraibilita_da_decidere(
+        {"iva": 22.0, "iva_detraibile": 22.0, "stato_detrazione_iva": "DA_INSERIRE"})
+    assert not liq.detraibilita_da_decidere(
+        {"iva": 22.0, "iva_detraibile": None, "iva_utilizzata": True})
+    assert not liq.detraibilita_da_decidere(
+        {"iva": 22.0, "iva_detraibile": 0, "stato_detrazione_iva": "INDETRAIBILE"})
 
 
 def test_selezione_esclude_stato_non_ammesso():

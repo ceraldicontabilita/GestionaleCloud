@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)
 #: Misurato il 22/09/2026: ogni fattura di noleggio 2026 esisteva due volte,
 #: la copia `archived` dell'import XML e quella attiva da Drive, e lo scan le
 #: sommava entrambe (59 fatture per 41.681 € invece di ~33).
-from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA  # noqa: E402,F401
+#: `$nin` su un campo assente passa (regola 11): e' voluto, assente = attiva.
+#: Criterio unico in `app/constants/fattura_attiva.py`.
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA  # noqa: E402,F401
 
 
 def scegli_veicolo_per_fattura(

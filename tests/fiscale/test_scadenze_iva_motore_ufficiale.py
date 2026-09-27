@@ -22,6 +22,12 @@ def _matches(doc, query):
         if isinstance(v, dict) and "$in" in v:
             if doc.get(k) not in v["$in"]:
                 return False
+        elif isinstance(v, dict) and "$nin" in v:
+            if doc.get(k) in v["$nin"]:
+                return False
+        elif isinstance(v, dict) and "$ne" in v:
+            if doc.get(k) == v["$ne"]:
+                return False
         else:
             if doc.get(k) != v:
                 return False
@@ -97,7 +103,8 @@ def test_esclude_fattura_gia_utilizzata_in_liquidazione_precedente():
         # Genuinamente disponibile per gennaio.
         {"id": "f2", "periodo_iva_attribuito": "2026-01", "iva_detraibile": 100.0,
          "iva_utilizzata": False, "stato_detrazione_iva": "DA_INSERIRE"},
-        # Nota di credito: mai un acquisto detraibile in positivo.
+        # Nota di credito: mai un acquisto detraibile in positivo, riduce
+        # l'IVA detraibile (audit 27/09/2026).
         {"id": "f3", "periodo_iva_attribuito": "2026-01", "iva_detraibile": 50.0,
          "iva_utilizzata": False, "stato_detrazione_iva": "DA_INSERIRE",
          "tipo_documento": "TD04"},
@@ -105,7 +112,7 @@ def test_esclude_fattura_gia_utilizzata_in_liquidazione_precedente():
 
     esito = _run(mod._iva_acquisti_ufficiale(db, "2026-01"))
 
-    assert esito["iva_acquisti"] == 100.0  # solo f2
+    assert esito["iva_acquisti"] == 50.0  # f2 (100) meno la nota di credito f3 (50)
     assert esito["fonte"] == "stima"
 
 

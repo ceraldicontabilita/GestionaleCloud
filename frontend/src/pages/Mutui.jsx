@@ -59,16 +59,15 @@ export default function Mutui() {
   const riconciliaAutomatico = async () => {
     try {
       setRiconciliaLoading(true);
-      const response = await api.post('/api/mutui/riconcilia', {
-        tolleranza_importo: 1.0,
-        tolleranza_giorni: 7,
-      });
+      // Il riscontro legge le rate addebitate in Prima Nota Banca (numero del
+      // mutuo e scadenza in causale): nessuna tolleranza su importo o data.
+      const response = await api.post('/api/mutui/riconcilia');
 
       setLastRiconciliazione(response.data.data);
       loadData(); // Ricarica dati
 
       toast.success(
-        `Riconciliazione completata! ${response.data.data.riconciliazioni_automatiche} rate riconciliate automaticamente, ${response.data.data.riconciliazioni_manuali_richieste} richiedono riconciliazione manuale`
+        `Riscontro completato: ${response.data.data.riconciliazioni_automatiche} rate trovate in banca, ${response.data.data.riconciliazioni_manuali_richieste} senza addebito bancario`
       );
     } catch (error) {
       console.error('Errore riconciliazione:', error);

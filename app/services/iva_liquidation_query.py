@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict
 
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
 from app.engines import liquidazione_iva_engine as liq
 from app.services.fiscal_deadlines import monthly_deadline
 
@@ -165,8 +166,10 @@ async def get_iva_period_snapshot(
         {"periodo": periodo, "stato": {"$in": [liq.CONFERMATA, liq.TRASMESSA]}},
         {"_id": 0}, sort=[("versione", -1)],
     )
+    # Solo fatture attive (audit 27/09/2026): una copia archiviata o in
+    # collisione non porta IVA, e non deve bloccare il mese come «da decidere».
     invoices = await db["invoices"].find(
-        {"periodo_iva_attribuito": periodo}, {"_id": 0}
+        {"periodo_iva_attribuito": periodo, **FILTRO_FATTURA_ATTIVA}, {"_id": 0}
     ).to_list(20000)
     # Due grandezze diverse, che non devono mai essere confuse:
     # - competenza: tutte le fatture fiscalmente attribuite al mese, anche se
@@ -186,11 +189,12 @@ async def get_iva_period_snapshot(
         {"_id": 0}, sort=[("versione", -1)],
     )
     previous_credit_cents = money_cents((previous or {}).get("credito_periodo"))
+    # Le note di credito riducono l'IVA detraibile (segno negativo).
     competence_purchases_cents = sum(
-        money_cents(item.get("iva_detraibile")) for item in competence_included
+        money_cents(liq.iva_detraibile_con_segno(item)) for item in competence_included
     )
     available_purchases_cents = sum(
-        money_cents(item.get("iva_detraibile")) for item in available_included
+        money_cents(liq.iva_detraibile_con_segno(item)) for item in available_included
     )
     purchases_cents = available_purchases_cents
     sales_cents = sales["iva_vendite_cents"]
@@ -206,10 +210,23 @@ async def get_iva_period_snapshot(
         motivi.append("archivio_fatture_non_verificabile")
     elif fatture_assenti:
         motivi.append("archivio_fatture_vuoto")
-    if sales["corrispettivi_inclusi"] == 0:
+    # Un mese tutto in chiusura (ristrutturazione, ferie: `chiusure_attivita`)
+    # senza corrispettivi e' giusto cosi': manca un dato solo se restano
+    # giorni aperti senza chiusura RT.
+    nessun_corrispettivo = (
+        sales["corrispettivi_inclusi"] == 0 and bool(sales["giorni_senza_corrispettivo"])
+    )
+    if nessun_corrispettivo:
         motivi.append("nessun_corrispettivo_nel_mese")
     if sales["giorni_senza_corrispettivo"]:
         motivi.append("giorni_senza_corrispettivo")
+    # Audit 27/09/2026 (punto 3): una fattura del periodo con IVA ma con la
+    # detraibilita' ancora da decidere esce dal calcolo, e l'IVA acquisti
+    # diventava 0 con lo stato CALCOLATA: il «da versare» risultava gonfiato.
+    # Finche' qualcuno non decide, l'IVA acquisti del mese non si conosce.
+    da_decidere = [item for item in invoices if liq.detraibilita_da_decidere(item)]
+    if da_decidere:
+        motivi.append("detraibilita_da_verificare")
     attendibile = not motivi
     if confirmed:
         source = "liquidazione_confermata"
@@ -231,9 +248,9 @@ async def get_iva_period_snapshot(
     if status == "DATI_MANCANTI":
         # Nessun saldo: le cifre parziali restano visibili come tali, ma non
         # esiste un "debito del periodo" da esporre come calcolato.
-        if sales["corrispettivi_inclusi"] == 0:
+        if nessun_corrispettivo:
             sales_cents = None
-        if fatture_assenti is not False:
+        if fatture_assenti is not False or da_decidere:
             purchases_cents = None
             competence_purchases_cents = None
             available_purchases_cents = None
@@ -252,6 +269,7 @@ async def get_iva_period_snapshot(
             1 for item in invoices
             if item.get("stato_detrazione_iva") in (None, "", "NON_VALUTATA", "DA_VERIFICARE")
         ),
+        "detraibilita_da_decidere_con_iva": len(da_decidere),
         "detraibilita_verificata": sum(
             1 for item in invoices
             if item.get("stato_detrazione_iva") not in (None, "", "NON_VALUTATA", "DA_VERIFICARE")

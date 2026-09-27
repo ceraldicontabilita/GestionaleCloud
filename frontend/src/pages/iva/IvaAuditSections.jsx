@@ -212,6 +212,7 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
                     <div role="alert" style={{ marginTop: 6, fontSize: 11, color: COLORS.danger }}>
                       {(s.motivi || []).includes('archivio_fatture_vuoto') && <div>Archivio fatture vuoto.</div>}
                       {(s.motivi || []).includes('nessun_corrispettivo_nel_mese') && <div>Nessun corrispettivo del mese.</div>}
+                      {(s.motivi || []).includes('detraibilita_da_verificare') && <div>Detraibilità IVA da verificare: IVA acquisti non calcolabile.</div>}
                       {giorniMancanti.length > 0 && (
                         <div>
                           Giorni senza chiusura RT: {giorniMancanti.length}{s.giorni_mese ? ` su ${s.giorni_mese}` : ''}

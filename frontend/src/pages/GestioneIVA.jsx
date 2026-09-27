@@ -155,7 +155,11 @@ export default function GestioneIVA() {
       await caricaLiquidazione();
       await carica();
     } catch (e) {
-      setMsg({ tipo: 'errore', testo: 'Errore conferma: ' + (e.response?.data?.detail || e.message) });
+      const dettaglio = e.response?.data?.detail;
+      const testo = typeof dettaglio === 'object' && dettaglio
+        ? dettaglio.message || JSON.stringify(dettaglio)
+        : dettaglio || e.message;
+      setMsg({ tipo: 'errore', testo: 'Errore conferma: ' + testo });
     } finally {
       setBusyLiq(false);
     }
@@ -622,6 +626,13 @@ export default function GestioneIVA() {
               )}
               {(dashboard.motivi || []).includes('nessun_corrispettivo_nel_mese') && (
                 <li>Nessun corrispettivo del mese in archivio.</li>
+              )}
+              {(dashboard.motivi || []).includes('detraibilita_da_verificare') && (
+                <li>
+                  Detraibilità IVA da verificare su{' '}
+                  {dashboard.conteggi_iva?.detraibilita_da_decidere_con_iva ?? 'alcune'} fatture:
+                  IVA acquisti non calcolabile finché non si decide.
+                </li>
               )}
               {(dashboard.giorni_senza_corrispettivo || []).length > 0 && (
                 <li>

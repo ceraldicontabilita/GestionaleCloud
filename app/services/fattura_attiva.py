@@ -6,8 +6,7 @@ dell'import XML e quella attiva da Drive (misurato il 27/09/2026: 563
 questo filtro conta ogni fattura due volte, e un motore di abbinamento trova
 due candidati identici e si rifiuta di scegliere.
 
-Il filtro viveva in `services/noleggio/processors.py` e, copiato a mano, in
-`fatture_report_ae.py`: da qui in avanti si importa da questo modulo.
+Il filtro sta in `app/constants/fattura_attiva.py`; qui il segno e l'importo.
 
 Il segno: una nota di credito ricevuta (TD04/TD08) riduce il debito verso il
 fornitore, non lo aumenta. Un totale che la somma in positivo gonfia la spesa
@@ -33,31 +32,14 @@ __all__ = [
     "importo_pagabile_con_segno",
 ]
 
-#: In archivio convivono due parole per lo stesso stato (regola 13).
-STATI_DOCUMENTO_NON_ATTIVI = ("archived", "archiviata", "deleted")
-#: Archivio storico e collisioni di identita' ancora da decidere.
-STATI_IMPORT_NON_ATTIVI = ("archivio_storico", "collisione_identita_da_verificare")
-
-#: «Fattura attiva» con lo stesso vocabolario del recupero pregresso e del
-#: libro giornale. `$nin` su un campo assente passa (regola 11): e' voluto,
-#: assente = attiva.
-FILTRO_FATTURA_ATTIVA: Dict[str, Any] = {
-    "status": {"$nin": list(STATI_DOCUMENTO_NON_ATTIVI)},
-    "stato_import": {"$nin": list(STATI_IMPORT_NON_ATTIVI)},
-    "entity_status": {"$ne": "deleted"},
-    "deleted": {"$ne": True},
-}
-
-
-def e_fattura_attiva(fattura: Mapping[str, Any]) -> bool:
-    """Lo stesso criterio di `FILTRO_FATTURA_ATTIVA`, in memoria."""
-    if str(fattura.get("status") or "").strip().lower() in STATI_DOCUMENTO_NON_ATTIVI:
-        return False
-    if str(fattura.get("stato_import") or "").strip().lower() in STATI_IMPORT_NON_ATTIVI:
-        return False
-    if str(fattura.get("entity_status") or "").strip().lower() == "deleted":
-        return False
-    return fattura.get("deleted") is not True
+# Il filtro vive in `app/constants/fattura_attiva.py` (senza dipendenze, lo
+# leggono anche i moduli di base): qui si riespone, non si ricopia.
+from app.constants.fattura_attiva import (  # noqa: E402
+    FILTRO_FATTURA_ATTIVA,
+    STATI_FATTURA_NON_ATTIVA as STATI_DOCUMENTO_NON_ATTIVI,
+    STATI_IMPORT_NON_ATTIVI,
+    fattura_attiva as e_fattura_attiva,
+)
 
 
 def e_nota_credito(fattura: Mapping[str, Any]) -> bool:

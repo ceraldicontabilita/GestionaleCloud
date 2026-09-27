@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 
-from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
 
 
 COLLECTION_REPORT = "fatture_report_ae"
@@ -48,7 +48,7 @@ COLONNE_TITOLARE = {
 }
 
 # Stesso criterio di «fattura attiva» del giornale: una copia archiviata o
-# in collisione non riceve pagamenti. Il filtro sta in un posto solo.
+# in collisione non riceve pagamenti (criterio unico in app/constants).
 FILTRO_FATTURE_ATTIVE = FILTRO_FATTURA_ATTIVA
 
 _PROIEZIONE_IDENTITA = {
