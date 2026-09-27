@@ -166,13 +166,40 @@ async def importa_estratto_sumup(
         {"content_sha256": sha256}, {"_id": 0, "id": 1},
     )
     codici = [riga.codice for riga in estratto.righe]
-    esistenti = {
-        doc.get("codice_transazione")
+    esistenti_doc = {
+        doc.get("codice_transazione"): doc
         async for doc in db[COLL_MOVIMENTI].find(
             {"codice_transazione": {"$in": codici}},
-            {"_id": 0, "codice_transazione": 1},
+            {"_id": 0, "id": 1, "codice_transazione": 1, "riferimento": 1,
+             "causale": 1, "importo": 1, "iban_beneficiario": 1},
         )
     }
+    esistenti = set(esistenti_doc)
+    # Il CSV porta il testo intero; il PDF lo spezza dove la cella va a capo
+    # («finanziame nto», «85280201 69»), e una causale spezzata non la
+    # riconosce nessuna regola. Sulla stessa riga (stesso codice) vince il CSV.
+    testi_corretti = 0
+    if str(filename or "").lower().endswith(".csv"):
+        for riga in estratto.righe:
+            presente = esistenti_doc.get(riga.codice)
+            if not presente or (
+                presente.get("riferimento") == riga.riferimento
+                and presente.get("causale") == riga.causale
+            ):
+                continue
+            aggiornata = {
+                **presente, "riferimento": riga.riferimento, "causale": riga.causale,
+            }
+            if riga.tipo_transazione.lower().startswith("bonifico"):
+                aggiornata["iban_beneficiario"] = _iban_beneficiario(riga.riferimento)
+            campi = {
+                "riferimento": riga.riferimento, "causale": riga.causale,
+                "iban_beneficiario": aggiornata.get("iban_beneficiario"),
+                **campi_bancari(aggiornata),
+                "testo_da": "csv", "updated_at": ora_import,
+            }
+            await db[COLL_MOVIMENTI].update_one({"id": presente["id"]}, {"$set": campi})
+            testi_corretti += 1
     payout = await _payout_per_pid(db)
 
     nuovi = []
@@ -231,6 +258,7 @@ async def importa_estratto_sumup(
         "righe": len(estratto.righe),
         "nuovi": len(nuovi),
         "gia_presenti": len(estratto.righe) - len(nuovi),
+        "testi_corretti": testi_corretti,
         "payout_collegati": payout_collegati,
         "payout_senza_api": payout_mancanti,
         "giroconti": giroconti,
@@ -273,6 +301,11 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
             movimento.update(mancanti)
             arricchiti += 1
 
+    # Rimborsi e apporti soci prima degli stipendi: un socio e' anche
+    # dipendente, e la causale di rimborso vince sul nome.
+    from app.services.finanziamenti_soci import scan_finanziamenti_da_ec
+
+    soci = await scan_finanziamenti_da_ec(db, anno=anno, collezione=COLL_MOVIMENTI)
     stipendi = await associa_bonifici_stipendi(
         db, anno=anno, collezione_movimenti=COLL_MOVIMENTI, ripassa_collegati=False,
     )
@@ -301,6 +334,8 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
         "stipendi_abbinati": stipendi.get("bonifici_associati", 0),
         "stipendi_dettaglio": stipendi.get("dettaglio", []),
         "stipendi_ambigui": stipendi.get("match_ambigui_ignorati", 0),
+        "rimborsi_soci_staccati": stipendi.get("rimborsi_soci_staccati", []),
+        "finanziamenti_soci_nuovi": soci.get("apporti_nuovi", 0) + soci.get("rimborsi_nuovi", 0),
         "fatture_abbinate": fatture["collegati_count"],
         "fatture_dettaglio": fatture["collegati"],
         "fatture_ambigue": fatture["ambigui_movimento"] + fatture["ambigui_fattura"],
@@ -310,6 +345,7 @@ async def abbina_movimenti_sumup(db, *, anno: Optional[int] = None) -> Dict[str,
             "gia_presenti": prima_nota.get("gia_presenti", 0),
             "stipendi": prima_nota.get("stipendi", 0),
             "finanziamenti_soci": prima_nota.get("finanziamenti_soci", 0),
+            "riclassificate": prima_nota.get("riclassificate", 0),
         },
     }
     logger.info("Abbinamento carta SumUp: %s", {k: v for k, v in esito.items() if k != "fatture_dettaglio"})

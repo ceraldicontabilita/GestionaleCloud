@@ -228,8 +228,14 @@ def _accorpa_duplicati_esatti(movimenti: List[Dict[str, Any]]) -> tuple[List[Dic
     return unici, duplicati
 
 
-async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, Any]:
-    """Estrae apporti e rimborsi soci dall'estratto conto (idempotente)."""
+async def scan_finanziamenti_da_ec(
+    db, anno: Optional[int] = None, collezione: str = "estratto_conto_movimenti",
+) -> Dict[str, Any]:
+    """Estrae apporti e rimborsi soci dall'estratto conto (idempotente).
+
+    ``collezione``: il conto BPM per difetto, ``sumup_conto_movimenti`` per i
+    bonifici partiti dalla carta SumUp.
+    """
     stats = {
         "righe_esaminate": 0,
         "apporti_nuovi": 0,
@@ -251,7 +257,7 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         if m.get("estratto_conto_id"):
             gia_importati.add(m["estratto_conto_id"])
 
-    cursor = db["estratto_conto_movimenti"].find({})
+    cursor = db[collezione].find({})
     async for doc in cursor:
         data_norm = _data_ec(doc)
         if anno and not data_norm.startswith(f"{anno}-"):

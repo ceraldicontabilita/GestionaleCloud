@@ -7,6 +7,7 @@ il writer unico. Non viene mai usata la sola uguaglianza dell'importo.
 """
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
@@ -19,6 +20,8 @@ from app.services.finanziamenti_soci import classifica_finanziamento_ec
 from app.services.scritture_contabili import scrivi_movimento_se_assente
 from app.services.bank_reconciliation_rules import classify_bank_movement
 from app.services.conti_pos import CONTO_BPM as CONTO_BANCA_PREDEFINITO
+
+logger = logging.getLogger(__name__)
 
 
 SOURCE = "proiezione_semantica_ec"
@@ -226,6 +229,59 @@ def _documento(movimento_ec: Dict[str, Any], classificazione: Dict[str, Any],
     }
 
 
+_CAMPI_CLASSIFICAZIONE = (
+    "dipendente_id", "dipendente_nome", "dipendente_codice_fiscale", "motivo_classificazione",
+    "socio_id", "socio_nome", "tipo_finanziamento", "numero_mutuo", "rata_scadenza",
+    "ripartizione_capitale_interessi", "gestore_pagamento", "regola_bancaria",
+    "regola_versione", "campi_estratti",
+)
+
+
+_CATEGORIE_RETRIBUTIVE = {"Stipendi", "TFR"}
+
+
+async def _riclassifica_riga_propria(db, prima_nota_id: str, documento: Dict[str, Any],
+                                     stats: Dict[str, Any]) -> None:
+    """Una riga «Stipendi»/«TFR» scritta da questo motore diventa rimborso
+    (o apporto) soci quando la causale, letta meglio, lo dichiara: cambia
+    categoria e contropartita con lo stesso id, nessuna seconda uscita. Una
+    riga scritta da altri (import, a mano) non si tocca."""
+    from app.services.mapping_piano_conti import completa_conti_prima_nota
+
+    # Solo il caso in cui la causale e' una prova piu' forte del nome: un
+    # rimborso/apporto soci scritto come stipendio. Il resto non si ritocca
+    # (fra un giro e l'altro la stessa riga puo' leggersi TFR o stipendio).
+    if not str(documento.get("tipo_classificazione_contabile") or "").startswith(
+        "finanziamento_socio_"
+    ):
+        return
+    riga = await db["prima_nota_banca"].find_one({"id": prima_nota_id}, {"_id": 0})
+    if not riga or riga.get("source") != SOURCE:
+        return
+    if riga.get("categoria") not in _CATEGORIE_RETRIBUTIVE:
+        return
+    campi = {
+        "categoria": documento["categoria"],
+        "tipo": documento["tipo"],
+        "tipo_classificazione_contabile": documento["tipo_classificazione_contabile"],
+        "descrizione": documento["descrizione"],
+        "classificato_at": documento["classificato_at"],
+        "riclassificata_da": riga.get("categoria"),
+    }
+    for campo in _CAMPI_CLASSIFICAZIONE:
+        campi[campo] = documento.get(campo)
+    base = {k: v for k, v in {**riga, **campi}.items()
+            if k not in ("conto_contropartita", "conto_contropartita_nome",
+                         "contropartita_da_classificare")}
+    campi.update({"conto_contropartita": None, "conto_contropartita_nome": None,
+                  "contropartita_da_classificare": None})
+    campi.update(completa_conti_prima_nota("banca", base))
+    await db["prima_nota_banca"].update_one({"id": prima_nota_id}, {"$set": campi})
+    stats["riclassificate"] = stats.get("riclassificate", 0) + 1
+    logger.warning("Riga Prima Nota %s riclassificata: %s -> %s",
+                   prima_nota_id, riga.get("categoria"), documento["categoria"])
+
+
 async def proietta_movimenti_bancari_semantici(
     db, *, anno: Optional[int] = None, movimento_ids=None,
     collezione: str = Collections.BANK_STATEMENTS,
@@ -383,6 +439,13 @@ async def proietta_movimenti_bancari_semantici(
                         conto_contabile if conto_contabile != CONTO_BANCA_PREDEFINITO else None,
                     ),
                 )
+                if gia_esistente:
+                    await _riclassifica_riga_propria(
+                        db, prima_nota_id, _documento(
+                            movimento_ec, classificazione, data, importo, ec_id,
+                            conto_contabile if conto_contabile != CONTO_BANCA_PREDEFINITO else None,
+                        ), stats,
+                    )
                 riga = {"id": prima_nota_id, "estratto_conto_id": ec_id}
                 tenute.append(riga)
             prima_nota_id = riga["id"]
