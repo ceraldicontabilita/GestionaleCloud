@@ -78,14 +78,9 @@ async def riconcilia_documenti_e_pagamenti(
     allocazioni_fatture_banca = await reconcile_deterministic_invoice_allocations(
         db, anno=anno, movement_ids=movimento_ids,
     )
-    # Carta SumUp: stessi motori di stipendi e fatture, sulla sua collezione.
-    from app.services.sumup_conto import abbina_movimenti_sumup
-
-    try:
-        carta_sumup = await abbina_movimenti_sumup(db, anno=anno)
-    except Exception as exc:  # noqa: BLE001 - gli altri agganci restano validi
-        logger.exception("Abbinamento carta SumUp non completato (%s)", type(exc).__name__)
-        carta_sumup = {"errore": f"{type(exc).__name__}: {exc}"}
+    # La carta SumUp non sta piu' qui: gira nel job bancario corto
+    # (``banca_versamenti_proiezione``). Qui era in coda a un giro che ogni
+    # deploy interrompe, e il 27/09/2026 non arrivava in fondo da ore.
     return {
         "assegni_intenti": assegni_intenti,
         "assegni_auto": assegni_auto,
@@ -105,7 +100,6 @@ async def riconcilia_documenti_e_pagamenti(
             "scan": finanziamenti_soci,
         },
         "allocazioni_fatture_banca": allocazioni_fatture_banca,
-        "carta_sumup": carta_sumup,
     }
 
 
