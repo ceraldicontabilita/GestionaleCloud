@@ -20,10 +20,9 @@ from pathlib import Path
 
 RADICE = Path(__file__).resolve().parents[2]
 
-# `paghe_riconciliazione.riconcilia_tutti_f24` aggiorna ancora
-# `f24_pagamenti`: e' tenuta per l'audit storico e non ha chiamanti, quindi
-# lavora su una collection vuota. Resta l'unica eccezione ammessa.
-SCRITTORI_AMMESSI = {"app/services/paghe_riconciliazione.py"}
+# `paghe_riconciliazione.riconcilia_tutti_f24`, l'ultima che scriveva su
+# `f24_pagamenti`, e' stata tolta il 27/09/2026: nessuna eccezione ammessa.
+SCRITTORI_AMMESSI: set = set()
 
 SCRITTURA = re.compile(
     r"f24_pagamenti[\"'\]]*\s*\.\s*(insert_one|insert_many|update_one|update_many|"

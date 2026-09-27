@@ -14,7 +14,7 @@ bancari valgono come prova di pagamento**:
   `tipo: "uscita"`.
 
 Non era teoria: `POST /api/paghe/riconcilia-f24` (in
-`app/hr/routers/f24_parser.py`) chiamava `riconcilia_tutti_f24` di QUESTA
+`app/hr/routers/f24_parser.py`) chiamava `riconcilia_tutti_f24` (tolta il 27/09/2026: un secondo motore F24 a ±1 EUR, senza chiamanti) di QUESTA
 copia, e `riconcilia_f24_con_banca` chiamava questo `cerca_in_estratto_conto`.
 Erano gli unici chiamanti vivi di entrambe le copie — sul lato ERP quelle tre
 funzioni restano solo per audit storico, perche'
@@ -30,7 +30,6 @@ from app.services.paghe_riconciliazione import (  # noqa: F401
     esegui_riconciliazione_paghe_completa,
     marca_movimento_riconciliato,
     riconcilia_tutti_cedolini,
-    riconcilia_tutti_f24,
     riconcilia_tutti_stipendi,
 )
 
@@ -39,6 +38,5 @@ __all__ = [
     "esegui_riconciliazione_paghe_completa",
     "marca_movimento_riconciliato",
     "riconcilia_tutti_cedolini",
-    "riconcilia_tutti_f24",
     "riconcilia_tutti_stipendi",
 ]

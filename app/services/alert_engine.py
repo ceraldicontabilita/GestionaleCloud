@@ -142,6 +142,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "F24 pagato ma non riconciliato con banca",
         "condizione_chiusura": "Match bancario confermato"
     },
+    "F24_QUIETANZA_SENZA_ADDEBITO": {
+        "modulo": "f24",
+        "severita": "warning",
+        "titolo": "Quietanza F24 senza addebito in banca",
+        "condizione_chiusura": "Addebito I24 di pari importo e data d'incasso trovato",
+    },
     "F24_DUPLICATO": {
         "modulo": "f24",
         "severita": "warning",
@@ -306,6 +312,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "severita": "warning",
         "titolo": "Addebito F24 non riconciliato",
         "condizione_chiusura": "Match confermato"
+    },
+    "BNK_F24_SENZA_QUIETANZA": {
+        "modulo": "banca",
+        "severita": "warning",
+        "titolo": "Addebito F24 senza quietanza: da riscaricare dal Cassetto Fiscale",
+        "condizione_chiusura": "Quietanza di pari importo e data d'incasso caricata",
     },
     "BNK_TRASFERIMENTO_INCOMPLETO": {
         "modulo": "banca",

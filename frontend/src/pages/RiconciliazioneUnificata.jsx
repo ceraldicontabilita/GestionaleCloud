@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { PageLayout } from '../components/PageLayout';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import AvvisoBonarioF24 from '../components/AvvisoBonarioF24';
+import RiscontroQuietanzeBanca from '../components/RiscontroQuietanzeBanca';
 import LinkContropartita, {
   ROTTE_CONTROPARTITA, PALETTE_CONTROPARTITA,
 } from '../components/LinkContropartita';
@@ -2148,6 +2149,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
     return (
       <div>
       <AvvisoBonarioF24 />
+      <RiscontroQuietanzeBanca anno={anno} />
       <TabellaAnalisiF24 anno={anno} />
       <div style={{ padding: 60, textAlign: 'center', color: '#a19d92' }}>
         <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}>📄</div>
@@ -2256,6 +2258,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
   return (
     <div>
       <AvvisoBonarioF24 />
+      <RiscontroQuietanzeBanca anno={anno} />
       <TabellaAnalisiF24 anno={anno} />
       <div style={{ padding: 16, background: '#f6f4ee', borderBottom: '1px solid #e6e3d9' }}>
         <div
