@@ -7,7 +7,7 @@ lista/dettaglio nonostante il messaggio di conferma dell'UI dica che
 l'operazione non è reversibile."""
 import asyncio
 
-from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria, matches_filter
 
 from app.routers.fatture_module import crud as mod
 
@@ -32,19 +32,9 @@ class _FakeCursor:
 
 
 def _matches(doc, query):
-    for k, v in query.items():
-        if k in ("$and", "$or"):
-            continue
-        if isinstance(v, dict) and "$ne" in v:
-            if doc.get(k) == v["$ne"]:
-                return False
-        else:
-            if doc.get(k) != v:
-                return False
-    for sub in query.get("$and", []):
-        if not _matches(doc, sub):
-            return False
-    return True
+    # Lo stesso motore di filtro dell'archivio in memoria: il filtro «fattura
+    # attiva» usa `$nin`, che un confronto fatto a mano non conosce.
+    return matches_filter(doc, query or {})
 
 
 class _FakeCollection:
@@ -171,7 +161,9 @@ def test_statistiche_restano_disponibili_nel_database_e2e_in_memoria(monkeypatch
         {
             "id": "f2", "invoice_number": "2", "invoice_date": "2026-08-07",
             "supplier_vat": "00000000002", "total_amount": 244.0,
-            "status": "paid",
+            # `status` e' lo stato del documento, non del pagamento: la
+            # pagata si dichiara nei campi del pagamento (criterio unico).
+            "stato_pagamento": "pagata",
         },
     ]))
 

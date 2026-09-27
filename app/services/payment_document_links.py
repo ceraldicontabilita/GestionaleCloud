@@ -11,16 +11,25 @@ from typing import Any, Dict, Iterable, List
 from app.services.entity_relations import upsert_entity_relation
 from app.services.identity_matching import identita_coincide, nome_presente_nel_testo
 from app.services.payment_invoice_matching import amounts_equal_to_cent, invoice_reference_in_text
+from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
 
 
 def _invoice_amount(invoice: Dict[str, Any]) -> float:
+    """Quanto il bonifico deve pagare: il netto della ritenuta, non il lordo.
+
+    Una parcella con ritenuta d'acconto si paga al netto (la ritenuta va in
+    F24): confrontare il bonifico col totale documento non trovava mai la
+    fattura (AVV. CARINI FPR 14/26: bonifico 3.206,40, totale 3.806,40,
+    ritenuta 600). Il calcolo sta in un posto solo.
+    """
     for field in ("total_amount", "totale", "importo_totale"):
         value = invoice.get(field)
         if value not in (None, ""):
             try:
-                return abs(float(value))
+                totale = abs(float(value))
             except (TypeError, ValueError):
                 return 0.0
+            return totale_pagabile_al_fornitore({**invoice, "total_amount": totale})
     return 0.0
 
 

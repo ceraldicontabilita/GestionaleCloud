@@ -36,11 +36,6 @@ def test_scadenze_restituisce_la_pagina_richiesta_e_il_totale_reale(monkeypatch)
     )
     monkeypatch.setattr(scadenze, "_genera_scadenze_fiscali", lambda *_args: [])
 
-    async def nessuna_fattura(*_args, **_kwargs):
-        return []
-
-    monkeypatch.setattr(scadenze, "_get_fatture_in_scadenza", nessuna_fattura)
-
     risultato = asyncio.run(
         scadenze.get_tutte_scadenze(
             anno=2026,
@@ -84,11 +79,6 @@ def test_scadenze_senza_mese_usa_tutto_e_solo_anno_selezionato(monkeypatch):
         return []
 
     monkeypatch.setattr(scadenze, "_genera_scadenze_fiscali", genera_fiscali)
-
-    async def nessuna_fattura(*_args, **_kwargs):
-        return []
-
-    monkeypatch.setattr(scadenze, "_get_fatture_in_scadenza", nessuna_fattura)
 
     risultato = asyncio.run(
         scadenze.get_tutte_scadenze(
@@ -135,11 +125,6 @@ def test_scadenze_filtra_anche_le_personalizzate_per_mese_e_tipo(monkeypatch):
         lambda: {"notifiche_scadenze": _Collection(rows)},
     )
     monkeypatch.setattr(scadenze, "_genera_scadenze_fiscali", lambda *_args: [])
-
-    async def nessuna_fattura(*_args, **_kwargs):
-        return []
-
-    monkeypatch.setattr(scadenze, "_get_fatture_in_scadenza", nessuna_fattura)
 
     risultato = asyncio.run(
         scadenze.get_tutte_scadenze(

@@ -11,6 +11,7 @@ import logging
 from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA, importo_documento_con_segno
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -30,150 +31,91 @@ class ScadenzaUpdate(BaseModel):
 # ENDPOINT
 # ============================================
 
+#: Le fatture fornitore NON hanno scadenza (decisione del titolare,
+#: 19/09/2026: «decido io quando pagare»). Qui la «data di scadenza» ripiegava
+#: su `invoice_date`, cosi' ogni fattura aperta risultava «scaduta» il giorno
+#: dopo l'emissione; e `data_scadenza` sulle fatture e' in gran parte il «+30»
+#: inventato dal vecchio import (`azzera-scadenze` e' ancora da lanciare), quindi
+#: non la si legge nemmeno quando c'e'.
+_NOTA_SENZA_SCADENZA = (
+    "Le fatture fornitore non hanno scadenza: decide il titolare quando pagarle."
+)
+
+
+def _query_da_pagare(anno: int, fornitore: Optional[str] = None) -> Dict[str, Any]:
+    """Fatture attive, non pagate (criterio unico), dell'anno richiesto."""
+    condizioni = [
+        dict(FILTRO_FATTURA_ATTIVA),
+        dict(FILTRO_NON_PAGATE),
+        {"invoice_date": {"$regex": f"^{anno}"}},
+    ]
+    if fornitore:
+        condizioni.append({"supplier_name": {"$regex": fornitore, "$options": "i"}})
+    return {"$and": condizioni}
+
+
 @router.get("/")
 @handle_errors
 async def get_scadenzario(
     anno: int = Query(None, description="Anno di riferimento"),
     fornitore: str = Query(None, description="Filtra per fornitore"),
     stato: str = Query("aperte", description="aperte, scadute, tutte"),
-    giorni_scadenza: int = Query(None, description="Fatture che scadono entro X giorni")
+    giorni_scadenza: int = Query(None, description="Ignorato: le fatture fornitore non hanno scadenza")
 ) -> Dict[str, Any]:
     """
-    Restituisce lo scadenzario fatture fornitori.
-    Default: fatture aperte (non pagate).
+    Fatture fornitori ancora da pagare.
+
+    Nessuna categoria «scadute» o «in scadenza»: le fatture fornitore non
+    hanno scadenza. `stato=scadute` restituisce quindi un elenco vuoto, e
+    `giorni_scadenza` non filtra niente. Le note di credito pesano in negativo.
     """
     db = Database.get_db()
-    
+
     oggi = datetime.now().strftime("%Y-%m-%d")
     if not anno:
         anno = datetime.now().year
-    
-    # Query base: fatture non pagate
-    query = {
-        "$and": [
-            {"pagato": {"$ne": True}},
-            {"status": {"$ne": "paid"}},
-            {"$or": [
-                {"invoice_date": {"$regex": f"^{anno}"}},
-                {"data_scadenza": {"$regex": f"^{anno}"}}
-            ]}
-        ]
-    }
-    
-    # Filtra per fornitore
-    if fornitore:
-        query["$and"].append({
-            "supplier_name": {"$regex": fornitore, "$options": "i"}
-        })
-    
-    # Filtra per stato
+
     if stato == "scadute":
-        query["$and"].append({
-            "$or": [
-                {"data_scadenza": {"$lt": oggi}},
-                {"$and": [
-                    {"data_scadenza": {"$exists": False}},
-                    {"invoice_date": {"$lt": oggi}}
-                ]}
-            ]
-        })
-    elif stato == "aperte" and giorni_scadenza:
-        data_limite = (datetime.now() + timedelta(days=giorni_scadenza)).strftime("%Y-%m-%d")
-        query["$and"].append({
-            "$or": [
-                {"data_scadenza": {"$lte": data_limite}},
-                {"$and": [
-                    {"data_scadenza": {"$exists": False}},
-                    {"invoice_date": {"$lte": data_limite}}
-                ]}
-            ]
-        })
-    
-    # Recupera fatture
-    fatture = await db["invoices"].find(
-        query,
-        {"_id": 0}
-    ).sort("data_scadenza", 1).to_list(5000)
-    
-    # Calcola totali e organizza per scadenza
-    totale_da_pagare = 0
-    totale_scaduto = 0
-    scadenze_per_periodo = {
-        "scadute": [],
-        "oggi": [],
-        "prossimi_7_giorni": [],
-        "prossimi_30_giorni": [],
-        "oltre_30_giorni": []
-    }
-    
-    try:
-        data_oggi = datetime.strptime(oggi, "%Y-%m-%d")
-    except ValueError:
-        data_oggi = datetime.now(timezone.utc)
-        oggi = data_oggi.strftime("%Y-%m-%d")
-    
+        fatture = []
+    else:
+        fatture = await db["invoices"].find(
+            _query_da_pagare(anno, fornitore),
+            {"_id": 0, "xml_raw": 0, "fattura_allegata": 0, "document_original_ref": 0, "foto": 0}
+        ).sort("invoice_date", -1).to_list(5000)
+
+    totale_da_pagare = 0.0
+    fornitori_totali: Dict[str, Dict[str, Any]] = {}
     for f in fatture:
-        importo = float(f.get("total_amount", 0))
+        importo = importo_documento_con_segno(f)
+        f["importo_con_segno"] = importo
         totale_da_pagare += importo
-        
-        # Determina data scadenza (usa invoice_date se manca data_scadenza)
-        data_scad_str = f.get("data_scadenza") or f.get("invoice_date", oggi)
-        try:
-            data_scad = datetime.strptime(data_scad_str[:10], "%Y-%m-%d")
-        except (ValueError, TypeError):
-            data_scad = data_oggi
-        
-        f["data_scadenza_effettiva"] = data_scad.strftime("%Y-%m-%d")
-        
-        # Calcola giorni alla scadenza
-        giorni = (data_scad - data_oggi).days
-        f["giorni_alla_scadenza"] = giorni
-        
-        # Categorizza
-        if giorni < 0:
-            scadenze_per_periodo["scadute"].append(f)
-            totale_scaduto += importo
-        elif giorni == 0:
-            scadenze_per_periodo["oggi"].append(f)
-        elif giorni <= 7:
-            scadenze_per_periodo["prossimi_7_giorni"].append(f)
-        elif giorni <= 30:
-            scadenze_per_periodo["prossimi_30_giorni"].append(f)
-        else:
-            scadenze_per_periodo["oltre_30_giorni"].append(f)
-    
-    # Riepilogo per fornitore
-    fornitori_totali = {}
-    for f in fatture:
-        fornitore_nome = f.get("supplier_name", "Sconosciuto")
-        if fornitore_nome not in fornitori_totali:
-            fornitori_totali[fornitore_nome] = {
-                "fornitore": fornitore_nome,
-                "num_fatture": 0,
-                "totale": 0
-            }
-        fornitori_totali[fornitore_nome]["num_fatture"] += 1
-        fornitori_totali[fornitore_nome]["totale"] += float(f.get("total_amount", 0))
-    
+        fornitore_nome = f.get("supplier_name") or "Sconosciuto"
+        voce = fornitori_totali.setdefault(fornitore_nome, {
+            "fornitore": fornitore_nome, "num_fatture": 0, "totale": 0.0,
+        })
+        voce["num_fatture"] += 1
+        voce["totale"] += importo
+
     fornitori_list = sorted(
-        fornitori_totali.values(), 
-        key=lambda x: x["totale"], 
+        ({**v, "totale": round(v["totale"], 2)} for v in fornitori_totali.values()),
+        key=lambda x: x["totale"],
         reverse=True
     )
-    
+
     return {
         "anno": anno,
         "data_riferimento": oggi,
+        "nota": _NOTA_SENZA_SCADENZA,
         "riepilogo": {
             "totale_fatture": len(fatture),
             "totale_da_pagare": round(totale_da_pagare, 2),
-            "totale_scaduto": round(totale_scaduto, 2),
-            "num_scadute": len(scadenze_per_periodo["scadute"]),
-            "num_in_scadenza_oggi": len(scadenze_per_periodo["oggi"]),
-            "num_prossimi_7gg": len(scadenze_per_periodo["prossimi_7_giorni"]),
-            "num_prossimi_30gg": len(scadenze_per_periodo["prossimi_30_giorni"])
+            "totale_scaduto": 0,
+            "num_scadute": 0,
+            "num_in_scadenza_oggi": 0,
+            "num_prossimi_7gg": 0,
+            "num_prossimi_30gg": 0
         },
-        "scadenze": scadenze_per_periodo,
+        "da_pagare": fatture,
         "per_fornitore": fornitori_list[:20]  # Top 20 fornitori
     }
 
@@ -182,67 +124,21 @@ async def get_scadenzario(
 @handle_errors
 async def get_scadenze_urgenti() -> Dict[str, Any]:
     """
-    Fatture urgenti: scadute o in scadenza entro 7 giorni.
-    Per dashboard e notifiche.
+    Fatture fornitore urgenti: nessuna, per definizione.
+
+    Senza scadenza non esiste una fattura «scaduta» o «in scadenza»: prima
+    lo diventava ogni fattura aperta, perche' la data ripiegava su
+    `invoice_date`. La risposta resta nella stessa forma per la pagina.
     """
-    db = Database.get_db()
-    
     oggi = datetime.now().strftime("%Y-%m-%d")
-    tra_7_giorni = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-    
-    query = {
-        "pagato": {"$ne": True},
-        "status": {"$ne": "paid"},
-        "$or": [
-            {"data_scadenza": {"$lte": tra_7_giorni}},
-            {"$and": [
-                {"data_scadenza": {"$exists": False}},
-                {"invoice_date": {"$lte": tra_7_giorni}}
-            ]}
-        ]
-    }
-    
-    fatture = await db["invoices"].find(
-        query,
-        {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, 
-         "total_amount": 1, "invoice_date": 1, "data_scadenza": 1}
-    ).sort("data_scadenza", 1).to_list(100)
-    
-    urgenti = []
-    try:
-        data_oggi = datetime.strptime(oggi, "%Y-%m-%d")
-    except ValueError:
-        data_oggi = datetime.now(timezone.utc)
-    
-    for f in fatture:
-        data_scad_str = f.get("data_scadenza") or f.get("invoice_date", oggi)
-        try:
-            data_scad = datetime.strptime(data_scad_str[:10], "%Y-%m-%d")
-        except (ValueError, TypeError):
-            data_scad = data_oggi
-        
-        giorni = (data_scad - data_oggi).days
-        
-        urgenti.append({
-            "id": f.get("id"),
-            "numero_fattura": f.get("invoice_number"),
-            "fornitore": f.get("supplier_name"),
-            "importo": round(float(f.get("total_amount", 0)), 2),
-            "data_scadenza": data_scad.strftime("%Y-%m-%d"),
-            "giorni_alla_scadenza": giorni,
-            "stato": "scaduta" if giorni < 0 else ("oggi" if giorni == 0 else "in_scadenza")
-        })
-    
-    totale = sum(u["importo"] for u in urgenti)
-    scadute = [u for u in urgenti if u["stato"] == "scaduta"]
-    
     return {
         "data_riferimento": oggi,
-        "num_urgenti": len(urgenti),
-        "totale_urgente": round(totale, 2),
-        "num_scadute": len(scadute),
-        "totale_scaduto": round(sum(s["importo"] for s in scadute), 2),
-        "fatture": urgenti
+        "nota": _NOTA_SENZA_SCADENZA,
+        "num_urgenti": 0,
+        "totale_urgente": 0,
+        "num_scadute": 0,
+        "totale_scaduto": 0,
+        "fatture": []
     }
 
 

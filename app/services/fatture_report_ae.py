@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 
+from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
+
 
 COLLECTION_REPORT = "fatture_report_ae"
 
@@ -46,13 +48,8 @@ COLONNE_TITOLARE = {
 }
 
 # Stesso criterio di «fattura attiva» del giornale: una copia archiviata o
-# in collisione non riceve pagamenti. `$nin` su un campo assente passa.
-FILTRO_FATTURE_ATTIVE = {
-    "status": {"$nin": ["archived", "archiviata", "deleted"]},
-    "stato_import": {"$nin": ["archivio_storico", "collisione_identita_da_verificare"]},
-    "entity_status": {"$ne": "deleted"},
-    "deleted": {"$ne": True},
-}
+# in collisione non riceve pagamenti. Il filtro sta in un posto solo.
+FILTRO_FATTURE_ATTIVE = FILTRO_FATTURA_ATTIVA
 
 _PROIEZIONE_IDENTITA = {
     "_id": 0, "id": 1, "filename": 1, "invoice_number": 1, "numero_fattura": 1,

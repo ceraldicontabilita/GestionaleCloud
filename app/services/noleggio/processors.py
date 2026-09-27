@@ -25,18 +25,11 @@ from .parsers import (
 
 logger = logging.getLogger(__name__)
 
-#: «Fattura attiva» con lo stesso vocabolario del recupero pregresso e del
-#: libro giornale: fuori le copie archiviate (`archived`/`archiviata`), le
-#: cancellate, l'archivio storico e le collisioni di identita' aperte.
+#: «Fattura attiva» si decide in un posto solo, `services/fattura_attiva.py`.
 #: Misurato il 22/09/2026: ogni fattura di noleggio 2026 esisteva due volte,
 #: la copia `archived` dell'import XML e quella attiva da Drive, e lo scan le
 #: sommava entrambe (59 fatture per 41.681 € invece di ~33).
-#: `$nin` su un campo assente passa (regola 11): e' voluto, assente = attiva.
-FILTRO_FATTURA_ATTIVA: Dict[str, Any] = {
-    "status": {"$nin": ["archived", "archiviata", "deleted"]},
-    "stato_import": {"$nin": ["archivio_storico", "collisione_identita_da_verificare"]},
-    "deleted": {"$ne": True},
-}
+from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA  # noqa: E402,F401
 
 
 def scegli_veicolo_per_fattura(
