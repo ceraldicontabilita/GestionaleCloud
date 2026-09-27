@@ -243,7 +243,9 @@ async def _conferma_cassa(fattura: Dict[str, Any], riga: Dict[str, Any]) -> Dict
     })
 
 
-async def _scrivi_banca_dichiarata(db, fattura: Dict[str, Any], riga: Dict[str, Any]) -> str:
+async def _scrivi_banca_dichiarata(
+    db, fattura: Dict[str, Any], riga: Dict[str, Any],
+) -> tuple:
     """Il titolare dice «pagata in banca»: la fattura va in Prima Nota Banca.
 
     La riga nasce dal writer unico (``registra_pagamento_fattura``, ramo
@@ -264,6 +266,18 @@ async def _scrivi_banca_dichiarata(db, fattura: Dict[str, Any], riga: Dict[str, 
     pn_id = esito.get("banca")
     if not pn_id:
         raise HTTPException(status_code=409, detail="Riga di Prima Nota Banca non scritta")
+    if esito.get("gia_provata"):
+        # Il pagamento e' gia' in banca con il movimento dell'estratto conto:
+        # la dichiarazione e' confermata, la riga provata non si tocca.
+        await db["invoices"].update_one({"id": fattura["id"]}, {"$set": {
+            "metodo_pagamento_dichiarato": metodo,
+            "pagamento_dichiarato_titolare": True,
+            "in_attesa_riscontro_banca": False,
+            "stato_finanziario": "riconciliato",
+            "prima_nota_banca_id": pn_id,
+            "updated_at": _oggi(),
+        }})
+        return pn_id, True
     await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": {
         CAMPO_RIGA_DICHIARATA: True,
         "data": data,
@@ -290,7 +304,62 @@ async def _scrivi_banca_dichiarata(db, fattura: Dict[str, Any], riga: Dict[str, 
         "data_pagamento": data,
         "updated_at": _oggi(),
     }})
-    return pn_id
+    return pn_id, False
+
+
+async def ripara_righe_dichiarate(db) -> Dict[str, int]:
+    """Riporta in ordine le righe di Prima Nota Banca legate al report.
+
+    - una riga **con** la prova dell'estratto conto non e' una dichiarazione:
+      se il report l'aveva declassata a provvisoria, torna confermata con la
+      data della banca;
+    - una riga dichiarata non supera il netto dovuto al fornitore: su una
+      parcella la ritenuta va in F24, non esce col bonifico.
+    """
+    from app.services.prima_nota_integrity import (
+        CAMPO_RIGA_DICHIARATA, _ha_evidenza_banca, totale_pagabile_al_fornitore,
+    )
+
+    righe = await db["prima_nota_banca"].find(
+        {CAMPO_RIGA_DICHIARATA: True, "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0},
+    ).to_list(5000)
+    esito = {"provate_ripristinate": 0, "importi_al_netto": 0}
+    for riga in righe:
+        fattura_id = str(riga.get("fattura_id") or "")
+        if _ha_evidenza_banca(riga):
+            data_banca = (riga.get("data_riconciliazione") or riga.get("date")
+                          or riga.get("data"))
+            await db["prima_nota_banca"].update_one({"id": riga["id"]}, {
+                "$set": {"riconciliato": True, "data": data_banca, "updated_at": _oggi()},
+                "$unset": {CAMPO_RIGA_DICHIARATA: "", "provvisorio": "", "canonico": "",
+                           "stato": "", "in_attesa_estratto_ufficiale": "",
+                           "motivo_provvisorio": "", "metodo_pagamento_dichiarato": "",
+                           "assegno_numero_dichiarato": ""},
+            })
+            if fattura_id:
+                await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+                    "in_attesa_riscontro_banca": False,
+                    "stato_finanziario": "riconciliato",
+                    "updated_at": _oggi(),
+                }})
+            esito["provate_ripristinate"] += 1
+            continue
+        if not fattura_id:
+            continue
+        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0}) or {}
+        pagabile = totale_pagabile_al_fornitore(fattura)
+        importo = abs(float(riga.get("importo") or 0))
+        if pagabile and importo - pagabile > 0.01:
+            segno = -1 if float(riga.get("importo") or 0) < 0 else 1
+            await db["prima_nota_banca"].update_one({"id": riga["id"]}, {"$set": {
+                "importo": segno * pagabile,
+                "amount": segno * pagabile,
+                "importo_lordo_fattura": importo,
+                "updated_at": _oggi(),
+            }})
+            esito["importi_al_netto"] += 1
+    return esito
 
 
 def _numero_assegno_movimento(movimento: Dict[str, Any]) -> str:
@@ -421,10 +490,16 @@ async def _registra_banca_dichiarata(
         return
     await _storna_cassa_provvisoria(db, fattura, metodo)
     try:
-        pn_id = await _scrivi_banca_dichiarata(db, fattura, riga)
+        pn_id, gia_provata = await _scrivi_banca_dichiarata(db, fattura, riga)
     except HTTPException as exc:
         annota(riga, "errore", fattura, motivo=str(exc.detail))
         await _salva_esito(db, riga, "errore", metodo=metodo, motivo=str(exc.detail))
+        return
+    if gia_provata:
+        annota(riga, "registrata", fattura, motivo="gia_in_banca_con_estratto_conto")
+        await _salva_esito(db, riga, "registrata", metodo=metodo,
+                           motivo="gia_in_banca_con_estratto_conto",
+                           prima_nota_banca_id=pn_id)
         return
     annota(riga, "in_attesa_banca", fattura, motivo=motivo)
     await _salva_esito(db, riga, "in_attesa_banca", metodo=metodo, motivo=motivo,

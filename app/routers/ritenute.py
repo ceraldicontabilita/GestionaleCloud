@@ -374,6 +374,47 @@ async def upsert_ritenuta_da_fattura(db, fattura: Dict[str, Any]) -> Optional[Di
     return document
 
 
+CHIAVE_ALLINEAMENTO_RITENUTE = "ritenute_fatture_allineate_v1"
+
+
+async def allinea_ritenute_fatture(db) -> Dict[str, Any]:
+    """Una volta sola: porta ``importo_ritenuta`` sulle parcelle gia' importate.
+
+    Il parser non leggeva ``DatiRitenuta`` e l'import da Drive non alimentava
+    la proiezione: le parcelle restavano con un residuo aperto pari alla
+    ritenuta, e il bonifico del netto non le chiudeva mai.
+    """
+    if await db["sistema_stato"].find_one({"chiave": CHIAVE_ALLINEAMENTO_RITENUTE}):
+        return {"saltato": "gia_allineate"}
+    fatture = await db["invoices"].find(
+        {"status": {"$nin": ["deleted", "archived"]},
+         "xml_raw": {"$regex": "DatiRitenuta"}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+         "supplier_name": 1, "supplier_vat": 1, "cedente_piva": 1, "xml_raw": 1,
+         "xml_body_index": 1, "importo_ritenuta": 1},
+    ).to_list(5000)
+    aggiornate = 0
+    for f in fatture:
+        dati = _estrai_dati_ritenuta(f.get("xml_raw"), int(f.get("xml_body_index") or 0))
+        if not dati:
+            continue
+        importo = dati["importo_cents"] / 100
+        if abs(float(f.get("importo_ritenuta") or 0) - importo) > 0.005:
+            await db["invoices"].update_one(
+                {"id": f["id"]}, {"$set": {"importo_ritenuta": importo}},
+            )
+            aggiornate += 1
+        await upsert_ritenuta_da_fattura(db, f)
+    await db["sistema_stato"].update_one(
+        {"chiave": CHIAVE_ALLINEAMENTO_RITENUTE},
+        {"$set": {"chiave": CHIAVE_ALLINEAMENTO_RITENUTE,
+                  "at": datetime.now(timezone.utc).isoformat(),
+                  "fatture": len(fatture), "aggiornate": aggiornate}},
+        upsert=True,
+    )
+    return {"fatture": len(fatture), "aggiornate": aggiornate}
+
+
 async def riconcilia_ritenute_esistenti(db) -> Dict[str, Any]:
     """Ricalcola le ritenute gia censite quando cambia la prova F24.
 

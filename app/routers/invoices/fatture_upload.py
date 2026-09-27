@@ -1201,6 +1201,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "pagamento": parsed.get("pagamento", {}),
             "pagamento_rate": parsed.get("pagamento_rate", []),
             "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
+            "importo_ritenuta": parsed.get("importo_ritenuta"),
             "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
             "metodo_pagamento": metodo_pagamento,
             **pagamento_xml,
@@ -2160,6 +2161,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "riepilogo_iva": parsed.get("riepilogo_iva", []),
         "pagamento_rate": parsed.get("pagamento_rate", []),
         "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
+        "importo_ritenuta": parsed.get("importo_ritenuta"),
         "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
         "causali": parsed.get("causali", []),
         "dati_fatture_collegate": parsed.get("dati_fatture_collegate", []),
@@ -2207,6 +2209,18 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     else:
         await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
+
+    # Anche da qui (Drive, cartella unica) la ritenuta della parcella entra
+    # nella proiezione Ritenute: prima la alimentava solo l'upload manuale.
+    try:
+        from app.routers.ritenute import upsert_ritenuta_da_fattura
+
+        await upsert_ritenuta_da_fattura(db, invoice)
+    except Exception as exc:
+        logger.warning(
+            "Proiezione Ritenute non aggiornata per la fattura %s (%s): %s",
+            invoice.get("invoice_number"), type(exc).__name__, exc,
+        )
 
     if identity_collision_ids:
         # Collegamento reciproco alla collisione, non alla stessa fattura:

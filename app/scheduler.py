@@ -772,8 +772,14 @@ def start_scheduler():
         deploy, le 182 fatture pagate in banca aspettavano senza fine."""
         try:
             from app.database import Database
-            from app.services.pagamenti_dichiarati_titolare import applica_pagamenti_dichiarati
-            r = await applica_pagamenti_dichiarati(Database.get_db(), solo_pendenti=True)
+            from app.routers.ritenute import allinea_ritenute_fatture
+            from app.services.pagamenti_dichiarati_titolare import (
+                applica_pagamenti_dichiarati, ripara_righe_dichiarate,
+            )
+            db = Database.get_db()
+            logger.info("[SCHEDULER-PAGAMENTI-DICHIARATI] ritenute %s, righe %s",
+                        await allinea_ritenute_fatture(db), await ripara_righe_dichiarate(db))
+            r = await applica_pagamenti_dichiarati(db, solo_pendenti=True)
             logger.info("[SCHEDULER-PAGAMENTI-DICHIARATI] %s", r.get("conteggi") or r.get("saltato"))
         except Exception as e:
             logger.error("[SCHEDULER-PAGAMENTI-DICHIARATI] errore: %s: %s", type(e).__name__, e)
@@ -814,6 +820,15 @@ def start_scheduler():
             )
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] versamenti: %s: %s", type(e).__name__, e)
+        try:
+            # Prima del fascicolo: l'uscita che cita una sentenza va in Banca
+            # come spesa di lite, non resta senza categoria.
+            from app.services.atti_giudiziari import collega_pagamenti
+            r = await collega_pagamenti(db, collezioni=("estratto_conto_movimenti",))
+            if r.get("collegati"):
+                logger.info("[SCHEDULER-BANCA] spese di lite collegate=%s", r.get("collegati"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] atti giudiziari: %s: %s", type(e).__name__, e)
         try:
             from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
             r = await proietta_movimenti_bancari_semantici(db)

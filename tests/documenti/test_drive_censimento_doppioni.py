@@ -39,13 +39,15 @@ class Drive:
 
     def list(self, q, **_):
         parent = q.split("'")[1]
+        nome = q.split(" and name = '")[1].rsplit("' and", 1)[0].replace("\\'", "'") if " and name = '" in q else None
         return _Esegui({"files": [{k: v for k, v in n.items() if k != "parent"}
-                                  for n in self.nodi.values() if n["parent"] == parent]})
+                                  for n in self.nodi.values()
+                                  if n["parent"] == parent and (nome is None or n["name"] == nome)]})
 
     def get(self, fileId, **_):
         n = self.nodi[fileId]
         return _Esegui({"id": fileId, "name": n["name"], "md5Checksum": n.get("md5Checksum"),
-                        "size": n.get("size"), "trashed": False})
+                        "size": n.get("size"), "trashed": False, "parents": [n["parent"]]})
 
     def update(self, fileId, body=None, **kw):
         if set(body or {}) != {"name"} or kw.get("addParents") or kw.get("removeParents"):
@@ -108,6 +110,7 @@ def test_marca_rinomina_solo_copie_e_tecnici_una_volta(drive, monkeypatch):
     assert nomi["ini"] == "FILE TECNICO DA ELIMINARE - desktop.ini"
     assert nomi["orig"] == "fattura.pdf" and nomi["unico"] == "cedolino.pdf"
     assert run(cen.giro(db)) == {"marcati": 0, "errori": 0, "lotto": 0}
+    assert run(cen.giro(db)) == {"nomi_ripuliti": 0, "errori": 0, "lotto": 0}
     assert len(drive.rinomine) == 4
     stato = run(db["sistema_stato"].find_one({"chiave": cen.CHIAVE_STATO}, {"_id": 0}))
     assert stato["fase"] == "completato" and stato["marcati"] == 4
@@ -153,3 +156,39 @@ def test_elenco_riservato_all_admin():
     for percorso in ("/drive-doppioni", "/drive-doppioni.csv"):
         rotta = next(r for r in router.routes if r.path == percorso)
         assert richiedi_admin in [d.call for d in rotta.dependant.dependencies]
+
+
+def test_dopo_la_marcatura_si_tolgono_i_numeri_dai_file_che_restano(monkeypatch):
+    """Richiesta del titolare (27/09/2026): fra i file non marcati nessuno deve
+    sembrare una copia. Due documenti diversi non prendono lo stesso nome."""
+    d = Drive()
+    d.cartella("dati", "DATI SOCIETA CERALDI", "radice")
+    d.file("q46", "Quietanza_045 (46).pdf", "dati", "a")
+    d.file("q47", "Quietanza_045 (47) (dup1).pdf", "dati", "b")
+    d.file("q47c", "Quietanza_045 (47).pdf", "dati", "b", creato="2026-02-01T00:00:00Z")
+    d.file("cert", "daticert (dup1).xml", "dati", "c", mime="application/xml")
+    d.file("fisso", "Riepilogo.xlsx", "dati", "d")
+    monkeypatch.setenv("DRIVE_SIMULAZIONE_RADICE", "radice")
+    monkeypatch.setenv("DRIVE_CENSIMENTO_DOPPIONI", "marca")
+    monkeypatch.setattr(cu, "_service", lambda: d)
+    db = AsyncMongoMockClient()["t"]
+    run(cen.giro(db))                                           # censimento
+    run(cen.giro(db))                                           # marcatura
+    run(cen.giro(db))                                           # niente altro da marcare
+    esito = run(cen.giro(db))                                   # nomi
+    nomi = {fid: n["name"] for fid, n in d.nodi.items()}
+    assert nomi["q47c"] == "DUPLICATO DA ELIMINARE - Quietanza_045 (47).pdf"   # la copia resta marcata
+    assert nomi["cert"] == "daticert.xml"
+    assert nomi["fisso"] == "Riepilogo.xlsx"
+    # Il primo prende il nome pulito, il secondo tiene il numero senza parentesi.
+    assert sorted([nomi["q46"], nomi["q47"]]) == ["Quietanza_045 - 47.pdf", "Quietanza_045.pdf"]
+    assert esito["nomi_ripuliti"] == 3
+    assert run(cen.giro(db)) == {"nomi_ripuliti": 0, "errori": 0, "lotto": 0}
+    stato = run(db["sistema_stato"].find_one({"chiave": cen.CHIAVE_STATO}, {"_id": 0}))
+    assert stato["fase"] == "completato" and stato["nomi_ripuliti"] == 3
+
+
+def test_nome_pulito():
+    assert cen.nome_pulito("Quietanza (47) (dup1).pdf") == ("Quietanza.pdf", "47")
+    assert cen.nome_pulito("senza numero.pdf") == ("senza numero.pdf", None)
+    assert cen.nome_pulito("Doc (2).PDF") == ("Doc.PDF", "2")

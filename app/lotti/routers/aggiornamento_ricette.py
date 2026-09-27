@@ -22,8 +22,10 @@ TERMINOLOGIA CORRETTA (uniformata):
 ═══════════════════════════════════════════════════════════════════
 """
 
+import asyncio
 import re
 import logging
+from functools import lru_cache
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
@@ -82,8 +84,14 @@ def _normalizza(s: str) -> str:
     return s.strip()
 
 
+@lru_cache(maxsize=65536)
 def _calcola_similarita(a: str, b: str) -> float:
-    """Calcola similarità 0.0–1.0 usando rapidfuzz (o fuzzywuzzy fallback)."""
+    """Calcola similarità 0.0–1.0 usando rapidfuzz (o fuzzywuzzy fallback).
+
+    In cache: le stesse coppie ingrediente/descrizione tornano a ogni fattura,
+    e ricalcolarle (regex dei sinonimi comprese) teneva occupato il loop
+    abbastanza da far fallire l'health check di Render (502).
+    """
     a_norm = _normalizza(a)
     b_norm = _normalizza(b)
     if not a_norm or not b_norm:
@@ -173,6 +181,9 @@ async def aggiorna_ricette_da_fattura(fattura_doc: dict) -> dict:
         nome_ingrediente_forzato = mappa_confermata.get(desc_lower)
 
         for ricetta in ricette:
+            # Cede il loop a ogni ricetta: prodotti x ricette x ingredienti gira
+            # tutto in CPU, e senza pause /api/health non risponde entro 5 s.
+            await asyncio.sleep(0)
             ricetta_nome = ricetta.get("nome", "")
             ingredienti_semplici = ricetta.get("ingredienti", [])  # lista stringhe
             ingredienti_dettaglio = ricetta.get("ingredienti_dettaglio", [])  # lista dict

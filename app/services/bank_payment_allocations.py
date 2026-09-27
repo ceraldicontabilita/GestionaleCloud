@@ -737,6 +737,218 @@ async def _reconcile_unique_identity_matches(
     }
 
 
+_PAROLA_FATTURA = re.compile(r"\b(?:fattur[ae]|fatt|ft|fvl?)\b", re.IGNORECASE)
+_GIORNI_GRUPPO_CITAZIONI = 30
+
+
+def _numeri_citati(movement: Dict[str, Any]) -> set:
+    """Parole della causale che possono essere numeri di fattura.
+
+    Solo se la causale parla di fatture («Pagamento Fatture 386, 738»,
+    «Saldo fatture fvl824 fvl968», «FT. 8528015144»): un numero qualsiasi
+    in una causale non e' un riferimento.
+    """
+    testo = _movement_text(movement)
+    if not _PAROLA_FATTURA.search(testo):
+        return set()
+    return {
+        parola.lower() for parola in re.findall(r"[A-Za-z]*\d[A-Za-z0-9]*", testo)
+        if len(parola) >= 3
+    }
+
+
+def _numero_citato(invoice: Dict[str, Any], citati: set) -> bool:
+    numero = str(
+        invoice.get("invoice_number") or invoice.get("numero_documento")
+        or invoice.get("numero_fattura") or ""
+    ).strip().lower()
+    if not numero:
+        return False
+    # «1/11358» si cita «11358»: conta l'ultimo pezzo, non le cifre sciolte.
+    return _compact(numero) in citati or numero.split("/")[-1] in citati
+
+
+def _fornitore_del_movimento(movement: Dict[str, Any], invoice: Dict[str, Any]) -> bool:
+    """Il beneficiario del bonifico e' il fornitore della fattura (IBAN,
+    P.IVA o nome): senza, un numero uguale di un altro fornitore passerebbe."""
+    text = _compact(_movement_text(movement))
+    iban = _compact(invoice.get("supplier_iban") or invoice.get("fornitore_iban") or invoice.get("iban"))
+    movement_iban = _compact(movement.get("iban_beneficiario") or movement.get("iban_controparte"))
+    if len(iban) >= 15 and (iban == movement_iban or iban in text):
+        return True
+    vat = _compact(invoice.get("supplier_vat") or invoice.get("fornitore_piva") or invoice.get("cedente_piva"))
+    if len(vat) >= 8 and vat in text:
+        return True
+    tokens = _supplier_tokens(invoice)
+    matched = [token for token in tokens if token in text]
+    if matched and (len(tokens) == 1 or len(matched) >= min(2, len(tokens))):
+        return True
+    # «2M ITALIA S.R.L.» non ha parole utili: vale il nome intero, senza la
+    # forma societaria, dentro il beneficiario («2MITALIA S.R.L.»).
+    nome = re.sub(
+        r"\b(s\.?\s?r\.?\s?l|s\.?\s?p\.?\s?a|s\.?\s?a\.?\s?s|s\.?\s?n\.?\s?c)\.?\b", " ",
+        str(invoice.get("supplier_name") or invoice.get("fornitore") or ""), flags=re.IGNORECASE,
+    )
+    nome = _compact(nome)
+    return len(nome) >= 6 and nome in text
+
+
+def _residuo_cents(invoice: Dict[str, Any]) -> int:
+    return max(0, invoice_payable_cents(invoice) - existing_invoice_allocations_cents(invoice))
+
+
+def _ripartisci_in_ordine(
+    movimenti: List[Dict[str, Any]], fatture: List[Dict[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]] | None:
+    """Quote per movimento, pagando le fatture dalla piu' vecchia.
+
+    Ogni bonifico paga le fatture in ordine di data finche' non esaurisce il
+    suo importo; l'ultima puo' restare pagata in parte e la chiude il bonifico
+    dopo. Una fattura emessa dopo il bonifico che dovrebbe pagarla fa saltare
+    tutto: il conto non torna per caso.
+    """
+    residui = [[fattura, _residuo_cents(fattura)] for fattura in fatture]
+    quote: Dict[str, List[Dict[str, Any]]] = {}
+    indice = 0
+    for movimento in movimenti:
+        da_coprire = abs(to_cents(movimento.get("importo")))
+        righe: List[Dict[str, Any]] = []
+        while da_coprire > 0 and indice < len(residui):
+            fattura, residuo = residui[indice]
+            data_fattura = str(fattura.get("invoice_date") or "")[:10]
+            if data_fattura > str(movimento.get("data") or "")[:10]:
+                return None
+            quota = min(residuo, da_coprire)
+            righe.append({"id": fattura["id"], "quota_cents": quota})
+            da_coprire -= quota
+            residui[indice][1] -= quota
+            if residui[indice][1] == 0:
+                indice += 1
+        if da_coprire:
+            return None
+        quote[str(movimento.get("id"))] = righe
+    if indice != len(residui):
+        return None
+    return quote
+
+
+def _raggruppa_bonifici(
+    movimenti: List[Dict[str, Any]], citazioni: Dict[str, List[Dict[str, Any]]],
+) -> List[List[Dict[str, Any]]]:
+    """Un bonifico che quadra da solo fa gruppo a se'. Gli altri dello stesso
+    fornitore si sommano in ordine di data, entro 30 giorni dal primo, finche'
+    la somma dei bonifici non fa quella delle fatture citate da tutti."""
+    def importo(m):
+        return abs(to_cents(m.get("importo")))
+
+    def giorno(m):
+        return datetime.strptime(str(m.get("data") or "")[:10], "%Y-%m-%d")
+
+    gruppi: List[List[Dict[str, Any]]] = []
+    corrente: List[Dict[str, Any]] = []
+    for movimento in movimenti:
+        citate = citazioni[str(movimento.get("id"))]
+        if sum(_residuo_cents(f) for f in citate) == importo(movimento):
+            gruppi.append([movimento])
+            continue
+        if corrente and (giorno(movimento) - giorno(corrente[0])).days > _GIORNI_GRUPPO_CITAZIONI:
+            gruppi.append(corrente)
+            corrente = []
+        corrente.append(movimento)
+        unione = {str(f["id"]): f for m in corrente for f in citazioni[str(m.get("id"))]}
+        if sum(importo(m) for m in corrente) == sum(_residuo_cents(f) for f in unione.values()):
+            gruppi.append(corrente)
+            corrente = []
+    if corrente:
+        gruppi.append(corrente)
+    return gruppi
+
+
+async def reconcile_cited_invoices(db, movements: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Bonifici che citano in causale le fatture che pagano.
+
+    Il bonifico paga le fatture che nomina, dello stesso fornitore, se la
+    somma dei residui fa l'importo al centesimo. Quando un fornitore riceve
+    piu' bonifici che si citano a vicenda («Si aggancia a bonifico del
+    06/08») vale lo stesso per il gruppo: somma dei bonifici uguale alla
+    somma delle fatture citate, ripartita in ordine di data. Un numero che
+    corrisponde a due fatture, o un totale che non torna, non collega niente.
+    """
+    candidati = [m for m in movements if _is_outgoing_invoice_candidate(m) and not m.get("riconciliato")]
+    citati_per_mov = {str(m.get("id")): _numeri_citati(m) for m in candidati}
+    candidati = [m for m in candidati if citati_per_mov[str(m.get("id"))]]
+    if not candidati:
+        return {"collegati": [], "collegati_count": 0, "sospesi": 0}
+    fatture = await db["invoices"].find(FILTRO_DA_RISCONTRARE, {"_id": 0}).to_list(50000)
+    fatture = [
+        f for f in fatture
+        if str(f.get("status") or "").lower() not in {"deleted", "archived", "archiviata"}
+        and str(f.get("tipo_documento") or f.get("document_type") or "").upper() not in {"TD04", "TD08"}
+        and _residuo_cents(f) > 0
+    ]
+
+    # Per ogni bonifico: le fatture del suo fornitore che la causale nomina.
+    citazioni: Dict[str, List[Dict[str, Any]]] = {}
+    sospesi = 0
+    for movimento in candidati:
+        citati = citati_per_mov[str(movimento.get("id"))]
+        trovate = [
+            f for f in fatture
+            if _numero_citato(f, citati) and _fornitore_del_movimento(movimento, f)
+        ]
+        per_numero: Dict[str, List[Dict[str, Any]]] = {}
+        for fattura in trovate:
+            per_numero.setdefault(_compact(fattura.get("invoice_number")), []).append(fattura)
+        if not trovate or any(len(v) > 1 for v in per_numero.values()) \
+                or len({_supplier_key(f) for f in trovate}) != 1:
+            sospesi += bool(trovate)
+            continue
+        citazioni[str(movimento.get("id"))] = trovate
+
+    per_fornitore: Dict[str, List[Dict[str, Any]]] = {}
+    for movimento in candidati:
+        trovate = citazioni.get(str(movimento.get("id")))
+        if trovate:
+            per_fornitore.setdefault(_supplier_key(trovate[0]), []).append(movimento)
+
+    collegati = []
+    for movimenti in per_fornitore.values():
+        movimenti.sort(key=lambda m: (str(m.get("data") or ""), str(m.get("id"))))
+        gruppi = _raggruppa_bonifici(movimenti, citazioni)
+        for gruppo in gruppi:
+            fatture_gruppo: Dict[str, Dict[str, Any]] = {}
+            for movimento in gruppo:
+                for fattura in citazioni[str(movimento.get("id"))]:
+                    fatture_gruppo[str(fattura["id"])] = fattura
+            ordinate = sorted(
+                fatture_gruppo.values(),
+                key=lambda f: (str(f.get("invoice_date") or ""), _compact(f.get("invoice_number"))),
+            )
+            quote = _ripartisci_in_ordine(gruppo, ordinate)
+            if quote is None:
+                sospesi += len(gruppo)
+                continue
+            try:
+                prospetti = [
+                    (m, await validate_bank_invoice_allocations(db, m, quote[str(m.get("id"))]))
+                    for m in gruppo
+                ]
+            except HTTPException as exc:
+                logger.info("Fatture citate non collegate (%s): %s", type(exc).__name__, exc.detail)
+                sospesi += len(gruppo)
+                continue
+            for movimento, allocations in prospetti:
+                await persist_bank_invoice_allocations(
+                    db, movimento, allocations, actor="automatic_identity:fatture_citate",
+                )
+                collegati.append({
+                    "movimento_id": movimento.get("id"),
+                    "fatture": [a["fattura_id"] for a in allocations],
+                    "regola": "fatture_citate_in_causale",
+                })
+    return {"collegati": collegati, "collegati_count": len(collegati), "sospesi": sospesi}
+
+
 async def reconcile_deterministic_invoice_allocations(
     db, *, movement_ids=None, anno=None,
 ) -> Dict[str, Any]:

@@ -293,6 +293,7 @@ const STILE_STATO_SUMUP = {
   'Stipendio abbinato alla busta': [COLORS.success, COLORS.successLight],
   'Fattura pagata': [COLORS.success, COLORS.successLight],
   'Registrato in Prima Nota': [COLORS.success, COLORS.successLight],
+  'Spesa di lite': [COLORS.info, COLORS.infoLight],
   'Da registrare': [COLORS.warning, COLORS.warningLight],
 };
 
@@ -341,6 +342,7 @@ function BadgeStatoSumUp({ stato }) {
 
 /* Ogni movimento dell'estratto del conto SumUp, raggruppato per giorno. */
 export function MovimentiContoSumUp({ movimenti = [], anno }) {
+  const [attoAperto, setAttoAperto] = useState(null);
   const giorni = useMemo(() => {
     const perGiorno = new Map();
     for (const movimento of movimenti) {
@@ -376,6 +378,22 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
                 <div style={{ color: COLORS.textMuted, fontSize: 12, overflowWrap: 'anywhere' }}>
                   {[riga.ora, riga.tipo_transazione, riga.causale].filter(Boolean).join(' · ')}
                 </div>
+                {(riga.atti_giudiziari || []).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                    {riga.atti_giudiziari.map(atto => (
+                      <button
+                        key={atto.id}
+                        type="button"
+                        data-testid={`atto-giudiziario-${atto.id}`}
+                        onClick={() => setAttoAperto(atto)}
+                        aria-label={`Vedi e scarica ${atto.etichetta} ${atto.numero_sentenza}`}
+                        style={{ minHeight: 44, padding: '4px 12px', border: `1px solid ${TERRACOTTA}`, borderRadius: 6, background: 'white', color: TERRACOTTA, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        {atto.etichetta} {atto.numero_sentenza}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <BadgeStatoSumUp stato={riga.stato} />
               <div style={{ minWidth: 110, textAlign: 'right', fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', fontVariantNumeric: 'tabular-nums', color: riga.importo < 0 ? ROSSO : VERDE }}>
@@ -385,6 +403,16 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
           ))}
         </div>
       ))}
+      {attoAperto && (
+        <DocumentViewerModal
+          title={`${attoAperto.etichetta} ${attoAperto.numero_sentenza}`}
+          subtitle={[attoAperto.tribunale && `Tribunale di ${attoAperto.tribunale}`, attoAperto.ruolo_generale && `R.G. ${attoAperto.ruolo_generale}`].filter(Boolean).join(' · ')}
+          fetchUrl={`/api/documenti/atti-giudiziari/${encodeURIComponent(attoAperto.id)}/file`}
+          documentType="atto_giudiziario"
+          onClose={() => setAttoAperto(null)}
+          testIdPrefix="atto-giudiziario-viewer"
+        />
+      )}
     </div>
   );
 }

@@ -855,6 +855,10 @@ async def registra_pagamento_fattura(
     now = datetime.now(timezone.utc).isoformat()
     data_fattura = fattura.get("invoice_date") or fattura.get("data_fattura") or now[:10]
     importo_totale = fattura.get("total_amount") or fattura.get("importo_totale") or 0
+    # Parcella con ritenuta: al fornitore esce il netto, la ritenuta va in F24.
+    pagabile = totale_pagabile_al_fornitore(fattura)
+    if pagabile and abs(float(importo_totale)) - pagabile > 0.01:
+        importo_totale = pagabile if float(importo_totale) >= 0 else -pagabile
     numero_fattura = fattura.get("invoice_number") or fattura.get("numero_fattura") or "N/A"
     fornitore = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "Fornitore"
     fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
@@ -1034,6 +1038,16 @@ async def registra_pagamento_fattura(
             )
             risultato["banca"] = mid
             risultato["duplicato"] = dup
+            if dup:
+                esistente = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one(
+                    {"id": mid}, session=session,
+                ) or {}
+                if any(esistente.get(c) not in (None, "") for c in CAMPI_EVIDENZA_BANCA):
+                    # La riga c'e' gia' e ha la prova dell'estratto conto:
+                    # non si declassa a provvisoria.
+                    risultato["provvisoria"] = False
+                    risultato["gia_provata"] = True
+                    return risultato
             await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
                 {"id": mid},
                 {"$set": {
