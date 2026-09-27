@@ -470,6 +470,14 @@ async def proietta_movimenti_bancari_semantici(
             _chiave_operazione(voce[2], voce[3], voce[1], conto_contabile), [],
         ).append(voce)
 
+    # Una riga gia' agganciata a una copia del gruppo e' quell'operazione,
+    # qualunque sia la sua chiave: uno stipendio scritto col dipendente
+    # provvisorio ``salario:nome|cognome`` (anagrafica ricavata dai salari)
+    # finiva in un altro gruppo, e la copia gemella scriveva una seconda riga.
+    gruppo_per_ec: Dict[str, tuple] = {
+        voce[4]: chiave for chiave, voci in gruppi.items() for voce in voci
+    }
+
     esistenti: Dict[tuple, list] = {}
     if gruppi:
         # Anche le righe scritte da altri canali (import dell'estratto conto,
@@ -484,7 +492,7 @@ async def proietta_movimenti_bancari_semantici(
              "estratto_conto_id": 1, "source": 1, "ripartizione_capitale_interessi": 1},
         ).to_list(None)
         for riga in righe:
-            chiave = _chiave_operazione(
+            chiave = gruppo_per_ec.get(str(riga.get("estratto_conto_id") or "")) or _chiave_operazione(
                 str(riga.get("data") or "")[:10], _importo(riga),
                 {"tipo": riga.get("tipo"), "categoria": riga.get("categoria"), **riga},
                 riga.get("conto_contabile"),
