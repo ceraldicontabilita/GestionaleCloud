@@ -35,4 +35,10 @@ def get_gmail_environment_credentials() -> GmailEnvironmentCredentials:
         or settings.GMAIL_APP_PASSWORD_AMMINISTRATIVO
     )
     host = settings.IMAP_HOST or settings.IMAP_SERVER or "imap.gmail.com"
+    # La password per le app Google si legge a gruppi («abcd efgh ijkl mnop»):
+    # incollata cosi' su Render gli spazi la fanno rifiutare. Non ne contiene.
+    if password:
+        password = "".join(str(password).split())
+    if user:
+        user = str(user).strip()
     return GmailEnvironmentCredentials(user=user, password=password, host=host)
