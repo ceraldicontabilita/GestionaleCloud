@@ -1,3 +1,4 @@
+import html
 import logging
 import re
 _LOG_INIT = logging.getLogger("uvicorn.error")
@@ -213,6 +214,11 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
     ingredienti_non_trovati = (lotto.get("lotti_fornitori") or {}).get(
         "ingredienti_non_trovati"
     ) or []
+    # Anche un ingrediente senza dose nella ricetta non e' stato scalato da
+    # nessun lotto fornitore: la tracciabilita' non e' completa.
+    ingredienti_non_trovati = list(ingredienti_non_trovati) + list(
+        (lotto.get("lotti_fornitori") or {}).get("ingredienti_senza_dose") or []
+    )
 
     # L'etichetta dichiarava sempre «TRACCIABILITA' REGISTRATA», anche con
     # ingredienti non tracciati o senza nessun lotto fornitore scalato: la
@@ -222,7 +228,7 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
     if ingredienti_non_trovati:
         timbro_trac = (
             "&#9888; TRACCIABILITÀ INCOMPLETA · non tracciati: "
-            + ", ".join(str(i) for i in ingredienti_non_trovati)
+            + ", ".join(html.escape(str(i)) for i in ingredienti_non_trovati)
         )
     elif lotti_scalati:
         timbro_trac = "&#10003; TRACCIABILITÀ REGISTRATA · Reg. CE 178/2002"

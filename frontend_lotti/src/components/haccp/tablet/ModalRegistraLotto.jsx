@@ -405,6 +405,14 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
       (_lf.lotti_esauriti || []).forEach((e) =>
         toast(`⚠️ ${e.prodotto}${e.fornitore ? " (" + e.fornitore + ")" : ""} finito — passa al prossimo lotto`)
       );
+      // Ricetta senza dosi: quegli ingredienti non sono stati scalati dal
+      // magazzino e il costo del lotto resta da verificare (27/09/2026).
+      if ((_lf.ingredienti_senza_dose || []).length) {
+        toast.error(`Magazzino non scalato per ${_lf.ingredienti_senza_dose.join(", ")}: la ricetta non ha le dosi. Chiedi al caporeparto di completarla.`, { duration: 10000 });
+      }
+      if ((_lf.ingredienti_non_trovati || []).length) {
+        toast.error(`Nessun lotto in magazzino per: ${_lf.ingredienti_non_trovati.join(", ")}`, { duration: 10000 });
+      }
       // Unità incompatibili: lotto NON scalato (tranche 4)
       (_lf.conversioni_non_disponibili || []).forEach((c) =>
         toast.error(`⚠️ ${c.ingrediente}: conversione non disponibile (${c.unita_lotto} → ${c.unita_ricetta}) — lotto non scalato, censisci il contenuto confezione`)

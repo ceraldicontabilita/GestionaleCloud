@@ -14,6 +14,8 @@ export const ADMIN_TABS = [
   "attrezzature",
   // Segna «n.a.» lo storico HACCP: una scrittura sui registri (GC-02h).
   "attendibilita_haccp",
+  // Chiudere la merce ferma e' una scrittura sul magazzino (27/09/2026).
+  "merce_ferma",
 ];
 
 export function tabRiservataAdmin(tabId) {
