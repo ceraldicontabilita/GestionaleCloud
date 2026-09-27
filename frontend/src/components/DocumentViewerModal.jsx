@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
 import api from '../api';
+import { conEstensione, salvaBlob, scaricaOriginale } from '../lib/scaricaOriginale';
 
 /**
  * Componente CANONICO "Vedi Documento" (PROMPT_DEFINITIVO §8.2): modale in-page per
@@ -24,7 +26,8 @@ import api from '../api';
  *                  autenticati non inseribili direttamente in iframe)
  *  - mimeType:     tipo del blob per fetchUrl (default application/pdf)
  *  - onClose:      callback di chiusura
- *  - onDownload:   se presente mostra "📥 Scarica"
+ *  - onDownload:   azione "📥 Scarica" personalizzata; senza, il pulsante scarica
+ *                  comunque il file mostrato (fetchUrl o src interno)
  *  - maxWidth:     larghezza massima del modale (default 960)
  *  - testIdPrefix: prefisso data-testid (default "document-viewer")
  */
@@ -63,6 +66,27 @@ export default function DocumentViewerModal({
   // 🖨️ Stampa (richiesta utente 18/07/2026: "non posso neanche stamparla"):
   // stampa il contenuto dell'iframe; se il browser lo impedisce apre il
   // documento in una scheda nuova, da cui si stampa col menu del browser.
+  // «Scarica» c'e' sempre quando il documento e' del gestionale: chi guarda un
+  // F24, una quietanza o un documento deve poterlo salvare senza cercarlo.
+  const nomeFile = String(title || documentType || 'documento')
+    .replace(/[^\w.\- ]+/g, ' ').trim().replace(/\s+/g, '_') || 'documento';
+  const urlInterno = fetchUrl || (typeof src === 'string' && src.startsWith('/api/') ? src : null);
+  const scaricaPredefinito = useCallback(async () => {
+    try {
+      if (blobUrl && fetchUrl) {
+        const blob = await (await fetch(blobUrl)).blob();
+        salvaBlob(blob, conEstensione(nomeFile, blob.type || mimeType));
+        return;
+      }
+      await scaricaOriginale(urlInterno, nomeFile);
+    } catch (e) {
+      toast.error('Documento non scaricabile', {
+        description: e?.response?.data?.detail || e?.message,
+      });
+    }
+  }, [blobUrl, fetchUrl, urlInterno, nomeFile, mimeType]);
+  const scarica = onDownload || (urlInterno ? scaricaPredefinito : null);
+
   const stampa = useCallback(() => {
     try {
       const w = iframeRef.current?.contentWindow;
@@ -297,8 +321,8 @@ export default function DocumentViewerModal({
             <button onClick={stampa} aria-label="Stampa documento" title="Stampa"
               data-testid={`${testIdPrefix}-print`}
               style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}>🖨️ Stampa</button>
-            {onDownload && (
-              <button onClick={onDownload} aria-label="Scarica documento" title="Scarica"
+            {scarica && (
+              <button onClick={scarica} aria-label="Scarica documento" title="Scarica"
                 data-testid={`${testIdPrefix}-download`}
                 style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}>📥 Scarica</button>
             )}

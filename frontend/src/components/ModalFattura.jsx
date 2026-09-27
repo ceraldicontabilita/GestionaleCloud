@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import api from '../api';
 import DocumentViewerModal from './DocumentViewerModal';
+import { scaricaOriginale } from '../lib/scaricaOriginale';
 
 /**
  * Modale in-page per visualizzare una fattura (view-assoinvoice), senza
@@ -41,17 +42,11 @@ export default function ModalFattura({ fatturaId, numero, onClose }) {
 
   const scaricaXmlOriginale = async () => {
     try {
-      const response = await api.get(`/api/fatture-ricevute/fattura/${fatturaId}/xml-originale`, {
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/xml' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `fattura_${numero || fatturaId}.xml`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      await scaricaOriginale(
+        `/api/fatture-ricevute/fattura/${fatturaId}/xml-originale`,
+        `fattura_${numero || fatturaId}.xml`,
+        'application/xml',
+      );
     } catch (error) {
       toast.error('XML originale non disponibile', {
         description: error.response?.data?.detail || error.message,

@@ -4265,10 +4265,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
     finally { setExportBusy(false); }
   };
 
-  const apriCedolino = async (riga) => {
+  const apriCedolino = async (riga, { scarica = false } = {}) => {
     if (!riga?.cedolino_id) return;
     const chiaveBusy = `cedolino_${keyOf(riga)}`;
-    const nuovaFinestra = window.open("", "_blank");
+    // «Scarica» salva il PDF senza aprire schede; «Apri» lo mostra.
+    const nuovaFinestra = scarica ? null : window.open("", "_blank");
     setBusy(chiaveBusy);
     try {
       const risposta = await axios.get(
@@ -4765,9 +4766,14 @@ function PagheBonificiPage({ dipendenti = [] }) {
                       </td>
                       <td style={td}>
                         {r.cedolino_pdf && r.cedolino_id
-                          ? <button className="dc-btn" disabled={busy === `cedolino_${k}`} onClick={() => apriCedolino(r)} style={{ fontSize: 12, padding: "4px 8px", color: "#234d3d", fontWeight: 600 }}>
-                              {busy === `cedolino_${k}` ? "Apro…" : "📄 Apri PDF"}
-                            </button>
+                          ? <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                              <button className="dc-btn" disabled={busy === `cedolino_${k}`} onClick={() => apriCedolino(r)} style={{ fontSize: 12, padding: "4px 8px", color: "#234d3d", fontWeight: 600 }}>
+                                {busy === `cedolino_${k}` ? "Apro…" : "📄 Apri PDF"}
+                              </button>
+                              <button className="dc-btn" disabled={busy === `cedolino_${k}`} onClick={() => apriCedolino(r, { scarica: true })} aria-label={`Scarica il cedolino di ${r.dipendente || ""}`} style={{ fontSize: 12, padding: "4px 8px", color: "#234d3d", fontWeight: 600 }}>
+                                Scarica
+                              </button>
+                            </span>
                           : r.cedolino_pdf
                             ? <span style={{ color: "#234d3d", fontSize: 12, fontWeight: 600 }}>PDF presente</span>
                           : <span style={{ color: "#9aa295", fontSize: 12 }}>no PDF</span>}
