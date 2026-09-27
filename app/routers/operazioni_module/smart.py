@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from app.database import Database
+from app.services.riconciliazione_smart import FILTRO_NON_IGNORATO
 from .common import RiconciliaManuale, ConfermaBatchRequest, logger, QUERY_FATTURA_NON_PAGATA, set_fattura_pagata
 
 # Le operazioni della carta Nexi (tipo="carta_credito") vivono nella STESSA
@@ -30,6 +31,8 @@ async def banca_veloce(
     query = {**ESCLUDI_CARTA_CREDITO}
     if solo_non_riconciliati:
         query["riconciliato"] = {"$ne": True}
+        # «Ignora» toglie il movimento dalla coda: non deve ricomparire.
+        query.update(FILTRO_NON_IGNORATO)
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
 
@@ -55,7 +58,9 @@ async def banca_veloce(
     ).sort("invoice_date", -1).limit(50).to_list(50)
 
     conta_movimenti_query = {**ESCLUDI_CARTA_CREDITO, **({"data": {"$regex": f"^{anno}"}} if anno else {})}
-    tot_non_ric = await db.estratto_conto_movimenti.count_documents({**conta_movimenti_query, "riconciliato": {"$ne": True}})
+    tot_non_ric = await db.estratto_conto_movimenti.count_documents({
+        **conta_movimenti_query, **FILTRO_NON_IGNORATO, "riconciliato": {"$ne": True},
+    })
     tot_ric = await db.estratto_conto_movimenti.count_documents({**conta_movimenti_query, "riconciliato": True})
     
     return {
