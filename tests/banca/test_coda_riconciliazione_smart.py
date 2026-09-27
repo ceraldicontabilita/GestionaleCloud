@@ -1,7 +1,8 @@
 """Coda «da riconciliare» di /smart/analizza e del tab Banca.
 
 - «Ignora» scrive ``ignorato``/``escluso_dalla_coda``: il movimento non torna;
-- una riga provvisoria aspetta l'estratto ufficiale, non un abbinamento;
+- una copia provvisoria coperta dall'estratto ufficiale non entra; oltre il suo
+  ultimo giorno e' l'unica traccia del movimento ed entra;
 - un accredito POS NUMIA non ha documento da abbinare: si conta a parte;
 - le fatture fornitore non hanno scadenza, quindi anche una fattura vecchia
   resta candidata.
@@ -26,8 +27,13 @@ MOVIMENTI = [
      "descrizione": "BONIFICO DUPLICATO", "ignorato": True, "escluso_dalla_coda": True},
     {"id": "M-IGNORATA", "data": "2026-08-10", "importo": -51.0, "tipo": "uscita",
      "descrizione": "BONIFICO VECCHIO FLAG", "ignorata": True},
-    {"id": "M-PROVVISORIO", "data": "2026-08-11", "importo": -60.0, "tipo": "uscita",
+    {"id": "M-PROVVISORIO", "data": "2026-08-09", "importo": -60.0, "tipo": "uscita",
      "descrizione": "BONIFICO DA EXPORT CSV", "livello_evidenza": "provvisoria",
+     "evidenza_bancaria_ufficiale": False, "in_attesa_estratto_ufficiale": True},
+    # Oltre l'ultimo giorno dell'estratto ufficiale (10/08) la copia
+    # provvisoria e' l'unica traccia: entra in coda.
+    {"id": "M-RECENTE", "data": "2026-08-20", "importo": -70.0, "tipo": "uscita",
+     "descrizione": "BONIFICO DA BANCA DIRETTA", "livello_evidenza": "provvisoria",
      "evidenza_bancaria_ufficiale": False, "in_attesa_estratto_ufficiale": True},
     {"id": "M-POS", "data": "2026-08-04", "importo": 867.30, "tipo": "entrata",
      "descrizione_originale": "INC.POS CARTE CREDIT - NUMIA-INTER DEL 03/08/26 PDV 3757283/0001"},
@@ -53,7 +59,7 @@ def test_analizza_esclude_ignorati_provvisori_e_accrediti_numia(monkeypatch):
     ids = {r.get("movimento_id") or (r.get("movimento") or {}).get("id") for r in risultati["movimenti"]}
     assert "M-BUONO" in ids
     assert not ids & {"M-IGNORATO", "M-IGNORATA", "M-PROVVISORIO", "M-POS"}
-    assert risultati["stats"]["totale_righe"] == 1
+    assert risultati["stats"]["totale_righe"] == 2
     assert risultati["stats"]["accrediti_pos_numia_esclusi"] == 1
 
 

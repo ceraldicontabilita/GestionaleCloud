@@ -857,10 +857,21 @@ async def analizza_estratto_conto_batch(
     query: Dict[str, Any] = {"tipo": {"$ne": "carta_credito"}, **FILTRO_NON_IGNORATO}
     if solo_non_riconciliati:
         query["riconciliato"] = {"$ne": True}
-        # Una riga provvisoria (export CSV, banca diretta) non e' ancora una
-        # prova: aspetta l'estratto conto ufficiale, non un abbinamento.
-        query["in_attesa_estratto_ufficiale"] = {"$ne": True}
-        query["$and"] = [filtro_solo_evidenza_ufficiale()]
+        # Una riga provvisoria (export CSV, banca diretta) coperta dall'estratto
+        # ufficiale e' una copia: si abbina la riga ufficiale. Oltre l'ultimo
+        # giorno dell'estratto invece e' l'unica traccia del movimento, e
+        # toglierla lasciava la coda vuota da fine agosto.
+        ultima_ufficiale = await db.estratto_conto_movimenti.find_one(
+            {"$and": [filtro_solo_evidenza_ufficiale(),
+                      {"in_attesa_estratto_ufficiale": {"$ne": True}}]},
+            {"_id": 0, "data": 1}, sort=[("data", -1)],
+        )
+        coperto_fino_a = str((ultima_ufficiale or {}).get("data") or "")[:10]
+        query["$and"] = [{"$or": [
+            {"$and": [filtro_solo_evidenza_ufficiale(),
+                      {"in_attesa_estratto_ufficiale": {"$ne": True}}]},
+            {"data": {"$gt": coperto_fino_a}},
+        ]}]
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
 
