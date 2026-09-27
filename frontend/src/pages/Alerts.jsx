@@ -3,6 +3,7 @@ import { AlertTriangle, ExternalLink, Info, LoaderCircle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { Badge, Button, Card, PageHeader } from '../components/ds';
+import LinkContropartita from '../components/LinkContropartita';
 import { COLORS, formatDateIT } from '../lib/utils';
 
 const PAGE_SIZE = 50;
@@ -20,6 +21,42 @@ const statoDa = params => {
   const s = params.get('stato');
   return s === 'risolto' || s === 'tutti' ? s : 'aperto';
 };
+
+const formatEuro = valore => (
+  typeof valore === 'number'
+    ? valore.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })
+    : ''
+);
+
+// Un alert mostra sempre i record coinvolti: le fatture candidate di un
+// pagamento cumulativo e gli altri record collegati, ognuno col suo link.
+function RecordCoinvolti({ alert }) {
+  const fatture = Array.isArray(alert.fatture_candidate) ? alert.fatture_candidate : [];
+  const altri = (Array.isArray(alert.record_coinvolti) ? alert.record_coinvolti : [])
+    .filter(record => record.link && record.link !== alert.link);
+  if (!fatture.length && !altri.length) return null;
+  return (
+    <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+      {fatture.length > 0 && <strong style={{ fontSize: 13 }}>Fatture candidate</strong>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {fatture.map(fattura => (
+          fattura.link ? (
+            <LinkContropartita key={fattura.id} to={fattura.link} compatto title={`Fattura ${fattura.numero || fattura.id}`}>
+              Fattura {fattura.numero || fattura.id} {formatEuro(fattura.importo)}
+            </LinkContropartita>
+          ) : (
+            <span key={fattura.id}>Fattura {fattura.numero || fattura.id} {formatEuro(fattura.importo)}</span>
+          )
+        ))}
+        {altri.map(record => (
+          <LinkContropartita key={`${record.collezione}-${record.id}`} to={record.link} compatto>
+            Apri {record.collezione === 'invoices' ? 'la fattura' : 'il record'} {record.id}
+          </LinkContropartita>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function Alerts() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -94,6 +131,7 @@ export default function Alerts() {
                   </div>
                   <p style={{ margin: '8px 0', color: COLORS.textMuted }}>{detail}</p>
                   <small>{alert.created_at ? formatDateIT(alert.created_at) : 'Data non disponibile'}</small>
+                  <RecordCoinvolti alert={alert} />
                   <div style={{ marginTop: 12 }}>
                     {alert.link ? (
                       <Link to={alert.link} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}><ExternalLink size={15} /> Apri il caso e verifica</Link>

@@ -3,14 +3,77 @@ Router per gestione Alert di sistema.
 Include alert per fornitori senza metodo pagamento, scadenze, etc.
 """
 from fastapi import APIRouter, Query, HTTPException
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
+from urllib.parse import quote
 import logging
 
 from app.database import Database
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# I deep-link canonici letti dalle pagine (CLAUDE.md, «Navigazione tra
+# contropartite»): un alert si apre sul record, non sulla pagina generica.
+_LINK_PER_COLLEZIONE = {
+    "invoices": "/fatture?invoice_id={id}",
+    "fatture": "/fatture?invoice_id={id}",
+    "estratto_conto_movimenti": "/riconciliazione/banca?movimento={id}",
+    "prima_nota_banca": "/prima-nota#sezione=banca&selected={id}",
+}
+
+
+def link_record(collezione: Any, record_id: Any) -> Optional[str]:
+    """Il deep-link canonico di un record, o None se la collezione non ne ha."""
+    modello = _LINK_PER_COLLEZIONE.get(str(collezione or ""))
+    if not modello or record_id in (None, ""):
+        return None
+    return modello.format(id=quote(str(record_id), safe=""))
+
+
+def arricchisci_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiunge all'alert il collegamento al record e i record coinvolti.
+
+    6.527 alert su 6.536 non avevano ``link``: la pagina diceva «verificare la
+    fonte indicata nel dettaglio» anche quando l'alert sapeva benissimo di
+    quale fattura o movimento parlava (``entita_collection``/``entita_id``).
+    Le fatture candidate di un pagamento cumulativo stavano in ``extra`` e
+    non si vedevano: escono come lista, ognuna col suo collegamento.
+    """
+    item = dict(alert)
+    record_link = link_record(item.get("entita_collection"), item.get("entita_id"))
+    if not item.get("link") and record_link:
+        item["link"] = record_link
+    extra = item.get("extra") if isinstance(item.get("extra"), dict) else {}
+    candidate = extra.get("fatture_candidate")
+    fatture: List[Dict[str, Any]] = []
+    if isinstance(candidate, list):
+        for fattura in candidate:
+            if not isinstance(fattura, dict):
+                continue
+            fatture.append({
+                "id": fattura.get("id"),
+                "numero": fattura.get("numero"),
+                "importo": fattura.get("importo"),
+                "link": link_record("invoices", fattura.get("id")),
+            })
+    item["fatture_candidate"] = fatture
+    record: List[Dict[str, Any]] = []
+    if item.get("entita_id"):
+        record.append({
+            "collezione": item.get("entita_collection"),
+            "id": item.get("entita_id"),
+            "link": record_link,
+        })
+    if extra.get("fattura_id") and not any(f["id"] == extra["fattura_id"] for f in fatture):
+        record.append({
+            "collezione": "invoices",
+            "id": extra["fattura_id"],
+            "link": link_record("invoices", extra["fattura_id"]),
+        })
+    item["record_coinvolti"] = record
+    return item
 
 
 @router.get("/summary")
@@ -65,8 +128,10 @@ async def alerts_summary() -> Dict[str, Any]:
     critical_recenti = await db["alerts"].find(
         {**query_open, "severita": "critical"},
         {"_id": 0, "id": 1, "codice": 1, "titolo": 1, "dettaglio": 1,
-         "modulo": 1, "severita": 1, "created_at": 1, "entita_id": 1, "link": 1}
+         "modulo": 1, "severita": 1, "created_at": 1, "entita_id": 1,
+         "entita_collection": 1, "link": 1}
     ).sort("created_at", -1).limit(5).to_list(5)
+    critical_recenti = [arricchisci_alert(alert) for alert in critical_recenti]
 
     # Il totale e' un conteggio diretto con lo stesso filtro della lista:
     # campana e pagina non possono piu' dire due numeri diversi.
@@ -122,7 +187,8 @@ async def lista_alerts(
         query,
         {"_id": 0}
     ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
-    
+    alerts = [arricchisci_alert(alert) for alert in alerts]
+
     # Statistiche
     totale = await db["alerts"].count_documents({})
     non_letti = await db["alerts"].count_documents({"letto": False})

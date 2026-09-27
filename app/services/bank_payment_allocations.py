@@ -475,6 +475,11 @@ async def persist_bank_invoice_allocations(
     await db[collezione_del_movimento(movement)].update_one(
         {"id": movement_id}, {"$set": movement_update},
     )
+    # Il movimento ora e' riconciliato: i suoi «senza match», «ambiguo» e
+    # «pagamento multiplo» restavano aperti per sempre.
+    from app.services.alert_engine import chiudi_alert_movimento_riconciliato
+
+    await chiudi_alert_movimento_riconciliato(db, movement_id)
 
     return {
         "success": True,
