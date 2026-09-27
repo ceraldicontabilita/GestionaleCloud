@@ -893,3 +893,91 @@ def test_insert_many_oltre_500_documenti_spezza_il_lookup(monkeypatch):
     assert len(runtime.remote["estratto_conto_movimenti"]) == 1200
     assert calls and max(calls) <= 500
     assert sum(calls) == 1200
+
+
+def test_update_rifiutato_ripristina_il_documento_di_prima():
+    runtime = FailingWriteSupabase({"alerts": [
+        {"_id": "a1", "stato": "aperto", "dettaglio": {"righe": [1, 2]}},
+        {"_id": "a2", "stato": "aperto"},
+    ]})
+
+    async def scenario():
+        await runtime.hydrate()
+        with pytest.raises(RuntimeError, match="rifiutata"):
+            await runtime["alerts"].update_one({"_id": "a1"}, {"$set": {"stato": "risolto"}})
+        return await runtime["alerts"].find({}).to_list(None)
+
+    documenti = {d["_id"]: d for d in asyncio.run(scenario())}
+    assert documenti["a1"] == {"_id": "a1", "stato": "aperto", "dettaglio": {"righe": [1, 2]}}
+    assert documenti["a2"]["stato"] == "aperto"
+
+
+def test_una_scrittura_non_copia_tutta_la_collezione(monkeypatch):
+    """Chiudere un alert copiava tutti i 7.485 alert per il ripristino."""
+    from app.services import supabase_runtime_database as runtime_db
+
+    runtime = FakeRestSupabase({"alerts": [
+        {"_id": f"a{i}", "codice": "C", "entita_id": f"e{i}", "stato": "aperto"} for i in range(500)
+    ]})
+    asyncio.run(runtime.hydrate())
+    normalizzati = []
+    originale = runtime_db._normalise_document
+
+    in_rilettura = []
+
+    def conta(document):
+        if not in_rilettura:
+            normalizzati.append(document.get("_id"))
+        return originale(document)
+
+    collezione = runtime["alerts"]
+    rileggi = collezione._refresh_unlocked
+
+    async def rilettura_non_contata(*args, **kwargs):
+        # Il finto Supabase non ha la firma delle collezioni e rilegge tutto:
+        # qui conta solo cio' che copia la scrittura.
+        in_rilettura.append(True)
+        try:
+            return await rileggi(*args, **kwargs)
+        finally:
+            in_rilettura.pop()
+
+    monkeypatch.setattr(runtime_db, "_normalise_document", conta)
+    monkeypatch.setattr(collezione, "_refresh_unlocked", rilettura_non_contata)
+
+    async def scenario():
+        await runtime["alerts"].update_many(
+            {"codice": "C", "entita_id": "e7", "stato": "aperto"}, {"$set": {"stato": "risolto"}},
+        )
+        return await runtime["alerts"].find_one({"_id": "a7"})
+
+    assert asyncio.run(scenario())["stato"] == "risolto"
+    assert len(normalizzati) < 50
+
+
+def test_una_lettura_lunga_cede_il_passo_alle_altre_richieste():
+    """Il controllo di salute deve rispondere mentre un job legge migliaia di righe."""
+    runtime = FakeRestSupabase({"alerts": [
+        {"_id": f"a{i}", "stato": "aperto", "dettaglio": {"n": i}} for i in range(2000)
+    ]})
+
+    async def scenario():
+        await runtime.hydrate()
+        battiti = 0
+
+        async def battito():
+            nonlocal battiti
+            while True:
+                await asyncio.sleep(0)
+                battiti += 1
+
+        tic = asyncio.create_task(battito())
+        await asyncio.sleep(0)
+        prima = battiti
+        documenti = await runtime["alerts"].find({"stato": "aperto"}).to_list(None)
+        tic.cancel()
+        return documenti, battiti - prima
+
+    documenti, battiti = asyncio.run(scenario())
+    assert len(documenti) == 2000
+    assert battiti >= 10
