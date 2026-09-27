@@ -42,3 +42,47 @@ def get_gmail_environment_credentials() -> GmailEnvironmentCredentials:
     if user:
         user = str(user).strip()
     return GmailEnvironmentCredentials(user=user, password=password, host=host)
+
+
+_VARIABILI_UTENTE = (
+    "IMAP_USER", "EMAIL_USER", "EMAIL_ADDRESS", "GMAIL_EMAIL",
+    "GMAIL_ACCOUNT_AMMINISTRATIVO", "ADMIN_EMAIL",
+)
+# Prima le password per le app: e' l'unico tipo che Gmail accetta via IMAP.
+_VARIABILI_PASSWORD = (
+    "GMAIL_APP_PASSWORD", "EMAIL_APP_PASSWORD", "GMAIL_APP_PASSWORD_AMMINISTRATIVO",
+    "IMAP_PASSWORD", "EMAIL_PASSWORD",
+)
+_coppia_riuscita: Optional[tuple] = None
+
+
+def candidate_gmail_credentials(massimo: int = 8) -> list:
+    """Tutte le coppie (indirizzo, password) configurate, senza doppioni.
+
+    Una password per le app nuova messa in ``GMAIL_APP_PASSWORD`` restava
+    inutile finche' ``IMAP_PASSWORD`` conteneva quella vecchia: la prima
+    variabile vinceva sempre. Il login ora le prova tutte; quella che Gmail
+    accetta passa in testa. Ogni voce e' (utente, password, var_utente,
+    var_password): i nomi servono ai log, i valori non si scrivono mai.
+    """
+    utenti, visti = [], set()
+    for nome in _VARIABILI_UTENTE:
+        valore = str(getattr(settings, nome, None) or "").strip()
+        if valore and valore.lower() not in visti:
+            visti.add(valore.lower())
+            utenti.append((valore, nome))
+    password, viste = [], set()
+    for nome in _VARIABILI_PASSWORD:
+        valore = "".join(str(getattr(settings, nome, None) or "").split())
+        if valore and valore not in viste:
+            viste.add(valore)
+            password.append((valore, nome))
+    coppie = [(u, p, nu, np) for p, np in password for u, nu in utenti]
+    if _coppia_riuscita:
+        coppie.sort(key=lambda c: (c[2], c[3]) != _coppia_riuscita)
+    return coppie[:massimo]
+
+
+def ricorda_coppia_riuscita(var_utente: str, var_password: str) -> None:
+    global _coppia_riuscita
+    _coppia_riuscita = (var_utente, var_password)
