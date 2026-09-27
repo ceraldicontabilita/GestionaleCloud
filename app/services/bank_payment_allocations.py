@@ -241,7 +241,10 @@ async def validate_bank_invoice_allocations(
     if any(not invoice_id for invoice_id in ids) or len(set(ids)) != len(ids):
         raise HTTPException(status_code=409, detail="Fatture mancanti o duplicate nel prospetto")
 
-    invoices = await db["invoices"].find({"id": {"$in": ids}}).to_list(len(ids))
+    # Le fatture del vecchio import hanno l'id numerico (1785229945876): cercate
+    # solo come testo non si trovavano, e il bonifico che le paga restava sospeso.
+    cercati = ids + [int(invoice_id) for invoice_id in ids if invoice_id.isdigit()]
+    invoices = await db["invoices"].find({"id": {"$in": cercati}}).to_list(len(cercati))
     by_id = {str(invoice.get("id")): invoice for invoice in invoices}
     if len(by_id) != len(ids):
         missing = [invoice_id for invoice_id in ids if invoice_id not in by_id]
@@ -269,7 +272,8 @@ async def validate_bank_invoice_allocations(
             )
         result.append({
             "allocation_id": allocation_id,
-            "fattura_id": invoice_id,
+            # L'id com'e' salvato: le scritture che seguono lo cercano per uguaglianza.
+            "fattura_id": invoice.get("id"),
             "fattura_numero": invoice.get("invoice_number") or invoice.get("numero_fattura"),
             "fornitore": invoice.get("supplier_name") or invoice.get("fornitore"),
             "quota_cents": quota_cents,
