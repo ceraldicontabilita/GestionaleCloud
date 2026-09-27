@@ -717,7 +717,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Il registro delle ricevute non è una prova di presenza**: vale solo se la fattura esiste ancora in
   `fatture`. **Un'impronta cambiata non è un conflitto** (il gestionale arricchisce righe e stati): conflitto è solo
   XML diverso con la fattura già in Lotti; se manca si importa. Un fornitore escluso si salta, non è un errore.
-- **Un numero che non si conosce non è zero**: KPI senza fonte = «Dato non disponibile»; spesa = `total_amount` del gestionale per identità (`spesa_da_gestionale`); costo lotto = consumo × prezzo di fattura (`costo_da_consumo`), altrimenti `None` col motivo; spese, sconti e trasporto non entrano in giacenza.
+- **Un numero che non si conosce non è zero**: KPI senza fonte = «Dato non disponibile»; spesa = `total_amount` del gestionale per identità (`spesa_da_gestionale`); costo lotto = consumo × prezzo di fattura (`costo_da_consumo`), altrimenti `None` col motivo; spese, sconti e trasporto non entrano in giacenza. Dose e righe-intestazione in un posto solo (`servizi/ingredienti_ricetta.py`): un ingrediente senza dose si dichiara (`ingredienti_senza_dose`), mai saltato in silenzio; la merce mai scaricata la chiude solo il titolare (`servizi/merce_ferma.py`: simulazione, conferma, riapribile, niente si cancella).
 - **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali veri: prezzo di riga, aliquota
   IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel PDF.
 - **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →

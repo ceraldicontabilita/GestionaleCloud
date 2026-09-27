@@ -48,6 +48,7 @@ import AttendibilitaHaccpView from "../components/haccp/AttendibilitaHaccpView";
 import ProdottiHubView from "../components/haccp/ProdottiHubView";
 import MenuVetrinaView from "../components/haccp/MenuVetrinaView";
 import ImpostazioniView from "../components/haccp/ImpostazioniView";
+import MerceFermaView from "../components/haccp/MerceFermaView";
 
 export const ProdottiConTabFornitore = ProdottiHubView;
 
@@ -99,6 +100,7 @@ const PAGINE = {
   manuale: { render: () => <ManualeHACCPView /> },
   registro_haccp: { render: () => <RegistroHACCPView /> },
   impostazioni: { render: (ctx) => <ImpostazioniView onNavigate={ctx.handleTabChange} /> },
+  merce_ferma: { render: () => <MerceFermaView /> },
   personale: { render: () => <ImpostazioniPersonaleView /> },
   stampanti: { render: () => <StampantiConfigView /> },
   guida: { render: () => <ManualeView /> },

@@ -1,7 +1,7 @@
 import {
   AlertCircle, AlertTriangle, BarChart3, BookMarked, BookOpen, Bug,
   Building2, ChefHat, ClipboardCheck, FileText, Flame, FlaskConical,
-  Globe, HelpCircle, IceCreamBowl, Layers, Network, Package,
+  Globe, HelpCircle, IceCreamBowl, Layers, Network, Package, PackageX,
   Refrigerator, Scale, Settings, ShieldCheck, ShoppingCart, Snowflake,
   Sparkles, Tag, Thermometer, TrendingUp, Truck, UtensilsCrossed, Users,
   Wheat,
@@ -23,6 +23,8 @@ export const SECONDARY_TABS = [
   { section: "Produzione e scorte", id: "produzione_consigliata", label: "Produzione consigliata", icon: ChefHat },
   { section: "Produzione e scorte", id: "storico_produzioni", label: "Storico produzioni", icon: FileText },
   { section: "Produzione e scorte", id: "materie", label: "Materie prime", icon: Wheat },
+  // 27/09/2026 — merce comprata e mai scaricata, ricette senza dosi
+  { section: "Produzione e scorte", id: "merce_ferma", label: "Merce ferma e dosi", icon: PackageX },
   // 19/09/2026 — la vetrina di ciò che i clienti vedono nel Menu digitale:
   // sta fra le voci di vendita, non nel backoffice (è un contenitore visivo
   // dei prodotti da vendere, non una pagina di amministrazione).

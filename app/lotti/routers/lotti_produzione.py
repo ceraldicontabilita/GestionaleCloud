@@ -1152,23 +1152,23 @@ async def scala_lotti_fornitori_per_ricetta(
     ricetta: dict, moltiplicatore: float, numero_lotto_produzione: str
 ) -> dict:
     """Scala automaticamente i lotti fornitori per ogni ingrediente (FIFO)."""
-    ingredienti_dettaglio = ricetta.get("ingredienti_dettaglio", [])
+    from app.lotti.servizi.ingredienti_ricetta import dose, righe_ingredienti
+
     lotti_scalati = []
     lotti_esauriti = []
     ingredienti_non_trovati = []
     ingredienti_insufficienti = []
     conversioni_non_disponibili = []
     lotti_da_smaltire = []
+    # Un ingrediente senza dose non si puo' scalare: prima si saltava in
+    # silenzio e la produzione diceva «0 lotti scalati» senza un perche'.
+    ingredienti_senza_dose = []
 
-    for ing in ingredienti_dettaglio:
+    for ing in righe_ingredienti(ricetta):
         nome_ing = ing.get("nome", "").strip()
-        if not nome_ing:
-            continue
-        try:
-            quantita_base = float(str(ing.get("quantita", 0) or 0).replace(",", "."))
-        except (ValueError, TypeError):
-            continue
-        if quantita_base <= 0:
+        quantita_base = dose(ing)
+        if quantita_base is None:
+            ingredienti_senza_dose.append(nome_ing)
             continue
         unita = ing.get("unita_misura") or ing.get("unita", "g")
         quantita_scalata = quantita_base * moltiplicatore
@@ -1291,6 +1291,7 @@ async def scala_lotti_fornitori_per_ricetta(
         "ingredienti_insufficienti": ingredienti_insufficienti,
         "conversioni_non_disponibili": conversioni_non_disponibili,
         "lotti_da_smaltire": lotti_da_smaltire,
+        "ingredienti_senza_dose": ingredienti_senza_dose,
     }
 
 
@@ -1308,6 +1309,9 @@ def costo_da_consumo(lotti_info: dict) -> tuple:
     from decimal import Decimal, InvalidOperation
 
     motivi = []
+    if lotti_info.get("ingredienti_senza_dose"):
+        # un costo senza questi ingredienti sarebbe parziale spacciato per intero
+        motivi.append("ricetta senza dose per: " + ", ".join(lotti_info["ingredienti_senza_dose"][:5]))
     if lotti_info.get("ingredienti_non_trovati"):
         motivi.append("ingredienti senza lotto: " + ", ".join(lotti_info["ingredienti_non_trovati"][:5]))
     if lotti_info.get("ingredienti_insufficienti"):

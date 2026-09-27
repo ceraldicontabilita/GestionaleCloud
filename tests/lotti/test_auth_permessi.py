@@ -145,7 +145,7 @@ def test_endpoint_distruttivi_dichiarano_require_admin():
     da_verificare = [
         ("app.lotti.routers.scheduler", ("/start", "/stop", "/run-pulizia-lotti-now")),
         ("app.lotti.routers.fatture", ("/dedup",)),
-        ("app.lotti.routers.lotti_fornitori", ("/reimporta-da-fatture", "/pulizia-scaduti")),
+        ("app.lotti.routers.lotti_fornitori", ("/reimporta-da-fatture", "/merce-ferma/chiudi", "/merce-ferma/riapri")),
         ("app.lotti.routers.temperature_positive", ("/scheda/{anno}/{frigorifero}/config",)),
         ("app.lotti.routers.temperature_negative", ("/scheda/{anno}/{congelatore}/config",)),
         # 25/07/2026: chi riscrive registri HACCP STORICI deve essere admin.
