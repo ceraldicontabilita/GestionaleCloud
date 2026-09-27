@@ -9,6 +9,7 @@ import {
   AnnoImportazioneCard,
   DriveFattureImportCard,
 } from '../components/DriveImportControls';
+import EstrattiContoOriginali from '../components/EstrattiContoOriginali';
 import {
   FileText,
   CheckCircle,
@@ -499,6 +500,7 @@ export default function ImportDocumenti() {
         >
           <DriveFattureImportCard />
           <AnnoImportazioneCard />
+          <EstrattiContoOriginali />
         </div>
 
         <h2 style={TITOLO_ORIGINE}>Dalla posta</h2>

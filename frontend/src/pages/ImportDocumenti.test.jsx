@@ -10,6 +10,9 @@ vi.mock('../components/DriveImportControls', () => ({
   DriveFattureImportCard: () => <div>Controllo import fatture Drive</div>,
   AnnoImportazioneCard: () => <div>Controllo anno import Drive</div>,
 }));
+vi.mock('../components/EstrattiContoOriginali', () => ({
+  default: () => <div>Estratti conto caricati</div>,
+}));
 
 function mockPreviewThenImport(tipo, importData, parsed = {}) {
   api.post.mockImplementation(url => Promise.resolve({

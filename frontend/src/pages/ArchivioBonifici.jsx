@@ -20,6 +20,7 @@ import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
+import DocumentViewerModal from '../components/DocumentViewerModal';
 import { toast } from 'sonner';
 
 const formatDate = formatDateIT;
@@ -40,6 +41,8 @@ export default function ArchivioBonifici() {
   const [riconciliazioneStats, setRiconciliazioneStats] = useState(null);
   const [riconciliando, setRiconciliando] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
+  // Il PDF del singolo bonifico: prima si scaricava solo lo ZIP dell'anno.
+  const [bonificoPdf, setBonificoPdf] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [associaDropdown, setAssociaDropdown] = useState(null);
   const [operazioniCompatibili, setOperazioniCompatibili] = useState([]);
@@ -994,6 +997,27 @@ export default function ArchivioBonifici() {
                   tdStyle: sfondoRic,
                 },
                 {
+                  key: 'pdf',
+                  label: 'PDF',
+                  ruoloCard: 'dettaglio',
+                  render: t => (
+                    <button
+                      type="button"
+                      data-testid={`bonifico-pdf-${t.id}`}
+                      onClick={() => setBonificoPdf(t)}
+                      aria-label={`Vedi e scarica il PDF del bonifico ${t.cro_trn || t.id}`}
+                      style={{
+                        minHeight: 32, padding: '4px 10px', border: '1px solid #c15f3c',
+                        borderRadius: 6, background: 'white', color: '#c15f3c',
+                        fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                      }}
+                    >
+                      PDF
+                    </button>
+                  ),
+                  tdStyle: sfondoRic,
+                },
+                {
                   key: 'cro_trn',
                   label: 'CRO/TRN',
                   ruoloCard: 'omesso',
@@ -1487,6 +1511,16 @@ export default function ArchivioBonifici() {
           </div>
         )}
       </div>
+      {bonificoPdf && (
+        <DocumentViewerModal
+          title={`Bonifico ${bonificoPdf.cro_trn || ''}`.trim()}
+          subtitle={`${bonificoPdf.data || ''} · ${bonificoPdf.beneficiario_nome || bonificoPdf.beneficiario || ''}`}
+          fetchUrl={`/api/archivio-bonifici/transfers/${bonificoPdf.id}/pdf`}
+          documentType="pdf"
+          onClose={() => setBonificoPdf(null)}
+          testIdPrefix="bonifico-pdf-viewer"
+        />
+      )}
       {fatturaView && (
           <ModalFattura
             fatturaId={fatturaView.id}
