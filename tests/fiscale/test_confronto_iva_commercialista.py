@@ -212,6 +212,28 @@ def test_un_modello_stornato_non_conta():
     assert _run(mod.f24_iva_per_periodo(db, 2025)) == {}
 
 
+def test_un_doppione_in_quarantena_non_raddoppia_il_versato():
+    """Audit 27/09/2026: la quarantena dei doppioni F24 usa status=eliminato."""
+    db = _Db([
+        _modello("6001", "2025", 534.06, "F24 gennaio.pdf"),
+        _modello("6001", "2025", 534.06, "F24 gennaio (2).pdf", status="eliminato"),
+    ])
+    esito = _run(mod.f24_iva_per_periodo(db, 2025))
+    assert esito["2025-01"]["importo"] == 534.06
+    assert esito["2025-01"]["documenti"] == ["F24 gennaio.pdf"]
+
+
+@pytest.mark.parametrize("stato", ["DATI_MANCANTI", "NON_VERIFICABILE"])
+def test_un_mese_con_dati_mancanti_non_e_uno_scostamento(stato):
+    """Audit 27/09/2026: cifre parziali non si confrontano con la LIPE."""
+    parziale = dict(NOSTRO, stato_calcolo=stato, attendibile=False,
+                    iva_acquisti=None, motivi=["detraibilita_da_verificare"])
+    riga = mod.confronta_periodo("2026-03", parziale, LIPE_MARZO, None)
+    assert riga["esito"] == "gestionale_non_calcolabile"
+    assert riga["scarti"] == {"iva_vendite": None, "iva_acquisti": None}
+    assert riga["gestionale"]["motivi"] == ["detraibilita_da_verificare"]
+
+
 def test_i_prospetti_si_leggono_con_un_solo_prefetch():
     """Una query per mese, su dodici mesi, e' proibita dal §4."""
     db = _Db([_modello("6001", "2025", 534.06)])

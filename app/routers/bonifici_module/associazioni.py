@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 import logging
 
 from app.database import Database, Collections
+from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 from app.services.payment_document_links import (
     collega_bonifico_fatture,
     valuta_fattura_bonifico,
@@ -295,16 +297,6 @@ async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
     raise HTTPException(404, "Bonifico non trovato in nessuna collection")
 
 
-def _importo_fattura(fattura: Dict[str, Any]) -> float:
-    for field in ("total_amount", "totale", "importo_totale"):
-        if fattura.get(field) not in (None, ""):
-            try:
-                return abs(float(fattura[field]))
-            except (TypeError, ValueError):
-                return 0.0
-    return 0.0
-
-
 def _valuta_fattura_bonifico(
     bonifico: Dict[str, Any], fattura: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -334,21 +326,28 @@ async def get_fatture_compatibili(bonifico_id: str) -> Dict[str, Any]:
 
     # Preselezione per importo esatto al centesimo. Il filtro semantico sotto
     # richiede inoltre identità fornitore o riferimento esplicito in causale.
-    query = {}
+    # Solo fatture attive e non pagate: ogni fattura 2026 esiste anche come
+    # copia `archived`, e due candidati identici non li sceglie nessuno.
+    condizioni: List[Dict[str, Any]] = [dict(FILTRO_FATTURA_ATTIVA), dict(FILTRO_NON_PAGATE)]
     if importo > 0:
         tolerance = 0.004
-        query["$or"] = [
+        condizioni.append({"$or": [
             {"total_amount": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
             {"totale": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
             {"importo_totale": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
-        ]
+            # Una parcella con ritenuta si paga al netto: il lordo non combacia
+            # mai, quindi entra e il confronto al centesimo lo fa `valuta`.
+            {"importo_ritenuta": {"$gt": 0}},
+        ]})
+    query = {"$and": condizioni}
 
     fatture_raw = await db[Collections.INVOICES].find(
         query, {"_id": 0, "id": 1, "fornitore": 1, "supplier_name": 1,
                 "cedente_denominazione": 1, "totale": 1, "total_amount": 1,
                 "importo_totale": 1, "invoice_number": 1, "invoice_date": 1,
-                "fornitore_denominazione": 1}
-    ).to_list(50)
+                "fornitore_denominazione": 1, "importo_ritenuta": 1,
+                "pagamento_rate_totale": 1, "pagamento_rate": 1}
+    ).to_list(500)
 
     fatture = []
     for f in fatture_raw:

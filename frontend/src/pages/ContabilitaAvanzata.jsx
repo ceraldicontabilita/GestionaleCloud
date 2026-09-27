@@ -430,6 +430,16 @@ export default function ContabilitaAvanzata() {
               prima di considerare un importo dovuto o pagato.
             </div>
 
+            {Array.isArray(imposte.avvisi) && imposte.avvisi.length > 0 && (
+              <div
+                style={{ ...styles.note, background: COLORS.warningLight, borderColor: COLORS.warning }}
+                data-testid="imposte-avvisi"
+              >
+                <strong>Base imponibile non affidabile.</strong>{' '}
+                {imposte.avvisi.join(' ')}
+              </div>
+            )}
+
             {/* Cards Riepilogo */}
             <div style={styles.grid4(isMobile)}>
               <div style={styles.statBox}>

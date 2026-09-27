@@ -8,8 +8,14 @@ import logging
 from app.database import Database
 from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
+    appartenenza_conto_bpm,
     filtro_saldo_prima_nota,
+    saldi_banca_per_conto,
+    TUTTI_I_CONTI,
 )
+from app.services import conti_pos
+from app.services.conto_economico_gestionale import FILTRO_CORRISPETTIVI_VALIDI
+from app.services.fatture_report_ae import FILTRO_FATTURE_ATTIVE
 from app.utils.error_handler import handle_errors
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
@@ -41,7 +47,9 @@ async def get_financial_summary(
     # Senza questo filtro i movimenti "eliminati" dall'utente o dal job di
     # dedup restavano comunque sommati qui, gonfiando i totali.
     prima_nota_match_cassa = filtro_saldo_prima_nota("prima_nota_cassa")
-    prima_nota_match_banca = filtro_saldo_prima_nota("prima_nota_banca")
+    # I flussi economici contano anche le uscite pagate con la Mastercard
+    # SumUp: il conto conta per il saldo, non per il costo.
+    prima_nota_match_banca = filtro_saldo_prima_nota("prima_nota_banca", conto=TUTTI_I_CONTI)
     esclusione_trasferimenti = {"$nor": [
         {"categoria": {"$regex": "versament|prelevament|trasferiment", "$options": "i"}},
         {"source": "trasferimento_interno"},
@@ -62,38 +70,50 @@ async def get_financial_summary(
         cassa_entrate = sum(r["total"] for r in cassa_result if r["_id"] == "entrata")
         cassa_uscite = sum(r["total"] for r in cassa_result if r["_id"] == "uscita")
 
-        # Get Prima Nota Banca totals
-        banca_pipeline = [
-            {"$match": {"$and": [flusso_economico_match_banca, {"data": date_range}]}},
-            {"$group": {
-                "_id": "$tipo",
-                "total": {"$sum": "$importo"}
-            }}
-        ]
-        banca_result = await db["prima_nota_banca"].aggregate(banca_pipeline).to_list(100)
-        banca_entrate = sum(r["total"] for r in banca_result if r["_id"] == "entrata")
-        banca_uscite = sum(r["total"] for r in banca_result if r["_id"] == "uscita")
+        # Prima Nota Banca: BPM 19.01.01 (con le righe storiche senza conto)
+        # e Mastercard SumUp 19.01.05 sono conti diversi e non si fondono in
+        # un solo «Banca» (stessa separazione di get_prima_nota_stats).
+        async def _flussi_banca(appartenenza):
+            risultato = await db["prima_nota_banca"].aggregate([
+                {"$match": {"$and": [
+                    flusso_economico_match_banca, {"data": date_range}, appartenenza,
+                ]}},
+                {"$group": {
+                    "_id": "$tipo",
+                    "total": {"$sum": "$importo"}
+                }}
+            ]).to_list(100)
+            entrate = sum(r["total"] for r in risultato if r["_id"] == "entrata")
+            uscite = sum(r["total"] for r in risultato if r["_id"] == "uscita")
+            return entrate, uscite
+
+        banca_entrate, banca_uscite = await _flussi_banca(appartenenza_conto_bpm())
+        sumup_entrate, sumup_uscite = await _flussi_banca(
+            {"conto_contabile": conti_pos.CONTO_SUMUP_MASTERCARD})
+        altri_entrate, altri_uscite = await _flussi_banca(
+            {"conto_contabile": {"$nin": [
+                conti_pos.CONTO_BPM, conti_pos.CONTO_SUMUP_MASTERCARD, None, "",
+            ]}})
 
         # Riporto iniziale (impostato a mano dall'utente o cumulato anni
         # precedenti): senza, i saldi qui differivano dalla Prima Nota
         # appena l'utente impostava il riporto al 01/01.
         saldo_query_cassa = filtro_saldo_prima_nota("prima_nota_cassa", data=date_range)
-        saldo_query_banca = filtro_saldo_prima_nota("prima_nota_banca", data=date_range)
         saldi_cassa = await aggrega_saldo_prima_nota(
             db, "prima_nota_cassa", saldo_query_cassa, anno,
         )
-        saldi_banca = await aggrega_saldo_prima_nota(
-            db, "prima_nota_banca", saldo_query_banca, anno,
-        )
+        saldi_conti_banca = await saldi_banca_per_conto(db, date_range, anno)
+        saldi_banca = saldi_conti_banca["bpm"]
+        saldi_sumup = saldi_conti_banca["sumup"]
+        saldi_altri = saldi_conti_banca["altri"]
         riporto_cassa = saldi_cassa["saldo_precedente"]
         riporto_banca = saldi_banca["saldo_precedente"]
         
         # ============ IVA DAI CORRISPETTIVI (DEBITO) ============
         corr_pipeline = [
             {"$match": {
+                **FILTRO_CORRISPETTIVI_VALIDI,
                 "data": date_range,
-                "entity_status": {"$ne": "deleted"},
-                "status": {"$nin": ["deleted", "archived"]},
             }},
             {"$group": {
                 "_id": None,
@@ -119,8 +139,7 @@ async def get_financial_summary(
                     {"$and": [{"data_ricezione": {"$exists": False}}, {"invoice_date": date_range}]}
                 ],
                 "tipo_documento": {"$nin": NOTE_CREDITO_TYPES},
-                "status": {"$nin": ["deleted", "archived"]},
-                "entity_status": {"$ne": "deleted"},
+                **FILTRO_FATTURE_ATTIVE,
             }},
             {"$group": {
                 "_id": None,
@@ -146,8 +165,7 @@ async def get_financial_summary(
                     {"$and": [{"data_ricezione": {"$exists": False}}, {"invoice_date": date_range}]}
                 ],
                 "tipo_documento": {"$in": NOTE_CREDITO_TYPES},
-                "status": {"$nin": ["deleted", "archived"]},
-                "entity_status": {"$ne": "deleted"},
+                **FILTRO_FATTURE_ATTIVE,
             }},
             {"$group": {
                 "_id": None,
@@ -165,6 +183,18 @@ async def get_financial_summary(
         
         # IVA Credito Netta = Fatture - Note Credito (stessa logica di iva_calcolo.py)
         iva_credito = iva_credito - iva_note_credito
+
+        # ``iva_detraibile`` assente vuol dire «non deciso», non zero: con
+        # anche una sola fattura attiva del periodo non classificata l'IVA a
+        # credito e il saldo non si conoscono.
+        iva_da_classificare = await db["invoices"].count_documents({
+            **FILTRO_FATTURE_ATTIVE,
+            "iva_detraibile": None,
+            "$or": [
+                {"data_ricezione": date_range},
+                {"$and": [{"data_ricezione": {"$exists": False}}, {"invoice_date": date_range}]}
+            ],
+        })
         
         # ============ FATTURE DA PAGARE (non pagate) ============
         fatture_da_pagare = await db["invoices"].aggregate([
@@ -189,12 +219,16 @@ async def get_financial_summary(
         # Nota: I versamenti da Cassa a Banca sono partite di giro interne
         # e non modificano il totale complessivo
         
-        total_income = cassa_entrate + banca_entrate
+        total_income = cassa_entrate + banca_entrate + sumup_entrate + altri_entrate
         # NON sommare salari perché sono già in banca_uscite
-        total_expenses = cassa_uscite + banca_uscite
-        saldo_iva = iva_debito - iva_credito
+        total_expenses = cassa_uscite + banca_uscite + sumup_uscite + altri_uscite
+        saldo_iva = None if iva_da_classificare else iva_debito - iva_credito
+        if iva_da_classificare:
+            vat_status = f"Da classificare ({iva_da_classificare} fatture senza IVA detraibile)"
+        else:
+            vat_status = "Da versare" if saldo_iva > 0 else "A credito"
         variazione_finanziaria = round(total_income - total_expenses, 2)
-        saldo_totale = round(saldi_cassa["saldo"] + saldi_banca["saldo"], 2)
+        saldo_totale = round(saldi_cassa["saldo"] + saldi_conti_banca["totale"], 2)
         riporto_totale = round(riporto_cassa + riporto_banca, 2)
         
         return {
@@ -219,12 +253,31 @@ async def get_financial_summary(
                 "saldo": saldi_cassa["saldo"],
                 "nota_flussi": "Entrate/uscite escludono i trasferimenti interni; il saldo li include.",
             },
+            # Solo Banca BPM (19.01.01 e righe storiche senza conto): saldo di
+            # Prima Nota, non saldo certificato dall'estratto conto.
             "banca": {
                 "entrate": round(banca_entrate, 2),
                 "uscite": round(banca_uscite, 2),  # Include già salari e F24
                 "riporto": round(riporto_banca, 2),
                 "saldo": saldi_banca["saldo"],
+                "conto": conti_pos.CONTO_BPM,
+                "fonte": "prima_nota_banca",
+                "saldo_certificato": False,
                 "nota_flussi": "Entrate/uscite escludono i trasferimenti interni; il saldo li include.",
+            },
+            "sumup": {
+                "entrate": round(sumup_entrate, 2),
+                "uscite": round(sumup_uscite, 2),
+                "riporto": 0.0,
+                "saldo": saldi_sumup["saldo"],
+                "conto": conti_pos.CONTO_SUMUP_MASTERCARD,
+                "fonte": "prima_nota_banca",
+                "saldo_certificato": False,
+            },
+            "altri_conti_banca": {
+                "entrate": round(altri_entrate, 2),
+                "uscite": round(altri_uscite, 2),
+                "saldo": saldi_altri["saldo"],
             },
             "salari": {
                 "totale": None,
@@ -237,9 +290,10 @@ async def get_financial_summary(
             },
             # IVA Section
             "vat_debit": round(iva_debito, 2),
-            "vat_credit": round(iva_credito, 2),
-            "vat_balance": round(saldo_iva, 2),
-            "vat_status": "Da versare" if saldo_iva > 0 else "A credito",
+            "vat_credit": None if iva_da_classificare else round(iva_credito, 2),
+            "vat_balance": None if saldo_iva is None else round(saldo_iva, 2),
+            "vat_status": vat_status,
+            "vat_da_classificare": iva_da_classificare,
             "vat_basis": "stima_classificata",
             "vat_note": (
                 "Stima da documenti classificati; non sostituisce la liquidazione IVA "
@@ -255,11 +309,13 @@ async def get_financial_summary(
             "fatture": {
                 "totale": round(tot_fatture, 2),
                 "count": fatt_count,
-                "iva": round(iva_credito, 2)
+                "iva": None if iva_da_classificare else round(iva_credito, 2),
+                "iva_da_classificare": iva_da_classificare,
             },
             # Campi H1 richiesti dalla specifica (con riporto iniziale)
             "saldo_cassa": saldi_cassa["saldo"],
             "saldo_banca": saldi_banca["saldo"],
+            "saldo_sumup": saldi_sumup["saldo"],
             "saldo_totale": saldo_totale,
             # Payables/Receivables
             "payables": round(payables, 2),

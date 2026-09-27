@@ -30,6 +30,7 @@ COLL_LIQ = "liquidazioni_iva"
 COLL_MOV = "movimenti_iva_fattura"
 # Note di credito: non sono acquisti detraibili in positivo
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
 
 
 def _float(value: Any) -> float:
@@ -57,6 +58,13 @@ def _iva_detraibile_fattura(doc: Dict[str, Any]) -> float:
     pct = max(0.0, min(100.0, pct))
     iva_esposta = _float(doc.get("iva_documento") or doc.get("iva"))
     return round(iva_esposta * pct / 100, 2)
+
+
+def _iva_detraibile_fattura_con_segno(doc: Dict[str, Any]) -> float:
+    """Come ``_iva_detraibile_fattura``, ma una nota di credito (TD04/TD08)
+    RIDUCE l'IVA detraibile: segno negativo (audit 27/09/2026, punto 8)."""
+    valore = _iva_detraibile_fattura(doc)
+    return -abs(valore) if liq.e_nota_credito(doc) else valore
 
 
 def _percentuale_detraibilita_fattura(doc: Dict[str, Any]) -> Optional[float]:
@@ -330,7 +338,8 @@ async def _fatture_del_periodo(db, periodo: str) -> List[Dict[str, Any]]:
         "stato_detrazione_iva": 1, "tipo_documento": 1,
         "annullata": 1, "duplicata": 1,
     }
-    return await db[COLL].find({"periodo_iva_attribuito": periodo}, proj).to_list(5000)
+    return await db[COLL].find(
+        {"periodo_iva_attribuito": periodo, **FILTRO_FATTURA_ATTIVA}, proj).to_list(5000)
 
 
 async def _credito_precedente(db, periodo: str) -> float:
@@ -354,11 +363,20 @@ async def _componi_liquidazione(
     credito_prec = await _credito_precedente(db, periodo)
     totali = liq.calcola_totali(incluse, iva_vendite, credito_prec)
     ora = datetime.now(timezone.utc).isoformat()
+    # Una fattura con IVA e detraibilita' non decisa resta fuori dal calcolo:
+    # l'IVA acquisti sarebbe sottostimata. La liquidazione nasce
+    # DA_VERIFICARE e non si conferma finche' qualcuno non decide.
+    da_decidere = [
+        {"id": f.get("id"), "invoice_number": f.get("invoice_number"),
+         "supplier_name": f.get("supplier_name")}
+        for f in fatture if liq.detraibilita_da_decidere(f)
+    ]
     return {
         "id": liq_id,
         "periodo": periodo,
         "versione": versione,
-        "stato": liq.CALCOLATA,
+        "stato": liq.DA_VERIFICARE if da_decidere else liq.CALCOLATA,
+        "fatture_detraibilita_da_decidere": da_decidere,
         "iva_vendite": totali["iva_vendite"],
         "iva_acquisti": totali["iva_acquisti"],
         "credito_precedente": totali["credito_precedente"],
@@ -372,7 +390,7 @@ async def _componi_liquidazione(
                 "supplier_name": f.get("supplier_name"),
                 "data_documento": f.get("data_documento"),
                 "iva_esposta": round(_float(f.get("iva_documento") or f.get("iva")), 2),
-                "iva": round(_iva_detraibile_fattura(f), 2),
+                "iva": round(liq.iva_detraibile_con_segno(f), 2),
                 "percentuale_detraibilita_iva": _percentuale_detraibilita_fattura(f),
             }
             for f in incluse
@@ -466,6 +484,14 @@ async def conferma_liquidazione(
         raise HTTPException(status_code=404, detail="Liquidazione non trovata")
     if doc.get("stato") in (liq.CONFERMATA, liq.TRASMESSA):
         raise HTTPException(status_code=409, detail="Liquidazione già confermata")
+    if doc.get("stato") == liq.DA_VERIFICARE and doc.get("fatture_detraibilita_da_decidere"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Liquidazione non confermabile: detraibilità IVA da decidere",
+                "fatture_detraibilita_da_decidere": doc["fatture_detraibilita_da_decidere"],
+            },
+        )
 
     periodo = doc["periodo"]
     actor = _utente_autenticato(current_user, utente)
@@ -778,8 +804,10 @@ async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
     # `campi_iva_da_fattura` deriva da `invoice_date` e riscrive) non e' mai
     # stato popolato. Guardare le sole due date derivate significa perdere
     # proprio le fatture che il riepilogo deve segnalare.
+    # Solo fatture attive (audit 27/09/2026): le copie archiviate o in
+    # collisione contavano due volte la stessa IVA.
     return await db[COLL].find(
-        {"$or": [
+        {**FILTRO_FATTURA_ATTIVA, "$or": [
             {"periodo_iva_attribuito": {"$regex": f"^{anno}"}},
             {"periodo_iva_attribuito": {"$in": [None, ""]},
              "stato_detrazione_iva": {"$in": [None, "", "DA_VERIFICARE"]},
@@ -804,20 +832,26 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
     prev = _periodo_precedente(periodo)
 
     def _somma_iva(docs):
-        return round(sum(_iva_detraibile_fattura(d) for d in docs), 2)
+        # Le note di credito riducono l'IVA (audit 27/09/2026, punto 8).
+        return round(sum(_iva_detraibile_fattura_con_segno(d) for d in docs), 2)
 
-    proj = {"_id": 0, "iva": 1, "iva_detraibile": 1, "stato_detrazione_iva": 1}
-    attribuite = await db[COLL].find({"periodo_iva_attribuito": periodo}, proj).to_list(20000)
-    utilizzate = await db[COLL].find({"periodo_iva_utilizzato": periodo}, proj).to_list(20000)
+    proj = {"_id": 0, "iva": 1, "iva_detraibile": 1, "stato_detrazione_iva": 1,
+            "tipo_documento": 1}
+    attive = FILTRO_FATTURA_ATTIVA
+    attribuite = await db[COLL].find(
+        {"periodo_iva_attribuito": periodo, **attive}, proj).to_list(20000)
+    utilizzate = await db[COLL].find(
+        {"periodo_iva_utilizzato": periodo, **attive}, proj).to_list(20000)
     rinviate = await db[COLL].find(
-        {"periodo_iva_attribuito": periodo, "stato_detrazione_iva": "RINVIATA"}, proj
+        {"periodo_iva_attribuito": periodo, "stato_detrazione_iva": "RINVIATA", **attive}, proj
     ).to_list(20000)
     indetraibili = await db[COLL].find(
-        {"periodo_iva_attribuito": periodo, "stato_detrazione_iva": "INDETRAIBILE"}, proj
+        {"periodo_iva_attribuito": periodo, "stato_detrazione_iva": "INDETRAIBILE", **attive}, proj
     ).to_list(20000)
     # ricevute NEL mese ma attribuite al mese PRECEDENTE (regola entro il 15)
     ricevute_attr_prec = await db[COLL].find(
-        {"data_ricezione": {"$regex": f"^{periodo}"}, "periodo_iva_attribuito": prev}, proj
+        {"data_ricezione": {"$regex": f"^{periodo}"}, "periodo_iva_attribuito": prev, **attive},
+        proj,
     ).to_list(20000)
 
     non_utilizzate = [

@@ -106,6 +106,10 @@ def test_import_payout_giroconto_e_reimport_idempotente(db):
     assert per_conto["19.01.01"]["estratto_conto_id"] == "ec-bpm-giro"
     assert {g["operation_id"] for g in gambe} == {"giroconto-sumup:CGIRO10000"}
     assert all(g["categoria"] == "trasferimento_interno" for g in gambe)
+    # La contropartita e' l'altro conto di tesoreria, mai «da classificare».
+    assert per_conto["19.01.05"]["conto_contropartita"] == "19.01.01"
+    assert per_conto["19.01.01"]["conto_contropartita"] == "19.01.05"
+    assert not any(g.get("contropartita_da_classificare") for g in gambe)
     # I bonifici ai fornitori non diventano spese senza documento.
     assert _run(db["prima_nota_banca"].count_documents({})) == 2
 

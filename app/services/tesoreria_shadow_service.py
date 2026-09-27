@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
+    TUTTI_I_CONTI,
     filtro_saldo_prima_nota,
 )
 from app.services.pos_evidence import (
@@ -129,7 +130,8 @@ async def _liquidita(db, riferimento: date) -> Liquidita:
         ],
     }
     query_cassa = filtro_saldo_prima_nota("prima_nota_cassa", **periodo)
-    query_banca = filtro_saldo_prima_nota("prima_nota_banca", **periodo)
+    query_banca = filtro_saldo_prima_nota(
+        "prima_nota_banca", conto=TUTTI_I_CONTI, **periodo)
     cassa = await aggrega_saldo_prima_nota(db, "prima_nota_cassa", query_cassa, anno=anno)
     banca = await aggrega_saldo_prima_nota(db, "prima_nota_banca", query_banca, anno=anno)
     saldo_cassa = Decimal(str(cassa["saldo"]))

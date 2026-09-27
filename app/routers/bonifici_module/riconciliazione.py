@@ -3,7 +3,7 @@ Bonifici Module - Riconciliazione con estratto conto.
 """
 from fastapi import HTTPException, Depends
 from app.utils.dependencies import get_current_admin_user
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import uuid
 import asyncio
@@ -263,15 +263,21 @@ async def get_riconciliazione_task(task_id: str) -> Dict[str, Any]:
     return _riconciliazione_task[task_id]
 
 
-async def stato_riconciliazione_bonifici() -> Dict[str, Any]:
-    """Stato della riconciliazione bonifici."""
+async def stato_riconciliazione_bonifici(anno: Optional[int] = None) -> Dict[str, Any]:
+    """Stato della riconciliazione bonifici, dell'anno se richiesto.
+
+    La pagina manda `anno`: prima lo ignorava e mostrava i numeri di tutti
+    gli anni sotto il selettore dell'anno.
+    """
     db = Database.get_db()
-    
-    totale = await db.bonifici_transfers.count_documents({})
-    riconciliati = await db.bonifici_transfers.count_documents({"riconciliato": True})
+
+    filtro: Dict[str, Any] = {"data": {"$regex": f"^{int(anno)}-"}} if anno else {}
+    totale = await db.bonifici_transfers.count_documents(filtro)
+    riconciliati = await db.bonifici_transfers.count_documents({**filtro, "riconciliato": True})
     non_riconciliati = totale - riconciliati
-    
+
     pipeline = [
+        {"$match": filtro},
         {"$group": {
             "_id": "$riconciliato",
             "totale": {"$sum": "$importo"},

@@ -156,18 +156,28 @@ async def verbali_notifications_task():
     logger.info("[SCHEDULER-VERBALI] notifiche: %s", result)
 
 
+#: Le partite di un fornitore: la fattura e la sua nota di credito. Non hanno
+#: scadenza (decide il titolare quando pagare), quindi nessun alert «scaduta»
+#: e nessuna «partita vecchia» nasce da loro.
+TIPI_PARTITA_FORNITORE = ("fattura_fornitore", "nota_credito")
+
+
 async def check_scadenze_partite_task():
     """
     Task eseguito ogni giorno alle 7:00.
     Scansiona partite_aperte con stato 'aperta' o 'parziale' e data_scadenza < oggi,
     e genera gli alert relazionali appropriati in base al tipo di partita:
-      - fattura_fornitore → FAT_DA_PAGARE_SCADUTA
       - f24               → F24_SCADUTO (+ F24_NON_PAGATO se non riconciliato)
       - stipendio         → CED_NON_PAGATO
       - pos_atteso        → BNK_POS_NON_RICONCILIATO
 
     L'alert_engine.genera_alert() è idempotente: non ricrea alert già aperti,
     quindi il task può girare ogni giorno senza duplicare.
+
+    Le partite fornitore (fatture e note di credito) sono fuori da tutti e
+    tre i giri: le fatture fornitore non hanno scadenza (decisione del
+    titolare, 19/09/2026), e la «data_scadenza» che portano e' un +30
+    inventato. Da lì nascevano 548 FAT_DA_PAGARE_SCADUTA «critical».
     """
     from app.database import Database
     from app.services.alert_engine import genera_alert
@@ -180,13 +190,13 @@ async def check_scadenze_partite_task():
 
         # Tipi di partita → codice alert associato
         mapping_alert = {
-            "fattura_fornitore": "FAT_DA_PAGARE_SCADUTA",
             "f24": "F24_SCADUTO",
             "stipendio": "CED_NON_PAGATO",
             "pos_atteso": "BNK_POS_NON_RICONCILIATO",
         }
 
         stats = {t: 0 for t in mapping_alert}
+        stats["fornitore_senza_scadenza"] = 0
         stats["totale_analizzate"] = 0
         stats["senza_mapping"] = 0
         stats["errori"] = 0
@@ -205,6 +215,9 @@ async def check_scadenze_partite_task():
         async for partita in cursor:
             stats["totale_analizzate"] += 1
             tipo = partita.get("tipo", "")
+            if tipo in TIPI_PARTITA_FORNITORE:
+                stats["fornitore_senza_scadenza"] += 1
+                continue
             codice_alert = mapping_alert.get(tipo)
             if not codice_alert:
                 stats["senza_mapping"] += 1
@@ -245,7 +258,7 @@ async def check_scadenze_partite_task():
             {
                 "stato": {"$in": ["aperta", "parziale"]},
                 "data_scadenza": {"$lt": oggi, "$ne": None},
-                "tipo": {"$nin": list(mapping_alert.keys())},
+                "tipo": {"$nin": list(mapping_alert.keys()) + list(TIPI_PARTITA_FORNITORE)},
             },
             {"_id": 0, "id": 1, "tipo": 1, "documento_id": 1,
              "documento_collection": 1, "controparte_nome": 1,
@@ -280,6 +293,7 @@ async def check_scadenze_partite_task():
                 "stato": {"$in": ["aperta", "parziale"]},
                 "$or": [{"data_scadenza": None}, {"data_scadenza": ""}],
                 "created_at": {"$lt": soglia_stale},
+                "tipo": {"$nin": list(TIPI_PARTITA_FORNITORE)},
             },
             {"_id": 0, "id": 1, "tipo": 1, "documento_id": 1,
              "documento_collection": 1, "controparte_nome": 1,
@@ -310,7 +324,7 @@ async def check_scadenze_partite_task():
 
         logger.info(
             f"📅 [SCHEDULER] Scadenze partite: {stats['totale_analizzate']} analizzate, "
-            f"fatture={stats['fattura_fornitore']}, f24={stats['f24']}, "
+            f"fornitore_saltate={stats['fornitore_senza_scadenza']}, f24={stats['f24']}, "
             f"stipendi={stats['stipendio']}, pos={stats['pos_atteso']}, "
             f"partita_vecchia_scaduta={stats['partita_vecchia_scaduta']}, "
             f"partita_vecchia_senza_scadenza={stats['partita_vecchia_senza_scadenza']}, "
@@ -323,7 +337,6 @@ async def check_scadenze_partite_task():
                 from app.services.websocket_manager import notify_data_change
                 await notify_data_change("scadenze_partite", {
                     "nuovi_alert": totale_nuovi,
-                    "fatture": stats["fattura_fornitore"],
                     "f24": stats["f24"],
                     "stipendi": stats["stipendio"],
                     "pos": stats["pos_atteso"],
@@ -865,6 +878,15 @@ def start_scheduler():
                         r.get("proiettati"), r.get("doppioni_tolti"), r.get("rate_mutuo"))
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] proiezione: %s: %s", type(e).__name__, e)
+        try:
+            # Ultimo passo: chiude gli alert che i passi sopra (e gli altri
+            # motori) hanno reso falsi e mette in quarantena i verbali nati
+            # dai numeri di fattura. Solo per id, con il motivo scritto.
+            from app.services.bonifiche_automatiche import esegui_bonifiche
+            r = await esegui_bonifiche(db)
+            logger.info("[SCHEDULER-BANCA] bonifiche %s", r.get("conteggi"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] bonifiche: %s: %s", type(e).__name__, e)
 
     async def _automazioni_prima_nota_job():
         from datetime import datetime as _dt

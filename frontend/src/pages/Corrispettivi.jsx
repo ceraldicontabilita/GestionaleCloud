@@ -71,6 +71,21 @@ export const ivaItem = item => legacyTotaleIvaIsImponibile(item)
 const sourceValue = (item, ...keys) => keys.map(key => item?.[key]).find(Boolean) || null;
 
 /**
+ * Chiave di selezione di un corrispettivo: l'id, mai la sola data. Due
+ * chiusure RT vere dello stesso giorno sono due righe distinte, e con la data
+ * la seconda non si apriva.
+ */
+export const chiaveCorrispettivo = item => String(item?.id || item?._id || item?.data || '');
+
+/** Riga aperta dal deep link: per id; un vecchio link con la data resta valido. */
+export const trovaCorrispettivo = (righe, selezionato) => {
+  if (!selezionato) return null;
+  return righe.find(c => chiaveCorrispettivo(c) === selezionato)
+    || righe.find(c => c.data === selezionato)
+    || null;
+};
+
+/**
  * PAGINA CORRISPETTIVI
  * Mostra i corrispettivi dalla collection corrispettivi
  * I corrispettivi vengono importati tramite XML dal registratore telematico
@@ -83,9 +98,9 @@ export default function Corrispettivi() {
   const [err, setErr] = useState('');
   const dettaglioRef = useRef(null);
 
-  // Deep link: item selezionato sincronizzato con hash (#selected=2026-04-08)
+  // Deep link: item selezionato sincronizzato con hash (#selected=<id>)
   const [hs, setHs] = useHashState({ selected: '' });
-  const selectedItem = corrispettivi.find(c => c.data === hs.selected) || null;
+  const selectedItem = trovaCorrispettivo(corrispettivi, hs.selected);
 
   useEffect(() => {
     if (selectedItem && dettaglioRef.current) {
@@ -114,8 +129,8 @@ export default function Corrispettivi() {
     }
   }
 
-  const openDetail = item => {
-    setHs('selected', item.data || '');
+  const openDetail = id => {
+    setHs('selected', id || '');
     requestAnimationFrame(() => {
       dettaglioRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -421,12 +436,12 @@ export default function Corrispettivi() {
                         <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center' }}>
                           <RowActionButton
                             variant="info"
-                            onClick={() => openDetail(c)}
+                            onClick={() => openDetail(chiaveCorrispettivo(c))}
                             title="Vedi dettaglio"
                             aria-label={`Vedi corrispettivo ${c.data || ''}`}
                             style={{ width: 'auto', minWidth: 60, padding: '0 10px', fontWeight: 700 }}
                           >
-                            {hs.selected === c.data ? 'Aperto' : 'Vedi'}
+                            {selectedItem && chiaveCorrispettivo(selectedItem) === chiaveCorrispettivo(c) ? 'Aperto' : 'Vedi'}
                           </RowActionButton>
                         </RowActions>
                       ),

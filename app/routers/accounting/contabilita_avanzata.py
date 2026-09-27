@@ -10,7 +10,7 @@ Endpoint per:
 from fastapi import APIRouter, HTTPException, Query, Depends
 from app.utils.dependencies import get_current_admin_user
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import logging
 import io
@@ -213,6 +213,11 @@ async def calcola_imposte_realtime(
         # Converti in dict per JSON
         return {
             "anno": anno,
+            "fonte": risultato.fonte,
+            "ricavi": risultato.ricavi,
+            "costi": risultato.costi,
+            "avvisi": risultato.avvisi,
+            "calcolabile": not risultato.avvisi,
             "utile_civilistico": risultato.utile_civilistico,
             "ires": {
                 "variazioni_aumento": [
@@ -248,7 +253,8 @@ async def calcola_imposte_realtime(
             "totale_imposte": risultato.totale_imposte,
             "aliquota_effettiva": risultato.aliquota_effettiva,
             "note": [
-                f"Calcolo basato su fatture e corrispettivi dell'anno {anno_label}",
+                f"Calcolo basato sul libro giornale dell'anno {anno_label}: "
+                "costi e ricavi al netto dell'IVA, note di credito sottratte",
                 "Variazioni fiscali automatiche per telefonia (20% indeducibile) e carburante auto (80% indeducibile)",
                 f"Aliquota IRAP regione {regione}: {calcolatore.aliquota_irap}%"
             ]
@@ -260,15 +266,23 @@ async def calcola_imposte_realtime(
 
 @router.get("/bilancio-dettagliato")
 @handle_errors
-async def get_bilancio_dettagliato() -> Dict[str, Any]:
+async def get_bilancio_dettagliato(
+    anno: Optional[int] = Query(None, ge=2000, le=2100, description="Anno; vuoto = tutto il registro"),
+) -> Dict[str, Any]:
     """
     Genera un bilancio dettagliato con:
     - Stato Patrimoniale (Attivo/Passivo/PN)
     - Conto Economico (Ricavi/Costi)
     - Dettaglio deducibilità fiscale per ogni voce di costo
     - Calcolo imposte integrato
+
+    Audit 27/09/2026: il frontend chiedeva ``?anno=`` ma il parametro non
+    esisteva, e il bilancio era sempre cumulativo su tutti gli anni.
     """
     db = Database.get_db()
+    # Invocata direttamente (test, altri servizi) FastAPI non sostituisce
+    # il valore predefinito Query(): conta solo un intero vero.
+    anno = anno if isinstance(anno, int) else None
 
     # Un solo piano (CEE ufficiale) e un solo calcolo dei saldi
     # (`piano_conti._calcola_saldi_piano_conti`): la collezione ``piano_conti``
@@ -277,7 +291,7 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
     from app.routers.accounting.piano_conti import _calcola_saldi_piano_conti
     from app.services.mapping_piano_conti import piano_conti_cee, saldi_in_cee
 
-    saldi_operativi = await _calcola_saldi_piano_conti(db, None)
+    saldi_operativi = await _calcola_saldi_piano_conti(db, str(anno) if anno else None)
     saldi_cee = saldi_in_cee(saldi_operativi)
     conti = [
         conto for conto in piano_conti_cee(saldi_operativi)
@@ -286,6 +300,8 @@ async def get_bilancio_dettagliato() -> Dict[str, Any]:
 
     bilancio = {
         "schema": "CEE",
+        "anno": anno,
+        "fonte_saldi": "movimenti_contabili",
         "stato_patrimoniale": {
             "attivo": {"voci": [], "totale": 0},
             "passivo": {"voci": [], "totale": 0},

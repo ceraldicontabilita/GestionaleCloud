@@ -31,11 +31,30 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+from app.services.conto_economico_gestionale import FILTRO_CORRISPETTIVI_VALIDI
 
 logger = logging.getLogger(__name__)
 
 COLL_MOVIMENTI = "movimenti_contabili"
 COLL_PIANO_CONTI = "piano_conti"
+
+# Audit 27/09/2026 (punto 4): una scrittura marcata cancellata non e' nel
+# libro giornale. 15 scritture con ``deleted: true`` (doppioni) venivano
+# ancora sommate da giornale, mastro e bilancio di verifica. UN solo
+# predicato per tutti i lettori del registro: le chiavi sono diverse da
+# quelle dei filtri di periodo, quindi si fonde con un semplice ``{**a, **b}``.
+FILTRO_SCRITTURA_ATTIVA: Dict[str, Any] = {
+    "deleted": {"$ne": True},
+    "status": {"$ne": "deleted"},
+    "entity_status": {"$ne": "deleted"},
+}
+
+
+def scrittura_attiva(scrittura: Dict[str, Any]) -> bool:
+    """Stesso predicato di ``FILTRO_SCRITTURA_ATTIVA``, per le liste gia' lette."""
+    return (scrittura.get("deleted") is not True
+            and scrittura.get("status") != "deleted"
+            and scrittura.get("entity_status") != "deleted")
 
 # Audit del commercialista 03/09/2026 §2 (PR 8): oltre alla guardia
 # ``find_one`` (valida in un solo processo), ogni scrittura porta una
@@ -108,20 +127,74 @@ def _anno_da_data(data: Optional[str]) -> Optional[int]:
         return None
 
 
+COLL_NUMERI_PROTOCOLLO = "protocollo_registrazioni"
+_numerazione_lock: Optional[asyncio.Lock] = None
+_numerazione_loop = None
+_TENTATIVI_NUMERO = 200
+
+
+def _lock_numerazione() -> asyncio.Lock:
+    """Un lock per event loop: un ``asyncio.Lock`` conteso resta legato al
+    loop in cui e' nato (i test ne aprono uno per caso)."""
+    global _numerazione_lock, _numerazione_loop
+    loop = asyncio.get_running_loop()
+    if _numerazione_lock is None or _numerazione_loop is not loop:
+        _numerazione_lock, _numerazione_loop = asyncio.Lock(), loop
+    return _numerazione_lock
+
+
+async def _massimo_numero(db, collezione: str, campo: str, anno: Optional[int]) -> int:
+    ultimo = await db[collezione].find_one(
+        {campo: {"$exists": True}, "anno": anno},
+        {"_id": 0, campo: 1},
+        sort=[(campo, -1)],
+    )
+    valore = (ultimo or {}).get(campo)
+    return valore if isinstance(valore, int) else 0
+
+
 async def _prossimo_numero(db, anno: Optional[int]) -> int:
     """Numero di protocollo PROGRESSIVO PER ANNO (scelta utente 2026-07-14,
     prassi dei registri contabili): riparte da 1 a ogni nuovo anno solare.
-    `{"anno": anno}` nel repository intercetta sia i documenti con `anno` uguale
-    sia quelli senza il campo, quando `anno` è None (fallback per scritture
-    senza data individuabile)."""
-    ultimo = await db[COLL_MOVIMENTI].find_one(
-        {"numero_registrazione": {"$exists": True}, "anno": anno},
-        {"_id": 0, "numero_registrazione": 1},
-        sort=[("numero_registrazione", -1)],
-    )
-    if ultimo and isinstance(ultimo.get("numero_registrazione"), int):
-        return ultimo["numero_registrazione"] + 1
-    return 1
+
+    Audit 27/09/2026 (punto 12): il vecchio «massimo + 1» non era atomico —
+    due scritture in volo nello stesso istante (import + giro pregresso, o
+    deploy sovrapposto) leggevano lo stesso massimo e nascevano due
+    registrazioni con lo stesso numero. Ora ogni numero si PRENOTA con una
+    riga in ``protocollo_registrazioni`` la cui ``idempotency_key``
+    (``num:<anno>:<n>``) Postgres rende unica (stesso indice delle
+    scritture): chi arriva secondo viene rifiutato e prova il numero dopo.
+    Nel processo un lock serializza la prenotazione. I numeri gia' assegnati
+    non si toccano (sono immutabili): si riparte dal massimo fra giornale e
+    prenotazioni. `{"anno": None}` intercetta anche i documenti senza il
+    campo (fallback per scritture senza data individuabile)."""
+    etichetta_anno = anno if anno is not None else "senza_anno"
+    async with _lock_numerazione():
+        numero = max(
+            await _massimo_numero(db, COLL_MOVIMENTI, "numero_registrazione", anno),
+            await _massimo_numero(db, COLL_NUMERI_PROTOCOLLO, "numero", anno),
+        ) + 1
+        for _ in range(_TENTATIVI_NUMERO):
+            chiave = f"num:{etichetta_anno}:{numero}"
+            if await db[COLL_NUMERI_PROTOCOLLO].find_one(
+                    {"idempotency_key": chiave}, {"_id": 0, "id": 1}):
+                numero += 1
+                continue
+            try:
+                await db[COLL_NUMERI_PROTOCOLLO].insert_one({
+                    "id": str(uuid.uuid4()), "anno": anno, "numero": numero,
+                    "idempotency_key": chiave, "created_at": _now(),
+                })
+            except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave e' gestito
+                if type(exc).__name__ != "DocumentoDuplicatoRemoto":
+                    raise
+                # Numero preso nel frattempo da un altro processo: il successivo.
+                numero += 1
+                continue
+            return numero
+    raise RuntimeError(
+        f"Numero di protocollo {etichetta_anno} non prenotato dopo "
+        f"{_TENTATIVI_NUMERO} tentativi: troppe scritture concorrenti")
 
 
 async def _audit(db, azione: str, entita_id: str, dettaglio: str) -> None:
@@ -137,14 +210,49 @@ async def _audit(db, azione: str, entita_id: str, dettaglio: str) -> None:
         logger.warning("[RegistrazioneContabile] audit della registrazione non scritto: %s", exc)
 
 
+_TOLLERANZA_QUADRATURA = 0.01
+
+
+class ScritturaNonQuadrata(ValueError):
+    """Scrittura con DARE diverso da AVERE: non si salva (CLAUDE.md)."""
+
+
+def totali_righe(righe: list) -> "tuple[float, float]":
+    """Totali DARE e AVERE sommati dalle RIGHE (non dai campi di testata,
+    che un chiamante potrebbe aver calcolato a parte)."""
+    dare = round(sum(float(r.get("dare") or 0) for r in righe or []), 2)
+    avere = round(sum(float(r.get("avere") or 0) for r in righe or []), 2)
+    return dare, avere
+
+
+def scrittura_quadrata(righe: list) -> bool:
+    dare, avere = totali_righe(righe)
+    return bool(righe) and abs(round(dare - avere, 2)) <= _TOLLERANZA_QUADRATURA
+
+
 async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[str, Any]:
     """Inserisce il movimento e aggiorna i saldi dei conti (una sola volta).
 
     Se Postgres rifiuta la riga perche' la ``idempotency_key`` e' gia' usata
     (scrittura fatta nel frattempo da un altro processo), NON aggiorna i
     saldi e restituisce la scrittura esistente con ``gia_registrato=True``.
+
+    Audit 27/09/2026 (punto 5): guardia Dare = Avere per OGNI scrittura del
+    motore, sommata dalle righe. 57 fatture erano nel giornale squadrate
+    (costo = imponibile, debito = totale documento). Unica eccezione: lo
+    storno (``storno_di``), specchio riga per riga di una scrittura gia'
+    salvata — deve poter annullare anche una scrittura storica squadrata,
+    e la coppia originale + storno somma comunque a zero su ogni conto.
     """
     from app.routers.accounting.piano_conti import aggiorna_saldo_conto
+    if not movimento.get("storno_di") and not scrittura_quadrata(movimento.get("righe") or []):
+        dare, avere = totali_righe(movimento.get("righe") or [])
+        raise ScritturaNonQuadrata(
+            f"Scrittura {movimento.get('tipo')} non quadrata: DARE {dare:.2f} != AVERE {avere:.2f}")
+    # Il numero si prenota solo per una scrittura che si salva davvero: una
+    # scrittura rifiutata dalla quadratura non brucia un numero del protocollo.
+    if movimento.get("numero_registrazione") is None:
+        movimento["numero_registrazione"] = await _prossimo_numero(db, movimento.get("anno"))
     try:
         await db[COLL_MOVIMENTI].insert_one(movimento.copy())
     except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave e' gestito
@@ -326,9 +434,17 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     if conti is None:
         conti = await determina_conti_fattura(db, fattura)
     centro_costo = fattura.get("centro_costo") or fattura.get("centro_di_costo")
-    data_doc = fattura.get("invoice_date") or fattura.get("data_fattura")
+    # Audit 27/09/2026 (punto 6): 19 scritture erano nate con ``anno`` None
+    # perche' la fattura portava la data solo in ``data_documento``/``data``.
+    # Senza nessuna data la scrittura non si salva: non si sa in quale anno
+    # (e con quale protocollo) registrarla.
+    data_doc = (fattura.get("invoice_date") or fattura.get("data_fattura")
+                or fattura.get("data_documento") or fattura.get("data"))
     numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
     anno = _anno_da_data(fattura.get("data_competenza") or data_doc)
+    if anno is None:
+        return {"stato": "da_verificare",
+                "motivo": "fattura senza data documento: anno di registrazione ignoto"}
 
     costo_contabile = round(imponibile + iva_indetraibile, 2)
     if is_nota_credito:
@@ -392,12 +508,26 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
             "riduzione debito v/fornitore" if is_nota_credito else "Debito v/fornitore"
         ),
     })
+    # Audit 27/09/2026 (punto 5): costo = imponibile, debito = totale del
+    # documento. Se i due lati non tornano (bollo, arrotondamenti, righe
+    # escluse dall'imponibile) la scrittura NON si salva: resta da verificare
+    # col motivo scritto, mai quadrata d'ufficio.
+    tot_dare, tot_avere = totali_righe(righe)
+    if abs(round(tot_dare - tot_avere, 2)) > _TOLLERANZA_QUADRATURA:
+        return {
+            "stato": "da_verificare",
+            "motivo": (
+                f"scrittura non quadrata: DARE {tot_dare:.2f} != AVERE {tot_avere:.2f} "
+                f"(imponibile {imponibile:.2f} + IVA {iva:.2f} contro totale {importo_totale:.2f})"
+            ),
+        }
     now = _now()
     fornitore_nome = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
     totale_lato_costo = round(costo_residuo + quota_cespiti + iva_detraibile, 2)
     movimento = {
         "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db, anno),
+        # Assegnato da _scrivi_movimento dopo la guardia di quadratura.
+        "numero_registrazione": None,
         "tipo": "fattura_acquisto",
         "fonte_documento": {"tipo": "fattura", "id": fattura_id, "numero": numero},
         "fattura_id": fattura_id,
@@ -469,7 +599,8 @@ async def _scrivi_storno(db, originale: Dict[str, Any], motivo: str, tipo: str,
     anno = originale.get("anno") or _anno_da_data(originale.get("data"))
     storno = {
         "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db, anno),
+        # Assegnato da _scrivi_movimento dopo la guardia di quadratura.
+        "numero_registrazione": None,
         "tipo": tipo,
         "storno_di": originale.get("id"),
         "fonte_documento": originale.get("fonte_documento"),
@@ -489,10 +620,18 @@ async def _scrivi_storno(db, originale: Dict[str, Any], motivo: str, tipo: str,
         "idempotency_key": idempotency_key,
     }
     mov = await _scrivi_movimento(db, storno, saldi)
-    await db[COLL_MOVIMENTI].update_one(
-        {"id": originale.get("id")},
-        {"$set": {"stato": "stornato", "stornato_da": mov.get("id"),
-                  "stornato_at": now, "motivo_storno": motivo}})
+    patch_originale = {"stato": "stornato", "stornato_da": mov.get("id"),
+                       "stornato_at": now, "motivo_storno": motivo}
+    chiave_originale = originale.get("idempotency_key")
+    if chiave_originale and ":stornato:" not in str(chiave_originale):
+        # Audit 27/09/2026: la scrittura stornata non occupa piu' la chiave
+        # naturale del documento. Righe, importi e protocollo restano quelli
+        # di allora; cambia solo la chiave tecnica, cosi' una nuova
+        # registrazione corretta dello stesso documento (rettifica) non viene
+        # rifiutata dall'indice unico come «gia' registrata».
+        patch_originale["idempotency_key"] = f"{chiave_originale}:stornato:{mov.get('id')}"
+        patch_originale["idempotency_key_originale"] = chiave_originale
+    await db[COLL_MOVIMENTI].update_one({"id": originale.get("id")}, {"$set": patch_originale})
     return mov
 
 
@@ -511,8 +650,14 @@ async def storna_registrazione_fattura(db, fattura_id: str, motivo: str) -> Dict
     """
     if not fattura_id:
         return {"stato": "saltato", "motivo": "fattura senza id"}
+    # Dopo una rettifica (storno + nuova registrazione) la stessa fattura ha
+    # due scritture: si storna quella ancora valida, non quella gia' stornata.
     originale = await db[COLL_MOVIMENTI].find_one(
-        {"tipo": "fattura_acquisto", "fattura_id": fattura_id}, {"_id": 0})
+        {"tipo": "fattura_acquisto", "fattura_id": fattura_id,
+         "stato": {"$ne": "stornato"}, **FILTRO_SCRITTURA_ATTIVA}, {"_id": 0})
+    if not originale:
+        originale = await db[COLL_MOVIMENTI].find_one(
+            {"tipo": "fattura_acquisto", "fattura_id": fattura_id}, {"_id": 0})
     if not originale:
         return {"stato": "saltato", "motivo": "nessuna scrittura da stornare"}
     if originale.get("stato") == "stornato":
@@ -540,10 +685,15 @@ async def storna_registrazione_corrispettivo(db, corrispettivo_id: Any, motivo: 
     inversa (``reg:storno-corrispettivo:<id>``)."""
     if corrispettivo_id in (None, ""):
         return {"stato": "saltato", "motivo": "corrispettivo senza id"}
+    # Come per le fatture: dopo storno + nuova registrazione si storna la
+    # scrittura ancora valida, non quella gia' stornata.
     originale = None
-    for valore in dict.fromkeys([corrispettivo_id, str(corrispettivo_id)]):
-        originale = await db[COLL_MOVIMENTI].find_one(
-            {"tipo": "corrispettivo", "corrispettivo_id": valore}, {"_id": 0})
+    for filtro_stato in ({"stato": {"$ne": "stornato"}, **FILTRO_SCRITTURA_ATTIVA}, {}):
+        for valore in dict.fromkeys([corrispettivo_id, str(corrispettivo_id)]):
+            originale = await db[COLL_MOVIMENTI].find_one(
+                {"tipo": "corrispettivo", "corrispettivo_id": valore, **filtro_stato}, {"_id": 0})
+            if originale:
+                break
         if originale:
             break
     if not originale:
@@ -660,7 +810,8 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
     now = _now()
     movimento = {
         "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db, anno),
+        # Assegnato da _scrivi_movimento dopo la guardia di quadratura.
+        "numero_registrazione": None,
         "tipo": "corrispettivo",
         "fonte_documento": {"tipo": "corrispettivo", "id": corr_id, "numero": None},
         "corrispettivo_id": corr_id,
@@ -698,9 +849,10 @@ _FILTRO_FATTURE_DA_REGISTRARE: Dict[str, Any] = {
     "duplicate_review_required": {"$ne": True},
     "registrata_contabilita": {"$ne": True},
 }
+# Corrispettivo valido: filtro unico di services/conto_economico_gestionale.py
+# (comprende ``archiviata``, che ``_corrispettivo_registrabile`` gia' scartava).
 _FILTRO_CORRISPETTIVI_DA_REGISTRARE: Dict[str, Any] = {
-    "status": {"$nin": ["deleted", "archived"]},
-    "entity_status": {"$ne": "deleted"},
+    **FILTRO_CORRISPETTIVI_VALIDI,
     "registrato_contabilita": {"$ne": True},
 }
 # Un corrispettivo provvisorio (chiusura manuale serale in attesa dell'XML
@@ -737,6 +889,7 @@ def _riepilogo_esiti(esiti: list) -> Dict[str, int]:
 _PROIEZIONE_FATTURE_MASSIVA = {"_id": 0, "xml_raw": 0, "xml_content": 0, "linee": 0}
 _PROIEZIONE_MOVIMENTI_MASSIVA = {
     "_id": 0, "id": 1, "tipo": 1, "fattura_id": 1, "corrispettivo_id": 1,
+    "stato": 1, "deleted": 1, "status": 1, "entity_status": 1,
 }
 _PAUSA_TRA_DOCUMENTI = 0.25  # secondi: lascia respirare event loop e database
 _PROGRESSO_OGNI = 20
@@ -747,8 +900,15 @@ _pregresso_task: Optional[asyncio.Task] = None
 
 async def _gia_registrati(db) -> tuple[Dict[str, str], Dict[str, str]]:
     """Documenti gia' nel libro giornale: ``{id documento: id movimento}``
-    per le fatture e per i corrispettivi."""
-    movimenti = await db[COLL_MOVIMENTI].find({}, _PROIEZIONE_MOVIMENTI_MASSIVA).to_list(None)
+    per le fatture e per i corrispettivi.
+
+    Una scrittura stornata o cancellata non tiene il documento nel giornale
+    (audit 27/09/2026): altrimenti una fattura rettificata, rimasta senza
+    scrittura valida, verrebbe rimarcata «registrata» dal riallineamento."""
+    movimenti = [
+        m for m in await db[COLL_MOVIMENTI].find({}, _PROIEZIONE_MOVIMENTI_MASSIVA).to_list(None)
+        if m.get("stato") != "stornato" and scrittura_attiva(m)
+    ]
     fatture = {str(m["fattura_id"]): str(m.get("id") or "") for m in movimenti
                if m.get("tipo") == "fattura_acquisto" and m.get("fattura_id")}
     corrispettivi = {str(m["corrispettivo_id"]): str(m.get("id") or "") for m in movimenti

@@ -115,7 +115,7 @@ describe('Import documenti - corrispettivo duplicato', () => {
         linked_claim_ids: ['claim-1', 'claim-2'],
         bank_verified: false,
       } },
-    })).toBe('Rata collegata â€¢ Cartelle collegate: 2 â€¢ Banca da verificare');
+    })).toBe('Rata collegata • Cartelle collegate: 2 • Banca da verificare');
   });
 
   it('separa importo, commissione e addebito per MAV RAV e bollettini', () => {

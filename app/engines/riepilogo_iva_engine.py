@@ -21,6 +21,22 @@ def _iva(f: Dict[str, Any]) -> float:
         return 0.0
 
 
+# Stati in cui nessuno ha ancora deciso la detraibilita'.
+STATI_NON_DECISI = (None, "", "NON_VALUTATA", "DA_VERIFICARE")
+
+
+def _iva_documento(f: Dict[str, Any]) -> float:
+    """IVA esposta sul documento (quella ancora da decidere)."""
+    for chiave in ("iva_documento", "iva", "total_tax", "totale_iva"):
+        try:
+            valore = float(f.get(chiave) or 0)
+        except (TypeError, ValueError):
+            continue
+        if valore:
+            return round(valore, 2)
+    return 0.0
+
+
 def _is_nota_credito(f: Dict[str, Any]) -> bool:
     return str(f.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO
 
@@ -43,9 +59,10 @@ def riepilogo_categorie(fatture: List[Dict[str, Any]]) -> Dict[str, Dict[str, fl
     }
 
     for f in fatture:
-        if _is_nota_credito(f):
-            continue
-        iva = _iva(f)
+        # Una nota di credito riduce l'IVA della sua categoria (audit
+        # 27/09/2026, punto 8): prima veniva saltata.
+        segno = -1 if _is_nota_credito(f) else 1
+        iva = round(segno * abs(_iva(f)), 2) if segno < 0 else _iva(f)
         stato = f.get("stato_detrazione_iva")
         if f.get("iva_utilizzata") is True:
             key = "utilizzata"
@@ -57,8 +74,13 @@ def riepilogo_categorie(fatture: List[Dict[str, Any]]) -> Dict[str, Dict[str, fl
             key = "recuperata_annualmente"
         elif stato == "RINVIATA":
             key = "rinviata"
-        elif stato == "DA_VERIFICARE":
+        elif stato in STATI_NON_DECISI or f.get("iva_detraibile") is None:
+            # Audit 27/09/2026 (punto 7): una fattura mai valutata finiva fra
+            # le «non utilizzate» — quindi nel disponibile — a 0 €. Non e'
+            # IVA disponibile: e' IVA da decidere, e vale quella del documento.
             key = "da_verificare"
+            if f.get("iva_detraibile") is None:
+                iva = round(segno * abs(_iva_documento(f)), 2)
         else:
             key = "non_utilizzata"
         cat[key][0] = round(cat[key][0] + iva, 2)

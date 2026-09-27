@@ -77,6 +77,11 @@ def test_un_versamento_scrive_uscita_cassa_ed_entrata_banca(db):
     assert cassa[0]["tipo"] == "uscita" and banca[0]["tipo"] == "entrata"
     assert cassa[0]["importo"] == banca[0]["importo"] == 5000.0
     assert esito["versamenti"] == 1
+    # Ogni gamba ha il suo conto e per contropartita l'altro conto di tesoreria.
+    assert banca[0]["conto_contabile"] == "19.01.01"
+    assert banca[0]["conto_contropartita"] == "19.03.03"
+    assert cassa[0]["conto_contabile"] == "19.03.03"
+    assert cassa[0]["conto_contropartita"] == "19.01.01"
 
 
 def test_un_prelievo_e_il_movimento_opposto(db):

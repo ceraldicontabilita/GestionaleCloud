@@ -15,6 +15,15 @@ from typing import Any
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 
 
+def non_collegato(campo: str) -> dict[str, Any]:
+    """«Non ancora collegato»: campo assente, null o vuoto.
+
+    `$in: [None, ""]` da solo non prende le righe che il campo non l'hanno
+    mai avuto, cioe' proprio quelle mai collegate.
+    """
+    return {"$or": [{campo: {"$exists": False}}, {campo: {"$in": [None, ""]}}]}
+
+
 COLLECTION_RICEVUTE = "ricevute_pagopa"
 PARSER_VERSION = "payment-receipt-layout-v4"
 
@@ -511,10 +520,31 @@ async def find_bank_movement(db, code: str | list[str], amount: Any):
         ))
     movements = await db.estratto_conto_movimenti.find({
         "$or": references,
-        "ricevuta_pagopa_id": {"$in": [None, ""]},
+        "$and": [non_collegato("ricevuta_pagopa_id")],
     }, {"_id": 0}).limit(20).to_list(20)
     exact = [item for item in movements if amounts_equal_to_cent(item.get("importo"), amount)]
     return exact[0] if len(exact) == 1 else None
+
+
+async def _movimento_della_ricevuta(
+    db, codes: list[str], values: dict[str, Any], amount: Any,
+) -> dict[str, Any] | None:
+    """Il movimento bancario della ricevuta: sempre per codice (IUV/CBILL o
+    gli altri riferimenti forti) e importo al centesimo.
+
+    L'importo si prova prima quello dell'operazione, poi l'addebito totale:
+    la banca addebita l'importo netto (781,60) e la commissione a parte,
+    mentre ``bank_debit_total`` lo somma (784,45) e non trovava mai niente.
+    """
+    tentati: list[Any] = []
+    for importo in (values.get("operation_amount") or amount, values.get("bank_debit_total")):
+        if importo in (None, "") or any(amounts_equal_to_cent(importo, t) for t in tentati):
+            continue
+        tentati.append(importo)
+        movement = await find_bank_movement(db, codes, importo)
+        if movement:
+            return movement
+    return None
 
 
 async def _associate_receipt_to_verbale(
@@ -633,8 +663,7 @@ async def import_receipt(
         )
         if values.get(field)
     ))
-    bank_amount = values.get("bank_debit_total") or amount
-    movement = await find_bank_movement(db, strong_codes, bank_amount)
+    movement = await _movimento_della_ricevuta(db, strong_codes, values, amount)
     now = datetime.now(timezone.utc).isoformat()
     receipt = {
         "id": receipt_id, "filename": filename, "content_type": "application/pdf",

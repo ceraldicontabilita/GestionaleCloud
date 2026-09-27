@@ -7,11 +7,43 @@ import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/Pa
 import { Button, Badge, StatCard, Input } from '../components/ds';
 import { Target, TrendingUp, TrendingDown, Save, Calculator, BarChart3 } from 'lucide-react';
 
+export const DATO_NON_DISPONIBILE = 'Dato non disponibile';
+
+/** Importo in euro, oppure «Dato non disponibile» se il backend non lo sa. */
+export function euroODato(valore) {
+  return valore == null ? DATO_NON_DISPONIBILE : formatEuro(valore);
+}
+
+/**
+ * Stato della pagina dalla risposta del backend. Nessun ripiego numerico:
+ * senza target configurato il target e' null (prima il backend inventava
+ * 50.000 € e la pagina un margine del 15%), senza costo del personale
+ * costi e utile sono null.
+ */
+export function statoDaRisposta(data) {
+  const target = data?.target || {};
+  const reale = data?.reale || {};
+  const analisi = data?.analisi || {};
+  return {
+    configurato: Boolean(target.configurato),
+    target_utile: target.utile_target_annuo ?? null,
+    margine_atteso: target.margine_medio_atteso ?? null,
+    ricavi_totali: reale.ricavi_totali ?? null,
+    costi_totali: reale.costi_totali ?? null,
+    utile_attuale: reale.utile_corrente ?? null,
+    personale_motivo: reale.personale_motivo ?? null,
+    percentuale_raggiungimento: analisi.percentuale_target_annuo ?? null,
+    gap_da_colmare: analisi.gap_target_annuo ?? null,
+    surplus_target: analisi.surplus_target_annuo ?? null,
+    per_centro_costo: {},
+  };
+}
+
 export default function UtileObiettivo() {
   const { anno } = useAnnoGlobale();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [settings, setSettings] = useState({ target_utile: 0, margine_atteso: 0.15 });
+  const [settings, setSettings] = useState({ target_utile: '', margine_atteso: null });
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
@@ -22,22 +54,11 @@ export default function UtileObiettivo() {
     setLoading(true);
     try {
       const res = await api.get(`/api/centri-costo/utile-obiettivo?anno=${anno}`);
-      const data = res.data;
-
-      setStatus({
-        target_utile: data.target?.utile_target_annuo || 0,
-        margine_atteso: data.target?.margine_medio_atteso || 0.15,
-        ricavi_totali: data.reale?.ricavi_totali || 0,
-        costi_totali: data.reale?.costi_totali || 0,
-        utile_attuale: data.reale?.utile_corrente || 0,
-        percentuale_raggiungimento: Math.max(0, data.analisi?.percentuale_target_annuo || 0),
-        gap_da_colmare: Math.max(0, data.analisi?.gap_target_annuo || 0),
-        surplus_target: Math.max(0, data.analisi?.surplus_target_annuo || 0),
-        per_centro_costo: {},
-      });
+      const nuovo = statoDaRisposta(res.data);
+      setStatus(nuovo);
       setSettings({
-        target_utile: data.target?.utile_target_annuo || 0,
-        margine_atteso: data.target?.margine_medio_atteso || 0.15,
+        target_utile: nuovo.target_utile ?? '',
+        margine_atteso: nuovo.margine_atteso,
       });
     } catch (err) {
       console.error('Errore caricamento status:', err);
@@ -48,11 +69,16 @@ export default function UtileObiettivo() {
   }
 
   async function saveTarget() {
+    const target = parseFloat(settings.target_utile);
+    if (!Number.isFinite(target)) {
+      toast.error('Indica il target di utile annuale prima di salvare');
+      return;
+    }
     setSaving(true);
     try {
       await api.post('/api/centri-costo/utile-obiettivo', {
         anno,
-        utile_target_annuo: settings.target_utile,
+        utile_target_annuo: target,
         margine_medio_atteso: settings.margine_atteso,
       });
       loadStatus();
@@ -63,9 +89,10 @@ export default function UtileObiettivo() {
     }
   }
 
-  const percentualeRaggiungimento = status?.percentuale_raggiungimento || 0;
-  const isOnTrack = (status?.gap_da_colmare || 0) === 0 && (status?.target_utile || 0) > 0;
-  const isAtRisk = !isOnTrack && percentualeRaggiungimento >= 50;
+  const percentualeRaggiungimento = status?.percentuale_raggiungimento ?? null;
+  const confrontabile = status?.configurato && percentualeRaggiungimento != null;
+  const isOnTrack = confrontabile && status?.gap_da_colmare === 0 && status?.target_utile > 0;
+  const isAtRisk = confrontabile && !isOnTrack && percentualeRaggiungimento >= 50;
   const progressColor = isOnTrack ? COLORS.success : isAtRisk ? COLORS.warning : COLORS.danger;
   const progressVariant = isOnTrack ? 'success' : isAtRisk ? 'warning' : 'danger';
 
@@ -97,9 +124,8 @@ export default function UtileObiettivo() {
                 <Input
                   type="number"
                   value={settings.target_utile}
-                  onChange={e =>
-                    setSettings(s => ({ ...s, target_utile: parseFloat(e.target.value) || 0 }))
-                  }
+                  placeholder="Da impostare"
+                  onChange={e => setSettings(s => ({ ...s, target_utile: e.target.value }))}
                   style={{ padding: 12, fontSize: 16, fontWeight: 600 }}
                   data-testid="input-target-utile"
                 />
@@ -118,11 +144,13 @@ export default function UtileObiettivo() {
                 </label>
                 <Input
                   type="number"
-                  value={(settings.margine_atteso * 100).toFixed(0)}
+                  value={settings.margine_atteso == null ? '' : (settings.margine_atteso * 100).toFixed(0)}
+                  placeholder="Da impostare"
                   onChange={e =>
                     setSettings(s => ({
                       ...s,
-                      margine_atteso: (parseFloat(e.target.value) || 0) / 100,
+                      margine_atteso:
+                        e.target.value === '' ? null : (parseFloat(e.target.value) || 0) / 100,
                     }))
                   }
                   style={{ padding: 12, fontSize: 16, fontWeight: 600 }}
@@ -148,7 +176,19 @@ export default function UtileObiettivo() {
           {/* Status Card */}
           {status && (
             <>
+              {!confrontabile && (
+                <PageSection title="Raggiungimento Obiettivo" style={{ marginTop: 24 }}>
+                  <div data-testid="utile-obiettivo-non-confrontabile" style={{ color: COLORS.textMuted, fontSize: 14 }}>
+                    {!status.configurato
+                      ? 'Nessun target impostato per quest\'anno: indica il target di utile per confrontarlo con il risultato.'
+                      : `${DATO_NON_DISPONIBILE}: utile non calcolabile${
+                          status.personale_motivo ? ` (${status.personale_motivo})` : ''
+                        }.`}
+                  </div>
+                </PageSection>
+              )}
               {/* Barra Progresso Principale */}
+              {confrontabile && (
               <PageSection title="Raggiungimento Obiettivo" style={{ marginTop: 24 }}>
                 <div
                   style={{
@@ -171,7 +211,7 @@ export default function UtileObiettivo() {
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 14, color: COLORS.textMuted, marginBottom: 4 }}>Target</div>
                     <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.gray[800], fontFamily: FONT.mono }}>
-                      {formatEuro(status.target_utile || 0)}
+                      {euroODato(status.target_utile)}
                     </div>
                   </div>
                 </div>
@@ -188,7 +228,7 @@ export default function UtileObiettivo() {
                 >
                   <div
                     style={{
-                      width: `${Math.min(percentualeRaggiungimento, 100)}%`,
+                      width: `${Math.max(0, Math.min(percentualeRaggiungimento, 100))}%`,
                       height: '100%',
                       background: progressColor,
                       borderRadius: BORDER_RADIUS.md,
@@ -227,34 +267,46 @@ export default function UtileObiettivo() {
                   </Badge>
                 </div>
               </PageSection>
+              )}
 
               {/* Metriche Dettagliate */}
               <div style={{ marginTop: 24 }}>
                 <PageGrid cols={4} gap={16}>
                   <StatCard
                     label="Ricavi Totali"
-                    value={formatEuro(status.ricavi_totali || 0)}
+                    value={euroODato(status.ricavi_totali)}
                     icon={<TrendingUp size={18} />}
                     accent="success"
                   />
                   <StatCard
                     label="Costi Totali"
-                    value={formatEuro(status.costi_totali || 0)}
+                    value={euroODato(status.costi_totali)}
+                    subtext="Fatture nette e lordo buste paga, senza contributi datoriali"
                     icon={<TrendingDown size={18} />}
                     accent="danger"
                   />
                   <StatCard
                     label="Utile Attuale"
-                    value={formatEuro(status.utile_attuale || 0)}
+                    value={euroODato(status.utile_attuale)}
                     icon={<Target size={18} />}
-                    accent={(status.utile_attuale || 0) >= 0 ? 'success' : 'danger'}
+                    accent={status.utile_attuale == null ? 'none' : status.utile_attuale >= 0 ? 'success' : 'danger'}
                   />
                   <StatCard
-                    label={status.gap_da_colmare > 0 ? 'Gap da Colmare' : 'Target Superato'}
-                    value={formatEuro(status.gap_da_colmare || 0)}
+                    label={
+                      status.gap_da_colmare == null
+                        ? 'Gap da Colmare'
+                        : status.gap_da_colmare > 0 ? 'Gap da Colmare' : 'Target Superato'
+                    }
+                    value={euroODato(status.gap_da_colmare)}
                     icon={<BarChart3 size={18} />}
-                    subtext={status.gap_da_colmare > 0 ? undefined : formatEuro(status.surplus_target || 0)}
-                    accent={(status.gap_da_colmare || 0) > 0 ? 'warning' : 'success'}
+                    subtext={
+                      status.gap_da_colmare != null && status.gap_da_colmare === 0
+                        ? euroODato(status.surplus_target)
+                        : undefined
+                    }
+                    accent={
+                      status.gap_da_colmare == null ? 'none' : status.gap_da_colmare > 0 ? 'warning' : 'success'
+                    }
                   />
                 </PageGrid>
               </div>

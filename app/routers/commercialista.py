@@ -214,39 +214,75 @@ async def get_prima_nota_cassa_mensile(anno: int, mese: int) -> Dict[str, Any]:
     }
 
 
+_PROIEZIONE_FATTURA_CASSA = {
+    "_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1, "invoice_date": 1,
+    "data_fattura": 1, "supplier_name": 1, "cedente_denominazione": 1,
+    "supplier_vat": 1, "total_amount": 1, "importo_totale": 1, "tipo_documento": 1,
+}
+
+
+async def fatture_pagate_in_cassa(db, prefisso: str) -> list:
+    """Fatture pagate per cassa nel periodo: le righe ATTIVE di Prima Nota
+    Cassa in uscita collegate a una fattura (``fattura_id``), per data del
+    pagamento. Audit 27/09/2026 (punto 13): prima si filtrava
+    ``invoices`` su ``metodo_pagamento``/``payment_method``/
+    ``modalita_pagamento``, campi quasi assenti — l'elenco era vuoto anche con
+    pagamenti in cassa registrati. Le righe di ripiego senza prova
+    (``SOURCES_ESCLUSE``, es. la cassa d'ufficio
+    ``metodo_fornitore_assente_provvisorio``) non sono un pagamento."""
+    from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
+    from app.routers.prima_nota_module.common import SOURCES_ESCLUSE
+
+    righe = await db["prima_nota_cassa"].find({
+        "data": {"$regex": f"^{prefisso}"},
+        "tipo": "uscita",
+        "fattura_id": {"$nin": [None, ""]},
+        "status": {"$nin": ["deleted", "archived"]},
+        "entity_status": {"$ne": "deleted"},
+        "source": {"$nin": SOURCES_ESCLUSE},
+    }, {"_id": 0, "id": 1, "fattura_id": 1, "data": 1, "importo": 1}).to_list(20000)
+
+    per_fattura: Dict[str, Dict[str, Any]] = {}
+    for riga in righe:
+        voce = per_fattura.setdefault(str(riga["fattura_id"]), {"importo": 0.0, "date": [], "righe": []})
+        voce["importo"] += abs(float(riga.get("importo") or 0))
+        voce["date"].append(str(riga.get("data") or "")[:10])
+        voce["righe"].append(riga.get("id"))
+    if not per_fattura:
+        return []
+    fatture = await db["invoices"].find(
+        {"id": {"$in": list(per_fattura)}, **FILTRO_FATTURA_ATTIVA},
+        _PROIEZIONE_FATTURA_CASSA,
+    ).to_list(len(per_fattura))
+    esito = []
+    for fattura in fatture:
+        pagamento = per_fattura[str(fattura["id"])]
+        esito.append({
+            **fattura,
+            "data_pagamento": max(pagamento["date"]),
+            "importo_pagato_cassa": round(pagamento["importo"], 2),
+            "prima_nota_cassa_ids": pagamento["righe"],
+        })
+    esito.sort(key=lambda f: (f["data_pagamento"], str(f.get("invoice_number") or "")))
+    return esito
+
+
 @router.get("/fatture-cassa/{anno}/{mese}")
 @handle_errors
 async def get_fatture_pagate_cassa(anno: int, mese: int) -> Dict[str, Any]:
-    """Get invoices paid by cash for a month or the whole year."""
+    """Fatture pagate per cassa nel mese (o nell'anno con ``mese=0``)."""
     db = Database.get_db()
     month_prefix, periodo_nome = _periodo(anno, mese)
-    
-    # Query fatture with payment method = contanti/cassa and date in month
-    cursor = db["invoices"].find({
-        "$and": [
-            {"$or": [
-                {"metodo_pagamento": {"$regex": "contant|cassa", "$options": "i"}},
-                {"payment_method": {"$regex": "contant|cassa|cash", "$options": "i"}},
-                {"modalita_pagamento": {"$regex": "contant|cassa", "$options": "i"}}
-            ]},
-            {"$or": [
-                {"data_pagamento": {"$regex": f"^{month_prefix}"}},
-                {"invoice_date": {"$regex": f"^{month_prefix}"}},
-                {"data_fattura": {"$regex": f"^{month_prefix}"}}
-            ]}
-        ]
-    }, {"_id": 0})
-    
-    fatture = await cursor.to_list(10000)
-    totale = sum(float(f.get("total_amount") or f.get("importo_totale") or 0) for f in fatture)
-    
+    fatture = await fatture_pagate_in_cassa(db, month_prefix)
+    totale = sum(f["importo_pagato_cassa"] for f in fatture)
     return {
         "anno": anno,
         "mese": mese,
         "mese_nome": periodo_nome,
         "fatture": fatture,
         "totale_fatture": len(fatture),
-        "totale_importo": round(totale, 2)
+        "totale_importo": round(totale, 2),
+        "fonte": "prima_nota_cassa",
     }
 
 
@@ -896,9 +932,12 @@ async def export_excel_commercialista(anno: int, mese: int):
     ws_fatture = wb.active
     ws_fatture.title = "Fatture Acquisto"
     
+    from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
+
+    # Solo fatture attive: le copie archiviate raddoppiavano i totali.
     fatture = await db["invoices"].find({
-        "invoice_date": {"$regex": f"^{mese_str}"}
-    }, {"_id": 0}).sort("invoice_date", 1).to_list(10000)
+        "invoice_date": {"$regex": f"^{mese_str}"}, **FILTRO_FATTURA_ATTIVA,
+    }, {"_id": 0, "xml_raw": 0, "xml_content": 0}).sort("invoice_date", 1).to_list(10000)
     
     headers_fatture = ['Data', 'N. Fattura', 'Fornitore', 'P.IVA Fornitore', 'Categoria', 
                        'Imponibile', 'IVA', 'Totale', 'Pagamento', 'Conto']
@@ -961,7 +1000,9 @@ async def export_excel_commercialista(anno: int, mese: int):
     ws_corr = wb.create_sheet("Corrispettivi")
     
     corrispettivi = await db["corrispettivi"].find({
-        "data": {"$regex": f"^{mese_str}"}
+        "data": {"$regex": f"^{mese_str}"},
+        "status": {"$nin": ["deleted", "archived"]},
+        "entity_status": {"$ne": "deleted"},
     }, {"_id": 0}).sort("data", 1).to_list(10000)
     
     headers_corr = ['Data', 'Totale', 'Contante', 'Elettronico', 'Chiusura N.', 'Note']
@@ -978,7 +1019,10 @@ async def export_excel_commercialista(anno: int, mese: int):
     
     for row, c in enumerate(corrispettivi, 2):
         totale = float(c.get('totale', 0) or 0)
-        contante = float(c.get('pagato_contante', c.get('pagato_cassa', 0)) or 0)
+        # Il campo vero e' `pagato_contanti` (plurale): il singolare non
+        # esiste sui corrispettivi XML e la colonna restava a zero.
+        contante = float(
+            c.get('pagato_contanti') or c.get('pagato_contante') or c.get('pagato_cassa') or 0)
         elettr = float(c.get('pagato_elettronico', 0) or 0)
         
         tot_corr += totale

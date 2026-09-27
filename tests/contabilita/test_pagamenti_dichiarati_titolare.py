@@ -244,6 +244,9 @@ def test_il_movimento_bancario_sostituisce_la_riga_dichiarata(db):
         {"_id": 0}).to_list(10))
     assert [r["id"] for r in attive] == [esito["banca"]]
     assert attive[0]["estratto_conto_id"] == "ec-leasys"
+    # La riga nuova porta conto di tesoreria e contropartita CEE.
+    assert attive[0]["conto_contabile"] == "19.01.01"
+    assert attive[0]["conto_contropartita"] == "33.03.01"
     fattura = asyncio.run(db["invoices"].find_one({"id": "f-leasys"}))
     assert fattura["in_attesa_riscontro_banca"] is False
     assert not asyncio.run(fatture_senza_pagamento_contabile_confermato(db, [fattura]))
@@ -467,3 +470,25 @@ def test_banca_con_numero_d_assegno_si_paga_con_quell_assegno(db):
     assert salvata["assegno_numero_titolare"] == "860"
     assert [l["fattura_id"] for l in a985["fatture_collegate"]] == ["f-fep39"]
     assert [l["fattura_id"] for l in a860["fatture_collegate"]] == ["f-dicosmo"]
+
+
+def test_il_conto_della_riga_dichiarata_lo_dice_il_metodo():
+    conto = pagamenti.conto_metodo_dichiarato
+    assert conto("banca") == "19.01.01"
+    assert conto("assegno") == "19.01.01"
+    assert conto("sumup") == "19.01.05"
+    assert conto("carta", "Carta SumUp") == "19.01.05"
+    # PayPal e carta Nexi non hanno un conto di tesoreria: vuoto, mai BPM.
+    assert conto("paypal") is None
+    assert conto("carta") is None
+
+
+def test_la_riga_dichiarata_nasce_sul_conto_del_metodo(db):
+    _importa_e_applica(db)
+    leasys = asyncio.run(db["prima_nota_banca"].find_one(
+        {"fattura_id": "f-leasys", "status": {"$nin": ["deleted", "archived"]}}))
+    assert leasys["conto_contabile"] == "19.01.01"
+    carta = asyncio.run(db["prima_nota_banca"].find_one(
+        {"fattura_id": "f-vande-carta", "status": {"$nin": ["deleted", "archived"]}}))
+    assert carta["metodo_pagamento_dichiarato"] == "carta"
+    assert carta["conto_contabile"] is None

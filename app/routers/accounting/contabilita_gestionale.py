@@ -16,6 +16,17 @@ import logging
 from app.database import Database, Collections
 from app.utils.dependencies import get_current_admin_user
 from app.services.mapping_piano_conti import operativo_a_ufficiale, descrizione_ufficiale
+from app.services.conto_economico_gestionale import (
+    FILTRO_CORRISPETTIVI_VALIDI,
+    MOTIVO_CONTRIBUTI,
+    costo_personale_mensile,
+    ricavi_corrispettivi,
+)
+from app.services.fatture_report_ae import FILTRO_FATTURE_ATTIVE
+from app.services.registrazione_contabile import FILTRO_SCRITTURA_ATTIVA
+
+#: Voce di costo del consuntivo budget per il lordo delle buste paga.
+VOCE_PERSONALE = "Personale"
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Contabilità Gestionale"])
@@ -62,7 +73,7 @@ async def _bilancio_verifica_da_registro(
         {"anno": anno},
         {"data_documento": {"$regex": f"^{anno_str}"}},
         {"data": {"$regex": f"^{anno_str}"}},
-    ]}
+    ], **FILTRO_SCRITTURA_ATTIVA}
     tutte_scritture = await db["movimenti_contabili"].find(
         periodo_query, {"_id": 0}
     ).sort("data_documento", 1).to_list(100000)
@@ -172,8 +183,10 @@ async def _bilancio_verifica_da_registro(
             {"data_documento": {"$regex": f"^{anno_str}"}},
         ],
     }
+    # Corrispettivo valido: filtro unico (conto_economico_gestionale), che
+    # esclude anche ``status`` deleted/archived/archiviata.
     filtro_corrispettivi: Dict[str, Any] = {
-        "entity_status": {"$ne": "deleted"},
+        **FILTRO_CORRISPETTIVI_VALIDI,
         "data": {"$regex": f"^{anno_str}"},
     }
     if not registro_vuoto:
@@ -695,60 +708,60 @@ async def get_budget_vs_consuntivo(
     budget_data = await get_budget_completo(anno)
     
     # --- CONSUNTIVO RICAVI (corrispettivi) ---
-    # Esclude i corrispettivi eliminati (soft-delete su entity_status) —
-    # senza questo filtro un doppione cancellato restava sommato nei
-    # ricavi consuntivi, falsando lo scostamento Budget vs Consuntivo
-    # (stesso bug già corretto in bilancio.py/piano_conti.py).
-    query_corr = {
-        "$and": [
-            {"$or": [
-                {"data": {"$regex": f"^{anno_str}"}},
-                {"anno": anno}
-            ]},
-            {"entity_status": {"$ne": "deleted"}},
-        ]
-    }
-    corrispettivi = await db[Collections.CORRISPETTIVI].find(query_corr, {"_id": 0}).to_list(10000)
-    
+    # Stesso calcolo di Dashboard e Bilancio (conto_economico_gestionale):
+    # corrispettivi validi (fuori anche ``status`` deleted/archived/
+    # archiviata) e imponibile da ``totale_imponibile`` o ``imponibile``,
+    # **mai** dal lordo ``totale``, che gonfiava i ricavi dell'IVA.
+    ricavi_rt = await ricavi_corrispettivi(
+        db, {"$gte": f"{anno_str}-01-01", "$lte": f"{anno_str}-12-31"})
     ricavi_mensili = {m: 0 for m in range(1, 13)}
-    for c in corrispettivi:
-        data = c.get("data", "")
-        try:
-            m = int(data[5:7])
-        except Exception:
-            continue
+    for m, valore in ricavi_rt["per_mese"].items():
         if 1 <= m <= 12:
-            ricavi_mensili[m] += float(c.get("totale_imponibile") or c.get("totale") or 0)
+            ricavi_mensili[m] += valore
     
     # --- CONSUNTIVO COSTI (fatture ricevute) ---
-    # Esclude le fatture eliminate (status "deleted"/"archived", vedi
-    # cascade_operations.py) — stesso motivo del filtro sui corrispettivi
-    # sopra: senza questo, una fattura cancellata restava sommata nei
-    # costi consuntivi.
-    query_fatt = {
-        "$and": [
-            {"$or": [
-                {"data_documento": {"$regex": f"^{anno_str}"}},
-                {"anno": anno}
-            ]},
-            {"status": {"$nin": ["deleted", "archived"]}},
-        ]
-    }
-    fatture = await db[Collections.INVOICES].find(query_fatt, {"_id": 0}).to_list(10000)
-    
+    # Fatture attive (fuori ``archived``/``archiviata``/``deleted`` e
+    # collisioni: le copie archiviate raddoppiavano i costi) per
+    # ``invoice_date``, il campo canonico: ``data_documento`` e' derivato e
+    # manca sulle fatture che il motore IVA non ha toccato (regola 12).
+    fatture = await db[Collections.INVOICES].find(
+        {**FILTRO_FATTURE_ATTIVE, "$or": [
+            {"invoice_date": {"$regex": f"^{anno_str}"}},
+            {"data_documento": {"$regex": f"^{anno_str}"}},
+        ]},
+        {"_id": 0, "id": 1, "invoice_date": 1, "data_documento": 1, "imponibile": 1,
+         "total_amount": 1, "iva": 1, "tipo_documento": 1, "categoria_contabile": 1},
+    ).to_list(None)
+
     costi_mensili = {m: 0 for m in range(1, 13)}
     costi_per_voce = defaultdict(lambda: {m: 0 for m in range(1, 13)})
+
+    # Costo del personale: lordo delle buste, voce di costo propria (la
+    # voce di budget «Personale» lo trova per nome). Un mese senza buste
+    # non costa zero: resta None in ``personale_mensile`` e non si somma.
+    personale_mensile = await costo_personale_mensile(db, anno)
+    for m, riepilogo in personale_mensile.items():
+        if riepilogo["lordo"] is None:
+            continue
+        costi_mensili[m] += riepilogo["lordo"]
+        costi_per_voce[VOCE_PERSONALE][m] += riepilogo["lordo"]
     
     for f in fatture:
-        data_doc = f.get("data_documento", "")
+        data_doc = str(f.get("invoice_date") or f.get("data_documento") or "")
+        if not data_doc.startswith(anno_str):
+            continue
         try:
             m = int(data_doc[5:7])
-        except Exception:
+        except ValueError:
             continue
         if not (1 <= m <= 12):
             continue
-        
-        importo = float(f.get("imponibile") or f.get("total_amount") or 0)
+
+        # Imponibile, mai il totale lordo IVA compresa.
+        if f.get("imponibile") is not None:
+            importo = float(f.get("imponibile") or 0)
+        else:
+            importo = float(f.get("total_amount") or 0) - float(f.get("iva") or 0)
         tipo_doc = f.get("tipo_documento", "TD01")
         
         if tipo_doc in ["TD04", "TD08"]:
@@ -864,7 +877,18 @@ async def get_budget_vs_consuntivo(
                 "scostamento": round(margine_cons - margine_budget, 2)
             }
         },
-        "andamento_mensile": andamento
+        "andamento_mensile": andamento,
+        "personale": {
+            "voce": VOCE_PERSONALE,
+            "mensile": {m: r["lordo"] for m, r in personale_mensile.items()},
+            "mesi_senza_buste": [
+                m for m, r in personale_mensile.items() if r["lordo"] is None
+            ],
+            "contributi": None,
+            "contributi_motivo": MOTIVO_CONTRIBUTI,
+            "incompleto": True,
+        },
+        "ricavi_senza_imponibile": ricavi_rt["senza_imponibile"],
     }
 
 
@@ -962,7 +986,10 @@ def _query_periodo_giornale(
     data_da = data_da if isinstance(data_da, str) and data_da else None
     data_a = data_a if isinstance(data_a, str) and data_a else None
     invoice_key = invoice_key if isinstance(invoice_key, str) and invoice_key else None
-    condizioni: List[Dict[str, Any]] = [{"righe": {"$exists": True, "$ne": []}}]
+    # Una scrittura cancellata (``deleted: true``, doppione) non e' nel
+    # registro: esclusa da giornale, mastro ed export (audit 27/09/2026).
+    condizioni: List[Dict[str, Any]] = [
+        {"righe": {"$exists": True, "$ne": []}, **FILTRO_SCRITTURA_ATTIVA}]
     if invoice_key:
         condizioni.append({"$or": [
             {"invoice_key": invoice_key},
@@ -1336,6 +1363,56 @@ async def import_libro_giornale(
         "scartate_senza_righe_o_protocollo": 0,
         "qualita_registro": qualita_dump,
     }
+
+
+_GIRI_MANUTENZIONE = {"rettifica-fatture": "rettifica_fatture",
+                      "scritture-cancellate": "scritture_cancellate"}
+
+
+@router.post("/libro-giornale/manutenzione/{giro}")
+async def manutenzione_libro_giornale(
+    giro: str,
+    dry_run: bool = Query(True, description="Simulazione: elenca senza scrivere"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Manutenzione del registro (Admin-only, audit 27/09/2026).
+
+    - ``rettifica-fatture``: scritture di fattura non quadrate o senza anno;
+      in applicazione le storna e registra di nuovo la fattura col motore
+      corretto (che rifiuta una scrittura non quadrata).
+    - ``scritture-cancellate``: scritture ``deleted: true``, gia' escluse dal
+      giornale; in applicazione le annota come doppione (con la gemella
+      attiva) o come documento rimasto senza scrittura. Nessuna cancellazione.
+
+    ``dry_run=true`` (predefinito) risponde subito con l'elenco; il giro vero
+    parte in sottofondo e si segue con ``GET .../manutenzione/{giro}/stato``."""
+    from app.services import manutenzione_giornale as manutenzione
+
+    nome = _GIRI_MANUTENZIONE.get(giro)
+    if not nome:
+        raise HTTPException(status_code=404, detail=f"Giro di manutenzione sconosciuto: {giro}")
+    db = Database.get_db()
+    if dry_run is not False:
+        if nome == "rettifica_fatture":
+            return await manutenzione.rettifica_scritture_fatture(db, dry_run=True)
+        return await manutenzione.censisci_scritture_cancellate(db, dry_run=True)
+    if not manutenzione.avvia_in_background(db, nome):
+        return {"status": "running", "message": "Manutenzione già in corso"}
+    return {"status": "started", "message": "Manutenzione avviata in sottofondo"}
+
+
+@router.get("/libro-giornale/manutenzione/{giro}/stato")
+async def stato_manutenzione_libro_giornale(
+    giro: str,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Avanzamento ed esito dell'ultimo giro di manutenzione del registro."""
+    from app.services import manutenzione_giornale as manutenzione
+
+    nome = _GIRI_MANUTENZIONE.get(giro)
+    if not nome:
+        raise HTTPException(status_code=404, detail=f"Giro di manutenzione sconosciuto: {giro}")
+    return await manutenzione.stato_giro(Database.get_db(), nome)
 
 
 @router.get("/libro-giornale/controllo-60-giorni")

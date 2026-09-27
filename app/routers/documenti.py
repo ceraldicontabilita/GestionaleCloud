@@ -533,6 +533,24 @@ async def telegram_test() -> Dict[str, Any]:
 
 
 _ARCHIVE_STATUSES = {"nuovo", "processato", "errore"}
+#: Come ogni stato canonico e' scritto davvero in archivio: `errore_parser`
+#: (376 documenti) e `elaborato` (1.417) li scrivono percorsi diversi, e con
+#: il solo nome canonico la card «Errori» diceva 0.
+_ARCHIVE_STATUS_VARIANTS: Dict[str, tuple] = {
+    "nuovo": ("nuovo",),
+    "processato": ("processato", "elaborato"),
+    "errore": ("errore", "errore_parser"),
+}
+_ARCHIVE_STATUS_CANONICO = {
+    variante: canonico
+    for canonico, varianti in _ARCHIVE_STATUS_VARIANTS.items()
+    for variante in varianti
+}
+
+
+def stato_archivio_canonico(status: Any) -> Any:
+    """Lo stato canonico (nuovo/processato/errore) di una variante d'archivio."""
+    return _ARCHIVE_STATUS_CANONICO.get(status, status)
 _ARCHIVE_PAYLOAD_FIELDS = {
     "pdf_data": 0,
     "file_base64": 0,
@@ -559,7 +577,8 @@ def _archive_query(
     if categoria:
         clauses.append({"category": categoria})
     if status:
-        clauses.append({"status": status})
+        varianti = _ARCHIVE_STATUS_VARIANTS.get(status, (status,))
+        clauses.append({"status": {"$in": list(varianti)}})
     if anno:
         year = str(anno)
         clauses.append({
@@ -598,6 +617,10 @@ def _archive_document_metadata(doc: Dict[str, Any]) -> Dict[str, Any]:
     item = dict(doc)
     for field in _ARCHIVE_PAYLOAD_FIELDS:
         item.pop(field, None)
+    canonico = stato_archivio_canonico(item.get("status"))
+    if canonico != item.get("status"):
+        item["status_originale"] = item.get("status")
+        item["status"] = canonico
 
     item["source_label"] = (
         item.get("fonte")
@@ -680,10 +703,10 @@ async def lista_documenti(
         (doc.get("_id") or "senza_categoria"): doc["count"]
         async for doc in db["documents_inbox"].aggregate(category_pipeline)
     }
-    by_status = {
-        (doc.get("_id") or "senza_stato"): doc["count"]
-        async for doc in db["documents_inbox"].aggregate(status_pipeline)
-    }
+    by_status: Dict[str, int] = {}
+    async for doc in db["documents_inbox"].aggregate(status_pipeline):
+        chiave = stato_archivio_canonico(doc.get("_id")) or "senza_stato"
+        by_status[chiave] = by_status.get(chiave, 0) + doc["count"]
     total = await db["documents_inbox"].count_documents(query)
 
     return {
@@ -3509,10 +3532,19 @@ async def upload_documento_automatico(
 
         # La stessa prova puo arrivare da upload, Gmail, PEC o Drive. Non si
         # crea una seconda copia soltanto perche cambia il canale di ingresso.
-        existing = await db["documents_inbox"].find_one(
-            {"file_hash": file_hash}, {"_id": 0, "id": 1, "filename": 1},
-        )
-        if existing:
+        # L'MD5 trova il candidato, lo SHA-256 del contenuto decide.
+        try:
+            from app.services.deduplica import esiste_documento_cross_canale
+
+            cross_channel = await esiste_documento_cross_canale(db, file_hash, contenuto=content)
+        except Exception as exc:
+            logger.warning("Dedup cross-canale di %s non riuscita: %s: %s",
+                           filename, type(exc).__name__, exc)
+            cross_channel = None
+        if cross_channel and cross_channel.get("collezione") == "documents_inbox":
+            existing = await db["documents_inbox"].find_one(
+                {"id": cross_channel.get("id")}, {"_id": 0, "id": 1, "filename": 1},
+            ) or {}
             return {
                 "success": False,
                 "duplicate": True,
@@ -3520,15 +3552,9 @@ async def upload_documento_automatico(
                 "imported": 0,
                 "tipo_rilevato": "non_riconosciuto",
                 "message": f"Documento duplicato ignorato: {existing.get('filename') or filename}",
-                "doc_id": existing.get("id"),
+                "doc_id": cross_channel.get("id"),
                 "filename": filename,
             }
-        try:
-            from app.services.deduplica import esiste_documento_cross_canale
-
-            cross_channel = await esiste_documento_cross_canale(db, file_hash)
-        except Exception:
-            cross_channel = None
         if cross_channel:
             return {
                 "success": False,
@@ -3555,6 +3581,7 @@ async def upload_documento_automatico(
             "status": "nuovo",
             "processed": False,
             "file_hash": file_hash,
+            "sha256": content_sha256,
             "file_size": len(content),
             "downloaded_at": datetime.now(timezone.utc).isoformat(),
             "source": "upload_automatico",
@@ -3571,7 +3598,7 @@ async def upload_documento_automatico(
                 "filename": filename,
                 "origine": "upload_manuale",
                 "mime_type": "application/octet-stream",
-                "hash_file": file_hash,
+                "hash_file": content_sha256,
                 "mittente": None,
                 "category": "altro",
             }, db, source_module="documenti_upload_auto")

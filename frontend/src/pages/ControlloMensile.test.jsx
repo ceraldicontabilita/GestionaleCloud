@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
-import ControlloMensile from './ControlloMensile';
+import ControlloMensile, { contantiCorrispettivi, diffContantiCassa } from './ControlloMensile';
 
 vi.mock('../api', () => ({
   default: { get: vi.fn() },
@@ -129,6 +129,43 @@ describe('ControlloMensile', () => {
     expect(await screen.findByText(/Errore nel caricamento di: Controllo POS-banca/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('row-month-1')).toBeInTheDocument());
   });
+  it('confronta la Cassa con la sola quota contanti, non col totale XML', async () => {
+    // Totale XML 100, di cui 30 in contanti: in Cassa entrano 30 e basta.
+    api.get.mockImplementation(url => {
+      if (url.includes('/api/prima-nota/cassa')) {
+        return Promise.resolve({ data: { movimenti: [
+          { data: '2026-01-02', categoria: 'Corrispettivi', tipo: 'entrata', importo: 30 },
+        ] } });
+      }
+      if (url.includes('/api/corrispettivi?')) {
+        return Promise.resolve({ data: [{
+          data: '2026-01-02', totale: 100, pagato_contanti: 30, pagato_elettronico: 70,
+        }] });
+      }
+      return rispostaPerUrl(url);
+    });
+    render(<ControlloMensile />);
+
+    await screen.findByTestId('row-month-1');
+    expect(screen.queryByText(/Ci sono discrepanze/)).not.toBeInTheDocument();
+    expect(screen.getByText(/nessun mese da verificare/)).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByTestId('view-month-1'));
+    const giorno = await screen.findByTestId('row-2026-01-02');
+    expect(within(giorno).queryByText('Da verificare')).not.toBeInTheDocument();
+  });
+
+  it('contanti e differenza: helper puri', () => {
+    expect(contantiCorrispettivi([{ pagato_contanti: 30 }, { pagato_contanti: '12.5' }]))
+      .toEqual({ totale: 42.5, senzaContanti: 0 });
+    expect(diffContantiCassa([{ totale: 100, pagato_contanti: 30 }], 30)).toBe(0);
+    expect(diffContantiCassa([{ totale: 100, pagato_contanti: 30 }], 100)).toBe(-70);
+    // Un XML senza quota contanti non si confronta: non e' una differenza.
+    expect(diffContantiCassa([{ totale: 100 }], 30)).toBeNull();
+    // Cassa senza nessun XML: tutta la Cassa e' da spiegare.
+    expect(diffContantiCassa([], 30)).toBe(-30);
+  });
+
   it('separa Numia e SumUp: la banca BPM si confronta col solo Numia', async () => {
     api.get.mockImplementation(url => {
       if (url.includes('/api/pos-corrispettivi/controllo-due-fasi')) {

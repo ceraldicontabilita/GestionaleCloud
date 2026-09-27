@@ -40,10 +40,19 @@ MOV_RETTIFICA = "RETTIFICA"
 MOV_RECUPERO_ANNUALE = "RECUPERO_ANNUALE"
 
 # Stati detrazione che rendono una fattura AMMISSIBILE a un nuovo calcolo (§10)
-STATI_DETRAZIONE_AMMESSI = {"DA_INSERIRE", "NON_VALUTATA", "RINVIATA"}
+# ``NON_VALUTATA`` (valore storico, nessuno lo scrive piu') vuol dire «non
+# deciso»: come nel riepilogo annuale non entra nel calcolo ma blocca il mese.
+STATI_DETRAZIONE_AMMESSI = {"DA_INSERIRE", "RINVIATA"}
+STATI_DETRAZIONE_DA_DECIDERE = ("DA_VERIFICARE", "NON_VALUTATA")
 
-# Note di credito: non sono acquisti detraibili in positivo
+# Note di credito ricevute: RIDUCONO l'IVA detraibile (audit 27/09/2026,
+# punto 8). Prima erano escluse dal calcolo (liquidazione) o sommate in
+# positivo (dashboard): entrano col segno negativo.
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+
+
+def e_nota_credito(f: Dict[str, Any]) -> bool:
+    return str(f.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO
 
 
 def _iva_detraibile(f: Dict[str, Any]) -> float:
@@ -53,6 +62,36 @@ def _iva_detraibile(f: Dict[str, Any]) -> float:
         return round(float(val or 0), 2)
     except (TypeError, ValueError):
         return 0.0
+
+
+def iva_detraibile_con_segno(f: Dict[str, Any]) -> float:
+    """IVA detraibile col segno della liquidazione: positiva per una fattura,
+    negativa per una nota di credito (TD04/TD08), qualunque segno porti il
+    documento (l'XML di una nota di credito ha di norma importi positivi)."""
+    valore = _iva_detraibile(f)
+    return -abs(valore) if e_nota_credito(f) else valore
+
+
+def detraibilita_da_decidere(f: Dict[str, Any]) -> bool:
+    """La fattura porta IVA ma nessuno ha ancora deciso quanta se ne detrae:
+    ``iva_detraibile`` assente (non zero: non deciso) o stato
+    ``DA_VERIFICARE``. Un documento senza IVA non ha nulla da decidere; uno
+    gia' usato in una liquidazione, annullato o duplicato non conta."""
+    if f.get("annullata") is True or f.get("duplicata") is True or f.get("iva_utilizzata") is True:
+        return False
+    if f.get("stato_detrazione_iva") == "INDETRAIBILE":
+        return False
+    iva_documento = 0.0
+    for chiave in ("iva_documento", "iva", "total_tax", "totale_iva"):
+        try:
+            iva_documento = abs(float(f.get(chiave) or 0))
+        except (TypeError, ValueError):
+            continue
+        if iva_documento:
+            break
+    if f.get("iva_detraibile") is None:
+        return iva_documento > 0
+    return f.get("stato_detrazione_iva") in STATI_DETRAZIONE_DA_DECIDERE
 
 
 def _id_fattura(f: Dict[str, Any]) -> Any:
@@ -68,10 +107,10 @@ def seleziona_fatture_per_liquidazione(
     Regole di inclusione (§10):
       - periodo_iva_attribuito == periodo
       - iva_utilizzata != true          (divieto di duplicazione §11)
-      - iva_detraibile > 0
+      - iva_detraibile diversa da zero
       - documento non annullato/duplicato
-      - stato_detrazione_iva in {DA_INSERIRE, NON_VALUTATA, RINVIATA}
-      - non è una nota di credito (TD04/TD08)
+      - stato_detrazione_iva in {DA_INSERIRE, RINVIATA}
+      - una nota di credito (TD04/TD08) entra col segno negativo
 
     Ritorna (incluse, escluse). Ogni voce ESCLUSA ha `motivo_esclusione`.
     Le fatture di un periodo diverso NON compaiono nel risultato: non
@@ -99,9 +138,6 @@ def seleziona_fatture_per_liquidazione(
         if f.get("duplicata") is True:
             _escludi("Documento duplicato")
             continue
-        if str(f.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO:
-            _escludi("Nota di credito")
-            continue
         if f.get("iva_utilizzata") is True:
             # §11: già utilizzata in una precedente liquidazione
             _escludi(
@@ -112,7 +148,7 @@ def seleziona_fatture_per_liquidazione(
         if stato is not None and stato not in STATI_DETRAZIONE_AMMESSI:
             _escludi(f"Stato detrazione '{stato}' non ammesso nel calcolo")
             continue
-        if _iva_detraibile(f) <= 0:
+        if (abs(_iva_detraibile(f)) if e_nota_credito(f) else _iva_detraibile(f)) <= 0:
             _escludi("IVA detraibile nulla o negativa")
             continue
 
@@ -133,9 +169,9 @@ def seleziona_fatture_per_competenza(
     pagamento (cassa, banca, pagata/non pagata) non sono criteri di
     esclusione. L'utilizzo viene esposto separatamente dal chiamante.
 
-    Restano escluse soltanto le posizioni che non possono contribuire come IVA
-    acquisti positiva: documenti annullati o duplicati, note di credito,
-    indetraibili esplicite e fatture senza IVA detraibile classificata.
+    Restano escluse soltanto le posizioni che non contribuiscono: documenti
+    annullati o duplicati, indetraibili esplicite e fatture senza IVA
+    detraibile classificata. Le note di credito entrano col segno negativo.
     """
     incluse: List[Dict[str, Any]] = []
     escluse: List[Dict[str, Any]] = []
@@ -159,13 +195,10 @@ def seleziona_fatture_per_competenza(
         if f.get("duplicata") is True:
             _escludi("Documento duplicato")
             continue
-        if str(f.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO:
-            _escludi("Nota di credito")
-            continue
         if f.get("stato_detrazione_iva") == "INDETRAIBILE":
             _escludi("IVA esplicitamente indetraibile")
             continue
-        if _iva_detraibile(f) <= 0:
+        if abs(_iva_detraibile(f)) <= 0 or (not e_nota_credito(f) and _iva_detraibile(f) < 0):
             _escludi("IVA detraibile non classificata o nulla")
             continue
 
@@ -185,7 +218,7 @@ def calcola_totali(
       saldo > 0 → IVA a DEBITO (da versare)
       saldo < 0 → IVA a CREDITO (riportata al periodo successivo)
     """
-    iva_acquisti = round(sum(_iva_detraibile(f) for f in incluse), 2)
+    iva_acquisti = round(sum(iva_detraibile_con_segno(f) for f in incluse), 2)
     iva_vendite = round(float(iva_vendite or 0), 2)
     credito_precedente = round(float(credito_precedente or 0), 2)
     saldo = round(iva_vendite - iva_acquisti - credito_precedente, 2)

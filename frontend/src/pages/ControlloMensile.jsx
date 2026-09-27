@@ -16,6 +16,34 @@ export function circuitiGiorno(g) {
   return { numia: parseFloat(c.numia) || 0, sumup: parseFloat(c.sumup) || 0 };
 }
 
+/**
+ * Quota contanti dichiarata dagli XML RT (``pagato_contanti``): e' l'unica
+ * parte del corrispettivo che entra in Prima Nota Cassa, la quota POS va in
+ * Banca. Confrontare il totale dell'XML con la Cassa segnava ogni mese «da
+ * verificare». Un XML che non dichiara i contanti non si confronta.
+ */
+export function contantiCorrispettivi(corrispettivi) {
+  let totale = 0;
+  let senzaContanti = 0;
+  for (const c of corrispettivi || []) {
+    const grezzo = c?.pagato_contanti;
+    const valore = parseFloat(grezzo);
+    if (grezzo === null || grezzo === undefined || grezzo === '' || Number.isNaN(valore)) {
+      senzaContanti += 1;
+      continue;
+    }
+    totale += valore;
+  }
+  return { totale, senzaContanti };
+}
+
+/** Contanti XML meno corrispettivi in Cassa; null se non confrontabile. */
+export function diffContantiCassa(corrispettivi, corrispettiviInCassa) {
+  const { totale, senzaContanti } = contantiCorrispettivi(corrispettivi);
+  if (senzaContanti > 0) return null;
+  return totale - corrispettiviInCassa;
+}
+
 /** Esito di un giorno o di un mese secondo la regola unica del colore. */
 export function esitoRiga({ hasData, intervento, verificare }) {
   if (intervento) return 'intervento';
@@ -57,7 +85,8 @@ const MONO = FONT.mono;
  * - POS RT / POS Reale / POS Banca e relativi stati arrivano dal motore canonico
  * - Corrisp. Auto = Σ corrispettivi.totale (da XML)
  * - Corrisp. Man. = Σ prima_nota_cassa WHERE categoria = "Corrispettivi" AND tipo = "entrata"
- * - Diff. Corr. = Corrisp. Auto - Corrisp. Man.
+ * - Diff. Corr. = Σ corrispettivi.pagato_contanti (XML) - Corrisp. Man.: in Cassa
+ *   entra solo la quota contanti, mai il totale (la quota POS va in Banca)
  * - Versamenti = Σ prima_nota_cassa WHERE (categoria = "Versamento" OR descrizione CONTAINS "versamento") AND tipo = "uscita"
  * - Saldo Cassa = Σ entrate - Σ uscite (tutti i movimenti cassa del periodo)
  *
@@ -310,7 +339,8 @@ export default function ControlloMensile() {
       const posDiff = posAuto - posManual;
       // RICONCILIAZIONE BANCARIA: POS arrivato in banca vs POS Manuale (tuo incasso reale)
       const posBancaDiff = posBanca - posManual; // Banca vs TUO dato reale
-      const corrispDiff = corrispAuto - corrispManual;
+      // In Cassa entra solo la quota contanti: il confronto e' con quella.
+      const corrispDiff = diffContantiCassa(monthCorrisp, corrispManual);
       const posFiscalIssue = monthPos.some(g =>
         ['differenza_in_piu_da_registrare', 'in_attesa_xml'].includes(g.stato_serale)
       );
@@ -335,7 +365,8 @@ export default function ControlloMensile() {
         corrispAuto > 0 ||
         corrispManual > 0 ||
         versamenti > 0;
-      const hasDiscrepancy = posFiscalIssue || posBankIssue || Math.abs(corrispDiff) > 1;
+      const hasDiscrepancy =
+        posFiscalIssue || posBankIssue || (corrispDiff !== null && Math.abs(corrispDiff) > 1);
 
       monthly.push({
         month,
@@ -537,7 +568,8 @@ export default function ControlloMensile() {
       dayData.saldoCassa = entrateGiorno - usciteGiorno;
 
       // Differenze
-      dayData.corrispettivoDiff = dayData.corrispettivoAuto - dayData.corrispettivoManual;
+      // In Cassa entra solo la quota contanti dell'XML, mai il totale.
+      dayData.corrispettivoDiff = diffContantiCassa(dayCorrisp, dayData.corrispettivoManual);
 
       dayData.hasData =
         dayData.posAuto > 0 ||
@@ -551,7 +583,7 @@ export default function ControlloMensile() {
       dayData.hasDiscrepancy =
         ['differenza_in_piu_da_registrare', 'in_attesa_xml'].includes(dayData.statoSerale) ||
         ['mancante', 'differenza', 'extra'].includes(dayData.statoBanca) ||
-        Math.abs(dayData.corrispettivoDiff) > 1;
+        (dayData.corrispettivoDiff !== null && Math.abs(dayData.corrispettivoDiff) > 1);
       dayData.esito = esitoRiga({
         hasData: dayData.hasData,
         intervento: dayData.statoSerale === 'differenza_in_piu_da_registrare' || dayData.statoBanca === 'mancante',

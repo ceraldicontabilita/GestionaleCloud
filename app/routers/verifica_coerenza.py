@@ -147,7 +147,10 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
         totale_credito_fatture_cents = 0
         totale_debito_corrispettivi_cents = 0
         periodi_calcolati = 0
-        
+        saldo_senza_riporto_cents = 0
+        credito_apertura_cents = 0
+        mesi_conclusi_non_calcolati: list[int] = []
+
         for mese in range(1, 13):
             iva = await verificatore.verifica_coerenza_iva_tra_pagine(
                 anno, mese, lipe_evidence=lipe_mensile[mese]
@@ -158,14 +161,28 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
             credito_cents = iva["iva_credito"].get("da_fatture_cents")
             debito_cents = iva["iva_debito"].get("da_corrispettivi_cents")
             f24_iva = iva.get("f24_commercialista") or {}
-            periodo_calcolato = credito_cents is not None and debito_cents is not None
+            # Il saldo del mese e' quello dello snapshot della liquidazione
+            # (None quando mancano dati), non vendite meno acquisti rifatto qui.
+            saldo_cents = (iva.get("saldo") or {}).get("saldo_cents")
+            periodo_calcolato = saldo_cents is not None
             if periodo_calcolato:
-                totale_credito_fatture_cents += int(credito_cents)
-                totale_debito_corrispettivi_cents += int(debito_cents)
+                if credito_cents is not None:
+                    totale_credito_fatture_cents += int(credito_cents)
+                if debito_cents is not None:
+                    totale_debito_corrispettivi_cents += int(debito_cents)
                 periodi_calcolati += 1
-            saldo_cents = (
-                int(debito_cents) - int(credito_cents) if periodo_calcolato else None
-            )
+                # Ogni saldo mensile sottrae gia' il credito del mese prima:
+                # sommarli cosi' come sono lo conterebbe due volte. Si somma
+                # il saldo al lordo del riporto e si toglie una volta sola il
+                # credito d'apertura (quello di gennaio).
+                credito_riportato = int((iva.get("saldo") or {}).get("credito_precedente_cents") or 0)
+                saldo_senza_riporto_cents += int(saldo_cents) + credito_riportato
+                if mese == 1:
+                    credito_apertura_cents = credito_riportato
+            elif iva.get("stato_periodo") not in ("NON_ANCORA_DOVUTO", "IN_FORMAZIONE"):
+                # Un mese concluso che non sappiamo calcolare rende ignoto
+                # anche il saldo dell'anno.
+                mesi_conclusi_non_calcolati.append(mese)
             
             confronto_mensile.append({
                 "mese": mese,
@@ -217,6 +234,10 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
                 "lipe": iva.get("lipe"),
             })
         
+        saldo_annuale_cents = (
+            None if mesi_conclusi_non_calcolati or periodi_calcolati == 0
+            else saldo_senza_riporto_cents - credito_apertura_cents
+        )
         return {
             "anno": anno,
             "mensile": confronto_mensile,
@@ -225,12 +246,11 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
                 "iva_credito_totale_cents": totale_credito_fatture_cents,
                 "iva_debito_totale": euros(totale_debito_corrispettivi_cents),
                 "iva_debito_totale_cents": totale_debito_corrispettivi_cents,
-                "saldo_annuale": euros(
-                    totale_debito_corrispettivi_cents - totale_credito_fatture_cents
+                "saldo_annuale": (
+                    euros(saldo_annuale_cents) if saldo_annuale_cents is not None else None
                 ),
-                "saldo_annuale_cents": (
-                    totale_debito_corrispettivi_cents - totale_credito_fatture_cents
-                ),
+                "saldo_annuale_cents": saldo_annuale_cents,
+                "mesi_conclusi_non_calcolati": mesi_conclusi_non_calcolati,
                 "periodi_calcolati": periodi_calcolati,
                 "periodi_non_calcolati": 12 - periodi_calcolati,
                 "periodi_da_completare": sum(

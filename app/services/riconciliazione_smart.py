@@ -13,7 +13,6 @@ Pattern riconosciuti:
 import re
 import logging
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
 from rapidfuzz import fuzz
 
 from app.database import Database
@@ -25,6 +24,8 @@ from app.services.payment_allocation_validator import (
     to_cents,
 )
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
+from app.services.pos_evidence import _e_accredito_pos_numia_con_giorno
 
 logger = logging.getLogger(__name__)
 
@@ -794,6 +795,15 @@ async def analizza_movimento(movimento: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+# Movimenti tolti dalla coda col bottone «Ignora» (operazioni_module): il
+# bottone scrive i tre campi, e ogni coda «da riconciliare» deve rispettarli.
+FILTRO_NON_IGNORATO: Dict[str, Any] = {
+    "ignorata": {"$ne": True},
+    "ignorato": {"$ne": True},
+    "escluso_dalla_coda": {"$ne": True},
+}
+
+
 async def analizza_estratto_conto_batch(
     limit: int = 100,
     solo_non_riconciliati: bool = True,
@@ -844,9 +854,24 @@ async def analizza_estratto_conto_batch(
     # collezione ma si riconciliano con lo statement carta, non movimento
     # per movimento — non sono "movimenti bancari" da proporre qui (bug
     # 18/07/2026, segnalato dall'utente).
-    query = {"tipo": {"$ne": "carta_credito"}}
+    query: Dict[str, Any] = {"tipo": {"$ne": "carta_credito"}, **FILTRO_NON_IGNORATO}
     if solo_non_riconciliati:
         query["riconciliato"] = {"$ne": True}
+        # Una riga provvisoria (export CSV, banca diretta) coperta dall'estratto
+        # ufficiale e' una copia: si abbina la riga ufficiale. Oltre l'ultimo
+        # giorno dell'estratto invece e' l'unica traccia del movimento, e
+        # toglierla lasciava la coda vuota da fine agosto.
+        ultima_ufficiale = await db.estratto_conto_movimenti.find_one(
+            {"$and": [filtro_solo_evidenza_ufficiale(),
+                      {"in_attesa_estratto_ufficiale": {"$ne": True}}]},
+            {"_id": 0, "data": 1}, sort=[("data", -1)],
+        )
+        coperto_fino_a = str((ultima_ufficiale or {}).get("data") or "")[:10]
+        query["$and"] = [{"$or": [
+            {"$and": [filtro_solo_evidenza_ufficiale(),
+                      {"in_attesa_estratto_ufficiale": {"$ne": True}}]},
+            {"data": {"$gt": coperto_fino_a}},
+        ]}]
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
 
@@ -856,12 +881,20 @@ async def analizza_estratto_conto_batch(
     
     movimenti = []
     totale_righe = 0
-    
+    accrediti_pos_numia = 0
+
     # Filtra ulteriormente: escludi movimenti di prelievo assegno se l'assegno è già elaborato
     async for mov in db.estratto_conto_movimenti.find(
         query, {"_id": 0},
     ).sort("data", -1):
-        desc = (mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
+        desc_originale = mov.get("descrizione_originale") or mov.get("descrizione") or ""
+        # Un accredito POS NUMIA/NEXI non ha un documento da abbinare: lo
+        # verifica la coerenza POS contro la chiusura del terminale. Si conta
+        # a parte invece di gonfiare la coda.
+        if _e_accredito_pos_numia_con_giorno(desc_originale):
+            accrediti_pos_numia += 1
+            continue
+        desc = desc_originale.upper()
         # Se è un prelievo assegno, verifica se l'assegno è già elaborato
         if "PRELIEVO" in desc and "ASSEGNO" in desc:
             # Estrai numero assegno dalla descrizione
@@ -894,18 +927,19 @@ async def analizza_estratto_conto_batch(
     assegni = await db.assegni.find({}, {"_id": 0}).to_list(1000)
     assegni_map = {a.get("numero", ""): a for a in assegni}
     
-    # Pre-carica fatture recenti (ultimi 3 mesi - OTTIMIZZATO per velocità)
-    data_limite = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    # Pre-carica le fatture non pagate, le piu' recenti prima. Nessun limite
+    # di data: le fatture fornitore non hanno scadenza e il titolare decide
+    # quando pagarle, quindi una fattura di quattro mesi fa pagata oggi deve
+    # poter essere proposta. Il tetto resta, ordinato per data decrescente.
     fatture = await db.invoices.find(
         {
-            "invoice_date": {"$gte": data_limite},
             **FILTRO_NON_PAGATE,
             "stato_pagamento": {"$nin": ["pagata", "sospesa"]},
         },
         {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, "supplier_vat": 1, 
          "total_amount": 1, "invoice_date": 1, "pagata": 1,
          "importo_pagato": 1, "payment_allocations": 1, "assegni_collegati": 1}
-    ).limit(1000).to_list(1000)
+    ).sort("invoice_date", -1).limit(1000).to_list(1000)
     
     # Pre-carica fornitori con metodo pagamento (usa collection corretta)
     fornitori = await db.fornitori.find(
@@ -929,6 +963,8 @@ async def analizza_estratto_conto_batch(
         "totale": totale_righe,
         "totale_righe": totale_righe,
         "righe_caricate": len(movimenti),
+        # Accrediti POS NUMIA fuori coda: si verificano in Coerenza POS.
+        "accrediti_pos_numia_esclusi": accrediti_pos_numia,
         "incasso_pos": 0,
         "commissione_pos": 0,
         "commissione_bancaria": 0,

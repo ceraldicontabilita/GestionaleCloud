@@ -46,6 +46,7 @@ from app.services.identity_matching import (
     soggetto_causale_bancaria,
     soggetto_pagante_coerente,
 )
+from app.services.alert_engine import chiudi_alert_movimento_riconciliato
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
 from app.services.scritture_contabili import scrivi_movimento
@@ -216,43 +217,64 @@ async def _alert_non_riconciliato(db, mov_id: Optional[str], importo: float, des
         logger.exception(f"Errore generazione alert RIC_NON_RICONCILIATO per {mov_id}")
 
 
-async def _alert_pagamento_multiplo(db, mov_id: Optional[str], importo: float) -> None:
+async def _alert_pagamento_multiplo(db, movimento: Dict[str, Any], importo: float) -> None:
     """Genera l'alert RIC_PAGAMENTO_MULTIPLO quando un movimento in uscita
-    resta senza match singolo ma la somma di 2-3 fatture fornitore ancora
-    aperte combacia (±0.05€) col suo importo — il caso "bonifico cumulativo"
-    mai gestito dal motore (gap #7 memoria/moduli/RICONCILIAZIONE.md). Solo
-    rilevamento/segnalazione: NON marca nulla come pagato né riconcilia
-    automaticamente, la combinazione va sempre confermata da un operatore.
-    Best-effort, non blocca la riconciliazione principale."""
+    resta senza match singolo ma la somma di 2-3 fatture ATTIVE e non pagate
+    dello STESSO fornitore, riconosciuto nel movimento (IBAN, P.IVA o nome),
+    fa il suo importo al centesimo — il «bonifico cumulativo».
+
+    Prima prendeva le prime 40 fatture non pagate di qualunque fornitore,
+    anche archiviate, e combinava importi entro ±0,05: un abbinamento per
+    solo importo. Senza un fornitore riconosciuto nel movimento non nasce
+    nessun alert. Solo segnalazione: NON marca nulla come pagato, la
+    combinazione la conferma un operatore. Best-effort.
+    """
+    mov_id = str(movimento.get("id") or movimento.get("_id") or "")
     if not mov_id or importo <= 0:
         return
     try:
+        from app.services.bank_payment_allocations import (
+            _fornitore_del_movimento,
+            _residuo_cents,
+            _supplier_key,
+        )
+        from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
+        from app.services.stato_pagamento_fattura import con_non_pagate
+
+        importo_cents = int(round(importo * 100))
         candidates = await db[Collections.INVOICES].find(
-            {
-                **FILTRO_NON_PAGATE,
+            con_non_pagate({
+                **FILTRO_FATTURA_ATTIVA,
                 # "sospesa" = l'utente ha bloccato la fattura in Prima Nota
                 # Provvisoria: non deve essere toccata dal matching automatico.
                 "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
-            },
-            {"_id": 1, "numero_fattura": 1, "invoice_number": 1,
-             "importo_totale": 1, "total_amount": 1,
-             "cedente_denominazione": 1, "supplier_name": 1}
-        ).limit(40).to_list(40)
+            }),
+            metadata_projection(Collections.INVOICES),
+        ).to_list(None)
 
-        righe = []
+        per_fornitore: Dict[str, List[tuple]] = {}
         for f in candidates:
-            imp = f.get("importo_totale") or f.get("total_amount") or 0
-            if imp and 0 < imp < importo:
-                righe.append((f, round(float(imp), 2)))
-
-        if len(righe) < 2:
-            return
+            tipo_doc = str(f.get("tipo_documento") or f.get("document_type") or "").upper()
+            if tipo_doc in {"TD04", "TD08"}:
+                continue
+            cents = _residuo_cents(f)
+            if not (0 < cents < importo_cents):
+                continue
+            if not _fornitore_del_movimento(movimento, f):
+                continue
+            chiave = _supplier_key(f) or "?"
+            per_fornitore.setdefault(chiave, []).append((f, cents))
 
         combo_trovata = None
-        for r in (2, 3):
-            for combo in itertools.combinations(righe, r):
-                if abs(sum(c[1] for c in combo) - importo) <= 0.05:
-                    combo_trovata = combo
+        for righe in per_fornitore.values():
+            if len(righe) < 2:
+                continue
+            for r in (2, 3):
+                for combo in itertools.combinations(righe, r):
+                    if sum(c[1] for c in combo) == importo_cents:
+                        combo_trovata = combo
+                        break
+                if combo_trovata:
                     break
             if combo_trovata:
                 break
@@ -262,20 +284,25 @@ async def _alert_pagamento_multiplo(db, mov_id: Optional[str], importo: float) -
 
         from app.services.alert_engine import genera_alert
         dettaglio_fatture = ", ".join(
-            f"{(c[0].get('numero_fattura') or c[0].get('invoice_number') or '?')} €{c[1]:.2f}"
+            f"{(c[0].get('numero_fattura') or c[0].get('invoice_number') or '?')} €{c[1] / 100:.2f}"
             for c in combo_trovata
+        )
+        fornitore = (
+            combo_trovata[0][0].get("supplier_name")
+            or combo_trovata[0][0].get("cedente_denominazione") or ""
         )
         await genera_alert(
             "RIC_PAGAMENTO_MULTIPLO", mov_id, COLLECTION_ESTRATTO_CONTO,
             f"Movimento di €{importo:.2f} senza match singolo — possibile pagamento cumulativo "
-            f"di {len(combo_trovata)} fatture (somma combacia): {dettaglio_fatture}",
+            f"di {len(combo_trovata)} fatture di {fornitore} (somma al centesimo): {dettaglio_fatture}",
             db,
             extra={
                 "importo_movimento": importo,
+                "fornitore": fornitore,
                 "fatture_candidate": [
-                    {"id": str(c[0].get("_id")),
+                    {"id": str(c[0].get("id") or c[0].get("_id")),
                      "numero": c[0].get("numero_fattura") or c[0].get("invoice_number"),
-                     "importo": c[1]}
+                     "importo": c[1] / 100}
                     for c in combo_trovata
                 ],
             },
@@ -1180,6 +1207,7 @@ async def riconcilia_movimenti_banca(
                     }}
                 )
                 results["commissioni_ignorate"] += 1
+                await chiudi_alert_movimento_riconciliato(db, mov_id)
                 continue
 
             match_found = False
@@ -1861,11 +1889,12 @@ async def riconcilia_movimenti_banca(
                         "updated_at": now
                     }}
                 )
+                await chiudi_alert_movimento_riconciliato(db, mov_id)
             elif not blocca_match_singolo:
                 results["non_trovati"] += 1
                 await _alert_non_riconciliato(db, mov_id, importo, descrizione)
                 if tipo == "uscita":
-                    await _alert_pagamento_multiplo(db, mov_id, importo)
+                    await _alert_pagamento_multiplo(db, mov, importo)
 
         except Exception as e:
             results["errors"].append({"id": mov.get("id"), "error": str(e)})

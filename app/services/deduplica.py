@@ -375,37 +375,89 @@ async def cerca_duplicato_dipendente(
 # Lo stesso PDF può arrivare per due strade diverse:
 #   - scaricamento completo email → collezioni *_email_attachments (campo `pdf_hash`)
 #   - pipeline documenti/allegati  → `documents_inbox` (campo `file_hash`)
-# Entrambe usano md5(contenuto). Senza un controllo incrociato, lo stesso file
-# poteva essere ingerito due volte (una per canale). Questa funzione cerca
-# l'impronta in ENTRAMBE le famiglie e dice se (e dove) esiste già.
+# Entrambe salvano md5(contenuto). L'MD5 serve solo a trovare il candidato in
+# fretta: la decisione «e' lo stesso file» la prende lo SHA-256 del contenuto
+# (salvato sul record o ricalcolato dal PDF salvato) piu' il confronto dei byte,
+# come vuole la regola della deduplica documentale certa.
+
+_CAMPI_SHA256_RECORD = ("sha256", "pdf_sha256", "file_sha256", "content_sha256")
+_CAMPI_PAYLOAD_RECORD = ("pdf_data", "file_base64", "content_base64")
+
+
+def _byte_del_record(record: Dict[str, Any]) -> Optional[bytes]:
+    import base64
+
+    for campo in _CAMPI_PAYLOAD_RECORD:
+        valore = record.get(campo)
+        if not valore:
+            continue
+        if isinstance(valore, (bytes, bytearray)):
+            return bytes(valore)
+        try:
+            return base64.b64decode(str(valore), validate=False)
+        except (ValueError, TypeError) as exc:
+            logger.warning("PDF del record %s illeggibile (%s): %s: %s",
+                           record.get("id"), campo, type(exc).__name__, exc)
+    return None
+
+
+async def _stesso_contenuto(db, collezione: str, trovato: Dict[str, Any],
+                            sha256: str, contenuto: bytes) -> bool:
+    """Il candidato trovato per MD5 e' davvero lo stesso file? SHA-256 del
+    record se l'ha salvato, altrimenti SHA-256 e byte del PDF salvato."""
+    salvato = next(
+        (str(trovato.get(c)).lower() for c in _CAMPI_SHA256_RECORD if trovato.get(c)), None,
+    )
+    if salvato:
+        return salvato == sha256
+    record_id = trovato.get("id")
+    if not record_id:
+        return False
+    # Il payload si legge per id, mai con un filtro sull'intera collezione.
+    completo = await db[collezione].find_one({"id": record_id}) or {}
+    originale = _byte_del_record(completo)
+    if originale is None:
+        return False
+    return hashlib.sha256(originale).hexdigest() == sha256 and originale == contenuto
+
 
 async def esiste_documento_cross_canale(
-    db, impronta_md5: str, escludi_collezione: Optional[str] = None
+    db, impronta_md5: str, escludi_collezione: Optional[str] = None,
+    *, contenuto: Optional[bytes] = None,
 ) -> Optional[Dict[str, str]]:
-    """Cerca l'impronta md5 nelle collezioni allegati email (`pdf_hash`) e in
-    `documents_inbox` (`file_hash`). Ritorna {'collezione', 'campo'} della prima
-    corrispondenza, oppure None se il documento non è ancora presente altrove.
+    """Cerca il documento nelle collezioni allegati email (`pdf_hash`) e in
+    `documents_inbox` (`file_hash`). Ritorna {'collezione', 'campo', 'sha256', 'id'}
+    della prima copia **certa**, oppure None.
+
+    L'MD5 (`impronta_md5`) fa solo da prefiltro: e' doppione soltanto il
+    record il cui SHA-256 coincide con quello di `contenuto` (e i cui byte,
+    quando si rileggono, sono gli stessi). Senza `contenuto` non si puo'
+    decidere, e un MD5 da solo non basta: la risposta e' None.
 
     `escludi_collezione`: nome della collezione da NON controllare (di norma
     quella in cui il chiamante sta per inserire, per non auto-rilevarsi)."""
     if not impronta_md5:
         return None
+    if contenuto is None:
+        logger.warning("Dedup cross-canale senza contenuto: MD5 %s non basta per decidere",
+                       impronta_md5)
+        return None
+    sha256 = hashlib.sha256(contenuto).hexdigest()
     from app.db_collections import EMAIL_ATTACHMENT_COLLECTIONS, COLL_DOCUMENTS_INBOX
 
+    proiezione = {"_id": 0, "id": 1, **{c: 1 for c in _CAMPI_SHA256_RECORD}}
+    candidati = []
     # documents_inbox usa `file_hash`
     if escludi_collezione != COLL_DOCUMENTS_INBOX:
-        found = await db[COLL_DOCUMENTS_INBOX].find_one(
-            {"file_hash": impronta_md5}, {"_id": 1}
-        )
-        if found:
-            return {"collezione": COLL_DOCUMENTS_INBOX, "campo": "file_hash"}
-
+        candidati.append((COLL_DOCUMENTS_INBOX, "file_hash"))
     # *_email_attachments usano `pdf_hash`
     for coll in EMAIL_ATTACHMENT_COLLECTIONS:
-        if coll == escludi_collezione:
-            continue
-        found = await db[coll].find_one({"pdf_hash": impronta_md5}, {"_id": 1})
-        if found:
-            return {"collezione": coll, "campo": "pdf_hash"}
+        if coll != escludi_collezione:
+            candidati.append((coll, "pdf_hash"))
+
+    for coll, campo in candidati:
+        found = await db[coll].find_one({campo: impronta_md5}, proiezione)
+        if found and await _stesso_contenuto(db, coll, found, sha256, contenuto):
+            return {"collezione": coll, "campo": campo, "sha256": sha256, "id": found.get("id")}
 
     return None

@@ -391,7 +391,10 @@ export default function Documenti() {
                 label: 'Stato e collegamento',
                 ruoloCard: 'dettaglio',
                 render: doc => {
-                  const statusStyle = STATUS_LABELS[doc.status] || STATUS_LABELS.nuovo;
+                  // Uno stato che non conosciamo si mostra per quello che e',
+                  // non come «Da collegare» (il backend normalizza le varianti).
+                  const statusStyle = STATUS_LABELS[doc.status]
+                    || (doc.status ? { label: String(doc.status).replaceAll('_', ' '), variant: 'warning' } : STATUS_LABELS.nuovo);
                   return (
                     <div style={{ display: 'grid', gap: 4 }}>
                       <Badge variant={statusStyle.variant}>{statusStyle.label}</Badge>

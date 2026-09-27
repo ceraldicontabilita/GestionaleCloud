@@ -35,6 +35,31 @@ describe('Lista alert operativi', () => {
     }));
   });
 
+  it('apre il movimento e mostra le fatture candidate col loro link', async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        alerts: [{
+          id: 'A-9', titolo: 'Pagamento multiplo non risolvibile automaticamente',
+          dettaglio: 'Possibile pagamento cumulativo', severita: 'info', modulo: 'riconciliazione',
+          link: '/riconciliazione/banca?movimento=MOV-1',
+          fatture_candidate: [
+            { id: 'F-1', numero: '12/A', importo: 100.5, link: '/fatture?invoice_id=F-1' },
+            { id: 'F-2', numero: '13/A', importo: 50, link: '/fatture?invoice_id=F-2' },
+          ],
+          record_coinvolti: [{ collezione: 'estratto_conto_movimenti', id: 'MOV-1', link: '/riconciliazione/banca?movimento=MOV-1' }],
+        }],
+        stats: { totale_filtrato: 1 },
+        pagination: { has_more: false },
+      },
+    });
+    render(<MemoryRouter initialEntries={['/dashboard/alerts']}><Alerts /></MemoryRouter>);
+
+    expect(await screen.findByRole('link', { name: /Apri il caso e verifica/i })).toHaveAttribute('href', '/riconciliazione/banca?movimento=MOV-1');
+    expect(screen.getByText('Fatture candidate')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Fattura 12\/A/ })).toHaveAttribute('href', '/fatture?invoice_id=F-1');
+    expect(screen.getByRole('link', { name: /Fattura 13\/A/ })).toHaveAttribute('href', '/fatture?invoice_id=F-2');
+  });
+
   it('pagina senza perdere i casi gia caricati', async () => {
     api.get
       .mockResolvedValueOnce({ data: { alerts: [{ id: 'A-1', titolo: 'Primo' }], stats: { totale_filtrato: 2 }, pagination: { has_more: true } } })

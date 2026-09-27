@@ -40,6 +40,31 @@ describe('IVA: mesi con dati mancanti (PR 9)', () => {
     expect(card.textContent).not.toContain('€ 0,00');
   });
 
+  it('detraibilità da verificare: IVA acquisti e saldo «non calcolato», mai 0 €', () => {
+    render(
+      <ScadenzeIvaMensili
+        anno={2026}
+        loading={false}
+        error={null}
+        dati={{
+          scadenze: [{
+            mese: 6, mese_nome: 'Giugno', stato: 'DATI_MANCANTI', attendibile: false,
+            motivi: ['detraibilita_da_verificare'],
+            giorni_senza_corrispettivo: [], giorni_mese: 30,
+            data_scadenza: '2026-07-16', iva_debito: 3000, iva_credito: null, saldo: null, saldo_cents: null,
+            fonte: 'stima',
+          }],
+          totale_a_credito: 0, totale_da_versare: 0, saldo_progressivo: 0,
+        }}
+      />,
+    );
+    const card = screen.getByTestId('iva-scadenza-mese-6');
+    expect(card.textContent).toContain('Detraibilità IVA da verificare');
+    expect(card.textContent).toContain('Non calcolato');
+    expect(card.textContent).not.toContain('€ 0,00');
+    expect(gestioneIva).toContain("includes('detraibilita_da_verificare')");
+  });
+
   it('la pagina IVA mostra l\'avviso con i giorni mancanti nel cruscotto mensile', () => {
     expect(gestioneIva).toContain("dashboard?.stato_liquidazione === 'DATI_MANCANTI'");
     expect(gestioneIva).toContain('data-testid="iva-dati-mancanti"');

@@ -13,6 +13,7 @@ from app.routers.prima_nota_module.common import (
     COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_PRIMA_NOTA_CASSA,
     aggrega_saldo_prima_nota,
+    TUTTI_I_CONTI,
     filtro_saldo_prima_nota,
 )
 
@@ -79,7 +80,8 @@ def _aperto(doc: Dict[str, Any]) -> bool:
 async def _saldo_liquidita(db, riferimento: date) -> Decimal:
     intervallo = {"$gte": f"{riferimento.year}-01-01", "$lte": riferimento.isoformat()}
     query_cassa = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA, data=intervallo)
-    query_banca = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA, data=intervallo)
+    query_banca = filtro_saldo_prima_nota(
+        COLLECTION_PRIMA_NOTA_BANCA, conto=TUTTI_I_CONTI, data=intervallo)
     cassa = await aggrega_saldo_prima_nota(
         db, COLLECTION_PRIMA_NOTA_CASSA, query_cassa, anno=riferimento.year
     )

@@ -13,8 +13,9 @@ Utilizzo:
 
     await risolvi_alert("FORN_MP_MANCANTE", fornitore_id, db)
 """
+import asyncio
+import hashlib
 import logging
-import uuid
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
@@ -564,6 +565,38 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
 # FUNZIONI PRINCIPALI
 # ============================================================
 
+#: Una sola creazione per volta nel processo: fra il controllo «esiste gia'
+#: aperto?» e l'inserimento ci sono degli await, e il giro dei 30 minuti e
+#: l'import di un estratto conto che girano insieme aprivano due alert gemelli
+#: per lo stesso movimento (15 doppioni RIC_* in produzione).
+_creazione_lock = asyncio.Lock()
+
+
+def id_alert_deterministico(codice: str, entita_id: str, generazione: int) -> str:
+    """Identificativo stabile dell'alert (codice, entita', n-esima apertura).
+
+    Due processi (deploy sovrapposto, web + scheduler) che aprono lo stesso
+    alert nello stesso momento calcolano lo stesso id: l'upsert per id di
+    Supabase ne tiene uno solo, invece di due righe gemelle. La generazione
+    (quanti alert di quel codice l'entita' ha gia' avuto) conserva lo storico:
+    un alert chiuso non viene sovrascritto da quello che si riapre dopo.
+    """
+    chiave = f"{codice}|{entita_id}|{int(generazione)}"
+    return "alert_" + hashlib.sha256(chiave.encode("utf-8")).hexdigest()[:24]
+
+
+async def _generazione_alert(db, codice: str, entita_id: str) -> int:
+    contatore = getattr(db[COLL_ALERTS], "count_documents", None)
+    if contatore is None:
+        return 0
+    try:
+        return int(await contatore({"codice": codice, "entita_id": entita_id}))
+    except Exception as exc:  # noqa: BLE001 - resta l'id della generazione 0
+        logger.warning("Conteggio alert %s/%s non riuscito: %s: %s",
+                       codice, entita_id, type(exc).__name__, exc)
+        return 0
+
+
 async def genera_alert(
     codice: str,
     entita_id: str,
@@ -574,7 +607,9 @@ async def genera_alert(
 ) -> Optional[Dict]:
     """
     Genera un alert se non ne esiste già uno aperto con stesso codice+entità.
-    Idempotente: se l'alert esiste già aperto, non lo duplica.
+    Idempotente: se l'alert esiste già aperto, non lo duplica — neanche con
+    due chiamate concorrenti nello stesso processo (lock) o in due processi
+    (id deterministico, vedi ``id_alert_deterministico``).
 
     Returns: il documento alert creato, o None se già esistente.
     """
@@ -584,39 +619,45 @@ async def genera_alert(
 
     cat = ALERT_CATALOG[codice]
 
-    # Idempotenza: controlla se esiste già aperto
-    existing = await db[COLL_ALERTS].find_one({
-        "codice": codice,
-        "entita_id": entita_id,
-        "stato": "aperto"
-    })
+    async with _creazione_lock:
+        # Idempotenza: controlla se esiste già aperto
+        existing = await db[COLL_ALERTS].find_one({
+            "codice": codice,
+            "entita_id": entita_id,
+            "stato": "aperto"
+        })
 
-    if existing:
-        logger.debug(f"Alert {codice} già aperto per {entita_id}, skip")
-        return None
+        if existing:
+            logger.debug(f"Alert {codice} già aperto per {entita_id}, skip")
+            return None
 
-    alert = {
-        "id": f"alert_{uuid.uuid4().hex[:12]}",
-        "codice": codice,
-        "modulo": cat["modulo"],
-        "severita": cat["severita"],
-        "titolo": cat["titolo"],
-        "dettaglio": dettaglio,
-        "condizione_chiusura": cat["condizione_chiusura"],
-        "entita_id": entita_id,
-        "entita_collection": entita_collection,
-        "stato": "aperto",
-        "letto": False,
-        "risolto": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "resolved_at": None,
-        "resolved_by": None,
-    }
+        alert_id = id_alert_deterministico(
+            codice, entita_id, await _generazione_alert(db, codice, entita_id),
+        )
+        alert = {
+            "_id": alert_id,
+            "id": alert_id,
+            "codice": codice,
+            "modulo": cat["modulo"],
+            "severita": cat["severita"],
+            "titolo": cat["titolo"],
+            "dettaglio": dettaglio,
+            "condizione_chiusura": cat["condizione_chiusura"],
+            "entita_id": entita_id,
+            "entita_collection": entita_collection,
+            "stato": "aperto",
+            "letto": False,
+            "risolto": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "resolved_at": None,
+            "resolved_by": None,
+        }
 
-    if extra:
-        alert["extra"] = extra
+        if extra:
+            alert["extra"] = extra
 
-    await db[COLL_ALERTS].insert_one(alert)
+        await db[COLL_ALERTS].insert_one(alert)
+    alert.pop("_id", None)
     logger.info(f"Alert generato: {codice} per {entita_collection}/{entita_id}")
     return alert
 
@@ -655,6 +696,62 @@ async def risolvi_alert(
         )
 
     return result.modified_count
+
+
+async def risolvi_alert_per_id(
+    alert_id: str,
+    db,
+    motivo: str,
+    resolved_by: str = "sistema",
+) -> bool:
+    """Chiude UN alert aperto per id, scrivendo il motivo.
+
+    E' lo stesso gesto di ``risolvi_alert``, pensato per le bonifiche: si
+    chiude solo la riga nominata, mai per filtro, e resta scritto perche'.
+    """
+    if not alert_id:
+        return False
+    result = await db[COLL_ALERTS].update_one(
+        {"id": alert_id, "stato": "aperto"},
+        {"$set": {
+            "stato": "risolto",
+            "risolto": True,
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "resolved_by": resolved_by,
+            "motivo_chiusura": motivo,
+        }},
+    )
+    return result.modified_count > 0
+
+
+#: Gli alert che un movimento bancario tiene aperti finche' non e'
+#: riconciliato. Nessuno li chiudeva: il movimento abbinato restava «senza
+#: match» per sempre.
+CODICI_ALERT_MOVIMENTO_DA_RICONCILIARE = (
+    "RIC_NON_RICONCILIATO",
+    "RIC_MATCH_AMBIGUO",
+    "RIC_PAGAMENTO_MULTIPLO",
+)
+
+
+async def chiudi_alert_movimento_riconciliato(
+    db, movimento_id: Any, resolved_by: str = "riconciliazione",
+) -> int:
+    """Il movimento e' diventato ``riconciliato: True``: i suoi alert di
+    riconciliazione non hanno piu' ragione di stare aperti. Non blocca mai
+    chi riconcilia: un errore qui si scrive nel log e basta."""
+    if not movimento_id:
+        return 0
+    try:
+        return await risolvi_alert_multi(
+            list(CODICI_ALERT_MOVIMENTO_DA_RICONCILIARE), str(movimento_id), db, resolved_by,
+        )
+    except Exception as exc:  # noqa: BLE001 - la riconciliazione e' gia' scritta
+        logger.warning(
+            "Alert del movimento %s non chiusi: %s: %s",
+            movimento_id, type(exc).__name__, exc,
+        )
+        return 0
 
 
 async def risolvi_alert_multi(

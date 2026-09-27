@@ -205,6 +205,24 @@ export default function CoerenzaPOSCorrispettivi() {
           />
         </div>
       )}
+      {(statsPos.fase2_senza_chiusura_terminale || 0) > 0 && (
+        <div
+          data-testid="avviso-senza-chiusura"
+          style={{
+            marginTop: -8,
+            marginBottom: 16,
+            padding: '10px 12px',
+            background: COLORS.warningLight,
+            borderRadius: BORDER_RADIUS.md,
+            color: COLORS.warning,
+            fontSize: 13,
+          }}
+        >
+          {TESTO_SENZA_CHIUSURA}: <strong>{statsPos.fase2_senza_chiusura_terminale}</strong>
+          {' '}giorni NUMIA, {formatEuro(statsPos.fase2_accrediti_senza_chiusura_totale || 0)} accreditati.
+          {' '}Non entrano nelle quadrature né nel saldo: inserisci la chiusura serale per verificarli.
+        </div>
+      )}
       {(statsPos.fase2_duplicati_banca_unificati || 0) > 0 && (
         <div
           style={{
@@ -704,9 +722,11 @@ function TabellaSettimanale({ settimane }) {
   }
   const statoLabel = {
     ok: 'Chiuso', in_attesa: "In attesa dell'accredito", mancante: 'Manca in banca', differenza: 'Differenza',
+    senza_chiusura_terminale: TESTO_SENZA_CHIUSURA,
   };
   const statoEsito = {
     ok: 'chiuso', in_attesa: 'nessun_dato', mancante: 'intervento', differenza: 'verificare',
+    senza_chiusura_terminale: 'verificare',
   };
   return (
     <TableWrap>
@@ -892,6 +912,7 @@ function RigaGiornaliera({ g, even, onReload }) {
                         g.stato_accredito === 'no_pos_manuale' ? COLORS.textSubtle :
                         g.stato_accredito === 'raggruppato' ? COLORS.textSubtle :
                         g.stato_accredito === 'mancante' ? COLORS.danger :
+                        g.stato_accredito === 'senza_chiusura_terminale' ? COLORS.warning :
                         (g.diff_accredito || 0) >= 0 ? COLORS.success : COLORS.danger;
 
   const statoAccrLabel = {
@@ -902,6 +923,7 @@ function RigaGiornaliera({ g, even, onReload }) {
     'mancante': 'Mancante',
     'differenza': 'Diff.',
     'extra': 'Extra',
+    'senza_chiusura_terminale': TESTO_SENZA_CHIUSURA,
   }[g.stato_accredito] || g.stato_accredito;
 
   // Badge stato corrispettivo (fase 0)
@@ -1047,6 +1069,11 @@ function RigaGiornaliera({ g, even, onReload }) {
                 {payoutSumUp.commissioni_gruppi > 0
                   ? ` · costi ${formatEuro(payoutSumUp.commissioni_gruppi)}`
                   : ''}
+              </div>
+            )}
+            {payoutSumUp?.rettifiche_gruppi > 0 && (
+              <div style={{ fontSize: 10, color: COLORS.textMuted }}>
+                Rettifica SumUp {formatEuro(payoutSumUp.rettifiche_gruppi)}
               </div>
             )}
           </>
@@ -1477,6 +1504,9 @@ export function esitoGiorno(stato) {
   return 'nessun_dato';
 }
 
+/** Giorno NUMIA il cui POS e' letto dall'accredito stesso: niente da verificare. */
+export const TESTO_SENZA_CHIUSURA = 'Senza chiusura terminale: accredito non verificabile';
+
 const TESTO_STATO = {
   ok: 'Chiuso',
   mancante: 'Manca in banca',
@@ -1502,21 +1532,27 @@ export function RiepilogoMensilePos({ riepilogo, anno }) {
     { chiave: 'pos_accreditato', titolo: 'Accreditato su BPM' },
     { chiave: 'sumup_pagato', titolo: 'Pagato sulla carta SumUp' },
     { chiave: 'differenza_xml_pos', titolo: 'Registratore − (Numia + SumUp)', segno: true, extra: true },
-    { chiave: 'differenza_pos_banca', titolo: 'BPM − Numia', segno: true, extra: true },
+    { chiave: 'pos_in_attesa_xml', titolo: 'POS in attesa di XML', extra: true },
+    { chiave: 'differenza_pos_banca', titolo: 'BPM − Numia', segno: true, extra: true, assente: 'Non verificabile' },
+    { chiave: 'pos_numia_senza_chiusura', titolo: 'Numia senza chiusura (da BPM)', extra: true },
+    { chiave: 'sumup_rettifiche', titolo: 'Rettifiche SumUp', extra: true },
     { chiave: 'sumup_commissioni', titolo: 'Commissioni SumUp', extra: true },
     { chiave: 'contanti', titolo: 'Contanti', extra: true },
     { chiave: 'totale_corrispettivi', titolo: 'Corrispettivi', extra: true },
   ].filter(c => tutte || !c.extra);
   const valore = (riga, c) => {
     const v = riga[c.chiave];
-    if (v === undefined || v === null) return '—';
+    if (v === undefined || v === null) return c.assente || '—';
     return c.segno ? formatEuroConSegno(v) : formatEuro(v);
   };
   return (
     <>
       <p style={{ margin: '0 0 10px', fontSize: 13, color: COLORS.textMuted }}>
         NUMIA si confronta con gli accrediti su BPM; SumUp con i pagamenti sulla sua carta, per data
-        del pagamento (un pagamento può coprire più giorni di vendita e non si divide).
+        del pagamento (un pagamento può coprire più giorni di vendita e non si divide). Il registratore si
+        confronta solo con i giorni che hanno l'XML: un giorno chiuso dall'RT col giorno dopo va con quella
+        chiusura, uno ancora in attesa di XML resta fuori. I giorni Numia senza chiusura del terminale non
+        sono verificabili contro BPM.
       </p>
       <Button variant="secondary" size="sm" onClick={() => setTutte(v => !v)} style={{ marginBottom: 10, minHeight: 44 }}
         data-testid="mensile-tutte-colonne">

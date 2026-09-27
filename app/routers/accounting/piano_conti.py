@@ -12,10 +12,10 @@ from app.database import Database
 from app.utils.dependencies import get_current_admin_user
 from app.utils.error_handler import handle_errors
 from app.utils.parsing import safe_float
-from app.services.liquidita_service import calcola_liquidita
 from app.services.mapping_piano_conti import (
     OPERATIVO_A_UFFICIALE,
     alias_operativi,
+    categoria_cee,
     conto_cee,
     conto_cee_valido,
     piano_conti_cee,
@@ -212,325 +212,110 @@ async def get_piano_conti(anno: str = None) -> Dict[str, Any]:
         "totale": len(conti),
         "schema": "CEE",
         "fonte": "piano_conti_ufficiale",
+        "fonte_saldi": "movimenti_contabili",
         "struttura": STRUTTURA_BASE,
         "conti_operativi_non_mappati": non_mappati,
         "anno": anno,
     }
 
 
-async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
-    """Calcola i saldi effettivi di tutti i conti del piano leggendo dalle
-    collection operative. Se `anno` è passato, filtra ai movimenti di quell'anno.
-
-    Mappatura:
-      01.01.01 Cassa              ← prima_nota_cassa (entrate − uscite)
-      01.01.02 Banca c/c          ← prima_nota_banca ∪ estratto_conto_movimenti
-      01.02.01 Crediti v/clienti  ← corrispettivi non ancora incassati (0 se tutti pagati cassa)
-      01.04.01 IVA a credito      ← invoices (IVA detraibile)
-      02.01.01 Debiti v/fornitori ← invoices non pagate (importo residuo)
-      02.02.01 Debiti tributari   ← f24_unificato non pagate
-      02.02.02 Debiti v/INPS      ← cedolini (contributi) non ancora pagati
-      02.03.01 IVA a debito       ← corrispettivi (totale_iva)
-      02.04.01 TFR                ← cedolini (tfr_mese cumulato)
-      04.01.01 Ricavi vendite     ← corrispettivi (totale_imponibile)
-      05.01.01 Acquisto merci     ← invoices (imponibile)
-      05.03.01 Salari e stipendi  ← cedolini (netto)
-      05.03.02 Contributi previd. ← cedolini (contributi)
-    """
-    saldi: Dict[str, float] = {}
-    liquidita = (
-        await calcola_liquidita(db, int(anno), f"{anno}-12-31")
-        if anno else None
-    )
-
-    # Filtri temporali (stringa ISO YYYY-MM-DD o campo numerico "anno")
-    #
-    # Conto Economico (ricavi/costi dell'anno) → flusso ristretto all'anno
-    # selezionato: _date_range/_anno_field.
-    # Stato Patrimoniale (saldi di cassa/banca/debiti al momento attuale) →
-    # non è un flusso dell'anno, è un saldo CUMULATIVO fino a fine anno
-    # selezionato: _date_cumulativo. Prima anche i saldi patrimoniali erano
-    # filtrati come un flusso annuale: selezionando un anno con poco/nessun
-    # movimento (es. l'anno corrente appena iniziato) Cassa/Banca/Debiti
-    # sparivano quasi a zero anche se il saldo reale era ben diverso da zero.
-    def _date_range(field: str):
-        if not anno:
-            return {}
-        return {field: {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}}
-
-    def _date_cumulativo(field: str):
-        if not anno:
-            return {}
-        return {field: {"$lte": f"{anno}-12-31"}}
-
-    def _anno_field():
-        if not anno:
-            return {}
-        return {"anno": int(anno)}
-
-    # ── INVOICES (fatture passive: costi + IVA credito + debiti fornitori) ──
-    # IVA a credito e Debiti v/fornitori sono saldi patrimoniali: cumulativi
-    # fino a fine anno selezionato, non ristretti alle sole fatture di
-    # quell'anno (una fattura 2024 ancora non pagata è un debito reale anche
-    # guardando il 2026).
-    match_inv = _date_cumulativo("invoice_date") or _date_cumulativo("data_documento") or {}
-    # I costi per sotto-conto (Conto Economico) restano invece un flusso
-    # dell'anno selezionato.
-    match_inv_periodo = _date_range("invoice_date") or _date_range("data_documento") or {}
-    pipe_inv = [
-        *( [{"$match": match_inv}] if match_inv else [] ),
-        {"$group": {
-            "_id": None,
-            "totale":     {"$sum": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}},
-            "imponibile": {"$sum": {"$ifNull": ["$importo_imponibile", {"$ifNull": ["$imponibile", 0]}]}},
-            # Il saldo IVA a credito include soltanto importi classificati.
-            # `importo_iva` e `iva` descrivono l'imposta del documento, non
-            # provano la detraibilita fiscale.
-            "iva":        {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
-        }}
-    ]
-    res = await db["invoices"].aggregate(pipe_inv).to_list(1)
-    if res:
-        saldi["01.04.01"] = round(float(res[0].get("iva") or 0), 2)          # IVA credito
-        saldi["02.01.01"] = round(float(res[0].get("totale") or 0), 2)       # Debiti fornitori (lordi)
-
-    # Imponibile dell'anno (non cumulativo) per il fallback 05.01.01 sotto:
-    # i costi sono un flusso Conto Economico, non un saldo patrimoniale.
-    pipe_inv_periodo = [
-        *( [{"$match": match_inv_periodo}] if match_inv_periodo else [] ),
-        {"$group": {
-            "_id": None,
-            "imponibile": {"$sum": {"$ifNull": ["$importo_imponibile", {"$ifNull": ["$imponibile", 0]}]}},
-        }}
-    ]
-    res_periodo = await db["invoices"].aggregate(pipe_inv_periodo).to_list(1)
-    totale_imponibile_fatture = float(res_periodo[0].get("imponibile") or 0) if res_periodo else 0.0
-
-    # ── COSTI PER SOTTO-CONTO (dal dizionario articoli) ──────────────────────
-    # Invece di sbattere tutto l'imponibile su 05.01.01, usiamo il dizionario
-    # articoli (popolato da /api/dizionario-articoli/genera-dizionario e
-    # categorizzato da ai_categorizzazione) per splittare i costi nelle
-    # sottocategorie reali (05.01.02 Materie prime, 05.01.03 Bevande alcoliche,
-    # 05.01.04 Bevande analcoliche, 05.01.09 Caffè, 05.02.01 Servizi, ...)
-    #
-    # Approccio: uniamo le righe fattura con il dizionario (per descrizione)
-    # e aggreghiamo per conto. Filtro per anno applicato al date della fattura.
-    pipe_righe = [
-        *( [{"$match": match_inv_periodo}] if match_inv_periodo else [] ),
-        {"$unwind": {"path": "$linee", "preserveNullAndEmptyArrays": False}},
-        # Join con dizionario_articoli per trovare il conto della riga
-        {"$lookup": {
-            "from": "dizionario_articoli",
-            "localField": "linee.descrizione",
-            "foreignField": "descrizione",
-            "as": "diz",
-        }},
-        # Se la riga è nel dizionario usiamo il conto del dizionario,
-        # altrimenti cade su 05.01.01 (Acquisto merci, default generico)
-        {"$addFields": {
-            "conto_assegnato": {
-                "$ifNull": [
-                    {"$arrayElemAt": ["$diz.conto", 0]},
-                    "05.01.01",
-                ]
-            },
-            # imponibile riga = prezzo_totale (senza IVA) — se manca proviamo altri campi
-            "imponibile_riga": {
-                "$ifNull": [
-                    "$linee.prezzo_totale",
-                    {"$ifNull": [
-                        "$linee.imponibile",
-                        {"$ifNull": ["$linee.importo", 0]}
-                    ]}
-                ]
-            }
-        }},
-        {"$group": {
-            "_id": "$conto_assegnato",
-            "totale": {"$sum": "$imponibile_riga"},
-            "righe": {"$sum": 1},
-        }},
-    ]
+def _intero_o_none(valore: Any) -> Optional[int]:
     try:
-        costi_per_conto = await db["invoices"].aggregate(pipe_righe).to_list(100)
-    except Exception as e:
-        logger.warning(f"Impossibile splittare costi per conto: {e}")
-        costi_per_conto = []
+        return int(valore)
+    except (TypeError, ValueError):
+        return None
 
-    imponibile_splittato = 0.0
-    for r in costi_per_conto:
-        codice = r.get("_id") or "05.01.01"
-        importo = round(float(r.get("totale") or 0), 2)
-        # Accumula (un conto può ricevere da più raggruppamenti)
-        saldi[codice] = round(saldi.get(codice, 0.0) + importo, 2)
-        imponibile_splittato += importo
 
-    # Safety net: se il dizionario non ha coperto nulla (dizionario vuoto
-    # o righe senza match), fallback al vecchio comportamento: tutto su 05.01.01
-    if imponibile_splittato <= 0.01 and totale_imponibile_fatture > 0:
-        saldi["05.01.01"] = round(saldi.get("05.01.01", 0) + totale_imponibile_fatture, 2)
+def _anno_scrittura(scrittura: Dict[str, Any]) -> Optional[int]:
+    """Anno della scrittura: il campo ``anno`` o, in mancanza, la data."""
+    anno = _intero_o_none(scrittura.get("anno"))
+    if anno is not None:
+        return anno
+    data = str(scrittura.get("data_documento") or scrittura.get("data") or "")
+    return _intero_o_none(data[:4]) if len(data) >= 4 else None
 
-    # Sottrai pagamenti effettivi ai Debiti v/fornitori (per saldo reale).
-    # IMPORTANTE: dopo la PR #1, i movimenti di pagamento fornitori sono salvati
-    # con categoria "Pagamento fornitore" (determina_tipo_movimento_fattura),
-    # NON con "fornitori". Inoltre possono avere source='fattura_pagata' o
-    # 'conferma_provvisori' o 'sync_fatture'. Dedup per riferimento FATT-.
-    match_pag = _date_cumulativo("data") or {}
-    pipe_pag_banca = [
-        *( [{"$match": match_pag}] if match_pag else [] ),
-        {"$match": {
-            "status": {"$nin": ["deleted", "archived"]},
-            "tipo": "uscita",
-            "$or": [
-                {"categoria": {"$in": ["Pagamento fornitore", "Fatture", "fornitori"]}},
-                {"riferimento": {"$regex": "^FATT-"}},
-                {"source": {"$in": ["fattura_pagata", "conferma_provvisori", "sync_fatture"]}},
-                {"fattura_id": {"$ne": None}},
-            ]
-        }},
-        {"$group": {"_id": None, "tot": {"$sum": "$importo"}}}
-    ]
-    pag_banca = await db["prima_nota_banca"].aggregate(pipe_pag_banca).to_list(1)
-    pag_cassa = await db["prima_nota_cassa"].aggregate(pipe_pag_banca).to_list(1)
-    pagato = (pag_banca[0]["tot"] if pag_banca else 0) + (pag_cassa[0]["tot"] if pag_cassa else 0)
-    saldi["02.01.01"] = round(max(0.0, saldi.get("02.01.01", 0) - float(pagato)), 2)
 
-    # ── CORRISPETTIVI (ricavi + IVA debito) ──────────────────────────────────
-    match_corr = _date_range("data") or {}
-    pipe_corr = [
-        {"$match": {**match_corr, "entity_status": {"$ne": "deleted"}}} if match_corr else {"$match": {"entity_status": {"$ne": "deleted"}}},
-        {"$group": {
-            "_id": None,
-            "totale":     {"$sum": {"$ifNull": ["$totale", 0]}},
-            "imponibile": {"$sum": {"$ifNull": ["$totale_imponibile", 0]}},
-            "iva":        {"$sum": {"$ifNull": ["$totale_iva", 0]}},
-            "contanti":   {"$sum": {"$ifNull": ["$pagato_contante", {"$ifNull": ["$pagato_cassa", 0]}]}},
-            "pos":        {"$sum": {"$ifNull": ["$pagato_elettronico", 0]}},
-        }}
-    ]
-    res = await db["corrispettivi"].aggregate(pipe_corr).to_list(1)
-    if res:
-        saldi["04.01.01"] = round(float(res[0].get("imponibile") or 0), 2)   # Ricavi vendite prodotti (corrispettivi totale)
-        saldi["02.03.01"] = round(float(res[0].get("iva") or 0), 2)          # IVA debito
+# Lato "naturale" del saldo per categoria CEE: un conto dell'attivo o di
+# costo e' positivo in DARE, uno del passivo, del netto o di ricavo in AVERE.
+_CATEGORIE_SALDO_DARE = {"attivo", "costi"}
+_CATEGORIE_ECONOMICHE = {"ricavi", "costi"}
 
-    # ── PRIMA NOTA CASSA (saldo cassa) ───────────────────────────────────────
-    # Saldo patrimoniale cumulativo fino a fine anno selezionato (non un
-    # flusso ristretto all'anno: la cassa non "riparte da zero" ogni anno).
-    # NON usare max(0, ...): se le uscite superano le entrate, la cassa può
-    # avere un saldo negativo (scoperto), e l'utente deve vederlo per poterlo
-    # correggere.
-    pipe_cassa = [
-        *( [{"$match": {**_date_cumulativo("data"), "status": {"$nin": ["deleted", "archived"]}}}]
-           if _date_cumulativo("data") else
-           [{"$match": {"status": {"$nin": ["deleted", "archived"]}}}] ),
-        {"$group": {
-            "_id": "$tipo",
-            "tot": {"$sum": "$importo"}
-        }}
-    ]
-    res = await db["prima_nota_cassa"].aggregate(pipe_cassa).to_list(10)
-    entrate_cassa = sum(float(r.get("tot") or 0) for r in res if r.get("_id") == "entrata")
-    uscite_cassa  = sum(float(r.get("tot") or 0) for r in res if r.get("_id") == "uscita")
-    saldi["01.01.01"] = (
-        liquidita["cassa"]["saldo"]
-        if liquidita else round(entrate_cassa - uscite_cassa, 2)
-    )
 
-    # ── BANCA c/c (saldo banca): Prima Nota Banca + Estratto Conto ───────────
-    # Il saldo banca viene dai movimenti di Prima Nota Banca (che è la fonte
-    # contabile). Se però Prima Nota Banca è vuota o sincronizzata male, si
-    # può ricadere sull'Estratto Conto come secondo strato.
-    #
-    # IMPORTANTE: l'estratto conto salva sempre importi POSITIVI in "importo"
-    # e distingue entrata/uscita nel campo "tipo" (verificato in
-    # bank_statement_import.py). NON sommare direttamente "$importo" come
-    # faceva la versione precedente — produceva un numero senza senso.
-    #
-    # Il formato date è ISO yyyy-mm-dd (non italiano).
+async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
+    """Saldi di ogni conto dal LIBRO GIORNALE (``movimenti_contabili``), per
+    codice di riga, col segno del conto CEE di destinazione.
 
-    # 1) Prima Nota Banca (fonte contabile) — saldo cumulativo fino a fine
-    # anno selezionato (stesso motivo della Cassa: non è un flusso annuale).
-    match_pnb_anno = {}
-    if anno:
-        match_pnb_anno["data"] = {"$lte": f"{anno}-12-31"}
-    match_pnb = {**match_pnb_anno, "status": {"$nin": ["deleted", "archived"]}}
-    pipe_pnb = [
-        {"$match": match_pnb},
-        {"$group": {"_id": "$tipo", "tot": {"$sum": "$importo"}}}
-    ]
-    res_pnb = await db["prima_nota_banca"].aggregate(pipe_pnb).to_list(10)
-    entrate_pnb = sum(float(r.get("tot") or 0) for r in res_pnb if r.get("_id") == "entrata")
-    uscite_pnb  = sum(float(r.get("tot") or 0) for r in res_pnb if r.get("_id") == "uscita")
-    saldo_pnb = entrate_pnb - uscite_pnb
+    Audit 27/09/2026 (punto 1): prima i saldi si ricalcolavano dalle
+    collezioni operative — un secondo sistema accanto al giornale, che
+    contava 555 fatture archiviate doppie, i corrispettivi cancellati,
+    sommava ``prezzo_totale`` stringa e leggeva sugli F24 campi che nessun
+    F24 ha. Ora il piano dei conti somma le stesse righe del bilancio di
+    verifica (``contabilita_gestionale._bilancio_verifica_da_registro``),
+    stesso predicato di scrittura attiva, e la conversione CEE resta quella
+    di ``mapping_piano_conti`` (chi chiama usa ``saldi_in_cee``).
 
-    # 2) Estratto Conto (fonte bancaria reale) — usato se Prima Nota Banca è vuota
-    match_ec: Dict[str, Any] = {"status": {"$nin": ["deleted", "archived"]}}
-    if anno:
-        match_ec["data"] = {"$lte": f"{anno}-12-31"}
-    pipe_ec = [
-        {"$match": match_ec},
-        {"$group": {"_id": "$tipo", "tot": {"$sum": "$importo"}}}
-    ]
-    res_ec = await db["estratto_conto_movimenti"].aggregate(pipe_ec).to_list(10)
-    entrate_ec = sum(float(r.get("tot") or 0) for r in res_ec if r.get("_id") == "entrata")
-    uscite_ec  = sum(float(r.get("tot") or 0) for r in res_ec if r.get("_id") == "uscita")
-    saldo_ec = entrate_ec - uscite_ec
+    - conti economici (ricavi, costi): flusso dell'anno ``anno``;
+    - conti patrimoniali: saldo cumulativo fino al 31/12 di ``anno``;
+    - senza ``anno``: tutto il registro.
+    La scrittura di chiusura dell'esercizio (``chiusura_esercizio``) degli
+    anni del flusso economico non si somma: il suo effetto — portare il
+    risultato a patrimonio netto — e' ricostruito qui sotto dai conti
+    economici, altrimenti ricavi e costi dell'anno chiuso varrebbero zero.
+    Cio' che il giornale non registra (pagamenti, stipendi) non compare:
+    un saldo che manca e' un dato da registrare, non da stimare.
+    """
+    from app.services.registrazione_contabile import FILTRO_SCRITTURA_ATTIVA
 
-    # Il Piano dei Conti espone il saldo CONTABILE, quindi usa Prima Nota
-    # come Bilancio, Finanziaria e Contabilita Avanzata. L'Estratto Conto e'
-    # una prova bancaria distinta: il suo saldo non deve sostituire in modo
-    # silenzioso quello del mastro. Lo scarto viene mostrato dalle pagine di
-    # riconciliazione e dal servizio liquidita_service.
-    saldi["01.01.02"] = (
-        liquidita["banca_contabile"]["saldo"]
-        if liquidita else round(saldo_pnb, 2)
-    )
-    if res_ec and abs(round(saldo_ec - saldo_pnb, 2)) >= 0.01:
-        logger.warning(
-            "Scarto Banca %s: Estratto Conto %.2f, Prima Nota %.2f",
-            anno or "cumulativo", saldo_ec, saldo_pnb,
-        )
+    anno_int = _intero_o_none(anno) if anno else None
+    scritture = await db[COLLECTION_MOVIMENTI_CONTABILI].find(
+        dict(FILTRO_SCRITTURA_ATTIVA),
+        {"_id": 0, "righe": 1, "anno": 1, "data": 1, "data_documento": 1, "tipo": 1},
+    ).to_list(None)
 
-    # ── CEDOLINI (costi personale + TFR + contributi) ─────────────────────────
-    match_ced = _anno_field() or {}
-    pipe_ced = [
-        *( [{"$match": match_ced}] if match_ced else [] ),
-        {"$group": {
-            "_id": None,
-            "netti":       {"$sum": {"$ifNull": ["$netto", 0]}},
-            "tfr":         {"$sum": {"$ifNull": ["$tfr_mese", 0]}},
-            "contributi":  {"$sum": {"$ifNull": ["$contributi_azienda", 0]}},
-            "lordi":       {"$sum": {"$ifNull": ["$lordo", 0]}},
-        }}
-    ]
-    res = await db["cedolini"].aggregate(pipe_ced).to_list(1)
-    if res:
-        saldi["05.03.01"] = round(float(res[0].get("lordi") or res[0].get("netti") or 0), 2)  # Salari/stipendi
-        saldi["05.03.02"] = round(float(res[0].get("contributi") or 0), 2)                    # Contributi previd.
-        saldi["05.03.03"] = round(float(res[0].get("tfr") or 0), 2)                           # TFR costo
-        saldi["02.04.01"] = round(float(res[0].get("tfr") or 0), 2)                           # TFR debito
+    grezzi: Dict[str, float] = {}
+    for scrittura in scritture:
+        righe = scrittura.get("righe") or []
+        if not righe:
+            continue
+        anno_s = _anno_scrittura(scrittura)
+        if anno_int is not None:
+            if anno_s is None or anno_s > anno_int:
+                continue
+            nel_flusso = anno_s == anno_int
+        else:
+            nel_flusso = True
+        if scrittura.get("tipo") == "chiusura_esercizio" and nel_flusso:
+            continue
+        for riga in righe:
+            codice = str(riga.get("conto_codice") or riga.get("conto") or "").strip()
+            cee = risolvi_codice_cee(codice)
+            if not cee:
+                continue
+            if categoria_cee(cee) in _CATEGORIE_ECONOMICHE and not nel_flusso:
+                continue
+            try:
+                dare = float(riga.get("dare") or 0)
+                avere = float(riga.get("avere") or 0)
+            except (TypeError, ValueError):
+                logger.warning("Riga non numerica nel giornale (conto %s): esclusa dai saldi", codice)
+                continue
+            grezzi[codice] = grezzi.get(codice, 0.0) + dare - avere
 
-    # ── F24 (debiti tributari) ────────────────────────────────────────────────
-    if "f24_unificato" in await db.list_collection_names():
-        match_f24 = _date_range("data_scadenza") or _anno_field() or {}
-        pipe_f24 = [
-            *( [{"$match": match_f24}] if match_f24 else [] ),
-            {"$group": {"_id": None, "tot": {"$sum": {"$ifNull": ["$totale", {"$ifNull": ["$importo", 0]}]}}}}
-        ]
-        res = await db["f24_unificato"].aggregate(pipe_f24).to_list(1)
-        if res:
-            saldi["02.02.01"] = round(float(res[0].get("tot") or 0), 2)
+    saldi: Dict[str, float] = {}
+    for codice, dare_meno_avere in grezzi.items():
+        categoria = categoria_cee(risolvi_codice_cee(codice))
+        saldo = dare_meno_avere if categoria in _CATEGORIE_SALDO_DARE else -dare_meno_avere
+        saldi[codice] = round(saldo, 2)
 
-    # ── PATRIMONIO NETTO: Utile/Perdita d'esercizio = Ricavi − Costi ─────────
-    # Capitale sociale (03.01.01) e Riserva legale (03.02.01) non hanno una
-    # fonte transazionale in questo gestionale (dati statutari): restano a 0
-    # finché non vengono gestiti altrove, non vengono inventati qui.
-    ricavi_tot = sum(v for k, v in saldi.items() if k.startswith("04."))
-    costi_tot = sum(v for k, v in saldi.items() if k.startswith("05."))
-    risultato = round(ricavi_tot - costi_tot, 2)
-    saldi["03.03.01"] = max(0.0, risultato)   # Utile d'esercizio
-    saldi["03.03.02"] = max(0.0, -risultato)  # Perdita d'esercizio
-
+    # Risultato dell'esercizio (ricavi - costi del flusso) sul netto: utile
+    # in 03.03.01, perdita in 03.03.02 col segno del netto (negativa).
+    ricavi = sum(v for k, v in saldi.items() if categoria_cee(risolvi_codice_cee(k)) == "ricavi")
+    costi = sum(v for k, v in saldi.items() if categoria_cee(risolvi_codice_cee(k)) == "costi")
+    risultato = round(ricavi - costi, 2)
+    if risultato > 0:
+        saldi["03.03.01"] = round(saldi.get("03.03.01", 0.0) + risultato, 2)
+    elif risultato < 0:
+        saldi["03.03.02"] = round(saldi.get("03.03.02", 0.0) + risultato, 2)
     return saldi
 
 
@@ -1232,8 +1017,10 @@ async def get_movimenti_per_conto(
     elif cat == "patrimonio_netto":
         if {"03.03.01", "03.03.02"} & set(codici_operativi):
             saldi_periodo = await _calcola_saldi_piano_conti(db, anno)
-            ricavi = sum(v for k, v in saldi_periodo.items() if k.startswith("04."))
-            costi = sum(v for k, v in saldi_periodo.items() if k.startswith("05."))
+            ricavi = sum(v for k, v in saldi_periodo.items()
+                         if categoria_cee(risolvi_codice_cee(k)) == "ricavi")
+            costi = sum(v for k, v in saldi_periodo.items()
+                        if categoria_cee(risolvi_codice_cee(k)) == "costi")
             risultato = round(ricavi - costi, 2)
             movimenti = [{
                 "data": f"{anno}-12-31" if anno else "",

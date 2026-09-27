@@ -21,6 +21,13 @@ export const CONTI_VERIFICA = {
   acquisti_merci: '05.01.01',
 };
 
+export const DATO_NON_DISPONIBILE = 'Dato non disponibile';
+
+/** Un importo che il backend non conosce (null) non si mostra come 0,00. */
+export function euroODato(valore) {
+  return valore == null ? DATO_NON_DISPONIBILE : formatEuro(valore);
+}
+
 export default function Bilancio() {
   const { anno } = useAnnoGlobale();
   const [statoPatrimoniale, setStatoPatrimoniale] = useState(null);
@@ -254,11 +261,27 @@ export default function Bilancio() {
                     </Td>
                   </tr>
                   <tr>
-                    <Td style={{ color: COLORS.gray[700] }}>Banca <LinkVerifica conto="banca" /></Td>
+                    <Td style={{ color: COLORS.gray[700] }}>Banca BPM <LinkVerifica conto="banca" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
                       {formatEuro(attivo.disponibilita_liquide.banca)}
                     </Td>
                   </tr>
+                  {attivo.disponibilita_liquide.mastercard_sumup != null && (
+                    <tr>
+                      <Td style={{ color: COLORS.gray[700] }}>Mastercard SumUp</Td>
+                      <Td align="right" mono style={{ fontWeight: 500 }}>
+                        {formatEuro(attivo.disponibilita_liquide.mastercard_sumup)}
+                      </Td>
+                    </tr>
+                  )}
+                  {attivo.disponibilita_liquide.altri_conti_banca ? (
+                    <tr>
+                      <Td style={{ color: COLORS.gray[700] }}>Altri conti di tesoreria</Td>
+                      <Td align="right" mono style={{ fontWeight: 500 }}>
+                        {formatEuro(attivo.disponibilita_liquide.altri_conti_banca)}
+                      </Td>
+                    </tr>
+                  ) : null}
                   <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
                     <Td style={{ fontWeight: 600 }}>Totale</Td>
                     <Td align="right" mono style={{ fontWeight: 600 }}>
@@ -268,6 +291,12 @@ export default function Bilancio() {
                 </tbody>
               </Table>
             </TableWrap>
+            <p
+              data-testid="bilancio-nota-saldi-prima-nota"
+              style={{ color: COLORS.textMuted, fontSize: 12, margin: '8px 0 0' }}
+            >
+              Saldi di Prima Nota Cassa e Banca, non saldi certificati dall'estratto conto.
+            </p>
           </div>
           <div style={{ marginBottom: 20 }}>
             <h4 style={{ color: COLORS.success, fontSize: 14, marginBottom: 12 }}>Crediti</h4>
@@ -584,7 +613,8 @@ export default function Bilancio() {
   const ContoEconomicoView = () => {
     if (!contoEconomico) return null;
     const { ricavi, costi, risultato } = contoEconomico;
-    const isProfit = risultato.utile_perdita >= 0;
+    const risultatoNoto = risultato.utile_perdita != null;
+    const isProfit = risultatoNoto && risultato.utile_perdita >= 0;
     return (
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         {/* RICAVI */}
@@ -684,6 +714,20 @@ export default function Bilancio() {
                     </Td>
                   </tr>
                 )}
+                <tr>
+                  <Td style={{ color: COLORS.gray[700], fontSize: 15 }}>
+                    Personale (lordo buste paga)
+                    <div style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                      Contributi a carico dell'azienda non disponibili
+                      {costi.personale == null && costi.personale_motivo
+                        ? ` · ${costi.personale_motivo}`
+                        : ''}
+                    </div>
+                  </Td>
+                  <Td align="right" mono style={{ fontWeight: 500, fontSize: 16 }}>
+                    {euroODato(costi.personale)}
+                  </Td>
+                </tr>
                 <tr style={{ borderTop: `2px solid ${COLORS.danger}`, background: COLORS.dangerLight }}>
                   <Td style={{ fontWeight: 700, fontSize: 16 }}>TOTALE COSTI (Netto)</Td>
                   <Td
@@ -691,7 +735,7 @@ export default function Bilancio() {
                     mono
                     style={{ fontWeight: 700, fontSize: 18, color: COLORS.danger }}
                   >
-                    {formatEuro(costi.totale_costi)}
+                    {euroODato(costi.totale_costi)}
                   </Td>
                 </tr>
               </tbody>
@@ -701,8 +745,9 @@ export default function Bilancio() {
 
         {/* RISULTATO */}
         <div
+          data-testid="bilancio-risultato"
           style={{
-            background: isProfit ? COLORS.success : COLORS.danger,
+            background: !risultatoNoto ? COLORS.textMuted : isProfit ? COLORS.success : COLORS.danger,
             borderRadius: BORDER_RADIUS.md,
             padding: 32,
             color: 'white',
@@ -718,10 +763,12 @@ export default function Bilancio() {
               marginBottom: 8,
             }}
           >
-            {isProfit ? 'UTILE DI ESERCIZIO' : 'PERDITA DI ESERCIZIO'}
+            {!risultatoNoto
+              ? 'RISULTATO DI ESERCIZIO'
+              : isProfit ? 'UTILE DI ESERCIZIO' : 'PERDITA DI ESERCIZIO'}
           </div>
-          <div style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, fontFamily: FONT.mono }}>
-            {formatEuro(Math.abs(risultato.utile_perdita))}
+          <div style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, fontFamily: risultatoNoto ? FONT.mono : undefined }}>
+            {risultatoNoto ? formatEuro(Math.abs(risultato.utile_perdita)) : DATO_NON_DISPONIBILE}
           </div>
           <div
             style={{
@@ -733,7 +780,10 @@ export default function Bilancio() {
               fontSize: 13,
             }}
           >
-            Margine: {risultato.margine_percentuale}%
+            {risultato.margine_percentuale != null
+              ? `Margine: ${risultato.margine_percentuale}%`
+              : 'Margine non calcolabile'}
+            {risultato.incompleto ? ' · senza contributi datoriali' : ''}
           </div>
         </div>
         {renderVociUfficiali(contoEconomico.voci_ufficiali, 'Conto Economico')}

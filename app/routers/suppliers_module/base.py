@@ -16,6 +16,9 @@ from .common import (
     logger
 )
 from app.services.payment_allocation_validator import allocation_summary, is_credit_note
+from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA, importo_documento_con_segno
+from app.services.stato_pagamento_fattura import e_annullata, e_pagata
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.services.payment_evidence_projection import project_payment_evidence_many
 
 router = APIRouter()
@@ -418,12 +421,14 @@ async def list_suppliers(
             # compreso) faceva restare la pagina su «Caricamento» per decine
             # di secondi. Il tetto è alto abbastanza da non tagliare l'archivio
             # 2026; i campi non letti non viaggiano.
+            # Solo le fatture attive: ogni fattura 2026 esiste anche come
+            # copia `archived`, e senza filtro contatori e saldi raddoppiano.
             invoice_rows = await db["invoices"].find(
-                {"$or": [
+                {"$and": [dict(FILTRO_FATTURA_ATTIVA), {"$or": [
                     {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
                     {"cedente_piva": {"$exists": True, "$nin": [None, ""]}},
                     {"fornitore_partita_iva": {"$exists": True, "$nin": [None, ""]}},
-                ]},
+                ]}]},
                 {
                     "_id": 0,
                     "supplier_vat": 1,
@@ -436,7 +441,13 @@ async def list_suppliers(
                     "importo_documento": 1,
                     "importo": 1,
                     "stato_pagamento": 1,
+                    "stato": 1,
+                    "payment_status": 1,
                     "pagato": 1,
+                    "paid": 1,
+                    "tipo_documento": 1,
+                    "document_type": 1,
+                    "document_role": 1,
                     "esclusa_da_cassa_banca": 1,
                     "data_documento": 1,
                     "invoice_date": 1,
@@ -449,14 +460,17 @@ async def list_suppliers(
                 key = _normalized_supplier_key(piva)
                 if not key:
                     continue
-                amount = _invoice_amount(invoice)
-                paid_status = str(invoice.get("stato_pagamento") or "").strip().lower()
-                paid = invoice.get("pagato") is True or paid_status in {"pagata", "paid"}
+                # Nota di credito in negativo; «pagata» dal solo criterio
+                # canonico, che legge tutti e cinque i campi di stato.
+                amount = importo_documento_con_segno(invoice, _invoice_amount(invoice))
+                paid = e_pagata(invoice)
+                annullata = e_annullata(invoice)
                 excluded = invoice.get("esclusa_da_cassa_banca") is True
                 date_value = invoice.get("data_documento") or invoice.get("invoice_date")
                 stat = grouped_stats.setdefault(key, {
                     "_id": piva, "fatture_count": 0, "fatture_totale": 0.0,
                     "fatture_pagate": 0.0, "fatture_non_pagate": 0.0,
+                    "fatture_non_pagate_count": 0,
                     "fatture_escluse_cassa_banca": 0.0,
                     "prima_fattura_data": None, "ultima_fattura_data": None,
                 })
@@ -464,8 +478,9 @@ async def list_suppliers(
                 stat["fatture_totale"] += amount
                 if paid:
                     stat["fatture_pagate"] += amount
-                elif not excluded:
+                elif not excluded and not annullata:
                     stat["fatture_non_pagate"] += amount
+                    stat["fatture_non_pagate_count"] += 1
                 if excluded:
                     stat["fatture_escluse_cassa_banca"] += amount
                 if date_value:
@@ -486,6 +501,9 @@ async def list_suppliers(
                     rec["fatture_totale"] = rec.get("fatture_totale", 0) + stat.get("fatture_totale", 0)
                     rec["fatture_pagate"] = rec.get("fatture_pagate", 0) + stat.get("fatture_pagate", 0)
                     rec["fatture_non_pagate"] = rec.get("fatture_non_pagate", 0) + stat.get("fatture_non_pagate", 0)
+                    rec["fatture_non_pagate_count"] = (
+                        rec.get("fatture_non_pagate_count", 0) + stat.get("fatture_non_pagate_count", 0)
+                    )
                     rec["fatture_escluse_cassa_banca"] = (
                         rec.get("fatture_escluse_cassa_banca", 0)
                         + stat.get("fatture_escluse_cassa_banca", 0)
@@ -1157,6 +1175,7 @@ async def get_supplier_fatturato(
     varianti = _varianti_piva(piva)
     query = {
         "$and": [
+            dict(FILTRO_FATTURA_ATTIVA),
             {"$or": [
                 {"fornitore_partita_iva": {"$in": varianti}},
                 {"supplier_vat": {"$in": varianti}},
@@ -1182,16 +1201,16 @@ async def get_supplier_fatturato(
     importo_non_pagato = 0.0
 
     for f in fatture:
-        importo = _invoice_amount(f)
-        data = f.get("data_documento") or f.get("invoice_date") or ""
+        # Nota di credito in negativo: riduce il fatturato, non lo gonfia.
+        importo = importo_documento_con_segno(f, _invoice_amount(f))
+        data = str(f.get("invoice_date") or f.get("data_documento") or "")
         mese_num = int(data[5:7]) if len(data) >= 7 and data[5:7].isdigit() else None
-        pagata = bool(f.get("pagato")) or (f.get("stato_pagamento") or "").lower() in ("pagata", "paid")
 
         totale_fatturato += importo
-        if pagata:
+        if e_pagata(f):
             fatture_pagate += 1
             importo_pagato += importo
-        else:
+        elif not e_annullata(f):
             fatture_non_pagate += 1
             importo_non_pagato += importo
 
@@ -1391,9 +1410,10 @@ async def get_fatture_fornitore(
                 {"cedente_piva": {"$in": varianti}}
             ]
         }
-        
-        # Filtri aggiuntivi da combinare in $and
-        extra_filters = []
+
+        # Filtri aggiuntivi da combinare in $and. Le copie archiviate delle
+        # fatture 2026 restano fuori: altrimenti ogni riga compare due volte.
+        extra_filters = [dict(FILTRO_FATTURA_ATTIVA)]
 
         if anno:
             extra_filters.append({
@@ -1419,38 +1439,40 @@ async def get_fatture_fornitore(
             extra_filters.append({"importo_totale": {"$lte": importo_max}})
 
         if tipo and tipo != "tutti":
+            # TD05 e' una nota di DEBITO: aumenta, non riduce. Le note di
+            # credito sono TD04/TD08, costante unica.
             if tipo == "nota_credito":
-                extra_filters.append({"tipo_documento": {"$in": ["TD04", "TD05", "NC"]}})
+                extra_filters.append({"tipo_documento": {"$in": list(TIPI_NOTA_CREDITO)}})
             elif tipo == "fattura":
-                extra_filters.append({"tipo_documento": {"$nin": ["TD04", "TD05", "NC"]}})
+                extra_filters.append({"tipo_documento": {"$nin": list(TIPI_NOTA_CREDITO)}})
 
-        if extra_filters:
-            query = {"$and": [supplier_filter] + extra_filters}
-        else:
-            query = supplier_filter
-        
-        fatture = await db["invoices"].find(query, {"_id": 0}).sort("data_documento", -1).skip(skip).limit(limit).to_list(limit)
+        query = {"$and": [supplier_filter] + extra_filters}
+
+        # `invoice_date` e' il campo canonico (regola 12): `data_documento`
+        # manca sulle fatture che il motore IVA non ha toccato.
+        fatture = await db["invoices"].find(query, {"_id": 0}).sort("invoice_date", -1).skip(skip).limit(limit).to_list(limit)
         totale = await db["invoices"].count_documents(query)
         
         estratto = []
         totale_importo = 0
         prove_per_fattura = await project_payment_evidence_many(db, fatture)
         for f, evidence in zip(fatture, prove_per_fattura):
-            importo = _invoice_amount(f)
-            imponibile = float(f.get("imponibile") or f.get("importo_imponibile") or f.get("taxable_amount") or 0)
-            iva = float(f.get("iva") or f.get("importo_iva") or f.get("vat_amount") or 0)
+            is_nc = is_credit_note(f)
+            segno = -1 if is_nc else 1
+            importo = importo_documento_con_segno(f, _invoice_amount(f))
+            imponibile = segno * abs(float(f.get("imponibile") or f.get("importo_imponibile") or f.get("taxable_amount") or 0))
+            iva = segno * abs(float(f.get("iva") or f.get("importo_iva") or f.get("vat_amount") or 0))
             tipo_doc = f.get("tipo_documento", "TD01")
-            is_nc = tipo_doc in ("TD04", "TD05", "TD08", "NC")
             estratto.append({
                 "id": f.get("id"),
-                "data": f.get("data_documento") or f.get("invoice_date") or "",
+                "data": f.get("invoice_date") or f.get("data_documento") or "",
                 "numero": f.get("numero_documento") or f.get("invoice_number") or "",
                 "importo_totale": importo,
                 "imponibile": round(imponibile, 2),
                 "iva": round(iva, 2),
                 "tipo_documento": tipo_doc,
                 "is_nota_credito": is_nc,
-                "pagato": f.get("pagato", False),
+                "pagato": e_pagata(f),
                 "riconciliato": f.get("riconciliato", False),
                 "stato_pagamento": f.get("stato_pagamento", ""),
                 "metodo_pagamento": f.get("metodo_pagamento") or f.get("metodo_pagamento_effettivo") or fornitore.get("metodo_pagamento") or "-",

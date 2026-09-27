@@ -4,14 +4,14 @@ Scadenze e Notifiche Router - Sistema alert per scadenze fiscali e pagamenti
 Gestisce:
 - Scadenze IVA mensili e confronto con F24 ricevuti
 - Scadenze F24 (16 di ogni mese)
-- Fatture in scadenza (pagamento entro X giorni)
+- Le fatture fornitore NON hanno scadenza (decide il titolare quando pagarle)
 - Notifiche personalizzate
 """
 
 from fastapi import APIRouter, Query, HTTPException, Body
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timedelta, timezone
-from app.database import Database, Collections
+from app.database import Database
 import logging
 import uuid
 from app.utils.error_handler import handle_errors
@@ -59,10 +59,8 @@ async def _iva_acquisti_ufficiale(db, periodo: str) -> Dict[str, Any]:
 
     fatture = await _fatture_del_periodo(db, periodo)
     incluse, _escluse = liq.seleziona_fatture_per_liquidazione(fatture, periodo)
-    iva_acquisti = round(sum(
-        round(float(f.get("iva_detraibile") or 0), 2)
-        for f in incluse
-    ), 2)
+    # Le note di credito riducono l'IVA detraibile (segno negativo).
+    iva_acquisti = liq.calcola_totali(incluse)["iva_acquisti"]
     return {"iva_acquisti": iva_acquisti, "fonte": "stima"}
 
 
@@ -154,11 +152,12 @@ async def get_tutte_scadenze(
         scadenze_fiscali = [s for s in scadenze_fiscali if s["tipo"] == tipo]
     scadenze.extend(scadenze_fiscali)
     
-    # 2. Fatture da pagare (scadenza pagamento)
-    if not tipo or tipo == "FATTURA":
-        fatture_scadenza = await _get_fatture_in_scadenza(db, anno, include_passate)
-        scadenze.extend(fatture_scadenza)
-    
+    # 2. Le fatture fornitore NON hanno scadenza (decisione del titolare,
+    #    19/09/2026: «decido io quando pagare»). Qui c'era una riga per ogni
+    #    fattura con `data + 30` inventata, copie archiviate comprese e note
+    #    di credito trasformate in debiti da `abs()`. F24 e scadenze fiscali
+    #    restano: quelle una scadenza vera ce l'hanno.
+
     # 3. Notifiche custom salvate
     prefisso_periodo = (
         f"^{anno:04d}-{mese_richiesto:02d}-"
@@ -251,10 +250,8 @@ async def get_prossime_scadenze(
         scadenze_mese = _genera_scadenze_fiscali(anno, mese, False)
         scadenze.extend(scadenze_mese)
     
-    # Fatture in scadenza
-    fatture = await _get_fatture_in_scadenza(db, oggi.year, False, giorni)
-    scadenze.extend(fatture)
-    
+    # Le fatture fornitore non hanno scadenza: nessuna riga da qui.
+
     # Notifiche custom non completate
     notifiche = await db["notifiche_scadenze"].find(
         {
@@ -472,190 +469,6 @@ def _genera_scadenze_fiscali(anno: int, mese: int, include_passate: bool) -> Lis
     return scadenze
 
 
-_PREFISSO_EVIDENZA_BANCA = "banca:"
-
-
-def _movimento_da_evidenza(evidenza_id: Any) -> Optional[str]:
-    """``banca:<id movimento estratto conto>:<fattura_id>`` → id movimento.
-
-    Formato scritto da `bank_payment_allocations` → `scadenze_rate_service`
-    (`evidenze_pagamento[].evidenza_id`), verificato sui dati reali il
-    03/09/2026: es. ``banca:EC-2026-02-17-11.68-4b86e9dd:<uuid fattura>``.
-    L'id del movimento contiene a sua volta ``-`` ma mai ``:``.
-    """
-    testo = str(evidenza_id or "")
-    if not testo.startswith(_PREFISSO_EVIDENZA_BANCA):
-        return None
-    resto = testo[len(_PREFISSO_EVIDENZA_BANCA):]
-    movimento = resto.split(":", 1)[0].strip()
-    return movimento or None
-
-
-def _pagamento_da_rate(rate: List[Dict[str, Any]], fattura: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Prova di pagamento di una scadenza: il movimento bancario che l'ha
-    pagata (audit 03/09/2026 §6, PR 16 — prima `movimento_id` era sempre
-    nullo). Fonte primaria: le evidenze sulle rate dello scadenzario;
-    ripiego: il movimento scritto sulla fattura dalla riconciliazione."""
-    evidenze: List[Dict[str, Any]] = []
-    for rata in rate:
-        for ev in rata.get("evidenze_pagamento") or []:
-            movimento_id = _movimento_da_evidenza((ev or {}).get("evidenza_id"))
-            if movimento_id:
-                evidenze.append({
-                    "movimento_bancario_id": movimento_id,
-                    "data_pagamento": ev.get("data_pagamento") or rata.get("data_pagamento"),
-                    "metodo": ev.get("metodo") or rata.get("metodo_pagamento_effettivo"),
-                    "importo": ev.get("importo"),
-                })
-    if not evidenze:
-        movimento_id = fattura.get("movimento_bancario_id")
-        ids = [str(v) for v in (fattura.get("movimento_bancario_ids") or []) if v]
-        if not movimento_id and len(ids) == 1:
-            movimento_id = ids[0]
-        if not movimento_id:
-            return None
-        evidenze.append({
-            "movimento_bancario_id": str(movimento_id),
-            "data_pagamento": fattura.get("data_pagamento"),
-            "metodo": fattura.get("metodo_pagamento_effettivo") or fattura.get("metodo_pagamento"),
-            "importo": fattura.get("importo_pagato"),
-        })
-    principale = evidenze[0]
-    return {
-        **principale,
-        "movimenti_bancari_ids": sorted({e["movimento_bancario_id"] for e in evidenze}),
-        "evidenze": evidenze,
-    }
-
-
-async def _arricchisci_pagamenti(db, scadenze: List[Dict[str, Any]]) -> None:
-    """Aggiunge ``pagamento`` (movimento bancario) alle scadenze FATTURA."""
-    fattura_ids = [s.get("fattura_id") for s in scadenze if s.get("fattura_id")]
-    if not fattura_ids:
-        return
-    rate_per_fattura: Dict[str, List[Dict[str, Any]]] = {}
-    try:
-        rate = await db["scadenziario_fornitori"].find(
-            {"fattura_id": {"$in": fattura_ids}},
-            {"_id": 0, "fattura_id": 1, "evidenze_pagamento": 1, "data_pagamento": 1,
-             "metodo_pagamento_effettivo": 1, "pagato": 1},
-        ).to_list(len(fattura_ids) * 12)
-    except Exception as exc:  # noqa: BLE001 - lo scadenzario e' un arricchimento
-        logger.warning("Scadenzario fornitori non leggibile per le prove di pagamento: %s", exc)
-        rate = []
-    for rata in rate:
-        rate_per_fattura.setdefault(str(rata.get("fattura_id")), []).append(rata)
-    for s in scadenze:
-        fattura = s.pop("_fattura", None) or {}
-        pagamento = _pagamento_da_rate(rate_per_fattura.get(str(s.get("fattura_id")), []), fattura)
-        if pagamento:
-            s["pagamento"] = pagamento
-            s["movimento_bancario_id"] = pagamento["movimento_bancario_id"]
-
-
-def _riga_scadenza_fattura(f: Dict[str, Any], data_scadenza: str, *, pagata: bool) -> Dict[str, Any]:
-    fornitore = (
-        f.get("supplier_name") or
-        f.get("cedente_denominazione") or
-        (f.get("cedente_prestatore", {}) or {}).get("denominazione", "") or
-        (f.get("fornitore", {}) or {}).get("denominazione", "") or
-        (f.get("fornitore", {}) or {}).get("ragione_sociale", "") or
-        ""
-    )
-    importo_raw = f.get("total_amount") or f.get("importo_totale") or f.get("importo") or f.get("totale_documento") or 0
-    try:
-        importo = abs(float(importo_raw)) if importo_raw else 0
-    except (ValueError, TypeError):
-        importo = 0
-    numero_fatt = f.get("invoice_number") or f.get("numero_documento") or f.get("numero_fattura", "")
-    return {
-        "id": f.get("id"),
-        "data": data_scadenza,
-        "tipo": "FATTURA",
-        "descrizione": f"Pagamento fattura {numero_fatt}",
-        "importo": importo,
-        "priorita": "bassa" if pagata else _calcola_priorita(data_scadenza),
-        "fornitore": fornitore,
-        "numero_fattura": numero_fatt,
-        "fattura_id": f.get("id"),  # Per il link "Vedi"
-        "source": "fattura",
-        "pagata": pagata,
-        "data_pagamento": f.get("data_pagamento") if pagata else None,
-        "_fattura": f,
-    }
-
-
-async def _get_fatture_in_scadenza(db, anno: int, include_passate: bool, giorni_limite: int = 60) -> List[Dict]:
-    """Ottiene fatture con scadenza pagamento imminente.
-
-    Con ``include_passate`` entrano anche le fatture dell'anno GIA' PAGATE
-    (``pagata: True``), ciascuna con la prova ``pagamento`` = movimento
-    bancario che l'ha saldata (audit 03/09/2026 §6, PR 16: "Scadenza →
-    movimento che l'ha pagata"). Senza il flag il comportamento resta quello
-    di sempre: solo le scadenze aperte."""
-    oggi = date.today()
-    data_limite = (oggi + timedelta(days=giorni_limite)).isoformat()
-
-    query = {
-        "pagato": {"$ne": True},
-        "status": {"$ne": "paid"},
-        "stato_pagamento": {"$nin": ["pagata", "pagato"]},
-        "$or": [
-            {"data_ricezione": {"$regex": f"^{anno}"}},
-            {"invoice_date": {"$regex": f"^{anno}"}}
-        ]
-    }
-
-    fatture = await db[Collections.INVOICES].find(query, {"_id": 0}).limit(100).to_list(100)
-
-    scadenze = []
-    for f in fatture:
-        # Calcola data scadenza (default 30 giorni da data fattura)
-        data_fatt = f.get("data_ricezione") or f.get("invoice_date") or ""
-        if not data_fatt:
-            continue
-        
-        try:
-            dt = datetime.strptime(data_fatt[:10], "%Y-%m-%d")
-            data_scadenza = (dt + timedelta(days=30)).strftime("%Y-%m-%d")
-        except (ValueError, TypeError):
-            continue
-        
-        if not include_passate and data_scadenza < oggi.isoformat():
-            continue
-        if data_scadenza > data_limite:
-            continue
-
-        scadenze.append(_riga_scadenza_fattura(f, data_scadenza, pagata=False))
-
-    if include_passate:
-        query_pagate = {
-            "$and": [
-                {"$or": [
-                    {"pagato": True}, {"status": "paid"},
-                    {"stato_pagamento": {"$in": ["pagata", "pagato"]}},
-                ]},
-                {"$or": [
-                    {"data_ricezione": {"$regex": f"^{anno}"}},
-                    {"invoice_date": {"$regex": f"^{anno}"}},
-                ]},
-                {"status": {"$nin": ["deleted", "archived"]}},
-            ]
-        }
-        pagate = await db[Collections.INVOICES].find(query_pagate, {"_id": 0}).limit(100).to_list(100)
-        for f in pagate:
-            data_fatt = f.get("data_ricezione") or f.get("invoice_date") or ""
-            try:
-                dt = datetime.strptime(data_fatt[:10], "%Y-%m-%d")
-                data_scadenza = (dt + timedelta(days=30)).strftime("%Y-%m-%d")
-            except (ValueError, TypeError):
-                continue
-            scadenze.append(_riga_scadenza_fattura(f, data_scadenza, pagata=True))
-
-    await _arricchisci_pagamenti(db, scadenze)
-    return scadenze
-
-
 def _calcola_priorita(data_str: str) -> str:
     """Calcola priorità in base ai giorni mancanti."""
     giorni = _giorni_mancanti(data_str)
@@ -711,12 +524,9 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
     oggi = datetime.now()
     limite_30 = (oggi + timedelta(days=30)).strftime('%Y-%m-%d')
 
-    # Fatture da pagare
-    fatture_urgenti = await db[Collections.INVOICES].count_documents({
-        "data_scadenza": {"$lte": limite_30},
-        "stato_pagamento": {"$in": ["non_pagata", "da_pagare", None]}
-    })
-    
+    # Le fatture fornitore non hanno scadenza: qui c'era un contatore sulle
+    # `data_scadenza` inventate che aggiungeva un alert rosso. Tolto.
+
     # F24 da pagare — collezione canonica unica f24_unificato, conteggio distinto
     # (copre schema canonico `scadenza`/`status` e legacy `data_scadenza`/`pagato`).
     # Vedi P0.1: prima due count sommate sulla stessa collezione raddoppiavano i
@@ -728,17 +538,12 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
     scadenze_urgenti = [s for s in scadenze_fiscali if _is_prossimi_giorni(s.get("data", s.get("data_scadenza", "")), 15)]
     
     totale_alert = (
-        (1 if fatture_urgenti > 0 else 0) +
         (1 if f24_da_pagare > 0 else 0) +
         len(scadenze_urgenti)
     )
 
     return {
         "totale_alert": totale_alert,
-        "fatture": {
-            "da_pagare_30gg": fatture_urgenti,
-            "urgenza": "alta" if fatture_urgenti > 5 else "media" if fatture_urgenti > 0 else "bassa"
-        },
         "f24": {
             "da_pagare_30gg": f24_da_pagare,
             "urgenza": "alta" if f24_da_pagare > 0 else "bassa"

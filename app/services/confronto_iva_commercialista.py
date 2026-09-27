@@ -45,6 +45,13 @@ ESITO_SCOSTAMENTO = "scostamento"
 ESITO_NOSTRO_ASSENTE = "gestionale_non_calcolabile"
 ESITO_LIPE_ASSENTE = "lipe_assente"
 
+#: Stati del nostro calcolo che non sono un numero da confrontare.
+STATI_NON_CALCOLABILI = (None, "", "NON_CALCOLATO", "DATI_MANCANTI", "NON_VERIFICABILE")
+#: Stati di un modello F24 che non e' (piu') un versamento: annullato,
+#: stornato o messo in quarantena come doppione (``status=eliminato``,
+#: ``f24_doppioni.py``) — contarlo raddoppia il versato.
+STATI_F24_ESCLUSI = ("annullato", "stornato", "eliminato")
+
 
 def scarto(nostro: Optional[float], loro: Optional[float]) -> Optional[float]:
     """Nostro meno loro, o `None` se manca un lato. Mai zero per finta."""
@@ -65,7 +72,10 @@ def confronta_periodo(
 ) -> Dict[str, Any]:
     """La riga di confronto di un mese. Funzione pura: nessuna lettura."""
     nostro = nostro or {}
-    calcolabile = nostro.get("stato_calcolo") not in (None, "NON_CALCOLATO")
+    # Audit 27/09/2026: un mese DATI_MANCANTI o NON_VERIFICABILE ha cifre
+    # parziali (IVA acquisti None o vendite di pochi giorni): confrontarle
+    # con la LIPE produceva uno «scostamento» che era solo un «non lo so».
+    calcolabile = nostro.get("stato_calcolo") not in STATI_NON_CALCOLABILI
 
     nostra_vendite = nostro.get("iva_vendite") if calcolabile else None
     nostra_acquisti = nostro.get("iva_acquisti") if calcolabile else None
@@ -146,7 +156,7 @@ async def f24_iva_per_periodo(db, anno: int) -> Dict[str, Dict[str, Any]]:
     per_periodo: Dict[str, Dict[str, Any]] = {}
     proiezione = {"_id": 0, "sezione_erario": 1, "file_name": 1, "status": 1}
     async for modello in db[COLL_F24].find({}, proiezione):
-        if (modello.get("status") or "") in ("annullato", "stornato"):
+        if (modello.get("status") or "") in STATI_F24_ESCLUSI:
             continue
         righe = modello.get("sezione_erario")
         if not isinstance(righe, list):

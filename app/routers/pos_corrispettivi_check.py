@@ -99,6 +99,103 @@ def _giornate_senza_xml(
     return chiusa_con, uniti
 
 
+def _aggrega_corrispettivi_per_giorno(
+    corrispettivi: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Corrispettivi sommati per giornata, come li legge la fase 1.
+
+    Possono esistere piu' XML nella stessa giornata (piu' RT o sostituzione
+    della matricola): vanno sommati, non sovrascritti con l'ultimo documento.
+    Lo usano sia il controllo a due fasi sia il riepilogo mensile, cosi' i due
+    confronti XML ↔ POS leggono la stessa giornata nello stesso modo.
+    """
+    corr_by_date: Dict[str, Dict[str, Any]] = {}
+    for c in corrispettivi:
+        d = c.get("data")
+        if isinstance(d, datetime):
+            d = d.strftime("%Y-%m-%d")
+        if not d:
+            continue
+        giorno = str(d)[:10]
+        aggregato = corr_by_date.setdefault(giorno, {
+            "pagato_elettronico": 0.0,
+            "totale_xml": None,
+            "totale_manuale": None,
+            "stato": None,
+            "ha_xml": False,
+        })
+        aggregato["pagato_elettronico"] += _importo_elettronico_xml(c)
+        if c.get("totale_manuale") is not None:
+            aggregato["totale_manuale"] = c.get("totale_manuale")
+        if _e_corrispettivo_xml(c):
+            aggregato["ha_xml"] = True
+            aggregato["stato"] = "definitivo_xml"
+            aggregato["totale_xml"] = float(aggregato.get("totale_xml") or 0) + float(
+                c.get("totale_xml")
+                if c.get("totale_xml") is not None
+                else c.get("totale") or c.get("totale_complessivo") or 0
+            )
+        elif aggregato.get("stato") != "definitivo_xml":
+            aggregato["stato"] = c.get("stato")
+    return corr_by_date
+
+
+def _stato_corrispettivo_giorno(
+    c_row: Dict[str, Any], giorno: str, soglia_alert_xml: str,
+) -> str:
+    """Fase 0: provvisorio / definitivo_xml / manca_xml / sconosciuto."""
+    stato_corr_raw = c_row.get("stato")
+    if not stato_corr_raw:
+        # Retrocompat: se non c'è stato esplicito, dedurlo dai campi
+        has_xml = bool(c_row.get("ha_xml"))
+        is_manual_source = c_row.get("source") in ("manuale_serale", "manuale", "manual_entry")
+        if has_xml:
+            return "definitivo_xml"
+        if is_manual_source:
+            return "manca_xml" if giorno < soglia_alert_xml else "provvisorio"
+        return "sconosciuto"
+    # Ricalcolo dinamico manca_xml per evitare di dipendere solo dal job
+    if stato_corr_raw == "provvisorio" and giorno < soglia_alert_xml:
+        return "manca_xml"
+    return stato_corr_raw
+
+
+def _termini_confronto_serale(
+    giorno: str,
+    c_row: Dict[str, Any],
+    stato_corr: str,
+    pos_manuali: Dict[str, float],
+    chiusa_con: Dict[str, str],
+    pos_giorni_uniti: Dict[str, List[str]],
+) -> tuple[str, float, float]:
+    """Regola unica della fase 1: con cosa si confronta l'XML di un giorno.
+
+    Ritorna ``(esito, elettronico_xml, pos_da_confrontare)``, con esito:
+
+    - ``chiusa_col_giorno_dopo``: il POS del giorno sta nella chiusura dopo;
+    - ``in_attesa_xml``: POS presente, XML non ancora arrivato, fuori saldo;
+    - ``confronto``: XML contro il POS del giorno piu' quello dei giorni che
+      la stessa chiusura RT porta con se';
+    - ``no_dati``: niente da confrontare.
+    """
+    xml_el = _importo_elettronico_xml(c_row)
+    pos_man = float(pos_manuali.get(giorno) or 0)
+    pos_man_presente = giorno in pos_manuali
+    if giorno in chiusa_con:
+        return "chiusa_col_giorno_dopo", xml_el, 0.0
+    if not c_row and pos_man > 0:
+        return "in_attesa_xml", xml_el, 0.0
+    if stato_corr in ("provvisorio", "manca_xml") and pos_man_presente:
+        return "in_attesa_xml", xml_el, 0.0
+    if xml_el > 0 or pos_man_presente:
+        pos_confronto = round(
+            pos_man + sum(pos_manuali.get(g) or 0 for g in pos_giorni_uniti.get(giorno, [])),
+            2,
+        )
+        return "confronto", xml_el, pos_confronto
+    return "no_dati", xml_el, 0.0
+
+
 def _importo_elettronico_xml(corrispettivo: Dict[str, Any]) -> float:
     """Legge la quota elettronica sia dal modello canonico sia da quello Drive storico.
 
@@ -269,8 +366,8 @@ async def verifica_coerenza_pos_corrispettivi(
             "$nor": [{"tipo": "uscita"}, {"type": "uscita"}],
             "$and": [{"$or": [
                 {"categoria": {"$in": CATEGORIE_POS_ACCREDITATI}},
-                {"descrizione": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
-                {"descrizione_originale": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
+                {"descrizione": {"$regex": "NUMIA|NEXI|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
+                {"descrizione_originale": {"$regex": "NUMIA|NEXI|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
             ]}],
         },
         {"_id": 0, "id": 1, "data": 1, "data_contabile": 1,
@@ -363,41 +460,40 @@ async def verifica_coerenza_pos_corrispettivi(
         
         elettronico_xml = corr["elettronico"]
         pos_accreditato = pos["importo"]
+        # Tutti i terminali del giorno: servono al "non battuto", che
+        # confronta il POS col registratore (NUMIA + SumUp).
         pos_manuale = chiusure_by_date.get(data, 0)
-        
+        # BPM accredita il solo NUMIA: SumUp paga sulla sua carta e si
+        # verifica coi payout altrove. Confrontare con BPM la somma di tutte le
+        # chiusure (oggi quasi tutte SumUp) dava mancanze e differenze false.
+        pos_numia = (pos_per_circuito.get(data) or {}).get(conti_pos.NUMIA)
+
         # REGOLA (utente 07/08/2026): il POS si ricostruisce SOLO dai terminali
         # reali. Qui c'era `pos_manuale if pos_manuale > 0 else elettronico_xml`:
         # in assenza della chiusura si usava il dato fiscale come riferimento,
         # e la giornata sembrava quadrata perche' confrontava l'XML con se
         # stesso. Senza terminale il riferimento non esiste, e va detto.
-        pos_reale_disponibile = pos_manuale > 0
-        riferimento_pos = pos_manuale if pos_reale_disponibile else 0.0
+        pos_reale_disponibile = pos_numia is not None
+        riferimento_pos = float(pos_numia or 0) if pos_reale_disponibile else 0.0
         # Il "non battuto" e' quanto e' passato dal POS ma non e' stato battuto
         # sul registratore. Ha senso solo con entrambe le fonti presenti.
         non_battuto = (round(pos_manuale - elettronico_xml, 2)
-                       if pos_reale_disponibile else 0.0)
-        
+                       if pos_manuale > 0 else 0.0)
+
         for _circuito, _valore in (pos_per_circuito.get(data) or {}).items():
             if _circuito in totali_per_circuito:
                 totali_per_circuito[_circuito] += float(_valore or 0)
         totale_elettronico_xml += elettronico_xml
         totale_pos_accreditato += pos_accreditato
         
-        # Calcola data accredito attesa (logica calendario)
+        # Data accredito attesa: il calendario unico, festivi compresi.
+        # Qui c'era una copia della regola lun-gio/ven-dom senza festivi.
         try:
             dt = datetime.strptime(data, "%Y-%m-%d")
-            giorno_settimana = dt.weekday()  # 0=Lun, 6=Dom
-            
-            # Logica accredito POS
-            if giorno_settimana <= 3:  # Lun-Gio -> accredito +1 giorno
-                data_accredito_attesa = (dt + timedelta(days=1)).strftime("%Y-%m-%d")
-            else:  # Ven-Dom -> accredito Lunedì
-                giorni_al_lunedi = 7 - giorno_settimana + 1
-                data_accredito_attesa = (dt + timedelta(days=giorni_al_lunedi)).strftime("%Y-%m-%d")
-        except Exception:
-            data_accredito_attesa = data
+        except (TypeError, ValueError):
             dt = None
-        
+        data_accredito_attesa = _data_accredito_attesa(data)
+
         # Verifica coerenza con tolleranza
         differenza = abs(riferimento_pos - pos_accreditato)
         tolleranza = max(riferimento_pos * 0.02, 5)  # 2% o €5 min
@@ -411,15 +507,15 @@ async def verifica_coerenza_pos_corrispettivi(
         # Il confronto dt >= oggi genera TypeError "can't compare offset-naive and offset-aware datetimes".
         # Soluzione: uso datetime.now() senza timezone per restare coerenti con dt.
         oggi = datetime.now()
-        is_recente = dt and dt >= oggi - timedelta(days=2)
-        
+        is_recente = data_accredito_attesa > oggi.strftime("%Y-%m-%d")
+
         if not pos_reale_disponibile:
             # Senza il dato del terminale non si puo' dire nulla sul giorno:
             # dichiararlo "ok" perche' l'XML coincide con se stesso e' il
             # falso verde che questa correzione elimina.
             stato = "attende_pos_reale"
-            messaggio = ("Attende chiusura POS reale: il dato del terminale "
-                         "non e' ancora arrivato")
+            messaggio = ("Attende chiusura POS NUMIA reale: il dato del "
+                         "terminale non e' ancora arrivato")
             giorni_anomalia += 1
         elif riferimento_pos > 0 and pos_accreditato == 0:
             if is_recente:
@@ -445,13 +541,15 @@ async def verifica_coerenza_pos_corrispettivi(
             "data": data,
             "non_battuto": non_battuto,
             "non_battuto_progressivo": non_battuto_progressivo,
-            "giorno_settimana": ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"][dt.weekday()] if 'dt' in dir() else "",
+            "giorno_settimana": ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"][dt.weekday()] if dt else "",
             "totale_corrispettivo": round(corr["totale"], 2),
             "contanti_xml": round(corr["contanti"], 2),
             "elettronico_xml": round(elettronico_xml, 2),
             "non_riscosso": round(corr["non_riscosso"], 2),
             "pos_accreditato": round(pos_accreditato, 2),
             "pos_chiusura_manuale": round(chiusure_by_date.get(data, 0), 2),  # Aggiunto riferimento chiusure manuali
+            # Il termine di confronto con BPM: il solo NUMIA del giorno.
+            "pos_numia": None if pos_numia is None else round(float(pos_numia), 2),
             # Un circuito assente NON vale zero: vale "non ha ancora
             # risposto", ed e' la pagina a doverlo mostrare come tale.
             "pos_per_circuito": {
@@ -509,7 +607,10 @@ async def verifica_coerenza_pos_corrispettivi(
         "anomalie": anomalie[:100],  # Limita a 100
         "anomalie_count": len(anomalie),
         "riepilogo_giornaliero": riepilogo_giornaliero[-60:],  # Ultimi 60 giorni
-        "note": "Logica accredito POS: Lun-Gio +1g, Ven-Dom -> Lunedì"
+        "note": (
+            "BPM si confronta col solo POS NUMIA (SumUp paga sulla sua carta); "
+            "data di accredito attesa dal calendario POS, festivi compresi"
+        )
     }
 
 
@@ -520,29 +621,81 @@ async def riepilogo_mensile_pos_corrispettivi(
 ) -> Dict[str, Any]:
     """
     Riepilogo mensile della coerenza POS/Corrispettivi per un anno.
+
+    Sono le regole del controllo a due fasi, sommate per mese:
+
+    - registratore ↔ POS (fase 1): un giorno con POS e senza XML si confronta
+      con la chiusura RT che lo copre (``_giornate_senza_xml``); un giorno
+      ancora in attesa dell'XML resta fuori dalla differenza ed e' esposto a
+      parte (``pos_in_attesa_xml``, ``giorni_in_attesa_xml``);
+    - BPM ↔ NUMIA (fase 2): contano solo i giorni con una chiusura del
+      terminale. Un NUMIA ricavato dall'accredito stesso vale come venduto per
+      la fase 1, ma contro la banca non e' verificabile: senza nessun giorno
+      verificabile la differenza del mese e' ``None``, non zero.
     """
     db = Database.get_db()
+    inizio_anno, fine_anno = f"{anno}-01-01", f"{anno}-12-31"
 
     # Un solo motore per giornaliero, mensile e controllo a due fasi. Il
     # precedente aggregate mensile usava la data contabile, sommava le copie
     # degli estratti sovrapposti e confrontava direttamente XML con banca.
-    accrediti_anno = await _carica_accrediti_banca_pos(
-        db, f"{anno}-01-01", f"{anno}-12-31"
-    )
+    accrediti_anno = await _carica_accrediti_banca_pos(db, inizio_anno, fine_anno)
     # I due terminali restano separati: NUMIA accredita su BPM, SumUp paga
     # sulla carta Mastercard SumUp. La banca BPM si confronta quindi con il
     # solo NUMIA; sommarci anche SumUp segnava come mancante, da agosto, una
     # cifra pari al venduto SumUp. Lo stesso ripiego del controllo a due fasi:
-    # un giorno NUMIA senza chiusura esplicita vale l'accredito BPM del giorno.
+    # un giorno NUMIA senza chiusura esplicita vale l'accredito BPM del giorno,
+    # ma solo come venduto: quei giorni si ricordano per tenerli fuori dal
+    # confronto con la banca.
     pos_per_circuito = await _carica_pos_per_circuito(db)
+    giorni_numia_da_banca = set()
     for giorno, evidenza in accrediti_anno.items():
-        pos_per_circuito.setdefault(giorno, {}).setdefault(
-            conti_pos.NUMIA, round(float(evidenza.get("totale") or 0), 2)
+        per_circuito = pos_per_circuito.setdefault(giorno, {})
+        if conti_pos.NUMIA not in per_circuito:
+            per_circuito[conti_pos.NUMIA] = round(float(evidenza.get("totale") or 0), 2)
+            giorni_numia_da_banca.add(giorno)
+    pos_manuali = {
+        giorno: round(sum(per_circuito.values()), 2)
+        for giorno, per_circuito in pos_per_circuito.items()
+    }
+
+    corrispettivi = await db["corrispettivi"].find(
+        {
+            "data": {"$gte": inizio_anno, "$lte": fine_anno},
+            "entity_status": {"$ne": "deleted"},
+            "status": {"$nin": ["deleted", "archived", "archiviata"]},
+        },
+        {
+            "_id": 0, "data": 1, "totale": 1, "totale_complessivo": 1,
+            "pagato_contanti": 1, "pagato_elettronico": 1, "pagato_pos": 1,
+            "stato": 1, "totale_manuale": 1, "totale_xml": 1, "source": 1,
+            "data_import_xml": 1, "content_hash": 1, "filename": 1,
+        },
+    ).to_list(10000)
+
+    # Fase 1 giorno per giorno, con la stessa regola del controllo a due fasi.
+    corr_by_date = _aggrega_corrispettivi_per_giorno(corrispettivi)
+    giorni_anno = sorted(
+        set(corr_by_date)
+        | {g for g in pos_manuali if inizio_anno <= g <= fine_anno}
+    )
+    chiusa_con, pos_giorni_uniti = _giornate_senza_xml(
+        giorni_anno, corr_by_date, pos_manuali
+    )
+    soglia_alert_xml = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    confronto_giorno: Dict[str, tuple] = {}
+    for giorno in giorni_anno:
+        c_row = corr_by_date.get(giorno, {})
+        confronto_giorno[giorno] = _termini_confronto_serale(
+            giorno, c_row,
+            _stato_corrispettivo_giorno(c_row, giorno, soglia_alert_xml),
+            pos_manuali, chiusa_con, pos_giorni_uniti,
         )
+
     payout_sumup = [
         payout async for payout in db["sumup_payouts"].find(
-            {"data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31T23:59:59"}},
-            {"_id": 0, "data": 1, "netto": 1, "commissione": 1},
+            {"data": {"$gte": inizio_anno, "$lte": f"{fine_anno}T23:59:59"}},
+            {"_id": 0, "data": 1, "netto": 1, "commissione": 1, "tipo_record": 1},
         )
     ]
 
@@ -553,11 +706,16 @@ async def riepilogo_mensile_pos_corrispettivi(
     totale_anno_numia = 0.0
     totale_anno_sumup = 0.0
     totale_anno_sumup_pagato = 0.0
+    totale_anno_sumup_rettifiche = 0.0
     totale_anno_sumup_commissioni = 0.0
+    totale_anno_differenza_xml_pos = 0.0
+    totale_anno_pos_in_attesa_xml = 0.0
+    totale_anno_numia_senza_chiusura = 0.0
+    differenze_banca_verificabili: List[float] = []
     totale_movimenti_banca = 0
     totale_movimenti_banca_raw = 0
     totale_duplicati_unificati = 0
-    
+
     for mese in range(1, 13):
         data_da = f"{anno}-{mese:02d}-01"
         if mese == 12:
@@ -567,29 +725,19 @@ async def riepilogo_mensile_pos_corrispettivi(
             # Sottrai un giorno per avere l'ultimo del mese
             dt_fine = datetime.strptime(data_a, "%Y-%m-%d") - timedelta(days=1)
             data_a = dt_fine.strftime("%Y-%m-%d")
-        
-        # Corrispettivi del mese
-        pipeline_corr = [
-            {"$match": {
-                "data": {"$gte": data_da, "$lte": data_a},
-                "entity_status": {"$ne": "deleted"},
-                "status": {"$nin": ["deleted", "archived", "archiviata"]},
-            }},
-            {"$group": {
-                "_id": None,
-                "totale": {"$sum": "$totale"},
-                "contanti": {"$sum": "$pagato_contanti"},
-                "elettronico": {"$sum": {"$ifNull": ["$pagato_elettronico", "$pagato_pos"]}},
-                "count": {"$sum": 1}
-            }}
-        ]
-        
-        corr_result = await db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
-        
-        elettronico = corr_result[0]["elettronico"] if corr_result else 0
+
+        def nel_mese(giorno: Any) -> bool:
+            return data_da <= str(giorno or "")[:10] <= data_a
+
+        # Corrispettivi del mese (tutti, per le colonne di consultazione)
+        corr_mese = [c for c in corrispettivi if nel_mese(c.get("data"))]
+        elettronico = sum(_importo_elettronico_xml(c) for c in corr_mese)
+        totale_corrispettivi = sum(float(c.get("totale") or 0) for c in corr_mese)
+        contanti = sum(float(c.get("pagato_contanti") or 0) for c in corr_mese)
+
         giorni_mese = [
             per_circuito for data, per_circuito in pos_per_circuito.items()
-            if data_da <= data <= data_a
+            if nel_mese(data)
         ]
         pos_numia = round(sum(
             float(c.get(conti_pos.NUMIA) or 0) for c in giorni_mese
@@ -600,44 +748,107 @@ async def riepilogo_mensile_pos_corrispettivi(
         # Il registratore somma tutto l'elettronico, qualunque terminale:
         # si confronta con NUMIA + SumUp.
         pos_terminale = round(pos_numia + pos_sumup, 2)
-        payout_mese = [
-            p for p in payout_sumup
-            if data_da <= str(p.get("data") or "")[:10] <= data_a
-        ]
-        sumup_pagato = round(sum(float(p.get("netto") or 0) for p in payout_mese), 2)
+
+        # Fase 1: solo i giorni che hanno un XML con cui confrontarsi.
+        esiti_mese = {
+            giorno: esito for giorno, esito in confronto_giorno.items()
+            if nel_mese(giorno)
+        }
+        elettronico_confrontato = round(sum(
+            xml for esito, xml, _pos in esiti_mese.values() if esito == "confronto"
+        ), 2)
+        pos_confrontato_xml = round(sum(
+            pos for esito, _xml, pos in esiti_mese.values() if esito == "confronto"
+        ), 2)
+        giorni_in_attesa_xml = sorted(
+            giorno for giorno, (esito, _xml, _pos) in esiti_mese.items()
+            if esito == "in_attesa_xml"
+        )
+        pos_in_attesa_xml = round(sum(
+            float(pos_manuali.get(giorno) or 0) for giorno in giorni_in_attesa_xml
+        ), 2)
+        giorni_chiusi_col_giorno_dopo = sorted(
+            giorno for giorno, (esito, _xml, _pos) in esiti_mese.items()
+            if esito == "chiusa_col_giorno_dopo"
+        )
+        differenza_xml_pos = round(elettronico_confrontato - pos_confrontato_xml, 2)
+
+        # Fase 2: BPM contro i soli giorni NUMIA con chiusura del terminale.
+        giorni_numia_verificabili = sorted(
+            data for data, per_circuito in pos_per_circuito.items()
+            if nel_mese(data) and conti_pos.NUMIA in per_circuito
+            and data not in giorni_numia_da_banca
+        )
+        giorni_numia_senza_chiusura = sorted(
+            data for data in giorni_numia_da_banca if nel_mese(data)
+        )
+        pos_numia_senza_chiusura = round(sum(
+            float(pos_per_circuito[data].get(conti_pos.NUMIA) or 0)
+            for data in giorni_numia_senza_chiusura
+        ), 2)
+        numia_verificabile = sum(
+            float(pos_per_circuito[data].get(conti_pos.NUMIA) or 0)
+            for data in giorni_numia_verificabili
+        )
+        banca_verificabile = sum(
+            float((accrediti_anno.get(data) or {}).get("totale") or 0)
+            for data in giorni_numia_verificabili
+        )
+        differenza_pos_banca = (
+            round(banca_verificabile - numia_verificabile, 2)
+            if giorni_numia_verificabili else None
+        )
+
+        payout_mese = [p for p in payout_sumup if nel_mese(p.get("data"))]
+        # La rettifica (deduzione SumUp) non e' un pagamento sulla carta: si
+        # espone da sola, non dentro il pagato.
+        sumup_pagato = round(sum(
+            float(p.get("netto") or 0) for p in payout_mese
+            if p.get("tipo_record") != "rettifica"
+        ), 2)
+        sumup_rettifiche = round(sum(
+            abs(float(p.get("netto") or 0)) for p in payout_mese
+            if p.get("tipo_record") == "rettifica"
+        ), 2)
         sumup_commissioni = round(
             sum(float(p.get("commissione") or 0) for p in payout_mese), 2
         )
         evidenze_mese = [
             evidenza for data, evidenza in accrediti_anno.items()
-            if data_da <= data <= data_a
+            if nel_mese(data)
         ]
         pos = round(sum(float(e.get("totale") or 0) for e in evidenze_mese), 2)
         movimenti_banca = sum(int(e.get("numero_movimenti") or 0) for e in evidenze_mese)
         movimenti_banca_raw = sum(int(e.get("numero_movimenti_raw") or 0) for e in evidenze_mese)
         duplicati_unificati = sum(int(e.get("duplicati_unificati") or 0) for e in evidenze_mese)
-        differenza_xml_pos = round(elettronico - pos_terminale, 2)
-        differenza_pos_banca = round(pos - pos_numia, 2)
 
         totale_anno_elettronico += elettronico
         totale_anno_numia += pos_numia
         totale_anno_sumup += pos_sumup
         totale_anno_sumup_pagato += sumup_pagato
+        totale_anno_sumup_rettifiche += sumup_rettifiche
         totale_anno_sumup_commissioni += sumup_commissioni
         totale_anno_pos_terminale += pos_terminale
         totale_anno_pos += pos
+        totale_anno_differenza_xml_pos += differenza_xml_pos
+        totale_anno_pos_in_attesa_xml += pos_in_attesa_xml
+        totale_anno_numia_senza_chiusura += pos_numia_senza_chiusura
+        if differenza_pos_banca is not None:
+            differenze_banca_verificabili.append(differenza_pos_banca)
         totale_movimenti_banca += movimenti_banca
         totale_movimenti_banca_raw += movimenti_banca_raw
         totale_duplicati_unificati += duplicati_unificati
-        
-        nome_mese = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", 
+
+        nome_mese = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
                      "Lug", "Ago", "Set", "Ott", "Nov", "Dic"][mese-1]
-        
+
+        banca_ok = differenza_pos_banca is None or abs(differenza_pos_banca) <= 0.5
+        banca_quasi = differenza_pos_banca is None or abs(differenza_pos_banca) <= 5
         mesi.append({
             "mese": mese,
             "nome": nome_mese,
-            "totale_corrispettivi": round(corr_result[0]["totale"] if corr_result else 0, 2),
-            "contanti": round(corr_result[0]["contanti"] if corr_result else 0, 2),
+            "totale_corrispettivi": round(totale_corrispettivi, 2),
+            "contanti": round(contanti, 2),
             "elettronico_xml": round(elettronico, 2),
             "pos_terminale": pos_terminale,
             "pos_numia": pos_numia,
@@ -645,24 +856,40 @@ async def riepilogo_mensile_pos_corrispettivi(
             # Payout SumUp per data del pagamento sulla carta: un payout puo'
             # coprire piu' giorni di vendita e non si ripartisce.
             "sumup_pagato": sumup_pagato,
+            "sumup_rettifiche": sumup_rettifiche,
             "sumup_commissioni": sumup_commissioni,
             "pos_accreditato": round(pos, 2),
+            # Fase 1: i termini davvero confrontati e cio' che resta fuori.
+            "elettronico_confrontato": elettronico_confrontato,
+            "pos_confrontato_xml": pos_confrontato_xml,
+            "pos_in_attesa_xml": pos_in_attesa_xml,
+            "giorni_in_attesa_xml": giorni_in_attesa_xml,
+            "giorni_chiusi_col_giorno_dopo": giorni_chiusi_col_giorno_dopo,
             "differenza_xml_pos": differenza_xml_pos,
+            # Fase 2: None = nessun giorno NUMIA con chiusura del terminale,
+            # quindi niente da verificare contro BPM (non uno zero).
             "differenza_pos_banca": differenza_pos_banca,
+            "banca_verificabile": differenza_pos_banca is not None,
+            "pos_numia_senza_chiusura": pos_numia_senza_chiusura,
+            "giorni_numia_senza_chiusura": giorni_numia_senza_chiusura,
             # Alias retrocompatibile: la quadratura operativa e' banca - POS.
             "differenza": differenza_pos_banca,
             "stato": (
-                "vuoto" if not corr_result and not pos_terminale and not pos
-                else "ok" if differenza_xml_pos >= -0.5 and abs(differenza_pos_banca) <= 0.5
-                else "warning" if differenza_xml_pos >= -5 and abs(differenza_pos_banca) <= 5
+                "vuoto" if not corr_mese and not pos_terminale and not pos
+                else "ok" if differenza_xml_pos >= -0.5 and banca_ok
+                else "warning" if differenza_xml_pos >= -5 and banca_quasi
                 else "error"
             ),
-            "corrispettivi_count": corr_result[0]["count"] if corr_result else 0,
+            "corrispettivi_count": len(corr_mese),
             "pos_count": movimenti_banca,
             "pos_count_raw": movimenti_banca_raw,
             "duplicati_banca_unificati": duplicati_unificati,
         })
-    
+
+    differenza_banca_anno = (
+        round(sum(differenze_banca_verificabili), 2)
+        if differenze_banca_verificabili else None
+    )
     return {
         "anno": anno,
         "mesi": mesi,
@@ -672,13 +899,15 @@ async def riepilogo_mensile_pos_corrispettivi(
             "pos_numia": round(totale_anno_numia, 2),
             "pos_sumup": round(totale_anno_sumup, 2),
             "sumup_pagato": round(totale_anno_sumup_pagato, 2),
+            "sumup_rettifiche": round(totale_anno_sumup_rettifiche, 2),
             "sumup_commissioni": round(totale_anno_sumup_commissioni, 2),
             "pos_accreditato": round(totale_anno_pos, 2),
-            "differenza_xml_pos": round(
-                totale_anno_elettronico - totale_anno_pos_terminale, 2
-            ),
-            "differenza_pos_banca": round(totale_anno_pos - totale_anno_numia, 2),
-            "differenza": round(totale_anno_pos - totale_anno_numia, 2),
+            "differenza_xml_pos": round(totale_anno_differenza_xml_pos, 2),
+            "pos_in_attesa_xml": round(totale_anno_pos_in_attesa_xml, 2),
+            "differenza_pos_banca": differenza_banca_anno,
+            "differenza": differenza_banca_anno,
+            "banca_verificabile": differenza_banca_anno is not None,
+            "pos_numia_senza_chiusura": round(totale_anno_numia_senza_chiusura, 2),
             "movimenti_banca": totale_movimenti_banca,
             "movimenti_banca_raw": totale_movimenti_banca_raw,
             "duplicati_banca_unificati": totale_duplicati_unificati,
@@ -722,7 +951,7 @@ async def riconcilia_pos_giorno(
         "tipo": {"$ne": "uscita"},
         "$or": [
             {"categoria": {"$regex": "Incasso tramite POS", "$options": "i"}},
-            {"descrizione_originale": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
+            {"descrizione_originale": {"$regex": "NUMIA|NEXI|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
         ],
     }, {"_id": 0, "data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1}).to_list(200)
 
@@ -1136,6 +1365,10 @@ async def _carica_fonti_pos_per_circuito(db) -> Dict[str, Dict[str, str]]:
     return fonti
 
 
+# Stati di sumup_payouts che chiudono la giornata di vendita (sumup_payout.py).
+STATI_PAYOUT_CHIUSI = frozenset({"riconciliato", "rettifica_confermata"})
+
+
 async def _carica_payout_sumup_per_giorno(
     db, data_da: str, data_a: str
 ) -> Dict[str, Dict[str, Any]]:
@@ -1151,6 +1384,7 @@ async def _carica_payout_sumup_per_giorno(
         {
             "_id": 0, "payout_id": 1, "data": 1, "netto": 1,
             "commissione": 1, "giorni": 1, "stato_riconciliazione": 1,
+            "tipo_record": 1,
         },
     ):
         giorni = sorted({str(g)[:10] for g in payout.get("giorni") or []})
@@ -1164,24 +1398,37 @@ async def _carica_payout_sumup_per_giorno(
             "commissioni_gruppo": round(float(payout.get("commissione") or 0), 2),
             "giorni_coperti": giorni,
             "stato": str(payout.get("stato_riconciliazione") or "da_verificare"),
+            "tipo_record": str(payout.get("tipo_record") or "payout"),
         }
+        e_rettifica = dettaglio["tipo_record"] == "rettifica"
         for giorno in giorni_periodo:
             item = out.setdefault(giorno, {
                 "payouts": [], "payout_ids": [], "netto_gruppi": 0.0,
-                "commissioni_gruppi": 0.0, "riconciliato": True,
+                "commissioni_gruppi": 0.0, "rettifiche_gruppi": 0.0,
+                "riconciliato": True,
             })
             item["payouts"].append(dettaglio)
             if dettaglio["payout_id"]:
                 item["payout_ids"].append(dettaglio["payout_id"])
-            item["netto_gruppi"] += dettaglio["netto_gruppo"]
+            if e_rettifica:
+                # Una deduzione SumUp (rimborso, chargeback) non e' un
+                # pagamento sulla carta: si mostra a parte, in positivo,
+                # invece di abbassare in silenzio il netto del gruppo.
+                item["rettifiche_gruppi"] += abs(dettaglio["netto_gruppo"])
+            else:
+                item["netto_gruppi"] += dettaglio["netto_gruppo"]
             item["commissioni_gruppi"] += dettaglio["commissioni_gruppo"]
+            # Una rettifica confermata e' chiusa quanto un payout
+            # riconciliato: con il solo «riconciliato» il giorno restava
+            # aperto per sempre.
             item["riconciliato"] = bool(
-                item["riconciliato"] and dettaglio["stato"] == "riconciliato"
+                item["riconciliato"] and dettaglio["stato"] in STATI_PAYOUT_CHIUSI
             )
 
     for item in out.values():
         item["netto_gruppi"] = round(item["netto_gruppi"], 2)
         item["commissioni_gruppi"] = round(item["commissioni_gruppi"], 2)
+        item["rettifiche_gruppi"] = round(item["rettifiche_gruppi"], 2)
         item["payout_ids"].sort()
     return out
 
@@ -1203,9 +1450,12 @@ async def _carica_accrediti_banca_pos(
     query = {
         "data": {"$gte": data_da, "$lte": data_a_estesa},
         "importo": {"$gt": 0},
+        # Numia e Nexi sono lo stesso circuito: in estratto conto compaiono
+        # entrambi i marchi, e il riconoscimento vero lo fa
+        # _e_accredito_pos_numia_con_giorno.
         "$or": [
-            {"descrizione_originale": {"$regex": "NUMIA", "$options": "i"}},
-            {"descrizione": {"$regex": "NUMIA", "$options": "i"}},
+            {"descrizione_originale": {"$regex": "NUMIA|NEXI", "$options": "i"}},
+            {"descrizione": {"$regex": "NUMIA|NEXI", "$options": "i"}},
         ],
     }
 
@@ -1359,37 +1609,8 @@ async def controllo_incassi_due_fasi(
         if data_da <= d <= data_a:
             date_note.add(d)
 
-    # Index corrispettivi per data. Possono esistere piu' XML nella stessa
-    # giornata (piu' RT o sostituzione della matricola): vanno sommati, non
-    # sovrascritti con l'ultimo documento restituito dal registro Drive/Supabase.
-    corr_by_date: Dict[str, Dict] = {}
-    for c in corrispettivi:
-        d = c.get("data")
-        if isinstance(d, datetime):
-            d = d.strftime("%Y-%m-%d")
-        if not d:
-            continue
-        giorno = d[:10]
-        aggregato = corr_by_date.setdefault(giorno, {
-            "pagato_elettronico": 0.0,
-            "totale_xml": None,
-            "totale_manuale": None,
-            "stato": None,
-            "ha_xml": False,
-        })
-        aggregato["pagato_elettronico"] += _importo_elettronico_xml(c)
-        if c.get("totale_manuale") is not None:
-            aggregato["totale_manuale"] = c.get("totale_manuale")
-        if _e_corrispettivo_xml(c):
-            aggregato["ha_xml"] = True
-            aggregato["stato"] = "definitivo_xml"
-            aggregato["totale_xml"] = float(aggregato.get("totale_xml") or 0) + float(
-                c.get("totale_xml")
-                if c.get("totale_xml") is not None
-                else c.get("totale") or c.get("totale_complessivo") or 0
-            )
-        elif aggregato.get("stato") != "definitivo_xml":
-            aggregato["stato"] = c.get("stato")
+    # Index corrispettivi per data (piu' XML nella stessa giornata si sommano).
+    corr_by_date = _aggrega_corrispettivi_per_giorno(corrispettivi)
 
     oggi = datetime.now().strftime("%Y-%m-%d")
     soglia_alert_xml = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -1404,6 +1625,10 @@ async def controllo_incassi_due_fasi(
         "fase1_ok": 0, "fase1_diff_piu": 0, "fase1_diff_meno": 0,
         # FASE 2: accrediti banca
         "fase2_ok": 0, "fase2_attesa": 0, "fase2_mancante": 0, "fase2_diff": 0, "fase2_extra": 0,
+        # Giorni NUMIA senza chiusura del terminale: il POS e' l'accredito
+        # stesso, quindi la fase 2 non ha niente da verificare.
+        "fase2_senza_chiusura_terminale": 0,
+        "fase2_accrediti_senza_chiusura_totale": 0.0,
         # Importi aggregati
         "importo_tot_da_compensare_piu": 0.0,
         "importo_tot_da_compensare_meno": 0.0,
@@ -1449,7 +1674,22 @@ async def controllo_incassi_due_fasi(
             "dettaglio": [{"data": d, "pos_manuale": round(pos_v, 2)}],
             "data_accredito_attesa": data_attesa,
         }
-        if data_attesa > oggi:
+        if fonti_pos_per_circuito.get(d, {}).get(conti_pos.NUMIA) == "estratto_conto_numia":
+            # Il «POS reale» NUMIA di questo giorno E' l'accredito BPM (manca
+            # la chiusura del terminale): confrontarlo con se stesso dava
+            # differenza zero e badge «riconciliato». Resta un proxy del
+            # venduto per la fase 1, ma qui l'accredito non e' verificabile.
+            g.update(
+                stato="senza_chiusura_terminale",
+                accredito=accr,
+                diff=None,
+                numero_movimenti_banca=numero_movimenti_banca,
+                origine_accredito=evidenza_banca.get("origine"),
+                date_contabili_banca=evidenza_banca.get("date_contabili", []),
+                movimenti_banca=evidenza_banca.get("movimenti", []),
+                riconciliato_banca_reale=False,
+            )
+        elif data_attesa > oggi:
             g.update(
                 stato="in_attesa", accredito=0.0, diff=0.0,
                 numero_movimenti_banca=numero_movimenti_banca,
@@ -1522,25 +1762,9 @@ async def controllo_incassi_due_fasi(
             )
 
         # FASE 0 v3: stato corrispettivo (provvisorio / definitivo_xml / manca_xml)
-        stato_corr_raw = c_row.get("stato")
         totale_manuale_corr = c_row.get("totale_manuale")
         totale_xml_corr = c_row.get("totale_xml")
-        if not stato_corr_raw:
-            # Retrocompat: se non c'è stato esplicito, dedurlo dai campi
-            has_xml = bool(c_row.get("ha_xml"))
-            is_manual_source = c_row.get("source") in ("manuale_serale", "manuale", "manual_entry")
-            if has_xml:
-                stato_corr = "definitivo_xml"
-            elif is_manual_source:
-                stato_corr = "manca_xml" if d < soglia_alert_xml else "provvisorio"
-            else:
-                stato_corr = "sconosciuto"
-        else:
-            # Ricalcolo dinamico manca_xml per evitare di dipendere solo dal job
-            if stato_corr_raw == "provvisorio" and d < soglia_alert_xml:
-                stato_corr = "manca_xml"
-            else:
-                stato_corr = stato_corr_raw
+        stato_corr = _stato_corrispettivo_giorno(c_row, d, soglia_alert_xml)
 
         if stato_corr == "provvisorio":
             stats["fase0_provvisori"] += 1
@@ -1553,26 +1777,24 @@ async def controllo_incassi_due_fasi(
         # Se il corrispettivo è provvisorio/manca_xml, non abbiamo xml_elettronico
         # → stato speciale "in_attesa_xml"
         giorni_uniti = pos_giorni_uniti.get(d, [])
-        if d in chiusa_con:
+        esito_f1, _xml_f1, pos_confronto = _termini_confronto_serale(
+            d, c_row, stato_corr, pos_manuali, chiusa_con, pos_giorni_uniti
+        )
+        if esito_f1 == "chiusa_col_giorno_dopo":
             # Chiusa dall'RT col giorno dopo: il confronto sta su quella chiusura.
             diff_serale = 0.0
             stato_serale = "chiusa_col_giorno_dopo"
             alert_serale = None
-        elif not c_row and pos_man > 0:
-            # Nessun XML per questo giorno e nessuna chiusura dopo che lo copra.
+        elif esito_f1 == "in_attesa_xml":
+            # Nessun XML (o solo il provvisorio) e nessuna chiusura dopo che
+            # lo copra: si aspetta l'XML.
             diff_serale = 0.0
             stato_serale = "in_attesa_xml"
             alert_serale = None
-        elif stato_corr in ("provvisorio", "manca_xml") and pos_man_presente:
-            # Abbiamo il POS serale ma non i dati fiscali → aspettiamo XML
-            diff_serale = 0.0
-            stato_serale = "in_attesa_xml"
-            alert_serale = None
-        elif xml_el > 0 or pos_man_presente:
+        elif esito_f1 == "confronto":
             # Convenzione canonica: XML - POS reale. Se l'XML e' maggiore,
             # tutti i pagamenti carta risultano coperti dagli scontrini emessi.
             # Una chiusura che copre anche il giorno prima porta il suo POS.
-            pos_confronto = round(pos_man + sum(pos_manuali.get(g) or 0 for g in giorni_uniti), 2)
             diff_serale, xml_copre_pos = _coerenza_xml_pos(
                 xml_el, pos_confronto, tolleranza_euro
             )
@@ -1643,7 +1865,12 @@ async def controllo_incassi_due_fasi(
             pos_gruppo = gruppo["pos_tot"]
             giorni_gruppo = len(gruppo["giorni"])
             # Statistiche e saldo: una volta per giorno operazione.
-            if stato_accr == "in_attesa":
+            if stato_accr == "senza_chiusura_terminale":
+                # Ne' «ok» ne' saldo: l'accredito non ha un termine di
+                # confronto. Si conta a parte, con l'importo accreditato.
+                stats["fase2_senza_chiusura_terminale"] += 1
+                stats["fase2_accrediti_senza_chiusura_totale"] += accredito
+            elif stato_accr == "in_attesa":
                 stats["fase2_attesa"] += 1
             elif stato_accr == "mancante":
                 stats["fase2_mancante"] += 1
@@ -1658,7 +1885,7 @@ async def controllo_incassi_due_fasi(
             else:  # extra
                 stats["fase2_extra"] += 1
                 saldo_progressivo += diff_accr
-            if stato_accr != "in_attesa":
+            if stato_accr not in ("in_attesa", "senza_chiusura_terminale"):
                 stats["fase2_pos_totale"] += pos_gruppo
                 stats["fase2_accrediti_totale"] += accredito
 
@@ -1736,7 +1963,11 @@ async def controllo_incassi_due_fasi(
             "pos_gruppo": round(pos_gruppo, 2),
             "giorni_gruppo": giorni_gruppo,
             "dettaglio_gruppo": dettaglio_gruppo,
-            "saldo_progressivo": round(saldo_progressivo, 2) if capogruppo and stato_accr != "in_attesa" else None,
+            "saldo_progressivo": (
+                round(saldo_progressivo, 2)
+                if capogruppo and stato_accr not in ("in_attesa", "senza_chiusura_terminale")
+                else None
+            ),
             "fase2_per_circuito": {
                 conti_pos.NUMIA: {
                     "conto": "BPM",
@@ -1763,6 +1994,9 @@ async def controllo_incassi_due_fasi(
     stats["importo_tot_mancante_banca"] = round(stats["importo_tot_mancante_banca"], 2)
     stats["fase2_pos_totale"] = round(stats["fase2_pos_totale"], 2)
     stats["fase2_accrediti_totale"] = round(stats["fase2_accrediti_totale"], 2)
+    stats["fase2_accrediti_senza_chiusura_totale"] = round(
+        stats["fase2_accrediti_senza_chiusura_totale"], 2
+    )
     stats["fase2_sumup_pos_totale"] = round(stats["fase2_sumup_pos_totale"], 2)
     stats["pos_numia_reale_annuo"] = round(stats["pos_numia_reale_annuo"], 2)
     stats["pos_sumup_reale_annuo"] = round(stats["pos_sumup_reale_annuo"], 2)
@@ -1797,6 +2031,7 @@ async def controllo_incassi_due_fasi(
             "num_giorni_sumup_in_attesa": 0,
             "num_giorni_mancanti": 0,
             "num_giorni_differenza": 0,
+            "num_giorni_senza_chiusura_terminale": 0,
         })
         if sw["data_inizio"] is None or g["data"] < sw["data_inizio"]:
             sw["data_inizio"] = g["data"]
@@ -1806,14 +2041,20 @@ async def controllo_incassi_due_fasi(
             sw["pos_totale"] += g["pos_manuale"]
             sw["num_giorni_con_pos"] += 1
         circuiti_giorno = g.get("pos_per_circuito") or {}
-        sw["pos_numia_totale"] += float(circuiti_giorno.get(conti_pos.NUMIA) or 0)
+        senza_chiusura = g.get("stato_accredito") == "senza_chiusura_terminale"
+        # Un NUMIA letto dall'accredito stesso non entra nel confronto con la
+        # banca: sommarlo da una parte e dall'altra dava una settimana «ok».
+        if not senza_chiusura:
+            sw["pos_numia_totale"] += float(circuiti_giorno.get(conti_pos.NUMIA) or 0)
         sw["pos_sumup_totale"] += float(circuiti_giorno.get(conti_pos.SUMUP) or 0)
         if (g.get("fase2_per_circuito") or {}).get(conti_pos.SUMUP, {}).get("stato") == "in_attesa_payout":
             sw["num_giorni_sumup_in_attesa"] += 1
         # L'accredito/diff sono già "una volta per gruppo" (solo sul capogruppo,
         # gli altri giorni del gruppo hanno accredito_banca=0), quindi sommarli
         # per ogni giorno della settimana non duplica nulla.
-        if g["capogruppo"]:
+        if g["capogruppo"] and senza_chiusura:
+            sw["num_giorni_senza_chiusura_terminale"] += 1
+        elif g["capogruppo"]:
             sw["accredito_totale"] += g["accredito_banca"]
             if g["stato_accredito"] == "in_attesa":
                 sw["num_giorni_in_attesa"] += 1
@@ -1840,6 +2081,8 @@ async def controllo_incassi_due_fasi(
             sw["stato"] = "mancante"
         elif abs(sw["diff_totale"]) > tolleranza_euro:
             sw["stato"] = "differenza"
+        elif sw["num_giorni_senza_chiusura_terminale"] > 0:
+            sw["stato"] = "senza_chiusura_terminale"
         else:
             sw["stato"] = "ok"
         riepilogo_settimanale.append(sw)
@@ -1907,27 +2150,33 @@ async def alert_oggi(
                 "data_errore": g["data"],
                 **g["alert_compensazione"],
             })
+        # La banca BPM accredita il solo NUMIA: l'importo atteso e' quello,
+        # non il POS del giorno (NUMIA + SumUp, che paga sulla sua carta).
+        pos_numia_atteso = float(
+            ((g.get("fase2_per_circuito") or {}).get(conti_pos.NUMIA) or {}).get("pos_reale")
+            or 0
+        )
         if g.get("stato_accredito") == "mancante":
             msg = (
-                f"Accredito POS mancante: il {g['data']} hai incassato €{g['pos_manuale']:.2f} "
-                f"ma la banca non l'ha ancora accreditato (atteso il {g['data_accredito_attesa']})."
+                f"Accredito POS NUMIA mancante: il {g['data']} hai incassato €{pos_numia_atteso:.2f} "
+                f"su NUMIA ma la banca non l'ha ancora accreditato (atteso il {g['data_accredito_attesa']})."
             )
             alerts_banca.append({
                 "data_incasso": g["data"],
                 "data_accredito_attesa": g["data_accredito_attesa"],
-                "importo_atteso": g["pos_manuale"],
+                "importo_atteso": pos_numia_atteso,
                 "messaggio": msg,
             })
             await _alert_pos_non_quadrato(db, g["data"], msg)
         elif g.get("stato_accredito") == "differenza":
             msg = (
-                f"Accredito diverso dal previsto: il {g['data']} incasso POS €{g['pos_manuale']:.2f}, "
+                f"Accredito diverso dal previsto: il {g['data']} incasso POS NUMIA €{pos_numia_atteso:.2f}, "
                 f"banca ha accreditato €{g['accredito_banca']:.2f} (differenza €{g['diff_accredito']:.2f})."
             )
             alerts_banca.append({
                 "data_incasso": g["data"],
                 "data_accredito_attesa": g["data_accredito_attesa"],
-                "importo_atteso": g["pos_manuale"],
+                "importo_atteso": pos_numia_atteso,
                 "importo_accreditato": g["accredito_banca"],
                 "differenza": g["diff_accredito"],
                 "messaggio": msg,
