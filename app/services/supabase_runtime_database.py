@@ -145,10 +145,6 @@ def _exact_lookup(selector: Any) -> tuple[str, list[str]] | None:
             if set(condition) != {"$in"} or not isinstance(condition["$in"], list):
                 continue
             raw_values = condition["$in"]
-            if any(value is None for value in raw_values):
-                # `$in` con None comprende il campo assente: l'indice esatto
-                # non vede le righe senza il campo.
-                continue
         else:
             raw_values = [condition]
         values = [str(value) for value in raw_values if value is not None]

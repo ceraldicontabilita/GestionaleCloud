@@ -84,10 +84,14 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
         stato = "DA_VERIFICARE"
         periodo_attribuito_finale = periodo_attribuito
     else:
+        # DA_VERIFICARE lo scrive solo questo motore, quando mancavano periodo o
+        # detraibilita': ora ci sono, e tenerlo lo bloccava per sempre (il
+        # motore gira all'import prima che la classificazione scriva
+        # `iva_detraibile`, quindi ogni fattura restava ferma lì).
         stato_esistente = inv.get("stato_detrazione_iva")
         stato = (
             stato_esistente
-            if stato_esistente in {"INDETRAIBILE", "RINVIATA", "DA_VERIFICARE"}
+            if stato_esistente in {"INDETRAIBILE", "RINVIATA"}
             else "DA_INSERIRE"
         )
         periodo_attribuito_finale = periodo_attribuito

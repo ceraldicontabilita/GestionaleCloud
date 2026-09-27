@@ -17,6 +17,7 @@ import re
 from app.database import Database
 from app.config import settings
 from app.services.payment_invoice_matching import amounts_equal_to_cent
+from app.services.pagopa_receipts import non_collegato as _non_collegato
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,7 @@ async def list_ricevute(
         if associata:
             query["movimento_id"] = {"$exists": True, "$ne": None}
         else:
-            query["movimento_id"] = {"$in": [None, ""]}
+            query["$and"] = [_non_collegato("movimento_id")]
     
     ricevute = await db[COLLECTION_RICEVUTE].find(
         query, {"_id": 0, "pdf_data": 0}
@@ -358,7 +359,7 @@ async def cerca_movimenti_pagopa(
         query["data"] = {"$regex": f"^{anno}"}
     
     if solo_non_associati:
-        query["ricevuta_pagopa_id"] = {"$in": [None, ""]}
+        query["$and"] = [_non_collegato("ricevuta_pagopa_id")]
     
     movimenti = await db.estratto_conto_movimenti.find(
         query, {"_id": 0}

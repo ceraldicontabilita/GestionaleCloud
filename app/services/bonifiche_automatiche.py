@@ -143,6 +143,11 @@ _PROVE_PROPRIE_VERBALE = (
     "pagamento_id", "paypal_transaction_id", "ricevuta_pagopa_id", "movimento_banca_id",
     "pdf_filename", "pdf_hash", "email_id", "message_id", "email_message_id",
     "quietanza_ricevuta", "importo", "data_verbale", "data_violazione", "iuv",
+    # Campi scritti dai canali veri (PEC, scanner email, banca).
+    "upec_id", "data_ricezione_notifica", "targa", "ente_creditore", "articolo_cds",
+    "email_subject", "email_from", "email_date", "file_hash", "movimento_id",
+    "importo_centesimi", "movimento_estratto_conto_id", "quietanza_pdf",
+    "pdf_ricevuta_path",
 )
 
 
@@ -170,14 +175,16 @@ def numero_derivato_da_fattura(numero_verbale: Any, numeri_fattura: Iterable[Any
 
 
 async def quarantena_verbali_da_fattura(db) -> Dict[str, int]:
-    """Mette in quarantena, per ``_id`` e con il motivo, i verbali che:
+    """Mette in quarantena, per ``_id`` e con il motivo, i verbali che hanno
+    per numero il numero (o un pezzo del numero) della fattura del
+    noleggiatore a cui sono collegati: sono nati dalla fattura, non da una
+    multa.
 
-    * hanno per numero il numero (o un pezzo del numero) della fattura del
-      noleggiatore a cui sono collegati; oppure
-    * sono collegati a una fattura che non esiste piu' o non e' attiva.
-
-    Un verbale con prove proprie (PDF, email, pagamento, importo) resta
-    com'e' e si conta a parte: quello e' un verbale vero, e decide una persona.
+    Un verbale collegato a una fattura archiviata o sparita **non** si tocca:
+    la dedup ha solo scelto l'altra copia, e va ricollegato, non nascosto
+    (si conta in ``da_ricollegare``). Un verbale con prove proprie resta
+    com'e', e uno che una persona ha ripristinato (``quarantena_revocata``)
+    non torna in quarantena.
     """
     from app.constants.stati_verbale import STATO_QUARANTENA
     from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
@@ -186,12 +193,14 @@ async def quarantena_verbali_da_fattura(db) -> Dict[str, int]:
         "_id": 1, "id": 1, "numero_verbale": 1, "stato": 1,
         "fattura_id": 1, "fattura_associata_id": 1,
         "fattura_numero": 1, "numero_fattura": 1, "fattura_associata_numero": 1,
+        "quarantena_revocata": 1,
         **{campo: 1 for campo in _PROVE_PROPRIE_VERBALE},
     }
     verbali = await db["verbali_noleggio"].find(
         {"stato": {"$ne": STATO_QUARANTENA}}, proiezione,
     ).to_list(None)
-    esito = {"analizzati": len(verbali), "quarantena": 0, "con_prove_proprie": 0}
+    esito = {"analizzati": len(verbali), "quarantena": 0, "con_prove_proprie": 0,
+             "da_ricollegare": 0}
 
     collegati = [v for v in verbali if v.get("fattura_id") or v.get("fattura_associata_id")]
     ids_fattura = sorted({
@@ -220,13 +229,12 @@ async def quarantena_verbali_da_fattura(db) -> Dict[str, int]:
             verbale.get("fattura_associata_numero"),
         ]
         derivato = numero_derivato_da_fattura(verbale.get("numero_verbale"), numeri)
-        if derivato:
-            motivo = f"il numero del verbale e' il numero della fattura {derivato}"
-        elif fattura is None:
-            motivo = f"la fattura collegata {fattura_id} non esiste piu'"
-        elif fattura_id not in attive:
-            motivo = f"la fattura collegata {fattura_id} non e' attiva (archiviata o cancellata)"
-        else:
+        if not derivato:
+            if fattura is None or fattura_id not in attive:
+                esito["da_ricollegare"] += 1
+            continue
+        motivo = f"il numero del verbale e' il numero della fattura {derivato}"
+        if verbale.get("quarantena_revocata"):
             continue
         if any(verbale.get(campo) for campo in _PROVE_PROPRIE_VERBALE):
             esito["con_prove_proprie"] += 1

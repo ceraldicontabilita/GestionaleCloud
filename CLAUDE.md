@@ -236,7 +236,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
     True}}` su una chiave inesistente passa **sempre**. Prima di fidarsi di un
     filtro, contare sul database quante righe hanno davvero quella chiave.
     Vale anche fra due funzioni: `supplier_result["nuovo"]` al posto di
-    `supplier_created` dava sempre `False`, e un alert non è mai partito. `$in: [None, …]` comprende il campo assente, come `$eq: None`.
+    `supplier_created` dava sempre `False`, e un alert non è mai partito. `$in: [None, …]` **non** prende il campo assente: «non ancora collegato» si scrive con `pagopa_receipts.non_collegato`.
 12. **Su `invoices` i campi canonici sono quelli inglesi**: `invoice_date`,
     `total_amount`, `invoice_number`. `data_documento` e `totale` sono derivati
     e mancano sulle fatture che il motore IVA non ha toccato: filtrarci o

@@ -61,9 +61,12 @@ async def _prepara(db):
         # verbale vero, fattura attiva e numero diverso: resta
         {"_id": "v4", "numero_verbale": "V777", "stato": "fattura_ricevuta",
          "fattura_id": "FT-VIVA"},
-        # fattura sparita ma con prove proprie (PDF): decide una persona
-        {"_id": "v5", "numero_verbale": "C1", "stato": "salvato",
-         "fattura_id": "FT-SPARITA", "pdf_filename": "verbale.pdf"},
+        # numero della fattura ma con prove proprie (PEC): decide una persona
+        {"_id": "v5", "numero_verbale": "A25111540620", "stato": "salvato",
+         "fattura_id": "FT-ARVAL", "upec_id": "PEC-1"},
+        # ripristinato a mano: non torna in quarantena
+        {"_id": "v6", "numero_verbale": "A25111540620", "stato": "fattura_ricevuta",
+         "fattura_id": "FT-ARVAL", "quarantena_revocata": True},
     ])
 
 
@@ -96,17 +99,18 @@ def test_bonifiche_chiudono_e_mettono_in_quarantena_solo_il_dovuto():
     # nessun altro codice toccato
     assert alert["A-ALTRO"]["stato"] == "aperto"
     # 4. verbali: quarantena col motivo, nessuno cancellato
-    assert len(verbali) == 5
-    for vid in ("v1", "v2", "v3"):
-        assert verbali[vid]["stato"] == "quarantena"
-        assert verbali[vid]["motivo_quarantena"]
-        assert verbali[vid]["stato_precedente"] == "fattura_ricevuta"
+    assert len(verbali) == 6
+    assert verbali["v1"]["stato"] == "quarantena"
+    assert verbali["v1"]["stato_precedente"] == "fattura_ricevuta"
     assert "A25111540620" in verbali["v1"]["motivo_quarantena"]
-    assert verbali["v4"]["stato"] == "fattura_ricevuta"
+    # fattura sparita o archiviata: si ricollega, non si nasconde
+    for vid in ("v2", "v3", "v4", "v6"):
+        assert verbali[vid]["stato"] == "fattura_ricevuta"
     assert verbali["v5"]["stato"] == "salvato"
 
-    assert primo["conteggi"]["verbali_da_fattura"]["quarantena"] == 3
+    assert primo["conteggi"]["verbali_da_fattura"]["quarantena"] == 1
     assert primo["conteggi"]["verbali_da_fattura"]["con_prove_proprie"] == 1
+    assert primo["conteggi"]["verbali_da_fattura"]["da_ricollegare"] == 2
     assert primo["conteggi"]["alert_movimenti"] == {
         "aperti": 4, "doppioni_chiusi": 1, "riconciliati_chiusi": 2,
     }

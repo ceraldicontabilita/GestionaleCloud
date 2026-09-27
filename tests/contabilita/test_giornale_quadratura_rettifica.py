@@ -287,3 +287,20 @@ def test_censimento_cancellate_elenca_annota_e_non_cancella():
     assert _run(db["movimenti_contabili"].count_documents({})) == 3
     # Idempotente.
     assert _run(manutenzione.censisci_scritture_cancellate(db, dry_run=False))["annotate"] == 0
+
+
+def test_scrittura_rifiutata_non_brucia_un_numero_di_protocollo():
+    db = _db()
+    righe_ok = [{"conto_codice": "05.01.01", "dare": 100, "avere": 0},
+                {"conto_codice": "02.01.01", "dare": 0, "avere": 100}]
+    squadrata = {
+        "id": "M1", "tipo": "prova", "anno": 2026, "numero_registrazione": None,
+        "righe": [{"conto_codice": "05.01.01", "dare": 100, "avere": 0},
+                  {"conto_codice": "02.01.01", "dare": 0, "avere": 90}],
+        "totale_dare": 100, "totale_avere": 90,
+    }
+    with pytest.raises(motore.ScritturaNonQuadrata):
+        _run(motore._scrivi_movimento(db, dict(squadrata), []))
+    mov = _run(motore._scrivi_movimento(db, {
+        **squadrata, "id": "M2", "righe": righe_ok, "totale_avere": 100}, []))
+    assert mov["numero_registrazione"] == 1

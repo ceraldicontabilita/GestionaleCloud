@@ -15,6 +15,15 @@ from typing import Any
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 
 
+def non_collegato(campo: str) -> dict[str, Any]:
+    """«Non ancora collegato»: campo assente, null o vuoto.
+
+    `$in: [None, ""]` da solo non prende le righe che il campo non l'hanno
+    mai avuto, cioe' proprio quelle mai collegate.
+    """
+    return {"$or": [{campo: {"$exists": False}}, {campo: {"$in": [None, ""]}}]}
+
+
 COLLECTION_RICEVUTE = "ricevute_pagopa"
 PARSER_VERSION = "payment-receipt-layout-v4"
 
@@ -511,7 +520,7 @@ async def find_bank_movement(db, code: str | list[str], amount: Any):
         ))
     movements = await db.estratto_conto_movimenti.find({
         "$or": references,
-        "ricevuta_pagopa_id": {"$in": [None, ""]},
+        "$and": [non_collegato("ricevuta_pagopa_id")],
     }, {"_id": 0}).limit(20).to_list(20)
     exact = [item for item in movements if amounts_equal_to_cent(item.get("importo"), amount)]
     return exact[0] if len(exact) == 1 else None

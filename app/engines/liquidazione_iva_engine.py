@@ -40,7 +40,10 @@ MOV_RETTIFICA = "RETTIFICA"
 MOV_RECUPERO_ANNUALE = "RECUPERO_ANNUALE"
 
 # Stati detrazione che rendono una fattura AMMISSIBILE a un nuovo calcolo (§10)
-STATI_DETRAZIONE_AMMESSI = {"DA_INSERIRE", "NON_VALUTATA", "RINVIATA"}
+# ``NON_VALUTATA`` (valore storico, nessuno lo scrive piu') vuol dire «non
+# deciso»: come nel riepilogo annuale non entra nel calcolo ma blocca il mese.
+STATI_DETRAZIONE_AMMESSI = {"DA_INSERIRE", "RINVIATA"}
+STATI_DETRAZIONE_DA_DECIDERE = ("DA_VERIFICARE", "NON_VALUTATA")
 
 # Note di credito ricevute: RIDUCONO l'IVA detraibile (audit 27/09/2026,
 # punto 8). Prima erano escluse dal calcolo (liquidazione) o sommate in
@@ -88,7 +91,7 @@ def detraibilita_da_decidere(f: Dict[str, Any]) -> bool:
             break
     if f.get("iva_detraibile") is None:
         return iva_documento > 0
-    return f.get("stato_detrazione_iva") == "DA_VERIFICARE"
+    return f.get("stato_detrazione_iva") in STATI_DETRAZIONE_DA_DECIDERE
 
 
 def _id_fattura(f: Dict[str, Any]) -> Any:
@@ -106,7 +109,7 @@ def seleziona_fatture_per_liquidazione(
       - iva_utilizzata != true          (divieto di duplicazione §11)
       - iva_detraibile diversa da zero
       - documento non annullato/duplicato
-      - stato_detrazione_iva in {DA_INSERIRE, NON_VALUTATA, RINVIATA}
+      - stato_detrazione_iva in {DA_INSERIRE, RINVIATA}
       - una nota di credito (TD04/TD08) entra col segno negativo
 
     Ritorna (incluse, escluse). Ogni voce ESCLUSA ha `motivo_esclusione`.

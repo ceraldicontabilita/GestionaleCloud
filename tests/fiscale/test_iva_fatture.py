@@ -112,3 +112,19 @@ def test_fallback_data_ricezione_su_data_documento():
     c = ivf.campi_iva_da_fattura(inv)
     assert c["data_ricezione"] == "2026-05-31"
     assert c["periodo_iva_attribuito"] == "2026-05"
+
+
+def test_da_verificare_del_motore_si_sblocca_quando_la_detraibilita_arriva():
+    """Il motore gira all'import prima della classificazione: il suo
+    DA_VERIFICARE non deve restare appiccicato quando `iva_detraibile` arriva."""
+    inv = {"invoice_date": "2026-03-10", "created_at": "2026-03-12T00:00:00", "iva": 220}
+    inv.update(ivf.campi_iva_da_fattura(inv))
+    assert inv["stato_detrazione_iva"] == "DA_VERIFICARE"
+    inv["iva_detraibile"] = 220
+    assert ivf.campi_iva_da_fattura(inv)["stato_detrazione_iva"] == "DA_INSERIRE"
+
+
+def test_non_valutata_e_da_decidere_come_nel_riepilogo():
+    from app.engines.liquidazione_iva_engine import detraibilita_da_decidere
+    assert detraibilita_da_decidere(
+        {"iva": 22, "iva_detraibile": 22, "stato_detrazione_iva": "NON_VALUTATA"})

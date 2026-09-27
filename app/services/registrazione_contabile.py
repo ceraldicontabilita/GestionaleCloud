@@ -249,6 +249,10 @@ async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[
         dare, avere = totali_righe(movimento.get("righe") or [])
         raise ScritturaNonQuadrata(
             f"Scrittura {movimento.get('tipo')} non quadrata: DARE {dare:.2f} != AVERE {avere:.2f}")
+    # Il numero si prenota solo per una scrittura che si salva davvero: una
+    # scrittura rifiutata dalla quadratura non brucia un numero del protocollo.
+    if movimento.get("numero_registrazione") is None:
+        movimento["numero_registrazione"] = await _prossimo_numero(db, movimento.get("anno"))
     try:
         await db[COLL_MOVIMENTI].insert_one(movimento.copy())
     except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave e' gestito
@@ -522,7 +526,8 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     totale_lato_costo = round(costo_residuo + quota_cespiti + iva_detraibile, 2)
     movimento = {
         "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db, anno),
+        # Assegnato da _scrivi_movimento dopo la guardia di quadratura.
+        "numero_registrazione": None,
         "tipo": "fattura_acquisto",
         "fonte_documento": {"tipo": "fattura", "id": fattura_id, "numero": numero},
         "fattura_id": fattura_id,
@@ -594,7 +599,8 @@ async def _scrivi_storno(db, originale: Dict[str, Any], motivo: str, tipo: str,
     anno = originale.get("anno") or _anno_da_data(originale.get("data"))
     storno = {
         "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db, anno),
+        # Assegnato da _scrivi_movimento dopo la guardia di quadratura.
+        "numero_registrazione": None,
         "tipo": tipo,
         "storno_di": originale.get("id"),
         "fonte_documento": originale.get("fonte_documento"),
@@ -679,10 +685,15 @@ async def storna_registrazione_corrispettivo(db, corrispettivo_id: Any, motivo: 
     inversa (``reg:storno-corrispettivo:<id>``)."""
     if corrispettivo_id in (None, ""):
         return {"stato": "saltato", "motivo": "corrispettivo senza id"}
+    # Come per le fatture: dopo storno + nuova registrazione si storna la
+    # scrittura ancora valida, non quella gia' stornata.
     originale = None
-    for valore in dict.fromkeys([corrispettivo_id, str(corrispettivo_id)]):
-        originale = await db[COLL_MOVIMENTI].find_one(
-            {"tipo": "corrispettivo", "corrispettivo_id": valore}, {"_id": 0})
+    for filtro_stato in ({"stato": {"$ne": "stornato"}, **FILTRO_SCRITTURA_ATTIVA}, {}):
+        for valore in dict.fromkeys([corrispettivo_id, str(corrispettivo_id)]):
+            originale = await db[COLL_MOVIMENTI].find_one(
+                {"tipo": "corrispettivo", "corrispettivo_id": valore, **filtro_stato}, {"_id": 0})
+            if originale:
+                break
         if originale:
             break
     if not originale:
@@ -799,7 +810,8 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
     now = _now()
     movimento = {
         "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db, anno),
+        # Assegnato da _scrivi_movimento dopo la guardia di quadratura.
+        "numero_registrazione": None,
         "tipo": "corrispettivo",
         "fonte_documento": {"tipo": "corrispettivo", "id": corr_id, "numero": None},
         "corrispettivo_id": corr_id,
