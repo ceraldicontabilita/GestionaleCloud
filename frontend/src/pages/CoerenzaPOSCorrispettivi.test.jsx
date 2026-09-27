@@ -12,6 +12,7 @@ import {
   formatEuroConSegno,
   parseTotaliPosTesto,
   CellaCircuito,
+  TESTO_SENZA_CHIUSURA,
 } from './CoerenzaPOSCorrispettivi';
 
 vi.mock('../api', () => ({
@@ -297,5 +298,63 @@ describe('CellaCircuito', () => {
       </tr></tbody></table>
     );
     expect(screen.getByText('in attesa')).toBeInTheDocument();
+  });
+});
+
+describe('NUMIA senza chiusura del terminale', () => {
+  // Il POS NUMIA letto dall'accredito BPM non si verifica contro se stesso:
+  // la pagina lo dice a parole e non lo conta fra i giorni quadrati.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation(url => {
+      if (url.includes('/verifica-coerenza')) return Promise.resolve({ data: {
+        riepilogo: {}, riepilogo_giornaliero: [], anomalie: [], anomalie_count: 0,
+      } });
+      if (url.includes('/riepilogo-mensile')) return Promise.resolve({ data: {
+        mesi: [{
+          mese: 7, nome: 'Lug', elettronico_xml: 900, pos_numia: 867.3,
+          pos_accreditato: 867.3, differenza_xml_pos: 32.7,
+          differenza_pos_banca: null, banca_verificabile: false, stato: 'ok',
+        }],
+        totali: { differenza_pos_banca: null },
+      } });
+      if (url.includes('/sumup/')) return Promise.resolve({ data: { configured: false } });
+      return Promise.resolve({ data: {
+        statistiche: {
+          fase2_ok: 0, fase2_senza_chiusura_terminale: 1,
+          fase2_accrediti_senza_chiusura_totale: 867.3, fase2_saldo_finale: 0,
+        },
+        giorni: [{
+          data: '2026-07-06', stato_serale: 'ok', stato_corrispettivo: 'definitivo_xml',
+          stato_accredito: 'senza_chiusura_terminale', riconciliato_banca_reale: false,
+          accredito_banca: 867.3, diff_accredito: null, pos_manuale_presente: true,
+          pos_manuale: 867.3, xml_elettronico: 900,
+          pos_per_circuito: { numia: 867.3, sumup: null },
+          fonte_pos_per_circuito: { numia: 'estratto_conto_numia' },
+          fase2_per_circuito: { sumup: { stato: 'no_pos_sumup' } },
+        }],
+        riepilogo_settimanale: [],
+      } });
+    });
+  });
+
+  it('mostra lo stato a parole e non lo conta come quadrato', async () => {
+    render(<CoerenzaPOSCorrispettivi />);
+
+    expect(await screen.findByTestId('avviso-senza-chiusura')).toHaveTextContent(TESTO_SENZA_CHIUSURA);
+    expect(screen.getByText('0%')).toBeInTheDocument();
+    expect(screen.queryByText('✓ Riconciliato banca')).toBeNull();
+    expect(screen.getAllByText(TESTO_SENZA_CHIUSURA).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(TESTO_SENZA_CHIUSURA, { selector: 'div' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Solo OK' }));
+    expect(screen.queryByText(TESTO_SENZA_CHIUSURA, { selector: 'div' })).toBeNull();
+  });
+
+  it('nel mensile la differenza BPM − Numia e\' «Non verificabile», non zero', async () => {
+    render(<CoerenzaPOSCorrispettivi />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Mensile' }));
+    fireEvent.click(screen.getByTestId('mensile-tutte-colonne'));
+    expect(screen.getByTestId('mensile-7')).toHaveTextContent('Non verificabile');
   });
 });

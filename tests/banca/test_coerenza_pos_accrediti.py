@@ -378,10 +378,15 @@ def test_due_fasi_separa_numia_da_sumup_e_non_usa_xml_come_pos(monkeypatch):
         assert giorno["fonte_pos_per_circuito"]["sumup"] == "api_sumup"
         assert giorno["pos_manuale"] == 1588.60
         assert giorno["diff_serale"] == 40.90
-        assert giorno["fase2_per_circuito"]["numia"]["riconciliato"] is True
+        # Senza chiusura NUMIA il POS reale e' l'accredito stesso: vale per la
+        # fase 1, ma la fase 2 non puo' certificare l'accredito contro se stesso.
+        assert giorno["fase2_per_circuito"]["numia"]["riconciliato"] is False
+        assert giorno["fase2_per_circuito"]["numia"]["stato"] == "senza_chiusura_terminale"
         assert giorno["fase2_per_circuito"]["numia"]["accredito"] == 867.30
         assert giorno["fase2_per_circuito"]["sumup"]["stato"] == "in_attesa_payout"
-        assert result["statistiche"]["fase2_pos_totale"] == 867.30
+        assert result["statistiche"]["fase2_pos_totale"] == 0.0
+        assert result["statistiche"]["fase2_senza_chiusura_terminale"] == 1
+        assert result["statistiche"]["fase2_accrediti_senza_chiusura_totale"] == 867.30
         assert result["statistiche"]["fase2_sumup_pos_totale"] == 721.30
         assert result["statistiche"]["pos_numia_reale_annuo"] == 867.30
         assert result["statistiche"]["pos_sumup_reale_annuo"] == 721.30
