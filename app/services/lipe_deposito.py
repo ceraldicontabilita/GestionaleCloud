@@ -123,45 +123,99 @@ async def deposita_lipe(
     }
 
 
-async def importa_lipe_archiviate(db, *, dry_run: bool = True) -> Dict[str, Any]:
-    """Rilegge le LIPE gia' inventariate e ne deposita i periodi.
+def _servizio_drive():
+    """La credenziale provata sulla cartella unica, dove stanno le LIPE; senza
+    cartella unica configurata, quella del registro fiscale."""
+    from app.services import drive_cartella_unica as cu
 
-    I PDF non stanno nel gestionale: `documents_inbox` ne conserva solo
-    l'impronta e l'id Drive, quindi ognuno si riscarica al momento. Un solo
-    prefetch dell'inventario, poi un download per file.
-    """
-    from app.services.drive_download import scarica_bytes
+    if cu.radice():
+        return cu._service()
     from app.services.drive_fiscal_registry import build_drive_service
 
-    candidati = []
+    return build_drive_service()
+
+
+def _lipe_nella_cartella_unica() -> List[Dict[str, str]]:
+    """Le LIPE in «DATI SOCIETA CERALDI»: radice, DA ELABORARE ed ELABORATE.
+
+    E' qui che arrivano dal 25/09: l'inventario di `documents_inbox` ha solo
+    le LIPE 2020-2023 e senza id Drive, quindi da solo non ne trovava nessuna.
+    Le copie marcate «DUPLICATO DA ELIMINARE» si saltano; fra copie con la
+    stessa impronta Drive se ne legge una.
+    """
+    from app.services import drive_cartella_unica as cu
+
+    root = cu.radice()
+    if not root:
+        return []
+    service = _servizio_drive()
+    cartelle = cu._cartelle(service, root)
+    filtro_marcati = "".join(
+        f" and not name contains '{p.strip()}'" for p in cu.PREFISSI_DA_ELIMINARE
+    )
+    trovate: Dict[str, Dict[str, str]] = {}
+    for parent in (root, cartelle[cu.INBOX], cartelle[cu.ARCHIVIO]):
+        token = None
+        while True:
+            risposta = service.files().list(
+                q=(f"'{parent}' in parents and trashed = false and name contains 'LIPE'"
+                   f" and mimeType = 'application/pdf'{filtro_marcati}"),
+                fields="nextPageToken, files(id, name, md5Checksum)", pageSize=1000,
+                pageToken=token, supportsAllDrives=True, includeItemsFromAllDrives=True,
+            ).execute()
+            for f in risposta.get("files", []):
+                trovate.setdefault(f.get("md5Checksum") or f["id"], {"nome": f["name"], "id": f["id"]})
+            token = risposta.get("nextPageToken")
+            if not token:
+                break
+    return list(trovate.values())
+
+
+async def importa_lipe_archiviate(db, *, dry_run: bool = True) -> Dict[str, Any]:
+    """Rilegge le LIPE archiviate e ne deposita i periodi.
+
+    Le cerca nella cartella unica su Drive e, per lo storico, fra quelle
+    inventariate in `documents_inbox` con un id Drive. I PDF non stanno nel
+    gestionale: ognuno si riscarica al momento.
+    """
+    from app.services.drive_download import scarica_bytes
+
+    candidati: Dict[str, str] = {}
     async for doc in db[COLL_INBOX].find({}, {"_id": 0}):
         nome = _nome_documento(doc)
         if e_una_lipe(nome) and doc.get("drive_file_id"):
-            candidati.append((nome, str(doc["drive_file_id"])))
+            candidati[str(doc["drive_file_id"])] = nome
+
+    errori: List[Dict[str, str]] = []
+    try:
+        for f in _lipe_nella_cartella_unica():
+            candidati.setdefault(f["id"], f["nome"])
+    except Exception as exc:  # noqa: BLE001 — si riporta, non si nasconde
+        logger.error("LIPE: cartella unica non leggibile: %s: %s", type(exc).__name__, exc)
+        errori.append({"file": "cartella unica", "errore": f"{type(exc).__name__}: {exc}"[:200]})
 
     # Le piu' recenti per ultime: cosi' una ritrasmissione sovrascrive.
-    candidati.sort(key=lambda c: protocollo_da_nome(c[0]) or 0)
+    ordinati = sorted(candidati.items(), key=lambda c: protocollo_da_nome(c[1]) or 0)
 
     esiti: List[Dict[str, Any]] = []
-    errori: List[Dict[str, str]] = []
     service = None
-    for nome, file_id in candidati:
+    for file_id, nome in ordinati:
         try:
             if service is None:
-                service = build_drive_service()
+                service = _servizio_drive()
             contenuto = scarica_bytes(service, file_id)
             esiti.append(await deposita_lipe(
-                db, contenuto, nome_file=nome, origine="documents_inbox",
+                db, contenuto, nome_file=nome, origine="drive",
                 drive_file_id=file_id, dry_run=dry_run,
             ))
         except Exception as exc:  # noqa: BLE001 — l'esito va riportato, non nascosto
             logger.exception("LIPE non leggibile: %s", nome)
-            errori.append({"file": nome, "errore": str(exc)[:200]})
+            errori.append({"file": nome, "errore": f"{type(exc).__name__}: {exc}"[:200]})
 
     depositati = sorted({p for e in esiti for p in e["depositati"]})
     return {
         "dry_run": dry_run,
-        "lipe_trovate": len(candidati),
+        "lipe_trovate": len(ordinati),
         "lipe_lette": len(esiti),
         "periodi_depositati": depositati,
         "periodi_scartati": [s for e in esiti for s in e["scartati"]],

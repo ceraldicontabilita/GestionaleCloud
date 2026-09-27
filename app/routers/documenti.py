@@ -3775,6 +3775,22 @@ async def upload_documento_automatico(
             is_duplicate = registered.get("status") == "duplicate"
             result["data"] = registered
             result["workflow"] = "FISCAL_DOCUMENT_INGESTION"
+            # Una LIPE e' anche la fonte dell'IVA mensile: i suoi periodi vanno
+            # in `lipe_periodi`, l'unica collezione che il confronto col
+            # commercialista legge. Anche su un duplicato: il deposito e'
+            # idempotente per periodo e recupera le LIPE archiviate prima.
+            from app.services import lipe_deposito
+
+            if lipe_deposito.e_una_lipe(filename):
+                try:
+                    result["lipe"] = await lipe_deposito.deposita_lipe(
+                        db, content, nome_file=filename, origine="documenti_upload_auto",
+                        drive_file_id=source_context.get("drive_file_id"), dry_run=False,
+                    )
+                except Exception as exc:  # noqa: BLE001 — l'archiviazione resta valida
+                    logger.error("LIPE %s archiviata ma periodi non depositati: %s: %s",
+                                 filename, type(exc).__name__, exc)
+                    result["lipe"] = {"errore": f"{type(exc).__name__}: {exc}"[:300]}
             result["duplicate"] = is_duplicate
             result["imported"] = 0 if is_duplicate else 1
             result["message"] = (
