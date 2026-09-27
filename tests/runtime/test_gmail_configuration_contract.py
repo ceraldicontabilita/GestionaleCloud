@@ -73,6 +73,7 @@ def test_template_render_usa_i_nomi_canonici():
     assert "ENABLE_EMAIL_CEDOLINI_SYNC=true" in template
     assert "ENABLE_EMAIL_F24_SYNC=true" in template
     assert "ENABLE_EMAIL_VERBALI_SYNC=true" in template
-    assert "GMAIL_SCAN_ALL_FOLDERS=true" in template
-    assert "GMAIL_SCAN_LOOKBACK_DAYS=30" in template
+    # Tutte le cartelle e lo storico intero li decide il cursore: nessuna variabile.
+    assert "GMAIL_SCAN_ALL_FOLDERS" not in template
+    assert "GMAIL_SCAN_LOOKBACK_DAYS" not in template
     assert "GMAIL_IMAP_ENABLED=false" not in template

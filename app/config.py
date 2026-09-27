@@ -242,8 +242,6 @@ class Settings(BaseSettings):
     # (13/07/2026): coerente con i canali email attivi (cedolini/F24/verbali).
     # Metterlo a False ferma TUTTA l'ingestione email dallo scheduler.
     ENABLE_GMAIL_IMAP: bool = True
-    GMAIL_SCAN_ALL_FOLDERS: bool = True
-    GMAIL_SCAN_LOOKBACK_DAYS: int = 30
     ENABLE_DOCUMENT_AI: bool = False
     ENABLE_ASYNC_IMPORTS: bool = True
     ENABLE_CACHING: bool = True
