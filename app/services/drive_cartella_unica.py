@@ -167,12 +167,12 @@ class _FileCaricato:
 async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any]) -> Dict[str, Any]:
     from fastapi import HTTPException
 
-    from app.routers.documenti import detect_document_type, upload_documento_automatico
+    from app.routers.documenti import rileva_tipo_documento, upload_documento_automatico
 
     # Un tipo non riconosciuto resta su Drive in ERRORI: lo smistatore lo
     # copierebbe in base64 dentro documents_inbox, una seconda copia
     # dell'originale che la cartella unica esiste per evitare.
-    if detect_document_type(nome, contenuto) == "auto":
+    if await rileva_tipo_documento(nome, contenuto) == "auto":
         return {"success": False, "tipo_rilevato": "non_riconosciuto"}
     try:
         return await upload_documento_automatico(file=_FileCaricato(nome, contenuto, contesto))

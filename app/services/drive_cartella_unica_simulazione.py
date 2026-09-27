@@ -158,10 +158,10 @@ def _esame_cedolino(contenuto: bytes) -> Dict[str, Any]:
 
 async def esamina(db, nome: str, contenuto: bytes) -> Dict[str, Any]:
     """Cosa succederebbe a questo file nella cartella unica, senza scrivere."""
-    from app.routers.documenti import detect_document_type
+    from app.routers.documenti import rileva_tipo_documento
     from app.services.document_import_preview import build_import_preview
 
-    tipo = detect_document_type(nome, contenuto)
+    tipo = await rileva_tipo_documento(nome, contenuto)
     if tipo == "auto":
         return {"tipo": "non_riconosciuto", "esito_previsto": cu.ERRORI,
                 "motivo": "tipo di documento non riconosciuto"}
