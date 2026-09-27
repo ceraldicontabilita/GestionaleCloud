@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '../components/ds/PageHeader';
 import {
   CheckCircle2,
@@ -218,6 +218,9 @@ export default function VerificaMovimentiBanca() {
     try {
       const params = new URLSearchParams({ anno: String(anno), limit: String(PAGE_SIZE), offset: String(offset) });
       if (typeFilter !== 'all') params.set('tipo', typeFilter);
+      // Lo stato si filtra sul server, prima della paginazione: filtrarlo qui
+      // guardava solo le righe gia' caricate e nascondeva il resto.
+      if (statusFilter !== 'all') params.set('stato', statusFilter);
       if (search.trim()) params.set('search', search.trim());
       const response = await api.get(`/api/prima-nota/indice-operazioni?${params}`);
       setData(response.data);
@@ -228,13 +231,11 @@ export default function VerificaMovimentiBanca() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [anno, search, typeFilter]);
+  }, [anno, search, typeFilter, statusFilter]);
 
-  useEffect(() => { load(); }, [anno, typeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [anno, typeFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visibleRows = useMemo(() => rows.filter(row => (
-    statusFilter === 'all' || row.index_status === statusFilter
-  )), [rows, statusFilter]);
+  const visibleRows = rows;
 
   const categories = data?.categories || [];
   const canLoadMore = rows.length < Number(data?.total_rows || 0);

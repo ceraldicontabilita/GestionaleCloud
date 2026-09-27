@@ -217,3 +217,49 @@ def test_candidato_fattura_mostra_metodo_fornitore_senza_riconciliare():
     assert result["matching"] == "manual_only"
     assert result["candidates"][0]["details"]["payment_method"] == "banca"
     assert run(db[COLL_ESTRATTO_CONTO].find_one({"id": "mov-invoice"})).get("riconciliato") is None
+
+
+def test_stato_e_carta_filtrati_prima_di_contare_e_paginare():
+    """Lo stato si decide nella query: filtrarlo dopo lo skip lasciava pagine
+    vuote e un totale sbagliato; le operazioni carta Nexi non sono righe banca."""
+    db = ClientArchivioMemoria()["manual-operation-index-stato"]
+    run(db[COLL_ESTRATTO_CONTO].insert_many([
+        {"id": f"mov-{i:02d}", "data": f"2026-08-{i + 1:02d}", "tipo": "uscita",
+         "importo": -10 - i, "descrizione": f"MOVIMENTO {i}"}
+        for i in range(6)
+    ] + [
+        {"id": "mov-ec", "data": "2026-08-20", "tipo": "uscita", "importo": -5,
+         "riconciliato": True},
+        {"id": "carta-1", "data": "2026-08-21", "tipo": "carta_credito", "importo": 9.99,
+         "descrizione": "AMZN MKTP IT"},
+    ]))
+    run(db[COLL_BANK_OPERATION_INDEX].insert_many([
+        {"movement_id": "mov-00", "category": "fattura", "target_id": "F-1", "status": "active"},
+        {"movement_id": "mov-01", "category": "altro", "target_id": None, "status": "active"},
+        {"movement_id": "mov-02", "category": "altro", "target_id": None, "status": "revoked"},
+    ]))
+
+    def elenca(stato, limit=100, offset=0):
+        with patch.object(Database, "get_db", return_value=db):
+            return run(list_manual_operation_index(
+                anno=2026, tipo=None, stato=stato, search="", limit=limit, offset=offset,
+                _user=USER,
+            ))
+
+    tutte = elenca(None)
+    assert tutte["total_rows"] == 7
+    assert "carta-1" not in {r["id"] for r in tutte["rows"]}
+
+    da_classificare = elenca("da_classificare", limit=2, offset=2)
+    assert da_classificare["total_rows"] == 4  # mov-02 (decisione revocata) .. mov-05
+    assert [r["id"] for r in da_classificare["rows"]] == ["mov-03", "mov-02"]
+    assert {r["index_status"] for r in da_classificare["rows"]} == {"da_classificare"}
+
+    assert [r["id"] for r in elenca("collegato_indice")["rows"]] == ["mov-00"]
+    assert [r["id"] for r in elenca("classificato")["rows"]] == ["mov-01"]
+    assert [r["id"] for r in elenca("riconciliato_banca")["rows"]] == ["mov-ec"]
+    assert elenca("all")["total_rows"] == 7
+
+    with pytest.raises(HTTPException) as exc:
+        elenca("inventato")
+    assert exc.value.status_code == 400

@@ -241,6 +241,42 @@ def _searchable(candidate: Dict[str, Any]) -> str:
     return " ".join(str(value or "") for value in values).upper()
 
 
+STATI_INDICE = ("riconciliato_banca", "collegato_indice", "classificato", "da_classificare")
+
+
+def _per_id_movimento(operatore: str, ids: List[str]) -> Dict[str, Any]:
+    """Filtro per id applicativo o, negli import storici, per ``_id``."""
+    if operatore == "$in":
+        return {"$or": [{"id": {"$in": ids}}, {"_id": {"$in": ids}}]}
+    return {"id": {"$nin": ids}, "_id": {"$nin": ids}}
+
+
+async def _filtro_stato_indice(db, stato: str) -> Dict[str, Any]:
+    """Traduce lo stato della riga in una condizione sulla query.
+
+    Lo stato si decide prima di contare e paginare: filtrarlo dopo lo
+    ``skip`` lasciava pagine vuote e un totale che non corrispondeva alle
+    righe, e la pagina filtrava solo le 200 righe gia' caricate.
+    """
+    if stato == "riconciliato_banca":
+        return {"riconciliato": True}
+    decisioni = await db[COLL_BANK_OPERATION_INDEX].find(
+        {"status": {"$ne": "revoked"}}, {"_id": 0, "movement_id": 1, "target_id": 1},
+    ).to_list(None)
+    collegati = sorted({str(d.get("movement_id")) for d in decisioni
+                        if d.get("movement_id") and d.get("target_id")})
+    classificati = sorted({str(d.get("movement_id")) for d in decisioni
+                           if d.get("movement_id") and not d.get("target_id")})
+    base = {"riconciliato": {"$ne": True}}
+    if stato == "collegato_indice":
+        return {**base, **_per_id_movimento("$in", collegati)}
+    if stato == "classificato":
+        # Una riga con piu' decisioni attive vale «collegata» se una ha il target.
+        solo_classificati = sorted(set(classificati) - set(collegati))
+        return {**base, **_per_id_movimento("$in", solo_classificati)}
+    return {**base, **_per_id_movimento("$nin", sorted(set(collegati) | set(classificati)))}
+
+
 async def list_manual_operation_index(
     anno: int = Query(..., ge=2000, le=2100),
     tipo: Optional[str] = Query(None),
@@ -251,11 +287,24 @@ async def list_manual_operation_index(
     _user: Dict[str, Any] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     db = Database.get_db()
+    if stato in (None, "", "all"):
+        stato = None
+    elif stato not in STATI_INDICE:
+        raise HTTPException(status_code=400, detail={
+            "code": "STATO_NON_VALIDO",
+            "message": f"stato deve essere uno fra {', '.join(STATI_INDICE)}",
+        })
+    # Le operazioni della carta Nexi vivono nella stessa collezione ma si
+    # riconciliano con lo statement carta, non movimento per movimento.
+    filtri: List[Dict[str, Any]] = [{"tipo": {"$ne": "carta_credito"}}]
     query: Dict[str, Any] = {"data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}}
     if tipo in {"entrata", "uscita"}:
         query["tipo"] = tipo
     if search.strip():
         query["descrizione"] = {"$regex": re.escape(search.strip()), "$options": "i"}
+    if stato:
+        filtri.append(await _filtro_stato_indice(db, stato))
+    query["$and"] = filtri
 
     total = await db[COLL_ESTRATTO_CONTO].count_documents(query)
     movements = await db[COLL_ESTRATTO_CONTO].find(query).sort("data", -1).skip(offset).limit(limit).to_list(limit)
@@ -279,6 +328,8 @@ async def list_manual_operation_index(
             "classificato" if decision else "da_classificare"
         )
         if stato and stato != row_status:
+            # Solo per le righe storiche il cui ``_id`` non e' un testo: il
+            # filtro vero sta gia' nella query.
             continue
         rows.append({
             "id": movement_id,
