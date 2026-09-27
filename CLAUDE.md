@@ -485,9 +485,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - F24, righe tributo, quietanza e movimento bancario sono entità distinte. La quietanza documenta il pagamento ma **non
   sostituisce la prova bancaria** né ricostruisce il modello (senza modello → alert «F24 mancante»); stato e residuo **per
-  riga tributo**. Quietanza ↔ addebito I24 (`riscontra_quietanze_banca`, job `f24_quietanze_banca` e arrivo della quietanza):
-  pagamento = protocollo+data+saldo, certo solo con importo al centesimo e «DATA INCASSO» della causale (troncata → dalla
-  copia in quarantena) = data della quietanza, altrimenti candidati; gli orfani dei due lati aprono un alert col record.
+  riga tributo**. Quietanza ↔ addebito I24 (`riscontra_quietanze_banca`, job `f24_quietanze_banca`, arrivo della quietanza):
+  protocollo+data+saldo, certo solo con importo al centesimo e «DATA INCASSO» (troncata → copia in quarantena) = data della
+  quietanza, se no candidati; orfani → alert col record; protocollo = giorno d'invio; stessa riga due volte nel giorno → alert.
 - Il saldo F24 non è mai un costo: ritenute 1001/1002/1012, addizionali
   3802/3847/3848 e quote a carico del lavoratore sono debiti verso enti. La
   sezione INPS non è tutta deducibile: la quota datoriale viene dalle paghe.

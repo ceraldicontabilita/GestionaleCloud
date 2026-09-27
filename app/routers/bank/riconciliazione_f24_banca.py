@@ -402,7 +402,7 @@ async def quietanze_banca(anno: Optional[int] = None):
     if anno:
         prefisso = str(int(anno))
         for chiave in ("riscontrati", "da_verificare", "quietanze_senza_addebito",
-                       "addebiti_senza_quietanza", "quietanze_incomplete"):
+                       "addebiti_senza_quietanza", "quietanze_incomplete", "tributi_ripetuti"):
             esito[chiave] = [r for r in esito[chiave] if str(r.get("data") or "").startswith(prefisso)]
         esito["anno"] = int(anno)
     return esito

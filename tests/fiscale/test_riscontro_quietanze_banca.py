@@ -256,3 +256,74 @@ def test_una_copia_in_quarantena_di_importo_diverso_non_presta_la_data():
 
     esito = _run(reg.riscontra_quietanze_banca(db, dry_run=True))
     assert esito["riscontrati"] == [] and len(esito["da_verificare"]) == 1
+
+
+# ── deleghe non programmate e tributi versati due volte ─────────────────────
+
+def _q_righe(id_, data, saldo, protocollo, righe, **extra):
+    return {**_q(id_, data, saldo, protocollo), "sezione_erario": [
+        {"codice_tributo": c, "periodo_riferimento": p, "importo_debito": d, "importo_credito": cr}
+        for c, p, d, cr in righe], **extra}
+
+
+def test_il_protocollo_dice_quando_la_delega_e_stata_inviata():
+    assert reg.data_invio_protocollo("26060212304532735/000001") == "2026-06-02"
+    assert reg.data_invio_protocollo("26061631545528157/000001") == "2026-06-16"
+    assert reg.data_invio_protocollo("") is None
+    assert reg.data_invio_protocollo("99999999999/1") is None
+
+
+def test_programmata_non_programmata_tipo_e_senza_modello():
+    programmata = _q_righe("q1", "2026-06-16", 1969.10, "26060212304532735/000001",
+                           [("3918", "2026", 3574.00, 0), ("6099", "01/2025", 0, 1604.90)])
+    ravvedimento = _q_righe("q2", "2026-07-21", 286.00, "26072135472143961/000001",
+                            [("1040", "06/2026", 284.00, 0), ("8948", "06/2026", 2.00, 0)])
+    [p1, p2] = sorted(reg.pagamenti_da_quietanze(reg._quietanza_legacy(q) for q in (programmata, ravvedimento)),
+                      key=lambda p: p["data"])
+    assert (p1["inviato_il"], p1["programmato"], p1["tipo_versamento"], p1["senza_modello"]) == (
+        "2026-06-02", True, "ordinario", True)
+    assert (p2["programmato"], p2["tipo_versamento"]) == (False, "ravvedimento")
+
+
+def test_lo_stesso_tributo_in_due_deleghe_dello_stesso_giorno_si_segnala():
+    """16/06/2026: IMU 3918 e credito 6099 in una delega programmata e in una
+    inviata il giorno stesso, entrambe addebitate."""
+    righe = [("3918", "2026", 3574.00, 0), ("6099", "01/2025", 0, 1604.90)]
+    q1 = _q_righe("q1", "2026-06-16", 1969.10, "26060212304532735/000001", righe)
+    q2 = _q_righe("q2", "2026-06-16", 2179.10, "26061631545528157/000001",
+                  righe + [("1040", "05/2026", 210.00, 0)])
+    esito = _riscontri([q1, q2], [_m("m1", "2026-06-17", -1969.10, "16/06/2026"),
+                                  _m("m2", "2026-06-17", -2179.10, "16/06/2026")])
+
+    [t] = esito["tributi_ripetuti"]
+    assert "3918 2026 3574.00" in t["righe"] and "1040" not in t["righe"]
+    assert "inviata il 02/06/2026, addebitata il 17/06/2026" in t["motivazione"]
+    assert "inviata il 16/06/2026" in t["motivazione"]
+    assert {p["programmato"] for p in t["pagamenti"]} == {True, False}
+
+
+def test_le_rate_mensili_non_sono_tributi_ripetuti():
+    """RC01 09/2025 da 1.294,00 EUR pagato ogni mese: stessa riga, giorni diversi."""
+    rate = [{**_q("q%d" % i, d, 1294.00, "2604081%d000000000/000001" % i), "sezione_inps": [
+        {"causale": "RC01", "periodo_da": "09/2025", "importo_debito": 1294.00}]}
+        for i, d in enumerate(("2026-04-08", "2026-05-08", "2026-06-08"))]
+    assert _riscontri(rate, [])["tributi_ripetuti"] == []
+
+
+def test_due_copie_della_stessa_delega_non_sono_un_tributo_ripetuto():
+    righe = [("3918", "2026", 3574.00, 0)]
+    copie = [_q_righe(i, "2026-06-16", 3574.00, "26060212304532735/000001", righe) for i in ("q1", "q2")]
+    assert _riscontri(copie, [])["tributi_ripetuti"] == []
+
+
+def test_il_tributo_ripetuto_apre_un_alert_con_le_due_deleghe():
+    righe = [("3918", "2026", 3574.00, 0)]
+    db = _db([_q_righe("q1", "2026-06-16", 3574.00, "26060212304532735/000001", righe),
+              _q_righe("q2", "2026-06-16", 3784.00, "26061631545528157/000001",
+                       righe + [("1040", "05/2026", 210.00, 0)])], [])
+    _run(reg.riscontra_quietanze_banca(db))
+    [a] = _run(db["alerts"].find({"codice": reg.ALERT_TRIBUTO_DUE_VOLTE}).to_list(10))
+    assert len(a["extra"]["record"]) == 2
+
+    _run(reg.riscontra_quietanze_banca(db))  # il secondo giro non ne apre un altro
+    assert len(_run(db["alerts"].find({"codice": reg.ALERT_TRIBUTO_DUE_VOLTE}).to_list(10))) == 1
