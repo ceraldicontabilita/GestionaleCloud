@@ -12,7 +12,7 @@ letture future dello stesso fornitore.
 """
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import APIRouter, Body, HTTPException
@@ -128,14 +128,9 @@ async def verifica_fattura(fattura_id: str, data: Dict[str, Any] = Body(...)) ->
         nuova_piva = update_set.get("supplier_vat", invoice.get("supplier_vat", ""))
         nuova_data = update_set.get("invoice_date", invoice.get("invoice_date", ""))
         update_set["invoice_key"] = generate_invoice_key(nuovo_numero, nuova_piva, nuova_data)
-        if "invoice_date" in campi_corretti and nuova_data:
-            try:
-                update_set["data_scadenza"] = (
-                    datetime.strptime(nuova_data, "%Y-%m-%d") + timedelta(days=30)
-                ).strftime("%Y-%m-%d")
-                update_set["anno"] = int(nuova_data[:4]) if nuova_data[:4].isdigit() else None
-            except (ValueError, TypeError):
-                pass
+        # Nessuna scadenza: le fatture fornitore non ne hanno (titolare, 19/09/2026).
+        if "invoice_date" in campi_corretti and nuova_data[:4].isdigit():
+            update_set["anno"] = int(nuova_data[:4])
 
     await db[Collections.INVOICES].update_one({"id": fattura_id}, {"$set": update_set})
 
@@ -170,9 +165,56 @@ async def verifica_fattura(fattura_id: str, data: Dict[str, Any] = Body(...)) ->
     })
 
     try:
+        contabilita = await ricalcola_contabilita_fattura_estera(db, fattura_id, esito)
+    except Exception as exc:  # la verifica resta salvata: il ricalcolo si ripete
+        logger.exception("Ricalcolo contabile della fattura estera %s fallito", fattura_id)
+        contabilita = {"stato": "errore", "errore": f"{type(exc).__name__}: {exc}"}
+
+    try:
         from app.services.alert_engine import risolvi_alert
         await risolvi_alert("FAT_ESTERA_DA_VERIFICARE", fattura_id, db)
     except Exception:
         logger.exception(f"Errore risoluzione alert verifica per {fattura_id}")
 
-    return {"success": True, "esito": esito, "campi_corretti": campi_corretti}
+    return {"success": True, "esito": esito, "campi_corretti": campi_corretti,
+            "contabilita": contabilita}
+
+
+async def ricalcola_contabilita_fattura_estera(db, fattura_id: str, esito: str) -> Dict[str, Any]:
+    """Dopo la verifica i dati sono del titolare, non piu' dell'AI.
+
+    Si rifanno con i motori unici la classificazione (centro di costo, IVA
+    detraibile) e, se il conto di costo o gli importi della scrittura non
+    tornano piu', la scrittura del libro giornale: si storna e si registra di
+    nuovo, mai si corregge sul posto.
+    """
+    from app.handlers.learning import handler_classifica_cdc
+    from app.routers.accounting.piano_conti import determina_conti_fattura
+    from app.services.eventi_fattura import costruisci_evento_fattura_created
+    from app.services.manutenzione_giornale import _riregistra
+    from app.services.registrazione_contabile import (
+        COLL_MOVIMENTI, FILTRO_SCRITTURA_ATTIVA, storna_registrazione_fattura,
+    )
+
+    fattura = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0})
+    if not fattura:
+        return {"stato": "saltato", "motivo": "fattura non trovata"}
+    classificazione = await handler_classifica_cdc(costruisci_evento_fattura_created(fattura), db)
+    fattura = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0}) or fattura
+
+    scrittura = await db[COLL_MOVIMENTI].find_one(
+        {"tipo": "fattura_acquisto", "fattura_id": fattura_id,
+         "stato": {"$ne": "stornato"}, **FILTRO_SCRITTURA_ATTIVA}, {"_id": 0})
+    if not scrittura:
+        return {"classificazione": classificazione, "giornale": "nessuna scrittura"}
+    conto_costo = (await determina_conti_fattura(db, fattura))["costo"]["codice"]
+    conti_scritti = {r.get("conto_codice") for r in scrittura.get("righe") or [] if r.get("dare")}
+    totale_scritto = round(sum(float(r.get("dare") or 0) for r in scrittura.get("righe") or []), 2)
+    totale_fattura = round(float(fattura.get("total_amount") or 0), 2)
+    if conto_costo in conti_scritti and abs(totale_scritto - totale_fattura) < 0.01:
+        return {"classificazione": classificazione, "giornale": "invariato"}
+    motivo = f"fattura estera {esito} dal titolare: conto {conto_costo}, totale {totale_fattura:.2f}"
+    storno = await storna_registrazione_fattura(db, fattura_id, motivo)
+    nuova = await _riregistra(db, fattura_id)
+    return {"classificazione": classificazione, "giornale": "riregistrato",
+            "storno": storno, "nuova_registrazione": nuova.get("stato")}

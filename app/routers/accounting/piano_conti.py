@@ -681,7 +681,11 @@ async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict
     )
 
     fornitore = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
-    linee = fattura.get("linee") or []
+    # Una fattura estera letta dal PDF non ha righe XML: le descrizioni lette
+    # dall'AI (solo testo, senza importi) dicono comunque cosa si e' comprato.
+    linee = fattura.get("linee") or [
+        {"descrizione": testo} for testo in (fattura.get("descrizione_righe_ai") or []) if testo
+    ]
 
     conto_costo = await _conto_da_regole_utente(db, fornitore, linee)
 
@@ -690,7 +694,16 @@ async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict
         riepilogo = categorizzazione.get("riepilogo_conti") or []
         dettaglio = categorizzazione.get("dettaglio_linee") or []
         if riepilogo:
-            principale = max(riepilogo, key=lambda c: c.get("importo", 0))
+            if any(c.get("importo") for c in riepilogo):
+                principale = max(riepilogo, key=lambda c: c.get("importo", 0))
+            else:
+                # Righe senza importo (fattura estera letta dal PDF): vince il
+                # conto con piu' righe, a parita' quello della prima riga.
+                ordine = [r.get("conto_codice") for r in dettaglio]
+                principale = max(riepilogo, key=lambda c: (
+                    ordine.count(c["codice"]),
+                    -ordine.index(c["codice"]) if c["codice"] in ordine else -len(ordine),
+                ))
             codice_vincente = principale["codice"]
             # Confidenza del match: il massimo tra le righe che sono finite
             # su questo conto (basta UNA riga con evidenza forte per fidarsi
