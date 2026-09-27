@@ -16,6 +16,7 @@ import logging
 from app.database import Database, Collections
 from app.utils.dependencies import get_current_admin_user
 from app.services.mapping_piano_conti import operativo_a_ufficiale, descrizione_ufficiale
+from app.services.registrazione_contabile import FILTRO_SCRITTURA_ATTIVA
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Contabilità Gestionale"])
@@ -62,7 +63,7 @@ async def _bilancio_verifica_da_registro(
         {"anno": anno},
         {"data_documento": {"$regex": f"^{anno_str}"}},
         {"data": {"$regex": f"^{anno_str}"}},
-    ]}
+    ], **FILTRO_SCRITTURA_ATTIVA}
     tutte_scritture = await db["movimenti_contabili"].find(
         periodo_query, {"_id": 0}
     ).sort("data_documento", 1).to_list(100000)
@@ -962,7 +963,10 @@ def _query_periodo_giornale(
     data_da = data_da if isinstance(data_da, str) and data_da else None
     data_a = data_a if isinstance(data_a, str) and data_a else None
     invoice_key = invoice_key if isinstance(invoice_key, str) and invoice_key else None
-    condizioni: List[Dict[str, Any]] = [{"righe": {"$exists": True, "$ne": []}}]
+    # Una scrittura cancellata (``deleted: true``, doppione) non e' nel
+    # registro: esclusa da giornale, mastro ed export (audit 27/09/2026).
+    condizioni: List[Dict[str, Any]] = [
+        {"righe": {"$exists": True, "$ne": []}, **FILTRO_SCRITTURA_ATTIVA}]
     if invoice_key:
         condizioni.append({"$or": [
             {"invoice_key": invoice_key},
@@ -1336,6 +1340,56 @@ async def import_libro_giornale(
         "scartate_senza_righe_o_protocollo": 0,
         "qualita_registro": qualita_dump,
     }
+
+
+_GIRI_MANUTENZIONE = {"rettifica-fatture": "rettifica_fatture",
+                      "scritture-cancellate": "scritture_cancellate"}
+
+
+@router.post("/libro-giornale/manutenzione/{giro}")
+async def manutenzione_libro_giornale(
+    giro: str,
+    dry_run: bool = Query(True, description="Simulazione: elenca senza scrivere"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Manutenzione del registro (Admin-only, audit 27/09/2026).
+
+    - ``rettifica-fatture``: scritture di fattura non quadrate o senza anno;
+      in applicazione le storna e registra di nuovo la fattura col motore
+      corretto (che rifiuta una scrittura non quadrata).
+    - ``scritture-cancellate``: scritture ``deleted: true``, gia' escluse dal
+      giornale; in applicazione le annota come doppione (con la gemella
+      attiva) o come documento rimasto senza scrittura. Nessuna cancellazione.
+
+    ``dry_run=true`` (predefinito) risponde subito con l'elenco; il giro vero
+    parte in sottofondo e si segue con ``GET .../manutenzione/{giro}/stato``."""
+    from app.services import manutenzione_giornale as manutenzione
+
+    nome = _GIRI_MANUTENZIONE.get(giro)
+    if not nome:
+        raise HTTPException(status_code=404, detail=f"Giro di manutenzione sconosciuto: {giro}")
+    db = Database.get_db()
+    if dry_run is not False:
+        if nome == "rettifica_fatture":
+            return await manutenzione.rettifica_scritture_fatture(db, dry_run=True)
+        return await manutenzione.censisci_scritture_cancellate(db, dry_run=True)
+    if not manutenzione.avvia_in_background(db, nome):
+        return {"status": "running", "message": "Manutenzione già in corso"}
+    return {"status": "started", "message": "Manutenzione avviata in sottofondo"}
+
+
+@router.get("/libro-giornale/manutenzione/{giro}/stato")
+async def stato_manutenzione_libro_giornale(
+    giro: str,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Avanzamento ed esito dell'ultimo giro di manutenzione del registro."""
+    from app.services import manutenzione_giornale as manutenzione
+
+    nome = _GIRI_MANUTENZIONE.get(giro)
+    if not nome:
+        raise HTTPException(status_code=404, detail=f"Giro di manutenzione sconosciuto: {giro}")
+    return await manutenzione.stato_giro(Database.get_db(), nome)
 
 
 @router.get("/libro-giornale/controllo-60-giorni")
