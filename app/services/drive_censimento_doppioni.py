@@ -40,6 +40,9 @@ PREFISSO_TECNICO = "FILE TECNICO DA ELIMINARE - "
 PREFISSI = (PREFISSO_DUPLICATO, PREFISSO_TECNICO)
 NOMI_TECNICI = {"desktop.ini", "thumbs.db", ".ds_store"}
 _COPIA_NEL_NOME = re.compile(r"(\(\d+\)|\bcopia\b|\bcopy\b|\bcopy of\b)", re.IGNORECASE)
+# «(3)», «(dup1)»: li aggiunge il PC quando nella cartella c'e' gia' un file
+# con quel nome. Su un file che non e' una copia fanno solo confusione.
+_NUMERO_COPIA = re.compile(r"\s*\((?:dup)?(\d+)\)", re.IGNORECASE)
 _GOOGLE_NATIVO = "application/vnd.google-apps."
 
 _lock = asyncio.Lock()
@@ -190,6 +193,9 @@ async def _giro(db, root: str) -> Dict[str, Any]:
     if modalita() != "marca" or stato.get("fase") == "completato":
         return {"saltato": f"fase {stato.get('fase')}, modalita {modalita()}"}
 
+    if stato.get("fase") == "nomi":
+        return await _pulisci_nomi(db, service, ed, stato)
+
     da_marcare = await db[REGISTRO].find({
         "edizione": ed, "ruolo": {"$in": ["duplicato", "tecnico"]},
         "gia_marcato": False, "marcatura": {"$exists": False},
@@ -202,7 +208,7 @@ async def _giro(db, root: str) -> Dict[str, Any]:
         marcati += esito.get("esito") == "rinominato"
         errori += esito.get("esito") == "errore"
         await asyncio.sleep(0)
-    aggiornamento = {"fase": "marcatura" if da_marcare else "completato",
+    aggiornamento = {"fase": "marcatura" if da_marcare else "nomi",
                      "marcati": int(stato.get("marcati") or 0) + marcati,
                      "errori_marcatura": int(stato.get("errori_marcatura") or 0) + errori}
     await db["sistema_stato"].update_one({"chiave": CHIAVE_STATO}, {"$set": aggiornamento})
@@ -238,6 +244,83 @@ def _marca(service, riga: Dict[str, Any]) -> Dict[str, Any]:
         logger.warning("[censimento-doppioni] %s non rinominato: %s: %s",
                        riga.get("file_id"), type(exc).__name__, exc)
         return {"esito": "errore", "motivo": f"{type(exc).__name__}: {exc}"[:300]}
+
+
+def nome_pulito(nome: str) -> Tuple[str, Optional[str]]:
+    """Il nome senza «(3)»/«(dup1)» e il primo numero tolto (per il ripiego)."""
+    numeri = _NUMERO_COPIA.findall(nome or "")
+    if not numeri:
+        return nome, None
+    base, punto, estensione = (nome or "").rpartition(".")
+    if not punto or "/" in estensione or " " in estensione:
+        base, estensione = nome, ""
+    pulito = _NUMERO_COPIA.sub("", base).strip() or base
+    return (f"{pulito}.{estensione}" if estensione else pulito), numeri[0]
+
+
+def _nome_libero(service, cartella: str, nome: str, file_id: str) -> bool:
+    valore = nome.replace("\\", "\\\\").replace("'", "\\'")
+    trovati = service.files().list(
+        q=f"'{cartella}' in parents and name = '{valore}' and trashed = false",
+        fields="files(id)", pageSize=2, supportsAllDrives=True, includeItemsFromAllDrives=True,
+    ).execute().get("files", [])
+    return all(f.get("id") == file_id for f in trovati)
+
+
+def _rinomina_senza_numero(service, riga: Dict[str, Any]) -> Dict[str, Any]:
+    """Toglie «(N)» dal nome di un originale o di un file unico. Se nella
+    stessa cartella quel nome c'e' gia', il numero resta ma senza parentesi
+    («Quietanza - 47.pdf»): due documenti diversi non prendono lo stesso nome."""
+    try:
+        attuale = service.files().get(
+            fileId=riga["file_id"], fields="id, name, parents, trashed", supportsAllDrives=True,
+        ).execute()
+        nome = attuale.get("name") or ""
+        if attuale.get("trashed"):
+            return {"esito": "saltato", "motivo": "gia' nel Cestino"}
+        if marcato(nome):
+            return {"esito": "saltato", "motivo": "marcato da eliminare"}
+        pulito, numero = nome_pulito(nome)
+        if numero is None:
+            return {"esito": "saltato", "motivo": "nome gia' senza numero"}
+        cartella = (attuale.get("parents") or [None])[0]
+        if cartella and not _nome_libero(service, cartella, pulito, riga["file_id"]):
+            base, punto, estensione = pulito.rpartition(".")
+            pulito = f"{base} - {numero}.{estensione}" if punto else f"{pulito} - {numero}"
+            if not _nome_libero(service, cartella, pulito, riga["file_id"]):
+                return {"esito": "saltato", "motivo": f"nome gia' usato nella cartella: {pulito}"}
+        service.files().update(
+            fileId=riga["file_id"], body={"name": pulito}, fields="id, name", supportsAllDrives=True,
+        ).execute()
+        return {"esito": "rinominato", "da": nome, "nuovo_nome": pulito}
+    except Exception as exc:  # il singolo file non ferma il lotto, ma resta scritto
+        logger.warning("[censimento-doppioni] %s: nome non ripulito: %s: %s",
+                       riga.get("file_id"), type(exc).__name__, exc)
+        return {"esito": "errore", "motivo": f"{type(exc).__name__}: {exc}"[:300]}
+
+
+async def _pulisci_nomi(db, service, ed: str, stato: Dict[str, Any]) -> Dict[str, Any]:
+    """Dopo la marcatura: via «(N)» dai file che restano (richiesta del titolare,
+    27/09/2026), cosi' fra quelli non marcati nessuno sembra una copia."""
+    candidati = await db[REGISTRO].find({
+        "edizione": ed, "ruolo": {"$in": ["originale", "unico"]},
+        "nome": {"$regex": r"\((dup)?\d+\)", "$options": "i"},
+        "pulizia_nome": {"$exists": False},
+    }, {"_id": 0}).limit(_lotto()).to_list(_lotto())
+    rinominati = errori = 0
+    for riga in candidati:
+        esito = await asyncio.to_thread(_rinomina_senza_numero, service, riga)
+        await db[REGISTRO].update_one({"id": riga["id"]}, {"$set": {
+            "pulizia_nome": esito, "pulito_il": datetime.now(timezone.utc).isoformat()}})
+        rinominati += esito.get("esito") == "rinominato"
+        errori += esito.get("esito") == "errore"
+        await asyncio.sleep(0)
+    await db["sistema_stato"].update_one({"chiave": CHIAVE_STATO}, {"$set": {
+        "fase": "nomi" if candidati else "completato",
+        "nomi_ripuliti": int(stato.get("nomi_ripuliti") or 0) + rinominati,
+        "errori_nomi": int(stato.get("errori_nomi") or 0) + errori,
+    }})
+    return {"nomi_ripuliti": rinominati, "errori": errori, "lotto": len(candidati)}
 
 
 async def elenco(db, *, solo_da_eliminare: bool = True, limite: int = 20000) -> Dict[str, Any]:

@@ -333,7 +333,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Censimento doppioni** della cartella GESTIONALE (`drive_censimento_doppioni.py`, `DRIVE_CENSIMENTO_DOPPIONI`
   off|censisci|marca): copie esatte (MD5 + dimensione Drive) e file tecnici si **rinominano soltanto**
   («DUPLICATO DA ELIMINARE - …», «FILE TECNICO DA ELIMINARE - …»), li elimina il titolare; resta l'originale in
-  `ELABORATE`, poi il più vecchio senza «(2)». Lo smistatore e la simulazione non toccano i file marcati.
+  `ELABORATE`, poi il più vecchio senza «(2)»; dai file che restano si toglie «(N)»/«(dupN)» (se il nome c'è già
+  nella cartella diventa «nome - N»). Lo smistatore e la simulazione non toccano i file marcati.
 - Il protocollo Drive (`gestionale.protocollo_drive`, tabella relazionale, non
   `documents`) riconcilia Drive con l'inventario: file nuovo → riga nuova,
   cambiato → aggiornata, sparito → `stato='rimosso'` con la data. Le impronte
