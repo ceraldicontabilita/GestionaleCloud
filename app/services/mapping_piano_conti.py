@@ -196,6 +196,9 @@ CONTO_UTENZE = "57.09"
 CONTO_PROVENTI_DIVERSI = "53.01"
 CONTO_CREDITI_VARI = "15.05"
 CONTO_SPESE_GENERALI = "63.05.51"
+# Spese di lite pagate alle controparti e transazioni di una causa: oneri
+# diversi di gestione (B.14), da confermare col commercialista.
+CONTO_SPESE_CONTENZIOSO = "71.03"
 
 _TESORERIA_PER_REGISTRO = {"banca": CONTO_BANCA, "cassa": CONTO_CASSA}
 
@@ -216,10 +219,6 @@ _CONTROPARTITE: Dict[str, Any] = {
     "pagamento paypal": CONTO_FORNITORI,
     "incasso cliente": CONTO_CREDITI_VARI,
     "rimborso": CONTO_PROVENTI_DIVERSI,
-    # Transazioni giudiziali e recuperi di sinistro pagati: altri costi di
-    # esercizio, come oneri straordinari e sopravvenienze (05.07.x -> 71.03).
-    # Non 71.03.03: un risarcimento non e' una sanzione.
-    "risarcimento danni": "71.03",
     "utenze": CONTO_UTENZE,
     # personale
     "stipendi": CONTO_PERSONALE_RETRIBUZIONI,
@@ -236,6 +235,7 @@ _CONTROPARTITE: Dict[str, Any] = {
     # vendite e cassa
     "corrispettivi": CONTO_VENDITA_MERCI,
     "spese": CONTO_SPESE_GENERALI,
+    "spese legali e contenzioso": CONTO_SPESE_CONTENZIOSO,
     # trasferimenti cassa <-> banca: la contropartita e' l'altro conto reale
     "versamento banca": lambda registro, tipo, gestore: (
         CONTO_CASSA if registro == "banca" else CONTO_BANCA),

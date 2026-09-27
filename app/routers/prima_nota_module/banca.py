@@ -476,12 +476,12 @@ def _stato_movimento_sumup(riga: Dict[str, Any]) -> str:
         return ("Giroconto verso BPM" if riga.get("estratto_bpm_id")
                 else "Giroconto, accredito BPM atteso")
     # Esiti di abbina_movimenti_sumup (stessi motori del conto BPM).
+    if riga.get("fascicolo_giudiziario"):
+        return "Spesa di lite"
     if riga.get("stipendio_id"):
         return "Stipendio abbinato alla busta"
     if riga.get("fattura_id") or riga.get("fattura_ids"):
         return "Fattura pagata"
-    if riga.get("categoria_dichiarata"):
-        return f"{riga['categoria_dichiarata']} (dichiarato)"
     if riga.get("prima_nota_banca_id"):
         return "Registrato in Prima Nota"
     return "Da registrare"
@@ -502,9 +502,16 @@ async def _movimenti_conto_sumup(db, dal: str, al: str) -> list:
          "payout_id": 1, "giroconto_operation_id": 1, "estratto_bpm_id": 1,
          "iban_beneficiario": 1, "codice_transazione": 1,
          "stipendio_id": 1, "fattura_id": 1, "fattura_ids": 1, "prima_nota_banca_id": 1,
-         "prima_nota_id": 1, "categoria_dichiarata": 1},
+         "prima_nota_id": 1, "fascicolo_giudiziario": 1},
     )
     righe = await cursore.to_list(None) if hasattr(cursore, "to_list") else [r async for r in cursore]
+    # Accanto alla spesa di lite, gli atti della causa da aprire e scaricare.
+    from app.services.atti_giudiziari import atti_del_fascicolo
+
+    atti_per_fascicolo = {
+        fascicolo: await atti_del_fascicolo(db, fascicolo)
+        for fascicolo in {r["fascicolo_giudiziario"] for r in righe if r.get("fascicolo_giudiziario")}
+    }
     movimenti = []
     for riga in righe:
         iban = riga.get("iban_beneficiario")
@@ -524,6 +531,8 @@ async def _movimenti_conto_sumup(db, dal: str, al: str) -> list:
             "stato": stato,
             "da_registrare": stato == "Da registrare",
             "payout_id": riga.get("payout_id"),
+            "fascicolo_giudiziario": riga.get("fascicolo_giudiziario"),
+            "atti_giudiziari": atti_per_fascicolo.get(riga.get("fascicolo_giudiziario"), []),
             "prima_nota_ids": [i for i in (riga.get("prima_nota_banca_id"),
                                            riga.get("prima_nota_id")) if i],
         })
@@ -1090,21 +1099,3 @@ async def candidati_banca_per_fattura(fattura_id: str) -> Dict[str, Any]:
         "nota": ("L'associazione la confermi tu: il gestionale mostra cosa "
                  "combacia, non decide al posto tuo."),
     }
-
-
-async def registra_movimento_sumup_dichiarato(
-    movimento_id: str,
-    payload: Dict[str, Any] = Body(...),
-    utente: Dict[str, Any] = None,
-) -> Dict[str, Any]:
-    """Registra in Prima Nota (19.01.05) un'uscita della carta che il titolare dichiara."""
-    from app.services import sumup_conto
-
-    db = Database.get_db()
-    attore = str((utente or {}).get("email") or (utente or {}).get("username") or "admin")
-    try:
-        return await sumup_conto.registra_uscita_dichiarata(
-            db, movimento_id, str(payload.get("categoria") or ""), attore,
-        )
-    except sumup_conto.RegistrazioneNonAmmessa as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc

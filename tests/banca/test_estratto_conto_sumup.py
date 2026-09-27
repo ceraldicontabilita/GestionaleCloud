@@ -186,34 +186,3 @@ def test_senza_estratto_non_c_e_quadratura(db):
     from app.routers.prima_nota_module.banca import _quadratura_estratto_sumup
 
     assert _run(_quadratura_estratto_sumup(db, [])) is None
-
-
-def test_il_titolare_dichiara_un_risarcimento_senza_documento(db):
-    from app.services.sumup_conto import RegistrazioneNonAmmessa, registra_uscita_dichiarata
-
-    _payout(db)
-    _run(importa_estratto_sumup(db, NOME, _csv()))
-    riga = _run(db[COLL_MOVIMENTI].find_one({"codice_transazione": "COB6KBP5W2"}))
-
-    esito = _run(registra_uscita_dichiarata(db, riga["id"], "Risarcimento danni", "titolare"))
-    assert esito["importo"] == 893.73 and esito["gia_registrata"] is False
-    pn = _run(db["prima_nota_banca"].find_one({"id": esito["prima_nota_id"]}))
-    assert pn["conto_contabile"] == "19.01.05"
-    assert pn["conto_contropartita"] == "71.03"
-    assert pn["tipo"] == "uscita" and pn["estratto_conto_id"] == riga["id"]
-
-    # Ridichiarare non scrive una seconda riga.
-    di_nuovo = _run(registra_uscita_dichiarata(db, riga["id"], "Risarcimento danni", "titolare"))
-    assert di_nuovo["prima_nota_id"] == esito["prima_nota_id"] and di_nuovo["gia_registrata"]
-    assert _run(db["prima_nota_banca"].count_documents({"source": "dichiarato_titolare_sumup"})) == 1
-
-    movimenti = _run(_movimenti_conto_sumup(db, "2026-01-01", "2026-12-31"))
-    assert movimenti[0]["stato"] == "Risarcimento danni (dichiarato)"
-
-    # Una riga gia' spiegata (il payout) o una categoria inventata non passano.
-    payout = _run(db[COLL_MOVIMENTI].find_one({"codice_transazione": "CPAYOUT111"}))
-    with pytest.raises(RegistrazioneNonAmmessa):
-        _run(registra_uscita_dichiarata(db, payout["id"], "Risarcimento danni", "titolare"))
-    altra = _run(db[COLL_MOVIMENTI].find_one({"codice_transazione": "COJQMJZZMJ"}))
-    with pytest.raises(RegistrazioneNonAmmessa):
-        _run(registra_uscita_dichiarata(db, altra["id"], "Spese varie", "titolare"))

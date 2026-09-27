@@ -8,9 +8,7 @@ Modulo suddiviso per funzionalità:
 - sync: Sincronizzazione corrispettivi, fatture, import batch
 - manutenzione: Fix, cleanup, verifica
 """
-from typing import Any, Dict
-
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Depends
 from app.middleware.performance import istantanea
 
 from app.utils.dependencies import get_current_admin_user
@@ -34,7 +32,7 @@ from .banca import (
     delete_movimento_banca, delete_all_prima_nota_banca, delete_banca_by_source,
     get_fattura_allegata_banca, movimenti_in_attesa_documento,
     analisi_righe_grezze_storiche, candidati_banca_per_fattura,
-    list_prima_nota_sumup, registra_movimento_sumup_dichiarato,
+    list_prima_nota_sumup,
 )
 from .salari import (
     get_prima_nota_salari, create_prima_nota_salari, delete_prima_nota_salari, get_salari_stats
@@ -123,19 +121,6 @@ router.add_api_route("/cassa/fix-corrispettivi-importo", fix_corrispettivi_impor
 # Banca - Statiche
 router.add_api_route("/banca", list_prima_nota_banca, methods=["GET"])
 router.add_api_route("/sumup", list_prima_nota_sumup, methods=["GET"])
-
-
-async def _registra_sumup_dichiarato(
-    movimento_id: str,
-    payload: Dict[str, Any] = Body(...),
-    utente: Dict[str, Any] = Depends(get_current_admin_user),
-):
-    return await registra_movimento_sumup_dichiarato(movimento_id, payload, utente)
-
-
-router.add_api_route(
-    "/sumup/movimenti/{movimento_id}/dichiara", _registra_sumup_dichiarato, methods=["POST"],
-)
 router.add_api_route("/banca/in-attesa-documento", movimenti_in_attesa_documento, methods=["GET"])
 router.add_api_route("/banca/analisi-righe-grezze", analisi_righe_grezze_storiche, methods=["GET"])
 router.add_api_route("/banca/candidati-per-fattura", candidati_banca_per_fattura, methods=["GET"])

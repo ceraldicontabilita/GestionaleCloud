@@ -293,6 +293,7 @@ const STILE_STATO_SUMUP = {
   'Stipendio abbinato alla busta': [COLORS.success, COLORS.successLight],
   'Fattura pagata': [COLORS.success, COLORS.successLight],
   'Registrato in Prima Nota': [COLORS.success, COLORS.successLight],
+  'Spesa di lite': [COLORS.info, COLORS.infoLight],
   'Da registrare': [COLORS.warning, COLORS.warningLight],
 };
 
@@ -340,33 +341,8 @@ function BadgeStatoSumUp({ stato }) {
 }
 
 /* Ogni movimento dell'estratto del conto SumUp, raggruppato per giorno. */
-export function MovimentiContoSumUp({ movimenti = [], anno, onRicarica }) {
-  const confirm = useConfirm();
-  const [inCorso, setInCorso] = useState('');
-  const [errore, setErrore] = useState('');
-  // Uscita senza documento che il titolare dichiara (transazione, recupero sinistro).
-  const dichiaraRisarcimento = async riga => {
-    const approvato = await confirm({
-      title: 'Registra come risarcimento danni',
-      message: `Registri in Prima Nota SumUp l'uscita di ${eur(Math.abs(riga.importo))} del ${formatDateIT(riga.data)} a ${riga.controparte || 'questo beneficiario'} come risarcimento danni (conto 71.03, altri costi di esercizio)?`,
-      confirmText: 'Registra risarcimento',
-      cancelText: 'Annulla',
-      variant: 'warning',
-    });
-    if (!approvato) return;
-    setInCorso(riga.id);
-    setErrore('');
-    try {
-      await api.post(`/api/prima-nota/sumup/movimenti/${encodeURIComponent(riga.id)}/dichiara`, {
-        categoria: 'Risarcimento danni',
-      });
-      if (onRicarica) await onRicarica({ silent: true });
-    } catch (e) {
-      setErrore(messaggioErrore(e));
-    } finally {
-      setInCorso('');
-    }
-  };
+export function MovimentiContoSumUp({ movimenti = [], anno }) {
+  const [attoAperto, setAttoAperto] = useState(null);
   const giorni = useMemo(() => {
     const perGiorno = new Map();
     for (const movimento of movimenti) {
@@ -383,9 +359,6 @@ export function MovimentiContoSumUp({ movimenti = [], anno, onRicarica }) {
           Dall'estratto SumUp (PDF o CSV caricato in Documenti &gt; Import): payout, bonifici, giroconti e pagamenti con la carta, giorno per giorno.
         </p>
       </div>
-      {errore && (
-        <div role="alert" style={{ padding: '8px 14px', color: ROSSO, fontSize: 13, fontWeight: 700 }}>{errore}</div>
-      )}
       {giorni.length === 0 ? (
         <div style={{ padding: 22, textAlign: 'center', color: COLORS.textMuted }}>
           Nessun estratto SumUp caricato per il {anno}.
@@ -405,19 +378,24 @@ export function MovimentiContoSumUp({ movimenti = [], anno, onRicarica }) {
                 <div style={{ color: COLORS.textMuted, fontSize: 12, overflowWrap: 'anywhere' }}>
                   {[riga.ora, riga.tipo_transazione, riga.causale].filter(Boolean).join(' · ')}
                 </div>
+                {(riga.atti_giudiziari || []).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                    {riga.atti_giudiziari.map(atto => (
+                      <button
+                        key={atto.id}
+                        type="button"
+                        data-testid={`atto-giudiziario-${atto.id}`}
+                        onClick={() => setAttoAperto(atto)}
+                        aria-label={`Vedi e scarica ${atto.etichetta} ${atto.numero_sentenza}`}
+                        style={{ minHeight: 44, padding: '4px 12px', border: `1px solid ${TERRACOTTA}`, borderRadius: 6, background: 'white', color: TERRACOTTA, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        {atto.etichetta} {atto.numero_sentenza}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <BadgeStatoSumUp stato={riga.stato} />
-              {riga.stato === 'Da registrare' && riga.importo < 0 && (
-                <button
-                  type="button"
-                  onClick={() => dichiaraRisarcimento(riga)}
-                  disabled={inCorso === riga.id}
-                  aria-label={`Registra come risarcimento danni l'uscita a ${riga.controparte || riga.tipo_transazione}`}
-                  style={{ minHeight: 44, padding: '0 12px', borderRadius: 8, border: `1px solid ${TERRACOTTA}`, background: 'white', color: TERRACOTTA, fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}
-                >
-                  {inCorso === riga.id ? 'Registro…' : 'Risarcimento'}
-                </button>
-              )}
               <div style={{ minWidth: 110, textAlign: 'right', fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', fontVariantNumeric: 'tabular-nums', color: riga.importo < 0 ? ROSSO : VERDE }}>
                 {riga.importo < 0 ? '−' : '+'}{eur(Math.abs(riga.importo))}
               </div>
@@ -425,12 +403,22 @@ export function MovimentiContoSumUp({ movimenti = [], anno, onRicarica }) {
           ))}
         </div>
       ))}
+      {attoAperto && (
+        <DocumentViewerModal
+          title={`${attoAperto.etichetta} ${attoAperto.numero_sentenza}`}
+          subtitle={[attoAperto.tribunale && `Tribunale di ${attoAperto.tribunale}`, attoAperto.ruolo_generale && `R.G. ${attoAperto.ruolo_generale}`].filter(Boolean).join(' · ')}
+          fetchUrl={`/api/documenti/atti-giudiziari/${encodeURIComponent(attoAperto.id)}/file`}
+          documentType="atto_giudiziario"
+          onClose={() => setAttoAperto(null)}
+          testIdPrefix="atto-giudiziario-viewer"
+        />
+      )}
     </div>
   );
 }
 
 /* ------------------------- conto Mastercard SumUp ------------------------ */
-export function CartaSumUp({ dati, anno, onRicarica }) {
+export function CartaSumUp({ dati, anno }) {
   const giorni = dati?.giorni || [];
   const vendite = dati?.giornate_vendite || [];
   const creditoNegativo = Number(dati?.credito_sumup_aperto || 0) < 0;
@@ -458,7 +446,7 @@ export function CartaSumUp({ dati, anno, onRicarica }) {
 
       <QuadraturaSumUp quadratura={dati?.quadratura_estratto} />
 
-      <MovimentiContoSumUp movimenti={dati?.movimenti_conto || []} anno={anno} onRicarica={onRicarica} />
+      <MovimentiContoSumUp movimenti={dati?.movimenti_conto || []} anno={anno} />
 
       <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e6e3d9' }}>
@@ -2567,7 +2555,7 @@ export default function PrimaNota() {
       {sezione === 'soci' && <FinanziamentoSoci />}
 
       {!loading && !loadError && sezione === 'sumup' && (
-        <CartaSumUp dati={sumup} anno={anno} onRicarica={carica} />
+        <CartaSumUp dati={sumup} anno={anno} />
       )}
 
       {!loading && !loadError && sezione !== 'provvisori' && sezione !== 'soci' && sezione !== 'sumup' && (

@@ -891,35 +891,24 @@ describe('Movimenti del conto SumUp', () => {
     expect(screen.getByText('Giroconto verso BPM')).toBeInTheDocument();
     expect(screen.getByText('Saldo da estratto SumUp')).toBeInTheDocument();
   });
-});
 
-describe('Risarcimento dichiarato sul conto SumUp', () => {
-  it('registra solo le uscite da registrare e poi ricarica', async () => {
-    api.post.mockResolvedValueOnce({ data: { prima_nota_id: 'pn-1' } });
-    const onRicarica = vi.fn().mockResolvedValue();
+  it('accanto alla spesa di lite apre gli atti della causa', () => {
+    api.get.mockResolvedValue({ data: new Blob(['%PDF'], { type: 'application/pdf' }) });
     render(<CartaSumUp
       anno={2026}
-      onRicarica={onRicarica}
       dati={{
         movimenti_conto: [
-          { id: 'sumup_conto:C964V3J4M7', data: '2026-09-04', tipo_transazione: 'Bonifico bancario in uscita',
-            controparte: 'MM S.p.a.', causale: 'Seconda rata a saldo transazione', importo: -2328.26,
-            saldo_disponibile: 100, stato: 'Da registrare' },
-          { id: 'b', data: '2026-09-15', tipo_transazione: 'Bonifico bancario in uscita',
-            controparte: 'Ceraldi Group srl', importo: -10000, saldo_disponibile: 2000,
-            stato: 'Giroconto verso BPM' },
+          { id: 'l', data: '2026-09-04', ora: '10:00', tipo_transazione: 'Bonifico bancario in uscita',
+            controparte: 'Controparte Spa', causale: 'sentenza 1234/21', importo: -625,
+            saldo_disponibile: 100, stato: 'Spesa di lite',
+            atti_giudiziari: [{ id: 'abc', etichetta: 'Sentenza', numero_sentenza: '1234/2021',
+              tribunale: 'Napoli', ruolo_generale: '5678/2016' }] },
         ],
       }}
     />);
-
-    const bottoni = screen.getAllByRole('button', { name: /risarcimento danni/i });
-    expect(bottoni).toHaveLength(1);
-    fireEvent.click(bottoni[0]);
-    await waitFor(() => expect(onRicarica).toHaveBeenCalled());
-    expect(api.post).toHaveBeenCalledWith(
-      '/api/prima-nota/sumup/movimenti/sumup_conto%3AC964V3J4M7/dichiara',
-      { categoria: 'Risarcimento danni' },
-    );
+    expect(screen.getByText('Spesa di lite')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Vedi e scarica Sentenza 1234/2021' }));
+    expect(screen.getAllByText('Sentenza 1234/2021').length).toBeGreaterThan(0);
   });
 });
 

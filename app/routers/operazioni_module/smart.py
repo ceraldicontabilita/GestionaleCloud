@@ -100,8 +100,11 @@ async def analizza_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
     il movimento e usa `analizza_movimento`, che si aspetta il dict."""
     from app.services.riconciliazione_smart import analizza_movimento
 
+    from app.services.sumup_conto import collezione_del_movimento
+
     db = Database.get_db()
-    movimento = await db.estratto_conto_movimenti.find_one({"id": movimento_id}, {"_id": 0})
+    movimento = await db[collezione_del_movimento({"id": movimento_id})].find_one(
+        {"id": movimento_id}, {"_id": 0})
     if not movimento:
         raise HTTPException(status_code=404, detail="Movimento non trovato")
 
@@ -129,7 +132,12 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
             raise HTTPException(status_code=409, detail="Indicare la quota di ogni fattura")
         if any(not str((item or {}).get("id") or "").strip() for item in associazioni_fatture):
             raise HTTPException(status_code=409, detail="Un candidato non ha un identificativo")
-        movimento_fatture = await db.estratto_conto_movimenti.find_one({"id": request.movimento_id})
+        # Anche un bonifico partito dalla carta SumUp si assegna da qui: la
+        # collezione la dice l'identificativo, il motore e' lo stesso.
+        from app.services.sumup_conto import collezione_del_movimento
+
+        movimento_fatture = await db[collezione_del_movimento({"id": request.movimento_id})].find_one(
+            {"id": request.movimento_id})
         if not movimento_fatture:
             raise HTTPException(status_code=404, detail="Movimento non trovato")
         if movimento_fatture.get("riconciliato"):
