@@ -704,25 +704,81 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     return HTMLResponse(content=_rendi_fattura_responsive(html))
 
 
-async def download_pdf_allegato(fattura_id: str, allegato_id: str) -> Response:
-    """Download PDF allegato fattura."""
-    db = Database.get_db()
+_MIME_ALLEGATO = {
+    "PDF": "application/pdf", "XML": "application/xml", "TXT": "text/plain",
+    "JPG": "image/jpeg", "JPEG": "image/jpeg", "PNG": "image/png",
+    "ZIP": "application/zip", "HTML": "text/html", "HTM": "text/html",
+}
 
-    allegato = await db[COL_ALLEGATI].find_one({"id": allegato_id, "fattura_id": fattura_id})
-    if not allegato:
-        raise HTTPException(status_code=404, detail="Allegato non trovato")
+
+def allegati_da_xml(xml_bytes: bytes) -> list:
+    """Gli allegati (<Allegati>) dentro l'XML della fattura, nell'ordine.
+
+    Stanno solo li': la vecchia collezione ``allegati_fatture`` non e' mai
+    stata riempita, e il PDF di cortesia di 184 fatture 2026 non si vedeva.
+    """
+    from lxml import etree as LET
 
     try:
-        pdf_data = base64.b64decode(allegato["base64_data"])
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail="Errore decodifica PDF") from exc
+        radice = LET.fromstring(xml_bytes, parser=LET.XMLParser(huge_tree=True, recover=True))
+    except (LET.XMLSyntaxError, ValueError):
+        return []
+    if radice is None:
+        return []
+    risultato = []
+    for nodo in radice.iter():
+        if not isinstance(nodo.tag, str) or LET.QName(nodo).localname != "Allegati":
+            continue
+        campi = {LET.QName(f).localname: (f.text or "").strip()
+                 for f in nodo if isinstance(f.tag, str)}
+        if not campi.get("Attachment"):
+            continue
+        risultato.append({
+            "indice": len(risultato),
+            "nome": campi.get("NomeAttachment") or f"allegato_{len(risultato) + 1}",
+            "formato": (campi.get("FormatoAttachment") or "").upper(),
+            "descrizione": campi.get("DescrizioneAttachment") or "",
+            "size_kb": round(len(campi["Attachment"]) * 3 / 4 / 1024, 1),
+            "_base64": campi["Attachment"],
+        })
+    return risultato
 
-    filename = allegato.get("nome_file", f"allegato_{allegato_id}.pdf")
 
+async def elenca_allegati_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Elenco degli allegati contenuti nell'XML originale della fattura."""
+    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
+    if fattura is None:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    allegati = allegati_da_xml(xml_bytes) if xml_bytes else []
+    return {"allegati": [{k: v for k, v in a.items() if k != "_base64"} for a in allegati]}
+
+
+async def download_pdf_allegato(fattura_id: str, allegato_id: str) -> Response:
+    """L'allegato numero ``allegato_id`` (0, 1, ...) dell'XML della fattura."""
+    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
+    if fattura is None:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    allegati = allegati_da_xml(xml_bytes) if xml_bytes else []
+    try:
+        allegato = allegati[int(allegato_id)]
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=404, detail="Allegato non trovato") from exc
+    try:
+        contenuto = base64.b64decode(re.sub(r"\s+", "", allegato["_base64"]), validate=False)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail="Allegato non leggibile nell'XML") from exc
+
+    formato = allegato["formato"] or (allegato["nome"].rsplit(".", 1)[-1].upper() if "." in allegato["nome"] else "")
+    if contenuto[:4] == b"%PDF":
+        formato = "PDF"
+    media_type = _MIME_ALLEGATO.get(formato, "application/octet-stream")
+    nome = re.sub(r'[^A-Za-z0-9._-]+', '-', allegato["nome"]).strip('-') or f"allegato_{allegato_id}"
+    if formato == "PDF" and not nome.lower().endswith(".pdf"):
+        nome += ".pdf"
     return Response(
-        content=pdf_data,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        content=contenuto,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{nome}"'},
     )
 
 

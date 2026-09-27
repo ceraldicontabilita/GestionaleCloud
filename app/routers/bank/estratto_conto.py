@@ -3,6 +3,7 @@ Gestione Estratto Conto
 Salva e visualizza tutti i movimenti bancari importati con campi strutturati.
 """
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
+from fastapi.responses import Response
 from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timezone
@@ -441,6 +442,12 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     evidenza = campi_evidenza(filename_originale)
     fonte_ufficiale = evidenza["livello_evidenza"] == EVIDENZA_UFFICIALE
     contents = await file.read()
+    # L'originale si conserva sempre, per poterlo rivedere e riscaricare.
+    from app.services.estratti_originali import conserva_originale
+    originale_id = await conserva_originale(
+        db, contents, filename_originale, fonte="import_estratto_conto",
+        drive_file_id=drive_file_id,
+    )
     
     movimenti = []
     
@@ -905,6 +912,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "fingerprint": fingerprint,
             "riconciliato": False,
             "source_filename": filename_originale,
+            "estratto_originale_id": originale_id,
             "drive_file_id": drive_file_id,
             "drive_source_path": drive_source_path,
             **evidenza,
@@ -2272,3 +2280,30 @@ async def stato_backfill_categorie_movimenti(
     stato = await stato_backfill_categorie_banca(Database.get_db())
     stato["in_corso"] = backfill_in_corso()
     return stato
+
+
+
+@router.get("/originali")
+@handle_errors
+async def elenco_estratti_originali() -> Dict[str, Any]:
+    """Gli estratti conto caricati (banca e Nexi), da rivedere e riscaricare."""
+    from app.services.estratti_originali import elenco
+
+    voci = await elenco(Database.get_db())
+    return {"estratti": voci, "totale": len(voci)}
+
+
+@router.get("/originali/{voce_id}/file")
+@handle_errors
+async def scarica_estratto_originale(voce_id: str) -> Response:
+    """Il file originale dell'estratto, cosi' come e' stato caricato."""
+    import re as _re
+    from app.services.estratti_originali import contenuto
+
+    trovato = await contenuto(Database.get_db(), voce_id)
+    if not trovato:
+        raise HTTPException(status_code=404, detail="Originale dell'estratto non disponibile")
+    dati, nome, mime = trovato
+    nome_sicuro = _re.sub(r"[^A-Za-z0-9._() -]+", "-", nome).strip("-") or "estratto"
+    return Response(content=dati, media_type=mime,
+                    headers={"Content-Disposition": f'inline; filename="{nome_sicuro}"'})
