@@ -340,7 +340,33 @@ function BadgeStatoSumUp({ stato }) {
 }
 
 /* Ogni movimento dell'estratto del conto SumUp, raggruppato per giorno. */
-export function MovimentiContoSumUp({ movimenti = [], anno }) {
+export function MovimentiContoSumUp({ movimenti = [], anno, onRicarica }) {
+  const confirm = useConfirm();
+  const [inCorso, setInCorso] = useState('');
+  const [errore, setErrore] = useState('');
+  // Uscita senza documento che il titolare dichiara (transazione, recupero sinistro).
+  const dichiaraRisarcimento = async riga => {
+    const approvato = await confirm({
+      title: 'Registra come risarcimento danni',
+      message: `Registri in Prima Nota SumUp l'uscita di ${eur(Math.abs(riga.importo))} del ${formatDateIT(riga.data)} a ${riga.controparte || 'questo beneficiario'} come risarcimento danni (conto 71.03, altri costi di esercizio)?`,
+      confirmText: 'Registra risarcimento',
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!approvato) return;
+    setInCorso(riga.id);
+    setErrore('');
+    try {
+      await api.post(`/api/prima-nota/sumup/movimenti/${encodeURIComponent(riga.id)}/dichiara`, {
+        categoria: 'Risarcimento danni',
+      });
+      if (onRicarica) await onRicarica({ silent: true });
+    } catch (e) {
+      setErrore(messaggioErrore(e));
+    } finally {
+      setInCorso('');
+    }
+  };
   const giorni = useMemo(() => {
     const perGiorno = new Map();
     for (const movimento of movimenti) {
@@ -357,6 +383,9 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
           Dall'estratto SumUp (PDF o CSV caricato in Documenti &gt; Import): payout, bonifici, giroconti e pagamenti con la carta, giorno per giorno.
         </p>
       </div>
+      {errore && (
+        <div role="alert" style={{ padding: '8px 14px', color: ROSSO, fontSize: 13, fontWeight: 700 }}>{errore}</div>
+      )}
       {giorni.length === 0 ? (
         <div style={{ padding: 22, textAlign: 'center', color: COLORS.textMuted }}>
           Nessun estratto SumUp caricato per il {anno}.
@@ -378,6 +407,17 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
                 </div>
               </div>
               <BadgeStatoSumUp stato={riga.stato} />
+              {riga.stato === 'Da registrare' && riga.importo < 0 && (
+                <button
+                  type="button"
+                  onClick={() => dichiaraRisarcimento(riga)}
+                  disabled={inCorso === riga.id}
+                  aria-label={`Registra come risarcimento danni l'uscita a ${riga.controparte || riga.tipo_transazione}`}
+                  style={{ minHeight: 44, padding: '0 12px', borderRadius: 8, border: `1px solid ${TERRACOTTA}`, background: 'white', color: TERRACOTTA, fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}
+                >
+                  {inCorso === riga.id ? 'Registro…' : 'Risarcimento'}
+                </button>
+              )}
               <div style={{ minWidth: 110, textAlign: 'right', fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', fontVariantNumeric: 'tabular-nums', color: riga.importo < 0 ? ROSSO : VERDE }}>
                 {riga.importo < 0 ? '−' : '+'}{eur(Math.abs(riga.importo))}
               </div>
@@ -390,7 +430,7 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
 }
 
 /* ------------------------- conto Mastercard SumUp ------------------------ */
-export function CartaSumUp({ dati, anno }) {
+export function CartaSumUp({ dati, anno, onRicarica }) {
   const giorni = dati?.giorni || [];
   const vendite = dati?.giornate_vendite || [];
   const creditoNegativo = Number(dati?.credito_sumup_aperto || 0) < 0;
@@ -418,7 +458,7 @@ export function CartaSumUp({ dati, anno }) {
 
       <QuadraturaSumUp quadratura={dati?.quadratura_estratto} />
 
-      <MovimentiContoSumUp movimenti={dati?.movimenti_conto || []} anno={anno} />
+      <MovimentiContoSumUp movimenti={dati?.movimenti_conto || []} anno={anno} onRicarica={onRicarica} />
 
       <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e6e3d9' }}>
@@ -2527,7 +2567,7 @@ export default function PrimaNota() {
       {sezione === 'soci' && <FinanziamentoSoci />}
 
       {!loading && !loadError && sezione === 'sumup' && (
-        <CartaSumUp dati={sumup} anno={anno} />
+        <CartaSumUp dati={sumup} anno={anno} onRicarica={carica} />
       )}
 
       {!loading && !loadError && sezione !== 'provvisori' && sezione !== 'soci' && sezione !== 'sumup' && (

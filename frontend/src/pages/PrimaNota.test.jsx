@@ -893,6 +893,36 @@ describe('Movimenti del conto SumUp', () => {
   });
 });
 
+describe('Risarcimento dichiarato sul conto SumUp', () => {
+  it('registra solo le uscite da registrare e poi ricarica', async () => {
+    api.post.mockResolvedValueOnce({ data: { prima_nota_id: 'pn-1' } });
+    const onRicarica = vi.fn().mockResolvedValue();
+    render(<CartaSumUp
+      anno={2026}
+      onRicarica={onRicarica}
+      dati={{
+        movimenti_conto: [
+          { id: 'sumup_conto:C964V3J4M7', data: '2026-09-04', tipo_transazione: 'Bonifico bancario in uscita',
+            controparte: 'MM S.p.a.', causale: 'Seconda rata a saldo transazione', importo: -2328.26,
+            saldo_disponibile: 100, stato: 'Da registrare' },
+          { id: 'b', data: '2026-09-15', tipo_transazione: 'Bonifico bancario in uscita',
+            controparte: 'Ceraldi Group srl', importo: -10000, saldo_disponibile: 2000,
+            stato: 'Giroconto verso BPM' },
+        ],
+      }}
+    />);
+
+    const bottoni = screen.getAllByRole('button', { name: /risarcimento danni/i });
+    expect(bottoni).toHaveLength(1);
+    fireEvent.click(bottoni[0]);
+    await waitFor(() => expect(onRicarica).toHaveBeenCalled());
+    expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/sumup/movimenti/sumup_conto%3AC964V3J4M7/dichiara',
+      { categoria: 'Risarcimento danni' },
+    );
+  });
+});
+
 describe('Quadratura del conto SumUp', () => {
   it('elenca le differenze con l estratto e dice se quadra', () => {
     render(<CartaSumUp

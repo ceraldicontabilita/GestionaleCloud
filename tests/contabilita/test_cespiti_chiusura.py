@@ -378,3 +378,25 @@ def test_scrittura_chiusura_generata_e_quadrata(monkeypatch):
     assert sum(x["dare"] for x in cattura["righe"]) == sum(x["avere"] for x in cattura["righe"])
     assert cattura["chiave"] == {"tipo": "chiusura_esercizio", "anno": 2025}
     assert any(x["conto_codice"] == "03.03.01" and x["avere"] == 400 for x in cattura["righe"])
+
+
+def test_classify_asset_parola_intera_non_pezzo_di_parola():
+    # «inCONDIZIONATo» non e' un climatizzatore, «imMOBILE» non e' un arredo.
+    assert classify_asset("SCONTO INCONDIZIONATO", 836) is None
+    assert classify_asset(
+        "CIL.a 6601/2025 Comune di Napoli immobile sito in Piazza S. D'Acquisto", 1400
+    ) is None
+    assert classify_asset("Climatizzatore a parete", 1200) == "impianti_generici"
+    assert classify_asset("Frigorifero a colonna", 1200) == "frigoriferi"
+    assert classify_asset("Tavolino in marmo", 900) == "mobili_arredi"
+
+
+def test_nota_di_credito_non_crea_cespiti():
+    from app.handlers.cespiti import handler_auto_cespite_da_fattura
+
+    payload = {
+        "tipo_documento": "TD04", "fattura_id": "nc-1", "data_documento": "2026-06-25",
+        "righe_linee": [{"descrizione": "Forno elettrico ventilato", "prezzo_totale": "3500"}],
+    }
+    esito = _run(handler_auto_cespite_da_fattura(payload, object()))
+    assert esito == {"skipped": True, "reason": "nota di credito"}

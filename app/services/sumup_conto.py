@@ -527,6 +527,67 @@ async def registra_giroconto(db, movimento: Dict[str, Any]) -> Dict[str, Any]:
             "estratto_bpm": (bpm or {}).get("id")}
 
 
+# Uscite della carta che nessun documento del gestionale spiega e che il
+# titolare dichiara lui (una transazione giudiziale, un recupero del
+# sinistro): categoria -> contropartita in mapping_piano_conti.
+CATEGORIE_DICHIARABILI = ("Risarcimento danni",)
+SOURCE_DICHIARATO = "dichiarato_titolare_sumup"
+
+
+class RegistrazioneNonAmmessa(ValueError):
+    """La riga non si puo' dichiarare: gia' spiegata, entrata o categoria ignota."""
+
+
+async def registra_uscita_dichiarata(
+    db, movimento_id: str, categoria: str, attore: str,
+) -> Dict[str, Any]:
+    """Scrive (idempotente) in Prima Nota sul 19.01.05 un'uscita dichiarata.
+
+    Solo una riga ancora «Da registrare»: una riga gia' spiegata da payout,
+    giroconto, busta o fattura ha la sua prova e non si ridichiara.
+    """
+    from app.services.scritture_contabili import scrivi_movimento_se_assente
+
+    if categoria not in CATEGORIE_DICHIARABILI:
+        raise RegistrazioneNonAmmessa(f"categoria non ammessa: {categoria!r}")
+    movimento = await db[COLL_MOVIMENTI].find_one({"id": movimento_id}, {"_id": 0})
+    if not movimento:
+        raise RegistrazioneNonAmmessa(f"movimento {movimento_id!r} non trovato")
+    importo = -float(movimento.get("importo") or 0)
+    if importo <= 0:
+        raise RegistrazioneNonAmmessa("solo un'uscita si dichiara")
+    spiegata = [campo for campo in (
+        "payout_id", "pid", "giroconto_operation_id", "stipendio_id",
+        "fattura_id", "fattura_ids",
+    ) if movimento.get(campo)]
+    if spiegata:
+        raise RegistrazioneNonAmmessa(f"riga gia' spiegata da {', '.join(spiegata)}")
+    operazione = f"sumup-dichiarato:{movimento['codice_transazione']}"
+    controparte = str(movimento.get("riferimento") or "").strip()
+    causale = str(movimento.get("causale") or "").strip()
+    riga_id, gia_scritta = await scrivi_movimento_se_assente(
+        db, "banca", {"operation_id": operazione, "conto_contabile": CONTO_SUMUP_MASTERCARD},
+        {
+            "data": movimento["data"], "tipo": "uscita", "importo": importo,
+            "categoria": categoria, "conto_contabile": CONTO_SUMUP_MASTERCARD,
+            "descrizione": " — ".join(t for t in (categoria, controparte, causale) if t),
+            "source": SOURCE_DICHIARATO, "operation_id": operazione,
+            "sumup_movimento_id": movimento["id"],
+            # La riga dell'estratto SumUp e' la prova del pagamento.
+            "estratto_conto_id": movimento["id"],
+            "dichiarato_da": attore,
+        },
+    )
+    await db[COLL_MOVIMENTI].update_one({"id": movimento["id"]}, {"$set": {
+        "prima_nota_banca_id": riga_id,
+        "categoria_dichiarata": categoria,
+        "dichiarato_da": attore,
+        "dichiarato_at": datetime.now(timezone.utc).isoformat(),
+    }})
+    return {"prima_nota_id": riga_id, "gia_registrata": gia_scritta,
+            "operation_id": operazione, "importo": importo}
+
+
 async def registra_giroconti(db, codici: List[str]) -> List[Dict[str, Any]]:
     """Giroconti fra le righe indicate, anche quelle importate in passato:
     un'entrata BPM arrivata dopo si aggancia al giro successivo."""

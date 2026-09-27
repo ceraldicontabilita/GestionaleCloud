@@ -216,6 +216,10 @@ _CONTROPARTITE: Dict[str, Any] = {
     "pagamento paypal": CONTO_FORNITORI,
     "incasso cliente": CONTO_CREDITI_VARI,
     "rimborso": CONTO_PROVENTI_DIVERSI,
+    # Transazioni giudiziali e recuperi di sinistro pagati: altri costi di
+    # esercizio, come oneri straordinari e sopravvenienze (05.07.x -> 71.03).
+    # Non 71.03.03: un risarcimento non e' una sanzione.
+    "risarcimento danni": "71.03",
     "utenze": CONTO_UTENZE,
     # personale
     "stipendi": CONTO_PERSONALE_RETRIBUZIONI,

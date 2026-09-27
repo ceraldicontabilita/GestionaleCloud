@@ -19,6 +19,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Dict
 from uuid import uuid4
 
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.services.piano_conti_ufficiale import SOGLIA_CESPITE_TUIR
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,11 @@ async def handler_auto_cespite_da_fattura(payload: Dict[str, Any], db) -> Dict[s
     righe = payload.get("righe_linee") or []
     if not righe:
         return {"skipped": True, "reason": "nessuna riga fattura"}
+
+    # Una nota di credito riduce un costo: nessuna sua riga e' un bene acquistato
+    # (lo «SCONTO INCONDIZIONATO» di una nota Officine Grafiche era diventato un impianto).
+    if str(payload.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO:
+        return {"skipped": True, "reason": "nota di credito"}
 
     fattura_id = payload.get("fattura_id")
     if not fattura_id:
