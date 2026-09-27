@@ -178,3 +178,125 @@ def test_rileggere_la_stessa_lipe_non_duplica(monkeypatch):
                                origine="test", dry_run=False))
 
     assert len(db[mod.COLL_LIPE].docs) == 1
+
+
+# ── Dove si cercano le LIPE da importare ──────────────────────────────────
+# L'inventario di documents_inbox ha le LIPE 2020-2023 senza id Drive: da solo
+# l'import non trovava niente. Dal 25/09 le LIPE stanno nella cartella unica.
+
+class _Inbox:
+    def __init__(self, docs):
+        self.docs = docs
+
+    def find(self, *_a, **_k):
+        docs = self.docs
+
+        class _Cursore:
+            def __aiter__(self):
+                self._it = iter(docs)
+                return self
+
+            async def __anext__(self):
+                try:
+                    return next(self._it)
+                except StopIteration:
+                    raise StopAsyncIteration
+
+        return _Cursore()
+
+
+def _import_finto(monkeypatch, *, inbox, cartella_unica, letture):
+    from app.services import drive_download
+
+    db = _Db()
+    db.collezioni[mod.COLL_INBOX] = _Inbox(inbox)
+    monkeypatch.setattr(mod, "_lipe_nella_cartella_unica", cartella_unica)
+    monkeypatch.setattr(mod, "_servizio_drive", lambda: object())
+    monkeypatch.setattr(drive_download, "scarica_bytes", lambda _s, file_id: file_id.encode())
+    monkeypatch.setattr(mod, "parse_lipe", lambda contenuto: _letto(letture[contenuto.decode()]))
+    return db
+
+
+def test_l_import_trova_le_lipe_nella_cartella_unica(monkeypatch):
+    db = _import_finto(
+        monkeypatch,
+        inbox=[{"filename": "LIPE_2021_283999885.pdf"}],  # senza id Drive: saltata
+        cartella_unica=lambda: [{"id": "d1", "nome": "LIPE_2026_407141844.pdf"}],
+        letture={"d1": [MARZO_BUONO]},
+    )
+
+    esito = _run(mod.importa_lipe_archiviate(db, dry_run=False))
+
+    assert esito["lipe_trovate"] == 1
+    assert esito["periodi_depositati"] == ["2026-03"]
+    assert db[mod.COLL_LIPE].docs[0]["drive_file_id"] == "d1"
+
+
+def test_la_ritrasmissione_si_legge_per_ultima(monkeypatch):
+    """Ordinate per protocollo: la comunicazione piu' recente vince sul periodo."""
+    db = _import_finto(
+        monkeypatch, inbox=[],
+        cartella_unica=lambda: [
+            {"id": "nuova", "nome": "LIPE_2022_IItrim_322737558.pdf"},
+            {"id": "vecchia", "nome": "LIPE_2022_IItrim_312334116.pdf"},
+        ],
+        letture={"nuova": [dict(MARZO_BUONO, iva_detratta=1.0)],
+                 "vecchia": [MARZO_BUONO]},
+    )
+
+    _run(mod.importa_lipe_archiviate(db, dry_run=False))
+
+    riga = db[mod.COLL_LIPE].docs[0]
+    assert riga["protocollo"] == 322737558
+    assert riga["iva_detratta"] == 1.0
+
+
+def test_una_cartella_unica_illeggibile_si_riporta(monkeypatch):
+    def _rotta():
+        raise RuntimeError("credenziali Drive non disponibili")
+
+    db = _import_finto(monkeypatch, inbox=[], cartella_unica=_rotta, letture={})
+
+    esito = _run(mod.importa_lipe_archiviate(db, dry_run=True))
+
+    assert esito["lipe_trovate"] == 0
+    assert esito["errori"] == [{"file": "cartella unica",
+                                "errore": "RuntimeError: credenziali Drive non disponibili"}]
+
+
+def test_la_ricerca_salta_i_marcati_e_le_copie_identiche(monkeypatch):
+    from app.services import drive_cartella_unica as cu
+
+    query = []
+
+    class _Richiesta:
+        def __init__(self, risposta):
+            self._risposta = risposta
+
+        def execute(self):
+            return self._risposta
+
+    class _Files:
+        def list(self, q, **_k):
+            query.append(q)
+            if "'radice' in parents" in q:
+                return _Richiesta({"files": [
+                    {"id": "a", "name": "LIPE_2024_Itrim_358048737.pdf", "md5Checksum": "m1"},
+                    {"id": "b", "name": "LIPE_2024_Itrim_358048737 (1).pdf", "md5Checksum": "m1"},
+                ]})
+            return _Richiesta({"files": []})
+
+    class _Servizio:
+        def files(self):
+            return _Files()
+
+    monkeypatch.setattr(cu, "radice", lambda: "radice")
+    monkeypatch.setattr(mod, "_servizio_drive", lambda: _Servizio())
+    monkeypatch.setattr(cu, "_cartelle", lambda _s, _r: {cu.INBOX: "inbox", cu.ARCHIVIO: "archivio",
+                                                          cu.ERRORI: "errori", cu.DOPPIONI: "doppioni"})
+
+    trovate = mod._lipe_nella_cartella_unica()
+
+    assert trovate == [{"nome": "LIPE_2024_Itrim_358048737.pdf", "id": "a"}]
+    assert len(query) == 3  # radice, DA ELABORARE, ELABORATE: mai ERRORI o DOPPIONI
+    assert all("not name contains 'DUPLICATO DA ELIMINARE -'" in q for q in query)
