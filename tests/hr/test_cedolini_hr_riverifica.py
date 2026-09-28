@@ -19,7 +19,7 @@ RIGA_14 = {"id": "r1", "cf": "dsimth82r04z209k", "anno": "2022", "mese": "14",
 
 def test_la_quattordicesima_si_ritrova_per_tipo_anche_col_mese_diverso():
     esito = rv.busta_della_riga(RIGA_14, [BUSTA_14])
-    assert esito == {"esito": "ritrovata", "netto": rv._cent(675.0)}
+    assert esito == {"esito": "ritrovata", "netto": rv._cent(675.0), "netto_calcolato": None}
 
 
 def test_la_mensile_vuole_lo_stesso_mese():
@@ -114,3 +114,36 @@ def test_con_l_acconto_un_netto_sbagliato_diventa_busta_piu_acconto():
     patch = rv.correzione(riga, rv.busta_della_riga(riga, [BUSTA_08]), "x")
     assert patch["netto_riverifica_esito"] == "corretto" and patch["netto"] == 1598.0
     assert patch["netto_busta"] == 598.0 and patch["storico_netto_ultimo"]["prima"] == 0.23
+
+
+# Caso di prova (dati inventati): cella del netto 1.500,00, competenze meno
+# trattenute 2.500,00 (acconto di 1.000,00 recuperato), in HR 2.499,95. La riga
+# HR non annota l'acconto: la v1 l'aveva «corretta» a 1.500,00.
+BUSTA_ACCONTO = {"codice_fiscale": "RSSMRA80A01F839X", "anno": 2023, "mese": 1,
+                 "tipo_cedolino": "mensile", "netto": 1500.0, "netto_calcolato": 2500.0,
+                 "stato_netto": NETTO_VERIFICATO_DA_CEDOLINO}
+RIGA_ACCONTO = {"id": "r2", "cf": "RSSMRA80A01F839X", "anno": "2023", "mese": "1",
+                "tipo": "ordinario", "netto": "2499.95"}
+
+
+def _patch(riga, busta):
+    return rv.correzione(riga, rv.busta_della_riga(riga, [busta]), "2026-09-28T07:00")
+
+
+def test_l_acconto_letto_dal_pdf_conferma_busta_piu_acconto():
+    patch = _patch(RIGA_ACCONTO, BUSTA_ACCONTO)
+    assert patch["netto_riverifica_esito"] == "confermato_con_acconto"
+    assert "netto" not in patch and patch["netto_busta"] == 1500.0
+
+
+def test_la_correzione_sbagliata_della_v1_si_ripristina():
+    riga = {**RIGA_ACCONTO, "netto": "1500.0", "prima_v1": "2499.95", "fonte_ultima": rv.VERSIONE_V1}
+    patch = _patch(riga, BUSTA_ACCONTO)
+    assert patch["netto_riverifica_esito"] == "ripristinato" and patch["netto"] == 2499.95
+    assert patch["storico_netto_ultimo"]["prima"] == 1500.0
+
+
+def test_la_correzione_giusta_della_v1_resta_senza_riscrivere():
+    riga = {**RIGA_14, "netto": "675.0", "prima_v1": "0.45", "fonte_ultima": rv.VERSIONE_V1}
+    patch = _patch(riga, BUSTA_14)
+    assert patch["netto_riverifica_esito"] == "corretto" and "netto" not in patch

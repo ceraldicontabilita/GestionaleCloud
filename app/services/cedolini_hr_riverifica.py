@@ -29,13 +29,20 @@ from app.services.hr_cedolini_deposito import TABELLA_CEDOLINI, tipo_cedolino_hr
 
 logger = logging.getLogger(__name__)
 
-VERSIONE = "riverifica_pdf_v1"
+VERSIONE = "riverifica_pdf_v2"
+#: La v1 toglieva l'acconto recuperato quando la riga HR non lo annotava: le
+#: sue «correzioni» si rivalutano partendo dal netto che c'era prima.
+VERSIONE_V1 = "riverifica_pdf_v1"
+#: Arrotondamento della busta fra netto del mese e busta + acconto.
+SCARTO_ARROTONDAMENTO = Decimal("1.00")
 LOTTO = 120
 
 _SQL_DA_RILEGGERE = (
     "SELECT id, doc->>'codice_fiscale' AS cf, doc->>'anno' AS anno, doc->>'mese' AS mese, "
     "doc->>'tipo_cedolino' AS tipo, doc->>'netto' AS netto, "
-    "doc->'acconti'->>'acconto_recuperato' AS acconto FROM " + TABELLA_CEDOLINI + " "
+    "doc->'acconti'->>'acconto_recuperato' AS acconto, "
+    "doc->'storico_netto_ultimo'->>'prima' AS prima_v1, "
+    "doc->'storico_netto_ultimo'->>'fonte' AS fonte_ultima FROM " + TABELLA_CEDOLINI + " "
     "WHERE doc ? 'pdf_data' AND length(doc->>'pdf_data') > 100 "
     "AND coalesce(doc->>'netto_riverificato_versione', '') <> $1 ORDER BY id LIMIT $2"
 )
@@ -81,38 +88,59 @@ def busta_della_riga(riga: Dict[str, Any], buste: List[Dict[str, Any]]) -> Dict[
     busta = candidate[0]
     if busta.get("stato_netto") != NETTO_VERIFICATO_DA_CEDOLINO or _cent(busta.get("netto")) is None:
         return {"esito": "netto_non_verificato", "stato_netto": busta.get("stato_netto")}
-    return {"esito": "ritrovata", "netto": _cent(busta.get("netto"))}
+    return {"esito": "ritrovata", "netto": _cent(busta.get("netto")),
+            # competenze − trattenute: con un acconto recuperato e' busta + acconto
+            "netto_calcolato": _cent(busta.get("netto_calcolato"))}
 
 
 def correzione(riga: Dict[str, Any], esito: Dict[str, Any], now: str) -> Dict[str, Any]:
-    """Il pezzo di documento da fondere nella riga HR (sempre col marcatore del giro)."""
+    """Il pezzo di documento da fondere nella riga HR (sempre col marcatore del giro).
+
+    Decisione del titolare (28/09/2026): in HR il netto e' quello della busta
+    piu' l'acconto gia' recuperato, il totale del mese (la cella dice 598,00,
+    la riga HR 1.597,06 con 1.000,00 di acconto). L'acconto si prende dalla
+    riga HR o, se la riga non lo annota, dal PDF stesso: competenze meno
+    trattenute supera la cella del netto. Lo scarto fino a 1,00 e'
+    l'arrotondamento della busta.
+    """
     patch: Dict[str, Any] = {
         "netto_riverificato_il": now, "netto_riverificato_versione": VERSIONE,
         "netto_riverifica_esito": esito["esito"],
     }
     if esito["esito"] != "ritrovata":
         return patch
-    prima, dopo = _cent(riga.get("netto")), esito["netto"]
-    # Decisione del titolare (28/09/2026): in HR il netto e' quello della busta
-    # piu' l'acconto gia' recuperato, il totale del mese. La cella dice 598,00,
-    # la riga HR 1.597,06 con 1.000,00 di acconto: e' giusta, non si tocca. Lo
-    # scarto fino a 1,00 e' l'arrotondamento della busta.
-    acconto = _cent(riga.get("acconto")) or Decimal("0")
-    if acconto > 0:
-        patch["netto_busta"] = float(dopo)
-        dopo = dopo + acconto
-        if prima is not None and abs(prima - dopo) <= Decimal("1.00"):
-            patch["netto_riverifica_esito"] = "confermato_con_acconto"
-            return patch
-    if prima == dopo:
-        patch["netto_riverifica_esito"] = "confermato"
+    attuale, cella = _cent(riga.get("netto")), esito["netto"]
+    # Una riga «corretta» dalla v1 si giudica dal netto che aveva prima.
+    corretta_da_v1 = riga.get("fonte_ultima") == VERSIONE_V1
+    prima = _cent(riga.get("prima_v1")) if corretta_da_v1 else attuale
+
+    con_acconto = []
+    acconto_hr = _cent(riga.get("acconto")) or Decimal("0")
+    if acconto_hr > 0:
+        con_acconto.append(cella + acconto_hr)
+    calcolato = esito.get("netto_calcolato")
+    if calcolato is not None and calcolato - cella > SCARTO_ARROTONDAMENTO:
+        con_acconto.append(calcolato)
+    if con_acconto:
+        patch["netto_busta"] = float(cella)
+
+    if prima is not None and any(abs(prima - v) <= SCARTO_ARROTONDAMENTO for v in con_acconto):
+        giusto, patch["netto_riverifica_esito"] = prima, "confermato_con_acconto"
+    elif prima == cella:
+        giusto, patch["netto_riverifica_esito"] = prima, "confermato"
+    else:
+        giusto = con_acconto[0] if acconto_hr > 0 else cella
+        patch["netto_riverifica_esito"] = "corretto"
+    if giusto == attuale:
         return patch
     patch.update({
-        "netto": float(dopo), "stato_netto": NETTO_VERIFICATO_DA_CEDOLINO,
-        "netto_fonte": VERSIONE, "netto_riverifica_esito": "corretto",
-        "storico_netto_ultimo": {"prima": float(prima) if prima is not None else None,
-                                 "dopo": float(dopo), "at": now, "fonte": VERSIONE},
+        "netto": float(giusto), "stato_netto": NETTO_VERIFICATO_DA_CEDOLINO,
+        "netto_fonte": VERSIONE,
+        "storico_netto_ultimo": {"prima": float(attuale) if attuale is not None else None,
+                                 "dopo": float(giusto), "at": now, "fonte": VERSIONE},
     })
+    if patch["netto_riverifica_esito"] != "corretto":
+        patch["netto_riverifica_esito"] = "ripristinato"
     return patch
 
 
@@ -134,7 +162,7 @@ async def riverifica_lotto(con, *, dry_run: bool = False, lotto: int = LOTTO) ->
             esito = {"esito": "pdf_illeggibile"}
         patch = correzione(riga, esito, now)
         conteggi[patch["netto_riverifica_esito"]] = conteggi.get(patch["netto_riverifica_esito"], 0) + 1
-        if patch["netto_riverifica_esito"] == "corretto":
+        if "storico_netto_ultimo" in patch:
             correzioni.append({"id": riga["id"], "cf": riga["cf"], "anno": riga["anno"], "mese": riga["mese"],
                                "tipo": riga["tipo"], **patch["storico_netto_ultimo"]})
         if dry_run:
