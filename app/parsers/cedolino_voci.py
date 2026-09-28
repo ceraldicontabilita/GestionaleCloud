@@ -239,6 +239,47 @@ def leggi_foglio_presenze(text: str) -> Dict:
     return result
 
 
+#: Voci che dicono «acconto gia' dato e recuperato in questa busta»: la cella
+#: TOTALE NETTO e' allora piu' bassa di competenze − trattenute, e il dovuto
+#: del mese e' netto + acconto (regola del titolare per la posizione in HR).
+#: Un solo elenco: codice come lo stampa il software paghe, descrizione.
+VOCI_ACCONTO_RECUPERATO = (
+    ("000306", "RECUPERO ACCONTO"),          # Zucchetti
+)
+#: CSC 8210 «ACCONTO TRATT. RETRIB.» non e' un recupero: sta fra le
+#: competenze (serie 8xxx, con lavoro ordinario e ferie), e' un acconto
+#: pagato dentro la busta e quindi gia' nel netto. Resta fuori di qui.
+#: Buste TFR: anticipo del fondo, non stipendio. Mai sommato al dovuto.
+VOCI_ACCONTO_TFR = ("ACCONTI GIA' EROGATI",)
+
+_IMPORTO_VOCE = r"(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})"
+
+
+def _regola_voce(codice: str, descrizione: str) -> "re.Pattern[str]":
+    parole = [re.escape(p.rstrip(".")) + r"\.?" for p in descrizione.split()]
+    return re.compile(
+        r"(?<!\d)0*" + re.escape(codice.lstrip("0")) + r"\s+" + r"\s*".join(parole)
+        + r"[^\d]{0,40}?" + _IMPORTO_VOCE
+    )
+
+
+_REGOLE_ACCONTO = [(c, d, _regola_voce(c, d)) for c, d in VOCI_ACCONTO_RECUPERATO]
+
+
+def acconto_recuperato_in_busta(testo: str) -> Optional[Dict[str, str]]:
+    """La voce di acconto recuperato stampata nella busta, o None.
+
+    Cerca solo i codici di ``VOCI_ACCONTO_RECUPERATO``: «ACCONTI GIA'
+    EROGATI» delle buste TFR non e' stipendio e non passa di qui.
+    """
+    alto = re.sub(r"\s+", " ", str(testo or "").upper())
+    for codice, descrizione, regola in _REGOLE_ACCONTO:
+        m = regola.search(alto)
+        if m:
+            return {"codice": codice, "descrizione": descrizione, "importo": m.group(1)}
+    return None
+
+
 def leggi_corpo_cedolino(text: str) -> Dict:
     """Voci codificate, IRPEF, ratei e dati chiave dal corpo di una busta."""
     lines = clean_text_lines(text)

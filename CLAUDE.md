@@ -577,14 +577,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Competenza da causale o nome file, altrimenti **regola del giorno 25**: prima del 25 = mese precedente,
   dal 25 = corrente. Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un solo esito,
   arricchito, mai duplicato.
+- **Posizione dipendente** (`services/posizione_dipendente.py`, pagina HR, solo admin; «Prima nota» di Archivio paghe è la stessa, per mese): DARE = netto di ogni busta **più l'acconto recuperato in busta** (voci `cedolino_voci.VOCI_ACCONTO_RECUPERATO`, poi `acconti.acconto_recuperato`, poi competenze − trattenute oltre 1,00 €), 13ª/14ª, parte non bonus delle conciliazioni; AVERE = bonifici, contanti, acconti fuori busta (`acconti_dipendenti`: pagamento, mai sommato a un netto). Saldo con riporto d'anno.
+  Conciliazioni (`conciliazioni`, verbale in `gestionale.blobs`): totale = somma delle voci al centesimo, «importi non compilati» = totale nullo, mai inventato; il **bonus** ha un conto suo, fuori dalle paghe. In «Bonifici da associare» si sceglie il tipo: stipendio, acconto, conciliazione o bonus.
 - «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale `DA_ASSEGNARE`: non imposta
   bonifico eseguito, movimento, data di pagamento né riconciliazione.
 - Cedolini e bonifici salario si associano per dipendente, periodo e regole temporali: non si richiedono
   importi identici quando esistono acconti o trattenute. Le correzioni a mano in «Paghe e bonifici» non
   vengono sovrascritte dalla sincronizzazione.
-- **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni**
-  dalla decorrenza (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015
-  art. 26).
+- **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni** dalla decorrenza
+  (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015 art. 26).
 - **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026 e ferie 15–23/08/2026
   non sono corrispettivi mancanti.
 - **Dello storico interessano solo cedolini e F24**: fatture e corrispettivi precedenti all'anno attivo
@@ -595,9 +596,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   XML. Eccezione: la fattura dell'**anno prima** pagata quest'anno entra solo come **debito** (`debiti_anno_precedente.py`: niente
   costo né IVA; il bonifico la chiude per fornitore e importo al centesimo, debiti uguali in ordine di data, entro 180 giorni; un importo che il fornitore fattura anche quest'anno è un canone e vuole il numero in causale; va in Prima Nota Banca su 33.03.01). Gli **accrediti in entrata del 2023** (ricevuta «A VOSTRO CREDITO»: Satispay, giroconti, rimborsi)
   non si registrano (`ANNI_ACCREDITI_NON_REGISTRATI`); i bonifici disposti di ogni anno restano.
-- Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato,
-  Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile
-  salvia.
+- Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato, Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile salvia.
 
 ## Fatture: identità e duplicati
 

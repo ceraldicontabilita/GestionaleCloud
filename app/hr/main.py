@@ -120,6 +120,10 @@ def register_routers():
                        dependencies=[Depends(require_staff)])
     app.include_router(cedolini.router, prefix="/api/cedolini", tags=["Cedolini"], dependencies=ADMIN)
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"], dependencies=ADMIN)
+    # Posizione dare/avere e conciliazioni: dati di paga, solo amministratore.
+    from .routers import posizione_dipendente
+    app.include_router(posizione_dipendente.router, prefix="/api/posizione-dipendente",
+                       tags=["Posizione dipendente"], dependencies=ADMIN)
     app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=STAFF)
 
     # Cedolini e Libro Unico ERP: un solo motore, `app/services/cedolini_motore.py`,
