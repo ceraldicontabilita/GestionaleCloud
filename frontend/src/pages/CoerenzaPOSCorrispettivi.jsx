@@ -788,6 +788,7 @@ export function CellaCircuito({ g, circuito }) {
     api: 'API SumUp',
     api_sumup: 'API SumUp',
     estratto_conto_numia: 'Estratto BPM',
+    numia_non_usato_estratto: 'Non usato (estratto BPM)',
     excel: 'Estratto / Excel',
     manuale: 'Manuale',
     inserimento_manuale_terminale: 'Manuale',

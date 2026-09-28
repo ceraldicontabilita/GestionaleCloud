@@ -1520,6 +1520,66 @@ async def _carica_accrediti_banca_pos(
     return out
 
 
+NUMIA_NON_USATO = "numia_non_usato_estratto"
+GIORNI_ACCREDITO_NUMIA = 7
+
+
+def _sposta(giorno: str, giorni: int) -> str:
+    return (datetime.strptime(giorno, "%Y-%m-%d") + timedelta(days=giorni)).strftime("%Y-%m-%d")
+
+
+async def _segna_numia_non_usato(
+    db,
+    pos_per_circuito: Dict[str, Dict[str, float]],
+    fonti_pos_per_circuito: Dict[str, Dict[str, str]],
+    accrediti: Dict[str, Dict[str, Any]],
+    data_da: str,
+    data_a: str,
+) -> List[str]:
+    """Numia a zero confermato: il terminale quel giorno non ha incassato.
+
+    Un giorno con la chiusura SumUp, senza chiusura Numia e senza nessun
+    accredito «DEL gg/mm/aa» resta altrimenti «in attesa» per sempre. Diventa
+    zero solo se l'estratto BPM caricato copre il giorno **e** i 7 giorni in
+    cui l'accredito sarebbe arrivato: movimenti prima o nel giorno e movimenti
+    da 7 a 21 giorni dopo. Un buco nell'estratto lascia il giorno in attesa.
+    """
+    candidati = [
+        giorno for giorno, per_circuito in pos_per_circuito.items()
+        if data_da <= giorno <= data_a
+        and conti_pos.SUMUP in per_circuito
+        and conti_pos.NUMIA not in per_circuito
+        and giorno not in accrediti
+    ]
+    if not candidati:
+        return []
+    date_estratto = set()
+    async for m in db["estratto_conto_movimenti"].find(
+        {"data": {"$gte": _sposta(min(candidati), -GIORNI_ACCREDITO_NUMIA),
+                  "$lte": _sposta(max(candidati), 3 * GIORNI_ACCREDITO_NUMIA)}},
+        {"_id": 0, "data": 1},
+    ):
+        data = m.get("data")
+        if isinstance(data, datetime):
+            data = data.strftime("%Y-%m-%d")
+        if data:
+            date_estratto.add(str(data)[:10])
+    segnati = []
+    for giorno in sorted(candidati):
+        prima = any(
+            _sposta(giorno, -GIORNI_ACCREDITO_NUMIA) <= d <= giorno for d in date_estratto
+        )
+        dopo = any(
+            _sposta(giorno, GIORNI_ACCREDITO_NUMIA) <= d <= _sposta(giorno, 3 * GIORNI_ACCREDITO_NUMIA)
+            for d in date_estratto
+        )
+        if prima and dopo:
+            pos_per_circuito[giorno][conti_pos.NUMIA] = 0.0
+            fonti_pos_per_circuito.setdefault(giorno, {})[conti_pos.NUMIA] = NUMIA_NON_USATO
+            segnati.append(giorno)
+    return segnati
+
+
 @router.get("/controllo-due-fasi")
 @handle_errors
 async def controllo_incassi_due_fasi(
@@ -1585,6 +1645,9 @@ async def controllo_incassi_due_fasi(
             fonti_pos_per_circuito.setdefault(giorno, {})[
                 conti_pos.NUMIA
             ] = "estratto_conto_numia"
+    await _segna_numia_non_usato(
+        db, pos_per_circuito, fonti_pos_per_circuito, accrediti, data_da, data_a
+    )
     pos_manuali = {
         giorno: round(sum(per_circuito.values()), 2)
         for giorno, per_circuito in pos_per_circuito.items()
