@@ -36,7 +36,9 @@ RIFERIMENTI = (
 
 
 def identita(doc: Dict[str, Any]) -> Optional[Tuple[str, int]]:
-    numero = re.sub(r"\D", "", str(doc.get("numero") or ""))
+    from app.services.carnet_assegni import numero_canonico
+
+    numero = re.sub(r"\D", "", numero_canonico(doc.get("numero")))
     importo = centesimi(doc.get("importo"))
     importo = abs(importo) if importo else None
     if not numero or not importo:

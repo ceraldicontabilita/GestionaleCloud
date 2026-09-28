@@ -997,11 +997,11 @@ export default function GestioneAssegni() {
     }).slice(0, 200);
   }, [fatture, filterFatturaModal, assegnoCoperto]);
 
-  // Raggruppa assegni per carnet (primi 10 cifre del numero) - usa filteredAssegni
+  // Raggruppa assegni per carnet: lo calcola il backend (10 assegni, da …1 a …0).
   const groupByCarnet = () => {
     const groups = {};
     filteredAssegni.forEach(a => {
-      const prefix = a.numero?.split('-')[0] || 'Senza Carnet';
+      const prefix = a.carnet || 'Senza Carnet';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(a);
     });
