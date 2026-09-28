@@ -1298,7 +1298,7 @@ def start_scheduler():
 
     async def _cedolini_tipo_dal_pdf_job():
         """13ª/14ª salvate come mensile: tipo riletto dal PDF, un lotto per giro
-        (simulazione finche' ``cedolini_tipo_dal_pdf.APPLICA`` e' falso)."""
+        (si applica da solo il solo verso mensile -> 13ª/14ª, il resto si annota)."""
         from app.database import Database
         from app.services.cedolini_tipo_dal_pdf import giro
 

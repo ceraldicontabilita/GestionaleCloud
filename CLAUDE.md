@@ -541,7 +541,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   tutte (`token_di_gruppo_ammesso`): un token admin non nato da lì non vale, il PIN personale del titolare è da operatore.
 - **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima Nota salari; l'archivio che
   si vede è **solo in HR** (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o per
-  CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte). Una 13ª/14ª salvata come «mensile» nell'ERP si riconosce solo rileggendo il PDF (`cedolini_tipo_dal_pdf.py`: busta con stesso CF, anno e netto al centesimo), mai dal mese.
+  CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte). Una 13ª/14ª salvata come «mensile» nell'ERP si riconosce solo rileggendo il PDF (`cedolini_tipo_dal_pdf.py`: busta con stesso CF, anno e netto al centesimo), mai dal mese; da solo si applica solo mensile → 13ª/14ª, il verso contrario resta `da_decidere` al titolare.
 - Il netto si legge solo dalla cella graficamente associata a `TOTALE NETTO` / `NETTO DEL MESE` / `NETTO
   IN BUSTA`: mai da `ARR. PREC.`, competenze, trattenute, TFR, arrotondamenti o dal nome file. Cella vuota
   → nullo, **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`, `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`,

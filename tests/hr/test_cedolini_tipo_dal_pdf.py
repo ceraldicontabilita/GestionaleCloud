@@ -87,3 +87,27 @@ def test_applicando_la_riga_cambia_tipo_e_conserva_quello_di_prima(monkeypatch):
     _, _, b, _ = _scenario(monkeypatch, applica=True)
     assert b["tipo_cedolino"] == "quattordicesima"
     assert b["tipo_cedolino_prima"]["tipo"] == "mensile"
+
+
+def test_il_verso_contrario_non_si_applica_da_solo(monkeypatch):
+    """Solo mensile -> 13ª/14ª si applica (titolare, 28/09/2026): una 14ª che
+    il PDF dice mensile resta com'e' e va nel rapporto da decidere."""
+    db = ArchivioDocumenti()
+    monkeypatch.setattr("app.services.cedolini_motore.leggi_pdf",
+                        lambda pdf: {"buste": [MENSILE, QUATTORDICESIMA]})
+
+    async def corri():
+        pdf = base64.b64encode(b"%PDF-finto").decode()
+        await db["cedolini"].insert_many([
+            {**_riga("a", 1050.0, tipo="quattordicesima"), "pdf_data": pdf},
+            {**_riga("b", 324.0), "pdf_data": pdf},
+        ])
+        await tp.giro(db, applica=True)
+        a = await db["cedolini"].find_one({"id": "a"}, {"_id": 0, "pdf_data": 0})
+        stato = await db["sistema_stato"].find_one({"chiave": tp.CHIAVE_STATO}, {"_id": 0})
+        return a, stato
+
+    a, stato = asyncio.run(corri())
+    assert a["tipo_cedolino"] == "quattordicesima" and "tipo_cedolino_prima" not in a
+    decisioni = {e["id"]: e["decisione"] for e in stato["esiti"]}
+    assert decisioni == {"a": "da_decidere", "b": "applicata"}

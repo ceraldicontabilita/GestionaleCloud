@@ -13,10 +13,12 @@ netto al centesimo**, verificato dalla cella. Una riga che il lettore non
 ritrova, o ritrova in piu' buste di tipo diverso, resta com'e' col motivo.
 
 Il giro va a lotti (``LOTTO`` righe per volta) e tiene il rapporto in
-``sistema_stato`` (chiave ``cedolini_tipo_dal_pdf``). Finche' ``APPLICA`` e'
-falso e' una **simulazione**: non tocca le righe. Quando si applica, la riga
-cambia ``tipo_cedolino`` (e il mese, se la busta ne porta un altro) e conserva
-il valore di prima in ``tipo_cedolino_prima``.
+``sistema_stato`` (chiave ``cedolini_tipo_dal_pdf``). Si applica da solo solo
+il verso scelto dal titolare (28/09/2026): una «mensile» che il PDF dice 13ª o
+14ª (``DIREZIONI_APPLICATE``). Il verso contrario, e ogni altro cambio, resta
+nel rapporto come ``da_decidere``. Quando si applica, la riga cambia
+``tipo_cedolino`` (e il mese, se la busta ne porta un altro) e conserva il
+valore di prima in ``tipo_cedolino_prima``.
 """
 from __future__ import annotations
 
@@ -34,10 +36,11 @@ logger = logging.getLogger(__name__)
 
 COLL = "cedolini"
 CHIAVE_STATO = "cedolini_tipo_dal_pdf"
-VERSIONE = "tipo_dal_pdf_v1"
+VERSIONE = "tipo_dal_pdf_v2"
 LOTTO = 40
-# Simulazione finche' il titolare non dice di applicare (domanda del 28/09/2026).
-APPLICA = False
+APPLICA = True
+# Il solo verso che il titolare ha fatto applicare da solo (28/09/2026).
+DIREZIONI_APPLICATE = frozenset({("mensile", "tredicesima"), ("mensile", "quattordicesima")})
 # Righe gia' marcate come copie da un giro precedente: non sono buste da tipizzare.
 TIPI_ESCLUSI = frozenset({"copia_non_canonica"})
 
@@ -145,9 +148,12 @@ async def giro(db, *, applica: bool = APPLICA, lotto: int = LOTTO) -> Dict[str, 
         voce = {"id": riga["id"], "cf": _cf(riga.get("codice_fiscale"))[:6] + "***",
                 "anno": riga.get("anno"), "mese": riga.get("mese"),
                 "netto": str(_netto(riga)), **esito}
+        if esito["esito"] == "da_riclassificare":
+            verso = (esito["tipo_prima"], esito["tipo"])
+            voce["decisione"] = "applicata" if applica and verso in DIREZIONI_APPLICATE else "da_decidere"
         if esito["esito"] != "confermato":
             esiti.append(voce)
-        if applica and esito["esito"] == "da_riclassificare":
+        if voce.get("decisione") == "applicata":
             await db[COLL].update_one({"id": riga["id"]}, {"$set": {
                 "tipo_cedolino": esito["tipo"], "mese": esito["mese"],
                 "tipo_cedolino_prima": {"tipo": esito["tipo_prima"], "mese": esito["mese_prima"],
