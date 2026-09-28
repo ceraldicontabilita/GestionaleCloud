@@ -251,7 +251,7 @@ def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
 _ESTENSIONI_XML = (".xml", ".xml.p7m", ".p7m", ".zip")
 
 
-_BUSTA_PAGA = re.compile(r"LUL|CEDOLIN|BUSTA|LIBRO\s*UNICO", re.IGNORECASE)
+_BUSTA_PAGA = re.compile(r"LUL|CEDOLIN|BUSTA|LIBRO\s*UNICO|TREDICESIMA|QUATTORDICESIMA", re.IGNORECASE)
 
 
 def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -311,19 +311,26 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
     la lettura poi la fa il giro a lotti.
     """
     righe = await db[REGISTRO].find(
-        {"cartella": ERRORI}, {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1},
+        {"cartella": {"$in": [ERRORI, ARRETRATO]}},
+        {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1, "cartella": 1},
     ).to_list(None)
     rimessi = 0
     for riga in righe:
         if limite is not None and rimessi >= limite:
             break
         motivo = str(riga.get("motivo") or "")
-        gia_presente = riga.get("tipo") == "cedolino" and _BUSTE_GIA_PRESENTI.match(motivo)
-        if not gia_presente and not _GUASTO_DI_RETE.match(motivo):
-            continue
+        if riga.get("cartella") == ARRETRATO:
+            # Una busta presa per estratto conto (cita la banca d'appoggio) e
+            # parcheggiata fra l'arretrato degli estratti: va riletta da busta.
+            if not e_busta({"name": riga.get("nome")}):
+                continue
+        else:
+            gia_presente = riga.get("tipo") == "cedolino" and _BUSTE_GIA_PRESENTI.match(motivo)
+            if not gia_presente and not _GUASTO_DI_RETE.match(motivo):
+                continue
         try:
-            await asyncio.to_thread(_sposta, service, riga["id"], cartelle[ERRORI], cartelle[INBOX],
-                                    "busta gia' in archivio: da rileggere")
+            await asyncio.to_thread(_sposta, service, riga["id"], cartelle[riga["cartella"]],
+                                    cartelle[INBOX], "da rileggere")
             await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
                             motivo="busta gia' in archivio, non un errore")
             rimessi += 1

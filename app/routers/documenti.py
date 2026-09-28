@@ -2691,6 +2691,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "f24"
     if lower.endswith(".pdf") and any(keyword in lower for keyword in (
         "cedolin", "busta_paga", "busta paga", "libro_unico", "libro unico", "lul",
+        "tredicesima", "quattordicesima",
     )):
         # Solo un PDF: «Indice_Cedolini_Gestionale.xlsx» non e' una busta paga.
         return "cedolino"

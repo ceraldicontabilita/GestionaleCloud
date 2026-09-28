@@ -175,3 +175,20 @@ def test_guasto_di_rete_torna_in_coda(ambiente):  # noqa: F811
                                     "motivo": "SSLError: [SSL: WRONG_VERSION_NUMBER] wrong version"}))
     assert run(cu.giro(db))["buste_rimesse_in_coda"] == 1
     assert drive.file["s1"]["parent"] == "elaborate"
+
+
+def test_busta_parcheggiata_fra_gli_estratti_torna_in_coda(ambiente):  # noqa: F811
+    drive, _, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    cu_arretrato = "arretrato"
+    drive.aggiungi("t1", "Ceraldi Vincenzo - Tredicesima 2020.pdf", b"%PDF t1", cu_arretrato)
+    drive.aggiungi("e1", "Estratto conto 2021.pdf", b"%PDF e1", cu_arretrato)
+    run(db[cu.REGISTRO].insert_many([
+        {"id": "t1", "nome": "Ceraldi Vincenzo - Tredicesima 2020.pdf", "cartella": cu.ARRETRATO,
+         "tipo": "estratto_conto"},
+        {"id": "e1", "nome": "Estratto conto 2021.pdf", "cartella": cu.ARRETRATO,
+         "tipo": "estratto_conto"},
+    ]))
+    assert run(cu.giro(db))["buste_rimesse_in_coda"] == 1
+    assert drive.file["t1"]["parent"] == "elaborate"
+    assert drive.file["e1"]["parent"] == cu_arretrato

@@ -163,3 +163,21 @@ def test_l_anno_del_pdf_generico_si_legge_dal_contenuto(monkeypatch):
         lambda _content: "Estratto conto Nexi al 31 maggio 2026",
     )
     assert cls.anno_documento("Estratto_Conto (1).pdf", b"pdf") == 2026
+
+
+def test_busta_paga_con_banca_d_appoggio_non_e_un_estratto():
+    from app.services.classificazione_estratti import route_da_testo
+
+    busta = ("CERALDI VINCENZO QUATTORDICESIMA 2020 PAGAMENTO BANCO BPM IBAN IT00 "
+             "TOTALE COMPETENZE 1.200,00 NETTO DEL MESE 1.020,00")
+    assert route_da_testo(busta) is None
+    # L'estratto della stessa banca resta un estratto.
+    assert route_da_testo("BANCO BPM ESTRATTO CONTO DATA CONTABILE DATA VALUTA") is not None
+
+
+def test_nome_tredicesima_e_quattordicesima_sono_buste():
+    from app.routers.documenti import detect_document_type
+
+    for nome in ("Ceraldi Vincenzo - Tredicesima 2020.pdf",
+                 "Parisi Antonio - Quattordicesima 2021 - Variante 1.pdf"):
+        assert detect_document_type(nome, b"%PDF-1.4 vuoto") == "cedolino"

@@ -132,6 +132,11 @@ def _testo_del_pdf(contenuto: bytes) -> str:
     return "\n".join(pagine)
 
 
+_BUSTA_PAGA = re.compile(
+    r"netto\s*del\s*mese|totale\s*netto|netto\s*in\s*busta|netto\s*busta"
+)
+
+
 def route_da_testo(testo: str) -> Optional[str]:
     """Fonte riconosciuta dall'intestazione del documento.
 
@@ -141,6 +146,13 @@ def route_da_testo(testo: str) -> Optional[str]:
     """
     testo = _pulisci(testo)
     if not testo:
+        return None
+
+    # Una busta paga cita la banca d'appoggio dello stipendio («Banco BPM»):
+    # col riquadro del netto e' un cedolino, mai un estratto conto. Senza
+    # questa guardia tredicesime e quattordicesime finivano nell'arretrato
+    # degli estratti invece che fra le buste.
+    if _BUSTA_PAGA.search(testo):
         return None
 
     # Carta Mastercard SumUp (conto 19.01.05): ha colonne «data», «saldo» e
