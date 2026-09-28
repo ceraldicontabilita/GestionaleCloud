@@ -983,6 +983,134 @@ async def reconcile_cited_invoices(db, movements: List[Dict[str, Any]]) -> Dict[
     return {"collegati": collegati, "collegati_count": len(collegati), "sospesi": sospesi}
 
 
+# Acconti (titolare, 28/09/2026): una fattura pagata in piu' bonifici allo
+# stesso fornitore, nessuno dei quali quadra da solo. FEP 7_26 di A 2000
+# Costruzioni (24.400,00) = 15.000,00 del 12/02 + 9.400,00 del 26/02.
+_GIORNI_ACCONTI = 90
+_MAX_BONIFICI_ACCONTO = 4
+_MAX_CANDIDATI_ACCONTO = 12
+
+
+def _combinazioni_che_quadrano(
+    movimenti: List[Dict[str, Any]], obiettivo: int,
+) -> List[List[Dict[str, Any]]]:
+    """Gruppi di 2..4 bonifici la cui somma fa ``obiettivo`` al centesimo."""
+    from itertools import combinations
+
+    trovate = []
+    for n in range(2, min(_MAX_BONIFICI_ACCONTO, len(movimenti)) + 1):
+        for gruppo in combinations(movimenti, n):
+            if sum(abs(to_cents(m.get("importo"))) for m in gruppo) == obiettivo:
+                trovate.append(list(gruppo))
+    return trovate
+
+
+async def reconcile_acconti_fornitore(
+    db, movements: List[Dict[str, Any]], *, excluded_movement_ids=None,
+    proponi: bool = True,
+) -> Dict[str, Any]:
+    """Piu' bonifici allo stesso fornitore che sommano al centesimo una sola
+    fattura aperta la pagano. Il beneficiario deve essere il fornitore della
+    fattura (IBAN, P.IVA o nome, ``_fornitore_del_movimento``), i bonifici
+    vengono dopo la fattura ed entro 90 giorni. Mai per solo importo: una
+    combinazione che vale per due fatture, o due combinazioni per la stessa
+    fattura, non collega niente e va in «Scegli fattura»."""
+    excluded = {str(value) for value in (excluded_movement_ids or [])}
+    candidati = [
+        m for m in movements
+        if str(m.get("id")) not in excluded and not m.get("riconciliato")
+        and not (m.get("fattura_id") or m.get("fattura_ids"))
+        and _is_outgoing_invoice_candidate(m)
+    ]
+    esito: Dict[str, Any] = {"collegati": [], "collegati_count": 0, "ambigui": 0, "proposte": 0}
+    if len(candidati) < 2:
+        return esito
+    fatture = await db["invoices"].find({"$or": [
+        {**FILTRO_NON_PAGATE, "stato_pagamento": {"$ne": "pagata"}},
+        {"in_attesa_riscontro_banca": True},
+    ]}, {"_id": 0}).to_list(50000)
+    fatture = [
+        f for f in fatture
+        if str(f.get("status") or "").lower() not in {"deleted", "archived", "archiviata"}
+        and str(f.get("tipo_documento") or f.get("document_type") or "").upper() not in {"TD04", "TD08"}
+        and _residuo_cents(f) > 0 and _supplier_key(f)
+    ]
+
+    soluzioni = []
+    for fattura in fatture:
+        data_fattura = str(fattura.get("invoice_date") or "")[:10]
+        try:
+            inizio = datetime.strptime(data_fattura, "%Y-%m-%d")
+        except ValueError:
+            continue
+        fine = (inizio + timedelta(days=_GIORNI_ACCONTI)).strftime("%Y-%m-%d")
+        residuo = _residuo_cents(fattura)
+        suoi = sorted(
+            (
+                m for m in candidati
+                if data_fattura <= str(m.get("data") or "")[:10] <= fine
+                and 0 < abs(to_cents(m.get("importo"))) < residuo
+                and _fornitore_del_movimento(m, fattura)
+            ),
+            key=lambda m: (str(m.get("data") or ""), str(m.get("id"))),
+        )
+        if len(suoi) < 2 or len(suoi) > _MAX_CANDIDATI_ACCONTO:
+            continue
+        combinazioni = _combinazioni_che_quadrano(suoi, residuo)
+        if combinazioni:
+            soluzioni.append((fattura, combinazioni))
+
+    # Univoca da tutti e due i lati: una sola combinazione per la fattura, e
+    # nessun bonifico conteso da un'altra fattura.
+    contesi: Dict[str, int] = {}
+    for _fattura, combinazioni in soluzioni:
+        for gruppo in combinazioni:
+            for m in gruppo:
+                contesi[str(m.get("id"))] = contesi.get(str(m.get("id")), 0) + 1
+    for fattura, combinazioni in soluzioni:
+        gruppo = combinazioni[0]
+        univoca = len(combinazioni) == 1 and all(contesi[str(m.get("id"))] == 1 for m in gruppo)
+        if not univoca:
+            esito["ambigui"] += 1
+            if proponi:
+                from app.services.riconciliazione_bancaria import proponi_scelta_fattura
+
+                for m in {str(m.get("id")): m for g in combinazioni for m in g}.values():
+                    creata = await proponi_scelta_fattura(
+                        db, m, [fattura],
+                        motivo=(
+                            "Acconto: piu' combinazioni di bonifici allo stesso fornitore "
+                            f"fanno il totale della fattura {fattura.get('invoice_number')}. "
+                            "Scegli quali la pagano."
+                        ),
+                        match_type="acconti_ambigui",
+                    )
+                    esito["proposte"] += bool(creata)
+            continue
+        try:
+            prospetti = [
+                (m, await validate_bank_invoice_allocations(db, m, [{
+                    "id": fattura["id"], "quota_cents": abs(to_cents(m.get("importo"))),
+                }]))
+                for m in gruppo
+            ]
+        except HTTPException as exc:
+            logger.info("Acconti non collegati (%s): %s", type(exc).__name__, exc.detail)
+            esito["ambigui"] += 1
+            continue
+        for movimento, allocations in prospetti:
+            await persist_bank_invoice_allocations(
+                db, movimento, allocations, actor="automatic_identity:acconti_fornitore",
+            )
+            esito["collegati"].append({
+                "movimento_id": movimento.get("id"),
+                "fattura_id": fattura.get("id"),
+                "regola": "acconti_stesso_fornitore",
+            })
+    esito["collegati_count"] = len(esito["collegati"])
+    return esito
+
+
 async def reconcile_deterministic_invoice_allocations(
     db, *, movement_ids=None, anno=None,
 ) -> Dict[str, Any]:
@@ -1042,4 +1170,13 @@ async def reconcile_deterministic_invoice_allocations(
         identity["ambigui_movimento"] + identity["ambigui_fattura"]
     )
     stats["proposte_soggetto_diverso"] = identity["proposte_soggetto_diverso"]
+    gia_collegati = allocated_movement_ids | {
+        str(voce["movimento_id"]) for voce in identity["collegati"]
+    }
+    acconti = await reconcile_acconti_fornitore(
+        db, movements, excluded_movement_ids=gia_collegati,
+    )
+    stats["allocati_acconti"] = acconti["collegati_count"]
+    stats["abbinamenti_acconti"] = acconti["collegati"]
+    stats["ambigui_acconti"] = acconti["ambigui"]
     return stats
