@@ -54,6 +54,9 @@ CATEGORIE_BANCA = [
     "Finanziamento soci",
     "Acconti clienti",
     "Risarcimenti e proventi straordinari",
+    "Assicurazioni",
+    "Commissioni POS",
+    "Debiti anno precedente",
     "Altro"
 ]
 
