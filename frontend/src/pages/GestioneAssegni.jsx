@@ -676,8 +676,6 @@ export default function GestioneAssegni() {
   // Learning Machine - nuovi stati
   const [learningLoading, setLearningLoading] = useState(false);
   const [learningResult, setLearningResult] = useState(null);
-  const [puliziaLoading, setPuliziaLoading] = useState(false);
-  const [puliziaResult, setPuliziaResult] = useState(null);
   const [statsAvanzate, setStatsAvanzate] = useState(null);
 
   // Associazione combinata (più assegni = 1 fattura)
@@ -857,38 +855,6 @@ export default function GestioneAssegni() {
       toast.error('Errore Learning: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLearningLoading(false);
-    }
-  };
-
-  // LEARNING MACHINE: Associazione Intelligente
-  const handleAssociaIntelligente = async () => {
-    setAutoAssociating(true);
-    setAutoAssocResult(null);
-    try {
-      const res = await api.post('/api/assegni/learning/associa-intelligente');
-      setAutoAssocResult(res.data);
-      loadData();
-    } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setAutoAssociating(false);
-    }
-  };
-
-  // PULIZIA DUPLICATI
-  const handlePuliziaDuplicati = async (dryRun = true) => {
-    setPuliziaLoading(true);
-    setPuliziaResult(null);
-    try {
-      const res = await api.post(`/api/assegni/learning/pulizia-duplicati?dry_run=${dryRun}`);
-      setPuliziaResult(res.data);
-      if (!dryRun && res.data.record_eliminati > 0) {
-        loadData();
-      }
-    } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setPuliziaLoading(false);
     }
   };
 
@@ -1529,38 +1495,12 @@ export default function GestioneAssegni() {
                 variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
-                  handleAssociaIntelligente();
-                }}
-                disabled={autoAssociating}
-                data-testid="associa-intelligente-btn"
-                title="Usa i pattern appresi per associazioni più accurate"
-                style={menuItemStyle}
-              >
-                🤖 Smart
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
                   toggleAmbiguiSection();
                 }}
                 data-testid="ambigui-toggle"
                 style={menuItemStyle}
               >
                 {ambiguiOpen ? '✕ Chiudi proposte fatture' : '📄 Verifica proposte fatture'}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  handlePuliziaDuplicati(true);
-                }}
-                disabled={puliziaLoading}
-                data-testid="pulizia-duplicati-btn"
-                title="Identifica e rimuove duplicati"
-                style={menuItemStyle}
-              >
-                🧹 Pulizia
               </Button>
               <Link
                 to="/learning-machine?tab=assegni"
@@ -1922,56 +1862,6 @@ export default function GestioneAssegni() {
             <Button
               variant="ghost"
               onClick={() => setLearningResult(null)}
-              aria-label="Chiudi"
-              style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
-            >
-              ✕
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* RISULTATO PULIZIA */}
-      {puliziaResult && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 15,
-            background: puliziaResult.dry_run ? COLORS.warningLight : COLORS.dangerLight,
-            borderRadius: BORDER_RADIUS.md,
-            border: `1px solid ${puliziaResult.dry_run ? COLORS.warning : COLORS.danger}`,
-          }}
-        >
-          <div
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
-          >
-            <div>
-              <strong
-                style={{ color: puliziaResult.dry_run ? COLORS.warning : COLORS.danger, fontSize: 14 }}
-              >
-                🧹 {puliziaResult.dry_run ? 'PREVIEW Pulizia' : 'Pulizia Completata'}:{' '}
-                {puliziaResult.totale_da_eliminare} record da eliminare
-              </strong>
-              <div style={{ marginTop: 8, fontSize: 13 }}>
-                <div>• Record vuoti: {puliziaResult.record_vuoti?.length || 0}</div>
-                <div>• Duplicati numero: {puliziaResult.duplicati_numero?.length || 0}</div>
-                {!puliziaResult.dry_run && (
-                  <div>• Record eliminati: {puliziaResult.record_eliminati}</div>
-                )}
-              </div>
-              {puliziaResult.dry_run && puliziaResult.totale_da_eliminare > 0 && (
-                <Button
-                  variant="danger"
-                  onClick={() => handlePuliziaDuplicati(false)}
-                  style={{ marginTop: 10 }}
-                >
-                  ⚠️ Conferma Eliminazione
-                </Button>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              onClick={() => setPuliziaResult(null)}
               aria-label="Chiudi"
               style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
             >
