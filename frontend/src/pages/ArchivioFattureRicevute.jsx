@@ -944,7 +944,7 @@ export default function ArchivioFatture() {
                     Documento
                   </Th>
                   <Th align="center" style={{ width: 150 }}>
-                    Pagata con
+                    Azione
                   </Th>
                 </tr>
               </thead>
