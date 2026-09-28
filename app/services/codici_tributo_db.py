@@ -122,13 +122,13 @@ CODICI_TRIBUTO_ERARIO = {
         "periodicita": "annuale"
     },
     
-    # Tributi locali addizionali (sostituto)
+    # 1671 e' un credito, non la trattenuta mensile (corretto il 27/09/2026).
     "1671": {
-        "descrizione": "Addizionale comunale IRPEF - sostituto d'imposta",
-        "categoria": "Addizionale",
-        "tipo": "ritenuta",
-        "scadenza": "16 del mese successivo",
-        "periodicita": "mensile"
+        "descrizione": "Eccedenza di versamenti di addizionale comunale IRPEF trattenuta dal sostituto d'imposta",
+        "categoria": "Credito",
+        "tipo": "credito",
+        "scadenza": "Compensazione",
+        "periodicita": "variabile"
     },
     
     # Crediti
@@ -237,10 +237,10 @@ CODICI_TRIBUTO_ERARIO = {
     
     # Ravvedimento operoso
     "8901": {"descrizione": "Sanzione pecuniaria IRPEF", "categoria": "Ravvedimento", "tipo": "sanzione", "scadenza": "Variabile", "periodicita": "ravvedimento"},
-    "8902": {"descrizione": "Interessi sul ravvedimento IRPEF", "categoria": "Ravvedimento", "tipo": "interessi", "scadenza": "Variabile", "periodicita": "ravvedimento"},
+    "8902": {"descrizione": "Sanzione pecuniaria addizionale regionale IRPEF", "categoria": "Ravvedimento", "tipo": "sanzione", "scadenza": "Variabile", "periodicita": "ravvedimento"},
     "8904": {"descrizione": "Sanzione pecuniaria IVA", "categoria": "Ravvedimento", "tipo": "sanzione", "scadenza": "Variabile", "periodicita": "ravvedimento"},
     "8906": {"descrizione": "Sanzione pecuniaria sostituti d'imposta", "categoria": "Ravvedimento", "tipo": "sanzione", "scadenza": "Variabile", "periodicita": "ravvedimento"},
-    "8907": {"descrizione": "Interessi ravvedimento sostituti d'imposta", "categoria": "Ravvedimento", "tipo": "interessi", "scadenza": "Variabile", "periodicita": "ravvedimento"},
+    "8907": {"descrizione": "Sanzione pecuniaria IRAP", "categoria": "Ravvedimento", "tipo": "sanzione", "scadenza": "Variabile", "periodicita": "ravvedimento"},
     
     # IMU
     "3914": {"descrizione": "IMU terreni", "categoria": "IMU", "tipo": "locale", "scadenza": "16 giugno (acconto), 16 dicembre (saldo)", "periodicita": "semestrale"},

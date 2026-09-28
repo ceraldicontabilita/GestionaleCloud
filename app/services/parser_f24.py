@@ -11,6 +11,8 @@ import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
+from app.engines.tributi_engine import mese_da_rateazione
+from app.services.codici_tributo_f24 import get_descrizione_causale_inps
 from app.utils.numeri_italiani import parse_importo_ita
 
 logger = logging.getLogger(__name__)
@@ -489,18 +491,6 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         if codice in CODICI_SOLO_REGIONI:
                             continue
 
-                        rateazione = ""
-                        anno = ""
-
-                        # Cerca rateazione e anno
-                        for j in range(i+1, min(i+5, len(row))):
-                            nw = row[j]['word']
-                            if nw in [',', '+/–']:
-                                continue
-                            if re.match(r'^\d{4}$', nw) and not re.match(r'^20\d{2}$', nw) and not rateazione:
-                                rateazione = nw
-                            elif re.match(r'^20\d{2}$', nw) and not anno:
-                                anno = nw
                         rateazione, anno = _rateazione_e_anno(
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
                         )
@@ -509,7 +499,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         debito, credito = debito_cents / 100, credito_cents / 100
 
                         if anno and (debito > 0 or credito > 0):
-                            mese = rateazione[2:4] if len(rateazione) == 4 else "00"
+                            mese = mese_da_rateazione(rateazione)
                             key = f"E_{codice}_{anno}_{rateazione}_{debito}_{credito}"
 
                             if key not in tributi_visti:
@@ -690,17 +680,6 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                     # - 1xxx (interessi ravvedimento - es. 1993)
                     if re.match(r'^(3\d{3}|8\d{3}|1\d{3})$', word):
                         codice = word
-                        rateazione = ""
-                        anno = ""
-
-                        for j in range(i+1, min(i+5, len(row))):
-                            nw = row[j]['word']
-                            if nw in [',', '+/–']:
-                                continue
-                            if re.match(r'^0[0-9]{3}$', nw) and not rateazione:
-                                rateazione = nw
-                            elif re.match(r'^20\d{2}$', nw) and not anno:
-                                anno = nw
                         rateazione, anno = _rateazione_e_anno(
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
                         )
@@ -709,7 +688,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         debito, credito = debito_cents / 100, credito_cents / 100
 
                         if anno and (debito > 0 or credito > 0):
-                            mese = rateazione[2:4] if len(rateazione) == 4 else "00"
+                            mese = mese_da_rateazione(rateazione)
                             key = f"R_{codice}_{cod_regione}_{anno}_{rateazione}_{debito}_{credito}"
 
                             if key not in tributi_visti:
@@ -728,7 +707,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "pagina": page_num + 1,
                                     "riga_y": y_key,
                                     "testo_sorgente": row_text,
-                                    "descrizione": get_descrizione_tributo_regioni(codice)
+                                    "descrizione": get_descrizione_tributo(codice)
                                 })
                         break
 
@@ -743,17 +722,6 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                     # Codici IRAP che vanno SEMPRE in REGIONI
                     if word in CODICI_IRAP:
                         codice = word
-                        rateazione = ""
-                        anno = ""
-
-                        for j in range(i+1, min(i+5, len(row))):
-                            nw = row[j]['word']
-                            if nw in [',', '+/–']:
-                                continue
-                            if re.match(r'^0[0-9]{3}$', nw) and not rateazione:
-                                rateazione = nw
-                            elif re.match(r'^20\d{2}$', nw) and not anno:
-                                anno = nw
                         rateazione, anno = _rateazione_e_anno(
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
                         )
@@ -762,7 +730,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         debito, credito = debito_cents / 100, credito_cents / 100
 
                         if anno and (debito > 0 or credito > 0):
-                            mese = rateazione[2:4] if len(rateazione) == 4 else "00"
+                            mese = mese_da_rateazione(rateazione)
                             # Usa "00" come codice regione placeholder
                             key = f"R_{codice}_00_{anno}_{rateazione}_{debito}_{credito}"
 
@@ -782,7 +750,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "pagina": page_num + 1,
                                     "riga_y": y_key,
                                     "testo_sorgente": row_text,
-                                    "descrizione": get_descrizione_tributo_regioni(codice)
+                                    "descrizione": get_descrizione_tributo(codice)
                                 })
                         break
 
@@ -824,20 +792,11 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 for i, item in enumerate(row):
                     word = item['word']
 
-                    # Codici tributi locali: 37xx, 38xx (Camera Commercio), 391x (IMU), 39xx (altri)
-                    if re.match(r'^(37\d{2}|38\d{2}|39\d{2})$', word):
+                    # Codici tributi locali: 37xx, 38xx (Camera Commercio), 391x (IMU),
+                    # 39xx (altri) e la TEFA (TEFA/TEFN/TEFZ, Ris. 5/E 2021): senza,
+                    # la TEFA del modello spariva e il saldo della sezione non tornava.
+                    if re.match(r'^(37\d{2}|38\d{2}|39\d{2}|TEF[ANZ])$', word):
                         codice = word
-                        rateazione = ""
-                        anno = ""
-
-                        for j in range(i+1, min(i+5, len(row))):
-                            nw = row[j]['word']
-                            if nw in [',', '+/–']:
-                                continue
-                            if re.match(r'^00\d{2}$', nw) and not rateazione:
-                                rateazione = nw
-                            elif re.match(r'^20\d{2}$', nw) and not anno:
-                                anno = nw
                         rateazione, anno = _rateazione_e_anno(
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
                         )
@@ -846,7 +805,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         debito, credito = debito_cents / 100, credito_cents / 100
 
                         if anno and (debito > 0 or credito > 0):
-                            mese = rateazione[2:4] if len(rateazione) == 4 else "00"
+                            mese = mese_da_rateazione(rateazione)
                             ente_ref = cod_comune or cod_ente or ""
                             key = f"L_{codice}_{ente_ref}_{anno}_{rateazione}_{debito}_{credito}"
 
@@ -867,7 +826,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "pagina": page_num + 1,
                                     "riga_y": y_key,
                                     "testo_sorgente": row_text,
-                                    "descrizione": get_descrizione_tributo_locale(codice)
+                                    "descrizione": get_descrizione_tributo(codice)
                                 })
                         break
 
@@ -1111,199 +1070,10 @@ def get_descrizione_tributo(codice: str) -> str:
     return _get_descrizione_tributo_canonica(codice)
 
 
-def get_descrizione_causale_inps(causale: str) -> str:
-    """Descrizione causali INPS."""
-    descrizioni = {
-        "DM10": "Contributi previdenziali dipendenti",
-        "CXX": "Contributi gestione separata",
-        "RC01": "Contributi artigiani/commercianti",
-        "C10": "Contributi cassa edile",
-        "CF10": "Contributi fondo pensione",
-    }
-    return descrizioni.get(causale, f"Contributo {causale}")
 
 
-def get_descrizione_tributo_regioni(codice: str) -> str:
-    """
-    Descrizione codici tributo regionali (sezione REGIONI F24).
-    Include IRAP, addizionali regionali e relativi ravvedimenti/sanzioni.
-    Fonte: https://www1.agenziaentrate.gov.it/servizi/codici/ricerca/
-    """
-    descrizioni = {
-        # ============================================
-        # IRAP - Autoliquidazione
-        # ============================================
-        "1868": "IRAP riallineamento principi contabili (D.Lgs. 192/2024)",
-        "3800": "IRAP saldo",
-        "3805": "Interessi pagamento dilazionato tributi regionali",
-        "3812": "IRAP acconto prima rata",
-        "3813": "IRAP acconto seconda rata o unica soluzione",
-        "3858": "IRAP versamento mensile (art.10-bis D.Lgs. 446/97)",
-        "3881": "Maggior acconto I rata IRAP (L. 207/2024)",
-        "3882": "Maggior acconto II rata IRAP (L. 207/2024)",
-        "3883": "IRAP compensazione credito (L. 190/2014)",
-        "4070": "CPB maggiorazione acconto IRAP (D.Lgs. 13/2024)",
-
-        # ============================================
-        # IRAP - Ravvedimento operoso
-        # ============================================
-        "1993": "Interessi ravvedimento IRAP (art.13 D.Lgs. 472/97)",
-        "8907": "Sanzione pecuniaria IRAP",
-
-        # ============================================
-        # IRAP - Accertamento e contenzioso
-        # ============================================
-        "1987": "Ravvedimento importi rateizzati IRAP - interessi",
-        "5063": "Recupero aiuto Stato esonero IRAP saldo - imposta/interessi",
-        "5064": "Recupero aiuto Stato esonero IRAP saldo - sanzione",
-        "5065": "Recupero aiuto Stato esonero IRAP acconto - imposta/interessi",
-        "5066": "Recupero aiuto Stato esonero IRAP acconto - sanzione",
-        "7452": "IRAP recupero credito compensazione - imposta/interessi",
-        "7453": "IRAP recupero credito compensazione - sanzione",
-        "9400": "Spese di notifica atti impositivi",
-        "9415": "IRAP accertamento con adesione - imposta/interessi",
-        "9416": "IRAP accertamento con adesione - sanzione",
-        "9424": "Sanzione anagrafe tributaria codice fiscale",
-        "9466": "IRAP omessa impugnazione - imposta/interessi",
-        "9467": "IRAP omessa impugnazione - sanzione",
-        "9478": "Sanzione decadenza rateazione IRAP (art.29 DL 78/2010)",
-        "9512": "IRAP conciliazione giudiziale - imposta/interessi",
-        "9513": "IRAP conciliazione giudiziale - sanzione",
-        "9607": "Sanzione pecuniaria IRAP definizione sanzioni",
-        "9695": "Sanzione componenti reddituali negativi non scambiati",
-        "9908": "IRAP adesione verbale constatazione - imposta/interessi",
-        "9909": "IRAP adesione verbale constatazione - sanzione",
-        "9920": "IRAP adesione invito comparire - imposta/interessi",
-        "9921": "IRAP adesione invito comparire - sanzione",
-        "9934": "IRAP contenzioso art.29 DL 78/2010 - imposta",
-        "9935": "IRAP contenzioso art.29 DL 78/2010 - interessi",
-        "9949": "Ravvedimento importi rateizzati IRAP - sanzione",
-        "9955": "IRAP reclamo/mediazione art.17-bis - imposta/interessi",
-        "9956": "IRAP reclamo/mediazione - sanzioni",
-        "9971": "Sanzioni IRAP contenzioso art.29 DL 78/2010",
-        "9988": "IRAP definizione agevolata PVC - imposta/interessi",
-        "9990": "IRAP definizione agevolata PVC - sanzione",
-
-        # ============================================
-        # Addizionale regionale IRPEF
-        # ============================================
-        "3801": "Addizionale regionale IRPEF - autotassazione",
-        "3802": "Addizionale regionale IRPEF - sostituto d'imposta",
-        "3803": "Addizionale regionale IRPEF - autotassazione acconto",
-        "8902": "Interessi ravvedimento addizionale regionale IRPEF",
-        "8903": "Sanzione pecuniaria addizionale regionale IRPEF",
-
-        # ============================================
-        # Sanatorie e definizioni regionali
-        # ============================================
-        "LP33": "IRAP/Add.reg. IRPEF definizione controversie (L. 130/2022) - imposta",
-        "LP34": "IRAP/Add.reg. IRPEF definizione controversie (L. 130/2022) - sanzioni",
-        "PF11": "IRAP definizione agevolata PVC (DL 119/2018)",
-        "PF33": "IRAP/Add.reg. IRPEF definizione controversie (DL 119/2018) - imposta",
-        "PF34": "IRAP/Add.reg. IRPEF definizione controversie (DL 119/2018) - sanzioni",
-        "TF23": "IRAP/Add.reg. IRPEF definizione controversie (L. 197/2022) - imposta",
-        "TF24": "IRAP/Add.reg. IRPEF definizione controversie (L. 197/2022) - sanzioni",
-        "TF42": "IRAP/Add.reg. IRPEF regolarizzazione pagamenti (L. 197/2022)",
-        "TF50": "IRAP ravvedimento speciale (L. 197/2022) - sanzioni",
-        "8124": "IRAP/Add.reg. IRPEF definizione controversie (DL 50/2017) - imposta",
-        "8125": "IRAP/Add.reg. IRPEF definizione controversie (DL 50/2017) - sanzioni",
-    }
-    return descrizioni.get(codice, f"Tributo regionale {codice}")
 
 
-def get_descrizione_tributo_locale(codice: str) -> str:
-    """
-    Descrizione codici tributo locali (sezione IMU/LOCALI F24).
-    Include IMU, TASI, TARI, addizionali comunali, ecc.
-    Fonte: https://www1.agenziaentrate.gov.it/servizi/codici/ricerca/
-    """
-    descrizioni = {
-        # ============================================
-        # Addizionale comunale IRPEF
-        # ============================================
-        "1671": "Addizionale comunale IRPEF - sostituto d'imposta",
-        "3797": "Addizionale comunale IRPEF - acconto autotassazione",
-        "3843": "Addizionale comunale IRPEF - acconto autotassazione",
-        "3844": "Addizionale comunale IRPEF - saldo autotassazione",
-        "3847": "Addizionale comunale IRPEF trattenuta sostituto - acconto",
-        "3848": "Addizionale comunale IRPEF trattenuta sostituto - saldo",
-
-        # ============================================
-        # IMU - Imposta Municipale Unica
-        # ============================================
-        "3912": "IMU abitazione principale e pertinenze",
-        "3913": "IMU fabbricati rurali strumentali - comune",
-        "3914": "IMU terreni - comune",
-        "3915": "IMU terreni - Stato",
-        "3916": "IMU aree fabbricabili - comune",
-        "3917": "IMU aree fabbricabili - Stato",
-        "3918": "IMU altri fabbricati - comune",
-        "3919": "IMU interessi accertamento - comune",
-        "3920": "IMU sanzioni accertamento - comune",
-        "3923": "IMU imposta - comune",
-        "3924": "IMU imposta - Stato",
-        "3925": "IMU fabbricati gruppo D - Stato",
-        "3926": "ISCOP imposta di scopo",
-        "3927": "ISCOP interessi",
-        "3928": "ISCOP sanzioni",
-        "3930": "IMU fabbricati gruppo D - comune (incremento)",
-
-        # ============================================
-        # TOSAP/COSAP
-        # ============================================
-        "3931": "TOSAP/COSAP occupazione permanente",
-        "3932": "TOSAP/COSAP occupazione temporanea",
-        "3933": "TOSAP/COSAP interessi",
-        "3934": "TOSAP/COSAP sanzioni",
-
-        # ============================================
-        # ICI (vecchia imposta - pre IMU)
-        # ============================================
-        "3901": "ICI abitazione principale",
-        "3902": "ICI terreni agricoli",
-        "3903": "ICI aree fabbricabili",
-        "3904": "ICI altri fabbricati",
-        "3906": "ICI interessi",
-        "3907": "ICI sanzioni",
-
-        # ============================================
-        # TARES
-        # ============================================
-        "3944": "TARES imposta",
-        "3945": "TARES interessi",
-        "3946": "TARES sanzioni",
-        "3950": "TARI tariffa rifiuti",
-        "3951": "TARI interessi",
-        "3952": "TARI sanzioni",
-        "3955": "TARES maggiorazione",
-        "3956": "TARES maggiorazione interessi",
-        "3957": "TARES maggiorazione sanzioni",
-
-        # ============================================
-        # TASI
-        # ============================================
-        "3958": "TASI abitazione principale e pertinenze",
-        "3959": "TASI fabbricati rurali strumentali",
-        "3960": "TASI aree fabbricabili",
-        "3961": "TASI altri fabbricati",
-        "3962": "TASI interessi accertamento",
-        "3963": "TASI sanzioni accertamento",
-
-        # ============================================
-        # ICP/CIMP (Pubblicità)
-        # ============================================
-        "3964": "ICP/CIMP imposta pubblicità",
-        "3965": "ICP/CIMP interessi",
-        "3966": "ICP/CIMP sanzioni",
-
-        # ============================================
-        # Camera di Commercio
-        # ============================================
-        "3850": "Diritto camerale annuale",
-        "3851": "Diritto camerale interessi",
-        "3852": "Diritto camerale sanzioni",
-    }
-    return descrizioni.get(codice, f"Tributo locale {codice}")
 
 
 def confronta_codici_tributo(f24_commercialista: Dict, quietanza: Dict) -> Dict[str, Any]:

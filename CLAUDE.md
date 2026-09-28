@@ -504,19 +504,18 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - IRAP è un motore separato da IRES, non sottrae mai l'intero F24, e le
   aliquote sono versionate per periodo d'imposta.
 - **Situazione fiscale legge il registro unico F24** (`registro_fiscale_f24.py`), mai l'indice Excel su Drive; un quadro del 770 caricato da solo (`componenti_770.py`) si aggancia al 770 intero per «Identificativo dichiarazione», mai per nome o importo.
-- Il catalogo dei codici tributo è consultivo: una ricerca non crea F24,
-  pagamenti o scritture. Le tabelle sono **due** —
-  `services/codici_tributo_f24.py` (la legge il parser) e
-  `services/codici_tributo_db.py` (con le scadenze) — e
-  `tests/fiscale/test_codici_tributo_coerenti.py` le fissa sulla fonte AdE: IRES 2001
-  acconto I, 2002 acconto II, 2003 saldo; 3802 addizionale regionale del sostituto, 3801
-  autotassazione. Un testo «di produzione» non vale come fonte: su entrambi era sbagliato.
+- Il catalogo dei codici tributo è consultivo: una ricerca non crea F24, pagamenti o scritture. **Le
+  descrizioni vengono solo da `services/codici_tributo_f24.py`**, causali INPS comprese (RC01 è la
+  regolarizzazione, non gli artigiani); `services/codici_tributo_db.py` aggiunge le scadenze. Parser e router
+  non tengono tabelle proprie (`test_codici_tributo_registro_unico.py`); `test_codici_tributo_coerenti.py`
+  fissa la fonte AdE: IRES 2001 acconto I, 2002 acconto II, 2003 saldo; 3802 sostituto, 3801 autotassazione;
+  TEFA/TEFN/TEFZ (Ris. 5/E 2021). Un testo «di produzione» non vale come fonte: su entrambi era sbagliato.
 - **Piano tributi** (`services/piano_tributi.py`, `/api/f24/piano-tributi`): le voci ricorrenti
   del titolare aprono un'attesa per periodo; la soddisfa solo l'addebito in banca, la quietanza
   la lascia `DA_VERIFICARE`. Legge il registro unico F24, non ne tiene un secondo; l'importo
   viene dal modello arrivato, mai stimato. 3802/3848 sono rate del saldo dell'anno prima.
 - Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`, `mese`), non sul modello né nella data di pagamento;
-  l'IVA mensile sono i codici 6001–6012. **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è autorizzato.
+  l'IVA mensile sono i codici 6001–6012. «00MM» è il mese, «NNRR» la rata: «0101» è la rata unica, mai gennaio (`tributi_engine.mese_da_rateazione`). Una riga d'avviso non trovata mostra gli indizi `POSSIBILE_COMPENSAZIONE_6099` / `POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE` (±1,00 €), mai un aggancio. **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è autorizzato.
 - **Dilazione INPS** (`dilazioni_inps.py`, PEC INPS con `Allegato.zip` o Import): il piano apre una rata per scadenza; la paga la quietanza con sede, causale,
   matricola, periodo e importo al centesimo, dopo la domanda, in ordine; l'addebito è quello della quietanza. Rata scaduta senza quietanza → alert.
 - **F24 ravveduto** (`f24_ravvedimento.py`): l'originale del commercialista resta; modello o quietanza con sanzioni gli si affianca
@@ -566,7 +565,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   **dati chiave** (ratei 13ª e 14ª, L.207/24, trattamento integrativo L.21) da `parsers/cedolino_voci.py`.
 - **Ogni PDF letto è una scheda Markdown** (`schede_markdown.py`); registro per anno riscritto a ogni scheda; ricarica dalle schede, mai dai PDF.
 - **Doppioni d'archivio** (`doppioni_archivio.py`): stessa busta (CF, periodo, tipo, netto, lordo, trattenute), quietanza
-  (protocollo) o bonifico (CRO+importo) non si riscrive; le copie vanno in `<collezione>_quarantena`, resta la pagata. Una busta già in archivio è un esito (`gia_presenti` → ELABORATE), mai un errore; la «STAMPA DI CONTROLLO» con la definitiva identica (CF, periodo, netto) va nel Cestino (`cedolini_stampe_controllo.py`).
+  (protocollo **e** saldo: col saldo diverso è un'altra delega, `protocollo_condiviso_con`) o bonifico (CRO+importo; il RIF. INTERNO BPM «MB…», quello dell'estratto conto, è `rif_interno`) non si riscrive; le copie vanno in `<collezione>_quarantena`, resta la pagata. Una busta già in archivio è un esito (`gia_presenti` → ELABORATE), mai un errore; la «STAMPA DI CONTROLLO» con la definitiva identica (CF, periodo, netto) va nel Cestino (`cedolini_stampe_controllo.py`).
 - Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.
 - **Pagamenti stipendio**: un solo ponte gestionale→HR (`hr_pagamenti_deposito`). Dipendente da CF → nome
   completo univoco → cognome univoco: la corrispondenza univoca **basta da sola** («il nome di un
@@ -862,6 +861,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
+- **Minisito fiscale** (RST-MINI): script e JSON attesi non sono su Drive (solo i due HTML). Saldo IRAP 2024 (5.164,00 €) e acconto IRAP 2025 (4.238,00 €) senza quietanza: da verificare col commercialista. 18 quietanze doppie (21.727,35 €) da mettere in quarantena con `/api/doppioni` (prima `dry_run`).
 - `gestionale.blobs`: oltre ai backup di Lotti, 216 PDF che **nessun documento cita**; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
 
 ## Logica dentro al database

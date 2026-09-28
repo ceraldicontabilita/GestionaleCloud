@@ -17,7 +17,7 @@ import logging
 import uuid
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -239,18 +239,25 @@ async def importa_quietanza_bytes(
 
     dg = parsed.get("dati_generali", {})
     protocollo = dg.get("protocollo_telematico", "")
+    saldo_quietanza = dg.get("saldo_delega", 0) or parsed.get("totali", {}).get("saldo_netto", 0)
+    protocollo_condiviso: List[str] = []
     if str(protocollo or "").strip():
-        # Stesso protocollo telematico = stessa quietanza, anche da un altro PDF.
-        stessa = await db[COLL_QUIETANZE].find_one(
-            {"protocollo_telematico": protocollo}, {"_id": 0, "id": 1},
-        )
+        # Stesso protocollo telematico e stesso saldo = stessa quietanza, anche
+        # da un altro PDF. Con un saldo diverso e' un'altra delega uscita dallo
+        # stesso PDF (il ravvedimento pagato lo stesso giorno): si importa e si
+        # annota, perche' scartarla toglieva un pagamento vero.
+        stesse = await db[COLL_QUIETANZE].find(
+            {"protocollo_telematico": protocollo},
+            {"_id": 0, "id": 1, "saldo": 1, "totali": 1, "dati_generali": 1},
+        ).to_list(None)
+        stessa = next((q for q in stesse if saldo_cents(q) == saldo_cents({"saldo": saldo_quietanza})), None)
         if stessa:
             await db[COLL_QUIETANZE].update_one(
                 {"id": stessa["id"]}, {"$addToSet": {"source_occurrences": occurrence}},
             )
             return {"success": True, "duplicate": True, "quietanza_id": stessa["id"],
-                    "filename": filename, "motivo": "stesso protocollo telematico"}
-    saldo_quietanza = dg.get("saldo_delega", 0) or parsed.get("totali", {}).get("saldo_netto", 0)
+                    "filename": filename, "motivo": "stesso protocollo telematico e stesso saldo"}
+        protocollo_condiviso = [q["id"] for q in stesse if q.get("id")]
     data_pagamento = dg.get("data_pagamento")
     codice_fiscale = dg.get("codice_fiscale", "")
 
@@ -292,6 +299,9 @@ async def importa_quietanza_bytes(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "source_occurrences": [occurrence],
     }
+    if protocollo_condiviso:
+        # Da confermare a vista: due deleghe col protocollo uguale e saldi diversi.
+        quietanza_doc["protocollo_condiviso_con"] = protocollo_condiviso
     if source_metadata.get("drive_file_id"):
         quietanza_doc.update({
             "drive_file_id": source_metadata["drive_file_id"],

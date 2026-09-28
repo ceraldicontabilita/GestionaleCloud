@@ -591,7 +591,7 @@ TRIBUTI_F24_MAPPING = {
     
     # === RAVVEDIMENTO OPEROSO ===
     "8904": "8.7_IRAP",  # Sanzioni IRAP
-    "8907": "8.7_IRAP",  # Interessi ravvedimento IRAP
+    "8907": "8.7_IRAP",  # Sanzione pecuniaria IRAP
     "8918": "8.2_IMU",   # Sanzioni IMU
     "1993": "8.7_IRAP",  # Interessi IRAP
     "1631": "8.6_IRES",  # Credito IRES da utilizzare

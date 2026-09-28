@@ -3678,6 +3678,7 @@ async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: O
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
     from fastapi.responses import StreamingResponse
+    from app.services.conti_pos import data_italiana
 
     dati = await _calcola_associazioni_bonifici(get_db(), anno, mese, stato)
     mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio",
@@ -3688,7 +3689,7 @@ async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: O
     ws.title = "Cedolini e Bonifici"
     intestazioni = ["Dipendente", "Periodo", "Importo Cedolino", "Importo Bonifico",
                     "Acconti", "Erogato", "Saldo", "Stato", "Qualità match", "Fonte",
-                    "N. Bonifici", "Data ultimo bonifico", "PDF Cedolino"]
+                    "N. Bonifici", "Data ultimo bonifico", "CRO / riferimento bonifici", "PDF Cedolino"]
     ws.append(intestazioni)
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="5B7A6B", end_color="5B7A6B", fill_type="solid")
@@ -3709,6 +3710,9 @@ async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: O
         # data), non sul campo aggregato della busta.
         date_bonifici = [b.get("data") for b in (r.get("bonifici") or []) if b.get("data")]
         data_ultimo = max(date_bonifici) if date_bonifici else (r.get("bonifico_data") or "")
+        # Il CRO sta accanto al bonifico: e' quello che si cerca sull'estratto conto.
+        riferimenti = ", ".join(dict.fromkeys(
+            str(b.get("riferimento")) for b in (r.get("bonifici") or []) if b.get("riferimento")))
         ws.append([
             r.get("dipendente"), periodo,
             r.get("busta") or 0, r.get("bonifico") or 0, r.get("acconti") or 0,
@@ -3716,8 +3720,14 @@ async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: O
             stati_lbl.get(r.get("stato"), r.get("stato")),
             qualita_lbl.get(r.get("qualita"), r.get("qualita") or ""),
             r.get("fonte") or "", r.get("n_bonifici") or 0,
-            data_ultimo, "Sì" if r.get("cedolino_pdf") else "No",
+            data_italiana(data_ultimo) if data_ultimo else "", riferimenti,
+            "Sì" if r.get("cedolino_pdf") else "No",
         ])
+    # Importi in euro all'italiana, incolonnati a destra (colonne C..G).
+    for riga in ws.iter_rows(min_row=2, min_col=3, max_col=7):
+        for cella in riga:
+            cella.number_format = '#,##0.00 "€"'
+            cella.alignment = Alignment(horizontal="right")
     for col in ws.columns:
         larghezza = max((len(str(c.value)) if c.value is not None else 0) for c in col) + 2
         ws.column_dimensions[col[0].column_letter].width = min(max(larghezza, 10), 40)
