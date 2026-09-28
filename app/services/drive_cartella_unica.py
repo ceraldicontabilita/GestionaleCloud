@@ -273,14 +273,18 @@ _BUSTE_GIA_PRESENTI = re.compile(r"^Cedolino non registrato: \d+ buste lette$")
 
 
 async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
-                                             limite: int = 200) -> int:
-    """Riporta in DA ELABORARE le buste finite in ERRORI solo perche' gia' registrate."""
+                                             limite: Optional[int] = None) -> int:
+    """Riporta in DA ELABORARE le buste finite in ERRORI solo perche' gia' registrate.
+
+    Tutte in una volta (decisione del titolare): spostarle costa solo metadati,
+    la lettura poi la fa il giro a lotti.
+    """
     righe = await db[REGISTRO].find(
         {"cartella": ERRORI, "tipo": "cedolino"}, {"_id": 0, "id": 1, "nome": 1, "motivo": 1},
     ).to_list(None)
     rimessi = 0
     for riga in righe:
-        if rimessi >= limite:
+        if limite is not None and rimessi >= limite:
             break
         if not _BUSTE_GIA_PRESENTI.match(str(riga.get("motivo") or "")):
             continue
