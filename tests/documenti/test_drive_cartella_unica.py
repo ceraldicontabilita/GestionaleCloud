@@ -329,7 +329,7 @@ def test_prima_la_radice_poi_da_elaborare_e_gli_xml_in_testa(ambiente, monkeypat
     assert [n for n, _ in smistati][3:] == ["bonifico-1.pdf", "bonifico-2.pdf", "bonifico-inbox.pdf"]
 
 
-# ── Arretrato degli estratti conto (scelta del titolare: dal 2026) ─────────
+# ── Arretrato degli estratti conto (titolare: dal 2025, l'anno prima per riconciliare) ──
 
 def _smista_estratto(monkeypatch, anno, tipo="estratto_conto_nexi"):
     import app.routers.documenti as documenti
@@ -351,12 +351,12 @@ def test_estratto_dell_arretrato_resta_fermo_in_arretrato(monkeypatch):
     monkeypatch.delenv("DRIVE_ESTRATTI_ANNO_MINIMO", raising=False)
     esito, chiamato = _smista_estratto(monkeypatch, 2024)
     assert not chiamato, "un estratto 2024 non si registra"
-    assert esito["arretrato"] is True and esito["anno"] == 2024 and esito["anno_minimo"] == 2026
+    assert esito["arretrato"] is True and esito["anno"] == 2024 and esito["anno_minimo"] == 2025
     cartella, motivo = cu.esito_del_risultato(esito)
     assert cartella == cu.ARRETRATO and "2024" in motivo
 
 
-@pytest.mark.parametrize("anno", [2026, None])
+@pytest.mark.parametrize("anno", [2025, 2026, None])
 def test_estratto_dell_anno_o_senza_anno_passa(monkeypatch, anno):
     monkeypatch.delenv("DRIVE_ESTRATTI_ANNO_MINIMO", raising=False)
     esito, chiamato = _smista_estratto(monkeypatch, anno)
@@ -387,3 +387,25 @@ def test_nel_giro_l_arretrato_va_in_arretrato_non_in_errori(ambiente):
     assert drive.file["e1"]["parent"] == "arretrato"
     riga = run(db[cu.REGISTRO].find_one({"id": "e1"}))
     assert riga["esito"] == "arretrato" and riga["cartella"] == cu.ARRETRATO
+
+
+def test_gli_estratti_conto_passano_davanti_agli_xml_e_ai_pdf():
+    """28/09/2026: gli estratti ufficiali BPM del 2025 erano sciolti nella
+    radice dietro oltre cinquemila file, e senza di loro stipendi e PayPal
+    restavano da riconciliare."""
+    coda = [
+        {"name": "bonifico.pdf"},
+        {"name": "IT01234567890_abc.xml", "createdTime": "2026-09-26T00:00:00Z"},
+        {"name": "Estratto conto corrente_30-09-2025.pdf"},
+        {"name": "LUL_2026_08.pdf"},
+        {"name": "ElencoEntrateUsciteAndamento.csv"},
+        {"name": "Estratto_Conto (3).pdf"},
+    ]
+    assert [f["name"] for f in cu.ordina_coda(coda)] == [
+        "LUL_2026_08.pdf",
+        "Estratto conto corrente_30-09-2025.pdf",
+        "Estratto_Conto (3).pdf",
+        "IT01234567890_abc.xml",
+        "bonifico.pdf",
+        "ElencoEntrateUsciteAndamento.csv",
+    ]
