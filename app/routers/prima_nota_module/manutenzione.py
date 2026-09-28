@@ -1169,9 +1169,14 @@ async def arricchisci_pagamenti_banca(
     di Prima Nota Banca agganciata a un movimento reale dell'estratto conto,
     specifica COME è stato pagato leggendo la causale bancaria — bonifico,
     assegno (con numero), addebito diretto SDD, PayPal — e, se assegno,
-    riporta il dato anche in Gestione Assegni (stato incassato)."""
+    annota il numero sulla riga.
+
+    Gli assegni non li crea ne' li segna incassati: lo fa solo il giro
+    dell'estratto conto (``assegni_estratto_conto``), con numero e importo al
+    centesimo. Qui nascevano schede «incassato» dalla sola causale e un
+    numero trovato con ``$regex`` di coda, che agganciava l'assegno sbagliato
+    quando due numeri finivano uguali."""
     import re as _re
-    import uuid as _uuid
 
     db = Database.get_db()
     movs = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
@@ -1182,10 +1187,7 @@ async def arricchisci_pagamenti_banca(
     ).to_list(20000)
 
     aggiornati = 0
-    assegni_creati = 0
-    assegni_aggiornati = 0
     per_metodo: Dict[str, int] = {}
-    now = datetime.now(timezone.utc).isoformat()
 
     for m in movs:
         ec = await db["estratto_conto_movimenti"].find_one(
@@ -1227,45 +1229,12 @@ async def arricchisci_pagamenti_banca(
             upd["descrizione"] = f"{descr} · {etichetta}"
         await db[COLLECTION_PRIMA_NOTA_BANCA].update_one({"id": m["id"]}, {"$set": upd})
 
-        if metodo == "assegno" and numero:
-            esistente = await db["assegni"].find_one(
-                {"$or": [{"numero": numero}, {"numero": {"$regex": f"{numero}$"}}]})
-            if esistente:
-                if esistente.get("stato") != "incassato":
-                    await db["assegni"].update_one(
-                        {"id": esistente["id"]},
-                        {"$set": {"stato": "incassato",
-                                  "importo": esistente.get("importo") or m.get("importo"),
-                                  "updated_at": now}})
-                    assegni_aggiornati += 1
-            else:
-                await db["assegni"].insert_one({
-                    "id": str(_uuid.uuid4()),
-                    "numero": numero,
-                    "stato": "incassato",
-                    "importo": m.get("importo"),
-                    "beneficiario": m.get("fornitore"),
-                    "causale": (ec.get("descrizione_originale") or "")[:150],
-                    "data_emissione": None,
-                    "data_scadenza": None,
-                    "data_fattura": None,
-                    "numero_fattura": None,
-                    "fattura_collegata": m.get("fattura_id"),
-                    "fatture_collegate": [m["fattura_id"]] if m.get("fattura_id") else [],
-                    "fornitore_piva": None,
-                    "note": f"Creato dall'estratto conto (addebito del {m.get('data')})",
-                    "created_at": now,
-                    "updated_at": now,
-                })
-                assegni_creati += 1
 
     return {
         "dry_run": dry_run,
         "righe_con_estratto_conto": len(movs),
         "aggiornate": aggiornati,
         "per_metodo": per_metodo,
-        "assegni_creati": assegni_creati,
-        "assegni_aggiornati": assegni_aggiornati,
     }
 
 

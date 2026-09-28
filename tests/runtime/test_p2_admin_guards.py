@@ -45,7 +45,6 @@ def test_endpoint_distruttivi_sono_admin_only():
         ("/mittenti/migra-legacy", "POST"),
         ("/dizionario-email/reset", "DELETE"),
         ("/inizializza-piano-esteso", "POST"),
-        ("/pulizia-duplicati", "POST"),
         ("/reset-riconciliazione", "POST"),
         # ERP-001 (19/07/2026): scrittura di massa su movimenti_banca,
         # prima richiamabile da qualunque utente autenticato non in sola

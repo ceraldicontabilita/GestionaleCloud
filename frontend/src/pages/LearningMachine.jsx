@@ -138,7 +138,6 @@ export default function LearningMachine() {
   const [assegniStats, setAssegniStats] = useState(null);
   const [assegniLoading, setAssegniLoading] = useState(false);
   const [learningResult, setLearningResult] = useState(null);
-  const [puliziaResult, setPuliziaResult] = useState(null);
 
   // === DOCUMENTI STATE ===
   const [documentiStats, setDocumentiStats] = useState(null);
@@ -388,34 +387,6 @@ export default function LearningMachine() {
       });
     } catch (error) {
       setMessage({ type: 'error', text: 'Errore nel learning' });
-    }
-    setAssegniLoading(false);
-  };
-
-  const handleAssociaIntelligente = async () => {
-    setAssegniLoading(true);
-    try {
-      const res = await api.post('/api/assegni/learning/associa-intelligente');
-      setMessage({ type: 'success', text: `Associati ${res.data.associati || 0} assegni!` });
-      loadAssegniStats();
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Errore associazione' });
-    }
-    setAssegniLoading(false);
-  };
-
-  const handlePuliziaDuplicati = async (dryRun = true) => {
-    setAssegniLoading(true);
-    setPuliziaResult(null);
-    try {
-      const res = await api.post(`/api/assegni/learning/pulizia-duplicati?dry_run=${dryRun}`);
-      setPuliziaResult(res.data);
-      if (!dryRun && res.data.record_eliminati > 0) {
-        loadAssegniStats();
-        setMessage({ type: 'success', text: `Eliminati ${res.data.record_eliminati} duplicati!` });
-      }
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Errore pulizia' });
     }
     setAssegniLoading(false);
   };
@@ -1199,103 +1170,6 @@ export default function LearningMachine() {
                   <p style={{ margin: 0, fontSize: 13, color: COLORS.accent }}>
                     ✅ Appresi <strong>{learningResult.pattern_appresi}</strong> pattern da{' '}
                     {learningResult.assegni_analizzati} assegni
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Card: Associa Intelligente */}
-            <div
-              style={{
-                background: COLORS.card,
-                borderRadius: BORDER_RADIUS.md,
-                padding: 20,
-                boxShadow: SHADOWS.md,
-              }}
-            >
-              <h3
-                style={{
-                  margin: '0 0 12px 0',
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: COLORS.primaryLight,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <Zap size={18} color={COLORS.warning} /> Associazione Intelligente
-              </h3>
-              <p style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
-                Usa i pattern appresi per associare automaticamente gli assegni alle fatture.
-              </p>
-              <Button
-                variant="warning"
-                onClick={handleAssociaIntelligente}
-                disabled={assegniLoading}
-                style={{ width: '100%', justifyContent: 'center' }}
-              >
-                <Zap size={16} /> {assegniLoading ? 'Associazione...' : 'Associa Automaticamente'}
-              </Button>
-            </div>
-
-            {/* Card: Pulizia Duplicati */}
-            <div
-              style={{
-                background: COLORS.card,
-                borderRadius: BORDER_RADIUS.md,
-                padding: 20,
-                boxShadow: SHADOWS.md,
-              }}
-            >
-              <h3
-                style={{
-                  margin: '0 0 12px 0',
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: COLORS.primaryLight,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <Trash2 size={18} color={COLORS.danger} /> Pulizia Duplicati
-              </h3>
-              <p style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
-                Trova e rimuove assegni duplicati dal database.
-              </p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button
-                  variant="secondary"
-                  onClick={() => handlePuliziaDuplicati(true)}
-                  disabled={assegniLoading}
-                  style={{ flex: 1, justifyContent: 'center' }}
-                >
-                  Anteprima
-                </Button>
-                <Button
-                  variant="danger"
-                  onClick={() => handlePuliziaDuplicati(false)}
-                  disabled={assegniLoading || !puliziaResult}
-                  style={{ flex: 1, justifyContent: 'center' }}
-                >
-                  Elimina
-                </Button>
-              </div>
-
-              {puliziaResult && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    background: COLORS.dangerLight,
-                    borderRadius: BORDER_RADIUS.md,
-                  }}
-                >
-                  <p style={{ margin: 0, fontSize: 13, color: COLORS.danger }}>
-                    Trovati <strong>{puliziaResult.duplicati_trovati || 0}</strong> duplicati
-                    {puliziaResult.record_eliminati > 0 &&
-                      ` - Eliminati: ${puliziaResult.record_eliminati}`}
                   </p>
                 </div>
               )}
