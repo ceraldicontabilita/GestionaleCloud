@@ -101,6 +101,48 @@ ASSEGNO_STATI = {
     "scaduto": {"label": "Scaduto", "color": "#795548"}
 }
 
+# Un numero uscito dal carnet resta consumato: da questi stati non si torna
+# a "vuoto" o "compilato" (disponibile), nemmeno con un PUT generico.
+STATI_NUMERO_CONSUMATO = {
+    "emesso", "parzialmente_assegnato", "assegnato", "incassato",
+    "annullato", "stornato", "scaduto",
+}
+STATI_DISPONIBILI = {"vuoto", "compilato"}
+# Campi che il PUT non annota nello storico (tecnici).
+_CAMPI_SENZA_STORICO = {"updated_at", "storico"}
+
+
+def _voce_storico(prima: Dict[str, Any], dopo: Dict[str, Any], azione: str, now: str,
+                  motivo: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Valore precedente e nuovo di ogni campo cambiato: la scheda non si riscrive senza traccia."""
+    campi = {
+        k: {"prima": prima.get(k), "dopo": v}
+        for k, v in dopo.items()
+        if k not in _CAMPI_SENZA_STORICO and prima.get(k) != v
+    }
+    if not campi and azione == "modifica":
+        return None
+    voce: Dict[str, Any] = {"at": now, "azione": azione, "campi": campi}
+    if motivo:
+        voce["motivo"] = motivo
+    return voce
+
+
+async def _scollega_fatture(db, assegno: Dict[str, Any], now: str) -> List[Dict[str, Any]]:
+    """Toglie l'assegno dalle fatture che pagava: il loro residuo torna aperto."""
+    collegate = [q for q in assegno.get("fatture_collegate") or [] if isinstance(q, dict)]
+    ids = [str(q.get("fattura_id")) for q in collegate if q.get("fattura_id")]
+    for campo in ("fattura_collegata", "fattura_id"):
+        if assegno.get(campo) and str(assegno[campo]) not in ids:
+            ids.append(str(assegno[campo]))
+            collegate.append({"fattura_id": str(assegno[campo])})
+    for fid in ids:
+        await db["invoices"].update_one(
+            {"id": fid}, {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}})
+        await _aggiorna_stato_intento_fattura(db, fid, now)
+    return collegate
+
+
 @router.get("/stati")
 async def get_assegno_stati() -> Dict[str, Any]:
     """Ritorna gli stati disponibili per gli assegni."""
@@ -1388,6 +1430,8 @@ async def update_assegno(
     data.pop("id", None)
     data.pop("numero", None)
     data.pop("created_at", None)
+    # Lo storico lo scrive solo il server.
+    data.pop("storico", None)
     
     # Valida stato se fornito
     if "stato" in data and data["stato"] not in ASSEGNO_STATI:
@@ -1399,6 +1443,31 @@ async def update_assegno(
         # Una modifica anagrafica non puo' cancellare l'evidenza gia' letta
         # dall'estratto conto.
         data.pop("stato", None)
+    if data.get("stato") in STATI_DISPONIBILI and assegno_esistente.get("stato") in STATI_NUMERO_CONSUMATO:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"L'assegno {assegno_esistente.get('numero')} e' {assegno_esistente.get('stato')}: "
+                "un numero emesso non torna disponibile. Per non usarlo si annulla."
+            ),
+        )
+    if data.get("stato") in ("annullato", "stornato") and data.get("stato") != assegno_esistente.get("stato"):
+        raise HTTPException(
+            status_code=409,
+            detail="Annullo e storno hanno un'azione propria (con motivo): /annulla o /storna.",
+        )
+    if (
+        assegno_esistente.get("incassato_confermato_banca")
+        and "importo" in data
+        and abs(_f(data.get("importo")) - _f(assegno_esistente.get("importo"))) > 0.005
+    ):
+        # Dopo il riscontro in banca l'importo nuovo non vale finche' non si
+        # riguarda l'addebito: la riconciliazione torna da verificare.
+        data["riscontro_banca_da_verificare"] = {
+            "motivo": "importo modificato dopo il riscontro in banca",
+            "importo_precedente": _f(assegno_esistente.get("importo")),
+            "rilevato_il": datetime.now(timezone.utc).isoformat(),
+        }
     
     # Se si compila un assegno vuoto, cambia stato automaticamente
     importo_effettivo = data.get("importo", assegno_esistente.get("importo"))
@@ -1412,10 +1481,14 @@ async def update_assegno(
             data["stato"] = "compilato"
     
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
+    voce = _voce_storico(assegno_esistente, data, "modifica", data["updated_at"])
+    aggiornamento: Dict[str, Any] = {"$set": data}
+    if voce:
+        aggiornamento["$push"] = {"storico": voce}
+
     result = await db[COLLECTION_ASSEGNI].update_one(
         {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
-        {"$set": data}
+        aggiornamento,
     )
     
     if result.matched_count == 0:
@@ -1830,23 +1903,47 @@ async def incassa_assegno(
             "confermato_banca": bool(movimento_estratto_conto_id)}
 
 
+class AnnulloAssegnoIn(BaseModel):
+    motivo: str = Field(..., min_length=3, max_length=500)
+
+
 @router.post("/{assegno_id}/annulla")
-async def annulla_assegno(assegno_id: str) -> Dict[str, str]:
-    """Annulla assegno."""
+async def annulla_assegno(assegno_id: str, body: AnnulloAssegnoIn) -> Dict[str, Any]:
+    """Annulla un assegno non passato in banca.
+
+    Il numero resta consumato (non torna disponibile), le fatture che pagava
+    tornano aperte e la scheda conserva quali erano. Un assegno gia' addebitato
+    non si annulla: si registra lo storno bancario.
+    """
     db = Database.get_db()
-    
-    result = await db[COLLECTION_ASSEGNI].update_one(
-        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
-        {"$set": {
-            "stato": "annullato",
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0},
     )
-    
-    if result.matched_count == 0:
+    if not assegno:
         raise HTTPException(status_code=404, detail="Assegno non trovato")
-    
-    return {"message": "Assegno annullato"}
+    if assegno.get("incassato_confermato_banca"):
+        raise HTTPException(
+            status_code=409,
+            detail="Annullo bloccato: l'assegno e' gia' addebitato in banca. Serve lo storno della banca.",
+        )
+    if assegno.get("stato") == "annullato":
+        return {"success": True, "idempotent": True, "message": "Assegno gia annullato"}
+
+    now = datetime.now(timezone.utc).isoformat()
+    collegate = await _scollega_fatture(db, assegno, now)
+    nuovo = {
+        "stato": "annullato", "stato_pre_annullo": assegno.get("stato"),
+        "motivo_annullo": body.motivo.strip(), "annullato_at": now,
+        "fatture_collegate": [], "fattura_collegata": None, "importo_assegnato": 0,
+        "stato_finanziario": None, "updated_at": now,
+    }
+    if collegate:
+        nuovo["fatture_prima_dell_annullo"] = collegate
+    await db[COLLECTION_ASSEGNI].update_one({"id": assegno["id"]}, {
+        "$set": nuovo,
+        "$push": {"storico": _voce_storico(assegno, nuovo, "annullo", now, body.motivo.strip())},
+    })
+    return {"success": True, "message": "Assegno annullato", "fatture_riaperte": len(collegate)}
 
 
 class StornoAssegnoIn(BaseModel):
@@ -1872,19 +1969,26 @@ async def storna_assegno(assegno_id: str, body: StornoAssegnoIn) -> Dict[str, An
         return {"success": True, "idempotent": True, "message": "Assegno gia stornato"}
 
     now = datetime.now(timezone.utc).isoformat()
+    collegate = await _scollega_fatture(db, assegno, now)
+    nuovo = {
+        "stato": "stornato",
+        "stato_pre_storno": assegno.get("stato"),
+        "motivo_storno": body.motivo.strip(),
+        "data_storno": body.data_storno or now[:10],
+        "stornato_at": now,
+        "stato_finanziario": "stornato_da_verificare",
+        "fatture_collegate": [], "fattura_collegata": None, "importo_assegnato": 0,
+        "updated_at": now,
+    }
+    if collegate:
+        nuovo["fatture_prima_dello_storno"] = collegate
     await db[COLLECTION_ASSEGNI].update_one(
         {"id": assegno["id"]},
-        {"$set": {
-            "stato": "stornato",
-            "stato_pre_storno": assegno.get("stato"),
-            "motivo_storno": body.motivo.strip(),
-            "data_storno": body.data_storno or now[:10],
-            "stornato_at": now,
-            "stato_finanziario": "stornato_da_verificare",
-            "updated_at": now,
-        }},
+        {"$set": nuovo,
+         "$push": {"storico": _voce_storico(assegno, nuovo, "storno", now, body.motivo.strip())}},
     )
-    return {"success": True, "message": "Assegno stornato: nessun pagamento e' stato creato"}
+    return {"success": True, "message": "Assegno stornato: nessun pagamento e' stato creato",
+            "fatture_riaperte": len(collegate)}
 
 
 @router.delete("/clear-generated")
@@ -1894,11 +1998,16 @@ async def clear_generated_assegni(stato: str = Query("vuoto")) -> Dict[str, Any]
     Default: elimina solo quelli vuoti.
     """
     db = Database.get_db()
-    
-    if stato not in ASSEGNO_STATI:
-        raise HTTPException(status_code=400, detail=f"Stato non valido. Valori ammessi: {list(ASSEGNO_STATI.keys())}")
-    
-    result = await db[COLLECTION_ASSEGNI].delete_many({"stato": stato})
+
+    # Solo i moduli mai usati: un assegno compilato, emesso o annullato e' una
+    # prova e non si cancella in blocco per stato.
+    if stato != "vuoto":
+        raise HTTPException(
+            status_code=400,
+            detail="Si eliminano in blocco solo i moduli vuoti; gli altri si annullano uno per uno.",
+        )
+
+    result = await db[COLLECTION_ASSEGNI].delete_many({"stato": "vuoto"})
     
     return {
         "message": f"Eliminati {result.deleted_count} assegni con stato '{stato}'",

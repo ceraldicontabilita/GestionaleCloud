@@ -768,6 +768,16 @@ async def sincronizza_assegni_da_estratto_conto(
         filtri_movimenti.append({"id": {"$in": ids_richiesti}})
     else:
         risultati["ambito"] = "completo"
+        # Prima del giro completo: lo stesso assegno registrato due volte
+        # (due export della banca) diventa una scheda sola.
+        from app.services.assegni_doppioni import unifica as unifica_assegni_doppi
+
+        try:
+            unione = await unifica_assegni_doppi(db)
+            risultati["assegni_doppi_unificati"] = unione["copie"]
+            risultati["assegni_doppi_in_conflitto"] = unione["in_conflitto"]
+        except Exception as exc:  # noqa: BLE001 - il giro continua, i doppioni restano visibili
+            logger.error("Assegni doppi non unificati: %s: %s", type(exc).__name__, exc)
     if data_dal:
         filtri_movimenti.append({"data": {"$gte": str(data_dal)}})
         risultati["data_dal"] = str(data_dal)
@@ -799,13 +809,35 @@ async def sincronizza_assegni_da_estratto_conto(
             now = datetime.now(timezone.utc).isoformat()
             data_movimento = _data_iso(movimento.get("data") or movimento.get("data_pagamento"))
             importo = round(abs(_f(movimento.get("importo"))), 2)
+            # Prima la scheda gia' legata a questo movimento; poi quella con lo
+            # stesso numero, che vale solo se l'importo coincide al centesimo.
             assegno = await db["assegni"].find_one({
                 "$or": [
-                    {"numero": numero}, {"assegno_numero": numero},
                     {"movimento_id": movimento.get("id")},
                     {"movimento_estratto_conto_id": movimento.get("id")},
                 ]
+            }, {"_id": 0}) or await db["assegni"].find_one({
+                "$or": [{"numero": numero}, {"assegno_numero": numero}],
             }, {"_id": 0})
+            legato_al_movimento = bool(assegno) and movimento.get("id") in (
+                assegno.get("movimento_id"), assegno.get("movimento_estratto_conto_id"))
+            if (
+                assegno and not legato_al_movimento
+                and assegno.get("importo") not in (None, "")
+                and abs(round(abs(_f(assegno.get("importo"))), 2) - importo) > 0.005
+            ):
+                risultati.setdefault("importo_diverso", []).append({
+                    "numero": numero, "movimento_id": movimento.get("id"), "importo_banca": importo,
+                    "assegno_id": assegno.get("id"), "importo_assegno": _f(assegno.get("importo")),
+                })
+                await db["assegni"].update_one({"id": assegno["id"]}, {"$set": {
+                    "riscontro_banca_da_verificare": {
+                        "movimento_id": movimento.get("id"), "importo_banca": importo,
+                        "motivo": "stesso numero, importo diverso dall'addebito in banca",
+                        "rilevato_il": now,
+                    },
+                }})
+                continue
             if assegno:
                 risultati["assegni_esistenti"] += 1
             else:
@@ -814,6 +846,9 @@ async def sincronizza_assegni_da_estratto_conto(
                     "data": data_movimento, "data_emissione": data_movimento,
                     "descrizione": descrizione, "movimento_id": movimento.get("id"),
                     "fonte": "estratto_conto", "banca": movimento.get("banca"),
+                    # Nessuna scheda compilata: numero e importo vengono dalla
+                    # banca; foto, beneficiario e fattura restano da recuperare.
+                    "rilevato_da_banca": True, "documento_da_recuperare": True,
                     "created_at": now, "updated_at": now,
                     "livello_evidenza_bancaria": movimento.get("livello_evidenza") or "legacy",
                     "evidenza_bancaria_ufficiale": bool(

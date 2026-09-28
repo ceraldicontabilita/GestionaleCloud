@@ -2699,6 +2699,16 @@ export default function GestioneAssegni() {
                         {RISCONTRO_BANCA[assegno.riscontro_banca].label}
                       </Badge>
                     )}
+                    {assegno.documento_da_recuperare && (
+                      <Badge variant="warning" data-testid={`da-recuperare-${assegno.id}`}>
+                        Rilevato da banca — documento da recuperare
+                      </Badge>
+                    )}
+                    {assegno.riscontro_banca_da_verificare && (
+                      <Badge variant="danger" title={assegno.riscontro_banca_da_verificare.motivo}>
+                        Riscontro banca da verificare
+                      </Badge>
+                    )}
                     {newlyGeneratedNumbers.has(assegno.numero) && <Badge variant="info">Nuovo</Badge>}
                   </span>
                 ),
