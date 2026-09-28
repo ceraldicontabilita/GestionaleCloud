@@ -83,9 +83,17 @@ export const RIPARAZIONI = [
   },
 ];
 
-function Riga({ lavoro, confirm }) {
+/** Un job in corso scrive: legge `fase` (doppioni_archivio) o `stato`
+ * (recupero_fatture_pregresso) — gli unici due nomi usati in `sistema_stato`
+ * dai lavori di questo pannello. */
+function jobInCorso(data) {
+  return Boolean(data) && (data.fase === 'in_corso' || data.stato === 'in_corso');
+}
+
+function Riga({ lavoro, confirm, attivo, setAttivo }) {
   const [esito, setEsito] = useState(null);
   const [inCorso, setInCorso] = useState(null);
+  const bloccatoDaAltro = attivo !== null && attivo.id !== lavoro.id;
 
   const chiama = useCallback(async (dryRun) => {
     setInCorso(dryRun ? 'conta' : 'esegui');
@@ -93,6 +101,7 @@ function Riga({ lavoro, confirm }) {
       const { data } = await api.post(`${lavoro.esegui}?dry_run=${dryRun}`);
       setEsito({ dryRun, data });
       toast.success(dryRun ? 'Conteggio eseguito, niente scritto' : 'Avviato');
+      if (!dryRun) setAttivo({ id: lavoro.id, titolo: lavoro.titolo });
     } catch (e) {
       const msg = messaggioErrore(e);
       setEsito({ dryRun, errore: msg });
@@ -100,7 +109,7 @@ function Riga({ lavoro, confirm }) {
     } finally {
       setInCorso(null);
     }
-  }, [lavoro.esegui]);
+  }, [lavoro.esegui, lavoro.id, lavoro.titolo, setAttivo]);
 
   const aggiorna = useCallback(async () => {
     if (!lavoro.stato) return;
@@ -108,12 +117,14 @@ function Riga({ lavoro, confirm }) {
     try {
       const { data } = await api.get(lavoro.stato);
       setEsito({ stato: true, data });
+      // Se questo era il lavoro segnato attivo e non e' piu' in corso, si sblocca da solo.
+      if (attivo?.id === lavoro.id && !jobInCorso(data)) setAttivo(null);
     } catch (e) {
       toast.error(messaggioErrore(e));
     } finally {
       setInCorso(null);
     }
-  }, [lavoro.stato]);
+  }, [lavoro.stato, lavoro.id, attivo, setAttivo]);
 
   const eseguiDavvero = useCallback(async () => {
     const ok = await confirm({
@@ -127,7 +138,7 @@ function Riga({ lavoro, confirm }) {
   }, [confirm, chiama, lavoro.titolo]);
 
   return (
-    <Card style={{ padding: 16, marginBottom: 12 }}>
+    <Card style={{ padding: 16, marginBottom: 12, opacity: bloccatoDaAltro ? 0.6 : 1 }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{lavoro.titolo}</div>
       <p style={{ margin: '0 0 8px', fontSize: 14, lineHeight: 1.5, opacity: 0.85 }}>
         {lavoro.spiega}
@@ -137,12 +148,17 @@ function Riga({ lavoro, confirm }) {
           <Badge variant="warning">Ordine</Badge> {lavoro.poi}
         </p>
       )}
+      {bloccatoDaAltro && (
+        <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600 }}>
+          In attesa: «{attivo.titolo}» e' in corso, aspetta che finisca.
+        </p>
+      )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <Button
           variant="secondary"
           size="sm"
-          disabled={inCorso !== null}
+          disabled={inCorso !== null || bloccatoDaAltro}
           onClick={() => chiama(true)}
         >
           {inCorso === 'conta' ? 'Conto…' : 'Conta (non scrive)'}
@@ -150,7 +166,7 @@ function Riga({ lavoro, confirm }) {
         <Button
           variant="danger"
           size="sm"
-          disabled={inCorso !== null || !esito || esito.errore}
+          disabled={inCorso !== null || !esito || esito.errore || bloccatoDaAltro}
           onClick={eseguiDavvero}
         >
           {inCorso === 'esegui' ? 'Avvio…' : 'Esegui'}
@@ -185,6 +201,7 @@ function Riga({ lavoro, confirm }) {
 
 export default function PannelloRiparazioni() {
   const confirm = useConfirm();
+  const [attivo, setAttivo] = useState(null);
   return (
     <div>
       <p style={{ fontSize: 14, lineHeight: 1.6, marginTop: 0 }}>
@@ -193,8 +210,21 @@ export default function PannelloRiparazioni() {
         visto i numeri. Girano in background, quindi rispondono «avviato»: per
         vedere com'e' finita, riapri la pagina interessata.
       </p>
+      {attivo && (
+        <div data-testid="lavoro-attivo">
+          <Card style={{ padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center',
+                         justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>
+              In corso: «{attivo.titolo}». Gli altri «Esegui» restano spenti finche' non finisce.
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => setAttivo(null)}>
+              Ho controllato, e' finita: sblocca
+            </Button>
+          </Card>
+        </div>
+      )}
       {RIPARAZIONI.map((l) => (
-        <Riga key={l.id} lavoro={l} confirm={confirm} />
+        <Riga key={l.id} lavoro={l} confirm={confirm} attivo={attivo} setAttivo={setAttivo} />
       ))}
     </div>
   );

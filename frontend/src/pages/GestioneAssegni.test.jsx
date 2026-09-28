@@ -39,6 +39,20 @@ vi.mock('sonner', () => ({
   },
 }));
 
+// La fotocamera vera (getUserMedia/canvas) non gira in jsdom: uno stub coi
+// due pulsanti che il componente reale espone (scatta/annulla) basta a
+// provare che GestioneAssegni la apre e usa il blob che restituisce.
+vi.mock('../components/CameraCattura', () => ({
+  default: ({ onCattura, onChiudi }) => (
+    <div data-testid="camera-cattura-stub">
+      <button type="button" onClick={() => onCattura(new Blob(['foto'], { type: 'image/jpeg' }))}>
+        Scatta (stub)
+      </button>
+      <button type="button" onClick={onChiudi}>Annulla (stub)</button>
+    </div>
+  ),
+}));
+
 const ASSEGNI = [
   { id: 'a1', numero: '208769333', importo: 1097.47, beneficiario: '-' },
   { id: 'a2', numero: '208770635', importo: 644.21, beneficiario: 'FORNITORE TEST' },
@@ -166,7 +180,7 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(screen.getByText('Non calcolata')).toBeInTheDocument();
   });
 
-  it('scatta/allega una foto assegno e la mostra dopo il salvataggio', async () => {
+  it('scatta dalla fotocamera live (mai da galleria/file) e salva la foto', async () => {
     api.get.mockImplementation(rispostaPagina([
       { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
     ]));
@@ -175,15 +189,33 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     renderPagina();
     await screen.findByTestId('assegni-table');
     expect(screen.queryByTestId('vedi-foto-a1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('camera-cattura-stub')).not.toBeInTheDocument();
 
-    const file = new File(['contenuto'], 'assegno.jpg', { type: 'image/jpeg' });
-    const input = screen.getByTestId('foto-assegno-input');
     fireEvent.click(screen.getByTestId('foto-a1'));
-    fireEvent.change(input, { target: { files: [file] } });
+    expect(await screen.findByTestId('camera-cattura-stub')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Scatta (stub)'));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/api/assegni/a1/upload-foto', expect.any(FormData),
     ));
+    await waitFor(() => expect(screen.queryByTestId('camera-cattura-stub')).not.toBeInTheDocument());
+  });
+
+  it('annullare la fotocamera non carica nessuna foto', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+    ]));
+
+    renderPagina();
+    await screen.findByTestId('assegni-table');
+
+    fireEvent.click(screen.getByTestId('foto-a1'));
+    expect(await screen.findByTestId('camera-cattura-stub')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Annulla (stub)'));
+
+    await waitFor(() => expect(screen.queryByTestId('camera-cattura-stub')).not.toBeInTheDocument());
+    expect(api.post).not.toHaveBeenCalledWith('/api/assegni/a1/upload-foto', expect.anything());
   });
 
   it('espone fornitore numero fattura data fattura e data incasso', async () => {
