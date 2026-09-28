@@ -850,7 +850,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Pregresso fatture**: 299 attive (173.184,83 €, gennaio–maggio) senza partita: le rigioca il job bancario corto (`ripubblica_a_lotti`). Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza `fattura_id`, ~260 movimenti banca senza categoria (bonifici disposti e SDD: si chiudono solo abbinandoli).
-- HR: 38 bonifici con `cedolino_id` orfano, 263 in «bonifici da associare» (quasi tutte distinte senza nome; le notifiche banca «Info Bonifico» le nominano), 10 tabelle attese dall'app
+- HR: 38 bonifici con `cedolino_id` orfano, 162 in «bonifici da associare» (quasi tutte distinte senza nome; le notifiche banca «Info Bonifico» le nominano), 10 tabelle attese dall'app
   assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
 - Noleggio: `veicoli_noleggio` è **vuota** in produzione (nessun driver né storico; le 4 targhe GX037HJ
