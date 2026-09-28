@@ -290,7 +290,9 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
     """Estrae i dati di UNA fattura da un singolo <FatturaElettronicaBody>."""
     # Estrai dati generali documento
     dati_generali = find_element(body, 'DatiGeneraliDocumento')
-    numero_fattura = get_text(dati_generali, 'Numero')
+    # Il numero e' un'identita': «  13719» e «13719» sono la stessa fattura
+    # (Societa' Duegi scrive il numero con uno spazio davanti).
+    numero_fattura = (get_text(dati_generali, 'Numero') or '').strip()
     data_fattura = get_text(dati_generali, 'Data')
     tipo_documento = get_text(dati_generali, 'TipoDocumento')
     divisa = get_text(dati_generali, 'Divisa', 'EUR')
