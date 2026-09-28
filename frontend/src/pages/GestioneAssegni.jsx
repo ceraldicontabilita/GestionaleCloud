@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva, Tabs } from '../components/ds';
 import { ePagata } from '../utils/statoFattura';
 import CarnetAssegni from '../components/assegni/CarnetAssegni';
+import CameraCattura from '../components/CameraCattura';
 
 // Fornitori mai pagabili con assegno (dettato utente 18/07/2026): arrivano
 // su carta di credito o addebito bancario, al limite bonifico — mai assegno.
@@ -666,27 +667,27 @@ export default function GestioneAssegni() {
     }
   };
 
-  // Foto dell'assegno: scatto da tablet/telefono o file, un input nascosto
-  // condiviso e riusato per ogni riga (l'assegno di destinazione è in
-  // fotoTargetAssegno al momento del click).
-  const fotoInputRef = useRef(null);
+  // Foto dell'assegno: scatto live dalla fotocamera, mai una scelta da
+  // galleria/file (mani sporche del banco: si scatta, non si allega).
+  // fotoTargetAssegno tiene l'assegno di destinazione finché la fotocamera
+  // (CameraCattura) non consegna il blob o l'utente annulla.
   const [fotoTargetAssegno, setFotoTargetAssegno] = useState(null);
   const [fotoUploadingId, setFotoUploadingId] = useState(null);
 
   const avviaFotoAssegno = assegno => {
     setFotoTargetAssegno(assegno);
-    fotoInputRef.current?.click();
   };
 
-  const uploadFotoAssegno = async event => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
+  const chiudiFotocamera = () => setFotoTargetAssegno(null);
+
+  const catturaFotoAssegno = async blob => {
     const assegno = fotoTargetAssegno;
-    if (!file || !assegno) return;
+    setFotoTargetAssegno(null);
+    if (!assegno) return;
     setFotoUploadingId(assegno.id);
     try {
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', blob, `assegno-${assegno.numero || assegno.id}.jpg`);
       await api.post(`/api/assegni/${assegno.id}/upload-foto`, form);
       toast.success('Foto dell’assegno salvata.');
       await loadData();
@@ -694,7 +695,6 @@ export default function GestioneAssegni() {
       toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     } finally {
       setFotoUploadingId(null);
-      setFotoTargetAssegno(null);
     }
   };
 
@@ -3048,15 +3048,9 @@ export default function GestioneAssegni() {
               },
             ]}
           />
-          <input
-            ref={fotoInputRef}
-            data-testid="foto-assegno-input"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={uploadFotoAssegno}
-            style={{ display: 'none' }}
-          />
+          {fotoTargetAssegno && (
+            <CameraCattura onCattura={catturaFotoAssegno} onChiudi={chiudiFotocamera} />
+          )}
         </div>
       )}
       {/* Generate Modal */}
