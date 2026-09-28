@@ -1145,6 +1145,62 @@ async def registra_documento_import(db, tipo_documento: str, documento: Dict[str
     return esito
 
 
+#: Esiti che un nuovo giro puo' sciogliere da solo: la classificazione IVA
+#: arriva dopo l'import (`iva_detraibilita.completa_iva_pregresso`) e un
+#: errore di lettura del database e' passeggero. Gli altri (importo nullo,
+#: scrittura da correggere a mano) restano fermi finche' qualcuno decide.
+_MOTIVI_DA_RIPROVARE = ("IVA detraibile non classificata",)
+LIMITE_FUORI_GIORNALE = 40
+
+
+def _da_riprovare(fattura: Dict[str, Any]) -> bool:
+    if fattura.get("iva_detraibile") is None:
+        return False
+    esito = fattura.get("registrazione_contabile_esito")
+    if not esito:
+        return True
+    if not isinstance(esito, dict):
+        return False
+    return esito.get("stato") == "errore" or esito.get("motivo") in _MOTIVI_DA_RIPROVARE
+
+
+async def registra_fatture_rimaste_fuori(db, limite: int = LIMITE_FUORI_GIORNALE) -> Dict[str, Any]:
+    """Fatture attive senza scrittura nel giornale che ora si possono registrare.
+
+    Rifiutate all'import per «IVA detraibile non classificata», restavano
+    fuori anche dopo che il job bancario corto aveva deciso la detraibilita':
+    nessuno le ripassava (238 fatture, 130.467,09 EUR). Stesso aggancio
+    dell'import (`registra_documento_import`), a lotti, un prefetch unico;
+    una fattura gia' registrata non rientra, quindi il secondo giro conta zero.
+    """
+    from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
+
+    registrate = {
+        str(m.get("fattura_id")) async for m in db[COLL_MOVIMENTI].find(
+            {"tipo": "fattura_acquisto"}, {"_id": 0, "fattura_id": 1})
+        if m.get("fattura_id")
+    }
+    proiezione = {"_id": 0, "id": 1, "iva_detraibile": 1, "registrazione_contabile_esito": 1}
+    candidate = [
+        f for f in await db["invoices"].find(FILTRO_FATTURA_ATTIVA, proiezione).to_list(None)
+        if f.get("id") and str(f["id"]) not in registrate and _da_riprovare(f)
+    ]
+    # Un errore che si ripete non deve occupare il lotto delle altre.
+    candidate.sort(key=lambda f: (f.get("registrazione_contabile_esito") or {}).get("stato") == "errore")
+    candidate = [f["id"] for f in candidate]
+    esito: Dict[str, Any] = {"candidate": len(candidate), "registrate": 0, "ancora_fuori": 0}
+    for fattura_id in candidate[:limite]:
+        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+        if not fattura:
+            continue
+        r = await registra_documento_import(db, "fattura", fattura)
+        if r.get("stato") == "registrato":
+            esito["registrate"] += 1
+        else:
+            esito["ancora_fuori"] += 1
+    return esito
+
+
 async def _annota_esito(db, collezione: str, doc_id: Any, esito: Dict[str, Any]) -> None:
     """Annota sul documento sorgente l'esito negativo del motore (o lo toglie
     quando la scrittura c'e'). Unico punto: usato dall'import automatico e dal
