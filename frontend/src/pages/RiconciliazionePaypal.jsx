@@ -214,21 +214,6 @@ export default function RiconciliazionePaypal() {
         )}
 
 
-        <section data-testid="paypal-relation-flow" aria-label="Stato collegamenti PayPal" style={{ ...card, gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', marginBottom: 16, overflowX: 'auto' }}>
-          {[
-            ['Transazioni', transazioni.length],
-            ['Controparte identificata', transazioni.filter(tx => tx.nome_controparte).length],
-            ['Fattura validata', transazioni.filter(tx => tx.stato_collegamento_fattura === 'associata_validata').length],
-            ['Banca verificata', riconciliati],
-            ['Eccezioni', transazioni.filter(tx => tx.stato_collegamento_fattura !== 'associata_validata').length + daVerificare],
-          ].map(([label, count], index) => (
-            <div key={label} style={{ minWidth: 120 }}>
-              <small>{index ? '→ ' : ''}{label}</small>
-              <strong style={value}>{count}</strong>
-            </div>
-          ))}
-        </section>
-
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {[
             ['transazioni', 'Transazioni'],
@@ -323,7 +308,6 @@ function SourceTable({ fonti }) {
 
 const card = { background: '#fff', border: '1px solid #e6e3d9', borderRadius: 10, padding: 14, display: 'grid', gap: 6 };
 const cards = { display: 'grid', gap: 10 };
-const value = { display: 'block', marginTop: 6, fontSize: 24, color: '#141413' };
 const buttonStyle = { minHeight: 40, padding: '8px 14px', borderRadius: 8, border: '1px solid #d0ccbe', background: '#fff', cursor: 'pointer', fontWeight: 700 };
 const inputStyle = { width: '100%', minHeight: 40, padding: '8px 10px', border: '1px solid #d0ccbe', borderRadius: 8 };
 const messageStyle = { padding: 12, color: '#7a776e', borderRadius: 8, marginBottom: 12 };
