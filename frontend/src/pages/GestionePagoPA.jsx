@@ -19,6 +19,7 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { PageLayout } from '../components/PageLayout';
 import { PageHeader } from '../components/ds/PageHeader';
 import DocumentViewerModal from '../components/DocumentViewerModal';
+import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
 import {
   FileText,
   RefreshCw,
@@ -668,18 +669,28 @@ export default function GestionePagoPA() {
                             Versamento documentato
                           </span>
                           {ricevuta.movimento_id ? (
-                            <span
-                              style={{
-                                padding: '4px 8px',
-                                background: '#e2f0e7',
-                                color: '#166534',
-                                borderRadius: 4,
-                                fontSize: 12,
-                                fontWeight: 600,
-                              }}
-                            >
-                              ✅ Associata
-                            </span>
+                            <>
+                              <span
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#e2f0e7',
+                                  color: '#166534',
+                                  borderRadius: 4,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                ✅ Associata
+                              </span>
+                              <LinkContropartita
+                                to={ROTTE_CONTROPARTITA.movimentoBanca(ricevuta.movimento_id)}
+                                title="Apre il movimento in Riconciliazione Banca"
+                                testId={`vedi-movimento-${idx}`}
+                                compatto
+                              >
+                                Vedi movimento
+                              </LinkContropartita>
+                            </>
                           ) : (
                             <span
                               style={{
