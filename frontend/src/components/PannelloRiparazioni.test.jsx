@@ -138,4 +138,56 @@ describe('Riparazioni una tantum', () => {
     expect(screen.getByText(/Dopo questo, lancia/)).toBeInTheDocument();
     expect(screen.getAllByText(/Registra il pregresso/).length).toBeGreaterThan(1);
   });
+
+  it('un lavoro avviato per davvero spegne «Esegui» e «Conta» degli altri', async () => {
+    api.post.mockResolvedValue({ data: { dry_run: true, candidate: 296 } });
+    monta();
+
+    // Conto e avvio il primo lavoro (pregresso).
+    await clic(screen.getAllByRole('button', { name: /Conta/i })[0]);
+    const eseguiPrimo = screen.getAllByRole('button', { name: /Esegui/i })[0];
+    await waitFor(() => expect(eseguiPrimo).toBeEnabled());
+    api.post.mockResolvedValue({ data: { avviato: true, dry_run: false } });
+    await clic(eseguiPrimo);
+
+    await waitFor(() => expect(screen.getByTestId('lavoro-attivo')).toBeInTheDocument());
+    // Il secondo lavoro (registra-pregresso) resta spento, anche il suo «Conta».
+    expect(screen.getAllByRole('button', { name: /Conta/i })[1]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /Esegui/i })[1]).toBeDisabled();
+  });
+
+  it('«Aggiorna stato» sblocca da solo quando il lavoro non e\' piu\' in corso', async () => {
+    api.post.mockResolvedValue({ data: { dry_run: true, candidate: 296 } });
+    monta();
+
+    await clic(screen.getAllByRole('button', { name: /Conta/i })[0]);
+    const eseguiPrimo = screen.getAllByRole('button', { name: /Esegui/i })[0];
+    await waitFor(() => expect(eseguiPrimo).toBeEnabled());
+    api.post.mockResolvedValue({ data: { avviato: true, dry_run: false } });
+    await clic(eseguiPrimo);
+    await waitFor(() => expect(screen.getByTestId('lavoro-attivo')).toBeInTheDocument());
+
+    api.get.mockResolvedValue({ data: { stato: 'completato', risultato: { ok: true } } });
+    await clic(screen.getAllByRole('button', { name: /Aggiorna stato/i })[0]);
+
+    await waitFor(() => expect(screen.queryByTestId('lavoro-attivo')).not.toBeInTheDocument());
+    expect(screen.getAllByRole('button', { name: /Conta/i })[1]).toBeEnabled();
+  });
+
+  it('lo sblocco manuale riaccende tutti gli altri lavori', async () => {
+    api.post.mockResolvedValue({ data: { dry_run: true, candidate: 296 } });
+    monta();
+
+    await clic(screen.getAllByRole('button', { name: /Conta/i })[0]);
+    const eseguiPrimo = screen.getAllByRole('button', { name: /Esegui/i })[0];
+    await waitFor(() => expect(eseguiPrimo).toBeEnabled());
+    api.post.mockResolvedValue({ data: { avviato: true, dry_run: false } });
+    await clic(eseguiPrimo);
+    await waitFor(() => expect(screen.getByTestId('lavoro-attivo')).toBeInTheDocument());
+
+    await clic(screen.getByRole('button', { name: /Ho controllato, e' finita/i }));
+
+    expect(screen.queryByTestId('lavoro-attivo')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Conta/i })[1]).toBeEnabled();
+  });
 });
