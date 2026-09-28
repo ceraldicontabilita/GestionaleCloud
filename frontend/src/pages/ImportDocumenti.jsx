@@ -932,6 +932,21 @@ export default function ImportDocumenti() {
                         {r.evidenceSummary}
                       </div>
                     )}
+                    {r.tipo === 'fattura_estera_pdf' && r.status === 'success' && (
+                      // I dati letti dall'AI li conferma il titolare: senza un
+                      // collegamento qui la coda restava introvabile.
+                      <a
+                        href="/fatture-estere-verifica"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', minHeight: 44,
+                          marginTop: 6, padding: '0 14px', borderRadius: BORDER_RADIUS.md,
+                          background: COLORS.primary, color: '#ffffff', fontSize: 13,
+                          fontWeight: 600, textDecoration: 'none',
+                        }}
+                      >
+                        Conferma i dati della fattura estera
+                      </a>
+                    )}
                   </div>
                 </div>
               ))}

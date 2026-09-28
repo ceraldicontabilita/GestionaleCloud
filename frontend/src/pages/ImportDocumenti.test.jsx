@@ -72,6 +72,26 @@ describe('Import documenti - corrispettivo duplicato', () => {
     expect(screen.queryByText('Import completato!')).not.toBeInTheDocument();
   });
 
+  it('dopo una fattura estera porta alla conferma dei dati letti', async () => {
+    mockPreviewThenImport('fattura_estera_pdf', {
+        success: true,
+        tipo_rilevato: 'fattura_estera_pdf',
+        imported: 1,
+        message: 'Fattura estera 1000492833 di SumUp Limited registrata',
+    });
+
+    render(<ImportDocumenti />);
+
+    const pdf = new File(['%PDF-1.4'], 'SUMUP Fattura ( 1000492833 ).pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [pdf] } });
+    fireEvent.click(await screen.findByTestId('upload-btn'));
+    await screen.findByTestId('preview-summary');
+    fireEvent.click(screen.getByTestId('upload-btn'));
+
+    const collegamento = await screen.findByText('Conferma i dati della fattura estera');
+    expect(collegamento.closest('a')).toHaveAttribute('href', '/fatture-estere-verifica');
+  });
+
   it('mostra come errore un workflow fallito restituito con HTTP 200', () => {
     expect(classificaEsitoUpload({
       success: false,

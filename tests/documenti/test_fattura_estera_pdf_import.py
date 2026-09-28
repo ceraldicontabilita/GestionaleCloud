@@ -194,3 +194,47 @@ def test_il_canone_del_terminale_resta_un_servizio():
         [{"descrizione": "Canone noleggio terminale POS settembre"}], "Nexi Payments SpA",
     )["dettaglio_linee"]
     assert dettaglio[0]["conto_codice"] != "05.01.06"
+
+
+def test_la_fattura_in_attesa_si_riallinea_da_sola_e_resta_da_confermare():
+    """Importata prima della correzione delle regole, la fattura SumUp era su
+    «commissioni POS» e la scrittura su «acquisto merci»: il giro la riallinea
+    senza aspettare la conferma, e una seconda passata non tocca niente."""
+    from app.routers import fatture_estera_verifica as verifica
+
+    db = ClientArchivioMemoria()["riallinea_estera"]
+
+    async def scenario():
+        await db["invoices"].insert_one({
+            "id": "f-sumup", "invoice_number": "1000492833", "invoice_date": "2026-09-22",
+            "supplier_name": "SumUp Limited", "supplier_vat": "NL858187498B01",
+            "total_amount": 454.0, "imponibile": 454.0, "iva": 0.0, "linee": [],
+            "descrizione_righe_ai": RIGHE_SUMUP, "verifica_ai": "in_attesa",
+            "centro_costo_id": "11.1_COMMISSIONI_POS",
+            "status": "imported", "stato_import": "attivo",
+        })
+        await db["movimenti_contabili"].insert_one({
+            "id": "mov-vecchio", "tipo": "fattura_acquisto", "fattura_id": "f-sumup",
+            "stato": "registrato", "anno": 2026, "data": "2026-09-22", "numero_registrazione": 1119,
+            "idempotency_key": "reg:fattura:f-sumup",
+            "righe": [
+                {"conto_codice": "05.01.01", "conto_nome": "Acquisto merci", "dare": 454.0, "avere": 0},
+                {"conto_codice": "02.01.01", "conto_nome": "Debiti v/fornitori", "dare": 0, "avere": 454.0},
+            ],
+            "totale_dare": 454.0, "totale_avere": 454.0,
+        })
+        primo = await verifica.riallinea_fatture_estere_in_attesa(db)
+        secondo = await verifica.riallinea_fatture_estere_in_attesa(db)
+        fattura = await db["invoices"].find_one({"id": "f-sumup"})
+        scritture = await db["movimenti_contabili"].find({"fattura_id": "f-sumup"}).to_list(None)
+        return primo, secondo, fattura, scritture
+
+    primo, secondo, fattura, scritture = asyncio.run(scenario())
+    assert primo["riregistrate"] == ["f-sumup"] and not primo["errori"]
+    assert secondo["riregistrate"] == [] and not secondo["errori"]
+    assert fattura["centro_costo_id"] == "5.3_PICCOLE_ATTREZZATURE"
+    assert fattura["verifica_ai"] == "in_attesa"
+    assert next(s for s in scritture if s["id"] == "mov-vecchio")["stato"] == "stornato"
+    valide = [s for s in scritture if s.get("tipo") == "fattura_acquisto" and s.get("stato") != "stornato"]
+    assert len(valide) == 1
+    assert {r["conto_codice"]: r["dare"] for r in valide[0]["righe"] if r.get("dare")} == {"05.01.06": 454.0}
