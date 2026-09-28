@@ -97,5 +97,12 @@ def test_il_collegamento_orfano_si_sostituisce():
         assert len(esito["collegati"]) == 1
         m1 = await db.estratto_conto_movimenti.find_one({"id": "m1"}, {"_id": 0})
         assert m1["fattura_id_orfano"] == "sparita" and m1["fattura_id"] is None
+        # Prima Nota Banca: una riga sul conto fornitori, niente costo.
+        righe = await db.prima_nota_banca.find({"estratto_conto_id": "m1"}, {"_id": 0}).to_list(5)
+        assert len(righe) == 1
+        assert righe[0]["conto_contropartita"] == "33.03.01" and righe[0]["importo"] == 12200.0
+        assert righe[0]["categoria"] == dap.CATEGORIA
+        await dap.abbina_pagamenti(db, anno_attivo=2026)
+        assert await db.prima_nota_banca.count_documents({"estratto_conto_id": "m1"}) == 1
 
     _run(scenario())
