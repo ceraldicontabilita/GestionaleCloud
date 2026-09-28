@@ -332,6 +332,81 @@ async def numeri_fattura_senza_spazi(db) -> Dict[str, int]:
     return esito
 
 
+#: Cosa scrive l'allineamento: i cinque campi di pagamento concordi e la data
+#: dell'addebito in banca. Il metodo di pagamento no: lo dice l'anagrafica.
+CAMPI_FATTURA_PAGATA = {
+    "stato": "pagata", "stato_pagamento": "pagata", "payment_status": "paid",
+    "pagato": True, "paid": True,
+}
+
+
+def _quote_assegno(assegno: Dict[str, Any]) -> Dict[str, int]:
+    """{fattura_id: centesimi} che l'assegno paga."""
+    from app.services.doppioni_archivio import centesimi
+
+    quote: Dict[str, int] = {}
+    for riga in assegno.get("fatture_collegate") or []:
+        if isinstance(riga, dict) and riga.get("fattura_id"):
+            quota = centesimi(riga.get("quota"))
+            if quota:
+                quote[str(riga["fattura_id"])] = quota
+    unica = assegno.get("fattura_id") or assegno.get("fattura_collegata")
+    if not quote and unica:
+        quota = centesimi(assegno.get("importo_assegnato") or assegno.get("importo"))
+        if quota:
+            quote[str(unica)] = abs(quota)
+    return quote
+
+
+async def fatture_pagate_con_assegno(db) -> Dict[str, int]:
+    """Fatture pagate da assegni addebitati in banca: i campi di stato si allineano.
+
+    Lo stato di pagamento vive in cinque campi e sulle fatture pagate con
+    assegno ne restava qualcuno fermo a «in attesa banca» o «da pagare»,
+    con la data della fattura al posto di quella dell'addebito. Vale solo la
+    prova ufficiale: assegno incassato, evidenza bancaria ufficiale e
+    movimento d'estratto, e le quote degli assegni fanno il totale della
+    fattura al centesimo. Per id; il secondo giro non scrive niente.
+    """
+    from app.constants.fattura_attiva import fattura_attiva
+    from app.services.doppioni_archivio import centesimi
+
+    assegni = await db["assegni"].find(
+        {"stato": "incassato", "evidenza_bancaria_ufficiale": True},
+        {"_id": 0, "id": 1, "fatture_collegate": 1, "fattura_id": 1, "fattura_collegata": 1,
+         "importo": 1, "importo_assegnato": 1, "data_incasso": 1,
+         "movimento_estratto_conto_id": 1},
+    ).to_list(None)
+    per_fattura: Dict[str, Dict[str, Any]] = {}
+    for assegno in assegni:
+        if not assegno.get("movimento_estratto_conto_id") or not assegno.get("data_incasso"):
+            continue
+        for fattura_id, quota in _quote_assegno(assegno).items():
+            voce = per_fattura.setdefault(fattura_id, {"cent": 0, "assegni": [], "date": []})
+            voce["cent"] += quota
+            voce["assegni"].append(assegno.get("id"))
+            voce["date"].append(str(assegno["data_incasso"])[:10])
+    esito = {"fatture": 0, "totale_diverso": 0}
+    for fattura_id, voce in per_fattura.items():
+        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0, "id": 1, "status": 1,
+            "stato_import": 1, "entity_status": 1, "deleted": 1, "total_amount": 1,
+            "data_pagamento": 1, **{campo: 1 for campo in CAMPI_FATTURA_PAGATA}})
+        if not fattura or not fattura_attiva(fattura):
+            continue
+        if centesimi(fattura.get("total_amount")) != voce["cent"]:
+            esito["totale_diverso"] += 1
+            continue
+        atteso = {**CAMPI_FATTURA_PAGATA, "data_pagamento": max(voce["date"])}
+        if all(fattura.get(k) == v for k, v in atteso.items()):
+            continue
+        await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+            **atteso, "pagamento_prova": {"tipo": "assegno", "assegni": voce["assegni"]},
+            "stato_allineato_banca_at": _ora(),
+        }})
+        esito["fatture"] += 1
+    return esito
+
+
 # ── Orchestrazione ──────────────────────────────────────────────────────────
 
 PASSI = (
@@ -341,6 +416,7 @@ PASSI = (
     ("verbali_da_fattura", quarantena_verbali_da_fattura),
     ("rate_f24", riallinea_rate_f24),
     ("numeri_fattura_con_spazi", numeri_fattura_senza_spazi),
+    ("fatture_pagate_con_assegno", fatture_pagate_con_assegno),
 )
 
 

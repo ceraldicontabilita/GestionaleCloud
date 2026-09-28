@@ -623,7 +623,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   vive in cinque campi (`stato`, `stato_pagamento`, `payment_status`, `pagato`, `paid`) e nessuno copre
   l'archivio: leggerne uno solo dichiarava non pagate 639 fatture da 311.838,20 €, e `{"pagato": {"$ne":
   True}}` le riportava tutte fra le aperte. `status` è lo stato del documento e `stato_finanziario` quello
-  della riconciliazione: nessuno dei due dice se è pagata.
+  della riconciliazione: nessuno dei due dice se è pagata. Pagata con assegni addebitati (prova ufficiale, quote = totale al centesimo): i cinque campi e `data_pagamento` si allineano alla banca (`fatture_pagate_con_assegno`, job bancario corto).
 - Il payload di `fattura.created` si costruisce solo con
   `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così import e recupero del
   pregresso propagano lo stesso evento.
