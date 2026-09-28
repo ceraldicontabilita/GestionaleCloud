@@ -242,21 +242,33 @@ def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
 _ESTENSIONI_XML = (".xml", ".xml.p7m", ".p7m", ".zip")
 
 
-def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Prima XML (fatture, chiusure RT) e ZIP, i piu' recenti in testa; poi il resto.
+_BUSTA_PAGA = re.compile(r"LUL|CEDOLIN|BUSTA|LIBRO\s*UNICO", re.IGNORECASE)
 
+
+def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Prima le buste paga, poi XML (fatture, chiusure RT) e ZIP, poi il resto.
+
+    Le buste in testa (decisione del titolare, 28/09/2026): finche' la busta
+    definitiva non e' in ELABORATE, la sua stampa di controllo resta su Drive.
     Un XML si registra in un attimo e fa i conti del mese; un PDF bancario puo'
     tenere il giro per minuti. Fra gli XML vince l'ultimo caricato: nella radice
     ce ne sono oltre mille di vecchi, e le fatture appena messe dal titolare non
     devono aspettare quelle. Il resto mantiene l'ordine di elenco (radice prima
     di DA ELABORARE, il piu' vecchio prima).
     """
-    def xml(f):
-        return str(f.get("name") or "").lower().endswith(_ESTENSIONI_XML)
+    def nome(f):
+        return str(f.get("name") or "")
 
+    def busta(f):
+        return nome(f).lower().endswith(".pdf") and bool(_BUSTA_PAGA.search(nome(f)))
+
+    def xml(f):
+        return nome(f).lower().endswith(_ESTENSIONI_XML)
+
+    buste = [f for f in coda if busta(f)]
     recenti = sorted((f for f in coda if xml(f)),
                      key=lambda f: str(f.get("createdTime") or ""), reverse=True)
-    return recenti + [f for f in coda if not xml(f)]
+    return buste + recenti + [f for f in coda if not busta(f) and not xml(f)]
 
 
 async def _registra(db, file_id: str, **campi) -> None:

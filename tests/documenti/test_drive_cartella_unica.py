@@ -277,7 +277,7 @@ def test_i_file_sciolti_nella_radice_passano_dallo_smistatore(ambiente):
     """La radice e' il calderone: i file li' si smistano come quelli in DA ELABORARE."""
     drive, smistati, esiti = ambiente
     db = AsyncMongoMockClient()["t"]
-    drive.aggiungi("r1", "cedolino.pdf", b"%PDF cedolino", "radice")
+    drive.aggiungi("r1", "estratto.pdf", b"%PDF estratto", "radice")
     drive.aggiungi("r2", "desktop.ini", b"[.ShellClassInfo]", "radice")
     drive.aggiungi("i1", "fattura.xml", b"<xml>i1</xml>", "inbox")
     esiti["desktop.ini"] = {"success": True, "tipo_rilevato": "non_riconosciuto"}
