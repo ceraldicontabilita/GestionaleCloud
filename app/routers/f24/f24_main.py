@@ -974,6 +974,10 @@ from app.routers.f24.piano_tributi import router as piano_tributi_router  # noqa
 
 router.include_router(piano_tributi_router)
 
+from app.routers.f24.tributi import router as tributi_router  # noqa: E402
+
+router.include_router(tributi_router)
+
 # Registrata per ULTIMA di proposito: una route dinamica a un segmento
 # cattura qualunque path statico definito dopo di lei (era il caso di
 # GET /quietanze, che non veniva mai raggiunta).

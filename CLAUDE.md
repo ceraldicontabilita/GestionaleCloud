@@ -491,11 +491,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   riga tributo**. Quietanza ↔ addebito I24 (`riscontra_quietanze_banca`, job `f24_quietanze_banca`, arrivo della quietanza):
   protocollo+data+saldo, certo solo con importo al centesimo e «DATA INCASSO» (troncata → copia in quarantena) = data della
   quietanza, se no candidati; orfani → alert col record; protocollo = giorno d'invio; stessa riga due volte nel giorno → alert.
-- Il saldo F24 non è mai un costo: ritenute 1001/1002/1012, addizionali
-  3802/3847/3848 e quote a carico del lavoratore sono debiti verso enti. La
-  sezione INPS non è tutta deducibile: la quota datoriale viene dalle paghe.
-- RC01 regolarizza un periodo precedente: non è costo del mese in cui si paga,
-  e si collega al DM10 di quel periodo senza sommare due volte i tributi.
+- Il saldo F24 non è mai un costo: ritenute 1001/1002/1012, addizionali 3802/3847/3848 e quote a carico del lavoratore
+  sono debiti verso enti. La sezione INPS non è tutta deducibile: la quota datoriale viene dalle paghe.
+- RC01 regolarizza un periodo precedente: non è costo del mese in cui si paga, e si collega al DM10 di quel periodo senza sommare due volte i tributi.
 - F24 ↔ cedolini si associano solo con soggetto, periodo, posizione
   contributiva e causali coerenti; la tolleranza vale solo sulla data di
   pagamento (mese successivo).
@@ -521,6 +519,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   l'IVA mensile sono i codici 6001–6012. «00MM» è il mese, «NNRR» la rata: «0101» è la rata unica, mai gennaio (`tributi_engine.mese_da_rateazione`). Una riga d'avviso non trovata mostra gli indizi `POSSIBILE_COMPENSAZIONE_6099` / `POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE` (±1,00 €), mai un aggancio. **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è autorizzato.
 - **Dilazione INPS** (`dilazioni_inps.py`, PEC INPS con `Allegato.zip` o Import): il piano apre una rata per scadenza; la paga la quietanza con sede, causale,
   matricola, periodo e importo al centesimo, dopo la domanda, in ordine; l'addebito è quello della quietanza. Rata scaduta senza quietanza → alert.
+- **Tributi** (`tributi_per_codice.py`, `/api/f24/tributi`, pagina `/tributi`): sola lettura per codice e periodo sul registro unico; colonne inviato dal commercialista, quietanza, ravvedimento (solo periodi con sanzione/interessi nella delega), credito compensato, ritenute attese; resta = max(modello, attese) − pagato.
+- **Ritenute**: le chiude anche la sola quietanza (1040 del periodo: riga uguale e univoca, o somma delle righe = totale del periodo; due candidate → nessuna scelta); al primo versamento Telegram «Ritenuta pagata» col protocollo, una volta (`avviso_versamento_at`), muto oltre 45 giorni.
 - **F24 ravveduto** (`f24_ravvedimento.py`): l'originale del commercialista resta; modello o quietanza con sanzioni gli si affianca
   (RAVVEDIMENTO) se ogni riga codice+periodo torna al centesimo, o è maggiore solo nel periodo sanzionato (interessi cumulati).
 - **Un F24 è il suo contenuto fiscale** (contribuente, data di versamento, saldo, righe codice/periodo/importo), non il PDF: `salva_f24`

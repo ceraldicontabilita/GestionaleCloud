@@ -150,6 +150,13 @@ export default function Ritenute() {
                   </div>
                 </div>
               )}
+              {!r.f24_id && r.quietanza_protocollo && (
+                <div style={{ fontSize: 11.5, color: '#4c4a44', marginTop: 4 }}>
+                  Quietanza AdE del {formatDateIT(r.quietanza_data)} · protocollo {r.quietanza_protocollo}
+                  {r.f24_associazione_tipo === 'aggregata' ? ' · 1040 del periodo sommato' : ''}
+                  <div style={{ marginTop: 3 }}><a href="/tributi?cerca=1040">Apri Tributi</a></div>
+                </div>
+              )}
               {!r.f24_id && r.stato === 'da_verificare_associazione_f24' && (
                 <div style={{ fontSize: 11.5, color: '#92400e', marginTop: 4 }}>
                   Candidati F24: {(r.f24_candidati || []).join(', ') || 'più documenti equivalenti'}
@@ -195,6 +202,12 @@ export default function Ritenute() {
                         {r.stato_evidenza_pagamento !== 'PAGATO_BANCA' && (
                           <div style={{ color: '#92400e' }}>Banca non verificata</div>
                         )}
+                      </div>
+                    ) : r.quietanza_protocollo ? (
+                      <div>
+                        <div>Quietanza del {formatDateIT(r.quietanza_data)}</div>
+                        <div>prot. {r.quietanza_protocollo}</div>
+                        {r.f24_associazione_tipo === 'aggregata' && <div>1040 del periodo sommato</div>}
                       </div>
                     ) : r.stato === 'da_verificare_associazione_f24' ? (
                       <span style={{ color: '#92400e' }}>Più candidati</span>

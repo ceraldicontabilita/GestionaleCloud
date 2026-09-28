@@ -418,18 +418,6 @@ async def importa_quietanza_bytes(
             {"$set": {"stato_associazione": "associata", "calcolo_fiscale_sospeso": False}},
         )
 
-        # La quietanza e' prova documentale sufficiente per Ritenute e IVA
-        # anche se l'addebito bancario non e' ancora verificato. Ritenute
-        # persiste lo stato: va quindi aggiornata nello stesso flusso di import,
-        # senza richiedere un secondo clic nella pagina dedicata.
-        try:
-            from app.routers.ritenute import riconcilia_ritenute_esistenti
-
-            risultato["ritenute_aggiornate"] = await riconcilia_ritenute_esistenti(db)
-        except Exception:
-            logger.exception("Errore aggiornamento ritenute dopo quietanza %s", file_id)
-            risultato["ritenute_aggiornate"] = {"errore": True}
-
     # Una quietanza con sanzioni da ravvedimento cerca subito l'F24 del
     # commercialista che ravvede (codici e periodi, mai l'importo).
     if any(t["codice"] in CODICI_RAVVEDIMENTO for t in estrai_tributi_dettaglio(quietanza_doc)):
@@ -441,6 +429,18 @@ async def importa_quietanza_bytes(
         except Exception as exc:  # noqa: BLE001 - la quietanza resta importata
             logger.exception("Quietanza %s: F24 ravveduto non cercato (%s)", file_id, type(exc).__name__)
             risultato["ravvedimento"] = {"errore": type(exc).__name__}
+
+    # La quietanza e' prova documentale sufficiente per le Ritenute anche
+    # quando il modello del commercialista non c'e' (la ritenuta si paga col
+    # 1040 della quietanza): si aggiornano adesso, e la ritenuta appena
+    # versata manda l'avviso «pagata» con i riferimenti.
+    try:
+        from app.routers.ritenute import riconcilia_ritenute_esistenti
+
+        risultato["ritenute_aggiornate"] = await riconcilia_ritenute_esistenti(db)
+    except Exception as exc:  # noqa: BLE001 - la quietanza resta importata
+        logger.exception("Quietanza %s: ritenute non aggiornate (%s)", file_id, type(exc).__name__)
+        risultato["ritenute_aggiornate"] = {"errore": type(exc).__name__}
 
     # L'addebito I24 puo' essere gia' in banca: si cerca adesso, fra i soli
     # movimenti di pari importo, senza aspettare il giro dei 30 minuti.

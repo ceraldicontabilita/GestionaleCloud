@@ -845,6 +845,15 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-F24] quietanze/banca: %s: %s", type(e).__name__, e)
         try:
+            # Ritenute d'acconto: il 1040 della quietanza le chiude e manda
+            # l'avviso «pagata» anche quando la quietanza e' arrivata senza modello.
+            from app.routers.ritenute import riconcilia_ritenute_esistenti
+            r = await riconcilia_ritenute_esistenti(db)
+            logger.info("[SCHEDULER-F24] ritenute analizzate=%s aggiornate=%s",
+                        r.get("analizzate"), r.get("aggiornate"))
+        except Exception as e:
+            logger.error("[SCHEDULER-F24] ritenute: %s: %s", type(e).__name__, e)
+        try:
             # Dopo il riscontro: la rata prende l'addebito dalla sua quietanza.
             from app.services.dilazioni_inps import collega_dilazioni
             r = await collega_dilazioni(db)

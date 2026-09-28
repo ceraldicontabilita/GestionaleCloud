@@ -184,12 +184,72 @@ async def _carica_f24(db) -> List[Dict[str, Any]]:
     return await TaxPaymentQueryService(db).list_documents()
 
 
+async def _carica_pagamenti_quietanza(db) -> List[Dict[str, Any]]:
+    """Le quietanze AdE con le loro righe, una per pagamento (copie unite).
+
+    Il commercialista non sempre manda il modello: la quietanza con il 1040
+    del periodo basta come prova documentale del versamento della ritenuta.
+    """
+    from app.db_collections import COLL_QUIETANZE_F24
+    from app.services.f24_controllo_incrociato import _quietanza_legacy, pagamenti_da_quietanze
+
+    docs = await db[COLL_QUIETANZE_F24].find({}, {"_id": 0, "pdf_data": 0}).to_list(5000)
+    quietanze = [
+        _quietanza_legacy(d) for d in docs
+        if d.get("entity_status") != "deleted"
+        and str(d.get("status") or "").lower() not in {"eliminato", "deleted"}
+    ]
+    return pagamenti_da_quietanze([q for q in quietanze if q.get("righe")])
+
+
+def _quietanze_1040(
+    pagamenti: List[Dict[str, Any]], periodo: Optional[str], importo_cents: int,
+    stesso_importo: int, totale_gruppo_cents: int, gruppo_multiplo: bool,
+) -> List[Dict[str, Any]]:
+    """Pagamenti con il 1040 del periodo che coprono la ritenuta al centesimo.
+
+    Una riga uguale alla ritenuta (se nessun'altra ritenuta del periodo ha lo
+    stesso importo), oppure le righe 1040 del periodo che sommate fanno il
+    totale delle ritenute del periodo (il commercialista le raggruppa: 210 +
+    490 per tre parcelle da 210, 280 e 210). Mai un importo vicino.
+    """
+    if not periodo or not re.fullmatch(r"\d{4}-\d{2}", periodo):
+        return []
+    anno, mese = int(periodo[:4]), int(periodo[5:7])
+    trovati = []
+    for pagamento in pagamenti:
+        righe = [
+            r for r in (pagamento.get("_righe") or [])
+            if r.get("codice") == "1040" and r.get("anno") == anno and r.get("mese") == mese
+            and int(r.get("importo_debito_cents") or 0) > 0
+        ]
+        if not righe:
+            continue
+        if stesso_importo == 1 and any(int(r["importo_debito_cents"]) == importo_cents for r in righe):
+            trovati.append({"pagamento": pagamento, "tipo": "singola"})
+        elif sum(int(r["importo_debito_cents"]) for r in righe) == totale_gruppo_cents:
+            trovati.append({"pagamento": pagamento, "tipo": "aggregata" if gruppo_multiplo else "singola"})
+    return trovati
+
+
+def _ravveduta_da_quietanza(pagamento: Dict[str, Any], periodo: str) -> bool:
+    from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
+
+    anno, mese = int(periodo[:4]), int(periodo[5:7])
+    codici = set(CODICI_RAVVEDIMENTO) | set(CODICI_RAVVEDIMENTO_RITENUTE)
+    return any(
+        r.get("codice") in codici and r.get("anno") == anno and r.get("mese") in (mese, None)
+        for r in (pagamento.get("_righe") or [])
+    )
+
+
 async def _riconcilia_ritenuta(
     db,
     rit: Dict[str, Any],
     *,
     ritenute_periodo: Optional[List[Dict[str, Any]]] = None,
     f24_docs: Optional[List[Dict[str, Any]]] = None,
+    pagamenti_quietanza: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Associa la riga 1040 corretta, distinguendo F24 e prova bancaria.
 
@@ -219,6 +279,10 @@ async def _riconcilia_ritenuta(
         "stato_evidenza_documentale": "NON_PRESENTE",
         "stato_banca": "NON_VERIFICATA",
         "versata_documentalmente": False,
+        "quietanza_id": None,
+        "quietanza_protocollo": None,
+        "quietanza_data": None,
+        "quietanza_pdf_url": None,
     }
     periodo = _periodo_ritenuta(rit)
     gruppo = [
@@ -267,6 +331,44 @@ async def _riconcilia_ritenuta(
 
     if not candidati:
         due = rit.get("scadenza_legale") or rit["scadenza"]
+        trovati = _quietanze_1040(
+            pagamenti_quietanza or [], periodo, importo_cents, stesso_importo,
+            totale_gruppo_cents, len(gruppo) > 1,
+        )
+        if len(trovati) > 1:
+            upd.update({
+                "stato": "da_verificare_associazione_f24",
+                "f24_candidati": sorted({
+                    str(q.get("id")) for t in trovati for q in t["pagamento"]["quietanze"] if q.get("id")
+                }),
+            })
+            return upd
+        if len(trovati) == 1:
+            pagamento = trovati[0]["pagamento"]
+            prima = (pagamento.get("quietanze") or [{}])[0]
+            data_pag = str(pagamento.get("data") or "")[:10] or None
+            upd.update({
+                "quietanza_id": prima.get("id"),
+                "quietanza_protocollo": pagamento.get("protocollo"),
+                "quietanza_data": data_pag,
+                "quietanza_pdf_url": prima.get("pdf_url"),
+                "f24_associazione_tipo": trovati[0]["tipo"],
+                "f24_periodo": periodo,
+                "f24_quota_ritenuta_cents": importo_cents,
+                "f24_quota_ritenuta": _euro_string(importo_cents),
+                "stato_evidenza_pagamento": "QUIETANZA_PRESENTE",
+                "stato_evidenza_documentale": "VERSATA_DOCUMENTALMENTE",
+                "versata_documentalmente": True,
+                "stato_obbligazione": "VERSATA",
+                "data_pagamento": data_pag,
+            })
+            if data_pag and data_pag <= due:
+                upd["stato"] = "pagata_puntuale"
+            elif _ravveduta_da_quietanza(pagamento, periodo):
+                upd["stato"] = "pagata_con_ravvedimento"
+            else:
+                upd["stato"] = "pagata_in_ritardo_senza_ravvedimento"
+            return upd
         upd["stato"] = "scaduta_da_versare" if oggi > due else "da_pagare"
         upd["f24_id"] = None
         return upd
@@ -431,6 +533,62 @@ async def _chiudi_avviso_se_versata(db, ritenuta: Dict[str, Any], upd: Dict[str,
                         resolved_by="f24_1040_versato")
 
 
+# Oltre questi giorni un versamento scoperto adesso e' storia: si segna senza
+# mandare un messaggio per ogni parcella dei mesi passati.
+GIORNI_AVVISO_VERSAMENTO = 45
+
+
+def testo_ritenuta_versata(ritenuta: Dict[str, Any], upd: Dict[str, Any]) -> str:
+    """La ritenuta e' pagata: fattura, importo, quando, come e con quale documento."""
+    esito = {
+        "pagata_puntuale": "nei termini",
+        "pagata_con_ravvedimento": "in ritardo, con ravvedimento",
+        "pagata_in_ritardo_senza_ravvedimento": "in ritardo, senza ravvedimento",
+    }.get(upd.get("stato"), "")
+    if upd.get("quietanza_protocollo"):
+        prova = f"quietanza AdE protocollo {upd['quietanza_protocollo']}"
+    elif upd.get("f24_descrizione") or upd.get("f24_id"):
+        prova = f"F24 {upd.get('f24_descrizione') or upd.get('f24_id')}"
+    else:
+        prova = "F24"
+    return (
+        f"Ritenuta d'acconto {_euro_it(ritenuta.get('importo_cents'))} della parcella "
+        f"{ritenuta.get('numero_fattura') or '?'} di {ritenuta.get('fornitore') or 'fornitore sconosciuto'} "
+        f"(periodo {str(upd.get('f24_periodo') or ritenuta.get('periodo_ritenuta') or '')}): "
+        f"versata il {_data_it(upd.get('data_pagamento'))} {esito}, codice 1040, {prova}."
+    ).replace("  ", " ")
+
+
+async def _avvisa_se_appena_versata(db, ritenuta: Dict[str, Any], upd: Dict[str, Any]) -> None:
+    """Al primo riscontro del versamento: segna la ritenuta e avvisa su Telegram.
+
+    Una volta sola per ritenuta (``avviso_versamento_at``). Un versamento
+    vecchio scoperto ora si segna in silenzio.
+    """
+    if upd.get("stato_obbligazione") != "VERSATA" or ritenuta.get("avviso_versamento_at"):
+        return
+    ora = datetime.now(timezone.utc)
+    testo = testo_ritenuta_versata(ritenuta, upd)
+    upd["avviso_versamento_at"] = ora.isoformat()
+    upd["avviso_versamento_testo"] = testo
+    recente = False
+    try:
+        data_pag = datetime.fromisoformat(str(upd.get("data_pagamento"))[:10]).date()
+        recente = (ora.date() - data_pag).days <= GIORNI_AVVISO_VERSAMENTO
+    except ValueError:
+        recente = False
+    upd["avviso_versamento_inviato"] = recente
+    if not recente:
+        return
+    try:
+        from app.services.telegram_notifications import send_notification
+
+        await send_notification(f"<b>Ritenuta pagata</b>\n{testo}")
+    except Exception as exc:
+        logger.warning("Telegram ritenuta versata non inviato per la fattura %s (%s): %s",
+                       ritenuta.get("numero_fattura"), type(exc).__name__, exc)
+
+
 CHIAVE_ALLINEAMENTO_RITENUTE = "ritenute_fatture_allineate_v1"
 
 
@@ -482,11 +640,13 @@ async def riconcilia_ritenute_esistenti(db) -> Dict[str, Any]:
     if not ritenute:
         return {"analizzate": 0, "aggiornate": 0}
     f24_docs = await _carica_f24(db)
+    pagamenti = await _carica_pagamenti_quietanza(db)
     aggiornate = 0
     for rit in ritenute:
         upd = await _riconcilia_ritenuta(
-            db, rit, ritenute_periodo=ritenute, f24_docs=f24_docs,
+            db, rit, ritenute_periodo=ritenute, f24_docs=f24_docs, pagamenti_quietanza=pagamenti,
         )
+        await _avvisa_se_appena_versata(db, rit, upd)
         result = await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": upd})
         aggiornate += int(getattr(result, "modified_count", 0) > 0)
         await _chiudi_avviso_se_versata(db, rit, upd)
@@ -523,10 +683,12 @@ async def scan_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
         {"data_fattura": {"$regex": f"^{anno}"}}, {"_id": 0}
     ).to_list(5000)
     f24_docs = await _carica_f24(db)
+    pagamenti = await _carica_pagamenti_quietanza(db)
     for rit in ritenute_anno:
         upd = await _riconcilia_ritenuta(
-            db, rit, ritenute_periodo=ritenute_anno, f24_docs=f24_docs
+            db, rit, ritenute_periodo=ritenute_anno, f24_docs=f24_docs, pagamenti_quietanza=pagamenti,
         )
+        await _avvisa_se_appena_versata(db, rit, upd)
         await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": upd})
         await _chiudi_avviso_se_versata(db, rit, upd)
 
@@ -544,9 +706,10 @@ async def lista_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
         {"data_fattura": {"$regex": f"^{anno}"}}, {"_id": 0}
     ).sort("scadenza", -1).to_list(2000)
     f24_docs = await _carica_f24(db)
+    pagamenti = await _carica_pagamenti_quietanza(db)
     for row in ritenute:
         row.update(await _riconcilia_ritenuta(
-            db, row, ritenute_periodo=ritenute, f24_docs=f24_docs,
+            db, row, ritenute_periodo=ritenute, f24_docs=f24_docs, pagamenti_quietanza=pagamenti,
         ))
     oggi = datetime.now(timezone.utc).date().isoformat()
     per_stato: Dict[str, int] = {}
