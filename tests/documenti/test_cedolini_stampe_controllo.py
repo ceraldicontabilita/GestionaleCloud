@@ -192,3 +192,14 @@ def test_busta_parcheggiata_fra_gli_estratti_torna_in_coda(ambiente):  # noqa: F
     assert run(cu.giro(db))["buste_rimesse_in_coda"] == 1
     assert drive.file["t1"]["parent"] == "elaborate"
     assert drive.file["e1"]["parent"] == cu_arretrato
+
+
+def test_busta_scartata_come_estratto_torna_in_coda(ambiente):  # noqa: F811
+    drive, _, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("t2", "Ceraldi Vincenzo - Tredicesima 2022.pdf", b"%PDF t2", "errori")
+    run(db[cu.REGISTRO].insert_one({
+        "id": "t2", "nome": "Ceraldi Vincenzo - Tredicesima 2022.pdf", "cartella": cu.ERRORI,
+        "tipo": "estratto_conto", "motivo": "Errore import estratto conto: 400: Formato Banco BPM"}))
+    assert run(cu.giro(db))["buste_rimesse_in_coda"] == 1
+    assert drive.file["t2"]["parent"] == "elaborate"
