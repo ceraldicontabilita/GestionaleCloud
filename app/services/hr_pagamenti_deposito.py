@@ -103,7 +103,12 @@ _CF_RE = re.compile(r"\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", re.I)
 # sparirebbe del tutto solo perche' contiene anche "rimborso".
 _ESCLUSIONE_DURA_RE = re.compile(
     r"\bTFR\b|fattur|\bFPR\b|\bFT\b\s*\d|prestit|finanziament|COMM\.?\s*SU|"
-    r"\bnota\s+spese",
+    r"\bnota\s+spese|"
+    # Un bonifico a Ceraldi Group e' un giroconto fra i conti della societa';
+    # l'ordinante non entra mai nel testo esaminato, quindi il nome qui e'
+    # sempre il beneficiario. «AZIENDA AGRICOLA» e la societa' semplice sono
+    # fornitori (il cognome in causale li faceva finire in coda come ambigui).
+    r"CERALDI\s+GROUP|AZIENDA\s+AGRICOLA|\bS\.\s?S\.(?!\w)",
     re.I,
 )
 _ESCLUSIONE_MORBIDA_RE = re.compile(
@@ -136,6 +141,19 @@ _SEGNALE_STIPENDIO_RE = re.compile(
     re.I,
 )
 _RIF_BANCA_RE = re.compile(r"RIF\.?\s*([A-Z0-9]+(?:/[0-9]+)?)", re.I)
+# Riferimento interno BPM di una disposizione: lo stesso sulla ricevuta PDF
+# («RIF. INTERNO MB0B…»), sull'estratto conto («VS.DISP. RIF. MB0B…/9…») e
+# nelle copie dei vecchi import. E' l'identita' del bonifico in coda.
+_RIF_INTERNO_RE = re.compile(r"\b(MB[0-9A-Z]{10})\b")
+
+
+def rif_interno_banca(*testi: Any) -> Optional[str]:
+    """Il riferimento interno «MB…» del bonifico, dal primo testo che lo porta."""
+    for testo in testi:
+        m = _RIF_INTERNO_RE.search(str(testo or "").upper())
+        if m:
+            return m.group(1)
+    return None
 # Addebito cumulativo della banca su piu' persone, senza nominarne nessuna:
 # e' proprio il caso per cui esiste la coda HR "bonifici da associare".
 _BENEFICIARI_DIVERSI_RE = re.compile(r"BENEFICIARI\s+(VARI|DIVERSI)", re.I)
@@ -249,8 +267,13 @@ def e_pagamento_non_stipendio(testo: str) -> bool:
     L'esclusione "dura" vince sempre. Quella "morbida" (rimborsi, consulenze,
     lavori occasionali...) non esclude quando la causale contiene
     esplicitamente una parola di stipendio (vedi _SEGNALE_STIPENDIO_RE)."""
+    from app.services.proiezione_bancaria import SPESE_DISPOSIZIONE_RE
+
     testo = testo or ""
-    if _ESCLUSIONE_DURA_RE.search(testo):
+    # «… FAVORE <dipendente> - ADD.SPE»: la commissione del bonifico porta il
+    # nome del beneficiario, ma e' un costo della banca (stesso criterio della
+    # proiezione bancaria, un'espressione sola).
+    if _ESCLUSIONE_DURA_RE.search(testo) or SPESE_DISPOSIZIONE_RE.search(testo):
         return True
     if _ESCLUSIONE_MORBIDA_RE.search(testo) and not _SEGNALE_STIPENDIO_RE.search(testo):
         return True
@@ -317,7 +340,7 @@ class ContestoHR:
     """
 
     def __init__(self, db_hr, indici: Dict[str, Any], esiti: List[Dict[str, Any]],
-                 hash_in_coda: set):
+                 hash_in_coda: set, rif_in_coda: Optional[Dict[str, str]] = None):
         self.db = db_hr
         self.indici = indici
         self.per_hash: Dict[str, Dict[str, Any]] = {}
@@ -326,6 +349,8 @@ class ContestoHR:
         for e in esiti:
             self._indicizza(e)
         self.hash_in_coda = set(hash_in_coda)
+        # riferimento «MB…» -> id della riga in coda: un bonifico sta in coda una volta
+        self.rif_in_coda: Dict[str, str] = dict(rif_in_coda or {})
         self.periodi_toccati: set = set()
 
     def _indicizza(self, esito: Dict[str, Any]) -> None:
@@ -381,10 +406,15 @@ async def carica_contesto_hr() -> Optional[ContestoHR]:
     indici = await _indici_dipendenti(db_hr)
     esiti = await db_hr.pagamenti_esiti.find({}, {"_id": 0, "pdf_data": 0}).to_list(None)
     in_coda = set()
-    async for b in db_hr.bonifici_da_associare.find({}, {"_id": 0, "hash": 1}):
+    rif_in_coda: Dict[str, str] = {}
+    async for b in db_hr.bonifici_da_associare.find(
+            {}, {"_id": 0, "id": 1, "hash": 1, "rif_banca": 1, "causale": 1, "stato": 1}):
         if b.get("hash"):
             in_coda.add(b["hash"])
-    return ContestoHR(db_hr, indici, esiti, in_coda)
+        rif = b.get("rif_banca") or rif_interno_banca(b.get("causale"))
+        if rif and b.get("stato") in (None, "da_associare"):
+            rif_in_coda.setdefault(rif, b.get("id"))
+    return ContestoHR(db_hr, indici, esiti, in_coda, rif_in_coda)
 
 
 # ── deposito vero e proprio ──────────────────────────────────────────────────
@@ -442,17 +472,34 @@ async def _arricchisci_esito(ctx: ContestoHR, esistente: Dict[str, Any],
 
 async def _metti_in_coda(ctx: ContestoHR, *, hash_pdf: Optional[str], data: Optional[str],
                          importo: Optional[float], causale: str, pdf_filename: Optional[str],
-                         pdf_data: Optional[str], fonte: str, riferimento: Dict[str, Any]) -> str:
+                         pdf_data: Optional[str], fonte: str, riferimento: Dict[str, Any],
+                         rif_banca: Optional[str] = None) -> str:
     coda_id = str(uuid.uuid4())
     await ctx.db.bonifici_da_associare.insert_one({
         "id": coda_id, "hash": hash_pdf, "data": data, "importo": importo,
         "causale": causale, "pdf_filename": pdf_filename, "pdf_data": pdf_data,
         "fonte": fonte, "stato": "da_associare", "created_at": _now_iso(),
-        **riferimento,
+        "rif_banca": rif_banca, **riferimento,
     })
     if hash_pdf:
         ctx.hash_in_coda.add(hash_pdf)
+    if rif_banca:
+        ctx.rif_in_coda[rif_banca] = coda_id
     return coda_id
+
+
+async def _completa_riga_in_coda(ctx: ContestoHR, coda_id: str, campi: Dict[str, Any]) -> List[str]:
+    """La seconda prova dello stesso bonifico (PDF dopo la riga banca, o il
+    contrario) completa la riga gia' in coda, mai ne crea un'altra."""
+    esistente = await ctx.db.bonifici_da_associare.find_one({"id": coda_id}, {"_id": 0, "pdf_data": 0})
+    if not esistente:
+        return []
+    aggiunte = {k: v for k, v in campi.items() if v and not esistente.get(k)}
+    if aggiunte:
+        await ctx.db.bonifici_da_associare.update_one({"id": coda_id}, {"$set": aggiunte})
+        if aggiunte.get("hash"):
+            ctx.hash_in_coda.add(aggiunte["hash"])
+    return sorted(aggiunte)
 
 
 async def _ricalcola_periodi(ctx: ContestoHR) -> None:
@@ -524,11 +571,20 @@ async def _deposita(
     if dip is None or periodo is None:
         # ambiguo, oppure nessun dipendente riconosciuto: decide una
         # persona dalla coda HR.
+        rif = rif_interno_banca(cro, causale, pdf_filename)
+        gia_in_coda = ctx.rif_in_coda.get(rif) if rif else None
+        if gia_in_coda:
+            if not dry_run:
+                await _completa_riga_in_coda(ctx, gia_in_coda, {
+                    "hash": hash_pdf, "pdf_filename": pdf_filename, "pdf_data": pdf_data,
+                    **riferimento})
+            return _marcatore(ESITO_DUPLICATO, motivo="rif_banca", coda_id=gia_in_coda)
         if dry_run:
             return _marcatore(ESITO_IN_CODA, motivo=motivo if dip is None else "periodo_sconosciuto")
         coda_id = await _metti_in_coda(
             ctx, hash_pdf=hash_pdf, data=data, importo=importo, causale=causale,
             pdf_filename=pdf_filename, pdf_data=pdf_data, fonte=origine, riferimento=riferimento,
+            rif_banca=rif,
         )
         return _marcatore(ESITO_IN_CODA, coda_id=coda_id,
                           motivo=motivo if dip is None else "periodo_sconosciuto")

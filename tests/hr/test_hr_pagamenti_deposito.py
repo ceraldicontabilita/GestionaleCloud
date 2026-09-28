@@ -773,3 +773,65 @@ def test_due_upsert_concorrenti_sulla_stessa_key_convergono_sullo_stesso_documen
     assert len(righe) == 1  # non due righe con la stessa key
     (unica_riga,) = righe.values()
     assert unica_riga["cro"] == "RIF123"  # il secondo upsert ha aggiornato, non duplicato
+
+
+# ── coda: un bonifico una volta sola, niente commissioni ne' giroconti ───────
+
+def test_ricevuta_riepilogativa_e_riga_banca_dello_stesso_bonifico_fanno_una_riga_in_coda(basi):
+    """La ricevuta «BENEFICIARI DIVERSI» e la riga d'estratto della stessa
+    distinta hanno lo stesso RIF. INTERNO MB…: una riga in coda, completata
+    dalla seconda prova (PDF e id del movimento)."""
+    db, hr = basi
+    _run(db.estratto_conto_movimenti.insert_one(_movimento(
+        id="m-dist", data="2026-06-10", importo=-930,
+        descrizione="VS.DISP. RIF. MB0B72155312/90695468 FAVORE BENEFICIARI VARI DISTINTA - ADD.TOT")))
+    _run(db.bonifici_transfers.insert_one(_transfer(
+        id="tr-dist", data="2026-06-10T00:00:00+00:00", importo=930.0, source_path=None,
+        beneficiario={"nome": "BENEFICIARI DIVERSI", "iban": "MB234005"},
+        causale="ADDEBITO RIEPILOGATIVO PER BONIFICI EMESSI", cro_trn="MB0B72155312")))
+
+    _run(ponte.deposita_pagamenti_in_hr(db))
+
+    righe = _run(hr.bonifici_da_associare.find({}, {"_id": 0}).to_list(None))
+    assert len(righe) == 1
+    riga = righe[0]
+    assert riga["rif_banca"] == "MB0B72155312"
+    assert riga["gestionale_transfer_id"] == "tr-dist" and riga["gestionale_movimento_id"] == "m-dist"
+    assert riga["pdf_data"] == PDF
+    marca_mov = _run(db.estratto_conto_movimenti.find_one({"id": "m-dist"}))["hr_deposito"]
+    assert marca_mov["esito"] in ("in_coda", "duplicato")
+    # idempotente: il giro dopo non aggiunge nulla
+    _run(ponte.deposita_pagamenti_in_hr(db))
+    assert _run(hr.bonifici_da_associare.count_documents({})) == 1
+
+
+def test_commissione_add_spe_e_giroconto_a_ceraldi_group_non_entrano_in_coda(basi):
+    db, hr = basi
+    _run(db.estratto_conto_movimenti.insert_many([
+        _movimento(id="m-spe", importo=-0.75,
+                   descrizione="VS.DISP. RIF. MB0B72252145/90754777 FAVORE BENEFICIARI VARI DISTINTA - ADD.SPE"),
+        _movimento(id="m-spe-dip", importo=-0.75,
+                   descrizione="VS.DISP. RIF. MB0B39504178/90144225 FAVORE Vespa Vincenzo - ADD.SPE"),
+    ]))
+    _run(db.bonifici_transfers.insert_many([
+        _transfer(id="tr-giro", importo=10000.0, source_path=None, cro_trn="MB0B11111111",
+                  beneficiario={"nome": "CERALDI GROUP S R L EUR", "iban": "IT00X0000000000000000000000"},
+                  causale="Ceraldi giroconto", document_hash="b" * 64),
+        _transfer(id="tr-agri", importo=500.0, source_path=None, cro_trn="MB0B22222222",
+                  beneficiario={"nome": "AZIENDA AGRICOLA ROSSI S.S.", "iban": "IT00X0000000000000000000001"},
+                  causale="Ceraldi", document_hash="c" * 64),
+    ]))
+
+    _run(ponte.deposita_pagamenti_in_hr(db))
+
+    assert _run(hr.bonifici_da_associare.count_documents({})) == 0
+    assert _run(hr.pagamenti_esiti.count_documents({})) == 0
+    for coll, ident in (("estratto_conto_movimenti", "m-spe"), ("estratto_conto_movimenti", "m-spe-dip"),
+                        ("bonifici_transfers", "tr-giro"), ("bonifici_transfers", "tr-agri")):
+        assert _run(db[coll].find_one({"id": ident}))["hr_deposito"]["esito"] == "non_stipendio"
+
+
+def test_rif_interno_banca_dai_tre_formati():
+    assert ponte.rif_interno_banca("MB0B40702991") == "MB0B40702991"
+    assert ponte.rif_interno_banca(None, "VS.DISP. RIF. MB0B98112736/90312521 FAVORE X") == "MB0B98112736"
+    assert ponte.rif_interno_banca("5034903683956034480340003400IT", "AGGIUNTIVA") is None
