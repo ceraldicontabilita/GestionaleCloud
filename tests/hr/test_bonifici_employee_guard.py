@@ -157,3 +157,32 @@ def test_un_centesimo_di_differenza_non_autorizza_bonifico():
     )
     assert result["compatibile"] is False
     assert "importo_esatto" not in result["evidenze"]
+
+
+def test_cognome_in_testa_al_beneficiario_basta_se_univoco():
+    """28/09/2026: la banca tronca il beneficiario («SANKAPALA ARACHCHILAGE
+    JANANIE AYAC») e il nome completo non c'e' piu'. Il cognome univoco in
+    testa al beneficiario basta (CLAUDE.md: CF -> nome -> cognome univoco)."""
+    from app.routers.bonifici_module.classification import classifica_destinazione_dipendente
+
+    dipendenti = [
+        {"id": "d1", "nome": "Jananie Ayachana Dissanayaka", "cognome": "Sankapala Arachchilage"},
+        {"id": "d2", "nome": "Mariano", "cognome": "Mauro"},
+        {"id": "d3", "nome": "Valerio", "cognome": "Ceraldi"},
+        {"id": "d4", "nome": "Vincenzo", "cognome": "Ceraldi"},
+    ]
+
+    def esito(causale):
+        return classifica_destinazione_dipendente({"descrizione": causale}, dipendenti)
+
+    trovato = esito("VS.DISP. RIF. MB0B57634620/90791489 FAVORE SANKAPALA ARACHCHILAGE JANANIE AYAC - ADD.TOT")
+    assert trovato["identita_univoca"] and trovato["dipendente_id"] == "d1"
+    assert trovato["motivo_destinazione"] == "cognome_univoco"
+    # Il cognome che e' anche un nome proprio, non in testa: non basta.
+    assert not esito("VS.DISP. RIF. X FAVORE ESPOSITO MAURO").get("identita_univoca")
+    # Due dipendenti con lo stesso cognome: ambiguo, nessuna scelta.
+    assert not esito("VS.DISP. RIF. X FAVORE CERALDI V").get("identita_univoca")
+    # La causale che dice «fattura» vince sul nome.
+    assert not esito("VS.DISP. RIF. X FAVORE MAURO SRL - SALDO FATTURA 12").get("identita_univoca")
+    # Senza «FAVORE» non c'e' beneficiario da leggere.
+    assert not esito("SDD CORE: 123 MAURO").get("identita_univoca")

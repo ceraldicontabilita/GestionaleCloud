@@ -568,7 +568,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   (protocollo **e** saldo: col saldo diverso è un'altra delega, `protocollo_condiviso_con`) o bonifico (CRO+importo; il RIF. INTERNO BPM «MB…», quello dell'estratto conto, è `rif_interno`) non si riscrive; le copie vanno in `<collezione>_quarantena`, resta la pagata. Una busta già in archivio è un esito (`gia_presenti` → ELABORATE), mai un errore; la «STAMPA DI CONTROLLO» con la definitiva identica (CF, periodo, netto) va nel Cestino (`cedolini_stampe_controllo.py`).
 - Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.
 - **Pagamenti stipendio**: un solo ponte gestionale→HR (`hr_pagamenti_deposito`). Dipendente da CF → nome
-  completo univoco → cognome univoco: la corrispondenza univoca **basta da sola** («il nome di un
+  completo univoco → cognome univoco (in banca in testa al beneficiario dopo «FAVORE»): la corrispondenza univoca **basta da sola** («il nome di un
   dipendente è un dipendente»: non serve la parola «stipendio» in causale né un lotto paghe). Resta il
   veto: TFR, fatture, commissioni e fornitori non entrano mai, nemmeno in coda, **anche con un nome
   dipendente dentro** la causale — l'esclusione vince sul nome. Ambiguo o `BENEFICIARI VARI` → coda. Il
