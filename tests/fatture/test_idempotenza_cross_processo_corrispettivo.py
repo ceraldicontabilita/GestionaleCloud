@@ -130,7 +130,16 @@ class ProcessoFinto(SupabaseRuntimeDatabase):
         raise AssertionError(function_name)
 
     def ids_in_cache(self, collection):
-        return {str(d.get("_id")) for d in self[collection]._documents}
+        """Gli id che il processo vede leggendo la collezione.
+
+        Si chiede a una lettura vera, non al buffer ``_documents``: il runtime
+        lo svuota a fine operazione (teneva in memoria l'ultimo lotto di ogni
+        collezione, payload compreso, fino all'OOM).
+        """
+        async def leggi():
+            return await self[collection].find({}, {"_id": 1}).to_list(None)
+
+        return {str(d.get("_id")) for d in asyncio.run(leggi())}
 
 
 CORR_ID = "8eb80d64-12ab-4e34-b848-8935ea1114d4"
@@ -261,7 +270,9 @@ def test_rifiuto_senza_documento_esistente_ripristina_la_riga_remota():
                 "source": "corrispettivo_import",
                 "idempotency_key": f"corr:{CORR_ID}:cassa_entrata",
             })
-        return processo["prima_nota_cassa"]._documents
+        # Cio' che il processo vede dopo il rifiuto: una lettura vera, non il
+        # buffer di lavoro (che il runtime svuota a fine operazione).
+        return await processo["prima_nota_cassa"].find({}).to_list(None)
 
     snapshot = asyncio.run(scenario())
 

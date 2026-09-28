@@ -70,6 +70,11 @@ async def lifespan(app: FastAPI):
     from app.services import sorveglianza_loop
 
     sorveglianza_loop.avvia()
+    # Arene malloc limitate prima che nascano i thread di lavoro, e memoria
+    # liberata restituita al sistema ogni 5 minuti (OOM a 2 GB su Render).
+    from app.services import memoria_processo
+
+    memoria_processo.avvia()
 
     # Fail closed: senza l'archivio operativo configurato il gestionale non
     # puo' garantire letture o scritture contabili coerenti.
@@ -685,6 +690,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Shutting down...")
     sorveglianza_loop.arresta()
+    memoria_processo.arresta()
     if not badge_alignment_task.done():
         badge_alignment_task.cancel()
         with suppress(asyncio.CancelledError):
