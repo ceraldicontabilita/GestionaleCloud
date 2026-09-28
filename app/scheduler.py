@@ -916,6 +916,15 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] IVA fatture: %s: %s", type(e).__name__, e)
         try:
+            # Le fatture che il giornale aveva rifiutato in attesa della
+            # classificazione IVA appena fatta sopra: stesso aggancio dell'import.
+            from app.services.registrazione_contabile import registra_fatture_rimaste_fuori
+            r = await registra_fatture_rimaste_fuori(db)
+            if r.get("candidate"):
+                logger.info("[SCHEDULER-BANCA] fatture nel giornale %s", r)
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] fatture nel giornale: %s: %s", type(e).__name__, e)
+        try:
             # Ultimo passo: chiude gli alert che i passi sopra (e gli altri
             # motori) hanno reso falsi e mette in quarantena i verbali nati
             # dai numeri di fattura. Solo per id, con il motivo scritto.
