@@ -317,10 +317,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
   conto. Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
   nome o contenuto sotto `DRIVE_ESTRATTI_ANNO_MINIMO` (difetto 2025: l'anno prima si legge per riconciliare; 0 = nessun filtro) va in `ARRETRATO`, non si registra.
-- Acquisizione serale RT: Render non raggiunge la rete del locale, quindi
-  `scripts/sync_rt_to_drive.py` gira su un PC della LAN (ignora gli XML
-  `ESITO`, SHA-256, copia atomica dei soli file nuovi). `RT_LOCAL_BASE_URL` e
-  `RT_DRIVE_INBOX` sono variabili **locali**: mai su Render. **Se quel
+- Corrispettivi: la via **primaria** è l'import degli XML (Documenti > Import, cartella unica); la copia serale RT è
+  **supplementare**. Render non raggiunge la rete del locale, quindi `scripts/sync_rt_to_drive.py` gira sul **PC del
+  titolare** (attività pianificata da `scripts/installa_sync_rt.ps1`, ogni sera e all'accensione) e copia in
+  `DA ELABORARE` le giornate dall'ultima copiata in poi (ignora gli XML `ESITO`, SHA-256, copia atomica dei soli file
+  nuovi). `RT_LOCAL_BASE_URL` e `RT_DRIVE_INBOX` sono variabili **locali**: mai su Render. **Se quel
   programma si ferma nessuno se ne accorge**: il gestionale vede solo l'assenza
   di file, e l'assenza di incassi somiglia a un locale chiuso. Il segnale da
   guardare è l'ultima giornata in `corrispettivi`, non la coda Drive: `fonti_ferme.py` avvisa (anche su
@@ -824,7 +825,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Drive, ponte pagamenti HR, dedup fatture.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 non è in archivio, solo su Drive.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
-- **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; il PC del negozio tace dal 28/08).
+- **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; la copia serale RT è ferma dal 28/08).
   08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
@@ -857,7 +858,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non hanno importo, targa né data; bonifici al Comune e pagamenti Mooney via PayPal sono candidati senza verbale.
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
-- `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
+- `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **installare la copia serale RT sul suo PC** (`scripts/installa_sync_rt.ps1`, recupera da sola le giornate dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
 - **Minisito fiscale** (RST-MINI): script e JSON attesi non sono su Drive (solo i due HTML). Saldo IRAP 2024 (5.164,00 €) e acconto IRAP 2025 (4.238,00 €) senza quietanza: da verificare col commercialista. 18 quietanze doppie (21.727,35 €) da mettere in quarantena con `/api/doppioni` (prima `dry_run`).

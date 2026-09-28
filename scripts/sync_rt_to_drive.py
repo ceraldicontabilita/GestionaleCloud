@@ -1,9 +1,16 @@
 """Raccoglitore locale RT -> Google Drive Desktop.
 
-Questo programma gira sul PC collegato alla LAN del registratore. Render non
-puo' raggiungere 192.168.x.x: il collector conserva i byte originali e li
-deposita in ``Corrispettivi/Da elaborare``; il gestionale su Render esegue poi
-parsing, deduplica e registrazione con la pipeline Drive canonica.
+Via **supplementare** dei corrispettivi: la primaria resta l'import degli XML
+(Documenti > Import o la cartella unica). Gira sul PC del titolare, collegato
+alla LAN del registratore (Render non raggiunge 192.168.x.x): copia i byte
+originali in ``DATI SOCIETA CERALDI/DA ELABORARE`` via Drive Desktop, e lo
+smistatore del gestionale fa parsing, deduplica e registrazione.
+
+Ogni giro riprende dal giorno dell'ultima copia (compreso, perche' l'RT
+aggiunge file durante la giornata) fino a oggi: un PC rimasto spento recupera
+da solo le giornate perse. Alla prima esecuzione legge tutte le giornate che
+l'RT conserva; ``--dal AAAAMMGG`` limita il recupero. Installazione come
+attivita' pianificata di Windows: ``scripts/installa_sync_rt.ps1``.
 """
 from __future__ import annotations
 
@@ -106,35 +113,51 @@ def _save_state(path: Path, state: dict) -> None:
     tmp.replace(path)
 
 
-def sync(base_url: str, inbox: Path, preview: bool = False) -> dict:
+def _giorno(url: str) -> str:
+    return unquote(urlparse(url).path.rstrip("/").split("/")[-1])
+
+
+def giornate_da_leggere(days: list[str], ultimo: str | None, dal: str | None = None) -> list[str]:
+    """Le cartelle giornaliere dal giorno dell'ultima copia (compreso) in poi."""
+    soglia = max(filter(None, [ultimo, dal]), default="")
+    return [d for d in days if _giorno(d) >= soglia]
+
+
+def sync(base_url: str, inbox: Path, preview: bool = False, dal: str | None = None) -> dict:
     base_url = _private_base_url(base_url)
-    days = _daily_directories(base_url)
-    source = days[-1] if days else base_url
-    urls = _rt_xmls(source)
     state_path = _state_path()
     state = _load_state(state_path)
     known = state.setdefault("hashes", {})
-    result = {"cartella": source, "trovati": len(urls), "copiati": 0, "duplicati": 0}
+    days = _daily_directories(base_url)
+    sorgenti = giornate_da_leggere(days, state.get("ultimo_giorno"), dal) if days else [base_url]
+    result = {"giornate": [_giorno(d) for d in sorgenti], "trovati": 0, "copiati": 0, "duplicati": 0}
 
     if not preview:
         inbox.mkdir(parents=True, exist_ok=True)
-    day = unquote(urlparse(source).path.rstrip("/").split("/")[-1])
-    for url in urls:
-        content = _get(url)
-        digest = hashlib.sha256(content).hexdigest()
-        if digest in known:
-            result["duplicati"] += 1
-            continue
-        original = unquote(urlparse(url).path.split("/")[-1])
-        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{day}_{original}")
-        target = inbox / safe_name
-        if not preview:
-            with tempfile.NamedTemporaryFile(dir=inbox, delete=False) as handle:
-                handle.write(content)
-                temp_name = Path(handle.name)
-            temp_name.replace(target)
-            known[digest] = {"source": url, "file": safe_name}
-        result["copiati"] += 1
+    for source in sorgenti:
+        day = _giorno(source)
+        urls = _rt_xmls(source)
+        result["trovati"] += len(urls)
+        for url in urls:
+            content = _get(url)
+            digest = hashlib.sha256(content).hexdigest()
+            if digest in known:
+                result["duplicati"] += 1
+                continue
+            original = unquote(urlparse(url).path.split("/")[-1])
+            safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{day}_{original}")
+            target = inbox / safe_name
+            if not preview:
+                with tempfile.NamedTemporaryFile(dir=inbox, delete=False) as handle:
+                    handle.write(content)
+                    temp_name = Path(handle.name)
+                temp_name.replace(target)
+                known[digest] = {"source": url, "file": safe_name}
+            result["copiati"] += 1
+        if not preview and re.fullmatch(r"20\d{6}", day):
+            # Salvato a ogni giornata: un giro interrotto riparte da qui.
+            state["ultimo_giorno"] = max(day, state.get("ultimo_giorno") or "")
+            _save_state(state_path, state)
 
     if not preview:
         _save_state(state_path, state)
@@ -142,14 +165,17 @@ def sync(base_url: str, inbox: Path, preview: bool = False) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Importa l'ultima giornata RT in Drive")
+    parser = argparse.ArgumentParser(description="Copia in Drive le giornate RT non ancora copiate")
     parser.add_argument("--preview", action="store_true", help="Non scrive file o stato")
+    parser.add_argument("--dal", help="Primo giorno da recuperare, AAAAMMGG")
     args = parser.parse_args()
+    if args.dal and not re.fullmatch(r"20\d{6}", args.dal):
+        raise SystemExit("--dal vuole una data AAAAMMGG")
     base_url = os.getenv("RT_LOCAL_BASE_URL", "http://192.168.1.19/www/dati-rt/")
     inbox_raw = os.getenv("RT_DRIVE_INBOX")
     if not inbox_raw:
-        raise SystemExit("Impostare RT_DRIVE_INBOX sulla cartella Corrispettivi\\Da elaborare")
-    result = sync(base_url, Path(inbox_raw), preview=args.preview)
+        raise SystemExit("Impostare RT_DRIVE_INBOX sulla cartella DATI SOCIETA CERALDI\\DA ELABORARE")
+    result = sync(base_url, Path(inbox_raw), preview=args.preview, dal=args.dal)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
