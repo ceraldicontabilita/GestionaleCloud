@@ -115,3 +115,40 @@ def test_arricchisci_pagamenti_non_crea_assegni():
     sorgente = (ROOT / "app/routers/prima_nota_module/manutenzione.py").read_text(encoding="utf-8")
     corpo = sorgente.split("async def arricchisci_pagamenti_banca(", 1)[1].split("\nasync def ", 1)[0]
     assert 'db["assegni"]' not in corpo
+
+
+def test_gli_stati_vivono_in_un_registro_solo():
+    """Nessun modulo tiene la sua lista di stati: il controllo di eliminazione
+    conosceva solo emesso/incassato e lasciava cancellare un assegno stornato."""
+    from app.constants import stati_assegno as registro
+    from app.routers.bank import assegni as assegni_router
+
+    assert assegni_router.ASSEGNO_STATI is registro.ASSEGNO_STATI
+    assert registro.STATI_NUMERO_CONSUMATO | registro.STATI_DISPONIBILI == set(registro.ASSEGNO_STATI)
+    for nome in ("app/routers/bank/assegni.py", "app/services/business_rules.py", "app/routers/commercialista.py"):
+        sorgente = (ROOT / nome).read_text(encoding="utf-8")
+        assert "ASSEGNO_STATI = {" not in sorgente, nome
+        assert '["vuoto", "compilato"]' not in sorgente, nome
+        assert '["emesso", "incassato"]' not in sorgente, nome
+
+
+@pytest.mark.parametrize("stato", ["emesso", "assegnato", "parzialmente_assegnato", "incassato",
+                                   "annullato", "stornato", "scaduto"])
+def test_un_numero_uscito_dal_carnet_non_si_elimina(stato):
+    from app.services.business_rules import BusinessRules
+
+    assert not BusinessRules.can_delete_assegno({"stato": stato}).is_valid
+
+
+@pytest.mark.parametrize("stato", ["vuoto", "compilato"])
+def test_un_numero_ancora_nel_carnet_si_elimina(stato):
+    from app.services.business_rules import BusinessRules
+
+    assert BusinessRules.can_delete_assegno({"stato": stato}).is_valid
+
+
+def test_l_avvio_non_riporta_gli_assegni_a_vuoto():
+    """La vecchia migrazione d'avvio riportava a «vuoto», per filtro, gli assegni
+    col beneficiario «Pag. fatt. …»: un numero emesso tornava disponibile."""
+    sorgente = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    assert 'db["assegni"].update_many' not in sorgente

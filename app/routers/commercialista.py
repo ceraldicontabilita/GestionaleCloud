@@ -19,6 +19,7 @@ from email import encoders
 import os
 import base64
 
+from app.constants.stati_assegno import STATI_DISPONIBILI
 from app.database import Database
 from app.utils.error_handler import handle_errors
 
@@ -773,7 +774,7 @@ async def _get_assegni_emessi_mensile(anno: int, mese: int) -> list:
     month_prefix, _ = _periodo(anno, mese)
 
     return await db["assegni"].find({
-        "stato": {"$nin": ["vuoto", "compilato"]},
+        "stato": {"$nin": sorted(STATI_DISPONIBILI)},
         "data_emissione": {"$regex": f"^{month_prefix}"}
     }, {"_id": 0}).sort("data_emissione", 1).to_list(5000)
 

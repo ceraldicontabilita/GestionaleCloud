@@ -266,8 +266,11 @@ class BusinessRules:
         """Verifica se un assegno può essere eliminato."""
         errors = []
         
+        from app.constants.stati_assegno import STATI_NUMERO_CONSUMATO
+
+        # Un numero uscito dal carnet non si cancella: si annulla o si storna.
         stato = assegno.get("stato", "vuoto")
-        if stato in ["emesso", "incassato"]:
+        if stato in STATI_NUMERO_CONSUMATO:
             errors.append(f"Impossibile eliminare: assegno già {stato}")
         
         if assegno.get("fatture_collegate") and len(assegno.get("fatture_collegate", [])) > 0:
