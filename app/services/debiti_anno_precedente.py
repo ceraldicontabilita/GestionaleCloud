@@ -224,11 +224,59 @@ async def _chiudi(db, debito, gruppo, ora, esito, to_cents) -> None:
             aggiornamento["fattura_id_orfano"] = m.get("fattura_id")
             aggiornamento["fattura_id"] = None
         await db["estratto_conto_movimenti"].update_one({"id": m.get("id")}, {"$set": aggiornamento})
+        await _proietta_prima_nota(db, m, debito, ora, to_cents)
     await db[COLL].update_one({"id": debito["id"]}, {"$set": {
         "residuo_cents": 0, "stato": "pagato", "pagamenti": pagamenti, "pagato_at": ora,
     }})
     esito["collegati"].append({"debito_id": debito["id"], "numero": debito.get("numero"),
                                "movimenti": [p["movimento_id"] for p in pagamenti]})
+
+
+CONTO_FORNITORI = "33.03.01"
+
+
+async def _proietta_prima_nota(db, m, debito, ora, to_cents) -> None:
+    """Titolare, 28/09/2026: il pagamento entra in Prima Nota Banca, sul conto
+    fornitori (33.03.01) e senza costo ne' IVA: e' il debito del 2025 che si
+    chiude, e senza questa riga il saldo della banca non torna. Una riga sola
+    per movimento: quella che c'e' gia' (import o fattura sparita) si
+    completa, mai se ne affianca una seconda."""
+    from uuid import uuid4
+
+    from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO, scrivi_movimento_se_assente
+
+    movimento_id = str(m.get("id") or "")
+    descrizione = f"Pagamento fattura {debito.get('numero')} del {debito['data']} (anno precedente)"
+    campi = {
+        "categoria": CATEGORIA, "category": CATEGORIA,
+        "descrizione": descrizione, "description": descrizione,
+        "conto_contropartita": CONTO_FORNITORI,
+        "debito_anno_precedente_id": debito["id"],
+        "fattura_id": None, "invoice_id": None,
+        "estratto_conto_id": movimento_id, "movimento_bancario_id": movimento_id,
+        "riconciliato": True, "updated_at": ora,
+    }
+    pn_query = {"$or": [
+        {"estratto_conto_id": movimento_id},
+        {"movimento_bancario_id": movimento_id},
+        {"movimento_estratto_conto_id": movimento_id},
+    ]}
+    esistenti = await db["prima_nota_banca"].find(
+        {"$and": [pn_query, dict(FILTRO_MOVIMENTO_ATTIVO)]}, {"_id": 0, "id": 1}).to_list(10)
+    if esistenti:
+        for riga in esistenti:
+            await db["prima_nota_banca"].update_one({"id": riga["id"]}, {"$set": campi})
+        return
+    await scrivi_movimento_se_assente(db, "banca", pn_query, {
+        "id": str(uuid4()),
+        "data": str(m.get("data") or "")[:10],
+        "tipo": "uscita",
+        "importo": abs(to_cents(m.get("importo"))) / 100,
+        "source": "debito_anno_precedente",
+        "idempotency_key": f"banca:{movimento_id}:debito_anno_precedente",
+        "created_at": ora,
+        **campi,
+    })
 
 
 async def recupera_da_drive(db, *, lotto: int = LOTTO_RECUPERO) -> Dict[str, Any]:
