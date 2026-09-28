@@ -591,7 +591,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   consultazione** (il `stato_import: archivio_storico` delle fatture e' stato tolto: erano 1.127 documenti
   e 52 MB fuori da ogni conto, che tornavano a ogni ricostruzione Drive). L'originale sta su Drive. Per
   rivedere un anno intero: cambiare l'anno attivo e rilanciare la ricostruzione, che rilegge tutti gli
-  XML. Gli **accrediti in entrata del 2023** (ricevuta «A VOSTRO CREDITO»: Satispay, giroconti, rimborsi)
+  XML. Eccezione: la fattura dell'**anno prima** pagata quest'anno entra solo come **debito** (`debiti_anno_precedente.py`: niente
+  costo né IVA; il bonifico la chiude per fornitore e importo al centesimo, debiti uguali in ordine di data). Gli **accrediti in entrata del 2023** (ricevuta «A VOSTRO CREDITO»: Satispay, giroconti, rimborsi)
   non si registrano (`ANNI_ACCREDITI_NON_REGISTRATI`); i bonifici disposti di ogni anno restano.
 - Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato,
   Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile
@@ -821,8 +822,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - TFR: `hr.app_tfr_accantonamenti` vuota, il codice scrive in `tfr_accantonamenti` (1.175 righe, 273.025,37 €); ingest cedolini 0 file su 49 caselle.
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica
   Drive, ponte pagamenti HR, dedup fatture.
-- Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
-  `fatture_pre2026_rimosse_20260920`.
+- Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 non è in archivio, solo su Drive.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
 - **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; il PC del negozio tace dal 28/08).
   08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
