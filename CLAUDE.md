@@ -74,7 +74,7 @@ resto del file.
   progetti reali** e integrare la soluzione, invece di descrivere il problema.
 - Se trovi errori, **correggili**: non limitarti a segnalarli.
 - Esponi il risultato e gli eventuali blocchi, non una sequenza di pulsanti
-  tecnici da premere.
+  tecnici da premere. **Quando c'è una scelta, fai la domanda** al titolare con le opzioni (la consigliata per prima).
 - Chiudere ogni sessione con il link di produzione:
   **https://gestionalecloud.onrender.com**
 
@@ -328,7 +328,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Drive, struttura canonica
 
-- **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import, prima **sciolto nella radice** (il calderone del titolare) poi da `DA ELABORARE`, con gli XML in testa e i più recenti primi,
+- **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import, prima **sciolto nella radice** (il calderone del titolare) poi da `DA ELABORARE`, con le buste paga in testa (tre insieme, scritte una alla volta per dipendente e periodo), poi gli XML dai più recenti; ogni giro va avanti fino a coda vuota,
   una copia byte-identica di un originale va nel Cestino (in `DOPPIONI` se il file è del titolare: Drive nega il Cestino al service account), «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Dentro `GESTIONALE` restano solo lei e `FOTO E IMMAGINI` (immagini, cartella a parte): le cartelle dei canali sotto non esistono piu'. Le copie degli allegati email vanno in `ELABORATE` (`email_drive_archive.py`), mai in `DA ELABORARE`: lo smistatore le registrerebbe due volte. La pausa dell'import è `DRIVE_CARTELLA_UNICA_IMPORT=false`, **mai** togliere la cartella: le credenziali si provano su di lei.
 - **Censimento doppioni** della cartella GESTIONALE (`drive_censimento_doppioni.py`, `DRIVE_CENSIMENTO_DOPPIONI`
   off|censisci|marca): copie esatte (MD5 + dimensione Drive) e file tecnici si **rinominano soltanto**

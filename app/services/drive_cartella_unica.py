@@ -242,9 +242,14 @@ def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
 _ESTENSIONI_XML = (".xml", ".xml.p7m", ".p7m", ".zip")
 
 
-def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Prima XML (fatture, chiusure RT) e ZIP, i piu' recenti in testa; poi il resto.
+_BUSTA_PAGA = re.compile(r"LUL|CEDOLIN|BUSTA|LIBRO\s*UNICO", re.IGNORECASE)
 
+
+def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Prima le buste paga, poi XML (fatture, chiusure RT) e ZIP, poi il resto.
+
+    Le buste in testa (decisione del titolare, 28/09/2026): finche' la busta
+    definitiva non e' in ELABORATE, la sua stampa di controllo resta su Drive.
     Un XML si registra in un attimo e fa i conti del mese; un PDF bancario puo'
     tenere il giro per minuti. Fra gli XML vince l'ultimo caricato: nella radice
     ce ne sono oltre mille di vecchi, e le fatture appena messe dal titolare non
@@ -254,9 +259,23 @@ def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     def xml(f):
         return str(f.get("name") or "").lower().endswith(_ESTENSIONI_XML)
 
+    buste = [f for f in coda if e_busta(f)]
     recenti = sorted((f for f in coda if xml(f)),
                      key=lambda f: str(f.get("createdTime") or ""), reverse=True)
-    return recenti + [f for f in coda if not xml(f)]
+    return buste + recenti + [f for f in coda if not e_busta(f) and not xml(f)]
+
+
+def e_busta(f: Dict[str, Any]) -> bool:
+    nome = str(f.get("name") or "")
+    return nome.lower().endswith(".pdf") and bool(_BUSTA_PAGA.search(nome))
+
+
+# Buste lette insieme (decisione del titolare, 28/09/2026). Solo le buste: la
+# loro scrittura e' serializzata per dipendente e periodo
+# (``cedolini_manager.registra_busta``); fatture e altri documenti restano uno
+# alla volta, perche' la loro dedup non e' protetta contro due letture parallele.
+BUSTE_IN_PARALLELO = 3
+_DUP_NOME = re.compile(r"\s*\(dup\d+\)|\s*\(\d+\)", re.IGNORECASE)
 
 
 async def _registra(db, file_id: str, **campi) -> None:
@@ -348,7 +367,7 @@ async def _giro(db) -> Dict[str, Any]:
         if f.get("md5Checksum"):
             per_md5.setdefault(f["md5Checksum"], []).append(f["id"])
 
-    for f in in_coda:
+    async def lavora(f: Dict[str, Any]) -> None:
         esito["letti"] += 1
         fid, nome = f["id"], f.get("name") or f["id"]
         try:
@@ -370,7 +389,7 @@ async def _giro(db) -> Dict[str, Any]:
                 esito["doppioni_cestinati"] += 1
                 esito["dettagli"].append({"file": nome, "esito": "doppione", "copia_di": copia_di,
                                           "cartella": cartella})
-                continue
+                return
 
             contesto = {"channel": "drive_cartella_unica", "drive_file_id": fid,
                         "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256}
@@ -406,6 +425,23 @@ async def _giro(db) -> Dict[str, Any]:
             except Exception as exc2:
                 logger.warning("[cartella-unica] %s non spostato in ERRORI: %s: %s",
                                nome, type(exc2).__name__, exc2)
+    blocchi: Dict[str, asyncio.Lock] = {}
+    parallelo = asyncio.Semaphore(BUSTE_IN_PARALLELO)
+
+    async def lavora_busta(f: Dict[str, Any]) -> None:
+        # Due copie dello stesso file o della stessa busta non si leggono insieme:
+        # il confronto col gia' archiviato deve vedere la prima gia' registrata.
+        chiave_nome = "nome:" + _DUP_NOME.sub("", str(f.get("name") or "")).strip().lower()
+        chiave_md5 = "md5:" + str(f.get("md5Checksum") or f["id"])
+        async with parallelo, blocchi.setdefault(chiave_nome, asyncio.Lock()), \
+                blocchi.setdefault(chiave_md5, asyncio.Lock()):
+            await lavora(f)
+
+    buste = [f for f in in_coda if e_busta(f)]
+    await asyncio.gather(*(lavora_busta(f) for f in buste))
+    for f in in_coda:
+        if not e_busta(f):
+            await lavora(f)
     esito["dettagli"] = esito["dettagli"][:100]
     esito["restanti"] = max(0, int(esito.get("in_coda_totale") or 0) - esito["letti"])
     await _salva_stato(db, esito)

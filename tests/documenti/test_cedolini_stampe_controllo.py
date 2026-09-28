@@ -142,3 +142,26 @@ def test_pulisci_archivio_senza_tetto_controlla_tutti_i_gruppi(ambiente, monkeyp
     monkeypatch.setattr(sc, "leggi", lambda c: (c.startswith(b"%PDF b"), {BUSTA}))
     esito = run(sc.pulisci_archivio(db, gruppi_per_giro=None))
     assert (esito["controllati"], esito["tolte"]) == (30, 30)
+
+
+def test_la_coda_legge_prima_le_buste():
+    coda = [
+        {"id": "p", "name": "estratto.pdf"},
+        {"id": "x", "name": "fattura.xml", "createdTime": "2026-09-01"},
+        {"id": "b", "name": "ROSSI - CEDOLINO-LUL - 2025-12 (dup1).pdf"},
+        {"id": "l", "name": "Libro unico.pdf"},
+    ]
+    assert [f["id"] for f in cu.ordina_coda(coda)] == ["b", "l", "x", "p"]
+
+
+def test_buste_in_parallelo_senza_doppioni(ambiente):  # noqa: F811
+    drive, smistati, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("c1", "ROSSI - LUL - 2025-12.pdf", b"%PDF busta", "inbox")
+    drive.aggiungi("c2", "ROSSI - LUL - 2025-12 (dup1).pdf", b"%PDF busta", "inbox")
+    for i in range(4):
+        drive.aggiungi(f"v{i}", f"VERDI{i} - LUL - 2025-12.pdf", f"%PDF v{i}".encode(), "inbox")
+    esito = run(cu.giro(db))
+    assert esito["letti"] == 6
+    assert esito["doppioni_cestinati"] == 1 and esito["elaborati"] == 5
+    assert len(smistati) == 5
