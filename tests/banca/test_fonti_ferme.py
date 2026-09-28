@@ -171,3 +171,43 @@ def test_copertura_senza_movimenti_non_avvisa():
     esito = _run(fonti_ferme.copertura_categoria_banca(db, anno=2026))
     assert esito["totale"] == 0
     assert esito["sopra_soglia"] is False
+
+
+def test_corrispettivi_fermi_da_due_giorni_d_apertura_avvisano_su_telegram(monkeypatch):
+    """28/09/2026: il PC del negozio si e' fermato e nessuno se n'e' accorto.
+    Il bar apre tutti i giorni: dopo due giorni d'apertura senza chiusura RT
+    l'avviso nasce e arriva su Telegram, una volta sola."""
+    inviati = []
+
+    async def finto_invio(testo, **_kw):
+        inviati.append(testo)
+        return {"success": True}
+
+    monkeypatch.setattr("app.services.telegram_notifications.send_notification", finto_invio)
+    db = _db("corr-telegram")
+    _popola(db, estratto="2026-09-20", corrispettivi="2026-09-21", pos="2026-09-20")
+
+    # 21 -> 23: due giorni, ancora nella norma.
+    assert _run(fonti_ferme.controlla_fonti_ferme(db, oggi=date(2026, 9, 23)))["ferme"] == []
+    # 21 -> 24: tre giorni, avviso e un solo messaggio anche al giro dopo.
+    esito = _run(fonti_ferme.controlla_fonti_ferme(db, oggi=date(2026, 9, 24)))
+    assert [r["fonte"] for r in esito["ferme"]] == ["corrispettivi"]
+    _run(fonti_ferme.controlla_fonti_ferme(db, oggi=date(2026, 9, 24)))
+    assert len(inviati) == 1 and "21/09/2026" in inviati[0]
+
+
+def test_i_giorni_di_chiusura_non_contano_come_corrispettivi_mancanti(monkeypatch):
+    async def finto_invio(testo, **_kw):
+        return {"success": True}
+
+    monkeypatch.setattr("app.services.telegram_notifications.send_notification", finto_invio)
+    db = _db("corr-ferie")
+    _popola(db, estratto="2026-08-20", corrispettivi="2026-08-14", pos="2026-08-20")
+    _run(db["chiusure_attivita"].insert_one(
+        {"id": "ferie", "data_inizio": "2026-08-15", "data_fine": "2026-08-23"}))
+    # Ferie 15-23/08: al 25/08 manca solo il 24 e oggi, nessun avviso.
+    esito = _run(fonti_ferme.controlla_fonti_ferme(db, oggi=date(2026, 8, 25)))
+    assert "corrispettivi" not in {r["fonte"] for r in esito["ferme"]}
+    riga = next(r for r in _run(fonti_ferme.stato_fonti(db, oggi=date(2026, 8, 25)))
+                if r["fonte"] == "corrispettivi")
+    assert riga["giorni_fermi"] == 2 and riga["ferma"] is False

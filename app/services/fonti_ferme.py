@@ -55,6 +55,14 @@ FONTI: tuple[dict[str, Any], ...] = (
             "senza corrispettivi non nascono il credito verso il gestore POS "
             "ne' l'incasso di cassa del giorno"
         ),
+        # 28/09/2026, titolare: il PC del negozio si e' fermato e nessuno se
+        # n'e' accorto per settimane. Il bar apre tutti i giorni (i
+        # corrispettivi 2026 coprono ogni giorno della settimana), quindi
+        # conta ogni giorno tranne le chiusure dichiarate, e dopo due giorni
+        # d'apertura senza chiusura RT l'avviso arriva anche su Telegram.
+        "giorni_tollerati": 2,
+        "salta_chiusure": True,
+        "telegram": True,
     },
     {
         "chiave": "pos_numia",
@@ -108,6 +116,34 @@ async def _ultima_data(db, fonte: Dict[str, Any]) -> Optional[date]:
     return massimo
 
 
+async def _giorni_fermi(db, fonte: Dict[str, Any], ultima: date, riferimento: date) -> int:
+    """Giorni dall'ultimo dato; per chi lo chiede, senza i giorni di chiusura
+    dell'attivita' (ferie, ristrutturazione: nessun corrispettivo e' dovuto)."""
+    giorni = (riferimento - ultima).days
+    if giorni <= 0 or not fonte.get("salta_chiusure"):
+        return giorni
+    from datetime import timedelta
+
+    from app.services.chiusure_attivita import giorni_chiusi
+
+    da = (ultima + timedelta(days=1)).isoformat()
+    try:
+        chiusi = await giorni_chiusi(db, da, riferimento.isoformat())
+    except Exception as exc:  # noqa: BLE001 - senza registro si contano tutti
+        logger.warning("Fonti ferme: chiusure non leggibili (%s: %s)", type(exc).__name__, exc)
+        chiusi = set()
+    return giorni - len(chiusi)
+
+
+async def _avvisa_telegram(fonte: Dict[str, Any], dettaglio: str) -> None:
+    from app.services.telegram_notifications import send_notification
+
+    esito = await send_notification(f"<b>Fonte ferma</b>\n{dettaglio}")
+    if not esito.get("success"):
+        logger.warning("Fonti ferme: Telegram non inviato per %s (%s)",
+                       fonte["chiave"], esito.get("error"))
+
+
 async def controlla_fonti_ferme(db, *, giorni_tollerati: int = GIORNI_TOLLERATI,
                                 oggi: Optional[date] = None) -> Dict[str, Any]:
     """Apre un avviso per ogni fonte ferma da troppi giorni, lo chiude quando
@@ -124,18 +160,21 @@ async def controlla_fonti_ferme(db, *, giorni_tollerati: int = GIORNI_TOLLERATI,
         if ultima is None:
             esito["vuote"].append(chiave)
             continue
-        giorni = (riferimento - ultima).days
-        if giorni > giorni_tollerati:
+        giorni = await _giorni_fermi(db, fonte, ultima, riferimento)
+        if giorni > fonte.get("giorni_tollerati", giorni_tollerati):
             dettaglio = (
                 f"{fonte['etichetta']}: nessun dato da {giorni} giorni "
                 f"(ultimo: {ultima.strftime('%d/%m/%Y')}). "
                 f"Conseguenza: {fonte['conseguenza']}."
             )
-            await genera_alert(
+            nuovo = await genera_alert(
                 "FONTE_CONTABILE_FERMA", chiave, fonte["collection"], dettaglio, db,
                 extra={"fonte": chiave, "ultima_data": ultima.isoformat(),
                        "giorni_fermi": giorni, "etichetta": fonte["etichetta"]},
             )
+            # Un messaggio quando l'avviso nasce, non a ogni giro orario.
+            if nuovo and fonte.get("telegram"):
+                await _avvisa_telegram(fonte, dettaglio)
             esito["ferme"].append({"fonte": chiave, "ultima_data": ultima.isoformat(),
                                    "giorni": giorni})
         else:
@@ -152,12 +191,14 @@ async def stato_fonti(db, *, oggi: Optional[date] = None) -> List[Dict[str, Any]
     righe: List[Dict[str, Any]] = []
     for fonte in FONTI:
         ultima = await _ultima_data(db, fonte)
+        giorni = await _giorni_fermi(db, fonte, ultima, riferimento) if ultima else None
         righe.append({
             "fonte": fonte["chiave"],
             "etichetta": fonte["etichetta"],
             "ultima_data": ultima.isoformat() if ultima else None,
-            "giorni_fermi": (riferimento - ultima).days if ultima else None,
-            "ferma": bool(ultima and (riferimento - ultima).days > GIORNI_TOLLERATI),
+            "giorni_fermi": giorni,
+            "ferma": bool(giorni is not None
+                          and giorni > fonte.get("giorni_tollerati", GIORNI_TOLLERATI)),
             "conseguenza": fonte["conseguenza"],
         })
     return righe
@@ -183,6 +224,8 @@ async def copertura_categoria_banca(
         senza_categoria = await collection.count_documents({
             **query_anno,
             "$or": [{"categoria": None}, {"categoria": ""}, {"categoria": {"$exists": False}}],
+            # Una riga segnata da ignorare (copia, duplicato) non aspetta categoria.
+            "ignorata": {"$ne": True},
         })
     except Exception as exc:  # noqa: BLE001 - non deve far fallire la pagina
         logger.warning("Copertura categoria banca non calcolabile (%s)", exc)
