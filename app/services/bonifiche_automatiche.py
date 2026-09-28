@@ -314,6 +314,24 @@ async def riallinea_rate_f24(db) -> Dict[str, int]:
     return esito
 
 
+async def numeri_fattura_senza_spazi(db) -> Dict[str, int]:
+    """Numeri di fattura salvati con spazi attorno (« 13719»): chi cerca per
+    numero non li trova. Si riscrive il numero ripulito, per id, e si conserva
+    quello letto dall'XML in ``invoice_number_originale``."""
+    esito = {"fatture": 0}
+    righe = await db["invoices"].find({}, {"_id": 0, "id": 1, "invoice_number": 1}).to_list(None)
+    for riga in righe:
+        numero = riga.get("invoice_number")
+        if not riga.get("id") or not isinstance(numero, str) or numero == numero.strip():
+            continue
+        await db["invoices"].update_one({"id": riga["id"]}, {"$set": {
+            "invoice_number": numero.strip(), "invoice_number_originale": numero,
+            "numero_ripulito_at": _ora(),
+        }})
+        esito["fatture"] += 1
+    return esito
+
+
 # ── Orchestrazione ──────────────────────────────────────────────────────────
 
 PASSI = (
@@ -322,6 +340,7 @@ PASSI = (
     ("documenti_classificati", chiudi_alert_documenti_classificati),
     ("verbali_da_fattura", quarantena_verbali_da_fattura),
     ("rate_f24", riallinea_rate_f24),
+    ("numeri_fattura_con_spazi", numeri_fattura_senza_spazi),
 )
 
 

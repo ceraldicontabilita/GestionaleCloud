@@ -135,3 +135,31 @@ def test_la_bonifica_e_agganciata_al_job_bancario_corto():
     inizio = testo.index("async def _banca_versamenti_proiezione_job")
     fine = testo.index("async def _automazioni_prima_nota_job")
     assert "esegui_bonifiche(db)" in testo[inizio:fine]
+
+
+def test_il_numero_di_fattura_con_gli_spazi_si_ripulisce_una_volta():
+    """Societa' Duegi scrive «  13719»: in archivio il numero resta cercabile."""
+    from app.services.bonifiche_automatiche import numeri_fattura_senza_spazi
+
+    async def scenario():
+        db = ArchivioDocumenti()
+        await db["invoices"].insert_many([
+            {"id": "f-duegi", "invoice_number": " 13719"},
+            {"id": "f-ok", "invoice_number": "1/7653"},
+        ])
+        primo = await numeri_fattura_senza_spazi(db)
+        duegi = await db["invoices"].find_one({"id": "f-duegi"})
+        secondo = await numeri_fattura_senza_spazi(db)
+        return primo, duegi, secondo
+
+    primo, duegi, secondo = asyncio.run(scenario())
+    assert primo == {"fatture": 1} and secondo == {"fatture": 0}
+    assert (duegi["invoice_number"], duegi["invoice_number_originale"]) == ("13719", " 13719")
+
+
+def test_l_import_legge_il_numero_senza_spazi():
+    from app.parsers.fattura_elettronica_parser import parse_fattura_xml
+    from tests.fiscale.test_fattura_passiva_regole_5_9 import XML
+
+    con_spazio = XML.replace("<Numero>F-99</Numero>", "<Numero>  F-99 </Numero>")
+    assert parse_fattura_xml(con_spazio)["invoice_number"] == "F-99"
