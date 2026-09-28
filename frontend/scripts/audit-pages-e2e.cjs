@@ -134,15 +134,16 @@ function uniqueProblems(problems) {
 
         const positions = await rows.evaluateAll(elements => elements.map(row => {
           const view = [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Vedi');
-          const link = [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Assegno');
+          // «Pagata con…» (cassa, banca, assegno): una tendina sola sulle fatture aperte.
+          const link = row.querySelector('select[data-testid^="scegli-pagamento-"]');
           const viewRect = view?.getBoundingClientRect();
           const linkRect = link?.getBoundingClientRect();
           return {
             type: row.textContent.includes('TD04') ? 'credit_note' : 'invoice',
             viewX: viewRect?.x,
-            viewY: viewRect?.y,
+            viewY: viewRect ? viewRect.y + viewRect.height / 2 : undefined,
             linkX: linkRect?.x,
-            linkY: linkRect?.y,
+            linkY: linkRect ? linkRect.y + linkRect.height / 2 : undefined,
           };
         }));
         const invoices = positions.filter(position => position.type === 'invoice');
@@ -153,19 +154,19 @@ function uniqueProblems(problems) {
           problems.push({ type: 'layout', detail: 'Una fattura non espone il pulsante Vedi' });
         }
         if (invoices.some(position => !Number.isFinite(position.linkX))) {
-          problems.push({ type: 'layout', detail: 'Una fattura pagabile non espone il pulsante Assegno' });
+          problems.push({ type: 'layout', detail: 'Una fattura pagabile non espone la tendina Pagata con' });
         }
         if (!sameColumn(positions.map(position => position.viewX).filter(Number.isFinite))) {
           problems.push({ type: 'layout', detail: 'I pulsanti Vedi non sono allineati nella stessa colonna' });
         }
         if (!sameColumn(invoices.map(position => position.linkX).filter(Number.isFinite))) {
-          problems.push({ type: 'layout', detail: 'I pulsanti Assegno non sono allineati nella stessa colonna' });
+          problems.push({ type: 'layout', detail: 'Le tendine Pagata con non sono allineate nella stessa colonna' });
         }
         if (invoices.some(position => Math.abs(position.viewY - position.linkY) > 1)) {
-          problems.push({ type: 'layout', detail: 'Vedi e Abbina non sono centrati sulla stessa riga' });
+          problems.push({ type: 'layout', detail: 'Vedi e Pagata con non sono centrati sulla stessa riga' });
         }
         if (!credit || Number.isFinite(credit.linkX)) {
-          problems.push({ type: 'accounting', detail: 'La nota di credito espone ancora Assegno' });
+          problems.push({ type: 'accounting', detail: 'La nota di credito espone ancora Pagata con' });
         }
       }
     } catch (error) {

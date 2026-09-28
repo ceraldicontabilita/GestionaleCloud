@@ -966,25 +966,7 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
       );
     }
     if (pulsantePagamento) return pulsantePagamento;
-    if (mov.corrispettivo_id || mov.xml_filename) {
-      const href = mov.corrispettivo_id
-        ? `/api/corrispettivi/${mov.corrispettivo_id}/view`
-        : `/api/corrispettivi/view-by-filename?filename=${encodeURIComponent(mov.xml_filename)}`;
-      return (
-        <button
-          type="button"
-          onClick={() => setDocumentView({
-            src: href,
-            title: `Corrispettivo ${mov.data || ''}`.trim(),
-          })}
-          title="Vedi corrispettivo"
-          aria-label={`Vedi corrispettivo ${mov.data || ''}`.trim()}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
-        >
-          <ReceiptText size={16} aria-hidden="true" /> Corrispettivo
-        </button>
-      );
-    }
+    // Il corrispettivo si guarda nella pagina Corrispettivi, non da qui (titolare, 28/09/2026).
     return null;
   };
 

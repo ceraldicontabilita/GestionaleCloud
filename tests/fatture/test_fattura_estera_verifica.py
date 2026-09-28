@@ -246,3 +246,33 @@ def test_affidabilita_fornitori_percentuale(monkeypatch):
     assert f["totale"] == 3
     assert f["corrette"] == 2
     assert f["percentuale_corrette"] == pytest.approx(66.7, abs=0.1)
+
+
+def test_confermate_restano_visibili_con_pagamento_e_candidati_paypal(monkeypatch):
+    """Dopo «Conferma / Correggi» la fattura esce dalla coda ma non sparisce:
+    in «Confermate» si vede com'e' stata pagata, e senza prova i candidati PayPal."""
+    from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.invoices.insert_one(_invoice(id="da-collegare", verifica_ai="confermata",
+                                              verifica_ai_at="2026-09-28T10:00:00+00:00"))
+        await db.invoices.insert_one(_invoice(id="in-cassa", verifica_ai="corretta",
+                                              verifica_ai_at="2026-09-28T11:00:00+00:00",
+                                              prima_nota_cassa_id="pn-1", pagato=True))
+        await db.invoices.insert_one(_invoice(id="ancora-in-coda"))
+        await db.paypal_transactions.insert_one({
+            "transaction_id": "TX-1", "importo": -100.0, "currency": "EUR", "data": "2026-06-11",
+            "transaction_status": "S", "nome_controparte": "Altro marchio",
+        })
+        _patch_db(monkeypatch, db)
+        return await mod.lista_verificate()
+
+    res = _run(scenario())
+
+    assert [f["id"] for f in res["fatture"]] == ["in-cassa", "da-collegare"]
+    in_cassa, da_collegare = res["fatture"]
+    assert in_cassa["pagamento"]["codice"] == "cassa"
+    assert in_cassa["candidati_paypal"] == []
+    assert da_collegare["pagamento"]["codice"] == "da_collegare"
+    assert [c["transaction_id"] for c in da_collegare["candidati_paypal"]] == ["TX-1"]
