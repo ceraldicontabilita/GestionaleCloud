@@ -84,6 +84,8 @@ def _assegno_riferisce_fattura(assegno: Dict[str, Any], fattura: Dict[str, Any])
     return invoice_reference_equals(numero_assegno, numero_fattura)
 
 
+from app.services.carnet_assegni import carnet_del_numero, numero_canonico, riepilogo_carnet  # noqa: E402
+
 # Stati: un registro solo (app/constants/stati_assegno.py).
 from app.constants.stati_assegno import (  # noqa: E402
     ASSEGNO_STATI,
@@ -152,7 +154,7 @@ async def genera_assegni(
     db = Database.get_db()
     
     try:
-        numeri_richiesti, carnet_id = _genera_sequenza_carnet(numero_primo, quantita)
+        numeri_richiesti, carnet_id = _genera_sequenza_carnet(numero_canonico(numero_primo), quantita)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     
@@ -499,6 +501,9 @@ async def list_assegni(
                 mancanti.extend(["fornitore", "numero_fattura"])
             assegno["dati_riconciliazione_mancanti"] = mancanti
 
+    # Il carnet si ricava dal numero (10 assegni, da …1 a …0): solo risposta.
+    for assegno in assegni:
+        assegno["carnet"] = carnet_del_numero(assegno.get("numero"))
     return assegni
 
 
@@ -602,6 +607,18 @@ async def fatture_disponibili_per_assegno(
         if len(risultato) >= limit:
             break
     return risultato
+
+
+@router.get("/carnet")
+async def get_carnet_assegni() -> Dict[str, Any]:
+    """Carnet da 10 assegni ricavati dai numeri: usati, buchi e stati, il piu' recente per primo."""
+    db = Database.get_db()
+    assegni = await db[COLLECTION_ASSEGNI].find(
+        {"entity_status": {"$ne": "deleted"}},
+        {"_id": 0, "numero": 1, "stato": 1, "data_emissione": 1, "data": 1},
+    ).to_list(None)
+    righe = riepilogo_carnet(assegni)
+    return {"carnet": righe, "totale": len(righe)}
 
 
 @router.get("/stats")

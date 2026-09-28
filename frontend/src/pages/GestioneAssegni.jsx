@@ -9,8 +9,9 @@ import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
-import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
+import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva, Tabs } from '../components/ds';
 import { ePagata } from '../utils/statoFattura';
+import CarnetAssegni from '../components/assegni/CarnetAssegni';
 
 // Fornitori mai pagabili con assegno (dettato utente 18/07/2026): arrivano
 // su carta di credito o addebito bancario, al limite bonifico — mai assegno.
@@ -172,6 +173,8 @@ export default function GestioneAssegni() {
   const [filterNumeroFattura, setFilterNumeroFattura] = useState('');
   const [filterSoloDaAssociare, setFilterSoloDaAssociare] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  // Vista: assegni singoli o carnet da 10 (calcolati dal backend).
+  const [vista, setVista] = useState('assegni');
   // Niente più stato locale per l'anno: prima "filterAnno" si inizializzava
   // dall'anno globale ma restava locale — cambiando l'anno in alto la
   // pagina ricaricava (era in dependency array) ma continuava a
@@ -997,11 +1000,11 @@ export default function GestioneAssegni() {
     }).slice(0, 200);
   }, [fatture, filterFatturaModal, assegnoCoperto]);
 
-  // Raggruppa assegni per carnet (primi 10 cifre del numero) - usa filteredAssegni
+  // Raggruppa assegni per carnet: lo calcola il backend (10 assegni, da …1 a …0).
   const groupByCarnet = () => {
     const groups = {};
     filteredAssegni.forEach(a => {
-      const prefix = a.numero?.split('-')[0] || 'Senza Carnet';
+      const prefix = a.carnet || 'Senza Carnet';
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(a);
     });
@@ -2456,8 +2459,16 @@ export default function GestioneAssegni() {
         )}
       </div>
 
-      {/* Assegni Table/Cards */}
-      {loadError ? (
+      {/* Assegni singoli o carnet da 10 */}
+      <Tabs
+        items={[{ key: 'assegni', label: 'Assegni' }, { key: 'carnet', label: 'Carnet' }]}
+        value={vista}
+        onChange={setVista}
+        style={{ marginBottom: 12 }}
+      />
+      {vista === 'carnet' ? (
+        <CarnetAssegni />
+      ) : loadError ? (
         <div role="alert" style={{ padding: 16, borderRadius: BORDER_RADIUS.md, background: COLORS.dangerLight, color: COLORS.danger }}>
           <strong>Caricamento non riuscito.</strong> {loadError}{' '}
           <Button variant="secondary" size="sm" onClick={loadData}>Riprova</Button>

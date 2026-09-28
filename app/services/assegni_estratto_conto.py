@@ -64,7 +64,9 @@ def estrai_numero_assegno(descrizione: str) -> Optional[str]:
     for pattern in _PATTERN_NUMERO:
         match = re.search(pattern, descrizione or "", re.IGNORECASE)
         if match:
-            return match.group(1).strip()
+            from app.services.carnet_assegni import numero_canonico
+
+            return numero_canonico(match.group(1).strip())
     return None
 
 
@@ -771,7 +773,13 @@ async def sincronizza_assegni_da_estratto_conto(
         # Prima del giro completo: lo stesso assegno registrato due volte
         # (due export della banca) diventa una scheda sola.
         from app.services.assegni_doppioni import unifica as unifica_assegni_doppi
+        from app.services.carnet_assegni import normalizza_numeri
 
+        try:
+            # Prima il numero canonico: «208770369» e «0208770369» sono lo stesso assegno.
+            risultati["assegni_numero_normalizzato"] = (await normalizza_numeri(db))["corrette"]
+        except Exception as exc:  # noqa: BLE001 - il giro continua, il numero resta com'era
+            logger.error("Numeri assegno non normalizzati: %s: %s", type(exc).__name__, exc)
         try:
             unione = await unifica_assegni_doppi(db)
             risultati["assegni_doppi_unificati"] = unione["copie"]
