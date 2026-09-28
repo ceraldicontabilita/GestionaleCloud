@@ -781,8 +781,12 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
             result["totali"]["netto"] = netto_val
 
     # Cerca pattern competenze/trattenute dalla struttura del documento
-    # Il formato è: trattenute \n competenze (es: 114,71 \n 1.228,13)
-    tratt_comp_match = re.search(r'(\d{1,3}[.,]\d{2})\s*\n\s*(\d{1,3}[.,]?\d{0,3}[.,]\d{2})\s*\n', text)
+    # Il formato è: trattenute \n competenze (es: 114,71 \n 1.228,13). Tutti e due
+    # sono righe intere e anche le trattenute hanno le migliaia: senza l'ancora
+    # «6.691,15» diventava «691,15» (busta di cessazione con TFR, giugno 2023).
+    tratt_comp_match = re.search(
+        r'^[ \t]*(\d{1,3}(?:\.\d{3})*[.,]\d{2})[ \t]*\n[ \t]*(\d{1,3}(?:\.\d{3})*[.,]\d{2})[ \t]*\n',
+        text, re.MULTILINE)
     if tratt_comp_match:
         tratt_val = parse_importo(tratt_comp_match.group(1))
         comp_val = parse_importo(tratt_comp_match.group(2))
