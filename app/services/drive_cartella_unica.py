@@ -326,7 +326,10 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
                 continue
         else:
             gia_presente = riga.get("tipo") == "cedolino" and _BUSTE_GIA_PRESENTI.match(motivo)
-            if not gia_presente and not _GUASTO_DI_RETE.match(motivo):
+            # Busta presa per estratto conto e scartata dal lettore della banca.
+            busta_come_estratto = (str(riga.get("tipo") or "").startswith("estratto_conto")
+                                   and e_busta({"name": riga.get("nome")}))
+            if not gia_presente and not busta_come_estratto and not _GUASTO_DI_RETE.match(motivo):
                 continue
         try:
             await asyncio.to_thread(_sposta, service, riga["id"], cartelle[riga["cartella"]],
