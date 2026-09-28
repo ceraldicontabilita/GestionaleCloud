@@ -89,6 +89,20 @@ async def registra(db, parsed: Dict[str, Any], *, drive_file_id: Optional[str] =
     return {"registrato": True, "id": debito_id}
 
 
+GIORNI_PAGAMENTO = 180
+
+
+def _entro(data_iso: str) -> str:
+    """Ultimo giorno in cui un bonifico puo' pagare la fattura: oltre, un
+    importo uguale e' un'altra fattura, non questa."""
+    from datetime import date, timedelta
+
+    try:
+        return (date.fromisoformat(data_iso) + timedelta(days=GIORNI_PAGAMENTO)).isoformat()
+    except ValueError:
+        return data_iso
+
+
 def _come_fattura(debito: Dict[str, Any]) -> Dict[str, Any]:
     """La forma che i riconoscitori del fornitore si aspettano."""
     return {"supplier_name": debito.get("fornitore"), "supplier_vat": debito.get("piva")}
@@ -135,12 +149,33 @@ async def abbina_pagamenti(db, *, anno_attivo: Optional[int] = None) -> Dict[str
             continue
         candidati.append(m)
 
+    # Importi dell'anno attivo per fornitore: un debito dello stesso importo e'
+    # un canone, e l'importo da solo non dice quale mese si sta pagando.
+    ricorrenti: Dict[str, set] = {}
+    for inv in await db["invoices"].find(
+            {"invoice_date": {"$regex": f"^{anno_attivo}"}},
+            {"_id": 0, "supplier_vat": 1, "total_amount": 1}).to_list(50000):
+        ricorrenti.setdefault(_piva(inv.get("supplier_vat")), set()).add(_cents(inv.get("total_amount")))
+
     soluzioni = []
     for debito in debiti:
         fattura = _come_fattura(debito)
+        if debito["residuo_cents"] in ricorrenti.get(debito["piva"], set()):
+            # Canone o bolletta a importo fisso (Fastweb 43,86, Arval 832,25):
+            # lo stesso importo del fornitore c'e' anche fra le fatture di
+            # quest'anno, quindi il bonifico paga piu' probabilmente quella.
+            # Solo il numero della fattura in causale lo lega al debito vecchio.
+            numero = re.sub(r"[^0-9A-Z]", "", str(debito.get("numero") or "").upper())
+            suoi_candidati = [
+                m for m in candidati
+                if len(numero) >= 4 and numero in re.sub(
+                    r"[^0-9A-Z]", "", str(m.get("descrizione_originale") or m.get("descrizione") or "").upper())
+            ]
+        else:
+            suoi_candidati = candidati
         suoi = [
-            m for m in candidati
-            if str(m.get("data") or "")[:10] >= debito["data"]
+            m for m in suoi_candidati
+            if debito["data"] <= str(m.get("data") or "")[:10] <= _entro(debito["data"])
             and abs(to_cents(m.get("importo"))) <= debito["residuo_cents"]
             and _fornitore_del_movimento(m, fattura)
         ]
@@ -178,7 +213,7 @@ async def abbina_pagamenti(db, *, anno_attivo: Optional[int] = None) -> Dict[str
         liberi = sorted(
             (m for m in candidati
              if str(m.get("id")) not in usati and _fornitore_del_movimento(m, fattura)
-             and str(m.get("data") or "")[:10] >= suoi_debiti[0]["data"]),
+             and suoi_debiti[0]["data"] <= str(m.get("data") or "")[:10] <= _entro(suoi_debiti[-1]["data"])),
             key=lambda m: (str(m.get("data") or ""), str(m.get("id"))),
         )
         if sum(abs(to_cents(m.get("importo"))) for m in liberi) != sum(d["residuo_cents"] for d in suoi_debiti):

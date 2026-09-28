@@ -106,3 +106,36 @@ def test_il_collegamento_orfano_si_sostituisce():
         assert await db.prima_nota_banca.count_documents({"estratto_conto_id": "m1"}) == 1
 
     _run(scenario())
+
+
+def test_canone_a_importo_fisso_non_si_abbina_per_importo():
+    """28/09/2026: due fatture Fastweb 2025 da 43,86 e una Arval da 832,25
+    risultavano pagate dagli addebiti di agosto e settembre 2026: sono canoni
+    mensili, quegli SDD pagano le fatture di quest'anno."""
+    async def scenario():
+        db = ClientArchivioMemoria()["dap-canoni"]
+        await dap.registra(db, {**_parsed("M031962931", 43.86, data="2025-12-01", piva="12878470157"),
+                                "supplier_name": "FASTWEB SpA"})
+        await db.invoices.insert_one({"id": "fw26", "supplier_vat": "12878470157",
+                                      "total_amount": 43.86, "invoice_date": "2026-01-01"})
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "sdd", "data": "2026-01-10", "tipo": "uscita", "importo": 43.86,
+            "descrizione_originale": "ADDEBITO DIRETTO SDD - SDD CORE: 3F3811A21532878 FASTWEB SpA"})
+        esito = await dap.abbina_pagamenti(db, anno_attivo=2026)
+        assert esito["collegati"] == []
+        # Con il numero della fattura in causale il legame e' certo.
+        await db.estratto_conto_movimenti.update_one({"id": "sdd"}, {"$set": {
+            "descrizione_originale": "SDD CORE: 3F38 FASTWEB SpA FATTURA M031962931"}})
+        assert len((await dap.abbina_pagamenti(db, anno_attivo=2026))["collegati"]) == 1
+
+    _run(scenario())
+
+
+def test_oltre_sei_mesi_non_e_il_pagamento_di_quella_fattura():
+    async def scenario():
+        db = ClientArchivioMemoria()["dap-finestra"]
+        await dap.registra(db, _parsed("FEP 71_25", 12200.0))
+        await db.estratto_conto_movimenti.insert_one(_bonifico("m1", "2026-09-02", 12200.0))
+        assert (await dap.abbina_pagamenti(db, anno_attivo=2026))["collegati"] == []
+
+    _run(scenario())
