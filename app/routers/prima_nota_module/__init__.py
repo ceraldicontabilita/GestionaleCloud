@@ -67,6 +67,7 @@ from .controllo_mensile import riepilogo_controllo_mensile
 from .operation_index import (
     list_manual_operation_candidates,
     list_manual_operation_index,
+    list_manual_operation_similar,
     save_manual_operation_decision,
 )
 
@@ -175,6 +176,11 @@ router.add_api_route("/indice-operazioni", list_manual_operation_index, methods=
 router.add_api_route(
     "/indice-operazioni/{movement_id}/candidati",
     list_manual_operation_candidates,
+    methods=["GET"],
+)
+router.add_api_route(
+    "/indice-operazioni/{movement_id}/simili",
+    list_manual_operation_similar,
     methods=["GET"],
 )
 router.add_api_route(

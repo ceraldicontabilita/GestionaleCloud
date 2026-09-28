@@ -263,3 +263,90 @@ def test_stato_e_carta_filtrati_prima_di_contare_e_paginare():
     with pytest.raises(HTTPException) as exc:
         elenca("inventato")
     assert exc.value.status_code == 400
+
+
+def test_famiglia_causale_ignora_numeri_e_dettagli():
+    from app.routers.prima_nota_module.operation_index import famiglia_causale
+
+    assert famiglia_causale("VERS. CONTANTI - VVVVV") == "VERS. CONTANTI"
+    assert famiglia_causale("COMMISSIONI - Comm.sdd: 3F3811A21532878") == "COMMISSIONI"
+    assert famiglia_causale("COMMISSIONI - Comm.sdd: PK)K,TLYRBPN8") == "COMMISSIONI"
+    # PDF ufficiale: senza il prefisso, conta cio' che precede i due punti.
+    assert famiglia_causale("SDD CORE: 4360740000000700913195 FORNITORE UNO") == "SDD CORE"
+    assert famiglia_causale("") == ""
+
+
+def test_scelta_senza_documento_si_applica_ai_simili_solo_se_richiesto():
+    """Titolare, 28/09/2026: classificato un versamento, tutti i versamenti
+    ancora da classificare ricevono la stessa scelta; un movimento gia' deciso,
+    riconciliato o di un'altra famiglia no. Ogni riga ha la sua decisione."""
+    from app.routers.prima_nota_module.operation_index import list_manual_operation_similar
+
+    db = ClientArchivioMemoria()["manual-operation-index-simili"]
+    righe = [
+        ("v-1", "2026-09-18", "entrata", 2760, "VERS. CONTANTI - VVVVV"),
+        ("v-2", "2026-09-07", "entrata", 2600, "VERS. CONTANTI - VVVVV"),
+        ("v-3", "2026-09-02", "entrata", 3500, "VERS. CONTANTI"),
+        ("v-deciso", "2026-08-30", "entrata", 1000, "VERS. CONTANTI - VVVVV"),
+        ("v-riconciliato", "2026-08-20", "entrata", 900, "VERS. CONTANTI - VVVVV"),
+        ("v-2025", "2025-12-30", "entrata", 800, "VERS. CONTANTI - VVVVV"),
+        ("c-1", "2026-09-15", "uscita", -1, "COMMISSIONI - Comm.sdd: 73029412064789"),
+    ]
+    for mid, data, tipo, importo, descr in righe:
+        run(db[COLL_ESTRATTO_CONTO].insert_one({
+            "id": mid, "data": data, "tipo": tipo, "importo": importo, "descrizione": descr,
+            "fingerprint": f"fp-{mid}", **({"riconciliato": True} if mid == "v-riconciliato" else {}),
+        }))
+    run(db[COLL_BANK_OPERATION_INDEX].insert_one({
+        "id": "bank-operation-index:v-deciso", "movement_id": "v-deciso",
+        "category": "altro", "status": "classified", "version": 1,
+    }))
+
+    with patch.object(Database, "get_db", return_value=db):
+        anteprima = run(list_manual_operation_similar("v-1", _user=USER))
+        assert anteprima["family"] == "VERS. CONTANTI"
+        assert [r["id"] for r in anteprima["samples"]] == ["v-2", "v-3"]
+
+        # Senza richiesta: una riga sola.
+        esito = run(save_manual_operation_decision(
+            "c-1", ManualIndexDecisionIn(category="commissione_bancaria"), current_user=USER,
+        ))
+        assert esito["applied_to_similar"] == 0
+        assert run(db[COLL_BANK_OPERATION_INDEX].count_documents({})) == 2
+
+        esito = run(save_manual_operation_decision(
+            "v-1", ManualIndexDecisionIn(category="trasferimento", note="cassa in banca",
+                                         applica_a_simili=True), current_user=USER,
+        ))
+
+    assert esito["applied_to_similar"] == 2
+    assert sorted(esito["applied_movement_ids"]) == ["v-2", "v-3"]
+    decisioni = {d["movement_id"]: d for d in run(db[COLL_BANK_OPERATION_INDEX].find({}).to_list(None))}
+    assert decisioni["v-2"]["category"] == "trasferimento"
+    assert decisioni["v-2"]["note"] == "cassa in banca"
+    assert decisioni["v-2"]["applied_from_movement_id"] == "v-1"
+    assert decisioni["v-2"]["amount_cents"] == 260000
+    assert "applied_from_movement_id" not in decisioni["v-1"]
+    assert decisioni["v-deciso"]["category"] == "altro"
+    assert "v-riconciliato" not in decisioni and "v-2025" not in decisioni
+    # Nessuna scrittura contabile e nessun «pagato»: solo l'indice.
+    assert run(db[COLL_ENTITY_RELATIONS].count_documents({})) == 0
+
+
+def test_una_natura_con_documento_non_si_applica_mai_ai_simili():
+    db = ClientArchivioMemoria()["manual-operation-index-simili-target"]
+    for mid in ("f-1", "f-2"):
+        run(db[COLL_ESTRATTO_CONTO].insert_one({
+            "id": mid, "data": "2026-09-10", "tipo": "uscita", "importo": -50,
+            "descrizione": "ADDEBITO DIRETTO SDD - SDD CORE: X FORNITORE", "fingerprint": mid,
+        }))
+    run(db[COLL_SUPPLIERS].insert_one({"id": "sup-1", "ragione_sociale": "FORNITORE UNO"}))
+
+    with patch.object(Database, "get_db", return_value=db):
+        esito = run(save_manual_operation_decision(
+            "f-1", ManualIndexDecisionIn(category="fornitore", target_id="sup-1", applica_a_simili=True),
+            current_user=USER,
+        ))
+
+    assert esito["applied_to_similar"] == 0
+    assert run(db[COLL_BANK_OPERATION_INDEX].count_documents({})) == 1

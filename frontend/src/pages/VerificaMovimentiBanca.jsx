@@ -36,9 +36,27 @@ function DecisionModal({ row, categories, onClose, onSaved }) {
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Titolare, 28/09/2026: una scelta senza documento (commissione,
+  // trasferimento, altro) vale per tutti i movimenti della stessa famiglia
+  // di causale. Si mostrano prima quanti sono e quali: mai alla cieca.
+  const [simili, setSimili] = useState(null);
+  const [applicaSimili, setApplicaSimili] = useState(false);
 
   const selectedCategory = categories.find(item => item.id === category);
   const requiresTarget = Boolean(selectedCategory?.requires_target);
+
+  useEffect(() => {
+    if (!selectedCategory || requiresTarget) {
+      setSimili(null);
+      setApplicaSimili(false);
+      return;
+    }
+    let vivo = true;
+    api.get(`/api/prima-nota/indice-operazioni/${encodeURIComponent(row.id)}/simili`)
+      .then(response => { if (vivo) setSimili(response.data || { count: 0, samples: [] }); })
+      .catch(() => { if (vivo) setSimili({ count: 0, samples: [], errore: true }); });
+    return () => { vivo = false; };
+  }, [selectedCategory?.id, requiresTarget, row.id]);
 
   const loadCandidates = useCallback(async (selected, query = '') => {
     if (!selected?.requires_target) {
@@ -84,6 +102,7 @@ function DecisionModal({ row, categories, onClose, onSaved }) {
         target_id: targetId || null,
         note,
         expected_version: Number(previous.version || 0),
+        applica_a_simili: Boolean(applicaSimili && !requiresTarget && simili?.count),
       });
       await onSaved();
       onClose();
@@ -175,6 +194,26 @@ function DecisionModal({ row, categories, onClose, onSaved }) {
                   ))}
                 </div>
               </>
+            )}
+            {!requiresTarget && simili && simili.count > 0 && (
+              <label className="manual-note" data-testid="applica-simili" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={applicaSimili}
+                  onChange={event => setApplicaSimili(event.target.checked)}
+                  style={{ width: 20, height: 20, marginTop: 2 }}
+                />
+                <span>
+                  <strong>Applica anche ai {simili.count} movimenti simili</strong> ancora da classificare
+                  {simili.family ? <> («{simili.family}»)</> : null}.
+                  <small style={{ display: 'block', marginTop: 4, color: '#7a776e' }}>
+                    {simili.samples.slice(0, 4).map(item => (
+                      `${formatDate(item.date)} · ${euroCents(item.amount_cents)} · ${item.description}`
+                    )).join(' — ')}
+                    {simili.count > 4 ? ` — e altri ${simili.count - 4}` : ''}
+                  </small>
+                </span>
+              </label>
             )}
             <label className="manual-note">
               Nota facoltativa

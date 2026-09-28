@@ -127,6 +127,91 @@ class ManualIndexDecisionIn(BaseModel):
     target_id: Optional[str] = None
     note: str = Field(default="", max_length=500)
     expected_version: Optional[int] = Field(default=None, ge=0)
+    # Titolare, 28/09/2026: «se classifico un versamento, tutti i versamenti».
+    # Vale solo per le nature senza documento da collegare: una fattura o un
+    # cedolino sono di un movimento solo.
+    applica_a_simili: bool = False
+
+
+# Numeri con la loro punteggiatura interna («1.500,00», «3F38…» no: e' testo).
+_FAMIGLIA_NUMERI = re.compile(r"\d[\d./:,-]*")
+_FAMIGLIA_SPAZI = re.compile(r"\s+")
+
+
+def famiglia_causale(descrizione: Any) -> str:
+    """La parte fissa della causale, quella che la banca ripete uguale.
+
+    Nell'export BPM la causale e' «TIPO OPERAZIONE - dettaglio» («VERS.
+    CONTANTI - VVVVV», «COMMISSIONI - Comm.sdd: …»): la famiglia e' il tipo.
+    Nel PDF ufficiale manca il prefisso e resta il dettaglio («SDD CORE: …»):
+    la famiglia e' cio' che precede i due punti. Numeri e riferimenti non
+    contano: due commissioni con codici diversi sono la stessa famiglia.
+    """
+    testo = str(descrizione or "").upper().strip()
+    if not testo:
+        return ""
+    if " - " in testo:
+        testo = testo.split(" - ", 1)[0]
+    elif ":" in testo:
+        testo = testo.split(":", 1)[0]
+    testo = _FAMIGLIA_NUMERI.sub(" ", testo)
+    return _FAMIGLIA_SPAZI.sub(" ", testo).strip()
+
+
+async def _movimenti_simili(db, movement: Dict[str, Any], movement_id: str) -> List[Dict[str, Any]]:
+    """Movimenti dello stesso anno, stesso verso e stessa famiglia di causale,
+    ancora senza decisione e senza prova bancaria: quelli su cui la scelta
+    fatta su ``movement`` puo' essere ripetuta."""
+    famiglia = famiglia_causale(movement.get("descrizione"))
+    anno = _date(movement)[:4]
+    if not famiglia or not anno.isdigit():
+        return []
+    decisi = {
+        str(d.get("movement_id")) for d in await db[COLL_BANK_OPERATION_INDEX].find(
+            {"status": {"$ne": "revoked"}}, {"_id": 0, "movement_id": 1},
+        ).to_list(None)
+    }
+    candidati = await db[COLL_ESTRATTO_CONTO].find({
+        "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
+        "tipo": movement.get("tipo"),
+        "riconciliato": {"$ne": True},
+    }).sort("data", -1).to_list(None)
+    simili = []
+    for altro in candidati:
+        altro_id = str(altro.get("id") or altro.get("_id") or "")
+        if not altro_id or altro_id == movement_id or altro_id in decisi:
+            continue
+        if famiglia_causale(altro.get("descrizione")) != famiglia:
+            continue
+        simili.append(altro)
+    return simili
+
+
+def _riga_simile(movement: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": str(movement.get("id") or movement.get("_id") or ""),
+        "date": _date(movement),
+        "description": movement.get("descrizione") or "",
+        "amount_cents": money_cents(movement.get("importo")),
+    }
+
+
+async def list_manual_operation_similar(
+    movement_id: str,
+    _user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Quanti e quali movimenti riceverebbero la stessa scelta: si mostra
+    prima di applicarla, non si applica mai alla cieca."""
+    db = Database.get_db()
+    movement = await db[COLL_ESTRATTO_CONTO].find_one(_movement_query(movement_id))
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimento bancario non trovato")
+    simili = await _movimenti_simili(db, movement, movement_id)
+    return {
+        "family": famiglia_causale(movement.get("descrizione")),
+        "count": len(simili),
+        "samples": [_riga_simile(m) for m in simili[:8]],
+    }
 
 
 def _actor(user: Dict[str, Any]) -> str:
@@ -446,6 +531,73 @@ async def list_manual_operation_candidates(
     }
 
 
+async def _scrivi_decisione(
+    db, movement: Dict[str, Any], movement_id: str, config: Dict[str, Any],
+    body: ManualIndexDecisionIn, target: Optional[Dict[str, Any]], target_id: Optional[str],
+    previous: Optional[Dict[str, Any]], actor: str, now: str, *, applicata_da: Optional[str] = None,
+) -> tuple:
+    """Scrive la decisione di un movimento (e la relazione, se ha un bersaglio)."""
+    target_type = config.get("target_type") if target_id else None
+    previous_version = int((previous or {}).get("version") or 0)
+    if previous and previous.get("target_id") and (
+        previous.get("target_id") != target_id or previous.get("target_type") != target_type
+    ):
+        await revoke_entity_relation(
+            db,
+            source_type="bank_movement",
+            source_id=movement_id,
+            relation_type="manually_indexed_as",
+            target_type=str(previous["target_type"]),
+            target_id=str(previous["target_id"]),
+            actor=actor,
+        )
+
+    decision = {
+        "id": f"bank-operation-index:{movement_id}",
+        "movement_id": movement_id,
+        "category": body.category,
+        "category_label": config["label"],
+        "target_type": target_type,
+        "target_id": target_id,
+        "target_label": _target_label(body.category, target) if target else None,
+        "note": body.note.strip(),
+        "amount_cents": money_cents(movement.get("importo")),
+        "source_fingerprint": movement.get("fingerprint"),
+        "status": "linked_index" if target_id else "classified",
+        "version": previous_version + 1,
+        "updated_at": now,
+        "updated_by": actor,
+        **({"applied_from_movement_id": applicata_da} if applicata_da else {}),
+    }
+    update: Dict[str, Any] = {"$set": decision, "$setOnInsert": {"created_at": now, "created_by": actor}}
+    if previous:
+        history_item = {k: v for k, v in previous.items() if k not in {"history", "_id"}}
+        update["$push"] = {"history": history_item}
+    await db[COLL_BANK_OPERATION_INDEX].update_one({"movement_id": movement_id}, update, upsert=True)
+
+    relation_key = None
+    if target_id:
+        relation_key = await upsert_entity_relation(
+            db,
+            source_type="bank_movement",
+            source_id=movement_id,
+            relation_type="manually_indexed_as",
+            target_type=str(target_type),
+            target_id=target_id,
+            status="confirmed",
+            rule=INDEX_RULE,
+            evidence=[
+                {"type": "bank_movement_id", "value": movement_id},
+                {"type": "operator_selection", "value": body.category},
+            ],
+            amount=movement.get("importo"),
+            provenance={"source_collection": COLL_ESTRATTO_CONTO, "fingerprint": movement.get("fingerprint")},
+            actor=actor,
+        )
+
+    return decision, relation_key
+
+
 async def save_manual_operation_decision(
     movement_id: str,
     body: ManualIndexDecisionIn,
@@ -475,66 +627,26 @@ async def save_manual_operation_decision(
 
     actor = _actor(current_user)
     now = datetime.now(timezone.utc).isoformat()
-    target_type = config.get("target_type") if target_id else None
-    if previous and previous.get("target_id") and (
-        previous.get("target_id") != target_id or previous.get("target_type") != target_type
-    ):
-        await revoke_entity_relation(
-            db,
-            source_type="bank_movement",
-            source_id=movement_id,
-            relation_type="manually_indexed_as",
-            target_type=str(previous["target_type"]),
-            target_id=str(previous["target_id"]),
-            actor=actor,
-        )
+    decision, relation_key = await _scrivi_decisione(
+        db, movement, movement_id, config, body, target, target_id, previous, actor, now,
+    )
 
-    decision = {
-        "id": f"bank-operation-index:{movement_id}",
-        "movement_id": movement_id,
-        "category": body.category,
-        "category_label": config["label"],
-        "target_type": target_type,
-        "target_id": target_id,
-        "target_label": _target_label(body.category, target) if target else None,
-        "note": body.note.strip(),
-        "amount_cents": money_cents(movement.get("importo")),
-        "source_fingerprint": movement.get("fingerprint"),
-        "status": "linked_index" if target_id else "classified",
-        "version": previous_version + 1,
-        "updated_at": now,
-        "updated_by": actor,
-    }
-    update: Dict[str, Any] = {"$set": decision, "$setOnInsert": {"created_at": now, "created_by": actor}}
-    if previous:
-        history_item = {k: v for k, v in previous.items() if k not in {"history", "_id"}}
-        update["$push"] = {"history": history_item}
-    await db[COLL_BANK_OPERATION_INDEX].update_one({"movement_id": movement_id}, update, upsert=True)
-
-    relation_key = None
-    if target_id:
-        relation_key = await upsert_entity_relation(
-            db,
-            source_type="bank_movement",
-            source_id=movement_id,
-            relation_type="manually_indexed_as",
-            target_type=str(target_type),
-            target_id=target_id,
-            status="confirmed",
-            rule=INDEX_RULE,
-            evidence=[
-                {"type": "bank_movement_id", "value": movement_id},
-                {"type": "operator_selection", "value": body.category},
-            ],
-            amount=movement.get("importo"),
-            provenance={"source_collection": COLL_ESTRATTO_CONTO, "fingerprint": movement.get("fingerprint")},
-            actor=actor,
-        )
+    applicati: List[str] = []
+    if body.applica_a_simili and not config["requires_target"]:
+        for simile in await _movimenti_simili(db, movement, movement_id):
+            simile_id = str(simile.get("id") or simile.get("_id") or "")
+            decisione_simile, _ = await _scrivi_decisione(
+                db, simile, simile_id, config, body, None, None, None, actor, now,
+                applicata_da=movement_id,
+            )
+            applicati.append(decisione_simile["movement_id"])
 
     return {
         "saved": True,
         "decision": decision,
         "relation_key": relation_key,
+        "applied_to_similar": len(applicati),
+        "applied_movement_ids": applicati,
         "source_unchanged": True,
         "payment_status_changed": False,
     }

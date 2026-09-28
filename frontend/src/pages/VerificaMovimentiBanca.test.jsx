@@ -114,6 +114,7 @@ describe('Eccezioni da riconciliare', () => {
         target_id: 'payslip-valerio',
         note: '',
         expected_version: 0,
+        applica_a_simili: false,
       },
     ));
   });
@@ -133,6 +134,50 @@ describe('Eccezioni da riconciliare', () => {
         category: 'altro', target_id: null,
         note: 'Operazione da esaminare con il consulente',
       }),
+    ));
+  });
+
+  it('una natura senza documento si puo applicare a tutti i movimenti simili, dopo averli visti', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/simili')) {
+        return Promise.resolve({ data: {
+          family: 'VERS. CONTANTI', count: 3,
+          samples: [
+            { id: 'v-1', date: '2026-09-18', amount_cents: 276000, description: 'VERS. CONTANTI - VVVVV' },
+            { id: 'v-2', date: '2026-09-07', amount_cents: 260000, description: 'VERS. CONTANTI - VVVVV' },
+          ],
+        } });
+      }
+      return Promise.resolve({ data: indexResponse });
+    });
+    render(<VerificaMovimentiBanca />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Classifica' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Altro/i }));
+
+    const casella = await screen.findByTestId('applica-simili');
+    expect(casella).toHaveTextContent('Applica anche ai 3 movimenti simili');
+    expect(casella).toHaveTextContent('VERS. CONTANTI - VVVVV');
+    fireEvent.click(casella.querySelector('input[type="checkbox"]'));
+    fireEvent.click(screen.getByRole('button', { name: /Conferma scelta/i }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/api/prima-nota/indice-operazioni/mov-salary',
+      expect.objectContaining({ category: 'altro', applica_a_simili: true }),
+    ));
+  });
+
+  it('senza spunta la scelta resta della sola riga', async () => {
+    api.get.mockImplementation(url => Promise.resolve({ data: url.includes('/simili')
+      ? { family: 'VERS. CONTANTI', count: 2, samples: [] } : indexResponse }));
+    render(<VerificaMovimentiBanca />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Classifica' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Altro/i }));
+    await screen.findByTestId('applica-simili');
+    fireEvent.click(screen.getByRole('button', { name: /Conferma scelta/i }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/api/prima-nota/indice-operazioni/mov-salary',
+      expect.objectContaining({ applica_a_simili: false }),
     ));
   });
 });

@@ -288,7 +288,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - `Documenti > Import` è l'unico ingresso manuale operativo, e lo stesso smistatore serve la cartella unica
   Drive (`DA ELABORARE | ELABORATE | ERRORI`); il suo id sta su Render, non in questo file.
 - Le fatture elettroniche arrivano dal canale Drive/SDI configurato. Una
-  fattura italiana trovata per email è un'anomalia, non una seconda fonte. Una fattura **estera** arriva in PDF (SumUp, Irlanda): Documenti > Import la passa al lettore unico `process_fattura_estera_pdf` solo se il testo porta una partita IVA UE non italiana, e un fornitore italiano letto dal PDF non si importa mai; resta «da verificare» e le sue righe sono solo testo (`descrizione_righe_ai`), mai importi, lette anche dal giornale; la conferma del titolare rifà classificazione e scrittura (storno e nuova registrazione, mai correzione sul posto).
+  fattura italiana trovata per email è un'anomalia, non una seconda fonte. Una fattura **estera** arriva in PDF (SumUp, Irlanda): Documenti > Import la passa al lettore unico `process_fattura_estera_pdf` solo se il testo porta una partita IVA UE non italiana, e un fornitore italiano letto dal PDF non si importa mai; resta «da verificare» e le sue righe sono solo testo (`descrizione_righe_ai`), mai importi, lette anche dal giornale; la conferma del titolare rifà classificazione e scrittura (storno e nuova registrazione, mai correzione sul posto). Dopo la conferma la fattura resta in «Confermate» col suo pagamento: senza prova elenca i PayPal con lo stesso importo al centesimo e il titolare sceglie (`collega_paypal_scelto_dal_titolare`: la sua parola sostituisce nome e numero, mai importo o valuta); un addebito bancario ufficiale già legato al PayPal chiude la catena anche se l'estratto PDF ha rimesso `riconciliato=False` (`finalizza_transazione_paypal_se_completa`).
 - Gmail/IMAP acquisisce F24, quietanze, cedolini, verbali e schede tecniche **solo** dai
   mittenti autorizzati, mai cablati nel codice: regole versionate su indirizzo, dominio, oggetto,
   intestazioni PEC e tipo di allegato (`app/services/mittenti.py`; i builtin sono una base rigenerabile). Un
@@ -313,7 +313,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Estratti conto: inbox unica per sei fonti; riconoscimento nell'ordine
   percorso → nome file (solo segni esclusivi) → contenuto, e il contenuto si
   prova SumUp → Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
-  segno. Non riconosciuto → cartella Errori col motivo scritto, **mai
+  segno. Il PDF ufficiale BPM cambia impaginazione dal trimestre al 30/06/2026 (entrate: tre date e «importo testo»; uscite: importo da solo e descrizione dopo): `parsers/estratto_conto_bpm_parser.py` le conosce entrambe, e la prova è il totale entrate al centesimo con l'archivio. La quietanza di rata «Mutui - Quietanza di pagamento_…» ha una colonna «totale netto»: si riconosce prima della guardia busta paga e va al modulo mutui. Non riconosciuto → cartella Errori col motivo scritto, **mai
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
   conto. Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
   nome o contenuto sotto `DRIVE_ESTRATTI_ANNO_MINIMO` (difetto 2025: l'anno prima si legge per riconciliare; 0 = nessun filtro) va in `ARRETRATO`, non si registra.
@@ -400,6 +400,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Ricavi: **solo corrispettivi RT**, all'imponibile e col filtro unico di `conto_economico_gestionale.py`, che dà anche il
   personale (lordo buste; contributi `None`). Le fatture ricevute sono costi; accrediti POS e payout non sono ricavi.
 - Corrispettivi: in cassa entra **solo la quota contanti**, la quota POS va in Prima Nota Banca. Mai il
+  totale; la chiusura POS reale **non riscrive** i contanti dell'entrata Cassa (il terminale si annota in `pos_reale_giorno`: sottrarlo dalla riga li rendeva negativi) e lo scontrino li legge dal corrispettivo. Mai il
   totale. Il **non riscosso** (sospesi, buoni, fattura) è ricavo ma non è denaro: terza gamba del DARE sui
   crediti (`01.02.01` → CEE 15.05), e solo se il documento lo **dichiara** e cassa + POS + non riscosso fa il
   totale al centesimo — mai per differenza, o un incasso non registrato sparisce lì dentro. Ignorarlo scarta
@@ -408,7 +409,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre
   fatti distinti. Coerenza XML↔POS (`controllo-due-fasi`): un giorno con POS e **senza XML** non è uno scarto — se l'RT l'ha chiuso col giorno dopo si confronta con quella chiusura (`_giornate_senza_xml`), altrimenti resta «attendo XML», fuori dal saldo (anche nel mensile). Un Numia senza chiusura letto dall'accredito vale per la fase 1, mai come prova contro BPM (`senza_chiusura_terminale`). SumUp corrente dall'API; Numia corrente dalla chiusura
   manuale serale; Numia storico ricostruito dagli export del gestore,
-  deduplicati e accorpati per giorno. Tutte e tre creano l'attesa bancaria;
+  deduplicati e accorpati per giorno. **Numia è dismesso dal 05/09/2026** (titolare, 28/09/2026): l'ultima vendita accreditata è del 04/09. Le chiusure Numia mancanti le ricostruisce dagli accrediti dell'estratto conto il job bancario corto (`ricostruzione_pos_estratto_conto.py`, salta i giorni già coperti); `fonti_ferme` misura il fermo Numia fino all'ultima vendita accreditata, non a oggi: un terminale spento non è una fonte ferma. Tutte e tre creano l'attesa bancaria;
   l'estratto conto può soltanto riconciliarla. Una vendita SumUp si conta una volta: la copia `LEGACY-SUMUP-…` (codice in `id_trans`) cede alla gemella dell'API (`transazioni_del_periodo`); le chiusure oltre la finestra dei 30 giorni si riallineano ogni giorno (`riallinea_chiusure_da_archivio`), e la risincronizzazione non stacca mai una vendita dal suo `payout_id` (l'API delle vendite non lo riporta).
 - Accredito POS in banca riconosciuto solo con causale del circuito più il
   giorno operativo `DEL gg/mm/aa`; **Numia e Nexi sono lo stesso circuito**;
@@ -435,7 +436,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `/riconciliazione/regole-banca`): un pattern estratto da una causale reale
   vince sul generico, ma un pattern di solo vocabolario bancario comune (es.
   "COMMISSIONI SU BONIFICI", senza un nome di fornitore) è rifiutato alla
-  creazione. Eliminare una regola non tocca i movimenti già categorizzati.
+  creazione. Eliminare una regola non tocca i movimenti già categorizzati. L'**indice operazioni** (`operation_index.py`, Movimenti › Classifica) è un'altra cosa: una natura senza documento (commissione, trasferimento, altro) si applica anche ai movimenti della stessa **famiglia di causale** (`famiglia_causale`: il testo prima del trattino, senza numeri), solo dopo averli visti e spuntati; una natura con documento (fattura, cedolino…) è di un movimento solo.
 - Pagamenti stipendio via nome: regola in «Personale». Qui vale solo il
   corollario bancario — un professionista omonimo di un dipendente, o un
   pagamento occasionale a lui, non entra nel fascicolo stipendi
@@ -622,7 +623,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `app/services/stato_pagamento_fattura.py`, e `ePagata` di `frontend/src/utils/statoFattura.js`. Lo stato
   vive in cinque campi (`stato`, `stato_pagamento`, `payment_status`, `pagato`, `paid`) e nessuno copre
   l'archivio: leggerne uno solo dichiarava non pagate 639 fatture da 311.838,20 €, e `{"pagato": {"$ne":
-  True}}` le riportava tutte fra le aperte. `status` è lo stato del documento e `stato_finanziario` quello
+  True}}` le riportava tutte fra le aperte. In archivio una fattura aperta si dichiara pagata da **una tendina sola** («Pagata con…», `ScegliPagamentoFattura.jsx`: cassa con data → `provvisori/conferma`, banca → estratto conto, assegno → registro assegni): nessun motore nuovo, e su una fattura già in Cassa o Banca non compare. `status` è lo stato del documento e `stato_finanziario` quello
   della riconciliazione: nessuno dei due dice se è pagata. Pagata con assegni addebitati (prova ufficiale, quote = totale al centesimo): i cinque campi e `data_pagamento` si allineano alla banca (`fatture_pagate_con_assegno`, job bancario corto).
 - Il payload di `fattura.created` si costruisce solo con
   `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così import e recupero del
@@ -816,26 +817,21 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   restano stabili. Escludere significa «non richiede la dichiarazione», non
   «nascondilo dal menu»: è conformità, si conserva e si revoca.
 
-## Stato attuale (al 23/09/2026 — riscrivere sul posto)
+## Stato attuale (al 28/09/2026 — riscrivere sul posto)
 
-- Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la
-  produzione è `degraded`. Non si accodano merge.
+- Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la produzione è `degraded`. Non si accodano merge.
 - TFR: `hr.app_tfr_accantonamenti` vuota, il codice scrive in `tfr_accantonamenti` (1.175 righe, 273.025,37 €); ingest cedolini 0 file su 49 caselle.
-- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica
-  Drive, ponte pagamenti HR, dedup fatture.
+- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica Drive, ponte pagamenti HR, dedup fatture.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 non è in archivio, solo su Drive.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
-- **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; la copia serale RT è ferma dal 28/08).
-  08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
-- **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono
-  calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
-  quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
-  IVA 2026.
+- **Numia dismesso** dal 05/09/2026: dal 01/08 al 04/09 le chiusure Numia vengono dagli accrediti in banca (50 giornate 2026 ancora da ricostruire al 28/09, 43.115,18 €: le fa il job bancario corto). POS corrente = solo SumUp (API).
+- **Estratto ufficiale BPM**: in archivio fino al 31/03/2026; il PDF al 30/06/2026 va caricato in Documenti > Import (lettore corretto il 28/09); operativo fino al 28/09 da CSV e Enable Banking.
+- **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; la copia serale RT è ferma dal 28/08). 08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
+- **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
 - Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. DRV-16 chiuso nel codice: nessuna lettura di `GOOGLE_DRIVE_*_FOLDER_ID` per sezione, `DRIVE_*_FOLDER_ID`, `DRIVE_FOLDER_REGISTRY_JSON`, `GOOGLE_SERVICE_ACCOUNT_JSON_*`, `DRIVE_SIMULAZIONE_{BATCH,EDIZIONE,SOLO_TIPO}`, `ADMIN_PASSWORD(_HASH)`; su Render si cancellano a mano. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge).
   Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social in `collegamentiPubblici.js`, privacy e cookie sono pagine del Menu (`/menu/privacy`, `/menu/cookie`) col titolare da `/api/menu/titolare`.
-- **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
-  (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
+- **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
 
 ## Aperto (togliere la voce quando si chiude)
 
@@ -848,9 +844,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
 - **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel job bancario corto `banca_versamenti_proiezione` — il giro lungo ogni deploy lo interrompe — e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`); un bonifico che cita le sue fatture in causale le paga se la somma torna al centesimo, anche in più bonifici dello stesso fornitore ripartiti per data (`reconcile_cited_invoices`), e una riga del vecchio import (`sumupbiz_…` su 19.01.01) passa sul conto della carta. Prima Nota > SumUp mostra la quadratura con l'estratto (righe da registrare, scritture che l'estratto non ha). Aperto: la coda «Scegli fattura» non apre ancora i movimenti della carta, e la «Deduzione SumUp» di 1,01 € del 03/08 (`rettifica_payout`) scrive un'uscita sulla Mastercard che l'estratto non ha.
 - **Pregresso fatture**: 299 attive (173.184,83 €, gennaio–maggio) senza partita: le rigioca il job bancario corto (`ripubblica_a_lotti`). Con `dry_run`: `azzera-scadenze` (642 fatture,
-  971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
+  971 partite inventate), `lipe/importa`.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza `fattura_id`, ~260 movimenti banca senza categoria (bonifici disposti e SDD: si chiudono solo abbinandoli).
-- HR: 38 bonifici con `cedolino_id` orfano, 162 in «bonifici da associare» (quasi tutte distinte senza nome; le notifiche banca «Info Bonifico» le nominano), 10 tabelle attese dall'app
+- HR: 38 bonifici con `cedolino_id` orfano, 138 in «bonifici da associare» (120 con proposta da confermare; 18 senza prova), 10 tabelle attese dall'app
   assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
 - Noleggio: `veicoli_noleggio` è **vuota** in produzione (nessun driver né storico; le 4 targhe GX037HJ
