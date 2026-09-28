@@ -425,11 +425,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
   (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano); `unifica_copie` (job bancario corto) lo rifà su **tutto** l'archivio: una riga per movimento, copia in quarantena, Prima Nota riagganciata. Assegni con numero diverso **non sono duplicati**; stesso numero e importo è lo stesso assegno, una scheda sola (`assegni_doppioni.py`, copia in `assegni_quarantena`), e la banca lega un addebito all'assegno solo se numero **e** importo coincidono. Un numero emesso non torna disponibile; annullo e storno hanno un motivo e riaprono le fatture; ogni modifica va nello `storico`. Le regole SDD
   creano un pagamento solo con identità, periodo e importo compatibili; altrimenti candidati.
-- Categorizzazione movimenti banca: un solo motore,
-  `app/services/categorizzazione_movimenti.py` (parole chiave e causali BPM non ambigue: F24, commissioni, utenze,
-  fatture, POS, assegni, versamenti, PayPal, rata mutuo; la riga senza categoria prende quella della sua copia di un altro export;
-  un'uscita già abbinata a una fattura sola o a un dipendente solo è «Fatture»/«Stipendi», `categoria_dal_collegamento`). Sopra le parole chiave, **regole
-  imparate** dal titolare (`app/services/regole_riconoscimento_banca.py`,
+- Categorizzazione movimenti banca: un solo motore, `app/services/categorizzazione_movimenti.py` (causali BPM non ambigue: F24,
+  commissioni, utenze, fatture, POS, assegni, versamenti, PayPal, rata mutuo, CBILL AdE «Rateizzazioni AdE», saldo Nexi «Addebito carta
+  di credito» — giroconto, non costo; la copia di un altro export presta la sua; `categoria_dal_collegamento`: uscita con una sola fattura o
+  un solo dipendente → «Fatture»/«Stipendi», socio → «Finanziamento soci»; in **entrata** rimborso/Amazon «Rimborso», torte «Acconti
+  clienti», mai ricavi). Sopra le parole chiave, **regole imparate** dal titolare (`app/services/regole_riconoscimento_banca.py`,
   `/riconciliazione/regole-banca`): un pattern estratto da una causale reale
   vince sul generico, ma un pattern di solo vocabolario bancario comune (es.
   "COMMISSIONI SU BONIFICI", senza un nome di fornitore) è rifiutato alla
