@@ -553,3 +553,72 @@ def test_chiusura_solo_contanti_non_copre_il_giorno_prima():
         {"2026-09-01": 300.0, "2026-09-03": 900.0},
     )
     assert chiusa_con == {} and uniti == {}
+
+
+def _estratto_bpm(date):
+    return [
+        {"id": f"BPM-{d}", "data": d, "importo": -1.50,
+         "descrizione_originale": "COMMISSIONI SU BONIFICI"}
+        for d in date
+    ]
+
+
+def test_numia_non_usato_quando_l_estratto_copre_il_giorno_e_la_settimana_dopo(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria()["test_numia_non_usato"]
+        await db["chiusure_pos_manuali"].insert_many([
+            {"data": "2026-08-10", "importo": 410.00, "gestore": "sumup", "source": "api_sumup"},
+            # L'estratto finisce il 14/08: la settimana dopo il 12/08 non e' coperta.
+            {"data": "2026-08-12", "importo": 380.00, "gestore": "sumup", "source": "api_sumup"},
+        ])
+        await db["estratto_conto_movimenti"].insert_many(
+            _estratto_bpm(["2026-08-08", "2026-08-11", "2026-08-14", "2026-08-18"])
+        )
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+
+        result = await pc.controllo_incassi_due_fasi(
+            data_da=None, data_a=None, anno=2026, tolleranza_euro=0.50
+        )
+        giorni = {g["data"]: g for g in result["giorni"]}
+
+        usato = giorni["2026-08-10"]
+        assert usato["pos_per_circuito"] == {"numia": 0.0, "sumup": 410.00}
+        assert usato["fonte_pos_per_circuito"]["numia"] == pc.NUMIA_NON_USATO
+        assert usato["pos_totale_completo"] is True
+        assert usato["stato_accredito"] == "no_pos_manuale"
+
+        scoperto = giorni["2026-08-12"]
+        assert scoperto["pos_per_circuito"]["numia"] is None
+        assert scoperto["pos_totale_completo"] is False
+
+    _run(scenario())
+
+
+def test_numia_non_usato_non_scatta_con_un_accredito_o_senza_sumup(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria()["test_numia_usato"]
+        await db["chiusure_pos_manuali"].insert_one(
+            {"data": "2026-08-10", "importo": 410.00, "gestore": "sumup", "source": "api_sumup"},
+        )
+        await db["corrispettivi"].insert_one({
+            "data": "2026-08-11", "pagato_elettronico": 300.00,
+            "stato": "definitivo_xml", "entity_status": "active",
+        })
+        await db["estratto_conto_movimenti"].insert_many(
+            _estratto_bpm(["2026-08-09", "2026-08-20"]) + [{
+                "id": "EC-N", "data": "2026-08-11", "importo": 55.00,
+                "descrizione_originale": "INC.POS CARTE CREDIT - NUMIA-INTER DEL 10/08/26 PDV 3757283/0001",
+            }]
+        )
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+
+        result = await pc.controllo_incassi_due_fasi(
+            data_da=None, data_a=None, anno=2026, tolleranza_euro=0.50
+        )
+        giorni = {g["data"]: g for g in result["giorni"]}
+        assert giorni["2026-08-10"]["pos_per_circuito"]["numia"] == 55.00
+        assert giorni["2026-08-10"]["fonte_pos_per_circuito"]["numia"] == "estratto_conto_numia"
+        # Senza nessuna chiusura del giorno non si inventa lo zero.
+        assert giorni["2026-08-11"]["pos_per_circuito"] == {"numia": None, "sumup": None}
+
+    _run(scenario())
