@@ -14,12 +14,11 @@ import {
   Provvisori,
   etichettaTabProvvisori,
   filtraFattureProvvisorie,
-  filtraMovimentiPrimaNota,
-  eCategoriaStorica,
   nomeFornitoreMovimento,
-  movimentoContaNelSaldo,
   normalizzaDescrizioneMovimento,
+  parametriRegistro,
   pastigliaRiporto,
+  Registro,
   useStatoFonti,
 } from './PrimaNota';
 
@@ -82,30 +81,6 @@ describe('Conto SumUp separato dalla Banca', () => {
 });
 
 describe('Movimenti banca provvisori', () => {
-  it('non considera liquidita bancaria un movimento senza estratto conto', () => {
-    expect(movimentoContaNelSaldo({
-      provvisorio: true,
-      riconciliato: false,
-      estratto_conto_id: null,
-      in_attesa_estratto_ufficiale: true,
-    }, 'banca')).toBe(false);
-  });
-
-  it('esclude dal saldo banca le stesse righe che esclude il backend', () => {
-    // Credito POS SumUp (15.07.02), costo del gestore, attesa POS, riga
-    // manuale senza estratto, pagamento dichiarato dal titolare.
-    for (const riga of [
-      { natura: 'credito_pos', source: 'corrispettivo_pos', conto_contabile: '15.07.02' },
-      { natura: 'costo', source: 'commissioni_sumup' },
-      { source: 'trasferimento_pos' },
-      { source: 'manuale_banca_senza_evidenza' },
-      { source: 'report_pagamenti_titolare', dichiarato_titolare: true, in_attesa_estratto_ufficiale: true },
-    ]) {
-      expect(movimentoContaNelSaldo(riga, 'banca')).toBe(false);
-    }
-    expect(movimentoContaNelSaldo({ source: 'estratto_conto', natura: 'movimento_bancario_reale' }, 'banca')).toBe(true);
-  });
-
   it('il saldo della testata e quello del backend, non la somma delle righe elencate', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
     expect(source).toContain('const saldoFinale = Number(datiAttivi.saldo || 0);');
@@ -120,17 +95,6 @@ describe('Movimenti banca provvisori', () => {
       .toMatchObject({ nota: 'Saldo cassa di fine 2025' });
   });
 
-  it('considera reale il movimento quando esiste evidenza di estratto conto', () => {
-    expect(movimentoContaNelSaldo({
-      provvisorio: false,
-      riconciliato: true,
-      estratto_conto_id: 'ec-1',
-    }, 'banca')).toBe(true);
-  });
-
-  it('non cambia la semantica della cassa', () => {
-    expect(movimentoContaNelSaldo({ provvisorio: true }, 'cassa')).toBe(true);
-  });
 });
 
 describe('Icone categorie Prima Nota', () => {
@@ -249,15 +213,6 @@ describe('Filtri distinti della Prima Nota', () => {
     expect(nomeFornitoreMovimento(movimenti[0])).toBe('G.I.A.L. Generale Ingrosso Alimentare S.R.L.');
   });
 
-  it('combina numero fattura, data e fornitore senza confonderli', () => {
-    expect(filtraMovimentiPrimaNota(movimenti, {
-      numeroFattura: '01404', data: '2026-03-27', fornitore: 'san carlo',
-    })).toEqual([movimenti[1]]);
-    expect(filtraMovimentiPrimaNota(movimenti, {
-      numeroFattura: '01404', data: '2026-03-31', fornitore: 'san carlo',
-    })).toEqual([]);
-  });
-
   it('applica gli stessi filtri alle fatture provvisorie', () => {
     const provvisori = movimenti.map(m => ({
       fattura_id: m.id,
@@ -337,12 +292,6 @@ describe('Fatture provvisorie in attesa banca', () => {
     );
     expect(normalizzaDescrizioneMovimento('Bonifico fornitore non duplicato'))
       .toBe('Bonifico fornitore non duplicato');
-  });
-
-  it('riconosce le categorie numeriche legacy senza confonderle con quelle operative', () => {
-    expect(eCategoriaStorica('5331')).toBe(true);
-    expect(eCategoriaStorica('5814')).toBe(true);
-    expect(eCategoriaStorica('F24')).toBe(false);
   });
 
   it('pagina la coda da decidere quando contiene centinaia di documenti', () => {
@@ -857,21 +806,6 @@ describe('Registro completo fatture in Prima Nota', () => {
   });
 });
 
-describe('Deep link tra sezioni contabili', () => {
-  it('trova il movimento anche tramite id della prova bancaria', () => {
-    const movimenti = [{
-      id: 'PN-BARBETTA',
-      movimento_estratto_conto_id: 'EC-2026-08-07-23.10-d2ef4678',
-      descrizione: 'Pagamento fattura Barbetta',
-      importo: 23.10,
-    }];
-
-    expect(filtraMovimentiPrimaNota(movimenti, {
-      testo: 'EC-2026-08-07-23.10-d2ef4678',
-    })).toHaveLength(1);
-  });
-});
-
 describe('Stato delle fonti di Prima Nota', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
@@ -979,5 +913,67 @@ describe('Quadratura del conto SumUp', () => {
       }}
     />);
     expect(screen.getByRole('status')).toHaveTextContent('Scarto non spiegato');
+  });
+});
+
+describe('Registro a pagine dal server', () => {
+  const riga = (n, extra = {}) => ({
+    id: `m${n}`, data: '2026-03-02', tipo: 'uscita', importo: 1, categoria: 'Altro',
+    descrizione: `Movimento ${n}`, saldo_progressivo: 1000 - n, netto_giorno: -250,
+    operazioni_giorno: 250, conta_nel_saldo: true, ...extra,
+  });
+  const primaPagina = Array.from({ length: 200 }, (_, i) => riga(i));
+  const dati = {
+    movimenti: primaPagina, totale: 250, saldo_precedente: 1000, saldo: 750,
+    categorie: ['Altro'], loaded: true,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation(url => {
+      if (url.startsWith('/api/prima-nota/cassa?')) {
+        return Promise.resolve({ data: {
+          movimenti: Array.from({ length: 50 }, (_, i) => riga(200 + i)), totale: 250,
+        } });
+      }
+      return Promise.resolve({ data: { ferme: [] } });
+    });
+  });
+
+  it('parametri: pagina di 200, mese a base 1 e soli filtri valorizzati', () => {
+    expect(parametriRegistro({ anno: 2026 })).toBe('anno=2026&limit=200&skip=0');
+    expect(parametriRegistro({
+      anno: 2026, mese: 0, skip: 200,
+      filtri: { categoria: 'Fatture', tipo: '', cerca: ' 12,5 ', numeroFattura: '7/A' },
+    })).toBe('anno=2026&limit=200&skip=200&mese=1&filtro_categoria=Fatture&cerca=12%2C5&numero_fattura=7%2FA');
+  });
+
+  it('«Mostra altre» accoda la pagina successiva e il saldo arriva dal server', async () => {
+    render(<Registro tipo="cassa" anno={2026} dati={dati} mese={null} onRicarica={() => {}} />);
+
+    expect(screen.getByTestId('conteggio-prima-nota')).toHaveTextContent('250 movimenti, mostrati i primi 200');
+    const bottone = screen.getByTestId('mostra-altre-prima-nota');
+    expect(bottone).toHaveTextContent('Mostra altre 50 · 50 rimanenti');
+    // Il riporto sta in fondo: non si vede finche' mancano righe.
+    expect(screen.queryByTestId('riga-saldo-iniziale-cassa')).not.toBeInTheDocument();
+
+    fireEvent.click(bottone);
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      '/api/prima-nota/cassa?anno=2026&limit=200&skip=200',
+    ));
+    await waitFor(() => expect(screen.queryByTestId('mostra-altre-prima-nota')).not.toBeInTheDocument());
+    expect(screen.getByText('Movimento 249')).toBeInTheDocument();
+    expect(screen.getByTestId('riga-saldo-iniziale-cassa')).toBeInTheDocument();
+    // Saldo della riga = quello del server, non ricalcolato sulle righe caricate.
+    expect(screen.getAllByText('€ 751,00').length).toBeGreaterThan(0);
+  });
+
+  it('un filtro chiede al server la prima pagina filtrata', async () => {
+    render(<Registro tipo="cassa" anno={2026} dati={dati} mese={2} onRicarica={() => {}} />);
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      '/api/prima-nota/cassa?anno=2026&limit=200&skip=0&mese=3',
+    ));
+    await waitFor(() => expect(screen.getByTestId('conteggio-prima-nota'))
+      .toHaveTextContent('250 movimenti a marzo, mostrati i primi 50'));
   });
 });

@@ -14,6 +14,7 @@ pagamento, la quietanza lo documenta ma non sostituisce la banca.
 from __future__ import annotations
 
 from collections import defaultdict
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from app.db_collections import COLL_QUIETANZE_F24
@@ -143,6 +144,100 @@ def obblighi(righe: List[Dict[str, Any]], status: Optional[str] = None) -> List[
     elif stato in {"paid_on_time", "documented", "quietanza_presente"}:
         scelti = {doc for doc, rs in per_documento.items() if rs[0].get("evidence_state") == QUIETANZA}
     return [r for r in righe if r["document_id"] in scelti]
+
+
+def _testo_ricerca(riga: Dict[str, Any]) -> str:
+    """Testi e numeri della riga, come li cercava la pagina (``String(x)``)."""
+    parti = []
+    for valore in riga.values():
+        if isinstance(valore, bool) or not isinstance(valore, (str, int, float)):
+            continue
+        if isinstance(valore, float) and valore.is_integer():
+            valore = int(valore)
+        parti.append(str(valore))
+    return " ".join(parti).lower()
+
+
+def anno_documento(documento: Dict[str, Any]) -> str:
+    return str(
+        documento.get("payment_year") or documento.get("filing_year") or documento.get("tax_year")
+        or documento.get("year") or documento.get("notification_date")
+        or documento.get("payment_date") or ""
+    )[:4]
+
+
+def stato_documento(documento: Dict[str, Any]) -> str:
+    return str(
+        documento.get("documentary_payment_status") or documento.get("evidence_state")
+        or documento.get("calculated_business_status") or documento.get("business_status")
+        or documento.get("payment_status") or documento.get("status") or ""
+    )
+
+
+def _euro_somma(valori) -> Decimal:
+    return sum((Decimal(str(v or 0)) for v in valori), Decimal("0"))
+
+
+def documenti_f24(righe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Righe tributo raggruppate per modello o quietanza, nell'ordine del registro.
+
+    Ogni documento porta i campi della sua prima riga, le righe in ``rows`` e
+    debito, credito e netto sommati al centesimo.
+    """
+    gruppi: Dict[str, List[Dict[str, Any]]] = {}
+    for r in righe:
+        chiave = str(r.get("document_id") or r.get("protocol") or r.get("filename") or r.get("id"))
+        gruppi.setdefault(chiave, []).append(r)
+    documenti = []
+    for chiave, rs in gruppi.items():
+        debito = _euro_somma(r.get("debit_amount") for r in rs).quantize(Decimal("0.01"))
+        credito = _euro_somma(r.get("credit_amount") for r in rs).quantize(Decimal("0.01"))
+        documento = {**rs[0], "id": f"f24-group-{chiave}", "is_f24_group": True, "rows": rs,
+                     "debit_amount": float(debito), "credit_amount": float(credito),
+                     "net_amount": float(debito - credito)}
+        documento["_testo"] = " ".join(
+            [_testo_ricerca({k: v for k, v in documento.items() if k != "rows"})]
+            + [_testo_ricerca(r) for r in rs]
+        )
+        documenti.append(documento)
+    return documenti
+
+
+def pagina_documenti_f24(
+    righe: List[Dict[str, Any]], *, cerca: Optional[str] = None, anno: Optional[str] = None,
+    stato: Optional[str] = None, offset: int = 0, limit: int = 200,
+) -> Dict[str, Any]:
+    """Una pagina di documenti F24 filtrati, con conteggi e totali di tutti.
+
+    ``total`` e ``totali`` (debito, credito, netto) sono sull'intero elenco
+    filtrato, ``total_groups``/``total_rows`` e i valori delle tendine
+    (``facets``) sull'elenco non filtrato: non dipendono dalla pagina.
+    """
+    documenti = documenti_f24(righe)
+    ago = str(cerca or "").strip().lower()
+    scelti = [
+        d for d in documenti
+        if (not ago or ago in d["_testo"])
+        and (not anno or anno_documento(d) == str(anno))
+        and (not stato or stato_documento(d) == stato)
+    ]
+    debito = _euro_somma(d["debit_amount"] for d in scelti)
+    credito = _euro_somma(d["credit_amount"] for d in scelti)
+    anni = sorted({a for a in map(anno_documento, documenti) if len(a) == 4 and a.startswith("20")
+                   and a.isdigit()}, reverse=True)
+    stati = sorted({s for s in map(stato_documento, documenti) if s})
+    pagina = [{k: v for k, v in d.items() if k != "_testo"} for d in scelti[offset:offset + limit]]
+    return {
+        "items": pagina,
+        "total": len(scelti),
+        "total_groups": len(documenti),
+        "total_rows": len(righe),
+        "offset": offset,
+        "limit": limit,
+        "totali": {"debit_amount": float(debito), "credit_amount": float(credito),
+                   "net_amount": float(debito - credito)},
+        "facets": {"anni": anni, "stati": stati},
+    }
 
 
 def conteggi(registro: Dict[str, Any], righe: List[Dict[str, Any]], dichiarazioni: int) -> Dict[str, int]:

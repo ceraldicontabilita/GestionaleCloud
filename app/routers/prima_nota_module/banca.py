@@ -13,6 +13,7 @@ from app.database import Database, Collections
 from app.services import conti_pos, sumup_sync
 from app.services.payment_document_links import payment_document_ref
 from app.services.payment_allocation_validator import allocation_summary
+from . import registro
 from .common import (
     entra_in_prima_nota,
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
@@ -256,9 +257,20 @@ async def list_prima_nota_banca(
     data_da: Optional[str] = Query(None),
     data_a: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
-    categoria: Optional[str] = Query(None)
+    categoria: Optional[str] = Query(None),
+    mese: Optional[int] = None,
+    filtro_categoria: Optional[str] = None,
+    filtro_tipo: Optional[str] = None,
+    cerca: Optional[str] = None,
+    numero_fattura: Optional[str] = None,
+    fornitore: Optional[str] = None,
+    data_fattura: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Lista movimenti e attese bancarie con saldo reale separato.
+
+    Pagina, filtri di consultazione e saldo progressivo come la Cassa
+    (``registro.py``): ``totale`` conta le righe filtrate, ``count`` quelle
+    della pagina; entrate, uscite e saldo restano sull'intero elenco.
 
     Le attese POS devono essere visibili e riconciliabili nella pagina Banca,
     ma non sono ancora liquidita': restano escluse da entrate, uscite e saldo
@@ -317,10 +329,15 @@ async def list_prima_nota_banca(
         query["categoria"] = categoria
         query_saldo["categoria"] = categoria
     
-    movimenti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
-    await arricchisci_movimenti_fattura(db, movimenti)
-    await _arricchisci_riconciliazione(db, movimenti)
-    await _arricchisci_documenti_pagamento(db, movimenti)
+    tutti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(query, {"_id": 0}).sort("data", -1).to_list(None)
+    filtri = {
+        "mese": mese, "categoria": filtro_categoria, "tipo": filtro_tipo,
+        "cerca": cerca, "numero_fattura": numero_fattura,
+        "fornitore": fornitore, "data_fattura": data_fattura,
+    }
+    fattura_su_tutti = registro.filtri_fattura_attivi(filtri)
+    if fattura_su_tutti:
+        await arricchisci_movimenti_fattura(db, tutti)
 
     # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
     saldi = await aggrega_saldo_prima_nota(
@@ -331,6 +348,17 @@ async def list_prima_nota_banca(
         query_base_precedente=query_base_saldo,
     )
 
+    pagina = registro.impagina_registro(
+        tutti, riporto=saldi["saldo_precedente"], conto="banca",
+        filtri=filtri, skip=skip, limit=limit,
+    )
+    movimenti = pagina["movimenti"]
+    # Riconciliazione e prove di pagamento: solo per le righe mostrate.
+    if not fattura_su_tutti:
+        await arricchisci_movimenti_fattura(db, movimenti)
+    await _arricchisci_riconciliazione(db, movimenti)
+    await _arricchisci_documenti_pagamento(db, movimenti)
+
     return {
         "movimenti": movimenti,
         "saldo": saldi["saldo"],
@@ -340,6 +368,10 @@ async def list_prima_nota_banca(
         "totale_entrate": saldi["totale_entrate"],
         "totale_uscite": saldi["totale_uscite"],
         "count": len(movimenti),
+        "totale": pagina["totale"],
+        "skip": skip,
+        "limit": limit,
+        "categorie": pagina["categorie"],
         "anno": anno
     }
 
