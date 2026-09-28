@@ -1265,6 +1265,17 @@ def start_scheduler():
                 upsert=True,
             )
 
+    async def _cedolini_tipo_dal_pdf_job():
+        """13ª/14ª salvate come mensile: tipo riletto dal PDF, un lotto per giro
+        (simulazione finche' ``cedolini_tipo_dal_pdf.APPLICA`` e' falso)."""
+        from app.database import Database
+        from app.services.cedolini_tipo_dal_pdf import giro
+
+        r = await giro(Database.get_db())
+        if r["lette"]:
+            logger.info("[SCHEDULER-CEDOLINI-TIPO] lette=%s rimaste=%s esiti=%s simulazione=%s",
+                        r["lette"], r["rimaste"], r["conteggi"], r["simulazione"])
+
     async def _chiusure_attivita_job():
         """Registro dei giorni di chiusura (ferie/ristrutturazione): periodi
         confermati + ferie collettive nelle presenze HR. Toglie quei giorni
@@ -1323,6 +1334,17 @@ def start_scheduler():
         coalesce=True,
         id="cedolini_hr_riverifica",
         name="Netti HR riletti dal PDF della busta (un lotto ogni 20 minuti)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _cedolini_tipo_dal_pdf_job,
+        'interval', minutes=20,
+        next_run_time=avvio + timedelta(minutes=9),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="cedolini_tipo_dal_pdf",
+        name="13a/14a dei cedolini: tipo riletto dal PDF (un lotto ogni 20 minuti)",
         replace_existing=True,
     )
 
