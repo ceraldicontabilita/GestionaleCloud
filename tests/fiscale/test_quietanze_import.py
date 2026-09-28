@@ -242,16 +242,6 @@ def test_quietanza_reale_1040_8948_marca_ravvedimento(monkeypatch):
     assert f24["importo_ravvedimento"] == 2.0
 
 
-def test_drive_quietanze_helpers():
-    from app.services import drive_quietanze_ingest as dq
-    assert dq.is_quietanza_filename("quietanza_giugno.PDF")
-    assert not dq.is_quietanza_filename("nota.txt")
-    # Canale Drive per sezione spento: su Render era false e la variabile e'
-    # stata tolta il 27/09/2026, quindi il default riflette la produzione.
-    from app.config import settings
-    assert settings.ENABLE_DRIVE_QUIETANZE_SYNC is False
-
-
 def test_upload_auto_endpoint_usa_il_servizio_canonico_quietanze(monkeypatch):
     """Integrazione HTTP reale: multipart -> router -> servizio -> DB fake."""
     from app.routers import documenti
@@ -377,3 +367,49 @@ def test_upload_quietanza_aggiorna_subito_ritenuta_reale_1040(monkeypatch):
     assert ritenuta["stato"] == "pagata_con_ravvedimento"
     assert ritenuta["stato_evidenza_pagamento"] == "QUIETANZA_PRESENTE_DA_VERIFICARE_BANCA"
     assert ritenuta["movimento_bancario_f24_id"] is None
+
+
+def _con_saldo(saldo, righe):
+    parsed = {**PARSED_OK, "dati_generali": {**PARSED_OK["dati_generali"], "saldo_delega": saldo},
+              "sezione_erario": righe, "totali": {"saldo_netto": saldo}}
+    return parsed
+
+
+def test_stesso_protocollo_stesso_saldo_da_un_altro_pdf_e_un_doppione(monkeypatch):
+    _patch_parser(monkeypatch, PARSED_OK)
+    db = _FakeDb()
+    primo = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-uno", "q.pdf"))
+    secondo = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-due", "q (2).pdf"))
+    assert secondo["duplicate"] is True and secondo["quietanza_id"] == primo["quietanza_id"]
+    assert len(db[qi.COLL_QUIETANZE].docs) == 1
+
+
+def test_stesso_protocollo_saldo_diverso_e_un_altro_pagamento(monkeypatch):
+    """04/11/2022: dallo stesso PDF escono il saldo IRAP (2.946,31) e il suo
+    ravvedimento (22,47) col protocollo uguale. Scartare il secondo toglieva
+    un pagamento vero: si importa e si annota, da confermare a vista."""
+    db = _FakeDb()
+    _patch_parser(monkeypatch, _con_saldo(2946.31, [
+        {"codice_tributo": "3800", "periodo_riferimento": "2021", "importo_debito": 2946.31}]))
+    primo = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-uno", "a.pdf"))
+    _patch_parser(monkeypatch, _con_saldo(22.47, [
+        {"codice_tributo": "8907", "periodo_riferimento": "2021", "importo_debito": 22.47}]))
+    secondo = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-due", "b.pdf"))
+    assert secondo["duplicate"] is False
+    docs = {d["id"]: d for d in db[qi.COLL_QUIETANZE].docs}
+    assert len(docs) == 2
+    assert docs[secondo["quietanza_id"]]["protocollo_condiviso_con"] == [primo["quietanza_id"]]
+
+
+def test_la_pulizia_doppioni_non_fonde_saldi_diversi():
+    from app.services.doppioni_archivio import gruppi_doppioni, identita_quietanza, _punteggio_quietanza
+
+    docs = [
+        {"id": "a", "protocollo_telematico": "22110435162612174/000001", "saldo": 2946.31},
+        {"id": "b", "protocollo_telematico": "22110435162612174/000001", "saldo": 2946.31},
+        {"id": "c", "protocollo_telematico": "22110435162612174/000001", "saldo": 22.47},
+    ]
+    gruppi = gruppi_doppioni(docs, identita_quietanza, _punteggio_quietanza)
+    assert len(gruppi) == 1
+    resta, copie = gruppi[0]
+    assert {resta["id"], *[c["id"] for c in copie]} == {"a", "b"}

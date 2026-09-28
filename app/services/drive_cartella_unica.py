@@ -9,6 +9,8 @@ originali **solo** da li'.
         ELABORATE      ← gli originali registrati (archivio piatto: tipo,
                           anno, fornitore stanno nel database)
         ERRORI         ← cio' che non si e' potuto registrare, col motivo
+        ARRETRATO      ← estratti conto di un anno sotto ``DRIVE_ESTRATTI_ANNO_MINIMO``
+                          (difetto 2026, scelta del titolare): fermi, non errori
 
 Il giro non ha un motore suo: ogni file passa dallo **stesso smistatore di
 Documenti > Import** (``upload_documento_automatico`` →
@@ -48,6 +50,16 @@ INBOX, ARCHIVIO, ERRORI = "DA ELABORARE", "ELABORATE", "ERRORI"
 # puo' cestinarlo solo lui (Drive risponde 403 al service account). Restano
 # qui, fuori dall'archivio, finche' il titolare non svuota la cartella.
 DOPPIONI = "DOPPIONI"
+# Estratti conto dell'arretrato tenuti fermi per scelta del titolare: non sono
+# errori e non si registrano. Per importarli si abbassa la soglia e si
+# riportano i file in DA ELABORARE.
+ARRETRATO = "ARRETRATO"
+# I tipi di Documenti > Import che sono estratti conto (banca, Nexi, PayPal,
+# mutuo, SumUp, export dei terminali POS): le sei fonti del vecchio canale.
+TIPI_ESTRATTO = frozenset({
+    "estratto_conto", "estratto_conto_nexi", "estratto_conto_paypal",
+    "estratto_conto_mutuo", "estratto_conto_sumup", "pos_terminal",
+})
 CARTELLA_MIME = "application/vnd.google-apps.folder"
 # Chiavi del risultato dello smistatore che identificano il record creato.
 _CHIAVI_RIFERIMENTO = (
@@ -77,6 +89,14 @@ def attivo() -> bool:
     return bool(radice()) and import_attivo()
 
 
+def anno_minimo_estratti() -> int:
+    """Soglia dell'arretrato; 0 = nessun filtro. Difetto 2026 (scelta del titolare)."""
+    try:
+        return max(0, int(os.getenv("DRIVE_ESTRATTI_ANNO_MINIMO", "2026")))
+    except ValueError:
+        return 2026
+
+
 def _batch() -> int:
     try:
         return max(1, min(int(os.getenv("DRIVE_CARTELLA_UNICA_BATCH", "25")), 200))
@@ -98,10 +118,27 @@ def _service():
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
-def _cartelle(service, root: str) -> Dict[str, str]:
-    from app.services.drive_invoice_ingest import _get_or_create_folder
+def _cartella(service, parent_id: str, nome: str) -> Optional[str]:
+    """La sottocartella ``nome`` di ``parent_id``; se manca la crea."""
+    risposta = service.files().list(
+        q=(f"name = '{nome}' and '{parent_id}' in parents "
+           f"and mimeType = '{CARTELLA_MIME}' and trashed = false"),
+        fields="files(id)", pageSize=1,
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+    ).execute()
+    trovate = risposta.get("files", [])
+    if trovate:
+        return trovate[0]["id"]
+    creata = service.files().create(
+        body={"name": nome, "mimeType": CARTELLA_MIME, "parents": [parent_id]},
+        fields="id", supportsAllDrives=True,
+    ).execute()
+    return creata.get("id")
 
-    return {nome: _get_or_create_folder(service, root, nome) for nome in (INBOX, ARCHIVIO, ERRORI, DOPPIONI)}
+
+def _cartelle(service, root: str) -> Dict[str, str]:
+    return {nome: _cartella(service, root, nome)
+            for nome in (INBOX, ARCHIVIO, ERRORI, DOPPIONI, ARRETRATO)}
 
 
 # File che il titolare ha chiesto di riguardare ed eliminare a mano
@@ -172,8 +209,18 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any]) -> Dict
     # Un tipo non riconosciuto resta su Drive in ERRORI: lo smistatore lo
     # copierebbe in base64 dentro documents_inbox, una seconda copia
     # dell'originale che la cartella unica esiste per evitare.
-    if await rileva_tipo_documento(nome, contenuto) == "auto":
+    tipo = await rileva_tipo_documento(nome, contenuto)
+    if tipo == "auto":
         return {"success": False, "tipo_rilevato": "non_riconosciuto"}
+    if tipo in TIPI_ESTRATTO and (minimo := anno_minimo_estratti()):
+        from app.services.classificazione_estratti import anno_documento
+
+        # L'anno si prova dal nome o dal contenuto (gli estratti Nexi si
+        # chiamano solo «Estratto_Conto.pdf»); senza anno il file prosegue.
+        anno = await asyncio.to_thread(anno_documento, nome, contenuto)
+        if anno is not None and anno < minimo:
+            return {"success": False, "tipo_rilevato": tipo, "arretrato": True,
+                    "anno": anno, "anno_minimo": minimo}
     try:
         return await upload_documento_automatico(file=_FileCaricato(nome, contenuto, contesto))
     except HTTPException as exc:
@@ -184,6 +231,9 @@ def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
     """(cartella di destinazione, motivo). Registrato o gia' presente → archivio."""
     if risultato.get("tipo_rilevato") == "non_riconosciuto":
         return ERRORI, "tipo di documento non riconosciuto"
+    if risultato.get("arretrato"):
+        return ARRETRATO, (f"estratto del {risultato.get('anno')}: arretrato fermo "
+                           f"(anno minimo {risultato.get('anno_minimo')})")
     if risultato.get("success") or risultato.get("duplicate"):
         return ARCHIVIO, ""
     return ERRORI, str(risultato.get("message") or risultato.get("error") or "registrazione non riuscita")[:500]
@@ -223,14 +273,18 @@ _BUSTE_GIA_PRESENTI = re.compile(r"^Cedolino non registrato: \d+ buste lette$")
 
 
 async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
-                                             limite: int = 200) -> int:
-    """Riporta in DA ELABORARE le buste finite in ERRORI solo perche' gia' registrate."""
+                                             limite: Optional[int] = None) -> int:
+    """Riporta in DA ELABORARE le buste finite in ERRORI solo perche' gia' registrate.
+
+    Tutte in una volta (decisione del titolare): spostarle costa solo metadati,
+    la lettura poi la fa il giro a lotti.
+    """
     righe = await db[REGISTRO].find(
         {"cartella": ERRORI, "tipo": "cedolino"}, {"_id": 0, "id": 1, "nome": 1, "motivo": 1},
     ).to_list(None)
     rimessi = 0
     for riga in righe:
-        if rimessi >= limite:
+        if limite is not None and rimessi >= limite:
             break
         if not _BUSTE_GIA_PRESENTI.match(str(riga.get("motivo") or "")):
             continue
@@ -264,7 +318,7 @@ async def _giro(db) -> Dict[str, Any]:
     from app.services.drive_download import scarica_bytes
 
     iniziato = datetime.now(timezone.utc).isoformat()
-    esito: Dict[str, Any] = {"letti": 0, "elaborati": 0, "errori": 0, "doppioni_cestinati": 0,
+    esito: Dict[str, Any] = {"letti": 0, "elaborati": 0, "errori": 0, "doppioni_cestinati": 0, "arretrati": 0,
                              "dettagli": [], "iniziato_at": iniziato}
     try:
         service = await asyncio.to_thread(_service)
@@ -327,7 +381,7 @@ async def _giro(db) -> Dict[str, Any]:
             await _registra(
                 db, fid, nome=nome, sha256=sha256, md5=f.get("md5Checksum"),
                 tipo=risultato.get("tipo_rilevato"), cartella=destinazione,
-                esito="elaborato" if destinazione == ARCHIVIO else "errore",
+                esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),
                 gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None,
                 riferimenti=riferimenti,
             )
@@ -335,6 +389,8 @@ async def _giro(db) -> Dict[str, Any]:
                 esito["elaborati"] += 1
                 if f.get("md5Checksum"):
                     per_md5.setdefault(f["md5Checksum"], []).append(fid)
+            elif destinazione == ARRETRATO:
+                esito["arretrati"] += 1
             else:
                 esito["errori"] += 1
             esito["dettagli"].append({"file": nome, "tipo": risultato.get("tipo_rilevato"),

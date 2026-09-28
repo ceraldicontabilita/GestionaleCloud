@@ -214,19 +214,18 @@ def test_import_anno_svuota_la_cartella_unica_non_i_vecchi_canali(monkeypatch):
     async def _promuovi(db_, anno):
         return {"anno": anno}
 
-    async def _vietato(*a, **k):
-        raise AssertionError("i canali per sezione non si chiamano piu'")
-
     monkeypatch.setattr("app.services.drive_cartella_unica.attivo", lambda: True)
     monkeypatch.setattr("app.services.drive_cartella_unica.svuota", _svuota)
-    monkeypatch.setattr("app.services.drive_invoice_ingest.sync", _vietato)
-    monkeypatch.setattr("app.services.drive_corrispettivi_ingest.sync", _vietato)
     monkeypatch.setattr(mod, "promuovi_archivio_anno", _promuovi)
 
     esito = _run(mod.importa_anno_da_drive(db, 2026))
 
     assert chiamate == ["svuota"]
     assert esito["drive"]["elaborati"] == 60
+    # I moduli dei canali per sezione non esistono piu'.
+    import importlib.util
+    assert importlib.util.find_spec("app.services.drive_invoice_ingest") is None
+    assert importlib.util.find_spec("app.services.drive_corrispettivi_ingest") is None
 
 
 def test_job_import_anno_persiste_esito(monkeypatch):

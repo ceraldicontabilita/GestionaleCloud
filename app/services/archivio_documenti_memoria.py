@@ -621,9 +621,56 @@ def apply_update(document: dict[str, Any], update: dict[str, Any], *, inserting:
     return result
 
 
+# Ogni quanti documenti una lettura lunga cede il passo alle altre richieste:
+# copiare migliaia di documenti di fila fermava il server per 15-30 s e
+# Render, col controllo di salute in timeout, riavviava l'istanza (502).
+BLOCCO_COOPERATIVO = 200
+
+
+def proiezione_indipendente(document: dict[str, Any], projection: dict[str, Any] | None) -> dict[str, Any]:
+    """``apply_projection`` che non condivide niente con ``document``.
+
+    Senza proiezione o con sole esclusioni la copia e' gia' profonda; con i
+    campi inclusi ``get_path`` restituisce i valori originali, e il documento
+    proiettato (piccolo) si copia.
+    """
+    risultato = apply_projection(document, projection)
+    if projection and any(
+        value not in (0, False) for key, value in projection.items() if key != "_id"
+    ):
+        return _clone(risultato)
+    return risultato
+
+
+async def filtra_e_proietta_a_rate(
+    documents: Iterable[dict[str, Any]],
+    selector: dict[str, Any] | None,
+    projection: dict[str, Any] | None,
+    prepara: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Filtra e proietta cedendo il loop ogni ``BLOCCO_COOPERATIVO`` documenti.
+
+    Cede anche all'inizio: una lettura servita dalla cache non aspetta la rete,
+    e un giro che ne fa centinaia di fila (le quietanze orfane, una per
+    quietanza) non lasciava mai rispondere il controllo di salute.
+    """
+    await asyncio.sleep(0)
+    risultato: list[dict[str, Any]] = []
+    for indice, document in enumerate(documents, 1):
+        if selector is None or matches_filter(document, selector):
+            risultato.append(proiezione_indipendente(
+                prepara(document) if prepara else document, projection,
+            ))
+        if indice % BLOCCO_COOPERATIVO == 0:
+            await asyncio.sleep(0)
+    return risultato
+
+
 class CursoreDocumenti:
-    def __init__(self, documents: Iterable[dict[str, Any]]):
-        self._documents = [_clone(document) for document in documents]
+    def __init__(self, documents: Iterable[dict[str, Any]], *, copia: bool = True):
+        # ``copia=False`` solo per documenti gia' copiati da chi chiama
+        # (``filtra_e_proietta_a_rate``): la terza copia non proteggeva niente.
+        self._documents = [_clone(document) for document in documents] if copia else list(documents)
         self._skip = 0
         self._limit: int | None = None
 
@@ -657,8 +704,17 @@ class CursoreDocumenti:
         return [_clone(document) for document in documents]
 
     async def to_list(self, length: int | None = None) -> list[dict[str, Any]]:
-        documents = self._page()
-        return documents if length is None else documents[:max(0, int(length))]
+        documents = self._documents[self._skip:]
+        if self._limit is not None:
+            documents = documents[:self._limit]
+        if length is not None:
+            documents = documents[:max(0, int(length))]
+        copie: list[dict[str, Any]] = []
+        for indice, document in enumerate(documents, 1):
+            copie.append(_clone(document))
+            if indice % BLOCCO_COOPERATIVO == 0:
+                await asyncio.sleep(0)
+        return copie
 
     def __aiter__(self) -> AsyncIterator[dict[str, Any]]:
         self._iterator = iter(self._page())

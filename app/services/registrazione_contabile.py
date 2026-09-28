@@ -1096,8 +1096,7 @@ async def _pregresso_in_background(db) -> Dict[str, Any]:
 
 
 def avvia_pregresso_in_background(db) -> bool:
-    """Come ``drive_quietanze_ingest.start_background_sync``: il giro puo'
-    durare piu' del timeout del gateway, quindi risponde subito e lo stato si
+    """Il giro puo' durare piu' del timeout del gateway, quindi risponde subito e lo stato si
     segue con ``stato_pregresso``. Un secondo avvio mentre e' in corso non parte."""
     global _pregresso_task
     if _pregresso_lock.locked():

@@ -23,14 +23,10 @@ const STATI = {
 
 const ETICHETTE_CONTEGGI = {
   movimenti: 'movimenti in archivio',
-  file_in_attesa: 'file in attesa',
   fatture: 'fatture',
-  importate_ultimo_giro: "importate nell'ultimo giro",
-  in_attesa: 'in attesa',
   giornate: 'giornate',
   cedolini: 'cedolini',
   f24: 'F24',
-  cedolini_illeggibili: 'cedolini illeggibili',
   assegni: 'assegni collegati',
   stipendi: 'stipendi collegati',
   bonifici: 'bonifici collegati',

@@ -30,9 +30,9 @@ class TestPublicPaths:
         assert "/api/health" in PUBLIC_PATHS
         assert "/api/ping" in PUBLIC_PATHS
 
-    def test_login_pubblico(self):
-        """Endpoint login deve essere pubblico."""
-        assert "/api/auth/login" in PUBLIC_PATHS
+    def test_login_password_tolto(self):
+        """Il login email + password non esiste piu': l'unico ingresso e' il PIN."""
+        assert "/api/auth/login" not in PUBLIC_PATHS
 
     def test_pin_login_pubblico(self):
         """Endpoint PIN login (login reale usato dal frontend) deve essere
@@ -65,7 +65,7 @@ class TestPublicPrefixes:
         path espliciti, non più come prefisso (audit sicurezza 19/07/2026:
         il prefisso "/api/auth/" rendeva pubblico anche qualunque endpoint
         futuro montato lì sotto)."""
-        assert "/api/auth/login" in PUBLIC_PATHS
+        assert "/api/auth/pin-login" in PUBLIC_PATHS
         assert "/api/auth/logout" in PUBLIC_PATHS
         assert "/api/auth/verify" in PUBLIC_PATHS
         assert "/api/auth/" not in PUBLIC_PREFIXES
@@ -147,7 +147,7 @@ class TestAllowlistCongelata:
         # Health check
         "/", "/health", "/api/health", "/api/ping",
         # Autenticazione necessaria prima di una sessione valida
-        "/api/auth/login", "/api/auth/logout", "/api/auth/verify",
+        "/api/auth/logout", "/api/auth/verify",
         "/api/auth/pin-login", "/api/auth/mfa/verify-login",
         # Pagine legali
         "/api/privacy", "/api/terms", "/api/data-deletion",
@@ -224,7 +224,7 @@ class TestPathMatching:
         assert self._is_public("/api/health") is True
 
     def test_api_login_pubblico(self):
-        assert self._is_public("/api/auth/login") is True
+        assert self._is_public("/api/auth/pin-login") is True
 
     def test_whatsapp_non_pubblico(self):
         assert self._is_public("/api/whatsapp/webhook") is False

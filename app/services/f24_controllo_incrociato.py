@@ -160,14 +160,16 @@ def _giorni_tra(a: Optional[str], b: Optional[str]) -> Optional[int]:
 
 def periodo_riga(riga: Dict[str, Any]) -> Dict[str, Optional[int]]:
     """Periodo di una riga tributo: campi mese/anno espliciti, poi
-    ``periodo_riferimento`` ('MM/AAAA'), poi solo anno."""
+    ``periodo_riferimento`` ('MM/AAAA'), poi solo anno. Una riga rateizzata
+    ('01/01 2022', rateazione '0101') non ha mese: e' la rata, non gennaio."""
+    rateizzata = te.riga_rateizzata(riga)
     mese_raw, anno_raw = riga.get("mese"), riga.get("anno")
     if anno_raw and str(anno_raw).strip().isdigit():
         anno = int(str(anno_raw).strip())
         mese = int(str(mese_raw).strip()) if mese_raw and str(mese_raw).strip().isdigit() else 0
-        return {"mese": mese if 1 <= mese <= 12 else None, "anno": anno}
+        return {"mese": mese if 1 <= mese <= 12 and not rateizzata else None, "anno": anno}
     testo = riga.get("periodo_riferimento") or riga.get("periodo") or ""
-    parsed = te._parse_periodo(testo)
+    parsed = None if rateizzata else te._parse_periodo(testo)
     if parsed:
         return {"mese": parsed[0], "anno": parsed[1]}
     m = re.search(r"(\d{4})", str(testo))
@@ -517,6 +519,67 @@ def _periodo_compatibile(riga: Dict[str, Any], periodo: Dict[str, Optional[int]]
     return riga["mese"] == periodo["mese"]
 
 
+# ── indizi per una riga non trovata ──────────────────────────────────────────
+
+INDIZIO_COMPENSAZIONE_6099 = "POSSIBILE_COMPENSAZIONE_6099"
+INDIZIO_ERRORE_PERIODO = "POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE"
+# «Importo quasi identico»: la sola soglia del cruscotto fiscale del titolare,
+# 1,00 EUR assoluto. Serve a proporre dove guardare, mai ad associare.
+TOLLERANZA_INDIZIO_CENTS = 100
+
+
+def indizi_riga_mancante(
+    codice: str, periodo: Dict[str, Optional[int]], importo_cents: int, registro: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Dove guardare prima di dire «non pagato». Sola lettura, nessun esito cambia.
+
+    * una riga 6099 (IVA annuale) di importo uguale entro 1,00 EUR, a debito o a
+      credito: il tributo puo' essere stato versato o compensato come saldo IVA;
+    * lo stesso codice con importo uguale ma un altro anno: periodo imputato
+      male sul modello.
+
+    Sono indizi da verificare con il commercialista, non prove di pagamento:
+    chi li legge decide, il registro non li applica mai."""
+    indizi: List[Dict[str, Any]] = []
+    for f24 in registro["f24"]:
+        for r in righe_modello(f24):
+            importo_riga = r["importo_debito_cents"] or r["importo_credito_cents"]
+            if not importo_riga or abs(importo_riga - importo_cents) > TOLLERANZA_INDIZIO_CENTS:
+                continue
+            tipo = None
+            if r["codice"] == "6099" and codice != "6099":
+                tipo = INDIZIO_COMPENSAZIONE_6099
+                spiegazione = (
+                    "Riga 6099 (IVA annuale) di importo quasi identico"
+                    + (" a credito: possibile compensazione" if r["importo_credito_cents"] else ": possibile versamento come saldo IVA")
+                )
+            elif r["codice"] == codice and periodo.get("anno") and r["anno"] and r["anno"] != periodo["anno"]:
+                tipo = INDIZIO_ERRORE_PERIODO
+                spiegazione = f"Stesso codice {codice} con importo quasi identico ma anno {r['anno']}: possibile errore di imputazione del periodo"
+            if not tipo:
+                continue
+            data = data_versamento_modello(f24)
+            prove = prove_modello(f24, registro)
+            indizi.append({
+                "tipo": tipo,
+                "spiegazione": spiegazione + " — da verificare con il commercialista",
+                "f24_id": f24.get("id"),
+                "file_name": f24.get("file_name"),
+                "codice_tributo": r["codice"],
+                "periodo": r["periodo_riferimento"],
+                "importo": euro(importo_riga),
+                "a_credito": bool(r["importo_credito_cents"]),
+                "data_versamento": data,
+                "data_versamento_it": data_italiana(data),
+                "pdf_url": PDF_F24_URL.format(f24_id=f24.get("id")),
+                # un modello non pagato non prova niente: lo si dice
+                "stato_evidenza": prove["stato_evidenza"],
+                "pagato_banca": prove["pagato_banca"],
+            })
+    indizi.sort(key=lambda i: i["data_versamento"] or "", reverse=True)
+    return indizi
+
+
 # ── controllo di una riga dell'avviso ────────────────────────────────────────
 
 def controlla_riga(
@@ -597,6 +660,11 @@ def controlla_riga(
                 "quietanze": [q for _, p, _, _ in valutati for q in p["quietanze"]],
                 "addebiti_banca": [a for _, p, _, _ in valutati for a in p["addebiti_banca"]],
             }
+
+    esito["indizi"] = (
+        indizi_riga_mancante(codice, periodo, importo_cents, registro)
+        if esito["esito"] in (ESITO_NON_TROVATO, ESITO_IMPORTO_DIVERSO) else []
+    )
 
     natura = TRIBUTI_SOSTITUTO.get(codice)
     esito["natura_sostituto"] = natura

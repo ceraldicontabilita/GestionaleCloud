@@ -320,40 +320,6 @@ async def quarantena_protocollo_drive(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.post("/drive/sync")
-async def sincronizza_cartelle_drive(
-    background_tasks: BackgroundTasks,
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Avvia in background tutti gli import Drive configurati e autorizzati."""
-    from app.services.drive_sync_orchestrator import start_all_after_response
-
-    background_tasks.add_task(start_all_after_response, Database.get_db())
-    return {
-        "status": "scheduled",
-        "message": "Sincronizzazione Drive accodata. I file restano tracciati nelle cartelle di lavorazione.",
-    }
-
-
-@router.get("/drive/fiscal/status")
-async def stato_drive_fiscale(
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Stato operativo senza esporre ID Drive o credenziali."""
-    db = Database.get_db()
-    registry = await db["drive_folder_registry"].find({}, {"_id": 0, "area": 1, "source": 1, "discovered_at": 1}).to_list(50)
-    state = await db["drive_sync_state"].find_one({"key": "fiscal_documents"}, {"_id": 0, "page_token": 0})
-    return {"configured_areas": registry, "sync": state or {"status": "not_initialized"}}
-
-
-@router.post("/drive/fiscal/discover")
-async def scopri_cartelle_drive_fiscali(
-    _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
-) -> Dict[str, Any]:
-    from app.services.drive_fiscal_registry import discover_fiscal_folders
-    return await discover_fiscal_folders(Database.get_db())
-
-
 @router.post("/drive/fiscal/sync")
 async def sincronizza_drive_fiscale_incrementale(
     _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
@@ -2240,7 +2206,7 @@ async def processa_tutti_documenti() -> Dict[str, Any]:
     funzione `sync_buste_paga()` mai definita in questo file (NameError
     sempre catturato dal try/except, quindi l'endpoint "riusciva" ma non
     processava mai nulla). I cedolini hanno un solo sistema di ingestione
-    canonico (drive_cedolini_ingest / email_download -> cedolini_manager ->
+    canonico (cartella unica Drive / email_download -> cedolini_manager ->
     salari_unificati_v2, vedi CLAUDE.md "Cedolini: un solo sistema"): questo
     endpoint combinato non deve duplicarlo con una chiamata inventata.
     """
@@ -2777,11 +2743,9 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
 
         if quadro_770(filename, pdf_text):
             return TIPO_COMPONENTE_770
-        # Dichiarazioni fiscali (770/IVA/IRAP/LIPE/Redditi SC): stesso
-        # classificatore deterministico del canale Drive
-        # "dichiarazione_fiscale" (app/services/drive_documenti_ingest.py),
-        # cosi' un upload manuale da Documenti > Import finisce nello stesso
-        # fiscal_documents indipendentemente dal punto di ingresso.
+        # Dichiarazioni fiscali (770/IVA/IRAP/LIPE/Redditi SC): classificatore
+        # deterministico unico, cosi' upload manuale e cartella unica Drive
+        # finiscono nello stesso fiscal_documents.
         from app.services.fiscal_domain import DocumentType, classify_document
 
         dichiarazione = classify_document(filename, pdf_text)
@@ -3330,7 +3294,7 @@ async def stato_cartella_unica(
     db = Database.get_db()
     stato = await db["sistema_stato"].find_one({"chiave": cu.CHIAVE_STATO}, {"_id": 0})
     conteggi = {}
-    for cartella in (cu.ARCHIVIO, cu.ERRORI, cu.DOPPIONI, "CESTINO", "RIMOSSO"):
+    for cartella in (cu.ARCHIVIO, cu.ERRORI, cu.DOPPIONI, cu.ARRETRATO, "CESTINO", "RIMOSSO"):
         conteggi[cartella] = await db[cu.REGISTRO].count_documents({"cartella": cartella})
     return {"attiva": cu.attivo(),
             "giro_in_corso": cu._lock.locked() or cu.svuotamento_in_corso(),
@@ -3356,17 +3320,6 @@ async def avvia_giro_cartella_unica(
         return {"avviato": False, "motivo": "giro_in_corso"}
     background_tasks.add_task(cu.svuota if tutto else cu.giro, Database.get_db())
     return {"avviato": True, "tutto": tutto}
-
-
-@router.get("/cartella-unica/simulazione")
-@handle_errors
-async def riepilogo_simulazione_cartella_unica(
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Come finirebbe ogni file se si migrasse oggi: per tipo, esito, non riconosciuti."""
-    from app.services import drive_cartella_unica_simulazione as sim
-
-    return await sim.riepilogo(Database.get_db())
 
 
 @router.get("/drive-doppioni")
@@ -3933,10 +3886,9 @@ async def upload_documento_automatico(
                 result["message"] = f"Errore import Quietanza F24: {quietanza.get('error', 'parsing fallito')}"
 
         elif tipo_rilevato == 'dichiarazione_fiscale':
-            # Stesso servizio del canale Drive "dichiarazione_fiscale"
-            # (app/services/drive_documenti_ingest.py): idempotente per
-            # sha256, popola fiscal_documents indipendentemente dal punto
-            # di ingresso (upload manuale qui, Drive lì).
+            # Servizio unico, idempotente per sha256: popola
+            # fiscal_documents sia dall'upload manuale sia dalla cartella
+            # unica Drive (che passa da qui).
             from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
 
             registered = await FiscalDocumentIngestionService(db).ingest(

@@ -16,10 +16,10 @@ const FONTI = {
     { ordine: 1, codice: 'banca', nome: 'Banca Banco BPM', stato: 'giallo',
       testo: "Il giro gira, ma l'ultimo movimento in archivio e' del 21/09/2026",
       ultimo_aggiornamento: '2026-09-25T04:34:06+00:00', ultimo_dato: '2026-09-21',
-      conteggi: { movimenti: 2223, file_in_attesa: null }, nota: null },
+      conteggi: { movimenti: 2223 }, nota: null },
     { ordine: 3, codice: 'corrispettivi', nome: 'Corrispettivi', stato: 'rosso',
       testo: 'Ultima giornata 18/09/2026: mancano 6 giorni di apertura.',
-      ultimo_aggiornamento: null, ultimo_dato: '2026-09-18', conteggi: { giornate: 647 }, nota: null },
+      ultimo_aggiornamento: null, ultimo_dato: '2026-09-18', conteggi: { giornate: null }, nota: null },
   ],
 };
 
@@ -40,11 +40,11 @@ describe('Aggiornamento dati', () => {
     expect(banca.textContent).toContain('Attenzione');
     expect(banca.textContent).toContain('25/09/2026 06:34');
     expect(banca.textContent).toContain('movimenti in archivio: 2223');
-    expect(banca.textContent).toContain('file in attesa: non disponibile');
     const corr = screen.getByTestId('fonte-corrispettivi');
     expect(corr.textContent).toContain('Fermo');
     expect(corr.textContent).toContain('Ultimo giro: non disponibile');
     expect(corr.textContent).toContain('18/09/2026');
+    expect(corr.textContent).toContain('giornate: non disponibile');
     expect(api.get).toHaveBeenCalledWith('/api/dashboard/aggiornamento-dati', { timeout: 20000 });
   });
 

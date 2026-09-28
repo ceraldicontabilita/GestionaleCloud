@@ -11,7 +11,6 @@ movimento del conto corrente. Creerebbe uscite bancarie mai avvenute.
 import pytest
 
 from app.services import classificazione_estratti as cls
-from app.services.drive_estratti_conto_ingest import _route_for_path, _supported_file
 
 
 # --- Nomi inequivocabili ---------------------------------------------------
@@ -139,42 +138,6 @@ def test_il_contenuto_ha_la_precedenza_sul_nome():
     assert "intestazione" in motivo
 
 
-# --- Integrazione con l'instradamento Drive --------------------------------
-
-def test_nell_inbox_unico_i_file_pos_vengono_presi_in_carico():
-    """Era il bug: senza una cartella "POS BPM" il file non veniva letto, e i
-    mesi restavano senza POS reale."""
-    for nome in ("Export_Mensile_Luglio_2026.csv",
-                 "Export_Transazioni_gennaio 2026.xlsx",
-                 "Commissioni_Marzo_2026.xlsx"):
-        route = _route_for_path("", nome)
-        assert route == "pos"
-        assert _supported_file(route, nome) is True
-
-
-def test_export_contabile_carta_viene_instradato_al_parser_estratto():
-    assert cls.route_da_nome("Enti_File_Contabili.xlsx") == cls.BANCA
-    assert _route_for_path("", "Enti_File_Contabili.xlsx") == "bank"
-
-
-def test_la_carta_di_credito_non_finisce_piu_nei_movimenti_bancari():
-    """Prima qualunque nome con "estratto" diventava un movimento di banca."""
-    assert _route_for_path("", "Estratto_Conto (7).pdf") != "bank"
-
-
-def test_un_file_di_fonte_ignota_resta_in_carico_per_la_verifica_finale():
-    """Non viene scartato in silenzio: si scarica e si guarda dentro."""
-    assert _supported_file(None, "Estratto_Conto (7).pdf") is True
-    assert _supported_file(None, "Nuova cartella compressa.zip") is False
-
-
-def test_la_cartella_della_fonte_continua_a_comandare():
-    """Chi ha ancora la struttura per fonte non deve accorgersi di nulla."""
-    assert _route_for_path("POS BPM/2026") == "pos"
-    assert _route_for_path("Carta Nexi") == "nexi"
-    assert _route_for_path("BPM/2026") == "bank"
-
-
 # --- Arretrato tenuto fermo ------------------------------------------------
 
 @pytest.mark.parametrize(("nome", "atteso"), [
@@ -194,42 +157,9 @@ def test_un_numero_lungo_non_viene_scambiato_per_un_anno():
     assert cls.anno_del_nome("84B9EHMDDE6B4-MSR-20250301000000-20250331235959.PDF") is None
 
 
-def test_l_arretrato_resta_fermo_e_l_anno_in_corso_passa(monkeypatch):
-    from app.services import drive_estratti_conto_ingest as ingest
-
-    monkeypatch.setattr(ingest.settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 2026,
-                        raising=False)
-    assert ingest._troppo_vecchio("Export_Mensile_Luglio_2026.csv") is False
-    assert ingest._troppo_vecchio("EC-38949004-agosto 2024.pdf") is True
-    # Senza anno nel nome si deve leggere il contenuto: e' il formato reale
-    # degli estratti Nexi 2026.
-    assert ingest._troppo_vecchio("Estratto_Conto (7).pdf") is False
-
-
 def test_l_anno_del_pdf_generico_si_legge_dal_contenuto(monkeypatch):
     monkeypatch.setattr(
         cls, "_testo_del_pdf",
         lambda _content: "Estratto conto Nexi al 31 maggio 2026",
     )
     assert cls.anno_documento("Estratto_Conto (1).pdf", b"pdf") == 2026
-
-
-def test_un_pdf_generico_2025_viene_rimandato_dopo_la_lettura(monkeypatch):
-    from app.services import drive_estratti_conto_ingest as ingest
-
-    monkeypatch.setattr(ingest.settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 2026,
-                        raising=False)
-    monkeypatch.setattr(
-        cls, "_testo_del_pdf",
-        lambda _content: "Movimenti carta dal 01 ottobre 2025 al 31 ottobre 2025",
-    )
-    assert ingest._periodo_contenuto("movimenti.pdf", b"pdf") == (2025, True)
-
-
-def test_azzerare_l_anno_minimo_sblocca_tutto(monkeypatch):
-    from app.services import drive_estratti_conto_ingest as ingest
-
-    monkeypatch.setattr(ingest.settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0,
-                        raising=False)
-    assert ingest._troppo_vecchio("EC-38949004-agosto 2024.pdf") is False
-    assert ingest._troppo_vecchio("Estratto_Conto (7).pdf") is False

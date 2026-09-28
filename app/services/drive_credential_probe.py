@@ -7,22 +7,55 @@ quell'account abbia accesso alla gerarchia GESTIONALE.
 """
 from __future__ import annotations
 
+import json
 import os
-from typing import Any, Iterable, Optional, Sequence, Tuple
+from typing import Any, Iterable, Optional, Tuple
 
 from app.config import settings
 
 
+SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+# Un solo service account per tutto il Drive: le credenziali per canale
+# (GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE, _CEDOLINI, ...) sono uscite con i canali.
 _CANDIDATE_SETTINGS = (
-    "GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE",
-    "GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI",
-    "GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI",
-    "GOOGLE_SERVICE_ACCOUNT_JSON_QUIETANZE",
-    "GOOGLE_SERVICE_ACCOUNT_JSON_ESTRATTI_CONTO",
-    "GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI",
     "GOOGLE_DRIVE_SA_JSON",
     "GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON",
 )
+
+
+def parse_sa_json(raw: str) -> dict:
+    raw = raw.strip()
+    if (raw.startswith("'") and raw.endswith("'")) or (
+        raw.startswith('"') and raw.endswith('"')
+    ):
+        raw = raw[1:-1]
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    cleaned = raw.replace('\\\n', '\\n').replace('\\"', '"')
+    return json.loads(cleaned)
+
+
+def load_shared_credentials():
+    """Il service account condiviso: JSON inline oppure file."""
+    try:
+        from google.oauth2 import service_account
+    except ImportError as e:
+        return None, f"dipendenze google mancanti: {e}"
+    try:
+        shared_json = settings.GOOGLE_DRIVE_SA_JSON or settings.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
+        if shared_json:
+            info = parse_sa_json(shared_json)
+            return service_account.Credentials.from_service_account_info(info, scopes=SCOPES), None
+        return service_account.Credentials.from_service_account_file(
+            settings.GOOGLE_DRIVE_SA_FILE, scopes=SCOPES
+        ), None
+    except json.JSONDecodeError as e:
+        return None, f"GOOGLE_DRIVE_SA_JSON non è un JSON valido: {e}"
+    except Exception as e:
+        return None, f"credenziali service account non valide: {e}"
 
 
 def _raw_candidates() -> Iterable[tuple[str, str]]:
@@ -40,10 +73,9 @@ def _raw_candidates() -> Iterable[tuple[str, str]]:
 
 def _credentials_from_raw(raw: str):
     from google.oauth2 import service_account
-    from app.services.drive_invoice_ingest import _parse_sa_json, _SCOPES
 
-    info = _parse_sa_json(raw)
-    return service_account.Credentials.from_service_account_info(info, scopes=_SCOPES)
+    info = parse_sa_json(raw)
+    return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
 
 
 def _can_access(creds: Any, folder_id: str) -> bool:
@@ -70,9 +102,7 @@ def _can_access(creds: Any, folder_id: str) -> bool:
 
 def _shared_candidate():
     try:
-        from app.services.drive_invoice_ingest import _load_credentials
-
-        return _load_credentials()
+        return load_shared_credentials()
     except Exception as exc:
         return None, str(exc)
 
@@ -117,43 +147,4 @@ def load_credentials_for_folder(folder_id: Optional[str]) -> Tuple[Any, Optional
     return None, (
         "nessun service account configurato ha accesso al folder Drive canonico "
         f"{folder_id}; credenziali provate={attempts}; errori caricamento={load_errors}"
-    )
-
-
-def load_credentials_for_folders(folder_ids: Sequence[str]) -> Tuple[Any, Optional[str]]:
-    """Restituisce una sola credenziale che vede *tutte* le radici indicate.
-
-    E' usata dagli Estratti conto, che possono avere piu' root operative. Una
-    ``files.list`` vuota non prova l'accesso al parent: per evitare falsi OK la
-    stessa credenziale deve superare ``files.get`` su ogni root prima che lo
-    scanner venga avviato.
-    """
-    roots = list(dict.fromkeys(str(value or "").strip() for value in folder_ids if str(value or "").strip()))
-    if not roots:
-        return None, "nessuna radice Drive configurata"
-
-    attempts = 0
-    load_errors = 0
-
-    shared_creds, shared_err = _shared_candidate()
-    if shared_creds is not None:
-        attempts += 1
-        if all(_can_access(shared_creds, folder_id) for folder_id in roots):
-            return shared_creds, None
-    elif shared_err:
-        load_errors += 1
-
-    for _name, raw in _raw_candidates():
-        try:
-            creds = _credentials_from_raw(raw)
-            attempts += 1
-            if all(_can_access(creds, folder_id) for folder_id in roots):
-                return creds, None
-        except Exception:
-            load_errors += 1
-
-    return None, (
-        "nessun service account configurato ha accesso a tutte le radici Drive "
-        f"richieste; radici={len(roots)}; credenziali provate={attempts}; "
-        f"errori caricamento={load_errors}"
     )

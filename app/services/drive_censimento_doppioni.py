@@ -14,7 +14,7 @@ Il gestionale non cancella e non sposta niente: al massimo rinomina.
   ``.DS_Store``, i file di blocco ``~$…`` di Office, i file vuoti) diventano
   «FILE TECNICO DA ELIMINARE - <nome>».
 
-Due interruttori su Render, come la simulazione:
+Due interruttori su Render:
 ``DRIVE_CENSIMENTO_DOPPIONI`` = ``off`` (difetto) | ``censisci`` (solo elenco) |
 ``marca`` (elenco e rinomina), e ``DRIVE_CENSIMENTO_EDIZIONE`` per rifarlo da
 capo. Il lavoro va a lotti dallo scheduler e riprende dove si era fermato.
@@ -69,9 +69,9 @@ def marcato(nome: Optional[str]) -> bool:
 
 
 def _radice() -> Optional[str]:
-    from app.services import drive_cartella_unica_simulazione as sim
-
-    return sim.radice()
+    # Il nome della variabile viene dalla simulazione della migrazione, tolta
+    # a migrazione fatta: la radice e' la stessa cartella GESTIONALE.
+    return os.getenv("DRIVE_SIMULAZIONE_RADICE", "").strip() or None
 
 
 def _inventario(service, root: str) -> List[Dict[str, Any]]:

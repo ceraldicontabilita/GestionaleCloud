@@ -1667,19 +1667,3 @@ async def simulazione_f24(anno: int, mese: int) -> Dict[str, Any]:
             "parametri": {"inps_azienda_percento": INPS_AZIENDA_PERCENT,
                           "inps_dipendente_percento": INPS_DIPENDENTE_PERCENT,
                           "nota": "Simulazione: fa fede il modello F24 del consulente."}}
-
-
-@router.post("/import-drive")
-@handle_errors
-async def import_cedolini_da_drive(body: Dict[str, Any] = Body(default={})) -> Dict[str, Any]:
-    """Alias compatibile dell'unico importatore Drive del gestionale.
-
-    ``folder_id`` non è più accettato: impedisce di importare accidentalmente
-    una cartella storica diversa dalla radice canonica configurata su Render.
-    """
-    if body.get("folder_id"):
-        raise HTTPException(status_code=400, detail="La cartella cedolini è unica e configurata centralmente")
-    from app.database import Database as MainDatabase
-    from app.services import drive_cedolini_ingest
-
-    return await drive_cedolini_ingest.sync(MainDatabase.get_db())

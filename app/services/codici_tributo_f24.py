@@ -152,7 +152,7 @@ CODICI_TRIBUTO_F24 = {
         "scadenza": "16 del mese successivo"
     },
     "RC01": {
-        "descrizione": "Contributi INPS artigiani",
+        "descrizione": "Regolarizzazione contributiva INPS di periodi pregressi (non e' un costo del mese in cui si paga)",
         "tipo": "debito",
         "sezione": "INPS"
     },
@@ -806,9 +806,9 @@ CODICI_TRIBUTO_F24 = {
         "sezione": "ERARIO"
     },
     "3919": {
-        "descrizione": "IMU interessi accertamento - comune",
+        "descrizione": "IMU altri fabbricati - Stato",
         "tipo": "misto",
-        "sezione": "ERARIO"
+        "sezione": "IMU"
     },
     "3920": {
         "descrizione": "IMU sanzioni accertamento - comune",
@@ -816,24 +816,24 @@ CODICI_TRIBUTO_F24 = {
         "sezione": "ERARIO"
     },
     "3923": {
-        "descrizione": "IMU imposta - comune",
+        "descrizione": "IMU interessi da accertamento - comune",
         "tipo": "misto",
-        "sezione": "ERARIO"
+        "sezione": "IMU"
     },
     "3924": {
-        "descrizione": "IMU imposta - Stato",
+        "descrizione": "IMU sanzioni da accertamento - comune",
         "tipo": "misto",
-        "sezione": "ERARIO"
+        "sezione": "IMU"
     },
     "3944": {
-        "descrizione": "TARES",
+        "descrizione": "TARI - tassa sui rifiuti (art. 1 c. 639 L. 147/2013; ex TARES)",
         "tipo": "misto",
-        "sezione": "ERARIO"
+        "sezione": "IMU"
     },
     "3950": {
-        "descrizione": "TARI",
+        "descrizione": "TARI - tariffa (art. 1 c. 668 L. 147/2013)",
         "tipo": "misto",
-        "sezione": "ERARIO"
+        "sezione": "IMU"
     },
     "3958": {
         "descrizione": "TASI abitazione principale",
@@ -1421,7 +1421,7 @@ CODICI_TRIBUTO_F24 = {
         "sezione": "ERARIO"
     },
     "8902": {
-        "descrizione": "Interessi ravvedimento IRPEF",
+        "descrizione": "Sanzione pecuniaria addizionale regionale IRPEF",
         "tipo": "misto",
         "sezione": "ERARIO"
     },
@@ -1901,7 +1901,265 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "misto",
         "sezione": "ERARIO"
     },
+
+    # ==================== TRIBUTI LOCALI E REGIONALI - riuniti da parser_f24.py e f24_parser.py (27/09/2026) ====================
+    # Testi ereditati dal dizionario del parser, non ancora confrontati uno per uno con
+    # la ricerca codici tributo dell'Agenzia delle Entrate: «da_verificare».
+    "LP33": {
+        "descrizione": "IRAP/Add.reg. IRPEF definizione controversie (L. 130/2022) - imposta",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "LP34": {
+        "descrizione": "IRAP/Add.reg. IRPEF definizione controversie (L. 130/2022) - sanzioni",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "PF11": {
+        "descrizione": "IRAP definizione agevolata PVC (DL 119/2018)",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "PF33": {
+        "descrizione": "IRAP/Add.reg. IRPEF definizione controversie (DL 119/2018) - imposta",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "PF34": {
+        "descrizione": "IRAP/Add.reg. IRPEF definizione controversie (DL 119/2018) - sanzioni",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "TF23": {
+        "descrizione": "IRAP/Add.reg. IRPEF definizione controversie (L. 197/2022) - imposta",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "TF24": {
+        "descrizione": "IRAP/Add.reg. IRPEF definizione controversie (L. 197/2022) - sanzioni",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "TF42": {
+        "descrizione": "IRAP/Add.reg. IRPEF regolarizzazione pagamenti (L. 197/2022)",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "TF50": {
+        "descrizione": "IRAP ravvedimento speciale (L. 197/2022) - sanzioni",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "8124": {
+        "descrizione": "IRAP/Add.reg. IRPEF definizione controversie (DL 50/2017) - imposta",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "8125": {
+        "descrizione": "IRAP/Add.reg. IRPEF definizione controversie (DL 50/2017) - sanzioni",
+        "tipo": "misto",
+        "sezione": "REGIONI",
+        "da_verificare": True
+    },
+    "3926": {
+        "descrizione": "ISCOP imposta di scopo",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3927": {
+        "descrizione": "ISCOP interessi",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3928": {
+        "descrizione": "ISCOP sanzioni",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3931": {
+        "descrizione": "TOSAP/COSAP occupazione permanente",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3932": {
+        "descrizione": "TOSAP/COSAP occupazione temporanea",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3933": {
+        "descrizione": "TOSAP/COSAP interessi",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3934": {
+        "descrizione": "TOSAP/COSAP sanzioni",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3901": {
+        "descrizione": "ICI abitazione principale",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3902": {
+        "descrizione": "ICI terreni agricoli",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3903": {
+        "descrizione": "ICI aree fabbricabili",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3904": {
+        "descrizione": "ICI altri fabbricati",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3906": {
+        "descrizione": "ICI interessi",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3907": {
+        "descrizione": "ICI sanzioni",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3955": {
+        "descrizione": "TARES maggiorazione",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3956": {
+        "descrizione": "TARES maggiorazione interessi",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3957": {
+        "descrizione": "TARES maggiorazione sanzioni",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3964": {
+        "descrizione": "ICP/CIMP imposta pubblicità",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3965": {
+        "descrizione": "ICP/CIMP interessi",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    "3966": {
+        "descrizione": "ICP/CIMP sanzioni",
+        "tipo": "misto",
+        "sezione": "IMU",
+        "da_verificare": True
+    },
+    # Verificati sulle risoluzioni dell'Agenzia delle Entrate (35/E 2012, 45/E 2014, 5/E 2021)
+    "1671": {
+        "descrizione": "Eccedenza di versamenti di addizionale comunale IRPEF trattenuta dal sostituto d'imposta",
+        "tipo": "credito",
+        "sezione": "IMU"
+    },
+    "1712": {
+        "descrizione": "Acconto imposta sostitutiva sulle rivalutazioni del TFR",
+        "tipo": "debito",
+        "sezione": "ERARIO"
+    },
+    "3843": {
+        "descrizione": "Addizionale comunale IRPEF - autotassazione - acconto",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
+    "3844": {
+        "descrizione": "Addizionale comunale IRPEF - autotassazione - saldo",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
+    "3945": {
+        "descrizione": "TARI - tassa sui rifiuti - interessi",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
+    "3946": {
+        "descrizione": "TARI - tassa sui rifiuti - sanzioni",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
+    "3951": {
+        "descrizione": "TARI - tariffa - interessi",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
+    "3952": {
+        "descrizione": "TARI - tariffa - sanzioni",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
+    "TEFA": {
+        "descrizione": "TEFA - tributo provinciale per la tutela, protezione e igiene dell'ambiente (Ris. 5/E 2021)",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
+    "TEFN": {
+        "descrizione": "TEFA - interessi (Ris. 5/E 2021)",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
+    "TEFZ": {
+        "descrizione": "TEFA - sanzioni (Ris. 5/E 2021)",
+        "tipo": "debito",
+        "sezione": "IMU"
+    },
 }
+
+
+# Causali della sezione INPS del modello F24 (non sono codici tributo: il
+# «codice» di quella sezione e' la sede). Una tabella sola, letta da entrambi
+# i parser: le due copie davano RC01 per «artigiani/commercianti», mentre e'
+# la regolarizzazione contributiva di un periodo precedente.
+CAUSALI_INPS: Dict[str, str] = {
+    "DM10": "Contributi INPS lavoratori dipendenti (DM10)",
+    "RC01": "Regolarizzazione contributiva di periodi pregressi",
+    "C10": "Gestione separata committenti - aliquota piena",
+    "CXX": "Gestione separata committenti - aliquota ridotta",
+}
+
+
+def get_descrizione_causale_inps(causale: str) -> str:
+    """Descrizione di una causale INPS; una causale ignota resta dichiarata tale."""
+    chiave = str(causale or "").strip().upper()
+    return CAUSALI_INPS.get(chiave, f"Causale INPS {chiave}")
 
 
 def get_codice_info(codice: str) -> Dict[str, Any]:

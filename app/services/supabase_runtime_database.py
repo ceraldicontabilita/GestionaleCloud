@@ -18,14 +18,14 @@ import hashlib
 import json
 import logging
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 import aiohttp
 
 from app.services.archivio_documenti_memoria import (
     MISSING, CursoreDocumenti, ArchivioDocumenti, CollezioneDocumenti, apply_projection, matches_filter,
-    prepara_filtro,
+    filtra_e_proietta_a_rate, prepara_filtro,
 )
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
@@ -735,14 +735,15 @@ class SupabaseTable(CollezioneDocumenti):
                         return CursoreDocumenti([
                             apply_projection(document, projection) for document in documents
                         ])
-                    return CursoreDocumenti([
-                        apply_projection(_senza_stato(document), projection)
-                        for document in documents
-                        if matches_filter(document, leggero)
-                    ])
+                    return CursoreDocumenti(await filtra_e_proietta_a_rate(
+                        documents, leggero, projection, prepara=_senza_stato,
+                    ), copia=False)
             async with self._remote_operation_lock:
                 await self._refresh_unlocked(projection, selector)
-                return CollezioneDocumenti.find(self, selector, projection, *args, **kwargs)
+                try:
+                    return CollezioneDocumenti.find(self, selector, projection, *args, **kwargs)
+                finally:
+                    self._rilascia()
 
         return _ReadThroughCursor(load)
 
@@ -768,23 +769,50 @@ class SupabaseTable(CollezioneDocumenti):
     async def distinct(self, key, selector=None, *args, **kwargs):
         async with self._remote_operation_lock:
             await self._refresh_unlocked(selector=selector)
-            return await CollezioneDocumenti.distinct(self, key, selector, *args, **kwargs)
+            try:
+                return await CollezioneDocumenti.distinct(self, key, selector, *args, **kwargs)
+            finally:
+                self._rilascia()
+
+    def _rilascia(self) -> None:
+        """Svuota il buffer di lavoro a operazione finita.
+
+        ``_documents`` serve solo alla singola operazione (rileggerlo e' la
+        prima cosa che ognuna fa); tenuto dopo, ogni collezione conservava il
+        suo ultimo lotto per sempre, spesso con il payload (XML delle
+        fatture, PDF in base64): la memoria saliva fino all'OOM a 2 GB. Quello
+        che resta e' la cache leggera, che e' fatta per restare.
+        """
+        self._documents = []
 
     def aggregate(self, pipeline, *args, **kwargs):
         async def load():
             # $lookup usa gli snapshot delle collezioni esterne: rileggerli
             # prima di calcolare evita join contro dati di un vecchio processo.
+            esterne = []
             for stage in pipeline:
                 lookup = stage.get("$lookup") if isinstance(stage, dict) else None
                 if isinstance(lookup, dict) and lookup.get("from"):
                     foreign = self.database[str(lookup["from"])]
-                    async with foreign._remote_operation_lock:
+                    if foreign is not self and foreign not in esterne:
+                        esterne.append(foreign)
+            # Le collezioni del $lookup restano bloccate finche' il calcolo non
+            # le ha lette: il loro buffer si svuota a fine operazione, e senza
+            # il lock una scrittura concorrente lo svuoterebbe a meta' join.
+            # Ordine fisso per nome: due aggregate incrociate non si bloccano.
+            async with AsyncExitStack() as stack:
+                for collezione in sorted([self, *esterne], key=lambda c: c.name):
+                    await stack.enter_async_context(collezione._remote_operation_lock)
+                try:
+                    for foreign in esterne:
                         await foreign._refresh_unlocked()
-            async with self._remote_operation_lock:
-                await self._refresh_unlocked(
-                    projection=_metadata_projection_if_safe(self.name, pipeline)
-                )
-                return CollezioneDocumenti.aggregate(self, pipeline, *args, **kwargs)
+                    await self._refresh_unlocked(
+                        projection=_metadata_projection_if_safe(self.name, pipeline)
+                    )
+                    return CollezioneDocumenti.aggregate(self, pipeline, *args, **kwargs)
+                finally:
+                    for collezione in (self, *esterne):
+                        collezione._rilascia()
 
         return _ReadThroughCursor(load)
 
@@ -803,15 +831,14 @@ class SupabaseTable(CollezioneDocumenti):
                 await self._prepare_insert_unlocked(documents)
             else:
                 await self._refresh_unlocked(selector=selector)
-            snapshot = [_normalise_document(document) for document in self._documents]
             try:
                 method = getattr(CollezioneDocumenti, method_name)
                 return await method(self, *args, **kwargs)
-            except Exception:
-                # L'RPC e' l'autorita': una scrittura rifiutata non deve mai
-                # lasciare visibile nel processo il documento candidato.
-                self._documents = snapshot
-                raise
+            finally:
+                # L'RPC e' l'autorita': rifiutata o riuscita, nel processo non
+                # resta il buffer (la cache si aggiorna solo a scrittura
+                # confermata, in ``_write_through``).
+                self._rilascia()
 
     async def insert_one(self, document, *args, **kwargs):
         return await self._mutate("insert_one", document, *args, **kwargs)

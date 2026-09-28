@@ -2,8 +2,8 @@
 Client LLM basato direttamente sull'SDK anthropic ufficiale (nessuna
 dipendenza da servizi terzi non disponibili su PyPI).
 """
+import asyncio
 import os
-import anthropic
 from dataclasses import dataclass, field
 
 DEFAULT_DOCUMENT_MODEL = "claude-sonnet-4-6"
@@ -38,7 +38,17 @@ class LlmChat:
         self.api_key = api_key
         self.system_prompt = system_prompt
         self.model = model
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = None
+
+    def _cliente(self):
+        # L'SDK si importa e la chiamata parte in un thread: sul loop del
+        # server l'import e la risposta dell'AI (13-38 s) fermavano tutto,
+        # /api/health compreso, e Render riavviava l'istanza (502).
+        if self._client is None:
+            import anthropic
+
+            self._client = anthropic.Anthropic(api_key=self.api_key)
+        return self._client
 
     def with_model(self, provider: str, model: str):
         self.model = model
@@ -79,5 +89,5 @@ class LlmChat:
         if self.system_prompt:
             kwargs["system"] = self.system_prompt
 
-        response = self._client.messages.create(**kwargs)
+        response = await asyncio.to_thread(lambda: self._cliente().messages.create(**kwargs))
         return response.content[0].text

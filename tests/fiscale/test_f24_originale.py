@@ -19,8 +19,8 @@ def test_originale_quietanza_drive_letto_per_id(monkeypatch):
         assert file_id == "drive-q-1"
         return b"%PDF-drive"
 
-    import app.services.drive_quietanze_ingest as ingest
-    monkeypatch.setattr(ingest, "download_file_by_id", fake_download)
+    import app.services.drive_download as drive_download
+    monkeypatch.setattr(drive_download, "scarica_originale", fake_download)
     result = asyncio.run(f24_originale.carica_originale(
         {"drive_file_id": "drive-q-1"}, tipo="quietanza",
     ))
@@ -31,7 +31,7 @@ def test_originale_f24_rifiuta_contenuto_non_pdf(monkeypatch):
     async def fake_download(_file_id):
         return b"contenuto-errato"
 
-    import app.services.drive_f24_ingest as ingest
-    monkeypatch.setattr(ingest, "download_file_by_id", fake_download)
+    import app.services.drive_download as drive_download
+    monkeypatch.setattr(drive_download, "scarica_originale", fake_download)
     with pytest.raises(ValueError, match="non e' un PDF"):
         asyncio.run(f24_originale.carica_originale({"drive_file_id": "drive-f24-1"}))

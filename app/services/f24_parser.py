@@ -10,6 +10,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Dict, Any, List, Optional
 import logging
 
+from app.engines.tributi_engine import e_rateazione, mese_da_rateazione
+from app.services.codici_tributo_f24 import get_descrizione_causale_inps, get_descrizione_tributo
 from app.utils.numeri_italiani import parse_importo_ita
 
 logger = logging.getLogger(__name__)
@@ -75,7 +77,18 @@ def _period_from_words(words: list[tuple[float, str]]) -> dict[str, str]:
 
     year = next((token for token in reversed(tokens) if re.fullmatch(r"20\d{2}", token)), "")
     month_token = next((token for token in tokens if token != year and re.fullmatch(r"(?:\d{1,2}|\d{2}/\d{2})", token)), "")
-    month = month_token.split("/")[-1].zfill(2) if month_token else ""
+    if "/" in month_token:
+        # «00/12» e' il mese 12; «01/01» e «03/03» sono rate (rata 1 di 1,
+        # rata 3 di 3): la riga e' annuale e la rata resta in ``rateazione``.
+        rateazione = month_token.replace("/", "")
+        month = mese_da_rateazione(rateazione)
+        month = "" if month == "00" else month
+        esito = {"periodo_riferimento": f"{month}/{year}" if month and year else year,
+                 "periodo_raw": raw}
+        if e_rateazione(rateazione):
+            esito["rateazione"] = rateazione
+        return esito
+    month = month_token.zfill(2) if month_token and int(month_token) else ""
     period = f"{month}/{year}" if month and year else year
     return {"periodo_riferimento": period, "periodo_raw": raw}
 
@@ -113,7 +126,7 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
                     code = next((token for x, token in words if 145 <= x < 200 and re.fullmatch(r"[A-Z0-9]{4}", token)), "")
                     if code:
                         parsed[target].append({**common, "codice_tributo": code,
-                                               "descrizione": get_descrizione_tributo_erario(code)})
+                                               "descrizione": get_descrizione_tributo(code)})
                 elif left == "INPS":
                     office = next((token for x, token in words if 110 <= x < 150), "")
                     causale = next((token for x, token in words if 145 <= x < 200), "")
@@ -135,14 +148,14 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
                     if code:
                         parsed[target].append({**common, "codice_regione": region,
                                                "codice_tributo": code,
-                                               "descrizione": get_descrizione_tributo_regioni(code)})
+                                               "descrizione": get_descrizione_tributo(code)})
                 else:
                     municipality = next((token for x, token in words if 110 <= x < 150), "")
                     code = next((token for x, token in words if 145 <= x < 200 and re.fullmatch(r"[A-Z0-9]{4}", token)), "")
                     if code:
                         parsed[target].append({**common, "codice_comune": municipality,
                                                "codice_tributo": code,
-                                               "descrizione": get_descrizione_tributo_locale(code)})
+                                               "descrizione": get_descrizione_tributo(code)})
                 continue
 
             protocol_word = next(
@@ -406,7 +419,7 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "periodo_riferimento": periodo,
             "importo_debito": debito,
             "importo_credito": credito,
-            "descrizione": get_descrizione_tributo_erario(codice)
+            "descrizione": get_descrizione_tributo(codice)
         })
     if coordinate_data["sezione_erario"]:
         result["sezione_erario"] = coordinate_data["sezione_erario"]
@@ -460,7 +473,7 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "periodo_riferimento": f"{match.group(3)} {match.group(4)}",
             "importo_debito": parse_importo(match.group(5)),
             "importo_credito": parse_importo(match.group(6)),
-            "descrizione": get_descrizione_tributo_regioni(match.group(2))
+            "descrizione": get_descrizione_tributo(match.group(2))
         })
     if coordinate_data["sezione_regioni"]:
         result["sezione_regioni"] = coordinate_data["sezione_regioni"]
@@ -478,7 +491,7 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "periodo_riferimento": match.group(3),
             "importo_debito": parse_importo(match.group(4)),
             "importo_credito": parse_importo(match.group(5)),
-            "descrizione": get_descrizione_tributo_locale(match.group(2))
+            "descrizione": get_descrizione_tributo(match.group(2))
         })
     if coordinate_data["sezione_tributi_locali"]:
         result["sezione_tributi_locali"] = coordinate_data["sezione_tributi_locali"]
@@ -534,64 +547,12 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     return result
 
 
-def get_descrizione_tributo_erario(codice: str) -> str:
-    """Descrizione codici tributo Erario."""
-    descrizioni = {
-        "1001": "Ritenute su redditi di lavoro dipendente",
-        "1040": "Ritenute su redditi di lavoro autonomo",
-        "1038": "Ritenute su interessi e altri redditi di capitale",
-        "1627": "Eccedenza di versamenti di ritenute",
-        "1631": "Credito d'imposta art. 3 DL 73/2021",
-        "1701": "Credito per prestazioni lavoro dipendente",
-        "1703": "Credito d'imposta per canoni di locazione",
-        "1704": "TFR pagato dal datore di lavoro",
-        "1712": "Acconto addizionale comunale IRPEF",
-        "1713": "Saldo addizionale comunale IRPEF",
-        "6001": "IVA mensile gennaio",
-        "6002": "IVA mensile febbraio",
-        "6013": "IVA acconto",
-        "6015": "IVA 1° trimestre",
-        "6099": "IVA annuale",
-        "3843": "Addizionale comunale IRPEF - Autotassazione",
-        "3844": "Addizionale regionale IRPEF - Autotassazione",
-    }
-    return descrizioni.get(codice, f"Tributo {codice}")
 
 
-def get_descrizione_causale_inps(causale: str) -> str:
-    """Descrizione causali INPS."""
-    descrizioni = {
-        "DM10": "Contributi previdenziali dipendenti",
-        "CXX": "Contributi gestione separata",
-        "RC01": "Contributi artigiani/commercianti",
-        "C10": "Contributi cassa edile",
-        "CF10": "Contributi fondo pensione",
-    }
-    return descrizioni.get(causale, f"Contributo {causale}")
 
 
-def get_descrizione_tributo_regioni(codice: str) -> str:
-    """Descrizione codici tributo regionali."""
-    descrizioni = {
-        "3801": "Addizionale regionale IRPEF - autotassazione",
-        "3802": "Addizionale regionale IRPEF - sostituto d'imposta",
-        "3805": "Addizionale regionale IRPEF - rata",
-        "3843": "Addizionale regionale IRPEF - autotassazione",
-    }
-    return descrizioni.get(codice, f"Tributo regionale {codice}")
 
 
-def get_descrizione_tributo_locale(codice: str) -> str:
-    """Descrizione codici tributo locali."""
-    descrizioni = {
-        "1671": "Addizionale comunale IRPEF - sostituto d'imposta",
-        "3914": "IMU - terreni",
-        "3916": "IMU - aree fabbricabili",
-        "3917": "IMU - quota Stato",
-        "3918": "IMU - altri fabbricati",
-        "3919": "IMU - interessi",
-    }
-    return descrizioni.get(codice, f"Tributo locale {codice}")
 
 
 def process_multiple_f24(pdf_paths: List[str]) -> List[Dict[str, Any]]:

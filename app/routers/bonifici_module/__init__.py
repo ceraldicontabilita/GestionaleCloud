@@ -4,7 +4,7 @@ Modulo suddiviso per funzionalità:
 - common: Costanti, utility parsing, deduplicazione
 - pdf_parser: Estrazione testo da PDF
 - jobs: Gestione job import, upload, background processing
-- transfers: CRUD bonifici, export
+- transfers: CRUD bonifici
 - riconciliazione: Riconciliazione con estratto conto, dashboard
 """
 from fastapi import APIRouter
@@ -17,7 +17,7 @@ from .jobs import (
 )
 from .transfers import (
     list_transfers, count_transfers, transfers_summary,
-    delete_transfer, get_bonifico_pdf, bulk_delete, update_transfer, export_transfers,
+    delete_transfer, get_bonifico_pdf, bulk_delete, update_transfer,
     download_zip_by_year
 )
 from .riconciliazione import (
@@ -39,7 +39,6 @@ router.add_api_route("/transfers/summary", transfers_summary, methods=["GET"])
 router.add_api_route("/transfers/bulk", bulk_delete, methods=["DELETE"])
 
 # Export
-router.add_api_route("/export", export_transfers, methods=["GET"])
 router.add_api_route("/download-zip/{year}", download_zip_by_year, methods=["GET"])
 
 # Riconciliazione
