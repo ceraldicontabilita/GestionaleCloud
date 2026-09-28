@@ -88,6 +88,18 @@ async def _busta_gia_in_archivio(db, ced: Dict[str, Any]) -> Optional[Dict[str, 
     return next((c for c in candidati if identita_cedolino(c) == chiave), None)
 
 
+# Una busta alla volta per dipendente e periodo: lo smistatore legge piu' PDF
+# insieme, e due copie della stessa busta non devono superare entrambe il
+# controllo «gia' in archivio» prima che la prima sia scritta.
+_LOCK_BUSTE: Dict[Any, asyncio.Lock] = {}
+
+
+def _lock_busta(ced: Dict[str, Any]) -> asyncio.Lock:
+    chiave = (str(ced.get("codice_fiscale") or ced.get("nome_dipendente") or "").upper(),
+              ced.get("anno"), ced.get("mese"))
+    return _LOCK_BUSTE.setdefault(chiave, asyncio.Lock())
+
+
 async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Optional[str],
                          pdf_text: str, results: Dict[str, Any]) -> None:
     """Scrive una busta letta: in contabilita' se il netto e' verificato, altrimenti solo in HR.
@@ -95,6 +107,13 @@ async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Op
     E' l'unico punto di scrittura di una busta, sia dalla lettura di un PDF
     sia dalla ricarica di una scheda Markdown (``schede_markdown``).
     """
+    async with _lock_busta(ced):
+        await _registra_busta(db, ced, filename=filename, pdf_data=pdf_data,
+                              pdf_text=pdf_text, results=results)
+
+
+async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Optional[str],
+                          pdf_text: str, results: Dict[str, Any]) -> None:
     from app.constants.stati_netto import alimenta_salari
     from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
     from app.services.salari_unificati_v2 import processa_cedolino_v2
