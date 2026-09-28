@@ -210,9 +210,10 @@ def test_nessun_circuito_crea_una_seconda_entrata_di_cassa():
     entrate = _righe_pos(db, "prima_nota_cassa", tipo="entrata")
     assert len(entrate) == 1
     assert entrate[0]["importo"] == 1000.0
-    # saldo contanti = totale XML - Nexi - SumUp
-    assert entrate[0]["pagato_contanti"] == 400.0
-    assert entrate[0]["pagato_elettronico"] == 600.0
+    # I terminali si annotano a parte: l'entrata non ricava i contanti per
+    # differenza (con la sola quota contanti in cassa venivano negativi).
+    assert entrate[0]["pos_reale_giorno"] == 600.0
+    assert "pagato_contanti" not in entrate[0]
     # Il valore fiscale XML non viene mai toccato.
     assert _run(db.corrispettivi.find_one({"id": "c1"}))["pagato_elettronico"] == 600.0
 

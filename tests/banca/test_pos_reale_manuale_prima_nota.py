@@ -175,10 +175,12 @@ def test_pos_manuale_sostituisce_xml_solo_in_prima_nota():
     assert corr["pos_reale_serale"] == 1000.0
 
     entrata, uscita = db["prima_nota_cassa"].docs
+    # L'entrata Cassa e' la quota contanti dell'XML: il terminale reale si
+    # annota a parte e non riscrive i contanti (diventavano negativi).
     assert entrata["importo"] == 1200.0
-    assert entrata["pagato_elettronico"] == 1000.0
-    assert entrata["pagato_contanti"] == 200.0
-    assert entrata["dettaglio"]["elettronico"] == 1000.0
+    assert entrata["pagato_contanti"] == 47.30
+    assert entrata["dettaglio"] == {"elettronico": 1152.70, "contanti": 47.30}
+    assert entrata["pos_reale_giorno"] == 1000.0
     assert uscita["status"] == "archived"
     assert uscita["deleted_reason"] == "pos_non_movimenta_contanti"
 
@@ -289,3 +291,16 @@ def test_controllo_due_fasi_segnala_solo_xml_inferiore_oltre_tolleranza():
 
     assert differenza == -1.20
     assert coerente is False
+
+
+def test_scontrino_legge_i_contanti_dal_corrispettivo_non_dalla_copia_in_prima_nota():
+    from app.routers.invoices.corrispettivi import generate_corrispettivo_html
+
+    corr = {"id": "c", "data": "2026-09-21", "totale": 100.0, "pagato_contanti": 30.0,
+            "pagato_elettronico": 70.0}
+    copia_rovinata = {"dettaglio": {"contanti": -40.0, "elettronico": 70.0}}
+
+    html = generate_corrispettivo_html(corr, copia_rovinata)
+
+    assert "-40" not in html
+    assert "30,00" in html
