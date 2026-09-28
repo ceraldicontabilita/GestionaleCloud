@@ -4067,7 +4067,11 @@ async def _indici_dipendenti(db):
     """Indici per riconoscere il dipendente da CF/nome nei documenti."""
     dips = await db.dipendenti.find({"merged_into": {"$exists": False}},
                                     {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1, "codice_fiscale": 1}).to_list(1000)
+    return indici_da_dipendenti(dips)
 
+
+def indici_da_dipendenti(dips):
+    """Gli stessi indici da un elenco gia' letto (la banca lo carica da se')."""
     def norm(s):
         return re.sub(r"\s+", " ", str(s or "").strip()).lower()
     by_cf, by_nome, by_cogn = {}, {}, {}

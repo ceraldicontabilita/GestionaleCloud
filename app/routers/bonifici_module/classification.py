@@ -54,6 +54,41 @@ def _beneficiario(bonifico: Dict[str, Any]) -> tuple[str, str]:
     return str(nome).strip(), re.sub(r"\s+", "", str(iban)).upper()
 
 
+_RE_BENEFICIARIO = re.compile(r"\bFAVORE\s+(.+?)(?:\s+-\s+|$)", re.IGNORECASE)
+
+
+def _candidato_per_cognome(dipendenti: Iterable[Dict[str, Any]], testo: str) -> list:
+    """Ultimo gradino della scala di CLAUDE.md (CF -> nome completo ->
+    cognome univoco), con lo stesso risolutore del ponte HR: la banca tronca
+    il beneficiario («SANKAPALA ARACHCHILAGE JANANIE AYAC») e il nome completo
+    non c'e' piu'. Mai quando la causale dice che e' altro (fattura, TFR,
+    fornitore, commissione): l'esclusione vince sul nome."""
+    from app.hr.routers.dipendenti_cloud import indici_da_dipendenti
+    from app.services.hr_pagamenti_deposito import e_pagamento_non_stipendio, risolvi_dipendente
+
+    elenco = list(dipendenti)
+    if not testo or not elenco or e_pagamento_non_stipendio(testo):
+        return []
+    # Solo il beneficiario, e solo se comincia col cognome: la banca scrive
+    # «FAVORE COGNOME NOME». Un cognome che e' anche un nome proprio o una
+    # parola (Mauro, Palma, Vespa) altrove nella causale non basta.
+    beneficiario = _RE_BENEFICIARIO.search(testo)
+    if not beneficiario:
+        return []
+    beneficiario = re.sub(r"\s+", " ", beneficiario.group(1)).strip().lower()
+    dipendente, motivo = risolvi_dipendente(indici_da_dipendenti(elenco), beneficiario)
+    if motivo != "cognome" or not dipendente:
+        return []
+    cognome = re.sub(r"\s+", " ", str(dipendente.get("cognome") or "")).strip().lower()
+    if not cognome or not beneficiario.startswith(cognome):
+        return []
+    nome = (
+        dipendente.get("nome_completo")
+        or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}".strip()
+    )
+    return [(dipendente, nome, "cognome_univoco")]
+
+
 def classifica_destinazione_dipendente(
     bonifico: Dict[str, Any], dipendenti: Iterable[Dict[str, Any]]
 ) -> Dict[str, Any]:
@@ -130,6 +165,7 @@ def classifica_destinazione_dipendente(
         candidati_iban
         or candidati_codice_fiscale
         or candidati_nome
+        or _candidato_per_cognome(dipendenti, testo_bancario)
     )
 
     # Un solo riscontro anagrafico e' utilizzabile; gli omonimi restano ambigui.
