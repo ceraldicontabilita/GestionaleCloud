@@ -203,3 +203,19 @@ def test_busta_scartata_come_estratto_torna_in_coda(ambiente):  # noqa: F811
         "tipo": "estratto_conto", "motivo": "Errore import estratto conto: 400: Formato Banco BPM"}))
     assert run(cu.giro(db))["buste_rimesse_in_coda"] == 1
     assert drive.file["t2"]["parent"] == "elaborate"
+
+
+def test_contabile_presa_per_estratto_torna_in_coda_una_volta(ambiente):  # noqa: F811
+    drive, _, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("c1", "Contabile di filiale_31-05-2024_3500,00.pdf", b"%PDF c1", "arretrato")
+    drive.aggiungi("c2", "Contabile di filiale_31-01-2024_3000,00.pdf", b"%PDF c2", "arretrato")
+    run(db[cu.REGISTRO].insert_many([
+        {"id": "c1", "nome": "Contabile di filiale_31-05-2024_3500,00.pdf", "cartella": cu.ARRETRATO,
+         "tipo": "estratto_conto", "motivo": "estratto del 2024: arretrato fermo (anno minimo 2026)"},
+        # Gia' riletta con le regole nuove: resta dov'e'.
+        {"id": "c2", "nome": "Contabile di filiale_31-01-2024_3000,00.pdf", "cartella": cu.ARRETRATO,
+         "tipo": "estratto_conto", "regole_non_riconosciuti": cu.REGOLE_NON_RICONOSCIUTI},
+    ]))
+    assert run(cu.giro(db))["buste_rimesse_in_coda"] == 1
+    assert drive.file["c2"]["parent"] == "arretrato"

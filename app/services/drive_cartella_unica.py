@@ -242,6 +242,7 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any]) -> Dict
 REGOLE_NON_RICONOSCIUTI = 1
 NON_RICONOSCIUTO = "tipo di documento non riconosciuto"
 
+_CONTABILE_FILIALE = re.compile(r"^Contabile di filiale", re.IGNORECASE)
 _STAMPA_FATTURA_XML = re.compile(r"\.xml(\.p7m)?\s*-\s", re.IGNORECASE)
 _FORMATI_NON_GESTITI = (".doc", ".docx", ".rtf", ".odt", ".xbrl", ".txt", ".csv", ".json")
 _ANNO_NEL_NOME = re.compile(r"(?<!\d)(20[0-2]\d|19\d\d)(?!\d)")
@@ -356,7 +357,11 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
         if riga.get("cartella") == ARRETRATO:
             # Una busta presa per estratto conto (cita la banca d'appoggio) e
             # parcheggiata fra l'arretrato degli estratti: va riletta da busta.
-            if not e_busta({"name": riga.get("nome")}):
+            # Lo stesso per una contabile di filiale, che ora ha un lettore.
+            contabile = (_CONTABILE_FILIALE.match(str(riga.get("nome") or ""))
+                         and int(riga.get("regole_non_riconosciuti") or 0) < REGOLE_NON_RICONOSCIUTI)
+            da_rileggere = bool(contabile)
+            if not e_busta({"name": riga.get("nome")}) and not contabile:
                 continue
         else:
             gia_presente = riga.get("tipo") == "cedolino" and _BUSTE_GIA_PRESENTI.match(motivo)
