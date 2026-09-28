@@ -1224,6 +1224,36 @@ def start_scheduler():
         except Exception:
             logger.exception("[SCHEDULER-HR-PAGAMENTI] deposito non completato")
 
+    async def _cedolini_hr_riverifica_job():
+        """Netti HR riletti dal PDF della busta col lettore unico, un lotto per
+        giro; si ferma da solo quando tutte le righe portano la versione."""
+        from app.database import Database
+        from app.services import hr_cedolini_deposito as deposito
+        from app.services.cedolini_hr_riverifica import riverifica_lotto
+
+        dsn = deposito.dsn_hr()
+        if not dsn:
+            return
+        con = await deposito.connetti_hr(dsn)
+        try:
+            r = await riverifica_lotto(con)
+        finally:
+            await con.close()
+        if r["lette"]:
+            logger.info("[SCHEDULER-HR-NETTI] lette=%s esiti=%s", r["lette"], r["conteggi"])
+            db = Database.get_db()
+            stato = await db["sistema_stato"].find_one({"chiave": "cedolini_hr_riverifica"}, {"_id": 0}) or {}
+            conteggi = dict(stato.get("conteggi") or {})
+            for k, v in r["conteggi"].items():
+                conteggi[k] = conteggi.get(k, 0) + v
+            await db["sistema_stato"].update_one(
+                {"chiave": "cedolini_hr_riverifica"},
+                {"$set": {"chiave": "cedolini_hr_riverifica", "conteggi": conteggi,
+                          "correzioni": (stato.get("correzioni") or []) + r["correzioni"],
+                          "aggiornato_il": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
+
     async def _chiusure_attivita_job():
         """Registro dei giorni di chiusura (ferie/ristrutturazione): periodi
         confermati + ferie collettive nelle presenze HR. Toglie quei giorni
@@ -1271,6 +1301,17 @@ def start_scheduler():
         coalesce=True,
         id="chiusure_attivita",
         name="Registro giorni di chiusura attivita' (ogni 6 ore)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _cedolini_hr_riverifica_job,
+        'interval', minutes=20,
+        next_run_time=avvio + timedelta(minutes=7),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="cedolini_hr_riverifica",
+        name="Netti HR riletti dal PDF della busta (un lotto ogni 20 minuti)",
         replace_existing=True,
     )
 
