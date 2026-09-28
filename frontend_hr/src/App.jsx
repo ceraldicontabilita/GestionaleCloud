@@ -4004,7 +4004,9 @@ function BonificiDaAssociarePage({ dipendenti }) {
       const iniziale = {};
       for (const b of (r.data || [])) {
         const [a, m] = (b.data || "").split("-");
-        iniziale[b.id] = { dipendente_id: "", tipo: "stipendio", conciliazione_id: "",
+        // una proposta (notifica «Info Bonifico» della banca, causale) precompila le scelte
+        iniziale[b.id] = { dipendente_id: b.proposta?.dipendente_id || "", tipo: b.proposta?.tipo || "stipendio",
+                           conciliazione_id: "",
                            anno: a ? Number(a) : new Date().getFullYear(),
                            mese: m ? Number(m) : new Date().getMonth() + 1 };
       }
@@ -4030,11 +4032,11 @@ function BonificiDaAssociarePage({ dipendenti }) {
     if ((nuova.tipo === "conciliazione" || nuova.tipo === "bonus") && nuova.dipendente_id) caricaConciliazioni(nuova.dipendente_id);
   };
 
-  const associa = async (id) => {
+  const associa = async (id, { silenzioso = false } = {}) => {
     const sc = scelte[id];
-    if (!sc?.dipendente_id) { toast("Scegli prima il dipendente", "err"); return; }
+    if (!sc?.dipendente_id) { toast("Scegli prima il dipendente", "err"); return false; }
     if ((sc.tipo === "conciliazione" || sc.tipo === "bonus") && !sc.conciliazione_id) {
-      toast("Scegli la conciliazione del dipendente", "err"); return;
+      toast("Scegli la conciliazione del dipendente", "err"); return false;
     }
     setBusy(id);
     try {
@@ -4044,14 +4046,38 @@ function BonificiDaAssociarePage({ dipendenti }) {
       });
       const dove = { stipendio: "nella busta del mese", acconto: "fra gli acconti del dipendente",
                      conciliazione: "sulla conciliazione", bonus: "sul bonus della conciliazione" }[sc.tipo];
-      toast(`Associato ${dove}`);
+      if (!silenzioso) toast(`Associato ${dove}`);
       setRighe(r => r.filter(x => x.id !== id));
       if (sc.tipo === "conciliazione" || sc.tipo === "bonus") setConcPerDip(s => ({ ...s, [sc.dipendente_id]: undefined }));
+      return true;
     } catch (e) {
       const d = e?.response?.data?.detail;
       toast((d && typeof d === "object" ? d.message : d) || "Errore nell'associazione", "err");
+      return false;
     }
     finally { setBusy(null); }
+  };
+
+  // Le proposte ancora come le ha scritte il sistema (dipendente e tipo non
+  // cambiati a mano) si confermano insieme, una alla volta con lo stesso
+  // endpoint della conferma singola: nessuna strada parallela.
+  const proposteIntatte = righe.filter(b => {
+    const sc = scelte[b.id] || {};
+    return b.proposta?.dipendente_id && sc.dipendente_id === b.proposta.dipendente_id
+      && (sc.tipo === "stipendio" || sc.tipo === "acconto");
+  });
+  const [avanzamento, setAvanzamento] = useState(null);
+  const confermaProposte = async () => {
+    const elenco = proposteIntatte.map(b => b.id);
+    if (!elenco.length) return;
+    if (!window.confirm(`Confermo ${elenco.length} proposte? Ognuna diventa il pagamento del dipendente proposto, nel mese del bonifico. Quelle che hai cambiato a mano restano da confermare una per una.`)) return;
+    let fatte = 0;
+    for (const [i, id] of elenco.entries()) {
+      setAvanzamento(`${i + 1} di ${elenco.length}`);
+      if (await associa(id, { silenzioso: true })) fatte += 1;
+    }
+    setAvanzamento(null);
+    toast(`Confermate ${fatte} proposte su ${elenco.length}`);
   };
 
   const ignora = async (id) => {
@@ -4081,6 +4107,11 @@ function BonificiDaAssociarePage({ dipendenti }) {
           <h1>Bonifici da associare</h1>
           <p>{righe.length} bonifici cumulativi ("beneficiari diversi") in attesa di essere assegnati a un dipendente. L'import dalla cartella Drive si fa da "Cedolini &amp; Bonifici" — arrivano qui solo quelli che non si possono assegnare da soli.</p>
         </div>
+        {proposteIntatte.length > 0 && (
+          <button type="button" className="dc-btn dc-btn-primary" style={{ minHeight: 44 }} disabled={!!avanzamento || !!busy} onClick={confermaProposte}>
+            <Check size={16} aria-hidden="true" /> {avanzamento ? `Confermo… ${avanzamento}` : `Conferma le ${proposteIntatte.length} proposte`}
+          </button>
+        )}
       </div>
 
       <div className="dc-card" style={{ marginBottom: 12, padding: 12, fontSize: 13, color: "#6b7669" }}>
@@ -4111,7 +4142,14 @@ function BonificiDaAssociarePage({ dipendenti }) {
                 <tr key={b.id}>
                   <td>{b.data ? dataIt : "—"}</td>
                   <td data-label="Importo">€ {eur(b.importo)}</td>
-                  <td data-label="Causale" className="dc-muted" style={{ fontSize: 12, maxWidth: 220, whiteSpace: "normal" }}>{b.causale || "—"}</td>
+                  <td data-label="Causale" className="dc-muted" style={{ fontSize: 12, maxWidth: 240, whiteSpace: "normal" }}>
+                    {b.causale || "—"}
+                    {b.proposta && (
+                      <div style={{ marginTop: 4, color: "#8a6f47", fontWeight: 600 }}>
+                        Proposta: {b.proposta.dipendente_nome || "dipendente"} — {b.proposta.prova}
+                      </div>
+                    )}
+                  </td>
                   <td data-label="PDF">
                     <button type="button" className="dc-btn dc-btn-ghost" style={{ fontSize: 12, padding: "3px 8px", minHeight: 36 }} onClick={() => apriPdf(b.id)} aria-label={`Apri il PDF del bonifico del ${dataIt}`}>
                       Apri
