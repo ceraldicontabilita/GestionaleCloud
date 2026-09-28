@@ -604,13 +604,19 @@ def start_scheduler():
             logger.info(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] {result}")
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] errore: {type(e).__name__}: {e}")
-        # Stampe di controllo delle buste con la definitiva identica: via da Drive.
+
+    async def _stampe_controllo_job():
+        # Stampe di controllo delle buste con la definitiva identica: via da
+        # Drive. Giro proprio, non in coda allo svuotamento (che dura ore):
+        # lavora solo su ELABORATE, dove lo smistatore non legge.
+        from app.database import Database
+        from app.services import drive_cartella_unica
+        if not drive_cartella_unica.attivo():
+            return
         try:
             from app.services.cedolini_stampe_controllo import pulisci_archivio
-            if not drive_cartella_unica._lock.locked():
-                async with drive_cartella_unica._lock:
-                    pulizia = await pulisci_archivio(Database.get_db(), gruppi_per_giro=None)
-                logger.info(f"[SCHEDULER-STAMPE-CONTROLLO] {pulizia}")
+            pulizia = await pulisci_archivio(Database.get_db(), gruppi_per_giro=None)
+            logger.info(f"[SCHEDULER-STAMPE-CONTROLLO] {pulizia}")
         except Exception as e:
             logger.error(f"[SCHEDULER-STAMPE-CONTROLLO] errore: {type(e).__name__}: {e}")
 
@@ -1184,6 +1190,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="drive_cartella_unica", name="Cartella unica Drive DATI SOCIETA CERALDI (ogni 15 min)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _stampe_controllo_job,
+        'interval', minutes=15,
+        next_run_time=avvio + timedelta(minutes=4),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="cedolini_stampe_controllo", name="Stampe di controllo buste: via da Drive (ogni 15 min)",
         replace_existing=True,
     )
 
