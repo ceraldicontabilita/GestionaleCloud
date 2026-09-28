@@ -7,11 +7,9 @@ app/routers/suppliers_module/iban.py, e la validazione "vera" (lunghezza +
 prefisso paese) viveva solo in app/services/suppliers/validators.py.
 Questo modulo e' l'unico punto di verita' per entrambe le cose.
 
-Nota: la validazione qui e' solo di formato (lunghezza 27 + prefisso "IT"),
-non calcola il check digit MOD97. Nessuna implementazione esistente nel
-repo lo faceva, quindi non e' stato introdotto per non cambiare
-comportamento: se in futuro serve un controllo piu' rigoroso va aggiunto
-esplicitamente.
+Nota: ``valida_iban`` controlla solo la forma (lunghezza 27 + prefisso "IT");
+chi scrive un IBAN in un ordine di pagamento usa ``iban_mod97_valido``, che
+calcola anche la cifra di controllo.
 """
 import re
 
@@ -39,3 +37,20 @@ def estrai_iban_da_testo(testo: str):
     if match and valida_iban(match.group(0)):
         return match.group(0)
     return None
+
+
+def iban_mod97_valido(iban: str) -> bool:
+    """Check digit ISO 13616 (MOD 97-10) di un IBAN di qualunque paese SEPA.
+
+    Serve a chi scrive un IBAN in un ordine di pagamento: la sola forma
+    (``valida_iban``) lascia passare una cifra sbagliata, e la banca rifiuta
+    il bonifico o, peggio, lo manda a un altro conto.
+    """
+    pulito = "".join(c for c in str(iban or "") if c.isalnum()).upper()
+    if not re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]{11,30}", pulito):
+        return False
+    if pulito.startswith("IT") and len(pulito) != IBAN_ITALIANO_LUNGHEZZA:
+        return False
+    riordinato = pulito[4:] + pulito[:4]
+    numero = "".join(str(int(c, 36)) for c in riordinato)
+    return int(numero) % 97 == 1
