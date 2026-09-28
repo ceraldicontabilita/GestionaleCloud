@@ -788,6 +788,17 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-FATTURE-EMESSE] errore: {type(e).__name__}: {e}")
 
+    async def _fatture_estere_job():
+        """Fatture estere da confermare riallineate alle regole di classificazione attuali."""
+        from app.database import Database
+        from app.routers.fatture_estera_verifica import riallinea_fatture_estere_in_attesa
+        try:
+            esito = await riallinea_fatture_estere_in_attesa(Database.get_db())
+            if esito.get("riregistrate") or esito.get("errori"):
+                logger.info(f"[SCHEDULER-FATTURE-ESTERE] {esito}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-FATTURE-ESTERE] errore: {type(e).__name__}: {e}")
+
     async def _f24_quietanze_banca_job():
         """F24 del commercialista ↔ ravvedimento, poi quietanze ↔ addebiti I24.
 
@@ -1436,6 +1447,16 @@ def start_scheduler():
         coalesce=True,
         id="fatture_emesse",
         name="Fatture emesse: fuori dalle passive, aggancio al corrispettivo (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _fatture_estere_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=5),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="fatture_estere_riallineamento",
+        name="Fatture estere da confermare: classificazione e registrazione alle regole attuali (ogni 30 min)",
         replace_existing=True,
     )
     scheduler.add_job(

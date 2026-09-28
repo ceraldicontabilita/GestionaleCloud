@@ -213,8 +213,42 @@ async def ricalcola_contabilita_fattura_estera(db, fattura_id: str, esito: str) 
     totale_fattura = round(float(fattura.get("total_amount") or 0), 2)
     if conto_costo in conti_scritti and abs(totale_scritto - totale_fattura) < 0.01:
         return {"classificazione": classificazione, "giornale": "invariato"}
-    motivo = f"fattura estera {esito} dal titolare: conto {conto_costo}, totale {totale_fattura:.2f}"
+    if esito == "riallineata":
+        motivo = (f"fattura estera riallineata alle regole di classificazione: conto {conto_costo}, "
+                  f"totale {totale_fattura:.2f}")
+    else:
+        motivo = f"fattura estera {esito} dal titolare: conto {conto_costo}, totale {totale_fattura:.2f}"
     storno = await storna_registrazione_fattura(db, fattura_id, motivo)
     nuova = await _riregistra(db, fattura_id)
     return {"classificazione": classificazione, "giornale": "riregistrato",
             "storno": storno, "nuova_registrazione": nuova.get("stato")}
+
+
+async def riallinea_fatture_estere_in_attesa(db) -> Dict[str, Any]:
+    """Le fatture estere ancora da confermare seguono le regole attuali.
+
+    La classificazione di una fattura letta dal PDF si decide all'import; se le
+    regole cambiano dopo (i terminali SumUp erano finiti su «commissioni POS» e
+    la scrittura su «acquisto merci»), la fattura restava sbagliata finche'
+    qualcuno non la confermava. Qui si ripassa con lo stesso motore della
+    conferma: classificazione rifatta e, se il conto non torna, storno e nuova
+    registrazione. ``verifica_ai`` resta ``in_attesa``: i dati letti dall'AI li
+    conferma sempre il titolare. Idempotente: una fattura gia' allineata da'
+    «invariato».
+    """
+    fatture = await db[Collections.INVOICES].find(
+        {"verifica_ai": "in_attesa"}, {"_id": 0, "id": 1},
+    ).to_list(500)
+    esito: Dict[str, Any] = {"esaminate": 0, "riregistrate": [], "errori": []}
+    for fattura in fatture:
+        esito["esaminate"] += 1
+        try:
+            ricalcolo = await ricalcola_contabilita_fattura_estera(db, fattura["id"], "riallineata")
+        except Exception as exc:  # una fattura rotta non ferma le altre
+            logger.warning("Riallineamento fattura estera %s non riuscito: %s: %s",
+                           fattura["id"], type(exc).__name__, exc)
+            esito["errori"].append({"fattura_id": fattura["id"], "errore": f"{type(exc).__name__}: {exc}"})
+            continue
+        if ricalcolo.get("giornale") == "riregistrato":
+            esito["riregistrate"].append(fattura["id"])
+    return esito
