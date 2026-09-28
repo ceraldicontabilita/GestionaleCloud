@@ -47,6 +47,13 @@ CATEGORIE_BANCA = [
     "F24",
     "Stipendi",
     "Rata mutuo",
+    # Decisioni del titolare del 28/09/2026 (categorizzazione_movimenti.py).
+    "Rateizzazioni AdE",
+    "Tassa automobilistica",
+    "Addebito carta di credito",
+    "Finanziamento soci",
+    "Acconti clienti",
+    "Risarcimenti e proventi straordinari",
     "Altro"
 ]
 

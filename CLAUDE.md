@@ -428,7 +428,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Categorizzazione movimenti banca: un solo motore,
   `app/services/categorizzazione_movimenti.py` (parole chiave e causali BPM non ambigue: F24, commissioni, utenze,
   fatture, POS, assegni, versamenti, PayPal, rata mutuo; la riga senza categoria prende quella della sua copia di un altro export;
-  un'uscita già abbinata a una fattura sola o a un dipendente solo è «Fatture»/«Stipendi», `categoria_dal_collegamento`). Sopra le parole chiave, **regole
+  un'uscita già abbinata a una fattura sola o a un dipendente solo è «Fatture»/«Stipendi», il socio «Finanziamento soci»,
+  `categoria_dal_collegamento`; CBILL AdE = «Rateizzazioni AdE», saldo Nexi = «Addebito carta di credito» (giroconto, non costo);
+  in **entrata** rimborso/restituzione/Amazon = «Rimborso», torte = «Acconti clienti», mai ricavi: il ricavo è lo scontrino). Sopra le parole chiave, **regole
   imparate** dal titolare (`app/services/regole_riconoscimento_banca.py`,
   `/riconciliazione/regole-banca`): un pattern estratto da una causale reale
   vince sul generico, ma un pattern di solo vocabolario bancario comune (es.

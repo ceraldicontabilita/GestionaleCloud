@@ -35,6 +35,10 @@ from app.services.doppioni_estratto_conto import eredita_categorie_da_copie
     ("IMP. BOLLO C/C", "Commissioni bancarie"),
     ("CANONE CARTA DEBITO", "Commissioni bancarie"),
     ("COMPETENZE", "Commissioni bancarie"),
+    # Decisioni del titolare del 28/09/2026.
+    ("BOLL.CBILL AGENZIA DELLE ENTRATE - R CBILL 180071115560092791", "Rateizzazioni AdE"),
+    ("BOLL.CBILL REGIONE CAMPANIA CBILL 301000000084494886", "Tassa automobilistica"),
+    ("SPESA CON CARTA DI CREDITO NEXI", "Addebito carta di credito"),
     # Restano senza categoria: non si indovina.
     ("BONIFICO COMPETENZE AGOSTO ROSSI", None),
     ("STORNO VERS. CONTANTI", None),
@@ -106,3 +110,38 @@ def test_l_abbinamento_gia_fatto_decide_la_categoria():
     assert righe["m-dip"]["categoria"] == "Stipendi"
     assert not righe["m-nulla"].get("categoria")
     assert esito["per_categoria"]["Fatture"] == 1 and esito["per_categoria"]["Stipendi"] == 1
+
+
+@pytest.mark.parametrize("mov,attesa", [
+    ({"tipo": "entrata", "importo": 1137.41, "descrizione": "BON.DA R-STORE S.P.A. RIMBORSO"}, "Rimborso"),
+    ({"tipo": "entrata", "importo": 404.0,
+      "descrizione": "BON.DA L. MORELLI E FIGLIO S.R.L. - X RESTITUZIONE BONIFICO ERRATO"}, "Rimborso"),
+    ({"tipo": "entrata", "importo": 59.48,
+      "descrizione": "BON.DA AMAZON PAYMENTS EUROPE S.C.A. AMAZON - 171-0500632"}, "Rimborso"),
+    ({"tipo": "entrata", "importo": 45.0, "descrizione": "BON.DA BRUNO ORIETTA - ACCONTO TORTA DI COMPLEANNO"},
+     "Acconti clienti"),
+    # In uscita «RIMBORSO» e' il contrario: lo restituiamo noi.
+    ({"tipo": "uscita", "importo": 50.0, "descrizione": "VS.DISP. FAVORE ROSSI RIMBORSO"}, None),
+    ({"importo": -50.0, "descrizione": "BONIFICO TORTA"}, None),
+    ({"tipo": "entrata", "importo": 10.0, "descrizione": "RIMBORSO TORTA ANNULLATA"}, None),
+])
+def test_entrate_rimborso_e_acconto(mov, attesa):
+    from app.services.categorizzazione_movimenti import categoria_entrata
+
+    assert categoria_entrata(mov) == attesa
+
+
+def test_il_socio_gia_riconosciuto_e_finanziamento_soci():
+    from app.services.categorizzazione_movimenti import categoria_dal_collegamento
+
+    assert categoria_dal_collegamento(
+        {"tipo": "entrata", "importo": 20000.0, "socio_id": "socio-1"}) == "Finanziamento soci"
+
+
+def test_la_regola_imparata_decide_il_risarcimento():
+    regole = [{"id": "r1", "pattern": "CHP LEGAL", "entita_tipo": "categoria",
+               "entita_nome": "Risarcimenti e proventi straordinari",
+               "categoria": "Risarcimenti e proventi straordinari"}]
+    esito = categorizza_movimento_bancario(
+        "BON.DA CHP LEGAL SRL CHP-25487-STUDIO ASSOCIA TO PRISCO", regole=regole)
+    assert esito.categoria == "Risarcimenti e proventi straordinari"
