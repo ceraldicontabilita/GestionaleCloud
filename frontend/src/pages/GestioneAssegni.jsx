@@ -2915,8 +2915,18 @@ export default function GestioneAssegni() {
                           </div>
                         )}
                         {assegno.associazione_ambigua && (
-                          <div style={{ color: COLORS.warning, fontWeight: 700 }}>
-                            Più candidati: scegli manualmente
+                          <div style={{ display: 'grid', gap: 5 }}>
+                            <span style={{ color: COLORS.warning, fontWeight: 700 }}>
+                              Più candidati
+                            </span>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openFattureModal(assegno)}
+                              data-testid={`scegli-manualmente-${assegno.id}`}
+                            >
+                              Scegli manualmente
+                            </Button>
                           </div>
                         )}
                         {assegno.associazione_conflittuale && (
