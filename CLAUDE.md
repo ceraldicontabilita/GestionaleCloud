@@ -279,7 +279,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   crea l'attesa prima della prova; il reimport non duplica; la prova certa
   conserva gli ID; la prova ambigua non inventa dati; la chiusura fallisce con
   un'attesa aperta.
-- Un alert mostra sempre l'elenco dei record coinvolti (la lista ricava il link da `entita_collection`/`entita_id`); alert falsi e verbali nati da un numero di fattura li chiude o mette in quarantena `bonifiche_automatiche.py` nel job bancario corto, per id e col motivo. Un comando di manutenzione che l'utente deve ripetere
+- Un alert mostra sempre l'elenco dei record coinvolti (la lista ricava il link da `entita_collection`/`entita_id`); alert falsi e verbali nati da un numero di fattura li chiude o mette in quarantena `bonifiche_automatiche.py` nel job bancario corto, per id e col motivo. Segnali incrociati in un modulo solo (`controlli_incrociati.py`, ogni mattina): beneficiario «FAVORE» diverso dal fornitore, fattura con due uscite intere, importo oltre 4× la mediana del fornitore, mese d'estratto senza movimenti (BPM, SumUp, Numia), RT dimenticata; un avviso ignorato non rinasce. Un comando di manutenzione che l'utente deve ripetere
   per correggere duplicati prevedibili è un difetto: la prevenzione per ID/hash sta nel flusso di importazione.
 - **L'abbinamento parte all'arrivo del secondo pezzo, in tutti e due i sensi**, mai aspettando un giro: F24 ↔ quietanza ↔ banca (`cerca_controparti_f24`), fattura ↔ report del titolare ↔ banca (`applica_per_fattura_arrivata`, `riprocessa_estratto_dopo_import_fattura`). I giri restano solo come rete.
 

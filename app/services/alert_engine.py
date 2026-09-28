@@ -362,6 +362,36 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Fonte contabile ferma: non arrivano piu' documenti",
         "condizione_chiusura": "La fonte torna ad aggiornarsi"
     },
+    "ESTRATTO_MESE_MANCANTE": {
+        "modulo": "banca",
+        "severita": "warning",
+        "titolo": "Estratto del mese mancante",
+        "condizione_chiusura": "Estratto del mese caricato"
+    },
+    "BNK_BENEFICIARIO_DIVERSO": {
+        "modulo": "banca",
+        "severita": "warning",
+        "titolo": "Bonifico collegato a una fattura di un altro fornitore",
+        "condizione_chiusura": "Collegamento corretto o beneficiario confermato"
+    },
+    "FAT_PAGATA_DUE_VOLTE": {
+        "modulo": "fatture",
+        "severita": "critical",
+        "titolo": "Fattura con due uscite per l'importo intero",
+        "condizione_chiusura": "Uscita in piu' scollegata o rimborso trovato"
+    },
+    "FAT_IMPORTO_ANOMALO": {
+        "modulo": "fatture",
+        "severita": "info",
+        "titolo": "Fattura molto piu' alta del solito per il fornitore",
+        "condizione_chiusura": "Importo confermato dal titolare"
+    },
+    "RT_GIORNO_SENZA_CHIUSURA": {
+        "modulo": "cassa",
+        "severita": "warning",
+        "titolo": "Giorno con incassi POS e senza chiusura RT",
+        "condizione_chiusura": "Chiusura RT del giorno importata"
+    },
     "ESTRATTO_NEXI_MANCANTE": {
         "modulo": "banca",
         "severita": "warning",
