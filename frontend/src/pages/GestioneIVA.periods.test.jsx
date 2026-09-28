@@ -16,7 +16,7 @@ describe('Gestione IVA per periodo', () => {
 
   it('carica fatture e corrispettivi del periodo selezionato', () => {
     expect(source).toContain('/api/iva/fatture?periodo=${periodo}');
-    expect(source).toContain('/api/corrispettivi?data_da=${start}&data_a=${end}');
+    expect(source).toContain('/api/corrispettivi/periodo?data_da=${start}&data_a=${end}');
     expect(source).toContain('iva-corrispettivi-tabella');
     expect(source).toContain('corrispettiviUnici');
     expect(source).toContain('copie escluse');

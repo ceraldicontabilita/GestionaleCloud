@@ -165,13 +165,35 @@ async def summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     }
 
 
+def _pagina_documenti(righe, *, cerca, anno_documento, stato_documento, offset, limit):
+    """Documenti F24 interi (righe raggruppate), filtrati e a pagine sul server."""
+    from app.services.registro_fiscale_f24 import pagina_documenti_f24
+
+    return pagina_documenti_f24(
+        righe, cerca=cerca, anno=anno_documento, stato=stato_documento,
+        offset=offset, limit=limit,
+    )
+
+
 @router.get("/obligations")
 async def obligations(status: str | None = None, limit: int = Query(200, ge=1, le=5000),
-                      _admin: Dict[str, Any] = Depends(get_current_admin_user)):
+                      _admin: Dict[str, Any] = Depends(get_current_admin_user),
+                      raggruppa: bool = False, offset: int = 0,
+                      cerca: Optional[str] = None, anno_documento: Optional[str] = None,
+                      stato_documento: Optional[str] = None):
+    """Deleghe per stato. Con ``raggruppa`` una pagina di documenti interi
+    (``offset``/``limit``), filtrati per testo, anno e stato, con conteggi e
+    totali dell'intero elenco: la pagina non scarica piu' tutte le righe."""
     from app.services.registro_fiscale_f24 import obblighi
 
     _, righe = await _righe_registro(Database.get_db())
     items = obblighi(righe, status)
+    if raggruppa:
+        return {
+            **_pagina_documenti(items, cerca=cerca, anno_documento=anno_documento,
+                                stato_documento=stato_documento, offset=max(0, offset), limit=limit),
+            "sources": _fonti(items),
+        }
     return {"items": items[:limit], "total": len(items), "sources": _fonti(items)}
 
 
@@ -184,13 +206,28 @@ async def f24_rows(
     offset: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=5000),
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
+    raggruppa: bool = False,
+    cerca: Optional[str] = None,
+    anno_documento: Optional[str] = None,
+    stato_documento: Optional[str] = None,
 ):
-    """Righe F24 del registro, ognuna col suo modello o quietanza d'origine."""
+    """Righe F24 del registro, ognuna col suo modello o quietanza d'origine.
+
+    Con ``raggruppa`` rende documenti interi a pagine, come ``/obligations``.
+    """
     from app.services.registro_fiscale_f24 import filtra_righe
 
     _, righe = await _righe_registro(Database.get_db())
     items = filtra_righe(righe, year=year, tax_code=tax_code, document_id=document_id,
                          credits_only=credits_only)
+    if raggruppa:
+        return {
+            **_pagina_documenti(items, cerca=cerca, anno_documento=anno_documento,
+                                stato_documento=stato_documento, offset=offset, limit=limit),
+            "sources": _fonti(items),
+            "filters": {"tax_code": tax_code, "document_id": document_id, "year": year,
+                        "credits_only": credits_only},
+        }
     return {
         "items": items[offset:offset + limit],
         "total": len(items),

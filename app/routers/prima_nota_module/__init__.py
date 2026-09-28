@@ -63,6 +63,7 @@ from .manutenzione import (
     diagnostica_metodi_discordanti,
     annulla_associazione_fattura_banca,
 )
+from .controllo_mensile import riepilogo_controllo_mensile
 from .operation_index import (
     list_manual_operation_candidates,
     list_manual_operation_index,
@@ -99,6 +100,10 @@ async def stato_fonti_contabili():
 router.add_api_route("/anni-disponibili", get_anni_disponibili, methods=["GET"])
 router.add_api_route("/stats", get_prima_nota_stats, methods=["GET"])
 router.add_api_route("/stato-fonti", stato_fonti_contabili, methods=["GET"])
+# Controllo mensile: totali di Cassa e corrispettivi XML per mese o per giorno.
+router.add_api_route(
+    "/controllo-mensile", istantanea(ttl=60)(riepilogo_controllo_mensile), methods=["GET"],
+)
 router.add_api_route("/saldo-finale", get_saldo_finale, methods=["GET"])
 router.add_api_route("/saldi-finanziari", get_saldi_finanziari, methods=["GET"])
 router.add_api_route("/saldo-iniziale", get_saldi_iniziali, methods=["GET"])

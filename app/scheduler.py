@@ -879,6 +879,16 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] assegni: %s: %s", type(e).__name__, e)
         try:
+            # Stipendi, PayPal e assegni in Prima Nota: riconciliati quando il
+            # loro movimento e' nell'estratto conto ufficiale.
+            from app.services.riscontro_estratto_prima_nota import segna_righe_riscontrate
+            r = await segna_righe_riscontrate(db)
+            if r.get("riconciliate"):
+                logger.info("[SCHEDULER-BANCA] Prima Nota riscontrata sull'estratto=%s %s",
+                            r.get("riconciliate"), r.get("per_categoria"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] riscontro estratto: %s: %s", type(e).__name__, e)
+        try:
             # Una fattura pagata in piu' bonifici allo stesso fornitore.
             from app.services.bank_payment_allocations import riconcilia_acconti_in_sospeso
             r = await riconcilia_acconti_in_sospeso(db)

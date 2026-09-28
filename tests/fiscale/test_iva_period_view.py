@@ -108,3 +108,38 @@ def test_vista_periodo_restituisce_solo_fatture_del_mese(monkeypatch):
     assert result["totale_iva_esposta"] == 220
     assert result["totale_iva_detraibile"] == 88
     assert result["fatture"][0]["percentuale_detraibilita_iva"] == 40
+
+
+def test_pagine_di_fatture_con_totali_dell_intero_periodo(monkeypatch):
+    """La pagina Gestione IVA chiede 200 fatture alla volta: i totali restano
+    quelli di tutto il periodo, uguali alla somma di tutte le righe."""
+    from decimal import Decimal
+
+    fatture = [
+        {
+            "id": f"f{n}", "periodo_iva_attribuito": "2026-04",
+            "data_documento": f"2026-04-{n % 28 + 1:02d}",
+            "iva": 10 + n / 100, "iva_detraibile": 5 + n / 100,
+            "stato_detrazione_iva": "DA_VERIFICARE" if n % 3 == 0 else "DA_INSERIRE",
+            "iva_utilizzata": n % 5 == 0,
+        }
+        for n in range(7)
+    ]
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: _Database(fatture)))
+
+    intera = _run(iva_router.fatture_iva(periodo="2026-04", anno=None, limit=5000, skip=0))
+    pagine = [
+        _run(iva_router.fatture_iva(periodo="2026-04", anno=None, limit=3, skip=skip))
+        for skip in (0, 3, 6)
+    ]
+    assert [len(p["fatture"]) for p in pagine] == [3, 3, 1]
+    assert [f["id"] for p in pagine for f in p["fatture"]] == [f["id"] for f in intera["fatture"]]
+    campi = ("totale", "totale_iva_esposta", "totale_iva_detraibile", "totale_iva_disponibile",
+             "totale_iva_utilizzata", "totale_da_verificare")
+    for pagina in pagine:
+        assert {c: pagina[c] for c in campi} == {c: intera[c] for c in campi}
+    assert intera["totale"] == 7
+    assert Decimal(str(intera["totale_iva_esposta"])) == sum(Decimal(str(f["iva"])) for f in fatture)
+    assert Decimal(str(intera["totale_iva_detraibile"])) == sum(
+        Decimal(str(f["iva_detraibile"])) for f in fatture)
+    assert intera["totale_da_verificare"] == 3

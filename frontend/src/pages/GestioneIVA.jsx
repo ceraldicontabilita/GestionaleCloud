@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { RefreshCw, Wallet, Calculator, CheckCircle2, Unlock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
@@ -18,6 +18,18 @@ import './GestioneIVA.css';
  * il periodo attribuito e la regola applicata. Le liquidazioni mensili
  * persistite arrivano nelle fasi successive.
  */
+// Come nell'artefatto: 200 righe per tabella, poi «Mostra altre». Conteggi e
+// totali arrivano dal server sull'intero periodo, non sulle righe caricate.
+const RIGHE_PER_PAGINA = 200;
+
+/** Primo e ultimo giorno del periodo IVA mostrato (anno intero o un mese). */
+export function intervalloPeriodo(anno, mese, vistaAnnuale) {
+  if (vistaAnnuale) return { start: `${anno}-01-01`, end: `${anno}-12-31` };
+  const mm = String(mese).padStart(2, '0');
+  const ultimo = String(new Date(anno, mese, 0).getDate()).padStart(2, '0');
+  return { start: `${anno}-${mm}-01`, end: `${anno}-${mm}-${ultimo}` };
+}
+
 const STATO_LABEL = {
   DA_INSERIRE: { label: 'Da inserire', variant: 'warning' },
   INSERITA_IN_LIQUIDAZIONE: { label: 'In liquidazione', variant: 'success' },
@@ -49,6 +61,10 @@ export default function GestioneIVA() {
   const confirm = useConfirm();
   const [dati, setDati] = useState(null);
   const [corrispettivi, setCorrispettivi] = useState([]);
+  // Giornate XML uniche, copie escluse e totali del periodo intero (server).
+  const [riepilogoCorrispettivi, setRiepilogoCorrispettivi] = useState(null);
+  const [caricaAltreFatture, setCaricaAltreFatture] = useState(false);
+  const [caricaAltriCorrispettivi, setCaricaAltriCorrispettivi] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorePeriodo, setErrorePeriodo] = useState('');
   const [ricalcolo, setRicalcolo] = useState(false);
@@ -187,6 +203,40 @@ export default function GestioneIVA() {
     }
   };
 
+  const urlFatture = () => (vistaAnnuale
+    ? `/api/iva/fatture?anno=${anno}`
+    : `/api/iva/fatture?periodo=${periodo}`);
+
+  // «Mostra altre»: la pagina successiva si accoda, i totali restano quelli
+  // del server sull'intero periodo.
+  const mostraAltreFatture = async () => {
+    setCaricaAltreFatture(true);
+    try {
+      const gia = dati?.fatture?.length || 0;
+      const res = await api.get(`${urlFatture()}&limit=${RIGHE_PER_PAGINA}&skip=${gia}`);
+      setDati(prev => ({ ...prev, fatture: [...(prev?.fatture || []), ...(res.data?.fatture || [])] }));
+    } catch (e) {
+      setMsg({ tipo: 'errore', testo: 'Altre fatture non caricate: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setCaricaAltreFatture(false);
+    }
+  };
+
+  const mostraAltriCorrispettivi = async () => {
+    setCaricaAltriCorrispettivi(true);
+    try {
+      const { start, end } = intervalloPeriodo(anno, mese, vistaAnnuale);
+      const res = await api.get(
+        `/api/corrispettivi/periodo?data_da=${start}&data_a=${end}&limit=${RIGHE_PER_PAGINA}&skip=${corrispettivi.length}`,
+      );
+      setCorrispettivi(prev => [...prev, ...(res.data?.corrispettivi || [])]);
+    } catch (e) {
+      setMsg({ tipo: 'errore', testo: 'Altri corrispettivi non caricati: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setCaricaAltriCorrispettivi(false);
+    }
+  };
+
   const carica = async () => {
     setLoading(true);
     setErrorePeriodo('');
@@ -195,22 +245,16 @@ export default function GestioneIVA() {
     // o se una delle due fonti fallisce.
     setDati(null);
     setCorrispettivi([]);
+    setRiepilogoCorrispettivi(null);
     try {
-      const start = vistaAnnuale
-        ? `${anno}-01-01`
-        : `${anno}-${String(mese).padStart(2, '0')}-01`;
-      const end = vistaAnnuale
-        ? `${anno}-12-31`
-        : `${anno}-${String(mese).padStart(2, '0')}-${String(new Date(anno, mese, 0).getDate()).padStart(2, '0')}`;
-      const fattureUrl = vistaAnnuale
-        ? `/api/iva/fatture?anno=${anno}&limit=5000`
-        : `/api/iva/fatture?periodo=${periodo}&limit=5000`;
+      const { start, end } = intervalloPeriodo(anno, mese, vistaAnnuale);
       const [fattureRes, corrispettiviRes] = await Promise.all([
-        api.get(fattureUrl),
-        api.get(`/api/corrispettivi?data_da=${start}&data_a=${end}&limit=5000`),
+        api.get(`${urlFatture()}&limit=${RIGHE_PER_PAGINA}`),
+        api.get(`/api/corrispettivi/periodo?data_da=${start}&data_a=${end}&limit=${RIGHE_PER_PAGINA}`),
       ]);
       setDati(fattureRes.data);
-      setCorrispettivi(Array.isArray(corrispettiviRes.data) ? corrispettiviRes.data : []);
+      setCorrispettivi(corrispettiviRes.data?.corrispettivi || []);
+      setRiepilogoCorrispettivi(corrispettiviRes.data || null);
     } catch (e) {
       const dettaglio = e.response?.data?.detail || e.message || 'errore sconosciuto';
       setErrorePeriodo(dettaglio);
@@ -264,35 +308,16 @@ export default function GestioneIVA() {
   };
 
   const fatture = dati?.fatture || [];
-  const numero = valore => Number(valore || 0);
-  const corrispettiviUnici = useMemo(() => {
-    const visti = new Set();
-    return corrispettivi.filter((c) => {
-      const totaleCents = Math.round(numero(c.totale ?? c.totale_complessivo) * 100);
-      const chiave = String(c.corrispettivo_key || '').trim() || [
-        c.data || c.data_rilevazione || '',
-        c.matricola_rt || c.id_dispositivo || c.matricola || '',
-        totaleCents,
-      ].join('|');
-      if (visti.has(chiave)) return false;
-      visti.add(chiave);
-      return true;
-    });
-  }, [corrispettivi]);
-  const duplicatiCorrispettiviEsclusi = corrispettivi.length - corrispettiviUnici.length;
-  const totaliCorrispettivi = corrispettiviUnici.reduce(
-    (acc, c) => {
-      const totale = numero(c.totale ?? c.totale_complessivo);
-      const iva = numero(c.totale_iva ?? c.iva);
-      acc.totale += totale;
-      acc.iva += iva;
-      acc.imponibile += numero(c.totale_imponibile ?? c.imponibile ?? (totale - iva));
-      acc.contanti += numero(c.pagato_contanti);
-      acc.elettronico += numero(c.pagato_elettronico ?? c.pagato_pos);
-      return acc;
-    },
-    { totale: 0, imponibile: 0, iva: 0, contanti: 0, elettronico: 0 }
-  );
+  // Le copie della stessa giornata le toglie il server (chiave_giornata_xml):
+  // qui arrivano solo giornate uniche, una pagina alla volta.
+  const corrispettiviUnici = corrispettivi;
+  const giornateXml = riepilogoCorrispettivi?.totale ?? corrispettiviUnici.length;
+  const duplicatiCorrispettiviEsclusi = riepilogoCorrispettivi?.copie_escluse || 0;
+  const totaliCorrispettivi = riepilogoCorrispettivi?.totali
+    || { totale: 0, imponibile: 0, iva: 0, contanti: 0, elettronico: 0 };
+  const fattureTotali = dati?.totale ?? fatture.length;
+  const fattureRimanenti = Math.max(0, fattureTotali - fatture.length);
+  const corrispettiviRimanenti = Math.max(0, giornateXml - corrispettiviUnici.length);
   const etichettaPercentuale = fattura => {
     if (!fattura.detraibilita_valutata || fattura.percentuale_detraibilita_iva == null) {
       return 'Da classificare';
@@ -371,7 +396,7 @@ export default function GestioneIVA() {
               ? 'Caricamento dati del periodo…'
               : errorePeriodo
                 ? 'Dati del periodo non disponibili'
-              : `${fatture.length} fatture · ${corrispettiviUnici.length} giornate XML`}
+              : `${fattureTotali} fatture · ${giornateXml} giornate XML`}
           </span>
         </div>
         <div className="iva-command-actions">
@@ -416,7 +441,7 @@ export default function GestioneIVA() {
         </div>
       ) : (
         <div className="iva-kpi-grid">
-          <div><span>Fatture nel periodo</span><strong>{dati?.totale ?? fatture.length}</strong></div>
+          <div><span>Fatture nel periodo</span><strong>{fattureTotali}</strong></div>
           <div><span>IVA esposta</span><strong>{formatEuro(dati?.totale_iva_esposta || 0)}</strong></div>
           <div><span>IVA detraibile</span><strong>{formatEuro(dati?.totale_iva_detraibile || 0)}</strong></div>
           <div data-testid="iva-totale-disponibile"><span>Ancora disponibile</span><strong>{formatEuro(dati?.totale_iva_disponibile || 0)}</strong></div>
@@ -443,7 +468,7 @@ export default function GestioneIVA() {
             <p>IVA esposta, percentuale di detraibilità e IVA effettivamente detraibile.</p>
           </div>
           <Badge variant={errorePeriodo ? 'danger' : 'info'}>
-            {errorePeriodo ? 'Non disponibile' : `${dati?.totale ?? fatture.length} fatture`}
+            {errorePeriodo ? 'Non disponibile' : `${fattureTotali} fatture`}
           </Badge>
         </div>
         {loading ? (
@@ -501,6 +526,14 @@ export default function GestioneIVA() {
                 })}
               </tbody>
             </table>
+            {fattureRimanenti > 0 && (
+              <MostraAltre
+                testId="iva-mostra-altre-fatture"
+                rimanenti={fattureRimanenti}
+                inCorso={caricaAltreFatture}
+                onClick={mostraAltreFatture}
+              />
+            )}
           </div>
         )}
       </section>
@@ -516,7 +549,7 @@ export default function GestioneIVA() {
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Badge variant={errorePeriodo ? 'danger' : 'info'}>
-              {errorePeriodo ? 'Non disponibile' : `${corrispettiviUnici.length} giornate`}
+              {errorePeriodo ? 'Non disponibile' : `${giornateXml} giornate`}
             </Badge>
             {duplicatiCorrispettiviEsclusi > 0 && (
               <Badge variant="neutral">{duplicatiCorrispettiviEsclusi} copie escluse</Badge>
@@ -570,6 +603,14 @@ export default function GestioneIVA() {
                 </tr>
               </tfoot>
             </table>
+            {corrispettiviRimanenti > 0 && (
+              <MostraAltre
+                testId="iva-mostra-altri-corrispettivi"
+                rimanenti={corrispettiviRimanenti}
+                inCorso={caricaAltriCorrispettivi}
+                onClick={mostraAltriCorrispettivi}
+              />
+            )}
           </div>
         )}
       </section>
@@ -845,6 +886,24 @@ export default function GestioneIVA() {
         error={controlliError.scadenze}
       />
     </PageLayout>
+  );
+}
+
+function MostraAltre({ testId, rimanenti, inCorso, onClick }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+      <Button
+        variant="secondary"
+        data-testid={testId}
+        onClick={onClick}
+        disabled={inCorso}
+        style={{ minHeight: 44 }}
+      >
+        {inCorso
+          ? 'Caricamento…'
+          : `Mostra altre ${Math.min(RIGHE_PER_PAGINA, rimanenti)} · ${rimanenti.toLocaleString('it-IT')} rimanenti`}
+      </Button>
+    </div>
   );
 }
 

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
-import ControlloMensile, { contantiCorrispettivi, diffContantiCassa } from './ControlloMensile';
+import ControlloMensile, { periodoDa } from './ControlloMensile';
 
 vi.mock('../api', () => ({
   default: { get: vi.fn() },
@@ -12,25 +12,43 @@ vi.mock('../contexts/AnnoContext', () => ({
   useAnnoGlobale: () => ({ anno: 2026 }),
 }));
 
-const cassa = {
+// Totali di Cassa e XML gia' sommati dal server (prima_nota_module/controllo_mensile.py).
+const periodo = (periodo, valori = {}) => ({
+  periodo,
+  corrispettivi_xml: 0, contanti_xml: 0, xml_senza_contanti: 0, documenti_commerciali: 0,
+  annulli: 0, pagato_non_riscosso: 0, pagato_non_riscosso_count: 0, ammontare_annulli: 0,
+  ammontare_annulli_count: 0, corrispettivi_cassa: 0, differenza_contanti: 0, versamenti: 0,
+  entrate_cassa: 0, uscite_cassa: 0, saldo_cassa: 0, movimenti_cassa: 0, righe_xml: 0,
+  ...valori,
+});
+const gennaio = {
+  corrispettivi_xml: 100, documenti_commerciali: 2, xml_senza_contanti: 1,
+  corrispettivi_cassa: 100, differenza_contanti: null, versamenti: 20,
+  entrate_cassa: 100, uscite_cassa: 20, saldo_cassa: 80, movimenti_cassa: 2, righe_xml: 1,
+};
+const riepilogoAnno = {
   data: {
-    movimenti: [
-      { data: '2026-01-02', categoria: 'Corrispettivi', tipo: 'entrata', importo: 100 },
-      { data: '2026-01-03', categoria: 'Versamento', tipo: 'uscita', importo: 20 },
-    ],
+    anno: 2026, mese: null,
+    periodi: Array.from({ length: 12 }, (_, i) => periodo(
+      `2026-${String(i + 1).padStart(2, '0')}`, i === 0 ? gennaio : {},
+    )),
+    totale: periodo(null, gennaio),
   },
 };
-const corrispettivi = {
-  data: [
-    {
-      data: '2026-01-02',
-      totale: 100,
-      numero_documenti: 2,
-      pagato_elettronico: 9999,
-      pagato_non_riscosso: 0,
-      totale_ammontare_annulli: 0,
-    },
-  ],
+const riepilogoGennaio = {
+  data: {
+    anno: 2026, mese: 1,
+    periodi: Array.from({ length: 31 }, (_, i) => periodo(
+      `2026-01-${String(i + 1).padStart(2, '0')}`,
+      i === 1 ? { corrispettivi_xml: 100, documenti_commerciali: 2, xml_senza_contanti: 1,
+        corrispettivi_cassa: 100, differenza_contanti: null, entrate_cassa: 100 }
+        : i === 2 ? { versamenti: 20, uscite_cassa: 20, saldo_cassa: -20 } : {},
+    )),
+    totale: periodo(null, gennaio),
+    versamenti_dettaglio: [
+      { id: 'v1', data: '2026-01-03', categoria: 'Versamento', tipo: 'uscita', importo: 20 },
+    ],
+  },
 };
 const controlloPos = {
   data: {
@@ -62,8 +80,12 @@ const registro = {
 };
 
 function rispostaPerUrl(url) {
-  if (url.includes('/api/prima-nota/cassa')) return Promise.resolve(cassa);
-  if (url.includes('/api/corrispettivi?')) return Promise.resolve(corrispettivi);
+  if (url.startsWith('/api/prima-nota/controllo-mensile?anno=2026&mese=')) {
+    return Promise.resolve(riepilogoGennaio);
+  }
+  if (url.startsWith('/api/prima-nota/controllo-mensile?anno=2026')) {
+    return Promise.resolve(riepilogoAnno);
+  }
   if (url.includes('/api/pos-corrispettivi/controllo-due-fasi')) {
     return Promise.resolve(controlloPos);
   }
@@ -91,6 +113,11 @@ describe('ControlloMensile', () => {
     expect(urls).toContain('/api/contabilita-gestionale/bilancio-verifica?anno=2026');
     expect(urls.some(url => url.includes('/api/bank-statement/movements'))).toBe(false);
     expect(urls.some(url => url.includes('limit=500'))).toBe(false);
+    // Cassa e corrispettivi arrivano sommati: nessuna riga scaricata.
+    expect(urls).toContain('/api/prima-nota/controllo-mensile?anno=2026');
+    expect(urls.some(url => url.includes('/api/prima-nota/cassa'))).toBe(false);
+    expect(urls.some(url => url.includes('/api/corrispettivi?'))).toBe(false);
+    expect(urls.some(url => /limit=\d{4,}/.test(url))).toBe(false);
     expect(screen.getByText(/Fatture da registrare/)).toBeInTheDocument();
     expect(screen.getByText(/Fatture da registrare 3/)).toBeInTheDocument();
   });
@@ -114,6 +141,7 @@ describe('ControlloMensile', () => {
     expect(api.get.mock.calls.some(([url]) =>
       url.includes('controllo-due-fasi?data_da=2026-01-01&data_a=2026-01-31')
     )).toBe(true);
+    expect(api.get).toHaveBeenCalledWith('/api/prima-nota/controllo-mensile?anno=2026&mese=1');
   });
 
   it('segnala una fonte canonica non disponibile senza presentare zeri come certi', async () => {
@@ -129,18 +157,21 @@ describe('ControlloMensile', () => {
     expect(await screen.findByText(/Errore nel caricamento di: Controllo POS-banca/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('row-month-1')).toBeInTheDocument());
   });
-  it('confronta la Cassa con la sola quota contanti, non col totale XML', async () => {
+  it('confronta la Cassa con la sola quota contanti: la differenza e\' del server', async () => {
     // Totale XML 100, di cui 30 in contanti: in Cassa entrano 30 e basta.
+    const valori = { corrispettivi_xml: 100, contanti_xml: 30, corrispettivi_cassa: 30,
+      differenza_contanti: 0, entrate_cassa: 30, saldo_cassa: 30 };
     api.get.mockImplementation(url => {
-      if (url.includes('/api/prima-nota/cassa')) {
-        return Promise.resolve({ data: { movimenti: [
-          { data: '2026-01-02', categoria: 'Corrispettivi', tipo: 'entrata', importo: 30 },
-        ] } });
+      if (url.startsWith('/api/prima-nota/controllo-mensile?anno=2026&mese=1')) {
+        return Promise.resolve({ data: {
+          periodi: [periodo('2026-01-02', valori)], totale: periodo(null, valori),
+          versamenti_dettaglio: [],
+        } });
       }
-      if (url.includes('/api/corrispettivi?')) {
-        return Promise.resolve({ data: [{
-          data: '2026-01-02', totale: 100, pagato_contanti: 30, pagato_elettronico: 70,
-        }] });
+      if (url.startsWith('/api/prima-nota/controllo-mensile')) {
+        return Promise.resolve({ data: {
+          periodi: [periodo('2026-01', valori)], totale: periodo(null, valori),
+        } });
       }
       return rispostaPerUrl(url);
     });
@@ -155,15 +186,11 @@ describe('ControlloMensile', () => {
     expect(within(giorno).queryByText('Da verificare')).not.toBeInTheDocument();
   });
 
-  it('contanti e differenza: helper puri', () => {
-    expect(contantiCorrispettivi([{ pagato_contanti: 30 }, { pagato_contanti: '12.5' }]))
-      .toEqual({ totale: 42.5, senzaContanti: 0 });
-    expect(diffContantiCassa([{ totale: 100, pagato_contanti: 30 }], 30)).toBe(0);
-    expect(diffContantiCassa([{ totale: 100, pagato_contanti: 30 }], 100)).toBe(-70);
-    // Un XML senza quota contanti non si confronta: non e' una differenza.
-    expect(diffContantiCassa([{ totale: 100 }], 30)).toBeNull();
-    // Cassa senza nessun XML: tutta la Cassa e' da spiegare.
-    expect(diffContantiCassa([], 30)).toBe(-30);
+  it('un periodo assente dal riepilogo vale zero, non inventa dati', () => {
+    expect(periodoDa({ periodi: [] }, '2026-03')).toMatchObject({
+      periodo: '2026-03', corrispettivi_xml: 0, saldo_cassa: 0, differenza_contanti: 0,
+    });
+    expect(periodoDa({ periodi: [periodo('2026-03', { versamenti: 5 })] }, '2026-03').versamenti).toBe(5);
   });
 
   it('separa Numia e SumUp: la banca BPM si confronta col solo Numia', async () => {

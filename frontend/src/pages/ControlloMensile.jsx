@@ -17,31 +17,21 @@ export function circuitiGiorno(g) {
 }
 
 /**
- * Quota contanti dichiarata dagli XML RT (``pagato_contanti``): e' l'unica
- * parte del corrispettivo che entra in Prima Nota Cassa, la quota POS va in
- * Banca. Confrontare il totale dell'XML con la Cassa segnava ogni mese «da
- * verificare». Un XML che non dichiara i contanti non si confronta.
+ * Totali di Cassa e corrispettivi XML del periodo: li calcola il server
+ * (``/api/prima-nota/controllo-mensile``, prima_nota_module/controllo_mensile.py)
+ * sulle stesse righe che la pagina scaricava. In Cassa entra solo la quota
+ * contanti dell'XML: ``differenza_contanti`` e' contanti XML − corrispettivi in
+ * Cassa, ``null`` se un XML del periodo non dichiara i contanti.
  */
-export function contantiCorrispettivi(corrispettivi) {
-  let totale = 0;
-  let senzaContanti = 0;
-  for (const c of corrispettivi || []) {
-    const grezzo = c?.pagato_contanti;
-    const valore = parseFloat(grezzo);
-    if (grezzo === null || grezzo === undefined || grezzo === '' || Number.isNaN(valore)) {
-      senzaContanti += 1;
-      continue;
-    }
-    totale += valore;
-  }
-  return { totale, senzaContanti };
-}
+const PERIODO_VUOTO = {
+  corrispettivi_xml: 0, contanti_xml: 0, xml_senza_contanti: 0, documenti_commerciali: 0,
+  annulli: 0, pagato_non_riscosso: 0, pagato_non_riscosso_count: 0, ammontare_annulli: 0,
+  ammontare_annulli_count: 0, corrispettivi_cassa: 0, differenza_contanti: 0, versamenti: 0,
+  entrate_cassa: 0, uscite_cassa: 0, saldo_cassa: 0, movimenti_cassa: 0, righe_xml: 0,
+};
 
-/** Contanti XML meno corrispettivi in Cassa; null se non confrontabile. */
-export function diffContantiCassa(corrispettivi, corrispettiviInCassa) {
-  const { totale, senzaContanti } = contantiCorrispettivi(corrispettivi);
-  if (senzaContanti > 0) return null;
-  return totale - corrispettiviInCassa;
+export function periodoDa(riepilogo, periodo) {
+  return (riepilogo?.periodi || []).find(p => p.periodo === periodo) || { ...PERIODO_VUOTO, periodo };
 }
 
 /** Esito di un giorno o di un mese secondo la regola unica del colore. */
@@ -80,7 +70,8 @@ const MONO = FONT.mono;
  * ----------------
  * | Mese/Data | POS Agenzia | POS Chiusura | Diff. POS | Corrisp. Auto | Corrisp. Man. | Diff. Corr. | Versamenti | Saldo Cassa | Dettagli |
  *
- * CALCOLI:
+ * CALCOLI (le somme di Cassa e XML le fa il server,
+ * GET /api/prima-nota/controllo-mensile; il browser non scarica le righe):
  * --------
  * - POS RT / POS Reale / POS Banca e relativi stati arrivano dal motore canonico
  * - Corrisp. Auto = Σ corrispettivi.totale (da XML)
@@ -168,23 +159,15 @@ export default function ControlloMensile() {
   const loadYearData = async () => {
     setLoading(true);
     try {
-      const startDate = `${anno}-01-01`;
-      const endDate = `${anno}-12-31`;
-
-      const params = new URLSearchParams({
-        data_da: startDate,
-        data_a: endDate,
-      });
-
       // Il motore POS a due fasi è la fonte canonica per XML, chiusura
       // serale e accrediti banca. Non replichiamo qui le sue regole.
+      // Cassa e corrispettivi XML arrivano già sommati per mese dal server:
+      // la pagina non scarica più le singole righe.
       // Con allSettled si distingue quale fonte è caduta: un errore del servizio
       // non deve sparire dietro a un mese "senza dati".
       const fonti = [
-        { nome: 'Cassa', vuoto: { data: { movimenti: [] } },
-          req: api.get(`/api/prima-nota/cassa?${params}&limit=10000`) },
-        { nome: 'Corrispettivi', vuoto: { data: [] },
-          req: api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=10000`) },
+        { nome: 'Cassa e corrispettivi', vuoto: { data: { periodi: [] } },
+          req: api.get(`/api/prima-nota/controllo-mensile?anno=${anno}`) },
         { nome: 'Controllo POS-banca', vuoto: { data: { giorni: [] } },
           req: api.get(`/api/pos-corrispettivi/controllo-due-fasi?anno=${anno}`) },
         { nome: 'Registro contabile', vuoto: { data: { completezza_registro: null } },
@@ -192,17 +175,13 @@ export default function ControlloMensile() {
       ];
       const esiti = await Promise.allSettled(fonti.map(f => f.req));
       const falliteNomi = [];
-      const [cassaRes, corrispRes, controlloPosRes, registroRes] = esiti.map((e, i) => {
+      const [riepilogoRes, controlloPosRes, registroRes] = esiti.map((e, i) => {
         if (e.status === 'fulfilled') return e.value;
         falliteNomi.push(fonti[i].nome);
         return fonti[i].vuoto;
       });
       setFontiErrore(falliteNomi);
 
-      const cassa = cassaRes.data.movimenti || [];
-      const corrispettivi = Array.isArray(corrispRes.data)
-        ? corrispRes.data
-        : corrispRes.data.corrispettivi || [];
       const controlloPos = controlloPosRes.data.giorni || [];
       setCompletezzaRegistro(
         registroRes.data.completezza_registro || {
@@ -214,7 +193,7 @@ export default function ControlloMensile() {
         }
       );
 
-      processYearData(cassa, corrispettivi, controlloPos);
+      processYearData(riepilogoRes.data, controlloPos);
     } catch (error) {
       console.error('Error loading year data:', error);
     } finally {
@@ -224,34 +203,21 @@ export default function ControlloMensile() {
 
   /**
    * PROCESSA DATI ANNUALI
-   * Aggrega i dati per mese calcolando tutti i totali
-   * Include: POS RT (XML), POS Reale (Tuo), POS Banca (da Estratto Conto Bancario)
+   * Mette accanto, mese per mese, i totali del server (Cassa, XML) e i giorni
+   * del motore POS a due fasi (POS RT, POS reale, POS banca).
    */
-  const processYearData = (cassa, corrispettivi, controlloPos = []) => {
+  const processYearData = (riepilogo, controlloPos = []) => {
     const monthly = [];
     let yearPosAuto = 0,
       yearPosManual = 0,
       yearPosBanca = 0,
       yearPosNumia = 0,
       yearPosSumup = 0;
-    let yearCorrispAuto = 0,
-      yearCorrispManual = 0;
-    let yearVersamenti = 0,
-      yearSaldoCassa = 0;
-    let yearDocumentiCommerciali = 0;
-    let yearAnnulli = 0;
-    let yearPagatoNonRiscosso = 0,
-      yearPagatoNonRiscossoCount = 0;
-    let yearAmmontareAnnulli = 0,
-      yearAmmontareAnnulliCount = 0;
 
     for (let month = 1; month <= 12; month++) {
       const monthStr = String(month).padStart(2, '0');
       const monthPrefix = `${anno}-${monthStr}`;
-
-      // Filtra dati per questo mese
-      const monthCassa = cassa.filter(m => m.data?.startsWith(monthPrefix));
-      const monthCorrisp = corrispettivi.filter(c => c.data?.startsWith(monthPrefix));
+      const periodo = periodoDa(riepilogo, monthPrefix);
       const monthPos = controlloPos.filter(g => g.data?.startsWith(monthPrefix));
 
       // Valori già controllati dal motore canonico a due fasi.
@@ -270,69 +236,10 @@ export default function ControlloMensile() {
       const posNumia = monthPos.reduce((sum, g) => sum + circuitiGiorno(g).numia, 0);
       const posSumup = monthPos.reduce((sum, g) => sum + circuitiGiorno(g).sumup, 0);
 
-      // ============ DOCUMENTI COMMERCIALI (da Corrispettivi XML) ============
-      // Numero totale di scontrini/ricevute emessi nel mese
-      const documentiCommerciali = monthCorrisp.reduce(
-        (sum, c) => sum + (parseInt(c.numero_documenti) || 0),
-        0
-      );
-
-      // ============ ANNULLI (vecchio campo - per compatibilità) ============
-      const annulli = monthCorrisp.reduce((sum, c) => sum + (parseInt(c.annulli) || 0), 0);
-
-      // ============ PAGATO NON RISCOSSO (da Corrispettivi XML) ============
-      // Differenza tra (Ammontare + ImportoParziale) - (PagatoContanti + PagatoElettronico)
-      const corrispNonRiscosso = monthCorrisp.filter(
-        c => (parseFloat(c.pagato_non_riscosso) || 0) > 0
-      );
-      const pagatoNonRiscosso = corrispNonRiscosso.reduce(
-        (sum, c) => sum + (parseFloat(c.pagato_non_riscosso) || 0),
-        0
-      );
-      const pagatoNonRiscossoCount = corrispNonRiscosso.length;
-
-      // ============ AMMONTARE ANNULLI (da Corrispettivi XML - TotaleAmmontareAnnulli) ============
-      const corrispAnnulli = monthCorrisp.filter(
-        c => (parseFloat(c.totale_ammontare_annulli) || 0) > 0
-      );
-      const ammontareAnnulli = corrispAnnulli.reduce(
-        (sum, c) => sum + (parseFloat(c.totale_ammontare_annulli) || 0),
-        0
-      );
-      const ammontareAnnulliCount = corrispAnnulli.length;
-
-      // ============ CORRISPETTIVI AUTO (da XML) ============
-      // Totale incassi giornalieri dai corrispettivi XML
-      const corrispAuto = monthCorrisp.reduce((sum, c) => sum + (parseFloat(c.totale) || 0), 0);
-
-      // ============ CORRISPETTIVI MANUALI (da Prima Nota) ============
-      // Corrispettivi registrati manualmente o importati da Excel
-      const corrispManual = monthCassa
-        .filter(m => m.categoria === 'Corrispettivi' || m.source === 'excel_corrispettivi')
-        .filter(m => m.tipo === 'entrata')
-        .reduce((sum, m) => sum + (parseFloat(m.importo) || 0), 0);
-
-      // ============ VERSAMENTI ============
-      // Versamenti = uscite dalla cassa verso banca
-      const versamenti = monthCassa
-        .filter(m => {
-          const isVersamento =
-            m.categoria === 'Versamento' ||
-            m.categoria?.toLowerCase().includes('versamento') ||
-            m.descrizione?.toLowerCase().includes('versamento');
-          return isVersamento && m.tipo === 'uscita';
-        })
-        .reduce((sum, m) => sum + Math.abs(parseFloat(m.importo) || 0), 0);
-
-      // ============ SALDO CASSA ============
-      // Saldo Cassa = Entrate cassa - Uscite cassa del mese
-      const entrateCassa = monthCassa
-        .filter(m => m.tipo === 'entrata')
-        .reduce((sum, m) => sum + (parseFloat(m.importo) || 0), 0);
-      const usciteCassa = monthCassa
-        .filter(m => m.tipo === 'uscita')
-        .reduce((sum, m) => sum + (parseFloat(m.importo) || 0), 0);
-      const saldoCassa = entrateCassa - usciteCassa;
+      const corrispAuto = periodo.corrispettivi_xml;
+      const corrispManual = periodo.corrispettivi_cassa;
+      const versamenti = periodo.versamenti;
+      const saldoCassa = periodo.saldo_cassa;
 
       // ============ DIFFERENZE ============
       // CONTROLLO GIORNALIERO: POS XML (chiusura serale RT) vs POS Manuale (tuo incasso reale)
@@ -340,7 +247,7 @@ export default function ControlloMensile() {
       // RICONCILIAZIONE BANCARIA: POS arrivato in banca vs POS Manuale (tuo incasso reale)
       const posBancaDiff = posBanca - posManual; // Banca vs TUO dato reale
       // In Cassa entra solo la quota contanti: il confronto e' con quella.
-      const corrispDiff = diffContantiCassa(monthCorrisp, corrispManual);
+      const corrispDiff = periodo.differenza_contanti;
       const posFiscalIssue = monthPos.some(g =>
         ['differenza_in_piu_da_registrare', 'in_attesa_xml'].includes(g.stato_serale)
       );
@@ -387,20 +294,14 @@ export default function ControlloMensile() {
         corrispDiff,
         versamenti,
         saldoCassa,
-        documentiCommerciali,
-        annulli,
-        pagatoNonRiscosso,
-        pagatoNonRiscossoCount,
-        ammontareAnnulli,
-        ammontareAnnulliCount,
+        documentiCommerciali: periodo.documenti_commerciali,
+        annulli: periodo.annulli,
+        pagatoNonRiscosso: periodo.pagato_non_riscosso,
+        pagatoNonRiscossoCount: periodo.pagato_non_riscosso_count,
+        ammontareAnnulli: periodo.ammontare_annulli,
+        ammontareAnnulliCount: periodo.ammontare_annulli_count,
         hasData,
         hasDiscrepancy,
-        // Debug info
-        _debug: {
-          cassaCount: monthCassa.length,
-          controlloPosCount: monthPos.length,
-          corrispCount: monthCorrisp.length,
-        },
       });
 
       yearPosAuto += posAuto;
@@ -408,18 +309,10 @@ export default function ControlloMensile() {
       yearPosBanca += posBanca;
       yearPosNumia += posNumia;
       yearPosSumup += posSumup;
-      yearCorrispAuto += corrispAuto;
-      yearCorrispManual += corrispManual;
-      yearVersamenti += versamenti;
-      yearSaldoCassa += saldoCassa;
-      yearDocumentiCommerciali += documentiCommerciali;
-      yearAnnulli += annulli;
-      yearPagatoNonRiscosso += pagatoNonRiscosso;
-      yearPagatoNonRiscossoCount += pagatoNonRiscossoCount;
-      yearAmmontareAnnulli += ammontareAnnulli;
-      yearAmmontareAnnulliCount += ammontareAnnulliCount;
     }
 
+    // Totali dell'anno di Cassa e XML: quelli del server, sulle stesse righe.
+    const totale = riepilogo?.totale || PERIODO_VUOTO;
     setMonthlyData(monthly);
     setYearTotals({
       posAuto: yearPosAuto,
@@ -427,22 +320,22 @@ export default function ControlloMensile() {
       posBanca: yearPosBanca,
       posNumia: yearPosNumia,
       posSumup: yearPosSumup,
-      corrispettiviAuto: yearCorrispAuto,
-      corrispettiviManual: yearCorrispManual,
-      versamenti: yearVersamenti,
-      saldoCassa: yearSaldoCassa,
-      documentiCommerciali: yearDocumentiCommerciali,
-      annulli: yearAnnulli,
-      pagatoNonRiscosso: yearPagatoNonRiscosso,
-      pagatoNonRiscossoCount: yearPagatoNonRiscossoCount,
-      ammontareAnnulli: yearAmmontareAnnulli,
-      ammontareAnnulliCount: yearAmmontareAnnulliCount,
+      corrispettiviAuto: totale.corrispettivi_xml,
+      corrispettiviManual: totale.corrispettivi_cassa,
+      versamenti: totale.versamenti,
+      saldoCassa: totale.saldo_cassa,
+      documentiCommerciali: totale.documenti_commerciali,
+      annulli: totale.annulli,
+      pagatoNonRiscosso: totale.pagato_non_riscosso,
+      pagatoNonRiscossoCount: totale.pagato_non_riscosso_count,
+      ammontareAnnulli: totale.ammontare_annulli,
+      ammontareAnnulliCount: totale.ammontare_annulli_count,
     });
   };
 
   /**
    * CARICA DATI MENSILI (Dettaglio Giornaliero)
-   * Recupera i movimenti del mese selezionato e li mostra giorno per giorno
+   * Totali del server giorno per giorno e dettaglio dei versamenti del mese.
    */
   const loadMonthData = async month => {
     setLoading(true);
@@ -452,16 +345,9 @@ export default function ControlloMensile() {
       const startDate = `${anno}-${monthStr}-01`;
       const endDate = `${anno}-${monthStr}-${String(daysInMonth).padStart(2, '0')}`;
 
-      const params = new URLSearchParams({
-        data_da: startDate,
-        data_a: endDate,
-      });
-
       const fonti = [
-        { nome: 'Cassa', vuoto: { data: { movimenti: [] } },
-          req: api.get(`/api/prima-nota/cassa?${params}&limit=10000`) },
-        { nome: 'Corrispettivi', vuoto: { data: [] },
-          req: api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=10000`) },
+        { nome: 'Cassa e corrispettivi', vuoto: { data: { periodi: [], versamenti_dettaglio: [] } },
+          req: api.get(`/api/prima-nota/controllo-mensile?anno=${anno}&mese=${month}`) },
         { nome: 'Controllo POS-banca', vuoto: { data: { giorni: [] } },
           req: api.get(
             `/api/pos-corrispettivi/controllo-due-fasi?data_da=${startDate}&data_a=${endDate}`
@@ -469,30 +355,16 @@ export default function ControlloMensile() {
       ];
       const esiti = await Promise.allSettled(fonti.map(f => f.req));
       const falliteNomi = [];
-      const [cassaRes, corrispRes, controlloPosRes] = esiti.map((e, i) => {
+      const [riepilogoRes, controlloPosRes] = esiti.map((e, i) => {
         if (e.status === 'fulfilled') return e.value;
         falliteNomi.push(fonti[i].nome);
         return fonti[i].vuoto;
       });
       setFontiErrore(falliteNomi);
 
-      const cassa = cassaRes.data.movimenti || [];
-      const corrispettivi = Array.isArray(corrispRes.data)
-        ? corrispRes.data
-        : corrispRes.data.corrispettivi || [];
       const controlloPos = controlloPosRes.data.giorni || [];
-
-      processDailyData(cassa, corrispettivi, controlloPos, month);
-
-      // Estrai dettaglio versamenti del mese
-      const versamentiMese = cassa.filter(m => {
-        const isVersamento =
-          m.categoria === 'Versamento' ||
-          m.categoria?.toLowerCase().includes('versamento') ||
-          m.descrizione?.toLowerCase().includes('versamento');
-        return isVersamento && m.tipo === 'uscita';
-      });
-      setVersamentiDettaglio(versamentiMese);
+      processDailyData(riepilogoRes.data, controlloPos, month);
+      setVersamentiDettaglio(riepilogoRes.data.versamenti_dettaglio || []);
     } catch (error) {
       console.error('Error loading month data:', error);
     } finally {
@@ -504,7 +376,7 @@ export default function ControlloMensile() {
    * PROCESSA DATI GIORNALIERI
    * Crea una riga per ogni giorno del mese con tutti i totali
    */
-  const processDailyData = (cassa, corrispettivi, controlloPos, month) => {
+  const processDailyData = (riepilogo, controlloPos, month) => {
     const daysInMonth = new Date(anno, month, 0).getDate();
     const comparison = [];
     const monthStr = String(month).padStart(2, '0');
@@ -512,10 +384,7 @@ export default function ControlloMensile() {
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${anno}-${monthStr}-${String(day).padStart(2, '0')}`;
       const dayData = { date: dateStr, day };
-
-      // Filtra movimenti del giorno
-      const dayCassa = cassa.filter(m => m.data === dateStr);
-      const dayCorrisp = corrispettivi.filter(c => c.data === dateStr);
+      const periodo = periodoDa(riepilogo, dateStr);
       const dayPos = controlloPos.find(g => g.data === dateStr);
 
       // Valori già verificati dal motore canonico POS/XML/banca.
@@ -529,47 +398,13 @@ export default function ControlloMensile() {
       dayData.statoSerale = dayPos?.stato_serale || 'no_dati';
       dayData.statoBanca = dayPos?.stato_accredito || 'no_pos_manuale';
 
-      // ============ DOCUMENTI COMMERCIALI (da Corrispettivi XML) ============
-      dayData.documentiCommerciali = dayCorrisp.reduce(
-        (sum, c) => sum + (parseInt(c.numero_documenti) || 0),
-        0
-      );
-
-      // ============ CORRISPETTIVI AUTO (da XML) ============
-      dayData.corrispettivoAuto = dayCorrisp.reduce(
-        (sum, c) => sum + (parseFloat(c.totale) || 0),
-        0
-      );
-
-      // ============ CORRISPETTIVI MANUALI ============
-      dayData.corrispettivoManual = dayCassa
-        .filter(m => m.categoria === 'Corrispettivi' || m.source === 'excel_corrispettivi')
-        .filter(m => m.tipo === 'entrata')
-        .reduce((sum, m) => sum + (parseFloat(m.importo) || 0), 0);
-
-      // ============ VERSAMENTO ============
-      dayData.versamento = dayCassa
-        .filter(m => {
-          const isVersamento =
-            m.categoria === 'Versamento' ||
-            m.categoria?.toLowerCase().includes('versamento') ||
-            m.descrizione?.toLowerCase().includes('versamento');
-          return isVersamento && m.tipo === 'uscita';
-        })
-        .reduce((sum, m) => sum + Math.abs(parseFloat(m.importo) || 0), 0);
-
-      // ============ SALDO CASSA ============
-      const entrateGiorno = dayCassa
-        .filter(m => m.tipo === 'entrata')
-        .reduce((sum, m) => sum + (parseFloat(m.importo) || 0), 0);
-      const usciteGiorno = dayCassa
-        .filter(m => m.tipo === 'uscita')
-        .reduce((sum, m) => sum + (parseFloat(m.importo) || 0), 0);
-      dayData.saldoCassa = entrateGiorno - usciteGiorno;
-
-      // Differenze
+      dayData.documentiCommerciali = periodo.documenti_commerciali;
+      dayData.corrispettivoAuto = periodo.corrispettivi_xml;
+      dayData.corrispettivoManual = periodo.corrispettivi_cassa;
+      dayData.versamento = periodo.versamenti;
+      dayData.saldoCassa = periodo.saldo_cassa;
       // In Cassa entra solo la quota contanti dell'XML, mai il totale.
-      dayData.corrispettivoDiff = diffContantiCassa(dayCorrisp, dayData.corrispettivoManual);
+      dayData.corrispettivoDiff = periodo.differenza_contanti;
 
       dayData.hasData =
         dayData.posAuto > 0 ||
@@ -578,8 +413,8 @@ export default function ControlloMensile() {
         dayData.corrispettivoAuto > 0 ||
         dayData.corrispettivoManual > 0 ||
         dayData.versamento > 0 ||
-        entrateGiorno > 0 ||
-        usciteGiorno > 0;
+        periodo.entrate_cassa > 0 ||
+        periodo.uscite_cassa > 0;
       dayData.hasDiscrepancy =
         ['differenza_in_piu_da_registrare', 'in_attesa_xml'].includes(dayData.statoSerale) ||
         ['mancante', 'differenza', 'extra'].includes(dayData.statoBanca) ||
@@ -589,14 +424,6 @@ export default function ControlloMensile() {
         intervento: dayData.statoSerale === 'differenza_in_piu_da_registrare' || dayData.statoBanca === 'mancante',
         verificare: dayData.hasDiscrepancy,
       });
-
-      // Debug info
-      dayData._debug = {
-        cassaCount: dayCassa.length,
-        corrispCount: dayCorrisp.length,
-        entrateGiorno,
-        usciteGiorno,
-      };
 
       comparison.push(dayData);
     }

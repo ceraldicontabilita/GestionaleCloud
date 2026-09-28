@@ -9,6 +9,7 @@ riapertura e rettifica. Montato sotto /api/iva.
 """
 import uuid
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
 
 import logging
@@ -38,6 +39,12 @@ def _float(value: Any) -> float:
         return float(value or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _somma_euro(valori) -> float:
+    """Somma al centesimo in ``Decimal`` (i singoli importi arrivano ``float``)."""
+    totale = sum((Decimal(str(v)) for v in valori), Decimal("0"))
+    return float(totale.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def _iva_detraibile_fattura(doc: Dict[str, Any]) -> float:
@@ -251,9 +258,14 @@ async def ultimo_ricalcolo() -> Dict[str, Any]:
 async def fatture_iva(
     periodo: Optional[str] = Query(None, description="Periodo IVA attribuito, 'YYYY-MM'"),
     anno: Optional[int] = Query(None),
-    limit: int = Query(500, le=5000),
+    limit: int = Query(500, ge=1, le=5000),
+    skip: int = 0,
 ) -> Dict[str, Any]:
-    """Elenco fatture con i dati IVA (periodo attribuito, regola, stato)."""
+    """Elenco fatture con i dati IVA (periodo attribuito, regola, stato).
+
+    ``fatture`` e' una pagina (``skip``/``limit``); ``totale`` e i totali IVA
+    sono sempre dell'intero periodo, qualunque sia la pagina richiesta.
+    """
     db = Database.get_db()
     query: Dict[str, Any] = {}
     if periodo:
@@ -271,22 +283,25 @@ async def fatture_iva(
         "stato_detrazione_iva": 1, "tipo_documento": 1,
         "stato_classificazione": 1, "classificato_da": 1,
     }
-    docs = await db[COLL].find(query, proj).sort("data_documento", -1).to_list(limit)
+    docs = await db[COLL].find(query, proj).sort("data_documento", -1).to_list(None)
     docs = [_arricchisci_fattura_iva(doc) for doc in docs]
+    skip = max(0, int(skip or 0))
     disponibili = [
         doc for doc in docs
         if doc.get("iva_utilizzata") is not True
         and doc.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
     ]
     return {
-        "fatture": docs,
+        "fatture": docs[skip:skip + limit],
         "totale": len(docs),
-        "totale_iva_esposta": round(sum(_float(doc.get("iva_esposta")) for doc in docs), 2),
-        "totale_iva_detraibile": round(sum(_iva_detraibile_fattura(doc) for doc in docs), 2),
-        "totale_iva_disponibile": round(sum(_iva_detraibile_fattura(doc) for doc in disponibili), 2),
-        "totale_iva_utilizzata": round(sum(
+        "skip": skip,
+        "limit": limit,
+        "totale_iva_esposta": _somma_euro(_float(doc.get("iva_esposta")) for doc in docs),
+        "totale_iva_detraibile": _somma_euro(_iva_detraibile_fattura(doc) for doc in docs),
+        "totale_iva_disponibile": _somma_euro(_iva_detraibile_fattura(doc) for doc in disponibili),
+        "totale_iva_utilizzata": _somma_euro(
             _iva_detraibile_fattura(doc) for doc in docs if doc.get("iva_utilizzata") is True
-        ), 2),
+        ),
         "totale_da_verificare": sum(
             1 for doc in docs if doc.get("stato_detrazione_iva") == "DA_VERIFICARE"
         ),

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body, Dep
 from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List
 from datetime import datetime, timezone, timedelta
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import uuid
 import logging
 import zipfile
@@ -57,6 +58,90 @@ async def list_corrispettivi(
             query["data"]["$lte"] = data_a
     
     return await db["corrispettivi"].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
+
+
+def _euro_corrispettivo(valore: Any) -> Decimal:
+    try:
+        numero = Decimal(str(valore or 0))
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+    return numero if numero.is_finite() else Decimal("0")
+
+
+def _primo_presente(riga: Dict[str, Any], *campi: str) -> Any:
+    """Il primo campo non nullo (come ``a ?? b`` nel browser)."""
+    for campo in campi:
+        if riga.get(campo) is not None:
+            return riga.get(campo)
+    return None
+
+
+def chiave_giornata_xml(riga: Dict[str, Any]) -> str:
+    """Una giornata XML: la chiave del corrispettivo, altrimenti data +
+    registratore + totale al centesimo. Due copie della stessa giornata
+    contano una volta sola."""
+    chiave = str(riga.get("corrispettivo_key") or "").strip()
+    if chiave:
+        return chiave
+    totale = _euro_corrispettivo(_primo_presente(riga, "totale", "totale_complessivo"))
+    centesimi = int((totale * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return "|".join([
+        str(riga.get("data") or riga.get("data_rilevazione") or ""),
+        str(riga.get("matricola_rt") or riga.get("id_dispositivo") or riga.get("matricola") or ""),
+        str(centesimi),
+    ])
+
+
+@router.get("/periodo")
+@handle_errors
+async def corrispettivi_del_periodo(
+    data_da: str = Query(..., description="Data inizio (YYYY-MM-DD)"),
+    data_a: str = Query(..., description="Data fine (YYYY-MM-DD)"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=1000),
+) -> Dict[str, Any]:
+    """Giornate XML del periodo per Gestione IVA, una pagina alla volta.
+
+    Le copie della stessa giornata (``chiave_giornata_xml``) contano una volta
+    sola; ``totale`` (giornate), ``copie_escluse`` e ``totali`` sono sempre
+    dell'intero periodo, non della pagina.
+    """
+    db = Database.get_db()
+    query = {
+        "entity_status": {"$ne": "deleted"},
+        "status": {"$nin": ["deleted", "archived"]},
+        "data": {"$gte": data_da, "$lte": data_a},
+    }
+    righe = await db["corrispettivi"].find(query, {"_id": 0}).sort("data", -1).to_list(None)
+    viste: set = set()
+    uniche: List[Dict[str, Any]] = []
+    for riga in righe:
+        chiave = chiave_giornata_xml(riga)
+        if chiave in viste:
+            continue
+        viste.add(chiave)
+        uniche.append(riga)
+
+    somme = {nome: Decimal("0") for nome in ("totale", "imponibile", "iva", "contanti", "elettronico")}
+    for riga in uniche:
+        totale = _euro_corrispettivo(_primo_presente(riga, "totale", "totale_complessivo"))
+        iva = _euro_corrispettivo(_primo_presente(riga, "totale_iva", "iva"))
+        imponibile = _primo_presente(riga, "totale_imponibile", "imponibile")
+        somme["totale"] += totale
+        somme["iva"] += iva
+        somme["imponibile"] += totale - iva if imponibile is None else _euro_corrispettivo(imponibile)
+        somme["contanti"] += _euro_corrispettivo(riga.get("pagato_contanti"))
+        somme["elettronico"] += _euro_corrispettivo(
+            _primo_presente(riga, "pagato_elettronico", "pagato_pos"))
+    return {
+        "corrispettivi": uniche[skip:skip + limit],
+        "totale": len(uniche),
+        "copie_escluse": len(righe) - len(uniche),
+        "skip": skip,
+        "limit": limit,
+        "totali": {nome: float(valore.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+                   for nome, valore in somme.items()},
+    }
 
 
 @router.post("/ricalcola-iva")

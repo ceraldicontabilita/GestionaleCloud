@@ -90,11 +90,12 @@ def attivo() -> bool:
 
 
 def anno_minimo_estratti() -> int:
-    """Soglia dell'arretrato; 0 = nessun filtro. Difetto 2026 (scelta del titolare)."""
+    """Soglia dell'arretrato; 0 = nessun filtro. Difetto 2025: gli estratti
+    dell'anno prima si leggono per riconciliare (titolare, 28/09/2026)."""
     try:
-        return max(0, int(os.getenv("DRIVE_ESTRATTI_ANNO_MINIMO", "2026")))
+        return max(0, int(os.getenv("DRIVE_ESTRATTI_ANNO_MINIMO", "2025")))
     except ValueError:
-        return 2026
+        return 2025
 
 
 def _batch() -> int:
@@ -288,7 +289,8 @@ _BUSTA_PAGA = re.compile(r"LUL|CEDOLIN|BUSTA|LIBRO\s*UNICO|TREDICESIMA|QUATTORDI
 
 
 def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Prima le buste paga, poi XML (fatture, chiusure RT) e ZIP, poi il resto.
+    """Prima le buste paga, poi gli estratti conto, poi XML (fatture, chiusure
+    RT) e ZIP, poi il resto.
 
     Le buste in testa (decisione del titolare, 28/09/2026): finche' la busta
     definitiva non e' in ELABORATE, la sua stampa di controllo resta su Drive.
@@ -302,9 +304,21 @@ def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return str(f.get("name") or "").lower().endswith(_ESTENSIONI_XML)
 
     buste = [f for f in coda if e_busta(f)]
+    estratti = [f for f in coda if not e_busta(f) and e_estratto_conto(f)]
     recenti = sorted((f for f in coda if xml(f)),
                      key=lambda f: str(f.get("createdTime") or ""), reverse=True)
-    return buste + recenti + [f for f in coda if not e_busta(f) and not xml(f)]
+    return buste + estratti + recenti + [
+        f for f in coda if not e_busta(f) and not e_estratto_conto(f) and not xml(f)]
+
+
+_ESTRATTO_CONTO = re.compile(r"ESTRATTO[\s_]*CONTO", re.IGNORECASE)
+
+
+def e_estratto_conto(f: Dict[str, Any]) -> bool:
+    """Un estratto conto (PDF, CSV o Excel della banca) dal nome: e' la prova
+    che riconcilia stipendi, PayPal e assegni, e non puo' aspettare in fondo a
+    migliaia di file sciolti (titolare, 28/09/2026)."""
+    return bool(_ESTRATTO_CONTO.search(str(f.get("name") or "")))
 
 
 def e_busta(f: Dict[str, Any]) -> bool:
