@@ -93,3 +93,24 @@ def test_in_simulazione_non_si_scrive(monkeypatch):
     con = _Con()
     assert asyncio.run(rv.riverifica_lotto(con, dry_run=True))["correzioni"][0]["dopo"] == 675.0
     assert con.aggiornamenti == []
+
+
+# ── acconto recuperato: in HR il netto e' busta + acconto (titolare, 28/09/2026) ──
+
+BUSTA_08 = {"codice_fiscale": "MSCMNL80A01F839X", "anno": 2025, "mese": 8,
+            "tipo_cedolino": "mensile", "netto": 598.0, "stato_netto": NETTO_VERIFICATO_DA_CEDOLINO}
+RIGA_08 = {"id": "r8", "cf": "MSCMNL80A01F839X", "anno": "2025", "mese": "8",
+           "tipo": "ordinario", "netto": "1597.06", "acconto": "1000"}
+
+
+def test_con_l_acconto_recuperato_il_netto_hr_non_si_riscrive_con_la_cella():
+    patch = rv.correzione(RIGA_08, rv.busta_della_riga(RIGA_08, [BUSTA_08]), "x")
+    assert patch["netto_riverifica_esito"] == "confermato_con_acconto"
+    assert "netto" not in patch and patch["netto_busta"] == 598.0
+
+
+def test_con_l_acconto_un_netto_sbagliato_diventa_busta_piu_acconto():
+    riga = {**RIGA_08, "netto": "0.23"}
+    patch = rv.correzione(riga, rv.busta_della_riga(riga, [BUSTA_08]), "x")
+    assert patch["netto_riverifica_esito"] == "corretto" and patch["netto"] == 1598.0
+    assert patch["netto_busta"] == 598.0 and patch["storico_netto_ultimo"]["prima"] == 0.23

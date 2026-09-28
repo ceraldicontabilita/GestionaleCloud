@@ -34,7 +34,8 @@ LOTTO = 120
 
 _SQL_DA_RILEGGERE = (
     "SELECT id, doc->>'codice_fiscale' AS cf, doc->>'anno' AS anno, doc->>'mese' AS mese, "
-    "doc->>'tipo_cedolino' AS tipo, doc->>'netto' AS netto FROM " + TABELLA_CEDOLINI + " "
+    "doc->>'tipo_cedolino' AS tipo, doc->>'netto' AS netto, "
+    "doc->'acconti'->>'acconto_recuperato' AS acconto FROM " + TABELLA_CEDOLINI + " "
     "WHERE doc ? 'pdf_data' AND length(doc->>'pdf_data') > 100 "
     "AND coalesce(doc->>'netto_riverificato_versione', '') <> $1 ORDER BY id LIMIT $2"
 )
@@ -92,6 +93,17 @@ def correzione(riga: Dict[str, Any], esito: Dict[str, Any], now: str) -> Dict[st
     if esito["esito"] != "ritrovata":
         return patch
     prima, dopo = _cent(riga.get("netto")), esito["netto"]
+    # Decisione del titolare (28/09/2026): in HR il netto e' quello della busta
+    # piu' l'acconto gia' recuperato, il totale del mese. La cella dice 598,00,
+    # la riga HR 1.597,06 con 1.000,00 di acconto: e' giusta, non si tocca. Lo
+    # scarto fino a 1,00 e' l'arrotondamento della busta.
+    acconto = _cent(riga.get("acconto")) or Decimal("0")
+    if acconto > 0:
+        patch["netto_busta"] = float(dopo)
+        dopo = dopo + acconto
+        if prima is not None and abs(prima - dopo) <= Decimal("1.00"):
+            patch["netto_riverifica_esito"] = "confermato_con_acconto"
+            return patch
     if prima == dopo:
         patch["netto_riverifica_esito"] = "confermato"
         return patch
