@@ -165,3 +165,13 @@ def test_buste_in_parallelo_senza_doppioni(ambiente):  # noqa: F811
     assert esito["letti"] == 6
     assert esito["doppioni_cestinati"] == 1 and esito["elaborati"] == 5
     assert len(smistati) == 5
+
+
+def test_guasto_di_rete_torna_in_coda(ambiente):  # noqa: F811
+    drive, _, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("s1", "ROSSI - LUL - 2025-11.pdf", b"%PDF s1", "errori")
+    run(db[cu.REGISTRO].insert_one({"id": "s1", "cartella": cu.ERRORI, "esito": "errore",
+                                    "motivo": "SSLError: [SSL: WRONG_VERSION_NUMBER] wrong version"}))
+    assert run(cu.giro(db))["buste_rimesse_in_coda"] == 1
+    assert drive.file["s1"]["parent"] == "elaborate"

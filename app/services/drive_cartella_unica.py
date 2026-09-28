@@ -113,9 +113,18 @@ def _service():
     creds, errore = load_credentials_for_folder(radice())
     if creds is None:
         raise RuntimeError(f"credenziali Drive non disponibili: {errore}")
+    import google_auth_httplib2
+    import httplib2
     from googleapiclient.discovery import build
 
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    # Senza tempo massimo una connessione caduta a meta' lettura tiene fermo
+    # il giro per sempre (e il lock con lui): 120 s poi l'errore, e il file
+    # torna in coda come guasto di rete.
+    http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=TIMEOUT_DRIVE))
+    return build("drive", "v3", http=http, cache_discovery=False)
+
+
+TIMEOUT_DRIVE = 120
 
 
 def _cartella(service, parent_id: str, nome: str) -> Optional[str]:
@@ -289,6 +298,9 @@ async def _registra(db, file_id: str, **campi) -> None:
 # busta da un'altra copia del PDF): non era un errore, e quei file vanno
 # riletti. Il motore ora la dichiara «gia' in archivio» e la manda in ELABORATE.
 _BUSTE_GIA_PRESENTI = re.compile(r"^Cedolino non registrato: \d+ buste lette$")
+# Un guasto di connessione durante la lettura non e' un difetto del file: si rilegge.
+_GUASTO_DI_RETE = re.compile(r"^(SSLError|ConnectionError|ConnectionResetError|TimeoutError|timeout|"
+                             r"RemoteDisconnected|BrokenPipeError|IncompleteRead)\b")
 
 
 async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
@@ -299,13 +311,15 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
     la lettura poi la fa il giro a lotti.
     """
     righe = await db[REGISTRO].find(
-        {"cartella": ERRORI, "tipo": "cedolino"}, {"_id": 0, "id": 1, "nome": 1, "motivo": 1},
+        {"cartella": ERRORI}, {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1},
     ).to_list(None)
     rimessi = 0
     for riga in righe:
         if limite is not None and rimessi >= limite:
             break
-        if not _BUSTE_GIA_PRESENTI.match(str(riga.get("motivo") or "")):
+        motivo = str(riga.get("motivo") or "")
+        gia_presente = riga.get("tipo") == "cedolino" and _BUSTE_GIA_PRESENTI.match(motivo)
+        if not gia_presente and not _GUASTO_DI_RETE.match(motivo):
             continue
         try:
             await asyncio.to_thread(_sposta, service, riga["id"], cartelle[ERRORI], cartelle[INBOX],
@@ -367,22 +381,25 @@ async def _giro(db) -> Dict[str, Any]:
         if f.get("md5Checksum"):
             per_md5.setdefault(f["md5Checksum"], []).append(f["id"])
 
-    async def lavora(f: Dict[str, Any]) -> None:
+    async def lavora(f: Dict[str, Any], drive=None) -> None:
+        # La connessione Drive (httplib2) non regge due thread insieme: ogni
+        # lettura parallela usa la sua, quella del giro resta per i file in fila.
+        drive = drive or service
         esito["letti"] += 1
         fid, nome = f["id"], f.get("name") or f["id"]
         try:
-            contenuto = await asyncio.to_thread(scarica_bytes, service, fid)
+            contenuto = await asyncio.to_thread(scarica_bytes, drive, fid)
             sha256 = hashlib.sha256(contenuto).hexdigest()
             copia_di = None
             for candidato in per_md5.get(f.get("md5Checksum") or "", []):
-                if await asyncio.to_thread(scarica_bytes, service, candidato) == contenuto:
+                if await asyncio.to_thread(scarica_bytes, drive, candidato) == contenuto:
                     copia_di = candidato
                     break
             if copia_di:
                 cartella = "CESTINO"
-                if not await asyncio.to_thread(_cestina, service, fid, copia_di):
+                if not await asyncio.to_thread(_cestina, drive, fid, copia_di):
                     cartella = DOPPIONI
-                    await asyncio.to_thread(_sposta, service, fid, f["_da"], cartelle[DOPPIONI],
+                    await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[DOPPIONI],
                                             f"copia identica di {copia_di}")
                 await _registra(db, fid, nome=nome, sha256=sha256, esito="doppione_cestinato",
                                 cartella=cartella, duplicato_di=copia_di)
@@ -395,7 +412,7 @@ async def _giro(db) -> Dict[str, Any]:
                         "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256}
             risultato = await _smista(nome, contenuto, contesto)
             destinazione, motivo = esito_del_risultato(risultato)
-            await asyncio.to_thread(_sposta, service, fid, f["_da"], cartelle[destinazione], motivo or None)
+            await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[destinazione], motivo or None)
             riferimenti = {k: risultato[k] for k in _CHIAVI_RIFERIMENTO if risultato.get(k)}
             await _registra(
                 db, fid, nome=nome, sha256=sha256, md5=f.get("md5Checksum"),
@@ -420,13 +437,18 @@ async def _giro(db) -> Dict[str, Any]:
             esito["errori"] += 1
             esito["dettagli"].append({"file": nome, "esito": ERRORI, "motivo": motivo})
             try:
-                await asyncio.to_thread(_sposta, service, fid, f["_da"], cartelle[ERRORI], motivo)
+                await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[ERRORI], motivo)
                 await _registra(db, fid, nome=nome, cartella=ERRORI, esito="errore", motivo=motivo)
             except Exception as exc2:
                 logger.warning("[cartella-unica] %s non spostato in ERRORI: %s: %s",
                                nome, type(exc2).__name__, exc2)
     blocchi: Dict[str, asyncio.Lock] = {}
     parallelo = asyncio.Semaphore(BUSTE_IN_PARALLELO)
+    buste = [f for f in in_coda if e_busta(f)]
+    connessioni: "asyncio.Queue" = asyncio.Queue()
+    if buste:
+        for _ in range(min(BUSTE_IN_PARALLELO, len(buste))):
+            connessioni.put_nowait(await asyncio.to_thread(_service))
 
     async def lavora_busta(f: Dict[str, Any]) -> None:
         # Due copie dello stesso file o della stessa busta non si leggono insieme:
@@ -435,9 +457,12 @@ async def _giro(db) -> Dict[str, Any]:
         chiave_md5 = "md5:" + str(f.get("md5Checksum") or f["id"])
         async with parallelo, blocchi.setdefault(chiave_nome, asyncio.Lock()), \
                 blocchi.setdefault(chiave_md5, asyncio.Lock()):
-            await lavora(f)
+            drive = await connessioni.get()
+            try:
+                await lavora(f, drive)
+            finally:
+                connessioni.put_nowait(drive)
 
-    buste = [f for f in in_coda if e_busta(f)]
     await asyncio.gather(*(lavora_busta(f) for f in buste))
     for f in in_coda:
         if not e_busta(f):
