@@ -922,6 +922,14 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] versamenti: %s: %s", type(e).__name__, e)
         try:
+            # Contabili di filiale arrivate prima dell'estratto: il secondo pezzo.
+            from app.services.contabili_filiale import ricollega_in_attesa
+            r = await ricollega_in_attesa(db)
+            if r.get("riprovate"):
+                logger.info("[SCHEDULER-BANCA] contabili filiale: %s", r)
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] contabili filiale: %s: %s", type(e).__name__, e)
+        try:
             # Carta SumUp: stipendi, fatture, spese di lite e Prima Nota sul suo
             # conto. Qui e non nel giro lungo: quello ogni deploy lo interrompe.
             from app.services.sumup_conto import abbina_movimenti_sumup

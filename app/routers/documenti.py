@@ -2581,6 +2581,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         "REGISTRIAMOAVOSTRODEBITO" in marker_pdf_text or "IBANBENEFICIARIO" in marker_pdf_text
     ):
         return "bonifici"
+    # Contabile di filiale BPM (versamento allo sportello): cita il conto
+    # corrente e il lettore degli estratti la prenderebbe per un estratto.
+    from app.services.contabili_filiale import TIPO as TIPO_CONTABILE_FILIALE, riconosci as e_contabile_filiale
+
+    if lower.endswith(".pdf") and e_contabile_filiale(compact_pdf_text):
+        return TIPO_CONTABILE_FILIALE
     if all(marker in compact_pdf_text for marker in (
         "SEZIONE 1", "LAVORATORE", "RECESSO DAL RAPPORTO DI LAVORO",
     )) or "MODULO RECESSO RAPPORTO DI LAVORO" in compact_pdf_text:
@@ -4289,6 +4295,33 @@ async def upload_documento_automatico(
                     if sumup_result.get("duplicate")
                     else f"Estratto SumUp importato: {sumup_result.get('nuovi', 0)} movimenti nuovi, "
                          f"{sumup_result.get('gia_presenti', 0)} già presenti."
+                ),
+            })
+
+        elif tipo_rilevato == 'contabile_filiale':
+            from app.services.contabili_filiale import registra as registra_contabile
+
+            contabile = await registra_contabile(
+                db, filename, content, await asyncio.to_thread(_pdf_text_for_detection, content),
+                drive_file_id=source_context.get("drive_file_id"),
+            )
+            if not contabile.get("success"):
+                raise ValueError(contabile.get("message") or "Contabile di filiale non leggibile")
+            stati = {
+                "collegata": "collegata al movimento dell'estratto conto",
+                "in_attesa_estratto": "in attesa del movimento nell'estratto conto",
+                "da_verificare": "da verificare: piu' movimenti compatibili",
+            }
+            result.update({
+                "workflow": "CONTABILE_FILIALE",
+                "duplicate": bool(contabile.get("duplicate")),
+                "imported": 0 if contabile.get("duplicate") else 1,
+                "data": contabile,
+                "message": (
+                    f"Contabile di filiale del {contabile.get('data_operazione')} "
+                    f"({contabile.get('importo')} EUR)"
+                    + (" già presente" if contabile.get("duplicate") else "")
+                    + f": {stati.get(contabile.get('stato'), contabile.get('stato'))}."
                 ),
             })
 

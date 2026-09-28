@@ -220,7 +220,8 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any]) -> Dict
     # dell'originale che la cartella unica esiste per evitare.
     tipo = await rileva_tipo_documento(nome, contenuto)
     if tipo == "auto":
-        return {"success": False, "tipo_rilevato": "non_riconosciuto"}
+        return {"success": False, "tipo_rilevato": "non_riconosciuto",
+                "fuori_contabilita": motivo_fuori_contabilita(nome)}
     if tipo in TIPI_ESTRATTO and (minimo := anno_minimo_estratti()):
         from app.services.classificazione_estratti import anno_documento
 
@@ -236,10 +237,41 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any]) -> Dict
         return {"success": False, "message": str(exc.detail), "http_status": exc.status_code}
 
 
+# Versione delle regole per i documenti non riconosciuti: un file gia' in
+# ERRORI con una versione piu' vecchia si rilegge una volta, mai a ogni giro.
+REGOLE_NON_RICONOSCIUTI = 1
+NON_RICONOSCIUTO = "tipo di documento non riconosciuto"
+
+_STAMPA_FATTURA_XML = re.compile(r"\.xml(\.p7m)?\s*-\s", re.IGNORECASE)
+_FORMATI_NON_GESTITI = (".doc", ".docx", ".rtf", ".odt", ".xbrl", ".txt", ".csv", ".json")
+_ANNO_NEL_NOME = re.compile(r"(?<!\d)(20[0-2]\d|19\d\d)(?!\d)")
+
+
+def motivo_fuori_contabilita(nome: str, *, anno_attivo: Optional[int] = None) -> Optional[str]:
+    """Perche' un file che nessun lettore riconosce va in ARRETRATO, o None.
+
+    Decisione del titolare (28/09/2026): bilanci, verbali, vecchie
+    dichiarazioni, stampe PDF di fatture e scansioni degli anni passati non
+    sono errori da guardare. Un file senza anno nel nome resta in ERRORI.
+    """
+    nome_basso = (nome or "").lower()
+    if _STAMPA_FATTURA_XML.search(nome_basso):
+        return "copia PDF di una fattura XML: la fattura entra dall'XML"
+    if nome_basso.endswith(_FORMATI_NON_GESTITI):
+        return "formato che nessun lettore contabile gestisce"
+    anno_attivo = anno_attivo or datetime.now(timezone.utc).year
+    anni = [int(a) for a in _ANNO_NEL_NOME.findall(nome or "")]
+    if anni and max(anni) < anno_attivo:
+        return f"documento del {max(anni)} che nessun lettore contabile riconosce"
+    return None
+
+
 def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
     """(cartella di destinazione, motivo). Registrato o gia' presente → archivio."""
     if risultato.get("tipo_rilevato") == "non_riconosciuto":
-        return ERRORI, "tipo di documento non riconosciuto"
+        if risultato.get("fuori_contabilita"):
+            return ARRETRATO, risultato["fuori_contabilita"]
+        return ERRORI, NON_RICONOSCIUTO
     if risultato.get("arretrato"):
         return ARRETRATO, (f"estratto del {risultato.get('anno')}: arretrato fermo "
                            f"(anno minimo {risultato.get('anno_minimo')})")
@@ -312,13 +344,15 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
     """
     righe = await db[REGISTRO].find(
         {"cartella": {"$in": [ERRORI, ARRETRATO]}},
-        {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1, "cartella": 1},
+        {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1, "cartella": 1,
+         "regole_non_riconosciuti": 1},
     ).to_list(None)
     rimessi = 0
     for riga in righe:
         if limite is not None and rimessi >= limite:
             break
         motivo = str(riga.get("motivo") or "")
+        da_rileggere = False
         if riga.get("cartella") == ARRETRATO:
             # Una busta presa per estratto conto (cita la banca d'appoggio) e
             # parcheggiata fra l'arretrato degli estratti: va riletta da busta.
@@ -329,13 +363,20 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
             # Busta presa per estratto conto e scartata dal lettore della banca.
             busta_come_estratto = (str(riga.get("tipo") or "").startswith("estratto_conto")
                                    and e_busta({"name": riga.get("nome")}))
-            if not gia_presente and not busta_come_estratto and not _GUASTO_DI_RETE.match(motivo):
+            # Un non riconosciuto letto con regole piu' vecchie si rilegge una
+            # volta: ora le contabili di filiale hanno un lettore e i file
+            # degli anni passati vanno in ARRETRATO.
+            da_rileggere = (motivo == NON_RICONOSCIUTO
+                            and int(riga.get("regole_non_riconosciuti") or 0) < REGOLE_NON_RICONOSCIUTI)
+            if (not gia_presente and not busta_come_estratto and not da_rileggere
+                    and not _GUASTO_DI_RETE.match(motivo)):
                 continue
         try:
             await asyncio.to_thread(_sposta, service, riga["id"], cartelle[riga["cartella"]],
                                     cartelle[INBOX], "da rileggere")
             await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
-                            motivo="busta gia' in archivio, non un errore")
+                            motivo=("rileggere con le regole nuove" if da_rileggere
+                                    else "busta gia' in archivio, non un errore"))
             rimessi += 1
         except Exception as exc:
             logger.warning("[cartella-unica] %s non rimesso in coda: %s: %s",
@@ -429,7 +470,7 @@ async def _giro(db) -> Dict[str, Any]:
                 tipo=risultato.get("tipo_rilevato"), cartella=destinazione,
                 esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),
                 gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None,
-                riferimenti=riferimenti,
+                riferimenti=riferimenti, regole_non_riconosciuti=REGOLE_NON_RICONOSCIUTI,
             )
             if destinazione == ARCHIVIO:
                 esito["elaborati"] += 1
