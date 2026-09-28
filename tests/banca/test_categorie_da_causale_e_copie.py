@@ -28,7 +28,15 @@ from app.services.doppioni_estratto_conto import eredita_categorie_da_copie
     ("SDD CORE: 49RJ2252ASLM4 PAYPAL EUROPE", "Pagamento PayPal"),
     ("RIF.MBVT02317394 COMM.BON. TELEMATICO SCT/ IST", "Commissioni bancarie"),
     ("COMMISSIONI - Comm.sdd: 49RJ2252ASLM4 PAYPAL", "Commissioni bancarie"),
+    # Le sigle del vecchio archivio 2026 (28/09/2026).
+    ("COMM. BON. TELEMATICO SCT", "Commissioni bancarie"),
+    ("COMM.FISSA SU OPERAZIONE", "Commissioni bancarie"),
+    ("RILASCIO CARNET ASSEGNI", "Commissioni bancarie"),
+    ("IMP. BOLLO C/C", "Commissioni bancarie"),
+    ("CANONE CARTA DEBITO", "Commissioni bancarie"),
+    ("COMPETENZE", "Commissioni bancarie"),
     # Restano senza categoria: non si indovina.
+    ("BONIFICO COMPETENZE AGOSTO ROSSI", None),
     ("STORNO VERS. CONTANTI", None),
     ("FATTURA NUMIA N. 123", None),
     ("VS.DISP. RIF. MB0B39331321/90553561 FAVORE GUARINO GIULIANO", None),
@@ -68,3 +76,33 @@ def test_due_righe_dello_stesso_export_non_si_passano_la_categoria():
     ]))
     assert _run(eredita_categorie_da_copie(db))["ereditate"] == 0
     assert not _run(db["estratto_conto_movimenti"].find_one({"id": "a"})).get("categoria")
+
+
+def test_l_abbinamento_gia_fatto_decide_la_categoria():
+    from app.services.categorizzazione_movimenti import (
+        backfill_categorie_banca, categoria_dal_collegamento)
+
+    u = {"tipo": "uscita", "importo": 10.0}
+    assert categoria_dal_collegamento({**u, "fattura_id": "f1"}) == "Fatture"
+    assert categoria_dal_collegamento({"importo": -10.0, "fattura_ids": ["f1", "f2"]}) == "Fatture"
+    assert categoria_dal_collegamento({**u, "dipendente_id": "d1"}) == "Stipendi"
+    # Collegato a tutti e due, o a nessuno, o un'entrata: non si decide qui.
+    assert categoria_dal_collegamento({**u, "fattura_id": "f1", "dipendente_id": "d1"}) is None
+    assert categoria_dal_collegamento(u) is None
+    assert categoria_dal_collegamento({"tipo": "entrata", "importo": 10.0, "fattura_id": "f1"}) is None
+
+    db = ClientArchivioMemoria()["collegati"]
+    _run(db["estratto_conto_movimenti"].insert_many([
+        {"id": "m-fatt", "data": "2026-05-02", "importo": 120.0, "tipo": "uscita",
+         "descrizione": "VS.DISP. RIF. MB0B FAVORE ROSSI SRL", "fattura_id": "inv-1"},
+        {"id": "m-dip", "data": "2026-05-03", "importo": 900.0, "tipo": "uscita",
+         "descrizione": "VS.DISP. RIF. MB0B FAVORE MARIO ROSSI", "dipendente_id": "dip-1"},
+        {"id": "m-nulla", "data": "2026-05-04", "importo": 50.0, "tipo": "uscita",
+         "descrizione": "VS.DISP. RIF. MB0B FAVORE SCONOSCIUTO"},
+    ]))
+    esito = _run(backfill_categorie_banca(db, anno=2026, con_stipendi=False))
+    righe = {r["id"]: r for r in _run(db["estratto_conto_movimenti"].find({}).to_list(10))}
+    assert righe["m-fatt"]["categoria"] == "Fatture"
+    assert righe["m-dip"]["categoria"] == "Stipendi"
+    assert not righe["m-nulla"].get("categoria")
+    assert esito["per_categoria"]["Fatture"] == 1 and esito["per_categoria"]["Stipendi"] == 1

@@ -323,7 +323,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `RT_DRIVE_INBOX` sono variabili **locali**: mai su Render. **Se quel
   programma si ferma nessuno se ne accorge**: il gestionale vede solo l'assenza
   di file, e l'assenza di incassi somiglia a un locale chiuso. Il segnale da
-  guardare è l'ultima giornata in `corrispettivi`, non la coda Drive.
+  guardare è l'ultima giornata in `corrispettivi`, non la coda Drive: `fonti_ferme.py` avvisa (anche su
+  Telegram, una volta) dopo **2 giorni d'apertura** senza chiusura RT, tolte le `chiusure_attivita`.
 
 ### Drive, struttura canonica
 
@@ -426,7 +427,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   creano un pagamento solo con identità, periodo e importo compatibili; altrimenti candidati.
 - Categorizzazione movimenti banca: un solo motore,
   `app/services/categorizzazione_movimenti.py` (parole chiave e causali BPM non ambigue: F24, commissioni, utenze,
-  fatture, POS, assegni, versamenti, PayPal, rata mutuo; la riga senza categoria prende quella della sua copia di un altro export). Sopra le parole chiave, **regole
+  fatture, POS, assegni, versamenti, PayPal, rata mutuo; la riga senza categoria prende quella della sua copia di un altro export;
+  un'uscita già abbinata a una fattura sola o a un dipendente solo è «Fatture»/«Stipendi», `categoria_dal_collegamento`). Sopra le parole chiave, **regole
   imparate** dal titolare (`app/services/regole_riconoscimento_banca.py`,
   `/riconciliazione/regole-banca`): un pattern estratto da una causale reale
   vince sul generico, ma un pattern di solo vocabolario bancario comune (es.

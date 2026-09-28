@@ -83,6 +83,10 @@ _COMMISSIONI_KEYWORDS = (
     "IMPOSTA DI BOLLO", "IMPOSTA BOLLO", "IMP.BOLLO", "I.BOLLO", "BOLLO C/C",
     "INTERESSI PASSIVI", "INT.PASSIVI", "INTERESSI DEBITORI", "INT.DEB",
     "COMPETENZE TRIMESTRALI", "COMPETENZE BANCARIE",
+    # Le stesse sigle come le scrive il vecchio archivio 2026 (verificato il
+    # 28/09/2026 sulle righe ancora senza categoria): con lo spazio, o per
+    # esteso sul carnet e sul canone della carta di debito.
+    "COMM. BON", "COMM.FISSA", "RILASCIO CARNET", "IMP. BOLLO", "CANONE CARTA",
 )
 
 # Utenze: marchi/fornitori di energia, gas, telefonia, acqua non ambigui.
@@ -153,6 +157,10 @@ def _categorie_da_causale(desc: str) -> List[str]:
         trovate.append("Pagamento PayPal")
     if _RE_RATA_MUTUO.search(desc):
         trovate.append("Rata mutuo")
+    # «COMPETENZE» da sola e' la liquidazione trimestrale del conto; con altre
+    # parole (es. «competenze agosto» in un bonifico) puo' essere uno stipendio.
+    if desc.strip() == "COMPETENZE":
+        trovate.append("Commissioni bancarie")
     if _RE_ACCREDITO_POS.search(desc) and not any(
         _kw_presente(desc, kw) for kw in _POS_KEYWORDS
     ):
@@ -284,6 +292,30 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def categoria_dal_collegamento(mov: Dict[str, Any]) -> Optional[str]:
+    """La categoria che un abbinamento gia' fatto rende certa: un movimento
+    collegato a una fattura paga una fattura, uno collegato a un dipendente e'
+    uno stipendio. Collegato a entrambi, o a nessuno, non si decide qui; e
+    nemmeno un'entrata (un rimborso del fornitore non e' un pagamento)."""
+    tipo = str(mov.get("tipo") or "").lower()
+    try:
+        importo = float(mov.get("importo") or 0)
+    except (TypeError, ValueError):
+        importo = 0.0
+    # CSV e banca diretta: importo positivo e verso in `tipo`; vecchio
+    # archivio: importo con segno.
+    uscita = tipo == "uscita" or (not tipo and importo < 0)
+    if not uscita:
+        return None
+    ha_fattura = bool(mov.get("fattura_id") or mov.get("fattura_ids"))
+    ha_dipendente = bool(mov.get("dipendente_id"))
+    if ha_fattura and not ha_dipendente:
+        return "Fatture"
+    if ha_dipendente and not ha_fattura:
+        return "Stipendi"
+    return None
+
+
 async def _movimenti_senza_categoria(db, anno: Optional[int]) -> List[Dict[str, Any]]:
     query: Dict[str, Any] = {
         "$or": [
@@ -301,7 +333,8 @@ async def _movimenti_senza_categoria(db, anno: Optional[int]) -> List[Dict[str, 
     return await db["estratto_conto_movimenti"].find(
         query,
         {"_id": 0, "id": 1, "descrizione_originale": 1, "descrizione": 1,
-         "importo": 1, "data": 1, "tipo": 1},
+         "importo": 1, "data": 1, "tipo": 1, "fattura_id": 1, "fattura_ids": 1,
+         "dipendente_id": 1},
     ).to_list(20000)
 
 
@@ -340,6 +373,7 @@ async def backfill_categorie_banca(
     regole = await carica_regole(db)
 
     per_categoria: Dict[str, List[str]] = {}
+    per_collegamento: Dict[str, List[str]] = {}
     # Movimenti presi da una regola imparata: motivo e (forse) fornitore
     # variano per regola, quindi si raggruppano a parte dal generico per
     # parola chiave (che ha sempre lo stesso motivo/fornitore=nessuno).
@@ -351,6 +385,10 @@ async def backfill_categorie_banca(
 
     for indice, mov in enumerate(movimenti, start=1):
         descrizione = mov.get("descrizione_originale") or mov.get("descrizione") or ""
+        dal_collegamento = categoria_dal_collegamento(mov)
+        if dal_collegamento:
+            per_collegamento.setdefault(dal_collegamento, []).append(mov["id"])
+            continue
         esito = categorizza_movimento_bancario(descrizione, mov.get("importo") or 0, regole=regole)
         if esito.categoria or esito.fornitore_id:
             if esito.regola_id:
@@ -392,6 +430,17 @@ async def backfill_categorie_banca(
                 }},
             )
             aggiornati += len(ids)
+        for categoria, ids in per_collegamento.items():
+            await db["estratto_conto_movimenti"].update_many(
+                {"id": {"$in": ids}},
+                {"$set": {
+                    "categoria": categoria,
+                    "categoria_auto": True,
+                    "categoria_auto_motivo": "abbinamento gia' fatto (fattura o dipendente)",
+                    "categoria_auto_at": now_iso,
+                }},
+            )
+            aggiornati += len(ids)
         for (categoria, fornitore_id, fornitore_nome, motivo), ids in per_regola.items():
             if not ids:
                 continue
@@ -415,6 +464,8 @@ async def backfill_categorie_banca(
             )
 
     per_categoria_totale: Dict[str, int] = {cat: len(ids) for cat, ids in per_categoria.items()}
+    for cat, ids in per_collegamento.items():
+        per_categoria_totale[cat] = per_categoria_totale.get(cat, 0) + len(ids)
     for (categoria, _fid, _fnome, _motivo), ids in per_regola.items():
         if categoria:
             per_categoria_totale[categoria] = per_categoria_totale.get(categoria, 0) + len(ids)
