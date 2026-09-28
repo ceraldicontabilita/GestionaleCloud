@@ -638,6 +638,48 @@ async def aggiungi_pagamento(db, conciliazione_id: str, dati: Dict[str, Any]) ->
     return vista_conciliazione(conc)
 
 
+#: Campi che il titolare puo' correggere su un pagamento scritto da lui.
+CAMPI_PAGAMENTO_MODIFICABILI = ("data", "importo", "parte", "modalita", "nota")
+
+
+def pagamento_modificabile(pag: Dict[str, Any]) -> bool:
+    """Contanti e pagamenti scritti a mano si correggono; un pagamento provato
+    da un bonifico ha la data e l'importo della banca, e quelli non si toccano."""
+    return pag.get("origine") == "manuale" or pag.get("modalita") == "contanti"
+
+
+async def modifica_pagamento(db, conciliazione_id: str, pagamento_id: str,
+                             dati: Dict[str, Any]) -> Dict[str, Any]:
+    """Corregge un pagamento della conciliazione; il valore di prima resta in ``storico``."""
+    conc = await db[COLL_CONCILIAZIONI].find_one({"id": conciliazione_id}, {"_id": 0, "file_data": 0})
+    if not conc or conc.get("annullata"):
+        raise ErrorePosizione("CONCILIAZIONE_NON_TROVATA", "Conciliazione non trovata o annullata")
+    pagamenti = list(conc.get("pagamenti") or [])
+    idx = next((i for i, p in enumerate(pagamenti) if p.get("id") == pagamento_id), None)
+    if idx is None:
+        raise ErrorePosizione("PAGAMENTO_NON_TROVATO", "Pagamento non trovato")
+    vecchio = pagamenti[idx]
+    if not pagamento_modificabile(vecchio):
+        raise ErrorePosizione("PAGAMENTO_DA_BANCA",
+                              "Un pagamento provato da un bonifico tiene la data e l'importo della banca",
+                              {"origine": vecchio.get("origine")})
+    unito = {**{k: vecchio.get(k) for k in CAMPI_PAGAMENTO_MODIFICABILI},
+             **{k: v for k, v in dati.items() if k in CAMPI_PAGAMENTO_MODIFICABILI}}
+    nuovo = normalizza_pagamento({**vecchio, **unito, "id": vecchio["id"]}, conc)
+    nuovo["origine"] = vecchio.get("origine")
+    prima = {k: vecchio.get(k) for k in CAMPI_PAGAMENTO_MODIFICABILI}
+    if prima != {k: nuovo.get(k) for k in CAMPI_PAGAMENTO_MODIFICABILI}:
+        nuovo["storico"] = list(vecchio.get("storico") or []) + [{"prima": prima, "modificato_il": _adesso()}]
+    else:
+        nuovo["storico"] = list(vecchio.get("storico") or [])
+    pagamenti[idx] = nuovo
+    conc["pagamenti"] = pagamenti
+    agg = {"pagamenti": pagamenti, "stato": stato_conciliazione(conc), "updated_at": _adesso()}
+    await db[COLL_CONCILIAZIONI].update_one({"id": conciliazione_id}, {"$set": agg})
+    conc.update(agg)
+    return vista_conciliazione(conc)
+
+
 async def registra_acconto_da_coda(db, in_coda: Dict[str, Any], dip: Dict[str, Any],
                                    anno: int, mese: int) -> Dict[str, Any]:
     """Un bonifico della coda che e' un acconto: va nel registro unico degli

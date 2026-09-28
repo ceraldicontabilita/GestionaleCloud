@@ -237,3 +237,35 @@ def test_documento_conciliazione_con_impronta(hr):
         _run(pos.salva_documento(hr, c["id"], "verbale.exe", b"x"))
     vista = _run(router_pos.elenco_conciliazioni("dip-1"))["righe"][0]
     assert "file_data" not in vista and vista["documento"]["nome"] == "verbale.pdf"
+
+
+def test_pagamento_in_contanti_si_corregge_con_storico(hr):
+    c = _run(router_pos.crea_conciliazione(_conc()))
+    c = _run(router_pos.aggiungi_pagamento(c["id"], {"data": "2026-05-21", "importo": "100", "parte": "bonus",
+                                                     "modalita": "contanti"}))
+    pag = c["pagamenti"][0]
+    c = _run(router_pos.modifica_pagamento(c["id"], pag["id"], {"data": "2026-06-30"}))
+    nuovo = c["pagamenti"][0]
+    assert nuovo["id"] == pag["id"] and nuovo["data"] == "2026-06-30"
+    assert nuovo["importo"] == "100.00" and nuovo["parte"] == "bonus" and nuovo["modalita"] == "contanti"
+    assert nuovo["origine"] == "manuale"
+    assert nuovo["storico"][0]["prima"]["data"] == "2026-05-21"
+    # la posizione legge la data nuova
+    righe = _run(pos.posizione_dipendente(hr, "dip-1", 2026))["bonus"]["righe"]
+    assert [r["data"] for r in righe if r["avere"]] == ["2026-06-30"]
+    with pytest.raises(HTTPException) as exc:
+        _run(router_pos.modifica_pagamento(c["id"], pag["id"], {"data": "30/06"}))
+    assert exc.value.status_code == 400 and exc.value.detail["code"] == "DATA_NON_VALIDA"
+
+
+def test_pagamento_provato_dal_bonifico_non_si_corregge(hr):
+    c = _run(router_pos.crea_conciliazione(_conc()))
+    _run(hr.conciliazioni.update_one({"id": c["id"]}, {"$set": {"pagamenti": [
+        {"id": "p-banca", "data": "2026-05-22", "importo": "700.00", "modalita": "bonifico",
+         "parte": "conciliazione", "origine": "ricevuta_bonifico"}]}}))
+    with pytest.raises(HTTPException) as exc:
+        _run(router_pos.modifica_pagamento(c["id"], "p-banca", {"data": "2026-06-01"}))
+    assert exc.value.status_code == 409 and exc.value.detail["code"] == "PAGAMENTO_DA_BANCA"
+    with pytest.raises(HTTPException) as exc:
+        _run(router_pos.modifica_pagamento(c["id"], "nessuno", {"data": "2026-06-01"}))
+    assert exc.value.status_code == 404
