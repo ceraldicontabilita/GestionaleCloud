@@ -13,6 +13,8 @@ Da qui passano tutti: i due punti di import e il replay del pregresso.
 """
 from typing import Any, Dict, List, Optional
 
+from app.services.stato_pagamento_fattura import e_pagata
+
 __all__ = [
     "CAMPI_RATA_EVENTO",
     "pagamento_rate_per_evento",
@@ -78,7 +80,9 @@ def costruisci_evento_fattura_created(
         "data_documento": invoice.get("invoice_date", ""),
         "data_scadenza": data_scadenza,
         "stato": invoice.get("status", "imported"),
-        "pagato": invoice.get("stato_pagamento") == "pagata",
+        # «E' pagata?» si chiede in un posto solo: lo stato vive in cinque
+        # campi e il solo `stato_pagamento` apriva una partita su una pagata.
+        "pagato": e_pagata(invoice),
         "righe_linee": invoice.get("linee", []),
         # Solo le fatture estere lette dal PDF: senza righe XML e' l'unico
         # testo che dice cosa si e' comprato (un lettore SumUp non e' una

@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "STATI_NON_ATTIVI",
     "ripubblica_fattura_created",
+    "ripubblica_a_lotti",
     "avvia_ripubblicazione",
     "stato_ripubblicazione",
     "azzera_scadenze_inventate",
@@ -70,7 +71,8 @@ _PROIEZIONE = {
     "tipo_documento": 1, "total_amount": 1, "imponibile": 1, "iva": 1,
     "metodo_pagamento": 1, "data_scadenza": 1, "pagamento_rate": 1,
     "pagamento_rate_coerente": 1, "status": 1, "stato_pagamento": 1,
-    "stato_import": 1, "linee": 1,
+    "stato_import": 1, "linee": 1, "evento_created_ripubblicato_at": 1,
+    "entity_status": 1, "deleted": 1,
 }
 
 _job_lock = asyncio.Lock()
@@ -155,6 +157,45 @@ async def ripubblica_fattura_created(db, *, dry_run: bool = True) -> Dict[str, A
         "senza_metodo_pagamento": senza_metodo,
         "motivi_errore": motivi_errore,
     }
+
+
+#: Marcatore del replay automatico: una fattura gia' pagata non riceve la
+#: partita (l'handler la salta), e senza il marcatore tornerebbe a ogni giro.
+MARCATORE_REPLAY = "evento_created_ripubblicato_at"
+LIMITE_REPLAY_PER_GIRO = 40
+
+
+async def ripubblica_a_lotti(db, limite: int = LIMITE_REPLAY_PER_GIRO) -> Dict[str, Any]:
+    """Il replay di `fattura.created` fatto dal job bancario corto, a lotti.
+
+    Stesso evento e stessi handler di `ripubblica_fattura_created`: le
+    fatture gia' ripubblicate portano il marcatore e non rientrano, cosi' il
+    giro finisce anche quando un handler decide di non aprire la partita.
+    """
+    from app.constants.fattura_attiva import fattura_attiva
+    from app.services.event_bus import EventTypes, propagate_event
+
+    candidate = [f for f in await _fatture_senza_partita(db)
+                 if not f.get(MARCATORE_REPLAY) and fattura_attiva(f)]
+    esito: Dict[str, Any] = {"candidate": len(candidate), "ripubblicate": 0, "errori": 0}
+    for riga in candidate[:limite]:
+        fattura = await db[COLL].find_one({"id": riga["id"]}, {"_id": 0})
+        if not fattura:
+            continue
+        evento = costruisci_evento_fattura_created(fattura)
+        evento["data_scadenza"] = None  # nessuna scadenza fornitore (titolare, 19/09/2026)
+        try:
+            await propagate_event(EventTypes.FATTURA_CREATED, evento, db,
+                                  source_module="replay_pregresso_automatico")
+        except Exception as exc:  # noqa: BLE001 - la fattura dopo gira comunque
+            esito["errori"] += 1
+            logger.warning("Replay fattura.created %s fallito: %s: %s",
+                           riga["id"], type(exc).__name__, exc)
+            continue
+        await db[COLL].update_one({"id": riga["id"]}, {"$set": {
+            MARCATORE_REPLAY: datetime.now(timezone.utc).isoformat()}})
+        esito["ripubblicate"] += 1
+    return esito
 
 
 # ── 3. Le scadenze inventate rimaste in archivio ───────────────────────────
