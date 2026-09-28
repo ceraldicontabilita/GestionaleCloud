@@ -42,6 +42,7 @@ const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
 const Scadenze = lazy(() => import("./pages/Scadenze.jsx"));
 const Ritenute = lazy(() => import("./pages/Ritenute.jsx"));
+const DistintaBonifici = lazy(() => import("./pages/DistintaBonifici.jsx"));
 const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
 const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
 const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
@@ -100,6 +101,7 @@ const router = createBrowserRouter([
       { path: "learning-machine/*", element: <LazyPage><LearningMachine /></LazyPage> },
       { path: "scadenze/*", element: <LazyPage><Scadenze /></LazyPage> },
       { path: "ritenute", element: <LazyPage><Ritenute /></LazyPage> },
+      { path: "distinta-bonifici", element: <LazyPage><DistintaBonifici /></LazyPage> },
       { path: "riconciliazione/*", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       { path: "documenti/*", element: <LazyPage><DocumentiHub /></LazyPage> },
       { path: "strumenti/*", element: <LazyPage><StrumentiHub /></LazyPage> },

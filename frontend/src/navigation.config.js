@@ -123,6 +123,7 @@ export const NAV_GRUPPI = [
       { to: '/riconciliazione/coerenza-pos', label: 'Coerenza POS', Icon: Banknote, perche: "Il registratore di cassa, il terminale e la banca devono raccontare lo stesso giorno." },
       { to: '/riconciliazione/assegni', label: 'Assegni', Icon: ScrollText, perche: "Gli assegni emessi, la fattura che pagano e il giorno in cui la banca li ha addebitati." },
       { to: '/riconciliazione/archivio-bonifici', label: 'Bonifici', Icon: ArrowLeftRight, perche: "I bonifici disposti, con la ricevuta e la fattura o lo stipendio che pagano." },
+      { to: '/distinta-bonifici', label: 'Distinta bonifici', Icon: ArrowLeftRight, perche: "Le fatture da pagare in un file per la banca: un bonifico per fornitore, il pagamento lo fai tu." },
       { to: '/riconciliazione/pagopa', label: 'PagoPA', Icon: Receipt, perche: "I pagamenti PagoPA e l'avviso che chiudono." },
       { to: '/riconciliazione/paypal', label: 'PayPal', Icon: CreditCard, perche: "PayPal non è un conto, è un passaggio: ogni acquisto ha il pagamento e la provvista." },
       { to: '/riconciliazione/regole-banca', label: 'Regole banca', Icon: ListChecks, perche: "Le regole imparate per riconoscere da sole le causali della banca." },
