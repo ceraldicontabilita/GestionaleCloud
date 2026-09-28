@@ -666,6 +666,38 @@ export default function GestioneAssegni() {
     }
   };
 
+  // Foto dell'assegno: scatto da tablet/telefono o file, un input nascosto
+  // condiviso e riusato per ogni riga (l'assegno di destinazione è in
+  // fotoTargetAssegno al momento del click).
+  const fotoInputRef = useRef(null);
+  const [fotoTargetAssegno, setFotoTargetAssegno] = useState(null);
+  const [fotoUploadingId, setFotoUploadingId] = useState(null);
+
+  const avviaFotoAssegno = assegno => {
+    setFotoTargetAssegno(assegno);
+    fotoInputRef.current?.click();
+  };
+
+  const uploadFotoAssegno = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const assegno = fotoTargetAssegno;
+    if (!file || !assegno) return;
+    setFotoUploadingId(assegno.id);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      await api.post(`/api/assegni/${assegno.id}/upload-foto`, form);
+      toast.success('Foto dell’assegno salvata.');
+      await loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setFotoUploadingId(null);
+      setFotoTargetAssegno(null);
+    }
+  };
+
   // Auto-associa assegni alle fatture
   const [autoAssociating, setAutoAssociating] = useState(false);
   const [autoAssocResult, setAutoAssocResult] = useState(null);
@@ -2983,6 +3015,25 @@ export default function GestioneAssegni() {
                           🖨️
                         </RowActionButton>
                         <RowActionButton
+                          variant={assegno.foto_url ? 'success' : 'neutral'}
+                          onClick={() => avviaFotoAssegno(assegno)}
+                          disabled={fotoUploadingId === assegno.id}
+                          data-testid={`foto-${assegno.id}`}
+                          title={assegno.foto_url ? 'Sostituisci foto assegno' : 'Scatta/allega foto assegno'}
+                        >
+                          {fotoUploadingId === assegno.id ? '…' : '📷'}
+                        </RowActionButton>
+                        {assegno.foto_url && (
+                          <RowActionButton
+                            variant="info"
+                            onClick={() => window.open(assegno.foto_url, '_blank', 'noopener,noreferrer')}
+                            data-testid={`vedi-foto-${assegno.id}`}
+                            title="Vedi foto assegno"
+                          >
+                            🖼️
+                          </RowActionButton>
+                        )}
+                        <RowActionButton
                           variant="danger"
                           onClick={() => handleDelete(assegno)}
                           data-testid={`delete-${assegno.id}`}
@@ -2996,6 +3047,15 @@ export default function GestioneAssegni() {
                 ),
               },
             ]}
+          />
+          <input
+            ref={fotoInputRef}
+            data-testid="foto-assegno-input"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={uploadFotoAssegno}
+            style={{ display: 'none' }}
           />
         </div>
       )}

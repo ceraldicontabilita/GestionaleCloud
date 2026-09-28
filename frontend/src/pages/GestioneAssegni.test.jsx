@@ -166,6 +166,26 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(screen.getByText('Non calcolata')).toBeInTheDocument();
   });
 
+  it('scatta/allega una foto assegno e la mostra dopo il salvataggio', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+    ]));
+    api.post.mockResolvedValue({ data: { success: true, foto_url: '/api/assegni/foto/a1_xyz' } });
+
+    renderPagina();
+    await screen.findByTestId('assegni-table');
+    expect(screen.queryByTestId('vedi-foto-a1')).not.toBeInTheDocument();
+
+    const file = new File(['contenuto'], 'assegno.jpg', { type: 'image/jpeg' });
+    const input = screen.getByTestId('foto-assegno-input');
+    fireEvent.click(screen.getByTestId('foto-a1'));
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/assegni/a1/upload-foto', expect.any(FormData),
+    ));
+  });
+
   it('espone fornitore numero fattura data fattura e data incasso', async () => {
     api.get.mockImplementation(rispostaPagina([{
       id: 'a2', numero: '0208770986', stato: 'incassato', importo: 562.24,

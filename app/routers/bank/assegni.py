@@ -2,10 +2,12 @@
 Checks (Assegni) router - Gestione Assegni.
 API per generazione, gestione e collegamento assegni.
 """
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
+import asyncio
 import uuid
 import logging
 import re
@@ -1171,6 +1173,28 @@ async def risolvi_ambiguo(
     return {"success": True, **res}
 
 
+@router.get("/foto/{foto_id}")
+async def leggi_foto_assegno(foto_id: str):
+    """Serve la foto dell'assegno da Supabase Storage (bucket ``menu-images``,
+    stesso archivio delle foto ricette). Cache lunga: il percorso e' immutabile,
+    un nuovo upload genera un ``foto_id`` diverso."""
+    db = Database.get_db()
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"foto_id": foto_id}, {"_id": 0, "foto_storage_path": 1, "foto_content_type": 1},
+    )
+    if not assegno or not assegno.get("foto_storage_path"):
+        raise HTTPException(status_code=404, detail="Foto non trovata")
+    from app.services import foto_assegni
+    try:
+        contenuto = await asyncio.to_thread(foto_assegni.leggi, str(assegno["foto_storage_path"]))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Foto non trovata") from exc
+    return Response(
+        content=contenuto, media_type=assegno.get("foto_content_type") or "image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 # === ROUTE DINAMICHE (con parametri) - DEVONO STARE DOPO LE STATICHE ===
 
 @router.get("/{assegno_id}")
@@ -1280,6 +1304,61 @@ async def update_assegno(
         "message": "Assegno aggiornato con successo",
         "intento_fattura": intento,
     }
+
+
+@router.post("/{assegno_id}/upload-foto")
+async def upload_foto_assegno(assegno_id: str, file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Foto dell'assegno (scatto da tablet/telefono o file): una sola per
+    assegno, visibile anche dalle fatture che paga. Stesso archivio delle
+    foto ricette (Supabase Storage), un prefisso diverso."""
+    db = Database.get_db()
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0},
+    )
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    mime = file.content_type or ""
+    if not mime.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File non è un'immagine")
+    contenuto = await file.read()
+    if len(contenuto) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Immagine troppo grande (max 15MB)")
+
+    from app.services import foto_assegni
+    caricata = await asyncio.to_thread(
+        foto_assegni.carica, assegno_id=assegno["id"], contenuto=contenuto, mime=mime,
+        filename=file.filename,
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    versione = int(datetime.now(timezone.utc).timestamp())
+    foto_id = caricata["id"]
+    foto_url = f"/api/assegni/foto/{foto_id}?v={versione}"
+    campi_foto = {
+        "foto_url": foto_url, "foto_id": foto_id,
+        "foto_storage_bucket": caricata["bucket"], "foto_storage_path": caricata["path"],
+        "foto_filename": file.filename, "foto_content_type": mime,
+        "foto_sha256": caricata["sha256"], "updated_at": now,
+    }
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"id": assegno["id"]},
+        {"$set": campi_foto, "$push": {"storico": _voce_storico(assegno, campi_foto, "foto", now)}},
+    )
+    # Le fatture che l'assegno sta pagando vedono la stessa foto, senza una
+    # seconda copia: stesso oggetto Storage, stesso URL.
+    fatture_collegate = [
+        q.get("fattura_id") for q in (assegno.get("fatture_collegate") or [])
+        if isinstance(q, dict) and q.get("fattura_id")
+    ]
+    if fatture_collegate:
+        await db["invoices"].update_many(
+            {"id": {"$in": fatture_collegate}},
+            {"$set": {
+                "foto_assegno_url": foto_url, "foto_assegno_id": foto_id,
+                "foto_assegno_numero": assegno.get("numero"),
+            }},
+        )
+    return {"success": True, "foto_url": foto_url, "foto_sha256": caricata["sha256"],
+            "fatture_aggiornate": len(fatture_collegate)}
 
 
 class FatturaQuotaIn(BaseModel):
