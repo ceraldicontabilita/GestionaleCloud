@@ -89,7 +89,10 @@ def test_il_collegamento_orfano_si_sostituisce():
         db = ClientArchivioMemoria()["dap-orfano"]
         await dap.registra(db, _parsed("FEP 71_25", 12200.0))
         await db.estratto_conto_movimenti.insert_one(
-            _bonifico("m1", "2026-03-23", 12200.0, fattura_id="sparita"))
+            _bonifico("m1", "2026-03-23", 12200.0, fattura_id="sparita", riconciliato=True))
+        # Riconciliato con qualcosa che esiste (niente fattura_id): non si tocca.
+        await db.estratto_conto_movimenti.insert_one(
+            _bonifico("m9", "2026-03-24", 12200.0, riconciliato=True, assegno_id="a1"))
         esito = await dap.abbina_pagamenti(db, anno_attivo=2026)
         assert len(esito["collegati"]) == 1
         m1 = await db.estratto_conto_movimenti.find_one({"id": "m1"}, {"_id": 0})

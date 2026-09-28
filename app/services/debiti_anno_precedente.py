@@ -117,7 +117,7 @@ async def abbina_pagamenti(db, *, anno_attivo: Optional[int] = None) -> Dict[str
     if not debiti:
         return esito
     movimenti = await db["estratto_conto_movimenti"].find(
-        {"data": {"$regex": f"^{anno_attivo}"}, "riconciliato": {"$ne": True},
+        {"data": {"$regex": f"^{anno_attivo}"},
          "debito_anno_precedente_id": {"$exists": False}},
         {"_id": 0},
     ).to_list(20000)
@@ -128,6 +128,10 @@ async def abbina_pagamenti(db, *, anno_attivo: Optional[int] = None) -> Dict[str
         # Un collegamento a una fattura che non c'e' piu' (le fatture del
         # 2025 tolte il 20/09) non e' un collegamento.
         if m.get("fattura_ids") or (m.get("fattura_id") and await _fattura_esiste(db, m.get("fattura_id"))):
+            continue
+        # Riconciliato vale solo se lo e' con qualcosa che esiste ancora: il
+        # 12.200 di A 2000 era «riconciliato» con una fattura tolta il 20/09.
+        if m.get("riconciliato") and not m.get("fattura_id"):
             continue
         candidati.append(m)
 
