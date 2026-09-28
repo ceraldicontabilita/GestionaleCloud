@@ -548,7 +548,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   alimenta Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`, che fallisce
   **chiuso**: uno stato assente, vuoto o sconosciuto non passa. Su un dato che diventa un bonifico
   l'assenza di prova non vale come prova.
-  Zucchetti/CSC: cella **sotto** l'etichetta (`_netto_dalla_cella`); competenze − trattenute è solo un controllo.
+  Zucchetti/CSC: cella **sotto** l'etichetta (`_netto_dalla_cella`); competenze − trattenute è solo un controllo. I netti HR si rileggono dal PDF della riga (`cedolini_hr_riverifica.py`, un lotto ogni 20 min): cambia solo un netto verificato, il vecchio resta in `storico_netto`.
 - Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il femminile non esiste su nessun
   documento e un filtro che lo cerca passa sempre.
 - **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi` (identità completa, acconti,
