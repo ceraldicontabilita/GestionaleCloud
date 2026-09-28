@@ -862,6 +862,19 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] assegni: %s: %s", type(e).__name__, e)
         try:
+            # Fatture dell'anno prima pagate quest'anno: solo il debito.
+            from app.services.debiti_anno_precedente import abbina_pagamenti, recupera_da_drive
+            r = await recupera_da_drive(db)
+            if r.get("letti"):
+                logger.info("[SCHEDULER-BANCA] debiti anno precedente letti=%s registrati=%s restano=%s",
+                            r.get("letti"), r.get("registrati"), r.get("restano"))
+            r = await abbina_pagamenti(db)
+            if r.get("collegati") or r.get("ambigui"):
+                logger.info("[SCHEDULER-BANCA] debiti anno precedente pagati=%s ambigui=%s",
+                            len(r.get("collegati") or []), r.get("ambigui"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] debiti anno precedente: %s: %s", type(e).__name__, e)
+        try:
             from app.services.doppioni_estratto_conto import eredita_categorie_da_copie
             r = await eredita_categorie_da_copie(db)
             logger.info("[SCHEDULER-BANCA] categorie senza=%s ereditate=%s contraddette=%s",

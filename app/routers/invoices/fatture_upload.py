@@ -2038,7 +2038,19 @@ async def process_xml_bytes(
                     "[Fatture] %s è del %s, l'anno attivo è %s: non entra in "
                     "archivio, l'originale resta su Drive",
                     filename, anno_fattura, anno_attivo)
+                # Titolare, 28/09/2026: quella dell'anno prima resta un debito
+                # da chiudere col bonifico dell'anno attivo (niente costo né IVA).
+                debito = None
+                from app.services import debiti_anno_precedente as dap
+                if dap.e_anno_precedente(p, anno_attivo):
+                    try:
+                        debito = await dap.registra(
+                            db, p, drive_file_id=(source_metadata or {}).get("drive_file_id"))
+                    except Exception as exc:  # noqa: BLE001 - non blocca l'import
+                        logger.warning("[Fatture] %s: debito anno precedente non registrato (%s: %s)",
+                                       filename, type(exc).__name__, exc)
                 return {
+                    "debito_anno_precedente": debito,
                     "status": "skipped_altro_anno",
                     "filename": filename,
                     "invoice_number": p.get("invoice_number"),
