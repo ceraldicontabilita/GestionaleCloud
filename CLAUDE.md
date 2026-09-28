@@ -315,7 +315,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   prova SumUp → Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
   segno. Non riconosciuto → cartella Errori col motivo scritto, **mai
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
-  conto. L'arretrato pre-2026 lo teneva fermo il canale estratti, tolto: la cartella unica non filtra per anno.
+  conto. Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
+  nome o contenuto sotto `DRIVE_ESTRATTI_ANNO_MINIMO` (difetto 2026, 0 = nessun filtro) va in `ARRETRATO`, non si registra.
 - Acquisizione serale RT: Render non raggiunge la rete del locale, quindi
   `scripts/sync_rt_to_drive.py` gira su un PC della LAN (ignora gli XML
   `ESITO`, SHA-256, copia atomica dei soli file nuovi). `RT_LOCAL_BASE_URL` e

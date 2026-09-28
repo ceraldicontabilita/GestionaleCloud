@@ -3294,7 +3294,7 @@ async def stato_cartella_unica(
     db = Database.get_db()
     stato = await db["sistema_stato"].find_one({"chiave": cu.CHIAVE_STATO}, {"_id": 0})
     conteggi = {}
-    for cartella in (cu.ARCHIVIO, cu.ERRORI, cu.DOPPIONI, "CESTINO", "RIMOSSO"):
+    for cartella in (cu.ARCHIVIO, cu.ERRORI, cu.DOPPIONI, cu.ARRETRATO, "CESTINO", "RIMOSSO"):
         conteggi[cartella] = await db[cu.REGISTRO].count_documents({"cartella": cartella})
     return {"attiva": cu.attivo(),
             "giro_in_corso": cu._lock.locked() or cu.svuotamento_in_corso(),
