@@ -52,6 +52,93 @@ async def lista_da_verificare() -> Dict[str, Any]:
     return {"fatture": fatture, "totale": len(fatture)}
 
 
+_PROIEZIONE_VERIFICATA = {
+    "_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1, "supplier_name": 1,
+    "supplier_vat": 1, "total_amount": 1, "imponibile": 1, "iva": 1, "divisa": 1,
+    "documento_inbox_id": 1, "filename": 1, "verifica_ai": 1, "verifica_ai_at": 1,
+    "verifica_ai_campi_corretti": 1, "metodo_pagamento": 1, "metodo_pagamento_dichiarato": 1,
+    "stato": 1, "stato_pagamento": 1, "payment_status": 1, "pagato": 1, "paid": 1,
+    "stato_finanziario": 1, "data_pagamento": 1, "paypal_transaction_id": 1,
+    "prima_nota_banca_id": 1, "prima_nota_cassa_id": 1, "in_attesa_riscontro_banca": 1,
+    "riconciliato": 1,
+}
+
+
+def _stato_pagamento_verificata(fattura: Dict[str, Any]) -> Dict[str, Any]:
+    """Cosa si sa del pagamento, in parole: nessuna prova = «da collegare»."""
+    from app.services.stato_pagamento_fattura import e_pagata
+
+    if fattura.get("paypal_transaction_id"):
+        pagata = e_pagata(fattura)
+        return {"codice": "paypal", "pagata": pagata,
+                "testo": "PayPal · addebito in banca trovato" if pagata
+                else "PayPal collegato · addebito in banca da trovare"}
+    if fattura.get("prima_nota_cassa_id"):
+        return {"codice": "cassa", "pagata": True, "testo": "Pagata in cassa"}
+    if fattura.get("prima_nota_banca_id"):
+        if fattura.get("in_attesa_riscontro_banca"):
+            return {"codice": "banca_dichiarata", "pagata": True,
+                    "testo": "Banca dichiarata · movimento da trovare"}
+        return {"codice": "banca", "pagata": True, "testo": "Banca · movimento collegato"}
+    if e_pagata(fattura):
+        return {"codice": "pagata", "pagata": True, "testo": "Pagata"}
+    return {"codice": "da_collegare", "pagata": False, "testo": "Pagamento da collegare"}
+
+
+@router.get("/verificate")
+@handle_errors
+async def lista_verificate(limit: int = 50) -> Dict[str, Any]:
+    """Fatture estere gia' confermate dal titolare, le piu' recenti prima.
+
+    Dopo «Conferma / Correggi» la fattura esce dalla coda: qui si vede che la
+    conferma c'e' stata e come e' stata pagata. Se nessun pagamento e'
+    collegato, la riga porta i pagamenti PayPal candidati (importo al
+    centesimo) da scegliere; il bonifico si cerca nell'estratto conto.
+    """
+    from app.services.paypal_reconciliation_links import candidati_paypal_per_fattura
+
+    db = Database.get_db()
+    limite = max(1, min(int(limit or 50), 200))
+    fatture = await db[Collections.INVOICES].find(
+        {"verifica_ai": {"$in": ["confermata", "corretta"]}}, _PROIEZIONE_VERIFICATA,
+    ).sort("verifica_ai_at", -1).to_list(limite)
+    for fattura in fatture:
+        fattura["pagamento"] = _stato_pagamento_verificata(fattura)
+        fattura["candidati_paypal"] = []
+        if fattura["pagamento"]["codice"] == "da_collegare":
+            try:
+                fattura["candidati_paypal"] = await candidati_paypal_per_fattura(db, fattura)
+            except Exception as exc:  # una riga rotta non svuota la pagina
+                logger.warning("Candidati PayPal della fattura estera %s non letti: %s: %s",
+                               fattura.get("id"), type(exc).__name__, exc)
+    return {"fatture": fatture, "totale": len(fatture)}
+
+
+@router.post("/{fattura_id}/collega-paypal")
+@handle_errors
+async def collega_paypal(fattura_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Il titolare sceglie il pagamento PayPal fra i candidati della fattura."""
+    from app.services.paypal_reconciliation_links import collega_paypal_scelto_dal_titolare
+
+    transaction_id = str(data.get("transaction_id") or "").strip()
+    if not transaction_id:
+        raise HTTPException(status_code=400, detail="Scegli il pagamento PayPal")
+    db = Database.get_db()
+    fattura = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    esito = await collega_paypal_scelto_dal_titolare(db, fattura, transaction_id)
+    if not esito.get("collegata"):
+        raise HTTPException(status_code=409, detail={
+            "code": "PAYPAL_NON_COLLEGABILE",
+            "message": "Pagamento PayPal non collegabile a questa fattura",
+            "details": {"motivo": esito.get("motivo")},
+        })
+    fattura = await db[Collections.INVOICES].find_one({"id": fattura_id}, _PROIEZIONE_VERIFICATA) or {}
+    return {"success": True, "pagamento": _stato_pagamento_verificata(fattura),
+            "finalizzazione": esito.get("finalizzazione")}
+
+
 @router.get("/affidabilita")
 @handle_errors
 async def affidabilita_fornitori() -> Dict[str, Any]:
@@ -170,6 +257,18 @@ async def verifica_fattura(fattura_id: str, data: Dict[str, Any] = Body(...)) ->
         logger.exception("Ricalcolo contabile della fattura estera %s fallito", fattura_id)
         contabilita = {"stato": "errore", "errore": f"{type(exc).__name__}: {exc}"}
 
+    # Dati confermati: il pagamento PayPal si cerca adesso, non al prossimo giro.
+    paypal: Dict[str, Any] = {}
+    try:
+        from app.services.paypal_reconciliation_links import collega_fattura_paypal_appena_importata
+        fattura_verificata = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0})
+        if fattura_verificata and not fattura_verificata.get("paypal_transaction_id"):
+            paypal = await collega_fattura_paypal_appena_importata(db, fattura_verificata)
+    except Exception as exc:
+        logger.warning("Ricerca PayPal della fattura estera %s non riuscita: %s: %s",
+                       fattura_id, type(exc).__name__, exc)
+        paypal = {"collegata": False, "motivo": f"errore: {type(exc).__name__}"}
+
     try:
         from app.services.alert_engine import risolvi_alert
         await risolvi_alert("FAT_ESTERA_DA_VERIFICARE", fattura_id, db)
@@ -177,7 +276,8 @@ async def verifica_fattura(fattura_id: str, data: Dict[str, Any] = Body(...)) ->
         logger.exception(f"Errore risoluzione alert verifica per {fattura_id}")
 
     return {"success": True, "esito": esito, "campi_corretti": campi_corretti,
-            "contabilita": contabilita}
+            "contabilita": contabilita, "paypal": {"collegata": bool(paypal.get("collegata")),
+                                                   "motivo": paypal.get("motivo")}}
 
 
 async def ricalcola_contabilita_fattura_estera(db, fattura_id: str, esito: str) -> Dict[str, Any]:

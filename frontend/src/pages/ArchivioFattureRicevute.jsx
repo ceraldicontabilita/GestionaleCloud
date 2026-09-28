@@ -15,8 +15,7 @@ import {
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import ModalFattura from '../components/ModalFattura';
-import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
-import AssociaBonificoFattura from '../components/AssociaBonificoFattura';
+import ScegliPagamentoFattura from '../components/ScegliPagamentoFattura';
 import {
   Button,
   Badge,
@@ -798,18 +797,12 @@ export default function ArchivioFatture() {
                   >
                     <Eye size={17} aria-hidden="true" /> Vedi
                   </Button>
-                  {!isPaid && !isRiconciliata && assegnoAssociabile && !allocationConflict && (
-                    <AssociaBonificoFattura
+                  {!isPaid && !isRiconciliata && assegnoAssociabile && !allocationConflict
+                    && !f.prima_nota_cassa_id && !f.prima_nota_banca_id && (
+                    <ScegliPagamentoFattura
                       fattura={f}
                       onSuccess={dopoAssociazioneAssegno}
-                      buttonStyle={{ flex: '1 1 auto', whiteSpace: 'nowrap' }}
-                    />
-                  )}
-                  {!isPaid && !isRiconciliata && assegnoAssociabile && !allocationConflict && (
-                    <AssociaAssegnoFattura
-                      fattura={f}
-                      onSuccess={dopoAssociazioneAssegno}
-                      buttonStyle={{ flex: '1 1 auto', whiteSpace: 'nowrap' }}
+                      style={{ flex: '1 1 auto', maxWidth: 'none', minHeight: 44 }}
                     />
                   )}
                 </div>
@@ -924,7 +917,7 @@ export default function ArchivioFatture() {
         ) : (
           // VISTA DESKTOP: tabella classica
           <TableWrap>
-            <Table style={{ minWidth: 1220 }}>
+            <Table>
               <thead>
                 <tr>
                   <Th align="center" style={{ width: 36 }}>
@@ -944,14 +937,14 @@ export default function ArchivioFatture() {
                   <Th align="right">Imponibile</Th>
                   <Th align="right">IVA</Th>
                   <Th align="right">Totale</Th>
-                  <Th align="left" style={{ minWidth: 190 }}>
+                  <Th align="left">
                     Pagamento / prova
                   </Th>
                   <Th align="center" style={{ width: 86 }}>
                     Documento
                   </Th>
-                  <Th align="center" style={{ width: 112 }}>
-                    Azione
+                  <Th align="center" style={{ width: 150 }}>
+                    Pagata con
                   </Th>
                 </tr>
               </thead>
@@ -1047,20 +1040,7 @@ export default function ArchivioFatture() {
                             <ArrowLeftRight size={15} /> {f.prima_nota_cassa_id ? 'In Banca' : 'In Cassa'}
                           </Button>
                         ) : !isPaid && !isRiconciliata && assegnoAssociabile && !allocationConflict ? (
-                          <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                            <AssociaBonificoFattura
-                              fattura={f}
-                              onSuccess={dopoAssociazioneAssegno}
-                              buttonLabel="Bonifico"
-                              buttonStyle={{ minHeight: 36, minWidth: 82, whiteSpace: 'nowrap', padding: '4px 10px' }}
-                            />
-                            <AssociaAssegnoFattura
-                              fattura={f}
-                              onSuccess={dopoAssociazioneAssegno}
-                              buttonLabel="Assegno"
-                              buttonStyle={{ minHeight: 36, minWidth: 82, whiteSpace: 'nowrap', padding: '4px 10px' }}
-                            />
-                          </div>
+                          <ScegliPagamentoFattura fattura={f} onSuccess={dopoAssociazioneAssegno} />
                         ) : (
                           <span aria-label="Nessuna azione disponibile" style={{ color: COLORS.textSubtle }}>—</span>
                         )}

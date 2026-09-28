@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import api from '../api';
 import { formatDateIT, formatEuroD } from '../lib/utils';
@@ -37,10 +37,18 @@ export default function AssociaAssegnoFattura({
   onSuccess,
   buttonLabel = 'Abbina assegno',
   buttonStyle = {},
+  apriSubito = false,
+  onChiudi,
 }) {
   const confirm = useConfirm();
   const dati = datiFattura(fattura);
-  const [aperto, setAperto] = useState(false);
+  const [aperto, setApertoInterno] = useState(false);
+  // Aperto dalla tendina «Pagamento» dell'archivio: niente bottone proprio,
+  // il riquadro si apre subito e chiudendolo si avvisa chi l'ha aperto.
+  const setAperto = valore => {
+    setApertoInterno(valore);
+    if (!valore) onChiudi?.();
+  };
   const [frammento, setFrammento] = useState('');
   const [proposte, setProposte] = useState([]);
   const [message, setMessage] = useState('');
@@ -75,6 +83,13 @@ export default function AssociaAssegnoFattura({
     cerca('');
   };
 
+  useEffect(() => {
+    if (!apriSubito) return;
+    setApertoInterno(true);
+    cerca('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apriSubito]);
+
   const collega = async candidato => {
     const approvato = await confirm({
       title: 'Collega assegno alla fattura',
@@ -104,6 +119,7 @@ export default function AssociaAssegnoFattura({
 
   return (
     <>
+      {!apriSubito && (
       <button
         type="button"
         onClick={commuta}
@@ -129,6 +145,7 @@ export default function AssociaAssegnoFattura({
       >
         {loading && !aperto ? 'Ricerca…' : buttonLabel}
       </button>
+      )}
 
       {aperto && (
         <div
