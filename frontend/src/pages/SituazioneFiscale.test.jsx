@@ -1,9 +1,9 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
-import SituazioneFiscale, { resolveDeclarationVersions } from './SituazioneFiscale';
+import SituazioneFiscale, { endpointFor, resolveDeclarationVersions } from './SituazioneFiscale';
 
 vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 describe('Situazione fiscale dal registro F24', () => {
@@ -15,7 +15,7 @@ describe('Situazione fiscale dal registro F24', () => {
     render(<MemoryRouter initialEntries={['/situazione-fiscale']}><SituazioneFiscale /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Da pagare' })).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/api/fiscal/obligations?status=TO_PAY&limit=5000');
+    expect(api.get).toHaveBeenCalledWith('/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=0');
     expect(screen.getByRole('link', { name: 'Pagati con quietanza' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tutti i tributi F24' })).toBeInTheDocument();
   });
@@ -92,8 +92,16 @@ describe('Situazione fiscale dal registro F24', () => {
       if (path === '/api/fiscal/summary') return Promise.resolve({ data: {
         counts: { documentary_payment_documents: 320 },
       } });
-      if (path.includes('/api/fiscal/obligations')) return Promise.resolve({ data: {
-        items: [{
+      if (path.includes('/api/fiscal/obligations') && path.includes('cerca=inesistente')) {
+        return Promise.resolve({ data: {
+          items: [], total: 0, total_groups: 1, total_rows: 2,
+          totali: { debit_amount: 0, credit_amount: 0, net_amount: 0 },
+          facets: { anni: ['2024'], stati: ['QUIETANZA_PRESENTE'] },
+        } });
+      }
+      if (path.includes('/api/fiscal/obligations')) {
+        // Il server rende il documento intero, con le sue righe tributo.
+        const righe = [{
           id: 'drive-paid-1', document_id: 'DOC-Q', source_kind: 'F24_REGISTRO_ROW',
           tax_code: '1001', description: 'Ritenute su retribuzioni', reference_period: '10/2024',
           debit_amount: 1455.21, credit_amount: 0, payment_date: '2024-11-18',
@@ -107,9 +115,16 @@ describe('Situazione fiscale dal registro F24', () => {
           filename: 'quietanza.pdf', protocol: '24111809324228190',
           payment_status: 'DOCUMENTATO_DA_QUIETANZA',
           documentary_payment_status: 'QUIETANZA_PRESENTE', bank_status: 'DA_VERIFICARE',
-        }],
-        sources: { registro_f24: 2, canonical: 'registro_f24' },
-      } });
+        }];
+        return Promise.resolve({ data: {
+          items: [{ ...righe[0], id: 'f24-group-DOC-Q', is_f24_group: true, rows: righe,
+            debit_amount: 1500, credit_amount: 0, net_amount: 1500 }],
+          total: 1, total_groups: 1, total_rows: 2,
+          totali: { debit_amount: 1500, credit_amount: 0, net_amount: 1500 },
+          facets: { anni: ['2024'], stati: ['QUIETANZA_PRESENTE'] },
+          sources: { registro_f24: 2, canonical: 'registro_f24' },
+        } });
+      }
       return Promise.resolve({ data: { items: [] } });
     });
 
@@ -124,10 +139,15 @@ describe('Situazione fiscale dal registro F24', () => {
     expect(screen.getByText('Quietanza documentale presente · riscontro bancario da verificare')).toBeInTheDocument();
     // la quietanza non ha un PDF nel registro: nessun bottone che fallirebbe
     expect(screen.queryByRole('button', { name: 'Apri PDF' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('fiscal-conteggio')).toHaveTextContent('1 documenti su 1 · 2 righe tributo');
     fireEvent.change(screen.getByLabelText('Cerca nella sezione'), { target: { value: 'inesistente' } });
-    expect(screen.getByText('Nessun risultato con questi filtri.')).toBeInTheDocument();
+    // La ricerca la fa il server: il testo parte dopo una breve pausa.
+    expect(await screen.findByText('Nessun risultato con questi filtri.')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith(
+      '/api/fiscal/obligations?status=PAID_ON_TIME&raggruppa=true&limit=200&offset=0&cerca=inesistente',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Azzera filtri' }));
-    expect(screen.getByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
+    expect(await screen.findByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
   });
 
   it('non dipende dal vecchio servizio di revisione', async () => {
@@ -303,5 +323,58 @@ describe('selezione probatoria della versione dichiarativa', () => {
 
     expect(result.selectedIds.size).toBe(0);
     expect(result.unresolvedGroups).toBe(1);
+  });
+});
+
+describe('Situazione fiscale a pagine di 200 documenti', () => {
+  const documento = n => ({
+    id: `f24-group-DOC-${n}`, document_id: `DOC-${n}`, source_kind: 'F24_REGISTRO_ROW',
+    is_f24_group: true, tax_code: '1001', description: `Tributo ${n}`, payment_date: '2026-01-16',
+    filename: `f24-${n}.pdf`, debit_amount: 10, credit_amount: 0, net_amount: 10,
+    documentary_payment_status: 'DA_VERIFICARE',
+    rows: [{ id: `DOC-${n}:1`, tax_code: '1001', description: `Tributo ${n}`, debit_amount: 10, credit_amount: 0 }],
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation(path => {
+      if (path === '/api/fiscal/summary') return Promise.resolve({ data: { counts: {} } });
+      if (path.startsWith('/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=200')) {
+        return Promise.resolve({ data: { items: [documento(200)], total: 201 } });
+      }
+      if (path.startsWith('/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=0')) {
+        return Promise.resolve({ data: {
+          items: Array.from({ length: 200 }, (_, i) => documento(i)),
+          total: 201, total_groups: 201, total_rows: 201,
+          totali: { debit_amount: 2010, credit_amount: 0, net_amount: 2010 },
+          facets: { anni: ['2026'], stati: ['DA_VERIFICARE'] },
+        } });
+      }
+      return Promise.resolve({ data: { items: [] } });
+    });
+  });
+
+  it('endpoint dei documenti F24: raggruppati, a pagine e filtrati sul server', () => {
+    expect(endpointFor('f24', { year: '2025', creditsOnly: true }, {}, { cerca: ' 1001 ', offset: 200 }))
+      .toBe('/api/fiscal/f24-rows?year=2025&credits_only=true&raggruppa=true&limit=200&offset=200&cerca=1001');
+    expect(endpointFor('tutti-tributi', {}, {}, { anno: '2024', stato: 'QUIETANZA_PRESENTE' }))
+      .toBe('/api/fiscal/obligations?raggruppa=true&limit=200&offset=0&anno_documento=2024&stato_documento=QUIETANZA_PRESENTE');
+  });
+
+  it('«Mostra altre» accoda i documenti successivi, i totali restano del server', async () => {
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi']}><SituazioneFiscale /></MemoryRouter>);
+
+    const bottone = await screen.findByTestId('fiscal-mostra-altre');
+    expect(bottone).toHaveTextContent('Mostra altre 1 · 1 rimanenti');
+    expect(screen.getByTestId('fiscal-conteggio')).toHaveTextContent('201 documenti su 201 · 201 righe tributo');
+    expect(screen.getByTestId('fiscal-conteggio')).toHaveTextContent('debiti');
+    expect(screen.queryByText('Tributo 200')).not.toBeInTheDocument();
+
+    fireEvent.click(bottone);
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      '/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=200',
+    ));
+    expect((await screen.findAllByText(/Tributo 200/)).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.queryByTestId('fiscal-mostra-altre')).not.toBeInTheDocument());
   });
 });

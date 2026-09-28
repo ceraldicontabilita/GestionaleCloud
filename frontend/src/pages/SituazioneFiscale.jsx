@@ -19,7 +19,24 @@ const TABS = [
   ['ader', 'Snapshot AdeR'],
 ];
 
-const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
+// Documenti F24 interi (righe tributo raggruppate per modello o quietanza):
+// raggruppamento, filtri, conteggi e totali li fa il server
+// (registro_fiscale_f24.pagina_documenti_f24), che rende 200 documenti alla
+// volta. Le altre schede restano piccole e si filtrano qui.
+const SERVER_TABS = new Set(['tributi', 'tributi-pagati', 'tutti-tributi', 'f24']);
+const RIGHE_PER_PAGINA = 200;
+
+export const parametriElenco = ({ cerca = '', anno = '', stato = '', offset = 0 } = {}) => {
+  const params = new URLSearchParams({
+    raggruppa: 'true', limit: String(RIGHE_PER_PAGINA), offset: String(offset),
+  });
+  if (String(cerca).trim()) params.set('cerca', String(cerca).trim());
+  if (anno) params.set('anno_documento', anno);
+  if (stato) params.set('stato_documento', stato);
+  return params.toString();
+};
+
+export const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}, elenco = {}) => {
   if (tab === 'dichiarazioni') {
     const params = new URLSearchParams();
     if (f24Filters.year) params.set('year', f24Filters.year);
@@ -31,8 +48,8 @@ const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
     if (f24Filters.year) params.set('year', f24Filters.year);
     if (f24Filters.taxCode) params.set('tax_code', f24Filters.taxCode);
     if (f24Filters.creditsOnly) params.set('credits_only', 'true');
-    params.set('limit', '5000');
-    return `/api/fiscal/f24-rows?${params.toString()}`;
+    const base = params.toString();
+    return `/api/fiscal/f24-rows?${base ? `${base}&` : ''}${parametriElenco(elenco)}`;
   }
   if (tab === 'codici-tributo') {
     const params = new URLSearchParams();
@@ -43,9 +60,9 @@ const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
     return `/api/documenti/tax-codes?${params.toString()}`;
   }
   return ({
-    tributi: '/api/fiscal/obligations?status=TO_PAY&limit=5000',
-    'tributi-pagati': '/api/fiscal/obligations?status=PAID_ON_TIME&limit=5000',
-    'tutti-tributi': '/api/fiscal/obligations?limit=5000',
+    tributi: `/api/fiscal/obligations?status=TO_PAY&${parametriElenco(elenco)}`,
+    'tributi-pagati': `/api/fiscal/obligations?status=PAID_ON_TIME&${parametriElenco(elenco)}`,
+    'tutti-tributi': `/api/fiscal/obligations?${parametriElenco(elenco)}`,
     'confronto-fonti': '/api/fiscal/source-certainty',
     'crosswalk-riscossione': '/api/fiscal/crosswalk',
     riscossione: '/api/fiscal/collections',
@@ -58,30 +75,7 @@ const euro = value => value == null ? 'Non disponibile' : new Intl.NumberFormat(
 const searchableText = item => Object.values(item || {}).filter(value => ['string', 'number'].includes(typeof value)).join(' ').toLocaleLowerCase('it');
 const itemYear = item => String(item.payment_year || item.filing_year || item.tax_year || item.year || item.notification_date || item.payment_date || '').slice(0, 4);
 const itemStatus = item => item.documentary_payment_status || item.evidence_state || item.calculated_business_status || item.business_status || item.payment_status || item.status || '';
-const PAGE_SIZES = [25, 50, 100];
 const F24_ROW = 'F24_REGISTRO_ROW';
-const F24_GROUPED_TABS = new Set(['tributi', 'tributi-pagati', 'tutti-tributi', 'f24']);
-const groupF24Rows = rows => {
-  const groups = new Map();
-  rows.forEach(row => {
-    const key = row.document_id || row.protocol || row.filename || row.id;
-    if (!groups.has(key)) groups.set(key, {
-      ...row, id: `f24-group-${key}`, is_f24_group: true, rows: [],
-      debit_amount: 0, credit_amount: 0,
-    });
-    const group = groups.get(key);
-    group.rows.push(row);
-    group.debit_amount += Number(row.debit_amount || 0);
-    group.credit_amount += Number(row.credit_amount || 0);
-  });
-  return [...groups.values()].map(group => ({
-    ...group,
-    debit_amount: Math.round(group.debit_amount * 100) / 100,
-    credit_amount: Math.round(group.credit_amount * 100) / 100,
-    net_amount: Math.round((group.debit_amount - group.credit_amount) * 100) / 100,
-    search_blob: group.rows.map(searchableText).join(' '),
-  }));
-};
 
 export const resolveDeclarationVersions = (declarations = [], checks = {}) => {
   const groups = new Map();
@@ -161,18 +155,25 @@ export default function SituazioneFiscale() {
   const [listQuery, setListQuery] = useState('');
   const [listYear, setListYear] = useState('');
   const [listStatus, setListStatus] = useState('');
-  const [pageSize, setPageSize] = useState(25);
-  const [page, setPage] = useState(1);
+  // Testo cercato, applicato dopo una pausa: ogni tasto non e' una richiesta.
+  const [listQueryApplicata, setListQueryApplicata] = useState('');
+  const [mostrati, setMostrati] = useState(RIGHE_PER_PAGINA);
+  const [elencoMeta, setElencoMeta] = useState(null);
+  const [caricaAltri, setCaricaAltri] = useState(false);
+  const elencoServer = SERVER_TABS.has(tab);
+  const chiaveElenco = elencoServer ? `${listQueryApplicata}|${listYear}|${listStatus}` : '';
+  const filtriEndpoint = () => ({
+    year: tab === 'dichiarazioni' ? declarationYear : f24Year,
+    declarationType, taxCode: f24TaxCode, creditsOnly: f24CreditsOnly,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
     const warnings = [];
     try {
       const [summaryResult, dataResult] = await Promise.allSettled([
-        api.get('/api/fiscal/summary'), api.get(endpointFor(tab, {
-          year: tab === 'dichiarazioni' ? declarationYear : f24Year,
-          declarationType, taxCode: f24TaxCode, creditsOnly: f24CreditsOnly,
-        }, taxCodeFilters)),
+        api.get('/api/fiscal/summary'), api.get(endpointFor(tab, filtriEndpoint(), taxCodeFilters,
+          elencoServer ? { cerca: listQueryApplicata, anno: listYear, stato: listStatus } : {})),
       ]);
       if (summaryResult.status === 'fulfilled') {
         setSummary(summaryResult.value.data);
@@ -182,6 +183,8 @@ export default function SituazioneFiscale() {
       if (dataResult.status === 'fulfilled') {
         const payload = dataResult.value.data || {};
         setItems(payload.items || []);
+        setElencoMeta(SERVER_TABS.has(tab) ? payload : null);
+        setMostrati(RIGHE_PER_PAGINA);
         setTaxCodeMeta(payload.catalog || null);
         setTaxCodeOptions(payload.filters || { tax_types: [], contexts: [] });
         setTabSources(payload.sources || null);
@@ -191,6 +194,7 @@ export default function SituazioneFiscale() {
       } else {
         const error = dataResult.reason;
         setItems([]);
+        setElencoMeta(null);
         setTabSources(null);
         setCertaintyMeta(null);
         toast.error(`${TABS.find(([id]) => id === tab)?.[1] || 'Sezione fiscale'} non disponibile`, {
@@ -202,12 +206,32 @@ export default function SituazioneFiscale() {
       setLoadWarnings(['Caricamento fiscale non completato.']);
       toast.error('Situazione fiscale non disponibile', { description: error.message });
     } finally { setLoading(false); }
-  }, [tab, f24Year, f24TaxCode, f24CreditsOnly, declarationYear, declarationType, taxCodeFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, f24Year, f24TaxCode, f24CreditsOnly, declarationYear, declarationType, taxCodeFilters, chiaveElenco]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    setListQuery(''); setListYear(''); setListStatus(''); setPage(1);
+    setListQuery(''); setListQueryApplicata(''); setListYear(''); setListStatus('');
+    setMostrati(RIGHE_PER_PAGINA);
   }, [tab]);
+  useEffect(() => {
+    const timer = setTimeout(() => setListQueryApplicata(listQuery), 300);
+    return () => clearTimeout(timer);
+  }, [listQuery]);
+
+  // «Mostra altre»: i documenti successivi si chiedono al server e si
+  // accodano; conteggi e totali restano quelli dell'intero elenco.
+  const caricaAltriDocumenti = async () => {
+    setCaricaAltri(true);
+    try {
+      const response = await api.get(endpointFor(tab, filtriEndpoint(), taxCodeFilters, {
+        cerca: listQueryApplicata, anno: listYear, stato: listStatus, offset: items.length,
+      }));
+      setItems(current => [...current, ...(response.data?.items || [])]);
+    } catch (error) {
+      toast.error('Altri documenti non caricati', { description: error.response?.data?.detail || error.message });
+    } finally { setCaricaAltri(false); }
+  };
 
   const openDocument = async documentId => {
     try {
@@ -312,23 +336,29 @@ export default function SituazioneFiscale() {
 
   const counts = summary?.counts || {};
   const activeLabel = useMemo(() => TABS.find(([id]) => id === tab)?.[1], [tab]);
-  const displayItems = useMemo(() => {
-    if (!F24_GROUPED_TABS.has(tab)) return items;
-    const registroRows = items.filter(item => item.source_kind === F24_ROW);
-    const otherItems = items.filter(item => item.source_kind !== F24_ROW);
-    return [...groupF24Rows(registroRows), ...otherItems];
-  }, [items, tab]);
-  const listYears = useMemo(() => [...new Set(displayItems.map(itemYear).filter(year => /^20\d{2}$/.test(year)))].sort().reverse(), [displayItems]);
-  const listStatuses = useMemo(() => [...new Set(displayItems.map(itemStatus).filter(Boolean))].sort(), [displayItems]);
+  const listYears = useMemo(() => (elencoServer
+    ? elencoMeta?.facets?.anni || []
+    : [...new Set(items.map(itemYear).filter(year => /^20\d{2}$/.test(year)))].sort().reverse()),
+  [elencoServer, elencoMeta, items]);
+  const listStatuses = useMemo(() => (elencoServer
+    ? elencoMeta?.facets?.stati || []
+    : [...new Set(items.map(itemStatus).filter(Boolean))].sort()),
+  [elencoServer, elencoMeta, items]);
   const filteredItems = useMemo(() => {
+    if (elencoServer) return items;
     const needle = listQuery.trim().toLocaleLowerCase('it');
-    return displayItems.filter(item => (!needle || `${searchableText(item)} ${item.search_blob || ''}`.includes(needle))
+    return items.filter(item => (!needle || searchableText(item).includes(needle))
       && (!listYear || itemYear(item) === listYear)
       && (!listStatus || itemStatus(item) === listStatus));
-  }, [displayItems, listQuery, listYear, listStatus]);
-  const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
-  const visibleItems = filteredItems.slice((Math.min(page, pageCount) - 1) * pageSize, Math.min(page, pageCount) * pageSize);
-  const resetListFilters = () => { setListQuery(''); setListYear(''); setListStatus(''); setPage(1); };
+  }, [elencoServer, items, listQuery, listYear, listStatus]);
+  const totaleFiltrato = elencoServer ? (elencoMeta?.total ?? items.length) : filteredItems.length;
+  const totaleSezione = elencoServer ? (elencoMeta?.total_groups ?? items.length) : items.length;
+  const visibleItems = elencoServer ? items : filteredItems.slice(0, mostrati);
+  const rimanenti = Math.max(0, totaleFiltrato - visibleItems.length);
+  const mostraAltri = () => (elencoServer
+    ? caricaAltriDocumenti()
+    : setMostrati(value => value + RIGHE_PER_PAGINA));
+  const resetListFilters = () => { setListQuery(''); setListYear(''); setListStatus(''); };
   const obligationRegister = useMemo(() => {
     const declarations = certaintyMeta?.declaration_items || [];
     const versionResolution = resolveDeclarationVersions(declarations, declarationChecks);
@@ -401,7 +431,7 @@ export default function SituazioneFiscale() {
         {loadWarnings.map(message => <div key={message}>{message}</div>)}
       </Card>}
       <Card bodyStyle={{ padding: 16 }}>
-        <div className="fiscal-section-heading"><div><h3>{activeLabel}</h3><p>{filteredItems.length} {F24_GROUPED_TABS.has(tab) ? 'documenti' : 'risultati'} su {displayItems.length}{F24_GROUPED_TABS.has(tab) && ` · ${items.length} righe tributo`}</p></div></div>
+        <div className="fiscal-section-heading"><div><h3>{activeLabel}</h3><p data-testid="fiscal-conteggio">{totaleFiltrato} {elencoServer ? 'documenti' : 'risultati'} su {totaleSezione}{elencoServer && ` · ${elencoMeta?.total_rows ?? 0} righe tributo`}{elencoServer && elencoMeta?.totali && ` · debiti ${euro(elencoMeta.totali.debit_amount)} · crediti ${euro(elencoMeta.totali.credit_amount)}`}</p></div></div>
         {tab === 'confronto-fonti' && certaintyMeta && <div className="fiscal-stats" style={{ marginBottom: 16 }}>
           <StatCard label="Concordanti" value={certaintyMeta.certain || 0} accent="success" />
           <StatCard label="Da verificare" value={certaintyMeta.requires_review || 0} accent="warning" />
@@ -556,21 +586,16 @@ export default function SituazioneFiscale() {
         </>}
         <section className="fiscal-list-filters" aria-label={`Filtri ${activeLabel}`}>
           <label className="fiscal-search">Cerca nella sezione
-            <input value={listQuery} onChange={event => { setListQuery(event.target.value); setPage(1); }} placeholder="Codice, descrizione, periodo, protocollo o file…" />
+            <input value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="Codice, descrizione, periodo, protocollo o file…" />
           </label>
           <label>Anno
-            <select value={listYear} onChange={event => { setListYear(event.target.value); setPage(1); }}>
+            <select value={listYear} onChange={event => setListYear(event.target.value)}>
               <option value="">Tutti</option>{listYears.map(year => <option key={year}>{year}</option>)}
             </select>
           </label>
           <label>Stato
-            <select value={listStatus} onChange={event => { setListStatus(event.target.value); setPage(1); }}>
+            <select value={listStatus} onChange={event => setListStatus(event.target.value)}>
               <option value="">Tutti</option>{listStatuses.map(status => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}
-            </select>
-          </label>
-          <label>Righe per pagina
-            <select value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>
-              {PAGE_SIZES.map(size => <option key={size}>{size}</option>)}
             </select>
           </label>
           <Button variant="secondary" onClick={resetListFilters} disabled={!listQuery && !listYear && !listStatus}>Azzera filtri</Button>
@@ -612,12 +637,12 @@ export default function SituazioneFiscale() {
           </section>
         </div>}
         {loading && <p>Caricamento…</p>}
-        {!loading && items.length === 0 && <p>{({
+        {!loading && totaleSezione === 0 && <p>{({
           'crosswalk-riscossione': 'Nessun collegamento di riscossione registrato.',
           riscossione: 'Nessuna cartella o posizione di riscossione registrata.',
           ader: 'Nessuno snapshot AdeR registrato.',
         }[tab] || 'Nessun documento in questa sezione.')}</p>}
-        {!loading && items.length > 0 && filteredItems.length === 0 && <div className="fiscal-empty"><strong>Nessun risultato con questi filtri.</strong><Button variant="secondary" onClick={resetListFilters}>Mostra tutti</Button></div>}
+        {!loading && totaleSezione > 0 && totaleFiltrato === 0 && <div className="fiscal-empty"><strong>Nessun risultato con questi filtri.</strong><Button variant="secondary" onClick={resetListFilters}>Mostra tutti</Button></div>}
         <div className="fiscal-records">
         {visibleItems.map((item, index) => {
           const entityId = item.id || item.collection_number || item.code || `row-${index}`;
@@ -718,10 +743,10 @@ export default function SituazioneFiscale() {
           </article>;
         })}
         </div>
-        {!loading && filteredItems.length > pageSize && <nav className="fiscal-pagination" aria-label="Paginazione risultati">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Precedente</Button>
-          <span>Pagina <strong>{Math.min(page, pageCount)}</strong> di <strong>{pageCount}</strong></span>
-          <Button variant="secondary" disabled={page >= pageCount} onClick={() => setPage(value => Math.min(pageCount, value + 1))}>Successiva</Button>
+        {!loading && rimanenti > 0 && <nav className="fiscal-pagination" aria-label="Altri risultati">
+          <Button variant="secondary" data-testid="fiscal-mostra-altre" onClick={mostraAltri} disabled={caricaAltri} style={{ minHeight: 44 }}>
+            {caricaAltri ? 'Caricamento…' : `Mostra altre ${Math.min(RIGHE_PER_PAGINA, rimanenti)} · ${rimanenti} rimanenti`}
+          </Button>
         </nav>}
       </Card>
     </PageLayout>

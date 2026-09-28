@@ -10,6 +10,7 @@ import logging
 
 from app.database import Database, Collections
 from app.services.scritture_contabili import scrivi_movimento
+from . import registro
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, aggrega_saldo_prima_nota,
     arricchisci_movimenti_fattura, filtro_saldo_prima_nota,
@@ -76,9 +77,23 @@ async def list_prima_nota_cassa(
     data_da: Optional[str] = Query(None, description="Data inizio (YYYY-MM-DD)"),
     data_a: Optional[str] = Query(None, description="Data fine (YYYY-MM-DD)"),
     tipo: Optional[str] = Query(None, description="entrata o uscita"),
-    categoria: Optional[str] = Query(None)
+    categoria: Optional[str] = Query(None),
+    mese: Optional[int] = None,
+    filtro_categoria: Optional[str] = None,
+    filtro_tipo: Optional[str] = None,
+    cerca: Optional[str] = None,
+    numero_fattura: Optional[str] = None,
+    fornitore: Optional[str] = None,
+    data_fattura: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Lista movimenti prima nota cassa con saldo separato per anno."""
+    """Lista movimenti prima nota cassa con saldo separato per anno.
+
+    ``tipo``/``categoria`` restringono anche saldo ed entrate/uscite; i filtri
+    di consultazione (``mese``, ``filtro_*``, ``cerca``, numero/data/fornitore
+    della fattura) scelgono solo le righe della pagina (``registro.py``).
+    ``totale`` e' il numero di righe che passano i filtri, ``count`` quelle
+    della pagina.
+    """
     db = Database.get_db()
     
     query = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA)
@@ -106,11 +121,28 @@ async def list_prima_nota_cassa(
             query["$and"].append({"categoria": esclusione_categorie})
         query["$and"].append({"categoria": categoria})
     
-    movimenti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
-    await arricchisci_movimenti_fattura(db, movimenti)
+    tutti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(query, {"_id": 0}).sort("data", -1).to_list(None)
+    filtri = {
+        "mese": mese, "categoria": filtro_categoria, "tipo": filtro_tipo,
+        "cerca": cerca, "numero_fattura": numero_fattura,
+        "fornitore": fornitore, "data_fattura": data_fattura,
+    }
+    # Numero, data e fornitore della fattura servono a filtrare solo se
+    # richiesti: altrimenti si leggono per le sole righe della pagina.
+    fattura_su_tutti = registro.filtri_fattura_attivi(filtri)
+    if fattura_su_tutti:
+        await arricchisci_movimenti_fattura(db, tutti)
 
     # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
     saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query, anno)
+
+    pagina = registro.impagina_registro(
+        tutti, riporto=saldi["saldo_precedente"], conto="cassa",
+        filtri=filtri, skip=skip, limit=limit,
+    )
+    movimenti = pagina["movimenti"]
+    if not fattura_su_tutti:
+        await arricchisci_movimenti_fattura(db, movimenti)
 
     return {
         "movimenti": movimenti,
@@ -121,6 +153,10 @@ async def list_prima_nota_cassa(
         "totale_entrate": saldi["totale_entrate"],
         "totale_uscite": saldi["totale_uscite"],
         "count": len(movimenti),
+        "totale": pagina["totale"],
+        "skip": skip,
+        "limit": limit,
+        "categorie": pagina["categorie"],
         "anno": anno,
         "sumup_live": {
             "stato": "conto_pos_separato",

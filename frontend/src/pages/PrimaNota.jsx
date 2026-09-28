@@ -54,9 +54,11 @@ const ROSSO = COLORS.danger;
 const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 const MESI_INTERI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio',
   'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
-// Come nell'artefatto: 200 righe, poi «Mostra altre 200». Il saldo progressivo
-// si calcola comunque su tutto l'anno, non sulle righe mostrate.
+// Come nell'artefatto: 200 righe, poi «Mostra altre 200». Le righe arrivano dal
+// server a pagine; il saldo progressivo di ogni riga (`saldo_progressivo`) lo
+// calcola il backend su tutto l'anno, non sulle righe caricate.
 const RIGHE_PER_BLOCCO = 200;
+// Valore della tendina «Movimenti storici importati» (registro.CATEGORIA_STORICA).
 const CATEGORIA_STORICA = '__movimenti_storici__';
 
 const CATEGORIE = {
@@ -67,10 +69,6 @@ const CATEGORIE = {
 };
 
 const eur = v => formatEuroD(v || 0);
-
-export function eCategoriaStorica(categoria) {
-  return /^\d{4}$/.test(String(categoria || '').trim());
-}
 
 export function normalizzaDescrizioneMovimento(descrizione) {
   const testo = String(descrizione || '').replace(/\s+/g, ' ').trim();
@@ -117,29 +115,6 @@ export function numeroFatturaMovimento(movimento = {}) {
   return movimento.numero_fattura || movimento.fattura_numero || movimento.invoice_number || '';
 }
 
-// Stessa regola del saldo reale del backend (ESCLUSIONI_SALDO_REALE in
-// prima_nota_module/common.py): una regola sola sui due lati. Il credito POS
-// e il costo trattenuto dal gestore non sono denaro sul conto; l'attesa POS,
-// la riga manuale senza estratto e il pagamento dichiarato restano visibili
-// in elenco ma non entrano nel saldo finché la banca non li prova.
-const NATURE_FUORI_SALDO_BANCA = ['credito_pos', 'costo'];
-const SOURCES_FUORI_SALDO_BANCA = [
-  'chiusura_pos_mobile', 'import_manuale_pos', 'estratto_conto_sync',
-  'metodo_fornitore_assente_provvisorio', 'manuale_banca_senza_evidenza',
-  'trasferimento_pos', 'corrispettivo_pos', 'corrispettivi_sync',
-];
-const CATEGORIE_FUORI_SALDO = ['POS_DUPLICATO'];
-
-export function movimentoContaNelSaldo(movimento = {}, tipo = '') {
-  if (tipo !== 'banca') return true;
-  return !(
-    NATURE_FUORI_SALDO_BANCA.includes(movimento.natura) ||
-    SOURCES_FUORI_SALDO_BANCA.includes(movimento.source) ||
-    CATEGORIE_FUORI_SALDO.includes(movimento.categoria) ||
-    movimento.in_attesa_estratto_ufficiale === true
-  );
-}
-
 // Il saldo iniziale dell'anno è un dato del titolare: se il backend dice che
 // non è impostato, la testata lo scrive invece di mostrare uno 0 muto.
 export function pastigliaRiporto(dati = {}, conto = 'Cassa', anno = new Date().getFullYear()) {
@@ -173,35 +148,6 @@ export function nomeFornitoreMovimento(movimento = {}) {
   const descrizione = String(movimento.descrizione || '');
   const separatore = descrizione.indexOf(' - ');
   return separatore >= 0 ? descrizione.slice(separatore + 3).trim() : '';
-}
-
-export function dataDocumentoMovimento(movimento = {}) {
-  return movimento.data_fattura || movimento.fattura_data || movimento.invoice_date || movimento.data || '';
-}
-
-export function filtraMovimentiPrimaNota(movimenti = [], filtri = {}) {
-  const numero = testoRicerca(filtri.numeroFattura);
-  const fornitore = testoRicerca(filtri.fornitore);
-  const data = String(filtri.data || '').trim();
-  const generico = testoRicerca(filtri.testo);
-
-  return movimenti.filter(movimento => {
-    if (numero && !testoRicerca(numeroFatturaMovimento(movimento)).includes(numero)) return false;
-    if (fornitore && !testoRicerca(nomeFornitoreMovimento(movimento)).includes(fornitore)) return false;
-    if (data && dataDocumentoMovimento(movimento) !== data) return false;
-    if (generico) {
-      const campi = [
-        movimento.descrizione,
-        movimento.numero_assegno || movimento.assegno_numero,
-        movimento.importo,
-        movimento.id,
-        movimento.estratto_conto_id,
-        movimento.movimento_estratto_conto_id,
-      ];
-      if (!campi.some(campo => testoRicerca(campo).includes(generico))) return false;
-    }
-    return true;
-  });
 }
 
 export function filtraFattureProvvisorie(fatture = [], filtri = {}) {
@@ -774,9 +720,25 @@ export function useStatoFonti() {
 }
 
 /* ------------------------------- registro ------------------------------- */
-function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onModificaRiporto }) {
+/* Parametri di consultazione del registro: li applica il server
+   (prima_nota_module/registro.py), che rende solo la pagina richiesta. */
+export function parametriRegistro({ anno, mese = null, skip = 0, filtri = {} }) {
+  const params = new URLSearchParams({ anno: String(anno), limit: String(RIGHE_PER_BLOCCO), skip: String(skip) });
+  if (mese !== null && mese !== undefined) params.set('mese', String(mese + 1));
+  const coppie = [
+    ['filtro_categoria', filtri.categoria], ['filtro_tipo', filtri.tipo],
+    ['cerca', filtri.cerca], ['numero_fattura', filtri.numeroFattura],
+    ['fornitore', filtri.fornitore], ['data_fattura', filtri.data],
+  ];
+  coppie.forEach(([chiave, valore]) => {
+    const testo = String(valore ?? '').trim();
+    if (testo) params.set(chiave, testo);
+  });
+  return params.toString();
+}
+
+export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
-  const [mostrate, setMostrate] = useState(RIGHE_PER_BLOCCO);
   const { fontiFerme, coperturaCategoria, errore: statoFontiErrore } = useStatoFonti();
   const coperturaSopraSoglia = !!coperturaCategoria?.sopra_soglia;
   const [cerca, setCerca] = useState(selectedId);
@@ -795,87 +757,83 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
     if (selectedId) setCerca(selectedId);
   }, [selectedId]);
 
-  const movimenti = dati.movimenti || [];
   const riporto = dati.saldo_precedente || 0;
+  const filtri = useMemo(() => ({
+    categoria: fCategoria, tipo: fTipo, cerca,
+    numeroFattura: fNumeroFattura, fornitore: fFornitore, data: fDataFattura,
+  }), [fCategoria, fTipo, cerca, fNumeroFattura, fFornitore, fDataFattura]);
+  const conFiltri = (mese !== null && mese !== undefined)
+    || Object.values(filtri).some(v => String(v ?? '').trim());
 
-  useEffect(() => { setMostrate(RIGHE_PER_BLOCCO); }, [
-    mese, cerca, fNumeroFattura, fDataFattura, fFornitore, fCategoria, fTipo,
-  ]);
+  // Senza filtri la prima pagina e' quella gia' letta dalla pagina madre; con
+  // un filtro la chiede il registro stesso. «Mostra altre» accoda la pagina
+  // successiva: nessuna riga, saldo o totale si ricalcola nel browser.
+  const daDati = () => ({
+    movimenti: dati.movimenti || [],
+    totale: dati.totale ?? (dati.movimenti || []).length,
+  });
+  const [lista, setLista] = useState(daDati);
+  const [caricaFiltri, setCaricaFiltri] = useState(false);
+  const [caricaAltre, setCaricaAltre] = useState(false);
+  const [erroreLista, setErroreLista] = useState('');
+  const richiestaLista = React.useRef(0);
 
-  // ORDINE DENTRO LA GIORNATA (regola utente 17/07/2026): prima il
-  // CORRISPETTIVO, poi l'uscita del POS, poi i pagamenti delle fatture,
-  // per ultimo il versamento in banca. Vale sia a video sia per il
-  // calcolo del saldo progressivo.
-  const rango = m => {
-    if (m.tipo === 'entrata') return m.categoria === 'Corrispettivi' ? 0 : 1;
-    if (m.categoria === 'POS Verso Banca' || m.categoria === 'Corrispettivi POS') return 2;
-    if (m.categoria === 'Versamento Banca') return 4;
-    return 3; // fatture, utenze e altre uscite
+  useEffect(() => {
+    const richiesta = ++richiestaLista.current;
+    setErroreLista('');
+    if (!conFiltri) {
+      setLista(daDati());
+      setCaricaFiltri(false);
+      return undefined;
+    }
+    setCaricaFiltri(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await api.get(
+          `/api/prima-nota/${tipo}?${parametriRegistro({ anno, mese, filtri })}`,
+        );
+        if (richiesta !== richiestaLista.current) return;
+        setLista({ movimenti: data?.movimenti || [], totale: data?.totale ?? 0 });
+      } catch (e) {
+        if (richiesta !== richiestaLista.current) return;
+        setErroreLista(messaggioErrore(e));
+      } finally {
+        if (richiesta === richiestaLista.current) setCaricaFiltri(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dati, tipo, anno, mese, filtri, conFiltri]);
+
+  const mostraAltre = async () => {
+    const richiesta = richiestaLista.current;
+    setCaricaAltre(true);
+    setErroreLista('');
+    try {
+      const { data } = await api.get(
+        `/api/prima-nota/${tipo}?${parametriRegistro({ anno, mese, filtri, skip: lista.movimenti.length })}`,
+      );
+      if (richiesta !== richiestaLista.current) return;
+      setLista(prev => ({
+        movimenti: [...prev.movimenti, ...(data?.movimenti || [])],
+        totale: data?.totale ?? prev.totale,
+      }));
+    } catch (e) {
+      if (richiesta === richiestaLista.current) setErroreLista(messaggioErrore(e));
+    } finally {
+      setCaricaAltre(false);
+    }
   };
 
-  // Ordine del registro A VIDEO: giorni dal più recente, dentro la
-  // giornata corrispettivo → POS → fatture → versamento.
-  const ordineVideo = (a, b) =>
-    (b.data || '').localeCompare(a.data || '') ||
-    rango(a) - rango(b) ||
-    (a.created_at || '').localeCompare(b.created_at || '');
-
-  // SALDO PROGRESSIVO CONTINUO nell'ORDINE DEL REGISTRO (regola utente
-  // 18/07/2026, esempio 20-21/01): si parte dal riporto in fondo e si
-  // sale riga per riga — OGNI riga vale la riga sotto ± il suo importo,
-  // anche a cavallo dei giorni. La somma è commutativa, quindi i totali
-  // di giornata e dell'anno non cambiano; cambia solo il punto in cui
-  // ogni singola riga "fotografa" il saldo, che ora segue la lettura.
-  // Sempre su TUTTO l'anno, mai sulla selezione filtrata.
-  const saldoDi = useMemo(() => {
-    const mappa = {};
-    let saldo = riporto;
-    const lista = [...movimenti].sort(ordineVideo);
-    for (let i = lista.length - 1; i >= 0; i--) {
-      const m = lista[i];
-      if (movimentoContaNelSaldo(m, tipo)) {
-        saldo += (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0);
-      }
-      mappa[m.id] = saldo;
-    }
-    return mappa;
-  }, [movimenti, riporto]);
-
-  // Filtri di ricerca + ordine A VIDEO: dal più recente al meno recente,
-  // dentro la giornata prima l'entrata (corrispettivo) poi l'uscita (POS).
-  const visibili = useMemo(() => {
-    let lista = movimenti;
-    if (mese !== null) lista = lista.filter(m => parseInt((m.data || '').slice(5, 7), 10) === mese + 1);
-    if (fCategoria === CATEGORIA_STORICA) {
-      lista = lista.filter(m => eCategoriaStorica(m.categoria));
-    } else if (fCategoria) {
-      lista = lista.filter(m => m.categoria === fCategoria);
-    }
-    if (fTipo) lista = lista.filter(m => m.tipo === fTipo);
-    lista = filtraMovimentiPrimaNota(lista, {
-      numeroFattura: fNumeroFattura,
-      data: fDataFattura,
-      fornitore: fFornitore,
-      testo: cerca,
-    });
-    return [...lista].sort(ordineVideo);
-  }, [
-    movimenti, mese, fCategoria, fTipo, cerca,
-    fNumeroFattura, fDataFattura, fFornitore,
-  ]);
-
-  const righe = visibili.slice(0, mostrate);
-  const rimanenti = Math.max(0, visibili.length - righe.length);
+  // Ordine a video (giorni dal piu' recente; nella giornata corrispettivo →
+  // POS → fatture → versamento), saldo progressivo sull'intero anno e filtri
+  // stanno in prima_nota_module/registro.py: le righe arrivano gia' in ordine.
+  const righe = lista.movimenti;
+  const rimanenti = Math.max(0, (lista.totale || 0) - righe.length);
   // La riga del riporto sta in fondo al registro: si vede quando si e' arrivati
-  // all'ultima riga, come prima sull'ultima pagina.
-  const ultimaPagina = rimanenti === 0;
-
-  const categorieUsate = useMemo(() => {
-    const categorie = [...new Set(movimenti.map(m => m.categoria).filter(Boolean))];
-    const haStoriche = categorie.some(eCategoriaStorica);
-    const correnti = categorie.filter(categoria => !eCategoriaStorica(categoria)).sort();
-    return haStoriche ? [...correnti, CATEGORIA_STORICA] : correnti;
-  }, [movimenti]);
+  // all'ultima riga.
+  const ultimaPagina = rimanenti === 0 && !caricaFiltri;
+  const categorieUsate = dati.categorie || [];
 
   // Evidenza di riconciliazione reale in Banca:
   // - per le fatture (caso Leasys: senza questo, una fattura registrata
@@ -1213,16 +1171,27 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
         </div>
       )}
 
+      {erroreLista && (
+        <div role="alert" style={{ margin: '0 0 8px', fontSize: 13, color: ROSSO }}>
+          Movimenti non caricati: {erroreLista}
+        </div>
+      )}
+      {caricaFiltri && (
+        <div role="status" style={{ margin: '0 0 8px', fontSize: 12.5, color: COLORS.textMuted }}>
+          Ricerca dei movimenti…
+        </div>
+      )}
+
       {/* Quante righe ci sono, detto una volta; il resto si carica in fondo. */}
-      {visibili.length > 0 && (
+      {!caricaFiltri && lista.totale > 0 && (
         <div data-testid="conteggio-prima-nota" style={{ margin: '0 0 8px', fontSize: 12.5, color: COLORS.textMuted }}>
-          <b style={{ color: COLORS.text }}>{visibili.length.toLocaleString('it-IT')}</b> movimenti
+          <b style={{ color: COLORS.text }}>{lista.totale.toLocaleString('it-IT')}</b> movimenti
           {mese !== null ? ` a ${MESI_INTERI[mese].toLowerCase()}` : ''}
           {rimanenti > 0 ? `, mostrati i primi ${righe.length.toLocaleString('it-IT')}` : ''}
         </div>
       )}
 
-      {righe.length === 0 && (
+      {!caricaFiltri && righe.length === 0 && (
         <div style={{ padding: 30, textAlign: 'center', color: '#7a776e', background: 'white', borderRadius: 12, border: '1px solid #e6e3d9' }}>
           Nessun movimento{mese !== null ? ` a ${MESI_INTERI[mese].toLowerCase()}` : ''}.
         </div>
@@ -1232,12 +1201,7 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
         /* ------------------- MOBILE: card per giornata ------------------- */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {gruppiGiorno.map(g => {
-            const netto = g.righe.reduce(
-              (s, m) => s + (movimentoContaNelSaldo(m, tipo)
-                ? (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0)
-                : 0),
-              0,
-            );
+            const netto = Number(g.righe[0]?.netto_giorno || 0);
             return (
               <div key={g.data} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <div
@@ -1298,12 +1262,12 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 11.5, color: '#7a776e' }}>
                         Saldo:{' '}
-                        <b style={{ color: (saldoDi[m.id] ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>
-                          {eur(saldoDi[m.id])}
+                        <b style={{ color: (m.saldo_progressivo ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                          {eur(m.saldo_progressivo)}
                         </b>
                       </span>
                       <span style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                        {tipo === 'banca' && !movimentoContaNelSaldo(m, tipo) && (
+                        {tipo === 'banca' && m.conta_nel_saldo === false && (
                           <span
                             data-testid={`movimento-provvisorio-${m.id}`}
                             title="Movimento inserito senza prova dell'estratto conto: visibile, ma escluso dal saldo bancario reale"
@@ -1358,14 +1322,9 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
                         <span>📅 {formatDateIT(m.data)}</span>
                         <span style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
                           {(() => {
-                            const giornaliere = righe.filter(r => r.data === m.data);
-                            const netto = giornaliere.reduce(
-                              (s, r) => s + (movimentoContaNelSaldo(r, tipo)
-                                ? (r.tipo === 'entrata' ? 1 : -1) * Math.abs(r.importo || 0)
-                                : 0),
-                              0,
-                            );
-                            return `${giornaliere.length} operazioni · ${netto >= 0 ? '+' : ''}${eur(netto)}`;
+                            const netto = Number(m.netto_giorno || 0);
+                            const operazioni = m.operazioni_giorno ?? righe.filter(r => r.data === m.data).length;
+                            return `${operazioni} operazioni · ${netto >= 0 ? '+' : ''}${eur(netto)}`;
                           })()}
                         </span>
                       </div>
@@ -1401,8 +1360,8 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
                   <td style={{ padding: '7px 10px', textAlign: 'right', color: ROSSO, fontWeight: m.tipo === 'uscita' ? 700 : 400, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
                     {m.tipo === 'uscita' ? eur(m.importo) : '—'}
                   </td>
-                  <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 800, color: (saldoDi[m.id] ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
-                    {eur(saldoDi[m.id])}
+                  <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 800, color: (m.saldo_progressivo ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
+                    {eur(m.saldo_progressivo)}
                   </td>
                   <td style={{ padding: '7px 10px', textAlign: 'center' }}>
                     <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -1422,19 +1381,22 @@ function Registro({ tipo, dati, mese, onMese, selectedId = '', onRicarica, onMod
         </div>
       )}
 
-      {rimanenti > 0 && (
+      {!caricaFiltri && rimanenti > 0 && (
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
           <button
             type="button"
             data-testid="mostra-altre-prima-nota"
-            onClick={() => setMostrate(n => n + RIGHE_PER_BLOCCO)}
+            onClick={mostraAltre}
+            disabled={caricaAltre}
             style={{
               minHeight: 44, padding: '10px 18px', borderRadius: 10, cursor: 'pointer',
               background: COLORS.card, color: COLORS.text, border: `1px solid ${COLORS.borderDark}`,
               fontSize: 13, fontWeight: 700,
             }}
           >
-            Mostra altre {Math.min(RIGHE_PER_BLOCCO, rimanenti)} · {rimanenti.toLocaleString('it-IT')} rimanenti
+            {caricaAltre
+              ? 'Caricamento…'
+              : `Mostra altre ${Math.min(RIGHE_PER_BLOCCO, rimanenti)} · ${rimanenti.toLocaleString('it-IT')} rimanenti`}
           </button>
         </div>
       )}
@@ -2362,7 +2324,9 @@ export default function PrimaNota() {
     if (!silent) setLoading(true);
     setLoadError('');
     try {
-      const params = `anno=${anno}&limit=10000`;
+      // Prima pagina del registro: riporto, entrate, uscite e saldo sono
+      // dell'anno intero; le righe successive le chiede «Mostra altre».
+      const params = parametriRegistro({ anno });
       if (sezione === 'provvisori') {
         const p = await api.get(
           `/api/prima-nota/provvisori?anno=${anno}`,
@@ -2609,6 +2573,7 @@ export default function PrimaNota() {
 
           <Registro
             tipo={sezione}
+            anno={anno}
             dati={datiAttivi}
             mese={mese}
             onMese={valore => setHs('mese', valore)}
