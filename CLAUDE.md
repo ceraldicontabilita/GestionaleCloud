@@ -573,7 +573,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   completo univoco → cognome univoco (in banca in testa al beneficiario dopo «FAVORE»): la corrispondenza univoca **basta da sola** («il nome di un
   dipendente è un dipendente»: non serve la parola «stipendio» in causale né un lotto paghe). Resta il
   veto: TFR, fatture, commissioni e fornitori non entrano mai, nemmeno in coda, **anche con un nome
-  dipendente dentro** la causale — l'esclusione vince sul nome. Ambiguo o `BENEFICIARI VARI` → coda. Il
+  dipendente dentro** la causale — l'esclusione vince sul nome (anche «ADD.SPE», giroconti a Ceraldi Group, società semplici e aziende agricole). Ambiguo o `BENEFICIARI VARI` → coda, **una riga per bonifico**: il RIF. INTERNO «MB…» (`rif_banca`) unisce ricevuta ed estratto, la seconda prova completa la riga. Il
   **lotto paghe** (≥3 dipendenti lo stesso giorno) resta un segnale per i casi non risolti altrimenti.
   Competenza da causale o nome file, altrimenti **regola del giorno 25**: prima del 25 = mese precedente,
   dal 25 = corrente. Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un solo esito,
@@ -850,7 +850,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Pregresso fatture**: 299 attive (173.184,83 €, gennaio–maggio) senza partita: le rigioca il job bancario corto (`ripubblica_a_lotti`). Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza `fattura_id`, ~260 movimenti banca senza categoria (bonifici disposti e SDD: si chiudono solo abbinandoli).
-- HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10 tabelle attese dall'app
+- HR: 38 bonifici con `cedolino_id` orfano, 263 in «bonifici da associare» (quasi tutte distinte senza nome; le notifiche banca «Info Bonifico» le nominano), 10 tabelle attese dall'app
   assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
 - Noleggio: `veicoli_noleggio` è **vuota** in produzione (nessun driver né storico; le 4 targhe GX037HJ
