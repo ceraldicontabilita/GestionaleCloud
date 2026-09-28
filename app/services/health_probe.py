@@ -59,9 +59,14 @@ class ProbeUnica:
         self._esito = None
         self._at = 0.0
 
-    def _raccogli(self) -> Esito:
-        esito = _esito_task(self._task)
-        self._esito, self._at, self._task = esito, time.monotonic(), None
+    def _raccogli(self, task: "asyncio.Future") -> Esito:
+        # Si legge il task che si e' aspettato, non ``self._task``: con piu'
+        # controlli di salute in coda sulla stessa probe il primo che la
+        # raccoglie la azzera, e il secondo leggeva None (500 proprio mentre
+        # il server era lento, cioe' quando Render guarda).
+        esito = _esito_task(task)
+        if self._task is task:
+            self._esito, self._at, self._task = esito, time.monotonic(), None
         return esito
 
     async def esito(
@@ -78,7 +83,7 @@ class ProbeUnica:
             # Probe nata su un altro event loop (chiuso): non finira' mai qui.
             self._task = task = None
         if task is not None and task.done():
-            self._raccogli()
+            self._raccogli(task)
             task = None
         if self._esito is not None:
             ttl = ttl_ok if self._esito[0] == VERIFICATA else ttl_errore
@@ -93,7 +98,7 @@ class ProbeUnica:
             return FALLITA, f"probe oltre {timeout:g}s ({self.nome} lento)"
         except Exception as exc:  # noqa: BLE001 - l'esito si legge dal task qui sotto
             logger.debug("Probe %s fallita: %s: %s", self.nome, type(exc).__name__, exc)
-        return self._raccogli()
+        return self._raccogli(task)
 
 
 def risposta_salute(

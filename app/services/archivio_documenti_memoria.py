@@ -648,7 +648,13 @@ async def filtra_e_proietta_a_rate(
     projection: dict[str, Any] | None,
     prepara: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Filtra e proietta cedendo il loop ogni ``BLOCCO_COOPERATIVO`` documenti."""
+    """Filtra e proietta cedendo il loop ogni ``BLOCCO_COOPERATIVO`` documenti.
+
+    Cede anche all'inizio: una lettura servita dalla cache non aspetta la rete,
+    e un giro che ne fa centinaia di fila (le quietanze orfane, una per
+    quietanza) non lasciava mai rispondere il controllo di salute.
+    """
+    await asyncio.sleep(0)
     risultato: list[dict[str, Any]] = []
     for indice, document in enumerate(documents, 1):
         if selector is None or matches_filter(document, selector):

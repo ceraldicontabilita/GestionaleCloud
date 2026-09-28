@@ -519,3 +519,33 @@ def test_firma_in_timeout_mantiene_la_cache_per_la_finestra_di_grazia(monkeypatc
     dentro, letture_dentro, fuori, letture_fuori = _run(scenario())
     assert [d["_id"] for d in dentro] == ["a1"] and letture_dentro == []
     assert [d["_id"] for d in fuori] == ["a1"] and letture_fuori == ["gc_fetch_collection"]
+
+
+def test_ogni_lettura_dalla_cache_cede_il_passo():
+    """Un giro che fa centinaia di letture dalla cache (una per quietanza) non
+    deve tenere fermo il server: la lettura non aspetta la rete, e senza una
+    cessione esplicita il controllo di salute non rispondeva mai."""
+    runtime = CachingFakeSupabase({"f24_unificato": [{"_id": f"f{i}", "saldo": i} for i in range(20)]})
+
+    async def scenario():
+        await runtime["f24_unificato"].find({}).to_list(None)
+        battiti = 0
+
+        async def battito():
+            nonlocal battiti
+            while True:
+                await asyncio.sleep(0)
+                battiti += 1
+
+        tic = asyncio.create_task(battito())
+        await asyncio.sleep(0)
+        prima = battiti
+        for _ in range(30):
+            # La stessa proiezione di abbina_quietanza_a_f24: senza il PDF.
+            await runtime["f24_unificato"].find(
+                {"saldo": {"$gte": 0}}, {"_id": 0, "pdf_data": 0},
+            ).to_list(None)
+        tic.cancel()
+        return battiti - prima
+
+    assert _run(scenario()) >= 20
