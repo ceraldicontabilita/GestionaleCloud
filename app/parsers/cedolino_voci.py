@@ -245,12 +245,10 @@ def leggi_foglio_presenze(text: str) -> Dict:
 #: Un solo elenco: codice come lo stampa il software paghe, descrizione.
 VOCI_ACCONTO_RECUPERATO = (
     ("000306", "RECUPERO ACCONTO"),          # Zucchetti
-    ("8210", "ACCONTO TRATT. RETRIB."),      # CSC / Teamsystem
 )
-#: CSC: la stessa somma compare anche come colonna «ACCONTO» del riquadro
-#: trattenute. Nessuna busta d'esempio ne mostra la forma: non si legge a
-#: colonna, basta la voce 8210.
-COLONNA_ACCONTO_CSC = "ACCONTO"
+#: CSC 8210 «ACCONTO TRATT. RETRIB.» non e' un recupero: sta fra le
+#: competenze (serie 8xxx, con lavoro ordinario e ferie), e' un acconto
+#: pagato dentro la busta e quindi gia' nel netto. Resta fuori di qui.
 #: Buste TFR: anticipo del fondo, non stipendio. Mai sommato al dovuto.
 VOCI_ACCONTO_TFR = ("ACCONTI GIA' EROGATI",)
 

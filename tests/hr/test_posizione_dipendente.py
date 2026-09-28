@@ -49,9 +49,10 @@ def _conc(**extra):
 
 def test_voci_acconto_in_un_elenco_solo():
     codici = {c for c, _ in VOCI_ACCONTO_RECUPERATO}
-    assert {"000306", "8210"} <= codici
+    assert "000306" in codici and "8210" not in codici
     assert acconto_recuperato_in_busta("000306 Recupero acconto 400,00")["importo"] == "400,00"
-    assert acconto_recuperato_in_busta("8210 ACCONTO TRATT. RETRIB. 1.200,00")["codice"] == "8210"
+    # CSC 8210 e' un acconto pagato dentro la busta (competenza), non un recupero
+    assert acconto_recuperato_in_busta("8210 ACCONTO TRATT. RETRIB. 1.200,00") is None
     # l'anticipo del fondo TFR non e' stipendio
     assert acconto_recuperato_in_busta("ACCONTI GIA' EROGATI 2.000,00") is None
 

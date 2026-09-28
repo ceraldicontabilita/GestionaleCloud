@@ -4,7 +4,7 @@ Decisione del titolare (28/09/2026). Per ogni dipendente:
 
 * **DARE (dovuto)**: il netto di ogni busta, 13ª e 14ª comprese. Se la busta
   stessa recupera un acconto gia' dato (voce Zucchetti ``000306`` «Recupero
-  acconto», CSC ``8210``: ``cedolino_voci.VOCI_ACCONTO_RECUPERATO``), il
+  acconto»: ``cedolino_voci.VOCI_ACCONTO_RECUPERATO``), il
   dovuto del mese e' netto + acconto: l'acconto era paga di quel mese, data
   prima. Poi le parti **non bonus** di una conciliazione.
 * **AVERE (pagato)**: bonifici (``pagamenti_esiti``), acconti in contanti del
