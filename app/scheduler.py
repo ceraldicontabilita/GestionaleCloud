@@ -663,6 +663,17 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-FONTI-FERME] errore: {type(e).__name__}: {e}")
 
+    async def _controlli_incrociati_job():
+        # Segnali, mai correzioni: beneficiario diverso, fattura pagata due
+        # volte, importo anomalo, mesi di estratto mancanti, RT dimenticata.
+        from app.database import Database
+        try:
+            from app.services.controlli_incrociati import esegui_controlli
+            esito = await esegui_controlli(Database.get_db())
+            logger.info("[SCHEDULER-CONTROLLI-INCROCIATI] %s", esito)
+        except Exception as e:
+            logger.error(f"[SCHEDULER-CONTROLLI-INCROCIATI] errore: {type(e).__name__}: {e}")
+
     async def _bonifici_pdf_inbox_job():
         from app.database import Database
         from app.services.bonifici_pdf_ingest import (
@@ -1210,6 +1221,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="fonti_ferme", name="Fonti ferme: corrispettivi, POS, estratti (ogni ora)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _controlli_incrociati_job,
+        CronTrigger(hour=6, minute=40, timezone="Europe/Rome"),
+        misfire_grace_time=3600,
+        coalesce=True,
+        id="controlli_incrociati",
+        name="Controlli incrociati: pagamenti, estratti mancanti, RT dimenticata (ogni giorno)",
         replace_existing=True,
     )
 
