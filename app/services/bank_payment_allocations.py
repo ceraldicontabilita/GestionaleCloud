@@ -1111,6 +1111,19 @@ async def reconcile_acconti_fornitore(
     return esito
 
 
+async def riconcilia_acconti_in_sospeso(db) -> Dict[str, Any]:
+    """Acconti per il job bancario corto.
+
+    In coda a ``reconcile_deterministic_invoice_allocations`` stanno nel giro
+    «Automazioni», che dura ore e riparte a ogni deploy: il 28/09/2026 FEP 7_26
+    aspettava i suoi due bonifici da un giorno. Qui girano da soli, sugli
+    stessi movimenti non riconciliati."""
+    movements = await db["estratto_conto_movimenti"].find(
+        {"riconciliato": {"$ne": True}}, {"_id": 0},
+    ).to_list(5000)
+    return await reconcile_acconti_fornitore(db, movements)
+
+
 async def reconcile_deterministic_invoice_allocations(
     db, *, movement_ids=None, anno=None,
 ) -> Dict[str, Any]:

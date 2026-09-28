@@ -257,7 +257,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Identità, prove e attese
 
-- Nessuna entità si associa per solo importo: servono identità/provenienza coerente e importo al centesimo (anche per gli **acconti**: 2–4 bonifici allo stesso fornitore che sommano una sola fattura aperta, entro 90 giorni, `reconcile_acconti_fornitore`). Unica
+- Nessuna entità si associa per solo importo: servono identità/provenienza coerente e importo al centesimo (anche per gli **acconti**: 2–4 bonifici allo stesso fornitore che sommano una sola fattura aperta, entro 90 giorni, `reconcile_acconti_fornitore`, nel job bancario corto). Unica
   eccezione, regola del titolare: un assegno paga la fattura di pari importo emessa nei 15 giorni prima dell'addebito,
   se è l'unica (`REGOLA_TITOLARE_GIORNI_PRECEDENTI`); il numero scritto nel report «Fatture ricevute» vince sempre.
 - Nei casi ambigui mostra i candidati (`Scegli fattura`, `Scegli driver`,

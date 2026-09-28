@@ -105,3 +105,31 @@ def test_il_bonifico_prima_della_fattura_o_oltre_90_giorni_non_conta():
         assert esito["collegati_count"] == 0
 
     _run(scenario())
+
+
+def test_job_corto_collega_gli_acconti_della_fattura_dichiarata_pagata():
+    """FEP 7_26 in produzione: il titolare l'ha dichiarata pagata col report
+    (``in_attesa_riscontro_banca``), i due bonifici arrivano dopo. Il job
+    bancario corto la collega senza aspettare il giro «Automazioni»."""
+    from app.services.bank_payment_allocations import riconcilia_acconti_in_sospeso
+
+    async def scenario():
+        db = ClientArchivioMemoria()["acconti"]
+        fattura = _fattura("fep7", "FEP 7_26", 24400.0, "2026-02-11")
+        fattura.update({
+            "stato_pagamento": "pagata", "pagato": True, "paid": True,
+            "payment_status": "paid", "in_attesa_riscontro_banca": True,
+        })
+        await db.invoices.insert_one(fattura)
+        await db.estratto_conto_movimenti.insert_many([
+            _bonifico("m1", "2026-02-12", 15000.0),
+            _bonifico("m2", "2026-02-26", 9400.0),
+        ])
+        esito = await riconcilia_acconti_in_sospeso(db)
+        assert esito["collegati_count"] == 2
+        for mid in ("m1", "m2"):
+            m = await db.estratto_conto_movimenti.find_one({"id": mid}, {"_id": 0})
+            assert m["riconciliato"] is True
+        assert (await riconcilia_acconti_in_sospeso(db))["collegati_count"] == 0
+
+    _run(scenario())

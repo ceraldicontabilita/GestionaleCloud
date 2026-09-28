@@ -862,6 +862,15 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] assegni: %s: %s", type(e).__name__, e)
         try:
+            # Una fattura pagata in piu' bonifici allo stesso fornitore.
+            from app.services.bank_payment_allocations import riconcilia_acconti_in_sospeso
+            r = await riconcilia_acconti_in_sospeso(db)
+            if r.get("collegati_count") or r.get("ambigui"):
+                logger.info("[SCHEDULER-BANCA] acconti collegati=%s ambigui=%s",
+                            r.get("collegati_count"), r.get("ambigui"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] acconti: %s: %s", type(e).__name__, e)
+        try:
             # Fatture dell'anno prima pagate quest'anno: solo il debito.
             from app.services.debiti_anno_precedente import abbina_pagamenti, recupera_da_drive
             r = await recupera_da_drive(db)
