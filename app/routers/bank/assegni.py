@@ -84,30 +84,12 @@ def _assegno_riferisce_fattura(assegno: Dict[str, Any], fattura: Dict[str, Any])
     return invoice_reference_equals(numero_assegno, numero_fattura)
 
 
-# Stati assegno.
-# "assegnato"/"parzialmente_assegnato" sono scritti dal collegamento a fatture
-# (auto-matcher in assegni_auto_match.py e endpoint manuale qui sotto) — devono
-# essere validi anche qui, altrimenti un PUT generico successivo con questi
-# stati verrebbe rifiutato dalla validazione più sotto.
-ASSEGNO_STATI = {
-    "vuoto": {"label": "Vuoto", "color": "#9e9e9e"},
-    "compilato": {"label": "Compilato", "color": "#2196f3"},
-    "emesso": {"label": "Emesso", "color": "#ff9800"},
-    "parzialmente_assegnato": {"label": "Parzialmente assegnato", "color": "#ff9800"},
-    "assegnato": {"label": "Assegnato", "color": "#2196f3"},
-    "incassato": {"label": "Incassato", "color": "#4caf50"},
-    "annullato": {"label": "Annullato", "color": "#f44336"},
-    "stornato": {"label": "Stornato", "color": "#b91c1c"},
-    "scaduto": {"label": "Scaduto", "color": "#795548"}
-}
-
-# Un numero uscito dal carnet resta consumato: da questi stati non si torna
-# a "vuoto" o "compilato" (disponibile), nemmeno con un PUT generico.
-STATI_NUMERO_CONSUMATO = {
-    "emesso", "parzialmente_assegnato", "assegnato", "incassato",
-    "annullato", "stornato", "scaduto",
-}
-STATI_DISPONIBILI = {"vuoto", "compilato"}
+# Stati: un registro solo (app/constants/stati_assegno.py).
+from app.constants.stati_assegno import (  # noqa: E402
+    ASSEGNO_STATI,
+    STATI_DISPONIBILI,
+    STATI_NUMERO_CONSUMATO,
+)
 # Campi che il PUT non annota nello storico (tecnici).
 _CAMPI_SENZA_STORICO = {"updated_at", "storico"}
 
