@@ -602,8 +602,9 @@ export default function GestioneAssegni() {
     try {
       // Schema canonico (PROMPT_MASTER.md, sezione 10): l'assegno mantiene il
       // suo importo nominale, ogni fattura riceve una quota. Il backend
-      // aggiorna assegni_collegati e l'intento di pagamento sulle fatture.
-      // Pagato e Prima Nota Banca cambiano solo in presenza del movimento EC.
+      // aggiorna assegni_collegati e l'intento di pagamento sulle fatture, e
+      // dichiara subito la fattura pagata in Prima Nota Banca (in attesa del
+      // solo riscontro dell'estratto conto).
       await api.put(`/api/assegni/${editingAssegnoForFatture.id}/fatture-collegate`, {
         fatture: selectedFatture.map(f => ({ fattura_id: f.id, quota: f.quota ?? f.importo })),
       });
@@ -613,7 +614,7 @@ export default function GestioneAssegni() {
       setSelectedFatture([]);
       setEditingId(null);
       setEditForm({});
-      toast.success('Fatture collegate. Il pagamento reale sarà confermato dal riscontro bancario.');
+      toast.success('Fatture collegate e pagamento dichiarato in Prima Nota Banca: resta solo il riscontro dell\'estratto conto.');
       loadData();
     } catch (error) {
       toast.error('Errore: ' + (error.response?.data?.detail || error.message));
