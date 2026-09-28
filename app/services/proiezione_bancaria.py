@@ -136,7 +136,7 @@ def _classifica_rata_mutuo(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 # Addebito spese di una disposizione: stessa causale del bonifico, col nome
 # del beneficiario dentro («- ADD.SPE», «COMM.SU BONIFICI»).
-_SPESE_DISPOSIZIONE = re.compile(r"ADD\.?\s*SPE\b|COMM\.?\s*SU\s*BONIFIC", re.IGNORECASE)
+SPESE_DISPOSIZIONE_RE = re.compile(r"ADD\.?\s*SPE\b|COMM\.?\s*SU\s*BONIFIC", re.IGNORECASE)
 
 
 def _classifica_dipendente(
@@ -203,7 +203,7 @@ def classifica_movimento_ec(
             "regola_versione": causale["rule_version"],
             "campi_estratti": causale.get("campi_estratti") or {},
         }
-    if _SPESE_DISPOSIZIONE.search(_testo(doc)) and _verso(doc) == "uscita":
+    if SPESE_DISPOSIZIONE_RE.search(_testo(doc)) and _verso(doc) == "uscita":
         # «COMM.SU BONIFICI - VS.DISP. … FAVORE <dipendente> - ADD.SPE»: la
         # commissione del bonifico porta il nome del beneficiario, ma e' un
         # costo della banca, non uno stipendio.

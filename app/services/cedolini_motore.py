@@ -36,7 +36,9 @@ from app.parsers.busta_paga_multi_template import (
     detect_template,
     parse_template_zucchetti_presenze,
 )
-from app.parsers.cedolino_voci import leggi_corpo_cedolino, leggi_foglio_presenze
+from app.parsers.cedolino_voci import (
+    acconto_recuperato_in_busta, leggi_corpo_cedolino, leggi_foglio_presenze,
+)
 
 # Per scelta operativa del 03/08/2026 lo storico autorizzato parte dal 2018.
 # La guardia evita che un file piu' vecchio, caricato per errore, entri nei
@@ -263,6 +265,13 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
     if corpo.get("voci"):
         busta["voci"] = corpo["voci"]
         busta["dati_chiave"] = corpo["dati_chiave"]
+    # Acconto gia' dato e recuperato in questa busta (voce codificata): va
+    # in HR con i dati chiave, la posizione del dipendente lo somma al netto.
+    acconto = acconto_recuperato_in_busta(testo)
+    if acconto:
+        busta["dati_chiave"] = {**(busta.get("dati_chiave") or {}),
+                                "acconto_recuperato_busta": acconto["importo"],
+                                "acconto_recuperato_voce": acconto["codice"]}
     # Ferie, ROL, contributi e TFR letti dal testo: vanno nella scheda
     # Markdown, cosi' la ricarica non ha bisogno del PDF.
     extra = {k: v for k, v in (estrai_ferie_rol_from_text(testo) if testo else {}).items()

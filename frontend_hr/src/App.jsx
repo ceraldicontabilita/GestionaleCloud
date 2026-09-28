@@ -11,7 +11,7 @@ import {
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
   MapPin, Euro, Download, RefreshCw, ChevronLeft, Grid3X3,
   User, FolderOpen, Settings, LogOut, ArrowLeft, AlertTriangle,
-  Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send, ShieldCheck
+  Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send, ShieldCheck, Scale
 } from "lucide-react";
 import { esciDalGruppo } from "../../frontend_shared/SessioneGruppo";
 import SelettoreSezioni from "./SelettoreSezioni";
@@ -196,6 +196,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     { id: "timbrature", label: "Timbrature", icon: Clock, section: "DIPENDENTI" },
     { id: "paghe-bonifici", label: "Archivio paghe", icon: Link2, section: "DIPENDENTI" },
     { id: "bonifici-da-associare", label: "Bonifici da associare", icon: Inbox, section: "DIPENDENTI" },
+    { id: "posizione-dipendente", label: "Posizione dipendente", icon: Scale, section: "DIPENDENTI" },
     { id: "tfr", label: "TFR", icon: Wallet, section: "DIPENDENTI" },
     { id: "documenti", label: "Documenti", icon: FolderOpen, section: "DIPENDENTI" },
     { id: "assunzione", label: "Assunzione & Contratti", icon: Briefcase, section: "DIPENDENTI" },
@@ -212,6 +213,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     timbrature: "Timbrature",
     "paghe-bonifici": "Archivio paghe",
     "bonifici-da-associare": "Bonifici da associare",
+    "posizione-dipendente": "Posizione dipendente",
     tfr: "TFR",
     missioni: "Missioni",
     documenti: "Documenti",
@@ -250,6 +252,8 @@ export default function DipendentiCloudApp({ page: pageProp }) {
         return <PagheBonificiPage dipendenti={activeDipendenti} />;
       case "bonifici-da-associare":
         return <BonificiDaAssociarePage dipendenti={dipendenti} />;
+      case "posizione-dipendente":
+        return <PosizioneDipendentePage dipendenti={dipendenti} />;
       case "tfr":
         return <TfrPage dipendenti={activeDipendenti} getDipendente={getDipendente} />;
       case "missioni":
@@ -3975,9 +3979,17 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
 // (importo, data, causale) e si assegna a mano dipendente + mese.
 function BonificiDaAssociarePage({ dipendenti }) {
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+  // Che cosa e' il bonifico: decide dove finisce (busta, acconti, conciliazione).
+  const TIPI = [
+    { id: "stipendio", label: "Stipendio" },
+    { id: "acconto", label: "Acconto" },
+    { id: "conciliazione", label: "Conciliazione" },
+    { id: "bonus", label: "Bonus conciliazione" },
+  ];
   const [righe, setRighe] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [scelte, setScelte] = useState({});   // id -> { dipendente_id, mese, anno }
+  const [scelte, setScelte] = useState({});   // id -> { dipendente_id, tipo, conciliazione_id, mese, anno }
+  const [concPerDip, setConcPerDip] = useState({}); // dipendente_id -> conciliazioni aperte
   const [busy, setBusy] = useState(null);
 
   const eur = (n) => (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3988,12 +4000,14 @@ function BonificiDaAssociarePage({ dipendenti }) {
     try {
       const r = await axios.get(`${API}/bonifici-da-associare`);
       setRighe(r.data || []);
-      // precompila mese/anno col mese del pagamento stesso: e' la scelta di
-      // default, l'utente puo' cambiarla prima di confermare
+      // anno e mese partono da quelli della data del bonifico: si possono cambiare
       const iniziale = {};
       for (const b of (r.data || [])) {
         const [a, m] = (b.data || "").split("-");
-        iniziale[b.id] = { dipendente_id: "", anno: a ? Number(a) : new Date().getFullYear(),
+        // una proposta (notifica «Info Bonifico» della banca, causale) precompila le scelte
+        iniziale[b.id] = { dipendente_id: b.proposta?.dipendente_id || "", tipo: b.proposta?.tipo || "stipendio",
+                           conciliazione_id: "",
+                           anno: a ? Number(a) : new Date().getFullYear(),
                            mese: m ? Number(m) : new Date().getMonth() + 1 };
       }
       setScelte(iniziale);
@@ -4002,21 +4016,68 @@ function BonificiDaAssociarePage({ dipendenti }) {
   };
   useEffect(() => { load(); }, []);
 
-  const setScelta = (id, campo, valore) =>
-    setScelte(s => ({ ...s, [id]: { ...s[id], [campo]: valore } }));
+  const caricaConciliazioni = async (dipId) => {
+    if (!dipId || concPerDip[dipId]) return;
+    try {
+      const r = await axios.get(`/hr/api/posizione-dipendente/conciliazioni?dipendente_id=${dipId}`);
+      const aperte = (r.data.righe || []).filter(c => c.stato !== "pagata");
+      setConcPerDip(s => ({ ...s, [dipId]: aperte }));
+    } catch (e) { setConcPerDip(s => ({ ...s, [dipId]: [] })); }
+  };
 
-  const associa = async (id) => {
+  const setScelta = (id, campo, valore) => {
+    const nuova = { ...scelte[id], [campo]: valore };
+    if (campo === "dipendente_id" || campo === "tipo") nuova.conciliazione_id = "";
+    setScelte(s => ({ ...s, [id]: nuova }));
+    if ((nuova.tipo === "conciliazione" || nuova.tipo === "bonus") && nuova.dipendente_id) caricaConciliazioni(nuova.dipendente_id);
+  };
+
+  const associa = async (id, { silenzioso = false } = {}) => {
     const sc = scelte[id];
-    if (!sc?.dipendente_id) { toast("Scegli prima il dipendente", "err"); return; }
+    if (!sc?.dipendente_id) { toast("Scegli prima il dipendente", "err"); return false; }
+    if ((sc.tipo === "conciliazione" || sc.tipo === "bonus") && !sc.conciliazione_id) {
+      toast("Scegli la conciliazione del dipendente", "err"); return false;
+    }
     setBusy(id);
     try {
       await axios.post(`${API}/bonifici-da-associare/${id}/associa`, {
-        dipendente_id: sc.dipendente_id, mese: sc.mese, anno: sc.anno,
+        dipendente_id: sc.dipendente_id, tipo: sc.tipo, mese: sc.mese, anno: sc.anno,
+        conciliazione_id: sc.conciliazione_id || undefined,
       });
-      toast("Associato: salvato nella scheda del dipendente con il PDF allegato");
+      const dove = { stipendio: "nella busta del mese", acconto: "fra gli acconti del dipendente",
+                     conciliazione: "sulla conciliazione", bonus: "sul bonus della conciliazione" }[sc.tipo];
+      if (!silenzioso) toast(`Associato ${dove}`);
       setRighe(r => r.filter(x => x.id !== id));
-    } catch (e) { console.error(e); toast(e?.response?.data?.detail || "Errore nell'associazione", "err"); }
+      if (sc.tipo === "conciliazione" || sc.tipo === "bonus") setConcPerDip(s => ({ ...s, [sc.dipendente_id]: undefined }));
+      return true;
+    } catch (e) {
+      const d = e?.response?.data?.detail;
+      toast((d && typeof d === "object" ? d.message : d) || "Errore nell'associazione", "err");
+      return false;
+    }
     finally { setBusy(null); }
+  };
+
+  // Le proposte ancora come le ha scritte il sistema (dipendente e tipo non
+  // cambiati a mano) si confermano insieme, una alla volta con lo stesso
+  // endpoint della conferma singola: nessuna strada parallela.
+  const proposteIntatte = righe.filter(b => {
+    const sc = scelte[b.id] || {};
+    return b.proposta?.dipendente_id && sc.dipendente_id === b.proposta.dipendente_id
+      && (sc.tipo === "stipendio" || sc.tipo === "acconto");
+  });
+  const [avanzamento, setAvanzamento] = useState(null);
+  const confermaProposte = async () => {
+    const elenco = proposteIntatte.map(b => b.id);
+    if (!elenco.length) return;
+    if (!window.confirm(`Confermo ${elenco.length} proposte? Ognuna diventa il pagamento del dipendente proposto, nel mese del bonifico. Quelle che hai cambiato a mano restano da confermare una per una.`)) return;
+    let fatte = 0;
+    for (const [i, id] of elenco.entries()) {
+      setAvanzamento(`${i + 1} di ${elenco.length}`);
+      if (await associa(id, { silenzioso: true })) fatte += 1;
+    }
+    setAvanzamento(null);
+    toast(`Confermate ${fatte} proposte su ${elenco.length}`);
   };
 
   const ignora = async (id) => {
@@ -4029,6 +4090,16 @@ function BonificiDaAssociarePage({ dipendenti }) {
     finally { setBusy(null); }
   };
 
+  // il PDF passa da axios: il token sta nell'intestazione, un link nudo non lo porta
+  const apriPdf = async (id) => {
+    try {
+      const r = await axios.get(`${API}/bonifici-da-associare/${id}/pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { toast("PDF non disponibile", "err"); }
+  };
+
   return (
     <div className="dc-page">
       <div className="dc-page-header">
@@ -4036,59 +4107,88 @@ function BonificiDaAssociarePage({ dipendenti }) {
           <h1>Bonifici da associare</h1>
           <p>{righe.length} bonifici cumulativi ("beneficiari diversi") in attesa di essere assegnati a un dipendente. L'import dalla cartella Drive si fa da "Cedolini &amp; Bonifici" — arrivano qui solo quelli che non si possono assegnare da soli.</p>
         </div>
+        {proposteIntatte.length > 0 && (
+          <button type="button" className="dc-btn dc-btn-primary" style={{ minHeight: 44 }} disabled={!!avanzamento || !!busy} onClick={confermaProposte}>
+            <Check size={16} aria-hidden="true" /> {avanzamento ? `Confermo… ${avanzamento}` : `Conferma le ${proposteIntatte.length} proposte`}
+          </button>
+        )}
       </div>
 
       <div className="dc-card" style={{ marginBottom: 12, padding: 12, fontSize: 13, color: "#6b7669" }}>
         Questi bonifici la banca li emette come un unico addebito su piu' persone insieme:
         il PDF non nomina nessuno, quindi non si possono assegnare da soli. Guarda importo e data
-        (apri il PDF se serve), scegli il dipendente e il mese di competenza, poi conferma:
-        il bonifico entra nella scheda del dipendente con il documento allegato, come tutti gli altri.
+        (apri il PDF se serve), scegli il dipendente e che cosa paga: <b>stipendio</b> (va nella busta del mese scelto),
+        <b> acconto</b> (pagamento sulla posizione del dipendente), <b>conciliazione</b> o <b>bonus</b> di una conciliazione.
+        Anno e mese partono dalla data del bonifico.
       </div>
 
       {loading ? <div className="dc-card" style={{ padding: 20 }}>Carico…</div> :
        righe.length === 0 ? <div className="dc-card" style={{ padding: 20 }}>Nessun bonifico in attesa.</div> :
       <div className="dc-card" style={{ padding: 0 }}>
-        <table className="dc-table">
+        <table className="dc-table dc-table--cards">
           <thead>
             <tr>
               <th>Data</th><th>Importo</th><th>Causale</th><th>PDF</th>
-              <th>Dipendente</th><th>Periodo</th><th></th>
+              <th>Dipendente</th><th>Tipo</th><th>Periodo</th><th></th>
             </tr>
           </thead>
           <tbody>
             {righe.map(b => {
               const sc = scelte[b.id] || {};
+              const dataIt = b.data ? b.data.split("-").reverse().join("/") : "?";
+              const conConc = sc.tipo === "conciliazione" || sc.tipo === "bonus";
+              const concs = concPerDip[sc.dipendente_id] || [];
               return (
                 <tr key={b.id}>
-                  <td>{b.data ? b.data.split("-").reverse().join("/") : "—"}</td>
-                  <td>€ {eur(b.importo)}</td>
-                  <td className="dc-muted" style={{ fontSize: 12, maxWidth: 220 }}>{b.causale || "—"}</td>
-                  <td>
-                    <a href={`${API}/bonifici-da-associare/${b.id}/pdf`} target="_blank" rel="noreferrer" className="dc-btn dc-btn-ghost" style={{ fontSize: 12, padding: "3px 8px" }}>
-                      Apri
-                    </a>
+                  <td>{b.data ? dataIt : "—"}</td>
+                  <td data-label="Importo">€ {eur(b.importo)}</td>
+                  <td data-label="Causale" className="dc-muted" style={{ fontSize: 12, maxWidth: 240, whiteSpace: "normal" }}>
+                    {b.causale || "—"}
+                    {b.proposta && (
+                      <div style={{ marginTop: 4, color: "#8a6f47", fontWeight: 600 }}>
+                        Proposta: {b.proposta.dipendente_nome || "dipendente"} — {b.proposta.prova}
+                      </div>
+                    )}
                   </td>
-                  <td>
-                    <select className="dc-input" aria-label={`Dipendente per il bonifico del ${b.data ? b.data.split("-").reverse().join("/") : "?"} di € ${eur(b.importo)}`} value={sc.dipendente_id || ""} onChange={e => setScelta(b.id, "dipendente_id", e.target.value)} style={{ minWidth: 160 }}>
+                  <td data-label="PDF">
+                    <button type="button" className="dc-btn dc-btn-ghost" style={{ fontSize: 12, padding: "3px 8px", minHeight: 36 }} onClick={() => apriPdf(b.id)} aria-label={`Apri il PDF del bonifico del ${dataIt}`}>
+                      Apri
+                    </button>
+                  </td>
+                  <td data-label="Dipendente">
+                    <select className="dc-input" aria-label={`Dipendente per il bonifico del ${dataIt} di € ${eur(b.importo)}`} value={sc.dipendente_id || ""} onChange={e => setScelta(b.id, "dipendente_id", e.target.value)} style={{ minWidth: 160, minHeight: 44 }}>
                       <option value="">— scegli —</option>
                       {dipOrdinati.map(d => <option key={d.id} value={d.id}>{d.nome_completo}</option>)}
                     </select>
                   </td>
-                  <td>
+                  <td data-label="Tipo">
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <select className="dc-input" aria-label={`Che cosa paga il bonifico di € ${eur(b.importo)}`} value={sc.tipo || "stipendio"} onChange={e => setScelta(b.id, "tipo", e.target.value)} style={{ minWidth: 130, minHeight: 44 }}>
+                        {TIPI.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                      </select>
+                      {conConc && (
+                        <select className="dc-input" aria-label={`Conciliazione per il bonifico di € ${eur(b.importo)}`} value={sc.conciliazione_id || ""} onChange={e => setScelta(b.id, "conciliazione_id", e.target.value)} disabled={!sc.dipendente_id} style={{ minWidth: 170, minHeight: 44 }}>
+                          <option value="">{!sc.dipendente_id ? "— prima il dipendente —" : concs.length ? "— scegli conciliazione —" : "nessuna conciliazione aperta"}</option>
+                          {concs.map(c => <option key={c.id} value={c.id}>{c.data.split("-").reverse().join("/")} · {c.totale ? `€ ${eur(c.totale)}` : "importi non compilati"}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  </td>
+                  <td data-label="Periodo">
                     <div style={{ display: "flex", gap: 4 }}>
-                      <select className="dc-input" aria-label={`Mese di competenza del bonifico di € ${eur(b.importo)}`} value={sc.mese || 1} onChange={e => setScelta(b.id, "mese", Number(e.target.value))} style={{ width: 100 }}>
+                      <select className="dc-input" aria-label={`Mese di competenza del bonifico di € ${eur(b.importo)}`} value={sc.mese || 1} onChange={e => setScelta(b.id, "mese", Number(e.target.value))} style={{ width: 110, minHeight: 44 }}>
                         {mesi.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                       </select>
                       <input type="number" className="dc-input" aria-label={`Anno di competenza del bonifico di € ${eur(b.importo)}`} value={sc.anno || new Date().getFullYear()}
-                        onChange={e => setScelta(b.id, "anno", Number(e.target.value))} style={{ width: 70 }} />
+                        onChange={e => setScelta(b.id, "anno", Number(e.target.value))} style={{ width: 80, minHeight: 44 }} />
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Azioni">
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button className="dc-btn" disabled={busy === b.id} onClick={() => associa(b.id)}>
+                      <button className="dc-btn" style={{ minHeight: 44 }} disabled={busy === b.id} onClick={() => associa(b.id)}>
                         {busy === b.id ? "…" : "Associa"}
                       </button>
-                      <button className="dc-btn dc-btn-ghost" disabled={busy === b.id} onClick={() => ignora(b.id)} title="Non e' un pagamento a un dipendente">
+                      <button className="dc-btn dc-btn-ghost" style={{ minHeight: 44 }} disabled={busy === b.id} onClick={() => ignora(b.id)} title="Non e' un pagamento a un dipendente">
                         Ignora
                       </button>
                     </div>
@@ -4099,6 +4199,492 @@ function BonificiDaAssociarePage({ dipendenti }) {
           </tbody>
         </table>
       </div>}
+    </div>
+  );
+}
+
+// ==================== POSIZIONE DIPENDENTE ====================
+// Dare/avere del dipendente con saldo progressivo e riporto da un anno
+// all'altro; il bonus delle conciliazioni sta in un riquadro a parte. I conti
+// li fa il backend (app/services/posizione_dipendente.py): qui solo vista e
+// moduli, con tendine al posto del testo libero.
+const POS_API = "/hr/api/posizione-dipendente";
+const eurPos = (n) => (n === null || n === undefined || n === "") ? "—"
+  : Number(n).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const erroreApi = (e, ripiego) => {
+  const d = e?.response?.data?.detail;
+  if (d && typeof d === "object") return d.message || ripiego;
+  return d || ripiego;
+};
+const STATO_CONC = {
+  da_pagare: { label: "Da pagare", variant: "danger" },
+  pagata_in_parte: { label: "Pagata in parte", variant: "warning" },
+  pagata: { label: "Pagata", variant: "success" },
+};
+const MOTIVI_ANNULLO = ["Inserita per errore", "Doppione", "Sostituita da un nuovo verbale"];
+
+async function apriDocumentoConciliazione(id) {
+  try {
+    const r = await axios.get(`${POS_API}/conciliazioni/${id}/documento`, { responseType: "blob" });
+    const url = URL.createObjectURL(r.data);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { toast("Documento non disponibile", "err"); }
+}
+
+function SaldoValore({ valore }) {
+  const n = Number(valore) || 0;
+  const colore = n > 0.005 ? "#d35f4e" : n < -0.005 ? "#8a6f47" : "#3d8168";
+  const testo = n > 0.005 ? "da pagare" : n < -0.005 ? "a credito" : "in pari";
+  return <span style={{ color: colore, fontWeight: 700 }}>{eurPos(n)} <span style={{ fontSize: 11, fontWeight: 600 }}>({testo})</span></span>;
+}
+
+function RigheMovimenti({ righe, vuoto }) {
+  if (!righe?.length) return <p className="dc-muted" style={{ padding: 12 }}>{vuoto}</p>;
+  // il dato piu' recente per primo; il saldo di ogni riga resta quello progressivo
+  const ordinate = [...righe].reverse();
+  return (
+    <table className="dc-table dc-table--cards">
+      <thead>
+        <tr><th>Data</th><th>Descrizione</th><th style={{ textAlign: "right" }}>Dare €</th>
+          <th style={{ textAlign: "right" }}>Avere €</th><th style={{ textAlign: "right" }}>Saldo €</th></tr>
+      </thead>
+      <tbody>
+        {ordinate.map((r, i) => (
+          <tr key={i}>
+            <td>{formatDate(r.data)}</td>
+            <td data-label="Descrizione" style={{ whiteSpace: "normal" }}>
+              {r.descrizione}
+              {r.avviso && <div style={{ color: "#c4894a", fontSize: 12, marginTop: 2 }}><AlertTriangle size={12} aria-hidden="true" /> {r.avviso}</div>}
+            </td>
+            <td data-label="Dare" style={{ textAlign: "right" }}>{r.dare === null ? "—" : eurPos(r.dare)}</td>
+            <td data-label="Avere" style={{ textAlign: "right" }}>{r.avere === null ? "—" : eurPos(r.avere)}</td>
+            <td data-label="Saldo" style={{ textAlign: "right" }}><SaldoValore valore={r.saldo} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const vociVuote = () => [{ voce: "straordinari", importo: "", descrizione: "" }];
+
+function ModuloConciliazione({ vocab, dipendente, iniziale, onClose, onSalvata }) {
+  const oggi = new Date().toISOString().slice(0, 10);
+  const [f, setF] = useState(() => iniziale ? {
+    tipo: iniziale.tipo, data: iniziale.data, modalita_pagamento: iniziale.modalita_pagamento,
+    importi_non_compilati: !!iniziale.importi_non_compilati,
+    voci: (iniziale.voci || []).map(v => ({ voce: v.voce, importo: v.importo ?? "", descrizione: v.descrizione || "" })),
+    totale: iniziale.totale ?? "", rate: (iniziale.rate || []).map(r => ({ ...r })),
+  } : { tipo: "conciliazione_sindacale", data: oggi, modalita_pagamento: "bonifico",
+        importi_non_compilati: false, voci: vociVuote(), totale: "", rate: [] });
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+  const setVoce = (i, k, v) => setF(s => ({ ...s, voci: s.voci.map((x, j) => j === i ? { ...x, [k]: v } : x) }));
+  const setRata = (i, k, v) => setF(s => ({ ...s, rate: s.rate.map((x, j) => j === i ? { ...x, [k]: v } : x) }));
+  const cent = (v) => Math.round((Number(String(v).replace(",", ".")) || 0) * 100);
+  const sommaCent = f.voci.reduce((t, v) => t + cent(v.importo), 0);
+  const totCent = cent(f.totale);
+  const quadra = f.importi_non_compilati || (f.totale !== "" && sommaCent === totCent);
+
+  const salva = async () => {
+    if (!quadra) { toast("Il totale deve essere la somma delle voci al centesimo", "err"); return; }
+    setBusy(true);
+    const corpo = {
+      dipendente_id: dipendente.id, tipo: f.tipo, data: f.data, modalita_pagamento: f.modalita_pagamento,
+      importi_non_compilati: f.importi_non_compilati,
+      voci: f.voci.map(v => ({ voce: v.voce, descrizione: v.voce === "altro" ? v.descrizione : null,
+                               importo: f.importi_non_compilati ? null : String(v.importo).replace(",", ".") })),
+      totale: f.importi_non_compilati ? null : String(f.totale).replace(",", "."),
+      rate: f.rate.map(r => ({ importo: String(r.importo).replace(",", "."), entro_il: r.entro_il })),
+    };
+    try {
+      const r = iniziale
+        ? await axios.put(`${POS_API}/conciliazioni/${iniziale.id}`, corpo)
+        : await axios.post(`${POS_API}/conciliazioni`, corpo);
+      if (file) {
+        const fd = new FormData(); fd.append("file", file);
+        await axios.post(`${POS_API}/conciliazioni/${r.data.id}/documento`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      }
+      toast("Conciliazione salvata");
+      onSalvata();
+    } catch (e) { toast(erroreApi(e, "Errore nel salvataggio"), "err"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal title={`${iniziale ? "Modifica" : "Nuova"} conciliazione — ${dipendente.nome_completo}`} onClose={onClose} maxWidth={720}>
+      <div className="dc-modal-body">
+        <div className="dc-form-grid">
+          <label className="dc-form-group"><span className="dc-label">Tipo</span>
+            <select value={f.tipo} onChange={e => set("tipo", e.target.value)}>
+              {vocab.tipi.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </label>
+          <label className="dc-form-group"><span className="dc-label">Data</span>
+            <input type="date" value={f.data} onChange={e => set("data", e.target.value)} />
+          </label>
+          <label className="dc-form-group"><span className="dc-label">Modalità di pagamento</span>
+            <select value={f.modalita_pagamento} onChange={e => set("modalita_pagamento", e.target.value)}>
+              {vocab.modalita.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </label>
+          <label className="dc-form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 }}>
+            <input type="checkbox" checked={f.importi_non_compilati} onChange={e => set("importi_non_compilati", e.target.checked)} style={{ width: 22, height: 22 }} />
+            <span className="dc-label">Importi non compilati nel verbale</span>
+          </label>
+        </div>
+        {f.importi_non_compilati && (
+          <div className="dc-card" style={{ marginTop: 12, padding: 10, borderLeft: "4px solid #c4894a", fontSize: 13 }}>
+            <AlertTriangle size={14} aria-hidden="true" /> Importi non compilati: la conciliazione resta senza totale e non entra nel saldo finché non si scrivono gli importi del verbale.
+          </div>
+        )}
+
+        <h4 style={{ margin: "16px 0 8px" }}>Voci</h4>
+        {f.voci.map((v, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 8 }}>
+            <label className="dc-form-group" style={{ flex: "1 1 180px" }}><span className="dc-label">Voce</span>
+              <select value={v.voce} onChange={e => setVoce(i, "voce", e.target.value)}>
+                {vocab.voci.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </label>
+            {v.voce === "altro" && (
+              <label className="dc-form-group" style={{ flex: "1 1 160px" }}><span className="dc-label">Quale voce</span>
+                <input value={v.descrizione} onChange={e => setVoce(i, "descrizione", e.target.value)} />
+              </label>
+            )}
+            {!f.importi_non_compilati && (
+              <label className="dc-form-group" style={{ flex: "0 1 130px" }}><span className="dc-label">Importo €</span>
+                <input inputMode="decimal" value={v.importo} onChange={e => setVoce(i, "importo", e.target.value)} />
+              </label>
+            )}
+            <button type="button" className="dc-btn dc-btn-ghost" style={{ minHeight: 44 }} aria-label={`Togli la voce ${i + 1}`}
+              disabled={f.voci.length === 1} onClick={() => setF(s => ({ ...s, voci: s.voci.filter((_, j) => j !== i) }))}>
+              <Trash2 size={16} aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+        <button type="button" className="dc-btn" style={{ minHeight: 44 }} onClick={() => setF(s => ({ ...s, voci: [...s.voci, { voce: "straordinari", importo: "", descrizione: "" }] }))}>
+          <Plus size={16} aria-hidden="true" /> Aggiungi voce
+        </button>
+
+        {!f.importi_non_compilati && (
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginTop: 12 }}>
+            <label className="dc-form-group" style={{ flex: "0 1 180px" }}><span className="dc-label">Totale del verbale €</span>
+              <input inputMode="decimal" value={f.totale} onChange={e => set("totale", e.target.value)} />
+            </label>
+            <div style={{ fontSize: 13, paddingBottom: 10, color: quadra ? "#3d8168" : "#d35f4e" }}>
+              Somma delle voci: {eurPos(sommaCent / 100)} {quadra ? "— quadra" : `— differenza ${eurPos((totCent - sommaCent) / 100)}`}
+            </div>
+          </div>
+        )}
+
+        <h4 style={{ margin: "16px 0 8px" }}>Rate previste</h4>
+        {f.rate.map((r, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 8 }}>
+            <label className="dc-form-group" style={{ flex: "0 1 140px" }}><span className="dc-label">Importo €</span>
+              <input inputMode="decimal" value={r.importo} onChange={e => setRata(i, "importo", e.target.value)} />
+            </label>
+            <label className="dc-form-group" style={{ flex: "0 1 170px" }}><span className="dc-label">Entro il</span>
+              <input type="date" value={r.entro_il} onChange={e => setRata(i, "entro_il", e.target.value)} />
+            </label>
+            <button type="button" className="dc-btn dc-btn-ghost" style={{ minHeight: 44 }} aria-label={`Togli la rata ${i + 1}`}
+              onClick={() => setF(s => ({ ...s, rate: s.rate.filter((_, j) => j !== i) }))}>
+              <Trash2 size={16} aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+        <button type="button" className="dc-btn" style={{ minHeight: 44 }} onClick={() => setF(s => ({ ...s, rate: [...s.rate, { importo: "", entro_il: oggi }] }))}>
+          <Plus size={16} aria-hidden="true" /> Aggiungi rata
+        </button>
+
+        <label className="dc-form-group" style={{ marginTop: 16 }}><span className="dc-label">Verbale (PDF, DOCX, foto){iniziale?.documento ? ` — ora: ${iniziale.documento.nome}` : ""}</span>
+          <input type="file" accept=".pdf,.docx,.doc,.jpg,.jpeg,.png" onChange={e => setFile(e.target.files?.[0] || null)} />
+        </label>
+
+        <div className="dc-modal-footer">
+          <button type="button" className="dc-btn dc-btn-ghost" onClick={onClose}>Annulla</button>
+          <button type="button" className="dc-btn dc-btn-primary" disabled={busy || !quadra} onClick={salva}>
+            {busy ? "Salvo…" : "Salva"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Con `pagamento` il modulo corregge un pagamento in contanti già scritto
+// (data, importo, parte): il valore di prima resta nello storico del pagamento.
+function ModuloPagamentoConciliazione({ vocab, conc, pagamento, onClose, onSalvato }) {
+  const [f, setF] = useState(pagamento
+    ? { data: pagamento.data, importo: String(pagamento.importo ?? "").replace(".", ","), parte: pagamento.parte, modalita: pagamento.modalita }
+    : { data: new Date().toISOString().slice(0, 10), importo: "",
+        parte: "conciliazione", modalita: conc.modalita_pagamento === "misto" ? "bonifico" : conc.modalita_pagamento });
+  const [busy, setBusy] = useState(false);
+  const salva = async () => {
+    setBusy(true);
+    try {
+      const corpo = { ...f, importo: String(f.importo).replace(",", ".") };
+      if (pagamento) await axios.put(`${POS_API}/conciliazioni/${conc.id}/pagamenti/${pagamento.id}`, corpo);
+      else await axios.post(`${POS_API}/conciliazioni/${conc.id}/pagamenti`, corpo);
+      toast(pagamento ? "Pagamento corretto" : "Pagamento registrato"); onSalvato();
+    } catch (e) { toast(erroreApi(e, "Errore nel pagamento"), "err"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title={pagamento ? "Correggi il pagamento" : "Pagamento della conciliazione"} onClose={onClose} maxWidth={520}>
+      <div className="dc-modal-body">
+        <div className="dc-form-grid">
+          <label className="dc-form-group"><span className="dc-label">Che cosa paga</span>
+            <select value={f.parte} onChange={e => setF(s => ({ ...s, parte: e.target.value }))}>
+              {vocab.parti.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </label>
+          <label className="dc-form-group"><span className="dc-label">Modalità</span>
+            <select value={f.modalita} onChange={e => setF(s => ({ ...s, modalita: e.target.value }))}>
+              {vocab.modalita.filter(t => t.id !== "misto").map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </label>
+          <label className="dc-form-group"><span className="dc-label">Data</span>
+            <input type="date" value={f.data} onChange={e => setF(s => ({ ...s, data: e.target.value }))} />
+          </label>
+          <label className="dc-form-group"><span className="dc-label">Importo €</span>
+            <input inputMode="decimal" value={f.importo} onChange={e => setF(s => ({ ...s, importo: e.target.value }))} />
+          </label>
+        </div>
+        <p className="dc-muted" style={{ fontSize: 12.5 }}>I bonifici si collegano dalla pagina «Bonifici da associare»: qui assegni e contanti.</p>
+        <div className="dc-modal-footer">
+          <button type="button" className="dc-btn dc-btn-ghost" onClick={onClose}>Annulla</button>
+          <button type="button" className="dc-btn dc-btn-primary" disabled={busy || !f.importo || !f.data} onClick={salva}>{busy ? "Salvo…" : pagamento ? "Salva correzione" : "Registra"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ModuloAnnullaConciliazione({ conc, onClose, onFatto }) {
+  const [motivo, setMotivo] = useState(MOTIVI_ANNULLO[0]);
+  const [altro, setAltro] = useState("");
+  const conferma = async () => {
+    const m = motivo === "altro" ? altro.trim() : motivo;
+    if (!m) { toast("Scrivi il motivo", "err"); return; }
+    try { await axios.post(`${POS_API}/conciliazioni/${conc.id}/annulla`, { motivo: m }); toast("Conciliazione annullata"); onFatto(); }
+    catch (e) { toast(erroreApi(e, "Errore"), "err"); }
+  };
+  return (
+    <Modal title="Annulla conciliazione" onClose={onClose} maxWidth={480}>
+      <div className="dc-modal-body">
+        <p className="dc-muted" style={{ fontSize: 13 }}>Non si cancella: resta in archivio con il motivo ed esce dalla posizione.</p>
+        <label className="dc-form-group"><span className="dc-label">Motivo</span>
+          <select value={motivo} onChange={e => setMotivo(e.target.value)}>
+            {MOTIVI_ANNULLO.map(m => <option key={m} value={m}>{m}</option>)}
+            <option value="altro">Altro (scrivi tu)</option>
+          </select>
+        </label>
+        {motivo === "altro" && (
+          <label className="dc-form-group" style={{ marginTop: 8 }}><span className="dc-label">Quale motivo</span>
+            <input value={altro} onChange={e => setAltro(e.target.value)} />
+          </label>
+        )}
+        <div className="dc-modal-footer">
+          <button type="button" className="dc-btn dc-btn-ghost" onClick={onClose}>Indietro</button>
+          <button type="button" className="dc-btn dc-btn-primary" onClick={conferma}>Annulla conciliazione</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PosizioneDipendentePage({ dipendenti }) {
+  const dipOrdinati = [...(dipendenti || [])].sort((a, b) => (a.nome_completo || "").localeCompare(b.nome_completo || ""));
+  const [dipId, setDipId] = useState(dipOrdinati[0]?.id || "");
+  const [anno, setAnno] = useState(null);
+  const [dati, setDati] = useState(null);
+  const [conc, setConc] = useState([]);
+  const [vocab, setVocab] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [modulo, setModulo] = useState(null); // {tipo: "conc"|"pag"|"annulla", conc?}
+  const dip = dipOrdinati.find(d => d.id === dipId);
+
+  useEffect(() => {
+    axios.get(`${POS_API}/vocabolari`).then(r => setVocab(r.data)).catch(() => setVocab(null));
+  }, []);
+
+  const carica = useCallback(async () => {
+    if (!dipId) return;
+    setLoading(true);
+    try {
+      const q = anno ? `?anno=${anno}` : "";
+      const [p, c] = await Promise.all([
+        axios.get(`${POS_API}/dipendente/${dipId}${q}`),
+        axios.get(`${POS_API}/conciliazioni?dipendente_id=${dipId}`),
+      ]);
+      setDati(p.data); setConc(c.data.righe || []);
+    } catch (e) { toast(erroreApi(e, "Errore nel caricamento"), "err"); setDati(null); }
+    finally { setLoading(false); }
+  }, [dipId, anno]);
+  useEffect(() => { carica(); }, [carica]);
+
+  const chiudiEricarica = () => { setModulo(null); carica(); };
+  const togliPagamento = async (c, p) => {
+    if (!window.confirm(`Togliere il pagamento di € ${eurPos(p.importo)} del ${formatDate(p.data)}?`)) return;
+    try { await axios.delete(`${POS_API}/conciliazioni/${c.id}/pagamenti/${p.id}`); carica(); }
+    catch (e) { toast(erroreApi(e, "Errore"), "err"); }
+  };
+  const nomeVoce = (id) => vocab?.voci.find(v => v.id === id)?.label || id;
+  const nomeTipo = (id) => vocab?.tipi.find(v => v.id === id)?.label || id;
+
+  const kpi = { background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, padding: "12px 14px" };
+  const kpiLbl = { fontSize: 11, color: "#6b7669", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700 };
+  const kpiVal = { fontSize: 20, fontWeight: 800, color: "#2a3329", marginTop: 4, fontVariantNumeric: "tabular-nums" };
+
+  return (
+    <div className="dc-page" style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <div className="dc-page-header">
+        <div>
+          <h1>Posizione dipendente</h1>
+          <p>Dare = netto di ogni busta (con l'acconto recuperato in busta), 13ª e 14ª, parte ordinaria delle conciliazioni.
+            Avere = bonifici, assegni, contanti e acconti. Il saldo passa da un anno all'altro; il bonus delle conciliazioni ha un conto a parte.</p>
+        </div>
+      </div>
+
+      <div className="dc-card" style={{ padding: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 14 }}>
+        <label className="dc-form-group" style={{ flex: "1 1 220px" }}><span className="dc-label">Dipendente</span>
+          <select value={dipId} onChange={e => { setDipId(e.target.value); setAnno(null); }} style={{ minHeight: 44 }}>
+            {dipOrdinati.map(d => <option key={d.id} value={d.id}>{d.nome_completo}{d.stato === "cessato" ? " (cessato)" : ""}</option>)}
+          </select>
+        </label>
+        <label className="dc-form-group" style={{ flex: "0 1 140px" }}><span className="dc-label">Anno</span>
+          <select value={dati?.anno || ""} onChange={e => setAnno(Number(e.target.value))} style={{ minHeight: 44 }}>
+            {(dati?.anni?.length ? dati.anni : [dati?.anno || new Date().getFullYear()]).slice().reverse().map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </label>
+        <button type="button" className="dc-btn" style={{ minHeight: 44 }} onClick={carica} disabled={loading}>
+          <RefreshCw size={16} aria-hidden="true" /> {loading ? "Carico…" : "Aggiorna"}
+        </button>
+      </div>
+
+      {!dipId ? <div className="dc-card" style={{ padding: 20 }}>Nessun dipendente in anagrafica.</div> : !dati ? (
+        <div className="dc-card" style={{ padding: 20 }}>{loading ? "Carico…" : "Nessun dato."}</div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 14 }}>
+            <div style={kpi}><div style={kpiLbl}>Apertura {dati.anno}</div><div style={kpiVal}><SaldoValore valore={dati.apertura} /></div></div>
+            <div style={kpi}><div style={kpiLbl}>Dare (dovuto)</div><div style={kpiVal}>{eurPos(dati.totale_dare)}</div></div>
+            <div style={kpi}><div style={kpiLbl}>Avere (pagato)</div><div style={kpiVal}>{eurPos(dati.totale_avere)}</div></div>
+            <div style={kpi}><div style={kpiLbl}>Chiusura {dati.anno}</div><div style={kpiVal}><SaldoValore valore={dati.chiusura} /></div></div>
+          </div>
+
+          {dati.avvisi?.length > 0 && (
+            <div className="dc-card" style={{ padding: 10, marginBottom: 14, borderLeft: "4px solid #c4894a", fontSize: 13 }}>
+              {dati.avvisi.map((a, i) => <div key={i}><AlertTriangle size={13} aria-hidden="true" /> {a}</div>)}
+            </div>
+          )}
+
+          <div className="dc-card" style={{ padding: 0, marginBottom: 18 }}>
+            <h3 style={{ margin: 0, padding: "12px 14px", borderBottom: "1px solid #e6e0d4" }}>Dare e avere {dati.anno}</h3>
+            <RigheMovimenti righe={dati.righe} vuoto="Nessun movimento nell'anno." />
+          </div>
+
+          <div className="dc-card" style={{ padding: 0, marginBottom: 18, borderLeft: "4px solid #8a6f47" }}>
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid #e6e0d4" }}>
+              <h3 style={{ margin: 0 }}>Bonus delle conciliazioni</h3>
+              <p className="dc-muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>Conto a parte: non entra nel saldo delle paghe.</p>
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 8, fontSize: 14 }}>
+                <span>Dovuto <b>{eurPos(dati.bonus.dovuto)}</b></span>
+                <span>Pagato <b>{eurPos(dati.bonus.pagato)}</b></span>
+                <span>Saldo <SaldoValore valore={dati.bonus.saldo} /></span>
+              </div>
+            </div>
+            <RigheMovimenti righe={dati.bonus.righe} vuoto="Nessun bonus." />
+          </div>
+
+          <div className="dc-card" style={{ padding: 0 }}>
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid #e6e0d4", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0 }}>Conciliazioni</h3>
+              <button type="button" className="dc-btn dc-btn-primary" style={{ minHeight: 44 }} disabled={!vocab} onClick={() => setModulo({ tipo: "conc" })}>
+                <Plus size={16} aria-hidden="true" /> Nuova conciliazione
+              </button>
+            </div>
+            {conc.length === 0 ? <p className="dc-muted" style={{ padding: 14 }}>Nessuna conciliazione registrata.</p> : conc.map(c => {
+              const st = STATO_CONC[c.stato] || { label: c.stato, variant: "default" };
+              return (
+                <div key={c.id} style={{ padding: 14, borderBottom: "1px solid #efe9dd" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <div><b>{nomeTipo(c.tipo)}</b> del {formatDate(c.data)} <Badge variant={st.variant}>{st.label}</Badge></div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {c.documento && (
+                        <button type="button" className="dc-btn dc-btn-ghost" style={{ minHeight: 44 }} onClick={() => apriDocumentoConciliazione(c.id)}>
+                          <FileText size={16} aria-hidden="true" /> Verbale
+                        </button>
+                      )}
+                      <button type="button" className="dc-btn" style={{ minHeight: 44 }} onClick={() => setModulo({ tipo: "pag", conc: c })}>
+                        <Euro size={16} aria-hidden="true" /> Pagamento
+                      </button>
+                      <button type="button" className="dc-btn" style={{ minHeight: 44 }} aria-label={`Modifica la conciliazione del ${formatDate(c.data)}`} onClick={() => setModulo({ tipo: "conc", conc: c })}>
+                        <Edit2 size={16} aria-hidden="true" /> Modifica
+                      </button>
+                      <button type="button" className="dc-btn dc-btn-ghost" style={{ minHeight: 44 }} aria-label={`Annulla la conciliazione del ${formatDate(c.data)}`} onClick={() => setModulo({ tipo: "annulla", conc: c })}>
+                        <X size={16} aria-hidden="true" /> Annulla
+                      </button>
+                    </div>
+                  </div>
+                  {c.importi_non_compilati ? (
+                    <div style={{ color: "#c4894a", fontSize: 13, marginTop: 6 }}><AlertTriangle size={13} aria-hidden="true" /> Importi non compilati</div>
+                  ) : (
+                    <div style={{ fontSize: 13.5, marginTop: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                      <span>Totale <b>{eurPos(c.totale)}</b></span>
+                      <span>di cui bonus <b>{eurPos(c.bonus)}</b></span>
+                      <span>Pagato <b>{eurPos(c.pagato_totale)}</b></span>
+                    </div>
+                  )}
+                  <div className="dc-muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                    {(c.voci || []).map(v => `${v.voce === "altro" ? (v.descrizione || "Altro") : nomeVoce(v.voce)}${v.importo ? ` € ${eurPos(v.importo)}` : ""}`).join(" · ")}
+                  </div>
+                  {c.rate?.length > 0 && (
+                    <div className="dc-muted" style={{ fontSize: 12.5, marginTop: 2 }}>
+                      Rate: {c.rate.map(r => `€ ${eurPos(r.importo)} entro il ${formatDate(r.entro_il)}`).join(" · ")}
+                    </div>
+                  )}
+                  {c.pagamenti?.length > 0 && (
+                    <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>
+                      {c.pagamenti.map(p => (
+                        <li key={p.id} style={{ marginBottom: 2 }}>
+                          {formatDate(p.data)} · € {eurPos(p.importo)} · {p.parte === "bonus" ? "bonus" : "parte ordinaria"} · {p.modalita}
+                          {(p.origine === "manuale" || p.modalita === "contanti") && (
+                            <button type="button" className="dc-btn dc-btn-ghost" style={{ marginLeft: 6, minHeight: 44, padding: "2px 10px", fontSize: 12 }}
+                              aria-label={`Correggi il pagamento del ${formatDate(p.data)}`} onClick={() => setModulo({ tipo: "pag", conc: c, pagamento: p })}>
+                              <Edit2 size={12} aria-hidden="true" /> Modifica
+                            </button>
+                          )}
+                          {p.origine === "manuale" ? (
+                            <button type="button" className="dc-btn dc-btn-ghost" style={{ marginLeft: 6, minHeight: 44, padding: "2px 10px", fontSize: 12 }}
+                              aria-label={`Togli il pagamento del ${formatDate(p.data)}`} onClick={() => togliPagamento(c, p)}>
+                              <Trash2 size={12} aria-hidden="true" /> Togli
+                            </button>
+                          ) : p.modalita !== "contanti" && <span className="dc-muted"> (provato dalla banca)</span>}
+                          {p.storico?.length > 0 && <span className="dc-muted"> · corretto {p.storico.length === 1 ? "una volta" : `${p.storico.length} volte`}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {modulo?.tipo === "conc" && vocab && dip && (
+        <ModuloConciliazione vocab={vocab} dipendente={dip} iniziale={modulo.conc} onClose={() => setModulo(null)} onSalvata={chiudiEricarica} />
+      )}
+      {modulo?.tipo === "pag" && vocab && (
+        <ModuloPagamentoConciliazione vocab={vocab} conc={modulo.conc} pagamento={modulo.pagamento} onClose={() => setModulo(null)} onSalvato={chiudiEricarica} />
+      )}
+      {modulo?.tipo === "annulla" && (
+        <ModuloAnnullaConciliazione conc={modulo.conc} onClose={() => setModulo(null)} onFatto={chiudiEricarica} />
+      )}
     </div>
   );
 }

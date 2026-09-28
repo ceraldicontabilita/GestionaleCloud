@@ -317,10 +317,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
   conto. Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
   nome o contenuto sotto `DRIVE_ESTRATTI_ANNO_MINIMO` (difetto 2025: l'anno prima si legge per riconciliare; 0 = nessun filtro) va in `ARRETRATO`, non si registra.
-- Acquisizione serale RT: Render non raggiunge la rete del locale, quindi
-  `scripts/sync_rt_to_drive.py` gira su un PC della LAN (ignora gli XML
-  `ESITO`, SHA-256, copia atomica dei soli file nuovi). `RT_LOCAL_BASE_URL` e
-  `RT_DRIVE_INBOX` sono variabili **locali**: mai su Render. **Se quel
+- Corrispettivi: la via **primaria** è l'import degli XML (Documenti > Import, cartella unica); la copia serale RT è
+  **supplementare**. Render non raggiunge la rete del locale, quindi `scripts/sync_rt_to_drive.py` gira sul **PC del
+  titolare** (attività pianificata da `scripts/installa_sync_rt.ps1`, ogni sera e all'accensione) e copia in
+  `DA ELABORARE` le giornate dall'ultima copiata in poi (ignora gli XML `ESITO`, SHA-256, copia atomica dei soli file
+  nuovi). `RT_LOCAL_BASE_URL` e `RT_DRIVE_INBOX` sono variabili **locali**: mai su Render. **Se quel
   programma si ferma nessuno se ne accorge**: il gestionale vede solo l'assenza
   di file, e l'assenza di incassi somiglia a un locale chiuso. Il segnale da
   guardare è l'ultima giornata in `corrispettivi`, non la coda Drive: `fonti_ferme.py` avvisa (anche su
@@ -572,19 +573,20 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   completo univoco → cognome univoco (in banca in testa al beneficiario dopo «FAVORE»): la corrispondenza univoca **basta da sola** («il nome di un
   dipendente è un dipendente»: non serve la parola «stipendio» in causale né un lotto paghe). Resta il
   veto: TFR, fatture, commissioni e fornitori non entrano mai, nemmeno in coda, **anche con un nome
-  dipendente dentro** la causale — l'esclusione vince sul nome. Ambiguo o `BENEFICIARI VARI` → coda. Il
+  dipendente dentro** la causale — l'esclusione vince sul nome (anche «ADD.SPE», giroconti a Ceraldi Group, società semplici e aziende agricole). Ambiguo o `BENEFICIARI VARI` → coda, **una riga per bonifico**: il RIF. INTERNO «MB…» (`rif_banca`) unisce ricevuta ed estratto, la seconda prova completa la riga. Il
   **lotto paghe** (≥3 dipendenti lo stesso giorno) resta un segnale per i casi non risolti altrimenti.
   Competenza da causale o nome file, altrimenti **regola del giorno 25**: prima del 25 = mese precedente,
   dal 25 = corrente. Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un solo esito,
   arricchito, mai duplicato.
+- **Posizione dipendente** (`services/posizione_dipendente.py`, pagina HR, solo admin; «Prima nota» di Archivio paghe è la stessa, per mese): DARE = netto di ogni busta **più l'acconto recuperato in busta** (voci `cedolino_voci.VOCI_ACCONTO_RECUPERATO`, poi `acconti.acconto_recuperato`, poi competenze − trattenute oltre 1,00 €), 13ª/14ª, parte non bonus delle conciliazioni; AVERE = bonifici, contanti, acconti fuori busta (`acconti_dipendenti`: pagamento, mai sommato a un netto). Saldo con riporto d'anno.
+  Conciliazioni (`conciliazioni`, verbale in `gestionale.blobs`): totale = somma delle voci al centesimo, «importi non compilati» = totale nullo, mai inventato; il **bonus** ha un conto suo, fuori dalle paghe. In «Bonifici da associare» si sceglie il tipo: stipendio, acconto, conciliazione o bonus. Un pagamento in contanti o scritto a mano si corregge (data, importo, parte; il prima resta in `storico`), uno provato dal bonifico mai.
 - «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale `DA_ASSEGNARE`: non imposta
   bonifico eseguito, movimento, data di pagamento né riconciliazione.
 - Cedolini e bonifici salario si associano per dipendente, periodo e regole temporali: non si richiedono
   importi identici quando esistono acconti o trattenute. Le correzioni a mano in «Paghe e bonifici» non
   vengono sovrascritte dalla sincronizzazione.
-- **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni**
-  dalla decorrenza (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015
-  art. 26).
+- **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni** dalla decorrenza
+  (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015 art. 26).
 - **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026 e ferie 15–23/08/2026
   non sono corrispettivi mancanti.
 - **Dello storico interessano solo cedolini e F24**: fatture e corrispettivi precedenti all'anno attivo
@@ -595,9 +597,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   XML. Eccezione: la fattura dell'**anno prima** pagata quest'anno entra solo come **debito** (`debiti_anno_precedente.py`: niente
   costo né IVA; il bonifico la chiude per fornitore e importo al centesimo, debiti uguali in ordine di data, entro 180 giorni; un importo che il fornitore fattura anche quest'anno è un canone e vuole il numero in causale; va in Prima Nota Banca su 33.03.01). Gli **accrediti in entrata del 2023** (ricevuta «A VOSTRO CREDITO»: Satispay, giroconti, rimborsi)
   non si registrano (`ANNI_ACCREDITI_NON_REGISTRATI`); i bonifici disposti di ogni anno restano.
-- Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato,
-  Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile
-  salvia.
+- Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato, Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile salvia.
 
 ## Fatture: identità e duplicati
 
@@ -623,7 +623,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   vive in cinque campi (`stato`, `stato_pagamento`, `payment_status`, `pagato`, `paid`) e nessuno copre
   l'archivio: leggerne uno solo dichiarava non pagate 639 fatture da 311.838,20 €, e `{"pagato": {"$ne":
   True}}` le riportava tutte fra le aperte. `status` è lo stato del documento e `stato_finanziario` quello
-  della riconciliazione: nessuno dei due dice se è pagata.
+  della riconciliazione: nessuno dei due dice se è pagata. Pagata con assegni addebitati (prova ufficiale, quote = totale al centesimo): i cinque campi e `data_pagamento` si allineano alla banca (`fatture_pagate_con_assegno`, job bancario corto).
 - Il payload di `fattura.created` si costruisce solo con
   `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così import e recupero del
   pregresso propagano lo stesso evento.
@@ -825,7 +825,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Drive, ponte pagamenti HR, dedup fatture.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 non è in archivio, solo su Drive.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
-- **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; il PC del negozio tace dal 28/08).
+- **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; la copia serale RT è ferma dal 28/08).
   08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
@@ -850,7 +850,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Pregresso fatture**: 299 attive (173.184,83 €, gennaio–maggio) senza partita: le rigioca il job bancario corto (`ripubblica_a_lotti`). Con `dry_run`: `azzera-scadenze` (642 fatture,
   971 partite inventate), `lipe/importa`, `ricostruisci-numia`.
 - Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza `fattura_id`, ~260 movimenti banca senza categoria (bonifici disposti e SDD: si chiudono solo abbinandoli).
-- HR: 38 bonifici con `cedolino_id` orfano, 119 in «bonifici da associare», 10 tabelle attese dall'app
+- HR: 38 bonifici con `cedolino_id` orfano, 162 in «bonifici da associare» (quasi tutte distinte senza nome; le notifiche banca «Info Bonifico» le nominano), 10 tabelle attese dall'app
   assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
 - Noleggio: `veicoli_noleggio` è **vuota** in produzione (nessun driver né storico; le 4 targhe GX037HJ
@@ -858,7 +858,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   non hanno importo, targa né data; bonifici al Comune e pagamenti Mooney via PayPal sono candidati senza verbale.
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
-- `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **far ripartire `sync_rt_to_drive.py`** (fermo dal 28/08); password Postgres; DNS ceraldiapp.it.
+- `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **installare la copia serale RT sul suo PC** (`scripts/installa_sync_rt.ps1`, recupera da sola le giornate dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
 - **Minisito fiscale** (RST-MINI): script e JSON attesi non sono su Drive (solo i due HTML). Saldo IRAP 2024 (5.164,00 €) e acconto IRAP 2025 (4.238,00 €) senza quietanza: da verificare col commercialista. 18 quietanze doppie (21.727,35 €) da mettere in quarantena con `/api/doppioni` (prima `dry_run`).

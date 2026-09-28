@@ -163,3 +163,48 @@ def test_l_import_legge_il_numero_senza_spazi():
 
     con_spazio = XML.replace("<Numero>F-99</Numero>", "<Numero>  F-99 </Numero>")
     assert parse_fattura_xml(con_spazio)["invoice_number"] == "F-99"
+
+
+def test_la_fattura_pagata_con_assegno_si_allinea_alla_banca():
+    """Stato fermo a «in attesa banca» e data della fattura: si allineano all'addebito."""
+    from app.services.bonifiche_automatiche import fatture_pagate_con_assegno
+
+    async def scenario():
+        db = ArchivioDocumenti()
+        await db["invoices"].insert_many([
+            {"id": "f-una", "total_amount": 646.72, "stato_pagamento": "in_attesa_banca",
+             "pagato": True, "paid": False, "data_pagamento": "2026-04-07"},
+            {"id": "f-due-a", "total_amount": 91.2, "stato": "da_pagare"},
+            {"id": "f-due-b", "total_amount": 439.1, "stato": "da_pagare"},
+            {"id": "f-parziale", "total_amount": 1000.0, "stato": "da_pagare"},
+            {"id": "f-provvisoria", "total_amount": 50.0, "stato": "da_pagare"},
+        ])
+        await db["assegni"].insert_many([
+            {"id": "a1", "stato": "incassato", "evidenza_bancaria_ufficiale": True,
+             "movimento_estratto_conto_id": "m1", "data_incasso": "2026-04-17",
+             "importo": 646.72, "fattura_id": "f-una"},
+            {"id": "a2", "stato": "incassato", "evidenza_bancaria_ufficiale": True,
+             "movimento_estratto_conto_id": "m2", "data_incasso": "2026-05-14", "importo": 530.3,
+             "fatture_collegate": [{"fattura_id": "f-due-a", "quota": 91.2},
+                                   {"fattura_id": "f-due-b", "quota": 439.1}]},
+            {"id": "a3", "stato": "incassato", "evidenza_bancaria_ufficiale": True,
+             "movimento_estratto_conto_id": "m3", "data_incasso": "2026-05-20",
+             "importo": 400.0, "fattura_id": "f-parziale"},
+            {"id": "a4", "stato": "incassato", "evidenza_bancaria_ufficiale": False,
+             "movimento_estratto_conto_id": "m4", "data_incasso": "2026-05-21",
+             "importo": 50.0, "fattura_id": "f-provvisoria"},
+        ])
+        primo = await fatture_pagate_con_assegno(db)
+        secondo = await fatture_pagate_con_assegno(db)
+        fatture = {f["id"]: f for f in await db["invoices"].find({}, {"_id": 0}).to_list(None)}
+        return primo, secondo, fatture
+
+    primo, secondo, fatture = asyncio.run(scenario())
+    assert primo == {"fatture": 3, "totale_diverso": 1}
+    assert secondo == {"fatture": 0, "totale_diverso": 1}
+    una = fatture["f-una"]
+    assert (una["stato_pagamento"], una["paid"], una["data_pagamento"]) == ("pagata", True, "2026-04-17")
+    assert fatture["f-due-b"]["stato"] == "pagata"
+    assert fatture["f-parziale"]["stato"] == "da_pagare"
+    assert fatture["f-provvisoria"]["stato"] == "da_pagare"
+    assert "metodo_pagamento" not in una

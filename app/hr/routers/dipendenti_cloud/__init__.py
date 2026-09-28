@@ -674,23 +674,69 @@ async def pdf_bonifico_da_associare(bonifico_id: str):
 
 @router.post("/bonifici-da-associare/{bonifico_id}/associa")
 async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...)):
-    """Assegna un bonifico in coda a un dipendente e a un periodo, scelti a
-    mano. Lo trasforma in un bonifico vero (stessa collezione degli altri,
-    stessa logica di riconciliazione) col PDF portato dietro come prova, e lo
-    toglie dalla coda."""
+    """Assegna un bonifico in coda a un dipendente, scelto a mano, e dice che
+    cosa e' (``tipo``):
+
+    * ``stipendio`` (difetto): diventa un bonifico vero del periodo (stessa
+      collezione degli altri, stessa riconciliazione) col PDF come prova;
+    * ``acconto``: va nel registro unico degli acconti, come pagamento sulla
+      posizione del dipendente; non si somma a nessun netto;
+    * ``conciliazione`` / ``bonus``: pagamento della parte ordinaria o del
+      bonus di una conciliazione del dipendente (``conciliazione_id``).
+
+    Anno e mese, se mancano, sono quelli della data del bonifico. Un bonifico
+    gia' associato non si associa una seconda volta."""
+    from app.services import posizione_dipendente as pos
+
     dipendente_id = data.get("dipendente_id")
-    mese = data.get("mese")
-    anno = data.get("anno")
-    if not dipendente_id or not mese or not anno:
-        raise HTTPException(400, "dipendente_id, mese, anno obbligatori")
+    tipo = str(data.get("tipo") or "stipendio").strip().lower()
+    if tipo not in pos.TIPI_BONIFICO_CODA:
+        raise HTTPException(400, {"code": "TIPO_NON_AMMESSO", "message": "Tipo: stipendio, acconto, conciliazione o bonus",
+                                  "details": {"ammessi": list(pos.TIPI_BONIFICO_CODA)}})
+    if not dipendente_id:
+        raise HTTPException(400, "dipendente_id obbligatorio")
 
     db = get_db()
     in_coda = await db.bonifici_da_associare.find_one({"id": bonifico_id}, {"_id": 0})
     if not in_coda:
         raise HTTPException(404, "Bonifico non trovato in coda")
+    if in_coda.get("stato") not in (None, "da_associare"):
+        raise HTTPException(409, {"code": "GIA_ASSOCIATO", "message": "Bonifico gia' uscito dalla coda",
+                                  "details": {"stato": in_coda.get("stato")}})
     dip = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
     if not dip:
         raise HTTPException(404, "Dipendente non trovato")
+    data_bon = str(in_coda.get("data") or "")
+    try:
+        anno = int(data.get("anno") or data_bon[:4])
+        mese = int(data.get("mese") or data_bon[5:7])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, "anno e mese obbligatori (il bonifico non ha una data leggibile)") from exc
+    if not (1 <= mese <= 14) or anno < 2000:
+        raise HTTPException(400, "mese deve essere 1-14, anno >= 2000")
+
+    if tipo != "stipendio":
+        try:
+            if tipo == "acconto":
+                esito = await pos.registra_acconto_da_coda(db, in_coda, dip, anno, mese)
+                rif = {"acconto_id": esito["id"]}
+            else:
+                if not data.get("conciliazione_id"):
+                    raise pos.ErrorePosizione("CONCILIAZIONE_MANCANTE", "Scegli la conciliazione del dipendente")
+                esito = await pos.aggiungi_pagamento(db, data["conciliazione_id"], {
+                    "dipendente_id": dipendente_id, "data": in_coda.get("data"),
+                    "importo": in_coda.get("importo"), "modalita": "bonifico",
+                    "parte": "bonus" if tipo == "bonus" else "conciliazione",
+                    "origine": "bonifici_da_associare", "bonifico_da_associare_id": bonifico_id,
+                })
+                rif = {"conciliazione_id": data["conciliazione_id"]}
+        except pos.ErrorePosizione as exc:
+            raise HTTPException(400, exc.come_dict()) from exc
+        await db.bonifici_da_associare.update_one(
+            {"id": bonifico_id},
+            {"$set": {"stato": "associato", "associato_a": dipendente_id, "associato_tipo": tipo,
+                      "associato_competenza": "%s-%02d" % (anno, mese), "associato_il": now_iso(), **rif}})
+        return {"ok": True, "tipo": tipo, **rif}
 
     nuovo = {
         "id": str(uuid.uuid4()), "dipendente_id": dipendente_id,
@@ -707,7 +753,7 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...)):
     await db.bonifici.insert_one(nuovo)
     await db.bonifici_da_associare.update_one(
         {"id": bonifico_id},
-        {"$set": {"stato": "associato", "associato_a": dipendente_id,
+        {"$set": {"stato": "associato", "associato_a": dipendente_id, "associato_tipo": "stipendio",
                   "associato_competenza": nuovo["competenza"], "associato_il": now_iso()}})
 
     # Aggancia anche al MOTORE UNICO paghe (pagamenti_esiti + paghe_mensili):
@@ -3425,24 +3471,12 @@ async def paghe_in_attesa():
 
 @router.get("/paghe/prima-nota")
 async def prima_nota(dipendente_id: str):
-    """Prima nota salari di un dipendente: tutti i mesi con busta, erogato (bonifici+acconti)
-    e saldo progressivo (cumulato busta − cumulato erogato; >0 = ancora da pagare)."""
-    db = get_db()
-    paghe = await db.paghe_mensili.find({"dipendente_id": dipendente_id}, {"_id": 0}).to_list(2000)
-    paghe.sort(key=lambda p: (p.get("anno") or 0, p.get("mese") or 0))
-    out, saldo = [], 0.0
-    for p in paghe:
-        busta = float(p.get("importo_busta") or 0)
-        acc = sum(float(a.get("importo") or 0) for a in (p.get("acconti") or []))
-        bon = float(p.get("bonifico_importo") or 0)
-        erogato = bon + acc
-        if busta == 0 and erogato == 0:
-            continue
-        saldo += busta - erogato
-        out.append({"anno": p.get("anno"), "mese": p.get("mese"), "busta": round(busta, 2),
-                    "bonifico": round(bon, 2), "acconti": round(acc, 2),
-                    "erogato": round(erogato, 2), "saldo_progressivo": round(saldo, 2)})
-    return {"righe": out, "saldo_finale": round(saldo, 2)}
+    """Prima nota salari di un dipendente per mese di competenza: dovuto (busta,
+    con l'acconto recuperato in busta), erogato (bonifici e acconti) e saldo
+    progressivo (>0 = ancora da pagare). E' la vista mensile della posizione
+    dare/avere (``app/services/posizione_dipendente.py``): un solo registro."""
+    from app.services.posizione_dipendente import prima_nota_dipendente
+    return await prima_nota_dipendente(get_db(), dipendente_id)
 
 
 @router.get("/paghe/associazioni-bonifici")
