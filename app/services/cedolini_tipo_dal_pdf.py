@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 COLL = "cedolini"
 CHIAVE_STATO = "cedolini_tipo_dal_pdf"
-VERSIONE = "tipo_dal_pdf_v2"
+# v3: il lettore riconosce la 13ª/14ª CSC dalla sua voce (852 14A MENSILITA').
+VERSIONE = "tipo_dal_pdf_v3"
 LOTTO = 40
 APPLICA = True
 # Il solo verso che il titolare ha fatto applicare da solo (28/09/2026).

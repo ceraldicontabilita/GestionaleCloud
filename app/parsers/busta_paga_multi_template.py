@@ -150,6 +150,22 @@ def _detect_tipo_cedolino(text: str) -> str:
             return next(iter(tipi_da_voci))
         return "mensile"
 
+    # Nelle buste CSC (2018-2022) la mensilita aggiuntiva e' una voce a
+    # codice numerico, «852 14A MENSILITA' 57,33+ 8,08017 463,24+», che cade
+    # oltre le prime 80 righe guardate qui sotto. Vale solo se e' l'unica
+    # competenza della busta (riga a codice chiusa da «+»; la 999 e' la base
+    # TFR, non una competenza): accanto alla retribuzione e' un mese ordinario.
+    voce_csc = re.compile(r"^\d{3,4} (1[34]) ?(?:A|MA|\^|ª)? ?MENSILIT")
+    competenze_csc = [
+        riga for riga in tutte_le_righe
+        if re.match(r"^\d{3,4} [A-Z0-9]", riga) and riga.endswith("+")
+        and not riga.startswith("999 ")
+    ]
+    tipi_csc = {voce_csc.match(riga).group(1) if voce_csc.match(riga) else None
+                for riga in competenze_csc}
+    if tipi_csc in ({"13"}, {"14"}) and not detect_cessazione(text).get("cessato", False):
+        return "tredicesima" if tipi_csc == {"13"} else "quattordicesima"
+
     rumore = (
         "RATEO", "RATEI", "MATURAT", "RESIDU", "ACCANTON",
         "PROGRESSIV", "IMPONIBILE", "FERIE", "PERMESS", "RECUPERO", "STORNO",
