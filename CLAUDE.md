@@ -578,7 +578,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   dal 25 = corrente. Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un solo esito,
   arricchito, mai duplicato.
 - **Posizione dipendente** (`services/posizione_dipendente.py`, pagina HR, solo admin; «Prima nota» di Archivio paghe è la stessa, per mese): DARE = netto di ogni busta **più l'acconto recuperato in busta** (voci `cedolino_voci.VOCI_ACCONTO_RECUPERATO`, poi `acconti.acconto_recuperato`, poi competenze − trattenute oltre 1,00 €), 13ª/14ª, parte non bonus delle conciliazioni; AVERE = bonifici, contanti, acconti fuori busta (`acconti_dipendenti`: pagamento, mai sommato a un netto). Saldo con riporto d'anno.
-  Conciliazioni (`conciliazioni`, verbale in `gestionale.blobs`): totale = somma delle voci al centesimo, «importi non compilati» = totale nullo, mai inventato; il **bonus** ha un conto suo, fuori dalle paghe. In «Bonifici da associare» si sceglie il tipo: stipendio, acconto, conciliazione o bonus.
+  Conciliazioni (`conciliazioni`, verbale in `gestionale.blobs`): totale = somma delle voci al centesimo, «importi non compilati» = totale nullo, mai inventato; il **bonus** ha un conto suo, fuori dalle paghe. In «Bonifici da associare» si sceglie il tipo: stipendio, acconto, conciliazione o bonus. Un pagamento in contanti o scritto a mano si corregge (data, importo, parte; il prima resta in `storico`), uno provato dal bonifico mai.
 - «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale `DA_ASSEGNARE`: non imposta
   bonifico eseguito, movimento, data di pagamento né riconciliazione.
 - Cedolini e bonifici salario si associano per dipendente, periodo e regole temporali: non si richiedono

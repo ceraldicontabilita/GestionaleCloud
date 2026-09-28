@@ -120,6 +120,16 @@ async def aggiungi_pagamento(conciliazione_id: str, dati: Dict[str, Any] = Body(
         raise _errore(exc, 404 if exc.code == "CONCILIAZIONE_NON_TROVATA" else 400) from exc
 
 
+@router.put("/conciliazioni/{conciliazione_id}/pagamenti/{pagamento_id}")
+async def modifica_pagamento(conciliazione_id: str, pagamento_id: str, dati: Dict[str, Any] = Body(...)):
+    """Corregge data, importo o parte di un pagamento in contanti o scritto a mano."""
+    try:
+        return await pos.modifica_pagamento(_db(), conciliazione_id, pagamento_id, dati)
+    except pos.ErrorePosizione as exc:
+        stato = {"CONCILIAZIONE_NON_TROVATA": 404, "PAGAMENTO_NON_TROVATO": 404, "PAGAMENTO_DA_BANCA": 409}
+        raise _errore(exc, stato.get(exc.code, 400)) from exc
+
+
 @router.delete("/conciliazioni/{conciliazione_id}/pagamenti/{pagamento_id}")
 async def togli_pagamento(conciliazione_id: str, pagamento_id: str):
     """Solo un pagamento scritto a mano; uno arrivato dalla coda bonifici resta."""

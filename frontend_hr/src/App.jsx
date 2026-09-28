@@ -4376,20 +4376,26 @@ function ModuloConciliazione({ vocab, dipendente, iniziale, onClose, onSalvata }
   );
 }
 
-function ModuloPagamentoConciliazione({ vocab, conc, onClose, onSalvato }) {
-  const [f, setF] = useState({ data: new Date().toISOString().slice(0, 10), importo: "",
-                               parte: "conciliazione", modalita: conc.modalita_pagamento === "misto" ? "bonifico" : conc.modalita_pagamento });
+// Con `pagamento` il modulo corregge un pagamento in contanti già scritto
+// (data, importo, parte): il valore di prima resta nello storico del pagamento.
+function ModuloPagamentoConciliazione({ vocab, conc, pagamento, onClose, onSalvato }) {
+  const [f, setF] = useState(pagamento
+    ? { data: pagamento.data, importo: String(pagamento.importo ?? "").replace(".", ","), parte: pagamento.parte, modalita: pagamento.modalita }
+    : { data: new Date().toISOString().slice(0, 10), importo: "",
+        parte: "conciliazione", modalita: conc.modalita_pagamento === "misto" ? "bonifico" : conc.modalita_pagamento });
   const [busy, setBusy] = useState(false);
   const salva = async () => {
     setBusy(true);
     try {
-      await axios.post(`${POS_API}/conciliazioni/${conc.id}/pagamenti`, { ...f, importo: String(f.importo).replace(",", ".") });
-      toast("Pagamento registrato"); onSalvato();
+      const corpo = { ...f, importo: String(f.importo).replace(",", ".") };
+      if (pagamento) await axios.put(`${POS_API}/conciliazioni/${conc.id}/pagamenti/${pagamento.id}`, corpo);
+      else await axios.post(`${POS_API}/conciliazioni/${conc.id}/pagamenti`, corpo);
+      toast(pagamento ? "Pagamento corretto" : "Pagamento registrato"); onSalvato();
     } catch (e) { toast(erroreApi(e, "Errore nel pagamento"), "err"); }
     finally { setBusy(false); }
   };
   return (
-    <Modal title="Pagamento della conciliazione" onClose={onClose} maxWidth={520}>
+    <Modal title={pagamento ? "Correggi il pagamento" : "Pagamento della conciliazione"} onClose={onClose} maxWidth={520}>
       <div className="dc-modal-body">
         <div className="dc-form-grid">
           <label className="dc-form-group"><span className="dc-label">Che cosa paga</span>
@@ -4412,7 +4418,7 @@ function ModuloPagamentoConciliazione({ vocab, conc, onClose, onSalvato }) {
         <p className="dc-muted" style={{ fontSize: 12.5 }}>I bonifici si collegano dalla pagina «Bonifici da associare»: qui assegni e contanti.</p>
         <div className="dc-modal-footer">
           <button type="button" className="dc-btn dc-btn-ghost" onClick={onClose}>Annulla</button>
-          <button type="button" className="dc-btn dc-btn-primary" disabled={busy || !f.importo} onClick={salva}>{busy ? "Salvo…" : "Registra"}</button>
+          <button type="button" className="dc-btn dc-btn-primary" disabled={busy || !f.importo || !f.data} onClick={salva}>{busy ? "Salvo…" : pagamento ? "Salva correzione" : "Registra"}</button>
         </div>
       </div>
     </Modal>
@@ -4608,12 +4614,19 @@ function PosizioneDipendentePage({ dipendenti }) {
                       {c.pagamenti.map(p => (
                         <li key={p.id} style={{ marginBottom: 2 }}>
                           {formatDate(p.data)} · € {eurPos(p.importo)} · {p.parte === "bonus" ? "bonus" : "parte ordinaria"} · {p.modalita}
+                          {(p.origine === "manuale" || p.modalita === "contanti") && (
+                            <button type="button" className="dc-btn dc-btn-ghost" style={{ marginLeft: 6, minHeight: 44, padding: "2px 10px", fontSize: 12 }}
+                              aria-label={`Correggi il pagamento del ${formatDate(p.data)}`} onClick={() => setModulo({ tipo: "pag", conc: c, pagamento: p })}>
+                              <Edit2 size={12} aria-hidden="true" /> Modifica
+                            </button>
+                          )}
                           {p.origine === "manuale" ? (
-                            <button type="button" className="dc-btn dc-btn-ghost" style={{ marginLeft: 6, padding: "2px 8px", fontSize: 12 }}
+                            <button type="button" className="dc-btn dc-btn-ghost" style={{ marginLeft: 6, minHeight: 44, padding: "2px 10px", fontSize: 12 }}
                               aria-label={`Togli il pagamento del ${formatDate(p.data)}`} onClick={() => togliPagamento(c, p)}>
                               <Trash2 size={12} aria-hidden="true" /> Togli
                             </button>
-                          ) : <span className="dc-muted"> (dalla coda bonifici)</span>}
+                          ) : p.modalita !== "contanti" && <span className="dc-muted"> (provato dalla banca)</span>}
+                          {p.storico?.length > 0 && <span className="dc-muted"> · corretto {p.storico.length === 1 ? "una volta" : `${p.storico.length} volte`}</span>}
                         </li>
                       ))}
                     </ul>
@@ -4629,7 +4642,7 @@ function PosizioneDipendentePage({ dipendenti }) {
         <ModuloConciliazione vocab={vocab} dipendente={dip} iniziale={modulo.conc} onClose={() => setModulo(null)} onSalvata={chiudiEricarica} />
       )}
       {modulo?.tipo === "pag" && vocab && (
-        <ModuloPagamentoConciliazione vocab={vocab} conc={modulo.conc} onClose={() => setModulo(null)} onSalvato={chiudiEricarica} />
+        <ModuloPagamentoConciliazione vocab={vocab} conc={modulo.conc} pagamento={modulo.pagamento} onClose={() => setModulo(null)} onSalvato={chiudiEricarica} />
       )}
       {modulo?.tipo === "annulla" && (
         <ModuloAnnullaConciliazione conc={modulo.conc} onClose={() => setModulo(null)} onFatto={chiudiEricarica} />
