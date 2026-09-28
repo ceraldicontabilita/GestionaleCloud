@@ -538,3 +538,97 @@ async def collega_fattura_paypal_appena_importata(db, invoice: Dict[str, Any]) -
     return await collega_transazione_a_fattura(
         db, valid[0][1], invoice, valid[0][0], automatic=True,
     )
+
+
+GIORNI_CANDIDATI_PAYPAL = 120
+
+
+async def candidati_paypal_per_fattura(db, invoice: Dict[str, Any]) -> list:
+    """Pagamenti PayPal che possono aver pagato questa fattura: da far scegliere.
+
+    Stesso importo al centesimo, pagamento commerciale riuscito, entro
+    ``GIORNI_CANDIDATI_PAYPAL`` giorni dalla fattura e non gia' legati a
+    un'altra. Ogni candidato porta l'esito del motore (``associabile``,
+    evidenze, scarto): la lista non collega niente.
+    """
+    from app.services.paypal_invoice_matching import _parse_date
+
+    amount = invoice_amount(invoice)
+    if amount <= 0:
+        return []
+    inv_date = _parse_date(invoice.get("invoice_date") or invoice.get("data_fattura"))
+    invoice_id = _invoice_id(invoice)
+    righe = await db[COLL_TRANSACTIONS].find({"$or": [
+        {"importo": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+        {"lordo": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+        {"amount": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+    ]}, {"_id": 0}).limit(100).to_list(100)
+    candidati = []
+    visti: set = set()
+    for tx in righe:
+        tx_id = _tx_id(tx)
+        if not tx_id or tx_id in visti or tx.get("is_pagopa") or not is_successful_paypal_payment(tx):
+            continue
+        visti.add(tx_id)
+        legata = str((tx.get("fattura_associata") or {}).get("fattura_id") or "")
+        if legata and legata != invoice_id:
+            continue
+        tx_date = _parse_date(tx.get("data") or tx.get("initiation_date"))
+        if inv_date and tx_date and abs((tx_date - inv_date).days) > GIORNI_CANDIDATI_PAYPAL:
+            continue
+        mapping = await supplier_mapping_for_transaction(db, tx)
+        valutazione = evaluate_paypal_invoice_match(tx, invoice, mapping)
+        candidati.append({
+            "transaction_id": tx_id,
+            "data": str(tx.get("data") or tx.get("initiation_date") or "")[:10],
+            "importo": transaction_amount(tx),
+            "valuta": tx.get("currency") or tx.get("valuta"),
+            "controparte": tx.get("nome_controparte") or tx.get("payer_name"),
+            "email": tx.get("email_controparte") or tx.get("payer_email"),
+            "riferimento": tx.get("invoice_id_fornitore") or tx.get("invoice_id"),
+            "descrizione": tx.get("descrizione"),
+            "gia_collegata": legata == invoice_id,
+            "addebito_banca": bool(tx.get("riconciliato_banca") or tx.get("movimento_banca_id")),
+            "associabile": valutazione["associabile"],
+            "evidenze": valutazione["evidenze"],
+            "scarto": valutazione.get("scarto"),
+        })
+    candidati.sort(key=lambda c: (not c["associabile"], c["data"]))
+    return candidati
+
+
+async def collega_paypal_scelto_dal_titolare(
+    db, invoice: Dict[str, Any], transaction_id: str,
+) -> Dict[str, Any]:
+    """Il titolare sceglie quale pagamento PayPal ha pagato la fattura.
+
+    La scelta vale solo fra i candidati di ``candidati_paypal_per_fattura``
+    (importo al centesimo, finestra di date, transazione libera): la sua
+    parola sostituisce l'identita' del fornitore quando PayPal espone un
+    altro nome (il marchio di un gruppo) o un numero d'ordine al posto del
+    numero fattura, mai l'importo. Il link lo scrive il motore unico.
+    """
+    candidati = await candidati_paypal_per_fattura(db, invoice)
+    scelto = next((c for c in candidati if c["transaction_id"] == transaction_id), None)
+    if not scelto:
+        return {"collegata": False, "motivo": "transazione_non_fra_i_candidati"}
+    transaction = await db[COLL_TRANSACTIONS].find_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]}, {"_id": 0},
+    )
+    if not transaction:
+        return {"collegata": False, "motivo": "transazione_non_trovata"}
+    mapping = await supplier_mapping_for_transaction(db, transaction)
+    valutazione = evaluate_paypal_invoice_match(transaction, invoice, mapping)
+    if not valutazione["associabile"]:
+        if "importo" not in valutazione["evidenze"]:
+            return {"collegata": False, "motivo": "importo_non_coincidente_al_centesimo"}
+        from app.services.paypal_invoice_matching import invoice_currency, transaction_currency
+
+        tx_valuta, fatt_valuta = transaction_currency(transaction), invoice_currency(invoice)
+        if tx_valuta and fatt_valuta and tx_valuta != fatt_valuta:
+            return {"collegata": False, "motivo": "valuta_non_coincidente"}
+        valutazione = {**valutazione, "associabile": True,
+                       "evidenze": [*valutazione["evidenze"], "scelta_titolare"]}
+    return await collega_transazione_a_fattura(
+        db, transaction, invoice, valutazione, automatic=False,
+    )

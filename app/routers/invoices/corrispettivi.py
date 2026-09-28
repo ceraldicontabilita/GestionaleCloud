@@ -1041,16 +1041,17 @@ def generate_corrispettivo_html(corrispettivo: Dict, movimento: Dict = None) -> 
     numero_documenti = corrispettivo.get("numero_documenti", 0) or 0
     
     # Dati aggiuntivi dal movimento prima nota
+    # Il movimento di Prima Nota riempie solo i campi che il corrispettivo non
+    # ha: la sua copia non vince mai sul documento fiscale (una copia rovinata
+    # mostrava contanti negativi nello scontrino).
     if movimento:
-        dettaglio = movimento.get("dettaglio", {})
-        if dettaglio:
-            pagato_contanti = dettaglio.get("contanti", pagato_contanti) or pagato_contanti
-            pagato_elettronico = dettaglio.get("elettronico", pagato_elettronico) or pagato_elettronico
-            totale_iva = dettaglio.get("totale_iva", totale_iva) or totale_iva
-            matricola_rt = dettaglio.get("matricola_rt", matricola_rt) or matricola_rt
-            numero_documenti = dettaglio.get("numero_documenti", numero_documenti) or numero_documenti
-        totale_iva = movimento.get("imposta", totale_iva) or totale_iva
-        totale_imponibile = movimento.get("imponibile", totale_imponibile) or totale_imponibile
+        dettaglio = movimento.get("dettaglio", {}) or {}
+        pagato_contanti = pagato_contanti or dettaglio.get("contanti") or 0
+        pagato_elettronico = pagato_elettronico or dettaglio.get("elettronico") or 0
+        totale_iva = totale_iva or dettaglio.get("totale_iva") or movimento.get("imposta") or 0
+        matricola_rt = matricola_rt or dettaglio.get("matricola_rt") or ""
+        numero_documenti = numero_documenti or dettaglio.get("numero_documenti") or 0
+        totale_imponibile = totale_imponibile or movimento.get("imponibile") or 0
     
     # Riepilogo IVA
     riepilogo_iva = corrispettivo.get("riepilogo_iva", []) or []

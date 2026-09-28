@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import api from '../api';
 import { formatDateIT, formatEuroD } from '../lib/utils';
@@ -26,10 +26,18 @@ export default function AssociaBonificoFattura({
   onSuccess,
   buttonLabel = 'Abbina bonifico',
   buttonStyle = {},
+  apriSubito = false,
+  onChiudi,
 }) {
   const confirm = useConfirm();
   const dati = datiFattura(fattura);
-  const [aperto, setAperto] = useState(false);
+  const [aperto, setApertoInterno] = useState(false);
+  // Aperto dalla tendina «Pagamento» dell'archivio: niente bottone proprio,
+  // il riquadro si apre subito e chiudendolo si avvisa chi l'ha aperto.
+  const setAperto = valore => {
+    setApertoInterno(valore);
+    if (!valore) onChiudi?.();
+  };
   const [candidati, setCandidati] = useState([]);
   const [residuo, setResiduo] = useState(0);
   const [errore, setErrore] = useState('');
@@ -55,6 +63,13 @@ export default function AssociaBonificoFattura({
     setAperto(true);
     cerca();
   };
+
+  useEffect(() => {
+    if (!apriSubito) return;
+    setApertoInterno(true);
+    cerca();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apriSubito]);
 
   const collega = async candidato => {
     const nonUnivoco = candidato.richiede_conferma;
@@ -88,6 +103,7 @@ export default function AssociaBonificoFattura({
 
   return (
     <>
+      {!apriSubito && (
       <button type="button" onClick={commuta} disabled={!dati.id || loading}
         aria-label={`Associa bonifico alla fattura ${dati.numero}`.trim()}
         style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -96,6 +112,7 @@ export default function AssociaBonificoFattura({
           cursor: !dati.id || loading ? 'wait' : 'pointer', ...buttonStyle }}>
         {loading && !aperto ? 'Ricerca…' : buttonLabel}
       </button>
+      )}
       {aperto && (
         <div role="dialog" aria-modal="true" aria-label={`Bonifici candidati per la fattura ${dati.numero}`}
           onMouseDown={e => e.target === e.currentTarget && setAperto(false)}

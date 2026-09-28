@@ -942,8 +942,10 @@ async def registra_chiusura_pos_reale(
                 db, "banca", nuovo_movimento_banca
             )
 
-    # Anche i metadati dell'entrata Cassa devono riflettere il terminale
-    # reale, pur lasciando intatto l'importo totale del corrispettivo.
+    # L'entrata Cassa e' la sola quota contanti dell'XML: il totale dei
+    # terminali si annota a parte e non la tocca. Fino al 28/09/2026 qui si
+    # sottraeva il POS dall'importo della riga come se fosse il totale del
+    # giorno, e la copia dei contanti diventava negativa (181 giornate).
     entrata_cassa = await db["prima_nota_cassa"].find_one({
         "data": data,
         "tipo": "entrata",
@@ -951,14 +953,10 @@ async def registra_chiusura_pos_reale(
         **filtro_attivo,
     })
     if entrata_cassa:
-        totale = round(float(entrata_cassa.get("importo") or 0), 2)
         await db["prima_nota_cassa"].update_one(
             {"id": entrata_cassa.get("id")},
             {"$set": {
-                "pagato_elettronico": totale_giorno,
-                "pagato_contanti": round(totale - totale_giorno, 2),
-                "dettaglio.elettronico": totale_giorno,
-                "dettaglio.contanti": round(totale - totale_giorno, 2),
+                "pos_reale_giorno": totale_giorno,
                 "quota_pos_fonte": "fonti_pos_reali",
                 "updated_at": now,
             }},
