@@ -46,10 +46,7 @@ class CorrispettiviService:
     def _generate_id(self) -> str:
         """Bug scoperto il 14/07/2026: mancava del tutto — process_xml e
         create_manual (che lo chiamano per l'id del corrispettivo) andavano
-        in AttributeError ad ogni chiamata reale. L'unico chiamante di
-        process_xml in produzione è drive_corrispettivi_ingest.py (il
-        canale Drive corrispettivi appena attivato): ogni sync sarebbe
-        fallito su ogni singolo file."""
+        in AttributeError ad ogni chiamata reale."""
         return str(uuid.uuid4())
 
     # ==================== CREATE ====================

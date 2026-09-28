@@ -17,9 +17,9 @@ async def carica_originale(doc: Dict[str, Any]) -> bytes:
         except Exception as exc:
             raise ValueError("PDF incorporato non decodificabile") from exc
     elif doc.get("drive_file_id"):
-        from app.services.drive_cedolini_ingest import download_file_by_id
+        from app.services.drive_download import scarica_originale
 
-        content = await download_file_by_id(str(doc["drive_file_id"]))
+        content = await scarica_originale(str(doc["drive_file_id"]))
     else:
         return b""
     if content and not content.startswith(b"%PDF"):

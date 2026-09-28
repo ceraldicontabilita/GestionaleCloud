@@ -1,8 +1,8 @@
 """Scaricare i byte di un file Drive: una funzione sola, per tutti.
 
-Stava dentro `drive_invoice_ingest` come helper privato, ma non ha niente di
-specifico delle fatture: la usa anche chi legge le LIPE archiviate. Una
-seconda copia sarebbe l'ennesimo doppione.
+La usano la cartella unica, «vedi documento» (cedolini, F24, quietanze), la
+pulizia fatture e chi legge le LIPE archiviate. Una seconda copia sarebbe
+l'ennesimo doppione.
 """
 import asyncio
 import io

@@ -10,8 +10,6 @@ def test_endpoint_fiscali_documenti_sono_realmente_montati():
     }
 
     attesi = {
-        ("/api/documenti/drive/fiscal/status", "GET"),
-        ("/api/documenti/drive/fiscal/discover", "POST"),
         ("/api/documenti/drive/fiscal/sync", "POST"),
         ("/api/documenti/tax-codes/status", "GET"),
         ("/api/documenti/tax-codes", "GET"),
@@ -26,3 +24,14 @@ def test_endpoint_fiscali_documenti_sono_realmente_montati():
     }
 
     assert attesi <= route
+    # Tolti con i canali per sezione (DRV-16): nessuna pagina li chiamava.
+    assert not {
+        ("/api/documenti/drive/fiscal/status", "GET"),
+        ("/api/documenti/drive/fiscal/discover", "POST"),
+        ("/api/documenti/drive/sync", "POST"),
+        ("/api/fatture/drive/sync", "POST"),
+        ("/api/cedolini/drive/sync", "POST"),
+        ("/api/corrispettivi/drive/quadratura", "POST"),
+        ("/api/f24/quietanze/drive/sync", "POST"),
+        ("/api/auth/login", "POST"),
+    } & route

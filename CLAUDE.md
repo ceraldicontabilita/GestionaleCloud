@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 27/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 28/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -192,7 +192,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   saltare il turno. Per lo stesso motivo `stop_scheduler` chiude con
   `shutdown(wait=False)`: i job sono coroutine dello stesso event loop, e
   aspettarli da dentro il loop impedisce allo spegnimento di arrivare in fondo.
-- Il download di un file Drive sta in un posto solo, `drive_download.py` (`scarica_originale` per id), e ogni servizio Drive che non è un canale prova la credenziale sulla cartella unica.
+- Il download di un file Drive sta in un posto solo, `drive_download.py` (`scarica_originale` per id). Un solo service account (`GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`), provato sulla cartella unica da ogni servizio Drive (`drive_credential_probe.py`).
 - PostgREST esegue le RPC del runtime come ruolo `anon`, con
   `statement_timeout` 20 s; `authenticator` resta a 8 s. Compute **Small** (90 connessioni,
   database ~2,2 GB): i timeout si rivedono se si riduce il payload di `documents`.
@@ -285,9 +285,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Ingresso documenti
 
-- `Documenti > Import` è l'unico ingresso manuale operativo. Ogni canale Drive
-  ha `DA ELABORARE | ELABORATE | ERRORI`; gli id delle cartelle stanno nelle
-  variabili d'ambiente di Render, non in questo file.
+- `Documenti > Import` è l'unico ingresso manuale operativo, e lo stesso smistatore serve la cartella unica
+  Drive (`DA ELABORARE | ELABORATE | ERRORI`); il suo id sta su Render, non in questo file.
 - Le fatture elettroniche arrivano dal canale Drive/SDI configurato. Una
   fattura italiana trovata per email è un'anomalia, non una seconda fonte. Una fattura **estera** arriva in PDF (SumUp, Irlanda): Documenti > Import la passa al lettore unico `process_fattura_estera_pdf` solo se il testo porta una partita IVA UE non italiana, e un fornitore italiano letto dal PDF non si importa mai; resta «da verificare» e le sue righe sono solo testo (`descrizione_righe_ai`), mai importi, lette anche dal giornale; la conferma del titolare rifà classificazione e scrittura (storno e nuova registrazione, mai correzione sul posto).
 - Gmail/IMAP acquisisce F24, quietanze, cedolini, verbali e schede tecniche **solo** dai
@@ -316,8 +315,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   prova SumUp → Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
   segno. Non riconosciuto → cartella Errori col motivo scritto, **mai
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
-  conto. Arretrato pre-2026 fermo per scelta del titolare
-  (`DRIVE_ESTRATTI_ANNO_MINIMO`); un nome senza anno vale come arretrato.
+  conto. Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
+  nome o contenuto sotto `DRIVE_ESTRATTI_ANNO_MINIMO` (difetto 2026, 0 = nessun filtro) va in `ARRETRATO`, non si registra.
 - Acquisizione serale RT: Render non raggiunge la rete del locale, quindi
   `scripts/sync_rt_to_drive.py` gira su un PC della LAN (ignora gli XML
   `ESITO`, SHA-256, copia atomica dei soli file nuovi). `RT_LOCAL_BASE_URL` e
@@ -329,22 +328,21 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 ### Drive, struttura canonica
 
 - **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import, prima **sciolto nella radice** (il calderone del titolare) poi da `DA ELABORARE`, con gli XML in testa e i più recenti primi,
-  una copia byte-identica di un originale va nel Cestino (in `DOPPIONI` se il file è del titolare: Drive nega il Cestino al service account), «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Dentro `GESTIONALE` restano solo lei e `FOTO E IMMAGINI` (immagini, cartella a parte): le cartelle dei canali sotto non esistono piu', e ogni loader prova la credenziale sulla **propria** cartella, mai su quella di un altro canale. Prima di migrare, la simulazione in sola lettura (`drive_cartella_unica_simulazione.py`, `DRIVE_SIMULAZIONE_RADICE`) dice come finirà ogni file. La pausa dell'import è `DRIVE_CARTELLA_UNICA_IMPORT=false`, **mai** togliere la cartella: le credenziali si provano su di lei.
+  una copia byte-identica di un originale va nel Cestino (in `DOPPIONI` se il file è del titolare: Drive nega il Cestino al service account), «vedi documento» legge solo da `ELABORATE` (`drive_cartella_unica.py`). Dentro `GESTIONALE` restano solo lei e `FOTO E IMMAGINI` (immagini, cartella a parte): le cartelle dei canali sotto non esistono piu'. Le copie degli allegati email vanno in `ELABORATE` (`email_drive_archive.py`), mai in `DA ELABORARE`: lo smistatore le registrerebbe due volte. La pausa dell'import è `DRIVE_CARTELLA_UNICA_IMPORT=false`, **mai** togliere la cartella: le credenziali si provano su di lei.
 - **Censimento doppioni** della cartella GESTIONALE (`drive_censimento_doppioni.py`, `DRIVE_CENSIMENTO_DOPPIONI`
   off|censisci|marca): copie esatte (MD5 + dimensione Drive) e file tecnici si **rinominano soltanto**
   («DUPLICATO DA ELIMINARE - …», «FILE TECNICO DA ELIMINARE - …»), li elimina il titolare; resta l'originale in
   `ELABORATE`, poi il più vecchio senza «(2)»; dai file che restano si toglie «(N)»/«(dupN)» (se il nome c'è già
-  nella cartella diventa «nome - N»). Lo smistatore e la simulazione non toccano i file marcati.
+  nella cartella diventa «nome - N»; radice `DRIVE_SIMULAZIONE_RADICE`). Lo smistatore non tocca i file marcati.
 - Il protocollo Drive (`gestionale.protocollo_drive`, tabella relazionale, non
   `documents`) riconcilia Drive con l'inventario: file nuovo → riga nuova,
   cambiato → aggiornata, sparito → `stato='rimosso'` con la data. Le impronte
   collegano ogni file al documento **per contenuto**, mai per nome, e una
   stessa impronta in più posizioni non crea un secondo documento: le
   provenienze stanno in `source_occurrences`.
-- **I canali Drive per sezione sono smontati** (fatture, cedolini, corrispettivi, F24, quietanze, estratti conto,
-  documenti, protocollo, quadrature e ricostruzione fatture): le loro cartelle `01_…10_` non esistono piu' e lo
-  scheduler non li avvia. Restano la cartella unica e le foto ricette di Lotti; `fonti_ferme` e `cedolini_bloccati`
-  hanno un job proprio. I moduli restano perche' lo smistatore ne usa i parser.
+- **I canali Drive per sezione non esistono piu'** (DRV-16): moduli `drive_*_ingest`, router `/drive/sync|quadratura`,
+  registro JSON delle cartelle e credenziali per canale tolti; lo smistatore non ne usava i parser. Restano la
+  cartella unica e le foto ricette di Lotti; `fonti_ferme` e `cedolini_bloccati` (`cedolini_bloccati.py`) hanno un job proprio.
 - **Corrispettivi: una riga senza `progressivo` né `id_dispositivo` non è una
   chiusura**, è una giornata senza documento, e il suo XML la **sostituisce** quando i contanti
   coincidono al centesimo (il totale no: lo storico sommava imponibile e IVA); due chiusure vere dello
@@ -536,7 +534,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   HMAC; mai due persone in forza con lo stesso PIN; mai un cessato). Il **PIN amministratore è uno solo
   per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, `app/services/admin_pin.py`) e si digita **solo nel login ERP**:
   HR, Lotti e Menu leggono quel cookie (`group_session.py`, `/auth/session`), senza login admin proprio (PIN, password,
-  Google). Il token ERP porta un `sid` stabile nei rinnovi; i token derivati lo copiano e il logout lo revoca per
+  Google). Il login email + password (`/api/auth/login`, `ADMIN_PASSWORD_HASH`) non esiste piu'. Il token ERP porta un `sid` stabile nei rinnovi; i token derivati lo copiano e il logout lo revoca per
   tutte (`token_di_gruppo_ammesso`): un token admin non nato da lì non vale, il PIN personale del titolare è da operatore.
 - **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima Nota salari; l'archivio che
   si vede è **solo in HR** (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o per
@@ -819,8 +817,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la
   produzione è `degraded`. Non si accodano merge.
 - TFR: `hr.app_tfr_accantonamenti` vuota, il codice scrive in `tfr_accantonamenti` (1.175 righe, 273.025,37 €); ingest cedolini 0 file su 49 caselle.
-- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, ingest Drive
-  (fatture, estratti conto, cedolini, bonifici), ponte pagamenti HR, dedup fatture, dichiarazioni fiscali.
+- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica
+  Drive, ponte pagamenti HR, dedup fatture.
 - Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 è in
   `fatture_pre2026_rimosse_20260920`.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
@@ -830,7 +828,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi,
   quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24
   IVA 2026.
-- Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. Canali Drive per sezione smontati dallo scheduler; il 27/09 tolte da Render `ENABLE_DRIVE_*_SYNC` e `DRIVE_*_BATCH_SIZE` (i default di `config.py` ora sono la produzione: tutti spenti tranne `DICHIARAZIONI_FISCALI`). `GOOGLE_DRIVE_*_FOLDER_ID` e `DRIVE_F24_FOLDER_ID` restano: il registro cartelle le usa ancora (archivio email, HR, verbali); vanno via con DRV-16. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
+- Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. DRV-16 chiuso nel codice: nessuna lettura di `GOOGLE_DRIVE_*_FOLDER_ID` per sezione, `DRIVE_*_FOLDER_ID`, `DRIVE_FOLDER_REGISTRY_JSON`, `GOOGLE_SERVICE_ACCOUNT_JSON_*`, `DRIVE_SIMULAZIONE_{BATCH,EDIZIONE,SOLO_TIPO}`, `ADMIN_PASSWORD(_HASH)`; su Render si cancellano a mano. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
 - Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge).
   Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social in `collegamentiPubblici.js`, privacy e cookie sono pagine del Menu (`/menu/privacy`, `/menu/cookie`) col titolare da `/api/menu/titolare`.
 - **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili
@@ -843,7 +841,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`, `CorrispettiviService`, import CSV), ognuna con la sua dedup: ridurle a una.
 - **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 tenute fuori dal giornale dal
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
-- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/fatture/drive/quadratura`, `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
+- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
 - Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
 - **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel job bancario corto `banca_versamenti_proiezione` — il giro lungo ogni deploy lo interrompe — e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`); un bonifico che cita le sue fatture in causale le paga se la somma torna al centesimo, anche in più bonifici dello stesso fornitore ripartiti per data (`reconcile_cited_invoices`), e una riga del vecchio import (`sumupbiz_…` su 19.01.01) passa sul conto della carta. Prima Nota > SumUp mostra la quadratura con l'estratto (righe da registrare, scritture che l'estratto non ha). Aperto: la coda «Scegli fattura» non apre ancora i movimenti della carta, e la «Deduzione SumUp» di 1,01 € del 03/08 (`rettifica_payout`) scrive un'uscita sulla Mastercard che l'estratto non ha.
 - **Pregresso fatture**: 296 attive (173.184,83 €) senza partita aperta, 280 fuori dal giornale. Prima

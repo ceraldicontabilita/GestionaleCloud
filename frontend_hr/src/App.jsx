@@ -4126,7 +4126,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [exportBusy, setExportBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [cedSyncBusy, setCedSyncBusy] = useState(false);
-  const [driveBonificiUrl, setDriveBonificiUrl] = useState(null);
   const [griglia, setGriglia] = useState(false);
   // Import (ex pagina Buste Paga)
   const [showImport, setShowImport] = useState(false);
@@ -4135,7 +4134,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [pnMsg, setPnMsg] = useState(null);
   const [csvMsg, setCsvMsg] = useState(null);
   const [storicoMsg, setStoricoMsg] = useState(null);
-  const [driveMsg, setDriveMsg] = useState(null);
   const fileRef = useRef(null); const excelRef = useRef(null); const csvRef = useRef(null); const storicoRef = useRef(null);
   // Strumenti
   const [showStrumenti, setShowStrumenti] = useState(false);
@@ -4162,11 +4160,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [anno, mese, filtroStato]);
-  useEffect(() => {
-    axios.get(`${API}/paghe/bonifici-drive-config`)
-      .then((r) => setDriveBonificiUrl(r.data?.drive_url || null))
-      .catch(() => setDriveBonificiUrl(null));
-  }, []);
 
   const conferma = async (r, val) => {
     setBusy(keyOf(r));
@@ -4348,14 +4341,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
     } catch (err) { setStoricoMsg({ errore: err?.response?.data?.detail || "Errore import archivio storico" }); }
     finally { setImporting(false); if (storicoRef.current) storicoRef.current.value = ""; }
   };
-  const importaDaDrive = async () => {
-    if (!window.confirm("Importo i PDF delle buste paga dai fascicoli Google Drive dei dipendenti?")) return;
-    setImporting(true); setDriveMsg(null);
-    try { const r = await axios.post(`/hr/api/cedolini/import-drive`, {}); setDriveMsg(r.data); await load(); }
-    catch (e) { setDriveMsg({ errore: e?.response?.data?.detail || "Errore import da Drive" }); }
-    finally { setImporting(false); }
-  };
-
   // ── Strumenti ──
   const cercaVoce = async () => {
     const q = cercaQ.trim();
@@ -4470,7 +4455,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
               <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, minWidth: 300, overflow: "hidden" }}>
                 {[["Libro Unico (PDF/ZIP)", () => fileRef.current?.click()],
                   ["Buste da email", handleImportEmail],
-                  ["Buste dai fascicoli Drive", importaDaDrive],
                   ["Prima Nota (Excel)", () => excelRef.current?.click()],
                   ["Pagamenti banca (CSV)", () => csvRef.current?.click()],
                   ["Archivio storico pagamenti ante-app (Excel)", () => storicoRef.current?.click()]].map(([label, fn], i, arr) => (
@@ -4490,9 +4474,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
             {exportBusy ? "Esporto…" : "📊 Esporta Excel"}
           </button>
           <button className="dc-btn" onClick={() => setShowStrumenti(s => !s)}>🔎 Strumenti {showStrumenti ? "▲" : "▼"}</button>
-          {driveBonificiUrl && <a href={driveBonificiUrl} target="_blank" rel="noreferrer" className="dc-btn" title="Fascicoli dei dipendenti su Drive: un PDF messo in <persona>/BONIFICI/DA ELABORARE entra qui da solo entro 15 minuti">
-            📁 Fascicoli Drive
-          </a>}
         </div>
       </div>
 
@@ -4522,12 +4503,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
               {importMsg.non_associati?.length > 0 && <div style={{ marginTop: 8, fontSize: 13, color: "#7d5526" }}>⚠ Non associati: {importMsg.non_associati.map(x => x.file || x).join(", ")}</div>}
             </div>
           )}
-        </div>
-      )}
-      {driveMsg && (
-        <div className="dc-card" style={msgCard(driveMsg)}>
-          {driveMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {driveMsg.errore}</div>
-            : <div style={{ fontWeight: 700 }}>✓ Drive: {driveMsg.trovati_pdf} PDF trovati · {driveMsg.archiviati} archiviati · {driveMsg.duplicati} duplicati saltati{(driveMsg.non_assegnati || []).length ? ` · da controllare: ${driveMsg.non_assegnati.join(", ")}` : ""}</div>}
         </div>
       )}
       {pnMsg && (

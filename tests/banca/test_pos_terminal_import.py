@@ -114,16 +114,6 @@ def test_csv_pos_blocca_stesso_id_con_importi_diversi():
         parse_pos_terminal_file(content, "Export_Transazioni_giugno_2026.csv")
 
 
-def test_file_commissioni_viene_instradato_senza_essere_un_export_transazioni():
-    # Il dispatcher lo accetta, poi il nome lo invia al parser commissioni:
-    # non deve mai diventare una chiusura POS reale.
-    from app.services.drive_estratti_conto_ingest import _supported_file
-
-    assert _supported_file("pos", "Export_Transazioni_aprile_2026.xlsx") is True
-    assert _supported_file("pos", "Commissioni_Aprile_2026.xlsx") is True
-    assert _supported_file("mutuo", "Estratto mutuo_31-12-2022.pdf") is True
-
-
 def test_chiave_operazione_non_dipende_dal_nome_del_file_o_formato_data():
     csv = (
         "Data e ora;Codice autorizzazione;Importo;Tipo transazione;Stato operazione;Numero carta\n"

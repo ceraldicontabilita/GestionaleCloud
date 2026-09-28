@@ -60,8 +60,8 @@ async function run() {
     assert.equal((await health.json()).environment, 'e2e-isolato',
       'Mutazioni vietate: il server non dichiara ambiente e2e-isolato');
 
-    const login = await context.request.post(`${BASE}/api/auth/login`, {
-      data: { email: 'e2e@example.invalid', password: 'e2e-password-solo-test' },
+    const login = await context.request.post(`${BASE}/api/auth/pin-login`, {
+      data: { pin: '246810' },
       maxRedirects: 0,
     });
     assert(login.ok(), `Login E2E fallito: HTTP ${login.status()}`);

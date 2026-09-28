@@ -83,7 +83,7 @@ class DriveFinto:
 
 
 CARTELLE = {cu.INBOX: "inbox", cu.ARCHIVIO: "elaborate", cu.ERRORI: "errori",
-            cu.DOPPIONI: "doppioni"}
+            cu.DOPPIONI: "doppioni", cu.ARRETRATO: "arretrato"}
 
 
 @pytest.fixture
@@ -327,3 +327,63 @@ def test_prima_la_radice_poi_da_elaborare_e_gli_xml_in_testa(ambiente, monkeypat
     run(cu.giro(db))
     # poi i PDF: prima la radice, poi DA ELABORARE
     assert [n for n, _ in smistati][3:] == ["bonifico-1.pdf", "bonifico-2.pdf", "bonifico-inbox.pdf"]
+
+
+# ── Arretrato degli estratti conto (scelta del titolare: dal 2026) ─────────
+
+def _smista_estratto(monkeypatch, anno, tipo="estratto_conto_nexi"):
+    import app.routers.documenti as documenti
+    import app.services.classificazione_estratti as cls
+
+    chiamato = []
+
+    async def upload(**_):
+        chiamato.append(1)
+        return {"success": True, "tipo_rilevato": tipo}
+
+    monkeypatch.setattr(documenti, "detect_document_type", lambda nome, contenuto: tipo)
+    monkeypatch.setattr(documenti, "upload_documento_automatico", upload)
+    monkeypatch.setattr(cls, "anno_documento", lambda nome, contenuto: anno)
+    return run(cu._smista("Estratto_Conto.pdf", b"%PDF", {})), chiamato
+
+
+def test_estratto_dell_arretrato_resta_fermo_in_arretrato(monkeypatch):
+    monkeypatch.delenv("DRIVE_ESTRATTI_ANNO_MINIMO", raising=False)
+    esito, chiamato = _smista_estratto(monkeypatch, 2024)
+    assert not chiamato, "un estratto 2024 non si registra"
+    assert esito["arretrato"] is True and esito["anno"] == 2024 and esito["anno_minimo"] == 2026
+    cartella, motivo = cu.esito_del_risultato(esito)
+    assert cartella == cu.ARRETRATO and "2024" in motivo
+
+
+@pytest.mark.parametrize("anno", [2026, None])
+def test_estratto_dell_anno_o_senza_anno_passa(monkeypatch, anno):
+    monkeypatch.delenv("DRIVE_ESTRATTI_ANNO_MINIMO", raising=False)
+    esito, chiamato = _smista_estratto(monkeypatch, anno)
+    assert chiamato and esito["success"] is True
+
+
+def test_soglia_zero_sblocca_l_arretrato(monkeypatch):
+    monkeypatch.setenv("DRIVE_ESTRATTI_ANNO_MINIMO", "0")
+    esito, chiamato = _smista_estratto(monkeypatch, 2019, tipo="pos_terminal")
+    assert chiamato and esito["success"] is True
+
+
+def test_il_filtro_vale_solo_per_gli_estratti(monkeypatch):
+    monkeypatch.delenv("DRIVE_ESTRATTI_ANNO_MINIMO", raising=False)
+    esito, chiamato = _smista_estratto(monkeypatch, 2024, tipo="fattura")
+    assert chiamato and not esito.get("arretrato")
+
+
+def test_nel_giro_l_arretrato_va_in_arretrato_non_in_errori(ambiente):
+    drive, _smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("e1", "EC agosto 2024.pdf", b"%PDF 2024", "inbox")
+    esiti["EC agosto 2024.pdf"] = {"success": False, "tipo_rilevato": "estratto_conto",
+                                   "arretrato": True, "anno": 2024, "anno_minimo": 2026}
+
+    esito = run(cu.giro(db))
+    assert (esito["arretrati"], esito["errori"], esito["elaborati"]) == (1, 0, 0)
+    assert drive.file["e1"]["parent"] == "arretrato"
+    riga = run(db[cu.REGISTRO].find_one({"id": "e1"}))
+    assert riga["esito"] == "arretrato" and riga["cartella"] == cu.ARRETRATO

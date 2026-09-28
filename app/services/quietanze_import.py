@@ -3,7 +3,7 @@ Motore UNICO di import quietanze F24.
 
 Usato da:
   - upload manuale multiplo (pagina F24, /api/f24/quietanze/upload-multiplo)
-  - ingest da Google Drive (drive_quietanze_ingest)
+  - cartella unica Google Drive (via Documenti > Import)
 
 Per ogni PDF: parsing (f24_parser.parse_quietanza_f24), dedup per impronta
 md5 (`pdf_hash`), salvataggio in `quietanze_f24` e MATCHING AUTOMATICO con

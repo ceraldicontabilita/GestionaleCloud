@@ -53,7 +53,6 @@ PUBLIC_PATHS = {
     "/api/sezioni/",
     
     # Authentication endpoints
-    "/api/auth/login",
     "/api/auth/logout",
     "/api/auth/verify",  # verifica il token da sé (401 con messaggio specifico se assente/scaduto)
     "/api/auth/pin-login",  # login PIN reale (pin_login.router montato su /api/auth): senza

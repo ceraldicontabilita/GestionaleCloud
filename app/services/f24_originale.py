@@ -17,11 +17,9 @@ async def carica_originale(doc: Dict[str, Any], *, tipo: str = "f24") -> bytes:
         except Exception as exc:
             raise ValueError("PDF F24 incorporato non decodificabile") from exc
     elif doc.get("drive_file_id"):
-        if tipo == "quietanza":
-            from app.services.drive_quietanze_ingest import download_file_by_id
-        else:
-            from app.services.drive_f24_ingest import download_file_by_id
-        content = await download_file_by_id(str(doc["drive_file_id"]))
+        from app.services.drive_download import scarica_originale
+
+        content = await scarica_originale(str(doc["drive_file_id"]))
     else:
         return b""
     if content and not content.startswith(b"%PDF"):

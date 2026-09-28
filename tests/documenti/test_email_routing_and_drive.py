@@ -1,7 +1,6 @@
 from app.services.email_drive_archive import route_for_document_type
 from app.services import email_drive_archive
 from app.services.email_monitor_service import _risolvi_tipo_documento_email
-from app.services import drive_folder_registry
 
 
 def test_classificazione_allegato_prevale_sul_tipo_mittente():
@@ -31,47 +30,24 @@ def test_routing_drive_documenti_amministrativi():
     assert route_for_document_type("altro") is None
 
 
-def test_archivio_email_usa_la_radice_documentale_canonica(monkeypatch):
-    chiamate = []
-    monkeypatch.setattr(email_drive_archive, "get_folder_id", lambda _area: None)
-    monkeypatch.setattr(email_drive_archive, "get_generic_documents_folder_id", lambda: "documenti-root")
-    monkeypatch.setattr(email_drive_archive, "_drive_service", lambda: object())
-    monkeypatch.setattr(
-        email_drive_archive, "_get_or_create_folder",
-        lambda _service, root, label: chiamate.append((root, label)) or "area-root",
+def test_archivio_email_senza_cartella_unica_non_tocca_drive(monkeypatch):
+    monkeypatch.delenv("GOOGLE_DRIVE_DATI_FOLDER_ID", raising=False)
+    monkeypatch.setattr(email_drive_archive, "_drive_service",
+                        lambda: (_ for _ in ()).throw(AssertionError("Drive non va aperto")))
+
+    esito = email_drive_archive.archive_document_copy(
+        {"id": "doc-1", "filename": "documento.pdf", "content": b"pdf"}, "partenopay"
     )
 
+    assert esito == {"status": "not_configured", "area": "partenopay"}
+
+
+def test_archivio_email_senza_contenuto_non_scrive(monkeypatch):
+    monkeypatch.setenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "radice-dati")
     esito = email_drive_archive.archive_document_copy(
         {"id": "doc-1", "filename": "documento.pdf", "content": b""}, "partenopay"
     )
-
-    assert chiamate == [("documenti-root", "PARTENOPAY")]
     assert esito == {"status": "error", "area": "partenopay", "reason": "contenuto_mancante"}
-
-
-def test_registry_risolve_alias_senza_esporre_id(monkeypatch):
-    monkeypatch.setattr(
-        drive_folder_registry.settings,
-        "DRIVE_FOLDER_REGISTRY_JSON",
-        '{"folders":[{"area":"cedolini","label":"Cedolini","folder_id":"secret-folder"}]}',
-    )
-    assert drive_folder_registry.get_folder_id("busta_paga") == "secret-folder"
-    public = drive_folder_registry.get_public_catalog()
-    assert "secret-folder" not in str(public)
-
-
-def test_registry_risolve_cartella_reale_verbali_auto(monkeypatch):
-    monkeypatch.setattr(
-        drive_folder_registry.settings,
-        "DRIVE_FOLDER_REGISTRY_JSON",
-        '{"folders":[{"area":"verbali_auto","label":"Verbali Auto",'
-        '"folder_id":"verbali-folder"}]}',
-    )
-
-    assert drive_folder_registry.get_folder_id("verbale") == "verbali-folder"
-    assert drive_folder_registry.get_folder_id("verbali") == "verbali-folder"
-    catalog = drive_folder_registry.get_public_catalog()
-    assert catalog["folders"][0]["mode"] == "automatico"
 
 
 class _DriveRequest:
@@ -117,9 +93,11 @@ class _DriveService:
         return self.files_api
 
 
-def test_archivio_usa_elaborate_e_registra_quota_account_servizio(monkeypatch):
+def test_archivio_usa_elaborate_della_cartella_unica_e_registra_quota(monkeypatch):
+    """La copia va in ELABORATE della cartella unica, non in DA ELABORARE:
+    il documento e' gia' entrato dall'email e lo smistatore lo rileggerebbe."""
     service = _DriveService()
-    monkeypatch.setattr(email_drive_archive, "get_folder_id", lambda area: "verbali-root")
+    monkeypatch.setenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "radice-dati")
     monkeypatch.setattr(email_drive_archive, "_drive_service", lambda: service)
 
     result = email_drive_archive.archive_document_copy(

@@ -134,6 +134,7 @@ export function DriveFattureImportCard() {
 
         <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 12 }}>
           {registro.ELABORATE ?? 0} file elaborati in tutto · {registro.ERRORI ?? 0} in ERRORI
+          {registro.ARRETRATO ? ` · ${registro.ARRETRATO} estratti dell'arretrato fermi in ARRETRATO` : ''}
           {' · '}ultimo giro: {formatoData(stato?.ultimo_giro?.updated_at)}
         </div>
 

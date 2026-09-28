@@ -107,24 +107,16 @@ services:
       - key: DRIVE_CARTELLA_UNICA_BATCH
         value: "50"
       # Pausa del solo import della cartella unica (la cartella resta configurata,
-      # simulazione e «vedi documento» continuano). Proprietario: titolare.
+      # «vedi documento» continua). Proprietario: titolare.
       - key: DRIVE_CARTELLA_UNICA_IMPORT
         sync: false
-      # Simulazione della migrazione (sola lettura): radice Drive da percorrere,
-      # vuota = spenta. Cambiare EDIZIONE rilegge tutto dopo una correzione.
+      # Radice Drive della cartella GESTIONALE percorsa dal censimento doppioni
+      # (il nome viene dalla simulazione della migrazione, conclusa e tolta).
+      # Id cartella, non un segreto; vuota = censimento spento. Proprietario: titolare.
       - key: DRIVE_SIMULAZIONE_RADICE
         sync: false
-      - key: DRIVE_SIMULAZIONE_EDIZIONE
-        value: "1"
-      - key: DRIVE_SIMULAZIONE_BATCH
-        value: "40"
-      # Collaudo di un lettore: con un tipo (es. cedolino) la nuova edizione
-      # rilegge solo i file che la precedente aveva dato di quel tipo. Vuoto =
-      # tutti. Proprietario: titolare; si svuota a collaudo finito.
-      - key: DRIVE_SIMULAZIONE_SOLO_TIPO
-        value: ""
-      # Censimento doppioni della cartella GESTIONALE (stessa radice della
-      # simulazione): off | censisci (solo elenco) | marca (rinomina le copie
+      # Censimento doppioni della cartella GESTIONALE (radice qui sopra):
+      # off | censisci (solo elenco) | marca (rinomina le copie
       # «DUPLICATO DA ELIMINARE - …»; non cancella ne' sposta). Proprietario: titolare.
       - key: DRIVE_CENSIMENTO_DOPPIONI
         value: "off"

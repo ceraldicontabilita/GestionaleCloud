@@ -15,12 +15,11 @@ import threading
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from pathlib import PurePosixPath
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable, List
 
 from openpyxl import load_workbook
 
 from app.config import settings
-from app.services import drive_cedolini_ingest as _drive
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
 INDEX_FOLDER_NAME = "INDICI GESTIONALE"
@@ -52,6 +51,24 @@ def _norm(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
 
 
+def _list_children(service, parent_id: str) -> List[Dict[str, Any]]:
+    """Figli diretti di una cartella Drive, tutte le pagine."""
+    q = f"'{parent_id}' in parents and trashed = false"
+    out: List[Dict[str, Any]] = []
+    page_token = None
+    while True:
+        res = service.files().list(
+            q=q, fields="nextPageToken, files(id, name, mimeType, md5Checksum, size)",
+            pageSize=100, pageToken=page_token,
+            supportsAllDrives=True, includeItemsFromAllDrives=True,
+        ).execute()
+        out.extend(res.get("files", []))
+        page_token = res.get("nextPageToken")
+        if not page_token:
+            break
+    return out
+
+
 def build_drive_service():
     # Credenziale provata sulla cartella unica, non sulla cartella cedolini:
     # smontata quella, ogni pagina che apriva un file Drive dava errore.
@@ -79,8 +96,8 @@ def _discover_index_file_sync(service, root_id: str) -> tuple[dict[str, Any], di
     ).execute()
     if root.get("trashed") or root.get("mimeType") != FOLDER_MIME:
         raise ValueError("La radice dell'archivio documentale non e' una cartella Drive attiva")
-    folder = _unique_named(_drive._list_children(service, root_id), INDEX_FOLDER_NAME, folder=True)
-    index_file = _unique_named(_drive._list_children(service, folder["id"]), INDEX_FILE_NAME, folder=False)
+    folder = _unique_named(_list_children(service, root_id), INDEX_FOLDER_NAME, folder=True)
+    index_file = _unique_named(_list_children(service, folder["id"]), INDEX_FILE_NAME, folder=False)
     metadata = service.files().get(
         fileId=index_file["id"],
         fields="id,name,mimeType,parents,trashed,modifiedTime,md5Checksum,size,webViewLink",
@@ -406,7 +423,7 @@ def _resolve_path_sync(service, root_id: str, drive_path: str) -> dict[str, Any]
     item: dict[str, Any] | None = None
     for position, part in enumerate(parts):
         expected_folder = position < len(parts) - 1
-        item = _unique_named(_drive._list_children(service, parent_id), part, folder=expected_folder)
+        item = _unique_named(_list_children(service, parent_id), part, folder=expected_folder)
         parent_id = item["id"]
     metadata = service.files().get(
         fileId=item["id"],

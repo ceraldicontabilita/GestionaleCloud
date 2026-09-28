@@ -1,4 +1,11 @@
-"""Copia non distruttiva degli allegati email rilevanti nelle cartelle Drive."""
+"""Copia non distruttiva degli allegati email rilevanti su Drive.
+
+Le copie vanno in ``ELABORATE`` della cartella unica «DATI SOCIETA CERALDI»
+(``drive_cartella_unica``), accanto agli originali gia' registrati: il
+documento e' gia' entrato dal canale email, quindi non passa da ``DA
+ELABORARE`` (lo smistatore lo registrerebbe una seconda volta). Le cartelle
+per sezione (F24, Cedolini, Verbali...) non esistono piu'.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +17,6 @@ import mimetypes
 from datetime import datetime, timezone
 from typing import Any
 
-from app.services.drive_folder_registry import get_folder_id, get_generic_documents_folder_id
 
 logger = logging.getLogger(__name__)
 
@@ -72,37 +78,6 @@ def _escape_query(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def _get_or_create_folder(service, parent_id: str, name: str) -> str:
-    escaped = _escape_query(name)
-    result = service.files().list(
-        q=(f"name = '{escaped}' and '{parent_id}' in parents and "
-           "mimeType = 'application/vnd.google-apps.folder' and trashed = false"),
-        fields="files(id)", pageSize=2, supportsAllDrives=True,
-        includeItemsFromAllDrives=True,
-    ).execute()
-    files = result.get("files", [])
-    if files:
-        return files[0]["id"]
-    created = service.files().create(
-        body={"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]},
-        fields="id", supportsAllDrives=True,
-    ).execute()
-    return created["id"]
-
-
-def _find_child_folder(service, parent_id: str, name: str) -> str | None:
-    """Restituisce una sottocartella esistente senza modificare Drive."""
-    escaped = _escape_query(name)
-    result = service.files().list(
-        q=(f"name = '{escaped}' and '{parent_id}' in parents and "
-           "mimeType = 'application/vnd.google-apps.folder' and trashed = false"),
-        fields="files(id)", pageSize=2, supportsAllDrives=True,
-        includeItemsFromAllDrives=True,
-    ).execute()
-    files = result.get("files", [])
-    return files[0]["id"] if files else None
-
-
 def _already_archived(service, parent_id: str, filename: str, digest: str) -> bool:
     result = service.files().list(
         q=f"name = '{_escape_query(filename)}' and '{parent_id}' in parents and trashed = false",
@@ -121,29 +96,19 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
     route = route_for_document_type(tipo)
     if route is None:
         return {"status": "ignored", "reason": "tipo_non_rilevante"}
-    area, label = route
-    folder_id = get_folder_id(area)
-    service = None
-    if not folder_id:
-        root_id = get_generic_documents_folder_id()
-        if not root_id:
-            return {"status": "not_configured", "area": area}
-        service = _drive_service()
-        if service is None:
-            return {"status": "not_configured", "area": area}
-        folder_id = _get_or_create_folder(service, root_id, label)
+    area, _label = route
+    from app.services import drive_cartella_unica as cu
 
+    root_id = cu.radice()
+    if not root_id:
+        return {"status": "not_configured", "area": area}
     content = _decode_content(doc)
     if not content:
         return {"status": "error", "area": area, "reason": "contenuto_mancante"}
-    service = service or _drive_service()
+    service = _drive_service()
     if service is None:
         return {"status": "not_configured", "area": area}
-
-    # Le aree documentali possono adottare il ciclo Da elaborare/Elaborate/
-    # Errori. Le copie gia' processate dall'app vanno in Elaborate; se la
-    # sottocartella non esiste si mantiene la compatibilita' con la radice.
-    folder_id = _find_child_folder(service, folder_id, "Elaborate") or folder_id
+    folder_id = cu._cartella(service, root_id, cu.ARCHIVIO)
 
     filename = str(doc.get("filename") or f"documento-{doc.get('id', 'email')}.pdf").strip()
     digest = str(doc.get("file_hash") or hashlib.md5(content).hexdigest())

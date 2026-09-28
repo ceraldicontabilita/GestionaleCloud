@@ -610,18 +610,6 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-STAMPE-CONTROLLO] errore: {type(e).__name__}: {e}")
 
-    async def _drive_simulazione_job():
-        from app.database import Database
-        from app.services import drive_cartella_unica_simulazione as sim
-        if not sim.radice():
-            return
-        try:
-            result = await sim.giro(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-SIMULAZIONE] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-SIMULAZIONE] errore: {type(e).__name__}: {e}")
-
-
     async def _drive_censimento_doppioni_job():
         # Censimento della cartella GESTIONALE richiesto dal titolare: elenca
         # le copie identiche e, in modalita' «marca», le rinomina soltanto.
@@ -1155,17 +1143,6 @@ def start_scheduler():
     )
 
     scheduler.add_job(
-        _drive_simulazione_job,
-        'interval', minutes=5,
-        next_run_time=avvio + timedelta(minutes=4),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="drive_cartella_unica_simulazione",
-        name="Simulazione migrazione cartella unica, sola lettura (ogni 5 min)",
-        replace_existing=True,
-    )
-
-    scheduler.add_job(
         _drive_censimento_doppioni_job,
         'interval', minutes=5,
         next_run_time=avvio + timedelta(minutes=6),
@@ -1376,10 +1353,10 @@ def start_scheduler():
 
     async def _cedolini_bloccati_job():
         from app.database import Database
-        from app.services import drive_cedolini_ingest
+        from app.services.cedolini_bloccati import verifica_documenti_bloccati
         db = Database.get_db()
         try:
-            bloccati = await drive_cedolini_ingest.verifica_documenti_bloccati(db)
+            bloccati = await verifica_documenti_bloccati(db)
             if bloccati["totale_bloccati"] > 0:
                 logger.warning(f"[SCHEDULER-CEDOLINI-BLOCCATI] {bloccati['totale_bloccati']} documenti cedolini mai processati oltre {bloccati['soglia_ore']}h")
                 from app.services.alert_engine import genera_alert

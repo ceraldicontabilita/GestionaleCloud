@@ -163,24 +163,6 @@ def test_disattivazione_elimina_materiale_mfa(db, monkeypatch):
     assert "recovery_code_hashes" not in doc
 
 
-def test_login_password_con_mfa_non_emette_sessione(db, monkeypatch):
-    import app.routers.auth as auth_mod
-    from app.database import Database
-
-    _enable_mfa(db, monkeypatch)
-    monkeypatch.setattr(Database, "db", db)
-    monkeypatch.setattr(auth_mod, "_check_password", lambda _plain: True)
-    response = Response()
-    result = asyncio.run(auth_mod.auth_login(
-        auth_mod.LoginRequest(email=auth_mod.ADMIN_EMAIL, password="non-salvata"),
-        _request("/api/auth/login", "127.0.0.71"),
-        response,
-    ))
-    assert result["mfa_required"] is True
-    assert decode_mfa_challenge(result["challenge_token"])["auth_method"] == "password"
-    assert "access_token" not in response.headers.get("set-cookie", "")
-
-
 def test_login_pin_con_mfa_non_emette_sessione(db, monkeypatch):
     import app.routers.pin_login as pin_mod
     from app.database import Database
