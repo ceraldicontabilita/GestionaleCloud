@@ -70,3 +70,54 @@ Creato il 12/06/2025 alle ore 08.45.40 Pagina 1 di 1
     assert rows[0]["tipo_operazione"] == "pagamento"
     assert rows[0]["descrizione"] == "FORNITORE ESEMPIO SRL NAPOLI"
     assert rows[0]["divisa"] == "EUR"
+
+
+def test_parser_bpm_impaginazione_dal_30_06_2026():
+    """Dal trimestre al 30/06/2026 PyMuPDF restituisce tre date (contabile,
+    valuta, disponibile) e poi l'importo: per le entrate «importo testo» sulla
+    stessa riga, per le uscite l'importo da solo e la descrizione dopo. La data
+    contabile e' la prima: un assegno con valuta il giorno prima resta al suo
+    giorno contabile."""
+    text = """
+    31/03/26
+    11.391,75 SALDO INIZIALE A VOSTRO CREDITO
+    01/04/26
+    01/04/26
+    01/04/26
+    14,00 CIRCUITO-A  DEL 31/03/26 PDV 1/00011
+    NEGOZIO PROVA                            NA
+    01/04/26
+    01/04/26
+    01/04/26
+    - 850,34 \u00a0
+    SDD CORE: 0000000000000000000001
+    FORNITORE UNO SRL
+    02/04/26
+    01/04/26
+    02/04/26
+    - 555,91 \u00a0
+    VOSTRO ASSEGNO N. 0000000001
+    03/04/26
+    03/04/26
+    03/04/26
+    - 29,10 \u00a0
+    IMP.BOLLO CC LR EX ART.13
+    DA 01/01/2026 A 31/03/2026
+    03/04/26
+    03/04/26
+    03/04/26
+    570,00 CIRCUITO-B  DEL 02/04/26 PDV 1/00011
+    NEGOZIO PROVA                            NA
+    """
+    rows = parse_bpm_text(text)
+    assert [(r["data"], r["importo"]) for r in rows] == [
+        ("2026-04-01", 14.0), ("2026-04-01", -850.34), ("2026-04-02", -555.91),
+        ("2026-04-03", -29.1), ("2026-04-03", 570.0),
+    ]
+    assert rows[0]["data_disponibile"] == "2026-04-01"
+    assert rows[0]["descrizione"] == "CIRCUITO-A DEL 31/03/26 PDV 1/00011 NEGOZIO PROVA NA"
+    assert rows[1]["descrizione"] == "SDD CORE: 0000000000000000000001 FORNITORE UNO SRL"
+    assert (rows[2]["data"], rows[2]["data_valuta"], rows[2]["data_disponibile"]) == (
+        "2026-04-02", "2026-04-01", "2026-04-02")
+    assert rows[2]["descrizione"] == "VOSTRO ASSEGNO N. 0000000001"
+    assert "DA 01/01/2026" in rows[3]["descrizione"]

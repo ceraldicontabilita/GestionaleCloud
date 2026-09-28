@@ -409,3 +409,16 @@ def test_gli_estratti_conto_passano_davanti_agli_xml_e_ai_pdf():
         "bonifico.pdf",
         "ElencoEntrateUsciteAndamento.csv",
     ]
+
+
+def test_quietanza_mutuo_riconosciuta_prima_della_guardia_busta_paga():
+    """La quietanza di rata ha la colonna «totale netto» come una busta paga:
+    il nome della banca («Mutui - …») e l'intestazione «MUTUI: QUIETANZA»
+    la portano al modulo mutui, non nell'arretrato."""
+    from app.services.classificazione_estratti import route_da_nome, route_da_testo
+
+    assert route_da_nome("Mutui - Quietanza di pagamento_08-09-2026_100,00.pdf") == "mutuo"
+    testo = ("MUTUI: QUIETANZA DI PAGAMENTO\nFinanziamento n. 1/0000000001\n"
+             "RATA N. 001 SCADENTE IL 24/08/2026\nDATA CONTABILE VALUTA TOTALE NETTO\n")
+    assert route_da_testo(testo) == "mutuo"
+    assert route_da_testo("CEDOLINO\nTOTALE NETTO 1.000,00") is None

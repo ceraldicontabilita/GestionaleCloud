@@ -66,11 +66,19 @@ FONTI: tuple[dict[str, Any], ...] = (
     },
     {
         "chiave": "pos_numia",
-        "collection": "pos_terminal_transactions",
+        # La chiusura del giorno, da qualunque fonte: export del terminale o
+        # ricostruzione dagli accrediti dell'estratto conto (NUMIA non ha API).
+        "collection": "chiusure_pos_manuali",
         "campi_data": ("data", "date"),
-        "etichetta": "Transazioni POS del terminale",
+        "solo_gestore": "numia",
+        # 28/09/2026, titolare: Numia dismesso dopo il 04/09/2026, restano i
+        # terminali SumUp. Il fermo si misura fino all'ultima vendita Numia
+        # accreditata in banca, non fino a oggi: un terminale spento non e'
+        # una fonte ferma, un giorno accreditato senza chiusura si'.
+        "riferimento": "ultima_vendita_numia_in_banca",
+        "etichetta": "Chiusure POS Numia",
         "conseguenza": (
-            "senza il dettaglio del terminale l'accredito POS dell'estratto "
+            "senza la chiusura del giorno l'accredito Numia dell'estratto "
             "conto non si puo' riconciliare per giorno di vendita"
         ),
     },
@@ -79,6 +87,22 @@ FONTI: tuple[dict[str, Any], ...] = (
 
 def _oggi() -> date:
     return datetime.now(timezone.utc).date()
+
+
+async def _riferimento(db, fonte: Dict[str, Any], oggi: date) -> date:
+    """Fino a che giorno la fonte doveva arrivare: oggi, salvo le fonti che
+    dipendono da un terminale che puo' essere spento."""
+    if fonte.get("riferimento") != "ultima_vendita_numia_in_banca":
+        return oggi
+    from app.services.ricostruzione_pos_estratto_conto import incassi_numia_per_giorno_vendita
+
+    try:
+        giorni = await incassi_numia_per_giorno_vendita(db, anno=str(oggi.year))
+    except Exception as exc:  # noqa: BLE001 - senza accrediti leggibili si usa oggi
+        logger.warning("Fonti ferme: accrediti Numia non leggibili (%s: %s)", type(exc).__name__, exc)
+        return oggi
+    ultime = [g for g in (_giorno(k) for k in giorni) if g]
+    return min(max(ultime), oggi) if ultime else oggi
 
 
 def _giorno(valore: Any) -> Optional[date]:
@@ -107,6 +131,11 @@ async def _ultima_data(db, fonte: Dict[str, Any]) -> Optional[date]:
         logger.warning("Fonti ferme: %s non leggibile (%s)", collection, exc)
         return None
     massimo: Optional[date] = None
+    if fonte.get("solo_gestore"):
+        from app.services.scritture_contabili import normalizza_gestore_pos
+
+        documenti = [d for d in documenti
+                     if normalizza_gestore_pos(d.get("gestore")) == fonte["solo_gestore"]]
     for documento in documenti:
         for campo in fonte["campi_data"]:
             giorno = _giorno(documento.get(campo))
@@ -160,7 +189,7 @@ async def controlla_fonti_ferme(db, *, giorni_tollerati: int = GIORNI_TOLLERATI,
         if ultima is None:
             esito["vuote"].append(chiave)
             continue
-        giorni = await _giorni_fermi(db, fonte, ultima, riferimento)
+        giorni = await _giorni_fermi(db, fonte, ultima, await _riferimento(db, fonte, riferimento))
         if giorni > fonte.get("giorni_tollerati", giorni_tollerati):
             dettaglio = (
                 f"{fonte['etichetta']}: nessun dato da {giorni} giorni "
@@ -191,7 +220,8 @@ async def stato_fonti(db, *, oggi: Optional[date] = None) -> List[Dict[str, Any]
     righe: List[Dict[str, Any]] = []
     for fonte in FONTI:
         ultima = await _ultima_data(db, fonte)
-        giorni = await _giorni_fermi(db, fonte, ultima, riferimento) if ultima else None
+        giorni = (await _giorni_fermi(db, fonte, ultima, await _riferimento(db, fonte, riferimento))
+                  if ultima else None)
         righe.append({
             "fonte": fonte["chiave"],
             "etichetta": fonte["etichetta"],

@@ -95,7 +95,8 @@ def route_da_nome(nome: str) -> Optional[str]:
     if _PAYPAL_REPORT.search(testo) or "paypal" in testo:
         return PAYPAL
 
-    if "mutuo" in testo:
+    # La banca chiama i suoi PDF «Mutui - Quietanza di pagamento_…».
+    if "mutuo" in testo or "mutui" in testo:
         return MUTUO
 
     # Carta di credito: Nexi per nome, oppure l'export "Movimenti carta".
@@ -152,6 +153,10 @@ def route_da_testo(testo: str) -> Optional[str]:
     # col riquadro del netto e' un cedolino, mai un estratto conto. Senza
     # questa guardia tredicesime e quattordicesime finivano nell'arretrato
     # degli estratti invece che fra le buste.
+    # La quietanza di rata del mutuo ha una colonna «totale netto»: si dichiara
+    # nell'intestazione e va riconosciuta prima della guardia sulle buste paga.
+    if "mutui: quietanza" in testo or ("mutuo" in testo and "rata n" in testo):
+        return MUTUO
     if _BUSTA_PAGA.search(testo):
         return None
 

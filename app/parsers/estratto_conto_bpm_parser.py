@@ -31,6 +31,12 @@ _STOP_PREFIXES = (
     "SWIFT", "COORDINATE BANCARIE", "CONTO CORRENTE", "INTESTATO A",
     "ESTRATTO CONTO CORRENTE", "DIVISA EUR", "AL 31.", "INVIO N.",
 )
+# Dall'estratto del 30/06/2026 la banca impagina diversamente: PyMuPDF
+# restituisce tre date di fila e poi importo e descrizione sulla stessa riga
+# («14,00 NUMIA-BNCMT  DEL 31/03/26 …», «- 850,34 SDD CORE: …»).
+_AMOUNT_WITH_TEXT = re.compile(
+    r"^(-?\s*\d{1,3}(?:\.\d{3})*,\d{2}|-?\s*\d+,\d{2})\s+(\S.*)$"
+)
 _HEADER_LINES = {
     "DATA", "ATM", "WEB", "APP", "DESCRIZIONE DELLE OPERAZIONI",
     "USCITE", "ENTRATE", "CONTABILE", "VALUTA", "DISPONIBILE",
@@ -97,21 +103,38 @@ def parse_bpm_text(text: str) -> List[Dict[str, Any]]:
         data_contabile, data_valuta = lines[i], lines[i + 1]
         j = i + 2
         descrizione: List[str] = []
-        while j < len(lines) and not _AMOUNT.match(lines[j]):
-            if _DATE.match(lines[j]) or lines[j].upper() in _HEADER_LINES:
-                break
-            descrizione.append(lines[j])
-            j += 1
-        if j >= len(lines) or not descrizione or not _AMOUNT.match(lines[j]):
-            i += 1
-            continue
-
-        importo = _amount(lines[j])
-        j += 1
         data_disponibile = None
-        if j < len(lines) and _DATE.match(lines[j]):
+        # Impaginazione dal 30/06/2026: tre date (contabile, valuta,
+        # disponibile) e poi l'importo. Entrata: «importo testo» sulla stessa
+        # riga. Uscita: importo da solo, descrizione nelle righe seguenti
+        # (raccolta piu' sotto). La data in coda alla descrizione e' gia' del
+        # movimento successivo: leggerla come disponibile spostava assegni e
+        # competenze al giorno della valuta.
+        if (j + 1 < len(lines) and _DATE.match(lines[j])
+                and (_AMOUNT_WITH_TEXT.match(lines[j + 1]) or _AMOUNT.match(lines[j + 1]))):
             data_disponibile = lines[j]
+            importo_testo = _AMOUNT_WITH_TEXT.match(lines[j + 1])
+            if importo_testo:
+                importo = _amount(importo_testo.group(1))
+                descrizione.append(importo_testo.group(2).strip())
+            else:
+                importo = _amount(lines[j + 1])
+            j += 2
+        else:
+            while j < len(lines) and not _AMOUNT.match(lines[j]):
+                if _DATE.match(lines[j]) or lines[j].upper() in _HEADER_LINES:
+                    break
+                descrizione.append(lines[j])
+                j += 1
+            if j >= len(lines) or not descrizione or not _AMOUNT.match(lines[j]):
+                i += 1
+                continue
+
+            importo = _amount(lines[j])
             j += 1
+            if j < len(lines) and _DATE.match(lines[j]):
+                data_disponibile = lines[j]
+                j += 1
 
         # Beneficiario/causale possono essere sulla riga successiva
         # all'importo. Ci fermiamo prima dell'inizio del movimento seguente.
@@ -127,7 +150,7 @@ def parse_bpm_text(text: str) -> List[Dict[str, Any]]:
             j += 1
 
         testo = " ".join(descrizione + dettagli).strip()
-        if "SALDO INIZIALE" not in testo.upper() and importo != 0:
+        if testo and "SALDO INIZIALE" not in testo.upper() and importo != 0:
             out.append({
                 "data": _iso(data_contabile),
                 "data_valuta": _iso(data_valuta),

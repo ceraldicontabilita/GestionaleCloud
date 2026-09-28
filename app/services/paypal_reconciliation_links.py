@@ -147,11 +147,23 @@ async def finalizza_transazione_paypal_se_completa(
     movement = await db[COLL_BANK].find_one(
         {"id": movement_id}, {"_id": 0}
     )
-    if not movement or not (
-        movement.get("riconciliato")
-        and str(movement.get("paypal_transaction_id") or "") == transaction_id
-    ):
+    if not movement or str(movement.get("paypal_transaction_id") or "") != transaction_id:
         return {"finalizzata": False, "motivo": "riscontro_bancario_non_confermato"}
+    if not movement.get("riconciliato"):
+        # L'estratto ufficiale (PDF) rimette ``riconciliato=False`` sui
+        # movimenti che promuove, perche' i motori li riprovino: il legame
+        # PayPal <-> banca pero' resta scritto sui due lati e nessuno lo
+        # rimetteva (28 addebiti fermi). Vale se il movimento e' ufficiale.
+        ufficiale = (movement.get("evidenza_bancaria_ufficiale") is True
+                     and movement.get("in_attesa_estratto_ufficiale") is not True)
+        legato = str(transaction.get("movimento_banca_id")
+                     or transaction.get("estratto_conto_movimento_id") or "") == movement_id
+        if not (ufficiale and legato):
+            return {"finalizzata": False, "motivo": "riscontro_bancario_non_confermato"}
+        await db[COLL_BANK].update_one({"id": movement_id}, {"$set": {
+            "riconciliato": True,
+            "tipo_riconciliazione": movement.get("tipo_riconciliazione") or "paypal_evidenze_univoche",
+        }})
     invoice = await db[COLL_INVOICES].find_one({"id": invoice_id})
     if not invoice:
         return {"finalizzata": False, "motivo": "fattura_non_trovata"}

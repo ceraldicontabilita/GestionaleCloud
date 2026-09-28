@@ -932,6 +932,20 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] versamenti: %s: %s", type(e).__name__, e)
         try:
+            # Chiusure Numia dagli accrediti dell'estratto conto (Numia non ha
+            # API): il giorno accreditato senza chiusura la riceve qui, non
+            # quando qualcuno preme il pulsante. Salta i giorni gia' coperti.
+            from app.services.ricostruzione_pos_estratto_conto import ricostruisci_chiusure_numia
+            r = await ricostruisci_chiusure_numia(
+                db, dry_run=False, anno=str(datetime.now(timezone.utc).year),
+                actor={"sub": "scheduler-banca", "name": "scheduler-banca"},
+            )
+            if r.get("scritti") or r.get("errori"):
+                logger.info("[SCHEDULER-BANCA] chiusure Numia dall'estratto scritte=%s errori=%s %s",
+                            r.get("scritti"), r.get("errori"), r.get("motivi_errore"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] chiusure Numia: %s: %s", type(e).__name__, e)
+        try:
             # Contabili di filiale arrivate prima dell'estratto: il secondo pezzo.
             from app.services.contabili_filiale import ricollega_in_attesa
             r = await ricollega_in_attesa(db)

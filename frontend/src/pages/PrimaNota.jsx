@@ -1319,16 +1319,16 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
                   style={{ borderBottom: '1px solid #f2f0e9', background: i % 2 ? '#f6f4ee' : 'white' }}
                 >
                   <td style={{ padding: '7px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatDateIT(m.data)}</td>
-                  <td style={{ padding: '7px 10px', minWidth: 155, maxWidth: 230, fontWeight: 700, color: TERRACOTTA, wordBreak: 'break-word' }}>
+                  <td style={{ padding: '7px 10px', maxWidth: 230, fontWeight: 700, color: TERRACOTTA, wordBreak: 'break-word' }}>
                     {nomeFornitoreMovimento(m) || '—'}
                   </td>
-                  <td style={{ padding: '7px 10px', minWidth: 110, maxWidth: 180, fontFamily: 'ui-monospace, Menlo, monospace', wordBreak: 'break-all' }}>
+                  <td style={{ padding: '7px 10px', maxWidth: 180, fontFamily: 'ui-monospace, Menlo, monospace', wordBreak: 'break-all' }}>
                     {numeroFatturaMovimento(m) || '—'}
                   </td>
                   <td style={{ padding: '7px 10px' }}>
                     <BadgeCategoria categoria={m.categoria} />
                   </td>
-                  <td style={{ padding: '7px 10px', minWidth: 210, maxWidth: 360, wordBreak: 'break-word' }}>
+                  <td style={{ padding: '7px 10px', maxWidth: 360, wordBreak: 'break-word' }}>
                     {normalizzaDescrizioneMovimento(m.descrizione) || '—'}
                     {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
                       <div style={{ marginTop: 3, color: '#4c4a44', fontWeight: 700, fontSize: 11 }}>
@@ -2485,7 +2485,7 @@ export default function PrimaNota() {
   );
 
   return (
-    <div style={{ padding: '14px clamp(10px, 3vw, 28px)', maxWidth: 1280, margin: '0 auto' }}>
+    <div style={{ padding: '14px clamp(10px, 3vw, 28px)', maxWidth: 1600, margin: '0 auto' }}>
       <PageHeader
         title="Prima nota"
         subtitle="Ogni euro entrato o uscito da cassa e banca, giorno per giorno, e il saldo che ne risulta."
