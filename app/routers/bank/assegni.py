@@ -112,8 +112,16 @@ def _voce_storico(prima: Dict[str, Any], dopo: Dict[str, Any], azione: str, now:
     return voce
 
 
-async def _scollega_fatture(db, assegno: Dict[str, Any], now: str) -> List[Dict[str, Any]]:
-    """Toglie l'assegno dalle fatture che pagava: il loro residuo torna aperto."""
+async def _scollega_fatture(db, assegno: Dict[str, Any], now: str, *, motivo: str = "assegno scollegato") -> List[Dict[str, Any]]:
+    """Toglie l'assegno dalle fatture che pagava: il loro residuo torna aperto.
+
+    Se l'assegno l'aveva dichiarata pagata (compilazione, non ancora provata
+    dalla banca) la dichiarazione si ritira con lo stesso motore
+    (``ritira_dichiarazione_banca``): mai una fattura che resta "pagata" per
+    un assegno annullato o stornato.
+    """
+    from app.services.pagamenti_dichiarati_titolare import ritira_dichiarazione_banca
+
     collegate = [q for q in assegno.get("fatture_collegate") or [] if isinstance(q, dict)]
     ids = [str(q.get("fattura_id")) for q in collegate if q.get("fattura_id")]
     for campo in ("fattura_collegata", "fattura_id"):
@@ -123,6 +131,7 @@ async def _scollega_fatture(db, assegno: Dict[str, Any], now: str) -> List[Dict[
     for fid in ids:
         await db["invoices"].update_one(
             {"id": fid}, {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}})
+        await ritira_dichiarazione_banca(db, fid, motivo=motivo)
         await _aggiorna_stato_intento_fattura(db, fid, now)
     return collegate
 
@@ -1424,7 +1433,13 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
                 ),
             )
 
-    # 1) Annulla i vecchi collegamenti sulle fatture precedentemente collegate
+    # 1) Annulla i vecchi collegamenti sulle fatture precedentemente collegate.
+    # Se la compilazione l'aveva dichiarata pagata (dichiara_pagamento_banca),
+    # la dichiarazione si ritira qui: la fattura non deve restare "pagata" per
+    # un assegno che ora paga un'altra fattura o un altro importo. Se resta
+    # selezionata nel nuovo set, il passo 2 la ridichiara.
+    from app.services.pagamenti_dichiarati_titolare import ritira_dichiarazione_banca
+
     vecchie = assegno.get("fatture_collegate") or []
     for vc in vecchie:
         old_fid = vc.get("fattura_id")
@@ -1433,6 +1448,7 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
         await db["invoices"].update_one(
             {"id": old_fid}, {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}}
         )
+        await ritira_dichiarazione_banca(db, old_fid, motivo="fatture collegate all'assegno modificate")
         await _aggiorna_stato_intento_fattura(db, old_fid, now)
 
     # 2) Applica i nuovi collegamenti
@@ -1471,7 +1487,21 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
         # Solo le quote positive (fatture normali) generano un movimento banca:
         # una nota di credito (quota negativa, Caso F) netta l'importo dovuto
         # ma non è di per sé un'uscita di denaro.
-        # La Prima Nota Banca nasce solo dal movimento reale dell'estratto conto.
+        # Il titolare, compilando l'assegno, dichiara la fattura pagata: entra
+        # subito in Prima Nota Banca `dichiarato_titolare` e attende solo il
+        # riscontro dell'estratto conto (stesso motore del report «Fatture
+        # ricevute», `pagamenti_dichiarati_titolare.py`). Se l'assegno e' gia'
+        # confermato in banca il ramo qui sotto scrive la riga vera: qui non
+        # si duplica.
+        if quota > 0 and not assegno.get("incassato_confermato_banca"):
+            from app.services.pagamenti_dichiarati_titolare import dichiara_pagamento_banca
+
+            await dichiara_pagamento_banca(
+                db, inv, metodo="assegno",
+                data=assegno.get("data_emissione") or now[:10],
+                assegno_numero=assegno.get("numero"),
+                source="assegno_compilato",
+            )
 
     fornitore_piva = next(iter(piva_set), None)
     first_inv = next(iter(fatture_map.values()), None)
@@ -1708,7 +1738,7 @@ async def annulla_assegno(assegno_id: str, body: AnnulloAssegnoIn) -> Dict[str, 
         return {"success": True, "idempotent": True, "message": "Assegno gia annullato"}
 
     now = datetime.now(timezone.utc).isoformat()
-    collegate = await _scollega_fatture(db, assegno, now)
+    collegate = await _scollega_fatture(db, assegno, now, motivo=f"assegno annullato: {body.motivo.strip()}")
     nuovo = {
         "stato": "annullato", "stato_pre_annullo": assegno.get("stato"),
         "motivo_annullo": body.motivo.strip(), "annullato_at": now,
@@ -1747,7 +1777,7 @@ async def storna_assegno(assegno_id: str, body: StornoAssegnoIn) -> Dict[str, An
         return {"success": True, "idempotent": True, "message": "Assegno gia stornato"}
 
     now = datetime.now(timezone.utc).isoformat()
-    collegate = await _scollega_fatture(db, assegno, now)
+    collegate = await _scollega_fatture(db, assegno, now, motivo=f"assegno stornato: {body.motivo.strip()}")
     nuovo = {
         "stato": "stornato",
         "stato_pre_storno": assegno.get("stato"),

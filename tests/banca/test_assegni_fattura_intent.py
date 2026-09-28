@@ -464,7 +464,12 @@ def test_collegamento_guidato_salva_numero_data_fornitore_e_relazione_bidirezion
     assert assegno["fatture_collegate"][0]["fattura_id"] == "fatt-kimbo"
     assert fattura["assegni_collegati"][0]["assegno_id"] == "ass-kimbo"
     assert fattura["metodo_pagamento_previsto"] == "assegno"
-    assert fattura["stato_finanziario"] == "in_attesa_estratto_conto"
+    # La compilazione dichiara la fattura pagata: entra in Prima Nota Banca
+    # e attende solo il riscontro dell'estratto conto (dichiara_pagamento_banca).
+    assert fattura["stato_finanziario"] == "pagata_dichiarata_in_attesa_banca"
+    assert fattura["pagato"] is True
+    assert fattura["in_attesa_riscontro_banca"] is True
+    assert fattura["prima_nota_banca_id"]
 
 
 def test_riprocessamento_storico_collega_assegno_incassato_alla_fattura_univoca():

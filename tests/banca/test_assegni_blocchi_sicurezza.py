@@ -123,6 +123,107 @@ def test_lo_storno_riapre_la_fattura(monkeypatch):
     assert _run(db["assegni"].find_one({"id": "a1"}))["fatture_prima_dello_storno"][0]["fattura_id"] == "f1"
 
 
+# ── compilare l'assegno dichiara la fattura pagata in banca ────────────────
+
+def _assegno_da_compilare(db):
+    _run(db["assegni"].insert_one({
+        "id": "a1", "numero": "0208770651", "stato": "compilato", "importo": 300.0,
+    }))
+    _run(db["invoices"].insert_one({
+        "id": "f1", "invoice_number": "12/A", "total_amount": 300.0,
+        "importo_residuo": 300.0, "pagato": False,
+    }))
+
+
+def test_compilare_l_assegno_dichiara_la_fattura_pagata_in_prima_nota_banca(monkeypatch):
+    db = _db(monkeypatch, "compila_dichiara")
+    _assegno_da_compilare(db)
+
+    _run(assegni_router.collega_fatture_assegno(
+        "a1", assegni_router.FattureCollegateIn(fatture=[
+            assegni_router.FatturaQuotaIn(fattura_id="f1", quota=300.0),
+        ]),
+    ))
+
+    f = _run(db["invoices"].find_one({"id": "f1"}))
+    assert f["pagato"] is True and f["in_attesa_riscontro_banca"] is True
+    assert f["stato_finanziario"] == "pagata_dichiarata_in_attesa_banca"
+    assert f["metodo_pagamento_dichiarato"] == "assegno"
+    assert f["assegno_numero_dichiarato"] == "0208770651"
+    righe = _run(db["prima_nota_banca"].find(
+        {"fattura_id": "f1", "status": {"$nin": ["deleted", "archived"]}}, {"_id": 0}).to_list(10))
+    assert len(righe) == 1
+    assert righe[0]["dichiarato_titolare"] is True
+    assert righe[0]["importo"] == 300.0
+
+
+def test_annullare_l_assegno_ritira_la_dichiarazione_e_riapre_la_fattura(monkeypatch):
+    db = _db(monkeypatch, "compila_annulla")
+    _assegno_da_compilare(db)
+    _run(assegni_router.collega_fatture_assegno(
+        "a1", assegni_router.FattureCollegateIn(fatture=[
+            assegni_router.FatturaQuotaIn(fattura_id="f1", quota=300.0),
+        ]),
+    ))
+
+    _run(assegni_router.annulla_assegno("a1", assegni_router.AnnulloAssegnoIn(motivo="Scritto male")))
+
+    f = _run(db["invoices"].find_one({"id": "f1"}))
+    assert f["pagato"] is False and f["in_attesa_riscontro_banca"] is False
+    assert f["metodo_pagamento"] == "sospesa"
+    # _aggiorna_stato_intento_fattura riscrive lo stato dopo il ritiro.
+    assert f["stato_finanziario"] == "provvisoria"
+    riga = _run(db["prima_nota_banca"].find_one({"fattura_id": "f1"}))
+    assert riga["status"] == "deleted"
+
+
+def test_stornare_l_assegno_ritira_la_dichiarazione_e_riapre_la_fattura(monkeypatch):
+    db = _db(monkeypatch, "compila_storna")
+    _assegno_da_compilare(db)
+    _run(assegni_router.collega_fatture_assegno(
+        "a1", assegni_router.FattureCollegateIn(fatture=[
+            assegni_router.FatturaQuotaIn(fattura_id="f1", quota=300.0),
+        ]),
+    ))
+
+    _run(assegni_router.storna_assegno("a1", assegni_router.StornoAssegnoIn(motivo="Respinto in banca")))
+
+    f = _run(db["invoices"].find_one({"id": "f1"}))
+    assert f["pagato"] is False and f["in_attesa_riscontro_banca"] is False
+    riga = _run(db["prima_nota_banca"].find_one({"fattura_id": "f1"}))
+    assert riga["status"] == "deleted"
+
+
+def test_ricollegare_l_assegno_a_un_altra_fattura_ritira_la_vecchia_dichiarazione(monkeypatch):
+    db = _db(monkeypatch, "compila_ricollega")
+    _assegno_da_compilare(db)
+    _run(db["invoices"].insert_one({
+        "id": "f2", "invoice_number": "13/B", "total_amount": 300.0,
+        "importo_residuo": 300.0, "pagato": False,
+    }))
+    _run(assegni_router.collega_fatture_assegno(
+        "a1", assegni_router.FattureCollegateIn(fatture=[
+            assegni_router.FatturaQuotaIn(fattura_id="f1", quota=300.0),
+        ]),
+    ))
+    # Il titolare si accorge di aver sbagliato fattura e la sostituisce.
+    _run(assegni_router.collega_fatture_assegno(
+        "a1", assegni_router.FattureCollegateIn(fatture=[
+            assegni_router.FatturaQuotaIn(fattura_id="f2", quota=300.0),
+        ]),
+    ))
+
+    f1 = _run(db["invoices"].find_one({"id": "f1"}))
+    f2 = _run(db["invoices"].find_one({"id": "f2"}))
+    assert f1["pagato"] is False and f1["in_attesa_riscontro_banca"] is False
+    assert f2["pagato"] is True and f2["in_attesa_riscontro_banca"] is True
+    riga_vecchia = _run(db["prima_nota_banca"].find_one({"fattura_id": "f1"}))
+    assert riga_vecchia["status"] == "deleted"
+    righe_nuove = _run(db["prima_nota_banca"].find(
+        {"fattura_id": "f2", "status": {"$nin": ["deleted", "archived"]}}, {"_id": 0}).to_list(10))
+    assert len(righe_nuove) == 1
+
+
 # ── storico ───────────────────────────────────────────────────────────────
 
 def test_ogni_modifica_lascia_valore_precedente_e_nuovo(monkeypatch):

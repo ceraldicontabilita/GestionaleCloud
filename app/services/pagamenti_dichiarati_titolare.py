@@ -268,10 +268,17 @@ async def _conferma_cassa(fattura: Dict[str, Any], riga: Dict[str, Any]) -> Dict
     })
 
 
-async def _scrivi_banca_dichiarata(
-    db, fattura: Dict[str, Any], riga: Dict[str, Any],
+async def dichiara_pagamento_banca(
+    db, fattura: Dict[str, Any], *,
+    metodo: str, data: Any = None, assegno_numero: Any = None,
+    metodo_testo: Any = None, source: str = ATTORE,
 ) -> tuple:
     """Il titolare dice «pagata in banca»: la fattura va in Prima Nota Banca.
+
+    Un solo motore per ogni canale che fa questa dichiarazione: il report
+    «Fatture ricevute» e la compilazione di un assegno (`assegni.py`,
+    quando la quota copre l'intera fattura) chiamano qui, mai una scrittura
+    propria.
 
     La riga nasce dal writer unico (``registra_pagamento_fattura``, ramo
     banca senza movimento) e porta ``dichiarato_titolare``: per l'utente la
@@ -283,10 +290,9 @@ async def _scrivi_banca_dichiarata(
     from app.routers.prima_nota_module.sync import registra_pagamento_fattura
     from app.services.prima_nota_integrity import CAMPO_RIGA_DICHIARATA
 
-    metodo = riga.get("metodo_pagamento_titolare")
-    data = riga.get("data_pagamento_report") or str(fattura.get("invoice_date") or "")[:10]
+    data = data or str(fattura.get("invoice_date") or "")[:10]
     esito = await registra_pagamento_fattura(
-        fattura, "banca", source=ATTORE, allow_provisional_bank=True,
+        fattura, "banca", source=source, allow_provisional_bank=True,
     )
     pn_id = esito.get("banca")
     if not pn_id:
@@ -310,7 +316,7 @@ async def _scrivi_banca_dichiarata(
         # e carta Nexi non sono BPM.
         from app.services.piano_conti_ufficiale import CONTI_UFFICIALI
 
-        conto = conto_metodo_dichiarato(metodo, riga.get("metodo_pagamento_titolare_testo"))
+        conto = conto_metodo_dichiarato(metodo, metodo_testo)
         campi_conto = {"conto_contabile": conto,
                        "conto_nome": CONTI_UFFICIALI.get(conto) if conto else None}
     await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": {
@@ -318,7 +324,7 @@ async def _scrivi_banca_dichiarata(
         CAMPO_RIGA_DICHIARATA: True,
         "data": data,
         "metodo_pagamento_dichiarato": metodo,
-        "assegno_numero_dichiarato": riga.get("assegno_numero_titolare") or None,
+        "assegno_numero_dichiarato": assegno_numero or None,
         "motivo_provvisorio": "dichiarata_dal_titolare_in_attesa_estratto_conto",
         "updated_at": _oggi(),
     }})
@@ -332,8 +338,8 @@ async def _scrivi_banca_dichiarata(
         "in_attesa_riscontro_banca": True,
         "metodo_pagamento": "banca",
         "metodo_pagamento_dichiarato": metodo,
-        "assegno_numero_dichiarato": riga.get("assegno_numero_titolare") or None,
-        "metodo_pagamento_override_source": ATTORE,
+        "assegno_numero_dichiarato": assegno_numero or None,
+        "metodo_pagamento_override_source": source,
         "prima_nota_id": pn_id,
         "prima_nota_banca_id": pn_id,
         "prima_nota_tipo": "banca",
@@ -341,6 +347,61 @@ async def _scrivi_banca_dichiarata(
         "updated_at": _oggi(),
     }})
     return pn_id, False
+
+
+async def _scrivi_banca_dichiarata(
+    db, fattura: Dict[str, Any], riga: Dict[str, Any],
+) -> tuple:
+    return await dichiara_pagamento_banca(
+        db, fattura,
+        metodo=riga.get("metodo_pagamento_titolare"),
+        data=riga.get("data_pagamento_report") or str(fattura.get("invoice_date") or "")[:10],
+        assegno_numero=riga.get("assegno_numero_titolare"),
+        metodo_testo=riga.get("metodo_pagamento_titolare_testo"),
+    )
+
+
+async def ritira_dichiarazione_banca(db, fattura_id: str, *, motivo: str) -> bool:
+    """Ritira una dichiarazione non ancora provata dalla banca: la fattura riapre.
+
+    Chiamata quando l'assegno che l'aveva dichiarata pagata viene annullato o
+    stornato prima dell'addebito. Una dichiarazione gia' sostituita dalla riga
+    con la prova bancaria (``in_attesa_riscontro_banca`` falso) non si tocca:
+    quel pagamento e' reale, indipendente dall'assegno.
+    """
+    from app.services.prima_nota_integrity import CAMPO_RIGA_DICHIARATA
+
+    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    if not fattura or not fattura.get("pagamento_dichiarato_titolare"):
+        return False
+    if not fattura.get("in_attesa_riscontro_banca"):
+        # Provata dalla banca (o gia' non piu' in attesa): non e' questa
+        # dichiarazione a riaprire il conto.
+        return False
+    now = _oggi()
+    pn_id = fattura.get("prima_nota_banca_id")
+    if pn_id:
+        riga_pn = await db["prima_nota_banca"].find_one({"id": pn_id}, {"_id": 0})
+        if riga_pn and riga_pn.get(CAMPO_RIGA_DICHIARATA):
+            await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": {
+                "status": "deleted", "motivo_eliminazione": motivo,
+                "eliminato_da": ATTORE, "eliminato_il": now, "updated_at": now,
+            }})
+    await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+        "pagato": False, "paid": False,
+        "stato_pagamento": "non_pagata", "payment_status": "unpaid",
+        "stato_finanziario": None,
+        "pagamento_dichiarato_titolare": False,
+        "in_attesa_riscontro_banca": False,
+        "metodo_pagamento": "sospesa",  # vocabolario unico, metodi_pagamento.py
+        "metodo_pagamento_dichiarato": None,
+        "assegno_numero_dichiarato": None,
+        "prima_nota_id": None, "prima_nota_banca_id": None, "prima_nota_tipo": None,
+        "data_pagamento": None,
+        "dichiarazione_ritirata_motivo": motivo,
+        "updated_at": now,
+    }})
+    return True
 
 
 async def ripara_righe_dichiarate(db) -> Dict[str, int]:
