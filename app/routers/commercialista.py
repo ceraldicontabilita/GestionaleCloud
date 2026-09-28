@@ -791,6 +791,14 @@ async def _get_fatture_estere_mensili(anno: int, mese: int) -> list:
     }, {"_id": 0}).to_list(500)
 
 
+@router.get("/completezza/{anno}/{mese}")
+@handle_errors
+async def completezza_pacchetto(anno: int, mese: int) -> Dict[str, Any]:
+    """Chiusure RT, originali delle fatture ed estratto BPM del periodo."""
+    from app.services.completezza_commercialista import completezza
+    return await completezza(Database.get_db(), anno, mese)
+
+
 @router.get("/export-completo/{anno}/{mese}")
 @handle_errors
 async def export_dati_completi(anno: int, mese: int):
@@ -805,6 +813,8 @@ async def export_dati_completi(anno: int, mese: int):
     - Assegni emessi nel mese (CSV)
     - PDF delle fatture ESTERE ricevute via email nel mese (allegati): le
       fatture italiane arrivano sempre via SDI/XML, non servono qui.
+    - LEGGIMI_COMPLETEZZA.txt: chiusure RT, originali delle fatture ed estratto
+      BPM del periodo, con quello che manca.
     """
     import zipfile
     import base64
@@ -817,7 +827,19 @@ async def export_dati_completi(anno: int, mese: int):
 
     zip_buffer = BytesIO()
 
+    from app.services.completezza_commercialista import completezza, testo_leggimi
+    try:
+        leggimi = testo_leggimi(await completezza(db, anno, mese))
+    except Exception as exc:  # noqa: BLE001 - il pacchetto si scarica comunque
+        logger.warning("Completezza pacchetto %s non calcolata: %s: %s",
+                       mese_str, type(exc).__name__, exc)
+        leggimi = (f"Controllo di completezza non riuscito ({type(exc).__name__}): "
+                   "chiusure RT, originali delle fatture ed estratto BPM vanno verificati a mano.\n")
+
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # 0. Cosa manca, scritto in testa al pacchetto
+        zf.writestr('LEGGIMI_COMPLETEZZA.txt', leggimi)
+
         # 1. PRIMA NOTA CASSA
         prima_nota_cassa = await get_prima_nota_cassa_mensile(anno, mese)
         if prima_nota_cassa.get('movimenti'):

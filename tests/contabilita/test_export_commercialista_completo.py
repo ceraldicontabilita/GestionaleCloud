@@ -110,6 +110,8 @@ def test_export_completo_contiene_solo_cassa_banca_assegni_e_fatture_estere(monk
         assert "prima_nota_banca_2026-05.csv" in names
         assert "assegni_emessi_2026-05.csv" in names
         assert "fatture_estere/fattura_estera_EST001.pdf" in names
+        # Cosa manca al pacchetto, sempre in testa (anche se il controllo non riesce).
+        assert "LEGGIMI_COMPLETEZZA.txt" in names
 
         # Mai più generati: fatture italiane, corrispettivi, riepilogo IVA, buste paga.
         assert "fatture_2026-05.csv" not in names

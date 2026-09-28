@@ -61,6 +61,7 @@ export default function Commercialista() {
   const [primaNotaData, setPrimaNotaData] = useState(null);
   const [fattureCassaData, setFattureCassaData] = useState(null);
   const [riepilogoData, setRiepilogoData] = useState(null);
+  const [completezza, setCompletezza] = useState(null);
   const [carnets, setCarnets] = useState([]);
   const [selectedCarnets, setSelectedCarnets] = useState([]); // Array per selezione multipla
   const [carnetSearch, setCarnetSearch] = useState(''); // Barra di ricerca
@@ -116,6 +117,11 @@ export default function Commercialista() {
         api.get(`/api/assegni?anno=${selectedYear}`),
         api.get(`/api/commercialista/riepilogo/${selectedYear}/${month}`),
       ]);
+
+      // A parte: se il controllo non risponde, il resto della pagina resta.
+      api.get(`/api/commercialista/completezza/${selectedYear}/${month}`)
+        .then(res => setCompletezza(res.data))
+        .catch(() => setCompletezza(null));
 
       setPrimaNotaData(primaNotaRes.data);
       setFattureCassaData(fattureCassaRes.data);
@@ -1052,6 +1058,8 @@ export default function Commercialista() {
           </div>
         </Card>
 
+        {completezza && <CompletezzaPacchetto esito={completezza} />}
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>Caricamento...</div>
         ) : (
@@ -1603,5 +1611,53 @@ export default function Commercialista() {
         )}
       </div>
     </PageLayout>
+  );
+}
+
+
+const it = g => (g ? `${g.slice(8, 10)}/${g.slice(5, 7)}/${g.slice(0, 4)}` : '—');
+
+/** Prima dello ZIP: cosa manca al pacchetto (RT, originali fatture, estratto BPM). */
+export function CompletezzaPacchetto({ esito }) {
+  const rt = esito.rt?.mancanti || [];
+  const senza = esito.fatture?.senza_originale || [];
+  const estratto = esito.estratto_bpm || {};
+  const righe = [
+    {
+      chiave: 'rt', ok: !rt.length, titolo: 'Chiusure RT',
+      testo: rt.length ? `Mancano ${rt.length} giorni: ${rt.slice(0, 10).map(it).join(', ')}${rt.length > 10 ? '…' : ''}` : 'Una per ogni giorno di apertura',
+    },
+    {
+      chiave: 'fatture', ok: !senza.length, titolo: 'Originali delle fatture',
+      testo: senza.length
+        ? `${senza.length} su ${esito.fatture.totale} senza originale: ${senza.slice(0, 5).map(f => `${f.numero} ${f.fornitore}`).join('; ')}${senza.length > 5 ? '…' : ''}`
+        : `${esito.fatture?.totale || 0} fatture, tutte con l'originale`,
+    },
+    {
+      chiave: 'estratto', ok: !!estratto.completo, titolo: 'Estratto conto BPM',
+      testo: estratto.completo
+        ? 'Copre il periodo'
+        : estratto.movimenti ? `Solo dal ${it(estratto.primo)} al ${it(estratto.ultimo)}` : 'Nessun movimento: estratto da caricare',
+    },
+  ];
+  return (
+    <div data-testid="completezza-pacchetto" style={{ marginBottom: 20 }}>
+    <Card>
+      <div style={{ fontWeight: 800, marginBottom: 8, color: COLORS.text }}>
+        {esito.completo ? 'Pacchetto completo' : 'Pacchetto incompleto'}
+        <span style={{ fontWeight: 400, color: COLORS.textMuted, marginLeft: 8, fontSize: 13 }}>
+          dal {it(esito.dal)} al {it(esito.al)}
+        </span>
+      </div>
+      {righe.map(r => (
+        <div key={r.chiave} data-testid={`completezza-${r.chiave}`} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0', borderTop: `1px solid ${COLORS.border}` }}>
+          <Badge variant={r.ok ? 'success' : 'warning'} style={{ textTransform: 'none', whiteSpace: 'nowrap' }}>
+            {r.ok ? 'Completo' : 'Manca'}
+          </Badge>
+          <span style={{ fontSize: 13 }}><b>{r.titolo}</b> — {r.testo}</span>
+        </div>
+      ))}
+    </Card>
+    </div>
   );
 }
