@@ -949,6 +949,15 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] fatture nel giornale: %s: %s", type(e).__name__, e)
         try:
+            # Fatture che non hanno mai propagato fattura.created (import del
+            # 14/09/2026): partita, alert e audit dagli stessi handler.
+            from app.services.recupero_fatture_pregresso import ripubblica_a_lotti
+            r = await ripubblica_a_lotti(db)
+            if r.get("candidate"):
+                logger.info("[SCHEDULER-BANCA] fattura.created ripubblicato %s", r)
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] replay fattura.created: %s: %s", type(e).__name__, e)
+        try:
             # Ultimo passo: chiude gli alert che i passi sopra (e gli altri
             # motori) hanno reso falsi e mette in quarantena i verbali nati
             # dai numeri di fattura. Solo per id, con il motivo scritto.
