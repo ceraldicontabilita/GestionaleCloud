@@ -311,9 +311,30 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     await screen.findByTestId('assegni-table');
     expect(screen.getByTestId('choose-invoice-auto')).toHaveTextContent('Scegli fattura');
     expect(screen.getByTestId('choose-invoice-ambiguo')).toHaveTextContent('Scegli fattura');
-    expect(screen.getByText('Più candidati: scegli manualmente')).toBeInTheDocument();
+    expect(screen.getByText('Più candidati')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('choose-invoice-auto'));
     expect(await screen.findByLabelText('Cerca e seleziona fornitore')).toBeInTheDocument();
+  });
+
+  it('«Scegli manualmente» sui casi ambigui apre il modale filtrato per fornitore', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/supporto/fatture-disponibili')) return Promise.resolve({ data: [] });
+      return rispostaPagina([
+        {
+          id: 'ambiguo', numero: '0208770650', stato: 'incassato', importo: 977.38,
+          beneficiario: 'FORNITORE AMBIGUO SRL', associazione_ambigua: true,
+        },
+      ])(url);
+    });
+
+    renderPagina();
+    await screen.findByTestId('assegni-table');
+
+    fireEvent.click(screen.getByTestId('scegli-manualmente-ambiguo'));
+    expect(await screen.findByText(/Collega Fatture all'Assegno/)).toBeInTheDocument();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      expect.stringContaining('fornitore=FORNITORE+AMBIGUO+SRL'),
+    ));
   });
 
   it('mostra il piano rate XML nelle proposte e confronta la quota della rata', async () => {

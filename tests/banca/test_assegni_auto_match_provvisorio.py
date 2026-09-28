@@ -40,6 +40,7 @@ def test_conferma_proposta_collega_ma_non_crea_banca_ne_segna_pagata():
         assert result["movimenti_banca"] == 0
         assert await db.prima_nota_banca.count_documents({}) == 0
         assert assegno_db["stato"] == "assegnato"
+        assert assegno_db["beneficiario"] == "FORNITORE PROVA SRL"
         assert fattura_db["pagato"] is False
         assert fattura_db["importo_pagato"] == 0.0
         assert fattura_db["stato_finanziario"] == "in_attesa_estratto_conto"

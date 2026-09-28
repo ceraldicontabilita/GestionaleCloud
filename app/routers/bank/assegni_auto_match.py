@@ -514,6 +514,8 @@ async def _apply_match(
                 ),
                 "fornitore_ragione_sociale": fatture_match[0].get("supplier_name") or
                                               fatture_match[0].get("cedente_denominazione"),
+                "beneficiario": fatture_match[0].get("supplier_name") or
+                                fatture_match[0].get("cedente_denominazione"),
                 "stato": "assegnato" if abs(quote_assegnate_totale - importo_ass) <= TOLL else "parzialmente_assegnato",
                 "match_auto": True,
                 "match_livello": livello,
@@ -591,6 +593,7 @@ async def _apply_match(
                         fattura.get("supplier_vat") or fattura.get("cedente_id_fiscale") or fattura.get("partita_iva")
                     ),
                     "fornitore_ragione_sociale": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+                    "beneficiario": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
                     "stato": "assegnato" if abs(quota - imp) <= TOLL else "parzialmente_assegnato",
                     "match_auto": True,
                     "match_livello": livello,
