@@ -104,20 +104,22 @@ def parse_bpm_text(text: str) -> List[Dict[str, Any]]:
         j = i + 2
         descrizione: List[str] = []
         data_disponibile = None
-        # Impaginazione dal 30/06/2026, entrate: terza data subito, poi
-        # «importo testo» sulla stessa riga.
+        # Impaginazione dal 30/06/2026: tre date (contabile, valuta,
+        # disponibile) e poi l'importo. Entrata: «importo testo» sulla stessa
+        # riga. Uscita: importo da solo, descrizione nelle righe seguenti
+        # (raccolta piu' sotto). La data in coda alla descrizione e' gia' del
+        # movimento successivo: leggerla come disponibile spostava assegni e
+        # competenze al giorno della valuta.
         if (j + 1 < len(lines) and _DATE.match(lines[j])
-                and _AMOUNT_WITH_TEXT.match(lines[j + 1])):
+                and (_AMOUNT_WITH_TEXT.match(lines[j + 1]) or _AMOUNT.match(lines[j + 1]))):
             data_disponibile = lines[j]
             importo_testo = _AMOUNT_WITH_TEXT.match(lines[j + 1])
-            importo = _amount(importo_testo.group(1))
-            descrizione.append(importo_testo.group(2).strip())
+            if importo_testo:
+                importo = _amount(importo_testo.group(1))
+                descrizione.append(importo_testo.group(2).strip())
+            else:
+                importo = _amount(lines[j + 1])
             j += 2
-        # Stessa impaginazione, uscite: l'importo da solo subito dopo le due
-        # date, la descrizione nelle righe seguenti (raccolta piu' sotto).
-        elif j < len(lines) and _AMOUNT.match(lines[j]):
-            importo = _amount(lines[j])
-            j += 1
         else:
             while j < len(lines) and not _AMOUNT.match(lines[j]):
                 if _DATE.match(lines[j]) or lines[j].upper() in _HEADER_LINES:
@@ -146,19 +148,6 @@ def parse_bpm_text(text: str) -> List[Dict[str, Any]]:
             if not _DATE.match(lines[j]) and not _AMOUNT.match(lines[j]):
                 dettagli.append(lines[j])
             j += 1
-
-        # Uscite nuova impaginazione: la data disponibile chiude il movimento
-        # dopo la descrizione. Tre date di fila pero' possono essere anche
-        # l'entrata successiva (contabile, valuta, disponibile): lo dice la
-        # quarta riga, «importo testo» solo in quel caso.
-        if not data_disponibile and j < len(lines) and _DATE.match(lines[j]):
-            seguono = lines[j + 1:j + 4]
-            coppia_dopo = len(seguono) >= 2 and _DATE.match(seguono[0]) and _DATE.match(seguono[1])
-            tripla_entrata = (len(seguono) >= 3 and coppia_dopo
-                              and bool(_AMOUNT_WITH_TEXT.match(seguono[2])))
-            if not seguono or not _DATE.match(seguono[0]) or (coppia_dopo and not tripla_entrata):
-                data_disponibile = lines[j]
-                j += 1
 
         testo = " ".join(descrizione + dettagli).strip()
         if testo and "SALDO INIZIALE" not in testo.upper() and importo != 0:

@@ -941,6 +941,17 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 rec for rec in records_to_insert if id(rec) not in gia_presenti
             ]
             duplicates += len(coppie)
+            # Il PDF ufficiale scrive la causale senza il prefisso dell'export
+            # («SDD CORE: …» contro «ADDEBITO DIRETTO SDD - SDD CORE: …»): la
+            # riga si riconosce solo qui, e senza questo restava «operativa»
+            # per sempre (Q1 2026: 330 promosse su 616 lette).
+            if fonte_ufficiale:
+                for _, esistente in coppie:
+                    if not (esistente.get("evidenza_bancaria_ufficiale") is True
+                            or esistente.get("livello_evidenza") == EVIDENZA_UFFICIALE):
+                        records_promossi.append(esistente)
+                        if esistente.get("id"):
+                            existing_usati.add(esistente["id"])
 
     promoted_ids = [record.get("id") for record in records_promossi if record.get("id")]
     async with _write_batch(db):
