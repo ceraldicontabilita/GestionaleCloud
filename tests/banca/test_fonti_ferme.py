@@ -28,7 +28,8 @@ def _popola(db, estratto="2026-08-24", corrispettivi="2026-08-24", pos="2026-07-
         if corrispettivi:
             await db["corrispettivi"].insert_one({"id": "co-1", "data": corrispettivi})
         if pos:
-            await db["pos_terminal_transactions"].insert_one({"id": "pt-1", "data": pos})
+            await db["chiusure_pos_manuali"].insert_one(
+                {"id": "pt-1", "data": pos, "gestore": "numia", "importo": 100.0})
     _run(scenario())
 
 
@@ -211,3 +212,37 @@ def test_i_giorni_di_chiusura_non_contano_come_corrispettivi_mancanti(monkeypatc
     riga = next(r for r in _run(fonti_ferme.stato_fonti(db, oggi=date(2026, 8, 25)))
                 if r["fonte"] == "corrispettivi")
     assert riga["giorni_fermi"] == 2 and riga["ferma"] is False
+
+
+def _accredito_numia(giorno_vendita, accredito, importo=50.0, n=1):
+    gg, mm, aa = giorno_vendita[8:10], giorno_vendita[5:7], giorno_vendita[2:4]
+    return {"id": f"ec-numia-{giorno_vendita}-{n}", "data": accredito, "tipo": "entrata",
+            "importo": importo,
+            "descrizione": f"INC.POS CARTE CREDIT - NUMIA-INTER DEL {gg}/{mm}/{aa} PDV 1/00011 NEGOZIO"}
+
+
+def test_numia_dismesso_non_e_una_fonte_ferma():
+    """Titolare, 28/09/2026: Numia spento dopo il 04/09. Se l'ultima vendita
+    Numia accreditata ha la sua chiusura, il terminale spento non avvisa."""
+    db = _db("numia-dismesso")
+    _popola(db, estratto="2026-09-27", corrispettivi="2026-09-27", pos="2026-09-04")
+    _run(db["estratto_conto_movimenti"].insert_one(_accredito_numia("2026-09-04", "2026-09-07")))
+
+    esito = _run(fonti_ferme.controlla_fonti_ferme(db, oggi=date(2026, 9, 28)))
+
+    assert esito["ferme"] == []
+
+
+def test_accrediti_numia_senza_chiusura_restano_un_avviso():
+    db = _db("numia-buco")
+    _popola(db, estratto="2026-09-27", corrispettivi="2026-09-27", pos="2026-07-31")
+    _run(db["estratto_conto_movimenti"].insert_one(_accredito_numia("2026-09-04", "2026-09-07")))
+    # Una chiusura SumUp non copre Numia.
+    _run(db["chiusure_pos_manuali"].insert_one(
+        {"id": "su-1", "data": "2026-09-27", "gestore": "sumup", "importo": 10.0}))
+
+    esito = _run(fonti_ferme.controlla_fonti_ferme(db, oggi=date(2026, 9, 28)))
+
+    ferme = {r["fonte"]: r for r in esito["ferme"]}
+    assert set(ferme) == {"pos_numia"}
+    assert ferme["pos_numia"]["giorni"] == 35  # dal 31/07 all'ultima vendita del 04/09
