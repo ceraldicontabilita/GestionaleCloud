@@ -209,3 +209,35 @@ def test_la_riga_del_vecchio_import_passa_sul_conto_della_carta():
     assert riga["conto_contabile"] == "19.01.05"
     assert riga["estratto_conto_id"] == "sumup_conto:C97WNWYJZM"
     assert mov["prima_nota_banca_id"] == "pn-today" and mov["fattura_id"] == "f3397"
+
+
+def test_numero_con_zeri_iniziali_o_coda_tagliata_dalla_banca():
+    from app.services.bank_payment_allocations import _numero_citato
+
+    leasys = {"invoice_number": "0000202610239916"}
+    assert _numero_citato(leasys, {"202610239916"})
+    assert _numero_citato(leasys, {"ft0202610239916"})
+    # La causale taglia le ultime due cifre: ancora lo stesso numero.
+    assert _numero_citato(leasys, {"2026102399"})
+    # Tre cifre tagliate o un numero diverso: no.
+    assert not _numero_citato(leasys, {"202610239"})
+    assert not _numero_citato(leasys, {"202610239917"})
+    # Un numero corto non si riconosce per le sole cifre.
+    assert not _numero_citato({"invoice_number": "000386"}, {"0386"})
+    assert _numero_citato({"invoice_number": "386"}, {"386"})
+
+
+def test_zeri_iniziali_collegano_solo_il_fornitore_del_bonifico():
+    db = ClientArchivioMemoria()["citate_leasys"]
+    iban_leasys = "IT60X0542811101000000123456"
+    fatture = [
+        _fattura("l1", "0000202610239916", "2026-08-01", 512.40, "LEASYS ITALIA S.P.A.", "06714021000"),
+        _fattura("x1", "0000202610239916", "2026-08-01", 512.40, "ALTRA DITTA SPA", "09999999999"),
+    ]
+    mov = _movimento("CDLEASYS01", "2026-09-10", "512.40",
+                     f"Leasys Italia SpA {iban_leasys}",
+                     "Pagamento fattura 202610239916", iban_leasys)
+    primo, _, esito, _, _ = _run(db, fatture, [mov])
+    assert primo["fatture_citate_abbinate"] == 1
+    assert _quote(esito["l1"]) == [51240]
+    assert _quote(esito["x1"]) == []

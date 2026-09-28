@@ -799,7 +799,35 @@ def _numero_citato(invoice: Dict[str, Any], citati: set) -> bool:
     if not numero:
         return False
     # «1/11358» si cita «11358»: conta l'ultimo pezzo, non le cifre sciolte.
-    return _compact(numero) in citati or numero.split("/")[-1] in citati
+    if _compact(numero) in citati or numero.split("/")[-1] in citati:
+        return True
+    return _cifre_citate(numero, citati)
+
+
+def _cifre_significative(valore: str) -> str:
+    return re.sub(r"\D", "", valore).lstrip("0")
+
+
+def _cifre_citate(numero: str, citati: set) -> bool:
+    """Lo stesso numero scritto dalla banca in un'altra forma: zeri iniziali
+    («0000202610239916» citato «202610239916») o coda tagliata dalla causale
+    (al massimo 2 cifre, solo per numeri di almeno 10). Almeno 5 cifre
+    significative: un numero corto e' troppo facile da incontrare per caso."""
+    if re.search(r"[a-z]", numero.split("/")[-1]):
+        return False
+    cifre = _cifre_significative(numero.split("/")[-1])
+    if len(cifre) < 5:
+        return False
+    for parola in citati:
+        if not re.fullmatch(r"[a-z]*\d+", parola):
+            continue
+        citato = _cifre_significative(parola)
+        if citato == cifre:
+            return True
+        if (len(cifre) >= 10 and len(citato) >= len(cifre) - 2
+                and len(citato) < len(cifre) and cifre.startswith(citato)):
+            return True
+    return False
 
 
 def _fornitore_del_movimento(movement: Dict[str, Any], invoice: Dict[str, Any]) -> bool:
