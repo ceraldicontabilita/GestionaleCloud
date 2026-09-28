@@ -62,6 +62,14 @@ services:
         sync: false
       - key: SUPABASE_RUNTIME_SECRET
         sync: false
+      # Telegram, unico canale degli avvisi (fonti ferme, posta, ritenute).
+      # Proprietario: titolare. Token del bot da @BotFather (segreto, si ruota
+      # revocandolo li'), chat id della chat del titolare. Senza i due valori
+      # gli avvisi restano solo in pagina e il log dice «Telegram non configurato».
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
       # --- App Lotti (HACCP), montata a /lotti. Le variabili namespaced
       # puntano allo stesso archivio Supabase del gruppo; il segreto JWT resta
       # separato per limitare l'ambito dei token. Senza LOTTI_SUPABASE_URL

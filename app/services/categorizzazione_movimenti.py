@@ -122,6 +122,16 @@ _POS_KEYWORDS = (
 )
 _ASSEGNI_KEYWORDS = ("PRELIEVO ASSEGNO", "VOSTRO ASSEGNO", "ADDEBITO ASSEGNO")
 
+# Decisioni del titolare del 28/09/2026 sulle causali ancora senza categoria.
+# «BOLL.CBILL AGENZIA DELLE ENTRATE - R»: rate di cartelle e avvisi pagate col
+# circuito CBILL (la «R» e' la riscossione), non un F24.
+_RATEIZZAZIONI_ADE_KEYWORDS = ("CBILL AGENZIA DELLE ENTRATE",)
+# «BOLL.CBILL REGIONE CAMPANIA»: la tassa automobilistica.
+_TASSA_AUTO_KEYWORDS = ("CBILL REGIONE CAMPANIA",)
+# Il saldo mensile della carta di credito aziendale: un giroconto verso la
+# carta, non un costo; i costi sono le spese dell'estratto Nexi.
+_CARTA_CREDITO_KEYWORDS = ("SPESA CON CARTA DI CREDITO NEXI",)
+
 _PATTERN_BUCKETS: Dict[str, tuple] = {
     "F24": _F24_KEYWORDS,
     "Commissioni bancarie": _COMMISSIONI_KEYWORDS,
@@ -129,7 +139,17 @@ _PATTERN_BUCKETS: Dict[str, tuple] = {
     "Fatture": _FATTURE_KEYWORDS,
     "Corrispettivi POS": _POS_KEYWORDS,
     "Assegni": _ASSEGNI_KEYWORDS,
+    "Rateizzazioni AdE": _RATEIZZAZIONI_ADE_KEYWORDS,
+    "Tassa automobilistica": _TASSA_AUTO_KEYWORDS,
+    "Addebito carta di credito": _CARTA_CREDITO_KEYWORDS,
 }
+
+# Entrate che non sono ricavi (titolare, 28/09/2026). Il rimborso di un
+# fornitore (nota di credito, reso Amazon, bonifico errato restituito) e il
+# denaro di un cliente per una torta ordinata: il ricavo della torta e' lo
+# scontrino del giorno del ritiro, l'acconto non lo anticipa.
+_RE_RIMBORSO_ENTRATA = re.compile(r"\bRIMBORS|\bRESTITUZION|\bAMAZON\b")
+_RE_ACCONTO_CLIENTE = re.compile(r"\bTORT[AE]\b")
 
 # Il vecchio archivio scrive l'accredito POS senza prefisso: «NUMIA-INTER DEL
 # 30/08/26 PDV …». Solo con il circuito e il giorno: «FATTURA NUMIA» e le
@@ -305,6 +325,10 @@ def categoria_dal_collegamento(mov: Dict[str, Any]) -> Optional[str]:
     # CSV e banca diretta: importo positivo e verso in `tipo`; vecchio
     # archivio: importo con segno.
     uscita = tipo == "uscita" or (not tipo and importo < 0)
+    # Il socio lo attribuisce `finanziamenti_soci.classifica_finanziamento_ec`,
+    # che gia' esige nome completo del socio e, in uscita, causale di rimborso.
+    if mov.get("socio_id"):
+        return "Finanziamento soci"
     if not uscita:
         return None
     ha_fattura = bool(mov.get("fattura_id") or mov.get("fattura_ids"))
@@ -313,6 +337,26 @@ def categoria_dal_collegamento(mov: Dict[str, Any]) -> Optional[str]:
         return "Fatture"
     if ha_dipendente and not ha_fattura:
         return "Stipendi"
+    return None
+
+
+def categoria_entrata(mov: Dict[str, Any]) -> Optional[str]:
+    """Rimborso di un fornitore o acconto di un cliente: solo sulle entrate,
+    perche' «RIMBORSO» in uscita e' il contrario (lo restituiamo noi)."""
+    tipo = str(mov.get("tipo") or "").lower()
+    try:
+        importo = float(mov.get("importo") or 0)
+    except (TypeError, ValueError):
+        importo = 0.0
+    if not (tipo == "entrata" or (not tipo and importo > 0)):
+        return None
+    desc = str(mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
+    acconto = bool(_RE_ACCONTO_CLIENTE.search(desc))
+    rimborso = bool(_RE_RIMBORSO_ENTRATA.search(desc))
+    if acconto and not rimborso:
+        return "Acconti clienti"
+    if rimborso and not acconto:
+        return "Rimborso"
     return None
 
 
@@ -334,7 +378,7 @@ async def _movimenti_senza_categoria(db, anno: Optional[int]) -> List[Dict[str, 
         query,
         {"_id": 0, "id": 1, "descrizione_originale": 1, "descrizione": 1,
          "importo": 1, "data": 1, "tipo": 1, "fattura_id": 1, "fattura_ids": 1,
-         "dipendente_id": 1},
+         "dipendente_id": 1, "socio_id": 1},
     ).to_list(20000)
 
 
@@ -385,7 +429,7 @@ async def backfill_categorie_banca(
 
     for indice, mov in enumerate(movimenti, start=1):
         descrizione = mov.get("descrizione_originale") or mov.get("descrizione") or ""
-        dal_collegamento = categoria_dal_collegamento(mov)
+        dal_collegamento = categoria_dal_collegamento(mov) or categoria_entrata(mov)
         if dal_collegamento:
             per_collegamento.setdefault(dal_collegamento, []).append(mov["id"])
             continue
@@ -436,7 +480,7 @@ async def backfill_categorie_banca(
                 {"$set": {
                     "categoria": categoria,
                     "categoria_auto": True,
-                    "categoria_auto_motivo": "abbinamento gia' fatto (fattura o dipendente)",
+                    "categoria_auto_motivo": "abbinamento gia' fatto (fattura, dipendente, socio) o entrata riconosciuta (rimborso, acconto)",
                     "categoria_auto_at": now_iso,
                 }},
             )
