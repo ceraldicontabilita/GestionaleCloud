@@ -590,14 +590,18 @@ def start_scheduler():
             logger.error(f"[SCHEDULER-VERBALI-LINK] errore: {e}")
 
 
+    GIRI_CARTELLA_UNICA = 1000
+
     async def _drive_cartella_unica_job():
         from app.database import Database
         from app.services import drive_cartella_unica
         if not drive_cartella_unica.attivo():
             return
         try:
-            result = await drive_cartella_unica.giro(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] { {k: result.get(k) for k in ('letti', 'elaborati', 'errori', 'doppioni_cestinati', 'buste_rimesse_in_coda', 'errore', 'saltato')} }")
+            # Tutta la coda, un giro dopo l'altro (decisione del titolare):
+            # il lotto resta solo come passo di lavoro, non come tetto.
+            result = await drive_cartella_unica.svuota(Database.get_db(), max_giri=GIRI_CARTELLA_UNICA)
+            logger.info(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] {result}")
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] errore: {type(e).__name__}: {e}")
         # Stampe di controllo delle buste con la definitiva identica: via da Drive.
@@ -605,7 +609,7 @@ def start_scheduler():
             from app.services.cedolini_stampe_controllo import pulisci_archivio
             if not drive_cartella_unica._lock.locked():
                 async with drive_cartella_unica._lock:
-                    pulizia = await pulisci_archivio(Database.get_db())
+                    pulizia = await pulisci_archivio(Database.get_db(), gruppi_per_giro=None)
                 logger.info(f"[SCHEDULER-STAMPE-CONTROLLO] {pulizia}")
         except Exception as e:
             logger.error(f"[SCHEDULER-STAMPE-CONTROLLO] errore: {type(e).__name__}: {e}")

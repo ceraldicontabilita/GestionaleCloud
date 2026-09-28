@@ -131,3 +131,14 @@ def test_motore_busta_gia_in_archivio_e_un_successo(monkeypatch):
     db = AsyncMongoMockClient()["t"]
     esito = run(cm.processa_tutti_cedolini_pdf(db, base64.b64encode(b"%PDF").decode(), "a.pdf"))
     assert esito["success"] is True and esito["gia_presenti"] == 1
+
+
+def test_pulisci_archivio_senza_tetto_controlla_tutti_i_gruppi(ambiente, monkeypatch):  # noqa: F811
+    drive, _, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    for i in range(30):
+        drive.aggiungi(f"a{i}", f"P{i} - LUL - 2025-12.pdf", f"%PDF a{i}".encode(), "elaborate")
+        drive.aggiungi(f"b{i}", f"P{i} - LUL - 2025-12 (dup1).pdf", f"%PDF b{i}".encode(), "elaborate")
+    monkeypatch.setattr(sc, "leggi", lambda c: (c.startswith(b"%PDF b"), {BUSTA}))
+    esito = run(sc.pulisci_archivio(db, gruppi_per_giro=None))
+    assert (esito["controllati"], esito["tolte"]) == (30, 30)

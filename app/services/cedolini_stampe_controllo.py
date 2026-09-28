@@ -21,7 +21,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ def bozze_superate(letti: List[Tuple[Dict[str, Any], bool, Set[Identita]]]
             if controllo and identita and identita <= definitive.keys()]
 
 
-async def pulisci_archivio(db, *, gruppi_per_giro: int = GRUPPI_PER_GIRO) -> Dict[str, Any]:
+async def pulisci_archivio(db, *, gruppi_per_giro: Optional[int] = GRUPPI_PER_GIRO) -> Dict[str, Any]:
     """Toglie da ELABORATE le stampe di controllo superate, qualche gruppo per giro."""
     from app.services import drive_cartella_unica as cu
     from app.services.drive_download import scarica_bytes
@@ -126,7 +126,7 @@ async def pulisci_archivio(db, *, gruppi_per_giro: int = GRUPPI_PER_GIRO) -> Dic
     }
     adesso = datetime.now(timezone.utc).isoformat()
     for chiave, membri in sorted(gruppi.items()):
-        if esito["controllati"] >= gruppi_per_giro:
+        if gruppi_per_giro is not None and esito["controllati"] >= gruppi_per_giro:
             break
         firma = ",".join(sorted(m["id"] for m in membri))
         if fatti.get(chiave) == firma:
