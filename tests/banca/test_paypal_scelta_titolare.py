@@ -100,3 +100,47 @@ def test_la_scelta_non_vale_fuori_dai_candidati():
         assert not salvata.get("paypal_transaction_id")
 
     _run(scenario())
+
+
+def _movimento_banca(ufficiale=True):
+    return {
+        "id": "EC-1", "data": "2025-10-08", "tipo": "uscita", "importo": 100.0,
+        "paypal_transaction_id": "TX-1", "tipo_riconciliazione": "paypal_evidenze_univoche",
+        # L'estratto ufficiale (PDF) ha rimesso riconciliato=False promuovendo il movimento.
+        "riconciliato": False, "evidenza_bancaria_ufficiale": ufficiale,
+        "in_attesa_estratto_ufficiale": not ufficiale,
+    }
+
+
+def test_scelta_su_addebito_ufficiale_gia_legato_chiude_la_fattura():
+    async def scenario():
+        db = await _db_con(_tx("TX-1", movimento_banca_id="EC-1", riconciliato_banca=True))
+        await db.estratto_conto_movimenti.insert_one(_movimento_banca())
+        fattura = await db.invoices.find_one({"id": "INV-ESTERA-1"}, {"_id": 0})
+
+        esito = await collega_paypal_scelto_dal_titolare(db, fattura, "TX-1")
+
+        assert esito["finalizzazione"]["finalizzata"] is True
+        salvata = await db.invoices.find_one({"id": "INV-ESTERA-1"}, {"_id": 0})
+        assert salvata["pagato"] is True
+        assert salvata["stato_finanziario"] == "riconciliato"
+        movimento = await db.estratto_conto_movimenti.find_one({"id": "EC-1"}, {"_id": 0})
+        assert movimento["riconciliato"] is True
+
+    _run(scenario())
+
+
+def test_addebito_non_ufficiale_non_chiude_la_fattura():
+    async def scenario():
+        db = await _db_con(_tx("TX-1", movimento_banca_id="EC-1", riconciliato_banca=True))
+        await db.estratto_conto_movimenti.insert_one(_movimento_banca(ufficiale=False))
+        fattura = await db.invoices.find_one({"id": "INV-ESTERA-1"}, {"_id": 0})
+
+        esito = await collega_paypal_scelto_dal_titolare(db, fattura, "TX-1")
+
+        assert esito["collegata"] is True
+        assert esito["finalizzazione"] == {"finalizzata": False, "motivo": "riscontro_bancario_non_confermato"}
+        salvata = await db.invoices.find_one({"id": "INV-ESTERA-1"}, {"_id": 0})
+        assert salvata["pagato"] is False
+
+    _run(scenario())
