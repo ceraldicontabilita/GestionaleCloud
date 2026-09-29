@@ -527,10 +527,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **F24 del 2018-2019 senza protocollo** (modulo con i dati sovrapposti, nome `NN_…_A0GHE_…`): `parse_quietanza_f24` legge data (una cifra per casella) e totale in alto, righe per coordinate, mese scritto «00MM». Senza protocollo la quietanza è il suo contenuto (`firma_contenuto`: data, saldo, righe): la stessa stampata due volte è una sola. Un guscio vuoto già in archivio (stesso `pdf_hash`, nessuna riga) si rilegge sul posto, mai «già importato».
 - **F24 ravveduto** (`f24_ravvedimento.py`): l'originale del commercialista resta; modello o quietanza con sanzioni gli si affianca
   (RAVVEDIMENTO) se ogni riga codice+periodo torna al centesimo, o è maggiore solo nel periodo sanzionato (interessi cumulati).
-- **Modello e quietanza si confrontano riga per riga sulla stessa vista** (`normalize_f24_evidence_rows`): «01 / 01 2021» è la rata unica, mai gennaio, e una riga INPS (sede, causale, matricola) che il modello del commercialista lascia in Erario col codice = anno torna in INPS. Senza questi due riallineamenti la quietanza restava «non corrispondente» a un modello uguale.
 - **Un F24 è il suo contenuto fiscale** (contribuente, data di versamento, saldo, righe codice/periodo/importo), non il PDF: `salva_f24`
   non crea un secondo modello da un'altra copia del file e ne annota la provenienza (`f24_doppioni.py`). I doppioni vanno in quarantena
-  reversibile (`status=eliminato`, `motivo_quarantena`, `doppione_di`), la copia pagata in banca resta; `F24_QUARANTENA_DOPPIONI` accende il giro.
+  reversibile (`status=eliminato`, `motivo_quarantena`, `doppione_di`), la copia pagata in banca resta; `F24_QUARANTENA_DOPPIONI` accende il giro. **Modello e quietanza si confrontano riga per riga sulla stessa vista** (`normalize_f24_evidence_rows`): «01 / 01 2021» è la rata unica, mai gennaio, e una riga INPS (sede, causale, matricola) che il modello del commercialista lascia in Erario col codice = anno torna in INPS. Senza questi due riallineamenti la quietanza restava «non corrispondente» a un modello uguale.
 
 ## Personale: un solo sistema per funzione
 
