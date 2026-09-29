@@ -289,10 +289,12 @@ _BUSTA_PAGA = re.compile(r"LUL|CEDOLIN|BUSTA|LIBRO\s*UNICO|TREDICESIMA|QUATTORDI
 
 
 def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Prima le buste paga, poi gli estratti conto, poi XML (fatture, chiusure
+    """Prima gli estratti conto, poi le buste paga, poi XML (fatture, chiusure
     RT) e ZIP, poi il resto.
 
-    Le buste in testa (decisione del titolare, 28/09/2026): finche' la busta
+    Gli estratti in testa (titolare, 29/09/2026): sono pochi e riconciliano
+    stipendi e PayPal, ma dietro migliaia di buste in coda aspettavano ore.
+    Le buste vengono subito dopo (decisione del 28/09/2026): finche' la busta
     definitiva non e' in ELABORATE, la sua stampa di controllo resta su Drive.
     Un XML si registra in un attimo e fa i conti del mese; un PDF bancario puo'
     tenere il giro per minuti. Fra gli XML vince l'ultimo caricato: nella radice
@@ -307,7 +309,7 @@ def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     estratti = [f for f in coda if not e_busta(f) and e_estratto_conto(f)]
     recenti = sorted((f for f in coda if xml(f)),
                      key=lambda f: str(f.get("createdTime") or ""), reverse=True)
-    return buste + estratti + recenti + [
+    return estratti + buste + recenti + [
         f for f in coda if not e_busta(f) and not e_estratto_conto(f) and not xml(f)]
 
 
