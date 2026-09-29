@@ -19,7 +19,7 @@ async def carica_originale(doc: Dict[str, Any], *, tipo: str = "f24") -> bytes:
     elif doc.get("drive_file_id"):
         from app.services.drive_download import scarica_originale
 
-        content = await scarica_originale(str(doc["drive_file_id"]))
+        content = await scarica_originale(str(doc["drive_file_id"]), md5=doc.get("drive_md5"))
     else:
         return b""
     if content and not content.startswith(b"%PDF"):
