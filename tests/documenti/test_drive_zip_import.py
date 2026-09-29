@@ -3,6 +3,7 @@ import asyncio
 import io
 import zipfile
 
+import pytest
 from mongomock_motor import AsyncMongoMockClient
 
 from app.services import drive_cartella_unica as cu
@@ -299,3 +300,58 @@ def test_ripasso_errori_una_volta_sola_per_versione_dei_lettori(monkeypatch):
         {"chiave": "import_zip_drive:cart-r"}, {"$set": {"stato": "in_corso", "indice": 3}}))
     _run(dz.elabora_cartella(db, "cart-r", file_drive, nome="M"))
     assert chiamate == []
+
+
+def test_ripasso_riprende_dopo_un_riavvio_senza_rifare_i_file_gia_riletti(monkeypatch):
+    """Il ripasso e' lento e un deploy lo interrompe: l'avanzamento si salva ogni 10 file."""
+    from app.services import drive_download
+
+    class Interruzione(BaseException):
+        pass
+
+    file_drive = [
+        {"id": f"k{i}", "name": f"F{i:02d}.pdf", "mimeType": "application/pdf",
+         "size": "100", "percorso": f"M/F{i:02d}.pdf"}
+        for i in range(25)
+    ]
+
+    async def scarica(file_id, md5=None):
+        return b"%PDF-" + file_id.encode()
+
+    monkeypatch.setattr(drive_download, "scarica_originale", scarica)
+    chiamate = []
+    fase = {"ripasso": False, "interrompi_dopo": None}
+
+    async def smista(nome, dati, contesto):
+        chiamate.append(nome)
+        if not fase["ripasso"]:
+            return {"success": False, "message": "F24 non quadrato"}
+        if fase["interrompi_dopo"] is not None and len(chiamate) > fase["interrompi_dopo"]:
+            raise Interruzione()
+        return {"success": True, "duplicate": False}
+
+    monkeypatch.setattr(cu, "_smista", smista)
+    db = AsyncMongoMockClient()["ripasso2"]
+    _run(dz.elabora_cartella(db, "cart-k", file_drive, nome="M"))
+    assert len(chiamate) == 25
+
+    # Il lettore e' stato corretto; il servizio viene fermato a meta' del ripasso (dopo 13 file).
+    fase["ripasso"] = True
+    fase["interrompi_dopo"] = 13
+    chiamate.clear()
+    _run(db["sistema_stato"].update_one(
+        {"chiave": "import_zip_drive:cart-k"}, {"$set": {"stato": "in_corso", "indice": 25}}))
+    with pytest.raises(Interruzione):
+        _run(dz.elabora_cartella(db, "cart-k", file_drive, nome="M"))
+    salvato = _run(db["sistema_stato"].find_one({"chiave": "import_zip_drive:cart-k"}))
+    assert len(salvato["ripasso_restanti"]) == 15 and salvato.get("versione_ripasso") != dz.VERSIONE_RIPASSO
+
+    # Al riavvio riprende dai 15 rimasti, non da 25.
+    fase["interrompi_dopo"] = None
+    chiamate.clear()
+    finale = _run(dz.elabora_cartella(db, "cart-k", file_drive, nome="M"))
+
+    assert len(chiamate) == 15
+    assert finale["contatori"]["errori"] == 0
+    salvato = _run(db["sistema_stato"].find_one({"chiave": "import_zip_drive:cart-k"}))
+    assert salvato["versione_ripasso"] == dz.VERSIONE_RIPASSO and salvato["ripasso_restanti"] == []
