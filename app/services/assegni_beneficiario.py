@@ -25,6 +25,12 @@ def _fornitore(fattura: Dict[str, Any]) -> str:
     return str(fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "").strip()
 
 
+def _id_possibili(fid: Any) -> List[Any]:
+    """Su `invoices` l'`id` e' un numero in meta' delle righe e un testo nelle altre."""
+    testo = str(fid)
+    return [testo, int(testo)] if testo.isdigit() else [testo]
+
+
 def _chiave(fattura: Dict[str, Any]) -> str:
     return str(
         fattura.get("supplier_id") or fattura.get("supplier_vat") or fattura.get("cedente_piva")
@@ -49,7 +55,7 @@ async def ricompila_beneficiari_da_fatture(db, *, dry_run: bool = False) -> Dict
             if not fid:
                 continue
             fattura = await db["invoices"].find_one(
-                {"id": fid},
+                {"id": {"$in": _id_possibili(fid)}},
                 {"_id": 0, "supplier_id": 1, "supplier_name": 1, "supplier_vat": 1,
                  "cedente_denominazione": 1, "cedente_piva": 1},
             )

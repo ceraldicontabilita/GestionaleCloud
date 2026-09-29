@@ -69,3 +69,12 @@ def test_secondo_giro_non_rifa_nulla():
         return await ricompila_beneficiari_da_fatture(db)
 
     assert asyncio.run(scenario())["aggiornati"] == 0
+
+
+def test_fattura_con_id_numerico_si_trova_con_l_id_testuale_dell_assegno():
+    esito, assegni = _esegui(
+        [_assegno("a1", ["1785229955420"])],
+        [{"id": 1785229955420, "supplier_name": "KIMBO S.P.A."}],
+    )
+    assert esito["aggiornati"] == 1
+    assert assegni[0]["beneficiario"] == "KIMBO S.P.A."
