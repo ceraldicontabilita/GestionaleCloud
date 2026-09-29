@@ -173,3 +173,31 @@ def test_lipe_che_cita_versamenti_auto_f24_non_e_un_modello_f24():
     ])
 
     assert detect_document_type("LIPE_2026_123456789.pdf", contenuto) == "dichiarazione_fiscale"
+
+
+def test_dichiarazioni_che_citano_f24_non_finiscono_nel_lettore_dei_modelli():
+    """770, IRAP e Redditi SC citano «F24»: erano lette come modelli e bloccate «non quadrato»."""
+    from app.routers.documenti import detect_document_type
+
+    contenuto = _pdf([
+        "MODELLO 770 SEMPLIFICATO 2021 REDDITI 2020",
+        "VERSAMENTI CON MODELLO F24 E COMPENSAZIONI",
+        "QUADRO ST RITENUTE OPERATE",
+    ])
+
+    assert detect_document_type("770_2021_imposta_2020_T211025164220380377.pdf", contenuto) == "dichiarazione_fiscale"
+    assert detect_document_type("IRAP_2021_imposta_2020_T210930200114276161.pdf", contenuto) == "dichiarazione_fiscale"
+    assert detect_document_type("760_2021_imposta_2020_T210930200158679371.pdf", contenuto) == "dichiarazione_fiscale"
+
+
+def test_un_vero_modello_f24_resta_f24_anche_con_un_nome_da_dichiarazione():
+    from app.routers.documenti import detect_document_type
+
+    contenuto = _pdf([
+        "MODELLO DI PAGAMENTO UNIFICATO",
+        "DELEGA IRREVOCABILE A",
+        "SEZIONE ERARIO CODICE TRIBUTO 1001",
+    ])
+
+    assert detect_document_type("770_ritenute_2021.pdf", contenuto) == "f24"
+    assert detect_document_type("documento.pdf", contenuto) == "f24"
