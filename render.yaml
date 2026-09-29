@@ -118,6 +118,12 @@ services:
       # «vedi documento» continua). Proprietario: titolare.
       - key: DRIVE_CARTELLA_UNICA_IMPORT
         sync: false
+      # Cartelle Drive (con sottocartelle) da importare in sola lettura, ids separati da
+      # virgola, es. il «MINISITO» dentro la cartella unica: lo smistatore non scende
+      # nelle sottocartelle e questo giro non sposta ne' cancella niente. Un giro al
+      # giorno; vuota = spento. Id cartella, non un segreto. Proprietario: titolare.
+      - key: DRIVE_IMPORT_CARTELLE_ID
+        sync: false
       # Radice Drive della cartella GESTIONALE percorsa dal censimento doppioni
       # (il nome viene dalla simulazione della migrazione, conclusa e tolta).
       # Id cartella, non un segreto; vuota = censimento spento. Proprietario: titolare.

@@ -663,6 +663,17 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-FONTI-FERME] errore: {type(e).__name__}: {e}")
 
+    async def _import_cartelle_drive_job():
+        # Cartelle Drive con sottocartelle (il MINISITO) lette in sola lettura:
+        # lo smistatore della cartella unica non ci scende.
+        from app.database import Database
+        try:
+            from app.services.drive_zip_import import importa_cartelle_configurate
+            esito = await importa_cartelle_configurate(Database.get_db())
+            logger.info("[SCHEDULER-IMPORT-CARTELLE-DRIVE] %s", esito)
+        except Exception as e:
+            logger.error(f"[SCHEDULER-IMPORT-CARTELLE-DRIVE] errore: {type(e).__name__}: {e}")
+
     async def _controlli_incrociati_job():
         # Segnali, mai correzioni: beneficiario diverso, fattura pagata due
         # volte, importo anomalo, mesi di estratto mancanti, RT dimenticata.
@@ -1262,6 +1273,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="fonti_ferme", name="Fonti ferme: corrispettivi, POS, estratti (ogni ora)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _import_cartelle_drive_job,
+        'interval', hours=1,
+        next_run_time=avvio + timedelta(minutes=12),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="import_cartelle_drive", name="Import cartelle Drive in sola lettura (ogni ora, se configurato)",
         replace_existing=True,
     )
 
