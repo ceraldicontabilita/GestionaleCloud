@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { PageLayout, PageSection } from '../components/PageLayout';
 import DocumentViewerModal from '../components/DocumentViewerModal';
-import { formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { Button, Badge } from '../components/ds';
 import { toast } from 'sonner';
 
@@ -270,6 +270,25 @@ export default function DettaglioVerbale() {
           <div><strong>PDF disponibili</strong><div>{pdfCount}</div></div>
         </div>
       </PageSection>
+
+      {(verbale?.notifiche_pec || []).length > 0 && (
+        <PageSection title="Notifica PEC e termini di ricorso">
+          {verbale.notifiche_pec.map((n) => (
+            <div key={n.upec_id || n.oggetto} data-testid="notifica-pec" style={{ border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md, padding: 14, marginBottom: 10 }}>
+              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <div><strong>Notificato il</strong><div>{formatDateIT(n.data_notifica) || '-'}</div></div>
+                <div><strong>Da</strong><div style={{ overflowWrap: 'anywhere' }}>{n.ente_mittente || '-'}</div></div>
+                <div><strong>Pagamento ridotto entro</strong><div>{formatDateIT(n.scadenze?.pagamento_ridotto) || '-'}</div></div>
+                <div><strong>Giudice di Pace entro</strong><div>{formatDateIT(n.scadenze?.ricorso_giudice_di_pace) || '-'}</div></div>
+                <div><strong>Prefetto entro</strong><div>{formatDateIT(n.scadenze?.ricorso_prefetto) || '-'}</div></div>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12, color: COLORS.textMuted }}>
+                Copia conforme e relata di notifica sono nel fascicolo qui sotto.
+              </div>
+            </div>
+          ))}
+        </PageSection>
+      )}
 
       <PageSection title="Fascicolo del verbale">
         <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>

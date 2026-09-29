@@ -39,6 +39,21 @@ async def _find_verbale(db, numero_verbale: str):
     return None, None
 
 
+@router.post("/notifiche-pec/aggancia")
+@handle_errors
+async def aggancia_notifiche_pec_ai_verbali(
+    dry_run: bool = True,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Aggancia le PEC di notifica in archivio al verbale con lo stesso numero.
+
+    `dry_run` per difetto: mostra cosa si aggancerebbe e cosa resta «da agganciare».
+    """
+    from app.services.notifiche_pec_verbali import aggancia_notifiche_pec
+
+    return await aggancia_notifiche_pec(Database.get_db(), dry_run=dry_run)
+
+
 @router.post("/associa-pdf/{numero_verbale:path}")
 @handle_errors
 async def associa_pdf_verbale(
