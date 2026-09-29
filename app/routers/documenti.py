@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import asyncio
 import re
+from decimal import Decimal, InvalidOperation
 import base64
 import hashlib
 import uuid
@@ -2567,9 +2568,13 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     # Sentenza, precetto, relata e attestazione di una causa: prova del
     # perche' di bonifici senza fattura (spese di lite), mai un pagamento.
     from app.services.atti_giudiziari import tipo_atto
+    from app.services.cartelle_pagamento import e_cartella_pagamento
 
     if lower.endswith(".pdf") and tipo_atto(compact_pdf_text):
         return "atto_giudiziario"
+    # Cartella di pagamento dell'Agente della riscossione: obbligo da pagare, non un pagamento.
+    if lower.endswith(".pdf") and e_cartella_pagamento(compact_pdf_text):
+        return "cartella_pagamento"
     if _e_contratto_di_lavoro(compact_pdf_text):
         # Un contratto cita la busta paga ma non e' un cedolino: resta un
         # documento da classificare, non una busta da leggere.
@@ -3425,6 +3430,20 @@ async def apri_originale_cartella_unica(
     )
 
 
+def _e_parcella_con_ritenuta(fattura: Dict[str, Any]) -> bool:
+    """Una parcella con ritenuta d'acconto entra anche se e' di un anno passato.
+
+    Decisione del titolare (29/09/2026): ogni 1040 versato deve avere la prova
+    della sua fattura, quindi le parcelle con `DatiRitenuta` di qualunque anno
+    entrano in archivio come fatture intere e alimentano le Ritenute. Le altre
+    fatture di anni passati restano fuori (regola del 20/09/2026).
+    """
+    try:
+        return Decimal(str(fattura.get("importo_ritenuta") or 0)) > 0
+    except (InvalidOperation, ValueError):
+        return False
+
+
 async def _chiusura_fuori_anno(db, parsed: Dict[str, Any], result: Dict[str, Any]) -> bool:
     """Vero se la chiusura RT e' di un anno diverso da quello attivo.
 
@@ -3826,7 +3845,8 @@ async def upload_documento_automatico(
                 for body in [parsed] + altri_body:
                     data_fattura = str(body.get("invoice_date") or "")
                     anno_fattura = int(data_fattura[:4]) if data_fattura[:4].isdigit() else None
-                    if anno_fattura and anno_fattura != anno_attivo:
+                    if (anno_fattura and anno_fattura != anno_attivo
+                            and not _e_parcella_con_ritenuta(body)):
                         altro_anno.append(anno_fattura)
                         continue
                     try:
@@ -4358,6 +4378,27 @@ async def upload_documento_automatico(
                     f"{atto['etichetta']} della sentenza {atto['numero_sentenza']}"
                     + (" già presente" if atto.get("duplicate") else " archiviata")
                     + f"; pagamenti collegati: {pagamenti.get('collegati', 0) + pagamenti.get('gia_collegati', 0)}."
+                ),
+            })
+
+        elif tipo_rilevato == 'cartella_pagamento':
+            from app.services.cartelle_pagamento import registra_cartella
+
+            cartella = await registra_cartella(
+                db, filename, content, drive_file_id=source_context.get("drive_file_id"),
+            )
+            if not cartella.get("success"):
+                raise ValueError(cartella.get("message") or "Cartella di pagamento non leggibile")
+            result.update({
+                "workflow": "CARTELLA_PAGAMENTO",
+                "duplicate": bool(cartella.get("duplicate")),
+                "imported": 0 if cartella.get("duplicate") else 1,
+                "data": cartella,
+                "message": (
+                    f"Cartella {cartella['numero_cartella']} di {cartella.get('ente_creditore') or 'ente non letto'}"
+                    f" da {cartella.get('totale')} EUR"
+                    + (" già presente" if cartella.get("duplicate") else " registrata: da pagare entro 60 giorni dalla notifica")
+                    + ("" if cartella.get("importi_quadrano") else " (importi da verificare)")
                 ),
             })
 

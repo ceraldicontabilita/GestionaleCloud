@@ -1120,6 +1120,14 @@ async def import_receipt(
             }},
         )
     await db[COLLECTION_RICEVUTE].insert_one(receipt.copy())
+    try:
+        import logging
+        from app.services.cartelle_pagamento import chiudi_da_ricevuta
+
+        await chiudi_da_ricevuta(db, receipt)
+    except Exception as exc:  # la cartella non ferma l'import della ricevuta
+        logging.getLogger(__name__).warning("Cartella non aggiornata dalla ricevuta %s (%s): %s",
+                       receipt.get("id"), type(exc).__name__, exc)
     paypal = await collega_ricevuta_a_paypal(db, receipt)
     if paypal.get("collegata"):
         receipt.update(paypal["campi"])

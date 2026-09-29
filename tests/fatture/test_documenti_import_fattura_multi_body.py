@@ -250,3 +250,30 @@ def test_upload_automatico_fattura_di_altro_anno_non_entra(monkeypatch):
 
     assert res["success"] is True and res["imported"] == 0
     assert res["skipped_altro_anno"] == 1 and "2024" in res["message"]
+
+
+def test_upload_automatico_parcella_con_ritenuta_di_altro_anno_entra(monkeypatch):
+    """Eccezione del titolare (29/09/2026): ogni 1040 ha la prova della sua fattura,
+    quindi una parcella con DatiRitenuta entra anche se e' di un anno passato."""
+    corpo = _body("31", "100.00").replace(
+        "<DatiGeneraliDocumento>",
+        "<DatiGeneraliDocumento><DatiRitenuta><TipoRitenuta>RT01</TipoRitenuta>"
+        "<ImportoRitenuta>20.00</ImportoRitenuta><AliquotaRitenuta>20.00</AliquotaRitenuta>"
+        "<CausalePagamento>A</CausalePagamento></DatiRitenuta>", 1,
+    ).replace("2026-07-01", "2024-03-10")
+    xml = _xml(corpo).encode("utf-8")
+    upload = UploadFile(filename="parcella.xml", file=io.BytesIO(xml))
+    monkeypatch.setattr(documenti_mod.Database, "get_db", staticmethod(lambda: _FakeDb()))
+    ricevute = []
+
+    async def _salva(db, body, filename, xml_raw=None):
+        ricevute.append(body.get("invoice_date"))
+        return {"invoice_number": body.get("invoice_number")}
+
+    import app.routers.invoices.fatture_upload as fu_mod
+    monkeypatch.setattr(fu_mod, "process_fattura_to_db", _salva)
+
+    res = _run(documenti_mod.upload_documento_automatico(file=upload))
+
+    assert ricevute == ["2024-03-10"] and res["imported"] == 1
+    assert not res.get("skipped_altro_anno")
