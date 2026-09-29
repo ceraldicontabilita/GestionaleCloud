@@ -7,8 +7,12 @@ lo stesso nome generico. Nessun algoritmo puo' indovinare il beneficiario
 ricevuta e della busta paga, e la persona associa dipendente e causale dalla
 pagina «Distinte» di HR (stesso `associa` della coda «Bonifici da associare»).
 
-Un importo che coincide col netto di UN solo dipendente nel periodo e' solo un
-*suggerimento* (``suggerimento``): non si scrive niente da soli.
+Due segnali, entrambi solo *suggerimenti*, mai scritture:
+
+* ``suggerimento``: l'importo e' il netto di UN solo dipendente nel periodo;
+* ``suggerimento_nota``: la nota scritta nella causale dell'estratto («… - Vespa
+  acc stipendio») nomina UN solo dipendente. La nota puo' citare chi paga per
+  piu' persone («stipendi» a nome del titolare): per questo resta un suggerimento.
 """
 from __future__ import annotations
 
@@ -81,8 +85,30 @@ def suggerimento(netti, giorno: str, importo: float) -> Optional[Dict[str, Any]]
     return next(iter(trovati.values()))
 
 
-async def elenco_distinte(db_gest, db_hr) -> List[Dict[str, Any]]:
+async def _indici_hr(db_hr) -> Dict[str, Any]:
+    from app.hr.routers.dipendenti_cloud import _indici_dipendenti
+
+    return await _indici_dipendenti(db_hr)
+
+
+def suggerimento_da_nota(indici: Dict[str, Any], nota: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Il dipendente nominato dalla nota della causale, se uno solo."""
+    if not nota:
+        return None
+    from app.services.hr_pagamenti_deposito import risolvi_dipendente
+
+    dip, motivo = risolvi_dipendente(indici, nota)
+    if dip is None:
+        return None
+    return {"dipendente_id": dip.get("id"),
+            "nome": dip.get("nome_completo") or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip(),
+            "motivo": motivo, "nota": nota}
+
+
+async def elenco_distinte(db_gest, db_hr, indici: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """Una riga per distinta ancora da associare, con tutti i dati estratti."""
+    if indici is None:
+        indici = await _indici_hr(db_hr)
     coda = await db_hr["bonifici_da_associare"].find(
         {"stato": "da_associare"}, {"_id": 0, "pdf_data": 0}).to_list(2000)
     coda_per_rif: Dict[str, List[Dict[str, Any]]] = {}
@@ -151,6 +177,7 @@ async def elenco_distinte(db_gest, db_hr) -> List[Dict[str, Any]]:
                               "importo": _importo(r.get("importo")), "causale": r.get("causale")}
                              for r in ricevute.get(rif, [])],
                 "suggerimento": suggerimento(netti, giorno, importo),
+                "suggerimento_nota": suggerimento_da_nota(indici, nota.group(1).strip() if nota else None),
             },
         })
     righe.sort(key=lambda r: r["data"], reverse=True)

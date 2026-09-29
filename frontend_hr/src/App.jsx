@@ -4161,6 +4161,15 @@ function BonificiDaAssociarePage({ dipendenti, distinte = false }) {
                       {b.distinta.nota && <div><b>Nota:</b> {b.distinta.nota}</div>}
                       <div className="dc-muted">{b.distinta.ufficiale ? "Estratto ufficiale" : "Solo export CSV (provvisorio)"}{b.distinta.estratto ? ` · ${b.distinta.estratto}` : ""}</div>
                       {b.distinta.ricevuta?.length > 0 && <div className="dc-muted">Ricevuta: {b.distinta.ricevuta.map(r => r.causale || r.file).filter(Boolean).join(", ")}</div>}
+                      {b.distinta.suggerimento_nota && (
+                        <div style={{ marginTop: 4, color: "#8a6f47", fontWeight: 600 }}>
+                          La nota dell'estratto nomina {b.distinta.suggerimento_nota.nome}. Controlla: la nota può citare chi paga per più persone.
+                          <button type="button" className="dc-btn dc-btn-ghost" style={{ fontSize: 12, padding: "2px 8px", minHeight: 32, marginLeft: 6 }}
+                            onClick={() => setScelte(s => ({ ...s, [b.id]: { ...s[b.id], dipendente_id: b.distinta.suggerimento_nota.dipendente_id } }))}>
+                            Usa
+                          </button>
+                        </div>
+                      )}
                       {b.distinta.suggerimento && (
                         <div style={{ marginTop: 4, color: "#8a6f47", fontWeight: 600 }}>
                           L'importo è il netto di {b.distinta.suggerimento.nome} ({String(b.distinta.suggerimento.mese).padStart(2, "0")}/{b.distinta.suggerimento.anno}).
