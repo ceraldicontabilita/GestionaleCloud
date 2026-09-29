@@ -83,6 +83,38 @@ def normalize_reference_period(source: dict[str, Any]) -> str | None:
     return None
 
 
+_RATA_NEL_TESTO = re.compile(r"^.{0,40}?\b\d{4}\s+(\d{2})\s*/\s*(\d{2})\s+(?:19|20)\d{2}\b")
+_RIGA_INPS_NEL_TESTO = re.compile(
+    r"\b(\d{4})\s+([A-Z]{2}\d{2})\s+(\d{6,12})\s+(\d{2})\s+((?:19|20)\d{2})\s+(\d{2})\s+((?:19|20)\d{2})\b"
+)
+
+
+def _e_rata_dal_testo(source: dict[str, Any]) -> bool:
+    """«01 / 01 2021» è la rata unica, non gennaio, anche quando il modello del
+    commercialista l'ha letta come mese (la quietanza non porta il mese)."""
+    from app.engines.tributi_engine import e_rateazione, riga_rateizzata
+
+    if riga_rateizzata(source):
+        return True
+    testo = str(source.get("testo_sorgente") or source.get("raw_text") or "")
+    trovato = _RATA_NEL_TESTO.match(testo)
+    return bool(trovato and e_rateazione(trovato.group(1) + trovato.group(2)))
+
+
+def _riga_inps_in_erario(source: dict[str, Any]) -> dict[str, str] | None:
+    """Sede, causale, matricola e periodo di una riga INPS finita per errore
+    nella sezione Erario dal modello del commercialista (codice = anno)."""
+    testo = str(source.get("testo_sorgente") or source.get("raw_text") or "")
+    trovato = _RIGA_INPS_NEL_TESTO.search(testo)
+    if not trovato:
+        return None
+    sede, causale, matricola, mese_da, anno_da, _mese_a, _anno_a = trovato.groups()
+    return {
+        "sede": sede, "causale": causale, "matricola": matricola,
+        "periodo": f"{mese_da}/{anno_da}",
+    }
+
+
 def _section_rows(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, list):
         return [row for row in value if isinstance(row, dict)]
@@ -161,11 +193,20 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
                 or source.get("codice_sede")
                 or ""
             )
+            row_section = section
+            periodo_riga = source
+            inps = _riga_inps_in_erario(source) if section == "ERARIO" else None
+            if inps:
+                row_section, code, entity = "INPS", inps["causale"], inps["sede"]
+                periodo_riga = {"periodo_riferimento": inps["periodo"]}
+            reference_period = (
+                None if _e_rata_dal_testo(source) else normalize_reference_period(periodo_riga)
+            )
             rows.append({
                 "ordinal": ordinal,
-                "section": section,
+                "section": row_section,
                 "tax_code": str(code).strip().upper(),
-                "reference_period": normalize_reference_period(source),
+                "reference_period": reference_period,
                 "reference_period_raw": source.get("periodo_raw") or "",
                 "entity_code": str(entity).strip().upper(),
                 "debit_amount": debit_cents / 100,
