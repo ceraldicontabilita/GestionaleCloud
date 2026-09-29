@@ -152,3 +152,26 @@ def test_due_quietanze_candidate_non_scelgono():
     r = run(db["ritenute_acconto"].find_one({"id": "r-giu"}))
     assert r["stato"] == "da_verificare_associazione_f24"
     assert r.get("stato_obbligazione") != "VERSATA"
+
+
+def test_ritenuta_con_importo_versato_diverso_dalle_fatture_non_e_pagata():
+    quietanza = _quietanza("q-x", "2026-04-16", "26041500000000000/000001",
+                           erario=[_riga("1040", "03/2026", 50000)])
+    ritenute = [_ritenuta("r1", "Prof A", "2026-03-04", 21000, "1"),
+                _ritenuta("r2", "Prof B", "2026-03-20", 28000, "2")]
+
+    voci = run(tributi.carica_voci(_db(quietanze=[quietanza], ritenute=ritenute)))["voci"]
+    voce = next(v for v in voci if v["codice"] == "1040" and v["mese"] == 3)
+
+    assert voce["stato"] == "NON_TORNA" and voce["scarto_cents"] == 1000
+    assert voce["atteso_cents"] == 49000 and voce["pagato_cents"] == 50000
+
+
+def test_1040_versato_senza_fatture_in_archivio_chiede_di_associarle():
+    quietanza = _quietanza("q-y", "2026-04-16", "26041500000000001/000001",
+                           erario=[_riga("1040", "09/2025", 22194)])
+
+    voci = run(tributi.carica_voci(_db(quietanze=[quietanza])))["voci"]
+    voce = next(v for v in voci if v["codice"] == "1040")
+
+    assert voce["fatture_da_associare"] is True and voce["stato"] == "PAGATO"
