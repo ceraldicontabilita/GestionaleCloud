@@ -3,7 +3,8 @@ import axios from "axios";
 import { toast } from "sonner";
 import { apiError } from "../../utils/apiError";
 import { norm } from "../../utils/textNormalize";
-import { getTabletSession } from "../../utils/tabletSession";
+import { getTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
+import { aggiungiAlCarrello, euro } from "../../utils/confrontoFornitori";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
@@ -65,7 +66,7 @@ function KeypadPopup({ titolo, value, onChange, onClose }) {
   );
 }
 
-function ProductCard({ p, onReload, eseguiConSessione }) {
+function ProductCard({ p, onReload, eseguiConSessione, prezzi }) {
   const [qty, setQty] = useState("1");
   const [busy, setBusy] = useState(false);
   const [keypad, setKeypad] = useState(false);
@@ -73,6 +74,29 @@ function ProductCard({ p, onReload, eseguiConSessione }) {
   const stock = Number(p.stock ?? p.giacenza ?? p.quantita ?? 0);
   const unita = p.unita || p.um || "pz";
   const source = p.source || p.origine || "bar";
+
+  // Prezzo e carrello: solo per il titolare (`prezzi` e' null per gli altri).
+  // Vale l'ultimo prezzo di fattura fra i lotti della riga.
+  const ultimo = prezzi
+    ? (p.lotti_ids || [p.id]).map((id) => prezzi[id]).filter(Boolean)
+        .sort((a, b) => String(b.data).localeCompare(String(a.data)))[0]
+    : null;
+  const ordina = () => {
+    const items = aggiungiAlCarrello({
+      id: `preleva_${p.key || p.id}`,
+      nome: nome,
+      fornitore: ultimo?.fornitore || p.fornitore || "",
+      prezzo: ultimo ? ultimo.prezzo : 0,
+      prezzo_fonte: ultimo ? "fattura_xml" : "non_disponibile",
+      prezzo_iva_esclusa: true,
+      unita_misura: p.pezzi_per_collo > 1 ? "cartone" : String(unita).toLowerCase(),
+      quantita: 1,
+      note: "", sospeso: false, aumento_pct: null, prezzo_precedente: null,
+      fonte: "magazzino",
+    });
+    axios.put(`${API}/ordini-fornitori/carrello-sospesi`, { righe: items }).catch(() => {});
+    toast.success(`${nome} aggiunto al carrello ordini`);
+  };
 
   const scarica = () => eseguiConSessione(async (operatoreNome) => {
     const q = Number(String(qty).replace(",", "."));
@@ -103,6 +127,11 @@ function ProductCard({ p, onReload, eseguiConSessione }) {
           <div style={{ fontSize: 11, fontWeight: 900, color: source === "fornitori" ? "#8a6f47" : "#047857", marginBottom: 4 }}>{String(source).toUpperCase()}</div>
           <div style={{ fontSize: 15, fontWeight: 900, lineHeight: 1.25 }}>{nome}</div>
           <div style={{ fontSize: 12, color: "#6b7669", marginTop: 2 }}>{p.categoria || p.fornitore || "Magazzino"}</div>
+          {ultimo && (
+            <div style={{ fontSize: 12, color: "#8a6f47", fontWeight: 800, marginTop: 2 }}>
+              {euro(ultimo.prezzo)} · {ultimo.fornitore}
+            </div>
+          )}
         </div>
         <div style={{ textAlign: "right", minWidth: 72 }}>
           <div style={{ fontSize: 23, fontWeight: 900, color: stock <= 0 ? "#dc2626" : "#047857" }}>{stock}</div>
@@ -123,6 +152,11 @@ function ProductCard({ p, onReload, eseguiConSessione }) {
         <button onClick={scarica} disabled={busy || stock <= 0} style={{ flex: 1, border: "none", borderRadius: 12, padding: "10px", fontWeight: 900, color: "#fff", background: busy || stock <= 0 ? "#9aa593" : "#5b7a6b" }}>
           {busy ? "Salvo..." : "Scarica"}
         </button>
+        {prezzi && (
+          <button onClick={ordina} style={{ border: "none", borderRadius: 12, padding: "10px 14px", fontWeight: 900, color: "#fff", background: "#c59a5f", cursor: "pointer" }}>
+            🛒 Ordina
+          </button>
+        )}
       </div>
       {keypad && (
         <KeypadPopup titolo={`Quanti ${unita.toLowerCase()} prelevi di ${nome}?`}
@@ -157,6 +191,15 @@ export default function MagazzinoBarView({ onBack, soloLavagna = false }) {
   const [source, setSource] = useState("tutti");
   // Giacenze per anno di fatturazione (richiesta Enzo 23/07/2026)
   const [anno, setAnno] = useState("");
+  // Prezzi d'acquisto e carrello: solo con accesso amministratore
+  const titolare = sessioneTitolareAttiva() || op.ruolo === "amministratore";
+  const [prezzi, setPrezzi] = useState(null);
+  useEffect(() => {
+    if (!titolare) return;
+    axios.get(`${API}/magazzino/prezzi-lotti`, { timeout: 30000 })
+      .then(r => setPrezzi(r.data?.prezzi || {}))
+      .catch(() => setPrezzi(null));
+  }, [titolare]);
   const [anni, setAnni] = useState([]);
   useEffect(() => {
     axios.get(`${API}/fatture/anni`, { timeout: 30000 })
@@ -325,7 +368,7 @@ export default function MagazzinoBarView({ onBack, soloLavagna = false }) {
             </div>
             {filtrati.length === 0 ? <MessageBox title="Nessun prodotto" text="Non ci sono prodotti da mostrare con questi filtri." /> : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 70 }}>
-                {filtrati.map((p, i) => <ProductCard key={`${p.source || p.origine || "bar"}-${p.id || i}`} p={p} onReload={carica} eseguiConSessione={eseguiConSessione} />)}
+                {filtrati.map((p, i) => <ProductCard key={`${p.source || p.origine || "bar"}-${p.id || i}`} p={p} onReload={carica} eseguiConSessione={eseguiConSessione} prezzi={prezzi} />)}
               </div>
             )}
           </>

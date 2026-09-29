@@ -457,6 +457,29 @@ async def prodotti_unificati(
     return items
 
 
+# ── GET prezzi d'acquisto (solo amministratore) ───────────────────────────────
+@router.get("/prezzi-lotti")
+async def prezzi_lotti(_admin=Depends(require_admin)):
+    """Ultimo prezzo di fattura di ogni lotto in giacenza. I prezzi NON stanno in
+    `prodotti-unificati` (il dipendente non deve saperli): li legge solo il
+    titolare, per ordinare dal tablet Preleva."""
+    from app.lotti.routers.lotti_produzione import _parse_data_fattura
+
+    docs = await db.lotti_fornitori.find(
+        {"esaurito": {"$ne": True}, "prezzo_unitario": {"$gt": 0}},
+        {"_id": 0, "id": 1, "prezzo_unitario": 1, "fornitore": 1, "data_fattura": 1},
+    ).to_list(8000)
+    prezzi = {}
+    for d in docs:
+        data = _parse_data_fattura(d.get("data_fattura"))
+        prezzi[d["id"]] = {
+            "prezzo": round(float(d["prezzo_unitario"]), 4),
+            "fornitore": d.get("fornitore", ""),
+            "data": "" if data.year >= 9999 else data.strftime("%Y-%m-%d"),
+        }
+    return {"prezzi": prezzi}
+
+
 # ── GET categorie ──────────────────────────────────────────────────────────────
 @router.get("/categorie")
 async def categorie_magazzino():

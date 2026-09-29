@@ -830,3 +830,20 @@ def test_righe_con_lo_stesso_nome_e_unita_sono_una_sola_riga(dbmock, monkeypatch
         operatore_nome="Mario", lotti_ids=kg[0]["lotti_ids"])))
     assert esito["ok"] is True and esito["stock_nuovo"] == 2
     assert run(dbmock.lotti_fornitori.find_one({"id": "L3"}))["quantita_disponibile"] == 5
+
+
+def test_prezzi_lotti_solo_ultimo_prezzo_dei_lotti_in_giacenza(dbmock):
+    import app.lotti.routers.magazzino_unificato as mu
+    run(dbmock.lotti_fornitori.insert_many([
+        {"id": "P1", "prodotto_nome": "PROVA", "fornitore": "Ditta Uno", "prezzo_unitario": 2.5,
+         "data_fattura": "10/08/2026", "esaurito": False},
+        {"id": "P2", "prodotto_nome": "PROVA", "fornitore": "Ditta Due", "prezzo_unitario": 0,
+         "data_fattura": "10/08/2026", "esaurito": False},
+        {"id": "P3", "prodotto_nome": "PROVA", "fornitore": "Ditta Tre", "prezzo_unitario": 9,
+         "data_fattura": "10/08/2026", "esaurito": True},
+    ]))
+    esito = run(mu.prezzi_lotti(_admin=None))
+    assert list(esito["prezzi"]) == ["P1"]
+    assert esito["prezzi"]["P1"] == {"prezzo": 2.5, "fornitore": "Ditta Uno", "data": "2026-08-10"}
+    righe = run(mu.prodotti_unificati(source="fornitori", gestione=True))
+    assert all("prezzo" not in r and "prezzo_unitario" not in r for r in righe)
