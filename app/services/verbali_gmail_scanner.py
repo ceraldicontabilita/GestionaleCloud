@@ -291,14 +291,32 @@ async def _ingest_pdf_attachment(db, parsed: Dict[str, Any], allegato: Dict[str,
         await db["documents_inbox"].insert_one(dict(document))
         document_status = "nuovo"
 
+    from app.services.notifiche_pec_verbali import metadati_notifica, registra_notifica_pec
     from app.services.verbali_document_import import process_verbale_document
-    await process_verbale_document(
+    notifica = metadati_notifica(
+        parsed.get("email_subject"), parsed.get("email_sender_visibile"),
+        parsed.get("data_ricezione_notifica"),
+    )
+    esito_verbale = await process_verbale_document(
         db,
         document_id=document_id,
         content=content,
         filename=allegato["filename"],
         source="email_verbale",
+        parsed_metadata={"data_notifica": notifica["data_notifica"]} if notifica["data_notifica"] else None,
     )
+    # La PEC e' la prova della notifica: si registra sul verbale che la copia
+    # conforme ha appena letto (stesso numero), con i termini di ricorso.
+    verbale_id = (esito_verbale or {}).get("verbale_id")
+    if verbale_id and notifica["upec_id"]:
+        verbale = await db["verbali_noleggio"].find_one(
+            {"id": verbale_id}, {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
+        )
+        if verbale:
+            await registra_notifica_pec(
+                db, verbale, notifica,
+                [{"id": document_id, "filename": allegato["filename"], "pdf_hash": digest}],
+            )
 
     # Un documento gia' archiviato non deve essere ritrasmesso a ogni nuova
     # scansione Gmail. Questo protegge anche le copie caricate con OAuth/UI

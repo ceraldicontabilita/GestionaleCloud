@@ -662,7 +662,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   più storico assegnazioni (`assegnazioni` del veicolo, `driver_alla_data`): il
   driver è quello attivo **alla data/ora del fatto**. Se targa, driver, verbale
   o pagamento non sono univoci, conservare il documento e chiedere una scelta.
-- Il verbale genera un promemoria operativo a 5 giorni dalla scoperta.
+- Il verbale genera un promemoria operativo a 5 giorni dalla scoperta. **La PEC di notifica è la prova della notifica** (`notifiche_pec_verbali.py`): la data della PEC è `data_notifica`, da cui 5 giorni (ridotto), 30 (Giudice di Pace) e 60 (Prefetto); il numero si legge dalla copia conforme, mai dal nome file, e la notifica si aggancia al verbale vero con quel numero (`notifiche_pec`, allegati nel fascicolo), mai a un secondo verbale; senza verbale resta «da agganciare» (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run` per difetto).
 - **Posizione auto/driver in un posto solo**: `app/services/noleggio/posizione.py`
   (`GET /api/noleggio/posizione`, tab «Posizione auto e driver»). DARE = costi documentati
   (fatture per categoria, verbali con importo verificato); AVERE = **solo prove strutturate**
