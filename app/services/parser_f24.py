@@ -239,6 +239,15 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
         return ""
 
 
+# Riga INPS del modello stampato dal cassetto fiscale: sede, causale, matricola e
+# periodo «MM AAAA» (uno o due, da/a), con importi a debito e a credito. La
+# matricola di una «CXX» e' un testo («80143NAPOLI»), quella di una «DM10» un numero.
+_RIGA_INPS_TESTO = re.compile(
+    r"\b(\d{4,5})\s+(CXX|DM10|RC01|C10|CF10)\s+([A-Z0-9]{8,15})\s+(\d{1,2})\s+"
+    r"((?:19|20)\d{2})(?:\s+(\d{1,2})\s+(?:19|20)\d{2})?"
+)
+
+
 def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
     """
     Parsa un F24 PDF della commercialista ed estrae tutti i dati.
@@ -476,8 +485,13 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 elif re.match(r'^(1[0-9]|2[0-1])$', first_words[0]):
                     is_riga_regioni = True
 
-            # Processa ERARIO solo se NON è una riga regioni
-            if not is_riga_regioni:
+            # Una riga INPS del cassetto fiscale ha l'anno fra i numeri: presa per
+            # una riga Erario (codice = anno) finiva nella sezione sbagliata, o
+            # andava persa quando l'importo era a credito (DM10 con «0,00 667,66»).
+            inps_riga = _RIGA_INPS_TESTO.search(row_text)
+
+            # Processa ERARIO solo se NON è una riga regioni né una riga INPS
+            if not is_riga_regioni and not inps_riga:
                 for i, item in enumerate(row):
                     word = item['word']
 
@@ -528,6 +542,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             # ============================================
             # SEZIONE INPS - Pattern: 5100 causale matricola mese anno debito
             # ============================================
+            righe_inps_prima = len(result["sezione_inps"])
             if '5100' in row_text and any(c in row_text for c in ['CXX', 'DM10', 'RC01']):
                 for i, item in enumerate(row):
                     word = item['word']
@@ -582,6 +597,30 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "descrizione": get_descrizione_causale_inps(causale)
                                 })
                         break
+
+            if inps_riga and len(result["sezione_inps"]) == righe_inps_prima:
+                sede_i, causale_i, matricola_i, mese_i, anno_i = inps_riga.groups()[:5]
+                debito_i, credito_i = extract_importo_cents(row)
+                chiave_i = f"I_{causale_i}_{matricola_i}_{anno_i}_{mese_i}_{debito_i}_{credito_i}"
+                if (debito_i or credito_i) and chiave_i not in tributi_visti:
+                    tributi_visti.add(chiave_i)
+                    mese_i = f"{int(mese_i):02d}"
+                    result["sezione_inps"].append({
+                        "codice_sede": sede_i,
+                        "causale": causale_i,
+                        "matricola": matricola_i,
+                        "periodo_riferimento": f"{mese_i}/{anno_i}",
+                        "mese": mese_i,
+                        "anno": anno_i,
+                        "importo_debito": debito_i / 100,
+                        "importo_credito": credito_i / 100,
+                        "importo_debito_cents": debito_i,
+                        "importo_credito_cents": credito_i,
+                        "pagina": page_num + 1,
+                        "riga_y": y_key,
+                        "testo_sorgente": row_text,
+                        "descrizione": get_descrizione_causale_inps(causale_i)
+                    })
 
             # ============================================
             # SEZIONE INAIL - Pattern: cod_sede cod_ditta cc num_rif causale importo
