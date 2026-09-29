@@ -298,22 +298,34 @@ async def _elabora_voci(
     fatte = 0
     letture: Dict[int, "asyncio.Task[bytes]"] = {}
 
-    if (riprova_errori and errori and indice > 0
+    if (riprova_errori and indice > 0
             and salvato.get("versione_ripasso") != VERSIONE_RIPASSO):
-        percorsi = {e.get("percorso") for e in errori}
-        ripassi = [v for v in voci[:indice] if v.percorso in percorsi and not v.motivo]
-        if ripassi:
-            contatori["errori"] = max(0, contatori["errori"] - len(ripassi))
+        # Il ripasso e' lento (un F24 cerca anche quietanze e ravvedimenti) e un
+        # riavvio lo interrompe: l'avanzamento si salva ogni 10 file, con l'elenco
+        # di quelli che restano, cosi' un nuovo avvio riprende da dove era.
+        if salvato.get("ripasso_versione") == VERSIONE_RIPASSO:
+            restanti = list(salvato.get("ripasso_restanti") or [])
+        else:
+            restanti = [e.get("percorso") for e in errori]
+            contatori["errori"] = max(0, contatori["errori"] - len(restanti))
             errori.clear()
-            for k in range(len(ripassi)):
-                await _un_file(
-                    ripassi, k, {}, origine, impronta,
-                    contatori, non_riconosciuti, errori, _smista, esito_del_risultato,
-                )
-            logger.info("Ripasso errori %s: %s file, ancora in errore %s",
-                        origine, len(ripassi), len(errori))
-        await _salva(db, chiave, versione_ripasso=VERSIONE_RIPASSO, contatori=contatori,
-                     errori=errori, non_riconosciuti=non_riconosciuti)
+        da_ripassare = set(restanti)
+        ripassi = [v for v in voci[:indice] if v.percorso in da_ripassare and not v.motivo]
+        for k, voce_ripasso in enumerate(ripassi):
+            await _un_file(
+                ripassi, k, {}, origine, impronta,
+                contatori, non_riconosciuti, errori, _smista, esito_del_risultato,
+            )
+            restanti = [p for p in restanti if p != voce_ripasso.percorso]
+            if (k + 1) % 10 == 0:
+                await _salva(db, chiave, ripasso_versione=VERSIONE_RIPASSO,
+                             ripasso_restanti=restanti, contatori=contatori,
+                             errori=errori, non_riconosciuti=non_riconosciuti)
+        logger.info("Ripasso errori %s: %s file, ancora in errore %s",
+                    origine, len(ripassi), len(errori))
+        await _salva(db, chiave, versione_ripasso=VERSIONE_RIPASSO,
+                     ripasso_versione=VERSIONE_RIPASSO, ripasso_restanti=[],
+                     contatori=contatori, errori=errori, non_riconosciuti=non_riconosciuti)
 
     def anticipa(da: int) -> None:
         for i in range(da, min(len(voci), da + PREFETCH_FILE)):
