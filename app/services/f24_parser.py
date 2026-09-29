@@ -23,6 +23,8 @@ _QUIETANZA_SECTION_LABELS = {
     "INAIL": "sezione_inail",
     "REGIONI": "sezione_regioni",
     "TRIB.LOCALI": "sezione_tributi_locali",
+    # Stampe del modello con i dati sovrapposti (2018-2019): stessa sezione.
+    "IMU/TRIB.LOCALI": "sezione_tributi_locali",
 }
 
 
@@ -88,9 +90,58 @@ def _period_from_words(words: list[tuple[float, str]]) -> dict[str, str]:
         if e_rateazione(rateazione):
             esito["rateazione"] = rateazione
         return esito
+    if not month_token:
+        # Rateazione/mese di 4 cifre («0002» = febbraio, «0101» = rata unica).
+        rata = next((t for t in tokens if t != year and re.fullmatch(r"\d{4}", t)), "")
+        if rata:
+            mese = mese_da_rateazione(rata)
+            mese = "" if mese == "00" else mese
+            esito = {"periodo_riferimento": f"{mese}/{year}" if mese and year else year,
+                     "periodo_raw": raw}
+            if e_rateazione(rata):
+                esito["rateazione"] = rata
+            return esito
     month = month_token.zfill(2) if month_token and int(month_token) else ""
     period = f"{month}/{year}" if month and year else year
     return {"periodo_riferimento": period, "periodo_raw": raw}
+
+
+def _stampa_f24_sovrapposta(pdf_path: str = None, pdf_content: bytes = None) -> dict[str, Any]:
+    """Data e totale di una stampa del modello con i dati sovrapposti (senza protocollo).
+
+    Le F24 del 2018-2019 escono come il modulo con i dati scritti sopra: la data
+    e' una cifra per casella (8 caselle, gg mm aaaa) e il totale sta in alto a
+    destra. Nessun protocollo telematico: la delega si riconosce per contenuto.
+    """
+    esito: dict[str, Any] = {"data_pagamento": None, "saldo_delega": None}
+    try:
+        doc = _open_pdf(pdf_path=pdf_path, pdf_content=pdf_content)
+    except Exception:  # noqa: BLE001 - senza documento non c'e' niente da leggere
+        return esito
+    try:
+        if not len(doc):
+            return esito
+        parole = doc[0].get_text("words")
+    finally:
+        doc.close()
+    cifre = sorted(
+        (float(w[0]), w[4]) for w in parole
+        if re.fullmatch(r"\d", w[4].strip()) and 215 <= float(w[1]) <= 240 and float(w[0]) < 300
+    )
+    if len(cifre) == 8:
+        try:
+            esito["data_pagamento"] = datetime.strptime(
+                "".join(c for _x, c in cifre), "%d%m%Y").date().isoformat()
+        except ValueError:
+            pass
+    importi = sorted(
+        (float(w[0]), w[4]) for w in parole
+        if float(w[0]) >= 480 and float(w[1]) < 215
+        and re.fullmatch(r"(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}", w[4].strip())
+    )
+    if importi:
+        esito["saldo_delega"] = parse_importo(importi[0][1])
+    return esito
 
 
 def _coordinate_quietanza(doc) -> dict[str, Any]:
@@ -398,6 +449,13 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         )
     ):
         result["dati_generali"]["saldo_delega"] = coordinate_data["saldo_delega"]
+
+    if not result["dati_generali"].get("data_pagamento") or not result["dati_generali"].get("saldo_delega"):
+        sovrapposta = _stampa_f24_sovrapposta(pdf_path, pdf_content)
+        if not result["dati_generali"].get("data_pagamento") and sovrapposta["data_pagamento"]:
+            result["dati_generali"]["data_pagamento"] = sovrapposta["data_pagamento"]
+        if not result["dati_generali"].get("saldo_delega") and sovrapposta["saldo_delega"]:
+            result["dati_generali"]["saldo_delega"] = sovrapposta["saldo_delega"]
 
     # ============================================
     # SEZIONE ERARIO
