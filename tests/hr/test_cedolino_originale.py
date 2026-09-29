@@ -15,7 +15,7 @@ def test_originale_storico_embedded():
 
 
 def test_originale_drive_letto_per_id(monkeypatch):
-    async def fake_download(file_id):
+    async def fake_download(file_id, md5=None):
         assert file_id == "drive-1"
         return b"%PDF-drive"
 
@@ -26,7 +26,7 @@ def test_originale_drive_letto_per_id(monkeypatch):
 
 
 def test_originale_rifiuta_contenuto_non_pdf(monkeypatch):
-    async def fake_download(_file_id):
+    async def fake_download(_file_id, md5=None):
         return b"contenuto-errato"
 
     import app.services.drive_download as drive_download

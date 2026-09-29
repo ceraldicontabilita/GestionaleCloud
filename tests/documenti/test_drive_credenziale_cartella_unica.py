@@ -45,7 +45,7 @@ def test_originali_per_id_passano_dalla_cartella_unica(monkeypatch, modulo, tipo
 
     lettore = importlib.import_module(modulo)
 
-    async def _finto(file_id):
+    async def _finto(file_id, md5=None):
         return b"%PDF-" + file_id.encode()
 
     monkeypatch.setattr(drive_download, "scarica_originale", _finto)

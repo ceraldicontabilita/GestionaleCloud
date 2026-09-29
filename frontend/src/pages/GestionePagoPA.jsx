@@ -19,6 +19,7 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { PageLayout } from '../components/PageLayout';
 import { PageHeader } from '../components/ds/PageHeader';
 import DocumentViewerModal from '../components/DocumentViewerModal';
+import CartellePagamento from '../components/CartellePagamento';
 import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
 import {
   FileText,
@@ -183,6 +184,8 @@ export default function GestionePagoPA() {
             </>
           )}
         />
+
+        <CartellePagamento />
 
         {/* Stats Cards */}
         {stats && (

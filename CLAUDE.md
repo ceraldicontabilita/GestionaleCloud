@@ -506,6 +506,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   aliquote sono versionate per periodo d'imposta.
 - **Situazione fiscale legge il registro unico F24** (`registro_fiscale_f24.py`), mai l'indice Excel su Drive; un quadro del 770 caricato da solo (`componenti_770.py`) si aggancia al 770 intero per «Identificativo dichiarazione», mai per nome o importo.
 - **Ricevute di pagamento pagoPA** (`pagopa_receipts.py`, un lettore per famiglia: BPM, Mooney via OCR, «Attestazione di pagamento» AdER): ogni voce «etichetta: € importo» si legge e la somma deve fare il totale al centesimo, altrimenti resta `DA_VERIFICARE` (una voce nuova non si ignora; «Importo originario» non è una voce). Stesso IUV, data e importo = stesso pagamento, un secondo file non duplica. La ricevuta non dice **che cosa** si è pagato: la natura (tributo, rata, diritti/oneri, sanzione) la sceglie il titolare (`PUT /api/pagopa/ricevute/{id}/natura`) o la dicono i soli diritti di notifica; la Mooney si aggancia al PayPal per ID transazione, mai per importo.
+- **Cartella di pagamento** (`cartelle_pagamento.py`, Documenti > Import, pagina PagoPA): fatto autorevole, apre subito l'attesa `CARTELLA_DA_PAGARE`. Il termine è 60 giorni dalla **notifica**, che nel PDF non c'è: la scadenza resta vuota finché il titolare non dice la data. La chiude solo la ricevuta con lo stesso IUV e importo al centesimo (altrimenti `DA_VERIFICARE`); il verbale si aggancia solo se univoco per numero e targa.
 - Il catalogo dei codici tributo è consultivo: una ricerca non crea F24, pagamenti o scritture. **Le
   descrizioni vengono solo da `services/codici_tributo_f24.py`**, causali INPS comprese (RC01 è la
   regolarizzazione, non gli artigiani); `services/codici_tributo_db.py` aggiunge le scadenze. Parser e router
@@ -596,7 +597,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   consultazione** (il `stato_import: archivio_storico` delle fatture e' stato tolto: erano 1.127 documenti
   e 52 MB fuori da ogni conto, che tornavano a ogni ricostruzione Drive). L'originale sta su Drive. Per
   rivedere un anno intero: cambiare l'anno attivo e rilanciare la ricostruzione, che rilegge tutti gli
-  XML. Eccezione: la fattura dell'**anno prima** pagata quest'anno entra solo come **debito** (`debiti_anno_precedente.py`: niente
+  XML. Eccezione 1: la **parcella con ritenuta** (`DatiRitenuta`) di qualunque anno entra come fattura intera da Documenti > Import (`_e_parcella_con_ritenuta`, decisione del 29/09/2026: ogni 1040 ha la prova della sua fattura). Eccezione 2: la fattura dell'**anno prima** pagata quest'anno entra solo come **debito** (`debiti_anno_precedente.py`: niente
   costo né IVA; il bonifico la chiude per fornitore e importo al centesimo, debiti uguali in ordine di data, entro 180 giorni; un importo che il fornitore fattura anche quest'anno è un canone e vuole il numero in causale; va in Prima Nota Banca su 33.03.01). Gli **accrediti in entrata del 2023** (ricevuta «A VOSTRO CREDITO»: Satispay, giroconti, rimborsi)
   non si registrano (`ANNI_ACCREDITI_NON_REGISTRATI`); i bonifici disposti di ogni anno restano.
 - Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato, Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile salvia.

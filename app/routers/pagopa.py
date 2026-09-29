@@ -168,6 +168,45 @@ async def upload_ricevuta(
     }
 
 
+@router.get("/cartelle")
+@handle_errors
+async def elenca_cartelle() -> Dict[str, Any]:
+    """Cartelle di pagamento con l'attesa «da pagare» e il verbale collegato."""
+    db = Database.get_db()
+    campi = {"_id": 0, "contenuto_b64": 0}
+    cartelle = await db["cartelle_pagamento"].find({}, campi).to_list(500)
+    cartelle.sort(key=lambda c: str(c.get("caricato_il") or ""), reverse=True)
+    return {"cartelle": cartelle}
+
+
+@router.put("/cartelle/{cartella_id}/notifica")
+@handle_errors
+async def imposta_notifica_cartella(cartella_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Il titolare dice quando la cartella e' stata notificata: parte il termine di 60 giorni."""
+    from app.services.cartelle_pagamento import imposta_notifica
+
+    esito = await imposta_notifica(Database.get_db(), cartella_id, str(data.get("data_notifica") or ""))
+    if not esito.get("success"):
+        raise HTTPException(status_code=400, detail={
+            "code": "NOTIFICA_NON_VALIDA", "message": esito.get("message") or "Notifica non valida"})
+    return esito
+
+
+@router.get("/cartelle/{cartella_id}/pdf")
+@handle_errors
+async def pdf_cartella(cartella_id: str):
+    from fastapi.responses import Response
+    from app.services.cartelle_pagamento import contenuto
+
+    trovato = await contenuto(Database.get_db(), cartella_id)
+    if not trovato:
+        raise HTTPException(status_code=404, detail="Originale della cartella non disponibile")
+    byte, nome = trovato
+    nome_ascii = nome.encode("ascii", "replace").decode("ascii").replace('"', " ")
+    return Response(content=byte, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{nome_ascii}"'})
+
+
 @router.get("/nature")
 @handle_errors
 async def nature_ricevuta() -> Dict[str, Any]:

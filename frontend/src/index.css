@@ -75,6 +75,12 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body {
+  /* Le intestazioni fisse (barra in alto, schede, testata tabella) coprono la
+     parte alta: scorrere fino a un elemento lo lascia sotto di loro. */
+  scroll-padding-top: calc(var(--topnav-height) + 110px);
+}
+
+html, body {
   margin: 0; padding: 0;
   width: 100%; max-width: 100%; min-height: 100%;
   overflow-x: hidden;
@@ -146,7 +152,7 @@ code {
    LAYOUT
    ================================================================ */
 .topnav-layout {
-  min-height: 100vh; width: 100%; max-width: 100vw; overflow-x: hidden;
+  min-height: 100vh; width: 100%; max-width: 100vw; overflow-x: clip;
   background: var(--c-bg); color: var(--c-text);
 }
 /* A sinistra la colonna delle sezioni, sempre visibile su desktop. In fondo
@@ -158,7 +164,33 @@ code {
   padding-top: calc(var(--topnav-height) + 16px);
   padding-left: calc(var(--colonna-nav-larghezza) + 24px);
   min-height: calc(100vh - var(--topnav-height));
-  box-sizing: border-box; overflow-x: hidden;
+  /* `clip` e non `hidden`: hidden farebbe di .page-content un contenitore di
+     scorrimento e ogni elemento «sticky» qui dentro smetterebbe di restare fisso. */
+  box-sizing: border-box; overflow-x: clip;
+}
+
+/* Barra dei fogli (le schede di un hub) e intestazione delle tabelle restano
+   fisse in alto mentre si scorre: si vede sempre cosa si sta leggendo. */
+.page-content { --altezza-schede: 0px; }
+.page-content:has([role="tablist"]) { --altezza-schede: 46px; }
+.page-content [role="tablist"] {
+  position: sticky; top: var(--topnav-height); z-index: 30;
+  background: var(--c-bg);
+}
+@media (min-width: 769px) {
+  .page-content thead th {
+    position: sticky; top: calc(var(--topnav-height) + var(--altezza-schede)); z-index: 20;
+    background: var(--c-bg-alt, #f2f0e9);
+    box-shadow: 0 1px 0 var(--c-border);
+  }
+}
+@media (min-width: 769px) {
+  /* Tabella dentro un riquadro con scorrimento proprio: l'intestazione resta fissa
+     nel riquadro, dal suo bordo alto (con l'offset della pagina coprirebbe la prima riga). */
+  .page-content [style*="overflow: auto"] thead th,
+  .page-content [style*="overflow-y: auto"] thead th,
+  .page-content [style*="overflow-x: auto"] thead th,
+  .page-content .table-scroll thead th { top: 0; }
 }
 @media (max-width: 768px) { .topnav-layout .page-content { padding: 10px 12px 150px 12px; padding-top: calc(var(--topnav-height) + 8px); } }
 
