@@ -254,3 +254,48 @@ def test_file_grande_non_si_anticipa(monkeypatch):
 
     esito = _run(dz.elabora_cartella(db, "cart-g", grande, nome="M"))
     assert esito["contatori"]["importati"] == 1 and letti == ["big"]
+
+
+def test_ripasso_errori_una_volta_sola_per_versione_dei_lettori(monkeypatch):
+    from app.services import drive_download
+
+    file_drive = [
+        {"id": f"r{i}", "name": f"F{i}.pdf", "mimeType": "application/pdf",
+         "size": "100", "percorso": f"M/F{i}.pdf"}
+        for i in range(3)
+    ]
+    chiamate = []
+
+    async def scarica(file_id, md5=None):
+        return b"%PDF-" + file_id.encode()
+
+    monkeypatch.setattr(drive_download, "scarica_originale", scarica)
+    stato = {"F1.pdf": {"success": False, "message": "F24 non quadrato"}}
+
+    async def smista(nome, dati, contesto):
+        chiamate.append(nome)
+        return stato.get(nome, {"success": True, "duplicate": False})
+
+    monkeypatch.setattr(cu, "_smista", smista)
+    db = AsyncMongoMockClient()["ripasso"]
+
+    primo = _run(dz.elabora_cartella(db, "cart-r", file_drive, nome="M"))
+    assert primo["contatori"]["errori"] == 1 and chiamate == ["F0.pdf", "F1.pdf", "F2.pdf"]
+
+    # Il lettore e' stato corretto: al giro dopo il file in errore si rilegge, una volta.
+    stato.clear()
+    dz_salvato = _run(db["sistema_stato"].find_one({"chiave": "import_zip_drive:cart-r"}))
+    assert dz_salvato["stato"] == "completato"
+    _run(db["sistema_stato"].update_one(
+        {"chiave": "import_zip_drive:cart-r"}, {"$set": {"stato": "in_corso", "indice": 3}}))
+    chiamate.clear()
+    secondo = _run(dz.elabora_cartella(db, "cart-r", file_drive, nome="M"))
+
+    assert chiamate == ["F1.pdf"]
+    assert secondo["contatori"]["errori"] == 0 and secondo["contatori"]["importati"] == 3
+
+    chiamate.clear()
+    _run(db["sistema_stato"].update_one(
+        {"chiave": "import_zip_drive:cart-r"}, {"$set": {"stato": "in_corso", "indice": 3}}))
+    _run(dz.elabora_cartella(db, "cart-r", file_drive, nome="M"))
+    assert chiamate == []

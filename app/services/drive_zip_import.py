@@ -48,6 +48,9 @@ MAX_ELENCO = 300
 # scrittura restano uno alla volta, cosi' due copie dello stesso file non si
 # superano a vicenda e nessun registro riceve due scritture insieme.
 PREFETCH_FILE = 8
+# I file finiti in errore prima di un miglioramento dei lettori si rileggono una
+# volta sola per versione (un cambio dei lettori F24 alza questo numero).
+VERSIONE_RIPASSO = "2026-09-29-inps-cassetto"
 PREFETCH_MAX_BYTE = 8 * 1024 * 1024
 
 _lavoro: Optional[asyncio.Task] = None
@@ -278,6 +281,7 @@ async def anteprima(archivio: zipfile.ZipFile) -> Dict[str, Any]:
 async def _elabora_voci(
     db, chiave: str, voci: List[_Voce], *, origine: str, impronta: str,
     limite: Optional[int] = None, riparti_se_completato: bool = False,
+    riprova_errori: bool = False,
 ) -> Dict[str, Any]:
     """Elabora le voci dal cursore in poi. `limite`: al massimo N voci (i test, i lotti)."""
     from app.services.drive_cartella_unica import _smista, esito_del_risultato
@@ -293,6 +297,23 @@ async def _elabora_voci(
         indice, contatori, non_riconosciuti, errori = 0, _contatori_vuoti(), [], []
     fatte = 0
     letture: Dict[int, "asyncio.Task[bytes]"] = {}
+
+    if (riprova_errori and errori and indice > 0
+            and salvato.get("versione_ripasso") != VERSIONE_RIPASSO):
+        percorsi = {e.get("percorso") for e in errori}
+        ripassi = [v for v in voci[:indice] if v.percorso in percorsi and not v.motivo]
+        if ripassi:
+            contatori["errori"] = max(0, contatori["errori"] - len(ripassi))
+            errori.clear()
+            for k in range(len(ripassi)):
+                await _un_file(
+                    ripassi, k, {}, origine, impronta,
+                    contatori, non_riconosciuti, errori, _smista, esito_del_risultato,
+                )
+            logger.info("Ripasso errori %s: %s file, ancora in errore %s",
+                        origine, len(ripassi), len(errori))
+        await _salva(db, chiave, versione_ripasso=VERSIONE_RIPASSO, contatori=contatori,
+                     errori=errori, non_riconosciuti=non_riconosciuti)
 
     def anticipa(da: int) -> None:
         for i in range(da, min(len(voci), da + PREFETCH_FILE)):
@@ -391,6 +412,7 @@ async def elabora_cartella(
     esito = await _elabora_voci(
         db, f"{CHIAVE}:{cartella_id}", _voci_da_cartella(file_drive), origine=nome,
         impronta=impronta, limite=limite, riparti_se_completato=True,
+        riprova_errori=True,
     )
     return {"file_id": cartella_id, **esito}
 
