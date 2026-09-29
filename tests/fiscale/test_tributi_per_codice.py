@@ -175,3 +175,19 @@ def test_1040_versato_senza_fatture_in_archivio_chiede_di_associarle():
     voce = next(v for v in voci if v["codice"] == "1040")
 
     assert voce["fatture_da_associare"] is True and voce["stato"] == "PAGATO"
+
+
+def test_stesso_tributo_in_due_deleghe_diverse_e_segnalato():
+    # Caso reale 16/06/2026: IMU 3918 2026 3.574,00 in due deleghe (protocolli diversi),
+    # entrambe addebitate in banca.
+    imu = lambda: [{"codice_tributo": "3918", "periodo_riferimento": "2026", "codice_comune": "F839",
+                    "importo_debito_cents": 357400, "importo_credito_cents": 0}]
+    q1 = _quietanza("q-imu-1", "2026-06-16", "26060212304532735/000001", locali=imu(),
+                    erario=[_riga("6099", "2025", 0, 160490)])
+    q2 = _quietanza("q-imu-2", "2026-06-16", "26061631545528157/000001", locali=imu(),
+                    erario=[_riga("1040", "05/2026", 21000), _riga("6099", "2025", 0, 160490)])
+    voci = run(tributi.carica_voci(_db([q1, q2])))["voci"]
+    voce = _voce(voci, "3918", "2026")
+    assert voce["quietanza_cents"] == 714800
+    assert voce["versato_due_volte_cents"] == 357400
+    assert _voce(voci, "1040", "05/2026")["versato_due_volte_cents"] == 0

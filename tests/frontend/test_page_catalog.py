@@ -18,9 +18,9 @@ REDIRECTS = CATALOG.get("redirects", [])
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
-def test_catalogo_contiene_esattamente_le_68_schermate_numerate():
-    assert [page["id"] for page in PAGES] == list(range(1, 69))
-    assert len({page["path"] for page in PAGES}) == 68
+def test_catalogo_contiene_esattamente_le_70_schermate_numerate():
+    assert [page["id"] for page in PAGES] == list(range(1, 71))
+    assert len({page["path"] for page in PAGES}) == 70
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
 

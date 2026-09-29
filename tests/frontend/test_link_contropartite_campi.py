@@ -107,12 +107,14 @@ def test_tabella_f24_espone_quietanza_e_movimento_bancario(monkeypatch):
     assert per_id["f24-a"]["quietanza_fonte"] == "fiscal_documents"
     assert per_id["f24-a"]["movimento_bancario_id"] == "EC-2026-02-16-1500.00-aa"
     assert per_id["f24-a"]["pagamento_verificato_banca"] is True
-    assert per_id["f24-b"]["quietanza_url"] == "/api/f24-riconciliazione/quietanze/Q-legacy"
+    # Il PDF della quietanza si apre con lo stesso lettore dell'analisi F24 (url_pdf_quietanza).
+    assert per_id["f24-b"]["quietanza_url"] == "/api/f24-public/pdf/Q-legacy"
     assert per_id["f24-b"]["movimenti_bancari_ids"] == ["EC-2026-03-16-800.00-bb"]
     assert per_id["f24-c"] == {
         "quietanza_id": None, "protocollo_quietanza": None, "quietanza_fonte": None,
         "quietanza_url": None, "movimento_bancario_id": None, "movimenti_bancari_ids": [],
         "pagamento_verificato_banca": False, "data_pagamento_effettivo": None,
+        "f24_pdf_url": "/api/f24-public/pdf/f24-c",
     }
 
 

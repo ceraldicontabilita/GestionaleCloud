@@ -116,6 +116,11 @@ function Dettaglio({ voce, onApri }) {
         {voce.scadenza && <> · scadenza {dataIt(voce.scadenza)}</>}
         {voce.ultimo_pagamento && <> · ultimo pagamento {dataIt(voce.ultimo_pagamento)}</>}
         {voce.in_ritardo && <strong style={{ color: COLORS.warning }}> · pagato dopo la scadenza</strong>}
+        {voce.versato_due_volte_cents > 0 && (
+          <strong style={{ color: COLORS.danger }} data-testid="versato-due-volte">
+            {' · '}stesso importo versato con due deleghe diverse ({euro(voce.versato_due_volte_cents)} in più): da verificare col commercialista
+          </strong>
+        )}
       </div>
       {voce.scarto_cents ? (
         <div role="alert" style={{ marginTop: 8, color: COLORS.danger, fontSize: 13 }} data-testid="scarto-ritenute">
@@ -248,6 +253,7 @@ export default function Tributi() {
                   <strong>{v.codice || '—'} · {v.periodo}</strong>
                   <Badge variant={VARIANTE[v.stato]}>{v.stato_label}</Badge>
                 </div>
+                {v.versato_due_volte_cents > 0 && <Badge variant="danger">Versato due volte</Badge>}
                 <div style={{ fontSize: 12, color: COLORS.textMuted, margin: '2px 0 6px' }}>{v.descrizione}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 12 }}>
                   {COLONNE.map(c => (
@@ -306,6 +312,7 @@ export default function Tributi() {
                       ))}
                       <td style={{ padding: '8px 10px' }}>
                         <Badge variant={VARIANTE[v.stato]}>{v.stato_label}</Badge>
+                        {v.versato_due_volte_cents > 0 && <div style={{ marginTop: 3 }}><Badge variant="danger">Versato due volte</Badge></div>}
                         {v.ultimo_pagamento && <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>il {dataIt(v.ultimo_pagamento)}</div>}
                       </td>
                     </tr>

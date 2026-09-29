@@ -322,6 +322,16 @@ def _chiudi_voce(voce: Dict[str, Any], oggi: str) -> Dict[str, Any]:
     scadenza = voce["scadenza"]
     ritardo = bool(scadenza and voce["ultimo_pagamento"] and voce["ultimo_pagamento"] > scadenza)
     voce["in_ritardo"] = ritardo
+    # Stesso importo pagato da due deleghe diverse (protocolli diversi): e'
+    # lo stesso segnale di F24_TRIBUTO_VERSATO_DUE_VOLTE, qui sulla riga.
+    protocolli_per_importo: Dict[int, set] = defaultdict(set)
+    for d in voce["documenti"]:
+        if d["tipo"] in ("quietanza", "ravvedimento") and d.get("importo_cents"):
+            protocolli_per_importo[int(d["importo_cents"])].add(d.get("protocollo") or d.get("quietanza_id"))
+    voce["versato_due_volte_cents"] = sum(
+        importo * (len(protocolli) - 1) for importo, protocolli in protocolli_per_importo.items()
+        if len(protocolli) > 1
+    )
     if voce["scarto_cents"]:
         stato = NON_TORNA
     elif voce["residuo_cents"] > 0:

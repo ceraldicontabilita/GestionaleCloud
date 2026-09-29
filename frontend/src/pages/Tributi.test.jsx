@@ -83,4 +83,14 @@ describe('Tributi', () => {
     fireEvent.change(screen.getByLabelText('Anno di riferimento'), { target: { value: '2026' } });
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/f24/tributi?anno=2026&cerca=1040'));
   });
+
+  it('segnala lo stesso tributo versato due volte', async () => {
+    const doppio = { ...risposta, voci: [{ ...risposta.voci[0], chiave: 'sezione_tributi_locali|3918|2026|', codice: '3918',
+      periodo: '2026', versato_due_volte_cents: 357400 }] };
+    api.get.mockResolvedValue({ data: doppio });
+    render(<MemoryRouter initialEntries={['/tributi']}><Tributi /></MemoryRouter>);
+    expect(await screen.findByText('Versato due volte')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('riga-sezione_tributi_locali|3918|2026|'));
+    expect(await screen.findByTestId('versato-due-volte')).toHaveTextContent('3.574,00');
+  });
 });

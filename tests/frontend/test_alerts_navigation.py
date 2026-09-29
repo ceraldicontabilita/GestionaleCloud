@@ -61,6 +61,9 @@ def test_lista_alert_aperti_filtrata_e_paginata(monkeypatch):
     assert filtered_query["severita"] == "critical"
     assert filtered_query["modulo"] == "f24"
     assert {"stato": "aperto"} in filtered_query["$or"]
-    assert result["alerts"] == [{"id": "A-2"}]
+    # Ogni alert porta l'elenco dei record coinvolti (vuoto se non ne ha).
+    assert [a["id"] for a in result["alerts"]] == ["A-2"]
+    assert result["alerts"][0]["record_coinvolti"] == []
+    assert result["alerts"][0]["fatture_candidate"] == []
     assert result["stats"]["totale_filtrato"] == 2
     assert result["pagination"] == {"offset": 1, "limit": 1, "has_more": False}
