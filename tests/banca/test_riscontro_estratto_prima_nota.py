@@ -116,3 +116,28 @@ def test_identificativo_scomparso_si_riscontra_per_giorno_e_importo():
         assert (await segna_righe_riscontrate(db))["riconciliate"] == 0
 
     _run(scenario())
+
+
+def test_movimento_ignorato_ma_collegato_alla_riga_e_una_prova():
+    """Le distinte «beneficiari vari» sono ignorate per non contarle due volte,
+    ma il bonifico e' nell'estratto: la riga gia' collegata si riscontra. Un
+    movimento ignorato NON si sceglie per giorno e importo."""
+    async def scenario():
+        db = ClientArchivioMemoria()["riscontro"]
+        await db.estratto_conto_movimenti.insert_many([
+            _mov("d1", data="2026-06-15", importo=-1000.0, ignorata=True,
+                 evidenza_bancaria_ufficiale=True, livello_evidenza="ufficiale"),
+            _mov("d2", data="2026-06-16", importo=-500.0, ignorata=True,
+                 evidenza_bancaria_ufficiale=True, livello_evidenza="ufficiale"),
+        ])
+        await db.prima_nota_banca.insert_many([
+            _riga("r1", "Stipendi", "d1", data="2026-06-15", importo=1000.0),
+            # id scomparso: si cercherebbe per giorno e importo, ma d2 e' ignorato
+            _riga("r2", "Stipendi", "EC-vecchio", data="2026-06-16", importo=500.0),
+        ])
+        esito = await segna_righe_riscontrate(db)
+        assert esito["riconciliate"] == 1
+        assert (await db.prima_nota_banca.find_one({"id": "r1"}, {"_id": 0}))["riconciliato"] is True
+        assert (await db.prima_nota_banca.find_one({"id": "r2"}, {"_id": 0}))["riconciliato"] is False
+
+    _run(scenario())

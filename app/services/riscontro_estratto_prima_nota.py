@@ -51,10 +51,18 @@ def evidenza_ufficiale(movimento: Dict[str, Any]) -> bool:
     return "livello_evidenza" not in movimento or movimento.get("livello_evidenza") == "ufficiale"
 
 
-def _escluso(movimento: Dict[str, Any]) -> bool:
+def _escluso(movimento: Dict[str, Any], *, ammetti_ignorata: bool = False) -> bool:
+    """Un movimento cancellato, archiviato o in quarantena non e' una prova.
+
+    «Ignorata» e' una scelta fatta per non contare il bonifico due volte (le
+    distinte «beneficiari vari»): il movimento esiste comunque nell'estratto.
+    Per una riga di Prima Nota gia' collegata a QUEL movimento (titolare,
+    30/09/2026) la prova vale; per la ricerca per giorno e importo no, perche'
+    li' si sceglierebbe un movimento che nessuno ha collegato.
+    """
     return (
         str(movimento.get("status") or "") in {"deleted", "archived"}
-        or movimento.get("ignorata") is True
+        or (movimento.get("ignorata") is True and not ammetti_ignorata)
         or movimento.get("in_quarantena") is True
     )
 
@@ -117,6 +125,7 @@ async def segna_righe_riscontrate(db) -> Dict[str, Any]:
     ora = datetime.now(timezone.utc).isoformat()
     for riga in righe:
         movimento = movimenti.get(legami.get(riga["id"]) or "")
+        collegata = movimento is not None
         if not movimento:
             chiave = (str(riga.get("data") or "")[:10], _cents(riga.get("importo")))
             libero = per_giorno.get(chiave) or []
@@ -125,7 +134,7 @@ async def segna_righe_riscontrate(db) -> Dict[str, Any]:
             movimento = libero.pop(0)
             esito["per_giorno_importo"] = esito.get("per_giorno_importo", 0) + 1
         esito["esaminate"] += 1
-        if _escluso(movimento) or not evidenza_ufficiale(movimento):
+        if _escluso(movimento, ammetti_ignorata=collegata) or not evidenza_ufficiale(movimento):
             esito["senza_estratto_ufficiale"] += 1
             continue
         if (str(riga.get("data") or "")[:10] != str(movimento.get("data") or "")[:10]
