@@ -6,6 +6,11 @@ nell'estratto conto ufficiale della banca. La proiezione li scriveva sempre
 con ``riconciliato: False``: 139 stipendi del 2026 con l'estratto in mano
 risultavano ancora da riconciliare.
 
+Se l'identificativo collegato non esiste piu' (il movimento e' stato
+rigenerato da una nuova lettura dell'estratto) la riga si riscontra sul
+movimento ufficiale dello STESSO giorno e dello stesso importo al centesimo,
+purche' non sia gia' il riscontro di un'altra riga.
+
 La prova e' una sola: il movimento collegato alla riga (``estratto_conto_id``
 e sinonimi) esiste, non e' in quarantena, ha l'evidenza ufficiale (il PDF
 della banca, non l'export CSV che resta ``in_attesa_estratto_ufficiale``) e
@@ -54,6 +59,34 @@ def _escluso(movimento: Dict[str, Any]) -> bool:
     )
 
 
+async def _ufficiali_per_giorno(db, righe: List[Dict[str, Any]]) -> Dict[tuple, List[Dict[str, Any]]]:
+    """Movimenti ufficiali attivi non ancora usati come riscontro, per (giorno, centesimi)."""
+    giorni = sorted({str(r.get("data") or "")[:10] for r in righe if r.get("data")})
+    if not giorni:
+        return {}
+    gia_usati = {
+        str((r.get("riscontro_estratto") or {}).get("movimento_id"))
+        for r in await db["prima_nota_banca"].find(
+            {"riscontro_estratto.movimento_id": {"$exists": True}},
+            {"_id": 0, "riscontro_estratto": 1}).to_list(50000)
+    }
+    docs = await db["estratto_conto_movimenti"].find(
+        {"data": {"$gte": giorni[0], "$lte": giorni[-1] + "~"}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "status": 1, "ignorata": 1,
+         "in_quarantena": 1, "in_attesa_estratto_ufficiale": 1,
+         "evidenza_bancaria_ufficiale": 1, "livello_evidenza": 1,
+         "source_filename_ufficiale": 1, "source_filename": 1}).to_list(50000)
+    richiesti = set(giorni)
+    out: Dict[tuple, List[Dict[str, Any]]] = {}
+    for m in sorted(docs, key=lambda x: str(x.get("id"))):
+        giorno = str(m.get("data") or "")[:10]
+        if (giorno not in richiesti or str(m.get("id")) in gia_usati
+                or _escluso(m) or not evidenza_ufficiale(m)):
+            continue
+        out.setdefault((giorno, _cents(m.get("importo"))), []).append(m)
+    return out
+
+
 async def segna_righe_riscontrate(db) -> Dict[str, Any]:
     """Idempotente: una riga gia' riconciliata non si riscrive."""
     from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO
@@ -78,11 +111,19 @@ async def segna_righe_riscontrate(db) -> Dict[str, Any]:
                  "source_filename_ufficiale": 1, "source_filename": 1}).to_list(500):
             movimenti[str(m["id"])] = m
 
+    orfane = [r for r in righe if not movimenti.get(legami.get(r["id"]) or "")]
+    per_giorno = await _ufficiali_per_giorno(db, orfane) if orfane else {}
+
     ora = datetime.now(timezone.utc).isoformat()
     for riga in righe:
         movimento = movimenti.get(legami.get(riga["id"]) or "")
         if not movimento:
-            continue
+            chiave = (str(riga.get("data") or "")[:10], _cents(riga.get("importo")))
+            libero = per_giorno.get(chiave) or []
+            if not libero:
+                continue
+            movimento = libero.pop(0)
+            esito["per_giorno_importo"] = esito.get("per_giorno_importo", 0) + 1
         esito["esaminate"] += 1
         if _escluso(movimento) or not evidenza_ufficiale(movimento):
             esito["senza_estratto_ufficiale"] += 1
