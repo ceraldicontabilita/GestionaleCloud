@@ -2746,7 +2746,9 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
         )):
             return "quietanza_f24"
-        if (
+        # La LIPE ha il campo «VERSAMENTI AUTO F24»: cita F24 ma non e' un modello.
+        e_lipe = "LIQUIDAZIONIPERIODICHE" in re.sub(r"[^A-Z]", "", content_str)
+        if not e_lipe and (
             re.search(r"\bF\s*24\b", content_str)
             or "DELEGA IRREVOCABILE A" in content_str
             or "MODELLO DI PAGAMENTO UNIFICATO" in content_str
