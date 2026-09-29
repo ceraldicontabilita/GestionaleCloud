@@ -459,6 +459,19 @@ async def backfill_categorie_banca(
             await on_progress(indice, totale)
 
     aggiornati = 0
+    da_fattura = {"assegnati": 0}
+    if not dry_run:
+        from app.services.fornitore_da_fattura_banca import assegna_fornitori_da_fatture
+        ids_riconosciuti = {i for ids in per_categoria.values() for i in ids}
+        ids_riconosciuti.update(i for ids in per_collegamento.values() for i in ids)
+        ids_riconosciuti.update(i for ids in per_regola.values() for i in ids)
+        restanti = [m for m in movimenti if m.get("id") not in ids_riconosciuti]
+        try:
+            da_fattura = await assegna_fornitori_da_fatture(db, restanti)
+        except Exception as exc:  # noqa: BLE001 - il resto del backfill prosegue
+            logger.warning("Fornitore da fattura non letto (%s)", type(exc).__name__)
+        aggiornati += da_fattura["assegnati"]
+        non_riconosciuti = max(0, non_riconosciuti - da_fattura["assegnati"])
     if not dry_run:
         now_iso = _now()
         for categoria, ids in per_categoria.items():
@@ -522,6 +535,7 @@ async def backfill_categorie_banca(
         "movimenti_esaminati": totale,
         "per_categoria": per_categoria_totale,
         "da_regola_appresa": sum(len(ids) for ids in per_regola.values()),
+        "da_fattura": da_fattura["assegnati"],
         "aggiornati": aggiornati,
         "non_riconosciuti": non_riconosciuti,
         "ambigui": ambigui,

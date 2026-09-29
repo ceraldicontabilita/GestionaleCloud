@@ -889,6 +889,15 @@ async def riprocessa_estratto_dopo_import_fattura(
     metodo = normalizza_metodo_pagamento(invoice.get("metodo_pagamento"))
     now = datetime.now(timezone.utc).isoformat()
 
+    try:
+        from app.services.fornitore_da_fattura_banca import assegna_alla_fattura_arrivata
+        await assegna_alla_fattura_arrivata(db, invoice)
+    except Exception as exc:  # noqa: BLE001 - l'import della fattura resta valido
+        logger.warning(
+            "Fornitore del movimento non letto dalla fattura %s (%s)",
+            invoice.get("invoice_number"), type(exc).__name__,
+        )
+
     # Solo il fornitore pagato in contanti non passa dalla banca. Un metodo
     # ancora da decidere non e' un motivo per non guardare: il movimento con
     # identita' e importo al centesimo e' la prova, qualunque cosa dica
