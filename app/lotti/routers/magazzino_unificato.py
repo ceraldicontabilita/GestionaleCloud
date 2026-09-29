@@ -388,16 +388,23 @@ async def prodotti_unificati(
                     continue
                 if solo_disponibili and u["stock"] <= 0:
                     continue
-            g = gruppi.get(k)
+            # Chi preleva vede UNA riga per prodotto: righe di fattura scritte in
+            # modo diverso che arrivano allo stesso nome (es. «Pomodorini»)
+            # e alla stessa unita' si fondono. La vista gestione resta per
+            # chiave, perche' li' si assegna nome e categoria a ogni riga.
+            gk = k if gestione else (_strip_accents(u["nome"]).strip(), u["unita"])
+            g = gruppi.get(gk)
             dfatt = str(d.get("data_fattura") or "")
             if g is None:
                 u = dict(u)
                 u["n_lotti"] = 1
+                u["lotti_ids"] = [u["id"]]
                 u["_fifo_data"] = dfatt
                 u["_fifo_id"] = u["id"]
                 u["_fifo_lotto"] = u["lotto_id"]
-                gruppi[k] = u
+                gruppi[gk] = u
             else:
+                g["lotti_ids"].append(u["id"])
                 g["stock"] = round(g["stock"] + u["stock"], 3)
                 if u.get("colli") is not None:
                     g["colli"] = round((g.get("colli") or 0) + u["colli"], 3)
@@ -550,6 +557,8 @@ class ScaricoPayload(BaseModel):
     quantita: float
     operatore_nome: str
     nota: Optional[str] = ""
+    # lotti fusi in una riga della lista: lo scarico li consuma in FIFO
+    lotti_ids: Optional[list[str]] = None
 
 
 # ── POST scarico unificato ─────────────────────────────────────────────────────
@@ -591,7 +600,17 @@ async def scarico_unificato(payload: ScaricoPayload):
         from app.lotti.routers.lotti_produzione import _parse_data_fattura
 
         nome_norm = (lotto.get("prodotto_nome_norm") or "").strip()
-        if nome_norm:
+        ids_gruppo = [i for i in (payload.lotti_ids or []) if i]
+        if ids_gruppo and payload.prodotto_id in ids_gruppo:
+            candidati = await db.lotti_fornitori.find(
+                {
+                    "id": {"$in": ids_gruppo},
+                    "esaurito": {"$ne": True},
+                    "quantita_disponibile": {"$gt": 0},
+                },
+                {"_id": 0},
+            ).to_list(1000)
+        elif nome_norm:
             candidati = await db.lotti_fornitori.find(
                 {
                     "prodotto_nome_norm": nome_norm,

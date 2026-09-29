@@ -83,6 +83,7 @@ function ProductCard({ p, onReload, eseguiConSessione }) {
         prodotto_id: p.id,
         source,
         quantita: q,
+        lotti_ids: p.lotti_ids,
         operatore_nome: operatoreNome,
         nota: "scarico tablet"
       }, { timeout: 15000 });

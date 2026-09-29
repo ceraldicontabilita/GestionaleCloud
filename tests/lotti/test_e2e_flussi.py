@@ -799,3 +799,34 @@ def test_dose_di_produzione_senza_dosi_lo_dice(dbmock):
         run(fc.dose_produzione("R-vuoto", fc.DoseProduzioneReq(quantita_base=1, unita="kg")))
     assert exc.value.status_code == 400
     assert "ingrediente di riferimento" in str(exc.value.detail)
+
+
+def test_righe_con_lo_stesso_nome_e_unita_sono_una_sola_riga(dbmock, monkeypatch):
+    """«Preleva» mostrava la stessa voce piu' volte: fatture con descrizioni
+    diverse che arrivano allo stesso nome. Ora sono una riga per nome e unita'
+    (KG e PZ restano separate) e lo scarico consuma da tutti i lotti fusi."""
+    import app.lotti.routers.magazzino_unificato as mu
+    monkeypatch.setattr(mu, "_e_alimento", lambda *a, **k: True)
+    monkeypatch.setattr(mu, "_nome_ingrediente_auto", lambda nome, conf: "Alimento prova")
+    run(dbmock.lotti_fornitori.insert_many([
+        {"id": "L1", "prodotto_nome": "ALIMENTO PROVA A", "prodotto_nome_norm": "prova a",
+         "fornitore": "Ditta Uno", "quantita_disponibile": 6, "unita_misura": "KG",
+         "data_fattura": _data_fattura(30), "esaurito": False},
+        {"id": "L2", "prodotto_nome": "ALIMENTO PROVA B", "prodotto_nome_norm": "prova b",
+         "fornitore": "Ditta Due", "quantita_disponibile": 4, "unita_misura": "KG",
+         "data_fattura": _data_fattura(20), "esaurito": False},
+        {"id": "L3", "prodotto_nome": "ALIMENTO PROVA C", "prodotto_nome_norm": "prova c",
+         "fornitore": "Ditta Tre", "quantita_disponibile": 5, "unita_misura": "PZ",
+         "data_fattura": _data_fattura(10), "esaurito": False},
+    ]))
+
+    righe = run(mu.prodotti_unificati(source="fornitori", gestione=False))
+    kg = [r for r in righe if r["unita"] == "KG"]
+    assert len(righe) == 2 and len(kg) == 1
+    assert kg[0]["stock"] == 10 and sorted(kg[0]["lotti_ids"]) == ["L1", "L2"]
+
+    esito = run(mu.scarico_unificato(mu.ScaricoPayload(
+        prodotto_id=kg[0]["id"], source="fornitori", quantita=8,
+        operatore_nome="Mario", lotti_ids=kg[0]["lotti_ids"])))
+    assert esito["ok"] is True and esito["stock_nuovo"] == 2
+    assert run(dbmock.lotti_fornitori.find_one({"id": "L3"}))["quantita_disponibile"] == 5
