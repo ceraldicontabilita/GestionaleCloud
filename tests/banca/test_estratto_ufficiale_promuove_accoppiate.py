@@ -75,3 +75,14 @@ def test_il_secondo_import_dello_stesso_pdf_non_cambia_nulla(db):
 
     assert esito["stats"]["nuovi"] == 0
     assert _run(db["estratto_conto_movimenti"].count_documents({"data": "2026-04-01"})) == 1
+
+
+def test_lo_stato_spiega_ogni_riga_letta_dall_estratto_ufficiale(db):
+    esito = _importa_pdf()
+    stats = esito["stats"]
+    assert stats["promossi"] == 1 and stats["gia_ufficiali"] == 0
+    assert stats["duplicati_non_promossi"] == 0
+    # secondo giro: la riga e' gia' ufficiale, e tutto torna comunque
+    stats = _importa_pdf()["stats"]
+    assert stats["promossi"] == 0 and stats["gia_ufficiali"] == 1
+    assert stats["duplicati_non_promossi"] == 0

@@ -756,6 +756,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     import uuid as _uuid
     inserted = 0
     duplicates = 0
+    gia_ufficiali = 0
     
     if not movimenti:
         return {
@@ -864,6 +865,12 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 next((row for row in existing_rows if row.get("operation_key") == operation_key), None)
                 or (existing_rows[occurrence - 1] if len(existing_rows) >= occurrence else {})
             )
+            if not existing.get("id") and direct_operation_match:
+                # chiave gia' in archivio ma riga non trovata per descrizione:
+                # senza questa la riga restava operativa per sempre
+                existing = next(
+                    (row for row in existing_all if row.get("operation_key") == operation_key), {},
+                )
             if not existing.get("operation_key") or not existing.get("operation_id"):
                 identity_backfills.append((
                     existing.get("id"), operation_key, operation_id, occurrence,
@@ -876,6 +883,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 or existing.get("livello_evidenza") == EVIDENZA_UFFICIALE
             ):
                 records_promossi.append(existing)
+            elif fonte_ufficiale:
+                gia_ufficiali += 1
             duplicates += 1
             continue
         
@@ -984,6 +993,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             inserted = len(records_to_insert)
 
     has_material_changes = bool(records_to_insert or promoted_ids)
+    if fonte_ufficiale and duplicates - len(set(promoted_ids)) - gia_ufficiali > 0:
+        logger.warning(
+            "[ESTRATTO-UFFICIALE] %s: %s righe lette come doppioni ma non promosse ne' gia' ufficiali",
+            filename_originale, duplicates - len(set(promoted_ids)) - gia_ufficiali,
+        )
 
     riconciliazione_operativa = None
     if not fonte_ufficiale and records_to_insert:
@@ -1392,6 +1406,15 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "nuovi": inserted,
             "duplicati": duplicates,
             "totale_letti": len(movimenti),
+            # Un estratto ufficiale deve spiegare ogni riga letta: nuova,
+            # gia' ufficiale o promossa. Il resto e' una lettura che non ha
+            # lasciato prova (Q2-Q4 2025: 784 righe lette, ~100 ufficiali).
+            "promossi": len(set(promoted_ids)),
+            "gia_ufficiali": gia_ufficiali,
+            "duplicati_non_promossi": (
+                max(0, duplicates - len(set(promoted_ids)) - gia_ufficiali)
+                if fonte_ufficiale else 0
+            ),
         },
         "riconciliazione_automatica": riconciliazione_results,
         "riconciliazione_operativa": riconciliazione_operativa,
