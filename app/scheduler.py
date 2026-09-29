@@ -899,6 +899,14 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-BANCA] assegni: %s: %s", type(e).__name__, e)
         try:
+            from app.services.assegni_beneficiario import ricompila_beneficiari_da_fatture
+            r = await ricompila_beneficiari_da_fatture(db)
+            if r.get("aggiornati") or r.get("ambigui"):
+                logger.info("[SCHEDULER-BANCA] assegni beneficiario dalla fattura aggiornati=%s ambigui=%s",
+                            r.get("aggiornati"), r.get("ambigui"))
+        except Exception as e:
+            logger.error("[SCHEDULER-BANCA] assegni beneficiario: %s: %s", type(e).__name__, e)
+        try:
             # Stipendi, PayPal e assegni in Prima Nota: riconciliati quando il
             # loro movimento e' nell'estratto conto ufficiale.
             from app.services.riscontro_estratto_prima_nota import segna_righe_riscontrate
