@@ -56,6 +56,28 @@ export default function GestionePagoPA() {
   const [filtro, setFiltro] = useState('');
   const [statoFiltro, setStatoFiltro] = useState('tutti');
 
+  const [nature, setNature] = useState([]);
+
+  useEffect(() => {
+    // Il vocabolario sta nel backend (un solo elenco): tributo, rata, diritti, sanzione…
+    api.get('/api/pagopa/nature')
+      .then(r => setNature(Array.isArray(r.data?.nature) ? r.data.nature : []))
+      .catch(() => setNature([]));
+  }, []);
+
+  const impostaNatura = async (ricevuta, natura) => {
+    if (!natura) return;
+    try {
+      await api.put(`/api/pagopa/ricevute/${ricevuta.id}/natura`, { natura });
+      const scelta = nature.find(n => n.id === natura);
+      setRicevute(lista => lista.map(r => (r.id === ricevuta.id
+        ? { ...r, natura, natura_label: scelta?.label || natura } : r)));
+      toast.success('Natura del pagamento salvata');
+    } catch (error) {
+      toast.error(error.response?.data?.detail?.message || 'Non sono riuscito a salvare la natura');
+    }
+  };
+
   const fetchStats = useCallback(async () => {
     try {
       const response = await api.get('/api/pagopa/stats');
@@ -655,7 +677,25 @@ export default function GestionePagoPA() {
                           <strong>{paymentKindLabel(ricevuta.document_kind)}</strong><br />
                           {ricevuta.identificativo_bolletta || ricevuta.numero_bollettino || '-'}
                         </td>
-                        <td style={{ padding: '12px 16px' }}>{ricevuta.beneficiario || '-'}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          {ricevuta.beneficiario || '-'}
+                          {ricevuta.id && nature.length > 0 && (
+                            <select
+                              value={ricevuta.natura || ''}
+                              onChange={e => impostaNatura(ricevuta, e.target.value)}
+                              aria-label={`Che cosa hai pagato (${ricevuta.identificativo_bolletta || ricevuta.id})`}
+                              data-testid={`natura-${ricevuta.id}`}
+                              style={{
+                                display: 'block', marginTop: 6, minHeight: 40, maxWidth: 210,
+                                padding: '6px 8px', fontSize: 12.5, fontWeight: 700,
+                                border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.card,
+                              }}
+                            >
+                              <option value="">Che cosa hai pagato…</option>
+                              {nature.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+                            </select>
+                          )}
+                        </td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 500 }}>
                           {formatEuro(paymentAmountParts(ricevuta).operation)}
                           <div style={{ fontSize: 11, color: '#7a776e', fontWeight: 400, marginTop: 3 }}>

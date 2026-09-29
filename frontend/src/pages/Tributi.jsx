@@ -32,6 +32,7 @@ const VARIANTE = {
   SANZIONE: 'accent',
   INTERESSI: 'accent',
   SENZA_PROVA: 'neutral',
+  NON_TORNA: 'danger',
 };
 
 const euro = cents => (cents ? formatEuro(cents / 100) : '—');
@@ -116,6 +117,18 @@ function Dettaglio({ voce, onApri }) {
         {voce.ultimo_pagamento && <> · ultimo pagamento {dataIt(voce.ultimo_pagamento)}</>}
         {voce.in_ritardo && <strong style={{ color: COLORS.warning }}> · pagato dopo la scadenza</strong>}
       </div>
+      {voce.scarto_cents ? (
+        <div role="alert" style={{ marginTop: 8, color: COLORS.danger, fontSize: 13 }} data-testid="scarto-ritenute">
+          <strong>Non torna:</strong> le fatture fanno {euro(voce.atteso_cents)}, la quietanza ha versato{' '}
+          {euro(voce.pagato_cents)} ({voce.scarto_cents > 0 ? 'in più' : 'in meno'} di {euro(Math.abs(voce.scarto_cents))}).
+          Controlla le fatture prima di considerarlo pagato.
+        </div>
+      ) : null}
+      {voce.fatture_da_associare && (
+        <div style={{ marginTop: 8, color: COLORS.textMuted, fontSize: 13 }} data-testid="fatture-da-associare">
+          Nessuna fattura associata a questo 1040: le fatture di {voce.periodo} non sono in archivio.
+        </div>
+      )}
       {voce.documenti.map((doc, i) => <Riferimento key={`${doc.tipo}-${i}`} doc={doc} onApri={onApri} />)}
     </div>
   );

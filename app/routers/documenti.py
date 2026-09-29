@@ -2638,6 +2638,19 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         "IMPORTO TOTALE PAGATO", "RICEVUTA TELEMATICA",
     )):
         return "ricevuta_pagopa"
+    # Ricevuta «per l'utente» di Mooney: il livello testo porta solo il marchio
+    # e il riquadro degli importi, il resto e' un'immagine (lo legge l'OCR).
+    # Il testo esce con le lettere spaziate («Mo  o  n  ey»): si confronta senza separatori.
+    if "MOONEY" in marker_pdf_text and "RICEVUTAPERLUTENTE" in marker_pdf_text:
+        return "ricevuta_pagopa"
+    # «Ricevuta di pagamento» dell'Agente della Riscossione (attestazione dal
+    # portale, una cartella o piu' documenti con lo stesso IUV).
+    if (
+        "RICEVUTA DI PAGAMENTO" in compact_pdf_text
+        and "AGENTE DELLA RISCOSSIONE" in compact_pdf_text
+        and "DETTAGLIO TRANSAZIONE" in compact_pdf_text
+    ):
+        return "ricevuta_pagopa"
 
     # Struttura positiva del modello F24.  Non dipendere dal nome file e non
     # usare una singola parola: una nota INPS o un avviso PagoPA possono

@@ -505,6 +505,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - IRAP è un motore separato da IRES, non sottrae mai l'intero F24, e le
   aliquote sono versionate per periodo d'imposta.
 - **Situazione fiscale legge il registro unico F24** (`registro_fiscale_f24.py`), mai l'indice Excel su Drive; un quadro del 770 caricato da solo (`componenti_770.py`) si aggancia al 770 intero per «Identificativo dichiarazione», mai per nome o importo.
+- **Ricevute di pagamento pagoPA** (`pagopa_receipts.py`, un lettore per famiglia: BPM, Mooney via OCR, «Attestazione di pagamento» AdER): ogni voce «etichetta: € importo» si legge e la somma deve fare il totale al centesimo, altrimenti resta `DA_VERIFICARE` (una voce nuova non si ignora; «Importo originario» non è una voce). Stesso IUV, data e importo = stesso pagamento, un secondo file non duplica. La ricevuta non dice **che cosa** si è pagato: la natura (tributo, rata, diritti/oneri, sanzione) la sceglie il titolare (`PUT /api/pagopa/ricevute/{id}/natura`) o la dicono i soli diritti di notifica; la Mooney si aggancia al PayPal per ID transazione, mai per importo.
 - Il catalogo dei codici tributo è consultivo: una ricerca non crea F24, pagamenti o scritture. **Le
   descrizioni vengono solo da `services/codici_tributo_f24.py`**, causali INPS comprese (RC01 è la
   regolarizzazione, non gli artigiani); `services/codici_tributo_db.py` aggiunge le scadenze. Parser e router

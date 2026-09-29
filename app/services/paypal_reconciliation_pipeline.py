@@ -1,8 +1,11 @@
 """Un solo passaggio PayPal -> fattura -> banca per tutti gli ingressi vivi."""
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _count(value: Any) -> int:
@@ -39,8 +42,19 @@ async def riconcilia_paypal_importato(
     dopo = await riprocessa_collegamenti_paypal(
         db, start_date=start_date, end_date=end_date,
     )
+    # Le ricevute pagoPA/Mooney arrivate prima del pagamento PayPal lo trovano qui.
+    from app.services.pagopa_receipts import ricollega_ricevute_paypal
+    try:
+        ricevute = await ricollega_ricevute_paypal(db)
+    except Exception as exc:  # la rete delle ricevute non ferma il giro PayPal
+        logger.warning(
+            "Ricevute pagoPA non ricollegate ai pagamenti PayPal (%s): %s",
+            type(exc).__name__, exc,
+        )
+        ricevute = {"in_attesa": 0, "collegate": 0, "errore": type(exc).__name__}
     return {
         "collegamenti_prima": prima,
         "banca": banca,
         "collegamenti_dopo": dopo,
+        "ricevute_pagopa": ricevute,
     }

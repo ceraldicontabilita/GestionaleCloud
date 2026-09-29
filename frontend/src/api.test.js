@@ -3,9 +3,11 @@
  * correlation_id e lascia `detail` com'era. `messaggioErrore` e' l'unico
  * punto che trasforma quella risposta in una frase per l'utente.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { messaggioErrore } from './api';
+import api, { ATTESE_RITENTATIVI_MS, eErroreTransitorio, messaggioErrore } from './api';
+
+vi.mock('sonner', () => ({ toast: { loading: vi.fn(), dismiss: vi.fn() } }));
 
 const errore = (data, status = 400) => ({ response: { status, data }, message: 'Request failed' });
 
@@ -37,5 +39,45 @@ describe('messaggioErrore', () => {
   it('senza risposta usa il messaggio di rete, poi il predefinito', () => {
     expect(messaggioErrore({ message: 'Network Error' })).toBe('Network Error');
     expect(messaggioErrore(null, 'Salvataggio non riuscito')).toBe('Salvataggio non riuscito');
+  });
+});
+
+
+describe('letture durante il riavvio del servizio', () => {
+  it('502, 503, 504 e una richiesta caduta sono transitori; un 400 o un 500 no', () => {
+    expect(eErroreTransitorio({ response: { status: 502 } })).toBe(true);
+    expect(eErroreTransitorio({ response: { status: 503 } })).toBe(true);
+    expect(eErroreTransitorio({ response: { status: 504 } })).toBe(true);
+    expect(eErroreTransitorio({ message: 'Network Error' })).toBe(true);
+    expect(eErroreTransitorio({ response: { status: 400 } })).toBe(false);
+    expect(eErroreTransitorio({ response: { status: 500 } })).toBe(false);
+  });
+
+  it('le attese coprono circa un minuto: un riavvio di Render non arriva all\'errore rosso', () => {
+    const totale = ATTESE_RITENTATIVI_MS.reduce((a, b) => a + b, 0);
+    expect(totale).toBeGreaterThanOrEqual(60000);
+    expect(ATTESE_RITENTATIVI_MS.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('una lettura ritenta finche\' il servizio risponde; una scrittura no', async () => {
+    vi.useFakeTimers();
+    let chiamate = 0;
+    const adattatore = config => {
+      chiamate += 1;
+      if (chiamate <= 3) return Promise.reject({ config, response: { status: 502, data: '' } });
+      return Promise.resolve({ data: { ok: true }, status: 200, statusText: 'OK', headers: {}, config });
+    };
+    const lettura = api.get('/api/prova', { adapter: adattatore });
+    await vi.runAllTimersAsync();
+    expect((await lettura).data).toEqual({ ok: true });
+    expect(chiamate).toBe(4);
+
+    chiamate = 0;
+    const scrittura = api.post('/api/prova', {}, { adapter: adattatore });
+    const esito = scrittura.catch(e => e);
+    await vi.runAllTimersAsync();
+    expect((await esito).response.status).toBe(502);
+    expect(chiamate).toBe(1);
+    vi.useRealTimers();
   });
 });

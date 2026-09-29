@@ -44,6 +44,7 @@ CREDITO = "CREDITO"
 SANZIONE = "SANZIONE"
 INTERESSI = "INTERESSI"
 SENZA_PROVA = "SENZA_PROVA"
+NON_TORNA = "NON_TORNA"
 
 ETICHETTE = {
     PAGATO: "Pagato (quietanza)",
@@ -57,6 +58,7 @@ ETICHETTE = {
     SANZIONE: "Sanzione pagata",
     INTERESSI: "Interessi pagati",
     SENZA_PROVA: "Da verificare",
+    NON_TORNA: "Non torna con le fatture",
 }
 
 # Sanzioni e interessi da ravvedimento (fonte unica: constants/codici_ravvedimento).
@@ -308,10 +310,21 @@ def _chiudi_voce(voce: Dict[str, Any], oggi: str) -> Dict[str, Any]:
     voce["pagato_cents"] = pagato
     voce["dovuto_cents"] = dovuto
     voce["residuo_cents"] = max(0, dovuto - pagato)
+    # Ritenuta: la somma delle fatture e l'importo versato devono coincidere al
+    # centesimo. Se no, «pagato» sarebbe un'affermazione senza prova.
+    voce["scarto_cents"] = 0
+    voce["fatture_da_associare"] = False
+    if voce["codice"] == "1040" and voce["sezione"] == "sezione_erario":
+        if voce["atteso_cents"] and pagato and pagato != voce["atteso_cents"]:
+            voce["scarto_cents"] = pagato - voce["atteso_cents"]
+        elif pagato and not voce["atteso_cents"]:
+            voce["fatture_da_associare"] = True
     scadenza = voce["scadenza"]
     ritardo = bool(scadenza and voce["ultimo_pagamento"] and voce["ultimo_pagamento"] > scadenza)
     voce["in_ritardo"] = ritardo
-    if voce["residuo_cents"] > 0:
+    if voce["scarto_cents"]:
+        stato = NON_TORNA
+    elif voce["residuo_cents"] > 0:
         if not voce["inviato_cents"] and voce["atteso_cents"] and not pagato:
             stato = SCADUTO if scadenza and scadenza < oggi else ATTESO
         else:
