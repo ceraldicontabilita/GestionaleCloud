@@ -43,13 +43,20 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
   const associa = async (movimento) => {
     setInCorso(movimento.id);
     try {
+      // La quota e' quella del movimento: per un acconto la fattura resta
+      // aperta per la differenza, invece di essere rifiutata al centesimo.
+      const quota = movimento.conferma === 'parziale' ? { quota_cents: movimento.quota_cents } : {};
       await api.post('/api/operazioni-da-confermare/smart/riconcilia-manuale', {
         movimento_id: movimento.id,
         tipo: 'fattura',
-        associazioni: [{ id: fattura.fattura_id }],
-        note: 'Associazione confermata a mano da Prima Nota',
+        associazioni: [{ id: fattura.fattura_id, ...quota }],
+        note: movimento.conferma === 'parziale'
+          ? 'Acconto confermato a mano da Prima Nota'
+          : 'Associazione confermata a mano da Prima Nota',
       });
-      toast.success('Fattura associata al movimento bancario.');
+      toast.success(movimento.conferma === 'parziale'
+        ? 'Acconto associato: la fattura resta aperta per la differenza.'
+        : 'Fattura associata al movimento bancario.');
       onAssociato?.();
       onChiudi();
     } catch (e) {
@@ -81,6 +88,9 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
         <p style={{ margin: '0 0 14px', color: '#7a776e', fontSize: 13 }}>
           {fattura.fornitore || '—'} — Fatt. {fattura.fattura_numero || '—'} ·{' '}
           <b>{euro(fattura.importo)}</b>
+          {dati && dati.residuo != null && Number(dati.residuo) !== Number(fattura.importo) && (
+            <> · da pagare al fornitore <b>{euro(dati.residuo)}</b></>
+          )}
         </p>
 
         {errore && <p style={{ color: '#b0362b' }}>{errore}</p>}
@@ -110,6 +120,14 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
               <div style={{ fontSize: 12.5, color: '#5f5c55' }}>
                 {(m.descrizione || m.descrizione_originale || '').slice(0, 110)}
               </div>
+              {m.spiegazione && (
+                <div
+                  data-testid={`esito-${m.id}`}
+                  style={{ fontSize: 12, marginTop: 4, fontWeight: 700, color: m.conferma === 'eccede' ? '#b0362b' : m.conferma === 'parziale' ? '#8a6410' : '#2f7a4f' }}
+                >
+                  {m.spiegazione}
+                </div>
+              )}
               <div style={{ fontSize: 11.5, marginTop: 4 }}>
                 {m.prove.length === 0 ? (
                   <span style={{ color: '#92400e' }}>
@@ -133,15 +151,16 @@ export default function AssociaMovimentoBanca({ fattura, onChiudi, onAssociato }
             </div>
             <button
               onClick={() => associa(m)}
-              disabled={Boolean(inCorso)}
+              disabled={Boolean(inCorso) || m.conferma === 'eccede'}
+              title={m.conferma === 'eccede' ? m.spiegazione : undefined}
               style={{
                 padding: '8px 14px', borderRadius: 8, border: 'none',
                 background: '#2c2b28', color: '#fff', fontWeight: 700,
-                fontSize: 12.5, cursor: inCorso ? 'wait' : 'pointer',
-                opacity: inCorso && inCorso !== m.id ? 0.5 : 1,
+                fontSize: 12.5, cursor: inCorso ? 'wait' : m.conferma === 'eccede' ? 'not-allowed' : 'pointer',
+                opacity: (inCorso && inCorso !== m.id) || m.conferma === 'eccede' ? 0.5 : 1,
               }}
             >
-              {inCorso === m.id ? 'Associo…' : 'È questo'}
+              {inCorso === m.id ? 'Associo…' : m.conferma === 'parziale' ? 'È un acconto' : 'È questo'}
             </button>
           </div>
         ))}

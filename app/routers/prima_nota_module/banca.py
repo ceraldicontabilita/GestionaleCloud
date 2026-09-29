@@ -896,6 +896,9 @@ async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str,
         ],
         "riconciliato": {"$ne": True},
         "classificato_contabilmente": {"$ne": True},
+        # Le spese della carta di credito non sono movimenti del conto: il
+        # conto vede solo il saldo mensile Nexi (giroconto).
+        "tipo": {"$ne": "carta_credito"},
     }
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
@@ -1062,39 +1065,59 @@ async def candidati_banca_per_fattura(fattura_id: str) -> Dict[str, Any]:
     Qui le prove si mostrano invece di pretenderle: ogni candidato arriva con
     scritto cosa combacia e cosa no. La decisione resta all'utente, che di
     quella fattura sa cose che il gestionale non sa.
+
+    L'importo cercato e' il **residuo da pagare al fornitore** (totale meno
+    ritenuta, meno quote gia' pagate), lo stesso che la conferma pretende al
+    centesimo: cercare sul totale mostrava movimenti che poi la conferma
+    rifiutava («Quadratura bloccata»), e non trovava mai il bonifico netto di
+    una parcella con ritenuta. Ogni candidato dice come si puo' confermare:
+    ``intero`` (chiude la fattura), ``parziale`` (acconto: la fattura resta
+    aperta per la differenza) o ``eccede`` (il movimento supera il residuo:
+    non si conferma da qui).
     """
     from app.routers.invoices.fatture_upload import (
         _finestra_pagamento,
         _token_identita_fornitore,
     )
     from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
+    from app.services.bank_payment_allocations import invoice_payable_cents
+    from app.services.payment_allocation_validator import (
+        existing_invoice_allocations_cents, to_cents,
+    )
 
     db = Database.get_db()
 
-    fattura = await db["invoices"].find_one(
-        {"id": fattura_id},
-        {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
-         "supplier_name": 1, "total_amount": 1},
-    )
+    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0, "xml_raw": 0, "pdf_data": 0})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
-    importo = float(fattura.get("total_amount") or 0)
-    if importo <= 0:
-        return {"fattura": fattura, "candidati": [], "totale": 0}
+    totale_cents = to_cents(fattura.get("total_amount"))
+    residuo_cents = max(0, invoice_payable_cents(fattura) - existing_invoice_allocations_cents(fattura))
+    vista_fattura = {
+        k: fattura.get(k) for k in ("id", "invoice_number", "invoice_date", "supplier_name", "total_amount")
+    }
+    vista_fattura["residuo"] = residuo_cents / 100
+    if residuo_cents <= 0:
+        return {"fattura": vista_fattura, "candidati": [], "totale": 0, "residuo": 0.0,
+                "nota": "La fattura non ha residuo da pagare al fornitore."}
 
     # Tolleranza volutamente larga: serve a MOSTRARE, non ad associare da solo.
     # L'associazione la conferma una persona, e la sua conferma e' la prova.
+    cercati = sorted({residuo_cents, totale_cents} - {0})
+    fasce = []
+    for cents in cercati:
+        importo = cents / 100
+        fasce.extend([
+            {"importo": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
+            {"importo": {"$gte": -importo - 0.05, "$lte": -importo + 0.05}},
+        ])
     conds: Dict[str, Any] = {
         "tipo": "uscita",
         "abbinato": {"$ne": True},
         "$and": [
             filtro_solo_evidenza_ufficiale(),
             {"riconciliato": {"$ne": True}},
-            {"$or": [
-                {"importo": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
-                {"importo": {"$gte": -importo - 0.05, "$lte": -importo + 0.05}},
-            ]},
+            {"$or": fasce},
         ],
     }
     finestra = _finestra_pagamento(str(fattura.get("invoice_date") or "")[:10])
@@ -1113,19 +1136,39 @@ async def candidati_banca_per_fattura(fattura_id: str) -> Dict[str, Any]:
     candidati = []
     for m in movimenti:
         testo = f"{m.get('descrizione') or ''} {m.get('descrizione_originale') or ''}".upper()
+        movimento_cents = abs(to_cents(m.get("importo")))
         prove = []
-        if abs(abs(float(m.get("importo") or 0)) - importo) < 0.005:
+        if movimento_cents == residuo_cents:
             prove.append("importo esatto")
         if numero and numero in testo:
             prove.append("numero fattura nella causale")
         if token_fornitore and any(t in testo for t in token_fornitore):
             prove.append("nome fornitore nella causale")
-        candidati.append({**m, "prove": prove, "forza": len(prove)})
+        if movimento_cents == residuo_cents:
+            conferma, spiegazione = "intero", "chiude la fattura"
+        elif movimento_cents < residuo_cents:
+            conferma = "parziale"
+            spiegazione = (
+                f"acconto: restano {(residuo_cents - movimento_cents) / 100:.2f} € da pagare"
+                .replace(".", ",")
+            )
+        else:
+            conferma = "eccede"
+            spiegazione = (
+                f"il movimento supera di {(movimento_cents - residuo_cents) / 100:.2f} € "
+                "il residuo della fattura"
+            ).replace(".", ",")
+            if movimento_cents == totale_cents and totale_cents != residuo_cents:
+                spiegazione += " (e' il totale con la ritenuta, non il netto da pagare)"
+        candidati.append({**m, "prove": prove, "forza": len(prove),
+                          "conferma": conferma, "spiegazione": spiegazione,
+                          "quota_cents": min(movimento_cents, residuo_cents)})
 
-    candidati.sort(key=lambda c: (-c["forza"], str(c.get("data") or "")))
+    candidati.sort(key=lambda c: (c["conferma"] == "eccede", -c["forza"], str(c.get("data") or "")))
 
     return {
-        "fattura": fattura,
+        "fattura": vista_fattura,
+        "residuo": residuo_cents / 100,
         "candidati": candidati,
         "totale": len(candidati),
         "nota": ("L'associazione la confermi tu: il gestionale mostra cosa "

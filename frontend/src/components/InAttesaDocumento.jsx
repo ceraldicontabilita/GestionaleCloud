@@ -194,6 +194,15 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
               <div style={{ color: '#92400e', fontSize: 12.5, fontWeight: 700 }}>
                 {m.motivo_sospensione}
               </div>
+              {(m.candidati || []).length === 0 && (
+                <a
+                  href={`/riconciliazione/banca?movimento=${encodeURIComponent(m.id)}`}
+                  data-testid={`cerca-documento-${m.id}`}
+                  style={{ fontSize: 12.5, fontWeight: 700, color: '#c15f3c' }}
+                >
+                  Nessun candidato automatico: cerca il documento in Riconciliazione
+                </a>
+              )}
               {(m.candidati || []).map((fattura) => (
                 <div
                   key={`${m.id}:${fattura.id}`}

@@ -254,6 +254,19 @@ def _float_from_spreadsheet(value: Any) -> Optional[float]:
         return None
 
 
+# Un export con almeno tante righe e nessun importo negativo non dice quali
+# sono entrate e quali uscite: il 29/09/2026 «ElencoEntrateUsciteAndamento_
+# 31-07-2026.csv» (1.873 righe, zero negativi) e il foglio della carta Nexi
+# sono entrati tutti come «entrata», addebiti SDD e prelievi assegno compresi.
+MIN_RIGHE_CONTROLLO_SEGNO = 10
+
+
+def segno_assente(movimenti: List[Dict[str, Any]]) -> bool:
+    """True se il file non distingue entrate e uscite (nessun importo negativo)."""
+    importi = [m.get("importo") for m in movimenti if m.get("importo") not in (None, 0, 0.0)]
+    return len(importi) >= MIN_RIGHE_CONTROLLO_SEGNO and all(float(i) > 0 for i in importi)
+
+
 def parse_enti_file_contabili_xlsx(contents: bytes) -> Optional[List[Dict[str, Any]]]:
     """Legge l'export ``Enti_File_Contabili`` delle carte aziendali.
 
@@ -450,6 +463,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     )
     
     movimenti = []
+    segno_da_controllare = False
     
     if filename.endswith('.pdf'):
         from app.parsers.estratto_conto_bpm_parser import parse_estratto_conto_bpm
@@ -539,6 +553,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             })
 
     elif filename.endswith('.csv'):
+        segno_da_controllare = True
         # Prova diversi encoding
         text = None
         for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
@@ -661,6 +676,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             if enti_rows is not None:
                 movimenti.extend(enti_rows)
             else:
+                segno_da_controllare = True
                 import openpyxl
                 wb = openpyxl.load_workbook(io.BytesIO(contents))
                 sheet = wb.active
@@ -752,6 +768,19 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     else:
         raise HTTPException(status_code=400, detail="Formato non supportato. Usa PDF, CSV o Excel.")
     
+    if segno_da_controllare and segno_assente(movimenti):
+        # Mai indovinare il verso: registrare «entrata» un addebito gonfia il
+        # saldo e riempie la coda di Prima Nota Banca di doppioni.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"File senza segno: {len(movimenti)} importi tutti positivi, nessuna uscita. "
+                "Non si capisce quali sono entrate e quali uscite: il file non viene registrato. "
+                "Scarica dalla banca l'export con gli importi negativi per le uscite "
+                "(o l'estratto conto PDF)."
+            ),
+        )
+
     # Salva nel database, evitando duplicati con un singolo query bulk
     import uuid as _uuid
     inserted = 0

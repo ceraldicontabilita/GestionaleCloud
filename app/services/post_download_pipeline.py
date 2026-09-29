@@ -69,6 +69,25 @@ async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
                 except Exception as e:
                     logger.debug(f"[PIPELINE-F24] Base parser fallito: {e}")
 
+            righe_lette = sum(
+                len(parsed.get(sezione) or [])
+                for sezione in ("sezione_erario", "sezione_inps", "sezione_regioni",
+                                "sezione_imu_tributi_locali", "sezione_inail")
+            ) if parsed else 0
+            if parsed and righe_lette == 0:
+                # Un allegato senza righe tributo non e' un F24 da pagare: era
+                # una pratica, una ricevuta o un PDF non letto (22 gusci vuoti
+                # il 28/09/2026, fra cui una pratica personale). Resta nella
+                # coda degli allegati con l'esito, non diventa un modello.
+                logger.warning("[PIPELINE-F24] %s: nessuna riga tributo letta, non salvato", filename)
+                await db["f24_email_attachments"].update_one(
+                    {"id": doc["id"]},
+                    {"$set": {"processed": True, "esito": "senza_righe_tributo",
+                              "processed_at": datetime.now(timezone.utc).isoformat()}},
+                )
+                stats["errori"] += 1
+                continue
+
             if parsed and (parsed.get("success") or parsed.get("sezione_erario")):
                 # Salva in f24_commercialista
                 f24_doc = {
