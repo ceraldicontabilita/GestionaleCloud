@@ -300,6 +300,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   errori e l'ultimo cursore.
 - Un errore di parsing **conserva email e allegato** e crea una coda visibile:
   non si scarta nulla.
+- **ZIP oltre 100 MB**: restano su Drive e si importano con `POST /api/admin/documenti/import-zip-drive?file_id=…` (`drive_zip_import.py`, `dry_run` per difetto = solo anteprima): indice e voci a intervalli di byte, ogni voce dallo smistatore della cartella unica (stessi doppioni), cursore in `sistema_stato`, si riprende dopo un riavvio; niente si sposta né si cancella su Drive. Avanzamento: `GET …/stato`.
 - Gli ZIP si validano prima dell'estrazione (path traversal, zip-bomb,
   estensioni vietate, limite di dimensione), poi si deduplicano e inventariano.
 - Deduplica documentale certa solo con SHA-256 **e** confronto byte; mai per
@@ -860,7 +861,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **installare la copia serale RT sul suo PC** (`scripts/installa_sync_rt.ps1`, recupera da sola le giornate dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
-- **Minisito fiscale** (RST-MINI): script e JSON attesi non sono su Drive (solo i due HTML). Saldo IRAP 2024 (5.164,00 €) e acconto IRAP 2025 (4.238,00 €) senza quietanza: da verificare col commercialista. 18 quietanze doppie (21.727,35 €) da mettere in quarantena con `/api/doppioni` (prima `dry_run`).
+- **Minisito fiscale** (RST-MINI): script e JSON stanno nello zip «09_CRUSCOTTO_E_DATI_STRUTTURATI» (da mettere in `MINISITO FISCALE` su Drive) e i PDF in «MINISITO (4).zip» (638 MB, DATI NUOVI) da importare con `import-zip-drive`. Saldo IRAP 2024 (5.164,00 €) e acconto IRAP 2025 (4.238,00 €) senza quietanza: da verificare col commercialista. 18 quietanze doppie (21.727,35 €) da mettere in quarantena con `/api/doppioni` (prima `dry_run`).
 - `gestionale.blobs`: oltre ai backup di Lotti, 216 PDF che **nessun documento cita**; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
 
 ## Logica dentro al database

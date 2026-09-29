@@ -508,6 +508,42 @@ async def fatture_pagamenti_dichiarati_stato(
 
 
 @router.post(
+    "/documenti/import-zip-drive",
+    summary="Importa uno ZIP grande direttamente da Drive, a voci e riprendibile",
+)
+async def documenti_import_zip_drive(
+    file_id: str = Query(..., min_length=10, max_length=120, description="Id Drive dello ZIP"),
+    dry_run: bool = Query(True, description="Se True conta soltanto cosa c'e' nello ZIP (simulazione)"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Documenti > Import accetta ZIP fino a 100 MB. Questo legge lo ZIP dove sta,
+    su Drive, con richieste a intervalli di byte, e ne passa ogni voce dallo
+    stesso smistatore della cartella unica (stesse regole e stessi doppioni).
+    Non sposta e non cancella niente su Drive. Gira in background; se il
+    servizio si riavvia, un nuovo avvio riparte dalla voce successiva.
+    Esito su `GET /documenti/import-zip-drive/stato`.
+    """
+    richiedi_admin(current_user)
+    from app.services import drive_zip_import
+
+    return await drive_zip_import.avvia(Database.get_db(), file_id, dry_run=dry_run)
+
+
+@router.get(
+    "/documenti/import-zip-drive/stato",
+    summary="Avanzamento dell'import di uno ZIP da Drive",
+)
+async def documenti_import_zip_drive_stato(
+    file_id: str = Query(..., min_length=10, max_length=120),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    richiedi_admin(current_user)
+    from app.services import drive_zip_import
+
+    return await drive_zip_import.stato(Database.get_db(), file_id)
+
+
+@router.post(
     "/fatture/azzera-scadenze",
     summary="Toglie le scadenze inventate dalle fatture fornitore e dalle partite",
 )
