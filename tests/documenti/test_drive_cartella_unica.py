@@ -389,7 +389,7 @@ def test_nel_giro_l_arretrato_va_in_arretrato_non_in_errori(ambiente):
     assert riga["esito"] == "arretrato" and riga["cartella"] == cu.ARRETRATO
 
 
-def test_gli_estratti_conto_passano_davanti_agli_xml_e_ai_pdf():
+def test_gli_estratti_conto_passano_davanti_a_buste_xml_e_pdf():
     """28/09/2026: gli estratti ufficiali BPM del 2025 erano sciolti nella
     radice dietro oltre cinquemila file, e senza di loro stipendi e PayPal
     restavano da riconciliare."""
@@ -402,9 +402,9 @@ def test_gli_estratti_conto_passano_davanti_agli_xml_e_ai_pdf():
         {"name": "Estratto_Conto (3).pdf"},
     ]
     assert [f["name"] for f in cu.ordina_coda(coda)] == [
-        "LUL_2026_08.pdf",
         "Estratto conto corrente_30-09-2025.pdf",
         "Estratto_Conto (3).pdf",
+        "LUL_2026_08.pdf",
         "IT01234567890_abc.xml",
         "bonifico.pdf",
         "ElencoEntrateUsciteAndamento.csv",
