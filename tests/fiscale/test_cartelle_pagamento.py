@@ -201,3 +201,11 @@ def test_un_vero_modello_f24_resta_f24_anche_con_un_nome_da_dichiarazione():
 
     assert detect_document_type("770_ritenute_2021.pdf", contenuto) == "f24"
     assert detect_document_type("documento.pdf", contenuto) == "f24"
+
+
+def test_irap_ira_t_con_riga_f24_nel_testo_e_dichiarazione():
+    from app.routers.documenti import _tipo_dichiarazione
+
+    testo = "QUADRO IR Ripartizione della base imponibile e dell'imposta Versato in F24"
+    assert _tipo_dichiarazione("IRA_T210930200114276161_00000000000.pdf", testo) == "dichiarazione_fiscale"
+    assert _tipo_dichiarazione("UNICO_SC_2019.pdf", "") == "dichiarazione_fiscale"
