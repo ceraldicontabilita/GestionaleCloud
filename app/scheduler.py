@@ -1286,11 +1286,11 @@ def start_scheduler():
 
     scheduler.add_job(
         _import_cartelle_drive_job,
-        'interval', hours=1,
-        next_run_time=avvio + timedelta(minutes=12),
+        'interval', minutes=10,
+        next_run_time=avvio + timedelta(minutes=2),
         misfire_grace_time=300,
         coalesce=True,
-        id="import_cartelle_drive", name="Import cartelle Drive in sola lettura (ogni ora, se configurato)",
+        id="import_cartelle_drive", name="Import cartelle Drive in sola lettura (ogni 10 minuti, se configurato)",
         replace_existing=True,
     )
 
