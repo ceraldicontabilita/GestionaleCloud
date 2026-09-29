@@ -112,6 +112,17 @@ async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Op
                               pdf_text=pdf_text, results=results)
 
 
+def _annota_busta(results: Dict[str, Any], ced: Dict[str, Any], esito: str) -> None:
+    """Cosa e' successo a ogni busta, per chi deve mostrarlo (Libro Unico in HR)."""
+    results.setdefault("dettaglio", []).append({
+        "dipendente": ced.get("nome_dipendente") or ced.get("codice_fiscale"),
+        "codice_fiscale": ced.get("codice_fiscale"),
+        "anno": ced.get("anno"), "mese": ced.get("mese"),
+        "tipo_cedolino": ced.get("tipo_cedolino") or "mensile",
+        "netto": ced.get("netto"), "esito": esito,
+    })
+
+
 async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Optional[str],
                           pdf_text: str, results: Dict[str, Any]) -> None:
     from app.constants.stati_netto import alimenta_salari
@@ -128,6 +139,7 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
         })
         if deposito.get("esito") in ("inserito", "gia_presente"):
             results["buste_senza_netto"] += 1
+            _annota_busta(results, ced, "solo_hr")
         else:
             results["errori"].append(
                 f"{chi}: busta senza netto verificato non depositata in HR ({deposito.get('esito')})"
@@ -143,6 +155,7 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
             "source_file_hash": ced.get("source_file_hash"),
         }}})
         results["gia_presenti"] = results.get("gia_presenti", 0) + 1
+        _annota_busta(results, ced, "gia_presente")
         return
 
     try:
@@ -160,6 +173,7 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
 
     if res.get("success"):
         results["cedolini_processati"] += 1
+        _annota_busta(results, ced, "scritta")
         if res.get("anagrafica_creata"):
             results["anagrafiche_create"] += 1
         if res.get("prima_nota_creata") or res.get("prima_nota_id"):

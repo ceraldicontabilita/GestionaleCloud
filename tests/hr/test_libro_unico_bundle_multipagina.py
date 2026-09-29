@@ -2,61 +2,52 @@ import asyncio
 import base64
 
 import fitz
-from mongomock_motor import AsyncMongoMockClient
 
 
 def _run(coro):
     return asyncio.run(coro)
 
 
-def test_import_hr_conserva_ordinario_e_quattordicesima_dello_stesso_periodo(monkeypatch):
+def test_libro_unico_hr_passa_dallo_scrittore_unico_e_riporta_ogni_busta(monkeypatch):
+    from app.database import Database
     from app.hr.services import libro_unico_bundle
-    from app.services import cedolini_motore
+    from app.services import cedolini_manager
 
     pdf = fitz.open()
     for testo in ("PAGINA 1", "PAGINA 2", "PAGINA 3"):
         pdf.new_page().insert_text((72, 72), testo)
     pdf_bytes = pdf.tobytes()
     pdf.close()
-    pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
 
-    monkeypatch.setattr(cedolini_motore, "leggi_pdf", lambda _content: {
-        "buste": [
-            {
-                "codice_fiscale": "RSSMRA80A01H501U", "nome_dipendente": "ROSSI MARIO",
-                "anno": 2026, "mese": 7, "tipo_cedolino": "mensile",
-                "netto": 1200.0, "lordo": 1500.0, "stato_netto": "NETTO_VERIFICATO_DA_CEDOLINO",
-                "source_page_start": 1, "source_page_end": 2, "source_document_pages": 3,
-                "_pdf_data": pdf_b64,
-            },
-            {
-                "codice_fiscale": "RSSMRA80A01H501U", "nome_dipendente": "ROSSI MARIO",
-                "anno": 2026, "mese": 7, "tipo_cedolino": "quattordicesima",
-                "netto": 600.0, "lordo": 750.0, "stato_netto": "NETTO_VERIFICATO_DA_CEDOLINO",
-                "retribuzione": {"paga_base": 750.0},
-                "source_page_start": 3, "source_page_end": 3, "source_document_pages": 3,
-                "_pdf_data": pdf_b64,
-            },
-        ],
-        "presenze": [],
-    })
+    chiamate = []
+    erp_db = object()
 
-    db = AsyncMongoMockClient()["hr_libro_unico"]
-    _run(db.dipendenti.insert_one({
-        "id": "dip-1", "codice_fiscale": "RSSMRA80A01H501U", "nome_completo": "Rossi Mario",
-    }))
+    async def scrittore(db, pdf_b64, filename, **kwargs):
+        chiamate.append((db, base64.b64decode(pdf_b64), filename, kwargs))
+        return {"dettaglio": [
+            {"dipendente": "ROSSI MARIO", "codice_fiscale": "RSSMRA80A01H501U", "anno": 2026,
+             "mese": 7, "tipo_cedolino": "mensile", "netto": 1200.0, "esito": "scritta"},
+            {"dipendente": "ROSSI MARIO", "codice_fiscale": "RSSMRA80A01H501U", "anno": 2026,
+             "mese": 7, "tipo_cedolino": "quattordicesima", "netto": 600.0, "esito": "solo_hr"},
+            {"dipendente": "BIANCHI LUCA", "codice_fiscale": "BNCLCU80A01H501X", "anno": 2026,
+             "mese": 7, "tipo_cedolino": "mensile", "netto": 900.0, "esito": "gia_presente"},
+        ], "errori": ["ROSSI: scrittura fallita"]}
 
-    esito = _run(libro_unico_bundle.dividi_e_registra(db, pdf_bytes, "libro-unico.pdf"))
-    inseriti = _run(db.cedolini.find({}, {"_id": 0}).to_list(10))
+    monkeypatch.setattr(cedolini_manager, "processa_tutti_cedolini_pdf", scrittore)
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: erp_db))
 
+    esito = _run(libro_unico_bundle.dividi_e_registra(object(), pdf_bytes, "libro-unico.pdf"))
+
+    assert chiamate[0][0] is erp_db
+    assert chiamate[0][1] == pdf_bytes
     assert esito["pagine_totali"] == 3
-    assert len(esito["inseriti"]) == 2
-    assert {(c["tipo_cedolino"], c["netto"]) for c in inseriti} == {
+    assert esito["dipendenti_nel_documento"] == 2
+    assert {(b["tipo_cedolino"], b["netto"]) for b in esito["inseriti"]} == {
         ("ordinario", 1200.0), ("quattordicesima", 600.0),
     }
-    assert {(c["source_page_start"], c["source_page_end"]) for c in inseriti} == {(1, 2), (3, 3)}
-    quattordicesima = next(c for c in inseriti if c["tipo_cedolino"] == "quattordicesima")
-    assert quattordicesima["retribuzione"] == {"paga_base": 750.0}
+    assert esito["inseriti"][0]["competenza"] == "2026-07"
+    assert esito["gia_presenti"] == [{"dipendente": "BIANCHI LUCA", "competenza": "2026-07"}]
+    assert esito["senza_pagina_retributiva"] == [{"errore": "ROSSI: scrittura fallita"}]
 
 
 def test_endpoint_libro_unico_canonico_sincronizza_attese_14a(monkeypatch):
