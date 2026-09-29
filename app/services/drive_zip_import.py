@@ -1,4 +1,4 @@
-"""Import di uno ZIP grande direttamente da Drive, a voci e riprendibile.
+"""Import di uno ZIP grande o di una cartella Drive, a voci e riprendibile.
 
 Documenti > Import accetta uno ZIP fino a 100 MB perche' lo tiene tutto in
 memoria. Uno ZIP da centinaia di MB (il «MINISITO» del titolare: 638 MB) non
@@ -10,6 +10,11 @@ Ogni voce passa dallo stesso smistatore della cartella unica
 (`drive_cartella_unica._smista` -> `upload_documento_automatico`), quindi ha le
 stesse regole di riconoscimento e di doppioni: un secondo passaggio deve dare
 `importati=0`. Niente si sposta e niente si cancella su Drive.
+
+Una **cartella** Drive (con le sue sottocartelle, come il «MINISITO» messo dentro
+«DATI SOCIETA CERALDI») si importa allo stesso modo: l'albero si legge in sola
+lettura, ogni file passa dallo smistatore, la struttura resta dov'e'. Lo smistatore
+della cartella unica non scende nelle sottocartelle, e non deve svuotarle.
 
 Lo stato (cursore, contatori, voci non riconosciute) sta in `sistema_stato`
 sotto `import_zip_drive:<file_id>`: se il servizio si riavvia a meta', un nuovo
@@ -23,9 +28,10 @@ import hashlib
 import io
 import logging
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +155,85 @@ def _motivo_saltata(voce: zipfile.ZipInfo) -> Optional[str]:
     return None
 
 
+@dataclass
+class _Voce:
+    """Un file da importare, che venga da uno ZIP o da una cartella Drive."""
+    percorso: str
+    nome: str
+    motivo: Optional[str]
+    leggi: Callable[[], Awaitable[bytes]]
+
+
+CARTELLA_MIME = "application/vnd.google-apps.folder"
+
+
+def _elenca_albero(service, cartella_id: str, nome_radice: str) -> List[Dict[str, Any]]:
+    """Tutti i file sotto una cartella Drive (sola lettura), in ordine di percorso."""
+    trovati: List[Dict[str, Any]] = []
+    coda = [(cartella_id, nome_radice)]
+    while coda:
+        corrente, base = coda.pop(0)
+        token = None
+        while True:
+            risposta = service.files().list(
+                q=f"'{corrente}' in parents and trashed = false",
+                fields="nextPageToken, files(id, name, mimeType, size, md5Checksum)",
+                pageSize=1000, pageToken=token,
+                supportsAllDrives=True, includeItemsFromAllDrives=True,
+            ).execute()
+            for f in risposta.get("files", []):
+                percorso = f"{base}/{f['name']}"
+                if f.get("mimeType") == CARTELLA_MIME:
+                    coda.append((f["id"], percorso))
+                else:
+                    trovati.append({**f, "percorso": percorso})
+            token = risposta.get("nextPageToken")
+            if not token:
+                break
+    trovati.sort(key=lambda f: (f["percorso"], f["id"]))
+    return trovati
+
+
+def _motivo_file_drive(f: Dict[str, Any]) -> Optional[str]:
+    nome = str(f.get("name") or "")
+    suffisso = Path(nome).suffix.lower()
+    if not nome or nome.startswith("."):
+        return "file di sistema"
+    if str(f.get("mimeType") or "").startswith("application/vnd.google-apps."):
+        return "documento Google: non e' un file"
+    if suffisso == ".zip":
+        return "archivio annidato: non si apre"
+    if suffisso not in SUFFISSI_AMMESSI:
+        return "formato che l'import non legge"
+    if int(f.get("size") or 0) > MAX_VOCE_BYTE:
+        return "file oltre 50 MB"
+    return None
+
+
+def _voci_da_cartella(file_drive: List[Dict[str, Any]]) -> List[_Voce]:
+    from app.services.drive_download import scarica_originale
+
+    def lettore(fid: str, md5: Optional[str]):
+        return lambda: scarica_originale(fid, md5=md5)
+
+    return [
+        _Voce(f["percorso"], f["name"], _motivo_file_drive(f),
+              lettore(f["id"], f.get("md5Checksum")))
+        for f in file_drive
+    ]
+
+
+def _voci_da_zip(archivio: zipfile.ZipFile) -> List[_Voce]:
+    def lettore(voce: zipfile.ZipInfo):
+        return lambda: asyncio.to_thread(archivio.read, voce)
+
+    return [
+        _Voce(v.filename.replace("\\", "/"), Path(v.filename.replace("\\", "/")).name,
+              _motivo_saltata(v), lettore(v))
+        for v in _voci(archivio)
+    ]
+
+
 async def _stato_salvato(db, chiave: str) -> Dict[str, Any]:
     return await db["sistema_stato"].find_one({"chiave": chiave}, {"_id": 0}) or {}
 
@@ -183,37 +268,38 @@ async def anteprima(archivio: zipfile.ZipFile) -> Dict[str, Any]:
             "non_compresso_byte": sum(max(0, v.file_size) for v in voci)}
 
 
-async def elabora(
-    db, file_id: str, archivio: zipfile.ZipFile, *, nome_zip: str = "",
-    limite: Optional[int] = None,
+async def _elabora_voci(
+    db, chiave: str, voci: List[_Voce], *, origine: str, impronta: str,
+    limite: Optional[int] = None, riparti_se_completato: bool = False,
 ) -> Dict[str, Any]:
     """Elabora le voci dal cursore in poi. `limite`: al massimo N voci (i test, i lotti)."""
     from app.services.drive_cartella_unica import _smista, esito_del_risultato
 
-    chiave = f"{CHIAVE}:{file_id}"
     salvato = await _stato_salvato(db, chiave)
-    voci = _voci(archivio)
     indice = int(salvato.get("indice") or 0)
     contatori = {**_contatori_vuoti(), **(salvato.get("contatori") or {})}
     non_riconosciuti: List[Dict[str, Any]] = list(salvato.get("non_riconosciuti") or [])
     errori: List[Dict[str, Any]] = list(salvato.get("errori") or [])
-    impronta_zip = hashlib.sha256(f"{file_id}:{nome_zip}".encode()).hexdigest()
+    if riparti_se_completato and salvato.get("stato") == "completato":
+        # Una cartella cambia nel tempo: un nuovo passaggio riguarda tutto, e
+        # cio' che e' gia' entrato torna «gia_presenti» senza riscrivere niente.
+        indice, contatori, non_riconosciuti, errori = 0, _contatori_vuoti(), [], []
     fatte = 0
 
     while indice < len(voci) and (limite is None or fatte < limite):
         voce = voci[indice]
-        percorso = voce.filename.replace("\\", "/")
-        nome = Path(percorso).name
-        motivo = _motivo_saltata(voce)
-        if motivo:
+        percorso, nome = voce.percorso, voce.nome
+        if voce.motivo:
             contatori["saltati"] += 1
         else:
             try:
-                dati = await asyncio.to_thread(archivio.read, voce)
+                dati = await voce.leggi()
+                if not dati:
+                    raise OSError("contenuto non leggibile da Drive")
                 risultato = await _smista(nome, dati, {
-                    "archive_filename": nome_zip, "archive_path": percorso,
+                    "archive_filename": origine, "archive_path": percorso,
                     "archive_group": str(Path(percorso).parent).replace("\\", "/"),
-                    "archive_sha256": impronta_zip,
+                    "archive_sha256": impronta,
                 })
                 cartella, perche = esito_del_risultato(risultato)
                 if risultato.get("tipo_rilevato") == "non_riconosciuto":
@@ -230,29 +316,89 @@ async def elabora(
                         errori.append({"percorso": percorso, "motivo": perche})
             except Exception as exc:  # noqa: BLE001 - una voce guasta non ferma le altre
                 contatori["errori"] += 1
-                logger.warning("Voce %s dello ZIP %s non importata: %s: %s",
-                               percorso, file_id, type(exc).__name__, exc)
+                logger.warning("Voce %s di %s non importata: %s: %s",
+                               percorso, origine, type(exc).__name__, exc)
                 if len(errori) < MAX_ELENCO:
                     errori.append({"percorso": percorso, "motivo": f"{type(exc).__name__}: {exc}"[:300]})
         indice += 1
         fatte += 1
         if fatte % 10 == 0:
-            await _salva(db, chiave, stato="in_corso", nome_zip=nome_zip, voci=len(voci),
+            await _salva(db, chiave, stato="in_corso", nome_zip=origine, voci=len(voci),
                          indice=indice, contatori=contatori,
                          non_riconosciuti=non_riconosciuti, errori=errori)
 
     finito = indice >= len(voci)
-    await _salva(db, chiave, stato="completato" if finito else "in_corso", nome_zip=nome_zip,
+    await _salva(db, chiave, stato="completato" if finito else "in_corso", nome_zip=origine,
                  voci=len(voci), indice=indice, contatori=contatori,
                  non_riconosciuti=non_riconosciuti, errori=errori, errore=None)
-    return {"file_id": file_id, "voci": len(voci), "indice": indice, "completato": finito,
-            "contatori": contatori}
+    return {"voci": len(voci), "indice": indice, "completato": finito, "contatori": contatori}
+
+
+async def elabora(
+    db, file_id: str, archivio: zipfile.ZipFile, *, nome_zip: str = "",
+    limite: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Le voci di uno ZIP, dal cursore in poi."""
+    impronta = hashlib.sha256(f"{file_id}:{nome_zip}".encode()).hexdigest()
+    esito = await _elabora_voci(
+        db, f"{CHIAVE}:{file_id}", _voci_da_zip(archivio), origine=nome_zip,
+        impronta=impronta, limite=limite,
+    )
+    return {"file_id": file_id, **esito}
+
+
+async def elabora_cartella(
+    db, cartella_id: str, file_drive: List[Dict[str, Any]], *, nome: str = "",
+    limite: Optional[int] = None,
+) -> Dict[str, Any]:
+    """I file di una cartella Drive (e sottocartelle), dal cursore in poi."""
+    impronta = hashlib.sha256(f"{cartella_id}:{nome}".encode()).hexdigest()
+    esito = await _elabora_voci(
+        db, f"{CHIAVE}:{cartella_id}", _voci_da_cartella(file_drive), origine=nome,
+        impronta=impronta, limite=limite, riparti_se_completato=True,
+    )
+    return {"file_id": cartella_id, **esito}
+
+
+def anteprima_cartella(file_drive: List[Dict[str, Any]]) -> Dict[str, Any]:
+    per_suffisso: Dict[str, int] = {}
+    saltate: Dict[str, int] = {}
+    for f in file_drive:
+        motivo = _motivo_file_drive(f)
+        if motivo:
+            saltate[motivo] = saltate.get(motivo, 0) + 1
+            continue
+        s = Path(str(f.get("name") or "")).suffix.lower()
+        per_suffisso[s] = per_suffisso.get(s, 0) + 1
+    return {"dry_run": True, "voci": len(file_drive), "da_importare": sum(per_suffisso.values()),
+            "per_formato": per_suffisso, "saltate_per_motivo": saltate,
+            "byte": sum(int(f.get("size") or 0) for f in file_drive)}
+
+
+def _tipo_e_nome(file_id: str) -> tuple[str, str]:
+    from app.services.drive_cartella_unica import _service
+
+    meta = _service().files().get(
+        fileId=file_id, fields="name, mimeType", supportsAllDrives=True,
+    ).execute()
+    return meta.get("mimeType") or "", meta.get("name") or file_id
 
 
 async def _esegui(db, file_id: str, dry_run: bool) -> None:
     async with _lock:
         chiave = f"{CHIAVE}:{file_id}"
         try:
+            mime, nome = await asyncio.to_thread(_tipo_e_nome, file_id)
+            if mime == CARTELLA_MIME:
+                from app.services.drive_cartella_unica import _service
+
+                file_drive = await asyncio.to_thread(_elenca_albero, _service(), file_id, nome)
+                if dry_run:
+                    await _salva(db, f"{chiave}:anteprima", stato="completato", nome_zip=nome,
+                                 risultato=anteprima_cartella(file_drive), errore=None)
+                else:
+                    await elabora_cartella(db, file_id, file_drive, nome=nome)
+                return
             fetch, size, nome = await asyncio.to_thread(_sorgente_drive, file_id)
             archivio = await asyncio.to_thread(zipfile.ZipFile, FileDriveARange(fetch, size))
             try:
@@ -265,7 +411,7 @@ async def _esegui(db, file_id: str, dry_run: bool) -> None:
             finally:
                 archivio.close()
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Import ZIP da Drive %s fallito", file_id)
+            logger.exception("Import da Drive %s fallito", file_id)
             await _salva(db, f"{chiave}:anteprima" if dry_run else chiave, stato="errore",
                          errore=f"{type(exc).__name__}: {exc}"[:500])
 
@@ -277,6 +423,35 @@ async def avvia(db, file_id: str, *, dry_run: bool = True) -> Dict[str, Any]:
         return {"avviato": False, **await stato(db, file_id)}
     _lavoro = asyncio.create_task(_esegui(db, file_id, dry_run))
     return {"avviato": True, "dry_run": dry_run, "file_id": file_id}
+
+
+async def importa_cartelle_configurate(db) -> Dict[str, Any]:
+    """Giro dello scheduler: le cartelle in `DRIVE_IMPORT_CARTELLE_ID` (ids separati da virgola).
+
+    Vuoto = spento. Una cartella gia' completata non si rilegge prima di un
+    giorno: e' un controllo dei file arrivati dopo, non un ciclo continuo.
+    """
+    import os
+
+    ids = [i.strip() for i in os.getenv("DRIVE_IMPORT_CARTELLE_ID", "").split(",") if i.strip()]
+    if not ids:
+        return {"saltato": "nessuna cartella configurata"}
+    esito: Dict[str, Any] = {}
+    for file_id in ids:
+        salvato = await _stato_salvato(db, f"{CHIAVE}:{file_id}")
+        if salvato.get("stato") == "completato":
+            try:
+                aggiornato = datetime.fromisoformat(str(salvato.get("updated_at")))
+                if (datetime.now(timezone.utc) - aggiornato).total_seconds() < 86400:
+                    esito[file_id] = "completato da meno di un giorno"
+                    continue
+            except ValueError:
+                pass
+        avviato = await avvia(db, file_id, dry_run=False)
+        esito[file_id] = "avviato" if avviato.get("avviato") else "gia' in corso"
+        if not avviato.get("avviato"):
+            break
+    return esito
 
 
 async def stato(db, file_id: str) -> Dict[str, Any]:

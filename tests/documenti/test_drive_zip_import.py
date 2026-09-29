@@ -120,3 +120,78 @@ def test_stato_dice_mai_avviato_e_poi_l_avanzamento(monkeypatch):
 
     stato = _run(dz.stato(db, "file-id-3"))
     assert stato["stato"] == "in_corso" and stato["indice"] == 1 and stato["voci"] == 6
+
+
+FILE_DRIVE = [
+    {"id": "f1", "name": "F24_1.pdf", "mimeType": "application/pdf", "size": "500", "percorso": "MINI/02/2021/F24_1.pdf"},
+    {"id": "f2", "name": "F24_2.pdf", "mimeType": "application/pdf", "size": "500", "percorso": "MINI/02/2021/F24_2.pdf"},
+    {"id": "f3", "name": "LIPE.pdf", "mimeType": "application/pdf", "size": "500", "percorso": "MINI/05/LIPE.pdf"},
+    {"id": "f4", "name": "script.py", "mimeType": "text/x-python", "size": "10", "percorso": "MINI/script.py"},
+    {"id": "f5", "name": "note", "mimeType": "application/vnd.google-apps.document", "percorso": "MINI/note"},
+]
+
+
+def _drive_finto(monkeypatch):
+    from app.services import drive_download
+
+    letti = []
+
+    async def scarica(file_id, md5=None):
+        letti.append(file_id)
+        return b"%PDF-" + file_id.encode()
+
+    monkeypatch.setattr(drive_download, "scarica_originale", scarica)
+    return letti
+
+
+def test_anteprima_cartella_conta_e_dice_cosa_salta():
+    esito = dz.anteprima_cartella(FILE_DRIVE)
+
+    assert esito["dry_run"] is True and esito["voci"] == 5 and esito["da_importare"] == 3
+    assert set(esito["saltate_per_motivo"]) == {
+        "formato che l'import non legge", "documento Google: non e' un file"}
+
+
+def test_cartella_si_importa_in_sola_lettura_e_riprende(monkeypatch):
+    db = AsyncMongoMockClient()["cartella"]
+    letti = _drive_finto(monkeypatch)
+    chiamate = _smista_finto(monkeypatch, {
+        "F24_1.pdf": {"success": True, "duplicate": False},
+        "F24_2.pdf": {"success": True, "duplicate": True},
+        "LIPE.pdf": {"success": False, "tipo_rilevato": "non_riconosciuto"},
+    })
+
+    primo = _run(dz.elabora_cartella(db, "cart-1", FILE_DRIVE, nome="MINI", limite=2))
+    assert primo["completato"] is False and primo["indice"] == 2
+    secondo = _run(dz.elabora_cartella(db, "cart-1", FILE_DRIVE, nome="MINI"))
+
+    assert secondo["completato"] is True
+    assert letti == ["f1", "f2", "f3"]
+    assert [p for _n, p in chiamate] == [
+        "MINI/02/2021/F24_1.pdf", "MINI/02/2021/F24_2.pdf", "MINI/05/LIPE.pdf"]
+    assert secondo["contatori"] == {
+        "importati": 1, "gia_presenti": 1, "non_riconosciuti": 1, "saltati": 2, "errori": 0}
+
+
+def test_cartella_completata_si_ricontrolla_e_i_file_gia_entrati_non_si_riscrivono(monkeypatch):
+    db = AsyncMongoMockClient()["cartella2"]
+    _drive_finto(monkeypatch)
+    _smista_finto(monkeypatch, {
+        "F24_1.pdf": {"success": True, "duplicate": False},
+        "F24_2.pdf": {"success": True, "duplicate": False},
+        "LIPE.pdf": {"success": True, "duplicate": False},
+    })
+    _run(dz.elabora_cartella(db, "cart-2", FILE_DRIVE, nome="MINI"))
+    _smista_finto(monkeypatch, {n: {"success": True, "duplicate": True}
+                                for n in ("F24_1.pdf", "F24_2.pdf", "LIPE.pdf")})
+
+    secondo = _run(dz.elabora_cartella(db, "cart-2", FILE_DRIVE, nome="MINI"))
+
+    assert secondo["contatori"]["importati"] == 0 and secondo["contatori"]["gia_presenti"] == 3
+
+
+def test_giro_configurato_e_spento_senza_variabile(monkeypatch):
+    monkeypatch.delenv("DRIVE_IMPORT_CARTELLE_ID", raising=False)
+    db = AsyncMongoMockClient()["cartella3"]
+
+    assert _run(dz.importa_cartelle_configurate(db)) == {"saltato": "nessuna cartella configurata"}

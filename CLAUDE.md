@@ -300,7 +300,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   errori e l'ultimo cursore.
 - Un errore di parsing **conserva email e allegato** e crea una coda visibile:
   non si scarta nulla.
-- **ZIP oltre 100 MB**: restano su Drive e si importano con `POST /api/admin/documenti/import-zip-drive?file_id=…` (`drive_zip_import.py`, `dry_run` per difetto = solo anteprima): indice e voci a intervalli di byte, ogni voce dallo smistatore della cartella unica (stessi doppioni), cursore in `sistema_stato`, si riprende dopo un riavvio; niente si sposta né si cancella su Drive. Avanzamento: `GET …/stato`.
+- **ZIP oltre 100 MB**: restano su Drive e si importano con `POST /api/admin/documenti/import-zip-drive?file_id=…` (`drive_zip_import.py`, `dry_run` per difetto = solo anteprima): indice e voci a intervalli di byte, ogni voce dallo smistatore della cartella unica (stessi doppioni), cursore in `sistema_stato`, si riprende dopo un riavvio; niente si sposta né si cancella su Drive. Avanzamento: `GET …/stato`. Lo stesso endpoint importa una **cartella** Drive con le sottocartelle (in sola lettura: lo smistatore della cartella unica non ci scende); `DRIVE_IMPORT_CARTELLE_ID` la fa girare da sola, un controllo al giorno.
 - Gli ZIP si validano prima dell'estrazione (path traversal, zip-bomb,
   estensioni vietate, limite di dimensione), poi si deduplicano e inventariano.
 - Deduplica documentale certa solo con SHA-256 **e** confronto byte; mai per
