@@ -166,7 +166,8 @@ def test_cartella_si_importa_in_sola_lettura_e_riprende(monkeypatch):
     secondo = _run(dz.elabora_cartella(db, "cart-1", FILE_DRIVE, nome="MINI"))
 
     assert secondo["completato"] is True
-    assert letti == ["f1", "f2", "f3"]
+    # Alla pausa dopo 2 file, f3 era gia' in lettura anticipata: si rilegge (una lettura in piu').
+    assert sorted(set(letti)) == ["f1", "f2", "f3"]
     assert [p for _n, p in chiamate] == [
         "MINI/02/2021/F24_1.pdf", "MINI/02/2021/F24_2.pdf", "MINI/05/LIPE.pdf"]
     assert secondo["contatori"] == {
@@ -195,3 +196,61 @@ def test_giro_configurato_e_spento_senza_variabile(monkeypatch):
     db = AsyncMongoMockClient()["cartella3"]
 
     assert _run(dz.importa_cartelle_configurate(db)) == {"saltato": "nessuna cartella configurata"}
+
+
+def test_cartella_legge_in_anticipo_ma_scrive_uno_alla_volta(monkeypatch):
+    """Le letture partono insieme, il riconoscimento no: due copie non si superano."""
+    from app.services import drive_download
+
+    file_drive = [
+        {"id": f"g{i}", "name": f"F{i}.pdf", "mimeType": "application/pdf",
+         "size": "1000", "percorso": f"M/F{i}.pdf"}
+        for i in range(6)
+    ]
+    in_volo = {"letture": 0, "max_letture": 0, "smista": 0, "max_smista": 0}
+
+    async def scarica(file_id, md5=None):
+        in_volo["letture"] += 1
+        in_volo["max_letture"] = max(in_volo["max_letture"], in_volo["letture"])
+        await asyncio.sleep(0.01)
+        in_volo["letture"] -= 1
+        return b"%PDF-" + file_id.encode()
+
+    async def smista(nome, dati, contesto):
+        in_volo["smista"] += 1
+        in_volo["max_smista"] = max(in_volo["max_smista"], in_volo["smista"])
+        await asyncio.sleep(0.001)
+        in_volo["smista"] -= 1
+        return {"success": True, "duplicate": False}
+
+    monkeypatch.setattr(drive_download, "scarica_originale", scarica)
+    monkeypatch.setattr(cu, "_smista", smista)
+    db = AsyncMongoMockClient()["parallelo"]
+
+    esito = _run(dz.elabora_cartella(db, "cart-p", file_drive, nome="M"))
+
+    assert esito["completato"] is True and esito["contatori"]["importati"] == 6
+    assert in_volo["max_letture"] > 1
+    assert in_volo["max_smista"] == 1
+
+
+def test_file_grande_non_si_anticipa(monkeypatch):
+    from app.services import drive_download
+
+    letti = []
+
+    async def scarica(file_id, md5=None):
+        letti.append(file_id)
+        return b"%PDF-x"
+
+    monkeypatch.setattr(drive_download, "scarica_originale", scarica)
+    _smista_finto(monkeypatch, {"G.pdf": {"success": True, "duplicate": False}})
+    grande = [{"id": "big", "name": "G.pdf", "mimeType": "application/pdf",
+               "size": str(dz.PREFETCH_MAX_BYTE + 1), "percorso": "M/G.pdf"}]
+    db = AsyncMongoMockClient()["parallelo2"]
+
+    voci = dz._voci_da_cartella(grande)
+    assert voci[0].byte > dz.PREFETCH_MAX_BYTE
+
+    esito = _run(dz.elabora_cartella(db, "cart-g", grande, nome="M"))
+    assert esito["contatori"]["importati"] == 1 and letti == ["big"]

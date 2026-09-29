@@ -43,6 +43,12 @@ MAX_RAPPORTO_COMPRESSIONE = 200
 SUFFISSI_AMMESSI = {".pdf", ".xml", ".p7m", ".xlsx", ".xls", ".csv"}
 # Le liste nello stato restano corte: sono per capire cosa guardare, non l'archivio.
 MAX_ELENCO = 300
+# Letture in anticipo: mentre un file si riconosce e si registra, i successivi
+# si scaricano gia'. Solo la lettura va in parallelo: il riconoscimento e la
+# scrittura restano uno alla volta, cosi' due copie dello stesso file non si
+# superano a vicenda e nessun registro riceve due scritture insieme.
+PREFETCH_FILE = 8
+PREFETCH_MAX_BYTE = 8 * 1024 * 1024
 
 _lavoro: Optional[asyncio.Task] = None
 _lock = asyncio.Lock()
@@ -162,6 +168,7 @@ class _Voce:
     nome: str
     motivo: Optional[str]
     leggi: Callable[[], Awaitable[bytes]]
+    byte: int = 0
 
 
 CARTELLA_MIME = "application/vnd.google-apps.folder"
@@ -218,7 +225,7 @@ def _voci_da_cartella(file_drive: List[Dict[str, Any]]) -> List[_Voce]:
 
     return [
         _Voce(f["percorso"], f["name"], _motivo_file_drive(f),
-              lettore(f["id"], f.get("md5Checksum")))
+              lettore(f["id"], f.get("md5Checksum")), int(f.get("size") or 0))
         for f in file_drive
     ]
 
@@ -285,53 +292,81 @@ async def _elabora_voci(
         # cio' che e' gia' entrato torna «gia_presenti» senza riscrivere niente.
         indice, contatori, non_riconosciuti, errori = 0, _contatori_vuoti(), [], []
     fatte = 0
+    letture: Dict[int, "asyncio.Task[bytes]"] = {}
 
-    while indice < len(voci) and (limite is None or fatte < limite):
-        voce = voci[indice]
-        percorso, nome = voce.percorso, voce.nome
-        if voce.motivo:
-            contatori["saltati"] += 1
-        else:
-            try:
-                dati = await voce.leggi()
-                if not dati:
-                    raise OSError("contenuto non leggibile da Drive")
-                risultato = await _smista(nome, dati, {
-                    "archive_filename": origine, "archive_path": percorso,
-                    "archive_group": str(Path(percorso).parent).replace("\\", "/"),
-                    "archive_sha256": impronta,
-                })
-                cartella, perche = esito_del_risultato(risultato)
-                if risultato.get("tipo_rilevato") == "non_riconosciuto":
-                    contatori["non_riconosciuti"] += 1
-                    if len(non_riconosciuti) < MAX_ELENCO:
-                        non_riconosciuti.append({"percorso": percorso, "motivo": perche})
-                elif risultato.get("duplicate"):
-                    contatori["gia_presenti"] += 1
-                elif risultato.get("success"):
-                    contatori["importati"] += 1
-                else:
-                    contatori["errori"] += 1
-                    if len(errori) < MAX_ELENCO:
-                        errori.append({"percorso": percorso, "motivo": perche})
-            except Exception as exc:  # noqa: BLE001 - una voce guasta non ferma le altre
-                contatori["errori"] += 1
-                logger.warning("Voce %s di %s non importata: %s: %s",
-                               percorso, origine, type(exc).__name__, exc)
-                if len(errori) < MAX_ELENCO:
-                    errori.append({"percorso": percorso, "motivo": f"{type(exc).__name__}: {exc}"[:300]})
-        indice += 1
-        fatte += 1
-        if fatte % 10 == 0:
-            await _salva(db, chiave, stato="in_corso", nome_zip=origine, voci=len(voci),
-                         indice=indice, contatori=contatori,
-                         non_riconosciuti=non_riconosciuti, errori=errori)
+    def anticipa(da: int) -> None:
+        for i in range(da, min(len(voci), da + PREFETCH_FILE)):
+            v = voci[i]
+            if (i not in letture and not v.motivo
+                    and 0 < v.byte <= PREFETCH_MAX_BYTE):
+                letture[i] = asyncio.ensure_future(v.leggi())
+
+    try:
+        while indice < len(voci) and (limite is None or fatte < limite):
+            anticipa(indice)
+            await _un_file(
+                voci, indice, letture, origine, impronta,
+                contatori, non_riconosciuti, errori, _smista, esito_del_risultato,
+            )
+            indice += 1
+            fatte += 1
+            if fatte % 10 == 0:
+                await _salva(db, chiave, stato="in_corso", nome_zip=origine, voci=len(voci),
+                             indice=indice, contatori=contatori,
+                             non_riconosciuti=non_riconosciuti, errori=errori)
+    finally:
+        for lettura in letture.values():
+            if not lettura.done():
+                lettura.cancel()
+            elif not lettura.cancelled():
+                lettura.exception()  # letto: niente «exception never retrieved»
 
     finito = indice >= len(voci)
     await _salva(db, chiave, stato="completato" if finito else "in_corso", nome_zip=origine,
                  voci=len(voci), indice=indice, contatori=contatori,
                  non_riconosciuti=non_riconosciuti, errori=errori, errore=None)
     return {"voci": len(voci), "indice": indice, "completato": finito, "contatori": contatori}
+
+
+async def _un_file(
+    voci, indice, letture, origine, impronta, contatori, non_riconosciuti, errori,
+    _smista, esito_del_risultato,
+) -> None:
+    """Un file: lettura (gia' in volo se anticipata), poi riconoscimento e scrittura."""
+    voce = voci[indice]
+    percorso, nome = voce.percorso, voce.nome
+    if voce.motivo:
+        contatori["saltati"] += 1
+        return
+    try:
+        lettura = letture.pop(indice, None)
+        dati = await (lettura if lettura is not None else voce.leggi())
+        if not dati:
+            raise OSError("contenuto non leggibile da Drive")
+        risultato = await _smista(nome, dati, {
+            "archive_filename": origine, "archive_path": percorso,
+            "archive_group": str(Path(percorso).parent).replace("\\", "/"),
+            "archive_sha256": impronta,
+        })
+        cartella, perche = esito_del_risultato(risultato)
+        if risultato.get("tipo_rilevato") == "non_riconosciuto":
+            contatori["non_riconosciuti"] += 1
+            if len(non_riconosciuti) < MAX_ELENCO:
+                non_riconosciuti.append({"percorso": percorso, "motivo": perche})
+        elif risultato.get("duplicate"):
+            contatori["gia_presenti"] += 1
+        elif risultato.get("success"):
+            contatori["importati"] += 1
+        else:
+            contatori["errori"] += 1
+            if len(errori) < MAX_ELENCO:
+                errori.append({"percorso": percorso, "motivo": perche})
+    except Exception as exc:  # noqa: BLE001 - una voce guasta non ferma le altre
+        contatori["errori"] += 1
+        logger.warning("Voce %s di %s non importata: %s: %s",
+                       percorso, origine, type(exc).__name__, exc)
+        if len(errori) < MAX_ELENCO:
+            errori.append({"percorso": percorso, "motivo": f"{type(exc).__name__}: {exc}"[:300]})
 
 
 async def elabora(
