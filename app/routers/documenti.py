@@ -2488,6 +2488,30 @@ async def rileva_tipo_documento(filename: str, file_content: bytes) -> str:
     return await asyncio.to_thread(detect_document_type, filename, file_content)
 
 
+def _tipo_dichiarazione(filename: str, pdf_text: str) -> str | None:
+    """Tipo di un PDF che e' una dichiarazione fiscale (o un suo quadro), altrimenti None.
+
+    Un quadro del 770 stampato da solo e' un pezzo della dichiarazione gia'
+    archiviata, non una seconda dichiarazione ne' un «da classificare».
+    Dichiarazioni fiscali (770/IVA/IRAP/LIPE/Redditi SC): classificatore
+    deterministico unico, cosi' upload manuale e cartella unica Drive finiscono
+    nello stesso fiscal_documents.
+    """
+    from app.services.componenti_770 import TIPO as TIPO_COMPONENTE_770, quadro as quadro_770
+    from app.services.fiscal_domain import DocumentType, classify_document
+
+    if quadro_770(filename, pdf_text):
+        return TIPO_COMPONENTE_770
+    dichiarazione = classify_document(filename, pdf_text)
+    if dichiarazione["document_type"] in {
+        DocumentType.MODELLO_770.value, DocumentType.DICHIARAZIONE_IVA.value,
+        DocumentType.LIPE.value, DocumentType.DICHIARAZIONE_IRAP.value,
+        DocumentType.REDDITI_SC.value,
+    }:
+        return "dichiarazione_fiscale"
+    return None
+
+
 def detect_document_type(filename: str, file_content: bytes) -> str:
     """Classifica solo con prove documentali sufficienti.
 
@@ -2757,11 +2781,18 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             return "quietanza_f24"
         # La LIPE ha il campo «VERSAMENTI AUTO F24»: cita F24 ma non e' un modello.
         e_lipe = "LIQUIDAZIONIPERIODICHE" in re.sub(r"[^A-Z]", "", content_str)
-        if not e_lipe and (
-            re.search(r"\bF\s*24\b", content_str)
-            or "DELEGA IRREVOCABILE A" in content_str
+        f24_forte = (
+            "DELEGA IRREVOCABILE A" in content_str
             or "MODELLO DI PAGAMENTO UNIFICATO" in content_str
             or ("SEZIONE ERARIO" in content_str and "CODICE TRIBUTO" in content_str)
+        )
+        # Anche 770, IRAP e Redditi citano «F24» (versamenti, compensazioni): la sola
+        # sigla nel testo non basta, se il documento e' una dichiarazione. Sono finite
+        # cosi' nel lettore dei modelli, che le bloccava come «F24 non quadrato».
+        if not e_lipe and (
+            f24_forte
+            or (re.search(r"\bF\s*24\b", content_str)
+                and not _tipo_dichiarazione(filename, pdf_text))
         ):
             return "f24"
         if any(marker in content_str for marker in ("CEDOLINO", "BUSTA PAGA", "LIBRO UNICO")):
@@ -2773,25 +2804,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             return "estratto_conto"
         if "BONIFICO" in content_str and ("IBAN" in content_str or "CRO" in content_str):
             return "bonifici"
-        # Un quadro del 770 stampato da solo e' un pezzo della dichiarazione
-        # gia' archiviata, non una seconda dichiarazione ne' un «da classificare».
-        from app.services.componenti_770 import TIPO as TIPO_COMPONENTE_770, quadro as quadro_770
-
-        if quadro_770(filename, pdf_text):
-            return TIPO_COMPONENTE_770
-        # Dichiarazioni fiscali (770/IVA/IRAP/LIPE/Redditi SC): classificatore
-        # deterministico unico, cosi' upload manuale e cartella unica Drive
-        # finiscono nello stesso fiscal_documents.
-        from app.services.fiscal_domain import DocumentType, classify_document
-
-        dichiarazione = classify_document(filename, pdf_text)
-        if dichiarazione["document_type"] in {
-            DocumentType.MODELLO_770.value, DocumentType.DICHIARAZIONE_IVA.value,
-            DocumentType.LIPE.value, DocumentType.DICHIARAZIONE_IRAP.value,
-            DocumentType.REDDITI_SC.value,
-        }:
-            return "dichiarazione_fiscale"
-        return "auto"
+        return _tipo_dichiarazione(filename, pdf_text) or "auto"
 
     if lower.endswith((".xlsx", ".xls", ".csv")):
         content_str = _spreadsheet_text_for_detection(lower, file_content).upper()
