@@ -646,6 +646,17 @@ async def lista_bonifici_da_associare():
     return righe
 
 
+@router.get("/bonifici-da-associare/distinte")
+async def distinte_da_associare():
+    """Le distinte «beneficiari vari» ancora da associare, con tutti i dati che
+    il sistema ne sa (estratto, ricevuta, commissione, nota, suggerimento).
+    L'associazione si fa con lo stesso `associa` della coda."""
+    from app.database import Database as DatabaseGestionale
+    from app.services.distinte_bonifici import elenco_distinte
+
+    return await elenco_distinte(DatabaseGestionale.get_db(), get_db())
+
+
 @router.get("/paghe/pagamento-esito/{key}/pdf")
 async def pdf_pagamento_esito(key: str):
     """PDF sorgente di un bonifico già associato a una busta (pagamenti_esiti),
