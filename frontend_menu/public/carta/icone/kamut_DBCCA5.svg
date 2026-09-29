@@ -1,0 +1,22 @@
+<svg id="icon-kamut" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="30" height="30" viewBox="0 0 30 30">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="Rectangle_72" data-name="Rectangle 72" width="30" height="30" fill="none"/>
+    </clipPath>
+    <clipPath id="clip-path-2">
+      <path id="Path_362" data-name="Path 362" d="M.526,0H16.467V27.858H.526Z" transform="translate(-2.937 0.183)" fill="none"/>
+    </clipPath>
+  </defs>
+  <g id="icon-kamut-2" data-name="icon-kamut" clip-path="url(#clip-path)">
+    <g id="Group_124" data-name="Group 124" transform="translate(10.235 2.798)">
+      <g id="Mask_Group_1" data-name="Mask Group 1" transform="translate(-1 -4.499)" clip-path="url(#clip-path-2)">
+        <path id="Path_296" data-name="Path 296" d="M7.257,8.715a5.653,5.653,0,0,1-1.821,3.629A5.652,5.652,0,0,1,3.614,8.715,5.652,5.652,0,0,1,5.436,5.086,5.653,5.653,0,0,1,7.257,8.715" transform="translate(0.386 0.031)" fill="#DBCCA5"/>
+        <path id="Path_297" data-name="Path 297" d="M.04,9.741s-.559,3.919,2.493,5.015c2.186.785,2.411,1.234,2.411,1.234a5.977,5.977,0,0,0-.337-2.942,5.122,5.122,0,0,0-2.746-2.3A10.629,10.629,0,0,1,.04,9.741" transform="translate(0.346 0.082)" fill="#DBCCA5"/>
+        <path id="Path_298" data-name="Path 298" d="M.04,14.4s-.559,3.919,2.493,5.015c2.186.785,2.411,1.234,2.411,1.234A5.977,5.977,0,0,0,4.608,17.7a5.129,5.129,0,0,0-2.746-2.3A10.58,10.58,0,0,1,.04,14.4" transform="translate(0.346 0.134)" fill="#DBCCA5"/>
+        <path id="Path_299" data-name="Path 299" d="M8.242,14.757c3.053-1.1,2.493-5.015,2.493-5.015A10.562,10.562,0,0,1,8.915,10.75a5.131,5.131,0,0,0-2.746,2.3,5.967,5.967,0,0,0-.336,2.941s.224-.448,2.41-1.233" transform="translate(0.411 0.082)" fill="#DBCCA5"/>
+        <path id="Path_300" data-name="Path 300" d="M8.915,15.406a5.134,5.134,0,0,0-2.746,2.3,5.971,5.971,0,0,0-.336,2.942s.223-.448,2.41-1.233c3.053-1.1,2.493-5.016,2.493-5.016a10.536,10.536,0,0,1-1.821,1.009" transform="translate(0.411 0.134)" fill="#DBCCA5"/>
+        <path id="Path_301" data-name="Path 301" d="M8.979,20.034a5.134,5.134,0,0,0-2.746,2.3A4.853,4.853,0,0,0,5.844,24.3a.576.576,0,0,1-.411.2A.635.635,0,0,1,5,24.313a4.849,4.849,0,0,0-.388-1.982,5.134,5.134,0,0,0-2.746-2.3A10.58,10.58,0,0,1,.04,19.025s-.559,3.92,2.493,5.016a7.385,7.385,0,0,1,2.3,1.113v1.912a.584.584,0,0,0,.588.631.539.539,0,0,0,.616-.506V25.13a7.78,7.78,0,0,1,2.27-1.089c3.053-1.1,2.493-5.016,2.493-5.016a10.536,10.536,0,0,1-1.821,1.009" transform="translate(0.346 0.186)" fill="#DBCCA5"/>
+      </g>
+    </g>
+  </g>
+</svg>

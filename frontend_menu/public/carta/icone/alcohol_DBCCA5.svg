@@ -1,0 +1,19 @@
+<svg id="icon-alcohol" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="30" height="30" viewBox="0 0 30 30">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="Rectangle_53" data-name="Rectangle 53" width="30" height="30" fill="none"/>
+    </clipPath>
+    <clipPath id="clip-path-2">
+      <rect id="Rectangle_76" data-name="Rectangle 76" width="13.878" height="17.574" fill="none"/>
+    </clipPath>
+  </defs>
+  <g id="icon-alcohol-2" data-name="icon-alcohol" clip-path="url(#clip-path)">
+    <g id="Group_135" data-name="Group 135" transform="translate(7.061 6.212)">
+      <g id="Group_127" data-name="Group 127" transform="translate(1 0)" clip-path="url(#clip-path-2)">
+        <path id="Path_322" data-name="Path 322" d="M3.074,1.285H5.047a.3.3,0,0,0,.3-.3V.3a.3.3,0,0,0-.3-.3H3.074a.3.3,0,0,0-.3.3V.986a.3.3,0,0,0,.3.3" transform="translate(-0.869 0)" fill="#DBCCA5"/>
+        <path id="Path_323" data-name="Path 323" d="M17.326,14.976V12.182a.419.419,0,0,0-.419-.419H11.434a.419.419,0,0,0-.418.419v2.794a3.153,3.153,0,0,0,2.562,3.1v1.944h-.011l-1.866.572v.6h5.011v-.6l-1.946-.572h0V18.071a3.153,3.153,0,0,0,2.562-3.1m-5.554-2.384h4.8V14.7h-4.8Z" transform="translate(-3.449 -3.683)" fill="#DBCCA5"/>
+        <path id="Path_324" data-name="Path 324" d="M4.476,6.254V3.091a.431.431,0,0,0-.431-.431H2.338a.431.431,0,0,0-.431.431V6.254A3.19,3.19,0,0,0,0,9.172v8.76a.476.476,0,0,0,.475.475H5.907a.476.476,0,0,0,.475-.475V9.172A3.19,3.19,0,0,0,4.476,6.254M2.563,16.595H.964V10.142h1.6Z" transform="translate(0 -0.833)" fill="#DBCCA5"/>
+      </g>
+    </g>
+  </g>
+</svg>

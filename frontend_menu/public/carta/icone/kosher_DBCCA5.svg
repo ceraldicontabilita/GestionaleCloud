@@ -1,0 +1,10 @@
+<svg id="icon-kosher" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="Rectangle_90" data-name="Rectangle 90" width="32" height="32" transform="translate(-1 -1)" fill="none"/>
+    </clipPath>
+  </defs>
+  <g id="icon-kosher-2" data-name="icon-kosher" transform="translate(1 1)" clip-path="url(#clip-path)">
+    <path id="Path_358" data-name="Path 358" d="M9.394,0,4.448,3.375V.042H0V11.93H4.448V5.883l5.279,6.089h5.612L8.064,3.492,13.01,0Z" transform="translate(8 9.177)" fill="#DBCCA5"/>
+  </g>
+</svg>
