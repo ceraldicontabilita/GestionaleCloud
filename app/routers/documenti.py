@@ -2674,6 +2674,15 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         or "MODELLODIPAGAMENTOUNIFICATO" in marker_pdf_text
     ) and sum(f24_structure_markers) >= 2:
         return "f24"
+    # F24 pagata del 2018-2019: il modulo con i dati sovrapposti. Nessuna intestazione
+    # («delega irrevocabile» non c'e'): comincia col codice banca+data (B, ABI, CAB, ggmmaa)
+    # e ha righe di sezione (ERARIO, INPS, REGIONI, IMU/TRIB.LOCALI).
+    if (
+        lower.endswith(".pdf")
+        and re.match(r"\s*(?:\[PAGINA \d+\]\s*)?B\d{15,17}\b", pdf_text)
+        and any(sezione in pdf_text for sezione in ("ERARIO", "INPS", "REGIONI", "TRIB.LOCALI"))
+    ):
+        return "quietanza_f24"
     if (
         "AVVISO DI PAGAMENTO" in compact_pdf_text
         or "QUANTO E QUANDO PAGARE" in compact_pdf_text
@@ -2746,7 +2755,9 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
         )):
             return "quietanza_f24"
-        if (
+        # La LIPE ha il campo «VERSAMENTI AUTO F24»: cita F24 ma non e' un modello.
+        e_lipe = "LIQUIDAZIONIPERIODICHE" in re.sub(r"[^A-Z]", "", content_str)
+        if not e_lipe and (
             re.search(r"\bF\s*24\b", content_str)
             or "DELEGA IRREVOCABILE A" in content_str
             or "MODELLO DI PAGAMENTO UNIFICATO" in content_str

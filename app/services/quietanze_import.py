@@ -13,6 +13,7 @@ F24 segnato pagato; nessun match → alert.
 """
 import base64
 import hashlib
+import json
 import logging
 import uuid
 from decimal import Decimal, InvalidOperation
@@ -172,6 +173,36 @@ async def _riconcilia_quietanza_ader(
     )
 
 
+def _e_guscio_vuoto(quietanza: dict) -> bool:
+    """Una «quietanza» salvata senza essere stata letta: niente protocollo, niente righe."""
+    if str(quietanza.get("protocollo_telematico") or "").strip():
+        return False
+    if quietanza.get("status") == "eliminato":
+        return False
+    sezioni = ("sezione_erario", "sezione_inps", "sezione_regioni",
+               "sezione_tributi_locali", "sezione_inail")
+    return not any(quietanza.get(k) for k in sezioni)
+
+
+def _firma_contenuto(parsed: dict, data_pagamento: Any, saldo: Any) -> str | None:
+    """Impronta del contenuto fiscale: data, saldo e ogni riga (sezione, codice, periodo, importi)."""
+    if not data_pagamento:
+        return None
+    righe = []
+    for sezione in ("sezione_erario", "sezione_inps", "sezione_regioni",
+                    "sezione_tributi_locali", "sezione_inail"):
+        for r in parsed.get(sezione, []) or []:
+            righe.append((
+                sezione, str(r.get("codice_tributo") or r.get("causale") or r.get("codice_atto") or ""),
+                str(r.get("periodo_raw") or r.get("periodo_riferimento") or ""),
+                int(r.get("importo_debito_cents") or 0), int(r.get("importo_credito_cents") or 0),
+            ))
+    if not righe:
+        return None
+    dati = json.dumps([str(data_pagamento), saldo_cents({"saldo": saldo}), sorted(righe)])
+    return "c1:" + hashlib.sha256(dati.encode()).hexdigest()
+
+
 async def importa_quietanza_bytes(
     db, content: bytes, filename: str, fonte: str = "upload_manuale",
     source_metadata: Dict[str, Any] | None = None,
@@ -198,7 +229,8 @@ async def importa_quietanza_bytes(
     existing = await db[COLL_QUIETANZE].find_one(
         {"pdf_hash": pdf_hash}, {"_id": 0}
     )
-    if existing:
+    guscio = bool(existing) and _e_guscio_vuoto(existing)
+    if existing and not guscio:
         await db[COLL_QUIETANZE].update_one(
             {"id": existing["id"]},
             {"$addToSet": {"source_occurrences": occurrence}},
@@ -260,6 +292,28 @@ async def importa_quietanza_bytes(
         protocollo_condiviso = [q["id"] for q in stesse if q.get("id")]
     data_pagamento = dg.get("data_pagamento")
     codice_fiscale = dg.get("codice_fiscale", "")
+    firma_contenuto = None
+    if not str(protocollo or "").strip():
+        # Senza protocollo (F24 del 2018-2019, modulo con i dati sovrapposti) la
+        # delega e' il suo contenuto fiscale: data, saldo e righe. Stampata due
+        # volte con PDF diversi e' una sola quietanza.
+        firma_contenuto = _firma_contenuto(parsed, data_pagamento, saldo_quietanza)
+        if firma_contenuto:
+            stessa = await db[COLL_QUIETANZE].find_one(
+                {"firma_contenuto": firma_contenuto}, {"_id": 0, "id": 1},
+            )
+            if stessa and not (guscio and stessa["id"] == existing["id"]):
+                await db[COLL_QUIETANZE].update_one(
+                    {"id": stessa["id"]}, {"$addToSet": {"source_occurrences": occurrence}},
+                )
+                if guscio:
+                    # Il guscio vuoto e' la copia di una quietanza gia' letta: quarantena reversibile.
+                    await db[COLL_QUIETANZE].update_one({"id": existing["id"]}, {"$set": {
+                        "status": "eliminato", "motivo_quarantena": "stesso contenuto fiscale",
+                        "doppione_di": stessa["id"],
+                    }})
+                return {"success": True, "duplicate": True, "quietanza_id": stessa["id"],
+                        "filename": filename, "motivo": "stesso contenuto fiscale (senza protocollo)"}
 
     codici_quietanza = set()
     for t in parsed.get("sezione_erario", []):
@@ -299,6 +353,8 @@ async def importa_quietanza_bytes(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "source_occurrences": [occurrence],
     }
+    if firma_contenuto:
+        quietanza_doc["firma_contenuto"] = firma_contenuto
     if protocollo_condiviso:
         # Da confermare a vista: due deleghe col protocollo uguale e saldi diversi.
         quietanza_doc["protocollo_condiviso_con"] = protocollo_condiviso
@@ -313,7 +369,21 @@ async def importa_quietanza_bytes(
         })
     else:
         quietanza_doc["pdf_data"] = base64.b64encode(content).decode("utf-8")
-    await db[COLL_QUIETANZE].insert_one(quietanza_doc.copy())
+    if guscio:
+        # Rileggo un guscio vuoto: stesso id e stessa provenienza, ora con i dati.
+        file_id = existing["id"]
+        quietanza_doc["id"] = file_id
+        quietanza_doc["created_at"] = existing.get("created_at") or quietanza_doc["created_at"]
+        quietanza_doc["source_occurrences"] = list(existing.get("source_occurrences") or []) + [occurrence]
+        for chiave in ("drive_file_id", "drive_parent_id", "drive_path", "drive_md5",
+                       "original_storage", "source_metadata", "fonte"):
+            if existing.get(chiave) not in (None, ""):
+                quietanza_doc[chiave] = existing[chiave]
+        if existing.get("drive_file_id"):
+            quietanza_doc.pop("pdf_data", None)
+        await db[COLL_QUIETANZE].update_one({"id": file_id}, {"$set": quietanza_doc})
+    else:
+        await db[COLL_QUIETANZE].insert_one(quietanza_doc.copy())
     try:
         riconciliazione_ader = await _riconcilia_quietanza_ader(
             db, content=content, filename=filename, quietanza=quietanza_doc,

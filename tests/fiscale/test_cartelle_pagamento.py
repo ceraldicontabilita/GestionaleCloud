@@ -160,3 +160,16 @@ def test_documenti_import_riconosce_la_cartella_di_pagamento():
     from app.routers.documenti import detect_document_type
 
     assert detect_document_type("cartella.pdf", _pdf()) == "cartella_pagamento"
+
+
+def test_lipe_che_cita_versamenti_auto_f24_non_e_un_modello_f24():
+    """Il campo VP «VERSAMENTI AUTO F24» faceva classificare la LIPE come F24 (import bloccato)."""
+    from app.routers.documenti import detect_document_type
+
+    contenuto = _pdf([
+        "COMUNICAZIONE DEI DATI DELLE LIQUIDAZIONI PERIODICHE IVA",
+        "VP7 DEBITO PERIODO PRECEDENTE NON SUPERIORE A 100 EURO",
+        "VERSAMENTI AUTO F24 ELEMENTI IDENTIFICATIVI",
+    ])
+
+    assert detect_document_type("LIPE_2026_123456789.pdf", contenuto) == "dichiarazione_fiscale"
