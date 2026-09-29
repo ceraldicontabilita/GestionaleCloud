@@ -1,0 +1,13 @@
+<svg id="icon-vegetarian" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="30" height="30" viewBox="0 0 30 30">
+  <defs>
+    <clipPath id="clip-path-vegetarian">
+      <rect id="Rectangle_83" data-name="Rectangle 83" width="18.141" height="14.122" fill="none"/>
+    </clipPath>
+  </defs>
+  <g id="Group_147" data-name="Group 147" transform="translate(6.93 7.939)">
+    <g id="Group_131" data-name="Group 131" transform="translate(0 0)" clip-path="url(#clip-path-vegetarian)">
+      <path id="Path_337" data-name="Path 337" d="M3.666.165A.694.694,0,0,0,2.654.287C1.376,2.063-1.963,7.465,1.584,11.266c2.6,2.782,4.672,2.856,4.672,2.856s-2.151-3.078-2.3-5.9c0,0,1.558,3.671,3,5.006A9.568,9.568,0,0,0,9.112,8.486C9.287,6.14,6.785,2.836,3.666.165" transform="translate(0 0)" fill="#79AC66"/>
+      <path id="Path_338" data-name="Path 338" d="M10.7,7.732a11.48,11.48,0,0,1-.482,3.411,13.368,13.368,0,0,1,5.413-2.151,14.8,14.8,0,0,0-6.749,4.413s2.6,1.261,3.894,1.112a6.267,6.267,0,0,0,3.671-1.965c.606-.727,1.814-2.323,2.5-3.344A.869.869,0,0,0,18.5,7.894c-1.679-.551-5.141-1.36-7.8-.162" transform="translate(-0.959 -0.767)" fill="#79AC66"/>
+    </g>
+  </g>
+</svg>

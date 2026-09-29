@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ArrowLeft } from 'lucide-react';
-import { FOCUS_SALVIA } from '../components/ProdottiSottocategoria';
 import { leggiLingua } from '../lib/preferenzeCliente';
 import { COLLEGAMENTI_PUBBLICI } from '../lib/collegamentiPubblici';
+
+// Anello di focus salvia, visibile anche sul fondo verde scuro del menu.
+const FOCUS_SALVIA =
+  'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#5b7a6b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#faf7f0]';
 
 // Informativa privacy e cookie del menu clienti. Il testo descrive cio' che
 // questo codice fa davvero (campi dell'ordine in `app/menu/models`, chiavi
@@ -180,7 +183,7 @@ const InformativaPage = ({ tipo }) => {
     <div className="min-h-screen bg-[#4a5d4a] overflow-x-clip">
       <main className="max-w-2xl mx-auto px-4 py-8">
         <a
-          href={`${base}/`}
+          href={`${base}/carta/index.html`}
           className={`inline-flex items-center gap-2 min-h-[44px] px-4 mb-6 rounded-lg bg-[#3d4d3d] text-white hover:bg-[#354535] transition-colors ${FOCUS_SALVIA}`}
         >
           <ArrowLeft className="w-5 h-5" aria-hidden="true" /> {t('Torna al menu', 'Back to the menu')}

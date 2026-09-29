@@ -1,0 +1,20 @@
+<svg id="icon-pistachies" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="30" height="30" viewBox="0 0 30 30">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="Rectangle_62" data-name="Rectangle 62" width="30" height="30" fill="none"/>
+    </clipPath>
+    <clipPath id="clip-path-2">
+      <rect id="Rectangle_63" data-name="Rectangle 63" width="17.031" height="18.095" fill="none"/>
+    </clipPath>
+  </defs>
+  <g id="icon-pistachies-2" data-name="icon-pistachies" clip-path="url(#clip-path)">
+    <g id="Group_101" data-name="Group 101" transform="translate(3.903 9.41) rotate(-20)">
+      <g id="Group_100" data-name="Group 100" transform="translate(0 0)" clip-path="url(#clip-path-2)">
+        <path id="Path_276" data-name="Path 276" d="M17.578,11.764a8.731,8.731,0,0,0-6.04-.831c-3.1.863-4.411,2.653-4.379,4.762s3.515,7.031,10.355,3.8c0,0-5.517-1.156-7.548-3.658a.562.562,0,0,1,.337-.916,14.98,14.98,0,0,0,7.275-3.159" transform="translate(-1.655 -2.471)" fill="#99B748"/>
+        <path id="Path_277" data-name="Path 277" d="M12.272,16.333s1.63,1.821,5.593,2.78a3.681,3.681,0,0,0,1.982-2.4A3.266,3.266,0,0,0,18.472,14s-1.47,1.662-6.2,2.333" transform="translate(-2.837 -3.236)" fill="#99B748"/>
+        <path id="Path_278" data-name="Path 278" d="M5.484,7.431s2.149-1.165,4-4.8A3.685,3.685,0,0,0,7.608.149,3.27,3.27,0,0,0,4.647.86s1.277,1.815.837,6.571" transform="translate(-1.074 0)" fill="#99B748"/>
+        <path id="Path_279" data-name="Path 279" d="M9.244,7.7c.056-.015.112-.025.168-.038a9.119,9.119,0,0,0,.307-5.5s-2.4,5.1-5.3,6.5A.561.561,0,0,1,3.6,8.12,14.976,14.976,0,0,0,2.209.312,8.73,8.73,0,0,0,.006,6c.123,3.215,1.562,4.9,3.621,5.36a3.5,3.5,0,0,0,1.382-.033c.4-1.6,1.715-2.919,4.236-3.621" transform="translate(0 -0.072)" fill="#99B748"/>
+      </g>
+    </g>
+  </g>
+</svg>

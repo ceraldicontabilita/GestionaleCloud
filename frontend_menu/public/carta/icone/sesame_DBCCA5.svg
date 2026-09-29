@@ -1,0 +1,20 @@
+<svg id="icon-sesame-allergens" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="30" height="30" viewBox="0 0 30 30">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="Rectangle_19" data-name="Rectangle 19" width="30" height="30" fill="none"/>
+    </clipPath>
+    <clipPath id="clip-path-2">
+      <rect id="Rectangle_36" data-name="Rectangle 36" width="14.154" height="20.492" fill="none"/>
+    </clipPath>
+  </defs>
+  <g id="Group_19" data-name="Group 19" clip-path="url(#clip-path)">
+    <g id="Group_53" data-name="Group 53" transform="translate(7.923 3.856)">
+      <g id="Group_52" data-name="Group 52" transform="translate(0 0)" clip-path="url(#clip-path-2)">
+        <path id="Path_230" data-name="Path 230" d="M8.344,13.951a3.292,3.292,0,0,1-1.2,3.485.693.693,0,0,1-.682.164,2.979,2.979,0,0,1-2.649-2.561,6,6,0,0,1,1.134-4.13.413.413,0,0,1,.506-.122,6,6,0,0,1,2.887,3.164" transform="translate(-1.633 -4.688)" fill="#DBCCA5"/>
+        <path id="Path_231" data-name="Path 231" d="M13,3.112a2.247,2.247,0,0,1-2.3,1.021.474.474,0,0,1-.4-.265,2.034,2.034,0,0,1,.051-2.515A4.1,4.1,0,0,1,12.947,0a.281.281,0,0,1,.3.2A4.1,4.1,0,0,1,13,3.112" transform="translate(-4.315 0)" fill="#DBCCA5"/>
+        <path id="Path_232" data-name="Path 232" d="M4.478,27.579a3.291,3.291,0,0,1,.558,3.642.693.693,0,0,1-.528.462A2.978,2.978,0,0,1,.973,30.643,6,6,0,0,1,.06,26.459a.412.412,0,0,1,.392-.342,6,6,0,0,1,4.025,1.462" transform="translate(0 -11.391)" fill="#DBCCA5"/>
+        <path id="Path_233" data-name="Path 233" d="M16.489,15.5a3.291,3.291,0,0,0-.558,3.642.693.693,0,0,0,.528.462,2.978,2.978,0,0,0,3.535-1.039,6,6,0,0,0,.912-4.185.412.412,0,0,0-.392-.342A6,6,0,0,0,16.489,15.5" transform="translate(-6.813 -6.121)" fill="#DBCCA5"/>
+      </g>
+    </g>
+  </g>
+</svg>

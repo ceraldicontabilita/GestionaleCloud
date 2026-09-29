@@ -1,0 +1,24 @@
+<svg id="icon-barley" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="30" height="30" viewBox="0 0 30 30">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="Rectangle_50" data-name="Rectangle 50" width="30" height="30" fill="none"/>
+    </clipPath>
+    <clipPath id="clip-path-2">
+      <rect id="Rectangle_51" data-name="Rectangle 51" width="8.864" height="21.45" transform="translate(0 0)" fill="none"/>
+    </clipPath>
+  </defs>
+  <g id="icon-barley-2" data-name="icon-barley" clip-path="url(#clip-path)">
+    <g id="Group_81" data-name="Group 81" transform="translate(10.568 4.275)">
+      <g id="Group_80" data-name="Group 80" clip-path="url(#clip-path-2)">
+        <path id="Path_254" data-name="Path 254" d="M4.445,0S1.1,2.536,4.424,6.526c0,0,3.346-3.346.021-6.526" fill="#DBCCA5"/>
+        <path id="Path_255" data-name="Path 255" d="M.009,5.382S-.42,9.032,4.766,9.287A4.161,4.161,0,0,0,.009,5.382" transform="translate(0 0.282)" fill="#DBCCA5"/>
+        <path id="Path_256" data-name="Path 256" d="M4.888,7.105a5,5,0,0,1,.767,2.066A3.813,3.813,0,0,0,8.864,5.28,4.215,4.215,0,0,0,4.888,7.105" transform="translate(0 0.398)" fill="#DBCCA5"/>
+        <path id="Path_257" data-name="Path 257" d="M4.888,11.1a5.121,5.121,0,0,1,.767,2.1A3.85,3.85,0,0,0,8.864,9.25,4.186,4.186,0,0,0,4.888,11.1" transform="translate(0 0.343)" fill="#DBCCA5"/>
+        <path id="Path_258" data-name="Path 258" d="M4.888,14.908a5.046,5.046,0,0,1,.767,2.076,3.826,3.826,0,0,0,3.209-3.911,4.2,4.2,0,0,0-3.976,1.835" transform="translate(0 0.378)" fill="#DBCCA5"/>
+        <path id="Path_259" data-name="Path 259" d="M.009,9.269s-.429,3.6,4.757,3.85c0,0-.163-4.076-4.757-3.85" transform="translate(0 0.309)" fill="#DBCCA5"/>
+        <path id="Path_260" data-name="Path 260" d="M.009,13.072s-.429,3.844,4.757,4.113A4.271,4.271,0,0,0,.009,13.072" transform="translate(0 0.178)" fill="#DBCCA5"/>
+        <path id="Path_261" data-name="Path 261" d="M4.382,21.45a.5.5,0,0,1-.5-.5V18.664a.5.5,0,0,1,1,0V20.95a.5.5,0,0,1-.5.5" fill="#DBCCA5"/>
+      </g>
+    </g>
+  </g>
+</svg>
