@@ -75,6 +75,12 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body {
+  /* Le intestazioni fisse (barra in alto, schede, testata tabella) coprono la
+     parte alta: scorrere fino a un elemento lo lascia sotto di loro. */
+  scroll-padding-top: calc(var(--topnav-height) + 110px);
+}
+
+html, body {
   margin: 0; padding: 0;
   width: 100%; max-width: 100%; min-height: 100%;
   overflow-x: hidden;
@@ -177,6 +183,14 @@ code {
     background: var(--c-bg-alt, #f2f0e9);
     box-shadow: 0 1px 0 var(--c-border);
   }
+}
+@media (min-width: 769px) {
+  /* Tabella dentro un riquadro con scorrimento proprio: l'intestazione resta fissa
+     nel riquadro, dal suo bordo alto (con l'offset della pagina coprirebbe la prima riga). */
+  .page-content [style*="overflow: auto"] thead th,
+  .page-content [style*="overflow-y: auto"] thead th,
+  .page-content [style*="overflow-x: auto"] thead th,
+  .page-content .table-scroll thead th { top: 0; }
 }
 @media (max-width: 768px) { .topnav-layout .page-content { padding: 10px 12px 150px 12px; padding-top: calc(var(--topnav-height) + 8px); } }
 
