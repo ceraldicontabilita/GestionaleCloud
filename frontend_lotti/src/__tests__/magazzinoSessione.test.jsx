@@ -38,3 +38,40 @@ test("il prelievo usa il dipendente della sessione senza richiedere un secondo P
     jest.clearAllMocks();
   }
 });
+
+test("prezzo e carrello si vedono solo al titolare", async () => {
+  const prova = async (ruolo) => {
+    localStorage.clear();
+    clearTabletSession();
+    saveToken("token-di-test");
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo }, "magazzino");
+    axios.get.mockImplementation((url) => {
+      if (url.includes("prodotti-unificati")) {
+        return Promise.resolve({ data: [{ id: "l-2", nome: "Farina", source: "fornitori", stock: 10, unita: "KG", fornitore: "Ditta Uno", lotti_ids: ["l-1", "l-2"] }] });
+      }
+      if (url.includes("prezzi-lotti")) {
+        return Promise.resolve({ data: { prezzi: { "l-1": { prezzo: 1, fornitore: "Ditta Uno", data: "2026-01-01" }, "l-2": { prezzo: 1.25, fornitore: "Ditta Uno", data: "2026-08-01" } } } });
+      }
+      if (url.includes("richieste")) return Promise.resolve({ data: { richieste: [] } });
+      return Promise.resolve({ data: [] });
+    });
+    axios.put.mockResolvedValue({ data: {} });
+    const node = document.createElement("div");
+    document.body.appendChild(node);
+    const root = createRoot(node);
+    await act(async () => root.render(<MagazzinoBarView onBack={() => {}} />));
+    await act(async () => [...node.querySelectorAll("button")].find((b) => b.textContent.includes("Preleva")).click());
+    const testo = node.textContent;
+    const ordina = [...node.querySelectorAll("button")].find((b) => b.textContent.includes("Ordina"));
+    await act(async () => root.unmount());
+    node.remove();
+    jest.clearAllMocks();
+    return { testo, ordina };
+  };
+  const dip = await prova("operatore");
+  expect(dip.testo).not.toContain("1,25");
+  expect(dip.ordina).toBeUndefined();
+  const tit = await prova("amministratore");
+  expect(tit.testo).toContain("1,25");
+  expect(tit.ordina).toBeDefined();
+});
