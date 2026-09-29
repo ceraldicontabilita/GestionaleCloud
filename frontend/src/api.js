@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toast } from 'sonner';
 
 const api = axios.create({
   baseURL: '',
@@ -22,10 +23,21 @@ api.interceptors.request.use(
   error => Promise.reject(error)
 );
 
-// Response interceptor: gestisce 401 (token scaduto/invalido) e ritenta
-// UNA volta le letture quando il backend sta ripartendo (cold start Render:
-// 502/503/504 o richiesta caduta) — evita la pagina d'errore al primo
-// accesso della giornata quando il server impiega qualche secondo a salire.
+// Il servizio riparte a ogni rilascio (Render): per uno o due minuti risponde
+// 502/503/504. Una lettura non deve mostrare un errore rosso per questo: si
+// riprova con attese crescenti (circa un minuto in tutto) e nel frattempo
+// un solo avviso dice cosa sta succedendo. Solo le letture (GET): una
+// scrittura ripetuta alla cieca potrebbe duplicare.
+export const ATTESE_RITENTATIVI_MS = [2000, 4000, 8000, 12000, 16000, 20000];
+const ID_AVVISO_RIAVVIO = 'riavvio-servizio';
+
+export function eErroreTransitorio(error) {
+  const status = error?.response?.status;
+  return !error?.response || status === 502 || status === 503 || status === 504;
+}
+
+// Response interceptor: gestisce 401 (token scaduto/invalido) e ritenta le
+// letture mentre il backend sta ripartendo.
 api.interceptors.response.use(
   response => {
     // Sessione scorrevole: il backend rinnova il token mentre usi l'app
@@ -34,6 +46,7 @@ api.interceptors.response.use(
     if (rinnovato) {
       localStorage.setItem('auth_token', rinnovato);
     }
+    if (response.config?.__tentativi) toast.dismiss(ID_AVVISO_RIAVVIO);
     return response;
   },
   async error => {
@@ -47,18 +60,19 @@ api.interceptors.response.use(
     }
 
     const cfg = error.config || {};
-    const status = error.response?.status;
-    const transitorio = !error.response || status === 502 || status === 503 || status === 504;
+    const fatti = cfg.__tentativi || 0;
     if (
-      transitorio
+      eErroreTransitorio(error)
       && (cfg.method || '').toLowerCase() === 'get'
-      && !cfg.__ritentata
       && !cfg.__noRetry
+      && fatti < ATTESE_RITENTATIVI_MS.length
     ) {
-      cfg.__ritentata = true;
-      await new Promise(r => setTimeout(r, 2000));
+      cfg.__tentativi = fatti + 1;
+      toast.loading('Il gestionale si sta aggiornando, riprovo…', { id: ID_AVVISO_RIAVVIO, duration: Infinity });
+      await new Promise(r => setTimeout(r, ATTESE_RITENTATIVI_MS[fatti]));
       return api.request(cfg);
     }
+    if (fatti) toast.dismiss(ID_AVVISO_RIAVVIO);
 
     return Promise.reject(error);
   }

@@ -25,7 +25,26 @@ def non_collegato(campo: str) -> dict[str, Any]:
 
 
 COLLECTION_RICEVUTE = "ricevute_pagopa"
-PARSER_VERSION = "payment-receipt-layout-v4"
+
+# Campi che una ricevuta di intermediario porta oltre a quelli pagoPA/CBILL.
+CAMPI_INTERMEDIARIO = (
+    "intermediario", "metodo_pagamento", "paypal_transaction_id", "payment_id",
+    "ente_creditore", "id_ricevuta", "id_operazione", "identificativo_riscossione",
+    "causale", "ora_pagamento", "importi_quadrano",
+    "agente_riscossione", "intestatario", "psp_bic", "psp_nome", "documenti",
+    "cartella_number", "importo_tributi", "interessi_mora", "diritti_notifica",
+    "natura", "natura_fonte",
+)
+
+# Che cos'e' il pagamento verso l'ente: lo dice il titolare, la ricevuta no.
+NATURE_RICEVUTA = {
+    "tributo": "Tributo",
+    "rata_rateizzazione": "Rata di rateizzazione",
+    "onere_pratica": "Diritti o oneri di una pratica",
+    "sanzione_interessi": "Sanzione o interessi",
+    "altro": "Altro",
+}
+PARSER_VERSION = "payment-receipt-layout-v5"
 
 
 def _money_decimal(value: str | None) -> Decimal | None:
@@ -239,6 +258,302 @@ def _parse_bpm_payment(text: str) -> dict[str, Any]:
     }
 
 
+# --- Ricevuta «per l'utente» di Mooney (pagoPA pagato con PayPal) -----------
+#
+# Mooney scrive nel livello testo solo il riquadro degli importi e l'ID
+# ricevuta; tutto il resto (data e ora, beneficiario, ente creditore, IUV,
+# PayPal ID) e' un'immagine. Con 226 caratteri di testo il lettore generico si
+# fermava li' e non trovava ne' IUV ne' data: la ricevuta non risultava un
+# pagamento. Qui si riconosce dal marchio, si legge l'immagine con l'OCR gia'
+# usato per gli avvisi e le righe si ricostruiscono per posizione: colonna
+# sinistra (dati del servizio) e destra (importi, PayPal), etichetta e valore
+# sulla stessa riga.
+_MOONEY_MARCHIO = re.compile(r"MOONEY", re.IGNORECASE)
+_MOONEY_TITOLO = re.compile(r"RICEVUTA\s*PER\s*L.?\s*UTENTE", re.IGNORECASE)
+
+
+def e_ricevuta_mooney(text: str) -> bool:
+    return bool(_MOONEY_MARCHIO.search(text or "") and _MOONEY_TITOLO.search(text or ""))
+
+
+def _righe_ocr_per_posizione(content: bytes) -> str:
+    """OCR della prima pagina con le righe rimesse in ordine di lettura.
+
+    Il motore restituisce le scritte in un ordine che separa spesso l'etichetta
+    dal suo valore (``Totale:`` e ``7,38`` a mille pixel di distanza): si
+    raggruppano per colonna e per altezza, mai per ordine di uscita.
+    """
+    import fitz
+    import numpy as np
+    from PIL import Image
+
+    engine = _get_ocr_engine()
+    righe: list[str] = []
+    with fitz.open(stream=content, filetype="pdf") as document:
+        for page in document:
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            image = np.array(Image.open(io.BytesIO(pixmap.tobytes("png"))))
+            risultato, _ = engine(image)
+            metà = pixmap.width / 2
+            voci = []
+            for riquadro, testo, _confidenza in (risultato or []):
+                if not str(testo).strip():
+                    continue
+                x = min(punto[0] for punto in riquadro)
+                y = sum(punto[1] for punto in riquadro) / len(riquadro)
+                voci.append((0 if x < metà else 1, y, x, str(testo).strip()))
+            for colonna in (0, 1):
+                gruppo = sorted((v for v in voci if v[0] == colonna), key=lambda v: (v[1], v[2]))
+                corrente: list[tuple[float, str]] = []
+                y_corrente = None
+                for _, y, x, testo in gruppo:
+                    if y_corrente is not None and abs(y - y_corrente) > 10:
+                        righe.append(" ".join(t for _, t in sorted(corrente)))
+                        corrente = []
+                    if not corrente:
+                        y_corrente = y
+                    corrente.append((x, testo))
+                if corrente:
+                    righe.append(" ".join(t for _, t in sorted(corrente)))
+    return "\n".join(righe)
+
+
+def _importo_mooney(righe: str, etichetta: str) -> Decimal | None:
+    trovato = re.search(
+        rf"^\s*{etichetta}\s*:?\s*(\d{{1,3}}(?:\.\d{{3}})*[,.]\d{{2}})\s*€?\s*$",
+        righe, re.IGNORECASE | re.MULTILINE,
+    )
+    if not trovato:
+        return None
+    testo = trovato.group(1)
+    if "," in testo:
+        testo = testo.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(testo)
+    except InvalidOperation:
+        return None
+
+
+def _parse_mooney_payment(text: str) -> dict[str, Any]:
+    """Campi della ricevuta Mooney, o ``{}`` se il testo non e' la sua.
+
+    La somma importo + diritti deve fare il totale al centesimo: una lettura
+    dell'immagine che non torna non e' un pagamento, resta da verificare.
+    """
+    if not e_ricevuta_mooney(text):
+        return {}
+    righe = text
+
+    def campo(modello: str) -> str | None:
+        trovato = re.search(modello, righe, re.IGNORECASE | re.MULTILINE)
+        return trovato.group(1).strip() if trovato else None
+
+    importo = _importo_mooney(righe, "Importo")
+    diritti = _importo_mooney(righe, "Diritti")
+    totale = _importo_mooney(righe, "Totale")
+    quadra = (
+        importo is not None and diritti is not None and totale is not None
+        and importo + diritti == totale
+    )
+    iuv = campo(r"\bIUV\s*:?\s*(\d{15,20})")
+    data_ora = re.search(
+        r"Data\s*e\s*[0o]ra\s*:?\s*(\d{2})/(\d{2})/(\d{4})\s*(\d{2}):(\d{2})",
+        righe, re.IGNORECASE,
+    )
+    data_pagamento = ora = None
+    if data_ora:
+        giorno, mese, anno, ore, minuti = data_ora.groups()
+        try:
+            data_pagamento = datetime(int(anno), int(mese), int(giorno)).date().isoformat()
+            ora = f"{ore}:{minuti}"
+        except ValueError:
+            data_pagamento = None
+    paypal_id = campo(r"PayPal\s*ID\s*:?\s*([A-Z0-9]{15,20})")
+    esito_positivo = bool(re.search(
+        r"immediatamente\s*assolto|costituisce\s*attestazione\s*di\s*pagamento",
+        righe, re.IGNORECASE,
+    ))
+    cifre = lambda valore: float(valore) if valore is not None else None  # noqa: E731
+    centesimi = lambda valore: int(valore * 100) if valore is not None else None  # noqa: E731
+    evidenze = {
+        nome: {"page_number": 1, "source_text": valore, "normalized_value": valore,
+               "parser_version": PARSER_VERSION}
+        for nome, valore in (("iuv", iuv), ("beneficiario", campo(r"Beneficiario\s*:?\s*(.+)$")))
+    }
+    return {
+        "document_kind": "RICEVUTA_PAGOPA",
+        "intermediario": "Mooney",
+        "metodo_pagamento": "PayPal" if paypal_id else None,
+        "paypal_transaction_id": paypal_id,
+        "identificativo_bolletta": iuv,
+        "operation_amount": cifre(importo),
+        "operation_amount_cents": centesimi(importo),
+        "fee_amount": cifre(diritti),
+        "fee_amount_cents": centesimi(diritti),
+        "bank_debit_total": cifre(totale),
+        "bank_debit_total_cents": centesimi(totale),
+        "data_pagamento": data_pagamento,
+        "ora_pagamento": ora,
+        "beneficiario": campo(r"Beneficiario\s*:?\s*(.+)$"),
+        "ente_creditore": campo(r"Ente\s*Creditore\s*:?\s*(\d{11})"),
+        "id_ricevuta": campo(r"ID\s*Ricevuta\s*:?\s*([A-Z0-9]{6,20})"),
+        "id_operazione": campo(r"ID\s*Operazione\s*:?\s*(\d{4,20})"),
+        "payment_id": campo(r"Payment\s*ID\s*:?\s*(\d{10,25})"),
+        "identificativo_riscossione": campo(r"Identificativo\s*Risc[o0]ssione\s*:?\s*([0-9a-f]{20,40})"),
+        "causale": campo(r"Causale\s*:?\s*(.+)$"),
+        "importi_quadrano": quadra,
+        "is_payment_receipt": bool(quadra and iuv and data_pagamento and esito_positivo),
+        "field_evidence": evidenze,
+    }
+
+
+# --- «Ricevuta di pagamento» dell'Agenzia delle Entrate-Riscossione ---------
+#
+# Il portale dell'Agente della Riscossione rilascia dopo ogni pagamento pagoPA
+# un'attestazione col dettaglio per cartella: importo dei tributi e diritti di
+# notifica separati. Ha il testo vero (niente OCR): una riga «etichetta: valore».
+# Puo' pagare una cartella sola o piu' documenti con lo stesso IUV (pagina 1 col
+# totale, poi un «Dettaglio documento» per ognuno). I diritti di notifica sono
+# scritti dal documento stesso: quella e' l'unica volta in cui la natura del
+# pagamento si legge invece di chiederla.
+_ADER_TITOLO = re.compile(r"Ricevuta\s+di\s+pagamento", re.IGNORECASE)
+
+
+def e_attestazione_ader(text: str) -> bool:
+    testo = text or ""
+    return bool(
+        _ADER_TITOLO.search(testo)
+        and re.search(r"Agente\s+della\s+Riscossione", testo, re.IGNORECASE)
+        and re.search(r"Dettaglio\s+transazione", testo, re.IGNORECASE)
+    )
+
+
+def _importo_ader(valore: str | None) -> Decimal | None:
+    if not valore:
+        return None
+    testo = valore.strip()
+    if "," in testo:
+        testo = testo.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(testo).quantize(Decimal("0.01"))
+    except InvalidOperation:
+        return None
+
+
+def _parse_ader_attestazione(text: str) -> dict[str, Any]:
+    """Campi dell'attestazione AdER, o ``{}`` se il testo non e' la sua.
+
+    Ogni documento deve far tornare tributi + diritti = totale e la somma dei
+    documenti deve fare il totale del pagamento al centesimo: se non torna,
+    non e' un pagamento riconosciuto, resta da verificare.
+    """
+    if not e_attestazione_ader(text):
+        return {}
+
+    def campo(modello: str, blocco: str = text) -> str | None:
+        trovato = re.search(modello, blocco, re.IGNORECASE)
+        return trovato.group(1).strip() if trovato else None
+
+    def cifra(etichetta: str, blocco: str = text) -> Decimal | None:
+        return _importo_ader(campo(rf"{etichetta}\s*:\s*€\s*([\d.,]+)", blocco))
+
+    prima, *dettagli = re.split(r"Dettaglio\s+documento\s+n\.", text, flags=re.IGNORECASE)
+    documenti: list[dict[str, Any]] = []
+    for blocco in (dettagli or [prima]):
+        # Ogni voce e' una riga «etichetta: € importo»; il totale e' l'unica che
+        # comincia per «Totale». Nessun elenco chiuso di voci: una voce che
+        # l'Agente aggiunge domani entra nella somma o fa fallire la quadratura.
+        voci = [
+            {"etichetta": re.sub(r"\s+", " ", etichetta).strip(),
+             "importo": float(_importo_ader(valore) or 0)}
+            for etichetta, valore in re.findall(
+                r"^\s*([A-Za-zÀ-ÿ' ./]+?)\s*:\s*€\s*([\d.,]+)\s*$", blocco, re.MULTILINE)
+            if not etichetta.strip().lower().startswith(("totale", "importo originario"))
+        ]
+        totale = cifra("Totale pagato", blocco)
+        if totale is None:
+            totale = cifra("Totale Cartella/Avviso", blocco)
+        somma_voci = sum((Decimal(str(v["importo"])) for v in voci), Decimal("0")).quantize(Decimal("0.01"))
+
+        def voce(nome: str, voci=voci) -> float | None:
+            trovate = [v["importo"] for v in voci if v["etichetta"].lower() == nome]
+            return trovate[0] if trovate else None
+
+        documenti.append({
+            "numero": campo(r"Cartella/Avviso\s+n\.\s*:\s*(\d{15,25})", blocco),
+            "ente_creditore": campo(r"Ente\s+creditore\s*:\s*(.+)", blocco),
+            "voci": voci,
+            "importo_tributi": voce("importo tributi"),
+            "interessi_mora": voce("interessi di mora"),
+            "diritti_notifica": voce("diritti di notifica"),
+            "totale": float(totale) if totale is not None else None,
+            "quadra": bool(voci) and totale is not None and somma_voci == totale,
+        })
+    totale_pagamento = cifra("Totale pagamento", prima) if dettagli else cifra("Totale Cartella/Avviso", prima)
+    somma = sum((Decimal(str(d["totale"])) for d in documenti if d["totale"] is not None), Decimal("0"))
+    quadra = bool(
+        totale_pagamento is not None and all(d["quadra"] for d in documenti)
+        and somma == totale_pagamento
+    )
+
+    def totale_voce(chiave: str) -> Decimal:
+        return sum((Decimal(str(d[chiave] or 0)) for d in documenti), Decimal("0"))
+
+    tributi_totali = totale_voce("importo_tributi")
+    interessi_totali = totale_voce("interessi_mora")
+    diritti_totali = totale_voce("diritti_notifica")
+    solo_diritti = bool(
+        quadra and diritti_totali > 0 and tributi_totali == 0 and interessi_totali == 0
+        and all(v["etichetta"].lower() == "diritti di notifica" for d in documenti for v in d["voci"])
+    )
+    data_ora = re.search(r"Data/ora\s*:\s*(\d{2})/(\d{2})/(\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)", text)
+    data_pagamento = ora = None
+    if data_ora:
+        giorno, mese, anno, ora = data_ora.groups()
+        try:
+            data_pagamento = datetime(int(anno), int(mese), int(giorno)).date().isoformat()
+        except ValueError:
+            data_pagamento = None
+    iuv = campo(r"IUV[^:\n]{0,3}:\s*(\d{15,20})")
+    psp = re.search(r"Identificativo\s+PSP\s*:\s*([A-Z0-9]{6,11})\s*-\s*(.+)", text)
+    eseguita = bool(
+        re.search(r"Transazione\s+eseguita", text, re.IGNORECASE)
+        and re.search(r"registrato\s+correttamente", text, re.IGNORECASE)
+    )
+    numeri = [d["numero"] for d in documenti if d["numero"]]
+    return {
+        "document_kind": "RICEVUTA_PAGOPA",
+        "intermediario": "Agenzia delle Entrate-Riscossione",
+        "agente_riscossione": campo(r"Agente\s+della\s+Riscossione\s*:\s*(.+)"),
+        "intestatario": campo(r"Intestata\s+a\s*:\s*(.+)"),
+        "identificativo_bolletta": iuv,
+        "operation_amount": float(totale_pagamento) if totale_pagamento is not None else None,
+        "operation_amount_cents": int(totale_pagamento * 100) if totale_pagamento is not None else None,
+        "bank_debit_total": float(totale_pagamento) if totale_pagamento is not None else None,
+        "bank_debit_total_cents": int(totale_pagamento * 100) if totale_pagamento is not None else None,
+        "data_pagamento": data_pagamento,
+        "ora_pagamento": ora,
+        "beneficiario": "ADER",
+        "ente_creditore": campo(r"Cod\.\s*Fisc\.\s*Agente\s*Risc\.\s*:\s*(\d{11})"),
+        "psp_bic": psp.group(1) if psp else None,
+        "psp_nome": psp.group(2).strip() if psp else None,
+        "documenti": documenti,
+        "cartella_number": numeri[0] if numeri else None,
+        "importo_tributi": float(tributi_totali),
+        "interessi_mora": float(interessi_totali),
+        "diritti_notifica": float(diritti_totali),
+        "natura": "onere_pratica" if solo_diritti else None,
+        "natura_fonte": "documento" if solo_diritti else None,
+        "importi_quadrano": quadra,
+        "is_payment_receipt": bool(quadra and iuv and data_pagamento and eseguita),
+        "field_evidence": {
+            nome: {"page_number": 1, "source_text": valore, "normalized_value": valore,
+                   "parser_version": PARSER_VERSION}
+            for nome, valore in (("iuv", iuv),)
+        },
+    }
+
+
 def _attach_pdf_coordinates(content: bytes, parsed: dict[str, Any]) -> None:
     evidence = parsed.get("field_evidence") or {}
     if not evidence:
@@ -288,6 +603,16 @@ def _extract_receipt_text(content: bytes) -> tuple[str, bool]:
         text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
     except Exception:
         pass
+    if e_ricevuta_mooney(text):
+        try:
+            righe = _righe_ocr_per_posizione(content)
+            if righe.strip():
+                return f"{text}\n{righe}", True
+        except Exception as exc:  # noqa: BLE001 - senza OCR resta il solo testo vettoriale
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "OCR ricevuta Mooney non riuscito (%s: %s)", type(exc).__name__, exc)
     upper_native = re.sub(r"\s+", " ", text).upper()
     native_notice = any(marker in upper_native for marker in (
         "AVVISO DI PAGAMENTO", "QUANTO E QUANDO PAGARE", "RATA UNICA ENTRO IL",
@@ -358,7 +683,8 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
     compact = re.sub(r"\s+", " ", text)
     upper = compact.upper()
     marker_text = re.sub(r"[^A-Z0-9]", "", upper)
-    bpm_payment = _parse_bpm_payment(text)
+    bpm_payment = (_parse_bpm_payment(text) or _parse_mooney_payment(text)
+                   or _parse_ader_attestazione(text))
     if bpm_payment:
         _attach_pdf_coordinates(content, bpm_payment)
     is_notice = any(marker in marker_text for marker in (
@@ -547,6 +873,70 @@ async def _movimento_della_ricevuta(
     return None
 
 
+async def collega_ricevuta_a_paypal(db, receipt: dict[str, Any]) -> dict[str, Any]:
+    """Ricevuta pagata con PayPal -> il pagamento PayPal con lo stesso ID.
+
+    L'identita' e' l'ID transazione scritto sulla ricevuta, mai l'importo da
+    solo: senza quell'ID (o senza il pagamento in archivio) la ricevuta resta
+    in attesa. L'importo dev'essere il totale addebitato al centesimo. Il
+    movimento di banca si aggancia solo se e' quello gia' legato a quel
+    pagamento PayPal e viene dall'estratto ufficiale.
+    """
+    from app.services.paypal_invoice_matching import transaction_amount
+
+    paypal_id = str(receipt.get("paypal_transaction_id") or "").strip()
+    if not paypal_id:
+        return {"collegata": False, "motivo": "nessun_paypal_id"}
+    transazione = await db["paypal_transactions"].find_one(
+        {"$or": [{"transaction_id": paypal_id}, {"id": paypal_id}]}, {"_id": 0},
+    )
+    if not transazione:
+        return {"collegata": False, "motivo": "paypal_non_ancora_in_archivio"}
+    totale = receipt.get("bank_debit_total") or receipt.get("importo")
+    if not amounts_equal_to_cent(transaction_amount(transazione), totale):
+        return {"collegata": False, "motivo": "importo_paypal_diverso"}
+
+    ora = datetime.now(timezone.utc).isoformat()
+    campi: dict[str, Any] = {"paypal_collegato": True, "paypal_collegato_il": ora}
+    movimento_id = transazione.get("movimento_banca_id") or transazione.get("estratto_conto_movimento_id")
+    movimento = None
+    if movimento_id and not receipt.get("movimento_id"):
+        movimento = await db["estratto_conto_movimenti"].find_one({"id": movimento_id}, {"_id": 0})
+        if not (movimento and movimento.get("evidenza_bancaria_ufficiale") is True
+                and amounts_equal_to_cent(movimento.get("importo"), totale)):
+            movimento = None
+    if movimento:
+        campi.update({"movimento_id": movimento["id"], "banca_verificata": True,
+                      "movimento_data": movimento.get("data"), "movimento_importo": movimento.get("importo")})
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento["id"]},
+            {"$set": {"ricevuta_pagopa_id": receipt["id"], "ricevuta_filename": receipt.get("filename"),
+                      "updated_at": ora}},
+        )
+    await db[COLLECTION_RICEVUTE].update_one({"id": receipt["id"]}, {"$set": campi})
+    # Un pagamento pagoPA non e' il pagamento di una fattura: fuori dall'abbinamento per importo.
+    await db["paypal_transactions"].update_one(
+        {"$or": [{"transaction_id": paypal_id}, {"id": paypal_id}]},
+        {"$set": {"is_pagopa": True, "ricevuta_pagopa_id": receipt["id"]}},
+    )
+    return {"collegata": True, "campi": campi, "transaction_id": paypal_id, "banca": bool(movimento)}
+
+
+async def ricollega_ricevute_paypal(db) -> dict[str, int]:
+    """Rete: le ricevute Mooney arrivate prima del pagamento PayPal lo trovano
+    appena la sincronizzazione lo porta (giro PayPal e importazione)."""
+    esito = {"in_attesa": 0, "collegate": 0}
+    attese = await db[COLLECTION_RICEVUTE].find({
+        "paypal_transaction_id": {"$nin": [None, ""]},
+        "paypal_collegato": {"$ne": True},
+    }, {"_id": 0, "pdf_data": 0}).to_list(500)
+    for ricevuta in attese:
+        esito["in_attesa"] += 1
+        if (await collega_ricevuta_a_paypal(db, ricevuta)).get("collegata"):
+            esito["collegate"] += 1
+    return esito
+
+
 async def _associate_receipt_to_verbale(
     db, *, receipt_id: str, parsed: dict[str, Any], amount: Any,
 ) -> dict[str, Any]:
@@ -654,6 +1044,18 @@ async def import_receipt(
         return {"success": True, "duplicate": True, "receipt": existing,
                 "riconciliazione_fiscale": existing.get("riconciliazione_fiscale")}
 
+    # Lo stesso pagamento documentato da un secondo file (l'attestazione del
+    # portale dopo la ricevuta dell'intermediario): stesso IUV, stesso importo,
+    # stesso giorno. Un solo record: il file nuovo non ne crea un secondo.
+    stesso = await db[COLLECTION_RICEVUTE].find_one(
+        {"identificativo_bolletta": code, "data_pagamento": values.get("data_pagamento")},
+        {"_id": 0, "pdf_data": 0},
+    )
+    if stesso and amounts_equal_to_cent(stesso.get("importo"), amount):
+        return {"success": True, "duplicate": True, "receipt": stesso,
+                "duplicate_motivo": "stesso_iuv_importo_data",
+                "riconciliazione_fiscale": stesso.get("riconciliazione_fiscale")}
+
     receipt_id = str(uuid.uuid4())
     strong_codes = list(dict.fromkeys(
         str(values.get(field) or "").strip()
@@ -702,7 +1104,12 @@ async def import_receipt(
         "associazione_automatica": bool(movement), "created_at": now,
         "versato_documentalmente": True,
         "banca_verificata": bool(movement),
+        # Ricevuta di un intermediario (Mooney): chi ha incassato, con cosa e' stata
+        # pagata e i riferimenti che la banca o PayPal potranno citare.
+        **{campo: values.get(campo) for campo in CAMPI_INTERMEDIARIO if values.get(campo) not in (None, "")},
     }
+    if receipt.get("natura") in NATURE_RICEVUTA:
+        receipt["natura_label"] = NATURE_RICEVUTA[receipt["natura"]]
     if movement:
         receipt.update({"movimento_data": movement.get("data"),
                         "movimento_importo": movement.get("importo")})
@@ -713,6 +1120,9 @@ async def import_receipt(
             }},
         )
     await db[COLLECTION_RICEVUTE].insert_one(receipt.copy())
+    paypal = await collega_ricevuta_a_paypal(db, receipt)
+    if paypal.get("collegata"):
+        receipt.update(paypal["campi"])
 
     verbale_match = await _associate_receipt_to_verbale(
         db, receipt_id=receipt_id, parsed=parsed, amount=amount,

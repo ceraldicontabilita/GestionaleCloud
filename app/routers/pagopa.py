@@ -168,6 +168,49 @@ async def upload_ricevuta(
     }
 
 
+@router.get("/nature")
+@handle_errors
+async def nature_ricevuta() -> Dict[str, Any]:
+    """Vocabolario della natura di un pagamento verso l'ente."""
+    from app.services.pagopa_receipts import NATURE_RICEVUTA
+
+    return {"nature": [{"id": k, "label": v} for k, v in NATURE_RICEVUTA.items()]}
+
+
+@router.put("/ricevute/{ricevuta_id}/natura")
+@handle_errors
+async def imposta_natura(ricevuta_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Il titolare dice che cosa ha pagato: la ricevuta non lo dice.
+
+    Non cambia importi, banca o collegamenti: registra la scelta, con chi e
+    quando, e conserva la precedente nello storico.
+    """
+    from app.services.pagopa_receipts import NATURE_RICEVUTA
+
+    natura = str(data.get("natura") or "").strip()
+    if natura not in NATURE_RICEVUTA:
+        raise HTTPException(status_code=400, detail={
+            "code": "NATURA_NON_VALIDA", "message": "Scegli una natura dell'elenco",
+            "details": {"ammesse": list(NATURE_RICEVUTA)},
+        })
+    db = Database.get_db()
+    ricevuta = await db[COLLECTION_RICEVUTE].find_one(
+        {"id": ricevuta_id}, {"_id": 0, "id": 1, "natura": 1, "storico_natura": 1},
+    )
+    if not ricevuta:
+        raise HTTPException(status_code=404, detail="Ricevuta non trovata")
+    ora = datetime.now(timezone.utc).isoformat()
+    storico = list(ricevuta.get("storico_natura") or [])
+    if ricevuta.get("natura") and ricevuta.get("natura") != natura:
+        storico.append({"natura": ricevuta["natura"], "fino_al": ora})
+    await db[COLLECTION_RICEVUTE].update_one({"id": ricevuta_id}, {"$set": {
+        "natura": natura, "natura_label": NATURE_RICEVUTA[natura],
+        "natura_scelta_il": ora, "storico_natura": storico, "updated_at": ora,
+    }})
+    return {"success": True, "ricevuta_id": ricevuta_id, "natura": natura,
+            "natura_label": NATURE_RICEVUTA[natura]}
+
+
 @router.post("/ricevute/associa-manuale")
 @handle_errors
 async def associa_manuale(data: Dict[str, Any]) -> Dict[str, Any]:

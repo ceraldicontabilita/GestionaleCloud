@@ -1,13 +1,13 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 import api from '../api';
 import GestionePagoPA, { paymentAmountParts, paymentKindLabel } from './GestionePagoPA';
 
 vi.mock('../api', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
 }));
 
 describe('Ricevuta associata: link al movimento', () => {
@@ -50,6 +50,33 @@ describe('Ricevuta associata: link al movimento', () => {
 
     await waitFor(() => expect(screen.getByText('⏳ Da Associare')).toBeInTheDocument());
     expect(screen.queryByTestId('vedi-movimento-0')).not.toBeInTheDocument();
+  });
+});
+
+describe('Ricevuta: che cosa hai pagato', () => {
+  it('salva la natura scelta dalla tendina e la mostra subito', async () => {
+    api.get.mockImplementation(url => {
+      if (url === '/api/pagopa/nature') {
+        return Promise.resolve({ data: { nature: [
+          { id: 'tributo', label: 'Tributo' }, { id: 'sanzione_interessi', label: 'Sanzione o interessi' },
+        ] } });
+      }
+      if (url === '/api/pagopa/ricevute') {
+        return Promise.resolve({ data: [{ id: 'ric-9', iuv: 'IUV9', beneficiario: 'ADER' }] });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.put.mockResolvedValue({ data: { success: true } });
+
+    render(<MemoryRouter><GestionePagoPA /></MemoryRouter>);
+
+    const tendina = await screen.findByTestId('natura-ric-9');
+    fireEvent.change(tendina, { target: { value: 'sanzione_interessi' } });
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/api/pagopa/ricevute/ric-9/natura', { natura: 'sanzione_interessi' },
+    ));
+    await waitFor(() => expect(screen.getByTestId('natura-ric-9')).toHaveValue('sanzione_interessi'));
   });
 });
 
