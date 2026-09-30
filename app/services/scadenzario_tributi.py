@@ -151,18 +151,20 @@ def scadenza_da_regola(sezione: str, codice: str, anno: Optional[int], mese: Opt
     if c in _ANNUALI and _ANNUALI[c]:
         m, g, dopo = _ANNUALI[c]
         return termine_effettivo(date(anno + dopo, m, g)), "regola codice annuale (senza proroghe)"
+    if sezione == "sezione_inps" and c.startswith(("RC", "RS", "RD")):
+        return None, "rata di dilazione INPS: scadenza nel piano, non nel codice"
     if mese and (c in _MENSILI or sezione == "sezione_inps"):
         return termine_effettivo(_sedici_mese_dopo(anno, mese)), "regola 16 del mese dopo"
     if mese and c in _ADDIZIONALI:
-        # Anno d'imposta o anno della trattenuta: vale quello che da' il
-        # ritardo minore (mai un ritardo inventato).
+        # Anno d'imposta (trattenuta nell'anno dopo, saldo) o anno della
+        # trattenuta (acconto, cessazioni): vale la scadenza piu' vicina alla
+        # data della quietanza.
         candidati = [termine_effettivo(_sedici_mese_dopo(a, mese)) for a in (anno, anno + 1)]
         if data_pagamento:
             pagato = date.fromisoformat(data_pagamento)
-            dopo = [s for s in candidati if s >= pagato]
-            if dopo:
-                return min(dopo), "regola addizionali trattenute (anno d'imposta ambiguo)"
-        return max(candidati), "regola addizionali trattenute (anno d'imposta ambiguo)"
+            return (min(candidati, key=lambda s: abs((pagato - s).days)),
+                    "regola addizionali trattenute (anno d'imposta o della trattenuta, il piu' vicino)")
+        return None, "addizionale senza data di pagamento"
     return None, "nessuna regola per il codice"
 
 
@@ -284,7 +286,9 @@ def calcola(pagamenti: Iterable[Dict[str, Any]],
                                  "fonte": fonte, "giorni": giorni})
 
             # Sanzione e interessi attesi per i tributi in ritardo del periodo.
-            ritardo = [v for v in valutati if v["giorni"] is not None and v["giorni"] > 0]
+            # INPS e INAIL: sanzioni civili, fuori dall'art. 13 e dalle 89xx.
+            ritardo = [v for v in valutati if v["giorni"] is not None and v["giorni"] > 0
+                       and v["chiave"][0] not in ("sezione_inps", "sezione_inail")]
             sanz_attesa = int_attesi = 0
             dettagli_calcolo = []
             for v in ritardo:
@@ -312,6 +316,11 @@ def calcola(pagamenti: Iterable[Dict[str, Any]],
                     stato = PUNTUALE
                     motivo = (f"pagato il {_data_it(data_p)}, scadenza {_data_it(v['scadenza'].isoformat())} "
                               f"({v['fonte']})")
+                elif v["chiave"][0] in ("sezione_inps", "sezione_inail"):
+                    stato = RITARDO_DA_VERIFICARE
+                    motivo = (f"pagato il {_data_it(data_p)}, {v['giorni']} giorni dopo la scadenza "
+                              f"{_data_it(v['scadenza'].isoformat())}: contributi, si applicano le sanzioni "
+                              "civili INPS/INAIL (non il ravvedimento art. 13): da verificare")
                 elif gruppo["sanzioni"] or gruppo["interessi"]:
                     basta_s = _basta(gruppo["sanzioni"], sanz_attesa)
                     # Interessi: si giudicano solo se si vedono (codice
