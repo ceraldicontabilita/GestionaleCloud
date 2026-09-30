@@ -774,6 +774,31 @@ async def controlla_avviso(
         ced = cedolini_per_periodo.get((periodo["anno"], periodo["mese"])) if periodo["mese"] else None
         esiti.append(controlla_riga(r, registro, ced))
 
+    # Scadenzario: pagato nei termini o ravveduto → la riga non e' dovuta.
+    from app.services import scadenzario_tributi as sc
+
+    quietanze_con_righe = [q for q in registro["quietanze"] if q.get("righe")]
+    scadenze = {}
+    for f24 in registro["f24"]:
+        if str(f24.get("etichetta") or "").upper() == "RAVVEDIMENTO":
+            continue
+        dv = data_versamento_modello(f24)
+        if dv:
+            for r in righe_modello(f24):
+                scadenze.setdefault((r["sezione"], r["codice"], r["anno"], r["mese"]), dv)
+    voci_scad = sc.calcola(pagamenti_da_quietanze(quietanze_con_righe), scadenze)
+    verdetti = []
+    for r, e in zip(righe, esiti):
+        periodo = parse_periodo_avviso(r.get("periodo"), r.get("anno_imposta"))
+        v = sc.verdetto_riga(
+            normalizza_codice(r.get("codice_tributo")), periodo["anno"], periodo["mese"], e["importo_cents"],
+            voci_scad, sanzioni_richieste_cents=centesimi(r.get("importo_sanzioni")) or 0,
+            interessi_richiesti_cents=centesimi(r.get("importo_interessi")) or 0,
+            data_versamento_ade=_data_iso(r.get("data_versamento_ade")),
+        )
+        e["scadenzario"] = v
+        verdetti.append(v)
+
     per_esito = {e: 0 for e in ESITI}
     totali = {e: 0 for e in ESITI}
     for e in esiti:
@@ -796,6 +821,7 @@ async def controlla_avviso(
             "per_esito": per_esito,
             "importi_per_esito": {k: euro(v) for k, v in totali.items()},
         },
+        "verdetto": sc.verdetto_avviso(numero_avviso, verdetti),
         "fonti": registro["conteggi"],
         "cedolini_hr_letti": {
             f"{m:02d}/{a}": {"n": len(v.get("cedolini") or []), "configurato": v.get("configurato"), "errore": v.get("errore")}

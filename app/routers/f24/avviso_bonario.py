@@ -30,6 +30,9 @@ class RigaAvvisoBonario(BaseModel):
     importo: float = Field(description="Importo richiesto dall'avviso")
     anno_imposta: Optional[int] = Field(None, ge=2000, le=2100)
     descrizione: Optional[str] = None
+    importo_sanzioni: Optional[float] = Field(None, description="Sanzioni richieste per la riga")
+    importo_interessi: Optional[float] = Field(None, description="Interessi richiesti per la riga")
+    data_versamento_ade: Optional[str] = Field(None, description="Data del versamento secondo l'Agenzia")
 
 
 class AvvisoBonarioRequest(BaseModel):

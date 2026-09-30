@@ -134,4 +134,17 @@ describe('Tributi', () => {
     fireEvent.change(screen.getByLabelText('Arrivato da'), { target: { value: 'drive' } });
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/f24/tributi/versamenti?origine=drive'));
   });
+
+  it('scadenzario: in ritardo e ravveduto, con la motivazione', async () => {
+    const scad = { anni: [2020], per_stato: [{ id: 'RAVVEDUTO', label: 'Pagato in ritardo, ravveduto', n: 1 }],
+      voci: [{ chiave: 'sezione_erario|1012|2020|7', codice: '1012', periodo: '07/2020', stato: 'RAVVEDUTO',
+        stato_label: 'Pagato in ritardo, ravveduto', scadenza: '2020-08-20', ultimo_pagamento: '2020-10-05', pagato_cents: 39573,
+        pagamenti: [{ data: '2020-10-05', protocollo: 'P', importo_cents: 39573, giorni_ritardo: 46, compensazione_totale: true,
+          motivazione: 'pagato il 05/10/2020, 46 giorni dopo la scadenza 20/08/2020' }] }] };
+    api.get.mockImplementation(url => Promise.resolve({ data: url.startsWith('/api/f24/tributi/scadenzario') ? scad : risposta }));
+    render(<MemoryRouter initialEntries={['/tributi?vista=scadenzario']}><Tributi /></MemoryRouter>);
+    fireEvent.click(await screen.findByTestId('scad-sezione_erario|1012|2020|7'));
+    expect(await screen.findByTestId('scad-pagamento')).toHaveTextContent('46 giorni di ritardo');
+    expect(screen.getByTestId('scad-pagamento')).toHaveTextContent('in compensazione');
+  });
 });

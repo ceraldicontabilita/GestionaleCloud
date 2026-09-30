@@ -267,6 +267,16 @@ export default function AvvisoBonarioF24() {
         </div>
       )}
 
+      {esito?.verdetto && (
+        <div role="status" data-testid="avviso-verdetto" style={{
+          marginTop: 12, padding: '10px 14px', borderRadius: 8, fontWeight: 700,
+          background: esito.verdetto.esito === 'NON_DOVUTO' ? '#e3efe8' : esito.verdetto.esito === 'DOVUTO_DIFFERENZA' ? '#f7e4e0' : '#fbf1e3',
+          color: esito.verdetto.esito === 'NON_DOVUTO' ? PALETTE.bosco : esito.verdetto.esito === 'DOVUTO_DIFFERENZA' ? PALETTE.terracotta : PALETTE.sabbiaScura,
+        }}>
+          {esito.verdetto.testo}
+        </div>
+      )}
+
       {esito?.righe?.length > 0 && (
         <div style={{ overflowX: 'auto', marginTop: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900, background: PALETTE.card }} data-testid="avviso-tabella-esiti">
@@ -299,6 +309,14 @@ export default function AvvisoBonarioF24() {
                   </td>
                   <td style={{ ...stileTd, minWidth: 220, color: PALETTE.grigio }}>
                     {r.motivazione}
+                    {r.scadenzario && (
+                      <div data-testid="avviso-scadenzario" style={{ marginTop: 6, color: PALETTE.inchiostro }}>
+                        <strong>{{ NON_DOVUTO: 'Non dovuto', DOVUTO: 'Dovuto', DOVUTO_DIFFERENZA: 'Dovuta la differenza', DA_VERIFICARE: 'Da verificare' }[r.scadenzario.verdetto]}</strong>
+                        {r.scadenzario.differenza_cents > 0 && <> · {formatEuro(r.scadenzario.differenza_cents / 100)}</>}
+                        {' — '}{r.scadenzario.motivazione}
+                        {(r.scadenzario.note || []).map(n => <div key={n}>{n}</div>)}
+                      </div>
+                    )}
                     <ListaIndizi indizi={r.indizi} onApriPdf={(i) => setPdfViewer({ title: `F24 ${i.file_name || i.f24_id}`, src: i.pdf_url })} />
                   </td>
                 </tr>

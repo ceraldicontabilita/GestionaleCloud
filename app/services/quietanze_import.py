@@ -538,6 +538,16 @@ async def importa_quietanza_bytes(
         logger.exception("Quietanza %s: ritenute non aggiornate (%s)", file_id, type(exc).__name__)
         risultato["ritenute_aggiornate"] = {"errore": type(exc).__name__}
 
+    # Scadenzario: la quietanza appena letta dice subito se il pagamento e'
+    # nei termini, in ritardo, ravveduto.
+    try:
+        from app.services.scadenzario_tributi import aggiorna as aggiorna_scadenzario
+
+        risultato["scadenzario"] = await aggiorna_scadenzario(db)
+    except Exception as exc:  # noqa: BLE001 - la quietanza resta importata
+        logger.exception("Quietanza %s: scadenzario non aggiornato (%s)", file_id, type(exc).__name__)
+        risultato["scadenzario"] = {"errore": type(exc).__name__}
+
     # L'addebito I24 puo' essere gia' in banca: si cerca adesso, fra i soli
     # movimenti di pari importo, senza aspettare il giro dei 30 minuti.
     try:
@@ -776,3 +786,37 @@ async def ricollega_quietanze_orfane(db) -> Dict[str, Any]:
                 "risolto_da": "ricollega_quietanze_orfane",
             }})
     return {"orfane": len(orfane), "collegate": collegate, "rietichettate": rietichettate}
+
+
+async def allinea_quietanze_saldo_zero(db) -> Dict[str, Any]:
+    """Quietanze gia' importate a saldo zero con righe a debito: pagate in
+    compensazione, non «F24 mancante». Solo per id, idempotente; chiude gli
+    alert bloccanti «quietanza senza match» nati prima di questa regola."""
+    docs = await db[COLL_QUIETANZE].find(
+        {"stato_quietanza": {"$in": ["QUIETANZA_PRESENTE_F24_MANCANTE",
+                                     "QUIETANZA_PRESENTE_F24_NON_CORRISPONDENTE"]}},
+        {"_id": 0, "pdf_data": 0},
+    ).to_list(5000)
+    aggiornate = alert_chiusi = 0
+    for q in docs:
+        if saldo_cents(q) != 0 or not estrai_tributi_dettaglio(q):
+            continue
+        await db[COLL_QUIETANZE].update_one({"id": q["id"]}, {"$set": {
+            "stato_associazione": "compensazione_totale",
+            "stato_quietanza": "QUIETANZA_COMPENSAZIONE_TOTALE",
+            "calcolo_fiscale_sospeso": False,
+            "compensazione_totale": True,
+        }})
+        aggiornate += 1
+        alert = await db[COLL_F24_ALERTS].find(
+            {"quietanza_id": q["id"], "tipo": "quietanza_senza_match", "status": "pending"},
+            {"_id": 0, "id": 1},
+        ).to_list(20)
+        for a in alert:
+            await db[COLL_F24_ALERTS].update_one({"id": a["id"]}, {"$set": {
+                "status": "resolved",
+                "risolto_motivo": "F24 a saldo zero: pagato tutto in compensazione",
+                "risolto_il": datetime.now(timezone.utc).isoformat(),
+            }})
+            alert_chiusi += 1
+    return {"controllate": len(docs), "aggiornate": aggiornate, "alert_chiusi": alert_chiusi}

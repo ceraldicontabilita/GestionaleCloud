@@ -65,3 +65,30 @@ async def registro_versamenti(
     dati = await _pagamenti()
     return {**versamenti.costruisci(dati["pagamenti"], anno=anno, origine=origine),
             "istantanea": dati.get("istantanea")}
+
+
+@router.get("/tributi/scadenzario",
+            summary="Scadenzario: ogni tributo pagato nei termini, in ritardo, ravveduto o no")
+async def scadenzario(
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
+    stato: Optional[str] = Query(None, max_length=40),
+    cerca: Optional[str] = Query(None, max_length=80),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Legge lo scadenzario persistente; se e' ancora vuoto lo calcola sul momento."""
+    from app.services import scadenzario_tributi as sc
+
+    db = Database.get_db()
+    voci = await db[sc.COLL].find({}, {"_id": 0}).to_list(20000)
+    persistente = bool(voci)
+    if not voci:
+        voci = await sc.carica(db)
+    return {**sc.riepilogo(voci, anno=anno, stato=stato or None, cerca=(cerca or "").strip() or None),
+            "persistente": persistente}
+
+
+@router.post("/tributi/scadenzario/aggiorna", summary="Ricalcola lo scadenzario (idempotente)")
+async def aggiorna_scadenzario(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
+    from app.services import scadenzario_tributi as sc
+
+    return await sc.aggiorna(Database.get_db())

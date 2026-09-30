@@ -865,6 +865,21 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-F24] ritenute: %s: %s", type(e).__name__, e)
         try:
+            from app.services.quietanze_import import allinea_quietanze_saldo_zero
+            r = await allinea_quietanze_saldo_zero(db)
+            if r["aggiornate"]:
+                logger.info("[SCHEDULER-F24] quietanze a saldo zero allineate=%s alert chiusi=%s",
+                            r["aggiornate"], r["alert_chiusi"])
+        except Exception as e:
+            logger.error("[SCHEDULER-F24] saldo zero: %s: %s", type(e).__name__, e)
+        try:
+            # Scadenzario: ogni riga pagata, in termini / in ritardo / ravveduta.
+            from app.services.scadenzario_tributi import aggiorna as aggiorna_scadenzario
+            r = await aggiorna_scadenzario(db)
+            logger.info("[SCHEDULER-F24] scadenzario voci=%s scritte=%s", r["voci"], r["scritte"])
+        except Exception as e:
+            logger.error("[SCHEDULER-F24] scadenzario: %s: %s", type(e).__name__, e)
+        try:
             # Dopo il riscontro: la rata prende l'addebito dalla sua quietanza.
             from app.services.dilazioni_inps import collega_dilazioni
             r = await collega_dilazioni(db)
