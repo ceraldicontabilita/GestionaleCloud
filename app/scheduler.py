@@ -685,6 +685,17 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-CONTROLLI-INCROCIATI] errore: {type(e).__name__}: {e}")
 
+    async def _incroci_fiscali_job():
+        # LIPE ↔ F24 mensile, IRAP ↔ 3800, IVA annuale ↔ 6099, 54-bis: un
+        # quadro solo, poi gli alert (aperti se mancano, chiusi se superati).
+        from app.database import Database
+        try:
+            from app.services.incroci_fiscali import esegui_incroci
+            esito = await esegui_incroci(Database.get_db())
+            logger.info("[SCHEDULER-INCROCI-FISCALI] %s", esito)
+        except Exception as e:
+            logger.error(f"[SCHEDULER-INCROCI-FISCALI] errore: {type(e).__name__}: {e}")
+
     async def _bonifici_pdf_inbox_job():
         from app.database import Database
         from app.services.bonifici_pdf_ingest import (
@@ -1316,6 +1327,16 @@ def start_scheduler():
         coalesce=True,
         id="controlli_incrociati",
         name="Controlli incrociati: pagamenti, estratti mancanti, RT dimenticata (ogni giorno)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _incroci_fiscali_job,
+        CronTrigger(hour=6, minute=50, timezone="Europe/Rome"),
+        misfire_grace_time=3600,
+        coalesce=True,
+        id="incroci_fiscali",
+        name="Incroci fiscali: LIPE-F24, IRAP, IVA annuale, 54-bis, con alert (ogni giorno)",
         replace_existing=True,
     )
 

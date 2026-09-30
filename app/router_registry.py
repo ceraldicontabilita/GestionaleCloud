@@ -235,6 +235,11 @@ def _register_employees(app: FastAPI):
     from app.routers import dichiarazioni_quadri
     app.include_router(dichiarazioni_quadri.router, prefix="/api/fiscale", tags=["Dichiarazioni fiscali"])
 
+    # Incroci fiscali del minisito (LIPE ↔ F24, IRAP, IVA annuale, 54-bis):
+    # un motore solo, in sola lettura; gli alert li apre il giro del mattino.
+    from app.routers import incroci_fiscali
+    app.include_router(incroci_fiscali.router, prefix="/api/fiscale", tags=["Dichiarazioni fiscali"])
+
     # Gestione IVA (SPECIFICA_IVA.md): attribuzione periodo per competenza,
     # IVA disponibile non utilizzata.
     from app.routers import iva as iva_router
