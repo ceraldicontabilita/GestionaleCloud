@@ -40,7 +40,8 @@ COLLEZIONE = "articoli_letti_ai"
 STATO_ID = "lettura_articoli_ai"
 VERSIONE = 1
 MODELLO = "claude-haiku-4-5"
-PER_CHIAMATA = 40
+PER_CHIAMATA = 25
+MAX_TOKEN = 8000
 IN_PARALLELO = 4
 SCRITTURA_OGNI = 400
 
@@ -122,17 +123,39 @@ def valida(lettura: Dict[str, Any], descrizione: str) -> Dict[str, Any]:
 
 
 def _estrai_array(testo: str) -> List[Dict[str, Any]]:
-    m = re.search(r"\[.*\]", testo or "", re.DOTALL)
-    if not m:
+    """Gli oggetti letti dalla risposta, anche se l'array e' troncato o ha testo attorno.
+
+    Una risposta tagliata a meta' (limite di token) o con una frase davanti non
+    deve far perdere le letture complete che contiene: si leggono gli oggetti
+    uno a uno dal primo ``[``.
+    """
+    testo = re.sub(r"```(?:json)?", "", testo or "")
+    inizio = testo.find("[")
+    if inizio < 0:
         return []
     try:
-        dati = json.loads(m.group())
-    except json.JSONDecodeError:
-        return []
-    return [d for d in dati if isinstance(d, dict)]
+        dati = json.loads(testo[inizio:testo.rindex("]") + 1])
+        return [d for d in dati if isinstance(d, dict)]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    decoder = json.JSONDecoder()
+    out: List[Dict[str, Any]] = []
+    pos = inizio + 1
+    while pos < len(testo):
+        graffa = testo.find("{", pos)
+        if graffa < 0:
+            break
+        try:
+            oggetto, pos = decoder.raw_decode(testo, graffa)
+        except json.JSONDecodeError:
+            break  # l'ultimo oggetto e' tagliato: si tengono quelli completi
+        if isinstance(oggetto, dict):
+            out.append(oggetto)
+    return out
 
 
-async def leggi_con_ai(descrizioni: List[str], client=None) -> Dict[str, Dict[str, Any]]:
+async def leggi_con_ai(descrizioni: List[str], client=None,
+                       diagnosi: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
     """Una chiamata per al massimo ``PER_CHIAMATA`` descrizioni.
     Torna {descrizione: lettura validata}; le mancanti restano da leggere."""
     chiave = _chiave_api()
@@ -143,7 +166,7 @@ async def leggi_con_ai(descrizioni: List[str], client=None) -> Dict[str, Dict[st
     lista = "\n".join(f"{i + 1}. {pulisci(d)}" for i, d in enumerate(descrizioni))
     corpo = {
         "model": MODELLO,
-        "max_tokens": 6000,
+        "max_tokens": MAX_TOKEN,
         "system": _SISTEMA,
         "messages": [{"role": "user", "content": f"Leggi queste {len(descrizioni)} descrizioni:\n{lista}"}],
     }
@@ -153,7 +176,11 @@ async def leggi_con_ai(descrizioni: List[str], client=None) -> Dict[str, Dict[st
     try:
         r = await client.post("https://api.anthropic.com/v1/messages", headers=intestazioni, json=corpo)
         r.raise_for_status()
-        testo = "".join(b.get("text", "") for b in r.json().get("content", []) if isinstance(b, dict))
+        risposta = r.json()
+        testo = "".join(b.get("text", "") for b in risposta.get("content", []) if isinstance(b, dict))
+        if diagnosi is not None:
+            diagnosi["stop_reason"] = risposta.get("stop_reason")
+            diagnosi["inizio_risposta"] = testo[:120]
     finally:
         if proprio:
             await client.aclose()
@@ -240,16 +267,33 @@ async def leggi_mancanti(db, descrizioni: Iterable[str], limite: int = 3000) -> 
             async def uno(blocco: List[str]) -> None:
                 nonlocal letti, errori, ultimo_errore
                 async with semaforo:
+                    risultato: Dict[str, Dict[str, Any]] = {}
+                    diagnosi: Dict[str, Any] = {}
+                    da_fare = list(blocco)
                     for tentativo in range(3):
                         try:
-                            risultato = await leggi_con_ai(blocco, client=client)
-                            break
+                            # le mancanti si rileggono a gruppi piu' piccoli: una risposta
+                            # tagliata o senza JSON non deve perdere tutto il blocco
+                            piccoli = [da_fare[i:i + max(1, len(da_fare) // (tentativo + 1))]
+                                       for i in range(0, len(da_fare), max(1, len(da_fare) // (tentativo + 1)))]
+                            for parte in piccoli if tentativo else [da_fare]:
+                                risultato.update(await leggi_con_ai(parte, client=client, diagnosi=diagnosi))
                         except Exception as exc:  # noqa: BLE001 - si conta e si riprova
                             ultimo_errore = f"{type(exc).__name__}: {exc}"[:300]
                             await asyncio.sleep(5 * (tentativo + 1))
-                    else:
+                        da_fare = [d for d in blocco if d not in risultato]
+                        if not da_fare:
+                            break
+                    if da_fare and not ultimo_errore:
+                        # risposta 200 ma senza letture: si dice perche', mai in silenzio
+                        ultimo_errore = (f"{len(da_fare)} descrizioni senza lettura: stop_reason="
+                                         f"{diagnosi.get('stop_reason')}, inizio risposta "
+                                         f"{diagnosi.get('inizio_risposta')!r}")[:300]
+                    if da_fare:
+                        logger.warning("[lettura_ai] %d descrizioni su %d non lette: %s",
+                                       len(da_fare), len(blocco), ultimo_errore)
+                    if not risultato:
                         errori += len(blocco)
-                        logger.warning("[lettura_ai] blocco di %d non letto: %s", len(blocco), ultimo_errore)
                         return
                 async with scrittura:
                     in_attesa.update(risultato)
