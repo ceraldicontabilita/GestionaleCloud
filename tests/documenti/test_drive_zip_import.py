@@ -334,6 +334,41 @@ def test_cartella_completata_con_lettori_nuovi_ripassa_solo_gli_errori(monkeypat
     assert secondo["contatori"]["errori"] == 0
 
 
+def test_nuova_versione_non_perde_i_file_rimasti_dal_ripasso_interrotto(monkeypatch):
+    """Un ripasso interrotto lascia file non in `errori`: la versione dopo li rilegge lo stesso."""
+    from app.services import drive_download
+
+    file_drive = [
+        {"id": f"p{i}", "name": f"F{i}.pdf", "mimeType": "application/pdf",
+         "size": "100", "percorso": f"M/F{i}.pdf"}
+        for i in range(4)
+    ]
+
+    async def scarica(file_id, md5=None):
+        return b"%PDF-" + file_id.encode()
+
+    monkeypatch.setattr(drive_download, "scarica_originale", scarica)
+    chiamate = []
+
+    async def smista(nome, dati, contesto):
+        chiamate.append(nome)
+        return {"success": True, "duplicate": False}
+
+    monkeypatch.setattr(cu, "_smista", smista)
+    db = AsyncMongoMockClient()["ripasso4"]
+    _run(dz.elabora_cartella(db, "cart-p", file_drive, nome="M"))
+    chiamate.clear()
+    # stato lasciato da un ripasso di una versione vecchia interrotto: F1 in errore, F3 ancora da rileggere
+    _run(db["sistema_stato"].update_one(
+        {"chiave": "import_zip_drive:cart-p"},
+        {"$set": {"stato": "completato", "indice": 4, "versione_ripasso": "vecchia",
+                  "ripasso_versione": "altra", "ripasso_restanti": ["M/F3.pdf"],
+                  "errori": [{"percorso": "M/F1.pdf", "motivo": "x"}],
+                  "contatori": {"errori": 1, "importati": 3}}}))
+    _run(dz.elabora_cartella(db, "cart-p", file_drive, nome="M"))
+    assert sorted(chiamate) == ["F1.pdf", "F3.pdf"]
+
+
 def test_ripasso_riprende_dopo_un_riavvio_senza_rifare_i_file_gia_riletti(monkeypatch):
     """Il ripasso e' lento e un deploy lo interrompe: l'avanzamento si salva ogni 10 file."""
     from app.services import drive_download
