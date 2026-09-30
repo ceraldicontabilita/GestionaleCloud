@@ -1,13 +1,16 @@
 """
 Router per gestione invio documenti al Commercialista.
 
-Permette l'invio via email di:
-- Prima Nota Cassa mensile (PDF)
-- Carnet assegni (PDF)
-- Fatture pagate per cassa (PDF)
+Il periodo e' sempre un intervallo `dal`/`al` ISO (`pacchetto.intervallo_periodo`): le rotte
+`/{anno}/{mese}` restano (mese=0 = anno intero) e accettano in piu' `?dal=&al=`.
+
+Invio singolo (PDF costruito dal browser): Prima Nota Cassa, Carnet assegni, Fatture per cassa.
+Pacchetto (`/pacchetto`, `/voce/...`, `/invia-pacchetto`): banca, PayPal, SumUp, bonifici,
+corrispettivi, fatture ricevute, F24, stipendi e presenze HR, costruiti dal server e spediti in
+UNA email; registro `commercialista_invii`, presenze nel registro unico di HR (`presenze_invii`).
 """
-from fastapi import APIRouter, HTTPException, Body
-from typing import Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, Body
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from calendar import monthrange
 import logging
@@ -15,6 +18,8 @@ import base64
 
 from app.constants.stati_assegno import STATI_DISPONIBILI
 from app.database import Database
+from app.services import commercialista_pacchetto as pacchetto
+from app.utils.dependencies import get_current_admin_user
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -32,6 +37,15 @@ def _periodo(anno: int, mese: int) -> tuple[str, str]:
     if mese == 0:
         return str(anno), f"Intero anno {anno}"
     return f"{anno}-{mese:02d}", f"{MESI_NOMI[mese]} {anno}"
+
+
+def _intervallo(anno: Optional[int] = None, mese: Optional[int] = None,
+                dal: Optional[str] = None, al: Optional[str] = None) -> pacchetto.Periodo:
+    """Il periodo scelto in pagina: `dal`/`al` ISO oppure anno/mese (mese=0 = anno intero)."""
+    try:
+        return pacchetto.intervallo_periodo(anno, mese, dal, al)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def smtp_configurato() -> bool:
@@ -116,129 +130,46 @@ async def update_commercialista_config(data: Dict[str, Any] = Body(...)) -> Dict
 
 @router.get("/prima-nota-cassa/{anno}/{mese}")
 @handle_errors
-async def get_prima_nota_cassa_mensile(anno: int, mese: int) -> Dict[str, Any]:
-    """Get Prima Nota Cassa for a month or the whole year (mese=0)."""
+async def get_prima_nota_cassa_mensile(anno: int, mese: int, dal: Optional[str] = None,
+                                       al: Optional[str] = None) -> Dict[str, Any]:
+    """Prima Nota Cassa del periodo: mese, anno intero (mese=0) o `dal`/`al` ISO."""
     db = Database.get_db()
-    month_prefix, periodo_nome = _periodo(anno, mese)
-    
-    # Query prima nota cassa - collection principale
-    movements = []
-    
-    # Try prima_nota_cassa collection (usata dal router prima_nota.py)
-    # Ordinamento: prima per data, poi per categoria (Corrispettivi prima di POS)
-    cursor = db["prima_nota_cassa"].find({
-        "data": {"$regex": f"^{month_prefix}"}
-    }, {"_id": 0}).sort([("data", 1), ("categoria", 1)])
-    movements = await cursor.to_list(5000)
-    
-    # If empty, try prima_nota collection with tipo_conto = cassa
-    if not movements:
-        cursor = db["prima_nota_cassa"].find({
-            "tipo_conto": "cassa",
-            "$or": [
-                {"data": {"$regex": f"^{month_prefix}"}},
-                {"date": {"$regex": f"^{month_prefix}"}}
-            ]
-        }, {"_id": 0}).sort([("data", 1), ("categoria", 1)])
-        movements = await cursor.to_list(5000)
-    
-    # Il terzo tentativo su una collezione `cash` e' stato tolto il 19/09/2026:
-    # non esiste nel database, quindi non ha mai restituito niente. La cassa
-    # vive in `prima_nota_cassa` e basta — una catena di ripieghi nasconde
-    # quale sia la fonte vera.
-
-    # Calculate totals
-    totale_entrate = 0
-    totale_uscite = 0
-    
-    for m in movements:
-        tipo = m.get("type") or m.get("tipo") or ""
-        importo = float(m.get("amount") or m.get("importo") or 0)
-        
-        if tipo.lower() in ["entrata", "income", "in"]:
-            totale_entrate += abs(importo)
-        else:
-            totale_uscite += abs(importo)
-    
-    saldo = totale_entrate - totale_uscite
-    
+    p = _intervallo(anno, mese, dal, al)
+    movements = await pacchetto.movimenti_cassa(db, p)
+    totale_entrate, totale_uscite, _ = pacchetto._testata_movimenti(movements)
     return {
         "anno": anno,
         "mese": mese,
-        "mese_nome": periodo_nome,
+        "dal": p.dal,
+        "al": p.al,
+        "mese_nome": p.etichetta,
         "movimenti": movements,
         "totale_movimenti": len(movements),
-        "totale_entrate": round(totale_entrate, 2),
-        "totale_uscite": round(totale_uscite, 2),
-        "saldo": round(saldo, 2)
+        "totale_entrate": float(round(totale_entrate, 2)),
+        "totale_uscite": float(round(totale_uscite, 2)),
+        "saldo": float(round(totale_entrate - totale_uscite, 2)),
     }
 
 
-_PROIEZIONE_FATTURA_CASSA = {
-    "_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1, "invoice_date": 1,
-    "data_fattura": 1, "supplier_name": 1, "cedente_denominazione": 1,
-    "supplier_vat": 1, "total_amount": 1, "importo_totale": 1, "tipo_documento": 1,
-}
-
-
-async def fatture_pagate_in_cassa(db, prefisso: str) -> list:
-    """Fatture pagate per cassa nel periodo: le righe ATTIVE di Prima Nota
-    Cassa in uscita collegate a una fattura (``fattura_id``), per data del
-    pagamento. Audit 27/09/2026 (punto 13): prima si filtrava
-    ``invoices`` su ``metodo_pagamento``/``payment_method``/
-    ``modalita_pagamento``, campi quasi assenti — l'elenco era vuoto anche con
-    pagamenti in cassa registrati. Le righe di ripiego senza prova
-    (``SOURCES_ESCLUSE``, es. la cassa d'ufficio
-    ``metodo_fornitore_assente_provvisorio``) non sono un pagamento."""
-    from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
-    from app.routers.prima_nota_module.common import SOURCES_ESCLUSE
-
-    righe = await db["prima_nota_cassa"].find({
-        "data": {"$regex": f"^{prefisso}"},
-        "tipo": "uscita",
-        "fattura_id": {"$nin": [None, ""]},
-        "status": {"$nin": ["deleted", "archived"]},
-        "entity_status": {"$ne": "deleted"},
-        "source": {"$nin": SOURCES_ESCLUSE},
-    }, {"_id": 0, "id": 1, "fattura_id": 1, "data": 1, "importo": 1}).to_list(20000)
-
-    per_fattura: Dict[str, Dict[str, Any]] = {}
-    for riga in righe:
-        voce = per_fattura.setdefault(str(riga["fattura_id"]), {"importo": 0.0, "date": [], "righe": []})
-        voce["importo"] += abs(float(riga.get("importo") or 0))
-        voce["date"].append(str(riga.get("data") or "")[:10])
-        voce["righe"].append(riga.get("id"))
-    if not per_fattura:
-        return []
-    fatture = await db["invoices"].find(
-        {"id": {"$in": list(per_fattura)}, **FILTRO_FATTURA_ATTIVA},
-        _PROIEZIONE_FATTURA_CASSA,
-    ).to_list(len(per_fattura))
-    esito = []
-    for fattura in fatture:
-        pagamento = per_fattura[str(fattura["id"])]
-        esito.append({
-            **fattura,
-            "data_pagamento": max(pagamento["date"]),
-            "importo_pagato_cassa": round(pagamento["importo"], 2),
-            "prima_nota_cassa_ids": pagamento["righe"],
-        })
-    esito.sort(key=lambda f: (f["data_pagamento"], str(f.get("invoice_number") or "")))
-    return esito
+# La lettura sta nel servizio del pacchetto (una sola per la pagina e per l'email).
+fatture_pagate_in_cassa = pacchetto.fatture_pagate_in_cassa
 
 
 @router.get("/fatture-cassa/{anno}/{mese}")
 @handle_errors
-async def get_fatture_pagate_cassa(anno: int, mese: int) -> Dict[str, Any]:
-    """Fatture pagate per cassa nel mese (o nell'anno con ``mese=0``)."""
+async def get_fatture_pagate_cassa(anno: int, mese: int, dal: Optional[str] = None,
+                                   al: Optional[str] = None) -> Dict[str, Any]:
+    """Fatture pagate per cassa nel periodo (mese, anno intero con `mese=0`, o `dal`/`al`)."""
     db = Database.get_db()
-    month_prefix, periodo_nome = _periodo(anno, mese)
-    fatture = await fatture_pagate_in_cassa(db, month_prefix)
+    p = _intervallo(anno, mese, dal, al)
+    fatture = await fatture_pagate_in_cassa(db, p)
     totale = sum(f["importo_pagato_cassa"] for f in fatture)
     return {
         "anno": anno,
         "mese": mese,
-        "mese_nome": periodo_nome,
+        "dal": p.dal,
+        "al": p.al,
+        "mese_nome": p.etichetta,
         "fatture": fatture,
         "totale_fatture": len(fatture),
         "totale_importo": round(totale, 2),
@@ -248,13 +179,16 @@ async def get_fatture_pagate_cassa(anno: int, mese: int) -> Dict[str, Any]:
 
 @router.get("/riepilogo/{anno}/{mese}")
 @handle_errors
-async def get_riepilogo_commercialista(anno: int, mese: int) -> Dict[str, Any]:
-    """Card source-backed per mese o anno, senza trasformare proposte in pagamenti."""
+async def get_riepilogo_commercialista(anno: int, mese: int, dal: Optional[str] = None,
+                                       al: Optional[str] = None) -> Dict[str, Any]:
+    """Card source-backed per il periodo, senza trasformare proposte in pagamenti."""
     db = Database.get_db()
-    prefix, periodo_nome = _periodo(anno, mese)
+    p = _intervallo(anno, mese, dal, al)
+    periodo_nome = p.etichetta
+    anno = int(p.dal[:4])
 
     movimenti_fatture = await db["prima_nota_banca"].find({
-        "data": {"$regex": f"^{prefix}"},
+        **p.filtro("data"),
         "riconciliato": True,
         "$or": [
             {"categoria": {"$regex": "fattur", "$options": "i"}},
@@ -273,22 +207,26 @@ async def get_riepilogo_commercialista(anno: int, mese: int) -> Dict[str, Any]:
         abs(float(m.get("importo") or m.get("amount") or 0)) for m in movimenti_fatture
     ), 2)
 
-    cedolini_query: Dict[str, Any] = {
-        "$or": [{"anno": anno}, {"anno": str(anno)}],
-        "entity_status": {"$ne": "deleted"},
-    }
-    if mese:
-        cedolini_query["$and"] = [{"$or": [{"mese": mese}, {"mese": str(mese)},
-                                              {"mese": f"{mese:02d}"}]}]
     cedolini = await db["cedolini"].find(
-        cedolini_query, {"_id": 0, "netto": 1, "netto_mese": 1}
+        {"anno": {"$in": [a for y in p.anni for a in (y, str(y))]},
+         "entity_status": {"$ne": "deleted"}},
+        {"_id": 0, "anno": 1, "mese": 1, "netto": 1, "netto_mese": 1},
     ).to_list(20000)
+    mesi_periodo = set(p.mesi())
+
+    def _mese_busta(c):
+        try:
+            return int(c.get("anno")), int(c.get("mese"))
+        except (TypeError, ValueError):
+            return None
+
+    cedolini = [c for c in cedolini if _mese_busta(c) in mesi_periodo]
     totale_netto_cedolini = round(sum(
         float(c.get("netto") or c.get("netto_mese") or 0) for c in cedolini
     ), 2)
 
     commissioni = await db["pos_commissioni_giornaliere"].find(
-        {"data": {"$regex": f"^{prefix}"}},
+        p.filtro("data"),
         {"_id": 0, "importo_lordo": 1, "importo_netto": 1,
          "commissioni": 1, "quadrato": 1},
     ).to_list(10000)
@@ -305,6 +243,8 @@ async def get_riepilogo_commercialista(anno: int, mese: int) -> Dict[str, Any]:
     return {
         "anno": anno,
         "mese": mese,
+        "dal": p.dal,
+        "al": p.al,
         "periodo_nome": periodo_nome,
         "fatture_banca": {
             "totale_fatture": len(fatture_keys),
@@ -696,16 +636,16 @@ async def get_alert_status() -> Dict[str, Any]:
     }
 
 
-async def _get_prima_nota_banca_mensile(anno: int, mese: int) -> Dict[str, Any]:
+async def _get_prima_nota_banca_mensile(anno: int, mese: int, dal: Optional[str] = None,
+                                        al: Optional[str] = None) -> Dict[str, Any]:
     """Prima Nota Banca del mese, stessa forma di get_prima_nota_cassa_mensile
     ma sulla collezione canonica prima_nota_banca (nessun fallback legacy:
     a differenza della cassa, per la banca esiste una sola collezione)."""
     db = Database.get_db()
-    month_prefix, _ = _periodo(anno, mese)
+    p = _intervallo(anno, mese, dal, al)
 
-    movements = await db["prima_nota_banca"].find({
-        "data": {"$regex": f"^{month_prefix}"}
-    }, {"_id": 0}).sort([("data", 1), ("categoria", 1)]).to_list(5000)
+    movements = await db["prima_nota_banca"].find(
+        p.filtro("data"), {"_id": 0}).sort([("data", 1), ("categoria", 1)]).to_list(5000)
 
     totale_entrate = 0.0
     totale_uscite = 0.0
@@ -725,43 +665,47 @@ async def _get_prima_nota_banca_mensile(anno: int, mese: int) -> Dict[str, Any]:
     }
 
 
-async def _get_assegni_emessi_mensile(anno: int, mese: int) -> list:
+async def _get_assegni_emessi_mensile(anno: int, mese: int, dal: Optional[str] = None,
+                                      al: Optional[str] = None) -> list:
     """Assegni EMESSI (consegnati a un beneficiario, non i numeri ancora in
     bianco) con data di emissione nel mese: stato diverso da "vuoto"/
     "compilato" e data_emissione valorizzata nel periodo."""
     db = Database.get_db()
-    month_prefix, _ = _periodo(anno, mese)
+    p = _intervallo(anno, mese, dal, al)
 
     return await db["assegni"].find({
         "stato": {"$nin": sorted(STATI_DISPONIBILI)},
-        "data_emissione": {"$regex": f"^{month_prefix}"}
+        **p.filtro("data_emissione")
     }, {"_id": 0}).sort("data_emissione", 1).to_list(5000)
 
 
-async def _get_fatture_estere_mensili(anno: int, mese: int) -> list:
+async def _get_fatture_estere_mensili(anno: int, mese: int, dal: Optional[str] = None,
+                                      al: Optional[str] = None) -> list:
     """Fatture ESTERE ricevute via email nel mese (mai le fatture italiane,
     che arrivano sempre via SDI/XML): identificate dal source impostato da
     process_fattura_estera_pdf, l'unico punto che le crea (fatture_upload.py)."""
     db = Database.get_db()
-    month_prefix, _ = _periodo(anno, mese)
+    p = _intervallo(anno, mese, dal, al)
 
     return await db["invoices"].find({
         "source": "email_gmail_estera",
-        "invoice_date": {"$regex": f"^{month_prefix}"}
+        **p.filtro("invoice_date")
     }, {"_id": 0}).to_list(500)
 
 
 @router.get("/completezza/{anno}/{mese}")
 @handle_errors
-async def completezza_pacchetto(anno: int, mese: int) -> Dict[str, Any]:
+async def completezza_pacchetto(anno: int, mese: int, dal: Optional[str] = None,
+                                al: Optional[str] = None) -> Dict[str, Any]:
     """Chiusure RT, originali delle fatture ed estratto BPM del periodo."""
     from app.services.completezza_commercialista import completezza
-    return await completezza(Database.get_db(), anno, mese)
+    p = _intervallo(anno, mese, dal, al)
+    return await completezza(Database.get_db(), anno, mese, dal=p.dal, al=p.al)
 
 
 @router.get("/export-completo/{anno}/{mese}")
 @handle_errors
-async def export_dati_completi(anno: int, mese: int):
+async def export_dati_completi(anno: int, mese: int, dal: Optional[str] = None, al: Optional[str] = None):
     """
     Export mensile per commercialista in formato ZIP (richiesta utente
     15/07/2026, sostituisce la vecchia versione che includeva anche fatture/
@@ -783,13 +727,17 @@ async def export_dati_completi(anno: int, mese: int):
     from fastapi.responses import StreamingResponse
 
     db = Database.get_db()
-    mese_str, _ = _periodo(anno, mese)
+    p = _intervallo(anno, mese, dal, al)
+    if dal or al:
+        mese_str = f"{p.dal}_{p.al}"
+    else:
+        mese_str, _ = _periodo(anno, mese)
 
     zip_buffer = BytesIO()
 
     from app.services.completezza_commercialista import completezza, testo_leggimi
     try:
-        leggimi = testo_leggimi(await completezza(db, anno, mese))
+        leggimi = testo_leggimi(await completezza(db, anno, mese, dal=p.dal, al=p.al))
     except Exception as exc:  # noqa: BLE001 - il pacchetto si scarica comunque
         logger.warning("Completezza pacchetto %s non calcolata: %s: %s",
                        mese_str, type(exc).__name__, exc)
@@ -801,7 +749,7 @@ async def export_dati_completi(anno: int, mese: int):
         zf.writestr('LEGGIMI_COMPLETEZZA.txt', leggimi)
 
         # 1. PRIMA NOTA CASSA
-        prima_nota_cassa = await get_prima_nota_cassa_mensile(anno, mese)
+        prima_nota_cassa = await get_prima_nota_cassa_mensile(anno, mese, dal, al)
         if prima_nota_cassa.get('movimenti'):
             csv_buffer = StringIO()
             writer = csv.writer(csv_buffer, delimiter=';')
@@ -819,7 +767,7 @@ async def export_dati_completi(anno: int, mese: int):
             zf.writestr(f'prima_nota_cassa_{mese_str}.csv', csv_buffer.getvalue())
 
         # 2. PRIMA NOTA BANCA
-        prima_nota_banca = await _get_prima_nota_banca_mensile(anno, mese)
+        prima_nota_banca = await _get_prima_nota_banca_mensile(anno, mese, dal, al)
         if prima_nota_banca.get('movimenti'):
             csv_buffer = StringIO()
             writer = csv.writer(csv_buffer, delimiter=';')
@@ -837,7 +785,7 @@ async def export_dati_completi(anno: int, mese: int):
             zf.writestr(f'prima_nota_banca_{mese_str}.csv', csv_buffer.getvalue())
 
         # 3. ASSEGNI EMESSI
-        assegni = await _get_assegni_emessi_mensile(anno, mese)
+        assegni = await _get_assegni_emessi_mensile(anno, mese, dal, al)
         if assegni:
             csv_buffer = StringIO()
             writer = csv.writer(csv_buffer, delimiter=';')
@@ -854,7 +802,7 @@ async def export_dati_completi(anno: int, mese: int):
             zf.writestr(f'assegni_emessi_{mese_str}.csv', csv_buffer.getvalue())
 
         # 4. FATTURE ESTERE (PDF allegati, non le fatture italiane via SDI)
-        fatture_estere = await _get_fatture_estere_mensili(anno, mese)
+        fatture_estere = await _get_fatture_estere_mensili(anno, mese, dal, al)
         for f in fatture_estere:
             documento_inbox_id = f.get("documento_inbox_id")
             if not documento_inbox_id:
@@ -882,7 +830,8 @@ async def export_dati_completi(anno: int, mese: int):
 
 @router.get("/export-excel/{anno}/{mese}")
 @handle_errors
-async def export_excel_commercialista(anno: int, mese: int):
+async def export_excel_commercialista(anno: int, mese: int, dal: Optional[str] = None,
+                                      al: Optional[str] = None):
     """
     Export Excel mensile per commercialista.
     Include fogli separati per: fatture, corrispettivi, prima nota, IVA.
@@ -895,11 +844,12 @@ async def export_excel_commercialista(anno: int, mese: int):
     from fastapi.responses import StreamingResponse
     
     db = Database.get_db()
-    mese_str, mese_nome = _periodo(anno, mese)
+    p = _intervallo(anno, mese, dal, al)
+    mese_nome = p.etichetta
     
     # Stili
     header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1e3a5f", end_color="1e3a5f", fill_type="solid")
+    header_fill = PatternFill(start_color="3f5a4e", end_color="3f5a4e", fill_type="solid")
     border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -918,7 +868,7 @@ async def export_excel_commercialista(anno: int, mese: int):
 
     # Solo fatture attive: le copie archiviate raddoppiavano i totali.
     fatture = await db["invoices"].find({
-        "invoice_date": {"$regex": f"^{mese_str}"}, **FILTRO_FATTURA_ATTIVA,
+        **p.filtro("invoice_date"), **FILTRO_FATTURA_ATTIVA,
     }, {"_id": 0, "xml_raw": 0, "xml_content": 0}).sort("invoice_date", 1).to_list(10000)
     
     headers_fatture = ['Data', 'N. Fattura', 'Fornitore', 'P.IVA Fornitore', 'Categoria', 
@@ -982,7 +932,7 @@ async def export_excel_commercialista(anno: int, mese: int):
     ws_corr = wb.create_sheet("Corrispettivi")
     
     corrispettivi = await db["corrispettivi"].find({
-        "data": {"$regex": f"^{mese_str}"},
+        **p.filtro("data"),
         "status": {"$nin": ["deleted", "archived"]},
         "entity_status": {"$ne": "deleted"},
     }, {"_id": 0}).sort("data", 1).to_list(10000)
@@ -1041,7 +991,7 @@ async def export_excel_commercialista(anno: int, mese: int):
     
     # Ordinamento: prima per data, poi per categoria (Corrispettivi prima di POS)
     prima_nota = await db["prima_nota_cassa"].find({
-        "data": {"$regex": f"^{mese_str}"}
+        **p.filtro("data")
     }, {"_id": 0}).sort([("data", 1), ("categoria", 1)]).to_list(10000)
     
     headers_pn = ['Data', 'Descrizione', 'Categoria', 'Tipo', 'Importo']
@@ -1380,3 +1330,257 @@ async def get_export_log(limit: int = 20) -> Dict[str, Any]:
         "logs": logs,
         "total": await db["export_log"].count_documents({})
     }
+
+
+# ---------------------------------------------------------------------------
+# Pacchetto da inviare: periodo, voci, un'unica email con tutti gli allegati
+# ---------------------------------------------------------------------------
+
+COLLEZIONE_INVII = "commercialista_invii"
+
+# Tipo del vecchio registro `commercialista_log` -> voce del pacchetto.
+_TIPO_LOG_VOCE = {"prima_nota_cassa": "prima_nota_cassa", "fatture_cassa": "fatture_cassa",
+                  "carnet_assegni": "carnet_assegni"}
+
+
+def _voci_richieste(voci: Any) -> List[str]:
+    """Le voci scelte, nell'ordine della pagina. 422 se vuote o sconosciute."""
+    if not isinstance(voci, list) or not voci:
+        raise HTTPException(status_code=422, detail="Scegli almeno un documento da inviare")
+    ignote = [v for v in voci if v not in pacchetto.VOCI]
+    if ignote:
+        raise HTTPException(status_code=422, detail=f"Documento sconosciuto: {ignote[0]}")
+    return [v for v in pacchetto.VOCI if v in voci]
+
+
+def _opzioni(carnet_ids: Any = None, presenze_rinvia: bool = False) -> Dict[str, Any]:
+    if isinstance(carnet_ids, str):
+        carnet_ids = [c.strip() for c in carnet_ids.split(",") if c.strip()]
+    return {"carnet_ids": [str(c) for c in (carnet_ids or [])], "presenze_rinvia": bool(presenze_rinvia)}
+
+
+async def _destinatario(db, esplicito: Optional[str] = None) -> str:
+    if esplicito and str(esplicito).strip():
+        return str(esplicito).strip()
+    config = await db["commercialista_config"].find_one({}, {"_id": 0, "email": 1}) or {}
+    return config.get("email") or DEFAULT_COMMERCIALISTA_EMAIL
+
+
+async def _ultimi_invii(db, p: pacchetto.Periodo) -> Dict[str, Dict[str, Any]]:
+    """L'ultimo invio per voce il cui periodo tocca quello scelto (registro nuovo e vecchio)."""
+    ultimi: Dict[str, Dict[str, Any]] = {}
+
+    def _tiene(voce: str, quando: str, dal: str, al: str, destinatario: str) -> None:
+        if not (dal <= p.al and al >= p.dal):
+            return
+        if voce not in ultimi or quando > ultimi[voce]["data"]:
+            ultimi[voce] = {"data": quando, "dal": dal, "al": al, "destinatario": destinatario}
+
+    invii = await db[COLLEZIONE_INVII].find(
+        {"esito": "inviato"}, {"_id": 0, "created_at": 1, "dal": 1, "al": 1, "destinatario": 1,
+                               "voci_inviate": 1}).sort([("created_at", -1)]).to_list(300)
+    for i in invii:
+        for voce in i.get("voci_inviate") or []:
+            _tiene(voce, str(i.get("created_at") or ""), str(i.get("dal") or ""), str(i.get("al") or ""),
+                   str(i.get("destinatario") or ""))
+    vecchi = await db["commercialista_log"].find(
+        {"success": True}, {"_id": 0, "tipo": 1, "anno": 1, "mese": 1, "email": 1, "data_invio": 1}
+    ).sort([("data_invio", -1)]).to_list(200)
+    for v in vecchi:
+        voce = _TIPO_LOG_VOCE.get(v.get("tipo"))
+        if not voce or not v.get("anno"):
+            continue
+        try:
+            periodo_log = pacchetto.intervallo_periodo(int(v["anno"]), int(v.get("mese") or 0))
+        except (TypeError, ValueError):
+            continue
+        _tiene(voce, str(v.get("data_invio") or ""), periodo_log.dal, periodo_log.al, str(v.get("email") or ""))
+    return ultimi
+
+
+@router.get("/pacchetto")
+@handle_errors
+async def get_pacchetto(anno: Optional[int] = None, mese: Optional[int] = None, dal: Optional[str] = None,
+                        al: Optional[str] = None, carnet_ids: Optional[str] = None) -> Dict[str, Any]:
+    """Stato di ogni documento del pacchetto per il periodo: conteggio, totale, pronto/incompleto/vuoto."""
+    db = Database.get_db()
+    p = _intervallo(anno, mese, dal, al)
+    voci = await pacchetto.costruisci_voci(db, list(pacchetto.VOCI), p, _opzioni(carnet_ids))
+    ultimi = await _ultimi_invii(db, p)
+    esito = []
+    for v in voci:
+        riga = pacchetto.riassunto(v)
+        riga["ultimo_invio"] = ultimi.get(v["voce"])
+        esito.append(riga)
+    return {"periodo": {"dal": p.dal, "al": p.al, "etichetta": p.etichetta},
+            "destinatario": await _destinatario(db), "smtp_configurato": smtp_configurato(),
+            "voci": esito}
+
+
+@router.get("/voce/{voce}")
+@handle_errors
+async def get_voce_pacchetto(voce: str, anno: Optional[int] = None, mese: Optional[int] = None,
+                             dal: Optional[str] = None, al: Optional[str] = None,
+                             carnet_ids: Optional[str] = None) -> Dict[str, Any]:
+    """Il documento intero (sezioni con colonne e righe) di una voce del pacchetto."""
+    _voci_richieste([voce])
+    p = _intervallo(anno, mese, dal, al)
+    return await pacchetto.costruisci_voce(Database.get_db(), voce, p, _opzioni(carnet_ids))
+
+
+@router.get("/voce/{voce}/scarica")
+@handle_errors
+async def scarica_voce_pacchetto(voce: str, anno: Optional[int] = None, mese: Optional[int] = None,
+                                 dal: Optional[str] = None, al: Optional[str] = None,
+                                 carnet_ids: Optional[str] = None, rinvia: bool = False):
+    """PDF di una voce (le presenze: PDF e CSV di HR, in ZIP se piu' mesi)."""
+    import io
+    import zipfile
+    from fastapi.responses import Response
+
+    _voci_richieste([voce])
+    db = Database.get_db()
+    p = _intervallo(anno, mese, dal, al)
+    opz = _opzioni(carnet_ids, rinvia)
+    costruita = await pacchetto.costruisci_voce(db, voce, p, opz)
+    if costruita["stato"] in (pacchetto.STATO_NON_DISPONIBILE, pacchetto.STATO_VUOTO):
+        raise HTTPException(status_code=404, detail=costruita["motivo"] or "Nessun dato nel periodo")
+    if voce == "presenze":
+        opz["presenze_rinvia"] = True  # scaricare non e' inviare: si scarica anche cio' che e' gia' partito
+    allegati, _ = await pacchetto.allegati_voce(db, costruita, p, opz)
+    if not allegati:
+        raise HTTPException(status_code=404, detail="Nessun allegato da scaricare")
+    if len(allegati) == 1:
+        dati, principale, sotto, nome = allegati[0]
+        return Response(content=dati, media_type=f"{principale}/{sotto}",
+                        headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for dati, _principale, _sotto, nome in allegati:
+            zf.writestr(nome, dati)
+    return Response(content=buffer.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="{pacchetto.nome_file(voce, p, "zip")}"'})
+
+
+def _corpo_email(p: pacchetto.Periodo, esiti: List[Dict[str, Any]]) -> str:
+    """Corpo HTML del pacchetto: periodo e, per ogni allegato, righe e totale."""
+    from html import escape
+
+    righe = "".join(
+        f'<tr><td style="padding:6px 8px;border-bottom:1px solid #e6e3d9">{escape(e["titolo"])}</td>'
+        f'<td style="padding:6px 8px;border-bottom:1px solid #e6e3d9;text-align:right">{e["conteggio"]}</td>'
+        f'<td style="padding:6px 8px;border-bottom:1px solid #e6e3d9;text-align:right">'
+        f'{escape(e["totale"] or "")}</td>'
+        f'<td style="padding:6px 8px;border-bottom:1px solid #e6e3d9">{escape(e.get("nota") or "")}</td></tr>'
+        for e in esiti if e["esito"] == "allegata")
+    return (
+        '<html><body style="font-family:Arial,sans-serif;background:#faf9f5;color:#141413;padding:20px">'
+        '<div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e6e3d9">'
+        '<div style="background:#3f5a4e;color:#ffffff;padding:16px 20px">'
+        '<h2 style="margin:0">Documenti per il commercialista</h2>'
+        f'<p style="margin:6px 0 0 0">Periodo: {escape(p.etichetta)} '
+        f'({escape(pacchetto.it_data(p.dal))} - {escape(pacchetto.it_data(p.al))})</p></div>'
+        '<div style="padding:20px"><p>Gentile Commercialista, in allegato trova i documenti del periodo.</p>'
+        '<table style="width:100%;border-collapse:collapse;font-size:14px">'
+        '<tr style="text-align:left;color:#7a776e"><th style="padding:6px 8px">Documento</th>'
+        '<th style="padding:6px 8px;text-align:right">Righe</th>'
+        '<th style="padding:6px 8px;text-align:right">Totale</th><th style="padding:6px 8px">Note</th></tr>'
+        f'{righe}</table>'
+        '<p style="color:#7a776e;font-size:13px">Il dettaglio di ogni documento e\' nel PDF allegato.</p></div>'
+        '<div style="background:#f6f4ee;padding:12px;text-align:center;font-size:12px;color:#7a776e">'
+        'Ceraldi Group S.R.L. - messaggio generato dal gestionale</div></div></body></html>'
+    )
+
+
+@router.post("/invia-pacchetto")
+@handle_errors
+async def invia_pacchetto(data: Dict[str, Any] = Body(...),
+                          _admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
+    """Una sola email al commercialista con i documenti scelti, costruiti dal server.
+
+    Corpo: `{dal, al}` (oppure `{anno, mese}`), `voci: [...]`, opzionali `carnet_ids`,
+    `presenze_rinvia`, `email`. Ogni voce vuota o non disponibile e' saltata e lo dice; le presenze
+    gia' inviate si rimandano solo con `presenze_rinvia`. Registro: `commercialista_invii`.
+    """
+    import asyncio
+    import uuid
+
+    from app.hr.services.email_smtp import credenziali_smtp, invia_email
+
+    voci = _voci_richieste(data.get("voci"))
+    db = Database.get_db()
+    p = _intervallo(data.get("anno"), data.get("mese"), data.get("dal"), data.get("al"))
+    opz = _opzioni(data.get("carnet_ids"), data.get("presenze_rinvia"))
+    destinatario = await _destinatario(db, data.get("email"))
+    if credenziali_smtp() is None:
+        raise HTTPException(status_code=503, detail="Email non configurata: mancano le credenziali SMTP")
+
+    costruite = await pacchetto.costruisci_voci(db, voci, p, opz)
+    allegati: List[Any] = []
+    esiti: List[Dict[str, Any]] = []
+    presenze_mesi: List[Dict[str, Any]] = []
+    for v in costruite:
+        base = {"voce": v["voce"], "titolo": v["titolo"], "stato": v["stato"], "conteggio": v["conteggio"],
+                "totale": v["totale"]}
+        if v["stato"] in (pacchetto.STATO_VUOTO, pacchetto.STATO_NON_DISPONIBILE):
+            esiti.append({**base, "esito": "saltata", "motivo": v["motivo"] or "Nessun dato nel periodo"})
+            continue
+        if v["voce"] == "presenze" and v["stato"] == pacchetto.STATO_GIA_INVIATO and not opz["presenze_rinvia"]:
+            esiti.append({**base, "esito": "saltata",
+                          "motivo": f"{v['motivo']}: per rimandarle serve la conferma «Rinvia»"})
+            continue
+        voce_allegati, extra = await pacchetto.allegati_voce(db, v, p, opz)
+        if not voce_allegati:
+            esiti.append({**base, "esito": "saltata", "motivo": "Nessun allegato da inviare"})
+            continue
+        allegati.extend(voce_allegati)
+        presenze_mesi.extend(extra.get("presenze_mesi") or [])
+        esiti.append({**base, "esito": "allegata", "file": [a[3] for a in voce_allegati],
+                      "nota": v["motivo"] if v["stato"] == pacchetto.STATO_INCOMPLETO else ""})
+
+    if not allegati:
+        raise HTTPException(status_code=422, detail="Nessun documento da inviare: le voci scelte sono vuote "
+                            "o non disponibili per il periodo")
+
+    ora = datetime.now(timezone.utc).isoformat()
+    registro = {"id": str(uuid.uuid4()), "dal": p.dal, "al": p.al, "periodo": p.etichetta,
+                "voci": esiti, "voci_inviate": [e["voce"] for e in esiti if e["esito"] == "allegata"],
+                "destinatario": destinatario, "created_at": ora}
+    try:
+        await asyncio.to_thread(
+            invia_email, destinatario, f"Documenti per il commercialista - {p.etichetta}",
+            _corpo_email(p, esiti), allegati, True)
+    except Exception as exc:  # noqa: BLE001 - l'errore si registra e si riporta col solo nome del tipo
+        logger.error("Invio del pacchetto a %s non riuscito: %s", destinatario, type(exc).__name__)
+        await db[COLLEZIONE_INVII].insert_one({**registro, "esito": "errore", "errore": type(exc).__name__,
+                                               "voci_inviate": []})
+        raise HTTPException(status_code=502, detail=f"Invio email non riuscito ({type(exc).__name__})") from exc
+
+    await db[COLLEZIONE_INVII].insert_one({**registro, "esito": "inviato"})
+    # Registro unico delle presenze (lo legge anche la pagina Presenze di HR).
+    if presenze_mesi:
+        from app.hr.services.presenze_consulente import registra_invio
+
+        for m in presenze_mesi:
+            await registra_invio(m["anno"], m["mese"], destinatario, n_dipendenti=m["n_dipendenti"],
+                                 con_pdf=True, origine="erp")
+    # L'avviso «Prima Nota Cassa da inviare» legge ancora il vecchio registro: un mese intero lo chiude.
+    if "prima_nota_cassa" in registro["voci_inviate"] and p.dal[:7] == p.al[:7] and p.dal[8:] == "01" \
+            and p.al == pacchetto.intervallo_periodo(int(p.dal[:4]), int(p.dal[5:7])).al:
+        await db["commercialista_log"].insert_one({
+            "tipo": "prima_nota_cassa", "anno": int(p.dal[:4]), "mese": int(p.dal[5:7]),
+            "email": destinatario, "data_invio": ora, "success": True, "note": "Inviata col pacchetto"})
+    return {"success": True, "destinatario": destinatario, "periodo": p.etichetta, "allegati": len(allegati),
+            "esiti": esiti, "invio_id": registro["id"],
+            "message": f"{len(allegati)} allegati inviati a {destinatario}"}
+
+
+@router.get("/invii")
+@handle_errors
+async def get_invii_pacchetto(limit: int = 30) -> Dict[str, Any]:
+    """Gli ultimi invii del pacchetto (riusciti e falliti), dal piu' recente."""
+    db = Database.get_db()
+    limit = max(1, min(int(limit), 100))
+    invii = await db[COLLEZIONE_INVII].find({}, {"_id": 0}).sort([("created_at", -1)]).to_list(limit)
+    return {"invii": invii, "totale": len(invii)}

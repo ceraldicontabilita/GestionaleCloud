@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { jsPDF } from 'jspdf';
@@ -7,29 +7,18 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useGuscio } from '../contexts/GuscioContext';
 import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
-import { Button, Badge, Card, Input, Select, StatCard, Table, TableWrap, Th, Td } from '../components/ds';
+import { Button, Badge, Card, Input, StatCard } from '../components/ds';
+import { AlertTriangle, FileSpreadsheet, FolderArchive, Mail, Save } from 'lucide-react';
+import SelettorPeriodo from '../components/commercialista/SelettorPeriodo';
+import PacchettoDaInviare from '../components/commercialista/PacchettoDaInviare';
+import { MESI, calcolaPeriodo, queryPeriodo, statoMese } from '../lib/periodoCommercialista';
+import { DA_COLLEGARE, avvisoSenzaFattura, datiRigaAssegno } from '../lib/carnetAssegni';
 
 // Funzione per formattare valuta come stringa pura (per PDF)
 const formatEuroStr = val => {
   if (val == null || isNaN(val)) return '€ 0,00';
   return `€ ${Number(val).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
-
-const MESI = [
-  '',
-  'Gennaio',
-  'Febbraio',
-  'Marzo',
-  'Aprile',
-  'Maggio',
-  'Giugno',
-  'Luglio',
-  'Agosto',
-  'Settembre',
-  'Ottobre',
-  'Novembre',
-  'Dicembre',
-];
 
 export default function Commercialista() {
   const isMobile = useIsMobile();
@@ -46,16 +35,22 @@ export default function Commercialista() {
   // Stato dell'avviso: lo legge il guscio (GuscioContext), qui non si richiede.
   const { alertCommercialista: alertStatus, ricaricaAlertCommercialista } = useGuscio();
   const [log, setLog] = useState([]);
+  const [invii, setInvii] = useState([]);
   const [segnandoInviata, setSegnandoInviata] = useState(false);
 
   // Anno dal context globale
   const { anno: selectedYear, setAnno } = useAnnoGlobale();
   const now = new Date();
   const [searchParams] = useSearchParams();
-  const [selectedMonth, setSelectedMonth] = useState(() => {
+  const [statoPeriodo, setStatoPeriodo] = useState(() => {
     const mese = parseInt(searchParams.get('mese') || '0');
-    return mese > 0 ? mese - 1 : now.getMonth(); // 0-indexed
+    return statoMese(selectedYear, mese > 0 ? mese : now.getMonth() + 1);
   });
+  // Il periodo scelto alimenta ogni scheda e ogni chiamata del pacchetto (sempre dal/al ISO).
+  const periodo = useMemo(
+    () => calcolaPeriodo({ ...statoPeriodo, anno: selectedYear }),
+    [statoPeriodo, selectedYear],
+  );
 
   // Data states
   const [primaNotaData, setPrimaNotaData] = useState(null);
@@ -74,12 +69,14 @@ export default function Commercialista() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const [configRes, logRes] = await Promise.all([
+      const [configRes, logRes, inviiRes] = await Promise.all([
         api.get('/api/commercialista/config'),
         api.get('/api/commercialista/log?limit=20'),
+        api.get('/api/commercialista/invii?limit=20').catch(() => ({ data: { invii: [] } })),
       ]);
       setConfig(configRes.data);
       setLog(logRes.data.log || []);
+      setInvii(inviiRes.data.invii || []);
     } catch (e) {
       console.error('Error loading config:', e);
     }
@@ -107,19 +104,20 @@ export default function Commercialista() {
   };
 
   const loadData = useCallback(async () => {
+    if (!periodo.valido) return;
     setLoading(true);
     try {
-      const month = selectedMonth < 0 ? 0 : selectedMonth + 1;
+      const rotta = `${periodo.anno}/${periodo.meseRotta}${queryPeriodo(periodo)}`;
 
       const [primaNotaRes, fattureCassaRes, assegniRes, riepilogoRes] = await Promise.all([
-        api.get(`/api/commercialista/prima-nota-cassa/${selectedYear}/${month}`),
-        api.get(`/api/commercialista/fatture-cassa/${selectedYear}/${month}`),
-        api.get(`/api/assegni?anno=${selectedYear}`),
-        api.get(`/api/commercialista/riepilogo/${selectedYear}/${month}`),
+        api.get(`/api/commercialista/prima-nota-cassa/${rotta}`),
+        api.get(`/api/commercialista/fatture-cassa/${rotta}`),
+        api.get(`/api/assegni?anno=${periodo.anno}`),
+        api.get(`/api/commercialista/riepilogo/${rotta}`),
       ]);
 
       // A parte: se il controllo non risponde, il resto della pagina resta.
-      api.get(`/api/commercialista/completezza/${selectedYear}/${month}`)
+      api.get(`/api/commercialista/completezza/${rotta}`)
         .then(res => setCompletezza(res.data))
         .catch(() => setCompletezza(null));
 
@@ -150,11 +148,30 @@ export default function Commercialista() {
     } finally {
       setLoading(false);
     }
-  }, [selectedYear, selectedMonth]);
+  }, [periodo]);
 
-  const periodoLabel = selectedMonth < 0
-    ? `Intero anno ${selectedYear}`
-    : `${MESI[selectedMonth + 1]} ${selectedYear}`;
+  const periodoLabel = periodo.etichetta;
+  const storico = useMemo(() => {
+    const tipiLog = { prima_nota_cassa: 'Prima Nota Cassa', fatture_cassa: 'Fatture pagate per cassa', carnet_assegni: 'Carnet assegni' };
+    const nuovi = invii.map(i => ({
+      chiave: i.id,
+      quando: i.created_at,
+      tipo: (i.voci || []).filter(v => v.esito === 'allegata').map(v => v.titolo).join(', ') || 'Pacchetto',
+      periodo: i.periodo,
+      email: i.destinatario,
+      ok: i.esito === 'inviato',
+    }));
+    const vecchi = log.map((e, idx) => ({
+      chiave: `log-${idx}`,
+      quando: e.data_invio,
+      tipo: tipiLog[e.tipo] || e.tipo,
+      periodo: e.carnet_id || `${MESI[e.mese]} ${e.anno}`,
+      email: e.email,
+      ok: !!e.success,
+    }));
+    return [...nuovi, ...vecchi].sort((x, y) => String(y.quando).localeCompare(String(x.quando)));
+  }, [invii, log]);
+  const nomeFile = testo => String(testo || '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
   useEffect(() => {
     loadConfig();
@@ -195,8 +212,6 @@ export default function Commercialista() {
     if (!primaNotaData) return null;
 
     const doc = new jsPDF();
-    const meseNome = MESI[selectedMonth + 1];
-
     // ==========================================
     // INTESTAZIONE AZIENDA
     // ==========================================
@@ -227,7 +242,7 @@ export default function Commercialista() {
     doc.setFontSize(12);
     doc.setFont(undefined, 'normal');
     doc.setTextColor(80);
-    doc.text(`Periodo: ${meseNome} ${selectedYear}`, 14, 52);
+    doc.text(`Periodo: ${periodoLabel}`, 14, 52);
 
     // ==========================================
     // RIEPILOGO DETTAGLIATO (2 COLONNE)
@@ -331,13 +346,9 @@ export default function Commercialista() {
       )
       .reduce((sum, m) => sum + parseFloat(m.totale_giornata || m.importo || 0), 0);
 
-    // Calcola ultimo giorno del mese per il saldo
-    const ultimoGiorno = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-    const dataOggi = new Date();
-    const isCurrentMonth =
-      dataOggi.getFullYear() === selectedYear && dataOggi.getMonth() === selectedMonth;
-    const giornoSaldo = isCurrentMonth ? dataOggi.getDate() : ultimoGiorno;
-    const dataSaldo = `${String(giornoSaldo).padStart(2, '0')}/${String(selectedMonth + 1).padStart(2, '0')}/${selectedYear}`;
+    // Data del saldo: la fine del periodo, o oggi se il periodo non e' ancora finito
+    const oggiISO = new Date().toISOString().slice(0, 10);
+    const dataSaldo = formatDateIT(periodo.al < oggiISO ? periodo.al : oggiISO);
 
     // ==========================================
     // BOX ENTRATE (colonna sinistra)
@@ -519,16 +530,15 @@ export default function Commercialista() {
     if (!fattureCassaData) return null;
 
     const doc = new jsPDF();
-    const meseNome = MESI[selectedMonth + 1];
 
     // Header
     doc.setFontSize(20);
-    doc.setTextColor(255, 152, 0);
+    doc.setTextColor(63, 90, 78);
     doc.text('Fatture Pagate per Cassa', 14, 20);
 
     doc.setFontSize(14);
     doc.setTextColor(100);
-    doc.text(`${meseNome} ${selectedYear}`, 14, 30);
+    doc.text(periodoLabel, 14, 30);
 
     // Summary
     doc.setFontSize(12);
@@ -613,7 +623,7 @@ export default function Commercialista() {
 
     // Header
     doc.setFontSize(20);
-    doc.setTextColor(76, 175, 80);
+    doc.setTextColor(63, 90, 78);
     doc.text('Carnet Assegni', 14, 20);
 
     doc.setFontSize(14);
@@ -625,29 +635,43 @@ export default function Commercialista() {
     doc.setTextColor(0);
     doc.text(`Numero Assegni: ${carnet?.assegni?.length}`, 14, 45);
     doc.setFontSize(14);
-    doc.setTextColor(76, 175, 80);
+    doc.setTextColor(63, 90, 78);
     doc.text(`Totale: ${formatEuroStr(carnet.totale)}`, 14, 55);
+    const senzaFattura = avvisoSenzaFattura(carnet.assegni);
+    if (senzaFattura) {
+      doc.setFontSize(9);
+      doc.setTextColor(138, 100, 16);
+      doc.text(senzaFattura, 14, 61);
+    }
 
-    // Table
+    // Table: il beneficiario non e' una colonna, e' il ripiego del fornitore
     if (carnet.assegni?.length > 0) {
-      const tableData = carnet.assegni.map(a => [
-        a.numero || '-',
-        a.stato || '-',
-        (a.beneficiario || a.fornitore_ragione_sociale || '-').substring(0, 28),
-        `${formatEuroStr(a.importo)}`,
-        formatDateIT(a.data_fattura) || '-',
-        a.numero_fattura || a.fattura_numero || '-',
-      ]);
+      const tableData = carnet.assegni.map(a => {
+        const d = datiRigaAssegno(a);
+        return [
+          a.numero || DA_COLLEGARE,
+          a.stato || '',
+          d.fornitore.substring(0, 34),
+          d.numeroFattura,
+          d.dataFattura,
+          `${formatEuroStr(a.importo)}`,
+        ];
+      });
 
       autoTable(doc, {
-        startY: 65,
-        head: [['N. Assegno', 'Stato', 'Beneficiario', 'Importo', 'Data Fatt.', 'N. Fattura']],
+        startY: 66,
+        head: [['N. Assegno', 'Stato', 'Fornitore', 'N. Fattura', 'Data Fattura', 'Importo']],
         body: tableData,
         theme: 'striped',
-        headStyles: { fillColor: [76, 175, 80] },
+        headStyles: { fillColor: [63, 90, 78] },
         styles: { fontSize: 8 },
         columnStyles: {
-          2: { cellWidth: 40 },
+          0: { cellWidth: 26 },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 52 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 26 },
+          5: { cellWidth: 26, halign: 'right' },
         },
       });
     }
@@ -672,16 +696,16 @@ export default function Commercialista() {
   const downloadPDF = (type, carnetData = null) => {
     let doc;
     let filename;
-    const meseNome = MESI[selectedMonth + 1];
+    const sigla = nomeFile(periodoLabel);
 
     switch (type) {
       case 'prima_nota':
         doc = generatePrimaNotaPDF();
-        filename = `Prima_Nota_Cassa_${meseNome}_${selectedYear}.pdf`;
+        filename = `Prima_Nota_Cassa_${sigla}.pdf`;
         break;
       case 'fatture_cassa':
         doc = generateFattureCassaPDF();
-        filename = `Fatture_Cassa_${meseNome}_${selectedYear}.pdf`;
+        filename = `Fatture_Cassa_${sigla}.pdf`;
         break;
       case 'carnet':
         doc = generateCarnetPDF(carnetData);
@@ -710,7 +734,7 @@ export default function Commercialista() {
 
     // Header
     doc.setFontSize(20);
-    doc.setTextColor(76, 175, 80);
+    doc.setTextColor(63, 90, 78);
     doc.text('Carnet Assegni Selezionati', 14, 20);
 
     doc.setFontSize(12);
@@ -726,6 +750,12 @@ export default function Commercialista() {
     doc.setTextColor(0);
     const totaleImporto = carnetsArray.reduce((sum, c) => sum + c.totale, 0);
     doc.text(`Totale Generale: ${formatEuroStr(totaleImporto)}`, 14, 42);
+    const senzaFatturaTot = avvisoSenzaFattura(carnetsArray.flatMap(c => c.assegni || []));
+    if (senzaFatturaTot) {
+      doc.setFontSize(9);
+      doc.setTextColor(138, 100, 16);
+      doc.text(senzaFatturaTot, 14, 48);
+    }
 
     // Tabella con tutti gli assegni raggruppati per carnet
     let currentY = 55;
@@ -738,7 +768,7 @@ export default function Commercialista() {
       }
 
       doc.setFontSize(12);
-      doc.setTextColor(76, 175, 80);
+      doc.setTextColor(63, 90, 78);
       doc.text(
         `Carnet ${carnet.id} - ${carnet?.assegni?.length} assegni - ${formatEuroStr(carnet.totale)}`,
         14,
@@ -748,56 +778,38 @@ export default function Commercialista() {
 
       // Tabella assegni con dati completi di fattura e fornitore
       const tableData = carnet.assegni.map(a => {
-        const dataAssegno =
-          formatDateIT(a.data_emissione) ||
-          formatDateIT(a.data_incasso) ||
-          formatDateIT(a.data_fattura) ||
-          '-';
-        const fornitore = (
-          a.fornitore_ragione_sociale ||
-          a.fornitore_fattura ||
-          a.beneficiario ||
-          '-'
-        ).substring(0, 28);
+        const dataAssegno = [a.data_emissione, a.data_incasso, a.data_fattura]
+          .map(formatDateIT)
+          .find(d => d && d !== '-') || '';
+        const d = datiRigaAssegno(a);
         return [
-          a.numero || '-',
+          a.numero || DA_COLLEGARE,
           dataAssegno,
-          (a.beneficiario || '-').substring(0, 24),
-          fornitore,
-          a.numero_fattura || a.fattura_numero || '-',
-          formatDateIT(a.data_fattura) || '-',
+          d.fornitore.substring(0, 40),
+          d.numeroFattura,
+          d.dataFattura,
           `${formatEuroStr(a.importo)}`,
-          a.stato || '-',
+          a.stato || '',
         ];
       });
 
       autoTable(doc, {
         startY: currentY,
         head: [
-          [
-            'N. Assegno',
-            'Data',
-            'Beneficiario',
-            'Fornitore',
-            'N. Fattura',
-            'Data Fattura',
-            'Importo',
-            'Stato',
-          ],
+          ['N. Assegno', 'Data', 'Fornitore', 'N. Fattura', 'Data Fattura', 'Importo', 'Stato'],
         ],
         body: tableData,
         theme: 'striped',
-        headStyles: { fillColor: [76, 175, 80], fontSize: 8 },
+        headStyles: { fillColor: [63, 90, 78], fontSize: 8 },
         styles: { fontSize: 7, cellPadding: 2 },
         columnStyles: {
-          0: { cellWidth: 22 },
-          1: { cellWidth: 18 },
-          2: { cellWidth: 30 },
-          3: { cellWidth: 32 },
-          4: { cellWidth: 18 },
-          5: { cellWidth: 18 },
-          6: { cellWidth: 20, halign: 'right' },
-          7: { cellWidth: 20 },
+          0: { cellWidth: 24 },
+          1: { cellWidth: 20 },
+          2: { cellWidth: 52 },
+          3: { cellWidth: 26 },
+          4: { cellWidth: 22 },
+          5: { cellWidth: 22, halign: 'right' },
+          6: { cellWidth: 16 },
         },
         margin: { left: 14, right: 14 },
       });
@@ -834,14 +846,14 @@ export default function Commercialista() {
         case 'prima_nota':
           doc = generatePrimaNotaPDF();
           endpoint = '/api/commercialista/invia-prima-nota';
-          payload.anno = selectedYear;
-          payload.mese = selectedMonth + 1;
+          payload.anno = periodo.anno;
+          payload.mese = periodo.meseRotta;
           break;
         case 'fatture_cassa':
           doc = generateFattureCassaPDF();
           endpoint = '/api/commercialista/invia-fatture-cassa';
-          payload.anno = selectedYear;
-          payload.mese = selectedMonth + 1;
+          payload.anno = periodo.anno;
+          payload.mese = periodo.meseRotta;
           break;
         case 'carnet':
           doc = generateCarnetPDF(carnetData);
@@ -870,14 +882,14 @@ export default function Commercialista() {
       const res = await api.post(endpoint, payload);
 
       if (res.data.success) {
-        showMessage(`✅ ${res?.data?.message}`);
+        showMessage(res?.data?.message || 'Invio riuscito');
         loadConfig(); // Refresh log
         ricaricaAlertCommercialista(); // L'invio cambia lo stato dell'avviso
       } else {
-        showMessage(`❌ Errore: ${res?.data?.message}`, 'error');
+        showMessage(`Errore: ${res?.data?.message}`, 'error');
       }
     } catch (e) {
-      showMessage(`❌ Errore invio: ${e.response?.data?.detail || e.message}`, 'error');
+      showMessage(`Errore invio: ${e.response?.data?.detail || e.message}`, 'error');
     } finally {
       setSending(null);
     }
@@ -897,31 +909,28 @@ export default function Commercialista() {
   return (
     <PageLayout
       title="Area Commercialista"
-      subtitle="Genera e invia documenti PDF al commercialista"
+      subtitle="Scegli il periodo e cosa inviare al commercialista: una sola email con tutti i documenti"
     >
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-        <h1 style={{ marginBottom: 5, color: COLORS.primaryLight }}>👩‍💼 Area Commercialista</h1>
-        <p style={{ color: COLORS.textMuted, marginBottom: 25 }}>
-          Genera e invia documenti PDF al commercialista via email
-        </p>
-
         {/* Alert Banner */}
         {alertStatus?.show_alert && (
           <div
+            role="alert"
             style={{
               background: COLORS.warning,
               color: 'white',
-              padding: 20,
+              padding: 16,
               borderRadius: BORDER_RADIUS.lg,
-              marginBottom: 25,
+              marginBottom: 20,
               display: 'flex',
               alignItems: 'center',
-              gap: 15,
+              flexWrap: 'wrap',
+              gap: 12,
               boxShadow: SHADOWS.md,
             }}
           >
-            <span style={{ fontSize: 32 }}>⚠️</span>
-            <div style={{ flex: 1 }}>
+            <AlertTriangle size={28} aria-hidden="true" style={{ flexShrink: 0 }} />
+            <div style={{ flex: '1 1 220px', minWidth: 0 }}>
               <strong style={{ fontSize: 16 }}>{alertStatus.message}</strong>
               <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: 14 }}>
                 Scadenza: {formatDate(alertStatus.deadline)}
@@ -931,9 +940,9 @@ export default function Commercialista() {
               variant="secondary"
               onClick={() => {
                 setAnno(alertStatus.anno_pendente);
-                setSelectedMonth(alertStatus.mese_pendente - 1);
+                setStatoPeriodo(statoMese(alertStatus.anno_pendente, alertStatus.mese_pendente));
               }}
-              style={{ background: COLORS.card, color: COLORS.warning }}
+              style={{ background: COLORS.card, color: COLORS.warning, minHeight: 44 }}
             >
               Vai al mese
             </Button>
@@ -946,6 +955,7 @@ export default function Commercialista() {
                 color: 'white',
                 border: '2px solid rgba(255,255,255,0.5)',
                 fontSize: 13,
+                minHeight: 44,
               }}
             >
               {segnandoInviata ? '...' : 'Segna come inviata'}
@@ -956,6 +966,7 @@ export default function Commercialista() {
         {/* Message */}
         {message && (
           <div
+            role="status"
             style={{
               padding: 15,
               borderRadius: BORDER_RADIUS.md,
@@ -969,10 +980,54 @@ export default function Commercialista() {
           </div>
         )}
 
+        {/* Periodo */}
+        <Card title="Periodo" icon={<FileSpreadsheet size={16} aria-hidden="true" />} style={{ marginBottom: 20 }}>
+          <SelettorPeriodo
+            stato={statoPeriodo}
+            anno={selectedYear}
+            onChange={setStatoPeriodo}
+            onAnno={setAnno}
+          />
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14 }}>
+            <Button
+              variant="success"
+              disabled={!periodo.valido}
+              onClick={() => {
+                window.open(
+                  `/api/commercialista/export-excel/${periodo.anno}/${periodo.meseRotta}${queryPeriodo(periodo)}`,
+                  '_blank'
+                );
+              }}
+              data-testid="export-excel-btn"
+              iconLeft={<FileSpreadsheet size={15} aria-hidden="true" />}
+              style={{ minHeight: 44 }}
+            >
+              Export Excel Commercialista
+            </Button>
+            {/* Export ZIP completo: Prima Nota Cassa/Banca, Assegni emessi, PDF fatture estere */}
+            <Button
+              variant="secondary"
+              disabled={!periodo.valido}
+              onClick={() => {
+                window.open(
+                  `/api/commercialista/export-completo/${periodo.anno}/${periodo.meseRotta}${queryPeriodo(periodo)}`,
+                  '_blank'
+                );
+              }}
+              data-testid="export-completo-btn"
+              title="ZIP con Prima Nota Cassa, Prima Nota Banca, Assegni emessi e PDF delle fatture estere del periodo"
+              iconLeft={<FolderArchive size={15} aria-hidden="true" />}
+              style={{ minHeight: 44 }}
+            >
+              Export ZIP completo
+            </Button>
+          </div>
+        </Card>
+
         {/* Config Card */}
-        <Card title="📧 Configurazione Email" style={{ marginBottom: 25 }}>
-          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div>
+        <Card title="Destinatario e email" icon={<Mail size={16} aria-hidden="true" />} style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ flex: '1 1 240px', minWidth: 0 }}>
               <label style={{ display: 'block', fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
                 Email Commercialista
               </label>
@@ -980,10 +1035,10 @@ export default function Commercialista() {
                 type="email"
                 value={config.email}
                 onChange={e => setConfig({ ...config, email: e.target.value })}
-                style={{ width: 280 }}
+                style={{ minHeight: 44 }}
               />
             </div>
-            <div>
+            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
               <label style={{ display: 'block', fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
                 Nome Commercialista
               </label>
@@ -991,74 +1046,39 @@ export default function Commercialista() {
                 type="text"
                 value={config.nome}
                 onChange={e => setConfig({ ...config, nome: e.target.value })}
-                style={{ width: 200 }}
+                style={{ minHeight: 44 }}
               />
             </div>
             <Badge variant={config.smtp_configured ? 'success' : 'danger'} style={{ padding: '8px 15px', fontSize: 13, textTransform: 'none' }}>
-              {config.smtp_configured ? '✅ SMTP Configurato' : '❌ SMTP Non Configurato'}
+              {config.smtp_configured ? 'SMTP configurato' : 'SMTP non configurato'}
             </Badge>
             <Button
               variant="primary"
               onClick={handleSaveConfig}
               disabled={savingConfig}
               data-testid="save-commercialista-config"
-              style={{ alignSelf: 'flex-end' }}
+              iconLeft={<Save size={15} aria-hidden="true" />}
+              style={{ minHeight: 44 }}
             >
-              {savingConfig ? 'Salvataggio...' : '💾 Salva'}
+              {savingConfig ? 'Salvataggio...' : 'Salva'}
             </Button>
           </div>
         </Card>
 
-        {/* Period Selector */}
-        <Card title="📅 Seleziona Periodo" style={{ marginBottom: 25 }}>
-          <div style={{ display: 'flex', gap: 15, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Select
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(parseInt(e.target.value))}
-              style={{ minWidth: 150 }}
-            >
-              <option value={-1}>Intero anno</option>
-              {MESI.slice(1).map((m, idx) => (
-                <option key={idx} value={idx}>
-                  {m}
-                </option>
-              ))}
-            </Select>
-            <Badge variant="info" style={{ padding: '10px 15px', fontSize: 14, textTransform: 'none' }}>
-              {selectedYear}
-            </Badge>
+        {periodo.valido && completezza && <CompletezzaPacchetto esito={completezza} />}
 
-            {/* Export Excel Button */}
-            <Button
-              variant="success"
-              onClick={() => {
-                const month = selectedMonth < 0 ? 0 : selectedMonth + 1;
-                const url = `/api/commercialista/export-excel/${selectedYear}/${month}`;
-                window.open(url, '_blank');
-              }}
-              data-testid="export-excel-btn"
-              style={{ marginLeft: 'auto' }}
-            >
-              📊 Export Excel Commercialista
-            </Button>
-
-            {/* Export ZIP completo: Prima Nota Cassa/Banca, Assegni emessi, PDF fatture estere */}
-            <Button
-              variant="secondary"
-              onClick={() => {
-                const month = selectedMonth < 0 ? 0 : selectedMonth + 1;
-                const url = `/api/commercialista/export-completo/${selectedYear}/${month}`;
-                window.open(url, '_blank');
-              }}
-              data-testid="export-completo-btn"
-              title="ZIP con Prima Nota Cassa, Prima Nota Banca, Assegni emessi e PDF delle fatture estere del mese"
-            >
-              🗂️ Export ZIP completo
-            </Button>
-          </div>
-        </Card>
-
-        {completezza && <CompletezzaPacchetto esito={completezza} />}
+        {periodo.valido && (
+          <PacchettoDaInviare
+            periodo={periodo}
+            carnetIds={selectedCarnets}
+            config={config}
+            avviso={showMessage}
+            onInviato={() => {
+              loadConfig();
+              ricaricaAlertCommercialista();
+            }}
+          />
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>Caricamento...</div>
@@ -1067,7 +1087,7 @@ export default function Commercialista() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
               gap: 15,
               marginBottom: 20,
             }}
@@ -1100,7 +1120,7 @@ export default function Commercialista() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 350px), 1fr))',
               gap: 20,
             }}
           >
@@ -1120,7 +1140,7 @@ export default function Commercialista() {
                   padding: 20,
                 }}
               >
-                <h3 style={{ margin: 0, color: 'white' }}>📒 Prima Nota Cassa</h3>
+                <h3 style={{ margin: 0, color: 'white' }}>Prima Nota Cassa</h3>
                 <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: 14 }}>
                   {periodoLabel}
                 </p>
@@ -1161,16 +1181,17 @@ export default function Commercialista() {
                     data-testid="download-prima-nota-pdf"
                     style={{ flex: 1, padding: '12px' }}
                   >
-                    📥 Scarica PDF
+                    Scarica PDF
                   </Button>
                   <Button
                     variant="info"
                     onClick={() => sendEmail('prima_nota')}
-                    disabled={sending === 'prima_nota' || !config.smtp_configured}
+                    disabled={sending === 'prima_nota' || !config.smtp_configured || !periodo.meseRotta}
+                    title={periodo.meseRotta ? undefined : 'Per un periodo diverso da un mese usa «Invia selezionati» nel pacchetto'}
                     data-testid="send-prima-nota-email"
                     style={{ flex: 1, padding: '12px' }}
                   >
-                    {sending === 'prima_nota' ? '⏳ Invio...' : '📧 Invia Email'}
+                    {sending === 'prima_nota' ? 'Invio...' : 'Invia Email'}
                   </Button>
                 </div>
               </div>
@@ -1192,7 +1213,7 @@ export default function Commercialista() {
                   padding: 20,
                 }}
               >
-                <h3 style={{ margin: 0 }}>💵 Fatture Pagate per Cassa</h3>
+                <h3 style={{ margin: 0 }}>Fatture Pagate per Cassa</h3>
                 <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: 14 }}>
                   {periodoLabel}
                 </p>
@@ -1212,16 +1233,17 @@ export default function Commercialista() {
                     data-testid="download-fatture-cassa-pdf"
                     style={{ flex: 1, padding: '12px' }}
                   >
-                    📥 Scarica PDF
+                    Scarica PDF
                   </Button>
                   <Button
                     variant="warning"
                     onClick={() => sendEmail('fatture_cassa')}
-                    disabled={sending === 'fatture_cassa' || !config.smtp_configured}
+                    disabled={sending === 'fatture_cassa' || !config.smtp_configured || !periodo.meseRotta}
+                    title={periodo.meseRotta ? undefined : 'Per un periodo diverso da un mese usa «Invia selezionati» nel pacchetto'}
                     data-testid="send-fatture-cassa-email"
                     style={{ flex: 1, padding: '12px' }}
                   >
-                    {sending === 'fatture_cassa' ? '⏳ Invio...' : '📧 Invia Email'}
+                    {sending === 'fatture_cassa' ? 'Invio...' : 'Invia Email'}
                   </Button>
                 </div>
               </div>
@@ -1244,7 +1266,7 @@ export default function Commercialista() {
                   padding: 20,
                 }}
               >
-                <h3 style={{ margin: 0 }}>📝 Carnet Assegni</h3>
+                <h3 style={{ margin: 0 }}>Carnet Assegni</h3>
                 <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: 14 }}>
                   Cerca e seleziona carnet da inviare
                 </p>
@@ -1253,7 +1275,7 @@ export default function Commercialista() {
                 {/* Barra di Ricerca */}
                 <Input
                   type="text"
-                  placeholder="🔍 Cerca carnet, beneficiario, importo..."
+                  placeholder="Cerca carnet, fornitore, numero fattura, importo..."
                   value={carnetSearch}
                   onChange={e => setCarnetSearch(e.target.value)}
                   style={{ marginBottom: 15 }}
@@ -1265,6 +1287,15 @@ export default function Commercialista() {
                   </div>
                 ) : (
                   <>
+                    {avvisoSenzaFattura(carnets.flatMap(c => c.assegni)) && (
+                      <div
+                        data-testid="carnet-senza-fattura"
+                        style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: COLORS.warning, marginBottom: 12 }}
+                      >
+                        <AlertTriangle size={15} aria-hidden="true" />
+                        {avvisoSenzaFattura(carnets.flatMap(c => c.assegni))}
+                      </div>
+                    )}
                     {/* Lista Carnet con Checkbox */}
                     <div
                       style={{
@@ -1385,18 +1416,14 @@ export default function Commercialista() {
                                     <span style={{ color: COLORS.warning }}>
                                       {formatEuro(a.importo)}
                                     </span>
-                                    {a.beneficiario && (
-                                      <span style={{ color: COLORS.gray[700] }}>
-                                        {' '}
-                                        · {a.beneficiario}
-                                      </span>
-                                    )}
-                                    {a.numero_fattura && (
-                                      <span style={{ color: COLORS.textMuted }}>
-                                        {' '}
-                                        · fatt. {a.numero_fattura}
-                                      </span>
-                                    )}
+                                    <span style={{ color: COLORS.gray[700] }}>
+                                      {' '}
+                                      · {datiRigaAssegno(a).fornitore}
+                                    </span>
+                                    <span style={{ color: COLORS.textMuted }}>
+                                      {' '}
+                                      · fatt. {datiRigaAssegno(a).numeroFattura}
+                                    </span>
                                     {a.stato && (
                                       <Badge
                                         variant={
@@ -1510,7 +1537,7 @@ export default function Commercialista() {
                         data-testid="download-carnet-pdf"
                         style={{ flex: 1, padding: '12px' }}
                       >
-                        📥 Scarica PDF ({selectedCarnets.length})
+                        Scarica PDF ({selectedCarnets.length})
                         {carnetSearch && ' · filtro attivo'}
                       </Button>
                       <Button
@@ -1558,8 +1585,8 @@ export default function Commercialista() {
                         style={{ flex: 1, padding: '12px' }}
                       >
                         {sending === 'carnet'
-                          ? '⏳ Invio...'
-                          : `📧 Invia Email (${selectedCarnets.length})`}
+                          ? 'Invio...'
+                          : `Invia Email (${selectedCarnets.length})`}
                       </Button>
                     </div>
                   </>
@@ -1570,43 +1597,28 @@ export default function Commercialista() {
           </>
         )}
 
-        {/* Log Section */}
-        {log.length > 0 && (
-          <Card title="📋 Storico Invii" style={{ marginTop: 25 }}>
-            <TableWrap style={{ border: 'none' }}>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Data Invio</Th>
-                    <Th>Tipo</Th>
-                    <Th>Periodo/ID</Th>
-                    <Th>Email</Th>
-                    <Th align="center">Stato</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {log.map((entry, idx) => (
-                    <tr key={idx}>
-                      <Td>{formatDate(entry.data_invio)}</Td>
-                      <Td>
-                        {entry.tipo === 'prima_nota_cassa' && '📒 Prima Nota'}
-                        {entry.tipo === 'fatture_cassa' && '💵 Fatture Cassa'}
-                        {entry.tipo === 'carnet_assegni' && '📝 Carnet'}
-                      </Td>
-                      <Td>
-                        {entry.carnet_id || `${MESI[entry.mese]} ${entry.anno}`}
-                      </Td>
-                      <Td>{entry.email}</Td>
-                      <Td align="center">
-                        <Badge variant={entry.success ? 'success' : 'danger'}>
-                          {entry.success ? '✓ Inviato' : '✕ Errore'}
-                        </Badge>
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
+        {/* Storico invii: registro del pacchetto e vecchio registro, dal piu' recente */}
+        {storico.length > 0 && (
+          <Card title="Storico invii" icon={<Mail size={16} aria-hidden="true" />} style={{ marginTop: 25 }}>
+            <ul data-testid="storico-invii" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {storico.map(riga => (
+                <li
+                  key={riga.chiave}
+                  style={{ padding: '10px 0', borderTop: `1px solid ${COLORS.border}`, fontSize: 13, minWidth: 0 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <strong>{formatDate(riga.quando)}</strong>
+                    <Badge variant={riga.ok ? 'success' : 'danger'}>
+                      {riga.ok ? 'Inviato' : 'Errore'}
+                    </Badge>
+                  </div>
+                  <div style={{ overflowWrap: 'anywhere' }}>{riga.tipo}</div>
+                  <div style={{ color: COLORS.textMuted, overflowWrap: 'anywhere' }}>
+                    {riga.periodo}{riga.email ? ` · ${riga.email}` : ''}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
       </div>
