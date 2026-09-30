@@ -196,6 +196,11 @@ async def startup_event():
         # Il catalogo web continua a funzionare anche se un file precaricato e'
         # temporaneamente assente: non deve mai impedire l'avvio HACCP.
         logging.warning(f"[STARTUP] cataloghi fornitori: {e}")
+    try:
+        from app.lotti.routers.catalogo_forno import inizializza_listini_precaricati
+        logging.info(f"[STARTUP] listini fornitori: {await inizializza_listini_precaricati()}")
+    except Exception as e:
+        logging.warning(f"[STARTUP] listini fornitori: {type(e).__name__}: {e}")
 
     try:
         from app.lotti.routers.acquaviva import inizializza_mapping_vandemoortele_2026

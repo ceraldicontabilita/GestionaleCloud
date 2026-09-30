@@ -424,6 +424,34 @@ async def job_ricerca_web_prodotti():
 # (ordini_fornitori.py), che gira alle 07:00 dentro job_genera_haccp_giornaliero.
 
 
+async def job_lettura_articoli_ai():
+    """Ogni ora (06-22) e qualche minuto dopo l'avvio: l'AI legge le descrizioni
+    di fatture e listini non ancora lette (servizi/lettura_articoli_ai.py)."""
+    try:
+        from app.lotti.routers.confronto_fornitori import esegui_lettura_ai
+
+        esito = await esegui_lettura_ai(limite=3000)
+        await db.scheduler_logs.insert_one({
+            "job": "lettura_articoli_ai",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "success": bool(esito.get("ok")) or esito.get("motivo") == "lettura gia' in corso",
+            "esito": esito,
+        })
+    except Exception as e:
+        await db.scheduler_logs.insert_one({
+            "job": "lettura_articoli_ai",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "success": False,
+            "error": f"{type(e).__name__}: {e}",
+        })
+        logger.warning(f"[Scheduler] lettura articoli AI: {type(e).__name__}: {e}")
+
+
+async def _lettura_articoli_ai_dopo_avvio():
+    await asyncio.sleep(180)
+    await job_lettura_articoli_ai()
+
+
 async def job_sync_gestionale_fatture():
     """Riceve le fatture correnti da GestionaleCloud con registro idempotente."""
     try:
@@ -592,8 +620,17 @@ def setup_scheduler():
         replace_existing=True,
     )
 
+    scheduler.add_job(
+        job_lettura_articoli_ai,
+        CronTrigger(minute=40, hour="6-22", timezone=TZ),
+        id="lettura_articoli_ai",
+        name="Lettura AI descrizioni articoli per il confronto prezzi (ogni ora, 06-22)",
+        replace_existing=True,
+    )
+
     scheduler.start()
     scheduler_started = True
+    asyncio.create_task(_lettura_articoli_ai_dopo_avvio())
     print(
         "[Scheduler] Avviato — 01:00 ref-fatture | 01:30 pulizia-lotti | "
         "ogni:15 GestionaleCloud-fatture | 02:30 backup | 03:00 normalizza | 04:00 pipeline | 07:00 HACCP+riordino"

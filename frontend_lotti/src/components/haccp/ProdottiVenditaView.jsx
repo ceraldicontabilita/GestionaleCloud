@@ -29,7 +29,9 @@ function mapItemCatalogoForno(p) {
   const prezzoFattura = p.gia_acquistato ? Number(p.prezzo_fattura || p.prezzo_listino || 0) : 0;
   return {
     id: `${p.fornitore}-${p.codice_articolo}`,
-    nome: p.nome_completo || p.nome,
+    // il nome standard dell'AI quando c'e'; quello del fornitore resta sotto
+    nome: p.nome_standard || p.nome_completo || p.nome,
+    nomeFornitore: p.nome_standard ? (p.nome_completo || p.nome) : "",
     foto_url: p.immagine_url || null,
     categoria: p.categoria || null,
     prezzo: prezzoFattura || p.prezzo_fornitore || p.prezzo || 0,
@@ -47,6 +49,13 @@ function mapItemCatalogoForno(p) {
     pezziCartone: p.pezzi_cartone || "",
     inRicette: !!p.in_ricette,
     link_prodotto: p.link_prodotto || "",
+    // listino del fornitore (es. Barone): prezzo dichiarato per l'unità di vendita
+    prezzoListino: Number(p.prezzo_listino || 0) || 0,
+    unitaVendita: p.unita_vendita || "",
+    dataListino: p.prezzo_listino_data || "",
+    offertaFino: p.offerta_fino || "",
+    ean: p.ean || "",
+    sottocategoria: p.sottocategoria || "",
     raw: p,
   };
 }
@@ -367,8 +376,11 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
           fetchUrl={`/catalogo-forno/prodotti?fornitore=${encodeURIComponent(f.fornitore_key)}`}
           mapItem={mapItemCatalogoForno}
           emojiVuoto="📦"
-          messaggioVuoto={`Nessun prodotto ancora sincronizzato per ${f.nome} — vai in Cataloghi Fornitori (web) e premi Sincronizza.`}
-          coloreAccento="green" />
+          messaggioVuoto={f.tipo === "listino"
+            ? `Nessun articolo nel listino di ${f.nome} — caricalo da Cataloghi Fornitori.`
+            : `Nessun prodotto ancora sincronizzato per ${f.nome} — vai in Cataloghi Fornitori (web) e premi Sincronizza.`}
+          confrontoPrezzi={f.tipo === "listino"}
+          coloreAccento="sage" />
       ))}
 
       {/* Contenuto Miei Prodotti / Acquaviva */}

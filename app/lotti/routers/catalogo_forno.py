@@ -9,7 +9,7 @@ import os
 import re
 import httpx
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Body, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Body, Depends, File, Form, UploadFile
 from typing import List, Optional
 from pydantic import BaseModel
 from pymongo import UpdateOne
@@ -261,7 +261,8 @@ async def lista_prodotti(fornitore: Optional[str] = None, categoria: Optional[st
         q["categoria"] = categoria
     if cerca:
         q["nome"] = {"$regex": cerca, "$options": "i"}
-    prods = await db.catalogo_forno_prodotti.find(q, {"_id": 0}).sort("nome", 1).to_list(2000)
+    # un listino come Barone ha oltre 4.000 articoli: il tetto e' di sicurezza, non un taglio
+    prods = await db.catalogo_forno_prodotti.find(q, {"_id": 0}).sort("nome", 1).to_list(20000)
     if fornitore:
         attivi = await db.dizionario_prodotti.find(
             {"catalogo_fonte": fornitore, "attivo": {"$ne": False}},
@@ -280,6 +281,21 @@ async def lista_prodotti(fornitore: Optional[str] = None, categoria: Optional[st
             prods = applica_prezzo_da_fatture(prods, prezzi)
         except Exception:
             logger.debug("[catalogo_forno] aggancio prezzi fatture fallito (non bloccante)")
+    # nome standard letto dall'AI (servizi/lettura_articoli_ai.py) accanto a quello del fornitore
+    if any(p.get("fonte_catalogo") == "listino" for p in prods):
+        from app.lotti.servizi.confronto_fornitori import impronta_descrizione
+        from app.lotti.servizi.lettura_articoli_ai import COLLEZIONE, VERSIONE
+
+        nomi = {
+            d.get("id"): d.get("nome")
+            for d in await getattr(db, COLLEZIONE).find(
+                {"versione": VERSIONE, "servizio": {"$ne": True}}, {"_id": 0, "id": 1, "nome": 1}
+            ).to_list(None)
+        }
+        for prodotto in prods:
+            nome = nomi.get(impronta_descrizione(prodotto.get("nome_completo") or prodotto.get("nome") or ""))
+            if nome:
+                prodotto["nome_standard"] = nome
     return {"totale": len(prods), "prodotti": prods}
 
 
@@ -343,3 +359,110 @@ async def elimina(codice: str, fornitore: str, _admin=Depends(require_admin)):
     if not res.deleted_count:
         raise HTTPException(404, "Prodotto non trovato")
     return {"ok": True}
+
+
+
+# ── Listini dei fornitori (Excel/CSV) ───────────────────────────────────────
+# Un listino e' il prezzo che il fornitore dichiara oggi (servizi/listino_fornitore.py):
+# entra nel catalogo del fornitore e nel confronto prezzi, con data e scritta «listino».
+
+_LISTINI_PRECARICATI = {
+    # Catalogo riservato a Ceraldi Group scaricato da barone.passweb.it il 28/09/2026
+    "barone": "listino_barone_2026-09-28.json",
+}
+_MAX_LISTINO_BYTES = 15 * 1024 * 1024
+
+
+async def _dopo_listino() -> None:
+    """Il confronto prezzi rilegge i listini e l'AI legge le descrizioni nuove."""
+    from app.lotti.routers.confronto_fornitori import esegui_lettura_ai
+    from app.lotti.servizi import confronto_fornitori as cf
+
+    cf.invalida_cache()
+    import asyncio
+
+    await asyncio.sleep(5)
+    try:
+        await esegui_lettura_ai(limite=6000)
+    except Exception as exc:  # noqa: BLE001 - la lettura AI non ferma il listino
+        logger.warning("[listino] lettura AI dopo l'import non riuscita: %s: %s", type(exc).__name__, exc)
+
+
+async def importa_listino_precaricato(chiave: str, forza: bool = False) -> dict:
+    """Carica un listino bundlato nel repo, se e' piu' recente di quello in archivio."""
+    from app.lotti.servizi import listino_fornitore as lf
+
+    path = os.path.join(_DATA_DIR, _LISTINI_PRECARICATI[chiave])
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    fornitore = payload["fornitore"]
+    fonte = await db.fonti_catalogo_esterne.find_one({"fornitore_key": fornitore["fornitore_key"]}, {"_id": 0})
+    if fonte and not forza and str(fonte.get("listino_data") or "") >= payload["data_listino"]:
+        return {"gia_presente": True, "listino_data": fonte.get("listino_data")}
+    esito = lf.leggi_righe(payload["tabella"])
+    return await lf.importa(
+        db, esito, fornitore_nome=fornitore["nome"], fornitore_key=fornitore["fornitore_key"],
+        piva=fornitore.get("partita_iva", ""), url=fornitore.get("url", ""),
+        data_listino=payload["data_listino"], file_sha256=payload.get("file_sha256", ""),
+        nome_file=payload.get("file", ""),
+    )
+
+
+async def inizializza_listini_precaricati() -> dict:
+    """All'avvio: un listino bundlato piu' nuovo di quello in archivio si carica.
+    Uno caricato a mano piu' recente non viene mai sostituito dal file del repo."""
+    risultati = {}
+    for chiave in _LISTINI_PRECARICATI:
+        try:
+            risultati[chiave] = await importa_listino_precaricato(chiave)
+        except Exception as exc:  # noqa: BLE001 - un listino non blocca l'avvio
+            risultati[chiave] = {"errore": f"{type(exc).__name__}: {exc}"}
+    # la lettura AI parte dal giro dello scheduler (qualche minuto dopo l'avvio):
+    # qui le fatture del gestionale potrebbero non essere ancora pronte
+    from app.lotti.servizi import confronto_fornitori as cf
+
+    cf.invalida_cache()
+    return risultati
+
+
+@router.post("/importa-listino")
+async def importa_listino(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    nome_fornitore: str = Form(...),
+    partita_iva: str = Form(""),
+    url: str = Form(""),
+    data_listino: str = Form(""),
+    _admin=Depends(require_admin),
+):
+    """Carica il listino di un fornitore da Excel (.xlsx) o CSV.
+
+    Colonne riconosciute per intestazione: Codice, Descrizione, Prezzo
+    (obbligatorie), EAN, IVA, Unita' di misura, Conf. ordine, Categoria,
+    Sottocategoria, Link. Ricaricare lo stesso file non cambia niente."""
+    from app.lotti.servizi import listino_fornitore as lf
+
+    contenuto = await file.read()
+    if not contenuto:
+        raise HTTPException(422, "Il file e' vuoto")
+    if len(contenuto) > _MAX_LISTINO_BYTES:
+        raise HTTPException(413, "File oltre 15 MB")
+    nome_file = file.filename or "listino"
+    if not nome_file.lower().endswith((".xlsx", ".csv", ".txt")):
+        raise HTTPException(415, "Formati accettati: .xlsx oppure .csv")
+    try:
+        esito = lf.leggi_righe(lf.tabella_da_file(contenuto, nome_file))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - file illeggibile: si dice perche'
+        raise HTTPException(422, f"File non leggibile: {type(exc).__name__}: {exc}") from exc
+    if not esito.righe:
+        raise HTTPException(422, "Nessuna riga con codice, descrizione e prezzo")
+    if url and not url.startswith("http"):
+        url = "https://" + url
+    risultato = await lf.importa(
+        db, esito, fornitore_nome=nome_fornitore, piva=partita_iva, url=url,
+        data_listino=data_listino[:10], file_sha256=lf.sha256(contenuto), nome_file=nome_file,
+    )
+    background.add_task(_dopo_listino)
+    return risultato

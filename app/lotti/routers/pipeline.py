@@ -380,14 +380,16 @@ async def esegui_pipeline_post_import(motivo: str = "manuale"):
         await step_fornitori(log)
         # ── Step — Ricostruisci catalogo unificato ordini (prodotti_master) ───
         try:
-            from app.lotti.routers.prodotti_master import rebuild as rebuild_master
+            # il motore, non l'endpoint: `rebuild` vuole BackgroundTasks e il permesso
+            # admin, e chiamato da qui falliva sempre senza ricostruire niente
+            from app.lotti.routers.prodotti_master import _esegui_rebuild as rebuild_master
 
             res_master = await rebuild_master()
             log["prodotti_master_rebuild"] = True
             log["prodotti_master_totale"] = res_master.get("totale") if isinstance(res_master, dict) else None
         except Exception as e_master:
             log["prodotti_master_rebuild"] = False
-            log["prodotti_master_errore"] = str(e_master)
+            log["prodotti_master_errore"] = f"{type(e_master).__name__}: {e_master}"
         # ── Step 7 — Aggiorna Manuale HACCP dinamico ──────────────────────
         try:
             from app.lotti.routers.haccp_manuale_auto import aggiorna_sezioni_manuale

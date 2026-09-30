@@ -11,6 +11,7 @@ import { API } from "../../utils/constants";
 import { apriDocumentoAutenticato } from "../../auth";
 import { norm } from "../../utils/textNormalize";
 import { linkEmailOrdine, linkWhatsAppOrdine } from "../../utils/invioOrdine";
+import { chiediMigliore, messaggioMigliore, versoIlMigliore } from "../../utils/confrontoFornitori";
 import { getOperatoreNome } from "../../auth";
 import { Search, ShoppingCart, Package, Send, Plus, Check, X, Minus, AlertTriangle, Scale } from "lucide-react";
 // UN solo confronto prezzi in tutta l'app (prima Ordini usava un componente
@@ -222,18 +223,41 @@ export default function OrdiniView({ initialTab = "riordini" }) {
     ).slice(0,120);
   }, [prodotti, q, sector, cat, forn]);
 
-  const inc = (p, d=1) => setCart(c => {
+  const inc = (p, d=1) => {
+    const nuovo = !cart[p.id] && d > 0;
+    incCarrello(p, d);
+    if (nuovo) versoMigliore(p);
+  };
+  const incCarrello = (p, d=1) => setCart(c => {
     const cur = c[p.id]?.qty || 0; const next = Math.max(0, cur+d);
     const nc = {...c};
     if (next<=0) { if (nc[p.id]?.da_catalogo) rimuoviDaCarrelloCataloghi(nc[p.id].idCatalogo); delete nc[p.id]; }
     else {
       const precedente = nc[p.id];
-      nc[p.id] = { id:p.id, nome:p.nome, conf:p.conf, fornitore:p.fornitore, prezzo:p.prezzo, fornitori60:p.fornitori60||[], prezzoRecente:p.prezzoRecente, prezzoGiorniFa:p.prezzoGiorniFa, qty:next, stock_iniziale:stockOf(p), soglia:sogliaOf(p), richiesto_da:(c[p.id]&&c[p.id].richiesto_da)||getOperatoreNome()||"Ordini app", ...(precedente?.da_catalogo ? { da_catalogo:true, idCatalogo:precedente.idCatalogo } : {}) };
+      nc[p.id] = { id:p.id, nome:p.nome, conf:p.conf, fornitore:p.fornitore, prezzo:p.prezzo, fornitori60:p.fornitori60||[], prezzoRecente:p.prezzoRecente, prezzoGiorniFa:p.prezzoGiorniFa, qty:next, stock_iniziale:stockOf(p), soglia:sogliaOf(p), richiesto_da:(c[p.id]&&c[p.id].richiesto_da)||getOperatoreNome()||"Ordini app", ...(precedente?.da_catalogo ? { da_catalogo:true, idCatalogo:precedente.idCatalogo } : {}),
+        // fornitore, prezzo e unità già scelti (a mano o dal confronto) restano quelli
+        ...(precedente ? { fornitore: precedente.fornitore, prezzo: precedente.prezzo, conf: precedente.conf, prezzoFonte: precedente.prezzoFonte, fornitoreSceltoDa: precedente.fornitoreSceltoDa } : {}) };
       if (precedente?.da_catalogo) aggiornaQuantitaCarrelloCataloghi(precedente.idCatalogo, next);
     }
     return nc;
   });
-  const toggle = (p) => setCart(c => { const nc={...c}; if(nc[p.id])delete nc[p.id]; else nc[p.id]={id:p.id,nome:p.nome,conf:p.conf,fornitore:p.fornitore,prezzo:p.prezzo,fornitori60:p.fornitori60||[],prezzoRecente:p.prezzoRecente,prezzoGiorniFa:p.prezzoGiorniFa,qty:1,stock_iniziale:stockOf(p),soglia:sogliaOf(p),richiesto_da:getOperatoreNome()||"Ordini app"}; return nc; });
+  // Regola del titolare (30/09/2026): scelto un prodotto, l'ordine parte verso
+  // chi lo vende al prezzo più basso fra fatture XML e listini (confronto unico).
+  const versoMigliore = async (p) => {
+    const esito = await chiediMigliore(axios, API, { descrizione: p.nome, fornitore: p.fornitore, prodottoMasterId: String(p.id || "") });
+    const spostato = versoIlMigliore({ nome: p.nome, fornitore: p.fornitore, prezzo: p.prezzo, unita_misura: p.conf }, esito);
+    if (!spostato.cambiato) return;
+    setCart(c => c[p.id] ? { ...c, [p.id]: {
+      ...c[p.id], fornitore: spostato.item.fornitore, prezzo: spostato.item.prezzo, conf: spostato.item.unita_misura,
+      prezzoFonte: spostato.item.prezzo_fonte, fornitoreSceltoDa: "miglior_prezzo",
+    } } : c);
+    toast.success(messaggioMigliore(p.nome, spostato), { duration: 9000 });
+  };
+  const toggle = (p) => {
+    const aggiunto = !cart[p.id];
+    setCart(c => { const nc={...c}; if(nc[p.id])delete nc[p.id]; else nc[p.id]={id:p.id,nome:p.nome,conf:p.conf,fornitore:p.fornitore,prezzo:p.prezzo,fornitori60:p.fornitori60||[],prezzoRecente:p.prezzoRecente,prezzoGiorniFa:p.prezzoGiorniFa,qty:1,stock_iniziale:stockOf(p),soglia:sogliaOf(p),richiesto_da:getOperatoreNome()||"Ordini app"}; return nc; });
+    if (aggiunto) versoMigliore(p);
+  };
   const markLow = (p, qta) => { const n = qta || Math.max(1,Math.ceil((sogliaOf(p)||1)-stockOf(p))); inc(p, n); toast.success(`Aggiunto riordino: ${n} pz`); };
 
   const setFornitore = (id, fornitore, prezzo) => {

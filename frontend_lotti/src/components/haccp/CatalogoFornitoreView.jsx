@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Search, RefreshCw, Package, ChevronRight, Home, Download, Tag, LayoutGrid, List, ExternalLink, Check, Plus, Trash2, X, Info, ZoomIn, ShoppingCart } from "lucide-react";
 import { API } from "../../utils/constants";
 import PrezzoFornitoreEditor from "./PrezzoFornitoreEditor";
+import { chiediMigliore, messaggioMigliore, versoIlMigliore } from "../../utils/confrontoFornitori";
 
 // Carrello UNIFICATO con il libro ordini (OrdiniSmartView usa la stessa chiave):
 // così "aggiungi dal catalogo" compare direttamente negli Ordini e diventa un
@@ -87,20 +88,21 @@ export function useCart(fornitoreNome) {
       setCart(uniti);
     }).catch(() => {});
   }, []);
-  const aggiungi = useCallback((p) => {
+  const aggiungi = useCallback(async (p) => {
     const current = leggiCarrello();
     const id = p.id || `ext_${(p.nome || "").toLowerCase().replace(/\s+/g, "_").slice(0, 40)}`;
     if (current.some(c => c.id === id)) { toast("Già nel carrello ordini"); return; }
+    const prezzoListino = Number(p.prezzoListino || p.prezzo_listino_fornitore || 0) || 0;
     // Formato compatibile con OrdiniSmartView (id, nome, fornitore, prezzo, quantita, ...)
-    const item = {
+    let item = {
       id,
       nome:            p.nome_display || p.nome || id,
       codici:          p.codice_articolo ? [p.codice_articolo] : [],
       fornitore:       fornitoreNome,
-      prezzo:          prezzoProdotto(p),   // 0 se mai acquistato → ordinabile lo stesso
-      prezzo_fonte:    prezzoFatturaProdotto(p) > 0 ? "fattura_xml" : Number(p.prezzo_fornitore || p.prezzoFornitore || 0) > 0 ? "comunicato_dal_fornitore" : "non_disponibile",
+      prezzo:          prezzoProdotto(p) || prezzoListino,   // 0 se mai acquistato → ordinabile lo stesso
+      prezzo_fonte:    prezzoFatturaProdotto(p) > 0 ? "fattura_xml" : Number(p.prezzo_fornitore || p.prezzoFornitore || 0) > 0 ? "comunicato_dal_fornitore" : prezzoListino > 0 ? "listino_fornitore" : "non_disponibile",
       prezzo_iva_esclusa: true,
-      unita_misura:    p.unita_confezione || "pz",
+      unita_misura:    (p.unitaVendita || p.unita_confezione || "pz").toLowerCase(),
       quantita:        1,
       note:            "",
       sospeso:         false,
@@ -108,35 +110,23 @@ export function useCart(fornitoreNome) {
       prezzo_precedente: null,
       fonte:           p.fonte || fornitoreNome.toLowerCase(),
     };
-    const updated = [...current, item];
+    // Regola del titolare (30/09/2026): l'ordine parte verso chi vende lo
+    // stesso articolo al prezzo più basso, fra fatture XML e listini — il
+    // confronto unico lo dice, qui si sposta la riga e lo si scrive.
+    const esito = await chiediMigliore(axios, API, {
+      descrizione: item.nome, fornitore: p.fornitore || fornitoreNome, codice: p.codice_articolo || "",
+    });
+    const spostato = versoIlMigliore(item, esito);
+    item = spostato.item;
+    const updated = [...leggiCarrello().filter(c => c.id !== id), item];
     salvaCarrello(updated);
     setCart(updated);
-    toast.success(prezzoProdotto(p) > 0
-      ? `"${item.nome.slice(0, 32)}" aggiunto agli ordini`
-      : `"${item.nome.slice(0, 28)}" aggiunto (prodotto nuovo, senza prezzo)`);
-
-    // Confronto con cataloghi esterni (richiesta Enzo 04/07/2026): se un
-    // catalogo aggiunto in "Cataloghi fornitori (web)" (es. offerte
-    // settimanali) ha lo STESSO prodotto a un prezzo migliore, avviso —
-    // non sostituisco nulla automaticamente, decide sempre l'operatore.
-    if (item.prezzo > 0) {
-      axios.get(`${API}/fonti-catalogo/confronta`, { params: { nome: item.nome, prezzo_attuale: item.prezzo } })
-        .then((r) => {
-          const d = r.data;
-          if (d?.conviene && d.migliore_offerta) {
-            toast.warning(
-              `${d.migliore_offerta.fornitore}: stesso prodotto a €${Number(d.migliore_offerta.prezzo).toFixed(2)} (risparmi €${Number(d.risparmio).toFixed(2)})`,
-              {
-                description: item.nome,
-                duration: 12000,
-                action: d.migliore_offerta.link_prodotto
-                  ? { label: "Vedi offerta", onClick: () => window.open(d.migliore_offerta.link_prodotto, "_blank") }
-                  : undefined,
-              }
-            );
-          }
-        })
-        .catch(() => {});
+    if (spostato.cambiato) {
+      toast.success(messaggioMigliore(item.nome, spostato), { duration: 9000 });
+    } else {
+      toast.success(item.prezzo > 0
+        ? `"${item.nome.slice(0, 32)}" aggiunto agli ordini`
+        : `"${item.nome.slice(0, 28)}" aggiunto (prodotto nuovo, senza prezzo)`);
     }
   }, [fornitoreNome]);
   return { cart, aggiungi, isInCart: (id) => cart.some(c => c.id === id) };
