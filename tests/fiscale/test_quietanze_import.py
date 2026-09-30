@@ -413,3 +413,35 @@ def test_la_pulizia_doppioni_non_fonde_saldi_diversi():
     assert len(gruppi) == 1
     resta, copie = gruppi[0]
     assert {resta["id"], *[c["id"] for c in copie]} == {"a", "b"}
+
+
+def test_ricevuta_senza_righe_tributo_non_e_una_quietanza(monkeypatch):
+    # Quietanza mutuo o ricevuta di bonifico: quadra (zero = zero) ma non ha righe.
+    _patch_parser(monkeypatch, {**PARSED_OK, "sezione_erario": [],
+                                "dati_generali": {**PARSED_OK["dati_generali"], "saldo_delega": 0},
+                                "totali": {"saldo_netto": 0}})
+    db = _FakeDb()
+    esito = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-mutuo", "quietanza_mutuo.pdf"))
+    assert esito["success"] is False and esito["stato_quietanza"] == "NON_QUIETANZA_F24"
+    assert db[qi.COLL_QUIETANZE].docs == []
+
+
+def test_f24_a_saldo_zero_entra_come_compensazione_senza_alert(monkeypatch):
+    parsed = {
+        **PARSED_OK,
+        "dati_generali": {**PARSED_OK["dati_generali"], "saldo_delega": 0,
+                          "protocollo_telematico": "20100536070838682-000001", "data_pagamento": "2020-10-05"},
+        "sezione_erario": [
+            {"codice_tributo": "1012", "periodo_riferimento": "09/2020", "importo_debito": 395.73},
+            {"codice_tributo": "1631", "periodo_riferimento": "09/2020", "importo_credito": 395.73},
+        ],
+        "totali": {"saldo_netto": 0},
+    }
+    _patch_parser(monkeypatch, parsed)
+    db = _FakeDb()
+    esito = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-zero", "f24_zero.pdf"))
+    assert esito["success"] and esito["stato_quietanza"] == "QUIETANZA_COMPENSAZIONE_TOTALE"
+    q = db[qi.COLL_QUIETANZE].docs[0]
+    assert q["compensazione_totale"] is True and q["calcolo_fiscale_sospeso"] is False
+    assert db[qi.COLL_F24_ALERTS].docs == []
+    assert "compensazione" in esito["riscontro_banca"].get("saltato", "")

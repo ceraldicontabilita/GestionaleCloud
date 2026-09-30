@@ -258,7 +258,70 @@ def _quietanza_da_fiscal_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         "protocollo_originale": protocollo,
         "importo_cents": importo,
         "f24_ids": sorted(f24_ids),
+        "origini": origini_documento(doc),
     }
+
+
+# Da dove arriva un documento F24: posta (Gmail, casella documenti), Drive,
+# caricato a mano. Un documento arrivato da piu' canali li porta tutti.
+ORIGINI = {"posta": "Posta", "drive": "Drive", "caricato": "Caricato", "altro": "Altro"}
+
+
+def _origine_da_source(source: Any) -> Optional[str]:
+    s = str(source or "").lower()
+    if not s:
+        return None
+    if "drive" in s:
+        return "drive"
+    if any(k in s for k in ("gmail", "email", "mail", "inbox", "posta", "pec")):
+        return "posta"
+    if "upload" in s or "manuale" in s:
+        return "caricato"
+    return "altro"
+
+
+def origini_documento(doc: Dict[str, Any]) -> List[str]:
+    """Canali da cui e' arrivato il documento, in ordine fisso (posta, drive, caricato, altro)."""
+    trovate = set()
+    for campo in ("fonte", "source", "origine", "source_module"):
+        o = _origine_da_source(doc.get(campo))
+        if o and not (campo == "fonte" and doc.get(campo) in (COLL_QUIETANZE_F24, COLL_FISCAL_DOCUMENTS)):
+            trovate.add(o)
+    for occ in doc.get("source_occurrences") or []:
+        if isinstance(occ, dict):
+            o = _origine_da_source(occ.get("source"))
+            if o:
+                trovate.add(o)
+            if occ.get("drive_file_id"):
+                trovate.add("drive")
+    if doc.get("drive_file_id"):
+        trovate.add("drive")
+    if doc.get("email_info") or doc.get("gmail_message_id") or doc.get("email_id"):
+        trovate.add("posta")
+    return [o for o in ORIGINI if o in trovate] or ["altro"]
+
+
+def saldo_quietanza_cents(doc: Dict[str, Any]) -> Optional[int]:
+    """Saldo della delega; 0 e' un saldo letto (F24 tutto in compensazione), non un saldo mancante."""
+    dg = doc.get("dati_generali") or {}
+    totali = doc.get("totali") or {}
+    if totali.get("saldo_netto_cents") not in (None, ""):
+        try:
+            return int(totali["saldo_netto_cents"])
+        except (TypeError, ValueError):
+            pass
+    for valore in (doc.get("saldo_delega"), doc.get("saldo"), dg.get("saldo_delega"), totali.get("saldo_netto")):
+        if valore is None or valore == "" or valore is False:
+            continue
+        cents = centesimi(valore)
+        if cents is not None:
+            return cents
+        try:
+            if Decimal(str(valore).replace(",", ".")) == 0:
+                return 0
+        except (InvalidOperation, ValueError):
+            continue
+    return None
 
 
 def _quietanza_legacy(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -267,6 +330,10 @@ def _quietanza_legacy(doc: Dict[str, Any]) -> Dict[str, Any]:
     importo = centesimi(
         doc.get("saldo_delega") or doc.get("saldo") or (doc.get("totali") or {}).get("saldo_netto")
     )
+    righe = righe_modello(doc)
+    if importo is None and righe:
+        # Saldo zero letto: la delega e' tutta in compensazione.
+        importo = saldo_quietanza_cents(doc)
     return {
         "id": doc.get("id"),
         "fonte": COLL_QUIETANZE_F24,
@@ -276,7 +343,8 @@ def _quietanza_legacy(doc: Dict[str, Any]) -> Dict[str, Any]:
         "protocollo_originale": protocollo,
         "importo_cents": importo,
         "f24_ids": sorted({str(v) for v in (doc.get("f24_associati") or []) if v}),
-        "righe": righe_modello(doc),
+        "righe": righe,
+        "origini": origini_documento(doc),
         # F24 del commercialista che questa quietanza ravvede (f24_ravvedimento).
         "ravvedimento_di": list(doc.get("ravvedimento_di") or []),
         # Rata del piano INPS che questa quietanza paga (dilazioni_inps).
@@ -1125,7 +1193,7 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
     """
     gruppi: Dict[str, List[Dict[str, Any]]] = {}
     for q in quietanze:
-        if q.get("protocollo") and q.get("data") and q.get("importo_cents"):
+        if q.get("protocollo") and q.get("data") and q.get("importo_cents") is not None:
             chiave = f"{q['protocollo']}|{q['data']}|{q['importo_cents']}"
         else:
             chiave = f"id:{q.get('id')}"
@@ -1140,9 +1208,14 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
             "chiave": chiave,
             "protocollo": prima.get("protocollo_originale"),
             "data": prima.get("data"),
-            "importo_cents": prima.get("importo_cents") or None,
+            "importo_cents": prima.get("importo_cents"),
             "quietanze": [{"id": q.get("id"), "fonte": q.get("fonte"), "filename": q.get("filename"),
                            "pdf_url": url_pdf_quietanza(q)} for q in copie],
+            "origini": [o for o in ORIGINI if any(o in (q.get("origini") or []) for q in copie)],
+            # Saldo zero con righe a debito: pagata tutta in compensazione,
+            # nessun addebito in banca da cercare.
+            "compensazione_totale": prima.get("importo_cents") == 0 and any(
+                int(r.get("importo_debito_cents") or 0) > 0 for r in righe),
             "ravvedimento_di": ravvedimento_di,
             "inviato_il": inviato_il,
             "programmato": (inviato_il < prima["data"]) if inviato_il and prima.get("data") else None,
@@ -1207,7 +1280,7 @@ def riscontri_quietanze_banca(
     candidati: Dict[str, List[Dict[str, Any]]] = {}
     per_addebito: Dict[str, List[str]] = {}
     for p in pagamenti:
-        if not p["data"] or not p["importo_cents"]:
+        if not p["data"] or not p["importo_cents"]:  # saldo zero: nessun addebito da cercare
             continue
         for m in addebiti:
             if importo_movimento_cents(m) != p["importo_cents"]:
@@ -1227,7 +1300,13 @@ def riscontri_quietanze_banca(
     senza_addebito: List[Dict[str, Any]] = []
     fuori_periodo = 0
     incompleti: List[Dict[str, Any]] = []
+    compensate: List[Dict[str, Any]] = []
     for p in pagamenti:
+        if p["data"] and p.get("compensazione_totale"):
+            compensate.append({**_vista_pagamento(p), "stato": "COMPENSATA", "motivazione": (
+                "saldo zero: tributi pagati interamente con i crediti della stessa delega, "
+                "nessun addebito in banca atteso")})
+            continue
         if not p["data"] or not p["importo_cents"]:
             incompleti.append({**_vista_pagamento(p), "motivo": (
                 "data di pagamento non letta" if not p["data"] else "saldo non letto")})
@@ -1283,13 +1362,14 @@ def riscontri_quietanze_banca(
         "quietanze_senza_addebito": ordina(senza_addebito),
         "addebiti_senza_quietanza": ordina(addebiti_senza),
         "quietanze_incomplete": ordina(incompleti),
+        "compensate_saldo_zero": ordina(compensate),
         "copertura_banca": {"dal": copertura[0], "al": copertura[1]},
         "conteggi": {
             "pagamenti": len(pagamenti), "riscontrati": len(riscontri),
             "da_verificare": len(da_verificare), "quietanze_senza_addebito": len(senza_addebito),
             "addebiti_senza_quietanza": len(addebiti_senza),
             "fuori_periodo_estratto": fuori_periodo, "quietanze_incomplete": len(incompleti),
-            "tributi_ripetuti": len(ripetuti),
+            "tributi_ripetuti": len(ripetuti), "compensate_saldo_zero": len(compensate),
         },
     }
 
@@ -1453,6 +1533,12 @@ async def riscontra_quietanza_arrivata(db, importo: Any) -> Dict[str, Any]:
     """
     cents = centesimi(importo)
     if not cents:
+        try:
+            zero = importo is not None and Decimal(str(importo).replace(",", ".")) == 0
+        except (InvalidOperation, ValueError):
+            zero = False
+        if zero:
+            return {"saltato": "saldo zero: pagato in compensazione, nessun addebito atteso"}
         return {"saltato": "saldo non letto"}
     valore = euro(abs(cents))
     quietanze = await db[COLL_QUIETANZE_F24].find(

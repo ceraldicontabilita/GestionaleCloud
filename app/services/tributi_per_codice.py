@@ -37,6 +37,7 @@ PAGATO = "PAGATO"
 PAGATO_IN_RITARDO = "PAGATO_IN_RITARDO"
 RAVVEDUTO = "RAVVEDUTO"
 PAGATO_BANCA = "PAGATO_BANCA"
+COMPENSATO = "COMPENSATO"
 DA_PAGARE = "DA_PAGARE"
 SCADUTO = "SCADUTO"
 ATTESO = "ATTESO"
@@ -51,6 +52,7 @@ ETICHETTE = {
     PAGATO_IN_RITARDO: "Pagato in ritardo",
     RAVVEDUTO: "Pagato con ravvedimento",
     PAGATO_BANCA: "Pagato in banca, manca la quietanza",
+    COMPENSATO: "Pagato in compensazione (F24 a zero)",
     DA_PAGARE: "Da pagare",
     SCADUTO: "Scaduto, non pagato",
     ATTESO: "Atteso, manca l'F24",
@@ -127,6 +129,7 @@ def _nuova_voce(chiave: Chiave, descrizione_riga: str) -> Dict[str, Any]:
         "quietanza_cents": 0,
         "ravvedimento_cents": 0,
         "banca_cents": 0,
+        "compensazione_cents": 0,
         "credito_cents": 0,
         "atteso_cents": 0,
         "scadenza": None,
@@ -181,6 +184,9 @@ def _aggiungi_pagamenti(voci: Dict[Chiave, Dict[str, Any]], pagamenti: List[Dict
             for r in righe if int(r.get("importo_credito_cents") or 0) > 0
         ]
         prima = (p.get("quietanze") or [{}])[0]
+        # F24 a saldo zero: i debiti sono pagati per intero dai crediti della
+        # stessa delega. E' un pagamento vero, senza addebito in banca.
+        tutta_compensata = bool(p.get("compensazione_totale"))
         for r in righe:
             voce = _voce(voci, r)
             debito = int(r.get("importo_debito_cents") or 0)
@@ -191,8 +197,18 @@ def _aggiungi_pagamenti(voci: Dict[Chiave, Dict[str, Any]], pagamenti: List[Dict
                 or (r.get("anno"), r.get("mese")) in periodi_ravveduti
                 or (r.get("mese") is None and r.get("anno") in anni_ravveduti)
             )
+            if credito and not debito:
+                tipo_doc = "credito"
+            elif ravveduta and debito:
+                tipo_doc = "ravvedimento"
+            elif tutta_compensata:
+                tipo_doc = "compensazione"
+            else:
+                tipo_doc = "quietanza"
             documento = {
-                "tipo": "ravvedimento" if (ravveduta and debito) else ("credito" if credito and not debito else "quietanza"),
+                "tipo": tipo_doc,
+                "origini": p.get("origini") or [],
+                "in_compensazione": tutta_compensata,
                 "data": p.get("data"),
                 "protocollo": p.get("protocollo"),
                 "quietanza_id": prima.get("id"),
@@ -212,6 +228,8 @@ def _aggiungi_pagamenti(voci: Dict[Chiave, Dict[str, Any]], pagamenti: List[Dict
             if debito:
                 if ravveduta:
                     voce["ravvedimento_cents"] += debito
+                elif tutta_compensata:
+                    voce["compensazione_cents"] += debito
                 else:
                     voce["quietanza_cents"] += debito
                 voce["ultimo_pagamento"] = _max_data(voce["ultimo_pagamento"], p.get("data"))
@@ -305,7 +323,8 @@ def _aggiungi_ritenute(voci: Dict[Chiave, Dict[str, Any]], ritenute: List[Dict[s
 
 
 def _chiudi_voce(voce: Dict[str, Any], oggi: str) -> Dict[str, Any]:
-    pagato = voce["quietanza_cents"] + voce["ravvedimento_cents"] + voce["banca_cents"]
+    pagato = (voce["quietanza_cents"] + voce["ravvedimento_cents"] + voce["banca_cents"]
+              + voce["compensazione_cents"])
     dovuto = max(voce["inviato_cents"], voce["atteso_cents"])
     voce["pagato_cents"] = pagato
     voce["dovuto_cents"] = dovuto
@@ -326,7 +345,7 @@ def _chiudi_voce(voce: Dict[str, Any], oggi: str) -> Dict[str, Any]:
     # lo stesso segnale di F24_TRIBUTO_VERSATO_DUE_VOLTE, qui sulla riga.
     protocolli_per_importo: Dict[int, set] = defaultdict(set)
     for d in voce["documenti"]:
-        if d["tipo"] in ("quietanza", "ravvedimento") and d.get("importo_cents"):
+        if d["tipo"] in ("quietanza", "ravvedimento", "compensazione") and d.get("importo_cents"):
             protocolli_per_importo[int(d["importo_cents"])].add(d.get("protocollo") or d.get("quietanza_id"))
     voce["versato_due_volte_cents"] = sum(
         importo * (len(protocolli) - 1) for importo, protocolli in protocolli_per_importo.items()
@@ -347,6 +366,8 @@ def _chiudi_voce(voce: Dict[str, Any], oggi: str) -> Dict[str, Any]:
         stato = RAVVEDUTO
     elif voce["quietanza_cents"]:
         stato = PAGATO_IN_RITARDO if ritardo else PAGATO
+    elif voce["compensazione_cents"]:
+        stato = COMPENSATO
     elif voce["banca_cents"]:
         stato = PAGATO_BANCA
     elif voce["credito_cents"]:
@@ -402,6 +423,7 @@ def riepilogo(voci: List[Dict[str, Any]], *, anno: Optional[int] = None, stato: 
             "quietanza_cents": somma("quietanza_cents"),
             "ravvedimento_cents": somma("ravvedimento_cents"),
             "banca_cents": somma("banca_cents"),
+            "compensazione_cents": somma("compensazione_cents"),
             "credito_cents": somma("credito_cents"),
             "atteso_cents": somma("atteso_cents"),
             "residuo_cents": somma("residuo_cents"),

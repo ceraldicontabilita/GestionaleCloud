@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Badge, Button, PageHeader, PageLoader } from '../components/ds';
+import { Badge, Button, PageHeader, PageLoader, Tabs } from '../components/ds';
+import RegistroVersamenti from '../components/tributi/RegistroVersamenti';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import { COLORS, FONT, formatEuro, useIsMobile } from '../lib/utils';
 import api from '../api';
@@ -15,6 +16,12 @@ import api from '../api';
  *
  * Sola lettura: i numeri li fa il backend (`/api/f24/tributi`) sul registro
  * unico F24; la pagina li mostra.
+ *
+ * Richiesta del 30/09/2026: gli F24 a saldo zero sono pagamenti in
+ * compensazione (non si scartano); in piu' tre viste sulle quietanze, la
+ * vera fonte: registro versamenti per anno (il «Cassetto» interno, che dice
+ * anche i mesi non pervenuti), crediti e compensazioni, deleghe per origine
+ * (Posta, Drive, Caricato). Vedi components/tributi/RegistroVersamenti.jsx.
  */
 
 const RIGHE_PER_PAGINA = 200;
@@ -25,6 +32,7 @@ const VARIANTE = {
   PAGATO_IN_RITARDO: 'warning',
   RAVVEDUTO: 'accent',
   PAGATO_BANCA: 'info',
+  COMPENSATO: 'info',
   DA_PAGARE: 'primary',
   SCADUTO: 'danger',
   ATTESO: 'warning',
@@ -89,19 +97,25 @@ function Riferimento({ doc, onApri }) {
       </div>
     );
   }
-  const titolo = doc.tipo === 'ravvedimento' ? 'Pagato con ravvedimento' : doc.tipo === 'credito' ? 'Credito compensato' : 'Pagato con quietanza';
+  const titolo = {
+    ravvedimento: doc.in_compensazione ? 'Pagato con ravvedimento, in compensazione' : 'Pagato con ravvedimento',
+    credito: 'Credito compensato',
+    compensazione: 'Pagato in compensazione (F24 a saldo zero)',
+  }[doc.tipo] || 'Pagato con quietanza';
+  const origini = (doc.origini || []).map(o => ({ posta: 'Posta', drive: 'Drive', caricato: 'Caricato' }[o] || o)).join(', ');
   return (
     <div style={riga} data-testid={`riferimento-${doc.tipo}`}>
       <strong>{titolo}</strong> · {dataIt(doc.data)}{doc.protocollo && <> · protocollo {doc.protocollo}</>}
       {doc.importo_cents > 0 && <> · {euro(doc.importo_cents)}</>}
       {doc.credito_cents > 0 && <> · a credito {euro(doc.credito_cents)}</>}
       {doc.copie > 1 && <> · {doc.copie} copie dello stesso file</>}
+      {origini && <> · arrivata da {origini}</>}
       {(doc.compensato_con || []).length > 0 && (
         <div>Ha pagato in compensazione: {doc.compensato_con.map(c => `${c.codice} ${c.periodo} ${euro(c.importo_cents)}`).join(' · ')}</div>
       )}
       {(doc.crediti_usati || []).length > 0 && (
         <div>Nella stessa delega crediti compensati: {doc.crediti_usati.map(c => `${c.codice} ${c.periodo} ${euro(c.importo_cents)}`).join(' · ')}
-          {' · '}saldo versato {euro(doc.saldo_delega_cents)}</div>
+          {' · '}saldo versato {doc.saldo_delega_cents === 0 ? `${formatEuro(0)}, nessun addebito in banca` : euro(doc.saldo_delega_cents)}</div>
       )}
       <div>{bottone}</div>
     </div>
@@ -169,6 +183,8 @@ export default function Tributi() {
   const stato = params.get('stato') || '';
   const sezione = params.get('sezione') || '';
   const cerca = params.get('cerca') || '';
+  const vista = params.get('vista') || 'codici';
+  const origine = params.get('origine') || '';
 
   const imposta = (chiave, valore) => {
     const nuovi = new URLSearchParams(params);
@@ -190,11 +206,12 @@ export default function Tributi() {
     if (stato) qs.set('stato', stato);
     if (sezione) qs.set('sezione', sezione);
     if (cerca) qs.set('cerca', cerca);
+    if (vista !== 'codici') return () => { attivo = false; };
     api.get(`/api/f24/tributi?${qs}`)
       .then(r => { if (attivo) { setDati(r.data); setMostrate(RIGHE_PER_PAGINA); } })
       .catch(e => { if (attivo) setErrore(e.response?.data?.detail || e.message || 'Lettura non riuscita'); });
     return () => { attivo = false; };
-  }, [anno, stato, sezione, cerca]);
+  }, [anno, stato, sezione, cerca, vista]);
 
   const voci = dati?.voci || [];
   const totali = dati?.totali || {};
@@ -213,7 +230,25 @@ export default function Tributi() {
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto', fontFamily: FONT.family }}>
-      <PageHeader title="Tributi" pastiglie={pastiglie} style={{ marginBottom: 14 }} />
+      <PageHeader title="Tributi" pastiglie={vista === 'codici' ? pastiglie : []} style={{ marginBottom: 14 }} />
+
+      <Tabs
+        value={vista}
+        onChange={v => { const n = new URLSearchParams(); n.set('vista', v); setParams(n, { replace: true }); setCercaTesto(''); }}
+        items={[
+          { key: 'codici', label: 'Per codice e periodo' },
+          { key: 'versamenti', label: 'Registro versamenti' },
+          { key: 'crediti', label: 'Crediti e compensazioni' },
+          { key: 'deleghe', label: 'Deleghe F24' },
+        ]}
+        style={{ marginBottom: 12 }}
+      />
+
+      {vista !== 'codici' && (
+        <RegistroVersamenti vista={vista} anno={anno} origine={origine} imposta={imposta} onApri={(url, titolo) => setPdf({ url, titolo })} />
+      )}
+
+      {vista === 'codici' && (<>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }} data-testid="filtri-tributi">
         <select aria-label="Anno di riferimento" value={anno} onChange={e => imposta('anno', e.target.value)} style={selettore}>
@@ -305,6 +340,9 @@ export default function Tributi() {
                           {c.id === 'inviato_cents' && !v.inviato_cents && v.atteso_cents > 0 && (
                             <div style={{ fontSize: 11, color: COLORS.warning }}>atteso {euro(v.atteso_cents)}</div>
                           )}
+                          {c.id === 'quietanza_cents' && v.compensazione_cents > 0 && (
+                            <div style={{ fontSize: 11, color: COLORS.info }}>compensato {euro(v.compensazione_cents)}</div>
+                          )}
                           {c.id === 'quietanza_cents' && v.banca_cents > 0 && (
                             <div style={{ fontSize: 11, color: COLORS.info }}>banca {euro(v.banca_cents)}</div>
                           )}
@@ -337,6 +375,8 @@ export default function Tributi() {
           </Button>
         </div>
       )}
+
+      </>)}
 
       {pdf && (
         <DocumentViewerModal title={pdf.titolo} fetchUrl={pdf.url} documentType="documento_fiscale" onClose={() => setPdf(null)} />

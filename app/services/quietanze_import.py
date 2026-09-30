@@ -269,6 +269,18 @@ async def importa_quietanza_bytes(
             "validazione": validation,
         }
 
+    # Una ricevuta di mutuo o di bonifico passa la quadratura (zero righe, saldo
+    # zero) ma non e' una quietanza F24: senza righe tributo non entra.
+    righe_lette = normalizza_righe_tributo(parsed)
+    if not any(r.get("tax_code") for r in righe_lette):
+        logger.warning("Documento %s senza righe tributo: non e' una quietanza F24", filename)
+        return {
+            "success": False,
+            "filename": filename,
+            "error": "Nessuna riga tributo letta: non e' una quietanza F24",
+            "stato_quietanza": "NON_QUIETANZA_F24",
+        }
+
     dg = parsed.get("dati_generali", {})
     protocollo = dg.get("protocollo_telematico", "")
     saldo_quietanza = dg.get("saldo_delega", 0) or parsed.get("totali", {}).get("saldo_netto", 0)
@@ -434,6 +446,8 @@ async def importa_quietanza_bytes(
             "blockers": ["POLICY_CONTABILE_NON_DISPONIBILE"],
         }
 
+    compensazione_totale = saldo_cents({"saldo": saldo_quietanza}) == 0 and bool(
+        estrai_tributi_dettaglio(quietanza_doc))
     if not f24_matchati:
         # CASO 3 della specifica (memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md):
         # esiste SOLO la quietanza → mai ricostruire l'F24 in automatico.
@@ -451,6 +465,15 @@ async def importa_quietanza_bytes(
             stato = "f24_non_corrispondente"
             # stato canonico del prompt §9.3: F24 del soggetto esiste ma non combacia
             stato_canonico = "QUIETANZA_PRESENTE_F24_NON_CORRISPONDENTE"
+        elif compensazione_totale:
+            # Saldo zero: la quietanza e' gia' la prova completa (debiti pagati
+            # coi crediti della stessa delega). Non si scarta e non si aspetta
+            # alcun addebito in banca; il modello del commercialista e' utile
+            # ma non blocca.
+            warning = ("F24 a saldo zero: tributi pagati interamente in compensazione, "
+                       "nessun addebito in banca atteso.")
+            stato = "compensazione_totale"
+            stato_canonico = "QUIETANZA_COMPENSAZIONE_TOTALE"
         else:
             warning = "F24 mancante — prego caricare il modello F24 corrispondente."
             stato = "f24_mancante"
@@ -463,9 +486,11 @@ async def importa_quietanza_bytes(
             {"$set": {
                 "stato_associazione": stato,
                 "stato_quietanza": stato_canonico,
-                "calcolo_fiscale_sospeso": True,
+                "calcolo_fiscale_sospeso": stato != "compensazione_totale",
+                "compensazione_totale": compensazione_totale,
             }},
         )
+    if not f24_matchati and stato != "compensazione_totale":
         alert = {
             "id": str(uuid.uuid4()),
             "tipo": "quietanza_senza_match",
@@ -482,10 +507,11 @@ async def importa_quietanza_bytes(
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await db[COLL_F24_ALERTS].insert_one(alert.copy())
-    else:
+    elif f24_matchati:
         await db[COLL_QUIETANZE].update_one(
             {"id": file_id},
-            {"$set": {"stato_associazione": "associata", "calcolo_fiscale_sospeso": False}},
+            {"$set": {"stato_associazione": "associata", "calcolo_fiscale_sospeso": False,
+                      "compensazione_totale": compensazione_totale}},
         )
 
     # Una quietanza con sanzioni da ravvedimento cerca subito l'F24 del
