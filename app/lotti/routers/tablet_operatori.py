@@ -310,7 +310,8 @@ def _op_response(doc):
     if ruolo == "amministratore":
         ruolo = "operatore"
     op = {"dipendente_id": doc["dipendente_id"], "nome": doc.get("nome", "Operatore"), "ruolo": ruolo}
-    token = make_token(sub=op["dipendente_id"], nome=op["nome"], ruolo=op["ruolo"], via="pin")
+    token = make_token(sub=op["dipendente_id"], nome=op["nome"], ruolo=op["ruolo"], via="pin",
+                       pin_version=doc.get("pin_version"))
     # Il ruolo di Lotti (HACCP, caporeparto) non entra nel token: il backend lo
     # rilegge a ogni operazione riservata. Qui serve al tablet per mostrare
     # solo i comandi che la persona puo' usare.
@@ -327,7 +328,7 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
     """
     if _db_hr() is None:
         return []
-    from app.hr.services.auth_dipendenti import trova_dipendente_per_pin
+    from app.hr.services.auth_dipendenti import trova_dipendente_per_pin, versione_pin
 
     persone = await trova_dipendente_per_pin(pin, solo_operatori_lotti=True)
     if not persone:
@@ -341,7 +342,8 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
                 {"_id": 0, "nome": 1, "ruolo": 1, "ruolo_lotti": 1, "reparti_lotti": 1})
             if op:
                 trovati.append({"dipendente_id": p["id"], "nome": op.get("nome"), "ruolo": op.get("ruolo"),
-                                "ruolo_lotti": op.get("ruolo_lotti"), "reparti_lotti": op.get("reparti_lotti")})
+                                "ruolo_lotti": op.get("ruolo_lotti"), "reparti_lotti": op.get("reparti_lotti"),
+                                "pin_version": versione_pin(p)})
         if len(trovati) == len(persone) or tentativo:
             break
         await sincronizza_operatori_da_hr()

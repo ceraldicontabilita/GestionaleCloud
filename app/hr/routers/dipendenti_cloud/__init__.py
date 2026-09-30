@@ -2825,6 +2825,7 @@ async def get_turni_config():
                   _nome_norm_cfg(d.get("nome_completo"))}:
             if k:
                 per_nome.setdefault(k, {})[d["id"]] = d
+    risolvibili = {}
     for c in configs:
         if c["dipendente_id"] in ids_validi:
             continue
@@ -2832,9 +2833,15 @@ async def get_turni_config():
         candidati = list(per_nome.get(k, {}).values()) if k else []
         d = candidati[0] if len(candidati) == 1 else None
         if d and d["id"] not in con_config:
-            con_config.add(d["id"])
-            c["riferimento_risolto_da"] = c["dipendente_id"]
-            c["dipendente_id"] = d["id"]
+            risolvibili.setdefault(d["id"], []).append(c)
+    for dipendente_id, riferimenti in risolvibili.items():
+        if len(riferimenti) > 1:
+            for c in riferimenti:
+                c["riferimento_conflitto"] = "Configurazioni orfane multiple: scegliere quella corretta"
+            continue
+        c = riferimenti[0]
+        c["riferimento_risolto_da"] = c["dipendente_id"]
+        c["dipendente_id"] = dipendente_id
     return configs
 
 

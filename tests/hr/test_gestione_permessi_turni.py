@@ -26,13 +26,14 @@ def hr(monkeypatch):
     monkeypatch.setattr(group_session, "sessione_revocata", non_revocata)
     asyncio.run(db.dipendenti.insert_one({
         "id": "dip-test", "nome": "Persona", "cognome": "Prova",
-        "stato": "attivo", "ruolo_app": "dipendente", "pin_hash": "hash-prova",
+        "stato": "attivo", "ruolo_app": "responsabile_turni", "pin_hash": "hash-prova",
     }))
     return db
 
 
 def _request(method, path, *, ruolo="responsabile_turni", **kwargs):
-    payload = {"sub": "operatore-prova", "role": ruolo,
+    payload = {"sub": "dip-test", "role": ruolo, "auth_method": "pin_dipendente",
+               "iat": datetime.now(timezone.utc),
                "exp": datetime.now(timezone.utc) + timedelta(hours=1)}
     if ruolo == "admin":
         payload.update(auth_method="sessione_erp", sid="sessione-prova")
@@ -153,3 +154,35 @@ def test_helper_riusa_la_scheda_canonica_senza_seconda_lettura(monkeypatch):
     assert asyncio.run(auth_dipendenti.sessione_dipendente_corrente(payload, dipendente=dip))
     dip["ruolo_app"] = "responsabile_turni"
     assert not asyncio.run(auth_dipendenti.sessione_dipendente_corrente(payload, dipendente=dip))
+
+
+def test_reset_pin_nello_stesso_secondo_revoca_vecchio_token_e_preserva_nuovo():
+    from app.services.workforce_tokens import verifica_token_firmato
+
+    dip = {"id": "dip-sintetico", "stato": "attivo", "pin_hash": "hash-prima",
+           "pin_updated_at": "2026-09-30T12:00:00.100000+00:00", "ruolo_app": "dipendente"}
+    vecchio = verifica_token_firmato(auth_dipendenti.crea_token_dipendente(dip), settings.SECRET_KEY)
+    assert auth_dipendenti.sessione_pin_corrente(dip, vecchio)
+    dip.update(pin_hash="hash-dopo", pin_updated_at="2026-09-30T12:00:00.900000+00:00")
+    assert not auth_dipendenti.sessione_pin_corrente(dip, vecchio)
+    nuovo = verifica_token_firmato(auth_dipendenti.crea_token_dipendente(dip), settings.SECRET_KEY)
+    assert auth_dipendenti.sessione_pin_corrente(dip, nuovo)
+    secondo = int(datetime(2026, 9, 30, 12, tzinfo=timezone.utc).timestamp())
+    assert not auth_dipendenti.sessione_pin_corrente(dip, {"iat": secondo, "auth_at": secondo})
+
+
+@pytest.mark.parametrize("metodo", ["pin", None])
+def test_revoca_si_applica_anche_a_pin_tablet_e_token_personale_storico(hr, metodo):
+    async def run():
+        await hr.dipendenti.update_one({"id": "dip-test"}, {"$set": {"ruolo_app": "dipendente"}})
+        payload = {"sub": "dip-test", "role": "dipendente", "iat": datetime.now(timezone.utc),
+                   "exp": datetime.now(timezone.utc) + timedelta(hours=1)}
+        if metodo:
+            payload["auth_method"] = metodo
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://hr.test",
+                                    headers={"Authorization": f"Bearer {token}"}) as client:
+            assert (await client.get("/api/timbrature/mie/oggi")).status_code == 200
+            await hr.dipendenti.update_one({"id": "dip-test"}, {"$set": {"stato": "cessato", "pin_hash": None}})
+            assert (await client.get("/api/timbrature/mie/oggi")).status_code == 401
+    asyncio.run(run())

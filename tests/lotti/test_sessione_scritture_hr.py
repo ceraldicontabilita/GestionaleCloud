@@ -124,3 +124,25 @@ def test_hr_indisponibile_blocca_scrittura_ma_preserva_sessione_erp(ambiente, mo
     token = make_token("erp:prova", "Titolare prova", "amministratore", via="sessione_erp", sid="sessione-di-prova")
     assert client.post("/api/lotti", headers={"Authorization": f"Bearer {token}"}).status_code == 200
     assert len(scritture) == 1
+
+
+def test_login_tablet_e_rinnovo_conservano_versione_pin(ambiente):
+    from app.hr.services.auth_dipendenti import versione_pin
+    from app.lotti.auth import router, verify_token
+    from app.lotti.routers.tablet_operatori import _op_response
+
+    client, hr, _lotti, _scritture = ambiente
+    client.app.include_router(router, prefix="/api")
+    dip = run(hr.dipendenti.find_one({"id": "hr-operatore"}))
+    login = _op_response({"dipendente_id": dip["id"], "nome": "Persona prova",
+                          "ruolo": "operatore", "pin_version": versione_pin(dip)})
+    prima = verify_token(login["token"])
+    assert prima["pin_version"] == versione_pin(dip)
+    risposta = client.post("/api/auth/refresh", headers={"Authorization": f"Bearer {login['token']}"})
+    assert risposta.status_code == 200
+    dopo = verify_token(risposta.json()["token"])
+    assert dopo["pin_version"] == prima["pin_version"]
+    assert dopo["auth_at"] == prima["auth_at"]
+    run(hr.dipendenti.update_one({"id": dip["id"]}, {"$set": {"pin_hash": "hash-reset-fixture",
+        "pin_updated_at": datetime.now(timezone.utc).isoformat()}}))
+    assert client.post("/api/lotti", headers={"Authorization": f"Bearer {risposta.json()['token']}"}).status_code == 401

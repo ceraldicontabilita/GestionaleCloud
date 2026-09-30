@@ -57,3 +57,19 @@ def test_riferimento_non_si_sposta_su_rapporto_fuori_forza(hr, stato):
         assert (await router.get_turni_config())[0]["dipendente_id"] == "id-storico"
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("inverti", [False, True])
+def test_due_config_orfane_non_scelgono_un_turno_in_ordine_di_lettura(hr, inverti):
+    async def run():
+        await hr.turni_config.delete_many({})
+        voci = [{"dipendente_id": "vecchio-a", "nome_riferimento": "Prova Persona", "turno_id": "mattina"},
+                {"dipendente_id": "vecchio-b", "nome_riferimento": "Prova Persona", "turno_id": "sera"}]
+        await hr.turni_config.insert_many(list(reversed(voci)) if inverti else voci)
+        await hr.dipendenti.insert_one(_dip("id-corrente"))
+        prima = await hr.turni_config.find({}).to_list(100)
+        vista = await router.get_turni_config()
+        assert all(c["dipendente_id"] != "id-corrente" for c in vista)
+        assert all(c.get("riferimento_conflitto") for c in vista)
+        assert await hr.turni_config.find({}).to_list(100) == prima
+    asyncio.run(run())

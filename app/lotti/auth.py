@@ -89,7 +89,7 @@ def _load_or_create_persistent_secret() -> str:
 
 
 def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None, sid: str = "",
-               auth_at: int = None) -> str:
+               auth_at: int = None, pin_version: str = None) -> str:
     return create_workforce_token(
         sub=sub,
         name=nome,
@@ -100,6 +100,7 @@ def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = Non
         auth_method=via,
         sid=sid,
         auth_at=auth_at,
+        pin_version=pin_version,
     )
 
 
@@ -239,7 +240,7 @@ async def auth_dependency(request: Request):
     if data:
         if request.method in ("POST", "PUT", "DELETE", "PATCH") and (
             data.get("auth_method") or data.get("via")
-        ) in {"pin", "pin_dipendente"}:
+        ) != "sessione_erp":
             from app.hr.services.auth_dipendenti import sessione_dipendente_corrente, sessione_pin_corrente
 
             dip = await _dipendente_hr_da_token(data)
@@ -247,7 +248,7 @@ async def auth_dependency(request: Request):
                 raise HTTPException(401, "Sessione operatore revocata: rifare l'accesso")
             corrente = (
                 await sessione_dipendente_corrente(data, dipendente=dip)
-                if data.get("auth_method") == "pin_dipendente"
+                if (data.get("auth_method") or data.get("via")) != "pin"
                 else sessione_pin_corrente(dip, data)
             )
             if not corrente:
@@ -292,17 +293,15 @@ async def _dipendente_hr_da_token(data: dict) -> dict | None:
     sub = str(data.get("sub") or "")
     if not sub:
         return None
-    from app.hr.database import Collections
     from app.lotti.routers.tablet_operatori import _db_hr
 
     db_hr = _db_hr()
     if db_hr is None:
         raise HTTPException(503, "Anagrafica HR non disponibile: riprovare tra poco")
     try:
-        campi = {"_id": 0, "id": 1, "stato": 1, "attivo": 1, "in_carico": 1,
-                 "merged_into": 1, "lotti_operatore": 1, "lotti_ruolo": 1, "lotti_reparti": 1,
-                 "pin_hash": 1, "pin_updated_at": 1, "ruolo_app": 1}
-        dip = await db_hr[Collections.EMPLOYEES].find_one({"id": sub}, campi)
+        from app.hr.services.auth_dipendenti import leggi_dipendente_per_sessione
+
+        dip = await leggi_dipendente_per_sessione(sub, db=db_hr)
         if dip is None:
             # I JWT precedenti all'unificazione portavano l'id del tablet.
             # Nessun ruolo o flag attivo della proiezione autorizza la persona.
@@ -314,7 +313,7 @@ async def _dipendente_hr_da_token(data: dict) -> dict | None:
                 (op or {}).get("hr_id"), (op or {}).get("gestionale_dipendente_id")
             ) if v}
             if len(identita) == 1:
-                dip = await db_hr[Collections.EMPLOYEES].find_one({"id": identita.pop()}, campi)
+                dip = await leggi_dipendente_per_sessione(identita.pop(), db=db_hr)
     except Exception:
         # La proiezione tablet puo' contenere un ruolo appena revocato in HR:
         # durante un guasto non puo' diventare una fonte di autorizzazione.
@@ -534,7 +533,8 @@ async def refresh_token(request: Request):
     # `sid` un token rinnovato sopravviverebbe al logout.
     nuovo = make_token(sub=data.get("sub", "op"), nome=data.get("nome", "Operatore"),
                        ruolo=ruolo, via=data.get("via", "pin"),
-                       sid=data.get("sid", ""), auth_at=auth_at)
+                       sid=data.get("sid", ""), auth_at=auth_at,
+                       pin_version=data.get("pin_version"))
     return {"ok": True, "token": nuovo}
 
 

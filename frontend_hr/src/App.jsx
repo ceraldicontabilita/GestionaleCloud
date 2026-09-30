@@ -2253,6 +2253,7 @@ function TurniPage({ dipendenti, turni, reload }) {
       .catch(() => {});
   }, []);
   const cfgDi = (dipId) => turniCfg.find(c => c.dipendente_id === dipId) || {};
+  const conflittiCfg = turniCfg.filter(c => c.riferimento_conflitto);
   // Preferenze del giorno di riposo inviate dai dipendenti dal portale (per settimana)
   const [prefRiposo, setPrefRiposo] = useState([]);
   useEffect(() => {
@@ -2383,6 +2384,10 @@ function TurniPage({ dipendenti, turni, reload }) {
   // abituale, mette Riposo nel giorno di riposo fisso e nell'onomastico, e mette
   // Ferie nei giorni di ferie/permesso approvati. Niente più nomi cablati.
   const generaProduzione = async () => {
+    if (conflittiCfg.length) {
+      toast("Ci sono configurazioni turni in conflitto: scegli quella corretta in Configura turni.", "err");
+      return;
+    }
     const idRiposo = idTurno("Riposo");
     const idFerie = idTurno("Ferie");
     const updates = [];
@@ -2656,6 +2661,11 @@ function TurniPage({ dipendenti, turni, reload }) {
         </div>
       </div>
 
+      {!!conflittiCfg.length && (
+        <div role="alert" className="dc-card" style={{ marginBottom: 12, padding: "12px 16px", color: "#b3261e" }}>
+          Configurazioni turni in conflitto. Apri Configura turni e scegli il turno corretto prima di generare la settimana.
+        </div>
+      )}
       <details className="dc-card" style={{ marginBottom: 12, padding: "12px 16px" }}>
         <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 14 }}>📖 Guida — come funziona questa pagina</summary>
         <div style={{ fontSize: 13, lineHeight: 1.65, marginTop: 10 }}>
@@ -2702,7 +2712,7 @@ function TurniPage({ dipendenti, turni, reload }) {
           🖌 Pennello {paint ? "ON" : ""}
         </button>
         )}
-        <button onClick={generaProduzione} disabled={busy}
+        <button onClick={generaProduzione} disabled={busy || !!conflittiCfg.length}
           style={{ background: "#5b7a6b", color: "#fff", border: "none", padding: "10px 18px", borderRadius: 10, fontWeight: 600, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
           {busy ? "Attendi…" : "Genera settimana"}
         </button>
