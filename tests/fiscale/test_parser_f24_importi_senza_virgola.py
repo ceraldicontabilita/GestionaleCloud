@@ -64,3 +64,17 @@ def test_due_pagine_senza_numero_modello_hanno_un_saldo_per_pagina():
     assert parsed["validazione"]["saldo_quadrato"] is True
     assert parsed["totali"]["saldo_delega_cents"] == 34627
     richiedi_quadratura_f24(parsed)
+
+
+def test_modello_con_periodo_inps_unito_importo_senza_virgola_e_comune_in_una_parola():
+    """Layout «F 24 CERALDI <mese> 22»: «5100 DM10 5124776507 072022 97700» e «F839 3848 07 2021 5732»."""
+    parsed = parse_f24_commercialista(pdf_content=_pdf([
+        (100, 240, "1001"), (140, 240, "07"), (170, 240, "2022"), (350, 240, "56967"), (470, 240, "000"),
+        (60, 300, "5100"), (100, 300, "DM10"), (150, 300, "5124776507"), (230, 300, "072022"), (350, 300, "97700"),
+        (60, 340, "F839"), (100, 340, "3848"), (150, 340, "07"), (180, 340, "2021"), (350, 340, "5732"),
+        (100, 400, "EURO"), (300, 400, "+"), (470, 400, "16" + "0399"),
+    ]))
+    [inps] = parsed["sezione_inps"]
+    assert (inps["causale"], inps["periodo_riferimento"], inps["importo_debito_cents"]) == ("DM10", "07/2022", 97700)
+    [imu] = parsed["sezione_tributi_locali"]
+    assert (imu["codice_comune"], imu["codice_tributo"], imu["importo_debito_cents"]) == ("F839", "3848", 5732)

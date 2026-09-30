@@ -558,13 +558,19 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         matricola = ""
                         mese = ""
                         anno = ""
+                        periodi_unito = ""
 
                         # Cerca matricola, mese, anno
                         for j in range(i+1, len(row)):
                             nw = row[j]['word']
                             if nw in [',', '+/–']:
                                 continue
-                            if re.match(r'^[A-Z0-9]{8,15}$', nw) and not matricola:
+                            periodo_unito = re.fullmatch(r'(0[1-9]|1[0-2])(20\d{2})', nw)
+                            if periodo_unito and not (mese or anno) and matricola:
+                                # «072022»: mese e anno scritti di seguito, senza spazio
+                                mese, anno = periodo_unito.groups()
+                                periodi_unito = nw
+                            elif re.match(r'^[A-Z0-9]{8,15}$', nw) and not matricola:
                                 matricola = nw
                             elif re.match(r'^(0[1-9]|1[0-2])$', nw) and not mese:
                                 mese = nw
@@ -575,10 +581,16 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         importo_cents = 0
                         numero_parts = []
                         for r in row:
-                            if r['x'] > 340 and re.match(r'^[\d.]+$', r['word']):
+                            if (r['x'] > 340 and re.match(r'^[\d.]+$', r['word'])
+                                    and r['word'] != periodi_unito):
                                 numero_parts.append((r['x'], r['word']))
 
-                        if len(numero_parts) >= 2:
+                        # Un solo token è un importo se ha la forma «4.37100» / «97700»
+                        # (virgola persa nel testo): due centesimi in coda.
+                        if len(numero_parts) >= 2 or (
+                            len(numero_parts) == 1
+                            and re.fullmatch(r'\d{1,3}(?:\.\d{3})*\d{2}', numero_parts[0][1])
+                        ):
                             numero_parts.sort()
                             importo_cents = _importo_cents_da_token(numero_parts)
 
@@ -818,6 +830,11 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                     re.match(r'^[A-Z]$', first_words[0]) and
                     all(re.match(r'^\d$', w) for w in first_words[1:4])):
                     cod_comune = ''.join(first_words[:4])
+                    is_locali_row = True
+
+                # Pattern 1b: «F839» / «B990» = codice comune in una parola sola
+                elif re.fullmatch(r'[A-Z]\d{3}', first_words[0]):
+                    cod_comune = first_words[0]
                     is_locali_row = True
 
                 # Pattern 2: "N A" = codice ente (2 lettere separate, es. NA = Napoli)
