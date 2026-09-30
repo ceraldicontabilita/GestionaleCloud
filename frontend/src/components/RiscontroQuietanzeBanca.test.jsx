@@ -121,4 +121,32 @@ describe('Quietanze F24 e addebiti in banca', () => {
     expect(screen.queryByText('Quietanza mancante')).toBeNull();
     expect(screen.getByText('Riscontrato')).toBeTruthy();
   });
+
+  it('mostra il livello di ogni esito, la differenza e i periodi senza estratto', async () => {
+    api.get.mockResolvedValueOnce({ data: {
+      ...RISPOSTA,
+      riscontrati: [],
+      tributi_ripetuti: [],
+      addebiti_senza_quietanza: [],
+      da_verificare: [{
+        chiave: 'p2', data: '2026-06-16', importo: 1000, livello: 'PARZIALE', differenza: 3,
+        quietanze: [{ id: 'q2', filename: 'q2.pdf' }],
+        addebito: { movimento_id: 'm2', data: '2026-06-16', importo: 1003 },
+        motivazione: 'differenza +3.00 EUR: da verificare con il commercialista',
+      }],
+      quietanze_senza_estratto: [{
+        chiave: 'p3', data: '2025-05-16', importo: 777, livello: 'NESSUN_MATCH',
+        estratto_periodo_presente: false, quietanze: [{ id: 'q3', filename: 'q3.pdf' }],
+        motivazione: 'estratto conto del periodo assente: non si puo\' dire se il pagamento manchi',
+      }],
+    } });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByText('Estratto assente')).toBeTruthy());
+    expect(screen.getByTestId('livello-da_verificare:p2').textContent).toContain('Livello: Parziale');
+    expect(screen.getByTestId('livello-da_verificare:p2').textContent).toContain('differenza');
+    expect(screen.getByTestId('livello-quietanze_senza_estratto:p3').textContent)
+      .toContain('Livello: Nessun match');
+    expect(screen.getByTestId('filtro-quietanze_senza_estratto').textContent).toContain('(1)');
+  });
 });

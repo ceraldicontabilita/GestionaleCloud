@@ -92,7 +92,7 @@ async def importa_quietanza(
     )
 
 
-async def cerca_controparti_f24(db) -> Dict[str, Any]:
+async def cerca_controparti_f24(db, saldo: Any = None) -> Dict[str, Any]:
     """Un modello F24 appena arrivato cerca subito i suoi pezzi gia' presenti.
 
     La quietanza puo' essere arrivata prima (e restare orfana) e l'addebito
@@ -115,9 +115,8 @@ async def cerca_controparti_f24(db) -> Dict[str, Any]:
         logger.exception("F24 arrivato: ravvedimento non cercato (%s)", type(exc).__name__)
         esito["ravvedimento"] = {"errore": type(exc).__name__}
     try:
-        from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
-        banca = await riconcilia_f24_tributi_banca(db)
-        esito["banca"] = {k: banca.get(k) for k in ("f24_pagati", "f24_parziali", "movimenti_associati")}
+        from app.services.f24_controllo_incrociato import riconcilia_f24_arrivato
+        esito["banca"] = await riconcilia_f24_arrivato(db, saldo)
     except Exception as exc:  # noqa: BLE001 - il modello resta importato
         logger.exception("F24 arrivato: addebito in banca non cercato (%s)", type(exc).__name__)
         esito["banca"] = {"errore": type(exc).__name__}
@@ -179,7 +178,8 @@ async def importa_modello_bytes(
         {"f24_dedup_key": documento["f24_dedup_key"]}, {"_id": 0, "id": 1}
     )
     f24_id = await salva_f24(db, documento, source=source)
-    controparti = None if existing else await cerca_controparti_f24(db)
+    controparti = None if existing else await cerca_controparti_f24(
+        db, (documento.get("totali") or {}).get("saldo_netto", documento.get("importo")))
     rows = normalizza_righe_tributo(documento)
     from app.services.fiscal_accounting_policy import build_journal_proposal
 

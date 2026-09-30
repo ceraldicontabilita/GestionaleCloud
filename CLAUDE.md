@@ -493,9 +493,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - F24, righe tributo, quietanza e movimento bancario sono entità distinte. La quietanza documenta il pagamento ma **non
   sostituisce la prova bancaria** né ricostruisce il modello (senza modello → alert «F24 mancante»); stato e residuo **per
-  riga tributo**. Quietanza ↔ addebito I24 (`riscontra_quietanze_banca`, job `f24_quietanze_banca`, arrivo della quietanza):
-  protocollo+data+saldo, certo solo con importo al centesimo e «DATA INCASSO» (troncata → copia in quarantena) = data della
-  quietanza, se no candidati; orfani → alert col record; protocollo = giorno d'invio; stessa riga due volte nel giorno → alert.
+  riga tributo**. **Un solo motore F24 ↔ banca, a livelli** (`riconcilia_f24_banca` in `f24_controllo_incrociato.py`, job
+  `f24_quietanze_banca`, arrivo di quietanza o modello con `riconcilia_f24_arrivato`): ogni coppia pagamento ↔ addebito ha
+  `livello` e `motivazione`. **CERTO** = importo al centesimo, addebito entro 2 giorni lavorativi (festivi in
+  `calendario_lavorativo.py`), causale di delega e, per una quietanza, «DATA INCASSO» (troncata → copia in quarantena) = data
+  della quietanza; un modello senza quietanza è provato da un addebito certo, uno con quietanza dall'addebito della quietanza se il
+  saldo torna. **PROBABILE** (causale senza data d'incasso, o più candidati: si mostrano tutti), **PARZIALE** (differenza sotto 5 €, con la
+  differenza), **NESSUN_MATCH** (con «estratto del periodo presente sì/no»: senza estratto non si dice che il pagamento manca),
+  **MOVIMENTO_ORFANO** (alert, quietanza da riscaricare). Solo il CERTO scrive il pagamento; gli altri una relazione `pending` in
+  `entity_relations`. Protocollo = giorno d'invio; stessa riga due volte nel giorno → alert.
 - Il saldo F24 non è mai un costo: ritenute 1001/1002/1012, addizionali 3802/3847/3848 e quote a carico del lavoratore
   sono debiti verso enti. La sezione INPS non è tutta deducibile: la quota datoriale viene dalle paghe.
 - RC01 regolarizza un periodo precedente: non è costo del mese in cui si paga, e si collega al DM10 di quel periodo senza sommare due volte i tributi.
@@ -570,7 +576,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi` (identità completa, acconti,
   residuo). Nessun percorso può cercarsi da solo «il primo movimento con importo vicino e il nome nella
   descrizione»: un omonimo o due buste uguali nello stesso mese bastano ad attaccare il movimento
-  sbagliato. Lo stesso per gli F24: `riconcilia_f24_tributi_banca`. Un movimento vale come prova solo se
+  sbagliato. Lo stesso per gli F24: `riconcilia_f24_banca`. Un movimento vale come prova solo se
   ha **evidenza bancaria ufficiale** e non è `in_attesa_estratto_ufficiale`.
 - **Un solo motore per ogni cedolino** (posta, Drive, Documenti > Import, pipeline email): legge
   `services/cedolini_motore.leggi_pdf` (Zucchetti classico e «s», Libro Unico, Teamsystem anche 13ª/14ª
@@ -909,7 +915,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **IVA, cosa manca** (verificato sul codice): acconto 6013 e saldo 6099 come calcolo, maggiorazione 1% dopo il 16/03, credito annuale da dichiarazione e compensazione orizzontale (soglia 25.000 €), conguaglio di dicembre; il confronto con la LIPE non copre 6013, 6099, trimestrali e credito riportato. La scadenza fissa del 27/12 (`fiscalita_italiana.py`) non si sposta al lunedì. `schemas/accounting_rules.py` descrive 6001/6002 come «saldo» e «acconto» ma sono gennaio e febbraio. `_credito_precedente` esiste in due copie (`routers/iva.py`, `iva_liquidation_query.py`): ridurle a una.
 - **Bilancio e competenza**: `routers/accounting/bilancio.py` seleziona i costi per data documento **oppure** data ricezione e ignora `data_competenza` (una fattura di dicembre ricevuta a gennaio può finire nell'esercizio sbagliato o in due); il debito nello stato patrimoniale usa lo stato «pagata» di oggi, non la data di pagamento rispetto a fine esercizio; il costo del personale è il solo lordo (contributi `None`).
 - **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. `scrittura_imposte` e `scrittura_versamento_iva` (`contabilita_generale.py`) non hanno chiamanti: chi le usa deve sapere che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
-- **F24 e banca**: il riscontro dell'addebito (`f24_bank_reconciliation.py`) si basa su importo e data e per un solo movimento sul saldo intero non controlla il codice tributo; la data di versamento assente fa saltare l'F24 senza avviso; il servizio ha solo 2 test. L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
+- **F24 e banca**: il motore a livelli confronta il saldo intero, non il codice tributo (l'allocazione per singola riga è stata tolta: 0 modelli l'avevano); un modello senza data di versamento è saltato senza avviso. Le quietanze provate dall'addebito non promuovono ancora da sole il modello a «pagato in banca» se il saldo differisce (ravvedimenti). L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
 - **Colazioni B&B, da chiudere**: attivare SumUp incollando la chiave in Impostazioni; togliere dal database il vecchio PIN in chiaro (`supabase-21.sql`, fase 2: `bb_pin_off`, `tit_pin` e il PIN come credenziale delle RPC) dopo aver provato l'accesso da `/colazioni/`;
   inserire dati veri del bar (orari, WhatsApp, email) e i B&B reali; far rivedere composizioni, ingredienti e allergeni delle colazioni standard;
   varianti di prodotto (latte vegetale, gusti del gelato) salvate ma non ancora scelte dall'ospite; per gli alberghi con servizio al tavolo gli extra usano ancora i prezzi banco;

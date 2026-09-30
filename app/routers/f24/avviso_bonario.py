@@ -1,25 +1,24 @@
-"""Interroga avviso bonario + aggancio addebiti/quietanze ↔ F24 (PR 11/12).
+"""Interroga avviso bonario (PR 11/12).
 
 Montato dentro il router F24 (``/api/f24``):
 
 * ``POST /api/f24/avviso-bonario/controllo`` — per ogni riga dell'avviso
   (codice tributo, periodo, importo) il controllo incrociato con righe F24,
   quietanze, addebiti bancari e ritenute dei cedolini HR. Sola lettura.
-* ``POST /api/f24/riconcilia-addebiti?dry_run=true`` — aggancio idempotente
-  addebito I24 ↔ F24 (data ±3 gg + importo esatto) e quietanza ↔ F24
-  (protocollo, oppure data + importo esatto). Solo admin; con ``dry_run``
-  restituisce le proposte senza scrivere.
+
+L'aggancio addebito ↔ pagamento non e' piu' qui: e' il motore a livelli
+``f24_controllo_incrociato.riconcilia_f24_banca``.
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import Database
 from app.services import f24_controllo_incrociato as controllo
-from app.utils.dependencies import get_current_admin_user, get_current_user
+from app.utils.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -56,12 +55,3 @@ async def controllo_avviso_bonario(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/riconcilia-addebiti", summary="Aggancia addebiti I24 e quietanze ai modelli F24 (idempotente)")
-async def riconcilia_addebiti_f24(
-    dry_run: bool = Query(True, description="true = solo proposte, nessuna scrittura"),
-    _admin: Dict[str, Any] = Depends(get_current_admin_user),
-) -> Dict[str, Any]:
-    db = Database.get_db()
-    return await controllo.riconcilia_addebiti(db, dry_run=dry_run)

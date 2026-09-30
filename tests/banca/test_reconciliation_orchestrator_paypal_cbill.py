@@ -24,8 +24,6 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
     async def salari(*args, **kwargs):
         return await record("salari", {}, *args, **kwargs)
 
-    async def f24(*args, **kwargs):
-        return await record("f24", {}, *args, **kwargs)
 
     async def paypal_fatture(*args, **kwargs):
         return await record("paypal_fatture", {"collegati": 1}, *args, **kwargs)
@@ -64,10 +62,6 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
     )
     monkeypatch.setattr(
         "app.services.stipendi_bonifici.associa_bonifici_stipendi", salari,
-    )
-    monkeypatch.setattr(
-        "app.services.f24_bank_reconciliation.riconcilia_f24_tributi_banca",
-        f24,
     )
     monkeypatch.setattr(
         "app.services.paypal_reconciliation_links.riprocessa_collegamenti_paypal",

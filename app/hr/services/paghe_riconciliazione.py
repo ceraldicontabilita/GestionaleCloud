@@ -19,7 +19,7 @@ copia, e `riconcilia_f24_con_banca` chiamava questo `cerca_in_estratto_conto`.
 Erano gli unici chiamanti vivi di entrambe le copie — sul lato ERP quelle tre
 funzioni restano solo per audit storico, perche'
 `esegui_riconciliazione_paghe_completa` usa ormai i motori canonici
-(`stipendi_bonifici` e `f24_bank_reconciliation`).
+(`stipendi_bonifici` e `f24_controllo_incrociato.riconcilia_f24_banca`).
 
 Nell'altro verso, questa copia aveva una cosa sola in piu': la soglia
 `netto_mese >= 50` in `riconcilia_tutti_stipendi`, portata sul modulo unico

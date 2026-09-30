@@ -21,7 +21,6 @@ async def riconcilia_documenti_e_pagamenti(
     from app.routers.bank.assegni_auto_match import run_auto_match
     from app.services.assegni_fattura_intent import riprocessa_intenti_assegni
     from app.services.bonifici_pdf_ingest import riprocessa_bonifici_pendenti
-    from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
     from app.services.finanziamenti_soci import scan_finanziamenti_da_ec
     from app.services.soci_accounting import riconcilia_attese_soci_da_ec
     from app.services.bank_payment_allocations import reconcile_deterministic_invoice_allocations
@@ -33,12 +32,9 @@ async def riconcilia_documenti_e_pagamenti(
     assegni_auto = await run_auto_match(db, dry_run=False, anno=anno)
     bonifici_pdf = await riprocessa_bonifici_pendenti(db, limit=2000)
     salari = await associa_bonifici_stipendi(db, anno=anno)
-    f24 = await riconcilia_f24_tributi_banca(
-        db, anno=anno, movimento_ids=movimento_ids,
-    )
-    # Quietanze F24 ↔ addebiti I24 e F24 ravveduti non stanno piu' qui: hanno
-    # un job loro (``f24_quietanze_banca`` in scheduler.py), per lo stesso
-    # motivo dei versamenti di contante qui sotto.
+    # F24 ↔ banca (quietanze, modelli, ravvedimenti) non stanno qui: l'unico
+    # motore ``riconcilia_f24_banca`` ha un job suo (``f24_quietanze_banca``
+    # in scheduler.py), per lo stesso motivo dei versamenti di contante qui sotto.
     start_date = f"{anno}-01-01" if anno else None
     end_date = f"{anno}-12-31" if anno else None
     paypal = await riconcilia_paypal_importato(
@@ -71,7 +67,6 @@ async def riconcilia_documenti_e_pagamenti(
         "assegni_auto": assegni_auto,
         "bonifici_pdf": bonifici_pdf,
         "salari": salari,
-        "f24": f24,
         "paypal": {
             "fatture_prima": paypal["collegamenti_prima"],
             "banca": paypal["banca"],
@@ -103,12 +98,9 @@ async def on_cedolino_importato_riprocessa(event: Dict[str, Any], db):
 
 async def on_f24_acquisito_riprocessa(event: Dict[str, Any], db):
     """Un F24 arrivato dopo l'addebito viene riesaminato per codice tributo."""
-    from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
+    from app.services.f24_controllo_incrociato import riconcilia_f24_arrivato
 
-    anno = event.get("anno")
-    return await riconcilia_f24_tributi_banca(
-        db, anno=int(anno) if str(anno or "").isdigit() else None,
-    )
+    return await riconcilia_f24_arrivato(db, event.get("importo_totale"))
 
 
 async def on_estratto_conto_importato_riprocessa(event: Dict[str, Any], db):
