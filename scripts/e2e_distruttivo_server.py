@@ -10,8 +10,26 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+# Il runner cloud puo' ereditare le credenziali del servizio reale. L'archivio
+# in memoria non basta: alcuni router aprono connessioni HR/Postgres, Drive o
+# servizi esterni direttamente. Rimuoverle PRIMA di importare app.* impedisce
+# che il collaudo usi per errore quelle connessioni.
+for _nome in tuple(os.environ):
+    if _nome.startswith(("SUPABASE_", "HR_", "MENU_", "LOTTI_", "APPDIPENDENTI_",
+                         "GOOGLE_", "GMAIL_", "SMTP_", "PAYPAL_", "SUMUP_",
+                         "REACT_APP_", "VITE_")) or _nome in {
+        "DATABASE_URL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+        "RENDER_INGEST_SHARED_SECRET", "GESTIONE_RISERVATA_CODE",
+    }:
+        os.environ.pop(_nome, None)
+
 # Configurazione deliberatamente fittizia, impostata prima di importare app.*.
 os.environ["ENVIRONMENT"] = "development"
+os.environ["ENABLE_SCHEDULER"] = "false"
+os.environ["PROCESS_ROLE"] = "web"
+os.environ["RUN_STARTUP_DATA_REPAIRS"] = "false"
+os.environ["RUN_STARTUP_INDEX_MIGRATIONS"] = "false"
+os.environ["RUN_STARTUP_SEED_DATA"] = "false"
 os.environ["SECRET_KEY"] = "e2e-isolato-solo-test-non-produzione"
 os.environ["ADMIN_EMAIL"] = "e2e@example.invalid"
 # PIN amministratore fittizio (sha256 di "246810"): l'unico ingresso e' il PIN.
