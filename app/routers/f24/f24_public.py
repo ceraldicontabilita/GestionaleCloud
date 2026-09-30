@@ -6,9 +6,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Query
 from fastapi.responses import Response
 from typing import Dict, Any
 from datetime import datetime, timezone
-import uuid
 import logging
-import base64
 
 from app.database import Database
 from app.db_collections import COLL_F24
@@ -256,193 +254,48 @@ async def get_scadenze_prossime_public(
 async def upload_f24_pdf(
     file: UploadFile = File(..., description="File PDF F24")
 ) -> Dict[str, Any]:
-    """
-    Carica PDF F24 ed estrae automaticamente i dati.
+    """Carica un PDF F24: stesso ingresso di Documenti > Import, Drive e posta.
 
-    **Supporta:**
-    - F24 Ordinario
-    - F24 Semplificato
-    - F24 contributi INPS
-
-    Estrae: codice tributo, importo, periodo riferimento, scadenza
-    Usa parser basato su coordinate PyMuPDF per maggiore affidabilità.
+    Un PDF gia' in archivio risponde 409; uno che non quadra o senza righe
+    tributo 422 col motivo, senza scrivere niente.
     """
-    import tempfile
-    import os
-    from app.services.parser_f24 import parse_f24_commercialista
+    esito = await _importa(file, source="f24_public_upload")
+    if esito.get("duplicate"):
+        raise HTTPException(status_code=409, detail="F24 già presente nel sistema")
+    return {**esito, "action": "creato"}
+
+
+async def _importa(file: UploadFile, *, source: str) -> Dict[str, Any]:
+    from app.services.f24_canonico import importa_modello_bytes
 
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo file PDF supportati")
-
     pdf_bytes = await file.read()
-
-    # Salva temporaneamente il PDF per il parser
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-        tmp_file.write(pdf_bytes)
-        tmp_path = tmp_file.name
-
-    try:
-        # Parse PDF usando il parser robusto basato su coordinate
-        parsed = parse_f24_commercialista(tmp_path)
-    finally:
-        # Rimuovi file temporaneo
-        os.unlink(tmp_path)
-
-    if "error" in parsed and parsed["error"]:
-        return {
-            "success": False,
-            "error": parsed["error"],
-            "filename": file.filename
-        }
-    try:
-        from app.services.f24_canonico import richiedi_quadratura_f24
-
-        richiedi_quadratura_f24(parsed)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    # Get database
     db = Database.get_db()
-
-    # Convert data_versamento to data_scadenza
-    data_scadenza = parsed.get("dati_generali", {}).get("data_versamento")
-
-    # Converti formato tributi per compatibilità con frontend
-    tributi_erario = []
-    for t in parsed.get("sezione_erario", []):
-        tributi_erario.append({
-            "codice_tributo": t.get("codice_tributo"),
-            "codice": t.get("codice_tributo"),
-            "rateazione": t.get("rateazione", ""),
-            "periodo_riferimento": t.get("periodo_riferimento", ""),
-            "anno_riferimento": t.get("anno", ""),
-            "anno": t.get("anno", ""),
-            "mese": t.get("mese", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", ""),
-            "riferimento": t.get("periodo_riferimento", "")
-        })
-
-    tributi_inps = []
-    for t in parsed.get("sezione_inps", []):
-        tributi_inps.append({
-            "codice_sede": t.get("codice_sede", ""),
-            "causale": t.get("causale", ""),
-            "causale_contributo": t.get("causale", ""),
-            "matricola": t.get("matricola", ""),
-            "periodo_da": t.get("mese", ""),
-            "periodo_a": t.get("anno", ""),
-            "periodo_riferimento": t.get("periodo_riferimento", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", "")
-        })
-
-    tributi_regioni = []
-    for t in parsed.get("sezione_regioni", []):
-        tributi_regioni.append({
-            "codice_tributo": t.get("codice_tributo"),
-            "codice": t.get("codice_tributo"),
-            "codice_regione": t.get("codice_regione", ""),
-            "codice_ente": t.get("codice_regione", ""),
-            "periodo_riferimento": t.get("periodo_riferimento", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", "")
-        })
-
-    tributi_imu = []
-    for t in parsed.get("sezione_tributi_locali", []):
-        tributi_imu.append({
-            "codice_tributo": t.get("codice_tributo"),
-            "codice": t.get("codice_tributo"),
-            "codice_comune": t.get("codice_comune", ""),
-            "codice_ente": t.get("codice_comune", ""),
-            "periodo_riferimento": t.get("periodo_riferimento", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", "")
-        })
-
-    # Aggiungi anche INAIL se presente
-    for t in parsed.get("sezione_inail", []):
-        tributi_inps.append({
-            "codice_sede": t.get("codice_sede", ""),
-            "causale": "INAIL",
-            "causale_contributo": t.get("causale", "INAIL"),
-            "matricola": t.get("codice_ditta", ""),
-            "periodo_da": "",
-            "periodo_a": "",
-            "periodo_riferimento": t.get("numero_riferimento", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", "")
-        })
-
-    totali = parsed.get("totali", {})
-
-    # Create F24 record
-    f24_id = str(uuid.uuid4())
-
-    # Check for duplicates nella collezione unificata
-    existing = await db[F24_COLLECTION].find_one({
-        "$or": [
-            {"dati_generali.data_scadenza": data_scadenza, "totali.saldo_netto": totali.get("saldo_finale", 0)},
-            {"file_name": file.filename}
-        ]
-    })
-
-    if existing:
-        raise HTTPException(status_code=409, detail="F24 già presente nel sistema")
-
-    # Converto al formato f24_commercialista
-    f24_doc = {
-        "id": f24_id,
-        "f24_key": f"{parsed.get('dati_generali', {}).get('codice_fiscale', '')}_{data_scadenza}",
-        "file_name": file.filename,
-        "file_path": None,  # PDF in memoria
-        "dati_generali": parsed.get("dati_generali", {}),
-        "sezione_erario": parsed.get("sezione_erario", []),
-        "sezione_inps": parsed.get("sezione_inps", []),
-        "sezione_regioni": parsed.get("sezione_regioni", []),
-        "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
-        "sezione_inail": parsed.get("sezione_inail", []),
-        "totali": totali,
-        "validazione": parsed.get("validazione", {}),
-        "has_ravvedimento": parsed.get("has_ravvedimento", False),
-        "status": "da_pagare",
-        "riconciliato": False,
-        "pdf_data": base64.b64encode(pdf_bytes).decode('utf-8'),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-
-    # Anche il vecchio endpoint pubblico passa dall'unico writer canonico.
-    from app.services.f24_canonico import salva_f24
-
-    f24_id = await salva_f24(db, f24_doc, source="f24_public_upload")
-
-    logger.info(f"F24 importato: {f24_id} - Scadenza {data_scadenza} - €{totali.get('saldo_finale', 0):.2f}")
-
+    esito = await importa_modello_bytes(db, pdf_bytes, file.filename, source=source)
+    if not esito.get("success"):
+        raise HTTPException(status_code=422, detail=esito.get("error") or "Parsing F24 fallito")
+    modello = await db[F24_COLLECTION].find_one(
+        {"id": esito["f24_id"]},
+        {"_id": 0, "dati_generali": 1, "totali": 1, "sezione_erario": 1, "sezione_inps": 1,
+         "sezione_inail": 1, "sezione_regioni": 1, "sezione_tributi_locali": 1},
+    ) or {}
+    dati = modello.get("dati_generali") or {}
+    totali = modello.get("totali") or {}
     return {
         "success": True,
-        "id": f24_id,
-        "scadenza": data_scadenza,
-        "contribuente": parsed.get("dati_generali", {}).get("ragione_sociale"),
-        "saldo_finale": totali.get("saldo_finale", 0),
+        "id": esito["f24_id"],
+        "duplicate": bool(esito.get("duplicate")),
+        "scadenza": dati.get("data_versamento"),
+        "contribuente": dati.get("ragione_sociale"),
+        "saldo_finale": totali.get("saldo_netto", totali.get("saldo_finale", 0)),
         "tributi": {
-            "erario": len(tributi_erario),
-            "inps": len(tributi_inps),
-            "regioni": len(tributi_regioni),
-            "imu": len(tributi_imu)
+            "erario": len(modello.get("sezione_erario") or []),
+            "inps": len(modello.get("sezione_inps") or []) + len(modello.get("sezione_inail") or []),
+            "regioni": len(modello.get("sezione_regioni") or []),
+            "imu": len(modello.get("sezione_tributi_locali") or []),
         },
-        "filename": file.filename
+        "filename": file.filename,
     }
 
 
@@ -565,187 +418,19 @@ async def delete_f24_model(f24_id: str) -> Dict[str, str]:
 @handle_errors
 async def upload_f24_pdf_overwrite(
     file: UploadFile = File(..., description="File PDF F24"),
-    overwrite: bool = Query(False, description="Sovrascrivi se esiste")
+    overwrite: bool = Query(False, description="Rileggi sul posto se il PDF è già in archivio")
 ) -> Dict[str, Any]:
+    """Carica un PDF F24 rileggendolo sul posto se e' gia' in archivio.
+
+    L'ingresso unico riconosce lo stesso PDF dalla sua impronta e ne rinfresca
+    le righe lette senza creare un secondo modello ne' toccare la provenienza:
+    con `overwrite=False` un PDF gia' presente si ferma prima, come `/upload`.
     """
-    Carica PDF F24 con opzione sovrascrivi.
-    Se overwrite=True, sostituisce F24 esistenti con stessa scadenza/importo.
-    Usa parser basato su coordinate PyMuPDF per maggiore affidabilità.
-    """
-    import tempfile
-    import os
-    from app.services.parser_f24 import parse_f24_commercialista
-
-    if not file.filename.lower().endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Solo file PDF supportati")
-
-    pdf_bytes = await file.read()
-
-    # Salva temporaneamente il PDF per il parser
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-        tmp_file.write(pdf_bytes)
-        tmp_path = tmp_file.name
-
-    try:
-        parsed = parse_f24_commercialista(tmp_path)
-    finally:
-        os.unlink(tmp_path)
-
-    if "error" in parsed and parsed["error"]:
-        return {
-            "success": False,
-            "error": parsed["error"],
-            "filename": file.filename
-        }
-    try:
-        from app.services.f24_canonico import richiedi_quadratura_f24
-
-        richiedi_quadratura_f24(parsed)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    db = Database.get_db()
-
-    # Convert data_versamento to data_scadenza
-    data_scadenza = parsed.get("dati_generali", {}).get("data_versamento")
-    totali = parsed.get("totali", {})
-
-    # Check for existing nella collezione unificata
-    existing = await db[F24_COLLECTION].find_one({
-        "$or": [
-            {"dati_generali.data_scadenza": data_scadenza, "totali.saldo_netto": totali.get("saldo_finale", 0)},
-            {"file_name": file.filename}
-        ]
-    })
-
-    if existing and not overwrite:
-        return {
-            "success": False,
-            "error": "F24 già presente. Usa overwrite=True per sovrascrivere.",
-            "existing_id": existing.get("id"),
-            "filename": file.filename
-        }
-
-    f24_id = existing.get("id") if existing else str(uuid.uuid4())
-
-    # Converti formato tributi per compatibilità con frontend
-    tributi_erario = []
-    for t in parsed.get("sezione_erario", []):
-        tributi_erario.append({
-            "codice_tributo": t.get("codice_tributo"),
-            "codice": t.get("codice_tributo"),
-            "rateazione": t.get("rateazione", ""),
-            "periodo_riferimento": t.get("periodo_riferimento", ""),
-            "anno_riferimento": t.get("anno", ""),
-            "anno": t.get("anno", ""),
-            "mese": t.get("mese", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", ""),
-            "riferimento": t.get("periodo_riferimento", "")
-        })
-
-    tributi_inps = []
-    for t in parsed.get("sezione_inps", []):
-        tributi_inps.append({
-            "codice_sede": t.get("codice_sede", ""),
-            "causale": t.get("causale", ""),
-            "causale_contributo": t.get("causale", ""),
-            "matricola": t.get("matricola", ""),
-            "periodo_da": t.get("mese", ""),
-            "periodo_a": t.get("anno", ""),
-            "periodo_riferimento": t.get("periodo_riferimento", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", "")
-        })
-
-    # Aggiungi INAIL se presente
-    for t in parsed.get("sezione_inail", []):
-        tributi_inps.append({
-            "codice_sede": t.get("codice_sede", ""),
-            "causale": "INAIL",
-            "causale_contributo": t.get("causale", "INAIL"),
-            "matricola": t.get("codice_ditta", ""),
-            "periodo_da": "",
-            "periodo_a": "",
-            "periodo_riferimento": t.get("numero_riferimento", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", "")
-        })
-
-    tributi_regioni = []
-    for t in parsed.get("sezione_regioni", []):
-        tributi_regioni.append({
-            "codice_tributo": t.get("codice_tributo"),
-            "codice": t.get("codice_tributo"),
-            "codice_regione": t.get("codice_regione", ""),
-            "codice_ente": t.get("codice_regione", ""),
-            "periodo_riferimento": t.get("periodo_riferimento", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", "")
-        })
-
-    tributi_imu = []
-    for t in parsed.get("sezione_tributi_locali", []):
-        tributi_imu.append({
-            "codice_tributo": t.get("codice_tributo"),
-            "codice": t.get("codice_tributo"),
-            "codice_comune": t.get("codice_comune", ""),
-            "codice_ente": t.get("codice_comune", ""),
-            "periodo_riferimento": t.get("periodo_riferimento", ""),
-            "importo_debito": t.get("importo_debito", 0),
-            "importo_credito": t.get("importo_credito", 0),
-            "importo": t.get("importo_debito", 0),
-            "descrizione": t.get("descrizione", "")
-        })
-
-    # Converto al formato f24_commercialista
-    f24_doc = {
-        "id": f24_id,
-        "f24_key": f"{parsed.get('dati_generali', {}).get('codice_fiscale', '')}_{data_scadenza}",
-        "file_name": file.filename,
-        "file_path": None,
-        "dati_generali": parsed.get("dati_generali", {}),
-        "sezione_erario": parsed.get("sezione_erario", []),
-        "sezione_inps": parsed.get("sezione_inps", []),
-        "sezione_regioni": parsed.get("sezione_regioni", []),
-        "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
-        "sezione_inail": parsed.get("sezione_inail", []),
-        "totali": totali,
-        "validazione": parsed.get("validazione", {}),
-        "has_ravvedimento": parsed.get("has_ravvedimento", False),
-        "status": existing.get("status", "da_pagare") if existing else "da_pagare",
-        "riconciliato": existing.get("riconciliato", False) if existing else False,
-        "pdf_data": base64.b64encode(pdf_bytes).decode('utf-8'),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-
-    from app.services.f24_canonico import salva_f24
-
-    if not existing:
-        f24_doc["created_at"] = datetime.now(timezone.utc).isoformat()
-    await salva_f24(
-        db,
-        f24_doc,
-        source="f24_public_overwrite",
-        existing_id=f24_id if existing else None,
-    )
-    action = "aggiornato" if existing else "creato"
-
-    logger.info(f"F24 {action}: {f24_id} - €{totali.get('saldo_netto', totali.get('saldo_finale', 0)):.2f}")
-
-    return {
-        "success": True,
-        "action": action,
-        "id": f24_id,
-        "scadenza": data_scadenza,
-        "saldo_finale": totali.get("saldo_netto", totali.get("saldo_finale", 0)),
-        "filename": file.filename
-    }
+    if not overwrite:
+        esito = await _importa(file, source="f24_public_overwrite")
+        if esito.get("duplicate"):
+            return {"success": False, "error": "F24 già presente. Usa overwrite=True per rileggerlo.",
+                    "existing_id": esito.get("id"), "filename": file.filename}
+        return {**esito, "action": "creato"}
+    esito = await _importa(file, source="f24_public_overwrite")
+    return {**esito, "action": "aggiornato" if esito.get("duplicate") else "creato"}

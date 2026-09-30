@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from app.database import Database
-from app.services.parser_f24 import parse_f24_commercialista, confronta_codici_tributo
+from app.services.parser_f24 import confronta_codici_tributo
 from app.services.alert_engine import genera_alert
 import os
 import uuid
@@ -34,49 +34,6 @@ COLL_QUIETANZE = "quietanze_f24"
 COLL_F24_ALERTS = "f24_riconciliazione_alerts"
 
 
-def _adatta_output_ai_f24(ai_parsed: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Adatta l'output del parser AI (parse_f24_ai / PROMPT_F24) allo schema
-    prodotto da parse_f24_commercialista, cosi' che il resto del flusso di
-    upload lo tratti in modo trasparente.
-
-    Differenze normalizzate:
-    - dati anagrafici/pagamento portati sotto `dati_generali`;
-    - `sezione_imu` dell'AI mappata su `sezione_tributi_locali`;
-    - `totali.saldo_finale` replicato anche su `saldo_netto`.
-    Ritorna None se l'AI non ha prodotto un risultato valido.
-    """
-    if not ai_parsed or not isinstance(ai_parsed, dict) or ai_parsed.get("error"):
-        return None
-
-    out = dict(ai_parsed)
-
-    # dati_generali (l'AI espone i campi al primo livello)
-    dg = dict(out.get("dati_generali") or {})
-    if out.get("data_pagamento") and not dg.get("data_versamento"):
-        dg["data_versamento"] = out.get("data_pagamento")
-    for campo in ("codice_fiscale", "ragione_sociale"):
-        if out.get(campo) and not dg.get(campo):
-            dg[campo] = out.get(campo)
-    out["dati_generali"] = dg
-
-    # Sezione IMU/tributi locali: allinea al nome usato dal resto del codice
-    if out.get("sezione_imu") and not out.get("sezione_tributi_locali"):
-        out["sezione_tributi_locali"] = out["sezione_imu"]
-    out.setdefault("sezione_erario", out.get("sezione_erario") or [])
-    out.setdefault("sezione_inps", out.get("sezione_inps") or [])
-    out.setdefault("sezione_regioni", out.get("sezione_regioni") or [])
-    out.setdefault("sezione_tributi_locali", out.get("sezione_tributi_locali") or [])
-
-    # Totali: garantisci saldo_netto (usato a valle per la f24_key e i confronti)
-    totali = dict(out.get("totali") or {})
-    if "saldo_netto" not in totali:
-        totali["saldo_netto"] = totali.get("saldo_finale", 0) or 0
-    out["totali"] = totali
-
-    out.setdefault("has_ravvedimento", False)
-    return out
-
-
 # ============================================
 # UPLOAD F24 COMMERCIALISTA
 # ============================================
@@ -85,223 +42,57 @@ def _adatta_output_ai_f24(ai_parsed: Optional[Dict[str, Any]]) -> Optional[Dict[
 @handle_errors
 async def upload_f24_commercialista(
     file: UploadFile = File(...),
-    use_ai: bool = Query(False, description="Usa AI per parsing (richiede crediti Gemini)")
 ) -> Dict[str, Any]:
-    """
-    Upload F24 ricevuto dalla commercialista (PDF).
-    Estrae codici tributo e lo inserisce come "DA PAGARE".
-    Usa chiave univoca per evitare duplicati.
+    """Upload di un F24 ricevuto dalla commercialista (PDF).
 
-    - use_ai=False (default): Usa parser PyMuPDF (veloce e accurato)
-    - use_ai=True: Usa AI per parsing (più lento, richiede crediti)
-
-    Architettura Drive/Supabase: salva PDF come Base64.
+    Stesso ingresso di Documenti > Import, Drive e posta (`importa_modello_bytes`):
+    lettura, quadratura, dedup per contenuto, ricerca di quietanza, ravvedimento e
+    addebito in banca. Il ripiego sul lettore AI non c'e' piu': un PDF che il
+    lettore non legge si corregge nel lettore e si ripassa, non si indovina.
+    Il modello prova solo la presentazione: un movimento banca nasce dall'estratto
+    conto e non viene mai sintetizzato durante l'upload del PDF.
     """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
 
+    from app.services.f24_canonico import importa_modello_bytes
+
     db = Database.get_db()
-    file_id = str(uuid.uuid4())
-
-    # Architettura Drive/Supabase: leggi contenuto e codifica in Base64
-    try:
-        content = await file.read()
-        import base64
-        pdf_base64 = base64.b64encode(content).decode('utf-8')
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Errore lettura file: {str(e)}") from e
-
-    # Parsing con PyMuPDF (parser principale, usa bytes)
-    parser_used = "pymupdf"
-    try:
-        parsed = parse_f24_commercialista(pdf_content=content)
-
-        # Se AI è richiesto e PyMuPDF trova pochi tributi, prova con AI
-        if use_ai:
-            total_tributi = (
-                len(parsed.get("sezione_erario", [])) +
-                len(parsed.get("sezione_inps", [])) +
-                len(parsed.get("sezione_regioni", [])) +
-                len(parsed.get("sezione_tributi_locali", []))
-            )
-            if total_tributi == 0:
-                logger.warning("PyMuPDF non ha trovato tributi, provo fallback AI")
-                try:
-                    from app.services.ai_document_parser import parse_f24_ai
-                    ai_parsed = await parse_f24_ai(file_bytes=content)
-                    ai_adattato = _adatta_output_ai_f24(ai_parsed)
-                    if ai_adattato is not None:
-                        ai_tributi = (
-                            len(ai_adattato.get("sezione_erario", [])) +
-                            len(ai_adattato.get("sezione_inps", [])) +
-                            len(ai_adattato.get("sezione_regioni", [])) +
-                            len(ai_adattato.get("sezione_tributi_locali", []))
-                        )
-                        if ai_tributi > 0:
-                            parsed = ai_adattato
-                            parser_used = "ai"
-                            logger.info(f"Fallback AI: estratti {ai_tributi} tributi")
-                        else:
-                            logger.warning("Anche il fallback AI non ha trovato tributi")
-                    else:
-                        motivo = (ai_parsed or {}).get("error", "output non valido")
-                        logger.warning(f"Fallback AI non utilizzabile: {motivo}")
-                except Exception as ai_err:
-                    logger.warning(f"Fallback AI fallito: {ai_err}")
-
-    except Exception as e:
-        logger.error(f"Errore parsing F24: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing: {str(e)}") from e
-
-    if "error" in parsed:
-        raise HTTPException(status_code=400, detail=parsed["error"])
-    try:
-        from app.services.f24_canonico import richiedi_quadratura_f24
-
-        richiedi_quadratura_f24(parsed)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    # Genera chiave univoca per rilevare duplicati
-    # Basata su: filename + data_versamento + saldo
-    dg = parsed.get("dati_generali", {})
-    totali = parsed.get("totali", {})
-    saldo = totali.get("saldo_netto", totali.get("saldo_finale", 0))
-    data_vers = dg.get("data_versamento", "")
-
-    # Chiave univoca: filename_base + data + saldo arrotondato
-    filename_base = file.filename.replace(".pdf", "").replace(".PDF", "")
-    f24_key = f"{filename_base}_{data_vers}_{round(saldo, 2)}"
-
-    # Verifica duplicati con chiave esatta
-    existing_key = await db[COLL_F24_COMMERCIALISTA].find_one({
-        "f24_key": f24_key,
-        "status": {"$ne": "eliminato"}
-    })
-
-    if existing_key:
+    content = await file.read()
+    esito = await importa_modello_bytes(db, content, file.filename, source="f24_commercialista_upload")
+    if not esito.get("success"):
+        raise HTTPException(status_code=422, detail=esito.get("error") or "Parsing F24 fallito")
+    if esito.get("duplicate"):
         return {
             "success": False,
             "error": "F24 già presente nel sistema",
-            "existing_id": existing_key.get("id"),
-            "filename": file.filename
+            "existing_id": esito.get("f24_id"),
+            "filename": file.filename,
         }
 
-    # Verifica se esiste già un F24 simile (possibile ravvedimento)
-    is_ravvedimento_update = False
-    f24_precedente = None
-
-    existing = await db[COLL_F24_COMMERCIALISTA].find_one({
-        "dati_generali.codice_fiscale": dg.get("codice_fiscale"),
-        "status": "da_pagare"
-    })
-
-    if existing and parsed.get("has_ravvedimento"):
-        # Questo F24 ha ravvedimento, potrebbe sostituire il precedente
-        confronto = confronta_codici_tributo(existing, parsed)
-        if confronto["match"]:
-            is_ravvedimento_update = True
-            f24_precedente = existing
-
-    # Estrai anno dalla data di versamento o dai tributi
-    anno = None
-
-    # 1. Prova ad estrarre dalla data di versamento (formato YYYY-MM-DD)
-    if data_vers and len(data_vers) >= 4:
-        anno = data_vers[:4]
-
-    # 2. Se non c'è anno, prova ad estrarlo dai tributi (periodo_riferimento)
-    if not anno:
-        for sezione in ["sezione_erario", "sezione_inps", "sezione_regioni", "sezione_tributi_locali"]:
-            for tributo in parsed.get(sezione, []):
-                # Cerca anno nel campo "anno" diretto
-                if tributo.get("anno"):
-                    anno = tributo.get("anno")
-                    break
-                # Oppure nel periodo_riferimento (es. "12/2024" o "2024")
-                periodo = tributo.get("periodo_riferimento", "")
-                if "/" in periodo:
-                    parts = periodo.split("/")
-                    for p in parts:
-                        if len(p) == 4 and p.isdigit():
-                            anno = p
-                            break
-                elif len(periodo) == 4 and periodo.isdigit():
-                    anno = periodo
-            if anno:
-                break
-
-    # Salva nel database con pdf_data (architettura Drive/Supabase)
-    documento = {
-        "id": file_id,
-        "f24_key": f24_key,
-        "file_name": file.filename,
-        "pdf_data": pdf_base64,  # Architettura Drive/Supabase
-        "parser_used": parser_used,  # Traccia quale parser è stato usato
-        "anno": anno,  # Campo anno estratto per filtri rapidi
-        "data_scadenza": data_vers,  # Alias per compatibilità frontend
-        "data_versamento": data_vers,  # Data originale
-        "dati_generali": parsed.get("dati_generali", {}),
-        "sezione_erario": parsed.get("sezione_erario", []),
-        "sezione_inps": parsed.get("sezione_inps", []),
-        "sezione_regioni": parsed.get("sezione_regioni", []),
-        "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
-        "sezione_inail": parsed.get("sezione_inail", []),
-        "totali": parsed.get("totali", {}),
-        "validazione": parsed.get("validazione", {}),
-        "codici_univoci": parsed.get("codici_univoci", []),
-        "has_ravvedimento": parsed.get("has_ravvedimento", False),
-        "codici_ravvedimento": parsed.get("codici_ravvedimento", []),
-        "status": "da_pagare",
-        "riconciliato": False,
-        "quietanza_id": None,
-        "movimento_bancario_id": None,
-        "f24_sostituito_id": f24_precedente.get("id") if f24_precedente else None,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-
-    from app.services.f24_canonico import salva_f24
-
-    file_id = await salva_f24(db, documento, source="f24_commercialista_upload")
-
-    # Il modello F24 prova solo la predisposizione/presentazione. Un movimento
-    # banca nasce esclusivamente dall'import dell'estratto conto e viene poi
-    # riconciliato; non viene mai sintetizzato durante l'upload del PDF.
-
-    # Se è un ravvedimento che sostituisce un F24 precedente, crea alert
-    if is_ravvedimento_update and f24_precedente:
-        alert = {
-            "id": str(uuid.uuid4()),
-            "tipo": "f24_sostituito",
-            "f24_nuovo_id": file_id,
-            "f24_vecchio_id": f24_precedente.get("id"),
-            "message": f"F24 con ravvedimento caricato. L'F24 precedente del {f24_precedente.get('dati_generali', {}).get('data_versamento', 'N/A')} sarà da eliminare dopo il pagamento.",
-            "importo_vecchio": f24_precedente.get("totali", {}).get("saldo_netto", 0),
-            "importo_nuovo": parsed.get("totali", {}).get("saldo_netto", 0),
-            "differenza_ravvedimento": round(parsed.get("totali", {}).get("saldo_netto", 0) - f24_precedente.get("totali", {}).get("saldo_netto", 0), 2),
-            "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db[COLL_F24_ALERTS].insert_one(alert.copy())
-
+    modello = await db[COLL_F24_COMMERCIALISTA].find_one(
+        {"id": esito["f24_id"]},
+        {"_id": 0, "dati_generali": 1, "totali": 1, "has_ravvedimento": 1, "sezione_erario": 1,
+         "sezione_inps": 1, "sezione_regioni": 1, "sezione_tributi_locali": 1},
+    ) or {}
+    ravvedimento = (esito.get("controparti") or {}).get("ravvedimento") or {}
     return {
         "success": True,
         "message": "F24 commercialista caricato",
-        "id": file_id,
+        "id": esito["f24_id"],
         "file_name": file.filename,
         "status": "da_pagare",
-        "dati_generali": parsed.get("dati_generali", {}),
-        "totali": parsed.get("totali", {}),
-        "has_ravvedimento": parsed.get("has_ravvedimento", False),
-        "is_ravvedimento_update": is_ravvedimento_update,
-        "f24_precedente_id": f24_precedente.get("id") if f24_precedente else None,
+        "dati_generali": modello.get("dati_generali") or {},
+        "totali": modello.get("totali") or {},
+        "has_ravvedimento": bool(modello.get("has_ravvedimento")),
+        "ravvedimento": ravvedimento,
+        "controparti": esito.get("controparti"),
         "sezioni": {
-            "erario": len(parsed.get("sezione_erario", [])),
-            "inps": len(parsed.get("sezione_inps", [])),
-            "regioni": len(parsed.get("sezione_regioni", [])),
-            "tributi_locali": len(parsed.get("sezione_tributi_locali", []))
-        }
+            "erario": len(modello.get("sezione_erario") or []),
+            "inps": len(modello.get("sezione_inps") or []),
+            "regioni": len(modello.get("sezione_regioni") or []),
+            "tributi_locali": len(modello.get("sezione_tributi_locali") or []),
+        },
     }
 
 

@@ -270,6 +270,42 @@ def chiave_f24(doc: Dict[str, Any]) -> str:
     return "f24_" + hashlib.md5(base.encode("utf-8")).hexdigest()[:20]
 
 
+# Campi che descrivono il PRIMO arrivo del modello: una copia successiva non li
+# riscrive (il PDF e' lo stesso: la chiave di dedup contiene il suo hash).
+_CAMPI_PROVENIENZA = frozenset({
+    "id", "_id", "file_name", "filename", "original_filename", "stored_filename",
+    "import_source", "source_metadata", "source_occurrences", "created_at",
+    "import_date", "imported_at", "pdf_data", "drive_file_id", "drive_parent_id",
+    "drive_path", "drive_md5", "original_storage", "email_from", "email_date",
+    "email_subject", "source_document_id",
+})
+
+
+async def _annota_provenienza(db, esistente: Dict[str, Any], doc: Dict[str, Any], source: Optional[str]) -> None:
+    """Aggiunge la copia appena vista alle provenienze del modello, una volta sola."""
+    meta = doc.get("source_metadata") or {}
+    provenienza = {
+        "file_name": doc.get("file_name") or doc.get("filename") or doc.get("original_filename"),
+        "drive_file_id": doc.get("drive_file_id") or meta.get("drive_file_id"),
+        "attachment_id": meta.get("attachment_id"),
+        "pdf_hash": doc.get("pdf_hash") or doc.get("file_hash"),
+        "import_source": source,
+        "visto_il": datetime.now(timezone.utc).isoformat(),
+    }
+    provenienza = {k: v for k, v in provenienza.items() if v not in (None, "")}
+    provenienze = list(esistente.get("source_occurrences") or [])
+    stessa = any(
+        p.get("drive_file_id") == provenienza.get("drive_file_id")
+        and p.get("attachment_id") == provenienza.get("attachment_id")
+        and p.get("file_name") == provenienza.get("file_name")
+        and p.get("import_source") == provenienza.get("import_source")
+        for p in provenienze
+    )
+    if not stessa:
+        provenienze.append(provenienza)
+        await db[COLL].update_one({"id": esistente["id"]}, {"$set": {"source_occurrences": provenienze}})
+
+
 async def salva_f24(
     db,
     doc: Dict[str, Any],
@@ -303,10 +339,21 @@ async def salva_f24(
         await db[COLL].update_one({"id": existing_id}, {"$set": patch})
         return existing_id
 
-    esistente = await db[COLL].find_one({"f24_dedup_key": chiave}, {"_id": 0, "id": 1})
+    esistente = await db[COLL].find_one(
+        {"f24_dedup_key": chiave}, {"_id": 0, "id": 1, "source_occurrences": 1, "source_metadata": 1},
+    )
     if esistente:
-        patch = {k: v for k, v in doc.items() if k not in ("id", "_id")}
+        # Stesso PDF gia' in archivio: le righe lette si rinfrescano (un lettore
+        # corretto rilegge sul posto), ma la provenienza del primo arrivo resta
+        # sua e la nuova copia si annota in `source_occurrences`. Prima il
+        # `$set` intero riscriveva nome del file, fonte e metadati con quelli
+        # dell'ultima copia, e l'allegato email puntato dal modello cambiava a
+        # ogni rinvio.
+        patch = {k: v for k, v in doc.items() if k not in _CAMPI_PROVENIENZA}
+        if not esistente.get("source_metadata") and doc.get("source_metadata"):
+            patch["source_metadata"] = doc["source_metadata"]
         await db[COLL].update_one({"f24_dedup_key": chiave}, {"$set": patch})
+        await _annota_provenienza(db, esistente, doc, source)
         return esistente.get("id")
 
     # Lo stesso F24 arrivato da un altro PDF (copia «(2)», stampa di
@@ -316,18 +363,7 @@ async def salva_f24(
 
     uguale = await modello_uguale(db, doc)
     if uguale:
-        provenienza = {
-            "file_name": doc.get("file_name") or doc.get("filename"),
-            "drive_file_id": doc.get("drive_file_id"),
-            "pdf_hash": doc.get("pdf_hash") or doc.get("file_hash"),
-            "import_source": source,
-            "visto_il": datetime.now(timezone.utc).isoformat(),
-        }
-        provenienze = list(uguale.get("source_occurrences") or [])
-        if not any(p.get("drive_file_id") == provenienza["drive_file_id"]
-                   and p.get("file_name") == provenienza["file_name"] for p in provenienze):
-            provenienze.append(provenienza)
-            await db[COLL].update_one({"id": uguale["id"]}, {"$set": {"source_occurrences": provenienze}})
+        await _annota_provenienza(db, uguale, doc, source)
         return uguale["id"]
 
     doc.setdefault("id", str(uuid4()))
