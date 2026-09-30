@@ -141,16 +141,6 @@ async def importa_modello_bytes(
             "filename": filename,
             "error": (parsed or {}).get("error", "Parsing F24 fallito"),
         }
-    try:
-        validation = richiedi_quadratura_f24(parsed)
-    except ValueError as exc:
-        return {
-            "success": False,
-            "filename": filename,
-            "error": str(exc),
-            "validazione": parsed.get("validazione") or {},
-        }
-
     if not normalizza_righe_tributo(parsed):
         # Una pratica, una ricevuta o un PDF non letto non e' un F24 da pagare
         # (22 gusci vuoti il 28/09/2026): non diventa un modello, da nessun canale.
@@ -159,6 +149,15 @@ async def importa_modello_bytes(
             "filename": filename,
             "error": "Nessuna riga tributo letta: non e' un modello F24",
             "stato_modello": "SENZA_RIGHE_TRIBUTO",
+        }
+    try:
+        validation = richiedi_quadratura_f24(parsed)
+    except ValueError as exc:
+        return {
+            "success": False,
+            "filename": filename,
+            "error": str(exc),
+            "validazione": parsed.get("validazione") or {},
         }
 
     source_metadata = dict(source_metadata or {})
