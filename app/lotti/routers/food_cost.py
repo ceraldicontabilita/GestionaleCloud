@@ -1471,11 +1471,12 @@ async def proponi_ingredienti_tutte(req: ProponiTutteReq, _admin=Depends(require
             "ingredienti_proposti_il": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        if base and fattore and fattore != 1.0:
+        if base and fattore:
             campi["dose_riferimento"] = f"1 kg di {base}"
             campi["dose_fattore"] = fattore
-            # le porzioni seguono le dosi, altrimenti il costo/porzione mente
-            campi["porzioni"] = max(1, int(round(porzioni * fattore)))
+            if fattore != 1.0:
+                # le porzioni seguono le dosi, altrimenti il costo/porzione mente
+                campi["porzioni"] = max(1, int(round(porzioni * fattore)))
         await db.ricette.update_one({"id": r["id"]}, {"$set": campi})
         compilate.append({"nome": nome, "fonte": esito.get("fonte"),
                           "quanti": len(ingredienti), "motivo": r.get("motivo"),
