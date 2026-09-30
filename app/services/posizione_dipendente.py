@@ -520,7 +520,36 @@ def _riga_json(mv: Dict[str, Any]) -> Dict[str, Any]:
             "fonte": mv["fonte"], "link": mv["link"], "avviso": mv["avviso"]}
 
 
-def posizione(movimenti: Dict[str, List[Dict[str, Any]]], anno: Optional[int] = None) -> Dict[str, Any]:
+def _mese_di(valore: Any) -> Optional[Tuple[int, int]]:
+    iso = _data_iso(valore)
+    return (int(iso[:4]), int(iso[5:7])) if iso else None
+
+
+def mesi_mancanti(registro: List[Dict[str, Any]], anno: int,
+                  rapporto: Optional[Dict[str, Any]] = None,
+                  oggi: Optional[date] = None) -> List[Tuple[int, int]]:
+    """Mesi dell'anno senza nessuna busta, dentro il rapporto di lavoro.
+
+    Parte dall'assunzione (se manca, dalla prima busta in archivio: nessuna data
+    inventata) e si ferma alla cessazione o al mese scorso. 13ª e 14ª non sono
+    mesi. Un mese è mancante solo se nessun cedolino né riga paga lo copre.
+    """
+    coperti = {mv["competenza"] for mv in registro if mv["tipo"] == "busta" and mv["competenza"]}
+    if not coperti:
+        return []
+    oggi = oggi or datetime.now(timezone.utc).date()
+    rapporto = rapporto or {}
+    inizio = _mese_di(rapporto.get("data_assunzione")) or min(c for c in coperti if c[1] <= 12)
+    fine = (oggi.year, oggi.month - 1) if oggi.month > 1 else (oggi.year - 1, 12)
+    cess = _mese_di(rapporto.get("data_cessazione"))
+    if cess and cess < fine:
+        fine = cess
+    return [(anno, m) for m in range(1, 13)
+            if inizio <= (anno, m) <= fine and (anno, m) not in coperti]
+
+
+def posizione(movimenti: Dict[str, List[Dict[str, Any]]], anno: Optional[int] = None,
+              rapporto: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Posizione con riporto: apertura = saldo di chiusura dell'anno prima."""
     registro = movimenti["registro"]
     anni = sorted({int(mv["data"][:4]) for mv in registro})
@@ -528,6 +557,12 @@ def posizione(movimenti: Dict[str, List[Dict[str, Any]]], anno: Optional[int] = 
         anno = anni[-1] if anni else datetime.now(timezone.utc).year
     prima = [mv for mv in registro if int(mv["data"][:4]) < anno]
     nell_anno = [mv for mv in registro if int(mv["data"][:4]) == anno]
+    mancanti = mesi_mancanti(registro, anno, rapporto)
+    nell_anno = sorted(nell_anno + [
+        _mov(_fine_mese(a, m), "mese_mancante", f"Busta {_nome_periodo(a, m)}: mese mancante",
+             competenza=(a, m), fonte="controllo_archivio", ordine=0,
+             avviso="busta non trovata in archivio né su Drive")
+        for a, m in mancanti], key=lambda x: (x["data"], x["ordine"], x["tipo"], x["descrizione"]))
     _, apertura = _con_saldo(prima)
     righe, chiusura = _con_saldo(nell_anno, apertura)
     per_anno, saldo = [], ZERO
@@ -546,6 +581,7 @@ def posizione(movimenti: Dict[str, List[Dict[str, Any]]], anno: Optional[int] = 
         "totale_dare": _eur(sum((mv["dare"] or ZERO for mv in nell_anno), ZERO)),
         "totale_avere": _eur(sum((mv["avere"] or ZERO for mv in nell_anno), ZERO)),
         "righe": [_riga_json(mv) for mv in righe],
+        "mesi_mancanti": [{"anno": a, "mese": m} for a, m in mancanti],
         "per_anno": per_anno,
         "avvisi": [mv["descrizione"] + ": " + mv["avviso"] for mv in nell_anno if mv["avviso"]],
         "bonus": {
@@ -603,7 +639,9 @@ async def carica_movimenti(db, dipendente_id: str) -> Dict[str, List[Dict[str, A
 
 
 async def posizione_dipendente(db, dipendente_id: str, anno: Optional[int] = None) -> Dict[str, Any]:
-    out = posizione(await carica_movimenti(db, dipendente_id), anno)
+    rapporto = await db.dipendenti.find_one(
+        {"id": dipendente_id}, {"_id": 0, "data_assunzione": 1, "data_cessazione": 1}) or {}
+    out = posizione(await carica_movimenti(db, dipendente_id), anno, rapporto)
     out["dipendente_id"] = dipendente_id
     return out
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -37,8 +38,11 @@ from app.parsers.busta_paga_multi_template import (
     parse_template_zucchetti_presenze,
 )
 from app.parsers.cedolino_voci import (
-    acconto_recuperato_in_busta, leggi_corpo_cedolino, leggi_foglio_presenze,
+    acconto_recuperato_in_busta, importi_ratei_da_coordinate, leggi_corpo_cedolino,
+    leggi_foglio_presenze,
 )
+
+logger = logging.getLogger(__name__)
 
 # Per scelta operativa del 03/08/2026 lo storico autorizzato parte dal 2018.
 # La guardia evita che un file piu' vecchio, caricato per errore, entri nei
@@ -265,6 +269,18 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
     if corpo.get("voci"):
         busta["voci"] = corpo["voci"]
         busta["dati_chiave"] = corpo["dati_chiave"]
+    if busta.get("_pdf_data"):
+        try:
+            ratei = importi_ratei_da_coordinate(base64.b64decode(busta["_pdf_data"]))
+        except Exception as exc:  # noqa: BLE001 - il rateo e' un dato in piu', la busta si legge lo stesso
+            logger.warning("Rateo 13a/14a non letto per coordinate (%s)", type(exc).__name__)
+            ratei = {}
+        chiave = busta.setdefault("dati_chiave", {})
+        for tipo, campo in (("13", "rateo_13ma"), ("14", "rateo_14ma")):
+            if tipo in ratei:
+                chiave[f"{campo}_presente"] = True
+                if not chiave.get(f"{campo}_importo"):
+                    chiave[f"{campo}_importo"] = ratei[tipo]
     # Acconto gia' dato e recuperato in questa busta (voce codificata): va
     # in HR con i dati chiave, la posizione del dipendente lo somma al netto.
     acconto = acconto_recuperato_in_busta(testo)
