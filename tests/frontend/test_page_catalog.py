@@ -18,9 +18,9 @@ REDIRECTS = CATALOG.get("redirects", [])
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
-def test_catalogo_contiene_esattamente_le_70_schermate_numerate():
-    assert [page["id"] for page in PAGES] == list(range(1, 71))
-    assert len({page["path"] for page in PAGES}) == 70
+def test_catalogo_contiene_esattamente_le_74_schermate_numerate():
+    assert [page["id"] for page in PAGES] == list(range(1, 75))
+    assert len({page["path"] for page in PAGES}) == 74
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
 
@@ -171,7 +171,7 @@ def test_tutte_le_route_del_catalogo_sono_coperte_da_una_route_react_reale():
         else:
             exact.add(path)
 
-    dynamic_prefixes = {"/verbali-noleggio"}
+    dynamic_prefixes = {"/verbali-noleggio", "/fiscale/f24", "/fiscale/tributi", "/personale/cedolini", "/protocollo"}
     for page in PAGES:
         path = page["path"]
         covered = (
