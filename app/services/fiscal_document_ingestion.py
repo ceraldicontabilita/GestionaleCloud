@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 from functools import lru_cache
 from typing import Any
 
@@ -17,8 +18,15 @@ from app.db_collections import (
     COLL_FISCAL_EVIDENCE,
     COLL_FISCAL_PAGES,
 )
+from app.services.dichiarazioni_quadri import (
+    TIPI_CON_QUADRI,
+    estrai_quadri_documento,
+    pagina_con_quadro,
+)
 from app.services.fiscal_domain import build_evidence, classify_document, sha256_bytes, stable_id, utc_now
 from app.services.fiscal_evidence import register_document
+
+logger = logging.getLogger(__name__)
 
 
 MAX_EXTRACTED_PAGE_CHARS = 40_000
@@ -106,9 +114,10 @@ def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str,
             "text_source": "rapidocr_locale" if ocr_used else "pdf_text",
             "ocr_used": ocr_used,
             "ocr_confidence": ocr_confidence,
-            # Le coordinate servono al quadro VP; non gonfiano le righe dell'archivio
-            # degli altri documenti fiscali.
-            "layout_words": layout_words if _looks_like_lipe_module(text) else [],
+            # Le coordinate servono al quadro VP della LIPE e ai righi delle
+            # dichiarazioni (VL/VX, RN, IR, esito ISA), che si leggono solo
+            # per posizione; non gonfiano le righe degli altri documenti.
+            "layout_words": layout_words if (_looks_like_lipe_module(text) or pagina_con_quadro(text)) else [],
             "requires_ocr": len(text.strip()) < 20,
         })
     pdf.close()
@@ -155,7 +164,8 @@ class FiscalDocumentIngestionService:
                 page.get("requires_ocr")
                 or len(str(page.get("text") or "").strip()) < 20
                 or (
-                    _looks_like_lipe_module(page.get("text") or "")
+                    (_looks_like_lipe_module(page.get("text") or "")
+                     or pagina_con_quadro(page.get("text") or ""))
                     and not page.get("layout_words")
                 )
                 for page in pages
@@ -173,6 +183,7 @@ class FiscalDocumentIngestionService:
                         upsert=True,
                     )
                 refreshed = True
+                await self._estrai_quadri(existing_version["document_id"])
             source_metadata = dict(source_metadata or {})
             source_occurrence = {
                 "source": source,
@@ -314,6 +325,7 @@ class FiscalDocumentIngestionService:
         )
         evidence["company_id"] = self.company_id
         await self.db[COLL_FISCAL_EVIDENCE].insert_one(evidence)
+        quadri = await self._estrai_quadri(document_id, classification["document_type"])
 
         # Documenti resta l'unico archivio di ingresso e l'unico proprietario
         # del payload. Il registro fiscale conserva solo metadati/versioni.
@@ -366,7 +378,28 @@ class FiscalDocumentIngestionService:
             "sha256": digest,
             "pages": len(pages),
             "classification": classification,
+            "quadri": quadri,
         }
+
+    async def _estrai_quadri(self, document_id: str, document_type: str | None = None) -> dict[str, Any] | None:
+        """Dopo le pagine, i righi delle dichiarazioni (VL/VX, RN, IR, ISA).
+
+        Solo per i tipi che li portano; un guasto del lettore non ferma
+        l'acquisizione, ma resta scritto con il suo tipo.
+        """
+        if document_type is None:
+            document = await self.db[COLL_FISCAL_DOCUMENTS].find_one(
+                {"company_id": self.company_id, "id": document_id}, {"_id": 0, "document_type": 1},
+            )
+            document_type = (document or {}).get("document_type")
+        if document_type not in TIPI_CON_QUADRI:
+            return None
+        try:
+            esito = await estrai_quadri_documento(self.db, document_id, company_id=self.company_id)
+        except Exception as exc:  # noqa: BLE001 - l'acquisizione non si ferma
+            logger.warning("Quadri non letti su %s: %s: %s", document_id, type(exc).__name__, exc)
+            return {"esito": "errore", "errore": f"{type(exc).__name__}: {exc}"}
+        return esito.get("quadri")
 
     async def mark_source_deleted(self, drive_file_id: str, deleted_at: str | None = None) -> int:
         result = await self.db[COLL_FISCAL_DOCUMENTS].update_many(
