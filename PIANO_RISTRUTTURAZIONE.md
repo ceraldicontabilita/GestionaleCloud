@@ -5,13 +5,45 @@
 - Baseline iniziale dell'audit: `8cf52bd269d8d1facb478e4a585fa8b01a5ec3ff`.
 - Baseline della bonifica misurata: `e283400164c0b9fb88ece13eb401fcde9cba1c42`.
 - Avanzamenti concorrenti preservati: `31943965f382018d87047637e16fe815d1b93318` (public_api) e `4ad3ffa4cbfd5612e6a4b179d583a419582f2c09` (report/batch).
-- Ultima tranche conclusa: RST-PIANO-RIALLINEA (30/09/2026, registro §8 riallineato alle modifiche entrate su main dal 28/09; nessun dato toccato). Ultima tranche di codice: [PR #932](https://github.com/ceraldicontabilita/GestionaleCloud/pull/932), F24 con periodo INPS unito e importi senza virgola.
-- Ultimo commit di `main`: **`6b69a7f`** (#932). Ultimo commit **servito e verificato** da `/api/health` e `/lotti/api/health` il 30/09/2026 alle 04:19 UTC: **`0deabb84`** (#931); `6b69a7f` e il commit `7fb1d8c` sono in deploy e vanno riverificati.
-- Prova di produzione: [CI 35706223965](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35706223965) e [Produzione/E2E 35706224041](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/35706224041) verdi; `/lotti/api/health` su `gestionalecloud.onrender.com` e `impresasemplice.online` ha restituito il commit di merge esatto. La revisione UX di tutte le pagine resta aperta in RST-0906.
+- Ultima tranche pubblicata: [PR #968](https://github.com/ceraldicontabilita/GestionaleCloud/pull/968), ricostruzione dei verbali e collegamento unico alla fattura. Le correzioni funzionali dell'audit successivo sono locali: pubblicazione bloccata da GitHub HTTP 403 su push e creazione PR.
+- Ultimo commit di `main` e **servito e verificato** il 30/09/2026 alle 17:54 UTC: **`0187a45fc12e398c80bd9a26a34fc387ae94570f`** (#968), health ERP, HR, Lotti e Menu. Questo commit non contiene le nuove correzioni locali.
+- Prova del commit #968: [CI 36749992434](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/36749992434) e [Produzione/E2E 36749992253](https://github.com/ceraldicontabilita/GestionaleCloud/actions/runs/36749992253) verdi, lette tramite API GitHub. Le nuove patch locali non hanno una CI remota né un deploy. La revisione UX di tutte le pagine resta aperta in RST-0906.
 - Registro della prova: [PR #646](https://github.com/ceraldicontabilita/GestionaleCloud/pull/646), merge `7cba24cba1a287a47350e603d9ee2ce6a30b8163`, CI 35683619681 e Produzione manuale 35683635453 verdi; `/lotti/api/health` ha confermato anche questo commit documentale.
 - **Stato complessivo: IN CORSO.** La fusione ERP, HR, Lotti e Menu non è completata. La bonifica pubblicata non certifica ogni funzione e ogni dato contabile.
 - **Programma approvato il 23/09/2026:** Drive documentale canonico, integrazione Minisito fiscale, riconciliazione F24 ↔ banca e backlog audit v3 in §7-bis (ordine in §7-bis H). Ogni PR si porta su `main` e si pubblica (Render pubblica solo da lì), un merge alla volta, a CI verde: il lavoro non è consegnato finché non è su `main` e live (CLAUDE.md, «Metodo»).
 - **Priorità operativa precedente:** verificare il ripristino delle ricette su un caso reale autorizzato e la coerenza dei riferimenti; completare le foto mancanti mediante caricamento sulla ricetta identificata per ID, senza sovrascrivere immagini manuali o inferire identità dal solo nome. Qualificare i residui strutturali dell'adattatore dati compatibile Mongo in memoria prima di riscriverli in forma canonica Supabase.
+
+## Audit funzionale del 30/09/2026 — stato per capitolo del prompt
+
+Produzione in sola lettura; scritture E2E su fixture isolate. I test del
+codice non certificano i dati privati o i backfill. Le baseline non
+rimisurate restano tali. Nessuna PR nuova creata: GitHub rifiuta le scritture.
+
+- 0 — PARZIALE: metodo e separazione degli ambienti applicati; consegna remota bloccata (HTTP 403).
+- 1 — PARZIALE: quattro health sul commit #968; log e metriche Render delle 24 ore non disponibili.
+- 2 — PARZIALE: test documentali; pagina Drive non completamente collaudabile senza deposito relazionale e fonti esterne isolate; ingest live non eseguito.
+- 3 — PARZIALE: RPC misura 1.539 fatture, 13 pre-2026 e ID misti; nessun backfill o riallineamento fornitori live.
+- 4 — PARZIALE: suite corrispettivi/POS; ricostruzione delle giornate reali non eseguita.
+- 5 — PARZIALE: E2E Cassa/Banca/Provvisori e pagamento misto isolati; riscontri privati live non certificati.
+- 6 — PARZIALE: 1.801 scritture, 1.786 attive, 40 non quadrate (848,25 € di differenze assolute, non saldo da rettificare); chiavi idempotenti presenti e senza duplicati. Codici 6001/6002 corretti; documenti, protocolli e competenza richiedono approfondimento.
+- 7 — NON_VERIFICABILE: classificazioni IVA e confronti fiscali richiedono letture riservate e decisioni del commercialista; nessuna aliquota inventata.
+- 8 — PARZIALE: 337 F24 nel runtime; campi fiscali annidati, non usare conteggi su chiavi top-level inesistenti; ingest/versamenti reali non eseguiti.
+- 9 — PARZIALE: fix permessi, revoca sessioni e GET turni-config in sola lettura; E2E login e turno gestione↔portale isolato; TFR runtime 1.239 righe, deposito HR e bonifici orfani non rimisurati.
+- 10 — PARZIALE: base #968 e suite verbali; ricostruzione o import PartenoPay live non eseguiti.
+- 11 — PARZIALE: router Mutui riservato admin, test di autorizzazione e rate; quadratura di ogni mutuo reale non certificata.
+- 12 — PARZIALE: recupero ricevute Lotti e secondo import idempotente, revoca HR anche sulle scritture ordinarie, dose di riferimento 1 kg; backlog e ripristino reale non rimisurati.
+- 13 — PARZIALE: carta sul catalogo canonico e E2E admin↔clienti; 108/323 prodotti pubblici con allergeni, 215 da distinguere dalle esclusioni approvate; Qromo continua a sostituire le modifiche ai propri prodotti.
+- 14 — NON_ESEGUITO: convenzioni B&B live e versamenti partner non collaudati.
+- 15 — NON_ESEGUITO: invio email e pacchetto reale al commercialista richiedono destinatario confermato e dati riservati.
+- 16 — NON_ESEGUITO: protocollo personale live non collaudato; nessun documento personale nel report.
+- 17 — PARZIALE: browser pubblico live a 360/390/768 e flussi HR/Menu isolati; revisione visiva di tutte le schermate private ancora aperta.
+- 18 — PARZIALE: guardie Mutui, HR e Lotti con regressioni; negazione anonima live Mutui/F24 verificata; non è un audit esaustivo di tutte le route.
+- 19 — PARZIALE: audit AST di 856 file, 1.059 route ERP rilevate e zero errori di parsing; nessuna rimozione di moduli basata sul solo censimento.
+- 20 — PARZIALE: latenze health ERP 0,38 s e Menu 0,82 s nel campione; nessuna misura delle 24 ore o certificazione di RAM/p95.
+- 21 — PARZIALE: 6.439 backend e 776 frontend passati, 74 schermate ERP isolate; 337 skip (332 HTTP senza backend dedicato, 4 PDF mancanti, 1 parametro vuoto); CI delle nuove patch non avviabile senza push.
+- 22 — PARZIALE: aggiornati conteggi e stato di rilascio in CLAUDE/PIANO; nessuna cronologia precedente dichiarata come nuova prova.
+- 23 — NON_VERIFICABILE: decisioni contabili, fiscali e documenti campione restano al titolare/consulente; nessuna scelta implicita.
+- 24 — PARZIALE: priorità Lotti/HR/Menu applicata; i merge sequenziali e la verifica deploy delle nuove patch restano bloccati dai permessi GitHub.
 
 ## 1. Regole di avanzamento e pubblicazione
 
