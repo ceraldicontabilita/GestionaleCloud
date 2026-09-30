@@ -50,6 +50,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { ePagata } from '../utils/statoFattura';
+import MagazzinoFornitore from '../components/MagazzinoFornitore';
+import MetodoDalFornitore from '../components/MetodoDalFornitore';
 
 // Hook per debounce
 function useDebounce(value, delay) {
@@ -138,6 +140,19 @@ const annoUltimaFattura = s => {
   return Number.isFinite(anno) ? anno : null;
 };
 
+// Il salvataggio generico non porta lo stato «nel magazzino / fuori»: si cambia solo dal
+// controllo dedicato (anteprima, motivo, storico).
+const datiScheda = ({
+  esclude_magazzino,
+  magazzino_origine,
+  magazzino_motivo,
+  magazzino_motivo_testo,
+  magazzino_deciso_il,
+  magazzino_deciso_da,
+  storico_magazzino,
+  ...resto
+}) => resto;
+
 const emptySupplier = {
   ragione_sociale: '',
   partita_iva: '',
@@ -154,7 +169,6 @@ const emptySupplier = {
   iban_lista: [], // Lista di IBAN aggiuntivi estratti dalle fatture
   metodo_pagamento: 'banca',
   giorni_pagamento: 30,
-  esclude_magazzino: false,
   esclude_cassa_banca: false,
   cessato: false,
   note: '',
@@ -758,6 +772,42 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     min={0}
                   />
                 </div>
+                {!isNew && (
+                  <div>
+                    <label
+                      htmlFor="metodo-valido-dal"
+                      style={{
+                        display: 'block',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: COLORS.gray[700],
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Metodo valido dal
+                    </label>
+                    <input
+                      id="metodo-valido-dal"
+                      type="date"
+                      value={String(form.metodo_pagamento_dal || '').slice(0, 10)}
+                      onChange={e => handleChange('metodo_pagamento_dal', e.target.value)}
+                      data-testid="metodo-valido-dal"
+                      style={{
+                        width: '100%',
+                        minHeight: 44,
+                        padding: '10px 14px',
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: BORDER_RADIUS.md,
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <div style={{ marginTop: 4, fontSize: 11.5, color: COLORS.textMuted }}>
+                      Le fatture da questa data in poi seguono il metodo. Dopo il salvataggio, dalla
+                      scheda si applica alle fatture già importate.
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* IBAN e lista IBAN aggiuntivi */}
@@ -834,9 +884,8 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 )}
               </div>
 
-              {/* Nota: il toggle "Esclude dal Magazzino" è ora un badge cliccabile
-                direttamente sulla card del fornitore (accanto al metodo di pagamento).
-                Basta cliccare su "📦 In magazzino" / "🚫 Escluso magazzino" per cambiare. */}
+              {/* Nel magazzino / fuori dal magazzino non si cambia da questo modulo: il
+                controllo a un tocco sta sulla card (anteprima, motivo, storico). */}
 
               <div
                 style={{
@@ -1235,7 +1284,8 @@ function SupplierCard({
   onShowFatturato,
   onToggleCessato,
   onChangeMetodo,
-  onToggleMagazzino,
+  onMagazzinoFatto,
+  onMetodoDal,
 }) {
   const nome = supplier.ragione_sociale || supplier.denominazione || supplier.nome || 'Fornitore';
   const piva = supplier.partita_iva || supplier.piva || supplier.vat_number || 'Non disponibile';
@@ -1388,9 +1438,22 @@ function SupplierCard({
           <span style={labelStyle}>Impostazioni operative</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <MetodoBadge supplier={supplier} onChangeMetodo={onChangeMetodo} />
-            <span style={{ ...valueStyle, fontSize: 12 }}>
-              {supplier.giorni_pagamento || 30} giorni
-            </span>
+            {supplier.metodo_pagamento_dal && (
+              <span style={{ ...valueStyle, fontSize: 12 }} data-testid="metodo-dal-testo">
+                dal {formatDateIT(supplier.metodo_pagamento_dal)}
+              </span>
+            )}
+            {metodoCanonico(supplier) === 'cassa' && supplier.metodo_pagamento_dal && (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid={`btn-applica-metodo-dal-${idFornitore(supplier)}`}
+                onClick={() => onMetodoDal(supplier)}
+                style={{ minHeight: 40, fontSize: 11.5 }}
+              >
+                Applica alle fatture
+              </Button>
+            )}
             {anno && (
               <Badge variant={anno >= selectedYear ? 'success' : 'neutral'}>Ultima {anno}</Badge>
             )}
@@ -1408,14 +1471,12 @@ function SupplierCard({
           marginTop: 6,
         }}
       >
-        <Button
-          variant={supplier.esclude_magazzino ? 'warning' : 'success'}
-          size="sm"
-          onClick={() => onToggleMagazzino(idFornitore(supplier), !supplier.esclude_magazzino)}
-          style={{ padding: isMobile ? '4px 7px' : '5px 9px', fontSize: isMobile ? 10.5 : 11 }}
-        >
-          {supplier.esclude_magazzino ? '🚫 Escluso magazzino' : '📦 In magazzino'}
-        </Button>
+        <MagazzinoFornitore
+          fornitore={supplier}
+          id={idFornitore(supplier)}
+          onFatto={vista => onMagazzinoFatto(idFornitore(supplier), vista)}
+          compatto={isMobile}
+        />
         <AzioniFornitore
           supplier={supplier}
           selectedYear={selectedYear}
@@ -1454,6 +1515,9 @@ export default function Fornitori() {
   const [filterSenzaMetodo, setFilterSenzaMetodo] = useState(false);
   // I fornitori cessati sono nascosti di default: questo chip li fa vedere
   const [mostraCessati, setMostraCessati] = useState(false);
+  // Magazzino: tutti | inclusi | esclusi
+  const [filtroMagazzino, setFiltroMagazzino] = useState('tutti');
+  const [metodoDalFornitore, setMetodoDalFornitore] = useState(null);
   // Fattura aperta in visualizzazione (ModalFattura) dall'estratto
   const [fatturaView, setFatturaView] = useState(null);
   // PR #5e850c8: filtri avanzati backend
@@ -1565,6 +1629,8 @@ export default function Fornitori() {
       if (!s.metodo_pagamento) return false;
       if (metodoCanonico(s) !== filterMetodo) return false;
     }
+    if (filtroMagazzino === 'inclusi' && s.esclude_magazzino) return false;
+    if (filtroMagazzino === 'esclusi' && !s.esclude_magazzino) return false;
     if (filterIncomplete && !isSupplierIncomplete(s)) return false;
     if (filterSenzaMetodo) {
       // 'misto' è un metodo scelto esplicitamente (uno dei 4 di METODI_PAGAMENTO),
@@ -1583,7 +1649,7 @@ export default function Fornitori() {
       let response;
       if (currentSupplier?.id) {
         // UPDATE nel database
-        response = await api.put(`/api/suppliers/${currentSupplier.id}`, formData);
+        response = await api.put(`/api/suppliers/${currentSupplier.id}`, datiScheda(formData));
       } else {
         // INSERT nel database
         response = await api.post('/api/suppliers', {
@@ -1592,12 +1658,6 @@ export default function Fornitori() {
         });
       }
 
-      // Mostra feedback se sono stati rimossi prodotti dal magazzino
-      if (response.data?.prodotti_rimossi_magazzino > 0) {
-        toast.success('Fornitore salvato', {
-          description: `${response.data.prodotti_rimossi_magazzino} prodotti rimossi automaticamente dal magazzino (fornitore escluso).`,
-        });
-      }
 
       setModalOpen(false);
       if (currentSupplier?.id) {
@@ -1643,30 +1703,16 @@ export default function Fornitori() {
     }
   };
 
-  // Toggle rapido "esclude_magazzino" dalla card (evita apertura modifica)
-  const handleToggleEsclude = async (supplierId, nuovoValore) => {
-    const ok = await confirm({
-      title: nuovoValore ? 'Escludi dal magazzino' : 'Riattiva nel magazzino',
-      message: 'Confermi la modifica del collegamento del fornitore al magazzino?',
-      confirmText: 'Salva',
-      cancelText: 'Annulla',
-    });
-    if (ok === false) return;
-    try {
-      const response = await api.put(`/api/suppliers/${supplierId}`, {
-        esclude_magazzino: nuovoValore,
-      });
-      const confirmed = response.data?.supplier || { esclude_magazzino: nuovoValore };
-      setSuppliers(prev =>
-        prev.map(s =>
-          idFornitore(s) === supplierId ? { ...s, ...confirmed } : s
-        )
-      );
-    } catch (error) {
-      toast.error(
-        'Errore aggiornamento magazzino: ' + (error.response?.data?.detail || error.message)
-      );
-    }
+  // Dopo una scelta «nel magazzino / fuori» (anteprima + motivo + conferma, fatta dentro
+  // MagazzinoFornitore) la lista prende lo stato nuovo restituito dal backend.
+  const handleMagazzinoFatto = (supplierId, vista) => {
+    if (!vista) return;
+    setSuppliers(prev => prev.map(s => (idFornitore(s) === supplierId ? { ...s, ...vista } : s)));
+    setEstrattoModal(prev =>
+      prev.fornitore && idFornitore(prev.fornitore) === supplierId
+        ? { ...prev, fornitore: { ...prev.fornitore, ...vista } }
+        : prev
+    );
   };
 
   // Toggle "cessato" dal menù ⋯: il fornitore sparisce dalla lista (o
@@ -1973,6 +2019,7 @@ export default function Fornitori() {
     withInvoices: suppliers.filter(s => (s.fatture_count || 0) > 0).length,
     incomplete: suppliers.filter(s => isSupplierIncomplete(s)).length,
     cash: suppliers.filter(s => canaleCanonico(s.metodo_pagamento) === 'cassa').length,
+    fuoriMagazzino: suppliers.filter(s => s.esclude_magazzino).length,
   };
 
   return (
@@ -2018,6 +2065,7 @@ export default function Fornitori() {
               tono: stats.incomplete > 0 ? 'attenzione' : 'ok',
             },
             { etichetta: 'Pagamento cassa', valore: stats.cash },
+            { etichetta: 'Fuori dal magazzino', valore: stats.fuoriMagazzino },
           ]}
           style={{ marginBottom: 14 }}
         />
@@ -2096,6 +2144,40 @@ export default function Fornitori() {
               <span style={{ fontSize: 16 }}>{cessatiCount}</span>
             </Badge>
           )}
+          <div
+            role="radiogroup"
+            aria-label="Filtro magazzino"
+            data-testid="filtro-magazzino"
+            style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}
+          >
+            {[
+              ['tutti', 'Tutti', stats.total],
+              ['inclusi', 'Nel magazzino', stats.total - stats.fuoriMagazzino],
+              ['esclusi', 'Fuori dal magazzino', stats.fuoriMagazzino],
+            ].map(([valore, etichetta, n]) => (
+              <button
+                key={valore}
+                type="button"
+                role="radio"
+                aria-checked={filtroMagazzino === valore}
+                data-testid={`filtro-magazzino-${valore}`}
+                onClick={() => setFiltroMagazzino(valore)}
+                style={{
+                  minHeight: 44,
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  borderRadius: BORDER_RADIUS.md,
+                  border: `1px solid ${filtroMagazzino === valore ? COLORS.primary : COLORS.border}`,
+                  background: filtroMagazzino === valore ? COLORS.primary : COLORS.card,
+                  color: filtroMagazzino === valore ? '#fff' : COLORS.text,
+                }}
+              >
+                {etichetta} · {n}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Tabs */}
@@ -2412,7 +2494,7 @@ export default function Fornitori() {
               // la pagina si azzera SOLO cambiando i filtri: correggere o
               // eliminare un fornitore dalla seconda pagina non riporta
               // più alla prima (richiesta utente 18/07)
-              resetKey={`${hs.search}|${hs.metodo}|${filterIncomplete}|${filterSenzaMetodo}|${filterAnzianita}|${giorniNuovo}|${mostraCessati}`}
+              resetKey={`${hs.search}|${hs.metodo}|${filtroMagazzino}|${filterIncomplete}|${filterSenzaMetodo}|${filterAnzianita}|${giorniNuovo}|${mostraCessati}`}
               chiave={(s, i) => idFornitore(s) || i}
               renderCard={s => (
                 <SupplierCard
@@ -2429,7 +2511,8 @@ export default function Fornitori() {
                   onShowFatturato={handleShowFatturato}
                   onToggleCessato={handleToggleCessato}
                   onChangeMetodo={handleChangeMetodo}
-                  onToggleMagazzino={handleToggleEsclude}
+                  onMagazzinoFatto={handleMagazzinoFatto}
+                  onMetodoDal={setMetodoDalFornitore}
                 />
               )}
               colonne={[
@@ -2612,25 +2695,14 @@ export default function Fornitori() {
                   label: 'Magazzino',
                   align: 'center',
                   ruoloCard: 'dettaglio',
-                  iconaCard: ' ', // il bottone si spiega da solo: niente prefisso "Magazzino:"
+                  iconaCard: ' ',
                   render: s => (
-                    <Button
-                      variant={s.esclude_magazzino ? 'warning' : 'success'}
-                      size="sm"
-                      onClick={async e => {
-                        e.stopPropagation();
-                        await handleToggleEsclude(idFornitore(s), !s.esclude_magazzino);
-                      }}
-                      data-testid={`btn-toggle-esclude-magazzino-${s.id}`}
-                      title={
-                        s.esclude_magazzino
-                          ? 'Click: RIMETTI nel magazzino (le fatture alimenteranno il dizionario articoli)'
-                          : 'Click: ESCLUDI dal magazzino (le fatture NON creano articoli)'
-                      }
-                      style={{ padding: '4px 10px', fontSize: 11 }}
-                    >
-                      {s.esclude_magazzino ? '🚫 Escluso magazzino' : '📦 In magazzino'}
-                    </Button>
+                    <MagazzinoFornitore
+                      fornitore={s}
+                      id={idFornitore(s)}
+                      onFatto={vista => handleMagazzinoFatto(idFornitore(s), vista)}
+                      compatto
+                    />
                   ),
                 },
                 {
@@ -2671,6 +2743,15 @@ export default function Fornitori() {
         onSave={handleSave}
         saving={saving}
       />
+
+      {metodoDalFornitore && (
+        <MetodoDalFornitore
+          fornitore={metodoDalFornitore}
+          id={idFornitore(metodoDalFornitore)}
+          onChiudi={() => setMetodoDalFornitore(null)}
+          onFatto={reloadData}
+        />
+      )}
 
       {/* Visore fattura in-page, aperto dal bottone 👁 Vedi dell'estratto */}
       {fatturaView && (
@@ -2968,33 +3049,19 @@ export default function Fornitori() {
                       {estrattoModal.fornitore?.partita_iva}
                     </div>
                   </div>
-                  {/* Toggle magazzino anche da dentro l'estratto (richiesta
-                      utente 10/07): stesso comportamento del badge in lista */}
-                  <Button
-                    variant={estrattoModal.fornitore?.esclude_magazzino ? 'warning' : 'success'}
-                    size="sm"
-                    data-testid="btn-toggle-magazzino-estratto"
-                    onClick={async () => {
-                      const f = estrattoModal.fornitore;
-                      if (!f) return;
-                      const nuovo = !f.esclude_magazzino;
-                      await handleToggleEsclude(idFornitore(f), nuovo);
-                      setEstrattoModal(prev => ({
-                        ...prev,
-                        fornitore: { ...prev.fornitore, esclude_magazzino: nuovo },
-                      }));
-                    }}
-                    title={
-                      estrattoModal.fornitore?.esclude_magazzino
-                        ? 'Click: RIMETTI nel magazzino (le fatture alimenteranno il dizionario articoli)'
-                        : 'Click: ESCLUDI dal magazzino (le fatture NON creano articoli)'
-                    }
-                    style={{ marginLeft: 'auto', marginRight: 12 }}
-                  >
-                    {estrattoModal.fornitore?.esclude_magazzino
-                      ? '🚫 Escluso magazzino'
-                      : '📦 In magazzino'}
-                  </Button>
+                  {/* Stesso controllo della lista, anche da dentro l'estratto */}
+                  {estrattoModal.fornitore && (
+                    <div style={{ marginLeft: 'auto', marginRight: 12 }}>
+                      <MagazzinoFornitore
+                        fornitore={estrattoModal.fornitore}
+                        id={idFornitore(estrattoModal.fornitore)}
+                        onFatto={vista =>
+                          handleMagazzinoFatto(idFornitore(estrattoModal.fornitore), vista)
+                        }
+                        compatto
+                      />
+                    </div>
+                  )}
                   <Button
                     variant="ghost"
                     onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}

@@ -546,18 +546,16 @@ async def approva_fornitore(nome: str = Query(...), includi: bool = Query(...),
     await _salva_decisione(nome_norm, escluso=not includi,
                            piva=piva or (existing or {}).get("piva") or "")
 
+    await _riporta_all_anagrafica(
+        nome_norm, piva or (existing or {}).get("piva") or "", not includi)
     stato = "attivo" if includi else "escluso"
     return {"success": True, "nome": nome_norm or nome, "stato": stato}
 
 
-@router.post("/escludi")
-async def toggle_esclusione_fornitore(nome: str = Query(...), escludi: bool = Query(...), _admin=Depends(require_admin)):
-    """Attiva/disattiva esclusione fornitore — cerca per nome normalizzato (senza virgolette, case-insensitive)"""
-    # Normalizza il nome: rimuovi virgolette esterne e spazi
+async def _trova_record_fornitore(nome: str):
+    """Il record `fornitori` di Lotti per nome: esatto, con virgolette, normalizzato, case-insensitive."""
     nome_norm = nome.strip().strip('"').strip("'").strip()
-
-    # Prima prova match esatto, poi con virgolette, poi case-insensitive
-    existing = (
+    return nome_norm, (
         await db.fornitori.find_one({"nome": nome})
         or await db.fornitori.find_one({"nome": f'"{nome_norm}"'})
         or await db.fornitori.find_one({"nome": nome_norm})
@@ -566,34 +564,61 @@ async def toggle_esclusione_fornitore(nome: str = Query(...), escludi: bool = Qu
         )
     )
 
-    if existing:
-        await db.fornitori.update_one(
-            {"_id": existing["_id"]},
-            {
-                "$set": {
-                    "escluso": escludi,
-                    "tipo_fornitura": "escluso" if escludi else "completo",
-                    "in_attesa": False,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }
-            },
-        )
-    else:
-        # Crea nuovo record con nome normalizzato
-        await db.fornitori.insert_one(
-            {
-                "nome": nome_norm,
-                "escluso": escludi,
-                "tipo_fornitura": "escluso" if escludi else "completo",
-                "in_attesa": False,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-        )
 
+async def imposta_esclusione(nome: str, escludi: bool, piva: str = "") -> dict:
+    """UNICO punto che scrive l'esclusione di un fornitore in Lotti.
+
+    Aggiorna il record `fornitori` (letto dall'import e dalle liste) E la
+    decisione in `fornitori_decisioni` (che la lista rilegge sempre): scrivere
+    solo il primo lasciava una decisione vecchia a riscrivere il flag. Includere
+    non toglie un `solo_magazzino` scelto prima: lo lascia com'e'.
+
+    La chiama sia l'endpoint di Lotti sia il gestionale (la scelta canonica sta
+    nell'anagrafica ERP e qui arriva come proiezione): nessuno dei due scrive
+    piu' `escluso` per conto suo."""
+    nome_norm, existing = await _trova_record_fornitore(nome)
+    tipo_prec = (existing or {}).get("tipo_fornitura")
+    tipo = "escluso" if escludi else (tipo_prec if tipo_prec == "solo_magazzino" else "completo")
+    ora = datetime.now(timezone.utc).isoformat()
+    campi = {"escluso": escludi, "tipo_fornitura": tipo, "in_attesa": False, "updated_at": ora}
+    if piva and not (existing or {}).get("piva"):
+        campi["piva"] = piva.strip()
+    if existing:
+        await db.fornitori.update_one({"_id": existing["_id"]}, {"$set": campi})
+    else:
+        await db.fornitori.insert_one({"id": str(uuid.uuid4()), "nome": nome_norm, **campi})
+    await _salva_decisione(
+        nome_norm, escluso=escludi,
+        piva=piva or (existing or {}).get("piva") or "", tipo_fornitura=tipo,
+    )
+    return {"nome_trovato": existing["nome"] if existing else nome_norm, "escluso": escludi,
+            "tipo_fornitura": tipo}
+
+
+async def _riporta_all_anagrafica(nome: str, piva: str, escluso: bool) -> None:
+    """La scelta fatta dentro Lotti arriva anche nell'anagrafica ERP (dove sta
+    la decisione canonica). Non blocca mai la risposta di Lotti."""
+    try:
+        from app.services.magazzino_fornitore import registra_decisione_da_lotti
+
+        await registra_decisione_da_lotti(nome, piva, escluso)
+    except Exception as exc:  # noqa: BLE001 - il motivo si scrive
+        logging.getLogger(__name__).warning(
+            "[fornitori] decisione su %s non riportata nell'anagrafica ERP: %s: %s",
+            nome, type(exc).__name__, exc)
+
+
+@router.post("/escludi")
+async def toggle_esclusione_fornitore(nome: str = Query(...), escludi: bool = Query(...), _admin=Depends(require_admin)):
+    """Attiva/disattiva esclusione fornitore — cerca per nome normalizzato (senza virgolette, case-insensitive)"""
+    esito = await imposta_esclusione(nome, escludi)
+    _CACHE_FORNITORI["dati"] = None
+    _, existing = await _trova_record_fornitore(nome)
+    await _riporta_all_anagrafica(nome, (existing or {}).get("piva") or "", escludi)
     return {
         "success": True,
         "escluso": escludi,
-        "nome_trovato": existing["nome"] if existing else nome_norm,
+        "nome_trovato": esito["nome_trovato"],
     }
 
 
@@ -629,6 +654,8 @@ async def set_tipo_fornitura(nome: str = Query(...), tipo: str = Query(...), _ad
     await _salva_decisione(nome_norm, escluso=(tipo == "escluso"),
                            piva=(existing or {}).get("piva") or "",
                            tipo_fornitura=tipo)
+    await _riporta_all_anagrafica(
+        nome_norm, (existing or {}).get("piva") or "", tipo == "escluso")
     return {
         "success": True,
         "nome_trovato": existing["nome"] if existing else nome_norm,
@@ -718,6 +745,8 @@ async def auto_classifica_fornitori(_admin=Depends(require_admin)):
                     }
                 },
             )
+            await _salva_decisione(nome, escluso=False, piva=f.get("piva") or "")
+            await _riporta_all_anagrafica(nome, f.get("piva") or "", False)
             inclusi += 1
             dettaglio.append({"nome": nome, "stato": "incluso_horeca"})
         else:
@@ -736,6 +765,8 @@ async def auto_classifica_fornitori(_admin=Depends(require_admin)):
                         }
                     },
                 )
+                await _salva_decisione(nome, escluso=True, piva=f.get("piva") or "")
+                await _riporta_all_anagrafica(nome, f.get("piva") or "", True)
                 esclusi += 1
                 dettaglio.append({"nome": nome, "stato": "escluso_non_horeca"})
             else:
