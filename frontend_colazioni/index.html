@@ -69,6 +69,7 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .stepper button{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:18px;line-height:1;cursor:pointer}
 .sticky-bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:6;box-shadow:0 -4px 14px rgba(0,0,0,.08)}
 .hero{border-radius:16px;color:#fff;padding:34px 20px;text-align:center;background:linear-gradient(135deg,#7a2e1d,#c8873a);background-size:cover;background-position:center;margin-bottom:12px;text-shadow:0 1px 6px rgba(0,0,0,.45)}
+.hero.img{padding:0;aspect-ratio:3/1;min-height:110px;background-size:cover;background-position:center;background-repeat:no-repeat}
 .hero h1{margin:0;font-size:26px}.hero p{margin:8px 0 0;font-size:15px}
 .prod{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer;align-items:center}
 .pimg{width:64px;height:64px;border-radius:12px;object-fit:cover;background:var(--line);flex:none}
@@ -141,10 +142,10 @@ async function render(){
  $("#back").hidden=h==="#/"||h==="#"||["ospite","hotel","invito","recupero"].includes(p[1])||(!!sess&&sess.r==="alb"&&p[1]==="albergatore");
  app.classList.toggle("wide",p[1]==="titolare"&&!!sess);
  if(p[1]==="ospite")return ospite(p[2]);
- if(p[1]==="hotel")return hotelLogin(p[2]);
+ if(p[1]==="hotel"){if(p[3]&&sess&&sess.r==="alb"&&sess.c===p[2])return alb(p[3]);return hotelLogin(p[2])}
  if(p[1]==="invito")return invito(p[2]);
  if(p[1]==="recupero")return recupero(p[2]);
- if(p[1]==="albergatore")return sess&&sess.r==="alb"?alb(p[2]||"home"):(($("#ttl").textContent="☕ Colazioni B&B"),void(app.innerHTML=`<div class="card">Per entrare usa il <b>link personale</b> che ti ha inviato il bar.</div>`));
+ if(p[1]==="albergatore")return sess&&sess.r==="alb"?(sess.c&&history.replaceState(null,"","#/hotel/"+sess.c+"/"+(p[2]||"home")),alb(p[2]||"home")):(($("#ttl").textContent="☕ Colazioni B&B"),void(app.innerHTML=`<div class="card">Per entrare usa il <b>link personale</b> che ti ha inviato il bar.</div>`));
  if(p[1]==="titolare")return sess&&sess.r==="tit"?tit(p[2]||"cruscotto",p[3]):loginTit();
  home()}
 function qr(el,text,size=200){el.innerHTML="";if(window.QRCode)new QRCode(el,{text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});else el.textContent=text}
@@ -169,7 +170,7 @@ function stampa(items){
  setTimeout(()=>{print()},250)}
 const cardVoucher=(v,menu,struttura)=>({sopra:struttura,titolo:camNome(v),riga:(v.camera?ospTxt(v.ospiti||1):`${v.qta} colazion${v.qta>1?"i":"e"}`)+` · ${dRange(v)}`,qr:v.id,codice:v.id,sotto:menu||"Mostra questo QR al bar"});
 
-const hero=(nome,sfondo,msg)=>`<div class="hero" style="${sfondo?`background-image:linear-gradient(rgba(0,0,0,.30),rgba(0,0,0,.60)),url('${esc(sfondo)}')`:""}"><h1>${esc(nome)}</h1>${msg?`<p>${esc(msg)}</p>`:""}</div>`;
+const hero=(nome,sfondo,msg)=>sfondo?`<div class="hero img" role="img" aria-label="${esc(nome)}" style="background-image:url('${esc(sfondo)}')"></div>`:`<div class="hero"><h1>${esc(nome)}</h1>${msg?`<p>${esc(msg)}</p>`:""}</div>`;
 function home(){
  $("#ttl").textContent="☕ Colazioni B&B";
  app.innerHTML=`<div class="hero"><h1>Colazioni per i B&B</h1><p>Bar Pasticceria Ceraldi · Napoli</p></div>
@@ -262,7 +263,9 @@ function pfHtml(s){
  return `<div class="card"><h3>La tua schermata di benvenuto</h3><p class="mute">È quella che vedi tu quando entri e che vedono i tuoi ospiti quando aprono il link della colazione.</p>
  <div id="pf_h"></div>
  <label>Messaggio di benvenuto (facoltativo)</label><input id="pf_b" maxlength="200" value="${esc(s.benvenuto)}" oninput="pfPrev()" placeholder="es. Buongiorno! La colazione vi aspetta da Ceraldi">
- <label>Immagine di sfondo</label><input id="pf_f" type="file" accept="image/*" onchange="pfFile(this)"> <button class="btn sm sec" onclick="PF.sfondo='';PF.cambiato=true;pfPrev()">Rimuovi immagine</button>
+ <label>Immagine di sfondo</label><input id="pf_f" type="file" accept="image/*" onchange="pfFile(this)"> <button class="btn sm sec" onclick="PF.sfondo='';PF.img=null;PF.cambiato=true;pfPrev();pfPos()">Rimuovi immagine</button>
+ <div class="mute" style="margin:4px 0 8px">Con un'immagine il testo di benvenuto non compare: l'immagine parla da sola. Formato consigliato: largo (3 a 1).</div>
+ <div id="pf_pos" hidden><label>Sposta l'immagine: sinistra ⟷ destra</label><input type="range" min="0" max="100" value="50" id="pf_px" oninput="PF.px=+this.value;pfRitaglia()"><label>Sposta l'immagine: alto ⟷ basso</label><input type="range" min="0" max="100" value="50" id="pf_py" oninput="PF.py=+this.value;pfRitaglia()"><button class="btn sm sec" onclick="PF.px=50;PF.py=50;$('#pf_px').value=50;$('#pf_py').value=50;pfRitaglia()">Centra</button></div>
  <label>Indirizzo</label><input id="pf_a" value="${esc(s.indirizzo)}"><label>Telefono</label><input id="pf_t" type="tel" value="${esc(s.telefono)}">
  <button class="btn" onclick="pfSalva()">Salva</button></div>
  <div class="card"><h3>🧾 Dati per la fattura</h3>${fiscaliForm(ALB.fiscali)}<button class="btn" onclick="pfFiscali()">Salva i dati</button></div>
@@ -272,15 +275,23 @@ function pfHtml(s){
  <button class="btn sec" onclick="recuperoNuovo()">Crea un nuovo codice di recupero</button></div>
  <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(link)}</p>
  <button class="btn sm sec" onclick="navigator.clipboard.writeText('${esc(link)}').then(()=>toast('Link copiato'))">Copia link</button></div>`}
-function pfPrev(){$("#pf_h").innerHTML=hero(ALB.struttura.nome,PF.sfondo,$("#pf_b").value)}
+function pfPrev(){const e=$("#pf_h");if(e)e.innerHTML=hero(ALB.struttura.nome,PF.sfondo,$("#pf_b")?$("#pf_b").value:"")}
+const pfPos=()=>{const e=$("#pf_pos");if(e)e.hidden=!PF.img};
 function pfFile(el){
  const f=el.files[0];if(!f)return;const img=new Image(),rd=new FileReader();
  rd.onload=()=>{img.onload=()=>{
-  const W=1000,k=Math.min(1,W/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+  const k=Math.min(1,2400/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
   c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-  let q=.72,u=c.toDataURL("image/jpeg",q);while(u.length>420000&&q>.3){q-=.1;u=c.toDataURL("image/jpeg",q)}
-  if(u.length>440000)return toast("Immagine troppo pesante: scegline una più piccola");
-  PF.sfondo=u;PF.cambiato=true;pfPrev()};img.src=rd.result};rd.readAsDataURL(f)}
+  PF.img=c;PF.px=50;PF.py=50;if($("#pf_px"))$("#pf_px").value=50;if($("#pf_py"))$("#pf_py").value=50;pfPos();pfRitaglia()};img.src=rd.result};rd.readAsDataURL(f)}
+/* ritaglia l'immagine in formato largo 3:1 attorno al punto scelto con i cursori */
+function pfRitaglia(){
+ if(!PF.img)return;
+ cancelAnimationFrame(PF.raf);PF.raf=requestAnimationFrame(()=>{
+  const im=PF.img,W=1200,H=400,sc=Math.max(W/im.width,H/im.height),sw=W/sc,sh=H/sc,sx=(im.width-sw)*(PF.px??50)/100,sy=(im.height-sh)*(PF.py??50)/100;
+  const c=document.createElement("canvas");c.width=W;c.height=H;c.getContext("2d").drawImage(im,sx,sy,sw,sh,0,0,W,H);
+  let q=.8,u=c.toDataURL("image/jpeg",q);while(u.length>420000&&q>.3){q-=.1;u=c.toDataURL("image/jpeg",q)}
+  if(u.length>440000)return toast("Immagine troppo pesante: scegline una più semplice");
+  PF.sfondo=u;PF.cambiato=true;pfPrev()})}
 async function pfSalva(){
  const r=await run("bb_alb_profilo_salva",{sid:sess.s,p:sess.p,pbenvenuto:$("#pf_b").value,psfondo:PF.cambiato?PF.sfondo:null,pindirizzo:$("#pf_a").value,ptelefono:$("#pf_t").value},"Salvato ✓");
  if(r){HOT=null;alb("profilo")}}
@@ -321,7 +332,7 @@ async function alb(sec){
  }
  app.innerHTML=(sec==="home"?hero(s.nome,HOT&&HOT.sfondo,s.benvenuto):"")+tabsHtml(tabs,sec,"albergatore")+body;
  if(sec==="profilo"){pfPrev();const e=$("#pf_q");if(e)qr(e,base()+"#/hotel/"+s.accesso,140)}
- if(sec==="nuova"){ntTab();ricalcNuova()}
+ if(sec==="nuova"&&$("#nt")){ntTab();ricalcNuova()}
  if(sec==="lista")filtraAlb();
  if(sec==="camere")crTab();
 }
