@@ -311,6 +311,11 @@ async def _elabora_voci(
             restanti = [e.get("percorso") for e in errori]
             contatori["errori"] = max(0, contatori["errori"] - len(restanti))
             errori.clear()
+            # Un ripasso di una versione precedente interrotto da un deploy ha
+            # ancora file da rileggere che non sono in `errori`: non si perdono.
+            for percorso_rimasto in salvato.get("ripasso_restanti") or []:
+                if percorso_rimasto not in restanti:
+                    restanti.append(percorso_rimasto)
         da_ripassare = set(restanti)
         ripassi = [v for v in voci[:indice] if v.percorso in da_ripassare and not v.motivo]
         for k, voce_ripasso in enumerate(ripassi):
