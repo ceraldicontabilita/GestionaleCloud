@@ -141,6 +141,15 @@ async def importa_modello_bytes(
             "filename": filename,
             "error": (parsed or {}).get("error", "Parsing F24 fallito"),
         }
+    if not normalizza_righe_tributo(parsed):
+        # Una pratica, una ricevuta o un PDF non letto non e' un F24 da pagare
+        # (22 gusci vuoti il 28/09/2026): non diventa un modello, da nessun canale.
+        return {
+            "success": False,
+            "filename": filename,
+            "error": "Nessuna riga tributo letta: non e' un modello F24",
+            "stato_modello": "SENZA_RIGHE_TRIBUTO",
+        }
     try:
         validation = richiedi_quadratura_f24(parsed)
     except ValueError as exc:
@@ -172,6 +181,8 @@ async def importa_modello_bytes(
         })
     else:
         documento["pdf_data"] = base64.b64encode(content).decode("utf-8")
+        if source_metadata:
+            documento["source_metadata"] = source_metadata
     documento["f24_dedup_key"] = chiave_f24(documento)
     documento["idempotency_key"] = f"f24:{documento['f24_dedup_key']}"
     existing = await db[COLL].find_one(

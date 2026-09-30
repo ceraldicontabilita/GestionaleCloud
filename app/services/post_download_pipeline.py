@@ -34,15 +34,16 @@ logger = logging.getLogger(__name__)
 async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Processa tutti gli F24 PDF scaricati da Gmail.
-    Estrae codici tributo, periodi, importi e salva nella collezione canonica
-    f24_unificato (scelta utente 13/07/2026: prima salvava in f24_commercialista
-    e gli F24 email non comparivano nel modulo F24 principale).
+    Ogni allegato passa da ``importa_modello_bytes``, l'ingresso unico dei
+    modelli, che scrive nella collezione canonica ``f24_unificato``.
     """
     stats = {"processati": 0, "errori": 0, "gia_processati": 0, "nuovi": 0}
 
     cursor = db["f24_email_attachments"].find({"processed": {"$ne": True}})
     docs = await cursor.to_list(length=500)
     logger.info(f"[PIPELINE-F24] {len(docs)} F24 da processare")
+
+    from app.services.f24_canonico import importa_modello_bytes
 
     for doc in docs:
         try:
@@ -53,91 +54,37 @@ async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
             pdf_bytes = base64.b64decode(pdf_data)
             filename = doc.get("filename", "f24.pdf")
 
-            # Prova parser enhanced (con LLM)
-            parsed = None
-            try:
-                from app.services.enhanced_document_parser import parse_f24_enhanced
-                parsed = await parse_f24_enhanced(pdf_bytes, "application/pdf")
-            except Exception as e:
-                logger.debug(f"[PIPELINE-F24] Enhanced parser non disponibile: {e}")
-
-            # Fallback: parser base (PyMuPDF)
-            if not parsed or not parsed.get("success"):
-                try:
-                    from app.services.f24_parser import parse_quietanza_f24
-                    parsed = parse_quietanza_f24(pdf_content=pdf_bytes)
-                except Exception as e:
-                    logger.debug(f"[PIPELINE-F24] Base parser fallito: {e}")
-
-            righe_lette = sum(
-                len(parsed.get(sezione) or [])
-                for sezione in ("sezione_erario", "sezione_inps", "sezione_regioni",
-                                "sezione_imu_tributi_locali", "sezione_inail")
-            ) if parsed else 0
-            if parsed and righe_lette == 0:
-                # Un allegato senza righe tributo non e' un F24 da pagare: era
-                # una pratica, una ricevuta o un PDF non letto (22 gusci vuoti
-                # il 28/09/2026, fra cui una pratica personale). Resta nella
-                # coda degli allegati con l'esito, non diventa un modello.
-                logger.warning("[PIPELINE-F24] %s: nessuna riga tributo letta, non salvato", filename)
-                await db["f24_email_attachments"].update_one(
-                    {"id": doc["id"]},
-                    {"$set": {"processed": True, "esito": "senza_righe_tributo",
-                              "processed_at": datetime.now(timezone.utc).isoformat()}},
-                )
-                stats["errori"] += 1
-                continue
-
-            if parsed and (parsed.get("success") or parsed.get("sezione_erario")):
-                # Salva in f24_commercialista
-                f24_doc = {
-                    "id": str(uuid.uuid4()),
-                    "filename": filename,
-                    "pdf_data": pdf_data,
-                    "pdf_hash": doc.get("pdf_hash"),
+            # Un solo ingresso F24: stesso lettore, stessa quadratura, stessa
+            # dedup per contenuto e stessa ricerca di quietanza e addebito degli
+            # altri canali (Documenti > Import, Drive). Niente parser proprio.
+            esito = await importa_modello_bytes(
+                db, pdf_bytes, filename, source="gmail_scan",
+                source_metadata={
                     "email_subject": doc.get("email_subject", ""),
                     "email_from": doc.get("email_from", ""),
                     "email_date": doc.get("email_date", ""),
-                    "source_folder": doc.get("email_info", {}).get("source_folder", ""),
-
-                    # Dati estratti
-                    "sezione_erario": parsed.get("sezione_erario", []),
-                    "sezione_inps": parsed.get("sezione_inps", []),
-                    "sezione_regioni": parsed.get("sezione_regioni", []),
-                    "sezione_tributi_locali": parsed.get("sezione_imu_tributi_locali", []),
-                    "totali": parsed.get("totali", {}),
-                    "contribuente": parsed.get("contribuente", {}),
-                    "data_pagamento": parsed.get("data_pagamento"),
-                    "periodo": parsed.get("periodo"),
-
-                    "status": "da_pagare",
-                    "riconciliato": False,
-                    "source": "gmail_scan",
-                    "imported_at": datetime.now(timezone.utc).isoformat(),
-                    "anno": doc.get("anno"),
-                    "mese": doc.get("mese"),
-                }
-
-                # Dedup per hash — collezione canonica f24_unificato
-                existing = await db["f24_unificato"].find_one({"pdf_hash": doc.get("pdf_hash")})
-                if not existing:
-                    from app.services.f24_canonico import salva_f24
-
-                    await salva_f24(db, f24_doc, source="gmail_scan")
-                    stats["nuovi"] += 1
-                    logger.info(f"[PIPELINE-F24] Salvato: {filename}")
-                else:
-                    stats["gia_processati"] += 1
-
-            # Marca come processato
+                    "attachment_id": doc.get("id"),
+                },
+            )
+            if esito.get("success"):
+                stats["gia_processati" if esito.get("duplicate") else "nuovi"] += 1
+                marca = {"esito": "duplicato" if esito.get("duplicate") else "importato",
+                         "f24_id": esito.get("f24_id")}
+            else:
+                # L'allegato resta in archivio col motivo scritto: non si scarta.
+                logger.warning("[PIPELINE-F24] %s non importato: %s", filename, esito.get("error"))
+                stats["errori"] += 1
+                marca = {"esito": esito.get("stato_modello") or "errore_lettura",
+                         "errore": esito.get("error")}
             await db["f24_email_attachments"].update_one(
                 {"id": doc["id"]},
-                {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
+                {"$set": {"processed": True, **marca,
+                          "processed_at": datetime.now(timezone.utc).isoformat()}},
             )
             stats["processati"] += 1
 
         except Exception as e:
-            logger.error(f"[PIPELINE-F24] Errore: {e}")
+            logger.error("[PIPELINE-F24] Errore (%s): %s", type(e).__name__, e)
             stats["errori"] += 1
 
     logger.info(f"[PIPELINE-F24] Completato: {stats}")
@@ -343,7 +290,8 @@ async def processa_verbali_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
 async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     Processa quietanze PDF scaricate da Gmail.
-    Cerca il F24 corrispondente e lo marca come pagato.
+    Ogni allegato passa da ``importa_quietanza`` (ingresso unico), che cerca il
+    modello corrispondente e la prova bancaria.
     """
     stats = {"processati": 0, "errori": 0, "f24_pagati": 0}
 
@@ -360,44 +308,35 @@ async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
             pdf_bytes = base64.b64decode(pdf_data)
             filename = doc.get("filename", "quietanza.pdf")
 
-            # Parse quietanza per estrarre codici tributo pagati
-            parsed = None
-            try:
-                from app.services.f24_parser import parse_quietanza_f24
-                parsed = parse_quietanza_f24(pdf_content=pdf_bytes)
-            except Exception as e:
-                logger.debug(f"[PIPELINE-QUIETANZE] Parser: {e}")
+            # Stesso ingresso di Documenti > Import e di Drive: lettura, quadratura,
+            # dedup per protocollo e contenuto, abbinamento al modello e alla banca.
+            from app.services.f24_canonico import importa_quietanza
 
-            if parsed and parsed.get("success"):
-                # Salva in f24_quietanze
-                quietanza_doc = {
-                    "id": str(uuid.uuid4()),
-                    "filename": filename,
-                    "pdf_data": pdf_data,
-                    "pdf_hash": doc.get("pdf_hash"),
-                    "sezione_erario": parsed.get("sezione_erario", []),
-                    "sezione_inps": parsed.get("sezione_inps", []),
-                    "sezione_regioni": parsed.get("sezione_regioni", []),
-                    "totali": parsed.get("totali", {}),
-                    "data_pagamento": parsed.get("data_pagamento"),
-                    "source": "gmail_scan",
-                    "f24_associati": [],
-                    "imported_at": datetime.now(timezone.utc).isoformat(),
-                }
-
-                existing = await db["f24_quietanze"].find_one({"pdf_hash": doc.get("pdf_hash")})
-                if not existing:
-                    await db["f24_quietanze"].insert_one(quietanza_doc)
-                    logger.info(f"[PIPELINE-QUIETANZE] Salvata: {filename}")
+            esito = await importa_quietanza(
+                db, pdf_bytes, filename, source="gmail_scan",
+                source_metadata={"attachment_id": doc.get("id")},
+            )
+            if esito.get("success"):
+                if not esito.get("duplicate"):
+                    stats["f24_pagati"] += len(esito.get("f24_matchati") or [])
+                marca = {"esito": "duplicato" if esito.get("duplicate") else "importata",
+                         "quietanza_id": esito.get("quietanza_id")}
+            else:
+                # L'allegato resta in archivio col motivo scritto: non si scarta.
+                logger.warning("[PIPELINE-QUIETANZE] %s non importata: %s", filename, esito.get("error"))
+                stats["errori"] += 1
+                marca = {"esito": esito.get("stato_quietanza") or "errore_lettura",
+                         "errore": esito.get("error")}
 
             await db["quietanze_email_attachments"].update_one(
                 {"id": doc["id"]},
-                {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
+                {"$set": {"processed": True, **marca,
+                          "processed_at": datetime.now(timezone.utc).isoformat()}}
             )
             stats["processati"] += 1
 
         except Exception as e:
-            logger.error(f"[PIPELINE-QUIETANZE] Errore: {e}")
+            logger.error("[PIPELINE-QUIETANZE] Errore (%s): %s", type(e).__name__, e)
             stats["errori"] += 1
 
     logger.info(f"[PIPELINE-QUIETANZE] Completato: {stats}")

@@ -112,7 +112,7 @@ def test_importa_modello_canonico_conserva_debiti_crediti_e_pdf(monkeypatch):
 def test_importa_modello_drive_conserva_solo_riferimento(monkeypatch):
     parsed = {
         "dati_generali": {"codice_fiscale": "CF1", "data_versamento": "2026-07-16"},
-        "sezione_erario": [],
+        "sezione_erario": [{"codice_tributo": "6001", "anno": "2026", "importo_debito_cents": 1000, "importo_credito_cents": 0}],
         "totali": {"totale_debito": 10.0, "totale_credito": 0.0, "saldo_netto": 10.0},
         "validazione": {"saldo_quadrato": True, "parser_version": "test-v1"},
     }
