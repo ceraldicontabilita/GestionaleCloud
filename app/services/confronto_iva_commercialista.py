@@ -8,9 +8,12 @@ Tre fonti, tre nature diverse, e non vanno confuse:
    commercialista trasmette all'Agenzia. E' il documento **canonico**
    dell'IVA mensile: quando i due numeri divergono, quello giusto e' questo,
    e lo scarto e' un difetto nostro da spiegare;
-3. **i prospetti F24** — quello che c'e' davvero da pagare, codici tributo
-   6001..6012 (IVA mensile) con l'anno di riferimento.
+3. **i versamenti F24** — quietanze e modelli con i codici 6001..6012 (IVA
+   mensile) e l'anno di riferimento sulla riga.
 
+Il confronto LIPE ↔ F24 (dovuto, versato, stato) lo fa un motore solo,
+`incroci_fiscali.incroci`: qui si aggiunge la colonna del gestionale e si
+tiene il contratto dell'endpoint `/api/iva/confronto-commercialista/{anno}`.
 Il confronto non "aggiusta" niente e non scrive sul consuntivo: dice dove i
 numeri divergono e di quanto, e lascia decidere.
 
@@ -23,22 +26,29 @@ Tre cose che non sono scostamenti e non vanno segnalate come tali:
   corretta, non un pagamento dimenticato. Il caso da segnalare e' l'opposto,
   LIPE a debito senza F24.
 """
+import logging
 from typing import Any, Dict, List, Optional
+
+from app.services.incroci_fiscali import (
+    COLL_LIPE, SOGLIA_CENTS, STATO_ECCEDENTE, STATO_MANCANTE, STATO_OK, STATO_PARZIALE,
+    confronta_importi, incroci,
+)
 
 __all__ = [
     "COLL_LIPE",
     "TOLLERANZA",
+    "SOGLIA_VERSAMENTO",
     "scarto",
     "confronta_periodo",
-    "f24_iva_per_periodo",
     "confronto_mensile",
 ]
 
-COLL_LIPE = "lipe_periodi"
-COLL_F24 = "f24_unificato"
+logger = logging.getLogger(__name__)
 
-#: Sotto il centesimo i due numeri sono lo stesso numero.
+#: Sotto il centesimo i due numeri (gestionale ↔ LIPE) sono lo stesso numero.
 TOLLERANZA = 0.01
+#: Dovuto ↔ versato: la soglia del motore degli incroci, 1,00 EUR.
+SOGLIA_VERSAMENTO = SOGLIA_CENTS / 100
 
 ESITO_ALLINEATO = "allineato"
 ESITO_SCOSTAMENTO = "scostamento"
@@ -47,10 +57,12 @@ ESITO_LIPE_ASSENTE = "lipe_assente"
 
 #: Stati del nostro calcolo che non sono un numero da confrontare.
 STATI_NON_CALCOLABILI = (None, "", "NON_CALCOLATO", "DATI_MANCANTI", "NON_VERIFICABILE")
-#: Stati di un modello F24 che non e' (piu') un versamento: annullato,
-#: stornato o messo in quarantena come doppione (``status=eliminato``,
-#: ``f24_doppioni.py``) — contarlo raddoppia il versato.
-STATI_F24_ESCLUSI = ("annullato", "stornato", "eliminato")
+
+#: Nota del versamento per stato del motore.
+_NOTA_PER_STATO = {
+    STATO_OK: "versato", STATO_MANCANTE: "f24_mancante",
+    STATO_PARZIALE: "importo_diverso", STATO_ECCEDENTE: "importo_diverso",
+}
 
 
 def scarto(nostro: Optional[float], loro: Optional[float]) -> Optional[float]:
@@ -95,20 +107,26 @@ def confronta_periodo(
     else:
         esito = ESITO_SCOSTAMENTO
 
-    # Il versamento: una LIPE a credito non deve produrre nessun F24.
+    # Il versamento: una LIPE a credito non deve produrre nessun F24. Lo
+    # stato viene dal motore degli incroci (soglia 1,00 EUR), qui si traduce
+    # nella nota del contratto.
     lipe_a_debito = (lipe or {}).get("iva_da_versare_o_credito_segno") == "debito"
     dovuto = (lipe or {}).get("iva_da_versare_o_credito") if lipe_a_debito else None
     pagato = (f24 or {}).get("importo")
+    stato_versamento = (f24 or {}).get("stato")
+    differenza = (f24 or {}).get("differenza")
     if not lipe:
         nota_f24 = "lipe_assente"
     elif not lipe_a_debito:
         nota_f24 = "nessun_versamento_dovuto" if pagato is None else "versamento_non_atteso"
     elif pagato is None:
         nota_f24 = "f24_mancante"
-    elif _quasi_zero(scarto(pagato, dovuto)):
-        nota_f24 = "versato"
     else:
-        nota_f24 = "importo_diverso"
+        if stato_versamento is None:
+            esito_importi = confronta_importi(round(float(dovuto) * 100), round(float(pagato) * 100))
+            stato_versamento = esito_importi["stato"]
+            differenza = esito_importi["differenza_cents"] / 100
+        nota_f24 = _NOTA_PER_STATO.get(stato_versamento, "importo_diverso")
 
     return {
         "periodo": periodo,
@@ -134,8 +152,11 @@ def confronta_periodo(
         "f24": {
             "dovuto_da_lipe": dovuto,
             "versato": pagato,
+            "differenza": differenza if lipe_a_debito and pagato is not None else None,
+            "stato": stato_versamento if lipe_a_debito and pagato is not None else None,
             "codice_tributo": (f24 or {}).get("codice_tributo"),
             "documenti": (f24 or {}).get("documenti") or [],
+            "hints": (f24 or {}).get("hints") or [],
             "nota": nota_f24,
         },
         "scarti": {
@@ -145,67 +166,39 @@ def confronta_periodo(
     }
 
 
-async def f24_iva_per_periodo(db, anno: int) -> Dict[str, Dict[str, Any]]:
-    """I versamenti IVA mensili (6001..6012) dell'anno, per `YYYY-MM`.
-
-    Un solo prefetch della collezione: la regola del §4 vieta una query per
-    mese. L'anno sta sulla **riga** del tributo (`anno`), non sul modello:
-    e' il periodo di riferimento del versamento, che non coincide con la
-    data in cui l'F24 e' stato pagato.
-    """
-    per_periodo: Dict[str, Dict[str, Any]] = {}
-    proiezione = {"_id": 0, "sezione_erario": 1, "file_name": 1, "status": 1}
-    async for modello in db[COLL_F24].find({}, proiezione):
-        if (modello.get("status") or "") in STATI_F24_ESCLUSI:
-            continue
-        righe = modello.get("sezione_erario")
-        if not isinstance(righe, list):
-            continue
-        for riga in righe:
-            if not isinstance(riga, dict):
-                continue
-            codice = str(riga.get("codice_tributo") or "")
-            anno_riga = str(riga.get("anno") or "")
-            if not codice.startswith("60") or len(codice) != 4:
-                continue
-            mese = codice[2:]
-            if not mese.isdigit() or not 1 <= int(mese) <= 12:
-                continue
-            if anno_riga != str(anno):
-                continue
-            chiave = f"{anno_riga}-{mese}"
-            voce = per_periodo.setdefault(
-                chiave, {"importo": 0.0, "codice_tributo": codice, "documenti": []}
-            )
-            voce["importo"] = round(
-                voce["importo"] + float(riga.get("importo_debito") or 0), 2
-            )
-            nome = modello.get("file_name")
-            if nome and nome not in voce["documenti"]:
-                voce["documenti"].append(nome)
-    return per_periodo
-
-
 async def confronto_mensile(db, anno: int) -> Dict[str, Any]:
-    """Dodici righe di confronto per l'anno richiesto."""
+    """Dodici righe di confronto per l'anno richiesto.
+
+    LIPE e versamenti vengono dal motore degli incroci (una lettura sola del
+    registro F24); qui si aggiunge il nostro calcolo mese per mese.
+    """
     from app.services.iva_liquidation_query import get_iva_period_snapshot
 
+    quadro = await incroci(db, anni=[anno])
     lipe_per_periodo: Dict[str, Dict[str, Any]] = {}
-    async for doc in db[COLL_LIPE].find(
-        {"periodo": {"$regex": f"^{anno}"}}, {"_id": 0}
-    ):
+    async for doc in db[COLL_LIPE].find({"periodo": {"$regex": f"^{anno}"}}, {"_id": 0}):
         periodo = doc.get("periodo")
         if periodo:
             lipe_per_periodo[periodo] = doc
 
-    f24_per_periodo = await f24_iva_per_periodo(db, anno)
+    f24_per_periodo: Dict[str, Dict[str, Any]] = {}
+    for riga in quadro["confronti_iva_mensile"]:
+        if riga["versato_f24"] is None or (not riga["f24_versamenti"] and not riga["versato_f24"]):
+            continue
+        f24_per_periodo[riga["periodo"]] = {
+            "importo": riga["versato_f24"], "codice_tributo": riga["codice_tributo"],
+            "documenti": riga["f24_sources"], "stato": riga["stato"], "differenza": riga["differenza"],
+            "hints": riga["hints"],
+        }
 
     righe: List[Dict[str, Any]] = []
     for mese in range(1, 13):
         periodo = f"{anno}-{mese:02d}"
         try:
             nostro = await get_iva_period_snapshot(db, anno=anno, mese=mese)
-        except Exception:  # noqa: BLE001 — un mese illeggibile non ferma l'anno
+        except Exception as exc:  # noqa: BLE001 — un mese illeggibile non ferma l'anno
+            logger.warning("Confronto IVA %s: gestionale non leggibile: %s: %s",
+                           periodo, type(exc).__name__, exc)
             nostro = None
         righe.append(confronta_periodo(
             periodo, nostro, lipe_per_periodo.get(periodo), f24_per_periodo.get(periodo),
@@ -228,4 +221,5 @@ async def confronto_mensile(db, anno: int) -> Dict[str, Any]:
         "f24_mancanti": [
             r["periodo"] for r in righe if r["f24"]["nota"] == "f24_mancante"
         ],
+        "guardia": quadro["guardia"],
     }
