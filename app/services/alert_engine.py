@@ -178,6 +178,32 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "condizione_chiusura": "Dati completati"
     },
 
+    # --- Incroci fiscali del minisito (incroci_fiscali.py) ---
+    "IVA_PAGAMENTO_MANCANTE_O_PARZIALE": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "IVA mensile dovuta da LIPE non versata (o versata in parte)",
+        "condizione_chiusura": "Versato con il codice 60MM del mese entro 1,00 EUR dal VP14, o LIPE sostituita"
+    },
+    "IRAP_SALDO_MANCANTE_O_PARZIALE": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "Saldo IRAP (rigo IR26) non versato con il codice 3800",
+        "condizione_chiusura": "Codice 3800 dell'anno d'imposta versato entro 1,00 EUR dal rigo IR26"
+    },
+    "IVA_ANNUALE_SALDO_DA_VERIFICARE": {
+        "modulo": "fiscale",
+        "severita": "warning",
+        "titolo": "Saldo IVA annuale (rigo VX1) senza versamento 6099",
+        "condizione_chiusura": "Codice 6099 dell'anno d'imposta versato entro 1,00 EUR dal rigo VX1"
+    },
+    "COMUNICAZIONE_54BIS_NON_PAGATA": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "Comunicazione di irregolarita' (art. 54-bis) non pagata",
+        "condizione_chiusura": "Codici della comunicazione versati per il suo totale entro 1,00 EUR"
+    },
+
     # --- Cedolini ---
     "CED_TIPO_NON_RICONOSCIUTO": {
         "modulo": "cedolini",
