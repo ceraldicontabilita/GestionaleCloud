@@ -298,91 +298,13 @@ async def sincronizza(fonte_id: str, background_tasks: BackgroundTasks, _admin=D
     fonte = await db.fonti_catalogo_esterne.find_one({"id": fonte_id}, {"_id": 0})
     if not fonte:
         raise HTTPException(404, "Fonte non trovata")
+    if fonte.get("tipo") == "listino":
+        raise HTTPException(409, "Questo catalogo e' un listino: si aggiorna caricando il file nuovo, non dal sito")
     await db.fonti_catalogo_esterne.update_one({"id": fonte_id}, {"$set": {"stato": "in_corso"}})
     background_tasks.add_task(_sincronizza_fonte, fonte)
     return {"ok": True, "message": "Sincronizzazione avviata in background"}
 
 
-# ── Confronto prezzi al carrello (richiesta Enzo 04/07/2026) ────────────────
-# "quando aggiungiamo prodotti nel carrello fai una ricerca su questo sito
-# [...] controlli prezzo e se migliore me lo proponi al posto dei nostri
-# fornitori abituali". Match volutamente STRETTO (decisione Enzo): un
-# prodotto diverso spacciato per equivalente è peggio di un'occasione vera
-# non segnalata. Confronta SOLO con prodotti da fonti_catalogo (questo
-# connettore), non con Saima/MEPA/Acquaviva che sono già "fornitori
-# abituali" — quelli sono il termine di paragone, non l'alternativa.
-
-_STOPWORD_MATCH = {"di", "da", "il", "la", "lo", "le", "gli", "un", "una", "e", "con", "per", "in", "the", "of"}
-_RX_FORMATO = re.compile(r"\b\d+\s?(?:cl|ml|lt|l|kg|g|gr|pz|pezzi)\b|\bx\s?\d+\b|\b\d+\s?x\b")
-
-
-def _normalizza_nome_confronto(nome: str) -> tuple[str, set]:
-    n = (nome or "").lower()
-    accenti = {"à": "a", "á": "a", "â": "a", "ä": "a", "è": "e", "é": "e", "ê": "e",
-               "ë": "e", "ì": "i", "í": "i", "î": "i", "ï": "i", "ò": "o", "ó": "o",
-               "ô": "o", "ö": "o", "ù": "u", "ú": "u", "û": "u", "ü": "u"}
-    for a, b in accenti.items():
-        n = n.replace(a, b)
-    n = re.sub(r"[^a-z0-9\s]", " ", n)
-    n = re.sub(r"\s+", " ", n).strip()
-    tokens = {t for t in n.split() if t not in _STOPWORD_MATCH and len(t) > 1}
-    return n, tokens
-
-
-def _corrispondenza_forte(nome_a: str, nome_b: str) -> bool:
-    """True solo se i due nomi sono con alta probabilità lo STESSO prodotto
-    nello STESSO formato (non solo lo stesso brand/categoria)."""
-    norm_a, tok_a = _normalizza_nome_confronto(nome_a)
-    norm_b, tok_b = _normalizza_nome_confronto(nome_b)
-    if not tok_a or not tok_b:
-        return False
-    comuni = tok_a & tok_b
-    jaccard = len(comuni) / len(tok_a | tok_b)
-    if jaccard < 0.5:
-        return False
-    firma_a = set(_RX_FORMATO.findall(norm_a))
-    firma_b = set(_RX_FORMATO.findall(norm_b))
-    # se ENTRAMBI i nomi specificano un formato/quantità, deve combaciare —
-    # altrimenti una lattina e una bottiglia dello stesso brand risulterebbero
-    # "equivalenti" solo perché il nome del prodotto è simile.
-    if firma_a and firma_b and not (firma_a & firma_b):
-        return False
-    return True
-
-
-@router.get("/confronta")
-async def confronta_prezzo_esterno(
-    nome: str,
-    prezzo_attuale: float = 0,
-    limit: int = 5,
-):
-    """Confronta un prodotto (tipicamente del carrello ordini) con i prodotti
-    già raccolti dai cataloghi esterni (fonti_catalogo). Ritorna la migliore
-    corrispondenza forte trovata, e se conviene rispetto al prezzo attuale."""
-    nome = (nome or "").strip()
-    if not nome:
-        raise HTTPException(400, "nome obbligatorio")
-
-    candidati = await db.catalogo_forno_prodotti.find(
-        {"fonte_scraping": "generico_ldjson_og", "prezzo": {"$gt": 0}},
-        {"_id": 0, "nome": 1, "nome_completo": 1, "prezzo": 1, "fornitore": 1,
-         "link_prodotto": 1, "immagine_url": 1, "data_aggiornamento": 1},
-    ).to_list(3000)
-
-    corrispondenze = [
-        c for c in candidati
-        if _corrispondenza_forte(nome, c.get("nome_completo") or c.get("nome") or "")
-    ]
-    corrispondenze.sort(key=lambda c: c["prezzo"])
-    migliore = corrispondenze[0] if corrispondenze else None
-    conviene = bool(migliore and prezzo_attuale > 0 and migliore["prezzo"] < prezzo_attuale)
-
-    return {
-        "nome_cercato": nome,
-        "prezzo_attuale": prezzo_attuale,
-        "trovati": len(corrispondenze),
-        "migliore_offerta": migliore,
-        "conviene": conviene,
-        "risparmio": round(prezzo_attuale - migliore["prezzo"], 2) if conviene else None,
-        "alternative": corrispondenze[:limit],
-    }
+# Il confronto dei prezzi al carrello non sta piu' qui: lo fa il motore unico
+# `confronto-fornitori` (fatture XML + listini + lettura AI), vedi
+# `GET /confronto-fornitori/migliore`.

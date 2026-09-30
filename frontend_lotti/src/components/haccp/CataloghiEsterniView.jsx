@@ -13,13 +13,18 @@
  * generico, non garantito per ogni sito — l'esito reale si vede solo dopo
  * "Sincronizza ora" (che gira sul backend live, con accesso a internet).
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { conferma } from "../../utils/conferma";
 import axios from "axios";
 import { toast } from "sonner";
 import { apiError } from "../../utils/apiError";
 import { API } from "../../utils/constants";
-import { Globe, Plus, RefreshCw, Trash2, CheckCircle2, AlertCircle, Clock, ExternalLink } from "lucide-react";
+import { Globe, Plus, RefreshCw, Trash2, CheckCircle2, AlertCircle, Clock, ExternalLink, FileSpreadsheet, Upload } from "lucide-react";
+
+const dataIt = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+};
 
 const STATO_UI = {
   nuova:     { label: "Non ancora sincronizzata", colore: "bg-gray-100 text-gray-500", icon: Clock },
@@ -35,6 +40,39 @@ export default function CataloghiEsterniView() {
   const [url, setUrl] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [sincronizzando, setSincronizzando] = useState(null);
+  // listino da file (Excel/CSV): prezzi dichiarati dal fornitore, entrano nel confronto prezzi
+  const [listinoNome, setListinoNome] = useState("");
+  const [listinoPiva, setListinoPiva] = useState("");
+  const [listinoFile, setListinoFile] = useState(null);
+  const [caricandoListino, setCaricandoListino] = useState(false);
+  const inputFile = useRef(null);
+
+  const caricaListino = async () => {
+    if (!listinoNome.trim() || !listinoFile) { toast.error("Scegli il file e scrivi il nome del fornitore"); return; }
+    setCaricandoListino(true);
+    try {
+      const form = new FormData();
+      form.append("file", listinoFile);
+      form.append("nome_fornitore", listinoNome.trim());
+      form.append("partita_iva", listinoPiva.trim());
+      const { data } = await axios.post(`${API}/catalogo-forno/importa-listino`, form);
+      toast.success(`${data.fornitore}: ${data.righe_lette} articoli · ${data.nuovi} nuovi, ${data.aggiornati} con prezzo cambiato${data.scartate ? ` · ${data.scartate} righe scartate` : ""}`,
+        { duration: 10000 });
+      setListinoFile(null);
+      if (inputFile.current) inputFile.current.value = "";
+      await carica();
+    } catch (e) {
+      toast.error("Listino non caricato: " + apiError(e));
+    } finally {
+      setCaricandoListino(false);
+    }
+  };
+
+  const preparaAggiornamento = (f) => {
+    setListinoNome(f.nome || "");
+    setListinoPiva(f.partita_iva || "");
+    inputFile.current?.click();
+  };
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -135,6 +173,39 @@ export default function CataloghiEsterniView() {
         </button>
       </div>
 
+      {/* Listino da file */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <FileSpreadsheet size={18} className="text-[#5b7a6b]" />
+          <p className="font-semibold text-gray-800">Carica un listino (Excel o CSV)</p>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          Colonne lette per nome: Codice, Descrizione, Prezzo (obbligatorie), EAN, IVA, Unità di misura, Categoria.
+          I prezzi entrano nel confronto con la scritta «listino» e la data; ricaricare lo stesso file non cambia niente.
+        </p>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-[160px]">
+            <label className="block text-xs font-semibold text-gray-500 mb-1">Nome fornitore</label>
+            <input value={listinoNome} onChange={e => setListinoNome(e.target.value)} placeholder="es. Barone Achille & figli srl"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[44px]" />
+          </div>
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-semibold text-gray-500 mb-1">Partita IVA</label>
+            <input value={listinoPiva} onChange={e => setListinoPiva(e.target.value)} placeholder="01527580615" inputMode="numeric"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[44px]" />
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs font-semibold text-gray-500 mb-1">File</label>
+            <input ref={inputFile} type="file" accept=".xlsx,.csv" onChange={e => setListinoFile(e.target.files?.[0] || null)}
+              className="w-full text-sm min-h-[44px]" />
+          </div>
+          <button onClick={caricaListino} disabled={caricandoListino}
+            className="flex items-center gap-2 px-4 min-h-[44px] bg-[#5b7a6b] text-white rounded-lg text-sm font-medium hover:bg-[#4d6a5c] disabled:opacity-50">
+            <Upload size={14} /> {caricandoListino ? "Carico…" : "Carica listino"}
+          </button>
+        </div>
+      </div>
+
       {/* Elenco fonti */}
       {loading ? (
         <div className="text-center py-16 text-gray-400 text-sm">Caricamento...</div>
@@ -153,9 +224,11 @@ export default function CataloghiEsterniView() {
                 <div className="flex-1 min-w-[200px]">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-gray-800">{f.nome}</p>
-                    <a href={f.url} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-[#5b7a6b]">
-                      <ExternalLink size={13} />
-                    </a>
+                    {f.url && (
+                      <a href={f.url} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-[#5b7a6b]">
+                        <ExternalLink size={13} />
+                      </a>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400 truncate">{f.url}</p>
                 </div>
@@ -163,16 +236,25 @@ export default function CataloghiEsterniView() {
                   <Icon size={12} className={f.stato === "in_corso" ? "animate-spin" : ""} /> {st.label}
                 </span>
                 {f.stato === "attivo" && (
-                  <span className="text-xs text-gray-500">{f.prodotti_trovati} prodotti</span>
+                  <span className="text-xs text-gray-500">
+                    {f.prodotti_trovati} prodotti{f.tipo === "listino" && f.listino_data ? ` · listino del ${dataIt(f.listino_data)}` : ""}
+                  </span>
                 )}
                 {f.stato === "errore" && f.ultimo_errore && (
                   <span className="text-xs text-red-500 max-w-[220px] truncate" title={f.ultimo_errore}>{f.ultimo_errore}</span>
                 )}
                 <div className="flex items-center gap-2 ml-auto">
-                  <button onClick={() => sincronizza(f)} disabled={sincronizzando === f.id || f.stato === "in_corso"}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2f6f3] border border-[#cfdfd5] text-[#5b7a6b] rounded-lg text-xs font-medium hover:bg-[#dce8e0] disabled:opacity-50">
-                    <RefreshCw size={12} className={sincronizzando === f.id ? "animate-spin" : ""} /> Sincronizza
-                  </button>
+                  {f.tipo === "listino" ? (
+                    <button onClick={() => preparaAggiornamento(f)}
+                      className="flex items-center gap-1.5 px-3 min-h-[44px] bg-[#f2f6f3] border border-[#cfdfd5] text-[#5b7a6b] rounded-lg text-xs font-medium hover:bg-[#dce8e0]">
+                      <Upload size={12} /> Carica listino nuovo
+                    </button>
+                  ) : (
+                    <button onClick={() => sincronizza(f)} disabled={sincronizzando === f.id || f.stato === "in_corso"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2f6f3] border border-[#cfdfd5] text-[#5b7a6b] rounded-lg text-xs font-medium hover:bg-[#dce8e0] disabled:opacity-50">
+                      <RefreshCw size={12} className={sincronizzando === f.id ? "animate-spin" : ""} /> Sincronizza
+                    </button>
+                  )}
                   <button onClick={() => elimina(f)}
                     className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50">
                     <Trash2 size={14} />

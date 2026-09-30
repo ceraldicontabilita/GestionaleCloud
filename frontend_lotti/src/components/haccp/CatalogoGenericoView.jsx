@@ -24,8 +24,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Search, Package, ShoppingCart, Tag, RefreshCw, Check, Plus, Info, ExternalLink, X } from "lucide-react";
+import { Search, Package, ShoppingCart, Tag, RefreshCw, Check, Plus, Info, ExternalLink, X, TrendingDown } from "lucide-react";
 import { API, fotoSrc } from "../../utils/constants";
+import { dataIt, euro, euroPezzo } from "../../utils/confrontoFornitori";
 import { aggiornaPrezzoNelCarrello, useCart } from "./CatalogoFornitoreView";
 import PrezzoFornitoreEditor from "./PrezzoFornitoreEditor";
 
@@ -41,7 +42,14 @@ export default function CatalogoGenericoView({
   titolo, sourceKey, fetchUrl, mapItem, emojiVuoto = "📦",
   messaggioVuoto = "Nessun prodotto ancora caricato.", coloreAccento = "sage",
   importaPrecaricatoUrl = null, importaPrecaricatoLabel = "Importa dal catalogo PDF",
+  confrontoPrezzi = false,
 }) {
+  // quanti articoli si disegnano: un listino ha migliaia di righe, si cresce con «Mostra altri»
+  const PASSO = 120;
+  const [visibili, setVisibili] = useState(PASSO);
+  // confronto con gli altri fornitori (fatture XML e listini): codice → sintesi
+  const [confronto, setConfronto] = useState({});
+  const [filtroPrezzo, setFiltroPrezzo] = useState("tutti"); // tutti | qui | altrove
   const colore = COLORI[coloreAccento] || COLORI.sage;
   const [prodotti, setProdotti] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +82,15 @@ export default function CatalogoGenericoView({
   }, [fetchUrl, mapItem, titolo]);
 
   useEffect(() => { carica(); }, [carica]);
+
+  useEffect(() => {
+    if (!confrontoPrezzi || !sourceKey) return;
+    axios.get(`${API}/confronto-fornitori/per-catalogo`, { params: { fornitore: sourceKey } })
+      .then(r => setConfronto(r.data?.articoli || {}))
+      .catch(() => setConfronto({}));
+  }, [confrontoPrezzi, sourceKey]);
+
+  useEffect(() => { setVisibili(PASSO); }, [search, filtroPrezzo]);
 
   const togglePreferito = async (prod) => {
     const eraPreferito = preferiti.has(prod.id);
@@ -133,14 +150,26 @@ export default function CatalogoGenericoView({
   };
 
   const filtrati = useMemo(() => {
-    if (!search) return prodotti;
-    const q = search.toLowerCase();
-    return prodotti.filter(p => (p.nome || "").toLowerCase().includes(q) || (p.codice || "").toLowerCase().includes(q) || (p.descrizione || "").toLowerCase().includes(q));
-  }, [prodotti, search]);
+    let lista = prodotti;
+    if (filtroPrezzo !== "tutti") {
+      lista = lista.filter(p => {
+        const c = confronto[p.codice];
+        if (!c || !c.migliore) return false;
+        return filtroPrezzo === "qui" ? c.questo_migliore : !c.questo_migliore;
+      });
+    }
+    if (!search) return lista;
+    const parole = search.toLowerCase().split(/\s+/).filter(Boolean);
+    return lista.filter(p => {
+      const testo = `${p.nome || ""} ${p.nomeFornitore || ""} ${p.codice || ""} ${p.descrizione || ""} ${p.ean || ""} ${p.categoria || ""} ${p.sottocategoria || ""}`.toLowerCase();
+      return parole.every(w => testo.includes(w));
+    });
+  }, [prodotti, search, filtroPrezzo, confronto]);
+  const conConfronto = useMemo(() => Object.values(confronto).filter(c => c.migliore), [confronto]);
 
   return (
     <div>
-      {selezionato && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4" onClick={() => setSelezionato(null)}><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}><div className="flex items-start justify-between gap-3 border-b border-gray-100 p-4"><div><p className={`m-0 text-[10px] font-black uppercase tracking-widest ${colore.text}`}>{titolo}</p><h3 className="m-0 mt-1 text-xl font-black text-gray-900">{selezionato.nome}</h3></div><button onClick={() => setSelezionato(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X size={18}/></button></div><div className="space-y-4 p-5"><div className={`flex h-52 items-center justify-center overflow-hidden rounded-xl ${colore.light}`}>{selezionato.foto_url ? <img src={fotoSrc(selezionato.foto_url)} alt={selezionato.nome} className="h-full w-full object-contain p-3"/> : <Package size={42} className={`${colore.text} opacity-30`}/>}</div><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs font-bold text-gray-400">Codice</dt><dd className="m-0 font-mono">{selezionato.codice || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Categoria</dt><dd className="m-0">{selezionato.categoria || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso singolo</dt><dd className="m-0">{selezionato.grammi || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Quantità cartone</dt><dd className="m-0">{selezionato.pezziCartone || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso totale cartone</dt><dd className="m-0">{pesoCartone(selezionato) ? `${pesoCartone(selezionato)} kg` : "—"}</dd></div></dl>{selezionato.descrizione && <p className="rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-600">{selezionato.descrizione}</p>}{selezionato.link_prodotto && <a href={selezionato.link_prodotto} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold ${colore.text}`}><ExternalLink size={15}/> Apri la scheda originale del fornitore</a>}<button onClick={() => toggleRicette(selezionato)} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black ${selezionato.inRicette ? "bg-green-100 text-green-700" : "bg-[#5b7a6b] text-white"}`}>{selezionato.inRicette ? <Check size={16}/> : <Plus size={16}/>} {selezionato.inRicette ? "Usato nelle ricette" : "Usa in ricetta"}</button></div></div></div>}
+      {selezionato && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4" onClick={() => setSelezionato(null)}><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}><div className="flex items-start justify-between gap-3 border-b border-gray-100 p-4"><div><p className={`m-0 text-[10px] font-black uppercase tracking-widest ${colore.text}`}>{titolo}</p><h3 className="m-0 mt-1 text-xl font-black text-gray-900">{selezionato.nome}</h3></div><button onClick={() => setSelezionato(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X size={18}/></button></div><div className="space-y-4 p-5"><div className={`flex h-52 items-center justify-center overflow-hidden rounded-xl ${colore.light}`}>{selezionato.foto_url ? <img src={fotoSrc(selezionato.foto_url)} alt={selezionato.nome} className="h-full w-full object-contain p-3"/> : <Package size={42} className={`${colore.text} opacity-30`}/>}</div><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs font-bold text-gray-400">Codice</dt><dd className="m-0 font-mono">{selezionato.codice || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Categoria</dt><dd className="m-0">{selezionato.categoria || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso singolo</dt><dd className="m-0">{selezionato.grammi || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Quantità cartone</dt><dd className="m-0">{selezionato.pezziCartone || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso totale cartone</dt><dd className="m-0">{pesoCartone(selezionato) ? `${pesoCartone(selezionato)} kg` : "—"}</dd></div>{selezionato.ean && <div><dt className="text-xs font-bold text-gray-400">EAN</dt><dd className="m-0 font-mono">{selezionato.ean}</dd></div>}{selezionato.prezzoListino > 0 && <div><dt className="text-xs font-bold text-gray-400">Prezzo di listino</dt><dd className="m-0">{euro(selezionato.prezzoListino)}{selezionato.unitaVendita ? ` per ${selezionato.unitaVendita}` : ""}{selezionato.dataListino ? ` · ${dataIt(selezionato.dataListino)}` : ""} · IVA esclusa</dd></div>}</dl>{selezionato.descrizione && <p className="rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-600">{selezionato.descrizione}</p>}{selezionato.link_prodotto && <a href={selezionato.link_prodotto} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold ${colore.text}`}><ExternalLink size={15}/> Apri la scheda originale del fornitore</a>}<button onClick={() => toggleRicette(selezionato)} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black ${selezionato.inRicette ? "bg-green-100 text-green-700" : "bg-[#5b7a6b] text-white"}`}>{selezionato.inRicette ? <Check size={16}/> : <Plus size={16}/>} {selezionato.inRicette ? "Usato nelle ricette" : "Usa in ricetta"}</button></div></div></div>}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <p className="text-xs font-semibold text-gray-500 uppercase">{filtrati.length} prodotti {titolo}</p>
         {importaPrecaricatoUrl && (
@@ -157,6 +186,21 @@ export default function CatalogoGenericoView({
           onChange={e => setSearch(e.target.value)}
           className="w-full pl-9 pr-3 py-2.5 rounded-xl border-2 border-gray-200 text-sm outline-none focus:border-gray-300" />
       </div>
+      {confrontoPrezzi && conConfronto.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {[
+            { id: "tutti", label: "Tutti" },
+            { id: "qui", label: `Più conveniente qui (${conConfronto.filter(c => c.questo_migliore).length})` },
+            { id: "altrove", label: `Costa meno altrove (${conConfronto.filter(c => !c.questo_migliore).length})` },
+          ].map(f => (
+            <button key={f.id} type="button" onClick={() => setFiltroPrezzo(f.id)} aria-pressed={filtroPrezzo === f.id}
+              className={`min-h-[44px] rounded-full border px-4 text-sm font-bold ${filtroPrezzo === f.id ? "border-[#5b7a6b] bg-[#5b7a6b] text-white" : "border-[#e6e0d4] bg-[#fffefb] text-[#3f5a4e]"}`}>
+              {f.label}
+            </button>
+          ))}
+          <span className="text-[12px] text-[#8a7f70]">Confronto al pezzo con le fatture XML e gli altri listini.</span>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-16 text-gray-400 text-sm">Caricamento...</div>
@@ -167,7 +211,7 @@ export default function CatalogoGenericoView({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {filtrati.map(p => {
+          {filtrati.slice(0, visibili).map(p => {
             const inCart = isInCart(p.id);
             const isPref = preferiti.has(p.id);
             return (
@@ -199,6 +243,7 @@ export default function CatalogoGenericoView({
                 <button onClick={() => toggleRicette(p)} className={`w-full py-1.5 text-[10px] font-black flex items-center justify-center gap-1 border-b ${p.inRicette ? "bg-green-50 text-green-700 border-green-100" : "bg-[#f2f6f3] text-[#4c6b5c] border-[#dce8e0]"}`}>{p.inRicette ? <Check size={10}/> : <Plus size={10}/>} {p.inRicette ? "Usato nelle ricette" : "Usa in ricetta"}</button>
                 <div className="p-2.5 space-y-1">
                   <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-tight">{p.nome}</p>
+                  {p.nomeFornitore && <p className="text-[10px] text-[#8a7f70] line-clamp-1" title={p.nomeFornitore}>«{p.nomeFornitore}»</p>}
                   {p.codice && (
                     <div className="flex items-center gap-1">
                       <Tag size={9} className="text-gray-400 flex-shrink-0" />
@@ -211,8 +256,31 @@ export default function CatalogoGenericoView({
                     </p>
                   )}
                   {p.descrizione && <p className="text-[10px] text-gray-500 line-clamp-3">{p.descrizione}</p>}
+                  {p.prezzoListino > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold text-[#3f5a4e] tabular-nums">{euro(p.prezzoListino)}</span>
+                      {p.unitaVendita && <span className="text-[10px] text-[#6b6358]">× {p.unitaVendita}</span>}
+                      <span className="text-[9px] bg-[#f3ece0] text-[#8a6f47] px-1.5 py-0.5 rounded-full font-semibold">
+                        listino{p.dataListino ? ` ${dataIt(p.dataListino).slice(0, 5)}` : ""}
+                      </span>
+                      {p.offertaFino && <span className="text-[9px] text-[#c4894a] font-semibold">offerta volantino fino al {dataIt(p.offertaFino)}</span>}
+                    </div>
+                  )}
+                  {confronto[p.codice]?.migliore && (
+                    confronto[p.codice].questo_migliore ? (
+                      <div className="flex items-center gap-1 rounded-lg bg-[#eef3ef] px-1.5 py-1 text-[10px] font-bold text-[#3d8168]">
+                        <TrendingDown size={11} aria-hidden="true" /> prezzo più basso · {euroPezzo(confronto[p.codice].prezzo_pezzo)} al pezzo
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-[#fbf3e8] px-1.5 py-1 text-[10px] font-bold text-[#7a5a2e]">
+                        costa meno da {confronto[p.codice].migliore}: {euroPezzo(confronto[p.codice].migliore_prezzo_pezzo)} al pezzo
+                        {confronto[p.codice].prezzo_pezzo ? ` (qui ${euroPezzo(confronto[p.codice].prezzo_pezzo)})` : ""}
+                        <span className="block font-semibold text-[#8a7f70]">aggiungendolo, l'ordine va a {confronto[p.codice].migliore}</span>
+                      </div>
+                    )
+                  )}
                   {/* Dopo l'acquisto prevale il prezzo reale XML; prima si usa il netto comunicato. */}
-                  {p.giaAcquistato && p.prezzoFattura > 0 ? (
+                  {p.prezzoListino > 0 ? null : p.giaAcquistato && p.prezzoFattura > 0 ? (
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-bold text-green-700">€{Number(p.prezzoFattura).toFixed(2)}</span>
                       <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">ultima fattura XML</span>
@@ -258,6 +326,14 @@ export default function CatalogoGenericoView({
               </div>
             );
           })}
+        </div>
+      )}
+      {filtrati.length > visibili && (
+        <div className="mt-4 flex justify-center">
+          <button type="button" onClick={() => setVisibili(v => v + PASSO)}
+            className="min-h-[44px] rounded-xl border border-[#e6e0d4] bg-[#fffefb] px-5 text-sm font-bold text-[#3f5a4e]">
+            Mostra altri ({filtrati.length - visibili} ancora)
+          </button>
         </div>
       )}
     </div>

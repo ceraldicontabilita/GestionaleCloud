@@ -739,13 +739,25 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `fatture`. **Un'impronta cambiata non è un conflitto** (il gestionale arricchisce righe e stati): conflitto è solo
   XML diverso con la fattura già in Lotti; se manca si importa. Un fornitore escluso si salta, non è un errore.
 - **Un numero che non si conosce non è zero**: KPI senza fonte = «Dato non disponibile»; spesa = `total_amount` del gestionale per identità (`spesa_da_gestionale`); costo lotto = consumo × prezzo di fattura (`costo_da_consumo`), altrimenti `None` col motivo; spese, sconti e trasporto non entrano in giacenza. Dose e righe-intestazione in un posto solo (`servizi/ingredienti_ricetta.py`): un ingrediente senza dose si dichiara (`ingredienti_senza_dose`), mai saltato in silenzio; la merce mai scaricata la chiude solo il titolare (`servizi/merce_ferma.py`: simulazione, conferma, riapribile, niente si cancella). Lievito di birra: un solo motore (`servizi/lievitazione.py`) per dose, produzione e calcolatore impasti; si scala dal `lievitazione_riferimento` della ricetta alle ore/temperature di oggi e senza riferimento non si ricalcola; la produzione scarica e registra il lievito realmente usato.
-- **Prezzi solo da acquisti reali in fattura XML.** Gli ordini hanno totali veri: prezzo di riga, aliquota
+- **Prezzi da acquisti reali in fattura XML, oppure da listino del fornitore dichiarato come tale.** Gli ordini hanno totali veri: prezzo di riga, aliquota
   IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel PDF.
+- **Listini** (`servizi/listino_fornitore.py`, `POST /catalogo-forno/importa-listino`, Excel/CSV letto per intestazione): prezzo
+  che il fornitore dichiara oggi (Barone: catalogo riservato, bundlato in `data/listino_barone_2026-09-28.json` e caricato
+  all'avvio solo se piu' nuovo di quello in archivio). Vivono in `catalogo_forno_prodotti` (`fonte_catalogo="listino"`,
+  `prezzo_listino` stringa Decimal per l'unita' «12 PZ») con la fonte `tipo="listino"` in `fonti_catalogo_esterne`; un articolo
+  uscito dal listino resta con `nel_listino=False`. Nel confronto compaiono con scritta «listino» e data, mai come prezzo pagato.
 - **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →
   articolo in `nome_mapping` (`servizi/articoli_fattura.py`): vince la riga **confermata** (Dizionario, «Proposte web»);
   senza conferme, parola intera e fuori i lotti che una prova dice altro («olive in acqua e sale» non è sale).
 - **Bevande e alcolici del bar** (acqua, birre, vino, prosecco, liquori, amari, sciroppi, succhi, bibite) si confrontano
-  a cartone o a pezzo, **mai a chilo o a litro**. Miglior fornitore: `servizi/confronto_fornitori.py` (righe XML, fornitore = P.IVA, accorpamento incerto deciso da una persona).
+  a cartone o a pezzo, **mai a chilo o a litro**. Miglior fornitore: `servizi/confronto_fornitori.py`, **motore unico** per confronto,
+  cataloghi e carrello (righe XML + listini, fornitore = P.IVA). Vetro e lattina non si uniscono mai, nemmeno passando per una
+  descrizione che il contenitore non lo dice. Accorpamento: certo per testo, EAN o **lettura AI** (`servizi/lettura_articoli_ai.py`,
+  collezione `articoli_letti_ai`, giro orario 06-22 e 3 minuti dopo l'avvio: marca, prodotto, variante, formato; misura e pezzi solo
+  se scritti nella descrizione), dichiarato `abbinato_ai` e separabile con «diverso»; il resto lo decide una persona.
+  `nome_mapping` resta l'ingrediente per le ricette, non l'articolo da ordinare. **Scelto un prodotto (catalogo, Ordini o
+  confronto), la riga del carrello va al fornitore che costa meno** (`GET /confronto-fornitori/migliore`) e il toast lo dice;
+  un cartone fatturato senza i pezzi scritti prende il numero dal listino dello stesso articolo, con la nota «da verificare».
 - Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili col peso del pezzo.
 - Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
   colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e

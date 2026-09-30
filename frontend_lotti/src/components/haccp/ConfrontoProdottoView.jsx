@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, GitMerge, Search, ShoppingCart, TrendingDown, X } from "lucide-react";
+import { AlertTriangle, Check, GitMerge, Search, ShoppingCart, Sparkles, TrendingDown, Unlink, X } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 import { API } from "../../utils/constants";
@@ -30,11 +30,12 @@ function Chip({ attivo, onClick, children }) {
   );
 }
 
-function RigaFornitore({ articolo, riga, migliore, eMigliore, pariMerito }) {
+function RigaFornitore({ articolo, riga, migliore, eMigliore, pariMerito, onSepara }) {
   const aggiungi = () => {
     aggiungiAlCarrello(rigaCarrello(articolo, riga));
-    toast.success(`${articolo.nome}: nel carrello da ${riga.fornitore}`);
+    toast.success(`${articolo.nome_standard || articolo.nome}: nel carrello da ${riga.fornitore}`);
   };
+  const listino = riga.origine === "listino";
   const extra = differenza(riga, migliore);
   return (
     <div
@@ -59,12 +60,32 @@ function RigaFornitore({ articolo, riga, migliore, eMigliore, pariMerito }) {
         </div>
         <div className="mt-0.5 text-[12px] text-[#6b6358]">
           <span className="font-extrabold text-[#3f5a4e] tabular-nums">{euroPezzo(riga.prezzo_pezzo)}</span> al pezzo
-          {riga.per_cartone && articolo.pezzi ? <> · {euro(riga.prezzo_confezione)} il cartone</> : null}
+          {listino && riga.unita_vendita ? <> · {euro(riga.prezzo_fattura)} per {riga.unita_vendita}</> : null}
+          {!listino && riga.per_cartone && articolo.pezzi ? <> · {euro(riga.prezzo_confezione)} il cartone</> : null}
           {extra && <span className="text-[#c4894a]"> · {extra}</span>}
         </div>
-        <div className="text-[11px] text-[#8a7f70]">
-          ultima fattura {dataIt(riga.data)}{riga.acquisti > 1 ? ` · ${riga.acquisti} acquisti` : ""}
+        <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-[#8a7f70]">
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${listino ? "bg-[#f3ece0] text-[#8a6f47]" : "bg-[#eef3ef] text-[#3f5a4e]"}`}>
+            {listino ? "listino" : "fattura XML"}
+          </span>
+          <span>
+            {listino ? `listino del ${dataIt(riga.data)}` : `ultima fattura ${dataIt(riga.data)}`}
+            {riga.acquisti > 1 ? ` · ${riga.acquisti} acquisti` : ""}
+            {riga.offerta_fino ? ` · offerta fino al ${dataIt(riga.offerta_fino)}` : ""}
+          </span>
         </div>
+        {riga.descrizione && riga.descrizione !== (articolo.nome_standard || articolo.nome) && (
+          <div className="truncate text-[11px] text-[#8a7f70]" title={riga.descrizione}>«{riga.descrizione}»</div>
+        )}
+        {riga.nota_pezzi && (
+          <div className="mt-0.5 text-[11px] font-semibold text-[#c4894a]">{riga.nota_pezzi}</div>
+        )}
+        {onSepara && (
+          <button type="button" onClick={() => onSepara(riga)}
+            className="mt-1 inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-[#e6e0d4] px-2 text-[11px] font-bold text-[#6b6358]">
+            <Unlink size={12} aria-hidden="true" /> Non è lo stesso articolo
+          </button>
+        )}
       </div>
       <button
         type="button"
@@ -80,12 +101,31 @@ function RigaFornitore({ articolo, riga, migliore, eMigliore, pariMerito }) {
   );
 }
 
-function CardArticolo({ a }) {
+function CardArticolo({ a, onCambiato }) {
   const migliore = a.migliore ? a.fornitori[0] : null;
+  const principale = a.fornitori[0];
+  const separa = async (riga) => {
+    try {
+      await axios.post(`${API}/confronto-fornitori/decisione`, { chiavi: [principale.chiave, riga.chiave], esito: "diverso" });
+      toast.success("Separati: non si confrontano più");
+      onCambiato && onCambiato();
+    } catch (e) {
+      toast.error(apiError(e, "Non riesco a separarli"));
+    }
+  };
+  const ordinaDalMigliore = () => {
+    aggiungiAlCarrello(rigaCarrello(a, migliore));
+    toast.success(`${a.nome_standard || a.nome}: nel carrello da ${migliore.fornitore}, il più conveniente`);
+  };
   return (
     <Card className="space-y-2.5 p-3.5">
       <div>
-        <h3 className="text-[15px] font-extrabold leading-snug text-[#2a3329]" style={{ letterSpacing: "-0.01em" }}>{a.nome}</h3>
+        <h3 className="text-[15px] font-extrabold leading-snug text-[#2a3329]" style={{ letterSpacing: "-0.01em" }}>{a.nome_standard || a.nome}</h3>
+        {a.abbinato_ai && (
+          <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-[#e6e0d4] bg-[#faf7f0] px-2 py-0.5 text-[11px] font-bold text-[#8a6f47]">
+            <Sparkles size={12} aria-hidden="true" /> descrizioni diverse unite dalla lettura AI
+          </span>
+        )}
         <p className="text-[12px] text-[#6b6358]">
           {a.formato ? <span className="font-bold">{a.formato}</span> : "formato non indicato"}
           {" · "}{a.n_fornitori} fornitor{a.n_fornitori === 1 ? "e" : "i"}
@@ -98,10 +138,17 @@ function CardArticolo({ a }) {
           <span>{a.motivo}</span>
         </div>
       )}
+      {migliore && !a.pari_merito && (
+        <button type="button" onClick={ordinaDalMigliore}
+          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-[#5b7a6b] text-sm font-bold text-white">
+          <ShoppingCart size={18} aria-hidden="true" /> Ordina da {migliore.fornitore}
+        </button>
+      )}
       <div className="space-y-1.5">
         {a.fornitori.map((r) => (
           <RigaFornitore key={r.fornitore_id || r.fornitore} articolo={a} riga={r}
-            migliore={migliore} eMigliore={migliore === r} pariMerito={a.pari_merito} />
+            migliore={migliore} eMigliore={migliore === r} pariMerito={a.pari_merito}
+            onSepara={a.abbinato_ai && r !== principale && r.chiave !== principale.chiave ? separa : null} />
         ))}
       </div>
     </Card>
@@ -158,6 +205,7 @@ function CardProposta({ p, onDecisa }) {
 export default function ConfrontoProdottoView() {
   const [q, setQ] = useState("");
   const [vista, setVista] = useState("confronti");   // confronti | tutti | da_confermare
+  const [stato, setStato] = useState(null);           // lettura AI delle descrizioni
   const [fornitore, setFornitore] = useState("");
   const [dati, setDati] = useState(null);
   const [proposte, setProposte] = useState(null);
@@ -189,6 +237,10 @@ export default function ConfrontoProdottoView() {
     return () => timer.current && clearTimeout(timer.current);
   }, [carica]);
 
+  useEffect(() => {
+    axios.get(`${API}/confronto-fornitori/lettura-ai/stato`).then(r => setStato(r.data)).catch(() => {});
+  }, []);
+
   const daConfermare = proposte?.totale ?? dati?.da_confermare ?? 0;
 
   return (
@@ -196,7 +248,8 @@ export default function ConfrontoProdottoView() {
       <div>
         <h2 className="text-lg font-extrabold text-[#2a3329]" style={{ letterSpacing: "-0.02em" }}>Miglior fornitore</h2>
         <p className="text-[13px] text-[#6b6358]">
-          Ultimo prezzo di ogni fornitore dalle fatture ricevute, confrontato al pezzo. Il più conveniente è in verde con la scritta.
+          Ultimo prezzo di ogni fornitore dalle fatture XML ricevute e dai listini (per esempio Barone), confrontato al pezzo.
+          Il più conveniente è in verde con la scritta; aggiungendolo al carrello l'ordine parte verso di lui.
         </p>
       </div>
 
@@ -231,9 +284,19 @@ export default function ConfrontoProdottoView() {
               {(dati?.fornitori || []).map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </label>
+          {stato && stato.stato !== "mai_eseguita" && (
+            <p className="flex items-center gap-1.5 text-[12px] text-[#8a7f70]">
+              <Sparkles size={13} aria-hidden="true" />
+              {stato.stato === "senza_chiave"
+                ? "Lettura AI dei nomi non attiva: manca la chiave del servizio AI."
+                : stato.stato === "in_corso"
+                  ? `L'AI sta leggendo i nomi dei prodotti (${stato.letture_salvate} già letti)…`
+                  : `${stato.letture_salvate} nomi di prodotto letti e standardizzati dall'AI${stato.da_leggere ? ` · ${stato.da_leggere} ancora da leggere` : ""}`}
+            </p>
+          )}
           {dati && (
             <p className="text-[12px] text-[#8a7f70]">
-              {dati.trovati} articoli · {dati.con_confronto} con un fornitore più conveniente su {dati.totale_articoli} acquistati
+              {dati.trovati} articoli · {dati.con_confronto} con un fornitore più conveniente su {dati.totale_articoli} fra fatture e listini
             </p>
           )}
         </div>
@@ -247,7 +310,7 @@ export default function ConfrontoProdottoView() {
         </div>
       )}
 
-      {!loading && vista !== "da_confermare" && dati?.articoli.map((a) => <CardArticolo key={a.chiave} a={a} />)}
+      {!loading && vista !== "da_confermare" && dati?.articoli.map((a) => <CardArticolo key={a.chiave} a={a} onCambiato={carica} />)}
 
       {!loading && vista === "da_confermare" && proposte && (
         proposte.proposte.length === 0

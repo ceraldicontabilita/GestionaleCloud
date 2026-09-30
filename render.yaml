@@ -62,6 +62,13 @@ services:
         sync: false
       - key: SUPABASE_RUNTIME_SECRET
         sync: false
+      # Lettura AI delle descrizioni di fatture e listini in Lotti
+      # (servizi/lettura_articoli_ai.py, modello Haiku, una chiamata per lotto di
+      # descrizioni, mai rilette) e, opzionale, estrazione AI di documenti.
+      # Proprietario: titolare; segreto, si ruota dalla console Anthropic.
+      # Senza chiave la lettura AI resta ferma in stato «senza_chiave».
+      - key: ANTHROPIC_API_KEY
+        sync: false
       # Telegram, unico canale degli avvisi (fonti ferme, posta, ritenute).
       # Proprietario: titolare. Token del bot da @BotFather (segreto, si ruota
       # revocandolo li'), chat id della chat del titolare. Senza i due valori

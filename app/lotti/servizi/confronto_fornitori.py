@@ -24,6 +24,20 @@ la quantita' fatturata e' minore di N. Se in un gruppo i prezzi per pezzo
 distano piu' di tre volte, le unita' di fattura non sono confrontabili: il
 gruppo lo dice e non sceglie un migliore invece di indovinare.
 
+Accanto alle fatture entrano i **listini** dei fornitori (``origine="listino"``,
+per esempio il catalogo riservato Barone): prezzo dichiarato oggi, con la sua
+data, mai confuso con un prezzo pagato. Il prezzo di listino vale per l'unita'
+scritta dal fornitore («12 PZ» = 12 pezzi), poi segue le stesse regole della
+fattura.
+
+La **lettura AI** (``servizi/lettura_articoli_ai.py``) legge ogni descrizione
+una volta sola: completa formato e confezione quando il testo li scrive in un
+modo che le espressioni regolari non capiscono, e da' a ogni articolo marca e
+prodotto standard. Due descrizioni con la stessa lettura (marca, prodotto,
+variante, formato, confezione) sono lo stesso articolo anche se il testo e'
+diverso: l'abbinamento si dichiara (``abbinato_ai``) e una persona lo puo'
+sciogliere con ``esito="diverso"``.
+
 Importi in ``Decimal``; all'uscita stringhe con quattro decimali.
 """
 from __future__ import annotations
@@ -148,7 +162,9 @@ class Articolo:
     @property
     def chiave(self) -> str:
         misura = f"{self.misura.normalize():f}{self.unita}" if self.misura else "-"
-        return f"{' '.join(self.parole)}|{misura}|x{self.pezzi or '?'}"
+        chiave = f"{' '.join(self.parole)}|{misura}|x{self.pezzi or '?'}"
+        # vetro e lattina hanno prezzi diversi: il contenitore scritto fa parte dell'articolo
+        return f"{chiave}|{self.contenitore}" if self.contenitore else chiave
 
     @property
     def formato(self) -> str:
@@ -302,6 +318,20 @@ class Acquisto:
     fattura_id: str = ""
     numero_fattura: str = ""
     aliquota_iva: str = ""
+    origine: str = "fattura"          # "fattura" | "listino"
+    descrizione_originale: str = ""   # il testo come scritto, chiave della lettura AI
+    cartone_senza_pezzi: bool = False  # fatturato a cartone, pezzi per cartone non scritti
+    # solo listino
+    fornitore_key: str = ""
+    codice_articolo: str = ""
+    ean: str = ""
+    link: str = ""
+    unita_vendita: str = ""
+    pezzi_vendita: int = 1
+    offerta_fino: str = ""
+    # lettura AI
+    chiave_ai: str = ""
+    nome_ai: str = ""
 
 
 def prezzo_per_pezzo(art: Articolo, prezzo: Decimal, unita: str, quantita: Optional[Decimal]) -> Tuple[Decimal, bool]:
@@ -369,6 +399,7 @@ def acquisti_da_fatture(fatture: Iterable[Dict[str, Any]]) -> List[Acquisto]:
                 continue
             unita = str(riga.get("unita_misura") or riga.get("unit") or "").strip()
             pezzo, per_cartone = prezzo_per_pezzo(art, prezzo, unita, quantita)
+            codice_unita = unita.strip().upper().rstrip(".")
             out.append(Acquisto(
                 fornitore=fornitore,
                 fornitore_id=fornitore_id,
@@ -382,7 +413,152 @@ def acquisti_da_fatture(fatture: Iterable[Dict[str, Any]]) -> List[Acquisto]:
                 fattura_id=str(f.get("id") or ""),
                 numero_fattura=str(f.get("invoice_number") or f.get("numero_fattura") or ""),
                 aliquota_iva=str(riga.get("aliquota_iva") or "").strip(),
+                descrizione_originale=str(descrizione),
+                cartone_senza_pezzi=codice_unita in _CODICI_CARTONE and not art.pezzi,
             ))
+    return out
+
+
+# ── listini dei fornitori ───────────────────────────────────────────────────
+
+
+def prezzo_listino_per_pezzo(art: Articolo, prezzo: Decimal, pezzi_vendita: int, sigla: str) -> Tuple[Decimal, bool]:
+    """Prezzo di listino → prezzo per pezzo, con le regole della fattura.
+
+    Il prezzo vale per ``pezzi_vendita`` unita' della sigla scritta («12 PZ»
+    a 8,52 € = 0,71 € l'uno); una unita' «CT» di un articolo «X24» e' un
+    cartone da 24; «KG» e' il prezzo al chilo."""
+    n = pezzi_vendita if pezzi_vendita and pezzi_vendita > 0 else 1
+    return prezzo_per_pezzo(art, prezzo / Decimal(n), sigla, None)
+
+
+def acquisti_da_listini(prodotti: Iterable[Dict[str, Any]], fonti: Iterable[Dict[str, Any]]) -> List[Acquisto]:
+    """Gli articoli dei listini (``catalogo_forno_prodotti`` con ``prezzo_listino``).
+
+    Il fornitore e' la fonte del listino: nome e partita IVA dal registro dei
+    cataloghi, cosi' un listino e le fatture dello stesso fornitore sono una
+    riga sola nel confronto (vince la data piu' recente)."""
+    per_chiave = {str(f.get("fornitore_key") or ""): f for f in fonti}
+    out: List[Acquisto] = []
+    for p in prodotti:
+        if p.get("nel_listino") is False:
+            continue
+        prezzo = _decimale(p.get("prezzo_listino"))
+        if prezzo is None or prezzo <= 0:
+            continue
+        key = str(p.get("fornitore") or "")
+        fonte = per_chiave.get(key) or {}
+        nome = str(fonte.get("nome") or p.get("fornitore_nome") or key).strip()
+        if not nome:
+            continue
+        descrizione = str(p.get("nome_completo") or p.get("nome") or "")
+        art = leggi(descrizione)
+        if not art.parole:
+            continue
+        piva = fonte.get("partita_iva") or ""
+        fornitore_id = identita_fornitore({"supplier_vat": piva}, nome)
+        pezzi_vendita = int(p.get("pezzi_vendita") or 1)
+        sigla = str(p.get("sigla_unita") or "")
+        pezzo, per_cartone = prezzo_listino_per_pezzo(art, prezzo, pezzi_vendita, sigla)
+        out.append(Acquisto(
+            fornitore=nome,
+            fornitore_id=fornitore_id,
+            data=_data_iso(p.get("prezzo_listino_data")),
+            articolo=art,
+            prezzo_fattura=prezzo.quantize(Q4),
+            unita_fattura=sigla,
+            quantita=None,
+            prezzo_pezzo=pezzo,
+            per_cartone=per_cartone or pezzi_vendita > 1,
+            aliquota_iva=str(p.get("aliquota_iva") if p.get("aliquota_iva") is not None else ""),
+            origine="listino",
+            descrizione_originale=descrizione,
+            fornitore_key=key,
+            codice_articolo=str(p.get("codice_articolo") or ""),
+            ean=str(p.get("ean") or ""),
+            link=str(p.get("link_prodotto") or ""),
+            unita_vendita=str(p.get("unita_vendita") or sigla),
+            pezzi_vendita=pezzi_vendita,
+            offerta_fino=str(p.get("offerta_fino") or ""),
+        ))
+    return out
+
+
+# ── lettura AI applicata agli acquisti ──────────────────────────────────────
+
+_PAROLE_VUOTE_AI = _RUMORE | {"ALL", "ALLO", "AI", "AGLI", "DELLE", "DEI", "DEGLI", "SU", "A", "UN", "UNA", "O"}
+
+
+def impronta_descrizione(descrizione: Any) -> str:
+    """Chiave della lettura AI: il testo ripulito (prima riga, maiuscolo)."""
+    import hashlib
+
+    return hashlib.sha256(pulisci(descrizione).encode("utf-8")).hexdigest()[:32]
+
+
+def _parole_ai(testo: Any) -> List[str]:
+    parole = re.split(r"[^A-Z0-9]+", pulisci(testo).replace("'", " "))
+    return sorted({p for p in parole if p and p not in _PAROLE_VUOTE_AI and (len(p) > 1 or p.isdigit())})
+
+
+def chiave_da_lettura(lettura: Dict[str, Any], art: Articolo) -> str:
+    """Marca + prodotto + variante + formato + confezione: la stessa per due
+    descrizioni diverse dello stesso articolo. Vuota se la lettura non basta."""
+    if not lettura or lettura.get("servizio"):
+        return ""
+    prodotto = _parole_ai(lettura.get("prodotto"))
+    if not prodotto:
+        return ""
+    marca = "".join(_parole_ai(lettura.get("marca")))
+    variante = " ".join(_parole_ai(lettura.get("variante")))
+    misura = f"{art.misura.normalize():f}{art.unita}" if art.misura else "-"
+    return f"ai:{marca}|{' '.join(prodotto)}|{variante}|{misura}|x{art.pezzi or '?'}"
+
+
+def _completa_articolo(art: Articolo, lettura: Dict[str, Any]) -> Articolo:
+    """Formato e confezione dalla lettura AI, solo dove il testo non li ha dati
+    alle espressioni regolari. Mai al posto di un dato gia' letto."""
+    from dataclasses import replace
+
+    misura, unita, pezzi = art.misura, art.unita, art.pezzi
+    if misura is None:
+        valore = _decimale(lettura.get("misura"))
+        if valore and valore > 0 and lettura.get("unita") in ("g", "ml"):
+            misura, unita = valore, lettura["unita"]
+    if pezzi is None:
+        try:
+            n = int(lettura.get("pezzi") or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if n > 1:
+            pezzi = n
+    if (misura, unita, pezzi) == (art.misura, art.unita, art.pezzi):
+        return art
+    return replace(art, misura=misura, unita=unita, pezzi=pezzi)
+
+
+def applica_letture(acquisti: List[Acquisto], letture: Dict[str, Dict[str, Any]]) -> List[Acquisto]:
+    """Acquisti con formato completato, nome standard e chiave AI."""
+    from dataclasses import replace
+
+    if not letture:
+        return acquisti
+    out: List[Acquisto] = []
+    for a in acquisti:
+        lettura = letture.get(impronta_descrizione(a.descrizione_originale or a.articolo.descrizione))
+        if not lettura or lettura.get("servizio"):
+            out.append(a)
+            continue
+        art = _completa_articolo(a.articolo, lettura)
+        if art is not a.articolo:
+            if a.origine == "listino":
+                pezzo, per_cartone = prezzo_listino_per_pezzo(art, a.prezzo_fattura, a.pezzi_vendita, a.unita_fattura)
+                per_cartone = per_cartone or a.pezzi_vendita > 1
+            else:
+                pezzo, per_cartone = prezzo_per_pezzo(art, a.prezzo_fattura, a.unita_fattura, a.quantita)
+            a = replace(a, articolo=art, prezzo_pezzo=pezzo, per_cartone=per_cartone,
+                        cartone_senza_pezzi=a.cartone_senza_pezzi and not art.pezzi)
+        out.append(replace(a, chiave_ai=chiave_da_lettura(lettura, art), nome_ai=str(lettura.get("nome") or "").strip()))
     return out
 
 
@@ -390,8 +566,13 @@ def acquisti_da_fatture(fatture: Iterable[Dict[str, Any]]) -> List[Acquisto]:
 
 
 class _Insiemi:
-    def __init__(self) -> None:
+    """Unione di chiavi. Un gruppo che contiene «vetro» non si unisce mai a uno
+    che contiene «lattina», nemmeno passando per una descrizione che il
+    contenitore non lo dice (la transitivita' li mescolava)."""
+
+    def __init__(self, contenitori: Optional[Dict[str, str]] = None) -> None:
         self.padre: Dict[str, str] = {}
+        self.contenitori: Dict[str, set] = {k: {c} for k, c in (contenitori or {}).items() if c}
 
     def trova(self, x: str) -> str:
         self.padre.setdefault(x, x)
@@ -400,10 +581,18 @@ class _Insiemi:
             x = self.padre[x]
         return x
 
-    def unisci(self, a: str, b: str) -> None:
+    def unisci(self, a: str, b: str) -> bool:
         ra, rb = self.trova(a), self.trova(b)
-        if ra != rb:
-            self.padre[max(ra, rb)] = min(ra, rb)
+        if ra == rb:
+            return True
+        ca, cb = self.contenitori.get(ra, set()), self.contenitori.get(rb, set())
+        if ca and cb and ca != cb:
+            return False
+        nuova, vecchia = min(ra, rb), max(ra, rb)
+        self.padre[vecchia] = nuova
+        if ca or cb:
+            self.contenitori[nuova] = ca | cb
+        return True
 
 
 def _coppia(a: str, b: str) -> Tuple[str, str]:
@@ -432,18 +621,44 @@ class Decisioni:
         return d
 
 
+class Gruppi(dict):
+    """Gruppi per radice; ``via_ai`` sono le radici unite dalla lettura AI (o
+    dall'EAN), ``archi_ai`` le coppie di chiavi che l'hanno fatto."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.via_ai: set = set()
+        self.archi_ai: Dict[str, List[Tuple[str, str]]] = {}
+
+
+def _formati_compatibili(a: Articolo, b: Articolo) -> bool:
+    if (a.misura or b.misura) and (a.misura != b.misura or a.unita != b.unita):
+        return False
+    if a.pezzi and b.pezzi and a.pezzi != b.pezzi:
+        return False
+    if a.contenitore and b.contenitore and a.contenitore != b.contenitore:
+        return False
+    return True
+
+
 def raggruppa(acquisti: List[Acquisto], decisioni: Optional[Decisioni] = None) -> Tuple[Dict[str, List[Acquisto]], List[Tuple[Articolo, Articolo]]]:
     """Gruppi di acquisti dello stesso articolo e coppie probabili da decidere."""
     decisioni = decisioni or Decisioni()
     per_chiave: Dict[str, List[Acquisto]] = {}
     articoli: Dict[str, Articolo] = {}
     fornitori_chiave: Dict[str, set] = {}
+    chiavi_ai: Dict[str, set] = {}
+    chiavi_ean: Dict[str, set] = {}
     for a in acquisti:
         per_chiave.setdefault(a.articolo.chiave, []).append(a)
         articoli.setdefault(a.articolo.chiave, a.articolo)
         fornitori_chiave.setdefault(a.articolo.chiave, set()).add(a.fornitore_id)
+        if a.chiave_ai:
+            chiavi_ai.setdefault(a.chiave_ai, set()).add(a.articolo.chiave)
+        if a.ean:
+            chiavi_ean.setdefault(a.ean, set()).add(a.articolo.chiave)
 
-    insiemi = _Insiemi()
+    insiemi = _Insiemi({k: art.contenitore for k, art in articoli.items()})
     for k in articoli:
         insiemi.trova(k)
     # stesso formato: si confrontano solo gli articoli con la stessa misura
@@ -465,10 +680,24 @@ def raggruppa(acquisti: List[Acquisto], decisioni: Optional[Decisioni] = None) -
                     insiemi.unisci(ka, kb)
                 elif esito == "probabile" and fornitori_chiave[ka] != fornitori_chiave[kb]:
                     probabili.append((articoli[ka], articoli[kb]))
-    # decisioni «stesso» fra formati diversi non esistono: il formato decide
-    gruppi: Dict[str, List[Acquisto]] = {}
+    # stesso EAN o stessa lettura AI: stesso articolo, se il formato non lo smentisce
+    archi: List[Tuple[str, str]] = []
+    for insieme in list(chiavi_ean.values()) + list(chiavi_ai.values()):
+        chiavi = sorted(insieme)
+        for kb in chiavi[1:]:
+            ka = chiavi[0]
+            coppia = _coppia(ka, kb)
+            if coppia in decisioni.diverso or not _formati_compatibili(articoli[ka], articoli[kb]):
+                continue
+            if insiemi.trova(ka) != insiemi.trova(kb) and insiemi.unisci(ka, kb):
+                archi.append(coppia)
+    gruppi = Gruppi()
     for k, lista in per_chiave.items():
         gruppi.setdefault(insiemi.trova(k), []).extend(lista)
+    for ka, kb in archi:
+        radice = insiemi.trova(ka)
+        gruppi.via_ai.add(radice)
+        gruppi.archi_ai.setdefault(radice, []).append((ka, kb))
     # una coppia probabile gia' finita nello stesso gruppo non va chiesta
     probabili = [(a, b) for a, b in probabili if insiemi.trova(a.chiave) != insiemi.trova(b.chiave)]
     return gruppi, probabili
@@ -481,33 +710,61 @@ def _q(valore: Optional[Decimal]) -> Optional[str]:
 RAPPORTO_MASSIMO = Decimal(3)
 
 
-def riepilogo_gruppo(acquisti: List[Acquisto]) -> Dict[str, Any]:
+def _pezzi_cartone_da_listino(acquisti: List[Acquisto]) -> Tuple[Optional[int], str]:
+    """Pezzi per cartone scritti da un listino dello stesso articolo («6 PZ»)."""
+    for a in sorted(acquisti, key=lambda x: x.data, reverse=True):
+        if a.origine == "listino" and a.pezzi_vendita > 1 and a.unita_fattura == "PZ" and not a.articolo.pezzi:
+            return a.pezzi_vendita, a.fornitore
+    return None, ""
+
+
+def riepilogo_gruppo(acquisti: List[Acquisto], abbinato_ai: bool = False) -> Dict[str, Any]:
     """L'articolo con l'ultimo prezzo di ogni fornitore e il migliore."""
     per_fornitore: Dict[str, List[Acquisto]] = {}
     for a in acquisti:
         per_fornitore.setdefault(a.fornitore_id, []).append(a)
+    pezzi_listino, fonte_pezzi = _pezzi_cartone_da_listino(acquisti)
     righe = []
     for lista in per_fornitore.values():
-        lista.sort(key=lambda a: (a.data, a.fattura_id))
+        lista.sort(key=lambda a: (a.data, a.origine == "listino", a.fattura_id))
         ultimo = lista[-1]
         prezzi = [a.prezzo_pezzo for a in lista]
+        pezzo = ultimo.prezzo_pezzo
+        nota_pezzi = ""
+        # cartone fatturato senza i pezzi scritti: se il listino di un altro
+        # fornitore dice quanti pezzi ha lo stesso articolo, si usa quel numero
+        # e lo si dichiara
+        if ultimo.origine == "fattura" and ultimo.cartone_senza_pezzi and pezzi_listino:
+            pezzo = (ultimo.prezzo_fattura / Decimal(pezzi_listino)).quantize(Q4)
+            nota_pezzi = f"cartone da {pezzi_listino} pezzi letto dal listino {fonte_pezzi}: da verificare"
         righe.append({
             "fornitore": ultimo.fornitore,
             "fornitore_id": ultimo.fornitore_id,
+            "origine": ultimo.origine,
             "descrizione": ultimo.articolo.descrizione,
-            "prezzo_pezzo": _q(ultimo.prezzo_pezzo),
-            "prezzo_confezione": _q(ultimo.prezzo_pezzo * ultimo.articolo.pezzi) if ultimo.articolo.pezzi else None,
+            "nome_ai": ultimo.nome_ai,
+            "chiave": ultimo.articolo.chiave,
+            "prezzo_pezzo": _q(pezzo),
+            "prezzo_confezione": _q(pezzo * ultimo.articolo.pezzi) if ultimo.articolo.pezzi else None,
             "prezzo_fattura": _q(ultimo.prezzo_fattura),
             "unita_fattura": ultimo.unita_fattura,
-            "per_cartone": ultimo.per_cartone,
+            "per_cartone": ultimo.per_cartone or bool(nota_pezzi),
+            "nota_pezzi": nota_pezzi,
             "data": ultimo.data,
             "numero_fattura": ultimo.numero_fattura,
             "fattura_id": ultimo.fattura_id,
             "aliquota_iva": ultimo.aliquota_iva,
-            "acquisti": len(lista),
+            "fornitore_key": ultimo.fornitore_key,
+            "codice_articolo": ultimo.codice_articolo,
+            "ean": ultimo.ean,
+            "link": ultimo.link,
+            "unita_vendita": ultimo.unita_vendita,
+            "pezzi_vendita": ultimo.pezzi_vendita,
+            "offerta_fino": ultimo.offerta_fino,
+            "acquisti": sum(1 for a in lista if a.origine == "fattura"),
             "prezzo_min": _q(min(prezzi)),
             "prezzo_max": _q(max(prezzi)),
-            "_pezzo": ultimo.prezzo_pezzo,
+            "_pezzo": pezzo,
         })
     # a parita' di prezzo vince la fattura piu' recente (chi fornisce oggi)
     righe.sort(key=lambda r: (r["data"], r["fornitore"]), reverse=True)
@@ -528,10 +785,13 @@ def riepilogo_gruppo(acquisti: List[Acquisto]) -> Dict[str, Any]:
     for r in righe:
         r.pop("_pezzo")
     # nome: la descrizione piu' recente del fornitore migliore (o del primo)
-    art = max(acquisti, key=lambda a: (a.fornitore_id == righe[0]["fornitore_id"], a.data)).articolo
+    scelto = max(acquisti, key=lambda a: (a.fornitore_id == righe[0]["fornitore_id"], a.data))
+    art = scelto.articolo
+    nome_standard = next((a.nome_ai for a in sorted(acquisti, key=lambda x: x.data, reverse=True) if a.nome_ai), "")
     return {
         "chiave": art.chiave,
         "nome": art.descrizione,
+        "nome_standard": nome_standard,
         "formato": art.formato,
         "pezzi": art.pezzi,
         "n_fornitori": len(righe),
@@ -540,6 +800,8 @@ def riepilogo_gruppo(acquisti: List[Acquisto]) -> Dict[str, Any]:
         "pari_merito": pari_merito,
         "confrontabile": confrontabile,
         "motivo": motivo,
+        "abbinato_ai": abbinato_ai,
+        "con_listino": any(r["origine"] == "listino" for r in righe),
         "valuta": VALUTA,
         "fornitori": righe,
         "chiavi": sorted({a.articolo.chiave for a in acquisti}),
@@ -565,12 +827,13 @@ def proposta(a: Articolo, b: Articolo, acquisti_per_chiave: Dict[str, List[Acqui
 # ── cache in memoria ────────────────────────────────────────────────────────
 
 _TTL = 120.0
-_cache: Dict[str, Any] = {"at": 0.0, "acquisti": None}
+_cache: Dict[str, Any] = {"at": 0.0, "acquisti": None, "riepiloghi": None}
 
 
 def invalida_cache() -> None:
     _cache["at"] = 0.0
     _cache["acquisti"] = None
+    _cache["riepiloghi"] = None
 
 
 def cache_valida() -> bool:
