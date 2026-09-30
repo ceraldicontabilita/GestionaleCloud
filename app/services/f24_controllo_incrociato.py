@@ -322,6 +322,13 @@ def _quietanza_legacy(doc: Dict[str, Any]) -> Dict[str, Any]:
         "ravvedimento_di": list(doc.get("ravvedimento_di") or []),
         # Rata del piano INPS che questa quietanza paga (dilazioni_inps).
         "dilazione_inps": doc.get("dilazione_inps"),
+        # Quadratura del saldo e stato: gli incroci fiscali scartano una
+        # quietanza non quadrata o in quarantena invece di sommarla.
+        "validazione": doc.get("validazione") or {},
+        "status": doc.get("status"),
+        # Il documento com'e' in archivio (senza pdf_data): serve agli indizi,
+        # che rileggono le righe con `righe_modello`.
+        "documento": doc,
     }
 
 
@@ -564,9 +571,10 @@ def _periodo_compatibile(riga: Dict[str, Any], periodo: Dict[str, Optional[int]]
 
 INDIZIO_COMPENSAZIONE_6099 = "POSSIBILE_COMPENSAZIONE_6099"
 INDIZIO_ERRORE_PERIODO = "POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE"
-# «Importo quasi identico»: la sola soglia del cruscotto fiscale del titolare,
-# 1,00 EUR assoluto. Serve a proporre dove guardare, mai ad associare.
-TOLLERANZA_INDIZIO_CENTS = 100
+# «Importo quasi identico»: 3,00 EUR assoluto (PIANO §7-bis F, incroci del
+# minisito). Un indizio propone dove guardare, mai un'associazione: la soglia
+# del confronto vero resta 1,00 EUR (`incroci_fiscali.SOGLIA_CENTS`).
+TOLLERANZA_INDIZIO_CENTS = 300
 
 
 def indizi_riga_mancante(
@@ -574,7 +582,7 @@ def indizi_riga_mancante(
 ) -> List[Dict[str, Any]]:
     """Dove guardare prima di dire «non pagato». Sola lettura, nessun esito cambia.
 
-    * una riga 6099 (IVA annuale) di importo uguale entro 1,00 EUR, a debito o a
+    * una riga 6099 (IVA annuale) di importo uguale entro 3,00 EUR, a debito o a
       credito: il tributo puo' essere stato versato o compensato come saldo IVA;
     * lo stesso codice con importo uguale ma un altro anno: periodo imputato
       male sul modello.
