@@ -378,9 +378,12 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
             paghe_idx[(a, m)] = p
     ced_per_id: Dict[str, Dict[str, Any]] = {}
     ced_idx: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    from app.services.cedolini_versioni import attiva
+
     for c in cedolini:
         tipo = str(c.get("tipo_cedolino") or "").strip().lower() or None
-        if tipo not in TIPI_BUSTA_DOVUTO:
+        # una versione superata della busta (`sostituito`) non e' un dovuto
+        if tipo not in TIPI_BUSTA_DOVUTO or not attiva(c):
             continue
         if c.get("id"):
             ced_per_id[c["id"]] = c

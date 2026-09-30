@@ -36,7 +36,7 @@ import logging
 import uuid
 import re
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import calendar
 
 from app.constants.stati_netto import (
@@ -275,7 +275,8 @@ async def processa_cedolino_v2(
     cedolino_data: Dict[str, Any],
     pdf_text: str = "",
     filename: str = "",
-    pdf_data: str = None
+    pdf_data: str = None,
+    sostituita: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Processa cedolino con estrazione completa ferie/ROL/contributi.
@@ -285,6 +286,11 @@ async def processa_cedolino_v2(
     3. Aggiorna anagrafica dipendente con ferie/ROL
     4. Crea movimento in prima_nota_salari  
     5. Tenta riconciliazione con estratto conto
+
+    ``sostituita`` (``{"sostituito_da", "sostituito_motivo"}``, da
+    ``cedolini_versioni``): la busta e' una versione superata da una gia' in
+    archivio; si scrive nel registro col suo PDF e ``status="sostituito"`` e
+    basta — niente anagrafica, Prima Nota, HR, eventi.
     """
     result = {
         "success": False,
@@ -363,7 +369,11 @@ async def processa_cedolino_v2(
         # --- 1. Anagrafica dipendente ---
         dipendente = await db["dipendenti"].find_one({"codice_fiscale": cf})
         
-        if dipendente:
+        if sostituita:
+            # Versione superata: l'anagrafica non cambia (ultimo netto,
+            # ferie, IBAN restano quelli della busta che vale).
+            dipendente_id = (dipendente or {}).get("id")
+        elif dipendente:
             dipendente_id = dipendente.get("id")
             update_anagrafica = {
                 "ultimo_cedolino": f"{mese:02d}/{anno}",
@@ -501,6 +511,18 @@ async def processa_cedolino_v2(
             if cedolino_data.get(field):
                 cedolino_record[field] = cedolino_data[field]
         cedolino_record["stato_netto"] = stato_netto
+        # Da dove viene il netto (`cella`, `non_letto_da_lul`, None) e i
+        # marcatori di versione letti una volta dal PDF (`cedolini_versioni`).
+        cedolino_record["netto_fonte"] = cedolino_data.get("netto_fonte")
+        from app.services.cedolini_versioni import STATUS_SOSTITUITO, marcatori
+        cedolino_record.update(marcatori({**cedolino_data, "filename": filename, "pdf_text": pdf_text}))
+        if sostituita:
+            cedolino_record.update({
+                "status": STATUS_SOSTITUITO,
+                "sostituito_da": sostituita.get("sostituito_da"),
+                "sostituito_motivo": sostituita.get("sostituito_motivo") or "versione superata",
+                "sostituito_at": datetime.now(timezone.utc).isoformat(),
+            })
 
         # Un reimport serve ad arricchire dati e PDF, mai a cancellare una
         # riconciliazione, un acconto o un pagamento gia' registrato.
@@ -525,6 +547,11 @@ async def processa_cedolino_v2(
             upsert=True
         )
         result["cedolino_id"] = cedolino_id
+
+        if sostituita:
+            result["success"] = True
+            result["sostituita"] = True
+            return result
 
         # HR e' l'unico archivio cedolini per gli utenti (decisione 03/09/2026):
         # deposito nella tabella app_cedolini dell'app HR, mai bloccante.

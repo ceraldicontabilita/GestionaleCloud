@@ -41,6 +41,23 @@ STATI_NON_UTILIZZABILI = tuple(
     s for s in STATI_NETTO if s != NETTO_VERIFICATO_DA_CEDOLINO
 )
 
+# ── da dove viene il netto (``netto_fonte``) ────────────────────────────────
+# Lo stato dice *se* il netto vale; la fonte dice *da dove* il lettore l'ha
+# preso. Il minisito del titolare aveva anche «calcolato_da_totali»: qui non
+# esiste, competenze − trattenute resta un controllo e non produce mai un
+# netto (CLAUDE.md, «Personale»).
+
+#: Il netto viene dalla cella graficamente associata all'etichetta.
+NETTO_FONTE_CELLA = "cella"
+
+#: Pagina del Libro Unico del Lavoro senza la cella del netto: il netto resta
+#: nullo (stato ``NETTO_NON_PRESENTE_O_NON_LEGGIBILE``), mai zero.
+NETTO_FONTE_NON_LETTO_DA_LUL = "non_letto_da_lul"
+
+#: Ogni altro caso (netto dal testo, netto assente su una busta normale) ha
+#: fonte ``None``.
+FONTI_NETTO = (NETTO_FONTE_CELLA, NETTO_FONTE_NON_LETTO_DA_LUL, None)
+
 
 def alimenta_salari(stato: object) -> bool:
     """True solo per il netto verificato.
