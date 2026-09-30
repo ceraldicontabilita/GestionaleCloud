@@ -640,10 +640,15 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
 @router.get("/bonifici-da-associare")
 async def lista_bonifici_da_associare():
     """Elenco leggero (senza il PDF) di chi aspetta un'assegnazione manuale."""
-    righe = await get_db().bonifici_da_associare.find(
+    from app.services.candidati_bonifico import arricchisci_coda
+
+    db = get_db()
+    righe = await db.bonifici_da_associare.find(
         {"stato": "da_associare"}, {"_id": 0, "pdf_data": 0}).to_list(500)
     righe.sort(key=lambda r: r.get("data") or "", reverse=True)
-    return righe
+    # Ogni riga porta i candidati (fino a 10, mai applicati), l'avviso
+    # multi-dipendente, `rif_banca` e `cro`: chi sceglie vede da dove viene il bonifico.
+    return await arricchisci_coda(db, righe)
 
 
 @router.get("/bonifici-da-associare/distinte")
@@ -652,9 +657,11 @@ async def distinte_da_associare():
     il sistema ne sa (estratto, ricevuta, commissione, nota, suggerimento).
     L'associazione si fa con lo stesso `associa` della coda."""
     from app.database import Database as DatabaseGestionale
+    from app.services.candidati_bonifico import arricchisci_distinte
     from app.services.distinte_bonifici import elenco_distinte
 
-    return await elenco_distinte(DatabaseGestionale.get_db(), get_db())
+    righe = await elenco_distinte(DatabaseGestionale.get_db(), get_db())
+    return await arricchisci_distinte(get_db(), righe)
 
 
 @router.get("/paghe/pagamento-esito/{key}/pdf")
@@ -683,8 +690,43 @@ async def pdf_bonifico_da_associare(bonifico_id: str):
                     headers={"Content-Disposition": f'inline; filename="{fname}"'})
 
 
+def _attore(utente: Optional[Dict[str, Any]]) -> str:
+    """Chi conferma: il nome nel token, altrimenti il ruolo."""
+    utente = utente if isinstance(utente, dict) else {}
+    return str(utente.get("name") or utente.get("sub") or utente.get("role") or "admin")
+
+
+def _db_gestionale():
+    """L'archivio del gestionale, o None se non raggiungibile (si dice nel log)."""
+    try:
+        from app.database import Database as DatabaseGestionale
+
+        return DatabaseGestionale.get_db()
+    except Exception as exc:  # noqa: BLE001 - il segno HR e' gia' scritto
+        logger.warning("Conferma bonifico: archivio gestionale non raggiungibile (%s: %s)",
+                       type(exc).__name__, exc)
+        return None
+
+
+async def _segna_conferma(db, in_coda: Dict[str, Any], attore: str, evento: Dict[str, Any]) -> Dict[str, Any]:
+    """Il bonifico associato a mano porta ``confermato_manuale`` (campi + storico
+    sulla riga in coda) e lo stesso segno sul movimento e sulla ricevuta del
+    gestionale da cui nasce. Restituisce i campi, da riusare su bonifico ed esito."""
+    from app.services.conferma_bonifico import campi_conferma, imposta_conferma_gestionale
+
+    campi = campi_conferma(attore)
+    await db.bonifici_da_associare.update_one(
+        {"id": in_coda["id"]},
+        {"$set": campi,
+         "$push": {"storico": {"azione": "conferma_manuale", "da": attore,
+                               "il": campi["confermato_il"], **evento}}})
+    await imposta_conferma_gestionale(_db_gestionale(), in_coda, campi)
+    return campi
+
+
 @router.post("/bonifici-da-associare/{bonifico_id}/associa")
-async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...)):
+async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
+                           utente: Dict[str, Any] = Depends(require_staff)):
     """Assegna un bonifico in coda a un dipendente, scelto a mano, e dice che
     cosa e' (``tipo``):
 
@@ -714,6 +756,15 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...)):
     if in_coda.get("stato") not in (None, "da_associare"):
         raise HTTPException(409, {"code": "GIA_ASSOCIATO", "message": "Bonifico gia' uscito dalla coda",
                                   "details": {"stato": in_coda.get("stato")}})
+    # Lo stesso bonifico visto da un'altra riga (ricevuta ed estratto hanno lo
+    # stesso «MB…») gia' confermato a mano e' consumato: non si associa due volte.
+    from app.services.conferma_bonifico import chiavi_confermate, e_consumato
+
+    if e_consumato(in_coda, await chiavi_confermate(db)):
+        raise HTTPException(409, {"code": "GIA_ASSOCIATO",
+                                  "message": "Questo bonifico e' gia' stato confermato a mano da un'altra riga",
+                                  "details": {"stato": "confermato_altrove"}})
+    attore = _attore(utente)
     dip = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
     if not dip:
         raise HTTPException(404, "Dipendente non trovato")
@@ -747,6 +798,8 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...)):
             {"id": bonifico_id},
             {"$set": {"stato": "associato", "associato_a": dipendente_id, "associato_tipo": tipo,
                       "associato_competenza": "%s-%02d" % (anno, mese), "associato_il": now_iso(), **rif}})
+        await _segna_conferma(db, in_coda, attore, {"dipendente_id": dipendente_id, "tipo": tipo,
+                                                    "competenza": "%s-%02d" % (anno, mese)})
         return {"ok": True, "tipo": tipo, **rif}
 
     nuovo = {
@@ -766,6 +819,15 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...)):
         {"id": bonifico_id},
         {"$set": {"stato": "associato", "associato_a": dipendente_id, "associato_tipo": "stipendio",
                   "associato_competenza": nuovo["competenza"], "associato_il": now_iso()}})
+    campi = await _segna_conferma(db, in_coda, attore, {"dipendente_id": dipendente_id, "tipo": "stipendio",
+                                                        "competenza": nuovo["competenza"]})
+    # Il bonifico e l'esito di pagamento portano lo stesso segno e le stesse
+    # chiavi d'identita' (MB…, CRO, hash): nessun'altra riga li riassegna.
+    identita = {k: in_coda.get(k) for k in ("rif_banca", "cro", "hash",
+                                            "gestionale_movimento_id", "gestionale_transfer_id")
+                if in_coda.get(k)}
+    await db.bonifici.update_one({"id": nuovo["id"]}, {"$set": {**campi, **identita,
+                                                               "bonifico_da_associare_id": bonifico_id}})
 
     # Aggancia anche al MOTORE UNICO paghe (pagamenti_esiti + paghe_mensili):
     # senza questo passo l'associazione restava confinata alla collezione
@@ -775,17 +837,67 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...)):
     key = f"beneficiari-diversi:{bonifico_id}"
     await db.pagamenti_esiti.update_one(
         {"key": key},
-        {"$set": {"key": key, "cro": None, "dipendente_id": dipendente_id,
+        {"$set": {"key": key, "cro": in_coda.get("cro"), "dipendente_id": dipendente_id,
                   "data": in_coda.get("data"), "importo": in_coda.get("importo") or 0,
                   "causale": in_coda.get("causale") or "Bonifico beneficiari diversi",
                   "beneficiario": dip.get("nome_completo"),
-                  "mese": mese_i, "anno": anno_i}}, upsert=True)
+                  "mese": mese_i, "anno": anno_i,
+                  "bonifico_da_associare_id": bonifico_id, **campi, **identita}}, upsert=True)
     await db.paghe_mensili.update_one(
         {"dipendente_id": dipendente_id, "anno": anno_i, "mese": mese_i},
         {"$set": {"dipendente_id": dipendente_id, "anno": anno_i, "mese": mese_i,
                   "updated_at": now_iso()}}, upsert=True)
     await _ricalcola_stato_paga(db, dipendente_id, anno_i, mese_i)
     return {"ok": True, "bonifico": nuovo}
+
+
+@router.post("/bonifici-da-associare/{bonifico_id}/ritira-conferma")
+async def ritira_conferma_bonifico(bonifico_id: str, utente: Dict[str, Any] = Depends(require_staff)):
+    """Annulla l'associazione a mano di un bonifico di tipo stipendio: il
+    bonifico torna in coda, il pagamento esce dalla busta e il segno
+    ``confermato_manuale`` si spegne (con chi e quando nello ``storico``).
+    Acconti e conciliazioni si correggono dalla posizione del dipendente."""
+    from app.services.conferma_bonifico import campi_ritiro, imposta_conferma_gestionale
+
+    db = get_db()
+    riga = await db.bonifici_da_associare.find_one({"id": bonifico_id}, {"_id": 0, "pdf_data": 0})
+    if not riga:
+        raise HTTPException(404, "Bonifico non trovato in coda")
+    if riga.get("stato") != "associato" or riga.get("confermato_manuale") is not True:
+        raise HTTPException(409, {"code": "NON_CONFERMATO", "message": "Il bonifico non e' confermato a mano",
+                                  "details": {"stato": riga.get("stato")}})
+    if riga.get("associato_tipo") != "stipendio":
+        raise HTTPException(409, {"code": "NON_ANNULLABILE_QUI",
+                                  "message": "Acconti e conciliazioni si correggono dalla posizione del dipendente",
+                                  "details": {"tipo": riga.get("associato_tipo")}})
+    attore = _attore(utente)
+    dip_id = riga.get("associato_a")
+    try:
+        anno_i, mese_i = (int(x) for x in str(riga.get("associato_competenza") or "").split("-"))
+    except ValueError:
+        anno_i = mese_i = None
+    bonifico = await db.bonifici.find_one({"assegnato_da_bonifico_diversi": bonifico_id}, {"_id": 0, "id": 1})
+    if bonifico:
+        await db.bonifici.delete_one({"id": bonifico["id"]})
+    await db.pagamenti_esiti.delete_one({"key": f"beneficiari-diversi:{bonifico_id}"})
+    if dip_id and anno_i:
+        tot = 0.0
+        async for e in db.pagamenti_esiti.find({"dipendente_id": dip_id, "mese": mese_i, "anno": anno_i},
+                                               {"_id": 0, "importo": 1}):
+            tot += float(e.get("importo") or 0)
+        await db.paghe_mensili.update_one(
+            {"dipendente_id": dip_id, "anno": anno_i, "mese": mese_i},
+            {"$set": {"bonifico_importo": round(tot, 2), "bonifico_ricevuto": tot > 0, "updated_at": now_iso()}})
+        await _ricalcola_stato_paga(db, dip_id, anno_i, mese_i)
+    campi = campi_ritiro()
+    await db.bonifici_da_associare.update_one(
+        {"id": bonifico_id},
+        {"$set": {"stato": "da_associare", "associato_a": None, "associato_tipo": None,
+                  "associato_competenza": None, "associato_il": None, **campi},
+         "$push": {"storico": {"azione": "ritira_conferma", "da": attore, "il": now_iso(),
+                               "dipendente_id": dip_id}}})
+    await imposta_conferma_gestionale(_db_gestionale(), riga, campi)
+    return {"ok": True}
 
 
 @router.post("/bonifici-da-associare/{bonifico_id}/ignora")
