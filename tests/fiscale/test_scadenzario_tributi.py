@@ -128,3 +128,13 @@ def test_quietanze_a_saldo_zero_gia_importate_si_allineano():
     z = asyncio.run(db[qi.COLL_QUIETANZE].find_one({"id": "z"}))
     assert z["stato_quietanza"] == "QUIETANZA_COMPENSAZIONE_TOTALE" and z["calcolo_fiscale_sospeso"] is False
     assert asyncio.run(qi.allinea_quietanze_saldo_zero(db))["aggiornate"] == 0
+
+
+def test_addizionale_prende_la_scadenza_piu_vicina_e_inps_non_e_art13():
+    q = _q("a", "2020-10-05", regioni=[_riga("3802", "07/2020", 7575)])
+    v = _calcola(q)["sezione_regioni|3802|2020|7"]
+    assert v["scadenza"] == "2020-08-20" and v["stato"] == sc.RITARDO_NON_RAVVEDUTO
+    q2 = _q("b", "2021-08-16", locali=[_riga("3848", "07/2020", 11591)])
+    assert _calcola(q2)["sezione_tributi_locali|3848|2020|7"]["stato"] == sc.PUNTUALE
+    s, _ = sc.scadenza_da_regola("sezione_inps", "RC01", 2021, 4, "2021-06-07")
+    assert s is None
