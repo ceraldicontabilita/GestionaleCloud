@@ -71,6 +71,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.constants.stati_associazione_bonifico import e_confermato_manuale
+
 logger = logging.getLogger(__name__)
 
 CAMPO_MARCATORE = "hr_deposito"
@@ -89,6 +91,8 @@ ESITO_NON_DIPENDENTE = "non_dipendente"
 ESITO_NON_STIPENDIO = "non_stipendio"
 ESITO_DATI_INCOMPLETI = "dati_incompleti"
 ESITO_HR_NON_CONFIGURATO = "hr_non_configurato"
+#: Il titolare ha associato questo bonifico a mano: il ponte non lo tocca piu'.
+ESITO_CONFERMATO_MANUALE = "confermato_manuale"
 
 _CF_RE = re.compile(r"\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", re.I)
 # Pagamenti a un dipendente che NON sono lo stipendio del mese: non entrano
@@ -218,6 +222,41 @@ def _nome_dipendente(dip: Dict[str, Any]) -> str:
 
 # ── riconoscimento del dipendente e della natura del pagamento ───────────────
 
+def dipendenti_citati(indici: Dict[str, Any], testo: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """``(livello, dipendenti)``: tutti i dipendenti che il testo cita al primo
+    livello che ne trova, in ordine di forza: ``cf``, ``nome`` (nome completo),
+    ``cognome``; ``nessuno`` con lista vuota. E' l'unica lettura del testo: sia
+    ``risolvi_dipendente`` (che sceglie solo se e' uno) sia i candidati della
+    coda (che li elencano tutti) partono da qui."""
+    haystack = _norm(testo)
+    if not haystack:
+        return "nessuno", []
+    by_cf = indici.get("cf") or {}
+    trovati_cf = {}
+    for m in _CF_RE.finditer(str(testo or "")):
+        dip = by_cf.get(m.group(1).upper())
+        if dip:
+            trovati_cf[dip["id"]] = dip
+    if trovati_cf:
+        return "cf", list(trovati_cf.values())
+
+    per_nome = {}
+    for nome_n, dip in (indici.get("nome") or {}).items():
+        if nome_n and nome_n in haystack:
+            per_nome[dip["id"]] = dip
+    if per_nome:
+        return "nome", list(per_nome.values())
+
+    per_cognome = {}
+    for cogn, lista in (indici.get("cogn") or {}).items():
+        if cogn and re.search(r"(?<![a-z'])" + re.escape(cogn) + r"(?![a-z])", haystack):
+            for dip in lista:
+                per_cognome[dip["id"]] = dip
+    if per_cognome:
+        return "cognome", list(per_cognome.values())
+    return "nessuno", []
+
+
 def risolvi_dipendente(indici: Dict[str, Any], testo: str) -> Tuple[Optional[Dict[str, Any]], str]:
     """``(dipendente, motivo)``: ``motivo`` in ``cf``/``nome``/``cognome``
     quando univoco, ``ambiguo`` se piu' persone combaciano, ``nessuno`` altrimenti.
@@ -226,39 +265,12 @@ def risolvi_dipendente(indici: Dict[str, Any], testo: str) -> Tuple[Optional[Dic
     codice fiscale davanti: nelle causali bancarie "ADD.TOT - CRLVLR88H14F839O
     stipendio" e' l'identita' piu' sicura.
     """
-    haystack = _norm(testo)
-    if not haystack:
+    livello, trovati = dipendenti_citati(indici, testo)
+    if not trovati:
         return None, "nessuno"
-    by_cf = indici.get("cf") or {}
-    trovati_cf = {}
-    for m in _CF_RE.finditer(str(testo or "")):
-        dip = by_cf.get(m.group(1).upper())
-        if dip:
-            trovati_cf[dip["id"]] = dip
-    if len(trovati_cf) == 1:
-        return next(iter(trovati_cf.values())), "cf"
-    if len(trovati_cf) > 1:
-        return None, "ambiguo"
-
-    per_nome = {}
-    for nome_n, dip in (indici.get("nome") or {}).items():
-        if nome_n and nome_n in haystack:
-            per_nome[dip["id"]] = dip
-    if len(per_nome) == 1:
-        return next(iter(per_nome.values())), "nome"
-    if len(per_nome) > 1:
-        return None, "ambiguo"
-
-    per_cognome = {}
-    for cogn, lista in (indici.get("cogn") or {}).items():
-        if cogn and re.search(r"(?<![a-z'])" + re.escape(cogn) + r"(?![a-z])", haystack):
-            for dip in lista:
-                per_cognome[dip["id"]] = dip
-    if len(per_cognome) == 1:
-        return next(iter(per_cognome.values())), "cognome"
-    if len(per_cognome) > 1:
-        return None, "ambiguo"
-    return None, "nessuno"
+    if len(trovati) == 1:
+        return trovati[0], livello
+    return None, "ambiguo"
 
 
 def e_pagamento_non_stipendio(testo: str) -> bool:
@@ -340,7 +352,8 @@ class ContestoHR:
     """
 
     def __init__(self, db_hr, indici: Dict[str, Any], esiti: List[Dict[str, Any]],
-                 hash_in_coda: set, rif_in_coda: Optional[Dict[str, str]] = None):
+                 hash_in_coda: set, rif_in_coda: Optional[Dict[str, str]] = None,
+                 rif_confermati: Optional[set] = None):
         self.db = db_hr
         self.indici = indici
         self.per_hash: Dict[str, Dict[str, Any]] = {}
@@ -351,7 +364,18 @@ class ContestoHR:
         self.hash_in_coda = set(hash_in_coda)
         # riferimento «MB…» -> id della riga in coda: un bonifico sta in coda una volta
         self.rif_in_coda: Dict[str, str] = dict(rif_in_coda or {})
+        # riferimenti «MB…» dei bonifici gia' confermati a mano dal titolare
+        self.rif_confermati: set = set(rif_confermati or ())
         self.periodi_toccati: set = set()
+        self._buste: Optional[Dict[str, List[Dict[str, Any]]]] = None
+
+    async def buste_aperte(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Buste e residui per i candidati della coda: una lettura per giro."""
+        if self._buste is None:
+            from app.services.candidati_bonifico import carica_buste_hr
+
+            self._buste = await carica_buste_hr(self.db)
+        return self._buste
 
     def _indicizza(self, esito: Dict[str, Any]) -> None:
         if esito.get("hash"):
@@ -407,14 +431,18 @@ async def carica_contesto_hr() -> Optional[ContestoHR]:
     esiti = await db_hr.pagamenti_esiti.find({}, {"_id": 0, "pdf_data": 0}).to_list(None)
     in_coda = set()
     rif_in_coda: Dict[str, str] = {}
+    rif_confermati: set = set()
     async for b in db_hr.bonifici_da_associare.find(
-            {}, {"_id": 0, "id": 1, "hash": 1, "rif_banca": 1, "causale": 1, "stato": 1}):
+            {}, {"_id": 0, "id": 1, "hash": 1, "rif_banca": 1, "causale": 1, "stato": 1,
+                 "confermato_manuale": 1}):
         if b.get("hash"):
             in_coda.add(b["hash"])
         rif = b.get("rif_banca") or rif_interno_banca(b.get("causale"))
         if rif and b.get("stato") in (None, "da_associare"):
             rif_in_coda.setdefault(rif, b.get("id"))
-    return ContestoHR(db_hr, indici, esiti, in_coda, rif_in_coda)
+        if rif and e_confermato_manuale(b):
+            rif_confermati.add(str(rif).split("/")[0].upper())
+    return ContestoHR(db_hr, indici, esiti, in_coda, rif_in_coda, rif_confermati)
 
 
 # ── deposito vero e proprio ──────────────────────────────────────────────────
@@ -473,14 +501,25 @@ async def _arricchisci_esito(ctx: ContestoHR, esistente: Dict[str, Any],
 async def _metti_in_coda(ctx: ContestoHR, *, hash_pdf: Optional[str], data: Optional[str],
                          importo: Optional[float], causale: str, pdf_filename: Optional[str],
                          pdf_data: Optional[str], fonte: str, riferimento: Dict[str, Any],
-                         rif_banca: Optional[str] = None) -> str:
+                         rif_banca: Optional[str] = None, cro: Optional[str] = None) -> str:
+    from app.services.candidati_bonifico import calcola_per_riga
+
     coda_id = str(uuid.uuid4())
-    await ctx.db.bonifici_da_associare.insert_one({
+    riga = {
         "id": coda_id, "hash": hash_pdf, "data": data, "importo": importo,
         "causale": causale, "pdf_filename": pdf_filename, "pdf_data": pdf_data,
         "fonte": fonte, "stato": "da_associare", "created_at": _now_iso(),
-        "rif_banca": rif_banca, **riferimento,
-    })
+        "rif_banca": rif_banca, "cro": cro, **riferimento,
+    }
+    # Candidati (fino a 10, mai applicati) e avviso multi-dipendente: si calcolano
+    # ora e si ricalcolano alla lettura se stantii. Un guasto qui non impedisce
+    # al bonifico di entrare in coda.
+    try:
+        riga.update(calcola_per_riga(riga, ctx.indici, await ctx.buste_aperte()))
+    except Exception as exc:  # noqa: BLE001 - la coda deve ricevere il bonifico comunque
+        logger.warning("[HR deposito pagamenti] candidati non calcolati per la coda (%s: %s)",
+                       type(exc).__name__, exc)
+    await ctx.db.bonifici_da_associare.insert_one(riga)
     if hash_pdf:
         ctx.hash_in_coda.add(hash_pdf)
     if rif_banca:
@@ -560,6 +599,11 @@ async def _deposita(
         return _marcatore(ESITO_DUPLICATO, key=(esistente or {}).get("key"), motivo="hash")
     if not importo or not data:
         return _marcatore(ESITO_DATI_INCOMPLETI, dipendente_id=(dip or {}).get("id"))
+    rif_operazione = rif_interno_banca(cro, causale, pdf_filename)
+    if rif_operazione and rif_operazione.upper() in ctx.rif_confermati:
+        # Stessa operazione (stesso «MB…») gia' associata a mano dal titolare:
+        # ricevuta ed estratto sono la stessa prova, non si depositano di nuovo.
+        return _marcatore(ESITO_DUPLICATO, motivo=ESITO_CONFERMATO_MANUALE)
 
     periodo = periodo_bonifico(testo, data, mese_dichiarato, anno_dichiarato)
     # Un nome/cognome risolto in modo univoco (motivo "cf"/"nome"/"cognome")
@@ -576,7 +620,7 @@ async def _deposita(
         if gia_in_coda:
             if not dry_run:
                 await _completa_riga_in_coda(ctx, gia_in_coda, {
-                    "hash": hash_pdf, "pdf_filename": pdf_filename, "pdf_data": pdf_data,
+                    "hash": hash_pdf, "pdf_filename": pdf_filename, "pdf_data": pdf_data, "cro": cro,
                     **riferimento})
             return _marcatore(ESITO_DUPLICATO, motivo="rif_banca", coda_id=gia_in_coda)
         if dry_run:
@@ -584,7 +628,7 @@ async def _deposita(
         coda_id = await _metti_in_coda(
             ctx, hash_pdf=hash_pdf, data=data, importo=importo, causale=causale,
             pdf_filename=pdf_filename, pdf_data=pdf_data, fonte=origine, riferimento=riferimento,
-            rif_banca=rif,
+            rif_banca=rif, cro=cro,
         )
         return _marcatore(ESITO_IN_CODA, coda_id=coda_id,
                           motivo=motivo if dip is None else "periodo_sconosciuto")
@@ -660,6 +704,10 @@ async def deposita_bonifico_transfer_in_hr(db, transfer: Dict[str, Any],
                                           ctx: Optional[ContestoHR] = None,
                                           dry_run: bool = False) -> Dict[str, Any]:
     """Porta in HR un documento di ``bonifici_transfers``; ritorna il marcatore."""
+    if e_confermato_manuale(transfer):
+        marca = _marcatore(ESITO_CONFERMATO_MANUALE)
+        await _marca(db, "bonifici_transfers", transfer.get("id"), marca, dry_run)
+        return marca
     if ctx is None:
         ctx = await carica_contesto_hr()
         if ctx is None:
@@ -748,6 +796,10 @@ async def deposita_movimento_banca_in_hr(db, mov: Dict[str, Any],
     """Porta in HR una riga di ``estratto_conto_movimenti``; ritorna il marcatore.
 
     ``segnale_esplicito="lotto_paghe"`` quando la data e' in ``date_lotti_paghe``."""
+    if e_confermato_manuale(mov):
+        marca = _marcatore(ESITO_CONFERMATO_MANUALE)
+        await _marca(db, "estratto_conto_movimenti", mov.get("id"), marca, dry_run)
+        return marca
     if ctx is None:
         ctx = await carica_contesto_hr()
         if ctx is None:

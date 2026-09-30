@@ -3,20 +3,25 @@ Analisi F24 — classificazione normativa, scadenze/ravvedimenti,
 associazione ai cedolini e doppi pagamenti.
 
 Espone via API il motore unico app/engines/tributi_engine.py
-(specifica: memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md).
+(specifica: la specifica del titolare (non è nel repository: vale il codice)).
 
 Endpoint (montati sotto /api/f24-analisi):
   GET /{f24_id}                     → analisi completa del modello (§11+§20)
   GET /{f24_id}/associazione        → esito §15 verso i cedolini di mese/anno
-  GET /doppi-pagamenti              → scansione coppie DM10↔RC01 pagate (§21+§23)
+  GET /doppi-pagamenti              → scansione coppie DM10↔RC01 pagate (§21+§23), con lo stato scelto
+  PUT /doppi-pagamenti/{id}/stato   → decisione del titolare (admin, motivo obbligatorio)
+  POST /doppi-pagamenti/rileva      → crea le anomalie nuove (admin, dry_run per difetto)
 """
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from app.database import Database
 from app.engines import tributi_engine as te
+from app.services import f24_anomalie as fa
+from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -41,44 +46,54 @@ async def _trova_f24(db, f24_id: str) -> Optional[Dict[str, Any]]:
 @router.get("/doppi-pagamenti")
 async def scan_doppi_pagamenti() -> Dict[str, Any]:
     """Cerca coppie F24 ordinario (DM10) ↔ RC01 dello stesso periodo con
-    entrambi i pagamenti risultanti: POSSIBILE DOPPIO PAGAMENTO (§23)."""
+    entrambi i pagamenti risultanti: POSSIBILE DOPPIO PAGAMENTO (§23).
+    Lo stato di ogni coppia e' quello scelto dal titolare, se c'e'."""
     db = Database.get_db()
-    ordinari, regolarizzazioni = [], []
-    for coll in _COLLEZIONI_F24:
-        docs = await db[coll].find({}, {"_id": 0, "pdf_data": 0}).to_list(2000)
-        for d in docs:
-            causali = te.causali_inps(d)
-            if "RC01" in causali:
-                regolarizzazioni.append(d)
-            elif causali or d.get("sezione_erario"):
-                ordinari.append(d)
-
-    anomalie = []
-    for rc in regolarizzazioni:
-        periodo_rc = te.periodo_prevalente(rc)
-        for ordinario in ordinari:
-            if te.periodo_prevalente(ordinario) != periodo_rc:
-                continue  # il confronto completo è costoso: pre-filtro sul periodo
-            esito = te.rileva_doppio_pagamento(ordinario, rc)
-            if esito.get("possibile_doppio_pagamento"):
-                anomalie.append({
-                    "f24_ordinario_id": ordinario.get("id"),
-                    "f24_ordinario_file": ordinario.get("file_name") or ordinario.get("filename"),
-                    "f24_rc01_id": rc.get("id"),
-                    "f24_rc01_file": rc.get("file_name") or rc.get("filename"),
-                    "periodo": esito["dettaglio"]["controlli"][1]["rc01"],
-                    "quota_potenzialmente_duplicata": esito["quota_potenzialmente_duplicata"],
-                    "quota_sanzioni_interessi": esito["quota_sanzioni_interessi"],
-                    "messaggio": esito["messaggio"],
-                    "stato": esito["stato"],
-                })
+    scansione = fa.trova_coppie_doppio_pagamento(await fa._leggi_f24(db))
+    anomalie = await fa.unisci_stati_salvati(db, scansione["anomalie"])
     return {
-        "esaminati_ordinari": len(ordinari),
-        "esaminati_rc01": len(regolarizzazioni),
+        "esaminati_ordinari": scansione["esaminati_ordinari"],
+        "esaminati_rc01": scansione["esaminati_rc01"],
         "possibili_doppi_pagamenti": len(anomalie),
+        "da_verificare": sum(1 for a in anomalie if a["stato"] == fa.STATO_APERTO),
         "anomalie": anomalie,
         "stati_possibili": list(te.STATI_ANOMALIA_DOPPIO_PAGAMENTO),
     }
+
+
+class StatoAnomalia(BaseModel):
+    stato: str
+    motivo: Optional[str] = None
+
+
+@router.put("/doppi-pagamenti/{anomalia_id}/stato")
+async def imposta_stato_doppio_pagamento(
+    anomalia_id: str,
+    corpo: StatoAnomalia,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Il titolare decide l'anomalia scegliendo lo stato da una lista. Il motivo e'
+    obbligatorio per ogni stato che non sia «da_verificare»."""
+    db = Database.get_db()
+    autore = str(_admin.get("email") or _admin.get("username") or _admin.get("id") or "admin")
+    try:
+        doc = await fa.imposta_stato(db, anomalia_id, corpo.stato, corpo.motivo, autore)
+    except fa.StatoNonValido as exc:
+        raise HTTPException(status_code=422, detail={
+            "code": "STATO_ANOMALIA_NON_VALIDO", "message": str(exc), "details": exc.dettagli,
+        })
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Anomalia non trovata")
+    return {"id": anomalia_id, "stato": doc["stato"], "storico": doc["storico"]}
+
+
+@router.post("/doppi-pagamenti/rileva")
+async def rileva_doppi_pagamenti(
+    dry_run: bool = Query(True, description="True = solo anteprima, non scrive anomalie ne' alert"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Crea le anomalie di doppio pagamento nuove (una per coppia, mai duplicate)."""
+    return await fa.rileva_doppi_pagamenti(Database.get_db(), dry_run=dry_run)
 
 
 def _movimenti_banca_f24(f24: Dict[str, Any]) -> list:

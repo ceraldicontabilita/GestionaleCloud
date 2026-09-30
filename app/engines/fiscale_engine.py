@@ -2,7 +2,7 @@
 Motore fiscale — costo del personale, IRES e IRAP.
 
 Implementa le sezioni 12-14 della specifica
-(memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md):
+(la specifica del titolare (non è nel repository: vale il codice)):
 
   §12 Costo del personale = retribuzioni lorde + quota INPS datoriale +
       premio INAIL + TFR maturato + 13ª/14ª + fondi a carico azienda +

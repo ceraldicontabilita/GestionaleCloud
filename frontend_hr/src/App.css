@@ -1219,3 +1219,40 @@ label.dc-form-group { cursor: default; }
 .dc-modal-wide { max-width: 880px; }
 .dc-modal:focus, .dc-modal:focus-visible { outline: none; }
 .dc-cell-btn-presenza { min-height: 36px; padding: 2px 1px; position: relative; }
+
+/* ── Coda «Bonifici da associare»: riferimenti, avviso, candidati ─────────
+   Solo token salvia/sabbia; avviso #c4894a. Nessun scroll orizzontale: i
+   codici vanno a capo (break-all) e le chip occupano tutta la larghezza. */
+.dc-coda-rif { display: flex; flex-direction: column; gap: 4px; font-size: 12px; text-align: left; min-width: 0; }
+.dc-coda-rif-riga { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
+.dc-coda-rif-et { font-weight: 600; color: #6b7669; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.dc-coda-rif-val {
+  font-family: inherit; font-variant-numeric: tabular-nums; color: #2a3329;
+  word-break: break-all; user-select: all; -webkit-user-select: all;
+}
+.dc-coda-avviso {
+  display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; padding: 6px 10px;
+  background: #f7ecdc; border: 1px solid #c4894a; border-radius: 8px;
+  color: #7d5526; font-size: 12px; font-weight: 600; text-align: left;
+}
+.dc-coda-avviso svg { color: #c4894a; flex-shrink: 0; margin-top: 1px; }
+.dc-coda-cand { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; }
+.dc-coda-cand-titolo { font-size: 0.68rem; font-weight: 600; color: #6b7669; text-transform: uppercase; letter-spacing: 0.04em; }
+.dc-coda-cand-lista { display: flex; flex-wrap: wrap; gap: 6px; }
+.dc-coda-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px;
+  border: 1px solid #e6e0d4; border-radius: 10px; background: #fffefb; color: #2a3329;
+  font: inherit; text-align: left; cursor: pointer; max-width: 100%;
+}
+.dc-coda-chip:hover { border-color: #5b7a6b; background: #e8efe9; }
+.dc-coda-chip:disabled { opacity: 0.6; cursor: default; }
+.dc-coda-chip svg { color: #5b7a6b; flex-shrink: 0; }
+.dc-coda-chip-testo { display: flex; flex-direction: column; min-width: 0; }
+.dc-coda-chip-nome { font-weight: 700; font-size: 0.85rem; overflow-wrap: anywhere; }
+.dc-coda-chip-dett { font-size: 0.75rem; color: #6b7669; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dc-coda-nessuno { font-size: 12px; margin: 0; text-align: left; }
+.dc-coda-scelta { display: flex; flex-direction: column; gap: 8px; min-width: 0; width: 100%; align-items: stretch; }
+@media (max-width: 680px) {
+  .dc-coda-chip { flex: 1 1 100%; }
+  .dc-table--cards td .dc-coda-rif, .dc-table--cards td .dc-coda-cand { text-align: left; align-items: flex-start; }
+}

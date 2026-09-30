@@ -25,6 +25,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.constants.stati_associazione_bonifico import e_confermato_manuale
 from app.database import Collections
 from app.db_collections import COLL_ENTITY_RELATIONS
 from app.routers.bonifici_module.classification import (
@@ -373,6 +374,7 @@ async def riallinea_competenza_bonifici_stipendi(
         "righe_esaminate": len(righe),
         "movimenti_esaminati": 0,
         "coerenti": 0,
+        "confermati_manuali_saltati": 0,
         "riferimenti_non_verificati": 0,
         "spostamenti": [],
         "senza_destinazione": [],
@@ -398,6 +400,11 @@ async def riallinea_competenza_bonifici_stipendi(
         riga = per_id[riga_id]
         periodo_riga = _periodo_riga(riga)
         for movimento in list(movimenti):
+            if e_confermato_manuale(movimento):
+                # Conferma del titolare: nessun motore automatico lo sposta o lo stacca.
+                esito["confermati_manuali_saltati"] += 1
+                esito["coerenti"] += 1
+                continue
             descrizione = movimento.get("descrizione_originale") or movimento.get("descrizione") or ""
             atteso = periodo_atteso_bonifico(
                 descrizione, movimento.get("data"), movimento.get("competenza_dichiarata"),
@@ -692,7 +699,7 @@ async def stacca_rimborsi_soci_da_stipendi(
     ).to_list(20000)
     for movimento in collegati:
         stipendio = movimento.get("stipendio_id")
-        if not stipendio or not e_rimborso_soci(movimento):
+        if not stipendio or e_confermato_manuale(movimento) or not e_rimborso_soci(movimento):
             continue
         riga = await db["prima_nota_salari"].find_one({"id": stipendio}, {"_id": 0})
         if riga:
@@ -823,8 +830,12 @@ async def associa_bonifici_stipendi(
         ):
             dipendenti.append(fallback)
 
+    # ``confermato_manuale`` assente = non confermato: il ``$ne`` e' voluto e
+    # passa su ogni riga senza il campo. Un bonifico confermato dal titolare e'
+    # consumato: nessun altro dipendente puo' averlo per candidato.
     filtro_movimenti: Dict[str, Any] = {
         "riconciliato": {"$ne": True},
+        "confermato_manuale": {"$ne": True},
         "$or": [
             {"tipo": "uscita"},
             {"importo": {"$lt": 0}},
@@ -845,6 +856,8 @@ async def associa_bonifici_stipendi(
         importo_grezzo = float(movimento.get("importo") or 0)
         if not (movimento.get("tipo") == "uscita" or importo_grezzo < 0):
             continue
+        if e_confermato_manuale(movimento):
+            continue  # difesa in profondita': il filtro sopra gia' li esclude
         descrizione = (
             movimento.get("descrizione_originale")
             or movimento.get("descrizione")

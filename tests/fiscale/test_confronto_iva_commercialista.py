@@ -135,92 +135,103 @@ def test_un_versamento_su_un_mese_a_credito_si_segnala():
     assert riga["f24"]["nota"] == "versamento_non_atteso"
 
 
-# ── La lettura dei prospetti F24 ──────────────────────────────────────────
+# ── I versamenti vengono dal motore degli incroci ─────────────────────────
+#
+# `f24_iva_per_periodo` non esiste piu': dovuto, versato e stato li calcola
+# `incroci_fiscali.incroci` (quietanze prima, modelli solo se scoperti, anno
+# sulla riga, soglia 1,00 EUR) e qui si aggiunge solo la colonna del gestionale.
 
-class _Cursore:
-    def __init__(self, docs):
-        self._docs = docs
-
-    def __aiter__(self):
-        async def gen():
-            for d in self._docs:
-                yield dict(d)
-        return gen()
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
-class _Db:
-    def __init__(self, f24):
-        self._f24 = f24
-        self.letture = 0
-
-    def __getitem__(self, nome):
-        db = self
-
-        class _Coll:
-            def find(self, query=None, proj=None):
-                db.letture += 1
-                return _Cursore(db._f24 if nome == mod.COLL_F24 else [])
-        return _Coll()
-
-
-def _modello(codice, anno, importo, nome="F24.pdf", status=None):
+def _modello(codice, anno, importo, nome="F24.pdf", status=None, id_=None):
     return {
-        "file_name": nome, "status": status,
+        "id": id_ or f"m-{nome}", "file_name": nome, "status": status or "da_pagare",
+        "dati_generali": {"data_versamento": f"{int(anno) + 1}-01-16"},
         "sezione_erario": [{
             "codice_tributo": codice, "anno": anno, "importo_debito": importo,
         }],
     }
 
 
-def test_l_anno_si_legge_sulla_riga_del_tributo():
+def _db(modelli, lipe):
+    db = ClientArchivioMemoria()["confronto_iva"]
+    _run(db.f24_unificato.insert_many(modelli))
+    _run(db.lipe_periodi.insert_many(lipe))
+    return db
+
+
+def _lipe(periodo, importo):
+    return {"periodo": periodo, "iva_da_versare_o_credito": importo,
+            "iva_da_versare_o_credito_segno": "debito", "quadratura_ok": True,
+            "nome_file": f"LIPE_{periodo[:4]}.pdf", "stato": "canonica"}
+
+
+def _confronto(db, anno, monkeypatch):
+    from app.services import iva_liquidation_query
+
+    async def _non_calcolato(_db, anno, mese):
+        return {"stato_calcolo": "NON_CALCOLATO", "motivi": ["periodo_non_concluso"]}
+
+    monkeypatch.setattr(iva_liquidation_query, "get_iva_period_snapshot", _non_calcolato)
+    return {r["periodo"]: r["f24"] for r in _run(mod.confronto_mensile(db, anno))["righe"]}
+
+
+def test_l_anno_si_legge_sulla_riga_del_tributo(monkeypatch):
     """Il periodo di riferimento sta sulla riga, non sul modello: un F24 di
     gennaio 2025 puo' essere stato pagato in un altro momento."""
-    db = _Db([_modello("6001", "2025", 534.06, "F24 iva gennaio Ceraldi.PDF")])
-
-    esito = _run(mod.f24_iva_per_periodo(db, 2025))
-
-    assert esito["2025-01"]["importo"] == 534.06
-    assert esito["2025-01"]["documenti"] == ["F24 iva gennaio Ceraldi.PDF"]
+    db = _db([_modello("6001", "2025", 534.06, "F24 iva gennaio Ceraldi.PDF")], [_lipe("2025-01", 534.06)])
+    gennaio = _confronto(db, 2025, monkeypatch)["2025-01"]
+    assert gennaio["versato"] == 534.06 and gennaio["stato"] == "OK" and gennaio["nota"] == "versato"
+    assert gennaio["documenti"] == ["F24 iva gennaio Ceraldi.PDF"] and gennaio["codice_tributo"] == "6001"
 
 
-def test_un_altro_anno_non_entra():
-    db = _Db([_modello("6001", "2024", 999.0)])
-    assert _run(mod.f24_iva_per_periodo(db, 2025)) == {}
+def test_un_altro_anno_non_entra(monkeypatch):
+    db = _db([_modello("6001", "2024", 999.0)], [_lipe("2025-01", 534.06)])
+    gennaio = _confronto(db, 2025, monkeypatch)["2025-01"]
+    assert gennaio["versato"] is None and gennaio["nota"] == "f24_mancante"
 
 
 @pytest.mark.parametrize("codice", ["1001", "6031", "600", "60AA", "6013", "6000"])
-def test_i_codici_che_non_sono_iva_mensile_restano_fuori(codice):
-    db = _Db([_modello(codice, "2025", 100.0)])
-    assert _run(mod.f24_iva_per_periodo(db, 2025)) == {}
+def test_i_codici_che_non_sono_iva_mensile_restano_fuori(codice, monkeypatch):
+    db = _db([_modello(codice, "2025", 100.0)], [_lipe("2025-01", 100.0)])
+    assert _confronto(db, 2025, monkeypatch)["2025-01"]["nota"] == "f24_mancante"
 
 
-def test_due_modelli_sullo_stesso_mese_si_sommano():
+def test_due_modelli_sullo_stesso_mese_si_sommano(monkeypatch):
     """Giugno 2025 ha un F24 ordinario e un ravvedimento."""
-    db = _Db([
+    db = _db([
         _modello("6006", "2025", 5000.00, "F24 IVA +RIT FERRANTINI.pdf"),
         _modello("6006", "2025", 771.48, "F24 ravv iva - cciaa- ritenuta.pdf"),
-    ])
-
-    esito = _run(mod.f24_iva_per_periodo(db, 2025))
-
-    assert esito["2025-06"]["importo"] == 5771.48
-    assert len(esito["2025-06"]["documenti"]) == 2
+    ], [_lipe("2025-06", 5771.48)])
+    giugno = _confronto(db, 2025, monkeypatch)["2025-06"]
+    assert giugno["versato"] == 5771.48 and giugno["stato"] == "OK" and len(giugno["documenti"]) == 2
 
 
-def test_un_modello_stornato_non_conta():
-    db = _Db([_modello("6001", "2025", 534.06, status="stornato")])
-    assert _run(mod.f24_iva_per_periodo(db, 2025)) == {}
+def test_un_modello_stornato_non_conta(monkeypatch):
+    db = _db([_modello("6001", "2025", 534.06, status="stornato")], [_lipe("2025-01", 534.06)])
+    assert _confronto(db, 2025, monkeypatch)["2025-01"]["nota"] == "f24_mancante"
 
 
-def test_un_doppione_in_quarantena_non_raddoppia_il_versato():
+def test_un_doppione_in_quarantena_non_raddoppia_il_versato(monkeypatch):
     """Audit 27/09/2026: la quarantena dei doppioni F24 usa status=eliminato."""
-    db = _Db([
+    db = _db([
         _modello("6001", "2025", 534.06, "F24 gennaio.pdf"),
         _modello("6001", "2025", 534.06, "F24 gennaio (2).pdf", status="eliminato"),
-    ])
-    esito = _run(mod.f24_iva_per_periodo(db, 2025))
-    assert esito["2025-01"]["importo"] == 534.06
-    assert esito["2025-01"]["documenti"] == ["F24 gennaio.pdf"]
+    ], [_lipe("2025-01", 534.06)])
+    gennaio = _confronto(db, 2025, monkeypatch)["2025-01"]
+    assert gennaio["versato"] == 534.06 and gennaio["documenti"] == ["F24 gennaio.pdf"]
+
+
+def test_sotto_un_euro_e_versato_sopra_e_importo_diverso(monkeypatch):
+    """La soglia del motore: 0,03 EUR di scarto e' OK, 60 EUR in piu' e' eccedente."""
+    db = _db([
+        _modello("6009", "2024", 149.28, "F24 settembre.pdf"),
+        _modello("6010", "2024", 446.61, "F24 ottobre.pdf"),
+    ], [_lipe("2024-09", 149.25), _lipe("2024-10", 386.06)])
+    righe = _confronto(db, 2024, monkeypatch)
+    assert righe["2024-09"]["nota"] == "versato" and righe["2024-09"]["differenza"] == 0.03
+    assert righe["2024-10"]["nota"] == "importo_diverso" and righe["2024-10"]["stato"] == "ECCEDENTE"
 
 
 @pytest.mark.parametrize("stato", ["DATI_MANCANTI", "NON_VERIFICABILE"])
@@ -232,10 +243,3 @@ def test_un_mese_con_dati_mancanti_non_e_uno_scostamento(stato):
     assert riga["esito"] == "gestionale_non_calcolabile"
     assert riga["scarti"] == {"iva_vendite": None, "iva_acquisti": None}
     assert riga["gestionale"]["motivi"] == ["detraibilita_da_verificare"]
-
-
-def test_i_prospetti_si_leggono_con_un_solo_prefetch():
-    """Una query per mese, su dodici mesi, e' proibita dal §4."""
-    db = _Db([_modello("6001", "2025", 534.06)])
-    _run(mod.f24_iva_per_periodo(db, 2025))
-    assert db.letture == 1

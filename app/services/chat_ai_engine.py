@@ -521,7 +521,7 @@ async def _tool_cerca_documenti(db, args):
 
 async def _tool_spiega_f24(db, args):
     """Analisi tracciabile di un F24 col motore tributi (specifica
-    memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md): classificazione per
+    la specifica del titolare (non è nel repository: vale il codice)): classificazione per
     natura/ente/deducibilità, scadenza naturale, ritardo, tipo versamento;
     con mese+anno valuta anche l'associazione ai cedolini (§15)."""
     from app.engines import tributi_engine as te

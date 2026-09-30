@@ -141,6 +141,19 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Parcella con ritenuta d'acconto da versare (F24 1040)",
         "condizione_chiusura": "F24 con il codice 1040 del periodo versato"
     },
+    "POSSIBILE_DOPPIO_PAGAMENTO_F24": {
+        "modulo": "f24",
+        "severita": "warning",
+        "titolo": "Possibile doppio pagamento: F24 ordinario e regolarizzazione RC01 per lo stesso debito",
+        "condizione_chiusura": "Il titolare cambia lo stato dell'anomalia (non duplicato, confermato, "
+                               "rimborsato/compensato, chiuso dal consulente)"
+    },
+    "F24_CONTROLLO_DA_VERIFICARE": {
+        "modulo": "f24",
+        "severita": "warning",
+        "titolo": "F24 con righe da verificare (codice Regione/Comune, riga INAIL, causale INPS)",
+        "condizione_chiusura": "Il modello non ha piu' righe da verificare al controllo successivo"
+    },
     "F24_NON_PAGATO": {
         "modulo": "f24",
         "severita": "warning",
@@ -176,6 +189,32 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "severita": "info",
         "titolo": "Dati F24 estratti incompleti",
         "condizione_chiusura": "Dati completati"
+    },
+
+    # --- Incroci fiscali del minisito (incroci_fiscali.py) ---
+    "IVA_PAGAMENTO_MANCANTE_O_PARZIALE": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "IVA mensile dovuta da LIPE non versata (o versata in parte)",
+        "condizione_chiusura": "Versato con il codice 60MM del mese entro 1,00 EUR dal VP14, o LIPE sostituita"
+    },
+    "IRAP_SALDO_MANCANTE_O_PARZIALE": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "Saldo IRAP (rigo IR26) non versato con il codice 3800",
+        "condizione_chiusura": "Codice 3800 dell'anno d'imposta versato entro 1,00 EUR dal rigo IR26"
+    },
+    "IVA_ANNUALE_SALDO_DA_VERIFICARE": {
+        "modulo": "fiscale",
+        "severita": "warning",
+        "titolo": "Saldo IVA annuale (rigo VX1) senza versamento 6099",
+        "condizione_chiusura": "Codice 6099 dell'anno d'imposta versato entro 1,00 EUR dal rigo VX1"
+    },
+    "COMUNICAZIONE_54BIS_NON_PAGATA": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "Comunicazione di irregolarita' (art. 54-bis) non pagata",
+        "condizione_chiusura": "Codici della comunicazione versati per il suo totale entro 1,00 EUR"
     },
 
     # --- Cedolini ---
