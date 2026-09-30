@@ -141,6 +141,19 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Parcella con ritenuta d'acconto da versare (F24 1040)",
         "condizione_chiusura": "F24 con il codice 1040 del periodo versato"
     },
+    "POSSIBILE_DOPPIO_PAGAMENTO_F24": {
+        "modulo": "f24",
+        "severita": "warning",
+        "titolo": "Possibile doppio pagamento: F24 ordinario e regolarizzazione RC01 per lo stesso debito",
+        "condizione_chiusura": "Il titolare cambia lo stato dell'anomalia (non duplicato, confermato, "
+                               "rimborsato/compensato, chiuso dal consulente)"
+    },
+    "F24_CONTROLLO_DA_VERIFICARE": {
+        "modulo": "f24",
+        "severita": "warning",
+        "titolo": "F24 con righe da verificare (codice Regione/Comune, riga INAIL, causale INPS)",
+        "condizione_chiusura": "Il modello non ha piu' righe da verificare al controllo successivo"
+    },
     "F24_NON_PAGATO": {
         "modulo": "f24",
         "severita": "warning",

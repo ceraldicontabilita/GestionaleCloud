@@ -50,7 +50,7 @@ MAX_ELENCO = 300
 PREFETCH_FILE = 8
 # I file finiti in errore prima di un miglioramento dei lettori si rileggono una
 # volta sola per versione (un cambio dei lettori F24 alza questo numero).
-VERSIONE_RIPASSO = "2026-09-30-f24-inps-periodo-unito-imu"
+VERSIONE_RIPASSO = "2026-09-30-f24-colonne-importi-inps-inail"
 PREFETCH_MAX_BYTE = 8 * 1024 * 1024
 
 _lavoro: Optional[asyncio.Task] = None

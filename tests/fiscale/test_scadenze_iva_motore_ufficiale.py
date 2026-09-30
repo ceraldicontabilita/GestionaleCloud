@@ -1,7 +1,7 @@
 """Bug segnalato dall'utente 15/07/2026: la card "IVA da versare" nella
 pagina Scadenze sommava semplicemente il campo "iva" di TUTTE le fatture
 ricevute/emesse nel mese, senza applicare le regole di
-memoria/SPECIFICA_IVA.md (§10-11): niente esclusione delle fatture già
+la specifica del titolare (non è nel repository: vale il codice) (§10-11): niente esclusione delle fatture già
 utilizzate in una liquidazione precedente, delle note di credito, dei
 documenti annullati/duplicati, né attribuzione per periodo IVA di
 competenza (regola del giorno 15). Poteva mostrare un "IVA da versare"

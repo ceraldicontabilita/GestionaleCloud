@@ -3,7 +3,7 @@ Motore UNICO tributi F24 — classificazione, scadenze, ravvedimenti,
 associazione F24↔cedolini e anti-duplicazione DM10↔RC01.
 
 Implementa la "Specifica definitiva F24/Cedolini/IRES/IRAP/Chat"
-(memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md), in particolare:
+(la specifica del titolare (non è nel repository: vale il codice)), in particolare:
   - §6-10: tabella normativa dei codici tributo e causali per ente;
   - §11:  classificazione automatica di ogni riga (natura, ente,
           deducibilità, motivazione);
@@ -250,22 +250,49 @@ def valuta_pagamento(mese: int, anno: int, data_pagamento: Any) -> Dict[str, Any
     }
 
 
+# Sezione del modello per ogni sezione della vista canonica (`normalize_f24_evidence_rows`).
+_SEZIONE_DA_VISTA = {
+    "ERARIO": "sezione_erario", "REGIONI": "sezione_regioni",
+    "TRIB.LOCALI": "sezione_tributi_locali", "IMU": "sezione_tributi_locali",
+    "INPS": "sezione_inps", "INAIL": "sezione_inail",
+}
+
+
 def _righe_f24(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Tutte le righe del modello con sezione esplicita."""
+    """Tutte le righe del modello con sezione esplicita, dalla vista canonica.
+
+    La vista (`normalize_f24_evidence_rows`, la stessa di `f24_canonico`) rimette al suo
+    posto una riga INPS che un vecchio import aveva messo in Erario col codice = anno:
+    RC01, matricola e periodo si leggono uguali su un modello nuovo e su uno gia' in archivio.
+    """
+    from app.services.f24_fiscal_evidence import normalize_f24_evidence_rows
+
     righe = []
-    for sezione in ("sezione_erario", "sezione_regioni", "sezione_tributi_locali"):
-        for r in f24.get(sezione, []) or []:
-            righe.append({**r, "_sezione": sezione, "_codice": r.get("codice_tributo", "")})
-    for r in f24.get("sezione_inps", []) or []:
-        righe.append({**r, "_sezione": "sezione_inps", "_codice": r.get("causale", "")})
-    for r in f24.get("sezione_inail", []) or []:
-        righe.append({**r, "_sezione": "sezione_inail", "_codice": r.get("causale", "")})
+    for vista in normalize_f24_evidence_rows(f24 or {}):
+        sezione = _SEZIONE_DA_VISTA.get(vista["section"])
+        if not sezione:
+            continue
+        riga = {**vista["source_fields"], "_sezione": sezione, "_codice": vista["tax_code"]}
+        if sezione == "sezione_inps":
+            riga.update(
+                causale=vista["tax_code"], codice_sede=vista["entity_code"] or riga.get("codice_sede", ""),
+                matricola=vista.get("matricola") or riga.get("matricola", ""),
+                periodo_da=vista.get("periodo_da", ""), periodo_a=vista.get("periodo_a", ""),
+            )
+            if vista.get("riclassificata_da_erario"):
+                riga["periodo_riferimento"] = vista["periodo_da"]
+                riga["riclassificata_da_erario"] = True
+        righe.append(riga)
     return righe
+
+
+def _righe_inps(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [r for r in _righe_f24(f24) if r["_sezione"] == "sezione_inps"]
 
 
 def causali_inps(f24: Dict[str, Any]) -> List[str]:
     return sorted({(r.get("causale") or "").strip().upper()
-                   for r in f24.get("sezione_inps", []) or [] if r.get("causale")})
+                   for r in _righe_inps(f24) if r.get("causale")})
 
 
 def tipo_versamento(f24: Dict[str, Any]) -> str:
@@ -293,6 +320,60 @@ def periodo_prevalente(f24: Dict[str, Any]) -> Optional[tuple]:
         dg = f24.get("dati_generali", {}) or {}
         return _parse_periodo(dg.get("periodo_riferimento") or dg.get("periodo"))
     return max(conteggio, key=conteggio.get)
+
+
+def controlli_f24(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Controlli della specifica §18 sul modello: cio' che il motore non sa dire con
+    certezza e che quindi resta «da_verificare», col codice mostrato (mai indovinato).
+
+    Un codice Regione o Comune che non e' in tabella non e' un errore: la tabella
+    conosce solo cio' che e' gia' comparso nei modelli. Ogni controllo porta tipo,
+    sezione, codice, natura ``da_verificare`` e il motivo scritto per esteso.
+    """
+    from app.services.codici_tributo_f24 import CAUSALI_INPS as CAUSALI_INPS_REGISTRO
+
+    controlli: List[Dict[str, Any]] = []
+
+    def aggiungi(tipo: str, sezione: str, codice: str, motivo: str, riga: Dict[str, Any]) -> None:
+        controlli.append({
+            "tipo": tipo, "sezione": sezione, "codice": codice,
+            "natura": "da_verificare", "motivo": motivo,
+            "testo_sorgente": riga.get("testo_sorgente") or riga.get("raw_text") or "",
+        })
+
+    for r in _righe_f24(f24):
+        sezione = r["_sezione"]
+        if sezione == "sezione_regioni":
+            regione = re.sub(r"\s", "", str(r.get("codice_regione") or ""))
+            regione = regione.zfill(2) if regione.isdigit() else regione.upper()
+            if not regione:
+                aggiungi("regione_assente", "REGIONI", "", f"Codice Regione assente sulla riga {r['_codice']}", r)
+            elif regione not in CODICI_REGIONE:
+                aggiungi("regione_non_in_tabella", "REGIONI", regione,
+                         f"Codice Regione {regione} non in tabella: verificare la Regione", r)
+        elif sezione == "sezione_tributi_locali":
+            comune = re.sub(r"\s", "", str(r.get("codice_comune") or r.get("codice_ente") or "")).upper()
+            if not comune:
+                aggiungi("comune_assente", "TRIB.LOCALI", "", f"Codice Comune assente sulla riga {r['_codice']}", r)
+            elif comune not in CODICI_COMUNE:
+                aggiungi("comune_non_in_tabella", "TRIB.LOCALI", comune,
+                         f"Codice Comune {comune} non in tabella: verificare il Comune", r)
+        elif sezione == "sezione_inps":
+            causale = str(r.get("causale") or "").strip().upper()
+            if not causale or (causale not in CAUSALI_INPS and causale not in CAUSALI_INPS_REGISTRO):
+                aggiungi("causale_inps_sconosciuta", "INPS", causale,
+                         f"Causale INPS {causale or 'assente'} non in tabella: verificare col consulente", r)
+        elif sezione == "sezione_inail" and r.get("incompleta"):
+            mancanti = ", ".join(r.get("campi_mancanti") or []) or "campi non indicati"
+            aggiungi("inail_incompleta", "INAIL", str(r.get("causale") or ""),
+                     f"Riga INAIL incompleta: mancano {mancanti}", r)
+    # Righe INAIL senza importo: il parser non le mette nella sezione, ma le dichiara.
+    for r in f24.get("righe_inail_incomplete") or []:
+        if isinstance(r, dict):
+            mancanti = ", ".join(r.get("campi_mancanti") or []) or "importo"
+            aggiungi("inail_incompleta", "INAIL", str(r.get("causale") or ""),
+                     f"Riga INAIL incompleta: mancano {mancanti}", r)
+    return controlli
 
 
 def classifica_f24(f24: Dict[str, Any]) -> Dict[str, Any]:
@@ -336,8 +417,11 @@ def classifica_f24(f24: Dict[str, Any]) -> Dict[str, Any]:
         pagamento["stato"] = "dichiarato_pagato_da_verificare_banca"
 
     saldo = dg.get("saldo_delega") or (f24.get("totali", {}) or {}).get("saldo_netto", 0)
+    controlli = controlli_f24(f24)
     return {
         "righe": righe_out,
+        "controlli": controlli,
+        "controlli_da_verificare": len(controlli),
         "totali_per_natura": totali,
         "tipo_versamento": tipo_versamento(f24),
         "causali_inps": causali_inps(f24),
@@ -394,7 +478,7 @@ def valuta_associazione_cedolini(
     # 4. posizione contributiva (matricola INPS), se nota dai cedolini
     if matricole_cedolini:
         mat_f24 = {str(r.get("matricola")).strip().upper()
-                   for r in (f24.get("sezione_inps") or []) if r.get("matricola")}
+                   for r in _righe_inps(f24) if r.get("matricola")}
         if mat_f24 and mat_f24.isdisjoint({str(m).strip().upper() for m in matricole_cedolini}):
             ok = False
             motivi.append("matricola INPS del modello diversa da quella dei cedolini")
@@ -494,10 +578,10 @@ def confronta_dm10_rc01(f24_ordinario: Dict[str, Any], f24_rc01: Dict[str, Any])
     # posizioni diverse dello stesso codice fiscale).
     def _matricole(f24):
         return {str(r.get("matricola")).strip().upper()
-                for r in (f24.get("sezione_inps") or []) if r.get("matricola")}
+                for r in _righe_inps(f24) if r.get("matricola")}
     def _sedi(f24):
         return {str(r.get("codice_sede")).strip().upper()
-                for r in (f24.get("sezione_inps") or []) if r.get("codice_sede")}
+                for r in _righe_inps(f24) if r.get("codice_sede")}
     mat_a, mat_b = _matricole(f24_ordinario), _matricole(f24_rc01)
     matricola_ok = True
     if mat_a and mat_b:

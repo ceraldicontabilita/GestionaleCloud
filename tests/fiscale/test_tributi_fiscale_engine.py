@@ -1,6 +1,6 @@
 """
 Motori tributi e fiscale — test sulla Specifica definitiva
-(memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md).
+(la specifica del titolare (non è nel repository: vale il codice)).
 
 Copre: classificazione §6-11, scadenze/ravvedimenti §20, associazione §15
 (esempio corretto e vietato), il caso reale F24 €50,61 (§16),
