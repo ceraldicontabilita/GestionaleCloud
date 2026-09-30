@@ -12,6 +12,7 @@ from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from app.hr.database import Database
+from app.services import mensilita_aggiuntive as mens
 from app.services import posizione_dipendente as pos
 
 router = APIRouter(tags=["Posizione dipendente"])
@@ -172,3 +173,81 @@ async def scarica_documento(conciliazione_id: str):
     nome_sicuro = nome.replace('"', "").replace("\n", " ")
     return Response(content=contenuto, media_type=mime,
                     headers={"Content-Disposition": f'inline; filename="{nome_sicuro}"'})
+
+
+# ── 13ª e 14ª: totali per dipendente e spostamento dei pagamenti ─────────────
+
+def _errore_mens(exc: mens.ErroreMensilita) -> HTTPException:
+    return HTTPException(status_code=400, detail=exc.come_dict())
+
+
+@router.get("/mensilita-aggiuntive")
+async def mensilita_riepilogo(anno: Optional[int] = None):
+    """Ratei maturati, busta, pagato e saldo di 13ª e 14ª per ogni dipendente."""
+    return await mens.riepilogo(_db(), anno or datetime.now(timezone.utc).year)
+
+
+@router.get("/mensilita-aggiuntive/{dipendente_id}/candidati")
+async def mensilita_candidati(dipendente_id: str, anno: Optional[int] = None):
+    """Bonifici e acconti del dipendente che si possono spostare su 13ª/14ª."""
+    db = _db()
+    await _dipendente(db, dipendente_id)
+    return {"righe": await mens.candidati(db, dipendente_id, anno or datetime.now(timezone.utc).year)}
+
+
+@router.post("/mensilita-aggiuntive/sposta")
+async def mensilita_sposta(dati: Dict[str, Any] = Body(...)):
+    """Sposta un pagamento sulla 13ª o 14ª: lo stesso record, mai una copia."""
+    db = _db()
+    dip_id, sorgente, ident = dati.get("dipendente_id"), dati.get("sorgente"), dati.get("id")
+    if not dip_id or not ident:
+        raise _errore_mens(mens.ErroreMensilita("DATI_MANCANTI", "dipendente_id e id sono obbligatori"))
+    await _dipendente(db, dip_id)
+    try:
+        mese = mens._mese_mensilita(dati.get("mensilita"))
+        anno = int(dati.get("anno"))
+        if sorgente == "esito":
+            esito = await db.pagamenti_esiti.find_one({"key": ident}, {"_id": 0, "pdf_data": 0})
+            if not esito or str(esito.get("dipendente_id")) != str(dip_id):
+                raise mens.ErroreMensilita("PAGAMENTO_NON_TROVATO", "Bonifico non trovato per questo dipendente")
+            if (int(esito.get("anno") or 0), int(esito.get("mese") or 0)) == (anno, mese):
+                return {"ok": True, "gia_assegnato": True}
+            from app.hr.routers.dipendenti_cloud import modifica_pagamento_esito
+            return await modifica_pagamento_esito(ident, {"anno": anno, "mese": mese,
+                                                          "nota": "spostato su " + mens.MENSILITA[str(mese)][1].lower()})
+        if sorgente == "acconto":
+            return await mens.sposta_acconto(db, dip_id, ident, str(mese), anno)
+        if sorgente == "paga":
+            return await mens.sposta_acconto_paga(db, dip_id, ident, str(mese), anno,
+                                                  data=dati.get("data"), importo=dati.get("importo"))
+        raise mens.ErroreMensilita("SORGENTE_NON_VALIDA", "sorgente: esito, acconto o paga", {"sorgente": sorgente})
+    except mens.ErroreMensilita as exc:
+        raise _errore_mens(exc) from exc
+    except (TypeError, ValueError) as exc:
+        raise _errore_mens(mens.ErroreMensilita("ANNO_NON_VALIDO", "L'anno non è valido")) from exc
+
+
+@router.post("/mensilita-aggiuntive/riporta")
+async def mensilita_riporta(dati: Dict[str, Any] = Body(...)):
+    """Rimette un pagamento nel mese da cui era stato spostato."""
+    db = _db()
+    dip_id, sorgente, ident = dati.get("dipendente_id"), dati.get("sorgente"), dati.get("id")
+    try:
+        if sorgente == "esito":
+            esito = await db.pagamenti_esiti.find_one({"key": ident}, {"_id": 0, "pdf_data": 0})
+            if not esito or str(esito.get("dipendente_id")) != str(dip_id):
+                raise mens.ErroreMensilita("PAGAMENTO_NON_TROVATO", "Bonifico non trovato per questo dipendente")
+            prima = next((m for m in reversed(esito.get("modifiche_manuali") or [])
+                          if m.get("da_mese") and m.get("da_anno")), None)
+            if not prima:
+                raise mens.ErroreMensilita("NIENTE_DA_RIPORTARE", "Il bonifico non è mai stato spostato")
+            from app.hr.routers.dipendenti_cloud import modifica_pagamento_esito
+            return await modifica_pagamento_esito(ident, {"anno": prima["da_anno"], "mese": prima["da_mese"],
+                                                          "nota": "riportato dov'era"})
+        if sorgente == "acconto":
+            return await mens.riporta_acconto(db, dip_id, ident)
+        if sorgente == "paga":
+            return await mens.riporta_acconto_paga(db, dip_id, ident)
+        raise mens.ErroreMensilita("SORGENTE_NON_VALIDA", "sorgente: esito, acconto o paga", {"sorgente": sorgente})
+    except mens.ErroreMensilita as exc:
+        raise _errore_mens(exc) from exc
