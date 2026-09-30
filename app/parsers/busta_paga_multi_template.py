@@ -146,7 +146,16 @@ def _detect_tipo_cedolino(text: str) -> str:
             for riga in tutte_le_righe
         )
         cessazione = detect_cessazione(text).get("cessato", False)
-        if len(tipi_da_voci) == 1 and not retribuzione_ordinaria and not cessazione:
+        # La 13a/14a vera porta «AGG.» accanto al periodo («Luglio 2025 AGG.»).
+        # Un mese di cassa integrazione o ferie, senza la riga Retribuzione,
+        # stampa «Z50000 13ma Mensilita'» come semplice rateo: e' una mensile.
+        periodo_aggiuntivo = any(
+            re.search(r'\b(?:GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|'
+                      r'SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE)\s+(?:19|20)\d{2}\s+AGG\b', riga)
+            for riga in tutte_le_righe
+        )
+        if (len(tipi_da_voci) == 1 and not retribuzione_ordinaria and not cessazione
+                and periodo_aggiuntivo):
             return next(iter(tipi_da_voci))
         return "mensile"
 

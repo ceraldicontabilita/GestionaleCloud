@@ -465,7 +465,7 @@ def leggi_corpo_cedolino(text: str) -> Dict:
     voci = []
     _num = re.compile(r'-?\d{1,3}(?:\.\d{3})*,\d{2,6}|-?\d+,\d{2,6}')
     for line in lines:
-        m = re.match(r'^([A-Z]\d{4,5})\b\s*(.*)$', line.strip())
+        m = re.match(r'^(?:\*\s*)*([A-Z]\d{4,5})\b\s*(.*)$', line.strip())
         if not m:
             continue
         codice, resto = m.group(1), m.group(2)
@@ -515,3 +515,36 @@ def leggi_corpo_cedolino(text: str) -> Dict:
         result["giorni_retribuiti"] = lav.group(2)
 
     return result
+
+
+_IMPORTO_IT = re.compile(r'^-?\d{1,3}(?:\.\d{3})*,\d{2}$|^-?\d+,\d{2}$')
+_CODICI_RATEO = {"Z50000": "13", "C50000": "13", "Z50022": "14", "C50022": "14"}
+
+
+def importi_ratei_da_coordinate(pdf_bytes: bytes) -> Dict[str, str]:
+    """Rateo 13a/14a letto per riga di pagina: il testo li spezza in righe diverse.
+
+    Nelle buste Zucchetti la voce «Z50000 13ma Mensilita'» ha codice e
+    descrizione, poi base, quantita' e importo su righe di testo separate: la
+    riga si ricompone per coordinata verticale e l'importo e' l'ultimo numero a
+    due decimali (le basi hanno cinque decimali). Ritorna {"13": "60,27", ...}.
+    """
+    import fitz
+
+    trovati: Dict[str, str] = {}
+    documento = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        for pagina in documento:
+            parole = pagina.get_text("words")
+            for parola in parole:
+                tipo = _CODICI_RATEO.get(parola[4])
+                if not tipo or tipo in trovati:
+                    continue
+                y = (parola[1] + parola[3]) / 2
+                riga = sorted((p for p in parole if abs((p[1] + p[3]) / 2 - y) < 4), key=lambda p: p[0])
+                importi = [p[4] for p in riga if p[0] > parola[2] and _IMPORTO_IT.match(p[4])]
+                if importi:
+                    trovati[tipo] = importi[-1]
+    finally:
+        documento.close()
+    return trovati
