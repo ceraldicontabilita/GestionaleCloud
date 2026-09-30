@@ -29,17 +29,20 @@ from app.services.hr_cedolini_deposito import TABELLA_CEDOLINI, tipo_cedolino_hr
 
 logger = logging.getLogger(__name__)
 
-VERSIONE = "riverifica_pdf_v2"
+VERSIONE = "riverifica_pdf_v3"
 #: La v1 toglieva l'acconto recuperato quando la riga HR non lo annotava: le
 #: sue «correzioni» si rivalutano partendo dal netto che c'era prima.
 VERSIONE_V1 = "riverifica_pdf_v1"
+#: La v3 e' la v2 piu' il rateo 13a/14a nei dati chiave: stessa logica sul netto.
+CAMPI_RATEO = ("rateo_13ma_presente", "rateo_13ma_importo",
+               "rateo_14ma_presente", "rateo_14ma_importo")
 #: Arrotondamento della busta fra netto del mese e busta + acconto.
 SCARTO_ARROTONDAMENTO = Decimal("1.00")
 LOTTO = 120
 
 _SQL_DA_RILEGGERE = (
     "SELECT id, doc->>'codice_fiscale' AS cf, doc->>'anno' AS anno, doc->>'mese' AS mese, "
-    "doc->>'tipo_cedolino' AS tipo, doc->>'netto' AS netto, "
+    "doc->>'tipo_cedolino' AS tipo, doc->>'netto' AS netto, doc->'dati_chiave' AS dati_chiave, "
     "doc->'acconti'->>'acconto_recuperato' AS acconto, "
     "doc->'storico_netto_ultimo'->>'prima' AS prima_v1, "
     "doc->'storico_netto_ultimo'->>'fonte' AS fonte_ultima FROM " + TABELLA_CEDOLINI + " "
@@ -86,9 +89,11 @@ def busta_della_riga(riga: Dict[str, Any], buste: List[Dict[str, Any]]) -> Dict[
     if len(candidate) > 1 and len({_cent(b.get("netto")) for b in candidate}) > 1:
         return {"esito": "ambigua", "netti": [str(_cent(b.get("netto"))) for b in candidate]}
     busta = candidate[0]
+    chiave = busta.get("dati_chiave") or {}
+    ratei = {c: chiave[c] for c in CAMPI_RATEO if c in chiave}
     if busta.get("stato_netto") != NETTO_VERIFICATO_DA_CEDOLINO or _cent(busta.get("netto")) is None:
-        return {"esito": "netto_non_verificato", "stato_netto": busta.get("stato_netto")}
-    return {"esito": "ritrovata", "netto": _cent(busta.get("netto")),
+        return {"esito": "netto_non_verificato", "stato_netto": busta.get("stato_netto"), "ratei": ratei}
+    return {"esito": "ritrovata", "netto": _cent(busta.get("netto")), "ratei": ratei,
             # competenze − trattenute: con un acconto recuperato e' busta + acconto
             "netto_calcolato": _cent(busta.get("netto_calcolato"))}
 
@@ -107,6 +112,11 @@ def correzione(riga: Dict[str, Any], esito: Dict[str, Any], now: str) -> Dict[st
         "netto_riverificato_il": now, "netto_riverificato_versione": VERSIONE,
         "netto_riverifica_esito": esito["esito"],
     }
+    if esito.get("ratei"):
+        esistenti = riga.get("dati_chiave")
+        if isinstance(esistenti, str):
+            esistenti = json.loads(esistenti)
+        patch["dati_chiave"] = {**(esistenti or {}), **esito["ratei"]}
     if esito["esito"] != "ritrovata":
         return patch
     attuale, cella = _cent(riga.get("netto")), esito["netto"]
