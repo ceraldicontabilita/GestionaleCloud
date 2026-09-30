@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Optional, Any
 from datetime import datetime, timezone, date
 import re
+import math
 import logging
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import uuid
@@ -1369,16 +1370,17 @@ def _ricetta_e_rivendita(r: dict) -> bool:
     return bool(r.get("fornitore_rivendita") or r.get("rivendita") or r.get("acquistato"))
 
 
-@router.get("/ricette-senza-ingredienti")
 def _ricetta_senza_quantita(r: dict) -> bool:
     """Ha gli ingredienti ma NESSUNA quantità utile: il food cost non si può
     calcolare (richiesta Enzo 25/07/2026: vanno compilate anche queste)."""
     det = r.get("ingredienti_dettaglio") or []
     if not det:
-        return False
-    return not any(float(i.get("quantita") or 0) > 0 for i in det)
+        return bool(r.get("ingredienti"))  # Nomi legacy senza dettagli = dosi mancanti.
+    quantita = [IngredienteConQuantita.coerce_quantita(i.get("quantita")) for i in det]
+    return not any(isinstance(q, (int, float)) and math.isfinite(q) and q > 0 for q in quantita)
 
 
+@router.get("/ricette-senza-ingredienti")
 async def ricette_senza_ingredienti():
     """Elenco delle ricette da compilare, escluse quelle di rivendita:
     - motivo "senza_ingredienti": non hanno proprio ingredienti;
