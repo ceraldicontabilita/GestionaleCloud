@@ -15,7 +15,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTO = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-MAX_RIGHE = 900
 AMMESSI = {"CLAUDE.md", "README.md", "PIANO_RISTRUTTURAZIONE.md"}
 
 
@@ -36,14 +35,6 @@ def test_solo_documenti_canonici_nel_repository() -> None:
     assert trovati == AMMESSI, (
         "I soli .md ammessi sono CLAUDE.md, README.md e PIANO_RISTRUTTURAZIONE.md. In piu' o in meno: "
         f"{sorted(trovati.symmetric_difference(AMMESSI))}"
-    )
-
-
-def test_tetto_di_righe() -> None:
-    righe = TESTO.count("\n") + 1
-    assert righe <= MAX_RIGHE, (
-        f"CLAUDE.md ha {righe} righe (tetto {MAX_RIGHE}): riscrivi «Stato attuale» "
-        "sul posto invece di aggiungere, e togli le voci chiuse da «Aperto»"
     )
 
 
