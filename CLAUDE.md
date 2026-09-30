@@ -870,6 +870,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   L'albergatore compila una pagina sola: camere, ospiti, dal/al, colazione. Un voucher vale per tutto il soggiorno (massimo 31 giorni),
   fino a tanti ritiri al giorno quanti sono gli ospiti. Il prezzo del voucher e' quello dell'hotel **piu'** il supplemento tavolo
   (`bb_config.supplemento_tavolo`, 1,50 € a persona) se la struttura ha `servizio_tavolo`; altrimenti servizio al banco.
+- **Fatture delle ricariche**: ogni ricarica che diventa confermata (carta SumUp, contanti al bar, ricarica registrata a mano) crea una riga in `bb_fatture_da_emettere`
+  (trigger `bb_trg_fattura_ricarica`, una sola riga per movimento). L'albergatore inserisce i **dati fiscali** (ragione sociale, P.IVA o C.F., indirizzo, codice destinatario/PEC) in registrazione o nel Profilo
+  (`bb_alb_fiscali_salva`, validati lato server); senza dati completi non puo' ricaricare con carta. Il titolare le lavora nel tab **Fatture**: copia i dati, emette la fattura da SumUp Fatture
+  (l'API pubblica di SumUp **non ha** endpoint per le fatture: provati `/v0.1/me/invoices` e simili, tutti 404) e segna numero e data; «Non dovuta» chiude le prove. Aliquota IVA e momento dell'emissione
+  (buono corrispettivo monouso: IVA gia' alla vendita?) li decide il commercialista: l'app non calcola l'IVA.
 - **Borsellino**: il saldo e' la somma dei movimenti confermati (`bb_saldo`); annullare un voucher rimborsa le non ritirate.
   Ricarica con SumUp (checkout ospitato lato server, `bb_sumup_verifica` accredita solo con stato PAID e importo e riferimento uguali;
   la chiave sta nel vault `sumup_api_key`) o in contanti al bar (il titolare conferma). **SumUp non e' ancora attivato**: manca la chiave.
@@ -930,6 +935,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. `scrittura_imposte` e `scrittura_versamento_iva` (`contabilita_generale.py`) non hanno chiamanti: chi le usa deve sapere che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
 - **F24 e banca**: il motore a livelli confronta il saldo intero, non il codice tributo (l'allocazione per singola riga è stata tolta: 0 modelli l'avevano); un modello senza data di versamento è saltato senza avviso. Le quietanze provate dall'addebito non promuovono ancora da sole il modello a «pagato in banca» se il saldo differisce (ravvedimenti). L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
 - **Colazioni B&B, da chiudere**: attivare SumUp incollando la chiave in Impostazioni;
+  emissione automatica delle fatture: serve un servizio SDI con accesso da programma (SumUp Fatture non ne ha; da chiedere all'assistenza SumUp o al commercialista);
   inserire dati veri del bar (orari, WhatsApp, email) e i B&B reali; far rivedere composizioni, ingredienti e allergeni delle colazioni standard;
   varianti di prodotto (latte vegetale, gusti del gelato) salvate ma non ancora scelte dall'ospite; per gli alberghi con servizio al tavolo gli extra usano ancora i prezzi banco;
   la catena SQL non e' ricostruibile (migrazioni 5, 6, 9, 11, 12 mancanti); il banner «VERSIONE DI PROVA» va tolto al lancio; eliminare i B&B demo (`bb_tit_elimina_demo`).
