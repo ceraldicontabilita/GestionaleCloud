@@ -252,3 +252,62 @@ def test_controlla_scadenze_f24_crea_segnalazione_se_assente():
     asyncio.run(fs._controlla_scadenze_f24(db))
     assert len(db["agenti_segnalazioni"].docs) == 1
     assert db["agenti_segnalazioni"].docs[0]["dati_riferimento"]["f24_id"] == "f24-y"
+
+
+# ─── 4. Scadenza dal codice tributo, non da `data_scadenza` ─────────────
+
+def test_scadenza_modello_dalla_riga_piu_vicina():
+    from datetime import date
+    from app.services.scadenzario_tributi import scadenza_modello
+
+    modello = {
+        "sezione_erario": [
+            {"codice_tributo": "6007", "anno": "2026", "importo_debito_cents": 10000, "importo_credito_cents": 0},
+            {"codice_tributo": "2003", "anno": "2025", "importo_debito_cents": 5000, "importo_credito_cents": 0},
+        ],
+        "sezione_inps": [],
+    }
+    scadenza, fonte = scadenza_modello(modello)
+    # IRES saldo 2025 → 30/06/2026; IVA luglio 2026 → 16/08 → proroga di Ferragosto 20/08/2026
+    assert scadenza == date(2026, 6, 30)
+    assert fonte.startswith("2003:")
+    assert scadenza_modello({"sezione_erario": []}) == (None, "nessuna riga a debito")
+    solo_credito = {"sezione_erario": [{"codice_tributo": "6007", "anno": "2026",
+                                        "importo_debito_cents": 0, "importo_credito_cents": 100}]}
+    assert scadenza_modello(solo_credito)[0] is None
+
+
+def test_controlla_scadenze_f24_senza_data_scadenza_usa_il_codice_tributo(monkeypatch):
+    from datetime import date, timedelta
+    import app.services.scadenzario_tributi as sc
+
+    db = _Db()
+    db["f24_unificato"].docs.extend([
+        {"id": "f24-a", "status": "da_pagare",
+         "sezione_erario": [{"codice_tributo": "6006", "anno": "2026",
+                             "importo_debito_cents": 315605, "importo_credito_cents": 0}],
+         "totali": {"saldo_netto": 3156.05}},
+        {"id": "f24-b", "status": "da_pagare",
+         "sezione_erario": [{"codice_tributo": "6001", "anno": "2026",
+                             "importo_debito_cents": 100, "importo_credito_cents": 0}]},
+        {"id": "f24-c", "status": "pagato",
+         "sezione_erario": [{"codice_tributo": "6006", "anno": "2026",
+                             "importo_debito_cents": 100, "importo_credito_cents": 0}]},
+    ])
+    vicina = date.today() + timedelta(days=5)
+    lontana = date.today() + timedelta(days=40)
+
+    def finta(f24):
+        return (vicina, "6006: regola IVA mensile") if f24["id"] == "f24-a" else (lontana, "6001: regola IVA mensile")
+
+    monkeypatch.setattr(sc, "scadenza_modello", finta)
+    fs = FiscaleSentinella()
+    asyncio.run(fs._controlla_scadenze_f24(db))
+    segn = db["agenti_segnalazioni"].docs
+    assert [s["dati_riferimento"]["f24_id"] for s in segn] == ["f24-a"]
+    assert segn[0]["scadenza"] == vicina.isoformat()
+    assert "6006" in segn[0]["titolo"] and "3156.05" in segn[0]["descrizione"]
+    assert "regola IVA mensile" in segn[0]["descrizione"]
+    # secondo giro: nessun doppione
+    asyncio.run(fs._controlla_scadenze_f24(db))
+    assert len(db["agenti_segnalazioni"].docs) == 1

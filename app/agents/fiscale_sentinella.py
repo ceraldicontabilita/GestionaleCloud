@@ -2,7 +2,7 @@ import re
 import asyncio
 import base64
 import logging
-from datetime import datetime, date, timedelta
+from datetime import date, timedelta
 from app.agents.notifier import crea_segnalazione
 from app.services.f24_payment_evidence import stato_evidenza_pagamento
 
@@ -192,36 +192,55 @@ class FiscaleSentinella:
         return dati
 
     async def _controlla_scadenze_f24(self, db):
-        oggi = date.today()
-        tra15 = (oggi + timedelta(days=15)).isoformat()
-        f24_urgenti = await db["f24_unificato"].find({
-            "status": "da_pagare",
-            "data_scadenza": {"$gte": oggi.isoformat(), "$lte": tra15}
-        }, {"_id": 0}).to_list(20)
+        """F24 da pagare in scadenza entro 15 giorni.
 
-        for f24 in f24_urgenti:
+        La scadenza si ricava dalle righe tributo (`scadenza_modello`: regola del
+        codice, festivi e proroga di Ferragosto): nessun F24 in archivio ha
+        `data_scadenza`, e un filtro su quel campo non trovava mai niente.
+        """
+        from app.services.scadenzario_tributi import scadenza_modello
+
+        oggi = date.today()
+        tra15 = oggi + timedelta(days=15)
+        candidati = await db["f24_unificato"].find(
+            {"status": "da_pagare"}, {"_id": 0, "pdf_data": 0},
+        ).to_list(500)
+
+        for f24 in candidati:
+            scadenza_txt = str(f24.get("data_scadenza") or "")[:10]
+            fonte = "data_scadenza del modello"
+            try:
+                scadenza = date.fromisoformat(scadenza_txt) if scadenza_txt else None
+            except ValueError:
+                scadenza = None
+            if scadenza is None:
+                scadenza, fonte = scadenza_modello(f24)
+            if scadenza is None or not (oggi <= scadenza <= tra15):
+                continue
             esistente = await db["agenti_segnalazioni"].find_one({
                 "agente": "FiscaleSentinella",
                 "dati_riferimento.f24_id": f24["id"],
                 "risolta": {"$ne": True}
             })
-            if not esistente:
-                try:
-                    giorni = (
-                        datetime.fromisoformat(f24["data_scadenza"]).date() - oggi
-                    ).days
-                except Exception:
-                    giorni = "?"
-                await crea_segnalazione(
-                    db, agente="FiscaleSentinella", tipo="urgente",
-                    titolo=f"F24 in scadenza — {f24.get('descrizione', 'N/D')}",
-                    descrizione=(
-                        f"F24 {f24.get('descrizione', '')} scade "
-                        f"il {f24.get('data_scadenza', '')}. "
-                        f"Mancano {giorni} giorni. Importo: €{f24.get('importo', 0):.2f}. "
-                        f"Invia al commercialista per preparazione pagamento."
-                    ),
-                    azione="F24 → visualizza e prepara pagamento",
-                    dati={"f24_id": f24["id"]},
-                    scadenza=f24.get("data_scadenza")
-                )
+            if esistente:
+                continue
+            giorni = (scadenza - oggi).days
+            codici = sorted({str(r.get("codice_tributo") or r.get("causale") or "")
+                             for sez in ("sezione_erario", "sezione_inps", "sezione_regioni",
+                                         "sezione_tributi_locali", "sezione_inail")
+                             for r in (f24.get(sez) or [])} - {""})
+            descrizione = f24.get("descrizione") or ", ".join(codici) or "N/D"
+            totali = f24.get("totali") or {}
+            importo = f24.get("importo") or totali.get("saldo_netto") or totali.get("saldo_finale") or 0
+            await crea_segnalazione(
+                db, agente="FiscaleSentinella", tipo="urgente",
+                titolo=f"F24 in scadenza — {descrizione}",
+                descrizione=(
+                    f"F24 {descrizione} scade il {scadenza.strftime('%d/%m/%Y')} ({fonte}). "
+                    f"Mancano {giorni} giorni. Importo: €{float(importo or 0):.2f}. "
+                    f"Invia al commercialista per preparazione pagamento."
+                ),
+                azione="F24 → visualizza e prepara pagamento",
+                dati={"f24_id": f24["id"], "scadenza_fonte": fonte},
+                scadenza=scadenza.isoformat()
+            )
