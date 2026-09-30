@@ -1,21 +1,26 @@
 """Classificazione e collegamento conservativo dei PDF Verbali/PagoPA da Drive."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from app.services.noleggio.controlli import driver_alla_data
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 
 
 _IUV_RE = re.compile(r"\b(3\d{17}|0\d{16,17})\b")
 _TARGA_RE = re.compile(r"\b([A-Z]{2}\d{3}[A-Z]{2})\b", re.IGNORECASE)
+# Numero con barre («111/V/2025», «2025/000123»): serie, sigla e anno separati da «/».
+_NUMERO_CON_BARRE = r"\d{1,8}(?:/[A-Z0-9]{1,8}){1,3}"
+_DATA_GG_MM_AAAA_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4}$")
 _VERBALE_PATTERNS = (
     re.compile(
-        r"\bverbale\s+(?:n(?:r)?[.°º]?|numero)?\s*[:#-]?\s*"
-        r"([A-Z]{0,3}[/-]?\d{6,20})\b",
+        r"\bverbale\s+(?:di\s+accertamento\s+)?(?:n(?:r)?[.°º]?|numero)?\s*[:#-]?\s*"
+        r"([A-Z]{0,3}[/-]?\d{6,20}|" + _NUMERO_CON_BARRE + r")(?![\w/])",
         re.I,
     ),
     re.compile(r"(?:numero|n[.°º]?|nr[.]?)?\s*verbale\s*[:#-]?\s*([A-Z0-9/-]{6,30})", re.I),
@@ -55,9 +60,11 @@ def _extract_text(content: bytes) -> str:
 
 def _extract_numero(text: str) -> Optional[str]:
     for pattern in _VERBALE_PATTERNS:
-        match = pattern.search(text or "")
-        if match:
+        for match in pattern.finditer(text or ""):
             value = match.group(1).strip(" .:-").upper()
+            # «verbale 12/03/2025» e' una data, non un numero.
+            if _DATA_GG_MM_AAAA_RE.match(value):
+                continue
             if value and value not in {"NUMERO", "VERBALE"}:
                 return value
     return None
@@ -66,8 +73,32 @@ def _extract_numero(text: str) -> Optional[str]:
 def _normalizza_numero(value: Any) -> Optional[str]:
     numero = str(value or "").strip().upper()
     numero = re.sub(r"^VERBALE\s*(?:N(?:R)?[.°º]?|NUMERO)?\s*", "", numero)
+    numero = re.sub(r"\s*/\s*", "/", numero)
     numero = numero.strip(" .:-")
     return numero or None
+
+
+def normalizza_numero_verbale(value: Any) -> Optional[str]:
+    """Numero verbale come chiave: maiuscolo, barre senza spazi, mai una data."""
+    numero = _normalizza_numero(value)
+    if numero and _DATA_GG_MM_AAAA_RE.match(numero):
+        return None
+    return numero
+
+
+def normalizza_iuv(value: Any) -> Optional[str]:
+    """L'IUV e' sempre una stringa di cifre, mai un numero.
+
+    Un intero o un float ha gia' perso lo zero iniziale (gli IUV da 17 cifre
+    cominciano per 0) o l'esattezza: si accetta solo se rispetta da solo la
+    forma dell'IUV, altrimenti non si indovina e si restituisce None.
+    """
+    if value in (None, "") or isinstance(value, (bool, float)):
+        return None
+    testo = re.sub(r"\s+", "", str(value)).upper()
+    if isinstance(value, int):
+        return testo if _IUV_RE.fullmatch(testo) else None
+    return testo if re.fullmatch(r"[0-9A-Z]{15,35}", testo) else None
 
 
 def _float_or_none(value: Any) -> Optional[float]:
@@ -151,40 +182,30 @@ async def _vehicle_context(
         "contratto": vehicle.get("contratto"),
         "fornitore_noleggio": vehicle.get("fornitore_noleggio"),
     }
-    # La targa identifica il veicolo, non il conducente. Il driver viene
-    # proposto solo da una assegnazione storica valida alla data del fatto.
+    # La targa identifica il veicolo, non il conducente: il driver e' quello
+    # dello storico assegnazioni alla data del fatto (motore unico
+    # `driver_alla_data`). Senza data del fatto non si propone nessuno; senza
+    # copertura dello storico resta da assegnare.
     if not event_date:
         return context
-    assignments = await db["storico_assegnazioni_veicoli"].find({
-        "targa": {"$regex": f"^{re.escape(targa)}$", "$options": "i"},
-        "data_inizio": {"$lte": event_date},
-        "$or": [
-            {"data_fine": {"$gte": event_date}},
-            {"data_fine": {"$exists": False}},
-            {"data_fine": None},
-            {"data_fine": ""},
-        ],
-    }, {"_id": 0}).limit(10).to_list(10)
-    candidates = {
-        str(item.get("driver_id") or item.get("driver") or item.get("driver_nome")): item
-        for item in assignments
-        if item.get("driver_id") or item.get("driver") or item.get("driver_nome")
-    }
-    if len(candidates) == 1:
-        assignment = next(iter(candidates.values()))
+    prova = driver_alla_data(vehicle, event_date)
+    if prova.get("fonte") == "storico_assegnazioni" and (prova.get("driver_id") or prova.get("driver")):
         context.update({
-            "driver_id": assignment.get("driver_id"),
-            "driver": assignment.get("driver") or assignment.get("driver_nome"),
+            "driver_id": prova.get("driver_id"),
+            "driver": prova.get("driver"),
             "driver_match_basis": "assegnazione_storica_alla_data",
         })
-    elif len(candidates) > 1:
+    elif prova.get("fonte") == "da_assegnare":
         context["driver_requires_review"] = True
     return context
 
 
 def _extract_violation_date(text: str) -> Optional[str]:
+    # Solo le diciture del fatto: «data verbale» e' la data dell'atto redatto,
+    # un'altra data (campo `data_verbale`), e non e' la violazione.
     match = re.search(
-        r"(?:data\s+(?:verbale|violazione)?|in\s+data)\s*:?[ ]*(\d{2}/\d{2}/\d{4})",
+        r"(?:data\s+(?:della\s+)?(?:violazione|infrazione)|\bdata\s*:|violazione\s+del|"
+        r"commess[ao]\s+il|accertat[ao]\s+il|in\s+data|il\s+giorno)\s*:?[ ]*(\d{2}/\d{2}/\d{4})",
         text or "", re.I,
     )
     if not match:
@@ -309,16 +330,19 @@ async def _schedule_verbale_notifications(
         )
 
 
-async def process_verbale_document(
-    db,
-    *,
-    document_id: str,
+async def leggi_documento_verbale(
     content: bytes,
     filename: str,
-    source: str = "drive_verbale",
     parsed_metadata: Dict[str, Any] | None = None,
+    *,
+    usa_ai: bool = True,
 ) -> Dict[str, Any]:
-    """Conserva relazioni certe; senza numero/IUV lascia il PDF da rivedere."""
+    """Legge il PDF di un verbale/avviso/ricevuta: l'unico lettore, senza scrivere.
+
+    Numero, IUV, targa e importo vengono dal **contenuto** (mai dal nome del file
+    come fonte del numero se il testo lo contiene); l'importo ha la sua
+    provenienza. `usa_ai=False` toglie il ripiego vision (anteprime e test).
+    """
     sha256 = hashlib.sha256(content).hexdigest()
     try:
         text = _extract_text(content)
@@ -347,7 +371,7 @@ async def process_verbale_document(
     ai_error: Optional[str] = None
     # Il fallback vision serve solo per veri PDF scansione. Questa guardia
     # evita chiamate esterne su payload corrotti o sui fixture testuali.
-    if content.startswith(b"%PDF") and len(text.strip()) < 80:
+    if usa_ai and content.startswith(b"%PDF") and len(text.strip()) < 80:
         try:
             from app.services.ai_document_parser import parse_verbale_ai
             ai_result = await parse_verbale_ai(file_bytes=content)
@@ -398,6 +422,43 @@ async def process_verbale_document(
         or any(marker in combined.casefold() for marker in _RICEVUTA_MARKERS)
     )
     is_notice = pagopa_data.get("document_kind") == "AVVISO_PAGOPA"
+    numero = normalizza_numero_verbale(numero)
+    iuv = normalizza_iuv(iuv)
+    violation_date = (
+        ai_data.get("data_violazione")
+        or pagopa_data.get("data_violazione")
+        or _extract_violation_date(text)
+    )
+    return {
+        "sha256": sha256, "text": text, "parsed_metadata": parsed_metadata,
+        "ai_data": ai_data, "ai_was_used": ai_was_used, "ai_error": ai_error,
+        "pagopa_data": pagopa_data, "numero": numero, "iuv": iuv, "targa": targa,
+        "importo": importo, "importo_fonte": importo_fonte,
+        "importo_conflitto": importo_conflitto, "data_pagamento": data_pagamento,
+        "data_violazione": violation_date, "is_receipt": is_receipt,
+        "is_notice": is_notice, "negative_payment": negative_payment,
+    }
+
+
+async def process_verbale_document(
+    db,
+    *,
+    document_id: str,
+    content: bytes,
+    filename: str,
+    source: str = "drive_verbale",
+    parsed_metadata: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Conserva relazioni certe; senza numero/IUV lascia il PDF da rivedere."""
+    letto = await leggi_documento_verbale(content, filename, parsed_metadata)
+    sha256, text = letto["sha256"], letto["text"]
+    parsed_metadata, ai_data = letto["parsed_metadata"], letto["ai_data"]
+    ai_was_used, ai_error = letto["ai_was_used"], letto["ai_error"]
+    pagopa_data = letto["pagopa_data"]
+    numero, iuv, targa = letto["numero"], letto["iuv"], letto["targa"]
+    importo, importo_fonte = letto["importo"], letto["importo_fonte"]
+    importo_conflitto, data_pagamento = letto["importo_conflitto"], letto["data_pagamento"]
+    is_receipt, is_notice = letto["is_receipt"], letto["is_notice"]
     now = datetime.now(timezone.utc).isoformat()
 
     extracted = {
@@ -502,11 +563,7 @@ async def process_verbale_document(
     identity = {"numero_verbale": numero} if numero else {"iuv": iuv}
     existing = await db["verbali_noleggio"].find_one(identity, {"_id": 0})
     verbale_id = str((existing or {}).get("id") or f"verbale_{hashlib.sha256(str(identity).encode()).hexdigest()[:32]}")
-    violation_date = (
-        ai_data.get("data_violazione")
-        or pagopa_data.get("data_violazione")
-        or _extract_violation_date(text)
-    )
+    violation_date = letto["data_violazione"]
     vehicle = await _vehicle_context(db, targa, violation_date)
     notification_date = (
         parsed_metadata.get("data_notifica")
@@ -554,6 +611,13 @@ async def process_verbale_document(
         "ambito": "veicolo" if targa else "amministrativo",
         "source_document_id": document_id,
         "source_sha256": sha256,
+        # L'originale resta sul verbale (campo `pdf_data`, gia' letto da
+        # `collect_verbale_pdfs`; il payload va in `gestionale.blobs`): la copia in
+        # `documents_inbox` si perde quando l'inbox si svuota, il verbale no.
+        "pdf_data": base64.b64encode(content).decode("ascii"),
+        "pdf_filename": filename,
+        "pdf_hash": sha256,
+        "pdf_size": len(content),
         "source": source,
         # Un avviso cita numero/targa ma non e' il verbale originale. Mantieni
         # il legacy ``stato`` per le viste esistenti e usa questi campi come

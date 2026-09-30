@@ -4,7 +4,6 @@ Trigger B: chiamato dopo insert di una fattura XML ARVAL/Leasys/ALD/etc.
 """
 import re
 import logging
-from datetime import datetime
 from typing import Dict, Any, Optional
 from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
@@ -41,32 +40,24 @@ async def cerca_fattura_per_verbale(db: ArchivioDocumenti, numero_verbale: str) 
 
 
 async def collega_verbali_a_fatture(db: ArchivioDocumenti) -> Dict[str, int]:
+    """Giro di rete: collega i verbali senza fattura a quella che ne cita il numero."""
+    from app.services.verbali_collegamento_fattura import collega_verbale, fattura_id_del_verbale
+
     stats = {"processati": 0, "collegati": 0}
-    cursor = db["verbali_noleggio"].find({
-        "numero_verbale": {"$exists": True, "$ne": None},
-        "fattura_associata_id": {"$exists": False},
-    })
+    cursor = db["verbali_noleggio"].find(
+        {"numero_verbale": {"$exists": True, "$ne": None}},
+        {"pdf_data": 0, "quietanza_pdf": 0},
+    )
     async for v in cursor:
+        # «Senza fattura» si decide in Python: `$in: [None]` non prende il campo assente.
+        if fattura_id_del_verbale(v):
+            continue
         stats["processati"] += 1
         m = await cerca_fattura_per_verbale(db, v["numero_verbale"])
         if m:
-            await db["verbali_noleggio"].update_one(
-                {"_id": v["_id"]},
-                {"$set": {
-                    "fattura_id": m["fattura_id"],
-                    "fattura_associata_id": m["fattura_id"],
-                    "fattura_numero": m["numero_fattura"],
-                    "numero_fattura": m["numero_fattura"],
-                    "fattura_associata_numero": m["numero_fattura"],
-                    "fattura_associata_data": m["data_fattura"],
-                    "fattura_associata_fornitore": m["fornitore"],
-                    "fattura_associata_importo": m["importo_fattura"],
-                    "updated_at": datetime.utcnow().isoformat(),
-                }}
-            )
-            await db["invoices"].update_one(
-                {"id": m["fattura_id"]},
-                {"$addToSet": {"verbali_collegati": v.get("numero_verbale")}}
+            filtro = {"id": v["id"]} if v.get("id") else {"_id": v["_id"]}
+            await collega_verbale(
+                db, filtro, m["fattura_id"], m["numero_fattura"], regola="numero_in_riga_fattura",
             )
             stats["collegati"] += 1
     return stats

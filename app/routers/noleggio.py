@@ -32,6 +32,10 @@ from app.services.noleggio.associations import (
 from app.utils.error_handler import handle_errors
 from app.constants.stati_verbale import e_chiuso
 from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
+from app.services.verbali_evidence import data_evento_verbale, data_violazione_verbale
+from app.services.verbali_collegamento_fattura import (
+    campi_da_fattura, fattura_id_del_verbale, fattura_numero_del_verbale,
+)
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 router = APIRouter()
@@ -78,6 +82,7 @@ async def _get_verbali_completi_per_targa(
         verbali_per_numero[numero] = {
             "numero_verbale": numero,
             "data_verbale": str(v.get("data_verbale") or v.get("created_at") or "")[:10],
+            "data_violazione": data_violazione_verbale(v),
             "importo": float(v.get("importo") or 0),
             "stato": v.get("stato"),
             "pagato": bool(
@@ -85,11 +90,8 @@ async def _get_verbali_completi_per_targa(
                 or v.get("pagamento_id") or v.get("paypal_transaction_id")
                 or v.get("ricevuta_pagopa_id") or v.get("movimento_banca_id")
             ),
-            "fattura_id": v.get("fattura_id") or v.get("fattura_associata_id"),
-            "fattura_numero": (
-                v.get("fattura_numero") or v.get("fattura_associata_numero")
-                or v.get("numero_fattura")
-            ),
+            "fattura_id": fattura_id_del_verbale(v),
+            "fattura_numero": fattura_numero_del_verbale(v),
             "ha_ricevuta": bool(
                 v.get("pdf_ricevuta_path") or v.get("quietanza_ricevuta")
                 or v.get("ricevuta_pagopa_id")
@@ -133,7 +135,7 @@ async def _get_verbali_completi_per_targa(
     if veicolo:
         from app.services.noleggio import driver_alla_data
         for v in verbali_per_numero.values():
-            v["driver_competente"] = driver_alla_data(veicolo, v.get("data_verbale"))
+            v["driver_competente"] = driver_alla_data(veicolo, data_evento_verbale(v)[0])
 
     return sorted(
         verbali_per_numero.values(),

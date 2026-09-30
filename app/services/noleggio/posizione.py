@@ -37,7 +37,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from app.constants.stati_verbale import e_pagato
 from app.services.noleggio.constants import FORNITORI_NOLEGGIO
 from app.services.noleggio.controlli import STATI_CONTRATTO_CHIUSI, driver_alla_data
-from app.services.verbali_evidence import amount_to_cents, sanitize_verbale_evidence
+from app.services.verbali_evidence import amount_to_cents, data_violazione_verbale, sanitize_verbale_evidence
 
 logger = logging.getLogger(__name__)
 
@@ -584,7 +584,9 @@ def _righe_verbali_veicolo(
         prova = _prova_verbale(record_posta) if record_posta else None
         data_verbale = _data(rec.get("data_verbale") or rec.get("data")
                              or (record_posta or {}).get("data_verbale") or (record_posta or {}).get("data_violazione"))
-        driver = driver_alla_data(veicolo, data_verbale or _data(rec.get("data")))
+        # Il driver e' quello alla data del fatto: violazione, poi data del verbale.
+        data_fatto = _data(data_violazione_verbale(record_posta or {})) or data_verbale or _data(rec.get("data"))
+        driver = driver_alla_data(veicolo, data_fatto)
         in_fattura = bool(rec.get("fattura_id"))
         importo_riaddebito = _cents(rec.get("totale")) if in_fattura else 0
         importo_verificato = (evidenza or {}).get("importo_centesimi")
