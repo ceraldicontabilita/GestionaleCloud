@@ -218,6 +218,9 @@ def _register_employees(app: FastAPI):
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"])
     from app.routers import schede_markdown
     app.include_router(schede_markdown.router, prefix="/api/schede", tags=["Schede Markdown"])
+    # Protocollo personale e familiare (MINI-07): import del registro, ricerca AND, ponte informativo.
+    from app.routers import protocollo_personale
+    app.include_router(protocollo_personale.router, prefix="/api/protocollo-personale", tags=["Protocollo personale"])
     from app.routers import doppioni_archivio
     app.include_router(doppioni_archivio.router, prefix="/api/doppioni", tags=["Doppioni archivio"])
     # Versioni della stessa busta (stampa di controllo, «Variante N»): rapporto
