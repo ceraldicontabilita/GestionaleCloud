@@ -226,6 +226,11 @@ def _register_employees(app: FastAPI):
     from app.routers import documenti_fiscali
     app.include_router(documenti_fiscali.router, prefix="/api/documenti-fiscali", tags=["Documenti fiscali"])
 
+    # Righi delle dichiarazioni (VL/VX, RN, IR, esito ISA) letti per posizione:
+    # ripasso dell'archivio e di un singolo documento.
+    from app.routers import dichiarazioni_quadri
+    app.include_router(dichiarazioni_quadri.router, prefix="/api/fiscale", tags=["Dichiarazioni fiscali"])
+
     # Gestione IVA (SPECIFICA_IVA.md): attribuzione periodo per competenza,
     # IVA disponibile non utilizzata.
     from app.routers import iva as iva_router
