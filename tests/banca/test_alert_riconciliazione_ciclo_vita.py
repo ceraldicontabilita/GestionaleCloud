@@ -78,7 +78,7 @@ def test_i_motori_che_riconciliano_chiudono_gli_alert_del_movimento():
     for relativo in (
         "app/services/bank_payment_allocations.py",
         "app/services/stipendi_bonifici.py",
-        "app/services/f24_bank_reconciliation.py",
+        "app/services/f24_controllo_incrociato.py",
         "app/services/riconciliazione_bancaria.py",
     ):
         testo = (RADICE / relativo).read_text(encoding="utf-8")

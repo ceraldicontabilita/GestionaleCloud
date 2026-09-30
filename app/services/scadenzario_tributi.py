@@ -44,6 +44,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
+from app.services.calendario_lavorativo import e_festivo
 from app.services import f24_controllo_incrociato as reg
 
 COLL = "scadenzario_tributi"
@@ -104,30 +105,11 @@ _INTERESSI = set(CODICI_RAVVEDIMENTO) - _SANZIONI
 
 # ── calendario ───────────────────────────────────────────────────────────
 
-def _pasqua(anno: int) -> date:
-    a, b, c = anno % 19, anno // 100, anno % 100
-    d, e = b // 4, b % 4
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = c // 4, c % 4
-    l_ = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l_) // 451
-    mese = (h + l_ - 7 * m + 114) // 31
-    giorno = ((h + l_ - 7 * m + 114) % 31) + 1
-    return date(anno, mese, giorno)
-
-
-def _festivo(g: date) -> bool:
-    fisse = {(1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15), (11, 1), (12, 8), (12, 25), (12, 26)}
-    return g.weekday() >= 5 or (g.month, g.day) in fisse or g == _pasqua(g.year) + timedelta(days=1)
-
-
 def termine_effettivo(g: date) -> date:
     """Proroga di Ferragosto e slittamento al primo giorno lavorativo."""
     if g.month == 8 and g.day <= 20:
         g = date(g.year, 8, 20)
-    while _festivo(g):
+    while e_festivo(g):
         g += timedelta(days=1)
     return g
 

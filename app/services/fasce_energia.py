@@ -10,6 +10,8 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, Iterable, Tuple
 from zoneinfo import ZoneInfo
 
+from app.services.calendario_lavorativo import festivita_nazionali
+
 
 ROME = ZoneInfo("Europe/Rome")
 
@@ -18,32 +20,6 @@ TARIFFE = {
     "F2": {"euro_kwh": 0.1752, "euro_kwh_con_perdite": 0.1927},
     "F3": {"euro_kwh": 0.1336, "euro_kwh_con_perdite": 0.1470},
 }
-
-
-def _pasqua(anno: int) -> date:
-    """Pasqua gregoriana (algoritmo di Meeus/Jones/Butcher)."""
-    a = anno % 19
-    b, c = divmod(anno, 100)
-    d, e = divmod(b, 4)
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = divmod(c, 4)
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    mese = (h + l - 7 * m + 114) // 31
-    giorno = (h + l - 7 * m + 114) % 31 + 1
-    return date(anno, mese, giorno)
-
-
-def festivita_nazionali(anno: int) -> set[date]:
-    fisse: Iterable[Tuple[int, int]] = (
-        (1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15),
-        (11, 1), (12, 8), (12, 25), (12, 26),
-    )
-    return {date(anno, mese, giorno) for mese, giorno in fisse} | {
-        _pasqua(anno) + timedelta(days=1),
-    }
 
 
 def fascia_per_istante(istante: datetime) -> str:

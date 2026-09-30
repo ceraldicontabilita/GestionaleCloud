@@ -12,10 +12,19 @@ import DocumentViewerModal from './DocumentViewerModal';
  *
  * Quietanza e addebito sono due prove dello stesso pagamento: qui si vedono
  * affiancate, con l'esito e la sua motivazione (importo, date e causale
- * confrontati). Il motore e' uno solo, `f24_controllo_incrociato`, che scrive
- * nel giro dei 30 minuti; questa pagina legge soltanto. Nessun giudizio
+ * confrontati). Il motore e' uno solo, `f24_controllo_incrociato`, a livelli
+ * (certo, probabile, parziale, nessun match, movimento orfano): scrive solo il
+ * certo, nel giro dei 30 minuti; questa pagina legge soltanto. Nessun giudizio
  * fiscale: fatti e discrepanze, da verificare col commercialista.
  */
+
+const LIVELLI = {
+  CERTO: 'Certo',
+  PROBABILE: 'Probabile',
+  PARZIALE: 'Parziale',
+  NESSUN_MATCH: 'Nessun match',
+  MOVIMENTO_ORFANO: 'Movimento orfano',
+};
 
 const GRUPPI = [
   { chiave: 'riscontrati', etichetta: 'Riscontrati', esito: 'chiuso', testo: 'Riscontrato' },
@@ -27,6 +36,14 @@ const GRUPPI = [
   {
     chiave: 'quietanze_senza_addebito', etichetta: 'Quietanze senza addebito',
     esito: 'intervento', testo: 'Addebito non trovato',
+  },
+  {
+    chiave: 'quietanze_senza_estratto', etichetta: 'Periodi senza estratto',
+    esito: 'verificare', testo: 'Estratto assente',
+  },
+  {
+    chiave: 'modelli_da_verificare', etichetta: 'Modelli F24 da verificare',
+    esito: 'verificare', testo: 'Da verificare',
   },
   { chiave: 'quietanze_incomplete', etichetta: 'Quietanze illeggibili', esito: 'verificare', testo: 'Dati mancanti' },
   {
@@ -132,7 +149,15 @@ export default function RiscontroQuietanzeBanca({ anno }) {
     {
       key: 'esito', label: 'Esito', ruoloCard: 'titolo',
       render: r => (
-        <Esito esito={r._gruppo.esito} data-testid={`esito-${r._id}`}>{r._gruppo.testo}</Esito>
+        <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+          <Esito esito={r._gruppo.esito} data-testid={`esito-${r._id}`}>{r._gruppo.testo}</Esito>
+          {r.livello && (
+            <span style={{ fontSize: 11.5, color: COLORS.textMuted }} data-testid={`livello-${r._id}`}>
+              Livello: {LIVELLI[r.livello] || r.livello}
+              {r.differenza ? ` · differenza ${formatEuro(r.differenza)}` : ''}
+            </span>
+          )}
+        </span>
       ),
     },
     {
@@ -234,8 +259,11 @@ export default function RiscontroQuietanzeBanca({ anno }) {
         </button>
       </div>
       <p style={{ margin: '6px 0 10px', fontSize: 12.5, color: COLORS.textMuted, maxWidth: 820 }}>
-        Riscontrato solo con importo uguale al centesimo e la «data incasso» della causale uguale
-        alla data della quietanza. Senza quella data, o con più candidati, resta da verificare.
+        Riscontrato (livello certo) solo con importo uguale al centesimo, addebito entro due giorni
+        lavorativi e la «data incasso» della causale uguale alla data della quietanza. Senza quella
+        data il livello è probabile; con una differenza sotto 5 euro è parziale; con più candidati
+        si mostrano tutti e non se ne sceglie uno. Se l'estratto del periodo manca non si può dire
+        che il pagamento manchi. Solo fatti e discrepanze, da verificare con il commercialista.
         {dati?.copertura_banca?.dal && (
           <> Estratto conto disponibile dal {formatDateIT(dati.copertura_banca.dal)} al{' '}
             {formatDateIT(dati.copertura_banca.al)}: le {conteggi.fuori_periodo_estratto || 0} quietanze

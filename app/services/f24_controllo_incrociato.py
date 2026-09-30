@@ -21,8 +21,8 @@ restano entita' distinte; nessuna associazione per solo importo (sempre data
 ±3 giorni + importo esatto, oppure protocollo); i casi ambigui restano
 proposte; la quietanza documenta il versamento ma non sostituisce la prova
 bancaria (``stato_evidenza_pagamento``). Le funzioni ``controlla_*`` e
-``verifica_codice`` non scrivono mai; ``riconcilia_addebiti`` scrive solo con
-``dry_run=False`` ed e' idempotente.
+``verifica_codice`` non scrivono mai; ``riconcilia_f24_banca`` (l'unico motore
+F24 ↔ banca, a livelli) scrive solo i riscontri CERTI ed e' idempotente.
 """
 from __future__ import annotations
 
@@ -37,9 +37,10 @@ from app.db_collections import (
 )
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 from app.engines import tributi_engine as te
+from app.services.calendario_lavorativo import giorni_lavorativi_tra
 from app.services.conti_pos import data_italiana
 from app.services.f24_payment_evidence import (
-    patch_pagamento_banca, patch_quietanza_associata, stato_evidenza_pagamento,
+    patch_pagamento_banca, stato_evidenza_pagamento,
 )
 from app.services.hr_cedolini_lettura import cedolini_hr_periodo, riepilogo_ritenute
 
@@ -895,199 +896,6 @@ def _f24_aperto_banca(f24: Dict[str, Any]) -> bool:
     return not stato_evidenza_pagamento(f24)["verificato_banca"]
 
 
-def proposte_aggancio(registro: Dict[str, Any]) -> Dict[str, Any]:
-    """Calcola, senza scrivere, gli agganci univoci e i casi ambigui.
-
-    Banca ↔ F24: |data movimento − data versamento| ≤ 3 gg e importo esatto
-    al centesimo, univoco in entrambe le direzioni (e nessun duplicato
-    bancario con stessa data/importo). Quietanza ↔ F24: protocollo uguale,
-    oppure stessa data di versamento e importo esatto. Mai per solo importo.
-    """
-    modelli = registro["f24"]
-    aperti = [f for f in modelli if _f24_aperto_banca(f)]
-    liberi = [m for m in registro["movimenti"] if _movimento_libero(m)]
-
-    firme: Dict[Tuple[str, int], List[str]] = {}
-    for m in liberi:
-        firme.setdefault((data_movimento(m) or "", importo_movimento_cents(m) or -1), []).append(
-            str(m.get("id") or m.get("fingerprint"))
-        )
-    duplicati = {mid for ids in firme.values() if len(ids) > 1 for mid in ids}
-
-    cand_per_f24: Dict[str, List[Dict[str, Any]]] = {}
-    cand_per_mov: Dict[str, List[str]] = {}
-    for f in aperti:
-        fid = str(f.get("id"))
-        dv, saldo = data_versamento_modello(f), saldo_modello_cents(f)
-        if not dv or saldo is None:
-            continue
-        for m in liberi:
-            mid = str(m.get("id") or m.get("fingerprint"))
-            gg = _giorni_tra(dv, data_movimento(m))
-            imp = importo_movimento_cents(m)
-            if gg is None or gg > TOLLERANZA_AGGANCIO_GG or imp is None:
-                continue
-            if abs(imp - saldo) <= TOLLERANZA_AGGANCIO_CENTS:
-                cand_per_f24.setdefault(fid, []).append(m)
-                cand_per_mov.setdefault(mid, []).append(fid)
-
-    banca_proposte, banca_ambigue = [], []
-    for f in aperti:
-        fid = str(f.get("id"))
-        cands = cand_per_f24.get(fid, [])
-        if not cands:
-            continue
-        voci = [{
-            "movimento_id": str(m.get("id") or m.get("fingerprint")),
-            "data_movimento": data_movimento(m), "data_movimento_it": data_italiana(data_movimento(m)),
-            "importo": euro(importo_movimento_cents(m)), "descrizione": m.get("descrizione"),
-        } for m in cands]
-        record = {
-            "f24_id": fid, "file_name": f.get("file_name"),
-            "data_versamento": data_versamento_modello(f),
-            "data_versamento_it": data_italiana(data_versamento_modello(f)),
-            "importo": euro(saldo_modello_cents(f)), "candidati": voci,
-        }
-        mid = voci[0]["movimento_id"]
-        univoco = len(cands) == 1 and mid not in duplicati and cand_per_mov.get(mid, []) == [fid]
-        if univoco:
-            banca_proposte.append({**record, "movimento_id": mid, "movimento": cands[0],
-                                   "criterio": "data_±3gg_e_importo_esatto"})
-        else:
-            banca_ambigue.append({**record, "motivo": (
-                "movimento con duplicato bancario (stessa data e importo)" if mid in duplicati
-                else "piu' candidati: scelta manuale"
-            )})
-
-    # Quietanze ↔ F24
-    con_quietanza = {str(f.get("quietanza_id")) for f in modelli if f.get("quietanza_id")}
-    quiet_proposte, quiet_ambigue, quiet_senza_modello = [], [], []
-    for q in registro["quietanze"]:
-        if q["f24_ids"] or str(q.get("id")) in con_quietanza:
-            continue
-        cands = []
-        for f in modelli:
-            if f.get("quietanza_id"):
-                continue
-            per_prot = bool(q["protocollo"]) and q["protocollo"] in protocolli_modello(f)
-            saldo = saldo_modello_cents(f)
-            per_data_imp = (
-                bool(q["data"]) and q["data"] == data_versamento_modello(f)
-                and q["importo_cents"] is not None and saldo is not None
-                and abs(q["importo_cents"] - saldo) <= TOLLERANZA_AGGANCIO_CENTS
-            )
-            if per_prot or per_data_imp:
-                cands.append((f, "protocollo" if per_prot else "data_e_importo_esatto"))
-        vista = _vista_quietanza(q, False)
-        if len(cands) == 1:
-            f, criterio = cands[0]
-            quiet_proposte.append({**vista, "f24_id": f.get("id"), "file_name": f.get("file_name"),
-                                   "criterio": criterio})
-        elif cands:
-            quiet_ambigue.append({**vista, "candidati": [
-                {"f24_id": f.get("id"), "file_name": f.get("file_name"), "criterio": c} for f, c in cands
-            ]})
-        else:
-            quiet_senza_modello.append({**vista, "motivo": (
-                "quietanza senza importo/protocollo confrontabile" if q["importo_cents"] is None and not q["protocollo"]
-                else "nessun modello F24 con lo stesso protocollo o stessa data+importo"
-            )})
-
-    con_candidato = set(cand_per_mov)
-    addebiti_senza_modello = [{
-        "movimento_id": str(m.get("id") or m.get("fingerprint")),
-        "data": data_movimento(m), "data_it": data_italiana(data_movimento(m)),
-        "importo": euro(importo_movimento_cents(m)), "descrizione": m.get("descrizione"),
-        "alert": "F24_MANCANTE",
-    } for m in liberi if str(m.get("id") or m.get("fingerprint")) not in con_candidato]
-
-    return {
-        "banca": {"proposte": banca_proposte, "ambigue": banca_ambigue},
-        "quietanze": {"proposte": quiet_proposte, "ambigue": quiet_ambigue,
-                      "senza_modello": quiet_senza_modello},
-        "addebiti_senza_modello": addebiti_senza_modello,
-        "conteggi": {
-            **registro["conteggi"],
-            "f24_senza_prova_bancaria": len(aperti),
-            "movimenti_liberi": len(liberi),
-            "banca_proposte": len(banca_proposte), "banca_ambigue": len(banca_ambigue),
-            "quietanze_proposte": len(quiet_proposte), "quietanze_ambigue": len(quiet_ambigue),
-            "quietanze_senza_modello": len(quiet_senza_modello),
-            "addebiti_senza_modello": len(addebiti_senza_modello),
-            "importo_addebiti_senza_modello": euro(sum(
-                importo_movimento_cents(m) or 0 for m in liberi
-                if str(m.get("id") or m.get("fingerprint")) not in con_candidato
-            )),
-        },
-    }
-
-
-async def riconcilia_addebiti(db, *, dry_run: bool = True) -> Dict[str, Any]:
-    """Aggancio idempotente addebito I24 ↔ F24 e quietanza ↔ F24.
-
-    ``dry_run=True`` (default) restituisce le proposte senza scrivere.
-    Con ``dry_run=False`` applica SOLO le proposte univoche; al giro
-    successivo quei modelli/movimenti non sono piu' liberi → 0 scritture.
-    """
-    registro = await carica_registro(db)
-    piano = proposte_aggancio(registro)
-    applicate = {"banca": 0, "quietanze": 0}
-    if dry_run:
-        return {"dry_run": True, **piano, "applicate": applicate}
-
-    now = datetime.now(timezone.utc).isoformat()
-    modelli_per_id = {str(f.get("id")): f for f in registro["f24"]}
-    for p in piano["banca"]["proposte"]:
-        f24 = modelli_per_id[p["f24_id"]]
-        movimento = p["movimento"]
-        patch_banca = {
-            **patch_pagamento_banca(
-                movimento_id=p["movimento_id"], data_pagamento=data_movimento(movimento),
-                riferimento=(movimento.get("f24_info") or {}).get("riferimento"),
-            ),
-            "importo_residuo": 0.0,
-            "criterio_aggancio_banca": p["criterio"],
-            "updated_at": now,
-        }
-        await db[COLL_F24].update_one({"id": p["f24_id"]}, {"$set": patch_banca})
-        f24.update(patch_banca)  # la quietanza (sotto) non deve declassare questa prova
-        await db[COLL_ESTRATTO_CONTO].update_one(
-            {"$or": [{"id": p["movimento_id"]}, {"fingerprint": p["movimento_id"]}]},
-            {"$set": {"riconciliato": True, "tipo_riconciliazione": "f24_tributi",
-                      "f24_ids": [p["f24_id"]], "data_riconciliazione": now}},
-        )
-        try:
-            from app.services.accounting_relation_writers import record_f24_bank_allocations
-            await record_f24_bank_allocations(db, f24=f24, allocations=[{
-                "movimento_id": p["movimento_id"], "importo": p["importo"], "codici_tributo": [],
-            }])
-        except Exception:  # noqa: BLE001 - la relazione e' un indice, non la prova
-            logger.exception("Relazione bancaria F24 %s non registrata", p["f24_id"])
-        applicate["banca"] += 1
-
-    for p in piano["quietanze"]["proposte"]:
-        f24 = modelli_per_id[str(p["f24_id"])]
-        patch = patch_quietanza_associata(
-            quietanza_id=str(p["quietanza_id"]), protocollo=p.get("protocollo") or "",
-            data_quietanza=p.get("data"),
-        )
-        if stato_evidenza_pagamento(f24)["verificato_banca"]:
-            # La quietanza non declassa una prova bancaria gia' presente.
-            for chiave in ("status", "stato_pagamento", "pagato", "pagamento_verificato_banca"):
-                patch.pop(chiave, None)
-        await db[COLL_F24].update_one({"id": p["f24_id"]}, {"$set": {
-            **patch, "quietanza_fonte": p["fonte"], "criterio_aggancio_quietanza": p["criterio"],
-            "updated_at": now,
-        }})
-        await db[p["fonte"]].update_one(
-            {"id": p["quietanza_id"]},
-            {"$set": {"f24_id": p["f24_id"], "f24_associati": [p["f24_id"]], "updated_at": now}},
-        )
-        applicate["quietanze"] += 1
-
-    return {"dry_run": False, **piano, "applicate": applicate}
-
-
 # ── riscontro quietanza ↔ addebito bancario ─────────────────────────────────
 #
 # Quietanza e addebito sono due prove dello stesso pagamento, e restano due
@@ -1098,15 +906,35 @@ async def riconcilia_addebiti(db, *, dry_run: bool = True) -> Dict[str, Any]:
 #
 # Un pagamento e' il suo protocollo telematico: due copie della stessa
 # quietanza (scaricata due volte, nomi diversi) sono un pagamento solo.
-# Certo = importo uguale al centesimo, addebito 0-4 giorni dopo la data della
-# quietanza (il fine settimana sposta la contabile) e la «DATA INCASSO» scritta
-# nella causale BPM uguale alla data della quietanza. Senza quella data nella
-# causale l'abbinamento resta una proposta da verificare. Mai per solo importo,
-# mai con tolleranza sull'importo.
+# Un motore solo, a livelli (RST-F24B). Ogni coppia pagamento ↔ addebito ha un
+# ``livello`` e una ``motivazione`` con importo, date e causale confrontati:
+#
+# * CERTO: importo uguale al centesimo, addebito entro 2 giorni lavorativi
+#   (con i festivi) dalla data del pagamento, causale di delega F24/I24 e,
+#   per una quietanza, la «DATA INCASSO» della causale uguale alla sua data.
+#   E' l'unico livello che scrive il pagamento;
+# * PROBABILE: importo e data uguali ma causale senza data d'incasso, oppure
+#   piu' addebiti compatibili (si mostrano tutti, non se ne sceglie uno);
+# * PARZIALE: differenza d'importo sotto la soglia (5 EUR), con la differenza;
+# * NESSUN_MATCH: nessun addebito, dicendo se l'estratto del periodo c'e';
+# * MOVIMENTO_ORFANO: addebito senza quietanza, da riscaricare.
+#
+# I livelli diversi da CERTO scrivono solo una relazione ``pending`` in
+# ``entity_relations``, mai un pagamento. Mai per solo importo.
 
 RISCONTRO_CERTO = "RISCONTRATO_BANCA"
 RISCONTRO_DA_VERIFICARE = "DA_VERIFICARE"
-GIORNI_ADDEBITO_DOPO_QUIETANZA = 4
+LIVELLO_CERTO = "CERTO"
+LIVELLO_PROBABILE = "PROBABILE"
+LIVELLO_PARZIALE = "PARZIALE"
+LIVELLO_NESSUN_MATCH = "NESSUN_MATCH"
+LIVELLO_MOVIMENTO_ORFANO = "MOVIMENTO_ORFANO"
+LIVELLI = (LIVELLO_CERTO, LIVELLO_PROBABILE, LIVELLO_PARZIALE, LIVELLO_NESSUN_MATCH,
+           LIVELLO_MOVIMENTO_ORFANO)
+GIORNI_LAVORATIVI_ADDEBITO = 2
+GIORNI_COPERTURA_ESTRATTO = 5
+SOGLIA_PARZIALE_CENTS = 500
+NOTA_COMMERCIALISTA = "da verificare con il commercialista"
 _RE_ADDEBITO_DELEGA = re.compile(r"\bI24\b|\bF24\b|DELEGA\s+UNIFICATA", re.I)
 _RE_DATA_INCASSO = re.compile(r"DATA\s+INCASSO\s+(\d{2})/(\d{2})/(\d{4})", re.I)
 
@@ -1289,45 +1117,125 @@ def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _mid(m: Dict[str, Any]) -> str:
+    return str(m.get("id") or m.get("fingerprint"))
+
+
+def _abbina(
+    unita: Iterable[Dict[str, Any]], addebiti: List[Dict[str, Any]], soglia_parziale_cents: int,
+) -> Tuple[Dict[str, Dict[str, List[Dict[str, Any]]]], Dict[str, List[str]]]:
+    """Candidati di ogni pagamento fra gli addebiti, senza scrivere e senza scegliere.
+
+    ``unita``: ``chiave``, ``data`` (ISO), ``importo_cents`` e, per un modello,
+    ``bidirezionale`` (la data del modello e' quella programmata: l'addebito
+    puo' anche precederla). L'addebito sta entro ``GIORNI_LAVORATIVI_ADDEBITO``
+    giorni lavorativi e la sua «DATA INCASSO», se c'e', e' quella del pagamento.
+    Un addebito gia' candidato esatto di un pagamento non e' proposto come
+    parziale di un altro.
+    """
+    per_unita: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+    for u in unita:
+        if not u["data"] or not u["importo_cents"]:
+            continue
+        giorno_u = date.fromisoformat(u["data"])
+        for m in addebiti:
+            imp = importo_movimento_cents(m)
+            if imp is None:
+                continue
+            diff = imp - u["importo_cents"]
+            if abs(diff) > soglia_parziale_cents:
+                continue
+            lavorativi = giorni_lavorativi_tra(giorno_u, date.fromisoformat(data_movimento(m)))
+            dentro = (abs(lavorativi) <= GIORNI_LAVORATIVI_ADDEBITO if u.get("bidirezionale")
+                      else 0 <= lavorativi <= GIORNI_LAVORATIVI_ADDEBITO)
+            if not dentro:
+                continue
+            incasso = data_incasso_causale(m)
+            if u.get("incasso_obbligatorio") and incasso and incasso != u["data"]:
+                continue  # la banca dice che e' un altro versamento (la data del modello e' solo programmata)
+            voce = {"m": m, "giorni": lavorativi, "incasso": incasso, "diff": diff}
+            per_unita.setdefault(u["chiave"], {"esatti": [], "parziali": []})[
+                "esatti" if diff == 0 else "parziali"].append(voce)
+    esatti = {_mid(v["m"]) for c in per_unita.values() for v in c["esatti"]}
+    per_addebito: Dict[str, List[str]] = {}
+    for chiave, c in per_unita.items():
+        c["parziali"] = [v for v in c["parziali"] if _mid(v["m"]) not in esatti]
+        for v in c["esatti"] + c["parziali"]:
+            per_addebito.setdefault(_mid(v["m"]), []).append(chiave)
+    return per_unita, per_addebito
+
+
+def _valuta(
+    u: Dict[str, Any], c: Optional[Dict[str, List[Dict[str, Any]]]],
+    per_addebito: Dict[str, List[str]],
+) -> Optional[Dict[str, Any]]:
+    """Il livello di un pagamento; ``None`` se non ha nessun candidato."""
+    if not c or not (c["esatti"] or c["parziali"]):
+        return None
+
+    def unico(v: Dict[str, Any]) -> bool:
+        return per_addebito.get(_mid(v["m"])) == [u["chiave"]]
+
+    esatti, parziali = c["esatti"], c["parziali"]
+    if esatti:
+        if len(esatti) == 1 and unico(esatti[0]):
+            v = esatti[0]
+            certo = not u.get("incasso_obbligatorio") or v["incasso"] == u["data"]
+            return {"livello": LIVELLO_CERTO if certo else LIVELLO_PROBABILE,
+                    "scelto": v, "candidati": esatti}
+        return {"livello": LIVELLO_PROBABILE, "scelto": None, "candidati": esatti}
+    if len(parziali) == 1 and unico(parziali[0]):
+        return {"livello": LIVELLO_PARZIALE, "scelto": parziali[0], "candidati": parziali}
+    return {"livello": LIVELLO_PARZIALE, "scelto": None, "candidati": parziali}
+
+
+def _motivo_coppia(
+    *, etichetta: str, importo_cents: int, data: str, v: Dict[str, Any], livello: str,
+) -> str:
+    addebito = _vista_addebito(v["m"])
+    testo = (
+        f"importo {addebito['importo']:.2f} EUR"
+        + (" uguale al centesimo" if not v["diff"] else
+           f" contro {importo_cents / 100:.2f} EUR: differenza {v['diff'] / 100:+.2f} EUR "
+           f"(soglia {SOGLIA_PARZIALE_CENTS / 100:.2f} EUR)")
+        + f"; {etichetta} del {data_italiana(data)}, addebito del {addebito['data_it']} "
+        f"({abs(v['giorni'])} gg lavorativi {'dopo' if v['giorni'] >= 0 else 'prima'})"
+    )
+    if v["incasso"]:
+        testo += f"; DATA INCASSO nella causale: {data_italiana(v['incasso'])}"
+        if v["m"].get("causale_export_banca_da"):
+            testo += f" (export ufficiale della banca, copia {v['m']['causale_export_banca_da']})"
+    elif livello != LIVELLO_CERTO:
+        testo += "; la causale non riporta la data d'incasso: da verificare"
+    return testo
+
+
 def riscontri_quietanze_banca(
     quietanze: Iterable[Dict[str, Any]], movimenti: Iterable[Dict[str, Any]],
+    *, soglia_parziale_cents: int = SOGLIA_PARZIALE_CENTS,
 ) -> Dict[str, Any]:
     """Calcola, senza scrivere, il riscontro di ogni pagamento con la banca.
 
-    Ogni esito porta la sua motivazione (importo, date, causale confrontati).
-    Un pagamento o un addebito con piu' candidati resta da verificare con
-    l'elenco dei candidati: niente si sceglie a caso.
+    Ogni esito porta ``livello`` e ``motivazione`` (importo, date, causale
+    confrontati). Un pagamento o un addebito con piu' candidati resta da
+    verificare con l'elenco dei candidati: niente si sceglie a caso.
     """
     pagamenti = pagamenti_da_quietanze(quietanze)
     addebiti = [m for m in movimenti if e_addebito_delega(m) and data_movimento(m)]
     date_banca = sorted(data_movimento(m) for m in addebiti)
     copertura = (date_banca[0], date_banca[-1]) if date_banca else (None, None)
 
-    candidati: Dict[str, List[Dict[str, Any]]] = {}
-    per_addebito: Dict[str, List[str]] = {}
-    for p in pagamenti:
-        if not p["data"] or not p["importo_cents"]:  # saldo zero: nessun addebito da cercare
-            continue
-        for m in addebiti:
-            if importo_movimento_cents(m) != p["importo_cents"]:
-                continue
-            giorni = (date.fromisoformat(data_movimento(m)) - date.fromisoformat(p["data"])).days
-            if not 0 <= giorni <= GIORNI_ADDEBITO_DOPO_QUIETANZA:
-                continue
-            incasso = data_incasso_causale(m)
-            if incasso and incasso != p["data"]:
-                continue  # la banca dice che e' un altro versamento
-            mid = str(m.get("id") or m.get("fingerprint"))
-            candidati.setdefault(p["chiave"], []).append({"m": m, "giorni": giorni, "incasso": incasso})
-            per_addebito.setdefault(mid, []).append(p["chiave"])
+    unita = [{"chiave": p["chiave"], "data": p["data"], "importo_cents": p["importo_cents"],
+              "incasso_obbligatorio": True} for p in pagamenti]
+    candidati, per_addebito = _abbina(unita, addebiti, soglia_parziale_cents)
 
     riscontri: List[Dict[str, Any]] = []
     da_verificare: List[Dict[str, Any]] = []
     senza_addebito: List[Dict[str, Any]] = []
-    fuori_periodo = 0
+    senza_estratto: List[Dict[str, Any]] = []
     incompleti: List[Dict[str, Any]] = []
     compensate: List[Dict[str, Any]] = []
-    for p in pagamenti:
+    for p, u in zip(pagamenti, unita):
         if p["data"] and p.get("compensazione_totale"):
             compensate.append({**_vista_pagamento(p), "stato": "COMPENSATA", "motivazione": (
                 "saldo zero: tributi pagati interamente con i crediti della stessa delega, "
@@ -1337,46 +1245,49 @@ def riscontri_quietanze_banca(
             incompleti.append({**_vista_pagamento(p), "motivo": (
                 "data di pagamento non letta" if not p["data"] else "saldo non letto")})
             continue
-        trovati = candidati.get(p["chiave"], [])
-        if len(trovati) == 1 and len(per_addebito[str(trovati[0]["m"].get("id") or trovati[0]["m"].get("fingerprint"))]) == 1:
-            c = trovati[0]
-            addebito = _vista_addebito(c["m"])
-            certo = c["incasso"] == p["data"]
-            motivo = (
-                f"importo {addebito['importo']:.2f} EUR uguale al centesimo; quietanza del "
-                f"{data_italiana(p['data'])}, addebito del {addebito['data_it']} "
-                f"({c['giorni']} gg dopo)"
-                + (f"; DATA INCASSO nella causale: {data_italiana(c['incasso'])}"
-                   + (" (export ufficiale della banca, copia "
-                      f"{c['m']['causale_export_banca_da']})"
-                      if c["m"].get("causale_export_banca_da") else "") if certo
-                   else "; la causale non riporta la data d'incasso: da verificare")
-            )
-            voce = {**_vista_pagamento(p), "addebito": addebito, "motivazione": motivo,
-                    "stato": RISCONTRO_CERTO if certo else RISCONTRO_DA_VERIFICARE}
-            (riscontri if certo else da_verificare).append(voce)
-        elif trovati:
+        valutazione = _valuta(u, candidati.get(p["chiave"]), per_addebito)
+        if valutazione and valutazione["scelto"]:
+            v = valutazione["scelto"]
+            livello = valutazione["livello"]
+            voce = {**_vista_pagamento(p), "livello": livello, "addebito": _vista_addebito(v["m"]),
+                    "motivazione": _motivo_coppia(etichetta="quietanza", importo_cents=p["importo_cents"],
+                                                  data=p["data"], v=v, livello=livello),
+                    "stato": RISCONTRO_CERTO if livello == LIVELLO_CERTO else RISCONTRO_DA_VERIFICARE}
+            if livello == LIVELLO_PARZIALE:
+                voce["differenza"] = euro(v["diff"])
+                voce["motivazione"] += f": {NOTA_COMMERCIALISTA}"
+            (riscontri if livello == LIVELLO_CERTO else da_verificare).append(voce)
+        elif valutazione:
             da_verificare.append({
                 **_vista_pagamento(p), "stato": RISCONTRO_DA_VERIFICARE,
-                "candidati": [_vista_addebito(c["m"]) for c in trovati],
-                "motivazione": f"{len(trovati)} addebiti compatibili, oppure un addebito "
+                "livello": valutazione["livello"],
+                "candidati": [_vista_addebito(v["m"]) for v in valutazione["candidati"]],
+                "motivazione": f"{len(valutazione['candidati'])} addebiti compatibili, oppure un addebito "
                                "conteso da piu' quietanze: scegliere a mano",
             })
-        elif copertura[0] and copertura[0] <= p["data"] and (
-            date.fromisoformat(p["data"]) + timedelta(days=GIORNI_ADDEBITO_DOPO_QUIETANZA)
-        ).isoformat() <= copertura[1]:
-            senza_addebito.append({**_vista_pagamento(p), "motivazione": (
-                "nessun addebito I24 di pari importo entro 4 giorni: pagato da un altro "
-                "conto, estratto conto incompleto o pagamento mai transitato")})
         else:
-            fuori_periodo += 1
+            coperto = bool(copertura[0]) and copertura[0] <= p["data"] and (
+                date.fromisoformat(p["data"]) + timedelta(days=GIORNI_COPERTURA_ESTRATTO)
+            ).isoformat() <= copertura[1]
+            voce = {**_vista_pagamento(p), "livello": LIVELLO_NESSUN_MATCH,
+                    "estratto_periodo_presente": coperto}
+            if coperto:
+                senza_addebito.append({**voce, "motivazione": (
+                    "nessun addebito I24 di pari importo (o entro "
+                    f"{SOGLIA_PARZIALE_CENTS / 100:.0f} EUR) entro {GIORNI_LAVORATIVI_ADDEBITO} giorni "
+                    "lavorativi; estratto del periodo presente: si'. Possibile: pagato da un altro "
+                    f"conto o pagamento mai transitato ({NOTA_COMMERCIALISTA})")})
+            else:
+                senza_estratto.append({**voce, "motivazione": (
+                    "estratto conto del periodo assente: non si puo' dire se il pagamento manchi; "
+                    "caricare l'estratto del periodo")})
 
     usati = set(per_addebito)
     addebiti_senza = [
-        {**_vista_addebito(m), "motivazione": (
+        {**_vista_addebito(m), "livello": LIVELLO_MOVIMENTO_ORFANO, "motivazione": (
             "addebito di delega F24 senza quietanza di pari importo e data: "
-            "quietanza da riscaricare dal Cassetto Fiscale")}
-        for m in addebiti if str(m.get("id") or m.get("fingerprint")) not in usati
+            "probabile quietanza da riscaricare dal Cassetto Fiscale")}
+        for m in addebiti if _mid(m) not in usati
     ]
     ordina = lambda righe: sorted(righe, key=lambda r: r.get("data") or "", reverse=True)  # noqa: E731
     addebito_di = {v["chiave"]: v["addebito"] for v in riscontri}
@@ -1386,6 +1297,7 @@ def riscontri_quietanze_banca(
         "riscontrati": ordina(riscontri),
         "da_verificare": ordina(da_verificare),
         "quietanze_senza_addebito": ordina(senza_addebito),
+        "quietanze_senza_estratto": ordina(senza_estratto),
         "addebiti_senza_quietanza": ordina(addebiti_senza),
         "quietanze_incomplete": ordina(incompleti),
         "compensate_saldo_zero": ordina(compensate),
@@ -1394,9 +1306,118 @@ def riscontri_quietanze_banca(
             "pagamenti": len(pagamenti), "riscontrati": len(riscontri),
             "da_verificare": len(da_verificare), "quietanze_senza_addebito": len(senza_addebito),
             "addebiti_senza_quietanza": len(addebiti_senza),
-            "fuori_periodo_estratto": fuori_periodo, "quietanze_incomplete": len(incompleti),
+            "fuori_periodo_estratto": len(senza_estratto), "quietanze_incomplete": len(incompleti),
             "tributi_ripetuti": len(ripetuti), "compensate_saldo_zero": len(compensate),
+            "per_livello": {
+                LIVELLO_CERTO: len(riscontri),
+                LIVELLO_PROBABILE: sum(1 for v in da_verificare if v.get("livello") == LIVELLO_PROBABILE),
+                LIVELLO_PARZIALE: sum(1 for v in da_verificare if v.get("livello") == LIVELLO_PARZIALE),
+                LIVELLO_NESSUN_MATCH: len(senza_addebito) + len(senza_estratto),
+                LIVELLO_MOVIMENTO_ORFANO: len(addebiti_senza),
+            },
         },
+    }
+
+
+def riscontri_modelli_banca(
+    registro: Dict[str, Any], esito_quietanze: Dict[str, Any],
+    *, soglia_parziale_cents: int = SOGLIA_PARZIALE_CENTS,
+) -> Dict[str, Any]:
+    """Modelli F24 ancora senza prova bancaria ↔ addebiti, con lo stesso motore a livelli.
+
+    Un modello con la sua quietanza e' provato dall'addebito della quietanza
+    (catena dovuto → F24 → quietanza → addebito) solo se il saldo del modello
+    e' uguale a quell'addebito al centesimo. Un modello senza quietanza si
+    confronta con gli addebiti liberi e non gia' reclamati da una quietanza:
+    data programmata ±2 giorni lavorativi, importo esatto, causale di delega.
+    Due modelli sullo stesso addebito, o due addebiti per lo stesso modello,
+    restano da verificare. Niente si scrive qui: solo il livello CERTO, poi.
+    """
+    modelli = [f for f in registro["f24"] if _f24_aperto_banca(f)]
+    certo_di_quietanza: Dict[str, Dict[str, Any]] = {}
+    reclamati: Set[str] = set()
+    for r in esito_quietanze["riscontrati"]:
+        reclamati.add(r["addebito"]["movimento_id"])
+        for q in r["quietanze"]:
+            certo_di_quietanza[str(q["id"])] = r["addebito"]
+    for r in esito_quietanze["da_verificare"]:
+        for a in ([r["addebito"]] if r.get("addebito") else []) + list(r.get("candidati") or []):
+            reclamati.add(a["movimento_id"])
+
+    per_id_movimento = {_mid(m): m for m in registro["movimenti"]}
+    riscontrati: List[Dict[str, Any]] = []
+    da_verificare: List[Dict[str, Any]] = []
+    senza_quietanza: List[Dict[str, Any]] = []
+
+    def vista(f: Dict[str, Any]) -> Dict[str, Any]:
+        dv = data_versamento_modello(f)
+        return {"f24_id": str(f.get("id")), "file_name": f.get("file_name"), "data": dv,
+                "data_it": data_italiana(dv), "importo": euro(saldo_modello_cents(f))}
+
+    for f in modelli:
+        fid = str(f.get("id"))
+        quietanze = registro["quietanze_per_f24"].get(fid, [])
+        if not quietanze and not f.get("quietanza_id"):
+            senza_quietanza.append(f)
+            continue
+        saldo = saldo_modello_cents(f)
+        for q in quietanze:
+            a = certo_di_quietanza.get(str(q.get("id")))
+            if a and saldo is not None and centesimi(a["importo"]) == saldo:
+                m = per_id_movimento.get(a["movimento_id"]) or {}
+                riscontrati.append({
+                    **vista(f), "livello": LIVELLO_CERTO, "criterio": "via_quietanza",
+                    "movimento_id": a["movimento_id"], "addebito": a, "data_movimento": a["data"],
+                    "riferimento": (m.get("f24_info") or {}).get("riferimento"),
+                    "motivazione": (
+                        f"quietanza {q.get('protocollo_originale') or q.get('id')} riscontrata con l'addebito "
+                        f"del {a['data_it']} di {a['importo']:.2f} EUR, uguale al saldo del modello"),
+                })
+                break
+
+    liberi = [m for m in registro["movimenti"]
+              if _movimento_libero(m) and e_addebito_delega(m) and data_movimento(m)
+              and _mid(m) not in reclamati]
+    unita = [{"chiave": str(f.get("id")), "data": data_versamento_modello(f),
+              "importo_cents": saldo_modello_cents(f), "bidirezionale": True} for f in senza_quietanza]
+    candidati, per_addebito = _abbina(unita, liberi, soglia_parziale_cents)
+    for f, u in zip(senza_quietanza, unita):
+        valutazione = _valuta(u, candidati.get(u["chiave"]), per_addebito)
+        if not valutazione:
+            continue
+        v, livello = valutazione["scelto"], valutazione["livello"]
+        if v:
+            voce = {**vista(f), "livello": livello, "movimento_id": _mid(v["m"]),
+                    "addebito": _vista_addebito(v["m"]), "data_movimento": data_movimento(v["m"]),
+                    "riferimento": (v["m"].get("f24_info") or {}).get("riferimento"),
+                    "criterio": "importo_data_causale",
+                    "motivazione": _motivo_coppia(etichetta="modello", importo_cents=u["importo_cents"],
+                                                  data=u["data"], v=v, livello=livello)}
+            if livello == LIVELLO_PARZIALE:
+                voce["differenza"] = euro(v["diff"])
+                voce["motivazione"] += f": {NOTA_COMMERCIALISTA}"
+            (riscontrati if livello == LIVELLO_CERTO else da_verificare).append(voce)
+        else:
+            da_verificare.append({
+                **vista(f), "livello": livello,
+                "candidati": [_vista_addebito(c["m"]) for c in valutazione["candidati"]],
+                "motivazione": f"{len(valutazione['candidati'])} addebiti compatibili, oppure un addebito "
+                               "conteso da piu' modelli: scegliere a mano"})
+
+    # Due modelli certi sullo stesso addebito non si scelgono: entrambi da verificare.
+    per_movimento: Dict[str, List[Dict[str, Any]]] = {}
+    for r in riscontrati:
+        per_movimento.setdefault(r["movimento_id"], []).append(r)
+    contesi = {mid for mid, voci in per_movimento.items() if len(voci) > 1}
+    if contesi:
+        for r in [r for r in riscontrati if r["movimento_id"] in contesi]:
+            riscontrati.remove(r)
+            da_verificare.append({**r, "livello": LIVELLO_PROBABILE, "motivazione": (
+                "stesso addebito e stesso saldo in piu' modelli F24: scegliere a mano")})
+    return {
+        "riscontrati": riscontrati, "da_verificare": da_verificare,
+        "conteggi": {"modelli_aperti": len(modelli), "riscontrati": len(riscontrati),
+                     "da_verificare": len(da_verificare)},
     }
 
 
@@ -1482,11 +1503,11 @@ async def applica_riscontri_quietanze(
     from app.services.alert_engine import genera_alert, risolvi_alert
 
     now = datetime.now(timezone.utc).isoformat()
-    scritti = {"quietanze": 0, "addebiti": 0, "alert_aperti": 0, "alert_chiusi": 0}
+    scritti = {"quietanze": 0, "addebiti": 0, "relazioni": 0, "alert_aperti": 0, "alert_chiusi": 0}
     for r in esito["riscontrati"]:
         a = r["addebito"]
         riscontro = {
-            "stato": RISCONTRO_CERTO, "movimento_id": a["movimento_id"], "data_addebito": a["data"],
+            "stato": RISCONTRO_CERTO, "livello": r["livello"], "movimento_id": a["movimento_id"], "data_addebito": a["data"],
             "importo": a["importo"], "data_incasso": a["data_incasso"], "motivazione": r["motivazione"],
         }
         for q in r["quietanze"]:
@@ -1500,6 +1521,12 @@ async def applica_riscontri_quietanze(
                     "movimento_bancario_id": a["movimento_id"],
                 }})
                 scritti["quietanze"] += 1
+            scritti["relazioni"] += await _scrivi_relazione(
+                db, movimento_id=a["movimento_id"], tipo_target="f24_receipt", target_id=str(q["id"]),
+                status="confirmed", rule=f"f24_banca:{r['livello']}",
+                importo_cents=centesimi(a["importo"]), collezione_target=collezione)
+            scritti["relazioni"] += await _revoca_candidate_altrove(
+                db, "f24_receipt", str(q["id"]), a["movimento_id"])
         ids = sorted(str(q["id"]) for q in r["quietanze"] if q.get("id"))
         risultato = await db[COLL_ESTRATTO_CONTO].update_one(
             {"$or": [{"id": a["movimento_id"]}, {"fingerprint": a["movimento_id"]}],
@@ -1511,6 +1538,14 @@ async def applica_riscontri_quietanze(
         if con_alert:
             scritti["alert_chiusi"] += await risolvi_alert(ALERT_ADDEBITO_SENZA_QUIETANZA, a["movimento_id"], db)
             scritti["alert_chiusi"] += await risolvi_alert(ALERT_QUIETANZA_SENZA_ADDEBITO, r["chiave"], db)
+    for r in esito["da_verificare"]:
+        for a in ([r["addebito"]] if r.get("addebito") else list(r.get("candidati") or [])):
+            for q in r["quietanze"]:
+                scritti["relazioni"] += await _scrivi_relazione(
+                    db, movimento_id=a["movimento_id"], tipo_target="f24_receipt",
+                    target_id=str(q["id"]), status="pending", rule=f"f24_banca:{r['livello']}",
+                    importo_cents=centesimi(a["importo"]),
+                    collezione_target=q.get("fonte") or COLL_QUIETANZE_F24)
     if not con_alert:
         return scritti
 
@@ -1539,23 +1574,120 @@ async def applica_riscontri_quietanze(
     return scritti
 
 
-async def riscontra_quietanze_banca(db, *, dry_run: bool = False) -> Dict[str, Any]:
-    """Il giro completo: registro letto una volta, riscontri e alert."""
+async def _scrivi_relazione(
+    db, *, movimento_id: str, tipo_target: str, target_id: str, status: str, rule: str,
+    importo_cents: Optional[int], collezione_target: str,
+) -> int:
+    """Relazione movimento → pagamento in ``entity_relations``; 1 solo se e' cambiata."""
+    from app.db_collections import COLL_ENTITY_RELATIONS
+    from app.services.entity_relations import relation_key, upsert_entity_relation
+
+    tipo_relazione = "settles_f24_receipt" if tipo_target == "f24_receipt" else "settles_f24_model"
+    chiave = relation_key("bank_movement", movimento_id, tipo_relazione, tipo_target, target_id)
+    attuale = await getattr(db, COLL_ENTITY_RELATIONS).find_one(
+        {"relation_key": chiave}, {"_id": 0, "status": 1, "rule": 1})
+    if attuale and attuale.get("status") == status and attuale.get("rule") == rule:
+        return 0
+    await upsert_entity_relation(
+        db, source_type="bank_movement", source_id=movimento_id, relation_type=tipo_relazione,
+        target_type=tipo_target, target_id=target_id, status=status, rule=rule,
+        evidence=[{"type": "bank_movement_id", "value": movimento_id},
+                  {"type": "livello", "value": rule.split(":")[-1]}],
+        amount=euro(importo_cents) if importo_cents is not None else None,
+        provenance={"source_collection": COLL_ESTRATTO_CONTO, "target_collection": collezione_target},
+    )
+    return 1
+
+
+async def _revoca_candidate_altrove(db, tipo_target: str, target_id: str, movimento_id: str) -> int:
+    """Un pagamento diventato certo ritira le candidature verso altri addebiti."""
+    from app.db_collections import COLL_ENTITY_RELATIONS
+    from app.services.entity_relations import revoke_entity_relation
+
+    tipo_relazione = "settles_f24_receipt" if tipo_target == "f24_receipt" else "settles_f24_model"
+    aperte = await getattr(db, COLL_ENTITY_RELATIONS).find(
+        {"target.type": tipo_target, "target.id": target_id, "status": "pending",
+         "relation_type": tipo_relazione}, {"_id": 0, "source": 1}).to_list(50)
+    ritirate = 0
+    for r in aperte:
+        altro = str((r.get("source") or {}).get("id") or "")
+        if altro and altro != movimento_id:
+            ritirate += int(await revoke_entity_relation(
+                db, source_type="bank_movement", source_id=altro, relation_type=tipo_relazione,
+                target_type=tipo_target, target_id=target_id))
+    return ritirate
+
+
+async def applica_riscontri_modelli(db, esito: Dict[str, Any]) -> Dict[str, int]:
+    """Scrive la prova bancaria dei soli modelli CERTI; gli altri livelli sono relazioni pending."""
+    from app.services.accounting_relation_writers import record_f24_bank_allocations
+    from app.services.alert_engine import chiudi_alert_movimento_riconciliato
+
+    now = datetime.now(timezone.utc).isoformat()
+    scritti = {"modelli": 0, "relazioni": 0}
+    for r in esito["riscontrati"]:
+        f24 = await db[COLL_F24].find_one({"id": r["f24_id"]}, {"_id": 0, "pdf_data": 0})
+        if not f24 or not _f24_aperto_banca(f24):
+            continue
+        patch = {
+            **patch_pagamento_banca(
+                movimento_id=r["movimento_id"], data_pagamento=r["data_movimento"],
+                riferimento=r.get("riferimento")),
+            "importo_residuo": 0.0, "criterio_aggancio_banca": r["criterio"], "updated_at": now,
+        }
+        await db[COLL_F24].update_one({"id": r["f24_id"]}, {"$set": patch})
+        await db[COLL_ESTRATTO_CONTO].update_one(
+            {"$or": [{"id": r["movimento_id"]}, {"fingerprint": r["movimento_id"]}]},
+            {"$set": {"riconciliato": True, "tipo_riconciliazione": "f24_tributi",
+                      "f24_ids": [r["f24_id"]], "data_riconciliazione": now}},
+        )
+        try:
+            await record_f24_bank_allocations(db, f24={**f24, **patch}, allocations=[{
+                "movimento_id": r["movimento_id"], "importo": r["importo"], "codici_tributo": [],
+            }])
+            await chiudi_alert_movimento_riconciliato(db, r["movimento_id"], "f24")
+        except Exception as exc:  # noqa: BLE001 - la relazione e' un indice, non la prova
+            logger.exception("Relazione bancaria F24 %s non registrata (%s)", r["f24_id"],
+                             type(exc).__name__)
+        scritti["modelli"] += 1
+    for r in esito["da_verificare"]:
+        for mid in ([r["movimento_id"]] if r.get("movimento_id") else
+                    [c["movimento_id"] for c in r.get("candidati") or []]):
+            scritti["relazioni"] += await _scrivi_relazione(
+                db, movimento_id=mid, tipo_target="f24_model", target_id=r["f24_id"],
+                status="pending", rule=f"f24_banca:{r['livello']}",
+                importo_cents=centesimi(r.get("importo")), collezione_target=COLL_F24)
+    return scritti
+
+
+async def riconcilia_f24_banca(
+    db, *, dry_run: bool = False, soglia_parziale_cents: int = SOGLIA_PARZIALE_CENTS,
+) -> Dict[str, Any]:
+    """L'unico motore F24 ↔ banca: registro letto una volta, livelli, scritture certe, alert.
+
+    Idempotente: dopo un giro completo il successivo scrive 0 righe.
+    """
     registro = await carica_registro(db)
     await causali_export_banca(db, registro["movimenti"])
-    esito = riscontri_quietanze_banca(registro["quietanze"], registro["movimenti"])
+    esito = riscontri_quietanze_banca(
+        registro["quietanze"], registro["movimenti"], soglia_parziale_cents=soglia_parziale_cents)
+    esito["modelli"] = riscontri_modelli_banca(
+        registro, esito, soglia_parziale_cents=soglia_parziale_cents)
     if dry_run:
         return {"dry_run": True, **esito}
-    return {"dry_run": False, **esito, "scritti": await applica_riscontri_quietanze(db, esito)}
+    scritti = await applica_riscontri_quietanze(db, esito)
+    scritti["modelli"] = await applica_riscontri_modelli(db, esito["modelli"])
+    return {"dry_run": False, **esito, "scritti": scritti}
 
 
-async def riscontra_quietanza_arrivata(db, importo: Any) -> Dict[str, Any]:
-    """All'arrivo di una quietanza: solo quietanze e addebiti di pari importo.
+async def riconcilia_f24_arrivato(db, importo: Any) -> Dict[str, Any]:
+    """All'arrivo di una quietanza o di un modello: solo pagamenti e addebiti di pari importo.
 
-    L'abbinamento chiede l'importo uguale al centesimo, quindi il sottoinsieme
-    con lo stesso importo da' lo stesso risultato del giro completo, senza
-    rileggere l'intero registro a ogni file del lotto. Gli alert li apre solo
-    il giro dei 30 minuti, che conosce la copertura dell'estratto conto.
+    Il confronto chiede l'importo uguale al centesimo (o entro la soglia del
+    livello PARZIALE, che qui non scrive), quindi il sottoinsieme con lo stesso
+    importo da' lo stesso esito certo del giro completo senza rileggere l'intero
+    registro a ogni file del lotto. Gli alert li apre solo il giro dei 30 minuti,
+    che conosce la copertura dell'estratto conto.
     """
     cents = centesimi(importo)
     if not cents:
@@ -1577,8 +1709,16 @@ async def riscontra_quietanza_arrivata(db, importo: Any) -> Dict[str, Any]:
     movimenti = [m for m in movimenti if m.get("entity_status") != "deleted"
                  and str(m.get("tipo") or "uscita").lower() != "entrata"]
     await causali_export_banca(db, movimenti)
-    esito = riscontri_quietanze_banca(
-        [_quietanza_legacy(q) for q in quietanze if q.get("entity_status") != "deleted"],
-        movimenti,
-    )
-    return {**esito["conteggi"], "scritti": await applica_riscontri_quietanze(db, esito, con_alert=False)}
+    quietanze_norm = [_quietanza_legacy(q) for q in quietanze if q.get("entity_status") != "deleted"]
+    esito = riscontri_quietanze_banca(quietanze_norm, movimenti)
+    scritti = await applica_riscontri_quietanze(db, esito, con_alert=False)
+    modelli = [f for f in await db[COLL_F24].find(
+        {"status": {"$ne": "eliminato"}}, {"_id": 0, "pdf_data": 0}).to_list(5000)
+        if f.get("entity_status") != "deleted" and saldo_modello_cents(f) == abs(cents)]
+    registro = {"f24": modelli, "movimenti": movimenti,
+                "quietanze_per_f24": {str(f.get("id")): [q for q in quietanze_norm
+                                                         if str(f.get("id")) in q["f24_ids"]]
+                                      for f in modelli}}
+    esito_modelli = riscontri_modelli_banca(registro, esito)
+    scritti["modelli"] = await applica_riscontri_modelli(db, esito_modelli)
+    return {**esito["conteggi"], "modelli": esito_modelli["conteggi"], "scritti": scritti}

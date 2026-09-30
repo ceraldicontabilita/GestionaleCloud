@@ -17,6 +17,8 @@ from app.db_collections import (
     QUERY_F24_PATTERN
 )
 
+from app.services.estratto_conto_bpm_parser import parse_estratto_conto_bpm
+
 # NON importare COLL_F24_COMMERCIALISTA da db_collections: lì l'alias punta
 # a "f24_unificato" (retrocompatibilità con un'altra pipeline F24), ma il
 # flusso "F24 commercialista → Quietanza → Banca" che questo router
@@ -26,17 +28,6 @@ from app.db_collections import (
 # commercialista, quindi la riconciliazione con l'estratto conto non
 # trovava mai nulla (bug #6 audit memoria/endpoints/README.md).
 COLL_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
-from app.services.estratto_conto_bpm_parser import (
-    parse_estratto_conto_bpm,
-    riconcilia_f24_con_estratto,
-    genera_report_riconciliazione
-)
-from app.services.alert_engine import genera_alert
-from app.services.f24_payment_evidence import (
-    ha_evidenza_bancaria,
-    ha_quietanza,
-    patch_pagamento_banca,
-)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -201,207 +192,22 @@ async def get_movimenti_f24_banca(
     }
 
 
-@router.post("/riconcilia-f24")
-async def riconcilia_f24_con_banca():
-    """
-    Esegue la riconciliazione tra F24 caricati e movimenti F24 dell'estratto conto.
-    
-    Confronta:
-    - F24 commercialista caricati
-    - Movimenti "I24 AGENZIA ENTRATE" dall'estratto conto
-    
-    Matching basato su importo e data (±3 giorni).
-    """
-    db = Database.get_db()
-    
-    try:
-        # Recupera F24 commercialista
-        f24_list = await db[COLL_F24_COMMERCIALISTA].find(
-            {},
-            {"_id": 0}
-        ).to_list(1000)
-        
-        # Recupera movimenti F24 dalla collezione estratto_conto_movimenti
-        movimenti_f24 = await db[COLL_ESTRATTO_CONTO].find(
-            QUERY_F24_PATTERN,
-            {"_id": 0}
-        ).to_list(1000)
-        
-        if not f24_list:
-            return {
-                "success": False,
-                "message": "Nessun F24 commercialista caricato",
-                "suggerimento": "Carica prima i PDF degli F24 tramite /api/f24-riconciliazione/commercialista/upload"
-            }
-        
-        if not movimenti_f24:
-            return {
-                "success": False,
-                "message": "Nessun movimento F24 trovato nell'estratto conto bancario",
-                "suggerimento": "L'estratto conto non contiene movimenti con pattern 'I24 AGENZIA ENTRATE'"
-            }
-        
-        # Esegui riconciliazione
-        result = riconcilia_f24_con_estratto(f24_list, movimenti_f24)
-        
-        # Aggiorna stato F24 nel database
-        for f24_pagato in result["f24_riconciliati"]:
-            if f24_pagato.get("riconciliato_per_tributi"):
-                await db[COLL_F24_COMMERCIALISTA].update_one(
-                    {"id": f24_pagato.get("id")},
-                    {"$set": {
-                        "allocazioni_banca": f24_pagato.get("allocazioni_banca", []),
-                        "saldo_tributi": f24_pagato.get("saldo_tributi", {}),
-                        "importo_residuo": 0,
-                        "status": "pagato",
-                        "stato_pagamento": "PAGATO_BANCA",
-                        "pagato": True,
-                        "pagamento_verificato_banca": True,
-                        "fonte_prova_pagamento": "estratto_conto",
-                    }},
-                )
-                continue
-            movimento = f24_pagato.get("movimento_bancario") or {}
-            movimento_id = movimento.get("id") or movimento.get("fingerprint")
-            if not movimento_id:
-                logger.warning(
-                    "F24 %s non marcato pagato: movimento senza identificativo",
-                    f24_pagato.get("id"),
-                )
-                continue
-            data_effettiva = f24_pagato.get("data_pagamento_effettivo")
-            riferimento = (movimento.get("f24_info") or {}).get("riferimento")
-            await db[COLL_F24_COMMERCIALISTA].update_one(
-                {"id": f24_pagato.get("id")},
-                {"$set": {
-                    **patch_pagamento_banca(
-                        movimento_id=str(movimento_id),
-                        data_pagamento=data_effettiva,
-                        riferimento=riferimento,
-                    ),
-                }}
-            )
-
-        # Un pagamento di una sola riga (es. codice 2001) non chiude l'intero
-        # F24: persistiamo allocazioni, residuo e tributi ancora aperti.
-        for f24_parziale in result.get("f24_parzialmente_pagati", []):
-            await db[COLL_F24_COMMERCIALISTA].update_one(
-                {"id": f24_parziale.get("id")},
-                {"$set": {
-                    "allocazioni_banca": f24_parziale.get("allocazioni_banca", []),
-                    "saldo_tributi": f24_parziale.get("saldo_tributi", {}),
-                    "importo_residuo": f24_parziale.get("importo_residuo", 0),
-                    "status": "parzialmente_pagato",
-                    "stato_pagamento": "PARZIALMENTE_PAGATO_BANCA",
-                    "pagato": False,
-                    "pagamento_verificato_banca": True,
-                    "fonte_prova_pagamento": "estratto_conto",
-                }},
-            )
-        
-        ids_parziali = {
-            str(f.get("id")) for f in result.get("f24_parzialmente_pagati", [])
-        }
-        for f24_non_pagato in result["f24_non_pagati"]:
-            f24_id = f24_non_pagato.get("id")
-            if str(f24_id) in ids_parziali:
-                continue
-            esistente = await db[COLL_F24_COMMERCIALISTA].find_one(
-                {"id": f24_id}, {"_id": 0, "pdf_data": 0}
-            )
-            era_gia_pagato = ha_evidenza_bancaria(esistente or {})
-            if era_gia_pagato:
-                # Non declassare un F24 già segnato pagato (es. da quietanza
-                # arrivata via email) solo perché QUESTO giro di matching non
-                # ha trovato il movimento bancario corrispondente — possibile
-                # pagamento con altro conto/mezzo. Segnala invece di sovrascrivere.
-                await genera_alert(
-                    "F24_NON_RICONCILIATO",
-                    f24_id,
-                    COLL_F24_COMMERCIALISTA,
-                    f"F24 {f24_non_pagato.get('file_name', '')} risulta pagato ma nessun "
-                    f"movimento bancario corrispondente trovato in questo giro di riconciliazione",
-                    db,
-                )
-            else:
-                stato = "DA_VERIFICARE_BANCA" if ha_quietanza(esistente or {}) else "DA_PAGARE"
-                await db[COLL_F24_COMMERCIALISTA].update_one(
-                    {"id": f24_id},
-                    {"$set": {
-                        "status": "da_pagare",
-                        "stato_pagamento": stato,
-                        "pagato": False,
-                        "pagamento_verificato_banca": False,
-                    }}
-                )
-
-        for mov in result["movimenti_non_associati"]:
-            mov_id = mov.get("id") or "_".join(str(mov.get(k, "")) for k in ("data_contabile", "importo", "descrizione"))
-            await genera_alert(
-                "BNK_F24_NON_RICONCILIATO",
-                mov_id,
-                COLL_ESTRATTO_CONTO,
-                f"Movimento banca del {mov.get('data_contabile')} per "
-                f"{abs(mov.get('importo', 0))}€ con pattern F24 non associato a nessun F24 commercialista",
-                db,
-            )
-
-        # Genera report
-        report = genera_report_riconciliazione(result)
-        
-        return {
-            "success": True,
-            "message": "Riconciliazione completata",
-            "stats": result["stats"],
-            "f24_riconciliati": [{
-                "id": f.get("id"),
-                "file_name": f.get("file_name"),
-                "importo": f.get("totali", {}).get("saldo_netto"),
-                "data_pagamento": f.get("data_pagamento_effettivo"),
-                "stato": "PAGATO"
-            } for f in result["f24_riconciliati"]],
-            "f24_parzialmente_pagati": [{
-                "id": f.get("id"),
-                "file_name": f.get("file_name"),
-                "importo_residuo": f.get("importo_residuo"),
-                "tributi_aperti": [
-                    r.get("codice") for r in (f.get("saldo_tributi") or {}).get("righe_aperte", [])
-                ],
-                "stato": "PARZIALMENTE_PAGATO_BANCA",
-            } for f in result.get("f24_parzialmente_pagati", [])],
-            "f24_non_pagati": [{
-                "id": f.get("id"),
-                "file_name": f.get("file_name"),
-                "importo": f.get("totali", {}).get("saldo_netto"),
-                "stato": "DA_PAGARE"
-            } for f in result["f24_non_pagati"]],
-            "movimenti_non_associati": [{
-                "data": m.get("data_contabile"),
-                "importo": abs(m.get("importo", 0)),
-                "descrizione": m.get("descrizione", "")[:100]
-            } for m in result["movimenti_non_associati"][:20]],
-            "report_testuale": report
-        }
-        
-    except Exception as e:
-        logger.error(f"Errore riconciliazione F24: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
 @router.get("/quietanze-banca")
 async def quietanze_banca(anno: Optional[int] = None):
     """Quietanze F24 ↔ addebiti I24: riscontri, da verificare, orfani.
 
     Solo lettura: calcola sul momento con lo stesso motore del giro dei 30
-    minuti (`f24_controllo_incrociato.riscontra_quietanze_banca`), che e'
+    minuti (`f24_controllo_incrociato.riconcilia_f24_banca`), che e'
     l'unico a scrivere. Ogni riga porta la motivazione del suo esito.
     """
-    from app.services.f24_controllo_incrociato import riscontra_quietanze_banca
+    from app.services.f24_controllo_incrociato import riconcilia_f24_banca
 
-    esito = await riscontra_quietanze_banca(Database.get_db(), dry_run=True)
+    esito = await riconcilia_f24_banca(Database.get_db(), dry_run=True)
+    esito["modelli_da_verificare"] = esito["modelli"]["da_verificare"]
     if anno:
         prefisso = str(int(anno))
         for chiave in ("riscontrati", "da_verificare", "quietanze_senza_addebito",
+                       "quietanze_senza_estratto", "modelli_da_verificare",
                        "addebiti_senza_quietanza", "quietanze_incomplete", "tributi_ripetuti",
                        "compensate_saldo_zero"):
             esito[chiave] = [r for r in esito.get(chiave, []) if str(r.get("data") or "").startswith(prefisso)]
