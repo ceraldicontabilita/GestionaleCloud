@@ -38,7 +38,7 @@ from app.database import Database
 from app.services import mutui_rate_dichiarate as dichiarate
 from app.utils.dependencies import get_current_admin_user
 
-router = APIRouter(tags=["Mutui"])
+router = APIRouter(tags=["Mutui"], dependencies=[Depends(get_current_admin_user)])
 logger = logging.getLogger(__name__)
 
 COLL_PIANI = "mutui_piani_documentali"
