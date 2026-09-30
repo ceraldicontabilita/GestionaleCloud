@@ -25,6 +25,17 @@ _RIF = re.compile(r"RIF\.?\s*:?\s*(MB[0-9A-Z]{8,})", re.I)
 _NOTA = re.compile(r"ADD\.\s*(?:TOT|SPE)\s*-\s*(.+)$", re.I)
 
 
+def e_distinta(testo: Any) -> bool:
+    """Addebito cumulativo «FAVORE BENEFICIARI VARI/DIVERSI»."""
+    return bool(_DISTINTA.search(str(testo or "")))
+
+
+def nota_distinta(testo: Any) -> Optional[str]:
+    """La nota scritta dopo «ADD.TOT - » nella causale dell'estratto, se c'e'."""
+    m = _NOTA.search(str(testo or ""))
+    return m.group(1).strip() if m else None
+
+
 def _importo(valore: Any) -> float:
     try:
         return abs(float(valore or 0))

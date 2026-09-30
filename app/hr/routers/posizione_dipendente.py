@@ -54,6 +54,21 @@ async def posizione(dipendente_id: str, anno: Optional[int] = None):
     return out
 
 
+@router.get("/riscontro-bonifici")
+async def riscontro_bonifici(anno: Optional[int] = None, mese: Optional[int] = None,
+                             dipendente_id: Optional[str] = None):
+    """Riscontro bonifico <-> busta, in sola lettura: per ogni busta lo stato
+    (confermato, da verificare, differenza, nessun bonifico, non riscontrabile),
+    la confidenza, i bonifici e la fonte. Non scrive niente; serve almeno un
+    filtro (anno o dipendente) perche' la risposta resti una pagina."""
+    if not (anno or dipendente_id):
+        raise HTTPException(400, {"code": "FILTRO_MANCANTE",
+                                  "message": "Scegli l'anno o il dipendente", "details": {}})
+    from app.services.riscontro_bonifici import riscontro_periodo
+
+    return await riscontro_periodo(_db(), anno=anno, mese=mese, dipendente_id=dipendente_id)
+
+
 @router.get("/conciliazioni")
 async def elenco_conciliazioni(dipendente_id: Optional[str] = None, annullate: bool = False):
     filtro: Dict[str, Any] = {"dipendente_id": dipendente_id} if dipendente_id else {}
