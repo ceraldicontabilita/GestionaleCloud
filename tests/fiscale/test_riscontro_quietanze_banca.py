@@ -71,11 +71,14 @@ def test_senza_data_incasso_nella_causale_e_solo_da_verificare():
     assert "non riporta la data d'incasso" in r["motivazione"]
 
 
-def test_un_centesimo_di_differenza_non_abbina():
+def test_un_centesimo_di_differenza_e_solo_parziale_mai_certo():
     esito = _riscontri([_q("q1", "2026-08-20", 654.33)],
                        [_m("m1", "2026-08-20", -654.34, "20/08/2026")])
-    assert esito["riscontrati"] == [] and esito["da_verificare"] == []
-    assert len(esito["addebiti_senza_quietanza"]) == 1
+    assert esito["riscontrati"] == []
+    [r] = esito["da_verificare"]
+    assert r["livello"] == reg.LIVELLO_PARZIALE and r["differenza"] == 0.01
+    assert "da verificare con il commercialista" in r["motivazione"]
+    assert esito["addebiti_senza_quietanza"] == []
 
 
 def test_una_data_incasso_diversa_e_un_altro_versamento():
@@ -84,7 +87,7 @@ def test_una_data_incasso_diversa_e_un_altro_versamento():
     assert esito["riscontrati"] == []
 
 
-def test_oltre_quattro_giorni_non_e_lo_stesso_pagamento():
+def test_oltre_due_giorni_lavorativi_non_e_lo_stesso_pagamento():
     esito = _riscontri([_q("q1", "2026-03-06", 1293.00)],
                        [_m("m1", "2026-03-11", -1293.00)])
     assert esito["riscontrati"] == [] and esito["da_verificare"] == []
@@ -167,7 +170,7 @@ def test_il_riscontro_si_scrive_su_quietanze_e_addebito_senza_riconciliare():
     db = _db([_q("q1", "2026-08-20", 654.33), _q("q2", "2026-08-20", 654.33)],
              [_m("m1", "2026-08-20", -654.33, "20/08/2026")])
 
-    esito = _run(reg.riscontra_quietanze_banca(db))
+    esito = _run(reg.riconcilia_f24_banca(db))
     assert esito["scritti"]["quietanze"] == 2
 
     q = _run(db[COLL_QUIETANZE_F24].find_one({"id": "q1"}))
@@ -181,16 +184,16 @@ def test_il_riscontro_si_scrive_su_quietanze_e_addebito_senza_riconciliare():
 
 def test_il_secondo_giro_non_riscrive_niente():
     db = _db([_q("q1", "2026-08-20", 654.33)], [_m("m1", "2026-08-20", -654.33, "20/08/2026")])
-    _run(reg.riscontra_quietanze_banca(db))
+    _run(reg.riconcilia_f24_banca(db))
 
-    secondo = _run(reg.riscontra_quietanze_banca(db))
+    secondo = _run(reg.riconcilia_f24_banca(db))
     assert secondo["scritti"]["quietanze"] == 0
     assert secondo["scritti"]["addebiti"] == 0
 
 
 def test_in_simulazione_non_si_scrive():
     db = _db([_q("q1", "2026-08-20", 654.33)], [_m("m1", "2026-08-20", -654.33, "20/08/2026")])
-    esito = _run(reg.riscontra_quietanze_banca(db, dry_run=True))
+    esito = _run(reg.riconcilia_f24_banca(db, dry_run=True))
 
     assert esito["conteggi"]["riscontrati"] == 1
     assert "riscontro_banca" not in _run(db[COLL_QUIETANZE_F24].find_one({"id": "q1"}))
@@ -198,14 +201,14 @@ def test_in_simulazione_non_si_scrive():
 
 def test_l_addebito_orfano_apre_un_alert_che_si_chiude_all_arrivo_della_quietanza():
     db = _db([], [_m("m1", "2026-09-17", -9421.15, "16/09/2026")])
-    _run(reg.riscontra_quietanze_banca(db))
+    _run(reg.riconcilia_f24_banca(db))
     aperti = _run(db["alerts"].find({"codice": reg.ALERT_ADDEBITO_SENZA_QUIETANZA,
                                      "stato": "aperto"}).to_list(10))
     assert [a["entita_id"] for a in aperti] == ["m1"]
     assert aperti[0]["extra"]["record"][0]["importo"] == 9421.15
 
     _run(db[COLL_QUIETANZE_F24].insert_one(_q("q1", "2026-09-16", 9421.15)))
-    _run(reg.riscontra_quietanze_banca(db))
+    _run(reg.riconcilia_f24_banca(db))
     aperti = _run(db["alerts"].find({"codice": reg.ALERT_ADDEBITO_SENZA_QUIETANZA,
                                      "stato": "aperto"}).to_list(10))
     assert aperti == []
@@ -216,7 +219,7 @@ def test_all_arrivo_della_quietanza_si_guarda_solo_il_suo_importo():
              [_m("m1", "2026-08-20", -654.33, "20/08/2026"),
               _m("m2", "2026-08-21", -111.11, "21/08/2026")])
 
-    esito = _run(reg.riscontra_quietanza_arrivata(db, 654.33))
+    esito = _run(reg.riconcilia_f24_arrivato(db, 654.33))
 
     assert esito["riscontrati"] == 1
     assert esito["addebiti_senza_quietanza"] == 0  # m2 non e' stato nemmeno letto
@@ -238,7 +241,7 @@ def test_la_causale_troncata_prende_la_data_incasso_dall_export_in_quarantena():
                              "2026-06-16-22.34.20.770713000604"}
     _run(db["estratto_conto_movimenti_quarantena"].insert_one(export))
 
-    esito = _run(reg.riscontra_quietanze_banca(db))
+    esito = _run(reg.riconcilia_f24_banca(db))
 
     [r] = esito["riscontrati"]
     assert r["addebito"]["movimento_id"] == tenuta["id"]
@@ -254,7 +257,7 @@ def test_una_copia_in_quarantena_di_importo_diverso_non_presta_la_data():
         "id": "x", "duplicato_di": "m1", "importo": 8139.64,
         "descrizione": "I24 AGENZIA ENTRATE - DATA INCASSO 16/06/2026"}))
 
-    esito = _run(reg.riscontra_quietanze_banca(db, dry_run=True))
+    esito = _run(reg.riconcilia_f24_banca(db, dry_run=True))
     assert esito["riscontrati"] == [] and len(esito["da_verificare"]) == 1
 
 
@@ -321,9 +324,9 @@ def test_il_tributo_ripetuto_apre_un_alert_con_le_due_deleghe():
     db = _db([_q_righe("q1", "2026-06-16", 3574.00, "26060212304532735/000001", righe),
               _q_righe("q2", "2026-06-16", 3784.00, "26061631545528157/000001",
                        righe + [("1040", "05/2026", 210.00, 0)])], [])
-    _run(reg.riscontra_quietanze_banca(db))
+    _run(reg.riconcilia_f24_banca(db))
     [a] = _run(db["alerts"].find({"codice": reg.ALERT_TRIBUTO_DUE_VOLTE}).to_list(10))
     assert len(a["extra"]["record"]) == 2
 
-    _run(reg.riscontra_quietanze_banca(db))  # il secondo giro non ne apre un altro
+    _run(reg.riconcilia_f24_banca(db))  # il secondo giro non ne apre un altro
     assert len(_run(db["alerts"].find({"codice": reg.ALERT_TRIBUTO_DUE_VOLTE}).to_list(10))) == 1

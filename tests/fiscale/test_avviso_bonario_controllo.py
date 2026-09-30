@@ -281,7 +281,7 @@ def test_route_avviso_bonario_precede_la_route_dinamica_di_f24_main():
         rotte.extend(child.routes if child is not None else [route])
     percorsi = [getattr(route, "path", "") for route in rotte]
     assert "/avviso-bonario/controllo" in percorsi
-    assert "/riconcilia-addebiti" in percorsi
+    assert "/riconcilia-addebiti" not in percorsi  # il motore F24 ↔ banca e' uno solo
     get_dinamica = max(
         i for i, route in enumerate(rotte)
         if getattr(route, "path", "") == "/{f24_id}"

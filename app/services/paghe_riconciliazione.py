@@ -337,21 +337,22 @@ async def esegui_riconciliazione_paghe_completa(db) -> dict:
     """
     try:
         # Unici motori autorizzati: identita' completa/acconti/residuo per i
-        # salari e allocazione univoca per singolo codice tributo per F24.
-        # I vecchi percorsi basati sul primo importo vicino restano disponibili
-        # solo per audit storico e non vengono piu' eseguiti automaticamente.
+        # salari e il motore a livelli F24 ↔ banca (solo i riscontri CERTI
+        # scrivono). I vecchi percorsi basati sul primo importo vicino restano
+        # disponibili solo per audit storico e non vengono piu' eseguiti.
         from app.services.stipendi_bonifici import associa_bonifici_stipendi
-        from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
+        from app.services.f24_controllo_incrociato import riconcilia_f24_banca
 
         salari_result = await associa_bonifici_stipendi(db)
-        f24_result = await riconcilia_f24_tributi_banca(db)
+        f24_result = await riconcilia_f24_banca(db)
         return {
             "stipendi": salari_result,
             "cedolini": salari_result,
-            "f24": f24_result,
+            "f24": f24_result["conteggi"],
             "totale_riconciliati": (
                 salari_result.get("bonifici_associati", 0)
-                + f24_result.get("movimenti_associati", 0)
+                + f24_result["conteggi"].get("riscontrati", 0)
+                + f24_result["modelli"]["conteggi"].get("riscontrati", 0)
             ),
         }
     except Exception as e:
