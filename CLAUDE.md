@@ -836,9 +836,16 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
   la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
   Le migrazioni 5, 6, 9, 11 e 12 furono applicate senza salvare il file: la catena SQL **non e' ricostruibile da zero**.
-- **Tre ruoli, tre link**: titolare (`#/titolare`, PIN del bar, oppure niente PIN finche' `bb_tit_pin_off` e' attivo, massimo 72 ore),
-  albergatore (`#/hotel/<accesso>`, PIN scelto da lui con l'invito `#/invito/<token>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**).
-  Le operazioni che spostano denaro o cambiano le credenziali chiedono sempre il PIN vero.
+- **Tre ruoli, tre link**: titolare (`#/titolare`), albergatore (`#/hotel/<accesso>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**).
+- **Titolare: nessun PIN suo, vale quello del gestionale.** La pagina chiama `POST /api/colazioni/accesso` (`app/routers/colazioni.py`, solo admin,
+  cookie o Bearer dell'ERP, MFA compresa); il backend chiede al database `bb_tit_sessione_apri` con la chiave di runtime `x-gc-api-key`
+  (la stessa di `gc_assert_runtime_secret`) e restituisce un token `tk:…` valido 12 ore, che la pagina passa come `p` alle RPC. Se il gestionale
+  non e' aperto, la pagina chiede il PIN e lo verifica con `/api/auth/pin-login`. Cambiare o resettare il PIN del titolare = farlo nel gestionale.
+- **Albergatore: PIN suo.** Lo sceglie con l'invito (`#/invito/<token>`, e' la registrazione) e riceve un **codice di recupero** (8 caratteri, si vede una sola volta,
+  in `bb_strutture.recupero_hash`). PIN perso: `#/recupero/<accesso>` con codice e nuovo PIN; senza codice, «Chiedi aiuto al bar» crea una richiesta
+  (`bb_richieste_pin`) che compare nel Cruscotto e si chiude mandando un nuovo invito. Dal Profilo cambia il PIN e rigenera il codice.
+  L'accesso passa da `bb_alb_login`, che dopo 5 errori blocca per 15 minuti (`bb_tentativi`, anche per IP): le altre RPC accettano solo il token di sessione
+  (`bb_sessioni`, 12 ore) e mai il PIN, perche' un'eccezione annulla il conteggio dei tentativi.
 - **Colazioni per struttura**: ogni hotel ha le sue colazioni (`bb_colazioni`, con nome, prezzo a persona e voci dal catalogo o libere).
   Le **standard** sono le stesse righe con `struttura_id` nullo: si importano in una struttura e poi si personalizzano, senza legame.
   L'albergatore compila una pagina sola: camere, ospiti, dal/al, colazione. Un voucher vale per tutto il soggiorno (massimo 31 giorni),
@@ -903,7 +910,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Bilancio e competenza**: `routers/accounting/bilancio.py` seleziona i costi per data documento **oppure** data ricezione e ignora `data_competenza` (una fattura di dicembre ricevuta a gennaio può finire nell'esercizio sbagliato o in due); il debito nello stato patrimoniale usa lo stato «pagata» di oggi, non la data di pagamento rispetto a fine esercizio; il costo del personale è il solo lordo (contributi `None`).
 - **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. `scrittura_imposte` e `scrittura_versamento_iva` (`contabilita_generale.py`) non hanno chiamanti: chi le usa deve sapere che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
 - **F24 e banca**: il riscontro dell'addebito (`f24_bank_reconciliation.py`) si basa su importo e data e per un solo movimento sul saldo intero non controlla il codice tributo; la data di versamento assente fa saltare l'F24 senza avviso; il servizio ha solo 2 test. L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
-- **Colazioni B&B, da chiudere**: attivare SumUp incollando la chiave in Impostazioni; cambiare il PIN del titolare (i PIN sono spenti a tempo, ricontrollare `bb_pin_stato`);
+- **Colazioni B&B, da chiudere**: attivare SumUp incollando la chiave in Impostazioni; togliere dal database il vecchio PIN in chiaro (`supabase-21.sql`, fase 2: `bb_pin_off`, `tit_pin` e il PIN come credenziale delle RPC) dopo aver provato l'accesso da `/colazioni/`;
   inserire dati veri del bar (orari, WhatsApp, email) e i B&B reali; far rivedere composizioni, ingredienti e allergeni delle colazioni standard;
   varianti di prodotto (latte vegetale, gusti del gelato) salvate ma non ancora scelte dall'ospite; per gli alberghi con servizio al tavolo gli extra usano ancora i prezzi banco;
   la catena SQL non e' ricostruibile (migrazioni 5, 6, 9, 11, 12 mancanti); il banner «VERSIONE DI PROVA» va tolto al lancio; eliminare i B&B demo (`bb_tit_elimina_demo`).
