@@ -29,6 +29,7 @@ import { API, fotoSrc } from "../../utils/constants";
 import { dataIt, euro, euroPezzo } from "../../utils/confrontoFornitori";
 import { aggiornaPrezzoNelCarrello, useCart } from "./CatalogoFornitoreView";
 import PrezzoFornitoreEditor from "./PrezzoFornitoreEditor";
+import CardCatalogo, { GRIGLIA_CARD, rigaConfronto } from "./CardCatalogo";
 
 const COLORI = {
   amber: { light: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
@@ -37,6 +38,18 @@ const COLORI = {
   yellow: { light: "bg-yellow-50", text: "text-yellow-700", border: "border-yellow-200" },
   sage: { light: "bg-[#f2f6f3]", text: "text-[#5b7a6b]", border: "border-[#cfdfd5]" },
 };
+
+// Un prezzo solo per card: il listino se c'e', altrimenti l'ultima fattura XML,
+// il netto comunicato dal fornitore o il prezzo di catalogo.
+export function prezzoDaMostrare(p) {
+  if (p.prezzoListino > 0) {
+    return { prezzo: euro(p.prezzoListino), nota: p.unitaVendita ? `× ${p.unitaVendita} · listino` : "listino" };
+  }
+  if (p.giaAcquistato && p.prezzoFattura > 0) return { prezzo: euro(p.prezzoFattura), nota: "ultima fattura" };
+  if (p.prezzoFornitore > 0) return { prezzo: euro(p.prezzoFornitore), nota: "netto fornitore" };
+  if (p.prezzo > 0) return { prezzo: euro(p.prezzo), nota: p.giaAcquistato ? "già comprato" : "" };
+  return { prezzo: "", nota: "" };
+}
 
 export default function CatalogoGenericoView({
   titolo, sourceKey, fetchUrl, mapItem, emojiVuoto = "📦",
@@ -169,7 +182,7 @@ export default function CatalogoGenericoView({
 
   return (
     <div>
-      {selezionato && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4" onClick={() => setSelezionato(null)}><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}><div className="flex items-start justify-between gap-3 border-b border-gray-100 p-4"><div><p className={`m-0 text-[10px] font-black uppercase tracking-widest ${colore.text}`}>{titolo}</p><h3 className="m-0 mt-1 text-xl font-black text-gray-900">{selezionato.nome}</h3></div><button onClick={() => setSelezionato(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X size={18}/></button></div><div className="space-y-4 p-5"><div className={`flex h-52 items-center justify-center overflow-hidden rounded-xl ${colore.light}`}>{selezionato.foto_url ? <img src={fotoSrc(selezionato.foto_url)} alt={selezionato.nome} className="h-full w-full object-contain p-3"/> : <Package size={42} className={`${colore.text} opacity-30`}/>}</div><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs font-bold text-gray-400">Codice</dt><dd className="m-0 font-mono">{selezionato.codice || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Categoria</dt><dd className="m-0">{selezionato.categoria || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso singolo</dt><dd className="m-0">{selezionato.grammi || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Quantità cartone</dt><dd className="m-0">{selezionato.pezziCartone || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso totale cartone</dt><dd className="m-0">{pesoCartone(selezionato) ? `${pesoCartone(selezionato)} kg` : "—"}</dd></div>{selezionato.ean && <div><dt className="text-xs font-bold text-gray-400">EAN</dt><dd className="m-0 font-mono">{selezionato.ean}</dd></div>}{selezionato.prezzoListino > 0 && <div><dt className="text-xs font-bold text-gray-400">Prezzo di listino</dt><dd className="m-0">{euro(selezionato.prezzoListino)}{selezionato.unitaVendita ? ` per ${selezionato.unitaVendita}` : ""}{selezionato.dataListino ? ` · ${dataIt(selezionato.dataListino)}` : ""} · IVA esclusa</dd></div>}</dl>{selezionato.descrizione && <p className="rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-600">{selezionato.descrizione}</p>}{selezionato.link_prodotto && <a href={selezionato.link_prodotto} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold ${colore.text}`}><ExternalLink size={15}/> Apri la scheda originale del fornitore</a>}<button onClick={() => toggleRicette(selezionato)} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black ${selezionato.inRicette ? "bg-green-100 text-green-700" : "bg-[#5b7a6b] text-white"}`}>{selezionato.inRicette ? <Check size={16}/> : <Plus size={16}/>} {selezionato.inRicette ? "Usato nelle ricette" : "Usa in ricetta"}</button></div></div></div>}
+      {selezionato && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4" onClick={() => setSelezionato(null)}><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}><div className="flex items-start justify-between gap-3 border-b border-gray-100 p-4"><div><p className={`m-0 text-[10px] font-black uppercase tracking-widest ${colore.text}`}>{titolo}</p><h3 className="m-0 mt-1 text-xl font-black text-gray-900">{selezionato.nome}</h3></div><button onClick={() => setSelezionato(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X size={18}/></button></div><div className="space-y-4 p-5"><div className={`flex h-52 items-center justify-center overflow-hidden rounded-xl ${colore.light}`}>{selezionato.foto_url ? <img src={fotoSrc(selezionato.foto_url)} alt={selezionato.nome} className="h-full w-full object-contain p-3"/> : <Package size={42} className={`${colore.text} opacity-30`}/>}</div><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs font-bold text-gray-400">Codice</dt><dd className="m-0 font-mono">{selezionato.codice || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Categoria</dt><dd className="m-0">{selezionato.categoria || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso singolo</dt><dd className="m-0">{selezionato.grammi || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Quantità cartone</dt><dd className="m-0">{selezionato.pezziCartone || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso totale cartone</dt><dd className="m-0">{pesoCartone(selezionato) ? `${pesoCartone(selezionato)} kg` : "—"}</dd></div>{selezionato.ean && <div><dt className="text-xs font-bold text-gray-400">EAN</dt><dd className="m-0 font-mono">{selezionato.ean}</dd></div>}{selezionato.prezzoListino > 0 && <div><dt className="text-xs font-bold text-gray-400">Prezzo di listino</dt><dd className="m-0">{euro(selezionato.prezzoListino)}{selezionato.unitaVendita ? ` per ${selezionato.unitaVendita}` : ""}{selezionato.dataListino ? ` · ${dataIt(selezionato.dataListino)}` : ""} · IVA esclusa</dd></div>}</dl>{selezionato.descrizione && <p className="rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-600">{selezionato.descrizione}</p>}{selezionato.link_prodotto && <a href={selezionato.link_prodotto} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold ${colore.text}`}><ExternalLink size={15}/> Apri la scheda originale del fornitore</a>}<PrezzoFornitoreEditor prodotto={selezionato} fonte={sourceKey} fornitore={selezionato.fornitore || sourceKey} codiceArticolo={selezionato.codice} onSaved={(dati) => { const aggiornato = { ...selezionato, prezzoFornitore: dati.prezzo_fornitore, prezzo_fornitore: dati.prezzo_fornitore, prezzo: selezionato.prezzoFattura > 0 ? selezionato.prezzoFattura : dati.prezzo_fornitore }; setProdotti(prev => prev.map(item => item.id === selezionato.id ? aggiornato : item)); setSelezionato(aggiornato); aggiornaPrezzoNelCarrello(aggiornato, aggiornato.prezzo, selezionato.prezzoFattura > 0 ? "fattura_xml" : "comunicato_dal_fornitore"); }} /><button onClick={() => togglePreferito(selezionato)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#e6e0d4] py-3 text-sm font-bold text-[#3f5a4e]">{preferiti.has(selezionato.id) ? "★ Preferito colazione" : "☆ Segna come preferito colazione"}</button><button onClick={() => toggleRicette(selezionato)} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black ${selezionato.inRicette ? "bg-green-100 text-green-700" : "bg-[#5b7a6b] text-white"}`}>{selezionato.inRicette ? <Check size={16}/> : <Plus size={16}/>} {selezionato.inRicette ? "Usato nelle ricette" : "Usa in ricetta"}</button></div></div></div>}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <p className="text-xs font-semibold text-gray-500 uppercase">{filtrati.length} prodotti {titolo}</p>
         {importaPrecaricatoUrl && (
@@ -210,120 +223,27 @@ export default function CatalogoGenericoView({
           <p className="text-sm">{search ? "Nessun risultato per questa ricerca" : messaggioVuoto}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+        <div className={GRIGLIA_CARD}>
           {filtrati.slice(0, visibili).map(p => {
-            const inCart = isInCart(p.id);
-            const isPref = preferiti.has(p.id);
+            const { prezzo, nota } = prezzoDaMostrare(p);
             return (
-              <div key={p.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all">
-                <div className={`h-28 ${colore.light} flex items-center justify-center overflow-hidden relative`}>
-                  {p.foto_url ? (
-                    <img src={fotoSrc(p.foto_url)} alt={p.nome} className="h-full w-full object-contain p-2"
-                      onError={e => { e.target.style.display = "none"; }} />
-                  ) : (
-                    <Package size={26} className={colore.text + " opacity-25"} />
-                  )}
-                  <button
-                    onClick={() => togglePreferito(p)}
-                    title={isPref ? "Preferito colazione — tocca per togliere" : "Segna come preferito colazione (va in tutte le stagioni)"}
-                    className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                      isPref ? "bg-white text-amber-500" : "bg-black/35 text-white"
-                    }`}>
-                    {isPref ? "★" : "☆"}
-                  </button>
-                </div>
-                <button
-                  onClick={() => aggiungiCarrello(p)}
-                  className={`w-full py-1.5 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors border-t border-b ${
-                    inCart ? "bg-green-100 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100"
-                  }`}>
-                  <ShoppingCart size={10} />
-                  {inCart ? "✓ Nel carrello" : "+ Aggiungi all'ordine"}
-                </button>
-                <button onClick={() => toggleRicette(p)} className={`w-full py-1.5 text-[10px] font-black flex items-center justify-center gap-1 border-b ${p.inRicette ? "bg-green-50 text-green-700 border-green-100" : "bg-[#f2f6f3] text-[#4c6b5c] border-[#dce8e0]"}`}>{p.inRicette ? <Check size={10}/> : <Plus size={10}/>} {p.inRicette ? "Usato nelle ricette" : "Usa in ricetta"}</button>
-                <div className="p-2.5 space-y-1">
-                  <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-tight">{p.nome}</p>
-                  {p.nomeFornitore && <p className="text-[10px] text-[#8a7f70] line-clamp-1" title={p.nomeFornitore}>«{p.nomeFornitore}»</p>}
-                  {p.codice && (
-                    <div className="flex items-center gap-1">
-                      <Tag size={9} className="text-gray-400 flex-shrink-0" />
-                      <span className="text-[10px] text-gray-400 font-mono truncate">{p.codice}</span>
-                    </div>
-                  )}
-                  {(p.grammi || p.pezziCartone) && (
-                    <p className="text-[10px] text-gray-400">
-                      {[p.grammi, p.pezziCartone && `${p.pezziCartone}/cartone`].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
-                  {p.descrizione && <p className="text-[10px] text-gray-500 line-clamp-3">{p.descrizione}</p>}
-                  {p.prezzoListino > 0 && (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-bold text-[#3f5a4e] tabular-nums">{euro(p.prezzoListino)}</span>
-                      {p.unitaVendita && <span className="text-[10px] text-[#6b6358]">× {p.unitaVendita}</span>}
-                      <span className="text-[9px] bg-[#f3ece0] text-[#8a6f47] px-1.5 py-0.5 rounded-full font-semibold">
-                        listino{p.dataListino ? ` ${dataIt(p.dataListino).slice(0, 5)}` : ""}
-                      </span>
-                      {p.offertaFino && <span className="text-[9px] text-[#c4894a] font-semibold">offerta volantino fino al {dataIt(p.offertaFino)}</span>}
-                    </div>
-                  )}
-                  {confronto[p.codice]?.migliore && (
-                    confronto[p.codice].questo_migliore ? (
-                      <div className="flex items-center gap-1 rounded-lg bg-[#eef3ef] px-1.5 py-1 text-[10px] font-bold text-[#3d8168]">
-                        <TrendingDown size={11} aria-hidden="true" /> prezzo più basso · {euroPezzo(confronto[p.codice].prezzo_pezzo)} al pezzo
-                      </div>
-                    ) : (
-                      <div className="rounded-lg bg-[#fbf3e8] px-1.5 py-1 text-[10px] font-bold text-[#7a5a2e]">
-                        costa meno da {confronto[p.codice].migliore}: {euroPezzo(confronto[p.codice].migliore_prezzo_pezzo)} al pezzo
-                        {confronto[p.codice].prezzo_pezzo ? ` (qui ${euroPezzo(confronto[p.codice].prezzo_pezzo)})` : ""}
-                        <span className="block font-semibold text-[#8a7f70]">aggiungendolo, l'ordine va a {confronto[p.codice].migliore}</span>
-                      </div>
-                    )
-                  )}
-                  {/* Dopo l'acquisto prevale il prezzo reale XML; prima si usa il netto comunicato. */}
-                  {p.prezzoListino > 0 ? null : p.giaAcquistato && p.prezzoFattura > 0 ? (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-bold text-green-700">€{Number(p.prezzoFattura).toFixed(2)}</span>
-                      <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">ultima fattura XML</span>
-                    </div>
-                  ) : p.prezzoFornitore > 0 ? (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-bold text-[#3f5a4e]">€{Number(p.prezzoFornitore).toFixed(2)}</span>
-                      <span className="text-[9px] bg-[#e2efe8] text-[#3f5a4e] px-1.5 py-0.5 rounded-full font-semibold">netto fornitore</span>
-                    </div>
-                  ) : p.giaAcquistato && p.prezzo > 0 ? (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-bold text-green-700">€{p.prezzo.toFixed(2)}</span>
-                      <span className="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">
-                        ✓ già comprato{p.quantitaFattura > 0 ? ` · ${p.quantitaFattura}` : ""}
-                      </span>
-                    </div>
-                  ) : p.prezzo > 0 ? (
-                    <p className="text-xs font-bold text-gray-600">€{p.prezzo.toFixed(2)}</p>
-                  ) : null}
-                  <PrezzoFornitoreEditor
-                    prodotto={p}
-                    fonte={sourceKey}
-                    fornitore={p.fornitore || sourceKey}
-                    codiceArticolo={p.codice}
-                    compatto
-                    onSaved={(dati) => {
-                      const aggiornato = {
-                        ...p,
-                        prezzoFornitore: dati.prezzo_fornitore,
-                        prezzo_fornitore: dati.prezzo_fornitore,
-                        prezzo: p.prezzoFattura > 0 ? p.prezzoFattura : dati.prezzo_fornitore,
-                      };
-                      setProdotti(prev => prev.map(item => item.id === p.id ? aggiornato : item));
-                      aggiornaPrezzoNelCarrello(
-                        aggiornato,
-                        aggiornato.prezzo,
-                        p.prezzoFattura > 0 ? "fattura_xml" : "comunicato_dal_fornitore",
-                      );
-                    }}
-                  />
-                  <button onClick={() => setSelezionato(p)} className={`mt-1 flex w-full items-center justify-center gap-1 rounded-lg border ${colore.border} py-1.5 text-[10px] font-bold ${colore.text}`}><Info size={10}/> Dettagli tecnici</button>
-                </div>
-              </div>
+              <CardCatalogo
+                key={p.id}
+                testId={`card-${p.id}`}
+                nome={p.nome}
+                foto={p.foto_url ? fotoSrc(p.foto_url) : ""}
+                prezzo={prezzo}
+                notaPrezzo={nota}
+                confronto={rigaConfronto(confronto[p.codice], euroPezzo)}
+                colore={coloreAccento}
+                inCart={isInCart(p.id)}
+                inRicette={!!p.inRicette}
+                preferito={preferiti.has(p.id)}
+                onApri={() => setSelezionato(p)}
+                onCarrello={() => aggiungiCarrello(p)}
+                onRicetta={() => toggleRicette(p)}
+                onPreferito={() => togglePreferito(p)}
+              />
             );
           })}
         </div>

@@ -18,7 +18,8 @@ import { toast } from "sonner";
 import { Search, RefreshCw, Package, ChevronRight, Home, Download, Tag, LayoutGrid, List, ExternalLink, Check, Plus, Trash2, X, Info, ZoomIn, ShoppingCart } from "lucide-react";
 import { API } from "../../utils/constants";
 import PrezzoFornitoreEditor from "./PrezzoFornitoreEditor";
-import { chiediMigliore, messaggioMigliore, versoIlMigliore } from "../../utils/confrontoFornitori";
+import CardCatalogo, { GRIGLIA_CARD } from "./CardCatalogo";
+import { chiediMigliore, euro, messaggioMigliore, versoIlMigliore } from "../../utils/confrontoFornitori";
 
 // Carrello UNIFICATO con il libro ordini (OrdiniSmartView usa la stessa chiave):
 // così "aggiungi dal catalogo" compare direttamente negli Ordini e diventa un
@@ -368,94 +369,27 @@ const CardCategoria = ({ cat, onClick, colore }) => {
   );
 };
 
-// Card prodotto — clic apre il modal dettaglio
-const CardProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionario, onCarrello, inCart, preferitoColazione, onTogglePreferito, onToggleRicette, onPrezzoSalvato }) => {
-  const [imgErr, setImgErr] = useState(false);
-  const imgUrl = prodotto.immagine_url || "";
-
+// Card prodotto — clic apre il modal dettaglio. Solo l'indispensabile: la card e'
+// CardCatalogo, la stessa di tutti i cataloghi; codice, descrizione, prezzo netto
+// da scrivere e scheda tecnica stanno nel dettaglio.
+const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarrello, inCart, preferitoColazione, onTogglePreferito, onToggleRicette }) => {
+  const prezzo = prezzoProdotto(prodotto);
   return (
-    <div
-      onClick={() => onDettaglio(prodotto)}
-      className={`bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all group cursor-pointer ${prodotto.gia_acquistato ? "ring-2 ring-emerald-400" : giaNelDizionario ? "ring-1 ring-green-300" : ""}`}>
-      {/* Immagine */}
-      <div className={`h-32 ${COLORI[colore].light} flex items-center justify-center overflow-hidden relative`}>
-        {imgUrl && !imgErr ? (
-          <img src={imgUrl} alt={prodotto.nome}
-            onError={() => setImgErr(true)}
-            className="h-full w-full object-contain p-2 group-hover:scale-105 transition-transform" />
-        ) : (
-          <Package size={28} className={COLORI[colore].text + " opacity-25"} />
-        )}
-        {giaNelDizionario && (
-          <div className="absolute top-1.5 right-1.5 bg-green-500 text-white rounded-full p-0.5">
-            <Check size={9} />
-          </div>
-        )}
-        {prodotto.gia_acquistato && (
-          <div className="absolute bottom-1.5 right-1.5 rounded-full bg-emerald-600 px-2 py-1 text-[9px] font-black uppercase text-white shadow-sm">
-            Già acquistato
-          </div>
-        )}
-        {/* Preferito colazione ("l'asterisco", richiesta Enzo 03/07/2026):
-            va in tutte e 4 le stagioni, indipendente dal carrello ordini. */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onTogglePreferito(prodotto); }}
-          title={preferitoColazione ? "Preferito colazione — tocca per togliere" : "Segna come preferito colazione (va in tutte le stagioni)"}
-          className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-            preferitoColazione ? "bg-white text-amber-500" : "bg-black/35 text-white"
-          }`}>
-          {preferitoColazione ? "★" : "☆"}
-        </button>
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-          <ZoomIn size={20} className="text-white drop-shadow" />
-        </div>
-      </div>
-      {/* Banner carrello — sotto foto, sopra testo */}
-      <button
-        data-testid={`cart-btn-${prodotto.id || prodotto.nome?.slice(0,10)}`}
-        onClick={(e) => { e.stopPropagation(); onCarrello(prodotto); }}
-        className={`w-full py-1.5 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors border-t border-b ${
-          inCart
-            ? "bg-green-100 text-green-700 border-green-200"
-            : "bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100"
-        }`}
-      >
-        <ShoppingCart size={10} />
-        {inCart ? "✓ Nel carrello" : "+ Aggiungi all'ordine"}
-      </button>
-      <button onClick={(e) => { e.stopPropagation(); onToggleRicette(prodotto, giaNelDizionario); }} className={`w-full py-1.5 text-[10px] font-black flex items-center justify-center gap-1 border-b ${giaNelDizionario ? "bg-green-50 text-green-700 border-green-100" : "bg-[#f2f6f3] text-[#4c6b5c] border-[#dce8e0]"}`}>
-        {giaNelDizionario ? <Check size={10} /> : <Plus size={10} />}{giaNelDizionario ? "Usato nelle ricette" : "Usa in ricetta"}
-      </button>
-      {/* Info */}
-      <div className="p-2.5 space-y-1">
-        <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-tight">{prodotto.nome_display || prodotto.nome}</p>
-        {prodotto.codice_articolo && (
-          <div className="flex items-center gap-1">
-            <Tag size={9} className="text-gray-400 flex-shrink-0" />
-            <span className="text-[10px] text-gray-400 font-mono truncate">{prodotto.codice_articolo}</span>
-          </div>
-        )}
-        {prodotto.descrizione && (
-          <p className="text-[10px] text-gray-500 line-clamp-3 leading-snug">{prodotto.descrizione}</p>
-        )}
-        {(prezzoProdotto(prodotto) > 0) && (
-          <p className={`text-xs font-bold ${prezzoFatturaProdotto(prodotto) > 0 ? "text-green-700" : "text-[#3f5a4e]"}`}>
-            €{prezzoProdotto(prodotto).toFixed(2)} · {prezzoFatturaProdotto(prodotto) > 0 ? "ultima fattura" : "netto fornitore"}
-          </p>
-        )}
-        <PrezzoFornitoreEditor
-          prodotto={prodotto}
-          fonte={fornitore}
-          fornitore={fornitore}
-          codiceArticolo={prodotto.codice_articolo || prodotto.codice}
-          compatto
-          onSaved={onPrezzoSalvato}
-        />
-        <div className={`text-[10px] font-medium flex items-center gap-0.5 ${COLORI[colore].text} opacity-60 group-hover:opacity-100`}>
-          <Info size={9} /> Clicca per dettagli
-        </div>
-      </div>
-    </div>
+    <CardCatalogo
+      testId={`cart-btn-${prodotto.id || prodotto.nome?.slice(0, 10)}`}
+      nome={prodotto.nome_display || prodotto.nome}
+      foto={prodotto.immagine_url || ""}
+      prezzo={prezzo > 0 ? euro(prezzo) : ""}
+      notaPrezzo={prezzo > 0 ? (prezzoFatturaProdotto(prodotto) > 0 ? "ultima fattura" : "netto fornitore") : ""}
+      colore={colore}
+      inCart={inCart}
+      inRicette={giaNelDizionario}
+      preferito={preferitoColazione}
+      onApri={() => onDettaglio(prodotto)}
+      onCarrello={() => onCarrello(prodotto)}
+      onRicetta={() => onToggleRicette(prodotto, giaNelDizionario)}
+      onPreferito={() => onTogglePreferito(prodotto)}
+    />
   );
 };
 
@@ -903,21 +837,16 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
               </p>
             </div>
           ) : vistaGriglia ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            <div className={GRIGLIA_CARD}>
               {prodottiFiltrati.map(p => (
-                <CardProdotto key={p.id} prodotto={p} colore={colore} fornitore={fornitore}
+                <CardProdotto key={p.id} prodotto={p} colore={colore}
                   onDettaglio={apriProdotto}
                   giaNelDizionario={dizionarioIds.has(p.id)}
                   onCarrello={aggiungiCarrello}
                   inCart={isInCart(p.id || `ext_${(p.nome||"").toLowerCase().replace(/\s+/g,"_").slice(0,40)}`)}
                   preferitoColazione={preferitiColazione.has(p.id)}
                   onTogglePreferito={togglePreferitoColazione}
-                  onToggleRicette={handleToggleRicette}
-                  onPrezzoSalvato={(dati) => {
-                    const aggiornato = { ...p, ...dati };
-                    setProdotti(prev => prev.map(item => item.id === p.id ? aggiornato : item));
-                    aggiornaPrezzoNelCarrello(aggiornato, dati.prezzo_fornitore);
-                  }} />
+                  onToggleRicette={handleToggleRicette} />
               ))}
             </div>
           ) : (
