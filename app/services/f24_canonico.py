@@ -43,8 +43,34 @@ def richiedi_quadratura_f24(parsed: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             "F24 non quadrato o non validato: salvataggio bloccato"
             + (f" (differenza {difference})" if difference is not None else "")
+            + _dettaglio_quadratura(parsed)
         )
     return validation
+
+
+def _dettaglio_quadratura(parsed: Dict[str, Any]) -> str:
+    """Righe lette e saldo stampato, in breve: dice DOVE non quadra.
+
+    Senza questo l'errore dava solo la differenza e per capire la causa serviva
+    riaprire il PDF; con le righe lette si vede subito quale importo o quale
+    codice il lettore ha perso o moltiplicato.
+    """
+    sezioni = (
+        ("E", "sezione_erario"), ("I", "sezione_inps"), ("R", "sezione_regioni"),
+        ("L", "sezione_tributi_locali"), ("N", "sezione_inail"),
+    )
+    voci = []
+    for sigla, nome in sezioni:
+        for riga in parsed.get(nome) or []:
+            voci.append(
+                f"{sigla}{riga.get('codice_tributo') or riga.get('causale') or '?'}"
+                f"/{riga.get('anno') or ''}"
+                f" D{riga.get('importo_debito_cents') or 0}"
+                f" C{riga.get('importo_credito_cents') or 0}"
+            )
+    saldo = (parsed.get("totali") or {}).get("saldo_delega_cents")
+    testa = f" [saldo stampato: {'non letto' if saldo is None else saldo} cent; righe {len(voci)}: "
+    return testa + "; ".join(voci[:14]) + ("; …" if len(voci) > 14 else "") + "]"
 
 
 def normalizza_righe_tributo(doc: Dict[str, Any]) -> list[Dict[str, Any]]:

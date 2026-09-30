@@ -302,6 +302,38 @@ def test_ripasso_errori_una_volta_sola_per_versione_dei_lettori(monkeypatch):
     assert chiamate == []
 
 
+def test_cartella_completata_con_lettori_nuovi_ripassa_solo_gli_errori(monkeypatch):
+    """Nuova versione dei lettori: si rileggono gli errori, non l'intera cartella."""
+    from app.services import drive_download
+
+    file_drive = [
+        {"id": f"c{i}", "name": f"F{i}.pdf", "mimeType": "application/pdf",
+         "size": "100", "percorso": f"M/F{i}.pdf"}
+        for i in range(4)
+    ]
+
+    async def scarica(file_id, md5=None):
+        return b"%PDF-" + file_id.encode()
+
+    monkeypatch.setattr(drive_download, "scarica_originale", scarica)
+    chiamate = []
+    stato = {"F2.pdf": {"success": False, "message": "F24 non quadrato"}}
+
+    async def smista(nome, dati, contesto):
+        chiamate.append(nome)
+        return stato.get(nome, {"success": True, "duplicate": False})
+
+    monkeypatch.setattr(cu, "_smista", smista)
+    db = AsyncMongoMockClient()["ripasso3"]
+    _run(dz.elabora_cartella(db, "cart-c", file_drive, nome="M"))
+    stato.clear()
+    chiamate.clear()
+
+    secondo = _run(dz.elabora_cartella(db, "cart-c", file_drive, nome="M"))
+    assert chiamate == ["F2.pdf"]
+    assert secondo["contatori"]["errori"] == 0
+
+
 def test_ripasso_riprende_dopo_un_riavvio_senza_rifare_i_file_gia_riletti(monkeypatch):
     """Il ripasso e' lento e un deploy lo interrompe: l'avanzamento si salva ogni 10 file."""
     from app.services import drive_download
