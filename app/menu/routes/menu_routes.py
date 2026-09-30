@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
+from decimal import Decimal, InvalidOperation
 
 from app.menu.supabase_client import supabase
 from app.menu.models.menu_models import (
@@ -41,6 +42,24 @@ def _visibile(row: dict) -> bool:
     return row.get("visible") is not False
 
 
+def prezzo_centesimi(prezzo) -> int | None:
+    """Un prezzo pubblico e' finito, positivo e dichiarato al centesimo."""
+    try:
+        valore = Decimal(str(prezzo).replace("€", "").strip().replace(",", "."))
+        if not valore.is_finite() or valore <= 0:
+            return None
+        centesimi = valore * 100
+        if centesimi != centesimi.to_integral_value():
+            return None
+        return int(centesimi)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _pubblicabile(row: dict) -> bool:
+    return _visibile(row) and prezzo_centesimi(row.get("price")) is not None
+
+
 def prod_out(row: dict) -> dict:
     return {
         "id": row["id"], "category_id": row["category_id"], "subcategory_id": row["subcategory_id"],
@@ -49,7 +68,7 @@ def prod_out(row: dict) -> dict:
         "allergens": row.get("allergens") or [], "image": row.get("image"),
         # visible/origine: prodotti creati da Lotti (origine "lotti") nascono con
         # visible = scelta del titolare in Lotti ("menu_pubblico").
-        "visible": _visibile(row), "origine": row.get("origine"),
+        "visible": _visibile(row), "pubblicabile": _pubblicabile(row), "origine": row.get("origine"),
     }
 
 
@@ -76,8 +95,8 @@ def allergen_out(row: dict) -> dict:
 
 
 def _prodotti_pubblici(rows) -> list:
-    """Il menu pubblico esclude le righe con visible=false."""
-    return [prod_out(r) for r in rows if _visibile(r)]
+    """Il menu pubblico esclude righe nascoste o senza un prezzo valido."""
+    return [prod_out(r) for r in rows if _pubblicabile(r)]
 
 
 def _fetch_all():
@@ -196,7 +215,7 @@ async def get_subcategory(subcategory_id: int):
 async def get_product(product_id: int):
     """Get a specific product"""
     res = supabase.table("menu_products").select("*").eq("id", product_id).limit(1).execute()
-    if not res.data or not _visibile(res.data[0]):
+    if not res.data or not _pubblicabile(res.data[0]):
         raise HTTPException(status_code=404, detail="Product not found")
     return prod_out(res.data[0])
 
@@ -361,21 +380,19 @@ MESSAGGIO_RIGA_DI_LOTTI = (
 )
 
 
-@router.put("/admin/products/{product_id}")
-async def update_product(product_id: int, product: ProductUpdate, username: str = Depends(verify_token)):
-    """Update a product.
-
-    Le righe con ``origine = "lotti"`` sono di proprieta' di Lotti (regola
-    CLAUDE.md «un solo sistema per funzione»): il ponte
-    ``app/lotti/servizi/menu_bridge.py`` riscrive la riga intera a ogni
-    salvataggio della ricetta, quindi una correzione fatta da qui sparirebbe
-    senza un avviso. Si rifiuta con 409 e si dice dove si modifica davvero."""
+def _verifica_prodotto_modificabile(product_id: int):
+    """Lo stesso proprietario vale per modifica e cancellazione."""
     esistente = supabase.table("menu_products").select("id,origine").eq("id", product_id).limit(1).execute()
     if not esistente.data:
         raise HTTPException(status_code=404, detail="Product not found")
     if (esistente.data[0].get("origine") or "") == ORIGINE_LOTTI:
         raise HTTPException(status_code=409, detail=MESSAGGIO_RIGA_DI_LOTTI)
 
+
+@router.put("/admin/products/{product_id}")
+async def update_product(product_id: int, product: ProductUpdate, username: str = Depends(verify_token)):
+    """Modifica i prodotti del Menu; quelli delle ricette si gestiscono in Lotti."""
+    _verifica_prodotto_modificabile(product_id)
     data = {k: v for k, v in product.model_dump().items() if v is not None}
     if not data:
         raise HTTPException(status_code=400, detail="No data to update")
@@ -398,6 +415,7 @@ async def update_product(product_id: int, product: ProductUpdate, username: str 
 @router.delete("/admin/products/{product_id}")
 async def delete_product(product_id: int, username: str = Depends(verify_token)):
     """Delete a product"""
+    _verifica_prodotto_modificabile(product_id)
     result = supabase.table("menu_products").delete().eq("id", product_id).execute()
 
     if not result.data:

@@ -16,7 +16,7 @@ import MenuClientiQR from '../components/admin/MenuClientiQR';
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const AdminDashboard = () => {
-  const [activeTab, setActiveTab] = useState('operazioni');
+  const [activeTab, setActiveTab] = useState('products');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -101,7 +101,7 @@ const AdminDashboard = () => {
             </TabsTrigger>
             <TabsTrigger value="products" className="flex items-center gap-2">
               <Package className="w-4 h-4" />
-              <span>Prodotti</span>
+              <span>Menu e allergeni</span>
             </TabsTrigger>
             <TabsTrigger value="backup" className="flex items-center gap-2">
               <Database className="w-4 h-4" />
@@ -121,7 +121,7 @@ const AdminDashboard = () => {
                 {[
                   { to: '/admin/ordini', label: 'Ordini', desc: 'Gestisci gli ordini in arrivo, in corso e pronti', icon: ShoppingBag },
                   { to: '/admin/cassa', label: 'Cassa', desc: 'Registra ordini al banco e incassi', icon: ClipboardList },
-                  { to: '/admin/cucina', label: 'Kitchen Monitor', desc: 'Schermo cucina per la preparazione', icon: ChefHat },
+                  { to: '/admin/cucina', label: 'Cucina', desc: 'Schermo cucina per la preparazione', icon: ChefHat },
                   { to: '/admin/magazzino', label: 'Magazzino', desc: 'Giacenze, carichi e scarichi', icon: Warehouse },
                   { to: '/admin/sale', label: 'Sale', desc: 'Gestisci le sale, ordini e coperto', icon: DoorOpen },
                 ].map((op) => (
