@@ -2543,12 +2543,10 @@ async def invia_presenze_commercialista(data: dict = Body(...)):
         logger.exception("Invio presenze al commercialista fallito")
         raise HTTPException(502, f"Invio email fallito: {type(e).__name__}: {e}") from e
 
-    # Salva lo storico dell'invio (a chi, quando)
-    rec = {"id": generate_id(), "anno": anno, "mese": mese, "periodo": periodo,
-           "destinatario": dest, "data_invio": now_iso(),
-           "n_dipendenti": len(righe), "con_pdf": bool(pdf_bytes)}
-    await get_db().presenze_invii.insert_one(rec.copy())
-    rec.pop("_id", None)
+    # Registro unico degli invii (lo legge anche il Pacchetto dell'Area Commercialista)
+    from app.hr.services.presenze_consulente import registra_invio
+    rec = await registra_invio(anno, mese, dest, n_dipendenti=len(righe),
+                               con_pdf=bool(pdf_bytes), origine="hr")
     return {"ok": True, "destinatario": dest, "periodo": periodo, "invio": rec}
 
 

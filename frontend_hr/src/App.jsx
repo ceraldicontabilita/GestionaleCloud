@@ -1542,6 +1542,14 @@ function PresenzePage({ dipendenti, reload }) {
       toast("Imposta prima l'email del commercialista (✎ accanto a Invia)", "err");
       return;
     }
+    // Mai due invii in silenzio: se il mese e' gia' partito (da qui o dall'Area Commercialista
+    // dell'ERP, il registro e' lo stesso) si chiede conferma.
+    const giaInviati = invii.filter(v => v.esito !== "errore");
+    if (giaInviati.length) {
+      const d = new Date(giaInviati[0].data_invio);
+      const quando = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+      if (!window.confirm(`Le presenze di ${mesi[mese - 1]} ${anno} risultano già inviate il ${quando} a ${giaInviati[0].destinatario}. Rinviarle?`)) return;
+    }
     try {
       const r = await axios.post(`${API}/presenze/invia-commercialista`, { anno, mese, ...buildRighe() });
       toast(`Presenze inviate a ${r.data.destinatario}`);
