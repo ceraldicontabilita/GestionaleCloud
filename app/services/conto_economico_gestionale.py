@@ -194,7 +194,8 @@ async def _buste_anno(db, anno: int) -> List[Dict[str, Any]]:
         {
             "anno": {"$in": [int(anno), str(anno)]},
             "entity_status": {"$ne": "deleted"},
-            "status": {"$nin": ["deleted", "archived", "archiviata"]},
+            # una versione superata della stessa busta non e' un costo (`cedolini_versioni`)
+            "status": {"$nin": ["deleted", "archived", "archiviata", "sostituito"]},
         },
         _PROIEZIONE_BUSTA,
     ).to_list(None)

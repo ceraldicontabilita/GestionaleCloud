@@ -66,6 +66,12 @@ def test_cedolini_golden_portano_gli_stati_del_minisito():
     assert {r["netto_fonte"] for r in righe} == {None, "diretto", "calcolato_da_totali", "non_letto_da_lul"}
     stati = {(r.get("riscontro") or {}).get("stato") for r in righe}
     assert stati == {None, "confermato", "da_verificare", "differenza", "nessun_bonifico_trovato", "non_riscontrabile"}
-    # un netto non letto resta nullo, mai zero: sono i 97 cedolini estratti dai LUL
+    # un netto non letto resta nullo, mai zero: sono i 57 cedolini estratti dai LUL
+    # (il piano ne diceva 97: il golden ne porta 57)
     da_lul = [r for r in righe if r["netto_fonte"] == "non_letto_da_lul"]
-    assert da_lul and all(r["netto_val"] is None for r in da_lul)
+    assert len(da_lul) == 57 and all(r["netto_val"] is None for r in da_lul)
+    # le versioni della stessa busta (MINI-03): rettificate e «Variante N» oltre la prima
+    assert sum(1 for r in righe if r.get("rettificato")) == 52
+    varianti = [r for r in righe if isinstance(r.get("variante"), int) and r["variante"] > 1]
+    assert len(varianti) == 196
+    assert len({r["tipo"] for r in righe}) == 4

@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
-from app.constants.stati_netto import NETTO_VERIFICATO_DA_CEDOLINO
+from app.constants.stati_netto import NETTO_FONTE_CELLA, NETTO_VERIFICATO_DA_CEDOLINO
 from app.services.hr_cedolini_deposito import TABELLA_CEDOLINI, tipo_cedolino_hr
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ def correzione(riga: Dict[str, Any], esito: Dict[str, Any], now: str) -> Dict[st
         return patch
     patch.update({
         "netto": float(giusto), "stato_netto": NETTO_VERIFICATO_DA_CEDOLINO,
-        "netto_fonte": VERSIONE,
+        "netto_fonte": NETTO_FONTE_CELLA,
         "storico_netto_ultimo": {"prima": float(attuale) if attuale is not None else None,
                                  "dopo": float(giusto), "at": now, "fonte": VERSIONE},
     })

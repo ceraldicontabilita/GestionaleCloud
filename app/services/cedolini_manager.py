@@ -127,6 +127,7 @@ def _annota_busta(results: Dict[str, Any], ced: Dict[str, Any], esito: str) -> N
 async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Optional[str],
                           pdf_text: str, results: Dict[str, Any]) -> None:
     from app.constants.stati_netto import alimenta_salari
+    from app.services import cedolini_versioni as versioni
     from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
     from app.services.salari_unificati_v2 import processa_cedolino_v2
 
@@ -159,6 +160,16 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
         _annota_busta(results, ced, "gia_presente")
         return
 
+    # Un'altra versione della stessa busta con un netto diverso (stampa di
+    # controllo, «Variante N»): un motore solo decide chi vale
+    # (`cedolini_versioni`). Se la busta in arrivo e' quella superata si salva
+    # subito «sostituito», mai come secondo cedolino attivo.
+    arrivo = await versioni.decidi_arrivo(db, {**ced, "pdf_text": pdf_text}, filename=filename)
+    sostituita = None
+    if arrivo["esito"] == "arrivo_perdente":
+        sostituita = {"sostituito_da": arrivo["vincitore"]["id"],
+                      "sostituito_motivo": arrivo.get("motivo") or "versione superata"}
+
     try:
         res = await processa_cedolino_v2(
             db=db,
@@ -166,11 +177,36 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
             pdf_text=pdf_text,
             filename=filename,
             pdf_data=pdf_data,
+            sostituita=sostituita,
         )
     except Exception as exc:
         logger.exception("[Cedolini] scrittura di %s (%s) fallita", filename, chi)
         results["errori"].append(f"{chi}: scrittura fallita: {type(exc).__name__}: {exc}")
         return
+
+    if res.get("success") and sostituita:
+        results["sostituite"] = results.get("sostituite", 0) + 1
+        _annota_busta(results, ced, "sostituita")
+        results.setdefault("versioni", []).append({
+            "codice_fiscale": ced.get("codice_fiscale"), "anno": ced.get("anno"),
+            "mese": ced.get("mese"), "esito": "arrivo_perdente",
+            "cedolino_id": res.get("cedolino_id"), **sostituita})
+        return
+
+    if res.get("success") and arrivo["esito"] in ("arrivo_vincitore", versioni.ESITO_DA_DECIDERE):
+        try:
+            voce = await versioni.applica_arrivo(db, arrivo, res["cedolino_id"])
+        except Exception as exc:  # noqa: BLE001 - la busta e' scritta, la decisione si ripete dal giro d'archivio
+            logger.warning("[Cedolini] versioni di %s (%s) non decise: %s: %s",
+                           filename, chi, type(exc).__name__, exc)
+            voce = {"esito": "errore", "motivo": f"{type(exc).__name__}: {exc}"}
+        results.setdefault("versioni", []).append({
+            "codice_fiscale": ced.get("codice_fiscale"), "anno": ced.get("anno"),
+            "mese": ced.get("mese"), "cedolino_id": res.get("cedolino_id"),
+            "esito": voce.get("esito"), "motivo": voce.get("motivo"),
+            "scartate": voce.get("scartate") or []})
+        if voce.get("esito") == versioni.ESITO_DA_DECIDERE:
+            results["versioni_da_decidere"] = results.get("versioni_da_decidere", 0) + 1
 
     if res.get("success"):
         results["cedolini_processati"] += 1
@@ -272,8 +308,9 @@ async def processa_tutti_cedolini_pdf(
 
     # Una busta gia' in archivio e' un esito, non un guasto: la copia di un
     # PDF gia' letto finiva in ERRORI come «1 buste lette» e non ne usciva.
+    # Lo stesso per una versione superata, salvata «sostituito».
     if not (results["cedolini_processati"] or results["buste_senza_netto"]
-            or results.get("gia_presenti")):
+            or results.get("gia_presenti") or results.get("sostituite")):
         results["success"] = False
     return results
 
