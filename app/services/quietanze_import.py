@@ -452,7 +452,7 @@ async def importa_quietanza_bytes(
     compensazione_totale = saldo_cents({"saldo": saldo_quietanza}) == 0 and bool(
         estrai_tributi_dettaglio(quietanza_doc))
     if not f24_matchati:
-        # CASO 3 della specifica (memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md):
+        # CASO 3 della specifica (la specifica del titolare (non è nel repository: vale il codice)):
         # esiste SOLO la quietanza → mai ricostruire l'F24 in automatico.
         # La quietanza resta registrata come prova di pagamento non associata
         # (stato dedicato) e nasce un alert bloccante che chiede il modello.

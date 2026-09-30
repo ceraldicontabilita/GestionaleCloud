@@ -142,6 +142,14 @@ CODICI_TRIBUTO_F24 = {
         "tipo": "debito",
         "sezione": "ERARIO"
     },
+    # Credito d'imposta usato in compensazione (colonna credito): la descrizione
+    # e' quella gia' in uso nel motore tributi; la voce ufficiale AdE resta da
+    # confermare col commercialista.
+    "6869": {
+        "descrizione": "Credito investimenti Mezzogiorno",
+        "tipo": "credito",
+        "sezione": "ERARIO"
+    },
     
     # ==================== INPS ====================
     "5100": {

@@ -1,7 +1,7 @@
 """
 Motore liquidazione IVA mensile — SELEZIONE fatture e TOTALI (logica pura).
 
-Fonte di verità: memoria/SPECIFICA_IVA.md §10-13, §18, §22.
+Fonte di verità: la specifica del titolare (non è nel repository: vale il codice) §10-13, §18, §22.
 
 Questo modulo NON tocca il database: riceve una lista di fatture (già
 arricchite dal motore `iva_fatture`/`iva_engine`, quindi con
