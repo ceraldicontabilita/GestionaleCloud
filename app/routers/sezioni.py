@@ -70,6 +70,13 @@ SEZIONI = [
             },
         ],
     },
+    {
+        "id": "colazioni",
+        "nome": "Colazioni B&B",
+        "descrizione": "Colazioni prepagate per gli ospiti dei B&B partner",
+        "percorso": "/colazioni/",
+        "icona": "Coffee",
+    },
 ]
 
 

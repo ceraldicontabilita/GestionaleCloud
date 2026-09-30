@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-PREFISSI = ("lotti", "menu", "hr")
+PREFISSI = ("lotti", "menu", "hr", "colazioni")
 
 
 @pytest.fixture(scope="module")
