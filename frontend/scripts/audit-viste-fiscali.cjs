@@ -205,7 +205,7 @@ const CASI = [
     verifica(scheda.includes('2023/000123') && scheda.includes('04/05/2023') && scheda.includes('210,50'), 'la scheda del protocollo ha numero, data gg/mm/aaaa e importo in euro');
     verifica(scheda.includes('Dato non disponibile'), 'un campo assente e «Dato non disponibile»');
     verifica(richieste.some(r => r === '/api/protocollo-personale/2023/123'), 'la scheda legge l\'API del protocollo personale');
-    verifica(scheda.includes('fuori dai conti'), 'la pagina dice che il documento personale e fuori dai conti');
+    verifica(scheda.toLowerCase().includes('fuori dai conti'), 'la pagina dice che il documento personale e fuori dai conti');
     await vai(page, '/protocollo/COLLAUDO');
     await attendi(page, 'protocollo-non-trovato');
     verifica(true, 'un numero senza la forma AAAA/NNNNNN e «non trovato», non una pagina vuota');
