@@ -218,12 +218,18 @@ def _register_employees(app: FastAPI):
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"])
     from app.routers import schede_markdown
     app.include_router(schede_markdown.router, prefix="/api/schede", tags=["Schede Markdown"])
+    # Protocollo personale e familiare (MINI-07): import del registro, ricerca AND, ponte informativo.
+    from app.routers import protocollo_personale
+    app.include_router(protocollo_personale.router, prefix="/api/protocollo-personale", tags=["Protocollo personale"])
     from app.routers import doppioni_archivio
     app.include_router(doppioni_archivio.router, prefix="/api/doppioni", tags=["Doppioni archivio"])
     # Versioni della stessa busta (stampa di controllo, «Variante N»): rapporto
     # in sola lettura e applicazione a lotti (services/cedolini_versioni).
     from app.routers import cedolini_versioni
     app.include_router(cedolini_versioni.router, prefix="/api/cedolini", tags=["Cedolini"])
+    # Indice relazionale (MINI-06) e relazioni entita' -> documento Drive (DRV-03).
+    from app.routers import indice_relazionale
+    app.include_router(indice_relazionale.router, prefix="/api/indice-relazionale", tags=["Indice relazionale"])
 
     # Documenti fiscali caricati a mano (dichiarazione IVA, cartelle
     # esattoriali, avvisi bonari): upload → id → recupero/download.
