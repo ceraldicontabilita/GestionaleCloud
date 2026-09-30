@@ -294,7 +294,8 @@ async function alb(sec){
   CR=ALB.camere.map(c=>({nome:c.nome,ospiti:c.ospiti}));body=camereEditor("Le tue camere");
  }else if(sec==="borsellino"){
   body=`<div class="card"><div class="mute">Saldo disponibile</div><div class="k" style="font-size:32px;font-weight:800">${eur(s.saldo)}</div>
-  <label>Importo ricarica (€)</label><input id="r_i" type="number" min="${ALB.config.ricarica_min}" max="${ALB.config.ricarica_max}" value="${Math.max(50,ALB.config.ricarica_min)}"><div class="mute" style="margin:-6px 0 10px">Da ${eur(ALB.config.ricarica_min)} a ${eur(ALB.config.ricarica_max)}</div>
+  ${ALB.sumup?`<label>Ricarica veloce con carta</label><div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">${[50,100,200,300,400,500].filter(v=>v>=ALB.config.ricarica_min&&v<=ALB.config.ricarica_max).map(v=>`<button class="btn" style="min-width:96px" onclick="ricaricaSumup(${v})">${v} €</button>`).join("")}</div><div class="mute" style="margin-bottom:10px">Tocca un importo: si apre il pagamento con carta e, appena è confermato, il saldo sale da solo.</div>`:""}
+  <label>Oppure un altro importo (€)</label><input id="r_i" type="number" min="${ALB.config.ricarica_min}" max="${ALB.config.ricarica_max}" value="${Math.max(50,ALB.config.ricarica_min)}"><div class="mute" style="margin:-6px 0 10px">Da ${eur(ALB.config.ricarica_min)} a ${eur(ALB.config.ricarica_max)}</div>
   ${ALB.sumup?`<button class="btn" onclick="ricaricaSumup()">💳 Paga con carta (SumUp)</button> <button class="btn sec" onclick="doRicarica()">Pago al bar</button>
   <p class="mute">Con la carta il saldo si aggiorna subito dopo il pagamento. Se scegli "Pago al bar", il saldo si aggiorna quando il bar conferma l'incasso.</p>`:`<button class="btn" onclick="doRicarica()">Richiedi ricarica</button>
   <p class="mute">Paga al bar: il saldo si aggiorna appena il bar conferma l'incasso.</p>`}</div>
@@ -374,8 +375,9 @@ function filtraAlb(){
  <div style="text-align:right"><span class="pill ${c}">${t}</span><br><button class="btn sm sec" onclick="mostraQR('${v.id}')">QR</button> ${!v.annullato&&v.usate<v.qta?`<button class="btn sm sec" onclick="annullaAlb('${v.id}')">Annulla</button>`:""}</div></div>`}).join("")||`<p class="mute">Nessun risultato.</p>`}
 async function annullaAlb(id){if(!confirm("Annullare questa colazione? Le non ritirate tornano nel borsellino."))return;const r=await run("bb_alb_annulla",{sid:sess.s,p:sess.p,vid:id});if(r){toast("Rimborsati "+eur(r.rimborsato));alb("lista")}}
 function stampaIds(ids){stampa(ids.map(id=>cardVoucher(ALB.vouchers.find(x=>x.id===id),"",ALB.struttura.nome)))}
-async function ricaricaSumup(){
- const i=+$("#r_i").value;if(!(i>=ALB.config.ricarica_min))return toast("Importo minimo "+eur(ALB.config.ricarica_min));
+async function ricaricaSumup(imp){
+ const i=imp!==undefined?+imp:+$("#r_i").value;if(!(i>=ALB.config.ricarica_min))return toast("Importo minimo "+eur(ALB.config.ricarica_min));
+ if(imp!==undefined&&!confirm("Ricaricare "+eur(i)+" con carta?"))return;
  const r=await run("bb_alb_ricarica_sumup",{sid:sess.s,p:sess.p,imp:i,ret:base()+"#/albergatore/borsellino"});
  if(r&&r.url)location.href=r.url}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
