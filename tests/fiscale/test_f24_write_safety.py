@@ -41,6 +41,7 @@ def test_endpoint_overwrite_delega_al_writer_canonico():
 
     source = Path(module.__file__).read_text(encoding="utf-8")
     overwrite = source[source.index("async def upload_f24_pdf_overwrite"):]
-    assert "await salva_f24(" in overwrite
-    assert "existing_id=f24_id if existing else None" in overwrite
+    assert "await _importa(file" in overwrite
+    assert "salva_f24(" not in source
+    assert "parse_f24_commercialista" not in source
     assert "db[F24_COLLECTION].insert_one" not in overwrite

@@ -6,7 +6,6 @@ from uuid import uuid4
 import logging
 import zipfile
 import io
-import hashlib
 import os
 
 from app.database import Database
@@ -18,7 +17,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ============== UPLOAD ZIP MASSIVO F24 ==============
+# ============== UPLOAD MASSIVO F24 ==============
+async def _importa_lotto(db, voci, source: str) -> Dict[str, Any]:
+    """Ogni PDF passa da `importa_modello_bytes`: lettura, quadratura, dedup per
+    contenuto e ricerca di quietanza e addebito. Prima questi due endpoint
+    salvavano il PDF in `f24_unificato` senza leggerlo (`status: pending`,
+    nessuna riga tributo): gusci vuoti che il registro contava come modelli."""
+    from app.services.f24_canonico import importa_modello_bytes
+
+    results = {"total": len(voci), "imported": 0, "duplicates": 0, "errors": 0, "details": []}
+    for nome, contenuto in voci:
+        if not nome.lower().endswith(".pdf"):
+            results["errors"] += 1
+            results["details"].append({"file": nome, "status": "error", "message": "Il file non è un PDF"})
+            continue
+        try:
+            esito = await importa_modello_bytes(db, contenuto, os.path.basename(nome), source=source)
+        except Exception as exc:  # noqa: BLE001 - un PDF rotto non ferma il lotto
+            logger.error("Errore elaborazione %s (%s): %s", nome, type(exc).__name__, exc)
+            results["errors"] += 1
+            results["details"].append({"file": nome, "status": "error", "message": f"{type(exc).__name__}: {exc}"})
+            continue
+        if not esito.get("success"):
+            results["errors"] += 1
+            results["details"].append({"file": nome, "status": "error", "message": esito.get("error")})
+        elif esito.get("duplicate"):
+            results["duplicates"] += 1
+            results["details"].append({"file": nome, "status": "duplicate", "id": esito.get("f24_id"),
+                                       "message": "F24 già presente nel sistema"})
+        else:
+            results["imported"] += 1
+            results["details"].append({"file": nome, "status": "imported", "id": esito.get("f24_id"),
+                                       "righe_tributo": esito.get("righe_tributo")})
+    return results
+
+
 @router.post(
     "/upload-zip",
     summary="Upload ZIP con PDF F24 massivo"
@@ -26,110 +59,27 @@ router = APIRouter()
 async def upload_f24_zip(
     file: UploadFile = File(...)
 ) -> Dict[str, Any]:
-    """
-    Upload massivo di PDF F24 tramite file ZIP.
-    - Estrae tutti i PDF dal ZIP
-    - Controlla duplicati tramite hash SHA256
-    - Salva i file e crea record nel database
-    """
+    """Upload massivo di PDF F24 tramite file ZIP: ogni PDF entra dall'ingresso unico."""
     if not file.filename.lower().endswith('.zip'):
         raise HTTPException(status_code=400, detail="Il file deve essere un archivio ZIP")
 
     db = Database.get_db()
-
-    # Leggi il contenuto del file ZIP
     try:
         zip_content = await file.read()
         zip_file = zipfile.ZipFile(io.BytesIO(zip_content))
     except zipfile.BadZipFile as exc:
         raise HTTPException(status_code=400, detail="File ZIP non valido o corrotto") from exc
 
-    # Estrai info sui PDF nel ZIP
     pdf_files = [f for f in zip_file.namelist() if f.lower().endswith('.pdf') and not f.startswith('__MACOSX')]
-
     if not pdf_files:
+        zip_file.close()
         raise HTTPException(status_code=400, detail="Nessun file PDF trovato nel ZIP")
 
-    results = {
-        "total": len(pdf_files),
-        "imported": 0,
-        "duplicates": 0,
-        "errors": 0,
-        "details": []
-    }
-
-    # Recupera tutti gli hash esistenti per controllo duplicati veloce
-    existing_hashes = set()
-    existing_docs = await db["f24_unificato"].find({}, {"file_hash": 1, "_id": 0}).to_list(10000)
-    for doc in existing_docs:
-        if doc.get("file_hash"):
-            existing_hashes.add(doc["file_hash"])
-
-    # Processa ogni PDF
-    for pdf_name in pdf_files:
-        try:
-            # Estrai il contenuto del PDF
-            pdf_content = zip_file.read(pdf_name)
-
-            # Calcola hash SHA256 per controllo duplicati
-            file_hash = hashlib.sha256(pdf_content).hexdigest()
-
-            # Controlla se è un duplicato
-            if file_hash in existing_hashes:
-                results["duplicates"] += 1
-                results["details"].append({
-                    "file": pdf_name,
-                    "status": "duplicate",
-                    "message": "File già presente nel sistema"
-                })
-                continue
-
-            # Genera ID univoco
-            file_id = str(uuid4())
-            safe_filename = os.path.basename(pdf_name).replace(" ", "_")
-            stored_filename = f"{file_id}_{safe_filename}"
-
-            # Architettura Drive/Supabase: salva PDF come Base64
-            import base64
-            pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-
-            # Crea record nel database con pdf_data
-            doc = {
-                "id": file_id,
-                "original_filename": pdf_name,
-                "stored_filename": stored_filename,
-                "pdf_data": pdf_base64,  # Architettura Drive/Supabase
-                "file_hash": file_hash,
-                "file_size": len(pdf_content),
-                "status": "pending",  # pending, processed, error
-                "imported_from_zip": file.filename,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-
-            from app.services.f24_canonico import salva_f24
-
-            file_id = await salva_f24(db, doc, source="f24_upload_zip")
-            existing_hashes.add(file_hash)  # Aggiungi all'elenco per evitare duplicati nello stesso upload
-
-            results["imported"] += 1
-            results["details"].append({
-                "file": pdf_name,
-                "status": "imported",
-                "id": file_id
-            })
-
-        except Exception as e:
-            logger.error(f"Errore elaborazione {pdf_name}: {e}")
-            results["errors"] += 1
-            results["details"].append({
-                "file": pdf_name,
-                "status": "error",
-                "message": str(e)
-            })
-
-    zip_file.close()
-
-    return results
+    try:
+        voci = [(nome, zip_file.read(nome)) for nome in pdf_files]
+    finally:
+        zip_file.close()
+    return await _importa_lotto(db, voci, source="f24_upload_zip")
 
 
 @router.post(
@@ -139,99 +89,10 @@ async def upload_f24_zip(
 async def upload_f24_multiple(
     files: List[UploadFile] = File(...)
 ) -> Dict[str, Any]:
-    """
-    Upload massivo di multipli PDF F24.
-    - Accetta più file PDF contemporaneamente
-    - Controlla duplicati tramite hash SHA256
-    - Salva i file e crea record nel database
-    """
+    """Upload di più PDF F24 in una volta: ogni PDF entra dall'ingresso unico."""
     db = Database.get_db()
-
-    results = {
-        "total": len(files),
-        "imported": 0,
-        "duplicates": 0,
-        "errors": 0,
-        "details": []
-    }
-
-    # Recupera hash esistenti
-    existing_hashes = set()
-    existing_docs = await db["f24_unificato"].find({}, {"file_hash": 1, "_id": 0}).to_list(10000)
-    for doc in existing_docs:
-        if doc.get("file_hash"):
-            existing_hashes.add(doc["file_hash"])
-
-    for file in files:
-        try:
-            # Verifica che sia un PDF
-            if not file.filename.lower().endswith('.pdf'):
-                results["errors"] += 1
-                results["details"].append({
-                    "file": file.filename,
-                    "status": "error",
-                    "message": "Il file non è un PDF"
-                })
-                continue
-
-            # Leggi contenuto
-            pdf_content = await file.read()
-
-            # Calcola hash
-            file_hash = hashlib.sha256(pdf_content).hexdigest()
-
-            # Controlla duplicati
-            if file_hash in existing_hashes:
-                results["duplicates"] += 1
-                results["details"].append({
-                    "file": file.filename,
-                    "status": "duplicate",
-                    "message": "File già presente nel sistema"
-                })
-                continue
-
-            # Architettura Drive/Supabase: salva PDF come Base64
-            import base64
-            file_id = str(uuid4())
-            safe_filename = os.path.basename(file.filename).replace(" ", "_")
-            stored_filename = f"{file_id}_{safe_filename}"
-
-            pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-
-            # Crea record con pdf_data
-            doc = {
-                "id": file_id,
-                "original_filename": file.filename,
-                "stored_filename": stored_filename,
-                "pdf_data": pdf_base64,  # Architettura Drive/Supabase
-                "file_hash": file_hash,
-                "file_size": len(pdf_content),
-                "status": "pending",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-
-            from app.services.f24_canonico import salva_f24
-
-            file_id = await salva_f24(db, doc, source="f24_upload_multiple")
-            existing_hashes.add(file_hash)
-
-            results["imported"] += 1
-            results["details"].append({
-                "file": file.filename,
-                "status": "imported",
-                "id": file_id
-            })
-
-        except Exception as e:
-            logger.error(f"Errore upload {file.filename}: {e}")
-            results["errors"] += 1
-            results["details"].append({
-                "file": file.filename,
-                "status": "error",
-                "message": str(e)
-            })
-
-    return results
+    voci = [(f.filename, await f.read()) for f in files]
+    return await _importa_lotto(db, voci, source="f24_upload_multiple")
 
 
 @router.get(
@@ -376,100 +237,37 @@ async def create_f24(
 async def upload_f24_pdf(
     file: UploadFile = File(...)
 ) -> Dict[str, Any]:
-    """
-    Upload PDF F24 con parsing automatico.
-    Usa il parser basato su coordinate PyMuPDF.
-    Salva nella collezione unificata f24_commercialista.
-    """
-    import tempfile
-    import base64
-    from app.services.parser_f24 import parse_f24_commercialista
-    from app.db_collections import COLL_F24
+    """Upload di un PDF F24: stesso ingresso di Documenti > Import, Drive e posta."""
+    from app.services.f24_canonico import importa_modello_bytes
 
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo file PDF supportati")
 
     db = Database.get_db()
     pdf_bytes = await file.read()
-
-    # Salva temporaneamente il PDF per il parser
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-        tmp_file.write(pdf_bytes)
-        tmp_path = tmp_file.name
-
-    try:
-        parsed = parse_f24_commercialista(tmp_path)
-    finally:
-        os.unlink(tmp_path)
-
-    if "error" in parsed and parsed["error"]:
-        return {
-            "success": False,
-            "error": parsed["error"],
-            "filename": file.filename
-        }
-    try:
-        from app.services.f24_canonico import richiedi_quadratura_f24
-
-        richiedi_quadratura_f24(parsed)
-    except ValueError as exc:
-        return {"success": False, "error": str(exc), "filename": file.filename}
-
-    totali = parsed.get("totali", {})
-    dati = parsed.get("dati_generali", {})
-    data_scadenza = dati.get("data_versamento")
-
-    # Check duplicati
-    existing = await db[COLL_F24].find_one({
-        "$or": [
-            {"dati_generali.data_scadenza": data_scadenza, "totali.saldo_netto": totali.get("saldo_finale", 0)},
-            {"file_name": file.filename}
-        ]
-    })
-
-    if existing:
+    esito = await importa_modello_bytes(db, pdf_bytes, file.filename, source="f24_upload_pdf")
+    if not esito.get("success"):
+        return {"success": False, "error": esito.get("error"), "filename": file.filename}
+    if esito.get("duplicate"):
         return {
             "success": False,
             "error": "F24 già presente nel sistema",
-            "existing_id": existing.get("id"),
-            "filename": file.filename
+            "existing_id": esito.get("f24_id"),
+            "filename": file.filename,
         }
 
-    # Crea documento nel formato f24_commercialista
-    f24_id = str(uuid4())
-    f24_doc = {
-        "id": f24_id,
-        "f24_key": f"{dati.get('codice_fiscale', '')}_{data_scadenza}",
-        "file_name": file.filename,
-        "file_path": None,
-        "dati_generali": dati,
-        "sezione_erario": parsed.get("sezione_erario", []),
-        "sezione_inps": parsed.get("sezione_inps", []),
-        "sezione_regioni": parsed.get("sezione_regioni", []),
-        "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
-        "sezione_inail": parsed.get("sezione_inail", []),
-        "totali": totali,
-        "validazione": parsed.get("validazione", {}),
-        "has_ravvedimento": parsed.get("has_ravvedimento", False),
-        "status": "da_pagare",
-        "riconciliato": False,
-        "pdf_data": base64.b64encode(pdf_bytes).decode('utf-8'),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-
-    from app.services.f24_canonico import salva_f24
-
-    f24_id = await salva_f24(db, f24_doc, source="f24_upload_pdf")
-
-    logger.info(f"F24 importato: {f24_id} - €{totali.get('saldo_netto', totali.get('saldo_finale', 0)):.2f}")
-
+    modello = await db[COLL_F24].find_one({"id": esito["f24_id"]}, {"_id": 0, "dati_generali": 1, "totali": 1})
+    dati = (modello or {}).get("dati_generali") or {}
+    totali = (modello or {}).get("totali") or {}
+    saldo = totali.get("saldo_netto", totali.get("saldo_finale", 0))
+    logger.info("F24 importato: %s - €%.2f", esito["f24_id"], saldo or 0)
     return {
         "success": True,
-        "id": f24_id,
-        "scadenza": data_scadenza,
+        "id": esito["f24_id"],
+        "scadenza": dati.get("data_versamento"),
         "contribuente": dati.get("ragione_sociale"),
-        "saldo_finale": totali.get("saldo_netto", totali.get("saldo_finale", 0)),
+        "saldo_finale": saldo,
+        "righe_tributo": esito.get("righe_tributo"),
         "filename": file.filename
     }
 

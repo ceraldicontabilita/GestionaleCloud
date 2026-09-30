@@ -7,13 +7,11 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from app.database import Database
 from app.services.email_downloader import download_and_process_emails, get_mittenti_configurati
-from app.services.parser_f24 import parse_f24_commercialista
 from app.services.f24_parser import parse_quietanza_f24
 from app.services.codici_tributo_db import get_info_codice_tributo
 import logging
-import hashlib
 from app.config import settings
-from app.services.f24_canonico import importa_quietanza, salva_f24
+from app.services.f24_canonico import importa_modello_bytes, importa_quietanza
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -143,94 +141,55 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 risultati["processati"] += 1
                 continue
 
-            parsed_f24 = parse_f24_commercialista(pdf_content=pdf_content)
-
-            # Se ha codici tributo, è un F24
-            has_tributi = (
-                len(parsed_f24.get("sezione_erario", [])) > 0 or
-                len(parsed_f24.get("sezione_inps", [])) > 0 or
-                len(parsed_f24.get("sezione_regioni", [])) > 0
-            )
-
-            if has_tributi and "error" not in parsed_f24:
-                # È un F24 della commercialista/consulente
-                file_hash = hashlib.sha256(pdf_content).hexdigest()
-                pdf_hash = hashlib.md5(pdf_content).hexdigest()
-                gia_presente = await db[COLL_F24_COMMERCIALISTA].find_one(
-                    {"$or": [{"file_hash": file_hash}, {"pdf_hash": pdf_hash}]},
-                    {"_id": 0, "id": 1},
-                )
-                f24_doc = {
-                    "id": allegato.get("id"),
-                    "file_name": allegato.get("original_filename"),
-                    "pdf_data": pdf_data,  # Architettura Drive/Supabase
-                    "file_hash": file_hash,
-                    "pdf_hash": pdf_hash,
+            esito_modello = await importa_modello_bytes(
+                db, pdf_content, allegato.get("original_filename") or "f24.pdf",
+                source="email_f24",
+                source_metadata={
                     "email_from": allegato.get("email_from"),
                     "email_date": allegato.get("email_date"),
                     "mittente_tipo": mittente_tipo,
                     "categoria_f24": categoria,
-                    "dati_generali": parsed_f24.get("dati_generali", {}),
-                    "sezione_erario": parsed_f24.get("sezione_erario", []),
-                    "sezione_inps": parsed_f24.get("sezione_inps", []),
-                    "sezione_regioni": parsed_f24.get("sezione_regioni", []),
-                    "sezione_tributi_locali": parsed_f24.get("sezione_tributi_locali", []),
-                    "totali": parsed_f24.get("totali", {}),
-                    "codici_univoci": parsed_f24.get("codici_univoci", []),
-                    "has_ravvedimento": parsed_f24.get("has_ravvedimento", False),
-                    "status": "da_pagare",
-                    "riconciliato": False,
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                }
-
-                f24_id = gia_presente.get("id") if gia_presente else await salva_f24(
-                    db, f24_doc, source="email_f24"
-                )
-                if not gia_presente:
+                    "attachment_id": allegato.get("id"),
+                },
+            )
+            if esito_modello.get("success"):
+                if not esito_modello.get("duplicate"):
                     risultati["f24_commercialista"] += 1
                 risultati["dettagli"].append({
                     "file": allegato.get("original_filename"),
                     "tipo": "F24",
-                    "f24_id": f24_id,
-                    "duplicato": bool(gia_presente),
+                    "f24_id": esito_modello.get("f24_id"),
+                    "duplicato": bool(esito_modello.get("duplicate")),
                     "categoria": categoria,
-                    "importo": parsed_f24.get("totali", {}).get("saldo_netto", 0),
-                    "codici": len(parsed_f24.get("codici_univoci", []))
+                    "righe_tributo": esito_modello.get("righe_tributo"),
                 })
-            else:
-                # Prova come quietanza (architettura Drive/Supabase: usa bytes)
-                parsed_quietanza = parse_quietanza_f24(pdf_content=pdf_content)
-
-                has_quietanza_data = (
-                    len(parsed_quietanza.get("sezione_erario", [])) > 0 or
-                    len(parsed_quietanza.get("sezione_inps", [])) > 0
+            elif esito_modello.get("stato_modello") == "SENZA_RIGHE_TRIBUTO":
+                # Non e' un modello: prova come quietanza senza protocollo leggibile.
+                esito_fallback = await importa_quietanza(
+                    db,
+                    pdf_content,
+                    allegato.get("original_filename") or "quietanza.pdf",
+                    source="email_f24_fallback",
                 )
-
-                if has_quietanza_data and "error" not in parsed_quietanza:
-                    esito_fallback = await importa_quietanza(
-                        db,
-                        pdf_content,
-                        allegato.get("original_filename") or "quietanza.pdf",
-                        source="email_f24_fallback",
-                    )
-                    if not esito_fallback.get("success"):
-                        raise ValueError(esito_fallback.get("error") or "Import quietanza fallito")
+                if esito_fallback.get("success"):
                     if not esito_fallback.get("duplicate"):
                         risultati["quietanze"] += 1
                     risultati["dettagli"].append({
                         "file": allegato.get("original_filename"),
                         "tipo": "Quietanza",
                         "duplicato": bool(esito_fallback.get("duplicate")),
-                        "importo": parsed_quietanza.get("totali", {}).get("saldo_netto", 0)
+                        "importo": esito_fallback.get("saldo", 0),
                     })
                 else:
-                    # Non riconosciuto
                     risultati["errori"] += 1
                     risultati["dettagli"].append({
                         "file": allegato.get("original_filename"),
                         "tipo": "Non riconosciuto",
-                        "errore": "Impossibile identificare come F24 o quietanza"
+                        "errore": esito_fallback.get("error") or "Impossibile identificare come F24 o quietanza",
                     })
+            else:
+                # Un F24 che non quadra non si salva: l'errore dice saldo e righe lette.
+                raise ValueError(esito_modello.get("error") or "Import F24 fallito")
 
             # Marca come processato
             await db[COLL_ALLEGATI].update_one(
@@ -265,11 +224,6 @@ async def processa_allegati_f24() -> Dict[str, Any]:
     ).to_list(100)
     for doc in inbox_docs:
         try:
-            gia = await db[COLL_F24_COMMERCIALISTA].find_one({"source_document_id": doc["id"]})
-            if gia:
-                await db["documents_inbox"].update_one(
-                    {"id": doc["id"]}, {"$set": {"f24_processato": True}})
-                continue
             pdf_content = _b64.b64decode(doc["pdf_data"])
             parsed_q = parse_quietanza_f24(pdf_content=pdf_content)
             dg_q = parsed_q.get("dati_generali", {})
@@ -300,56 +254,28 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 )
                 continue
 
-            parsed_f24 = parse_f24_commercialista(pdf_content=pdf_content)
-            has_tributi = (
-                len(parsed_f24.get("sezione_erario", [])) > 0 or
-                len(parsed_f24.get("sezione_inps", [])) > 0 or
-                len(parsed_f24.get("sezione_regioni", [])) > 0
-            )
-            if has_tributi and "error" not in parsed_f24:
-                file_hash = hashlib.sha256(pdf_content).hexdigest()
-                pdf_hash = hashlib.md5(pdf_content).hexdigest()
-                gia_hash = await db[COLL_F24_COMMERCIALISTA].find_one(
-                    {"$or": [{"file_hash": file_hash}, {"pdf_hash": pdf_hash}]},
-                    {"_id": 0, "id": 1},
-                )
-                f24_doc = {
-                    "id": str(__import__("uuid").uuid4()),
-                    "file_name": doc.get("filename"),
-                    "source_document_id": doc["id"],
-                    "pdf_data": doc["pdf_data"],
-                    "file_hash": file_hash,
-                    "pdf_hash": pdf_hash,
+            esito_modello = await importa_modello_bytes(
+                db, pdf_content, doc.get("filename") or "f24.pdf",
+                source="documents_inbox_email",
+                source_metadata={
                     "email_from": doc.get("email_from"),
                     "email_date": doc.get("email_date"),
-                    "dati_generali": parsed_f24.get("dati_generali", {}),
-                    "sezione_erario": parsed_f24.get("sezione_erario", []),
-                    "sezione_inps": parsed_f24.get("sezione_inps", []),
-                    "sezione_regioni": parsed_f24.get("sezione_regioni", []),
-                    "sezione_tributi_locali": parsed_f24.get("sezione_tributi_locali", []),
-                    "totali": parsed_f24.get("totali", {}),
-                    "codici_univoci": parsed_f24.get("codici_univoci", []),
-                    "has_ravvedimento": parsed_f24.get("has_ravvedimento", False),
-                    "status": "da_pagare",
-                    "riconciliato": False,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-                f24_id = gia_hash.get("id") if gia_hash else await salva_f24(
-                    db, f24_doc, source="documents_inbox_email"
-                )
-                if not gia_hash:
+                    "source_document_id": doc["id"],
+                },
+            )
+            if esito_modello.get("success"):
+                if not esito_modello.get("duplicate"):
                     risultati["f24_commercialista"] += 1
                 risultati["processati"] += 1
                 risultati["dettagli"].append({
                     "file": doc.get("filename"), "tipo": "F24 (documents_inbox)",
-                    "f24_id": f24_id,
-                    "duplicato": bool(gia_hash),
-                    "codici": len(parsed_f24.get("codici_univoci", [])),
-                    "importo": parsed_f24.get("totali", {}).get("saldo_netto", 0),
+                    "f24_id": esito_modello.get("f24_id"),
+                    "duplicato": bool(esito_modello.get("duplicate")),
+                    "righe_tributo": esito_modello.get("righe_tributo"),
                 })
                 await db["documents_inbox"].update_one(
-                    {"id": doc["id"]}, {"$set": {"f24_processato": True}})
-            else:
+                    {"id": doc["id"]}, {"$set": {"f24_processato": True, "f24_id": esito_modello.get("f24_id")}})
+            elif esito_modello.get("stato_modello") == "SENZA_RIGHE_TRIBUTO":
                 # lasciato riprovabile ma tracciato
                 risultati["dettagli"].append({
                     "file": doc.get("filename"), "tipo": "inbox non riconosciuto come F24",
@@ -358,6 +284,8 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                     {"id": doc["id"]},
                     {"$set": {"f24_processato": True,
                               "f24_esito": "non_riconosciuto_da_parser"}})
+            else:
+                raise ValueError(esito_modello.get("error") or "Import F24 fallito")
         except Exception as e:
             logger.error(f"Errore processing F24 inbox {doc.get('filename')}: {e}")
             risultati["errori"] += 1

@@ -51,12 +51,12 @@ def test_email_quietanza_non_viene_scambiata_per_modello_f24(monkeypatch):
 
         f24_chiamato = False
 
-        def parse_f24_vietato(**_):
+        async def modello_vietato(*_a, **_k):
             nonlocal f24_chiamato
             f24_chiamato = True
-            return {}
+            return {"success": False, "error": "non doveva essere chiamato"}
 
-        monkeypatch.setattr(email_f24, "parse_f24_commercialista", parse_f24_vietato)
+        monkeypatch.setattr(email_f24, "importa_modello_bytes", modello_vietato)
 
         async def importa(*_args, **_kwargs):
             return {
@@ -86,11 +86,14 @@ def test_email_f24_stesso_pdf_in_due_allegati_non_duplica(monkeypatch):
         ])
         monkeypatch.setattr(email_f24.Database, "get_db", staticmethod(lambda: db))
         monkeypatch.setattr(email_f24, "parse_quietanza_f24", lambda **_: {"dati_generali": {}})
-        monkeypatch.setattr(email_f24, "parse_f24_commercialista", lambda **_: {
+        # Stesso lettore dell'ingresso unico: l'allegato passa da importa_modello_bytes.
+        monkeypatch.setattr("app.services.parser_f24.parse_f24_commercialista", lambda pdf_content: {
             "dati_generali": {"codice_fiscale": "04523831214", "data_versamento": "2026-07-16"},
-            "sezione_erario": [{"codice_tributo": "6006", "importo_debito": 100}],
+            "sezione_erario": [{"codice_tributo": "6006", "anno": "2026", "importo_debito": 100,
+                                "importo_debito_cents": 10000, "importo_credito_cents": 0}],
             "sezione_inps": [], "sezione_regioni": [], "sezione_tributi_locali": [],
-            "totali": {"saldo_netto": 100}, "codici_univoci": ["6006"],
+            "totali": {"saldo_netto": 100, "saldo_delega_cents": 10000},
+            "validazione": {"saldo_quadrato": True, "parser_version": "test"},
         })
 
         esito = await email_f24.processa_allegati_f24()
@@ -99,5 +102,38 @@ def test_email_f24_stesso_pdf_in_due_allegati_non_duplica(monkeypatch):
         assert await db["f24_unificato"].count_documents({}) == 1
         dettagli = [d for d in esito["risultati"]["dettagli"] if d.get("tipo") == "F24"]
         assert [d["duplicato"] for d in dettagli] == [False, True]
+        modello = await db["f24_unificato"].find_one({})
+        # La provenienza del primo arrivo resta; la seconda copia si annota.
+        assert modello["file_name"] == "f24-a.pdf"
+        assert modello["source_metadata"]["attachment_id"] == "a1"
+        assert [p["attachment_id"] for p in modello["source_occurrences"]] == ["a2"]
+
+    asyncio.run(scenario())
+
+
+def test_email_allegato_senza_righe_tributo_non_diventa_modello(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria()["test_email_f24_guscio"]
+        await db["email_allegati"].insert_one({
+            "id": "a1", "original_filename": "Sportello virtuale.pdf",
+            "extension": ".pdf", "processato": False,
+            "pdf_data": base64.b64encode(b"pratica").decode(),
+        })
+        monkeypatch.setattr(email_f24.Database, "get_db", staticmethod(lambda: db))
+        monkeypatch.setattr(email_f24, "parse_quietanza_f24", lambda **_: {"dati_generali": {}})
+        monkeypatch.setattr("app.services.parser_f24.parse_f24_commercialista", lambda pdf_content: {
+            "dati_generali": {}, "sezione_erario": [], "totali": {},
+        })
+
+        async def quietanza_no(*_a, **_k):
+            return {"success": False, "error": "Nessuna riga tributo letta: non e' una quietanza F24"}
+
+        monkeypatch.setattr(email_f24, "importa_quietanza", quietanza_no)
+        esito = await email_f24.processa_allegati_f24()
+
+        assert esito["risultati"]["f24_commercialista"] == 0
+        assert esito["risultati"]["errori"] == 1
+        assert await db["f24_unificato"].count_documents({}) == 0
+        assert esito["risultati"]["dettagli"][0]["tipo"] == "Non riconosciuto"
 
     asyncio.run(scenario())
