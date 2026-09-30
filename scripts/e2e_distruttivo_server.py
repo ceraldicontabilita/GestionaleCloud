@@ -14,17 +14,14 @@ from pathlib import Path
 # in memoria non basta: alcuni router aprono connessioni HR/Postgres, Drive o
 # servizi esterni direttamente. Rimuoverle PRIMA di importare app.* impedisce
 # che il collaudo usi per errore quelle connessioni.
-for _nome in tuple(os.environ):
-    if _nome.startswith(("SUPABASE_", "HR_", "MENU_", "LOTTI_", "APPDIPENDENTI_",
-                         "GOOGLE_", "GMAIL_", "SMTP_", "PAYPAL_", "SUMUP_",
-                         "REACT_APP_", "VITE_")) or _nome in {
-        "DATABASE_URL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
-        "RENDER_INGEST_SHARED_SECRET", "GESTIONE_RISERVATA_CODE",
-    }:
-        os.environ.pop(_nome, None)
+from scripts.collaudo_isolato import ambiente_isolato
+
+_ambiente_fixture = ambiente_isolato(os.environ)
+os.environ.clear()
+os.environ.update(_ambiente_fixture)
 
 # Configurazione deliberatamente fittizia, impostata prima di importare app.*.
-os.environ["ENVIRONMENT"] = "development"
+os.environ["ENVIRONMENT"] = "test"
 os.environ["ENABLE_SCHEDULER"] = "false"
 os.environ["PROCESS_ROLE"] = "web"
 os.environ["RUN_STARTUP_DATA_REPAIRS"] = "false"

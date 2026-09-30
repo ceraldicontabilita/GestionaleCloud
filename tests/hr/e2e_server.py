@@ -6,11 +6,12 @@ Nessun lifespan ERP/HR, connessione Supabase o scheduler.
 """
 import os
 
-# Nessun URL/credenziale ereditati: fixture locale, mai produzione.
-for key in list(os.environ):
-    if (key.startswith(("HR_", "LOTTI_", "MENU_", "SUPABASE_", "GOOGLE_", "GMAIL_", "SMTP_"))
-            or any(word in key.upper() for word in ("URL", "MONGO", "TOKEN", "SECRET", "PIN", "API_KEY", "PASSWORD"))):
-        os.environ.pop(key, None)
+# Stesso perimetro del runner ERP: nessun URL, segreto o .env ereditato.
+from scripts.collaudo_isolato import ambiente_isolato
+
+_ambiente_fixture = ambiente_isolato(os.environ)
+os.environ.clear()
+os.environ.update(_ambiente_fixture)
 os.environ["HR_JWT_SECRET"] = "e2e-hr-fixture-isolata-non-produzione-12345678"
 os.environ["SECRET_KEY"] = "e2e-erp-fixture-isolata-non-produzione-12345678"
 os.environ["ENABLE_SCHEDULER"] = "false"

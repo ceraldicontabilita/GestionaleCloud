@@ -6,9 +6,11 @@ Nessuno startup ERP, client Supabase reale o sync Qromo.
 import os
 from copy import deepcopy
 
-for nome in list(os.environ):
-    if nome.startswith(("MENU_", "SUPABASE_", "HR_", "LOTTI_", "GOOGLE_", "GMAIL_")):
-        os.environ.pop(nome, None)
+from scripts.collaudo_isolato import ambiente_isolato
+
+_ambiente_fixture = ambiente_isolato(os.environ)
+os.environ.clear()
+os.environ.update(_ambiente_fixture)
 os.environ["ENABLE_SCHEDULER"] = "false"
 os.environ["ENABLE_QROMO_AUTO_SYNC"] = "false"
 os.environ["MENU_JWT_SECRET"] = "menu-e2e-isolato-solo-test-non-produzione"
@@ -47,6 +49,7 @@ async def _db():
 
 
 carta_qromo._db = _db
+menu_routes._db_legacy = _db
 menu_app.dependency_overrides[qrcode_routes.verify_token] = lambda: "admin_isolato"
 
 app = FastAPI(title="Menu collaudo isolato")

@@ -206,7 +206,8 @@ class Settings(BaseSettings):
     _auth_secret_source: str = PrivateAttr(default="unset")
 
     model_config = SettingsConfigDict(
-        env_file="/app/backend/.env",
+        env_file=(None if os.environ.get("ENVIRONMENT", "").strip().lower() == "test"
+                  else "/app/backend/.env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore"
@@ -223,6 +224,10 @@ class Settings(BaseSettings):
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
         # Le variabili iniettate da Render devono prevalere su un file .env
         # dell'immagine potenzialmente obsoleto.
+        if os.environ.get("ENVIRONMENT", "").strip().lower() == "test":
+            # Il runner rimuove le credenziali ereditate: un file .env o un
+            # secrets_dir non deve reintrodurle dopo lo scrub.
+            return (init_settings, env_settings)
         return (init_settings, env_settings, dotenv_settings, file_secret_settings)
 
     def __init__(self, **kwargs):

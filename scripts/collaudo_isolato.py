@@ -10,13 +10,14 @@ import subprocess
 import sys
 
 
-def main():
-    ambiente = dict(os.environ)
+def ambiente_isolato(sorgente):
+    """Esclude anche alias legacy e URL che aprono client fuori dal deposito ERP."""
+    ambiente = dict(sorgente)
     for nome in tuple(ambiente):
         if any(parola in nome for parola in (
             "SUPABASE", "SECRET", "TOKEN", "API_KEY", "GMAIL", "PAYPAL",
             "SUMUP", "PIN_HASH", "SMTP", "GOOGLE", "DATABASE", "MONGO",
-            "BACKEND_URL", "API_URL",
+            "URL", "PASSWORD", "CREDENTIAL",
         )) or nome.startswith(("VITE_", "REACT_APP_", "MENU_", "LOTTI_",
                               "HR_", "APPDIPENDENTI_")):
             ambiente.pop(nome, None)
@@ -27,6 +28,11 @@ def main():
         RUN_STARTUP_DATA_REPAIRS="false",
         RUN_STARTUP_INDEX_MIGRATIONS="false", RUN_STARTUP_SEED_DATA="false",
     )
+    return ambiente
+
+
+def main():
+    ambiente = ambiente_isolato(os.environ)
     return subprocess.call([sys.executable, "-m", "pytest", *sys.argv[1:]],
                            cwd=Path(__file__).resolve().parents[1], env=ambiente)
 
