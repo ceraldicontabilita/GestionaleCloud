@@ -8,7 +8,9 @@ sempre "ok" anche ignorandoli, verificato) — va bene solo per email senza
 allegato. Quando c'è un allegato serve SMTP:
   1. SMTP_HOST/SMTP_PORT + SMTP_EMAIL|SMTP_USER + SMTP_PASSWORD
   2. PEC_HOST/PEC_PORT + PEC_USER + PEC_PASSWORD
-  3. GMAIL_APP_PASSWORD (+ ADMIN_EMAIL o GMAIL_ACCOUNT_AMMINISTRATIVO) → smtp.gmail.com:465
+  3. password per le app di Gmail, con i nomi e la precedenza di
+     `app/services/gmail_credentials.py` (lo stesso account della posta in
+     ingresso) → smtp.gmail.com:465
 Credenziali SOLO nelle env di Render, mai nel codice/chat.
 """
 import os
@@ -34,13 +36,15 @@ def credenziali_smtp() -> Optional[dict]:
     user = os.getenv("SMTP_EMAIL") or os.getenv("SMTP_USER") or os.getenv("PEC_USER")
     pwd = os.getenv("SMTP_PASSWORD") or os.getenv("PEC_PASSWORD")
     if not (host and user and pwd):
-        gmail_pwd = os.getenv("GMAIL_APP_PASSWORD")
-        gmail_user = os.getenv("GMAIL_ACCOUNT_AMMINISTRATIVO") or os.getenv("ADMIN_EMAIL")
-        if gmail_pwd and gmail_user:
+        # Un solo elenco di nomi e una sola precedenza per l'account Gmail:
+        # `gmail_credentials` toglie gli spazi dell'app password («abcd efgh…»).
+        from app.services.gmail_credentials import get_gmail_environment_credentials
+
+        gmail = get_gmail_environment_credentials()
+        if gmail.password and gmail.user:
             host = host or "smtp.gmail.com"
-            user = user or gmail_user
-            # l'app password di Gmail si copia spesso con gli spazi (xxxx xxxx xxxx xxxx)
-            pwd = pwd or gmail_pwd.replace(" ", "")
+            user = user or gmail.user
+            pwd = pwd or gmail.password
     if not (host and user and pwd):
         return None
     return {"host": host, "port": int(port_str or 465), "user": user, "password": pwd}
@@ -61,12 +65,17 @@ def _invia_via_relay(cred: dict, destinatario: str, oggetto: str, corpo: str) ->
 
 
 def _invia_via_smtp(cred: dict, destinatario: str, oggetto: str, corpo: str,
-                    allegati: Optional[Sequence[Tuple[bytes, str, str, str]]] = None) -> None:
+                    allegati: Optional[Sequence[Tuple[bytes, str, str, str]]] = None,
+                    html: bool = False) -> None:
     msg = EmailMessage()
     msg["From"] = cred["user"]
     msg["To"] = destinatario
     msg["Subject"] = oggetto
-    msg.set_content(corpo)
+    if html:
+        msg.set_content("Questo messaggio è in formato HTML: aprilo con un client di posta che lo mostri.")
+        msg.add_alternative(corpo, subtype="html")
+    else:
+        msg.set_content(corpo)
     for dati, maintype, subtype, filename in (allegati or []):
         msg.add_attachment(dati, maintype=maintype, subtype=subtype, filename=filename)
     # timeout esplicito: senza, una connessione SMTP che non risponde resta
@@ -88,17 +97,18 @@ def _invia_via_smtp(cred: dict, destinatario: str, oggetto: str, corpo: str,
 
 
 def invia_email(destinatario: str, oggetto: str, corpo: str,
-                allegati: Optional[Sequence[Tuple[bytes, str, str, str]]] = None) -> None:
+                allegati: Optional[Sequence[Tuple[bytes, str, str, str]]] = None,
+                html: bool = False) -> None:
     """Invio SINCRONO (bloccante): chiamare da un thread (asyncio.to_thread) se
     usato da codice async. allegati: lista di (bytes, maintype, subtype, filename).
-    Con allegati serve per forza SMTP (il relay li ignora silenziosamente)."""
-    if allegati:
+    Con allegati o con corpo HTML serve per forza SMTP (il relay li ignora)."""
+    if allegati or html:
         cred = credenziali_smtp()
         if not cred:
             raise RuntimeError("Email con allegato non configurata su Render: il relay "
                                "(GMAIL_RELAY_URL/SECRET) non supporta gli allegati, serve "
                                "SMTP_HOST/PEC_HOST oppure GMAIL_APP_PASSWORD + ADMIN_EMAIL")
-        _invia_via_smtp(cred, destinatario, oggetto, corpo, allegati)
+        _invia_via_smtp(cred, destinatario, oggetto, corpo, allegati, html)
         return
     relay = _credenziali_relay()
     if relay:
