@@ -8,6 +8,9 @@ Endpoints:
 - GET /api/mutui/statistiche/dashboard - Statistiche generali
 - POST /api/mutui/riconcilia - Stato del riscontro rate ↔ banca
 - GET /api/mutui/{mutuo_id}/rate - Rate del mutuo
+- POST /api/mutui/{mutuo_id}/rate-dichiarate - Rate scadute «pagate, dichiarato dal
+  titolare» (anteprima per difetto, conferma forte, solo admin)
+- POST /api/mutui/{mutuo_id}/rate-dichiarate/ritira - Ritiro della dichiarazione
 
 Audit 27/09/2026 (punto 11): il router leggeva la collezione ``mutui``, che
 in produzione non esiste. Il piano vero lo scrive l'import documentale
@@ -28,9 +31,12 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from app.database import Database
+from app.services import mutui_rate_dichiarate as dichiarate
+from app.utils.dependencies import get_current_admin_user
 
 router = APIRouter(tags=["Mutui"])
 logger = logging.getLogger(__name__)
@@ -105,15 +111,38 @@ async def _rate_in_banca(db) -> Dict[tuple, Dict[str, Any]]:
     return per_rata
 
 
-def _mutuo_da_piano(piano: Dict[str, Any], in_banca: Dict[tuple, Dict[str, Any]]) -> Dict[str, Any]:
-    """Il piano documentale nella forma che la pagina Mutui legge."""
+def _mutuo_da_piano(
+    piano: Dict[str, Any], in_banca: Dict[tuple, Dict[str, Any]],
+    prove: Optional[Dict[str, Dict[str, Any]]] = None,
+    dichiarazioni: Optional[Dict[int, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Il piano documentale nella forma che la pagina Mutui legge.
+
+    ``stato`` e' quello effettivo: «Pagata» se la rata e' provata (banca,
+    quietanza, estratto annuale), dichiarata dal titolare o scritta pagata sul
+    piano; ``stato_piano`` conserva quello del PDF e ``prova`` dice chi la
+    regge. ``riconciliata`` resta solo l'addebito in Prima Nota Banca.
+    """
     delibera = str(piano.get("numero_delibera"))
     cifre = _cifre_mutuo(delibera)
+    prove = prove or {}
+    dichiarazioni = dichiarazioni or {}
     rate = []
     for rata in sorted(piano.get("rate") or [], key=lambda r: int(r.get("numero_rata") or 0)):
-        riga_banca = in_banca.get((cifre, _data_gma(rata.get("data_scadenza"))))
+        scadenza = _data_gma(rata.get("data_scadenza"))
+        riga_banca = in_banca.get((cifre, scadenza))
+        dichiarazione = dichiarazioni.get(int(rata.get("numero_rata") or 0))
+        esito = dichiarate.esito_rata(rata, prove.get(scadenza), dichiarazione)
+        attiva = esito["dichiarazione_attiva"]
         rate.append({
             **rata,
+            "stato": "Pagata" if esito["pagata"] else rata.get("stato"),
+            "stato_piano": rata.get("stato"),
+            "prova": esito["prova"],
+            "dichiarata_titolare": esito["prova"] == dichiarate.PROVA_DICHIARATA,
+            "dichiarazione_sostituita": esito["dichiarazione_sostituita"],
+            "dichiarata_da": (dichiarazione or {}).get("dichiarato_da") if attiva else None,
+            "dichiarata_il": (dichiarazione or {}).get("dichiarato_il") if attiva else None,
             "riconciliata": bool(riga_banca),
             "movimento_bancario_id": (riga_banca or {}).get("movimento_bancario_id"),
             "prima_nota_banca_id": (riga_banca or {}).get("id"),
@@ -141,6 +170,8 @@ def _mutuo_da_piano(piano: Dict[str, Any], in_banca: Dict[tuple, Dict[str, Any]]
         "totale_rate": len(rate),
         "rate_pagate": rate_pagate,
         "rate_da_pagare": rate_da_pagare,
+        "rate_dichiarate_titolare": sum(1 for r in rate if r["dichiarata_titolare"]),
+        "rate_provate": sum(1 for r in rate if r["prova"] in dichiarate.PROVE_REALI),
         "rate_residue_dichiarate": piano.get("rate_residue_dichiarate"),
         "totale_pagato_capitale": _somma("quota_capitale", True),
         "totale_pagato_interessi": _somma("quota_interessi", True),
@@ -167,7 +198,13 @@ async def _mutui(db) -> List[Dict[str, Any]]:
     if not piani:
         return []
     in_banca = await _rate_in_banca(db)
-    return [_mutuo_da_piano(piano, in_banca) for piano in piani]
+    prove = await dichiarate.carica_prove(db)
+    dichiarazioni = await dichiarate.carica_dichiarazioni(db)
+    mutui = []
+    for piano in piani:
+        cifre = _cifre_mutuo(piano.get("numero_delibera"))
+        mutui.append(_mutuo_da_piano(piano, in_banca, prove.get(cifre), dichiarazioni.get(cifre)))
+    return mutui
 
 
 async def _mutuo(db, mutuo_id: str) -> Dict[str, Any]:
@@ -297,8 +334,13 @@ async def riconcilia_mutui_con_estratto_conto():
     proiezione bancaria, per numero del mutuo e scadenza in causale. Qui si
     legge quali rate «Pagata» del piano hanno quella riga e quali no.
     """
-    mutui = await _mutui(get_db())
+    db = get_db()
+    # Una prova arrivata dopo sostituisce la dichiarazione del titolare.
+    sostituite = await dichiarate.assorbi_dichiarazioni_rate(db)
+    mutui = await _mutui(db)
     esito: Dict[str, Any] = {
+        "dichiarazioni_sostituite_da_prova": sostituite["sostituite"],
+        "rate_dichiarate_senza_prova": 0,
         "totale_rate_processate": 0,
         "riconciliazioni_automatiche": 0,
         "riconciliazioni_manuali_richieste": 0,
@@ -307,6 +349,10 @@ async def riconcilia_mutui_con_estratto_conto():
     for mutuo in mutui:
         for rata in mutuo["rate"]:
             if rata.get("stato") != "Pagata":
+                continue
+            if rata.get("dichiarata_titolare"):
+                # Dichiarata dal titolare: nessun addebito da riscontrare finche' non c'e' l'estratto.
+                esito["rate_dichiarate_senza_prova"] += 1
                 continue
             esito["totale_rate_processate"] += 1
             voce = {
@@ -328,3 +374,63 @@ async def riconcilia_mutui_con_estratto_conto():
                 voce["status"] = "addebito_bancario_non_trovato"
             esito["dettagli"].append(voce)
     return {"success": True, "message": "Riscontro completato", "data": esito}
+
+
+# ============================================================================
+# RATE «PAGATE, DICHIARATO DAL TITOLARE»
+# ============================================================================
+
+class DichiarazioneRate(BaseModel):
+    data_limite: Optional[str] = None  # gg/mm/aaaa o ISO; default oggi (le rate future restano fuori)
+    motivo: str = dichiarate.MOTIVO_DEFAULT
+    motivo_altro: Optional[str] = None
+    dry_run: bool = True
+    conferma: Optional[str] = None  # la frase mostrata dall'anteprima
+
+
+class RitiroDichiarazione(BaseModel):
+    numeri_rata: Optional[List[int]] = None  # default: tutte le dichiarazioni attive
+    motivo: str = "dichiarazione_errata"
+    motivo_altro: Optional[str] = None
+    dry_run: bool = True
+    conferma: Optional[str] = None
+
+
+def _attore(utente: Dict[str, Any]) -> str:
+    return str(utente.get("email") or utente.get("username") or utente.get("user_id") or "titolare")
+
+
+@router.post("/{mutuo_id}/rate-dichiarate", summary="Segna le rate scadute come pagate (dichiarato dal titolare)")
+async def dichiara_rate_pagate(
+    mutuo_id: str, corpo: DichiarazioneRate, utente: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Le rate scadute senza prova diventano `pagata_dichiarata_titolare`.
+
+    `dry_run` per difetto: risponde con l'anteprima (numero rate, importi in
+    centesimi, prima e ultima scadenza, rate gia' provate) e la frase di
+    conferma. Con `dry_run=false` serve quella frase. Non tocca una rata gia'
+    provata da banca, quietanza o estratto annuale, non scrive nel giornale
+    ne' in Prima Nota, e una prova successiva sostituisce la dichiarazione.
+    """
+    from app.services.config_import import get_anno_importazione_attivo
+
+    db = get_db()
+    esito = await dichiarate.dichiara_rate_pagate(
+        db, mutuo_id, data_limite=corpo.data_limite, motivo=corpo.motivo,
+        motivo_altro=corpo.motivo_altro, dry_run=corpo.dry_run, conferma=corpo.conferma,
+        dichiarato_da=_attore(utente), anno_attivo=await get_anno_importazione_attivo(db),
+    )
+    return {"success": True, "data": esito}
+
+
+@router.post("/{mutuo_id}/rate-dichiarate/ritira", summary="Ritira la dichiarazione delle rate pagate")
+async def ritira_rate_dichiarate(
+    mutuo_id: str, corpo: RitiroDichiarazione, utente: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Le rate tornano com'erano sul piano; la dichiarazione resta nello storico."""
+    esito = await dichiarate.ritira_dichiarazioni(
+        get_db(), mutuo_id, numeri_rata=corpo.numeri_rata, motivo=corpo.motivo,
+        motivo_altro=corpo.motivo_altro, dry_run=corpo.dry_run, conferma=corpo.conferma,
+        dichiarato_da=_attore(utente),
+    )
+    return {"success": True, "data": esito}
