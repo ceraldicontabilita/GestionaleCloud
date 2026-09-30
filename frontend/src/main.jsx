@@ -56,6 +56,11 @@ const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.j
 const SituazioneFiscale = lazy(() => import("./pages/SituazioneFiscale.jsx"));
 const PianoTributi = lazy(() => import("./pages/PianoTributi.jsx"));
 const Tributi = lazy(() => import("./pages/Tributi.jsx"));
+// Viste 1.6 (MINI-08): un indirizzo stabile per ogni F24, tributo, busta e protocollo.
+const F24Scheda = lazy(() => import("./pages/F24Scheda.jsx"));
+const TributoCodice = lazy(() => import("./pages/TributoCodice.jsx"));
+const CedolinoScheda = lazy(() => import("./pages/CedolinoScheda.jsx"));
+const ProtocolloScheda = lazy(() => import("./pages/ProtocolloScheda.jsx"));
 
 // HR (AppDipendenti), Menu e Lotti NON sono pagine di questa SPA: sono app
 // portate pari pari, servite dal backend a /hr/, /menu/ e /lotti/ (link a
@@ -117,6 +122,13 @@ const router = createBrowserRouter([
       { path: "situazione-fiscale/*", element: <RequireAdmin><LazyPage><SituazioneFiscale /></LazyPage></RequireAdmin> },
       { path: "piano-tributi", element: <RequireAdmin><LazyPage><PianoTributi /></LazyPage></RequireAdmin> },
       { path: "tributi", element: <RequireAdmin><LazyPage><Tributi /></LazyPage></RequireAdmin> },
+      // Viste per id: indirizzi stabili, aprono anche da un link condiviso. I vecchi
+      // indirizzi (`/f24/:id`, `/tributi/:codice`, `/cedolini/:id`) li rimanda LegacyRouteResolver.
+      { path: "fiscale/f24/:id", element: <RequireAdmin><LazyPage><F24Scheda /></LazyPage></RequireAdmin> },
+      { path: "fiscale/tributi/:codice", element: <RequireAdmin><LazyPage><TributoCodice /></LazyPage></RequireAdmin> },
+      { path: "personale/cedolini/:id", element: <RequireAdmin><LazyPage><CedolinoScheda /></LazyPage></RequireAdmin> },
+      { path: "protocollo/:id", element: <RequireAdmin><LazyPage><ProtocolloScheda /></LazyPage></RequireAdmin> },
+      { path: "protocollo/:anno/:progressivo", element: <RequireAdmin><LazyPage><ProtocolloScheda /></LazyPage></RequireAdmin> },
       { path: "fatture-estere-verifica", element: <LazyPage><FattureEstereVerifica /></LazyPage> },
 
       // Un solo punto di compatibilità per vecchi preferiti; altrimenti 404 reale.

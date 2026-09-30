@@ -227,6 +227,9 @@ def _register_employees(app: FastAPI):
     # in sola lettura e applicazione a lotti (services/cedolini_versioni).
     from app.routers import cedolini_versioni
     app.include_router(cedolini_versioni.router, prefix="/api/cedolini", tags=["Cedolini"])
+    # Scheda e PDF di una busta (vista React): DOPO `/versioni`, che e' fisso.
+    from app.routers import cedolini_scheda
+    app.include_router(cedolini_scheda.router, prefix="/api/cedolini", tags=["Cedolini"])
     # Indice relazionale (MINI-06) e relazioni entita' -> documento Drive (DRV-03).
     from app.routers import indice_relazionale
     app.include_router(indice_relazionale.router, prefix="/api/indice-relazionale", tags=["Indice relazionale"])

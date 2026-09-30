@@ -14,6 +14,22 @@ describe('schede Fornitori compatte', () => {
     expect(source).not.toContain('title="Altre azioni"');
   });
 
+  it('nel magazzino / fuori: un controllo solo, filtro in lista, niente badge con emoji', () => {
+    expect(source).toContain('<MagazzinoFornitore');
+    expect(source).toContain('data-testid="filtro-magazzino"');
+    expect(source).toContain("etichetta: 'Fuori dal magazzino'");
+    expect(source).not.toContain('Escluso magazzino');
+    expect(source).not.toContain('handleToggleEsclude');
+    // il salvataggio generico non porta il flag: si cambia solo dal controllo con anteprima
+    expect(source).toContain('datiScheda(formData)');
+  });
+
+  it('il metodo ha una data «valido dal» e si applica alle fatture dalla scheda', () => {
+    expect(source).toContain('data-testid="metodo-valido-dal"');
+    expect(source).toContain('<MetodoDalFornitore');
+    expect(source).not.toContain('giorni_pagamento || 30} giorni');
+  });
+
   it('mantiene una griglia mobile corta e filtri compatti', () => {
     expect(source).toContain("? 'repeat(2, minmax(0, 1fr))'");
     expect(source).toContain('Senza metodo');

@@ -216,9 +216,33 @@ def _sha_xml(testo: Any) -> str:
     return hashlib.sha256(testo.encode("utf-8")).hexdigest() if testo else ""
 
 
-async def _fornitori_esclusi() -> set[str]:
-    docs = await db.fornitori.find({"escluso": True}, {"_id": 0, "nome": 1}).to_list(5000)
-    return {str(d.get("nome") or "").strip().lower() for d in docs if d.get("nome")}
+async def fatture_da_prendere_fornitore(piva: str, nome: str) -> list[str]:
+    """`source_id` delle fatture di UN fornitore non ancora in Lotti.
+
+    Serve quando lo si include: entrano le sole fatture ancora da prendere
+    (le altre le riconosce `_source_id_gia_presi`, e l'import e' comunque
+    idempotente). Il fornitore si riconosce per P.IVA; senza P.IVA per nome."""
+    from app.services.magazzino_fornitore import chiave_nome, normalizza_piva
+
+    p, n = normalizza_piva(piva), chiave_nome(nome)
+    if not p and not n:
+        return []
+    items, _ = await _elenco_locale(None)
+    gia_presi = await _source_id_gia_presi()
+    trovati: list[str] = []
+    for item in items:
+        vat = normalizza_piva(item.get("supplier_vat"))
+        if p:
+            if vat != p:
+                continue
+        elif chiave_nome(item.get("supplier_name")) != n:
+            continue
+        sid = str(item.get("source_id") or "").strip()
+        sh = str(item.get("source_hash") or "").strip()
+        if not sid or (sh and gia_presi.get(sid) == sh):
+            continue
+        trovati.append(sid)
+    return trovati
 
 
 def _descrivi(exc: BaseException) -> str:
@@ -339,10 +363,14 @@ async def esegui_sync_gestionale(
         # Un fornitore escluso non entra mai in Lotti: lo si toglie PRIMA del
         # tetto, altrimenti ogni giro rileggeva le stesse fatture escluse,
         # le contava come errore («senza fattura operativa») e non finiva mai.
-        esclusi = await _fornitori_esclusi()
+        # La decisione canonica sta nell'anagrafica ERP (per P.IVA); dove
+        # non ha mai deciso vale quella gia' presa in Lotti (per nome).
+        from app.services.magazzino_fornitore import carica_decisioni
+
+        decisioni = await carica_decisioni(db_lotti=db)
         da_lavorare = []
         for item in da_prendere:
-            if str(item.get("supplier_name") or "").strip().lower() in esclusi:
+            if decisioni.escluso(item.get("supplier_vat"), item.get("supplier_name")):
                 result["escluse_fornitore"] += 1
                 continue
             da_lavorare.append(item)
@@ -553,6 +581,13 @@ async def alimenta_lotti_da_fattura(source_id: str) -> dict[str, Any]:
         dettaglio = await _dettaglio_locale(source_id)
     except Exception as exc:  # fattura non piu' attiva o non trovata
         esito["motivo"] = _descrivi(exc)
+        return esito
+
+    from app.services.magazzino_fornitore import carica_decisioni
+
+    if (await carica_decisioni(db_lotti=db)).escluso(
+            dettaglio.get("supplier_vat"), dettaglio.get("supplier_name")):
+        esito["motivo"] = "fornitore fuori dal magazzino"
         return esito
 
     xml_raw = str(dettaglio.get("xml_raw") or "") or _xml_from_projection(dettaglio)
