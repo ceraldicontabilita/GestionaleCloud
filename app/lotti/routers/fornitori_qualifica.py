@@ -45,6 +45,14 @@ async def get_qualifica_in_attesa():
     return [d for d in docs if d.get("nome_fornitore", "") not in esclusi_nomi]
 
 
+async def _applica_scelta(nome: str, piva: str, escluso: bool) -> None:
+    """Una scelta esplicita passa dall'unico scrittore di Lotti e arriva nell'anagrafica ERP."""
+    from app.lotti.routers.fornitori import _riporta_all_anagrafica, imposta_esclusione
+
+    await imposta_esclusione(nome, escluso, piva or "")
+    await _riporta_all_anagrafica(nome, piva or "", escluso)
+
+
 @router.patch("/qualifica/{piva}/approva")
 async def approva_qualifica_fornitore(piva: str, includi: bool = True, _admin=Depends(require_admin)):
     """Approva o esclude un fornitore dalla qualifica HACCP."""
@@ -57,9 +65,7 @@ async def approva_qualifica_fornitore(piva: str, includi: bool = True, _admin=De
     if doc_q:
         nome = doc_q.get("nome_fornitore", "")
         if nome:
-            await db.fornitori.update_one(
-                {"nome": nome}, {"$set": {"in_attesa": False, "escluso": not includi}}, upsert=True
-            )
+            await _applica_scelta(nome, piva, not includi)
     return {"ok": True, "piva": piva, "stato": nuovo_stato}
 
 
@@ -76,14 +82,12 @@ async def approva_batch_qualifica(payload: dict, _admin=Depends(require_admin)):
         {"$set": {"stato": nuovo_stato, "approvato_il": datetime.now(timezone.utc).isoformat()}},
     )
     docs = await db.fornitori_qualifica.find(
-        {"piva": {"$in": pive}}, {"_id": 0, "nome_fornitore": 1}
+        {"piva": {"$in": pive}}, {"_id": 0, "nome_fornitore": 1, "piva": 1}
     ).to_list(500)
     for doc in docs:
         nome = doc.get("nome_fornitore", "")
         if nome:
-            await db.fornitori.update_one(
-                {"nome": nome}, {"$set": {"in_attesa": False, "escluso": not includi}}, upsert=True
-            )
+            await _applica_scelta(nome, doc.get("piva", ""), not includi)
     return {"aggiornati": result.modified_count, "stato": nuovo_stato}
 
 
@@ -97,12 +101,18 @@ async def auto_qualifica_tutti_attivi(_admin=Depends(require_admin)):
         {"stato": "in_attesa_verifica"}, {"_id": 0, "piva": 1, "nome_fornitore": 1}
     ).to_list(500)
 
+    from app.services.magazzino_fornitore import carica_decisioni
+
+    decisioni = await carica_decisioni()
     aggiornati = 0
     for doc in docs_in_attesa:
         piva = doc.get("piva", "")
         nome = doc.get("nome_fornitore", "")
         fornitore = await db.fornitori.find_one({"nome": nome}, {"escluso": 1})
         if fornitore and fornitore.get("escluso"):
+            continue
+        # una qualifica automatica non riporta dentro chi il titolare ha messo fuori
+        if decisioni.escluso(piva, nome):
             continue
         await db.fornitori_qualifica.update_one(
             {"piva": piva},
