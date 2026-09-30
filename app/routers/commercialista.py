@@ -11,12 +11,6 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from calendar import monthrange
 import logging
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders
-import os
 import base64
 
 from app.constants.stati_assegno import STATI_DISPONIBILI
@@ -40,72 +34,39 @@ def _periodo(anno: int, mese: int) -> tuple[str, str]:
     return f"{anno}-{mese:02d}", f"{MESI_NOMI[mese]} {anno}"
 
 
-def get_smtp_config():
-    """Get SMTP configuration from environment."""
-    return {
-        "host": os.environ.get('SMTP_HOST', 'smtp.gmail.com'),
-        "port": int(os.environ.get('SMTP_PORT', 587)),
-        "user": (
-            os.environ.get('SMTP_USER')
-            or os.environ.get('SMTP_USERNAME')
-            or os.environ.get('EMAIL_USER')
-        ),
-        "password": (
-            os.environ.get('SMTP_PASSWORD')
-            or os.environ.get('EMAIL_PASSWORD')
-        ),
-        "from_email": (
-            os.environ.get('FROM_EMAIL')
-            or os.environ.get('SMTP_FROM_EMAIL')
-            or os.environ.get('SMTP_USER')
-            or os.environ.get('EMAIL_USER')
-        ),
-    }
+def smtp_configurato() -> bool:
+    """Lo stato mostrato in pagina e quello dell'invio sono la stessa domanda:
+    `email_smtp.credenziali_smtp` (SMTP_* su Render, altrimenti la password
+    per le app dell'account Gmail di `gmail_credentials`)."""
+    from app.hr.services.email_smtp import credenziali_smtp
+
+    return credenziali_smtp() is not None
 
 
 def send_email_with_attachment(
-    to_email: str, 
-    subject: str, 
-    html_body: str, 
+    to_email: str,
+    subject: str,
+    html_body: str,
     attachment_data: Optional[bytes] = None,
     attachment_name: Optional[str] = None
 ) -> bool:
-    """Send email with optional PDF attachment."""
-    config = get_smtp_config()
-    
-    if not all([config["host"], config["user"], config["password"]]):
-        logger.error("SMTP not configured")
+    """Invia un'email col PDF allegato dal punto unico di invio (`email_smtp`)."""
+    from app.hr.services.email_smtp import credenziali_smtp, invia_email
+
+    if credenziali_smtp() is None:
+        logger.error("SMTP non configurato: né SMTP_* né la password per le app di Gmail")
         raise HTTPException(status_code=500, detail="Configurazione SMTP mancante")
-    
+
+    allegati = None
+    if attachment_data and attachment_name:
+        allegati = [(attachment_data, "application", "pdf", attachment_name)]
     try:
-        msg = MIMEMultipart()
-        msg['Subject'] = subject
-        msg['From'] = config["from_email"] or config["user"]
-        msg['To'] = to_email
-        
-        # HTML body
-        html_part = MIMEText(html_body, 'html', 'utf-8')
-        msg.attach(html_part)
-        
-        # Attachment if provided
-        if attachment_data and attachment_name:
-            part = MIMEBase('application', 'pdf')
-            part.set_payload(attachment_data)
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', f'attachment; filename="{attachment_name}"')
-            msg.attach(part)
-        
-        with smtplib.SMTP(config["host"], config["port"], timeout=30) as server:
-            server.starttls()
-            server.login(config["user"], config["password"])
-            server.send_message(msg)
-        
-        logger.info(f"Email sent to {to_email}: {subject}")
+        invia_email(to_email, subject, html_body, allegati, html=True)
+        logger.info("Email inviata a %s: %s", to_email, subject)
         return True
-        
     except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore invio email: {str(e)}") from e
+        logger.error("Invio email a %s non riuscito: %s: %s", to_email, type(e).__name__, e)
+        raise HTTPException(status_code=500, detail=f"Errore invio email: {type(e).__name__}") from e
 
 
 @router.get("/config")
@@ -125,9 +86,7 @@ async def get_commercialista_config() -> Dict[str, Any]:
             "invio_automatico": False
         }
     
-    # Add SMTP status
-    smtp_config = get_smtp_config()
-    config["smtp_configured"] = all([smtp_config["host"], smtp_config["user"], smtp_config["password"]])
+    config["smtp_configured"] = smtp_configurato()
     
     return config
 
