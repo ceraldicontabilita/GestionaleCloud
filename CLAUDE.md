@@ -40,7 +40,7 @@ automatico da `main`, health check `/api/health`) e un unico progetto Supabase s
 | HR, portale dipendenti | `/hr`, `/hr/portale` | `app/hr/` + `frontend_hr/` |
 | Menu pubblico e admin | `/menu`, `/menu/admin` | `app/menu/` + `frontend_menu/` |
 | Lotti (HACCP) | `/lotti` | `app/lotti/` + `frontend_lotti/` |
-| Colazioni B&B | `/colazioni` | `frontend_colazioni/` (pagina statica, nessun backend in `app/`) |
+| Colazioni B&B | `/convenzioni` (il vecchio `/colazioni` rimanda qui) | `frontend_colazioni/` (pagina statica, nessun backend in `app/`) |
 
 Il `Mount` di Starlette esige la barra finale: il prefisso **nudo** va
 rimandato a `/<prefisso>/` fra i mount e il catch-all, o cade nella SPA
@@ -857,7 +857,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
 
-- **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/colazioni/` con `StaticFiles`.
+- **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
   la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
   Le migrazioni 5, 6, 9, 11 e 12 furono applicate senza salvare il file: la catena SQL **non e' ricostruibile da zero**.

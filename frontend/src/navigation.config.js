@@ -169,12 +169,12 @@ export const NAV_GRUPPI = [
     colore: '#7a776e',
     // App del gruppo portate pari pari dentro il gestionale: ognuna ha il
     // proprio login ed e' servita a pagina intera dal backend montato a
-    // /menu, /hr, /lotti (Colazioni B&B e' una pagina statica a /colazioni/). Si aprono in una scheda nuova.
+    // /menu, /hr, /lotti (Colazioni B&B e' una pagina statica a /convenzioni/). Si aprono in una scheda nuova.
     voci: [
       { href: '/menu/admin', label: 'Menu', Icon: Menu, external: true },
       { href: '/hr/', label: 'HR', Icon: Users, external: true, adminOnly: true },
       { href: '/lotti/', label: 'HACCP Lotti', Icon: ShieldCheck, external: true },
-      { href: '/colazioni/', label: 'Colazioni B&B', Icon: Coffee, external: true },
+      { href: '/convenzioni/', label: 'Colazioni B&B', Icon: Coffee, external: true },
     ],
   },
   {

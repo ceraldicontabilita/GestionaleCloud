@@ -1,6 +1,6 @@
 """Colazioni B&B: il titolare entra con la sessione del gestionale.
 
-L'app Colazioni B&B (`/colazioni/`, pagina statica) parla con Supabase solo
+L'app Colazioni B&B (`/convenzioni/`, pagina statica) parla con Supabase solo
 tramite funzioni RPC `bb_*`. Per il titolare non esiste un PIN separato: chi e'
 gia' entrato nel gestionale (PIN amministratore `PIN_HASH_ADMIN`, con MFA se
 attiva) chiede qui un token di sessione. Il token lo emette il database, dietro

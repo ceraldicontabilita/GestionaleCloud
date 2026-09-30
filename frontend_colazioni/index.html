@@ -578,7 +578,7 @@ async function doTit(){
  try{
   const r=await fetch("/api/auth/pin-login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
   const j=await r.json().catch(()=>null);
-  if(!j){m.textContent="Apri l'area titolare da gestionalecloud.onrender.com/colazioni/";return}
+  if(!j){m.textContent="Apri l'area titolare da gestionalecloud.onrender.com/convenzioni/";return}
   if(j.mfa_required){m.innerHTML="Il tuo accesso ha il secondo fattore: entra prima nel <a href=\"/\">gestionale</a>, poi torna qui.";return}
   if(!r.ok){m.textContent=(typeof j.detail==="string"&&j.detail)||"PIN non valido";return}
   if(j.access_token)try{localStorage.setItem("auth_token",j.access_token)}catch(e){}
