@@ -36,6 +36,7 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
     esito = await processa_tutti_cedolini_pdf(
         Database.get_db(), base64.b64encode(pdf_bytes).decode("ascii"), filename or "libro_unico.pdf",
         source_path=filename or "", source_file_hash=hashlib.sha256(pdf_bytes).hexdigest(),
+        fonte="caricato",
     )
 
     def _competenza(busta: Dict[str, Any]) -> str:

@@ -3885,6 +3885,8 @@ async def upload_documento_automatico(
                 db, b64encode(content).decode("ascii"), filename,
                 source_path=filename,
                 source_file_hash=hashlib.sha256(content).hexdigest(),
+                drive_file_id=source_context.get("drive_file_id") or "",
+                fonte="drive" if source_context.get("drive_file_id") else "documenti_upload_auto",
             )
             result["workflow"] = "MOTORE_UNICO_CEDOLINI"
             result["data"] = {k: esito.get(k) for k in (

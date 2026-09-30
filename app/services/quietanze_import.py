@@ -20,6 +20,8 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+from app.constants.canale_documento import canale_obbligatorio
+
 logger = logging.getLogger(__name__)
 
 COLL_QUIETANZE = "quietanze_f24"
@@ -362,6 +364,7 @@ async def importa_quietanza_bytes(
         "codici_tributo": list(codici_quietanza),
         "f24_associati": [],
         "fonte": fonte,
+        "canale": canale_obbligatorio(fonte, drive_file_id=source_metadata.get("drive_file_id")),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "source_occurrences": [occurrence],
     }

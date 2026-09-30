@@ -268,6 +268,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   **distinte**, collegate da `operation_id`, mai fuse in un solo record.
 - I documenti originali restano immutabili: hash, fonte, versione, timestamp e
   log. I duplicati si marcano, non si eliminano in modo permanente.
+- Ogni documento importato (F24, quietanza, LIPE, cedolino, ricevuta di bonifico) nasce con `canale` ∈ `posta|drive|caricato|altro`
+  (`app/constants/canale_documento.py`, `canale_obbligatorio`: l'etichetta che dice il canale vince, l'id Drive decide solo se manca; la prima copia arrivata lo fissa) e con uno stato
+  esplicito (LIPE `canonica`+`sostituisce`, bonifico `stato_riconciliazione`, alert `aperto|risolto|ignorato`). Il dettaglio grezzo resta nel
+  campo storico di ogni collezione (`import_source`, `fonte`, `source`, `origine`); `canali_documento` lo riduce per l'archivio senza `canale`.
 - **Una prova successiva non crea mai l'obbligo che dovrebbe dimostrare.** Il
   fatto autorevole crea subito l'attesa; la prova la soddisfa o la lascia
   `DA_VERIFICARE`.

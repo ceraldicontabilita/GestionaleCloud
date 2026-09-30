@@ -18,6 +18,7 @@ import base64
 import logging
 from typing import Dict, Any, List, Optional
 
+from app.constants.canale_documento import canale_obbligatorio
 from app.services.cedolini_motore import PAYROLL_MIN_YEAR  # noqa: F401 (re-export)
 
 logger = logging.getLogger(__name__)
@@ -192,8 +193,13 @@ async def processa_tutti_cedolini_pdf(
     source_container: str = "",
     drive_file_id: str = "",
     source_file_hash: str = "",
+    fonte: str = "",
 ) -> Dict[str, Any]:
     """Lo scrittore unico dei cedolini: posta, Drive e Documenti > Import.
+
+    ``fonte`` dice da che canale arriva il PDF (``posta``, ``caricato``, o un
+    valore grezzo che ``canale_da_fonte`` sa ridurre); senza, ``drive_file_id``
+    vale Drive. Ogni busta scritta porta ``canale``.
 
     Legge col motore unico (``cedolini_motore.leggi_pdf``) e scrive ogni busta
     una volta sola. Una busta col netto verificato va in contabilita' (registro
@@ -250,9 +256,11 @@ async def processa_tutti_cedolini_pdf(
             results["errori"].append(f"{filename}: {lettura['motivo']}")
         return results
 
+    canale = canale_obbligatorio(fonte or source_container, drive_file_id=drive_file_id)
     for ced in lettura["buste"]:
         ced["source_path"] = source_path or filename
         ced["source_container"] = source_container or None
+        ced["canale"] = canale
         if drive_file_id:
             ced["drive_file_id"] = drive_file_id
         if source_file_hash:

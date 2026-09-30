@@ -246,7 +246,7 @@ def mappa_cedolino_per_hr(cedolino: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "cedolino_dedup_key": cedolino.get("cedolino_dedup_key") or cedolino.get("dedup_key"),
     }
     for chiave in ("drive_file_id", "source_file_hash", "source_path", "source_container",
-                   "stato_netto", "dati_chiave"):
+                   "canale", "stato_netto", "dati_chiave"):
         if cedolino.get(chiave):
             doc[chiave] = cedolino[chiave]
     formato = str(cedolino.get("formato") or cedolino.get("formato_rilevato")

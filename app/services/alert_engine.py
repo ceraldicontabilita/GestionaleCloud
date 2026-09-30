@@ -19,6 +19,10 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
+from app.constants.canale_documento import (
+    STATO_ALERT_APERTO, STATO_ALERT_IGNORATO, STATO_ALERT_RISOLTO,
+)
+
 logger = logging.getLogger(__name__)
 
 # Collection name — importare da db_collections.py quando aggiornato
@@ -666,7 +670,7 @@ async def genera_alert(
         existing = await db[COLL_ALERTS].find_one({
             "codice": codice,
             "entita_id": entita_id,
-            "stato": "aperto"
+            "stato": STATO_ALERT_APERTO
         })
 
         if existing:
@@ -687,7 +691,7 @@ async def genera_alert(
             "condizione_chiusura": cat["condizione_chiusura"],
             "entita_id": entita_id,
             "entita_collection": entita_collection,
-            "stato": "aperto",
+            "stato": STATO_ALERT_APERTO,
             "letto": False,
             "risolto": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -719,11 +723,11 @@ async def risolvi_alert(
         {
             "codice": codice,
             "entita_id": entita_id,
-            "stato": "aperto"
+            "stato": STATO_ALERT_APERTO
         },
         {
             "$set": {
-                "stato": "risolto",
+                "stato": STATO_ALERT_RISOLTO,
                 "risolto": True,
                 "resolved_at": datetime.now(timezone.utc).isoformat(),
                 "resolved_by": resolved_by
@@ -754,9 +758,9 @@ async def risolvi_alert_per_id(
     if not alert_id:
         return False
     result = await db[COLL_ALERTS].update_one(
-        {"id": alert_id, "stato": "aperto"},
+        {"id": alert_id, "stato": STATO_ALERT_APERTO},
         {"$set": {
-            "stato": "risolto",
+            "stato": STATO_ALERT_RISOLTO,
             "risolto": True,
             "resolved_at": datetime.now(timezone.utc).isoformat(),
             "resolved_by": resolved_by,
@@ -815,7 +819,7 @@ async def verifica_alert_aperti(
 ) -> List[Dict]:
     """Ritorna tutti gli alert aperti per un'entità."""
     alerts = await db[COLL_ALERTS].find(
-        {"entita_id": entita_id, "stato": "aperto"},
+        {"entita_id": entita_id, "stato": STATO_ALERT_APERTO},
         {"_id": 0}
     ).to_list(100)
     return alerts
@@ -824,7 +828,7 @@ async def verifica_alert_aperti(
 async def conta_alert_per_modulo(db) -> Dict[str, Dict[str, int]]:
     """Ritorna conteggio alert aperti raggruppati per modulo e severità."""
     pipeline = [
-        {"$match": {"stato": "aperto"}},
+        {"$match": {"stato": STATO_ALERT_APERTO}},
         {"$group": {
             "_id": {"modulo": "$modulo", "severita": "$severita"},
             "count": {"$sum": 1}
@@ -849,10 +853,10 @@ async def ignora_alert(
 ) -> bool:
     """Segna un alert come ignorato dall'utente."""
     result = await db[COLL_ALERTS].update_one(
-        {"id": alert_id, "stato": "aperto"},
+        {"id": alert_id, "stato": STATO_ALERT_APERTO},
         {
             "$set": {
-                "stato": "ignorato",
+                "stato": STATO_ALERT_IGNORATO,
                 "resolved_at": datetime.now(timezone.utc).isoformat(),
                 "resolved_by": ignored_by
             }

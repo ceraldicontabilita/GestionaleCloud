@@ -120,6 +120,7 @@ async def processa_cedolini_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
                 db, pdf_data, filename,
                 source_path=doc.get("source_path") or filename,
                 source_file_hash=doc.get("file_hash") or doc.get("pdf_hash") or "",
+                fonte="posta",
             )
         except Exception as exc:
             logger.error("[PIPELINE-CEDOLINI] %s: %s: %s", filename, type(exc).__name__, exc)

@@ -16,6 +16,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.constants.canale_documento import (
+    STATO_BONIFICO_ASSOCIATO_ATTESA_BANCA, STATO_BONIFICO_DOCUMENTATO, canale_obbligatorio,
+)
 from app.routers.bonifici_module.common import build_dedup_key
 from app.routers.bonifici_module.pdf_parser import (
     extract_filename_metadata,
@@ -262,7 +265,7 @@ async def associa_transfer_a_salario(db, transfer: Dict[str, Any]) -> Dict[str, 
             "dipendente_id": candidato.get("dipendente_id"),
             "dipendente_nome": nome,
             "associazione_evidenze": evidenze,
-            "stato_riconciliazione": "documento_associato_attesa_banca",
+            "stato_riconciliazione": STATO_BONIFICO_ASSOCIATO_ATTESA_BANCA,
             "updated_at": now,
         }},
     )
@@ -457,11 +460,14 @@ async def importa_pdf_bonifico(
         "id": str(uuid.uuid4()),
         "source_file": filename,
         "source": source,
+        "canale": canale_obbligatorio(source),
         "source_path": source_path,
         "document_hash": digest,
         "pdf_data": base64.b64encode(content).decode("ascii"),
         "created_at": now,
         "riconciliato": False,
+        # PDF letto, nessuna prova bancaria: lo stato nasce esplicito.
+        "stato_riconciliazione": STATO_BONIFICO_DOCUMENTATO,
     }
     if isinstance(transfer.get("data"), datetime):
         transfer["data"] = transfer["data"].isoformat()
