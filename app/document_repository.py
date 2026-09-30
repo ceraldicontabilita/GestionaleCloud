@@ -20,6 +20,7 @@ from app.db_collections import (
 
 
 DOCUMENT_PAYLOAD_FIELDS: Mapping[str, tuple[str, ...]] = {
+    "protocollo_personale": ("testo_ocr",),
     COLL_DOCUMENTS_INBOX: ("pdf_data",),
     COLL_CEDOLINI: ("pdf_data",),
     COLL_QUIETANZE_F24: ("pdf_data",),

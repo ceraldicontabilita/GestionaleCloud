@@ -1,0 +1,4 @@
+﻿Chiave;Origine tipo;Origine id;Relazione;Destinazione tipo;Destinazione id;Stato;Regola;Importo EUR;Prove;Creata;Aggiornata
+bank_movement|MOV-7|proves_invoice_payment|invoice|INV-A;bank_movement;MOV-7;proves_invoice_payment;invoice;INV-A;DA_VERIFICARE;cro;1234,56;cro=CRO-0001;15/09/2026;15/09/2026
+f24_receipt|=CMD|has_source_document|documento|DRIVE-002;f24_receipt;'=CMD;has_source_document;documento;DRIVE-002;REVOCATA;collegamento_protocollo;;;30/09/2026;30/09/2026
+invoice|INV-A|has_source_document|documento|DRIVE-001;invoice;INV-A;has_source_document;documento;DRIVE-001;CONFERMATA;drive_file_id;;"drive_file_id=DRIVE-001; md5=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";01/09/2026;01/09/2026
