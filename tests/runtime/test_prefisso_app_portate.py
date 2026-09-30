@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-PREFISSI = ("lotti", "menu", "hr", "colazioni")
+PREFISSI = ("lotti", "menu", "hr", "convenzioni")
 
 
 @pytest.fixture(scope="module")
@@ -82,3 +82,13 @@ def test_le_api_delle_app_portate_non_passano_dal_redirect():
     assert risposta.status_code != 307, (
         "Il redirect del prefisso nudo sta intercettando anche le rotte figlie."
     )
+
+
+def test_il_vecchio_indirizzo_colazioni_rimanda_a_convenzioni():
+    """Gli inviti gia' mandati contengono `/colazioni/`: devono continuare ad aprire l'app."""
+    client = TestClient(app, follow_redirects=False)
+    for vecchio, nuovo in (("/colazioni", "/convenzioni/"), ("/colazioni/", "/convenzioni/"),
+                           ("/colazioni/menu-img/extra.json", "/convenzioni/menu-img/extra.json")):
+        risposta = client.get(vecchio)
+        assert risposta.status_code == 307, vecchio
+        assert risposta.headers["location"] == nuovo, vecchio

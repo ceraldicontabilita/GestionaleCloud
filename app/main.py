@@ -1031,16 +1031,16 @@ else:
     logger.warning("Frontend Menu non trovato (%s): /menu serve solo le API", _MENU_BUILD)
 app.mount("/menu", menu_app, name="menu")
 
-# Colazioni B&B: pagina unica statica (frontend_colazioni/index.html, nessuna
+# Convenzioni (Colazioni B&B): pagina unica statica (frontend_colazioni/index.html, nessuna
 # build) che parla direttamente con Supabase tramite funzioni RPC con PIN. Non ha
 # un backend in app/: si serve la cartella cosi' com'e', con `html=True` per
 # l'indice. Va montata PRIMA del catch-all della SPA dell'ERP.
 _COLAZIONI_DIR = os.path.join(_PROJECT_ROOT, "frontend_colazioni")
 if os.path.isdir(_COLAZIONI_DIR):
-    app.mount("/colazioni", StaticFiles(directory=_COLAZIONI_DIR, html=True), name="colazioni")
-    logger.info("Colazioni B&B montata da %s", _COLAZIONI_DIR)
+    app.mount("/convenzioni", StaticFiles(directory=_COLAZIONI_DIR, html=True), name="convenzioni")
+    logger.info("Convenzioni (Colazioni B&B) montata da %s", _COLAZIONI_DIR)
 else:
-    logger.warning("Colazioni B&B non trovata (%s): /colazioni non risponde", _COLAZIONI_DIR)
+    logger.warning("Convenzioni (Colazioni B&B) non trovata (%s): /convenzioni non risponde", _COLAZIONI_DIR)
 
 # App HR (AppDipendenti) portata pari pari: backend originale (app/hr, proprio
 # login a PIN) montato a /hr -> /hr/api/...; il build Vite di frontend_hr
@@ -1062,7 +1062,7 @@ app.mount("/hr", hr_app, name="hr")
 # gestionale — verificato il 20/09/2026: tutti e tre i prefissi rispondevano 200
 # con `<title>Ceraldi ERP</title>`. Il redirect a `/<prefisso>/` va registrato
 # DOPO i mount e PRIMA del catch-all, ed e' 307 perche' conserva il metodo.
-_APP_PORTATE = ("lotti", "menu", "hr", "colazioni")
+_APP_PORTATE = ("lotti", "menu", "hr", "convenzioni")
 
 for _prefisso in _APP_PORTATE:
     def _vai_alla_app_portata(request: Request, _p: str = _prefisso) -> RedirectResponse:
@@ -1078,6 +1078,15 @@ for _prefisso in _APP_PORTATE:
         include_in_schema=False,
         name=f"{_prefisso}-slash",
     )
+
+# Vecchio indirizzo `/colazioni/...`: gli inviti gia' mandati agli albergatori lo
+# contengono. Rimanda a `/convenzioni/...` (il #frammento lo conserva il browser).
+@app.get("/colazioni", include_in_schema=False)
+@app.get("/colazioni/{resto:path}", include_in_schema=False)
+async def _colazioni_vecchio_indirizzo(request: Request, resto: str = "") -> RedirectResponse:
+    coda = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"/convenzioni/{resto}{coda}", status_code=307)
+
 
 if os.path.isdir(_FRONTEND_DIST):
     assets_path = os.path.join(_FRONTEND_DIST, "assets")
