@@ -150,6 +150,42 @@ def scadenza_da_regola(sezione: str, codice: str, anno: Optional[int], mese: Opt
     return None, "nessuna regola per il codice"
 
 
+def scadenza_modello(f24: Dict[str, Any]) -> Tuple[Optional[date], str]:
+    """Scadenza di un modello F24 non ancora pagato: la piu' vicina fra le sue
+    righe a debito, ognuna dalla regola del suo codice e periodo.
+
+    Un modello non ha `data_scadenza` (nessun F24 in archivio la porta): la
+    scadenza sta sulle righe tributo. Senza righe o senza regola resta None
+    con il motivo, mai una data inventata.
+    """
+    from app.services.f24_fiscal_evidence import normalize_f24_evidence_rows
+
+    righe = [r for r in normalize_f24_evidence_rows(f24) if int(r.get("debit_cents") or 0) > 0]
+    if not righe:
+        return None, "nessuna riga a debito"
+    candidate: List[Tuple[date, str]] = []
+    motivi: List[str] = []
+    for r in righe:
+        periodo = r.get("reference_period") or ""
+        anno = int(periodo[:4]) if len(periodo) >= 4 and periodo[:4].isdigit() else None
+        mese = int(periodo[5:7]) if len(periodo) >= 7 and periodo[5:7].isdigit() else None
+        if not anno:
+            campi = r.get("source_fields") or {}
+            try:
+                anno = int(str(campi.get("anno") or campi.get("anno_riferimento") or "")[:4])
+            except ValueError:
+                anno = None
+        sezione = f"sezione_{str(r.get('section') or '').lower()}"
+        scadenza, fonte = scadenza_da_regola(sezione, r.get("tax_code"), anno, mese)
+        if scadenza:
+            candidate.append((scadenza, f"{r.get('tax_code')}: {fonte}"))
+        else:
+            motivi.append(f"{r.get('tax_code')}: {fonte}")
+    if not candidate:
+        return None, "; ".join(motivi)
+    return min(candidate, key=lambda c: c[0])
+
+
 # ── ravvedimento ─────────────────────────────────────────────────────────
 
 def percentuale_ravvedimento(giorni: int, scadenza: date) -> Tuple[Decimal, str, str]:
