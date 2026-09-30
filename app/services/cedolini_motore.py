@@ -88,6 +88,9 @@ def _summary_cedolino(
             NETTO_VERIFICATO_DA_CEDOLINO if summary.get("netto") is not None
             else NETTO_NON_PRESENTE_O_NON_LEGGIBILE
         ),
+        # Da dove viene il netto: `cella`, `non_letto_da_lul` o None
+        # (`app/constants/stati_netto.py`).
+        "netto_fonte": summary.get("netto_fonte"),
         "netto_letto": summary.get("netto_letto"),
         "netto_calcolato": summary.get("netto_calcolato"),
         "totale_trattenute": summary.get("trattenute"),

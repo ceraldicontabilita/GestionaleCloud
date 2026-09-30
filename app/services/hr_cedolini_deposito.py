@@ -93,7 +93,8 @@ _SQL_DIPENDENTE = (
 )
 
 _SQL_ESISTENTI = (
-    "SELECT id, doc->>'tipo_cedolino' AS tipo, doc->>'cedolino_dedup_key' AS dedup_key"
+    "SELECT id, doc->>'tipo_cedolino' AS tipo, doc->>'cedolino_dedup_key' AS dedup_key,"
+    " doc->>'netto' AS netto, doc->'storico_netto' AS storico_netto"
     " FROM " + TABELLA_CEDOLINI +
     " WHERE (upper(doc->>'codice_fiscale') = $1"
     "        AND doc->>'anno' ~ '^[0-9]+$' AND (doc->>'anno')::int = $2"
@@ -104,6 +105,10 @@ _SQL_ESISTENTI = (
 _SQL_INSERISCI = (
     "INSERT INTO " + TABELLA_CEDOLINI + " (id, doc) VALUES ($1, $2::jsonb)"
 )
+
+# La riga HR segue la versione vincente della busta (`cedolini_versioni`):
+# lo stesso `doc || patch` della riverifica dei netti.
+_SQL_AGGIORNA = "UPDATE " + TABELLA_CEDOLINI + " SET doc = doc || $2::jsonb WHERE id = $1"
 
 
 # ── configurazione e connessione ─────────────────────────────────────────────
@@ -246,7 +251,7 @@ def mappa_cedolino_per_hr(cedolino: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "cedolino_dedup_key": cedolino.get("cedolino_dedup_key") or cedolino.get("dedup_key"),
     }
     for chiave in ("drive_file_id", "source_file_hash", "source_path", "source_container",
-                   "canale", "stato_netto", "dati_chiave"):
+                   "canale", "stato_netto", "netto_fonte", "dati_chiave"):
         if cedolino.get(chiave):
             doc[chiave] = cedolino[chiave]
     formato = str(cedolino.get("formato") or cedolino.get("formato_rilevato")
@@ -287,11 +292,54 @@ async def _cerca_esistente_hr(con, cf: str, anno: int, mese: int,
     righe = await con.fetch(_SQL_ESISTENTI, cf, int(anno), int(mese), dedup_key or "")
     for riga in righe:
         if dedup_key and riga["dedup_key"] == dedup_key:
-            return {"id": riga["id"], "motivo": "cedolino_dedup_key"}
+            return {"id": riga["id"], "motivo": "cedolino_dedup_key", **_netto_hr(riga)}
     for riga in righe:
         if tipo_cedolino_hr(riga["tipo"]) == tipo:
-            return {"id": riga["id"], "motivo": "cf_anno_mese_tipo"}
+            return {"id": riga["id"], "motivo": "cf_anno_mese_tipo", **_netto_hr(riga)}
     return None
+
+
+def _netto_hr(riga: Any) -> Dict[str, Any]:
+    """Netto e storico della riga HR, se la query li porta (le finte dei test no)."""
+    try:
+        netto, storico = riga.get("netto"), riga.get("storico_netto")
+    except AttributeError:
+        return {"netto": None, "storico_netto": []}
+    if isinstance(storico, str):
+        try:
+            storico = json.loads(storico)
+        except ValueError:
+            storico = []
+    return {"netto": _numero(netto), "storico_netto": list(storico or [])}
+
+
+async def _segui_vincitore(con, esistente: Dict[str, Any], doc: Dict[str, Any], chiave: str,
+                           *, dry_run: bool) -> Dict[str, Any]:
+    """La riga HR prende il netto della versione vincente; il vecchio resta in ``storico_netto``."""
+    prima, dopo = esistente.get("netto"), doc.get("netto")
+    if dopo is None or prima == dopo:
+        return {"esito": "gia_presente", "id": esistente["id"], **_riepilogo(doc)}
+    now = datetime.now(timezone.utc).isoformat()
+    patch: Dict[str, Any] = {
+        "netto": dopo, "storico_netto_ultimo": {"prima": prima, "dopo": dopo, "at": now,
+                                                "fonte": "cedolini_versioni"},
+        "storico_netto": list(esistente.get("storico_netto") or [])
+        + [{"prima": prima, "dopo": dopo, "at": now, "fonte": "cedolini_versioni"}],
+        "rettificato": True,
+        # Il PDF e' quello della versione che vale: la riverifica dei netti lo rilegge.
+        "netto_riverificato_versione": None,
+    }
+    for campo in ("filename", "pdf_filename", "pdf_data", "stato_netto", "netto_fonte", "lordo",
+                  "competenze", "trattenute", "gestionale_cedolino_id", "cedolino_dedup_key",
+                  "drive_file_id", "source_file_hash", "canale", "dati_chiave"):
+        if doc.get(campo) is not None:
+            patch[campo] = doc[campo]
+    if dry_run:
+        return {"esito": "da_aggiornare", "id": esistente["id"], "netto_prima": prima, **_riepilogo(doc)}
+    await con.execute(_SQL_AGGIORNA, esistente["id"], json.dumps(patch, default=str))
+    logger.info("[HR deposito] aggiornato %s -> id=%s: netto %s -> %s (versione vincente)",
+                chiave, esistente["id"], prima, dopo)
+    return {"esito": "aggiornato", "id": esistente["id"], "netto_prima": prima, **_riepilogo(doc)}
 
 
 def _nome_da_anagrafica(dip: Dict[str, Any]) -> str:
@@ -313,9 +361,17 @@ async def deposita_cedolino_in_hr(
     Esiti: ``hr_non_configurato`` (nessuna DSN), ``dati_insufficienti``
     (senza CF/anno/mese non esiste identita' HR), ``gia_presente`` (mai
     sovrascritto), ``inserito``, ``da_inserire`` (solo con ``dry_run``),
-    ``errore`` (problema di rete/DB, gia' loggato: l'ingestione prosegue).
+    ``errore`` (problema di rete/DB, gia' loggato: l'ingestione prosegue),
+    ``sostituita`` (versione superata di una busta: nessuna riga HR),
+    ``aggiornato`` / ``da_aggiornare`` (il cedolino porta ``rettificato``,
+    cioe' e' la versione vincente di `cedolini_versioni`: la riga HR prende
+    il suo netto e conserva il vecchio in ``storico_netto``).
     ``con`` permette al backfill di riusare una sola connessione.
     """
+    from app.services.cedolini_versioni import STATUS_SOSTITUITO
+
+    if str(cedolino.get("status") or "").lower() == STATUS_SOSTITUITO:
+        return {"esito": "sostituita", "id": None}
     doc = mappa_cedolino_per_hr(cedolino)
     if doc is None:
         logger.info("[HR deposito] saltato: cedolino senza CF/anno/mese (id gestionale=%s)",
@@ -337,6 +393,8 @@ async def deposita_cedolino_in_hr(
                 con, doc["codice_fiscale"], doc["anno"], doc["mese"],
                 doc["tipo_cedolino"], doc.get("cedolino_dedup_key") or "",
             )
+            if esistente and cedolino.get("rettificato"):
+                return await _segui_vincitore(con, esistente, doc, chiave, dry_run=dry_run)
             if esistente:
                 logger.info("[HR deposito] gia_presente %s -> id=%s (%s)",
                             chiave, esistente["id"], esistente["motivo"])

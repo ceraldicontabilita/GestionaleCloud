@@ -1331,6 +1331,7 @@ def extract_summary(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         "trattenute": totali.get("trattenute"),
         "netto": totali.get("netto"),
         "stato_netto": totali.get("stato_netto"),
+        "netto_fonte": totali.get("netto_fonte"),
         "netto_letto": totali.get("netto_letto"),
         "netto_calcolato": totali.get("netto_calcolato"),
         "retribuzione": parsed_data.get("retribuzione") or {},
@@ -1410,13 +1411,21 @@ def _verifica_netto(result: Dict[str, Any], text: str = "") -> None:
     """
     from app.constants.stati_netto import (
         MULTIPLE_NETS_DA_VERIFICARE,
+        NETTO_FONTE_CELLA,
+        NETTO_FONTE_NON_LETTO_DA_LUL,
         NETTO_NON_PRESENTE_O_NON_LEGGIBILE,
         NETTO_VERIFICATO_DA_CEDOLINO,
     )
 
-    t = result.get("totali") or {}
     if result.get("tipo_documento") == "foglio_presenze":
         return
+    # `result.get("totali") or {}` staccava un dizionario nuovo quando i
+    # totali erano vuoti (pagina LUL senza importi): stato e fonte del netto
+    # andavano persi e la busta risultava senza stato.
+    t = result.get("totali")
+    if not isinstance(t, dict):
+        t = result["totali"] = {}
+    t["netto_fonte"] = None
     if t.get("netto_candidati"):
         t["netto"] = None
         t["stato_netto"] = MULTIPLE_NETS_DA_VERIFICARE
@@ -1424,8 +1433,18 @@ def _verifica_netto(result: Dict[str, Any], text: str = "") -> None:
     letto = t.get("netto")
     if letto is None:
         t["stato_netto"] = NETTO_NON_PRESENTE_O_NON_LEGGIBILE
+        if "LIBRO UNICO DEL LAVORO" in (text or "").upper():
+            # Pagina del Libro Unico senza la cella del netto: il netto resta
+            # nullo e la fonte lo dichiara, cosi' l'archivio distingue una
+            # pagina LUL da una busta illeggibile.
+            # TODO(MINI-03): manca ancora il lettore per posizione (stile
+            # pdfplumber) del netto sulle pagine del Libro Unico; finche' non
+            # c'e', queste pagine restano «non_letto_da_lul».
+            t["netto_fonte"] = NETTO_FONTE_NON_LETTO_DA_LUL
         return
     t["stato_netto"] = NETTO_VERIFICATO_DA_CEDOLINO
+    if t.get("netto_da_cella"):
+        t["netto_fonte"] = NETTO_FONTE_CELLA
     if re.search(r"COMPENSO\s+AMMINISTRATORE|CO\.CO\.CO", text.upper()):
         # Compenso amministratore (Co.Co.Co.): «competenze» e «trattenute» qui
         # intercettano residui e arrotondamenti, il confronto sarebbe a vuoto

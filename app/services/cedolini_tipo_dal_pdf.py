@@ -71,8 +71,9 @@ def _netto(doc: Dict[str, Any]) -> Optional[Decimal]:
 
 
 def _attiva(doc: Dict[str, Any]) -> bool:
-    return (doc.get("entity_status") != "deleted"
-            and str(doc.get("tipo_cedolino") or "").lower() not in TIPI_ESCLUSI)
+    from app.services.cedolini_versioni import attiva
+
+    return attiva(doc) and str(doc.get("tipo_cedolino") or "").lower() not in TIPI_ESCLUSI
 
 
 def casi_da_rileggere(cedolini: Iterable[Dict[str, Any]]) -> Dict[Tuple[str, int, int], List[Dict[str, Any]]]:

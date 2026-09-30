@@ -76,9 +76,13 @@ async def sincronizza_prima_nota_da_cedolini(
     centralizzato in ``salari_periodo``. Nessuna riga di pagamento viene
     eliminata da questa funzione.
     """
+    from app.services.cedolini_versioni import STATI_NON_ATTIVI
+
     periodo_contabile = filtro_periodo_prima_nota()
+    # Una versione superata della stessa busta (`cedolini_versioni`) non
+    # alimenta la Prima Nota: resta in archivio col suo PDF e basta.
     cedolini = await db["cedolini"].find(
-        periodo_contabile,
+        {**periodo_contabile, "status": {"$nin": list(STATI_NON_ATTIVI)}},
         {
             "_id": 0, "id": 1, "dipendente_id": 1,
             "nome_dipendente": 1, "codice_fiscale": 1,
