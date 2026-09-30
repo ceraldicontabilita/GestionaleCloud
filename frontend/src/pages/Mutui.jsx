@@ -6,6 +6,7 @@ import { formatEuro, useIsMobile, RG, pagePad, formatDateIT, COLORS, SHADOWS, BO
 import { PageLayout, PageSection, PageLoading } from '../components/PageLayout';
 import { PageHeader } from '../components/ds/PageHeader';
 import { Button, Badge, TableWrap, Table, Th, Td } from '../components/ds';
+import DichiaraRateMutuo from '../components/DichiaraRateMutuo';
 import {
   Landmark,
   TrendingUp,
@@ -33,6 +34,7 @@ export default function Mutui() {
   const [expandedMutuo, setExpandedMutuo] = useState(null);
   const [riconciliaLoading, setRiconciliaLoading] = useState(false);
   const [lastRiconciliazione, setLastRiconciliazione] = useState(null);
+  const [dichiara, setDichiara] = useState(null); // { mutuo, ritira }
 
   useEffect(() => {
     loadData();
@@ -75,6 +77,12 @@ export default function Mutui() {
     } finally {
       setRiconciliaLoading(false);
     }
+  };
+
+  const dichiarazioneFatta = esito => {
+    const n = esito?.dichiarate ?? esito?.ritirate ?? 0;
+    toast.success(esito?.ritirate !== undefined ? `Dichiarazione ritirata su ${n} rate` : `${n} rate segnate come pagate (dichiarato dal titolare)`);
+    return loadData();
   };
 
   const toggleExpanded = mutuoId => {
@@ -363,6 +371,29 @@ export default function Mutui() {
                   </div>
                 </div>
 
+                {/* Rate passate dichiarate pagate dal titolare */}
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 12 }}
+                >
+                  <Button
+                    variant="secondary"
+                    onClick={() => setDichiara({ mutuo, ritira: false })}
+                    data-testid={`dichiara-rate-${mutuo.mutuo_id}`}
+                  >
+                    Segna le rate passate come pagate
+                  </Button>
+                  {mutuo.rate_dichiarate_titolare > 0 && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => setDichiara({ mutuo, ritira: true })}
+                      data-testid={`ritira-dichiarazione-${mutuo.mutuo_id}`}
+                    >
+                      Ritira la dichiarazione ({mutuo.rate_dichiarate_titolare})
+                    </Button>
+                  )}
+                </div>
+
                 {/* Prossima Scadenza Alert */}
                 {mutuo.prossima_data_scadenza && (
                   <div
@@ -445,6 +476,21 @@ export default function Mutui() {
                                 {rata.stato === 'Pagata' && (
                                   <Badge variant="success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                     <CheckCircle2 size={12} /> Pagata
+                                  </Badge>
+                                )}
+                                {rata.prova === 'banca' && (
+                                  <Badge variant="success" style={{ display: 'inline-flex', marginLeft: 4 }}>
+                                    Provata dalla banca
+                                  </Badge>
+                                )}
+                                {(rata.prova === 'quietanza' || rata.prova === 'estratto_annuale') && (
+                                  <Badge variant="success" style={{ display: 'inline-flex', marginLeft: 4 }}>
+                                    {rata.prova === 'quietanza' ? 'Provata da quietanza' : 'Provata da estratto annuale'}
+                                  </Badge>
+                                )}
+                                {rata.dichiarata_titolare && (
+                                  <Badge variant="warning" style={{ display: 'inline-flex', marginLeft: 4 }}>
+                                    Dichiarata dal titolare
                                   </Badge>
                                 )}
                                 {rata.stato === 'Da pagare' && (
@@ -555,6 +601,14 @@ export default function Mutui() {
           </div>
         )}
       </PageSection>
+      {dichiara && (
+        <DichiaraRateMutuo
+          mutuo={dichiara.mutuo}
+          ritira={dichiara.ritira}
+          onChiudi={() => setDichiara(null)}
+          onFatto={dichiarazioneFatta}
+        />
+      )}
     </PageLayout>
   );
 }
