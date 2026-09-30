@@ -1383,261 +1383,35 @@ async def get_cartelle_email() -> Dict[str, Any]:
 async def sync_f24_automatico(
     giorni: int = Query(30, ge=1, le=365)
 ) -> Dict[str, Any]:
+    """Alias legacy: processa gli F24 gia' in `documents_inbox`.
+
+    Prima scaricava da solo la INBOX (un secondo downloader: la posta si legge
+    solo con `email_full_download`, tutte le cartelle) e scriveva i modelli con
+    un lettore e una dedup propri. Il parametro `giorni` resta per compatibilita'
+    e non ha effetto.
     """
-    Sincronizza automaticamente F24 dalle email.
-    - Scarica SOLO allegati F24
-    - Li processa automaticamente
-    - Li carica nella sezione F24
-    Chiamato all'avvio dell'app.
-    """
-    db = Database.get_db()
-
-    from app.services.gmail_search import get_gmail_credentials
-    email_user, email_password, _imap = await get_gmail_credentials(db)
-
-    if not email_user or not email_password:
-        return {
-            "success": False,
-            "error": "Credenziali email non configurate",
-            "f24_trovati": 0,
-            "f24_caricati": 0,
-            "dettagli": []
-        }
-
-    try:
-        # Scarica documenti (solo F24) - max 30 email per velocità
-        result = await download_documents_from_email(
-            db=db,
-            email_user=email_user,
-            email_password=email_password,
-            since_days=giorni,
-            folder="INBOX",
-            max_emails=30
-        )
-
-        if not result.get("success"):
-            return {
-                "success": False,
-                "error": result.get("error", "Errore sconosciuto"),
-                "f24_trovati": 0,
-                "f24_caricati": 0,
-                "dettagli": []
-            }
-
-        new_documents = result.get("documents", [])
-        f24_docs = [d for d in new_documents if d.get("category") == "f24"]
-        quietanze_docs = [d for d in new_documents if d.get("category") == "quietanza"]
-
-        # Processa automaticamente gli F24 (architettura Drive/Supabase)
-        f24_caricati = []
-        f24_errori = []
-
-        for doc in f24_docs:
-            try:
-                # Architettura Drive/Supabase: usa pdf_data
-                pdf_data = doc.get("pdf_data")
-                if not pdf_data:
-                    f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in Drive/Supabase"})
-                    continue
-
-                # Decodifica PDF da base64
-                import base64
-                pdf_content = base64.b64decode(pdf_data)
-
-                # Chiama il parser F24 con pdf_content (architettura Drive/Supabase)
-                from app.services.parser_f24 import parse_f24_commercialista
-
-                parsed = parse_f24_commercialista(pdf_content=pdf_content)
-
-                # Il parser restituisce direttamente il risultato (non un wrapper con 'success')
-                # Verifica che non ci sia un errore e che ci siano dati
-                if not parsed.get("error") and (parsed.get("sezione_erario") or parsed.get("sezione_inps") or parsed.get("totali")):
-                    # Il parsed È già f24_data
-                    f24_data = parsed
-
-                    # Aggiungi ID e filename
-                    from uuid import uuid4
-                    f24_data["id"] = str(uuid4())
-                    f24_data["file_name"] = doc["filename"]
-
-                    # Rimuovi eventuali _id per evitare errori Drive/Supabase
-                    if "_id" in f24_data:
-                        del f24_data["_id"]
-
-                    # Aggiungi info email
-                    f24_data["email_source"] = {
-                        "subject": doc.get("email_subject", ""),
-                        "from": doc.get("email_from", ""),
-                        "date": doc.get("email_date", ""),
-                        "document_id": doc.get("id")
-                    }
-                    f24_data["auto_imported"] = True
-                    f24_data["import_date"] = datetime.now(timezone.utc).isoformat()
-                    f24_data["pdf_data"] = pdf_data
-                    f24_data["file_hash"] = hashlib.sha256(pdf_content).hexdigest()
-
-                    # Controlla se già esiste (per evitare duplicati)
-                    existing = await db["f24_unificato"].find_one({
-                        "file_name": f24_data.get("file_name")
-                    })
-
-                    if existing:
-                        f24_errori.append({"file": doc["filename"], "errore": "F24 già presente nel database"})
-                        continue
-
-                    from app.services.f24_canonico import salva_f24
-
-                    f24_data["id"] = await salva_f24(db, f24_data, source="email_sync")
-
-                    # Salva anche in f24_models per la visualizzazione frontend
-                    # Converti formato tributi per f24_models
-                    tributi_erario = []
-                    for t in parsed.get("sezione_erario", []):
-                        tributi_erario.append({
-                            "codice_tributo": t.get("codice_tributo"),
-                            "codice": t.get("codice_tributo"),
-                            "rateazione": t.get("rateazione", ""),
-                            "periodo_riferimento": t.get("periodo_riferimento", ""),
-                            "anno_riferimento": t.get("anno", ""),
-                            "anno": t.get("anno", ""),
-                            "mese": t.get("mese", ""),
-                            "importo_debito": t.get("importo_debito", 0),
-                            "importo_credito": t.get("importo_credito", 0),
-                            "importo": t.get("importo_debito", 0),
-                            "descrizione": t.get("descrizione", ""),
-                            "riferimento": t.get("periodo_riferimento", "")
-                        })
-
-                    tributi_inps = []
-                    for t in parsed.get("sezione_inps", []):
-                        tributi_inps.append({
-                            "codice_sede": t.get("codice_sede", ""),
-                            "causale": t.get("causale", ""),
-                            "causale_contributo": t.get("causale", ""),
-                            "matricola": t.get("matricola", ""),
-                            "periodo_da": t.get("mese", ""),
-                            "periodo_a": t.get("anno", ""),
-                            "periodo_riferimento": t.get("periodo_riferimento", ""),
-                            "importo_debito": t.get("importo_debito", 0),
-                            "importo_credito": t.get("importo_credito", 0),
-                            "importo": t.get("importo_debito", 0),
-                            "descrizione": t.get("descrizione", "")
-                        })
-
-                    tributi_regioni = []
-                    for t in parsed.get("sezione_regioni", []):
-                        tributi_regioni.append({
-                            "codice_tributo": t.get("codice_tributo"),
-                            "codice": t.get("codice_tributo"),
-                            "codice_regione": t.get("codice_regione", ""),
-                            "codice_ente": t.get("codice_regione", ""),
-                            "periodo_riferimento": t.get("periodo_riferimento", ""),
-                            "importo_debito": t.get("importo_debito", 0),
-                            "importo_credito": t.get("importo_credito", 0),
-                            "importo": t.get("importo_debito", 0),
-                            "descrizione": t.get("descrizione", "")
-                        })
-
-                    tributi_imu = []
-                    for t in parsed.get("sezione_tributi_locali", []):
-                        tributi_imu.append({
-                            "codice_tributo": t.get("codice_tributo"),
-                            "codice": t.get("codice_tributo"),
-                            "codice_comune": t.get("codice_comune", ""),
-                            "codice_ente": t.get("codice_comune", ""),
-                            "periodo_riferimento": t.get("periodo_riferimento", ""),
-                            "importo_debito": t.get("importo_debito", 0),
-                            "importo_credito": t.get("importo_credito", 0),
-                            "importo": t.get("importo_debito", 0),
-                            "descrizione": t.get("descrizione", "")
-                        })
-
-                    totali = parsed.get("totali", {})
-                    data_scadenza = (
-                        parsed.get("dati_generali", {}).get("data_stampa")
-                        or parsed.get("dati_generali", {}).get("data_compilazione")
-                    )
-
-
-                    # Controlla duplicati in f24_models
-
-                    # La vista frontend legge lo schema tollerante del record
-                    # canonico appena salvato: non creare una seconda copia
-                    # dello stesso PDF con un'altra forma dati.
-
-                    # Aggiorna stato documento
-                    await db["documents_inbox"].update_one(
-                        {"id": doc["id"]},
-                        {"$set": {
-                            "status": "processato",
-                            "processed": True,
-                            "processed_to": "f24_models",
-                            "processed_at": datetime.now(timezone.utc).isoformat()
-                        }}
-                    )
-
-                    f24_caricati.append({
-                        "file": doc["filename"],
-                        "importo": totali.get("saldo_netto", 0) or totali.get("saldo_finale", 0),
-                        "data_scadenza": data_scadenza or "",
-                        "tributi": len(tributi_erario) + len(tributi_inps)
-                    })
-                else:
-                    f24_errori.append({
-                        "file": doc["filename"],
-                        "errore": parsed.get("error", "Parsing fallito")
-                    })
-
-            except Exception as e:
-                f24_errori.append({"file": doc["filename"], "errore": str(e)})
-
-        # Processa quietanze
-        quietanze_caricate = 0
-        for doc in quietanze_docs:
-            try:
-                await db["documents_inbox"].update_one(
-                    {"id": doc["id"]},
-                    {"$set": {
-                        "status": "nuovo",
-                        "ready_for": "quietanze_f24"
-                    }}
-                )
-                quietanze_caricate += 1
-            except Exception as e:
-                logger.warning(f"Errore collegamento quietanza: {e}")
-
-        return {
-            "success": True,
-            "f24_trovati": len(f24_docs),
-            "f24_caricati": len(f24_caricati),
-            "f24_errori": len(f24_errori),
-            "quietanze_trovate": len(quietanze_docs),
-            "dettagli": f24_caricati,
-            "errori": f24_errori if f24_errori else None,
-            "messaggio": f"Trovati {len(f24_docs)} F24, caricati {len(f24_caricati)} con successo" if f24_docs else "Nessun nuovo F24 trovato nelle email"
-        }
-
-    except Exception as e:
-        logger.error(f"Errore sync F24: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "f24_trovati": 0,
-            "f24_caricati": 0,
-            "dettagli": []
-        }
+    esito = await processa_f24_scaricati()
+    return {
+        **esito,
+        "f24_trovati": esito.get("f24_processati", 0) + esito.get("f24_errori", 0),
+        "f24_caricati": esito.get("f24_processati", 0),
+        "messaggio": "La posta la scarica solo il giro orario; qui si processano gli F24 gia' in inbox",
+    }
 
 
 @router.post("/processa-f24-scaricati")
 @handle_errors
 async def processa_f24_scaricati() -> Dict[str, Any]:
+    """Processa gli F24 in `documents_inbox` non ancora processati.
+
+    Ogni PDF passa da `importa_modello_bytes`, l'ingresso unico dei modelli:
+    lettura, quadratura, dedup per contenuto, ricerca di quietanza e addebito.
     """
-    Processa tutti gli F24 già scaricati ma non ancora processati.
-    Utile se il primo sync ha fallito.
-    """
+    from app.services.f24_canonico import importa_modello_bytes
+    import base64
+
     db = Database.get_db()
 
-    # Trova F24 non processati
     f24_docs = await db["documents_inbox"].find(
         {"category": "f24", "processed": {"$ne": True}},
         {"_id": 0}
@@ -1654,103 +1428,56 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
     f24_caricati = []
     f24_errori = []
 
-    from app.services.parser_f24 import parse_f24_commercialista
-    from app.services.f24_canonico import chiave_f24, salva_f24
-    import base64
-    import hashlib
-
     for doc in f24_docs:
         try:
-            # Architettura Drive/Supabase: usa pdf_data
             pdf_data = doc.get("pdf_data")
             if not pdf_data:
                 f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in Drive/Supabase"})
                 continue
 
-            pdf_content = base64.b64decode(pdf_data)
-            parsed = parse_f24_commercialista(pdf_content=pdf_content)
-
-            # Contratto reale del parser (P0.8): NON restituisce success/f24_data;
-            # ritorna {"error": ...} in errore, altrimenti il dict F24 direttamente
-            # (dati_generali/sezione_erario/sezione_inps/totali). Stesso contratto
-            # usato da sync-f24-automatico.
-            if not parsed.get("error") and (
-                parsed.get("sezione_erario") or parsed.get("sezione_inps") or parsed.get("totali")
-            ):
-                f24_data = dict(parsed)
-                f24_data["id"] = str(uuid.uuid4())
-                # file_name è la chiave del controllo duplicati sotto: senza,
-                # find_one({"file_name": None}) matcherebbe a vuoto e salterebbe
-                # SEMPRE l'import (come fa sync_f24_automatico). Vedi P0.8.
-                f24_data["file_name"] = doc.get("filename")
-                f24_data["pdf_hash"] = hashlib.md5(pdf_content).hexdigest()
-                f24_data["document_id"] = doc.get("id")
-                f24_data["status"] = "da_pagare"
-                f24_data["riconciliato"] = False
-
-                # Rimuovi _id
-                if "_id" in f24_data:
-                    del f24_data["_id"]
-
-                # Aggiungi info
-                f24_data["email_source"] = {
-                    "subject": doc.get("email_subject", ""),
-                    "from": doc.get("email_from", ""),
-                    "date": doc.get("email_date", ""),
-                    "document_id": doc.get("id")
-                }
-                f24_data["auto_imported"] = True
-                f24_data["import_date"] = datetime.now(timezone.utc).isoformat()
-
-                # Dedup canonica per contenuto e dati F24. Il solo filename non
-                # e' sufficiente: nomi uguali possono contenere modelli diversi.
-                f24_data["f24_dedup_key"] = chiave_f24(f24_data)
-                existing = await db["f24_unificato"].find_one({
-                    "f24_dedup_key": f24_data["f24_dedup_key"]
-                })
-
-                if existing:
-                    # Aggiorna stato come processato ma non aggiungere
-                    await db["documents_inbox"].update_one(
-                        {"id": doc["id"]},
-                        {"$set": {"status": "processato", "processed": True, "note": "Già presente"}}
-                    )
-                    continue
-
-                await salva_f24(db, f24_data, source="documents_inbox")
-
-                await db["documents_inbox"].update_one(
-                    {"id": doc["id"]},
-                    {"$set": {
-                        "status": "processato",
-                        "processed": True,
-                        "processed_to": "f24_unificato",
-                        "processed_at": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
-
-                f24_caricati.append({
-                    "file": doc["filename"],
-                    "importo": f24_data.get("totali", {}).get("saldo_netto", 0),
-                    "tributi": len(f24_data.get("sezione_erario", []))
-                              + len(f24_data.get("sezione_inps", [])),
-                })
-            else:
-                f24_errori.append({
-                    "file": doc["filename"],
-                    "errore": parsed.get("error", "Parsing fallito")
-                })
+            esito = await importa_modello_bytes(
+                db, base64.b64decode(pdf_data), doc.get("filename") or "f24.pdf",
+                source="documents_inbox",
+                source_metadata={
+                    "source_document_id": doc.get("id"),
+                    "email_subject": doc.get("email_subject", ""),
+                    "email_from": doc.get("email_from", ""),
+                    "email_date": doc.get("email_date", ""),
+                },
+            )
+            if not esito.get("success"):
+                f24_errori.append({"file": doc["filename"], "errore": esito.get("error", "Parsing fallito")})
                 await db["documents_inbox"].update_one(
                     {"id": doc["id"]},
                     {"$set": {
                         "status": "errore_parser", "processed": False,
-                        "parser_errors": [parsed.get("error", "Parsing fallito")],
+                        "parser_errors": [esito.get("error", "Parsing fallito")],
                         "parser_checked_at": datetime.now(timezone.utc).isoformat(),
                     }},
                 )
+                continue
+
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "status": "processato",
+                    "processed": True,
+                    "processed_to": "f24_unificato",
+                    "f24_id": esito.get("f24_id"),
+                    "note": "Già presente" if esito.get("duplicate") else None,
+                    "processed_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            if esito.get("duplicate"):
+                continue
+            f24_caricati.append({
+                "file": doc["filename"],
+                "f24_id": esito.get("f24_id"),
+                "tributi": esito.get("righe_tributo", 0),
+            })
 
         except Exception as e:
-            f24_errori.append({"file": doc["filename"], "errore": str(e)})
+            f24_errori.append({"file": doc["filename"], "errore": f"{type(e).__name__}: {e}"})
 
     return {
         "success": True,

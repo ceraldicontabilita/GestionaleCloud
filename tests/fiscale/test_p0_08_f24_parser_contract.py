@@ -1,33 +1,32 @@
 """P0.8 — Il parser F24 (`parse_f24_commercialista`) ha un contratto unico:
 ritorna {"error": ...} in caso di errore, altrimenti il dict F24 direttamente
 (dati_generali/sezione_erario/sezione_inps/totali). NON restituisce success/f24_data.
-Tutti i chiamanti devono usare questo contratto."""
+Dal 30/09/2026 (AV3-06) `documenti.py` non lo chiama piu' da solo: gli F24 in
+`documents_inbox` passano da `importa_modello_bytes`, l'ingresso unico."""
 from pathlib import Path
 
 
 def test_processa_f24_scaricati_usa_contratto_reale():
     src = Path("app/routers/documenti.py").read_text(encoding="utf-8")
-    # il contratto inesistente non deve più comparire
     assert 'parsed.get("success") and parsed.get("f24_data")' not in src
     assert 'parsed["f24_data"]' not in src
 
 
 def test_parser_non_restituisce_success_ne_f24_data():
     src = Path("app/services/parser_f24.py").read_text(encoding="utf-8")
-    # il parser restituisce dati_generali/sezione_erario, non un wrapper success
     assert '"dati_generali"' in src
     assert '"sezione_erario"' in src
 
 
-def test_processa_f24_imposta_file_name_per_dedup():
-    """Il file_name deve essere impostato prima del controllo duplicati, altrimenti
-    find_one({'file_name': None}) salterebbe sempre l'import (review P0.8)."""
+def test_processa_f24_passa_dall_ingresso_unico():
     src = Path("app/routers/documenti.py").read_text(encoding="utf-8")
-    assert 'f24_data["file_name"] = doc.get("filename")' in src
-
-
-def test_processa_f24_usa_hash_e_collezione_canonica():
-    src = Path("app/routers/documenti.py").read_text(encoding="utf-8")
-    assert 'f24_data["pdf_hash"] = hashlib.md5(pdf_content).hexdigest()' in src
-    assert 'await salva_f24(db, f24_data, source="documents_inbox")' in src
-    assert '"processed_to": "f24_unificato"' in src
+    inizio = src.index('@router.post("/sync-f24-automatico")')
+    fine = src.index('@router.get("/ultimo-sync")')
+    blocco = src[inizio:fine]
+    assert "importa_modello_bytes(" in blocco
+    assert "salva_f24(" not in blocco
+    assert "parse_f24_commercialista" not in blocco
+    # Il secondo downloader della INBOX non c'e' piu': la posta la legge solo
+    # email_full_download, tutte le cartelle.
+    assert "download_documents_from_email(" not in blocco
+    assert '"processed_to": "f24_unificato"' in blocco

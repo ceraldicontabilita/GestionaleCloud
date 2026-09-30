@@ -273,18 +273,18 @@ async def parse_verbali_con_llm(
 
 @router.post("/parse-f24-llm")
 async def parse_f24_con_llm(
-    limit: int = Query(default=50, description="Max F24 da processare")
+    limit: int = Query(default=50, description="Ignorato: alias legacy")
 ) -> Dict[str, Any]:
-    """
-    Parsing LLM degli F24 PDF.
-    Estrae: codici tributo, periodi, importi, sezioni.
-    Salva in f24_commercialista per riconciliazione con banca.
-    """
-    from app.services.llm_document_parser import batch_parse_f24
-    db = Database.get_db()
-    stats = await batch_parse_f24(db, limit=limit)
-    return {"success": True, "stats": stats}
+    """Alias legacy: gli allegati F24 della posta passano dall'ingresso unico.
 
+    Prima leggeva i PDF con un modello LLM e scriveva modelli propri in
+    `f24_unificato`: un secondo lettore accanto a `parser_f24`. Ora processa la
+    coda degli allegati con la stessa pipeline del giro automatico.
+    """
+    from app.services.post_download_pipeline import processa_f24_da_email
+    db = Database.get_db()
+    stats = await processa_f24_da_email(db)
+    return {"success": True, "stats": stats}
 
 
 @router.post("/riconcilia-verbali")

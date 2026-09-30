@@ -150,3 +150,68 @@ def test_upload_multiplo_e_zip_leggono_ogni_pdf(monkeypatch):
         assert await db["f24_unificato"].count_documents({}) == 2
 
     asyncio.run(scenario())
+
+
+def test_inbox_documenti_passa_dall_ingresso_unico(monkeypatch):
+    from app.routers import documenti
+
+    db = AsyncMongoMockClient()["inbox"]
+    monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+
+    def lettore(pdf_content):
+        if pdf_content == b"%PDF-vuoto":
+            return {"dati_generali": {}, "sezione_erario": [], "totali": {}}
+        return _parsed()
+
+    monkeypatch.setattr("app.services.parser_f24.parse_f24_commercialista", lettore)
+    import base64
+
+    async def scenario():
+        await db["documents_inbox"].insert_many([
+            {"id": "d1", "category": "f24", "filename": "F24 IVA.pdf", "email_from": "studio@example.invalid",
+             "pdf_data": base64.b64encode(b"%PDF-1").decode()},
+            {"id": "d2", "category": "f24", "filename": "F24 IVA copia.pdf",
+             "pdf_data": base64.b64encode(b"%PDF-1").decode()},
+            {"id": "d3", "category": "f24", "filename": "pratica.pdf",
+             "pdf_data": base64.b64encode(b"%PDF-vuoto").decode()},
+            {"id": "d4", "category": "f24", "filename": "senza.pdf"},
+            {"id": "d5", "category": "cedolino", "filename": "busta.pdf", "pdf_data": "x"},
+        ])
+        esito = await documenti.processa_f24_scaricati()
+        assert esito["f24_processati"] == 1 and esito["f24_errori"] == 2
+        assert await db["f24_unificato"].count_documents({}) == 1
+        modello = await db["f24_unificato"].find_one({})
+        assert modello["source_metadata"]["source_document_id"] == "d1"
+        assert modello["import_source"] == "documents_inbox"
+        d1 = await db["documents_inbox"].find_one({"id": "d1"})
+        d2 = await db["documents_inbox"].find_one({"id": "d2"})
+        d3 = await db["documents_inbox"].find_one({"id": "d3"})
+        assert d1["processed"] is True and d1["processed_to"] == "f24_unificato" and d1["f24_id"] == modello["id"]
+        assert d2["processed"] is True and d2["note"] == "Già presente" and d2["f24_id"] == modello["id"]
+        assert d3["status"] == "errore_parser" and "riga tributo" in d3["parser_errors"][0]
+        assert (await db["documents_inbox"].find_one({"id": "d5"})).get("processed") is None
+
+        # L'alias legacy non scarica piu' niente: processa la stessa coda.
+        alias = await documenti.sync_f24_automatico(giorni=7)
+        assert alias["success"] is True and alias["f24_caricati"] == 0
+        assert await db["f24_unificato"].count_documents({}) == 1
+
+    asyncio.run(scenario())
+
+
+def test_parse_f24_llm_e_alias_della_pipeline_posta(monkeypatch):
+    from app.routers import email_download
+    from app.services import post_download_pipeline
+
+    chiamate = []
+
+    async def pipeline(db):
+        chiamate.append(db)
+        return {"processati": 0, "errori": 0, "gia_processati": 0, "nuovi": 0}
+
+    monkeypatch.setattr(post_download_pipeline, "processa_f24_da_email", pipeline)
+    monkeypatch.setattr(email_download.Database, "get_db", staticmethod(lambda: "db"))
+    esito = asyncio.run(email_download.parse_f24_con_llm(limit=5))
+    assert esito["success"] is True and chiamate == ["db"]
+    import app.services.llm_document_parser as llm
+    assert not hasattr(llm, "batch_parse_f24") and not hasattr(llm, "parse_f24_pdf")
