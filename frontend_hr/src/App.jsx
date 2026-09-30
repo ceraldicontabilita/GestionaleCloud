@@ -198,6 +198,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     { id: "bonifici-da-associare", label: "Bonifici da associare", icon: Inbox, section: "DIPENDENTI" },
     { id: "distinte-da-associare", label: "Distinte bonifici", icon: Inbox, section: "DIPENDENTI" },
     { id: "posizione-dipendente", label: "Posizione dipendente", icon: Scale, section: "DIPENDENTI" },
+    { id: "mensilita-aggiuntive", label: "13ª e 14ª", icon: Euro, section: "DIPENDENTI" },
     { id: "tfr", label: "TFR", icon: Wallet, section: "DIPENDENTI" },
     { id: "documenti", label: "Documenti", icon: FolderOpen, section: "DIPENDENTI" },
     { id: "assunzione", label: "Assunzione & Contratti", icon: Briefcase, section: "DIPENDENTI" },
@@ -216,6 +217,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     "bonifici-da-associare": "Bonifici da associare",
     "distinte-da-associare": "Distinte bonifici",
     "posizione-dipendente": "Posizione dipendente",
+    "mensilita-aggiuntive": "13ª e 14ª",
     tfr: "TFR",
     missioni: "Missioni",
     documenti: "Documenti",
@@ -258,6 +260,8 @@ export default function DipendentiCloudApp({ page: pageProp }) {
         return <BonificiDaAssociarePage dipendenti={dipendenti} distinte />;
       case "posizione-dipendente":
         return <PosizioneDipendentePage dipendenti={dipendenti} />;
+      case "mensilita-aggiuntive":
+        return <MensilitaAggiuntivePage />;
       case "tfr":
         return <TfrPage dipendenti={activeDipendenti} getDipendente={getDipendente} />;
       case "missioni":
@@ -4524,6 +4528,186 @@ function ModuloAnnullaConciliazione({ conc, onClose, onFatto }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// 13ª e 14ª per dipendente: totali e spostamento dei pagamenti. I numeri e lo
+// spostamento (sempre lo stesso record, mai una copia) li fa il backend
+// (app/services/mensilita_aggiuntive.py): qui solo vista e tendine.
+const NOME_MENSILITA = { "13": "13ª", "14": "14ª" };
+
+function BloccoMensilita({ blocco, etichetta }) {
+  const incompleto = blocco.buste_mensili > 0 && blocco.buste_con_rateo < blocco.buste_mensili;
+  return (
+    <>
+      <td data-label={`${etichetta} ratei maturati`} style={{ textAlign: "right" }}>
+        {blocco.buste_con_rateo ? eurPos(blocco.rateo_maturato) : "—"}
+        {incompleto && <div style={{ color: "#c4894a", fontSize: 11 }}>{blocco.buste_con_rateo} buste su {blocco.buste_mensili}</div>}
+      </td>
+      <td data-label={`${etichetta} busta`} style={{ textAlign: "right" }}>{blocco.busta_presente ? eurPos(blocco.busta) : "—"}</td>
+      <td data-label={`${etichetta} pagato`} style={{ textAlign: "right" }}>{eurPos(blocco.pagato)}</td>
+      <td data-label={`${etichetta} saldo`} style={{ textAlign: "right" }}>{blocco.busta_presente || blocco.pagato ? <SaldoValore valore={blocco.saldo} /> : "—"}</td>
+    </>
+  );
+}
+
+function SpostaMensilitaModal({ riga, anno, onClose, onFatto }) {
+  const [cand, setCand] = useState(null);
+  const [scelta, setScelta] = useState("");
+  const [mensilita, setMensilita] = useState("13");
+  const [busy, setBusy] = useState(false);
+  const carica = useCallback(async () => {
+    try {
+      const r = await axios.get(`${POS_API}/mensilita-aggiuntive/${riga.dipendente_id}/candidati?anno=${anno}`);
+      setCand(r.data.righe || []);
+    } catch (e) { toast(erroreApi(e, "Errore nel caricamento"), "err"); setCand([]); }
+  }, [riga.dipendente_id, anno]);
+  useEffect(() => { carica(); }, [carica]);
+
+  const chiave = (c) => `${c.sorgente}|${c.id}`;
+  const assegnati = (cand || []).filter(c => c.sulla_mensilita && c.anno === anno);
+  const spostabili = (cand || []).filter(c => !(c.sulla_mensilita && c.anno === anno));
+  const scelto = spostabili.find(c => chiave(c) === scelta);
+
+  const chiama = async (percorso, corpo, ok) => {
+    setBusy(true);
+    try { await axios.post(`${POS_API}/mensilita-aggiuntive/${percorso}`, corpo); toast(ok); await carica(); onFatto(); }
+    catch (e) { toast(erroreApi(e, "Operazione non riuscita"), "err"); }
+    finally { setBusy(false); }
+  };
+  const associa = async () => {
+    if (!scelto) return;
+    await chiama("sposta", { dipendente_id: riga.dipendente_id, sorgente: scelto.sorgente, id: scelto.id,
+      mensilita, anno, data: scelto.data, importo: scelto.importo }, `Spostato sulla ${NOME_MENSILITA[mensilita]} ${anno}`);
+    setScelta("");
+  };
+  const riporta = (c) => chiama("riporta", { dipendente_id: riga.dipendente_id, sorgente: c.sorgente, id: c.id },
+    "Riportato nel mese di prima");
+
+  return (
+    <Modal wide title={`13ª e 14ª ${anno} · ${riga.nome}`} onClose={() => !busy && onClose()}>
+      <p className="dc-muted" style={{ marginTop: 0, fontSize: 13 }}>
+        Scegli il bonifico o l'acconto e a quale mensilità appartiene: il pagamento si sposta, non si copia, e lo puoi riportare dov'era.
+      </p>
+      {cand === null ? <p className="dc-muted">Carico…</p> : (
+        <>
+          <div className="dc-card" style={{ padding: 12, marginBottom: 14 }}>
+            <h4 style={{ margin: "0 0 8px" }}>Sposta un pagamento</h4>
+            <label className="dc-form-group"><span className="dc-label">Bonifico o acconto</span>
+              <select value={scelta} onChange={e => setScelta(e.target.value)} style={{ minHeight: 44 }}>
+                <option value="">— scegli —</option>
+                {spostabili.map(c => (
+                  <option key={chiave(c)} value={chiave(c)}>
+                    {formatDate(c.data)} · € {eurPos(c.importo)} · {c.descrizione} · ora su {c.collocazione}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div role="radiogroup" aria-label="Mensilità" style={{ display: "flex", gap: 8, margin: "10px 0", flexWrap: "wrap" }}>
+              {["13", "14"].map(m => (
+                <button key={m} type="button" role="radio" aria-checked={mensilita === m}
+                  className={mensilita === m ? "dc-btn dc-btn-primary" : "dc-btn"} style={{ minHeight: 44, minWidth: 96 }}
+                  onClick={() => setMensilita(m)}>{NOME_MENSILITA[m]}</button>
+              ))}
+            </div>
+            <button type="button" className="dc-btn dc-btn-primary" style={{ minHeight: 44 }} disabled={!scelto || busy} onClick={associa}>
+              <Link2 size={16} aria-hidden="true" /> Associa alla {NOME_MENSILITA[mensilita]} {anno}
+            </button>
+          </div>
+
+          <div className="dc-card" style={{ padding: 0 }}>
+            <h4 style={{ margin: 0, padding: "10px 12px", borderBottom: "1px solid #e6e0d4" }}>Già sulla 13ª e 14ª {anno}</h4>
+            {assegnati.length === 0 ? <p className="dc-muted" style={{ padding: 12, margin: 0 }}>Nessun pagamento associato.</p> : assegnati.map(c => (
+              <div key={chiave(c)} style={{ padding: "10px 12px", borderBottom: "1px solid #efe9dd", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <div>{formatDate(c.data)} · <b>€ {eurPos(c.importo)}</b> · {c.descrizione}
+                  <div className="dc-muted" style={{ fontSize: 12 }}>{c.collocazione}</div></div>
+                <button type="button" className="dc-btn dc-btn-ghost" style={{ minHeight: 44 }} disabled={busy}
+                  aria-label={`Riporta il pagamento del ${formatDate(c.data)} nel mese di prima`} onClick={() => riporta(c)}>
+                  <X size={16} aria-hidden="true" /> Riporta nel mese
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function MensilitaAggiuntivePage() {
+  const [anno, setAnno] = useState(new Date().getFullYear());
+  const [dati, setDati] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [aperto, setAperto] = useState(null);
+  const carica = useCallback(async () => {
+    setLoading(true);
+    try { setDati((await axios.get(`${POS_API}/mensilita-aggiuntive?anno=${anno}`)).data); }
+    catch (e) { toast(erroreApi(e, "Errore nel caricamento"), "err"); setDati(null); }
+    finally { setLoading(false); }
+  }, [anno]);
+  useEffect(() => { carica(); }, [carica]);
+  const tot = dati?.totali;
+
+  return (
+    <div className="dc-page" style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <div className="dc-page-header">
+        <div>
+          <h1>13ª e 14ª</h1>
+          <p>Per ogni dipendente: ratei maturati letti dalle buste mensili (13ª gennaio-dicembre, 14ª luglio-giugno), busta della mensilità,
+            pagato e saldo. Un pagamento dato come acconto o senza indicazione si sposta qui dalla scheda «Gestisci».</p>
+        </div>
+      </div>
+      <div className="dc-card" style={{ padding: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 14 }}>
+        <label className="dc-form-group" style={{ flex: "0 1 140px" }}><span className="dc-label">Anno</span>
+          <select value={anno} onChange={e => setAnno(Number(e.target.value))} style={{ minHeight: 44 }}>
+            {(dati?.anni?.length ? dati.anni : [anno]).slice().reverse().map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </label>
+        <button type="button" className="dc-btn" style={{ minHeight: 44 }} onClick={carica} disabled={loading}>
+          <RefreshCw size={16} aria-hidden="true" /> {loading ? "Carico…" : "Aggiorna"}
+        </button>
+      </div>
+      {!dati ? <div className="dc-card" style={{ padding: 20 }}>{loading ? "Carico…" : "Nessun dato."}</div> : dati.righe.length === 0 ? (
+        <div className="dc-card" style={{ padding: 20 }}>Nessuna 13ª o 14ª per il {anno}.</div>
+      ) : (
+        <div className="dc-card" style={{ padding: 0 }}>
+          <table className="dc-table dc-table--cards">
+            <thead>
+              <tr><th rowSpan={2}>Dipendente</th><th colSpan={4} style={{ textAlign: "center" }}>13ª {anno}</th>
+                <th colSpan={4} style={{ textAlign: "center" }}>14ª {anno}</th><th rowSpan={2}></th></tr>
+              <tr>{["Ratei €", "Busta €", "Pagato €", "Saldo €", "Ratei €", "Busta €", "Pagato €", "Saldo €"].map((t, i) => <th key={i} style={{ textAlign: "right" }}>{t}</th>)}</tr>
+            </thead>
+            <tbody>
+              {dati.righe.map(r => (
+                <tr key={r.dipendente_id}>
+                  <td data-label="Dipendente"><b>{r.nome}</b>{r.stato === "cessato" ? " (cessato)" : ""}</td>
+                  <BloccoMensilita blocco={r.tredicesima} etichetta="13ª" />
+                  <BloccoMensilita blocco={r.quattordicesima} etichetta="14ª" />
+                  <td>
+                    <button type="button" className="dc-btn" style={{ minHeight: 44 }} aria-label={`Gestisci 13ª e 14ª di ${r.nome}`} onClick={() => setAperto(r)}>
+                      <Link2 size={16} aria-hidden="true" /> Gestisci
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              <tr style={{ fontWeight: 800 }}>
+                <td data-label="Totale">Totale</td>
+                {["tredicesima", "quattordicesima"].map(k => (
+                  <React.Fragment key={k}>
+                    <td data-label="Ratei" style={{ textAlign: "right" }}>{eurPos(tot[k].rateo_maturato)}</td>
+                    <td data-label="Busta" style={{ textAlign: "right" }}>{eurPos(tot[k].busta)}</td>
+                    <td data-label="Pagato" style={{ textAlign: "right" }}>{eurPos(tot[k].pagato)}</td>
+                    <td data-label="Saldo" style={{ textAlign: "right" }}>{eurPos(tot[k].saldo)}</td>
+                  </React.Fragment>
+                ))}
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      {aperto && <SpostaMensilitaModal riga={aperto} anno={anno} onClose={() => setAperto(null)} onFatto={carica} />}
+    </div>
   );
 }
 
