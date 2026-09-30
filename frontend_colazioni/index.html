@@ -724,11 +724,13 @@ async function annullaTit(id){if(!confirm("Annullare il voucher? Le colazioni no
 /* --- Strutture e inviti --- */
 const digits=s=>String(s||"").replace(/\D/g,"");
 const linkInvito=s=>base()+"#/invito/"+s.invito_token, linkHotel=s=>base()+"#/hotel/"+s.accesso;
+const msgAccesso=(s,link)=>"Ciao! Ecco l'accesso alla tua area colazioni di "+barNome()+": "+link+" — entri con il tuo PIN. Da lì scegli camere, giorni e colazione e mandi il QR ai tuoi ospiti.";
 const msgInvito=(s,link)=>((TIT.config||{}).msg_invito||"Attiva il tuo accesso: {link}").replace("{bar}",barNome()).replace("{hotel}",s.nome).replace("{link}",link);
 function pStrutture(){
  return `<div class="row"><h2 style="margin:8px 0">Strutture partner</h2><button class="btn" onclick="go('#/titolare/invita')">+ Invita nuovo B&B</button></div>`+
  TIT.strutture.map(s=>`<button class="big" onclick="go('#/titolare/struttura/${s.id}')"><div class="row"><b>${esc(s.nome)} ${s.demo?`<span class="pill p-warn">DEMO</span>`:""}${s.attivo?"":` <span class="pill p-warn">in attesa di attivazione</span>`}</b><span class="price" style="font-size:20px">${eur(s.saldo)}</span></div>
- <span>${esc(s.indirizzo)} · ${attivi(TIT.vouchers.filter(v=>v.struttura_id===s.id)).length} ordini</span></button>`).join("")||`<p class="mute">Nessuna struttura. Creane una con "+ Invita nuovo B&B".</p>`}
+ <span>${esc(s.indirizzo)} · ${attivi(TIT.vouchers.filter(v=>v.struttura_id===s.id)).length} ordini</span></button>
+ <div class="row" style="justify-content:flex-start;margin:-2px 0 12px 4px"><button class="btn sm" onclick="go('#/titolare/invito/${s.id}')">📨 Condividi con l'albergatore</button></div>`).join("")||`<p class="mute">Nessuna struttura. Creane una con "+ Invita nuovo B&B".</p>`}
 function pInvita(){return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="card"><h3>1 · Dati del nuovo B&B</h3>
  <label>Nome della struttura *</label><input id="in_n" placeholder="es. B&B Vesuvio"><label>Telefono / WhatsApp</label><input id="in_t" type="tel" placeholder="+39 333 1234567"><label>Email</label><input id="in_e" type="email"><label>Indirizzo</label><input id="in_a"></div>
  <div class="card"><h3>2 · Colazioni che può offrire</h3><p class="mute">Tocca una colazione per aprirla: nome, prezzo e contenuto dal menù. L'albergatore vedrà solo queste.</p><div id="ce2"></div></div>
@@ -751,12 +753,16 @@ function pInvito(id){
   <textarea id="inv_t" rows="4">${esc(msgInvito(s,linkInvito(s)))}</textarea>
   <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px"><button class="btn" onclick="invSend('wa','${id}')">💬 WhatsApp</button><button class="btn sec" onclick="invSend('mail','${id}')">✉️ Email</button><button class="btn sec" onclick="invSend('copia','${id}')">Copia messaggio</button><button class="btn sec" onclick="invSend('share','${id}')">Condividi…</button></div>
   <div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(linkInvito(s))}</p></div></div>`:""}
+ ${!s.invito_token?`<div class="card"><h3>📨 Condividi l'app con ${esc(s.nome)}</h3><p class="mute">Manda il link personale: l'albergatore entra con il suo PIN. Puoi cambiare il messaggio prima di inviarlo.</p>
+  <textarea id="acc_t" rows="4">${esc(msgAccesso(s,linkHotel(s)))}</textarea>
+  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px"><button class="btn" onclick="invSend('wa','${id}','acc_t')">💬 WhatsApp</button><button class="btn sec" onclick="invSend('mail','${id}','acc_t')">✉️ Email</button><button class="btn sec" onclick="invSend('copia','${id}','acc_t')">Copia messaggio</button><button class="btn sec" onclick="invSend('share','${id}','acc_t')">Condividi…</button><button class="btn sec" onclick="stampaAccesso('${id}')">🖨 Stampa QR</button></div>
+  <div style="text-align:center;margin-top:12px"><div class="qr" id="accqr2" style="display:inline-flex"></div></div></div>`:""}
  <div class="card"><h3>🔗 Link di accesso personale</h3><p class="mute">È il link che il B&B userà ogni volta per entrare (con il suo PIN). Mostra solo il nome del suo albergo.</p><p style="word-break:break-all">${esc(linkHotel(s))}</p>
   <button class="btn sm sec" onclick="navigator.clipboard.writeText('${linkHotel(s)}').then(()=>toast('Link copiato'))">Copia link</button> <a class="btn sm sec" style="text-decoration:none;display:inline-block" href="${linkHotel(s)}" target="_blank" rel="noopener">Apri come lo vede il B&B</a></div>
  <div class="card"><h3>${s.attivo?"PIN dimenticato?":"Invito scaduto o perso?"}</h3><p class="mute">Crea un nuovo invito: chi lo apre potrà scegliere un nuovo PIN.</p><button class="btn sec" onclick="invRigenera('${id}')">Genera un nuovo invito</button></div>`}
-pInvito.after=id=>{const s=TIT.strutture.find(x=>x.id===id);const e=$("#invqr");if(e&&s.invito_token)qr(e,linkInvito(s),150)};
-function invSend(tipo,id){
- const s=TIT.strutture.find(x=>x.id===id),t=$("#inv_t").value;
+pInvito.after=id=>{const s=TIT.strutture.find(x=>x.id===id);const e=$("#invqr");if(e&&s.invito_token)qr(e,linkInvito(s),150);const a=$("#accqr2");if(a&&!s.invito_token)qr(a,linkHotel(s),150)};
+function invSend(tipo,id,campo){
+ const s=TIT.strutture.find(x=>x.id===id),t=$("#"+(campo||"inv_t")).value;
  if(tipo==="wa")window.open("https://wa.me/"+digits(s.telefono)+"?text="+encodeURIComponent(t),"_blank");
  else if(tipo==="mail")location.href="mailto:"+(s.email||"")+"?subject="+encodeURIComponent("Il tuo accesso a Colazioni B&B")+"&body="+encodeURIComponent(t);
  else if(tipo==="copia")navigator.clipboard.writeText(t).then(()=>toast("Messaggio copiato"));
