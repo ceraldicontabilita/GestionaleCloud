@@ -5,6 +5,8 @@ del ponte Lotti. Il catalogo Qromo (``menu_carta`` o seme) aggiunge solamente
 colori, foto locali, orari e dettagli non modificati: non decide prezzo,
 allergeni o pubblicazione. Non si espongono listini interni o prodotti
 rimossi usando una seconda copia del catalogo.
+Le scelte della vecchia ``menu_carta_override`` restano leggibili tramite
+lo stesso adattatore delle API Menu finche' il titolare ne approva la migrazione.
 
 Endpoint:
     GET  /api/menu/carta                     pubblico, per la pagina /menu/carta/
@@ -122,12 +124,12 @@ async def _dataset() -> Dict[str, Any]:
 @router_pubblico.get("/carta")
 async def carta_pubblica():
     dati = await _dataset()
-    return _carta_dai_dati(dati)
+    return await _carta_dai_dati(dati)
 
 
-def _carta_dai_dati(dati):
+async def _carta_dai_dati(dati):
     dettagli = costruisci_carta(dati["pub"], dati["extras"], dati.get("imgmap") or {})
-    categorie, sottocategorie, prodotti = menu_routes._fetch_all()
+    categorie, sottocategorie, prodotti = await menu_routes._fetch_all()
     return carta_da_menu(categorie, sottocategorie, prodotti, dettagli, dati.get("imgmap") or {})
 
 
@@ -205,13 +207,15 @@ async def stato(_utente: str = Depends(verify_token)):
     db = await _db()
     salvato = await db[COLLEZIONE].find_one({"id": ID_DATASET}, {"_id": 0, "importato_il": 1})
     dati = await _dataset()
-    carta = _carta_dai_dati(dati)
+    carta = await _carta_dai_dati(dati)
+    scelte_legacy = await menu_routes._scelte_legacy()
     return {
         "fonte": "importato" if salvato else "seme",
         "catalogo": "menu_products",
         "importato_il": (salvato or {}).get("importato_il"),
         "menu": len(carta["menus"]), "categorie": len(carta["cats"]), "prodotti": len(carta["items"]),
-        "override": 0,  # Campo legacy: le scelte si salvano nei prodotti canonici.
+        "override": len(scelte_legacy),
+        "compatibilita_legacy": bool(scelte_legacy),
     }
 
 
@@ -227,7 +231,9 @@ async def importa(corpo: Importa, _utente: str = Depends(verify_token)):
         upsert=True,
     )
     return {"ok": True, "menu": len(carta["menus"]), "categorie": len(carta["cats"]),
-            "prodotti": len(carta["items"])}
+            "prodotti": len(carta["items"]), "ambito": "dettagli_carta",
+            "catalogo_aggiornato": False,
+            "messaggio": "Importati i dettagli della carta. Nomi, prezzi, allergeni e pubblicazione restano quelli del catalogo Menu; il catalogo Qromo si importa con Sincronizza da Qromo."}
 
 
 class SceltaProdotto(BaseModel):
