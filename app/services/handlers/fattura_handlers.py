@@ -397,6 +397,21 @@ async def on_fattura_created_alimenta_lotti(event: Dict[str, Any], db) -> Option
 
 
 _CODA_LOTTI: set = set()
+
+
+def accoda_alimentazione_lotti(source_ids) -> int:
+    """Accoda in sottofondo l'alimentazione di Lotti per piu' fatture.
+
+    Stessa coda e stesso lucchetto dell'handler `fattura.created`: una fattura
+    alla volta, idempotente. Serve quando si include un fornitore prima escluso
+    (`magazzino_fornitore.applica`)."""
+    accodate = 0
+    for sid in dict.fromkeys(str(x) for x in source_ids if x):
+        task = asyncio.create_task(_alimenta_lotti(sid))
+        _CODA_LOTTI.add(task)
+        task.add_done_callback(_CODA_LOTTI.discard)
+        accodate += 1
+    return accodate
 _LUCCHETTI_LOTTI: Dict[int, asyncio.Lock] = {}
 
 

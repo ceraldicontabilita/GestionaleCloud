@@ -2,7 +2,7 @@
 Suppliers base CRUD operations.
 List, get, update, delete suppliers.
 """
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -10,11 +10,17 @@ import httpx
 import re
 
 from app.database import Database, Collections
+from app.utils.dependencies import get_current_admin_user
 from app.middleware.performance import cache
 from .common import (
     PAYMENT_METHODS, PAYMENT_TERMS, SUPPLIERS_CACHE_KEY, SUPPLIERS_CACHE_TTL,
     logger
 )
+from app.services.magazzino_fornitore import (
+    MOTIVO_MODIFICA_SCHEDA, anteprima as anteprima_magazzino, applica as applica_magazzino,
+    allinea_da_lotti, carica_decisioni, vista_scheda,
+)
+from app.services.metodo_fornitore_dal import applica as applica_metodo_dal, stato as stato_metodo_dal
 from app.services.payment_allocation_validator import allocation_summary, is_credit_note
 from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA, importo_documento_con_segno
 from app.services.stato_pagamento_fattura import e_annullata, e_pagata
@@ -88,9 +94,11 @@ def _legacy_supplier_view(supplier: Dict[str, Any]) -> Dict[str, Any]:
             "giorni_pagamento", supplier.get("payment_days", 30)
         ),
         "comune": supplier.get("comune") or supplier.get("locality") or "",
-        "esclude_magazzino": supplier.get(
-            "esclude_magazzino", not supplier.get("inventory_enabled", False)
-        ),
+        # Solo la scelta scritta. Il vecchio ripiego `not inventory_enabled`
+        # (campo che nessuno dei 198 fornitori ha) faceva risultare escluso chi
+        # non era mai stato deciso; lo stato effettivo lo calcola
+        # `magazzino_fornitore.vista_scheda` (ERP, poi Lotti, poi «non deciso»).
+        "esclude_magazzino": supplier.get("esclude_magazzino") is True,
         "esclude_cassa_banca": supplier.get(
             "esclude_cassa_banca", bool(supplier.get("cessato", False))
         ),
@@ -324,11 +332,6 @@ async def list_suppliers(
             compatible_filters.append({"$or": [{"attivo": True}, {"attivo": {"$exists": False}}]})
         else:
             compatible_filters.append({"attivo": False})
-    if esclude_magazzino is not None:
-        compatible_filters.append({"$or": [
-            {"esclude_magazzino": esclude_magazzino},
-            {"inventory_enabled": not esclude_magazzino},
-        ]})
     if search and search.strip():
         import re as _re
         search_lower = _re.escape(search.strip())
@@ -526,7 +529,16 @@ async def list_suppliers(
         # popola davvero.
 
     suppliers = list(suppliers_map.values())
-    
+
+    # Nel magazzino / fuori: stato effettivo (anagrafica ERP, poi decisione di
+    # Lotti, poi «non deciso» = incluso) con motivo, data e chi l'ha deciso.
+    decisioni_magazzino = await carica_decisioni(db)
+    for s_ in suppliers:
+        s_.update(vista_scheda(s_, decisioni_magazzino))
+    if esclude_magazzino is not None:
+        suppliers = [s_ for s_ in suppliers
+                     if bool(s_.get("esclude_magazzino")) == esclude_magazzino]
+
     # Filtro stato_anagrafica (post-aggregation perché richiede prima_fattura_data)
     if stato_anagrafica:
         soglia_date = (datetime.now(timezone.utc) - timedelta(days=giorni_nuovo)).date().isoformat()
@@ -741,7 +753,8 @@ async def get_supplier(supplier_id: str) -> Dict[str, Any]:
             {"_id": 0}
         ).sort("data_fattura", -1).limit(20).to_list(20)
         supplier["fatture_recenti"] = invoices
-    
+
+    supplier.update(vista_scheda(supplier, await carica_decisioni(db)))
     return supplier
 
 
@@ -794,7 +807,10 @@ async def create_supplier(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "giorni_pagamento": data.get("giorni_pagamento") or 30,
         "note": data.get("note") or "",
         "attivo": True,
-        "esclude_magazzino": bool(data.get("esclude_magazzino", False)),
+        # niente `esclude_magazzino: False` d'ufficio: sarebbe una decisione che
+        # nessuno ha preso (e nasconderebbe quella eventualmente gia' in Lotti)
+        **({"esclude_magazzino": bool(data["esclude_magazzino"])}
+           if isinstance(data.get("esclude_magazzino"), bool) else {}),
         "cessato": bool(data.get("cessato", False)),
         "esclude_cassa_banca": bool(
             data.get("esclude_cassa_banca", False) or data.get("cessato", False)
@@ -817,6 +833,12 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     data.pop("partita_iva", None)
     data.pop("created_at", None)
 
+    # Nel magazzino / fuori: mai scritto dal PUT generico. Se cambia davvero
+    # passa dall'unico servizio (storico, proiezione su Lotti, fatture da prendere).
+    cambio_magazzino = data.pop("esclude_magazzino", None)
+    for _campo in ("magazzino_motivo", "magazzino_motivo_testo", "magazzino_deciso_il",
+                   "magazzino_deciso_da", "storico_magazzino"):
+        data.pop(_campo, None)
     if "esclude_cassa_banca" in data:
         data["esclude_cassa_banca"] = bool(data["esclude_cassa_banca"])
     if data.get("cessato") is True:
@@ -829,10 +851,17 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
         if data["metodo_pagamento"] not in PAYMENT_METHODS:
             raise HTTPException(status_code=400, detail="Metodo pagamento non valido")
         metodo_configurato = data["metodo_pagamento"] is not None and data["metodo_pagamento"] != ""
-        
-        # Se cambia metodo, salva la data del cambio e lo storico
-        if metodo_configurato:
-            data["metodo_pagamento_dal"] = data.get("metodo_pagamento_dal") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # «Metodo valido dal»: data ISO scritta dal titolare (la UI la mostra gg/mm/aaaa).
+    if data.get("metodo_pagamento_dal") in ("", None):
+        data.pop("metodo_pagamento_dal", None)
+    elif not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(data["metodo_pagamento_dal"])):
+        raise HTTPException(status_code=400, detail="Data «metodo valido dal» non valida (aaaa-mm-gg)")
+    else:
+        try:
+            datetime.strptime(str(data["metodo_pagamento_dal"]), "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data «metodo valido dal» non valida")
     
     if "termini_pagamento" in data:
         term = next((t for t in PAYMENT_TERMS if t["code"] == data["termini_pagamento"]), None)
@@ -845,14 +874,29 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
         _filtro_fornitore(supplier_id),
         {"partita_iva": 1, "piva": 1, "vat_number": 1, "id": 1,
          "denominazione": 1, "ragione_sociale": 1,
-         "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1}
+         "metodo_pagamento": 1, "metodo_pagamento_dal": 1,
+         "esclude_cassa_banca": 1, "cessato": 1}
     )
-    
+
     if not supplier:
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
-    
-    supplier_update: Dict[str, Any] = {"$set": data}
+
+    # La data «dal» si stampa solo quando il metodo cambia davvero: prima ogni
+    # salvataggio della scheda la riportava a oggi (BIG FOOD: «cassa dal
+    # 30/09/2026» invece che dal 01/01/2025) e il metodo non valeva mai per il passato.
+    metodo_cambiato = False
     if metodo_configurato:
+        metodo_cambiato = (
+            data["metodo_pagamento"] != supplier.get("metodo_pagamento")
+            or ("metodo_pagamento_dal" in data
+                and data["metodo_pagamento_dal"] != supplier.get("metodo_pagamento_dal"))
+        )
+        if "metodo_pagamento_dal" not in data and (
+                metodo_cambiato or not supplier.get("metodo_pagamento_dal")):
+            data["metodo_pagamento_dal"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    supplier_update: Dict[str, Any] = {"$set": data}
+    if metodo_configurato and metodo_cambiato:
         # Una sola scrittura sul foglio Fornitori: prima il metodo e poi lo
         # storico venivano persistiti con due round-trip distinti.
         supplier_update["$push"] = {"storico_metodi_pagamento": {
@@ -943,21 +987,17 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
 
         _asyncio.create_task(_riprocessa_prima_nota())
 
-    prodotti_rimossi = 0
-    if data.get("esclude_magazzino") == True:
-        piva = supplier.get("partita_iva")
-        supplier_id_db = supplier.get("id") or supplier.get("_id")
-        
-        result_stocks = await db["warehouse_stocks"].delete_many({
-            "$or": [{"supplier_piva": piva}, {"supplier_id": str(supplier_id_db)}, {"fornitore_piva": piva}]
-        })
-        prodotti_rimossi += result_stocks.deleted_count
-        
-        result_inv = await db["warehouse_inventory"].delete_many({
-            "$or": [{"supplier_piva": piva}, {"supplier_id": str(supplier_id_db)}, {"fornitore_piva": piva}]
-        })
-        prodotti_rimossi += result_inv.deleted_count
-    
+    if isinstance(cambio_magazzino, bool):
+        attuale = await db[Collections.SUPPLIERS].find_one(
+            _filtro_fornitore(supplier_id), {"_id": 0})
+        stato_ora, _ = (await carica_decisioni(db)).stato(
+            (attuale or {}).get("partita_iva") or (attuale or {}).get("piva"),
+            (attuale or {}).get("ragione_sociale") or (attuale or {}).get("denominazione"))
+        if attuale and bool(stato_ora) != cambio_magazzino:
+            await applica_magazzino(db, attuale, cambio_magazzino, MOTIVO_MODIFICA_SCHEDA,
+                                    "", "scheda fornitore")
+            await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
+
     # ── EVENTO: pubblica sul bus unico (learning machine + risoluzione alert) ──
     try:
         from app.services.event_bus import propagate_event, EventTypes
@@ -980,13 +1020,106 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
         _filtro_fornitore(supplier_id), {"_id": 0}
     )
 
+    vista_aggiornata = _legacy_supplier_view(updated_supplier or {})
+    vista_aggiornata.update(vista_scheda(vista_aggiornata, await carica_decisioni(db)))
     return {
         "message": "Fornitore aggiornato con successo",
-        "supplier": _legacy_supplier_view(updated_supplier or {}),
+        "supplier": vista_aggiornata,
         "alerts_risolti": alerts_risolti,
-        "prodotti_rimossi_magazzino": prodotti_rimossi,
         **esclusione_sync,
     }
+
+
+def _utente(admin: Dict[str, Any]) -> str:
+    return str(admin.get("username") or admin.get("email") or admin.get("sub") or "admin")
+
+
+async def _fornitore_o_404(db, supplier_id: str) -> Dict[str, Any]:
+    fornitore = await db[Collections.SUPPLIERS].find_one(_filtro_fornitore(supplier_id), {"_id": 0})
+    if not fornitore:
+        raise HTTPException(status_code=404, detail="Fornitore non trovato")
+    return fornitore
+
+
+@router.get("/{supplier_id}/magazzino/anteprima")
+async def anteprima_magazzino_fornitore(
+    supplier_id: str,
+    escludi: bool = Query(..., description="True = escludi dal magazzino, False = includi"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Cosa cambia se il fornitore esce dal magazzino o ci rientra, coi conteggi
+    veri e senza scrivere niente: da guardare PRIMA di confermare."""
+    db = Database.get_db()
+    return await anteprima_magazzino(db, await _fornitore_o_404(db, supplier_id), escludi)
+
+
+@router.put("/{supplier_id}/magazzino")
+async def imposta_magazzino_fornitore(
+    supplier_id: str,
+    data: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Nel magazzino / fuori dal magazzino, a un tocco, con motivo scelto.
+
+    Body: {escludi: bool, motivo: <chip>, motivo_testo?: str (solo con «altro»)}.
+    Non cancella niente: le fatture restano contabili, i lotti gia' creati
+    restano; includere accoda le fatture ancora da prendere in Lotti."""
+    escludi = data.get("escludi")
+    if not isinstance(escludi, bool):
+        raise HTTPException(status_code=400, detail="escludi deve essere true o false")
+    db = Database.get_db()
+    fornitore = await _fornitore_o_404(db, supplier_id)
+    try:
+        esito = await applica_magazzino(
+            db, fornitore, escludi, data.get("motivo"), data.get("motivo_testo") or "",
+            _utente(_admin))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
+    aggiornato = _legacy_supplier_view(await _fornitore_o_404(db, supplier_id))
+    aggiornato.update(vista_scheda(aggiornato, await carica_decisioni(db)))
+    return {"success": True, **esito, "supplier": aggiornato}
+
+
+@router.post("/{supplier_id}/applica-metodo-dal")
+async def applica_metodo_fornitore_dal(
+    supplier_id: str,
+    dry_run: bool = Query(True, description="True = solo elenco e residui (difetto)"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Il metodo Cassa del fornitore vale per le sue fatture dal «metodo valido dal».
+
+    `dry_run` mostra le fatture che chiuderebbe, i residui, e quelle che non
+    tocca (banca o assegno con prova, note di credito, rate, parziali). Senza
+    `dry_run` parte in background con gli stessi motori della conferma in Cassa;
+    il secondo giro non trova piu' niente da chiudere."""
+    db = Database.get_db()
+    fornitore = await _fornitore_o_404(db, supplier_id)
+    esito = await applica_metodo_dal(db, fornitore, dry_run=dry_run)
+    if not dry_run:
+        await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
+    return esito
+
+
+@router.get("/{supplier_id}/applica-metodo-dal/stato")
+async def stato_metodo_fornitore_dal(
+    supplier_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    db = Database.get_db()
+    return await stato_metodo_dal(db, await _fornitore_o_404(db, supplier_id))
+
+
+@router.post("/magazzino/allinea")
+async def allinea_magazzino_da_lotti(
+    dry_run: bool = Query(True, description="True = solo anteprima (difetto)"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Migrazione: dove l'anagrafica non ha deciso e Lotti si', vale Lotti."""
+    db = Database.get_db()
+    esito = await allinea_da_lotti(db, dry_run=dry_run)
+    if not dry_run:
+        await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
+    return esito
 
 
 @router.post("/{supplier_id}/toggle-active")
