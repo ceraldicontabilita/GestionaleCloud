@@ -98,7 +98,7 @@ export const NAV_GRUPPI = [
       { to: '/documenti/drive', label: 'Cartelle Google Drive', Icon: HardDrive, perche: "Le cartelle di Google Drive da cui il gestionale legge i documenti." },
       { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt, perche: "Deleghe e quietanze. Un modello F24 non è una prova di pagamento: la prova è il movimento in banca." },
       { to: '/scadenze', label: 'Scadenze', Icon: Clock, perche: "Che cosa va pagato o presentato, e entro quando." },
-      { to: '/tributi', label: 'Tributi', Icon: ListChecks, adminOnly: true, perche: "Codice per codice: che cosa hai pagato e quando, con quietanza o ravvedimento, che cosa hai compensato e che cosa resta da pagare." },
+      { to: '/tributi', alias: ['/fiscale/tributi', '/fiscale/f24'], label: 'Tributi', Icon: ListChecks, adminOnly: true, perche: "Codice per codice: che cosa hai pagato e quando, con quietanza o ravvedimento, che cosa hai compensato e che cosa resta da pagare." },
       { to: '/ritenute', label: 'Ritenute', Icon: Receipt, perche: "Le ritenute d'acconto sulle fatture dei professionisti e il loro versamento con F24." },
       { to: '/noleggio', label: 'Noleggi', Icon: Car, perche: "Le auto a noleggio: contratti, costi, verbali e chi le guidava." },
       { to: '/piano-tributi', label: 'Piano tributi', Icon: CalendarCheck, adminOnly: true, perche: "I tributi ricorrenti attesi per periodo, soddisfatti solo dall'addebito in banca." },
@@ -214,9 +214,12 @@ export function voceDi(pathname) {
   for (const gruppo of NAV_GRUPPI) {
     for (const voce of gruppo.voci) {
       if (!voce.to) continue;
+      // `alias`: altri prefissi che appartengono alla stessa voce (le viste per id
+      // `/fiscale/tributi/:codice` e `/fiscale/f24/:id` stanno sotto «Tributi»).
+      const prefissi = [voce.to, ...(voce.alias || [])];
       const combacia = voce.to === '/'
         ? percorso === '/'
-        : percorso === voce.to || percorso.startsWith(`${voce.to}/`);
+        : prefissi.some(p => percorso === p || percorso.startsWith(`${p}/`));
       if (combacia && (!trovata || voce.to.length > trovata.voce.to.length)) {
         trovata = { voce, gruppo };
       }

@@ -54,6 +54,7 @@ const EXACT_REDIRECTS = {
   '/batch-processor': '/admin/batch-processor',
   '/fisco': '/contabilita/calendario',
   '/riconciliazione-unificata': '/riconciliazione',
+  '/fiscale/tributi': '/tributi',
 };
 
 const PREFIX_REDIRECTS = [
@@ -88,8 +89,19 @@ const PREFIX_REDIRECTS = [
   ['/fisco/', '/contabilita/calendario'],
 ];
 
+// Viste per id (MINI-08): il vecchio indirizzo porta l'identificativo, che si tiene.
+const PARAM_REDIRECTS = [
+  [/^\/f24\/([^/]+)$/, id => `/fiscale/f24/${id}`],
+  [/^\/tributi\/([^/]+)$/, codice => `/fiscale/tributi/${codice}`],
+  [/^\/cedolini\/([^/]+)$/, id => `/personale/cedolini/${id}`],
+];
+
 export default function LegacyRouteResolver() {
-  const { pathname } = useLocation();
+  const { pathname, search, hash } = useLocation();
+  for (const [modello, verso] of PARAM_REDIRECTS) {
+    const trovato = modello.exec(pathname);
+    if (trovato) return <Navigate to={`${verso(trovato[1])}${search}${hash}`} replace />;
+  }
   const exact = EXACT_REDIRECTS[pathname];
   const prefixed = PREFIX_REDIRECTS.find(([prefix]) => pathname.startsWith(prefix));
   const target = exact || prefixed?.[1];

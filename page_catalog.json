@@ -4,7 +4,7 @@
   "production_url": "https://gestionalecloud.onrender.com",
   "updated_at": "2026-08-20",
   "source_revision": "40d3f109beacd897fc0d80a3a0eab5fc51612f2c",
-  "description": "Catalogo canonico delle 64 schermate. HTTP 200 non prova il funzionamento: componenti, route, dati e relazioni devono essere collaudati.",
+  "description": "Catalogo canonico delle 74 schermate. HTTP 200 non prova il funzionamento: componenti, route, dati e relazioni devono essere collaudati.",
   "pages": [
     {
       "id": 1,
@@ -925,6 +925,70 @@
       "documentation_file": "memoria/pagine/fatture-emesse.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
+    },
+    {
+      "id": 71,
+      "label": "Scheda F24",
+      "path": "/fiscale/f24/:id",
+      "e2e_path": "/fiscale/f24/COLLAUDO-E2E",
+      "component": "frontend/src/pages/F24Scheda.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "admin",
+      "audit_status": "unverified",
+      "allowed_api_statuses": [
+        404
+      ],
+      "module": "contabilita",
+      "component_status": "reachable_from_router",
+      "route_kind": "detail"
+    },
+    {
+      "id": 72,
+      "label": "Tributo per codice",
+      "path": "/fiscale/tributi/:codice",
+      "e2e_path": "/fiscale/tributi/1040",
+      "component": "frontend/src/pages/TributoCodice.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "admin",
+      "audit_status": "unverified",
+      "allowed_api_statuses": [
+        404
+      ],
+      "module": "contabilita",
+      "component_status": "reachable_from_router",
+      "route_kind": "detail"
+    },
+    {
+      "id": 73,
+      "label": "Scheda busta paga",
+      "path": "/personale/cedolini/:id",
+      "e2e_path": "/personale/cedolini/COLLAUDO-E2E",
+      "component": "frontend/src/pages/CedolinoScheda.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "admin",
+      "audit_status": "unverified",
+      "allowed_api_statuses": [
+        404
+      ],
+      "module": "personale",
+      "component_status": "reachable_from_router",
+      "route_kind": "detail"
+    },
+    {
+      "id": 74,
+      "label": "Scheda protocollo",
+      "path": "/protocollo/:id",
+      "e2e_path": "/protocollo/2023/000001",
+      "component": "frontend/src/pages/ProtocolloScheda.jsx",
+      "entry": "frontend/src/main.jsx",
+      "access": "admin",
+      "audit_status": "unverified",
+      "allowed_api_statuses": [
+        404
+      ],
+      "module": "protocollo",
+      "component_status": "reachable_from_router",
+      "route_kind": "detail"
     }
   ],
   "redirects": [

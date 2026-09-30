@@ -137,6 +137,8 @@ jobs:
         run: node scripts/audit-layout.cjs
       - name: Audit viewer documenti
         run: node scripts/audit-viewer.cjs
+      - name: E2E viste fiscali e del personale
+        run: node scripts/audit-viste-fiscali.cjs
 
   deploy:
     name: GestionaleCloud live serve questo commit
