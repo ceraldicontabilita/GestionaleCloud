@@ -19,7 +19,8 @@ RIGA_14 = {"id": "r1", "cf": "dsimth82r04z209k", "anno": "2022", "mese": "14",
 
 def test_la_quattordicesima_si_ritrova_per_tipo_anche_col_mese_diverso():
     esito = rv.busta_della_riga(RIGA_14, [BUSTA_14])
-    assert esito == {"esito": "ritrovata", "netto": rv._cent(675.0), "netto_calcolato": None}
+    assert esito == {"esito": "ritrovata", "netto": rv._cent(675.0), "ratei": {},
+                      "netto_calcolato": None}
 
 
 def test_la_mensile_vuole_lo_stesso_mese():
@@ -147,3 +148,18 @@ def test_la_correzione_giusta_della_v1_resta_senza_riscrivere():
     riga = {**RIGA_14, "netto": "675.0", "prima_v1": "0.45", "fonte_ultima": rv.VERSIONE_V1}
     patch = _patch(riga, BUSTA_14)
     assert patch["netto_riverifica_esito"] == "corretto" and "netto" not in patch
+
+
+def test_il_rateo_letto_dalla_busta_si_fonde_nei_dati_chiave_senza_perdere_il_resto():
+    busta = {**BUSTA_14, "dati_chiave": {"rateo_13ma_presente": True, "rateo_13ma_importo": "60,27"}}
+    riga = {**RIGA_14, "dati_chiave": {"acconto_recuperato_busta": "100,00"}}
+    patch = rv.correzione(riga, rv.busta_della_riga(riga, [busta]), "x")
+    assert patch["dati_chiave"] == {"acconto_recuperato_busta": "100,00",
+                                    "rateo_13ma_presente": True, "rateo_13ma_importo": "60,27"}
+
+
+def test_il_rateo_si_scrive_anche_se_il_netto_non_e_verificato():
+    busta = {**BUSTA_14, "stato_netto": "MULTIPLE_NETS_DA_VERIFICARE",
+             "dati_chiave": {"rateo_14ma_importo": "1.234,56", "rateo_14ma_presente": True}}
+    patch = rv.correzione(RIGA_14, rv.busta_della_riga(RIGA_14, [busta]), "x")
+    assert patch["dati_chiave"]["rateo_14ma_importo"] == "1.234,56" and "netto" not in patch
