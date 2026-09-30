@@ -104,7 +104,9 @@ async function rpc(fn,args={}){
  const j=await r.json().catch(()=>null);
  if(!r.ok)throw new Error((j&&j.message)||"Errore di rete");
  return j}
-async function run(fn,args,okMsg){try{const r=await rpc(fn,args);if(okMsg)toast(okMsg);return r??true}catch(e){toast(e.message);return undefined}}
+async function run(fn,args,okMsg){try{const r=await rpc(fn,args);if(okMsg)toast(okMsg);return r??true}catch(e){
+ if(/Sessione scaduta/i.test(e.message)&&sess){const r=sess.r,c=sess.c;setSess(null);toast("Sessione scaduta: rientra");go(r==="alb"&&c?"#/hotel/"+c:"#/titolare");return undefined}
+ toast(e.message);return undefined}}
 
 /* ============ DATI ESTERNI: navi (Guardia Costiera) e scioperi (MIT), via Supabase ============ */
 let EXT=null;
@@ -131,16 +133,17 @@ function scioperiHtml(E){
 let sess=JSON.parse(sessionStorage.getItem("sess")||"null");
 const setSess=x=>{sess=x;sessionStorage.setItem("sess",JSON.stringify(x))};
 const go=h=>{if(location.hash===h)render();else location.hash=h};
-const esci=()=>{const c=sess&&sess.c;setSess(null);go(c?"#/hotel/"+c:"#/")};
+const esci=()=>{const c=sess&&sess.c,r=sess&&sess.r,p=sess&&sess.p;if(r==="alb"&&p)rpc("bb_alb_logout",{p}).catch(()=>{});setSess(null);go(c?"#/hotel/"+c:r==="tit"?"#/titolare":"#/")};
 const loading=()=>{app.innerHTML=`<p class="mute" style="text-align:center;margin-top:40px">Caricamento…</p>`};
 addEventListener("hashchange",render);
 async function render(){
  const h=location.hash||"#/";const p=h.split("/");
- $("#back").hidden=h==="#/"||h==="#"||["ospite","hotel","invito"].includes(p[1])||(!!sess&&sess.r==="alb"&&p[1]==="albergatore");
+ $("#back").hidden=h==="#/"||h==="#"||["ospite","hotel","invito","recupero"].includes(p[1])||(!!sess&&sess.r==="alb"&&p[1]==="albergatore");
  app.classList.toggle("wide",p[1]==="titolare"&&!!sess);
  if(p[1]==="ospite")return ospite(p[2]);
  if(p[1]==="hotel")return hotelLogin(p[2]);
  if(p[1]==="invito")return invito(p[2]);
+ if(p[1]==="recupero")return recupero(p[2]);
  if(p[1]==="albergatore")return sess&&sess.r==="alb"?alb(p[2]||"home"):(($("#ttl").textContent="☕ Colazioni B&B"),void(app.innerHTML=`<div class="card">Per entrare usa il <b>link personale</b> che ti ha inviato il bar.</div>`));
  if(p[1]==="titolare")return sess&&sess.r==="tit"?tit(p[2]||"cruscotto",p[3]):loginTit();
  home()}
@@ -180,11 +183,42 @@ async function hotelLogin(cod){
  if(!h){app.innerHTML=`<div class="card">Link non valido. Chiedi al bar di inviartene uno nuovo.</div>`;return}
  if(sess&&sess.r==="alb"&&sess.s===h.id){go("#/albergatore/home");return}
  if(!h.attivo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">L'accesso non è ancora attivo. Usa il <b>link di invito</b> che ti ha inviato il bar.</div>`;return}
- app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card">${h.pin_off?`<div class="alert"><b>Modalità prova:</b> il PIN non è richiesto.</div><button class="btn" onclick="hotelEntra('${h.id}','${esc(cod)}')">Entra</button>`:
-  `<label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" onkeydown="if(event.key==='Enter')hotelEntra('${h.id}','${esc(cod)}')"><button class="btn" onclick="hotelEntra('${h.id}','${esc(cod)}')">Entra</button>`}</div>`}
+ app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card"><label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" onkeydown="if(event.key==='Enter')hotelEntra('${h.id}','${esc(cod)}')"><button class="btn" onclick="hotelEntra('${h.id}','${esc(cod)}')">Entra</button>
+  <p style="text-align:center;margin:12px 0 0"><a href="#/recupero/${esc(cod)}">Ho perso il PIN</a></p></div>`}
 async function hotelEntra(id,cod){
- const p=$("#lp")?$("#lp").value:"";const st=await run("bb_alb_stato",{sid:id,p});if(!st||st===true)return;
- setSess({r:"alb",s:id,p,c:cod});go("#/albergatore/home")}
+ const pin=$("#lp")?$("#lp").value:"";if(!pin)return toast("Scrivi il tuo PIN");
+ const r=await run("bb_alb_login",{paccesso:cod,ppin:pin});if(!r||r===true)return;
+ if(!r.ok){toast(r.msg||"PIN errato");if($("#lp"))$("#lp").value="";return}
+ setSess({r:"alb",s:r.sid,p:r.token,c:cod});go("#/albergatore/home")}
+/* --- recupero del PIN: codice di recupero, oppure richiesta al bar --- */
+async function recupero(cod){
+ $("#ttl").textContent="☕ Colazioni B&B";loading();
+ const h=await rpc("bb_hotel_info",{codice:cod||""}).catch(()=>null);
+ if(!h||!h.attivo){app.innerHTML=`<div class="card">Link non valido. Chiedi al bar di inviartene uno nuovo.</div>`;return}
+ app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card"><h3>Recupera il tuo accesso</h3>
+  <p class="mute">Scrivi il <b>codice di recupero</b> che hai ricevuto quando hai attivato l'accesso (sono 8 caratteri, per esempio K7QM-2XPD) e scegli un nuovo PIN.</p>
+  <label>Codice di recupero</label><input id="rc" autocapitalize="characters" autocomplete="off" placeholder="XXXX-XXXX">
+  <label>Nuovo PIN (almeno 4 caratteri)</label><input id="rp" type="password" autocomplete="new-password"><label>Ripeti il nuovo PIN</label><input id="rp2" type="password" autocomplete="new-password">
+  <button class="btn" onclick="recuperoOk('${esc(cod)}')">Imposta il nuovo PIN</button></div>
+  <div class="card"><h3>Non trovi il codice?</h3><p class="mute">Chiedi al bar: ti manda un nuovo link per scegliere un PIN.</p>
+  <label>Un recapito (facoltativo)</label><input id="ra" placeholder="il tuo numero, se diverso da quello del bar"><button class="btn sec" onclick="recuperoAiuto('${esc(cod)}')">Chiedi aiuto al bar</button>
+  <p style="text-align:center;margin:12px 0 0"><a href="#/hotel/${esc(cod)}">← Torna all'accesso</a></p></div>`}
+async function recuperoOk(cod){
+ const n=$("#rp").value;if(n!==$("#rp2").value)return toast("I due PIN non coincidono");
+ const r=await run("bb_alb_recupera",{paccesso:cod,pcodice:$("#rc").value,pnuovo:n});if(!r||r===true)return;
+ if(!r.ok)return toast(r.msg||"Codice errato");
+ setSess({r:"alb",s:r.sid,p:r.token,c:cod});codiceRecupero(r.recupero,"Nuovo PIN impostato ✓")}
+async function recuperoAiuto(cod){
+ if(await run("bb_alb_richiedi_aiuto",{paccesso:cod,pnota:$("#ra").value}))app.innerHTML=`<div class="card"><h3>Richiesta inviata ✓</h3><p>Il bar l'ha ricevuta: ti manderà un nuovo link per scegliere il PIN. Quando lo apri, potrai impostarlo subito.</p><a class="btn" style="display:inline-block;text-decoration:none" href="#/hotel/${esc(cod)}">Torna all'accesso</a></div>`}
+/* schermata del codice di recupero: si mostra una volta sola */
+function codiceRecupero(codice,titolo){
+ $("#ttl").textContent="☕ Colazioni B&B";
+ app.innerHTML=`<div class="card" style="text-align:center"><h3>${esc(titolo||"Accesso attivato ✓")}</h3>
+  <p>Questo è il tuo <b>codice di recupero</b>. Se un giorno perdi il PIN, con questo codice ne scegli uno nuovo senza chiamare nessuno.</p>
+  <div style="font-size:32px;font-weight:800;letter-spacing:4px;margin:14px 0">${esc(codice)}</div>
+  <p class="mute">Salvalo adesso: fai uno screenshot o scrivilo. Per motivi di sicurezza non si può rivedere: se lo perdi, ne crei uno nuovo dal Profilo.</p>
+  <button class="btn sec" onclick="navigator.clipboard.writeText('${esc(codice)}').then(()=>toast('Codice copiato'))">Copia il codice</button>
+  <button class="btn" onclick="go('#/albergatore/profilo')">Ho salvato il codice</button></div>`}
 async function invito(tok){
  $("#ttl").textContent="☕ Colazioni B&B";loading();
  const h=await rpc("bb_invito_info",{token:tok||""}).catch(()=>null);
@@ -196,8 +230,16 @@ async function invito(tok){
 async function invitoOk(tok){
  const p=$("#i_p").value;if(p!==$("#i_p2").value)return toast("I due PIN non coincidono");
  const r=await run("bb_invito_accetta",{token:tok,ppin:p,pindirizzo:$("#i_a").value,ptelefono:$("#i_t").value,pemail:$("#i_e").value});if(!r||r===true)return;
- setSess({r:"alb",s:r.id,p,c:r.accesso});toast("Accesso attivato ✓");go("#/albergatore/profilo")}
+ setSess({r:"alb",s:r.id,p:r.token,c:r.accesso});codiceRecupero(r.recupero,"Accesso attivato ✓")}
 let ALB=null,HOT=null,PF={};
+async function pinCambia(){
+ const n=$("#sp1").value;if(n!==$("#sp2").value)return toast("I due PIN non coincidono");
+ const r=await run("bb_alb_pin_cambia",{sid:sess.s,p:sess.p,pvecchio:$("#sp0").value,pnuovo:n});if(!r||r===true)return;
+ if(!r.ok)return toast(r.msg||"Non riesco a cambiare il PIN");toast("PIN cambiato ✓");["sp0","sp1","sp2"].forEach(i=>$("#"+i).value="")}
+async function recuperoNuovo(){
+ const pin=prompt("Per crearne uno nuovo scrivi il tuo PIN");if(!pin)return;
+ const r=await run("bb_alb_recupero_nuovo",{sid:sess.s,p:sess.p,ppin:pin});if(!r||r===true)return;
+ if(!r.ok)return toast(r.msg||"PIN non corretto");codiceRecupero(r.recupero,"Nuovo codice di recupero")}
 /* --- profilo: benvenuto e sfondo --- */
 function pfHtml(s){
  PF={sfondo:HOT?HOT.sfondo:"",cambiato:false};const link=base()+"#/hotel/"+s.accesso;
@@ -207,6 +249,10 @@ function pfHtml(s){
  <label>Immagine di sfondo</label><input id="pf_f" type="file" accept="image/*" onchange="pfFile(this)"> <button class="btn sm sec" onclick="PF.sfondo='';PF.cambiato=true;pfPrev()">Rimuovi immagine</button>
  <label>Indirizzo</label><input id="pf_a" value="${esc(s.indirizzo)}"><label>Telefono</label><input id="pf_t" type="tel" value="${esc(s.telefono)}">
  <button class="btn" onclick="pfSalva()">Salva</button></div>
+ <div class="card"><h3>🔐 Sicurezza</h3><label>PIN attuale</label><input id="sp0" type="password" autocomplete="current-password"><label>Nuovo PIN (almeno 4 caratteri)</label><input id="sp1" type="password" autocomplete="new-password"><label>Ripeti il nuovo PIN</label><input id="sp2" type="password" autocomplete="new-password">
+ <button class="btn" onclick="pinCambia()">Cambia PIN</button>
+ <p class="mute" style="margin-top:14px">Il codice di recupero serve se perdi il PIN. Se non lo hai più, ne puoi creare uno nuovo (il vecchio smette di funzionare).</p>
+ <button class="btn sec" onclick="recuperoNuovo()">Crea un nuovo codice di recupero</button></div>
  <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(link)}</p>
  <button class="btn sm sec" onclick="navigator.clipboard.writeText('${esc(link)}').then(()=>toast('Link copiato'))">Copia link</button></div>`}
 function pfPrev(){$("#pf_h").innerHTML=hero(ALB.struttura.nome,PF.sfondo,$("#pf_b").value)}
@@ -224,7 +270,7 @@ async function pfSalva(){
 
 async function alb(sec){
  loading();
- ALB=await run("bb_alb_stato",{sid:sess.s,p:sess.p});if(!ALB||ALB===true)return esci();
+ ALB=await run("bb_alb_stato",{sid:sess.s,p:sess.p});if(!ALB||ALB===true)return sess?esci():undefined;
  if(!HOT||HOT.id!==ALB.struttura.id)HOT=await rpc("bb_hotel_info",{codice:ALB.struttura.accesso}).catch(()=>null);
  const s=ALB.struttura,my=ALB.vouchers,oggi=ALB.oggi;
  $("#ttl").textContent="🏨 "+s.nome;
@@ -483,12 +529,31 @@ function napoli(){return `
 
 /* ============ TITOLARE ============ */
 async function loginTit(){
- $("#ttl").textContent="🧁 Area titolare";
- const st=await rpc("bb_pin_stato").catch(()=>({}));
- app.innerHTML=`<div class="card">${st&&st.attivo?`<div class="alert"><b>Modalità prova:</b> il PIN non è richiesto fino alle ${ora(st.fino)}.</div><button class="btn" onclick="doTit()">Entra</button>`:`<label>PIN titolare</label><input id="tp" type="password" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')doTit()"><button class="btn" onclick="doTit()">Entra</button>`}</div>`}
+ $("#ttl").textContent="🧁 Area titolare";loading();
+ if(await titSessione())return go("#/titolare/cruscotto");
+ app.innerHTML=`<div class="card"><h3>Accesso del titolare</h3><p class="mute">Si entra con lo stesso PIN del gestionale.</p>
+  <label>PIN</label><input id="tp" type="password" inputmode="numeric" autocomplete="current-password" onkeydown="if(event.key==='Enter')doTit()"><button class="btn" onclick="doTit()">Entra</button><div id="tmsg" class="mute" style="margin-top:10px"></div></div>`}
+/* La sessione del titolare la apre il gestionale: stesso PIN (e stesso secondo fattore) dell'ERP. */
+async function titSessione(){
+ try{
+  const t=localStorage.getItem("auth_token");
+  const r=await fetch("/api/colazioni/accesso",{method:"POST",credentials:"same-origin",headers:t?{Authorization:"Bearer "+t}:{}});
+  if(!r.ok)return false;const j=await r.json();if(!j||!j.token)return false;
+  setSess({r:"tit",p:j.token});return true}catch(e){return false}}
 const ora=f=>{try{return new Date(String(f).replace(" ","T").replace(/\+00$/,"+00:00")).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Rome"})}catch(e){return ""}};
-async function doTit(){const p=$("#tp")?$("#tp").value:"";if(!await run("bb_tit_stato",{p}))return;setSess({r:"tit",p});go("#/titolare/cruscotto")}
-const pinStrict=()=>sess.p||prompt("Per questa operazione serve il PIN del titolare");
+async function doTit(){
+ const pin=($("#tp")?$("#tp").value:"").trim(),m=$("#tmsg");if(!pin)return;m.textContent="";
+ try{
+  const r=await fetch("/api/auth/pin-login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
+  const j=await r.json().catch(()=>null);
+  if(!j){m.textContent="Apri l'area titolare da gestionalecloud.onrender.com/colazioni/";return}
+  if(j.mfa_required){m.innerHTML="Il tuo accesso ha il secondo fattore: entra prima nel <a href=\"/\">gestionale</a>, poi torna qui.";return}
+  if(!r.ok){m.textContent=(typeof j.detail==="string"&&j.detail)||"PIN non valido";return}
+  if(j.access_token)try{localStorage.setItem("auth_token",j.access_token)}catch(e){}
+  if(await titSessione())return go("#/titolare/cruscotto");
+  m.textContent="Non riesco ad aprire la sessione: riprova tra poco."}
+ catch(e){m.textContent="Connessione non riuscita"}}
+const pinStrict=()=>sess.p;
 let TIT=null;
 const TABS=[["cruscotto","Cruscotto"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini"],["strutture","Strutture"],["menu","Menù"],["impostazioni","Impostazioni"]];
 const supTxt=()=>eur(+String((TIT.config||{}).supplemento_tavolo||"1.5").replace(",","."));
@@ -496,7 +561,8 @@ const fasceMenu=()=>Object.keys(TIT.menu).map(Number).sort((a,b)=>a-b);
 const barNome=()=>TIT.bar.bar_nome||"Bar Pasticceria Ceraldi";
 async function tit(sec,arg){
  loading();
- TIT=await run("bb_tit_stato",{p:sess.p});if(!TIT)return esci();
+ TIT=await run("bb_tit_stato",{p:sess.p});if(!TIT)return sess?esci():undefined;
+ TIT.richieste_pin=await rpc("bb_tit_richieste_pin",{p:sess.p}).catch(()=>[]);
  $("#ttl").textContent="🧁 "+barNome();
  const fn={cruscotto:pCruscotto,produzione:pProduzione,scan:pScan,ordini:pOrdini,strutture:pStrutture,struttura:pStruttura,invita:pInvita,invito:pInvito,menu:pMenu,impostazioni:pImpostazioni}[sec]||pCruscotto;
  app.innerHTML=tabsHtml(TABS,["struttura","invita","invito"].includes(sec)?"strutture":sec,"titolare")+fn(arg);
@@ -519,7 +585,8 @@ function pCruscotto(){
  const max=Math.max(1,...giorni.map(g=>g.n));
  const top=TIT.strutture.map(s=>({n:s.nome,v:consegnato(vs.filter(v=>v.struttura_id===s.id&&v.data.slice(0,7)===oggi.slice(0,7)))})).sort((a,b)=>b.v-a.v).slice(0,5);
 
- return `${TIT.attesa.length?`<div class="alert"><b>💶 Ricariche da confermare</b>${TIT.attesa.map(a=>`<div class="row" style="margin-top:6px"><span>${esc(a.nome)} · ${eur(a.importo)}</span><button class="btn sm" onclick="conferma('${a.id}')">Incassata</button></div>`).join("")}</div>`:""}
+ return `${(TIT.richieste_pin||[]).map(r=>`<div class="alert"><b>🔑 ${esc(r.struttura)}</b> ha perso il PIN e il codice di recupero${r.telefono?` · ${esc(r.telefono)}`:""}${r.nota?` · «${esc(r.nota)}»`:""}<div class="row" style="margin-top:6px;justify-content:flex-start;gap:6px"><button class="btn sm" onclick="richiestaInvito('${r.struttura_id}','${r.id}')">Invia nuovo link</button><button class="btn sm sec" onclick="richiestaChiudi('${r.id}')">Ignora</button></div></div>`).join("")}
+ ${TIT.attesa.length?`<div class="alert"><b>💶 Ricariche da confermare</b>${TIT.attesa.map(a=>`<div class="row" style="margin-top:6px"><span>${esc(a.nome)} · ${eur(a.importo)}</span><button class="btn sm" onclick="conferma('${a.id}')">Incassata</button></div>`).join("")}</div>`:""}
  ${(()=>{const n=day.filter(v=>hasReq(v.richieste)||(v.extra||[]).length).length;return n?`<div class="alert"><b>⚠️ ${n} colazioni di oggi con richieste o extra</b> <button class="btn sm" onclick="go('#/titolare/produzione')">Vedi</button></div>`:""})()}
  <div class="kpis"><div class="card"><div class="mute">Da preparare oggi</div><div class="k">${daPrep}</div></div>
  <div class="card"><div class="mute">Consegnate oggi</div><div class="k">${fatte}</div></div>
@@ -532,6 +599,8 @@ function pCruscotto(){
  <div class="card"><h3>✊ Scioperi nei prossimi 14 giorni</h3><div id="ex_s" class="mute">Caricamento…</div></div>
  <button class="btn" onclick="go('#/titolare/produzione')">Vai alla produzione di oggi →</button>`}
 pCruscotto.after=()=>loadExt().then(E=>{if($("#ex_n")){$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)}});
+async function richiestaInvito(sid,rid){if(await run("bb_tit_invito_rigenera",{p:sess.p,sid})){await run("bb_tit_richiesta_chiudi",{p:sess.p,pid:rid});go("#/titolare/invito/"+sid)}}
+async function richiestaChiudi(rid){if(await run("bb_tit_richiesta_chiudi",{p:sess.p,pid:rid})!==undefined)render()}
 const conferma=async id=>{if(await run("bb_tit_conferma_ricarica",{p:sess.p,mid:id},"Ricarica confermata"))go("#/titolare/cruscotto")};
 
 /* --- Produzione --- */
@@ -791,11 +860,7 @@ function pImpostazioni(){
  <button class="btn" onclick="attivaSumup()">${TIT.sumup?"Aggiorna chiave":"Attiva pagamenti"}</button> ${TIT.sumup?`<button class="btn sec" onclick="rimuoviSumup()">Disattiva e cancella la chiave</button>`:""}
  <p class="mute">La chiave viene controllata con SumUp e salvata cifrata sul server: non viene mai più mostrata né inviata ai browser. Il codice esercente lo ricavo io dal tuo conto.</p></div>
  <div class="card"><h3>🔌 Stato dei collegamenti</h3><p class="mute">Controlla che database, SumUp, navi e scioperi funzionino.</p><button class="btn" onclick="diagnostica()">Controlla ora</button><div id="dg" style="margin-top:10px"></div></div>
- <div class="card"><h3>🧪 Modalità prova (senza PIN)</h3>
- ${TIT.pin_off&&TIT.pin_off.attivo?`<div class="alert bad"><b>PIN disattivati</b> fino alle ${ora(TIT.pin_off.fino)}. Chiunque conosca l'indirizzo può entrare nell'area bar e in quelle dei B&B.</div><button class="btn" onclick="pinOff(0)">Riattiva i PIN adesso</button>`:
- `<p class="mute">Per fare prove senza digitare i PIN, disattivali per qualche ora: poi si riattivano da soli. Restano sempre protetti con il PIN: chiave SumUp, cambio PIN e cancellazione dei dati di prova. Ricordati di non lasciarla attiva quando parti con i clienti veri.</p>
- <button class="btn sec" onclick="pinOff(8)">8 ore</button> <button class="btn sec" onclick="pinOff(24)">24 ore</button> <button class="btn sec" onclick="pinOff(72)">72 ore</button>`}</div>
- <div class="card"><h3>🔒 Sicurezza</h3><label>Nuovo PIN titolare (min 6 cifre)</label><input id="np" type="password" inputmode="numeric" autocomplete="off"><button class="btn" onclick="cambiaPin()">Cambia PIN</button></div>
+ <div class="card"><h3>🔒 Accesso</h3><p class="mute">Il titolare entra con lo stesso PIN del gestionale: per cambiarlo si usa il gestionale. Gli albergatori scelgono il PIN da soli quando attivano l'accesso e possono recuperarlo con il loro codice di recupero. Se lo perdono del tutto, ti arriva una richiesta nel Cruscotto.</p></div>
  <div class="card"><h3>🧪 Dati di prova</h3><p class="mute">${demo?`Ci sono ${demo} strutture dimostrative (PIN 1111, 2222, 3333) con ordini fittizi. Quando inizi con i dati veri, eliminale.`:"Nessun dato di prova presente."}</p>
  ${demo?`<button class="btn bad" onclick="eliminaDemo()">Elimina tutti i dati di prova</button>`:""}</div>`}
 const salvaCfg=async(k,v)=>{if(await run("bb_tit_config_set",{p:sess.p,pk:k,pv:v},"Salvato")!==undefined&&TIT.config)TIT.config[k]=v.trim()};
@@ -810,8 +875,6 @@ async function diagnostica(){
   riga(d.scioperi.ok,"Scioperi",`${d.scioperi.n} in elenco · aggiornato ${t(d.scioperi.aggiornato)}${d.scioperi.errore?" · "+esc(d.scioperi.errore):""}`)}
 async function attivaSumup(){const p=pinStrict();if(!p)return;const r=await run("bb_tit_sumup_configura",{p,chiave:$("#sk").value});if(r){toast("SumUp attivo"+(r.nome?" · "+r.nome:""));render()}}
 async function rimuoviSumup(){if(!confirm("Disattivare i pagamenti con carta e cancellare la chiave?"))return;const p=pinStrict();if(!p)return;if(await run("bb_tit_sumup_rimuovi",{p},"Disattivato"))render()}
-async function cambiaPin(){const cur=pinStrict();if(!cur)return;const n=$("#np").value;if(await run("bb_tit_pin_cambia",{p:cur,nuovo:n},"PIN cambiato")){setSess({r:"tit",p:n});$("#np").value=""}}
-async function pinOff(h){const p=pinStrict();if(!p)return;if(await run("bb_tit_pin_off",{p,ore:h},h?"PIN disattivati per "+h+" ore":"PIN riattivati")){setSess({r:"tit",p});render()}}
 async function eliminaDemo(){if(!confirm("Eliminare tutte le strutture e gli ordini di prova?"))return;const p=pinStrict();if(!p)return;const n=await run("bb_tit_elimina_demo",{p});if(n!==undefined){toast(n+" strutture eliminate");render()}}
 
 render();
