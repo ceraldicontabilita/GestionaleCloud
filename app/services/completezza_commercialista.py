@@ -108,9 +108,14 @@ async def copertura_estratto_bpm(db, da: str, a: str) -> Dict[str, Any]:
     return {"movimenti": len(date_viste), "primo": primo, "ultimo": ultimo, "completo": completo}
 
 
-async def completezza(db, anno: int, mese: int, *, oggi: Optional[date] = None) -> Dict[str, Any]:
+async def completezza(db, anno: int, mese: int, *, oggi: Optional[date] = None,
+                      dal: Optional[str] = None, al: Optional[str] = None) -> Dict[str, Any]:
+    """Completezza del periodo: mese, anno intero (mese=0) o l'intervallo ``dal``/``al`` ISO."""
     riferimento = oggi or datetime.now(timezone.utc).date()
-    da, a = periodo(anno, mese, riferimento)
+    if dal and al:
+        da, a = dal, min(al, (riferimento - timedelta(days=GIORNI_ATTESA)).isoformat())
+    else:
+        da, a = periodo(anno, mese, riferimento)
     rt = await chiusure_rt_mancanti(db, da, a)
     totale_fatture, senza_originale = await fatture_senza_originale(db, da, a)
     estratto = await copertura_estratto_bpm(db, da, a)
