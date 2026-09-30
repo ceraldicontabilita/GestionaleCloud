@@ -28,8 +28,8 @@ def _run(awaitable):
 
 def _db(quanti):
     db = ClientArchivioMemoria()["batch_reprocessing_test"]
-    _run(db["f24_models"].insert_many(
-        [{"id": f"f{i}", "pdf_data": PDF} for i in range(quanti)]))
+    _run(db["cedolini"].insert_many(
+        [{"id": f"c{i}", "pdf_data": PDF} for i in range(quanti)]))
     return db
 
 
@@ -40,9 +40,9 @@ def _parser_finto(monkeypatch):
 
     async def _finto(pdf_bytes, mime):
         chiamate.append(pdf_bytes)
-        return {"success": True, "totali": {"saldo": 100.0}}
+        return {"success": True, "importi_finali": {"netto_in_busta": 100.0}}
 
-    monkeypatch.setattr(servizio, "parse_f24_enhanced", _finto)
+    monkeypatch.setattr(servizio, "parse_cedolino_enhanced", _finto)
     return chiamate
 
 
@@ -53,7 +53,7 @@ def _riprocessa(db, dry_run=False):
     async def _giro():
         # init_db() cerca la connessione reale: qui il db e' gia' iniettato.
         service.init_db = lambda: asyncio.sleep(0)
-        return await service.reprocess_all_f24(dry_run=dry_run)
+        return await service.reprocess_all_cedolini(dry_run=dry_run)
 
     return _run(_giro())
 
@@ -63,22 +63,22 @@ def _riprocessa(db, dry_run=False):
 def test_non_crea_documenti_nuovi(_parser_finto):
     """La paura legittima: che un riprocessamento raddoppi l'archivio."""
     db = _db(5)
-    prima = _run(db["f24_models"].count_documents({}))
+    prima = _run(db["cedolini"].count_documents({}))
 
     _riprocessa(db)
 
-    assert _run(db["f24_models"].count_documents({})) == prima == 5
+    assert _run(db["cedolini"].count_documents({})) == prima == 5
 
 
 def test_arricchisce_senza_toccare_i_campi_originali(_parser_finto):
     db = _db(1)
-    _run(db["f24_models"].update_one({"id": "f0"}, {"$set": {"totali": {"saldo": 1.0}}}))
+    _run(db["cedolini"].update_one({"id": "c0"}, {"$set": {"netto": 1.0}}))
 
     _riprocessa(db)
 
-    doc = _run(db["f24_models"].find_one({"id": "f0"}))
-    assert doc["totali"] == {"saldo": 1.0}          # originale intatto
-    assert doc["totali_enhanced"] == {"saldo": 100.0}
+    doc = _run(db["cedolini"].find_one({"id": "c0"}))
+    assert doc["netto"] == 1.0          # originale intatto
+    assert doc["netto_enhanced"] == 100.0
     assert doc["enhanced_parser_version"] == "v2"
 
 
@@ -86,8 +86,8 @@ def test_la_prova_a_vuoto_non_scrive_niente(_parser_finto):
     db = _db(3)
     esito = _riprocessa(db, dry_run=True)
 
-    assert esito["f24_success"] == 3
-    assert _run(db["f24_models"].find_one({"enhanced_parsing": {"$exists": True}})) is None
+    assert esito["cedolini_success"] == 3
+    assert _run(db["cedolini"].find_one({"enhanced_parsing": {"$exists": True}})) is None
 
 
 def test_rieseguirlo_non_moltiplica_niente(_parser_finto):
@@ -95,7 +95,7 @@ def test_rieseguirlo_non_moltiplica_niente(_parser_finto):
     _riprocessa(db)
     _riprocessa(db)
 
-    assert _run(db["f24_models"].count_documents({})) == 3
+    assert _run(db["cedolini"].count_documents({})) == 3
 
 
 # --- Memoria ---------------------------------------------------------------
@@ -117,14 +117,14 @@ def test_i_pdf_si_leggono_a_blocchi_non_tutti_insieme(monkeypatch, _parser_finto
 
     assert max(letture) <= 4
     assert sum(letture) == 10          # nessun documento saltato
-    assert esito["f24_processed"] == 10
+    assert esito["cedolini_processed"] == 10
 
 
 def test_la_prima_lettura_non_porta_dietro_i_pdf():
     """Serve a contare e a paginare: caricare i PDF qui vanificherebbe tutto."""
     db = _db(3)
     identificativi = _run(servizio._identificativi(
-        db["f24_models"], {"pdf_data": {"$exists": True}}))
+        db["cedolini"], {"pdf_data": {"$exists": True}}))
 
     assert len(identificativi) == 3
     assert all(not isinstance(i, dict) for i in identificativi)
@@ -134,24 +134,24 @@ def test_la_prima_lettura_non_porta_dietro_i_pdf():
 
 def test_un_documento_illeggibile_non_blocca_il_lotto(monkeypatch):
     db = _db(3)
-    _run(db["f24_models"].update_one({"id": "f1"}, {"$set": {"pdf_data": "non-base64!!"}}))
+    _run(db["cedolini"].update_one({"id": "c1"}, {"$set": {"pdf_data": "non-base64!!"}}))
 
     async def _finto(pdf_bytes, mime):
-        return {"success": True, "totali": {}}
+        return {"success": True, "importi_finali": {}}
 
-    monkeypatch.setattr(servizio, "parse_f24_enhanced", _finto)
+    monkeypatch.setattr(servizio, "parse_cedolino_enhanced", _finto)
     esito = _riprocessa(db)
 
-    assert esito["f24_errors"] == 1
-    assert esito["f24_success"] == 2
-    assert esito["errors"][0]["type"] == "f24"
+    assert esito["cedolini_errors"] == 1
+    assert esito["cedolini_success"] == 2
+    assert esito["errors"][0]["type"] == "cedolino"
 
 
 # --- Controllo di ruolo ----------------------------------------------------
 
 @pytest.mark.parametrize("nome_endpoint", [
     "get_preview", "get_status",
-    "start_reprocessing", "start_f24_only", "start_cedolini_only",
+    "start_reprocessing", "start_cedolini_only",
 ])
 def test_ogni_endpoint_e_riservato_all_admin(nome_endpoint):
     """Avvia una scrittura di massa: prima bastava essere loggati, anche in
@@ -164,3 +164,19 @@ def test_ogni_endpoint_e_riservato_all_admin(nome_endpoint):
         getattr(p.default, "dependency", None) is get_current_admin_user
         for p in parametri
     ), f"{nome_endpoint} deve restare admin-only"
+
+
+# --- Niente F24 ------------------------------------------------------------
+
+def test_il_batch_non_rilegge_piu_i_modelli_f24():
+    """I modelli F24 hanno un solo lettore (`parser_f24`) e un solo ingresso:
+    il riprocessamento AI scriveva campi paralleli su collezioni dismesse."""
+    from pathlib import Path
+    from app.routers import batch_reprocessing as router
+    from app.services import enhanced_document_parser as lettore
+
+    assert not hasattr(servizio.BatchReprocessingService, "reprocess_all_f24")
+    assert not hasattr(router, "start_f24_only")
+    assert not hasattr(lettore, "parse_f24_enhanced")
+    sorgente = Path(servizio.__file__).read_text(encoding="utf-8")
+    assert "f24_models" not in sorgente.split('"""', 2)[2]  # solo nella docstring di testa
