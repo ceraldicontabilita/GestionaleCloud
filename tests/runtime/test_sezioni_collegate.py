@@ -18,8 +18,8 @@ from app.routers.sezioni import SEZIONI
 RADICE = pathlib.Path(__file__).resolve().parents[2]
 
 
-def test_ci_sono_tutte_e_quattro():
-    assert {s["id"] for s in SEZIONI} == {"gestionale", "lotti", "hr", "menu"}
+def test_ci_sono_tutte_le_sezioni():
+    assert {s["id"] for s in SEZIONI} == {"gestionale", "lotti", "hr", "menu", "colazioni"}
 
 
 @pytest.mark.parametrize("sezione", SEZIONI, ids=lambda s: s["id"])

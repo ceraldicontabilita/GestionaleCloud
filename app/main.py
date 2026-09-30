@@ -1031,6 +1031,17 @@ else:
     logger.warning("Frontend Menu non trovato (%s): /menu serve solo le API", _MENU_BUILD)
 app.mount("/menu", menu_app, name="menu")
 
+# Colazioni B&B: pagina unica statica (frontend_colazioni/index.html, nessuna
+# build) che parla direttamente con Supabase tramite funzioni RPC con PIN. Non ha
+# un backend in app/: si serve la cartella cosi' com'e', con `html=True` per
+# l'indice. Va montata PRIMA del catch-all della SPA dell'ERP.
+_COLAZIONI_DIR = os.path.join(_PROJECT_ROOT, "frontend_colazioni")
+if os.path.isdir(_COLAZIONI_DIR):
+    app.mount("/colazioni", StaticFiles(directory=_COLAZIONI_DIR, html=True), name="colazioni")
+    logger.info("Colazioni B&B montata da %s", _COLAZIONI_DIR)
+else:
+    logger.warning("Colazioni B&B non trovata (%s): /colazioni non risponde", _COLAZIONI_DIR)
+
 # App HR (AppDipendenti) portata pari pari: backend originale (app/hr, proprio
 # login a PIN) montato a /hr -> /hr/api/...; il build Vite di frontend_hr
 # (base /hr/) e' servito dalla stessa sub-app con fallback SPA per i deep link
@@ -1051,7 +1062,7 @@ app.mount("/hr", hr_app, name="hr")
 # gestionale — verificato il 20/09/2026: tutti e tre i prefissi rispondevano 200
 # con `<title>Ceraldi ERP</title>`. Il redirect a `/<prefisso>/` va registrato
 # DOPO i mount e PRIMA del catch-all, ed e' 307 perche' conserva il metodo.
-_APP_PORTATE = ("lotti", "menu", "hr")
+_APP_PORTATE = ("lotti", "menu", "hr", "colazioni")
 
 for _prefisso in _APP_PORTATE:
     def _vai_alla_app_portata(request: Request, _p: str = _prefisso) -> RedirectResponse:
