@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from app.constants.canale_documento import canale_obbligatorio
+
 logger = logging.getLogger(__name__)
 
 COLL = "f24_unificato"
@@ -274,7 +276,7 @@ def chiave_f24(doc: Dict[str, Any]) -> str:
 # riscrive (il PDF e' lo stesso: la chiave di dedup contiene il suo hash).
 _CAMPI_PROVENIENZA = frozenset({
     "id", "_id", "file_name", "filename", "original_filename", "stored_filename",
-    "import_source", "source_metadata", "source_occurrences", "created_at",
+    "import_source", "canale", "source_metadata", "source_occurrences", "created_at",
     "import_date", "imported_at", "pdf_data", "drive_file_id", "drive_parent_id",
     "drive_path", "drive_md5", "original_storage", "email_from", "email_date",
     "email_subject", "source_document_id",
@@ -332,6 +334,9 @@ async def salva_f24(
     doc["idempotency_key"] = f"f24:{chiave}"
     if source:
         doc.setdefault("import_source", source)
+    # Il canale d'ingresso e' provenienza: la prima copia arrivata lo fissa.
+    doc.setdefault("canale", canale_obbligatorio(doc.get("import_source"),
+                                                 drive_file_id=doc.get("drive_file_id")))
 
     if existing_id:
         doc["id"] = existing_id

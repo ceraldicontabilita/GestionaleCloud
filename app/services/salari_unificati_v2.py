@@ -497,7 +497,7 @@ async def processa_cedolino_v2(
             "created_at": (cedolino_esistente or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        for field in ("drive_file_id", "source_file_hash", "voci", "dati_chiave", "retribuzione"):
+        for field in ("drive_file_id", "source_file_hash", "canale", "voci", "dati_chiave", "retribuzione"):
             if cedolino_data.get(field):
                 cedolino_record[field] = cedolino_data[field]
         cedolino_record["stato_netto"] = stato_netto

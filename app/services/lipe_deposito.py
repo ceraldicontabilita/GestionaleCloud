@@ -17,6 +17,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.constants.canale_documento import STATO_LIPE_CANONICA, canale_obbligatorio
 from app.services.lipe_parser import parse_lipe
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,12 @@ async def deposita_lipe(
                 ignorati.append(periodo)
                 continue
 
+        # Una ritrasmissione sostituisce la precedente sullo stesso periodo:
+        # la riga resta una, e ricorda quali protocolli ha sostituito.
+        sostituisce = list((esistente or {}).get("sostituisce") or [])
+        vecchio_protocollo = (esistente or {}).get("protocollo")
+        if esistente and vecchio_protocollo is not None and vecchio_protocollo != protocollo:
+            sostituisce.append(vecchio_protocollo)
         riga = {
             **{k: v for k, v in periodo_letto.items() if k != "pagina"},
             "periodo": periodo,
@@ -103,6 +110,9 @@ async def deposita_lipe(
             "nome_file": nome_file,
             "drive_file_id": drive_file_id,
             "origine": origine,
+            "canale": canale_obbligatorio(origine, drive_file_id=drive_file_id),
+            "stato": STATO_LIPE_CANONICA,
+            "sostituisce": sostituisce,
             "aggiornato_at": ora,
         }
         if not dry_run:

@@ -35,6 +35,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set
 from app.db_collections import (
     COLL_ESTRATTO_CONTO, COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_QUIETANZE_F24,
 )
+from app.constants.canale_documento import CANALI, canali_documento
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 from app.engines import tributi_engine as te
 from app.services.calendario_lavorativo import giorni_lavorativi_tra
@@ -263,43 +264,14 @@ def _quietanza_da_fiscal_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-# Da dove arriva un documento F24: posta (Gmail, casella documenti), Drive,
-# caricato a mano. Un documento arrivato da piu' canali li porta tutti.
-ORIGINI = {"posta": "Posta", "drive": "Drive", "caricato": "Caricato", "altro": "Altro"}
-
-
-def _origine_da_source(source: Any) -> Optional[str]:
-    s = str(source or "").lower()
-    if not s:
-        return None
-    if "drive" in s:
-        return "drive"
-    if any(k in s for k in ("gmail", "email", "mail", "inbox", "posta", "pec")):
-        return "posta"
-    if "upload" in s or "manuale" in s:
-        return "caricato"
-    return "altro"
+# Da dove arriva un documento F24: posta, Drive, caricato a mano. Il
+# vocabolario e il normalizzatore stanno in `constants/canale_documento.py`.
+ORIGINI = CANALI
 
 
 def origini_documento(doc: Dict[str, Any]) -> List[str]:
     """Canali da cui e' arrivato il documento, in ordine fisso (posta, drive, caricato, altro)."""
-    trovate = set()
-    for campo in ("fonte", "source", "origine", "source_module"):
-        o = _origine_da_source(doc.get(campo))
-        if o and not (campo == "fonte" and doc.get(campo) in (COLL_QUIETANZE_F24, COLL_FISCAL_DOCUMENTS)):
-            trovate.add(o)
-    for occ in doc.get("source_occurrences") or []:
-        if isinstance(occ, dict):
-            o = _origine_da_source(occ.get("source"))
-            if o:
-                trovate.add(o)
-            if occ.get("drive_file_id"):
-                trovate.add("drive")
-    if doc.get("drive_file_id"):
-        trovate.add("drive")
-    if doc.get("email_info") or doc.get("gmail_message_id") or doc.get("email_id"):
-        trovate.add("posta")
-    return [o for o in ORIGINI if o in trovate] or ["altro"]
+    return canali_documento(doc, fonti_registro=(COLL_QUIETANZE_F24, COLL_FISCAL_DOCUMENTS))
 
 
 def saldo_quietanza_cents(doc: Dict[str, Any]) -> Optional[int]:

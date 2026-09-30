@@ -707,6 +707,7 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                     source_container=doc.get("source_container") or "",
                     drive_file_id=doc.get("drive_file_id"),
                     source_file_hash=doc.get("file_hash"),
+                    fonte="posta",
                 )
 
                 # Letto e' anche un foglio presenze, uno storico fuori periodo o
