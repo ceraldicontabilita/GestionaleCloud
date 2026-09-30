@@ -19,7 +19,7 @@ RADICE = pathlib.Path(__file__).resolve().parents[2]
 
 
 def test_ci_sono_tutte_le_sezioni():
-    assert {s["id"] for s in SEZIONI} == {"gestionale", "lotti", "hr", "menu", "colazioni"}
+    assert {s["id"] for s in SEZIONI} == {"gestionale", "lotti", "hr", "menu", "convenzioni"}
 
 
 @pytest.mark.parametrize("sezione", SEZIONI, ids=lambda s: s["id"])
