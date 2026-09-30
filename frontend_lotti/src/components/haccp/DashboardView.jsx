@@ -27,8 +27,10 @@ import {
   Network,
   ShieldCheck,
   Fish,
+  Tag,
 } from "lucide-react";
 import { API } from "../../utils/constants";
+import { carteFontiCatalogo } from "../../utils/fontiCatalogo";
 import { isAdmin } from "../../auth";
 import StatoSistemaWidget from "./StatoSistemaWidget";
 import HACCPHomeCard from "./HACCPHomeCard";
@@ -159,6 +161,12 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
   // Fonti che non hanno risposto: un numero mancante non è uno zero, e con
   // anche una sola fonte giù la home non può dire «tutto in regola».
   const [fontiMancanti, setFontiMancanti] = useState([]);
+  const [fontiCatalogo, setFontiCatalogo] = useState([]);
+  useEffect(() => {
+    axios.get(`${API}/fonti-catalogo`, { timeout: 15000 })
+      .then((r) => setFontiCatalogo(carteFontiCatalogo(r.data)))
+      .catch(() => { /* non bloccante: restano le tre card storiche */ });
+  }, []);
 
   const navigate = useCallback((tab) => {
     if (tab?.includes("/")) {
@@ -332,6 +340,9 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
           <ActionCard icon={Package} title="Acquaviva" subtitle="Catalogo Dolciaria Acquaviva e prodotti acquistati." badge="Catalogo" tone="amber" onClick={() => navigate("prodotti/acquaviva")} />
           <ActionCard icon={Building2} title="SAIMA" subtitle="Categorie, prodotti e ricettari SAIMA." badge="Catalogo" tone="green" onClick={() => navigate("prodotti/saima")} />
           <ActionCard icon={ShoppingCart} title="MEPA" subtitle="Catalogo prodotti MEPA Alimentari." badge="Catalogo" tone="neutral" onClick={() => navigate("prodotti/mepa")} />
+          {fontiCatalogo.map((c) => (
+            <ActionCard key={c.chiave} icon={Tag} title={c.titolo} subtitle={c.sottotitolo} badge={c.badge} tone="amber" onClick={() => navigate(c.percorso)} />
+          ))}
         </div>
       </section>
 
