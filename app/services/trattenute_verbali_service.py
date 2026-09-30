@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.db_collections import COLL_EMPLOYEES
+from app.services.verbali_evidence import data_evento_verbale
 
 logger = logging.getLogger(__name__)
 
@@ -290,9 +291,7 @@ async def costruisci_trattenuta_da_verbale(
         "verbale_id": verbale.get("id"),
         "numero_verbale": verbale.get("numero_verbale"),
         "targa": verbale.get("targa"),
-        "data_infrazione": verbale.get("data_infrazione")
-        or verbale.get("data_verbale")
-        or verbale.get("data"),
+        "data_infrazione": data_evento_verbale(verbale)[0] or verbale.get("data"),
         # Importi
         "importo_verbale": importo_verbale,
         "importo_pagato_societa": importo_pagato,

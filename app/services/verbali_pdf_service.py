@@ -35,6 +35,7 @@ async def collect_verbale_pdfs(
             "tipo": "verbale",
             "size": verbale.get("pdf_size") or 0,
             "source": "verbale_legacy",
+            "file_hash": verbale.get("pdf_hash"),
             **({"content_base64": verbale.get("pdf_data")} if include_content else {}),
         })
 
@@ -85,6 +86,10 @@ async def collect_verbale_pdfs(
             if not document_id or document_id in seen_document_ids:
                 continue
             seen_document_ids.add(document_id)
+            if document.get("file_hash") and any(
+                r.get("file_hash") == document["file_hash"] for r in results
+            ):
+                continue   # stessa impronta dell'originale gia' sul verbale: una copia sola
             results.append({
                 "indice": next_index,
                 "id": document_id,

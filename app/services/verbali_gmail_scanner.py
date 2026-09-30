@@ -436,14 +436,9 @@ async def _upsert_verbale(db, parsed) -> str:
 
 
 async def _collega_fattura(db, numero_verbale: str, fm: Dict[str, Any]) -> None:
-    await db["verbali_noleggio"].update_one(
-        {"numero_verbale": numero_verbale},
-        {"$set": {
-            "fattura_associata_id": fm["fattura_id"],
-            "fattura_associata_numero": fm["numero_fattura"],
-            "fattura_associata_data": fm["data_fattura"],
-            "fattura_associata_fornitore": fm["fornitore"],
-            "fattura_associata_importo": fm["importo_fattura"],
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }}
+    from app.services.verbali_collegamento_fattura import collega_verbale
+
+    await collega_verbale(
+        db, {"numero_verbale": numero_verbale}, fm["fattura_id"], fm["numero_fattura"],
+        regola="numero_in_riga_fattura",
     )

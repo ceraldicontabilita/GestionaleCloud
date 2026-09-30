@@ -54,6 +54,34 @@ async def aggancia_notifiche_pec_ai_verbali(
     return await aggancia_notifiche_pec(Database.get_db(), dry_run=dry_run)
 
 
+@router.post("/ricostruisci-da-pdf")
+@handle_errors
+async def ricostruisci_verbali_dal_pdf(
+    dry_run: bool = True,
+    crea_da_pec: bool = False,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Ricostruzione una tantum dei verbali dal loro PDF, in sottofondo.
+
+    `dry_run` per difetto: conta e mostra esempi (senza dati personali), non scrive.
+    `crea_da_pec` (solo con `dry_run=false`) apre dalla pipeline i verbali che hanno
+    solo la copia conforme della PEC. Esito in `GET …/ricostruisci-da-pdf/stato`.
+    """
+    from app.services import verbali_ricostruzione
+
+    return await verbali_ricostruzione.avvia(Database.get_db(), dry_run=dry_run, crea_da_pec=crea_da_pec)
+
+
+@router.get("/ricostruisci-da-pdf/stato")
+@handle_errors
+async def stato_ricostruzione_verbali(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    from app.services import verbali_ricostruzione
+
+    return await verbali_ricostruzione.stato(Database.get_db())
+
+
 @router.post("/associa-pdf/{numero_verbale:path}")
 @handle_errors
 async def associa_pdf_verbale(

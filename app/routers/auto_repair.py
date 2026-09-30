@@ -38,13 +38,9 @@ async def collega_targa_driver(
                   "driver_assignment_source": fonte, "updated_at": now}},
         upsert=True,
     )
-    await db["storico_assegnazioni_veicoli"].update_one(
-        {"targa": plate, "driver_id": driver_id, "data_fine": None},
-        {"$set": {"targa": plate, "driver_id": driver_id, "driver_nome": nome,
-                  "fonte": fonte, "updated_at": now},
-         "$setOnInsert": {"data_inizio": "1900-01-01", "created_at": now}},
-        upsert=True,
-    )
+    # Lo storico delle assegnazioni sta solo sul veicolo (`assegnazioni`, scritto
+    # dal PUT del noleggio con le date vere): qui la data d'inizio non si sa e
+    # non si inventa, quindi si aggiorna soltanto il driver attuale.
     query = {"targa": {"$regex": f"^{plate}$", "$options": "i"},
              "$or": [{"driver_id": None}, {"driver_id": ""}, {"driver_id": {"$exists": False}}]}
     result = await db["verbali_noleggio"].update_many(

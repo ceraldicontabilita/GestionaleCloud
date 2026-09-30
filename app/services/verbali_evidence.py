@@ -96,12 +96,42 @@ def sanitize_verbale_amount(record: Dict[str, Any]) -> Dict[str, Any]:
     return sanitized
 
 
+def data_violazione_verbale(record: Dict[str, Any]) -> Optional[str]:
+    """Data dell'infrazione (giorno ISO): l'unico posto che sa come si chiama.
+
+    Il campo e' ``data_violazione``; ``data_infrazione`` e' l'alias di vecchie
+    righe (mai piu' scritto). ``data_verbale`` e' un'altra data (quella in cui
+    l'atto e' stato redatto) e qui non entra: chi decide il driver alla data del
+    fatto o la finestra di un pagamento la chiede con `data_evento_verbale`.
+    """
+    for chiave in ("data_violazione", "data_infrazione"):
+        valore = str(record.get(chiave) or "").strip()
+        if valore:
+            return valore[:10]
+    return None
+
+
+def data_evento_verbale(record: Dict[str, Any]) -> tuple[Optional[str], str]:
+    """Giorno del fatto e sua provenienza: ``violazione``, ``data_verbale`` o ``assente``.
+
+    Senza data di violazione ripiega sulla data del verbale dichiarandolo, cosi'
+    chi la usa (driver alla data, ricerca del pagamento) sa che e' un ripiego.
+    """
+    violazione = data_violazione_verbale(record)
+    if violazione:
+        return violazione, "violazione"
+    redatto = str(record.get("data_verbale") or "").strip()
+    if redatto:
+        return redatto[:10], "data_verbale"
+    return None, "assente"
+
+
 def describe_verbale_date(record: Dict[str, Any]) -> Dict[str, Any]:
     """Separa la data operativa da una prima data letta nel PDF/OCR."""
     verified = record.get("data_verbale_verificata") is True or str(
         record.get("data_verbale_stato") or ""
     ).upper() in STATI_IMPORTO_VERIFICATI
-    raw_date = record.get("data_verbale") or record.get("data_violazione")
+    raw_date = record.get("data_verbale") or data_violazione_verbale(record)
     if verified and raw_date:
         return {
             "data_verbale": raw_date,

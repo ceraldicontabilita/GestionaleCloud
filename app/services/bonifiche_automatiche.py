@@ -188,6 +188,7 @@ async def quarantena_verbali_da_fattura(db) -> Dict[str, int]:
     """
     from app.constants.stati_verbale import STATO_QUARANTENA
     from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
+    from app.services.verbali_collegamento_fattura import fattura_id_del_verbale
 
     proiezione = {
         "_id": 1, "id": 1, "numero_verbale": 1, "stato": 1,
@@ -202,10 +203,8 @@ async def quarantena_verbali_da_fattura(db) -> Dict[str, int]:
     esito = {"analizzati": len(verbali), "quarantena": 0, "con_prove_proprie": 0,
              "da_ricollegare": 0}
 
-    collegati = [v for v in verbali if v.get("fattura_id") or v.get("fattura_associata_id")]
-    ids_fattura = sorted({
-        str(v.get("fattura_id") or v.get("fattura_associata_id")) for v in collegati
-    })
+    collegati = [v for v in verbali if fattura_id_del_verbale(v)]
+    ids_fattura = sorted({fattura_id_del_verbale(v) for v in collegati})
     esistenti: Dict[str, Dict[str, Any]] = {}
     attive: set = set()
     if ids_fattura:
@@ -221,7 +220,7 @@ async def quarantena_verbali_da_fattura(db) -> Dict[str, int]:
 
     ora = _ora()
     for verbale in collegati:
-        fattura_id = str(verbale.get("fattura_id") or verbale.get("fattura_associata_id"))
+        fattura_id = fattura_id_del_verbale(verbale)
         fattura = esistenti.get(fattura_id)
         numeri = [
             (fattura or {}).get("invoice_number"), (fattura or {}).get("numero_fattura"),

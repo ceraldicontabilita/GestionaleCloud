@@ -282,7 +282,7 @@ def _parse_pagopa_body(body):
         r'Ente creditore[:\s]*([^\n]+)',
         r'Ente Beneficiario[:\s]*([^\n]+)',
     ], re.IGNORECASE)
-    out["data_infrazione"] = _m([
+    out["data_violazione"] = _m([
         r'VERBALE.*?DATA[:\s]*(\d{2}/\d{2}/\d{2,4})',
         r'\bDATA\b[:\s]*(\d{2}/\d{2}/\d{2,4})',
     ], re.IGNORECASE | re.DOTALL)
@@ -370,10 +370,12 @@ async def _cerca_in_estratto_conto(db, iuv, numero_verbale, targa, importo, verb
     if not importo or float(importo) <= 0:
         return None
     imp = float(importo)
+    from app.services.verbali_evidence import data_evento_verbale
+
+    # La finestra del pagamento parte dall'atto redatto; senza, dal giorno del fatto.
     data_v = (
         verbale.get("data_verbale")
-        or verbale.get("data_infrazione")
-        or verbale.get("data_violazione")
+        or data_evento_verbale(verbale)[0]
         or verbale.get("data_ricezione_notifica")
     )
     if not data_v:

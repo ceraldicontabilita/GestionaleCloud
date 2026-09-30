@@ -229,11 +229,12 @@ def test_driver_richiede_assegnazione_storica_compatibile_con_la_data():
     db = ClientArchivioMemoria()["verbale-driver-temporale"]
     _run(db["veicoli_noleggio"].insert_one({
         "id": "car-1", "targa": "AB123CD", "driver_id": "driver-corrente",
-    }))
-    _run(db["storico_assegnazioni_veicoli"].insert_one({
-        "targa": "AB123CD", "driver_id": "driver-storico",
-        "driver": "Mario Storico", "data_inizio": "2025-01-01",
-        "data_fine": "2025-06-30",
+        "assegnazioni": [
+            {"driver_id": "driver-storico", "driver": "Mario Storico",
+             "dal": "2025-01-01", "al": "2025-06-30"},
+            {"driver_id": "driver-corrente", "driver": "Anna Corrente",
+             "dal": "2025-07-01", "al": None},
+        ],
     }))
 
     context = _run(mod._vehicle_context(db, "AB123CD", "2025-04-10"))
@@ -241,6 +242,19 @@ def test_driver_richiede_assegnazione_storica_compatibile_con_la_data():
     assert context["veicolo_id"] == "car-1"
     assert context["driver_id"] == "driver-storico"
     assert context["driver_match_basis"] == "assegnazione_storica_alla_data"
+
+
+def test_storico_che_non_copre_la_data_non_propone_il_driver_di_oggi():
+    db = ClientArchivioMemoria()["verbale-driver-scoperto"]
+    _run(db["veicoli_noleggio"].insert_one({
+        "id": "car-2", "targa": "AB123CD", "driver_id": "driver-corrente",
+        "assegnazioni": [{"driver_id": "driver-corrente", "dal": "2026-01-01", "al": None}],
+    }))
+
+    context = _run(mod._vehicle_context(db, "AB123CD", "2025-04-10"))
+
+    assert "driver_id" not in context
+    assert context["driver_requires_review"] is True
 
 
 def test_ricevuta_pagopa_non_si_associa_se_importo_non_coincide(monkeypatch):

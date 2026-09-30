@@ -2689,7 +2689,7 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
             "workflow": "PARTENOPAY_ARCHIVIO_PROBATORIO",
             "filename": filename,
             "imported": result.get("inserted_or_updated", 0),
-            "duplicates": 0,
+            "duplicates": result.get("invariati", 0),
             "errors": len(result.get("integrity_errors") or []),
         }
 

@@ -145,4 +145,8 @@ def test_anteprima_riconciliazione_non_scrive_e_applicazione_confermata_si(monke
     applied = asyncio.run(riconcilia_verbale("V-PREVIEW", dry_run=False))
     assert applied["dry_run"] is False
     assert len(db["verbali_noleggio"].updates) == 1
-    assert len(db["invoices"].updates) == 1
+    # Un solo collegamento, sul verbale: la fattura non porta una seconda copia.
+    assert db["invoices"].updates == []
+    scritti = db["verbali_noleggio"].updates[0][1]["$set"]
+    assert scritti["fattura_id"]
+    assert "fattura_associata_id" not in scritti and "fattura_associata_numero" not in scritti

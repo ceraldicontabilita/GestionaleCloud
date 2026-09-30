@@ -701,6 +701,37 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   più storico assegnazioni (`assegnazioni` del veicolo, `driver_alla_data`): il
   driver è quello attivo **alla data/ora del fatto**. Se targa, driver, verbale
   o pagamento non sono univoci, conservare il documento e chiedere una scelta.
+  **`driver_alla_data` (`noleggio/controlli.py`) è l'unico motore**: lo storico sta solo sul veicolo
+  (`veicoli_noleggio.assegnazioni`, dal/al), la collezione `storico_assegnazioni_veicoli` non esiste più; con uno
+  storico che non copre la data il driver è «da assegnare», mai quello di oggi. **La data dell'infrazione è
+  `data_violazione`** (`verbali_evidence.data_violazione_verbale`; `data_infrazione` è un alias di vecchie righe,
+  mai più scritto); `data_verbale` è la data dell'atto redatto, un'altra cosa (`data_evento_verbale` dice quale
+  delle due si sta usando).
+- **Il PDF di un verbale si legge in un posto solo**, `verbali_document_import.leggi_documento_verbale` (numero,
+  IUV, targa, importo, data dal **contenuto**, mai dal nome file): `process_verbale_document` lo chiama e scrive,
+  la ricostruzione lo chiama e non scrive. Il numero può avere barre («111/V/2025», «2025/000123»; una data dopo
+  «verbale» non è un numero), IUV e codice avviso sono **sempre testo** (`normalizza_iuv`: un intero ha perso lo
+  zero iniziale, un float le cifre: non si indovinano). L'**originale resta sul verbale** (`pdf_data`, `pdf_hash`,
+  `pdf_filename`; il payload finisce in `gestionale.blobs`): la copia in `documents_inbox` sparisce quando l'inbox si svuota.
+- **Un solo collegamento verbale → fattura** (`verbali_collegamento_fattura.py`): `fattura_id`, `fattura_numero` e
+  la provenienza `fattura_collegamento`; data, fornitore e importo si leggono dalla fattura. I campi
+  `fattura_associata_*` e `numero_fattura` non si scrivono più (si leggono solo come ripiego, `fattura_id_del_verbale`),
+  la fattura non porta una seconda copia (`verbali_collegati` non si scrive più).
+- **Ricostruzione dei verbali dal PDF** (`verbali_ricostruzione.py`, `POST /api/verbali-noleggio/ricostruisci-da-pdf`, admin,
+  `dry_run` per difetto, in sottofondo, stato in `sistema_stato` chiave `verbali_ricostruzione`, `GET …/stato`): riempie
+  **solo i campi vuoti** di un verbale con lo stesso numero; un valore diverso è un conflitto (candidato, mai applicato);
+  due verbali con lo stesso numero sono ambigui e non si toccano; mai per solo importo, mai una cancellazione (le righe
+  `VERB-…` restano; con `crea_da_pec` la copia conforme senza verbale vero apre il verbale dalla pipeline); porta su
+  `fattura_id` e `data_violazione` i campi legacy; il secondo giro dà `da_fare = 0`; non scrive in contabilità. Un verbale
+  senza originale (`senza_originale`) si ricarica da Documenti > Import, che lo riconosce per numero o IUV e ora conserva l'originale.
+- **Pacchetto PartenoPay** (`partenopay_archive_import.py`): hash di ogni file contro `data.json` **e** contro
+  `MANIFEST_SHA256.csv` (file fuori manifest o con hash diverso = errore che blocca; manifest vuoto = avviso, non prova);
+  l'import che scrive passa solo da Documenti > Import (lo smistatore riconosce lo ZIP), `POST /api/verbali-noleggio/import-partenopay`
+  è **solo anteprima**; secondo giro `nuovi = 0`, scadenza operativa e promemoria nascono una volta alla scoperta, un
+  verbale già riconciliato o in quarantena non torna indietro.
+- `POST /api/verbali-noleggio/{id}/upload-quietanza` (solo admin): `importo_pagato` e `data_pagamento` obbligatori, importo
+  Decimal al centesimo e uguale a quello del verbale (altrimenti 409), PDF con hash; con il PDF il verbale è «pagato»,
+  senza «pagato_attesa_quietanza»; stessa quietanza due volte = nessuna seconda nota presenze né seconda proposta di trattenuta.
 - Il verbale genera un promemoria operativo a 5 giorni dalla scoperta. **La PEC di notifica è la prova della notifica** (`notifiche_pec_verbali.py`): la data della PEC è `data_notifica`, da cui 5 giorni (ridotto), 30 (Giudice di Pace) e 60 (Prefetto); il numero si legge dalla copia conforme, mai dal nome file, e la notifica si aggancia al verbale vero con quel numero (`notifiche_pec`, allegati nel fascicolo), mai a un secondo verbale; senza verbale resta «da agganciare» (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run` per difetto).
 - **Posizione auto/driver in un posto solo**: `app/services/noleggio/posizione.py`
   (`GET /api/noleggio/posizione`, tab «Posizione auto e driver»). DARE = costi documentati
@@ -946,8 +977,14 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
 - **Mutuo 905217466** (Retail, 60 rate 17/03/2021–24/02/2026): il piano PDF è l'istantanea del 2023 (27 «Pagata», 33 «Da pagare» già tutte scadute), ma ogni rata ha la sua prova (estratti annuali 2021–2025, Prima Nota Banca dal 08/2024 a 02/2026): con la lettura per prova il residuo del piano è 0. La dichiarazione del titolare serve solo dove nessuna prova c'è.
 - Noleggio: `veicoli_noleggio` è **vuota** in produzione (nessun driver né storico; le 4 targhe GX037HJ
-  ALD, GW980EP Arval, HB411GV Leasys, GG782PN cessata vivono solo nelle fatture); i 105 verbali in archivio
-  non hanno importo, targa né data; bonifici al Comune e pagamenti Mooney via PayPal sono candidati senza verbale.
+  ALD, GW980EP Arval, HB411GV Leasys, GG782PN cessata vivono solo nelle fatture); bonifici al Comune e pagamenti
+  Mooney via PayPal sono candidati senza verbale. `verbali_noleggio` ha 342 righe: 105 lette dal PDF (con importo,
+  targa e data, **ma nessuna ha l'originale agganciato**: il loro `source_document_id` non è più in `documents_inbox`
+  e nessun campo del verbale porta il PDF), 136 righe `VERB-…` nate dalla PEC (con il PDF della copia conforme o della relata) e circa 100 nate da
+  un numero di fattura (quarantena o `fattura_ricevuta`). Da fare con l'autorizzazione del titolare: l'anteprima
+  `POST /api/verbali-noleggio/ricostruisci-da-pdf`, poi `dry_run=false`; ricaricare da Documenti > Import gli originali dei
+  105 (le ricevute e gli avvisi PartenoPay sono su Drive); il pacchetto `PARTENOPAY_NAVIGABILE_PRONTO.zip` non è stato
+  trovato su Drive, va caricato da Documenti > Import (prima l'anteprima `…/import-partenopay`).
 - L'alert scadenze F24 di `FiscaleSentinella` legge `data_scadenza`, che **nessun** F24 ha: non è mai
   partito. La scadenza va derivata dal codice tributo (`codici_tributo_db`), mai inventata.
 - `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **installare la copia serale RT sul suo PC** (`scripts/installa_sync_rt.ps1`, recupera da sola le giornate dal 28/08); password Postgres; DNS ceraldiapp.it.
@@ -957,7 +994,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - `gestionale.blobs`: oltre ai backup di Lotti, 216 PDF che **nessun documento cita**; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
 
 - **Protocollo personale**: il registro xlsx su Drive non è ancora importato (prima `dry_run`, poi l'import autorizzato); manca la ricerca sull'intero testo (colonna indicizzata, DRV-02), la lettura dalla pipeline invece di un `file_id` dato a mano (DRV-05); la pagina React c'è (`/protocollo/AAAA/NNNNNN`).
-- **Notifiche PEC dei verbali**: circa 136 PEC in archivio (`verbali_email_attachments`) non sono ancora agganciate ai verbali veri, e nate come righe `VERB-…` senza targa né importo: prima l'anteprima (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run`), poi l'aggancio. Le righe `VERB-…` non si cancellano; si decide dopo l'anteprima se metterle in quarantena.
+- **Notifiche PEC dei verbali**: circa 136 PEC in archivio (`verbali_email_attachments`) non sono ancora agganciate ai verbali veri, e nate come righe `VERB-…` senza targa né importo: prima l'anteprima (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run`), poi l'aggancio. Le righe `VERB-…` non si cancellano; si decide dopo l'anteprima se metterle in quarantena. La ricostruzione dal PDF (sopra) completa i campi del verbale vero dalla copia conforme.
 - **IVA, cosa manca** (verificato sul codice): acconto 6013 e saldo 6099 come calcolo, maggiorazione 1% dopo il 16/03, credito annuale da dichiarazione e compensazione orizzontale (soglia 25.000 €), conguaglio di dicembre; il confronto con la LIPE non copre 6013, 6099, trimestrali e credito riportato. La scadenza fissa del 27/12 (`fiscalita_italiana.py`) non si sposta al lunedì. `schemas/accounting_rules.py` descrive 6001/6002 come «saldo» e «acconto» ma sono gennaio e febbraio. `_credito_precedente` esiste in due copie (`routers/iva.py`, `iva_liquidation_query.py`): ridurle a una.
 - **Bilancio e competenza**: `routers/accounting/bilancio.py` seleziona i costi per data documento **oppure** data ricezione e ignora `data_competenza` (una fattura di dicembre ricevuta a gennaio può finire nell'esercizio sbagliato o in due); il debito nello stato patrimoniale usa lo stato «pagata» di oggi, non la data di pagamento rispetto a fine esercizio; il costo del personale è il solo lordo (contributi `None`).
 - **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. `scrittura_imposte` e `scrittura_versamento_iva` (`contabilita_generale.py`) non hanno chiamanti: chi le usa deve sapere che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
