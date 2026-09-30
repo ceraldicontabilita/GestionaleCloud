@@ -1482,6 +1482,7 @@ async def registra_produzione_e_crea_lotto(
     memorizza_durata: bool = Query(False),        # ← ricorda la durata per questo prodotto
     operation_id: Optional[str] = Query(None),    # ← idempotenza doppio tocco (tranche 4)
     destinazione: Optional[str] = None,           # banco immediato o deposito
+    lievitazione_json: Optional[str] = None,       # ← ore e temperature di oggi (query)
 ):
     """
     Registra una produzione e:
@@ -1522,6 +1523,19 @@ async def registra_produzione_e_crea_lotto(
     ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
     if not ricetta:
         raise HTTPException(status_code=404, detail=f"Ricetta con id '{ricetta_id}' non trovata")
+    # Le condizioni di lievitazione si controllano PRIMA di occupare il frigo
+    # o l'operazione: un dato sbagliato non deve lasciare nulla a metà.
+    lievitazione_oggi = None
+    if lievitazione_json:
+        from app.lotti.servizi.lievitazione import DatoNonValido, condizioni
+        try:
+            lievitazione_oggi = condizioni(json.loads(lievitazione_json))
+        except (ValueError, TypeError, AttributeError) as exc:
+            if operation_id:
+                await db.operazioni_idempotenti.delete_one(
+                    {"_id": f"prod_{operation_id}", "risultato": {"$exists": False}})
+            messaggio = str(exc) if isinstance(exc, DatoNonValido) else "Condizioni di lievitazione non leggibili"
+            raise HTTPException(400, messaggio) from exc
     try:
         posizione_iniziale = await _posizione_produzione(
             destinazione, frigo_numero, ricetta.get("reparto", ""),
@@ -1599,8 +1613,19 @@ async def registra_produzione_e_crea_lotto(
              "creato": datetime.now(timezone.utc).isoformat()})
     except DuplicateKeyError as exc:
         raise HTTPException(409, "Produzione già in corso; riprova tra poco") from exc
+    # Il lievito di birra dipende da ore e temperatura: il magazzino scarica
+    # quello davvero usato oggi, e il lotto conserva le condizioni.
+    ricetta_scarico, lievitazione = ricetta, None
+    if lievitazione_oggi:
+        from app.lotti.servizi.lievitazione import adegua_lievito, applica_a_ingredienti
+        # Il riferimento è già stato validato al salvataggio della ricetta.
+        lievitazione = adegua_lievito(
+            ricetta.get("ingredienti_dettaglio") or [], ricetta.get("lievitazione_riferimento"),
+            lievitazione_oggi, moltiplicatore)
+        ricetta_scarico = {**ricetta, "ingredienti_dettaglio": applica_a_ingredienti(
+            ricetta.get("ingredienti_dettaglio") or [], lievitazione)}
     lotti_info = await scala_lotti_fornitori_per_ricetta(
-        ricetta, moltiplicatore, numero_lotto)
+        ricetta_scarico, moltiplicatore, numero_lotto)
     try:
         lotti_info["da_riordinare"] = await _riordini_post_produzione(
             lotti_info.get("lotti_scalati", []), ricetta.get("nome", ""))
@@ -1639,6 +1664,7 @@ async def registra_produzione_e_crea_lotto(
         "lotti_componenti": _json_loads_safe(lotti_componenti_json),
         "operatore_id": operatore_id or "",  # ← dipendente che ha prodotto
         "operatore_nome": operatore_nome or "",
+        "lievitazione": lievitazione,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     lotto_doc = await crea_lotto(lotto_doc, origine="produzione")
@@ -1672,6 +1698,7 @@ async def registra_produzione_e_crea_lotto(
             "reparto": ricetta.get("reparto", ""),
             "destinazione": destinazione,
             "posizione": posizione_iniziale,
+            "lievitazione": lievitazione,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
     )

@@ -22,6 +22,7 @@ export const PAGE_META = {
   produzione_consigliata: { sub: "Suggerimenti basati su storico, invenduto e festività", colore: "linear-gradient(135deg,#c9a877,#8a6f47)", icona: "👨‍🍳" },
   mappa_tracciabilita: { sub: "Percorso del prodotto dalla fattura allo smaltimento", colore: SAGE, icona: "🗺️" },
   storico_produzioni: { sub: "Produzioni registrate", colore: SAGE, icona: "📦" },
+  calcolatore_impasti: { sub: "Farina, acqua, sale e lievito da panetti, ore e temperatura", colore: SAGE, icona: "⚖️" },
   materie: { sub: "Materie prime e giacenze", colore: SAGE, icona: "🌾" },
   merce_ferma: { sub: "Merce mai scaricata e ricette senza dosi: il magazzino che dice il vero", colore: SAGE },
   in_menu: { sub: "I prodotti che i clienti vedono nel Menu digitale: foto, descrizione, prezzo al tavolo e allergeni", colore: SAGE },

@@ -29,6 +29,11 @@ OPERAZIONI_DI_REPARTO = {
     "farciture:dividi_e_manda_al_banco",
     "food_cost:suggerisci_ingredienti",
     "food_cost:dose_produzione",
+    # Calcoli di lievito e impasto: non scrivono nulla (27/09/2026).
+    "food_cost:lievito_per_produzione",
+    "food_cost:calcolatore_impasto",
+    "food_cost:calcolatore_mix_farine",
+    "food_cost:calcolatore_temperatura_acqua",
     "food_cost:leggi_ingredienti_foto",
     "food_cost:auto_rileva_allergeni_singola",
     "food_cost:usa_ricetta",

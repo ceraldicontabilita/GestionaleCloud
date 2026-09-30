@@ -14,6 +14,10 @@ router = APIRouter(prefix="/food-cost", tags=["Food Cost"])
 # 2L si paga a bottiglia, non "al chilo"). Fonte UNICA in routers.utils.
 from app.lotti.routers.utils import CATEGORIE_BEVANDE_A_UNITA as CATEGORIE_VENDUTE_A_UNITA  # noqa: E402
 from app.lotti.auth import require_admin, require_permesso, verifica_reparto_ricetta
+from app.lotti.servizi.lievitazione import (  # noqa: E402
+    DatoNonValido, adegua_lievito, applica_a_ingredienti, attrito_da_impasto, calcola_impasto,
+    mix_farine, temperatura_acqua,
+)
 from app.lotti.allergeni import (
     ALLERGENI_14,
     estrai_nomi_ingredienti,
@@ -1193,6 +1197,9 @@ class DoseProduzioneReq(BaseModel):
     unita: str = "kg"
     moltiplicatore: float | None = None
     normalizza_1kg: bool = False
+    # Ore e temperature della lievitazione di OGGI: se la ricetta dichiara per
+    # quale lievitazione vale la sua dose, il lievito di birra si ricalcola.
+    lievitazione: dict | None = None
 
 
 def _massa_impasto(ingredienti: list[dict], peso_uovo_g: float = 0) -> dict:
@@ -1277,6 +1284,8 @@ async def dose_produzione(ricetta_id: str, req: DoseProduzioneReq):
             "Non riesco a capire l'ingrediente di riferimento: nessun ingrediente "
             "ha un peso (kg/g/l/ml). Correggi le dosi della ricetta.",
         )
+    lievito = _lievito_per_dose(norm["ingredienti"], ric, req.lievitazione)
+    norm["ingredienti"] = applica_a_ingredienti(norm["ingredienti"], lievito)
     massa = _massa_impasto(norm["ingredienti"], float(ric.get("peso_uovo_g") or 0))
     peso_pezzo = float(ric.get("peso_pezzo_g") or 0)
     pezzi = (int(massa["peso_totale_g"] // peso_pezzo)
@@ -1289,7 +1298,69 @@ async def dose_produzione(ricetta_id: str, req: DoseProduzioneReq):
         "peso_pezzo_g": peso_pezzo or None,
         **massa,
         "ingredienti": norm["ingredienti"],
+        "lievito": lievito,
     }
+
+
+def _lievito_per_dose(ingredienti: list[dict], ricetta: dict, oggi: dict | None) -> dict:
+    """Esito del ricalcolo del lievito; un dato sbagliato diventa un 400 leggibile."""
+    try:
+        return adegua_lievito(ingredienti, ricetta.get("lievitazione_riferimento"), oggi)
+    except DatoNonValido as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/ricetta/{ricetta_id}/lievito")
+async def lievito_per_produzione(ricetta_id: str, body: dict = Body(...)):
+    """Lievito di birra per una produzione di `pezzi` con la lievitazione di oggi.
+
+    Stesso moltiplicatore della registrazione del lotto (pezzi / porzioni della
+    ricetta), così il tablet mostra la dose che il magazzino scaricherà.
+    Non salva nulla."""
+    ric = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+    if not ric:
+        raise HTTPException(404, "Ricetta non trovata")
+    try:
+        pezzi = float(body.get("pezzi") or 0)
+    except (TypeError, ValueError):
+        pezzi = 0
+    porzioni = float(ric.get("porzioni") or 0)
+    moltiplicatore = pezzi / porzioni if pezzi > 0 and porzioni > 0 else 1.0
+    try:
+        esito = adegua_lievito(ric.get("ingredienti_dettaglio") or [], ric.get("lievitazione_riferimento"),
+                               body.get("lievitazione"), moltiplicatore)
+    except DatoNonValido as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {**esito, "moltiplicatore": round(moltiplicatore, 3),
+            "porzioni_ricetta": porzioni or None}
+
+
+def _esito_calcolo(funzione, *args):
+    try:
+        return funzione(*args)
+    except DatoNonValido as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/calcolatore-impasto")
+async def calcolatore_impasto(body: dict = Body(...)):
+    """Ricetta di un impasto da panetti, idratazione, sale e lievitazione."""
+    return _esito_calcolo(calcola_impasto, body)
+
+
+@router.post("/calcolatore-impasto/mix-farine")
+async def calcolatore_mix_farine(body: dict = Body(...)):
+    return _esito_calcolo(mix_farine, body.get("w_a"), body.get("w_b"), body.get("w_voluto"),
+                          body.get("farina_totale_g"))
+
+
+@router.post("/calcolatore-impasto/temperatura-acqua")
+async def calcolatore_temperatura_acqua(body: dict = Body(...)):
+    if body.get("tfi_misurata") not in (None, ""):
+        return _esito_calcolo(attrito_da_impasto, body.get("tfi_misurata"), body.get("t_ambiente"),
+                              body.get("t_farina"), body.get("t_acqua"))
+    return _esito_calcolo(temperatura_acqua, body.get("tfi"), body.get("t_ambiente"), body.get("t_farina"),
+                          body.get("attrito"), body.get("t_prefermento"))
 
 
 def _ricetta_e_rivendita(r: dict) -> bool:
