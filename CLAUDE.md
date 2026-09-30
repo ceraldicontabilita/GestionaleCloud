@@ -40,6 +40,7 @@ automatico da `main`, health check `/api/health`) e un unico progetto Supabase s
 | HR, portale dipendenti | `/hr`, `/hr/portale` | `app/hr/` + `frontend_hr/` |
 | Menu pubblico e admin | `/menu`, `/menu/admin` | `app/menu/` + `frontend_menu/` |
 | Lotti (HACCP) | `/lotti` | `app/lotti/` + `frontend_lotti/` |
+| Colazioni B&B | `/colazioni` | `frontend_colazioni/` (pagina statica, nessun backend in `app/`) |
 
 Il `Mount` di Starlette esige la barra finale: il prefisso **nudo** va
 rimandato a `/<prefisso>/` fra i mount e il catch-all, o cade nella SPA
@@ -835,6 +836,30 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   restano stabili. Escludere significa «non richiede la dichiarazione», non
   «nascondilo dal menu»: è conformità, si conserva e si revoca.
 
+### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
+
+- **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/colazioni/` con `StaticFiles`.
+  Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
+  la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
+  Le migrazioni 5, 6, 9, 11 e 12 furono applicate senza salvare il file: la catena SQL **non e' ricostruibile da zero**.
+- **Tre ruoli, tre link**: titolare (`#/titolare`, PIN del bar, oppure niente PIN finche' `bb_tit_pin_off` e' attivo, massimo 72 ore),
+  albergatore (`#/hotel/<accesso>`, PIN scelto da lui con l'invito `#/invito/<token>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**).
+  Le operazioni che spostano denaro o cambiano le credenziali chiedono sempre il PIN vero.
+- **Colazioni per struttura**: ogni hotel ha le sue colazioni (`bb_colazioni`, con nome, prezzo a persona e voci dal catalogo o libere).
+  Le **standard** sono le stesse righe con `struttura_id` nullo: si importano in una struttura e poi si personalizzano, senza legame.
+  L'albergatore compila una pagina sola: camere, ospiti, dal/al, colazione. Un voucher vale per tutto il soggiorno (massimo 31 giorni),
+  fino a tanti ritiri al giorno quanti sono gli ospiti. Il prezzo del voucher e' quello dell'hotel **piu'** il supplemento tavolo
+  (`bb_config.supplemento_tavolo`, 1,50 € a persona) se la struttura ha `servizio_tavolo`; altrimenti servizio al banco.
+- **Borsellino**: il saldo e' la somma dei movimenti confermati (`bb_saldo`); annullare un voucher rimborsa le non ritirate.
+  Ricarica con SumUp (checkout ospitato lato server, `bb_sumup_verifica` accredita solo con stato PAID e importo e riferimento uguali;
+  la chiave sta nel vault `sumup_api_key`) o in contanti al bar (il titolare conferma). **SumUp non e' ancora attivato**: manca la chiave.
+- **Menu**: catalogo proprio `bb_prod_cat`/`bb_prod_sub`/`bb_prodotti` importato da Qromo, **separato** da `menu.*` che non si tocca.
+  I prezzi in uso sono quelli **banco** (i prezzi tavolo restano in `prezzo_tavolo`); gli allergeni sono l'unione di Qromo e del gestionale.
+  Foto, testi lunghi e ingredienti sono file statici in `frontend_colazioni/menu-img/` (`extra.json`). Extra dell'ospite: prezzi calcolati
+  dal server, si pagano al bar; le versioni senza glutine (`bb_senza_glutine`) aggiungono solo la differenza.
+- **Dati esterni** (navi e scioperi) in cache `bb_esterni`, aggiornata dal database con l'estensione `http` (Guardia Costiera EMSWe per le navi,
+  RSS del MIT per gli scioperi), al massimo ogni 20 minuti.
+
 ## Stato attuale (al 30/09/2026 — riscrivere sul posto)
 
 - Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la produzione è `degraded`. Non si accodano merge.
@@ -884,6 +909,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Bilancio e competenza**: `routers/accounting/bilancio.py` seleziona i costi per data documento **oppure** data ricezione e ignora `data_competenza` (una fattura di dicembre ricevuta a gennaio può finire nell'esercizio sbagliato o in due); il debito nello stato patrimoniale usa lo stato «pagata» di oggi, non la data di pagamento rispetto a fine esercizio; il costo del personale è il solo lordo (contributi `None`).
 - **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. `scrittura_imposte` e `scrittura_versamento_iva` (`contabilita_generale.py`) non hanno chiamanti: chi le usa deve sapere che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
 - **F24 e banca**: il motore a livelli confronta il saldo intero, non il codice tributo (l'allocazione per singola riga è stata tolta: 0 modelli l'avevano); un modello senza data di versamento è saltato senza avviso. Le quietanze provate dall'addebito non promuovono ancora da sole il modello a «pagato in banca» se il saldo differisce (ravvedimenti). L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
+- **Colazioni B&B, da chiudere**: attivare SumUp incollando la chiave in Impostazioni; cambiare il PIN del titolare (i PIN sono spenti a tempo, ricontrollare `bb_pin_stato`);
+  inserire dati veri del bar (orari, WhatsApp, email) e i B&B reali; far rivedere composizioni, ingredienti e allergeni delle colazioni standard;
+  varianti di prodotto (latte vegetale, gusti del gelato) salvate ma non ancora scelte dall'ospite; per gli alberghi con servizio al tavolo gli extra usano ancora i prezzi banco;
+  la catena SQL non e' ricostruibile (migrazioni 5, 6, 9, 11, 12 mancanti); il banner «VERSIONE DI PROVA» va tolto al lancio; eliminare i B&B demo (`bb_tit_elimina_demo`).
 
 ## Logica dentro al database
 
