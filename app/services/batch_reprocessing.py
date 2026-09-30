@@ -1,6 +1,11 @@
 """
-Batch Reprocessing Service per F24 e Cedolini
-Riprocessa tutti i documenti esistenti con il nuovo parser migliorato.
+Batch Reprocessing Service per i cedolini
+Rilegge i cedolini gia' in archivio con il parser migliorato.
+
+La parte F24 non c'e' piu' (AV3-06): rileggeva i modelli con un secondo lettore
+e scriveva campi paralleli `_enhanced` su collezioni dismesse (`f24_models`,
+`f24`, `f24_uploaded`) che in produzione non esistono. I modelli hanno un solo
+lettore, `parser_f24`, e un solo ingresso, `f24_canonico.importa_modello_bytes`.
 """
 
 import base64
@@ -8,10 +13,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List
 from app.database import Database
-from app.services.enhanced_document_parser import (
-    parse_f24_enhanced,
-    parse_cedolino_enhanced
-)
+from app.services.enhanced_document_parser import parse_cedolino_enhanced
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +43,6 @@ class BatchReprocessingService:
     def __init__(self):
         self.db = None
         self.stats = {
-            "f24_total": 0,
-            "f24_processed": 0,
-            "f24_success": 0,
-            "f24_errors": 0,
             "cedolini_total": 0,
             "cedolini_processed": 0,
             "cedolini_success": 0,
@@ -60,114 +58,11 @@ class BatchReprocessingService:
         if self.db is None:
             raise Exception("Database non connesso")
 
-    async def _riprocessa_f24(self, coll, coll_name: str, doc: Dict[str, Any],
-                              dry_run: bool) -> None:
-        """Rilegge un F24 e gli aggiunge i campi del parser migliorato.
-
-        Non inserisce mai un documento nuovo e non tocca i campi originali:
-        scrive solo in `enhanced_parsing` e nei `*_enhanced` dello stesso
-        documento. Un errore su un documento non ferma gli altri.
-        """
-        try:
-            doc_id = doc.get("_id")
-            pdf_data = doc.get("pdf_data")
-            if not pdf_data:
-                return
-
-            pdf_bytes = base64.b64decode(pdf_data)
-
-            # Conta ogni tentativo, anche se il parser solleva prima
-            # di produrre un risultato (evita "42 errori / 0 processati").
-            self.stats["f24_processed"] += 1
-
-            result = await parse_f24_enhanced(pdf_bytes, "application/pdf")
-
-            if not result.get("success"):
-                self.stats["f24_errors"] += 1
-                self.stats["errors"].append({
-                    "type": "f24",
-                    "collection": coll_name,
-                    "doc_id": str(doc_id),
-                    "error": result.get("error", "Unknown error"),
-                })
-                return
-
-            self.stats["f24_success"] += 1
-            if not dry_run:
-                update_data = {
-                    "enhanced_parsing": result,
-                    "enhanced_parsing_date": datetime.now(timezone.utc).isoformat(),
-                    "enhanced_parser_version": "v2",
-                }
-                sezioni = {
-                    "sezione_erario": "sezione_erario_enhanced",
-                    "sezione_inps": "sezione_inps_enhanced",
-                    "sezione_regioni": "sezione_regioni_enhanced",
-                    "sezione_imu_tributi_locali": "sezione_imu_enhanced",
-                    "totali": "totali_enhanced",
-                    "validazione": "validazione_enhanced",
-                }
-                for origine, destinazione in sezioni.items():
-                    if result.get(origine):
-                        update_data[destinazione] = result[origine]
-
-                await coll.update_one({"_id": doc_id}, {"$set": update_data})
-
-            logger.info(f"F24 {doc_id} riprocessato con successo")
-
-        except Exception as e:
-            self.stats["f24_errors"] += 1
-            self.stats["errors"].append({
-                "type": "f24",
-                "collection": coll_name,
-                "doc_id": str(doc.get("_id")),
-                "error": str(e),
-            })
-            logger.error(f"Errore riprocessamento F24 {doc.get('_id')}: {e}")
-
-    async def reprocess_all_f24(self, dry_run: bool = False) -> Dict[str, Any]:
-        """
-        Riprocessa tutti gli F24 con PDF disponibile.
-
-        Args:
-            dry_run: Se True, non salva le modifiche (solo test)
-
-        Returns:
-            Statistiche del riprocessamento
-        """
-        await self.init_db()
-        self.stats["start_time"] = datetime.now(timezone.utc).isoformat()
-
-        # Collezioni che contengono F24 con PDF
-        collections = ["f24_models", "f24", "f24_uploaded"]
-
-        for coll_name in collections:
-            try:
-                coll = self.db[coll_name]
-
-                filtro = {"pdf_data": {"$exists": True, "$ne": None}}
-                proiezione = {"_id": 1, "pdf_data": 1, "id": 1, "filename": 1}
-                identificativi = await _identificativi(coll, filtro)
-                self.stats["f24_total"] += len(identificativi)
-
-                logger.info(f"Trovati {len(identificativi)} F24 con PDF in {coll_name}")
-
-                for inizio in range(0, len(identificativi), DIMENSIONE_BLOCCO):
-                    gruppo = identificativi[inizio:inizio + DIMENSIONE_BLOCCO]
-                    for doc in await _blocco(coll, gruppo, proiezione):
-                        await self._riprocessa_f24(coll, coll_name, doc, dry_run)
-
-            except Exception as e:
-                logger.error(f"Errore accesso collezione {coll_name}: {e}")
-
-        self.stats["end_time"] = datetime.now(timezone.utc).isoformat()
-        return self.stats
-
     async def _riprocessa_cedolino(self, coll, coll_name: str, doc: Dict[str, Any],
                                    dry_run: bool) -> None:
         """Rilegge un cedolino e gli aggiunge i campi del parser migliorato.
 
-        Come per gli F24: nessun inserimento, nessuna sovrascrittura dei dati
+        Nessun inserimento, nessuna sovrascrittura dei dati
         originali, e un errore su un documento non ferma gli altri.
         """
         try:
@@ -286,32 +181,15 @@ class BatchReprocessingService:
         return self.stats
 
     async def reprocess_all(self, dry_run: bool = False) -> Dict[str, Any]:
-        """
-        Riprocessa tutti i documenti (F24 + Cedolini).
-
-        Args:
-            dry_run: Se True, non salva le modifiche (solo test)
-
-        Returns:
-            Statistiche complete del riprocessamento
-        """
+        """Riprocessa tutti i cedolini (l'unico documento che questo servizio rilegge)."""
         logger.info(f"Avvio riprocessamento batch {'(DRY RUN)' if dry_run else ''}")
-
-        # Riprocessa F24
-        await self.reprocess_all_f24(dry_run)
-
-        # Riprocessa Cedolini
         await self.reprocess_all_cedolini(dry_run)
-
-        # Calcola statistiche finali
-        self.stats["totale_documenti"] = self.stats["f24_total"] + self.stats["cedolini_total"]
-        self.stats["totale_processati"] = self.stats["f24_processed"] + self.stats["cedolini_processed"]
-        self.stats["totale_successi"] = self.stats["f24_success"] + self.stats["cedolini_success"]
-        self.stats["totale_errori"] = self.stats["f24_errors"] + self.stats["cedolini_errors"]
+        self.stats["totale_documenti"] = self.stats["cedolini_total"]
+        self.stats["totale_processati"] = self.stats["cedolini_processed"]
+        self.stats["totale_successi"] = self.stats["cedolini_success"]
+        self.stats["totale_errori"] = self.stats["cedolini_errors"]
         self.stats["dry_run"] = dry_run
-
         logger.info(f"Riprocessamento completato: {self.stats['totale_successi']}/{self.stats['totale_processati']} successi")
-
         return self.stats
 
 

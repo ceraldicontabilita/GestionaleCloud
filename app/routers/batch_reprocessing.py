@@ -1,8 +1,9 @@
 """API amministrative per la rielaborazione dei documenti gia acquisiti.
 
 La rielaborazione ordinaria lavora dinamicamente sull'archivio documentale e
-non e piu limitata a F24 e cedolini. Gli endpoint specializzati restano per
-compatibilita e manutenzione mirata.
+non e piu limitata ai cedolini. L'endpoint specializzato sui cedolini resta per
+manutenzione mirata; quello sugli F24 non c'e' piu' (AV3-06: i modelli hanno un
+solo lettore e un solo ingresso, `f24_canonico.importa_modello_bytes`).
 """
 import asyncio
 import logging
@@ -82,7 +83,7 @@ async def _run_universale(dry_run: bool, categoria: Optional[str]) -> None:
         await _set_state(db, {"error": str(exc), "progress": "Errore", "running": False})
 
 
-async def _run_specializzato(method: str, dry_run: bool) -> None:
+async def _run_specializzato(dry_run: bool) -> None:
     db = Database.get_db()
     try:
         await _set_state(db, {
@@ -91,11 +92,7 @@ async def _run_specializzato(method: str, dry_run: bool) -> None:
             "result": None,
             "progress": f"Rielaborazione specializzata ({'SIMULAZIONE' if dry_run else 'ESECUZIONE'})",
         })
-        service = BatchReprocessingService()
-        if method == "f24":
-            result = await service.reprocess_all_f24(dry_run)
-        else:
-            result = await service.reprocess_all_cedolini(dry_run)
+        result = await BatchReprocessingService().reprocess_all_cedolini(dry_run)
         await _set_state(db, {"result": result, "progress": "Completato", "running": False})
     except Exception as exc:
         logger.exception("Errore rielaborazione specializzata")
@@ -138,18 +135,6 @@ async def start_reprocessing(
     return {"detail": "Rielaborazione documenti avviata"}
 
 
-@router.post("/f24-only")
-async def start_f24_only(
-    dry_run: bool = Query(True),
-    _admin: Dict[str, Any] = Depends(get_current_admin_user),
-) -> Dict[str, str]:
-    blocco = await _puo_partire()
-    if blocco:
-        return blocco
-    asyncio.create_task(_run_specializzato("f24", dry_run))
-    return {"detail": "Rielaborazione F24 avviata"}
-
-
 @router.post("/cedolini-only")
 async def start_cedolini_only(
     dry_run: bool = Query(True),
@@ -158,5 +143,5 @@ async def start_cedolini_only(
     blocco = await _puo_partire()
     if blocco:
         return blocco
-    asyncio.create_task(_run_specializzato("cedolini", dry_run))
+    asyncio.create_task(_run_specializzato(dry_run))
     return {"detail": "Rielaborazione cedolini avviata"}
