@@ -83,11 +83,12 @@ def _sha(testo):
     return hashlib.sha256(testo.encode("utf-8")).hexdigest()
 
 
-def test_xml_cambiato_con_fattura_in_lotti_e_conflitto_e_non_sovrascrive(bridge, monkeypatch):
+@pytest.mark.parametrize("fattura_id", ["lotti-1", None])
+def test_xml_cambiato_con_fattura_in_lotti_e_conflitto_e_non_sovrascrive(bridge, monkeypatch, fattura_id):
     module, database = bridge
     run(database.gestionale_fatture_ricevute.insert_one({
         "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "importata",
-        "fattura_id": "lotti-1",
+        "fattura_id": fattura_id,
     }))
     run(database.fatture.insert_one({
         "id": "lotti-1", "numero_fattura": "42/A", "piva": "01234567890",
@@ -110,6 +111,10 @@ def test_xml_cambiato_con_fattura_in_lotti_e_conflitto_e_non_sovrascrive(bridge,
     assert receipt["source_hash"] == "hash-vecchio"
     assert receipt["stato"] == "conflitto_hash"
     assert receipt["nuovo_source_hash"] == "hash-nuovo"
+    assert receipt["fattura_id"] == "lotti-1"
+    secondo = run(module.esegui_sync_gestionale(anno=2026, anteprima=False))
+    assert secondo["conflitti_noti"] == 1
+    assert secondo["esaminate"] == 0
 
 
 def test_impronta_cambiata_ma_stesso_xml_si_riallinea(bridge, monkeypatch):
@@ -385,9 +390,11 @@ def test_conflitto_gia_segnalato_non_occupa_il_giro(bridge, monkeypatch):
     """Con 40 fatture per giro, un conflitto riletto ogni volta bloccherebbe
     per sempre quelle piu' recenti: una volta segnalato si conta e si salta."""
     module, database = bridge
+    run(database.fatture.insert_one({"id": "lotti-conflitto"}))
     run(database.gestionale_fatture_ricevute.insert_one({
         "source_id": "invoice-1", "source_hash": "hash-vecchio", "stato": "conflitto_hash",
         "nuovo_source_hash": "hash-nuovo", "conflitto_verificato": True,
+        "fattura_id": "lotti-conflitto",
     }))
     letti = []
 
@@ -434,3 +441,22 @@ def test_vecchio_conflitto_senza_fattura_in_lotti_si_importa(bridge, monkeypatch
     assert result["importate"] == 1 and result["conflitti_noti"] == 0
     receipt = run(database.gestionale_fatture_ricevute.find_one({"source_id": "invoice-1"}))
     assert receipt["stato"] == "importata" and receipt["fattura_id"] == "lotti-9"
+
+
+def test_conflitto_confermato_non_blocca_recupero_di_fattura_sparita(bridge, monkeypatch):
+    module, database = bridge
+    run(database.gestionale_fatture_ricevute.insert_one({
+        "source_id": "invoice-1", "source_hash": "hash-vecchio",
+        "stato": "conflitto_hash", "fattura_id": "lotti-sparita",
+        "nuovo_source_hash": "hash-nuovo", "conflitto_verificato": True,
+    }))
+
+    async def elenco(_client, _anno):
+        return [_item("hash-nuovo")], 1
+
+    monkeypatch.setattr(module, "_elenco", elenco)
+    result = run(module.esegui_sync_gestionale(anno=2026, anteprima=True))
+
+    assert result["conflitti_noti"] == 0
+    assert result["conflitti"] == []
+    assert result["importabili"] == 1

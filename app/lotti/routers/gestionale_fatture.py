@@ -258,7 +258,15 @@ def _descrivi(exc: BaseException) -> str:
     return f"{tipo}: {testo[:180]}" if testo else tipo
 
 
-async def _source_id_gia_presi() -> dict[str, str]:
+async def _fatture_presenti() -> set[str]:
+    return {
+        str(f["id"])
+        for f in await db.fatture.find({}, {"_id": 0, "id": 1}).to_list(100000)
+        if f.get("id")
+    }
+
+
+async def _source_id_gia_presi(presenti: set[str] | None = None) -> dict[str, str]:
     """`source_id` -> `source_hash` delle fatture gia' prese E ANCORA PRESENTI.
 
     Solo gli stati terminali: un `conflitto_hash` deve essere riesaminato ogni
@@ -277,17 +285,15 @@ async def _source_id_gia_presi() -> dict[str, str]:
         {"stato": {"$in": ["importata", "collegata_esistente"]}},
         {"_id": 0, "source_id": 1, "source_hash": 1, "fattura_id": 1},
     ).to_list(100000)
-    presenti = {
-        str(f.get("id") or "")
-        for f in await db.fatture.find({}, {"_id": 0, "id": 1}).to_list(100000)
-    }
+    if presenti is None:
+        presenti = await _fatture_presenti()
     presi: dict[str, str] = {}
     for r in righe:
         sid = str(r.get("source_id") or "")
         if not sid:
             continue
         fattura_id = str(r.get("fattura_id") or "")
-        if fattura_id and fattura_id not in presenti:
+        if not fattura_id or fattura_id not in presenti:
             continue  # il registro dice presa, ma in Lotti non c'e' piu'
         presi[sid] = str(r.get("source_hash") or "")
     return presi
@@ -339,15 +345,17 @@ async def esegui_sync_gestionale(
         # Ora si scartano prima quelle gia' prese, poi si taglia: ogni giro
         # lavora fatture NUOVE, e `arretrato` dice quante restano per il giro
         # dopo, cosi' il ritardo e' un numero che si legge.
-        gia_presi = await _source_id_gia_presi()
+        presenti = await _fatture_presenti()
+        gia_presi = await _source_id_gia_presi(presenti)
         noti = {
             str(r.get("source_id") or ""): str(r.get("nuovo_source_hash") or "")
             for r in await getattr(db, RECEIPTS).find(
                 # solo quelli confermati dalla regola attuale (XML diverso con
                 # la fattura in Lotti): i vecchi si riesaminano una volta
                 {"stato": "conflitto_hash", "conflitto_verificato": True},
-                {"_id": 0, "source_id": 1, "nuovo_source_hash": 1}
+                {"_id": 0, "source_id": 1, "nuovo_source_hash": 1, "fattura_id": 1}
             ).to_list(100000)
+            if str(r.get("fattura_id") or "") in presenti
         }
         da_prendere = []
         for item in items:
@@ -427,7 +435,8 @@ async def esegui_sync_gestionale(
                         await getattr(db, RECEIPTS).update_one(
                             {"source_id": source_id},
                             {"$set": {"stato": "conflitto_hash", "nuovo_source_hash": source_hash,
-                                      "conflitto_verificato": True, "ultimo_controllo": now}},
+                                      "conflitto_verificato": True, "fattura_id": in_lotti.get("id"),
+                                      "ultimo_controllo": now}},
                         )
                     continue
 
@@ -482,7 +491,7 @@ async def esegui_sync_gestionale(
                     result["escluse_fornitore"] += 1
                     continue
                 invoice = (
-                    {"id": ids[0]} if ids
+                    await db.fatture.find_one({"id": ids[0]}, {"_id": 0, "id": 1}) if ids
                     else await db.fatture.find_one(_invoice_query(item), {"_id": 0, "id": 1})
                 )
                 if not invoice:
@@ -612,11 +621,20 @@ async def alimenta_lotti_da_fattura(source_id: str) -> dict[str, Any]:
         return esito
     ids = [i for i in (importata.get("fatture_ids") or []) if i]
     fattura = (
-        {"id": ids[0]} if ids
+        await db.fatture.find_one({"id": ids[0]}, {"_id": 0, "id": 1}) if ids
         else await db.fatture.find_one(_invoice_query(dettaglio), {"_id": 0, "id": 1})
     )
-    if fattura:
-        await db.fatture.update_one({"id": fattura["id"]}, {"$set": relazione})
+    if not fattura:
+        # L'importatore puo' restituire errori senza sollevare: dichiararlo
+        # importato creava una ricevuta senza fattura che il giro successivo
+        # saltava per sempre, lasciando il magazzino privo della merce.
+        esito.update({
+            "stato": "errore",
+            "motivo": "Import completato senza fattura operativa: "
+                      + ("; ".join(importata.get("errori") or []) or "nessun esito dal motore"),
+        })
+        return esito
+    await db.fatture.update_one({"id": fattura["id"]}, {"$set": relazione})
     await getattr(db, RECEIPTS).update_one(
         {"source_id": source_id},
         {"$set": {**relazione, "source_id": source_id,
