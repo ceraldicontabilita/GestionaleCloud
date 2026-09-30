@@ -111,6 +111,11 @@ def _importo_cents_da_token(parts) -> int:
     # Esempi reali: 123 -> 1,23; 1234 -> 12,34.
     if re.fullmatch(r"\d+", joined):
         return int(joined)
+    # Stessa regola con i punti delle migliaia ma senza virgola («1.03712» =
+    # 1.037,12): la virgola non e' nel livello testo, le ultime due cifre sono
+    # i centesimi. Senza questo il valore usciva x100 e il saldo non quadrava.
+    if re.fullmatch(r"\d{1,3}(?:\.\d{3})*\d{2}", joined):
+        return int(joined.replace(".", ""))
     try:
         normalized = joined.replace(".", "").replace(",", ".")
         return int((Decimal(normalized) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -456,6 +461,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 if saldo_documento_cents or "0,00" in row_text:
                     result["dati_generali"]["saldo_delega"] = saldo_documento_cents / 100
                     result["dati_generali"]["saldo_delega_cents"] = saldo_documento_cents
+                    page_balances.setdefault(page_number, saldo_documento_cents / 100)
 
             # ============================================
             # SEZIONE ERARIO - Codici 1xxx, 2xxx, 6xxx, 8xxx
@@ -498,7 +504,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                     # Codici ERARIO: 1xxx, 2xxx, 6xxx, 8xxx
                     # ESCLUDI i codici 3xxx (IRAP) che vanno in REGIONI
                     # ESCLUDI anche codici IRAP specifici (1993, 8907) senza codice regione
-                    if re.match(r'^(1\d{3}|2\d{3}|6\d{3}|7\d{3}|8\d{3}|9\d{3})$', word):
+                    if re.match(r'^(1\d{3}|2\d{3}|4\d{3}|6\d{3}|7\d{3}|8\d{3}|9\d{3})$', word):
                         codice = word
 
                         # Se è un codice IRAP (1993, 8907), salta - andrà in REGIONI
@@ -947,6 +953,21 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     # La quadratura va verificata per modello e poi sull'intero documento:
     # confrontare tutte le righe con il solo saldo dell'ultima pagina produce
     # un falso non-quadrato sul campione IMU + ritenuta.
+    # Una delega stampata su piu' pagine senza «MOD NUM» ha un modello (e un
+    # saldo finale) per pagina: confrontare la somma di tutte le righe con il
+    # saldo della sola prima pagina la dava sempre non quadrata.
+    if not any(value is not None for value in page_models.values()) and len(page_balances) > 1:
+        pagine_con_righe = {
+            int(row.get("pagina") or 1)
+            for section_name in sections for row in result[section_name]
+        }
+        if pagine_con_righe and pagine_con_righe <= set(page_balances):
+            for page_number in page_balances:
+                page_models[page_number] = page_number
+            for section_name in sections:
+                for row in result[section_name]:
+                    row["numero_modello"] = page_models.get(int(row.get("pagina") or 1))
+
     model_keys = []
     for page_number, model_number in page_models.items():
         if model_number is not None and model_number not in model_keys:

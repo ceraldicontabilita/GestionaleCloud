@@ -50,7 +50,7 @@ MAX_ELENCO = 300
 PREFETCH_FILE = 8
 # I file finiti in errore prima di un miglioramento dei lettori si rileggono una
 # volta sola per versione (un cambio dei lettori F24 alza questo numero).
-VERSIONE_RIPASSO = "2026-09-29-irap-unico-errori-transitori"
+VERSIONE_RIPASSO = "2026-09-30-f24-importi-senza-virgola"
 PREFETCH_MAX_BYTE = 8 * 1024 * 1024
 
 _lavoro: Optional[asyncio.Task] = None
@@ -291,7 +291,9 @@ async def _elabora_voci(
     contatori = {**_contatori_vuoti(), **(salvato.get("contatori") or {})}
     non_riconosciuti: List[Dict[str, Any]] = list(salvato.get("non_riconosciuti") or [])
     errori: List[Dict[str, Any]] = list(salvato.get("errori") or [])
-    if riparti_se_completato and salvato.get("stato") == "completato":
+    if (riparti_se_completato and salvato.get("stato") == "completato"
+            and not (riprova_errori and errori
+                     and salvato.get("versione_ripasso") != VERSIONE_RIPASSO)):
         # Una cartella cambia nel tempo: un nuovo passaggio riguarda tutto, e
         # cio' che e' gia' entrato torna «gia_presenti» senza riscrivere niente.
         indice, contatori, non_riconosciuti, errori = 0, _contatori_vuoti(), [], []
@@ -508,7 +510,9 @@ async def importa_cartelle_configurate(db) -> Dict[str, Any]:
     esito: Dict[str, Any] = {}
     for file_id in ids:
         salvato = await _stato_salvato(db, f"{CHIAVE}:{file_id}")
-        if salvato.get("stato") == "completato":
+        # Una versione nuova dei lettori (VERSIONE_RIPASSO) ripassa gli errori
+        # subito, senza aspettare il giorno di attesa dei file arrivati dopo.
+        if salvato.get("stato") == "completato" and salvato.get("versione_ripasso") == VERSIONE_RIPASSO:
             try:
                 aggiornato = datetime.fromisoformat(str(salvato.get("updated_at")))
                 if (datetime.now(timezone.utc) - aggiornato).total_seconds() < 86400:

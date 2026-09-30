@@ -6,7 +6,7 @@ reviewed_at: 2026-09-20
 storage_architecture: supabase
 -->
 
-Aggiornato il 28/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 30/09/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -23,8 +23,9 @@ in una certa data e impediscono di capire quali logiche siano in vigore: non si 
 - Una regola nuova nata da un incidente entra nella sezione giusta, in una o
   due righe, senza il racconto di come ci si è arrivati.
 - Non creare altri `.md`, né cartelle di documentazione, né report generati da
-  script. `tests/runtime/test_claude_md.py` fa rispettare tetto di righe, data
-  dell'intestazione, divieto di capitoli datati e divieto di nuovi `.md`.
+  script. `tests/runtime/test_claude_md.py` fa rispettare data dell'intestazione,
+  divieto di capitoli datati e divieto di nuovi `.md`. **Non c'è un tetto di lunghezza**
+  (decisione del titolare, 30/09/2026): si scrive quanto serve, senza ripetere la stessa regola due volte.
 - Il codice, i test e la configurazione live vincono sempre su questo file.
   Se trovi una contraddizione, **correggi questo file** nello stesso commit.
 
@@ -300,7 +301,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   errori e l'ultimo cursore.
 - Un errore di parsing **conserva email e allegato** e crea una coda visibile:
   non si scarta nulla.
-- **ZIP oltre 100 MB**: restano su Drive e si importano con `POST /api/admin/documenti/import-zip-drive?file_id=…` (`drive_zip_import.py`, `dry_run` per difetto = solo anteprima): indice e voci a intervalli di byte, ogni voce dallo smistatore della cartella unica (stessi doppioni), cursore in `sistema_stato`, si riprende dopo un riavvio; niente si sposta né si cancella su Drive. Avanzamento: `GET …/stato`. Lo stesso endpoint importa una **cartella** Drive con le sottocartelle (in sola lettura: lo smistatore della cartella unica non ci scende); `DRIVE_IMPORT_CARTELLE_ID` la fa girare da sola, un controllo al giorno.
+- **ZIP oltre 100 MB**: restano su Drive e si importano con `POST /api/admin/documenti/import-zip-drive?file_id=…` (`drive_zip_import.py`, `dry_run` per difetto = solo anteprima): indice e voci a intervalli di byte, ogni voce dallo smistatore della cartella unica (stessi doppioni), cursore in `sistema_stato`, si riprende dopo un riavvio; niente si sposta né si cancella su Drive. Avanzamento: `GET …/stato`. Lo stesso endpoint importa una **cartella** Drive con le sottocartelle (in sola lettura: lo smistatore della cartella unica non ci scende); `DRIVE_IMPORT_CARTELLE_ID` la fa girare da sola, un controllo al giorno. **Ripasso degli errori**: ogni correzione a un lettore alza `VERSIONE_RIPASSO`; al primo giro dopo il deploy la cartella già completata rilegge **solo i file in errore** (non l'intera cartella), una volta per versione, salvando l'avanzamento ogni 10 file (un deploy lo interrompe e riprende). Un file «non quadrato» non si forza mai: si corregge il lettore e si ripassa.
 - Gli ZIP si validano prima dell'estrazione (path traversal, zip-bomb,
   estensioni vietate, limite di dimensione), poi si deduplicano e inventariano.
 - Deduplica documentale certa solo con SHA-256 **e** confronto byte; mai per
@@ -396,6 +397,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   stipendi, 39.07.05 TFR, 75.01.07.x commissioni, 31.03.15 finanziamento soci,
   47.01.03 corrispettivi). I 9 conti POS articolano voci già in bilancio per
   tenere separati Numia, SumUp e PayPal: non sono conti nuovi.
+- **Competenza e pagamento sono due date**: il costo e l'IVA seguono la competenza (`data_competenza`, `periodo_iva_attribuito`, anno/mese della busta), il pagamento (F24, bonifico, assegno) chiude un **debito** e non genera mai un costo. F24, ritenute, contributi e saldo IVA non sono costi; il costo del personale è il lordo della busta per il mese di competenza, mai la data del bonifico. Un test end-to-end deve provare che un F24 o una ritenuta pagati non alterano `costi.totale_costi` del bilancio.
 - Ammortamenti: scrittura semplice DARE 05.04.01 / AVERE 01.05.01; il
   risultato d'esercizio resta con segno, con guardia anti-doppia chiusura. Un cespite nasce da una riga fattura solo per parola intera («inCONDIZIONATo» non è un climatizzatore), mai da una nota di credito né da uno sconto.
 - Ricavi: **solo corrispettivi RT**, all'imponibile e col filtro unico di `conto_economico_gestionale.py`, che dà anche il
@@ -465,6 +467,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   il 15 → liquidazione del mese precedente, solo nello stesso anno solare.
   Ricevuta dopo il 15 → mese di ricezione. Operazione dell'anno precedente →
   **mai** retroattribuzione a dicembre: è un blocco, non un avviso.
+- **Codici IVA**: 6001–6012 sono i mesi gennaio–dicembre (6012 = dicembre), 6031–6033 i trimestrali, 6013 l'acconto di dicembre, 6099 il saldo annuale di dichiarazione. Il calcolo di 6013 (metodi storico, previsionale, analitico, soglia minima, esclusioni) e di 6099 (con maggiorazione dell'1% al mese dopo il 16/03) **non esiste ancora**: le soglie e le percentuali si prendono dalla norma, non si inventano (vedi «Aperto»). Credito e debito di dicembre passano a gennaio; oggi il riporto è solo mese su mese (`_credito_precedente`), senza credito da dichiarazione né compensazione orizzontale (soglia 25.000 € con visto di conformità).
 - I 12 giorni sono un controllo sull'emissione del fornitore, mai una
   tolleranza di detrazione per noi.
 - Una liquidazione confermata non si sovrascrive: ogni ricalcolo è una nuova
@@ -530,6 +533,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Un F24 è il suo contenuto fiscale** (contribuente, data di versamento, saldo, righe codice/periodo/importo), non il PDF: `salva_f24`
   non crea un secondo modello da un'altra copia del file e ne annota la provenienza (`f24_doppioni.py`). I doppioni vanno in quarantena
   reversibile (`status=eliminato`, `motivo_quarantena`, `doppione_di`), la copia pagata in banca resta; `F24_QUARANTENA_DOPPIONI` accende il giro. **Modello e quietanza si confrontano riga per riga sulla stessa vista** (`normalize_f24_evidence_rows`): «01 / 01 2021» è la rata unica, mai gennaio, e una riga INPS (sede, causale, matricola) che il modello del commercialista lascia in Erario col codice = anno torna in INPS. Senza questi due riallineamenti la quietanza restava «non corrispondente» a un modello uguale.
+- **Lettura degli importi F24** (`parser_f24._importo_cents_da_token`): certi PDF perdono la virgola nel livello testo, quindi «1.03712» è 1.037,12 e «99035» è 990,35 (senza virgola le ultime due cifre sono sempre i centesimi; letto come 1.037 × 100 il saldo sbagliava di centinaia di migliaia di euro). Il codice 4xxx (es. 4731) è un codice Erario come 1xxx/2xxx. Una delega su più pagine **senza «MOD NUM»** ha un saldo per pagina (si confronta pagina per pagina, mai la somma di tutto col saldo della prima). Un F24 che non quadra non si salva, e l'errore elenca saldo stampato e righe lette (`f24_canonico._dettaglio_quadratura`): la causa si legge da lì, non riaprendo il PDF.
 
 ## Personale: un solo sistema per funzione
 
@@ -821,7 +825,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   restano stabili. Escludere significa «non richiede la dichiarazione», non
   «nascondilo dal menu»: è conformità, si conserva e si revoca.
 
-## Stato attuale (al 28/09/2026 — riscrivere sul posto)
+## Stato attuale (al 30/09/2026 — riscrivere sul posto)
 
 - Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la produzione è `degraded`. Non si accodano merge.
 - TFR: `hr.app_tfr_accantonamenti` vuota, il codice scrive in `tfr_accantonamenti` (1.175 righe, 273.025,37 €); ingest cedolini 0 file su 49 caselle.
@@ -830,6 +834,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
 - **Numia dismesso** dal 05/09/2026: dal 01/08 al 04/09 le chiusure Numia vengono dagli accrediti in banca (50 giornate 2026 ancora da ricostruire al 28/09, 43.115,18 €: le fa il job bancario corto). POS corrente = solo SumUp (API).
 - **Estratto ufficiale BPM**: in archivio fino al 31/03/2026; il PDF al 30/06/2026 va caricato in Documenti > Import (lettore corretto il 28/09); operativo fino al 28/09 da CSV e Enable Banking.
+- **Import minisito Drive completato** (dichiarazioni fiscali 826: 770, Redditi SC, IRAP, IVA, LIPE; F24 unificati 263; quietanze 548). Le IRAP `IRA_T…` e gli UNICO si riconoscono per nome e per il quadro IR/IS, mai come F24 anche se citano «Versato in F24».
 - **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; la copia serale RT è ferma dal 28/08). 08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
 - Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. DRV-16 chiuso nel codice: nessuna lettura di `GOOGLE_DRIVE_*_FOLDER_ID` per sezione, `DRIVE_*_FOLDER_ID`, `DRIVE_FOLDER_REGISTRY_JSON`, `GOOGLE_SERVICE_ACCOUNT_JSON_*`, `DRIVE_SIMULAZIONE_{BATCH,EDIZIONE,SOLO_TIPO}`, `ADMIN_PASSWORD(_HASH)`; su Render si cancellano a mano. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
@@ -861,8 +866,14 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - `/api/download` serve `./downloads`, mai popolato. A mano, dal titolare: **installare la copia serale RT sul suo PC** (`scripts/installa_sync_rt.ps1`, recupera da sola le giornate dal 28/08); password Postgres; DNS ceraldiapp.it.
 - Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
   `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
-- **Minisito fiscale** (RST-MINI): script e JSON stanno nello zip «09_CRUSCOTTO_E_DATI_STRUTTURATI» (da mettere in `MINISITO FISCALE` su Drive) e i PDF in «MINISITO (4).zip» (638 MB, DATI NUOVI) da importare con `import-zip-drive`. Saldo IRAP 2024 (5.164,00 €) e acconto IRAP 2025 (4.238,00 €) senza quietanza: da verificare col commercialista. 18 quietanze doppie (21.727,35 €) da mettere in quarantena con `/api/doppioni` (prima `dry_run`).
+- **Minisito fiscale**: la cartella Drive è stata letta per intero (5.111 file: 348 nuovi, 4.472 già presenti, 154 non riconosciuti, 80 in errore); i PDF non riconosciuti sono soprattutto ISA e quadri sciolti e documenti 2006–2011. Restano da chiudere: circa 40 F24 non quadrati di cui non si conosce ancora la causa (il ripasso dopo ogni correzione mostra nell'errore saldo e righe lette), 20 errori transitori di Supabase da ripassare, 5 file che Drive non fa leggere e 6 quietanze con saldo non quadrato. «Giugno 2026» resta bloccato: il credito di 63,28 € della pagina 2 non è nel saldo stampato (decide il titolare). Saldo IRAP 2024 (5.164,00 €) e acconto IRAP 2025 (4.238,00 €) senza quietanza: da verificare col commercialista. 18 quietanze doppie (21.727,35 €) da mettere in quarantena con `/api/doppioni` (prima `dry_run`).
 - `gestionale.blobs`: oltre ai backup di Lotti, 216 PDF che **nessun documento cita**; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
+
+- **Notifiche PEC dei verbali**: circa 136 PEC in archivio (`verbali_email_attachments`) non sono ancora agganciate ai verbali veri, e nate come righe `VERB-…` senza targa né importo: prima l'anteprima (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run`), poi l'aggancio. Le righe `VERB-…` non si cancellano; si decide dopo l'anteprima se metterle in quarantena.
+- **IVA, cosa manca** (verificato sul codice): acconto 6013 e saldo 6099 come calcolo, maggiorazione 1% dopo il 16/03, credito annuale da dichiarazione e compensazione orizzontale (soglia 25.000 €), conguaglio di dicembre; il confronto con la LIPE non copre 6013, 6099, trimestrali e credito riportato. La scadenza fissa del 27/12 (`fiscalita_italiana.py`) non si sposta al lunedì. `schemas/accounting_rules.py` descrive 6001/6002 come «saldo» e «acconto» ma sono gennaio e febbraio. `_credito_precedente` esiste in due copie (`routers/iva.py`, `iva_liquidation_query.py`): ridurle a una.
+- **Bilancio e competenza**: `routers/accounting/bilancio.py` seleziona i costi per data documento **oppure** data ricezione e ignora `data_competenza` (una fattura di dicembre ricevuta a gennaio può finire nell'esercizio sbagliato o in due); il debito nello stato patrimoniale usa lo stato «pagata» di oggi, non la data di pagamento rispetto a fine esercizio; il costo del personale è il solo lordo (contributi `None`).
+- **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. `scrittura_imposte` e `scrittura_versamento_iva` (`contabilita_generale.py`) non hanno chiamanti: chi le usa deve sapere che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
+- **F24 e banca**: il riscontro dell'addebito (`f24_bank_reconciliation.py`) si basa su importo e data e per un solo movimento sul saldo intero non controlla il codice tributo; la data di versamento assente fa saltare l'F24 senza avviso; il servizio ha solo 2 test. L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
 
 ## Logica dentro al database
 
