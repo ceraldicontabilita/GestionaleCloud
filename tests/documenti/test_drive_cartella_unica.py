@@ -422,3 +422,91 @@ def test_quietanza_mutuo_riconosciuta_prima_della_guardia_busta_paga():
              "RATA N. 001 SCADENTE IL 24/08/2026\nDATA CONTABILE VALUTA TOTALE NETTO\n")
     assert route_da_testo(testo) == "mutuo"
     assert route_da_testo("CEDOLINO\nTOTALE NETTO 1.000,00") is None
+
+
+# --- Velocita': download in anticipo, con tetti, nell'ordine della coda ---
+
+def _coda(n, size=10):
+    return [{"id": f"f{i}", "name": f"f{i}.xml", "size": str(size)} for i in range(n)]
+
+
+def test_precarica_rispetta_i_tetti_di_parallelismo_e_byte():
+    volo = {"ora": 0, "max": 0, "byte": 0, "byte_max": 0}
+
+    async def scarica(f):
+        volo["ora"] += 1
+        volo["byte"] += 10
+        volo["max"] = max(volo["max"], volo["ora"])
+        volo["byte_max"] = max(volo["byte_max"], volo["byte"])
+        await asyncio.sleep(0.01)
+        volo["ora"] -= 1
+        return b"x" * 10
+
+    async def prova():
+        visti = []
+        async for f, contenuto in cu.precarica_in_ordine(_coda(20), scarica, paralleli=3, byte_max=25):
+            visti.append(f["id"])
+            await asyncio.sleep(0.005)
+            volo["byte"] -= 10
+        return visti
+
+    visti = run(prova())
+    assert visti == [f"f{i}" for i in range(20)]  # ordine di priorita' conservato
+    assert volo["max"] <= 3
+    assert volo["byte_max"] <= 30  # tetto 25 byte: al piu' 2 file da 10 + quello in consumo
+
+
+def test_precarica_file_piu_grande_del_tetto_passa_da_solo_senza_stallo():
+    async def scarica(f):
+        return b"x"
+
+    async def prova():
+        return [f["id"] async for f, _ in cu.precarica_in_ordine(
+            _coda(5, size=1000), scarica, paralleli=4, byte_max=10)]
+
+    assert run(asyncio.wait_for(prova(), 5)) == [f"f{i}" for i in range(5)]
+
+
+def test_un_download_che_fallisce_non_blocca_gli_altri():
+    async def scarica(f):
+        if f["id"] == "f1":
+            raise ConnectionResetError("caduta")
+        return b"ok"
+
+    async def prova():
+        return [(f["id"], c) async for f, c in cu.precarica_in_ordine(
+            _coda(4), scarica, paralleli=2, byte_max=1000)]
+
+    r = run(prova())
+    assert [i for i, _ in r] == ["f0", "f1", "f2", "f3"]
+    assert isinstance(r[1][1], ConnectionResetError) and r[2][1] == b"ok" and r[3][1] == b"ok"
+
+
+def test_giro_parallelo_errore_di_un_file_va_in_errori_e_gli_altri_passano(ambiente, monkeypatch):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    for i in range(6):
+        drive.aggiungi(f"x{i}", f"a{i}.xml", f"<xml>{i}</xml>".encode(), "inbox")
+    import app.services.drive_download as dd
+    vero = dd.scarica_bytes
+
+    def scarica(service, fid):
+        if fid == "x2":
+            raise ConnectionResetError("caduta")
+        return vero(service, fid)
+
+    monkeypatch.setattr(dd, "scarica_bytes", scarica)
+    esito = run(cu.giro(db))
+    assert (esito["letti"], esito["elaborati"], esito["errori"]) == (6, 5, 1)
+    assert drive.file["x2"]["parent"] == "errori"
+    assert sorted(n for n, _ in smistati) == ["a0.xml", "a1.xml", "a3.xml", "a4.xml", "a5.xml"]
+
+
+def test_secondo_giro_non_rielabora_niente(ambiente):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    for i in range(4):
+        drive.aggiungi(f"y{i}", f"b{i}.xml", f"<xml>{i}</xml>".encode(), "inbox")
+    assert run(cu.giro(db))["elaborati"] == 4
+    seconda = run(cu.giro(db))
+    assert seconda["letti"] == 0 and seconda["elaborati"] == 0 and len(smistati) == 4

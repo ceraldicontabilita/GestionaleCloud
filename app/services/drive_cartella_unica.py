@@ -100,9 +100,94 @@ def anno_minimo_estratti() -> int:
 
 def _batch() -> int:
     try:
-        return max(1, min(int(os.getenv("DRIVE_CARTELLA_UNICA_BATCH", "25")), 200))
+        return max(1, min(int(os.getenv("DRIVE_CARTELLA_UNICA_BATCH", "100")), 200))
     except ValueError:
-        return 25
+        return 100
+
+
+def _intero_env(nome: str, difetto: int, minimo: int, massimo: int) -> int:
+    try:
+        return max(minimo, min(int(os.getenv(nome, str(difetto))), massimo))
+    except ValueError:
+        return difetto
+
+
+def _precarica_paralleli() -> int:
+    """Download Drive in volo mentre il giro elabora il file davanti (difetto 4).
+    ``DRIVE_PRECARICA_PARALLELI``; 1 = come prima, un file alla volta."""
+    return _intero_env("DRIVE_PRECARICA_PARALLELI", 4, 1, 8)
+
+
+def _precarica_byte_max() -> int:
+    """Tetto ai byte scaricati e non ancora elaborati (difetto 48 MB), per non
+    idratare la coda in RAM (servizio da 2 GB, gia' andato in OOM).
+    ``DRIVE_PRECARICA_MB``. Un file piu' grande del tetto passa da solo."""
+    return _intero_env("DRIVE_PRECARICA_MB", 48, 1, 256) * 1024 * 1024
+
+
+async def precarica_in_ordine(files: List[Dict[str, Any]], scarica, *, paralleli: int, byte_max: int):
+    """Scarica in parallelo, con tetti, e restituisce **nell'ordine della coda**.
+
+    Generatore asincrono di ``(file, contenuto | eccezione)``: il chiamante
+    elabora un file alla volta (la dedup dei motori non e' protetta da due
+    letture parallele), mentre i download dei successivi corrono. Il tetto ai
+    byte in volo conta i byte gia' scaricati e non ancora consumati; un file
+    che li supera da solo parte solo a coda di prefetch vuota. Un download che
+    fallisce arriva come eccezione al suo turno e non ferma gli altri.
+    """
+    cond = asyncio.Condition()
+    stato = {"byte": 0, "volo": 0, "turno": 0}
+    compiti: List["asyncio.Task"] = []
+
+    def stima(f):
+        try:
+            return max(1, int(f.get("size") or 0)) or 1
+        except (TypeError, ValueError):
+            return 1024 * 1024
+
+    async def scarico(f, j):
+        peso = stima(f)
+        async with cond:
+            # Il turno e' rigoroso: un file piu' avanti non prende il posto di
+            # quello che il consumatore sta aspettando (stallo sul tetto).
+            await cond.wait_for(lambda: stato["turno"] == j and stato["volo"] < paralleli and (
+                stato["byte"] == 0 or stato["byte"] + peso <= byte_max))
+            stato["byte"] += peso
+            stato["volo"] += 1
+            stato["turno"] += 1
+            cond.notify_all()
+        try:
+            return await scarica(f)
+        except Exception as exc:  # arriva al suo turno, non ferma i vicini
+            return exc
+        finally:
+            async with cond:
+                stato["volo"] -= 1
+                cond.notify_all()
+
+    async def rilascia(f):
+        async with cond:
+            stato["byte"] -= stima(f)
+            cond.notify_all()
+
+    try:
+        # Finestra di lookahead: i task nascono in ordine e partono in ordine.
+        finestra = max(paralleli * 2, 2)
+        prossimo = 0
+        for i, f in enumerate(files):
+            while prossimo < len(files) and len(compiti) - i < finestra:
+                compiti.append(asyncio.ensure_future(scarico(files[prossimo], prossimo)))
+                prossimo += 1
+            risultato = await compiti[i]
+            try:
+                yield f, risultato
+            finally:
+                await rilascia(f)
+    finally:
+        for t in compiti:
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(*compiti, return_exceptions=True)
 
 
 def _service():
@@ -453,14 +538,16 @@ async def _giro(db) -> Dict[str, Any]:
         if f.get("md5Checksum"):
             per_md5.setdefault(f["md5Checksum"], []).append(f["id"])
 
-    async def lavora(f: Dict[str, Any], drive=None) -> None:
+    async def lavora(f: Dict[str, Any], drive=None, pre=None) -> None:
         # La connessione Drive (httplib2) non regge due thread insieme: ogni
         # lettura parallela usa la sua, quella del giro resta per i file in fila.
         drive = drive or service
         esito["letti"] += 1
         fid, nome = f["id"], f.get("name") or f["id"]
         try:
-            contenuto = await asyncio.to_thread(scarica_bytes, drive, fid)
+            if isinstance(pre, BaseException):
+                raise pre
+            contenuto = pre if pre is not None else await asyncio.to_thread(scarica_bytes, drive, fid)
             sha256 = hashlib.sha256(contenuto).hexdigest()
             copia_di = None
             for candidato in per_md5.get(f.get("md5Checksum") or "", []):
@@ -536,9 +623,26 @@ async def _giro(db) -> Dict[str, Any]:
                 connessioni.put_nowait(drive)
 
     await asyncio.gather(*(lavora_busta(f) for f in buste))
-    for f in in_coda:
-        if not e_busta(f):
-            await lavora(f)
+    # Gli altri file restano elaborati uno alla volta (la dedup dei motori non
+    # regge due letture insieme), ma il loro download corre in anticipo, in
+    # parallelo e con tetto ai byte in volo.
+    altri = [f for f in in_coda if not e_busta(f)]
+    if altri:
+        n_conn = min(_precarica_paralleli(), len(altri))
+        pool: "asyncio.Queue" = asyncio.Queue()
+        for _ in range(n_conn):
+            pool.put_nowait(await asyncio.to_thread(_service))
+
+        async def scarica_altro(f):
+            drive = await pool.get()
+            try:
+                return await asyncio.to_thread(scarica_bytes, drive, f["id"])
+            finally:
+                pool.put_nowait(drive)
+
+        async for f, pre in precarica_in_ordine(altri, scarica_altro, paralleli=n_conn,
+                                                byte_max=_precarica_byte_max()):
+            await lavora(f, None, pre)
     esito["dettagli"] = esito["dettagli"][:100]
     esito["restanti"] = max(0, int(esito.get("in_coda_totale") or 0) - esito["letti"])
     await _salva_stato(db, esito)

@@ -35,6 +35,11 @@ def _matches(doc, query):
         if isinstance(v, dict) and "$regex" in v:
             if not str(doc.get(k, "")).startswith(v["$regex"].lstrip("^")):
                 return False
+        elif isinstance(v, dict) and ("$gte" in v or "$lte" in v):
+            # il periodo e' un intervallo dal/al (l'ultimo giorno incluso con «~»)
+            valore = str(doc.get(k, ""))
+            if not (v.get("$gte", "") <= valore <= v.get("$lte", "~")):
+                return False
         elif isinstance(v, dict) and "$nin" in v:
             if doc.get(k) in v["$nin"]:
                 return False
