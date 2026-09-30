@@ -259,9 +259,9 @@ def test_ponte_mostra_i_documenti_collegati_e_non_scrive_niente():
     impronta = sha("cartella.pdf2022/000004")
     run(pp.importa_registro(db, xlsx(), dry_run=False))
     run(db["cartelle_pagamento"].insert_one({"id": "cart-1", "sha256": impronta}))
-    run(db["pagopa_receipts"].insert_one({"id": "rec-1", "pdf_hash": impronta}))
+    run(db["ricevute_pagopa"].insert_one({"id": "rec-1", "pdf_hash": impronta}))
     run(db["invoices"].insert_one({"id": "fatt-1", "invoice_number": "1", "total_amount": 10}))
-    prima = {c: run(db[c].find({}).to_list(None)) for c in ("cartelle_pagamento", "pagopa_receipts", "invoices",
+    prima = {c: run(db[c].find({}).to_list(None)) for c in ("cartelle_pagamento", "ricevute_pagopa", "invoices",
                                                            "prima_nota", "movimenti_contabili", "entity_relations")}
     db.bloccato = True
     dettaglio = run(pp.dettaglio(db, "2022/000004"))
@@ -272,6 +272,53 @@ def test_ponte_mostra_i_documenti_collegati_e_non_scrive_niente():
         ("cartella_pagamento", "cart-1"), ("ricevuta_pagopa", "rec-1")}
     dopo = {c: run(db[c].find({}).to_list(None)) for c in prima}
     assert dopo == prima  # nessuna relazione, scrittura contabile o pagamento nato dal ponte
+    # rimanda alla sezione che esiste gia', senza riportare i dati del documento
+    assert {d["rotta"] for d in collegati["documenti"]} == {"/riconciliazione/pagopa"}
+    assert all(set(d) <= {"tipo", "collezione", "id", "rotta", "via", "stato"} for d in collegati["documenti"])
+
+
+def test_ponte_rimanda_a_tributi_verbali_atti_archivio_esistenti():
+    db = ArchivioDocumenti()
+    righe = [riga(f"2024/00000{i}", "doc", impronta=sha(f"f{i}"), nome=f"f{i}.pdf") for i in range(1, 5)]
+    run(pp.importa_registro(db, xlsx(righe), dry_run=False))
+    run(db["quietanze_f24"].insert_one({"id": "q-1", "pdf_hash": sha("f1")}))
+    run(db["verbali_noleggio"].insert_one({"id": "v-1", "numero_verbale": "AB/123", "source_sha256": sha("f2")}))
+    run(db["atti_giudiziari"].insert_one({"id": sha("f3")}))
+    run(db["documents_inbox"].insert_one({"id": "d-1", "sha256": sha("f4")}))
+    rotte = {}
+    for n in range(1, 5):
+        for d in run(pp.dettaglio(db, f"2024/{n}"))["collegati"]["documenti"]:
+            rotte[d["tipo"]] = d["rotta"]
+    assert rotte == {"tributo_pagato": "/tributi", "verbale": "/verbali-noleggio/AB/123",
+                     "atto_giudiziario": "/prima-nota", "documento_archivio": "/documenti/archivio"}
+
+
+def test_riga_familiare_resta_fuori_dalla_contabilita_end_to_end():
+    from app.services.personal_family_registry import FAMILY_PROFILES
+
+    nome = next(iter(FAMILY_PROFILES.values()))["display_name"]
+    db = ArchivioDocumenti()
+    righe = [riga("2023/000001", f"TARI 2023 intestata a {nome}", nome="tari.pdf", importo="88,00")]
+    run(pp.importa_registro(db, xlsx(righe), dry_run=False))
+    salvata = run(db[pp.COLL].find_one({"id": "2023/000001"}))
+    assert salvata["ambito"] == "personale_familiare" and salvata["accounting_excluded"] is True
+    run(pp.cerca(db, q="tari"))
+    run(pp.dettaglio(db, "2023/1"))
+    contabili = ("prima_nota", "prima_nota_banca", "prima_nota_cassa", "movimenti_contabili", "scritture_contabili",
+                 "invoices", "alerts", "scadenziario_fornitori", "partite_aperte", "attese", "entity_relations",
+                 "estratto_conto_movimenti", "pagamenti")
+    for collezione in contabili:
+        assert run(db[collezione].find({}).to_list(None)) == [], collezione
+
+
+def test_nessun_modulo_contabile_legge_il_protocollo_personale():
+    from pathlib import Path
+
+    radice = Path(__file__).resolve().parents[2] / "app"
+    lettori = {p.relative_to(radice).as_posix() for p in radice.rglob("*.py")
+               if "protocollo_personale" in p.read_text(encoding="utf-8", errors="ignore")}
+    assert lettori == {"services/protocollo_personale.py", "routers/protocollo_personale.py",
+                       "document_repository.py", "router_registry.py"}
 
 
 def test_ponte_legge_le_relazioni_documentali_senza_crearne():

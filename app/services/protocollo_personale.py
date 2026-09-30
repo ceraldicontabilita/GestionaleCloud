@@ -40,6 +40,7 @@ import unicodedata
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from urllib.parse import quote
 
 from app.constants.canale_documento import CANALE_DRIVE
 from app.document_repository import metadata_projection
@@ -469,13 +470,23 @@ async def allega_testo_pdf(db, numero: str, contenuto_pdf: bytes) -> Dict[str, A
     if riga["sha256"] != hashlib.sha256(contenuto_pdf).hexdigest():
         return {"success": False, "code": "IMPRONTA_DIVERSA", "message": "il file non e' quello registrato"}
     testo = ((await asyncio.to_thread(extract_pdf_text, contenuto_pdf)) or "").strip()
+    fonte = "livello_testo_pdf"
+    if not testo:
+        # Scansione: lo stesso OCR locale (RapidOCR) delle ricevute Mooney, un motore solo.
+        try:
+            from app.services.pagopa_receipts import _righe_ocr_per_posizione
+
+            testo = ((await asyncio.to_thread(_righe_ocr_per_posizione, contenuto_pdf)) or "").strip()
+            fonte = "ocr_rapidocr"
+        except Exception as exc:
+            logger.warning("Protocollo personale: OCR non riuscito (%s)", type(exc).__name__)
     if not testo:
         return {"success": False, "code": "TESTO_ASSENTE",
-                "message": "il PDF non ha livello testo: l'OCR sulle scansioni non e' ancora collegato"}
+                "message": "il PDF non ha testo leggibile, ne' dal livello testo ne' dall'OCR"}
     ora = datetime.now(timezone.utc).isoformat()
     await db[COLL].update_one({"id": canonico[0]}, {"$set": {
         "testo_ocr": testo[:MAX_TESTO_OCR], "testo_indice": testo[:MAX_TESTO_INDICE],
-        "testo_fonte": "livello_testo_pdf", "testo_aggiornato_il": ora, "aggiornato_il": ora}})
+        "testo_fonte": fonte, "testo_aggiornato_il": ora, "aggiornato_il": ora}})
     return {"success": True, "numero": canonico[0], "caratteri": len(testo)}
 
 
@@ -570,14 +581,14 @@ def filtra(righe: Iterable[Dict[str, Any]], *, q: Optional[str] = None, anno: Op
            includi_rimossi: bool = False) -> List[Dict[str, Any]]:
     """Ricerca AND sulle parole, filtri esatti, piu' recenti per prime (puro, testabile).
 
-    ``anno`` vale per l'anno del documento **o** del protocollo."""
+    ``anno`` vale per l'anno del documento se c'e', altrimenti del protocollo."""
     parole = parole_di(q)
     tipo = normalizza_testo(tipo_documento).strip() if tipo_documento else ""
     trovate = []
     for riga in righe:
         if not includi_rimossi and riga.get("stato") == STATO_RIMOSSO:
             continue
-        if anno is not None and anno not in (riga.get("anno_documento"), riga.get("anno_protocollo")):
+        if anno is not None and (riga.get("anno_documento") or riga.get("anno_protocollo")) != anno:
             continue
         if tipo and tipo not in normalizza_testo(riga.get("tipo_documento")):
             continue
@@ -613,16 +624,34 @@ async def cerca(db, *, q: Optional[str] = None, anno: Optional[int] = None, tipo
 
 # ── ponte informativo verso la contabilita' ─────────────────────────────────
 
-# (collezione, campo con lo SHA-256 del PDF, etichetta): sola lettura
-SORGENTI_IMPRONTA: Tuple[Tuple[str, str, str], ...] = (
-    ("cartelle_pagamento", "sha256", "cartella_pagamento"),
-    ("atti_giudiziari", "id", "atto_giudiziario"),
-    ("pagopa_receipts", "pdf_hash", "ricevuta_pagopa"),
-    ("quietanze_f24", "pdf_hash", "quietanza_f24"),
-    ("f24_unificato", "pdf_hash", "modello_f24"),
-    ("bonifici_transfers", "pdf_hash", "bonifico"),
-    ("documents_inbox", "sha256", "documento_caricato"),
+# Il ponte NON riporta i dati e NON ha viste proprie: dice dove sta la scheda
+# nella sezione che esiste gia' (Tributi, PagoPA e cartelle, Verbali, Atti,
+# Archivio documenti) con la rotta gia' usata dal frontend.
+# (collezione, campi con lo SHA-256 del PDF, tipo, rotta della sezione esistente)
+SORGENTI_IMPRONTA: Tuple[Tuple[str, Tuple[str, ...], str, str], ...] = (
+    ("cartelle_pagamento", ("sha256",), "cartella_pagamento", "/riconciliazione/pagopa"),
+    ("ricevute_pagopa", ("pdf_hash", "source_sha256"), "ricevuta_pagopa", "/riconciliazione/pagopa"),
+    ("quietanze_f24", ("pdf_hash",), "tributo_pagato", "/tributi"),
+    ("f24_unificato", ("pdf_hash",), "modello_f24", "/tributi"),
+    ("verbali_noleggio", ("source_sha256",), "verbale", "/verbali-noleggio/{numero_verbale}"),
+    ("atti_giudiziari", ("id",), "atto_giudiziario", "/prima-nota"),
+    ("documents_inbox", ("sha256",), "documento_archivio", "/documenti/archivio"),
 )
+# tipo di entita' in `entity_relations` -> rotta esistente (LinkContropartita.jsx e sezioni)
+ROTTE_RELAZIONI: Dict[str, str] = {
+    "invoice": "/fatture?invoice_id={id}",
+    "f24_model": "/tributi",
+    "f24_receipt": "/tributi",
+}
+
+
+def _rotta(modello: Optional[str], documento: Dict[str, Any]) -> Optional[str]:
+    if not modello:
+        return None
+    try:
+        return modello.format(**{k: quote(str(v), safe="/") for k, v in documento.items() if v is not None})
+    except KeyError:
+        return None
 
 
 async def documenti_collegati(db, riga: Dict[str, Any]) -> Dict[str, Any]:
@@ -631,15 +660,17 @@ async def documenti_collegati(db, riga: Dict[str, Any]) -> Dict[str, Any]:
     trovati: List[Dict[str, Any]] = []
     impronta = riga.get("sha256")
     if impronta:
-        for collezione, campo, etichetta in SORGENTI_IMPRONTA:
+        for collezione, campi, etichetta, modello in SORGENTI_IMPRONTA:
             try:
-                documenti = await db[collezione].find({campo: impronta}, {"_id": 0, "id": 1}).to_list(5)
+                documenti = await db[collezione].find(
+                    {"$or": [{c: impronta} for c in campi]},
+                    {"_id": 0, "id": 1, "numero_verbale": 1}).to_list(5)
             except Exception as exc:
                 logger.warning("Ponte protocollo: lettura di %s non riuscita (%s)", collezione, type(exc).__name__)
                 continue
             for documento in documenti:
-                trovati.append({"tipo": etichetta, "collezione": collezione,
-                                "id": documento.get("id") or impronta, "via": "impronta_sha256"})
+                trovati.append({"tipo": etichetta, "collezione": collezione, "id": documento.get("id") or impronta,
+                                "rotta": _rotta(modello, documento), "via": "impronta_sha256"})
     drive_id = riga.get("drive_file_id")
     if drive_id:
         try:
@@ -651,7 +682,9 @@ async def documenti_collegati(db, riga: Dict[str, Any]) -> Dict[str, Any]:
                 origine = rel.get("source") or {}
                 altro = rel.get("target") if origine.get("type") == "documento" and origine.get("id") == drive_id \
                     else origine
-                trovati.append({"tipo": (altro or {}).get("type"), "collezione": None, "id": (altro or {}).get("id"),
+                tipo, altro_id = (altro or {}).get("type"), (altro or {}).get("id")
+                trovati.append({"tipo": tipo, "collezione": None, "id": altro_id,
+                                "rotta": _rotta(ROTTE_RELAZIONI.get(str(tipo)), {"id": altro_id}),
                                 "via": "entity_relations", "stato": rel.get("status")})
         except Exception as exc:
             logger.warning("Ponte protocollo: lettura delle relazioni non riuscita (%s)", type(exc).__name__)
