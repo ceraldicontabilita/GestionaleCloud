@@ -15,6 +15,29 @@
 
 ## Audit funzionale del 30/09/2026 — stato per capitolo del prompt
 
+Riesame successivo delle correzioni locali: l'allegato contiene **163 punti**.
+Il primo rapporto ne elencava 161 e ometteva `1.3b` (Scheduler) e `4.4b`
+(Ricavi). La suite verde precedente non copriva import Lotti parziale,
+revoca PIN nello stesso secondo, sessioni personali legacy, cache HR stale,
+configurazioni turni conflittuali e compatibilità della vecchia carta Menu.
+Questi casi sono stati riprodotti su fixture e sono oggetto delle correzioni
+del riesame; non costituiscono prova di danni avvenuti in produzione.
+
+Il 502 segnalato non si è ripresentato nei GET delle 19:28 UTC e nei browser
+delle 19:32 UTC sui due domini. Il servizio serve ancora `0187a45f`; senza log
+e metriche Render la causa dell'incidente resta non verificata. Nessun riavvio
+eseguito. Alle 20:26 UTC il 502 si e' ripresentato su login e health dei due
+domini; alle 20:29 UTC le letture sono tornate 200 sullo stesso commit, senza
+intervento. Incidente intermittente aperto: origine e causa non determinate.
+GitHub: nessuna PR aperta; i cinque rami remoti residui hanno zero
+commit aggiuntivi rispetto a `main`. Le nuove correzioni rimangono locali.
+
+Non sono certificati l'arretrato reale fatture→Lotti, la correttezza di tutti
+gli allergeni, i cinque flussi contabili completi del punto 21.4, la
+ripristinabilità dei dati reali o l'atomicità tra stock e registro movimenti.
+Qromo resta autorevole per i propri prodotti, come richiesto dal punto 13.2:
+il salvataggio manuale non garantisce conservazione dopo una sincronizzazione.
+
 Produzione in sola lettura; scritture E2E su fixture isolate. I test del
 codice non certificano i dati privati o i backfill. Le baseline non
 rimisurate restano tali. Nessuna PR nuova creata: GitHub rifiuta le scritture.
