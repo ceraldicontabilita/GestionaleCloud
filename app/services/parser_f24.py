@@ -247,10 +247,33 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
 # Riga INPS del modello stampato dal cassetto fiscale: sede, causale, matricola e
 # periodo «MM AAAA» (uno o due, da/a), con importi a debito e a credito. La
 # matricola di una «CXX» e' un testo («80143NAPOLI»), quella di una «DM10» un numero.
-_RIGA_INPS_TESTO = re.compile(
-    r"\b(\d{4,5})\s+(CXX|DM10|RC01|C10|CF10)\s+([A-Z0-9]{8,15})\s+(\d{1,2})\s+"
-    r"((?:19|20)\d{2})(?:\s+(\d{1,2})\s+(?:19|20)\d{2})?"
+RIGA_INPS_TESTO = re.compile(
+    r"\b(?P<sede>\d{4,5})\s+(?P<causale>[A-Z]{1,4}\d{0,2})\s+(?P<matricola>[A-Z0-9]{6,15})\s+"
+    r"(?P<mese_da>\d{1,2})\s+(?P<anno_da>(?:19|20)\d{2})"
+    r"(?:\s+(?P<mese_a>\d{1,2})\s+(?P<anno_a>(?:19|20)\d{2}))?"
 )
+_RIGA_INPS_TESTO = RIGA_INPS_TESTO
+
+
+def periodi_riga_inps(trovato) -> Dict[str, str]:
+    """``periodo_da`` / ``periodo_a`` («MM/AAAA») di una riga INPS. Con un solo
+    periodo scritto, da e a coincidono: il modello non lo estende."""
+    da = f"{int(trovato.group('mese_da')):02d}/{trovato.group('anno_da')}"
+    if trovato.group("mese_a") and trovato.group("anno_a"):
+        a = f"{int(trovato.group('mese_a')):02d}/{trovato.group('anno_a')}"
+    else:
+        a = da
+    return {"periodo_da": da, "periodo_a": a}
+
+
+def _periodi_da_testo_inps(row_text: str, mese: str, anno: str) -> Dict[str, str]:
+    """Periodo da/a di una riga INPS letta parola per parola: se la riga e' nella forma
+    canonica si prende dal testo, altrimenti a = da (il solo periodo trovato)."""
+    trovato = RIGA_INPS_TESTO.search(row_text)
+    if trovato:
+        return periodi_riga_inps(trovato)
+    da = f"{mese}/{anno}" if mese and anno else ""
+    return {"periodo_da": da, "periodo_a": da}
 
 
 def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
@@ -374,8 +397,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     # ============================================
     # Layout F24: importi iniziano dopo X=340
     IMPORTO_X_START = 340
-    DEBITO_X_MAX = 410
-    CREDITO_X_MIN = 440
+    DEBITO_X_MAX = 410  # bordo destro massimo della colonna debito
 
     # Soglie Y per sezioni (approssimate, variano per PDF)
     # Le determineremo dinamicamente cercando le intestazioni
@@ -384,39 +406,25 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     page_models: dict[int, int | None] = {}
     page_balances: dict[int, float] = {}
 
-    def _extract_importo_cents_coordinate(row):
-        """Estrae debito e credito da una riga basandosi sulle coordinate."""
-        debito_parts = []
-        credito_parts = []
-
-        for item in row:
-            x = item['x']
-            word = item['word']
-
-            if word in ['+/–', '+/-', '+', '-']:
-                continue
-            if not re.match(r'^[\d.,]+$', word):
-                continue
-
-            if x > IMPORTO_X_START and x <= DEBITO_X_MAX:
-                debito_parts.append((x, word))
-            elif x >= CREDITO_X_MIN:
-                credito_parts.append((x, word))
-
-        return _importo_cents_da_token(debito_parts), _importo_cents_da_token(credito_parts)
-
     def extract_importo_cents(row):
-        """Estrae gli importi canonici come interi di centesimi."""
+        """Estrae gli importi canonici come interi di centesimi.
+
+        Le colonne sono allineate a destra: un importo a 4 cifre («5.024») parte piu' a
+        sinistra di uno a 3 («667») e con la sola x d'inizio finiva nella colonna
+        sbagliata (5.024,76 letto 0,76). Debito e credito si distinguono dal bordo
+        DESTRO della parola, che sta sempre nella sua colonna (debito ~385-402,
+        credito ~467-485)."""
         debito_parts = []
         credito_parts = []
         for item in row:
             x = item['x']
+            fine = item.get('x1', x)
             word = item['word']
-            if word in ['+/â€“', '+/-', '+', '-'] or not re.match(r'^[\d.,]+$', word):
+            if word in ['+/–', '+/-', '+', '-'] or not re.match(r'^[\d.,]+$', word):
                 continue
-            if x > IMPORTO_X_START and x <= DEBITO_X_MAX:
+            if x > IMPORTO_X_START and fine <= DEBITO_X_MAX:
                 debito_parts.append((x, word))
-            elif x >= CREDITO_X_MIN:
+            elif fine > DEBITO_X_MAX and x > IMPORTO_X_START:
                 credito_parts.append((x, word))
         return _importo_cents_da_token(debito_parts), _importo_cents_da_token(credito_parts)
 
@@ -450,7 +458,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             y_key = round(y0 / 8) * 8
             if y_key not in rows:
                 rows[y_key] = []
-            rows[y_key].append({'x': round(x0), 'y': round(y0), 'word': word.strip()})
+            rows[y_key].append({'x': round(x0), 'x1': round(x1), 'y': round(y0), 'word': word.strip()})
 
         # Processa ogni riga
         for y_key in sorted(rows.keys()):
@@ -509,6 +517,17 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
 
                         # Se è un codice IRAP (1993, 8907), salta - andrà in REGIONI
                         if codice in CODICI_SOLO_REGIONI:
+                            continue
+
+                        # Un anno («2022») dopo un mese o una matricola e' il periodo di
+                        # una riga INPS, non un codice tributo (2022 e' anche un codice
+                        # vero, ma non sta mai dopo «11» o «5124776507»): la riga resta non
+                        # letta e la quadratura la segnala, invece di inventare un codice.
+                        precedente = row[i - 1]['word'] if i > 0 else ""
+                        if re.fullmatch(r"(?:19|20)\d{2}", codice) and (
+                            re.fullmatch(r"\d{1,2}", precedente)
+                            or re.fullmatch(r"(?=.*\d)[A-Z0-9]{8,15}", precedente)
+                        ):
                             continue
 
                         rateazione, anno = _rateazione_e_anno(
@@ -605,6 +624,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "periodo_riferimento": f"{mese}/{anno}",
                                     "mese": mese,
                                     "anno": anno,
+                                    **_periodi_da_testo_inps(row_text, mese, anno),
                                     "importo_debito": importo_cents / 100,
                                     "importo_credito": 0.0,
                                     "importo_debito_cents": importo_cents,
@@ -617,7 +637,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         break
 
             if inps_riga and len(result["sezione_inps"]) == righe_inps_prima:
-                sede_i, causale_i, matricola_i, mese_i, anno_i = inps_riga.groups()[:5]
+                sede_i, causale_i, matricola_i = (
+                    inps_riga.group("sede"), inps_riga.group("causale"), inps_riga.group("matricola"))
+                mese_i, anno_i = inps_riga.group("mese_da"), inps_riga.group("anno_da")
                 debito_i, credito_i = extract_importo_cents(row)
                 chiave_i = f"I_{causale_i}_{matricola_i}_{anno_i}_{mese_i}_{debito_i}_{credito_i}"
                 if (debito_i or credito_i) and chiave_i not in tributi_visti:
@@ -630,6 +652,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         "periodo_riferimento": f"{mese_i}/{anno_i}",
                         "mese": mese_i,
                         "anno": anno_i,
+                        **periodi_riga_inps(inps_riga),
                         "importo_debito": debito_i / 100,
                         "importo_credito": credito_i / 100,
                         "importo_debito_cents": debito_i,
@@ -681,11 +704,22 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 importo_inail = importo_inail_cents / 100
                 credito_inail = credito_inail_cents / 100
 
-                if cod_sede_inail and cod_ditta and importo_inail > 0:
+                if cod_sede_inail and cod_ditta:
+                    # Mancano cc, numero di riferimento o causale? La riga resta, con
+                    # l'elenco dei campi assenti: prima si perdeva o passava muta.
+                    mancanti = [
+                        nome for nome, valore in (
+                            ("cc", cc), ("numero_riferimento", num_riferimento),
+                            ("causale", causale_inail),
+                        ) if not valore
+                    ]
+                    senza_importo = importo_inail_cents <= 0 and credito_inail_cents <= 0
+                    if senza_importo:
+                        mancanti.append("importo")
                     key = f"INAIL_{cod_sede_inail}_{cod_ditta}_{num_riferimento}"
                     if key not in tributi_visti:
                         tributi_visti.add(key)
-                        result["sezione_inail"].append({
+                        riga_inail = {
                             "codice_sede": cod_sede_inail,
                             "codice_ditta": cod_ditta,
                             "cc": cc,
@@ -699,7 +733,16 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             "riga_y": y_key,
                             "testo_sorgente": row_text,
                             "descrizione": f"Premio INAIL - Causale {causale_inail}"
-                        })
+                        }
+                        if mancanti:
+                            riga_inail["incompleta"] = True
+                            riga_inail["campi_mancanti"] = mancanti
+                        # Senza importo non e' una riga di pagamento: non entra nella
+                        # sezione (non deve far sembrare un modello un F24), ma si vede.
+                        if senza_importo:
+                            result.setdefault("righe_inail_incomplete", []).append(riga_inail)
+                        else:
+                            result["sezione_inail"].append(riga_inail)
 
             # ============================================
             # SEZIONE REGIONI - Pattern: cod_regione codice rateazione anno debito/credito

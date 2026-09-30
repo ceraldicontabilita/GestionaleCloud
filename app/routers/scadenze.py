@@ -26,7 +26,7 @@ COLL_F24_CANONICA = "f24_unificato"
 
 async def _iva_acquisti_ufficiale(db, periodo: str) -> Dict[str, Any]:
     """IVA acquisti detraibile del periodo 'YYYY-MM' secondo il motore
-    ufficiale di liquidazione (memoria/SPECIFICA_IVA.md §10-11), la stessa
+    ufficiale di liquidazione (la specifica del titolare (non è nel repository: vale il codice) §10-11), la stessa
     logica usata da POST /api/iva/liquidazioni/calcola — non una terza
     formula parallela.
 

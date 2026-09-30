@@ -897,6 +897,16 @@ def start_scheduler():
             logger.info("[SCHEDULER-F24] dilazioni INPS=%s scritti=%s", r["dilazioni"], r.get("scritti"))
         except Exception as e:
             logger.error("[SCHEDULER-F24] dilazioni INPS: %s: %s", type(e).__name__, e)
+        try:
+            # Doppi pagamenti DM10/RC01 (una anomalia per coppia, mai riaperta) e righe
+            # «da verificare» (Regione/Comune fuori tabella, INAIL incompleta, causale INPS).
+            from app.services.f24_anomalie import giro_anomalie_f24
+            r = await giro_anomalie_f24(db)
+            if r["doppi_pagamenti"]["nuove"] or r["controlli"]["alert_aperti"] or r["controlli"]["alert_chiusi"]:
+                logger.info("[SCHEDULER-F24] anomalie doppi pagamenti nuove=%s controlli alert aperti=%s chiusi=%s",
+                            r["doppi_pagamenti"]["nuove"], r["controlli"]["alert_aperti"], r["controlli"]["alert_chiusi"])
+        except Exception as e:
+            logger.error("[SCHEDULER-F24] anomalie F24: %s: %s", type(e).__name__, e)
 
     async def _banca_versamenti_proiezione_job():
         """Assegni, versamenti di contante e proiezione dei movimenti bancari

@@ -1,7 +1,7 @@
 """
 Motore IVA — attribuzione del periodo di liquidazione per COMPETENZA.
 
-Fonte di verità: memoria/SPECIFICA_IVA.md. Questo modulo implementa il cuore
+Fonte di verità: la specifica del titolare (non è nel repository: vale il codice). Questo modulo implementa il cuore
 fiscale della specifica: dato quando un'operazione è avvenuta e quando la
 fattura è stata ricevuta/registrata, stabilisce a QUALE liquidazione IVA
 mensile va attribuita l'IVA a credito (che NON coincide con il mese di

@@ -84,9 +84,6 @@ def normalize_reference_period(source: dict[str, Any]) -> str | None:
 
 
 _RATA_NEL_TESTO = re.compile(r"^.{0,40}?\b\d{4}\s+(\d{2})\s*/\s*(\d{2})\s+(?:19|20)\d{2}\b")
-_RIGA_INPS_NEL_TESTO = re.compile(
-    r"\b(\d{4})\s+([A-Z]{2}\d{2})\s+(\d{6,12})\s+(\d{2})\s+((?:19|20)\d{2})\s+(\d{2})\s+((?:19|20)\d{2})\b"
-)
 
 
 def _e_rata_dal_testo(source: dict[str, Any]) -> bool:
@@ -102,16 +99,21 @@ def _e_rata_dal_testo(source: dict[str, Any]) -> bool:
 
 
 def _riga_inps_in_erario(source: dict[str, Any]) -> dict[str, str] | None:
-    """Sede, causale, matricola e periodo di una riga INPS finita per errore
-    nella sezione Erario dal modello del commercialista (codice = anno)."""
+    """Sede, causale, matricola e periodo (da/a) di una riga INPS finita per errore
+    nella sezione Erario dal modello del commercialista (codice = anno). La regola e'
+    quella del parser (`RIGA_INPS_TESTO`): una sola, cosi' i modelli gia' in archivio
+    e quelli nuovi si leggono allo stesso modo."""
+    from app.services.parser_f24 import RIGA_INPS_TESTO, periodi_riga_inps
+
     testo = str(source.get("testo_sorgente") or source.get("raw_text") or "")
-    trovato = _RIGA_INPS_NEL_TESTO.search(testo)
+    trovato = RIGA_INPS_TESTO.search(testo)
     if not trovato:
         return None
-    sede, causale, matricola, mese_da, anno_da, _mese_a, _anno_a = trovato.groups()
+    periodi = periodi_riga_inps(trovato)
     return {
-        "sede": sede, "causale": causale, "matricola": matricola,
-        "periodo": f"{mese_da}/{anno_da}",
+        "sede": trovato.group("sede"), "causale": trovato.group("causale"),
+        "matricola": trovato.group("matricola"),
+        "periodo": periodi["periodo_da"], **periodi,
     }
 
 
@@ -195,10 +197,21 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
             )
             row_section = section
             periodo_riga = source
+            dettaglio_inps: dict[str, Any] = {}
             inps = _riga_inps_in_erario(source) if section == "ERARIO" else None
             if inps:
                 row_section, code, entity = "INPS", inps["causale"], inps["sede"]
                 periodo_riga = {"periodo_riferimento": inps["periodo"]}
+                dettaglio_inps = {
+                    "matricola": inps["matricola"], "periodo_da": inps["periodo_da"],
+                    "periodo_a": inps["periodo_a"], "riclassificata_da_erario": True,
+                }
+            elif section == "INPS":
+                dettaglio_inps = {
+                    "matricola": source.get("matricola") or "",
+                    "periodo_da": source.get("periodo_da") or source.get("periodo_riferimento") or "",
+                    "periodo_a": source.get("periodo_a") or source.get("periodo_riferimento") or "",
+                }
             reference_period = (
                 None if _e_rata_dal_testo(source) else normalize_reference_period(periodo_riga)
             )
@@ -220,6 +233,7 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
                 "description": source.get("descrizione") or "",
                 "is_accounting_cost": False,
                 "source_fields": source,
+                **dettaglio_inps,
             })
     return rows
 

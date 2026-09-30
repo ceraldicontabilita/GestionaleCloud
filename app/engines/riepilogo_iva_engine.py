@@ -1,7 +1,7 @@
 """
 Riepilogo annuale IVA e controlli automatici (logica pura).
 
-Fonte di verità: memoria/SPECIFICA_IVA.md §16-18.
+Fonte di verità: la specifica del titolare (non è nel repository: vale il codice) §16-18.
 
 Non tocca il database: riceve la lista delle fatture di acquisto arricchite
 (campi IVA già calcolati) e, opzionalmente, le liquidazioni mensili confermate
