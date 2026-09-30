@@ -85,10 +85,9 @@ async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, A
     db = Database.get_db()
     tokens = [t for t in nome.lower().split() if t]
     candidati = []
-    async for d in db[Collections.EMPLOYEES].find(
-            {"attivo": {"$ne": False},
-             "merged_into": {"$exists": False},
-             "stato": {"$nin": ["cessato", "dimesso", "archiviato"]}}):
+    async for d in db[Collections.EMPLOYEES].find({"merged_into": {"$exists": False}}):
+        if not _dipendente_eleggibile(d):
+            continue
         completo = (d.get("nome_completo") or f"{d.get('nome', '')} {d.get('cognome', '')}").lower()
         if all(t in completo for t in tokens):
             candidati.append(d)
@@ -123,6 +122,50 @@ def _dipendente_eleggibile(dip: Dict[str, Any]) -> bool:
     from app.hr.services.stato_rapporto import e_in_forza
 
     return e_in_forza(dip)
+
+
+async def sessione_dipendente_corrente(payload: Dict[str, Any], *,
+                                     dipendente: Optional[Dict[str, Any]] = None) -> bool:
+    """Una sessione personale segue lo stato e i permessi dell'anagrafica.
+
+    Il JWT dura sette giorni, ma la cessazione, la revoca del PIN o un cambio
+    di ruolo devono avere effetto anche sui token gia' emessi. Le sessioni
+    dell'amministratore sono invece verificate da ``group_session``.
+    """
+    if payload.get("auth_method") != "pin_dipendente":
+        return True
+    dip = dipendente
+    if dip is None:
+        dip = await Database.get_db()[Collections.EMPLOYEES].find_one(
+            {"id": payload.get("sub")},
+            {"_id": 0, "stato": 1, "attivo": 1, "in_carico": 1,
+             "merged_into": 1, "ruolo_app": 1, "pin_hash": 1, "pin_updated_at": 1},
+        )
+    return bool(sessione_pin_corrente(dip, payload)
+                and (dip.get("ruolo_app") or "dipendente") == payload.get("role"))
+
+
+def sessione_pin_corrente(dip: Optional[Dict[str, Any]], payload: Dict[str, Any]) -> bool:
+    """Validita' del PIN della scheda HR, comune a portale e tablet Lotti.
+
+    Il chiamante risolve l'id canonico e controlla i propri ruoli/reparti;
+    questo controllo non traduce ruoli ne' concede permessi.
+    """
+    if not dip or not _dipendente_eleggibile(dip) or not dip.get("pin_hash"):
+        return False
+    # L'iat JWT ha precisione al secondo. Nessuna migrazione: la data e'
+    # gia' scritta dal comando canonico che imposta/reimposta il PIN.
+    aggiornato = dip.get("pin_updated_at")
+    if aggiornato:
+        try:
+            ts = datetime.fromisoformat(str(aggiornato).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if int(payload.get("auth_at") or payload.get("iat") or 0) < int(ts.timestamp()):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, Any]]:

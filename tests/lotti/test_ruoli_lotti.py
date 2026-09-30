@@ -1,7 +1,7 @@
 """Ruoli di Lotti (titolare 26/09/2026): responsabile HACCP e caporeparto.
 
 - ogni ruolo passa solo sulle sue API, gli altri ricevono 403 con codice;
-- il ruolo si rilegge dalla proiezione HR a ogni operazione: tolto, vale subito;
+- il ruolo si rilegge dalla scheda HR a ogni operazione: tolto, vale subito;
 - il caporeparto modifica solo le ricette del proprio reparto;
 - il ruolo si assegna sulla scheda HR e arriva al tablet col login.
 
@@ -33,6 +33,13 @@ def ambiente(monkeypatch):
     monkeypatch.setattr(lotti_db, "database", db)
     monkeypatch.setattr(t, "db", db)
     monkeypatch.setattr(DatabaseHR, "get_db", classmethod(lambda cls: hr))
+    run(hr.dipendenti.insert_many([
+        {"id": "hr-op", "stato": "attivo", "lotti_ruolo": "operatore"},
+        {"id": "hr-haccp", "stato": "attivo", "lotti_ruolo": "haccp"},
+        {"id": "hr-capo", "stato": "attivo", "lotti_ruolo": "caporeparto",
+         "lotti_reparti": ["pasticceria"]},
+        {"id": "hr-cessato", "stato": "cessato", "lotti_ruolo": "haccp"},
+    ]))
     run(db.tablet_operatori.insert_many([
         {"id": "op-1", "hr_id": "hr-op", "gestionale_dipendente_id": "hr-op", "nome": "Operatore", "attivo": True},
         {"id": "op-2", "hr_id": "hr-haccp", "gestionale_dipendente_id": "hr-haccp", "nome": "Responsabile",
@@ -110,14 +117,59 @@ def test_ogni_ruolo_passa_solo_sulle_sue_api(ambiente):
 
 
 def test_ruolo_tolto_vale_subito_e_il_cessato_non_passa(ambiente):
-    _t, db, _hr = ambiente
+    _t, _db, hr = ambiente
     client = _app()
     haccp = _token("hr-haccp")
     assert client.post("/registri", headers=haccp).status_code == 200
-    run(db.tablet_operatori.update_one({"id": "op-2"}, {"$set": {"ruolo_lotti": "operatore"}}))
+    run(hr.dipendenti.update_one({"id": "hr-haccp"}, {"$set": {"lotti_ruolo": "operatore"}}))
     assert client.post("/registri", headers=haccp).status_code == 403  # stesso token
     assert client.post("/registri", headers=_token("hr-cessato")).status_code == 403
     assert client.post("/registri", headers=_token("hr-inesistente")).status_code == 403
+
+
+def test_revoca_hr_ignora_proiezione_tablet_non_ancora_aggiornata(ambiente):
+    from app.lotti.auth import profilo_da_token
+
+    _t, db, hr = ambiente
+    token = {"sub": "hr-haccp", "ruolo": "operatore"}
+    assert run(profilo_da_token(token))["ruolo"] == "haccp"
+    run(hr.dipendenti.update_one({"id": "hr-haccp"}, {"$set": {"lotti_ruolo": "operatore"}}))
+    assert run(db.tablet_operatori.find_one({"hr_id": "hr-haccp"}))["ruolo_lotti"] == "haccp"
+    assert run(profilo_da_token(token))["ruolo"] == "operatore"
+
+
+@pytest.mark.parametrize("revoca", [
+    {"stato": "cessato"}, {"attivo": False}, {"in_carico": False},
+    {"merged_into": "altra-scheda"}, {"lotti_operatore": False},
+])
+def test_cessazione_o_esclusione_hr_revoca_il_profilo_esistente(ambiente, revoca):
+    from app.lotti.auth import profilo_da_token
+
+    _t, db, hr = ambiente
+    run(hr.dipendenti.update_one({"id": "hr-haccp"}, {"$set": revoca}))
+    assert run(db.tablet_operatori.find_one({"hr_id": "hr-haccp"}))["attivo"] is True
+    assert run(profilo_da_token({"sub": "hr-haccp", "ruolo": "operatore"})) is None
+
+
+def test_reparto_riletto_da_hr_senza_attendere_sync(ambiente):
+    from app.lotti.auth import profilo_da_token
+
+    _t, _db, hr = ambiente
+    run(hr.dipendenti.update_one({"id": "hr-capo"}, {"$set": {"lotti_reparti": ["bar"]}}))
+    assert run(profilo_da_token({"sub": "hr-capo", "ruolo": "operatore"}))["reparti"] == ["bar"]
+
+
+def test_hr_indisponibile_non_usa_ruoli_tablet_obsoleti(ambiente, monkeypatch):
+    from app.hr.database import Database as DatabaseHR
+    from app.lotti.auth import profilo_da_token
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(DatabaseHR, "get_db", classmethod(lambda cls: None))
+    with pytest.raises(HTTPException) as errore:
+        run(profilo_da_token({"sub": "hr-haccp", "ruolo": "operatore"}))
+    assert errore.value.status_code == 503
+    # La sessione ERP amministratore non dipende dalla proiezione HR.
+    assert run(profilo_da_token({"sub": "erp:1", "ruolo": "amministratore"}))["ruolo"] == "amministratore"
 
 
 def test_il_titolare_passa_ovunque():

@@ -32,7 +32,7 @@ axios.interceptors.response.use(
   (r) => r,
   (err) => {
     const s = err?.response?.status;
-    if (s === 401 || s === 403) {
+    if (s === 401) {
       localStorage.removeItem("pt_token");
       localStorage.removeItem("pt_role");
       localStorage.removeItem("pt_name");
@@ -141,6 +141,17 @@ export default function DipendentiCloudApp({ page: pageProp }) {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      if (soloTurni) {
+        const [dipRes, turRes, ordRes] = await Promise.all([
+          axios.get(`${API}/dipendenti`),
+          axios.get(`${API}/turni`),
+          axios.get(`${API}/ordine-dipendenti`),
+        ]);
+        setDipendenti(dipRes.data || []);
+        setTurni(turRes.data || []);
+        setOrdineDip(ordRes.data?.ordine || []);
+        return;
+      }
       const [dipRes, ferRes, turRes, missRes, docRes, statsRes, ordRes] = await Promise.all([
         axios.get(`${API}/dipendenti`),
         axios.get(`${API}/ferie`),
@@ -162,7 +173,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [soloTurni]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -6686,4 +6697,3 @@ function BonificiContabPage() {
     </div>
   );
 }
-

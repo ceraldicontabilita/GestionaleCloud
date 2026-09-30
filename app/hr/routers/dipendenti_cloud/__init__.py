@@ -2,7 +2,7 @@
 Dipendenti in Cloud - Router Module
 Sistema HR completo per gestione personale
 """
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Body, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Body, Form, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -24,8 +24,38 @@ from app.hr.utils.dependencies import require_staff
 
 logger = logging.getLogger(__name__)
 
-# Router principale
-router = APIRouter(prefix="/dipendenti-cloud", tags=["Dipendenti Cloud"])
+# Il responsabile turni dispone soltanto delle operazioni usate dalla pagina
+# Turni. La UI non costituisce un confine di autorizzazione: nuove rotte e
+# gestione anagrafica/PIN/paghe/documenti restano riservate all'amministratore.
+_ROTTE_RESPONSABILE_TURNI = {
+    ("GET", "/dipendenti"), ("GET", "/dipendenti/{dipendente_id}"),
+    ("GET", "/ordine-dipendenti"), ("POST", "/ordine-dipendenti"),
+    ("GET", "/ferie"),
+    ("GET", "/turni"), ("POST", "/turni"),
+    ("PUT", "/turni/{turno_id}"), ("DELETE", "/turni/{turno_id}"),
+    ("GET", "/assegnazioni-turni"), ("POST", "/assegnazioni-turni"),
+    ("GET", "/turni-config"), ("POST", "/turni-config"),
+    ("GET", "/turni-disponibilita-bar"), ("GET", "/turni-preferenze"),
+    ("GET", "/turni-chiusura-pomeridiana"), ("POST", "/turni-chiusura-pomeridiana"),
+    ("GET", "/onomastici"), ("POST", "/onomastici"),
+    ("GET", "/onomastici/settimana"),
+    ("POST", "/presenze/batch"),
+}
+
+
+async def require_gestione_hr(request: Request, identity=Depends(require_staff)):
+    if identity.get("role") == "admin":
+        return identity
+    # Usa il template della rotta risolta, non un startswith sul percorso
+    # fornito dal client: /dipendenti/{id}/pin non e' /dipendenti/{id}.
+    percorso = request.scope["route"].path.split("/dipendenti-cloud", 1)[-1]
+    if (request.method, percorso) not in _ROTTE_RESPONSABILE_TURNI:
+        raise HTTPException(403, "Accesso riservato all'amministratore")
+    return identity
+
+
+router = APIRouter(prefix="/dipendenti-cloud", tags=["Dipendenti Cloud"],
+                   dependencies=[Depends(require_gestione_hr)])
 
 # ============ HELPERS ============
 
@@ -2773,36 +2803,37 @@ def _nome_norm_cfg(s) -> str:
 
 @router.get("/turni-config")
 async def get_turni_config():
-    """Config turni per dipendente. Ripara le relazioni ORFANE: se una config punta
-    a un dipendente_id che non esiste più (dipendente reimportato/ricreato con un
-    nuovo id), la riaggancia per nome al dipendente attivo corrispondente — era la
-    causa dei dipendenti che 'non generano turni' senza nessun errore visibile."""
+    """Vista in sola lettura delle configurazioni turni.
+
+    Un riferimento orfano si risolve nella vista solo con un unico candidato
+    in forza e senza configurazione propria. La relazione persistita cambia
+    soltanto con il comando esplicito ``save_turni_config``.
+    """
     db = get_db()
     configs = await db.turni_config.find({}, {"_id": 0}).to_list(1000)
     dips = await db.dipendenti.find({"merged_into": {"$exists": False}},
                                     {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1,
-                                     "stato": 1, "attivo": 1}).to_list(1000)
+                                     "stato": 1, "attivo": 1, "in_carico": 1}).to_list(1000)
     ids_validi = {d["id"] for d in dips}
     con_config = {c["dipendente_id"] for c in configs}
     per_nome = {}
     for d in dips:
-        if d.get("attivo") is False or (d.get("stato") or "attivo") in ("cessato", "dimesso", "archiviato"):
+        if not stato_rapporto.e_in_forza(d):
             continue
         for k in {_nome_norm_cfg(f"{d.get('cognome','')}{d.get('nome','')}"),
                   _nome_norm_cfg(f"{d.get('nome','')}{d.get('cognome','')}"),
                   _nome_norm_cfg(d.get("nome_completo"))}:
             if k:
-                per_nome.setdefault(k, d)
+                per_nome.setdefault(k, {})[d["id"]] = d
     for c in configs:
         if c["dipendente_id"] in ids_validi:
             continue
         k = _nome_norm_cfg(c.get("nome_riferimento"))
-        d = per_nome.get(k) if k else None
+        candidati = list(per_nome.get(k, {}).values()) if k else []
+        d = candidati[0] if len(candidati) == 1 else None
         if d and d["id"] not in con_config:
-            await db.turni_config.update_one(
-                {"dipendente_id": c["dipendente_id"]},
-                {"$set": {"dipendente_id": d["id"], "updated_at": now_iso()}})
             con_config.add(d["id"])
+            c["riferimento_risolto_da"] = c["dipendente_id"]
             c["dipendente_id"] = d["id"]
     return configs
 

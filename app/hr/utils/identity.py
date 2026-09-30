@@ -48,6 +48,10 @@ async def get_identity(
     role = str(payload.get("role") or "").strip().lower()
     if role not in RUOLI_VALIDI:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token senza ruolo HR valido")
+    from app.hr.services.auth_dipendenti import sessione_dipendente_corrente
+
+    if not await sessione_dipendente_corrente(payload):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Accesso personale revocato: effettua di nuovo l'accesso")
     return {
         "id": sub,
         "role": role,

@@ -12,7 +12,7 @@ Il titolare (``amministratore``) entra solo dal Gestionale e può tutto.
 Il ruolo sta sulla **scheda HR** (``lotti_ruolo``, ``lotti_reparti``):
 l'anagrafica HR comanda e Lotti ne tiene solo la proiezione in
 ``tablet_operatori``. Il backend non si fida del ruolo scritto nel token: a
-ogni operazione riservata rilegge la proiezione, così un ruolo tolto vale
+ogni operazione riservata rilegge la scheda HR, così un ruolo tolto vale
 subito e non allo scadere del token. Un ruolo sconosciuto o assente vale
 operatore; un operatore non in carico non passa (fallisce chiuso).
 """
