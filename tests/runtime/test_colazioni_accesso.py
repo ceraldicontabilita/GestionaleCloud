@@ -59,7 +59,10 @@ def test_senza_configurazione_supabase_risponde_503(monkeypatch):
 
 
 def test_l_endpoint_non_e_pubblico():
-    assert not any(p.startswith("/api/colazioni") for p in PUBLIC_PATHS)
+    assert "/api/colazioni/accesso" not in PUBLIC_PATHS
+    assert {p for p in PUBLIC_PATHS if p.startswith("/api/colazioni")} == {
+        "/api/colazioni/ospite/evento"
+    }
 
 
 def test_l_endpoint_e_registrato_nel_gestionale():
