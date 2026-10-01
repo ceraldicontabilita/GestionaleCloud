@@ -57,7 +57,7 @@ def test_secondo_giro_non_duplica(bridge, monkeypatch):
     async def dettaglio(_client, _path, **_params):
         return {**_item(), "xml_raw": "<FatturaElettronica/>"}
 
-    async def importa(_files):
+    async def importa(_files, **_kwargs):
         await database.fatture.insert_one({
             "id": "lotti-1", "numero_fattura": "42/A", "piva": "01234567890",
             "prodotti": [{"descrizione": "FARINA"}],
@@ -67,7 +67,15 @@ def test_secondo_giro_non_duplica(bridge, monkeypatch):
     import app.lotti.routers.fatture as fatture
     monkeypatch.setattr(module, "_elenco", elenco)
     monkeypatch.setattr(module, "_get_json", dettaglio)
+    collega = pytest.importorskip("app.lotti.routers.ricette")
+    chiamate_collegamento = []
+
+    async def collega_una_volta():
+        chiamate_collegamento.append(True)
+        return {"ingredienti_collegati": 3}
+
     monkeypatch.setattr(fatture, "importa_fattura_xml", importa)
+    monkeypatch.setattr(collega, "collega_ingredienti_canonico", collega_una_volta)
 
     first = run(module.esegui_sync_gestionale(anno=2026, anteprima=False))
     second = run(module.esegui_sync_gestionale(anno=2026, anteprima=False))
@@ -76,6 +84,7 @@ def test_secondo_giro_non_duplica(bridge, monkeypatch):
     assert second["gia_ricevute"] == 1
     assert run(database.fatture.count_documents({})) == 1
     assert run(database.gestionale_fatture_ricevute.count_documents({})) == 1
+    assert chiamate_collegamento == [True]
 
 
 def _sha(testo):
@@ -161,7 +170,7 @@ def test_impronta_cambiata_e_fattura_assente_da_lotti_si_importa(bridge, monkeyp
     async def dettaglio(_client, _path, **_params):
         return {**_item("hash-nuovo"), "xml_raw": "<FatturaElettronica/>"}
 
-    async def importa(_files):
+    async def importa(_files, **_kwargs):
         await database.fatture.insert_one({
             "id": "lotti-2", "numero_fattura": "42/A", "piva": "IT01234567890",
             "prodotti": [{"descrizione": "FARINA"}],
@@ -239,7 +248,7 @@ def test_righe_strutturate_funzionano_anche_senza_xml_raw(bridge, monkeypatch):
 
     captured = {}
 
-    async def importa(files):
+    async def importa(files, **_kwargs):
         captured["xml"] = (await files[0].read()).decode("utf-8")
         await database.fatture.insert_one({
             "id": "lotti-2", "numero_fattura": "42/A", "piva": "01234567890",
@@ -446,7 +455,7 @@ def test_vecchio_conflitto_senza_fattura_in_lotti_si_importa(bridge, monkeypatch
     async def dettaglio(_client, _path, **_params):
         return {**_item("hash-nuovo"), "xml_raw": "<FatturaElettronica/>"}
 
-    async def importa(_files):
+    async def importa(_files, **_kwargs):
         await database.fatture.insert_one({"id": "lotti-9", "numero_fattura": "42/A",
                                            "piva": "01234567890", "prodotti": [{"descrizione": "UOVA"}]})
         return {"fatture_processate": 1, "fatture_ids": ["lotti-9"]}
