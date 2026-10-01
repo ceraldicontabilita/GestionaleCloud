@@ -31,6 +31,18 @@ const riferimentoFornitoreNonAttivo = (r) =>
     ORIGINI_FORNITORE.has(String(r?.origine || "").toLowerCase()) ||
     r?.ricettario_saima_id || r?.ricettario_mepa_id || r?.ricettario_acquaviva_id || r?.ricettario_fornitore_id
   );
+const CATEGORIE_RAPIDE = [
+  { id: "colazioni", label: "Colazioni", breve: "Colazione", icona: "☕" },
+  { id: "dolci_secchi", label: "Dolci secchi", breve: "Secchi", icona: "🍪" },
+  { id: "natale", label: "Natale", breve: "Natale", icona: "🎄" },
+  { id: "pasqua", label: "Pasqua", breve: "Pasqua", icona: "🐣" },
+];
+const TAB_CATEGORIE_RAPIDE = [
+  { id: "tutte", label: "Tutte" },
+  ...CATEGORIE_RAPIDE.slice(0, 2),
+  { id: "ricorrenze", label: "Ricorrenze" },
+  ...CATEGORIE_RAPIDE.slice(2),
+];
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -42,6 +54,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const [loading,    setLoading]    = useState(true);
   const [search,     setSearch]     = useState("");
   const [repFiltro,  setRepFiltro]  = useState("tutti");
+  const [categoriaFiltro, setCategoriaFiltro] = useState("tutte");
   const [statoFiltro,setStatoFiltro]= useState("attive");
   const [editRicetta,setEditRicetta]= useState(null);   // null=lista, {}=nuova, {id}=modifica
   const [showForm,   setShowForm]   = useState(false);
@@ -95,6 +108,20 @@ function TabRicette({ solaLetturaOperatore = false }) {
       toast(visibile ? "Ricetta ripristinata nei reparti" : "Ricetta esclusa dalle card; resta nel ricettario");
       return true;
     } catch { toast("Impossibile cambiare la visibilità della ricetta", "err"); return false; }
+    finally { setCambiandoVisibilita(null); }
+  };
+
+  const impostaCategoriaRapida = async (ricetta, categoria, attiva) => {
+    if (!ricetta?.id || cambiandoVisibilita) return;
+    const correnti = Array.isArray(ricetta.categorie_rapide) ? ricetta.categorie_rapide : [];
+    const categorie = attiva
+      ? [...new Set([...correnti, categoria])]
+      : correnti.filter(c => c !== categoria);
+    setCambiandoVisibilita(ricetta.id);
+    try {
+      await axios.put(`${API}/ricette/${ricetta.id}/categorie-rapide`, { categorie });
+      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, categorie_rapide:categorie} : r));
+    } catch { toast("Impossibile aggiornare la categoria rapida", "err"); }
     finally { setCambiandoVisibilita(null); }
   };
 
@@ -183,6 +210,9 @@ function TabRicette({ solaLetturaOperatore = false }) {
     const esclusa = r.visibile_tablet === false && !riferimentoFornitoreNonAttivo(r);
     if (statoFiltro === "attive" && esclusa) return false;
     if (statoFiltro === "escluse" && !esclusa) return false;
+    const categorie = Array.isArray(r.categorie_rapide) ? r.categorie_rapide : [];
+    if (categoriaFiltro === "ricorrenze" && !categorie.some(c => ["ricorrenze", "natale", "pasqua"].includes(c))) return false;
+    if (!["tutte", "ricorrenze"].includes(categoriaFiltro) && !categorie.includes(categoriaFiltro)) return false;
     if (search && !r.nome?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }).sort((a,b) => (a.nome||"").localeCompare(b.nome||"","it"));
@@ -236,6 +266,17 @@ function TabRicette({ solaLetturaOperatore = false }) {
         </button>}
       </div>
 
+      <div role="tablist" aria-label="Categorie rapide ricette" style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:10,marginBottom:8}}>
+        {TAB_CATEGORIE_RAPIDE.map(c => (
+          <button key={c.id} type="button" role="tab" aria-selected={categoriaFiltro===c.id}
+            onClick={() => setCategoriaFiltro(c.id)}
+            style={{padding:"9px 14px",borderRadius:999,border:"1.5px solid",whiteSpace:"nowrap",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer",
+              background:categoriaFiltro===c.id?"var(--primary)":"var(--card)",color:categoriaFiltro===c.id?"#fff":"var(--text-2)",borderColor:categoriaFiltro===c.id?"var(--primary)":"var(--border)"}}>
+            {c.icona ? `${c.icona} ` : ""}{c.label}
+          </button>
+        ))}
+      </div>
+
       {!solaLetturaOperatore && !mostraCestino && !loading &&
         <ImportaFotoRicette ricette={ricette} onCompletata={carica} />}
 
@@ -287,6 +328,22 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   Ricetta fornitore: non compare in produzione finché non la adatti e salvi
                 </div>}
                 {esclusa && <div style={{fontSize:12,fontWeight:800,color:"#3f5a4e",background:"#edf4ef",borderRadius:8,padding:"6px 8px"}}>Esclusa dalle card dei reparti</div>}
+                {!solaLetturaOperatore && !riferimentoFornitore && <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,fontWeight:800,color:"var(--text-2)",cursor:"pointer"}}>
+                  <input type="checkbox" checked={r.visibile_tablet !== false}
+                    disabled={cambiandoVisibilita===r.id}
+                    onChange={e => impostaVisibilita(r, e.target.checked)} />
+                  In uso nei reparti
+                </label>}
+                {!solaLetturaOperatore && <div aria-label={`Categorie rapide ${r.nome}`} style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {CATEGORIE_RAPIDE.map(c => {
+                    const attiva = (r.categorie_rapide || []).includes(c.id);
+                    return <label key={c.id} title={`Mostra in ${c.label}`} style={{display:"flex",alignItems:"center",gap:3,padding:"4px 6px",borderRadius:7,border:`1px solid ${attiva?"#9db9a8":"var(--border)"}`,background:attiva?"#edf4ef":"#fff",fontSize:10,fontWeight:800,color:attiva?"#3f5a4e":"var(--text-3)",cursor:"pointer"}}>
+                      <input type="checkbox" checked={attiva} disabled={cambiandoVisibilita===r.id}
+                        onChange={e => impostaCategoriaRapida(r, c.id, e.target.checked)} style={{width:12,height:12}} />
+                      {c.icona} {c.breve}
+                    </label>;
+                  })}
+                </div>}
                 {/* Una sola entrata: produzione e amministrazione vivono nella scheda. */}
                 <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:"auto"}}>
                   <button
