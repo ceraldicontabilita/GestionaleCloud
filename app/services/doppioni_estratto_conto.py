@@ -402,35 +402,40 @@ async def _applica_una_tantum(db) -> None:
     )
 
 
-# Import letti col lettore sbagliato, messi in quarantena dal titolare («lancia pure ed elimina
-# movimenti errati», 01/10/2026): l'export «Spese» di SumUp letto come estratto BPM. Una tantum,
-# per id, con motivo; le righe vere stanno nell'estratto SumUp.
-IMPORT_ERRATI_AUTORIZZATI = ("expenses_2026-08-01_2026-09-22.xlsx",)
-MARCATORE_IMPORT_ERRATI = "import_errato_spese_sumup_20261001_v1"
+# Import letti col lettore sbagliato, messi in quarantena dal titolare, una tantum, per id e con motivo
+# (un marcatore per file: aggiungerne uno non rifa gli altri). Ogni voce: (file, marcatore, motivo).
+#  * 01/10/2026 «lancia pure ed elimina movimenti errati»: l'export «Spese» di SumUp letto come estratto
+#    BPM; le righe vere stanno nell'estratto SumUp.
+#  * 01/10/2026 «tutto il file, sistema le 242 righe»: l'export «Elenco Entrate Uscite» senza segno, tutto
+#    entrato come «entrata»; ogni riga ha la gemella corretta (segno opposto) negli altri import.
 MOTIVO_SPESE_SUMUP = "export «Spese» di SumUp letto come estratto BPM (importo = IVA, causale = categoria)"
+MOTIVO_ELENCO_SENZA_SEGNO = (
+    "export «Elenco Entrate Uscite» senza segno: addebiti letti come entrate (la riga corretta e' gia' in archivio)"
+)
+IMPORT_ERRATI_AUTORIZZATI = (
+    ("expenses_2026-08-01_2026-09-22.xlsx", "import_errato_spese_sumup_20261001_v1", MOTIVO_SPESE_SUMUP),
+    ("ElencoEntrateUsciteAndamento_31-07-2026_07.23.35.csv", "import_errato_elenco_senza_segno_20261001_v1",
+     MOTIVO_ELENCO_SENZA_SEGNO),
+)
 
 
 async def _applica_import_errati(db) -> None:
-    corrente = await db["migration_runs"].find_one({"id": MARCATORE_IMPORT_ERRATI})
-    if corrente and corrente.get("status") == "completed":
-        return
-    stato = "failed"
-    try:
-        risultato = {
-            nome: await quarantena_import_errato(db, nome, MOTIVO_SPESE_SUMUP, dry_run=False,
-                                                 actor="migrazione_avvio")
-            for nome in IMPORT_ERRATI_AUTORIZZATI
-        }
-        stato = "completed"
-    except Exception as exc:  # noqa: BLE001 - l'esito resta in migration_runs
-        logger.exception("Quarantena import errati non completata (%s)", type(exc).__name__)
-        risultato = {"success": False, "reason": f"{type(exc).__name__}: {exc}"}
-    await db["migration_runs"].update_one(
-        {"id": MARCATORE_IMPORT_ERRATI},
-        {"$set": {"id": MARCATORE_IMPORT_ERRATI, "status": stato,
-                  "finished_at": _oggi(), "result": risultato}},
-        upsert=True,
-    )
+    for nome, marcatore, motivo in IMPORT_ERRATI_AUTORIZZATI:
+        corrente = await db["migration_runs"].find_one({"id": marcatore})
+        if corrente and corrente.get("status") == "completed":
+            continue
+        stato = "failed"
+        try:
+            risultato = await quarantena_import_errato(db, nome, motivo, dry_run=False, actor="migrazione_avvio")
+            stato = "completed"
+        except Exception as exc:  # noqa: BLE001 - l'esito resta in migration_runs
+            logger.exception("Quarantena import errato %s non completata (%s)", nome, type(exc).__name__)
+            risultato = {"success": False, "reason": f"{type(exc).__name__}: {exc}"}
+        await db["migration_runs"].update_one(
+            {"id": marcatore},
+            {"$set": {"id": marcatore, "status": stato, "finished_at": _oggi(), "result": risultato}},
+            upsert=True,
+        )
 
 
 async def _applica_tutto_all_avvio(db) -> None:
