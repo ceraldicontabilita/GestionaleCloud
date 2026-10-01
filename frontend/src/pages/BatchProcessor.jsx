@@ -333,7 +333,17 @@ export default function BatchProcessor() {
 
         return true;
       } catch (error) {
-        const errorMsg = error.response?.data?.detail || error.message;
+        // Nessuna risposta entro il tempo del browser (2 minuti): il server puo' stare
+        // ancora lavorando. Non e' un fallimento del task: si dice com'e' e si prosegue.
+        const nessunaRisposta = !error.response && /timeout|ECONNABORTED/i.test(`${error.code} ${error.message}`);
+        if (nessunaRisposta) {
+          setTaskResults(prev => ({ ...prev, [task.id]: { success: false, pending: true } }));
+          addLog(`… ${task.name}: il server non ha risposto entro 2 minuti e potrebbe stare ancora lavorando. Ricontrolla fra poco.`, 'warning');
+          return false;
+        }
+        const dettaglio = error.response?.data?.detail;
+        const errorMsg = (typeof dettaglio === 'string' ? dettaglio : dettaglio?.message)
+          || error.response?.data?.message || error.message;
 
         setTaskResults(prev => ({
           ...prev,
@@ -477,6 +487,11 @@ export default function BatchProcessor() {
 
     if (result.success) {
       return <CheckCircle style={{ width: 20, height: 20, color: COLORS.success }} />;
+    }
+
+    // Nessuna risposta in tempo: il server puo' ancora lavorare, non e' un errore.
+    if (result.pending) {
+      return <Clock style={{ width: 20, height: 20, color: COLORS.warning }} />;
     }
 
     return <XCircle style={{ width: 20, height: 20, color: COLORS.danger }} />;

@@ -516,7 +516,15 @@ async def process_email_documents(
     Esegue parsing automatico su documenti non ancora processati.
     """
     from app.services.ai_integration_service import process_email_documents_batch
-    
+
+    # Senza chiave il batch non puo' fare niente: dirlo subito invece di leggere
+    # 20 PDF dal database (a server carico erano 2 minuti e poi «timeout»).
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail="Elaborazione AI non attiva: manca ANTHROPIC_API_KEY nelle variabili di Render",
+        )
+
     db = Database.get_db()
     
     result = await process_email_documents_batch(db, limit=limit)
