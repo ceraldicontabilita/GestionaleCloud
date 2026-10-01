@@ -139,13 +139,19 @@ jobs:
           path: ${{ github.workspace }}/.playwright-browsers
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/yarn.lock') }}
       - name: Installa Chromium per Playwright
-        # Si e' visto fermarsi per 20 minuti sul download: tetto di 6 minuti
-        # sul passo e due tentativi da 170 secondi, senza saltare nessun test.
-        timeout-minutes: 6
+        # Si e' visto fermarsi per 20 minuti sul download dei pacchetti apt:
+        # due tentativi da 200 secondi, ma fra uno e l'altro si aspetta che l'apt
+        # rimasto vivo liberi il blocco di dpkg (il timeout uccide solo
+        # playwright, non il suo apt-get). Tetto del passo 10 minuti.
+        timeout-minutes: 10
         run: |
           for tentativo in 1 2; do
-            timeout 170 npx playwright-core install --with-deps chromium && exit 0
+            timeout -k 10 200 npx playwright-core install --with-deps chromium && exit 0
             echo "Installazione Chromium: tentativo $tentativo non riuscito"
+            for i in $(seq 1 24); do
+              pgrep -x 'apt-get|apt|dpkg' > /dev/null || break
+              sleep 5
+            done
           done
           exit 1
       - name: Avvia preview
