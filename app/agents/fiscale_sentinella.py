@@ -207,6 +207,10 @@ class FiscaleSentinella:
         ).to_list(500)
 
         for f24 in candidati:
+            # `status` resta «da_pagare» anche con la quietanza in archivio finche' la
+            # banca non l'ha provata: chi ha gia' versato non riceve un «in scadenza».
+            if stato_evidenza_pagamento(f24)["versato_documentalmente"]:
+                continue
             scadenza_txt = str(f24.get("data_scadenza") or "")[:10]
             fonte = "data_scadenza del modello"
             try:

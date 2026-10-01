@@ -1000,6 +1000,15 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 if abs(float(word[1]) - y) <= 9
             ]
             if words_on_row:
+                # Dove cadono gli importi (bordo destro, in punti): se una riga finisce
+                # nella colonna sbagliata, l'errore di quadratura lo dice e la correzione
+                # si calibra sui dati veri invece che a occhio sul PDF.
+                numerici = [word for word in words_on_row
+                            if re.fullmatch(r"[\d.,]+", str(word[4]).strip()) and float(word[0]) > IMPORTO_X_START]
+                bordi_debito = [round(float(w[2])) for w in numerici if float(w[2]) <= DEBITO_X_MAX]
+                bordi_credito = [round(float(w[2])) for w in numerici if float(w[2]) > DEBITO_X_MAX]
+                row["colonne_x1"] = {"debito": max(bordi_debito) if bordi_debito else None,
+                                     "credito": max(bordi_credito) if bordi_credito else None}
                 bbox = [
                     round(min(float(word[0]) for word in words_on_row), 2),
                     round(min(float(word[1]) for word in words_on_row), 2),
