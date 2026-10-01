@@ -459,9 +459,9 @@ export default function ImpostazioniPersonaleView() {
                         Il responsabile HACCP fa di persona il controllo visivo di frigoriferi e congelatori
                       </span>
                       <span style={{ display: "block", fontSize: 11.5, color: MUTED, marginTop: 4 }}>
-                        Ogni mattina alle 07:00 si aprono le caselle del giorno. Finito il giro, nelle pagine Temperature tocchi
-                        «Giro fatto: tutto conforme» col tuo PIN: il registro annota l'esito firmato da te, all'ora vera, senza
-                        scrivere numeri. Una temperatura fuori soglia si scrive a mano col valore vero.
+                        Con la dichiarazione continuativa firmata, ogni mattina alle 07:00 il registro annota l'esito conforme
+                        senza inventare un numero. Se durante il giro trovi un'anomalia, registri la temperatura misurata e
+                        l'azione correttiva: la misura manuale sostituisce sempre l'esito automatico e ne conserva la storia.
                       </span>
                     </span>
                   </label>

@@ -3,6 +3,7 @@ export const CATALOGHI_PRODOTTI_FISSI = [
   "miei",
   "acquaviva",
   "acquaviva_acquistati",
+  "cartelli_bar",
   "saima",
   "saima_ricettari",
   "mepa",

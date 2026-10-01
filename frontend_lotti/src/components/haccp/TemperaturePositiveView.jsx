@@ -22,7 +22,6 @@ import { printHtml } from "../../utils/printHtml";
 import { apiError } from "../../utils/apiError";
 import { testoFirmatari } from "../../utils/firmatari";
 import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
-import DichiaraConformiButton from "./DichiaraConformiButton";
 import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
 import { LEGENDA_STATI_HACCP, statoCellaHaccp } from "../../utils/statoCellaHaccp";
 
@@ -396,7 +395,6 @@ export default function TemperaturePositiveView() {
           <button onClick={() => cambiaMese(-1)} className="rounded p-2 hover:bg-gray-100"><ChevronLeft size={20} /></button>
           <span className="min-w-[150px] text-center font-semibold">{MESI_IT[mese - 1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="rounded p-2 hover:bg-gray-100"><ChevronRight size={20} /></button>
-          <DichiaraConformiButton onFatto={fetchSchede} />
           <Button onClick={stampaScheda} variant="secondary" size="sm"><Printer size={16} /> Stampa</Button>
           <Button onClick={fetchSchede} variant="secondary" size="sm"><RefreshCw size={16} /> Ricarica</Button>
         </div>

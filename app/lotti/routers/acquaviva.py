@@ -220,6 +220,151 @@ def rileva_allergeni_da_testo(testo: str) -> List[str]:
     return rileva_allergeni(descrizione=testo)
 
 
+def _parse_lista_ingredienti_pdf(content: bytes) -> List[dict]:
+    """Estrae la tabella CODICE/DESCRIZIONE/LISTA INGREDIENTI.
+
+    Il codice e' l'unica identita' usata dall'import: il nome resta evidenza
+    leggibile ma non viene mai usato per forzare un'associazione.
+    """
+    try:
+        import pdfplumber
+    except ImportError as exc:
+        raise HTTPException(500, "pdfplumber non disponibile. Contattare l'amministratore.") from exc
+
+    righe: List[dict] = []
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        for pagina, page in enumerate(pdf.pages, 1):
+            for table in page.extract_tables() or []:
+                for row in table or []:
+                    if not row or len(row) < 3:
+                        continue
+                    codice = re.sub(r"\s+", "", str(row[0] or ""))
+                    nome = re.sub(r"\s+", " ", str(row[1] or "")).strip()
+                    ingredienti = re.sub(r"\s+", " ", str(row[2] or "")).strip()
+                    if not codice.isdigit() or not nome or not ingredienti:
+                        continue
+                    righe.append({
+                        "codice": codice,
+                        "nome_documento": nome,
+                        "ingredienti_str": ingredienti,
+                        "pagina": pagina,
+                    })
+    # Un codice duplicato nel documento e' ambiguo: non scegliamo una riga.
+    conteggi = {}
+    for riga in righe:
+        conteggi[riga["codice"]] = conteggi.get(riga["codice"], 0) + 1
+    return [r for r in righe if conteggi[r["codice"]] == 1]
+
+
+def _codici_catalogo(prodotto: dict) -> set[str]:
+    valori = [
+        prodotto.get("codice"), prodotto.get("codice_articolo"),
+        prodotto.get("codice_aqv_2025"), prodotto.get("codice_aqv_2026"),
+        *(prodotto.get("codici_alias") or []),
+    ]
+    return {re.sub(r"\s+", "", str(v or "")) for v in valori if str(v or "").strip()}
+
+
+async def _applica_lista_ingredienti(righe: List[dict], nome_file: str) -> dict:
+    """Applica ingredienti/allergeni solo ai codici catalogo univoci.
+
+    Aggiorna anche i dizionari usati dal ricettario e aggiunge alle ricette
+    collegate gli allergeni del prodotto, senza cancellare dichiarazioni gia'
+    presenti o conferme manuali.
+    """
+    from app.lotti.allergeni import rileva_allergeni as rileva_allergeni_ufficiali
+
+    catalogo = await db.acquaviva_prodotti.find(
+        {"fonte": {"$in": ["acquaviva", "vandemoortele"]}}, {"_id": 0}
+    ).to_list(5000)
+    per_codice: dict[str, list[dict]] = {}
+    for prodotto in catalogo:
+        for codice in _codici_catalogo(prodotto):
+            per_codice.setdefault(codice, []).append(prodotto)
+
+    aggiornati = []
+    non_trovati = []
+    ambigui = []
+    timestamp = datetime.now(timezone.utc).isoformat()
+    for riga in righe:
+        candidati = per_codice.get(riga["codice"], [])
+        ids = {p.get("id") for p in candidati if p.get("id")}
+        if len(ids) != 1:
+            (ambigui if len(ids) > 1 else non_trovati).append({
+                "codice": riga["codice"], "nome": riga["nome_documento"]
+            })
+            continue
+        prodotto = next(p for p in candidati if p.get("id") in ids)
+        allergeni, _ = rileva_allergeni_ufficiali([riga["ingredienti_str"]])
+        campi = {
+            "ingredienti_str": riga["ingredienti_str"],
+            "ingredienti": riga["ingredienti_str"],
+            "allergeni": allergeni,
+            "allergeni_fonte": {
+                "tipo": "lista_ingredienti_fornitore",
+                "file": nome_file,
+                "codice": riga["codice"],
+                "pagina": riga["pagina"],
+                "importato_il": timestamp,
+            },
+            "updated_at": timestamp,
+        }
+        pid = prodotto["id"]
+        await db.acquaviva_prodotti.update_one({"id": pid}, {"$set": campi})
+        # Solo documenti gia' promossi nel ricettario: nessun nuovo ingrediente
+        # operativo viene creato dall'import del PDF.
+        for collection in (db.dizionario_prodotti, db.dizionario_ingredienti):
+            await collection.update_one({"id": pid}, {"$set": campi})
+        aggiornati.append({"id": pid, "codice": riga["codice"], "allergeni": allergeni})
+
+    allergeni_per_id = {r["id"]: r["allergeni"] for r in aggiornati}
+    ricette_aggiornate = 0
+    if allergeni_per_id:
+        ricette = await db.ricette.find(
+            {}, {"_id": 0, "id": 1, "ingredienti_dettaglio": 1, "allergeni": 1,
+                 "allergeni_auto": 1, "allergeni_da_confermare": 1}
+        ).to_list(5000)
+        for ricetta in ricette:
+            ereditati = []
+            for dettaglio in ricetta.get("ingredienti_dettaglio") or []:
+                if not isinstance(dettaglio, dict):
+                    continue
+                pid = dettaglio.get("prodotto_master_id") or dettaglio.get("prodotto_id")
+                for allergene in allergeni_per_id.get(pid, []):
+                    if allergene not in ereditati:
+                        ereditati.append(allergene)
+            if not ereditati:
+                continue
+            correnti = list(ricetta.get("allergeni") or [])
+            automatici = list(ricetta.get("allergeni_auto") or [])
+            nuovi = [a for a in ereditati if a not in correnti]
+            for allergene in ereditati:
+                if allergene not in correnti:
+                    correnti.append(allergene)
+                if allergene not in automatici:
+                    automatici.append(allergene)
+            update = {
+                "allergeni": correnti,
+                "allergeni_auto": automatici,
+                "allergeni_catalogo_fornitore": ereditati,
+                "allergeni_catalogo_aggiornati_il": timestamp,
+            }
+            # Un nuovo allergene richiede controllo umano della ricetta; una
+            # conferma precedente resta valida se il dato era gia' presente.
+            if nuovi:
+                update["allergeni_da_confermare"] = True
+            await db.ricette.update_one({"id": ricetta["id"]}, {"$set": update})
+            ricette_aggiornate += 1
+
+    return {
+        "righe_pdf": len(righe),
+        "prodotti_aggiornati": len(aggiornati),
+        "ricette_aggiornate": ricette_aggiornate,
+        "non_trovati": non_trovati,
+        "ambigui": ambigui,
+    }
+
+
 def _normalizza_nome_catalogo(value: str) -> str:
     value = unicodedata.normalize("NFKD", str(value or "").casefold())
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
@@ -973,6 +1118,68 @@ async def import_listino_da_pdf(file: UploadFile = File(...), _admin=Depends(req
         "non_trovati_nel_db": len(non_trovati),
         "esempi_non_trovati": non_trovati[:10],
     }
+
+
+@router.post("/import-ingredienti-pdf")
+async def import_ingredienti_da_pdf(
+    file: UploadFile = File(...), _admin=Depends(require_admin)
+):
+    """Importa la lista ingredienti ufficiale AQV/VDM per codice esatto.
+
+    Non crea prodotti e non usa il nome per il matching. Il report espone ogni
+    codice assente o ambiguo, cosi' l'operatore puo' verificarlo senza perdita
+    di informazione.
+    """
+    content = await file.read()
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(400, "Il file caricato non e' un PDF valido")
+    righe = _parse_lista_ingredienti_pdf(content)
+    if not righe:
+        raise HTTPException(400, "Nessuna riga ingredienti trovata nel PDF")
+    return await _applica_lista_ingredienti(righe, file.filename or "lista_ingredienti.pdf")
+
+
+@router.get("/cartelli-bar")
+async def get_cartelli_bar(
+    search: Optional[str] = Query(None),
+    solo_in_ricette: bool = Query(False),
+):
+    """Prodotti con ingredienti verificabili pronti per i cartelli del bar."""
+    query = {
+        "fonte": {"$in": ["acquaviva", "vandemoortele"]},
+        "ingredienti_str": {"$nin": [None, ""]},
+    }
+    if search:
+        query["$or"] = [
+            {"nome": {"$regex": re.escape(search), "$options": "i"}},
+            {"codice": {"$regex": re.escape(search), "$options": "i"}},
+            {"codice_aqv_2026": {"$regex": re.escape(search), "$options": "i"}},
+        ]
+    prodotti = await db.acquaviva_prodotti.find(query, {"_id": 0}).sort("nome", 1).to_list(5000)
+    ids = [p.get("id") for p in prodotti if p.get("id")]
+    attivi = set()
+    if ids:
+        usati = await db.dizionario_prodotti.find(
+            {"id": {"$in": ids}, "attivo": {"$ne": False}}, {"_id": 0, "id": 1}
+        ).to_list(5000)
+        attivi = {p.get("id") for p in usati}
+    risultato = []
+    for prodotto in prodotti:
+        in_ricette = prodotto.get("id") in attivi
+        if solo_in_ricette and not in_ricette:
+            continue
+        risultato.append({
+            "id": prodotto.get("id"),
+            "codice": prodotto.get("codice_aqv_2026") or prodotto.get("codice")
+                      or prodotto.get("codice_articolo"),
+            "nome": prodotto.get("nome"),
+            "foto_url": prodotto.get("foto_url") or prodotto.get("immagine_url"),
+            "ingredienti": prodotto.get("ingredienti_str"),
+            "allergeni": prodotto.get("allergeni") or [],
+            "in_ricette": in_ricette,
+            "fonte": prodotto.get("fonte"),
+        })
+    return {"prodotti": risultato, "totale": len(risultato)}
 
 
 @router.put("/prodotti/{prodotto_id}/prezzo")
