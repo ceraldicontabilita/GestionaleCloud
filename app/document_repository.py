@@ -21,6 +21,9 @@ from app.db_collections import (
 
 DOCUMENT_PAYLOAD_FIELDS: Mapping[str, tuple[str, ...]] = {
     "protocollo_personale": ("testo_ocr",),
+    # PDF originale del verbale (AV3-09: ~346 KB in base64 su 141 righe, circa 49 MB):
+    # una lista di verbali non lo porta, si legge per id.
+    "verbali_noleggio": ("pdf_data", "quietanza_pdf"),
     COLL_DOCUMENTS_INBOX: ("pdf_data",),
     COLL_CEDOLINI: ("pdf_data",),
     COLL_QUIETANZE_F24: ("pdf_data",),

@@ -972,7 +972,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   con un template Meta approvato e ricontrolla l'ultimo consenso prima di acquisirla. URL Google/Tripadvisor, informativa
   e ritardo si configurano dalla scheda; token e phone number id Meta restano nelle variabili Render.
 
-## Stato attuale (al 30/09/2026 — riscrivere sul posto)
+## Stato attuale (al 01/10/2026 — riscrivere sul posto)
 
 - Ogni merge su `main` fa ridistribuire Render: per qualche minuto la produzione può essere `degraded`. Non si accodano merge. La health del commit `0187a45f`, letta il 30/09 alle 17:54 UTC, dichiarava `hydrated_rows=249598`, `hydration_errors=0`; il vecchio valore ~77.000 non è una misura corrente.
 - TFR: la lettura RPC del runtime il 30/09 misura **1.239** righe in `tfr_accantonamenti`. L'assenza nel deposito relazionale HR, l'importo aggregato e lo stato dell'ingest posta restano baseline da riconfermare; non sono stati interrogati nell'audit in sola lettura.
@@ -1023,7 +1023,7 @@ locale e marker fixture prima delle scritture.
 
 - **Lotti, due giri di ricerca web sulle descrizioni di fattura**: `identifica_col_web` (`lettura_articoli_ai.py`, giro `lotti_identifica_col_web`, categoria del Dizionario, `web_cercato_at`) e la campagna `ricerca_web_prodotti` (`app/lotti/routers/scheduler.py`, schede e `nome_mapping`, `ricerca_web_tentativi`, mai un tentativo registrato). Condividono l'helper `cerca_sul_web` ma sono due code e due contatori: fonderli in un giro solo.
 
-- **Fornitori, da lanciare dopo il merge** (admin, prima `dry_run`): `POST /api/suppliers/magazzino/allinea` (le 88 esclusioni di Lotti sull'anagrafica); per BIG FOOD SRL `POST /api/suppliers/{id}/applica-metodo-dal` dopo aver messo «Metodo valido dal» 01/01/2025 sulla scheda (oggi è 30/09/2026 per un salvataggio della scheda). Le 6 fatture BIG FOOD già pagate con assegno, banca o dichiarazione in banca (2.711,38 €) restano dove sono finché il titolare non dice diversamente. Il «30 giorni» della scheda fornitore (`giorni_pagamento`, default alla creazione) è un residuo di scadenza che le regole non prevedono: la scheda non lo mostra più, il campo nel form resta da togliere.
+- **Fornitori, da lanciare dopo il merge** (admin, prima `dry_run`): `POST /api/suppliers/magazzino/allinea` (le 88 esclusioni di Lotti sull'anagrafica); per BIG FOOD SRL `POST /api/suppliers/{id}/applica-metodo-dal` dopo aver messo «Metodo valido dal» 01/01/2025 sulla scheda (oggi è 30/09/2026 per un salvataggio della scheda). Le 6 fatture BIG FOOD già pagate con assegno, banca o dichiarazione in banca (2.711,38 €) restano dove sono finché il titolare non dice diversamente.
 
 - **Termini di recupero**: la regola dei termini vive in una vista SQL (`verifica.tabulato_tributi_termini`, migrazioni `…013008` e `…013741`), non in Python con test: se cresce o va corretta, portarla in `termini_recupero.py` con i casi del foglio del 01/10/2026 (27 righe ancora recuperabili su 98 senza versamento al 01/10).
 
@@ -1048,13 +1048,11 @@ locale e marker fixture prima delle scritture.
 - HR: 38 bonifici con `cedolino_id` orfano, 138 in «bonifici da associare» (120 con proposta da confermare; 18 senza prova), 10 tabelle attese dall'app
   assenti (turni_config, onomastici, richieste…), Iazzetta senza IBAN; Appuhamy, Aurigemma, Vitiello,
   Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
-- **Mutuo 905217466** (Retail, 60 rate 17/03/2021–24/02/2026): il piano PDF è l'istantanea del 2023 (27 «Pagata», 33 «Da pagare» già tutte scadute), ma ogni rata ha la sua prova (estratti annuali 2021–2025, Prima Nota Banca dal 08/2024 a 02/2026): con la lettura per prova il residuo del piano è 0. La dichiarazione del titolare serve solo dove nessuna prova c'è.
 - Noleggio: `veicoli_noleggio` è **vuota** in produzione (nessun driver né storico; le 4 targhe GX037HJ
   ALD, GW980EP Arval, HB411GV Leasys, GG782PN cessata vivono solo nelle fatture); bonifici al Comune e pagamenti
-  Mooney via PayPal sono candidati senza verbale. `verbali_noleggio` ha 342 righe: 105 lette dal PDF (con importo,
-  targa e data, **ma nessuna ha l'originale agganciato**: il loro `source_document_id` non è più in `documents_inbox`
-  e nessun campo del verbale porta il PDF), 136 righe `VERB-…` nate dalla PEC (con il PDF della copia conforme o della relata) e circa 100 nate da
-  un numero di fattura (quarantena o `fattura_ricevuta`). Da fare con l'autorizzazione del titolare: l'anteprima
+  Mooney via PayPal sono candidati senza verbale. `verbali_noleggio` ha 347 righe (lettura del 01/10): 132 `VERB-…` nate dalla PEC, 141 con
+  il PDF salvato sul verbale (`pdf_data`, le 132 PEC più 9), 69 in quarantena e il resto letto dal PDF o nato da un numero di fattura
+  (`fattura_ricevuta`). Per le righe lette dal PDF il `source_document_id` non è più in `documents_inbox` e senza `pdf_data` non hanno l'originale. Da fare con l'autorizzazione del titolare: l'anteprima
   `POST /api/verbali-noleggio/ricostruisci-da-pdf`, poi `dry_run=false`; ricaricare da Documenti > Import gli originali dei
   105 (le ricevute e gli avvisi PartenoPay sono su Drive); il pacchetto `PARTENOPAY_NAVIGABILE_PRONTO.zip` non è stato
   trovato su Drive, va caricato da Documenti > Import (prima l'anteprima `…/import-partenopay`).

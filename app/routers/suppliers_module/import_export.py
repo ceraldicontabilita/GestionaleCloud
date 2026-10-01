@@ -67,7 +67,6 @@ async def upload_suppliers_excel(file: UploadFile = File(...)) -> Dict[str, Any]
                     "nazione": str(row.get('Nazione', 'IT')).strip() if pd.notna(row.get('Nazione')) else "IT",
                     "metodo_pagamento": "bonifico",
                     "termini_pagamento": "30GG",
-                    "giorni_pagamento": 30,
                     "iban": "",
                     "banca": "",
                     "attivo": True,
@@ -78,7 +77,7 @@ async def upload_suppliers_excel(file: UploadFile = File(...)) -> Dict[str, Any]
                 
                 if existing:
                     update_fields = {k: v for k, v in supplier_doc.items() 
-                                     if k not in ['metodo_pagamento', 'termini_pagamento', 'giorni_pagamento', 'iban', 'banca']}
+                                     if k not in ['metodo_pagamento', 'termini_pagamento', 'iban', 'banca']}
                     await db[Collections.SUPPLIERS].update_one(
                         {"partita_iva": partita_iva},
                         {"$set": update_fields}

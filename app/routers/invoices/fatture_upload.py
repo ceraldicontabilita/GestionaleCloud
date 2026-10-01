@@ -514,7 +514,6 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         "provincia": fornitore_data.get("provincia") or "",
         "nazione": fornitore_data.get("nazione") or "IT",
         "metodo_pagamento": None,
-        "giorni_pagamento": 30,
         "iban": iban_xml or "",
         "telefono": fornitore_data.get("telefono") or "",
         "email": fornitore_data.get("email") or "",
@@ -2730,7 +2729,6 @@ async def sync_suppliers_from_invoices() -> Dict[str, Any]:
             # Regola generale: nessun metodo finché non configurato esplicitamente
             # sul fornitore (vedi ensure_supplier_exists) — mai un default arbitrario.
             "metodo_pagamento": "sospesa",
-            "giorni_pagamento": 30,
             "iban": "",
             "fatture_count": group["count"],
             "source": "sync_from_invoices",
