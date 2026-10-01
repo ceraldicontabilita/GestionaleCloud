@@ -87,6 +87,32 @@ async def scadenzario(
             "persistente": persistente}
 
 
+@istantanea(ttl=300)
+async def _termini() -> Dict[str, Any]:
+    # La vista costa circa 5 secondi: si serve pronta e si ricalcola in sottofondo.
+    return {"righe": await Database.get_db().termini_recupero()}
+
+
+@router.get("/tributi/termini",
+            summary="Termini di recupero: entro quando l'ente puo' ancora chiedere un tributo non trovato")
+async def termini_recupero(
+    stato: Optional[str] = Query(None, max_length=40,
+                                 description="Assente = versamento mancante; TUTTI = senza filtro"),
+    situazione: Optional[str] = Query(None, pattern="^(ANCORA_RECUPERABILE|TERMINE_SCADUTO|DA_VERIFICARE)$"),
+    codice: Optional[str] = Query(None, max_length=20),
+    cerca: Optional[str] = Query(None, max_length=80),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Sola lettura sulla vista dei termini (``services/termini_recupero.py``).
+    Termini indicativi: vanno confermati con il commercialista."""
+    from app.services import termini_recupero as termini
+
+    dati = await _termini()
+    return {**termini.riepilogo(dati["righe"], stato=stato or None, situazione=situazione or None,
+                                codice=codice or None, cerca=(cerca or "").strip() or None),
+            "istantanea": dati.get("istantanea")}
+
+
 @router.post("/tributi/scadenzario/aggiorna", summary="Ricalcola lo scadenzario (idempotente)")
 async def aggiorna_scadenzario(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     from app.services import scadenzario_tributi as sc

@@ -1322,6 +1322,17 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
         collections = len((self.hydration_result or {}).get("fogli") or [])
         return {"collections": collections, "write_path": "verified"}
 
+    async def termini_recupero(self) -> list[dict[str, Any]]:
+        """Righe di ``verifica.tabulato_tributi_termini`` (solo lettura).
+
+        Lo schema ``verifica`` non e' raggiungibile dal ruolo applicativo:
+        l'unico ingresso e' ``gc_termini_recupero`` (segreto runtime).
+        """
+        risultato = await self._rpc("gc_termini_recupero", {})
+        if not isinstance(risultato, list):
+            raise RuntimeError("gc_termini_recupero: risposta non valida (attesa una lista)")
+        return [riga for riga in risultato if isinstance(riga, dict)]
+
     @asynccontextmanager
     async def scheduler_lease(self, job_id: str, ttl_seconds: int = 900):
         """Lease distribuita rinnovata finche il job resta in esecuzione.
