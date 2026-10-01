@@ -11,6 +11,8 @@ deve scegliere a mano un bonifico che la banca ha gia' spiegato.
 * La fattura si collega solo se esiste, e' attiva, non e' gia' legata a un altro bonifico e il suo
   importo (al netto dell'eventuale ritenuta) e' quello del bonifico.
 * Se il movimento punta una copia archiviata, vale la gemella attiva (numero, totale e P.IVA uguali, una sola).
+* Piu' bonifici dello stesso fornitore sulla stessa fattura (acconti) si collegano solo se, con quelli
+  gia' legati, sommano il totale al centesimo; ognuno con il suo riferimento banca nel movimento.
 * Gli stipendi restano al motore HR; una riga senza esito certo non si tocca.
 * Idempotente: il secondo giro da' ``nuovi = 0``.
 """
@@ -27,10 +29,13 @@ from app.services.payment_document_links import collega_bonifico_fatture
 
 logger = logging.getLogger(__name__)
 
-RE_RIF_BANCA = re.compile(r"\bMB[A-Z]{2}\d{8}\b")
+RE_RIF_BANCA = re.compile(r"\bMB[A-Z0-9]{2}\d{8}\b")  # MBVT… (ordinario) e MB0B… (urgente)
 ESITI_HR_GIA_DECISI = {"arricchito", "depositato", "in_coda", "duplicato"}
 CATEGORIE_DEL_MOTORE_STIPENDI = {"Stipendi"}
 REGOLA = "rif_banca_in_estratto+importo_esatto+fattura_del_movimento"
+REGOLA_ACCONTI = "rif_banca_in_estratto+acconti_che_sommano_il_totale+fattura_del_movimento"
+EVIDENZE_ACCONTI = ["rif_banca_in_estratto", "acconti_sommano_il_totale_al_centesimo",
+                    "fattura_individuata_dal_movimento"]
 REGOLA_NOME = "nome_beneficiario_in_estratto+importo_esatto+data_vicina+fattura_del_movimento"
 EVIDENZE_FATTURA_NOME = ["nome_beneficiario_in_estratto", "importo_esatto_al_centesimo", "data_entro_3_giorni",
                          "fattura_individuata_dal_movimento"]
@@ -82,6 +87,10 @@ def _gia_decisa(t: Dict[str, Any]) -> bool:
     )
 
 
+def _id_fattura_del_movimento(m: Dict[str, Any]) -> Any:
+    return (m.get("fattura_ids") or [None])[0] or m.get("fattura_id") or m.get("candidate_fattura_id")
+
+
 async def _gemella_attiva(db, id_fattura: Any) -> Optional[Dict[str, Any]]:
     """La fattura attiva che e' la stessa del documento indicato dal movimento, se questo e' archiviato.
 
@@ -106,7 +115,7 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
     """Abbina i bonifici PDF ancora senza esito al loro movimento d'estratto e ne eredita l'esito."""
     esito: Dict[str, Any] = {
         "dry_run": dry_run, "esaminati": 0, "movimento_trovato": 0, "fatture_collegate": 0,
-        "destinazioni_certe": 0, "senza_esito_certo": 0, "fattura_non_collegabile": 0,
+        "destinazioni_certe": 0, "senza_esito_certo": 0, "fattura_non_collegabile": 0, "acconti_collegati": 0,
     }
     filtro: Dict[str, Any] = {}
     if anno:
@@ -134,6 +143,7 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
             per_chiave.setdefault((rif, cents), []).append(m)
 
     ora = datetime.now(timezone.utc).isoformat()
+    acconti: Dict[str, Dict[str, Any]] = {}
     for t in da_fare:
         esito["esaminati"] += 1
         rif = _rif(t.get("rif_interno"))
@@ -150,6 +160,13 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
                 and nome_presente_nel_testo(nome, str(m.get("descrizione") or m.get("causale") or ""))
             ]
             prova = "nome_importo_data"
+        if len(candidati) > 1 and prova == "rif_banca":
+            # Stesso riferimento banca e stesso importo = la stessa operazione letta da due fonti (la riga
+            # del vecchio archivio e quella dell'estratto ufficiale): vale la copia che porta la fattura,
+            # a patto che le copie con fattura non ne indichino due diverse.
+            con_fattura = [m for m in candidati if _id_fattura_del_movimento(m)]
+            if con_fattura and len({str(_id_fattura_del_movimento(m)) for m in con_fattura}) == 1:
+                candidati = con_fattura[:1]
         if len(candidati) != 1:
             continue  # nessun movimento, o piu' di uno: non si indovina
         movimento = candidati[0]
@@ -158,14 +175,22 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
         if categoria in CATEGORIE_DEL_MOTORE_STIPENDI:
             continue
 
-        id_fattura = (movimento.get("fattura_ids") or [None])[0] or movimento.get("fattura_id") or movimento.get("candidate_fattura_id")
+        id_fattura = _id_fattura_del_movimento(movimento)
         if id_fattura:
             fattura = await db["invoices"].find_one(
                 {"id": {"$in": _id_possibili(id_fattura)}, **FILTRO_FATTURA_ATTIVA}, {"_id": 0})
             if not fattura:
                 fattura = await _gemella_attiva(db, id_fattura)
             altri = {str(x) for x in (fattura or {}).get("bonifico_ids") or []} - {str(t.get("id"))}
-            if not fattura or altri or _importo_atteso_cents(fattura) != cents:
+            atteso = _importo_atteso_cents(fattura) if fattura else None
+            if fattura and not altri and atteso == cents:
+                pass  # importo uguale al centesimo: collegamento diretto
+            elif fattura and prova == "rif_banca" and atteso and cents < atteso:
+                # Un acconto: si decide a fine giro, solo se tutti i bonifici della fattura sommano il totale.
+                gruppo = acconti.setdefault(str(fattura.get("id")), {"fattura": fattura, "voci": []})
+                gruppo["voci"].append((t, movimento, cents))
+                continue
+            else:
                 esito["fattura_non_collegabile"] += 1
                 continue
             if not dry_run:
@@ -187,5 +212,26 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
             esito["destinazioni_certe"] += 1
         else:
             esito["senza_esito_certo"] += 1
+    per_id = {str(t.get("id")): t for t in trasferimenti}
+    for gruppo in acconti.values():
+        fattura, voci = gruppo["fattura"], gruppo["voci"]
+        id_voci = {str(v[0].get("id")) for v in voci}
+        gia_legati = [per_id.get(str(x)) for x in fattura.get("bonifico_ids") or [] if str(x) not in id_voci]
+        if any(x is None for x in gia_legati):
+            esito["fattura_non_collegabile"] += len(voci)
+            continue
+        somma = sum(c for _, _, c in voci) + sum(_cents(x.get("importo")) or 0 for x in gia_legati)
+        if somma != _importo_atteso_cents(fattura):
+            esito["fattura_non_collegabile"] += len(voci)
+            continue
+        for t, movimento, _cents_voce in voci:
+            if not dry_run:
+                await db["bonifici_transfers"].update_one(
+                    {"id": t["id"]}, {"$set": {"movimento_estratto_conto_id": movimento["id"]}})
+                await collega_bonifico_fatture(
+                    db, {**t, "movimento_estratto_conto_id": movimento["id"]}, [fattura], auto=True,
+                    evidenze=EVIDENZE_ACCONTI, regola=REGOLA_ACCONTI)
+            esito["fatture_collegate"] += 1
+            esito["acconti_collegati"] += 1
     logger.info("[BONIFICI-ESTRATTO] %s", esito)
     return esito
