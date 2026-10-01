@@ -1610,6 +1610,38 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    _foto_ricette_finite: list = []
+
+    async def _foto_ricette_storage_job():
+        # Foto ricette di Lotti ancora solo su Drive -> Supabase Storage, un
+        # file per volta (RAM bassa). Idempotente: finite quelle da portare,
+        # il giro non fa altro che contarle.
+        # Le foto nuove nascono gia' su Storage: finito l'arretrato il giro si
+        # ferma fino al prossimo avvio, senza rileggere ogni 3 minuti le ricette.
+        if _foto_ricette_finite:
+            return
+        try:
+            from app.lotti.db import database as lotti_db
+            from app.lotti.servizi.foto_ricette_migrazione import migra_lotto
+            esito = await migra_lotto(lotti_db, limite=10)
+            if esito["restano"] == 0 and esito["errori"] == 0:
+                _foto_ricette_finite.append(True)
+            if esito["migrate"] or esito["errori"]:
+                logger.info(f"[SCHEDULER-FOTO-RICETTE] {esito}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-FOTO-RICETTE] errore: {type(e).__name__}: {e}")
+
+    scheduler.add_job(
+        _foto_ricette_storage_job,
+        'interval', minutes=3,
+        next_run_time=avvio + timedelta(seconds=150),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="foto_ricette_storage",
+        name="Foto ricette Lotti da Drive a Supabase Storage (10 per giro, ogni 3 minuti)",
+        replace_existing=True,
+    )
+
     # Canali Drive documentali generici: bonifici dipendenti, verbali e canali
     # fiscali esplicitamente abilitati. Il resolver di ciascun canale limita la
     # scansione alla propria DA ELABORARE canonica.

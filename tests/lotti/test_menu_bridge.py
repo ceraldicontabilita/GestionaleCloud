@@ -326,8 +326,11 @@ def test_upload_foto_copia_immagine_nel_menu(ambiente):
     foto_id = ricette._foto_id_da_url(esito["foto_url"])
     assert esito["menu_sync"]["esito"] == "aggiornato"
     risposta_foto = run(ricette.leggi_foto(foto_id))
-    assert risposta_foto.body == b"\x89PNG-finto"
-    assert risposta_foto.media_type == "image/png"
+    # La foto su Storage si serve rimandando al CDN pubblico, non rispedendo i byte.
+    assert risposta_foto.status_code == 302
+    assert risposta_foto.headers["location"] == (
+        f"https://storage.test/object/public/menu-images/lotti/ricette/{foto_id}.png"
+    )
 
     assert len(finto.upload) == 1
     caricato = finto.upload[0]
