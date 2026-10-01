@@ -4,6 +4,7 @@ import { Badge, Button, Card, PageHeader, PageLoader, StatCard } from '../compon
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, FONT, formatEuro } from '../lib/utils';
 import api from '../api';
+import { scaricaOriginale } from '../lib/scaricaOriginale';
 
 const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
@@ -306,6 +307,7 @@ export default function PianoTributi() {
   const [errore, setErrore] = useState('');
   const [carico, setCarico] = useState(true);
   const [aperta, setAperta] = useState(null);
+  const [scaricando, setScaricando] = useState(false);
 
   const carica = useCallback(() => {
     let attivo = true;
@@ -341,6 +343,21 @@ export default function PianoTributi() {
             {p.etichetta(anno)}
           </Button>
         ))}
+        <Button
+          type="button" variant="outline" style={{ minHeight: 44 }} disabled={scaricando}
+          onClick={async () => {
+            setScaricando(true);
+            try {
+              await scaricaOriginale(`/api/f24/piano-tributi/excel?anno=${parametroAnni(periodo, anno)}`, `scadenzario-tributi-${parametroAnni(periodo, anno)}.xlsx`);
+            } catch (e) {
+              setErrore(e.response?.data?.detail || e.message || 'Excel non disponibile');
+            } finally {
+              setScaricando(false);
+            }
+          }}
+        >
+          {scaricando ? 'Preparo il file...' : 'Scarica Excel'}
+        </Button>
       </div>
       {carico && <PageLoader />}
       {errore && <div role="alert" style={{ padding: 12, color: COLORS.danger }}>Errore: {errore}</div>}

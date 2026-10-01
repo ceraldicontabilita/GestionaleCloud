@@ -43,6 +43,9 @@
 .fiscal-f24-watermark { position:absolute; top:50%; left:50%; color:rgba(20, 20, 19,.035); font-size:10rem; font-weight:900; letter-spacing:.1em; transform:translate(-50%,-50%) rotate(-12deg); pointer-events:none; }
 .fiscal-f24-file { position:relative; margin-bottom:10px; overflow:hidden; color:#7a776e; font-size:.82rem; text-overflow:ellipsis; white-space:nowrap; }
 .fiscal-f24-table-wrap { position:relative; overflow-x:auto; }
+/* La tabella sta in un riquadro che scorre da solo: l'intestazione fissa della pagina
+   (index.css, `.page-content thead th`) la spostava in basso sopra le prime righe. */
+.page-content .fiscal-f24-table-wrap thead th { position:static; box-shadow:none; }
 .fiscal-f24-table { width:100%; border-collapse:collapse; font-size:.86rem; }
 .fiscal-f24-table th,.fiscal-f24-table td { padding:8px 10px; border:1px solid #d0ccbe; text-align:left; }
 .fiscal-f24-table thead th { background:#f2f0e9; color:#141413; font-size:.72rem; text-transform:uppercase; }

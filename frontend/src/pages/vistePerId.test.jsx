@@ -330,7 +330,7 @@ describe('Vecchi indirizzi', () => {
       <Routes>
         <Route path="/fiscale/*" element={<Dove />} />
         <Route path="/personale/*" element={<Dove />} />
-        <Route path="/tributi" element={<Dove />} />
+        <Route path="/situazione-fiscale/*" element={<Dove />} />
         <Route path="*" element={<LegacyRouteResolver />} />
       </Routes>
     </MemoryRouter>,
@@ -340,6 +340,11 @@ describe('Vecchi indirizzi', () => {
     ['/f24/abc', '/fiscale/f24/abc'],
     ['/tributi/1040?anno=tutti', '/fiscale/tributi/1040?anno=tutti'],
     ['/cedolini/c9', '/personale/cedolini/c9'],
+    // Piano tributi, Tributi e Ritenute sono schede della Situazione fiscale; la ricerca segue
+    ['/tributi', '/situazione-fiscale/tributi-per-codice'],
+    ['/tributi?cerca=1040&vista=termini', '/situazione-fiscale/tributi-per-codice?cerca=1040&vista=termini'],
+    ['/piano-tributi', '/situazione-fiscale/piano'],
+    ['/ritenute', '/situazione-fiscale/ritenute'],
   ])('%s rimanda a %s', async (vecchio, nuovo) => {
     vai(vecchio);
     expect((await screen.findByTestId('dove')).textContent).toBe(nuovo);
@@ -349,11 +354,11 @@ describe('Vecchi indirizzi', () => {
     render(
       <MemoryRouter initialEntries={['/fiscale/tributi']}>
         <Routes>
-          <Route path="/tributi" element={<Dove />} />
+          <Route path="/situazione-fiscale/*" element={<Dove />} />
           <Route path="*" element={<LegacyRouteResolver />} />
         </Routes>
       </MemoryRouter>,
     );
-    expect((await screen.findByTestId('dove')).textContent).toBe('/tributi');
+    expect((await screen.findByTestId('dove')).textContent).toBe('/situazione-fiscale/tributi-per-codice');
   });
 });

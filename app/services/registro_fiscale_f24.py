@@ -200,6 +200,9 @@ def documenti_f24(righe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             + [_testo_ricerca(r) for r in rs]
         )
         documenti.append(documento)
+    # Il piu' recente per primo; senza data in fondo (a parita', il nome file).
+    documenti.sort(key=lambda d: (str(d.get("payment_date") or ""), str(d.get("filename") or "")), reverse=True)
+    documenti.sort(key=lambda d: not d.get("payment_date"))
     return documenti
 
 

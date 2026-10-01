@@ -285,3 +285,14 @@ def test_excel_dello_scadenzario_un_versamento_per_riga_con_link_ritardo_e_prosp
     assert riepilogo[(2026, 1001)] == 500.0                                      # febbraio: 16/02, 1001 di gennaio
     assert wb["Debito e credito"]["G4"].value == 120.0
     assert run(xl.righe_scadenzario(db, [2024])) == []                           # un anno senza versamenti: vuoto
+
+
+def test_i_documenti_f24_sono_ordinati_per_data_dal_piu_recente_e_senza_data_in_fondo():
+    from app.services.registro_fiscale_f24 import documenti_f24
+
+    def riga(doc, data, nome):
+        return {"document_id": doc, "payment_date": data, "filename": nome, "debit_amount": 1, "credit_amount": 0}
+
+    righe = [riga("a", "2026-01-16", "a.pdf"), riga("b", None, "b.pdf"),
+             riga("c", "2026-08-20", "c.pdf"), riga("d", "2026-03-16", "d.pdf")]
+    assert [d["filename"] for d in documenti_f24(righe)] == ["c.pdf", "d.pdf", "a.pdf", "b.pdf"]

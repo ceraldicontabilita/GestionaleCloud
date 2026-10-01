@@ -6,6 +6,7 @@ import api from '../api';
 import SituazioneFiscale, { endpointFor, resolveDeclarationVersions } from './SituazioneFiscale';
 
 vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('../contexts/AnnoContext', () => ({ useAnnoGlobale: () => ({ anno: 2026 }) }));
 describe('Situazione fiscale dal registro F24', () => {
   it('apre per impostazione predefinita la lista da pagare', async () => {
     api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
@@ -18,6 +19,25 @@ describe('Situazione fiscale dal registro F24', () => {
     expect(api.get).toHaveBeenCalledWith('/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=0');
     expect(screen.getByRole('link', { name: 'Pagati con quietanza' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tutti i tributi F24' })).toBeInTheDocument();
+  });
+
+  it('Piano tributi, Tributi e Ritenute sono schede della stessa pagina', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary' ? { counts: {} } : { items: [] } }));
+    render(<MemoryRouter initialEntries={['/situazione-fiscale']}><SituazioneFiscale /></MemoryRouter>);
+    await screen.findByRole('heading', { name: 'Da pagare' });
+    expect(screen.getByRole('link', { name: 'Piano tributi' })).toHaveAttribute('href', '/situazione-fiscale/piano');
+    expect(screen.getByRole('link', { name: 'Tributi' })).toHaveAttribute('href', '/situazione-fiscale/tributi-per-codice');
+    expect(screen.getByRole('link', { name: 'Ritenute' })).toHaveAttribute('href', '/situazione-fiscale/ritenute');
+  });
+
+  it('la scheda Piano tributi mostra il piano senza passare dagli elenchi F24', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path.startsWith('/api/f24/piano-tributi')
+      ? { anno: 2026, voci: [], conteggi: {}, etichette: {}, mancano: [], fuori_piano: [], modelli_doppi: 0 }
+      : {} }));
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/piano']}><SituazioneFiscale /></MemoryRouter>);
+    expect(await screen.findByRole('button', { name: 'Scarica Excel' })).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/^\/api\/f24\/piano-tributi\?anno=\d{4}$/));
+    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('/api/fiscal/obligations'));
   });
 
   beforeEach(() => {

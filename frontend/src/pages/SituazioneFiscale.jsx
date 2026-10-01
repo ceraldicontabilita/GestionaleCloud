@@ -1,10 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
-import { Badge, Button, Card, StatCard } from '../components/ds';
+import { Badge, Button, Card, PageLoader, StatCard } from '../components/ds';
 import './SituazioneFiscale.css';
+
+// Le schede che erano pagine a se' (Piano tributi, Tributi per codice, Ritenute): qui si
+// mostrano con la loro stessa vista, senza una seconda copia. I vecchi indirizzi
+// (/piano-tributi, /tributi, /ritenute) rimandano a queste schede (LegacyRouteResolver).
+const PianoTributi = lazy(() => import('./PianoTributi'));
+const Tributi = lazy(() => import('./Tributi'));
+const Ritenute = lazy(() => import('./Ritenute'));
+const SCHEDE_INCORPORATE = [
+  ['piano', 'Piano tributi', PianoTributi],
+  ['tributi-per-codice', 'Tributi', Tributi],
+  ['ritenute', 'Ritenute', Ritenute],
+];
 
 const TABS = [
   ['tributi', 'Da pagare'],
@@ -70,6 +82,18 @@ export const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}, elenco = 
   }[tab]);
 };
 
+const TUTTE_LE_SCHEDE = [...SCHEDE_INCORPORATE.map(([id, label]) => [id, label]), ...TABS];
+
+function SchedeFiscali({ tab }) {
+  return (
+    <nav aria-label="Sezioni situazione fiscale" className="fiscal-tabs">
+      {TUTTE_LE_SCHEDE.map(([id, label]) => <Link key={id} to={`/situazione-fiscale/${id}`}
+        style={{ padding: '8px 12px', borderRadius: 8, textDecoration: 'none', fontWeight: 700,
+          background: tab === id ? '#c15f3c' : '#e6e3d9', color: tab === id ? '#fff' : '#c15f3c' }}>{label}</Link>)}
+    </nav>
+  );
+}
+
 const labelForClaim = item => item.document_number || item.collection_number || item.cartella_number_original || item.id;
 const euro = value => value == null ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value);
 const searchableText = item => Object.values(item || {}).filter(value => ['string', 'number'].includes(typeof value)).join(' ').toLocaleLowerCase('it');
@@ -120,7 +144,7 @@ export const resolveDeclarationVersions = (declarations = [], checks = {}) => {
   return { selectedIds, states, resolvedGroups, unresolvedGroups };
 };
 
-export default function SituazioneFiscale() {
+function ElenchiFiscali() {
   const location = useLocation();
   const tab = TABS.find(([id]) => location.pathname.endsWith(`/${id}`))?.[0] || 'tributi';
   const [summary, setSummary] = useState(null);
@@ -415,11 +439,7 @@ export default function SituazioneFiscale() {
     <PageLayout title="Situazione fiscale" icon="⚖️"
       subtitle="Obblighi, pagamenti, cartelle e prove restano distinti e verificabili"
       actions={<Button variant="secondary" onClick={load} disabled={loading}>Aggiorna</Button>}>
-      <nav aria-label="Sezioni situazione fiscale" className="fiscal-tabs">
-        {TABS.map(([id, label]) => <Link key={id} to={`/situazione-fiscale/${id}`}
-          style={{ padding: '8px 12px', borderRadius: 8, textDecoration: 'none', fontWeight: 700,
-            background: tab === id ? '#c15f3c' : '#e6e3d9', color: tab === id ? '#fff' : '#c15f3c' }}>{label}</Link>)}
-      </nav>
+      <SchedeFiscali tab={tab} />
       <div className="fiscal-stats">
         <StatCard label="Modelli F24" value={counts.f24_documents || 0} accent="primary" />
         <StatCard label="Righe tributo" value={counts.f24_rows || 0} accent="primary" />
@@ -749,6 +769,21 @@ export default function SituazioneFiscale() {
           </Button>
         </nav>}
       </Card>
+    </PageLayout>
+  );
+}
+
+
+export default function SituazioneFiscale() {
+  const { pathname } = useLocation();
+  const incorporata = SCHEDE_INCORPORATE.find(([id]) => pathname.endsWith(`/${id}`));
+  if (!incorporata) return <ElenchiFiscali />;
+  const [id, , Scheda] = incorporata;
+  return (
+    <PageLayout title="Situazione fiscale" icon="⚖️"
+      subtitle="Obblighi, pagamenti, cartelle e prove restano distinti e verificabili">
+      <SchedeFiscali tab={id} />
+      <Suspense fallback={<PageLoader />}><Scheda /></Suspense>
     </PageLayout>
   );
 }
