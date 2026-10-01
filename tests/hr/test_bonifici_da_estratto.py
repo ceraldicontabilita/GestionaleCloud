@@ -96,3 +96,22 @@ def test_senza_riferimento_un_nome_diverso_non_basta():
         movimento={"id": "m9", "data": "2026-08-15", "tipo": "uscita", "importo": -2752.98, "categoria": "Fatture",
                    "descrizione": "VOSTRA DISPOSIZIONE FAVORE Edenred Italia S.r.l.", "candidate_fattura_id": "850878"})
     assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 0
+
+
+def test_un_movimento_che_punta_la_copia_archiviata_si_collega_alla_gemella_attiva():
+    db = _db(fattura={"id": "850878-arch", "invoice_number": "850878", "total_amount": 2752.98, "status": "archived",
+                      "supplier_vat": "09429840151"})
+    run(db["invoices"].insert_one({"id": "attiva", "invoice_number": "850878", "total_amount": 2752.98,
+                                   "status": "imported", "supplier_vat": "09429840151"}))
+    run(db["estratto_conto_movimenti"].update_one({"id": "m1"}, {"$set": {"candidate_fattura_id": "850878-arch"}}))
+    assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 1
+    assert run(db["bonifici_transfers"].find_one({"id": "b1"}))["fattura_associata_id"] == "attiva"
+
+
+def test_la_gemella_con_altra_partita_iva_non_basta():
+    db = _db(fattura={"id": "850878-arch", "invoice_number": "850878", "total_amount": 2752.98, "status": "archived",
+                      "supplier_vat": "09429840151"})
+    run(db["invoices"].insert_one({"id": "altra", "invoice_number": "850878", "total_amount": 2752.98,
+                                   "status": "imported", "supplier_vat": "11111111111"}))
+    run(db["estratto_conto_movimenti"].update_one({"id": "m1"}, {"$set": {"candidate_fattura_id": "850878-arch"}}))
+    assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 0

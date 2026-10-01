@@ -10,6 +10,7 @@ deve scegliere a mano un bonifico che la banca ha gia' spiegato.
 * Mai per solo importo: servono riferimento banca **e** importo al centesimo.
 * La fattura si collega solo se esiste, e' attiva, non e' gia' legata a un altro bonifico e il suo
   importo (al netto dell'eventuale ritenuta) e' quello del bonifico.
+* Se il movimento punta una copia archiviata, vale la gemella attiva (numero, totale e P.IVA uguali, una sola).
 * Gli stipendi restano al motore HR; una riga senza esito certo non si tocca.
 * Idempotente: il secondo giro da' ``nuovi = 0``.
 """
@@ -81,6 +82,26 @@ def _gia_decisa(t: Dict[str, Any]) -> bool:
     )
 
 
+async def _gemella_attiva(db, id_fattura: Any) -> Optional[Dict[str, Any]]:
+    """La fattura attiva che e' la stessa del documento indicato dal movimento, se questo e' archiviato.
+
+    Il motore bancario puo' aver puntato la copia archiviata: l'identita' e' numero, totale e
+    P.IVA del cedente, e vale solo se la gemella attiva e' una sola.
+    """
+    puntata = await db["invoices"].find_one({"id": {"$in": _id_possibili(id_fattura)}}, {"_id": 0})
+    numero = (puntata or {}).get("invoice_number")
+    piva = (puntata or {}).get("supplier_vat") or (puntata or {}).get("cedente_piva")
+    if not puntata or not numero or not piva:
+        return None
+    gemelle = await db["invoices"].find(
+        {"invoice_number": numero, **FILTRO_FATTURA_ATTIVA}, {"_id": 0}).to_list(None)
+    gemelle = [
+        g for g in gemelle
+        if (g.get("supplier_vat") or g.get("cedente_piva")) == piva and _cents(g.get("total_amount")) == _cents(puntata.get("total_amount"))
+    ]
+    return gemelle[0] if len(gemelle) == 1 else None
+
+
 async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_run: bool = False) -> Dict[str, Any]:
     """Abbina i bonifici PDF ancora senza esito al loro movimento d'estratto e ne eredita l'esito."""
     esito: Dict[str, Any] = {
@@ -141,6 +162,8 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
         if id_fattura:
             fattura = await db["invoices"].find_one(
                 {"id": {"$in": _id_possibili(id_fattura)}, **FILTRO_FATTURA_ATTIVA}, {"_id": 0})
+            if not fattura:
+                fattura = await _gemella_attiva(db, id_fattura)
             altri = {str(x) for x in (fattura or {}).get("bonifico_ids") or []} - {str(t.get("id"))}
             if not fattura or altri or _importo_atteso_cents(fattura) != cents:
                 esito["fattura_non_collegabile"] += 1
