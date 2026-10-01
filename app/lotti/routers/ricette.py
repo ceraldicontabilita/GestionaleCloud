@@ -25,7 +25,7 @@ GET  /api/tablet/{reparto}          — prodotti per vista tablet
 """
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Body, Depends
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Any
 from datetime import datetime, timezone
@@ -2974,6 +2974,17 @@ async def leggi_foto(foto_id: str):
     )
     if ricetta and ricetta.get("foto_storage_path"):
         from app.lotti.servizi import supabase_foto_ricette
+        # Il bucket e' pubblico e il percorso immutabile: si rimanda al CDN di
+        # Storage invece di scaricare e rispedire ogni PNG dal servizio (300
+        # card insieme tenevano occupati i thread per decine di secondi).
+        try:
+            return RedirectResponse(
+                supabase_foto_ricette.url_pubblico(str(ricetta["foto_storage_path"])),
+                status_code=302,
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            )
+        except Exception as exc:
+            logger.warning("Foto %s: URL pubblico non ricavabile (%s), la servo io", foto_id, type(exc).__name__)
         try:
             contenuto = await asyncio.to_thread(
                 supabase_foto_ricette.leggi, str(ricetta["foto_storage_path"])
