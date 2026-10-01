@@ -81,6 +81,16 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .sheet{background:var(--card);color:var(--ink);width:100%;max-width:560px;max-height:90vh;overflow:auto;border-radius:20px 20px 0 0;padding-bottom:16px}
 .sheet img.big{width:100%;height:220px;object-fit:cover;border-radius:20px 20px 0 0;display:block}
 .sheet .in{padding:14px 16px}
+.catalog-tools{display:grid;gap:8px;grid-template-columns:minmax(190px,1.2fr) minmax(150px,.8fr) minmax(150px,.8fr);margin:10px 0}
+.catalog-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+.catalog-card{display:grid;grid-template-columns:82px 1fr;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;min-width:0}
+.catalog-card.selected{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+.catalog-card img{width:82px;height:82px;object-fit:cover;border-radius:10px;background:var(--line)}
+.catalog-card .no-photo{width:82px;height:82px;border-radius:10px;background:var(--line);display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;color:var(--mute);font-size:11px}
+.catalog-card input[type=checkbox]{width:22px;height:22px;margin:0;flex:none}
+.catalog-card input[type=number]{margin:4px 0 0;max-width:120px}
+.catalog-origin{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--brand)}
+@media(max-width:620px){.catalog-tools{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px 1fr}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}}
 </style>
 </head>
 <body>
@@ -302,7 +312,7 @@ async function alb(sec){
  if(!HOT||HOT.id!==ALB.struttura.id)HOT=await rpc("bb_hotel_info",{codice:ALB.struttura.accesso}).catch(()=>null);
  const s=ALB.struttura,my=ALB.vouchers,oggi=ALB.oggi;
  $("#ttl").textContent="🏨 "+s.nome;
- const tabs=[["home","Riepilogo"],["nuova","Nuova colazione"],["lista","Ospiti"],["camere","Camere"],["profilo","Profilo"],["borsellino","Borsellino"]];
+ const tabs=[["home","Riepilogo"],["nuova","Nuova colazione"],["prodotti","Prodotti"],["lista","Ospiti"],["camere","Camere"],["profilo","Profilo"],["borsellino","Borsellino"]];
  let body="";
  if(sec==="home"){
   const att=my.filter(v=>!v.annullato&&v.usate<v.qta&&fine(v)>=oggi),att2=ALB.movimenti.filter(m=>!m.confermato).reduce((a,m)=>a+m.importo,0);
@@ -316,10 +326,12 @@ async function alb(sec){
   body=nuovaHtml();
  }else if(sec==="lista"){
   body=`<input id="q" placeholder="Cerca camera, ospite o codice…" oninput="filtraAlb()"><div id="al"></div>`;
+ }else if(sec==="prodotti"){
+  body=`<div class="card"><h3>Prodotti disponibili per ${esc(s.nome)}</h3><p class="mute">Questo listino è stato scelto dal bar appositamente per la tua struttura. Prezzi di vendita IVA inclusa.</p></div><div id="alb_prodotti"><p class="mute">Caricamento prodotti…</p></div>`;
  }else if(sec==="profilo"){
   body=pfHtml(s);
  }else if(sec==="camere"){
-  CR=ALB.camere.map(c=>({nome:c.nome,ospiti:c.ospiti}));body=camereEditor("Le tue camere");
+  CR=ALB.camere.map(c=>({nome:c.nome,ospiti:c.ospiti,servizio_tavolo:!!c.servizio_tavolo}));body=camereEditor("Le tue camere");
  }else if(sec==="borsellino"){
   body=fiscBanner()+`<div class="card"><div class="mute">Saldo disponibile</div><div class="k" style="font-size:32px;font-weight:800">${eur(s.saldo)}</div>
   ${ALB.sumup?`<label>Ricarica veloce con carta</label><div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">${[50,100,200,300,400,500].filter(v=>v>=ALB.config.ricarica_min&&v<=ALB.config.ricarica_max).map(v=>`<button class="btn" style="min-width:96px" onclick="ricaricaSumup(${v})">${v} €</button>`).join("")}</div><div class="mute" style="margin-bottom:10px">Tocca un importo: si apre il pagamento con carta e, appena è confermato, il saldo sale da solo.</div>`:""}
@@ -334,7 +346,13 @@ async function alb(sec){
  if(sec==="profilo"){pfPrev();const e=$("#pf_q");if(e)qr(e,base()+"#/hotel/"+s.accesso,140)}
  if(sec==="nuova"&&$("#nt")){ntTab();ricalcNuova()}
  if(sec==="lista")filtraAlb();
+ if(sec==="prodotti")albProdotti();
  if(sec==="camere")crTab();
+}
+async function albProdotti(){
+ const prodotti=await run("bb_alb_prodotti",{sid:sess.s,p:sess.p});if(!Array.isArray(prodotti))return;
+ const el=$("#alb_prodotti");if(!el)return;
+ el.innerHTML=prodotti.length?`<div class="catalog-grid">${prodotti.map(p=>`<article class="catalog-card">${p.immagine?`<img loading="lazy" src="${esc(p.immagine)}" alt="${esc(p.nome)}" onerror="this.outerHTML='<div class=&quot;no-photo&quot;>Foto non disponibile</div>'">`:`<div class="no-photo">Foto non disponibile</div>`}<div><div class="catalog-origin">${esc(p.origine==="vandemoortele"?"Vandemoortele":p.origine==="senza_glutine"?"Senza glutine":"Produzione interna")}</div><b>${esc(p.nome)}</b>${p.descrizione?`<div class="mute">${esc(p.descrizione)}</div>`:""}${(p.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${p.allergeni.map(esc).join(", ")}</div>`:""}<div class="price" style="font-size:20px;margin-top:5px">${eur(p.prezzo)}</div></div></article>`).join("")}</div>`:`<div class="card"><p class="mute">Il bar non ha ancora pubblicato prodotti per questa struttura.</p></div>`;
 }
 /* --- nuova colazione: tutto in una pagina --- */
 let NR=[],DEF={};
@@ -344,21 +362,21 @@ function nuovaHtml(){
  const oggi=ALB.oggi,C=ALB.camere,cols=ALB.colazioni;
  if(!cols.length)return `<div class="card"><h3>Nessuna colazione disponibile</h3><p class="mute">Il bar non ha ancora attivato le colazioni per la tua struttura. Contatta ${esc(ALB.bar.bar_nome||"il bar")}.</p></div>`;
  DEF={dal:oggi,al:oggi,col:cols[0].id};
- NR=C.map(c=>({camera:c.nome,ospiti:c.ospiti,dal:oggi,al:oggi,col:cols[0].id,on:false}));
+ NR=C.map(c=>({camera:c.nome,ospiti:c.ospiti,dal:oggi,al:oggi,col:cols[0].id,on:false,tavolo:!!c.servizio_tavolo}));
  const pre=[["Oggi",0],["Domani",1],["2 notti",2],["3 notti",3],["1 settimana",6]];
  return `<div class="card"><h3>1 · Periodo e colazione</h3><p class="mute">Imposta una volta sola: vale per tutte le camere. Poi, se serve, cambi la singola riga.</p>
   <div class="chips" style="margin-bottom:8px">${pre.map(p=>`<button class="btn sm sec" onclick="ntPre(${p[1]},${p[0]==="Domani"?1:0})">${p[0]}</button>`).join(" ")}</div>
   <div class="filters">
   <div><label>Dal</label><input id="n_dal" type="date" value="${oggi}" min="${oggi}" max="${addDays(oggi,ALB.config.anticipo)}" onchange="ntDef()"></div>
   <div><label>Al (compreso)</label><input id="n_al" type="date" value="${oggi}" min="${oggi}" onchange="ntDef()"></div>
-  <div><label>Tipo di colazione</label><select id="n_col" onchange="ntDef()">${cols.map(c=>`<option value="${c.id}">${esc(c.nome)} · ${eur(c.prezzo+sup())}</option>`).join("")}</select></div></div>
-  ${sup()?`<div class="mute">🪑 Servizio al tavolo: nei prezzi è già incluso il supplemento di ${eur(sup())} a persona.</div>`:`<div class="mute">☕ Colazione servita al banco.</div>`}
+  <div><label>Tipo di colazione</label><select id="n_col" onchange="ntDef()">${cols.map(c=>`<option value="${c.id}">${esc(c.nome)} · ${eur(c.prezzo)}</option>`).join("")}</select></div></div>
+  <div class="mute">🪑 Per ogni camera puoi spuntare Tavolo: il prezzo aumenta di ${eur(sup())} a persona per ogni giorno. Senza spunta resta il prezzo al banco.</div>
   <div id="n_cd" class="mute"></div>
   ${ALB.config.limite_ora?`<div class="mute">Per il giorno stesso ordina entro le ${esc(ALB.config.limite_ora)} del giorno prima.</div>`:""}</div>
  <div class="card"><div class="row"><h3 style="margin:0">2 · Camere e ospiti</h3><span><button class="btn sm sec" onclick="selTutte(true)">Tutte</button> <button class="btn sm sec" onclick="selTutte(false)">Nessuna</button></span></div>
   ${C.length?"":`<p class="mute">Non hai ancora inserito le camere: aggiungile qui sotto oppure <a href="#/albergatore/camere">salvale una volta per sempre</a>.</p>`}
   <div class="scroll"><table id="nt"></table></div>
-  <button class="btn sm sec" onclick="NR.push({camera:'',ospiti:2,dal:DEF.dal,al:DEF.al,col:DEF.col,on:true,libera:true});ntTab();ricalcNuova()">+ Camera non in elenco</button></div>
+  <button class="btn sm sec" onclick="NR.push({camera:'',ospiti:2,dal:DEF.dal,al:DEF.al,col:DEF.col,on:true,libera:true,tavolo:false});ntTab();ricalcNuova()">+ Camera non in elenco</button></div>
  <div class="card"><div class="row"><span class="mute" id="n_s"></span><span class="price" id="n_t"></span></div><div id="n_w"></div><button class="btn" id="n_b" onclick="doNuova()">Crea colazioni e QR</button></div>`}
 function ntPre(n,start){const oggi=ALB.oggi,d=addDays(oggi,start);$("#n_dal").value=d;$("#n_al").value=addDays(d,start?Math.max(0,n-1):n);ntDef()}
 function ntDef(){
@@ -367,15 +385,16 @@ function ntDef(){
  const c=colById(DEF.col);$("#n_cd").innerHTML=c?(c.descrizione?esc(c.descrizione)+"<br>":"")+(c.voci||[]).map(v=>(v.qta>1?v.qta+"× ":"")+esc(v.nome)).join(" · "):"";
  ntTab();ricalcNuova()}
 function ntRow(i,k,v){const r=NR[i];r[k]=v;if(k==="dal"&&r.al<v)r.al=v;if(k==="al"&&v<r.dal)r.dal=v;if(r.al>addDays(r.dal,30))r.al=addDays(r.dal,30);ntTab();ricalcNuova()}
-function rigaTot(r){const c=colById(r.col);return c?(c.prezzo+sup())*r.ospiti*nGiorni(r.dal,r.al):0}
+function rigaTot(r){const c=colById(r.col);return c?(c.prezzo+(r.tavolo?sup():0))*r.ospiti*nGiorni(r.dal,r.al):0}
 function ntTab(){
  const oggi=ALB.oggi,mx=addDays(oggi,ALB.config.anticipo);
- $("#nt").innerHTML=`<tr><th></th><th>Camera</th><th>Ospiti</th><th>Dal</th><th>Al</th><th>Colazione</th><th style="text-align:right">Totale</th></tr>`+NR.map((r,i)=>`<tr style="${r.on?"":"opacity:.55"}"><td><input type="checkbox" ${r.on?"checked":""} onchange="NR[${i}].on=this.checked;ntTab();ricalcNuova()" style="width:auto;margin:0"></td>
+ $("#nt").innerHTML=`<tr><th></th><th>Camera</th><th>Ospiti</th><th>Dal</th><th>Al</th><th>Colazione</th><th>Tavolo</th><th style="text-align:right">Totale</th></tr>`+NR.map((r,i)=>`<tr style="${r.on?"":"opacity:.55"}"><td><input type="checkbox" ${r.on?"checked":""} onchange="NR[${i}].on=this.checked;ntTab();ricalcNuova()" style="width:auto;margin:0"></td>
   <td>${r.libera?`<input value="${esc(r.camera)}" placeholder="Camera" oninput="NR[${i}].camera=this.value" style="margin:0;min-width:100px">`:`<b>${esc(r.camera)}</b>`}</td>
   <td><div class="stepper"><button onclick="ntOsp(${i},-1)">−</button><b>${r.ospiti}</b><button onclick="ntOsp(${i},1)">+</button></div></td>
   <td><input type="date" value="${r.dal}" min="${oggi}" max="${mx}" onchange="ntRow(${i},'dal',this.value||'${oggi}')" style="margin:0;min-width:130px"></td>
   <td><input type="date" value="${r.al}" min="${r.dal}" onchange="ntRow(${i},'al',this.value||'${r.dal}')" style="margin:0;min-width:130px"></td>
-  <td><select onchange="ntRow(${i},'col',this.value)" style="margin:0">${ALB.colazioni.map(c=>`<option value="${c.id}" ${c.id===r.col?"selected":""}>${esc(c.nome)} · ${eur(c.prezzo+sup())}</option>`).join("")}</select></td>
+  <td><select onchange="ntRow(${i},'col',this.value)" style="margin:0">${ALB.colazioni.map(c=>`<option value="${c.id}" ${c.id===r.col?"selected":""}>${esc(c.nome)} · ${eur(c.prezzo+(r.tavolo?sup():0))}</option>`).join("")}</select></td>
+  <td><label style="display:flex;gap:5px;align-items:center;white-space:nowrap"><input type="checkbox" ${r.tavolo?"checked":""} onchange="NR[${i}].tavolo=this.checked;ntTab();ricalcNuova()" style="width:auto;margin:0"> +${eur(sup())}</label></td>
   <td style="text-align:right;white-space:nowrap">${r.on?eur(rigaTot(r)):"–"}</td></tr>`).join("")}
 function ntOsp(i,d){NR[i].ospiti=Math.min(10,Math.max(1,NR[i].ospiti+d));ntTab();ricalcNuova()}
 function selTutte(v){NR.forEach(r=>r.on=v);ntTab();ricalcNuova()}
@@ -384,7 +403,7 @@ function ricalcNuova(){
  $("#n_t").textContent=eur(tot);$("#n_s").textContent=`${on.length} camere · ${pers} ospiti · saldo dopo: ${eur(dopo)}`;
  $("#n_w").innerHTML=dopo<0?`<div class="alert bad">Saldo insufficiente: mancano ${eur(-dopo)}. <a href="#/albergatore/borsellino">Ricarica il borsellino</a></div>`:""}
 async function doNuova(){
- const righe=NR.filter(r=>r.on).map(r=>({camera:r.camera.trim(),ospiti:r.ospiti,dal:r.dal,al:r.al,colazione_id:r.col}));
+ const righe=NR.filter(r=>r.on).map(r=>({camera:r.camera.trim(),ospiti:r.ospiti,dal:r.dal,al:r.al,colazione_id:r.col,servizio_tavolo:!!r.tavolo}));
  if(!righe.length)return toast("Seleziona almeno una camera");
  if(righe.some(r=>!r.camera))return toast("Scrivi il nome della camera");
  $("#n_b").disabled=true;
@@ -422,16 +441,17 @@ function mostraQR(id){
  $("#sh").onclick=()=>navigator.share?navigator.share({title:"La tua colazione",text:msg,url:l}).catch(()=>{}):navigator.clipboard.writeText(msg+" ").then(()=>toast("Messaggio copiato"))}
 /* --- editor camere (albergatore e titolare) --- */
 let CR=[],CRSID=null;
-function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi come si chiamano le camere e quanti ospiti ci sono di solito: le ritroverai già pronte quando crei le colazioni.</p><div id="ce"></div>
- <button class="btn sm sec" onclick="CR.push({nome:'',ospiti:2});crTab()">+ Aggiungi camera</button></div>
+function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi nome e ospiti. Spunta Tavolo solo per le camere che hanno normalmente il servizio al tavolo: durante ogni prenotazione potrai ancora cambiarlo.</p><div id="ce"></div>
+ <button class="btn sm sec" onclick="CR.push({nome:'',ospiti:2,servizio_tavolo:crDefaultTavolo()});crTab()">+ Aggiungi camera</button></div>
  <div class="card"><h3>Crea più camere insieme</h3><div class="filters"><div><label>Nome</label><input id="g_p" value="Camera"></div><div><label>Dal numero</label><input id="g_a" type="number" value="1"></div><div><label>Quante</label><input id="g_n" type="number" value="6"></div><div><label>Ospiti</label><input id="g_o" type="number" value="2"></div></div>
  <button class="btn sm sec" style="margin-top:8px" onclick="crGen()">Aggiungi all'elenco</button></div>
  <button class="btn" onclick="crSalva()">Salva camere</button>`}
-function crTab(){$("#ce").innerHTML=CR.map((c,i)=>`<div class="row" style="gap:6px;margin:4px 0"><input value="${esc(c.nome)}" placeholder="Nome camera" oninput="CR[${i}].nome=this.value" style="margin:0"><div class="stepper"><button onclick="crOsp(${i},-1)">−</button><b>${c.ospiti}</b><button onclick="crOsp(${i},1)">+</button></div><button class="btn sm sec" onclick="CR.splice(${i},1);crTab()">✕</button></div>`).join("")||`<p class="mute">Nessuna camera inserita.</p>`}
+const crDefaultTavolo=()=>sess.r==="alb"?!!(ALB&&ALB.struttura&&ALB.struttura.tavolo):!!(((TIT&&TIT.strutture)||[]).find(s=>s.id===CRSID)||{}).servizio_tavolo;
+function crTab(){$("#ce").innerHTML=CR.map((c,i)=>`<div class="row" style="gap:6px;margin:4px 0"><input value="${esc(c.nome)}" placeholder="Nome camera" oninput="CR[${i}].nome=this.value" style="margin:0"><div class="stepper"><button onclick="crOsp(${i},-1)">−</button><b>${c.ospiti}</b><button onclick="crOsp(${i},1)">+</button></div><label style="display:flex;gap:5px;align-items:center;white-space:nowrap"><input type="checkbox" ${c.servizio_tavolo?"checked":""} onchange="CR[${i}].servizio_tavolo=this.checked" style="width:auto;margin:0"> Tavolo</label><button class="btn sm sec" onclick="CR.splice(${i},1);crTab()">✕</button></div>`).join("")||`<p class="mute">Nessuna camera inserita.</p>`}
 function crOsp(i,d){CR[i].ospiti=Math.min(10,Math.max(1,CR[i].ospiti+d));crTab()}
-function crGen(){const p=$("#g_p").value.trim(),a=+$("#g_a").value||1,n=Math.min(100,+$("#g_n").value||0),o=Math.min(10,Math.max(1,+$("#g_o").value||2));for(let i=0;i<n;i++)CR.push({nome:(p+" "+(a+i)).trim(),ospiti:o});crTab()}
+function crGen(){const p=$("#g_p").value.trim(),a=+$("#g_a").value||1,n=Math.min(100,+$("#g_n").value||0),o=Math.min(10,Math.max(1,+$("#g_o").value||2));for(let i=0;i<n;i++)CR.push({nome:(p+" "+(a+i)).trim(),ospiti:o,servizio_tavolo:crDefaultTavolo()});crTab()}
 async function crSalva(){
- const camere=CR.filter(c=>c.nome.trim()).map(c=>({nome:c.nome.trim(),ospiti:c.ospiti}));
+ const camere=CR.filter(c=>c.nome.trim()).map(c=>({nome:c.nome.trim(),ospiti:c.ospiti,servizio_tavolo:!!c.servizio_tavolo}));
  const ok=sess.r==="alb"?await run("bb_alb_camere_salva",{sid:sess.s,p:sess.p,camere},"Camere salvate"):await run("bb_tit_camere_salva",{p:sess.p,sid:CRSID,camere},"Camere salvate");
  if(ok!==undefined)render()}
 
@@ -439,6 +459,9 @@ async function crSalva(){
 const modTxt=m=>m.tipo==="senza"?`Senza ${esc(m.testo)}`:m.tipo==="senza_glutine"?"Versione senza glutine"+(m.testo?": "+esc(m.testo):""):esc(m.testo)+"";
 const modChi=m=>m.chi&&m.chi!=="Tutti"?` <span class="mute">(${esc(m.chi)})</span>`:"";
 let G=null;
+const RECENSIONE_GOOGLE="https://g.page/r/CQqRnemKplctEBM/review";
+const RECENSIONE_TRIPADVISOR="https://www.tripadvisor.it/UserReviewEdit-g187785-d2695184-Ceraldi_Caffe-Naples_Province_of_Naples_Campania.html";
+const recensioniOspite=()=>`<div class="card" style="text-align:center"><h2 style="margin-bottom:6px">Com’è stata la tua esperienza da Ceraldi Caffè?</h2><p class="mute">Se ti va, scegli dove raccontarcela. La recensione è libera e non dà diritto a sconti, omaggi o premi.</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="${RECENSIONE_GOOGLE}" target="_blank" rel="noopener">⭐ Recensisci su Google</a><a class="btn sec" href="${RECENSIONE_TRIPADVISOR}" target="_blank" rel="noopener">🟢 Recensisci su Tripadvisor</a></div></div>`;
 async function ospite(id){
  $("#ttl").textContent="☕ La tua colazione";loading();
  const d=await rpc("bb_ospite",{vid:id||""}).catch(()=>null);
@@ -454,7 +477,7 @@ async function ospite(id){
  <div class="alert ok" style="text-align:left"><b>${d.tavolo?"🪑 La colazione sarà servita al tavolo":"☕ La colazione sarà servita al banco"}</b></div><div class="qr" id="qrbox"></div><p><b style="letter-spacing:2px;font-size:20px">${d.id}</b></p><p class="mute">Mostra questo codice al bancone di ${esc(b.bar_nome||"Bar Pasticceria Ceraldi")}.</p>
  <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(maps)}" target="_blank" rel="noopener">📍 Come arrivare al bar</a>
  ${b.bar_indirizzo?`<p class="mute">${esc(b.bar_indirizzo)}${b.bar_orari?" · "+esc(b.bar_orari):""}</p>`:""}${b.bar_tel||b.bar_whatsapp||b.bar_email?`<p>${b.bar_tel?`<a href="tel:${esc(b.bar_tel)}">📞 Chiama</a> `:""}${b.bar_whatsapp?`<a href="https://wa.me/${esc(String(b.bar_whatsapp).replace(/\D/g,""))}" target="_blank" rel="noopener">💬 WhatsApp</a> `:""}${b.bar_email?`<a href="mailto:${esc(b.bar_email)}">✉️ Email</a>`:""}</p>`:""}</div>
- ${albergoHtml(d.indirizzo)}<div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
+ ${albergoHtml(d.indirizzo)}<div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>${recensioniOspite()}
  <h2>Napoli oggi</h2>${napoli()}`;
  qr($("#qrbox"),d.id);gRender();
  loadExt().then(E=>{$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)})}
@@ -587,7 +610,7 @@ async function doTit(){
  catch(e){m.textContent="Connessione non riuscita"}}
 const pinStrict=()=>sess.p;
 let TIT=null;
-const TABS=[["cruscotto","Cruscotto"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini"],["strutture","Strutture"],["fatture","Fatture"],["menu","Menù"],["impostazioni","Impostazioni"]];
+const TABS=[["cruscotto","Cruscotto"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini"],["strutture","Strutture"],["prodotti","Prodotti hotel"],["fatture","Fatture"],["menu","Menù"],["impostazioni","Impostazioni"]];
 const supTxt=()=>eur(+String((TIT.config||{}).supplemento_tavolo||"1.5").replace(",","."));
 const fasceMenu=()=>Object.keys(TIT.menu).map(Number).sort((a,b)=>a-b);
 const barNome=()=>TIT.bar.bar_nome||"Bar Pasticceria Ceraldi";
@@ -597,7 +620,7 @@ async function tit(sec,arg){
  TIT.richieste_pin=await rpc("bb_tit_richieste_pin",{p:sess.p}).catch(()=>[]);
  TIT.fatture=await rpc("bb_tit_fatture",{p:sess.p}).catch(()=>[]);
  $("#ttl").textContent="🧁 "+barNome();
- const fn={cruscotto:pCruscotto,produzione:pProduzione,scan:pScan,ordini:pOrdini,strutture:pStrutture,struttura:pStruttura,invita:pInvita,invito:pInvito,fatture:pFatture,menu:pMenu,impostazioni:pImpostazioni}[sec]||pCruscotto;
+ const fn={cruscotto:pCruscotto,produzione:pProduzione,scan:pScan,ordini:pOrdini,strutture:pStrutture,struttura:pStruttura,invita:pInvita,invito:pInvito,prodotti:pProdottiHotel,fatture:pFatture,menu:pMenu,impostazioni:pImpostazioni}[sec]||pCruscotto;
  const nf=(TIT.fatture||[]).filter(f=>f.stato==="da_emettere"&&!f.demo).length;
  app.innerHTML=tabsHtml(TABS.map(t=>t[0]==="fatture"&&nf?[t[0],t[1]+" ("+nf+")"]:t),["struttura","invita","invito"].includes(sec)?"strutture":sec,"titolare")+fn(arg);
  (fn.after||(()=>{}))(arg)}
@@ -745,7 +768,7 @@ function pStrutture(){
 function pInvita(){return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="card"><h3>1 · Dati del nuovo B&B</h3>
  <label>Nome della struttura *</label><input id="in_n" placeholder="es. B&B Vesuvio"><label>Telefono / WhatsApp</label><input id="in_t" type="tel" placeholder="+39 333 1234567"><label>Email</label><input id="in_e" type="email"><label>Indirizzo</label><input id="in_a"></div>
  <div class="card"><h3>2 · Colazioni che può offrire</h3><p class="mute">Tocca una colazione per aprirla: nome, prezzo e contenuto dal menù. L'albergatore vedrà solo queste.</p><div id="ce2"></div></div>
- <div class="card"><h3>3 · Dove viene servita</h3><label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px"><input type="checkbox" id="in_tav" onchange="" style="width:auto;margin:4px 0 0"><span><b>Servizio al tavolo</b><br><span class="mute">Spunta se l'ospite può accomodarsi a tavola: all'albergatore viene addebitato in automatico un supplemento di ${supTxt()} a colazione a persona (lo cambi in Impostazioni). Se non è spuntato, la colazione è servita al banco.</span></span></label></div>
+ <div class="card"><h3>3 · Impostazione iniziale delle camere</h3><label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px"><input type="checkbox" id="in_tav" onchange="" style="width:auto;margin:4px 0 0"><span><b>Preseleziona servizio al tavolo</b><br><span class="mute">Usalo come valore iniziale quando verranno create le camere. Il supplemento di ${supTxt()} sarà comunque applicato soltanto alle singole camere o prenotazioni con Tavolo spuntato.</span></span></label></div>
  <div class="card"><button class="btn" onclick="invitaCrea()">Salva e genera QR / link per l'albergatore</button><p class="mute">Le camere e gli ospiti li inserirà lui, dalla sua pagina.</p></div>`}
 pInvita.after=()=>ceInit(null);
 async function invitaCrea(){
@@ -785,8 +808,8 @@ function pStruttura(id){
  return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div>
  <div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2>${s.demo?`<span class="pill p-warn">DEMO</span>`:""}</div>
  <div class="kpis"><div class="card"><div class="mute">Saldo borsellino</div><div class="k">${eur(s.saldo)}</div></div><div class="card"><div class="mute">Ordini</div><div class="k">${attivi(vs).length}</div></div><div class="card"><div class="mute">Consegnato</div><div class="k">${eur(consegnato(attivi(vs)))}</div></div></div>
- <div class="card"><h3>Azioni</h3><button class="btn sm" onclick="ricaricaManuale('${id}')">+ Registra ricarica</button> <button class="btn sm sec" onclick="modificaStruttura('${id}')">Modifica dati</button> <button class="btn sm sec" onclick="nuovoPin('${id}')">Cambia PIN</button></div>
- <div class="card"><h3>🪑 Dove viene servita</h3><label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px"><input type="checkbox" ${s.servizio_tavolo?"checked":""} onchange="tavoloSet('${id}',this.checked)" style="width:auto;margin:4px 0 0"><span><b>Servizio al tavolo</b><br><span class="mute">Spunta se l'ospite può accomodarsi a tavola: all'albergatore viene addebitato in automatico un supplemento di ${supTxt()} a colazione a persona (lo cambi in Impostazioni). Se non è spuntato, la colazione è servita al banco.</span></span></label></div>
+ <div class="card"><h3>Azioni</h3><button class="btn sm" onclick="ricaricaManuale('${id}')">+ Registra ricarica</button> <button class="btn sm sec" onclick="modificaStruttura('${id}')">Modifica dati</button> <button class="btn sm sec" onclick="nuovoPin('${id}')">Cambia PIN</button> <button class="btn sm sec" onclick="go('#/titolare/prodotti/${id}')">Prodotti e prezzi</button></div>
+ <div class="card"><h3>🪑 Servizio al tavolo per camera</h3><p class="mute">Nell’elenco Camere spunta Tavolo solo dove previsto. In fase di prenotazione l’albergatore può confermare o cambiare la scelta: il totale aumenta subito di ${supTxt()} a persona per ogni colazione.</p></div>
  <div class="card"><h3>🥐 Colazioni offerte a questo hotel</h3><p class="mute">Solo queste colazioni compariranno nella pagina dell'albergatore, con i prezzi che stabilisci qui.</p><div id="ce2"></div></div>
  ${camereEditor("Camere di "+s.nome)}
  <div class="card"><div class="row"><h3 style="margin:0">Accesso albergatore</h3><span class="pill ${s.attivo?"p-ok":"p-warn"}">${s.attivo?"attivo":"in attesa di attivazione"}</span></div>
@@ -795,13 +818,59 @@ function pStruttura(id){
  <div style="text-align:center;margin-top:10px"><div class="qr" id="accqr" style="display:inline-flex"></div></div></div>
  <h3>Movimenti</h3><div class="card scroll"><table>${mv.map(m=>`<tr><td>${new Date(m.t).toLocaleDateString("it-IT")}</td><td>${esc(m.nota)}${m.confermato?"":` <span class="pill p-warn">in attesa</span>`}</td><td style="text-align:right;color:${m.importo<0?"var(--bad)":"var(--ok)"}">${eur(m.importo)}</td></tr>`).join("")}</table></div>
  <h3>Colazioni</h3><div class="card scroll"><table><tr><th>Periodo</th><th>Camera / ospite</th><th>Colazione</th><th>Ritirate</th><th>Stato</th></tr>${vs.map(v=>{const[t,c]=stato(v,oggi);return `<tr><td>${dRange(v)}</td><td>${esc(descV(v,false))}</td><td>${esc(colNome(v))}<div class="mute">${v.qta}× ${eur(v.fascia)}</div></td><td>${v.usate}/${v.qta}</td><td><span class="pill ${c}">${t}</span></td></tr>`}).join("")}</table></div>`}
-pStruttura.after=id=>{const s=TIT.strutture.find(x=>x.id===id),e=$("#accqr");if(e&&s)qr(e,linkHotel(s),150);CRSID=id;CR=((TIT.camere||{})[id]||[]).map(c=>({nome:c.nome,ospiti:c.ospiti}));crTab();ceInit(id)};
+pStruttura.after=id=>{const s=TIT.strutture.find(x=>x.id===id),e=$("#accqr");if(e&&s)qr(e,linkHotel(s),150);CRSID=id;CR=((TIT.camere||{})[id]||[]).map(c=>({nome:c.nome,ospiti:c.ospiti,servizio_tavolo:!!c.servizio_tavolo}));crTab();ceInit(id)};
 const stampaAccesso=id=>{const s=TIT.strutture.find(x=>x.id===id);stampa([{sopra:barNome(),titolo:s.nome,riga:"Ordina le colazioni per i tuoi ospiti",qr:linkHotel(s),codice:"",sotto:"Scansiona per entrare · serve il tuo PIN"}])};
 async function tavoloSet(id,v){if(await run("bb_tit_tavolo_set",{p:sess.p,sid:id,val:v},v?"Servizio al tavolo attivo":"Colazione al banco")===undefined)return;const s=TIT.strutture.find(x=>x.id===id);if(s)s.servizio_tavolo=v}
 async function ricaricaManuale(id){const i=+prompt("Importo incassato (€)");if(i>0&&await run("bb_tit_ricarica_manuale",{p:sess.p,sid:id,imp:i},"Ricarica registrata"))render()}
 async function nuovoPin(id){const p=prompt("Nuovo PIN per l'albergatore (min 4 cifre)");if(p&&p.length>=4)await run("bb_tit_struttura_salva",{p:sess.p,sid:id,pnome:null,pindirizzo:null,ppin:p,pfasce:null},"PIN aggiornato")}
 async function modificaStruttura(id){const s=TIT.strutture.find(x=>x.id===id);const n=prompt("Nome",s.nome);if(!n)return;const a=prompt("Indirizzo",s.indirizzo);
  if(await run("bb_tit_struttura_salva",{p:sess.p,sid:id,pnome:n,pindirizzo:a??s.indirizzo,ppin:null,pfasce:null},"Salvato"))render()}
+
+/* --- Catalogo prodotti separato per struttura --- */
+let CP={base:null,lista:[],sid:"",q:"",origine:"tutti"};
+const cpNorm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+const cpOrigine=o=>o==="vandemoortele"?"Vandemoortele":o==="senza_glutine"?"Senza glutine":"Produzione interna";
+function pProdottiHotel(id){
+ return `<div class="card"><h2 style="margin:0 0 6px">Prodotti e prezzi per hotel</h2><p class="mute">Scegli una struttura, seleziona i prodotti che deve vedere e indica il suo prezzo di vendita. Vandemoortele deriva dagli acquisti in fattura; Produzione interna deriva dalle nostre ricette. Foto, descrizioni e allergeni compaiono solo quando sono già documentati.</p><div id="cp_head"><p class="mute">Caricamento catalogo…</p></div></div><div id="cp_body"></div>`}
+pProdottiHotel.after=id=>cpAvvia(id);
+async function cpAvvia(id){
+ if(!CP.base){
+  try{
+   const token=localStorage.getItem("auth_token");
+   const [r,g,c]=await Promise.all([fetch("/api/colazioni/catalogo-prodotti",{credentials:"same-origin",headers:token?{Authorization:"Bearer "+token}:{}}),rpc("bb_glutine_pubblico").catch(()=>[]),rpc("bb_catalogo").catch(()=>[])]);
+   if(!r.ok)throw new Error(r.status===401?"Rientra nel gestionale per leggere le fonti prodotti.":"Catalogo prodotti non disponibile.");
+   const j=await r.json(),gia=new Set((j.prodotti||[]).map(p=>p.chiave));
+   const gf=(Array.isArray(g)?g:[]).map(x=>({chiave:"senza_glutine:"+cpNorm(x.nome),origine:"senza_glutine",nome:x.nome,descrizione:"Prodotto senza glutine",allergeni:[],immagine:null,prezzo:null,categoria:"Senza glutine",prova:"elenco senza glutine"})).filter(x=>x.nome&&!gia.has(x.chiave));
+   const listino=Array.isArray(c)?c:[];
+   CP.base=[...(j.prodotti||[]),...gf].map(p=>{const q=listino.find(x=>cpNorm(x.nome)===cpNorm(p.nome));return {...p,prezzo:p.prezzo||q&&q.prezzo||null}});
+  }catch(e){$("#cp_head").innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;return}
+ }
+ const scelta=id&&TIT.strutture.some(s=>s.id===id)?id:(CP.sid&&TIT.strutture.some(s=>s.id===CP.sid)?CP.sid:(TIT.strutture[0]||{}).id);
+ $("#cp_head").innerHTML=TIT.strutture.length?`<label>Struttura che vedrà il listino</label><select id="cp_sid" onchange="cpCarica(this.value)">${TIT.strutture.map(s=>`<option value="${s.id}" ${s.id===scelta?"selected":""}>${esc(s.nome)}${s.demo?" (DEMO)":""}</option>`).join("")}</select><div class="catalog-tools"><input id="cp_q" placeholder="Cerca prodotto…" oninput="CP.q=this.value;cpDisegna()"><select id="cp_o" onchange="CP.origine=this.value;cpDisegna()"><option value="tutti">Tutte le provenienze</option><option value="vandemoortele">Vandemoortele acquistati</option><option value="produzione_interna">Produzione interna</option><option value="senza_glutine">Senza glutine</option></select><button class="btn" onclick="cpSalva()">Salva prodotti e prezzi</button></div><div id="cp_stat" class="mute"></div>`:`<div class="alert">Prima crea almeno una struttura.</div>`;
+ if(scelta)await cpCarica(scelta);
+}
+async function cpCarica(sid){
+ CP.sid=sid;$("#cp_body").innerHTML=`<p class="mute">Caricamento selezioni…</p>`;
+ const assegnati=await run("bb_tit_prodotti_struttura",{p:sess.p,sid});if(!Array.isArray(assegnati))return;
+ const perChiave=new Map(assegnati.map(x=>[x.chiave,x]));
+ CP.lista=CP.base.map(x=>{const a=perChiave.get(x.chiave);return {...x,on:!!a,prezzo:a?+a.prezzo:(x.prezzo?+x.prezzo:0),descrizione:a&&a.descrizione||x.descrizione||"",allergeni:a&&a.allergeni||x.allergeni||[],immagine:a&&a.immagine||x.immagine||null,categoria:a&&a.categoria||x.categoria||""}});
+ assegnati.filter(a=>!CP.lista.some(x=>x.chiave===a.chiave)).forEach(a=>CP.lista.push({...a,on:true,prezzo:+a.prezzo,non_in_fonte:true}));
+ cpDisegna();
+}
+function cpDisegna(){
+ const q=cpNorm(CP.q),vis=CP.lista.filter(p=>(CP.origine==="tutti"||p.origine===CP.origine)&&(!q||cpNorm([p.nome,p.descrizione,p.categoria].join(" ")).includes(q)));
+ const scelti=CP.lista.filter(p=>p.on),mancanti=scelti.filter(p=>!(p.prezzo>0));
+ if($("#cp_stat"))$("#cp_stat").innerHTML=`${scelti.length} selezionati${mancanti.length?` · <b>${mancanti.length} senza prezzo</b>`:""} · ${vis.length} mostrati`;
+ $("#cp_body").innerHTML=vis.length?`<div class="catalog-grid">${vis.map(p=>{const i=CP.lista.indexOf(p);return `<article class="catalog-card ${p.on?"selected":""}">${p.immagine?`<img loading="lazy" src="${esc(p.immagine)}" alt="${esc(p.nome)}" onerror="this.style.visibility='hidden'">`:`<div class="no-photo">Foto non disponibile</div>`}<div><div class="row" style="align-items:flex-start;gap:7px"><label style="display:flex;gap:7px;align-items:flex-start;flex:1;color:var(--ink)"><input type="checkbox" ${p.on?"checked":""} onchange="cpSel(${i},this.checked)"><span><span class="catalog-origin">${esc(cpOrigine(p.origine))}</span><br><b>${esc(p.nome)}</b></span></label></div>${p.descrizione?`<div class="mute">${esc(p.descrizione)}</div>`:""}${(p.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${p.allergeni.map(esc).join(", ")}</div>`:`<div class="mute">Allergeni non inseriti</div>`}${p.non_in_fonte?`<div class="alert" style="padding:5px;margin:5px 0">Non più presente nella fonte: resta selezionato finché non lo togli.</div>`:""}<label>Prezzo per questa struttura (€)</label><input type="number" min="0" step="0.10" value="${p.prezzo||""}" placeholder="da inserire" oninput="CP.lista[${i}].prezzo=+this.value;cpAggiornaStat()"></div></article>`}).join("")}</div>`:`<div class="card"><p class="mute">Nessun prodotto corrisponde ai filtri.</p></div>`;
+}
+function cpAggiornaStat(){const s=CP.lista.filter(p=>p.on),m=s.filter(p=>!(p.prezzo>0));if($("#cp_stat"))$("#cp_stat").innerHTML=`${s.length} selezionati${m.length?` · <b>${m.length} senza prezzo</b>`:""}`}
+function cpSel(i,v){CP.lista[i].on=v;cpDisegna()}
+async function cpSalva(){
+ const scelti=CP.lista.filter(p=>p.on);const senza=scelti.filter(p=>!(p.prezzo>0));
+ if(senza.length)return toast(`Inserisci il prezzo per ${senza[0].nome}${senza.length>1?` e altri ${senza.length-1}`:""}`);
+ const righe=scelti.map(p=>({chiave:p.chiave,origine:p.origine,nome:p.nome,descrizione:p.descrizione||"",allergeni:p.allergeni||[],immagine:p.immagine||null,prezzo:p.prezzo,categoria:p.categoria||""}));
+ const r=await run("bb_tit_prodotti_salva",{p:sess.p,sid:CP.sid,righe},"Prodotti e prezzi salvati");if(Array.isArray(r))await cpCarica(CP.sid);
+}
 
 /* --- Menù (modifica + import) --- */
 function pMenu(){
@@ -909,7 +978,7 @@ function pImpostazioni(){
  ${f("bar_nome","Nome del locale","Bar Pasticceria Ceraldi")}${f("bar_indirizzo","Indirizzo","Via …, Napoli")}${f("bar_tel","Telefono","+39 …","tel")}${f("bar_whatsapp","WhatsApp (con prefisso, senza spazi)","39333…","tel")}${f("bar_email","Email","info@…","email")}${f("bar_orari","Orari di apertura","es. 7:00–14:00")}${f("bar_maps","Link Google Maps (facoltativo)","https://maps.app.goo.gl/…","url","Se lo lasci vuoto uso indirizzo e nome del bar.")}</div>
  <div class="card"><h3>📏 Regole di vendita</h3>
  ${f("ricarica_min","Ricarica minima (€)","5","number")}${f("ricarica_max","Ricarica massima (€)","2000","number")}${f("anticipo_max_giorni","Giorni massimi di anticipo per prenotare","60","number")}
- ${f("supplemento_tavolo","Supplemento servizio al tavolo (€ a persona, per colazione)","es. 1,50","text","Si aggiunge al prezzo della colazione per gli alberghi con il servizio al tavolo spuntato. Vale per le prenotazioni nuove.")}
+ ${f("supplemento_tavolo","Supplemento servizio al tavolo (€ a persona, per colazione)","es. 1,50","text","Si aggiunge solo alle camere o prenotazioni con Tavolo spuntato. Vale per le prenotazioni nuove.")}
  ${f("ordini_limite_ora","Orario limite per ordinare il giorno prima","es. 20:00","time","Vuoto = nessun limite. Con 20:00, le colazioni per domani si possono creare fino alle 20:00 di oggi (e quindi mai per lo stesso giorno).")}</div>
  <div class="card"><h3>💬 Messaggio all'ospite</h3><p class="mute">Testo proposto quando l'albergatore preme "Invia all'ospite". Puoi usare <b>{ospite}</b>, <b>{bar}</b> e <b>{link}</b>.</p>
  <textarea rows="3" onchange="salvaCfg('msg_ospite',this.value)">${esc(c.msg_ospite||"")}</textarea></div>
