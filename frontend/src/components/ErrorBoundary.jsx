@@ -1,5 +1,6 @@
 import React from 'react';
 import { COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
+import { TriangleAlert } from 'lucide-react';
 import { Button } from './ds/Button';
 
 const STALE_CHUNK_PATTERNS = [
@@ -79,7 +80,7 @@ class ErrorBoundary extends React.Component {
             fontFamily: FONT.family,
           }}
         >
-          <div style={{ fontSize: 48 }}>⚠️</div>
+          <TriangleAlert size={48} color={COLORS.danger} aria-hidden />
           <h2 style={{ color: COLORS.danger, margin: 0, fontSize: 20 }}>
             Si è verificato un errore
           </h2>

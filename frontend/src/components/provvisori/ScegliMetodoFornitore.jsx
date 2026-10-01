@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import api from '../../api';
+import { Check } from 'lucide-react';
 import { formatEuro } from '../../lib/utils';
+import { euroOppure } from '../../lib/vista';
 
 const TERRACOTTA = '#c15f3c';
 const ROSSO = '#b4452f';
@@ -72,7 +74,7 @@ export default function ScegliMetodoFornitore({ fattura, altre = [], onClose, on
           Come hai pagato {fornitore}?
         </h3>
         <div style={{ fontSize: 13, color: '#5f5c55', marginBottom: 12 }}>
-          Fattura {numero} · {formatEuro(Number(fattura.importo || 0))}. Il fornitore non ha ancora un metodo di pagamento:
+          Fattura {numero} · {euroOppure(fattura.importo)}. Il fornitore non ha ancora un metodo di pagamento:
           lo scegli ora e resta salvato, cosi' le prossime fatture seguono da sole.
         </div>
 
@@ -88,7 +90,7 @@ export default function ScegliMetodoFornitore({ fattura, altre = [], onClose, on
                 background: metodo === m.id ? '#f7ebe4' : 'white', color: '#141413', fontFamily: 'inherit',
               }}
             >
-              <div style={{ fontWeight: 800, fontSize: 15 }}>{metodo === m.id ? '✓ ' : ''}{m.titolo}</div>
+              <div style={{ fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>{metodo === m.id && <Check size={16} aria-hidden="true" />}{m.titolo}</div>
               <div style={{ fontSize: 11.5, color: '#5f5c55', marginTop: 2 }}>{m.dettaglio}</div>
             </button>
           ))}

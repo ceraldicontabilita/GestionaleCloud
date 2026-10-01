@@ -2,6 +2,7 @@ import React from 'react';
 import { CalendarDays, FileCheck2 } from 'lucide-react';
 import { Badge } from '../../components/ds';
 import { COLORS, formatDateIT, formatEuro } from '../../lib/utils';
+import { euroOppure } from '../../lib/vista';
 
 // Data ISO → gg/mm/aaaa (regola del titolare: date sempre gg/mm/aaaa).
 export function giornoIT(iso) {
@@ -55,7 +56,7 @@ function EsitoF24({ mese }) {
     return <Badge variant="warning">Dati da verificare</Badge>;
   }
   if (daVersare <= 0) {
-    return <Badge variant="info">Credito {formatEuro(aCredito)}</Badge>;
+    return <Badge variant="info">Credito {euroOppure(aCredito)}</Badge>;
   }
   if (mese.stato_f24 === 'in_attesa_f24' || mese.importo_f24_commercialista == null) {
     return <Badge variant="warning">In attesa F24</Badge>;
@@ -114,10 +115,10 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                     <td data-label="Calcolo gestionale" style={{ padding: '10px 9px', textAlign: 'right' }}>
                       {nonCalcolato ? '—' : (
                         <span>
-                          Vendite {formatEuro(m.iva_debito_corrispettivi)}<br />
-                          Acquisti − {formatEuro(m.iva_credito_fatture)}<br />
+                          Vendite {euroOppure(m.iva_debito_corrispettivi)}<br />
+                          Acquisti − {euroOppure(m.iva_credito_fatture)}<br />
                           <strong style={{ color: m.saldo > 0 ? COLORS.danger : COLORS.success }}>
-                            Saldo {m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}
+                            Saldo {m.saldo > 0 ? '+' : ''}{euroOppure(m.saldo)}
                           </strong>
                           <small style={{ display: 'block', color: COLORS.textMuted }}>
                             {m.num_fatture || 0} fatture · {m.fatture_con_iva_competenza || 0} con IVA
@@ -130,8 +131,8 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                     <td data-label="LIPE comunicata" style={{ padding: '10px 9px', textAlign: 'right' }}>
                       {['LIPE_ESTRATTA', 'LIPE_DA_VERIFICARE'].includes(m.lipe?.stato) ? (
                         <span>
-                          Esigibile VP4 {formatEuro(m.lipe.vp4)}<br />
-                          Detraibile VP5 {formatEuro(m.lipe.vp5)}
+                          Esigibile VP4 {euroOppure(m.lipe.vp4)}<br />
+                          Detraibile VP5 {euroOppure(m.lipe.vp5)}
                           <small style={{ display: 'block', color: m.lipe.stato === 'LIPE_DA_VERIFICARE' ? COLORS.warning : m.lipe.coerente_gestionale ? COLORS.success : COLORS.danger }}>
                             {m.lipe.stato === 'LIPE_DA_VERIFICARE' ? 'OCR da verificare' : m.lipe.coerente_gestionale ? 'uguale al gestionale' : 'diversa dal gestionale'} · pag. {m.lipe.page_number || '—'}
                           </small>
@@ -141,7 +142,7 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                     <td data-label="F24 commercialista" style={{ padding: '10px 9px', textAlign: 'right' }}>
                       {m.importo_f24_commercialista == null ? '—' : (
                         <span>
-                          {formatEuro(m.importo_f24_commercialista)}
+                          {euroOppure(m.importo_f24_commercialista)}
                           <small style={{ display: 'block', color: COLORS.textMuted }}>
                             codice {m.codice_tributo_iva || '—'}{m.f24_multi_tributo ? ' · multi-tributo' : ''}
                           </small>
@@ -160,9 +161,9 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
             </table>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
-            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>IVA debito {anno}</span><strong>{formatEuro(dati.totali?.iva_debito_totale || 0)}</strong></div>
-            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>IVA credito {anno}</span><strong>{formatEuro(dati.totali?.iva_credito_totale || 0)}</strong></div>
-            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>Saldo gestionale {anno}</span><strong style={{ color: (dati.totali?.saldo_annuale || 0) > 0 ? COLORS.danger : COLORS.success }}>{formatEuro(dati.totali?.saldo_annuale || 0)}</strong></div>
+            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>IVA debito {anno}</span><strong>{euroOppure(dati.totali?.iva_debito_totale)}</strong></div>
+            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>IVA credito {anno}</span><strong>{euroOppure(dati.totali?.iva_credito_totale)}</strong></div>
+            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>Saldo gestionale {anno}</span><strong style={{ color: (dati.totali?.saldo_annuale || 0) > 0 ? COLORS.danger : COLORS.success }}>{euroOppure(dati.totali?.saldo_annuale)}</strong></div>
           </div>
         </>
       )}
@@ -223,8 +224,8 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
                   )}
                   <div style={{ marginTop: 7, fontSize: 11, color: COLORS.textMuted }}>Scadenza {formatDateIT(s.data_scadenza)}</div>
                   <div style={{ marginTop: 8, display: 'grid', gap: 3, fontSize: 12 }}>
-                    <span>Debito: <strong>{nonCalcolato ? '—' : formatEuro(s.iva_debito)}</strong></span>
-                    <span>Credito: <strong>{nonCalcolato ? '—' : formatEuro(s.iva_credito)}</strong></span>
+                    <span>Debito: <strong>{nonCalcolato ? '—' : euroOppure(s.iva_debito)}</strong></span>
+                    <span>Credito: <strong>{nonCalcolato ? '—' : euroOppure(s.iva_credito)}</strong></span>
                     <span>Saldo progressivo: <strong>{nonCalcolato ? '—' : formatEuro(s.saldo_progressivo ?? s.saldo)}</strong></span>
                   </div>
                   <div style={{ marginTop: 9 }}>
@@ -237,9 +238,9 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
             })}
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
-            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>Totale a credito</span><strong style={{ color: COLORS.success }}>{formatEuro(dati.totale_a_credito || 0)}</strong></div>
-            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>Totale teorico a debito</span><strong style={{ color: COLORS.warning }}>{formatEuro(dati.totale_da_versare || 0)}</strong></div>
-            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>Saldo progressivo</span><strong>{formatEuro(dati.saldo_progressivo ?? dati.saldo_annuale ?? 0)}</strong></div>
+            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>Totale a credito</span><strong style={{ color: COLORS.success }}>{euroOppure(dati.totale_a_credito)}</strong></div>
+            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>Totale teorico a debito</span><strong style={{ color: COLORS.warning }}>{euroOppure(dati.totale_da_versare)}</strong></div>
+            <div style={metricStyle}><span style={{ color: COLORS.textMuted, fontSize: 11 }}>Saldo progressivo</span><strong>{euroOppure(dati.saldo_progressivo ?? dati.saldo_annuale)}</strong></div>
           </div>
         </>
       )}

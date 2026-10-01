@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Check, X, Trash2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
@@ -21,7 +22,7 @@ import { CopyLinkButton } from '../components/CopyLinkButton';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
 import { VisoreOriginale } from '../components/ApriOriginale';
-import { urlOriginale } from '../lib/vista';
+import { urlOriginale, euroOppure } from '../lib/vista';
 import { toast } from 'sonner';
 
 const formatDate = formatDateIT;
@@ -482,7 +483,7 @@ export default function ArchivioBonifici() {
           }}
           title="Sincronizza gli IBAN dei bonifici nell'anagrafica dipendenti"
         >
-          🔄 Sync IBAN
+          Sync IBAN
         </button>
         <button
           onClick={() => {
@@ -501,7 +502,7 @@ export default function ArchivioBonifici() {
             fontSize: 13,
           }}
         >
-          🔄 Aggiorna
+          Aggiorna
         </button>
       </div>
 
@@ -594,7 +595,7 @@ export default function ArchivioBonifici() {
           }}
         >
           <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
-            ✓ Riconciliati
+            Riconciliati
           </div>
           <div
             style={{
@@ -629,7 +630,7 @@ export default function ArchivioBonifici() {
       >
         <div>
           <div style={{ fontWeight: 'bold', fontSize: 16 }}>
-            🏦 Riconciliazione con Estratto Conto
+            Riconciliazione con Estratto Conto
           </div>
           <div style={{ fontSize: 13, opacity: 0.9 }}>
             Confronta i bonifici con i movimenti bancari per verificare i pagamenti effettivi
@@ -651,7 +652,7 @@ export default function ArchivioBonifici() {
           }}
           data-testid="riconcilia-bonifici-btn"
         >
-          {riconciliando ? '⏳ Riconciliazione in corso...' : '▶ Avvia Riconciliazione'}
+          {riconciliando ? 'Riconciliazione in corso...' : 'Avvia Riconciliazione'}
         </button>
       </div>
 
@@ -667,7 +668,7 @@ export default function ArchivioBonifici() {
           }}
         >
           <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#141413' }}>
-            📅 Riepilogo per Anno
+            Riepilogo per Anno
           </h3>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {Object.entries(summary)
@@ -695,7 +696,7 @@ export default function ArchivioBonifici() {
                     {year}
                   </div>
                   <div style={{ fontSize: 12, color: '#7a776e' }}>
-                    {data.count} bonifici • {formatEuro(data.total)}
+                    {data.count} bonifici • {euroOppure(data.total)}
                   </div>
                 </div>
               ))}
@@ -719,7 +720,7 @@ export default function ArchivioBonifici() {
       >
         <input
           type="text"
-          placeholder="🔍 Cerca causale, CRO/TRN..."
+          placeholder="Cerca causale, CRO/TRN..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           onKeyDown={e => {
@@ -750,7 +751,7 @@ export default function ArchivioBonifici() {
           }}
           data-testid="bonifici-search-btn"
         >
-          🔍 Cerca
+          Cerca
         </button>
         <input
           type="text"
@@ -815,7 +816,7 @@ export default function ArchivioBonifici() {
               fontSize: 13,
             }}
           >
-            ✕ Reset
+            Reset
           </button>
         )}
 
@@ -874,7 +875,7 @@ export default function ArchivioBonifici() {
           }}
           data-testid="tab-associati"
         >
-          ✅ Associati
+          Associati
           <span
             style={{
               background: activeTab === 'associati' ? 'rgba(255,255,255,0.2)' : '#e6e3d9',
@@ -902,16 +903,16 @@ export default function ArchivioBonifici() {
       >
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#7a776e' }}>
-            ⏳ Caricamento...
+            Caricamento...
           </div>
         ) : loadError ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#b0362b' }}>
-            ⚠️ Errore nel caricamento dei bonifici. Riprova con «Aggiorna».
+            Errore nel caricamento dei bonifici. Riprova con «Aggiorna».
           </div>
         ) : transfersToShow.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#7a776e' }}>
             {activeTab === 'da_associare'
-              ? '🎉 Tutti i bonifici sono stati associati!'
+              ? 'Tutti i bonifici sono stati associati!'
               : 'Nessun bonifico associato. Seleziona il tab "Da Associare" per iniziare.'}
           </div>
         ) : (
@@ -924,18 +925,17 @@ export default function ArchivioBonifici() {
               colonne={[
                 {
                   key: 'riconciliato',
-                  label: '✓',
+                  label: 'Riconc.',
                   align: 'center',
-                  // Su mobile lo stato ✅ diventa prefisso del beneficiario (titolo)
                   ruoloCard: 'omesso',
                   tdStyle: sfondoRic,
                   render: t =>
                     t.riconciliato ? (
                       <span
-                        style={{ color: '#16a34a', fontSize: 16 }}
+                        style={{ color: COLORS.success, display: 'inline-flex' }}
                         title={`Riconciliato: ${t.movimento_descrizione || 'Trovato in estratto conto'}`}
                       >
-                        ✅
+                        <Check size={16} role="img" aria-label="Riconciliato" />
                       </span>
                     ) : (
                       <span style={{ color: '#d0ccbe', fontSize: 14 }}>—</span>
@@ -957,7 +957,7 @@ export default function ArchivioBonifici() {
                   ruoloCard: 'importo',
                   render: t => (
                     <span style={{ fontWeight: 'bold', color: '#16a34a' }}>
-                      {formatEuro(t.importo)}
+                      {euroOppure(t.importo)}
                     </span>
                   ),
                   tdStyle: t => ({ whiteSpace: 'nowrap', ...sfondoRic(t) }),
@@ -968,7 +968,6 @@ export default function ArchivioBonifici() {
                   ruoloCard: 'titolo',
                   render: t => (
                     <>
-                      {isMobile && t.riconciliato ? '✅ ' : ''}
                       {t.beneficiario?.nome || '-'}
                     </>
                   ),
@@ -978,7 +977,6 @@ export default function ArchivioBonifici() {
                   key: 'causale',
                   label: 'Causale',
                   ruoloCard: 'dettaglio',
-                  iconaCard: '💬',
                   render: t => {
                     if (isMobile) {
                       // Causale accorciata: nella card resta su una riga
@@ -1043,7 +1041,6 @@ export default function ArchivioBonifici() {
                   key: 'salario',
                   label: activeTab === 'associati' ? 'Salario Associato' : 'Associa Salario',
                   ruoloCard: 'dettaglio',
-                  iconaCard: '💰',
                   tdStyle: sfondoRic,
                   // position:relative sul wrapper: ancora il dropdown sia nella
                   // cella desktop sia nella card mobile
@@ -1061,7 +1058,7 @@ export default function ArchivioBonifici() {
                               fontWeight: 500,
                             }}
                           >
-                            ✓ {t.operazione_salario_desc?.substring(0, 20) || 'Associato'}
+                            {t.operazione_salario_desc?.substring(0, 20) || 'Associato'}
                           </span>
                           <button
                             onClick={() => handleDisassocia(t.id, t.operazione_salario_desc)}
@@ -1074,7 +1071,7 @@ export default function ArchivioBonifici() {
                             }}
                             title="Rimuovi associazione (doppia conferma)"
                           >
-                            ✕
+                            <X size={12} aria-label="Rimuovi" />
                           </button>
                         </div>
                       ) : stipendioGiaInHr(t) ? (
@@ -1105,7 +1102,7 @@ export default function ArchivioBonifici() {
                             }}
                             data-testid={`btn-associa-${t.id}`}
                           >
-                            {associaDropdown === t.id ? '▲ Chiudi periodi' : 'Scegli periodo'}
+                            {associaDropdown === t.id ? 'Chiudi periodi' : 'Scegli periodo'}
                           </button>
                           {/* Dropdown operazioni */}
                           {associaDropdown === t.id && (
@@ -1144,7 +1141,7 @@ export default function ArchivioBonifici() {
                               )}
                               {loadingOperazioni ? (
                                 <div style={{ padding: 16, textAlign: 'center', color: '#7a776e' }}>
-                                  ⏳ Caricamento...
+                                  Caricamento...
                                 </div>
                               ) : operazioniCompatibili.length === 0 ? (
                                 <div
@@ -1226,7 +1223,7 @@ export default function ArchivioBonifici() {
                                             'ui-monospace, SFMono-Regular, Menlo, monospace',
                                         }}
                                       >
-                                        {formatEuro(op.importo_display)}
+                                        {euroOppure(op.importo_display)}
                                       </span>
                                     </div>
                                   </div>
@@ -1243,7 +1240,6 @@ export default function ArchivioBonifici() {
                   key: 'fattura',
                   label: activeTab === 'associati' ? 'Fattura Associata' : 'Associa Fattura',
                   ruoloCard: 'dettaglio',
-                  iconaCard: '📄',
                   tdStyle: sfondoRic,
                   render: t => (
                     <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -1259,7 +1255,7 @@ export default function ArchivioBonifici() {
                               fontWeight: 500,
                             }}
                           >
-                            📄 {t.fattura_numero?.substring(0, 15) || 'Associata'}
+                            {t.fattura_numero?.substring(0, 15) || 'Associata'}
                             {t.fattura_esito === 'intero' && ' · saldo'}
                             {t.fattura_esito === 'acconto' && ' · acconto'}
                             {t.fattura_esito === 'eccede' && ' · supera il dovuto'}
@@ -1275,7 +1271,7 @@ export default function ArchivioBonifici() {
                             }}
                             title="Rimuovi associazione (doppia conferma)"
                           >
-                            ✕
+                            <X size={12} aria-label="Rimuovi" />
                           </button>
                         </div>
                       ) : t.destinazione_automatica ? (
@@ -1316,7 +1312,7 @@ export default function ArchivioBonifici() {
                             }}
                             data-testid={`btn-associa-fattura-${t.id}`}
                           >
-                            {associaFatturaDropdown === t.id ? '▲ Scegli' : '📄 Fattura'}
+                            {associaFatturaDropdown === t.id ? 'Scegli' : 'Fattura'}
                           </button>
                           {/* Dropdown fatture */}
                           {associaFatturaDropdown === t.id && (
@@ -1337,7 +1333,7 @@ export default function ArchivioBonifici() {
                             >
                               {loadingFatture ? (
                                 <div style={{ padding: 16, textAlign: 'center', color: '#7a776e' }}>
-                                  ⏳ Caricamento...
+                                  Caricamento...
                                 </div>
                               ) : fattureCompatibili.length === 0 ? (
                                 <div
@@ -1412,7 +1408,7 @@ export default function ArchivioBonifici() {
                                       }}
                                     >
                                       <span>
-                                        {formatDate(f.data_fattura)} • {formatEuro(f.importo)}
+                                        {formatDate(f.data_fattura)} • {euroOppure(f.importo)}
                                       </span>
                                       {f.id && (
                                         <button
@@ -1449,7 +1445,6 @@ export default function ArchivioBonifici() {
                   key: 'note',
                   label: 'Note',
                   ruoloCard: 'dettaglio',
-                  iconaCard: '📝',
                   tdStyle: sfondoRic,
                   render: t =>
                     editingNote === t.id ? (
@@ -1479,7 +1474,7 @@ export default function ArchivioBonifici() {
                               fontSize: 10,
                             }}
                           >
-                            ✓
+                            <Check size={12} aria-label="Salva" />
                           </button>
                           <button
                             onClick={() => {
@@ -1496,7 +1491,7 @@ export default function ArchivioBonifici() {
                               fontSize: 10,
                             }}
                           >
-                            ✕
+                            <X size={12} aria-label="Rimuovi" />
                           </button>
                         </div>
                       ) : (
@@ -1518,7 +1513,7 @@ export default function ArchivioBonifici() {
                 },
                 {
                   key: 'elimina',
-                  label: '🗑️',
+                  label: 'Elimina',
                   align: 'center',
                   ruoloCard: 'azioni',
                   tdStyle: sfondoRic,
@@ -1534,7 +1529,7 @@ export default function ArchivioBonifici() {
                       }}
                       title="Elimina"
                     >
-                      🗑️
+                      <Trash2 size={14} aria-label="Elimina" />
                     </button>
                   ),
                 },
@@ -1546,7 +1541,7 @@ export default function ArchivioBonifici() {
       {bonificoPdf && (
         <VisoreOriginale
           title={`Bonifico ${bonificoPdf.cro_trn || ''}`.trim()}
-          subtitle={`${bonificoPdf.data || ''} · ${bonificoPdf.beneficiario_nome || bonificoPdf.beneficiario || ''}`}
+          subtitle={`${bonificoPdf.data ? formatDate(bonificoPdf.data) : ''} · ${bonificoPdf.beneficiario_nome || bonificoPdf.beneficiario || ''}`}
           url={urlOriginale({ tipo: 'bonifico', id: bonificoPdf.id })}
           documentType="pdf"
           onClose={() => setBonificoPdf(null)}

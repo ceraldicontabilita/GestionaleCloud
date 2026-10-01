@@ -48,7 +48,7 @@ describe('Ricevuta associata: link al movimento', () => {
 
     render(<MemoryRouter><GestionePagoPA /></MemoryRouter>);
 
-    await waitFor(() => expect(screen.getByText('⏳ Da Associare')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Da Associare')).toBeInTheDocument());
     expect(screen.queryByTestId('vedi-movimento-0')).not.toBeInTheDocument();
   });
 });

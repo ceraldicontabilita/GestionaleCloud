@@ -17,6 +17,10 @@ import {
   Select,
   StatCard,
 } from '../components/ds';
+import {
+  Banknote, Car, ChartColumn, CheckCircle2, ClipboardList, CreditCard, FileText, Globe,
+  Landmark, Mail, Receipt, Smartphone, TriangleAlert, User,
+} from 'lucide-react';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   BORDER_RADIUS,
@@ -28,23 +32,23 @@ import {
 const PAGE_SIZE = 50;
 
 const CATEGORY_COLORS = {
-  f24: { bg: '#f7ebe4', text: '#4c4a44', icon: '📋', label: 'F24' },
-  fattura: { bg: '#e2f0e7', text: '#166534', icon: '🧾', label: 'Fattura' },
-  fattura_estera_pdf: { bg: '#e2f0e7', text: '#166534', icon: '🌍', label: 'Fattura estera' },
-  busta_paga: { bg: '#f7eeda', text: '#92400e', icon: '📄', label: 'Cedolino' },
-  estratto_conto: { bg: '#f7ebe4', text: '#8a6f47', icon: '🏦', label: 'Estratto conto' },
-  quietanza: { bg: '#e2f0e7', text: '#2f7a4f', icon: '✅', label: 'Quietanza' },
-  bonifico: { bg: '#fce7f3', text: '#be185d', icon: '💸', label: 'Bonifico' },
-  cartella_esattoriale: { bg: '#f8e5e2', text: '#b0362b', icon: '⚠️', label: 'Cartella' },
-  avviso_bonario: { bg: '#ffedd5', text: '#c2410c', icon: '📨', label: 'Avviso bonario' },
-  dichiarazione_iva: { bg: '#eef3ef', text: '#4c4a44', icon: '📊', label: 'Dichiarazione IVA' },
-  satispay: { bg: '#fce7f3', text: '#be185d', icon: '📱', label: 'Satispay' },
-  contributi_inps: { bg: '#eef3ef', text: '#4c4a44', icon: '🏛️', label: 'INPS' },
-  certificazione_unica: { bg: '#ecfccb', text: '#4d7c0f', icon: '👤', label: 'CU' },
-  verbale: { bg: '#f8e5e2', text: '#b0362b', icon: '🚗', label: 'Verbale' },
-  pagopa: { bg: '#eef3ef', text: '#4c4a44', icon: '🏛️', label: 'PagoPA' },
-  paypal: { bg: '#f7ebe4', text: '#4c4a44', icon: '💳', label: 'PayPal' },
-  altro: { bg: '#f2f0e9', text: '#5f5c55', icon: '📄', label: 'Altro' },
+  f24: { bg: COLORS.primarySoft, text: COLORS.text, icon: ClipboardList, label: 'F24' },
+  fattura: { bg: COLORS.successLight, text: COLORS.success, icon: Receipt, label: 'Fattura' },
+  fattura_estera_pdf: { bg: COLORS.successLight, text: COLORS.success, icon: Globe, label: 'Fattura estera' },
+  busta_paga: { bg: COLORS.warningLight, text: COLORS.warning, icon: FileText, label: 'Cedolino' },
+  estratto_conto: { bg: COLORS.primarySoft, text: COLORS.info, icon: Landmark, label: 'Estratto conto' },
+  quietanza: { bg: COLORS.successLight, text: COLORS.success, icon: CheckCircle2, label: 'Quietanza' },
+  bonifico: { bg: COLORS.primarySoft, text: COLORS.primaryDark, icon: Banknote, label: 'Bonifico' },
+  cartella_esattoriale: { bg: COLORS.dangerLight, text: COLORS.danger, icon: TriangleAlert, label: 'Cartella' },
+  avviso_bonario: { bg: COLORS.warningLight, text: COLORS.warning, icon: Mail, label: 'Avviso bonario' },
+  dichiarazione_iva: { bg: COLORS.bgAlt, text: COLORS.text, icon: ChartColumn, label: 'Dichiarazione IVA' },
+  satispay: { bg: COLORS.primarySoft, text: COLORS.primaryDark, icon: Smartphone, label: 'Satispay' },
+  contributi_inps: { bg: COLORS.bgAlt, text: COLORS.text, icon: Landmark, label: 'INPS' },
+  certificazione_unica: { bg: COLORS.successLight, text: COLORS.success, icon: User, label: 'CU' },
+  verbale: { bg: COLORS.dangerLight, text: COLORS.danger, icon: Car, label: 'Verbale' },
+  pagopa: { bg: COLORS.bgAlt, text: COLORS.text, icon: Landmark, label: 'PagoPA' },
+  paypal: { bg: COLORS.primarySoft, text: COLORS.text, icon: CreditCard, label: 'PayPal' },
+  altro: { bg: COLORS.bgAlt, text: COLORS.textMuted, icon: FileText, label: 'Altro' },
 };
 
 const STATUS_LABELS = {
@@ -183,7 +187,6 @@ export default function Documenti() {
   return (
     <PageLayout
       title="Archivio documenti"
-      icon="🗂️"
       subtitle={`Consultazione documentale ${anno}: provenienza, stato, collegamenti e anomalie senza modificare i dati`}
       actions={
         <>
@@ -285,7 +288,6 @@ export default function Documenti() {
 
       <Card
         title={`Documenti ${rangeStart}–${rangeEnd} di ${total}`}
-        icon="📄"
         bodyStyle={{ padding: 14 }}
       >
         {loading ? (
@@ -294,7 +296,6 @@ export default function Documenti() {
           </div>
         ) : documents.length === 0 ? (
           <div style={{ padding: 44, textAlign: 'center', color: COLORS.textMuted }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>🗂️</div>
             <strong>Nessun documento con questi filtri.</strong>
             <div style={{ marginTop: 6 }}>Azzera i filtri oppure usa la pagina Carica documenti.</div>
           </div>
@@ -311,6 +312,7 @@ export default function Documenti() {
                 ruoloCard: 'omesso',
                 render: doc => {
                   const style = categoryStyle(doc);
+                  const Icona = style.icon;
                   return (
                     <span
                       title={doc.category_label || style.label}
@@ -326,7 +328,7 @@ export default function Documenti() {
                         fontWeight: 700,
                       }}
                     >
-                      {style.icon} {style.label}
+                      <Icona size={14} aria-hidden /> {style.label}
                     </span>
                   );
                 },
@@ -358,21 +360,18 @@ export default function Documenti() {
                 key: 'periodo_documentale',
                 label: 'Periodo documento',
                 ruoloCard: 'dettaglio',
-                iconaCard: '📅',
                 render: doc => doc.periodo_documentale || 'Da verificare',
               },
               {
                 key: 'acquired_at',
                 label: 'Acquisito il',
                 ruoloCard: 'dettaglio',
-                iconaCard: '📥',
                 render: doc => formatArchiveDate(doc.acquired_at),
               },
               {
                 key: 'size_bytes',
                 label: 'Dimensione',
                 ruoloCard: 'dettaglio',
-                iconaCard: '💾',
                 align: 'right',
                 render: doc => formatBytes(doc.size_bytes),
               },
@@ -395,7 +394,7 @@ export default function Documenti() {
                       )}
                       {(doc.anomalies || []).map(anomaly => (
                         <span key={anomaly} style={{ fontSize: 11, color: COLORS.warning }}>
-                          ⚠ {ANOMALY_LABELS[anomaly] || anomaly}
+                          <TriangleAlert size={12} aria-hidden style={{ verticalAlign: '-2px' }} /> {ANOMALY_LABELS[anomaly] || anomaly}
                         </span>
                       ))}
                     </div>

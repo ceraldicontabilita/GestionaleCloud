@@ -74,7 +74,7 @@ class SchedulerConLease(AsyncIOScheduler):
 
 
 # Un solo oggetto per processo; la lease impedisce sovrapposizioni tra istanze.
-scheduler = SchedulerConLease()
+scheduler = SchedulerConLease(timezone="Europe/Rome")
 
 async def scan_verbali_email_task():
     """
@@ -1673,7 +1673,7 @@ def start_scheduler():
 
     scheduler.add_job(
         _tax_code_registry_job,
-        CronTrigger(day_of_week="sun", hour=4, minute=10),
+        CronTrigger(day_of_week="sun", hour=4, minute=10, timezone="Europe/Rome"),
         id="tax_code_registry_sync",
         name="Aggiornamento registro ufficiale codici tributo (settimanale)",
         replace_existing=True,
@@ -1692,7 +1692,7 @@ def start_scheduler():
 
     scheduler.add_job(
         _collaudo_notturno_job,
-        CronTrigger(hour=4, minute=30),
+        CronTrigger(hour=4, minute=30, timezone="Europe/Rome"),
         id="collaudo_invarianti",
         name="Collaudo automatico invarianti (ogni notte 4:30)",
         replace_existing=True,
@@ -1718,7 +1718,7 @@ def start_scheduler():
 
     scheduler.add_job(
         _cedolini_bloccati_job,
-        CronTrigger(day_of_week="sun", hour=5, minute=15),
+        CronTrigger(day_of_week="sun", hour=5, minute=15, timezone="Europe/Rome"),
         id="cedolini_bloccati",
         name="Cedolini arrivati ma mai elaborati (domenica ore 5:15)",
         replace_existing=True,
@@ -1829,7 +1829,7 @@ def start_scheduler():
 
     scheduler.add_job(
         check_scadenze_partite_task,
-        CronTrigger(hour=7, minute=0),
+        CronTrigger(hour=7, minute=0, timezone="Europe/Rome"),
         id="scadenze_partite_check",
         name="Controllo Scadenze Partite Aperte (ogni giorno ore 7:00)",
         replace_existing=True
@@ -1849,7 +1849,7 @@ def start_scheduler():
 
     scheduler.add_job(
         controllo_pos_calendario_task,
-        CronTrigger(hour=7, minute=30),
+        CronTrigger(hour=7, minute=30, timezone="Europe/Rome"),
         id="controllo_pos_calendario",
         name="Controllo POS con calendario accrediti (ogni giorno ore 7:30)",
         replace_existing=True
@@ -1891,7 +1891,7 @@ def start_scheduler():
 
     scheduler.add_job(
         controllo_canoni_noleggio_task,
-        CronTrigger(hour=7, minute=45),
+        CronTrigger(hour=7, minute=45, timezone="Europe/Rome"),
         id="controllo_canoni_noleggio",
         name="Regolarità canoni noleggio (ogni giorno ore 7:45)",
         replace_existing=True
@@ -1899,7 +1899,7 @@ def start_scheduler():
 
     scheduler.add_job(
         check_scadenze_f24_task,
-        CronTrigger(hour=8, minute=0),
+        CronTrigger(hour=8, minute=0, timezone="Europe/Rome"),
         id="f24_scadenze_check",
         name="Controllo Scadenze F24 (ogni giorno ore 8:00)",
         replace_existing=True
@@ -1916,7 +1916,7 @@ def start_scheduler():
 
     scheduler.add_job(
         verifica_trattenute_retro_task,
-        CronTrigger(hour=8, minute=30),
+        CronTrigger(hour=8, minute=30, timezone="Europe/Rome"),
         id="verifica_trattenute_retro",
         name="Verifica retroattiva trattenute verbali nei cedolini (ogni giorno ore 8:30)",
         replace_existing=True
@@ -1924,7 +1924,7 @@ def start_scheduler():
 
     scheduler.add_job(
         check_scadenze_f24_task,
-        CronTrigger(hour=14, minute=0),
+        CronTrigger(hour=14, minute=0, timezone="Europe/Rome"),
         id="f24_scadenze_check_pm",
         name="Reminder Scadenze F24 (ogni giorno ore 14:00)",
         replace_existing=True
@@ -1932,7 +1932,7 @@ def start_scheduler():
 
     scheduler.add_job(
         check_fornitori_duplicati_task,
-        CronTrigger(hour=6, minute=0),
+        CronTrigger(hour=6, minute=0, timezone="Europe/Rome"),
         id="fornitori_duplicati_check",
         name="Controllo Fornitori Duplicati (ogni giorno ore 6:00)",
         replace_existing=True
@@ -1940,7 +1940,7 @@ def start_scheduler():
 
     scheduler.add_job(
         unifica_fornitori_duplicati_task,
-        CronTrigger(hour=6, minute=20),
+        CronTrigger(hour=6, minute=20, timezone="Europe/Rome"),
         id="fornitori_unifica_duplicati",
         name="Unifica Fornitori Duplicati (ogni giorno ore 6:20)",
         misfire_grace_time=3600,
@@ -1962,7 +1962,7 @@ def start_scheduler():
 
     scheduler.add_job(
         paypal_recupera_fatture_email_task,
-        CronTrigger(hour=5, minute=30),
+        CronTrigger(hour=5, minute=30, timezone="Europe/Rome"),
         id="paypal_recupera_fatture_email",
         name="Recupero Fatture PayPal mancanti dalla posta (ogni giorno ore 5:30)",
         replace_existing=True
@@ -2020,7 +2020,7 @@ def start_scheduler():
 
     scheduler.add_job(
         _paypal_automatico_job,
-        CronTrigger(hour="3,14", minute=20),
+        CronTrigger(hour="3,14", minute=20, timezone="Europe/Rome"),
         misfire_grace_time=3600,
         coalesce=True,
         id="paypal_automatico",

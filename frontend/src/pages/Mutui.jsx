@@ -22,6 +22,7 @@ import {
   Banknote,
   FileText,
 } from 'lucide-react';
+import { euroOppure, dataOppure } from '../lib/vista';
 
 const MONO = FONT.mono;
 
@@ -29,6 +30,7 @@ export default function Mutui() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   const [mutui, setMutui] = useState([]);
+  const [rateVisibili, setRateVisibili] = useState({});
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedMutuo, setExpandedMutuo] = useState(null);
@@ -138,7 +140,7 @@ export default function Mutui() {
                 Importo Totale Accordato
               </div>
               <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.text, fontFamily: MONO }}>
-                {formatEuro(stats.importo_totale_accordato)}
+                {euroOppure(stats.importo_totale_accordato)}
               </div>
               <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
                 {stats.numero_mutui} mutui attivi
@@ -178,7 +180,7 @@ export default function Mutui() {
             >
               <div style={{ fontSize: 11, color: COLORS.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Debito Residuo</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.warning, fontFamily: MONO }}>
-                {formatEuro(stats.debito_residuo_totale)}
+                {euroOppure(stats.debito_residuo_totale)}
               </div>
               <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
                 {stats.rate_da_pagare} rate da pagare
@@ -255,7 +257,7 @@ export default function Mutui() {
                   <div style={{ fontWeight: 600, color: COLORS.text }}>{scad.nome}</div>
                   <div style={{ color: COLORS.textMuted }}>
                     Rata {scad.numero_rata} - {formatDateIT(scad.data_scadenza)} -{' '}
-                    {formatEuro(scad.importo_totale)}
+                    {euroOppure(scad.importo_totale)}
                   </div>
                 </div>
               ))}
@@ -314,7 +316,7 @@ export default function Mutui() {
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 13, color: COLORS.textMuted }}>Importo accordato</div>
                     <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.text, fontFamily: MONO }}>
-                      {formatEuro(mutuo.importo_accordato)}
+                      {euroOppure(mutuo.importo_accordato)}
                     </div>
                   </div>
                 </div>
@@ -335,7 +337,7 @@ export default function Mutui() {
                       Totale pagato
                     </div>
                     <div style={{ fontSize: 16, fontWeight: 600, color: COLORS.success, fontFamily: MONO }}>
-                      {formatEuro(mutuo.totale_pagato)}
+                      {euroOppure(mutuo.totale_pagato)}
                     </div>
                     <div style={{ fontSize: 11, color: COLORS.textSubtle }}>
                       {mutuo.rate_pagate} / {mutuo.totale_rate} rate
@@ -346,7 +348,7 @@ export default function Mutui() {
                       Debito residuo
                     </div>
                     <div style={{ fontSize: 16, fontWeight: 600, color: COLORS.warning, fontFamily: MONO }}>
-                      {formatEuro(mutuo.debito_residuo_totale)}
+                      {euroOppure(mutuo.debito_residuo_totale)}
                     </div>
                   </div>
                   <div>
@@ -409,8 +411,8 @@ export default function Mutui() {
                   >
                     <Calendar size={16} style={{ color: COLORS.warning }} />
                     <span style={{ fontSize: 13, color: COLORS.warning, fontWeight: 500 }}>
-                      Prossima scadenza: {mutuo.prossima_data_scadenza} -{' '}
-                      {formatEuro(mutuo.prossimo_importo)}
+                      Prossima scadenza: {dataOppure(mutuo.prossima_data_scadenza)} -{' '}
+                      {euroOppure(mutuo.prossimo_importo)}
                     </span>
                   </div>
                 )}
@@ -449,7 +451,7 @@ export default function Mutui() {
                           </tr>
                         </thead>
                         <tbody>
-                          {mutuo.rate?.map((rata, idx) => (
+                          {mutuo.rate?.slice(0, rateVisibili[mutuo.mutuo_id] || 200).map((rata, idx) => (
                             <tr
                               key={idx}
                               style={{
@@ -464,13 +466,13 @@ export default function Mutui() {
                               <Td style={{ fontWeight: 500 }}>{rata.numero_rata}</Td>
                               <Td>{formatDateIT(rata.data_scadenza)}</Td>
                               <Td align="right" mono>
-                                {formatEuro(rata.quota_capitale)}
+                                {euroOppure(rata.quota_capitale)}
                               </Td>
                               <Td align="right" mono style={{ color: COLORS.textMuted }}>
-                                {formatEuro(rata.quota_interessi)}
+                                {euroOppure(rata.quota_interessi)}
                               </Td>
                               <Td align="right" mono style={{ fontWeight: 600 }}>
-                                {formatEuro(rata.importo_totale)}
+                                {euroOppure(rata.importo_totale)}
                               </Td>
                               <Td align="center">
                                 {rata.stato === 'Pagata' && (
@@ -526,6 +528,13 @@ export default function Mutui() {
                         </tbody>
                       </Table>
                     </TableWrap>
+                    {(mutuo.rate?.length || 0) > (rateVisibili[mutuo.mutuo_id] || 200) && (
+                      <div style={{ textAlign: 'center', padding: 12 }}>
+                        <Button type="button" variant="secondary" onClick={() => setRateVisibili(p => ({ ...p, [mutuo.mutuo_id]: (p[mutuo.mutuo_id] || 200) + 200 }))}>
+                          Mostra altre ({mutuo.rate.length - (rateVisibili[mutuo.mutuo_id] || 200)})
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Riepilogo Importi */}
@@ -549,7 +558,7 @@ export default function Mutui() {
                         Capitale Pagato
                       </div>
                       <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.success, fontFamily: MONO }}>
-                        {formatEuro(mutuo.totale_pagato_capitale)}
+                        {euroOppure(mutuo.totale_pagato_capitale)}
                       </div>
                     </div>
                     <div
@@ -564,7 +573,7 @@ export default function Mutui() {
                         Interessi Pagati
                       </div>
                       <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.warning, fontFamily: MONO }}>
-                        {formatEuro(mutuo.totale_pagato_interessi)}
+                        {euroOppure(mutuo.totale_pagato_interessi)}
                       </div>
                     </div>
                     <div
@@ -580,7 +589,7 @@ export default function Mutui() {
                         Totale Versato
                       </div>
                       <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.text, fontFamily: MONO }}>
-                        {formatEuro(mutuo.totale_pagato)}
+                        {euroOppure(mutuo.totale_pagato)}
                       </div>
                     </div>
                   </div>

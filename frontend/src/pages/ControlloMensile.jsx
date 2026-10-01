@@ -4,6 +4,8 @@ import { formatEuro, COLORS, FONT, SHADOWS, BORDER_RADIUS, formatDateIT } from '
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Esito, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
+import { euroOppure } from '../lib/vista';
+import { X, TriangleAlert, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 
 /**
  * I due terminali restano separati: NUMIA (chiusura serale scritta a mano)
@@ -496,7 +498,7 @@ export default function ControlloMensile() {
               onClick={() => setShowVersamentiModal(false)}
               style={{ fontSize: 16, padding: '4px 10px' }}
             >
-              ✕
+              <X size={16} aria-hidden />
             </Button>
           </div>
 
@@ -563,7 +565,7 @@ export default function ControlloMensile() {
             padding: '10px 14px', marginBottom: 16, fontSize: 14,
           }}
         >
-          ⚠️ Errore nel caricamento di: {fontiErrore.join(', ')}. I totali possono essere
+          <TriangleAlert size={16} aria-hidden style={{ verticalAlign: '-3px' }} /> Errore nel caricamento di: {fontiErrore.join(', ')}. I totali possono essere
           incompleti — non è detto che il periodo sia senza movimenti. Riprova.
         </div>
       )}
@@ -613,7 +615,7 @@ export default function ControlloMensile() {
                 style={{ minHeight: 40 }}
                 data-testid="prev-month-btn"
               >
-                ◀ {meseSelezionato > 1 ? monthNames[meseSelezionato - 2] : 'Gen'}
+                <ChevronLeft size={16} aria-hidden style={{ verticalAlign: '-3px' }} /> {meseSelezionato > 1 ? monthNames[meseSelezionato - 2] : 'Gen'}
               </Button>
 
               <span
@@ -643,7 +645,7 @@ export default function ControlloMensile() {
                 style={{ minHeight: 40 }}
                 data-testid="next-month-btn"
               >
-                {meseSelezionato < 12 ? monthNames[meseSelezionato] : 'Dic'} ▶
+                {meseSelezionato < 12 ? monthNames[meseSelezionato] : 'Dic'} <ChevronRight size={16} aria-hidden style={{ verticalAlign: '-3px' }} />
               </Button>
             </div>
 
@@ -654,7 +656,7 @@ export default function ControlloMensile() {
               style={{ minHeight: 40 }}
               data-testid="back-to-year-btn"
             >
-              ← Riepilogo Annuale
+              <ArrowLeft size={16} aria-hidden style={{ verticalAlign: '-3px' }} /> Riepilogo Annuale
             </Button>
 
             <Button
@@ -682,10 +684,10 @@ export default function ControlloMensile() {
         </p>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <StatCard label="Elettronico secondo il registratore" value={formatEuro(yearTotals.posAuto)} accent="primary" />
-        <StatCard label="POS Numia, chiusura serale" value={formatEuro(yearTotals.posNumia || 0)} accent="primary" />
-        <StatCard label="POS SumUp, dall'app" value={formatEuro(yearTotals.posSumup || 0)} accent="primary" />
-        <StatCard label="Accreditato su BPM" subtext="Solo Numia: SumUp paga sulla sua carta" value={formatEuro(yearTotals.posBanca || 0)} accent="primary" />
+        <StatCard label="Elettronico secondo il registratore" value={euroOppure(yearTotals.posAuto)} accent="primary" />
+        <StatCard label="POS Numia, chiusura serale" value={euroOppure(yearTotals.posNumia)} accent="primary" />
+        <StatCard label="POS SumUp, dall'app" value={euroOppure(yearTotals.posSumup)} accent="primary" />
+        <StatCard label="Accreditato su BPM" subtext="Solo Numia: SumUp paga sulla sua carta" value={euroOppure(yearTotals.posBanca)} accent="primary" />
       </div>
       <p style={{ margin: '0 0 16px', fontSize: 13, color: COLORS.textMuted }}>
         Fatture da registrare {(completezzaRegistro.fatture_da_registrare || 0).toLocaleString('it-IT')}
@@ -709,7 +711,7 @@ export default function ControlloMensile() {
             gap: 10,
           }}
         >
-          <span style={{ fontSize: 24 }}>⚠️</span>
+          <TriangleAlert size={24} aria-hidden color={COLORS.warning} />
           <div>
             <strong>Attenzione:</strong> alcuni {viewMode === 'anno' ? 'mesi' : 'giorni'} non tornano.
             La colonna «Esito» dice quali: «Da sistemare» serve un intervento, «Da verificare» va guardato.
@@ -758,16 +760,16 @@ export default function ControlloMensile() {
                   >
                     <Td style={{ fontWeight: 600 }}>{row.monthName}</Td>
                     <Td align="right" mono>
-                      {row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}
+                      {row.posAuto > 0 ? euroOppure(row.posAuto) : '-'}
                     </Td>
                     <Td align="right" mono>
-                      {row.posNumia > 0 ? formatEuro(row.posNumia) : '-'}
+                      {row.posNumia > 0 ? euroOppure(row.posNumia) : '-'}
                     </Td>
                     <Td align="right" mono>
-                      {row.posSumup > 0 ? formatEuro(row.posSumup) : '-'}
+                      {row.posSumup > 0 ? euroOppure(row.posSumup) : '-'}
                     </Td>
                     <Td align="right" mono>
-                      {row.posBanca > 0 ? formatEuro(row.posBanca) : '-'}
+                      {row.posBanca > 0 ? euroOppure(row.posBanca) : '-'}
                     </Td>
                     <Td align="center"><Esito esito={row.esitoRegistratore} /></Td>
                     <Td align="center"><Esito esito={row.esitoBanca} /></Td>
@@ -793,10 +795,10 @@ export default function ControlloMensile() {
                 style={{ background: COLORS.primary, color: '#fff', fontWeight: 'bold', fontSize: 12 }}
               >
                 <td style={{ padding: 10 }}>TOTALE {anno}</td>
-                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posAuto)}</td>
-                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posNumia || 0)}</td>
-                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posSumup || 0)}</td>
-                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{formatEuro(yearTotals.posBanca || 0)}</td>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{euroOppure(yearTotals.posAuto)}</td>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{euroOppure(yearTotals.posNumia)}</td>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{euroOppure(yearTotals.posSumup)}</td>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>{euroOppure(yearTotals.posBanca)}</td>
                 <td></td>
                 <td></td>
                 <td style={{ padding: 10 }}></td>
@@ -846,15 +848,15 @@ export default function ControlloMensile() {
                     data-testid={`row-${row.date}`}
                   >
                     <Td style={{ fontWeight: 500 }}>{formatDate(row.date)}</Td>
-                    <Td align="right" mono>{row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}</Td>
-                    <Td align="right" mono>{row.posNumia > 0 ? formatEuro(row.posNumia) : '-'}</Td>
-                    <Td align="right" mono>{row.posSumup > 0 ? formatEuro(row.posSumup) : '-'}</Td>
-                    <Td align="right" mono>{row.posBanca > 0 ? formatEuro(row.posBanca) : '-'}</Td>
+                    <Td align="right" mono>{row.posAuto > 0 ? euroOppure(row.posAuto) : '-'}</Td>
+                    <Td align="right" mono>{row.posNumia > 0 ? euroOppure(row.posNumia) : '-'}</Td>
+                    <Td align="right" mono>{row.posSumup > 0 ? euroOppure(row.posSumup) : '-'}</Td>
+                    <Td align="right" mono>{row.posBanca > 0 ? euroOppure(row.posBanca) : '-'}</Td>
                     <Td align="right" mono>
-                      {Math.abs(row.posDiff) > 0.01 ? `${row.posDiff > 0 ? '+' : ''}${formatEuro(row.posDiff)}` : '-'}
+                      {Math.abs(row.posDiff) > 0.01 ? `${row.posDiff > 0 ? '+' : ''}${euroOppure(row.posDiff)}` : '-'}
                     </Td>
                     <Td align="right" mono>
-                      {Math.abs(row.posBancaDiff) > 0.01 ? `${row.posBancaDiff > 0 ? '+' : ''}${formatEuro(row.posBancaDiff)}` : '-'}
+                      {Math.abs(row.posBancaDiff) > 0.01 ? `${row.posBancaDiff > 0 ? '+' : ''}${euroOppure(row.posBancaDiff)}` : '-'}
                     </Td>
                     <Td align="center"><Esito esito={row.esito} /></Td>
                   </tr>

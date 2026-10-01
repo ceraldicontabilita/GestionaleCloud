@@ -6,8 +6,9 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading, PageError } from '../components/PageLayout';
 import { Button, Select, TableWrap, Table, Th, Td, Input } from '../components/ds';
-import { FileText, Download, TrendingUp, TrendingDown, Scale, Trash2, Plus } from 'lucide-react';
+import { FileText, Download, TrendingUp, TrendingDown, Scale, Trash2, Plus, Ruler, PenLine } from 'lucide-react';
 import { toast } from 'sonner';
+import { euroOppure } from '../lib/vista';
 
 // Voce del bilancio → conto operativo del registro in partita doppia
 // (motore unico app/services/registrazione_contabile.py, conti fissi).
@@ -25,7 +26,7 @@ export const DATO_NON_DISPONIBILE = 'Dato non disponibile';
 
 /** Un importo che il backend non conosce (null) non si mostra come 0,00. */
 export function euroODato(valore) {
-  return valore == null ? DATO_NON_DISPONIBILE : formatEuro(valore);
+  return valore == null ? DATO_NON_DISPONIBILE : euroOppure(valore);
 }
 
 export default function Bilancio() {
@@ -193,7 +194,7 @@ export default function Bilancio() {
     return (
       <details style={{ marginTop: 20 }}>
         <summary style={{ cursor: 'pointer', fontWeight: 600, color: COLORS.textMuted }}>
-          📓 Piano dei conti ufficiale (CEE) — {titolo}
+          Piano dei conti ufficiale (CEE) — {titolo}
         </summary>
         <div style={{ marginTop: 12, overflowX: 'auto' }}>
           {gruppi.map(([gruppo, righe]) => (
@@ -207,7 +208,7 @@ export default function Bilancio() {
                     <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                       <td style={{ padding: '4px 8px', fontFamily: FONT.mono, whiteSpace: 'nowrap' }}>{r.codice}</td>
                       <td style={{ padding: '4px 8px' }}>{r.descrizione}</td>
-                      <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: FONT.mono }}>{formatEuro(r.saldo)}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: FONT.mono }}>{euroOppure(r.saldo)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -257,20 +258,20 @@ export default function Bilancio() {
                   <tr>
                     <Td style={{ color: COLORS.gray[700] }}>Cassa <LinkVerifica conto="cassa" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
-                      {formatEuro(attivo.disponibilita_liquide.cassa)}
+                      {euroOppure(attivo.disponibilita_liquide.cassa)}
                     </Td>
                   </tr>
                   <tr>
                     <Td style={{ color: COLORS.gray[700] }}>Banca BPM <LinkVerifica conto="banca" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
-                      {formatEuro(attivo.disponibilita_liquide.banca)}
+                      {euroOppure(attivo.disponibilita_liquide.banca)}
                     </Td>
                   </tr>
                   {attivo.disponibilita_liquide.mastercard_sumup != null && (
                     <tr>
                       <Td style={{ color: COLORS.gray[700] }}>Mastercard SumUp</Td>
                       <Td align="right" mono style={{ fontWeight: 500 }}>
-                        {formatEuro(attivo.disponibilita_liquide.mastercard_sumup)}
+                        {euroOppure(attivo.disponibilita_liquide.mastercard_sumup)}
                       </Td>
                     </tr>
                   )}
@@ -278,14 +279,14 @@ export default function Bilancio() {
                     <tr>
                       <Td style={{ color: COLORS.gray[700] }}>Altri conti di tesoreria</Td>
                       <Td align="right" mono style={{ fontWeight: 500 }}>
-                        {formatEuro(attivo.disponibilita_liquide.altri_conti_banca)}
+                        {euroOppure(attivo.disponibilita_liquide.altri_conti_banca)}
                       </Td>
                     </tr>
                   ) : null}
                   <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
                     <Td style={{ fontWeight: 600 }}>Totale</Td>
                     <Td align="right" mono style={{ fontWeight: 600 }}>
-                      {formatEuro(attivo.disponibilita_liquide.totale)}
+                      {euroOppure(attivo.disponibilita_liquide.totale)}
                     </Td>
                   </tr>
                 </tbody>
@@ -306,7 +307,7 @@ export default function Bilancio() {
                   <tr>
                     <Td style={{ color: COLORS.gray[700] }}>Crediti vs Clienti <LinkVerifica conto="crediti_clienti" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
-                      {formatEuro(attivo.crediti.crediti_vs_clienti)}
+                      {euroOppure(attivo.crediti.crediti_vs_clienti)}
                     </Td>
                   </tr>
                 </tbody>
@@ -325,7 +326,7 @@ export default function Bilancio() {
                       <tr>
                         <Td style={{ color: COLORS.gray[700] }}>Da cespiti (Cespiti &amp; TFR)</Td>
                         <Td align="right" mono style={{ fontWeight: 500 }}>
-                          {formatEuro(attivo.immobilizzazioni.da_cespiti)}
+                          {euroOppure(attivo.immobilizzazioni.da_cespiti)}
                         </Td>
                       </tr>
                     )}
@@ -333,14 +334,14 @@ export default function Bilancio() {
                       <tr>
                         <Td style={{ color: COLORS.gray[700] }}>Da voci inserite a mano</Td>
                         <Td align="right" mono style={{ fontWeight: 500 }}>
-                          {formatEuro(attivo.immobilizzazioni.da_voci_manuali)}
+                          {euroOppure(attivo.immobilizzazioni.da_voci_manuali)}
                         </Td>
                       </tr>
                     )}
                     <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
                       <Td style={{ fontWeight: 600 }}>Totale</Td>
                       <Td align="right" mono style={{ fontWeight: 600 }}>
-                        {formatEuro(attivo.immobilizzazioni.totale)}
+                        {euroOppure(attivo.immobilizzazioni.totale)}
                       </Td>
                     </tr>
                   </tbody>
@@ -364,7 +365,7 @@ export default function Bilancio() {
           >
             <span style={{ fontSize: 16, fontWeight: 600 }}>TOTALE ATTIVO</span>
             <span style={{ fontSize: 24, fontWeight: 700, fontFamily: FONT.mono }}>
-              {formatEuro(attivo.totale_attivo)}
+              {euroOppure(attivo.totale_attivo)}
             </span>
           </div>
         </div>
@@ -399,14 +400,14 @@ export default function Bilancio() {
                   <tr>
                     <Td style={{ color: COLORS.gray[700] }}>Debiti vs Fornitori <LinkVerifica conto="debiti_fornitori" /></Td>
                     <Td align="right" mono style={{ fontWeight: 500 }}>
-                      {formatEuro(passivo.debiti.debiti_vs_fornitori)}
+                      {euroOppure(passivo.debiti.debiti_vs_fornitori)}
                     </Td>
                   </tr>
                   {passivo.fondo_tfr > 0 && (
                     <tr>
                       <Td style={{ color: COLORS.gray[700] }}>Fondo TFR <LinkVerifica conto="fondo_tfr" /></Td>
                       <Td align="right" mono style={{ fontWeight: 500 }}>
-                        {formatEuro(passivo.fondo_tfr)}
+                        {euroOppure(passivo.fondo_tfr)}
                       </Td>
                     </tr>
                   )}
@@ -431,7 +432,7 @@ export default function Bilancio() {
                         color: passivo.patrimonio_netto >= 0 ? COLORS.success : COLORS.danger,
                       }}
                     >
-                      {formatEuro(passivo.patrimonio_netto)}
+                      {euroOppure(passivo.patrimonio_netto)}
                     </Td>
                   </tr>
                   {passivo.patrimonio_netto_dettaglio_manuale > 0 && (
@@ -440,7 +441,7 @@ export default function Bilancio() {
                         di cui da voci inserite a mano (capitale/riserve)
                       </Td>
                       <Td align="right" mono style={{ fontSize: 12, color: COLORS.textMuted }}>
-                        {formatEuro(passivo.patrimonio_netto_dettaglio_manuale)}
+                        {euroOppure(passivo.patrimonio_netto_dettaglio_manuale)}
                       </Td>
                     </tr>
                   )}
@@ -464,13 +465,13 @@ export default function Bilancio() {
           >
             <span style={{ fontSize: 16, fontWeight: 600 }}>TOTALE PASSIVO</span>
             <span style={{ fontSize: 24, fontWeight: 700, fontFamily: FONT.mono }}>
-              {formatEuro(passivo.totale_passivo)}
+              {euroOppure(passivo.totale_passivo)}
             </span>
           </div>
         </div>
       </PageGrid>
       {mese && rateoAmmortamenti && rateoAmmortamenti.num_cespiti > 0 && (
-        <PageSection title="Ammortamenti a rateo (bilancio provvisorio)" icon="📐" style={{ marginTop: 24 }}>
+        <PageSection title="Ammortamenti a rateo (bilancio provvisorio)" icon={<Ruler size={16} aria-hidden />} style={{ marginTop: 24 }}>
           <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
             Rateo lineare da inizio anno (quota annuale ordinaria / 12 × mesi trascorsi):
             l'ammortamento maturato dai cespiti fino a {mesi.find(m => m.value === mese)?.label} {anno}, per
@@ -491,21 +492,21 @@ export default function Bilancio() {
                 {rateoAmmortamenti.cespiti.map(c => (
                   <tr key={c.cespite_id}>
                     <Td>{c.descrizione}</Td>
-                    <Td align="right" mono>{formatEuro(c.quota_annua_ordinaria)}</Td>
-                    <Td align="right" mono style={{ fontWeight: 500 }}>{formatEuro(c.rateo_al_mese)}</Td>
+                    <Td align="right" mono>{euroOppure(c.quota_annua_ordinaria)}</Td>
+                    <Td align="right" mono style={{ fontWeight: 500 }}>{euroOppure(c.rateo_al_mese)}</Td>
                   </tr>
                 ))}
                 <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
                   <Td style={{ fontWeight: 600 }}>Totale rateo</Td>
                   <Td></Td>
-                  <Td align="right" mono style={{ fontWeight: 600 }}>{formatEuro(rateoAmmortamenti.totale_rateo)}</Td>
+                  <Td align="right" mono style={{ fontWeight: 600 }}>{euroOppure(rateoAmmortamenti.totale_rateo)}</Td>
                 </tr>
               </tbody>
             </Table>
           </TableWrap>
         </PageSection>
       )}
-      <PageSection title="Voci di bilancio inserite manualmente" icon="✍️" style={{ marginTop: 24 }}>
+      <PageSection title="Voci di bilancio inserite manualmente" icon={<PenLine size={16} aria-hidden />} style={{ marginTop: 24 }}>
         <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
           Capitale sociale, riserve, saldi di apertura o altre immobilizzazioni che il
           sistema non deriva da prima nota/fatture/cedolini — codici del piano dei conti
@@ -529,7 +530,7 @@ export default function Bilancio() {
                     <Td mono>{v.codice_cee}</Td>
                     <Td>{v.descrizione}</Td>
                     <Td style={{ color: COLORS.textMuted, fontSize: 12 }}>{v.note || '-'}</Td>
-                    <Td align="right" mono style={{ fontWeight: 500 }}>{formatEuro(v.importo)}</Td>
+                    <Td align="right" mono style={{ fontWeight: 500 }}>{euroOppure(v.importo)}</Td>
                     <Td align="right">
                       <Button
                         variant="ghost"
@@ -544,8 +545,8 @@ export default function Bilancio() {
                 ))}
                 <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
                   <Td colSpan={3} style={{ fontWeight: 600 }}>
-                    Totale — immobilizzazioni {formatEuro(vociBilancio.totale_immobilizzazioni)},
-                    capitale e riserve {formatEuro(vociBilancio.totale_patrimonio_netto)}
+                    Totale — immobilizzazioni {euroOppure(vociBilancio.totale_immobilizzazioni)},
+                    capitale e riserve {euroOppure(vociBilancio.totale_patrimonio_netto)}
                   </Td>
                   <Td align="right" mono style={{ fontWeight: 600 }}>
                     {formatEuro(vociBilancio.totale_immobilizzazioni + vociBilancio.totale_patrimonio_netto)}
@@ -645,13 +646,13 @@ export default function Bilancio() {
                     Corrispettivi (Imponibile) <LinkVerifica conto="ricavi_corrispettivi" />
                   </Td>
                   <Td align="right" mono style={{ fontWeight: 500, fontSize: 16 }}>
-                    {formatEuro(ricavi.corrispettivi)}
+                    {euroOppure(ricavi.corrispettivi)}
                   </Td>
                 </tr>
                 {ricavi.corrispettivi_lordi > 0 && (
                   <tr>
                     <Td style={{ color: COLORS.textMuted, fontSize: 13, fontStyle: 'italic' }}>
-                      (Lordo incl. IVA: {formatEuro(ricavi.corrispettivi_lordi)})
+                      (Lordo incl. IVA: {euroOppure(ricavi.corrispettivi_lordi)})
                     </Td>
                     <Td></Td>
                   </tr>
@@ -663,7 +664,7 @@ export default function Bilancio() {
                     mono
                     style={{ fontWeight: 700, fontSize: 18, color: COLORS.success }}
                   >
-                    {formatEuro(ricavi.totale_ricavi)}
+                    {euroOppure(ricavi.totale_ricavi)}
                   </Td>
                 </tr>
               </tbody>
@@ -697,7 +698,7 @@ export default function Bilancio() {
                 <tr>
                   <Td style={{ color: COLORS.gray[700], fontSize: 15 }}>Acquisti (Imponibile) <LinkVerifica conto="acquisti_merci" /></Td>
                   <Td align="right" mono style={{ fontWeight: 500, fontSize: 16 }}>
-                    {formatEuro(costi.acquisti)}
+                    {euroOppure(costi.acquisti)}
                   </Td>
                 </tr>
                 {costi.note_credito > 0 && (
@@ -710,7 +711,7 @@ export default function Bilancio() {
                       mono
                       style={{ fontWeight: 500, fontSize: 16, color: COLORS.success }}
                     >
-                      -{formatEuro(costi.note_credito)}
+                      -{euroOppure(costi.note_credito)}
                     </Td>
                   </tr>
                 )}

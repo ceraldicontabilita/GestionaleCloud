@@ -38,6 +38,7 @@ from app.services.registrazione_contabile import (
     scrittura_quadrata,
     totali_righe,
 )
+from app.utils.id_fattura import filtro_id
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ async def _scritture_fattura(db) -> List[Dict[str, Any]]:
 
 
 async def _riregistra(db, fattura_id: str) -> Dict[str, Any]:
-    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
     if not fattura:
         return {"stato": "saltato", "motivo": "fattura non piu' in archivio"}
     if not _fattura_attiva(fattura):
@@ -100,7 +101,7 @@ async def _riregistra(db, fattura_id: str) -> Dict[str, Any]:
          "stato": {"$ne": "stornato"}, **FILTRO_SCRITTURA_ATTIVA},
         {"_id": 0, "id": 1})
     if valida:
-        await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
             "registrata_contabilita": True, "movimento_contabile_id": valida.get("id")}})
         return {"stato": "gia_registrato", "movimento_id": valida.get("id")}
     esito = await registra_fattura(db, fattura, force=True)
@@ -162,7 +163,7 @@ async def rettifica_scritture_fatture(db, *, dry_run: bool = True,
             }})
             if fattura_id:
                 await db["invoices"].update_one(
-                    {"id": fattura_id},
+                    filtro_id(fattura_id),
                     {"$set": {"registrata_contabilita": False,
                               "movimento_contabile_stornato_id": scrittura.get("id")},
                      "$unset": {"movimento_contabile_id": ""}})

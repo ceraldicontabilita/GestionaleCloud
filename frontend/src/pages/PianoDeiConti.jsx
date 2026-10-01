@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
-import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { PageHeader } from '../components/ds/PageHeader';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Button, Badge, StatCard, Input, Select, Table, TableWrap, Th, Td } from '../components/ds';
+import { euroOppure } from '../lib/vista';
+import { ChartColumn, TrendingDown, TrendingUp, Gem, Banknote, FileText, ChevronDown, ChevronRight, X } from 'lucide-react';
 
 const MONO = FONT.mono;
 
@@ -47,11 +49,11 @@ export function buildBalanceSummary(grouped = {}) {
 }
 
 const CATEGORIE = {
-  attivo: { nome: 'ATTIVO', color: COLORS.info, icon: '📊' },
-  passivo: { nome: 'PASSIVO', color: COLORS.danger, icon: '📉' },
-  patrimonio_netto: { nome: 'PATRIMONIO NETTO', color: COLORS.primary, icon: '💎' },
-  ricavi: { nome: 'RICAVI', color: COLORS.success, icon: '📈' },
-  costi: { nome: 'COSTI', color: COLORS.warning, icon: '💸' },
+  attivo: { nome: 'ATTIVO', color: COLORS.info, icon: ChartColumn },
+  passivo: { nome: 'PASSIVO', color: COLORS.danger, icon: TrendingDown },
+  patrimonio_netto: { nome: 'PATRIMONIO NETTO', color: COLORS.primary, icon: Gem },
+  ricavi: { nome: 'RICAVI', color: COLORS.success, icon: TrendingUp },
+  costi: { nome: 'COSTI', color: COLORS.warning, icon: Banknote },
 };
 
 export default function PianoDeiConti() {
@@ -59,6 +61,7 @@ export default function PianoDeiConti() {
   const confirm = useConfirm();
   const { anno: annoGlobale } = useAnnoGlobale();
   const [_conti, setConti] = useState([]);
+  const [movVisibili, setMovVisibili] = useState(200);
   const [pianoInfo, setPianoInfo] = useState({ totale: 0, nonMappati: [] });
   const [grouped, setGrouped] = useState({});
   const [bilancio, setBilancio] = useState(null);
@@ -253,7 +256,7 @@ export default function PianoDeiConti() {
               <StatCard
                 key={label}
                 label={label}
-                value={<span style={{ fontFamily: MONO }}>{formatEuro(val)}</span>}
+                value={<span style={{ fontFamily: MONO }}>{euroOppure(val)}</span>}
                 accent={accent}
               />
             ))}
@@ -291,7 +294,7 @@ export default function PianoDeiConti() {
                 disabled={riclassificando}
                 title="Analizza le righe delle fatture XML con AI e le assegna ai conti del piano corretti (es. Coca-Cola → Bevande analcoliche)"
               >
-                {riclassificando ? '⏳ Classificazione in corso…' : '🤖 Ricategorizza con AI'}
+                {riclassificando ? 'Classificazione in corso…' : 'Ricategorizza con AI'}
               </Button>
 
               {riclassificaResult && (
@@ -304,8 +307,8 @@ export default function PianoDeiConti() {
                   border: `1px solid ${riclassificaResult.success ? COLORS.success : COLORS.danger}`,
                 }}>
                   {riclassificaResult.success
-                    ? `✅ Articoli elaborati: ${riclassificaResult.step1_genera_dizionario?.total || 0} · Riclassificati AI: ${riclassificaResult.step2_categorizzazione_ai?.categorizzati || 0}`
-                    : `❌ Errore: ${riclassificaResult.error || 'operazione fallita'}`}
+                    ? `Articoli elaborati: ${riclassificaResult.step1_genera_dizionario?.total || 0} · Riclassificati AI: ${riclassificaResult.step2_categorizzazione_ai?.categorizzati || 0}`
+                    : `Errore: ${riclassificaResult.error || 'operazione fallita'}`}
                 </div>
               )}
             </div>
@@ -335,7 +338,7 @@ export default function PianoDeiConti() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: 24 }}>{cat.icon}</span>
+                      <cat.icon size={24} aria-hidden color={cat.color} />
                       <div>
                         <div style={{ fontWeight: 'bold', color: cat.color }}>{cat.nome}</div>
                         <div style={{ fontSize: 12, color: COLORS.textMuted }}>
@@ -344,7 +347,7 @@ export default function PianoDeiConti() {
                       </div>
                     </div>
                     <span style={{ fontSize: 20 }}>
-                      {expandedCategories.includes(key) ? '▼' : '▶'}
+                      {expandedCategories.includes(key) ? <ChevronDown size={20} aria-hidden /> : <ChevronRight size={20} aria-hidden />}
                     </span>
                   </div>
 
@@ -418,7 +421,7 @@ export default function PianoDeiConti() {
                                       color: conto.saldo >= 0 || lato_saldo(conto)?.favorevole ? COLORS.success : COLORS.danger,
                                     }}
                                   >
-                                    {lato_saldo(conto) ? formatEuro(Math.abs(conto.saldo)) : formatEuro(conto.saldo)}
+                                    {lato_saldo(conto) ? formatEuro(Math.abs(conto.saldo)) : euroOppure(conto.saldo)}
                                     {lato_saldo(conto) && (
                                       <span style={{ display: 'block', fontSize: 11, fontWeight: 'normal' }}>
                                         {lato_saldo(conto).testo}
@@ -478,7 +481,7 @@ export default function PianoDeiConti() {
               const catInfo = CATEGORIE[catKey] || {
                 nome: selectedConto.categoria,
                 color: COLORS.primary,
-                icon: '📄',
+                icon: FileText,
               };
               return (
                 <>
@@ -495,7 +498,7 @@ export default function PianoDeiConti() {
                       <div
                         style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, marginBottom: 4 }}
                       >
-                        {catInfo.icon} {catInfo.nome}
+                        <catInfo.icon size={18} aria-hidden style={{ verticalAlign: '-3px' }} /> {catInfo.nome}
                       </div>
                       <div
                         style={{
@@ -529,7 +532,7 @@ export default function PianoDeiConti() {
                         padding: '4px 12px',
                       }}
                     >
-                      ✕
+                      <X size={18} aria-hidden />
                     </button>
                   </div>
 
@@ -547,7 +550,7 @@ export default function PianoDeiConti() {
                         label: 'Saldo',
                         val: lato_saldo(selectedConto)
                           ? `${formatEuro(Math.abs(selectedConto.saldo))} · ${lato_saldo(selectedConto).testo}`
-                          : formatEuro(selectedConto.saldo || 0),
+                          : euroOppure(selectedConto.saldo),
                         color: (selectedConto.saldo || 0) >= 0 || lato_saldo(selectedConto)?.favorevole ? COLORS.success : COLORS.danger,
                       },
                       { label: 'Natura', val: selectedConto.natura || '—', color: COLORS.textMuted },
@@ -579,7 +582,7 @@ export default function PianoDeiConti() {
                   <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
                     {[
                       { label: 'Movimenti', val: contoDetail.totale_movimenti },
-                      { label: 'Totale periodo', val: formatEuro(contoDetail.totale_importo) },
+                      { label: 'Totale periodo', val: euroOppure(contoDetail.totale_importo) },
                     ].map(({ label, val }) => (
                       <div
                         key={label}
@@ -634,10 +637,10 @@ export default function PianoDeiConti() {
                             </tr>
                           </thead>
                           <tbody>
-                            {contoDetail.movimenti.map((mov, i) => (
+                            {contoDetail.movimenti.slice(0, movVisibili).map((mov, i) => (
                               <tr key={i}>
                                 <Td mono style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                                  {String(mov.data || '—').slice(0, 10)}
+                                  {mov.data ? formatDateIT(mov.data) : '—'}
                                 </Td>
                                 <Td style={{ maxWidth: 260 }}>
                                   <div
@@ -665,7 +668,7 @@ export default function PianoDeiConti() {
                                   }}
                                 >
                                   {mov.tipo === 'entrata' ? '+' : '-'}
-                                  {formatEuro(mov.importo)}
+                                  {euroOppure(mov.importo)}
                                 </Td>
                                 {contoDetail.movimenti.some(m => m.linea_descrizione) && (
                                   <Td>
@@ -682,7 +685,7 @@ export default function PianoDeiConti() {
                                         defaultValue=""
                                       >
                                         <option value="">
-                                          {spostandoRiga === mov.linea_descrizione ? '…' : '↔️'}
+                                          {spostandoRiga === mov.linea_descrizione ? '…' : 'Sposta'}
                                         </option>
                                         {contiCosti
                                           .filter(c => c.codice !== selectedConto?.codice)
@@ -700,6 +703,13 @@ export default function PianoDeiConti() {
                           </tbody>
                         </Table>
                       </TableWrap>
+                      {contoDetail.movimenti.length > movVisibili && (
+                        <div style={{ textAlign: 'center', padding: 12 }}>
+                          <Button type="button" variant="secondary" onClick={() => setMovVisibili(v => v + 200)}>
+                            Mostra altre ({contoDetail.movimenti.length - movVisibili})
+                          </Button>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <div

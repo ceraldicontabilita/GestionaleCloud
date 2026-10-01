@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import {
+  AlertTriangle,
   Brain,
   CheckCircle,
   TrendingUp,
@@ -74,7 +75,7 @@ export default function LearningMachineUniversale() {
         }}
       >
         <Brain size={48} style={{ marginBottom: 12 }} />
-        <h1 style={{ margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>Learning Machine</h1>
+        <h2 style={{ margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>Learning Machine</h2>
         <p style={{ margin: '0 0 24px', opacity: 0.9, fontSize: 15 }}>
           Analizza automaticamente tutti i dati per migliorare le associazioni e previsioni
         </p>
@@ -105,8 +106,8 @@ export default function LearningMachineUniversale() {
                 style={{
                   width: 24,
                   height: 24,
-                  border: '3px solid rgba(99,102,241,0.3)',
-                  borderTopColor: '#5b7a6b',
+                  border: '3px solid rgba(193,95,60,0.3)',
+                  borderTopColor: COLORS.primary,
                   borderRadius: '50%',
                   animation: 'spin 1s linear infinite',
                 }}
@@ -116,7 +117,7 @@ export default function LearningMachineUniversale() {
           ) : (
             <>
               <Brain size={24} />
-              🧠 Impara Tutto
+              Impara Tutto
             </>
           )}
         </button>
@@ -132,15 +133,15 @@ export default function LearningMachineUniversale() {
         <div
           style={{
             padding: 16,
-            background: '#fef2f2',
-            border: '1px solid #fca5a5',
+            background: COLORS.dangerLight,
+            border: `1px solid ${COLORS.danger}`,
             borderRadius: 12,
-            color: '#dc2626',
+            color: COLORS.danger,
             marginBottom: 24,
             textAlign: 'center',
           }}
         >
-          ⚠️ Errore: {error}
+          <AlertTriangle size={16} aria-hidden style={{ verticalAlign: '-3px', marginRight: 6 }} />Errore: {error}
         </div>
       )}
 
@@ -156,7 +157,7 @@ export default function LearningMachineUniversale() {
           }}
         >
           <h3 style={{ margin: '0 0 16px', fontSize: 14, color: '#7a776e', fontWeight: 600 }}>
-            📊 Dati disponibili per l'apprendimento
+            Dati disponibili per l'apprendimento
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {Object.entries(status.collections || {}).map(([name, count]) => (
@@ -168,7 +169,7 @@ export default function LearningMachineUniversale() {
                   borderRadius: 8,
                   fontSize: 13,
                   fontWeight: 500,
-                  color: count > 0 ? '#16a34a' : '#a19d92',
+                  color: count > 0 ? COLORS.success : '#a19d92',
                 }}
               >
                 {name}: <strong>{count.toLocaleString()}</strong>
@@ -195,7 +196,7 @@ export default function LearningMachineUniversale() {
               gap: 8,
             }}
           >
-            <CheckCircle size={24} color="#10b981" />
+            <CheckCircle size={24} color={COLORS.success} />
             Cosa ho imparato
           </h2>
 
@@ -210,7 +211,7 @@ export default function LearningMachineUniversale() {
             {getModuleResult('fornitori') && (
               <ResultCard
                 icon={<Users size={24} />}
-                color="#5b7a6b"
+                color={COLORS.primary}
                 title="Fornitori"
                 analyzed={getModuleResult('fornitori').total_analyzed}
                 insights={[
@@ -219,7 +220,7 @@ export default function LearningMachineUniversale() {
                     .slice(0, 3)
                     .map(([m, c]) => `${m}: ${c} fornitori`),
                 ]}
-                benefit="→ Suggerisco metodo pagamento per nuovi fornitori"
+                benefit="Suggerisco metodo pagamento per nuovi fornitori"
               />
             )}
 
@@ -227,16 +228,16 @@ export default function LearningMachineUniversale() {
             {getModuleResult('stagionalita') && (
               <ResultCard
                 icon={<Calendar size={24} />}
-                color="#f59e0b"
+                color={COLORS.accent}
                 title="Stagionalità Vendite"
                 analyzed={getModuleResult('stagionalita').total_analyzed}
                 insights={[
-                  `Trend: ${getModuleResult('stagionalita').trend === 'growing' ? '📈 In crescita' : getModuleResult('stagionalita').trend === 'declining' ? '📉 In calo' : '➡️ Stabile'}`,
+                  `Trend: ${getModuleResult('stagionalita').trend === 'growing' ? 'In crescita' : getModuleResult('stagionalita').trend === 'declining' ? 'In calo' : 'Stabile'}`,
                   getModuleResult('stagionalita').peak_months?.length > 0
                     ? `Mesi migliori: ${getModuleResult('stagionalita').peak_months.join(', ')}`
                     : 'Analizzando pattern mensili...',
                 ]}
-                benefit="→ Prevedo gli incassi dei prossimi mesi"
+                benefit="Prevedo gli incassi dei prossimi mesi"
               />
             )}
 
@@ -244,7 +245,7 @@ export default function LearningMachineUniversale() {
             {getModuleResult('assegni') && (
               <ResultCard
                 icon={<FileText size={24} />}
-                color="#ef4444"
+                color={COLORS.danger}
                 title="Assegni"
                 analyzed={getModuleResult('assegni').total_analyzed}
                 insights={[
@@ -257,7 +258,7 @@ export default function LearningMachineUniversale() {
                         .join(', ')}`
                     : '',
                 ].filter(Boolean)}
-                benefit="→ Associo automaticamente assegni a fatture"
+                benefit="Associo automaticamente assegni a fatture"
               />
             )}
 
@@ -265,7 +266,7 @@ export default function LearningMachineUniversale() {
             {getModuleResult('pagamenti') && (
               <ResultCard
                 icon={<CreditCard size={24} />}
-                color="#10b981"
+                color={COLORS.success}
                 title="Tempi Pagamento"
                 analyzed={getModuleResult('pagamenti').total_analyzed}
                 insights={[
@@ -274,7 +275,7 @@ export default function LearningMachineUniversale() {
                     : 'Raccolgo dati sui pagamenti...',
                   `${getModuleResult('pagamenti').patterns_found} fornitori analizzati`,
                 ]}
-                benefit="→ Prevedo quando arriveranno i pagamenti"
+                benefit="Prevedo quando arriveranno i pagamenti"
               />
             )}
 
@@ -282,7 +283,7 @@ export default function LearningMachineUniversale() {
             {getModuleResult('movimenti') && (
               <ResultCard
                 icon={<TrendingUp size={24} />}
-                color="#8a6f47"
+                color={COLORS.info}
                 title="Movimenti Bancari"
                 analyzed={getModuleResult('movimenti').total_analyzed}
                 insights={[
@@ -291,7 +292,7 @@ export default function LearningMachineUniversale() {
                     ? `${Object.keys(getModuleResult('movimenti').keywords).length} parole chiave`
                     : 'Raccolgo dati movimenti...',
                 ]}
-                benefit="→ Categorizzo automaticamente i movimenti"
+                benefit="Categorizzo automaticamente i movimenti"
               />
             )}
           </div>
@@ -311,7 +312,7 @@ export default function LearningMachineUniversale() {
         >
           <Brain size={64} style={{ opacity: 0.3, marginBottom: 16 }} />
           <p style={{ fontSize: 16, margin: 0 }}>
-            Clicca <strong>"🧠 Impara Tutto"</strong> per iniziare l'analisi
+            Clicca <strong>"Impara Tutto"</strong> per iniziare l'analisi
           </p>
           <p style={{ fontSize: 14, margin: '8px 0 0', opacity: 0.7 }}>
             Il sistema analizzerà tutti i tuoi dati e imparerà i pattern

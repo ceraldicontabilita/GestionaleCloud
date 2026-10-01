@@ -32,6 +32,7 @@ export default function DriveDocumentIndex() {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null);
   const [originale, setOriginale] = useState(null);
+  const [limite, setLimite] = useState(200);
 
   // "Documenti" legge il protocollo vivo (gestionale.protocollo_drive):
   // una riga per file su Drive, aggiornata dal giro periodico.
@@ -48,7 +49,7 @@ export default function DriveDocumentIndex() {
           year: year || undefined,
           includi_rimossi: showRemoved ? true : undefined,
           solo_duplicati: onlyDuplicates ? true : undefined,
-          limit: 200,
+          limit: limite,
         },
       });
       setResults(response.data.results || []);
@@ -57,7 +58,7 @@ export default function DriveDocumentIndex() {
     } finally {
       setLoading(false);
     }
-  }, [endpoint, isVerbaliFolder, query, year, showRemoved, onlyDuplicates]);
+  }, [endpoint, isVerbaliFolder, query, year, showRemoved, onlyDuplicates, limite]);
 
   const refreshProtocol = async () => {
     setRefreshing(true);
@@ -93,6 +94,10 @@ export default function DriveDocumentIndex() {
     setSelected(null);
     search();
   }, [activeTab, isVerbaliFolder]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (limite > 200) search();
+  }, [limite]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDocument = async documentId => {
     setError('');
@@ -199,16 +204,19 @@ export default function DriveDocumentIndex() {
             <tbody>
               {results.map(document => (
                 <tr key={document.document_id} className={document.is_source_package ? 'is-package' : ''}>
-                  <td><strong>{document.subject || 'Da identificare'}</strong><small>{document.domain || 'Archivio Drive'}</small></td>
-                  <td>{document.year || '—'}</td>
-                  <td><strong>{document.display_title || document.document_type_label || 'Documento'}</strong><small title={document.filename}>{document.filename}</small></td>
-                  <td><span>{document.summary}</span><small title={document.drive_path}>{document.drive_path}</small></td>
-                  <td><span className={`drive-index__status ${document.is_source_package ? 'is-package' : ''}`}>{document.is_source_package ? 'PACCHETTO SORGENTE' : (document.status || 'CATALOGATO')}</span></td>
-                  <td>{documentButton(document)}</td>
+                  <td data-label="Persona / soggetto"><strong>{document.subject || 'Da identificare'}</strong><small>{document.domain || 'Archivio Drive'}</small></td>
+                  <td data-label="Anno">{document.year || '—'}</td>
+                  <td data-label="Atto"><strong>{document.display_title || document.document_type_label || 'Documento'}</strong><small title={document.filename}>{document.filename}</small></td>
+                  <td data-label="Informazioni utili"><span>{document.summary}</span><small title={document.drive_path}>{document.drive_path}</small></td>
+                  <td data-label="Stato"><span className={`drive-index__status ${document.is_source_package ? 'is-package' : ''}`}>{document.is_source_package ? 'PACCHETTO SORGENTE' : (document.status || 'CATALOGATO')}</span></td>
+                  <td data-label="Azioni">{documentButton(document)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {results.length >= limite && (
+            <button type="button" className="drive-index__more" onClick={() => setLimite(l => l + 200)} disabled={loading}>Mostra altre</button>
+          )}
         </div>
       )}
 

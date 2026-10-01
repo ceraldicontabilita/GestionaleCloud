@@ -55,7 +55,7 @@ SOLDI = (
 AMPIE = {"Exception", "BaseException"}
 
 # Cricchetta sui moduli che non toccano i soldi: può solo scendere.
-TETTO_ALTROVE = 117
+TETTO_ALTROVE = 112
 
 
 def _sul_denaro(percorso: Path) -> bool:

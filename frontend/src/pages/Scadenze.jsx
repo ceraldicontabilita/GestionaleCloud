@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Plus, TriangleAlert, RefreshCw, ClipboardList, CalendarDays, Check, Trash2, Eye, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
@@ -198,30 +199,12 @@ export default function Scadenze() {
             ? `-${Math.abs(s.giorni_mancanti)}g`
             : `${s.giorni_mancanti}g`;
 
-  const getTipoIcon = tipo => {
-    switch (tipo) {
-      case 'IVA':
-        return '🧾';
-      case 'F24':
-        return '📋';
-      case 'FATTURA':
-        return '📄';
-      case 'INPS':
-        return '🏛️';
-      case 'IRPEF':
-        return '📋';
-      default:
-        return '📌';
-    }
-  };
-
   return (
     <PageLayout
       title="Scadenze e Notifiche"
-      icon="📅"
       subtitle="Gestione scadenze fiscali, pagamenti e promemoria"
       actions={
-        <Button variant="info" size="lg" iconLeft="➕" onClick={() => setShowModal(true)}>
+        <Button variant="info" size="lg" iconLeft={<Plus size={16} aria-hidden="true" />} onClick={() => setShowModal(true)}>
           Nuova Scadenza
         </Button>
       }
@@ -240,7 +223,7 @@ export default function Scadenze() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 15 }}>
-              <span style={{ fontSize: 24 }}>⚠️</span>
+              <TriangleAlert size={24} aria-hidden="true" />
               <h3 style={{ margin: 0 }}>{alertWidget.totale_alert} Alert Attivi</h3>
             </div>
             <div
@@ -252,7 +235,7 @@ export default function Scadenze() {
             >
               {alertWidget.f24?.da_pagare_30gg > 0 && (
                 <StatCard
-                  icon="📋"
+                  icon={<ClipboardList size={18} aria-hidden="true" />}
                   label="F24 da Pagare"
                   value={alertWidget?.f24?.da_pagare_30gg}
                   accent="danger"
@@ -261,7 +244,7 @@ export default function Scadenze() {
               )}
               {alertWidget.fiscali?.prossime > 0 && (
                 <StatCard
-                  icon="📅"
+                  icon={<CalendarDays size={18} aria-hidden="true" />}
                   label="Scadenze Fiscali"
                   value={alertWidget?.fiscali?.prossime}
                   accent="warning"
@@ -287,7 +270,7 @@ export default function Scadenze() {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 15 }}>
-                <span style={{ fontSize: 24 }}>🔄</span>
+                <RefreshCw size={24} aria-hidden="true" />
                 <h3 style={{ margin: 0 }}>Documenti da Riconciliare</h3>
               </div>
 
@@ -322,7 +305,7 @@ export default function Scadenze() {
                       {documentiRiconciliare?.verbali?.in_attesa_fattura}
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-                      📧 Verbali in Attesa Fattura
+                      Verbali in Attesa Fattura
                     </div>
                     <div style={{ fontSize: 11, opacity: 0.8 }}>
                       PDF arrivati via email, fattura non ancora ricevuta
@@ -357,7 +340,7 @@ export default function Scadenze() {
                         documentiRiconciliare.verbali.con_pdf_scaricato}
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-                      📄 Fatture in Attesa Verbale
+                      Fatture in Attesa Verbale
                     </div>
                     <div style={{ fontSize: 11, opacity: 0.8 }}>
                       Fattura ricevuta, PDF verbale non ancora scaricato
@@ -378,7 +361,7 @@ export default function Scadenze() {
                 {/* F24/Tributi */}
                 {documentiRiconciliare.f24_tributi > 0 && (
                   <StatCard
-                    icon="📋"
+                    icon={<ClipboardList size={18} aria-hidden="true" />}
                     label="F24/Tributi"
                     value={documentiRiconciliare.f24_tributi}
                     subtext="Documenti da posta"
@@ -420,7 +403,7 @@ export default function Scadenze() {
                   }}
                   data-testid="btn-riconci-automatica"
                 >
-                  🔄 Riconcilia Automaticamente
+                  Riconcilia Automaticamente
                 </Button>
               </div>
             </div>
@@ -458,7 +441,7 @@ export default function Scadenze() {
           </label>
 
           <Button variant="secondary" onClick={() => loadData()}>
-            🔄 Aggiorna
+            Aggiorna
           </Button>
         </div>
 
@@ -479,12 +462,12 @@ export default function Scadenze() {
               fontWeight: 'bold',
             }}
           >
-            📋 Tutte le Scadenze ({totaleScadenze})
+            Tutte le Scadenze ({totaleScadenze})
           </div>
 
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
-              ⏳ Caricamento...
+              Caricamento...
             </div>
           ) : loadError ? (
             <div
@@ -554,7 +537,6 @@ export default function Scadenze() {
                     label: 'Data',
                     align: 'center',
                     ruoloCard: 'dettaglio',
-                    iconaCard: '📅',
                     // Su mobile solo gg/mm: l'anno è nel selettore globale
                     render: s => (isMobile ? formatDateGGMM(s.data) || '-' : formatDate(s.data)),
                     tdStyle: s => tdStyleScadenza(s, { color: COLORS.textMuted }),
@@ -564,7 +546,6 @@ export default function Scadenze() {
                     label: 'Giorni',
                     align: 'center',
                     ruoloCard: 'dettaglio',
-                    iconaCard: '⏳',
                     render: s => (
                       <span
                         style={{
@@ -623,14 +604,14 @@ export default function Scadenze() {
                               onClick={() => handleCompleta(s.id)}
                               title="Segna come completata"
                             >
-                              ✓
+                              <Check size={14} aria-hidden="true" />
                             </RowActionButton>
                             <RowActionButton
                               variant="danger"
                               onClick={() => handleElimina(s.id)}
                               title="Elimina"
                             >
-                              🗑️
+                              <Trash2 size={14} aria-hidden="true" />
                             </RowActionButton>
                           </RowActions>
                         )}
@@ -655,7 +636,7 @@ export default function Scadenze() {
                                 title="Visualizza Dettagli Fattura"
                                 data-testid={`view-invoice-${s.fattura_id || s.id}`}
                               >
-                                👁️
+                                <Eye size={14} aria-hidden="true" />
                               </RowActionButton>
                             </RowActions>
                           )}
@@ -682,7 +663,7 @@ export default function Scadenze() {
                         )}
                         {s.pagata && !paidIds.has(s.id) && (
                           <Badge variant="success" style={{ marginTop: 4 }}>
-                            ✓ Pagata{s.pagamento?.data_pagamento ? ` il ${formatDateIT(s.pagamento.data_pagamento)}` : ''}
+                            Pagata{s.pagamento?.data_pagamento ? ` il ${formatDateIT(s.pagamento.data_pagamento)}` : ''}
                           </Badge>
                         )}
                         {!paidIds.has(s.id) && !s.pagata &&
@@ -695,10 +676,10 @@ export default function Scadenze() {
                               title="Registra Pagamento"
                               style={{ marginTop: 4, fontSize: 11, padding: '4px 10px' }}
                             >
-                              💰 Paga
+                              Paga
                             </Button>
                           )}
-                        {paidIds.has(s.id) && <Badge variant="success">✓ Pagato</Badge>}
+                        {paidIds.has(s.id) && <Badge variant="success">Pagato</Badge>}
                       </>
                     ),
                   },
@@ -753,7 +734,7 @@ export default function Scadenze() {
                   marginBottom: 20,
                 }}
               >
-                <h3 style={{ margin: 0 }}>➕ Nuova Scadenza</h3>
+                <h3 style={{ margin: 0 }}>Nuova Scadenza</h3>
                 <Button
                   variant="ghost"
                   onClick={() => setShowModal(false)}
@@ -767,7 +748,7 @@ export default function Scadenze() {
                     fontSize: 16,
                   }}
                 >
-                  ✕
+                  <X size={16} aria-hidden="true" />
                 </Button>
               </div>
 
@@ -944,7 +925,7 @@ export default function Scadenze() {
                 }}
               >
                 <h3 style={{ margin: '0 0 8px', fontSize: 18, color: COLORS.primaryLight }}>
-                  💰 Registra Pagamento
+                  Registra Pagamento
                 </h3>
                 <Button
                   variant="ghost"
@@ -959,7 +940,7 @@ export default function Scadenze() {
                     fontSize: 16,
                   }}
                 >
-                  ✕
+                  <X size={16} aria-hidden="true" />
                 </Button>
               </div>
               <div
@@ -988,7 +969,7 @@ export default function Scadenze() {
                       }}
                       title="Visualizza PDF Fattura"
                     >
-                      📄 Vedi
+                      Vedi
                     </Button>
                   )}
               </div>
@@ -1011,7 +992,7 @@ export default function Scadenze() {
                   onClick={() => handlePagaScadenza(pagaModal, 'cassa')}
                   style={{ flex: 1 }}
                 >
-                  🏪 Paga in CASSA
+                  Paga in CASSA
                 </Button>
                 <Button
                   variant="info"
@@ -1020,7 +1001,7 @@ export default function Scadenze() {
                   onClick={() => handlePagaScadenza(pagaModal, 'banca')}
                   style={{ flex: 1 }}
                 >
-                  🏦 Paga in BANCA
+                  Paga in BANCA
                 </Button>
               </div>
               <Button

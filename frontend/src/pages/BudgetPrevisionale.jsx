@@ -33,7 +33,9 @@ import {
   Target,
   X,
   Edit2,
+  Check,
 } from 'lucide-react';
+import { euroOppure } from '../lib/vista';
 
 const NOMI_MESI = [
   '',
@@ -214,8 +216,8 @@ export default function BudgetPrevisionale() {
   };
 
   const getValBadge = val => {
-    if (val === 'positivo') return { variant: 'success', icon: '✓' };
-    return { variant: 'danger', icon: '✗' };
+    if (val === 'positivo') return { variant: 'success', icon: <Check size={12} aria-hidden />, testo: 'Positivo' };
+    return { variant: 'danger', icon: <X size={12} aria-hidden />, testo: 'Negativo' };
   };
 
   // ---- RENDER ----
@@ -261,19 +263,19 @@ export default function BudgetPrevisionale() {
                   <StatCard
                     icon={<TrendingUp size={18} />}
                     label="Ricavi Budget"
-                    value={formatEuro(budget.totali.ricavi_budget)}
+                    value={euroOppure(budget.totali.ricavi_budget)}
                     accent="success"
                   />
                   <StatCard
                     icon={<TrendingDown size={18} />}
                     label="Costi Budget"
-                    value={formatEuro(budget.totali.costi_budget)}
+                    value={euroOppure(budget.totali.costi_budget)}
                     accent="danger"
                   />
                   <StatCard
                     icon={<Target size={18} />}
                     label="Margine"
-                    value={formatEuro(budget.totali.margine_budget)}
+                    value={euroOppure(budget.totali.margine_budget)}
                     accent={budget.totali.margine_budget >= 0 ? 'success' : 'danger'}
                   />
                   <StatCard
@@ -556,7 +558,7 @@ export default function BudgetPrevisionale() {
                               mono
                               style={{ fontWeight: 700, color: isR ? COLORS.success : COLORS.danger }}
                             >
-                              {formatEuro(v.importo_annuale)}
+                              {euroOppure(v.importo_annuale)}
                             </Td>
                             {NOMI_MESI.slice(1).map((_, i) => (
                               <Td
@@ -565,7 +567,7 @@ export default function BudgetPrevisionale() {
                                 mono
                                 style={{ padding: '8px 2px', fontSize: 11, color: COLORS.textMuted }}
                               >
-                                {v.mensile?.[i + 1] ? formatEuro(v.mensile[i + 1]) : '-'}
+                                {v.mensile?.[i + 1] ? euroOppure(v.mensile[i + 1]) : '-'}
                               </Td>
                             ))}
                             <Td align="center" style={{ padding: '8px 4px' }}>
@@ -678,7 +680,7 @@ export default function BudgetPrevisionale() {
                                 fontFamily: FONT.mono,
                               }}
                             >
-                              {formatEuro(t.budget)}
+                              {euroOppure(t.budget)}
                             </div>
                           </div>
                           <div>
@@ -686,7 +688,7 @@ export default function BudgetPrevisionale() {
                             <div
                               style={{ fontSize: 18, fontWeight: 700, color, fontFamily: FONT.mono }}
                             >
-                              {formatEuro(t.consuntivo)}
+                              {euroOppure(t.consuntivo)}
                             </div>
                           </div>
                         </div>
@@ -704,7 +706,7 @@ export default function BudgetPrevisionale() {
                           }}
                         >
                           Scost: {t.scostamento >= 0 ? '+' : ''}
-                          {formatEuro(t.scostamento)}
+                          {euroOppure(t.scostamento)}
                           {t.scostamento_pct !== undefined &&
                             ` (${t.scostamento_pct >= 0 ? '+' : ''}${t.scostamento_pct}%)`}
                         </div>
@@ -757,14 +759,14 @@ export default function BudgetPrevisionale() {
                               </Badge>
                             </Td>
                             <Td align="right" mono style={{ color: COLORS.gray[600] }}>
-                              {formatEuro(v.budget)}
+                              {euroOppure(v.budget)}
                             </Td>
                             <Td
                               align="right"
                               mono
                               style={{ fontWeight: 600, color: isR ? COLORS.success : COLORS.danger }}
                             >
-                              {formatEuro(v.consuntivo)}
+                              {euroOppure(v.consuntivo)}
                             </Td>
                             <Td
                               align="right"
@@ -775,7 +777,7 @@ export default function BudgetPrevisionale() {
                               }}
                             >
                               {v.scostamento >= 0 ? '+' : ''}
-                              {formatEuro(v.scostamento)}
+                              {euroOppure(v.scostamento)}
                             </Td>
                             <Td
                               align="center"
@@ -788,7 +790,7 @@ export default function BudgetPrevisionale() {
                               {v.scostamento_pct}%
                             </Td>
                             <Td align="center">
-                              <Badge variant={vb.variant}>{vb.icon}</Badge>
+                              <Badge variant={vb.variant}>{vb.icon} {vb.testo}</Badge>
                             </Td>
                           </tr>
                         );
@@ -848,10 +850,10 @@ export default function BudgetPrevisionale() {
                         >
                           <Td style={{ fontWeight: 500 }}>{NOMI_MESI[m.mese]}</Td>
                           <Td align="right" mono style={{ color: COLORS.textSubtle }}>
-                            {formatEuro(m.ricavi_budget)}
+                            {euroOppure(m.ricavi_budget)}
                           </Td>
                           <Td align="right" mono style={{ fontWeight: 600, color: COLORS.success }}>
-                            {formatEuro(m.ricavi_consuntivo)}
+                            {euroOppure(m.ricavi_consuntivo)}
                           </Td>
                           <Td
                             align="right"
@@ -861,21 +863,21 @@ export default function BudgetPrevisionale() {
                               color: deltaRic >= 0 ? COLORS.success : COLORS.danger,
                             }}
                           >
-                            {hasData ? `${deltaRic >= 0 ? '+' : ''}${formatEuro(deltaRic)}` : '-'}
+                            {hasData ? `${deltaRic >= 0 ? '+' : ''}${euroOppure(deltaRic)}` : '-'}
                           </Td>
                           <Td
                             align="right"
                             mono
                             style={{ color: COLORS.textSubtle, background: COLORS.bgAlt }}
                           >
-                            {formatEuro(m.costi_budget)}
+                            {euroOppure(m.costi_budget)}
                           </Td>
                           <Td
                             align="right"
                             mono
                             style={{ fontWeight: 600, color: COLORS.danger, background: COLORS.bgAlt }}
                           >
-                            {formatEuro(m.costi_consuntivo)}
+                            {euroOppure(m.costi_consuntivo)}
                           </Td>
                           <Td
                             align="right"
@@ -887,11 +889,11 @@ export default function BudgetPrevisionale() {
                             }}
                           >
                             {hasData
-                              ? `${deltaCosti >= 0 ? '+' : ''}${formatEuro(deltaCosti)}`
+                              ? `${deltaCosti >= 0 ? '+' : ''}${euroOppure(deltaCosti)}`
                               : '-'}
                           </Td>
                           <Td align="right" mono style={{ color: COLORS.textMuted }}>
-                            {formatEuro(margineBudget)}
+                            {euroOppure(margineBudget)}
                           </Td>
                           <Td
                             align="right"
@@ -901,7 +903,7 @@ export default function BudgetPrevisionale() {
                               color: margineReale >= 0 ? COLORS.success : COLORS.danger,
                             }}
                           >
-                            {hasData ? formatEuro(margineReale) : '-'}
+                            {hasData ? euroOppure(margineReale) : '-'}
                           </Td>
                         </tr>
                       );
@@ -977,7 +979,7 @@ export default function BudgetPrevisionale() {
                               background: COLORS.success,
                               borderRadius: '3px 3px 0 0',
                             }}
-                            title={`Ricavi: ${formatEuro(m.ricavi_consuntivo)}`}
+                            title={`Ricavi: ${euroOppure(m.ricavi_consuntivo)}`}
                           />
                           <div
                             style={{
@@ -986,7 +988,7 @@ export default function BudgetPrevisionale() {
                               background: COLORS.danger,
                               borderRadius: '3px 3px 0 0',
                             }}
-                            title={`Costi: ${formatEuro(m.costi_consuntivo)}`}
+                            title={`Costi: ${euroOppure(m.costi_consuntivo)}`}
                           />
                         </div>
                         <span style={{ fontSize: 10, color: COLORS.textSubtle }}>

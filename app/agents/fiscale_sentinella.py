@@ -182,8 +182,10 @@ class FiscaleSentinella:
         if m:
             try:
                 dati["importo_tributo"] = float(m.group(1).replace('.', '').replace(',', '.'))
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Avviso fiscale: importo del tributo %r non letto (%s: %s)",
+                    m.group(1), type(exc).__name__, exc)
         m = re.search(r'(?:entro il|scadenza)[:\s]+(\d{2}/\d{2}/\d{4})', testo, re.I)
         if m:
             p = m.group(1).split("/")

@@ -8,7 +8,6 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import api from '../api';
 import {
-  formatEuro,
   formatDateIT,
   useIsMobile,
   RG,
@@ -18,21 +17,13 @@ import {
   BORDER_RADIUS,
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { euroOppure, NON_DISPONIBILE } from '../lib/vista';
 import { Button, Badge, Esito, StatCard, Tabs, Input, TableWrap, Table, Th, Td } from '../components/ds';
-import {
-  CreditCard,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  TrendingUp,
-  Calendar,
-  FileWarning,
-  X,
-} from 'lucide-react';
+import { CreditCard, AlertTriangle, CheckCircle, XCircle, RefreshCw, TrendingUp, Calendar, FileWarning, X, ChevronUp, ChevronDown } from 'lucide-react';
 
 export function formatEuroConSegno(amount) {
-  const valore = Number(amount || 0);
+  if (amount === null || amount === undefined || amount === '' || Number.isNaN(Number(amount))) return NON_DISPONIBILE;
+  const valore = Number(amount);
   const segno = valore > 0 ? '+' : valore < 0 ? '-' : '';
   const assoluto = new Intl.NumberFormat('it-IT', {
     minimumFractionDigits: 2,
@@ -44,7 +35,7 @@ export function formatEuroConSegno(amount) {
 
 export function BadgeRiconciliatoBanca({ riconciliato }) {
   return riconciliato
-    ? <Badge variant="success">✓ Riconciliato banca</Badge>
+    ? <Badge variant="success">Riconciliato banca</Badge>
     : null;
 }
 
@@ -178,20 +169,20 @@ export default function CoerenzaPOSCorrispettivi() {
           <StatCard
             icon={<CreditCard size={18} />}
             label="Totale POS reale anno"
-            value={formatEuro(statsPos.pos_totale_reale_annuo || 0)}
-            subtext={`NUMIA ${formatEuro(statsPos.pos_numia_reale_annuo || 0)} + SUMUP ${formatEuro(statsPos.pos_sumup_reale_annuo || 0)}`}
+            value={euroOppure(statsPos.pos_totale_reale_annuo)}
+            subtext={`NUMIA ${euroOppure(statsPos.pos_numia_reale_annuo)} + SUMUP ${euroOppure(statsPos.pos_sumup_reale_annuo)}`}
             accent="info"
           />
           <StatCard
             icon={<TrendingUp size={18} />}
             label="Accrediti bancari reali"
-            value={formatEuro(statsPos.fase2_accrediti_totale || 0)}
+            value={euroOppure(statsPos.fase2_accrediti_totale)}
             accent="accent"
           />
           <StatCard
             icon={<AlertTriangle size={18} />}
             label="Saldo da verificare"
-            value={formatEuro(statsPos.fase2_saldo_finale || 0)}
+            value={euroOppure(statsPos.fase2_saldo_finale)}
             subtext="Apri i giorni da controllare"
             accent={Math.abs(statsPos.fase2_saldo_finale || 0) > 0.01 ? 'danger' : 'success'}
             onClick={apriProblemiDueFasi}
@@ -199,7 +190,7 @@ export default function CoerenzaPOSCorrispettivi() {
           <StatCard
             icon={<CreditCard size={18} />}
             label="Venduto SumUp reale"
-            value={sumup?.configured ? formatEuro(sumup.totale_venduto || 0) : 'Non configurato'}
+            value={sumup?.configured ? euroOppure(sumup.totale_venduto) : 'Non configurato'}
             subtext={sumup?.configured ? `${sumup.numero_transazioni || 0} transazioni riuscite` : (sumup?.detail || 'Credenziali assenti')}
             accent={sumup?.configured ? 'info' : 'warning'}
           />
@@ -219,7 +210,7 @@ export default function CoerenzaPOSCorrispettivi() {
           }}
         >
           {TESTO_SENZA_CHIUSURA}: <strong>{statsPos.fase2_senza_chiusura_terminale}</strong>
-          {' '}giorni NUMIA, {formatEuro(statsPos.fase2_accrediti_senza_chiusura_totale || 0)} accreditati.
+          {' '}giorni NUMIA, {euroOppure(statsPos.fase2_accrediti_senza_chiusura_totale)} accreditati.
           {' '}Non entrano nelle quadrature né nel saldo: inserisci la chiusura serale per verificarli.
         </div>
       )}
@@ -246,7 +237,7 @@ export default function CoerenzaPOSCorrispettivi() {
           items={[
             {
               key: 'due_fasi',
-              label: '⚡ Controllo 2 Fasi',
+              label: 'Controllo 2 Fasi',
             },
             { key: 'giornaliero', label: 'Giornaliero', icon: <Calendar size={14} /> },
             { key: 'mensile', label: 'Mensile', icon: <TrendingUp size={14} /> },
@@ -305,11 +296,11 @@ export default function CoerenzaPOSCorrispettivi() {
                         {g.giorno_settimana}
                       </span>
                     </Td>
-                    <Td align="right">{formatEuro(g.elettronico_xml)}</Td>
-                    <Td align="right">{formatEuro(g.pos_accreditato)}</Td>
+                    <Td align="right">{euroOppure(g.elettronico_xml)}</Td>
+                    <Td align="right">{euroOppure(g.pos_accreditato)}</Td>
                     <Td align="right">
                       {g.differenza > 0 ? '+' : ''}
-                      {formatEuro(g.differenza)}
+                      {euroOppure(g.differenza)}
                     </Td>
                     <Td align="center">
                       <Esito esito={esitoGiorno(g.stato)}>{TESTO_STATO[g.stato] || g.stato}</Esito>
@@ -383,9 +374,9 @@ export default function CoerenzaPOSCorrispettivi() {
                     </div>
                     <div style={{ fontSize: 13, color: COLORS.textMuted }}>{a.messaggio}</div>
                     <div style={{ fontSize: 12, marginTop: 4 }}>
-                      <span style={{ color: COLORS.info }}>XML: {formatEuro(a.elettronico_xml)}</span>
+                      <span style={{ color: COLORS.info }}>XML: {euroOppure(a.elettronico_xml)}</span>
                       <span style={{ margin: '0 8px', color: COLORS.textSubtle }}>|</span>
-                      <span style={{ color: COLORS.bruno }}>POS: {formatEuro(a.pos_accreditato)}</span>
+                      <span style={{ color: COLORS.bruno }}>POS: {euroOppure(a.pos_accreditato)}</span>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -397,7 +388,7 @@ export default function CoerenzaPOSCorrispettivi() {
                         marginBottom: 4,
                       }}
                     >
-                      {formatEuro(a.differenza)}
+                      {euroOppure(a.differenza)}
                     </div>
                     <div style={{ fontSize: 11, color: COLORS.textMuted }}>
                       Verifica automatica su estratto conto
@@ -456,6 +447,7 @@ function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }
   const [modalAperta, setModalAperta] = useState(false);
   const [importAperto, setImportAperto] = useState(false);
   const [vista, setVista] = useState('giornaliero'); // giornaliero | settimanale
+  const [limiteGiorni, setLimiteGiorni] = useState(200);
 
   const apriProblemi = () => {
     setVista('giornaliero');
@@ -541,9 +533,9 @@ function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }
         </strong>
         <div style={{ marginTop: 6, fontSize: 13, color: COLORS.text }}>
           {saldoXmlPos.direzione === 'piu'
-            ? `Nel registratore risulta elettronico marcato ${formatEuro(Math.abs(saldoXmlPos.saldo))} IN PIÙ rispetto al terminale POS.`
+            ? `Nel registratore risulta elettronico marcato ${euroOppure(Math.abs(saldoXmlPos.saldo))} IN PIÙ rispetto al terminale POS.`
             : saldoXmlPos.direzione === 'meno'
-            ? `Nel registratore risulta elettronico marcato ${formatEuro(Math.abs(saldoXmlPos.saldo))} IN MENO rispetto al terminale POS.`
+            ? `Nel registratore risulta elettronico marcato ${euroOppure(Math.abs(saldoXmlPos.saldo))} IN MENO rispetto al terminale POS.`
             : 'Nel totale del periodo, registratore e terminale POS coincidono.'}
           {' '}È un riepilogo informativo di {saldoXmlPos.giorni} giorni confrontabili: non modifica XML né chiusure POS.
         </div>
@@ -588,7 +580,7 @@ function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }
         <StatCard
           icon={<XCircle size={16} />}
           label="Accrediti circuito mancanti"
-          value={formatEuro(stats.importo_tot_mancante_banca)}
+          value={euroOppure(stats.importo_tot_mancante_banca)}
           subtext={`NUMIA/BPM: ${stats.fase2_mancante || 0} giorni · SumUp payout: ${stats.fase2_sumup_in_attesa_payout || 0}`}
           accent="danger"
           onClick={apriProblemi}
@@ -668,7 +660,7 @@ function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }
             </tr>
           </thead>
           <tbody>
-            {giorniFiltrati.map((g, i) => (
+            {giorniFiltrati.slice(0, limiteGiorni).map((g, i) => (
               <RigaGiornaliera key={g.data} g={g} even={i % 2 === 0} onReload={onReload} />
             ))}
           </tbody>
@@ -676,26 +668,33 @@ function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }
             <tfoot>
               <tr style={{ background: COLORS.primary, color: '#fff', fontWeight: 700 }}>
                 <Td colSpan={8} align="right" style={{ color: '#fff', background: 'transparent' }}>
-                  TOTALE ANNUO POS {formatEuro(stats.pos_totale_reale_annuo || 0)}
-                  {' '}= NUMIA {formatEuro(stats.pos_numia_reale_annuo || 0)}
-                  {' '}+ SUMUP {formatEuro(stats.pos_sumup_reale_annuo || 0)}
+                  TOTALE ANNUO POS {euroOppure(stats.pos_totale_reale_annuo)}
+                  {' '}= NUMIA {euroOppure(stats.pos_numia_reale_annuo)}
+                  {' '}+ SUMUP {euroOppure(stats.pos_sumup_reale_annuo)}
                 </Td>
                 <Td align="right" style={{ color: '#fff', background: 'transparent' }}>
-                  BPM {formatEuro(stats.fase2_accrediti_totale || 0)}
+                  BPM {euroOppure(stats.fase2_accrediti_totale)}
                 </Td>
                 <Td align="right" style={{ color: '#fff', background: 'transparent' }}>
-                  SUMUP {formatEuro(stats.fase2_sumup_pos_totale || 0)}
+                  SUMUP {euroOppure(stats.fase2_sumup_pos_totale)}
                 </Td>
                 <Td align="right" style={{
                   background: 'transparent',
                   color: (stats.fase2_saldo_finale || 0) >= 0 ? COLORS.successLight : COLORS.dangerLight,
                 }}>
-                  NUMIA Δ {formatEuro(stats.fase2_saldo_finale || 0)}
+                  NUMIA Δ {euroOppure(stats.fase2_saldo_finale)}
                 </Td>
               </tr>
             </tfoot>
           )}
         </Table>
+        {giorniFiltrati.length > limiteGiorni && (
+          <div style={{ padding: 12, textAlign: 'center' }}>
+            <Button variant="secondary" onClick={() => setLimiteGiorni(l => l + 200)}>
+              Mostra altre ({giorniFiltrati.length - limiteGiorni})
+            </Button>
+          </div>
+        )}
         {giorniFiltrati.length === 0 && (
           <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
             Nessun giorno da mostrare con questo filtro.
@@ -751,16 +750,16 @@ function TabellaSettimanale({ settimane }) {
                 </div>
               </Td>
               <Td align="right" style={{ fontWeight: 600 }}>
-                {formatEuro(sw.pos_numia_totale || 0)}
+                {euroOppure(sw.pos_numia_totale)}
               </Td>
               <Td align="right" style={{ fontWeight: 600 }}>
-                {sw.accredito_totale > 0 ? formatEuro(sw.accredito_totale) : '—'}
+                {sw.accredito_totale > 0 ? euroOppure(sw.accredito_totale) : '—'}
               </Td>
               <Td align="right" style={{ fontWeight: 600 }}>
-                {sw.pos_sumup_totale > 0 ? formatEuro(sw.pos_sumup_totale) : '—'}
+                {sw.pos_sumup_totale > 0 ? euroOppure(sw.pos_sumup_totale) : '—'}
               </Td>
               <Td align="right" style={{ fontWeight: 700 }}>
-                {sw.stato === 'in_attesa' ? '—' : formatEuro(sw.diff_totale)}
+                {sw.stato === 'in_attesa' ? '—' : euroOppure(sw.diff_totale)}
               </Td>
               <Td align="center">
                 <Esito esito={statoEsito[sw.stato] || 'nessun_dato'}>{statoLabel[sw.stato] || sw.stato}</Esito>
@@ -801,7 +800,7 @@ export function CellaCircuito({ g, circuito }) {
         ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>in attesa</em>
         : (
           <>
-            <div>{formatEuro(valore)}</div>
+            <div>{euroOppure(valore)}</div>
             {etichettaFonte && (
               <div style={{ color: COLORS.textMuted, fontSize: 10, marginTop: 2 }}>
                 {etichettaFonte}
@@ -932,7 +931,7 @@ function RigaGiornaliera({ g, even, onReload }) {
   const statoCorrBadge = {
     'definitivo_xml': { label: 'XML', variant: 'success' },
     'provvisorio': { label: 'Provv.', variant: 'warning' },
-    'manca_xml': { label: '⚠ No XML', variant: 'accent' },
+    'manca_xml': { label: 'No XML', variant: 'accent' },
     'sconosciuto': { label: '—', variant: 'neutral' },
   }[statoCorr] || { label: '—', variant: 'neutral' };
 
@@ -946,7 +945,7 @@ function RigaGiornaliera({ g, even, onReload }) {
         <Badge variant={statoCorrBadge.variant}>{statoCorrBadge.label}</Badge>
       </Td>
       <Td align="right" style={{ borderLeft: `2px solid ${COLORS.border}` }}>
-        {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : (statoCorr !== 'definitivo_xml' ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>attendo XML</em> : '—')}
+        {g.xml_elettronico > 0 ? euroOppure(g.xml_elettronico) : (statoCorr !== 'definitivo_xml' ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>attendo XML</em> : '—')}
       </Td>
       <CellaCircuito g={g} circuito="numia" />
       <CellaCircuito g={g} circuito="sumup" />
@@ -981,7 +980,7 @@ function RigaGiornaliera({ g, even, onReload }) {
           ? (
             <>
               <div style={{ fontWeight: 800, color: COLORS.primary }}>
-                {formatEuro(g.pos_totale_giornaliero)}
+                {euroOppure(g.pos_totale_giornaliero)}
               </div>
               <div style={{ fontSize: 10, color: g.pos_totale_completo ? COLORS.success : COLORS.warning, marginTop: 2 }}>
                 {g.pos_totale_completo ? 'NUMIA + SUMUP' : 'PARZIALE · circuito mancante'}
@@ -1002,7 +1001,7 @@ function RigaGiornaliera({ g, even, onReload }) {
             }}
             title="Mostra il dettaglio giorno per giorno di questo accredito"
           >
-            gruppo {g.giorni_gruppo} gg: {formatEuro(g.pos_gruppo)} {espansa ? '▲' : '▼'}
+            gruppo {g.giorni_gruppo} gg: {euroOppure(g.pos_gruppo)} {espansa ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}
           </Button>
         )}
       </Td>
@@ -1027,7 +1026,7 @@ function RigaGiornaliera({ g, even, onReload }) {
             }}
             title="Mostra i singoli accrediti BPM che formano il totale"
           >
-            {formatEuro(g.accredito_banca)} {dettaglioBancaAperto ? '▲' : '▼'}
+            {euroOppure(g.accredito_banca)} {dettaglioBancaAperto ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}
           </Button>
         )}
         {g.riconciliato_banca_reale ? (
@@ -1038,9 +1037,9 @@ function RigaGiornaliera({ g, even, onReload }) {
           </div>
         )}
         {g.stato_accredito === 'ok' || g.stato_accredito === 'differenza' || g.stato_accredito === 'extra'
-          ? formatEuro(g.diff_accredito)
+          ? euroOppure(g.diff_accredito)
           : g.stato_accredito === 'mancante'
-            ? formatEuro(g.diff_accredito)
+            ? euroOppure(g.diff_accredito)
             : null}
         {g.numero_movimenti_banca > 0 && (
           <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>
@@ -1055,7 +1054,7 @@ function RigaGiornaliera({ g, even, onReload }) {
         ) : (
           <>
             {faseSumUp.stato === 'riconciliato' ? (
-              <Badge variant="success">✓ Payout riconciliato</Badge>
+              <Badge variant="success">Payout riconciliato</Badge>
             ) : faseSumUp.stato === 'payout_da_verificare' ? (
               <Badge variant="warning">Payout da verificare</Badge>
             ) : (
@@ -1066,15 +1065,15 @@ function RigaGiornaliera({ g, even, onReload }) {
             </div>
             {payoutSumUp?.netto_gruppi > 0 && (
               <div style={{ fontSize: 10, color: COLORS.textMuted }}>
-                Netto gruppo {formatEuro(payoutSumUp.netto_gruppi)}
+                Netto gruppo {euroOppure(payoutSumUp.netto_gruppi)}
                 {payoutSumUp.commissioni_gruppi > 0
-                  ? ` · costi ${formatEuro(payoutSumUp.commissioni_gruppi)}`
+                  ? ` · costi ${euroOppure(payoutSumUp.commissioni_gruppi)}`
                   : ''}
               </div>
             )}
             {payoutSumUp?.rettifiche_gruppi > 0 && (
               <div style={{ fontSize: 10, color: COLORS.textMuted }}>
-                Rettifica SumUp {formatEuro(payoutSumUp.rettifiche_gruppi)}
+                Rettifica SumUp {euroOppure(payoutSumUp.rettifiche_gruppi)}
               </div>
             )}
           </>
@@ -1088,7 +1087,7 @@ function RigaGiornaliera({ g, even, onReload }) {
             : g.saldo_progressivo >= 0 ? COLORS.success : COLORS.danger,
         }}
       >
-        {g.saldo_progressivo == null ? '' : formatEuro(g.saldo_progressivo)}
+        {g.saldo_progressivo == null ? '' : euroOppure(g.saldo_progressivo)}
       </Td>
     </tr>
     {g.dettaglio_gruppo && espansa && (
@@ -1099,30 +1098,30 @@ function RigaGiornaliera({ g, even, onReload }) {
             padding: '8px 12px', fontSize: 11, color: COLORS.gray[700],
           }}>
             <div style={{ fontWeight: 700, marginBottom: 4, color: COLORS.primary }}>
-              Accredito di {formatEuro(g.accredito_banca)} del {formatDateIT(g.data_accredito_attesa)} — da dove arriva:
+              Accredito di {euroOppure(g.accredito_banca)} del {formatDateIT(g.data_accredito_attesa)} — da dove arriva:
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 {g.dettaglio_gruppo.map(dg => (
                   <tr key={dg.data}>
                     <td style={{ padding: '2px 8px 2px 0' }}>↳ {formatDateIT(dg.data)}</td>
-                    <td style={{ padding: '2px 0', textAlign: 'right', fontWeight: 600 }}>{formatEuro(dg.pos_manuale)}</td>
+                    <td style={{ padding: '2px 0', textAlign: 'right', fontWeight: 600 }}>{euroOppure(dg.pos_manuale)}</td>
                   </tr>
                 ))}
                 <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
                   <td style={{ padding: '4px 8px 0 0', fontWeight: 700 }}>Totale incassato</td>
-                  <td style={{ padding: '4px 0 0', textAlign: 'right', fontWeight: 700 }}>{formatEuro(g.pos_gruppo)}</td>
+                  <td style={{ padding: '4px 0 0', textAlign: 'right', fontWeight: 700 }}>{euroOppure(g.pos_gruppo)}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: '2px 8px 0 0', fontWeight: 700 }}>Accreditato in banca</td>
-                  <td style={{ padding: '2px 0 0', textAlign: 'right', fontWeight: 700 }}>{formatEuro(g.accredito_banca)}</td>
+                  <td style={{ padding: '2px 0 0', textAlign: 'right', fontWeight: 700 }}>{euroOppure(g.accredito_banca)}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: '2px 8px 0 0', fontWeight: 700 }}>Differenza</td>
                   <td style={{
                     padding: '2px 0 0', textAlign: 'right', fontWeight: 700,
                     color: g.diff_accredito >= 0 ? COLORS.success : COLORS.danger,
-                  }}>{formatEuro(g.diff_accredito)}</td>
+                  }}>{euroOppure(g.diff_accredito)}</td>
                 </tr>
               </tbody>
             </table>
@@ -1138,7 +1137,7 @@ function RigaGiornaliera({ g, even, onReload }) {
             borderRadius: BORDER_RADIUS.md, padding: '10px 12px',
           }}>
             <div style={{ fontWeight: 800, color: COLORS.primary, marginBottom: 7 }}>
-              Accrediti NUMIA su BPM che compongono {formatEuro(g.accredito_banca)}
+              Accrediti NUMIA su BPM che compongono {euroOppure(g.accredito_banca)}
             </div>
             {(g.movimenti_banca || []).length > 0 ? (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
@@ -1162,7 +1161,7 @@ function RigaGiornaliera({ g, even, onReload }) {
                           : ''}
                       </td>
                       <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 700 }}>
-                        {formatEuro(movimento.importo)}
+                        {euroOppure(movimento.importo)}
                       </td>
                     </tr>
                   ))}
@@ -1171,7 +1170,7 @@ function RigaGiornaliera({ g, even, onReload }) {
                       Totale ricalcolato ({(g.movimenti_banca || []).length} movimenti)
                     </td>
                     <td style={{ padding: '7px 0 0', textAlign: 'right', fontWeight: 800 }}>
-                      {formatEuro((g.movimenti_banca || []).reduce(
+                      {euroOppure((g.movimenti_banca || []).reduce(
                         (somma, movimento) => somma + Number(movimento.importo || 0), 0
                       ))}
                     </td>
@@ -1472,7 +1471,7 @@ export function ModalImportTotaliPos({ onClose, onSaved }) {
         />
         {anteprima?.righe && (
           <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
-            {anteprima.righe.length} giornate · totale {formatEuro(anteprima.totale)}
+            {anteprima.righe.length} giornate · totale {euroOppure(anteprima.totale)}
           </div>
         )}
         {(errore || anteprima?.errore) && (
@@ -1544,7 +1543,7 @@ export function RiepilogoMensilePos({ riepilogo, anno }) {
   const valore = (riga, c) => {
     const v = riga[c.chiave];
     if (v === undefined || v === null) return c.assente || '—';
-    return c.segno ? formatEuroConSegno(v) : formatEuro(v);
+    return c.segno ? formatEuroConSegno(v) : euroOppure(v);
   };
   return (
     <>

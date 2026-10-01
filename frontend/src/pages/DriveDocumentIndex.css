@@ -81,4 +81,14 @@
   .drive-index__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .drive-index__boolean > div { grid-template-columns: 1fr; }
   .drive-index__detail { inset: 58px 8px 8px; width: auto; }
+  .drive-index__table-wrap { overflow-x: visible; }
+  .drive-index__table { min-width: 0; }
+  .drive-index__table thead { display: none; }
+  .drive-index__table, .drive-index__table tbody, .drive-index__table tr, .drive-index__table td { display: block; width: 100%; }
+  .drive-index__table tr { margin-bottom: 10px; border: 1px solid #e6e3d9; border-radius: 12px; background: #fff; overflow: hidden; }
+  .drive-index__table td { max-width: none; border-bottom: 1px solid #f2f0e9; }
+  .drive-index__table td::before { content: attr(data-label); display: block; margin-bottom: 3px; color: #7a776e; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .drive-index__table td:last-child { border-bottom: 0; }
+  .drive-index__more { display: block; margin: 12px auto 0; }
 }
+.drive-index__more { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border: 1px solid #c2ddd0; border-radius: 9px; background: #eef3ef; color: #4c4a44; font: inherit; font-weight: 700; cursor: pointer; }

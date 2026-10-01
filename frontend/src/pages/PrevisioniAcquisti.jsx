@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RefreshCw, Search, ShoppingCart, Loader2, Package, TrendingUp, TrendingDown, ChevronUp, ChevronDown } from 'lucide-react';
 import api from '../api';
 import { formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
@@ -18,6 +19,7 @@ export default function PrevisioniAcquisti() {
   const [settimanePrevisione, setSettimanePrevisione] = useState(4);
   const [costoTotale, setCostoTotale] = useState(0);
   const [expandedId, setExpandedId] = useState(null);
+  const [limite, setLimite] = useState(200);
 
   useEffect(() => {
     loadData();
@@ -92,8 +94,8 @@ export default function PrevisioniAcquisti() {
         >
           <Tabs
             items={[
-              { key: 'statistiche', label: `📈 Statistiche ${annoGlobale}` },
-              { key: 'previsioni', label: '🔮 Previsioni' },
+              { key: 'statistiche', label: `Statistiche ${annoGlobale}` },
+              { key: 'previsioni', label: 'Previsioni' },
             ]}
             value={activeTab}
             onChange={setActiveTab}
@@ -120,7 +122,7 @@ export default function PrevisioniAcquisti() {
             disabled={loading}
             data-testid="refresh-btn"
           >
-            🔄
+            <RefreshCw size={16} aria-label="Aggiorna" />
           </Button>
 
           <Button
@@ -129,7 +131,7 @@ export default function PrevisioniAcquisti() {
             disabled={popolando}
             data-testid="popola-storico-btn"
           >
-            {popolando ? 'Popolando...' : '🔄 Popola Storico'}
+            {popolando ? 'Popolando...' : 'Popola Storico'}
           </Button>
         </div>
 
@@ -137,7 +139,7 @@ export default function PrevisioniAcquisti() {
         <div style={{ marginBottom: 16 }}>
           <Input
             type="text"
-            iconLeft="🔍"
+            iconLeft={<Search size={16} aria-hidden="true" />}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             placeholder="Cerca prodotto (es: caffè, prosecco, farina...)"
@@ -148,7 +150,7 @@ export default function PrevisioniAcquisti() {
         {/* Riepilogo Previsioni */}
         {activeTab === 'previsioni' && costoTotale > 0 && (
           <StatCard
-            icon="🛒"
+            icon={<ShoppingCart size={18} aria-hidden="true" />}
             label={`Costo stimato prossime ${settimanePrevisione} settimane`}
             value={formatEuro(costoTotale)}
             accent="primary"
@@ -161,21 +163,21 @@ export default function PrevisioniAcquisti() {
           title={
             activeTab === 'statistiche' ? (
               <>
-                📊 Acquisti documentati {annoGlobale} vs {annoGlobale - 1}
+                Acquisti documentati {annoGlobale} vs {annoGlobale - 1}
               </>
             ) : (
-              <>📦 Acquisti Previsti ({filteredData.length} prodotti)</>
+              <>Acquisti Previsti ({filteredData.length} prodotti)</>
             )
           }
         >
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
-              <div style={{ fontSize: 32, marginBottom: 16 }}>⏳</div>
+              <Loader2 size={32} aria-hidden="true" style={{ marginBottom: 16 }} />
               Caricamento...
             </div>
           ) : filteredData.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
-              <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>📦</div>
+              <Package size={48} aria-hidden="true" style={{ marginBottom: 16, opacity: 0.3 }} />
               <p>Nessun dato trovato</p>
               <p style={{ fontSize: 13 }}>
                 Clicca &quot;Popola Storico&quot; per importare i dati dalle fatture
@@ -183,7 +185,7 @@ export default function PrevisioniAcquisti() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {filteredData.slice(0, 50).map((item, idx) => (
+              {filteredData.slice(0, limite).map((item, idx) => (
                 <div
                   key={item.id || idx}
                   style={{
@@ -226,10 +228,10 @@ export default function PrevisioniAcquisti() {
                         {activeTab === 'statistiche' ? (
                           <>
                             <span>
-                              📦 {item.quantita_totale?.toFixed(1)} {item.unita_misura}
+                              {item.quantita_totale?.toFixed(1)} {item.unita_misura}
                             </span>
-                            <span>📅 Media/gg: {item.media_giornaliera}</span>
-                            <span>📆 Media/sett: {item.media_settimanale}</span>
+                            <span>Media/gg: {item.media_giornaliera}</span>
+                            <span>Media/sett: {item.media_settimanale}</span>
                           </>
                         ) : (
                           <>
@@ -246,10 +248,10 @@ export default function PrevisioniAcquisti() {
                     {activeTab === 'statistiche' && item.trend && (
                       <Badge variant={getTrendVariant(item.trend)}>
                         {item.trend === 'nuovo' ? (
-                          <>🆕 Nuovo nel {annoGlobale}</>
+                          <>Nuovo nel {annoGlobale}</>
                         ) : (
                           <>
-                            {item.trend === '↑' ? '📈' : item.trend === '↓' ? '📉' : ''}
+                            {item.trend === '↑' ? <TrendingUp size={12} aria-hidden="true" /> : item.trend === '↓' ? <TrendingDown size={12} aria-hidden="true" /> : null}
                             {item.variazione_pct > 0 ? '+' : ''}
                             {item.variazione_pct}%
                           </>
@@ -257,7 +259,7 @@ export default function PrevisioniAcquisti() {
                       </Badge>
                     )}
 
-                    <span style={{ marginLeft: 8 }}>{expandedId === item.id ? '▲' : '▼'}</span>
+                    <span style={{ marginLeft: 8 }}>{expandedId === item.id ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}</span>
                   </div>
 
                   {/* Dettagli espansi */}
@@ -347,6 +349,13 @@ export default function PrevisioniAcquisti() {
               ))}
             </div>
           )}
+          {filteredData.length > limite && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+              <Button variant="secondary" onClick={() => setLimite(l => l + 200)} style={{ minHeight: 44 }}>
+                Mostra altre ({filteredData.length - limite})
+              </Button>
+            </div>
+          )}
         </Card>
 
         {/* Info */}
@@ -361,14 +370,14 @@ export default function PrevisioniAcquisti() {
             color: COLORS.info,
           }}
         >
-          💡 <strong>Come funziona:</strong> Il sistema analizza lo storico acquisti dalle fatture
+          <strong>Come funziona:</strong> Il sistema analizza lo storico acquisti dalle fatture
           XML. Calcola medie giornaliere/settimanali e confronta con l&apos;anno precedente per
           suggerirti gli acquisti.
           <br />
-          📊 <strong>Statistiche:</strong> Mostra consumi dell&apos;anno corrente vs anno
+          <strong>Statistiche:</strong> Mostra consumi dell&apos;anno corrente vs anno
           precedente.
           <br />
-          🔮 <strong>Previsioni:</strong> Propone quantità da ordinare basate sugli acquisti storici; non presume il consumo senza giacenze.
+          <strong>Previsioni:</strong> Propone quantità da ordinare basate sugli acquisti storici; non presume il consumo senza giacenze.
         </div>
       </div>
     </PageLayout>

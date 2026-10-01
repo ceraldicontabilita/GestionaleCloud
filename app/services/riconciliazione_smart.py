@@ -23,7 +23,7 @@ from app.services.payment_allocation_validator import (
     invoice_total_cents,
     to_cents,
 )
-from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE, con_non_pagate
 from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
 from app.services.pos_evidence import _e_accredito_pos_numia_con_giorno
 
@@ -437,7 +437,7 @@ async def cerca_fatture_fornitore(
     """Cerca fatture di un fornitore, opzionalmente filtrate per importo."""
     # "sospesa" = bloccata manualmente in Prima Nota Provvisoria, esclusa
     # dal matching automatico di riconciliazione.
-    query = {"pagato": {"$ne": True}, "stato_pagamento": {"$ne": "sospesa"}}
+    query = con_non_pagate({"stato_pagamento": {"$ne": "sospesa"}})
     
     if piva_fornitore:
         query["$or"] = [

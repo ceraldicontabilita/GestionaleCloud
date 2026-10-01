@@ -115,10 +115,49 @@ async def _fattura_esiste(db, fattura_id: Any) -> bool:
     return bool(await db["invoices"].find_one({"id": {"$in": cercati}}, {"_id": 0, "id": 1}))
 
 
+def _soluzioni_per_debito(
+    debiti: List[Dict[str, Any]], candidati: List[Dict[str, Any]], ricorrenti: Dict[str, set],
+) -> List[Any]:
+    """Per ogni debito i gruppi di bonifici che lo chiudono al centesimo.
+    Calcolo puro, senza I/O: gira fuori dall'event loop (CLAUDE.md, regola 16)."""
+    from app.services.bank_payment_allocations import (
+        _combinazioni_che_quadrano, _fornitore_del_movimento,
+    )
+    from app.services.payment_allocation_validator import to_cents
+
+    soluzioni = []
+    for debito in debiti:
+        fattura = _come_fattura(debito)
+        if debito["residuo_cents"] in ricorrenti.get(debito["piva"], set()):
+            # Canone o bolletta a importo fisso (Fastweb 43,86, Arval 832,25):
+            # lo stesso importo del fornitore c'e' anche fra le fatture di
+            # quest'anno, quindi il bonifico paga piu' probabilmente quella.
+            # Solo il numero della fattura in causale lo lega al debito vecchio.
+            numero = re.sub(r"[^0-9A-Z]", "", str(debito.get("numero") or "").upper())
+            suoi_candidati = [
+                m for m in candidati
+                if len(numero) >= 4 and numero in re.sub(
+                    r"[^0-9A-Z]", "", str(m.get("descrizione_originale") or m.get("descrizione") or "").upper())
+            ]
+        else:
+            suoi_candidati = candidati
+        suoi = [
+            m for m in suoi_candidati
+            if debito["data"] <= str(m.get("data") or "")[:10] <= _entro(debito["data"])
+            and abs(to_cents(m.get("importo"))) <= debito["residuo_cents"]
+            and _fornitore_del_movimento(m, fattura)
+        ]
+        esatti = [[m] for m in suoi if abs(to_cents(m.get("importo"))) == debito["residuo_cents"]]
+        gruppi = esatti or (_combinazioni_che_quadrano(suoi, debito["residuo_cents"]) if len(suoi) <= 12 else [])
+        if gruppi:
+            soluzioni.append((debito, gruppi))
+    return soluzioni
+
+
 async def abbina_pagamenti(db, *, anno_attivo: Optional[int] = None) -> Dict[str, Any]:
     """Bonifici dell'anno attivo che pagano un debito dell'anno prima."""
     from app.services.bank_payment_allocations import (
-        _combinazioni_che_quadrano, _fornitore_del_movimento, _is_outgoing_invoice_candidate,
+        _fornitore_del_movimento, _is_outgoing_invoice_candidate,
     )
     from app.services.payment_allocation_validator import to_cents
 
@@ -157,32 +196,7 @@ async def abbina_pagamenti(db, *, anno_attivo: Optional[int] = None) -> Dict[str
             {"_id": 0, "supplier_vat": 1, "total_amount": 1}).to_list(50000):
         ricorrenti.setdefault(_piva(inv.get("supplier_vat")), set()).add(_cents(inv.get("total_amount")))
 
-    soluzioni = []
-    for debito in debiti:
-        fattura = _come_fattura(debito)
-        if debito["residuo_cents"] in ricorrenti.get(debito["piva"], set()):
-            # Canone o bolletta a importo fisso (Fastweb 43,86, Arval 832,25):
-            # lo stesso importo del fornitore c'e' anche fra le fatture di
-            # quest'anno, quindi il bonifico paga piu' probabilmente quella.
-            # Solo il numero della fattura in causale lo lega al debito vecchio.
-            numero = re.sub(r"[^0-9A-Z]", "", str(debito.get("numero") or "").upper())
-            suoi_candidati = [
-                m for m in candidati
-                if len(numero) >= 4 and numero in re.sub(
-                    r"[^0-9A-Z]", "", str(m.get("descrizione_originale") or m.get("descrizione") or "").upper())
-            ]
-        else:
-            suoi_candidati = candidati
-        suoi = [
-            m for m in suoi_candidati
-            if debito["data"] <= str(m.get("data") or "")[:10] <= _entro(debito["data"])
-            and abs(to_cents(m.get("importo"))) <= debito["residuo_cents"]
-            and _fornitore_del_movimento(m, fattura)
-        ]
-        esatti = [[m] for m in suoi if abs(to_cents(m.get("importo"))) == debito["residuo_cents"]]
-        gruppi = esatti or (_combinazioni_che_quadrano(suoi, debito["residuo_cents"]) if len(suoi) <= 12 else [])
-        if gruppi:
-            soluzioni.append((debito, gruppi))
+    soluzioni = await asyncio.to_thread(_soluzioni_per_debito, debiti, candidati, ricorrenti)
 
     contesi: Dict[str, int] = {}
     for _debito, gruppi in soluzioni:

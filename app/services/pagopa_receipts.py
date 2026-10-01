@@ -5,6 +5,7 @@ import base64
 import hashlib
 import inspect
 import io
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
@@ -13,6 +14,8 @@ from typing import Any
 
 from app.services.ocr_locale import MemoriaInsufficiente, motore
 from app.services.payment_invoice_matching import amounts_equal_to_cent
+
+logger = logging.getLogger(__name__)
 
 
 def non_collegato(campo: str) -> dict[str, Any]:
@@ -596,8 +599,9 @@ def _extract_receipt_text(content: bytes) -> tuple[str, bool]:
         from pypdf import PdfReader
 
         text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 - si prova PyMuPDF/OCR
+        logger.warning(
+            "Ricevuta pagoPA: testo vettoriale pypdf non letto (%s: %s)", type(exc).__name__, exc)
     if e_ricevuta_mooney(text):
         try:
             righe = _righe_ocr_per_posizione(content)
@@ -634,8 +638,9 @@ def _extract_receipt_text(content: bytes) -> tuple[str, bool]:
             return fitz_text, False
         if len(fitz_text.strip()) > len(text.strip()):
             text = fitz_text
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 - resta il testo di pypdf
+        logger.warning(
+            "Ricevuta pagoPA: testo PyMuPDF non letto (%s: %s)", type(exc).__name__, exc)
 
     try:
         import fitz

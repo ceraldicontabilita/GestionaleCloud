@@ -18,6 +18,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.utils.id_fattura import filtro_id
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ async def on_fattura_created_garantisci_fornitore(event: Dict[str, Any], db) -> 
     from app.routers.invoices.fatture_upload import ensure_supplier_exists
 
     fattura = await db["invoices"].find_one(
-        {"id": fattura_id},
+        filtro_id(fattura_id),
         {"_id": 0, "id": 1, "supplier_vat": 1, "supplier_name": 1, "fornitore": 1,
          "cliente": 1, "sha256": 1, "document_hash": 1, "document_id": 1},
     )
@@ -222,11 +223,11 @@ async def on_fattura_created_iva(event: Dict[str, Any], db) -> Optional[Dict]:
     if not fattura_id:
         return None
     try:
-        inv = await db["invoices"].find_one({"id": fattura_id})
+        inv = await db["invoices"].find_one(filtro_id(fattura_id))
         if not inv:
             return {"action": "skip", "reason": "fattura non trovata"}
         campi = iva_fatture.campi_iva_da_fattura(inv)
-        await db["invoices"].update_one({"id": fattura_id}, {"$set": campi})
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": campi})
         return {"action": "iva_attribuita", "periodo": campi.get("periodo_iva_attribuito")}
     except Exception as e:
         logger.warning(f"Attribuzione IVA fattura {fattura_id} non riuscita (non bloccante): {e}")

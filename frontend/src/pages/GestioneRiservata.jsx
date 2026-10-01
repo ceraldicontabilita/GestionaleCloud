@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { COLORS, SHADOWS, BORDER_RADIUS, FONT, formatEuro, formatDateIT } from '../lib/utils';
+import { COLORS, SHADOWS, BORDER_RADIUS, FONT, formatDateIT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import {
   Button,
@@ -32,6 +32,7 @@ import {
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react';
+import { euroOppure } from '../lib/vista';
 
 // Il codice riservato viene inviato al backend come header su ogni chiamata
 // dati (l'autorizzazione è lato server, non solo lato UI). Vedi P0.11.
@@ -165,6 +166,7 @@ function LoginGestioneRiservata({ onLogin }) {
 // Main Dashboard
 function DashboardGestioneRiservata({ onLogout }) {
   const [movimenti, setMovimenti] = useState([]);
+  const [limiteMov, setLimiteMov] = useState(200);
   const [riepilogo, setRiepilogo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -273,36 +275,16 @@ function DashboardGestioneRiservata({ onLogout }) {
   ];
 
   return (
-    <PageLayout title="Gestione Riservata" subtitle="Incassi e spese non fatturati">
+    <PageLayout
+      title="Gestione Riservata"
+      subtitle="Incassi e spese non fatturati"
+      actions={
+        <Button variant="secondary" onClick={handleLogout} iconLeft={<EyeOff size={16} />}>
+          Esci
+        </Button>
+      }
+    >
       <div style={{ minHeight: '100vh', background: COLORS.bg }}>
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 30,
-          }}
-        >
-          <div>
-            <h1
-              style={{
-                margin: 0,
-                color: COLORS.text,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-              }}
-            >
-              <Lock size={28} /> Gestione Riservata
-            </h1>
-            <p style={{ color: COLORS.textMuted, marginTop: 4 }}>Incassi e spese non fatturati</p>
-          </div>
-          <Button variant="secondary" onClick={handleLogout} iconLeft={<EyeOff size={16} />}>
-            Esci
-          </Button>
-        </div>
-
         {/* Filtri */}
         <div
           style={{
@@ -363,21 +345,21 @@ function DashboardGestioneRiservata({ onLogout }) {
             <StatCard
               icon={<TrendingUp size={20} />}
               label="Incassi Non Fatturati"
-              value={formatEuro(riepilogo.incassi?.totale || 0)}
+              value={euroOppure(riepilogo.incassi?.totale)}
               subtext={`${riepilogo.incassi?.count || 0} movimenti`}
               accent="success"
             />
             <StatCard
               icon={<TrendingDown size={20} />}
               label="Spese Non Fatturate"
-              value={formatEuro(riepilogo.spese?.totale || 0)}
+              value={euroOppure(riepilogo.spese?.totale)}
               subtext={`${riepilogo.spese?.count || 0} movimenti`}
               accent="danger"
             />
             <StatCard
               icon={<DollarSign size={20} />}
               label="Saldo Netto Extra"
-              value={formatEuro(riepilogo.saldo_netto || 0)}
+              value={euroOppure(riepilogo.saldo_netto)}
               subtext="Da aggiungere al fatturato"
               accent="primary"
             />
@@ -445,7 +427,7 @@ function DashboardGestioneRiservata({ onLogout }) {
                   onChange={e => setFormData({ ...formData, tipo: e.target.value })}
                 >
                   <option value="incasso">Incasso</option>
-                  <option value="spesa">💸 Spesa</option>
+                  <option value="spesa">Spesa</option>
                 </Select>
               </div>
               <div>
@@ -528,7 +510,7 @@ function DashboardGestioneRiservata({ onLogout }) {
           }}
         >
           <div style={{ padding: '20px 24px', borderBottom: `1px solid ${COLORS.border}` }}>
-            <h3 style={{ margin: 0, color: COLORS.text }}>📋 Movimenti ({movimenti.length})</h3>
+            <h3 style={{ margin: 0, color: COLORS.text }}>Movimenti ({movimenti.length})</h3>
           </div>
 
           {loading ? (
@@ -553,7 +535,7 @@ function DashboardGestioneRiservata({ onLogout }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {movimenti.map(mov => (
+                  {movimenti.slice(0, limiteMov).map(mov => (
                     <tr key={mov.id}>
                       <Td>{formatDateIT(mov.data)}</Td>
                       <Td>
@@ -572,7 +554,7 @@ function DashboardGestioneRiservata({ onLogout }) {
                         }}
                       >
                         {mov.tipo === 'incasso' ? '+' : '-'}
-                        {formatEuro(mov.importo)}
+                        {euroOppure(mov.importo)}
                       </Td>
                       <Td align="center">
                         <RowActions style={{ justifyContent: 'center' }}>
@@ -588,6 +570,13 @@ function DashboardGestioneRiservata({ onLogout }) {
                   ))}
                 </tbody>
               </Table>
+              {movimenti.length > limiteMov && (
+                <div style={{ textAlign: 'center', padding: 12 }}>
+                  <Button type="button" variant="secondary" onClick={() => setLimiteMov(n => n + 200)}>
+                    Mostra altre ({movimenti.length - limiteMov})
+                  </Button>
+                </div>
+              )}
             </TableWrap>
           )}
         </div>

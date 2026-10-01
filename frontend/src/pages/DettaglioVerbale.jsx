@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { PageLayout, PageSection } from '../components/PageLayout';
 import { VisoreOriginale } from '../components/ApriOriginale';
-import { urlOriginale } from '../lib/vista';
-import { formatEuro, formatDateIT, COLORS, BORDER_RADIUS } from '../lib/utils';
+import { urlOriginale, euroOppure } from '../lib/vista';
+import { formatDateIT, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { Button, Badge } from '../components/ds';
 import { toast } from 'sonner';
 
@@ -123,7 +123,7 @@ export default function DettaglioVerbale() {
     try {
       const res = await api.post(`/api/verbali-noleggio/ricalcola-pdf/${encodeURIComponent(verbaleId)}`);
       await reload();
-      toast.success(`PDF riletto: importo ${formatEuro(res.data?.importo || 0)}`);
+      toast.success(`PDF riletto: importo ${euroOppure(res.data?.importo)}`);
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Rilettura PDF non riuscita');
     } finally {
@@ -216,7 +216,7 @@ export default function DettaglioVerbale() {
       key: 'banca', title: 'Pagamento in banca',
       present: fascicolo.pagamento_banca?.presente,
       detail: fascicolo.pagamento_banca?.movimento
-        ? `${fascicolo.pagamento_banca.movimento.data_contabile || fascicolo.pagamento_banca.movimento.data || 'Data non disponibile'} · ${formatEuro(Math.abs(fascicolo.pagamento_banca.movimento.importo || 0))} · ${fascicolo.pagamento_banca.movimento.descrizione || 'Movimento bancario'}`
+        ? `${formatDateIT(fascicolo.pagamento_banca.movimento.data_contabile || fascicolo.pagamento_banca.movimento.data) || 'Data non disponibile'} · ${euroOppure(fascicolo.pagamento_banca.movimento.importo == null ? null : Math.abs(fascicolo.pagamento_banca.movimento.importo))} · ${fascicolo.pagamento_banca.movimento.descrizione || 'Movimento bancario'}`
         : 'Nessun movimento bancario collegato',
     },
     {
@@ -244,7 +244,7 @@ export default function DettaglioVerbale() {
           <div><strong>Targa</strong><div>{verbale?.targa || '-'}</div></div>
           <div><strong>Trasgressore</strong><div>{verbale?.trasgressore || '-'}</div></div>
           <div><strong>Stato</strong><div><Badge variant={stato === 'pagato' ? 'success' : stato === 'sospeso' ? 'warning' : 'neutral'}>{stato}</Badge></div></div>
-          <div><strong>Importo</strong><div>{formatEuro(verbale?.importo || verbale?.totale || 0)}</div></div>
+          <div><strong>Importo</strong><div>{euroOppure(verbale?.importo ?? verbale?.totale)}</div></div>
           <div><strong>PDF disponibili</strong><div>{pdfCount}</div></div>
         </div>
       </PageSection>
@@ -303,7 +303,7 @@ export default function DettaglioVerbale() {
             onChange={event => setTrasgressore(event.target.value)}
             placeholder="Ragione sociale o nominativo"
             aria-label="Trasgressore"
-            style={{ minWidth: 320, padding: '10px 12px', borderRadius: 8, border: `1px solid ${COLORS.border}` }}
+            style={{ minWidth: 'min(320px, 100%)', padding: '10px 12px', borderRadius: 8, border: `1px solid ${COLORS.border}` }}
           />
           <Button variant="primary" disabled={savingTrasgressore || trasgressore.trim().length < 3} onClick={saveTrasgressore}>
             {savingTrasgressore ? 'Salvataggio…' : 'Salva trasgressore'}

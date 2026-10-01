@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Loader2, X, Building2, FileText, Folder, ChartColumn, Download, RefreshCw, Plus, Check, Trash2 } from 'lucide-react';
 import api from '../api';
 import { COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
@@ -35,6 +36,17 @@ const CATEGORIA_COLORS = {
   non_categorizzato: { bg: COLORS.gray[100], text: COLORS.gray[700], label: 'Non Categorizzato' },
 };
 
+function MostraAltre({ totale, limite, onClick }) {
+  if (totale <= limite) return null;
+  return (
+    <div style={{ padding: 12, textAlign: 'center' }}>
+      <Button variant="secondary" onClick={onClick}>
+        Mostra altre ({totale - limite})
+      </Button>
+    </div>
+  );
+}
+
 export default function RegoleCategorizzazione() {
   const [regole, setRegole] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +58,9 @@ export default function RegoleCategorizzazione() {
   const [newRule, setNewRule] = useState({ pattern: '', categoria: '', note: '' });
   const [editingCategoria, setEditingCategoria] = useState(null);
   const [ricategorizzando, setRicategorizzando] = useState(false);
+  const [limite, setLimite] = useState(200);
+
+  useEffect(() => { setLimite(200); }, [activeTab, searchTerm]);
 
   const fetchRegole = useCallback(async () => {
     setLoading(true);
@@ -73,9 +88,9 @@ export default function RegoleCategorizzazione() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setMessage({ type: 'success', text: '✅ File Excel scaricato!' });
+      setMessage({ type: 'success', text: 'File Excel scaricato!' });
     } catch (err) {
-      setMessage({ type: 'error', text: '❌ Errore nel download' });
+      setMessage({ type: 'error', text: 'Errore nel download' });
     }
   };
 
@@ -90,12 +105,12 @@ export default function RegoleCategorizzazione() {
       if (res.data.success) {
         setMessage({
           type: 'success',
-          text: `✅ Caricate: ${res.data.regole_fornitori_caricate} fornitori, ${res.data.regole_descrizioni_caricate} descrizioni`,
+          text: `Caricate: ${res.data.regole_fornitori_caricate} fornitori, ${res.data.regole_descrizioni_caricate} descrizioni`,
         });
         fetchRegole();
       }
     } catch (err) {
-      setMessage({ type: 'error', text: '❌ Errore nel caricamento' });
+      setMessage({ type: 'error', text: 'Errore nel caricamento' });
     }
     setUploading(false);
     event.target.value = '';
@@ -103,31 +118,31 @@ export default function RegoleCategorizzazione() {
 
   const handleAddRule = async () => {
     if (!newRule.pattern || !newRule.categoria) {
-      setMessage({ type: 'error', text: '⚠️ Pattern e categoria sono obbligatori' });
+      setMessage({ type: 'error', text: 'Pattern e categoria sono obbligatori' });
       return;
     }
     try {
       const res = await api.post('/api/regole/fornitore', newRule);
       if (res.data.success) {
-        setMessage({ type: 'success', text: '✅ Regola aggiunta!' });
+        setMessage({ type: 'success', text: 'Regola aggiunta!' });
         setShowAddForm(false);
         setNewRule({ pattern: '', categoria: '', note: '' });
         fetchRegole();
       } else {
-        setMessage({ type: 'error', text: "❌ Aggiunta non riuscita: " + (res.data.message || 'errore sconosciuto') });
+        setMessage({ type: 'error', text: "Aggiunta non riuscita: " + (res.data.message || 'errore sconosciuto') });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: "❌ Errore nell'aggiunta della regola" });
+      setMessage({ type: 'error', text: "Errore nell'aggiunta della regola" });
     }
   };
 
   const handleDeleteRule = async (tipo, pattern) => {
     try {
       await api.delete(`/api/regole/elimina/${tipo}/${encodeURIComponent(pattern)}`);
-      setMessage({ type: 'success', text: '✅ Regola eliminata!' });
+      setMessage({ type: 'success', text: 'Regola eliminata!' });
       fetchRegole();
     } catch (err) {
-      setMessage({ type: 'error', text: "❌ Errore nell'eliminazione" });
+      setMessage({ type: 'error', text: "Errore nell'eliminazione" });
     }
   };
 
@@ -140,16 +155,16 @@ export default function RegoleCategorizzazione() {
         setMessage({
           type: nErrori > 0 ? 'error' : 'success',
           text:
-            `✅ Ricategorizzate ${res.data.fatture_processate} fatture!` +
+            `Ricategorizzate ${res.data.fatture_processate} fatture!` +
             (nErrori > 0
-              ? ` ⚠️ ${nErrori} con errori: ${res.data.errori.slice(0, 3).join('; ')}${nErrori > 3 ? '…' : ''}`
+              ? ` ${nErrori} con errori: ${res.data.errori.slice(0, 3).join('; ')}${nErrori > 3 ? '…' : ''}`
               : ''),
         });
       } else {
-        setMessage({ type: 'error', text: '❌ Ricategorizzazione non riuscita' });
+        setMessage({ type: 'error', text: 'Ricategorizzazione non riuscita' });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: '❌ Errore nella ricategorizzazione' });
+      setMessage({ type: 'error', text: 'Errore nella ricategorizzazione' });
     }
     setRicategorizzando(false);
   };
@@ -188,7 +203,7 @@ export default function RegoleCategorizzazione() {
   if (loading) {
     return (
       <div style={{ padding: 24, textAlign: 'center', paddingTop: 100 }}>
-        <div style={{ fontSize: 32, marginBottom: 16 }}>⏳</div>
+        <Loader2 size={32} aria-hidden="true" style={{ marginBottom: 16, color: COLORS.textMuted }} />
         <div style={{ color: COLORS.textMuted }}>Caricamento regole...</div>
       </div>
     );
@@ -205,26 +220,6 @@ export default function RegoleCategorizzazione() {
       subtitle="Associazioni Fornitore/Descrizione → Categoria Contabile"
     >
       <div data-testid="regole-categorizzazione-page">
-        {/* Header */}
-        <div style={{ marginBottom: 24 }}>
-          <h1
-            style={{
-              fontSize: 28,
-              fontWeight: 700,
-              color: COLORS.primaryLight,
-              marginBottom: 8,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
-            <span>⚙️</span> Regole di Categorizzazione
-          </h1>
-          <p style={{ color: COLORS.textMuted }}>
-            Associazioni Fornitore/Descrizione → Categoria Contabile
-          </p>
-        </div>
-
         {/* Messaggio */}
         {message && (
           <div
@@ -256,7 +251,7 @@ export default function RegoleCategorizzazione() {
               onClick={() => setMessage(null)}
               style={{ fontSize: 18, padding: '2px 8px', color: 'inherit' }}
             >
-              ✕
+              <X size={16} aria-hidden="true" />
             </Button>
           </div>
         )}
@@ -270,10 +265,10 @@ export default function RegoleCategorizzazione() {
             marginBottom: 24,
           }}
         >
-          <StatCard label="Regole Fornitori" value={regole?.regole_fornitori?.length || 0} accent="info" icon="🏢" />
-          <StatCard label="Regole Descrizioni" value={regole?.regole_descrizioni?.length || 0} accent="accent" icon="📝" />
-          <StatCard label="Categorie" value={totaleCategorie} accent="success" icon="📁" />
-          <StatCard label="Totale Regole" value={totaleRegole} accent="warning" icon="📊" />
+          <StatCard label="Regole Fornitori" value={regole?.regole_fornitori?.length || 0} accent="info" icon={<Building2 size={18} aria-hidden="true" />} />
+          <StatCard label="Regole Descrizioni" value={regole?.regole_descrizioni?.length || 0} accent="accent" icon={<FileText size={18} aria-hidden="true" />} />
+          <StatCard label="Categorie" value={totaleCategorie} accent="success" icon={<Folder size={18} aria-hidden="true" />} />
+          <StatCard label="Totale Regole" value={totaleRegole} accent="warning" icon={<ChartColumn size={18} aria-hidden="true" />} />
         </div>
 
         {/* Azioni */}
@@ -289,7 +284,7 @@ export default function RegoleCategorizzazione() {
             borderRadius: BORDER_RADIUS.md,
           }}
         >
-          <Button variant="success" onClick={handleDownloadExcel} iconLeft="📥">
+          <Button variant="success" onClick={handleDownloadExcel} iconLeft={<Download size={16} aria-hidden="true" />}>
             Scarica Excel
           </Button>
 
@@ -314,14 +309,14 @@ export default function RegoleCategorizzazione() {
               gap: 8,
             }}
           >
-            📤 {uploading ? 'Caricamento...' : 'Carica Excel'}
+            {uploading ? 'Caricamento...' : 'Carica Excel'}
           </DocumentImportLink>
 
-          <Button variant="info" onClick={handleRicategorizza} disabled={ricategorizzando} iconLeft="🔄">
+          <Button variant="info" onClick={handleRicategorizza} disabled={ricategorizzando} iconLeft={<RefreshCw size={16} aria-hidden="true" />}>
             {ricategorizzando ? 'Elaborazione...' : 'Applica alle Fatture'}
           </Button>
 
-          <Button variant="warning" onClick={() => setShowAddForm(!showAddForm)} iconLeft="➕">
+          <Button variant="warning" onClick={() => setShowAddForm(!showAddForm)} iconLeft={<Plus size={16} aria-hidden="true" />}>
             Nuova Regola
           </Button>
         </div>
@@ -337,7 +332,7 @@ export default function RegoleCategorizzazione() {
               marginBottom: 20,
             }}
           >
-            <h3 style={{ marginTop: 0, marginBottom: 16 }}>➕ Aggiungi Nuova Regola</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>Aggiungi Nuova Regola</h3>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <Input
                 type="text"
@@ -358,10 +353,10 @@ export default function RegoleCategorizzazione() {
                   </option>
                 ))}
               </Select>
-              <Button variant="success" onClick={handleAddRule} iconLeft="✅">
+              <Button variant="success" onClick={handleAddRule} iconLeft={<Check size={16} aria-hidden="true" />}>
                 Salva
               </Button>
-              <Button variant="secondary" onClick={() => setShowAddForm(false)} iconLeft="✕">
+              <Button variant="secondary" onClick={() => setShowAddForm(false)} iconLeft={<X size={16} aria-hidden="true" />}>
                 Annulla
               </Button>
             </div>
@@ -380,7 +375,7 @@ export default function RegoleCategorizzazione() {
         >
           <Input
             type="text"
-            placeholder="🔍 Cerca regola..."
+            placeholder="Cerca regola..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             style={{ minWidth: 250 }}
@@ -470,7 +465,7 @@ export default function RegoleCategorizzazione() {
                                       padding: 0,
                                     }}
                                   >
-                                    ✕
+                                    <X size={14} aria-hidden="true" />
                                   </button>
                                 </span>
                               ))}
@@ -511,7 +506,7 @@ export default function RegoleCategorizzazione() {
                                       padding: 0,
                                     }}
                                   >
-                                    ✕
+                                    <X size={14} aria-hidden="true" />
                                   </button>
                                 </span>
                               ))}
@@ -538,7 +533,7 @@ export default function RegoleCategorizzazione() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRules(regole?.regole_fornitori).map((r, i) => {
+                  {filteredRules(regole?.regole_fornitori).slice(0, limite).map((r, i) => {
                     const style = getCategoryStyle(r.categoria);
                     return (
                       <tr key={i}>
@@ -553,7 +548,7 @@ export default function RegoleCategorizzazione() {
                             variant="danger"
                             size="sm"
                             onClick={() => handleDeleteRule('fornitore', r.pattern)}
-                            iconLeft="🗑️"
+                            iconLeft={<Trash2 size={16} aria-hidden="true" />}
                           >
                             Elimina
                           </Button>
@@ -563,6 +558,11 @@ export default function RegoleCategorizzazione() {
                   })}
                 </tbody>
               </Table>
+              <MostraAltre
+                totale={filteredRules(activeTab === 'fornitori' ? regole?.regole_fornitori : regole?.regole_descrizioni).length}
+                limite={limite}
+                onClick={() => setLimite(l => l + 200)}
+              />
             </TableWrap>
           )}
 
@@ -578,7 +578,7 @@ export default function RegoleCategorizzazione() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRules(regole?.regole_descrizioni).map((r, i) => {
+                  {filteredRules(regole?.regole_descrizioni).slice(0, limite).map((r, i) => {
                     const style = getCategoryStyle(r.categoria);
                     return (
                       <tr key={i}>
@@ -593,7 +593,7 @@ export default function RegoleCategorizzazione() {
                             variant="danger"
                             size="sm"
                             onClick={() => handleDeleteRule('descrizione', r.pattern)}
-                            iconLeft="🗑️"
+                            iconLeft={<Trash2 size={16} aria-hidden="true" />}
                           >
                             Elimina
                           </Button>
@@ -603,6 +603,11 @@ export default function RegoleCategorizzazione() {
                   })}
                 </tbody>
               </Table>
+              <MostraAltre
+                totale={filteredRules(activeTab === 'fornitori' ? regole?.regole_fornitori : regole?.regole_descrizioni).length}
+                limite={limite}
+                onClick={() => setLimite(l => l + 200)}
+              />
             </TableWrap>
           )}
 

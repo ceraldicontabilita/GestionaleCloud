@@ -199,7 +199,7 @@ router.add_api_route(
 # === ROTTE DINAMICHE (devono venire DOPO le statiche) ===
 
 # Cassa - Dinamiche
-router.add_api_route("/cassa/delete-by-source/{source}", delete_cassa_by_source, methods=["DELETE"])
+router.add_api_route("/cassa/delete-by-source/{source}", delete_cassa_by_source, methods=["DELETE"], dependencies=[Depends(get_current_admin_user)])
 router.add_api_route("/cassa/{movimento_id}", update_prima_nota_cassa, methods=["PUT"])
 router.add_api_route("/cassa/{movimento_id}", delete_movimento_cassa, methods=["DELETE"])
 router.add_api_route("/cassa/{movimento_id}/fattura", get_fattura_allegata_cassa, methods=["GET"])
@@ -225,7 +225,7 @@ router.add_api_route("/sposta-scrittura", sposta_scrittura_prima_nota, methods=[
 
 # Banca - Sync estratto conto
 router.add_api_route("/banca/sync-estratto-conto", sync_estratto_conto_to_banca, methods=["POST"])
-router.add_api_route("/banca/delete-by-source/{source}", delete_banca_by_source, methods=["DELETE"])
+router.add_api_route("/banca/delete-by-source/{source}", delete_banca_by_source, methods=["DELETE"], dependencies=[Depends(get_current_admin_user)])
 router.add_api_route("/banca/{movimento_id}", update_prima_nota_banca, methods=["PUT"])
 router.add_api_route("/banca/{movimento_id}", delete_movimento_banca, methods=["DELETE"])
 router.add_api_route("/banca/{movimento_id}/fattura", get_fattura_allegata_banca, methods=["GET"])

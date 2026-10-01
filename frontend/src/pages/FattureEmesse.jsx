@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, FileCode, Link2, RefreshCw, Upload, Users, FileOutput } from 'lucide-react';
 import api, { messaggioErrore } from '../api';
-import { COLORS, formatDateIT, formatEuroD } from '../lib/utils';
+import { COLORS, formatDateIT } from '../lib/utils';
+import { euroOppure } from '../lib/vista';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { scaricaOriginale } from '../lib/scaricaOriginale';
 import { urlOriginale } from '../lib/vista';
@@ -58,7 +59,7 @@ function SceltaCorrispettivo({ fattura, onScelto }) {
     <div data-testid={`scelta-corrispettivo-${fattura.id}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
       {opzioni.map(c => (
         <Button key={c.id} variant="secondary" size="sm" onClick={() => scegli(c.id)} style={{ minHeight: 44 }}>
-          {formatDateIT(c.data)} · {formatEuroD(c.totale)}
+          {formatDateIT(c.data)} · {euroOppure(c.totale)}
         </Button>
       ))}
     </div>
@@ -92,7 +93,7 @@ function Clienti() {
           render: c => [c.email, c.pec, c.telefono].filter(Boolean).join(' · ') || '—' },
         { key: 'fatture', label: 'Fatture', align: 'right', ruoloCard: 'dettaglio', render: c => c.fatture || 0 },
         { key: 'totale_fatturato', label: 'Fatturato', align: 'right', mono: true, ruoloCard: 'importo',
-          render: c => formatEuroD(c.totale_fatturato || 0) },
+          render: c => euroOppure(c.totale_fatturato) },
       ]}
     />
   );
@@ -138,7 +139,7 @@ export default function FattureEmesse() {
 
   const pastiglie = useMemo(() => [
     { etichetta: 'Fatture emesse', valore: String(riepilogo.numero || 0), nota: `Anno ${anno}`, tono: 'neutro' },
-    { etichetta: 'Totale fatturato', valore: formatEuroD(riepilogo.totale || 0),
+    { etichetta: 'Totale fatturato', valore: euroOppure(riepilogo.totale),
       nota: 'Già nei corrispettivi: non aumenta le entrate', tono: 'neutro' },
     { etichetta: 'Collegate al corrispettivo', valore: String(perStato.SODDISFATTO || 0),
       nota: 'Il giorno dello scontrino', tono: 'ok' },
@@ -168,7 +169,7 @@ export default function FattureEmesse() {
         );
       },
     },
-    { key: 'totale', label: 'Totale', align: 'right', mono: true, ruoloCard: 'importo', render: f => formatEuroD(f.totale) },
+    { key: 'totale', label: 'Totale', align: 'right', mono: true, ruoloCard: 'importo', render: f => euroOppure(f.totale) },
     {
       key: 'azioni', label: '', ruoloCard: 'azioni',
       render: f => (

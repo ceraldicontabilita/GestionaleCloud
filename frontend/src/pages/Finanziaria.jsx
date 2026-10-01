@@ -19,7 +19,10 @@ import {
   Receipt,
   AlertCircle,
   Info,
+  BookOpen,
+  ClipboardList,
 } from 'lucide-react';
+import { euroOppure } from '../lib/vista';
 
 export const DATO_NON_DISPONIBILE = 'Dato non disponibile';
 
@@ -28,7 +31,7 @@ export const DATO_NON_DISPONIBILE = 'Dato non disponibile';
  * con fatture senza ``iva_detraibile`` classificata): non e' 0,00.
  */
 export function euroODato(valore) {
-  return valore == null ? DATO_NON_DISPONIBILE : formatEuro(valore);
+  return valore == null ? DATO_NON_DISPONIBILE : euroOppure(valore);
 }
 
 export default function Finanziaria() {
@@ -60,7 +63,6 @@ export default function Finanziaria() {
     return (
       <PageLayout
         title="Situazione Finanziaria"
-        icon="📊"
         subtitle={`Riepilogo finanziario ${selectedYear}`}
       >
         <PageLoading message={`Caricamento dati finanziari per ${selectedYear}...`} />
@@ -70,7 +72,7 @@ export default function Finanziaria() {
 
   if (loadError || !summary) {
     return (
-      <PageLayout title="Situazione Finanziaria" icon="📊" subtitle={`Riepilogo finanziario ${selectedYear}`}>
+      <PageLayout title="Situazione Finanziaria" subtitle={`Riepilogo finanziario ${selectedYear}`}>
         <div role="alert" style={{ padding: 20, border: `1px solid ${COLORS.danger}`, background: COLORS.dangerLight, borderRadius: 8 }}>
           <strong>Dati finanziari non disponibili.</strong>
           <div style={{ marginTop: 6, fontSize: 13 }}>{loadError || 'Il servizio non ha restituito un riepilogo valido.'}</div>
@@ -84,7 +86,6 @@ export default function Finanziaria() {
   return (
     <PageLayout
       title="Situazione Finanziaria"
-      icon="📊"
       subtitle={`Riepilogo finanziario e stima IVA documentale - Anno ${selectedYear}`}
       actions={
         <Badge
@@ -97,7 +98,7 @@ export default function Finanziaria() {
             letterSpacing: 'normal',
           }}
         >
-          📅 Anno: {selectedYear}
+          Anno: {selectedYear}
         </Badge>
       }
     >
@@ -132,15 +133,15 @@ export default function Finanziaria() {
         <StatCard
           icon={<TrendingUp size={18} />}
           label="Entrate finanziarie dell'anno"
-          value={formatEuro(summary?.total_income)}
-          subtext={`Cassa: ${formatEuro(summary?.cassa?.entrate)} | BPM: ${formatEuro(summary?.banca?.entrate)} | SumUp: ${formatEuro(summary?.sumup?.entrate)}`}
+          value={euroOppure(summary?.total_income)}
+          subtext={`Cassa: ${euroOppure(summary?.cassa?.entrate)} | BPM: ${euroOppure(summary?.banca?.entrate)} | SumUp: ${euroOppure(summary?.sumup?.entrate)}`}
           accent="success"
         />
         <StatCard
           icon={<TrendingDown size={18} />}
           label="Uscite finanziarie dell'anno"
-          value={formatEuro(summary?.total_expenses)}
-          subtext={`Cassa: ${formatEuro(summary?.cassa?.uscite)} | BPM: ${formatEuro(summary?.banca?.uscite)} | SumUp: ${formatEuro(summary?.sumup?.uscite)}`}
+          value={euroOppure(summary?.total_expenses)}
+          subtext={`Cassa: ${euroOppure(summary?.cassa?.uscite)} | BPM: ${euroOppure(summary?.banca?.uscite)} | SumUp: ${euroOppure(summary?.sumup?.uscite)}`}
           accent="danger"
         />
         <StatCard
@@ -154,44 +155,44 @@ export default function Finanziaria() {
           icon={<Building2 size={18} />}
           label="Disponibilità contabile"
           value={formatEuro(summary?.available_balance ?? summary?.saldo_totale)}
-          subtext={`Include riporti iniziali: ${formatEuro(summary?.opening_balance)}`}
+          subtext={`Include riporti iniziali: ${euroOppure(summary?.opening_balance)}`}
           accent={(summary?.available_balance ?? summary?.saldo_totale) >= 0 ? 'success' : 'danger'}
         />
       </PageGrid>
 
       {/* Sezione IVA */}
-      <PageSection title="Riepilogo IVA" icon="🧾" style={{ marginTop: 20 }}>
+      <PageSection title="Riepilogo IVA" icon={<Receipt size={16} aria-hidden />} style={{ marginTop: 20 }}>
         <p style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
           Stima IVA da Corrispettivi XML e Fatture XML classificate. La liquidazione verificata,
           l'F24 e l'addebito bancario restano controlli distinti.
         </p>
         <PageGrid cols={3} gap={16}>
           <StatCard
-            label="📤 IVA a DEBITO (Corrispettivi)"
-            value={formatEuro(summary?.vat_debit)}
+            label="IVA a DEBITO (Corrispettivi)"
+            value={euroOppure(summary?.vat_debit)}
             subtext={
               <>
                 Da {summary?.corrispettivi?.count || 0} corrispettivi
                 <br />
-                Totale vendite: {formatEuro(summary?.corrispettivi?.totale)}
+                Totale vendite: {euroOppure(summary?.corrispettivi?.totale)}
               </>
             }
             accent="warning"
           />
           <StatCard
-            label="📥 IVA a CREDITO (Fatture)"
+            label="IVA a CREDITO (Fatture)"
             value={euroODato(summary?.vat_credit)}
             subtext={
               <>
                 Da {summary?.fatture?.count || 0} fatture
                 <br />
-                Totale acquisti: {formatEuro(summary?.fatture?.totale)}
+                Totale acquisti: {euroOppure(summary?.fatture?.totale)}
               </>
             }
             accent="success"
           />
           <StatCard
-            label="⚖️ Stima saldo IVA"
+            label="Stima saldo IVA"
             value={euroODato(summary?.vat_balance)}
             subtext={
               <Badge
@@ -210,7 +211,7 @@ export default function Finanziaria() {
       </PageSection>
 
       {/* Dettaglio Prima Nota */}
-      <PageSection title="Dettaglio Prima Nota" icon="📒" style={{ marginTop: 20 }}>
+      <PageSection title="Dettaglio Prima Nota" icon={<BookOpen size={16} aria-hidden />} style={{ marginTop: 20 }}>
         {(summary?.avvisi_aggiornamento || []).map((a) => (
           <div
             key={a.conto}
@@ -258,15 +259,15 @@ export default function Finanziaria() {
                       {summary?.cassa?.aggiornato_al ? `aggiornato al ${formatDateIT(summary.cassa.aggiornato_al)}` : 'data ultimo movimento non nota'}
                     </div>
                   </Td>
-                <Td align="right" mono>{formatEuro(summary?.cassa?.riporto)}</Td>
+                <Td align="right" mono>{euroOppure(summary?.cassa?.riporto)}</Td>
                 <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
-                  {formatEuro(summary?.cassa?.entrate)}
+                  {euroOppure(summary?.cassa?.entrate)}
                 </Td>
                 <Td align="right" mono style={{ color: COLORS.danger, fontWeight: 500 }}>
-                  {formatEuro(summary?.cassa?.uscite)}
+                  {euroOppure(summary?.cassa?.uscite)}
                 </Td>
                 <Td align="right" mono style={{ fontWeight: 600 }}>
-                  {formatEuro(summary?.cassa?.saldo)}
+                  {euroOppure(summary?.cassa?.saldo)}
                 </Td>
               </tr>
               <tr>
@@ -278,15 +279,15 @@ export default function Finanziaria() {
                       {summary?.banca?.aggiornato_al ? `aggiornato al ${formatDateIT(summary.banca.aggiornato_al)}` : 'data ultimo movimento non nota'}
                     </div>
                   </Td>
-                <Td align="right" mono>{formatEuro(summary?.banca?.riporto)}</Td>
+                <Td align="right" mono>{euroOppure(summary?.banca?.riporto)}</Td>
                 <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
-                  {formatEuro(summary?.banca?.entrate)}
+                  {euroOppure(summary?.banca?.entrate)}
                 </Td>
                 <Td align="right" mono style={{ color: COLORS.danger, fontWeight: 500 }}>
-                  {formatEuro(summary?.banca?.uscite)}
+                  {euroOppure(summary?.banca?.uscite)}
                 </Td>
                 <Td align="right" mono style={{ fontWeight: 600 }}>
-                  {formatEuro(summary?.banca?.saldo)}
+                  {euroOppure(summary?.banca?.saldo)}
                 </Td>
               </tr>
               {summary?.sumup && (
@@ -299,15 +300,15 @@ export default function Finanziaria() {
                       {summary?.sumup?.aggiornato_al ? `aggiornato al ${formatDateIT(summary.sumup.aggiornato_al)}` : 'data ultimo movimento non nota'}
                     </div>
                   </Td>
-                  <Td align="right" mono>{formatEuro(summary.sumup.riporto)}</Td>
+                  <Td align="right" mono>{euroOppure(summary.sumup.riporto)}</Td>
                   <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
-                    {formatEuro(summary.sumup.entrate)}
+                    {euroOppure(summary.sumup.entrate)}
                   </Td>
                   <Td align="right" mono style={{ color: COLORS.danger, fontWeight: 500 }}>
-                    {formatEuro(summary.sumup.uscite)}
+                    {euroOppure(summary.sumup.uscite)}
                   </Td>
                   <Td align="right" mono style={{ fontWeight: 600 }}>
-                    {formatEuro(summary.sumup.saldo)}
+                    {euroOppure(summary.sumup.saldo)}
                   </Td>
                 </tr>
               )}
@@ -316,13 +317,13 @@ export default function Finanziaria() {
               <tr style={{ background: COLORS.bgAlt, fontWeight: 600 }}>
                 <Td style={{ fontWeight: 600 }}>TOTALE</Td>
                 <Td align="right" mono style={{ fontWeight: 600 }}>
-                  {formatEuro(summary?.opening_balance)}
+                  {euroOppure(summary?.opening_balance)}
                 </Td>
                 <Td align="right" mono style={{ fontWeight: 600, color: COLORS.success }}>
-                  {formatEuro(summary?.total_income)}
+                  {euroOppure(summary?.total_income)}
                 </Td>
                 <Td align="right" mono style={{ fontWeight: 600, color: COLORS.danger }}>
-                  {formatEuro(summary?.total_expenses)}
+                  {euroOppure(summary?.total_expenses)}
                 </Td>
                 <Td
                   data-testid="saldo-contabile-totale"
@@ -333,7 +334,7 @@ export default function Finanziaria() {
                     color: summary?.saldo_totale >= 0 ? COLORS.success : COLORS.danger,
                   }}
                 >
-                  {formatEuro(summary?.saldo_totale)}
+                  {euroOppure(summary?.saldo_totale)}
                 </Td>
               </tr>
             </tfoot>
@@ -353,7 +354,7 @@ export default function Finanziaria() {
       </PageSection>
 
       {/* Situazione Debiti/Crediti */}
-      <PageSection title="Situazione Debiti/Crediti" icon="📋" style={{ marginTop: 20 }}>
+      <PageSection title="Situazione Debiti/Crediti" icon={<ClipboardList size={16} aria-hidden />} style={{ marginTop: 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div
             style={{
@@ -370,7 +371,7 @@ export default function Finanziaria() {
               Fatture da pagare (debiti vs fornitori)
             </span>
             <span style={{ fontWeight: 700, color: COLORS.danger, fontFamily: FONT.mono }}>
-              {formatEuro(summary?.payables)}
+              {euroOppure(summary?.payables)}
             </span>
           </div>
           <div
@@ -396,7 +397,7 @@ export default function Finanziaria() {
               </span>
             ) : (
               <span style={{ fontWeight: 700, color: COLORS.success, fontFamily: FONT.mono }}>
-                {formatEuro(summary?.receivables)}
+                {euroOppure(summary?.receivables)}
               </span>
             )}
           </div>
@@ -414,7 +415,7 @@ export default function Finanziaria() {
             }}
           >
             <span>
-              🧾 Stima documentale IVA{' '}
+              Stima documentale IVA{' '}
               {summary?.vat_balance == null
                 ? `(${summary?.vat_status || 'non calcolabile'})`
                 : summary.vat_balance > 0 ? 'a debito' : 'a credito'}

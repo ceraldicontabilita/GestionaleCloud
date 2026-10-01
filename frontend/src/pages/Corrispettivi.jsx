@@ -11,6 +11,7 @@ import {
   useIsMobile,
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { euroOppure } from '../lib/vista';
 import {
   PageLayout,
   PageSection,
@@ -30,14 +31,7 @@ import {
   RowActionButton,
   ListaAdattiva,
 } from '../components/ds';
-import {
-  Receipt,
-  Banknote,
-  CreditCard,
-  Percent,
-  RefreshCw,
-  X,
-} from 'lucide-react';
+import { Receipt, Banknote, CreditCard, Percent, RefreshCw, X, ClipboardList } from 'lucide-react';
 
 const asNumber = value => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -145,7 +139,6 @@ export default function Corrispettivi() {
   return (
     <PageLayout
       title="Corrispettivi Elettronici"
-      icon="🧾"
       subtitle={`Corrispettivi giornalieri dal registratore telematico - Anno ${selectedYear}`}
       actions={
         <div style={{ display: 'flex', gap: 10 }}>
@@ -211,7 +204,7 @@ export default function Corrispettivi() {
             <div ref={dettaglioRef} style={{ scrollMarginTop: 100 }}>
             <PageSection
               title={`Dettaglio Corrispettivo ${formatDateIT(selectedItem.data)}`}
-              icon="📋"
+              icon={<ClipboardList size={18} aria-hidden="true" />}
               style={{ marginTop: 20 }}
             >
               <Button
@@ -237,11 +230,11 @@ export default function Corrispettivi() {
                   </h4>
                   <div style={{ fontSize: 13, lineHeight: 2 }}>
                     <div>
-                      📅 Data: <strong>{formatDateIT(selectedItem.data)}</strong>
+                      Data: <strong>{formatDateIT(selectedItem.data)}</strong>
                     </div>
-                    <div>🔢 Matricola RT: {selectedItem.matricola_rt || '-'}</div>
-                    <div>🏢 P.IVA: {selectedItem.partita_iva || '-'}</div>
-                    <div>📄 N° Documenti: {selectedItem.numero_documenti || '-'}</div>
+                    <div>Matricola RT: {selectedItem.matricola_rt || '-'}</div>
+                    <div>P.IVA: {selectedItem.partita_iva || '-'}</div>
+                    <div>N° Documenti: {selectedItem.numero_documenti || '-'}</div>
                   </div>
                 </div>
                 <div>
@@ -257,10 +250,10 @@ export default function Corrispettivi() {
                   </h4>
                   <div style={{ fontSize: 13, lineHeight: 2 }}>
                     <div style={{ color: COLORS.success }}>
-                      💵 Cassa: {formatEuro(selectedItem.pagato_contanti)}
+                      Cassa: {euroOppure(selectedItem.pagato_contanti)}
                     </div>
                     <div style={{ color: COLORS.info }}>
-                      💳 Elettronico: {formatEuro(selectedItem.pagato_elettronico)}
+                      Elettronico: {euroOppure(selectedItem.pagato_elettronico)}
                     </div>
                     <div style={{ fontWeight: 700, marginTop: 8, fontSize: 15 }}>
                       Totale: {formatEuro(totaleItem(selectedItem))}
@@ -338,13 +331,13 @@ export default function Corrispettivi() {
           {/* Lista Corrispettivi */}
           <PageSection
             title={`Elenco Corrispettivi (${corrispettivi.length})`}
-            icon="📋"
+            icon={<ClipboardList size={18} aria-hidden="true" />}
             style={{ marginTop: 20, padding: 0 }}
             actions={<CopyLinkButton />}
           >
             {corrispettivi.length === 0 ? (
               <div style={{ padding: 40 }}>
-                <PageEmpty icon="🧾" message="Nessun corrispettivo registrato per questo anno" />
+                <PageEmpty icon={<Receipt size={40} aria-hidden="true" />} message="Nessun corrispettivo registrato per questo anno" />
                 <div style={{ textAlign: 'center', marginTop: 16 }}>
                   <span style={{ color: COLORS.textMuted, fontSize: 14 }}>
                     I documenti vengono acquisiti esclusivamente dalla pagina Documenti.
@@ -371,7 +364,7 @@ export default function Corrispettivi() {
                     },
                     {
                       // La matricola RT è quasi sempre identica su ogni riga:
-                      // su mobile è omessa (resta nel dettaglio 👁), su
+                      // su mobile è omessa (resta nel dettaglio), su
                       // desktop resta come colonna secondaria.
                       key: 'matricola_rt',
                       label: 'Matricola RT',
@@ -381,27 +374,25 @@ export default function Corrispettivi() {
                     },
                     {
                       key: 'pagato_contanti',
-                      label: '💵 Cassa',
+                      label: 'Cassa',
                       align: 'right',
                       mono: true,
                       ruoloCard: 'dettaglio',
-                      iconaCard: '💵',
                       render: c => (
                         <span style={{ color: COLORS.success, fontWeight: 500 }}>
-                          {formatEuro(c.pagato_contanti)}
+                          {euroOppure(c.pagato_contanti)}
                         </span>
                       ),
                     },
                     {
                       key: 'pagato_elettronico',
-                      label: '💳 POS',
+                      label: 'POS',
                       align: 'right',
                       mono: true,
                       ruoloCard: 'dettaglio',
-                      iconaCard: '💳',
                       render: c => (
                         <span style={{ color: COLORS.info, fontWeight: 500 }}>
-                          {formatEuro(c.pagato_elettronico)}
+                          {euroOppure(c.pagato_elettronico)}
                         </span>
                       ),
                     },

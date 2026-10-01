@@ -4,7 +4,9 @@ import { CopyLinkButton } from '../components/CopyLinkButton';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import api from '../api';
-import { COLORS, STYLES, button, badge, formatEuro } from '../lib/utils';
+import { Bot, Brain, CheckCircle2, Circle, LoaderCircle, ShieldCheck } from 'lucide-react';
+import { COLORS, STYLES, button, badge, useIsMobile } from '../lib/utils';
+import { euroOppure, dataOppure } from '../lib/vista';
 import { PageLayout, PageSection, PageEmpty, PageLoading } from '../components/PageLayout';
 
 // ---- costanti ----
@@ -17,9 +19,9 @@ const TIPO_CFG = {
 };
 
 const STATI_CFG = {
-  completato: { color: COLORS.success, label: 'Attivo', icon: '●' },
-  errore: { color: COLORS.danger, label: 'Errore', icon: '●' },
-  in_esecuzione: { color: COLORS.warning, label: 'In esecuzione', icon: '◐' },
+  completato: { color: COLORS.success, label: 'Attivo', Icon: Circle },
+  errore: { color: COLORS.danger, label: 'Errore', Icon: Circle },
+  in_esecuzione: { color: COLORS.warning, label: 'In esecuzione', Icon: LoaderCircle },
 };
 
 function formatTs(iso) {
@@ -41,7 +43,7 @@ function AgenteCard({ agente, onRun }) {
   const s = STATI_CFG[agente.stato] || {
     color: COLORS.gray,
     label: agente.stato || '?',
-    icon: '●',
+    Icon: Circle,
   };
   return (
     <div style={{ ...STYLES.card, display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -84,7 +86,7 @@ function AgenteCard({ agente, onRun }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ fontSize: 13, color: s.color, fontWeight: 600 }}>
-          {s.icon} {s.label}
+          <s.Icon size={12} aria-hidden style={{ verticalAlign: '-1px', marginRight: 4 }} /> {s.label}
         </span>
         <button
           onClick={() => onRun(agente.agente)}
@@ -253,7 +255,7 @@ function DecisioneCard({ decisione, isAdmin, onDecisione }) {
           </div>
         </div>
         <div style={{ fontWeight: 700, color: Math.abs(decisione.financial_impact || 0) > 0 ? COLORS.warning : COLORS.gray }}>
-          Impatto {formatEuro(decisione.financial_impact || 0)}
+          Impatto {euroOppure(decisione.financial_impact)}
         </div>
       </div>
       {decisione.explanation && (
@@ -318,6 +320,7 @@ function DecisioneCard({ decisione, isAdmin, onDecisione }) {
 }
 
 function CashFlowPanel({ previsione }) {
+  const isMobile = useIsMobile();
   if (!previsione?.scenari?.length) {
     return <PageEmpty message="Previsione non ancora disponibile." />;
   }
@@ -329,7 +332,7 @@ function CashFlowPanel({ previsione }) {
         <div style={{ ...STYLES.card, flex: '1 1 180px' }}>
           <div style={{ fontSize: 12, color: COLORS.gray }}>Liquidità iniziale</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.text }}>
-            {formatEuro(previsione.liquidita_iniziale || 0)}
+            {euroOppure(previsione.liquidita_iniziale)}
           </div>
         </div>
         <div style={{ ...STYLES.card, flex: '1 1 180px' }}>
@@ -378,10 +381,22 @@ function CashFlowPanel({ previsione }) {
       {previsione.scenari.map(scenario => (
         <PageSection key={scenario.nome} title={`Scenario ${scenario.nome}`}>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, marginBottom: 10 }}>
-            <span><strong>Saldo minimo:</strong> {formatEuro(scenario.saldo_minimo)}</span>
-            <span><strong>Saldo finale:</strong> {formatEuro(scenario.saldo_finale)}</span>
+            <span><strong>Saldo minimo:</strong> {euroOppure(scenario.saldo_minimo)}</span>
+            <span><strong>Saldo finale:</strong> {euroOppure(scenario.saldo_finale)}</span>
             <span>Entrate {Math.round(scenario.fattore_entrate * 100)}% · Uscite {Math.round(scenario.fattore_uscite * 100)}%</span>
           </div>
+          {isMobile ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {scenario.settimane.map(riga => (
+                <div key={riga.settimana} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, fontSize: 13, display: 'grid', gap: 3 }}>
+                  <strong>{riga.settimana} · {dataOppure(riga.dal)} – {dataOppure(riga.al)}</strong>
+                  <span style={{ color: COLORS.success }}>Entrate: {euroOppure(riga.entrate)}</span>
+                  <span style={{ color: COLORS.danger }}>Uscite: {euroOppure(riga.uscite)}</span>
+                  <span style={{ fontWeight: 700, color: riga.saldo_finale < 0 ? COLORS.danger : COLORS.text }}>Saldo finale: {euroOppure(riga.saldo_finale)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
@@ -395,17 +410,18 @@ function CashFlowPanel({ previsione }) {
                 {scenario.settimane.map(riga => (
                   <tr key={riga.settimana}>
                     <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9' }}>{riga.settimana}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9' }}>{riga.dal} – {riga.al}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9', color: COLORS.success }}>{formatEuro(riga.entrate)}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9', color: COLORS.danger }}>{formatEuro(riga.uscite)}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9' }}>{dataOppure(riga.dal)} – {dataOppure(riga.al)}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9', color: COLORS.success }}>{euroOppure(riga.entrate)}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9', color: COLORS.danger }}>{euroOppure(riga.uscite)}</td>
                     <td style={{ padding: 8, borderBottom: '1px solid #f2f0e9', fontWeight: 700, color: riga.saldo_finale < 0 ? COLORS.danger : '#141413' }}>
-                      {formatEuro(riga.saldo_finale)}
+                      {euroOppure(riga.saldo_finale)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          )}
         </PageSection>
       ))}
       <div style={{ ...STYLES.card, fontSize: 12, color: COLORS.gray }}>
@@ -546,15 +562,10 @@ export default function AgentiPage() {
   ];
 
   return (
-    <PageLayout>
-      {/* HEADER */}
-      <div style={STYLES.header}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>🤖 Agenti AI</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>
-            Monitor, segnalazioni e pattern appresi dal sistema di intelligenza automatica
-          </p>
-        </div>
+    <PageLayout
+      title="Agenti AI"
+      subtitle="Monitor, segnalazioni e pattern appresi dal sistema di intelligenza automatica"
+      actions={
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <span style={{ ...badge(automazioni.sospese ? 'danger' : 'success'), alignSelf: 'center' }}>
             {automazioni.sospese ? 'Automazioni ferme' : 'Modalità shadow'}
@@ -574,10 +585,11 @@ export default function AgentiPage() {
           disabled={running || automazioni.sospese}
           style={button('primary', running || automazioni.sospese)}
         >
-          {running ? '⏳ Esecuzione...' : '▶ Esegui tutti ora'}
+          {running ? 'Esecuzione...' : 'Esegui tutti ora'}
         </button>
         </div>
-      </div>
+      }
+    >
 
       {msg && (
         <div
@@ -656,7 +668,7 @@ export default function AgentiPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {stati.length === 0 ? (
                 <PageEmpty
-                  icon="🤖"
+                  icon={<Bot size={48} aria-hidden />}
                   message="Nessun agente registrato. Esegui gli agenti per inizializzare i dati."
                 />
               ) : (
@@ -693,7 +705,7 @@ export default function AgentiPage() {
           {activeTab === 'urgente' && (
             <div>
               {urgenti === 0 ? (
-                <PageEmpty icon="🛡️" message="Nessuna segnalazione urgente — tutto in ordine" />
+                <PageEmpty icon={<ShieldCheck size={48} aria-hidden />} message="Nessuna segnalazione urgente — tutto in ordine" />
               ) : (
                 [...segnPerTipo('urgente'), ...segnPerTipo('anomalia')].map(s => (
                   <SegnalazioneCard key={s.id} s={s} onRisolvi={risolviSegnalazione} />
@@ -705,7 +717,7 @@ export default function AgentiPage() {
           {activeTab === 'avviso' && (
             <div>
               {segnPerTipo('avviso').length === 0 ? (
-                <PageEmpty icon="✅" message="Nessun avviso attivo" />
+                <PageEmpty icon={<CheckCircle2 size={48} aria-hidden />} message="Nessun avviso attivo" />
               ) : (
                 segnPerTipo('avviso').map(s => (
                   <SegnalazioneCard key={s.id} s={s} onRisolvi={risolviSegnalazione} />
@@ -742,7 +754,7 @@ export default function AgentiPage() {
             <div>
               {pattern.length === 0 ? (
                 <PageEmpty
-                  icon="🧠"
+                  icon={<Brain size={48} aria-hidden />}
                   message="Nessun pattern appreso. La Learning Machine impara dalle tue azioni nel tempo."
                 />
               ) : (

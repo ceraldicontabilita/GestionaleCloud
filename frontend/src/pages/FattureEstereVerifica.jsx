@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { COLORS, BORDER_RADIUS, formatDateIT, formatEuroD } from '../lib/utils';
+import { COLORS, BORDER_RADIUS, formatDateIT } from '../lib/utils';
+import { euroOppure } from '../lib/vista';
 import { Button, Badge, Card, PageHeader, Input } from '../components/ds';
 import { toast } from 'sonner';
 import { CheckCircle2, FileSearch, Eye } from 'lucide-react';
@@ -17,11 +18,6 @@ const CAMPI = [
   { key: 'iva', label: 'IVA', numero: true },
   { key: 'total_amount', label: 'Totale', numero: true },
 ];
-
-function formatEuro(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }) : '-';
-}
 
 function RigaFattura({ fattura, rating, onVerificata, onVediPdf }) {
   const [form, setForm] = useState(() =>
@@ -142,7 +138,7 @@ function RigaConfermata({ fattura, onAggiornata, onVediPdf }) {
             {fattura.supplier_name} · {fattura.invoice_number}
           </div>
           <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 3 }}>
-            {formatDateIT(fattura.invoice_date)} · <b>{formatEuroD(fattura.total_amount)}</b>
+            {formatDateIT(fattura.invoice_date)} · <b>{euroOppure(fattura.total_amount)}</b>
             {fattura.divisa && fattura.divisa !== 'EUR' ? ` (${fattura.divisa})` : ''}
             {' · '}{fattura.verifica_ai === 'corretta' ? 'corretta' : 'confermata'} il {formatDateIT(fattura.verifica_ai_at)}
           </div>
@@ -174,7 +170,7 @@ function RigaConfermata({ fattura, onAggiornata, onVediPdf }) {
                   padding: 10, marginBottom: 6, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md,
                 }}>
                   <div style={{ minWidth: 0, flex: '1 1 260px', fontSize: 13 }}>
-                    <b>{formatDateIT(c.data)} · {formatEuroD(c.importo)}{c.valuta && c.valuta !== 'EUR' ? ` ${c.valuta}` : ''}</b>
+                    <b>{formatDateIT(c.data)} · {euroOppure(c.importo)}{c.valuta && c.valuta !== 'EUR' ? ` ${c.valuta}` : ''}</b>
                     {' · '}{c.controparte || 'controparte non indicata'}
                     <div style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2, overflowWrap: 'anywhere' }}>
                       {c.email ? `${c.email} · ` : ''}{c.riferimento ? `rif. ${c.riferimento} · ` : ''}
@@ -297,7 +293,7 @@ export default function FattureEstereVerifica() {
 
       {pdfDoc && (
         <VisoreOriginale
-          title={`📄 ${pdfDoc.filename}`}
+          title={`${pdfDoc.filename}`}
           url={urlOriginale({ tipo: 'documento', id: pdfDoc.documento_inbox_id })}
           onClose={() => setPdfDoc(null)}
           maxWidth={1000}

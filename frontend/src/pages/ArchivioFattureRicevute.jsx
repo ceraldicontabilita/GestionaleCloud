@@ -4,7 +4,6 @@ import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
-  formatEuro,
   formatDateIT,
   formatDateGGMM,
   COLORS,
@@ -28,9 +27,17 @@ import {
   Th,
   Td,
 } from '../components/ds';
-import { Eye, FileText, ArrowLeftRight } from 'lucide-react';
+import { Eye, FileText, ArrowLeftRight, Check, Banknote, Landmark, PenLine, RefreshCw, TriangleAlert, X, Inbox } from 'lucide-react';
 import { ePagata } from '../utils/statoFattura';
 import { metodoNonConfigurato } from '../utils/metodoPagamento';
+import { euroOppure } from '../lib/vista';
+
+const MOTIVI_SPOSTAMENTO = [
+  'Pagata in contanti',
+  'Pagata con bonifico o carta',
+  'Registrata nel registro sbagliato',
+  'Metodo del fornitore cambiato',
+];
 
 // Come nell'artefatto: 200 righe, poi «Mostra altre 200 · N rimanenti».
 // `pagina` conta i blocchi gia' mostrati.
@@ -188,6 +195,54 @@ export const FILTRO_FATTURE_ANOMALE = Object.freeze({
   mese: '', fornitore: '', stato: 'anomala', search: '',
 });
 
+function MotivoSpostamento({ numero, da, a, onConferma, onAnnulla }) {
+  const [scelta, setScelta] = useState('');
+  const [altro, setAltro] = useState('');
+  const motivo = scelta === 'Altro' ? altro.trim() : scelta;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Motivo dello spostamento"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(20, 20, 19, 0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
+      onClick={onAnnulla}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ background: COLORS.card, borderRadius: BORDER_RADIUS.lg, padding: 18, width: '100%', maxWidth: 440 }}>
+        <h3 style={{ margin: '0 0 6px', fontSize: 15 }}>Sposta la fattura {numero} da {da} a {a}</h3>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>Scegli il motivo: resta nella traccia di audit.</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          {[...MOTIVI_SPOSTAMENTO, 'Altro'].map(m => (
+            <Button
+              key={m}
+              type="button"
+              size="sm"
+              variant={scelta === m ? 'primary' : 'secondary'}
+              onClick={() => setScelta(m)}
+              aria-pressed={scelta === m}
+              style={{ minHeight: 44 }}
+            >
+              {m === 'Altro' ? 'Altro (scrivi tu)' : m}
+            </Button>
+          ))}
+        </div>
+        {scelta === 'Altro' && (
+          <Input
+            aria-label="Motivo dello spostamento"
+            value={altro}
+            onChange={e => setAltro(e.target.value)}
+            style={{ marginBottom: 12 }}
+            autoFocus
+          />
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Button type="button" variant="secondary" onClick={onAnnulla} style={{ minHeight: 44 }}>Annulla</Button>
+          <Button type="button" variant="primary" disabled={!motivo} onClick={() => onConferma(motivo)} style={{ minHeight: 44 }}>Sposta</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ArchivioFatture() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
@@ -276,6 +331,7 @@ export default function ArchivioFatture() {
   const [invoiceNotFoundWarning, setInvoiceNotFoundWarning] = useState(null);
   const [fatturaView, setFatturaView] = useState(null);
   const [spostamentoInCorso, setSpostamentoInCorso] = useState('');
+  const [spostaMotivo, setSpostaMotivo] = useState(null);
   const highlightedRowRef = useRef(null);
 
   useEffect(() => {
@@ -384,8 +440,12 @@ export default function ArchivioFatture() {
     const movimentoId = da === 'cassa' ? fattura.prima_nota_cassa_id : fattura.prima_nota_banca_id;
     if (!movimentoId) return;
     const numero = fattura.invoice_number || fattura.numero_documento || fattura.id;
-    const motivo = window.prompt(`Motivo dello spostamento della fattura ${numero} da ${da} a ${a}:`);
-    if (!motivo?.trim()) return;
+    setSpostaMotivo({ fattura, da, a, numero, movimentoId });
+  };
+
+  const eseguiSposta = async (motivo) => {
+    const { fattura, da, a, numero, movimentoId } = spostaMotivo;
+    setSpostaMotivo(null);
     setSpostamentoInCorso(fattura.id);
     try {
       await api.post('/api/prima-nota/sposta-movimento', { movimento_id: movimentoId, da, a, motivo: motivo.trim(), conferma: true });
@@ -424,8 +484,7 @@ export default function ArchivioFatture() {
 
   // ==================== HELPERS ====================
 
-  // Usa formatEuro da utils.js (già importato)
-  const formatCurrency = formatEuro;
+  const formatCurrency = euroOppure;
   // Imponibile/IVA assenti (importi da verificare) si mostrano «—», mai € 0,00:
   // il backend non li ricostruisce piu' da `totale / 1.22`.
   const formatImportoOVuoto = v => (v === null || v === undefined ? '—' : formatCurrency(v));
@@ -436,7 +495,7 @@ export default function ArchivioFatture() {
   const getStatoBadge = fattura => {
     if (ePagata(fattura)) {
       let metodo = fattura.metodo_pagamento || '';
-      let icon = '✅';
+      let Icona = Check;
       let label = 'Pagata';
 
       if (
@@ -444,26 +503,26 @@ export default function ArchivioFatture() {
         metodo.toLowerCase().includes('cassa') ||
         metodo.toLowerCase().includes('contanti')
       ) {
-        icon = '💵';
+        Icona = Banknote;
         label = 'Cassa';
       } else if (
         fattura.prima_nota_banca_id ||
         metodo.toLowerCase().includes('banca') ||
         metodo.toLowerCase().includes('bonifico')
       ) {
-        icon = '🏦';
+        Icona = Landmark;
         label = 'Banca';
       } else if (metodo.toLowerCase().includes('assegno')) {
-        icon = '📝';
+        Icona = PenLine;
         label = 'Assegno';
       } else if (metodo.toLowerCase().includes('rid') || metodo.toLowerCase().includes('sdd')) {
-        icon = '🔄';
+        Icona = RefreshCw;
         label = 'RID/SDD';
       }
 
       return (
         <Badge variant="success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          {icon} {label}
+          <Icona size={12} aria-hidden="true" /> {label}
         </Badge>
       );
     }
@@ -487,7 +546,7 @@ export default function ArchivioFatture() {
           background: COLORS.warningLight, border: `1px solid ${COLORS.warning}`,
           display: 'flex', alignItems: 'flex-start', gap: 12,
         }}>
-          <div style={{ fontSize: 20 }}>🔍 ⚠️</div>
+          <TriangleAlert size={20} aria-hidden="true" style={{ color: COLORS.warning, flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 13, color: COLORS.warning, lineHeight: 1.5 }}>
             {invoiceNotFoundWarning.notExist ? (
               <>
@@ -535,9 +594,10 @@ export default function ArchivioFatture() {
               p.delete('id');
               setSearchParams(p, { replace: true });
             }}
-            style={{ fontSize: 18, color: COLORS.warning, padding: 0 }}
+            aria-label="Chiudi avviso"
+            style={{ color: COLORS.warning, padding: 0 }}
           >
-            ✓
+            <X size={18} aria-hidden="true" />
           </Button>
         </div>
       )}
@@ -662,7 +722,7 @@ export default function ArchivioFatture() {
               <option value="importata">Importate</option>
               <option value="anomala">Anomale</option>
               <option value="pagata">Pagate</option>
-              <option value="senza_metodo">🔍 ⚠️ Senza metodo pagamento</option>
+              <option value="senza_metodo">Senza metodo pagamento</option>
             </Select>
           </div>
           <div style={isMobile ? { gridColumn: '1 / -1' } : { flex: 1, minWidth: 180 }}>
@@ -718,7 +778,7 @@ export default function ArchivioFatture() {
             onClick={() => scaricaSelezione('pdf')}
             data-testid="scarica-selezione-pdf"
           >
-            {exportInCorso === 'pdf' ? '⏳ PDF...' : '📄 Scarica PDF'}
+            {exportInCorso === 'pdf' ? 'PDF...' : 'Scarica PDF'}
           </Button>
           <Button
             variant="secondary"
@@ -727,7 +787,7 @@ export default function ArchivioFatture() {
             onClick={() => scaricaSelezione('excel')}
             data-testid="scarica-selezione-excel"
           >
-            {exportInCorso === 'excel' ? '⏳ Excel...' : '📊 Scarica Excel'}
+            {exportInCorso === 'excel' ? 'Excel...' : 'Scarica Excel'}
           </Button>
           <button
             onClick={() => setSelezionate(new Set())}
@@ -737,7 +797,7 @@ export default function ArchivioFatture() {
             }}
             title="Deseleziona tutto"
           >
-            ✕ Deseleziona
+            Deseleziona
           </button>
         </div>
       )}
@@ -746,11 +806,11 @@ export default function ArchivioFatture() {
       <Card>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
-            ⏳ Caricamento...
+            Caricamento...
           </div>
         ) : fatture.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+            <Inbox size={48} aria-hidden="true" style={{ marginBottom: 16, color: COLORS.textSubtle }} />
             <p style={{ margin: 0 }}>Nessuna fattura trovata</p>
             <p style={{ margin: '8px 0 0 0', fontSize: 14 }}>
               Vai a Import Unificato per importare fatture
@@ -786,7 +846,7 @@ export default function ArchivioFatture() {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', width: '100%' }}>
                   {isRiconciliata && (
                     <Badge variant="success" style={{ fontSize: 11 }}>
-                      🔗 RICONC.
+                      RICONC.
                     </Badge>
                   )}
                   <Button
@@ -865,7 +925,7 @@ export default function ArchivioFatture() {
                         flexShrink: 0,
                       }}
                     >
-                      {formatCurrency(f.total_amount || f.importo_totale)}
+                      {formatCurrency(f.total_amount ?? f.importo_totale)}
                     </div>
                   </div>
                   <div
@@ -1004,7 +1064,7 @@ export default function ArchivioFatture() {
                         {formatImportoOVuoto(f.iva)}
                       </Td>
                       <Td align="right" mono style={{ fontWeight: 700, color: COLORS.primary, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(f.total_amount || f.importo_totale)}
+                        {formatCurrency(f.total_amount ?? f.importo_totale)}
                       </Td>
                       <Td style={{ whiteSpace: 'nowrap' }}>
                         <span style={{ display: 'inline-flex', whiteSpace: 'nowrap' }}>
@@ -1064,6 +1124,15 @@ export default function ArchivioFatture() {
             Mostra altre {Math.min(PER_PAGINA, fattureRimanenti)} · {fattureRimanenti.toLocaleString('it-IT')} rimanenti
           </Button>
         </div>
+      )}
+      {spostaMotivo && (
+        <MotivoSpostamento
+          numero={spostaMotivo.numero}
+          da={spostaMotivo.da}
+          a={spostaMotivo.a}
+          onConferma={eseguiSposta}
+          onAnnulla={() => setSpostaMotivo(null)}
+        />
       )}
       {fatturaView && (
         <ModalFattura

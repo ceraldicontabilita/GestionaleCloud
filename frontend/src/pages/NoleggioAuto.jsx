@@ -15,7 +15,7 @@ import {
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
-import { PageHeader } from '../components/ds/PageHeader';
+import { euroOppure } from '../lib/vista';
 import ModalFattura from '../components/ModalFattura';
 import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import { toast } from 'sonner';
@@ -33,6 +33,9 @@ import {
   RowActions,
   RowActionButton,
 } from '../components/ds';
+import { ChevronDown, ChevronUp, Route, Tag, Wrench, Car, ChartColumn, Check, ClipboardList, Download, Eye, Hourglass, Pencil, Plus, RefreshCw, Save, Search, Trash2, Wallet, X } from 'lucide-react';
+
+const ICO = { verticalAlign: '-2px', flexShrink: 0 };
 
 export default function NoleggioAuto() {
   const isMobile = useIsMobile();
@@ -80,14 +83,15 @@ export default function NoleggioAuto() {
   // Stato per lookup OpenAPI
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState(null);
+  const [limiteVeicoli, setLimiteVeicoli] = useState(200);
 
   const categorie = [
-    { key: 'canoni', label: 'Canoni', icon: '💰', color: '#4caf50' },
-    { key: 'pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#c15f3c' },
-    { key: 'verbali', label: 'Verbali', icon: '📋', color: '#f44336' },
-    { key: 'bollo', label: 'Bollo', icon: '🏷️', color: '#c15f3c' },
-    { key: 'costi_extra', label: 'Costi Extra', icon: '➕', color: '#ff9800' },
-    { key: 'riparazioni', label: 'Riparazioni', icon: '🔧', color: '#795548' },
+    { key: 'canoni', label: 'Canoni', icon: Wallet, color: COLORS.success },
+    { key: 'pedaggio', label: 'Pedaggio', icon: Route, color: COLORS.primary },
+    { key: 'verbali', label: 'Verbali', icon: ClipboardList, color: COLORS.danger },
+    { key: 'bollo', label: 'Bollo', icon: Tag, color: COLORS.primary },
+    { key: 'costi_extra', label: 'Costi Extra', icon: Plus, color: COLORS.warning },
+    { key: 'riparazioni', label: 'Riparazioni', icon: Wrench, color: COLORS.info },
   ];
 
   const fetchVeicoli = useCallback(async () => {
@@ -349,7 +353,7 @@ export default function NoleggioAuto() {
   const descriviVoceControllo = (key, item) => {
     switch (key) {
       case 'trattenute_da_confermare':
-        return `${item?.dipendente_nome || 'Dipendente N/D'} • ${formatEuro(Number(item?.importo || 0))}${
+        return `${item?.dipendente_nome || 'Dipendente N/D'} • ${euroOppure(item?.importo)}${
           item?.numero_verbale ? ` • Verbale ${item.numero_verbale}` : ''
         }${item?.targa ? ` • ${item.targa}` : ''}`;
       case 'auto_senza_driver':
@@ -359,13 +363,13 @@ export default function NoleggioAuto() {
       case 'pagamenti_non_riconciliati':
         return `${item?.supplier_name || 'Fornitore N/D'} • Fatt. ${item?.invoice_number || 'N/D'} del ${formatDate(
           item?.invoice_date
-        )} • ${formatEuro(Number(item?.total_amount || 0))}`;
+        )} • ${euroOppure(item?.total_amount)}`;
       case 'alert_aperti':
         return `${item?.titolo || item?.codice || 'Avviso'}${item?.dettaglio ? ` — ${item.dettaglio}` : ''}`;
       case 'verbali_aperti':
         return `Verbale ${item?.numero_verbale || 'N/D'} • ${item?.targa || '-'} • ${formatDate(
           item?.data_verbale
-        )} • ${formatEuro(Number(item?.importo || 0))}`;
+        )} • ${euroOppure(item?.importo)}`;
       default:
         return '';
     }
@@ -380,8 +384,6 @@ export default function NoleggioAuto() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-      <PageHeader title="Noleggi" style={{ marginBottom: 14 }} />
-
       {/* Pannello Controlli — cruscotto "cosa richiede attenzione".
           Compare solo se c'è almeno una segnalazione; API in errore o
           vuota → nessun render (optional chaining ovunque). */}
@@ -406,7 +408,7 @@ export default function NoleggioAuto() {
               marginBottom: 8,
             }}
           >
-            🔎 Controlli — {totaleControlli} da verificare
+            <Search size={14} aria-hidden="true" style={ICO} /> Controlli — {totaleControlli} da verificare
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {controlliChips.map(chip => {
@@ -548,7 +550,7 @@ export default function NoleggioAuto() {
           variant="secondary"
           data-testid="noleggio-refresh-btn"
         >
-          🔄 Aggiorna
+          <RefreshCw size={14} aria-hidden="true" style={ICO} /> Aggiorna
         </Button>
         <span style={{ fontSize: 13, color: COLORS.textMuted }}>
           I veicoli vengono compilati automaticamente dalle fatture di noleggio.
@@ -567,7 +569,7 @@ export default function NoleggioAuto() {
           }}
           data-testid="noleggio-error"
         >
-          ❌ {err}
+          <X size={14} aria-hidden="true" style={ICO} /> {err}
         </div>
       )}
 
@@ -585,7 +587,7 @@ export default function NoleggioAuto() {
                 fontSize: 14,
               }}
             >
-              📊 Riepilogo: {selectedVeicolo.marca} {selectedVeicolo.modello || ''} -{' '}
+              <ChartColumn size={14} aria-hidden="true" style={ICO} /> Riepilogo: {selectedVeicolo.marca} {selectedVeicolo.modello || ''} -{' '}
               {selectedVeicolo.targa}
             </div>
           )}
@@ -611,7 +613,7 @@ export default function NoleggioAuto() {
                   key={cat.key}
                   accent="none"
                   style={{ padding: '10px 12px', borderLeft: `3px solid ${cat.color}` }}
-                  label={<span style={{ color: COLORS.textMuted }}>{cat.icon} {cat.label}</span>}
+                  label={<span style={{ color: COLORS.textMuted }}><cat.icon size={14} aria-hidden="true" style={ICO} /> {cat.label}</span>}
                   value={<span style={{ fontSize: 16, color: cat.color }}>{formatEuro(valore)}</span>}
                 />
               );
@@ -625,7 +627,7 @@ export default function NoleggioAuto() {
                 color: 'white',
               }}
             >
-              <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>💰 TOTALE</div>
+              <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}><Wallet size={14} aria-hidden="true" style={ICO} /> TOTALE</div>
               <div style={{ fontSize: 16, fontWeight: 'bold' }}>
                 {formatEuro(
                   selectedVeicolo
@@ -655,7 +657,7 @@ export default function NoleggioAuto() {
             }}
           >
             <h2 style={{ margin: 0, fontSize: 18 }}>
-              🚗 {selectedVeicolo.marca} {selectedVeicolo.modello || 'Modello da definire'} -{' '}
+              <Car size={14} aria-hidden="true" style={ICO} /> {selectedVeicolo.marca} {selectedVeicolo.modello || 'Modello da definire'} -{' '}
               <span style={{ color: COLORS.info, fontFamily: 'monospace' }}>
                 {selectedVeicolo.targa}
               </span>
@@ -669,28 +671,28 @@ export default function NoleggioAuto() {
                 title="Aggiorna dati veicolo da OpenAPI Automotive"
                 data-testid="veicolo-update-openapi-btn"
               >
-                {lookupLoading ? '⏳' : '🔍'} Aggiorna da Targa
+                {lookupLoading ? '' : ''} Aggiorna da Targa
               </Button>
               <Button
                 onClick={() => setEditingVeicolo({ ...selectedVeicolo })}
                 variant="info"
                 size="sm"
               >
-                ✏️ Modifica
+                <Pencil size={14} aria-hidden="true" style={ICO} /> Modifica
               </Button>
               <Button
                 onClick={() => handleDelete(selectedVeicolo.targa)}
                 variant="danger"
                 size="sm"
               >
-                🗑️ Elimina
+                <Trash2 size={14} aria-hidden="true" style={ICO} /> Elimina
               </Button>
               <Button
                 onClick={() => setSelectedVeicolo(null)}
                 variant="ghost"
                 style={{ fontSize: 20, border: 'none', padding: 0 }}
               >
-                ✕
+                <X size={14} aria-hidden="true" style={ICO} />
               </Button>
             </div>
           </div>
@@ -769,7 +771,7 @@ export default function NoleggioAuto() {
                 Totale {annoFiltro || 'tutti gli anni'}
               </h3>
               <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.text }}>
-                {formatEuro(selectedVeicolo.totale_generale)}
+                {euroOppure(selectedVeicolo.totale_generale)}
               </div>
             </div>
           </div>
@@ -802,7 +804,7 @@ export default function NoleggioAuto() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span>{cat.icon}</span>
+                    <span><cat.icon size={16} aria-hidden="true" style={ICO} /></span>
                     <span style={{ fontWeight: '600', color: cat.color }}>{cat.label}</span>
                     <span style={{ fontSize: 13, color: COLORS.textMuted }}>({spese.length} fatture)</span>
                   </div>
@@ -810,7 +812,7 @@ export default function NoleggioAuto() {
                     <span style={{ fontWeight: 'bold', fontSize: 16, color: cat.color }}>
                       {formatEuro(totaleSezione)}
                     </span>
-                    <span>{isOpen ? '▲' : '▼'}</span>
+                    <span>{isOpen ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}</span>
                   </div>
                 </div>
 
@@ -923,7 +925,7 @@ export default function NoleggioAuto() {
                                 fontSize: 12,
                               }}
                             >
-                              {formatEuro(s.imponibile)}
+                              {euroOppure(s.imponibile)}
                             </Td>
                             <Td
                               align="right"
@@ -932,7 +934,7 @@ export default function NoleggioAuto() {
                                 fontSize: 12,
                               }}
                             >
-                              {formatEuro(s.iva)}
+                              {euroOppure(s.iva)}
                             </Td>
                             <Td
                               align="right"
@@ -942,7 +944,7 @@ export default function NoleggioAuto() {
                                 fontSize: 12,
                               }}
                             >
-                              {formatEuro(s.totale)}
+                              {euroOppure(s.totale)}
                             </Td>
                             <Td align="center">
                               {s.pagato ? (
@@ -1049,20 +1051,62 @@ export default function NoleggioAuto() {
         }}
       >
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${COLORS.border}` }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>🚗 Elenco Veicoli ({veicoli.length})</h2>
+          <h2 style={{ margin: 0, fontSize: 18 }}><Car size={14} aria-hidden="true" style={ICO} /> Elenco Veicoli ({veicoli.length})</h2>
         </div>
 
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
-            ⏳ Caricamento...
+            <Hourglass size={14} aria-hidden="true" style={ICO} /> Caricamento...
           </div>
         ) : veicoli.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🚗</div>
+            <div style={{ fontSize: 48, marginBottom: 16 }}><Car size={40} aria-hidden="true" style={ICO} /></div>
             <div style={{ color: COLORS.textMuted }}>Nessun veicolo trovato per {annoFiltro}</div>
             <div style={{ color: COLORS.textSubtle, fontSize: 14, marginTop: 8 }}>
               I veicoli vengono rilevati automaticamente dalle fatture dei fornitori di noleggio
             </div>
+          </div>
+        ) : isMobile ? (
+          <div style={{ display: 'grid', gap: 10 }} data-testid="noleggio-table">
+            {veicoli.slice(0, limiteVeicoli).map((v, i) => (
+              <div
+                key={v.targa || i}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedVeicolo(v)}
+                onKeyDown={e => { if (e.key === 'Enter') setSelectedVeicolo(v); }}
+                data-testid={`veicolo-row-${v.targa}`}
+                style={{
+                  padding: 12,
+                  borderRadius: BORDER_RADIUS.md,
+                  border: `1px solid ${COLORS.border}`,
+                  background: selectedVeicolo?.targa === v.targa ? COLORS.infoLight : COLORS.card,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ fontWeight: 700, color: COLORS.info, fontFamily: FONT.mono }}>{v.targa}</span>
+                  <span style={{ fontWeight: 700, color: COLORS.primary }}>{euroOppure(v.totale_generale)}</span>
+                </div>
+                <div style={{ fontSize: 13, marginTop: 2 }}>{v.marca} {(v.modello || '-').slice(0, 25)}</div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                  {v.fornitore_noleggio || '-'} · {v.driver || 'Driver non assegnato'}
+                </div>
+                <div style={{ fontSize: 12.5, marginTop: 6, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  <span>Canoni: {euroOppure(v.totale_canoni)}</span>
+                  <span>Verbali: {euroOppure(v.totale_verbali)}</span>
+                  <span>Bollo: {euroOppure(v.totale_bollo)}</span>
+                  <span>Riparazioni: {euroOppure(v.totale_riparazioni)}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <Button variant="secondary" style={{ minHeight: 44, flex: 1 }} onClick={e => { e.stopPropagation(); setSelectedVeicolo(v); }}>
+                    <Eye size={14} aria-hidden="true" style={ICO} /> Dettaglio
+                  </Button>
+                  <Button variant="secondary" style={{ minHeight: 44, flex: 1 }} onClick={e => { e.stopPropagation(); setEditingVeicolo({ ...v }); }}>
+                    <Pencil size={14} aria-hidden="true" style={ICO} /> Modifica
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -1114,7 +1158,7 @@ export default function NoleggioAuto() {
                 </tr>
               </thead>
               <tbody>
-                {veicoli.map((v, i) => (
+                {veicoli.slice(0, limiteVeicoli).map((v, i) => (
                   <tr
                     key={v.targa || i}
                     style={{
@@ -1143,19 +1187,19 @@ export default function NoleggioAuto() {
                       {v.driver || '-'}
                     </Td>
                     <Td align="right" style={{ color: categorie.find(c => c.key === 'canoni').color, fontSize: 12 }}>
-                      {formatEuro(v.totale_canoni)}
+                      {euroOppure(v.totale_canoni)}
                     </Td>
                     <Td align="right" style={{ color: categorie.find(c => c.key === 'verbali').color, fontSize: 12 }}>
-                      {formatEuro(v.totale_verbali)}
+                      {euroOppure(v.totale_verbali)}
                     </Td>
                     <Td align="right" style={{ color: categorie.find(c => c.key === 'bollo').color, fontSize: 12 }}>
-                      {formatEuro(v.totale_bollo)}
+                      {euroOppure(v.totale_bollo)}
                     </Td>
                     <Td align="right" style={{ color: categorie.find(c => c.key === 'riparazioni').color, fontSize: 12 }}>
-                      {formatEuro(v.totale_riparazioni)}
+                      {euroOppure(v.totale_riparazioni)}
                     </Td>
                     <Td align="right" style={{ fontWeight: 'bold', color: COLORS.primary, fontSize: 13 }}>
-                      {formatEuro(v.totale_generale)}
+                      {euroOppure(v.totale_generale)}
                     </Td>
                     <Td align="center">
                       <RowActions style={{ justifyContent: 'center' }}>
@@ -1167,7 +1211,7 @@ export default function NoleggioAuto() {
                           }}
                           title="Vedi dettaglio"
                         >
-                        👁️
+                        <Eye size={14} aria-hidden="true" style={ICO} />
                       </RowActionButton>
                         <RowActionButton
                           variant="neutral"
@@ -1177,7 +1221,7 @@ export default function NoleggioAuto() {
                           }}
                           title="Modifica"
                         >
-                        ✏️
+                        <Pencil size={14} aria-hidden="true" style={ICO} />
                       </RowActionButton>
                       </RowActions>
                     </Td>
@@ -1186,6 +1230,11 @@ export default function NoleggioAuto() {
               </tbody>
             </table>
           </div>
+        )}
+        {veicoli.length > limiteVeicoli && (
+          <Button variant="secondary" onClick={() => setLimiteVeicoli(x => x + 200)} style={{ minHeight: 44, marginTop: 12 }}>
+            Mostra altre ({veicoli.length - limiteVeicoli})
+          </Button>
         )}
       </div>
 
@@ -1224,13 +1273,13 @@ export default function NoleggioAuto() {
                 marginBottom: 20,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 18 }}>✏️ Modifica {editingVeicolo.targa}</h2>
+              <h2 style={{ margin: 0, fontSize: 18 }}><Pencil size={14} aria-hidden="true" style={ICO} /> Modifica {editingVeicolo.targa}</h2>
               <Button
                 onClick={() => setEditingVeicolo(null)}
                 variant="ghost"
                 style={{ fontSize: 20, border: 'none', padding: 0 }}
               >
-                ✕
+                <X size={14} aria-hidden="true" style={ICO} />
               </Button>
             </div>
 
@@ -1253,7 +1302,7 @@ export default function NoleggioAuto() {
                   }}
                 >
                   <span style={{ fontWeight: '600', color: COLORS.success, fontSize: 13 }}>
-                    🚗 Dati da OpenAPI Automotive
+                    <Car size={14} aria-hidden="true" style={ICO} /> Dati da OpenAPI Automotive
                   </span>
                   <Button
                     onClick={() => handleLookupVeicolo(editingVeicolo.targa)}
@@ -1261,7 +1310,7 @@ export default function NoleggioAuto() {
                     variant="success"
                     size="sm"
                   >
-                    {lookupLoading ? '⏳ Cercando...' : '🔍 Cerca Dati'}
+                    {lookupLoading ? 'Cercando...' : 'Cerca Dati'}
                   </Button>
                 </div>
 
@@ -1325,14 +1374,14 @@ export default function NoleggioAuto() {
                         width: '100%',
                       }}
                     >
-                      📥 Applica questi dati
+                      <Download size={14} aria-hidden="true" style={ICO} /> Applica questi dati
                     </Button>
                   </div>
                 )}
 
                 {lookupResult?.error && (
                   <div style={{ fontSize: 12, color: COLORS.danger, marginTop: 8 }}>
-                    ❌ {lookupResult.error}
+                    <X size={14} aria-hidden="true" style={ICO} /> {lookupResult.error}
                   </div>
                 )}
 
@@ -1613,7 +1662,7 @@ export default function NoleggioAuto() {
                 }}
                 variant="danger"
               >
-                🗑️ Elimina
+                <Trash2 size={14} aria-hidden="true" style={ICO} /> Elimina
               </Button>
               <div style={{ display: 'flex', gap: 10 }}>
                 <Button
@@ -1626,7 +1675,7 @@ export default function NoleggioAuto() {
                   onClick={handleSaveVeicolo}
                   variant="primary"
                 >
-                  💾 Salva
+                  <Save size={14} aria-hidden="true" style={ICO} /> Salva
                 </Button>
               </div>
             </div>
@@ -1667,13 +1716,13 @@ export default function NoleggioAuto() {
                 marginBottom: 20,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 18 }}>➕ Aggiungi Veicolo</h2>
+              <h2 style={{ margin: 0, fontSize: 18 }}><Plus size={14} aria-hidden="true" style={ICO} /> Aggiungi Veicolo</h2>
               <Button
                 onClick={() => setShowAddVeicolo(false)}
                 variant="ghost"
                 style={{ fontSize: 20, border: 'none', padding: 0 }}
               >
-                ✕
+                <X size={14} aria-hidden="true" style={ICO} />
               </Button>
             </div>
 
@@ -1717,7 +1766,7 @@ export default function NoleggioAuto() {
                   <option value="">-- Seleziona Fornitore --</option>
                   {fornitori.map(f => (
                     <option key={f.piva} value={f.piva}>
-                      {f.nome} {!f.targa_in_fattura ? '⚠️' : ''}
+                      {f.nome} {!f.targa_in_fattura ? '' : ''}
                     </option>
                   ))}
                 </Select>
@@ -1784,7 +1833,7 @@ export default function NoleggioAuto() {
                 onClick={handleAddVeicolo}
                 variant="primary"
               >
-                ➕ Aggiungi
+                <Plus size={14} aria-hidden="true" style={ICO} /> Aggiungi
               </Button>
             </div>
           </div>
@@ -1828,14 +1877,14 @@ export default function NoleggioAuto() {
               }}
             >
               <h2 style={{ margin: 0, fontSize: 18, color: COLORS.text }}>
-                📋 Fatture Non Associate ({modalFattureNonAssociate.fatture.length})
+                <ClipboardList size={14} aria-hidden="true" style={ICO} /> Fatture Non Associate ({modalFattureNonAssociate.fatture.length})
               </h2>
               <Button
                 onClick={() => setModalFattureNonAssociate(m => ({ ...m, open: false }))}
                 variant="ghost"
                 style={{ fontSize: 20, border: 'none', padding: 0 }}
               >
-                ✕
+                <X size={14} aria-hidden="true" style={ICO} />
               </Button>
             </div>
             <p style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>
@@ -1866,7 +1915,7 @@ export default function NoleggioAuto() {
               !modalFattureNonAssociate.errore &&
               modalFattureNonAssociate.fatture.length === 0 && (
                 <div style={{ padding: 24, textAlign: 'center', color: COLORS.textMuted }}>
-                  ✅ Nessuna fattura non associata
+                  <Check size={14} aria-hidden="true" style={ICO} /> Nessuna fattura non associata
                 </div>
               )}
 
@@ -1890,7 +1939,7 @@ export default function NoleggioAuto() {
                         {f.fornitore || 'N/D'} • Fatt. {f.numero || 'N/D'} del {f.data || 'N/D'}
                       </div>
                       <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
-                        {formatEuro(Number(f.importo || 0))}
+                        {euroOppure(f.importo)}
                         {f.descrizione ? ` • ${f.descrizione}` : ''}
                       </div>
                       {(f.contratto || f.codice_cliente) && (

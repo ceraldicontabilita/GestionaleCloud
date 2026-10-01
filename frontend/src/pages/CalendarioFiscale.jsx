@@ -28,6 +28,7 @@ export default function CalendarioFiscale() {
   const { anno: selectedYear } = useAnnoGlobale();
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
+  const [limiteScadenze, setLimiteScadenze] = useState(200);
   const [error, setError] = useState(null);
   const [calendario, setCalendario] = useState(null);
   const [notifiche, setNotifiche] = useState(null);
@@ -497,7 +498,7 @@ export default function CalendarioFiscale() {
           <Card>
             <CardContent style={{ padding: 0 }}>
               {scadenzeFiltrate.length === 0 ? (
-                <PageEmpty icon="📅" message="Nessuna scadenza per i filtri selezionati" />
+                <PageEmpty icon={<Calendar size={48} aria-hidden />} message="Nessuna scadenza per i filtri selezionati" />
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                 <table className="calendario-responsive-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -520,7 +521,7 @@ export default function CalendarioFiscale() {
                     </tr>
                   </thead>
                   <tbody>
-                    {scadenzeFiltrate.map((scad, idx) => (
+                    {scadenzeFiltrate.slice(0, limiteScadenze).map((scad, idx) => (
                       <tr
                         key={scad.id || idx}
                         style={{
@@ -638,6 +639,13 @@ export default function CalendarioFiscale() {
                     ))}
                   </tbody>
                 </table>
+                </div>
+              )}
+              {scadenzeFiltrate.length > limiteScadenze && (
+                <div style={{ textAlign: 'center', padding: 12 }}>
+                  <Button type="button" variant="outline" onClick={() => setLimiteScadenze(n => n + 200)}>
+                    Mostra altre ({scadenzeFiltrate.length - limiteScadenze})
+                  </Button>
                 </div>
               )}
             </CardContent>

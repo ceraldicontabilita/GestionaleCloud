@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useGuscio } from '../contexts/GuscioContext';
+import { euroOppure, NON_DISPONIBILE } from '../lib/vista';
 import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge, Card, Input, StatCard } from '../components/ds';
@@ -16,7 +17,7 @@ import { DA_COLLEGARE, avvisoSenzaFattura, datiRigaAssegno } from '../lib/carnet
 
 // Funzione per formattare valuta come stringa pura (per PDF)
 const formatEuroStr = val => {
-  if (val == null || isNaN(val)) return '€ 0,00';
+  if (val == null || val === '' || isNaN(val)) return NON_DISPONIBILE;
   return `€ ${Number(val).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
@@ -58,6 +59,7 @@ export default function Commercialista() {
   const [riepilogoData, setRiepilogoData] = useState(null);
   const [completezza, setCompletezza] = useState(null);
   const [carnets, setCarnets] = useState([]);
+  const [storicoMax, setStoricoMax] = useState(200);
   const [selectedCarnets, setSelectedCarnets] = useState([]); // Array per selezione multipla
   const [carnetSearch, setCarnetSearch] = useState(''); // Barra di ricerca
 
@@ -414,7 +416,7 @@ export default function Commercialista() {
       yRight += 6;
     }
     if (totalePOS > 0) {
-      doc.text('Pag. Elettronico → Banca:', 114, yRight);
+      doc.text('Pag. Elettronico verso Banca:', 114, yRight);
       doc.text(fmt(totalePOS), 190, yRight, { align: 'right' });
       yRight += 6;
     }
@@ -471,7 +473,7 @@ export default function Commercialista() {
 
         return [
           formatDateIT(data),
-          tipo === 'entrata' ? '↑ ENTRATA' : '↓ USCITA',
+          tipo === 'entrata' ? 'ENTRATA' : 'USCITA',
           formatEuro(importo),
           (m.description || m.descrizione || '-').substring(0, 45),
           m.category || m.categoria || '-',
@@ -1094,26 +1096,26 @@ export default function Commercialista() {
           >
             <StatCard
               label="Fatture pagate per banca"
-              value={formatEuro(riepilogoData?.fatture_banca?.totale_importo)}
+              value={euroOppure(riepilogoData?.fatture_banca?.totale_importo)}
               subtext={`${riepilogoData?.fatture_banca?.totale_fatture || 0} fatture riconciliate`}
               accent="info"
             />
             <StatCard
               label="Cedolini"
-              value={formatEuro(riepilogoData?.cedolini?.totale_netto)}
+              value={euroOppure(riepilogoData?.cedolini?.totale_netto)}
               subtext={`${riepilogoData?.cedolini?.totale_cedolini || 0} cedolini · ${periodoLabel}`}
               accent="primary"
             />
             <StatCard
               label="Coerenza POS"
-              value={formatEuro(riepilogoData?.coerenza_pos?.netto)}
+              value={euroOppure(riepilogoData?.coerenza_pos?.netto)}
               subtext={`${riepilogoData?.coerenza_pos?.giorni || 0} giorni · ${riepilogoData?.coerenza_pos?.giorni_non_quadrati || 0} da verificare`}
               accent={(riepilogoData?.coerenza_pos?.giorni_non_quadrati || 0) ? 'warning' : 'success'}
             />
             <StatCard
               label="IVA annuale: debito / credito"
-              value={`${formatEuro(riepilogoData?.iva_annuale?.iva_debito)} / ${formatEuro(riepilogoData?.iva_annuale?.iva_credito)}`}
-              subtext={`Saldo ${formatEuro(riepilogoData?.iva_annuale?.saldo)}`}
+              value={`${euroOppure(riepilogoData?.iva_annuale?.iva_debito)} / ${euroOppure(riepilogoData?.iva_annuale?.iva_credito)}`}
+              subtext={`Saldo ${euroOppure(riepilogoData?.iva_annuale?.saldo)}`}
               accent={(riepilogoData?.iva_annuale?.saldo || 0) > 0 ? 'danger' : 'success'}
             />
           </div>
@@ -1156,20 +1158,20 @@ export default function Commercialista() {
                 >
                   <StatCard
                     label="Entrate"
-                    value={formatEuro(primaNotaData?.totale_entrate)}
+                    value={euroOppure(primaNotaData?.totale_entrate)}
                     accent="success"
                     style={{ textAlign: 'center' }}
                   />
                   <StatCard
                     label="Uscite"
-                    value={formatEuro(primaNotaData?.totale_uscite)}
+                    value={euroOppure(primaNotaData?.totale_uscite)}
                     accent="danger"
                     style={{ textAlign: 'center' }}
                   />
                 </div>
                 <StatCard
                   label="Saldo"
-                  value={formatEuro(primaNotaData?.saldo)}
+                  value={euroOppure(primaNotaData?.saldo)}
                   subtext={`${primaNotaData?.totale_movimenti || 0} movimenti`}
                   accent={(primaNotaData?.saldo || 0) >= 0 ? 'success' : 'danger'}
                   style={{ textAlign: 'center', marginBottom: 20 }}
@@ -1221,7 +1223,7 @@ export default function Commercialista() {
               <div style={{ padding: 20 }}>
                 <StatCard
                   label="Totale Fatture"
-                  value={formatEuro(fattureCassaData?.totale_importo)}
+                  value={euroOppure(fattureCassaData?.totale_importo)}
                   subtext={`${fattureCassaData?.totale_fatture || 0} fatture`}
                   accent="warning"
                   style={{ textAlign: 'center', marginBottom: 20, padding: '20px 18px' }}
@@ -1414,7 +1416,7 @@ export default function Commercialista() {
                                       N° {a.numero || '-'}
                                     </span>{' '}
                                     <span style={{ color: COLORS.warning }}>
-                                      {formatEuro(a.importo)}
+                                      {euroOppure(a.importo)}
                                     </span>
                                     <span style={{ color: COLORS.gray[700] }}>
                                       {' '}
@@ -1601,7 +1603,7 @@ export default function Commercialista() {
         {storico.length > 0 && (
           <Card title="Storico invii" icon={<Mail size={16} aria-hidden="true" />} style={{ marginTop: 25 }}>
             <ul data-testid="storico-invii" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {storico.map(riga => (
+              {storico.slice(0, storicoMax).map(riga => (
                 <li
                   key={riga.chiave}
                   style={{ padding: '10px 0', borderTop: `1px solid ${COLORS.border}`, fontSize: 13, minWidth: 0 }}
@@ -1619,6 +1621,9 @@ export default function Commercialista() {
                 </li>
               ))}
             </ul>
+            {storico.length > storicoMax && (
+              <Button variant="secondary" size="sm" onClick={() => setStoricoMax(n => n + 200)} style={{ marginTop: 12, minHeight: 44 }}>Mostra altre</Button>
+            )}
           </Card>
         )}
       </div>

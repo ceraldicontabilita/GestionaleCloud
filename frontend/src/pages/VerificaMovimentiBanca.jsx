@@ -13,18 +13,14 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { formatDateIT } from '../lib/utils';
+import { euroCentesimiOppure } from '../lib/vista';
 
 const PAGE_SIZE = 200;
 
-const euroCents = (cents) => new Intl.NumberFormat('it-IT', {
-  style: 'currency', currency: 'EUR',
-}).format((Number(cents) || 0) / 100);
+const euroCents = euroCentesimiOppure;
 
-const formatDate = (value) => {
-  if (!value) return '—';
-  const [year, month, day] = String(value).slice(0, 10).split('-');
-  return day && month && year ? `${day}-${month}-${year}` : String(value);
-};
+const formatDate = (value) => (value ? formatDateIT(value) : '—');
 
 function DecisionModal({ row, categories, onClose, onSaved }) {
   const previous = row.decision || {};

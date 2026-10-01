@@ -30,6 +30,9 @@ import logging
 from typing import Dict, Any
 from datetime import datetime, timezone
 
+from app.services.stato_pagamento_fattura import e_pagata
+from app.utils.id_fattura import filtro_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -185,16 +188,16 @@ class CascadeOperations:
             # 8. Infine elimina/archivia la fattura stessa
             if hard_delete:
                 # Elimina da entrambe le collezioni (invoices e fatture_ricevute)
-                r1 = await db["invoices"].delete_one({"id": fattura_id})
-                r2 = await db["invoices"].delete_one({"id": fattura_id})
+                r1 = await db["invoices"].delete_one(filtro_id(fattura_id))
+                r2 = await db["invoices"].delete_one(filtro_id(fattura_id))
                 risultato["entita_eliminate"]["fattura"] = r1.deleted_count + r2.deleted_count
             else:
                 r1 = await db["invoices"].update_one(
-                    {"id": fattura_id},
+                    filtro_id(fattura_id),
                     {"$set": {"status": "deleted", "entity_status": "deleted", "deleted_at": now}}
                 )
                 r2 = await db["invoices"].update_one(
-                    {"id": fattura_id},
+                    filtro_id(fattura_id),
                     {"$set": {"status": "deleted", "entity_status": "deleted", "deleted_at": now}}
                 )
                 risultato["entita_eliminate"]["fattura"] = r1.modified_count + r2.modified_count
@@ -293,8 +296,8 @@ class CascadeOperations:
         
         try:
             # 1. Aggiorna fattura
-            await db["invoices"].update_one({"id": fattura_id}, {"$set": {**updates, "updated_at": now}})
-            await db["invoices"].update_one({"id": fattura_id}, {"$set": {**updates, "updated_at": now}})
+            await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {**updates, "updated_at": now}})
+            await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {**updates, "updated_at": now}})
             risultato["entita_aggiornate"]["fattura"] = 1
             
             # 2. Propaga importo a Prima Nota
@@ -394,9 +397,9 @@ class CascadeOperations:
         dettagli["ha_movimenti_magazzino"] = movimento is not None
         
         # Check Pagamenti
-        fattura = await db["invoices"].find_one({"id": fattura_id}, {"pagato": 1, "payment_status": 1})
+        fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"pagato": 1, "paid": 1, "stato": 1, "stato_pagamento": 1, "payment_status": 1})
         if fattura:
-            dettagli["ha_pagamenti"] = fattura.get("pagato") == True or fattura.get("payment_status") == "paid"
+            dettagli["ha_pagamenti"] = e_pagata(fattura)
         
         # Check Riconciliazioni
         ric = await db["riconciliazioni"].find_one({"$or": [{"fattura_id": fattura_id}, {"scadenza_id": {"$regex": fattura_id}}]})

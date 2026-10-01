@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PageLayout } from '../components/PageLayout';
 import { COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { Button, Card, PageHeader, Input } from '../components/ds';
-import { Bot, Save, RefreshCw, Loader2 } from 'lucide-react';
+import { Bot, Save, RefreshCw, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import api from '../api';
 
 const labelStyle = {
@@ -152,7 +152,7 @@ export default function ImpostazioniAI() {
                 color: msg.ok ? COLORS.success : COLORS.danger,
               }}
             >
-              {msg.ok ? '✓ ' : '✗ '}
+              {msg.ok ? <CheckCircle2 size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} /> : <XCircle size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />}
               {msg.testo}
             </div>
           )}

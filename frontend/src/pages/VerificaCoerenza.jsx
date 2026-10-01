@@ -5,6 +5,8 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge, Card, Tabs } from '../components/ds';
+import { euroOppure } from '../lib/vista';
+import { RefreshCw, Receipt, CircleCheck, TriangleAlert, CircleX, Lightbulb } from 'lucide-react';
 
 export default function VerificaCoerenza() {
   const { anno } = useAnnoGlobale();
@@ -32,6 +34,7 @@ export default function VerificaCoerenza() {
   const [verificaCompleta, setVerificaCompleta] = useState(null);
   // 'bonifici' rimosso: il box 'Bonifici vs Banca' è stato eliminato (sempre a zero, fuorviante)
   const [error, setError] = useState(null);
+  const [discVisibili, setDiscVisibili] = useState(200);
 
   useEffect(() => {
     loadAll();
@@ -102,7 +105,6 @@ export default function VerificaCoerenza() {
   return (
     <PageLayout
       title="Verifica Coerenza Dati"
-      icon="🔍"
       subtitle={`Controllo automatico - Anno ${anno}`}
       actions={
         <Button
@@ -110,7 +112,7 @@ export default function VerificaCoerenza() {
           onClick={loadAll}
           disabled={loading}
           data-testid="btn-ricarica-verifica"
-          iconLeft="🔄"
+          iconLeft={<RefreshCw size={16} aria-hidden />}
         >
           Ricarica
         </Button>
@@ -177,8 +179,8 @@ export default function VerificaCoerenza() {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 40 }}>
-                  {stato === 'OK' ? '✅' : stato === 'ATTENZIONE' ? '⚠️' : '❌'}
+                <span style={{ display: 'inline-flex', color: statoColors.text }}>
+                  {stato === 'OK' ? <CircleCheck size={40} aria-hidden /> : stato === 'ATTENZIONE' ? <TriangleAlert size={40} aria-hidden /> : <CircleX size={40} aria-hidden />}
                 </span>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 'bold', color: statoColors.text }}>
@@ -220,8 +222,8 @@ export default function VerificaCoerenza() {
           value={activeTab}
           onChange={handleTabChange}
           items={[
-            { key: 'riepilogo', label: '📋 Riepilogo' },
-            { key: 'discrepanze', label: '⚠️ Discrepanze' },
+            { key: 'riepilogo', label: 'Riepilogo' },
+            { key: 'discrepanze', label: 'Discrepanze' },
           ]}
           style={{ marginBottom: 16 }}
         />
@@ -237,7 +239,7 @@ export default function VerificaCoerenza() {
           }}
         >
           {/* IVA Annuale */}
-          <Card title={`IVA Annuale ${anno}`} icon="🧾">
+          <Card title={`IVA Annuale ${anno}`} icon={<Receipt size={16} aria-hidden />}>
             {verificaCompleta?.verifiche?.iva_annuale && (
               <div style={{ display: 'grid', gap: 10 }}>
                 <div
@@ -251,7 +253,7 @@ export default function VerificaCoerenza() {
                 >
                   <span style={{ color: COLORS.danger, fontSize: 13 }}>IVA Debito</span>
                   <strong style={{ color: COLORS.danger }}>
-                    {formatEuro(verificaCompleta.verifiche.iva_annuale.iva_debito_totale)}
+                    {euroOppure(verificaCompleta.verifiche.iva_annuale.iva_debito_totale)}
                   </strong>
                 </div>
                 <div
@@ -265,7 +267,7 @@ export default function VerificaCoerenza() {
                 >
                   <span style={{ color: COLORS.success, fontSize: 13 }}>IVA Credito</span>
                   <strong style={{ color: COLORS.success }}>
-                    {formatEuro(verificaCompleta.verifiche.iva_annuale.iva_credito_totale)}
+                    {euroOppure(verificaCompleta.verifiche.iva_annuale.iva_credito_totale)}
                   </strong>
                 </div>
                 <div
@@ -300,7 +302,7 @@ export default function VerificaCoerenza() {
             )}
           </Card>
 
-          <Card title="F24 IVA dalla commercialista" icon="🧾">
+          <Card title="F24 IVA dalla commercialista" icon={<Receipt size={16} aria-hidden />}>
             {verificaCompleta?.verifiche?.f24_iva && (
               <div style={{ display: 'grid', gap: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
@@ -344,12 +346,12 @@ export default function VerificaCoerenza() {
           <div style={{ ...cardStyle, border: `2px solid ${COLORS.danger}` }}>
             <div style={{ ...cardHeaderStyle, background: COLORS.dangerLight }}>
               <h3 style={{ ...cardTitleStyle, color: COLORS.danger }}>
-                ⚠️ Discrepanze Rilevate ({verificaCompleta?.discrepanze?.length})
+                Discrepanze Rilevate ({verificaCompleta?.discrepanze?.length})
               </h3>
             </div>
             <div style={cardContentStyle}>
               <div style={{ display: 'grid', gap: 12 }}>
-                {verificaCompleta.discrepanze.map((d, idx) => (
+                {verificaCompleta.discrepanze.slice(0, discVisibili).map((d, idx) => (
                   <div
                     key={idx}
                     style={{
@@ -392,11 +394,11 @@ export default function VerificaCoerenza() {
                       <div style={{ textAlign: 'right', minWidth: 100 }}>
                         <div style={{ fontSize: 11, color: COLORS.textMuted }}>Atteso</div>
                         <div style={{ fontWeight: 'bold', color: COLORS.success, fontSize: 14 }}>
-                          {formatEuro(d.valore_atteso)}
+                          {euroOppure(d.valore_atteso)}
                         </div>
                         <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 4 }}>Trovato</div>
                         <div style={{ fontWeight: 'bold', color: COLORS.danger, fontSize: 14 }}>
-                          {formatEuro(d.valore_trovato)}
+                          {euroOppure(d.valore_trovato)}
                         </div>
                         <div
                           style={{
@@ -410,7 +412,7 @@ export default function VerificaCoerenza() {
                           }}
                         >
                           Δ {d.differenza > 0 ? '+' : ''}
-                          {formatEuro(d.differenza)}
+                          {euroOppure(d.differenza)}
                         </div>
                       </div>
                     </div>
@@ -426,18 +428,23 @@ export default function VerificaCoerenza() {
                           borderLeft: `3px solid ${COLORS.info}`,
                         }}
                       >
-                        💡 <strong>Suggerimento:</strong> {d.suggerimento}
+                        <Lightbulb size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> <strong>Suggerimento:</strong> {d.suggerimento}
                       </div>
                     )}
                   </div>
                 ))}
+                {verificaCompleta.discrepanze.length > discVisibili && (
+                  <Button type="button" variant="secondary" onClick={() => setDiscVisibili(v => v + 200)}>
+                    Mostra altre ({verificaCompleta.discrepanze.length - discVisibili})
+                  </Button>
+                )}
               </div>
             </div>
           </div>
         ) : (
           <div style={{ ...cardStyle, background: COLORS.successLight, border: `2px solid ${COLORS.success}` }}>
             <div style={{ ...cardContentStyle, padding: 40, textAlign: 'center' }}>
-              <div style={{ fontSize: 56, marginBottom: 12 }}>✅</div>
+              <div style={{ marginBottom: 12 }}><CircleCheck size={56} aria-hidden color={COLORS.success} /></div>
               <h3 style={{ margin: 0, color: COLORS.success, fontSize: 20 }}>
                 Tutti i Dati sono Coerenti!
               </h3>

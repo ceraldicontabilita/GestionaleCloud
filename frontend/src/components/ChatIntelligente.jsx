@@ -4,7 +4,8 @@
  */
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot } from 'lucide-react';
+import { Bot, BookOpen, CircleHelp, Lightbulb, LoaderCircle, Mic, Paperclip, SendHorizontal, TriangleAlert, X } from 'lucide-react';
+import ApriOriginale from './ApriOriginale';
 import api from '../api';
 import { Button, Input } from './ds';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
@@ -15,7 +16,7 @@ export default function ChatIntelligente() {
   const [messages, setMessages] = useState([
     {
       type: 'assistant',
-      text: '👋 Ciao! Sono il tuo assistente contabile AI. Puoi chiedermi informazioni su fatture, F24, stipendi, fornitori, bilanci e molto altro. Prova a farmi una domanda!',
+      text: 'Ciao! Sono il tuo assistente contabile AI. Puoi chiedermi informazioni su fatture, F24, stipendi, fornitori, bilanci e molto altro. Prova a farmi una domanda!',
       timestamp: new Date().toISOString(),
     },
   ]);
@@ -102,7 +103,7 @@ export default function ChatIntelligente() {
       if (data.query_type && data.summary) {
         const summary = data.summary;
         if (summary.count !== undefined) {
-          responseText += `\n\n📊 *Dati trovati: ${summary.count}*`;
+          responseText += `\n\n*Dati trovati: ${summary.count}*`;
         }
       }
 
@@ -129,7 +130,7 @@ export default function ChatIntelligente() {
         ...prev,
         {
           type: 'assistant',
-          text: `❌ Errore: ${error.response?.data?.detail || error.message || 'Si è verificato un errore'}`,
+          text: `Errore: ${error.response?.data?.detail || error.message || 'Si è verificato un errore'}`,
           timestamp: new Date().toISOString(),
           isError: true,
         },
@@ -288,7 +289,7 @@ export default function ChatIntelligente() {
               fontSize: 18,
             }}
           >
-            ✕
+            <X size={18} aria-hidden />
           </Button>
         </div>
       </div>
@@ -371,16 +372,16 @@ export default function ChatIntelligente() {
                     </span>
                   )}
                   {msg.fonti && msg.fonti.length > 0 && (
-                    <span>📚 Fonti: {msg.fonti.join(' · ')}</span>
+                    <span><BookOpen size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Fonti: {msg.fonti.join(' · ')}</span>
                   )}
                   {msg.datiMancanti && msg.datiMancanti.length > 0 && (
-                    <span>❓ Dati mancanti: {msg.datiMancanti.join(' · ')}</span>
+                    <span><CircleHelp size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Dati mancanti: {msg.datiMancanti.join(' · ')}</span>
                   )}
                   {msg.anomalie && msg.anomalie.length > 0 && (
-                    <span>⚠️ Anomalie: {msg.anomalie.join(' · ')}</span>
+                    <span><TriangleAlert size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Anomalie: {msg.anomalie.join(' · ')}</span>
                   )}
                   {msg.azioniProposte && msg.azioniProposte.length > 0 && (
-                    <span>💡 Azioni: {msg.azioniProposte.join(' · ')}</span>
+                    <span><Lightbulb size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Azioni: {msg.azioniProposte.join(' · ')}</span>
                   )}
                 </div>
               )}
@@ -414,24 +415,12 @@ export default function ChatIntelligente() {
                       style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12 }}
                     >
                       <span style={{ flex: '1 1 120px', minWidth: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>
-                        📎 {d.etichetta}
+                        <Paperclip size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{d.etichetta}
                       </span>
                       {d.download_url && (
-                        <a
-                          href={d.download_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            padding: '4px 9px',
-                            borderRadius: 6,
-                            background: COLORS.primary,
-                            color: '#fff',
-                            textDecoration: 'none',
-                            fontWeight: 600,
-                          }}
-                        >
-                          ⬇ Scarica
-                        </a>
+                        <ApriOriginale url={d.download_url} titolo={d.etichetta} variante="primary">
+                          Apri originale
+                        </ApriOriginale>
                       )}
                       {d.page_url && (
                         <button
@@ -449,7 +438,7 @@ export default function ChatIntelligente() {
                             cursor: 'pointer',
                           }}
                         >
-                          Vai a →
+                          Vai alla pagina
                         </button>
                       )}
                     </div>
@@ -500,7 +489,7 @@ export default function ChatIntelligente() {
             background: COLORS.bg,
           }}
         >
-          <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 8 }}>💡 Suggerimenti:</div>
+          <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 8 }}><Lightbulb size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Suggerimenti:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {suggestedQuestions.slice(0, 3).map((q, i) => (
               <Button
@@ -562,7 +551,7 @@ export default function ChatIntelligente() {
               animation: isListening ? 'pulse 1.2s infinite' : 'none',
             }}
           >
-            🎤
+            <Mic size={18} aria-hidden />
           </Button>
         )}
         <Button
@@ -576,7 +565,7 @@ export default function ChatIntelligente() {
             fontSize: 14,
           }}
         >
-          {isLoading ? '⏳' : '➤'}
+          {isLoading ? <LoaderCircle size={18} aria-label="Invio in corso" /> : <SendHorizontal size={18} aria-label="Invia" />}
         </Button>
       </div>
       </div>

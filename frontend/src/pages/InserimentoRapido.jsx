@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import { formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import api from '../api';
 import { metodoNonConfigurato } from '../utils/metodoPagamento';
+import { euroOppure } from '../lib/vista';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Input, Select } from '../components/ds';
 import {
@@ -627,7 +628,7 @@ export default function InserimentoRapido() {
                 }}
               >
                 <span style={styles.listItemAmount}>
-                  {formatEuro(f.total_amount || f.importo || 0)}
+                  {euroOppure(f.total_amount ?? f.importo)}
                 </span>
               </div>
             </div>
@@ -883,7 +884,7 @@ export default function InserimentoRapido() {
                       </div>
                       {ins.importo && (
                         <span style={{ fontSize: '14px', fontWeight: '600', color: COLORS.text }}>
-                          {formatEuro(ins.importo)}
+                          {euroOppure(ins.importo)}
                         </span>
                       )}
                       {ins.ore && (

@@ -3,6 +3,7 @@ import { sezioneStrumenti } from './segmentiHub';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { PageLoader } from '../../components/ds';
+import { COLORS } from '../../lib/utils';
 
 const VerificaContent = lazy(() => import('../VerificaCoerenza.jsx'));
 const CommercialistaContent = lazy(() => import('../Commercialista.jsx'));
@@ -10,10 +11,10 @@ const PianificazioneContent = lazy(() => import('../Pianificazione.jsx'));
 const VisureContent = lazy(() => import('../Visure.jsx'));
 
 const TABS = [
-  { id: 'verifica', label: 'Verifica coerenza', color: '#5b7a6b' },
-  { id: 'commercialista', label: 'Commercialista', color: '#8a6f47' },
-  { id: 'pianificazione', label: 'Pianificazione', color: '#10b981' },
-  { id: 'visure', label: 'Visure', color: '#5b7a6b' },
+  { id: 'verifica', label: 'Verifica coerenza', color: COLORS.primary },
+  { id: 'commercialista', label: 'Commercialista', color: COLORS.primary },
+  { id: 'pianificazione', label: 'Pianificazione', color: COLORS.primary },
+  { id: 'visure', label: 'Visure', color: COLORS.primary },
 ];
 
 const getTabFromPath = sezioneStrumenti;
@@ -84,6 +85,7 @@ export default function StrumentiHub() {
             data-testid={`tab-strumenti-${tab.id}`}
             onClick={() => handleTabChange(tab.id)}
             style={{
+              minHeight: 44,
               padding: '7px 13px',
               borderRadius: 6,
               border: `1px solid ${activeTab === tab.id ? tab.color : '#e6e3d9'}`,

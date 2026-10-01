@@ -42,7 +42,7 @@ describe('Due chiusure RT nello stesso giorno', () => {
 
     fireEvent.click(bottoni[1]);
 
-    expect(await screen.findByText('🔢 Matricola RT: RT-SECONDA')).toBeInTheDocument();
+    expect(await screen.findByText('Matricola RT: RT-SECONDA')).toBeInTheDocument();
     expect(window.location.hash).toContain('selected=corr-b');
     const aperti = screen.getAllByRole('button', { name: 'Vedi corrispettivo 2026-09-06' })
       .filter(b => within(b).queryByText('Aperto'));

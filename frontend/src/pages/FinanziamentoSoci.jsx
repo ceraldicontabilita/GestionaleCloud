@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuroD, formatDateIT } from '../lib/utils';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import { NON_DISPONIBILE } from '../lib/vista';
 
 /**
  * FINANZIAMENTO SOCI (richiesta utente 18/07/2026) — prima nota dei
@@ -15,7 +17,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 const TERRACOTTA = '#c15f3c';
 const VERDE = '#16a34a';
 const ROSSO = '#dc2626';
-const eur = v => formatEuroD(v || 0);
+const eur = v => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? NON_DISPONIBILE : formatEuroD(v));
 
 function parseImportoIT(input) {
   const v = parseFloat(String(input ?? '').replace(/\./g, '').replace(',', '.'));
@@ -28,6 +30,7 @@ export default function FinanziamentoSoci() {
   const [dati, setDati] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [limite, setLimite] = useState(200);
   const [aperta, setAperta] = useState(null);
   const [manuale, setManuale] = useState(null); // {socio_id, nome}
   const [form, setForm] = useState({ tipo: 'apporto', importo: '', data: '', descrizione: '' });
@@ -95,7 +98,7 @@ export default function FinanziamentoSoci() {
     <div style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         <div style={{ fontSize: 13, color: '#5f5c55' }}>
-          👥 Prima nota finanziamenti: apporti e rimborsi dei soci letti
+          Prima nota finanziamenti: apporti e rimborsi dei soci letti
           dall'estratto conto (causale per causale).
         </div>
         <button
@@ -103,7 +106,7 @@ export default function FinanziamentoSoci() {
           data-testid="scan-finanziamenti-soci"
           style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: scanning ? 0.6 : 1 }}
         >
-          {scanning ? '⏳ Scansione…' : '🔄 Aggiorna da estratto conto'}
+          {scanning ? 'Scansione…' : 'Aggiorna da estratto conto'}
         </button>
       </div>
 
@@ -122,7 +125,7 @@ export default function FinanziamentoSoci() {
         </div>
       )}
 
-      {loading && <div style={{ padding: 30, textAlign: 'center', color: '#7a776e' }}>⏳ Caricamento…</div>}
+      {loading && <div style={{ padding: 30, textAlign: 'center', color: '#7a776e' }}>Caricamento…</div>}
 
       {!loading && (
         <>
@@ -133,7 +136,7 @@ export default function FinanziamentoSoci() {
                 data-testid={`scheda-socio-${s.socio_id}`}
                 style={{ background: 'white', borderRadius: 12, border: '1px solid #e6e3d9', borderLeft: `4px solid ${s.saldo >= 0 ? TERRACOTTA : ROSSO}`, padding: '11px 14px' }}
               >
-                <div style={{ fontWeight: 800, color: TERRACOTTA, fontSize: 14.5 }}>👤 {s.nome}</div>
+                <div style={{ fontWeight: 800, color: TERRACOTTA, fontSize: 14.5 }}>{s.nome}</div>
                 <div style={{ display: 'grid', gap: 3, margin: '8px 0' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                     <span style={{ color: '#7a776e' }}>Apporti</span>
@@ -150,17 +153,18 @@ export default function FinanziamentoSoci() {
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button
-                    onClick={() => setAperta(aperta === s.socio_id ? null : s.socio_id)}
+                    onClick={() => { setAperta(aperta === s.socio_id ? null : s.socio_id); setLimite(200); }}
                     style={{ flex: 1, background: '#f2f0e9', border: '1px solid #e6e3d9', borderRadius: 7, padding: '6px 8px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
                   >
-                    {aperta === s.socio_id ? '▲ Chiudi' : `▼ Movimenti (${s.movimenti.length})`}
+                    {aperta === s.socio_id ? 'Chiudi' : `Movimenti (${s.movimenti.length})`}
                   </button>
                   <button
                     onClick={() => { setManuale({ socio_id: s.socio_id, nome: s.nome }); setErrore(''); }}
                     title="Aggiungi movimento manuale"
+                    aria-label="Aggiungi movimento manuale"
                     style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 7, padding: '6px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}
                   >
-                    ➕
+                    <Plus size={14} aria-hidden="true" />
                   </button>
                 </div>
                 {aperta === s.socio_id && (
@@ -168,20 +172,21 @@ export default function FinanziamentoSoci() {
                     {s.movimenti.length === 0 && (
                       <div style={{ fontSize: 12, color: '#7a776e' }}>Nessun movimento{dati?.anno ? ` nel ${dati.anno}` : ''}.</div>
                     )}
-                    {s.movimenti.map(m => (
+                    {s.movimenti.slice(0, limite).map(m => (
                       <div key={m.id} style={{ border: '1px solid #f2f0e9', borderRadius: 8, padding: '6px 9px', fontSize: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                           <span style={{ fontWeight: 700, color: m.tipo === 'apporto' ? VERDE : ROSSO }}>
-                            {m.tipo === 'apporto' ? '↧ Apporto' : '↥ Rimborso'} · {formatDateIT(m.data)}
+                            {m.tipo === 'apporto' ? 'Apporto' : 'Rimborso'} · {formatDateIT(m.data)}
                           </span>
                           <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
                             <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(m.importo)}</b>
                             <button
                               onClick={() => elimina(m)} disabled={busy === m.id}
                               title="Elimina (es. associazione errata)"
+                              aria-label="Elimina movimento"
                               style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '2px 6px', fontSize: 11, cursor: 'pointer' }}
                             >
-                              🗑️
+                              <Trash2 size={12} aria-hidden="true" />
                             </button>
                           </span>
                         </div>
@@ -190,6 +195,14 @@ export default function FinanziamentoSoci() {
                         </div>
                       </div>
                     ))}
+                    {s.movimenti.length > limite && (
+                      <button
+                        onClick={() => setLimite(l => l + 200)}
+                        style={{ background: '#f2f0e9', border: '1px solid #e6e3d9', borderRadius: 7, padding: '8px', fontSize: 12, cursor: 'pointer', fontWeight: 600, minHeight: 44 }}
+                      >
+                        Mostra altre ({s.movimenti.length - limite})
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -213,7 +226,7 @@ export default function FinanziamentoSoci() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(20, 20, 19,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
         >
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: 15, color: TERRACOTTA }}>➕ Movimento — {manuale.nome}</h3>
+            <h3 style={{ margin: '0 0 10px', fontSize: 15, color: TERRACOTTA }}>Movimento — {manuale.nome}</h3>
             <div style={{ display: 'grid', gap: 9 }}>
               <select value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })} style={campo}>
                 <option value="apporto">Apporto (il socio finanzia)</option>
@@ -236,7 +249,7 @@ export default function FinanziamentoSoci() {
                   Annulla
                 </button>
                 <button onClick={salvaManuale} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: TERRACOTTA, color: 'white', fontWeight: 700, cursor: 'pointer' }}>
-                  💾 Salva
+                  Salva
                 </button>
               </div>
             </div>

@@ -20,6 +20,7 @@ import hashlib
 import json
 import logging
 from typing import Any, Dict
+from app.utils.id_fattura import filtro_id
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ async def ricalcola_iva_fattura(db, fattura_id: str) -> Dict[str, Any]:
     """Ricalcola e salva i campi IVA di una fattura (solo se cambiano)."""
     from app.engines import iva_fatture
 
-    fattura = await db["invoices"].find_one({"id": fattura_id})
+    fattura = await db["invoices"].find_one(filtro_id(fattura_id))
     if not fattura:
         return {"stato": "saltato", "motivo": "fattura non trovata"}
     campi = iva_fatture.campi_iva_da_fattura(fattura)
@@ -60,7 +61,7 @@ async def ricalcola_iva_fattura(db, fattura_id: str) -> Dict[str, Any]:
         if fattura.get("iva_ricalcolo_impronta") != impronta:
             cambiati["iva_ricalcolo_impronta"] = impronta
     if cambiati:
-        await db["invoices"].update_one({"id": fattura_id}, {"$set": cambiati})
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": cambiati})
     return {"stato": campi.get("stato_detrazione_iva"), "aggiornata": bool(cambiati)}
 
 
@@ -98,12 +99,12 @@ async def completa_iva_pregresso(db, limite: int = LIMITE_PER_GIRO) -> Dict[str,
     for fattura_id, lavoro in lavori[:limite]:
         try:
             if lavoro == "classifica":
-                completa = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+                completa = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
                 if not completa:
                     continue
                 await handler_classifica_cdc(costruisci_evento_fattura_created(completa), db)
                 await db["invoices"].update_one(
-                    {"id": fattura_id},
+                    filtro_id(fattura_id),
                     {"$set": {"classificazione_iva_tentata_at": _ora()}})
                 esito["classificate"] += 1
             else:

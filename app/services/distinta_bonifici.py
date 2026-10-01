@@ -26,6 +26,7 @@ from app.services.fattura_attiva import e_fattura_attiva, e_nota_credito
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
 from app.services.stato_pagamento_fattura import e_annullata, e_pagata
 from app.utils.iban import iban_mod97_valido
+from app.utils.id_fattura import filtro_id
 
 CENT = Decimal("0.01")
 CAUSALE_MAX = 140
@@ -146,7 +147,7 @@ async def componi_bonifici(db, fattura_ids: List[str]) -> Dict[str, Any]:
     gruppi: Dict[str, Dict[str, Any]] = {}
     scartate: List[Dict[str, Any]] = []
     for fid in dict.fromkeys(str(i) for i in fattura_ids if i):
-        fattura = await db["invoices"].find_one({"id": fid}, {"_id": 0, "xml_content": 0})
+        fattura = await db["invoices"].find_one(filtro_id(fid), {"_id": 0, "xml_content": 0})
         if not fattura:
             scartate.append({"id": fid, "motivo": "fattura_non_trovata"})
             continue

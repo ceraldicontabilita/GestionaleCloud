@@ -14,6 +14,7 @@ import "./styles/topnav.css";
 import { gruppiVisibili, NAV_MOBILE_BAR, voceDi } from "./navigation.config";
 import { useAuth } from "./contexts/AuthContext.jsx";
 import { useGuscio } from "./contexts/GuscioContext.jsx";
+import { Eye, X, TriangleAlert } from "lucide-react";
 
 export default function App() {
   const { isAdmin, isReadOnly } = useAuth();
@@ -51,7 +52,7 @@ export default function App() {
             padding: '6px 12px', fontSize: 13, fontWeight: 600,
             borderBottom: '1px solid #fcd34d',
           }}>
-            👁 Sei in modalità sola lettura: puoi consultare i dati ma non modificarli.
+            <Eye size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> Sei in modalità sola lettura: puoi consultare i dati ma non modificarli.
           </div>
         )}
         {/* Banner notifiche browser rimosso */}
@@ -107,8 +108,9 @@ export default function App() {
                 <button
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
+                  aria-label="Chiudi il menu"
                 >
-                  ✕
+                  <X size={20} aria-hidden />
                 </button>
               </div>
               <div className="mobile-menu-gruppi">
@@ -167,7 +169,7 @@ export default function App() {
               marginBottom: 20,
               borderRadius: 10,
             }}>
-              <span style={{ fontSize: 24 }}>⚠️</span>
+              <TriangleAlert size={24} aria-hidden />
               <div style={{ flex: 1 }}>
                 <strong>{alertCommercialista.message}</strong>
               </div>
@@ -196,8 +198,9 @@ export default function App() {
                   cursor: 'pointer',
                   padding: 5
                 }}
+                aria-label="Chiudi l'avviso"
               >
-                ✕
+                <X size={18} aria-hidden />
               </button>
             </div>
           )}

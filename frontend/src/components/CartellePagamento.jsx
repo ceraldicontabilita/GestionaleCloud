@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import api from '../api';
 import { COLORS, BORDER_RADIUS, formatEuroD } from '../lib/utils';
 import { toast } from './ui/sonner';
+import { euroOppure } from '../lib/vista';
 
 /**
  * Cartelle di pagamento dell'Agente della riscossione: ogni cartella e' un
@@ -65,7 +66,7 @@ export default function CartellePagamento() {
                 <span style={{ fontWeight: 800, color: stato.colore }}>{stato.testo}</span>
               </div>
               <div style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 2 }}>
-                {c.ente_creditore || 'Ente non letto'} · {formatEuroD(Number(c.totale || 0))}
+                {c.ente_creditore || 'Ente non letto'} · {euroOppure(c.totale)}
                 {c.diritti_notifica ? ` (di cui diritti di notifica ${formatEuroD(Number(c.diritti_notifica))})` : ''}
                 {c.iuv ? ` · IUV ${c.iuv}` : ''}
               </div>
