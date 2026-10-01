@@ -111,7 +111,7 @@ const TopNav = memo(function TopNav() {
         {/* Brand */}
         <NavLink to="/" style={S.brand} data-testid="nav-brand">
           <div style={S.brandSquare}>CG</div>
-          <span style={S.brandName}>Ceraldi ERP</span>
+          <span style={S.brandName} className="topnav-brand-name">Ceraldi ERP</span>
         </NavLink>
 
         {/* Destra: Anno + Notifiche + Avatar */}
@@ -142,7 +142,7 @@ const TopNav = memo(function TopNav() {
           <NotificationBellMinimal />
 
           {/* Avatar utente */}
-          <div style={S.avatar} title="Ceraldi Group Admin">
+          <div style={S.avatar} className="topnav-avatar" title="Ceraldi Group Admin">
             CG
           </div>
 

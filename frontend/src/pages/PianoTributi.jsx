@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, PageHeader, PageLoader, StatCard } from '../components/ds';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { COLORS, FONT, formatEuro } from '../lib/utils';
+import { COLORS, FONT, formatEuro, useIsMobile } from '../lib/utils';
 import api from '../api';
 import { scaricaOriginale } from '../lib/scaricaOriginale';
 
@@ -40,7 +40,7 @@ const dataIt = iso => {
 const importo = valore => (valore === null || valore === undefined ? null : formatEuro(Number(valore)));
 
 // Una fila di piccole card che va a capo da sola: mai una colonna lunga.
-const FILA_CARD = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 8 };
+const FILA_CARD = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 8 };
 const PICCOLA_CARD = {
   padding: '8px 10px', borderRadius: 8, fontSize: 12, lineHeight: 1.35,
   border: `1px solid ${COLORS.border}`, background: COLORS.card, color: COLORS.text,
@@ -225,16 +225,21 @@ function RicercaCodice({ anno }) {
 }
 
 // Il piano di un anno: i gruppi di voci con le loro caselle, poi gli altri codici versati.
-function GrigliaAnno({ g, aperta, setAperta }) {
+function GrigliaAnno({ g, aperta, setAperta, filtroStati = null }) {
   const gruppi = useMemo(() => {
     const out = [];
-    for (const riga of g.voci || []) {
+    for (const rigaTutta of g.voci || []) {
+      // Con un filtro attivo restano solo le caselle di quello stato e le voci che ne hanno.
+      const riga = filtroStati
+        ? { ...rigaTutta, caselle: (rigaTutta.caselle || []).filter(c => filtroStati.has(c.stato)) }
+        : rigaTutta;
+      if (filtroStati && !riga.caselle.length) continue;
       let gr = out.find(x => x.nome === riga.voce.gruppo);
       if (!gr) { gr = { nome: riga.voce.gruppo, righe: [] }; out.push(gr); }
       gr.righe.push(riga);
     }
     return out;
-  }, [g]);
+  }, [g, filtroStati]);
 
   return (
     <>
@@ -270,7 +275,7 @@ function GrigliaAnno({ g, aperta, setAperta }) {
         </section>
       ))}
 
-      {(g.fuori_piano || []).length > 0 && (
+      {!filtroStati && (g.fuori_piano || []).length > 0 && (
         <section>
           <h2 style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.02em', margin: '8px 0' }}>Altri codici versati nel {g.anno}</h2>
           <div style={FILA_CARD}>
@@ -308,6 +313,8 @@ export default function PianoTributi() {
   const [carico, setCarico] = useState(true);
   const [aperta, setAperta] = useState(null);
   const [scaricando, setScaricando] = useState(false);
+  const [filtro, setFiltro] = useState(null);
+  const isMobile = useIsMobile(768);
 
   const carica = useCallback(() => {
     let attivo = true;
@@ -325,10 +332,18 @@ export default function PianoTributi() {
   // Un anno solo e' la forma di sempre; piu' anni arrivano come elenco, dal piu' recente.
   const anni = dati ? (dati.multi ? dati.anni : [dati]) : [];
   const conta = stato => (dati?.conteggi?.[stato] || 0);
+  const STATI_FILTRO = {
+    pagato: { etichetta: 'Pagati (banca)', stati: ['pagato'] },
+    verifica: { etichetta: 'Da verificare', stati: ['quietanza_senza_banca', 'da_confermare_banca', 'da_verificare_a_mano'] },
+    mancano: { etichetta: 'Mancano o scaduti', stati: [...new Set((dati?.mancano || []).map(m => m.stato))] },
+    futuro: { etichetta: 'Non ancora scaduti', stati: ['futuro', 'da_pagare'] },
+  };
+  const filtroStati = filtro && STATI_FILTRO[filtro] ? new Set(STATI_FILTRO[filtro].stati) : null;
+  const scegliFiltro = id => setFiltro(corrente => (corrente === id ? null : id));
   const sottotitolo = periodo === 'anno' ? `${anno}` : (periodo === 'tutti' ? 'tutti gli anni' : `${Math.max(2019, Number(anno) - 2)}-${anno}`);
 
   return (
-    <div style={{ padding: '0 16px 24px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: isMobile ? '0 0 24px' : '0 16px 24px', maxWidth: 1200, margin: '0 auto' }}>
       <PageHeader
         title="Piano tributi"
         subtitle={`${sottotitolo}: i tributi che devono arrivare, quelli pagati e quelli che mancano`}
@@ -364,31 +379,50 @@ export default function PianoTributi() {
 
       {dati && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
-            <StatCard label="Pagati (banca)" value={conta('pagato')} accent="success" />
-            <StatCard label="Da verificare" value={conta('quietanza_senza_banca') + conta('da_confermare_banca') + conta('da_verificare_a_mano')} accent="warning" />
-            <StatCard label="Mancano o scaduti" value={(dati.mancano || []).length} accent="danger" />
-            <StatCard label="Non ancora scaduti" value={conta('futuro') + conta('da_pagare')} accent="none" />
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? 120 : 160}px, 1fr))`, gap: isMobile ? 8 : 12, marginBottom: 12 }}>
+            <StatCard label="Pagati (banca)" value={conta('pagato')} accent="success" onClick={() => scegliFiltro('pagato')} style={filtro === 'pagato' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
+            <StatCard label="Da verificare" value={conta('quietanza_senza_banca') + conta('da_confermare_banca') + conta('da_verificare_a_mano')} accent="warning" onClick={() => scegliFiltro('verifica')} style={filtro === 'verifica' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
+            <StatCard label="Mancano o scaduti" value={(dati.mancano || []).length} accent="danger" onClick={() => scegliFiltro('mancano')} style={filtro === 'mancano' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
+            <StatCard label="Non ancora scaduti" value={conta('futuro') + conta('da_pagare')} accent="none" onClick={() => scegliFiltro('futuro')} style={filtro === 'futuro' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
           </div>
+          {filtro && STATI_FILTRO[filtro] && (
+            <div role="status" data-testid="piano-filtro-attivo" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 13 }}>
+              <span>Mostro solo: <strong>{STATI_FILTRO[filtro].etichetta}</strong></span>
+              <Button type="button" variant="outline" size="sm" style={{ minHeight: 44 }} onClick={() => setFiltro(null)}>Mostra tutto</Button>
+            </div>
+          )}
 
           {(dati.mancano || []).length > 0 && (
-            <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.danger}` }}>
+            <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.danger}`, ...(isMobile ? { padding: 10 } : {}) }}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Da guardare subito</div>
               <div style={FILA_CARD}>
-                {dati.mancano.map((m, i) => (
-                  <div
-                    key={i}
-                    style={{ ...PICCOLA_CARD, borderLeft: `3px solid ${COLORS.danger}`, background: COLORS.dangerLight }}
-                  >
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{m.voce}</div>
-                    <div style={{ color: COLORS.textMuted }}>{m.codici.join(', ')} · {m.periodo}</div>
-                    <div>scadenza {m.scadenza ? dataIt(m.scadenza) : '-'}</div>
-                    {m.giorni_scaduto > 0 && (
-                      <div style={{ color: COLORS.danger, fontWeight: 700 }}>scaduto da {giorni(m.giorni_scaduto)}</div>
-                    )}
-                    <div style={{ fontWeight: 700 }}>{dati.etichette[m.stato]}</div>
-                  </div>
-                ))}
+                {dati.mancano.map((m, i) => {
+                  const codice = (m.codici || [])[0];
+                  const corpo = (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{m.voce}</div>
+                      <div style={{ color: COLORS.textMuted }}>{m.codici.join(', ')} · {m.periodo}</div>
+                      <div>scadenza {m.scadenza ? dataIt(m.scadenza) : '-'}</div>
+                      {m.giorni_scaduto > 0 && (
+                        <div style={{ color: COLORS.danger, fontWeight: 700 }}>scaduto da {giorni(m.giorni_scaduto)}</div>
+                      )}
+                      <div style={{ fontWeight: 700 }}>{dati.etichette[m.stato]}</div>
+                    </>
+                  );
+                  const stile = { ...PICCOLA_CARD, borderLeft: `3px solid ${COLORS.danger}`, background: COLORS.dangerLight };
+                  // Un tocco apre il tributo per codice: li' ci sono F24, quietanze e ravvedimento.
+                  return codice ? (
+                    <Link
+                      key={i} to={`/situazione-fiscale/tributi-per-codice?cerca=${encodeURIComponent(codice)}`}
+                      data-testid="piano-card-mancante"
+                      style={{ ...stile, textDecoration: 'none', display: 'block', minHeight: 44 }}
+                    >
+                      {corpo}
+                    </Link>
+                  ) : (
+                    <div key={i} style={stile}>{corpo}</div>
+                  );
+                })}
               </div>
             </Card>
           )}
@@ -405,7 +439,7 @@ export default function PianoTributi() {
               {dati.multi && (
                 <h2 style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em', margin: '20px 0 8px' }}>Anno {g.anno}</h2>
               )}
-              <GrigliaAnno g={g} aperta={aperta} setAperta={setAperta} />
+              <GrigliaAnno g={g} aperta={aperta} setAperta={setAperta} filtroStati={filtroStati} />
             </div>
           ))}
         </>

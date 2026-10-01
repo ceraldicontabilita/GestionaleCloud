@@ -414,3 +414,13 @@ table td.text-right, table th.text-right { text-align: right; }
   .ds-statcard { padding: 12px 14px !important; }
   .ds-statcard-value { font-size: 19px !important; }
 }
+
+/* Barra in alto sul telefono: marchio, anno, avvisi e uscita devono stare tutti nella riga.
+   Il nome del marchio e l'avatar (solo decorativo) cedono il posto; il resto si stringe. */
+@media (max-width: 520px) {
+  [data-testid="topnav-primary"] .topnav-brand-name,
+  [data-testid="topnav-primary"] .topnav-avatar { display: none !important; }
+  [data-testid="topnav-primary"] [data-testid="nav-brand"] { margin-right: 6px !important; }
+  [data-testid="topnav-primary"] .topnav-right { gap: 6px !important; min-width: 0; }
+  [data-testid="anno-selector"] { padding: 2px 6px !important; }
+}
