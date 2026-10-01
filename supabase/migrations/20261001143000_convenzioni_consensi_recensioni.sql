@@ -78,7 +78,7 @@ create table if not exists public.bb_ospite_contatti (
   aggiornato_il timestamptz not null default now()
 );
 
-create table if not exists public.bb_recensioni_inviti (
+create table if not exists public.bb_voucher_recensioni_inviti (
   voucher_id text primary key references public.bb_vouchers(id) on delete cascade,
   dovuto_il timestamptz not null,
   stato text not null default 'in_attesa'
@@ -89,10 +89,10 @@ create table if not exists public.bb_recensioni_inviti (
   inviato_il timestamptz,
   aggiornato_il timestamptz not null default now()
 );
-create index if not exists bb_recensioni_inviti_coda_idx
-  on public.bb_recensioni_inviti(stato,dovuto_il);
+create index if not exists bb_voucher_recensioni_inviti_coda_idx
+  on public.bb_voucher_recensioni_inviti(stato,dovuto_il);
 
-create table if not exists public.bb_recensioni_click (
+create table if not exists public.bb_voucher_recensioni_click (
   id uuid primary key default extensions.gen_random_uuid(),
   voucher_id text not null references public.bb_vouchers(id) on delete cascade,
   destinazione text not null check (destinazione in ('google','tripadvisor')),
@@ -103,11 +103,11 @@ alter table public.bb_ospite_aperture enable row level security;
 alter table public.bb_ospite_consensi enable row level security;
 alter table public.bb_ospite_posizioni enable row level security;
 alter table public.bb_ospite_contatti enable row level security;
-alter table public.bb_recensioni_inviti enable row level security;
-alter table public.bb_recensioni_click enable row level security;
+alter table public.bb_voucher_recensioni_inviti enable row level security;
+alter table public.bb_voucher_recensioni_click enable row level security;
 revoke all on public.bb_ospite_aperture, public.bb_ospite_consensi,
  public.bb_ospite_posizioni, public.bb_ospite_contatti,
- public.bb_recensioni_inviti, public.bb_recensioni_click
+ public.bb_voucher_recensioni_inviti, public.bb_voucher_recensioni_click
  from public, anon, authenticated;
 
 create or replace function public.bb_ospite_privacy_stato(vid text) returns json
@@ -148,7 +148,7 @@ begin
  select
   (select count(*) from public.bb_ospite_aperture where voucher_id=v.id and aperto_il>now()-interval '1 hour')+
   (select count(*) from public.bb_ospite_consensi where voucher_id=v.id and avvenuto_il>now()-interval '1 hour')+
-  (select count(*) from public.bb_recensioni_click where voucher_id=v.id and cliccato_il>now()-interval '1 hour')
+  (select count(*) from public.bb_voucher_recensioni_click where voucher_id=v.id and cliccato_il>now()-interval '1 hour')
  into eventi_ora;
  if eventi_ora>=120 then raise exception 'Troppe richieste: riprova piu tardi'; end if;
  if pfinalita='apertura' then
@@ -157,7 +157,7 @@ begin
   return public.bb_ospite_privacy_stato(v.id);
  end if;
  if pfinalita like 'recensione_%' then
-  insert into public.bb_recensioni_click(voucher_id,destinazione)
+  insert into public.bb_voucher_recensioni_click(voucher_id,destinazione)
   values(v.id,case when pfinalita='recensione_google' then 'google' else 'tripadvisor' end);
   return public.bb_ospite_privacy_stato(v.id);
  end if;
@@ -186,13 +186,13 @@ begin
     consenso_attivo=true,aggiornato_il=now();
    delay_min:=greatest(0,public.bb_cfg('review_invite_delay_minutes','180')::int);
    base_invito:=greatest(now(),(v.data::timestamp + interval '12 hours') at time zone 'Europe/Rome');
-   insert into public.bb_recensioni_inviti(voucher_id,dovuto_il,stato)
+   insert into public.bb_voucher_recensioni_inviti(voucher_id,dovuto_il,stato)
    values(v.id,base_invito+make_interval(mins=>delay_min),'in_attesa')
    on conflict(voucher_id) do update set dovuto_il=excluded.dovuto_il,stato='in_attesa',
     ultimo_errore=null,aggiornato_il=now();
   else
    update public.bb_ospite_contatti set consenso_attivo=false,aggiornato_il=now() where voucher_id=v.id;
-   update public.bb_recensioni_inviti set stato='annullato',aggiornato_il=now()
+   update public.bb_voucher_recensioni_inviti set stato='annullato',aggiornato_il=now()
     where voucher_id=v.id and stato in ('in_attesa','errore');
   end if;
  end if;
@@ -207,12 +207,12 @@ declare risultato json;
 begin
  perform public.gc_assert_runtime_secret();
  with candidati as (
-  select j.voucher_id from public.bb_recensioni_inviti j
+  select j.voucher_id from public.bb_voucher_recensioni_inviti j
   join public.bb_ospite_contatti c on c.voucher_id=j.voucher_id and c.consenso_attivo
   where j.stato in ('in_attesa','errore') and j.dovuto_il<=now() and j.tentativi<5
   order by j.dovuto_il for update skip locked limit least(greatest(plimit,1),50)
  ), presi as (
-  update public.bb_recensioni_inviti j set stato='invio',tentativi=tentativi+1,aggiornato_il=now()
+  update public.bb_voucher_recensioni_inviti j set stato='invio',tentativi=tentativi+1,aggiornato_il=now()
   from candidati x where x.voucher_id=j.voucher_id returning j.voucher_id
  )
  select coalesce(json_agg(json_build_object(
@@ -229,7 +229,7 @@ create or replace function public.bb_recensioni_esito_runtime(vid text, pok bool
 language plpgsql security definer set search_path='' as $$
 begin
  perform public.gc_assert_runtime_secret();
- update public.bb_recensioni_inviti set stato=case when pok then 'inviato' else 'errore' end,
+ update public.bb_voucher_recensioni_inviti set stato=case when pok then 'inviato' else 'errore' end,
   provider_id=left(pprovider_id,240),ultimo_errore=left(perrore,500),
   inviato_il=case when pok then now() else inviato_il end,aggiornato_il=now()
  where voucher_id=upper(trim(vid));

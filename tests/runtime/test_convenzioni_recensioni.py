@@ -43,8 +43,8 @@ def test_migrazione_protegge_dati_e_registra_audit_e_coda():
         "bb_ospite_consensi",
         "bb_ospite_posizioni",
         "bb_ospite_contatti",
-        "bb_recensioni_inviti",
-        "bb_recensioni_click",
+        "bb_voucher_recensioni_inviti",
+        "bb_voucher_recensioni_click",
     ):
         assert f"alter table public.{tabella} enable row level security" in sql
     assert "informativa_versione" in sql
