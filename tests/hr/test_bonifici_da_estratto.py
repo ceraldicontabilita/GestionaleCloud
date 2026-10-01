@@ -204,3 +204,25 @@ def test_il_riferimento_dei_bonifici_urgenti_mb0b_si_riconosce():
         "descrizione": "VS.DISP. RIF. MB0B54696749/00370093 FAVORE CIERVO FABIANA", "fattura_ids": ["F1"]}))
     run(db["invoices"].insert_one({"id": "F1", "invoice_number": "FPR 9/26", "total_amount": 5000.0, "status": "imported"}))
     assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 1
+
+
+def test_una_fattura_con_id_numerico_riceve_i_suoi_bonifici():
+    db = _db_vuoto()
+    run(db["invoices"].insert_one({"id": 1785340207136, "invoice_number": "FPR 9/26", "total_amount": 8750.0, "status": "imported"}))
+    for i, importo in enumerate([3750.0, 5000.0]):
+        rif = f"MBVT2000000{i}"
+        run(db["bonifici_transfers"].insert_one(_bonifico(f"b{i}", rif, importo, "CIERVO FABIANA")))
+        run(db["estratto_conto_movimenti"].insert_one(_movimento(f"m{i}", rif, importo, fattura_id="1785340207136")))
+    assert run(abbina_bonifici_via_estratto(db))["acconti_collegati"] == 2
+    assert sorted(run(db["invoices"].find_one({"id": 1785340207136}))["bonifico_ids"]) == ["b0", "b1"]
+
+
+def test_il_riallineamento_rimette_il_bonifico_sulla_fattura_collegata_dal_solo_lato_del_bonifico():
+    db = _db_vuoto()
+    run(db["invoices"].insert_one({"id": 1785340207136, "invoice_number": "FPR 9/26", "total_amount": 8750.0}))
+    run(db["bonifici_transfers"].insert_one({
+        **_bonifico("b0", "MBVT20000000", 3750.0), "fattura_associata": True, "fattura_id": "1785340207136",
+        "fattura_ids": ["1785340207136"], "fattura_associazione_evidenze": ["rif_banca_in_estratto"]}))
+    assert run(abbina_bonifici_via_estratto(db))["fatture_riallineate"] == 1
+    assert run(db["invoices"].find_one({"id": 1785340207136}))["bonifico_ids"] == ["b0"]
+    assert run(abbina_bonifici_via_estratto(db))["fatture_riallineate"] == 0   # secondo giro: niente di nuovo

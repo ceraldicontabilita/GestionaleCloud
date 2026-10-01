@@ -111,6 +111,29 @@ async def _gemella_attiva(db, id_fattura: Any) -> Optional[Dict[str, Any]]:
     return gemelle[0] if len(gemelle) == 1 else None
 
 
+async def _riallinea_bonifico_ids(db, trasferimenti: List[Dict[str, Any]]) -> int:
+    """Rimette sulla fattura il bonifico che questo motore le aveva collegato dal solo lato del bonifico.
+
+    Con l'`id` numerico la fattura non veniva trovata e il suo `bonifico_ids` restava vuoto.
+    """
+    riallineate = 0
+    for t in trasferimenti:
+        if "rif_banca_in_estratto" not in (t.get("fattura_associazione_evidenze") or []):
+            continue
+        for id_fattura in t.get("fattura_ids") or []:
+            fattura = await db["invoices"].find_one(
+                {"id": {"$in": _id_possibili(id_fattura)}}, {"_id": 0, "id": 1, "bonifico_ids": 1})
+            if not fattura or str(t.get("id")) in {str(x) for x in fattura.get("bonifico_ids") or []}:
+                continue
+            await db["invoices"].update_one(
+                {"id": {"$in": _id_possibili(id_fattura)}},
+                {"$addToSet": {"bonifico_ids": str(t.get("id")), "payment_document_ids": str(t.get("id"))}})
+            riallineate += 1
+    if riallineate:
+        logger.info("[BONIFICI-ESTRATTO] fatture riallineate con il loro bonifico: %d", riallineate)
+    return riallineate
+
+
 async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_run: bool = False) -> Dict[str, Any]:
     """Abbina i bonifici PDF ancora senza esito al loro movimento d'estratto e ne eredita l'esito."""
     esito: Dict[str, Any] = {
@@ -123,6 +146,8 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
     trasferimenti = await db["bonifici_transfers"].find(
         filtro, {"_id": 0, "pdf_data": 0, "pdf_base64": 0, "contenuto_b64": 0}
     ).to_list(None)
+    if not dry_run:
+        esito["fatture_riallineate"] = await _riallinea_bonifico_ids(db, trasferimenti)
     da_fare = [t for t in trasferimenti if not _gia_decisa(t) and (t.get("rif_interno") or t.get("cro_trn"))]
     if not da_fare:
         return esito
