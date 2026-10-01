@@ -187,6 +187,62 @@ def test_il_netto_zucchetti_si_legge_dalla_cella_sotto_l_etichetta():
     assert _netto_dalla_cella([vuota]) == {"netto": None}
 
 
+def _pagina_lul_csc(tmp_path, *, cella):
+    """PDF sintetico nel tracciato CSC del Libro Unico (MINI-09.2), senza dati veri.
+
+    Coordinate prese dal tracciato reale: intestazione, riga ``ARR. PREC. / ARR.
+    ATTUALE / TOTALE NETTO`` con i due arrotondamenti ai lati e, sotto
+    ``NETTO``, la cella allineata a destra (vuota quando ``cella`` e' None).
+    """
+    import fitz
+
+    doc = fitz.open()
+    pagina = doc.new_page(width=595, height=842)
+    for x, y, testo in (
+        (17, 18, "LIBRO UNICO DEL LAVORO DL. 112/2008"),
+        (463, 42, "MAGGIO 2013"),
+        (375, 718, "ARR. PREC. ARR. ATTUALE TOTALE NETTO"),
+        (395, 728, "0,48"),
+        (443, 728, "0,86"),
+    ):
+        pagina.insert_text((x, y), testo, fontsize=6)
+    if cella is not None:
+        pagina.insert_text((520, 728), cella, fontsize=6)
+    percorso = tmp_path / "lul.pdf"
+    doc.save(str(percorso))
+    doc.close()
+    return str(percorso)
+
+
+def test_il_netto_del_libro_unico_csc_si_legge_dalla_cella_per_posizione(tmp_path):
+    """Il LUL non ha un lettore a parte: lo legge `_netto_dalla_cella` (MINI-09.2)."""
+    from app.constants.stati_netto import NETTO_FONTE_CELLA, NETTO_VERIFICATO_DA_CEDOLINO
+    from app.parsers.busta_paga_multi_template import parse_busta_paga_multi
+
+    letto = parse_busta_paga_multi(_pagina_lul_csc(tmp_path, cella="1.137,00+"))
+    totali = letto["totali"]
+    # Gli arrotondamenti 0,48 e 0,86 stanno sulla stessa riga ma non sotto NETTO.
+    assert totali["netto"] == 1137.0
+    assert totali["netto_fonte"] == NETTO_FONTE_CELLA
+    assert totali["stato_netto"] == NETTO_VERIFICATO_DA_CEDOLINO
+
+
+def test_libro_unico_con_cella_vuota_resta_nullo_e_non_letto_da_lul(tmp_path):
+    from app.constants.stati_netto import (
+        NETTO_FONTE_NON_LETTO_DA_LUL,
+        NETTO_NON_PRESENTE_O_NON_LEGGIBILE,
+        alimenta_salari,
+    )
+    from app.parsers.busta_paga_multi_template import parse_busta_paga_multi
+
+    totali = parse_busta_paga_multi(_pagina_lul_csc(tmp_path, cella=None))["totali"]
+    # Nessun valore sotto l'etichetta: mai 0, mai un arrotondamento al suo posto.
+    assert totali.get("netto") is None
+    assert totali["netto_fonte"] == NETTO_FONTE_NON_LETTO_DA_LUL
+    assert totali["stato_netto"] == NETTO_NON_PRESENTE_O_NON_LEGGIBILE
+    assert not alimenta_salari(totali["stato_netto"])
+
+
 def test_il_netto_non_si_ricalcola_mai_da_competenze_e_trattenute():
     from app.constants.stati_netto import (
         MULTIPLE_NETS_DA_VERIFICARE,

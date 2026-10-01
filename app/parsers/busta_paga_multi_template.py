@@ -1434,12 +1434,12 @@ def _verifica_netto(result: Dict[str, Any], text: str = "") -> None:
     if letto is None:
         t["stato_netto"] = NETTO_NON_PRESENTE_O_NON_LEGGIBILE
         if "LIBRO UNICO DEL LAVORO" in (text or "").upper():
-            # Pagina del Libro Unico senza la cella del netto: il netto resta
-            # nullo e la fonte lo dichiara, cosi' l'archivio distingue una
-            # pagina LUL da una busta illeggibile.
-            # TODO(MINI-03): manca ancora il lettore per posizione (stile
-            # pdfplumber) del netto sulle pagine del Libro Unico; finche' non
-            # c'e', queste pagine restano «non_letto_da_lul».
+            # Pagina del Libro Unico in cui la cella sotto «NETTO» e' vuota
+            # (o l'etichetta manca): il lettore per posizione c'e' gia'
+            # (`_netto_dalla_cella`, provato su campioni CSC 2011-2020 e
+            # Zucchetti 2023-2025, MINI-09.2) e qui non ha trovato nessun
+            # valore. Il netto resta nullo e la fonte lo dichiara, cosi'
+            # l'archivio distingue una pagina LUL da una busta illeggibile.
             t["netto_fonte"] = NETTO_FONTE_NON_LETTO_DA_LUL
         return
     t["stato_netto"] = NETTO_VERIFICATO_DA_CEDOLINO
