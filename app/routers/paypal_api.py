@@ -712,7 +712,6 @@ async def crea_fornitore_e_mappa(body: Dict[str, Any] = Body(...)):
         "iban": "",  # PayPal non usa IBAN
         "iban_lista": [],
         "metodo_pagamento": body.get("metodo_pagamento") or "paypal",
-        "giorni_pagamento": int(body.get("giorni_pagamento") or 0),
         "esclude_magazzino": bool(body.get("esclude_magazzino", True)),
         # Campo letto dall'app esterna collegata allo stesso DB — non rimuovere.
         "escludi_da_tracciabilita": bool(body.get("escludi_da_tracciabilita", False)),

@@ -129,7 +129,7 @@ def _score_completezza(d: Dict[str, Any]) -> int:
     score = 0
     for k in ("partita_iva", "codice_fiscale", "iban", "metodo_pagamento",
               "indirizzo", "cap", "comune", "provincia", "telefono", "email",
-              "giorni_pagamento", "centro_costo_id"):
+              "centro_costo_id"):
         if d.get(k) not in _VUOTI:
             score += 2
     if not metodo_non_configurato(d.get("metodo_pagamento")):
