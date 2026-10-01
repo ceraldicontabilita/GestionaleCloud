@@ -146,6 +146,10 @@ async def cerca_controparti_f24(db, saldo: Any = None) -> Dict[str, Any]:
     return esito
 
 
+# Stato di pagamento di un modello: iniziale all'import, poi dei motori.
+_CAMPI_STATO_PAGAMENTO = ("status", "stato_pagamento", "pagato", "riconciliato")
+
+
 async def importa_modello_bytes(
     db, content: bytes, filename: str, *, source: str = "upload_manuale",
     source_metadata: Optional[Dict[str, Any]] = None,
@@ -211,6 +215,12 @@ async def importa_modello_bytes(
     existing = await db[COLL].find_one(
         {"f24_dedup_key": documento["f24_dedup_key"]}, {"_id": 0, "id": 1}
     )
+    if existing:
+        # Lo stesso PDF letto di nuovo rinfresca le righe, mai lo stato di pagamento: lo scrivono i
+        # motori (quietanza, banca, doppioni). Riportarlo a «da pagare» cancellava la prova gia'
+        # trovata (`pagato=False` con l'addebito collegato) e riportava in vita un modello in quarantena.
+        for campo in _CAMPI_STATO_PAGAMENTO:
+            documento.pop(campo, None)
     f24_id = await salva_f24(db, documento, source=source)
     controparti = None if existing else await cerca_controparti_f24(
         db, (documento.get("totali") or {}).get("saldo_netto", documento.get("importo")))

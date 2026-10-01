@@ -923,16 +923,28 @@ async def importa_csv_ade(db, testo: str, filename: str = "", *, dry_run: bool =
     letto = leggi_csv_ade(testo)
     esito: Dict[str, Any] = {
         "dry_run": dry_run, "righe_lette": len(letto["righe"]), "nuovi": 0, "aggiornati": 0, "invariati": 0,
-        "gia_definitivi": 0, "conflitti": [], "discordanze_con_xml": [], "chiusure_dichiarate": 0,
+        "gia_definitivi": 0, "fuori_anno": 0, "anno_attivo": None,
+        "conflitti": [], "discordanze_con_xml": [], "chiusure_dichiarate": 0,
         "errori": list(letto["errori"]), "giornate_provvisorie": [],
     }
     per_giorno: Dict[str, List[Dict[str, Any]]] = {}
     for riga in letto["righe"]:
         per_giorno.setdefault(riga["data"], []).append(riga)
 
+    # Nel gestionale entra solo l'anno attivo (decisione del titolare, 20/09/2026):
+    # il CSV del portale puo' coprire piu' anni, ma una giornata di un altro anno
+    # non diventa un corrispettivo (come per l'XML); l'originale resta dov'e'.
+    from app.services.config_import import get_anno_importazione_attivo
+
+    anno_attivo = await get_anno_importazione_attivo(db)
+    esito["anno_attivo"] = anno_attivo
+
     now = datetime.now(timezone.utc).isoformat()
     for giorno in sorted(per_giorno):
         righe = per_giorno[giorno]
+        if int(giorno[:4]) != anno_attivo:
+            esito["fuori_anno"] += len(righe)
+            continue
         presenti = await db["corrispettivi"].find(
             {"data": giorno, "entity_status": {"$ne": "deleted"},
              "status": {"$nin": ["deleted", "archived", "archiviata"]}}, {"_id": 0},
@@ -966,7 +978,14 @@ async def importa_csv_ade(db, testo: str, filename: str = "", *, dry_run: bool =
             }
             precedente = gia_csv.get(r["id_invio"])
             if precedente:
-                if all(precedente.get(k) == v for k, v in nuovi_campi.items()):
+                # Lo stesso contenuto con un altro nome di file («corrispettivi (1).csv»)
+                # non e' una variazione: il nome non conta nel confronto.
+                def _senza_nome(campo, valore):
+                    return ({k: x for k, x in valore.items() if k != "filename"}
+                            if campo == "csv_ade" and isinstance(valore, dict) else valore)
+
+                if all(_senza_nome(k, precedente.get(k)) == _senza_nome(k, v)
+                       for k, v in nuovi_campi.items()):
                     esito["invariati"] += 1
                     continue
                 esito["aggiornati"] += 1

@@ -645,6 +645,13 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
     bonifico = round(tot_esiti, 2) if n_esiti else float(p.get("bonifico_importo") or 0)
     busta = float(p.get("importo_busta") or 0)
     acc = sum(float(a.get("importo") or 0) for a in (p.get("acconti") or []))
+    # Gli acconti del registro unico (anche quelli nati da «Bonifici da associare»)
+    # sono pagamenti sulla busta come per la posizione dipendente: lo stesso conto.
+    from app.services import posizione_dipendente as pos
+
+    acconti_registro = await db.acconti_dipendenti.find(
+        {"dipendente_id": dip}, {"_id": 0}).to_list(2000)
+    acc += float(pos.acconti_registro_del_mese(acconti_registro, anno, mese, p.get("acconti") or []))
     erogato = bonifico + acc
     if busta <= 0 and erogato <= 0:
         stato = "vuoto"
@@ -830,6 +837,9 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
                       "associato_competenza": "%s-%02d" % (anno, mese), "associato_il": now_iso(), **rif}})
         await _segna_conferma(db, in_coda, attore, {"dipendente_id": dipendente_id, "tipo": tipo,
                                                     "competenza": "%s-%02d" % (anno, mese)})
+        if tipo == "acconto":
+            # l'acconto e' un pagamento sulla busta del mese: lo stato del mese lo conta
+            await _ricalcola_stato_paga(db, dipendente_id, anno, mese)
         return {"ok": True, "tipo": tipo, **rif}
 
     nuovo = {

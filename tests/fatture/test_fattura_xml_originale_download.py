@@ -32,8 +32,14 @@ class _FakeCollection:
         self.docs = docs or []
 
     async def find_one(self, query, *a, **k):
+        def _uguale(valore, atteso):
+            # l'`id` di una fattura puo' essere testo o numero: il codice di produzione cerca con `$in`
+            if isinstance(atteso, dict) and "$in" in atteso:
+                return valore in atteso["$in"]
+            return valore == atteso
+
         for d in self.docs:
-            if all(d.get(k2) == v2 for k2, v2 in query.items()):
+            if all(_uguale(d.get(k2), v2) for k2, v2 in query.items()):
                 return dict(d)
         return None
 

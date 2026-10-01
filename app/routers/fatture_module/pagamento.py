@@ -6,6 +6,7 @@ from typing import Dict, Any
 from datetime import datetime, timezone
 
 from app.database import Database
+from app.utils.id_fattura import filtro_id
 from app.routers.fatture_module.ciclo_utils import COL_SCADENZIARIO
 from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, logger
 
@@ -39,7 +40,7 @@ async def cambia_metodo_pagamento_fattura(payload: Dict[str, Any] = Body(...)) -
     if not fattura_id or not nuovo_metodo:
         raise HTTPException(status_code=400, detail="fattura_id e metodo sono obbligatori")
     
-    fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id})
+    fattura = await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(fattura_id))
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
     
@@ -47,7 +48,7 @@ async def cambia_metodo_pagamento_fattura(payload: Dict[str, Any] = Body(...)) -
     
     # Aggiorna fattura
     await db[COL_FATTURE_RICEVUTE].update_one(
-        {"id": fattura_id},
+        filtro_id(fattura_id),
         {"$set": {
             "metodo_pagamento": nuovo_metodo,
             "metodo_pagamento_precedente": metodo_precedente,

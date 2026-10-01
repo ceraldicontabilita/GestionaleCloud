@@ -131,6 +131,12 @@ async def _ultima_data(db, fonte: Dict[str, Any]) -> Optional[date]:
         logger.warning("Fonti ferme: %s non leggibile (%s)", collection, exc)
         return None
     massimo: Optional[date] = None
+    # Una riga ritirata o archiviata (giornata sostituita dall'XML, copia in
+    # quarantena) non e' un dato arrivato: non sposta in avanti l'ultima data,
+    # altrimenti nasconderebbe un fermo vero.
+    documenti = [d for d in documenti
+                 if d.get("status") not in ("deleted", "archived", "archiviata")
+                 and d.get("entity_status") != "deleted"]
     if fonte.get("solo_gestore"):
         from app.services.scritture_contabili import normalizza_gestore_pos
 

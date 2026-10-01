@@ -39,8 +39,15 @@ GIORNO_SCADENZA = 16
 
 
 def _periodo_scaduto(anno: int, mese: int, oggi: str) -> bool:
+    """Il periodo e' scaduto dopo il 16 del mese dopo, con festivi e proroga di Ferragosto.
+
+    La stessa regola dello Scadenzario (`termine_effettivo`): senza, i mesi dal 17 al 19/08 e il lunedi'
+    dopo un 16 di sabato o domenica risultavano «non pervenuti» quando erano ancora nei termini.
+    """
+    from app.services.scadenzario_tributi import termine_effettivo
+
     a, m = (anno + 1, 1) if mese == 12 else (anno, mese + 1)
-    return f"{a}-{m:02d}-{GIORNO_SCADENZA:02d}" < oggi
+    return termine_effettivo(date(a, m, GIORNO_SCADENZA)).isoformat() < oggi
 
 
 def _vista_delega(p: Dict[str, Any]) -> Dict[str, Any]:

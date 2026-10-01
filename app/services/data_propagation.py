@@ -11,6 +11,7 @@ FLUSSI IMPLEMENTATI:
 4. Movimento Eliminato → Aggiornamento Entità Collegate
 """
 
+from app.utils.id_fattura import filtro_id
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import logging
@@ -58,7 +59,7 @@ class DataPropagationService:
         }
         
         # 1. Recupera fattura
-        invoice = await self.db[Collections.INVOICES].find_one({"id": invoice_id})
+        invoice = await self.db[Collections.INVOICES].find_one(filtro_id(invoice_id))
         if not invoice:
             results["errors"].append("Fattura non trovata")
             return results
@@ -121,7 +122,7 @@ class DataPropagationService:
         
         try:
             await self.db[Collections.INVOICES].update_one(
-                {"id": invoice_id},
+                filtro_id(invoice_id),
                 {
                     "$set": {
                         "payment_status": new_status,
@@ -237,7 +238,7 @@ class DataPropagationService:
             "supplier_recalculated": False
         }
         
-        invoice = await self.db[Collections.INVOICES].find_one({"id": invoice_id})
+        invoice = await self.db[Collections.INVOICES].find_one(filtro_id(invoice_id))
         if not invoice:
             return results
         

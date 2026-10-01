@@ -137,58 +137,36 @@ async def on_dipendente_updated_risolvi(event: Dict[str, Any], db) -> Optional[D
     return {"action": "alert_risolti", "count": risolti} if risolti else None
 
 
-async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
-    """
-    Quando un dipendente viene cessato esegue il ciclo completo di chiusura:
+def _archivi_cessazione(db):
+    """``(hr, gestionale)``: ogni collezione si scrive dove vive davvero.
 
-    1. Revoca il PIN del portale (nessun nuovo accesso da qui in poi)
-    2. Termina i contratti ancora attivi alla data di cessazione
-    3. Rifiuta automaticamente richieste assenza pending con data > data_cessazione
-    4. Annulla partite aperte stipendio residue
-    5. Risolve alert aperti sul dipendente (tranne DIP_CESSATO_FLUSSI_ATTIVI nuovo)
-    6. Genera audit + eventuale alert se restano flussi anomali
-
-    Limite noto sulla revoca del PIN: blocca ogni NUOVO accesso, ma un token
-    gia' emesso resta valido fino a scadenza (fino a 7 giorni: `get_identity`
-    verifica firma e scadenza, non rilegge lo stato del dipendente a ogni
-    chiamata). Le sessioni gia' aperte non vengono chiuse.
-
-    Idempotente: se ricevuto due volte non duplica azioni (skip se già terminato).
-    """
-    from app.services.alert_engine import genera_alert
-    from app.services.audit_logger import log_evento
-    from datetime import datetime, timedelta, timezone
-
-    dip_id = event.get("dipendente_id", "")
-    nome = event.get("nome_completo", "")
-    data_cessazione = event.get("data_cessazione") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    source_module = event.get("source_module", "manuale")
-    auto_from_cedolino = event.get("auto_from_cedolino", False)
-    diciture = event.get("cessazione_diciture", [])
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-    azioni = {
-        "pin_revocato": False,
-        "contratti_terminati": 0,
-        "richieste_future_rifiutate": 0,
-        "partite_annullate": 0,
-        "alerts_risolti": 0,
-    }
-
-    # 1. Revoca il PIN. CLAUDE.md, «Personale»: «la cessazione revoca il PIN»,
-    # «mai un cessato» fra i PIN validi. Due strade di cessazione
-    # (`routers/employees/dipendenti.py`, la spunta «non in carico» nel PUT e
-    # il DELETE) non lo revocano da sole: si affidano a questo handler. Finche'
-    # viveva solo sul bus HR — mai collegato, zero handler a runtime — quelle
-    # due strade lasciavano il PIN attivo. Il PIN resta di proprieta' di HR
-    # («l'anagrafica HR comanda»), quindi qui si chiama il suo servizio.
+    Contratti e richieste di assenza stanno in HR (``hr.app_*``); partite aperte,
+    avvisi, cedolini e audit nel gestionale. La cessazione parte da HR (che passa
+    il suo archivio) o dal gestionale (che passa il suo): con un archivio solo le
+    partite stipendio restavano aperte, o i contratti. Se uno dei due non e'
+    raggiungibile (test, avvio) si ripiega su quello ricevuto."""
+    hr = gestionale = None
     try:
-        from app.hr.services.auth_dipendenti import rimuovi_pin
+        from app.hr.database import Database as DatabaseHR, DatabaseNonConfigurato
 
-        azioni["pin_revocato"] = await rimuovi_pin(dip_id)
-    except Exception as e:
-        logger.exception(f"Errore revoca PIN per dip {dip_id}: {e}")
+        candidato = DatabaseHR.get_db()
+        if candidato is not None and not isinstance(candidato, DatabaseNonConfigurato):
+            hr = candidato
+    except Exception as exc:  # noqa: BLE001 - si ripiega sull'archivio ricevuto
+        logger.warning("Cessazione: archivio HR non raggiungibile (%s: %s)", type(exc).__name__, exc)
+    try:
+        from app.database import Database as DatabaseGestionale
 
+        gestionale = DatabaseGestionale.get_db()
+    except Exception as exc:  # noqa: BLE001 - idem
+        logger.warning("Cessazione: archivio gestionale non raggiungibile (%s: %s)", type(exc).__name__, exc)
+    return (hr if hr is not None else db), (gestionale if gestionale is not None else db)
+
+
+async def _chiudi_contratti_e_assenze(db, dip_id: str, data_cessazione: str, now_iso: str,
+                                      azioni: Dict[str, Any]) -> None:
+    """Passi 2 e 3 della cessazione, sull'archivio HR (``db``): contratti ancora
+    attivi alla data e richieste di assenza future in attesa."""
     # 2. Termina i contratti ancora attivi alla data di cessazione.
     try:
         r_contratti = await db["employee_contracts"].update_many(
@@ -233,9 +211,66 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     except Exception as e:
         logger.exception(f"Errore rifiuto richieste future per dip {dip_id}: {e}")
 
+
+async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
+    """
+    Quando un dipendente viene cessato esegue il ciclo completo di chiusura:
+
+    1. Revoca il PIN del portale (nessun nuovo accesso da qui in poi)
+    2. Termina i contratti ancora attivi alla data di cessazione
+    3. Rifiuta automaticamente richieste assenza pending con data > data_cessazione
+    4. Annulla partite aperte stipendio residue
+    5. Risolve alert aperti sul dipendente (tranne DIP_CESSATO_FLUSSI_ATTIVI nuovo)
+    6. Genera audit + eventuale alert se restano flussi anomali
+
+    Limite noto sulla revoca del PIN: blocca ogni NUOVO accesso, ma un token
+    gia' emesso resta valido fino a scadenza (fino a 7 giorni: `get_identity`
+    verifica firma e scadenza, non rilegge lo stato del dipendente a ogni
+    chiamata). Le sessioni gia' aperte non vengono chiuse.
+
+    Idempotente: se ricevuto due volte non duplica azioni (skip se già terminato).
+    """
+    from app.services.alert_engine import genera_alert
+    from app.services.audit_logger import log_evento
+    from datetime import datetime, timedelta, timezone
+
+    dip_id = event.get("dipendente_id", "")
+    nome = event.get("nome_completo", "")
+    data_cessazione = event.get("data_cessazione") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    source_module = event.get("source_module", "manuale")
+    auto_from_cedolino = event.get("auto_from_cedolino", False)
+    diciture = event.get("cessazione_diciture", [])
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db_hr, db_gest = _archivi_cessazione(db)
+    azioni = {
+        "pin_revocato": False,
+        "contratti_terminati": 0,
+        "richieste_future_rifiutate": 0,
+        "partite_annullate": 0,
+        "alerts_risolti": 0,
+    }
+
+    # 1. Revoca il PIN. CLAUDE.md, «Personale»: «la cessazione revoca il PIN»,
+    # «mai un cessato» fra i PIN validi. Due strade di cessazione
+    # (`routers/employees/dipendenti.py`, la spunta «non in carico» nel PUT e
+    # il DELETE) non lo revocano da sole: si affidano a questo handler. Finche'
+    # viveva solo sul bus HR — mai collegato, zero handler a runtime — quelle
+    # due strade lasciavano il PIN attivo. Il PIN resta di proprieta' di HR
+    # («l'anagrafica HR comanda»), quindi qui si chiama il suo servizio.
+    try:
+        from app.hr.services.auth_dipendenti import rimuovi_pin
+
+        azioni["pin_revocato"] = await rimuovi_pin(dip_id)
+    except Exception as e:
+        logger.exception(f"Errore revoca PIN per dip {dip_id}: {e}")
+
+    # 2-3. Contratti e richieste di assenza: stanno in HR.
+    await _chiudi_contratti_e_assenze(db_hr, dip_id, data_cessazione, now_iso, azioni)
+
     # 4. Annulla partite aperte stipendio residue
     try:
-        r_partite = await db["partite_aperte"].update_many(
+        r_partite = await db_gest["partite_aperte"].update_many(
             {
                 "controparte_id": dip_id,
                 "tipo": "stipendio",
@@ -251,24 +286,27 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     except Exception as e:
         logger.exception(f"Errore annullamento partite per dip {dip_id}: {e}")
 
-    # 5. Risolve alert aperti sul dipendente
+    # 5. Risolve alert aperti sul dipendente (HR e gestionale hanno ciascuno i propri)
     try:
-        r_alerts = await db["alerts"].update_many(
-            {
-                "entita_id": dip_id,
-                "stato": "aperto",
-                # Non risolvere l'alert DIP_CESSATO_FLUSSI_ATTIVI che potremmo creare subito dopo
-                "codice": {"$ne": "DIP_CESSATO_FLUSSI_ATTIVI"},
-            },
-            {"$set": {
-                "stato": "risolto",
-                "risolto": True,
-                "resolved_at": now_iso,
-                "resolved_by": "cessazione",
-                "note_risoluzione": f"Dipendente {nome} cessato il {data_cessazione}",
-            }}
-        )
-        azioni["alerts_risolti"] = r_alerts.modified_count
+        risolti = 0
+        for archivio in {id(a): a for a in (db_hr, db_gest)}.values():
+            r_alerts = await archivio["alerts"].update_many(
+                {
+                    "entita_id": dip_id,
+                    "stato": "aperto",
+                    # Non risolvere l'alert DIP_CESSATO_FLUSSI_ATTIVI che potremmo creare subito dopo
+                    "codice": {"$ne": "DIP_CESSATO_FLUSSI_ATTIVI"},
+                },
+                {"$set": {
+                    "stato": "risolto",
+                    "risolto": True,
+                    "resolved_at": now_iso,
+                    "resolved_by": "cessazione",
+                    "note_risoluzione": f"Dipendente {nome} cessato il {data_cessazione}",
+                }}
+            )
+            risolti += r_alerts.modified_count
+        azioni["alerts_risolti"] = risolti
     except Exception as e:
         logger.exception(f"Errore risoluzione alert per dip {dip_id}: {e}")
 
@@ -277,11 +315,11 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     #    l'alert è generato solo se siamo in cessazione manuale)
     if not auto_from_cedolino:
         due_mesi_fa = (datetime.now() - timedelta(days=60)).strftime("%Y-%m")
-        cedolini_recenti = await db["cedolini"].count_documents({
+        cedolini_recenti = await db_gest["cedolini"].count_documents({
             "dipendente_id": dip_id,
             "$expr": {"$gte": [{"$concat": [{"$toString": "$anno"}, "-", {"$toString": "$mese"}]}, due_mesi_fa]}
         })
-        partite_aperte_post = await db["partite_aperte"].count_documents({
+        partite_aperte_post = await db_gest["partite_aperte"].count_documents({
             "controparte_id": dip_id,
             "tipo": "stipendio",
             "stato": {"$in": ["aperta", "parziale"]}

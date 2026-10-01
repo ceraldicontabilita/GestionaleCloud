@@ -202,7 +202,9 @@ def percentuale_ravvedimento(giorni: int, scadenza: date) -> Tuple[Decimal, str,
             return Decimal("1.3889"), regime, "31–90 giorni (12,5% ridotto a 1/9)"
         if anno_dopo:
             return Decimal("3.125"), regime, "entro un anno (25% ridotto a 1/8)"
-        return Decimal("3.5714"), regime, "oltre un anno (25% ridotto a 1/7)"
+        if giorni <= 730:
+            return Decimal("3.5714"), regime, "entro due anni (25% ridotto a 1/7)"
+        return Decimal("4.1667"), regime, "oltre due anni (25% ridotto a 1/6)"
     regime = "art. 13 D.Lgs. 471/1997 previgente (sanzione base 30%)"
     if giorni <= 14:
         return (Decimal("0.1") * giorni).quantize(Decimal("0.0001")), regime, f"entro 14 giorni ({giorni} gg × 0,1%)"
@@ -230,6 +232,25 @@ def interessi_legali_cents(importo_cents: int, dal: date, al: date) -> int:
         totale += Decimal(importo_cents) * tasso / Decimal(100) * Decimal((fino - g).days) / Decimal(365)
         g = fino
     return int(totale.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def eccedenza_da_interessi(dovuto_cents: int, versato_cents: int, scadenza: Any, pagato_il: Any) -> bool:
+    """Il versato supera il dovuto solo per gli interessi legali cumulati al tributo.
+
+    Nel ravvedimento di ritenute e addizionali gli interessi non hanno un codice proprio: si sommano al
+    tributo (Ris. AdE 18/E del 28/04/2023, 280,00 diventa 280,31). L'eccedenza e' accettata se non supera
+    gli interessi legali dalla scadenza al versamento piu' la tolleranza di sempre (50 centesimi o il 3%);
+    mai per un importo vicino qualunque, e mai in difetto.
+    """
+    if versato_cents <= dovuto_cents:
+        return False
+    try:
+        scad = scadenza if isinstance(scadenza, date) else date.fromisoformat(str(scadenza)[:10])
+        pagato = pagato_il if isinstance(pagato_il, date) else date.fromisoformat(str(pagato_il)[:10])
+    except ValueError:
+        return False
+    attesi = interessi_legali_cents(dovuto_cents, scad, pagato)
+    return versato_cents - dovuto_cents <= attesi + max(TOLLERANZA_CENTS, int(Decimal(attesi) * TOLLERANZA_PCT))
 
 
 def _basta(pagato: int, atteso: int) -> bool:

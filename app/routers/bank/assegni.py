@@ -5,7 +5,7 @@ API per generazione, gestione e collegamento assegni.
 from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime, timezone
 import asyncio
 import uuid
@@ -29,6 +29,7 @@ from app.services.payment_allocation_validator import (
 )
 from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.utils.id_fattura import filtro_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -132,7 +133,7 @@ async def _scollega_fatture(db, assegno: Dict[str, Any], now: str, *, motivo: st
             collegate.append({"fattura_id": str(assegno[campo])})
     for fid in ids:
         await db["invoices"].update_one(
-            {"id": fid}, {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}})
+            filtro_id(fid), {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}})
         await ritira_dichiarazione_banca(db, fid, motivo=motivo)
         await _aggiorna_stato_intento_fattura(db, fid, now)
     return collegate
@@ -1062,7 +1063,7 @@ async def lista_ambigui(
         )
         if anno and data_assegno[:4].isdigit() and int(data_assegno[:4]) != anno:
             continue
-        inv = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+        inv = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
         if not inv or inv.get("pagato") is True:
             continue
         total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
@@ -1127,7 +1128,7 @@ async def risolvi_ambiguo(
         raise HTTPException(status_code=400, detail="Assegno già collegato")
     fatture = []
     for fid in fattura_ids:
-        inv = await db["invoices"].find_one({"id": fid}, {"_id": 0})
+        inv = await db["invoices"].find_one(filtro_id(fid), {"_id": 0})
         if not inv:
             raise HTTPException(status_code=404, detail=f"Fattura {fid} non trovata")
         total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
@@ -1362,7 +1363,8 @@ async def upload_foto_assegno(assegno_id: str, file: UploadFile = File(...)) -> 
 
 
 class FatturaQuotaIn(BaseModel):
-    fattura_id: str
+    # Su `invoices` l'`id` e' un numero su meta' delle righe: la UI lo rimanda cosi' com'e'.
+    fattura_id: Union[str, int]
     # Positiva per una fattura normale, negativa per una nota di credito (TD04)
     # che netta l'importo dovuto — vedi PROMPT_MASTER.md, sezione 10.
     quota: float
@@ -1372,14 +1374,14 @@ class FattureCollegateIn(BaseModel):
     fatture: List[FatturaQuotaIn] = Field(default_factory=list)
 
 
-async def _aggiorna_stato_intento_fattura(db, fattura_id: str, now: str) -> None:
+async def _aggiorna_stato_intento_fattura(db, fattura_id: Union[str, int], now: str) -> None:
     """Ricalcola l'intento assegno senza alterare il pagamento reale."""
-    inv = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    inv = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
     if not inv:
         return
     links = [x for x in inv.get("assegni_collegati") or [] if isinstance(x, dict)]
     if links or inv.get("riconciliato_con_ec"):
-        await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
             "metodo_pagamento_previsto": "assegno",
             "metodo_pagamento_override_source": "assegno_compilato",
             "pagamento_specifico_prevale_su_fornitore": True,
@@ -1400,7 +1402,7 @@ async def _aggiorna_stato_intento_fattura(db, fattura_id: str, now: str) -> None
     }
     if original:
         update["$set"]["metodo_pagamento"] = original
-    await db["invoices"].update_one({"id": fattura_id}, update)
+    await db["invoices"].update_one(filtro_id(fattura_id), update)
 
 
 @router.put("/{assegno_id}/fatture-collegate")
@@ -1437,7 +1439,7 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
     for f in body.fatture:
         if f.fattura_id in fatture_map:
             continue
-        inv = await db["invoices"].find_one({"id": f.fattura_id}, {"_id": 0})
+        inv = await db["invoices"].find_one(filtro_id(f.fattura_id), {"_id": 0})
         if not inv:
             raise HTTPException(status_code=404, detail=f"Fattura {f.fattura_id} non trovata")
         fatture_map[f.fattura_id] = inv
@@ -1525,7 +1527,7 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
         if not old_fid:
             continue
         await db["invoices"].update_one(
-            {"id": old_fid}, {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}}
+            filtro_id(old_fid), {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}}
         )
         await ritira_dichiarazione_banca(db, old_fid, motivo="fatture collegate all'assegno modificate")
         await _aggiorna_stato_intento_fattura(db, old_fid, now)
@@ -1542,7 +1544,7 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
         inv = fatture_map[f.fattura_id]
         original_method = inv.get("metodo_pagamento") or inv.get("payment_method")
         await db["invoices"].update_one(
-            {"id": f.fattura_id},
+            filtro_id(f.fattura_id),
             {
                 "$set": {
                     "metodo_pagamento_fornitore_originale": original_method,
@@ -1758,7 +1760,7 @@ async def incassa_assegno(
     if assegno.get("fattura_collegata"):
         fid = assegno["fattura_collegata"]
         await db["invoices"].update_one(
-            {"id": fid},
+            filtro_id(fid),
             {"$set": {"data_ultimo_incasso_assegno": data_incasso,
                       "metodo_pagamento_effettivo": "assegno",
                       "updated_at": datetime.now(timezone.utc).isoformat()}}

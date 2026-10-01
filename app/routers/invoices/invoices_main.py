@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import Collections, Database
+from app.utils.id_fattura import filtro_id
 from app.utils.dependencies import get_current_admin_user
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
@@ -332,7 +333,7 @@ async def get_invoices_by_month(year: int, month: int) -> Dict[str, Any]:
 @router.get("/{invoice_id}")
 async def get_invoice(invoice_id: str) -> Dict[str, Any]:
     db = Database.get_db()
-    invoice = await db[Collections.INVOICES].find_one({"id": invoice_id}, {"_id": 0})
+    invoice = await db[Collections.INVOICES].find_one(filtro_id(invoice_id), {"_id": 0})
     if invoice:
         return invoice
     try:

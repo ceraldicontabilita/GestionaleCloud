@@ -96,6 +96,7 @@ class FakeDatabase:
         self.dipendenti = EmployeeCollection()
         self.paghe_mensili = MonthlyPayrollCollection()
         self.pagamenti_esiti = EmptyPaymentsCollection()
+        self.acconti_dipendenti = EmptyPaymentsCollection()  # lo stato del mese conta gli acconti del registro
         self.pagamenti_storico = HistoricalPaymentsCollection()
 
 

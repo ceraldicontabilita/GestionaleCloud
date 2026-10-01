@@ -95,15 +95,29 @@ def driver_alla_data(veicolo: Dict[str, Any], data_evento: Optional[str]) -> Dic
     data = (data_evento or "")[:10]
     assegnazioni = veicolo.get("assegnazioni") or []
     if data and assegnazioni:
+        coperte = []
         for a in assegnazioni:
             dal = (a.get("dal") or "")[:10]
             al = (a.get("al") or "")[:10]
             if dal and data >= dal and (not al or data <= al):
-                return {
-                    "driver": a.get("driver"),
-                    "driver_id": a.get("driver_id"),
-                    "fonte": "storico_assegnazioni",
-                }
+                coperte.append({"driver": a.get("driver"), "driver_id": a.get("driver_id")})
+        # Lo stesso driver registrato due volte non e' un'ambiguita'; due driver
+        # diversi sulla stessa data si': non se ne sceglie uno, si mostrano i candidati.
+        distinti = {(c["driver_id"] or c["driver"]): c for c in coperte}
+        if len(distinti) > 1:
+            return {
+                "driver": None,
+                "driver_id": None,
+                "fonte": "da_assegnare",
+                "motivo": "assegnazioni sovrapposte alla data",
+                "candidati": list(distinti.values()),
+            }
+        if coperte:
+            return {
+                "driver": coperte[0]["driver"],
+                "driver_id": coperte[0]["driver_id"],
+                "fonte": "storico_assegnazioni",
+            }
         return {
             "driver": None,
             "driver_id": None,

@@ -107,6 +107,10 @@ def _build_corrispettivo_doc(parsed: Dict[str, Any], filename: str, source: str)
     }
 
 
+#: Chiusura serale digitata a mano (provvisoria in attesa dell'XML dell'RT).
+SORGENTI_MANUALI = ("manuale_serale", "manuale", "manual_entry")
+
+
 def _ha_identita_documento(doc: Dict[str, Any]) -> bool:
     """Una riga con chiave XML, registratore o progressivo e' una chiusura.
     Senza nessuno dei quattro e' una giornata registrata senza documento
@@ -174,6 +178,19 @@ async def _find_existing_corrispettivo(db, corr_doc: Dict[str, Any]) -> Optional
             if not _altra_chiusura(existing, key):
                 return existing
 
+    # Livello 3b: la chiusura MANUALE serale e' una riga sola per giorno, senza
+    # chiave ne' matricola: l'XML dello stesso giorno la promuove anche se il
+    # totale digitato la sera non coincide con quello dell'RT. Senza questo
+    # la giornata restava in due righe (manuale provvisorio + XML) e i contanti
+    # entravano due volte in Prima Nota Cassa (310 + 300 invece di 300).
+    # Una chiusura XML vuota non promuove nulla.
+    if key and data and totale > 0:
+        for existing in await db["corrispettivi"].find({"data": data, **not_deleted}).to_list(50):
+            if (existing.get("source") in SORGENTI_MANUALI
+                    and existing.get("stato") in ("provvisorio", "manca_xml")
+                    and not _ha_identita_documento(existing)):
+                return existing
+
     # Livello 4: la giornata senza documento dello stesso giorno, anche con un
     # totale diverso di pochi euro (la chiusura storica sommava imponibile e
     # IVA, l'XML conta contanti + elettronico): e' la stessa giornata, e
@@ -231,14 +248,32 @@ async def _ritira_corrispettivo(
     if vecchio_id in (None, "") or vecchia.get("status") == "deleted":
         return esito
     ids = list(dict.fromkeys([vecchio_id, str(vecchio_id)]))
+    nuovo_id = campi.get("sostituito_da")
     for collezione in ("prima_nota_cassa", "prima_nota_banca"):
         righe = await db[collezione].find(
-            {"corrispettivo_id": {"$in": ids}}, {"_id": 0, "id": 1},
+            {"corrispettivo_id": {"$in": ids}},
+            {"_id": 0, "id": 1, "source": 1, "gestore": 1, "idempotency_key": 1},
         ).to_list(50)
         for riga in righe:
-            if riga.get("id"):
-                await db[collezione].delete_one({"id": riga["id"]})
-                esito["prima_nota_rimosse"] += 1
+            if not riga.get("id"):
+                continue
+            # Il credito POS nasce dalla chiusura del TERMINALE, non dalla
+            # giornata che si ritira: se c'e' la chiusura che la sostituisce
+            # (di norma ha gia' «adottato» questa riga) il credito passa a
+            # lei, con la sua riconciliazione. Cancellarlo faceva sparire il
+            # POS della giornata dalla Prima Nota Banca.
+            if (collezione == "prima_nota_banca" and nuovo_id not in (None, "")
+                    and riga.get("source") == "trasferimento_pos"):
+                from app.services.scritture_contabili import chiave_idempotenza_corrispettivo
+                nuova = {"corrispettivo_id": nuovo_id}
+                if riga.get("idempotency_key"):
+                    nuova["idempotency_key"] = chiave_idempotenza_corrispettivo(
+                        nuovo_id, "banca_credito", riga.get("gestore"))
+                await db[collezione].update_one({"id": riga["id"]}, {"$set": nuova})
+                esito["pos_trasferiti"] = esito.get("pos_trasferiti", 0) + 1
+                continue
+            await db[collezione].delete_one({"id": riga["id"]})
+            esito["prima_nota_rimosse"] += 1
     from app.services.registrazione_contabile import storna_registrazione_corrispettivo
     esito["giornale"] = (await storna_registrazione_corrispettivo(
         db, vecchio_id, motivo)).get("stato")
@@ -257,7 +292,17 @@ async def _delete_prima_nota_for_corrispettivo(db, corrispettivo_id: str, data: 
     # Per id esatto
     if corrispettivo_id:
         await db["prima_nota_cassa"].delete_many({"corrispettivo_id": corrispettivo_id})
-        await db["prima_nota_banca"].delete_many({"corrispettivo_id": corrispettivo_id})
+        # Il credito POS verso il gestore (``trasferimento_pos``) nasce dalla
+        # chiusura del TERMINALE, non dall'XML: rigenerarlo da qui lo
+        # cancellava insieme alla sua riconciliazione con l'accredito
+        # dell'estratto conto (riimportare lo stesso XML con force_update,
+        # o l'XML che promuove un provvisorio, riportava il giorno ad
+        # «ATTESO» e lasciava l'estratto «riconciliato» verso una riga
+        # sparita). Il motore unico e' idempotente: lo ritrova per chiave.
+        await db["prima_nota_banca"].delete_many({
+            "corrispettivo_id": corrispettivo_id,
+            "source": {"$ne": "trasferimento_pos"},
+        })
 
     # Per source+data (corrispettivi storici senza corrispettivo_id)
     if data:
@@ -368,7 +413,7 @@ async def ingest_corrispettivo_parsed(
         and source == "xml"
         and (
             existing.get("stato") in ("provvisorio", "manca_xml")
-            or existing.get("source") in ("manuale_serale", "manuale", "manual_entry")
+            or existing.get("source") in SORGENTI_MANUALI
         )
     )
     if source == "xml":

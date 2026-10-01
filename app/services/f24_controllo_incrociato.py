@@ -214,6 +214,17 @@ def data_versamento_modello(f24: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def e_modello_di_ravvedimento(f24: Dict[str, Any]) -> bool:
+    """Un modello che e' lui stesso un ravvedimento: etichettato, o con sanzioni/interessi nelle sue righe.
+
+    Non e' un F24 del commercialista: la sua data e' quella del versamento (non una scadenza) e il suo
+    tributo comprende gli interessi cumulati, quindi non da' ne' scadenza ne' dovuto.
+    """
+    if str(f24.get("etichetta") or "").upper() == "RAVVEDIMENTO":
+        return True
+    return any(str(r.get("codice") or "").upper() in CODICI_RAVVEDIMENTO for r in righe_modello(f24))
+
+
 def saldo_modello_cents(f24: Dict[str, Any]) -> Optional[int]:
     totali = f24.get("totali") or {}
     for chiave in ("saldo_netto_cents", "saldo_finale_cents", "saldo_delega_cents"):
@@ -762,7 +773,7 @@ async def controlla_avviso(
     quietanze_con_righe = [q for q in registro["quietanze"] if q.get("righe")]
     scadenze = {}
     for f24 in registro["f24"]:
-        if str(f24.get("etichetta") or "").upper() == "RAVVEDIMENTO":
+        if e_modello_di_ravvedimento(f24):
             continue
         dv = data_versamento_modello(f24)
         if dv:
@@ -1541,9 +1552,12 @@ async def applica_riscontri_quietanze(
                       "quietanza_f24_riscontro": RISCONTRO_CERTO}},
         )
         scritti["addebiti"] += int(getattr(risultato, "modified_count", 0) or 0)
-        if con_alert:
-            scritti["alert_chiusi"] += await risolvi_alert(ALERT_ADDEBITO_SENZA_QUIETANZA, a["movimento_id"], db)
-            scritti["alert_chiusi"] += await risolvi_alert(ALERT_QUIETANZA_SENZA_ADDEBITO, r["chiave"], db)
+        # Un riscontro certo chiude gli alert che dicevano il contrario, anche all'arrivo di un
+        # pezzo (`con_alert=False`: li' non se ne aprono, il registro e' parziale, ma chiudere si
+        # puo'): una quietanza caricata dopo l'addebito lasciava «addebito senza quietanza» aperto
+        # fino al giro dei 30 minuti.
+        scritti["alert_chiusi"] += await risolvi_alert(ALERT_ADDEBITO_SENZA_QUIETANZA, a["movimento_id"], db)
+        scritti["alert_chiusi"] += await risolvi_alert(ALERT_QUIETANZA_SENZA_ADDEBITO, r["chiave"], db)
     for r in esito["da_verificare"]:
         for a in ([r["addebito"]] if r.get("addebito") else list(r.get("candidati") or [])):
             for q in r["quietanze"]:

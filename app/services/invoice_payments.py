@@ -12,6 +12,7 @@ from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 from app.services.scritture_contabili import _sessione, _transazione_registro
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
+from app.utils.id_fattura import filtro_id, varianti_id
 
 
 COL_SCADENZIARIO = "scadenziario_fornitori"
@@ -19,7 +20,8 @@ COL_FATTURE_RICEVUTE = "invoices"
 
 
 class ManualInvoicePaymentRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    # L'`id` di una fattura e' un numero su meta' delle righe e la pagina lo rimanda cosi' com'e'.
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, coerce_numbers_to_str=True)
 
     fattura_id: str = Field(min_length=1, max_length=160)
     scadenza_id: Optional[str] = Field(default=None, max_length=160)
@@ -61,7 +63,8 @@ class ManualInvoicePaymentResponse(BaseModel):
 
 
 class InvoiceBankReconciliationRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    # Come sopra: `fattura_id` puo' arrivare come numero.
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, coerce_numbers_to_str=True)
 
     fattura_id: str = Field(min_length=1, max_length=160)
     movimento_id: str = Field(min_length=1, max_length=200)
@@ -95,8 +98,8 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
     pagato. Su Atlas tutte le mutazioni fanno commit o rollback insieme.
     """
     invoice = (
-        await db["invoices"].find_one({"id": req.fattura_id}, {"_id": 0})
-        or await db[COL_FATTURE_RICEVUTE].find_one({"id": req.fattura_id}, {"_id": 0})
+        await db["invoices"].find_one(filtro_id(req.fattura_id), {"_id": 0})
+        or await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(req.fattura_id), {"_id": 0})
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
@@ -122,7 +125,7 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
             # residuo deve usare lo stesso snapshot delle scritture che
             # seguono, non il documento letto prima di aprire la sessione.
             current_invoice = await db[COL_FATTURE_RICEVUTE].find_one(
-                {"id": req.fattura_id}, {"_id": 0}, **skw,
+                filtro_id(req.fattura_id), {"_id": 0}, **skw,
             )
             if not current_invoice:
                 raise HTTPException(status_code=404, detail="Fattura non trovata")
@@ -182,7 +185,7 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
             due = None
             if req.scadenza_id:
                 due = await db[COL_SCADENZIARIO].find_one(
-                    {"id": req.scadenza_id, "fattura_id": req.fattura_id},
+                    {"id": req.scadenza_id, "fattura_id": {"$in": varianti_id(req.fattura_id)}},
                     {"_id": 0}, **skw,
                 )
                 if not due:
@@ -278,7 +281,7 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
             ] = movement_id
             for name in {"invoices", COL_FATTURE_RICEVUTE}:
                 await db[name].update_one(
-                    {"id": req.fattura_id}, {"$set": update_fields}, **skw,
+                    filtro_id(req.fattura_id), {"$set": update_fields}, **skw,
                 )
 
             result = {
@@ -345,7 +348,7 @@ async def find_invoice_bank_candidates(db, fattura_id: str) -> Dict[str, Any]:
     Nessun candidato viene riconciliato da questa lettura.
     """
     invoice = await db[COL_FATTURE_RICEVUTE].find_one(
-        {"id": fattura_id}, {"_id": 0},
+        filtro_id(fattura_id), {"_id": 0},
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
@@ -458,8 +461,8 @@ async def reconcile_invoice_bank_movement(
     un override manuale resta possibile, ma richiede una motivazione auditabile.
     """
     invoice = (
-        await db[COL_FATTURE_RICEVUTE].find_one({"id": req.fattura_id}, {"_id": 0})
-        or await db["invoices"].find_one({"id": req.fattura_id}, {"_id": 0})
+        await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(req.fattura_id), {"_id": 0})
+        or await db["invoices"].find_one(filtro_id(req.fattura_id), {"_id": 0})
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
@@ -535,7 +538,7 @@ async def reconcile_invoice_bank_movement(
         }
         for name in {COL_FATTURE_RICEVUTE, "invoices"}:
             await db[name].update_one(
-                {"id": req.fattura_id}, {"$set": invoice_updates}, **skw,
+                filtro_id(req.fattura_id), {"$set": invoice_updates}, **skw,
             )
         await db["estratto_conto_movimenti"].update_one(
             {"id": req.movimento_id},

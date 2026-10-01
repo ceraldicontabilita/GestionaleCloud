@@ -15,8 +15,10 @@ import uuid
 from app.database import Database, Collections
 from app.engines.prima_nota_engine import normalizza_metodo_pagamento
 from .common import (
-    COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA
+    COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
+    campi_dopo_spostamento, riga_con_prova_bancaria,
 )
+from app.utils.id_fattura import filtro_id
 
 logger = logging.getLogger(__name__)
 
@@ -3419,7 +3421,15 @@ async def sposta_scrittura_prima_nota(data: Dict = Body(...)) -> Dict:
     
     if origine == nuova_destinazione:
         return {"success": True, "message": "Già nella destinazione corretta"}
-    
+
+    # Una riga con la prova della banca non si declassa a Cassa (vedi `sposta_movimento`).
+    if origine == "banca" and nuova_destinazione == "cassa" and riga_con_prova_bancaria(movimento):
+        raise HTTPException(
+            status_code=409,
+            detail=("La riga e' legata a un movimento dell'estratto conto: non si sposta in Cassa. "
+                    "Per cambiare destinazione si annulla prima l'associazione con la banca."),
+        )
+
     # Rimuovi dalla collection originale
     coll_origine = COLLECTION_PRIMA_NOTA_CASSA if origine == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
     await db[coll_origine].delete_one({"id": movimento_id})
@@ -3429,6 +3439,8 @@ async def sposta_scrittura_prima_nota(data: Dict = Body(...)) -> Dict:
     movimento.pop("_id", None)
     movimento["spostato_da"] = origine
     movimento["spostato_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    # stessa riga, stesso id: conto di tesoreria e metodo sono quelli del registro di arrivo
+    movimento.update(campi_dopo_spostamento(movimento, origine, nuova_destinazione))
     await db[coll_dest].insert_one(movimento)
     
     # Aggiorna la fattura collegata
@@ -3436,9 +3448,13 @@ async def sposta_scrittura_prima_nota(data: Dict = Body(...)) -> Dict:
     if fattura_id:
         metodo_label = "contanti" if nuova_destinazione == "cassa" else "bonifico"
         await db["invoices"].update_one(
-            {"id": fattura_id},
+            filtro_id(fattura_id),
             {"$set": {
                 "prima_nota_tipo": nuova_destinazione,
+                "prima_nota_id": movimento_id,
+                "prima_nota_cassa_id": movimento_id if nuova_destinazione == "cassa" else None,
+                "prima_nota_banca_id": movimento_id if nuova_destinazione == "banca" else None,
+                "metodo_pagamento_effettivo": nuova_destinazione,
                 "payment_method": metodo_label,
             }}
         )

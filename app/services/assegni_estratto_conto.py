@@ -361,6 +361,31 @@ async def _quote_lato_fattura(db, assegno_id: str) -> List[Dict[str, Any]]:
     return quote
 
 
+async def _propaga_fattura_pagata_da_assegno(
+    db, fattura_id: Any, importo: float, data_pagamento: str, assegno: Dict[str, Any],
+) -> None:
+    """L'addebito dell'assegno e' la prova: chiude la partita aperta e gli alert della fattura.
+
+    E' lo stesso evento (`fattura.pagata`) che pubblicano il bonifico, la cassa e l'incasso manuale
+    dell'assegno: senza, la fattura risultava pagata con la sua partita ancora aperta. Mai bloccante:
+    la scrittura contabile e' gia' fatta.
+    """
+    try:
+        from app.services.event_bus import EventTypes, propagate_event
+
+        await propagate_event(EventTypes.FATTURA_PAGATA, {
+            "fattura_id": fattura_id,
+            "metodo_pagamento": "assegno",
+            "data_pagamento": data_pagamento,
+            "importo": importo,
+            "assegno_id": assegno.get("id"),
+            "assegno_numero": assegno.get("numero"),
+        }, db, source_module="assegno_estratto_conto")
+    except Exception as exc:  # noqa: BLE001 - un handler rotto non annulla il collegamento
+        logger.exception("fattura.pagata non propagata per l'assegno %s (%s)",
+                         assegno.get("numero"), type(exc).__name__)
+
+
 async def _collega_fattura_univoca(
     db,
     assegno: Dict[str, Any],
@@ -433,6 +458,7 @@ async def _collega_fattura_univoca(
             evidenza_id=f"assegno:{assegno['id']}:{fid}", metodo="assegno",
             data_pagamento=data_movimento,
         )
+        await _propaga_fattura_pagata_da_assegno(db, fid, importo, data_movimento, assegno)
     else:
         await db["invoices"].update_one(filtro_id(fid), {"$set": update_fattura})
 

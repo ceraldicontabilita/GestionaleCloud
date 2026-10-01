@@ -933,7 +933,7 @@ async def export_excel_commercialista(anno: int, mese: int, dal: Optional[str] =
     
     corrispettivi = await db["corrispettivi"].find({
         **p.filtro("data"),
-        "status": {"$nin": ["deleted", "archived"]},
+        "status": {"$nin": ["deleted", "archived", "archiviata"]},
         "entity_status": {"$ne": "deleted"},
     }, {"_id": 0}).sort("data", 1).to_list(10000)
     
@@ -1051,15 +1051,26 @@ async def export_excel_commercialista(anno: int, mese: int, dal: Optional[str] =
         cell.fill = header_fill
         cell.border = border
     
-    # IVA vendite (dai corrispettivi - assumiamo 10%)
-    iva_vendite = tot_corr * 0.10 / 1.10
-    
+    # IVA vendite: quella dichiarata dal registratore su ogni giornata
+    # (`totale_iva`, o la somma dei riepiloghi), la stessa della liquidazione.
+    # Mai uno scorporo al 10% sul totale: con aliquote miste darebbe un numero
+    # inventato. Una giornata senza IVA dichiarata non si stima, si segnala.
+    from app.services.iva_liquidation_query import _iva_corrispettivo_cents
+    iva_vendite = round(sum(_iva_corrispettivo_cents(c) for c in corrispettivi) / 100, 2)
+    giorni_senza_iva = sum(
+        1 for c in corrispettivi
+        if _iva_corrispettivo_cents(c) == 0
+        and float(c.get('totale', 0) or c.get('totale_complessivo', 0) or 0) > 0)
+
     iva_data = [
         ('IVA a debito (vendite)', iva_vendite),
         ('IVA a credito (acquisti)', tot_iva_detraibile),
         ('', ''),
         ('SALDO IVA', iva_vendite - tot_iva_detraibile)
     ]
+    if giorni_senza_iva:
+        iva_data.append((
+            f"ATTENZIONE: IVA vendite non dichiarata su {giorni_senza_iva} giorni (non stimata)", ''))
     
     for row, (voce, importo) in enumerate(iva_data, 2):
         ws_iva.cell(row=row, column=1, value=voce).border = border

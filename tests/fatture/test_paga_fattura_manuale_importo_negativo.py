@@ -14,7 +14,14 @@ from app.routers.fatture_module import pagamento as mod
 def _matches(doc, query):
     if not query:
         return True
-    return all(doc.get(k) == v for k, v in query.items())
+
+    def _uguale(valore, atteso):
+        # l'`id` di una fattura puo' essere testo o numero: il codice di produzione cerca con `$in`
+        if isinstance(atteso, dict) and "$in" in atteso:
+            return valore in atteso["$in"]
+        return valore == atteso
+
+    return all(_uguale(doc.get(k), v) for k, v in query.items())
 
 
 class _FakeCollection:

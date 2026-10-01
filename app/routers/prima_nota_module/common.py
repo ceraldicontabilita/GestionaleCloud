@@ -593,3 +593,35 @@ CATEGORIE_SENZA_DOCUMENTO = frozenset({
 def entra_in_prima_nota(categoria: Optional[str]) -> bool:
     """Se il movimento puo' entrare in Prima Nota senza un documento dietro."""
     return str(categoria or "").strip() in CATEGORIE_SENZA_DOCUMENTO
+
+
+# I campi che legano una riga di Prima Nota a un movimento reale dell'estratto conto: uno qualunque
+# presente e' la prova bancaria (stessi campi di `banca.CAMPI_EVIDENZA_MOVIMENTO`).
+CAMPI_PROVA_BANCARIA = (
+    "estratto_conto_id", "movimento_bancario_id", "movimento_estratto_conto_id", "movimento_banca_id",
+)
+
+
+def riga_con_prova_bancaria(riga: Dict[str, Any]) -> bool:
+    """Vero se la riga e' legata a un movimento d'estratto: la banca l'ha vista, non e' una dichiarazione."""
+    return any(riga.get(campo) for campo in CAMPI_PROVA_BANCARIA)
+
+
+def campi_dopo_spostamento(riga: Dict[str, Any], origine: str, destinazione: str) -> Dict[str, Any]:
+    """Cio' che cambia su una riga di Prima Nota che passa da Cassa a Banca (o viceversa) con lo stesso id.
+
+    Lo spostamento e' una riclassificazione, non un trasferimento di denaro: la riga resta una, ma il
+    suo conto di tesoreria (19.03.03 cassa, 19.01.01 banca) e il metodo che dichiara devono essere
+    quelli del registro di arrivo. Un conto esplicito diverso dalla tesoreria dell'origine (POS,
+    carta) non si tocca: non e' il conto del registro.
+    """
+    from app.services.mapping_piano_conti import CONTI_UFFICIALI, conto_tesoreria
+
+    campi: Dict[str, Any] = {"metodo_pagamento": destinazione, "metodo_pagamento_effettivo": destinazione}
+    conto_attuale = str(riga.get("conto_contabile") or "").strip()
+    if not conto_attuale or conto_attuale == conto_tesoreria(origine):
+        conto = conto_tesoreria(destinazione)
+        if conto:
+            campi["conto_contabile"] = conto
+            campi["conto_nome"] = CONTI_UFFICIALI.get(conto, "")
+    return campi

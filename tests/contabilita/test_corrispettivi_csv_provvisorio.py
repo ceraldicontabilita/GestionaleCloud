@@ -24,8 +24,15 @@ def _run(c):
     return asyncio.run(c)
 
 
-def _db_con_xml_del_primo():
+def _nuovo_db():
+    """Archivio in memoria con l'anno attivo fissato: il CSV importa solo l'anno attivo."""
     db = AsyncMongoMockClient()["t"]
+    _run(db["sistema_stato"].insert_one({"chiave": "config_import_anno_attivo", "anno": 2026}))
+    return db
+
+
+def _db_con_xml_del_primo():
+    db = _nuovo_db()
     _run(db["corrispettivi"].insert_one({
         "id": "x1", "data": "2026-09-01", "stato": "definitivo_xml", "source": "xml",
         "corrispettivo_key": "k1", "matricola_rt": "99MEY026532", "totale": 2243.8,
@@ -78,7 +85,7 @@ def test_imponibile_diverso_dall_xml_si_dichiara_non_si_corregge():
 
 
 def test_una_riga_manuale_gia_presente_non_si_sovrascrive():
-    db = AsyncMongoMockClient()["t"]
+    db = _nuovo_db()
     _run(db["corrispettivi"].insert_one({"id": "m1", "data": "2026-09-30", "stato": "provvisorio",
                                           "source": "manuale_serale", "totale": 2700.0}))
     esito = _run(cs.importa_csv_ade(db, CSV, "a.csv"))
@@ -87,7 +94,7 @@ def test_una_riga_manuale_gia_presente_non_si_sovrascrive():
 
 
 def test_due_chiusure_dello_stesso_giorno_restano_due_righe():
-    db = AsyncMongoMockClient()["t"]
+    db = _nuovo_db()
     csv = TESTATA + _riga(10, "06/09/2026", "000000001454,09", "000000001454,09", "000000000145,41") \
         + _riga(11, "06/09/2026", "000000000543,09", "000000000543,09", "000000000054,31")
     assert _run(cs.importa_csv_ade(db, csv, "a.csv"))["nuovi"] == 2
@@ -98,7 +105,7 @@ def test_xml_successivo_promuove_la_riga_provvisoria_e_sovrascrive():
     """Stesso percorso di import dell'XML: data + matricola trovano la riga provvisoria."""
     from app.routers.invoices.corrispettivi_helpers import _find_existing_corrispettivo
 
-    db = AsyncMongoMockClient()["t"]
+    db = _nuovo_db()
     _run(cs.importa_csv_ade(db, TESTATA + _riga(1, "30/09/2026", "000000002518,15", "000000002518,15", "000000000251,81"), "a.csv"))
     xml = {"corrispettivo_key": "04523831214_2026-09-30_99MEY026532_2650", "data": "2026-09-30",
            "matricola_rt": "99MEY026532", "totale": 2770.0}
@@ -109,7 +116,7 @@ def test_xml_successivo_promuove_la_riga_provvisoria_e_sovrascrive():
 def test_import_xml_sulla_riga_provvisoria_la_promuove_a_definitivo():
     from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed
 
-    db = AsyncMongoMockClient()["t"]
+    db = _nuovo_db()
     _run(cs.importa_csv_ade(db, TESTATA + _riga(1, "30/09/2026", "000000002518,15", "000000002518,15", "000000000251,81"), "a.csv"))
     parsed = {"corrispettivo_key": "04523831214_2026-09-30_99MEY026532_2650", "data": "2026-09-30",
               "matricola_rt": "99MEY026532", "totale": 2770.0, "pagato_contanti": 700.0, "pagato_elettronico": 2070.0,

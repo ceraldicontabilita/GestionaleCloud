@@ -9,6 +9,7 @@ import calendar
 import re
 
 from app.database import Database
+from app.utils.id_fattura import filtro_id
 from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, COL_ALLEGATI, logger
 from .helpers import generate_invoice_html
 from app.services.payment_allocation_validator import (
@@ -469,11 +470,11 @@ async def storia_fattura(fattura_id: str) -> Dict[str, Any]:
     e lo stato derivato corrente. Sopravvive all'azzeramento (chiave invoice_key)."""
     from app.services import storia_fatture as _storia
     db = Database.get_db()
-    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0, "invoice_key": 1,
+    fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0, "invoice_key": 1,
                                                                  "invoice_number": 1})
     if not fattura:
         fattura = await db[COL_FATTURE_RICEVUTE].find_one(
-            {"id": fattura_id}, {"_id": 0, "invoice_key": 1, "invoice_number": 1})
+            filtro_id(fattura_id), {"_id": 0, "invoice_key": 1, "invoice_number": 1})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
     key = fattura.get("invoice_key")
@@ -505,9 +506,9 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
     db = Database.get_db()
 
     # ── Trova fattura ────────────────────────────────────────────────────────
-    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
     if not fattura:
-        fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
+        fattura = await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(fattura_id), {"_id": 0})
     if not fattura:
         # Compatibilita' con i link storici basati sull'ID interno del registro.
         try:
@@ -692,9 +693,9 @@ async def get_fattura_dettaglio(fattura_id: str) -> Dict[str, Any]:
     """Dettaglio singola fattura con righe e allegati."""
     db = Database.get_db()
 
-    fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
+    fattura = await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(fattura_id), {"_id": 0})
     if not fattura:
-        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+        fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
     if not fattura:
         try:
             fattura = await db["invoices"].find_one({"_id": fattura_id})
@@ -729,7 +730,7 @@ async def update_fattura(fattura_id: str, data: Dict[str, Any]) -> Dict[str, Any
     """Aggiorna una fattura."""
     db = Database.get_db()
 
-    fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id})
+    fattura = await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(fattura_id))
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
@@ -740,7 +741,7 @@ async def update_fattura(fattura_id: str, data: Dict[str, Any]) -> Dict[str, Any
 
     if update_fields:
         update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
-        await db[COL_FATTURE_RICEVUTE].update_one({"id": fattura_id}, {"$set": update_fields})
+        await db[COL_FATTURE_RICEVUTE].update_one(filtro_id(fattura_id), {"$set": update_fields})
 
     return {"success": True, "updated": list(update_fields.keys())}
 

@@ -39,7 +39,6 @@ from app.constants.stati_verbale import (
 )
 from app.services.verbali_evidence import (
     describe_verbale_amount,
-    describe_verbale_date,
     sanitize_verbale_evidence,
 )
 from app.utils.dependencies import get_current_admin_user
@@ -827,8 +826,9 @@ async def riconcilia_verbale(
                 })
 
 
-                data_info = describe_verbale_date(verbale)
-                data_evento = data_info.get("data_verbale")
+                # Il driver e' quello alla data dell'INFRAZIONE (`data_violazione`), non
+                # a quella dell'atto redatto: stesso criterio di `collega-driver-massivo`.
+                data_evento = data_evento_verbale(verbale)[0]
                 driver_prova = driver_alla_data(veicolo, data_evento)
                 if driver_prova.get("fonte") == "storico_assegnazioni" and driver_prova.get("driver_id"):
                     updates["driver_id"] = driver_prova["driver_id"]

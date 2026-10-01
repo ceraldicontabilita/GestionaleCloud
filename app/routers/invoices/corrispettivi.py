@@ -1355,7 +1355,12 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
     note = (data.get("note") or "").strip()
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    existing = await db["corrispettivi"].find_one({"data": data_str}, {"_id": 0})
+    # Solo la giornata VIVA: una riga ritirata (sostituita dall'XML, `status:
+    # deleted`) resta per l'audit e non e' ne' un definitivo che blocca ne' un
+    # manuale da aggiornare.
+    existing = await db["corrispettivi"].find_one(
+        {"data": data_str, "entity_status": {"$ne": "deleted"},
+         "status": {"$nin": ["deleted", "archived", "archiviata"]}}, {"_id": 0})
 
     if existing and existing.get("stato") == "definitivo_xml":
         raise HTTPException(
@@ -1377,7 +1382,7 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
         }
         if note:
             update["note_manuale"] = note
-        await db["corrispettivi"].update_one({"data": data_str}, {"$set": update})
+        await db["corrispettivi"].update_one({"id": existing.get("id")}, {"$set": update})
         action = "aggiornato"
         corr_id = existing.get("id")
     else:
@@ -1413,7 +1418,7 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
         prevista = data_accredito_prevista_str(data_str)
         if prevista:
             await db["corrispettivi"].update_one(
-                {"data": data_str},
+                {"id": corr_id},
                 {"$set": {
                     "data_prevista_accredito": prevista,
                     "stato_accredito": "in_attesa_accredito",
