@@ -38,7 +38,7 @@ def test_originale_f24_rifiuta_contenuto_non_pdf(monkeypatch):
 
 
 def _drive_finto(monkeypatch, *, scaricabili, copia_md5=None):
-    """Drive finto: solo gli id in `scaricabili` si scaricano; la ricerca per MD5 dà `copia_md5`."""
+    """Drive finto: solo gli id in `scaricabili` si scaricano; la ricerca per MD5 (nel protocollo Drive) dà `copia_md5`."""
     import app.services.drive_cartella_unica as cu
     import app.services.drive_download as dd
 
@@ -51,13 +51,17 @@ def _drive_finto(monkeypatch, *, scaricabili, copia_md5=None):
 
     monkeypatch.setattr(cu, "_service", lambda: Service())
 
-    def scarica(_service, file_id):
+    def scarica(_service, file_id, **_):
         if file_id not in scaricabili:
             raise Rifiutato("404 file non trovato")
         return scaricabili[file_id]
 
     monkeypatch.setattr(dd, "scarica_bytes", scarica)
-    monkeypatch.setattr(dd, "_cerca_per_md5", lambda _s, _m: copia_md5)
+
+    async def altro_id(_md5, _escluso):
+        return copia_md5
+
+    monkeypatch.setattr(dd, "_altro_id_per_md5", altro_id)
     return dd
 
 

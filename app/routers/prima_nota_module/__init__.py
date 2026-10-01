@@ -46,6 +46,7 @@ from .sync import (
     segnala_dubbio_pagamento,
     proponi_assegni_fattura, associa_assegno_fattura_provvisoria,
     conferma_provvisorie_multiple,
+    imposta_metodo_fornitore_provvisoria,
     conferma_divisione_provvisoria,
     sposta_scrittura_prima_nota,
     annulla_auto_conferma,
@@ -210,6 +211,7 @@ router.add_api_route("/provvisori", get_fatture_provvisorie, methods=["GET"])
 router.add_api_route("/provvisori/conferma", conferma_fattura_provvisoria, methods=["POST"])
 router.add_api_route("/provvisori/attendi-banca", imposta_fattura_in_attesa_banca, methods=["POST"])
 router.add_api_route("/provvisori/conferma-multipla", conferma_provvisorie_multiple, methods=["POST"])
+router.add_api_route("/provvisori/imposta-metodo-fornitore", imposta_metodo_fornitore_provvisoria, methods=["POST"])
 router.add_api_route("/provvisori/da-decidere", riporta_fattura_da_decidere, methods=["POST"])
 router.add_api_route("/provvisori/segnala-dubbio", segnala_dubbio_pagamento, methods=["POST"])
 router.add_api_route("/provvisori/assegni-proposti", proponi_assegni_fattura, methods=["GET"])

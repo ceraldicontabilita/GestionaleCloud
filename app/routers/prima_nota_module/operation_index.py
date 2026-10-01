@@ -51,7 +51,7 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
         "requires_target": True,
         "help": "Scegli la fattura esatta del fornitore.",
         "date_field": "invoice_date",
-        "search_fields": ["supplier_name", "fornitore", "numero_documento", "numero_fattura", "invoice_number"],
+        "search_fields": ["supplier_name", "fornitore", "supplier_vat", "cedente_piva", "numero_documento", "numero_fattura", "invoice_number"],
     },
     "cedolino": {
         "label": "Cedolino / dipendente",

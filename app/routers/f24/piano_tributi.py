@@ -2,7 +2,7 @@
 
 Montato dentro il router F24 (``/api/f24``), prima della rotta dinamica:
 
-* ``GET  /api/f24/piano-tributi?anno=2026`` — griglia voci x periodi;
+* ``GET  /api/f24/piano-tributi?anno=2026`` (o ``2024-2026``, ``tutti``) — griglia voci x periodi;
 * la ricerca di un codice tributo resta ``GET /api/f24-riconciliazione/verifica-codice``;
 * ``GET  /api/f24/piano-tributi/voci`` — le voci del piano;
 * ``PUT  /api/f24/piano-tributi/voci/{id}`` — attiva/disattiva, scadenze, mesi;
@@ -13,7 +13,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.database import Database
@@ -45,11 +46,36 @@ class NuovaVoce(BaseModel):
 
 @router.get("/piano-tributi", summary="Piano tributi dell'anno: attesi, arrivati, pagati")
 async def griglia_piano(
-    anno: Optional[int] = Query(None, ge=2019, le=2100),
+    anno: Optional[str] = Query(None, description="2026, 2024-2026, 2024,2026 oppure tutti"),
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
-    anno = anno or datetime.now(timezone.utc).year
-    return await piano.griglia(Database.get_db(), anno)
+    try:
+        return await piano.griglia_anni(Database.get_db(), anno)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/piano-tributi/excel", summary="Scadenzario dei tributi in Excel (un versamento per riga)")
+async def scadenzario_excel(
+    request: Request,
+    anno: Optional[str] = Query(None, description="2026, 2024-2026, 2024,2026 oppure tutti"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Response:
+    from app.services import scadenzario_excel as xl
+
+    db = Database.get_db()
+    try:
+        registro = await piano.registro_f24.carica_registro(db)
+        anni = piano.anni_richiesti(anno, piano._modelli_con_righe(registro), datetime.now(timezone.utc).date())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    righe = await xl.righe_scadenzario(db, None if (anno or "").strip().lower() == "tutti" else anni)
+    contenuto = xl.costruisci_xlsx(righe, base_url=str(request.base_url))
+    return Response(
+        content=contenuto,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{xl.nome_file(anno)}"'},
+    )
 
 
 @router.get("/piano-tributi/voci", summary="Voci del piano tributi")

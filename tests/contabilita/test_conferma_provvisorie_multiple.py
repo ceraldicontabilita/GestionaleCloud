@@ -99,3 +99,72 @@ def test_richieste_malformate_si_fermano_subito(registro, payload, atteso):
         _run(conferma_provvisorie_multiple(payload))
     assert atteso in str(err.value.detail)
     assert registro["cassa"] == [] and registro["banca"] == []
+
+
+# ── metodo del fornitore dalla scheda di conferma, poi le sue altre fatture ───────────
+
+from mongomock_motor import AsyncMongoMockClient  # noqa: E402
+
+from app.database import Collections, Database  # noqa: E402
+from app.routers.prima_nota_module.sync import imposta_metodo_fornitore_provvisoria  # noqa: E402
+
+
+def _fattura(id_, piva, numero="1"):
+    return {"id": id_, "supplier_vat": piva, "invoice_number": numero, "metodo_pagamento": "sospesa"}
+
+
+@pytest.fixture
+def archivio(monkeypatch, registro):
+    db = AsyncMongoMockClient()["metodo"]
+    _run(db["invoices"].insert_many([
+        _fattura("a", "IT111", "880"), _fattura("b", "IT111", "881"), _fattura(7, "IT111", "882"),
+        _fattura("x", "IT999", "1"),
+    ]))
+    _run(db[Collections.SUPPLIERS].insert_many([
+        {"id": "s1", "partita_iva": "IT111", "denominazione": "F.LLI SOMMELLA", "metodo_pagamento": "sospesa"},
+        {"id": "s2", "partita_iva": "IT999", "denominazione": "ALTRO", "metodo_pagamento": "bonifico"},
+    ]))
+    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))
+    return db
+
+
+def test_si_imposta_il_metodo_una_volta_e_si_spostano_le_altre_dello_stesso_fornitore(archivio, registro):
+    esito = _run(imposta_metodo_fornitore_provvisoria(
+        {"fattura_id": "a", "metodo": "cassa", "altre_fattura_ids": ["b", 7, "x"]}))
+    fornitore = _run(archivio[Collections.SUPPLIERS].find_one({"id": "s1"}))
+    assert fornitore["metodo_pagamento"] == "cassa" and fornitore["metodo_pagamento_dal"]   # con la sua data «dal»
+    assert [c["fattura_id"] for c in registro["cassa"]] == ["a", "b", "7"]
+    assert esito["altre_incluse"] == 2 and esito["altre_escluse"] == ["x"]      # un altro fornitore non si sposta mai
+    assert esito["metodo_fornitore_cambiato"] is True and esito["riuscite"] == 3
+
+
+def test_banca_manda_tutte_fra_i_pagamenti_attesi_in_banca(archivio, registro):
+    _run(imposta_metodo_fornitore_provvisoria({"fattura_id": "a", "metodo": "banca", "altre_fattura_ids": ["b"]}))
+    assert [c["fattura_id"] for c in registro["banca"]] == ["a", "b"] and registro["cassa"] == []
+    assert _run(archivio[Collections.SUPPLIERS].find_one({"id": "s1"}))["metodo_pagamento"] == "banca"
+
+
+def test_un_metodo_gia_impostato_diverso_non_si_cambia_di_nascosto(archivio, registro):
+    with pytest.raises(HTTPException) as err:
+        _run(imposta_metodo_fornitore_provvisoria({"fattura_id": "x", "metodo": "cassa"}))
+    assert err.value.status_code == 409 and "bonifico" in err.value.detail
+    assert registro["cassa"] == []
+    # lo stesso senso (bonifico = banca) non e' un cambio: si sposta soltanto
+    esito = _run(imposta_metodo_fornitore_provvisoria({"fattura_id": "x", "metodo": "banca"}))
+    assert esito["metodo_fornitore_cambiato"] is False and esito["metodo_fornitore"] == "bonifico"
+    # chi lo vuole cambiare lo dice
+    _run(imposta_metodo_fornitore_provvisoria({"fattura_id": "x", "metodo": "cassa", "cambia_metodo": True}))
+    assert _run(archivio[Collections.SUPPLIERS].find_one({"id": "s2"}))["metodo_pagamento"] == "cassa"
+
+
+@pytest.mark.parametrize(("payload", "stato"), [
+    ({"fattura_id": "a", "metodo": "assegno"}, 400),
+    ({"metodo": "cassa"}, 400),
+    ({"fattura_id": "nessuna", "metodo": "cassa"}, 404),
+    ({"fattura_id": "a", "metodo": "cassa", "altre_fattura_ids": "b"}, 400),
+])
+def test_richieste_sbagliate_si_fermano_prima_di_toccare_il_fornitore(archivio, registro, payload, stato):
+    with pytest.raises(HTTPException) as err:
+        _run(imposta_metodo_fornitore_provvisoria(payload))
+    assert err.value.status_code == stato
+    assert _run(archivio[Collections.SUPPLIERS].find_one({"id": "s1"}))["metodo_pagamento"] == "sospesa"

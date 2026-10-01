@@ -54,7 +54,11 @@ const EXACT_REDIRECTS = {
   '/batch-processor': '/admin/batch-processor',
   '/fisco': '/contabilita/calendario',
   '/riconciliazione-unificata': '/riconciliazione',
-  '/fiscale/tributi': '/tributi',
+  // Piano tributi, Tributi e Ritenute sono schede della Situazione fiscale.
+  '/fiscale/tributi': '/situazione-fiscale/tributi-per-codice',
+  '/tributi': '/situazione-fiscale/tributi-per-codice',
+  '/piano-tributi': '/situazione-fiscale/piano',
+  '/ritenute': '/situazione-fiscale/ritenute',
 };
 
 const PREFIX_REDIRECTS = [
@@ -106,6 +110,10 @@ export default function LegacyRouteResolver() {
   const prefixed = PREFIX_REDIRECTS.find(([prefix]) => pathname.startsWith(prefix));
   const target = exact || prefixed?.[1];
 
-  if (target && target !== pathname) return <Navigate to={target} replace />;
+  // La ricerca (?cerca=1040, ?vista=termini) segue il rimando, tranne dove la destinazione ha gia' la sua.
+  if (target && target !== pathname) {
+    const conRicerca = target.includes('?') || target.includes('#') ? target : `${target}${search}`;
+    return <Navigate to={conRicerca} replace />;
+  }
   return <PaginaNonTrovata />;
 }

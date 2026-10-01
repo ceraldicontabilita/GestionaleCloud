@@ -41,7 +41,6 @@ const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 // === STANDALONE PAGES ===
 const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
 const Scadenze = lazy(() => import("./pages/Scadenze.jsx"));
-const Ritenute = lazy(() => import("./pages/Ritenute.jsx"));
 const DistintaBonifici = lazy(() => import("./pages/DistintaBonifici.jsx"));
 const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
 const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
@@ -54,8 +53,6 @@ const LegacyRouteResolver = lazy(() => import("./pages/LegacyRouteResolver.jsx")
 const GestioneIVA = lazy(() => import("./pages/GestioneIVA.jsx"));
 const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.jsx"));
 const SituazioneFiscale = lazy(() => import("./pages/SituazioneFiscale.jsx"));
-const PianoTributi = lazy(() => import("./pages/PianoTributi.jsx"));
-const Tributi = lazy(() => import("./pages/Tributi.jsx"));
 // Viste 1.6 (MINI-08): un indirizzo stabile per ogni F24, tributo, busta e protocollo.
 const F24Scheda = lazy(() => import("./pages/F24Scheda.jsx"));
 const TributoCodice = lazy(() => import("./pages/TributoCodice.jsx"));
@@ -106,7 +103,6 @@ const router = createBrowserRouter([
       { path: "contabilita/*", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "learning-machine/*", element: <LazyPage><LearningMachine /></LazyPage> },
       { path: "scadenze/*", element: <LazyPage><Scadenze /></LazyPage> },
-      { path: "ritenute", element: <LazyPage><Ritenute /></LazyPage> },
       { path: "distinta-bonifici", element: <LazyPage><DistintaBonifici /></LazyPage> },
       { path: "riconciliazione/*", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       { path: "documenti/*", element: <LazyPage><DocumentiHub /></LazyPage> },
@@ -120,8 +116,6 @@ const router = createBrowserRouter([
       { path: "mappa-gestionale", element: <LazyPage><MappaGestionale /></LazyPage> },
       { path: "iva/*", element: <LazyPage><GestioneIVA /></LazyPage> },
       { path: "situazione-fiscale/*", element: <RequireAdmin><LazyPage><SituazioneFiscale /></LazyPage></RequireAdmin> },
-      { path: "piano-tributi", element: <RequireAdmin><LazyPage><PianoTributi /></LazyPage></RequireAdmin> },
-      { path: "tributi", element: <RequireAdmin><LazyPage><Tributi /></LazyPage></RequireAdmin> },
       // Viste per id: indirizzi stabili, aprono anche da un link condiviso. I vecchi
       // indirizzi (`/f24/:id`, `/tributi/:codice`, `/cedolini/:id`) li rimanda LegacyRouteResolver.
       { path: "fiscale/f24/:id", element: <RequireAdmin><LazyPage><F24Scheda /></LazyPage></RequireAdmin> },
