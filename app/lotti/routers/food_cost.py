@@ -187,6 +187,7 @@ async def get_dizionario(
             if d.get("nome"):
                 nascosti.add(d["nome"].lower().strip())
     from app.lotti.routers.classificatore_alimenti import motivo_non_pertinente_lotti
+    from app.lotti.servizi.dizionario_ingredienti import e_bevanda
 
     candidati = await db.dizionario_prodotti.find(query, {"_id": 0}).sort(
         [("ultima_fattura_data", -1), ("nome_normalizzato", 1)]
@@ -202,6 +203,11 @@ async def get_dizionario(
                 escluso = True
                 p["escluso_motivo"] = f"automatico: {motivo}"
                 p["escluso_automatico"] = True
+        if p.get("escluso_ricette") is not False and not escluso and e_bevanda(p):
+            # le bibite non sono ingredienti: fuori dalla lista, la riga resta (vista «Escluse»)
+            escluso = True
+            p["escluso_motivo"] = "automatico: bevanda"
+            p["escluso_automatico"] = True
         if escluso == solo_esclusi:
             filtrati.append(p)
     totale = len(filtrati)
@@ -224,6 +230,13 @@ async def get_dizionario(
     return {"totale": totale, "skip": skip, "limit": limit, "prodotti": prodotti}
 
 
+@router.get("/dizionario/categorie")
+async def get_categorie_dizionario():
+    """L'elenco delle categorie della tendina: una sola fonte per backend e frontend."""
+    from app.lotti.servizi.dizionario_ingredienti import CATEGORIE
+    return {"categorie": CATEGORIE}
+
+
 @router.get("/dizionario/canonici")
 async def get_canonici_dizionario():
     """Elenco dei nomi canonici già usati (per l'autocomplete della pagina
@@ -239,19 +252,9 @@ async def get_canonici_dizionario():
 # prezzi né lo storico: la riga semplicemente esce dalla coda da battezzare
 # (pagina + promemoria DATI4 del Supervisore).
 
-FAMIGLIE_ESCLUSIONE_DIZIONARIO = {
-    "bevande": ["acqua", "bibita", "bibite", "succo", "succhi", "sciroppo",
-                "coca", "cola", "aranciata", "gassosa", "chinotto", "tonica",
-                "cedrata", "limonata", "spremuta", "energy", "red bull",
-                "redbull", "ginger", "estathe", "the freddo", "te freddo"],
-    "alcolici": ["birra", "birre", "liquore", "liquori", "amaro", "amari",
-                 "rum", "gin", "vodka", "whisky", "whiskey", "grappa",
-                 "aperol", "campari", "sambuca", "limoncello", "brandy",
-                 "cognac", "vermouth", "vermut", "bitter", "aperitivo"],
-    "vini": ["vino", "vini", "spumante", "prosecco", "champagne",
-             "franciacorta", "lambrusco", "falanghina", "aglianico",
-             "moscato", "brut", "greco di tufo"],
-}
+# Le parole delle famiglie stanno in servizi/dizionario_ingredienti.py (fonte unica:
+# le usa anche l'esclusione automatica delle bibite dalla lista «da associare»).
+from app.lotti.servizi.dizionario_ingredienti import FAMIGLIE_ESCLUSIONE_DIZIONARIO  # noqa: E402
 
 
 def _regex_famiglia(famiglia: str):

@@ -1943,6 +1943,28 @@ def start_scheduler():
         replace_existing=True
     )
 
+    async def _dizionario_lotti_job():
+        # Lotti, Dizionario ingredienti: categorie rinominate e categoria certa
+        # alle righe che non ce l'hanno (lotti da 200, idempotente: secondo giro 0).
+        try:
+            from app.lotti.db import database as db_lotti
+            from app.lotti.servizi.dizionario_ingredienti import giro_dizionario
+            r = await giro_dizionario(db_lotti)
+            logger.info("[SCHEDULER-LOTTI] dizionario %s", r)
+        except Exception as e:
+            logger.error("[SCHEDULER-LOTTI] dizionario: %s: %s", type(e).__name__, e)
+
+    scheduler.add_job(
+        _dizionario_lotti_job,
+        'interval', minutes=20,
+        next_run_time=avvio + timedelta(minutes=9),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="lotti_dizionario_categorie",
+        name="Lotti: categorie del Dizionario ingredienti (ogni 20 min)",
+        replace_existing=True,
+    )
+
     async def _paypal_automatico_job():
         from app.database import Database
         from app.services.paypal_automatico import giro_paypal
