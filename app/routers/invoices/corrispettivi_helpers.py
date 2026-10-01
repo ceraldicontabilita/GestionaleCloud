@@ -382,6 +382,11 @@ async def ingest_corrispettivo_parsed(
                 corr_doc["totale_manuale"] = existing.get("totale_manuale")
             if existing.get("data_inserimento_manuale"):
                 corr_doc["data_inserimento_manuale"] = existing.get("data_inserimento_manuale")
+            # CSV AdE provvisorio (corrispettivi_service.importa_csv_ade): il totale non e'
+            # piu' derivato, e' quello dell'XML; il dato del CSV resta come storico.
+            if existing.get("csv_ade"):
+                corr_doc["csv_ade"] = existing["csv_ade"]
+                corr_doc["totale_derivato"] = False
             # Forziamo update_if_exists anche se il chiamante non l'ha chiesto:
             # promuovere provvisorio → definitivo è sempre sicuro
             update_if_exists = True

@@ -88,6 +88,8 @@ def test_csv_ade_con_periodo_inattivita_registra_la_chiusura():
     db = AsyncMongoMockClient()["gc"]
     app = FastAPI()
     app.include_router(router_mod.router, prefix="/api/corrispettivi")
+    from app.utils.dependencies import get_current_admin_user
+    app.dependency_overrides[get_current_admin_user] = lambda: {"sub": "a", "role": "admin"}
     Database.db = db
     try:
         csv = (
@@ -98,7 +100,7 @@ def test_csv_ade_con_periodo_inattivita_registra_la_chiusura():
         with TestClient(app) as client:
             r = client.post("/api/corrispettivi/import-csv", files={"file": ("ade.csv", csv.encode(), "text/csv")})
         assert r.status_code == 200, r.text
-        assert r.json()["importati"] == 1
+        assert r.json()["nuovi"] == 1
         chiusure = _run(mod.elenca_chiusure(db))
         assert [(c["data_inizio"], c["data_fine"], c["fonte"], c["riferimento"]) for c in chiusure] == [
             ("2026-03-01", "2026-03-08", "ade_inattivita", "1")]
