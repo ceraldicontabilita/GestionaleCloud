@@ -1,10 +1,15 @@
 from app.lotti.routers.controllo_dati import (
+    LINK_FIELDS,
     _all_link_fields_missing,
     _build_issue,
     _calcola_score,
     _issue_status,
     _missing_or_empty,
 )
+
+
+def test_ingrediente_canonico_conta_come_collegamento():
+    assert "ingrediente_canonico" in LINK_FIELDS
 
 
 def test_missing_or_empty_builds_legacy_safe_query():

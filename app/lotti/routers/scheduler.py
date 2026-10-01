@@ -470,6 +470,12 @@ async def job_sync_gestionale_fatture():
             "importate": res.get("importate", 0),
             "gia_ricevute": res.get("gia_ricevute", 0),
             "collegate_esistenti": res.get("collegate_esistenti", 0),
+            "importabili": res.get("importabili", 0),
+            "arretrato": res.get("arretrato", 0),
+            "senza_xml": res.get("senza_xml", 0),
+            "non_importabili_noti": res.get("non_importabili_noti", 0),
+            "escluse_fornitore": res.get("escluse_fornitore", 0),
+            "completo": bool(res.get("completo")),
             "errori": (res.get("errori") or [])[:10],
             "conflitti": (res.get("conflitti") or [])[:10],
         })

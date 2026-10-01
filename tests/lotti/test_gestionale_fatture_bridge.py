@@ -259,6 +259,25 @@ def test_righe_strutturate_funzionano_anche_senza_xml_raw(bridge, monkeypatch):
     assert "<Quantita>2</Quantita>" in captured["xml"]
 
 
+def test_fattura_senza_contenuto_non_occupa_ogni_giro(bridge, monkeypatch):
+    module, database = bridge
+    item = {**_item(), "has_xml": False, "lines": []}
+
+    async def elenco(_client, _anno):
+        return [item], 1
+
+    monkeypatch.setattr(module, "_elenco", elenco)
+
+    first = run(module.esegui_sync_gestionale(anno=2026, massimo=40, anteprima=False))
+    second = run(module.esegui_sync_gestionale(anno=2026, massimo=40, anteprima=False))
+
+    assert first["senza_xml"] == 1 and first["esaminate"] == 1
+    assert second["non_importabili_noti"] == 1 and second["esaminate"] == 0
+    assert second["completo"] is True
+    receipt = run(database.gestionale_fatture_ricevute.find_one({"source_id": "invoice-1"}))
+    assert receipt["stato"] == "senza_contenuto" and receipt["source_hash"] == "hash-1"
+
+
 def test_monolite_legge_fatture_locali_senza_url_o_segreto(bridge, monkeypatch):
     module, database = bridge
     monkeypatch.delenv("GESTIONALECLOUD_API_URL", raising=False)

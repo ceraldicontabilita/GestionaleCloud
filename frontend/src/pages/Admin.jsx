@@ -390,6 +390,7 @@ export default function Admin() {
   }
 
   const tabItems = [
+    { key: 'app', label: 'App collegate' },
     { key: 'email', label: 'Email', icon: '📧' },
     { key: 'keywords', label: 'Parole Chiave', icon: '🔑' },
     { key: 'rollback', label: 'Rollback Dati', icon: '🗑️' },
@@ -406,6 +407,37 @@ export default function Admin() {
     >
       {/* Tabs */}
       <Tabs items={tabItems} value={activeTab} onChange={handleTabChange} style={{ marginBottom: 16 }} />
+
+      {activeTab === 'app' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <Card title="Impostazioni del gruppo">
+            <p style={{ marginTop: 0, color: COLORS.textMuted, lineHeight: 1.55 }}>
+              Questo e il punto unico da cui aprire la configurazione delle app.
+              Le impostazioni restano salvate nel modulo che le utilizza, senza copie parallele.
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+              gap: 12,
+            }}>
+              {[
+                { href: '/lotti/#impostazioni', titolo: 'HACCP e Lotti', testo: 'Operatori, reparti, frigoriferi, stampanti, cataloghi e controlli.' },
+                { href: '/hr/', titolo: 'Personale e HR', testo: 'Dipendenti, ruoli, accessi e dati del personale.' },
+                { href: '/menu/admin', titolo: 'Menu', testo: 'Catalogo, pubblicazione, allergeni e dati pubblici.' },
+              ].map(voce => (
+                <a key={voce.href} href={voce.href} style={{
+                  display: 'block', minHeight: 120, padding: 16,
+                  border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md,
+                  background: COLORS.bgAlt, color: COLORS.text, textDecoration: 'none',
+                }}>
+                  <strong style={{ display: 'block', marginBottom: 8 }}>{voce.titolo}</strong>
+                  <span style={{ color: COLORS.textMuted, fontSize: 13, lineHeight: 1.5 }}>{voce.testo}</span>
+                </a>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* TAB EMAIL */}
       {activeTab === 'email' && (

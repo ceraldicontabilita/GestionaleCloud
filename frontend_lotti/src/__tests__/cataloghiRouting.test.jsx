@@ -77,20 +77,20 @@ describe("navigazione reale dei cataloghi fornitori", () => {
     expect(container.querySelector('[data-testid="vista-cataloghi"]')).not.toBeNull();
   });
 
-  test.each([
-    ["Acquaviva", "prodotti/acquaviva"],
-    ["SAIMA", "prodotti/saima"],
-    ["MEPA", "prodotti/mepa"],
-  ])("la card Home %s apre il deep-link corretto", async (titolo, hash) => {
+  test("la Home raccoglie i cataloghi nell'area ufficio", async () => {
     await act(async () => {
       root.render(<DashboardView stats={{}} onNavigate={jest.fn()} />);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const card = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent.includes(titolo) && button.textContent.includes("Catalogo"));
-    expect(card).toBeTruthy();
-    await act(async () => card.click());
-    expect(window.location.hash).toBe(`#${hash}`);
+    expect(container.textContent).not.toContain("Cataloghi fornitori");
+    const ufficio = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent.includes("Ufficio e archivio"));
+    expect(ufficio).toBeTruthy();
+    await act(async () => ufficio.click());
+    expect(container.textContent).toContain("Listini e cataloghi");
+    expect(container.textContent).not.toContain("Acquaviva");
+    expect(container.textContent).not.toContain("SAIMA");
+    expect(container.textContent).not.toContain("MEPA");
   });
 });

@@ -40,13 +40,17 @@ describe("navigazione amministrativa sempre comprensibile", () => {
     container.remove();
   });
 
-  test("Impostazioni e Controllo dati non sono nascosti nel pannello chiuso", async () => {
+  test("le impostazioni sono centralizzate e il controllo dati resta nell'area ufficio", async () => {
     await act(async () => {
       root.render(<DashboardView stats={{}} onNavigate={jest.fn()} />);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(Array.from(container.querySelectorAll("button")).some((b) => b.textContent.includes("Impostazioni"))).toBe(true);
+    expect(Array.from(container.querySelectorAll("button")).some((b) => b.textContent.includes("Impostazioni"))).toBe(false);
+    expect(Array.from(container.querySelectorAll("button")).some((b) => b.textContent.includes("Controllo dati"))).toBe(false);
+    const ufficio = Array.from(container.querySelectorAll("button"))
+      .find((b) => b.textContent.includes("Ufficio e archivio"));
+    await act(async () => ufficio.click());
     expect(Array.from(container.querySelectorAll("button")).some((b) => b.textContent.includes("Controllo dati"))).toBe(true);
   });
 
