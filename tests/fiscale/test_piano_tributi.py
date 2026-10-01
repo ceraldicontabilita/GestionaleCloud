@@ -255,3 +255,33 @@ def test_codice_comune_a_caselle_non_e_una_regione():
     assert _codice_regione_da_riga(comune) == ""
     regione = [parola(30, "0"), parola(44, "5"), parola(170, "3802")]
     assert _codice_regione_da_riga(regione) == "05"
+
+
+def test_excel_dello_scadenzario_un_versamento_per_riga_con_link_ritardo_e_prospetto():
+    import io
+    import openpyxl
+    from app.services import scadenzario_excel as xl
+
+    f1 = _f24("f-mag", "2026-06-19", erario=[("1001", 5, 2026, 102651, 0)], movimento_bancario_id="m1")
+    f2 = _f24("f-gen", "2026-02-16", erario=[("1001", 1, 2026, 50000, 0), ("1655", 1, 2026, 0, 12000)])
+    db = _db(f1, f2)
+    run(db["prospetti_contabili"].insert_one({
+        "id": "p1", "stato": "canonica", "f24_id": "f-gen", "mese": 1, "anno": 2026, "esito": "COMPLETO",
+        "documento_id": "doc-1"}))
+    righe = run(xl.righe_scadenzario(db, [2026]))
+    assert [r["f24_id"] for r in righe] == ["f-mag", "f-gen", "f-gen"]          # il versamento piu' recente per primo
+    assert righe[0]["giorni_ritardo"] == 3 and righe[1]["giorni_ritardo"] == 0   # 16/06 -> 19/06; 16/02 in termini
+    wb = openpyxl.load_workbook(io.BytesIO(xl.costruisci_xlsx(righe, "https://gestionale.test")))
+    assert wb.sheetnames == ["Scadenzario", "Riepilogo", "Debito e credito"]
+    ws = wb["Scadenzario"]
+    assert [c.value for c in ws[1]][:8] == [
+        "Data", "Descrizione", "rateazione, regione/provincia, mese rif.", "anno di riferimento",
+        "Codice tributo", "Importo", "f24 consulente", "quietanza"]
+    assert ws["E2"].value == 1001 and ws["F2"].value == 1026.51 and ws["J2"].value == 3
+    assert ws["G2"].hyperlink.target == "https://gestionale.test/fiscale/f24/f-mag"
+    assert ws["K4"].value == "01/2026 · COMPLETO" and "doc-1" in ws["K4"].hyperlink.target
+    assert ws["F4"].value == -120.0                                              # un credito compensato e' negativo
+    riepilogo = {(r[0].value, r[1].value): r[3].value for r in wb["Riepilogo"].iter_rows(min_row=2) if r[1].value}
+    assert riepilogo[(2026, 1001)] == 500.0                                      # febbraio: 16/02, 1001 di gennaio
+    assert wb["Debito e credito"]["G4"].value == 120.0
+    assert run(xl.righe_scadenzario(db, [2024])) == []                           # un anno senza versamenti: vuoto
