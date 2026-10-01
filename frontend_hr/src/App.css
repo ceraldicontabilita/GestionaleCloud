@@ -1210,6 +1210,7 @@ a.dc-sidebar-logo {
 label.dc-form-group { cursor: default; }
 .dc-form-group > .dc-label { font-size: 0.8rem; font-weight: 500; color: #3a463a; }
 /* Bottoni icona: area di tocco minima 44×44 (2.5.5) */
+.dc-app button { min-width: 44px; min-height: 44px; }
 .dc-btn-icon { min-width: 44px; min-height: 44px; }
 /* Celle interattive delle griglie Presenze/Ferie come bottoni */
 .dc-cell-btn { width: 100%; min-height: 44px; border: none; background: transparent; cursor: pointer; font: inherit; padding: 4px 3px; color: inherit; }

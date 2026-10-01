@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Optional, Any
 from datetime import datetime, timezone, date
 import re
+import math
 import logging
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import uuid
@@ -1369,16 +1370,17 @@ def _ricetta_e_rivendita(r: dict) -> bool:
     return bool(r.get("fornitore_rivendita") or r.get("rivendita") or r.get("acquistato"))
 
 
-@router.get("/ricette-senza-ingredienti")
 def _ricetta_senza_quantita(r: dict) -> bool:
     """Ha gli ingredienti ma NESSUNA quantità utile: il food cost non si può
     calcolare (richiesta Enzo 25/07/2026: vanno compilate anche queste)."""
     det = r.get("ingredienti_dettaglio") or []
     if not det:
-        return False
-    return not any(float(i.get("quantita") or 0) > 0 for i in det)
+        return bool(r.get("ingredienti"))  # Nomi legacy senza dettagli = dosi mancanti.
+    quantita = [IngredienteConQuantita.coerce_quantita(i.get("quantita")) for i in det]
+    return not any(isinstance(q, (int, float)) and math.isfinite(q) and q > 0 for q in quantita)
 
 
+@router.get("/ricette-senza-ingredienti")
 async def ricette_senza_ingredienti():
     """Elenco delle ricette da compilare, escluse quelle di rivendita:
     - motivo "senza_ingredienti": non hanno proprio ingredienti;
@@ -1471,11 +1473,12 @@ async def proponi_ingredienti_tutte(req: ProponiTutteReq, _admin=Depends(require
             "ingredienti_proposti_il": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        if base and fattore and fattore != 1.0:
+        if base and fattore:
             campi["dose_riferimento"] = f"1 kg di {base}"
             campi["dose_fattore"] = fattore
-            # le porzioni seguono le dosi, altrimenti il costo/porzione mente
-            campi["porzioni"] = max(1, int(round(porzioni * fattore)))
+            if fattore != 1.0:
+                # le porzioni seguono le dosi, altrimenti il costo/porzione mente
+                campi["porzioni"] = max(1, int(round(porzioni * fattore)))
         await db.ricette.update_one({"id": r["id"]}, {"$set": campi})
         compilate.append({"nome": nome, "fonte": esito.get("fonte"),
                           "quanti": len(ingredienti), "motivo": r.get("motivo"),

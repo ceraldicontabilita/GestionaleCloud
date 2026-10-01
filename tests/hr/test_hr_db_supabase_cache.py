@@ -110,6 +110,9 @@ class PoolFinto:
             return righe
         tab = _TAB.search(sql).group(1)
         righe_tab = self.tabelle.setdefault(tab, {})
+        if sql.startswith("SELECT (SELECT jsonb_object_agg(k, v)"):
+            doc = righe_tab.get(args[0])
+            return [] if doc is None else [{"doc": json.dumps({k: v for k, v in doc.items() if k in args[1]})}]
         if sql.startswith("SELECT id, (doc - ARRAY["):
             campi = re.findall(r"'([a-z_]+)'", sql.split("FROM")[0])
             pesanti = [c for c in campi if c in hr._CAMPI_PESANTI]
@@ -182,6 +185,50 @@ def _pool():
             {"id": "d2", "nome": "Bruno", "attivo": False},
         ],
     })
+
+
+def test_autorizzazione_per_id_ignora_cache_e_non_usa_ddl(monkeypatch):
+    from app.hr.database import Database
+    from app.hr.services.auth_dipendenti import sessione_dipendente_corrente
+
+    dip = {"id": "auth-fixture", "stato": "attivo", "pin_hash": "hash-fixture", "ruolo_app": "dipendente"}
+    pool = PoolFinto({"app_dipendenti": [dip]})
+    db = _db(pool)
+    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))
+    payload = {"sub": "auth-fixture", "role": "dipendente", "auth_method": "pin_dipendente"}
+    async def scenario():
+        await db.dipendenti.find_one({"id": "auth-fixture"})
+        pool.log.clear()
+        assert await sessione_dipendente_corrente(payload)
+        pool.scrivi_esterno("app_dipendenti", {**dip, "stato": "cessato", "pin_hash": None})
+        pool.firma_guasta = True
+        assert not await sessione_dipendente_corrente(payload)
+    _run(scenario())
+    assert len(pool.log) == 2
+    assert all(s.startswith("SELECT (SELECT jsonb_object_agg(k, v)") and "WHERE id = $1" in s for s in pool.log)
+
+
+def test_autorizzazione_guasto_sql_non_usa_la_copia_in_grazia(monkeypatch):
+    from fastapi import HTTPException
+    from app.hr.database import Database
+    from app.hr.services.auth_dipendenti import sessione_dipendente_corrente
+
+    dip = {"id": "auth-fixture", "stato": "attivo", "pin_hash": "hash-fixture", "ruolo_app": "dipendente"}
+    pool = PoolFinto({"app_dipendenti": [dip]})
+    db = _db(pool)
+    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))
+    esegui = pool.esegui
+    def guasto_auth(sql, args):
+        if sql.startswith("SELECT (SELECT jsonb_object_agg(k, v)"):
+            raise RuntimeError("fixture auth SQL unavailable")
+        return esegui(sql, args)
+    async def scenario():
+        await db.dipendenti.find_one({"id": "auth-fixture"})
+        monkeypatch.setattr(pool, "esegui", guasto_auth)
+        with pytest.raises(HTTPException) as errore:
+            await sessione_dipendente_corrente({"sub": "auth-fixture", "role": "dipendente", "auth_method": "pin_dipendente"})
+        assert errore.value.status_code == 503
+    _run(scenario())
 
 
 def test_seconda_lettura_non_rilegge_la_tabella():

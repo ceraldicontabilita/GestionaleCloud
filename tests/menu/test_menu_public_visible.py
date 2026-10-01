@@ -151,6 +151,18 @@ def test_prod_in_e_prod_out_gestiscono_visible():
     assert ProductCreate(category_id=1, subcategory_id=10, **base).visible is True
 
 
+@pytest.mark.parametrize("prezzo", [None, "", "0.00€", "-1.00€", "nan", "inf", "1.001€"])
+def test_prezzo_non_dichiarato_o_invalido_nascosto_in_tutte_le_letture_pubbliche(finto, prezzo):
+    finto.tabelle["menu_products"][0]["price"] = prezzo
+    menu = _run(mr.get_full_menu())
+    assert [p["id"] for p in menu["categories"][0]["subcategories"][0]["items"]] == [101]
+    assert [p["id"] for p in _run(mr.get_subcategory(10))["items"]] == [101]
+    assert [p["id"] for p in _run(mr.search_products("ba"))["results"]] == [101]
+    with pytest.raises(HTTPException) as e:
+        _run(mr.get_product(100))
+    assert e.value.status_code == 404
+
+
 def test_admin_create_e_update_accettano_visible(finto):
     creato = _run(mr.create_product(
         ProductCreate(category_id=1, subcategory_id=10, name="Nuovo", nameIT="Nuovo", price="2.00€", visible=False),
@@ -188,6 +200,20 @@ def test_admin_del_menu_non_puo_modificare_una_riga_di_lotti(finto):
     # Un id inesistente resta un 404, non un 409
     with pytest.raises(HTTPException) as mancante:
         _run(mr.update_product(999999, ProductUpdate(price="1.00€"), username="admin"))
+    assert mancante.value.status_code == 404
+
+
+def test_admin_del_menu_non_puo_cancellare_un_prodotto_della_ricetta(finto):
+    prima = [dict(p) for p in finto.tabelle["menu_products"]]
+    with pytest.raises(HTTPException) as e:
+        _run(mr.delete_product(1000000, username="admin"))
+    assert e.value.status_code == 409
+    assert "Lotti" in e.value.detail
+    assert finto.tabelle["menu_products"] == prima
+    assert finto.chiamate == []
+    assert _run(mr.get_all_products_flat(username="admin"))["total"] == 3
+    with pytest.raises(HTTPException) as mancante:
+        _run(mr.delete_product(999999, username="admin"))
     assert mancante.value.status_code == 404
 
 

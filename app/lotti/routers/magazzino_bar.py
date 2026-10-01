@@ -107,6 +107,11 @@ async def crea_prodotto(payload: NuovoProdotto, _admin=Depends(require_admin)):
     return doc
 
 
+class EsitoMovimentoStockIncerto(RuntimeError):
+    """Una scrittura puo' essere applicata senza la sua prova nel registro."""
+    esito_stock_incerto = True
+
+
 async def applica_movimento_stock(prod: dict, delta_pezzi: float, tipo: str,
                                   operatore_nome: str, nota: str = "",
                                   extra: dict | None = None):
@@ -116,11 +121,16 @@ async def applica_movimento_stock(prod: dict, delta_pezzi: float, tipo: str,
     # Aggiornamento ATOMICO: $inc somma il delta lato Mongo, immune da scarichi
     # concorrenti (leggi-poi-scrivi perdeva una vendita se due scarichi partivano
     # insieme). find_one_and_update torna il documento col valore reale aggiornato.
-    aggiornato = await db.magazzino_bar_prodotti.find_one_and_update(
-        {"id": prod["id"]},
-        {"$inc": {"stock": round(delta_pezzi, 3)}},
-        return_document=ReturnDocument.AFTER,
-    )
+    try:
+        aggiornato = await db.magazzino_bar_prodotti.find_one_and_update(
+            {"id": prod["id"]},
+            {"$inc": {"stock": round(delta_pezzi, 3)}},
+            return_document=ReturnDocument.AFTER,
+        )
+    except Exception as exc:
+        # Anche un timeout puo' arrivare dopo l'applicazione lato server:
+        # ripetere il delta senza una prova transazionale puo' raddoppiarlo.
+        raise EsitoMovimentoStockIncerto("Esito aggiornamento stock da verificare") from exc
     nuovo = round(float((aggiornato or {}).get("stock", float(prod.get("stock", 0)) + delta_pezzi)), 3)
     mov = {
         "id": str(uuid.uuid4()),
@@ -135,7 +145,10 @@ async def applica_movimento_stock(prod: dict, delta_pezzi: float, tipo: str,
         "data": datetime.now(timezone.utc).isoformat(),
         **(extra or {}),
     }
-    await db.magazzino_bar_movimenti.insert_one(dict(mov))
+    try:
+        await db.magazzino_bar_movimenti.insert_one(dict(mov))
+    except Exception as exc:
+        raise EsitoMovimentoStockIncerto("Stock aggiornato, registrazione movimento da verificare") from exc
     mov.pop("_id", None)
     from app.lotti.eventi import publish
     await publish("STOCK_MOVIMENTATO", {
@@ -1155,4 +1168,3 @@ async def auto_configura_colli(_admin=Depends(require_admin)):
         aggiornati += 1
         dettaglio.append({"nome": p.get("nome", ""), "pezzi_per_collo": n})
     return {"ok": True, "aggiornati": aggiornati, "totale": len(prods), "dettaglio": dettaglio}
-

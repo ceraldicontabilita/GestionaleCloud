@@ -81,6 +81,18 @@ def test_un_token_admin_senza_sid_non_passa():
 
 @pytest.mark.parametrize("ruolo", sorted(RUOLI_VALIDI))
 def test_i_ruoli_dell_app_passano(ruolo):
+    from mongomock_motor import AsyncMongoMockClient
+    from app.hr.database import Database
+
+    if ruolo != "admin":
+        db = AsyncMongoMockClient()["ruoli_fixture"]
+        _run(db.dipendenti.insert_one({"id": "titolare@esempio.it", "stato": "attivo",
+                                      "pin_hash": "hash-fixture", "ruolo_app": ruolo}))
+        from unittest.mock import patch
+        with patch.object(Database, "get_db", classmethod(lambda cls: db)):
+            utente = _run(get_current_user(_Credenziali(_token(role=ruolo))))
+        assert utente["role"] == ruolo
+        return
     token = _token_admin_da_gestionale() if ruolo == "admin" else _token(role=ruolo)
     utente = _run(get_current_user(_Credenziali(token)))
     assert utente["role"] == ruolo

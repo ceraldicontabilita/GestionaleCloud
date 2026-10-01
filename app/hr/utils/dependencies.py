@@ -71,6 +71,11 @@ async def get_current_user(
         if not await token_di_gruppo_ammesso(payload):
             raise AuthenticationError("Sessione chiusa: rientra dal Gestionale")
 
+        from app.hr.services.auth_dipendenti import sessione_dipendente_corrente
+
+        if not await sessione_dipendente_corrente(payload):
+            raise AuthenticationError("Accesso personale revocato")
+
         return {
             "user_id": user_id,
             "email": payload.get("email"),
@@ -154,6 +159,11 @@ async def get_optional_user(
         from app.services.group_session import token_di_gruppo_ammesso
 
         if not await token_di_gruppo_ammesso(payload):
+            return None
+
+        from app.hr.services.auth_dipendenti import sessione_dipendente_corrente
+
+        if not await sessione_dipendente_corrente(payload):
             return None
 
         user_id = payload.get("sub")
@@ -357,6 +367,10 @@ async def _decode_or_401(credentials: HTTPAuthorizationCredentials) -> Dict[str,
         # Admin solo dalla sessione del Gestionale, e mai dopo il suo logout.
         if not await token_di_gruppo_ammesso(payload):
             raise JWTError("sessione chiusa o admin fuori dalla sessione del Gestionale")
+        from app.hr.services.auth_dipendenti import sessione_dipendente_corrente
+
+        if not await sessione_dipendente_corrente(payload):
+            raise JWTError("accesso personale revocato")
         return payload
     except JWTError as e:
         logger.info(f"Auth strict: token rifiutato ({e})")

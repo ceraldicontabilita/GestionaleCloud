@@ -93,7 +93,13 @@ def test_scrittura_senza_token_bloccata():
     assert exc.value.status_code == 401
 
 
-def test_scrittura_con_token_passa():
+def test_scrittura_con_token_passa(monkeypatch):
+    from app.hr.database import Database as DatabaseHR
+    from mongomock_motor import AsyncMongoMockClient
+
+    hr = AsyncMongoMockClient()["hr_auth_test"]
+    monkeypatch.setattr(DatabaseHR, "get_db", classmethod(lambda cls: hr))
+    _run(hr.dipendenti.insert_one({"id": "op1", "stato": "attivo", "pin_hash": "hash-fixture"}))
     t = make_token("op1", "Mario", "operatore")
     req = FintaRichiesta(method="POST", path="/api/ricette", token=t)
     assert _run(auth_dependency(req)) is None  # nessuna eccezione
