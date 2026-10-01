@@ -1625,6 +1625,38 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    _foto_ricette_finite: list = []
+
+    async def _foto_ricette_storage_job():
+        # Foto ricette di Lotti ancora solo su Drive -> Supabase Storage, un
+        # file per volta (RAM bassa). Idempotente: finite quelle da portare,
+        # il giro non fa altro che contarle.
+        # Le foto nuove nascono gia' su Storage: finito l'arretrato il giro si
+        # ferma fino al prossimo avvio, senza rileggere ogni 3 minuti le ricette.
+        if _foto_ricette_finite:
+            return
+        try:
+            from app.lotti.db import database as lotti_db
+            from app.lotti.servizi.foto_ricette_migrazione import migra_lotto
+            esito = await migra_lotto(lotti_db, limite=10)
+            if esito["restano"] == 0 and esito["errori"] == 0:
+                _foto_ricette_finite.append(True)
+            if esito["migrate"] or esito["errori"]:
+                logger.info(f"[SCHEDULER-FOTO-RICETTE] {esito}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-FOTO-RICETTE] errore: {type(e).__name__}: {e}")
+
+    scheduler.add_job(
+        _foto_ricette_storage_job,
+        'interval', minutes=3,
+        next_run_time=avvio + timedelta(seconds=150),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="foto_ricette_storage",
+        name="Foto ricette Lotti da Drive a Supabase Storage (10 per giro, ogni 3 minuti)",
+        replace_existing=True,
+    )
+
     # Canali Drive documentali generici: bonifici dipendenti, verbali e canali
     # fiscali esplicitamente abilitati. Il resolver di ciascun canale limita la
     # scansione alla propria DA ELABORARE canonica.
@@ -1936,6 +1968,93 @@ def start_scheduler():
         replace_existing=True
     )
 
+    async def _dizionario_lotti_job():
+        # Lotti, Dizionario ingredienti: categorie rinominate e categoria certa
+        # alle righe che non ce l'hanno (lotti da 200, idempotente: secondo giro 0).
+        try:
+            from app.lotti.db import database as db_lotti
+            from app.lotti.servizi.dizionario_ingredienti import giro_dizionario
+            r = await giro_dizionario(db_lotti)
+            logger.info("[SCHEDULER-LOTTI] dizionario %s", r)
+        except Exception as e:
+            logger.error("[SCHEDULER-LOTTI] dizionario: %s: %s", type(e).__name__, e)
+
+    scheduler.add_job(
+        _dizionario_lotti_job,
+        'interval', minutes=20,
+        next_run_time=avvio + timedelta(minutes=9),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="lotti_dizionario_categorie",
+        name="Lotti: categorie del Dizionario ingredienti (ogni 20 min)",
+        replace_existing=True,
+    )
+
+    async def _paypal_automatico_job():
+        from app.database import Database
+        from app.services.paypal_automatico import giro_paypal
+        await giro_paypal(Database.get_db())
+
+    scheduler.add_job(
+        _paypal_automatico_job,
+        CronTrigger(hour="3,14", minute=20),
+        misfire_grace_time=3600,
+        coalesce=True,
+        id="paypal_automatico",
+        name="PayPal automatico: API, banca, fatture e posta (ore 3:20 e 14:20)",
+        replace_existing=True,
+    )
+
+    async def _categorie_banca_job():
+        from app.database import Database
+        from app.services.categorizzazione_movimenti import backfill_categorie_banca
+        r = await backfill_categorie_banca(
+            Database.get_db(), anno=datetime.now().year, dry_run=False, con_stipendi=False)
+        logger.info("[SCHEDULER-CATEGORIE-BANCA] %s", {k: v for k, v in r.items() if isinstance(v, (int, str))})
+
+    scheduler.add_job(
+        _categorie_banca_job,
+        'interval', hours=1,
+        next_run_time=avvio + timedelta(minutes=15),
+        misfire_grace_time=900,
+        coalesce=True,
+        id="categorie_banca",
+        name="Categorie dei movimenti bancari senza categoria (ogni ora)",
+        replace_existing=True,
+    )
+
+    async def _bonifici_estratto_job():
+        from app.database import Database
+        from app.services.bonifici_da_estratto import abbina_bonifici_via_estratto
+        await abbina_bonifici_via_estratto(Database.get_db())
+
+    scheduler.add_job(
+        _bonifici_estratto_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=18),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="bonifici_via_estratto",
+        name="Bonifici PDF abbinati al movimento d'estratto per riferimento banca (ogni 30 min)",
+        replace_existing=True,
+    )
+
+    async def _pec_cartelle_job():
+        from app.database import Database
+        from app.services.notifiche_pec_cartelle import ripassa_notifiche_dalla_posta
+        await ripassa_notifiche_dalla_posta(Database.get_db())
+
+    scheduler.add_job(
+        _pec_cartelle_job,
+        'interval', hours=6,
+        next_run_time=avvio + timedelta(minutes=12),
+        misfire_grace_time=900,
+        coalesce=True,
+        id="pec_cartelle_notifiche",
+        name="Date di notifica delle cartelle dalla PEC (ogni 6 ore)",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
@@ -1943,6 +2062,7 @@ def start_scheduler():
     logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
     logger.info("   - Recupero Fatture PayPal mancanti: ogni giorno ore 5:30")
+    logger.info("   - PayPal automatico (API, banca, fatture, posta): ore 3:20 e 14:20")
 
 
 def stop_scheduler():

@@ -9,6 +9,7 @@ Nuove fatture vengono processate solo per i prodotti ancora sconosciuti.
 
 import os
 import re
+from app.lotti.servizi.dizionario_ingredienti import CATEGORIE
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -49,18 +50,18 @@ SINONIMI_STATICI: dict[str, dict] = {
     "zucchero impalpabile": {"nome_canc": "Zucchero a Velo", "categoria": "Dolcificanti"},
     "zucchero di canna": {"nome_canc": "Zucchero di Canna", "categoria": "Dolcificanti"},
     # Grassi
-    "burro": {"nome_canc": "Burro", "categoria": "Latticini e Grassi"},
-    "strutto": {"nome_canc": "Strutto", "categoria": "Latticini e Grassi"},
-    "margarina": {"nome_canc": "Margarina", "categoria": "Latticini e Grassi"},
+    "burro": {"nome_canc": "Burro", "categoria": "Burro o margarina"},
+    "strutto": {"nome_canc": "Strutto", "categoria": "Latticini"},
+    "margarina": {"nome_canc": "Margarina", "categoria": "Burro o margarina"},
     # Uova
     "uova fresche": {"nome_canc": "Uova Fresche", "categoria": "Uova"},
     "uova": {"nome_canc": "Uova", "categoria": "Uova"},
     "tuorlo": {"nome_canc": "Tuorlo d'Uovo", "categoria": "Uova"},
     "albume": {"nome_canc": "Albume d'Uovo", "categoria": "Uova"},
     # Latticini
-    "latte": {"nome_canc": "Latte Fresco", "categoria": "Latticini e Grassi"},
-    "panna fresca": {"nome_canc": "Panna Fresca", "categoria": "Latticini e Grassi"},
-    "panna": {"nome_canc": "Panna", "categoria": "Latticini e Grassi"},
+    "latte": {"nome_canc": "Latte Fresco", "categoria": "Latticini"},
+    "panna fresca": {"nome_canc": "Panna Fresca", "categoria": "Latticini"},
+    "panna": {"nome_canc": "Panna", "categoria": "Latticini"},
     "ricotta": {"nome_canc": "Ricotta", "categoria": "Formaggi"},
     "mozzarella": {"nome_canc": "Mozzarella", "categoria": "Formaggi"},
     "fior di latte": {"nome_canc": "Fior di Latte", "categoria": "Formaggi"},
@@ -102,18 +103,18 @@ SINONIMI_STATICI: dict[str, dict] = {
     "rum": {"nome_canc": "Rum", "categoria": "Alcolici e Liquori"},
     "limoncello": {"nome_canc": "Limoncello", "categoria": "Alcolici e Liquori"},
     # Marche commerciali comuni → nome usuale
-    "olva": {"nome_canc": "Margarina", "categoria": "Latticini e Grassi"},
-    "margarina olva": {"nome_canc": "Margarina", "categoria": "Latticini e Grassi"},
-    "ilva": {"nome_canc": "Burro", "categoria": "Latticini e Grassi"},
-    "burro ilva": {"nome_canc": "Burro", "categoria": "Latticini e Grassi"},
-    "gateaux": {"nome_canc": "Margarina Sfoglia", "categoria": "Latticini e Grassi"},
-    "wiener": {"nome_canc": "Margarina Crema", "categoria": "Latticini e Grassi"},
-    "wienercreme": {"nome_canc": "Margarina Crema", "categoria": "Latticini e Grassi"},
-    "melange": {"nome_canc": "Margarina", "categoria": "Latticini e Grassi"},
-    "green valley": {"nome_canc": "Margarina", "categoria": "Latticini e Grassi"},
-    "green platte": {"nome_canc": "Margarina", "categoria": "Latticini e Grassi"},
-    "homillina": {"nome_canc": "Margarina", "categoria": "Latticini e Grassi"},
-    "plunderplat": {"nome_canc": "Margarina", "categoria": "Latticini e Grassi"},
+    "olva": {"nome_canc": "Margarina", "categoria": "Burro o margarina"},
+    "margarina olva": {"nome_canc": "Margarina", "categoria": "Burro o margarina"},
+    "ilva": {"nome_canc": "Burro", "categoria": "Burro o margarina"},
+    "burro ilva": {"nome_canc": "Burro", "categoria": "Burro o margarina"},
+    "gateaux": {"nome_canc": "Margarina Sfoglia", "categoria": "Latticini"},
+    "wiener": {"nome_canc": "Margarina Crema", "categoria": "Latticini"},
+    "wienercreme": {"nome_canc": "Margarina Crema", "categoria": "Latticini"},
+    "melange": {"nome_canc": "Margarina", "categoria": "Latticini"},
+    "green valley": {"nome_canc": "Margarina", "categoria": "Latticini"},
+    "green platte": {"nome_canc": "Margarina", "categoria": "Latticini"},
+    "homillina": {"nome_canc": "Margarina", "categoria": "Latticini"},
+    "plunderplat": {"nome_canc": "Margarina", "categoria": "Latticini"},
     "manitoba": {"nome_canc": "Farina Manitoba", "categoria": "Farine e Cereali"},
     "caputo": {"nome_canc": "Farina 00", "categoria": "Farine e Cereali"},
     "mandorle pelate": {"nome_canc": "Mandorle Pelate", "categoria": "Frutta Secca"},
@@ -125,9 +126,9 @@ SINONIMI_STATICI: dict[str, dict] = {
     "amarene": {"nome_canc": "Amarene", "categoria": "Conserve e Condimenti"},
     "canditi": {"nome_canc": "Canditi", "categoria": "Conserve e Condimenti"},
     "miele": {"nome_canc": "Miele", "categoria": "Dolcificanti"},
-    "vaniglia": {"nome_canc": "Vaniglia", "categoria": "Aromi"},
-    "vanillina": {"nome_canc": "Vanillina", "categoria": "Aromi"},
-    "cannella": {"nome_canc": "Cannella", "categoria": "Aromi"},
+    "vaniglia": {"nome_canc": "Vaniglia", "categoria": "Bagne e Aromi"},
+    "vanillina": {"nome_canc": "Vanillina", "categoria": "Bagne e Aromi"},
+    "cannella": {"nome_canc": "Cannella", "categoria": "Bagne e Aromi"},
     "sale": {"nome_canc": "Sale", "categoria": "Condimenti"},
     "sale fino": {"nome_canc": "Sale Fino", "categoria": "Condimenti"},
     # ── Decorazioni di zucchero (codette, diavolini, ecc.) ──
@@ -311,10 +312,7 @@ async def normalizza_batch_con_ai(descrizioni: list) -> dict:
                         "rispondi SOLO con un JSON array: "
                         '[{"i":1,"nome_canc":"Nome Breve","categoria":"Categoria"}, ...] '
                         "Nessuna spiegazione. Il nome canonico: breve (2-4 parole), in italiano. "
-                        "Categorie valide: Farine e Cereali, Dolcificanti, Latticini e Grassi, "
-                        "Uova, Formaggi, Frutta e Verdura, Conserve e Condimenti, Cioccolato e Cacao, "
-                        "Lieviti e Addensanti, Semilavorati Pasticceria, Alcolici e Liquori, "
-                        "Carni e Salumi, Pesce, Condimenti, Bevande, Varie Alimentari, Non Alimentare."
+                        "Categorie valide: " + ", ".join(CATEGORIE) + "."
                     ),
                     "messages": [
                         {
@@ -689,7 +687,8 @@ async def correggi_mapping(payload: dict = Body(...), _admin=Depends(require_adm
     esatta = {"$regex": f"^{re.escape(desc_key)}$", "$options": "i"}
     res = await db.dizionario_prodotti.update_many(
         {"$or": [{"nome_normalizzato": esatta}, {"nome_originale": esatta}]},
-        {"$set": {"nome_canonico": nome_canc, "ingrediente_canonico": nome_canc}},
+        {"$set": {"nome_canonico": nome_canc, "ingrediente_canonico": nome_canc,
+                  **({"categoria_canonica": categoria, "categoria_fonte": "manuale"} if categoria else {})}},
     )
     return {"success": True, "prodotti_aggiornati": res.modified_count}
 

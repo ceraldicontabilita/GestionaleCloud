@@ -438,8 +438,13 @@ export default function ArchivioBonifici() {
   const totaleImporto = transfers.reduce((sum, t) => sum + (t.importo || 0), 0);
 
   // Separa bonifici associati da non associati
-  const bonificiDaAssociare = transfers.filter(t => !t.salario_associato && !t.fattura_associata);
-  const bonificiAssociati = transfers.filter(t => t.salario_associato || t.fattura_associata);
+  // «Associato» = ha un esito certo: salario, fattura, destinazione letta dall'estratto
+  // (`destinazione_automatica`) o stipendio gia' trattato da HR. I doppioni non si associano a niente.
+  const stipendioGiaInHr = t => ['arricchito', 'depositato'].includes(t.hr_deposito?.esito);
+  const eDoppione = t => t.hr_deposito?.esito === 'duplicato';
+  const eAssociato = t => Boolean(t.salario_associato || t.fattura_associata || t.destinazione_automatica || stipendioGiaInHr(t));
+  const bonificiDaAssociare = transfers.filter(t => !eAssociato(t) && !eDoppione(t));
+  const bonificiAssociati = transfers.filter(eAssociato);
 
   // Dati da mostrare in base al tab
   const transfersToShow = activeTab === 'da_associare' ? bonificiDaAssociare : bonificiAssociati;
@@ -1071,13 +1076,17 @@ export default function ArchivioBonifici() {
                             ✕
                           </button>
                         </div>
-                      ) : (t.fattura_associata || t.hr_deposito?.esito === 'non_stipendio') ? (
+                      ) : stipendioGiaInHr(t) ? (
+                        <span style={{ fontSize: 11, color: '#3d8168', fontWeight: 600 }}>Stipendio già in HR</span>
+                      ) : !t.destinazione_dipendente ? (
+                        // Non e' uno stipendio: la colonna del salario non dice niente (prima ripeteva
+                        // «Scegli periodo» su ogni riga). Il testo storico resta nel tooltip.
                         <span
                           data-testid={`non-stipendio-${t.id}`}
-                          title="La causale cita una fattura e il bonifico è già collegato: non è uno stipendio, non serve scegliere il periodo"
+                          title="Pagamento fattura: nessun periodo. Non è uno stipendio, non serve scegliere il periodo"
                           style={{ fontSize: 11, color: '#7a776e' }}
                         >
-                          Pagamento fattura: nessun periodo
+                          —
                         </span>
                       ) : (
                         <div>
@@ -1268,25 +1277,27 @@ export default function ArchivioBonifici() {
                             ✕
                           </button>
                         </div>
-                      ) : t.destinazione_dipendente ? (
+                      ) : t.destinazione_automatica ? (
+                        <span
+                          data-testid={`destinazione-automatica-${t.id}`}
+                          title={`Letto dall'estratto conto (rif. ${t.destinazione_automatica.rif_banca || '—'}): nessuna fattura da scegliere`}
+                          style={{
+                            display: 'inline-block', padding: '4px 8px', borderRadius: 6,
+                            background: '#e2f0e7', color: '#3d8168', fontSize: 11, fontWeight: 600,
+                          }}
+                        >
+                          {t.destinazione_automatica.categoria}
+                        </span>
+                      ) : (t.destinazione_dipendente || stipendioGiaInHr(t)) ? (
                         <span
                           title={
                             t.dipendente_nome_rilevato
-                              ? `Pagamento a ${t.dipendente_nome_rilevato}: associa solo il salario`
-                              : 'Causale retributiva: associa solo il salario'
+                              ? `Pagamento a ${t.dipendente_nome_rilevato}: si associa solo il salario`
+                              : 'Causale retributiva: si associa solo il salario'
                           }
-                          style={{
-                            display: 'inline-block',
-                            padding: '4px 8px',
-                            borderRadius: 6,
-                            background: '#f7eeda',
-                            color: '#92400e',
-                            fontSize: 10,
-                            fontWeight: 700,
-                            whiteSpace: 'nowrap',
-                          }}
+                          style={{ fontSize: 11, color: '#7a776e' }}
                         >
-                          Solo salario
+                          —
                         </span>
                       ) : (
                         <div>

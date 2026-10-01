@@ -33,6 +33,8 @@ describe('Archivio bonifici: scelta salario sicura', () => {
   it('un bonifico con la fattura collegata mostra la fattura e non propone il periodo', () => {
     expect(frontendSource).toContain('Pagamento fattura: nessun periodo');
     expect(frontendSource).toContain("t.fattura_esito === 'acconto'");
-    expect(frontendSource).toContain("t.hr_deposito?.esito === 'non_stipendio'");
+    // la colonna del salario non ripete «Scegli periodo» su ogni riga: solo per i dipendenti
+    expect(frontendSource).toContain('!t.destinazione_dipendente');
+    expect(frontendSource).toContain('t.destinazione_automatica');
   });
 });

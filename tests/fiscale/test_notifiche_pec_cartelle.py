@@ -78,3 +78,31 @@ def test_un_altro_numero_non_tocca_la_cartella():
     run(pec.registra_notifica_email(db, OGGETTO.replace("07120260127882548002", "07120260117439961000"),
                                     CORPO.replace("07120260127882548002", "07120260117439961000")))
     assert run(db[COLL].find_one({"id": "cartella:07120260127882548002"}))["data_notifica"] is None
+
+
+def test_cartella_con_id_uuid_si_trova_dal_numero_in_source_fact_id():
+    """In produzione l'id della riga e' un UUID: il numero sta in `source_fact_id`."""
+    db = _db({"id": "72fef348-fba1-49ef-b048-f624de08190a", "source_fact_id": "cartella:07120260127882548002",
+              "numero_cartella": "071 2026 01278825 48/002", "data_notifica": None})
+    esito = run(pec.registra_notifica_email(db, OGGETTO, CORPO, messaggio_id="<m1>"))
+    assert esito["stato"] == "applicata"
+    c = run(db[COLL].find_one({"id": "72fef348-fba1-49ef-b048-f624de08190a"}))
+    assert c["data_notifica"] == "2026-09-24" and c["scadenza"] == "2026-11-23"
+
+
+def test_ripasso_dalla_posta_applica_le_notifiche_trovate(monkeypatch):
+    db = _db({"id": "uuid-1", "source_fact_id": "cartella:07120260127882548002", "data_notifica": None})
+
+    async def credenziali(_db):
+        return "utente@example.org", "segreto", "imap.example.org"
+
+    monkeypatch.setattr("app.services.gmail_search.get_gmail_credentials", credenziali)
+    monkeypatch.setattr(pec, "leggi_notifiche_dalla_posta", lambda *a, **k: [
+        {"oggetto": OGGETTO, "corpo": CORPO, "messaggio_id": "<m1>"},
+        {"oggetto": "Altro messaggio", "corpo": "", "messaggio_id": "<m2>"},
+    ])
+
+    esito = run(pec.ripassa_notifiche_dalla_posta(db))
+    assert (esito["lette"], esito["nuove"], esito["applicate"]) == (1, 1, 1)
+    # secondo giro: niente di nuovo
+    assert run(pec.ripassa_notifiche_dalla_posta(db))["nuove"] == 0

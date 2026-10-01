@@ -3,6 +3,7 @@ Sincronizzazione paypal_transactions da API Reporting.
 Upsert per transaction_id, enrichment dei campi mancanti.
 """
 import re
+import httpx
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,11 @@ CHECKPOINT_COLL = "paypal_sync_checkpoints"
 # Sotto questa durata la sync incrementale non chiama PayPal (vedi
 # sync_paypal_incremental).
 INTERVALLO_MINIMO_SYNC = timedelta(minutes=5)
+# PayPal: «le transazioni compaiono nel report entro 3 ore». Chiedere gli
+# ultimi minuti da' 404 (01/10/2026: 502 ad ogni apertura della pagina) e,
+# peggio, sposta il checkpoint oltre operazioni che il report non mostra
+# ancora. La finestra si chiude quindi 3 ore prima di adesso.
+RITARDO_DATI_PAYPAL = timedelta(hours=3)
 
 PAGOPA_CUSTOM_PATTERN = re.compile(r'^E\d{13}[A-Za-z0-9]{3,4}$')
 PAGOPA_IUV_PATTERN = re.compile(r'\b0\d{17}\b')
@@ -212,7 +218,7 @@ async def sync_paypal_incremental(db: ArchivioDocumenti) -> Dict[str, Any]:
             start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     else:
         start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    end = now
+    end = now - RITARDO_DATI_PAYPAL
     # Ogni apertura della pagina PayPal richiama questa sync: se l'ultimo
     # intervallo acquisito e' di pochi secondi fa non ha senso interrogare
     # PayPal per una finestra di secondi (14/09/2026: finestra di 6 s ->
@@ -240,14 +246,32 @@ async def sync_paypal_incremental(db: ArchivioDocumenti) -> Dict[str, Any]:
             }},
         )
         return {"success": True, "status": "updated", **result}
-    except Exception as exc:
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 404:
+            await _checkpoint_in_errore(db, checkpoint_id, lease_id, exc)
+            raise
+        # 404 del Reporting API = niente da leggere in quella finestra: non e'
+        # un guasto. Il checkpoint resta dov'era e la finestra cresce al giro dopo.
+        logger.warning("PayPal sync %s -> %s: 404, nessuna transazione disponibile", start, end)
         await db[CHECKPOINT_COLL].update_one(
             {"id": checkpoint_id, "lease_id": lease_id},
-            {"$set": {
-                "status": "error",
-                "last_error": type(exc).__name__,
-                "lock_until": now.isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
+            {"$set": {"status": "nessun_dato", "lock_until": now.isoformat(),
+                      "updated_at": datetime.now(timezone.utc).isoformat()}},
         )
+        return {"success": True, "status": "nessun_dato", "last_success_end": last_success}
+    except Exception as exc:
+        await _checkpoint_in_errore(db, checkpoint_id, lease_id, exc)
         raise
+
+
+async def _checkpoint_in_errore(db, checkpoint_id: str, lease_id: str, exc: Exception) -> None:
+    ora = datetime.now(timezone.utc).isoformat()
+    await db[CHECKPOINT_COLL].update_one(
+        {"id": checkpoint_id, "lease_id": lease_id},
+        {"$set": {
+            "status": "error",
+            "last_error": type(exc).__name__,
+            "lock_until": ora,
+            "updated_at": ora,
+        }},
+    )

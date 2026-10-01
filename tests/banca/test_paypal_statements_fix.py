@@ -375,3 +375,81 @@ def test_proposte_banca_non_riusa_movimento_gia_riconciliato():
     result = mod._proposte_riconciliazione_banca(txs, movimenti)
 
     assert result["proposte"] == []
+
+
+# --- 01/10/2026: riconciliazione PayPal ↔ banca senza intervento manuale ---
+
+SDD = "ADDEBITO DIRETTO SDD - SDD CORE: 49RJ2252ASLM4 PayPal Europe S.a.r.l. et Cie S.C.A"
+BONIFICO = "BONIF. VS. FAVORE - BON.DA PayPal Europe S.a.r.l. et Cie S.C.A - YYW1052371473308/PAYPAL"
+
+
+def test_addebito_sdd_dopo_quattro_giorni_si_abbina_da_solo():
+    """MongoDB: 184,31 USD = 165,96 € il 20/08, addebito SDD il 24/08."""
+    righe = [
+        {"transaction_id": "T-USD", "event_code": "T0003", "tipo": "T0003", "lordo": -184.31,
+         "currency": "USD", "data": "2026-08-20", "transaction_status": "S"},
+        {"transaction_id": "T-EUR", "event_code": "T0200", "tipo": "T0200", "lordo": -165.96,
+         "currency": "EUR", "data": "2026-08-20", "transaction_status": "S",
+         "paypal_reference_id": "T-USD"},
+    ]
+    movimento = {"id": "EC-1", "data": "2026-08-24", "importo": -165.96, "tipo": "uscita",
+                 "descrizione": SDD}
+
+    risultato = mod._proposte_riconciliazione_banca(mod._pagamenti_paypal_in_euro(righe), [movimento])
+
+    assert [(p["movimento_id"], p["transaction_id"]) for p in risultato["proposte"]] == [("EC-1", "T-USD")]
+
+
+def test_accredito_in_banca_si_abbina_al_prelievo_paypal():
+    righe = [
+        {"transaction_id": "RIMB", "event_code": "T1107", "tipo": "T1107", "lordo": 9.38,
+         "currency": "EUR", "data": "2026-08-04", "transaction_status": "S"},
+        {"transaction_id": "PRELIEVO", "event_code": "T0403", "tipo": "T0403", "lordo": -9.38,
+         "currency": "EUR", "data": "2026-08-04", "transaction_status": "S"},
+    ]
+    movimento = {"id": "EC-2", "data": "2026-08-05", "importo": 9.38, "tipo": "entrata",
+                 "descrizione": BONIFICO}
+
+    accrediti = mod._accrediti_paypal(righe)
+    risultato = mod._proposte_riconciliazione_banca(accrediti, [movimento])
+
+    assert [a["transaction_id"] for a in accrediti] == ["PRELIEVO"]  # il rimborso non conta due volte
+    assert [(p["movimento_id"], p["transaction_id"]) for p in risultato["proposte"]] == [("EC-2", "PRELIEVO")]
+
+
+def test_accredito_senza_prelievo_nel_report_usa_l_incasso_entro_venti_giorni():
+    righe = [{"transaction_id": "RIMB", "event_code": "T1107", "tipo": "T1107", "lordo": 7.8,
+              "currency": "EUR", "data": "2026-08-05", "transaction_status": "S"}]
+    movimento = {"id": "EC-3", "data": "2026-08-17", "importo": 7.8, "tipo": "entrata",
+                 "descrizione": BONIFICO}
+
+    risultato = mod._proposte_riconciliazione_banca(mod._accrediti_paypal(righe), [movimento])
+    assert [p["transaction_id"] for p in risultato["proposte"]] == ["RIMB"]
+
+    lontano = {**movimento, "data": "2026-09-10"}
+    assert mod._proposte_riconciliazione_banca(mod._accrediti_paypal(righe), [lontano])["proposte"] == []
+
+
+def test_due_addebiti_uguali_per_due_pagamenti_uguali_si_abbinano_in_ordine():
+    txs = [
+        {"transaction_id": "PAY-1", "data": "2026-07-23", "lordo": -32.94},
+        {"transaction_id": "PAY-2", "data": "2026-07-23", "lordo": -32.94},
+    ]
+    movimenti = [
+        {"id": "EC-B", "data": "2026-07-27", "importo": 32.94, "tipo": "uscita", "descrizione": SDD},
+        {"id": "EC-A", "data": "2026-07-27", "importo": 32.94, "tipo": "uscita", "descrizione": SDD},
+    ]
+
+    risultato = mod._proposte_riconciliazione_banca(txs, movimenti)
+
+    assert risultato["ambigui"] == 0
+    assert {(p["movimento_id"], p["transaction_id"]) for p in risultato["proposte"]} == {
+        ("EC-A", "PAY-1"), ("EC-B", "PAY-2"),
+    }
+    assert all("importi_uguali_in_ordine" in p["evidenze"] for p in risultato["proposte"])
+
+
+def test_importo_oltre_dieci_giorni_non_si_abbina_per_un_pagamento():
+    tx = {"transaction_id": "PAY", "data": "2026-07-01", "lordo": -50.0}
+    movimento = {"id": "EC", "data": "2026-07-15", "importo": -50.0, "tipo": "uscita", "descrizione": SDD}
+    assert mod._proposte_riconciliazione_banca([tx], [movimento])["proposte"] == []
