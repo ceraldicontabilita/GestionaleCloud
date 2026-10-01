@@ -26,6 +26,7 @@ LINK_FIELDS = (
     "prodotto_dizionario_id",
     "nome_canonico",
     "nome_canc",
+    "ingrediente_canonico",
 )
 
 
@@ -319,18 +320,20 @@ async def _overview(limit_campioni: int) -> dict:
             },
         ]
     }
-    scheduler_failed_q = {
-        "$and": [
-            {"timestamp": {"$gte": since}},
-            {
-                "$or": [
-                    {"success": False},
-                    {"errore": {"$exists": True, "$ne": ""}},
-                    {"error": {"$exists": True, "$ne": ""}},
-                ]
-            },
-        ]
-    }
+    # Non sommare centinaia di tentativi dello stesso job: interessa quali
+    # automazioni sono *ancora* guaste. Si prende quindi solo l'ultimo esito
+    # per job negli ultimi sette giorni e si valuta quello.
+    scheduler_failed_pipeline = [
+        {"$match": {"timestamp": {"$gte": since}}},
+        {"$sort": {"timestamp": -1}},
+        {"$group": {"_id": "$job", "ultimo": {"$first": "$$ROOT"}}},
+        {"$replaceRoot": {"newRoot": "$ultimo"}},
+        {"$match": {"$or": [
+            {"success": False},
+            {"errore": {"$exists": True, "$ne": ""}},
+            {"error": {"$exists": True, "$ne": ""}},
+        ]}},
+    ]
 
     issues = [
         _build_issue(
@@ -444,19 +447,20 @@ async def _overview(limit_campioni: int) -> dict:
         ),
         _build_issue(
             issue_id="scheduler_falliti_7g",
-            title="Job scheduler falliti negli ultimi 7 giorni",
-            description="Log scheduler con success=false o errore valorizzato.",
-            count=await _count("scheduler_logs", scheduler_failed_q),
+            title="Automazioni attualmente in errore",
+            description="Ultimo esito fallito per ciascun job negli ultimi 7 giorni.",
+            count=await _aggregate_count("scheduler_logs", scheduler_failed_pipeline),
             severity="alta",
             owner="Automazioni",
             route="#dashboard",
             action="Verificare ultimo errore, rilanciare il job e rendere visibile lo stato operativo.",
-            samples=await _sample(
+            samples=await _aggregate_sample(
                 "scheduler_logs",
-                scheduler_failed_q,
-                {"_id": 0, "job": 1, "timestamp": 1, "success": 1, "errore": 1, "error": 1},
+                [*scheduler_failed_pipeline, {"$project": {
+                    "_id": 0, "job": 1, "timestamp": 1, "success": 1,
+                    "errore": 1, "error": 1,
+                }}],
                 limit=limit_campioni,
-                sort=[("timestamp", -1)],
             ),
         ),
     ]

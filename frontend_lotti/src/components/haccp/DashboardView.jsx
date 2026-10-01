@@ -19,18 +19,12 @@ import {
   ShoppingCart,
   Store,
   Truck,
-  IceCreamBowl,
-  Wallet,
   Coffee,
-  TrendingDown,
-  Thermometer,
   Network,
   ShieldCheck,
   Fish,
-  Tag,
 } from "lucide-react";
 import { API } from "../../utils/constants";
-import { carteFontiCatalogo } from "../../utils/fontiCatalogo";
 import { isAdmin } from "../../auth";
 import StatoSistemaWidget from "./StatoSistemaWidget";
 import HACCPHomeCard from "./HACCPHomeCard";
@@ -128,24 +122,6 @@ function QuickLink({ icon: Icon, title, subtitle, onClick }) {
 }
 
 
-// ── Cruscotto: KPI grandi + grafico temperature ────────────────────────────
-function KpiBig({ label, value, sub, color, icon: Icon, onClick }) {
-  return (
-    <button onClick={onClick} type="button"
-      className="group flex flex-col items-start gap-1 rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-      style={{ borderColor: "#e6e0d4" }}>
-      <div className="flex w-full items-center justify-between">
-        <span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: `${color}1a`, color }}>
-          <Icon size={18} />
-        </span>
-      </div>
-      <div className="mt-1 text-2xl font-black tabular-nums" style={{ color: "#384038" }}>{value}</div>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9a917f" }}>{label}</div>
-      {sub ? <div className="text-xs font-semibold" style={{ color }}>{sub}</div> : null}
-    </button>
-  );
-}
-
 export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [pesceOpen, setPesceOpen] = useState(false);
@@ -161,12 +137,6 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
   // Fonti che non hanno risposto: un numero mancante non è uno zero, e con
   // anche una sola fonte giù la home non può dire «tutto in regola».
   const [fontiMancanti, setFontiMancanti] = useState([]);
-  const [fontiCatalogo, setFontiCatalogo] = useState([]);
-  useEffect(() => {
-    axios.get(`${API}/fonti-catalogo`, { timeout: 15000 })
-      .then((r) => setFontiCatalogo(carteFontiCatalogo(r.data)))
-      .catch(() => { /* non bloccante: restano le tre card storiche */ });
-  }, []);
 
   const navigate = useCallback((tab) => {
     if (tab?.includes("/")) {
@@ -214,10 +184,9 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
 
   const riepilogo = useMemo(() => {
     const scadenzeUrgenti = lottiScadenza.filter((l) => (l.giorni_alla_scadenza ?? 99) <= 2).length;
-    const pezziProdotti = produzioniOggi.reduce((s, p) => s + (p.pezzi || p.quantita || 0), 0);
     const bancoAperto = venditeOggi.filter((v) => v.stato === "aperto").length;
-    return { scadenzeUrgenti, pezziProdotti, bancoAperto };
-  }, [lottiScadenza, produzioniOggi, venditeOggi]);
+    return { scadenzeUrgenti, bancoAperto };
+  }, [lottiScadenza, venditeOggi]);
 
   const [refreshing, setRefreshing] = useState(false);
   const aggiorna = async () => {
@@ -323,74 +292,12 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
             <ActionCard icon={Coffee} title="Bar" subtitle="Caffetteria e bevande: produci e registra lotti." badge="Tablet" tone="coffeeV" onClick={() => navigate("tablet/bar")} />
             <ActionCard icon={Store} title="Banco vendita" subtitle="Apri il banco, registra vendita e scarica lotti." badge={riepilogo.bancoAperto ? `${riepilogo.bancoAperto} aperto` : "Tablet"} tone="sandV" onClick={() => navigate("tablet/vendita")} />
             <ActionCard icon={Package} title="Magazzino" subtitle="Scarichi rapidi, giacenze e movimenti con la sessione attiva." badge="Tablet" tone="sandDarkV" onClick={() => navigate("tablet/magazzino")} />
-            <ActionCard icon={IceCreamBowl} title="Gelati" subtitle="Calcolo ricette, produzioni con lotto e invenduti." badge="Lab" tone="salviaV" onClick={() => navigate("gelati")} />
             <ActionCard icon={AlertTriangle} title="Cosa usare oggi" subtitle="Lotti per urgenza scadenza e valore economico, con azioni rapide." badge={riepilogo.scadenzeUrgenti ? `${riepilogo.scadenzeUrgenti} urgenti` : "OK"} tone={riepilogo.scadenzeUrgenti ? "red" : "amber"} onClick={() => navigate("cosa_usare_oggi")} />
-            <ActionCard icon={ChefHat} title="Produzione consigliata" subtitle="Cosa produrre domani, in base a storico, invenduto e festività." badge="Nuovo" tone="amber" onClick={() => navigate("produzione_consigliata")} />
-            <ActionCard icon={Layers} title="Lotti" subtitle="Scadenze, tracciabilità e registro lotti." badge={lottiScadenza.length ? `${lottiScadenza.length} scadenze` : "OK"} tone={lottiScadenza.length ? "red" : "neutral"} onClick={() => navigate("lotti")} />
           </div>
         </div>
       </section>
-
-      <section>
-        <SectionTitle
-          title="Cataloghi fornitori"
-          subtitle="Accesso diretto ai cataloghi completi collegati agli acquisti."
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <ActionCard icon={Package} title="Acquaviva" subtitle="Catalogo Dolciaria Acquaviva e prodotti acquistati." badge="Catalogo" tone="amber" onClick={() => navigate("prodotti/acquaviva")} />
-          <ActionCard icon={Building2} title="SAIMA" subtitle="Categorie, prodotti e ricettari SAIMA." badge="Catalogo" tone="green" onClick={() => navigate("prodotti/saima")} />
-          <ActionCard icon={ShoppingCart} title="MEPA" subtitle="Catalogo prodotti MEPA Alimentari." badge="Catalogo" tone="neutral" onClick={() => navigate("prodotti/mepa")} />
-          {fontiCatalogo.map((c) => (
-            <ActionCard key={c.chiave} icon={Tag} title={c.titolo} subtitle={c.sottotitolo} badge={c.badge} tone="amber" onClick={() => navigate(c.percorso)} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── CRUSCOTTO: colpo d'occhio del mattino ──────────────────────── */}
-      {!loading && (() => {
-        const k = cruscotto?.kpi || {};
-        const nd = "Dato non disponibile";
-        const conta = (v) => (v === null || v === undefined ? nd : v);
-        const spesa = k.spesa_mese === null || k.spesa_mese === undefined
-          ? nd
-          : `€${Number(k.spesa_mese).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        const subSpesa = !cruscotto ? "cruscotto non raggiungibile"
-          : k.spesa_errore ? k.spesa_errore
-          : `${k.fatture_mese} fatture${k.fatture_senza_importo ? ` · ${k.fatture_senza_importo} senza importo` : ""}`;
-        const subScorta = k.sotto_scorta === null || k.sotto_scorta === undefined ? (k.scorte_errore || "non letto")
-          : [k.esauriti ? `${k.esauriti} esauriti` : null, k.senza_soglia ? `${k.senza_soglia} senza soglia` : null]
-              .filter(Boolean).join(" · ") || "tutto ok";
-        return (
-        <section className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <KpiBig label="Spesa 30 giorni" value={spesa}
-              sub={subSpesa} color="#5b7a6b" icon={Wallet} />
-            <KpiBig label="Sotto scorta" value={conta(k.sotto_scorta)}
-              sub={subScorta} color={k.sotto_scorta ? "#c4894a" : "#3d8168"} icon={TrendingDown} onClick={() => navigate("backoffice")} />
-            <KpiBig label="Lotti scaduti" value={conta(k.lotti_scaduti)}
-              sub={!cruscotto ? "non letto" : k.lotti_in_scadenza ? `${k.lotti_in_scadenza} in scadenza` : "nessuno"} color={k.lotti_scaduti ? "#d35f4e" : "#3d8168"} icon={AlertTriangle} onClick={() => navigate("lotti")} />
-            <KpiBig label="Ordini da convalidare" value={conta(k.ordini_bozza)}
-              sub={!cruscotto ? "non letto" : k.ordini_bozza ? "bozze in attesa" : "nessuno"} color={k.ordini_bozza ? "#8a6f47" : "#3d8168"} icon={ShoppingCart} onClick={() => navigate("ordini")} />
-            <KpiBig label="Prodotti oggi" value={fontiMancanti.includes("produzioni di oggi") ? nd : fmt(riepilogo.pezziProdotti)}
-              sub="pezzi in produzione" color="#8a6f47" icon={ChefHat} onClick={() => navigate("storico_produzioni")} />
-          </div>
-        </section>
-        );
-      })()}
-
-
       {/* Home più pulita: Area ufficio e Archivio (roba da scrivania, non
           quotidiana in negozio) sotto un pulsante a comparsa, chiuso di default. */}
-      {isAdmin() && (
-        <section>
-          <SectionTitle title="Amministrazione" subtitle="Configurazione sempre visibile per il titolare." />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <QuickLink icon={Settings} title="Impostazioni" subtitle="Azienda, operatori, frigoriferi, stampanti, backup" onClick={() => navigate("impostazioni")} />
-            <QuickLink icon={Network} title="Controllo dati" subtitle="Integrità, anomalie e manutenzione archivio" onClick={() => navigate("controllo_dati")} />
-          </div>
-        </section>
-      )}
-
       <button
         type="button"
         onClick={() => setUfficioOpen(v => !v)}
@@ -426,9 +333,9 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
           <QuickLink icon={Truck} title="Ricezione merce" subtitle="Arrivi, controlli e fornitori" onClick={() => navigate("ricezione_merce")} />
           {isAdmin() && <QuickLink icon={ClipboardCheck} title="Collaudi da fare" subtitle="Test da spuntare dopo ogni modifica" onClick={() => navigate("collaudi")} />}
           <QuickLink icon={FileText} title="Listini e cataloghi" subtitle="Listini, cataloghi fornitori, prezzi banco e magazzino" onClick={() => navigate("prodotti")} />
+          {isAdmin() && <QuickLink icon={Network} title="Controllo dati" subtitle="Integrità, anomalie e manutenzione archivio" onClick={() => navigate("controllo_dati")} />}
         </div>
       </section>
-      </>)}
 
       <section className="border-t border-stone-200 pt-4">
         <SectionTitle title="Strumenti avanzati" subtitle="Registro pesce, centro HACCP e stato sistema." />
@@ -467,6 +374,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
           <StatoSistemaWidget />
         </div>
       </section>
+      </>)}
     </div>
   );
 }

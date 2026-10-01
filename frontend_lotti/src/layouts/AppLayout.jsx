@@ -76,7 +76,7 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
           </button>
         </div>
 
-        {/* Destra: azioni del titolare, ingranaggio Impostazioni sempre ultimo.
+        {/* Destra: azioni del titolare, ingresso unico alle impostazioni del gruppo.
             Sul telefono le azioni scendono su una seconda riga e l'ingranaggio
             resta in testata accanto a «← Gestionale» (App.css). */}
         {amministratore && (
@@ -112,19 +112,17 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
         )}
         {amministratore && (
           <div className="g-header-ingranaggio" style={{ flexShrink: 0 }}>
-            <AltroDropdown
-              tabs={IMPOSTAZIONI_TABS}
-              activeTab={activeTab}
-              onTabChange={onTabChange}
-              etichetta="Impostazioni"
-              icona={Settings}
-              nome="impostazioni"
-              ariaLabel="Impostazioni e amministrazione"
-              classeBottone="g-impostazioni-btn"
-              stileBottone={{ ...btnHeaderStyle, minHeight: 44 }}
-              classeEtichetta="g-header-btn-label"
-              freccia={false}
-            />
+            <a
+              href="/admin/app"
+              data-testid="impostazioni-gestionale-link"
+              aria-label="Impostazioni centralizzate nel Gestionale"
+              title="Impostazioni centralizzate nel Gestionale"
+              className="g-impostazioni-btn"
+              style={{ ...btnHeaderStyle, minHeight: 44, textDecoration: "none" }}
+            >
+              <Settings size={15} />
+              <span className="g-header-btn-label" style={{ whiteSpace: "nowrap" }}>Impostazioni</span>
+            </a>
           </div>
         )}
       </header>

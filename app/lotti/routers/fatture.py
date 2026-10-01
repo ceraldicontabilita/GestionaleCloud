@@ -544,8 +544,14 @@ async def importa_fattura_xml(files: List[UploadFile]):
     }
     ids_completi = []
 
-    fornitori_esclusi_docs = await db.fornitori.find({"escluso": True}, {"nome": 1}).to_list(5000)
-    fornitori_esclusi = {f["nome"].lower() for f in fornitori_esclusi_docs}
+    # Una sola risposta alla domanda "questo fornitore alimenta Lotti?".
+    # L'anagrafica ERP e' canonica e puo' correggere una vecchia esclusione
+    # locale di Lotti. Leggere qui soltanto ``db.fornitori.escluso`` creava un
+    # secondo filtro: il ponte ammetteva la fattura, l'importatore la scartava
+    # e lo scheduler la riprovava per sempre dichiarando comunque successo.
+    from app.services.magazzino_fornitore import carica_decisioni
+
+    decisioni_fornitori = await carica_decisioni(db_lotti=db)
     fornitori_solomag_docs = await db.fornitori.find({"tipo_fornitura": "solo_magazzino"}, {"nome": 1}).to_list(5000)
     fornitori_solo_magazzino = {f["nome"].lower() for f in fornitori_solomag_docs}
 
@@ -623,7 +629,9 @@ async def importa_fattura_xml(files: List[UploadFile]):
                 risultati["errori"].append(f"{file.filename}: Fornitore non trovato")
                 continue
 
-            if fattura_data["fornitore"].lower() in fornitori_esclusi:
+            if decisioni_fornitori.escluso(
+                fattura_data.get("piva"), fattura_data.get("fornitore")
+            ):
                 risultati["fatture_saltate_escluse"] += 1
                 continue
 
@@ -1113,6 +1121,7 @@ async def importa_fattura_xml(files: List[UploadFile]):
         try:
             from app.lotti.routers.pipeline import esegui_pipeline_post_import
             from app.lotti.routers.aggiornamento_ricette import aggiorna_ricette_da_fattura
+            from app.lotti.routers.ricette import collega_ingredienti_canonico
             import asyncio
 
             asyncio.create_task(
@@ -1147,6 +1156,16 @@ async def importa_fattura_xml(files: List[UploadFile]):
                         risultati["match_ingredienti_ricette"].extend(res.get("match", []))
                 except Exception as e:
                     logger.warning(f"[fatture] aggiornamento ricette fallito: {e}")
+
+            # Il collegamento salvato sulla ricetta usa il matcher canonico
+            # deterministico (lo stesso delle righe fattura). Le mappature
+            # apprese sopra, da sole, non valorizzavano ``nome_canonico`` e il
+            # Controllo dati continuava a mostrare migliaia di ingredienti
+            # scollegati anche dopo l'arrivo delle fatture.
+            collegamenti = await collega_ingredienti_canonico()
+            risultati["ingredienti_ricette_collegati"] = collegamenti.get(
+                "ingredienti_collegati", 0
+            )
 
         except Exception as e:
             logger.warning(f"[fatture] Avvio pipeline post-import fallito: {e}")

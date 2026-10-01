@@ -30,7 +30,7 @@ describe("testata di Lotti", () => {
     node.remove();
   });
 
-  test("il titolare vede per primo «← Gestionale», il logo porta alla Home e l'ingranaggio le Impostazioni", async () => {
+  test("il titolare vede per primo «← Gestionale», il logo porta alla Home e le impostazioni centralizzate", async () => {
     saveRuolo("amministratore");
     const onTabChange = jest.fn();
     await act(async () => root.render(<AppLayout activeTab="lotti" onTabChange={onTabChange}>x</AppLayout>));
@@ -43,10 +43,8 @@ describe("testata di Lotti", () => {
     await act(async () => testata.querySelector('[data-testid="logo-home-lotti"]').click());
     expect(onTabChange).toHaveBeenCalledWith("dashboard");
 
-    const ingranaggio = testata.querySelector('[data-testid="impostazioni-dropdown-btn"]');
-    await act(async () => ingranaggio.click());
-    await act(async () => node.querySelector('[data-testid="impostazioni-menu-backoffice"]').click());
-    expect(onTabChange).toHaveBeenCalledWith("backoffice");
+    const impostazioni = testata.querySelector('[data-testid="impostazioni-gestionale-link"]');
+    expect(impostazioni.getAttribute("href")).toBe("/admin/app");
   });
 
   test("il Backoffice non sta più sotto «Altro»", async () => {
@@ -60,7 +58,7 @@ describe("testata di Lotti", () => {
   test("il dipendente non vede ingranaggio né indicatore amministratore", async () => {
     saveRuolo("operatore");
     await act(async () => root.render(<AppLayout activeTab="ricette" onTabChange={() => {}}>x</AppLayout>));
-    expect(node.querySelector('[data-testid="impostazioni-dropdown-btn"]')).toBeNull();
+    expect(node.querySelector('[data-testid="impostazioni-gestionale-link"]')).toBeNull();
     expect(node.querySelector('[data-testid="indicatore-amministratore"]')).toBeNull();
     expect(node.querySelector('[data-testid="btn-torna-gestionale"]')).toBeNull();
     expect(node.querySelector("header").textContent).toContain("Reparti");

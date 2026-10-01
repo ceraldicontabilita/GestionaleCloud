@@ -397,6 +397,7 @@ async def esegui_sync_gestionale(
         # conflitti gia' segnalati per la stessa impronta: restano da vedere,
         # ma non si rileggono a ogni giro (occuperebbero il tetto per sempre)
         "conflitti_noti": 0,
+        "non_importabili_noti": 0,
         "conflitti": [],
         "errori": [],
     }
@@ -432,6 +433,13 @@ async def esegui_sync_gestionale(
             ).to_list(100000)
             if str(r.get("fattura_id") or "") in presenti
         }
+        non_importabili_noti = {
+            str(r.get("source_id") or ""): str(r.get("source_hash") or "")
+            for r in await getattr(db, RECEIPTS).find(
+                {"stato": "senza_contenuto"},
+                {"_id": 0, "source_id": 1, "source_hash": 1},
+            ).to_list(100000)
+        }
         da_prendere = []
         for item in items:
             sid = str(item.get("source_id") or "").strip()
@@ -441,6 +449,9 @@ async def esegui_sync_gestionale(
                 continue
             if sid and sh and noti.get(sid) == sh:
                 result["conflitti_noti"] += 1
+                continue
+            if sid and sh and non_importabili_noti.get(sid) == sh:
+                result["non_importabili_noti"] += 1
                 continue
             da_prendere.append(item)
         # Un fornitore escluso non entra mai in Lotti: lo si toglie PRIMA del
@@ -524,6 +535,19 @@ async def esegui_sync_gestionale(
 
             if not item.get("has_xml") and not item.get("lines"):
                 result["senza_xml"] += 1
+                if not anteprima:
+                    await getattr(db, RECEIPTS).update_one(
+                        {"source_id": source_id},
+                        {"$set": {
+                            "source_id": source_id,
+                            "source_hash": source_hash,
+                            "stato": "senza_contenuto",
+                            "numero_fattura": item.get("invoice_number"),
+                            "data_fattura": item.get("invoice_date"),
+                            "ultimo_controllo": now,
+                        }},
+                        upsert=True,
+                    )
                 continue
             result["importabili"] += 1
             if anteprima:
@@ -587,6 +611,7 @@ async def esegui_sync_gestionale(
             await client.aclose()
 
     result["ok"] = not result["errori"] and not result["conflitti"]
+    result["completo"] = result["ok"] and result["arretrato"] == 0
     if not anteprima:
         await db.sistema_stato.update_one(
             {"chiave": "gestionale_fatture_sync"},
