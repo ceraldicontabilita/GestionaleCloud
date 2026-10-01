@@ -369,6 +369,8 @@ async def elimina(codice: str, fornitore: str, _admin=Depends(require_admin)):
 _LISTINI_PRECARICATI = {
     # Catalogo riservato a Ceraldi Group scaricato da barone.passweb.it il 28/09/2026
     "barone": "listino_barone_2026-09-28.json",
+    # Catalogo bar del vecchio archivio: un file con un listino per fornitore (P.IVA dell'anagrafica)
+    "catalogo_ceraldi": "listini_catalogo_ceraldi_2026-07.json",
 }
 _MAX_LISTINO_BYTES = 15 * 1024 * 1024
 
@@ -388,15 +390,11 @@ async def _dopo_listino() -> None:
         logger.warning("[listino] lettura AI dopo l'import non riuscita: %s: %s", type(exc).__name__, exc)
 
 
-async def importa_listino_precaricato(chiave: str, forza: bool = False) -> dict:
-    """Carica un listino bundlato nel repo, se e' piu' recente di quello in archivio."""
+async def _importa_un_listino(payload: dict, forza: bool) -> dict:
     from app.lotti.servizi import listino_fornitore as lf
 
-    path = os.path.join(_DATA_DIR, _LISTINI_PRECARICATI[chiave])
-    with open(path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
     fornitore = payload["fornitore"]
-    fonte = await db.fonti_catalogo_esterne.find_one({"fornitore_key": fornitore["fornitore_key"]}, {"_id": 0})
+    fonte = await db.fonti_catalogo_esterne.find_one({"fornitore_key": lf.slug(fornitore["fornitore_key"])}, {"_id": 0})
     if fonte and not forza and str(fonte.get("listino_data") or "") >= payload["data_listino"]:
         return {"gia_presente": True, "listino_data": fonte.get("listino_data")}
     esito = lf.leggi_righe(payload["tabella"])
@@ -406,6 +404,23 @@ async def importa_listino_precaricato(chiave: str, forza: bool = False) -> dict:
         data_listino=payload["data_listino"], file_sha256=payload.get("file_sha256", ""),
         nome_file=payload.get("file", ""),
     )
+
+
+async def importa_listino_precaricato(chiave: str, forza: bool = False) -> dict:
+    """Carica un listino bundlato nel repo, se e' piu' recente di quello in archivio.
+    Un file puo' portare piu' fornitori (``listini``): l'esito e' uno per fornitore."""
+    path = os.path.join(_DATA_DIR, _LISTINI_PRECARICATI[chiave])
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    if "listini" not in payload:
+        return await _importa_un_listino(payload, forza)
+    esiti = {}
+    for listino in payload["listini"]:
+        try:
+            esiti[listino["fornitore"]["fornitore_key"]] = await _importa_un_listino(listino, forza)
+        except Exception as exc:  # noqa: BLE001 - un fornitore non ferma gli altri
+            esiti[listino["fornitore"]["fornitore_key"]] = {"errore": f"{type(exc).__name__}: {exc}"}
+    return esiti
 
 
 async def inizializza_listini_precaricati() -> dict:

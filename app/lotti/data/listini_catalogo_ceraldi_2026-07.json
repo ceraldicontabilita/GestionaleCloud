@@ -1,0 +1,7607 @@
+{
+"_fonte": "Catalogo bar Ceraldi (vecchio archivio, luglio 2026): prezzi dichiarati IVA esclusa per fornitore; 90 prodotti senza fornitore esclusi su decisione del titolare",
+"listini": [
+{
+"fornitore": {
+"nome": "Dolciaria Acquaviva S.p.A.",
+"fornitore_key": "acquaviva",
+"partita_iva": "",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "fdb285fc47708558bc2368300ca54ead5b12301cac9808561510d5afe44bf8ad",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-16218",
+"AQV BABY CRNT CALI STRA 35G 3.15KG",
+28.22,
+"KAR",
+"BASI E MIX",
+"",
+null
+],
+[
+"CC-16219",
+"AQV CMBLL MAXI SUGARED 100G 3KG",
+20.7,
+"KAR",
+"BASI E MIX",
+"",
+null
+],
+[
+"CC-16220",
+"AQV CRNT CALI STRA 95G 3.8KG",
+32.12,
+"KAR",
+"BASI E MIX",
+"",
+null
+],
+[
+"CC-16221",
+"AQV CRNT STR MLTCER HONEY 80G 4.48KG",
+40.55,
+"KAR",
+"BASI E MIX",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "Alfa Service Srl",
+"fornitore_key": "alfaservicesrl",
+"partita_iva": "06626921214",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "b31a3ce91924d3082275250a71692ab64b3037927c59de7e9daf7024fe60b160",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0561",
+"CANNUCCE DRITTE 13CM TRASPARENTI CF 1000PZ",
+4.27,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0562",
+"BOBINA ALLUMINIO NUDA FLOOR",
+4.27,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0563",
+"BICCHIERI 80CC BIANCO 96PZ",
+0.79,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0564",
+"PALETTINA BETULLA IMBUSTATA 50PZ",
+0.49,
+"CF",
+"CARTA",
+"",
+null
+],
+[
+"CC-0565",
+"TOVAGLIOLI 24X24 2V BORDEAUX CF 100PZ",
+1.4,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0566",
+"ISAP BICCHIERI KRISTAL 300CC CF 50PZ",
+2.01,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0567",
+"ISAP BICCHIERI KRISTAL 250CC CF 50PZ",
+1.46,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0568",
+"PELLICOLA NUDA H 300MM",
+5.12,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0569",
+"BICCHIERI CARTONCINO 250CC 50PZ",
+1.83,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0570",
+"TOVAGLIOLI 17X17 BIANCHI SFUSI",
+4.27,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0571",
+"CUCCHIAINO RIUTILIZZABILE TRASPARENTE 100PZ",
+2.07,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0572",
+"CUCCHIAINO RIUTILIZZABILE PS MULTICOLOR 13CM 1KG",
+6.71,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0573",
+"PIROTTINI BABA CRYSTAL GRANDE 11X6 400PZ",
+28.06,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0574",
+"NAVETTE FONDO ORO 10KG N1",
+20.74,
+"PZ",
+"CARTA",
+"IMBALLAGGIO",
+null
+],
+[
+"CC-0575",
+"COPERCHI BICCHIERI CARTONCINO 250CC 50PZ",
+1.83,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0576",
+"TOVAGLIOLI 25X25 EXTRA 1 SCELTA 9KG",
+28.06,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0577",
+"CANNUCCE DRITTE 21CM TRASPARENTI CF 1000PZ",
+4.88,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0578",
+"CANNUCCE NERE IMBUSTATE SING. PLASTICA 21CM 500PZ",
+5.246,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0579",
+"STRISCIA ORO LARGA 10KG",
+29.89,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0580",
+"TOVAGLIOLI 15X15 EXTRA 1 SCELTA 9KG",
+28.06,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0581",
+"SHOPPERS COMPOSTABILI 27X50 MAIS 6.5GR 500PZ",
+20.74,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0582",
+"NASTRINI 250/500 YARDS MARRONE",
+1.95,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0583",
+"BICCHIERI CARTONCINO 75CC 2000PZ",
+18.3,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0584",
+"COPERCHIO BICCHIERE CARTONCINO 75CC 50PZ",
+0.61,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0585",
+"STUZZICADENTI IMBUSTATI 9CM LEGNO 1000PZ",
+3.05,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0586",
+"NASTRO 19X66 ADESIVO TRASPARENTE",
+0.73,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0587",
+"ROTOLO TERMICO OMOLOGATO 80X80X12 CF 10PZ",
+10.98,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0588",
+"SACCHI AMBRA 18KG",
+32.94,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0589",
+"BICCHIERI TRASPARENTE 200CC 96PZ",
+0.73,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0590",
+"ROTOLONI ALFA SERVICE TIPO 900",
+6.95,
+"CP",
+"CARTA",
+"",
+null
+],
+[
+"CC-0591",
+"CARTA IGIENICA CARIND DYNAMIC 10RT",
+1.71,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0592",
+"CARTA IGIENICA CARIND EXCLUSIVE 3V 4RT",
+1.83,
+"PZ",
+"CARTA",
+"",
+null
+],
+[
+"CC-0712",
+"NAVETTE FONDO ORO 10KG N2",
+20.74,
+"CF",
+"IMBALLAGGIO",
+"",
+null
+],
+[
+"CC-0713",
+"NAVETTE FONDO ORO 10KG N3",
+20.74,
+"CF",
+"IMBALLAGGIO",
+"",
+null
+],
+[
+"CC-0714",
+"NAVETTE FONDO ORO 10KG N4",
+20.74,
+"CF",
+"ALTRO",
+"",
+null
+],
+[
+"CC-0715",
+"NAVETTE FONDO ORO 10KG N5",
+20.74,
+"CF",
+"IMBALLAGGIO",
+"",
+null
+],
+[
+"CC-0716",
+"NAVETTE FONDO ORO 10KG N6",
+20.74,
+"CF",
+"IMBALLAGGIO",
+"",
+null
+],
+[
+"CC-0717",
+"NAVETTE FONDO ORO 10KG N7",
+20.74,
+"CF",
+"IMBALLAGGIO",
+"",
+null
+],
+[
+"CC-0718",
+"NAVETTE FONDO ORO 10KG N8",
+20.74,
+"CF",
+"IMBALLAGGIO",
+"",
+null
+],
+[
+"CC-0720",
+"NAVETTE FONDO ORO 10KG N10",
+20.74,
+"CF",
+"IMBALLAGGIO",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "BIG FOOD SRL",
+"fornitore_key": "bigfood",
+"partita_iva": "06356400637",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "4c5273cbc01fd72ab5b861b27a7851dd4529a024a4d2f906f37e27924a11a7a3",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-16295",
+"LEONCINI P/COTTO TIROLO",
+7.821,
+"KG",
+"CONSERVE",
+"",
+null
+],
+[
+"CC-16296",
+"SCARLINO WURSTEL GR.100 CLASSICO C",
+0.429,
+"PZ",
+"CONSERVE",
+"",
+null
+],
+[
+"CC-16297",
+"WELCOME FETTE GR.800",
+4.6696,
+"PZ",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-16302",
+"TULIP BACON/PANCETTA AFFUM.KG.1",
+12.727,
+"PZ",
+"CONSERVE",
+"",
+null
+],
+[
+"CC-16307",
+"RIO MARE TONNO O.OLIVA GR.65 X6",
+5.775,
+"",
+"",
+null,
+10
+]
+]
+},
+{
+"fornitore": {
+"nome": "DI VINCENZO GROUP SRL",
+"fornitore_key": "divincenzo",
+"partita_iva": "18377021003",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "1567bf899262904b06d4d4c4b16aaa4e98c72ba21c5116080d2a0cfcde2b6b9b",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0006",
+"ACQUA SORGESANA VAP CL.33 CTX24",
+9.28,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0008",
+"ALBERTI STREGA LIQUORE CL100",
+14.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0009",
+"APERITIVO L'APE CL.100 BAGNOLI",
+5.6,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0010",
+"APEROL BARBIERI CL.100",
+11.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0011",
+"BAILEYS ORIGINAL IRISH CREAM CL.100",
+15.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0012",
+"BITTER CAMPARI CL.100",
+15,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0013",
+"BITTERS ORANGE CL.15 FEE BROTHERS 1864",
+15.63,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0014",
+"BOLS CURACAO BLU CL.70",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0019",
+"BOLS LIQ.CL70 DRY ORANGE",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0020",
+"BOLS LIQ.CL70 MENTA BIANCA",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0021",
+"BOLS LIQ.CL70 TRIPLE SEC",
+12.76,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0022",
+"BORSCI AMARO CL100 S.MARZANO",
+12.45,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0023",
+"BRANDY BRANCA CL100 STRAVECCHIO",
+14.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0024",
+"BRANDY BRANCA CL70 STRAVECCHIO",
+11.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0026",
+"BRANDY STOCK 84 CL70 ORIGINAL",
+8.6,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0027",
+"CACHACA CL100 51",
+15.55,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0028",
+"CARDENAL MENDOZA CL70 BRANDY",
+23.92,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0029",
+"CHINA MARTINI CL70",
+11.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0030",
+"COGNAC COURVOISIER CL70VS",
+25.45,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0032",
+"COGNAC HENNESSY CL70 V.S.",
+31,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0033",
+"COGNAC MARTELL CL70 VS",
+192.48,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0036",
+"DE KUYPER CL70 CREMA CACAO BIANCA",
+9.68,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0037",
+"DE KUYPER CL70 CREMA DECASSIS",
+10.84,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0038",
+"DE KUYPER CL70 DRY ORANGE",
+10.84,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0039",
+"DE KUYPER CL70 MENTA BIANCA",
+11.24,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0040",
+"DE KUYPER CL70 PEACHTREE",
+11.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0041",
+"DE KUYPER CL70 TRIPLE SEC",
+13.1,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0042",
+"DRAMBUIE CL.100",
+29.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0043",
+"DRAMBUIE CL.70",
+22.76,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0044",
+"GIN BOMBAY CL100 SAPPHIRE BLU",
+17.9,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0045",
+"GIN BOSFORD CL100",
+8.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0046",
+"GIN BULLDOG CL100",
+22.32,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0047",
+"GIN BULLDOG CL70",
+18.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0048",
+"GIN ELEPHANT CL50 LONDON DRY",
+23.4,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0049",
+"GIN GORDON'S CL100",
+12.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0051",
+"GIN MARTIN MILLER'S CL70",
+27.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0052",
+"GIN MONKEY 47 CL50 DRY",
+35.42,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0053",
+"GIN PORTOFINO DRY CL.50 43°",
+44,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0054",
+"GIN ROKU CL 100",
+34.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0055",
+"GIN ROKU CL70",
+26.6,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0057",
+"GIN TANQUERAY CL.100",
+18.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0059",
+"GRAND MARNIER CL.70",
+18,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0060",
+"GRAND MARNIER CL100",
+23.18,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0061",
+"GRAPPA LA TRENTINA MORBIDA BARRIQUE CL.70 MARZADRO",
+17.05,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0062",
+"GRAPPA LA TRENTINA TRADIZIONALE BIANCA CL.70 MARZADRO",
+2.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0063",
+"HAVANA CLUB RESERVA CL70",
+14.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0064",
+"JAGERMAISTER CL 100",
+14.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0065",
+"KAHLUA CL.100",
+16.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0066",
+"LEMONSODA CL.20 CTX24",
+11.3,
+"CT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0067",
+"LIMONCELLO DI CAPRI CL.100",
+12.23,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0068",
+"LIQUORE ST. GERMAIN CL.70",
+28.1,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0071",
+"PUNT & MES CL.100",
+9.76,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0072",
+"RON HAVANA CLUB 3Y CL.100",
+28,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0073",
+"RON HAVANA CLUB 3Y CL.70",
+12.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0074",
+"RON HAVANA CLUB 7Y CL.100",
+28,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0075",
+"RON HAVANA CLUB 7Y CL.70",
+12.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0076",
+"RON HAVANA CLUB ESPECIAL CL.100",
+17,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0077",
+"RON HAVANA CLUB ESPECIAL CL.70",
+13.64,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0078",
+"RON PAMPERO CL70 ANEJO ESPECIAL",
+12.1,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0079",
+"RON PAMPERO CL70 ANIVERSARIO RESERVA EXCLUSIVA",
+22.55,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0080",
+"RON PAMPERO CL70 BLANCO",
+9,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0081",
+"RON ZACAPA CL100 23Y SOLERA",
+62.13,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0082",
+"RON ZACAPA CL70 23Y SOLERA",
+51.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0083",
+"RON ZACAPA CL70 XO",
+130,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0085",
+"RUM BACARDI CL100 BIANCO",
+11.04,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0086",
+"RUM DIPLOMATICO CL70 MANTUANO",
+23.55,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0087",
+"TEQUILA JOSE'CUERVO CL100 BIANCA",
+14.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0088",
+"VECCHIA ROMAGNA CL100 BRANDY ETIC.NERA",
+11.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0090",
+"VERMOUTH CARPANO ANTICA FORMULA CL.100",
+27.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0092",
+"WHISKEY JACK DANIEL'S CL100",
+21.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0093",
+"WHISKEY JAMESON CL100",
+20.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0094",
+"WHISKEY JAMESON CL70",
+16.24,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0095",
+"WHISKY CANADIAN CL70 CLUB",
+16.1,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0096",
+"WHISKY CHIVAS REGAL CL100 12Y",
+18.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0097",
+"WHISKY FOUR ROSES BOURBON CL.100",
+13.55,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0098",
+"WHISKY FOUR ROSES BOURBON CL70",
+13.55,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0099",
+"WHISKY GLEN GRANT CL1005Y",
+12.77,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0101",
+"WHISKY GLENLIVET CL70 12Y",
+34.47,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0103",
+"WHISKY LAGAVULIN CL70 16Y",
+74,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0104",
+"WHISKY LAPHROAIG CL70 10Y",
+35.7,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0105",
+"WHISKY OBAN CL70 14Y",
+60,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0107",
+"WILD TURKEY CL100 BOURBON 81",
+27.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0108",
+"WILD TURKEY CL70 BOURBON 81",
+21.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0110",
+"PERNOD CL70",
+12.62,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0111",
+"AMARO RABARBARO ZUCCA CL100",
+13.03,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0112",
+"AMARO RABARBARO ZUCCA CL70",
+8.34,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0113",
+"BRAULIO AMARO CL100",
+14.01,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0114",
+"AMARO JEFFERSON CL70 30%",
+23.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0115",
+"AVERNA AMARO CL100",
+15.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0116",
+"AVERNA AMARO CL150",
+24.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0117",
+"AVERNA AMARO CL50",
+7.9,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0118",
+"AVERNA AMARO CL70",
+11.26,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0119",
+"LUCANO AMARO CL100",
+11.8,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0120",
+"LUCANO AMARO CL150",
+17.03,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0121",
+"LUCANO AMARO CL70",
+8.9,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0123",
+"RAMAZZOTTI AMARO CL150",
+22.5,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0124",
+"RAMAZZOTTI AMARO CL70",
+10.1,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0125",
+"VODKA BELUGA CL100",
+42.6,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0126",
+"VODKA STOLICHNAYA CL100",
+12.5,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0127",
+"VODKA BELVEDERE CL100",
+38.17,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0128",
+"VODKA GREY GOOSE CL100",
+30.5,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0129",
+"GIN HENDRICK'S CL.70",
+30.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0130",
+"GIN HENDRICK'S CL100",
+38.5,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0131",
+"MALIBU CL.100",
+14,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0132",
+"MIDORI CL100",
+22,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0133",
+"MIDORI CL70",
+16.7,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0134",
+"DISARONNO CL100",
+16.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0135",
+"DISARONNO CL70",
+10.8,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0136",
+"AMARO UNICUM CL100",
+15.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0137",
+"AMARO UNICUM CL70",
+11.5,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0138",
+"PASTIS 51 CL.100",
+11.53,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0139",
+"AMARO PETRUS CL70",
+11.8,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0140",
+"VOV LIQUORE CL70 ALL'UOVO",
+10.1,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0141",
+"LUXARDO MARASCHINO CL.70",
+6.3,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0142",
+"MARTINI AMBRATO CL70 RISERVA SPECIALE",
+13.19,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0143",
+"MARTINI BIANCO CL100",
+7.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0144",
+"MARTINI RUBINO CL75 RISERVA SPECIALE",
+14.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0145",
+"MARTINI ROSSO CL100",
+7.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0146",
+"MARTINI CL100 EXTRA DRY",
+3.84,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0147",
+"AMARO CYNAR CL.100",
+12,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0148",
+"AMARO FERNET BRANCA CL.100",
+16.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0149",
+"AMARO VECCHIO DEL CAPO CL.100",
+16.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0150",
+"BIRRA BECK'S 0.33 CTX24 - GERMANIA",
+19,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0151",
+"BIRRA CERES STRONG ALE CL.33 CTX24 - DANIMARCA",
+34.0001,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0152",
+"BIRRA ICHNUSA NON FILTRATA CL.33 CTX24 - ITALIA",
+24.5,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0153",
+"BIRRA LEFFE BLONDE CL.33 CTX24 - BELGIO",
+34.57,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0154",
+"BIRRA MENABREA BIONDA CL.33 CTX24",
+23.38,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0155",
+"BIRRA PERONI CL.33 CTX24 - ITALIA",
+15.5,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0156",
+"BIRRA PERONI CL.66 CTX15 - ITALIA",
+15.7,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0157",
+"BIRRA PERONI GRAN RISERVA DOPPIO MALTO NERA CL.50 CTX12  - ITALIA",
+17.5,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0158",
+"BIRRA NASTRO AZZURRO CL33X24",
+17,
+"PZ",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0159",
+"BIRRA TENNENT'S CL33X24",
+35.5,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0160",
+"BIRRA TOURTEL CL33X24 ANALCOLICA",
+25.5,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0161",
+"CEDRATA TASSONI CL.18 CTX25",
+19.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0162",
+"CHIN8 NERI CL.20 CTX24",
+14.56,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0163",
+"CHINA MARTINI CL100",
+10.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0164",
+"COCA COLA LATTINA CL.33 CTX24 SLEEK",
+14,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0165",
+"COCA COLA VETRO VAP CL.33 CTX24",
+18.3,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0166",
+"COCA COLA ZERO VETRO VAP CL.33 CTX24",
+18.3,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0167",
+"CRODINO CL.10 CTX48",
+26.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0168",
+"CRODINO CL.10 CTX60",
+29.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0169",
+"ESTATHE LIMONE LATTINA CL.33 CTX24",
+19.2,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0171",
+"FANTA ORANGE VETRO VAP CL.33 CTX24",
+18.3,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0172",
+"LURISIA LIMONATA VAP CL.27.5 CTX24",
+27.55,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0173",
+"RED BULL ENERGY DRINK LATTINA CL.25 CTX24",
+24.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0174",
+"SANBITTER DRY CL.10 CTX40",
+19.8,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0175",
+"SANBITTER ROSSO CL.10 CTX40",
+19.8,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0176",
+"SCHWEPPES ARANCIA CL.18 CTX24",
+16,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0177",
+"SCHWEPPES LIMONE CL.18 CTX24",
+16,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0178",
+"SCHWEPPES TONICA CL.18 CTX24",
+16,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0179",
+"SPRITE VETRO VAP CL.33 CTX24",
+18.3,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0182",
+"APEROL SODA CL12,5X48",
+44.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0183",
+"CAMPARI SODA CL10X100",
+87,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0184",
+"CAMPARI SODA CL10X50",
+46,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0185",
+"CAMPARI SODA CL10X60",
+53,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0186",
+"SODA SIFONE LT.1,5",
+2.5,
+"BT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0192",
+"SCIROPPO DI MANDORLA KG.2,6 SABA",
+3.64,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0193",
+"SCIROPPO MONIN FLEUR DE SUREAU CL.75 - FIORI DI SAMBUCO",
+12.2,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0194",
+"SCIROPPO ZUCCHERO DI CANNA CL.100 BAGNOLI",
+4.94,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0195",
+"YOGA CL20X24BT ACE",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0196",
+"YOGA CL20X24BT ALBICOCCA",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0197",
+"YOGA CL20X24BT ANANAS",
+17.76,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0198",
+"YOGA CL20X24BT ARANCIA ROSSA",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0200",
+"YOGA CL20X24BT ARANCIA SICILIA",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0201",
+"YOGA CL20X24BT BANANA",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0202",
+"YOGA CL20X24BT MELA VERDE",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0203",
+"YOGA CL20X24BT MIRTILLO",
+25.84,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0204",
+"YOGA CL20X24BT PERA",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0205",
+"YOGA CL20X24BT PESCA",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0206",
+"YOGA CL20X24BT POMPELMO",
+15.2,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0207",
+"CIRIO SUCCO POMODORO CL20X24",
+16.4,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0208",
+"DOLCIFICANTE LINEA BOX 300 BS",
+6,
+"CT",
+"DOLCIFICANTI",
+"",
+null
+],
+[
+"CC-0267",
+"ACQUA FERRARELLE CL50X24 PET",
+4.55,
+"CT",
+"ACQUA",
+"UOVA",
+null
+],
+[
+"CC-0275",
+"ACQUA LETE CL150X6",
+1.89,
+"CT",
+"ACQUA",
+"CONTENITORI",
+null
+],
+[
+"CC-0277",
+"ACQUA LETE PET CL50X24",
+4,
+"CT",
+"ACQUA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0300",
+"ACQUA SAN BENEDETTO CL200X6 NATURALE",
+1.65,
+"CT",
+"ACQUA",
+"CANNUCCE",
+null
+],
+[
+"CC-0303",
+"ACQUA SAN BENEDETTO CL50X24 NATURALE PET",
+3.6,
+"CT",
+"ACQUA",
+"BICCHIERI",
+null
+],
+[
+"CC-0309",
+"ACQUA SANPELLEGRINO CL25X24 FRIZZANTE VETRO",
+21.9,
+"CT",
+"ACQUA",
+"BICCHIERI",
+null
+],
+[
+"CC-0323",
+"ACQUA SORGESANA CL50X24NATURALE PET",
+2.9,
+"CT",
+"ACQUA",
+"IMBALLAGGIO",
+null
+],
+[
+"CC-0327",
+"ACQUA VERA CL200X6 NATURALE PET",
+1.95,
+"CT",
+"ACQUA",
+"IMBALLAGGIO",
+null
+],
+[
+"CC-0330",
+"ACQUA VERA CL50X24 NATURALE PET",
+3.2,
+"CT",
+"ACQUA",
+"CARTA E ROTOLI",
+null
+],
+[
+"CC-0331",
+"ACQUA VERA LT1,5X6 NATURALE PET",
+1.5,
+"CT",
+"ACQUA",
+"CARTA E ROTOLI",
+null
+],
+[
+"CC-0500",
+"TABASCO ML 150",
+6.73,
+"BOTTIGLIA",
+"TABASCO ML 150",
+"CONDIMENTI",
+null
+],
+[
+"CC-0501",
+"BRANDY VECCHIA ROMAGNA ETICHETTA NERA CL.70",
+11.5,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0502",
+"ESTATHE'CL33X24 PESCA LATTINA",
+19.2,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0503",
+"ESTATHE'CL25X24 LIMONE VETRO",
+23.2,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0504",
+"ESTATHE'CL25X24 PESCA VETRO",
+23.2,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0505",
+"ABSINT BAREKSTEN CL50",
+36.86,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0506",
+"ABSINTHE 72 VERTE DE FOUGEROLLES CL20",
+17.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0507",
+"FEVER-TREE GINGER BEER CL.20X24",
+26.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0508",
+"FEVER-TREE INDIAN TONIC CL20X24",
+26.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0509",
+"FEVER-TREE LEMON TONIC CL.20X24",
+26.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0510",
+"FEVER-TREE MEDITERRANEAN CL20X24 TONIC WATER",
+26.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0511",
+"FEVER-TREE SICILIAN LEMONADE CL20X24",
+26.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0512",
+"FEVER-TREE PINK GRAPEFRUIT CL.20X24",
+26.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0513",
+"SANPELLEGRINO COCKTAIL CL20X24 ROSSO",
+14,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0514",
+"SANPELLEGRINO COCKTAIL CL20X24 BIANCO",
+14,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0515",
+"S.MARGHERITA PROSECCO CL75 VALDOB.BRUT",
+7,
+"BT",
+"VINO",
+"Bar",
+null
+],
+[
+"CC-0516",
+"SELECT APERITIVO CL100 PILLA",
+14.3,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0517",
+"MATIC-L DETERGENTE PER LAVASTOVIGLIE KG5",
+11.4,
+"CF",
+"DETERGENZA",
+"Bar",
+null
+],
+[
+"CC-0518",
+"BRILLANTANTE LAVASTOVIGLIE KG.5 MATRIX",
+9.47,
+"CF",
+"DETERGENZA",
+"Bar",
+null
+],
+[
+"CC-0519",
+"CHINOTTO NERI CL20X24PZ",
+14.56,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0520",
+"VODKA KEGLEVICH CL100 FRAGOLA",
+9.53,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0521",
+"VODKA ARTIC CL100 FRAGOLA",
+9.6,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0522",
+"FORLIVESE ARACHIDI SALATE KG1 ARGENTINE",
+3.8,
+"CF",
+"BAR",
+"Bar",
+null
+],
+[
+"CC-0523",
+"ACQUA PERRIER CL33X24 NATURALE VAP",
+25,
+"CT",
+"ACQUA",
+"Bar",
+null
+],
+[
+"CC-0524",
+"BIRRA CORONA CL33X24",
+26.6899,
+"CT",
+"BIRRE",
+"Bar",
+null
+],
+[
+"CC-0525",
+"MOLINARI SAMBUCA CL100",
+16.5,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0526",
+"JOLLY LIMONCELLO CL200",
+13.26,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0528",
+"CRODINO CL.10X48",
+27,
+"",
+"ALTRO",
+"ALTRO",
+null
+],
+[
+"CC-0529",
+"AMARO MONTENEGRO CL100",
+18.37,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0531",
+"CASA SETARO FALANGHINA CL75 CAMPANELLE",
+7.38,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0532",
+"ANTINORI CL75 TORMARESCA CHARDONNAY",
+6.5,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0533",
+"GATORADE ARANCIA CL.50X12",
+10.5,
+"BT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0534",
+"GATORADE LIMONE CL.50X12",
+10.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0535",
+"PASETTI COLLECIVETTA CL75 PECORINO",
+9.65,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0536",
+"VIGNAL PROSECCO CL75 EXTRA DRY",
+3.9,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0537",
+"BASILISCO TEODOSIO CL75AGLIANICO DEL VULTURE",
+8.3999,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0539",
+"TASSONI CL18X25 CEDRATAZERO",
+21,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0540",
+"MOIO 57 ROSSO CL75",
+8.71,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0541",
+"ANTINORI CL75 IL BRUCIATO BOLGHERI",
+20,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0543",
+"SCHWEPPES CL18X24 GINGER ALE",
+19,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0544",
+"BIRRA HEINEKEN CL33X24",
+22,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0545",
+"GRAPPA NONINO FRIULANA CL.70",
+14.55,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0546",
+"GRAPPA NARDINI BIANCA CL.100",
+21.83,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0547",
+"ACQUA VITASNELLA LT1,5X6 NATURALE",
+2.75,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0549",
+"GIN BICKENS LONDON DRY 40° CL.100",
+12.85,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0552",
+"GRAPPA 903 BARRIQUE CL.70",
+16.5,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0554",
+"WHISKY J&B SCOTCH WHISKY CL.100",
+15.5,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0555",
+"GIN MALFY CON POMPELMO ROSA CL.70",
+21,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0556",
+"ALABASTRA CAMPANIA GRECO IGP 2016 CL.75",
+13,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0557",
+"ALABASTRA TAURASI DOCG CL.75",
+35.5,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0558",
+"ALAMBICCO ROSSO CREME CL10",
+2.41,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0559",
+"ERIDANIA ZUCCHERO KG5 CANNA TROPICAL BUSTINE",
+10.95,
+"CT",
+"ALTRO",
+"ALTRO",
+null
+],
+[
+"CC-0635",
+"ABACA SCIROPPO CL75 COCCO",
+6.95,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0636",
+"ABACA SCIROPPO CL75 GRANATINA",
+6.95,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0637",
+"ABACA SCIROPPO CL75 PASSION FRUIT MARACUJA",
+7.45,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0638",
+"ABACA SCIROPPO CL75 FRAGOLA",
+6.95,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0643",
+"POWERADE CL50X12 ORANGE",
+8.97,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0644",
+"POWERADE CL50X12 CITRUS",
+8.97,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0645",
+"PIMM'S CL.100",
+16.01,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0646",
+"BITTERS ANGOSTURA CL.20",
+8.19,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0647",
+"TONICA SUPERFINE TASSONI CL.18 CTX25",
+21,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0654",
+"ABACA SCIROPPO CL75 ELDERFLOWERS",
+7.45,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0685",
+"COLTERENZIO CL75 CHARDONNAY ALTKIRCH",
+9,
+"",
+"VINO",
+"ALTRO",
+null
+],
+[
+"CC-0686",
+"AMARO DEL CAPO CL70",
+10.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0687",
+"TOP FOOD MIELE MILLEFIORI GR6X100 BUSTINE DISP",
+12.3,
+"",
+"ALTRO",
+"ALTRO",
+null
+],
+[
+"CC-0697",
+"VERMOUTH COCCHI DI TORINO ROSSO CL.75",
+16.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0698",
+"AMARO NOCILLO LEANZA CL.50",
+11.99,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0699",
+"AMARO DEL DIAVOLO CL70",
+10.83,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0700",
+"AMARO DEL DIAVOLO CL70 AST.",
+11.6,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0701",
+"AMARO DEL DIAVOLO CL70+BICCHIERI",
+15.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0702",
+"AMARO DEL ROSSO CL70",
+8.95,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0703",
+"AMARO DEL SOLE CL5 MIGNON",
+0.85,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0704",
+"AMARO DEL SOLE CL70",
+5.4,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0705",
+"AMARO DENTE DI LEONE CL100 GIFTBOX CON 2 BICCHIERI",
+42.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0706",
+"AMARO DENTE DI LEONE CL100 LA VALDOTAINE",
+27.44,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0707",
+"AMARO DI ANGOSTURA CL70",
+18.42,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0708",
+"AMARO EROICO CL70 ESSENZA MEDITERRANEA",
+29.17,
+"",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-16214",
+"GIN TANQUERAY TEN 47,3° CL.100",
+39.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-16245",
+"CAGGIANO FIAGRE CL75 CAMPANIA BIANCO",
+8.7,
+"BT",
+"VINO",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "Drink Up S.r.l.",
+"fornitore_key": "drinkup",
+"partita_iva": "06443221210",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "0848b919103885921de9ceff84664f58a9ecffda84cec7cec3b9e4dcbc3b2a51",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0689",
+"KBIRR NATAVOTA LAGER CL 33X12 5.2%",
+2.29,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0690",
+"KBIRR CUORE DI NAPOLI 33X12 6%",
+2.43,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0691",
+"KBIRR NATAVOTA RED CL 33X12 9%",
+2.44,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0692",
+"KBIRR PULLICENHELL PALE ALE 5.2% 33X12 APPROVED AVPN",
+2.43,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0693",
+"KBIRR AFAMMOKK NATAVOTA LAGER CL 33X12 ETICHETTA CELEBRATIVA",
+2.4,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0694",
+"KBIRR NATAVOTA LAGER PREMIUM CL 75X6",
+7.08,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0695",
+"KBIRR NATAVOTA RED PREMIUM CL 75X6",
+7.32,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0696",
+"KBIRR CUORE DI NAPOLI PREMIUM CL 75X6",
+7.32,
+"CT",
+"BIRRE",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "Emilio Cristiani",
+"fornitore_key": "emiliocristiani",
+"partita_iva": "",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "dd513b5b01ecf698ed4205c7e5d2f4027d714e67b8329e2201d72feea6df84c9",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0003",
+"ACQUA NATIA / ELECTA PREMIUM PET CL.50 CTX24",
+5.31,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0006",
+"ACQUA SORGESANA VAP CL.33 CTX24",
+10,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0009",
+"APERITIVO L'APE CL.100 BAGNOLI",
+5.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0010",
+"APEROL BARBIERI CL.100",
+11.49,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0011",
+"BAILEYS ORIGINAL IRISH CREAM CL.100",
+14.99,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0012",
+"BITTER CAMPARI CL.100",
+14.49,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0055",
+"GIN ROKU CL70",
+25.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0057",
+"GIN TANQUERAY CL.100",
+17.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0064",
+"JAGERMAISTER CL 100",
+14.07,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0070",
+"PASSOA PASSION FRUIT CL.100",
+16.4,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0071",
+"PUNT & MES CL.100",
+9.76,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0093",
+"WHISKEY JAMESON CL100",
+25.69,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0114",
+"AMARO JEFFERSON CL70 30%",
+22.9,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0115",
+"AVERNA AMARO CL100",
+15.32,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0136",
+"AMARO UNICUM CL100",
+17.04,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0139",
+"AMARO PETRUS CL70",
+11.44,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0150",
+"BIRRA BECK'S 0.33 CTX24 - GERMANIA",
+18.74,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0151",
+"BIRRA CERES STRONG ALE CL.33 CTX24 - DANIMARCA",
+33.99,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0152",
+"BIRRA ICHNUSA NON FILTRATA CL.33 CTX24 - ITALIA",
+24.86,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0153",
+"BIRRA LEFFE BLONDE CL.33 CTX24 - BELGIO",
+32.94,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0155",
+"BIRRA PERONI CL.33 CTX24 - ITALIA",
+15.49,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0156",
+"BIRRA PERONI CL.66 CTX15 - ITALIA",
+15.65,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0158",
+"BIRRA NASTRO AZZURRO CL33X24",
+16.81,
+"PZ",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0159",
+"BIRRA TENNENT'S CL33X24",
+33.87,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0162",
+"CHIN8 NERI CL.20 CTX24",
+14.55,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0164",
+"COCA COLA LATTINA CL.33 CTX24 SLEEK",
+13.8,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0165",
+"COCA COLA VETRO VAP CL.33 CTX24",
+18.3,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0167",
+"CRODINO CL.10 CTX48",
+26.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0169",
+"ESTATHE LIMONE LATTINA CL.33 CTX24",
+19.2,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0172",
+"LURISIA LIMONATA VAP CL.27.5 CTX24",
+30.82,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0176",
+"SCHWEPPES ARANCIA CL.18 CTX24",
+15.99,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0177",
+"SCHWEPPES LIMONE CL.18 CTX24",
+15.99,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0178",
+"SCHWEPPES TONICA CL.18 CTX24",
+15.99,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0183",
+"CAMPARI SODA CL10X100",
+83.42,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0197",
+"YOGA CL20X24BT ANANAS",
+17.45,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0203",
+"YOGA CL20X24BT MIRTILLO",
+24.13,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0205",
+"YOGA CL20X24BT PESCA",
+14.08,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0267",
+"ACQUA FERRARELLE CL50X24 PET",
+4.54,
+"CT",
+"ACQUA",
+"UOVA",
+null
+],
+[
+"CC-0300",
+"ACQUA SAN BENEDETTO CL200X6 NATURALE",
+1.65,
+"CT",
+"ACQUA",
+"CANNUCCE",
+null
+],
+[
+"CC-0502",
+"ESTATHE'CL33X24 PESCA LATTINA",
+19.2,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0508",
+"FEVER-TREE INDIAN TONIC CL20X24",
+26,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0513",
+"SANPELLEGRINO COCKTAIL CL20X24 ROSSO",
+19.79,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0514",
+"SANPELLEGRINO COCKTAIL CL20X24 BIANCO",
+19.79,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0520",
+"VODKA KEGLEVICH CL100 FRAGOLA",
+11.1,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0524",
+"BIRRA CORONA CL33X24",
+25.39,
+"CT",
+"BIRRE",
+"Bar",
+null
+],
+[
+"CC-0525",
+"MOLINARI SAMBUCA CL100",
+16.49,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0529",
+"AMARO MONTENEGRO CL100",
+15.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0544",
+"BIRRA HEINEKEN CL33X24",
+20.37,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0635",
+"ABACA SCIROPPO CL75 COCCO",
+7.44,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0636",
+"ABACA SCIROPPO CL75 GRANATINA",
+7.44,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0637",
+"ABACA SCIROPPO CL75 PASSION FRUIT MARACUJA",
+7.44,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0638",
+"ABACA SCIROPPO CL75 FRAGOLA",
+7.44,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0686",
+"AMARO DEL CAPO CL70",
+11.2,
+"BT",
+"LIQUORI",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "ENOTECA DANTE S.R.L.",
+"fornitore_key": "enotecadante",
+"partita_iva": "07024451218",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "c3320c6b7c824e09350783c5b0734bb1da9c15bbba2fdd81649d30142620cf70",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0535",
+"PASETTI COLLECIVETTA CL75 PECORINO",
+8.762,
+"BT",
+"VINO",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "Eureka Onlus societa' cooperativa sociale",
+"fornitore_key": "eurekaonlus",
+"partita_iva": "03162360618",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "d707bec7f33b4b6b31df53e4faebbe821a508f2a4b336fc30f5579494d835aa6",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0722",
+"ASPRINIO D’AVERSA MARHITATE CANTINA VITEMATTE",
+7.19,
+"BT",
+"VINO",
+"VINO",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "Europa 23 S.R.L.",
+"fornitore_key": "europa",
+"partita_iva": "01893910701",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "a777a5be0d5906b6c3ac053ab4c7f0adf39fffcbad55e8633bd12b14667b0f78",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0000",
+"ACQUA FERRARELLE CL.50 CTX24",
+4.5,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0001",
+"ACQUA FERRARELLE LT.1,5 CTX6",
+1.95,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0002",
+"ACQUA LETE VAP - VETRO CL.33 CTX24",
+10,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0003",
+"ACQUA NATIA / ELECTA PREMIUM PET CL.50 CTX24",
+4.5,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0005",
+"ACQUA SORGESANA LT.1,5 CTX6",
+1.4,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0006",
+"ACQUA SORGESANA VAP CL.33 CTX24",
+10,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0007",
+"ACQUA VITASNELLA LT.1,5 CTX6",
+2.75,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0008",
+"ALBERTI STREGA LIQUORE CL100",
+12.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0009",
+"APERITIVO L'APE CL.100 BAGNOLI",
+5.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0010",
+"APEROL BARBIERI CL.100",
+12.51,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0011",
+"BAILEYS ORIGINAL IRISH CREAM CL.100",
+15.49,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0012",
+"BITTER CAMPARI CL.100",
+14.7,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0014",
+"BOLS CURACAO BLU CL.70",
+10.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0016",
+"BOLS LIQ.CL70 CACAO BIANCO",
+10.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0018",
+"BOLS LIQ.CL70 CREMA DE CASSIS",
+10.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0021",
+"BOLS LIQ.CL70 TRIPLE SEC",
+12.99,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0022",
+"BORSCI AMARO CL100 S.MARZANO",
+18,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0025",
+"BRANDY STOCK 84 CL100 ORIGINAL",
+13.54,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0034",
+"COINTREAU CL.100",
+23,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0040",
+"DE KUYPER CL70 PEACHTREE",
+12.99,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0044",
+"GIN BOMBAY CL100 SAPPHIRE BLU",
+18.91,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0045",
+"GIN BOSFORD CL100",
+10.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0046",
+"GIN BULLDOG CL100",
+21.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0048",
+"GIN ELEPHANT CL50 LONDON DRY",
+33.92,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0049",
+"GIN GORDON'S CL100",
+13.54,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0050",
+"GIN MARE",
+38,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0054",
+"GIN ROKU CL 100",
+28,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0055",
+"GIN ROKU CL70",
+28,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0057",
+"GIN TANQUERAY CL.100",
+18.24,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0064",
+"JAGERMAISTER CL 100",
+14.64,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0065",
+"KAHLUA CL.100",
+16.49,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0066",
+"LEMONSODA CL.20 CTX24",
+12.81,
+"CT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0067",
+"LIMONCELLO DI CAPRI CL.100",
+12.99,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0068",
+"LIQUORE ST. GERMAIN CL.70",
+32.94,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0070",
+"PASSOA PASSION FRUIT CL.100",
+15.01,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0071",
+"PUNT & MES CL.100",
+9.46,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0072",
+"RON HAVANA CLUB 3Y CL.100",
+15.49,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0074",
+"RON HAVANA CLUB 7Y CL.100",
+19.76,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0075",
+"RON HAVANA CLUB 7Y CL.70",
+19.76,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0078",
+"RON PAMPERO CL70 ANEJO ESPECIAL",
+14.49,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0081",
+"RON ZACAPA CL100 23Y SOLERA",
+60.02,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0083",
+"RON ZACAPA CL70 XO",
+111.02,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0085",
+"RUM BACARDI CL100 BIANCO",
+14.03,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0086",
+"RUM DIPLOMATICO CL70 MANTUANO",
+33.92,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0087",
+"TEQUILA JOSE'CUERVO CL100 BIANCA",
+18.18,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0089",
+"VECCHIA ROMAGNA CL70 BRANDY CLASSICA",
+12.51,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0091",
+"VODKA ABSOLUT CL.100 SECCA",
+15.86,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0092",
+"WHISKEY JACK DANIEL'S CL100",
+23,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0114",
+"AMARO JEFFERSON CL70 30%",
+23,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0115",
+"AVERNA AMARO CL100",
+15,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0119",
+"LUCANO AMARO CL100",
+13,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0129",
+"GIN HENDRICK'S CL.70",
+28.06,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0131",
+"MALIBU CL.100",
+12.99,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0132",
+"MIDORI CL100",
+22,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0134",
+"DISARONNO CL100",
+18.19,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0136",
+"AMARO UNICUM CL100",
+17.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0139",
+"AMARO PETRUS CL70",
+12.99,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0143",
+"MARTINI BIANCO CL100",
+7.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0144",
+"MARTINI RUBINO CL75 RISERVA SPECIALE",
+13,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0148",
+"AMARO FERNET BRANCA CL.100",
+17.51,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0150",
+"BIRRA BECK'S 0.33 CTX24 - GERMANIA",
+18.48,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0151",
+"BIRRA CERES STRONG ALE CL.33 CTX24 - DANIMARCA",
+34.53,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0152",
+"BIRRA ICHNUSA NON FILTRATA CL.33 CTX24 - ITALIA",
+28.06,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0153",
+"BIRRA LEFFE BLONDE CL.33 CTX24 - BELGIO",
+35.01,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0155",
+"BIRRA PERONI CL.33 CTX24 - ITALIA",
+15.99,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0156",
+"BIRRA PERONI CL.66 CTX15 - ITALIA",
+15.99,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0157",
+"BIRRA PERONI GRAN RISERVA DOPPIO MALTO NERA CL.50 CTX12  - ITALIA",
+18,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0158",
+"BIRRA NASTRO AZZURRO CL33X24",
+18,
+"PZ",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0159",
+"BIRRA TENNENT'S CL33X24",
+33.98,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0161",
+"CEDRATA TASSONI CL.18 CTX25",
+19.03,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0164",
+"COCA COLA LATTINA CL.33 CTX24 SLEEK",
+13.54,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0165",
+"COCA COLA VETRO VAP CL.33 CTX24",
+19.03,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0166",
+"COCA COLA ZERO VETRO VAP CL.33 CTX24",
+19.03,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0167",
+"CRODINO CL.10 CTX48",
+25.01,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0169",
+"ESTATHE LIMONE LATTINA CL.33 CTX24",
+19,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0171",
+"FANTA ORANGE VETRO VAP CL.33 CTX24",
+19.03,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0173",
+"RED BULL ENERGY DRINK LATTINA CL.25 CTX24",
+24.52,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0174",
+"SANBITTER DRY CL.10 CTX40",
+20.01,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0176",
+"SCHWEPPES ARANCIA CL.18 CTX24",
+16,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0177",
+"SCHWEPPES LIMONE CL.18 CTX24",
+16,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0178",
+"SCHWEPPES TONICA CL.18 CTX24",
+16,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0179",
+"SPRITE VETRO VAP CL.33 CTX24",
+19.03,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0183",
+"CAMPARI SODA CL10X100",
+85,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0186",
+"SODA SIFONE LT.1,5",
+4.51,
+"BT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0195",
+"YOGA CL20X24BT ACE",
+14.52,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0196",
+"YOGA CL20X24BT ALBICOCCA",
+14.52,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0197",
+"YOGA CL20X24BT ANANAS",
+15.5,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0198",
+"YOGA CL20X24BT ARANCIA ROSSA",
+14.52,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0200",
+"YOGA CL20X24BT ARANCIA SICILIA",
+13.79,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0202",
+"YOGA CL20X24BT MELA VERDE",
+14.52,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0203",
+"YOGA CL20X24BT MIRTILLO",
+21.96,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0204",
+"YOGA CL20X24BT PERA",
+14.52,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0205",
+"YOGA CL20X24BT PESCA",
+14.52,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0206",
+"YOGA CL20X24BT POMPELMO",
+14.52,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0267",
+"ACQUA FERRARELLE CL50X24 PET",
+4.5,
+"CT",
+"ACQUA",
+"UOVA",
+null
+],
+[
+"CC-0275",
+"ACQUA LETE CL150X6",
+1.9,
+"CT",
+"ACQUA",
+"CONTENITORI",
+null
+],
+[
+"CC-0277",
+"ACQUA LETE PET CL50X24",
+3.99,
+"CT",
+"ACQUA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0303",
+"ACQUA SAN BENEDETTO CL50X24 NATURALE PET",
+3.2,
+"CT",
+"ACQUA",
+"BICCHIERI",
+null
+],
+[
+"CC-0323",
+"ACQUA SORGESANA CL50X24NATURALE PET",
+3.05,
+"CT",
+"ACQUA",
+"IMBALLAGGIO",
+null
+],
+[
+"CC-0327",
+"ACQUA VERA CL200X6 NATURALE PET",
+1.8,
+"CT",
+"ACQUA",
+"IMBALLAGGIO",
+null
+],
+[
+"CC-0502",
+"ESTATHE'CL33X24 PESCA LATTINA",
+19,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0504",
+"ESTATHE'CL25X24 PESCA VETRO",
+22.02,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0507",
+"FEVER-TREE GINGER BEER CL.20X24",
+25.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0508",
+"FEVER-TREE INDIAN TONIC CL20X24",
+25.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0510",
+"FEVER-TREE MEDITERRANEAN CL20X24 TONIC WATER",
+25.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0513",
+"SANPELLEGRINO COCKTAIL CL20X24 ROSSO",
+14.03,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0515",
+"S.MARGHERITA PROSECCO CL75 VALDOB.BRUT",
+8.97,
+"BT",
+"VINO",
+"Bar",
+null
+],
+[
+"CC-0516",
+"SELECT APERITIVO CL100 PILLA",
+10,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0519",
+"CHINOTTO NERI CL20X24PZ",
+12.57,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0520",
+"VODKA KEGLEVICH CL100 FRAGOLA",
+10,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0524",
+"BIRRA CORONA CL33X24",
+28.06,
+"CT",
+"BIRRE",
+"Bar",
+null
+],
+[
+"CC-0525",
+"MOLINARI SAMBUCA CL100",
+13.48,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0529",
+"AMARO MONTENEGRO CL100",
+17.51,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0530",
+"BIRRA PERONI GRAN RISERVA ROSSA 33CL X 24",
+24.5,
+"",
+"BIRRE",
+"BIRRE",
+null
+],
+[
+"CC-0533",
+"GATORADE ARANCIA CL.50X12",
+10,
+"BT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0540",
+"MOIO 57 ROSSO CL75",
+8.48,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0544",
+"BIRRA HEINEKEN CL33X24",
+19.52,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0547",
+"ACQUA VITASNELLA LT1,5X6 NATURALE",
+2.75,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0548",
+"BIANCO SARTI CL.100",
+17.02,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0552",
+"GRAPPA 903 BARRIQUE CL.70",
+17.02,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0554",
+"WHISKY J&B SCOTCH WHISKY CL.100",
+16.47,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0555",
+"GIN MALFY CON POMPELMO ROSA CL.70",
+24.03,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0638",
+"ABACA SCIROPPO CL75 FRAGOLA",
+7.32,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0643",
+"POWERADE CL50X12 ORANGE",
+9.76,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0686",
+"AMARO DEL CAPO CL70",
+10.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0710",
+"PASSOA 1LT",
+15,
+"",
+"COCKTAIL",
+"COCKTAIL",
+null
+],
+[
+"CC-16245",
+"CAGGIANO FIAGRE CL75 CAMPANIA BIANCO",
+10.74,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-16249",
+"SCHWEPPES SODA",
+19,
+"CT",
+"SODATI",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "F.lli Fiorentino Srl",
+"fornitore_key": "fiorentino",
+"partita_iva": "01637290634",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "37b567ab17092744c335f0634ffd59231ef120bd4f68504135e264af7bb21482",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0542",
+"MAYONESE GAJA DA KG.5",
+15.95,
+"CT",
+"CONDIMENTI E GRASSI",
+"CONDIMENTI E GRASSI",
+null
+],
+[
+"CC-0556",
+"ALABASTRA CAMPANIA GRECO IGP 2016 CL.75",
+19.75,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0655",
+"FARINA 00 CAPUTO RINFORZ.KG.25",
+0.86,
+"CF",
+"FARINA",
+"",
+null
+],
+[
+"CC-0656",
+"FARINA 0/MAN. CAPUTO DA KG.25",
+0.98,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0657",
+"ZUCCHERO RAF.SEM.ERIDANIA KG.25",
+0.7673,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0658",
+"SEMOLA MEDIA S/1 MININNI KG.25",
+0.88,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0659",
+"SALE SACCHI SALTECHNO KG.25",
+0.46,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0660",
+"PASSATA POMODORI POMOLA' KG.3",
+21.32,
+"CT",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0661",
+"FUNGHI CHAMP D'AMICO KG.3X6",
+6.05,
+"SC",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0662",
+"POMODORI PELATI KG.3 TORRENTE",
+20.54,
+"CT",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0663",
+"PASTA DIVELLA MEZZANI TAGL 35",
+0.64,
+"NR",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0664",
+"PASTA DIVELLA PATERNOSTI 62",
+0.6448,
+"NR",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0665",
+"OLIO SEMI GIRASOLE SORRENTO L.25",
+41.86,
+"LT",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0666",
+"OLIO EXTRAVERGINE OLIVA L.5",
+28.6,
+"LT",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0667",
+"SALE FINO ITALKALI DA KG.1X12",
+0.45,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0668",
+"STRUTTO RAFFINATO I B VERDE",
+1.94,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0669",
+"FAGIOLI BORLOTTI DA KG.3X6",
+3.66,
+"PZ",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0670",
+"MARG WIENER PLUNDERPLAT KG.2X5",
+2.9975,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0671",
+"MARGAR WIENERCREME DA KG.2,5X4",
+2.89,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0672",
+"POMODORINI CASARECCIA KG.3X6",
+22.07,
+"CT",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0673",
+"STRUTTO RAFFINATO UNIGRA KG.25",
+1.89,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0674",
+"LIEVITO X PANIFIC. G.500X5X4",
+1.98,
+"PZ",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0675",
+"TONNO CALLIPO OL.OLIVA G.80X96",
+1.28,
+"PZ",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0676",
+"MARGARINA WIENER BACK KG.2,5X4",
+2.72,
+"KG",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0678",
+"MAIS BONDUELLE GR.300X12",
+1.12,
+"PZ",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0679",
+"FAGIOLI CANNELL LESSATI KG.3X6",
+3.8,
+"PZ",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0680",
+"PASSATA POMODORO G.700 TORRENTE",
+0.93,
+"PZ",
+"FARINE E DERIVATI",
+"",
+null
+],
+[
+"CC-0683",
+"PASTA DE CECCO MISTA CORTA",
+1.17,
+"NR",
+"FARINE E DERIVATI",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "RONDINELLA MARKET S.R.L.",
+"fornitore_key": "rondinella",
+"partita_iva": "04518411212",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "803a107ccf45f80eff4194245dfdb9647acc8fda12901fad791dd2e49af7c096",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0610",
+"CREMA RIO GRAN TRADIZIONE NOCCIOLA DA KG 13",
+63,
+"KG",
+"PASTICCERIA",
+"CREME E FARCE",
+null
+],
+[
+"CC-0611",
+"CREMA RIO TRADIZIONE PISTACCHIO IN CONFEZIONE DA KG 5 (DC00BM)",
+36,
+"KG",
+"PASTICCERIA",
+"CREME E FARCE",
+null
+],
+[
+"CC-0619",
+"PASSATA DI VISCIOLE 55",
+39.996,
+"KG",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0639",
+"FORM STAC 400ML",
+4.5,
+"CF",
+"PASTICCERIA",
+"FORM STAC 400ML",
+null
+],
+[
+"CC-0640",
+"SCAGLIETTA FONDENTE X 1KG",
+14.003,
+"CF",
+"PASTICCERIA",
+"DECORAZIONI",
+null
+],
+[
+"CC-0641",
+"CUBETTI MISTI 5KG",
+4.18,
+"CT",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0642",
+"FARCITELLA AL PISTACCHIO 8KG",
+79.2,
+"CF",
+"PASTICCERIA",
+"CREME E FARCE",
+null
+],
+[
+"CC-0653",
+"OLVA THERMO QUICK",
+4.1,
+"CT",
+"PASTICCERIA",
+"GRASSI E LATTICINI",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "SAIMA S.p.A.",
+"fornitore_key": "saima",
+"partita_iva": "01992440618",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "8d322f10a9d06cf4724d1bbd9795d3acf0302471b696096697b3fde854f3e17b",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0527",
+"CUBETTI ARANCIO AMORDIFRUTTA 6X6 KG 5 CANDITI (050BM320)",
+7.7374,
+"CT",
+"FRUTTA E CONFETTURE",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0593",
+"TUORLO D'UOVO PASTORIZZATO DA ALLEVAMENTO A TERRA",
+9.68,
+"KG",
+"PASTICCERIA",
+"UOVA",
+null
+],
+[
+"CC-0594",
+"TARTELLETTA (063213) MODERN DOLCE C/BURRO 43MM PZ 250 (SFUSO)",
+29.0136,
+"CT",
+"PASTICCERIA",
+"DECORAZIONI",
+null
+],
+[
+"CC-0595",
+"QUADRATI BIANCHI STRIATI ROSSI/NERI 3 CM DA 220 PZ (1034182)",
+36.08,
+"CF",
+"PASTICCERIA",
+"DECORAZIONI",
+null
+],
+[
+"CC-0596",
+"PIROTTINI ROTONDI GRANDI (ART.7) MM50XH25 PZ 2000",
+23.4325,
+"CF",
+"PASTICCERIA",
+"CONTENITORI",
+null
+],
+[
+"CC-0597",
+"AMIDO ARTECREMA CONFEZIONE DA 1 KG",
+5.2613,
+"KG",
+"PASTICCERIA",
+"FARINE E AMIDI",
+null
+],
+[
+"CC-0598",
+"MELANGE PLUS HOMILLINA PLATTE DA KG 10 (4155)",
+3.05,
+"KG",
+"PASTICCERIA",
+"GRASSI E LATTICINI",
+null
+],
+[
+"CC-0599",
+"MELANGE PLUS HOMILLINA GATEAUX DA KG 10 (4156)",
+2.9505,
+"KG",
+"PASTICCERIA",
+"GRASSI E LATTICINI",
+null
+],
+[
+"CC-0600",
+"MIX YOGOFINE DA KG 15",
+4.6475,
+"KG",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0601",
+"PIROTTINI ROTONDI (ART.4) PICCOLI MM35XH21 PZ 2000",
+19.3602,
+"CF",
+"PASTICCERIA",
+"CONTENITORI",
+null
+],
+[
+"CC-0602",
+"SAC A POCHE TRASPARENTI MONOUSO DA CM53 PZ 72",
+19.4261,
+"CF",
+"PASTICCERIA",
+"CONTENITORI",
+null
+],
+[
+"CC-0603",
+"GOCCINE MIGNON DI SURROGATO FONDENTE 1000/HG DA KG 12",
+5.59,
+"KG",
+"PASTICCERIA",
+"DECORAZIONI",
+null
+],
+[
+"CC-0604",
+"STRUTTO PAPILLON EXTRA IN SECCHIO DA KG 15",
+2.16,
+"KG",
+"PASTICCERIA",
+"GRASSI E LATTICINI",
+null
+],
+[
+"CC-0605",
+"GRANELLA PISTACCHIO CALIBRO 2/4 DA KG 1",
+29.986,
+"KG",
+"PASTICCERIA",
+"DECORAZIONI",
+null
+],
+[
+"CC-0606",
+"BASE PASTA DI MANDORLE MO ORO CONFEZIONE DA KG 12,5",
+8.5459,
+"KG",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0607",
+"SEMOLA D'AUTORE PER RIPIENO DI SFOGLIATELLA IN CONFEZIO DA KG 5",
+1.4674,
+"KG",
+"PASTICCERIA",
+"FARINE E AMIDI",
+null
+],
+[
+"CC-0608",
+"EUROVO UOVA SFUSE L IN GUSCIO IN CASSA DA PZ 180 (0102)",
+42.38,
+"CT",
+"PASTICCERIA",
+"UOVA",
+null
+],
+[
+"CC-0609",
+"CONFETTURA ALBICOCCA EXTRA AMORD. (75% FRUTTA) KG 1,65 (04047115B)",
+11.28,
+"KG",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0610",
+"CREMA RIO GRAN TRADIZIONE NOCCIOLA DA KG 13",
+4.6541,
+"KG",
+"PASTICCERIA",
+"CREME E FARCE",
+null
+],
+[
+"CC-0611",
+"CREMA RIO TRADIZIONE PISTACCHIO IN CONFEZIONE DA KG 5 (DC00BM)",
+11.0187,
+"KG",
+"PASTICCERIA",
+"CREME E FARCE",
+null
+],
+[
+"CC-0612",
+"LIEVITO DI BIRRA PER PANIFICAZIONE",
+4.0832,
+"KG",
+"PASTICCERIA",
+"LIEVITI E AROMI",
+null
+],
+[
+"CC-0613",
+"ZUCCHERO IN GRANELLA MEDIA",
+1.61,
+"KG",
+"PASTICCERIA",
+"ZUCCHERI",
+null
+],
+[
+"CC-0614",
+"NUOVA BIANCALIEVE CREMADA MONTARE",
+2.7764,
+"LT",
+"PASTICCERIA",
+"GRASSI E LATTICINI",
+null
+],
+[
+"CC-0615",
+"ALBICOCCHE INTERE PELLECCHIELLA IN SCIROPPO DA KG 5",
+8.68,
+"KG",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0616",
+"STACCANTE DUBOR SPRAY PR100 ML 600",
+4.8,
+"CF",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0617",
+"PREPARATO DI FRUTTA FRAGOLA FORNO CHEF PROFESSIONAL DA KG 2",
+8.08,
+"KG",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0618",
+"PASSATA ORO ALBICOCCA UNICA CONFEZIONE DA KG 6,5 (04052160C)",
+4.3769,
+"KG",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0619",
+"PASSATA DI VISCIOLE 55",
+9.6437,
+"KG",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0620",
+"PANNA SPRAY ZUCCHERATA ML 700",
+6.4801,
+"CF",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0621",
+"PANNA TENUTAPIU' DA LT 1 (M.G. 38%)",
+5.88,
+"LT",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0622",
+"TARTELLETTA (063915) MODERN DOLCE CON BURRO 65MM PZ 90 (BLISTER)",
+28.446,
+"CT",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0623",
+"GRANO COTTO CONFEZIONE DA 6 X 2000 GR",
+3.28,
+"CF",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0624",
+"SOTTOGELI GRANDI PZ 2000 CM 13",
+30.2877,
+"CF",
+"PASTICCERIA",
+"CONTENITORI",
+null
+],
+[
+"CC-0625",
+"CREMA AL CACAO (30%) DA FARCITURA KG 6 (BITTER)",
+7.03,
+"KG",
+"PASTICCERIA",
+"CREME E FARCE",
+null
+],
+[
+"CC-0626",
+"MIELE MILLEFIORI ITALIANO DA KG 9",
+6.93,
+"KG",
+"PASTICCERIA",
+"ZUCCHERI",
+null
+],
+[
+"CC-0627",
+"GELATINA GELINA A FREDDO NEUTRA IN CONFEZIONE DA KG 6",
+4.103,
+"KG",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0628",
+"CANNELLINI BIANCHI DA KG 1",
+6.7,
+"KG",
+"PASTICCERIA",
+"",
+null
+],
+[
+"CC-0629",
+"DIAVOLINI COLORATI IN CONFEZIONE DA GR 500",
+5.4,
+"CF",
+"PASTICCERIA",
+"",
+null
+],
+[
+"CC-0630",
+"MIELE MILLEFIORI CONTENITORE KG 10",
+4.72,
+"KG",
+"PASTICCERIA",
+"ZUCCHERI",
+null
+],
+[
+"CC-0631",
+"CACAO DA 1 KG ROSSO BRUNO 22/24 CORPO PIENO VAN HOUTEN",
+12.7259,
+"KG",
+"PASTICCERIA",
+"CIOCCOLATO E SURROGATI",
+null
+],
+[
+"CC-0632",
+"ZUCCHERO A VELO IMPALPABILE DA 5 KG",
+1.4168,
+"KG",
+"PASTICCERIA",
+"ZUCCHERI",
+null
+],
+[
+"CC-0633",
+"MIX CAKE NATURE DA KG 10 (4830)",
+6.4922,
+"KG",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0634",
+"LIEVITO BACK PULVER CHIMICO DA KG 2,5 + BRICCO GRADUATO",
+9.702,
+"KG",
+"PASTICCERIA",
+"",
+null
+],
+[
+"CC-0648",
+"MIGLIORATORE XXL FORZA IN CONFEZIONE DA KG 8",
+6.07,
+"CF",
+"PASTICCERIA",
+"FARINE E AMIDI",
+null
+],
+[
+"CC-0649",
+"SCORZA PALERMO MEDIA GLASSATA PZ 100 (145 MM)",
+46.67,
+"CT",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+],
+[
+"CC-0650",
+"SCORZA PALERMO MIGNON GLASSATA KG 3,5 (85 MM)",
+51.12,
+"CT",
+"PASTICCERIA",
+"BASI E MIX",
+null
+],
+[
+"CC-0651",
+"DESTROSIO MONOIDRATO IN CONFEZIONE DA KG 25",
+1.27,
+"CF",
+"PASTICCERIA",
+"ZUCCHERI",
+null
+],
+[
+"CC-0652",
+"SUCCO DI LIMONE CONF. GR500 SURGELATO PROPPY GEL/PRIMO FIORE",
+2.7182,
+"CT",
+"PASTICCERIA",
+"FRUTTA E CONFETTURE",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "SIRO S.R.L. UNIPERSONALE",
+"fornitore_key": "siro",
+"partita_iva": "04104640612",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "b185b0187db8a534421eb2ea7a487b4c447c90db4c030ff8f2aea2cacc6b7d98",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0000",
+"ACQUA FERRARELLE CL.50 CTX24",
+4.54,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0001",
+"ACQUA FERRARELLE LT.1,5 CTX6",
+2.74,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0002",
+"ACQUA LETE VAP - VETRO CL.33 CTX24",
+11.9,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0003",
+"ACQUA NATIA / ELECTA PREMIUM PET CL.50 CTX24",
+5.31,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0005",
+"ACQUA SORGESANA LT.1,5 CTX6",
+1.95,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0006",
+"ACQUA SORGESANA VAP CL.33 CTX24",
+9.25,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0007",
+"ACQUA VITASNELLA LT.1,5 CTX6",
+2.75,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0008",
+"ALBERTI STREGA LIQUORE CL100",
+14.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0009",
+"APERITIVO L'APE CL.100 BAGNOLI",
+5.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0010",
+"APEROL BARBIERI CL.100",
+11.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0011",
+"BAILEYS ORIGINAL IRISH CREAM CL.100",
+15,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0012",
+"BITTER CAMPARI CL.100",
+14.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0013",
+"BITTERS ORANGE CL.15 FEE BROTHERS 1864",
+15.63,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0014",
+"BOLS CURACAO BLU CL.70",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0016",
+"BOLS LIQ.CL70 CACAO BIANCO",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0018",
+"BOLS LIQ.CL70 CREMA DE CASSIS",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0019",
+"BOLS LIQ.CL70 DRY ORANGE",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0020",
+"BOLS LIQ.CL70 MENTA BIANCA",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0021",
+"BOLS LIQ.CL70 TRIPLE SEC",
+12,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0022",
+"BORSCI AMARO CL100 S.MARZANO",
+16.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0023",
+"BRANDY BRANCA CL100 STRAVECCHIO",
+14.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0024",
+"BRANDY BRANCA CL70 STRAVECCHIO",
+10.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0025",
+"BRANDY STOCK 84 CL100 ORIGINAL",
+10.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0027",
+"CACHACA CL100 51",
+15.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0028",
+"CARDENAL MENDOZA CL70 BRANDY",
+24.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0029",
+"CHINA MARTINI CL70",
+11.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0030",
+"COGNAC COURVOISIER CL70VS",
+25.45,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0031",
+"COGNAC COURVOISIER CL70VSOP",
+48.31,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0032",
+"COGNAC HENNESSY CL70 V.S.",
+30,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0033",
+"COGNAC MARTELL CL70 VS",
+26.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0034",
+"COINTREAU CL.100",
+21,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0040",
+"DE KUYPER CL70 PEACHTREE",
+11.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0041",
+"DE KUYPER CL70 TRIPLE SEC",
+13.1,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0042",
+"DRAMBUIE CL.100",
+29.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0044",
+"GIN BOMBAY CL100 SAPPHIRE BLU",
+17,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0045",
+"GIN BOSFORD CL100",
+10,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0046",
+"GIN BULLDOG CL100",
+22.32,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0047",
+"GIN BULLDOG CL70",
+18.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0048",
+"GIN ELEPHANT CL50 LONDON DRY",
+34.31,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0049",
+"GIN GORDON'S CL100",
+11.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0050",
+"GIN MARE",
+35,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0051",
+"GIN MARTIN MILLER'S CL70",
+26.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0052",
+"GIN MONKEY 47 CL50 DRY",
+35.42,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0053",
+"GIN PORTOFINO DRY CL.50 43°",
+44,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0054",
+"GIN ROKU CL 100",
+25.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0055",
+"GIN ROKU CL70",
+25.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0056",
+"GIN TANQUERAY ALCOHOL 0% CL.70 ANALCOLICO",
+13.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0057",
+"GIN TANQUERAY CL.100",
+17.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0059",
+"GRAND MARNIER CL.70",
+20,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0061",
+"GRAPPA LA TRENTINA MORBIDA BARRIQUE CL.70 MARZADRO",
+18.4,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0062",
+"GRAPPA LA TRENTINA TRADIZIONALE BIANCA CL.70 MARZADRO",
+16.85,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0064",
+"JAGERMAISTER CL 100",
+14,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0065",
+"KAHLUA CL.100",
+16.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0066",
+"LEMONSODA CL.20 CTX24",
+12.3,
+"CT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0067",
+"LIMONCELLO DI CAPRI CL.100",
+12.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0068",
+"LIQUORE ST. GERMAIN CL.70",
+27.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0069",
+"MALFY ROSA CL 100",
+34,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0070",
+"PASSOA PASSION FRUIT CL.100",
+16.4,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0071",
+"PUNT & MES CL.100",
+9.76,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0072",
+"RON HAVANA CLUB 3Y CL.100",
+15.83,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0074",
+"RON HAVANA CLUB 7Y CL.100",
+28,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0075",
+"RON HAVANA CLUB 7Y CL.70",
+22.19,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0076",
+"RON HAVANA CLUB ESPECIAL CL.100",
+17.4,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0082",
+"RON ZACAPA CL70 23Y SOLERA",
+51.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0083",
+"RON ZACAPA CL70 XO",
+130,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0084",
+"RUM BACARDI CARTA BLANCA CL.100 CUBA",
+13.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0086",
+"RUM DIPLOMATICO CL70 MANTUANO",
+23.55,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0087",
+"TEQUILA JOSE'CUERVO CL100 BIANCA",
+18.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0088",
+"VECCHIA ROMAGNA CL100 BRANDY ETIC.NERA",
+15.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0090",
+"VERMOUTH CARPANO ANTICA FORMULA CL.100",
+24,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0091",
+"VODKA ABSOLUT CL.100 SECCA",
+16,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0092",
+"WHISKEY JACK DANIEL'S CL100",
+21.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0096",
+"WHISKY CHIVAS REGAL CL100 12Y",
+31,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0097",
+"WHISKY FOUR ROSES BOURBON CL.100",
+18.54,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0101",
+"WHISKY GLENLIVET CL70 12Y",
+30.09,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0103",
+"WHISKY LAGAVULIN CL70 16Y",
+73.75,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0104",
+"WHISKY LAPHROAIG CL70 10Y",
+35.7,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0105",
+"WHISKY OBAN CL70 14Y",
+60,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0114",
+"AMARO JEFFERSON CL70 30%",
+22.9,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0115",
+"AVERNA AMARO CL100",
+15.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0119",
+"LUCANO AMARO CL100",
+11,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0122",
+"RAMAZZOTTI AMARO CL100",
+14,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0127",
+"VODKA BELVEDERE CL100",
+36.48,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0128",
+"VODKA GREY GOOSE CL100",
+30.86,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0129",
+"GIN HENDRICK'S CL.70",
+30.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0130",
+"GIN HENDRICK'S CL100",
+34.9,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0131",
+"MALIBU CL.100",
+14,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0132",
+"MIDORI CL100",
+22,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0134",
+"DISARONNO CL100",
+16.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0136",
+"AMARO UNICUM CL100",
+15.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0138",
+"PASTIS 51 CL.100",
+17.11,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0140",
+"VOV LIQUORE CL70 ALL'UOVO",
+10.1,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0143",
+"MARTINI BIANCO CL100",
+7.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0144",
+"MARTINI RUBINO CL75 RISERVA SPECIALE",
+14.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0145",
+"MARTINI ROSSO CL100",
+7.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0147",
+"AMARO CYNAR CL.100",
+14.53,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0148",
+"AMARO FERNET BRANCA CL.100",
+16.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0149",
+"AMARO VECCHIO DEL CAPO CL.100",
+16.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0150",
+"BIRRA BECK'S 0.33 CTX24 - GERMANIA",
+18.5,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0151",
+"BIRRA CERES STRONG ALE CL.33 CTX24 - DANIMARCA",
+34,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0152",
+"BIRRA ICHNUSA NON FILTRATA CL.33 CTX24 - ITALIA",
+24,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0153",
+"BIRRA LEFFE BLONDE CL.33 CTX24 - BELGIO",
+34,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0155",
+"BIRRA PERONI CL.33 CTX24 - ITALIA",
+15.5,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0156",
+"BIRRA PERONI CL.66 CTX15 - ITALIA",
+15.5,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0158",
+"BIRRA NASTRO AZZURRO CL33X24",
+17.33,
+"PZ",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0159",
+"BIRRA TENNENT'S CL33X24",
+34,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0161",
+"CEDRATA TASSONI CL.18 CTX25",
+19,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0162",
+"CHIN8 NERI CL.20 CTX24",
+14.56,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0163",
+"CHINA MARTINI CL100",
+10.98,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0164",
+"COCA COLA LATTINA CL.33 CTX24 SLEEK",
+14.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0165",
+"COCA COLA VETRO VAP CL.33 CTX24",
+19.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0166",
+"COCA COLA ZERO VETRO VAP CL.33 CTX24",
+19.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0167",
+"CRODINO CL.10 CTX48",
+26.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0169",
+"ESTATHE LIMONE LATTINA CL.33 CTX24",
+19.2,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0171",
+"FANTA ORANGE VETRO VAP CL.33 CTX24",
+19.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0173",
+"RED BULL ENERGY DRINK LATTINA CL.25 CTX24",
+24.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0174",
+"SANBITTER DRY CL.10 CTX40",
+19.8,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0175",
+"SANBITTER ROSSO CL.10 CTX40",
+19.8,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0176",
+"SCHWEPPES ARANCIA CL.18 CTX24",
+16,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0177",
+"SCHWEPPES LIMONE CL.18 CTX24",
+16.88,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0178",
+"SCHWEPPES TONICA CL.18 CTX24",
+17.46,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0179",
+"SPRITE VETRO VAP CL.33 CTX24",
+19.5,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0183",
+"CAMPARI SODA CL10X100",
+86,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0186",
+"SODA SIFONE LT.1,5",
+4.61,
+"BT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0187",
+"POLPA NEXUS COCONUT CL.70 - COCCO",
+13.83,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0188",
+"POLPA NEXUS MARACUJA CL.70 - FRUTTO DELLA PASSIONE",
+13.07,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0190",
+"SPUMANTE VILLA MIAZZI CUVEE BRUT MILLES. CL.75 ASTORIA",
+4,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0191",
+"VINO PECORINO BIO DOC BAKAN CL.75 TORRI - ABRUZZO",
+7.63,
+"BT",
+"VINO",
+"",
+null
+],
+[
+"CC-0192",
+"SCIROPPO DI MANDORLA KG.2,6 SABA",
+14.74,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0193",
+"SCIROPPO MONIN FLEUR DE SUREAU CL.75 - FIORI DI SAMBUCO",
+12.2,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0194",
+"SCIROPPO ZUCCHERO DI CANNA CL.100 BAGNOLI",
+4.94,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0195",
+"YOGA CL20X24BT ACE",
+14.09,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0196",
+"YOGA CL20X24BT ALBICOCCA",
+14.091,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0197",
+"YOGA CL20X24BT ANANAS",
+17.45,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0198",
+"YOGA CL20X24BT ARANCIA ROSSA",
+14.091,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0200",
+"YOGA CL20X24BT ARANCIA SICILIA",
+14.09,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0201",
+"YOGA CL20X24BT BANANA",
+14.09,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0202",
+"YOGA CL20X24BT MELA VERDE",
+14.09,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0203",
+"YOGA CL20X24BT MIRTILLO",
+24.16,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0204",
+"YOGA CL20X24BT PERA",
+14.09,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0205",
+"YOGA CL20X24BT PESCA",
+14.091,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0206",
+"YOGA CL20X24BT POMPELMO",
+14,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0207",
+"CIRIO SUCCO POMODORO CL20X24",
+16.4,
+"CT",
+"SUCCHI",
+"",
+null
+],
+[
+"CC-0208",
+"DOLCIFICANTE LINEA BOX 300 BS",
+6,
+"CT",
+"DOLCIFICANTI",
+"",
+null
+],
+[
+"CC-0309",
+"ACQUA SANPELLEGRINO CL25X24 FRIZZANTE VETRO",
+21.9,
+"CT",
+"ACQUA",
+"BICCHIERI",
+null
+],
+[
+"CC-0501",
+"BRANDY VECCHIA ROMAGNA ETICHETTA NERA CL.70",
+15.66,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0502",
+"ESTATHE'CL33X24 PESCA LATTINA",
+19.2,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0507",
+"FEVER-TREE GINGER BEER CL.20X24",
+26.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0508",
+"FEVER-TREE INDIAN TONIC CL20X24",
+24.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0509",
+"FEVER-TREE LEMON TONIC CL.20X24",
+24.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0510",
+"FEVER-TREE MEDITERRANEAN CL20X24 TONIC WATER",
+24.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0511",
+"FEVER-TREE SICILIAN LEMONADE CL20X24",
+24.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0512",
+"FEVER-TREE PINK GRAPEFRUIT CL.20X24",
+24.5,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0513",
+"SANPELLEGRINO COCKTAIL CL20X24 ROSSO",
+16.07,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0514",
+"SANPELLEGRINO COCKTAIL CL20X24 BIANCO",
+16.08,
+"CT",
+"SODATI",
+"Bar",
+null
+],
+[
+"CC-0524",
+"BIRRA CORONA CL33X24",
+26.17,
+"CT",
+"BIRRE",
+"Bar",
+null
+],
+[
+"CC-0525",
+"MOLINARI SAMBUCA CL100",
+16,
+"BT",
+"LIQUORI",
+"Bar",
+null
+],
+[
+"CC-0529",
+"AMARO MONTENEGRO CL100",
+19.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0538",
+"ACQUA SORGESANA CL.150 CTX6",
+1.9459,
+"",
+"ACQUA",
+"ACQUA",
+null
+],
+[
+"CC-0543",
+"SCHWEPPES CL18X24 GINGER ALE",
+19.46,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0544",
+"BIRRA HEINEKEN CL33X24",
+21,
+"CT",
+"BIRRE",
+"",
+null
+],
+[
+"CC-0545",
+"GRAPPA NONINO FRIULANA CL.70",
+16.84,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0546",
+"GRAPPA NARDINI BIANCA CL.100",
+22.06,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0548",
+"BIANCO SARTI CL.100",
+17,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0549",
+"GIN BICKENS LONDON DRY 40° CL.100",
+12.88,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0550",
+"RON BACARDI 8.Y OCHO CL.70",
+26,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0552",
+"GRAPPA 903 BARRIQUE CL.70",
+18.12,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0553",
+"WHISKY JACK DANIEL'S RYE TENNESSEE CL.70",
+32.27,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0554",
+"WHISKY J&B SCOTCH WHISKY CL.100",
+17.45,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0555",
+"GIN MALFY CON POMPELMO ROSA CL.70",
+34,
+"BT",
+"LIQUORI",
+"LIQUORI",
+null
+],
+[
+"CC-0637",
+"ABACA SCIROPPO CL75 PASSION FRUIT MARACUJA",
+10.25,
+"BT",
+"SCIROPPI",
+"",
+null
+],
+[
+"CC-0645",
+"PIMM'S CL.100",
+20.5131,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0646",
+"BITTERS ANGOSTURA CL.20",
+16.91,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0647",
+"TONICA SUPERFINE TASSONI CL.18 CTX25",
+25.38,
+"CT",
+"SODATI",
+"",
+null
+],
+[
+"CC-0697",
+"VERMOUTH COCCHI DI TORINO ROSSO CL.75",
+16.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0698",
+"AMARO NOCILLO LEANZA CL.50",
+13.03,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-16214",
+"GIN TANQUERAY TEN 47,3° CL.100",
+43.2,
+"BT",
+"LIQUORI",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "SUD INGROSSO DI VINCENZO SRL",
+"fornitore_key": "sudingrosso",
+"partita_iva": "08719711213",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "9868f2ab96b2c875afd84ad4be8e6f9239334c4c6cfb74f06851f5b4d943d660",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0007",
+"ACQUA VITASNELLA LT.1,5 CTX6",
+2.75,
+"CT",
+"ACQUA",
+"",
+null
+],
+[
+"CC-0009",
+"APERITIVO L'APE CL.100 BAGNOLI",
+5.6,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0011",
+"BAILEYS ORIGINAL IRISH CREAM CL.100",
+15.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0013",
+"BITTERS ORANGE CL.15 FEE BROTHERS 1864",
+15.63,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0014",
+"BOLS CURACAO BLU CL.70",
+11.96,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0024",
+"BRANDY BRANCA CL70 STRAVECCHIO",
+10.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0025",
+"BRANDY STOCK 84 CL100 ORIGINAL",
+10.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0026",
+"BRANDY STOCK 84 CL70 ORIGINAL",
+8.6,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0029",
+"CHINA MARTINI CL70",
+11.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0030",
+"COGNAC COURVOISIER CL70VS",
+25.45,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0032",
+"COGNAC HENNESSY CL70 V.S.",
+31,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0033",
+"COGNAC MARTELL CL70 VS",
+27,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0034",
+"COINTREAU CL.100",
+21,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0035",
+"DE KUYPER CL70 BLU CURACAO",
+11.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0043",
+"DRAMBUIE CL.70",
+24.76,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0050",
+"GIN MARE",
+37,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0052",
+"GIN MONKEY 47 CL50 DRY",
+35.42,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0056",
+"GIN TANQUERAY ALCOHOL 0% CL.70 ANALCOLICO",
+13.89,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0069",
+"MALFY ROSA CL 100",
+34,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0070",
+"PASSOA PASSION FRUIT CL.100",
+12.55,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0072",
+"RON HAVANA CLUB 3Y CL.100",
+15.83,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0075",
+"RON HAVANA CLUB 7Y CL.70",
+22.19,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0079",
+"RON PAMPERO CL70 ANIVERSARIO RESERVA EXCLUSIVA",
+22.55,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0084",
+"RUM BACARDI CARTA BLANCA CL.100 CUBA",
+13.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0089",
+"VECCHIA ROMAGNA CL70 BRANDY CLASSICA",
+10,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0090",
+"VERMOUTH CARPANO ANTICA FORMULA CL.100",
+24,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0091",
+"VODKA ABSOLUT CL.100 SECCA",
+16,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0097",
+"WHISKY FOUR ROSES BOURBON CL.100",
+18.54,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0098",
+"WHISKY FOUR ROSES BOURBON CL70",
+1.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0099",
+"WHISKY GLEN GRANT CL1005Y",
+12.25,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0100",
+"WHISKY GLENFIDDICH CL7012Y",
+41.35,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0101",
+"WHISKY GLENLIVET CL70 12Y",
+34.47,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0102",
+"WHISKY J.WALKER CL70 RED LABEL",
+11.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0103",
+"WHISKY LAGAVULIN CL70 16Y",
+74,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0104",
+"WHISKY LAPHROAIG CL70 10Y",
+35.7,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0105",
+"WHISKY OBAN CL70 14Y",
+60,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0106",
+"WHISKY TALISKER CL70 10Y",
+34.5,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0107",
+"WILD TURKEY CL100 BOURBON 81",
+27,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0108",
+"WILD TURKEY CL70 BOURBON 81",
+21.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0109",
+"PERNOD CL.100",
+17.23,
+"PZ",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0113",
+"BRAULIO AMARO CL100",
+14.01,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0114",
+"AMARO JEFFERSON CL70 30%",
+23.2,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0115",
+"AVERNA AMARO CL100",
+15.8,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0116",
+"AVERNA AMARO CL150",
+24.3,
+"BT",
+"LIQUORI",
+"",
+null
+],
+[
+"CC-0122",
+"RAMAZZOTTI AMARO CL100",
+14,
+"BT",
+"LIQUORI",
+"",
+null
+]
+]
+},
+{
+"fornitore": {
+"nome": "TOP SPINA s.r.l. unipersonale",
+"fornitore_key": "topspina",
+"partita_iva": "06076491213",
+"url": ""
+},
+"data_listino": "2026-07-03",
+"file": "catalogo_ceraldi_2026-07.json",
+"file_sha256": "425982435cbe53f7e5b17980d370d29c77cea97339d0956861b28c2b4ed37d46",
+"tabella": [
+[
+"Codice",
+"Descrizione",
+"Prezzo",
+"Conf. ordine",
+"Categoria",
+"Sottocategoria",
+"IVA"
+],
+[
+"CC-0709",
+"FUSTO 20 LT. N'ARTIGIANA ORO GR° 4.8",
+111.02,
+"FU",
+"BIRRE",
+"",
+null
+]
+]
+}
+]
+}
