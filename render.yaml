@@ -168,6 +168,21 @@ services:
         sync: false
       - key: SUMUP_MERCHANT_CODE
         sync: false
+      # --- Inviti recensione Colazioni B&B. Il template Meta deve avere due
+      # parametri nel corpo: nome struttura e link recensione. Proprietario:
+      # titolare; il token si ruota da Meta Business. Se assenti, nessun invio.
+      - key: COLAZIONI_PUBLIC_URL
+        value: "https://impresasemplice.online/convenzioni/"
+      - key: WHATSAPP_CLOUD_API_BASE
+        value: "https://graph.facebook.com/v23.0"
+      - key: WHATSAPP_CLOUD_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_CLOUD_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_REVIEW_TEMPLATE_NAME
+        value: "ceraldi_review_invite"
+      - key: WHATSAPP_REVIEW_TEMPLATE_LANGUAGE
+        value: "it"
       # --- Banco BPM via Enable Banking (PSD2, sola lettura), modalita' ombra.
       # Proprietario: titolare (Vincenzo Ceraldi). Spenta per default: senza
       # ENABLE_BANKING_ENABLED=true le rotte /api/banca/enable-banking/*

@@ -168,6 +168,16 @@ class Settings(BaseSettings):
     SUMUP_MERCHANT_CODE: str = ""
     SUMUP_API_BASE: str = "https://api.sumup.com"
 
+    # Inviti recensione Colazioni B&B via WhatsApp Cloud API. Il token resta
+    # soltanto nelle variabili Render; senza configurazione la coda resta in
+    # attesa e nessun messaggio parte.
+    COLAZIONI_PUBLIC_URL: str = "https://impresasemplice.online/convenzioni/"
+    WHATSAPP_CLOUD_API_BASE: str = "https://graph.facebook.com/v23.0"
+    WHATSAPP_CLOUD_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_CLOUD_ACCESS_TOKEN: str = ""
+    WHATSAPP_REVIEW_TEMPLATE_NAME: str = "ceraldi_review_invite"
+    WHATSAPP_REVIEW_TEMPLATE_LANGUAGE: str = "it"
+
     # OpenAPI.it
     OPENAPI_IT_KEY: Optional[str] = None
     OPENAPI_IT_ENV: str = "production"
