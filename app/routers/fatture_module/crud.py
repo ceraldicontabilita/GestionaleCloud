@@ -491,7 +491,7 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
     """Cerca la fattura e recupera l'XML FatturaPA originale (bytes, gia'
     ripulito dall'eventuale busta .p7m), se disponibile. Punto UNICO usato
     sia dalla vista renderizzata (view_fattura_assoinvoice) sia dal download
-    del file grezzo (download_xml_originale) — cosi' le due viste concordano
+    del file grezzo (servizio `originale_documento`, tipo `fattura`) — cosi' le due viste concordano
     sempre su cosa sia "l'originale" di una fattura.
 
     1. Cerca la fattura in `invoices` (poi fallback COL_FATTURE_RICEVUTE / _id)

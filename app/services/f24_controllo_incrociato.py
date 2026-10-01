@@ -916,6 +916,10 @@ GIORNI_LAVORATIVI_ADDEBITO = 2
 GIORNI_COPERTURA_ESTRATTO = 5
 SOGLIA_PARZIALE_CENTS = 500
 NOTA_COMMERCIALISTA = "da verificare con il commercialista"
+# Un modello che il motore non puo' confrontare (non e' un livello: non c'e' un
+# esito d'abbinamento da dire, solo il dato che manca).
+ESITO_DATA_VERSAMENTO_ASSENTE = "data_versamento_assente"
+ESITO_SALDO_ASSENTE = "saldo_assente"
 _RE_ADDEBITO_DELEGA = re.compile(r"\bI24\b|\bF24\b|DELEGA\s+UNIFICATA", re.I)
 _RE_DATA_INCASSO = re.compile(r"DATA\s+INCASSO\s+(\d{2})/(\d{2})/(\d{4})", re.I)
 
@@ -1356,6 +1360,22 @@ def riscontri_modelli_banca(
                 })
                 break
 
+    # `_abbina` salta un modello senza data o senza saldo: non e' un «nessun addebito
+    # trovato», e' un modello che non si puo' confrontare. Si dichiara, senza
+    # cambiare le regole: la causa e' nel dato (la data la scrive chi carica il
+    # modello o la quietanza), e il modello resta fuori dai conteggi del giro.
+    non_riscontrabili: List[Dict[str, Any]] = []
+    for f in senza_quietanza:
+        if not data_versamento_modello(f):
+            non_riscontrabili.append({**vista(f), "esito": ESITO_DATA_VERSAMENTO_ASSENTE, "motivazione": (
+                "modello senza data di versamento: non si confronta con la banca finche' "
+                "non arriva la quietanza o la data")})
+        elif not saldo_modello_cents(f):
+            non_riscontrabili.append({**vista(f), "esito": ESITO_SALDO_ASSENTE, "motivazione": (
+                "modello senza saldo letto (o a saldo zero): nessun addebito da cercare")})
+    non_riscontrabili_id = {v["f24_id"] for v in non_riscontrabili}
+    senza_quietanza = [f for f in senza_quietanza if str(f.get("id")) not in non_riscontrabili_id]
+
     liberi = [m for m in registro["movimenti"]
               if _movimento_libero(m) and e_addebito_delega(m) and data_movimento(m)
               and _mid(m) not in reclamati]
@@ -1397,8 +1417,13 @@ def riscontri_modelli_banca(
                 "stesso addebito e stesso saldo in piu' modelli F24: scegliere a mano")})
     return {
         "riscontrati": riscontrati, "da_verificare": da_verificare,
+        "non_riscontrabili": non_riscontrabili,
         "conteggi": {"modelli_aperti": len(modelli), "riscontrati": len(riscontrati),
-                     "da_verificare": len(da_verificare)},
+                     "da_verificare": len(da_verificare),
+                     "data_versamento_assente": sum(
+                         1 for v in non_riscontrabili if v["esito"] == ESITO_DATA_VERSAMENTO_ASSENTE),
+                     "saldo_assente": sum(
+                         1 for v in non_riscontrabili if v["esito"] == ESITO_SALDO_ASSENTE)},
     }
 
 

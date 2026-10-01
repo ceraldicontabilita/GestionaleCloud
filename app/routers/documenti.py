@@ -3060,8 +3060,12 @@ async def upload_documento_automatico(
 
         verifica_pdf_reale(content, filename)
 
-    # Rileva tipo
-    tipo_rilevato = await rileva_tipo_documento(filename, content)
+    # Rileva tipo. La cartella unica Drive lo ha gia' letto (e in anticipo,
+    # mentre il file davanti si registrava): rileggere un PDF per intero, OCR
+    # compreso, raddoppiava il tempo di ogni file riconosciuto.
+    tipo_rilevato = getattr(file, "tipo_rilevato_noto", None)
+    if not isinstance(tipo_rilevato, str) or not tipo_rilevato:
+        tipo_rilevato = await rileva_tipo_documento(filename, content)
 
     from app.services.document_import_preview import verify_confirmation_token
     from fastapi.params import Header as HeaderParameter
