@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 
-def test_e2e_non_puo_usare_connessioni_esterne_ereditate():
+def test_e2e_non_puo_usare_connessioni_esterne_ereditate(tmp_path):
     root = Path(__file__).resolve().parents[2]
     env = dict(os.environ)
     injected = {
@@ -24,6 +24,11 @@ def test_e2e_non_puo_usare_connessioni_esterne_ereditate():
         "GEMINI_API_KEY": "production-test-placeholder",
     }
     env.update(injected)
+    frontend_dist = tmp_path / "dist"
+    frontend_dist.mkdir()
+    (frontend_dist / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    env["E2E_FRONTEND_DIST"] = str(frontend_dist)
+    injected_keys = json.dumps(list(injected))
     script = '''
 import json, os
 from unittest.mock import patch
@@ -41,12 +46,12 @@ print(json.dumps({
     "supabase": settings.SUPABASE_URL,
     "scheduler": settings.ENABLE_SCHEDULER,
     "client_esterni_chiamati": len(client_esterni_chiamati),
-    "external_keys": [k for k in json.loads(os.environ["E2E_INJECTED_KEYS"]) if k in os.environ and k != "ENABLE_SCHEDULER"],
+    "external_keys": [k for k in __INJECTED_KEYS__ if k in os.environ and k != "ENABLE_SCHEDULER"],
 }))
-'''
-    env["E2E_INJECTED_KEYS"] = json.dumps(list(injected))
+'''.replace("__INJECTED_KEYS__", injected_keys)
     result = subprocess.run([sys.executable, "-c", script], cwd=root, env=env,
-                            text=True, capture_output=True, timeout=30, check=True)
+                            text=True, capture_output=True, timeout=30, check=False)
+    assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout.strip().splitlines()[-1])
     assert data == {"dsn": None, "supabase": None, "scheduler": False,
                     "external_keys": [], "client_esterni_chiamati": 0}
