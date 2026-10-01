@@ -327,6 +327,50 @@ async def ripulisci_import(
     return esito
 
 
+async def quarantena_import_errato(
+    db, source_filename: str, motivo: str, *, dry_run: bool = True, actor: str = "manutenzione",
+) -> Dict[str, Any]:
+    """Mette in quarantena TUTTE le righe di un file letto con il lettore sbagliato (per id, con motivo).
+
+    Caso reale (01/10/2026): l'export «Spese» di SumUp (netto + IVA + fornitore) letto come estratto BPM
+    scrisse 25 righe con l'IVA al posto dell'importo (0,00 per gli stipendi). Le righe vere stanno
+    nell'estratto SumUp: qui non c'e' niente da tenere. Stessa uscita dei doppioni: copia intera in
+    ``estratto_conto_movimenti_quarantena``, poi fuori dall'estratto; la Prima Nota Banca nata da loro si
+    storna (soft delete), quella con una fattura collegata non si tocca e si elenca.
+    """
+    righe = await db[COLLEZIONE].find({"source_filename": source_filename}, {"_id": 0}).to_list(20000)
+    ids = [r["id"] for r in righe if r.get("id")]
+    righe_pn = await _righe_prima_nota_da(db, ids) if ids else []
+    con_fattura = [r for r in righe_pn if r.get("fattura_id") or r.get("fattura_ids")]
+    da_stornare = [r for r in righe_pn if r not in con_fattura]
+    esito: Dict[str, Any] = {
+        "source_filename": source_filename, "dry_run": dry_run, "righe": len(righe),
+        "prima_nota_da_stornare": len(da_stornare),
+        "prima_nota_con_fattura_non_toccate": [r["id"] for r in con_fattura][:50],
+        "hr": await _storna_hr(ids, dry_run=dry_run) if ids else {},
+    }
+    if dry_run:
+        esito["esempi"] = [{"data": r.get("data"), "descrizione": r.get("descrizione"), "importo": r.get("importo")}
+                           for r in righe[:10]]
+        return esito
+    adesso = _oggi()
+    for riga in da_stornare:
+        await db["prima_nota_banca"].update_one(
+            {"id": riga["id"]},
+            {"$set": {"status": "deleted", "deleted_at": adesso, "deleted_reason": motivo, "deleted_by": actor}},
+        )
+    for riga in righe:
+        await db[COLLEZIONE_QUARANTENA].update_one(
+            {"id": riga["id"]},
+            {"$set": {**riga, "motivo_quarantena": motivo, "quarantena_at": adesso, "quarantena_da": actor}},
+            upsert=True,
+        )
+        await db[COLLEZIONE].delete_one({"id": riga["id"]})
+    logger.info("Import errato %s: %s righe in quarantena, %s righe Prima Nota stornate, HR %s",
+                source_filename, len(righe), len(da_stornare), esito["hr"])
+    return esito
+
+
 async def applica(db, *, actor: str = "migrazione_avvio") -> Dict[str, Any]:
     """Una tantum: gli import autorizzati dal titolare."""
     return {

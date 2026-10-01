@@ -26,6 +26,60 @@ function nomeFornitore(fornitore) {
   return fornitore.denominazione || fornitore.ragione_sociale || fornitore.nome || fornitore.id;
 }
 
+/**
+ * Che cos'e' questo movimento? Il sistema legge la causale col motore unico e, per un
+ * addebito della carta Nexi, dice a quale estratto va riscontrato. Per il resto elenca i
+ * documenti con lo stesso importo al centesimo (verbali, cartelle, fatture non pagate):
+ * sono candidati, il collegamento si fa in «Classifica e collega», mai da qui.
+ */
+export function LetturaMovimento({ movimento }) {
+  const [stato, setStato] = useState({ aperto: false, caricamento: false, dati: null, errore: '' });
+
+  const apri = async () => {
+    setStato({ aperto: true, caricamento: true, dati: null, errore: '' });
+    try {
+      const r = await api.get(`/api/regole-riconoscimento-banca/proposte/${encodeURIComponent(movimento.id)}`);
+      setStato({ aperto: true, caricamento: false, dati: r.data, errore: '' });
+    } catch (err) {
+      setStato({ aperto: true, caricamento: false, dati: null, errore: err?.response?.data?.detail || 'Lettura non riuscita' });
+    }
+  };
+
+  if (!stato.aperto) {
+    return <Button size="sm" variant="secondary" onClick={apri}>Cosa potrebbe essere?</Button>;
+  }
+  const d = stato.dati;
+  return (
+    <div data-testid="lettura-movimento" style={{ display: 'grid', gap: 6, fontSize: 13, minWidth: 260 }}>
+      {stato.caricamento && <span role="status">Leggo la causale…</span>}
+      {stato.errore && <span role="alert" style={{ color: COLORS.danger }}>{stato.errore}</span>}
+      {d && (
+        <>
+          <div>
+            {d.riconoscimento?.categoria
+              ? <>Riconosciuto: <strong>{d.riconoscimento.categoria}</strong> ({d.riconoscimento.motivo})</>
+              : <>Non riconosciuto da solo: {d.riconoscimento?.motivo || 'serve il tuo controllo'}.</>}
+          </div>
+          {d.nexi && <div>Carta Nexi, spese di {d.nexi.periodo_spese}: {d.nexi.nota}</div>}
+          {d.candidati.length > 0 && (
+            <div>
+              <div style={{ color: COLORS.textMuted }}>Stesso importo al centesimo:</div>
+              {d.candidati.map(c => (
+                <div key={`${c.tipo}-${c.id}`}><a href={c.rotta}>{c.etichetta}</a></div>
+              ))}
+            </div>
+          )}
+          {d.candidati.length === 0 && !d.riconoscimento?.categoria && (
+            <div style={{ color: COLORS.textMuted }}>Nessun verbale, cartella o fattura aperta con questo importo.</div>
+          )}
+          <a href={d.classifica}>Classifica e collega</a>
+          <span style={{ color: COLORS.textMuted }}>{d.avviso}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function RigaInsegnaMovimento({ movimento, fornitori, onSalvato }) {
   const [fornitoreId, setFornitoreId] = useState('');
   const [categoriaLibera, setCategoriaLibera] = useState('');
@@ -55,6 +109,8 @@ function RigaInsegnaMovimento({ movimento, fornitori, onSalvato }) {
   };
 
   return (
+    <div style={{ display: 'grid', gap: 10 }}>
+    <LetturaMovimento movimento={movimento} />
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
       <Select
         value={fornitoreId}
@@ -74,9 +130,10 @@ function RigaInsegnaMovimento({ movimento, fornitori, onSalvato }) {
         style={{ minWidth: 130, width: 130 }}
       />
       <Button size="sm" variant="success" onClick={salva} disabled={salvando}>
-        {salvando ? 'Salvo...' : 'A chi appartiene?'}
+        {salvando ? 'Salvo...' : 'Salva regola per i prossimi'}
       </Button>
       {errore && <span style={{ color: COLORS.danger, fontSize: 12 }}>{errore}</span>}
+    </div>
     </div>
   );
 }
@@ -204,7 +261,7 @@ export default function RegoleRiconoscimentoBanca() {
                   <Th>Causale</Th>
                   <Th align="right">Importo</Th>
                   <Th>Categoria attuale</Th>
-                  <Th>A chi appartiene?</Th>
+                  <Th>Cosa è</Th>
                 </tr>
               </thead>
               <tbody>

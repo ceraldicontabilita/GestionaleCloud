@@ -2550,6 +2550,10 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             from app.services.pagamenti_buoni import is_canonical_csv
             if is_canonical_csv(file_content):
                 return "pagamenti_buoni"
+            if all(m in content_str for m in ("ID INVIO", "MATRICOLA DISPOSITIVO", "AMMONTARE DELLE VENDITE")):
+                return "corrispettivi_csv_ade"
+        if all(marker in content_str for marker in ("IMPORTO NETTO", "IMPORTO IVA", "FORNITORE", "STATO DEL PAGAMENTO")):
+            return "spese_sumup"
         if all(marker in content_str for marker in (
             "ID SDI", "METODO DI PAGAMENTO", "TOTALE DOCUMENTO",
             "NETTO A PAGARE", "FORNITORE",
@@ -3982,6 +3986,31 @@ async def upload_documento_automatico(
                     "/api/admin/fatture/pagamenti-dichiarati/stato)"
                 )
 
+        elif tipo_rilevato == 'corrispettivi_csv_ade':
+            # CSV «Corrispettivi» del portale AdE: dato provvisorio in attesa dell'XML del
+            # registratore, che lo sovrascrive (corrispettivi_service.importa_csv_ade).
+            from app.services.corrispettivi_service import importa_csv_ade
+
+            try:
+                testo_csv = content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                testo_csv = content.decode("latin-1")
+            esito_csv = await importa_csv_ade(db, testo_csv, filename)
+            result.update({
+                "workflow": "CORRISPETTIVI_CSV_PROVVISORIO",
+                "imported": esito_csv["nuovi"],
+                "duplicate": esito_csv["nuovi"] == 0 and esito_csv["aggiornati"] == 0,
+                "data": esito_csv,
+                "message": (
+                    f"Corrispettivi CSV AdE: {esito_csv['nuovi']} giornate provvisorie nuove, "
+                    f"{esito_csv['aggiornati']} aggiornate, {esito_csv['gia_definitivi']} già coperte dall'XML"
+                    + (f", {len(esito_csv['discordanze_con_xml'])} con imponibile diverso dall'XML" if esito_csv["discordanze_con_xml"] else "")
+                    + (f", {len(esito_csv['conflitti'])} in conflitto con una riga manuale" if esito_csv["conflitti"] else "")
+                    + (f", {len(esito_csv['errori'])} righe da controllare" if esito_csv["errori"] else "")
+                    + ": l'XML del registratore le sostituirà"
+                ),
+            })
+
         elif tipo_rilevato == 'pagamenti_buoni':
             # Registro dedicato: resta dietro Documenti e deduplica per
             # riferimento operazione, senza creare movimenti contabili o
@@ -4082,6 +4111,26 @@ async def upload_documento_automatico(
                     "Estratto Nexi già presente; verifica aggiornata."
                     if nexi_result.get("duplicate")
                     else f"Estratto Nexi importato: {nexi_result.get('operazioni', 0)} operazioni."
+                ),
+            })
+
+        elif tipo_rilevato == 'spese_sumup':
+            # Export «Spese» di SumUp: fornitore, categoria e IVA dei movimenti della carta che
+            # l'estratto ha gia' (sumup_conto.arricchisci_da_spese_sumup). Mai un estratto BPM.
+            from app.services.sumup_conto import arricchisci_da_spese_sumup
+
+            esito_spese = await arricchisci_da_spese_sumup(db, content, filename)
+            result.update({
+                "workflow": "SPESE_SUMUP_ARRICCHIMENTO",
+                "imported": esito_spese["arricchiti"],
+                "duplicate": esito_spese["arricchiti"] == 0 and esito_spese["gia_arricchiti"] > 0,
+                "data": esito_spese,
+                "message": (
+                    f"Spese SumUp: {esito_spese['arricchiti']} movimenti arricchiti con fornitore e IVA, "
+                    f"{esito_spese['gia_arricchiti']} già arricchiti"
+                    + (f", {len(esito_spese['senza_movimento'])} senza movimento nell'estratto SumUp (carica l'estratto del periodo)"
+                       if esito_spese["senza_movimento"] else "")
+                    + (f", {len(esito_spese['ambigui'])} ambigui" if esito_spese["ambigui"] else "")
                 ),
             })
 

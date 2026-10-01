@@ -1071,6 +1071,14 @@ export default function ArchivioBonifici() {
                             ✕
                           </button>
                         </div>
+                      ) : (t.fattura_associata || t.hr_deposito?.esito === 'non_stipendio') ? (
+                        <span
+                          data-testid={`non-stipendio-${t.id}`}
+                          title="La causale cita una fattura e il bonifico è già collegato: non è uno stipendio, non serve scegliere il periodo"
+                          style={{ fontSize: 11, color: '#7a776e' }}
+                        >
+                          Pagamento fattura: nessun periodo
+                        </span>
                       ) : (
                         <div>
                           <button
@@ -1242,6 +1250,9 @@ export default function ArchivioBonifici() {
                             }}
                           >
                             📄 {t.fattura_numero?.substring(0, 15) || 'Associata'}
+                            {t.fattura_esito === 'intero' && ' · saldo'}
+                            {t.fattura_esito === 'acconto' && ' · acconto'}
+                            {t.fattura_esito === 'eccede' && ' · supera il dovuto'}
                           </span>
                           <button
                             onClick={() => handleDisassociaFattura(t.id, t.fattura_numero)}

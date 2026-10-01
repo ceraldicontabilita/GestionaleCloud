@@ -62,7 +62,60 @@ async def list_transfers(
     ).to_list(5000)
     for transfer in transfers:
         transfer.update(classifica_destinazione_dipendente(transfer, dipendenti))
+    await _arricchisci_con_fattura(db, transfers)
     return transfers
+
+
+def _centesimi(valore: Any) -> Optional[int]:
+    from app.services.payment_invoice_matching import money_cents
+
+    return money_cents(abs(float(valore))) if valore not in (None, "") else None
+
+
+async def _arricchisci_con_fattura(db, transfers: List[Dict[str, Any]]) -> None:
+    """Numero della fattura collegata e se il bonifico la salda o e' un acconto.
+
+    L'esito si dice con i numeri della fattura (netto di ritenuta incluso), mai dedotto dal testo:
+    ``intero`` = importo uguale al dovuto al centesimo, ``acconto`` = meno del dovuto,
+    ``eccede`` = piu' del dovuto (da guardare). Un bonifico con la fattura gia' collegata non e' uno
+    stipendio: la pagina non gli propone il periodo.
+    """
+    id_per_bonifico: Dict[str, List[str]] = {}
+    for t in transfers:
+        ids = [str(i) for i in (t.get("fattura_ids") or []) if i]
+        for campo in ("fattura_id", "fattura_associata_id"):
+            if t.get(campo) and str(t[campo]) not in ids:
+                ids.append(str(t[campo]))
+        if ids and t.get("fattura_associata"):
+            id_per_bonifico[str(t.get("id"))] = ids
+    if not id_per_bonifico:
+        return
+    tutti = sorted({i for ids in id_per_bonifico.values() for i in ids})
+    candidati = tutti + [int(i) for i in tutti if i.isdigit()]
+    fatture = {
+        str(f.get("id")): f for f in await db[Collections.INVOICES].find(
+            {"id": {"$in": candidati}},
+            {"_id": 0, "id": 1, "invoice_number": 1, "total_amount": 1, "importo_ritenuta": 1, "supplier_name": 1},
+        ).to_list(len(candidati) + 10)
+    }
+    for t in transfers:
+        ids = id_per_bonifico.get(str(t.get("id")))
+        if not ids:
+            continue
+        trovate = [fatture[i] for i in ids if i in fatture]
+        if not trovate:
+            continue
+        t["fattura_numero"] = t.get("fattura_numero") or ", ".join(
+            str(f.get("invoice_number") or "") for f in trovate if f.get("invoice_number"))
+        t["fattura_id_prima"] = str(trovate[0].get("id"))
+        if len(trovate) == 1:
+            dovuto = _centesimi(trovate[0].get("total_amount"))
+            ritenuta = _centesimi(trovate[0].get("importo_ritenuta")) or 0
+            pagato = _centesimi(t.get("importo"))
+            if dovuto is not None and pagato is not None:
+                atteso = dovuto - ritenuta
+                t["fattura_dovuto_cents"] = atteso
+                t["fattura_esito"] = "intero" if pagato == atteso else ("acconto" if pagato < atteso else "eccede")
 
 
 async def count_transfers(

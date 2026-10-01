@@ -142,6 +142,55 @@ describe('Pagina PayPal: fonti, stati e filtri', () => {
     );
   });
 
+  it('mostra ogni transazione in una card, anche su desktop, con l ID per intero', async () => {
+    mockSuccessfulRequests();
+    renderPage('/riconciliazione/paypal?tab=transazioni');
+
+    expect(await screen.findByTestId('paypal-transaction-cards')).toBeInTheDocument();
+    expect(screen.getAllByTestId('paypal-transaction-card')).toHaveLength(2);
+    expect(screen.queryByTestId('paypal-transactions-table')).not.toBeInTheDocument();
+    expect(screen.getByText('TX-VALID')).toBeInTheDocument();
+  });
+
+  it('collega una transazione senza prova a un addebito bancario scelto dal titolare', async () => {
+    mockSuccessfulRequests();
+    const candidato = { id: 'EC-1', data: '2026-07-15', descrizione: 'ADDEBITO DIRETTO ALTRO', importo: '-42.62', citata_paypal: false };
+    api.get.mockImplementation(url => {
+      if (url.includes('/candidati-banca')) return Promise.resolve({ data: { candidati: [candidato] } });
+      if (url.includes('/dashboard')) return Promise.resolve({ data: {} });
+      if (url.includes('/transactions')) return Promise.resolve({ data: { transactions } });
+      if (url.includes('/bank-movements')) return Promise.resolve({ data: { movimenti: [] } });
+      if (url.includes('/paypal-api/status')) return Promise.resolve({ data: { api_configurata: false } });
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true } });
+    renderPage('/riconciliazione/paypal?tab=transazioni');
+
+    const bottoni = await screen.findAllByRole('button', { name: 'Collega a un addebito in banca' });
+    fireEvent.click(bottoni[0]);
+    expect(await screen.findByText(/ADDEBITO DIRETTO ALTRO/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Collega questo' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      expect.stringContaining('/transazione/'), { movimento_id: 'EC-1' }));
+    expect(api.post.mock.calls.some(([url]) => url.includes('/collega-banca'))).toBe(true);
+  });
+
+  it('senza addebiti compatibili lo dice e non propone collegamenti', async () => {
+    mockSuccessfulRequests();
+    api.get.mockImplementation(url => {
+      if (url.includes('/candidati-banca')) return Promise.resolve({ data: { candidati: [], motivo: 'importo in euro o data della transazione non noti' } });
+      if (url.includes('/transactions')) return Promise.resolve({ data: { transactions } });
+      if (url.includes('/bank-movements')) return Promise.resolve({ data: { movimenti: [] } });
+      if (url.includes('/paypal-api/status')) return Promise.resolve({ data: { api_configurata: false } });
+      return Promise.resolve({ data: {} });
+    });
+    renderPage('/riconciliazione/paypal?tab=transazioni');
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Collega a un addebito in banca' }))[0]);
+    expect(await screen.findByText('importo in euro o data della transazione non noti')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Collega questo' })).not.toBeInTheDocument();
+  });
+
   it('usa card e non la tabella transazioni su mobile', async () => {
     viewport.mobile = true;
     mockSuccessfulRequests();

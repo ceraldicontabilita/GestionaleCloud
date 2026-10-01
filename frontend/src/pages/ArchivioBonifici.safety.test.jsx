@@ -29,4 +29,10 @@ describe('Archivio bonifici: scelta salario sicura', () => {
     expect(frontendSource).not.toContain('handleDownloadZip');
     expect(frontendSource).not.toContain('clicca per scaricare ZIP');
   });
+
+  it('un bonifico con la fattura collegata mostra la fattura e non propone il periodo', () => {
+    expect(frontendSource).toContain('Pagamento fattura: nessun periodo');
+    expect(frontendSource).toContain("t.fattura_esito === 'acconto'");
+    expect(frontendSource).toContain("t.hr_deposito?.esito === 'non_stipendio'");
+  });
 });

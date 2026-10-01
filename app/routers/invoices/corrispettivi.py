@@ -690,167 +690,27 @@ async def upload_corrispettivi_zip(file: UploadFile = File(...)) -> Dict[str, An
 
 @router.post("/import-csv")
 @handle_errors
-async def import_corrispettivi_csv(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def import_corrispettivi_csv(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(False, description="True = solo anteprima, non scrive"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """CSV «Corrispettivi» del portale Agenzia delle Entrate: dato PROVVISORIO in attesa dell'XML.
+
+    «Ammontare delle vendite» e' l'imponibile, «Imposta» l'IVA. Le giornate gia' coperte
+    dall'XML non si toccano (si confronta l'imponibile); le altre entrano ``provvisorio``, senza
+    contanti/POS, senza Prima Nota e senza giornale: l'XML del registratore le promuove a
+    ``definitivo_xml`` e sovrascrive. Un secondo import dello stesso file da' ``nuovi=0``.
     """
-    Importa corrispettivi da file CSV (formato Agenzia Entrate).
-    Formato atteso:
-    - Separatore: ; (punto e virgola)
-    - Numeri: "000000003605,60" (virgola decimale)
-    - Data: DD/MM/YYYY HH:MM:SS
-    - Colonne: Id invio;Matricola;Data rilevazione;Data trasmissione;Totale;Imponibile;IVA
-    """
-    import re
-    
-    db = Database.get_db()
-    
+    from app.services.corrispettivi_service import importa_csv_ade
+
+    contenuto = await file.read()
     try:
-        content = await file.read()
-        # Prova diverse codifiche
-        try:
-            text = content.decode('utf-8')
-        except Exception:
-            text = content.decode('latin-1')
-        
-        lines = text.strip().split('\n')
-        
-        # Salta header
-        if lines[0].startswith('Id invio') or 'Matricola' in lines[0]:
-            lines = lines[1:]
-        
-        importati = 0
-        aggiornati = 0
-        errori = []
-        totale_importato = 0
-        
-        for i, line in enumerate(lines):
-            try:
-                # Parse CSV con ; come separatore
-                parts = line.split(';')
-                if len(parts) < 7:
-                    continue
-                
-                # Rimuovi apici e parse dei campi
-                def clean_value(val):
-                    return val.strip().strip("'").strip('"')
-                
-                def parse_amount(val):
-                    """Parse formato "000000003605,60" -> 3605.60"""
-                    clean = clean_value(val).replace('.', '').replace(',', '.')
-                    # Rimuovi zeri iniziali ma mantieni il valore
-                    return float(clean)
-                
-                id_invio = clean_value(parts[0])
-                matricola = clean_value(parts[1])
-                data_rilevazione = clean_value(parts[2])
-                data_trasmissione = clean_value(parts[3])
-                totale = parse_amount(parts[4])
-                imponibile = parse_amount(parts[5])
-                iva = parse_amount(parts[6])
-
-                # Colonne 8-9 del tracciato AdE: "Periodo di inattivita' da/a".
-                # Il registratore telematico le compila il giorno della
-                # riapertura dopo una chiusura (ferie, ristrutturazione): sono
-                # la prova che quei giorni NON sono corrispettivi mancanti.
-                inattivita_da = clean_value(parts[7]) if len(parts) > 7 else ""
-                inattivita_a = clean_value(parts[8]) if len(parts) > 8 else ""
-                if inattivita_da:
-                    try:
-                        from app.services.chiusure_attivita import registra_chiusura
-                        await registra_chiusura(
-                            db, inattivita_da[:10], (inattivita_a or inattivita_da)[:10],
-                            "inattivita", "ade_inattivita", riferimento=id_invio,
-                            note=f"dichiarata dal RT {matricola} con l'invio {id_invio}",
-                        )
-                    except Exception as exc:
-                        errori.append(f"Riga {i+1}: periodo di inattivita' non registrato: {exc}")
-                
-                # Parse data (DD/MM/YYYY HH:MM:SS -> YYYY-MM-DD)
-                data_match = re.match(r'(\d{2})/(\d{2})/(\d{4})', data_rilevazione)
-                if not data_match:
-                    errori.append(f"Riga {i+1}: formato data non valido: {data_rilevazione}")
-                    continue
-                
-                data_iso = f"{data_match.group(3)}-{data_match.group(2)}-{data_match.group(1)}"
-                
-                if totale <= 0:
-                    continue
-                
-                # Verifica se esiste già (stesso id_invio o stessa data con stesso importo)
-                existing = await db["corrispettivi"].find_one({
-                    "$or": [
-                        {"id_invio": id_invio},
-                        {"data": data_iso, "totale": totale}
-                    ]
-                })
-                
-                corr_doc = {
-                    "id": str(uuid.uuid4()),
-                    "id_invio": id_invio,
-                    "matricola": matricola,
-                    "data": data_iso,
-                    "data_rilevazione": data_rilevazione,
-                    "data_trasmissione": data_trasmissione,
-                    "totale": totale,
-                    "totale_imponibile": imponibile,
-                    "totale_iva": iva,
-                    "aliquota_iva": 10 if imponibile > 0 else 0,
-                    "source": "csv_import",
-                    "filename": file.filename,
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                }
-                
-                if existing:
-                    # Aggiorna
-                    await db["corrispettivi"].update_one(
-                        {"_id": existing["_id"]},
-                        {"$set": {
-                            "id_invio": id_invio,
-                            "totale": totale,
-                            "totale_imponibile": imponibile,
-                            "totale_iva": iva,
-                            "updated_at": datetime.now(timezone.utc).isoformat()
-                        }}
-                    )
-                    aggiornati += 1
-                else:
-                    # Inserisci nuovo
-                    await db["corrispettivi"].insert_one(corr_doc.copy())
-                    importati += 1
-
-                    # --- EVENT BUS: corrispettivo registrato (Chat 9c) ---
-                    try:
-                        from app.services.event_bus import propagate_event, EventTypes
-                        await propagate_event(EventTypes.CORRISPETTIVO_REGISTRATO, {
-                            "corrispettivo_id": corr_doc.get("id"),
-                            "data": corr_doc.get("data"),
-                            "totale": corr_doc.get("totale") or corr_doc.get("importo_totale"),
-                            "contanti": corr_doc.get("contanti") or corr_doc.get("quota_contanti"),
-                            "elettronico": corr_doc.get("elettronico") or corr_doc.get("quota_pos"),
-                        }, db, source_module="corrispettivi_csv")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning(
-                            "[Corrispettivi] evento CORRISPETTIVO_REGISTRATO non propagato: la prima "
-                            "nota non riceve questo corrispettivo: %s", exc)
-                
-                totale_importato += totale
-                
-            except Exception as e:
-                errori.append(f"Riga {i+1}: {str(e)}")
-                continue
-        
-        return {
-            "success": True,
-            "message": f"Import completato: {importati} nuovi, {aggiornati} aggiornati",
-            "importati": importati,
-            "aggiornati": aggiornati,
-            "totale_importato": round(totale_importato, 2),
-            "errori": errori[:20] if errori else None,
-            "errori_count": len(errori)
-        }
-        
-    except Exception as e:
-        logger.error(f"Errore import CSV: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing CSV: {str(e)}") from e
+        testo = contenuto.decode("utf-8")
+    except UnicodeDecodeError:
+        testo = contenuto.decode("latin-1")
+    esito = await importa_csv_ade(Database.get_db(), testo, file.filename or "", dry_run=dry_run)
+    return {"success": True, **esito}
 
 
 # ============== GIORNI DI CHIUSURA (ferie, ristrutturazione) ==============

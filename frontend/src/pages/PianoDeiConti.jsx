@@ -7,7 +7,7 @@ import { PageLayout } from '../components/PageLayout';
 import { PageHeader } from '../components/ds/PageHeader';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { Button, Badge, StatCard, Tabs, Input, Select, Table, TableWrap, Th, Td } from '../components/ds';
+import { Button, Badge, StatCard, Input, Select, Table, TableWrap, Th, Td } from '../components/ds';
 
 const MONO = FONT.mono;
 
@@ -46,7 +46,6 @@ export default function PianoDeiConti() {
   const [_conti, setConti] = useState([]);
   const [pianoInfo, setPianoInfo] = useState({ totale: 0, nonMappati: [] });
   const [grouped, setGrouped] = useState({});
-  const [regole, setRegole] = useState([]);
   const [bilancio, setBilancio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [riclassificando, setRiclassificando] = useState(false);
@@ -121,28 +120,14 @@ export default function PianoDeiConti() {
     return match ? match[1] : 'conti';
   };
 
-  const [activeTab, setActiveTab] = useState(getTabFromPath());
+  const activeTab = getTabFromPath();
 
-  const handleTabChange = tabId => {
-    setActiveTab(tabId);
-    navigate(`/contabilita/piano-conti/${tabId}`);
-  };
-
+  // Le «Regole categorizzazione» di questa pagina erano un secondo sistema che il motore di
+  // registrazione non leggeva piu': l'unico e' Learning Machine > Regole categorizzazione.
   useEffect(() => {
-    const tab = getTabFromPath();
-    if (tab !== activeTab) setActiveTab(tab);
-  }, [location.pathname]);
+    if (activeTab === 'regole') navigate('/learning-machine/regole', { replace: true });
+  }, [activeTab, navigate]);
   const [expandedCategories, setExpandedCategories] = useState(['attivo', 'passivo', 'costi']);
-
-  // Modal nuova regola
-  const [showNewRegola, setShowNewRegola] = useState(false);
-  const [newRegola, setNewRegola] = useState({
-    tipo: 'fornitore',
-    pattern: '',
-    conto_dare: '',
-    conto_avere: '',
-    descrizione: '',
-  });
 
   useEffect(() => {
     loadData();
@@ -152,10 +137,7 @@ export default function PianoDeiConti() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [contiRes, regoleRes] = await Promise.all([
-        api.get(`/api/piano-conti/?anno=${annoGlobale}`),
-        api.get('/api/piano-conti/regole'),
-      ]);
+      const contiRes = await api.get(`/api/piano-conti/?anno=${annoGlobale}`);
 
       const groupedConti = contiRes.data?.grouped || {};
       setConti(contiRes.data?.conti || []);
@@ -164,7 +146,6 @@ export default function PianoDeiConti() {
         nonMappati: contiRes.data?.conti_operativi_non_mappati || [],
       });
       setGrouped(groupedConti);
-      setRegole(regoleRes.data?.regole || []);
       // Difesa sulla forma: se il backend risponde con payload vuoto/inatteso
       // (riavvio in corso) le card bilancio leggono i sotto-oggetti e
       // manderebbero in crash la pagina — meglio nasconderle.
@@ -209,27 +190,6 @@ export default function PianoDeiConti() {
       });
     } finally {
       setRiclassificando(false);
-    }
-  };
-
-  const handleCreateRegola = async () => {
-    if (!newRegola.pattern || !newRegola.conto_dare) {
-      toast.error('Pattern e conto DARE sono obbligatori');
-      return;
-    }
-    try {
-      await api.post('/api/piano-conti/regole', newRegola);
-      setShowNewRegola(false);
-      setNewRegola({
-        tipo: 'fornitore',
-        pattern: '',
-        conto_dare: '',
-        conto_avere: '',
-        descrizione: '',
-      });
-      loadData();
-    } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -284,18 +244,6 @@ export default function PianoDeiConti() {
             ))}
           </div>
         )}
-
-        {/* Tabs */}
-        <div style={{ marginBottom: 20 }}>
-          <Tabs
-            items={[
-              { key: 'conti', label: '📊 Piano dei Conti' },
-              { key: 'regole', label: '⚙️ Regole Categorizzazione' },
-            ]}
-            value={activeTab}
-            onChange={handleTabChange}
-          />
-        </div>
 
         {/* Piano dei Conti */}
         {activeTab === 'conti' && (
@@ -471,267 +419,6 @@ export default function PianoDeiConti() {
           </>
         )}
 
-        {/* Regole Categorizzazione */}
-        {activeTab === 'regole' && (
-          <>
-            <div style={{ marginBottom: 15 }}>
-              <Button
-                variant="primary"
-                onClick={() => setShowNewRegola(true)}
-                data-testid="new-regola-btn"
-              >
-                ➕ Nuova Regola
-              </Button>
-            </div>
-
-            <div
-              style={{
-                background: COLORS.dangerLight,
-                border: `1px solid ${COLORS.danger}`,
-                padding: 15,
-                borderRadius: BORDER_RADIUS.md,
-                marginBottom: 20,
-                fontSize: 13,
-                color: COLORS.text,
-              }}
-            >
-              <strong>⚠️ Tab storica, scollegata dalla registrazione fatture:</strong>
-              <p style={{ margin: '8px 0 0 0' }}>
-                Le regole create qui vengono salvate nella vecchia collezione{' '}
-                <code>regole_categorizzazione</code>, che il motore di registrazione fatture{' '}
-                <strong>non legge più</strong> (consolidamento 19/09/2026): crearne una qui non
-                cambia il conto usato per nessuna fattura. Sono rimaste solo a scopo storico/di
-                consultazione.
-              </p>
-              <p style={{ margin: '8px 0 0 0' }}>
-                Le regole realmente usate dal motore si gestiscono in{' '}
-                <strong>Learning Machine → ⚙️ Regole Categorizzazione</strong>:{' '}
-                <a
-                  href="/learning-machine/regole"
-                  onClick={e => {
-                    e.preventDefault();
-                    navigate('/learning-machine/regole');
-                  }}
-                  style={{ color: COLORS.primary, fontWeight: 'bold' }}
-                >
-                  vai alla pagina
-                </a>
-                .
-              </p>
-              <ul style={{ margin: '10px 0 0 0', paddingLeft: 20 }}>
-                <li>
-                  <strong>Pattern</strong>: parola chiave da cercare (es. "ENEL" per bollette
-                  elettricità)
-                </li>
-                <li>
-                  <strong>Conto DARE</strong>: conto che aumenta (es. costo utenze)
-                </li>
-                <li>
-                  <strong>Conto AVERE</strong>: conto che diminuisce (es. debito fornitore)
-                </li>
-              </ul>
-            </div>
-
-            <TableWrap>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Tipo</Th>
-                    <Th>Pattern</Th>
-                    <Th>Conto DARE</Th>
-                    <Th>Conto AVERE</Th>
-                    <Th>Descrizione</Th>
-                    <Th align="center">Stato</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {regole.map(regola => (
-                    <tr key={regola.id}>
-                      <Td>
-                        <Badge variant={regola.tipo === 'fornitore' ? 'success' : 'info'}>
-                          {regola.tipo}
-                        </Badge>
-                      </Td>
-                      <Td mono style={{ fontWeight: 'bold' }}>
-                        {regola.pattern}
-                      </Td>
-                      <Td mono>{regola.conto_dare}</Td>
-                      <Td mono>{regola.conto_avere}</Td>
-                      <Td>{regola.descrizione}</Td>
-                      <Td align="center">
-                        <span
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: BORDER_RADIUS.full,
-                            background: regola.attiva ? COLORS.success : COLORS.textSubtle,
-                            display: 'inline-block',
-                          }}
-                        />
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
-          </>
-        )}
-
-        {/* Modal Nuova Regola */}
-        {showNewRegola && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-            }}
-            onClick={() => setShowNewRegola(false)}
-          >
-            <div
-              style={{
-                background: COLORS.card,
-                borderRadius: BORDER_RADIUS.md,
-                padding: 24,
-                maxWidth: 500,
-                width: '90%',
-                boxShadow: SHADOWS.modal,
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h2 style={{ marginTop: 0 }}>⚙️ Nuova Regola Categorizzazione</h2>
-                <button
-                  onClick={() => setShowNewRegola(false)}
-                  aria-label="Chiudi"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    flexShrink: 0,
-                    background: COLORS.gray[100],
-                    border: 'none',
-                    borderRadius: BORDER_RADIUS.md,
-                    color: COLORS.gray[600],
-                    fontSize: 16,
-                    lineHeight: 1,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gap: 15 }}>
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: 13 }}
-                  >
-                    Tipo Regola
-                  </label>
-                  <Select
-                    value={newRegola.tipo}
-                    onChange={e => setNewRegola({ ...newRegola, tipo: e.target.value })}
-                  >
-                    <option value="fornitore">Per Fornitore (nome)</option>
-                    <option value="tipo_documento">Per Tipo Documento</option>
-                    <option value="pagamento">Per Metodo Pagamento</option>
-                  </Select>
-                </div>
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: 13 }}
-                  >
-                    Pattern (Regex) *
-                  </label>
-                  <Input
-                    type="text"
-                    value={newRegola.pattern}
-                    onChange={e => setNewRegola({ ...newRegola, pattern: e.target.value })}
-                    placeholder="ENEL|EDISON"
-                    style={{ fontFamily: MONO }}
-                  />
-                  <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 3 }}>
-                    Usa | per alternative (es. ENEL|EDISON per luce o gas)
-                  </div>
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                    gap: 10,
-                  }}
-                >
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        marginBottom: 5,
-                        fontWeight: 'bold',
-                        fontSize: 13,
-                      }}
-                    >
-                      Conto DARE *
-                    </label>
-                    <Input
-                      type="text"
-                      value={newRegola.conto_dare}
-                      onChange={e => setNewRegola({ ...newRegola, conto_dare: e.target.value })}
-                      placeholder="05.02.02"
-                      style={{ fontFamily: MONO }}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        marginBottom: 5,
-                        fontWeight: 'bold',
-                        fontSize: 13,
-                      }}
-                    >
-                      Conto AVERE
-                    </label>
-                    <Input
-                      type="text"
-                      value={newRegola.conto_avere}
-                      onChange={e => setNewRegola({ ...newRegola, conto_avere: e.target.value })}
-                      placeholder="02.01.01"
-                      style={{ fontFamily: MONO }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 5, fontWeight: 'bold', fontSize: 13 }}
-                  >
-                    Descrizione
-                  </label>
-                  <Input
-                    type="text"
-                    value={newRegola.descrizione}
-                    onChange={e => setNewRegola({ ...newRegola, descrizione: e.target.value })}
-                    placeholder="Utenze elettricità"
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-                <Button variant="secondary" onClick={() => setShowNewRegola(false)}>
-                  Annulla
-                </Button>
-                <Button variant="primary" onClick={handleCreateRegola}>
-                  ⚙️ Crea Regola
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ─── DRAWER DETTAGLIO CONTO ─── */}
