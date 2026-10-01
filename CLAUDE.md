@@ -1022,12 +1022,13 @@ locale e marker fixture prima delle scritture.
 
 - **Termini di recupero**: la regola dei termini vive in una vista SQL (`verifica.tabulato_tributi_termini`, migrazioni `…013008` e `…013741`), non in Python con test: se cresce o va corretta, portarla in `termini_recupero.py` con i casi del foglio del 01/10/2026 (27 righe ancora recuperabili su 98 senza versamento al 01/10).
 
-- `legacy_staging` (5 tabelle, ~1 MB; le altre 51 sono state cancellate: gia' nel gestionale al centesimo): restano i dati che il gestionale non ha.
-  `residui_fatture_2026` (29 righe senza XML: 21 note di credito e 8 parcelle FPR pagate, servono gli XML dal portale AdE), `catalogo_ceraldi`
-  (525 prodotti bar con prezzi per fornitore, luglio 2026: da importare come listino dichiarato, non sono prezzi pagati), `movimenti_carta`
-  (34 movimenti carta gen–giu 2026, 18 con fattura collegata a mano), `presenze_acconti` (resta da registrare in HR l'acconto TFR di 1.800 €
-  a Capezzuto del 31/07/2026 e uno stipendio di agosto) e `presenze_profili` (data di assunzione di Carotenuto, profilo di Murolo assente dall'HR
-  corrente). Si migrano con le vie normali (mai con SQL a mano: l'acconto TFR scrive anche il giornale), poi lo schema si cancella.
+- `legacy_staging` (5 tabelle, ~1 MB; le altre 51 sono state cancellate: gia' nel gestionale al centesimo): restano i dati che il gestionale non puo' ricevere senza una via con admin.
+  `residui_fatture_2026` (le 21 note di credito sono gia' TD04/TD08 nel gestionale, verificato per importo; restano **8 parcelle FPR pagate** nel 2026 senza XML: Carini 3.206,40, Marotta 1.122,24 + 1.517,70 + 1.656,64,
+  Ferrantini 1.122,24 ×3, Graziuso 2.300,00 contanti — servono gli XML dal portale AdE), `catalogo_ceraldi`
+  (525 prodotti bar con prezzi per fornitore, luglio 2026: da importare come listino dichiarato, fornitore per P.IVA, non sono prezzi pagati), `movimenti_carta`
+  (34 movimenti carta gen–giu 2026, 18 con fattura collegata a mano: gli estratti Nexi correnti sono PDF mensili senza righe), `presenze_acconti` (da registrare in HR
+  l'acconto TFR di 1.800 € a Capezzuto del 31/07/2026 e uno stipendio di agosto) e `presenze_profili` (IBAN e profilo di Murolo, assente dall'HR corrente: da chiedere al titolare se e' un ex dipendente).
+  Si migrano con le vie normali (mai con SQL a mano: l'acconto TFR scrive anche il giornale), poi lo schema si cancella.
 - **Tre strade scrivono `corrispettivi`** (`ingest_corrispettivo_parsed`, `CorrispettiviService`, import CSV), ognuna con la sua dedup: ridurle a una.
 - **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 tenute fuori dal giornale dal
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
