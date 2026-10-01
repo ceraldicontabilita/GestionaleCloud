@@ -214,8 +214,12 @@ async def registra_cartella(
     await db[COLL].insert_one(documento)
     verbali = await collega_verbali(db, id_cartella)
     ricevuta = await chiudi_da_ricevuta_esistente(db, id_cartella)
+    # La PEC che l'ha notificata puo' essere arrivata prima della cartella: la data si mette adesso.
+    from app.services.notifiche_pec_cartelle import applica_notifiche_in_attesa
+
+    notifica = await applica_notifiche_in_attesa(db, id_cartella)
     return {"success": True, "duplicate": False, "id": id_cartella, **dati,
-            "verbali": verbali, "ricevuta": ricevuta}
+            "verbali": verbali, "ricevuta": ricevuta, "notifica_pec": notifica}
 
 
 async def imposta_notifica(db, cartella_id: str, data_notifica: str) -> Dict[str, Any]:
