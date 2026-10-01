@@ -115,3 +115,92 @@ def test_la_gemella_con_altra_partita_iva_non_basta():
                                    "status": "imported", "supplier_vat": "11111111111"}))
     run(db["estratto_conto_movimenti"].update_one({"id": "m1"}, {"$set": {"candidate_fattura_id": "850878-arch"}}))
     assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 0
+
+
+def _bonifico(id_, rif, importo, nome="A 2000 Costruzioni S.r.l"):
+    return {"id": id_, "data": "2026-02-12T00:00:00+00:00", "importo": importo, "rif_interno": rif,
+            "beneficiario": {"nome": nome}, "hr_deposito": {"esito": "non_stipendio"}}
+
+
+def _movimento(id_, rif, importo, fattura_id=None, data="2026-02-12"):
+    m = {"id": id_, "data": data, "tipo": "uscita", "importo": -importo, "categoria": "Fatture",
+         "descrizione": f"VS.DISP. RIF. {rif}/00746988 FAVORE A 2000 COSTRUZIONI S.R.L"}
+    if fattura_id:
+        m["fattura_ids"] = [fattura_id]
+    return m
+
+
+def _db_vuoto():
+    return AsyncMongoMockClient()["bonifici"]
+
+
+def test_la_stessa_operazione_letta_da_due_fonti_si_collega_con_la_copia_che_porta_la_fattura():
+    db = _db_vuoto()
+    run(db["bonifici_transfers"].insert_one(_bonifico("b1", "MBVT17968737", 372.42, "ceramiche Mara srl")))
+    run(db["estratto_conto_movimenti"].insert_many([
+        _movimento("legacy", "MBVT17968737", 372.42, fattura_id="F1"),
+        {**_movimento("ufficiale", "MBVT17968737", 372.42), "importo": 372.42},
+    ]))
+    run(db["invoices"].insert_one({"id": "F1", "invoice_number": "2/623", "total_amount": 372.42, "status": "imported"}))
+    assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 1
+    assert run(db["bonifici_transfers"].find_one({"id": "b1"}))["fattura_associata_id"] == "F1"
+
+
+def test_due_copie_che_indicano_fatture_diverse_restano_ambigue():
+    db = _db_vuoto()
+    run(db["bonifici_transfers"].insert_one(_bonifico("b1", "MBVT17968737", 100.0)))
+    run(db["estratto_conto_movimenti"].insert_many([
+        _movimento("m1", "MBVT17968737", 100.0, fattura_id="F1"),
+        _movimento("m2", "MBVT17968737", 100.0, fattura_id="F2")]))
+    run(db["invoices"].insert_many([
+        {"id": "F1", "invoice_number": "1", "total_amount": 100.0, "status": "imported"},
+        {"id": "F2", "invoice_number": "2", "total_amount": 100.0, "status": "imported"}]))
+    assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 0
+
+
+def _scenario_acconti(importi, totale):
+    db = _db_vuoto()
+    run(db["invoices"].insert_one({"id": "F1", "invoice_number": "FEP 7_26", "total_amount": totale, "status": "imported"}))
+    for i, importo in enumerate(importi):
+        rif = f"MBVT1000000{i}"
+        run(db["bonifici_transfers"].insert_one(_bonifico(f"b{i}", rif, importo)))
+        run(db["estratto_conto_movimenti"].insert_one(_movimento(f"m{i}", rif, importo, fattura_id="F1")))
+    return db
+
+
+def test_gli_acconti_che_sommano_il_totale_si_collegano_tutti_alla_fattura():
+    db = _scenario_acconti([15000.0, 9400.0], 24400.0)
+    esito = run(abbina_bonifici_via_estratto(db))
+    assert esito["acconti_collegati"] == 2 and esito["fatture_collegate"] == 2
+    for i in (0, 1):
+        t = run(db["bonifici_transfers"].find_one({"id": f"b{i}"}))
+        assert t["fattura_associata_id"] == "F1" and "acconti_sommano_il_totale_al_centesimo" in t["fattura_associazione_evidenze"]
+    assert sorted(run(db["invoices"].find_one({"id": "F1"}))["bonifico_ids"]) == ["b0", "b1"]
+    assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 0          # secondo giro: niente di nuovo
+
+
+def test_acconti_che_non_sommano_il_totale_non_si_collegano():
+    db = _scenario_acconti([15000.0, 9000.0], 24400.0)
+    esito = run(abbina_bonifici_via_estratto(db))
+    assert esito["fatture_collegate"] == 0 and esito["fattura_non_collegabile"] == 2
+    assert "fattura_associata" not in run(db["bonifici_transfers"].find_one({"id": "b0"}))
+
+
+def test_un_acconto_si_somma_a_quelli_gia_legati_alla_fattura():
+    db = _scenario_acconti([3750.0, 5000.0], 8750.0)
+    run(db["bonifici_transfers"].update_one({"id": "b0"}, {"$set": {
+        "fattura_associata": True, "fattura_id": "F1"}}))
+    run(db["invoices"].update_one({"id": "F1"}, {"$set": {"bonifico_ids": ["b0"]}}))
+    esito = run(abbina_bonifici_via_estratto(db))
+    assert esito["acconti_collegati"] == 1
+    assert run(db["bonifici_transfers"].find_one({"id": "b1"}))["fattura_associata_id"] == "F1"
+
+
+def test_il_riferimento_dei_bonifici_urgenti_mb0b_si_riconosce():
+    db = _db_vuoto()
+    run(db["bonifici_transfers"].insert_one(_bonifico("b1", "MB0B54696749", 5000.0, "CIERVO FABIANA")))
+    run(db["estratto_conto_movimenti"].insert_one({
+        "id": "m1", "data": "2026-05-06", "tipo": "uscita", "importo": -5000.0, "categoria": "Fatture",
+        "descrizione": "VS.DISP. RIF. MB0B54696749/00370093 FAVORE CIERVO FABIANA", "fattura_ids": ["F1"]}))
+    run(db["invoices"].insert_one({"id": "F1", "invoice_number": "FPR 9/26", "total_amount": 5000.0, "status": "imported"}))
+    assert run(abbina_bonifici_via_estratto(db))["fatture_collegate"] == 1
