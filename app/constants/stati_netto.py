@@ -50,8 +50,11 @@ STATI_NON_UTILIZZABILI = tuple(
 #: Il netto viene dalla cella graficamente associata all'etichetta.
 NETTO_FONTE_CELLA = "cella"
 
-#: Pagina del Libro Unico del Lavoro senza la cella del netto: il netto resta
-#: nullo (stato ``NETTO_NON_PRESENTE_O_NON_LEGGIBILE``), mai zero.
+#: Pagina del Libro Unico del Lavoro in cui il lettore per posizione
+#: (`_netto_dalla_cella`) non trova nessun valore sotto «NETTO»: il netto resta
+#: nullo (stato ``NETTO_NON_PRESENTE_O_NON_LEGGIBILE``), mai zero. Non e' un
+#: lettore mancante: una cella stampata vuota (mese a zero, cassa integrazione
+#: a pagamento diretto, stampa di controllo senza totali) e' vuota davvero.
 NETTO_FONTE_NON_LETTO_DA_LUL = "non_letto_da_lul"
 
 #: Ogni altro caso (netto dal testo, netto assente su una busta normale) ha
