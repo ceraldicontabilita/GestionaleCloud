@@ -2424,6 +2424,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         "DELEGAIRREVOCABILE" in marker_pdf_text
         or "MODELLODIPAGAMENTOUNIFICATO" in marker_pdf_text
     ) and sum(f24_structure_markers) >= 2:
+        # La stampa del Cassetto fiscale («Data/Ore/Utente», «Soggetto: ... ( cf )») ha la forma
+        # del modello ma e' la copia di una delega VERSATA: una quietanza, anche senza protocollo.
+        from app.services.f24_parser import e_stampa_cassetto
+
+        if lower.endswith(".pdf") and e_stampa_cassetto(pdf_text):
+            return "quietanza_f24"
         return "f24"
     # F24 pagata del 2018-2019: il modulo con i dati sovrapposti. Nessuna intestazione
     # («delega irrevocabile» non c'e'): comincia col codice banca+data (B, ABI, CAB, ggmmaa)

@@ -445,3 +445,82 @@ def test_f24_a_saldo_zero_entra_come_compensazione_senza_alert(monkeypatch):
     assert q["compensazione_totale"] is True and q["calcolo_fiscale_sospeso"] is False
     assert db[qi.COLL_F24_ALERTS].docs == []
     assert "compensazione" in esito["riscontro_banca"].get("saltato", "")
+
+
+# ── copia del Cassetto (senza data) e quietanza con la data: la stessa delega ─────────
+
+def _riga(sez, codice, periodo, deb, cred):
+    return {"codice_tributo": codice, "periodo_riferimento": periodo,
+            "importo_debito_cents": deb, "importo_credito_cents": cred, **({"causale": codice} if sez == "inps" else {})}
+
+
+def _delega(data):
+    return {
+        "dati_generali": {"protocollo_telematico": "", "saldo_delega": 4272.67, "data_pagamento": data,
+                          "codice_fiscale": ""},
+        "sezione_erario": [_riga("erario", "1655", "12/2018", 0, 222507), _riga("erario", "1627", "2018", 0, 83207)],
+        "sezione_inps": [_riga("inps", "DM10", "12/2018", 686700, 0)],
+        "sezione_regioni": [_riga("regioni", "3802", "12/2018", 44272, 0)],
+        "sezione_tributi_locali": [_riga("locali", "3848", "12/2018", 44272, 0)],
+        "sezione_inail": [],
+        "validazione": {"saldo_quadrato": True},
+        "totali": {"saldo_netto": 4272.67},
+    }
+
+
+def _importa_in_ordine(monkeypatch, *documenti):
+    """documenti: (nome, contenuto, delega letta). Ritorna (db, esiti)."""
+    from mongomock_motor import AsyncMongoMockClient
+    import app.services.f24_parser as fp
+
+    letti = {contenuto: delega for _nome, contenuto, delega in documenti}
+    monkeypatch.setattr(fp, "parse_quietanza_f24", lambda pdf_content=None, **_: letti[pdf_content])
+    db = AsyncMongoMockClient()["quietanze"]
+
+    async def run():
+        return [await qi.importa_quietanza_bytes(db, c, n, fonte="upload_manuale") for n, c, _d in documenti]
+    return db, asyncio.run(run())
+
+
+def test_copia_del_cassetto_senza_data_e_quietanza_con_data_sono_una_sola_delega(monkeypatch):
+    cassetto = ("cassetto.pdf", b"%PDF-cassetto", _delega(None))
+    datata = ("quietanza.pdf", b"%PDF-datata", _delega("2019-01-16"))
+    for ordine in ((datata, cassetto), (cassetto, datata)):
+        db, esiti = _importa_in_ordine(monkeypatch, *ordine)
+        assert all(e["success"] for e in esiti)
+        quietanze = asyncio.run(db["quietanze_f24"].find({}).to_list(10))
+        assert len(quietanze) == 1                                   # mai due quietanze per lo stesso pagamento
+        assert quietanze[0]["data_pagamento"] == "2019-01-16"          # la data arriva dal pezzo che la porta
+        assert len(quietanze[0]["source_occurrences"]) == 2            # le due provenienze restano
+
+
+def test_due_deleghe_con_saldo_o_righe_diversi_non_si_fondono(monkeypatch):
+    altra = _delega("2019-02-18")
+    altra["sezione_regioni"] = [_riga("regioni", "3802", "01/2019", 15329, 0)]
+    altra["dati_generali"]["saldo_delega"] = 4272.67
+    db, esiti = _importa_in_ordine(
+        monkeypatch, ("a.pdf", b"%PDF-a", _delega("2019-01-16")), ("b.pdf", b"%PDF-b", altra))
+    assert len(asyncio.run(db["quietanze_f24"].find({}).to_list(10))) == 2
+
+
+def test_la_stampa_del_cassetto_si_riconosce_dall_intestazione():
+    from app.services.f24_parser import e_stampa_cassetto
+
+    testo = ("DELEGA IRREVOCABILE A:\nData: 01/10/2026 - Ore: 07:57:11 - Utente: 04523831214\n"
+             "Soggetto: CERALDI GROUP S.R.L.\n( 04523831214 )\n")
+    assert e_stampa_cassetto(testo)
+    assert not e_stampa_cassetto("DELEGA IRREVOCABILE A:\nSoggetto: CERALDI GROUP S.R.L.\n( 04523831214 )\n")
+    assert not e_stampa_cassetto("Data: 01/10/2026 - Ore: 07:57:11 - Utente: 04523831214\nrata mutuo\n")
+
+
+def test_import_riconosce_la_stampa_del_cassetto_come_quietanza(monkeypatch):
+    from app.routers import documenti
+
+    testo = ("Delega irrevocabile a:\nModello di pagamento unificato\nCodice fiscale\nCodice tributo\nSaldo finale\n"
+             "Sezione erario\n1655 12 2018\nData: 01/10/2026 - Ore: 07:57:11 - Utente: 04523831214\n"
+             "Soggetto: CERALDI GROUP S.R.L.\n( 04523831214 )\n")
+    monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda _c: testo)
+    assert documenti.detect_document_type("stampa.pdf", b"%PDF-x") == "quietanza_f24"
+    # lo stesso modello senza l'intestazione del Cassetto resta un modello da pagare
+    monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda _c: testo.split("Data:")[0])
+    assert documenti.detect_document_type("stampa.pdf", b"%PDF-x") == "f24"

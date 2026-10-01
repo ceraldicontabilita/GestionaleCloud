@@ -242,3 +242,16 @@ def test_codice_tributo_scritto_una_cifra_per_casella_si_riunisce():
     assert len(_unisci_codici_a_caselle(cf)) == 11
     regione = [parola(24, "0"), parola(39, "5")]
     assert [r["word"] for r in _unisci_codici_a_caselle(regione)] == ["0", "5"]
+
+
+def test_codice_comune_a_caselle_non_e_una_regione():
+    """«E 9 0 6» (IMU) non e' la regione 06: il 3848 non finisce anche fra le regioni."""
+    from app.services.parser_f24 import _codice_regione_da_riga
+
+    def parola(x, w):
+        return {"x": x, "x1": x + 6, "y": 520, "word": w}
+
+    comune = [parola(25, "E"), parola(35, "9"), parola(45, "0"), parola(55, "6"), parola(170, "3848")]
+    assert _codice_regione_da_riga(comune) == ""
+    regione = [parola(30, "0"), parola(44, "5"), parola(170, "3802")]
+    assert _codice_regione_da_riga(regione) == "05"

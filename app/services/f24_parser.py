@@ -295,6 +295,25 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
         return ""
 
 
+# Stampa dal Cassetto fiscale / Entratel: «Data: gg/mm/aaaa - Ore: hh:mm:ss - Utente: <cf>» e
+# «Soggetto: <ragione sociale> ( <cf> )» in testa. E' la copia che l'Agenzia rilascia di una
+# delega versata: una quietanza, anche se il protocollo telematico non c'e'. La data in testa
+# e' quella della stampa, mai quella del pagamento.
+_RE_STAMPA_DATA_ORA = re.compile(r"Data:\s*\d{2}/\d{2}/\d{4}\s*-\s*Ore:\s*\d{2}:\d{2}:\d{2}", re.IGNORECASE)
+_RE_STAMPA_SOGGETTO = re.compile(r"Soggetto:\s*[^\n]+?\s*\(\s*[A-Z0-9]{11,16}\s*\)", re.IGNORECASE)
+
+
+def e_stampa_cassetto(text: str) -> bool:
+    """Vero se il testo porta l'intestazione «Data/Ore/Utente» e «Soggetto» del Cassetto fiscale.
+
+    Nel livello testo l'intestazione non e' per forza in testa: le sue parti si cercano in tutto
+    il documento, ma devono esserci tutte (data e ora di stampa, utente, soggetto col codice).
+    """
+    t = text or ""
+    return bool(_RE_STAMPA_DATA_ORA.search(t) and re.search(r"Utente:\s*[A-Z0-9]{11,16}", t, re.IGNORECASE)
+                and _RE_STAMPA_SOGGETTO.search(t.replace("\n", " ")))
+
+
 def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
     """
     Parsa una quietanza F24 ed estrae tutti i dati strutturati.

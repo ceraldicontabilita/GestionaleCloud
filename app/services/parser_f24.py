@@ -190,6 +190,12 @@ def _codice_regione_da_riga(row) -> str:
         ),
         key=lambda item: item[0],
     )
+    # «E 9 0 6» e' un codice comune/ente (sezione IMU e tributi locali): le sue cifre
+    # «0 6» non sono la regione 06, e la riga finiva due volte, anche fra le regioni.
+    primi = [str(item.get("word", "")).strip()
+             for item in sorted(row, key=lambda item: float(item.get("x", 0)))[:4]]
+    if len(primi) == 4 and re.fullmatch(r"[A-Z]", primi[0]) and all(re.fullmatch(r"\d", v) for v in primi[1:]):
+        return ""
     for index, (_x, value) in enumerate(candidati):
         if re.fullmatch(r"0[1-9]|1\d|2[0-1]", value):
             return value
