@@ -498,6 +498,14 @@ export default function Mutui() {
                                     <Clock size={12} /> Da pagare
                                   </Badge>
                                 )}
+                                {rata.stato === 'Da verificare' && (
+                                  <Badge variant="warning" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <AlertTriangle size={12} />
+                                    {rata.differenza_importo_cents == null
+                                      ? 'Importo da verificare'
+                                      : `Pagato ${formatEuro(rata.importo_provato_cents / 100)}, differenza ${formatEuro(rata.differenza_importo_cents / 100)}`}
+                                  </Badge>
+                                )}
                                 {rata.stato === 'Scaduta' && (
                                   <Badge variant="danger" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                     <AlertTriangle size={12} /> Scaduta

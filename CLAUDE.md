@@ -450,7 +450,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Lo stesso per `proiezione_bancaria.py` (stipendi — lo stesso bonifico nelle copie si riconosce dal riferimento `MB…`, e «ADD.SPE» è una commissione, non uno stipendio —, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote dalla quietanza o dal piano d'ammortamento a importo identico, altrimenti `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale). **Assegni: un motore solo abbina** (identità + importo al centesimo, `assegni_fattura_intent`/`assegni_auto_match`; anche `/incassa` esige l'importo del movimento): niente abbinamento per importo con tolleranza, niente schede nate da una causale (`arricchisci_pagamenti_banca`), niente cancellazione per filtro. Gli stati stanno solo in `constants/stati_assegno.py`: un numero uscito dal carnet non si elimina né torna «vuoto». Numero e carnet in `carnet_assegni.py`: 10 cifre (lo zero perso si rimette, un frammento no), carnet BPM da 10 da «…1» a «…0», ricavato dal numero e mai scritto. Collegare una fattura all'intero importo di un assegno (`PUT /assegni/{id}/fatture-collegate`) la dichiara pagata subito, con lo stesso motore del report titolare (`dichiara_pagamento_banca`, `pagamenti_dichiarati_titolare.py`): riga Prima Nota Banca `dichiarato_titolare`, poi solo il riscontro dell'estratto conto. Annullo, storno o un nuovo collegamento che sostituisce il precedente ritirano la dichiarazione non ancora provata (`ritira_dichiarazione_banca`) e riaprono la fattura; una dichiarazione già sostituita dalla riga con la prova bancaria non si tocca.
 - **Mutui: la rata ha una prova, non un solo «Pagata»** (`routers/mutui.py`, `services/mutui_rate_dichiarate.py`). Prove in ordine di forza:
   riga di Prima Nota Banca `rata_mutuo` (`banca`), quietanza, estratto annuale della banca (`estratto_annuale`), dichiarazione del titolare,
-  «Pagata» scritto sul piano PDF (`piano`, un'istantanea, non una prova); l'identità è **numero del mutuo + scadenza**, mai l'importo (il tasso è variabile).
+  «Pagata» scritto sul piano PDF (`piano`, un'istantanea, non una prova); l'identità è **numero del mutuo + scadenza**, ma **l'importo pagato deve tornare**:
+  `valuta_prove` confronta in `Decimal`, al centesimo, il pagamento letto (riga di banca, quietanza, estratto) con la rata, ammettendo lo scarto del tasso variabile
+  entro `TOLLERANZA_IMPORTO_CENTS` (5,00 €; sul mutuo Retail lo scarto reale è 2,75 € costante) e mostrandolo (`differenza_importo_cents`). Oltre la tolleranza, o con un importo
+  illeggibile da una parte, la rata è **«Da verificare»** con la differenza, mai «Pagata» (nemmeno per la dichiarazione o per il «Pagata» del piano), resta nel residuo e
+  l'anteprima della dichiarazione non la include; due pagamenti distinti della stessa fonte che sommano la rata la reggono.
   `stato_piano` conserva quello del PDF, `stato` è l'effettivo e `prova` dice chi lo regge; il residuo si calcola sullo stato effettivo.
   **«Segna le rate passate come pagate»** (`POST /api/mutui/{id}/rate-dichiarate`, admin, `dry_run` per difetto, conferma forte con la frase dell'anteprima; `…/ritira`):
   le rate scadute senza prova diventano `pagata_dichiarata_titolare` in `mutui_rate_dichiarate` (una riga per mutuo e rata, con `dichiarato_da`, motivo a scelta e `storico`), mai dentro il piano
@@ -776,6 +780,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   conferma esplicita al momento dell'azione.
 - Telegram è l'unico canale attivo per alert e notifiche operative: non
   registrare router, webhook o fallback WhatsApp.
+- **Ogni route è autenticata, e una nuova senza token non entra in silenzio.** L'ERP è chiuso dal middleware globale per tutto `/api/` fuori da
+  `PUBLIC_PATHS` (login, liveness, callback banca col suo `state`, pagine legali); HR, Lotti e Menu vivono fuori da `/api/` e si proteggono con le
+  proprie dipendenze (`require_*`, `auth_dependency`, `verify_token`). `tests/runtime/test_p2_admin_guards.py` costruisce l'inventario da `app.main:app`
+  (mount compresi) e fallisce per ogni route raggiungibile senza token che non sia in una lista bianca **con il motivo**; vale anche per ogni voce nuova di
+  `PUBLIC_PATHS`. I dati finanziari (Mutui, letture comprese, e il parser dei piani) hanno la guardia admin sul router. Un ordine anonimo del Menu è sempre
+  «cliente» e non pagato: `cassa` e `pagato` li dichiara solo chi porta il token dello staff.
 
 ## Dominio per app
 
