@@ -605,6 +605,25 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-CARTELLA-UNICA] errore: {type(e).__name__}: {e}")
 
+    async def _protocollo_drive_incrementale_job():
+        # 01/10/2026: il giro completo del protocollo e' spento (RAM) e dal 17/09
+        # nessun file nuovo entrava nel protocollo: ogni quietanza o busta
+        # arrivata dopo risultava `senza_origine`. Qui solo i file nuovi o
+        # modificati dall'ultimo giro, a memoria costante, poi la prova
+        # d'origine dei documenti il cui file e' ora nel protocollo.
+        from app.database import Database
+        from app.services import drive_protocollo
+        if not drive_protocollo.incrementale_attivo():
+            return
+        try:
+            esito = await drive_protocollo.sincronizza_incrementale()
+            logger.info(f"[SCHEDULER-PROTOCOLLO-DRIVE] {esito}")
+            if esito.get("esito") == "ok":
+                prove = await drive_protocollo.riallinea_prove(Database.get_db())
+                logger.info(f"[SCHEDULER-PROTOCOLLO-DRIVE] prove: {prove}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-PROTOCOLLO-DRIVE] errore: {type(e).__name__}: {e}")
+
     async def _stampe_controllo_job():
         # Stampe di controllo delle buste con la definitiva identica: via da
         # Drive. Giro proprio, non in coda allo svuotamento (che dura ore):
@@ -1297,6 +1316,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="drive_cartella_unica", name="Cartella unica Drive DATI SOCIETA CERALDI (ogni 15 min)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _protocollo_drive_incrementale_job,
+        'interval', minutes=20,
+        next_run_time=avvio + timedelta(minutes=5),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="protocollo_drive_incrementale", name="Protocollo Drive incrementale (ogni 20 min)",
         replace_existing=True,
     )
 

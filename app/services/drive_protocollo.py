@@ -18,6 +18,15 @@ trovano senza scaricare nulla. Le impronte dei documenti gia' in archivio
 cosi' ogni file Drive puo' essere collegato al documento del gestionale che lo
 contiene, per contenuto e non per nome.
 
+Due modi di tenerlo allineato, un solo protocollo:
+- ``sincronizza``: giro COMPLETO (percorre tutto l'albero, vede anche i file
+  spariti). Tiene in memoria l'intero elenco, circa 23.000 file: per la RAM del
+  piano (2 GB) e' spento (``PROTOCOLLO_DRIVE_ENABLED=false``).
+- ``sincronizza_incrementale``: solo i file creati o modificati dall'ultimo
+  giro riuscito, una pagina di 1.000 alla volta (memoria costante). Non vede i
+  file spariti o spostati fuori: li segna solo il giro completo. E' quello che
+  tiene viva la prova d'origine dei documenti (``prova_calcola``).
+
 La cancellazione fisica non esiste qui: i duplicati si SPOSTANO in quarantena
 (``GOOGLE_DRIVE_QUARANTENA_FOLDER_ID``) solo su richiesta esplicita, mai in
 automatico, e mai la copia canonica.
@@ -28,7 +37,7 @@ import asyncio
 import logging
 import posixpath
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from app.config import settings
@@ -375,6 +384,211 @@ async def sincronizza(service=None, conn=None) -> Dict[str, Any]:
         finally:
             if chiudi:
                 await conn.close()
+
+
+# ── giro incrementale ─────────────────────────────────────────────────────────
+
+MARGINE_INCREMENTALE = timedelta(minutes=10)
+GIRO_APERTO_OLTRE = "3 hours"
+CAMPI_CARTELLE = "nextPageToken, files(id, name, parents)"
+# Collezioni con la prova d'origine calcolata dal database (trigger prova_origine).
+COLLEZIONI_CON_PROVA = ("quietanze_f24", "cedolini")
+LIMITE_RIALLINEA = 200
+
+
+def incrementale_attivo() -> bool:
+    return bool(settings.PROTOCOLLO_DRIVE_INCREMENTALE)
+
+
+def _elenca_cartelle(service) -> Dict[str, tuple]:
+    """Tutte le cartelle visibili: id -> (nome, id del padre). Sono poche
+    centinaia; servono a ricostruire il percorso di un file dal suo padre."""
+    out: Dict[str, tuple] = {}
+    token = None
+    while True:
+        res = service.files().list(
+            q=f"mimeType = '{CARTELLA_MIME}' and trashed = false", fields=CAMPI_CARTELLE,
+            pageSize=PAGINA_DRIVE, pageToken=token, supportsAllDrives=True, includeItemsFromAllDrives=True,
+        ).execute()
+        for cartella in res.get("files", []):
+            padri = cartella.get("parents") or []
+            out[cartella["id"]] = (cartella.get("name") or "", padri[0] if padri else None)
+        token = res.get("nextPageToken")
+        if not token:
+            return out
+
+
+def percorso_cartelle(parent_id: Optional[str], cartelle: Dict[str, tuple], radice_id: str) -> Optional[List[str]]:
+    """Nomi delle cartelle dalla prima sotto la radice fino al padre del file
+    (lista vuota se il file e' nella radice); ``None`` se il file sta fuori
+    dall'albero della radice o la catena si interrompe."""
+    nomi: List[str] = []
+    corrente = parent_id
+    visti = set()
+    while corrente and corrente not in visti:
+        if corrente == radice_id:
+            return list(reversed(nomi))
+        visti.add(corrente)
+        voce = cartelle.get(corrente)
+        if voce is None:
+            return None
+        nomi.append(voce[0])
+        corrente = voce[1]
+    return None
+
+
+def _pagina_modificati(service, dal: datetime, token: Optional[str]) -> Dict[str, Any]:
+    istante = dal.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return service.files().list(
+        q=f"mimeType != '{CARTELLA_MIME}' and trashed = false and modifiedTime > '{istante}'",
+        fields=CAMPI_LIST, pageSize=PAGINA_DRIVE, pageToken=token,
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+    ).execute()
+
+
+async def sincronizza_incrementale(service=None, conn=None) -> Dict[str, Any]:
+    """Registra nel protocollo i file creati o modificati dall'ultimo giro
+    riuscito. Memoria costante: una pagina di 1.000 file alla volta, mai
+    l'intero elenco. Idempotente (upsert per ``drive_id``): un giro ripetuto
+    non crea righe nuove. Serializzato con il giro completo."""
+    if not incrementale_attivo():
+        return {"esito": "disattivato", "message": "PROTOCOLLO_DRIVE_INCREMENTALE=false"}
+    radice_id = radice()
+    if not radice_id:
+        return {"esito": "non_configurato",
+                "message": "Imposta GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID su Render"}
+    dsn = postgres_diretto.dsn()
+    if not dsn:
+        return {"esito": "non_configurato", "message": "DSN Postgres non configurato"}
+
+    async with _sync_lock:
+        avvio = datetime.now(timezone.utc)
+        chiudi = conn is None
+        conn = conn or await postgres_diretto.connetti(dsn)
+        giro_id = None
+        try:
+            # Un giro rimasto 'in_corso' da piu' di tre ore appartiene a un
+            # processo morto (riavvio a meta' scansione, 17/09/2026: il giro 66).
+            await conn.execute(
+                "update gestionale.protocollo_drive_giri set fine=now(), esito='interrotto', "
+                "dettaglio='processo riavviato durante la scansione' "
+                f"where esito='in_corso' and avvio < now() - interval '{GIRO_APERTO_OLTRE}'")
+            ultimo = await conn.fetchval(
+                "select max(avvio) from gestionale.protocollo_drive_giri where esito = 'ok'")
+            if ultimo is None:
+                return {"esito": "serve_giro_completo",
+                        "message": "Nessun giro riuscito: il primo va fatto completo (sincronizza)"}
+            dal = ultimo - MARGINE_INCREMENTALE
+            giro_id = await conn.fetchval(
+                "insert into gestionale.protocollo_drive_giri (avvio, esito, dettaglio) "
+                "values ($1, 'in_corso', $2) returning id", avvio, f"incrementale dal {dal.isoformat()}")
+            service = service or costruisci_service()
+            cartelle = await asyncio.to_thread(_elenca_cartelle, service)
+            visti = nuovi = aggiornati = fuori = 0
+            token = None
+            while True:
+                pagina = await asyncio.to_thread(_pagina_modificati, service, dal, token)
+                righe = []
+                for file in pagina.get("files", []):
+                    visti += 1
+                    padri = file.get("parents") or []
+                    percorso = percorso_cartelle(padri[0] if padri else None, cartelle, radice_id)
+                    if percorso is None:
+                        fuori += 1
+                        continue
+                    righe.append(deriva_riga(file, percorso))
+                if righe:
+                    n, a = await _upsert(conn, righe, avvio)
+                    nuovi += n
+                    aggiornati += a
+                token = pagina.get("nextPageToken")
+                if not token:
+                    break
+            duplicati = collegati = 0
+            if nuovi or aggiornati:
+                # Duplicati, impronte e collegamenti guardano l'intera tabella: si
+                # rifanno solo se questo giro ha scritto qualcosa (la maggior
+                # parte dei giri da 20 minuti non trova niente).
+                duplicati = _conta(await conn.execute(SQL_DUPLICATI))
+                for origine, sql in SQL_IMPRONTE.items():
+                    try:
+                        await conn.execute(sql)
+                    except Exception as exc:  # noqa: BLE001 - un'impronta non ferma il giro
+                        logger.warning("[PROTOCOLLO-DRIVE] impronte %s saltate: %s: %s", origine, type(exc).__name__, exc)
+                collegati = _conta(await conn.execute(SQL_COLLEGA))
+            fine = datetime.now(timezone.utc)
+            await conn.execute(
+                "update gestionale.protocollo_drive_giri set fine=$2, esito='ok', file_visti=$3, nuovi=$4, "
+                "aggiornati=$5, rimossi=0, duplicati=$6, collegati=$7 where id=$1",
+                giro_id, fine, visti, nuovi, aggiornati, duplicati, collegati)
+            esito = {"esito": "ok", "modo": "incrementale", "giro_id": giro_id, "dal": dal.isoformat(),
+                     "file_visti": visti, "fuori_radice": fuori, "nuovi": nuovi, "aggiornati": aggiornati,
+                     "duplicati_marcati": duplicati, "collegati": collegati,
+                     "durata_s": round((fine - avvio).total_seconds(), 1)}
+            logger.info("[PROTOCOLLO-DRIVE] %s", esito)
+            return esito
+        except Exception as exc:
+            if giro_id is not None:
+                await conn.execute(
+                    "update gestionale.protocollo_drive_giri set fine=now(), esito='errore', dettaglio=$2 where id=$1",
+                    giro_id, f"{type(exc).__name__}: {exc}"[:1000])
+            logger.error("[PROTOCOLLO-DRIVE] giro incrementale %s fallito: %s: %s", giro_id, type(exc).__name__, exc)
+            raise
+        finally:
+            if chiudi:
+                await conn.close()
+
+
+async def riallinea_prove(db, conn=None, limite: int = LIMITE_RIALLINEA) -> Dict[str, Any]:
+    """Rifa la prova d'origine dei documenti rimasti ``senza_origine`` il cui
+    file Drive e' ora nel protocollo.
+
+    La prova la calcola il database (trigger ``prova_origine``: cerca il file
+    per MD5 o per id Drive in ``protocollo_drive``) a ogni scrittura del
+    documento. Qui si sceglie solo QUALI documenti riscrivere: quelli senza
+    origine con un file ormai presente. Un documento il cui file non c'e' non
+    si tocca (resta ``senza_origine``: e' la verita'), quindi un secondo giro
+    non riscrive niente.
+    """
+    dsn = postgres_diretto.dsn()
+    if conn is None and not dsn:
+        return {"esito": "non_configurato", "message": "DSN Postgres non configurato"}
+    chiudi = conn is None
+    conn = conn or await postgres_diretto.connetti(dsn)
+    try:
+        from app.document_repository import metadata_projection
+
+        candidati = []
+        for nome in COLLEZIONI_CON_PROVA:
+            # `_id` e' la chiave del runtime ERP (riga di `documents`) e puo' differire
+            # dal campo `id` del documento: si riscrive per `_id`, mai per `id`.
+            righe = await db[nome].find({"prova.stato": "senza_origine"}, metadata_projection(nome, {"_id": 1})).to_list(None)
+            for r in righe:
+                drive_id = r.get("drive_file_id") or (r.get("prova") or {}).get("drive_id")
+                md5 = r.get("drive_md5") or r.get("pdf_hash") or r.get("source_file_hash_md5")
+                candidati.append((nome, r.get("_id"), drive_id, md5))
+        if not candidati:
+            return {"esito": "ok", "senza_origine": 0, "riallineati": 0}
+        ids = [c[2] for c in candidati if c[2]]
+        md5s = [c[3] for c in candidati if c[3]]
+        presenti = await conn.fetch(
+            "select drive_id, md5 from gestionale.protocollo_drive where rimosso_il is null "
+            "and (drive_id = any($1::text[]) or md5 = any($2::text[]))", ids, md5s)
+        ids_presenti = {p["drive_id"] for p in presenti}
+        md5_presenti = {p["md5"] for p in presenti if p["md5"]}
+        da_riscrivere = [c for c in candidati if c[1] and (c[2] in ids_presenti or c[3] in md5_presenti)]
+        adesso = datetime.now(timezone.utc).isoformat()
+        riallineati = 0
+        for nome, doc_id, _drive_id, _md5 in da_riscrivere[:max(1, limite)]:
+            await db[nome].update_one({"_id": doc_id}, {"$set": {"prova_riallineata_il": adesso}})
+            riallineati += 1
+        esito = {"esito": "ok", "senza_origine": len(candidati), "con_file_ora_presente": len(da_riscrivere),
+                 "riallineati": riallineati}
+        logger.info("[PROTOCOLLO-DRIVE] prove riallineate: %s", esito)
+        return esito
+    finally:
+        if chiudi:
+            await conn.close()
 
 
 # ── letture per l'interfaccia ─────────────────────────────────────────────────

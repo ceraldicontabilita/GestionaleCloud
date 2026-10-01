@@ -349,7 +349,19 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   cambiato → aggiornata, sparito → `stato='rimosso'` con la data. Le impronte
   collegano ogni file al documento **per contenuto**, mai per nome, e una
   stessa impronta in più posizioni non crea un secondo documento: le
-  provenienze stanno in `source_occurrences`.
+  provenienze stanno in `source_occurrences`. **Due giri, un solo protocollo**: il
+  completo (`sincronizza`: percorre tutto l'albero, ~23.000 file in memoria, vede
+  anche i file spariti; spento per la RAM, `PROTOCOLLO_DRIVE_ENABLED=false`) e
+  l'**incrementale** (`sincronizza_incrementale`, ogni 20 minuti, `PROTOCOLLO_DRIVE_INCREMENTALE`
+  acceso per difetto): solo i file creati o modificati dall'ultimo giro riuscito (meno 10
+  minuti), una pagina da 1.000 alla volta, percorso dalle cartelle fino alla radice; non vede
+  i file spariti o spostati fuori (li segna solo il completo) e non rifa duplicati e
+  collegamenti se non ha scritto niente. Un giro `in_corso` da oltre 3 ore e' di un processo
+  morto e si chiude `interrotto`. Dopo ogni giro `riallinea_prove` riscrive (marcatore
+  `prova_riallineata_il`) i documenti `senza_origine` il cui file e' ora nel protocollo: la prova
+  la rifa il trigger `prova_origine` (`prova_calcola`, per MD5 o id Drive). Senza il file nel
+  protocollo la prova dice la verita' («nessun file Drive con la stessa impronta»), mai un'origine
+  inventata: dal 17/09 al 01/10/2026 il protocollo non ha visto nessun file nuovo.
 - **I canali Drive per sezione non esistono piu'** (DRV-16): moduli `drive_*_ingest`, router `/drive/sync|quadratura`,
   registro JSON delle cartelle e credenziali per canale tolti; lo smistatore non ne usava i parser. Restano la
   cartella unica e le foto ricette di Lotti; `fonti_ferme` e `cedolini_bloccati` (`cedolini_bloccati.py`) hanno un job proprio.
@@ -945,7 +957,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 - Ogni merge su `main` fa ridistribuire Render: per qualche minuto la produzione può essere `degraded`. Non si accodano merge. La health del commit `0187a45f`, letta il 30/09 alle 17:54 UTC, dichiarava `hydrated_rows=249598`, `hydration_errors=0`; il vecchio valore ~77.000 non è una misura corrente.
 - TFR: la lettura RPC del runtime il 30/09 misura **1.239** righe in `tfr_accantonamenti`. L'assenza nel deposito relazionale HR, l'importo aggregato e lo stato dell'ingest posta restano baseline da riconfermare; non sono stati interrogati nell'audit in sola lettura.
-- **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica Drive, ponte pagamenti HR, dedup fatture.
+- **Spento**: il giro completo del protocollo, `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica Drive, giro incrementale del protocollo (ogni 20 minuti), ponte pagamenti HR, dedup fatture.
 - Fatture: lettura RPC del 30/09, **1.539** righe, **1.526 del 2026** e 13 precedenti (8 del 2024, 2 del 2019, 2 del 2022, 1 del 2025). `invoice_date`, `invoice_number`, `total_amount` presenti su tutte; `id` testuale su 753, numerico su 786. Orfani e collisioni non rimisurati: non assumere zero. Il pre-2026 non è quindi interamente fuori archivio.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
 - **Numia dismesso** dal 05/09/2026: dal 01/08 al 04/09 le chiusure Numia vengono dagli accrediti in banca (50 giornate 2026 ancora da ricostruire al 28/09, 43.115,18 €: le fa il job bancario corto). POS corrente = solo SumUp (API).
