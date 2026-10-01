@@ -120,6 +120,8 @@ _ERP_SENZA_TOKEN = {
 # (dominio, percorso) -> (metodi ammessi, motivo). Sotto-app senza dipendenza di accesso.
 _SOTTOAPP_SENZA_TOKEN = {
     ("lotti", "/lotti/api/health"): ({"GET"}, "liveness"),
+    ("hr", "/hr/{full_path:path}"): ({"GET"}, "pagine statiche dell'app HR: nessun dato, solo il bundle"),
+    ("menu", "/menu/{full_path:path}"): ({"GET"}, "pagine statiche del Menu: nessun dato, solo il bundle"),
     ("hr", "/hr/api/health"): ({"GET"}, "liveness"),
     ("menu", "/menu/api/health"): ({"GET"}, "liveness"),
     ("hr", "/hr/api/auth/dipendenti-attivi"): ({"GET"}, "tocca il tuo nome: solo nomi, non sono un segreto"),
