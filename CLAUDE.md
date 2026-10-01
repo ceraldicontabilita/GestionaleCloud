@@ -215,7 +215,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
    dei 30 minuti; l'estratto conto lo **accoda in sottofondo**, mai lo aspetta.
 5. Migrazioni DDL su `gestionale.documents` a database scarico o con
    `create index concurrently`. Ogni DDL fa ricaricare lo schema a PostgREST
-   (503 per minuti): l'HR fa DDL solo se la tabella manca davvero.
+   (503 per minuti): l'HR fa DDL solo se la tabella manca davvero. Ogni migrazione applicata al progetto si salva nello stesso giorno in `supabase/migrations/<versione>_<nome>.sql`, con la versione del registro `supabase_migrations.schema_migrations`: il file e' l'unico modo di ricostruire il database da zero.
 6. **Nessuna cancellazione con filtro**: solo per id, con
    `gc_delete_documents` / `gc_delete_blobs` / `lotti_delete_*`. `DELETE` e
    `TRUNCATE` a mano sono bloccati su `gestionale.documents`, `.blobs`,
@@ -460,7 +460,6 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   (`_ESCLUSIONE_RE` in `hr_pagamenti_deposito.py`).
 - Le simulazioni non scrivono sul consuntivo. La chiusura d'esercizio richiede
   checklist, anteprima, conferma forte, audit e rollback.
-- **Area Commercialista** (`commercialista_pacchetto.py`, `/api/commercialista/pacchetto`, `/invia-pacchetto`, solo admin): il periodo è un intervallo `dal`/`al` (`intervallo_periodo`, un punto solo) e ogni scheda (banca, PayPal, SumUp, bonifici, corrispettivi, fatture per metodo, F24, stipendi, cassa, carnet, presenze) legge le sue fonti esistenti; una voce vuota o guasta si dichiara, mai riempita. Un invio = una email con un allegato per voce (`invia_email`), registrato in `commercialista_invii`. Le presenze le costruisce `hr/services/presenze_consulente.py` e il registro è uno solo, `presenze_invii`: un mese già inviato non parte due volte senza «Rinvia». L'IBAN esce sempre mascherato e il carnet assegni non ha colonna «Beneficiario» (mancante = «Da collegare»).
 - **Area Commercialista** (`commercialista_pacchetto.py`, `/api/commercialista/pacchetto`, `/invia-pacchetto`, solo admin): il periodo è un intervallo `dal`/`al` (`intervallo_periodo`, un punto solo) e ogni scheda (banca, PayPal, SumUp, bonifici, corrispettivi, fatture per metodo, F24, stipendi, cassa, carnet, presenze) legge le sue fonti esistenti; una voce vuota o guasta si dichiara, mai riempita. Un invio = una email con un allegato per voce (`invia_email`), registrato in `commercialista_invii`. Le presenze le costruisce `hr/services/presenze_consulente.py` e il registro è uno solo, `presenze_invii`: un mese già inviato non parte due volte senza «Rinvia». L'IBAN esce sempre mascherato e il carnet assegni non ha colonna «Beneficiario» (mancante = «Da collegare»).
 - Navigazione tra contropartite: un solo componente
   `frontend/src/components/LinkContropartita.jsx`; i deep-link letti dalle
@@ -908,7 +907,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
   la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
-  Le migrazioni 5, 6, 9, 11 e 12 furono applicate senza salvare il file: la catena SQL **non e' ricostruibile da zero**.
+  La catena e' completa (22 versioni): v1-4, 7, 8, 10 e 13-22 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
+  in `supabase/migrations/` come `…_colazioni_bb_vN_*.sql`; sono gia' applicate, i file non vanno rieseguiti.
 - **Tre ruoli, tre link**: titolare (`#/titolare`), albergatore (`#/hotel/<accesso>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**).
 - **Titolare: nessun PIN suo, vale quello del gestionale.** La pagina chiama `POST /api/colazioni/accesso` (`app/routers/colazioni.py`, solo admin,
   cookie o Bearer dell'ERP, MFA compresa); il backend chiede al database `bb_tit_sessione_apri` con la chiave di runtime `x-gc-api-key`
@@ -1004,7 +1004,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   emissione automatica delle fatture: serve un servizio SDI con accesso da programma (SumUp Fatture non ne ha; da chiedere all'assistenza SumUp o al commercialista);
   inserire dati veri del bar (orari, WhatsApp, email) e i B&B reali; far rivedere composizioni, ingredienti e allergeni delle colazioni standard;
   varianti di prodotto (latte vegetale, gusti del gelato) salvate ma non ancora scelte dall'ospite; per gli alberghi con servizio al tavolo gli extra usano ancora i prezzi banco;
-  la catena SQL non e' ricostruibile (migrazioni 5, 6, 9, 11, 12 mancanti); il banner «VERSIONE DI PROVA» va tolto al lancio; eliminare i B&B demo (`bb_tit_elimina_demo`).
+  il banner «VERSIONE DI PROVA» va tolto al lancio; eliminare i B&B demo (`bb_tit_elimina_demo`).
 
 ## Logica dentro al database
 
