@@ -11,8 +11,12 @@ backend, `bb_tit_sessione_apri` risponde «accesso negato».
 Il PIN degli albergatori, invece, e' loro: lo scelgono con l'invito e lo
 recuperano con il codice di recupero (vedi CLAUDE.md, «Colazioni B&B»).
 """
+import hashlib
 import logging
-from typing import Any, Dict
+import re
+import unicodedata
+from decimal import Decimal, InvalidOperation
+from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,6 +29,164 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 ORE_SESSIONE = 12
+
+_FORNITORE_VANDEMOORTELE = re.compile(r"vand(?:e)?moo?rte?le|vandermortel", re.IGNORECASE)
+_CAMPI_CODICE_PRODOTTO = (
+    "codice_prodotto",
+    "codice_articolo",
+    "codice_aqv_2026",
+    "codice_aqv_2025",
+    "acquaviva_id",
+)
+
+
+def _testo_normalizzato(valore: Any) -> str:
+    testo = unicodedata.normalize("NFKD", str(valore or ""))
+    testo = "".join(c for c in testo if not unicodedata.combining(c))
+    return " ".join(re.findall(r"[A-Z0-9]+", testo.upper()))
+
+
+def _decimale_positivo(valore: Any) -> Optional[Decimal]:
+    try:
+        numero = Decimal(str(valore or "0"))
+    except (InvalidOperation, ValueError):
+        return None
+    return numero if numero > 0 else None
+
+
+def _codici_prodotto(prodotto: Mapping[str, Any]) -> set[str]:
+    return {
+        _testo_normalizzato(prodotto.get(campo)).replace(" ", "")
+        for campo in _CAMPI_CODICE_PRODOTTO
+        if prodotto.get(campo)
+    }
+
+
+def _prodotto_certo_da_riga(
+    descrizione: str,
+    riga: Mapping[str, Any],
+    prodotti: Iterable[Mapping[str, Any]],
+) -> Optional[Mapping[str, Any]]:
+    """Collega la fattura al catalogo solo con una prova univoca.
+
+    Non usa somiglianze o parole in comune: valgono un codice esplicito oppure
+    l'uguaglianza del nome/descrizione normalizzati. In caso di ambiguita' la
+    riga resta senza foto e allergeni, invece di inventare un'associazione.
+    """
+
+    codici_riga = {
+        _testo_normalizzato(riga.get(campo)).replace(" ", "")
+        for campo in ("codice", "codice_articolo", "codice_prodotto", "sku")
+        if riga.get(campo)
+    }
+    testo_riga = _testo_normalizzato(descrizione)
+    candidati: List[Mapping[str, Any]] = []
+    for prodotto in prodotti:
+        codici = _codici_prodotto(prodotto)
+        codice_nel_testo = any(
+            len(codice) >= 4 and re.search(rf"(?:^|\s){re.escape(codice)}(?:\s|$)", testo_riga)
+            for codice in codici
+        )
+        stesso_testo = testo_riga and testo_riga in {
+            _testo_normalizzato(prodotto.get("nome")),
+            _testo_normalizzato(prodotto.get("descrizione")),
+        }
+        if (codici_riga and codici_riga & codici) or codice_nel_testo or stesso_testo:
+            candidati.append(prodotto)
+    return candidati[0] if len(candidati) == 1 else None
+
+
+def costruisci_catalogo_prodotti_hotel(
+    fatture: Iterable[Mapping[str, Any]],
+    prodotti_vendita: Iterable[Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Catalogo verificabile per gli hotel, senza modificare i dati sorgente."""
+
+    prodotti = [p for p in prodotti_vendita if p.get("attivo", True)]
+    risultato: List[Dict[str, Any]] = []
+
+    # Tutto cio' che produciamo: il legame alla ricetta e' la prova, non il nome.
+    for prodotto in prodotti:
+        if not prodotto.get("ricetta_id"):
+            continue
+        nome = str(prodotto.get("nome") or "").strip()
+        if not nome:
+            continue
+        risultato.append(
+            {
+                "chiave": f"interno:{prodotto.get('id')}",
+                "origine": "produzione_interna",
+                "nome": nome,
+                "descrizione": str(prodotto.get("descrizione") or "").strip(),
+                "allergeni": list(prodotto.get("allergeni") or []),
+                "immagine": prodotto.get("immagine_url") or None,
+                "prezzo": _decimale_positivo(prodotto.get("prezzo_vendita")),
+                "categoria": str(prodotto.get("categoria") or "Produzione interna").strip()
+                or "Produzione interna",
+                "prova": "ricetta",
+            }
+        )
+
+    # Vandemoortele: una riga entra soltanto se compare davvero in fattura.
+    acquistati: Dict[str, Dict[str, Any]] = {}
+    for fattura in fatture:
+        fornitore = " ".join(
+            str(fattura.get(campo) or "")
+            for campo in ("fornitore", "fornitore_ragione_sociale", "supplier_name")
+        )
+        if not _FORNITORE_VANDEMOORTELE.search(fornitore):
+            continue
+        for riga in fattura.get("prodotti") or []:
+            descrizione = str(
+                riga.get("descrizione") or riga.get("description") or riga.get("nome") or ""
+            ).strip()
+            if not descrizione or not _decimale_positivo(riga.get("quantita")):
+                continue
+            identita = _testo_normalizzato(descrizione)
+            if not identita:
+                continue
+            voce = acquistati.setdefault(
+                identita,
+                {
+                    "descrizione_fattura": descrizione,
+                    "quantita": Decimal("0"),
+                    "riga": riga,
+                },
+            )
+            voce["quantita"] += _decimale_positivo(riga.get("quantita")) or Decimal("0")
+
+    for identita, voce in acquistati.items():
+        riga = voce["riga"]
+        collegato = _prodotto_certo_da_riga(voce["descrizione_fattura"], riga, prodotti)
+        nome = str((collegato or {}).get("nome") or voce["descrizione_fattura"]).strip()
+        digest = hashlib.sha256(identita.encode("utf-8")).hexdigest()[:24]
+        risultato.append(
+            {
+                "chiave": f"vandemoortele:{digest}",
+                "origine": "vandemoortele",
+                "nome": nome,
+                "descrizione": str((collegato or {}).get("descrizione") or voce["descrizione_fattura"]).strip(),
+                "allergeni": list((collegato or {}).get("allergeni") or []),
+                "immagine": (collegato or {}).get("immagine_url") or None,
+                "prezzo": _decimale_positivo((collegato or {}).get("prezzo_vendita")),
+                "categoria": str((collegato or {}).get("categoria") or "Vandemoortele").strip()
+                or "Vandemoortele",
+                "prova": "fattura",
+                "descrizione_fattura": voce["descrizione_fattura"],
+                "quantita_acquistata": voce["quantita"],
+                "collegamento_catalogo": bool(collegato),
+            }
+        )
+
+    ordine_origine = {"vandemoortele": 0, "produzione_interna": 1}
+    return sorted(
+        risultato,
+        key=lambda p: (
+            ordine_origine.get(p["origine"], 9),
+            _testo_normalizzato(p.get("categoria")),
+            _testo_normalizzato(p["nome"]),
+        ),
+    )
 
 
 async def _apri_sessione_supabase() -> Dict[str, Any]:
@@ -63,3 +225,68 @@ async def accesso_titolare(_admin: Dict[str, Any] = Depends(get_current_admin_us
     if not token:
         raise HTTPException(status_code=502, detail="Colazioni B&B non raggiungibile")
     return {"token": token, "scade": esito.get("scade")}
+
+
+@router.get("/catalogo-prodotti", summary="Prodotti verificati per i menu degli hotel")
+async def catalogo_prodotti_hotel(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Prodotti acquistati da Vandemoortele e prodotti delle ricette interne.
+
+    La rotta e' amministrativa: descrizioni, foto e allergeni arrivano dalle
+    fonti canoniche di Lotti, mentre la prova di acquisto resta la fattura.
+    Non assegna prezzi e non pubblica nulla: la scelta per struttura viene
+    salvata dalle RPC ``bb_tit_prodotti_*``.
+    """
+
+    from app.lotti.db import database as db
+
+    fatture = await db.fatture.find(
+        {
+            "$or": [
+                {"fornitore": {"$regex": "vandemoortele|vandermoortel|vandermortel", "$options": "i"}},
+                {
+                    "fornitore_ragione_sociale": {
+                        "$regex": "vandemoortele|vandermoortel|vandermortel",
+                        "$options": "i",
+                    }
+                },
+            ]
+        },
+        {
+            "_id": 0,
+            "fornitore": 1,
+            "fornitore_ragione_sociale": 1,
+            "prodotti": 1,
+            "data_fattura": 1,
+            "numero_fattura": 1,
+        },
+    ).to_list(500)
+    prodotti = await db.prodotti_vendita.find(
+        {"attivo": True},
+        {
+            "_id": 0,
+            "id": 1,
+            "nome": 1,
+            "descrizione": 1,
+            "categoria": 1,
+            "ricetta_id": 1,
+            "fonte": 1,
+            "allergeni": 1,
+            "immagine_url": 1,
+            "prezzo_vendita": 1,
+            "codice_prodotto": 1,
+            "codice_articolo": 1,
+            "codice_aqv_2026": 1,
+            "codice_aqv_2025": 1,
+            "acquaviva_id": 1,
+            "attivo": 1,
+        },
+    ).to_list(2000)
+    catalogo = costruisci_catalogo_prodotti_hotel(fatture, prodotti)
+    return {
+        "prodotti": catalogo,
+        "totale": len(catalogo),
+        "vandemoortele": sum(p["origine"] == "vandemoortele" for p in catalogo),
+        "produzione_interna": sum(p["origine"] == "produzione_interna" for p in catalogo),
+    }

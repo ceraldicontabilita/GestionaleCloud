@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-09-20
+reviewed_at: 2026-10-01
 storage_architecture: supabase
 -->
 
-Aggiornato il 30/09/2026 sul codice di `main` del repository canonico
+Aggiornato il 01/10/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -943,8 +943,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Colazioni per struttura**: ogni hotel ha le sue colazioni (`bb_colazioni`, con nome, prezzo a persona e voci dal catalogo o libere).
   Le **standard** sono le stesse righe con `struttura_id` nullo: si importano in una struttura e poi si personalizzano, senza legame.
   L'albergatore compila una pagina sola: camere, ospiti, dal/al, colazione. Un voucher vale per tutto il soggiorno (massimo 31 giorni),
-  fino a tanti ritiri al giorno quanti sono gli ospiti. Il prezzo del voucher e' quello dell'hotel **piu'** il supplemento tavolo
-  (`bb_config.supplemento_tavolo`, 1,50 € a persona) se la struttura ha `servizio_tavolo`; altrimenti servizio al banco.
+  fino a tanti ritiri al giorno quanti sono gli ospiti. Ogni camera ha il proprio valore predefinito `servizio_tavolo`, modificabile
+  nella singola prenotazione: solo le righe spuntate aggiungono al prezzo dell'hotel il supplemento configurato
+  (`bb_config.supplemento_tavolo`, 1,50 € a persona per colazione); le altre restano al banco.
 - **Fatture delle ricariche**: ogni ricarica che diventa confermata (carta SumUp, contanti al bar, ricarica registrata a mano) crea una riga in `bb_fatture_da_emettere`
   (trigger `bb_trg_fattura_ricarica`, una sola riga per movimento). L'albergatore inserisce i **dati fiscali** (ragione sociale, P.IVA o C.F., indirizzo, codice destinatario/PEC) in registrazione o nel Profilo
   (`bb_alb_fiscali_salva`, validati lato server); senza dati completi non puo' ricaricare con carta. Il titolare le lavora nel tab **Fatture**: copia i dati, emette la fattura da SumUp Fatture
