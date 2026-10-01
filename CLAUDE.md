@@ -927,7 +927,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
   la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
-  La catena e' completa (22 versioni): v1-4, 7, 8, 10 e 13-22 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
+  La catena e' completa fino a v23: v1-4, 7, 8, 10 e 13-23 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
   in `supabase/migrations/` come `…_colazioni_bb_vN_*.sql`; sono gia' applicate, i file non vanno rieseguiti.
 - **Tre ruoli, tre link**: titolare (`#/titolare`), albergatore (`#/hotel/<accesso>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**).
 - **Titolare: nessun PIN suo, vale quello del gestionale.** La pagina chiama `POST /api/colazioni/accesso` (`app/routers/colazioni.py`, solo admin,
@@ -960,6 +960,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   dal server, si pagano al bar; le versioni senza glutine (`bb_senza_glutine`) aggiungono solo la differenza.
 - **Dati esterni** (navi e scioperi) in cache `bb_esterni`, aggiornata dal database con l'estensione `http` (Guardia Costiera EMSWe per le navi,
   RSS del MIT per gli scioperi), al massimo ogni 20 minuti.
+- **Recensioni post-consumo** (v23): dalla scheda di ogni struttura il titolare genera i link QR/NFC/Wi-Fi
+  `#/recensioni/<token>/<fonte>`. Geolocalizzazione e WhatsApp sono scelte esplicite, separate e mai preselezionate;
+  ogni consenso, diniego e revoca conserva timestamp, struttura, fonte e versione informativa. Solo l'opt-in WhatsApp
+  con numero valido crea una riga in `bb_recensioni_inviti` dopo la conferma di fine colazione. Lo scheduler la invia
+  con un template Meta approvato e ricontrolla l'ultimo consenso prima di acquisirla. URL Google/Tripadvisor, informativa
+  e ritardo si configurano dalla scheda; token e phone number id Meta restano nelle variabili Render.
 
 ## Stato attuale (al 30/09/2026 — riscrivere sul posto)
 
@@ -1062,6 +1068,9 @@ locale e marker fixture prima delle scritture.
 - **Apertura dell'originale (DRV-04)**: le viste per id aprono F24, quietanza e busta con `ApriOriginale`, ma l'endpoint unico non c'è: `documenti.py` (`/documento/{id}/download`), `fiscal_control.py` (`/documents/{id}/content`), `/api/f24-public/pdf`, `/api/cedolini/{id}/pdf`, `/api/download` e il visualizzatore restano cinque strade; il protocollo personale non ha ancora un originale apribile (nella scheda solo il nome del file) e i tab di Situazione fiscale leggono ancora `drive_document_index`.
 - **F24 e banca**: il motore a livelli confronta il saldo intero, non il codice tributo (l'allocazione per singola riga è stata tolta: 0 modelli l'avevano); un modello senza data di versamento è saltato senza avviso. Le quietanze provate dall'addebito non promuovono ancora da sole il modello a «pagato in banca» se il saldo differisce (ravvedimenti). L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
 - **Colazioni B&B, da chiudere**: attivare SumUp incollando la chiave in Impostazioni;
+  applicare `frontend_colazioni/sql/supabase-23.sql`, configurare i due URL recensione e l'informativa dalla scheda
+  struttura, poi impostare su Render `WHATSAPP_CLOUD_PHONE_NUMBER_ID` e `WHATSAPP_CLOUD_ACCESS_TOKEN` e approvare
+  il template `ceraldi_review_invite` con i parametri nome struttura e link;
   emissione automatica delle fatture: serve un servizio SDI con accesso da programma (SumUp Fatture non ne ha; da chiedere all'assistenza SumUp o al commercialista);
   inserire dati veri del bar (orari, WhatsApp, email) e i B&B reali; far rivedere composizioni, ingredienti e allergeni delle colazioni standard;
   varianti di prodotto (latte vegetale, gusti del gelato) salvate ma non ancora scelte dall'ospite; per gli alberghi con servizio al tavolo gli extra usano ancora i prezzi banco;

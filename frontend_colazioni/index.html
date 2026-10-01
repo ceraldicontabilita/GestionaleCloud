@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#7a2e1d">
 <title>Colazioni B&B · Bar Ceraldi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root{--bg:#fbf6ee;--card:#fff;--ink:#2b1d16;--mute:#7b6a60;--brand:#7a2e1d;--brand2:#c8873a;--ok:#2f7d4f;--warn:#b7791f;--bad:#b3261e;--line:#eadfce;--r:16px}
 @media(prefers-color-scheme:dark){:root{--bg:#1c1410;--card:#2a1e18;--ink:#f4e9dd;--mute:#b5a294;--line:#3d2c23;--brand:#e0a06a;--brand2:#c8873a}}
 *{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+body{margin:0;font-family:"Plus Jakarta Sans",sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
 header{background:linear-gradient(135deg,#7a2e1d,#a4492b);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
 header h1{font-size:18px;margin:0;flex:1}
 header button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:10px;padding:6px 10px;font-size:13px}
@@ -91,6 +94,10 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .catalog-card input[type=number]{margin:4px 0 0;max-width:120px}
 .catalog-origin{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--brand)}
 @media(max-width:620px){.catalog-tools{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px 1fr}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}}
+.review-hero{padding:26px 18px;background:linear-gradient(145deg,var(--brand),#a4492b);color:#fff;border-radius:var(--r);margin-bottom:12px}
+.review-hero h2{font-size:28px;line-height:1.08;letter-spacing:-.02em;margin:4px 0 10px}.review-hero p{margin:0;opacity:.9}
+.consent-box{border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}.consent-box h3{margin-bottom:5px}.consent-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.consent-actions .btn{min-height:44px}.consent-actions .chosen{background:var(--ok);border-color:var(--ok);color:#fff}
+.review-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.review-qr{text-align:center}.review-qr .qr{min-height:184px;align-items:center}.privacy-note{font-size:12px;color:var(--mute);line-height:1.55}.review-destination{width:100%;min-height:54px;margin:6px 0;font-size:16px}.review-success{text-align:center;padding:24px 10px}.review-success h2{font-size:30px;letter-spacing:-.02em}
 </style>
 </head>
 <body>
@@ -149,12 +156,14 @@ const loading=()=>{app.innerHTML=`<p class="mute" style="text-align:center;margi
 addEventListener("hashchange",render);
 async function render(){
  const h=location.hash||"#/";const p=h.split("/");
- $("#back").hidden=h==="#/"||h==="#"||["ospite","hotel","invito","recupero"].includes(p[1])||(!!sess&&sess.r==="alb"&&p[1]==="albergatore");
+ $("#back").hidden=h==="#/"||h==="#"||["ospite","hotel","invito","recupero","recensioni","recensione-invito"].includes(p[1])||(!!sess&&sess.r==="alb"&&p[1]==="albergatore");
  app.classList.toggle("wide",p[1]==="titolare"&&!!sess);
  if(p[1]==="ospite")return ospite(p[2]);
  if(p[1]==="hotel"){if(p[3]&&sess&&sess.r==="alb"&&sess.c===p[2])return alb(p[3]);return hotelLogin(p[2])}
  if(p[1]==="invito")return invito(p[2]);
  if(p[1]==="recupero")return recupero(p[2]);
+ if(p[1]==="recensioni")return recensioniOspite(p[2],p[3]||"link");
+ if(p[1]==="recensione-invito")return recensioneInvito(p[2]);
  if(p[1]==="albergatore")return sess&&sess.r==="alb"?(sess.c&&history.replaceState(null,"","#/hotel/"+sess.c+"/"+(p[2]||"home")),alb(p[2]||"home")):(($("#ttl").textContent="☕ Colazioni B&B"),void(app.innerHTML=`<div class="card">Per entrare usa il <b>link personale</b> che ti ha inviato il bar.</div>`));
  if(p[1]==="titolare")return sess&&sess.r==="tit"?tit(p[2]||"cruscotto",p[3]):loginTit();
  home()}
@@ -186,6 +195,79 @@ function home(){
  app.innerHTML=`<div class="hero"><h1>Colazioni per i B&B</h1><p>Bar Pasticceria Ceraldi · Napoli</p></div>
  <div class="card"><p>Se sei un albergatore, apri il <b>link personale</b> che ti ha inviato il bar: lì trovi il tuo accesso.</p><p class="mute">Se sei un ospite, apri il link o il QR che ti ha dato il tuo albergo.</p></div>
  <p style="text-align:center"><a class="mute" href="#/titolare">Area riservata del bar</a></p>`}
+
+/* ============ INVITI RECENSIONE: OSPITE ============ */
+let REC=null;
+async function recensioniOspite(token,fonte){
+ $("#ttl").textContent="Ceraldi Caffè";loading();
+ fonte=["qr","nfc","wifi","link"].includes(fonte)?fonte:"link";
+ try{
+  const info=await rpc("bb_recensioni_link_pubblico",{ptoken:token});
+  if(!info)throw new Error("Link non valido o disattivato");
+  const visita=await rpc("bb_recensioni_visita_apri",{ptoken:token,pfonte:fonte});
+  REC={token,fonte,info,sessione:visita.sessione,scelte:{},telefono:false};
+  recPagina()}
+ catch(e){app.innerHTML='<div class="card"><h2>Invito non disponibile</h2><p class="mute">'+esc(e.message)+'</p></div>'}}
+function recPagina(){
+ const i=REC.info,privacy=i.informativa_url?'<a href="'+esc(i.informativa_url)+'" target="_blank" rel="noopener">Leggi l’informativa completa</a>.':'L’informativa completa sarà resa disponibile dal titolare.';
+ app.innerHTML='<div class="review-hero"><div class="mute" style="color:#fff">OSPITE DI '+esc(i.struttura).toUpperCase()+'</div><h2>La colazione ha il suo rito.</h2><p>Le scelte sulla privacy restano tue, sempre.</p></div>'+
+ '<div class="card"><h2>Come vuoi vivere l’esperienza?</h2>'+
+ '<div class="consent-box"><h3>Geolocalizzazione</h3><p class="mute">Serve solo a registrare la presenza nel luogo della colazione. Il browser chiederà la posizione esclusivamente dopo il tuo consenso.</p><div class="consent-actions"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento</button><button class="btn sec" id="rg1" onclick="recScelta(\'geolocalizzazione\',true)">Acconsento</button></div></div>'+
+ '<div class="consent-box"><h3>Invito WhatsApp</h3><p class="mute">Ricevi un solo messaggio post-consumo con i link Google e Tripadvisor. Nessun messaggio promozionale.</p><div class="consent-actions"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento</button><button class="btn sec" id="rw1" onclick="recScelta(\'whatsapp\',true)">Acconsento</button></div></div>'+
+ '<p class="privacy-note">Nessuna opzione è preselezionata. Puoi revocare in ogni momento. Versione informativa: '+esc(i.informativa_versione)+'. '+privacy+'</p>'+
+ '<div id="rec_next"></div></div>'}
+async function recScelta(finalita,si){
+ try{
+  await rpc("bb_recensioni_consenso",{psessione:REC.sessione,pfinalita:finalita,pacconsento:si,pversione:REC.info.informativa_versione,pclient:navigator.userAgent});
+  REC.scelte[finalita]=si;
+  const pre=finalita==="geolocalizzazione"?"rg":"rw";
+  $("#"+pre+"0").classList.toggle("chosen",!si);$("#"+pre+"1").classList.toggle("chosen",si);
+  if(finalita==="geolocalizzazione"&&si)recPosizione();
+  recAvanti()}
+ catch(e){toast(e.message)}}
+function recPosizione(){
+ if(!navigator.geolocation)return toast("Posizione non disponibile su questo dispositivo");
+ navigator.geolocation.getCurrentPosition(async p=>{
+  try{await rpc("bb_recensioni_posizione",{psessione:REC.sessione,plat:p.coords.latitude,plon:p.coords.longitude,paccuratezza:p.coords.accuracy})}
+  catch(e){toast(e.message)}
+ },()=>toast("Il dispositivo non ha condiviso la posizione. Puoi comunque continuare."),{enableHighAccuracy:false,timeout:10000,maximumAge:300000})}
+function recAvanti(){
+ if(!("geolocalizzazione" in REC.scelte)||!("whatsapp" in REC.scelte))return;
+ $("#rec_next").innerHTML=REC.scelte.whatsapp?
+  '<label>Numero WhatsApp in formato internazionale</label><input id="rec_tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="+39 333 123 4567"><p class="privacy-note">Il numero è protetto dalle regole del database e viene usato solo per questo invito.</p><button class="btn" style="width:100%" onclick="recSalvaTelefono()">Salva il numero e continua</button>':
+  '<button class="btn" style="width:100%" onclick="recPronto()">Continua senza messaggi</button>'}
+async function recSalvaTelefono(){
+ const telefono=$("#rec_tel").value;
+ try{await rpc("bb_recensioni_telefono",{psessione:REC.sessione,ptelefono:telefono});REC.telefono=true;recPronto()}
+ catch(e){toast(e.message)}}
+function recPronto(){
+ app.innerHTML='<div class="review-hero"><h2>Buona colazione.</h2><p>Il tuo momento Ceraldi può iniziare.</p></div><div class="card review-success"><h2>Quando hai terminato</h2><p class="mute">Conferma la fine della colazione. Se hai scelto WhatsApp, l’unico invito sarà programmato da quel momento.</p><button class="btn review-destination" onclick="recFine()">Ho terminato la colazione</button><div id="rec_revoche"></div></div>';
+ recRevoche()}
+function recRevoche(){
+ const a=[];
+ if(REC.scelte.geolocalizzazione)a.push('<button class="btn sec sm" onclick="recRevoca(\'geolocalizzazione\',this)">Revoca geolocalizzazione</button>');
+ if(REC.scelte.whatsapp)a.push('<button class="btn sec sm" onclick="recRevoca(\'whatsapp\',this)">Revoca WhatsApp</button>');
+ if($("#rec_revoche"))$("#rec_revoche").innerHTML=a.join(" ")}
+async function recRevoca(finalita,bottone){
+ try{await rpc("bb_recensioni_revoca",{psessione:REC.sessione,pfinalita:finalita,pclient:navigator.userAgent});REC.scelte[finalita]=false;bottone.remove();toast("Consenso revocato")}
+ catch(e){toast(e.message)}}
+async function recFine(){
+ try{
+  const r=await rpc("bb_recensioni_completa",{psessione:REC.sessione});
+  app.innerHTML='<div class="card review-success"><h2>Grazie, a presto.</h2><p class="mute">'+(r.invito_pianificato?"Riceverai un solo invito WhatsApp all’orario previsto.":"Nessun messaggio verrà inviato.")+'</p></div>'}
+ catch(e){toast(e.message)}}
+async function recensioneInvito(token){
+ $("#ttl").textContent="Ceraldi Caffè";loading();
+ try{
+  const i=await rpc("bb_recensioni_invito_pubblico",{ptoken:token});
+  if(!i)throw new Error("Invito non valido o scaduto");
+  const g=i.google_url?'<button class="btn review-destination" onclick="recApri(\''+token+'\',\'google\',decodeURIComponent(\''+encodeURIComponent(i.google_url)+'\'))">Recensisci su Google</button>':'';
+  const t=i.tripadvisor_url?'<button class="btn sec review-destination" onclick="recApri(\''+token+'\',\'tripadvisor\',decodeURIComponent(\''+encodeURIComponent(i.tripadvisor_url)+'\'))">Recensisci su Tripadvisor</button>':'';
+  app.innerHTML='<div class="review-hero"><div class="mute" style="color:#fff">GRAZIE DA '+esc(i.struttura).toUpperCase()+'</div><h2>Com’è stata la tua esperienza?</h2><p>La tua opinione ci aiuta a servire una colazione ancora migliore.</p></div><div class="card"><h2>Scegli liberamente dove recensire</h2>'+g+t+'<p class="privacy-note">Nessun premio o incentivo è associato alla recensione.</p>'+(g||t?"":'<div class="alert">I link alle recensioni non sono ancora configurati.</div>')+'</div>'}
+ catch(e){app.innerHTML='<div class="card"><h2>Invito non disponibile</h2><p class="mute">'+esc(e.message)+'</p></div>'}}
+async function recApri(token,destinazione,url){
+ try{await rpc("bb_recensioni_click",{ptoken:token,pdestinazione:destinazione})}catch(e){}
+ location.href=url}
 
 /* ============ ACCESSO DELL'ALBERGATORE (link personale e invito) ============ */
 async function hotelLogin(cod){
@@ -459,9 +541,6 @@ async function crSalva(){
 const modTxt=m=>m.tipo==="senza"?`Senza ${esc(m.testo)}`:m.tipo==="senza_glutine"?"Versione senza glutine"+(m.testo?": "+esc(m.testo):""):esc(m.testo)+"";
 const modChi=m=>m.chi&&m.chi!=="Tutti"?` <span class="mute">(${esc(m.chi)})</span>`:"";
 let G=null;
-const RECENSIONE_GOOGLE="https://g.page/r/CQqRnemKplctEBM/review";
-const RECENSIONE_TRIPADVISOR="https://www.tripadvisor.it/UserReviewEdit-g187785-d2695184-Ceraldi_Caffe-Naples_Province_of_Naples_Campania.html";
-const recensioniOspite=()=>`<div class="card" style="text-align:center"><h2 style="margin-bottom:6px">Com’è stata la tua esperienza da Ceraldi Caffè?</h2><p class="mute">Se ti va, scegli dove raccontarcela. La recensione è libera e non dà diritto a sconti, omaggi o premi.</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="${RECENSIONE_GOOGLE}" target="_blank" rel="noopener">⭐ Recensisci su Google</a><a class="btn sec" href="${RECENSIONE_TRIPADVISOR}" target="_blank" rel="noopener">🟢 Recensisci su Tripadvisor</a></div></div>`;
 async function ospite(id){
  $("#ttl").textContent="☕ La tua colazione";loading();
  const d=await rpc("bb_ospite",{vid:id||""}).catch(()=>null);
@@ -477,7 +556,7 @@ async function ospite(id){
  <div class="alert ok" style="text-align:left"><b>${d.tavolo?"🪑 La colazione sarà servita al tavolo":"☕ La colazione sarà servita al banco"}</b></div><div class="qr" id="qrbox"></div><p><b style="letter-spacing:2px;font-size:20px">${d.id}</b></p><p class="mute">Mostra questo codice al bancone di ${esc(b.bar_nome||"Bar Pasticceria Ceraldi")}.</p>
  <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(maps)}" target="_blank" rel="noopener">📍 Come arrivare al bar</a>
  ${b.bar_indirizzo?`<p class="mute">${esc(b.bar_indirizzo)}${b.bar_orari?" · "+esc(b.bar_orari):""}</p>`:""}${b.bar_tel||b.bar_whatsapp||b.bar_email?`<p>${b.bar_tel?`<a href="tel:${esc(b.bar_tel)}">📞 Chiama</a> `:""}${b.bar_whatsapp?`<a href="https://wa.me/${esc(String(b.bar_whatsapp).replace(/\D/g,""))}" target="_blank" rel="noopener">💬 WhatsApp</a> `:""}${b.bar_email?`<a href="mailto:${esc(b.bar_email)}">✉️ Email</a>`:""}</p>`:""}</div>
- ${albergoHtml(d.indirizzo)}<div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>${recensioniOspite()}
+ ${albergoHtml(d.indirizzo)}<div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
  <h2>Napoli oggi</h2>${napoli()}`;
  qr($("#qrbox"),d.id);gRender();
  loadExt().then(E=>{$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)})}
@@ -620,9 +699,9 @@ async function tit(sec,arg){
  TIT.richieste_pin=await rpc("bb_tit_richieste_pin",{p:sess.p}).catch(()=>[]);
  TIT.fatture=await rpc("bb_tit_fatture",{p:sess.p}).catch(()=>[]);
  $("#ttl").textContent="🧁 "+barNome();
- const fn={cruscotto:pCruscotto,produzione:pProduzione,scan:pScan,ordini:pOrdini,strutture:pStrutture,struttura:pStruttura,invita:pInvita,invito:pInvito,prodotti:pProdottiHotel,fatture:pFatture,menu:pMenu,impostazioni:pImpostazioni}[sec]||pCruscotto;
+ const fn={cruscotto:pCruscotto,produzione:pProduzione,scan:pScan,ordini:pOrdini,strutture:pStrutture,struttura:pStruttura,invita:pInvita,invito:pInvito,recensioni:pRecensioni,prodotti:pProdottiHotel,fatture:pFatture,menu:pMenu,impostazioni:pImpostazioni}[sec]||pCruscotto;
  const nf=(TIT.fatture||[]).filter(f=>f.stato==="da_emettere"&&!f.demo).length;
- app.innerHTML=tabsHtml(TABS.map(t=>t[0]==="fatture"&&nf?[t[0],t[1]+" ("+nf+")"]:t),["struttura","invita","invito"].includes(sec)?"strutture":sec,"titolare")+fn(arg);
+ app.innerHTML=tabsHtml(TABS.map(t=>t[0]==="fatture"&&nf?[t[0],t[1]+" ("+nf+")"]:t),["struttura","invita","invito","recensioni"].includes(sec)?"strutture":sec,"titolare")+fn(arg);
  (fn.after||(()=>{}))(arg)}
 const consegnato=vs=>vs.reduce((a,v)=>a+v.usate*v.fascia,0);
 const attivi=vs=>vs.filter(v=>!v.annullato);
@@ -764,7 +843,7 @@ function pStrutture(){
  return `<div class="row"><h2 style="margin:8px 0">Strutture partner</h2><button class="btn" onclick="go('#/titolare/invita')">+ Invita nuovo B&B</button></div>`+
  TIT.strutture.map(s=>`<button class="big" onclick="go('#/titolare/struttura/${s.id}')"><div class="row"><b>${esc(s.nome)} ${s.demo?`<span class="pill p-warn">DEMO</span>`:""}${s.attivo?"":` <span class="pill p-warn">in attesa di attivazione</span>`}</b><span class="price" style="font-size:20px">${eur(s.saldo)}</span></div>
  <span>${esc(s.indirizzo)} · ${attivi(TIT.vouchers.filter(v=>v.struttura_id===s.id)).length} ordini</span></button>
- <div class="row" style="justify-content:flex-start;margin:-2px 0 12px 4px"><button class="btn sm" onclick="go('#/titolare/invito/${s.id}')">📨 Condividi con l'albergatore</button></div>`).join("")||`<p class="mute">Nessuna struttura. Creane una con "+ Invita nuovo B&B".</p>`}
+ <div class="row" style="justify-content:flex-start;margin:-2px 0 12px 4px"><button class="btn sm" onclick="go('#/titolare/invito/${s.id}')">Condividi con l'albergatore</button><button class="btn sm sec" onclick="go('#/titolare/recensioni/${s.id}')">Inviti recensione</button></div>`).join("")||`<p class="mute">Nessuna struttura. Creane una con "+ Invita nuovo B&B".</p>`}
 function pInvita(){return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="card"><h3>1 · Dati del nuovo B&B</h3>
  <label>Nome della struttura *</label><input id="in_n" placeholder="es. B&B Vesuvio"><label>Telefono / WhatsApp</label><input id="in_t" type="tel" placeholder="+39 333 1234567"><label>Email</label><input id="in_e" type="email"><label>Indirizzo</label><input id="in_a"></div>
  <div class="card"><h3>2 · Colazioni che può offrire</h3><p class="mute">Tocca una colazione per aprirla: nome, prezzo e contenuto dal menù. L'albergatore vedrà solo queste.</p><div id="ce2"></div></div>
@@ -808,7 +887,7 @@ function pStruttura(id){
  return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div>
  <div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2>${s.demo?`<span class="pill p-warn">DEMO</span>`:""}</div>
  <div class="kpis"><div class="card"><div class="mute">Saldo borsellino</div><div class="k">${eur(s.saldo)}</div></div><div class="card"><div class="mute">Ordini</div><div class="k">${attivi(vs).length}</div></div><div class="card"><div class="mute">Consegnato</div><div class="k">${eur(consegnato(attivi(vs)))}</div></div></div>
- <div class="card"><h3>Azioni</h3><button class="btn sm" onclick="ricaricaManuale('${id}')">+ Registra ricarica</button> <button class="btn sm sec" onclick="modificaStruttura('${id}')">Modifica dati</button> <button class="btn sm sec" onclick="nuovoPin('${id}')">Cambia PIN</button> <button class="btn sm sec" onclick="go('#/titolare/prodotti/${id}')">Prodotti e prezzi</button></div>
+ <div class="card"><h3>Azioni</h3><button class="btn sm" onclick="ricaricaManuale('${id}')">+ Registra ricarica</button> <button class="btn sm sec" onclick="modificaStruttura('${id}')">Modifica dati</button> <button class="btn sm sec" onclick="nuovoPin('${id}')">Cambia PIN</button> <button class="btn sm sec" onclick="go('#/titolare/prodotti/${id}')">Prodotti e prezzi</button> <button class="btn sm sec" onclick="go('#/titolare/recensioni/${id}')">Inviti recensione</button></div>
  <div class="card"><h3>🪑 Servizio al tavolo per camera</h3><p class="mute">Nell’elenco Camere spunta Tavolo solo dove previsto. In fase di prenotazione l’albergatore può confermare o cambiare la scelta: il totale aumenta subito di ${supTxt()} a persona per ogni colazione.</p></div>
  <div class="card"><h3>🥐 Colazioni offerte a questo hotel</h3><p class="mute">Solo queste colazioni compariranno nella pagina dell'albergatore, con i prezzi che stabilisci qui.</p><div id="ce2"></div></div>
  ${camereEditor("Camere di "+s.nome)}
@@ -825,6 +904,36 @@ async function ricaricaManuale(id){const i=+prompt("Importo incassato (€)");if
 async function nuovoPin(id){const p=prompt("Nuovo PIN per l'albergatore (min 4 cifre)");if(p&&p.length>=4)await run("bb_tit_struttura_salva",{p:sess.p,sid:id,pnome:null,pindirizzo:null,ppin:p,pfasce:null},"PIN aggiornato")}
 async function modificaStruttura(id){const s=TIT.strutture.find(x=>x.id===id);const n=prompt("Nome",s.nome);if(!n)return;const a=prompt("Indirizzo",s.indirizzo);
  if(await run("bb_tit_struttura_salva",{p:sess.p,sid:id,pnome:n,pindirizzo:a??s.indirizzo,ppin:null,pfasce:null},"Salvato"))render()}
+
+/* --- Inviti recensione per struttura --- */
+let REVT=null;
+function pRecensioni(id){
+ const s=TIT.strutture.find(x=>x.id===id);
+ if(!s)return '<div class="card">Struttura non trovata.</div>';
+ return '<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="row"><h2 style="margin:4px 0">Inviti recensione · '+esc(s.nome)+'</h2></div><div id="revt"><p class="mute">Caricamento…</p></div>'}
+pRecensioni.after=id=>recTitCarica(id);
+const recLink=fonte=>base()+"#/recensioni/"+REVT.token+"/"+fonte;
+async function recTitCarica(id){
+ const stato=await run("bb_tit_recensioni_stato",{p:sess.p,sid:id});if(!stato)return;
+ REVT={...stato,sid:id};recTitDisegna()}
+function recTitDisegna(){
+ const c=REVT.config;
+ $("#revt").innerHTML='<div class="kpis"><div class="card"><div class="mute">Aperture</div><div class="k">'+REVT.visite+'</div></div><div class="card"><div class="mute">Opt-in WhatsApp attivi</div><div class="k">'+REVT.optin_whatsapp+'</div></div><div class="card"><div class="mute">Inviti inviati</div><div class="k">'+REVT.inviti_inviati+'</div></div><div class="card"><div class="mute">Click recensioni</div><div class="k">'+(+REVT.click_google + +REVT.click_tripadvisor)+'</div></div></div>'+
+ '<div class="card"><h3>Link unici per questa struttura</h3><p class="mute">Usa lo stesso invito con una fonte diversa per misurare QR, NFC e Wi-Fi. Il cliente vede sempre due scelte separate e non preselezionate.</p><div class="review-links">'+["qr","nfc","wifi"].map(f=>'<div class="review-qr"><b>'+f.toUpperCase()+'</b><div class="qr" id="rq_'+f+'"></div><button class="btn sm sec" onclick="recCopia(\''+f+'\')">Copia link</button></div>').join("")+'</div><div class="row" style="margin-top:12px;justify-content:flex-start;flex-wrap:wrap"><button class="btn" onclick="recStampa()">Stampa i QR</button><button class="btn sec" onclick="recRigenera()">Rigenera link unico</button></div></div>'+
+ '<div class="card"><h3>Configurazione invito</h3><label>URL Google Reviews</label><input id="rc_g" type="url" value="'+esc(c.google_url)+'" placeholder="https://search.google.com/local/writereview?..."><label>URL Tripadvisor</label><input id="rc_t" type="url" value="'+esc(c.tripadvisor_url)+'" placeholder="https://www.tripadvisor.it/UserReviewEdit-..."><label>URL informativa privacy</label><input id="rc_u" type="url" value="'+esc(c.informativa_url)+'" placeholder="https://..."><label>Versione informativa</label><input id="rc_v" value="'+esc(c.informativa_versione)+'"><label>Invio post-consumo dopo quanti minuti</label><input id="rc_r" type="number" min="0" max="10080" value="'+c.ritardo_minuti+'"><button class="btn" onclick="recConfigSalva()">Salva configurazione</button><p class="privacy-note">La configurazione vale per tutte le strutture. Le credenziali WhatsApp restano nelle variabili protette di Render e non compaiono qui.</p></div>';
+ ["qr","nfc","wifi"].forEach(f=>qr($("#rq_"+f),recLink(f),174))}
+const recCopia=f=>navigator.clipboard.writeText(recLink(f)).then(()=>toast("Link "+f.toUpperCase()+" copiato"));
+function recStampa(){
+ const s=TIT.strutture.find(x=>x.id===REVT.sid);
+ stampa(["qr","nfc","wifi"].map(f=>({sopra:"Ceraldi Caffè · "+s.nome,titolo:"Raccontaci la tua colazione",riga:"Apri dal tuo telefono",qr:recLink(f),codice:f.toUpperCase(),sotto:"Consensi separati · nessuna opzione preselezionata"})))}
+async function recRigenera(){
+ if(!confirm("Rigenerare il link? I QR già stampati smetteranno di funzionare."))return;
+ const token=await run("bb_tit_recensioni_link_rigenera",{p:sess.p,sid:REVT.sid},"Nuovo link creato");
+ if(token){REVT.token=token;recTitDisegna()}}
+async function recConfigSalva(){
+ const dati={google_url:$("#rc_g").value,tripadvisor_url:$("#rc_t").value,informativa_url:$("#rc_u").value,informativa_versione:$("#rc_v").value,ritardo_minuti:$("#rc_r").value};
+ const r=await run("bb_tit_recensioni_config_salva",{p:sess.p,pdati:dati},"Configurazione salvata");
+ if(r!==undefined){REVT.config={...REVT.config,...dati,ritardo_minuti:+dati.ritardo_minuti};recTitDisegna()}}
 
 /* --- Catalogo prodotti separato per struttura --- */
 let CP={base:null,lista:[],sid:"",q:"",origine:"tutti"};

@@ -150,11 +150,9 @@ def test_frontend_e_migrazione_espongono_selezione_per_struttura():
 def test_pagina_ospite_qr_offre_recensione_google_e_tripadvisor_senza_incentivi():
     html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
 
-    assert "https://g.page/r/CQqRnemKplctEBM/review" in html
-    assert (
-        "https://www.tripadvisor.it/UserReviewEdit-g187785-d2695184-"
-        "Ceraldi_Caffe-Naples_Province_of_Naples_Campania.html"
-    ) in html
-    assert "Com’è stata la tua esperienza da Ceraldi Caffè?" in html
-    assert "La recensione è libera e non dà diritto a sconti, omaggi o premi." in html
-    assert "${recensioniOspite()}" in html
+    assert "bb_recensioni_invito_pubblico" in html
+    assert "i.google_url" in html
+    assert "i.tripadvisor_url" in html
+    assert "Com’è stata la tua esperienza?" in html
+    assert "Nessun premio o incentivo è associato alla recensione." in html
+    assert 'if(p[1]==="recensioni")return recensioniOspite' in html

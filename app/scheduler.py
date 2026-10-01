@@ -2078,6 +2078,25 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _recensioni_colazioni_job():
+        from app.services.colazioni_recensioni import processa_inviti_recensioni
+
+        esito = await processa_inviti_recensioni()
+        if esito.get("presi") or esito.get("falliti"):
+            logger.info("[RECENSIONI-COLAZIONI] %s", esito)
+
+    scheduler.add_job(
+        _recensioni_colazioni_job,
+        "interval",
+        minutes=1,
+        next_run_time=avvio + timedelta(minutes=1),
+        misfire_grace_time=60,
+        coalesce=True,
+        id="recensioni_colazioni_whatsapp",
+        name="Inviti recensione Colazioni B&B via WhatsApp (ogni minuto)",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
