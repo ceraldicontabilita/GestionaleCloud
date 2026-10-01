@@ -109,3 +109,24 @@ def test_import_errato_in_quarantena_per_id_con_anteprima_e_prima_nota_stornata(
     assert _run(db[d.COLLEZIONE].count_documents({})) == 1                        # resta solo la riga vera
     assert _run(db[d.COLLEZIONE_QUARANTENA].count_documents({"motivo_quarantena": "letto col lettore sbagliato"})) == 2
     assert _run(db["prima_nota_banca"].find_one({"id": "PN1"}))["status"] == "deleted"
+
+
+def test_l_elenco_senza_segno_va_in_quarantena_all_avvio_una_volta_e_lascia_la_gemella_corretta():
+    from app.services import doppioni_estratto_conto as d
+
+    nome = "ElencoEntrateUsciteAndamento_31-07-2026_07.23.35.csv"
+    db = AsyncMongoMockClient()["t"]
+    _run(db[d.COLLEZIONE].insert_many([
+        {"id": "EC-1", "data": "2026-07-27", "tipo": "entrata", "importo": 32.94, "source_filename": nome},
+        {"id": "EC-2", "data": "2026-07-27", "tipo": "entrata", "importo": 32.94, "source_filename": nome},
+        {"id": "LEG-1", "data": "2026-07-27", "tipo": "uscita", "importo": -32.94},
+    ]))
+    _run(db["prima_nota_banca"].insert_one({"id": "PN1", "estratto_conto_id": "EC-1", "status": "active"}))
+    _run(d._applica_import_errati(db))
+    assert [r["id"] for r in _run(db[d.COLLEZIONE].find({}).to_list(10))] == ["LEG-1"]
+    assert _run(db[d.COLLEZIONE_QUARANTENA].count_documents({"motivo_quarantena": d.MOTIVO_ELENCO_SENZA_SEGNO})) == 2
+    assert _run(db["prima_nota_banca"].find_one({"id": "PN1"}))["status"] == "deleted"
+    # secondo avvio: il marcatore e' completato, niente da rifare
+    _run(db[d.COLLEZIONE].insert_one({"id": "EC-9", "importo": 1.0, "source_filename": nome}))
+    _run(d._applica_import_errati(db))
+    assert _run(db[d.COLLEZIONE].count_documents({"id": "EC-9"})) == 1
