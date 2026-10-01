@@ -320,7 +320,9 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any]) -> Dict
     try:
         return await upload_documento_automatico(file=_FileCaricato(nome, contenuto, contesto))
     except HTTPException as exc:
-        return {"success": False, "message": str(exc.detail), "http_status": exc.status_code}
+        # Memoria esaurita per l'OCR: il file non e' sbagliato, si riprova al giro dopo.
+        return {"success": False, "message": str(exc.detail), "http_status": exc.status_code,
+                "rinviato": bool(getattr(exc, "rinviabile", False))}
 
 
 # Versione delle regole per i documenti non riconosciuti: un file gia' in
@@ -570,6 +572,12 @@ async def _giro(db) -> Dict[str, Any]:
             contesto = {"channel": "drive_cartella_unica", "drive_file_id": fid,
                         "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256}
             risultato = await _smista(nome, contenuto, contesto)
+            if risultato.get("rinviato"):
+                # Resta in DA ELABORARE, mai in ERRORI: un file e' «errore» solo se e' lui a esserlo.
+                esito["rinviati"] = esito.get("rinviati", 0) + 1
+                esito["dettagli"].append({"file": nome, "esito": "rinviato", "motivo": risultato.get("message")})
+                logger.warning("[cartella-unica] %s rinviato: %s", nome, risultato.get("message"))
+                return
             destinazione, motivo = esito_del_risultato(risultato)
             await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[destinazione], motivo or None)
             riferimenti = {k: risultato[k] for k in _CHIAVI_RIFERIMENTO if risultato.get(k)}

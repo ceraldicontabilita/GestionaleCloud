@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import io
 import logging
-from functools import lru_cache
 from typing import Any
 
 import fitz
@@ -25,6 +25,7 @@ from app.services.dichiarazioni_quadri import (
 )
 from app.services.fiscal_domain import build_evidence, classify_document, sha256_bytes, stable_id, utc_now
 from app.services.fiscal_evidence import register_document
+from app.services.ocr_locale import MemoriaInsufficiente, motore
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +40,6 @@ CATEGORY_DOCUMENT_TYPES = {
     "dichiarazione_irap": "DICHIARAZIONE_IRAP",
     "elenco_percipienti": "ELENCO_PERCIPIENTI",
 }
-
-
-@lru_cache(maxsize=1)
-def _ocr_engine():
-    from rapidocr_onnxruntime import RapidOCR
-
-    return RapidOCR()
 
 
 def _layout_word(box, text: str) -> dict[str, Any]:
@@ -63,14 +57,14 @@ def _looks_like_lipe_module(text: str) -> bool:
     return all(field in normalized for field in ("VP1", "VP4", "VP14"))
 
 
-def _ocr_page(page) -> tuple[str, float | None, list[dict[str, Any]]]:
+def _ocr_page(page, engine) -> tuple[str, float | None, list[dict[str, Any]]]:
     """OCR locale della singola pagina, senza inviare il documento a terzi."""
     import numpy as np
     from PIL import Image
 
     pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
     image = np.array(Image.open(io.BytesIO(pixmap.tobytes("png"))))
-    result, _ = _ocr_engine()(image)
+    result, _ = engine(image)
     rows = [item for item in (result or []) if len(item) >= 3 and str(item[1]).strip()]
     text = "\n".join(str(item[1]).strip() for item in rows)
     scores = [float(item[2]) for item in rows if item[2] is not None]
@@ -87,6 +81,13 @@ def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str,
         pdf = fitz.open(stream=content, filetype="pdf")
     except Exception as exc:
         raise ValueError("PDF non leggibile") from exc
+    # Il motore OCR si crea alla prima pagina che ne ha bisogno e si libera a fine documento.
+    with contextlib.ExitStack() as pila:
+        return _pagine_del_pdf(pdf, use_ocr, pila)
+
+
+def _pagine_del_pdf(pdf, use_ocr: bool, pila) -> list[dict[str, Any]]:
+    engine = None
     pages = []
     for index, page in enumerate(pdf):
         text = page.get_text("text")[:MAX_EXTRACTED_PAGE_CHARS]
@@ -99,11 +100,15 @@ def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str,
         ocr_confidence = None
         if use_ocr and len(text.strip()) < 20:
             try:
-                ocr_text, ocr_confidence, ocr_words = _ocr_page(page)
+                if engine is None:
+                    engine = pila.enter_context(motore())
+                ocr_text, ocr_confidence, ocr_words = _ocr_page(page, engine)
                 if ocr_text.strip():
                     text = ocr_text[:MAX_EXTRACTED_PAGE_CHARS]
                     layout_words = ocr_words
                     ocr_used = True
+            except MemoriaInsufficiente:
+                raise        # il documento si riprova piu' tardi: non diventa «da rivedere» a vita
             except Exception:
                 # Il documento resta in revisione: nessun fallimento OCR può
                 # trasformarsi in un dato fiscale certo o bloccare l'import.

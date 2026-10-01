@@ -9,9 +9,9 @@ import re
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from functools import lru_cache
 from typing import Any
 
+from app.services.ocr_locale import MemoriaInsufficiente, motore
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 
 
@@ -287,9 +287,11 @@ def _righe_ocr_per_posizione(content: bytes) -> str:
     import numpy as np
     from PIL import Image
 
-    engine = _get_ocr_engine()
+    from app.services.ocr_locale import motore
+
     righe: list[str] = []
-    with fitz.open(stream=content, filetype="pdf") as document:
+    # Il motore vive solo per questo documento (ocr_locale): mai una quota permanente di memoria.
+    with motore() as engine, fitz.open(stream=content, filetype="pdf") as document:
         for page in document:
             pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
             image = np.array(Image.open(io.BytesIO(pixmap.tobytes("png"))))
@@ -587,13 +589,6 @@ def _attach_pdf_coordinates(content: bytes, parsed: dict[str, Any]) -> None:
         return
 
 
-@lru_cache(maxsize=1)
-def _get_ocr_engine():
-    from rapidocr_onnxruntime import RapidOCR
-
-    return RapidOCR()
-
-
 def _extract_receipt_text(content: bytes) -> tuple[str, bool]:
     """Estrae il testo e usa OCR locale solo per le attestazioni raster."""
     text = ""
@@ -608,6 +603,8 @@ def _extract_receipt_text(content: bytes) -> tuple[str, bool]:
             righe = _righe_ocr_per_posizione(content)
             if righe.strip():
                 return f"{text}\n{righe}", True
+        except MemoriaInsufficiente:
+            raise            # non e' un OCR fallito: la ricevuta va riprovata, non letta a meta'
         except Exception as exc:  # noqa: BLE001 - senza OCR resta il solo testo vettoriale
             import logging
 
@@ -644,9 +641,8 @@ def _extract_receipt_text(content: bytes) -> tuple[str, bool]:
         import fitz
         import numpy as np
         from PIL import Image
-        engine = _get_ocr_engine()
         lines: list[str] = []
-        with fitz.open(stream=content, filetype="pdf") as document:
+        with motore() as engine, fitz.open(stream=content, filetype="pdf") as document:
             for page in document:
                 pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 image = np.array(Image.open(io.BytesIO(pixmap.tobytes("png"))))
@@ -654,6 +650,8 @@ def _extract_receipt_text(content: bytes) -> tuple[str, bool]:
                 lines.extend(item[1] for item in (result or []) if item[1].strip())
         if lines:
             return "\n".join(lines), True
+    except MemoriaInsufficiente:
+        raise                # da riprovare, non da lasciare «da verificare» per sempre
     except Exception:
         # Senza dati leggibili la ricevuta resta da verificare e non produce
         # mai automaticamente uno stato PAGATO o CHIUSO.

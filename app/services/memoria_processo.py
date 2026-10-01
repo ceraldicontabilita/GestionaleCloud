@@ -71,6 +71,19 @@ def rss_mb() -> Optional[float]:
         return None
 
 
+def limite_mb() -> float:
+    """Il limite di memoria del contenitore (cgroup v2 o v1); 2 GB, quelli di Render, se non si legge."""
+    for percorso in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            with open(percorso, encoding="ascii") as f:
+                valore = f.read().strip()
+            if valore.isdigit() and int(valore) < (1 << 50):      # «max» o valori enormi = nessun limite
+                return round(int(valore) / 1048576, 1)
+        except OSError:
+            continue
+    return 2048.0
+
+
 def restituisci() -> Dict[str, Any]:
     """Raccoglie gli oggetti irraggiungibili e restituisce al sistema le pagine libere."""
     prima = rss_mb()
