@@ -10,6 +10,7 @@ import { Button, Badge } from '../components/ds';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { ConfrontoIvaCommercialista, ScadenzeIvaMensili, giornoIT } from './iva/IvaAuditSections';
 import './GestioneIVA.css';
+import { euroOppure } from '../lib/vista';
 
 /**
  * Gestione IVA — Fase 1: "IVA disponibile non ancora utilizzata"
@@ -159,7 +160,7 @@ export default function GestioneIVA() {
     if (!liquidazione?.id) return;
     const ok = await confirm({
       title: `Conferma liquidazione ${periodo}`,
-      message: `Confermare IVA vendite ${formatEuro(liquidazione.iva_vendite)}, IVA acquisti ${formatEuro(liquidazione.iva_acquisti)} e ${liquidazione.fatture_incluse?.length || 0} fatture? Dopo la conferma l'IVA viene marcata come utilizzata.`,
+      message: `Confermare IVA vendite ${euroOppure(liquidazione.iva_vendite)}, IVA acquisti ${euroOppure(liquidazione.iva_acquisti)} e ${liquidazione.fatture_incluse?.length || 0} fatture? Dopo la conferma l'IVA viene marcata come utilizzata.`,
       variant: 'warning',
     });
     if (!ok) return;
@@ -333,7 +334,7 @@ export default function GestioneIVA() {
         .map(r => {
           const aliquota = r.aliquota_iva ?? r.aliquota;
           const iva = r.imposta ?? r.iva;
-          return aliquota == null ? null : `${aliquota}%: ${formatEuro(iva || 0)}`;
+          return aliquota == null ? null : `${aliquota}%: ${euroOppure(iva)}`;
         })
         .filter(Boolean)
         .join(' · ');
@@ -354,7 +355,7 @@ export default function GestioneIVA() {
   ]);
 
   return (
-    <PageLayout title="Gestione IVA" icon="📊" subtitle={`Attribuzione, liquidazione, F24 e scadenze — ${anno}`}>
+    <PageLayout title="Gestione IVA" subtitle={`Attribuzione, liquidazione, F24 e scadenze — ${anno}`}>
       <nav className="iva-period-tabs" role="tablist" aria-label="Periodo IVA">
         <button
           type="button"
@@ -442,10 +443,10 @@ export default function GestioneIVA() {
       ) : (
         <div className="iva-kpi-grid">
           <div><span>Fatture nel periodo</span><strong>{fattureTotali}</strong></div>
-          <div><span>IVA esposta</span><strong>{formatEuro(dati?.totale_iva_esposta || 0)}</strong></div>
-          <div><span>IVA detraibile</span><strong>{formatEuro(dati?.totale_iva_detraibile || 0)}</strong></div>
-          <div data-testid="iva-totale-disponibile"><span>Ancora disponibile</span><strong>{formatEuro(dati?.totale_iva_disponibile || 0)}</strong></div>
-          <div><span>IVA corrispettivi</span><strong>{formatEuro(totaliCorrispettivi.iva)}</strong></div>
+          <div><span>IVA esposta</span><strong>{euroOppure(dati?.totale_iva_esposta)}</strong></div>
+          <div><span>IVA detraibile</span><strong>{euroOppure(dati?.totale_iva_detraibile)}</strong></div>
+          <div data-testid="iva-totale-disponibile"><span>Ancora disponibile</span><strong>{euroOppure(dati?.totale_iva_disponibile)}</strong></div>
+          <div><span>IVA corrispettivi</span><strong>{euroOppure(totaliCorrispettivi.iva)}</strong></div>
           <div><span>Da verificare</span><strong>{dati?.totale_da_verificare || 0}</strong></div>
         </div>
       )}
@@ -510,13 +511,13 @@ export default function GestioneIVA() {
                         {REGOLA_LABEL[f.regola_iva_applicata] || f.regola_iva_applicata || '—'}
                       </td>
                       <td data-label="IVA esposta" style={{ ...STILI.td, textAlign: 'right' }}>
-                        {formatEuro(f.iva_esposta ?? 0)}
+                        {euroOppure(f.iva_esposta)}
                       </td>
                       <td data-label="Detraibilità IVA" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>
                         {etichettaPercentuale(f)}
                       </td>
                       <td data-label="IVA detraibile" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>
-                        {formatEuro(f.iva_detraibile ?? 0)}
+                        {euroOppure(f.iva_detraibile)}
                       </td>
                       <td data-label="Stato" style={STILI.td}>
                         <Badge variant={st.variant}>{st.label}</Badge>
@@ -582,11 +583,11 @@ export default function GestioneIVA() {
                   <tr key={c.id || c.id_invio || i} style={{ borderTop: `1px solid ${COLORS.border}` }}>
                     <td data-label="Data" style={STILI.td}>{formatDateIT(c.data || c.data_rilevazione)}</td>
                     <td data-label="Matricola RT" style={STILI.td}>{c.matricola_rt || c.matricola || c.id_dispositivo || '—'}</td>
-                    <td data-label="Imponibile" style={{ ...STILI.td, textAlign: 'right' }}>{formatEuro(c.totale_imponibile ?? c.imponibile ?? 0)}</td>
-                    <td data-label="IVA" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>{formatEuro(c.totale_iva ?? c.iva ?? 0)}</td>
-                    <td data-label="Totale" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>{formatEuro(c.totale ?? c.totale_complessivo ?? 0)}</td>
-                    <td data-label="Contanti" style={{ ...STILI.td, textAlign: 'right' }}>{formatEuro(c.pagato_contanti ?? c.contanti ?? 0)}</td>
-                    <td data-label="Elettronico" style={{ ...STILI.td, textAlign: 'right' }}>{formatEuro(c.pagato_elettronico ?? c.elettronico ?? c.pagato_pos ?? 0)}</td>
+                    <td data-label="Imponibile" style={{ ...STILI.td, textAlign: 'right' }}>{euroOppure(c.totale_imponibile ?? c.imponibile)}</td>
+                    <td data-label="IVA" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>{euroOppure(c.totale_iva ?? c.iva)}</td>
+                    <td data-label="Totale" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>{euroOppure(c.totale ?? c.totale_complessivo)}</td>
+                    <td data-label="Contanti" style={{ ...STILI.td, textAlign: 'right' }}>{euroOppure(c.pagato_contanti ?? c.contanti)}</td>
+                    <td data-label="Elettronico" style={{ ...STILI.td, textAlign: 'right' }}>{euroOppure(c.pagato_elettronico ?? c.elettronico ?? c.pagato_pos)}</td>
                     <td data-label="Aliquote IVA" style={{ ...STILI.td, fontSize: 12, color: COLORS.textMuted }}>{riepilogoAliquote(c)}</td>
                   </tr>
                 ))}
@@ -594,11 +595,11 @@ export default function GestioneIVA() {
               <tfoot>
                 <tr>
                   <td colSpan="2" style={STILI.th}>Totale periodo</td>
-                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.imponibile)}</td>
-                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.iva)}</td>
-                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.totale)}</td>
-                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.contanti)}</td>
-                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.elettronico)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{euroOppure(totaliCorrispettivi.imponibile)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{euroOppure(totaliCorrispettivi.iva)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{euroOppure(totaliCorrispettivi.totale)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{euroOppure(totaliCorrispettivi.contanti)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{euroOppure(totaliCorrispettivi.elettronico)}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -625,27 +626,27 @@ export default function GestioneIVA() {
           <div style={{ ...STILI.riepilogo, borderBottom: 'none' }} data-testid="iva-dashboard-mese">
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>Attribuita al mese</span>
-              <strong>{formatEuro(dashboard.iva_acquisti_attribuita || 0)}</strong>
+              <strong>{euroOppure(dashboard.iva_acquisti_attribuita)}</strong>
             </div>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>Ricevuta ma competenza mese prec.</span>
-              <strong>{formatEuro(dashboard.iva_ricevuta_attribuita_mese_precedente || 0)}</strong>
+              <strong>{euroOppure(dashboard.iva_ricevuta_attribuita_mese_precedente)}</strong>
             </div>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>Utilizzata</span>
-              <strong>{formatEuro(dashboard.iva_utilizzata || 0)}</strong>
+              <strong>{euroOppure(dashboard.iva_utilizzata)}</strong>
             </div>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>Non utilizzata</span>
-              <strong>{formatEuro(dashboard.iva_non_utilizzata || 0)}</strong>
+              <strong>{euroOppure(dashboard.iva_non_utilizzata)}</strong>
             </div>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>Rinviata</span>
-              <strong>{formatEuro(dashboard.iva_rinviata || 0)}</strong>
+              <strong>{euroOppure(dashboard.iva_rinviata)}</strong>
             </div>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>Indetraibile</span>
-              <strong>{formatEuro(dashboard.iva_indetraibile || 0)}</strong>
+              <strong>{euroOppure(dashboard.iva_indetraibile)}</strong>
             </div>
           </div>
         )}
@@ -716,7 +717,7 @@ export default function GestioneIVA() {
                 <strong>
                   {dashboard.versamento_iva.f24?.importo_iva == null
                     ? '—'
-                    : formatEuro(dashboard.versamento_iva.f24.importo_iva)}
+                    : euroOppure(dashboard.versamento_iva.f24.importo_iva)}
                 </strong>
               </div>
               <div style={STILI.voce}>
@@ -753,15 +754,15 @@ export default function GestioneIVA() {
               </div>
               <div style={STILI.voce}>
                 <span style={STILI.voceLabel}>IVA vendite</span>
-                <strong>{formatEuro(liquidazione.iva_vendite)}</strong>
+                <strong>{euroOppure(liquidazione.iva_vendite)}</strong>
               </div>
               <div style={STILI.voce}>
                 <span style={STILI.voceLabel}>IVA acquisti</span>
-                <strong>{formatEuro(liquidazione.iva_acquisti)}</strong>
+                <strong>{euroOppure(liquidazione.iva_acquisti)}</strong>
               </div>
               <div style={STILI.voce}>
                 <span style={STILI.voceLabel}>Credito precedente</span>
-                <strong>{formatEuro(liquidazione.credito_precedente)}</strong>
+                <strong>{euroOppure(liquidazione.credito_precedente)}</strong>
               </div>
               <div style={STILI.voce}>
                 <span style={STILI.voceLabel}>
@@ -788,7 +789,7 @@ export default function GestioneIVA() {
                   (liquidazione.fatture_incluse || []).map((f, i) => (
                     <div key={f.id || i} style={STILI.rigaMini}>
                       <span>{f.supplier_name || '—'} · {f.invoice_number || '—'}</span>
-                      <strong>{formatEuro(f.iva)}</strong>
+                      <strong>{euroOppure(f.iva)}</strong>
                     </div>
                   ))
                 )}
@@ -831,7 +832,7 @@ export default function GestioneIVA() {
             ].map(([label, key]) => (
               <div key={key} style={STILI.voce}>
                 <span style={STILI.voceLabel}>{label}</span>
-                <strong>{formatEuro(riepilogo.categorie?.[key]?.iva || 0)}</strong>
+                <strong>{euroOppure(riepilogo.categorie?.[key]?.iva)}</strong>
                 <span style={{ fontSize: 11, color: COLORS.textMuted }}>
                   {riepilogo.categorie?.[key]?.conteggio || 0} fatt.
                 </span>
@@ -841,22 +842,22 @@ export default function GestioneIVA() {
           <div style={{ ...STILI.riepilogo, borderTop: 'none' }}>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>IVA vendite</span>
-              <strong>{formatEuro(riepilogo.calcolo_annuale?.iva_vendite || 0)}</strong>
+              <strong>{euroOppure(riepilogo.calcolo_annuale?.iva_vendite)}</strong>
             </div>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>IVA detraibile annuale</span>
-              <strong>{formatEuro(riepilogo.calcolo_annuale?.iva_detraibile_annuale || 0)}</strong>
+              <strong>{euroOppure(riepilogo.calcolo_annuale?.iva_detraibile_annuale)}</strong>
             </div>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>Debito finale</span>
               <strong style={{ color: COLORS.danger }}>
-                {formatEuro(riepilogo.calcolo_annuale?.debito_finale || 0)}
+                {euroOppure(riepilogo.calcolo_annuale?.debito_finale)}
               </strong>
             </div>
             <div style={STILI.voce}>
               <span style={STILI.voceLabel}>Credito finale</span>
               <strong style={{ color: COLORS.success }}>
-                {formatEuro(riepilogo.calcolo_annuale?.credito_finale || 0)}
+                {euroOppure(riepilogo.calcolo_annuale?.credito_finale)}
               </strong>
             </div>
           </div>

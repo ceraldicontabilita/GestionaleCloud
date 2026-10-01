@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { PageLayout } from '../components/PageLayout';
 import { AlertTriangle, CheckCircle, FileText, Loader2, Play, RefreshCw } from 'lucide-react';
+import { Button, Card, Select } from '../components/ds';
+import { COLORS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 
 const etichetta = valore => String(valore || 'non_classificato')
   .replaceAll('_', ' ')
@@ -12,6 +14,7 @@ const etichetta = valore => String(valore || 'non_classificato')
 
 export default function BatchReprocessing() {
   const confirm = useConfirm();
+  const isMobile = useIsMobile();
   const [anteprima, setAnteprima] = useState(null);
   const [stato, setStato] = useState(null);
   const [categoria, setCategoria] = useState('');
@@ -88,90 +91,98 @@ export default function BatchReprocessing() {
   };
 
   const risultato = stato?.result || null;
+  const colonne = n => (isMobile ? '1fr' : `repeat(${n}, minmax(0, 1fr))`);
+  const sfondoStato = stato?.running ? COLORS.warningLight : stato?.error ? COLORS.dangerLight : risultato ? COLORS.successLight : COLORS.card;
+  const tessera = { background: COLORS.card, borderRadius: BORDER_RADIUS.md, padding: 12 };
 
   return (
     <PageLayout
       title="Rielaborazione documenti"
       subtitle="Rilegge gli originali con i parser correnti, per tutte le categorie presenti in archivio"
-      icon={<RefreshCw size={24} />}
     >
-      <div className="max-w-5xl mx-auto space-y-6">
-        <section className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
-            <div>
-              <h3 className="text-lg font-semibold flex items-center gap-2">
-                <FileText size={20} /> Documenti disponibili
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Le categorie vengono lette dall'archivio: non esiste più una lista fissa limitata a F24 e cedolini.
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-slate-800">{anteprima?.totale || 0}</div>
-              <div className="text-xs text-gray-500">documenti rielaborabili</div>
+      <div style={{ maxWidth: 1024, margin: '0 auto', display: 'grid', gap: 24 }}>
+        <Card
+          title="Documenti disponibili"
+          icon={<FileText size={18} aria-hidden style={{ marginRight: 6, verticalAlign: '-3px' }} />}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+            <p style={{ margin: 0, fontSize: 13, color: COLORS.textMuted, flex: '1 1 260px' }}>
+              Le categorie vengono lette dall'archivio: non esiste più una lista fissa limitata a F24 e cedolini.
+            </p>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: COLORS.text }}>{anteprima?.totale ?? 0}</div>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>documenti rielaborabili</div>
             </div>
           </div>
 
-          <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="categoria-rielaborazione">
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }} htmlFor="categoria-rielaborazione">
             Ambito
           </label>
-          <select
+          <Select
             id="categoria-rielaborazione"
             value={categoria}
             onChange={e => setCategoria(e.target.value)}
-            className="w-full min-h-11 border rounded-lg px-3 bg-white"
+            style={{ width: '100%', minHeight: 44 }}
           >
-            <option value="">Tutte le categorie ({anteprima?.totale || 0})</option>
+            <option value="">Tutte le categorie ({anteprima?.totale ?? 0})</option>
             {categorie.map(([nome, totale]) => (
               <option key={nome} value={nome}>{etichetta(nome)} ({totale})</option>
             ))}
-          </select>
+          </Select>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-4">
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 16 }}>
             {categorie.map(([nome, totale]) => (
               <button
                 type="button"
                 key={nome}
                 onClick={() => setCategoria(nome)}
-                className={`text-left rounded-lg border px-3 py-2 ${categoria === nome ? 'border-slate-700 bg-slate-50' : 'border-slate-200 bg-white'}`}
+                aria-pressed={categoria === nome}
+                style={{
+                  textAlign: 'left', minHeight: 44, cursor: 'pointer', font: 'inherit', color: COLORS.text,
+                  borderRadius: BORDER_RADIUS.md, padding: '8px 12px',
+                  border: `1px solid ${categoria === nome ? COLORS.primary : COLORS.border}`,
+                  background: categoria === nome ? COLORS.primarySoft : COLORS.card,
+                  display: 'flex', justifyContent: 'space-between', gap: 8,
+                }}
               >
-                <span className="font-medium">{etichetta(nome)}</span>
-                <span className="float-right font-mono text-gray-500">{totale}</span>
+                <span style={{ fontWeight: 600 }}>{etichetta(nome)}</span>
+                <span style={{ color: COLORS.textMuted, fontVariantNumeric: 'tabular-nums' }}>{totale}</span>
               </button>
             ))}
           </div>
-        </section>
+        </Card>
 
         {stato && (
-          <section className={`rounded-xl border p-6 ${stato.running ? 'bg-yellow-50 border-yellow-200' : stato.error ? 'bg-red-50 border-red-200' : risultato ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              {stato.running ? <Loader2 size={20} className="animate-spin" /> : stato.error ? <AlertTriangle size={20} /> : risultato ? <CheckCircle size={20} /> : <RefreshCw size={20} />}
+          <section style={{ borderRadius: BORDER_RADIUS.lg, border: `1px solid ${COLORS.border}`, padding: 24, background: sfondoStato }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 17, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {stato.running ? <Loader2 size={20} aria-hidden style={{ animation: 'rielab-spin 1s linear infinite' }} /> : stato.error ? <AlertTriangle size={20} aria-hidden /> : risultato ? <CheckCircle size={20} aria-hidden /> : <RefreshCw size={20} aria-hidden />}
               Stato rielaborazione
             </h3>
-            <div className="text-sm font-medium">{stato.progress || 'Inattiva'}</div>
-            {stato.error && <div className="mt-2 text-red-700">{stato.error}</div>}
+            <style>{'@keyframes rielab-spin { to { transform: rotate(360deg); } }'}</style>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{stato.progress || 'Inattiva'}</div>
+            {stato.error && <div style={{ marginTop: 8, color: COLORS.danger }}>{stato.error}</div>}
 
             {risultato && (
-              <div className="mt-4 space-y-3">
+              <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
                 {risultato.dry_run && (
-                  <span className="inline-block px-2 py-1 rounded bg-orange-100 text-orange-800 text-xs font-semibold">
+                  <span style={{ justifySelf: 'start', padding: '4px 8px', borderRadius: BORDER_RADIUS.sm, background: COLORS.warningLight, color: COLORS.warning, fontSize: 12, fontWeight: 700 }}>
                     SIMULAZIONE: nessun dato salvato
                   </span>
                 )}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
-                  <div className="bg-white rounded p-3"><b className="text-xl block">{risultato.totale_documenti || 0}</b><span className="text-xs text-gray-500">Trovati</span></div>
-                  <div className="bg-white rounded p-3"><b className="text-xl block">{risultato.totale_processati || 0}</b><span className="text-xs text-gray-500">Processati</span></div>
-                  <div className="bg-white rounded p-3"><b className="text-xl block text-green-700">{risultato.totale_successi || 0}</b><span className="text-xs text-gray-500">Riletti</span></div>
-                  <div className="bg-white rounded p-3"><b className="text-xl block text-red-700">{risultato.totale_errori || 0}</b><span className="text-xs text-gray-500">Da verificare</span></div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 12, textAlign: 'center' }}>
+                  <div style={tessera}><b style={{ fontSize: 20, display: 'block' }}>{risultato.totale_documenti ?? 0}</b><span style={{ fontSize: 12, color: COLORS.textMuted }}>Trovati</span></div>
+                  <div style={tessera}><b style={{ fontSize: 20, display: 'block' }}>{risultato.totale_processati ?? 0}</b><span style={{ fontSize: 12, color: COLORS.textMuted }}>Processati</span></div>
+                  <div style={tessera}><b style={{ fontSize: 20, display: 'block', color: COLORS.success }}>{risultato.totale_successi ?? 0}</b><span style={{ fontSize: 12, color: COLORS.textMuted }}>Riletti</span></div>
+                  <div style={tessera}><b style={{ fontSize: 20, display: 'block', color: COLORS.danger }}>{risultato.totale_errori ?? 0}</b><span style={{ fontSize: 12, color: COLORS.textMuted }}>Da verificare</span></div>
                 </div>
                 {Object.keys(risultato.categorie || {}).length > 0 && (
                   <details>
-                    <summary className="cursor-pointer font-medium">Risultati per categoria</summary>
-                    <div className="mt-2 grid gap-1 text-sm">
+                    <summary style={{ cursor: 'pointer', fontWeight: 600, minHeight: 44, display: 'flex', alignItems: 'center' }}>Risultati per categoria</summary>
+                    <div style={{ marginTop: 8, display: 'grid', gap: 4, fontSize: 13 }}>
                       {Object.entries(risultato.categorie).map(([nome, dati]) => (
-                        <div key={nome} className="flex justify-between bg-white rounded px-3 py-2">
+                        <div key={nome} style={{ ...tessera, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                           <span>{etichetta(nome)}</span>
-                          <span>{dati.successi || 0} riusciti · {dati.errori || 0} da verificare</span>
+                          <span>{dati.successi ?? 0} riusciti · {dati.errori ?? 0} da verificare</span>
                         </div>
                       ))}
                     </div>
@@ -182,27 +193,26 @@ export default function BatchReprocessing() {
           </section>
         )}
 
-        <section className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="text-lg font-semibold mb-4">Azioni</h3>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="rounded-lg bg-[#eef3ef] p-4">
-              <h4 className="font-semibold text-[#234d3d]">Simulazione</h4>
-              <p className="text-sm text-[#a94f30] mt-1 mb-3">Rilegge i documenti e mostra l'esito senza salvare modifiche.</p>
-              <button onClick={() => avvia(true)} disabled={caricamento || stato?.running} className="flex items-center gap-2 px-4 py-2 bg-[#a94f30] text-white rounded-lg disabled:opacity-50">
-                <Play size={16} /> Simula rielaborazione
-              </button>
+        <Card title="Azioni">
+          <div style={{ display: 'grid', gridTemplateColumns: colonne(2), gap: 16 }}>
+            <div style={{ borderRadius: BORDER_RADIUS.md, background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`, padding: 16 }}>
+              <h4 style={{ margin: 0, fontWeight: 700 }}>Simulazione</h4>
+              <p style={{ fontSize: 13, color: COLORS.textMuted, margin: '4px 0 12px' }}>Rilegge i documenti e mostra l'esito senza salvare modifiche.</p>
+              <Button variant="primary" onClick={() => avvia(true)} disabled={caricamento || stato?.running} iconLeft={<Play size={16} aria-hidden />} style={{ minHeight: 44 }}>
+                Simula rielaborazione
+              </Button>
             </div>
-            <div className="rounded-lg bg-orange-50 border border-orange-200 p-4">
-              <h4 className="font-semibold text-orange-900 flex items-center gap-2"><AlertTriangle size={17} /> Esecuzione</h4>
-              <p className="text-sm text-orange-700 mt-1 mb-3">Salva il nuovo esito accanto all'originale. Non crea un nuovo documento né un nuovo pagamento.</p>
-              <button onClick={avviaReale} disabled={caricamento || stato?.running} className="flex items-center gap-2 px-4 py-2 bg-orange-700 text-white rounded-lg disabled:opacity-50">
-                <Play size={16} /> Rielabora documenti
-              </button>
+            <div style={{ borderRadius: BORDER_RADIUS.md, background: COLORS.warningLight, border: `1px solid ${COLORS.border}`, padding: 16 }}>
+              <h4 style={{ margin: 0, fontWeight: 700, color: COLORS.warning, display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={17} aria-hidden /> Esecuzione</h4>
+              <p style={{ fontSize: 13, color: COLORS.warning, margin: '4px 0 12px' }}>Salva il nuovo esito accanto all'originale. Non crea un nuovo documento né un nuovo pagamento.</p>
+              <Button variant="danger" onClick={avviaReale} disabled={caricamento || stato?.running} iconLeft={<Play size={16} aria-hidden />} style={{ minHeight: 44 }}>
+                Rielabora documenti
+              </Button>
             </div>
           </div>
-        </section>
+        </Card>
 
-        <section className="text-sm text-gray-600 bg-gray-50 rounded-lg p-4">
+        <section style={{ fontSize: 13, color: COLORS.textMuted, background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.md, padding: 16 }}>
           <b>Regola:</b> la rielaborazione non sostituisce l'originale e non prova un pagamento. Serve a rieseguire classificazione ed estrazione con i parser correnti e a conservare il nuovo risultato per confronto e verifica.
         </section>
       </div>

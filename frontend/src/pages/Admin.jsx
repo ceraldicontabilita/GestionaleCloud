@@ -8,7 +8,7 @@ import { COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useHashState } from '../hooks/useHashState';
 import { Button, Badge, StatCard, Card, Tabs, Input, Select } from '../components/ds';
-import { Trash2, AlertTriangle, X, Loader2, CheckCircle2 } from 'lucide-react';
+import { Trash2, AlertTriangle, X, Loader2, CheckCircle2, Plus, Check, Eye, EyeOff, Mail, FolderOpen, Search, FlaskConical, Clock, XCircle, ChevronUp, ChevronDown } from 'lucide-react';
 import PannelloSumUp from '../components/PannelloSumUp';
 import PannelloRiparazioni from '../components/PannelloRiparazioni';
 
@@ -391,18 +391,17 @@ export default function Admin() {
 
   const tabItems = [
     { key: 'app', label: 'App collegate' },
-    { key: 'email', label: 'Email', icon: '📧' },
-    { key: 'keywords', label: 'Parole Chiave', icon: '🔑' },
-    { key: 'rollback', label: 'Rollback Dati', icon: '🗑️' },
-    { key: 'collaudo', label: 'Collaudo', icon: '🧪' },
-    { key: 'bank-rules', label: 'Riferimenti bancari', icon: '🏦' },
-    { key: 'riparazioni', label: 'Riparazioni', icon: '🩹' },
+    { key: 'email', label: 'Email' },
+    { key: 'keywords', label: 'Parole Chiave' },
+    { key: 'rollback', label: 'Rollback Dati' },
+    { key: 'collaudo', label: 'Collaudo' },
+    { key: 'bank-rules', label: 'Riferimenti bancari' },
+    { key: 'riparazioni', label: 'Riparazioni' },
   ];
 
   return (
     <PageLayout
       title="Amministrazione"
-      icon="⚙️"
       subtitle="Configurazione sistema, email e parametri"
     >
       {/* Tabs */}
@@ -457,7 +456,7 @@ export default function Admin() {
           <Card
             title="Account Email Configurati"
             actions={
-              <Button variant="primary" size="sm" onClick={() => setShowNewForm(true)} iconLeft="➕">
+              <Button variant="primary" size="sm" onClick={() => setShowNewForm(true)} iconLeft={<Plus size={16} aria-hidden />}>
                 Aggiungi Email
               </Button>
             }
@@ -500,7 +499,7 @@ export default function Admin() {
                             fontSize: 14,
                           }}
                         >
-                          📧 {acc.nome}
+                          <Mail size={16} aria-hidden /> {acc.nome}
                           {acc.is_env_default && <Badge variant="info">Principale (da .env)</Badge>}
                           {acc.attivo ? (
                             <Badge variant="success">Attivo</Badge>
@@ -532,8 +531,8 @@ export default function Admin() {
                           Modifica
                         </Button>
                         {!acc.is_env_default && (
-                          <Button variant="danger" size="sm" onClick={() => deleteEmailAccount(acc.id)}>
-                            🗑️
+                          <Button variant="danger" size="sm" onClick={() => deleteEmailAccount(acc.id)} aria-label="Elimina account">
+                            <Trash2 size={16} aria-hidden />
                           </Button>
                         )}
                       </div>
@@ -562,7 +561,7 @@ export default function Admin() {
                         }
                         style={{ color: COLORS.primaryLight, padding: '2px 6px' }}
                       >
-                        {showPassword[acc.id] ? '🙈' : '👁️'}
+                        {showPassword[acc.id] ? <EyeOff size={16} aria-label="Nascondi password" /> : <Eye size={16} aria-label="Mostra password" />}
                       </Button>
                     </div>
 
@@ -593,7 +592,7 @@ export default function Admin() {
                 style={{ marginTop: 20, borderTop: `1px solid ${COLORS.border}`, paddingTop: 20 }}
               >
                 <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
-                  ➕ Nuovo Account Email
+                  Nuovo Account Email
                 </h4>
                 <div
                   style={{
@@ -672,8 +671,8 @@ export default function Admin() {
                           e.key === 'Enter' && (e.preventDefault(), addKeywordToAccount(false))
                         }
                       />
-                      <Button type="button" variant="primary" size="sm" onClick={() => addKeywordToAccount(false)}>
-                        ➕
+                      <Button type="button" variant="primary" size="sm" onClick={() => addKeywordToAccount(false)} aria-label="Aggiungi parola chiave">
+                        <Plus size={16} aria-hidden />
                       </Button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -694,7 +693,7 @@ export default function Admin() {
                               color: COLORS.danger,
                             }}
                           >
-                            ✕
+                            <X size={12} aria-label="Rimuovi" />
                           </button>
                         </Badge>
                       ))}
@@ -703,7 +702,7 @@ export default function Admin() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                   <Button variant="success" onClick={() => saveEmailAccount(newAccount)}>
-                    ✔️ Salva
+                    <Check size={16} aria-hidden /> Salva
                   </Button>
                   <Button
                     variant="secondary"
@@ -712,7 +711,7 @@ export default function Admin() {
                       setNewKeywordInput('');
                     }}
                   >
-                    ✕ Annulla
+                    <X size={16} aria-hidden /> Annulla
                   </Button>
                 </div>
               </div>
@@ -724,7 +723,7 @@ export default function Admin() {
                 style={{ marginTop: 20, borderTop: `1px solid ${COLORS.border}`, paddingTop: 20 }}
               >
                 <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
-                  ✏️ Modifica Account: {editingAccount.nome}
+                  Modifica Account: {editingAccount.nome}
                   {editingAccount.is_env_default && (
                     <span style={{ fontSize: 10, color: COLORS.textMuted, marginLeft: 8 }}>
                       (Email Principale da .env)
@@ -817,8 +816,8 @@ export default function Admin() {
                           e.key === 'Enter' && (e.preventDefault(), addKeywordToAccount(true))
                         }
                       />
-                      <Button type="button" variant="primary" size="sm" onClick={() => addKeywordToAccount(true)}>
-                        ➕
+                      <Button type="button" variant="primary" size="sm" onClick={() => addKeywordToAccount(true)} aria-label="Aggiungi parola chiave">
+                        <Plus size={16} aria-hidden />
                       </Button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -839,7 +838,7 @@ export default function Admin() {
                               color: COLORS.danger,
                             }}
                           >
-                            ✕
+                            <X size={12} aria-label="Rimuovi" />
                           </button>
                         </Badge>
                       ))}
@@ -854,7 +853,7 @@ export default function Admin() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                   <Button variant="success" onClick={() => saveEmailAccount(editingAccount)}>
-                    ✔️ Salva Modifiche
+                    <Check size={16} aria-hidden /> Salva Modifiche
                   </Button>
                   <Button
                     variant="secondary"
@@ -863,7 +862,7 @@ export default function Admin() {
                       setEditKeywordInput('');
                     }}
                   >
-                    ✕ Annulla
+                    <X size={16} aria-hidden /> Annulla
                   </Button>
                 </div>
               </div>
@@ -906,7 +905,7 @@ export default function Admin() {
               onKeyDown={e => e.key === 'Enter' && addParolaChiave()}
             />
             <Button variant="primary" onClick={addParolaChiave}>
-              ➕ Aggiungi
+              <Plus size={16} aria-hidden /> Aggiungi
             </Button>
           </div>
 
@@ -952,7 +951,7 @@ export default function Admin() {
                         }}
                         data-testid={`remove-keyword-${cat}-${kw}`}
                       >
-                        ✕
+                        <X size={12} aria-label="Rimuovi" />
                       </button>
                     </Badge>
                   ))}
@@ -1098,7 +1097,7 @@ function PuliziaDriveFattureCard() {
       }}
     >
       <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.primary, marginBottom: 4 }}>
-        📁 Cartella Drive fatture — pulizia per anno
+        <FolderOpen size={16} aria-hidden style={{ verticalAlign: '-3px', marginRight: 6 }} />Cartella Drive fatture — pulizia per anno
       </div>
       <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
         Dopo il rollback di un anno, i file XML/P7M su Drive vanno rimossi anche da qui,
@@ -1142,7 +1141,7 @@ function PuliziaDriveFattureCard() {
           disabled={busy !== null}
           data-testid="btn-drive-pulizia-conta"
         >
-          {busy === 'conta' ? '⏳ Conto…' : '🔍 Conta (nessuna modifica)'}
+          {busy === 'conta' ? <><Loader2 size={16} aria-hidden /> Conto…</> : <><Search size={16} aria-hidden /> Conta (nessuna modifica)</>}
         </Button>
         <Button
           variant="danger"
@@ -1152,12 +1151,12 @@ function PuliziaDriveFattureCard() {
           title={!contaRes ? 'Prima esegui il conteggio' : undefined}
           data-testid="btn-drive-pulizia-elimina"
         >
-          {busy === 'elimina' ? '⏳ Sposto nel cestino…' : '🗑️ Sposta nel cestino Drive'}
+          {busy === 'elimina' ? <><Loader2 size={16} aria-hidden /> Sposto nel cestino…</> : <><Trash2 size={16} aria-hidden /> Sposta nel cestino Drive</>}
         </Button>
       </div>
       {errore && (
         <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: COLORS.danger }}>
-          ⚠️ {errore}
+          <AlertTriangle size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{errore}
         </div>
       )}
       {contaRes && (
@@ -1174,7 +1173,7 @@ function PuliziaDriveFattureCard() {
           <div style={{ fontWeight: 700, marginBottom: 4 }}>
             {contaRes.dry_run
               ? `Trovati ${contaRes.da_eliminare} file da spostare nel cestino`
-              : `✅ Spostati nel cestino ${contaRes.eliminati} file`}{' '}
+              : `Spostati nel cestino ${contaRes.eliminati} file`}{' '}
             <span style={{ fontWeight: 500, color: COLORS.textMuted }}>
               (esaminati {contaRes.esaminati}, altri anni {contaRes.altri_anni}, anno non
               determinabile {contaRes.non_determinati}, errori {contaRes.errori})
@@ -1495,7 +1494,7 @@ function CollaudoTab() {
           alle 4:30 e on-demand qui. Ogni violazione genera un alert idempotente,
           risolto automaticamente quando il check torna pulito.
         </div>
-        <Button variant="primary" onClick={eseguiOra} disabled={eseguendo} iconLeft={eseguendo ? undefined : '🧪'}>
+        <Button variant="primary" onClick={eseguiOra} disabled={eseguendo} iconLeft={eseguendo ? undefined : <FlaskConical size={16} aria-hidden />}>
           {eseguendo ? 'Eseguo...' : 'Esegui ora'}
         </Button>
       </div>
@@ -1521,11 +1520,11 @@ function CollaudoTab() {
       {ultimo && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-            <StatCard icon="🕐" label="Ultimo collaudo" value={formatData(ultimo.eseguito_at)} accent="primary" />
-            <StatCard icon="✅" label="Check puliti" value={`${ultimo.checks_totali - ultimo.checks_violati - ultimo.checks_in_errore}/${ultimo.checks_totali}`} accent={ultimo.checks_violati === 0 ? 'success' : 'primary'} />
-            <StatCard icon="⚠️" label="Check con violazioni" value={ultimo.checks_violati} accent={ultimo.checks_violati > 0 ? 'warning' : 'success'} />
-            <StatCard icon="❌" label="Violazioni totali" value={ultimo.violazioni_totali} accent={ultimo.violazioni_totali > 0 ? 'danger' : 'success'} />
-            <StatCard icon="!" label="Check in errore" value={ultimo.checks_in_errore || 0} accent={(ultimo.checks_in_errore || 0) > 0 ? 'danger' : 'success'} />
+            <StatCard icon={<Clock size={16} aria-hidden />} label="Ultimo collaudo" value={formatData(ultimo.eseguito_at)} accent="primary" />
+            <StatCard icon={<CheckCircle2 size={16} aria-hidden />} label="Check puliti" value={`${ultimo.checks_totali - ultimo.checks_violati - ultimo.checks_in_errore}/${ultimo.checks_totali}`} accent={ultimo.checks_violati === 0 ? 'success' : 'primary'} />
+            <StatCard icon={<AlertTriangle size={16} aria-hidden />} label="Check con violazioni" value={ultimo.checks_violati} accent={ultimo.checks_violati > 0 ? 'warning' : 'success'} />
+            <StatCard icon={<XCircle size={16} aria-hidden />} label="Violazioni totali" value={ultimo.violazioni_totali} accent={ultimo.violazioni_totali > 0 ? 'danger' : 'success'} />
+            <StatCard icon={<AlertTriangle size={16} aria-hidden />} label="Check in errore" value={ultimo.checks_in_errore || 0} accent={(ultimo.checks_in_errore || 0) > 0 ? 'danger' : 'success'} />
           </div>
 
           <Card title="Dettaglio invarianti">
@@ -1552,14 +1551,14 @@ function CollaudoTab() {
                       }}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                        <span>{pulito ? '✅' : inErrore ? '❌' : '⚠️'}</span>
+                        <span aria-hidden style={{ display: 'inline-flex' }}>{pulito ? <CheckCircle2 size={16} color={COLORS.success} /> : inErrore ? <XCircle size={16} color={COLORS.danger} /> : <AlertTriangle size={16} color={COLORS.warning} />}</span>
                         <span style={{ fontWeight: 600, color: COLORS.text }}>{c.nome}</span>
                       </span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                         <Badge variant={pulito ? 'success' : inErrore ? 'danger' : 'warning'}>
                           {inErrore ? 'errore' : `${c.violazioni} violazioni`}
                         </Badge>
-                        <span style={{ color: COLORS.textMuted }}>{aperto ? '▲' : '▼'}</span>
+                        <span style={{ color: COLORS.textMuted }}>{aperto ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}</span>
                       </span>
                     </button>
                     {aperto && (

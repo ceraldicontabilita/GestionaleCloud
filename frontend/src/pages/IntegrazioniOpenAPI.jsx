@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import api from '../api';
-import { COLORS, SPACING, BORDER_RADIUS, FONT, STYLES, useIsMobile } from '../lib/utils';
+import { COLORS, SPACING, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
+import { CheckCircle2, Download, RefreshCw } from 'lucide-react';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge, Card, Input, Tabs, TableWrap, Table, Th, Td } from '../components/ds';
 
@@ -99,30 +100,24 @@ export default function IntegrazioniOpenAPI() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout
+      title="Integrazioni OpenAPI.it"
+      subtitle="XBRL (Bilanci Camera di Commercio)"
+      actions={
+        <Button variant="info" onClick={loadStatus} iconLeft={<RefreshCw size={16} aria-hidden />}>
+          Aggiorna Stato
+        </Button>
+      }
+    >
       <div style={{ padding: `0 ${SPACING.xl}px ${SPACING.xl}px` }}>
-        <div style={STYLES.pageHeader}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>
-              🔌 Integrazioni OpenAPI.it
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: COLORS.textMuted }}>
-              XBRL (Bilanci Camera di Commercio)
-            </p>
-          </div>
-          <Button variant="info" onClick={loadStatus}>
-            🔄 Aggiorna Stato
-          </Button>
-        </div>
-
         <div style={{ marginTop: SPACING.lg }}>
           {/* Status Card */}
           <div style={{ marginBottom: 24 }}>
             <Card
-              title="📊 XBRL - Bilanci"
+              title="XBRL - Bilanci"
               actions={
                 <Badge variant={xbrlStatus?.api_key_configured ? 'success' : 'danger'}>
-                  {xbrlStatus?.api_key_configured ? '✓ Configurato' : '✗ Non configurato'}
+                  {xbrlStatus?.api_key_configured ? 'Configurato' : 'Non configurato'}
                 </Badge>
               }
             >
@@ -139,8 +134,8 @@ export default function IntegrazioniOpenAPI() {
           <div style={{ marginBottom: 20 }}>
             <Tabs
               items={[
-                { key: 'xbrl', label: '📊 XBRL Bilanci' },
-                { key: 'config', label: '⚙️ Configurazione' },
+                { key: 'xbrl', label: 'XBRL Bilanci' },
+                { key: 'config', label: 'Configurazione' },
               ]}
               value={activeTab}
               onChange={key => {
@@ -156,7 +151,7 @@ export default function IntegrazioniOpenAPI() {
               {/* Info Card */}
               <div style={infoCardStyle}>
                 <h4 style={{ margin: '0 0 12px', color: COLORS.info }}>
-                  📊 Bilanci XBRL Camera di Commercio
+                  Bilanci XBRL Camera di Commercio
                 </h4>
                 <p style={{ fontSize: 13, color: COLORS.text, marginBottom: 8 }}>
                   Richiedi bilanci ufficiali in formato XBRL dalla Camera di Commercio.
@@ -170,7 +165,7 @@ export default function IntegrazioniOpenAPI() {
 
               {/* Form Richiesta */}
               <div style={{ marginBottom: 16 }}>
-                <Card title="📥 Richiedi Bilancio">
+                <Card title="Richiedi Bilancio">
                   <div
                     style={{
                       display: 'grid',
@@ -222,7 +217,7 @@ export default function IntegrazioniOpenAPI() {
                       style={{ height: 42 }}
                       data-testid="richiedi-xbrl-btn"
                     >
-                      {xbrlLoading ? '⏳ Invio...' : '📤 Richiedi Bilancio'}
+                      {xbrlLoading ? 'Invio...' : 'Richiedi Bilancio'}
                     </Button>
                   </div>
 
@@ -236,7 +231,7 @@ export default function IntegrazioniOpenAPI() {
                         fontSize: 13,
                       }}
                     >
-                      <strong>✅ {xbrlResult.message}</strong>
+                      <strong><CheckCircle2 size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{xbrlResult.message}</strong>
                       <br />
                       <span style={{ color: COLORS.textMuted }}>
                         ID Richiesta: {xbrlResult.request_id}
@@ -249,10 +244,10 @@ export default function IntegrazioniOpenAPI() {
               {/* Lista Richieste */}
               <div style={{ marginBottom: 16 }}>
                 <Card
-                  title="📋 Richieste Recenti"
+                  title="Richieste Recenti"
                   actions={
-                    <Button variant="secondary" size="sm" onClick={loadXbrlRequests}>
-                      🔄 Aggiorna
+                    <Button variant="secondary" size="sm" onClick={loadXbrlRequests} iconLeft={<RefreshCw size={14} aria-hidden />}>
+                      Aggiorna
                     </Button>
                   }
                 >
@@ -323,7 +318,7 @@ export default function IntegrazioniOpenAPI() {
                                       textDecoration: 'none',
                                     }}
                                   >
-                                    📥 Download
+                                    <Download size={12} aria-hidden style={{ marginRight: 4 }} /> Download
                                   </a>
                                 )}
                               </Td>
@@ -337,7 +332,7 @@ export default function IntegrazioniOpenAPI() {
               </div>
 
               <div style={infoCardStyle}>
-                <h4 style={{ margin: '0 0 12px', color: COLORS.info }}>ℹ️ Informazioni XBRL</h4>
+                <h4 style={{ margin: '0 0 12px', color: COLORS.info }}>Informazioni XBRL</h4>
                 <p style={{ fontSize: 13, color: COLORS.text, marginBottom: 12 }}>
                   Il servizio XBRL permette di ottenere i bilanci delle aziende italiane in
                   formato strutturato.
@@ -357,7 +352,7 @@ export default function IntegrazioniOpenAPI() {
           {activeTab === 'config' && (
             <div>
               <div style={{ marginBottom: 16 }}>
-                <Card title="⚙️ Configurazione Attuale">
+                <Card title="Configurazione Attuale">
                   <TableWrap style={{ border: 'none' }}>
                     <Table>
                       <tbody>
@@ -384,7 +379,7 @@ export default function IntegrazioniOpenAPI() {
               </div>
 
               <div style={infoCardStyle}>
-                <h4 style={{ margin: '0 0 12px', color: COLORS.info }}>📘 Aggiornare la API Key</h4>
+                <h4 style={{ margin: '0 0 12px', color: COLORS.info }}>Aggiornare la API Key</h4>
                 <p style={{ fontSize: 13, color: COLORS.text, marginBottom: 12 }}>
                   Per aggiornare le credenziali OpenAPI.it:
                 </p>

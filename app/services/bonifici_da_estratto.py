@@ -23,6 +23,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.utils.id_fattura import varianti_id
 from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
 from app.services.identity_matching import nome_presente_nel_testo
 from app.services.payment_document_links import collega_bonifico_fatture
@@ -54,9 +55,7 @@ def _rif(testo: Any) -> Optional[str]:
     return trovato.group(0) if trovato else None
 
 
-def _id_possibili(valore: Any) -> List[Any]:
-    testo = str(valore)
-    return [testo, int(testo)] if testo.isdigit() else [testo]
+_id_possibili = varianti_id
 
 
 def _giorni_tra(a: Any, b: Any) -> Optional[int]:

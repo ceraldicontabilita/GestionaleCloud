@@ -183,7 +183,7 @@ describe('Numero assegno in Prima Nota Banca', () => {
     const numero = screen.getByLabelText('Numero assegno');
     expect(numero).toHaveValue('208769300');
     fireEvent.change(numero, { target: { value: '208769333' } });
-    fireEvent.click(screen.getByRole('button', { name: '💾 Salva' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salva' }));
 
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       '/api/prima-nota/banca/mov-1',
@@ -247,7 +247,7 @@ describe('Fatture provvisorie in attesa banca', () => {
       onRicarica={onRicarica}
     />);
 
-    fireEvent.click(screen.getByRole('button', { name: '🏦 Attendi banca' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Attendi banca' }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/api/prima-nota/provvisori/attendi-banca',

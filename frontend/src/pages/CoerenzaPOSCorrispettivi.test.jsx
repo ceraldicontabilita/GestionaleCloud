@@ -56,10 +56,10 @@ describe('Segno differenza XML meno POS reale', () => {
 describe('Evidenza di riconciliazione bancaria', () => {
   it('mostra il badge soltanto quando il backend certifica il match reale', () => {
     const { rerender } = render(<BadgeRiconciliatoBanca riconciliato={false} />);
-    expect(screen.queryByText('✓ Riconciliato banca')).not.toBeInTheDocument();
+    expect(screen.queryByText('Riconciliato banca')).not.toBeInTheDocument();
 
     rerender(<BadgeRiconciliatoBanca riconciliato />);
-    expect(screen.getByText('✓ Riconciliato banca')).toBeInTheDocument();
+    expect(screen.getByText('Riconciliato banca')).toBeInTheDocument();
   });
 });
 
@@ -343,7 +343,7 @@ describe('NUMIA senza chiusura del terminale', () => {
 
     expect(await screen.findByTestId('avviso-senza-chiusura')).toHaveTextContent(TESTO_SENZA_CHIUSURA);
     expect(screen.getByText('0%')).toBeInTheDocument();
-    expect(screen.queryByText('✓ Riconciliato banca')).toBeNull();
+    expect(screen.queryByText('Riconciliato banca')).toBeNull();
     expect(screen.getAllByText(TESTO_SENZA_CHIUSURA).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(TESTO_SENZA_CHIUSURA, { selector: 'div' })).toBeInTheDocument();
 

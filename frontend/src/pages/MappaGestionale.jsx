@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { PageHeader } from '../components/ds';
+import { useIsMobile } from '../lib/utils';
 import {
   AlertTriangle,
   Archive,
@@ -527,6 +529,7 @@ function DetailPanel({ area, relatedAreas, onSelectArea }) {
 }
 
 export default function MappaGestionale() {
+  const isMobile = useIsMobile();
   const [activeId, setActiveId] = useState('documenti');
   const [group, setGroup] = useState('Tutte');
 
@@ -539,17 +542,10 @@ export default function MappaGestionale() {
 
   return (
     <div style={styles.page}>
-      <header style={styles.header}>
-        <div>
-          <div style={styles.eyebrow}>Guida visiva applicazione</div>
-          <h1 style={styles.h1}>Mappa gestionale Ceraldi ERP</h1>
-          <p style={styles.lead}>
-            Flusso unico per capire da dove arrivano i dati, quali pagine li lavorano, quali
-            controlli servono e come si chiudono documenti, cassa, banca, POS, F24, quietanze,
-            cedolini, verbali e PayPal.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="Mappa gestionale Ceraldi ERP"
+        subtitle="Da dove arrivano i dati, quali pagine li lavorano e come si chiudono documenti, cassa, banca, POS, F24, cedolini, verbali e PayPal."
+      />
 
       <section style={styles.flowCard}>
         <div style={styles.sectionHeader}>
@@ -561,7 +557,7 @@ export default function MappaGestionale() {
             </p>
           </div>
         </div>
-        <div style={styles.stageRow}>
+        <div style={isMobile ? { ...styles.stageRow, gridTemplateColumns: '1fr', overflowX: 'visible' } : styles.stageRow}>
           {STAGES.map((stage, index) => (
             <React.Fragment key={stage.id}>
               <div style={styles.stage}>
@@ -578,7 +574,7 @@ export default function MappaGestionale() {
                   ))}
                 </div>
               </div>
-              {index < STAGES.length - 1 && <div style={styles.arrow}>-&gt;</div>}
+              {!isMobile && index < STAGES.length - 1 && <div style={styles.arrow}>-&gt;</div>}
             </React.Fragment>
           ))}
         </div>
@@ -679,36 +675,6 @@ const styles = {
     padding: 20,
     color: '#141413',
     colorScheme: 'light',
-  },
-  header: {
-    background: '#c15f3c',
-    color: '#fff',
-    borderRadius: 8,
-    padding: '22px 24px',
-    marginBottom: 16,
-    boxShadow: '0 6px 18px rgba(20, 20, 19, 0.16)',
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: 800,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    color: '#c2ddd0',
-    marginBottom: 6,
-  },
-  h1: {
-    margin: 0,
-    fontSize: 26,
-    lineHeight: 1.15,
-    letterSpacing: 0,
-    color: '#fff',
-  },
-  lead: {
-    margin: '8px 0 0',
-    maxWidth: 1040,
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: 14,
-    lineHeight: 1.5,
   },
   flowCard: {
     background: '#fff',

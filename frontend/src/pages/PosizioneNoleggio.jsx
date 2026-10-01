@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { COLORS, formatEuro, formatDateIT, useIsMobile } from '../lib/utils';
+import { COLORS, formatDateIT, useIsMobile } from '../lib/utils';
+import { euroOppure } from '../lib/vista';
 import { PageSection } from '../components/PageLayout';
 import { StatCard, Badge, Select, PageLoader, ListaAdattiva, Button } from '../components/ds';
 import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
@@ -68,7 +69,7 @@ function BadgeTipo({ tipo }) {
   return <Badge variant={e.variant}>{e.label}</Badge>;
 }
 
-const importo = v => (v === null || v === undefined ? '—' : formatEuro(v));
+const importo = euroOppure;
 
 function linkProva(prova) {
   if (!prova) return null;
@@ -144,6 +145,7 @@ export default function PosizioneNoleggio() {
   const [aperte, setAperte] = useState({});
   const [assegnazione, setAssegnazione] = useState({});
   const [salvataggio, setSalvataggio] = useState('');
+  const [limiteVeicoli, setLimiteVeicoli] = useState(200);
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -280,7 +282,7 @@ export default function PosizioneNoleggio() {
         ruoloCard: 'dettaglio',
         render: v =>
           v.trattenute?.length
-            ? v.trattenute.map(t => `${formatEuro(t.importo)} (${t.stato || 'proposta'})`).join(', ')
+            ? v.trattenute.map(t => `${euroOppure(t.importo)} (${t.stato || 'proposta'})`).join(', ')
             : '—',
       },
     ],
@@ -310,7 +312,7 @@ export default function PosizioneNoleggio() {
         key: 'verbali',
         label: 'Verbali',
         ruoloCard: 'dettaglio',
-        render: d => `${d.verbali} (${d.verbali_aperti} aperti, ${formatEuro(d.verbali_importo)})`,
+        render: d => `${d.verbali} (${d.verbali_aperti} aperti, ${euroOppure(d.verbali_importo)})`,
       },
       { key: 'trattenute', label: 'Trattenute', align: 'right', mono: true, ruoloCard: 'dettaglio', render: d => importo(d.trattenute) },
     ],
@@ -366,14 +368,14 @@ export default function PosizioneNoleggio() {
           marginBottom: 20,
         }}
       >
-        <StatCard icon={<FileText size={18} />} label={`Costi ${anno} (Dare)`} value={formatEuro(totali.dare)} accent="primary" />
-        <StatCard icon={<Landmark size={18} />} label="Pagato con prova (Avere)" value={formatEuro(totali.avere)} accent="success" />
+        <StatCard icon={<FileText size={18} />} label={`Costi ${anno} (Dare)`} value={euroOppure(totali.dare)} accent="primary" />
+        <StatCard icon={<Landmark size={18} />} label="Pagato con prova (Avere)" value={euroOppure(totali.avere)} accent="success" />
         <StatCard
           icon={totali.saldo > 0 ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
           label="Saldo aperto"
-          value={formatEuro(totali.saldo)}
+          value={euroOppure(totali.saldo)}
           accent={totali.saldo > 0 ? 'danger' : 'success'}
-          subtext={totali.avere_non_verificato ? `${formatEuro(totali.avere_non_verificato)} dichiarati senza estratto conto` : null}
+          subtext={totali.avere_non_verificato ? `${euroOppure(totali.avere_non_verificato)} dichiarati senza estratto conto` : null}
         />
         <StatCard
           icon={<Receipt size={18} />}
@@ -404,7 +406,7 @@ export default function PosizioneNoleggio() {
         </PageSection>
       )}
 
-      {dati.veicoli.map(v => {
+      {dati.veicoli.slice(0, limiteVeicoli).map(v => {
         const aperta = !!aperte[v.targa];
         const cessato = ['cessato', 'chiuso', 'archiviato'].includes(String(v.stato_contratto || '').toLowerCase());
         const r = v.riepilogo;
@@ -436,10 +438,10 @@ export default function PosizioneNoleggio() {
               <div style={{ textAlign: isMobile ? 'left' : 'right' }}>
                 <div style={{ fontSize: 12, color: COLORS.textMuted }}>Saldo aperto</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: r.saldo > 0 ? COLORS.danger : COLORS.success, fontVariantNumeric: 'tabular-nums' }}>
-                  {formatEuro(r.saldo)}
+                  {euroOppure(r.saldo)}
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.textMuted }}>
-                  Dare {formatEuro(r.dare)} · Avere {formatEuro(r.avere)}
+                  Dare {euroOppure(r.dare)} · Avere {euroOppure(r.avere)}
                 </div>
               </div>
             </div>
@@ -506,8 +508,8 @@ export default function PosizioneNoleggio() {
                       return (
                         <tr key={c.key} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                           <td style={{ padding: '6px 8px' }}>{c.label}</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatEuro(pc.dare)}</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatEuro(pc.avere)}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{euroOppure(pc.dare)}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{euroOppure(pc.avere)}</td>
                           <td
                             style={{
                               padding: '6px 8px',
@@ -517,7 +519,7 @@ export default function PosizioneNoleggio() {
                               color: pc.saldo > 0 ? COLORS.danger : COLORS.success,
                             }}
                           >
-                            {formatEuro(pc.saldo)}
+                            {euroOppure(pc.saldo)}
                           </td>
                         </tr>
                       );
@@ -569,6 +571,12 @@ export default function PosizioneNoleggio() {
           </PageSection>
         );
       })}
+
+      {dati.veicoli.length > limiteVeicoli && (
+        <Button variant="secondary" onClick={() => setLimiteVeicoli(x => x + 200)} style={{ minHeight: 44, marginBottom: 16 }}>
+          Mostra altre ({dati.veicoli.length - limiteVeicoli})
+        </Button>
+      )}
 
       <PageSection title="Posizione per driver" icon={<UserRound size={16} />}>
         {dati.driver.length === 0 ? (

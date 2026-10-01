@@ -17,6 +17,7 @@ import logging
 import uuid
 
 from app.database import Database, Collections
+from app.services.stato_pagamento_fattura import con_non_pagate
 from app.engines.prima_nota_engine import decide_destinazione_fattura
 
 logger = logging.getLogger(__name__)
@@ -188,14 +189,10 @@ class DataPropagationService:
         """
         # Somma fatture non pagate
         pipeline = [
-            {"$match": {
+            {"$match": con_non_pagate({
                 "supplier_id": supplier_id,
-                "$or": [
-                    {"pagato": {"$ne": True}},
-                    {"payment_status": {"$nin": ["paid"]}}
-                ],
                 "entity_status": {"$ne": "deleted"}
-            }},
+            })},
             {"$group": {
                 "_id": None,
                 "totale": {"$sum": {"$ifNull": ["$total_amount", "$importo_totale"]}}

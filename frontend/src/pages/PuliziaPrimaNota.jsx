@@ -3,7 +3,11 @@ import api from '../api';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout, PageSection } from '../components/PageLayout';
-import { formatEuroD } from '../lib/utils';
+import { PageHeader } from '../components/ds/PageHeader';
+import { formatEuroD, formatDateIT } from '../lib/utils';
+import { NON_DISPONIBILE, dataOppure } from '../lib/vista';
+
+const eur = v => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? NON_DISPONIBILE : formatEuroD(v));
 import { AlertTriangle, CheckCircle, Search, Eye, RefreshCw, Loader2 } from 'lucide-react';
 
 /**
@@ -99,8 +103,8 @@ export default function PuliziaPrimaNota() {
     const conferma = await confirm({
       title: 'Sposta movimento',
       message:
-        `Spostare il movimento del ${voce.data} (${voce.numero_fattura || voce.descrizione}, ` +
-        `${formatEuroD(voce.importo || 0)}) da ${voce.registro_attuale.toUpperCase()} ` +
+        `Spostare il movimento del ${dataOppure(voce.data)} (${voce.numero_fattura || voce.descrizione}, ` +
+        `${eur(voce.importo)}) da ${voce.registro_attuale.toUpperCase()} ` +
         `a ${voce.registro_atteso.toUpperCase()}? La fattura collegata viene aggiornata di conseguenza.`,
       confirmText: 'Sposta',
     });
@@ -130,14 +134,11 @@ export default function PuliziaPrimaNota() {
 
   return (
     <PageLayout>
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#141413' }}>
-          🧹 Pulizia Prima Nota
-        </h2>
-        <div style={{ fontSize: 13, color: '#7a776e', marginTop: 2 }}>
-          Manutenzione dati Prima Nota Cassa e Banca · Anno {anno}
-        </div>
-      </div>
+      <PageHeader
+        title="Pulizia Prima Nota"
+        subtitle={`Manutenzione dati Prima Nota Cassa e Banca · Anno ${anno}`}
+        style={{ marginBottom: 16 }}
+      />
       <PageSection>
         <div style={{
           background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 8,
@@ -357,7 +358,7 @@ export default function PuliziaPrimaNota() {
                       <div style={{ flex: 1, minWidth: 180, fontSize: 13 }}>
                         <strong>{v.numero_fattura || v.descrizione}</strong>
                         <div style={{ fontSize: 11.5, color: '#7a776e', marginTop: 2 }}>
-                          Operazione del {v.data} · {formatEuroD(v.importo || 0)} · oggi in{' '}
+                          Operazione del {dataOppure(v.data)} · {eur(v.importo)} · oggi in{' '}
                           <strong style={{ color: '#dc2626' }}>{v.registro_attuale.toUpperCase()}</strong>,
                           {' '}il fornitore è{' '}
                           <strong style={{ color: '#16a34a' }}>{v.registro_atteso.toUpperCase()}</strong>
@@ -390,6 +391,7 @@ export default function PuliziaPrimaNota() {
 }
 
 function DuplicateList({ title, registro, groups }) {
+  const [limite, setLimite] = useState(200);
   if (!groups.length) return (
     <div style={{ marginTop: 12, fontSize: 13, color: '#059669' }}><strong>{title}:</strong> nessun duplicato.</div>
   );
@@ -397,7 +399,7 @@ function DuplicateList({ title, registro, groups }) {
     <div style={{ marginTop: 16 }}>
       <div style={{ fontSize: 14, fontWeight: 700, color: '#141413', marginBottom: 8 }}>{title} ({groups.length} gruppi)</div>
       <div style={{ display: 'grid', gap: 10 }}>
-        {groups.map((g, index) => (
+        {groups.slice(0, limite).map((g, index) => (
           <div key={`${g.chiave}-${index}`} style={{ border: `1px solid ${g.certezza === 'certo' ? '#86efac' : '#fbbf24'}`, borderRadius: 8, padding: 12, background: g.certezza === 'certo' ? '#f0fdf4' : '#fffbeb' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
               <strong>{g.certezza === 'certo' ? 'Corretto automaticamente' : 'Da verificare'}</strong>
@@ -408,6 +410,11 @@ function DuplicateList({ title, registro, groups }) {
           </div>
         ))}
       </div>
+      {groups.length > limite && (
+        <button type="button" onClick={() => setLimite(l => l + 200)} style={{ ...btnStyle('secondary', false), marginTop: 10 }}>
+          Mostra altre ({groups.length - limite})
+        </button>
+      )}
     </div>
   );
 }
@@ -415,7 +422,7 @@ function DuplicateList({ title, registro, groups }) {
 function MovementRow({ label, registro, movement }) {
   return (
     <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #e6e3d9', fontSize: 12, lineHeight: 1.55 }}>
-      <strong>{label}:</strong> {movement.data || 'data assente'} · {formatEuroD(movement.importo || 0)} · {movement.numero_fattura || movement.fattura_id || movement.riferimento || 'senza riferimento'}
+      <strong>{label}:</strong> {movement.data ? formatDateIT(movement.data) : 'data assente'} · {eur(movement.importo)} · {movement.numero_fattura || movement.fattura_id || movement.riferimento || 'senza riferimento'}
       <br />{movement.descrizione || 'descrizione assente'}
       <br /><span style={{ color: '#7a776e' }}>ID {movement.id || 'assente'} · fonte {movement.source || 'non indicata'}</span>
       {movement.id && (

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
+import { NON_DISPONIBILE } from '../lib/vista';
 import { PageHeader } from '../components/ds/PageHeader';
 
 /**
@@ -14,15 +15,15 @@ import { PageHeader } from '../components/ds/PageHeader';
 const TERRACOTTA = '#c15f3c';
 const STATI = {
   da_pagare: { label: 'Da pagare', bg: '#f7eeda', fg: '#92400e' },
-  scaduta_da_versare: { label: '⚠️ SCADUTA da versare', bg: '#f8e5e2', fg: '#991b1b' },
+  scaduta_da_versare: { label: 'SCADUTA da versare', bg: '#f8e5e2', fg: '#991b1b' },
   f24_associato_da_pagare: { label: 'F24 trovato, banca da verificare', bg: '#f7ebe4', fg: '#4c4a44' },
   da_verificare_associazione_f24: { label: 'Più F24 compatibili: verifica', bg: '#f7eeda', fg: '#92400e' },
-  pagata_puntuale: { label: '✓ Pagata puntuale', bg: '#e2f0e7', fg: '#166534' },
+  pagata_puntuale: { label: 'Pagata puntuale', bg: '#e2f0e7', fg: '#166534' },
   pagata_con_ravvedimento: { label: 'Pagata con ravvedimento', bg: '#fef9c3', fg: '#854d0e' },
-  pagata_in_ritardo_senza_ravvedimento: { label: '⚠️ In ritardo SENZA ravvedimento', bg: '#f8e5e2', fg: '#991b1b' },
+  pagata_in_ritardo_senza_ravvedimento: { label: 'In ritardo SENZA ravvedimento', bg: '#f8e5e2', fg: '#991b1b' },
 };
 
-const eur = v => formatEuroD(v || 0);
+const eur = v => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? NON_DISPONIBILE : formatEuroD(v));
 
 export default function Ritenute() {
   const { anno } = useAnnoGlobale();
@@ -31,6 +32,7 @@ export default function Ritenute() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filtroStato, setFiltroStato] = useState('tutti');
+  const [limite, setLimite] = useState(200);
 
   const carica = async () => {
     setLoading(true);
@@ -106,14 +108,14 @@ export default function Ritenute() {
           {error} <button onClick={carica}>Riprova</button>
         </div>
       ) : loading ? (
-        <div style={{ padding: 30, textAlign: 'center', color: '#7a776e' }}>⏳ Caricamento…</div>
+        <div style={{ padding: 30, textAlign: 'center', color: '#7a776e' }}>Caricamento…</div>
       ) : righe.length === 0 ? (
         <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, padding: 30, textAlign: 'center', color: '#7a776e' }}>
           Nessuna ritenuta trovata nelle fatture {anno} per il filtro selezionato.
         </div>
       ) : isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {righe.map(r => (
+          {righe.slice(0, limite).map(r => (
             <div key={r.id} style={{ background: 'white', border: '1px solid #e6e3d9', borderLeft: '4px solid #d97706', borderRadius: 11, padding: '10px 12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                 <b style={{ fontSize: 13, color: TERRACOTTA }}>{r.fornitore || '—'}</b>
@@ -132,7 +134,7 @@ export default function Ritenute() {
               </div>
               {r.f24_id && (
                 <div style={{ fontSize: 11.5, color: '#4c4a44', marginTop: 4 }}>
-                  🔗 F24, riga 1040 {r.f24_periodo ? `(${r.f24_periodo})` : ''}:{' '}
+                  F24, riga 1040 {r.f24_periodo ? `(${r.f24_periodo})` : ''}:{' '}
                   {r.f24_descrizione || r.f24_id}
                   <div>
                     Quota {eur(r.f24_quota_ritenuta)}
@@ -176,7 +178,7 @@ export default function Ritenute() {
               </tr>
             </thead>
             <tbody>
-              {righe.map((r, i) => (
+              {righe.slice(0, limite).map((r, i) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #f2f0e9', background: i % 2 ? '#f6f4ee' : 'white' }}>
                   <td style={{ padding: '8px 10px', fontWeight: 600 }}>{r.fornitore || '—'}</td>
                   <td style={{ padding: '8px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
@@ -191,7 +193,7 @@ export default function Ritenute() {
                   <td style={{ padding: '8px 10px', fontSize: 11.5, color: '#4c4a44' }}>
                     {r.f24_id ? (
                       <div>
-                        <div>🔗 1040 {r.f24_periodo || 'periodo da verificare'}</div>
+                        <div>1040 {r.f24_periodo || 'periodo da verificare'}</div>
                         <div>
                           quota {eur(r.f24_quota_ritenuta)}
                           {r.f24_associazione_tipo === 'aggregata'
@@ -221,8 +223,20 @@ export default function Ritenute() {
         </div>
       )}
 
+      {righe.length > limite && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+          <button
+            type="button"
+            onClick={() => setLimite(l => l + 200)}
+            style={{ minHeight: 44, padding: '8px 16px', borderRadius: 8, border: '1px solid #e6e3d9', background: 'white', cursor: 'pointer', fontWeight: 600 }}
+          >
+            Mostra altre ({righe.length - limite})
+          </button>
+        </div>
+      )}
+
       <div style={{ marginTop: 14, background: '#fefce8', border: '1px solid #d97706', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: '#854d0e' }}>
-        📖 <b>Ravvedimento</b>: {dati.logica_ravvedimento || 'sanzione ridotta (codice 8906) + interessi (codice 1989) nello stesso F24 del tributo 1040.'}
+        <b>Ravvedimento</b>: {dati.logica_ravvedimento || 'sanzione ridotta (codice 8906) + interessi (codice 1989) nello stesso F24 del tributo 1040.'}
       </div>
     </div>
   );

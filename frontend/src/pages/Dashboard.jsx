@@ -27,6 +27,7 @@ import api from '../api';
 import { aggiornatoAlle, getConCopia } from '../lib/cacheGuscio';
 import { useAnnoGlobale, AnnoSelector } from '../contexts/AnnoContext';
 import { formatEuro, COLORS } from '../lib/utils';
+import { euroOppure, dataOppure } from '../lib/vista';
 import { PageLayout } from '../components/PageLayout';
 import AggiornamentoDati from '../components/AggiornamentoDati';
 
@@ -354,7 +355,7 @@ export default function Dashboard() {
       {/* Avviso endpoint in errore (distinto da "nessun dato") */}
       {erroriApi.length > 0 && (
         <div style={STILI.avvisoErrori} data-testid="dashboard-api-errors">
-          ⚠️ Sezioni non disponibili in questo momento (errore, non «nessun dato»):{' '}
+          Sezioni non disponibili in questo momento (errore, non «nessun dato»):{' '}
           {erroriApi.join(', ')}.
         </div>
       )}
@@ -435,7 +436,7 @@ export default function Dashboard() {
             <Nota>
               Saldo dei movimenti di cassa nel periodo.
               {sumupCassaLive?.applicabile && (
-                <> La giornata SumUp corrente usa il dato live {formatEuro(sumupCassaLive.importo_corrente)} senza riscrivere la prova sorgente.</>
+                <> La giornata SumUp corrente usa il dato live {euroOppure(sumupCassaLive.importo_corrente)} senza riscrivere la prova sorgente.</>
               )}
             </Nota>
           </CardBox>
@@ -507,7 +508,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {scadenze.scadenze.slice(0, 8).map((s, i) => (
                   <div key={s.id || i} style={STILI.rigaScadenza}>
-                    <span style={{ fontWeight: 700, minWidth: 92 }}>{s.data}</span>
+                    <span style={{ fontWeight: 700, minWidth: 92 }}>{dataOppure(s.data)}</span>
                     <span style={STILI.tagTipo}>{s.tipo}</span>
                     <span style={{ flex: 1, color: COLORS.text }}>{s.descrizione}</span>
                     {s.importo ? (
@@ -650,7 +651,7 @@ function FasciaEnergiaCard({ energia, errore }) {
           <div style={STILI.energiaMotivo}>{energia.motivo}</div>
         </div>
         <div style={STILI.energiaPrezzo}>
-          <strong>{Number(energia.tariffa?.euro_kwh || 0).toFixed(4)} euro/kWh</strong>
+          <strong>{energia.tariffa?.euro_kwh == null ? DATO_NON_DISPONIBILE : `${Number(energia.tariffa.euro_kwh).toFixed(4)} euro/kWh`}</strong>
           <span>componente energia</span>
         </div>
       </div>

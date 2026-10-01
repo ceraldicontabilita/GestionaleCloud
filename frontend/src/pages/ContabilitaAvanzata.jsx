@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
-import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
+import { COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile, formatDateIT } from '../lib/utils';
 import { FileText } from 'lucide-react';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge, StatCard, Card, Select, TableWrap, Table, Th, Td } from '../components/ds';
+import { euroOppure } from '../lib/vista';
 
 const styles = {
   loading: { textAlign: 'center', padding: 40, color: COLORS.textMuted },
@@ -257,18 +258,18 @@ export default function ContabilitaAvanzata() {
 
   if (loading) {
     return (
-      <PageLayout>
+      <PageLayout title="Contabilità avanzata">
         <div style={styles.loading}>Caricamento dati contabili...</div>
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout>
+    <PageLayout title="Contabilità avanzata">
       <div data-testid="contabilita-avanzata-page">
         {/* Header Actions */}
         <div style={styles.headerActions}>
-          <Badge variant="primary">📅 Anno: {selectedYear}</Badge>
+          <Badge variant="primary">Anno: {selectedYear}</Badge>
           <Button
             variant="primary"
             onClick={handleDownloadPDF}
@@ -320,7 +321,7 @@ export default function ContabilitaAvanzata() {
             }}
             data-testid="contabilita-avanzata-errori"
           >
-            ⚠️ Questi blocchi non sono disponibili per un errore del server (non è
+            Questi blocchi non sono disponibili per un errore del server (non è
             mancanza di dati): {erroriBlocchi.join(' · ')}
           </div>
         )}
@@ -337,50 +338,50 @@ export default function ContabilitaAvanzata() {
             }}
           >
             <StatCard
-              label="💶 Disponibilità Liquide (Cassa + Banca)"
+              label="Disponibilità Liquide (Cassa + Banca)"
               value={
                 <span style={{ fontFamily: FONT.mono, color: COLORS.success }}>
-                  {formatEuro(disponibilita.totale_disponibilita_liquide || 0)}
+                  {euroOppure(disponibilita.totale_disponibilita_liquide)}
                 </span>
               }
-              subtext={`al ${disponibilita.data_riferimento}`}
+              subtext={`al ${formatDateIT(disponibilita.data_riferimento)}`}
               accent="primary"
             />
             <StatCard
-              label="💵 Cassa"
+              label="Cassa"
               value={
                 <span style={{ fontFamily: FONT.mono }}>
-                  {formatEuro(disponibilita.cassa?.saldo || 0)}
+                  {euroOppure(disponibilita.cassa?.saldo)}
                 </span>
               }
               subtext={
                 <span style={{ fontFamily: FONT.mono }}>
-                  E: {formatEuro(disponibilita.cassa?.entrate || 0)} · U:{' '}
-                  {formatEuro(disponibilita.cassa?.uscite || 0)}
+                  E: {euroOppure(disponibilita.cassa?.entrate)} · U:{' '}
+                  {euroOppure(disponibilita.cassa?.uscite)}
                 </span>
               }
               accent="primary"
             />
             <StatCard
-              label="🏦 Banca"
+              label="Banca"
               value={
                 <span style={{ fontFamily: FONT.mono }}>
-                  {formatEuro(disponibilita.banca?.saldo || 0)}
+                  {euroOppure(disponibilita.banca?.saldo)}
                 </span>
               }
               subtext={
                 <span style={{ fontFamily: FONT.mono }}>
-                  E: {formatEuro(disponibilita.banca?.entrate || 0)} · U:{' '}
-                  {formatEuro(disponibilita.banca?.uscite || 0)}
+                  E: {euroOppure(disponibilita.banca?.entrate)} · U:{' '}
+                  {euroOppure(disponibilita.banca?.uscite)}
                 </span>
               }
               accent="primary"
             />
             <StatCard
-              label="⇄ Versamenti (Cassa → Banca)"
+              label="Versamenti (Cassa → Banca)"
               value={
                 <span style={{ fontFamily: FONT.mono }}>
-                  {formatEuro(disponibilita.versamenti_cassa_to_banca?.totale || 0)}
+                  {euroOppure(disponibilita.versamenti_cassa_to_banca?.totale)}
                 </span>
               }
               subtext={`${disponibilita.versamenti_cassa_to_banca?.operazioni || 0} operazioni nel ${disponibilita.anno}`}
@@ -404,9 +405,9 @@ export default function ContabilitaAvanzata() {
             }}
           >
             <strong>Confronto banca:</strong> saldo contabile{' '}
-            {formatEuro(disponibilita.riconciliazione_banca.saldo_contabile)} · saldo da Estratto Conto{' '}
-            {formatEuro(disponibilita.riconciliazione_banca.saldo_estratto_conto)} · scarto{' '}
-            {formatEuro(disponibilita.riconciliazione_banca.scarto)}.
+            {euroOppure(disponibilita.riconciliazione_banca.saldo_contabile)} · saldo da Estratto Conto{' '}
+            {euroOppure(disponibilita.riconciliazione_banca.saldo_estratto_conto)} · scarto{' '}
+            {euroOppure(disponibilita.riconciliazione_banca.scarto)}.
             {!disponibilita.riconciliazione_banca.riconciliato && (
               <> Lo scarto deve essere riconciliato; non viene corretto automaticamente.</>
             )}
@@ -459,7 +460,7 @@ export default function ContabilitaAvanzata() {
                   style={{ marginLeft: 'auto' }}
                   data-testid="btn-ricategorizza"
                 >
-                  {processing ? '⏳ Elaborazione...' : '✅ Registra documenti mancanti'}
+                  {processing ? 'Elaborazione...' : 'Registra documenti mancanti'}
                 </Button>
               </div>
             </Card>
@@ -486,25 +487,25 @@ export default function ContabilitaAvanzata() {
               <div style={styles.statBox}>
                 <p style={styles.statBoxLabel}>Utile Civilistico</p>
                 <p style={styles.statBoxValue} data-testid="utile-civilistico">
-                  {formatEuro(imposte.utile_civilistico)}
+                  {euroOppure(imposte.utile_civilistico)}
                 </p>
               </div>
               <div style={styles.statBox}>
                 <p style={styles.statBoxLabel}>Stima IRES (24%)</p>
                 <p style={styles.statBoxValue} data-testid="ires-dovuta">
-                  {formatEuro(imposte.ires.imposta_dovuta)}
+                  {euroOppure(imposte.ires.imposta_dovuta)}
                 </p>
               </div>
               <div style={styles.statBox}>
                 <p style={styles.statBoxLabel}>Stima IRAP ({imposte.irap.aliquota}%)</p>
                 <p style={styles.statBoxValue} data-testid="irap-dovuta">
-                  {formatEuro(imposte.irap.imposta_dovuta)}
+                  {euroOppure(imposte.irap.imposta_dovuta)}
                 </p>
               </div>
               <div style={styles.statBox}>
                 <p style={styles.statBoxLabel}>Stima Totale Imposte</p>
                 <p style={styles.statBoxValue} data-testid="totale-imposte">
-                  {formatEuro(imposte.totale_imposte)}
+                  {euroOppure(imposte.totale_imposte)}
                 </p>
                 <p style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
                   Aliquota effettiva: {imposte.aliquota_effettiva}%
@@ -515,14 +516,14 @@ export default function ContabilitaAvanzata() {
             {/* Dettaglio IRES/IRAP */}
             <div style={styles.grid2(isMobile)}>
               <Card>
-                <h3 style={styles.sectionTitle}>📊 Calcolo IRES</h3>
+                <h3 style={styles.sectionTitle}>Calcolo IRES</h3>
                 <TableWrap>
                   <Table>
                     <tbody>
                       <tr>
                         <Td>Utile civilistico</Td>
                         <Td align="right" mono>
-                          {formatEuro(imposte.utile_civilistico)}
+                          {euroOppure(imposte.utile_civilistico)}
                         </Td>
                       </tr>
                       {imposte.ires.variazioni_aumento.map((v, i) => (
@@ -531,7 +532,7 @@ export default function ContabilitaAvanzata() {
                             + {v.descrizione}
                           </Td>
                           <Td align="right" mono style={{ color: COLORS.warning }}>
-                            +{formatEuro(v.importo)}
+                            +{euroOppure(v.importo)}
                           </Td>
                         </tr>
                       ))}
@@ -541,14 +542,14 @@ export default function ContabilitaAvanzata() {
                             - {v.descrizione}
                           </Td>
                           <Td align="right" mono style={{ color: COLORS.success }}>
-                            -{formatEuro(v.importo)}
+                            -{euroOppure(v.importo)}
                           </Td>
                         </tr>
                       ))}
                       <tr style={{ borderTop: `2px solid ${COLORS.border}` }}>
                         <Td style={{ fontWeight: 500 }}>Reddito imponibile</Td>
                         <Td align="right" mono style={{ fontWeight: 'bold' }}>
-                          {formatEuro(imposte.ires.reddito_imponibile)}
+                          {euroOppure(imposte.ires.reddito_imponibile)}
                         </Td>
                       </tr>
                       <tr style={{ background: COLORS.bgAlt }}>
@@ -563,7 +564,7 @@ export default function ContabilitaAvanzata() {
                             padding: 12,
                           }}
                         >
-                          {formatEuro(imposte.ires.imposta_dovuta)}
+                          {euroOppure(imposte.ires.imposta_dovuta)}
                         </Td>
                       </tr>
                     </tbody>
@@ -572,7 +573,7 @@ export default function ContabilitaAvanzata() {
               </Card>
               <Card>
                 <h3 style={styles.sectionTitle}>
-                  🏛️ Calcolo IRAP -{' '}
+                  Calcolo IRAP -{' '}
                   {regione.charAt(0).toUpperCase() + regione.slice(1).replace(/_/g, ' ')}
                 </h3>
                 <TableWrap>
@@ -581,19 +582,19 @@ export default function ContabilitaAvanzata() {
                       <tr>
                         <Td>Valore della produzione</Td>
                         <Td align="right" mono>
-                          {formatEuro(imposte.irap.valore_produzione)}
+                          {euroOppure(imposte.irap.valore_produzione)}
                         </Td>
                       </tr>
                       <tr>
                         <Td style={{ color: COLORS.success, paddingLeft: 16 }}>- Deduzioni</Td>
                         <Td align="right" mono style={{ color: COLORS.success }}>
-                          -{formatEuro(imposte.irap.deduzioni)}
+                          -{euroOppure(imposte.irap.deduzioni)}
                         </Td>
                       </tr>
                       <tr style={{ borderTop: `2px solid ${COLORS.border}` }}>
                         <Td style={{ fontWeight: 500 }}>Base imponibile</Td>
                         <Td align="right" mono style={{ fontWeight: 'bold' }}>
-                          {formatEuro(imposte.irap.base_imponibile)}
+                          {euroOppure(imposte.irap.base_imponibile)}
                         </Td>
                       </tr>
                       <tr style={{ background: COLORS.bgAlt }}>
@@ -610,7 +611,7 @@ export default function ContabilitaAvanzata() {
                             padding: 12,
                           }}
                         >
-                          {formatEuro(imposte.irap.imposta_dovuta)}
+                          {euroOppure(imposte.irap.imposta_dovuta)}
                         </Td>
                       </tr>
                     </tbody>
@@ -663,7 +664,7 @@ export default function ContabilitaAvanzata() {
               />
             </div>
             <Card>
-              <h3 style={styles.sectionTitle}>📊 Distribuzione per Categoria</h3>
+              <h3 style={styles.sectionTitle}>Distribuzione per Categoria</h3>
               <TableWrap>
                 <Table>
                   <thead>
@@ -688,7 +689,7 @@ export default function ContabilitaAvanzata() {
                         </Td>
                         <Td align="right">{cat.numero_fatture}</Td>
                         <Td align="right" mono>
-                          {formatEuro(cat.importo_totale)}
+                          {euroOppure(cat.importo_totale)}
                         </Td>
                         <Td
                           align="right"
@@ -716,10 +717,10 @@ export default function ContabilitaAvanzata() {
             </Card>
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
               <Button variant="primary" onClick={handleInizializzaPiano} disabled={processing}>
-                📋 Aggiorna Piano dei Conti
+                Aggiorna Piano dei Conti
               </Button>
               <Button variant="secondary" onClick={handleRicategorizza} disabled={processing}>
-                🔄 Ricategorizza Tutte le Fatture
+                Ricategorizza Tutte le Fatture
               </Button>
             </div>
           </div>
@@ -734,7 +735,7 @@ export default function ContabilitaAvanzata() {
         {activeTab === 'bilancio' && bilancio && (
           <div style={styles.spaceY}>
             <Card>
-              <h3 style={styles.sectionTitle}>📈 Conto Economico</h3>
+              <h3 style={styles.sectionTitle}>Conto Economico</h3>
               <div style={styles.grid2(isMobile)}>
                 <div>
                   <h4 style={styles.sectionHeader(COLORS.success)}>RICAVI</h4>
@@ -750,7 +751,7 @@ export default function ContabilitaAvanzata() {
                             {voce.codice} - {voce.nome}
                           </span>
                           <span style={{ color: COLORS.success, fontWeight: 500, fontFamily: FONT.mono }}>
-                            {formatEuro(voce.saldo)}
+                            {euroOppure(voce.saldo)}
                           </span>
                         </div>
                       ))}
@@ -764,7 +765,7 @@ export default function ContabilitaAvanzata() {
                     >
                       <span style={{ color: COLORS.text, fontWeight: 'bold' }}>TOTALE RICAVI</span>
                       <span style={{ color: COLORS.success, fontWeight: 'bold', fontFamily: FONT.mono }}>
-                        {formatEuro(bilancio.conto_economico.ricavi.totale)}
+                        {euroOppure(bilancio.conto_economico.ricavi.totale)}
                       </span>
                     </div>
                   </div>
@@ -791,7 +792,7 @@ export default function ContabilitaAvanzata() {
                               fontFamily: FONT.mono,
                             }}
                           >
-                            {formatEuro(voce.saldo)}
+                            {euroOppure(voce.saldo)}
                           </span>
                           {voce.deducibilita_ires < 100 && (
                             <span style={{ color: COLORS.warning, fontSize: 12, marginLeft: 8 }}>
@@ -810,7 +811,7 @@ export default function ContabilitaAvanzata() {
                     >
                       <span style={{ color: COLORS.text, fontWeight: 'bold' }}>TOTALE COSTI</span>
                       <span style={{ color: COLORS.danger, fontWeight: 'bold', fontFamily: FONT.mono }}>
-                        {formatEuro(bilancio.conto_economico.costi.totale)}
+                        {euroOppure(bilancio.conto_economico.costi.totale)}
                       </span>
                     </div>
                   </div>
@@ -845,7 +846,7 @@ export default function ContabilitaAvanzata() {
                         : COLORS.danger,
                   }}
                 >
-                  {formatEuro(bilancio.conto_economico.utile_ante_imposte)}
+                  {euroOppure(bilancio.conto_economico.utile_ante_imposte)}
                 </span>
               </div>
               <div
@@ -860,7 +861,7 @@ export default function ContabilitaAvanzata() {
                   label="Costi deducibili IRES"
                   value={
                     <span style={{ fontFamily: FONT.mono }}>
-                      {formatEuro(bilancio.conto_economico.costi.totale_deducibile_ires)}
+                      {euroOppure(bilancio.conto_economico.costi.totale_deducibile_ires)}
                     </span>
                   }
                   accent="none"
@@ -869,7 +870,7 @@ export default function ContabilitaAvanzata() {
                   label="Costi deducibili IRAP"
                   value={
                     <span style={{ fontFamily: FONT.mono }}>
-                      {formatEuro(bilancio.conto_economico.costi.totale_deducibile_irap)}
+                      {euroOppure(bilancio.conto_economico.costi.totale_deducibile_irap)}
                     </span>
                   }
                   accent="none"
@@ -877,7 +878,7 @@ export default function ContabilitaAvanzata() {
               </div>
             </Card>
             <Card>
-              <h3 style={styles.sectionTitle}>🏦 Stato Patrimoniale</h3>
+              <h3 style={styles.sectionTitle}>Stato Patrimoniale</h3>
               <div style={styles.grid2(isMobile)}>
                 <div>
                   <h4 style={styles.sectionHeader(COLORS.info)}>ATTIVO</h4>
@@ -893,7 +894,7 @@ export default function ContabilitaAvanzata() {
                             {voce.codice} - {voce.nome}
                           </span>
                           <span style={{ color: COLORS.info, fontWeight: 500, fontFamily: FONT.mono }}>
-                            {formatEuro(voce.saldo)}
+                            {euroOppure(voce.saldo)}
                           </span>
                         </div>
                       ))}
@@ -907,7 +908,7 @@ export default function ContabilitaAvanzata() {
                     >
                       <span style={{ color: COLORS.text, fontWeight: 'bold' }}>TOTALE ATTIVO</span>
                       <span style={{ color: COLORS.info, fontWeight: 'bold', fontFamily: FONT.mono }}>
-                        {formatEuro(bilancio.stato_patrimoniale.attivo.totale)}
+                        {euroOppure(bilancio.stato_patrimoniale.attivo.totale)}
                       </span>
                     </div>
                   </div>
@@ -926,7 +927,7 @@ export default function ContabilitaAvanzata() {
                             {voce.codice} - {voce.nome}
                           </span>
                           <span style={{ color: COLORS.primary, fontWeight: 500, fontFamily: FONT.mono }}>
-                            {formatEuro(voce.saldo)}
+                            {euroOppure(voce.saldo)}
                           </span>
                         </div>
                       ))}
@@ -940,7 +941,7 @@ export default function ContabilitaAvanzata() {
                     >
                       <span style={{ color: COLORS.text, fontWeight: 'bold' }}>TOTALE PASSIVO</span>
                       <span style={{ color: COLORS.primary, fontWeight: 'bold', fontFamily: FONT.mono }}>
-                        {formatEuro(bilancio.stato_patrimoniale.passivo.totale)}
+                        {euroOppure(bilancio.stato_patrimoniale.passivo.totale)}
                       </span>
                     </div>
                   </div>

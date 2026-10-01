@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
+import { Download, Expand, Maximize, MoveHorizontal, Printer, X } from 'lucide-react';
 import api from '../api';
 import { conEstensione, messaggioErroreOriginale, salvaBlob, scaricaOriginale } from '../lib/scaricaOriginale';
 
@@ -17,7 +18,7 @@ import { conEstensione, messaggioErroreOriginale, salvaBlob, scaricaOriginale } 
  * browser dentro l'iframe; lo zoom CSS qui è utile soprattutto per i documenti HTML.
  *
  * Props:
- *  - title:        titolo header (es. "📄 Fattura 123")
+ *  - title:        titolo header (es. "Fattura 123")
  *  - subtitle:     riga secondaria opzionale
  *  - documentType: tipo logico (fattura_html|fattura_pdf|cedolino|f24|quietanza|
  *                  estratto_conto|documento_fiscale|allegato_email|verbale|pagopa|pdf)
@@ -26,7 +27,7 @@ import { conEstensione, messaggioErroreOriginale, salvaBlob, scaricaOriginale } 
  *                  autenticati non inseribili direttamente in iframe)
  *  - mimeType:     tipo del blob per fetchUrl (default application/pdf)
  *  - onClose:      callback di chiusura
- *  - onDownload:   azione "📥 Scarica" personalizzata; senza, il pulsante scarica
+ *  - onDownload:   azione "Scarica" personalizzata; senza, il pulsante scarica
  *                  comunque il file mostrato (fetchUrl o src interno)
  *  - maxWidth:     larghezza massima del modale (default 960)
  *  - testIdPrefix: prefisso data-testid (default "document-viewer")
@@ -63,7 +64,7 @@ export default function DocumentViewerModal({
   const fitWidth = useCallback(() => { setFit('width'); setZoom(1); }, []);
   const fitPage = useCallback(() => { setFit('page'); setZoom(1); }, []);
 
-  // 🖨️ Stampa (richiesta utente 18/07/2026: "non posso neanche stamparla"):
+  // Stampa (richiesta utente 18/07/2026: "non posso neanche stamparla"):
   // stampa il contenuto dell'iframe; se il browser lo impedisce apre il
   // documento in una scheda nuova, da cui si stampa col menu del browser.
   // «Scarica» c'e' sempre quando il documento e' del gestionale: chi guarda un
@@ -193,8 +194,8 @@ export default function DocumentViewerModal({
     : baseIframeSrc;
 
   const btn = extra => ({
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     flexShrink: 0,
     background: 'rgba(255,255,255,0.15)',
     border: 'none',
@@ -312,22 +313,22 @@ export default function DocumentViewerModal({
               data-testid={`${testIdPrefix}-zoom-in`} style={btn({ fontSize: 20 })}>+</button>
             <button onClick={fitWidth} aria-label="Adatta alla larghezza" title="Adatta larghezza"
               data-testid={`${testIdPrefix}-fit-width`}
-              style={btn({ width: 'auto', padding: '0 10px', fontSize: 16, opacity: fit === 'width' ? 1 : 0.7 })}>↔</button>
+              style={btn({ width: 'auto', padding: '0 10px', fontSize: 16, opacity: fit === 'width' ? 1 : 0.7 })}><MoveHorizontal size={18} aria-hidden /></button>
             <button onClick={fitPage} aria-label="Adatta alla pagina" title="Adatta pagina"
               data-testid={`${testIdPrefix}-fit-page`}
-              style={btn({ width: 'auto', padding: '0 10px', fontSize: 16, opacity: fit === 'page' ? 1 : 0.7 })}>⤢</button>
+              style={btn({ width: 'auto', padding: '0 10px', fontSize: 16, opacity: fit === 'page' ? 1 : 0.7 })}><Maximize size={18} aria-hidden /></button>
             <button onClick={apriSchermoIntero} aria-label="Schermo intero" title="Schermo intero"
-              data-testid={`${testIdPrefix}-fullscreen`} style={btn({ fontSize: 18 })}>⛶</button>
+              data-testid={`${testIdPrefix}-fullscreen`} style={btn({ fontSize: 18 })}><Expand size={18} aria-hidden /></button>
             <button onClick={stampa} aria-label="Stampa documento" title="Stampa"
               data-testid={`${testIdPrefix}-print`}
-              style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}>🖨️ Stampa</button>
+              style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}><Printer size={16} aria-hidden /> Stampa</button>
             {scarica && (
               <button onClick={scarica} aria-label="Scarica documento" title="Scarica"
                 data-testid={`${testIdPrefix}-download`}
-                style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}>📥 Scarica</button>
+                style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}><Download size={16} aria-hidden /> Scarica</button>
             )}
             <button onClick={onClose} aria-label="Chiudi" title="Chiudi"
-              data-testid={`${testIdPrefix}-close`} style={btn({ fontSize: 20 })}>✕</button>
+              data-testid={`${testIdPrefix}-close`} style={btn({ fontSize: 20 })}><X size={20} aria-hidden /></button>
           </div>
         </div>
 

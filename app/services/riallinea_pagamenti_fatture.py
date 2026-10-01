@@ -47,6 +47,7 @@ from app.services.bank_payment_allocations import (
 from app.services.entity_relations import relation_key
 from app.services.payment_allocation_validator import to_cents
 from app.services.scritture_contabili import FILTRO_MOVIMENTO_ATTIVO, _batch_scritture_registro
+from app.utils.id_fattura import filtro_id
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ async def _valuta_riga(db, riga: Dict[str, Any]) -> Dict[str, Any]:
     """Stato dei cinque oggetti + esito, senza scrivere nulla."""
     fattura_id = str(riga.get("fattura_id") or "")
     ec_id = _id_ec(riga)
-    fattura = await db["invoices"].find_one({"id": fattura_id}) if fattura_id else None
+    fattura = await db["invoices"].find_one(filtro_id(fattura_id)) if fattura_id else None
     ec = await db["estratto_conto_movimenti"].find_one({"id": ec_id}, {"_id": 0}) if ec_id else None
     scadenze = await _lista(db["scadenziario_fornitori"].find({"fattura_id": fattura_id}), 100)
     partita = await db["partite_aperte"].find_one(

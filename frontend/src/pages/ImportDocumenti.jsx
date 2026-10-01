@@ -20,6 +20,7 @@ import {
   Sparkles,
   Mail,
   Users,
+  XCircle,
 } from 'lucide-react';
 
 const TITOLO_ORIGINE = {
@@ -867,9 +868,9 @@ export default function ImportDocumenti() {
                     : 'Import parziale'}
               </div>
               <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
-                <span style={{ color: COLORS.success }}>✓ {successCount}</span>
-                <span style={{ color: COLORS.warning }}>⚠ {duplicateCount + partialCount}</span>
-                <span style={{ color: COLORS.danger }}>✕ {errorCount}</span>
+                <span style={{ color: COLORS.success, display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} aria-hidden /> Importati: {successCount}</span>
+                <span style={{ color: COLORS.warning, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={14} aria-hidden /> Duplicati o parziali: {duplicateCount + partialCount}</span>
+                <span style={{ color: COLORS.danger, display: 'inline-flex', alignItems: 'center', gap: 4 }}><XCircle size={14} aria-hidden /> Errori: {errorCount}</span>
               </div>
             </div>
             <div style={{ padding: 14, maxHeight: 250, overflow: 'auto' }}>

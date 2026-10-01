@@ -242,7 +242,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 12. **Su `invoices` i campi canonici sono quelli inglesi**: `invoice_date`,
     `total_amount`, `invoice_number`. `data_documento` e `totale` sono derivati
     e mancano sulle fatture che il motore IVA non ha toccato: filtrarci o
-    sommarci perde righe in silenzio. `iva` e `imponibile` ci sono sempre. L'`id` è un **numero** su 786 righe di 1.532: cercare per id con `{"$in": [testo, int]}`.
+    sommarci perde righe in silenzio. `iva` e `imponibile` ci sono sempre. L'`id` è un **numero** su 786 righe di 1.532: cercare per id con `{"$in": [testo, int]}`, cioè con l'helper unico `app/utils/id_fattura.py` (`filtro_id`, `varianti_id`): una ricerca o un aggiornamento col solo testo non trova la fattura e non dà errore.
 13. Un conteggio che torna zero tondo, o uguale al totale su ogni colonna, si
     tratta come un errore di lettura finché non è smentito. Lo stesso per uno
     stato: in archivio convivono `archived` e `archiviata`, e un filtro che ne

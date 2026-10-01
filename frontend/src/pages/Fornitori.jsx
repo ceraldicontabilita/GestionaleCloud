@@ -9,7 +9,6 @@ import Portal from '../components/Portal';
 import ModalFattura from '../components/ModalFattura';
 import { PageHeader } from '../components/ds/PageHeader';
 import {
-  formatEuro,
   formatDateIT,
   STYLES,
   COLORS,
@@ -48,11 +47,16 @@ import {
   X,
   TrendingUp,
   RefreshCw,
+  Trash2,
+  Printer,
+  ChevronDown,
+  TriangleAlert,
 } from 'lucide-react';
 import { ePagata } from '../utils/statoFattura';
 import MagazzinoFornitore from '../components/MagazzinoFornitore';
 import MetodoDalFornitore from '../components/MetodoDalFornitore';
 import DoppioniFornitori from '../components/DoppioniFornitori';
+import { euroOppure } from '../lib/vista';
 
 // Hook per debounce
 function useDebounce(value, delay) {
@@ -933,7 +937,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   }}
                   data-testid="check-fornitore-cessato"
                 />
-                🚪 Fornitore cessato (nascosto dalla lista; fatture e dati IVA conservati)
+                Fornitore cessato (nascosto dalla lista; fatture e dati IVA conservati)
               </label>
             </div>
           </div>
@@ -976,7 +980,7 @@ function MetodoBadge({ supplier, onChangeMetodo }) {
   const metodoKey = supplier.metodo_pagamento ? metodoCanonico(supplier) : '';
   const metodo = metodoKey
     ? getMetodo(metodoKey)
-    : { label: '⚠️ Da impostare', color: COLORS.warning };
+    : { label: 'Da impostare', color: COLORS.warning };
   const [showMetodoMenu, setShowMetodoMenu] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -1043,7 +1047,7 @@ function MetodoBadge({ supplier, onChangeMetodo }) {
       >
         <CreditCard size={12} />
         {updating ? '...' : metodo.label}
-        <span style={{ marginLeft: '2px', fontSize: '10px' }}>▼</span>
+        <ChevronDown size={12} aria-hidden style={{ marginLeft: '2px' }} />
       </button>
 
       {/* Menu dropdown con Portal - fuori dalla riga */}
@@ -1356,7 +1360,7 @@ function SupplierCard({
               whiteSpace: 'nowrap',
             }}
           >
-            {formatEuro(supplier.fatture_totale || 0)}
+            {euroOppure(supplier.fatture_totale)}
           </div>
         </div>
       </div>
@@ -1397,7 +1401,7 @@ function SupplierCard({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {formatEuro(supplier.fatture_pagate || 0)}
+                {euroOppure(supplier.fatture_pagate)}
               </div>
               <span style={{ ...labelStyle, marginTop: 3, marginBottom: 0 }}>Pagato</span>
             </div>
@@ -1410,7 +1414,7 @@ function SupplierCard({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {formatEuro(supplier.fatture_non_pagate || 0)}
+                {euroOppure(supplier.fatture_non_pagate)}
               </div>
               <span style={{ ...labelStyle, marginTop: 3, marginBottom: 0 }}>Residuo</span>
             </div>
@@ -1868,6 +1872,7 @@ export default function Fornitori() {
   });
 
   // Stato per modale estratto fatture
+  const [estrattoVisibili, setEstrattoVisibili] = useState(200);
   const [estrattoModal, setEstrattoModal] = useState({
     open: false,
     fornitore: null,
@@ -2099,7 +2104,7 @@ export default function Fornitori() {
             }}
             data-testid="badge-attivi"
           >
-            <span>✅ Attivi</span>
+            <span>Attivi</span>
             <span style={{ fontSize: 16 }}>{totaliFiltrati.attivi}</span>
           </Badge>
           {cessatiCount > 0 && (
@@ -2125,7 +2130,7 @@ export default function Fornitori() {
                 cursor: 'pointer',
               }}
             >
-              <span>🚪 Cessati</span>
+              <span>Cessati</span>
               <span style={{ fontSize: 16 }}>{cessatiCount}</span>
             </Badge>
           )}
@@ -2276,7 +2281,7 @@ export default function Fornitori() {
                 onChange={e => setFilterSenzaMetodo(e.target.checked)}
                 style={{ width: '16px', height: '16px', accentColor: COLORS.warning }}
               />
-              ⚠️ Senza metodo
+              <TriangleAlert size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> Senza metodo
             </label>
 
             <Button
@@ -2287,7 +2292,7 @@ export default function Fornitori() {
               title="Rilegge le fatture XML dei fornitori con dati mancanti e completa email, telefono, comune, indirizzo — non tocca i campi già valorizzati"
               data-testid="btn-popola-tutti-xml"
             >
-              {popolandoTutti ? '⏳ Popolamento...' : '📥 Popola dati mancanti da XML'}
+              {popolandoTutti ? 'Popolamento...' : 'Popola dati mancanti da XML'}
             </Button>
 
             <CopyLinkButton style={{ flexShrink: 0 }} />
@@ -2313,8 +2318,8 @@ export default function Fornitori() {
               </span>
               {[
                 { k: 'tutti', l: 'Tutti' },
-                { k: 'nuovo', l: '🆕 Nuovi' },
-                { k: 'storico', l: '📜 Storici' },
+                { k: 'nuovo', l: 'Nuovi' },
+                { k: 'storico', l: 'Storici' },
               ].map(opt => (
                 <Button
                   key={opt.k}
@@ -2390,8 +2395,9 @@ export default function Fornitori() {
                   data-testid="filter-prodotto-clear"
                   style={{ padding: '4px 8px', fontSize: 12 }}
                   title="Pulisci"
+                  aria-label="Pulisci"
                 >
-                  ✕
+                  <X size={14} aria-hidden />
                 </Button>
               )}
             </div>
@@ -2580,7 +2586,6 @@ export default function Fornitori() {
                   key: 'comune',
                   label: 'Località',
                   ruoloCard: 'dettaglio',
-                  iconaCard: '📍',
                   render: s =>
                     s.comune ? `${s.comune}${s.provincia ? ` (${s.provincia})` : ''}` : '-',
                   tdStyle: { fontSize: 13, color: COLORS.textMuted },
@@ -2590,7 +2595,6 @@ export default function Fornitori() {
                   label: 'Fatture',
                   align: 'center',
                   ruoloCard: 'dettaglio',
-                  iconaCard: '🧾',
                   render: s => s.fatture_count || 0,
                 },
                 {
@@ -2599,7 +2603,7 @@ export default function Fornitori() {
                   align: 'right',
                   ruoloCard: 'dettaglio',
                   iconaCard: 'Totale',
-                  render: s => formatEuro(s.fatture_totale || 0),
+                  render: s => euroOppure(s.fatture_totale),
                   tdStyle: { fontWeight: 600 },
                 },
                 {
@@ -2610,7 +2614,7 @@ export default function Fornitori() {
                   iconaCard: 'Pagato',
                   render: s => (
                     <span style={{ color: COLORS.success, fontWeight: 600 }}>
-                      {formatEuro(s.fatture_pagate || 0)}
+                      {euroOppure(s.fatture_pagate)}
                     </span>
                   ),
                 },
@@ -2627,7 +2631,7 @@ export default function Fornitori() {
                         fontWeight: 700,
                       }}
                     >
-                      {formatEuro(s.fatture_non_pagate || 0)}
+                      {euroOppure(s.fatture_non_pagate)}
                     </span>
                   ),
                 },
@@ -2639,7 +2643,6 @@ export default function Fornitori() {
                   label: 'Ultima fatt.',
                   align: 'center',
                   ruoloCard: 'dettaglio',
-                  iconaCard: '🕐',
                   render: s => {
                     const anno = annoUltimaFattura(s);
                     if (!anno) return <span style={{ color: COLORS.textSubtle }}>—</span>;
@@ -2861,7 +2864,7 @@ export default function Fornitori() {
                           fontFamily: FONT.mono,
                         }}
                       >
-                        {formatEuro(fatturatoModal.data.totale_fatturato || 0)}
+                        {euroOppure(fatturatoModal.data.totale_fatturato)}
                       </div>
                       <div style={{ fontSize: '14px', color: COLORS.primary, marginTop: '8px' }}>
                         {fatturatoModal.data?.numero_fatture ?? 0} fatture
@@ -2880,13 +2883,13 @@ export default function Fornitori() {
                       <StatCard
                         label="Pagate"
                         value={(fatturatoModal.data?.fatture_pagate ?? 0) || 0}
-                        subtext={formatEuro(fatturatoModal.data.importo_pagato || 0)}
+                        subtext={euroOppure(fatturatoModal.data.importo_pagato)}
                         accent="success"
                       />
                       <StatCard
                         label="Da Pagare"
                         value={(fatturatoModal.data?.fatture_non_pagate ?? 0) || 0}
-                        subtext={formatEuro(fatturatoModal.data.importo_non_pagato || 0)}
+                        subtext={euroOppure(fatturatoModal.data.importo_non_pagato)}
                         accent="danger"
                       />
                     </div>
@@ -2919,7 +2922,7 @@ export default function Fornitori() {
                               >
                                 <span style={{ color: COLORS.textMuted }}>{m.mese_nome}</span>
                                 <span style={{ fontWeight: 600, color: COLORS.gray[800] }}>
-                                  {formatEuro(m.totale || 0)}
+                                  {euroOppure(m.totale)}
                                   <span
                                     style={{
                                       fontWeight: 400,
@@ -2964,7 +2967,7 @@ export default function Fornitori() {
                             handleViewInvoicesModal(fornitore, anno);
                           }}
                         >
-                          📄 Vedi le fatture ({fatturatoModal.data?.numero_fatture ?? 0})
+                          Vedi le fatture ({fatturatoModal.data?.numero_fatture ?? 0})
                         </Button>
                       </div>
                     )}
@@ -3022,7 +3025,7 @@ export default function Fornitori() {
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
                   <div>
-                    <div style={{ fontSize: '20px', fontWeight: 700 }}>📋 Estratto Fatture</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700 }}>Estratto Fatture</div>
                     <div style={{ fontSize: '14px', opacity: 0.9, marginTop: 4 }}>
                       {estrattoModal.fornitore?.ragione_sociale ||
                         estrattoModal.fornitore?.nome ||
@@ -3267,7 +3270,7 @@ export default function Fornitori() {
                   onClick={reloadEstratto}
                   disabled={estrattoModal.loading}
                 >
-                  🔍 Filtra
+                  <Search size={14} aria-hidden /> Filtra
                 </Button>
               </div>
 
@@ -3299,17 +3302,17 @@ export default function Fornitori() {
                       />
                       <StatCard
                         label="Totale"
-                        value={formatEuro(estrattoModal.data.totali?.importo_totale || 0)}
+                        value={euroOppure(estrattoModal.data.totali?.importo_totale)}
                         accent="success"
                       />
                       <StatCard
                         label="Note Credito"
-                        value={`- ${formatEuro(estrattoModal.data.totali?.note_credito || 0)}`}
+                        value={`- ${euroOppure(estrattoModal.data.totali?.note_credito)}`}
                         accent="danger"
                       />
                       <StatCard
                         label="Netto"
-                        value={formatEuro(estrattoModal.data.totali?.netto || 0)}
+                        value={euroOppure(estrattoModal.data.totali?.netto)}
                         accent="warning"
                       />
                     </div>
@@ -3331,7 +3334,7 @@ export default function Fornitori() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(estrattoModal.data.estratto || []).map((f, idx) => (
+                          {(estrattoModal.data.estratto || []).slice(0, estrattoVisibili).map((f, idx) => (
                             <tr
                               key={f.id || idx}
                               style={{
@@ -3353,14 +3356,14 @@ export default function Fornitori() {
                                 )}
                               </Td>
                               <Td align="right" mono>
-                                {formatEuro(f.imponibile || 0)}
+                                {euroOppure(f.imponibile)}
                               </Td>
                               <Td align="right" mono>
-                                {formatEuro(f.iva || 0)}
+                                {euroOppure(f.iva)}
                               </Td>
                               <Td align="right" mono style={{ fontWeight: 600 }}>
                                 {/* il backend manda la nota di credito gia' negativa */}
-                                {formatEuro(f.importo_totale || 0)}
+                                {euroOppure(f.importo_totale)}
                               </Td>
                               <Td align="center">
                                 <Badge
@@ -3380,7 +3383,7 @@ export default function Fornitori() {
                                     variant="success"
                                     style={{ background: COLORS.success, color: 'white' }}
                                   >
-                                    ✓ RICONCILIATA
+                                    <Check size={11} aria-hidden /> RICONCILIATA
                                   </Badge>
                                 ) : ePagata(f) ? (
                                   <Badge
@@ -3411,7 +3414,7 @@ export default function Fornitori() {
                                       style={{ padding: '3px 8px', fontSize: 10 }}
                                       title="Visualizza la fattura"
                                     >
-                                      👁 Vedi
+                                      Vedi
                                     </Button>
                                   )}
                                   {!ePagata(f) && !f.is_nota_credito && (
@@ -3423,7 +3426,7 @@ export default function Fornitori() {
                                           if (
                                             !(await confirm({
                                               title: 'Pagamento in cassa',
-                                              message: `Confermi pagamento CASSA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`,
+                                              message: `Confermi pagamento CASSA di ${euroOppure(f.importo_totale)} per fattura ${f.numero}?`,
                                             }))
                                           )
                                             return;
@@ -3468,7 +3471,7 @@ export default function Fornitori() {
                                         style={{ padding: '3px 8px', fontSize: 10 }}
                                         title="Segna come pagata in contanti"
                                       >
-                                        💵 Cassa
+                                        Cassa
                                       </Button>
                                       <Button
                                         variant="info"
@@ -3477,7 +3480,7 @@ export default function Fornitori() {
                                           if (
                                             !(await confirm({
                                               title: 'Pagamento in banca',
-                                              message: `Confermi pagamento BANCA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`,
+                                              message: `Confermi pagamento BANCA di ${euroOppure(f.importo_totale)} per fattura ${f.numero}?`,
                                             }))
                                           )
                                             return;
@@ -3522,7 +3525,7 @@ export default function Fornitori() {
                                         style={{ padding: '3px 8px', fontSize: 10 }}
                                         title="Segna come pagata con bonifico"
                                       >
-                                        🏦 Banca
+                                        Banca
                                       </Button>
                                     </>
                                   )}
@@ -3539,8 +3542,9 @@ export default function Fornitori() {
                                       data-testid={`btn-elimina-fattura-${f.id}`}
                                       style={{ padding: '3px 8px', fontSize: 10 }}
                                       title="Elimina fattura"
+                                      aria-label="Elimina fattura"
                                     >
-                                      🗑️
+                                      <Trash2 size={13} aria-hidden />
                                     </Button>
                                   )}
                                 </div>
@@ -3562,6 +3566,13 @@ export default function Fornitori() {
                         </tbody>
                       </Table>
                     </TableWrap>
+                    {(estrattoModal.data.estratto || []).length > estrattoVisibili && (
+                      <div style={{ textAlign: 'center', padding: 12 }}>
+                        <Button type="button" variant="secondary" onClick={() => setEstrattoVisibili(v => v + 200)}>
+                          Mostra altre ({(estrattoModal.data.estratto || []).length - estrattoVisibili})
+                        </Button>
+                      </div>
+                    )}
                   </>
                 ) : null}
               </div>
@@ -3604,7 +3615,7 @@ export default function Fornitori() {
                       printWin.print();
                     }}
                   >
-                    🖨️ Stampa
+                    <Printer size={14} aria-hidden /> Stampa
                   </Button>
                   <Button
                     variant="primary"

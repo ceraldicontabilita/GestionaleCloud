@@ -18,12 +18,12 @@ describe('sicurezza della pagina Riconciliazione', () => {
   });
   it('non conferma mai automaticamente il primo candidato ambiguo', () => {
     expect(source).not.toContain('suggerimenti?.slice(0, 1)');
-    expect(source).toContain('Seleziona il candidato digitando il numero');
+    expect(source).toContain('Seleziona il candidato corretto');
   });
 
   it('richiede motivo per ignorare e modalita per gli stipendi non quadrati', () => {
     expect(source).toContain('codice_motivo');
-    expect(source).toContain('acconto, saldo, multiplo oppure errore');
+    expect(source).toContain('Seleziona acconto, saldo o multiplo; un dato incoerente resta sospeso.');
   });
 
   it('conserva la fonte bancaria e sostituisce le azioni di massa con analisi read-only', () => {

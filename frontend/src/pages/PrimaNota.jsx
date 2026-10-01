@@ -10,7 +10,7 @@ import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import { VisoreOriginale } from '../components/ApriOriginale';
-import { urlOriginale } from '../lib/vista';
+import { urlOriginale, NON_DISPONIBILE } from '../lib/vista';
 import DocumentImportLink from '../components/DocumentImportLink';
 import BancaDiretta from '../components/BancaDiretta';
 import FinanziamentoSoci from './FinanziamentoSoci';
@@ -71,7 +71,7 @@ const CATEGORIE = {
     'Pagamento PayPal', 'Rimborso', 'Stipendi', 'Commissioni bancarie', 'Assegni', 'F24', 'Altro'],
 };
 
-const eur = v => formatEuroD(v || 0);
+const eur = v => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? NON_DISPONIBILE : formatEuroD(v));
 
 export function normalizzaDescrizioneMovimento(descrizione) {
   const testo = String(descrizione || '').replace(/\s+/g, ' ').trim();
@@ -543,13 +543,13 @@ export function CartaNexi({ anno }) {
       }}
     >
       <div style={{ fontSize: 11, fontWeight: 700, color: '#7a776e', textTransform: 'uppercase', marginBottom: 6 }}>
-        💳 Carta Nexi — addebiti da verificare
+        Carta Nexi — addebiti da verificare
       </div>
       <div style={{ display: 'grid', gap: 6 }}>
         {daCompletare.map((d, idx) => (
           <div key={`${d.periodo}-${d.data_addebito}-${d.importo}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap' }}>
             <span style={{ color: '#4c4a44' }}>
-              {d.stato === 'estratto_mancante' ? '📎 Manca lo statement' : '⚠️ Non quadra'} — periodo {d.periodo}
+              {d.stato === 'estratto_mancante' ? 'Manca lo statement' : 'Non quadra'} — periodo {d.periodo}
               {' '}(addebito {formatDateIT(d.data_addebito)})
             </span>
             <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
@@ -568,7 +568,7 @@ export function CartaNexi({ anno }) {
           title="Acquisisci lo statement Nexi da Documenti: classificazione e provenienza centralizzate"
           style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
         >
-          📎 Acquisisci statement Nexi da Documenti
+          Acquisisci statement Nexi da Documenti
         </DocumentImportLink>
       </div>
     </div>
@@ -634,7 +634,7 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
         style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 420 }}
       >
         <h3 style={{ margin: '0 0 12px', color: TERRACOTTA, fontSize: 16 }}>
-          {movimento ? '📝 Modifica movimento' : '➕ Nuovo movimento'} — {tipo === 'cassa' ? 'Cassa' : 'Banca'}
+          {movimento ? 'Modifica movimento' : 'Nuovo movimento'} — {tipo === 'cassa' ? 'Cassa' : 'Banca'}
         </h3>
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -673,7 +673,7 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
               onClick={salva} disabled={saving}
               style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: TERRACOTTA, color: 'white', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
             >
-              {saving ? '⏳…' : '💾 Salva'}
+              {saving ? 'Salvataggio…' : 'Salva'}
             </button>
           </div>
         </div>
@@ -868,7 +868,7 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
           title={mov.allocation_conflict_reason || 'Allocazione pagamenti eccedente o incoerente'}
           style={{ background: '#f8e5e2', color: '#b0362b', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
         >
-          ⚠ Conflitto da verificare
+          Conflitto da verificare
         </span>
       );
     }
@@ -882,7 +882,7 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
           title={`Credito chiuso dal payout ${payoutId}, che copre al centesimo le vendite del giorno`}
           style={{ background: '#e2f0e7', color: '#2f7a4f', border: '1px solid #86efac', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
         >
-          ✅ Chiuso dal payout
+          Chiuso dal payout
         </span>
       );
     }
@@ -910,13 +910,13 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
           title={title}
           style={{ background: '#e2f0e7', color: '#2f7a4f', border: '1px solid #86efac', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
         >
-          ✅ Riconciliato{importoInfo}
+          Riconciliato{importoInfo}
         </span>
       );
     }
     const posNonQuadrato = isPos && accredito_trovato;
     const testoPos = posNonQuadrato
-      ? `⚠️ Non quadra (${eur(accreditato_ec)} accreditati; differenza ${eur(differenza_ec)})`
+      ? `Non quadra (${eur(accreditato_ec)} accreditati; differenza ${eur(differenza_ec)})`
       : null;
     return (
       <span
@@ -931,7 +931,7 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
           : "Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"}
         style={{ background: '#f7eeda', color: '#8a6410', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
       >
-        {testoPos || '⚠️ Da verificare'}
+        {testoPos || 'Da verificare'}
       </span>
     );
   };
@@ -944,7 +944,7 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
         onClick={() => setDocumentView({
           fetchUrl: pagamento.view_url,
           title: `Pagamento ${pagamento.nome_file || mov.data || ''}`.trim(),
-          subtitle: `${pagamento.data || ''} · ${eur(pagamento.importo || 0)}`,
+          subtitle: `${pagamento.data ? formatDateIT(pagamento.data) : ''} · ${eur(pagamento.importo)}`,
         })}
         title="Vedi PDF del pagamento"
         aria-label="Vedi PDF del pagamento"
@@ -1304,7 +1304,7 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
                   <tr data-testid={`giorno-${m.data}`}>
                     <td colSpan={tipo === 'cassa' ? 10 : 9} style={{ padding: '10px 12px 6px', background: '#f2f0e9' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: TERRACOTTA, color: 'white', borderRadius: 9, padding: '8px 12px', fontWeight: 800 }}>
-                        <span>📅 {formatDateIT(m.data)}</span>
+                        <span>{formatDateIT(m.data)}</span>
                         <span style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
                           {(() => {
                             const netto = Number(m.netto_giorno || 0);
@@ -1883,14 +1883,14 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                 onClick={() => confermaMultipla('cassa')} disabled={busyMultiplo}
                 style={{ background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busyMultiplo ? 0.5 : 1 }}
               >
-                💵 Registra in Cassa ({selezionate.size})
+                Registra in Cassa ({selezionate.size})
               </button>
               <button
                 onClick={() => confermaMultipla('banca')} disabled={busyMultiplo}
                 title="Le sposta tra i pagamenti attesi; nessun pagamento viene registrato senza estratto conto"
                 style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busyMultiplo ? 0.5 : 1 }}
               >
-                🏦 Attendi banca ({selezionate.size})
+                Attendi banca ({selezionate.size})
               </button>
             </>
           )}
@@ -1951,12 +1951,12 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
               <div style={{ fontWeight: 700, fontSize: 13.5, color: TERRACOTTA }}>{p.fornitore || p.supplier_name || '—'}</div>
               <div style={{ fontSize: 12, color: '#7a776e' }}>
                 Fatt. {p.fattura_numero || p.numero_fattura || p.invoice_number || '—'} del {formatDateIT(p.fattura_data || p.data || p.invoice_date)}
-                {p.suggerimento === 'sospesa' && ' — ⏸ sospesa'}
+                {p.suggerimento === 'sospesa' && ' — sospesa'}
               </div>
               {dettaglioDdt(p)}
               {p.anomalia_pagamento?.stato === 'aperta' && (
                 <div role="status" style={{ marginTop: 4, color: '#b0362b', fontSize: 11.5, fontWeight: 800 }}>
-                  ⚠ Metodo di pagamento da verificare
+                  Metodo di pagamento da verificare
                 </div>
               )}
               </div>
@@ -1976,27 +1976,27 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
               onClick={() => confermaCassa(p)} disabled={busy === p.fattura_id}
               style={{ background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
             >
-              💵 Cassa
+              Cassa
             </button>
             <button
               onClick={() => attendiBanca(p)} disabled={busy === p.fattura_id}
               title="Sposta tra i pagamenti attesi; non registra un pagamento senza estratto conto"
               style={{ background: TERRACOTTA, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
             >
-              🏦 Attendi banca
+              Attendi banca
             </button>
             <button
               onClick={() => { setParziale(p); setImportoCassa(''); setErrore(''); }}
               style={{ background: '#f2f0e9', border: '1px solid #e6e3d9', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
             >
-              ✂️ Parziale
+              Parziale
             </button>
             {p.suggerimento !== 'sospesa' && (
               <button
                 onClick={() => conferma(p, 'sospesa')}
                 style={{ background: '#f7eeda', border: '1px solid #d97706', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}
               >
-                ⏸ Sospendi
+                Sospendi
               </button>
             )}
             <button
@@ -2006,7 +2006,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
               title="Evidenzia la fattura come anomalia senza creare o cancellare pagamenti"
               style={{ background: '#fff7ed', color: '#b0362b', border: '1px solid #fb923c', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', opacity: p.anomalia_pagamento?.stato === 'aperta' ? 0.6 : 1 }}
             >
-              ⚠ {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio sul pagamento'}
+              {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio sul pagamento'}
             </button>
           </div>
           {erroreRiga?.fatturaId === p.fattura_id && (
@@ -2020,7 +2020,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       {attesaBancaVisibili.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: '#7a776e', margin: '4px 0 8px' }}>
-            🏦 Pagamenti previsti in banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
+            Pagamenti previsti in banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
             Si registrano da sole quando l'addebito arriva. Puoi associare manualmente un movimento oppure correggere il metodo in qualsiasi momento.
           </div>
           {attesaBancaVisibili.map(p => (
@@ -2076,7 +2076,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                 {dettaglioDdt(p)}
                 {p.anomalia_pagamento?.stato === 'aperta' && (
                   <div role="status" style={{ marginTop: 4, color: '#b0362b', fontSize: 11.5, fontWeight: 800 }}>
-                    ⚠ Metodo di pagamento da verificare
+                    Metodo di pagamento da verificare
                   </div>
                 )}
                 {p.motivo_sospensione && (
@@ -2118,7 +2118,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   title="Correggi il metodo della fattura e registrala in Cassa"
                   style={{ minHeight: 40, background: VERDE, color: 'white', border: 0, borderRadius: 8, padding: '7px 11px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
                 >
-                  💵 Sposta in Cassa
+                  Sposta in Cassa
                 </button>
                 <button
                   type="button"
@@ -2127,7 +2127,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   title="Rimuovi l'attesa automatica e scegli nuovamente il metodo"
                   style={{ minHeight: 40, background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 8, padding: '7px 11px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
                 >
-                  ↩ Da decidere
+                  Da decidere
                 </button>
                 <button
                   type="button"
@@ -2136,7 +2136,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   title="Evidenzia la fattura come anomalia e riportala tra le decisioni"
                   style={{ minHeight: 40, background: '#fff7ed', color: '#b0362b', border: '1px solid #fb923c', borderRadius: 8, padding: '7px 11px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', opacity: p.anomalia_pagamento?.stato === 'aperta' ? 0.6 : 1 }}
                 >
-                  ⚠ {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio'}
+                  {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio'}
                 </button>
                 <span title={p.movimento_banca ? 'Il movimento ha prova univoca ed e in elaborazione' : (p.motivo_sospensione || 'Nessuna associazione automatica senza una prova univoca')} style={{ color: p.movimento_banca ? '#047857' : '#7a776e', fontSize: 11.5, fontWeight: 700 }}>
                   {p.movimento_banca ? 'Riscontro univoco trovato' : (p.stato_match === 'ambiguo_importo_al_centesimo' ? 'Sospesa: piu fatture compatibili' : 'In attesa di riscontro univoco')}
@@ -2160,7 +2160,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           style={{ position: 'fixed', inset: 0, background: 'rgba(20, 20, 19,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
         >
           <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
-            <h3 style={{ margin: '0 0 6px', fontSize: 15, color: TERRACOTTA }}>✂️ Pagamento parziale</h3>
+            <h3 style={{ margin: '0 0 6px', fontSize: 15, color: TERRACOTTA }}>Pagamento parziale</h3>
             <div style={{ fontSize: 13, color: '#5f5c55', marginBottom: 10 }}>
               {parziale.fornitore || '—'} — totale <b>{eur(parziale.importo)}</b>
             </div>
@@ -2172,7 +2172,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
             />
             {parseImportoIT(importoCassa) !== null && (
               <div style={{ fontSize: 12.5, color: '#5f5c55', marginBottom: 8 }}>
-                💵 Cassa {eur(parseImportoIT(importoCassa))} + 🏦 Banca {eur((parziale.importo || 0) - parseImportoIT(importoCassa))}
+                Cassa {eur(parseImportoIT(importoCassa))} + Banca {eur((parziale.importo || 0) - parseImportoIT(importoCassa))}
               </div>
             )}
             <div style={{ fontSize: 12, color: '#7a776e', marginBottom: 8 }}>

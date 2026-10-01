@@ -19,21 +19,10 @@ import { Alert, AlertDescription } from '../components/ui/alert';
 import { PageLayout } from '../components/PageLayout';
 import { PageHeader } from '../components/ds/PageHeader';
 import { VisoreOriginale } from '../components/ApriOriginale';
-import { urlOriginale } from '../lib/vista';
+import { urlOriginale, euroOppure } from '../lib/vista';
 import CartellePagamento from '../components/CartellePagamento';
 import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
-import {
-  FileText,
-  RefreshCw,
-  Search,
-  CheckCircle2,
-  AlertCircle,
-  Upload,
-  Link2,
-  Download,
-  Eye,
-  Calendar,
-} from 'lucide-react';
+import { FileText, RefreshCw, Search, CheckCircle2, AlertCircle, Upload, Link2, Download, Eye, Calendar, Landmark, ChartColumn, Scale, Trash2, Store } from 'lucide-react';
 import { toast } from '../components/ui/sonner';
 import api from '../api';
 
@@ -51,6 +40,7 @@ export const paymentAmountParts = receipt => ({
 export default function GestionePagoPA() {
   const [pdfViewer, setPdfViewer] = useState(null); // {title, url} — viewer canonico §8
   const isMobile = useIsMobile();
+  const [limiteRicevute, setLimiteRicevute] = useState(200);
   const [ricevute, setRicevute] = useState([]);
   const [loading, setLoading] = useState(false);
   const [autoAssociaLoading, setAutoAssociaLoading] = useState(false);
@@ -137,6 +127,124 @@ export default function GestionePagoPA() {
     return true;
   });
 
+  const cellaCodice = (ricevuta, idx) => (
+    <>
+                          <strong>{paymentKindLabel(ricevuta.document_kind)}</strong><br />
+                          {ricevuta.identificativo_bolletta || ricevuta.numero_bollettino || '-'}
+    </>
+  );
+
+  const cellaBeneficiario = (ricevuta, idx) => (
+    <>
+                          {ricevuta.beneficiario || '-'}
+                          {ricevuta.id && nature.length > 0 && (
+                            <select
+                              value={ricevuta.natura || ''}
+                              onChange={e => impostaNatura(ricevuta, e.target.value)}
+                              aria-label={`Che cosa hai pagato (${ricevuta.identificativo_bolletta || ricevuta.id})`}
+                              data-testid={`natura-${ricevuta.id}`}
+                              style={{
+                                display: 'block', marginTop: 6, minHeight: 40, maxWidth: 210,
+                                padding: '6px 8px', fontSize: 12.5, fontWeight: 700,
+                                border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.card,
+                              }}
+                            >
+                              <option value="">Che cosa hai pagato…</option>
+                              {nature.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+                            </select>
+                          )}
+    </>
+  );
+
+  const cellaImporto = (ricevuta, idx) => (
+    <>
+                          {formatEuro(paymentAmountParts(ricevuta).operation)}
+                          <div style={{ fontSize: 11, color: '#7a776e', fontWeight: 400, marginTop: 3 }}>
+                            Commissione {formatEuro(paymentAmountParts(ricevuta).fee)}<br />
+                            Addebito banca {formatEuro(paymentAmountParts(ricevuta).bankTotal)}
+                          </div>
+    </>
+  );
+
+  const cellaStato = (ricevuta, idx) => (
+    <>
+                          <div style={{ display: 'grid', gap: 4, justifyItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: '#166534', fontWeight: 700 }}>
+                            Versamento documentato
+                          </span>
+                          {ricevuta.movimento_id ? (
+                            <>
+                              <span
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#e2f0e7',
+                                  color: '#166534',
+                                  borderRadius: 4,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Associata
+                              </span>
+                              <LinkContropartita
+                                to={ROTTE_CONTROPARTITA.movimentoBanca(ricevuta.movimento_id)}
+                                title="Apre il movimento in Riconciliazione Banca"
+                                testId={`vedi-movimento-${idx}`}
+                                compatto
+                              >
+                                Vedi movimento
+                              </LinkContropartita>
+                            </>
+                          ) : (
+                            <span
+                              style={{
+                                padding: '4px 8px',
+                                background: '#ffedd5',
+                                color: '#9a3412',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Da Associare
+                            </span>
+                          )}
+                          {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#4c4a44' }}>
+                            Rata/cartelle collegate ({(ricevuta.cartelle_collegate || []).length})
+                          </Link>}
+                          </div>
+    </>
+  );
+
+  const cellaAzioni = (ricevuta, idx) => (
+    <>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+                            {ricevuta.id && (
+                              <>
+                                <button
+                                  onClick={() =>
+                                    setPdfViewer({
+                                      title: `Ricevuta PagoPA ${ricevuta.iuv || ricevuta.id}`,
+                                      url: urlOriginale({ tipo: 'ricevuta_pagopa', id: ricevuta.id }),
+                                    })
+                                  }
+                                  style={{
+                                    padding: '6px 10px',
+                                    background: 'transparent',
+                                    border: '1px solid #e6e3d9',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                  }}
+                                  data-testid={`view-ricevuta-${idx}`}
+                                >
+                                  <Eye size={16} aria-label="Apri ricevuta" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+    </>
+  );
+
   return (
     <PageLayout>
       <div style={{ maxWidth: 1400, margin: '0 auto' }} data-testid="gestione-pagopa">
@@ -216,7 +324,7 @@ export default function GestionePagoPA() {
                 }}
               >
                 <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>
-                  📄 Ricevute Totali
+                  Ricevute Totali
                 </div>
                 <div
                   style={{ fontSize: 18, fontWeight: 'bold', color: '#5b7a6b' }}
@@ -234,7 +342,7 @@ export default function GestionePagoPA() {
                   borderLeft: '3px solid #22c55e',
                 }}
               >
-                <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>✅ Associate</div>
+                <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>Associate</div>
                 <div
                   style={{ fontSize: 18, fontWeight: 'bold', color: '#22c55e' }}
                   data-testid="stats-associate"
@@ -252,7 +360,7 @@ export default function GestionePagoPA() {
                 }}
               >
                 <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>
-                  ⏳ Da Associare
+                  Da Associare
                 </div>
                 <div
                   style={{ fontSize: 18, fontWeight: 'bold', color: '#f97316' }}
@@ -271,7 +379,7 @@ export default function GestionePagoPA() {
               >
                 <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>Importo Totale</div>
                 <div style={{ fontSize: 18, fontWeight: 'bold' }} data-testid="stats-importo">
-                  {formatEuro(stats.totale_pagato || 0)}
+                  {euroOppure(stats.totale_pagato)}
                 </div>
               </div>
             </div>
@@ -312,7 +420,7 @@ export default function GestionePagoPA() {
             }}
           >
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#2c2b28' }}>
-              📋 Tipologie Pagamenti CBILL
+              Tipologie Pagamenti CBILL
             </h2>
             <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#7a776e' }}>
               Pagamenti identificabili tramite codice CBILL per rateizzazioni e tributi
@@ -336,7 +444,7 @@ export default function GestionePagoPA() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>🏛️</span>
+                  <Landmark size={24} aria-hidden="true" />
                   <div>
                     <h4 style={{ margin: 0, fontWeight: 600, color: '#4c4a44' }}>Rateizzi INPS</h4>
                     <p style={{ margin: 0, fontSize: 12, color: '#5b7a6b' }}>
@@ -361,7 +469,7 @@ export default function GestionePagoPA() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>📊</span>
+                  <ChartColumn size={24} aria-hidden="true" />
                   <div>
                     <h4 style={{ margin: 0, fontWeight: 600, color: '#166534' }}>
                       Agenzia delle Entrate
@@ -386,7 +494,7 @@ export default function GestionePagoPA() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>⚖️</span>
+                  <Scale size={24} aria-hidden="true" />
                   <div>
                     <h4 style={{ margin: 0, fontWeight: 600, color: '#991b1b' }}>
                       Agenzia Riscossione
@@ -413,7 +521,7 @@ export default function GestionePagoPA() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>🗑️</span>
+                  <Trash2 size={24} aria-hidden="true" />
                   <div>
                     <h4 style={{ margin: 0, fontWeight: 600, color: '#92400e' }}>TARI</h4>
                     <p style={{ margin: 0, fontSize: 12, color: '#f59e0b' }}>Tassa rifiuti</p>
@@ -436,7 +544,7 @@ export default function GestionePagoPA() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>🏪</span>
+                  <Store size={24} aria-hidden="true" />
                   <div>
                     <h4 style={{ margin: 0, fontWeight: 600, color: '#8a6f47' }}>COSAP / TOSAP</h4>
                     <p style={{ margin: 0, fontSize: 12, color: '#8a6f47' }}>
@@ -461,7 +569,7 @@ export default function GestionePagoPA() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 24 }}>📄</span>
+                  <FileText size={24} aria-hidden="true" />
                   <div>
                     <h4 style={{ margin: 0, fontWeight: 600, color: '#4c4a44' }}>Altri Tributi</h4>
                     <p style={{ margin: 0, fontSize: 12, color: '#7a776e' }}>Pagamenti vari</p>
@@ -491,7 +599,7 @@ export default function GestionePagoPA() {
             <div style={{ flex: 1, minWidth: 250 }}>
               <input
                 type="text"
-                placeholder="🔍 Cerca per codice CBILL o beneficiario..."
+                placeholder="Cerca per codice CBILL o beneficiario..."
                 value={filtro}
                 onChange={e => setFiltro(e.target.value)}
                 style={{
@@ -534,7 +642,7 @@ export default function GestionePagoPA() {
                   fontSize: 13,
                 }}
               >
-                ✅ Associati
+                Associati
               </button>
               <button
                 onClick={() => setStatoFiltro('non_associati')}
@@ -549,7 +657,7 @@ export default function GestionePagoPA() {
                   fontSize: 13,
                 }}
               >
-                ⏳ Da Associare
+                Da Associare
               </button>
             </div>
           </div>
@@ -572,7 +680,7 @@ export default function GestionePagoPA() {
             }}
           >
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#2c2b28' }}>
-              📄 Ricevute PagoPA
+              Ricevute PagoPA
             </h2>
             <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#7a776e' }}>
               {ricevuteFiltrate.length} ricevute {filtro && `(filtrate per "${filtro}")`}
@@ -599,6 +707,26 @@ export default function GestionePagoPA() {
                 </p>
               </div>
             ) : (
+              <>
+              {isMobile ? (
+              <div data-testid="ricevute-card" style={{ display: 'grid', gap: 10 }}>
+                {ricevuteFiltrate.slice(0, limiteRicevute).map((ricevuta, idx) => (
+                  <div
+                    key={ricevuta._id || idx}
+                    style={{ border: '1px solid #e6e3d9', borderRadius: 10, padding: 12, background: COLORS.card, display: 'grid', gap: 8, minWidth: 0 }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                      <strong>{ricevuta.data_pagamento ? formatDateIT(ricevuta.data_pagamento) : '-'}</strong>
+                      <span style={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'right', wordBreak: 'break-all' }}>{cellaCodice(ricevuta, idx)}</span>
+                    </div>
+                    <div>{cellaBeneficiario(ricevuta, idx)}</div>
+                    <div style={{ fontWeight: 500 }}>{cellaImporto(ricevuta, idx)}</div>
+                    <div>{cellaStato(ricevuta, idx)}</div>
+                    <div>{cellaAzioni(ricevuta, idx)}</div>
+                  </div>
+                ))}
+              </div>
+              ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -672,133 +800,34 @@ export default function GestionePagoPA() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ricevuteFiltrate.map((ricevuta, idx) => (
+                    {ricevuteFiltrate.slice(0, limiteRicevute).map((ricevuta, idx) => (
                       <tr key={ricevuta._id || idx} style={{ borderBottom: '1px solid #e6e3d9' }}>
                         <td style={{ padding: '12px 16px' }}>
-                          📅 {ricevuta.data_pagamento ? formatDateIT(ricevuta.data_pagamento) : '-'}
+                          {ricevuta.data_pagamento ? formatDateIT(ricevuta.data_pagamento) : '-'}
                         </td>
-                        <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 13 }}>
-                          <strong>{paymentKindLabel(ricevuta.document_kind)}</strong><br />
-                          {ricevuta.identificativo_bolletta || ricevuta.numero_bollettino || '-'}
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          {ricevuta.beneficiario || '-'}
-                          {ricevuta.id && nature.length > 0 && (
-                            <select
-                              value={ricevuta.natura || ''}
-                              onChange={e => impostaNatura(ricevuta, e.target.value)}
-                              aria-label={`Che cosa hai pagato (${ricevuta.identificativo_bolletta || ricevuta.id})`}
-                              data-testid={`natura-${ricevuta.id}`}
-                              style={{
-                                display: 'block', marginTop: 6, minHeight: 40, maxWidth: 210,
-                                padding: '6px 8px', fontSize: 12.5, fontWeight: 700,
-                                border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.card,
-                              }}
-                            >
-                              <option value="">Che cosa hai pagato…</option>
-                              {nature.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
-                            </select>
-                          )}
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 500 }}>
-                          {formatEuro(paymentAmountParts(ricevuta).operation)}
-                          <div style={{ fontSize: 11, color: '#7a776e', fontWeight: 400, marginTop: 3 }}>
-                            Commissione {formatEuro(paymentAmountParts(ricevuta).fee)}<br />
-                            Addebito banca {formatEuro(paymentAmountParts(ricevuta).bankTotal)}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          <div style={{ display: 'grid', gap: 4, justifyItems: 'center' }}>
-                          <span style={{ fontSize: 11, color: '#166534', fontWeight: 700 }}>
-                            Versamento documentato
-                          </span>
-                          {ricevuta.movimento_id ? (
-                            <>
-                              <span
-                                style={{
-                                  padding: '4px 8px',
-                                  background: '#e2f0e7',
-                                  color: '#166534',
-                                  borderRadius: 4,
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                }}
-                              >
-                                ✅ Associata
-                              </span>
-                              <LinkContropartita
-                                to={ROTTE_CONTROPARTITA.movimentoBanca(ricevuta.movimento_id)}
-                                title="Apre il movimento in Riconciliazione Banca"
-                                testId={`vedi-movimento-${idx}`}
-                                compatto
-                              >
-                                Vedi movimento
-                              </LinkContropartita>
-                            </>
-                          ) : (
-                            <span
-                              style={{
-                                padding: '4px 8px',
-                                background: '#ffedd5',
-                                color: '#9a3412',
-                                borderRadius: 4,
-                                fontSize: 12,
-                                fontWeight: 600,
-                              }}
-                            >
-                              ⏳ Da Associare
-                            </span>
-                          )}
-                          {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#4c4a44' }}>
-                            Rata/cartelle collegate ({(ricevuta.cartelle_collegate || []).length})
-                          </Link>}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
-                            {ricevuta.id && (
-                              <>
-                                <button
-                                  onClick={() =>
-                                    setPdfViewer({
-                                      title: `📄 Ricevuta PagoPA ${ricevuta.iuv || ricevuta.id}`,
-                                      url: urlOriginale({ tipo: 'ricevuta_pagopa', id: ricevuta.id }),
-                                    })
-                                  }
-                                  style={{
-                                    padding: '6px 10px',
-                                    background: 'transparent',
-                                    border: '1px solid #e6e3d9',
-                                    borderRadius: 6,
-                                    cursor: 'pointer',
-                                  }}
-                                  data-testid={`view-ricevuta-${idx}`}
-                                >
-                                  👁️
-                                </button>
-                                <a
-                                  href={`${urlOriginale({ tipo: 'ricevuta_pagopa', id: ricevuta.id })}?scarica=true`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    padding: '6px 10px',
-                                    background: 'transparent',
-                                    border: '1px solid #e6e3d9',
-                                    borderRadius: 6,
-                                    textDecoration: 'none',
-                                  }}
-                                >
-                                  📥
-                                </a>
-                              </>
-                            )}
-                          </div>
-                        </td>
+                        <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 13 }}>{cellaCodice(ricevuta, idx)}</td>
+                        <td style={{ padding: '12px 16px' }}>{cellaBeneficiario(ricevuta, idx)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 500 }}>{cellaImporto(ricevuta, idx)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>{cellaStato(ricevuta, idx)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>{cellaAzioni(ricevuta, idx)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              )}
+            {ricevuteFiltrate.length > limiteRicevute && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setLimiteRicevute(l => l + 200)}
+                  style={{ minHeight: 44, padding: '8px 16px', borderRadius: 8, border: '1px solid #e6e3d9', background: COLORS.card, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  Mostra altre ({ricevuteFiltrate.length - limiteRicevute})
+                </button>
+              </div>
+            )}
+              </>
             )}
           </div>
         </div>

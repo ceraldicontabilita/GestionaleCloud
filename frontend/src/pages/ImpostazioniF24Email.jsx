@@ -231,7 +231,7 @@ function GmailSettingsSection() {
               color: msg.ok ? COLORS.success : COLORS.danger,
             }}
           >
-            {msg.ok ? '✓ ' : '✗ '}
+            {msg.ok ? <CheckCircle size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} /> : <AlertCircle size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />}
             {msg.testo}
           </div>
         )}

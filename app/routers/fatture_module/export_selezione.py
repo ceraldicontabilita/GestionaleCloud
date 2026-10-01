@@ -10,6 +10,7 @@ from fastapi import Body, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.database import Database
+from app.utils.id_fattura import filtro_id_in
 from .crud import _normalizza_da_invoices
 
 COLONNE = [
@@ -31,7 +32,7 @@ _CAMPI_NUMERICI = {"imponibile", "iva", "importo_totale"}
 async def _carica_fatture(ids: List[str]) -> List[Dict[str, Any]]:
     db = Database.get_db()
     docs = await db["invoices"].find(
-        {"id": {"$in": ids}, "entity_status": {"$ne": "deleted"}, "status": {"$ne": "deleted"}},
+        {**filtro_id_in(ids), "entity_status": {"$ne": "deleted"}, "status": {"$ne": "deleted"}},
         {"_id": 0},
     ).to_list(len(ids) + 1)
     fatture = [_normalizza_da_invoices(d) for d in docs]

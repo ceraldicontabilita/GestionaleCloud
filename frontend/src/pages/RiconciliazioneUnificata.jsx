@@ -20,12 +20,17 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 import { PageLayout } from '../components/PageLayout';
 import { VisoreOriginale } from '../components/ApriOriginale';
-import { urlOriginale } from '../lib/vista';
+import { urlOriginale, euroOppure } from '../lib/vista';
 import AvvisoBonarioF24 from '../components/AvvisoBonarioF24';
 import RiscontroQuietanzeBanca from '../components/RiscontroQuietanzeBanca';
 import LinkContropartita, {
   ROTTE_CONTROPARTITA, PALETTE_CONTROPARTITA,
 } from '../components/LinkContropartita';
+import { useScegliOpzione } from '../components/ScegliOpzione';
+import { Calendar, ChevronDown, ChevronRight, ChevronUp, Hourglass, ChartColumn, Check, ClipboardList, Eye, FileText, Info, Landmark, Lightbulb, Link2, Paperclip, RefreshCw, Search, Trash2, TriangleAlert, User, X } from 'lucide-react';
+
+const ICO = { verticalAlign: '-2px', flexShrink: 0 };
+const eurAbs = v => (v === null || v === undefined || v === '' ? euroOppure(v) : euroOppure(Math.abs(Number(v))));
 
 const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx'));
 
@@ -82,7 +87,7 @@ export function linksContropartitaMovimento(m = {}) {
       key: 'prima-nota',
       to: ROTTE_CONTROPARTITA.primaNotaBanca(c.prima_nota_banca_id),
       etichetta: 'Prima Nota Banca',
-      title: `Riga di Prima Nota Banca ${c.prima_nota_banca_id} · ${formatDateIT(m.data || '')} · ${formatEuro(Math.abs(m.importo || 0))}`,
+      title: `Riga di Prima Nota Banca ${c.prima_nota_banca_id} · ${formatDateIT(m.data || '')} · ${eurAbs(m.importo)}`,
     });
   }
   return links;
@@ -146,7 +151,7 @@ export function PannelloMovimentoRichiesto({ id, richiesta, onChiudi }) {
       {richiesta?.stato === 'ok' && (
         <>
           <div style={{ fontSize: 13, marginTop: 4, color: '#141413' }}>
-            {formatDateIT(dati.data || '')} · {formatEuro(Math.abs(dati.importo || 0))} · {dati.descrizione || '—'}
+            {formatDateIT(dati.data || '')} · {eurAbs(dati.importo)} · {dati.descrizione || '—'}
           </div>
           <div style={{ fontSize: 12, color: '#5f5c55', marginTop: 2 }}>
             Tipo: {dati.tipo || 'non riconosciuto'} · {c.riconciliato ? 'riconciliato' : 'non riconciliato'}
@@ -205,6 +210,7 @@ export function isRentalReconciliationMovement(movement) {
 
 export default function RiconciliazioneUnificata() {
   const isMobile = useIsMobile();
+  const [scegli, dialogoScelta] = useScegliOpzione();
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
   const location = useLocation();
@@ -507,10 +513,15 @@ export default function RiconciliazioneUnificata() {
         const giaPagato = Number(movimento.importo_bonifico ?? 0);
         const mismatch = atteso > 0 && giaPagato > 0 && Math.abs(atteso - giaPagato) > 0.01;
         const modalitaEff = modalita || (mismatch
-          ? window.prompt(
-              'Importo stipendio e bonifici non coincidono. Scrivi acconto, saldo, multiplo oppure errore:',
-              'acconto',
-            )?.trim().toLowerCase()
+          ? (await scegli({
+            titolo: 'Importo stipendio e bonifici non coincidono',
+            descrizione: 'Scegli come trattare il bonifico; «Annulla» lascia il dato sospeso.',
+            opzioni: [
+              { valore: 'acconto', etichetta: 'Acconto' },
+              { valore: 'saldo', etichetta: 'Saldo' },
+              { valore: 'multiplo', etichetta: 'Più bonifici (multiplo)' },
+            ],
+          }))?.valore
           : 'saldo');
         if (!modalitaEff || modalitaEff === 'errore') {
           toast.error('Conferma stipendio bloccata', {
@@ -543,15 +554,6 @@ export default function RiconciliazioneUnificata() {
           : [];
       const tipoFattura = ['fattura', 'fattura_sdd', 'fattura_bonifico'].includes(tipoEff);
       if (!scelte.length && tipoFattura && suggerimenti.length > 1) {
-        const elencoQuote = suggerimenti.map((s, indice) => {
-          const quota = Number.isInteger(s.quota_cents) ? s.quota_cents / 100 : Number(s.importo || 0);
-          const prima = Number.isInteger(s.residuo_precedente_cents)
-            ? s.residuo_precedente_cents / 100 : quota;
-          const dopo = Number.isInteger(s.residuo_successivo_cents)
-            ? s.residuo_successivo_cents / 100 : Math.max(0, prima - quota);
-          return `${indice + 1}) ${s.numero || s.id} | fattura ${formatEuro(s.importo || 0)} | ` +
-            `residuo ${formatEuro(prima)} | quota ${formatEuro(quota)} | dopo ${formatEuro(dopo)}`;
-        }).join('\n');
         if (movimento.quadratura?.stato === 'verificata') {
           scelte = suggerimenti.map(s => ({
             ...s,
@@ -559,32 +561,33 @@ export default function RiconciliazioneUnificata() {
               ? s.quota_cents : Math.round(Number(s.importo || 0) * 100),
           }));
         } else {
-          const selectedText = window.prompt(
-            `Seleziona le fatture (numeri separati da virgola) e poi indica le quote:\n${elencoQuote}`,
-            suggerimenti.map((_, indice) => indice + 1).join(','),
-          );
-          const indexes = (selectedText || '').split(',')
-            .map(value => Number.parseInt(value.trim(), 10) - 1)
-            .filter(index => Number.isInteger(index) && index >= 0 && index < suggerimenti.length);
-          scelte = indexes.map(index => {
-            const item = suggerimenti[index];
-            const defaultQuota = Number.isInteger(item.quota_cents)
-              ? (item.quota_cents / 100).toFixed(2) : Number(item.importo || 0).toFixed(2);
-            const quota = window.prompt(`Quota per fattura ${item.numero || item.id}:`, defaultQuota);
-            return { ...item, quota_cents: Math.round(Number(String(quota || '').replace(',', '.')) * 100) };
+          const risposta = await scegli({
+            titolo: 'Seleziona le fatture da pagare con questo movimento',
+            descrizione: 'Ogni fattura porta la quota proposta; per cambiarla usa «Altro (scrivi tu)».',
+            multipla: true,
+            opzioni: suggerimenti.map((s, indice) => {
+              const quota = Number.isInteger(s.quota_cents) ? s.quota_cents / 100 : Number(s.importo || 0);
+              return { valore: String(indice), etichetta: `${s.numero || s.id}`, dettaglio: `fattura ${euroOppure(s.importo)} · quota ${formatEuro(quota)}`, quota: quota.toFixed(2) };
+            }),
+            altro: 'Quota in euro',
+            conferma: 'Riconcilia',
+          });
+          scelte = (risposta?.valori || []).map(valore => {
+            const item = suggerimenti[Number(valore)];
+            return { ...item, quota_cents: Math.round(Number(risposta.quote[valore]) * 100) };
           }).filter(item => Number.isInteger(item.quota_cents) && item.quota_cents > 0);
         }
       }
       if (!scelte.length && suggerimenti.length > 1 && !tipoFattura) {
-        const elenco = suggerimenti
-          .map((s, indice) => `${indice + 1}) ${s.fornitore || s.nome || s.dipendente || 'candidato'} - ${formatEuro(s.importo || 0)}`)
-          .join('\n');
-        const scelta = Number.parseInt(window.prompt(
-          `Seleziona il candidato digitando il numero:\n${elenco}`,
-          '1',
-        ) || '', 10);
-        if (Number.isInteger(scelta) && scelta >= 1 && scelta <= suggerimenti.length) {
-          scelte = [suggerimenti[scelta - 1]];
+        const risposta = await scegli({
+          titolo: 'Seleziona il candidato corretto',
+          opzioni: suggerimenti.map((s, indice) => ({
+            valore: String(indice),
+            etichetta: `${s.fornitore || s.nome || s.dipendente || 'candidato'} - ${euroOppure(s.importo)}`,
+          })),
+        });
+        if (risposta?.valore !== undefined && suggerimenti[Number(risposta.valore)]) {
+          scelte = [suggerimenti[Number(risposta.valore)]];
         }
       }
       if (!scelte.length || (!tipoFattura && scelte.length !== 1)) {
@@ -612,16 +615,23 @@ export default function RiconciliazioneUnificata() {
 
   // Ignora movimento
   const handleIgnora = async movimento => {
-    const codice = window.prompt(
-      'Codice motivo (duplicato, gia_pagato, non_pertinente, movimento_non_bancario, da_verificare, altro):',
-      'da_verificare',
-    )?.trim().toLowerCase();
-    if (!codice) return;
-    const motivo = window.prompt('Descrivi brevemente il motivo dell\'ignoramento:', codice);
+    const risposta = await scegli({
+      titolo: 'Perché escludi questo movimento dalla coda?',
+      opzioni: [
+        { valore: 'duplicato', etichetta: 'Duplicato', richiedeCampo: 'ID del movimento originale da conservare' },
+        { valore: 'gia_pagato', etichetta: 'Già pagato' },
+        { valore: 'non_pertinente', etichetta: 'Non pertinente' },
+        { valore: 'movimento_non_bancario', etichetta: 'Movimento non bancario' },
+        { valore: 'da_verificare', etichetta: 'Da verificare' },
+      ],
+      altro: 'Scrivi il motivo',
+      conferma: 'Escludi',
+    });
+    if (!risposta) return;
+    const codice = risposta.valore;
+    const motivo = risposta.testo;
     if (!motivo?.trim()) return;
-    const recordConservatoId = codice === 'duplicato'
-      ? window.prompt('ID del movimento originale da conservare:')?.trim()
-      : null;
+    const recordConservatoId = codice === 'duplicato' ? risposta.campo : null;
     if (codice === 'duplicato' && !recordConservatoId) return;
     setProcessing(movimento.movimento_id || movimento.id);
     try {
@@ -700,6 +710,7 @@ export default function RiconciliazioneUnificata() {
 
   return (
     <div style={{ position: 'relative', padding: '16px' }}>
+      {dialogoScelta}
       {loadError && (
         <div
           style={{
@@ -716,7 +727,7 @@ export default function RiconciliazioneUnificata() {
             gap: 12,
           }}
         >
-          <span>⚠️ {loadError}</span>
+          <span><TriangleAlert size={14} aria-hidden="true" style={ICO} /> {loadError}</span>
           <button
             onClick={() => loadAllData(currentLimit)}
             style={{
@@ -814,7 +825,7 @@ export default function RiconciliazioneUnificata() {
             whiteSpace: 'nowrap',
           }}
         >
-          🔄 Aggiorna
+          <RefreshCw size={14} aria-hidden="true" style={ICO} /> Aggiorna
         </button>
 
         {/* Bottone Filtri */}
@@ -834,7 +845,7 @@ export default function RiconciliazioneUnificata() {
             whiteSpace: 'nowrap',
           }}
         >
-          🔍 Filtri {showFilters ? '▲' : '▼'}
+          <Search size={14} aria-hidden="true" style={ICO} /> Filtri {showFilters ? <ChevronUp size={14} aria-hidden="true" style={ICO} /> : <ChevronDown size={14} aria-hidden="true" style={ICO} />}
         </button>
       </div>
 
@@ -925,7 +936,7 @@ export default function RiconciliazioneUnificata() {
         >
           <div>
             <label style={{ display: 'block', fontSize: 12, color: '#7a776e', marginBottom: 4 }}>
-              📅 Data Da
+              <Calendar size={14} aria-hidden="true" style={ICO} /> Data Da
             </label>
             <input
               type="date"
@@ -942,7 +953,7 @@ export default function RiconciliazioneUnificata() {
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 12, color: '#7a776e', marginBottom: 4 }}>
-              📅 Data A
+              <Calendar size={14} aria-hidden="true" style={ICO} /> Data A
             </label>
             <input
               type="date"
@@ -995,7 +1006,7 @@ export default function RiconciliazioneUnificata() {
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 12, color: '#7a776e', marginBottom: 4 }}>
-              🔎 Cerca
+              <Search size={14} aria-hidden="true" style={ICO} /> Cerca
             </label>
             <input
               type="text"
@@ -1028,7 +1039,7 @@ export default function RiconciliazioneUnificata() {
                 fontSize: 13,
               }}
             >
-              ✕ Reset
+              <X size={14} aria-hidden="true" style={ICO} /> Reset
             </button>
           </div>
         </div>
@@ -1270,11 +1281,12 @@ function MovimentiTab({
   vistaLista = false,
 }) {
   const isMobile = useIsMobile();
+  const [limite, setLimite] = useState(200);
 
   if (movimenti.length === 0) {
     return (
       <div style={{ padding: 60, textAlign: 'center', color: '#a19d92' }}>
-        <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}>✅</div>
+        <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}><Check size={40} aria-hidden="true" style={ICO} /></div>
         <div>{emptyText}</div>
       </div>
     );
@@ -1361,7 +1373,6 @@ function MovimentiTab({
                 key: 'data',
                 label: 'Data',
                 ruoloCard: 'dettaglio',
-                iconaCard: '📅',
                 // Su mobile solo giorno/mese (l'anno è nel selettore globale)
                 render: m => {
                   const d = m.data || m.data_emissione;
@@ -1398,7 +1409,7 @@ function MovimentiTab({
                       )}
                       {numeroFattura && (
                         <div style={{ fontSize: 11, color: '#5b7a6b', marginTop: 2 }}>
-                          📄 Fattura: {numeroFattura}
+                          <FileText size={14} aria-hidden="true" style={ICO} /> Fattura: {numeroFattura}
                         </div>
                       )}
                       <LinksContropartita m={m} />
@@ -1406,8 +1417,8 @@ function MovimentiTab({
                         <div style={{ marginTop: 4, fontSize: 11, color: '#4c4a44' }}>
                           {m.suggerimenti.map(item => (
                             <div key={item.id}>
-                              {item.numero || item.id}: fattura {formatEuro(item.importo || 0)}, quota{' '}
-                              {formatEuro(Number.isInteger(item.quota_cents) ? item.quota_cents / 100 : item.importo || 0)}, residuo dopo{' '}
+                              {item.numero || item.id}: fattura {euroOppure(item.importo)}, quota{' '}
+                              {euroOppure(Number.isInteger(item.quota_cents) ? item.quota_cents / 100 : item.importo)}, residuo dopo{' '}
                               {formatEuro(Number.isInteger(item.residuo_successivo_cents) ? item.residuo_successivo_cents / 100 : 0)}
                             </div>
                           ))}
@@ -1415,7 +1426,7 @@ function MovimentiTab({
                       )}
                       {m.beneficiario && (
                         <div style={{ fontSize: 11, color: '#d97706', marginTop: 2 }}>
-                          👤 Beneficiario: {m.beneficiario}
+                          <User size={14} aria-hidden="true" style={ICO} /> Beneficiario: {m.beneficiario}
                         </div>
                       )}
                     </div>
@@ -1456,9 +1467,9 @@ function MovimentiTab({
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        ✅ Match:{' '}
+                        <Check size={14} aria-hidden="true" style={ICO} /> Match:{' '}
                         {sugg.fornitore || sugg.nome || sugg.dipendente || 'Match'}{' '}
-                        {formatEuro(sugg.importo || 0)}
+                        {euroOppure(sugg.importo)}
                       </span>
                     );
                   }
@@ -1475,7 +1486,7 @@ function MovimentiTab({
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        ⚠️ Dati incompleti
+                        <TriangleAlert size={14} aria-hidden="true" style={ICO} /> Dati incompleti
                       </span>
                     );
                   }
@@ -1514,7 +1525,7 @@ function MovimentiTab({
                     {/* Su mobile il segno rende esplicito entrata/uscita;
                         su desktop resta il valore assoluto come prima */}
                     {isMobile
-                      ? `${m.importo < 0 ? '-' : '+'}${formatEuro(Math.abs(m.importo || 0))}`
+                      ? `${m.importo < 0 ? '-' : '+'}${eurAbs(m.importo)}`
                       : m.importo
                         ? formatEuro(Math.abs(m.importo))
                         : '€ 0,00'}
@@ -1541,7 +1552,7 @@ function MovimentiTab({
         </div>
       ) : (
         <div>
-          {movimenti.map((m, idx) => (
+          {movimenti.slice(0, limite).map((m, idx) => (
             <MovimentoCard
               key={m.movimento_id || m.id || idx}
               movimento={m}
@@ -1552,6 +1563,11 @@ function MovimentiTab({
               showFattura={showFattura}
             />
           ))}
+          {movimenti.length > limite && (
+            <button type="button" onClick={() => setLimite(x => x + 200)} style={{ minHeight: 44, padding: '8px 16px', margin: '10px 0', borderRadius: 6, border: '1px solid #e6e3d9', background: '#fff', color: '#141413', fontWeight: 600, cursor: 'pointer' }}>
+              Mostra altre ({movimenti.length - limite})
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1608,7 +1624,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
             fontSize: 20,
           }}
         >
-          {hasMatch ? '✅' : datiIncompleti ? '⚠️' : ragioneSociale ? '👤' : '📝'}
+          {hasMatch ? <Check size={20} aria-hidden="true" /> : datiIncompleti ? <TriangleAlert size={20} aria-hidden="true" /> : ragioneSociale ? <User size={20} aria-hidden="true" /> : <FileText size={20} aria-hidden="true" />}
         </div>
 
         <div style={{ flex: 1 }}>
@@ -1692,7 +1708,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
                 color: '#5b7a6b',
               }}
             >
-              📄 Fattura: {numeroFattura}
+              <FileText size={14} aria-hidden="true" style={ICO} /> Fattura: {numeroFattura}
             </div>
           )}
           <LinksContropartita m={movimento} />
@@ -1710,16 +1726,16 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
                 alignItems: 'center',
               }}
             >
-              <span>📝 Assegno N. {movimento.numero_assegno}</span>
+              <span><FileText size={14} aria-hidden="true" style={ICO} /> Assegno N. {movimento.numero_assegno}</span>
               <span>• Stato: {movimento.stato || 'N/D'}</span>
               {movimento.beneficiario && (
                 <span style={{ color: '#5b7a6b', fontWeight: 600 }}>
-                  • 👤 {movimento.beneficiario}
+                  • <User size={14} aria-hidden="true" style={ICO} /> {movimento.beneficiario}
                 </span>
               )}
               {movimento.fornitore && !movimento.beneficiario && (
                 <span style={{ color: '#5b7a6b', fontWeight: 600 }}>
-                  • 👤 {movimento.fornitore}
+                  • <User size={14} aria-hidden="true" style={ICO} /> {movimento.fornitore}
                 </span>
               )}
             </div>
@@ -1741,19 +1757,19 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
               }}
             >
               <span>
-                <b>Assegno:</b> {formatEuro(Math.abs(movimento.importo || 0))}
+                <b>Assegno:</b> {eurAbs(movimento.importo)}
               </span>
               {movimento.importo_fattura !== undefined && (
                 <>
                   <span>•</span>
                   <span>
-                    📄 <b>Fattura:</b> {formatEuro(Math.abs(movimento.importo_fattura || 0))}
+                    <FileText size={14} aria-hidden="true" style={ICO} /> <b>Fattura:</b> {eurAbs(movimento.importo_fattura)}
                   </span>
                   {Math.abs((movimento.importo || 0) - (movimento.importo_fattura || 0)) > 0.01 && (
                     <>
                       <span>•</span>
                       <span style={{ color: '#dc2626', fontWeight: 600 }}>
-                        ⚠️ Diff:{' '}
+                        <TriangleAlert size={14} aria-hidden="true" style={ICO} /> Diff:{' '}
                         {formatEuro(
                           Math.abs((movimento.importo || 0) - (movimento.importo_fattura || 0))
                         )}
@@ -1774,7 +1790,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
                     color: '#4c4a44',
                   }}
                 >
-                  📊 <b>Pagamento in {movimento?.info_rate?.numero_rate} rate</b>: Totale rate{' '}
+                  <ChartColumn size={14} aria-hidden="true" style={ICO} /> <b>Pagamento in {movimento?.info_rate?.numero_rate} rate</b>: Totale rate{' '}
                   {formatEuro(movimento.info_rate.totale_rate)}
                   {movimento.importo_fattura > 0 && (
                     <span> su fattura di {formatEuro(movimento.importo_fattura)}</span>
@@ -1793,7 +1809,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
                     color: '#4c4a44',
                   }}
                 >
-                  ℹ️ {movimento.nota_td24}
+                  <Info size={14} aria-hidden="true" style={ICO} /> {movimento.nota_td24}
                 </div>
               )}
             </div>
@@ -1808,7 +1824,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
                 color: '#d97706',
               }}
             >
-              👤 Beneficiario: {movimento.beneficiario}
+              <User size={14} aria-hidden="true" style={ICO} /> Beneficiario: {movimento.beneficiario}
             </div>
           )}
 
@@ -1827,8 +1843,8 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
             <div style={{ marginTop: 8, padding: 8, background: '#f6f4ee', borderRadius: 6, fontSize: 11 }}>
               {movimento.suggerimenti.map(item => (
                 <div key={item.id} style={{ marginBottom: 3 }}>
-                  <b>{item.numero || item.id}</b>: fattura {formatEuro(item.importo || 0)}; quota{' '}
-                  {formatEuro(Number.isInteger(item.quota_cents) ? item.quota_cents / 100 : item.importo || 0)}; residuo dopo{' '}
+                  <b>{item.numero || item.id}</b>: fattura {euroOppure(item.importo)}; quota{' '}
+                  {euroOppure(Number.isInteger(item.quota_cents) ? item.quota_cents / 100 : item.importo)}; residuo dopo{' '}
                   {formatEuro(Number.isInteger(item.residuo_successivo_cents) ? item.residuo_successivo_cents / 100 : 0)}
                 </div>
               ))}
@@ -1846,8 +1862,8 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
                 display: 'inline-block',
               }}
             >
-              🔗 {suggerimento.fornitore || suggerimento.nome || suggerimento.dipendente || 'Match'}
-              : {formatEuro(suggerimento.importo || 0)}
+              <Link2 size={14} aria-hidden="true" style={ICO} /> {suggerimento.fornitore || suggerimento.nome || suggerimento.dipendente || 'Match'}
+              : {euroOppure(suggerimento.importo)}
             </div>
           )}
         </div>
@@ -1899,11 +1915,11 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
 // possibile duplicazione e motivazione automatica. Il "pagato in ritardo"
 // è evidenziato con scadenza naturale e data effettiva, come da specifica.
 const STILI_STATO_F24 = {
-  pagato_nei_termini: { label: '✅ Pagato nei termini', bg: '#e2f0e7', color: '#166534' },
-  pagato_in_ritardo: { label: '⚠️ PAGATO IN RITARDO', bg: '#f8e5e2', color: '#991b1b' },
-  non_pagato: { label: '❌ Non pagato', bg: '#ffedd5', color: '#9a3412' },
-  in_scadenza: { label: '🕐 In scadenza', bg: '#f7ebe4', color: '#4c4a44' },
-  periodo_ignoto: { label: '❓ Periodo ignoto', bg: '#f2f0e9', color: '#7a776e' },
+  pagato_nei_termini: { label: 'Pagato nei termini', bg: '#e2f0e7', color: '#166534' },
+  pagato_in_ritardo: { label: 'PAGATO IN RITARDO', bg: '#f8e5e2', color: '#991b1b' },
+  non_pagato: { label: 'Non pagato', bg: '#ffedd5', color: '#9a3412' },
+  in_scadenza: { label: 'In scadenza', bg: '#f7ebe4', color: '#4c4a44' },
+  periodo_ignoto: { label: 'Periodo ignoto', bg: '#f2f0e9', color: '#7a776e' },
   // F24 del commercialista pagato con un ravvedimento (f24_ravvedimento.py).
   ravveduto: { label: 'Ravveduto', bg: '#f7ebe4', color: '#8a6f47' },
 };
@@ -1919,8 +1935,8 @@ const bottoneFile = {
 };
 
 const STILI_DUP_F24 = {
-  da_verificare: { label: '🚨 Da verificare', bg: '#f8e5e2', color: '#991b1b' },
-  collegato_no_duplicato: { label: '🔗 Collegato (no doppio)', bg: '#f7ebe4', color: '#4c4a44' },
+  da_verificare: { label: 'Da verificare', bg: '#f8e5e2', color: '#991b1b' },
+  collegato_no_duplicato: { label: 'Collegato (no doppio)', bg: '#f7ebe4', color: '#4c4a44' },
   no: { label: 'No', bg: '#f2f0e9', color: '#7a776e' },
 };
 
@@ -1929,6 +1945,8 @@ export function TabellaAnalisiF24({ anno }) {
   const [loading, setLoading] = useState(false);
   const [errore, setErrore] = useState(null);
   const [soloAnno, setSoloAnno] = useState(true);
+  const [limite, setLimite] = useState(200);
+  const isMobile = useIsMobile();
   const [ricercaTributo, setRicercaTributo] = useState('');
   const [pdfViewer, setPdfViewer] = useState(null); // {title, fetchUrl}
 
@@ -1961,13 +1979,16 @@ export function TabellaAnalisiF24({ anno }) {
     padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11,
     color: '#7a776e', textTransform: 'uppercase', whiteSpace: 'nowrap',
   };
-  const cella = { padding: '6px 8px', fontSize: 12, verticalAlign: 'top' };
+  const cella = { padding: '6px 8px', fontSize: 12, verticalAlign: 'top', ...(isMobile ? { display: 'block' } : {}) };
+  const etichettaM = testo => (isMobile ? (
+    <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#7a776e', textTransform: 'uppercase' }}>{testo}</span>
+  ) : null);
 
   return (
     <div style={{ padding: 16, borderBottom: '1px solid #e6e3d9', background: 'white' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0, fontSize: 15, color: '#141413' }}>
-          📋 Analisi F24 — scadenze, ravvedimenti e duplicazioni
+          <ClipboardList size={14} aria-hidden="true" style={ICO} /> Analisi F24 — scadenze, ravvedimenti e duplicazioni
         </h3>
         <button
           data-testid="btn-carica-analisi-f24"
@@ -1979,7 +2000,7 @@ export function TabellaAnalisiF24({ anno }) {
             fontWeight: 600, fontSize: 12.5,
           }}
         >
-          {loading ? '⏳ Analizzo…' : righe ? '🔄 Ricarica' : '📊 Carica analisi'}
+          {loading ? 'Analizzo…' : righe ? 'Ricarica' : 'Carica analisi'}
         </button>
         <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#4c4a44', cursor: 'pointer' }}>
           <input type="checkbox" checked={soloAnno} onChange={e => setSoloAnno(e.target.checked)} />
@@ -2003,7 +2024,7 @@ export function TabellaAnalisiF24({ anno }) {
 
       {errore && (
         <div style={{ marginTop: 10, fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
-          ⚠️ {errore}
+          <TriangleAlert size={14} aria-hidden="true" style={ICO} /> {errore}
         </div>
       )}
 
@@ -2015,8 +2036,8 @@ export function TabellaAnalisiF24({ anno }) {
 
       {righe && righe.length > 0 && (
         <div style={{ overflowX: 'auto', marginTop: 12 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
-            <thead>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? 0 : 980, display: isMobile ? 'block' : 'table' }}>
+            <thead style={isMobile ? { display: 'none' } : undefined}>
               <tr style={{ background: '#f6f4ee', borderBottom: '2px solid #e6e3d9' }}>
                 <th style={cellaTh}>Periodo competenza</th>
                 <th style={cellaTh}>Scadenza naturale</th>
@@ -2030,8 +2051,8 @@ export function TabellaAnalisiF24({ anno }) {
                 <th style={cellaTh}>Motivazione</th>
               </tr>
             </thead>
-            <tbody>
-              {righeFiltrate.map((r, idx) => {
+            <tbody style={isMobile ? { display: 'block' } : undefined}>
+              {righeFiltrate.slice(0, limite).map((r, idx) => {
                 const stato = STILI_STATO_F24[r.stato_pagamento] || STILI_STATO_F24.periodo_ignoto;
                 const dup = STILI_DUP_F24[r.possibile_duplicazione] || STILI_DUP_F24.no;
                 const inRitardo = r.stato_pagamento === 'pagato_in_ritardo';
@@ -2042,9 +2063,10 @@ export function TabellaAnalisiF24({ anno }) {
                     style={{
                       borderBottom: '1px solid #f2f0e9',
                       background: inRitardo ? '#fff7f7' : idx % 2 ? '#f6f4ee' : 'white',
+                      ...(isMobile ? { display: 'block', border: '1px solid #e6e3d9', borderRadius: 8, marginBottom: 10, padding: 6 } : {}),
                     }}
                   >
-                    <td style={{ ...cella, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    <td style={{ ...cella, fontWeight: 700, whiteSpace: 'nowrap' }}>{etichettaM('Periodo competenza')}
                       {r.periodo_competenza || '—'}
                       {(r.codici_tributo || []).length > 0 && (
                         <div style={{ fontSize: 10.5, color: '#5b7a6b', fontFamily: 'monospace', marginTop: 2 }}>
@@ -2057,24 +2079,24 @@ export function TabellaAnalisiF24({ anno }) {
                         </div>
                       )}
                     </td>
-                    <td style={{ ...cella, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
-                      {r.scadenza_naturale || '—'}
+                    <td style={{ ...cella, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{etichettaM('Scadenza naturale')}
+                      {r.scadenza_naturale ? formatDateIT(r.scadenza_naturale) : '—'}
                     </td>
-                    <td style={{ ...cella, whiteSpace: 'nowrap', fontFamily: 'monospace', fontWeight: inRitardo ? 700 : 400, color: inRitardo ? '#991b1b' : '#141413' }}>
-                      {r.data_pagamento || '—'}
+                    <td style={{ ...cella, whiteSpace: 'nowrap', fontFamily: 'monospace', fontWeight: inRitardo ? 700 : 400, color: inRitardo ? '#991b1b' : '#141413' }}>{etichettaM('Pagamento effettivo')}
+                      {r.data_pagamento ? formatDateIT(r.data_pagamento) : '—'}
                     </td>
-                    <td style={{ ...cella, textAlign: 'center', fontWeight: 700, color: r.giorni_ritardo > 0 ? '#dc2626' : '#16a34a' }}>
+                    <td style={{ ...cella, textAlign: 'center', fontWeight: 700, color: r.giorni_ritardo > 0 ? '#dc2626' : '#16a34a' }}>{etichettaM('Giorni ritardo')}
                       {r.giorni_ritardo ?? '—'}
                     </td>
-                    <td style={cella}>
+                    <td style={cella}>{etichettaM('Stato pagamento')}
                       <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: stato.bg, color: stato.color, whiteSpace: 'nowrap' }}>
                         {stato.label}
                       </span>
                     </td>
-                    <td style={{ ...cella, whiteSpace: 'nowrap' }}>
+                    <td style={{ ...cella, whiteSpace: 'nowrap' }}>{etichettaM('Tipo versamento')}
                       {r.tipo_versamento === 'ordinario' ? 'Ordinario'
-                        : r.tipo_versamento === 'regolarizzazione' ? '🔁 Regolarizzazione'
-                          : '🔁 Ravvedimento'}
+                        : r.tipo_versamento === 'regolarizzazione' ? 'Regolarizzazione'
+                          : 'Ravvedimento'}
                       {/* Originale del commercialista e ravvedimento affiancati:
                           dall'uno si apre l'altro, nessuno dei due si cancella. */}
                       {r.etichetta === 'RAVVEDIMENTO' && (r.ravvedimento_di || []).length > 0 && (
@@ -2123,10 +2145,10 @@ export function TabellaAnalisiF24({ anno }) {
                         </div>
                       )}
                     </td>
-                    <td style={{ ...cella, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                    <td style={{ ...cella, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{etichettaM('Causale INPS')}
                       {(r.causali_inps || []).join(', ') || '—'}
                     </td>
-                    <td style={{ ...cella, whiteSpace: 'nowrap' }}>
+                    <td style={{ ...cella, whiteSpace: 'nowrap' }}>{etichettaM('Documento collegato')}
                       {/* I file veri: il modello F24 e la sua quietanza, aperti
                           nel lettore PDF. Niente rimando all'estratto conto:
                           li' bisognava cercare l'operazione a mano. */}
@@ -2165,17 +2187,22 @@ export function TabellaAnalisiF24({ anno }) {
                         )}
                       </span>
                     </td>
-                    <td style={cella}>
+                    <td style={cella}>{etichettaM('Possibile duplicazione')}
                       <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: dup.bg, color: dup.color, whiteSpace: 'nowrap' }}>
                         {dup.label}
                       </span>
                     </td>
-                    <td style={{ ...cella, minWidth: 220, color: '#5f5c55' }}>{r.motivazione}</td>
+                    <td style={{ ...cella, minWidth: 220, color: '#5f5c55' }}>{etichettaM('Motivazione')}{r.motivazione}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          {righeFiltrate.length > limite && (
+            <button type="button" onClick={() => setLimite(x => x + 200)} style={{ ...bottoneFile, minHeight: 44, margin: '10px 0' }}>
+              Mostra altre ({righeFiltrate.length - limite})
+            </button>
+          )}
         </div>
       )}
       {pdfViewer && (
@@ -2191,6 +2218,7 @@ export function TabellaAnalisiF24({ anno }) {
 }
 
 function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefresh, anno }) {
+  const [limite, setLimite] = useState(200);
   const [selezionati, setSelezionati] = useState(new Set());
   const [pdfViewer, setPdfViewer] = useState(null); // {title, src} — viewer canonico §8
   const [metodoBatch] = useState('banca');
@@ -2207,7 +2235,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
       <RiscontroQuietanzeBanca anno={anno} />
       <TabellaAnalisiF24 anno={anno} />
       <div style={{ padding: 60, textAlign: 'center', color: '#a19d92' }}>
-        <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}>📄</div>
+        <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}><FileText size={40} aria-hidden="true" style={ICO} /></div>
         <div>Nessun F24 pendente da pagare</div>
         {onLoadF24 && (
           <button
@@ -2227,7 +2255,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
               fontSize: 13,
             }}
           >
-            {f24Loading ? '⏳ Caricamento F24...' : '🔍 Carica F24 pendenti'}
+            {f24Loading ? 'Caricamento F24...' : 'Carica F24 pendenti'}
           </button>
         )}
       </div>
@@ -2326,7 +2354,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
           }}
         >
           <h3 style={{ margin: 0, fontSize: 16, color: '#141413' }}>
-            📄 F24 Pendenti ({f24Validi.length})
+            <FileText size={14} aria-hidden="true" style={ICO} /> F24 Pendenti ({f24Validi.length})
           </h3>
           <div
             style={{
@@ -2356,7 +2384,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
               fontSize: 13,
             }}
           >
-            {selezionati.size === f24Validi.length ? '☐ Deseleziona' : '☑ Seleziona tutti'}
+            {selezionati.size === f24Validi.length ? 'Deseleziona' : 'Seleziona tutti'}
           </button>
 
           {selezionati.size > 0 && (
@@ -2372,7 +2400,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                   color: '#991b1b',
                 }}
               >
-                🏦 Pagamento Banca
+                <Landmark size={14} aria-hidden="true" style={ICO} /> Pagamento Banca
               </span>
 
               <button
@@ -2392,7 +2420,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                   fontSize: 13,
                 }}
               >
-                {salvandoBatch ? '⏳' : '✅'} Conferma {selezionati.size} (
+                {salvandoBatch ? <Hourglass size={14} aria-hidden="true" style={ICO} /> : <Check size={14} aria-hidden="true" style={ICO} />} Conferma {selezionati.size} (
                 {formatEuro(totaleSelezionati)})
               </button>
             </>
@@ -2401,7 +2429,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
       </div>
 
       <div>
-        {f24Validi.map((f, idx) => {
+        {f24Validi.slice(0, limite).map((f, idx) => {
           const importo = f.importo_totale || f.importo || 0;
           const scadenzaStr = formatDateIT(f.data_scadenza);
 
@@ -2482,12 +2510,12 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                       }}
                       title="Disattivato: Fase 0 — serve il movimento bancario"
                     >
-                      🏦 Paga con Banca
+                      <Landmark size={14} aria-hidden="true" style={ICO} /> Paga con Banca
                     </button>
                     <button
                       onClick={async () => {
                         if (f.pdf_url) {
-                          setPdfViewer({ title: `📄 F24 ${f.descrizione || f.numero || ''}`, url: f.pdf_url });
+                          setPdfViewer({ title: `F24 ${f.descrizione || f.numero || ''}`, url: f.pdf_url });
                         } else {
                           await confirm({
                             title: 'PDF non disponibile',
@@ -2511,7 +2539,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                         f.pdf_url ? 'Visualizza PDF F24' : 'PDF non disponibile'
                       }
                     >
-                      👁️ Vedi PDF
+                      <Eye size={14} aria-hidden="true" style={ICO} /> Vedi PDF
                     </button>
                   </div>
                 </div>
@@ -2519,6 +2547,11 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
             </div>
           );
         })}
+        {f24Validi.length > limite && (
+          <button type="button" onClick={() => setLimite(x => x + 200)} style={{ minHeight: 44, padding: '8px 16px', margin: '10px 0', borderRadius: 6, border: '1px solid #e6e3d9', background: '#fff', color: '#141413', fontWeight: 600, cursor: 'pointer' }}>
+            Mostra altre ({f24Validi.length - limite})
+          </button>
+        )}
       </div>
 
       {pdfViewer && (
@@ -2534,6 +2567,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 }
 
 function DocumentiTab({ documenti, stats, onRefresh, processing }) {
+  const [limite, setLimite] = useState(200);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [pdfViewer, setPdfViewer] = useState(null); // {title, src} — viewer canonico §8
   const [collezioni, setCollezioni] = useState([]);
@@ -2601,7 +2635,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
     // dall'utente 18/07/2026). Il viewer scarica il blob via axios (stesso
     // pattern di Documenti.jsx/FattureEstereVerifica.jsx).
     setPdfViewer({
-      title: `📄 ${doc.filename || doc.nome || 'Documento'}`,
+      title: `${doc.filename || doc.nome || 'Documento'}`,
       fetchUrl: urlOriginale({ tipo: 'documento', id: doc.id }),
     });
   };
@@ -2679,7 +2713,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   if (documenti.length === 0) {
     return (
       <div style={{ padding: 60, textAlign: 'center', color: '#a19d92' }}>
-        <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}>📎</div>
+        <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}><Paperclip size={40} aria-hidden="true" style={ICO} /></div>
         <div>Nessun documento da associare</div>
         <div style={{ fontSize: 12, marginTop: 8 }}>
           Tutti i documenti scaricati sono stati associati
@@ -2702,7 +2736,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
           }}
         >
           <h3 style={{ margin: 0, fontSize: 16, color: '#141413' }}>
-            📎 Documenti Non Associati ({documenti.length})
+            <Paperclip size={14} aria-hidden="true" style={ICO} /> Documenti Non Associati ({documenti.length})
           </h3>
           {stats && (
             <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
@@ -2748,7 +2782,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
             borderRight: selectedDoc ? '1px solid #e6e3d9' : 'none',
           }}
         >
-          {documenti.map(doc => (
+          {documenti.slice(0, limite).map(doc => (
             <div
               key={doc.id}
               onClick={() => setSelectedDoc(doc)}
@@ -2805,6 +2839,11 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
               </div>
             </div>
           ))}
+          {documenti.length > limite && (
+            <button type="button" onClick={() => setLimite(x => x + 200)} style={{ minHeight: 44, padding: '8px 16px', margin: '10px 0', borderRadius: 6, border: '1px solid #e6e3d9', background: '#fff', color: '#141413', fontWeight: 600, cursor: 'pointer' }}>
+              Mostra altre ({documenti.length - limite})
+            </button>
+          )}
         </div>
 
         {/* Pannello dettaglio */}
@@ -2831,7 +2870,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                   gap: 8,
                 }}
               >
-                👁️ Apri PDF
+                <Eye size={14} aria-hidden="true" style={ICO} /> Apri PDF
               </button>
             </div>
 
@@ -2868,7 +2907,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                   }}
                 >
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#4c4a44', marginBottom: 8 }}>
-                    💡 Proposta Intelligente
+                    <Lightbulb size={14} aria-hidden="true" style={ICO} /> Proposta Intelligente
                   </div>
                   {selectedDoc?.proposta?.tipo_suggerito && (
                     <div style={{ fontSize: 12, color: '#5f5c55', marginBottom: 4 }}>
@@ -2955,7 +2994,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                   fontSize: 13,
                 }}
               >
-                ✓ Associa
+                <Check size={14} aria-hidden="true" style={ICO} /> Associa
               </button>
               <button
                 onClick={() => handleDelete(selectedDoc.id)}
@@ -2971,7 +3010,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                   fontSize: 13,
                 }}
               >
-                🗑️
+                <Trash2 size={14} aria-hidden="true" style={ICO} />
               </button>
             </div>
           </div>
@@ -2986,7 +3025,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
             fontSize: 13, fontWeight: 600, color: '#141413', display: 'flex', alignItems: 'center', gap: 6,
           }}
         >
-          {mostraRecenti ? '▼' : '▶'} Documenti associati di recente — sbagliato collezione? Annulla qui
+          {mostraRecenti ? <ChevronDown size={14} aria-hidden="true" style={ICO} /> : <ChevronRight size={14} aria-hidden="true" style={ICO} />} Documenti associati di recente — sbagliato collezione? Annulla qui
         </button>
         {mostraRecenti && (
           <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
@@ -3013,7 +3052,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                     opacity: annullando === doc.id ? 0.5 : 1,
                   }}
                 >
-                  {annullando === doc.id ? '⏳…' : '↩️ Annulla'}
+                  {annullando === doc.id ? '…' : 'Annulla'}
                 </button>
               </div>
             ))}

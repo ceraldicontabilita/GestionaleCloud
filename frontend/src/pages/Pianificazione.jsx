@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { COLORS } from '../lib/utils';
 import { PageLayout, PageSection, PageLoading } from '../components/PageLayout';
-import { Calendar, Plus, RefreshCw, X } from 'lucide-react';
+import { Calendar, Plus, RefreshCw, X, Handshake, AlarmClock, Bell, CircleCheck, Pin, Tag, MessageSquare, Inbox, Save, Sparkles, ListChecks } from 'lucide-react';
 
 /** Il dato piu' recente si mostra per primo (regola del gestionale). */
 export function ordinaEventiRecentiPrima(eventi) {
@@ -18,6 +18,7 @@ export default function Pianificazione() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [err, setErr] = useState('');
+  const [visibili, setVisibili] = useState(200);
   // Un errore di caricamento non e' un'agenda vuota.
   const [loadErr, setLoadErr] = useState('');
   const [newEvent, setNewEvent] = useState({
@@ -83,8 +84,9 @@ export default function Pianificazione() {
   }
 
   function getEventIcon(type) {
-    const icons = { meeting: '🤝', deadline: '⏰', reminder: '🔔', task: '✅' };
-    return icons[type] || '📌';
+    const icons = { meeting: Handshake, deadline: AlarmClock, reminder: Bell, task: CircleCheck };
+    const Icona = icons[type] || Pin;
+    return <Icona size={15} aria-hidden style={{ verticalAlign: '-2px' }} />;
   }
 
   const inputStyle = {
@@ -170,7 +172,7 @@ export default function Pianificazione() {
 
       {/* Form Nuovo Evento */}
       {showForm && (
-        <PageSection title="Nuovo Evento" icon="✨" style={{ marginBottom: 20 }}>
+        <PageSection title="Nuovo Evento" icon={<Sparkles size={16} aria-hidden />} style={{ marginBottom: 20 }}>
           <button
             onClick={() => setShowForm(false)}
             style={{
@@ -222,10 +224,10 @@ export default function Pianificazione() {
                 value={newEvent.type}
                 onChange={e => setNewEvent({ ...newEvent, type: e.target.value })}
               >
-                <option value="meeting">🤝 Riunione</option>
-                <option value="deadline">⏰ Scadenza</option>
-                <option value="reminder">🔔 Promemoria</option>
-                <option value="task">✅ Attività</option>
+                <option value="meeting">Riunione</option>
+                <option value="deadline">Scadenza</option>
+                <option value="reminder">Promemoria</option>
+                <option value="task">Attività</option>
               </select>
             </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -249,7 +251,7 @@ export default function Pianificazione() {
                   fontSize: 14,
                 }}
               >
-                💾 Salva
+                <Save size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> Salva
               </button>
               <button
                 type="button"
@@ -275,7 +277,7 @@ export default function Pianificazione() {
       {/* Lista Eventi */}
       <PageSection
         title={loadErr ? 'Eventi Pianificati' : `Eventi Pianificati (${events.length})`}
-        icon="📋"
+        icon={<ListChecks size={16} aria-hidden />}
       >
         {loading ? (
           <PageLoading message="Caricamento eventi..." />
@@ -311,7 +313,7 @@ export default function Pianificazione() {
           </div>
         ) : events.length === 0 ? (
           <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+            <div style={{ marginBottom: 12 }}><Inbox size={48} aria-hidden color={COLORS.textMuted} /></div>
             <div style={{ fontSize: 16, fontWeight: 600, color: '#2c2b28', marginBottom: 8 }}>
               Nessun evento in agenda
             </div>
@@ -326,7 +328,7 @@ export default function Pianificazione() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {events.map((ev, i) => (
+            {events.slice(0, visibili).map((ev, i) => (
               <div
                 key={ev.id || i}
                 style={{
@@ -349,8 +351,8 @@ export default function Pianificazione() {
                     alignItems: 'center',
                   }}
                 >
-                  <span>📅 {new Date(ev.scheduled_date).toLocaleString('it-IT')}</span>
-                  <span>🏷️ {ev.event_type}</span>
+                  <span><Calendar size={13} aria-hidden style={{ verticalAlign: '-2px' }} /> {new Date(ev.scheduled_date).toLocaleString('it-IT')}</span>
+                  <span><Tag size={13} aria-hidden style={{ verticalAlign: '-2px' }} /> {ev.event_type}</span>
                   <span
                     style={{
                       padding: '2px 10px',
@@ -368,11 +370,20 @@ export default function Pianificazione() {
                   <div
                     style={{ fontSize: 13, color: '#7a776e', marginTop: 10, fontStyle: 'italic' }}
                   >
-                    💬 {ev.notes}
+                    <MessageSquare size={13} aria-hidden style={{ verticalAlign: '-2px' }} /> {ev.notes}
                   </div>
                 )}
               </div>
             ))}
+            {events.length > visibili && (
+              <button
+                type="button"
+                onClick={() => setVisibili(v => v + 200)}
+                style={{ minHeight: 44, padding: '10px 16px', background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}
+              >
+                Mostra altre ({events.length - visibili})
+              </button>
+            )}
           </div>
         )}
       </PageSection>

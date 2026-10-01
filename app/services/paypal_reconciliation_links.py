@@ -22,6 +22,7 @@ from app.services.accounting_relation_writers import (
     record_paypal_bank_chain,
     record_paypal_invoice_link,
 )
+from app.utils.id_fattura import filtro_id
 
 
 COLL_TRANSACTIONS = "paypal_transactions"
@@ -101,7 +102,7 @@ async def supplier_mapping_for_transaction(db, transaction: Dict[str, Any]) -> O
 
 
 async def _invoice_is_available(db, invoice_id: str, transaction_id: str) -> bool:
-    invoice = await db[COLL_INVOICES].find_one({"id": invoice_id}, {"_id": 0})
+    invoice = await db[COLL_INVOICES].find_one(filtro_id(invoice_id), {"_id": 0})
     if not invoice:
         return False
     linked_ids = {
@@ -164,7 +165,7 @@ async def finalizza_transazione_paypal_se_completa(
             "riconciliato": True,
             "tipo_riconciliazione": movement.get("tipo_riconciliazione") or "paypal_evidenze_univoche",
         }})
-    invoice = await db[COLL_INVOICES].find_one({"id": invoice_id})
+    invoice = await db[COLL_INVOICES].find_one(filtro_id(invoice_id))
     if not invoice:
         return {"finalizzata": False, "motivo": "fattura_non_trovata"}
 
@@ -187,7 +188,7 @@ async def finalizza_transazione_paypal_se_completa(
         source="riconciliazione_paypal_end_to_end",
         importo_pagamento=transaction_amount(transaction),
     )
-    await db[COLL_INVOICES].update_one({"id": invoice_id}, {"$set": {
+    await db[COLL_INVOICES].update_one(filtro_id(invoice_id), {"$set": {
         "riconciliato_paypal": True,
         "paypal_riconciliato_banca": True,
         "riconciliato": True,
@@ -328,7 +329,7 @@ async def collega_transazione_a_fattura(
             "payment_operation_id": str(transaction.get("payment_operation_id") or f"paypal:{transaction_id}"),
         }},
     )
-    await db[COLL_INVOICES].update_one({"id": invoice_id}, {
+    await db[COLL_INVOICES].update_one(filtro_id(invoice_id), {
         "$set": {
             "paypal_transaction_id": transaction_id,
             "payment_operation_id": str(transaction.get("payment_operation_id") or f"paypal:{transaction_id}"),
@@ -375,7 +376,7 @@ async def _candidate_invoices(db, transaction: Dict[str, Any], *, invoice_id: Op
     amount = transaction_amount(transaction)
     query: Dict[str, Any]
     if invoice_id:
-        query = {"id": invoice_id}
+        query = filtro_id(invoice_id)
     else:
         query = {"$or": [
             {"total_amount": {"$gte": amount - 0.004, "$lte": amount + 0.004}},
@@ -469,7 +470,7 @@ async def riprocessa_collegamenti_paypal(
                 # Serve per migrare le associazioni create prima che fosse
                 # ammessa la prova univoca nome+importo+data senza riferimento.
                 linked_invoice = await db[COLL_INVOICES].find_one(
-                    {"id": association.get("fattura_id")}, {"_id": 0}
+                    filtro_id(association.get("fattura_id")), {"_id": 0}
                 )
                 if linked_invoice:
                     mapping = await supplier_mapping_for_transaction(db, transaction)

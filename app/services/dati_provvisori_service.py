@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ async def genera_proposte_pagamento(db, anno: int = 2026) -> Dict[str, Any]:
     fatture = await db["invoices"].find(
         {
             "payment_method": {"$in": ["bonifico", "sepa", "rid", "domiciliazione", ""]},
-            "$or": [{"stato_pagamento": {"$ne": "pagata"}}, {"stato_pagamento": None}],
+            **FILTRO_NON_PAGATE,
             "total_amount": {"$gt": 0},
             "invoice_date": {"$regex": f"^{anno}"}
         },
@@ -117,8 +118,10 @@ async def genera_proposte_pagamento(db, anno: int = 2026) -> Dict[str, Any]:
                             score += 10
                         elif diff_days > 90:
                             score -= 20
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Proposta pagamento: data del movimento %s non confrontata, nessun punteggio di vicinanza (%s: %s)",
+                        mov.get("id"), type(exc).__name__, exc)
             
             if score > best_score:
                 best_score = score

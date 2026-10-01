@@ -150,6 +150,7 @@ function ElenchiFiscali() {
   const location = useLocation();
   const tab = TABS.find(([id]) => location.pathname.endsWith(`/${id}`))?.[0] || 'tributi';
   const [summary, setSummary] = useState(null);
+  const [obblighiVisibili, setObblighiVisibili] = useState(200);
   const [items, setItems] = useState([]);
   const [tabMeta, setTabMeta] = useState(null);
   const [certaintyMeta, setCertaintyMeta] = useState(null);
@@ -422,7 +423,7 @@ function ElenchiFiscali() {
     };
   }, [certaintyMeta, declarationChecks]);
   return (
-    <PageLayout title="Situazione fiscale" icon="⚖️"
+    <PageLayout title="Situazione fiscale"
       subtitle="Obblighi, pagamenti, cartelle e prove restano distinti e verificabili"
       actions={<Button variant="secondary" onClick={load} disabled={loading}>Aggiorna</Button>}>
       <SchedeFiscali tab={tab} />
@@ -476,7 +477,7 @@ function ElenchiFiscali() {
           </div>
           {obligationRegister.obligations.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 12 }}><table className="fiscal-f24-table">
             <thead><tr><th>Dichiarazione</th><th>Tributo / periodo</th><th>Importo dovuto</th><th>F24 commercialista</th><th>Stato Erario</th><th>Confronto gestionale</th></tr></thead>
-            <tbody>{obligationRegister.obligations.map(item => <tr key={item.id}>
+            <tbody>{obligationRegister.obligations.slice(0, obblighiVisibili).map(item => <tr key={item.id}>
               <td><strong>{item.declaration.document_type}</strong><div className="fiscal-muted">{item.declaration.filename}</div></td>
               <td><strong>{item.row.declaration_row?.tax_code || '—'}</strong><div>{item.row.declaration_row?.reference_period || '—'}</div></td>
               <td>{euro(item.amount)}</td>
@@ -486,6 +487,7 @@ function ElenchiFiscali() {
             </tr>)}</tbody>
             <tfoot><tr><th colSpan="2">Totale debiti dichiarati elaborati</th><th>{euro(obligationRegister.expectedAmount)}</th><th colSpan="3">Calcolo al centesimo; nessun collegamento per solo importo</th></tr></tfoot>
           </table></div>}
+          {obligationRegister.obligations.length > obblighiVisibili && <div style={{ marginTop: 8 }}><Button variant="secondary" onClick={() => setObblighiVisibili(v => v + 200)}>Mostra altre {obligationRegister.obligations.length - obblighiVisibili}</Button></div>}
           {declarationCheckProgress.failed > 0 && <div className="fiscal-muted" style={{ marginTop: 8 }}>{declarationCheckProgress.failed} documenti non elaborati: restano esplicitamente da verificare.</div>}
         </section>}
         {tab === 'confronto-fonti' && (certaintyMeta?.declaration_items || []).length > 0 && <section aria-labelledby="declaration-certainty-heading" style={{ marginBottom: 18 }}>
@@ -776,7 +778,7 @@ export default function SituazioneFiscale() {
   if (!incorporata) return <ElenchiFiscali />;
   const [id, , Scheda] = incorporata;
   return (
-    <PageLayout title="Situazione fiscale" icon="⚖️"
+    <PageLayout title="Situazione fiscale"
       subtitle="Obblighi, pagamenti, cartelle e prove restano distinti e verificabili">
       <SchedeFiscali tab={id} />
       <Suspense fallback={<PageLoader />}><Scheda /></Suspense>

@@ -4,6 +4,8 @@ import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, formatDateIT, useIsMobile } from '../lib/utils.js';
+import { euroOppure } from '../lib/vista';
+import { Check, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { PageHeader } from '../components/ds/PageHeader';
 import LinkContropartita, {
   PALETTE_CONTROPARTITA, ROTTE_CONTROPARTITA, rottaDocumentoOrigine,
@@ -140,6 +142,7 @@ export default function LibroGiornale() {
     const stornata = scrittura => scrittura.stato === 'stornato' || String(scrittura.tipo || '').startsWith('storno_');
     return { contate: tutte.filter(stornata).length, e: stornata };
   }, [giornale]);
+  const [limiteScritture, setLimiteScritture] = useState(200);
   const scrittureMostrate = React.useMemo(() => {
     const tutte = giornale?.scritture || [];
     return nascondiStornate ? tutte.filter(sc => !scritturaStornata.e(sc)) : tutte;
@@ -250,8 +253,7 @@ export default function LibroGiornale() {
     }
   };
 
-  const eur = v =>
-    (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const eur = euroOppure;
 
   const Badge = ({ ok, children }) => (
     <span style={{
@@ -342,7 +344,7 @@ export default function LibroGiornale() {
           padding: '10px 14px', background: '#fffbeb', border: '1px solid #fcd34d',
           borderRadius: 8, color: '#92400e', fontSize: 13, marginBottom: 14,
         }}>
-          ⏰ <strong>{controllo60.totale_in_ritardo} documenti oltre i 60 giorni</strong> non
+          <strong>{controllo60.totale_in_ritardo} documenti oltre i 60 giorni</strong> non
           ancora registrati in contabilità ({controllo60.fatture_non_registrate_oltre_60gg} fatture,{' '}
           {controllo60.corrispettivi_non_registrati_oltre_60gg} corrispettivi).
           Le registrazioni cronologiche vanno eseguite entro 60 giorni: {controllo60.azione}
@@ -402,15 +404,15 @@ export default function LibroGiornale() {
               </label>
             )}
             <span style={{ color: COLORS.textMuted, fontSize: 13 }}>
-              DARE € {eur(giornale?.totale_dare)} · AVERE € {eur(giornale?.totale_avere)}
+              DARE {eur(giornale?.totale_dare)} · AVERE {eur(giornale?.totale_avere)}
             </span>
             <Badge ok={giornale?.quadratura}>
-              {giornale?.quadratura ? '✓ Quadra' : '✗ Non quadra'}
+              {giornale?.quadratura ? <><Check size={12} aria-hidden /> Quadra</> : <><X size={12} aria-hidden /> Non quadra</>}
             </Badge>
           </div>
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {scrittureMostrate.map(s => (
+              {scrittureMostrate.slice(0, limiteScritture).map(s => (
                 <div
                   key={s.id}
                   ref={s.id === scritturaRichiesta ? rigaEvidenziataRef : null}
@@ -428,20 +430,20 @@ export default function LibroGiornale() {
                         n. {s.numero_registrazione}
                       </span>
                       <span style={{ marginLeft: 8, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11.5, color: '#5f5c55' }}>
-                        {s.data_documento || s.data}
+                        {formatDateIT(s.data_documento || s.data)}
                       </span>
                       <span style={{ marginLeft: 8, background: '#f2f0e9', color: '#5f5c55', padding: '2px 7px', borderRadius: 999, fontSize: 10.5, fontWeight: 600 }}>
                         {s.tipo}
                       </span>
                     </div>
-                    <span style={{ color: COLORS.textMuted, flexShrink: 0 }}>{espansa === s.id ? '▲' : '▼'}</span>
+                    <span style={{ color: COLORS.textMuted, flexShrink: 0 }}>{espansa === s.id ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}</span>
                   </div>
                   <div style={{ marginTop: 4, fontSize: 12.5, color: '#2c2b28', overflowWrap: 'anywhere' }}>
                     {s.descrizione}
                   </div>
                   <div style={{ marginTop: 6, display: 'flex', gap: 14, fontSize: 12, fontFamily: 'ui-monospace, Menlo, monospace' }}>
-                    <span style={{ color: '#16a34a', fontWeight: 700 }}>DARE € {eur(s.totale_dare)}</span>
-                    <span style={{ color: '#dc2626', fontWeight: 700 }}>AVERE € {eur(s.totale_avere)}</span>
+                    <span style={{ color: '#16a34a', fontWeight: 700 }}>DARE {eur(s.totale_dare)}</span>
+                    <span style={{ color: '#dc2626', fontWeight: 700 }}>AVERE {eur(s.totale_avere)}</span>
                   </div>
                   {espansa === s.id && (
                     <div style={{ marginTop: 8, borderTop: `1px solid ${COLORS.border}`, paddingTop: 6 }}>
@@ -462,7 +464,7 @@ export default function LibroGiornale() {
                             {r.conto_codice || r.conto} — {r.conto_nome}
                           </span>
                           <span style={{ whiteSpace: 'nowrap', fontFamily: 'ui-monospace, Menlo, monospace' }}>
-                            {r.dare ? `D € ${eur(r.dare)}` : `A € ${eur(r.avere)}`}
+                            {r.dare ? `D ${eur(r.dare)}` : `A ${eur(r.avere)}`}
                           </span>
                         </div>
                       ))}
@@ -486,7 +488,7 @@ export default function LibroGiornale() {
                 </tr>
               </thead>
               <tbody>
-                {scrittureMostrate.map(s => (
+                {scrittureMostrate.slice(0, limiteScritture).map(s => (
                   <React.Fragment key={s.id}>
                     <tr style={stileRigaScrittura(s, { borderBottom: `1px solid ${COLORS.border}`, cursor: 'pointer' })}
                       ref={s.id === scritturaRichiesta ? rigaEvidenziataRef : null}
@@ -496,10 +498,10 @@ export default function LibroGiornale() {
                       <td style={td}>{formatDateIT(s.data_documento || s.data)}</td>
                       <td style={td}>{s.tipo}</td>
                       <td style={td}>{s.descrizione}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>€ {eur(s.totale_dare)}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>€ {eur(s.totale_avere)}</td>
+                      <td style={{ ...td, textAlign: 'right' }}>{eur(s.totale_dare)}</td>
+                      <td style={{ ...td, textAlign: 'right' }}>{eur(s.totale_avere)}</td>
                       <td style={{ ...td, color: COLORS.textMuted }}>
-                        {espansa === s.id ? '▲' : '▼'}
+                        {espansa === s.id ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
                       </td>
                     </tr>
                     {espansa === s.id && rottaDocumentoOrigine(s.fonte_documento) && (
@@ -526,8 +528,8 @@ export default function LibroGiornale() {
                         <td style={td}></td>
                         <td style={td} colSpan={2}>{r.conto_codice || r.conto} — {r.conto_nome}</td>
                         <td style={td}>{r.descrizione}</td>
-                        <td style={{ ...td, textAlign: 'right' }}>{r.dare ? `€ ${eur(r.dare)}` : ''}</td>
-                        <td style={{ ...td, textAlign: 'right' }}>{r.avere ? `€ ${eur(r.avere)}` : ''}</td>
+                        <td style={{ ...td, textAlign: 'right' }}>{r.dare ? `${eur(r.dare)}` : ''}</td>
+                        <td style={{ ...td, textAlign: 'right' }}>{r.avere ? `${eur(r.avere)}` : ''}</td>
                         <td style={td}></td>
                       </tr>
                     ))}
@@ -536,6 +538,14 @@ export default function LibroGiornale() {
               </tbody>
             </table>
           </div>
+          )}
+          {scrittureMostrate.length > limiteScritture && (
+            <div style={{ textAlign: 'center', padding: 12 }}>
+              <button type="button" onClick={() => setLimiteScritture(n => n + 200)}
+                style={{ minHeight: 44, padding: '10px 18px', borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.card, cursor: 'pointer', fontWeight: 600 }}>
+                Mostra altre ({scrittureMostrate.length - limiteScritture})
+              </button>
+            </div>
           )}
           {scrittureMostrate.length === 0 && (
             <div style={{ color: COLORS.textMuted, padding: 24, textAlign: 'center' }}>
@@ -552,10 +562,10 @@ export default function LibroGiornale() {
           <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <strong style={{ color: COLORS.text }}>{mastro?.totale_conti ?? 0} mastrini</strong>
             <span style={{ color: COLORS.textMuted, fontSize: 13 }}>
-              DARE € {eur(mastro?.totale_dare)} · AVERE € {eur(mastro?.totale_avere)}
+              DARE {eur(mastro?.totale_dare)} · AVERE {eur(mastro?.totale_avere)}
             </span>
             <Badge ok={mastro?.quadratura}>
-              {mastro?.quadratura ? '✓ Quadra' : '✗ Non quadra'}
+              {mastro?.quadratura ? <><Check size={12} aria-hidden /> Quadra</> : <><X size={12} aria-hidden /> Non quadra</>}
             </Badge>
           </div>
           {isMobile ? (
@@ -586,14 +596,14 @@ export default function LibroGiornale() {
                         fontWeight: 800, fontSize: 14.5, fontFamily: 'ui-monospace, Menlo, monospace',
                         color: m.saldo >= 0 ? '#141413' : '#dc2626',
                       }}>
-                        € {eur(m.saldo)}
+                        {eur(m.saldo)}
                       </div>
                       <div style={{ fontSize: 10.5, color: COLORS.textMuted }}>{m.movimenti} righe</div>
                     </div>
                   </div>
                   <div style={{ marginTop: 6, display: 'flex', gap: 14, fontSize: 11.5, fontFamily: 'ui-monospace, Menlo, monospace' }}>
-                    <span style={{ color: '#16a34a' }}>DARE € {eur(m.dare)}</span>
-                    <span style={{ color: '#dc2626' }}>AVERE € {eur(m.avere)}</span>
+                    <span style={{ color: '#16a34a' }}>DARE {eur(m.dare)}</span>
+                    <span style={{ color: '#dc2626' }}>AVERE {eur(m.avere)}</span>
                   </div>
                 </div>
               ))}
@@ -622,12 +632,12 @@ export default function LibroGiornale() {
                         ? `${m.conto_ufficiale} — ${m.conto_ufficiale_nome || ''}`
                         : <span style={{ color: COLORS.textMuted }}>—</span>}
                     </td>
-                    <td style={{ ...td, textAlign: 'right' }}>€ {eur(m.dare)}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>€ {eur(m.avere)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{eur(m.dare)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{eur(m.avere)}</td>
                     <td style={{
                       ...td, textAlign: 'right', fontWeight: 700,
                       color: m.saldo >= 0 ? COLORS.text : COLORS.danger,
-                    }}>€ {eur(m.saldo)}</td>
+                    }}>{eur(m.saldo)}</td>
                     <td style={{ ...td, textAlign: 'right' }}>{m.movimenti}</td>
                   </tr>
                 ))}

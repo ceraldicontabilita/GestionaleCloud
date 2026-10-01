@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Printer,
 } from 'lucide-react';
+import { euroOppure } from '../lib/vista';
 
 const TIPO_COLORS = {
   attivo: { variant: 'success', label: 'Attivo' },
@@ -40,6 +41,7 @@ const GRUPPI_CONTI = {
 export default function BilancioVerifica() {
   const { anno } = useAnnoGlobale();
   const [data, setData] = useState(null);
+  const [movVisibili, setMovVisibili] = useState({});
   const [loading, setLoading] = useState(true);
   const [bvError, setBvError] = useState(false);
   const [dettaglio, setDettaglio] = useState(false);
@@ -217,22 +219,22 @@ export default function BilancioVerifica() {
         <StatCard
           accent="primary"
           label="TOTALE DARE"
-          value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.dare)}</span>}
+          value={<span style={{ fontFamily: FONT.mono }}>{euroOppure(totali.dare)}</span>}
         />
         <StatCard
           accent="primary"
           label="TOTALE AVERE"
-          value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.avere)}</span>}
+          value={<span style={{ fontFamily: FONT.mono }}>{euroOppure(totali.avere)}</span>}
         />
         <StatCard
           accent="primary"
           label="SALDO DARE"
-          value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.saldo_dare)}</span>}
+          value={<span style={{ fontFamily: FONT.mono }}>{euroOppure(totali.saldo_dare)}</span>}
         />
         <StatCard
           accent="primary"
           label="SALDO AVERE"
-          value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.saldo_avere)}</span>}
+          value={<span style={{ fontFamily: FONT.mono }}>{euroOppure(totali.saldo_avere)}</span>}
         />
         <StatCard
           accent={registroVuoto ? 'warning' : quadratura ? 'success' : 'danger'}
@@ -258,7 +260,7 @@ export default function BilancioVerifica() {
                   ? 'OK'
                   : anomalieRegistro > 0
                     ? `${anomalieRegistro} anomalie`
-                    : formatEuro(totali.sbilancio)}
+                    : euroOppure(totali.sbilancio)}
             </span>
           }
           subtext={
@@ -515,10 +517,10 @@ export default function BilancioVerifica() {
                         </Td>
                         <Td></Td>
                         <Td align="right" mono style={{ fontWeight: 600, color: COLORS.success }}>
-                          {formatEuro(gruppo.totale_dare)}
+                          {euroOppure(gruppo.totale_dare)}
                         </Td>
                         <Td align="right" mono style={{ fontWeight: 600, color: COLORS.danger }}>
-                          {formatEuro(gruppo.totale_avere)}
+                          {euroOppure(gruppo.totale_avere)}
                         </Td>
                         {showSaldi && (
                           <>
@@ -527,7 +529,7 @@ export default function BilancioVerifica() {
                               mono
                               style={{ fontWeight: 600, color: COLORS.success, background: COLORS.bgAlt }}
                             >
-                              {saldoGruppo > 0 ? formatEuro(saldoGruppo) : '-'}
+                              {saldoGruppo > 0 ? euroOppure(saldoGruppo) : '-'}
                             </Td>
                             <Td
                               align="right"
@@ -595,7 +597,7 @@ export default function BilancioVerifica() {
                                     color: conto.dare > 0 ? COLORS.success : COLORS.gray[300],
                                   }}
                                 >
-                                  {formatEuro(conto.dare)}
+                                  {euroOppure(conto.dare)}
                                 </Td>
                                 <Td
                                   align="right"
@@ -605,7 +607,7 @@ export default function BilancioVerifica() {
                                     color: conto.avere > 0 ? COLORS.danger : COLORS.gray[300],
                                   }}
                                 >
-                                  {formatEuro(conto.avere)}
+                                  {euroOppure(conto.avere)}
                                 </Td>
                                 {showSaldi && (
                                   <>
@@ -618,7 +620,7 @@ export default function BilancioVerifica() {
                                         background: COLORS.bgAlt,
                                       }}
                                     >
-                                      {conto.saldo_dare > 0 ? formatEuro(conto.saldo_dare) : '-'}
+                                      {conto.saldo_dare > 0 ? euroOppure(conto.saldo_dare) : '-'}
                                     </Td>
                                     <Td
                                       align="right"
@@ -629,7 +631,7 @@ export default function BilancioVerifica() {
                                         background: COLORS.bgAlt,
                                       }}
                                     >
-                                      {conto.saldo_avere > 0 ? formatEuro(conto.saldo_avere) : '-'}
+                                      {conto.saldo_avere > 0 ? euroOppure(conto.saldo_avere) : '-'}
                                     </Td>
                                   </>
                                 )}
@@ -642,7 +644,7 @@ export default function BilancioVerifica() {
                                     to={ROTTE_CONTROPARTITA.giornaleConto(conto.codice, anno)}
                                     compatto
                                     testId={`link-giornale-${conto.codice}`}
-                                    title={`Libro giornale ${anno} · conto ${conto.codice} ${conto.nome} · ${conto.n_movimenti} scritture · dare ${formatEuro(conto.dare)} / avere ${formatEuro(conto.avere)}`}
+                                    title={`Libro giornale ${anno} · conto ${conto.codice} ${conto.nome} · ${conto.n_movimenti} scritture · dare ${euroOppure(conto.dare)} / avere ${euroOppure(conto.avere)}`}
                                   >
                                     Giornale
                                   </LinkContropartita>
@@ -670,7 +672,7 @@ export default function BilancioVerifica() {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {conto.movimenti.map((m, mi) => (
+                                        {conto.movimenti.slice(0, movVisibili[conto.codice] || 200).map((m, mi) => (
                                           <tr key={mi} style={{ borderBottom: `1px solid ${COLORS.gray[100]}` }}>
                                             <Td style={{ padding: '3px 8px', color: COLORS.textMuted }}>
                                               {formatDateIT(m.data)}
@@ -686,14 +688,14 @@ export default function BilancioVerifica() {
                                               mono
                                               style={{ padding: '3px 8px', color: COLORS.success }}
                                             >
-                                              {m.dare > 0 ? formatEuro(m.dare) : ''}
+                                              {m.dare > 0 ? euroOppure(m.dare) : ''}
                                             </Td>
                                             <Td
                                               align="right"
                                               mono
                                               style={{ padding: '3px 8px', color: COLORS.danger }}
                                             >
-                                              {m.avere > 0 ? formatEuro(m.avere) : ''}
+                                              {m.avere > 0 ? euroOppure(m.avere) : ''}
                                             </Td>
                                             <Td style={{ padding: '3px 8px' }}>
                                               <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
@@ -727,6 +729,13 @@ export default function BilancioVerifica() {
                                         ))}
                                       </tbody>
                                     </Table>
+                                    {conto.movimenti.length > (movVisibili[conto.codice] || 200) && (
+                                      <div style={{ textAlign: 'center', padding: 8 }}>
+                                        <Button type="button" variant="secondary" size="sm" onClick={() => setMovVisibili(p => ({ ...p, [conto.codice]: (p[conto.codice] || 200) + 200 }))}>
+                                          Mostra altre ({conto.movimenti.length - (movVisibili[conto.codice] || 200)})
+                                        </Button>
+                                      </div>
+                                    )}
                                   </td>
                                 </tr>
                               )}
@@ -747,10 +756,10 @@ export default function BilancioVerifica() {
                   </td>
                   <td></td>
                   <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: FONT.mono }}>
-                    {formatEuro(data.totali.dare)}
+                    {euroOppure(data.totali.dare)}
                   </td>
                   <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: FONT.mono }}>
-                    {formatEuro(data.totali.avere)}
+                    {euroOppure(data.totali.avere)}
                   </td>
                   {showSaldi && (
                     <>
@@ -762,7 +771,7 @@ export default function BilancioVerifica() {
                           background: COLORS.primaryLight,
                         }}
                       >
-                        {formatEuro(data.totali.saldo_dare)}
+                        {euroOppure(data.totali.saldo_dare)}
                       </td>
                       <td
                         style={{
@@ -772,7 +781,7 @@ export default function BilancioVerifica() {
                           background: COLORS.primaryLight,
                         }}
                       >
-                        {formatEuro(data.totali.saldo_avere)}
+                        {euroOppure(data.totali.saldo_avere)}
                       </td>
                     </>
                   )}
@@ -808,10 +817,10 @@ export default function BilancioVerifica() {
                     {data.stato === 'REGISTRO_VUOTO'
                       ? '— REGISTRO VUOTO: nessuna scrittura in partita doppia, nessuna quadratura da verificare'
                       : data.quadratura
-                        ? '✓ Il bilancio di verifica quadra — Totale Dare = Totale Avere'
+                        ? 'Il bilancio di verifica quadra — Totale Dare = Totale Avere'
                         : data.qualita_registro && !data.qualita_registro.registro_valido
-                          ? '✗ REGISTRO NON VALIDO — verificare le anomalie prima di usare i saldi'
-                          : `✗ SBILANCIO: ${formatEuro(data.totali.sbilancio)} — Verificare le registrazioni`}
+                          ? 'REGISTRO NON VALIDO — verificare le anomalie prima di usare i saldi'
+                          : `SBILANCIO: ${euroOppure(data.totali.sbilancio)} — Verificare le registrazioni`}
                   </td>
                 </tr>
               </tfoot>

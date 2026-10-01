@@ -299,7 +299,7 @@ export default function BatchProcessor() {
   const executeTask = useCallback(
     async task => {
       setCurrentTask(task.id);
-      addLog(`▶ Avvio: ${task.name}`, 'info');
+      addLog(`Avvio: ${task.name}`, 'info');
 
       try {
         const response =
@@ -322,14 +322,14 @@ export default function BatchProcessor() {
           errorsCount: prev.errorsCount + (result.errors?.length || 0),
         }));
 
-        addLog(`✓ ${task.name}: completato`, 'success');
+        addLog(`${task.name}: completato`, 'success');
 
         // Log dettagli
-        if (result.processed) addLog(`  → Processati: ${result.processed}`, 'info');
+        if (result.processed) addLog(`  Processati: ${result.processed}`, 'info');
         if (result.fatture_create)
-          addLog(`  → Fatture create: ${result.fatture_create}`, 'success');
-        if (result.riconciliati) addLog(`  → Riconciliati: ${result.riconciliati}`, 'success');
-        if (result.errors?.length) addLog(`  → Errori: ${result?.errors?.length}`, 'warning');
+          addLog(`  Fatture create: ${result.fatture_create}`, 'success');
+        if (result.riconciliati) addLog(`  Riconciliati: ${result.riconciliati}`, 'success');
+        if (result.errors?.length) addLog(`  Errori: ${result?.errors?.length}`, 'warning');
 
         return true;
       } catch (error) {
@@ -338,7 +338,7 @@ export default function BatchProcessor() {
         const nessunaRisposta = !error.response && /timeout|ECONNABORTED/i.test(`${error.code} ${error.message}`);
         if (nessunaRisposta) {
           setTaskResults(prev => ({ ...prev, [task.id]: { success: false, pending: true } }));
-          addLog(`… ${task.name}: il server non ha risposto entro 2 minuti e potrebbe stare ancora lavorando. Ricontrolla fra poco.`, 'warning');
+          addLog(`${task.name}: il server non ha risposto entro 2 minuti e potrebbe stare ancora lavorando. Ricontrolla fra poco.`, 'warning');
           return false;
         }
         const dettaglio = error.response?.data?.detail;
@@ -350,7 +350,7 @@ export default function BatchProcessor() {
           [task.id]: { success: false, error: errorMsg },
         }));
 
-        addLog(`✗ ${task.name}: ${errorMsg}`, 'error');
+        addLog(`${task.name}: ${errorMsg}`, 'error');
 
         setStats(prev => ({
           ...prev,
@@ -381,7 +381,7 @@ export default function BatchProcessor() {
       await executeTask(task);
 
       if (task.statoEndpoint) {
-        addLog("⏳ In corso in background, verifico l'esito reale…", 'info');
+        addLog("In corso in background, verifico l'esito reale…", 'info');
         for (let tentativo = 0; tentativo < 15; tentativo++) {
           await new Promise(resolve => setTimeout(resolve, 2000));
           try {
@@ -394,14 +394,14 @@ export default function BatchProcessor() {
                     .join(', ')
                 : '';
               addLog(
-                `✓ ${task.name}: ${risultato.aggiornati ?? 0} movimenti categorizzati su ${risultato.movimenti_esaminati ?? '?'} esaminati${perCategoria ? ` (${perCategoria})` : ''}`,
+                `${task.name}: ${risultato.aggiornati ?? 0} movimenti categorizzati su ${risultato.movimenti_esaminati ?? '?'} esaminati${perCategoria ? ` (${perCategoria})` : ''}`,
                 'success'
               );
               setTaskResults(prev => ({ ...prev, [task.id]: { success: true, data: risultato } }));
               break;
             }
             if (stato?.stato === 'errore') {
-              addLog(`✗ ${task.name}: ${stato.errore || 'errore sconosciuto'}`, 'error');
+              addLog(`${task.name}: ${stato.errore || 'errore sconosciuto'}`, 'error');
               break;
             }
           } catch (e) {
@@ -426,8 +426,8 @@ export default function BatchProcessor() {
     setTaskResults({});
     setLogs([]);
 
-    addLog('🚀 Avvio elaborazione batch automatica...', 'info');
-    addLog(`📋 ${AUTO_TASKS.length} task da eseguire`, 'info');
+    addLog('Avvio elaborazione batch automatica...', 'info');
+    addLog(`${AUTO_TASKS.length} task da eseguire`, 'info');
 
     const tasksToRun = AUTO_TASKS.filter(t => t.autoRun);
 
@@ -450,7 +450,7 @@ export default function BatchProcessor() {
       lastRunTime: new Date().toISOString(),
     }));
 
-    addLog('✅ Elaborazione batch completata!', 'success');
+    addLog('Elaborazione batch completata!', 'success');
   }, [isRunning, executeTask, addLog]);
 
   // Auto-avvio al mount (solo una volta)
@@ -505,12 +505,7 @@ export default function BatchProcessor() {
       <div style={styles.container}>
         {/* Header con controlli */}
         <div style={styles.header}>
-          <div>
-            <h1 style={styles.headerTitle}>Elaborazione Batch</h1>
-            <p style={styles.headerSubtitle}>
-              Sincronizzazione automatica di tutti i flussi documentali
-            </p>
-          </div>
+          <div />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             {/* Indicatore Auto Mode */}
             <div style={styles.autoModeIndicator}>
@@ -665,6 +660,9 @@ export default function BatchProcessor() {
               logs.map((log, i) => (
                 <div key={i} style={styles.logEntry}>
                   <span style={styles.logTime}>[{log.timestamp}]</span>
+                  <span aria-hidden style={{ display: 'inline-flex', marginRight: 6, verticalAlign: '-2px' }}>
+                    {log.type === 'success' ? <CheckCircle size={13} /> : log.type === 'error' ? <XCircle size={13} /> : log.type === 'warning' ? <AlertTriangle size={13} /> : <Clock size={13} />}
+                  </span>
                   <span
                     style={
                       log.type === 'success'

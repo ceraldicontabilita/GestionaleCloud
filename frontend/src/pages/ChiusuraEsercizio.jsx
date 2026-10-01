@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
-  formatEuro,
   formatDateIT,
   COLORS,
   SHADOWS,
@@ -26,6 +25,7 @@ import {
   Unlock,
 } from 'lucide-react';
 import { PageLayout } from '../components/PageLayout';
+import { euroOppure } from '../lib/vista';
 
 const MONO = FONT.mono;
 
@@ -238,7 +238,6 @@ export default function ChiusuraEsercizio() {
   return (
     <PageLayout
       title="Chiusura Esercizio"
-      icon="📅"
       subtitle={`Wizard guidato per la chiusura annuale - Anno ${anno}`}
       actions={
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -355,7 +354,7 @@ export default function ChiusuraEsercizio() {
                   )
                 }
                 label="Risultato"
-                value={formatEuro(stato.risultato_esercizio)}
+                value={euroOppure(stato.risultato_esercizio)}
                 accent={stato.risultato_esercizio >= 0 ? 'success' : 'danger'}
                 style={{ minWidth: 200 }}
               />
@@ -589,7 +588,7 @@ export default function ChiusuraEsercizio() {
                     >
                       <span>Totale Ricavi</span>
                       <span style={{ color: COLORS.success, fontFamily: MONO }}>
-                        {formatEuro(bilancino.bilancino.ricavi.totale)}
+                        {euroOppure(bilancino.bilancino.ricavi.totale)}
                       </span>
                     </div>
                   </div>
@@ -643,7 +642,7 @@ export default function ChiusuraEsercizio() {
                     >
                       <span>Totale Costi</span>
                       <span style={{ color: COLORS.danger, fontFamily: MONO }}>
-                        {formatEuro(bilancino.bilancino.costi.totale)}
+                        {euroOppure(bilancino.bilancino.costi.totale)}
                       </span>
                     </div>
                   </div>
@@ -677,7 +676,7 @@ export default function ChiusuraEsercizio() {
                       ) : (
                         <TrendingDown size={28} />
                       )}
-                      {formatEuro(bilancino.bilancino.risultato.utile_perdita)}
+                      {euroOppure(bilancino.bilancino.risultato.utile_perdita)}
                     </div>
                     <div
                       style={{
@@ -935,7 +934,7 @@ export default function ChiusuraEsercizio() {
                           color: c.risultato_esercizio >= 0 ? COLORS.success : COLORS.danger,
                         }}
                       >
-                        {formatEuro(c.risultato_esercizio)}
+                        {euroOppure(c.risultato_esercizio)}
                       </Td>
                       <Td style={{ color: COLORS.textMuted }}>{c.note || '-'}</Td>
                     </tr>

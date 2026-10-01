@@ -28,6 +28,7 @@ from app.services.alert_engine import (
     COLL_ALERTS,
     risolvi_alert_per_id,
 )
+from app.utils.id_fattura import filtro_id, filtro_id_in
 
 logger = logging.getLogger(__name__)
 
@@ -210,11 +211,11 @@ async def quarantena_verbali_da_fattura(db) -> Dict[str, int]:
     if ids_fattura:
         proiezione_fattura = {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1}
         for fattura in await db["invoices"].find(
-            {"id": {"$in": ids_fattura}}, proiezione_fattura,
+            filtro_id_in(ids_fattura), proiezione_fattura,
         ).to_list(None):
             esistenti[str(fattura.get("id"))] = fattura
         for fattura in await db["invoices"].find(
-            {**FILTRO_FATTURA_ATTIVA, "id": {"$in": ids_fattura}}, {"_id": 0, "id": 1},
+            {**FILTRO_FATTURA_ATTIVA, **filtro_id_in(ids_fattura)}, {"_id": 0, "id": 1},
         ).to_list(None):
             attive.add(str(fattura.get("id")))
 
@@ -323,7 +324,7 @@ async def numeri_fattura_senza_spazi(db) -> Dict[str, int]:
         numero = riga.get("invoice_number")
         if not riga.get("id") or not isinstance(numero, str) or numero == numero.strip():
             continue
-        await db["invoices"].update_one({"id": riga["id"]}, {"$set": {
+        await db["invoices"].update_one(filtro_id(riga["id"]), {"$set": {
             "invoice_number": numero.strip(), "invoice_number_originale": numero,
             "numero_ripulito_at": _ora(),
         }})
@@ -387,7 +388,7 @@ async def fatture_pagate_con_assegno(db) -> Dict[str, int]:
             voce["date"].append(str(assegno["data_incasso"])[:10])
     esito = {"fatture": 0, "totale_diverso": 0}
     for fattura_id, voce in per_fattura.items():
-        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0, "id": 1, "status": 1,
+        fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0, "id": 1, "status": 1,
             "stato_import": 1, "entity_status": 1, "deleted": 1, "total_amount": 1,
             "data_pagamento": 1, **{campo: 1 for campo in CAMPI_FATTURA_PAGATA}})
         if not fattura or not fattura_attiva(fattura):
@@ -398,7 +399,7 @@ async def fatture_pagate_con_assegno(db) -> Dict[str, int]:
         atteso = {**CAMPI_FATTURA_PAGATA, "data_pagamento": max(voce["date"])}
         if all(fattura.get(k) == v for k, v in atteso.items()):
             continue
-        await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
             **atteso, "pagamento_prova": {"tipo": "assegno", "assegni": voce["assegni"]},
             "stato_allineato_banca_at": _ora(),
         }})

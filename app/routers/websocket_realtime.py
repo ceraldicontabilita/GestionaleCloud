@@ -83,8 +83,10 @@ async def calculate_live_kpi(db, anno: int) -> dict:
                         entrate_totali += importo
                     else:
                         uscite_totali += abs(importo)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "KPI live: movimenti di %s esclusi da entrate e uscite (%s: %s)",
+                    collection_name, type(exc).__name__, exc)
         
         # Conteggi
         num_fatture = await db[Collections.INVOICES].count_documents({})

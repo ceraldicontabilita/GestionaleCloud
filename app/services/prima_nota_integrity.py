@@ -365,14 +365,7 @@ def _ha_evidenza_banca(riga: Dict[str, Any]) -> bool:
     return any(riga.get(campo) not in (None, "") for campo in CAMPI_EVIDENZA_BANCA)
 
 
-def varianti_id(valore: Any) -> List[Any]:
-    """Un id di fattura storico puo' essere salvato come numero
-    (``1776634698467``) invece che come testo: il filtro li cerca tutti e due."""
-    testo = str(valore)
-    varianti: List[Any] = [testo]
-    if testo.isdigit():
-        varianti.append(int(testo))
-    return varianti
+from app.utils.id_fattura import varianti_id  # noqa: E402,F401
 
 
 async def assorbi_righe_dichiarate(

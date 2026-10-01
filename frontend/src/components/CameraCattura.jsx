@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { COLORS, BORDER_RADIUS } from '../lib/utils';
+import { Camera } from 'lucide-react';
 import { Button } from './ds';
 
 /**
@@ -93,7 +94,7 @@ export default function CameraCattura({ onCattura, onChiudi }) {
           <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
             <Button variant="secondary" onClick={chiudi}>Annulla</Button>
             <Button variant="primary" onClick={scatta} disabled={!pronta} data-testid="camera-scatta">
-              📷 Scatta
+              <Camera size={18} aria-hidden style={{ marginRight: 6 }} /> Scatta
             </Button>
           </div>
         </>

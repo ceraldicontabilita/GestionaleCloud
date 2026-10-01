@@ -50,6 +50,7 @@ from app.services.prima_nota_integrity import (
     SOURCES_NON_PAGAMENTO,
     fatture_senza_pagamento_contabile_confermato,
 )
+from app.utils.id_fattura import filtro_id, filtro_id_in
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +250,7 @@ async def _storna_cassa_provvisoria(db, fattura: Dict[str, Any], metodo: str) ->
                     if fattura.get(c) in ids}
         if scollega:
             await db["invoices"].update_one(
-                {"id": fattura["id"]},
+                filtro_id(fattura["id"]),
                 {"$unset": {**scollega, "prima_nota_tipo": ""}},
             )
     return len(righe)
@@ -300,7 +301,7 @@ async def dichiara_pagamento_banca(
     if esito.get("gia_provata"):
         # Il pagamento e' gia' in banca con il movimento dell'estratto conto:
         # la dichiarazione e' confermata, la riga provata non si tocca.
-        await db["invoices"].update_one({"id": fattura["id"]}, {"$set": {
+        await db["invoices"].update_one(filtro_id(fattura["id"]), {"$set": {
             "metodo_pagamento_dichiarato": metodo,
             "pagamento_dichiarato_titolare": True,
             "in_attesa_riscontro_banca": False,
@@ -328,7 +329,7 @@ async def dichiara_pagamento_banca(
         "motivo_provvisorio": "dichiarata_dal_titolare_in_attesa_estratto_conto",
         "updated_at": _oggi(),
     }})
-    await db["invoices"].update_one({"id": fattura["id"]}, {"$set": {
+    await db["invoices"].update_one(filtro_id(fattura["id"]), {"$set": {
         "pagato": True,
         "paid": True,
         "stato_pagamento": "pagata",
@@ -371,7 +372,7 @@ async def ritira_dichiarazione_banca(db, fattura_id: str, *, motivo: str) -> boo
     """
     from app.services.prima_nota_integrity import CAMPO_RIGA_DICHIARATA
 
-    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
     if not fattura or not fattura.get("pagamento_dichiarato_titolare"):
         return False
     if not fattura.get("in_attesa_riscontro_banca"):
@@ -387,7 +388,7 @@ async def ritira_dichiarazione_banca(db, fattura_id: str, *, motivo: str) -> boo
                 "status": "deleted", "motivo_eliminazione": motivo,
                 "eliminato_da": ATTORE, "eliminato_il": now, "updated_at": now,
             }})
-    await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+    await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
         "pagato": False, "paid": False,
         "stato_pagamento": "non_pagata", "payment_status": "unpaid",
         "stato_finanziario": None,
@@ -556,7 +557,7 @@ async def _paga_con_assegni(
             for f, riga in membri:
                 await _storna_cassa_provvisoria(db, f, "assegno")
             completi = [
-                await db["invoices"].find_one({"id": f["id"]}, _PROIEZIONE) for f, _ in membri
+                await db["invoices"].find_one(filtro_id(f["id"]), _PROIEZIONE) for f, _ in membri
             ]
             from app.services.assegni_estratto_conto import collega_assegno_riconciliato_a_fatture
 
@@ -637,10 +638,10 @@ async def applica_pagamenti_dichiarati(
         risultato["fornitori"] = await _aggiorna_fornitori(db, righe, dry_run=dry_run)
 
     ids = [r["invoice_id"] for r in righe if r.get("invoice_id")]
-    fatture = await db["invoices"].find({"id": {"$in": ids}}, _PROIEZIONE).to_list(len(ids) or 1)
-    per_id = {f["id"]: f for f in fatture}
+    fatture = await db["invoices"].find(filtro_id_in(ids), _PROIEZIONE).to_list(len(ids) or 1)
+    per_id = {str(f["id"]): f for f in fatture}
     aperte = {
-        f["id"]: f for f in await fatture_senza_pagamento_contabile_confermato(db, fatture)
+        str(f["id"]): f for f in await fatture_senza_pagamento_contabile_confermato(db, fatture)
     }
 
     conteggi: Dict[str, int] = defaultdict(int)
@@ -675,7 +676,7 @@ async def applica_pagamenti_dichiarati(
             if not dry_run:
                 await _salva_esito(db, riga, "non_pagata")
             continue
-        fattura_id = riga.get("invoice_id")
+        fattura_id = str(riga.get("invoice_id") or "")
         if not fattura_id or fattura_id not in per_id:
             annota(riga, "fattura_non_ancora_arrivata", motivo="XML non ancora nel gestionale")
             if not dry_run:
@@ -711,7 +712,7 @@ async def applica_pagamenti_dichiarati(
                    motivo="pagata con SumUp: scegli tu Cassa o Banca in Provvisoria")
             if not dry_run:
                 await _storna_cassa_provvisoria(db, fattura, "sumup")
-                await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+                await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
                     "metodo_pagamento_dichiarato": "sumup",
                     "metodo_pagamento_override_source": ATTORE,
                 }})
@@ -807,11 +808,11 @@ async def _ricontrolla_attese(db, righe: List[Dict[str, Any]], risultato: Dict[s
     if not in_attesa:
         return
     ids = [r["invoice_id"] for r in in_attesa]
-    fatture = await db["invoices"].find({"id": {"$in": ids}}, _PROIEZIONE).to_list(len(ids))
-    ancora_aperte = {f["id"] for f in await fatture_senza_pagamento_contabile_confermato(db, fatture)}
+    fatture = await db["invoices"].find(filtro_id_in(ids), _PROIEZIONE).to_list(len(ids))
+    ancora_aperte = {str(f["id"]) for f in await fatture_senza_pagamento_contabile_confermato(db, fatture)}
     chiuse = 0
     for riga in in_attesa:
-        if riga["invoice_id"] not in ancora_aperte:
+        if str(riga["invoice_id"]) not in ancora_aperte:
             chiuse += 1
             await _salva_esito(db, riga, "registrata",
                                metodo=(riga.get("pagamento_applicato") or {}).get("metodo"),

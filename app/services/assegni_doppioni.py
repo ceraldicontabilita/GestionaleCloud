@@ -22,6 +22,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.doppioni_archivio import _ricollega, centesimi, sposta_nella_cartella
+from app.utils.id_fattura import filtro_id
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ async def _cedi_fatture(db, resta: Dict[str, Any], copia: Dict[str, Any]) -> boo
     ) if copia.get(k) not in (None, "", [])}
     await db[COLL].update_one({"id": resta["id"]}, {"$set": campi})
     for fid in _fatture(copia):
-        inv = await db["invoices"].find_one({"id": fid}, {"_id": 0, "assegni_collegati": 1})
+        inv = await db["invoices"].find_one(filtro_id(fid), {"_id": 0, "assegni_collegati": 1})
         links = (inv or {}).get("assegni_collegati") or []
         nuovi, cambiato = [], False
         for link in links:
@@ -111,7 +112,7 @@ async def _cedi_fatture(db, resta: Dict[str, Any], copia: Dict[str, Any]) -> boo
                 cambiato = True
             nuovi.append(link)
         if cambiato:
-            await db["invoices"].update_one({"id": fid}, {"$set": {"assegni_collegati": nuovi}})
+            await db["invoices"].update_one(filtro_id(fid), {"$set": {"assegni_collegati": nuovi}})
     return True
 
 

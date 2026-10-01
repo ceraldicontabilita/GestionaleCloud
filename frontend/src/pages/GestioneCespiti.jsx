@@ -29,7 +29,8 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { formatEuro, formatDateIT, useIsMobile } from '../lib/utils';
+import { formatDateIT, useIsMobile } from '../lib/utils';
+import { euroOppure } from '../lib/vista';
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -150,6 +151,7 @@ const styles = {
 
 export default function GestioneCespiti() {
   const isMobile = useIsMobile();
+  const [limiteCespiti, setLimiteCespiti] = useState(200);
   const { anno } = useAnnoGlobale();
   const confirm = useConfirm();
   // URL Tab Support
@@ -341,13 +343,13 @@ export default function GestioneCespiti() {
       const fineEsercizio = new Date(Number(anno), 11, 31, 0, 0, 0);
       if (oggi < fineEsercizio) {
         toast.info(
-          `Anteprima ${anno}: ${preview.data.num_cespiti} cespiti, ${formatEuro(preview.data.totale_ammortamenti)}. Registrazione definitiva dal 31/12/${anno}.`
+          `Anteprima ${anno}: ${preview.data.num_cespiti} cespiti, ${euroOppure(preview.data.totale_ammortamenti)}. Registrazione definitiva dal 31/12/${anno}.`
         );
         return;
       }
       const ok = await confirm({
         title: `Registra ammortamenti ${anno}`,
-        message: `Registrare definitivamente ${preview.data.num_cespiti} quote per ${formatEuro(preview.data.totale_ammortamenti)}?`,
+        message: `Registrare definitivamente ${preview.data.num_cespiti} quote per ${euroOppure(preview.data.totale_ammortamenti)}?`,
         variant: 'danger',
       });
       if (!ok) return;
@@ -371,7 +373,7 @@ export default function GestioneCespiti() {
       }
       const ok = await confirm({
         title: 'Importa proposte da fatture XML',
-        message: `${preview.data.num_potenziali_cespiti} proposte per ${formatEuro(preview.data.valore_totale)}. Saranno inserite come da verificare, senza ammortamento automatico.`,
+        message: `${preview.data.num_potenziali_cespiti} proposte per ${euroOppure(preview.data.valore_totale)}. Saranno inserite come da verificare, senza ammortamento automatico.`,
       });
       if (!ok) return;
       const r = await api.post('/api/cespiti/scan-fatture?soglia_valore=200&dry_run=false');
@@ -455,7 +457,7 @@ export default function GestioneCespiti() {
       : '-';
 
   return (
-    <PageLayout>
+    <PageLayout title="Cespiti">
       {errorePagina && (
         <div role="alert" style={{ ...styles.urgentBox, color: '#991b1b' }}>
           <strong>Errore di caricamento:</strong> {errorePagina}
@@ -683,7 +685,7 @@ export default function GestioneCespiti() {
                 </div>
               ) : isMobile ? (
                 <div data-testid="cespiti-mobile-cards" style={{ display: 'grid', gap: 8 }}>
-                  {cespiti.map(c => (
+                  {cespiti.slice(0, limiteCespiti).map(c => (
                     <div
                       key={c.id}
                       style={{ border: '1px solid #e6e3d9', borderRadius: 8, padding: 10 }}
@@ -783,7 +785,7 @@ export default function GestioneCespiti() {
                       </tr>
                     </thead>
                     <tbody>
-                      {cespiti.map(c => (
+                      {cespiti.slice(0, limiteCespiti).map(c => (
                         <tr key={c.id}>
                           {editingCespite === c.id ? (
                             <>
@@ -910,6 +912,13 @@ export default function GestioneCespiti() {
                   </table>
                 </div>
               )}
+              {cespiti.length > limiteCespiti && (
+                <div style={{ textAlign: 'center', padding: 12 }}>
+                  <Button type="button" variant="outline" onClick={() => setLimiteCespiti(n => n + 200)}>
+                    Mostra altre ({cespiti.length - limiteCespiti})
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </TabsContent>
@@ -1012,7 +1021,7 @@ export default function GestioneCespiti() {
                                           <td style={styles.td}>{a.periodo}</td>
                                           <td style={styles.tdRight}>{fmt(a.quota_mese)}</td>
                                           <td style={styles.tdRight}>
-                                            {fmt(a.rivalutazione || 0)}
+                                            {fmt(a.rivalutazione)}
                                           </td>
                                         </tr>
                                       ))}

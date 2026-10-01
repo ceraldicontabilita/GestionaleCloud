@@ -4,6 +4,7 @@
  */
 import React, { useState } from 'react';
 import { useUpload } from '../contexts/UploadContext';
+import { CheckCircle2, ChevronDown, ChevronUp, Clock, FileText, LoaderCircle, Settings, Upload, X, XCircle, TriangleAlert } from 'lucide-react';
 import { Button } from './ds';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 
@@ -51,7 +52,7 @@ export function UploadStatusBar() {
             animation: hasActiveUploads ? 'pulse 2s infinite' : 'none',
           }}
         >
-          {hasActiveUploads ? '⏳' : completedUploads.length > 0 ? '✓' : '!'}
+          {hasActiveUploads ? <LoaderCircle size={20} aria-label="Upload in corso" /> : completedUploads.length > 0 ? <CheckCircle2 size={20} aria-label="Upload completati" /> : <TriangleAlert size={20} aria-label="Upload con errori" />}
           <span
             style={{
               position: 'absolute',
@@ -118,7 +119,7 @@ export function UploadStatusBar() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 16 }}>{hasActiveUploads ? '⏳' : '📤'}</span>
+          <span style={{ fontSize: 16 }}>{hasActiveUploads ? <LoaderCircle size={16} aria-hidden /> : <Upload size={16} aria-hidden />}</span>
           <span style={{ fontWeight: 600, fontSize: 14 }}>
             {hasActiveUploads
               ? `Upload in corso (${activeUploads.length})`
@@ -137,7 +138,7 @@ export function UploadStatusBar() {
               fontSize: 12,
             }}
           >
-            {expanded ? '▼' : '▲'}
+            {expanded ? <ChevronDown size={16} aria-label="Riduci" /> : <ChevronUp size={16} aria-label="Espandi" />}
           </Button>
           <Button
             variant="ghost"
@@ -212,7 +213,7 @@ export function UploadStatusBar() {
                       padding: 4,
                     }}
                   >
-                    ✕
+                    <X size={16} aria-label="Rimuovi" />
                   </Button>
                 )}
               </div>
@@ -313,17 +314,17 @@ export function UploadStatusBar() {
 function getStatusIcon(status) {
   switch (status) {
     case 'pending':
-      return '⏸️';
+      return <Clock size={16} aria-hidden />;
     case 'uploading':
-      return '⏳';
+      return <LoaderCircle size={16} aria-hidden />;
     case 'processing':
-      return '⚙️';
+      return <Settings size={16} aria-hidden />;
     case 'completed':
-      return '✅';
+      return <CheckCircle2 size={16} aria-hidden color={COLORS.success} />;
     case 'error':
-      return '❌';
+      return <XCircle size={16} aria-hidden color={COLORS.danger} />;
     default:
-      return '📄';
+      return <FileText size={16} aria-hidden />;
   }
 }
 

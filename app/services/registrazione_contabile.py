@@ -27,11 +27,13 @@ via import pigro per evitare import circolari.
 import asyncio
 import logging
 import uuid
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.services.conto_economico_gestionale import FILTRO_CORRISPETTIVI_VALIDI
+from app.utils.id_fattura import filtro_id
 
 logger = logging.getLogger(__name__)
 
@@ -210,24 +212,45 @@ async def _audit(db, azione: str, entita_id: str, dettaglio: str) -> None:
         logger.warning("[RegistrazioneContabile] audit della registrazione non scritto: %s", exc)
 
 
-_TOLLERANZA_QUADRATURA = 0.01
+_CENTESIMO = Decimal("0.01")
+_TOLLERANZA_QUADRATURA = _CENTESIMO
 
 
 class ScritturaNonQuadrata(ValueError):
     """Scrittura con DARE diverso da AVERE: non si salva (CLAUDE.md)."""
 
 
-def totali_righe(righe: list) -> "tuple[float, float]":
-    """Totali DARE e AVERE sommati dalle RIGHE (non dai campi di testata,
-    che un chiamante potrebbe aver calcolato a parte)."""
-    dare = round(sum(float(r.get("dare") or 0) for r in righe or []), 2)
-    avere = round(sum(float(r.get("avere") or 0) for r in righe or []), 2)
+def _decimale(valore: Any) -> Decimal:
+    """Un importo al centesimo, via testo: mai la rappresentazione binaria."""
+    try:
+        return Decimal(str(valore or 0)).quantize(_CENTESIMO, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return Decimal("0.00")
+
+
+def totali_decimali(righe: list) -> "tuple[Decimal, Decimal]":
+    """Totali DARE e AVERE sommati dalle RIGHE, ogni importo arrotondato al
+    centesimo prima di sommare."""
+    dare = sum((_decimale(r.get("dare")) for r in righe or []), Decimal("0.00"))
+    avere = sum((_decimale(r.get("avere")) for r in righe or []), Decimal("0.00"))
     return dare, avere
 
 
+def totali_righe(righe: list) -> "tuple[float, float]":
+    """Totali DARE e AVERE sommati dalle RIGHE (non dai campi di testata,
+    che un chiamante potrebbe aver calcolato a parte)."""
+    dare, avere = totali_decimali(righe)
+    return float(dare), float(avere)
+
+
+def differenza_ammessa(dare: Decimal, avere: Decimal) -> bool:
+    """Scarto fra DARE e AVERE entro un centesimo (arrotondamenti per aliquota), in Decimal."""
+    return abs(dare - avere) <= _TOLLERANZA_QUADRATURA
+
+
 def scrittura_quadrata(righe: list) -> bool:
-    dare, avere = totali_righe(righe)
-    return bool(righe) and abs(round(dare - avere, 2)) <= _TOLLERANZA_QUADRATURA
+    dare, avere = totali_decimali(righe)
+    return bool(righe) and differenza_ammessa(dare, avere)
 
 
 async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[str, Any]:
@@ -512,8 +535,8 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     # documento. Se i due lati non tornano (bollo, arrotondamenti, righe
     # escluse dall'imponibile) la scrittura NON si salva: resta da verificare
     # col motivo scritto, mai quadrata d'ufficio.
-    tot_dare, tot_avere = totali_righe(righe)
-    if abs(round(tot_dare - tot_avere, 2)) > _TOLLERANZA_QUADRATURA:
+    tot_dare, tot_avere = totali_decimali(righe)
+    if not differenza_ammessa(tot_dare, tot_avere):
         return {
             "stato": "da_verificare",
             "motivo": (
@@ -1212,7 +1235,7 @@ async def _annota_esito(db, collezione: str, doc_id: Any, esito: Dict[str, Any])
                        collezione, doc_id, stato, esito.get("motivo"))
         try:
             await db[collezione].update_one(
-                {"id": doc_id},
+                filtro_id(doc_id) if collezione == "invoices" else {"id": doc_id},
                 {"$set": {"registrazione_contabile_esito": {
                     "stato": stato, "motivo": esito.get("motivo"), "at": _now(),
                 }}},
@@ -1316,9 +1339,8 @@ async def registra_scrittura_semplice(db, movimento: Dict[str, Any],
     if esistente:
         return {"id": esistente["id"], "gia_presente": True}
 
-    tot_dare = round(sum(float(r.get("dare", 0) or 0) for r in righe), 2)
-    tot_avere = round(sum(float(r.get("avere", 0) or 0) for r in righe), 2)
-    if abs(tot_dare - tot_avere) > 0.01:
+    tot_dare, tot_avere = totali_decimali(righe)
+    if not differenza_ammessa(tot_dare, tot_avere):
         raise ValueError(
             f"Scrittura non bilanciata: DARE {tot_dare} != AVERE {tot_avere}")
 

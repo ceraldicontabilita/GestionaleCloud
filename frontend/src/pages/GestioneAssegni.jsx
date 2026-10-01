@@ -13,6 +13,12 @@ import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, R
 import { ePagata } from '../utils/statoFattura';
 import CarnetAssegni from '../components/assegni/CarnetAssegni';
 import CameraCattura from '../components/CameraCattura';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { euroOppure } from '../lib/vista';
+import { useScegliOpzione } from '../components/ScegliOpzione';
+import { BookOpen, CircleHelp, Bot, Brain, Building2, Camera, ChevronDown, ChevronUp, Circle, ChartColumn, Check, ClipboardList, Eye, FileText, Hourglass, Image as ImageIcon, Info, Landmark, Pencil, Printer, RefreshCw, Search, Settings, Trash2, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
+
+const ICO = { verticalAlign: '-2px', flexShrink: 0 };
 
 // Fornitori mai pagabili con assegno (dettato utente 18/07/2026): arrivano
 // su carta di credito o addebito bancario, al limite bonifico — mai assegno.
@@ -184,8 +190,12 @@ export default function GestioneAssegni() {
 
   // Responsive (telefono/tablet)
   const isMobile = useIsMobile();
+  const [scegli, dialogoScelta] = useScegliOpzione();
+  const [fotoAperta, setFotoAperta] = useState(null);
+  const [limiteAmbigui, setLimiteAmbigui] = useState(200);
+  const [limiteFatture, setLimiteFatture] = useState(200);
 
-  // Menu "⚙️ Altro" (azioni secondarie consolidate)
+  // Menu " Altro" (azioni secondarie consolidate)
   const [showAltroMenu, setShowAltroMenu] = useState(false);
   const altroMenuRef = useRef(null);
   useEffect(() => {
@@ -654,12 +664,21 @@ export default function GestioneAssegni() {
   };
 
   const handleStorna = async assegno => {
-    const motivo = window.prompt(
-      `Motivo dello storno per l’assegno ${assegno.numero || ''} (obbligatorio):`,
-    );
-    if (!motivo?.trim()) return;
+    const scelta = await scegli({
+      titolo: `Motivo dello storno per l’assegno ${assegno.numero || ''}`,
+      opzioni: [
+        { valore: 'importo_errato', etichetta: 'Importo errato' },
+        { valore: 'beneficiario_errato', etichetta: 'Beneficiario errato' },
+        { valore: 'emesso_per_errore', etichetta: 'Emesso per errore' },
+        { valore: 'restituito', etichetta: 'Restituito dal beneficiario' },
+        { valore: 'smarrito', etichetta: 'Smarrito o distrutto' },
+      ],
+      altro: 'Scrivi il motivo',
+      conferma: 'Storna assegno',
+    });
+    if (!scelta?.testo) return;
     try {
-      await api.post(`/api/assegni/${assegno.id}/storna`, { motivo: motivo.trim() });
+      await api.post(`/api/assegni/${assegno.id}/storna`, { motivo: scelta.testo });
       toast.success('Assegno stornato: nessun pagamento è stato registrato.');
       await loadData();
     } catch (error) {
@@ -1374,7 +1393,7 @@ export default function GestioneAssegni() {
     setSelectedAssegni(new Set());
   };
 
-  // Stile voce del menu "⚙️ Altro" (pattern dropdown TopNav)
+  // Stile voce del menu " Altro" (pattern dropdown TopNav)
   const menuItemStyle = {
     justifyContent: 'flex-start',
     gap: 8,
@@ -1396,7 +1415,7 @@ export default function GestioneAssegni() {
         overflowX: 'hidden',
       }}
     >
-      {/* Action Bar consolidata: 3 azioni principali + menu "⚙️ Altro" */}
+      {/* Action Bar consolidata: 3 azioni principali + menu " Altro" */}
       <div
         style={{
           display: 'flex',
@@ -1425,7 +1444,7 @@ export default function GestioneAssegni() {
           title="Rilegge l'estratto conto e collega automaticamente solo fatture univoche al centesimo"
           style={{ boxShadow: SHADOWS.sm }}
         >
-          {autoAssociating ? 'Riprocessamento…' : '↻ Riprocessa collegamenti'}
+          {autoAssociating ? 'Riprocessamento…' : 'Riprocessa collegamenti'}
         </Button>
 
         <Button
@@ -1434,7 +1453,7 @@ export default function GestioneAssegni() {
           onClick={() => setShowFilters(!showFilters)}
           data-testid="toggle-filters-btn"
         >
-          🔍 Filtri{' '}
+          <Search size={14} aria-hidden="true" style={ICO} /> Filtri{' '}
           {(filterFornitore ||
             filterImportoMin ||
             filterImportoMax ||
@@ -1443,7 +1462,7 @@ export default function GestioneAssegni() {
             '●'}
         </Button>
 
-        {/* Menu "⚙️ Altro": tutte le azioni secondarie consolidate qui */}
+        {/* Menu " Altro": tutte le azioni secondarie consolidate qui */}
         <div ref={altroMenuRef} style={{ position: 'relative' }}>
           <Button
             variant={showAltroMenu ? 'primary' : 'secondary'}
@@ -1452,7 +1471,7 @@ export default function GestioneAssegni() {
             aria-expanded={showAltroMenu}
             data-testid="altro-menu-btn"
           >
-            ⚙️ Altro {showAltroMenu ? '▴' : '▾'}
+            <Settings size={14} aria-hidden="true" style={ICO} /> Altro {showAltroMenu ? <ChevronUp size={14} aria-hidden="true" style={ICO} /> : <ChevronDown size={14} aria-hidden="true" style={ICO} />}
           </Button>
           {showAltroMenu && (
             <div
@@ -1482,7 +1501,7 @@ export default function GestioneAssegni() {
                 data-testid="auto-associa-btn"
                 style={menuItemStyle}
               >
-                ↻ {autoAssociating ? 'Riprocessamento…' : 'Riprocessa storico'}
+                <RefreshCw size={14} aria-hidden="true" style={ICO} /> {autoAssociating ? 'Riprocessamento…' : 'Riprocessa storico'}
               </Button>
               <Button
                 variant="ghost"
@@ -1495,7 +1514,7 @@ export default function GestioneAssegni() {
                 title="Anteprima: mostra cosa collegherebbe senza scrivere sul DB"
                 style={menuItemStyle}
               >
-                👁️ Anteprima auto-match
+                <Eye size={14} aria-hidden="true" style={ICO} /> Anteprima auto-match
               </Button>
               <Button
                 variant="ghost"
@@ -1510,7 +1529,7 @@ export default function GestioneAssegni() {
                   color: selectedAssegni.size === 0 ? COLORS.textSubtle : COLORS.gray[700],
                 }}
               >
-                🖨️ Stampa Selezionati
+                <Printer size={14} aria-hidden="true" style={ICO} /> Stampa Selezionati
                 {selectedAssegni.size > 0 ? ` (${selectedAssegni.size})` : ''}
               </Button>
               <div style={{ height: 1, background: COLORS.border, margin: '6px 0' }} />
@@ -1525,7 +1544,7 @@ export default function GestioneAssegni() {
                 title="Apprende dai dati esistenti per migliorare le associazioni future"
                 style={menuItemStyle}
               >
-                🧠 {learningLoading ? 'Learning...' : 'Learn'}
+                <Brain size={14} aria-hidden="true" style={ICO} /> {learningLoading ? 'Learning...' : 'Learn'}
               </Button>
               <Button
                 variant="ghost"
@@ -1536,7 +1555,7 @@ export default function GestioneAssegni() {
                 data-testid="ambigui-toggle"
                 style={menuItemStyle}
               >
-                {ambiguiOpen ? '✕ Chiudi proposte fatture' : '📄 Verifica proposte fatture'}
+                {ambiguiOpen ? 'Chiudi proposte fatture' : 'Verifica proposte fatture'}
               </Button>
               <Link
                 to="/learning-machine?tab=assegni"
@@ -1544,7 +1563,7 @@ export default function GestioneAssegni() {
                 title="Dashboard Learning Machine completa"
                 style={{ ...menuItemStyle, display: 'flex', alignItems: 'center', textDecoration: 'none' }}
               >
-                📊 Dashboard Learning
+                <ChartColumn size={14} aria-hidden="true" style={ICO} /> Dashboard Learning
               </Link>
               <div style={{ height: 1, background: COLORS.border, margin: '6px 0' }} />
               <Button
@@ -1556,7 +1575,7 @@ export default function GestioneAssegni() {
                 data-testid="svuota-btn"
                 style={{ ...menuItemStyle, color: COLORS.danger }}
               >
-                🗑️ Svuota (assegni vuoti)
+                <Trash2 size={14} aria-hidden="true" style={ICO} /> Svuota (assegni vuoti)
               </Button>
             </div>
           )}
@@ -1593,7 +1612,7 @@ export default function GestioneAssegni() {
           >
             <div>
               <strong style={{ color: COLORS.warning, fontSize: 14 }}>
-                ⚠ Assegni ambigui — serve la tua decisione
+                <TriangleAlert size={14} aria-hidden="true" style={ICO} /> Assegni ambigui — serve la tua decisione
               </strong>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: COLORS.warning }}>
                 Questi assegni hanno fatture o rate candidate, ma manca una prova sufficiente
@@ -1607,7 +1626,7 @@ export default function GestioneAssegni() {
               disabled={ambiguiLoading}
               style={{ borderColor: COLORS.warning, color: COLORS.warning }}
             >
-              {ambiguiLoading ? '⏳ Aggiorno…' : '↻ Ricarica'}
+              {ambiguiLoading ? 'Aggiorno…' : 'Ricarica'}
             </Button>
           </div>
 
@@ -1617,12 +1636,12 @@ export default function GestioneAssegni() {
 
           {!ambiguiLoading && ambiguiList.length === 0 && (
             <div style={{ padding: 20, textAlign: 'center', color: COLORS.success, fontSize: 14 }}>
-              ✅ Nessun assegno ambiguo da risolvere.
+              <Check size={14} aria-hidden="true" style={ICO} /> Nessun assegno ambiguo da risolvere.
             </div>
           )}
 
           {!ambiguiLoading &&
-            ambiguiList.map(a => (
+            ambiguiList.slice(0, limiteAmbigui).map(a => (
               <div
                 key={a.assegno_id}
                 data-testid={`ambiguo-${a.assegno_id}`}
@@ -1668,7 +1687,7 @@ export default function GestioneAssegni() {
                     disabled={ambiguiResolving[a.assegno_id]}
                     data-testid={`risolvi-${a.assegno_id}`}
                   >
-                    {ambiguiResolving[a.assegno_id] ? '⏳ …' : '✓ Collega selezionati'}
+                    {ambiguiResolving[a.assegno_id] ? '…' : 'Collega selezionati'}
                   </Button>
                 </div>
                 {/* Candidate fatture */}
@@ -1745,7 +1764,7 @@ export default function GestioneAssegni() {
                           )}
                         </span>
                         <span style={{ fontFamily: 'monospace', color: COLORS.text }}>
-                          € {(c.importo_residuo ?? c.importo_totale ?? 0).toFixed(2)}
+                          {euroOppure(c.importo_residuo ?? c.importo_totale)}
                         </span>
                         {c.fattura_id && (
                           <Button
@@ -1758,7 +1777,7 @@ export default function GestioneAssegni() {
                             }}
                             style={{ padding: '2px 7px', fontSize: 10 }}
                           >
-                            📄 Vedi
+                            <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
                           </Button>
                         )}
                         {c.payment_status === 'partial' && (
@@ -1772,6 +1791,11 @@ export default function GestioneAssegni() {
                 </div>
               </div>
             ))}
+          {!ambiguiLoading && ambiguiList.length > limiteAmbigui && (
+            <Button variant="secondary" onClick={() => setLimiteAmbigui(x => x + 200)} style={{ minHeight: 44, margin: '8px 0' }}>
+              Mostra altre ({ambiguiList.length - limiteAmbigui})
+            </Button>
+          )}
         </div>
       )}
 
@@ -1786,7 +1810,7 @@ export default function GestioneAssegni() {
           }}
         >
           <StatCard
-            icon="📊"
+            icon={<ChartColumn size={16} aria-hidden="true" />}
             label="Salute assegni emessi"
             value={
               Number.isFinite(Number(statsAvanzate.health_score))
@@ -1805,7 +1829,7 @@ export default function GestioneAssegni() {
           />
 
           <StatCard
-            icon="✅"
+            icon={<Check size={16} aria-hidden="true" />}
             label="Con Beneficiario"
             value={
               Number.isFinite(Number(statsAvanzate.con_beneficiario))
@@ -1817,7 +1841,7 @@ export default function GestioneAssegni() {
           />
 
           <StatCard
-            icon="📒"
+            icon={<BookOpen size={16} aria-hidden="true" />}
             label="Fogli carnet vuoti"
             value={statsAvanzate.carnet_vuoti || 0}
             subtext="Esclusi dagli indicatori"
@@ -1825,19 +1849,19 @@ export default function GestioneAssegni() {
           />
 
           <StatCard
-            icon="📄"
+            icon={<FileText size={16} aria-hidden="true" />}
             label="Con Fattura"
             value={`${statsAvanzate.con_fattura}/${statsAvanzate.totale_assegni}`}
             accent="info"
           />
 
           {statsAvanzate.duplicati > 0 && (
-            <StatCard icon="⚠️" label="Duplicati" value={statsAvanzate.duplicati} accent="danger" />
+            <StatCard icon={<TriangleAlert size={16} aria-hidden="true" />} label="Duplicati" value={statsAvanzate.duplicati} accent="danger" />
           )}
 
           {statsAvanzate.senza_beneficiario > 0 && (
             <StatCard
-              icon="❓"
+              icon={<CircleHelp size={16} aria-hidden="true" />}
               label="Da Associare"
               value={statsAvanzate.senza_beneficiario}
               accent="warning"
@@ -1856,7 +1880,7 @@ export default function GestioneAssegni() {
                 onClick={() => setFilterSoloDaAssociare(false)}
                 style={{ borderColor: COLORS.warning, color: COLORS.warning }}
               >
-                ✕ Mostra tutti
+                <X size={14} aria-hidden="true" style={ICO} /> Mostra tutti
               </Button>
             </div>
           )}
@@ -1879,7 +1903,7 @@ export default function GestioneAssegni() {
           >
             <div>
               <strong style={{ color: COLORS.success, fontSize: 14 }}>
-                🧠 Learning Completato: {learningResult.pattern_appresi} pattern appresi da{' '}
+                <Brain size={14} aria-hidden="true" style={ICO} /> Learning Completato: {learningResult.pattern_appresi} pattern appresi da{' '}
                 {learningResult.assegni_analizzati} assegni
               </strong>
               {learningResult.dettagli && learningResult.dettagli.length > 0 && (
@@ -1901,7 +1925,7 @@ export default function GestioneAssegni() {
               aria-label="Chiudi"
               style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
             >
-              ✕
+              <X size={14} aria-hidden="true" style={ICO} />
             </Button>
           </div>
         </div>
@@ -1942,7 +1966,7 @@ export default function GestioneAssegni() {
               fontSize: 20,
             }}
           >
-            ✕
+            <X size={14} aria-hidden="true" style={ICO} />
           </Button>
           <div
             style={{
@@ -2105,20 +2129,20 @@ export default function GestioneAssegni() {
           >
             <div style={{ flex: 1 }}>
               <strong style={{ color: COLORS.success, fontSize: 14 }}>
-                🤖 Auto-Match {autoAssocResult._dry_run ? '(ANTEPRIMA)' : 'completato'}
+                <Bot size={14} aria-hidden="true" style={ICO} /> Auto-Match {autoAssocResult._dry_run ? '(ANTEPRIMA)' : 'completato'}
               </strong>
               <div
                 style={{ marginTop: 8, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 12 }}
               >
                 <span>
-                  📋 Assegni processati: <strong>{autoAssocResult.assegni_processati ?? 0}</strong>
+                  <ClipboardList size={14} aria-hidden="true" style={ICO} /> Assegni processati: <strong>{autoAssocResult.assegni_processati ?? 0}</strong>
                 </span>
                 <span>
-                  📄 Fatture disponibili:{' '}
+                  <FileText size={14} aria-hidden="true" style={ICO} /> Fatture disponibili:{' '}
                   <strong>{autoAssocResult.fatture_disponibili ?? 0}</strong>
                 </span>
                 <span>
-                  🏦 Prima Nota Banca:{' '}
+                  <Landmark size={14} aria-hidden="true" style={ICO} /> Prima Nota Banca:{' '}
                   <strong>
                     {autoAssocResult.movimenti_banca_creati > 0
                       ? autoAssocResult.movimenti_banca_creati
@@ -2148,22 +2172,22 @@ export default function GestioneAssegni() {
                 style={{ marginTop: 8, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 12 }}
               >
                 <span style={{ color: COLORS.success }}>
-                  ✓ L1 (1=1): <strong>{autoAssocResult.totali?.L1 ?? 0}</strong>
+                  <Check size={14} aria-hidden="true" style={ICO} /> L1 (1=1): <strong>{autoAssocResult.totali?.L1 ?? 0}</strong>
                 </span>
                 <span style={{ color: COLORS.info }}>
-                  ✓ L2 (N uguali→1): <strong>{autoAssocResult.totali?.L2 ?? 0}</strong>
+                  <Check size={14} aria-hidden="true" style={ICO} /> L2 (N uguali→1): <strong>{autoAssocResult.totali?.L2 ?? 0}</strong>
                 </span>
                 <span style={{ color: COLORS.accent }}>
-                  ✓ L3 (N diversi→1): <strong>{autoAssocResult.totali?.L3 ?? 0}</strong>
+                  <Check size={14} aria-hidden="true" style={ICO} /> L3 (N diversi→1): <strong>{autoAssocResult.totali?.L3 ?? 0}</strong>
                 </span>
                 <span style={{ color: COLORS.warning }}>
-                  ✓ L4 (1→N): <strong>{autoAssocResult.totali?.L4 ?? 0}</strong>
+                  <Check size={14} aria-hidden="true" style={ICO} /> L4 (1→N): <strong>{autoAssocResult.totali?.L4 ?? 0}</strong>
                 </span>
                 <span style={{ color: COLORS.danger }}>
-                  ⚠ Ambigui: <strong>{autoAssocResult.totali?.ambigui ?? 0}</strong>
+                  <TriangleAlert size={14} aria-hidden="true" style={ICO} /> Ambigui: <strong>{autoAssocResult.totali?.ambigui ?? 0}</strong>
                 </span>
                 <span style={{ color: COLORS.textMuted }}>
-                  ✗ Non trovati: <strong>{autoAssocResult.totali?.non_trovati ?? 0}</strong>
+                  <X size={14} aria-hidden="true" style={ICO} /> Non trovati: <strong>{autoAssocResult.totali?.non_trovati ?? 0}</strong>
                 </span>
               </div>
               {['L1', 'L2', 'L3', 'L4'].flatMap(livello =>
@@ -2222,7 +2246,7 @@ export default function GestioneAssegni() {
                             {m.fornitore ? ` — ${m.fornitore}` : ''}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <strong>{formatEuro(m.fattura_importo || 0)}</strong>
+                            <strong>{euroOppure(m.fattura_importo)}</strong>
                             {m.fattura_id && (
                               <Button
                                 variant="success"
@@ -2232,7 +2256,7 @@ export default function GestioneAssegni() {
                                 }
                                 style={{ padding: '4px 8px', fontSize: 11 }}
                               >
-                                📄 Vedi
+                                <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
                               </Button>
                             )}
                           </div>
@@ -2240,7 +2264,7 @@ export default function GestioneAssegni() {
                         <div style={{ marginTop: 4, paddingLeft: 12, color: COLORS.textMuted }}>
                           {(m.assegni || []).map((a, j) => (
                             <div key={j}>
-                              ↳ Assegno {a.assegno_numero || a.assegno_id}: {formatEuro(a.quota || 0)}
+                              ↳ Assegno {a.assegno_numero || a.assegno_id}: {euroOppure(a.quota)}
                             </div>
                           ))}
                         </div>
@@ -2272,7 +2296,7 @@ export default function GestioneAssegni() {
                             {m.fornitore ? ` — ${m.fornitore}` : ''}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <strong>{formatEuro(m.fattura_importo || 0)}</strong>
+                            <strong>{euroOppure(m.fattura_importo)}</strong>
                             {m.fattura_id && (
                               <Button
                                 variant="success"
@@ -2282,7 +2306,7 @@ export default function GestioneAssegni() {
                                 }
                                 style={{ padding: '4px 8px', fontSize: 11 }}
                               >
-                                📄 Vedi
+                                <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
                               </Button>
                             )}
                           </div>
@@ -2290,7 +2314,7 @@ export default function GestioneAssegni() {
                         <div style={{ marginTop: 4, paddingLeft: 12, color: COLORS.textMuted }}>
                           {(m.assegni || []).map((a, j) => (
                             <div key={j}>
-                              ↳ Assegno {a.assegno_numero || a.assegno_id}: {formatEuro(a.quota || 0)}
+                              ↳ Assegno {a.assegno_numero || a.assegno_id}: {euroOppure(a.quota)}
                             </div>
                           ))}
                         </div>
@@ -2322,7 +2346,7 @@ export default function GestioneAssegni() {
               aria-label="Chiudi"
               style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
             >
-              ✕
+              <X size={14} aria-hidden="true" style={ICO} />
             </Button>
           </div>
         </div>
@@ -2344,7 +2368,7 @@ export default function GestioneAssegni() {
               <strong
                 style={{ color: autoAssocResult.assegni_aggiornati > 0 ? COLORS.success : COLORS.warning }}
               >
-                {autoAssocResult.assegni_aggiornati > 0 ? '✓' : '!'} {autoAssocResult.message}
+                {autoAssocResult.assegni_aggiornati > 0 ? <Check size={14} aria-hidden="true" style={ICO} /> : <TriangleAlert size={14} aria-hidden="true" style={ICO} />} {autoAssocResult.message}
               </strong>
               {autoAssocResult.dettagli && autoAssocResult.dettagli.length > 0 && (
                 <div style={{ marginTop: 10, fontSize: 13 }}>
@@ -2372,7 +2396,7 @@ export default function GestioneAssegni() {
               aria-label="Chiudi"
               style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
             >
-              ✕
+              <X size={14} aria-hidden="true" style={ICO} />
             </Button>
           </div>
         </div>
@@ -2414,7 +2438,7 @@ export default function GestioneAssegni() {
               gap: 8,
             }}
           >
-            ⏳ Assegni in attesa di fattura
+            <Hourglass size={14} aria-hidden="true" style={ICO} /> Assegni in attesa di fattura
             {assegniNonAssociati.totale !== undefined && (
               <Badge variant={assegniNonAssociati.totale > 0 ? 'warning' : 'success'}>
                 {assegniNonAssociati.totale}
@@ -2431,9 +2455,9 @@ export default function GestioneAssegni() {
               }}
               disabled={loadingNonAssociati}
             >
-              {loadingNonAssociati ? '⏳' : '🔄'} Aggiorna
+              {loadingNonAssociati ? <Hourglass size={14} aria-hidden="true" style={ICO} /> : <RefreshCw size={14} aria-hidden="true" style={ICO} />} Aggiorna
             </Button>
-            <span style={{ fontSize: 18 }}>{showNonAssociati ? '▲' : '▼'}</span>
+            <span style={{ fontSize: 18 }}>{showNonAssociati ? <ChevronUp size={18} aria-hidden="true" /> : <ChevronDown size={18} aria-hidden="true" />}</span>
           </div>
         </div>
 
@@ -2441,7 +2465,7 @@ export default function GestioneAssegni() {
           <div style={{ marginTop: 16 }}>
             {loadingNonAssociati ? (
               <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>
-                ⏳ Caricamento...
+                <Hourglass size={14} aria-hidden="true" style={ICO} /> Caricamento...
               </div>
             ) : assegniNonAssociati.totale === 0 ? (
               <div
@@ -2453,7 +2477,7 @@ export default function GestioneAssegni() {
                   color: COLORS.success,
                 }}
               >
-                ✅ Tutti gli assegni hanno un riferimento documentale
+                <Check size={14} aria-hidden="true" style={ICO} /> Tutti gli assegni hanno un riferimento documentale
               </div>
             ) : (
               <div>
@@ -2600,7 +2624,6 @@ export default function GestioneAssegni() {
                 key: 'numero',
                 label: 'N. Assegno',
                 ruoloCard: 'dettaglio',
-                iconaCard: '🔢',
                 tdStyle: tdSelezione,
                 render: assegno => (
                   <span
@@ -2715,7 +2738,6 @@ export default function GestioneAssegni() {
                 key: 'data_incasso',
                 label: 'Incasso / EC',
                 ruoloCard: 'dettaglio',
-                iconaCard: '🏦',
                 tdStyle: tdSelezione,
                 render: assegno => assegno.data_incasso ? (
                   <div style={{ fontSize: 12 }}>
@@ -2758,7 +2780,7 @@ export default function GestioneAssegni() {
                     />
                   ) : (
                     <span style={{ fontWeight: 'bold', fontSize: 13 }}>
-                      {formatEuro(assegno.importo)}
+                      {euroOppure(assegno.importo)}
                     </span>
                   ),
               },
@@ -2766,7 +2788,6 @@ export default function GestioneAssegni() {
                 key: 'fattura',
                 label: 'Fattura / Data',
                 ruoloCard: 'dettaglio',
-                iconaCard: '📄',
                 tdStyle: tdSelezione,
                 render: assegno =>
                   editingId === assegno.id ? (
@@ -2845,7 +2866,7 @@ export default function GestioneAssegni() {
                             title="Visualizza Fattura"
                             data-testid={`view-fattura-${assegno.id}`}
                           >
-                            📄 Vedi
+                            <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
                           </Button>
                         )}
                       </span>
@@ -2881,7 +2902,7 @@ export default function GestioneAssegni() {
                           title="Visualizza Fattura"
                           data-testid={`view-fattura-${assegno.id}`}
                         >
-                          📄 Vedi
+                          <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
                         </Button>
                       )}
                       {/* Info fattura */}
@@ -2967,7 +2988,7 @@ export default function GestioneAssegni() {
                           style={{ width: 28, height: 28 }}
                           title="Salva"
                         >
-                          ✓
+                          <Check size={14} aria-hidden="true" style={ICO} />
                         </RowActionButton>
                         <RowActionButton
                           variant="danger"
@@ -2975,7 +2996,7 @@ export default function GestioneAssegni() {
                           style={{ width: 28, height: 28 }}
                           title="Annulla"
                         >
-                          ✕
+                          <X size={14} aria-hidden="true" style={ICO} />
                         </RowActionButton>
                       </>
                     ) : (
@@ -2986,7 +3007,7 @@ export default function GestioneAssegni() {
                           data-testid={`edit-${assegno.id}`}
                           title="Modifica"
                         >
-                          ✏️
+                          <Pencil size={14} aria-hidden="true" style={ICO} />
                         </RowActionButton>
                         {['compilato', 'assegnato', 'parzialmente_assegnato'].includes(assegno.stato) && (
                           <RowActionButton
@@ -2995,7 +3016,7 @@ export default function GestioneAssegni() {
                             data-testid={`emetti-${assegno.id}`}
                             title="Emetti assegno"
                           >
-                            📤
+                            <Upload size={14} aria-hidden="true" style={ICO} />
                           </RowActionButton>
                         )}
                         {!['incassato', 'annullato', 'stornato'].includes(assegno.stato) && (
@@ -3005,7 +3026,7 @@ export default function GestioneAssegni() {
                             data-testid={`storna-${assegno.id}`}
                             title="Storna assegno"
                           >
-                            ↩️
+                            <Undo2 size={14} aria-hidden="true" style={ICO} />
                           </RowActionButton>
                         )}
                         {/* STAMPA singolo assegno: il carnet è il prefisso
@@ -3022,7 +3043,7 @@ export default function GestioneAssegni() {
                           data-testid={`print-${assegno.id}`}
                           title="Stampa"
                         >
-                          🖨️
+                          <Printer size={14} aria-hidden="true" style={ICO} />
                         </RowActionButton>
                         <RowActionButton
                           variant={assegno.foto_url ? 'success' : 'neutral'}
@@ -3031,16 +3052,16 @@ export default function GestioneAssegni() {
                           data-testid={`foto-${assegno.id}`}
                           title={assegno.foto_url ? 'Sostituisci foto assegno' : 'Scatta/allega foto assegno'}
                         >
-                          {fotoUploadingId === assegno.id ? '…' : '📷'}
+                          {fotoUploadingId === assegno.id ? '…' : <Camera size={14} aria-hidden="true" style={ICO} />}
                         </RowActionButton>
                         {assegno.foto_url && (
                           <RowActionButton
                             variant="info"
-                            onClick={() => window.open(assegno.foto_url, '_blank', 'noopener,noreferrer')}
+                            onClick={() => setFotoAperta({ url: assegno.foto_url, numero: assegno.numero })}
                             data-testid={`vedi-foto-${assegno.id}`}
                             title="Vedi foto assegno"
                           >
-                            🖼️
+                            <ImageIcon size={14} aria-hidden="true" style={ICO} />
                           </RowActionButton>
                         )}
                         <RowActionButton
@@ -3049,7 +3070,7 @@ export default function GestioneAssegni() {
                           data-testid={`delete-${assegno.id}`}
                           title="Elimina"
                         >
-                          🗑️
+                          <Trash2 size={14} aria-hidden="true" style={ICO} />
                         </RowActionButton>
                       </>
                     )}
@@ -3061,6 +3082,15 @@ export default function GestioneAssegni() {
           {fotoTargetAssegno && (
             <CameraCattura onCattura={catturaFotoAssegno} onChiudi={chiudiFotocamera} />
           )}
+          {fotoAperta && (
+            <VisoreOriginale
+              url={fotoAperta.url}
+              titolo={`Foto assegno ${fotoAperta.numero || ''}`.trim()}
+              mimeType="image/jpeg"
+              onClose={() => setFotoAperta(null)}
+            />
+          )}
+          {dialogoScelta}
         </div>
       )}
       {/* Generate Modal */}
@@ -3104,7 +3134,7 @@ export default function GestioneAssegni() {
                 data-testid="close-generate-btn"
                 style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 18, background: COLORS.bgAlt, color: COLORS.gray[700] }}
               >
-                ✕
+                <X size={14} aria-hidden="true" style={ICO} />
               </Button>
             </div>
             <p style={{ color: COLORS.textMuted, fontSize: 14, marginBottom: 20 }}>
@@ -3221,7 +3251,7 @@ export default function GestioneAssegni() {
               onMouseLeave={() => setIsDragging(false)}
             >
               <div>
-                <h2 style={{ margin: 0, fontSize: 16 }}>📄 Collega Fatture all'Assegno</h2>
+                <h2 style={{ margin: 0, fontSize: 16 }}><FileText size={14} aria-hidden="true" style={ICO} /> Collega Fatture all'Assegno</h2>
                 <p style={{ margin: '2px 0 0', fontSize: 11, opacity: 0.8 }}>
                   Trascina per spostare
                 </p>
@@ -3247,7 +3277,7 @@ export default function GestioneAssegni() {
                   lineHeight: 1,
                 }}
               >
-                ✕
+                <X size={14} aria-hidden="true" style={ICO} />
               </Button>
             </div>
 
@@ -3292,7 +3322,7 @@ export default function GestioneAssegni() {
                       Importo Assegno
                     </div>
                     <div style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.primaryLight }}>
-                      {formatEuro(editingAssegnoForFatture?.importo || 0)}
+                      {euroOppure(editingAssegnoForFatture?.importo)}
                     </div>
                   </div>
                 </div>
@@ -3307,9 +3337,9 @@ export default function GestioneAssegni() {
                   }}
                 >
                   {assegnoCoperto ? (
-                    <>✓ Importo completamente coperto dalla fattura collegata</>
+                    <><Check size={14} aria-hidden="true" style={ICO} /> Importo completamente coperto dalla fattura collegata</>
                   ) : (
-                    <>ℹ️ Collega più fatture solo quando la loro somma coincide con l’assegno</>
+                    <><Info size={14} aria-hidden="true" style={ICO} /> Collega più fatture solo quando la loro somma coincide con l’assegno</>
                   )}
                 </p>
               </div>
@@ -3326,7 +3356,7 @@ export default function GestioneAssegni() {
                   }}
                 >
                   <strong style={{ color: COLORS.success }}>
-                    ✓ Fatture collegate: {selectedFatture.length}
+                    <Check size={14} aria-hidden="true" style={ICO} /> Fatture collegate: {selectedFatture.length}
                   </strong>
                   <div style={{ marginTop: 10 }}>
                     {selectedFatture.map(f => (
@@ -3427,7 +3457,7 @@ export default function GestioneAssegni() {
                     fontWeight: 600,
                   }}
                 >
-                  ✓ Associazione completa. Non occorre aggiungere altre fatture.
+                  <Check size={14} aria-hidden="true" style={ICO} /> Associazione completa. Non occorre aggiungere altre fatture.
                 </div>
               )}
               <div style={{ marginBottom: 15, display: assegnoCoperto ? 'none' : 'block' }}>
@@ -3447,7 +3477,7 @@ export default function GestioneAssegni() {
 
                 {loadingFatture ? (
                   <div style={{ padding: 30, textAlign: 'center', color: COLORS.textMuted }}>
-                    ⏳ Caricamento...
+                    <Hourglass size={14} aria-hidden="true" style={ICO} /> Caricamento...
                   </div>
                 ) : fattureVisibili.length === 0 ? (
                   <div
@@ -3470,7 +3500,7 @@ export default function GestioneAssegni() {
                       borderRadius: BORDER_RADIUS.md,
                     }}
                   >
-                    {fattureVisibili.map((f, idx) => {
+                    {fattureVisibili.slice(0, limiteFatture).map((f, idx) => {
                       const isSelected = selectedFatture.find(sf => sf.id === f.id);
                       const fornitore = f.supplier_name || f.cedente_denominazione || 'N/A';
                       const tipoDoc = f.tipo_documento || f.document_type || 'TD01';
@@ -3508,7 +3538,7 @@ export default function GestioneAssegni() {
                                 zIndex: 1,
                               }}
                             >
-                              🏢 {fornitore}
+                              <Building2 size={14} aria-hidden="true" style={ICO} /> {fornitore}
                             </div>
                           )}
                           <div
@@ -3552,7 +3582,7 @@ export default function GestioneAssegni() {
                                   gap: 6,
                                 }}
                               >
-                                {isSelected ? '✓ ' : '○ '}
+                                {isSelected ? <Check size={14} aria-hidden="true" style={ICO} /> : <Circle size={14} aria-hidden="true" style={ICO} />}
                                 {f.invoice_number || f.numero_fattura || 'N/A'}
                                 {isNotaCredito && (
                                   <Badge variant="danger" style={{ fontSize: 9, padding: '2px 6px' }}>
@@ -3592,13 +3622,18 @@ export default function GestioneAssegni() {
                                 }}
                                 style={{ padding: '3px 7px', fontSize: 10, flexShrink: 0 }}
                               >
-                                📄 Vedi
+                                <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
                               </Button>
                             </div>
                           </div>
                         </React.Fragment>
                       );
                     })}
+                    {fattureVisibili.length > limiteFatture && (
+                      <Button variant="secondary" onClick={() => setLimiteFatture(x => x + 200)} style={{ minHeight: 44, margin: 8 }}>
+                        Mostra altre ({fattureVisibili.length - limiteFatture})
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -3621,7 +3656,7 @@ export default function GestioneAssegni() {
                   disabled={selectedFatture.length === 0 && !(editingAssegnoForFatture?.fatture_collegate || []).length}
                   data-testid="salva-fatture-btn"
                 >
-                  ✓ Salva {selectedFatture.length} fattur
+                  <Check size={14} aria-hidden="true" style={ICO} /> Salva {selectedFatture.length} fattur
                   {selectedFatture.length === 1 ? 'a' : 'e'}
                 </Button>
               </div>

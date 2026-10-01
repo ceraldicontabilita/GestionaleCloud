@@ -6,14 +6,16 @@ import { PageLayout } from '../components/PageLayout';
 import { PageHeader } from '../components/ds/PageHeader';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useIsMobile } from '../hooks/useData';
+import { NON_DISPONIBILE } from '../lib/vista';
 
 const denaro = (valore, valuta = 'EUR') => {
+  if (valore === null || valore === undefined || valore === '') return NON_DISPONIBILE;
   const currency = String(valuta || 'EUR').toUpperCase();
   try {
     return new Intl.NumberFormat('it-IT', { style: 'currency', currency })
-      .format(Number(valore || 0));
+      .format(Number(valore));
   } catch {
-    return `${Number(valore || 0).toFixed(2)} ${currency}`;
+    return `${Number(valore).toFixed(2)} ${currency}`;
   }
 };
 
@@ -43,6 +45,7 @@ const compactId = valore => {
 export default function RiconciliazionePaypal() {
   const { anno } = useAnnoGlobale();
   const isMobile = useIsMobile();
+  const [limite, setLimite] = useState(200);
   const location = useLocation();
   const tabIniziale = new URLSearchParams(location.search).get('tab') || 'transazioni';
   const [tab, setTab] = useState(tabIniziale);
@@ -219,14 +222,16 @@ export default function RiconciliazionePaypal() {
                 <option value="non_associata">Non associata</option>
               </select>
             </div>
-            <TransactionCards righe={righe} onSaveDescription={salvaDescrizione} onLinked={() => caricaDati()} />
+            <TransactionCards righe={righe.slice(0, limite)} onSaveDescription={salvaDescrizione} onLinked={() => caricaDati()} />
+            {righe.length > limite && <button type="button" onClick={() => setLimite(n => n + 200)} style={{ minHeight: 44, margin: '12px auto', display: 'block', padding: '10px 18px', borderRadius: 8, border: '1px solid #e6e3d9', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Mostra altre ({righe.length - limite})</button>}
           </>
         )}
 
         {!loading && tab === 'estratti' && (
           <>
             <p style={{ color: '#7a776e' }}>Fonti duplicate unificate: <strong>{riepilogoBanca.duplicati_unificati || 0}</strong></p>
-            {isMobile ? <BankCards righe={movimentiBanca} /> : <BankTable righe={movimentiBanca} />}
+            {isMobile ? <BankCards righe={movimentiBanca.slice(0, limite)} /> : <BankTable righe={movimentiBanca.slice(0, limite)} />}
+            {movimentiBanca.length > limite && <button type="button" onClick={() => setLimite(n => n + 200)} style={{ minHeight: 44, margin: '12px auto', display: 'block', padding: '10px 18px', borderRadius: 8, border: '1px solid #e6e3d9', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Mostra altre ({movimentiBanca.length - limite})</button>}
           </>
         )}
 
@@ -387,7 +392,7 @@ function BankTable({ righe }) {
 }
 
 function SourceDetails({ fonte }) {
-  return <><strong>{fonteLabel(fonte)}</strong><span>{fonte.periodo_inizio || '-'} - {fonte.periodo_fine || '-'}</span><span>{fonte.totale_transazioni || 0} transazioni</span><span>{fonte.totale_pagamenti || 0} pagamenti</span>{fonte.documento_presente === false && <span>Nessun file: fonte API</span>}</>;
+  return <><strong>{fonteLabel(fonte)}</strong><span>{dataIT(fonte.periodo_inizio)} - {dataIT(fonte.periodo_fine)}</span><span>{fonte.totale_transazioni || 0} transazioni</span><span>{fonte.totale_pagamenti || 0} pagamenti</span>{fonte.documento_presente === false && <span>Nessun file: fonte API</span>}</>;
 }
 
 function SourceCards({ fonti }) {

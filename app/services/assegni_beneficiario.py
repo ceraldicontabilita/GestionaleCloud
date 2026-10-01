@@ -12,6 +12,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+from app.utils.id_fattura import varianti_id
+
 logger = logging.getLogger(__name__)
 
 _VUOTI = {"", "-", "n/a", "non disponibile"}
@@ -25,10 +27,7 @@ def _fornitore(fattura: Dict[str, Any]) -> str:
     return str(fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "").strip()
 
 
-def _id_possibili(fid: Any) -> List[Any]:
-    """Su `invoices` l'`id` e' un numero in meta' delle righe e un testo nelle altre."""
-    testo = str(fid)
-    return [testo, int(testo)] if testo.isdigit() else [testo]
+_id_possibili = varianti_id
 
 
 def _chiave(fattura: Dict[str, Any]) -> str:

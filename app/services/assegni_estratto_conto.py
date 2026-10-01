@@ -29,6 +29,7 @@ from app.services.payment_allocation_validator import (
 )
 from app.services.accounting_relation_writers import record_check_reconciliation
 from app.services.prima_nota_integrity import assorbi_righe_dichiarate
+from app.utils.id_fattura import filtro_id
 
 
 logger = logging.getLogger(__name__)
@@ -125,17 +126,17 @@ async def _fattura_attiva_per_id(db, fattura_id: str) -> Optional[Dict[str, Any]
     from app.services.fatture_report_ae import FILTRO_FATTURE_ATTIVE
 
     attiva = await db["invoices"].find_one(
-        {"id": fattura_id, **FILTRO_FATTURE_ATTIVE}, {"_id": 0},
+        {**filtro_id(fattura_id), **FILTRO_FATTURE_ATTIVE}, {"_id": 0},
     )
     if attiva:
         return attiva
-    copia = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0}) or {}
+    copia = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0}) or {}
     if not copia:
         return None
     for campo in ("duplicate_of", "doppione_di"):
         if copia.get(campo):
             canonica = await db["invoices"].find_one(
-                {"id": copia[campo], **FILTRO_FATTURE_ATTIVE}, {"_id": 0},
+                {**filtro_id(copia[campo]), **FILTRO_FATTURE_ATTIVE}, {"_id": 0},
             )
             if canonica:
                 return canonica
@@ -183,7 +184,7 @@ async def _fattura_da_prima_nota(db, numero: str, importo: float) -> Optional[Di
     ids = list(dict.fromkeys(str(r.get("invoice_id") or r.get("fattura_id")) for r in per_numero))
     if len(ids) != 1:
         return None
-    return await db["invoices"].find_one({"id": ids[0]}, {"_id": 0})
+    return await db["invoices"].find_one(filtro_id(ids[0]), {"_id": 0})
 
 
 async def _fattura_da_numero_assegno_xml(
@@ -422,7 +423,7 @@ async def _collega_fattura_univoca(
             "$set": update_fattura,
             "$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}},
         }
-        await db["invoices"].update_one({"id": fid}, update_doc)
+        await db["invoices"].update_one(filtro_id(fid), update_doc)
         await db["invoices"].update_one(
             {"id": fid}, {"$addToSet": {"assegni_collegati": link}},
         )
@@ -433,7 +434,7 @@ async def _collega_fattura_univoca(
             data_pagamento=data_movimento,
         )
     else:
-        await db["invoices"].update_one({"id": fid}, {"$set": update_fattura})
+        await db["invoices"].update_one(filtro_id(fid), {"$set": update_fattura})
 
     if aggiorna_assegno:
         await db["assegni"].update_one(
@@ -561,11 +562,11 @@ async def collega_assegno_riconciliato_a_fatture(
             ), None)
             applicata = not bool(vecchio)
             await db["invoices"].update_one(
-                {"id": fattura_id},
+                filtro_id(fattura_id),
                 {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}},
             )
             await db["invoices"].update_one(
-                {"id": fattura_id},
+                filtro_id(fattura_id),
                 {"$addToSet": {"assegni_collegati": {
                     "assegno_id": assegno["id"], "numero": assegno.get("numero"),
                     "quota": quota, "data_collegamento": now, "match_auto": match_auto,
@@ -613,7 +614,7 @@ async def collega_assegno_riconciliato_a_fatture(
         db, quote_per_fattura, sostituita_da=pn_id, movimento_id=movimento_id,
     )
     for fattura_id in fattura_ids:
-        await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
             "riconciliato": True,
             "riconciliato_con_ec": True,
             "stato_finanziario": "riconciliato",
@@ -948,7 +949,7 @@ async def sincronizza_assegni_da_estratto_conto(
                 sostituita_da=pn_id, movimento_id=movimento.get("id"),
             )
             for fid_collegata in tutte_le_fatture:
-                await db["invoices"].update_one({"id": fid_collegata}, {"$set": {
+                await db["invoices"].update_one(filtro_id(fid_collegata), {"$set": {
                     "riconciliato": True,
                     "riconciliato_con_ec": True,
                     "stato_finanziario": "riconciliato",

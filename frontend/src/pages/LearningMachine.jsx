@@ -15,18 +15,19 @@ import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import {
-  formatEuro,
   formatDateIT,
   COLORS,
   SHADOWS,
   BORDER_RADIUS,
   useIsMobile,
 } from '../lib/utils';
+import { euroOppure } from '../lib/vista';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { Button, Badge, StatCard, Tabs, Input } from '../components/ds';
+import { Button, Badge, StatCard, Tabs, Input, PageHeader } from '../components/ds';
 import {
   Brain,
+  Sparkles,
   RefreshCw,
   CheckCircle,
   AlertCircle,
@@ -37,7 +38,6 @@ import {
   FileText,
   CreditCard,
   BarChart3,
-  Zap,
   Trash2,
   Settings,
   Search,
@@ -126,6 +126,8 @@ export default function LearningMachine() {
   // === FORNITORI STATE ===
   const [fornitoriNonClassificati, setFornitoriNonClassificati] = useState([]);
   const [fornitoriConfigurati, setFornitoriConfigurati] = useState([]);
+  const [maxNonClassificati, setMaxNonClassificati] = useState(200);
+  const [maxConfigurati, setMaxConfigurati] = useState(200);
   const [centriCosto, setCentriCosto] = useState([]);
   const [fornitoriLoading, setFornitoriLoading] = useState(false);
   const [selectedFornitore, setSelectedFornitore] = useState(null);
@@ -400,8 +402,8 @@ export default function LearningMachine() {
     { id: 'fornitori', label: 'Fornitori & Keywords', icon: Tag },
     { id: 'assegni', label: 'Pattern Assegni', icon: CreditCard },
     { id: 'documenti', label: 'Classificazione Documenti', icon: FileText },
-    { id: 'regole', label: '⚙️ Regole Categorizzazione', icon: Settings },
-    { id: 'universale', label: '🌐 Training Universale', icon: RefreshCw },
+    { id: 'regole', label: 'Regole Categorizzazione', icon: Settings },
+    { id: 'universale', label: 'Training Universale', icon: RefreshCw },
   ];
 
   // ============================================================
@@ -410,52 +412,11 @@ export default function LearningMachine() {
 
   return (
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header COMPATTO: una sola riga. Prima era un bannerone da 24px di
-          padding con il titolo h1 INVISIBILE (il CSS globale colora gli
-          h1-h4 di navy → navy su navy) e un sottotitolo inutile: metà card
-          sembrava vuota (segnalato l'11/07). */}
-      <div
-        style={{
-          background: COLORS.primary,
-          borderRadius: BORDER_RADIUS.md,
-          padding: '10px 14px',
-          marginBottom: 14,
-          color: 'white',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 8,
-        }}
-      >
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 17,
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            color: 'white',
-          }}
-        >
-          <Brain size={20} /> Learning Machine
-        </h1>
-        <div
-          style={{
-            background: 'rgba(255,255,255,0.15)',
-            padding: '4px 10px',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 12,
-          }}
-        >
-          <Zap size={14} />
-          <span style={{ fontWeight: 600 }}>Attivo</span>
-        </div>
-      </div>
+      <PageHeader
+        title="Learning Machine"
+        subtitle="Impara da fornitori, assegni e documenti già classificati per proporre categorie e abbinamenti"
+        actions={<Badge variant="success">Attivo</Badge>}
+      />
 
       {/* Messaggio globale */}
       <MessageBanner message={message} onClose={() => setMessage(null)} />
@@ -649,7 +610,7 @@ export default function LearningMachine() {
                   data-testid="btn-classifica-contenuto"
                   title="Legge le righe XML di ogni fattura non classificata: le sicure si classificano da sole, le ambigue restano da decidere"
                 >
-                  🧠 Classifica dal contenuto XML
+                  <Brain size={16} aria-hidden /> Classifica dal contenuto XML
                 </Button>
                 <Button
                   variant="secondary"
@@ -658,7 +619,7 @@ export default function LearningMachine() {
                   data-testid="btn-classifica-ai"
                   title="Chiede all'AI (stesso motore della Chat) di classificare SOLO le fatture rimaste ambigue"
                 >
-                  ✨ AI sulle ambigue
+                  <Sparkles size={16} aria-hidden /> AI sulle ambigue
                 </Button>
               </div>
             </div>
@@ -734,7 +695,7 @@ export default function LearningMachine() {
                       <p>Tutti i fornitori sono classificati!</p>
                     </div>
                   ) : (
-                    fornitoriNonClassificati.map((f, idx) => (
+                    fornitoriNonClassificati.slice(0, maxNonClassificati).map((f, idx) => (
                       <div
                         key={idx}
                         onClick={() => selezionaFornitore(f)}
@@ -768,13 +729,16 @@ export default function LearningMachine() {
                               {f.fornitore_nome}
                             </p>
                             <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '4px 0 0 0' }}>
-                              {f.fatture_count} fatture • {formatEuro(f.totale_fatture || 0)}
+                              {f.fatture_count} fatture • {euroOppure(f.totale_fatture)}
                             </p>
                           </div>
                           <ChevronRight size={16} color={COLORS.textSubtle} />
                         </div>
                       </div>
                     ))
+                  )}
+                  {fornitoriNonClassificati.length > maxNonClassificati && (
+                    <Button variant="secondary" size="sm" onClick={() => setMaxNonClassificati(n => n + 200)} style={{ marginTop: 12, minHeight: 44 }}>Mostra altre</Button>
                   )}
                 </div>
               </div>
@@ -819,7 +783,7 @@ export default function LearningMachine() {
                       </p>
                       <p style={{ margin: '4px 0 0 0', fontSize: 12, color: COLORS.info }}>
                         {selectedFornitore.fatture_count} fatture •{' '}
-                        {formatEuro(selectedFornitore.totale_fatture || 0)}
+                        {euroOppure(selectedFornitore.totale_fatture)}
                       </p>
                     </div>
 
@@ -981,7 +945,7 @@ export default function LearningMachine() {
                   gap: 12,
                 }}
               >
-                {fornitoriConfigurati.map((f, idx) => (
+                {fornitoriConfigurati.slice(0, maxConfigurati).map((f, idx) => (
                   <div
                     key={idx}
                     style={{
@@ -1032,6 +996,9 @@ export default function LearningMachine() {
                   </div>
                 ))}
               </div>
+              {fornitoriConfigurati.length > maxConfigurati && (
+                <Button variant="secondary" size="sm" onClick={() => setMaxConfigurati(n => n + 200)} style={{ marginTop: 12, minHeight: 44 }}>Mostra altre</Button>
+              )}
             </div>
           )}
         </div>
@@ -1168,7 +1135,7 @@ export default function LearningMachine() {
                   }}
                 >
                   <p style={{ margin: 0, fontSize: 13, color: COLORS.accent }}>
-                    ✅ Appresi <strong>{learningResult.pattern_appresi}</strong> pattern da{' '}
+                    <CheckCircle size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Appresi <strong>{learningResult.pattern_appresi}</strong> pattern da{' '}
                     {learningResult.assegni_analizzati} assegni
                   </p>
                 </div>
