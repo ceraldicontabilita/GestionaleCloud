@@ -7,10 +7,61 @@ l'ennesimo doppione.
 import asyncio
 import io
 import logging
+import random
+import time
+from typing import Callable, TypeVar
 
-__all__ = ["scarica_bytes", "scarica_originale"]
+__all__ = ["scarica_bytes", "scarica_originale", "riprova"]
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+# Codici Drive che passano da soli: quota per utente (429), guasti del server
+# (5xx) e il 403 «rateLimitExceeded» con cui Google risponde a una raffica.
+_STATI_TRANSITORI = frozenset({408, 429, 500, 502, 503, 504})
+_MOTIVI_QUOTA = ("ratelimitexceeded", "userratelimitexceeded", "backenderror", "internalerror")
+TENTATIVI = 5
+ATTESA_BASE_S = 1.0
+ATTESA_MAX_S = 30.0
+_dormi = time.sleep  # sostituibile nei test
+
+
+def e_transitorio(exc: BaseException) -> bool:
+    """Un errore Drive che vale la pena riprovare: quota, 5xx, rete caduta."""
+    stato = getattr(getattr(exc, "resp", None), "status", None)
+    try:
+        stato = int(stato) if stato is not None else None
+    except (TypeError, ValueError):
+        stato = None
+    if stato in _STATI_TRANSITORI:
+        return True
+    if stato == 403:
+        testo = str(exc).lower()
+        return any(m in testo for m in _MOTIVI_QUOTA)
+    if stato is not None:
+        return False  # 400, 401, 404...: non cambia riprovando
+    return isinstance(exc, (ConnectionError, TimeoutError, OSError)) or \
+        type(exc).__name__ in {"SSLError", "HttpLib2Error", "ServerNotFoundError", "RemoteDisconnected",
+                               "IncompleteRead", "BrokenPipeError"}
+
+
+def riprova(fn: Callable[[], T], *, tentativi: int | None = None, quale: str = "Drive") -> T:
+    """Esegue ``fn`` e, su 429/5xx/rete, riprova con attesa esponenziale (1, 2, 4, 8 s
+    piu' un po' di casualita', tetto 30 s). Gli altri errori passano subito.
+    Chiamata da un thread (``asyncio.to_thread``): dorme senza fermare il loop."""
+    massimo = max(1, tentativi if tentativi is not None else TENTATIVI)
+    for n in range(1, massimo + 1):
+        try:
+            return fn()
+        except Exception as exc:
+            if n >= massimo or not e_transitorio(exc):
+                raise
+            attesa = min(ATTESA_MAX_S, ATTESA_BASE_S * (2 ** (n - 1))) * (0.75 + random.random() / 2)
+            logger.warning("[drive] %s: %s, riprovo fra %.1f s (tentativo %d/%d)",
+                           quale, type(exc).__name__, attesa, n, massimo)
+            _dormi(attesa)
+    raise AssertionError("irraggiungibile")  # pragma: no cover
 
 
 def scarica_bytes(service, file_id: str, *, conferma_abuso: bool = False) -> bytes:
@@ -29,7 +80,9 @@ def scarica_bytes(service, file_id: str, *, conferma_abuso: bool = False) -> byt
     downloader = MediaIoBaseDownload(buffer, richiesta)
     finito = False
     while not finito:
-        _, finito = downloader.next_chunk()
+        # Un pezzo che fallisce per quota o 5xx si riprova da solo: il chunk
+        # non e' stato scritto e il downloader riparte dallo stesso byte.
+        _, finito = riprova(downloader.next_chunk, quale="download")
     return buffer.getvalue()
 
 
