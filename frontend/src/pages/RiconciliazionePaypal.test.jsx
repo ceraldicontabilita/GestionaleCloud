@@ -219,16 +219,11 @@ describe('Pagina PayPal: fonti, stati e filtri', () => {
     expect(screen.getByText('Nessun file: fonte API')).toBeInTheDocument();
   });
 
-  it('sincronizza in modo incrementale all apertura senza pulsanti di riprocessamento', async () => {
+  it('all apertura legge soltanto: la sincronizzazione PayPal gira da sola di notte', async () => {
     mockSuccessfulRequests();
-    api.post.mockResolvedValue({ data: {
-      collegamenti_prima: { associate: 1 },
-      banca: { riconciliati: 1 },
-      collegamenti_dopo: { finalizzate: 1 },
-    } });
     renderPage();
-    expect(await screen.findByTestId('paypal-sync-status')).toHaveTextContent('Aggiornato');
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/paypal-api/sync/incremental'));
+    expect(await screen.findByTestId('paypal-sync-status')).toHaveTextContent('Aggiornamento automatico alle 03:20 e 14:20');
+    expect(api.post).not.toHaveBeenCalled();
     expect(screen.queryByTestId('reprocess-paypal-btn')).not.toBeInTheDocument();
   });
 });

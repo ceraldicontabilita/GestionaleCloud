@@ -299,6 +299,51 @@ def _id_movimento(mov: Dict[str, Any]) -> str:
     return str(mov.get("id") or mov.get("_id") or "")
 
 
+# Importo esatto + segno coerente + data entro 10 giorni (10 + 55 + 5): basta
+# se la coppia e' biunivoca. L'addebito SDD di PayPal arriva anche 4-7 giorni
+# dopo l'operazione, e con la soglia a 85 restava «Da associare» ogni
+# addebito oltre i 3 giorni (24/08/2026: 165,96 € per MongoDB del 20/08).
+SOGLIA_SCORE_MATCH_BANCA = 70
+# Il prelievo del saldo PayPal verso la banca lo decide il titolare quando
+# vuole: l'accredito puo' seguire l'incasso di settimane.
+GIORNI_MAX_ACCREDITO = 20
+
+
+def _accrediti_paypal(transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Righe PayPal che spiegano un accredito in banca («BON.DA PayPal Europe»).
+
+    Un accredito e' il prelievo del saldo (T04xx, negativo lato PayPal) oppure,
+    se il prelievo non e' nel report, l'incasso o il rimborso (positivo) da cui
+    nasce. Mai entrambi: lo stesso importo conterebbe due volte. L'importo si
+    espone positivo in ``importo_report_eur``, come lo vede la banca.
+    """
+    prelievi = []
+    entrate = []
+    for tx in transactions:
+        stato = str(tx.get("transaction_status") or tx.get("status") or "").strip().upper()
+        if stato in {"P", "V", "D", "PENDING", "REVERSED", "DENIED"}:
+            continue
+        if tx.get("balance_affecting") is False:
+            continue
+        tipo = str(tx.get("transaction_event_code") or tx.get("event_code") or tx.get("tipo") or "").upper()
+        importo = _importo_paypal(tx)
+        valuta = str(tx.get("currency") or tx.get("valuta") or "EUR").upper()
+        if valuta != "EUR" or not importo:
+            continue
+        if tipo.startswith("T04") and importo < 0:
+            prelievi.append((tx, abs(importo)))
+        elif importo > 0 and not tipo.startswith(("T02", "T04")):
+            entrate.append((tx, importo))
+    centesimi_prelevati = {round(i * 100) for _, i in prelievi}
+    righe = []
+    for tx, importo in prelievi + [e for e in entrate if round(e[1] * 100) not in centesimi_prelevati]:
+        riga = dict(tx)
+        riga["importo_report_eur"] = round(importo, 2)
+        riga["accredito_banca"] = True
+        righe.append(riga)
+    return righe
+
+
 def _score_match_banca(tx: Dict[str, Any], mov: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Valuta un collegamento PayPal-banca senza accettare l'importo da solo.
 
@@ -342,7 +387,8 @@ def _score_match_banca(tx: Dict[str, Any], mov: Dict[str, Any]) -> Optional[Dict
     if not tx_date or not mov_date:
         return None
     delta = abs((tx_date - mov_date).days)
-    if delta > 10 and not riferimento_esplicito:
+    limite = GIORNI_MAX_ACCREDITO if tx.get("accredito_banca") else 10
+    if delta > limite and not riferimento_esplicito:
         return None
 
     score = 10  # segno coerente
@@ -365,6 +411,9 @@ def _score_match_banca(tx: Dict[str, Any], mov: Dict[str, Any]) -> Optional[Dict
     elif delta <= 10:
         score += 5
         evidenze.append("data_entro_10_giorni")
+    elif delta <= limite:
+        score += 5
+        evidenze.append("data_entro_20_giorni_accredito")
 
     return {"score": score, "evidenze": evidenze, "delta_giorni": delta}
 
@@ -946,7 +995,7 @@ def _proposte_riconciliazione_banca(
             if not tx_id:
                 continue
             match = _score_match_banca(tx, mov)
-            if not match or match["score"] < 85:
+            if not match or match["score"] < SOGLIA_SCORE_MATCH_BANCA:
                 continue
             arco = {
                 "movimento_id": mov_id,
@@ -962,7 +1011,38 @@ def _proposte_riconciliazione_banca(
 
     proposte: List[Dict[str, Any]] = []
     ambigui = set()
+
+    # Importi uguali, stesso numero di movimenti e di operazioni PayPal (due
+    # addebiti da 32,94 € per due pagamenti da 32,94 €): sono intercambiabili
+    # e si abbinano in ordine di data, mai a caso e mai lasciati sospesi.
+    per_importo: Dict[int, Dict[str, set]] = {}
     for mov_id, archi in archi_per_movimento.items():
+        for arco in archi:
+            gruppo = per_importo.setdefault(round(arco["importo_movimento"] * 100), {"mov": set(), "tx": set()})
+            gruppo["mov"].add(mov_id)
+            gruppo["tx"].add(arco["transaction_id"])
+    gia_abbinati_mov: set = set()
+    for gruppo in per_importo.values():
+        if len(gruppo["mov"]) < 2 or len(gruppo["mov"]) != len(gruppo["tx"]):
+            continue
+        archi_gruppo = {
+            (a["movimento_id"], a["transaction_id"]): a
+            for m in gruppo["mov"] for a in archi_per_movimento[m]
+        }
+        if len(archi_gruppo) != len(gruppo["mov"]) * len(gruppo["tx"]):
+            continue  # non tutte le coppie sono compatibili: resta sospeso
+        data_tx = {str(t.get("transaction_id") or t.get("id") or ""): str(t.get("data") or "")[:10] for t in paypal_txs}
+        movimenti_ordinati = sorted(gruppo["mov"], key=lambda m: (next(a["data_movimento"] for a in archi_per_movimento[m]), m))
+        tx_ordinate = sorted(gruppo["tx"], key=lambda t: (data_tx.get(t, ""), t))
+        for mov_id, tx_id in zip(movimenti_ordinati, tx_ordinate):
+            arco = dict(archi_gruppo[(mov_id, tx_id)])
+            arco["evidenze"] = [*arco["evidenze"], "importi_uguali_in_ordine"]
+            proposte.append(arco)
+            gia_abbinati_mov.add(mov_id)
+
+    for mov_id, archi in archi_per_movimento.items():
+        if mov_id in gia_abbinati_mov:
+            continue
         archi.sort(key=lambda item: item["score"], reverse=True)
         migliori_mov = [a for a in archi if a["score"] == archi[0]["score"]]
         if len(migliori_mov) != 1:
@@ -1004,7 +1084,7 @@ async def _auto_riconcilia(
         {"_id": 0}
     ).to_list(5000)
     paypal_txs = [
-        tx for tx in _pagamenti_paypal_in_euro(paypal_txs)
+        tx for tx in _pagamenti_paypal_in_euro(paypal_txs) + _accrediti_paypal(paypal_txs)
         if not anno or (_data_documento(tx) and _data_documento(tx).year == anno)
     ]
 

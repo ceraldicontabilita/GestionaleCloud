@@ -1911,6 +1911,55 @@ def start_scheduler():
         replace_existing=True
     )
 
+    async def _paypal_automatico_job():
+        from app.database import Database
+        from app.services.paypal_automatico import giro_paypal
+        await giro_paypal(Database.get_db())
+
+    scheduler.add_job(
+        _paypal_automatico_job,
+        CronTrigger(hour="3,14", minute=20),
+        misfire_grace_time=3600,
+        coalesce=True,
+        id="paypal_automatico",
+        name="PayPal automatico: API, banca, fatture e posta (ore 3:20 e 14:20)",
+        replace_existing=True,
+    )
+
+    async def _categorie_banca_job():
+        from app.database import Database
+        from app.services.categorizzazione_movimenti import backfill_categorie_banca
+        r = await backfill_categorie_banca(
+            Database.get_db(), anno=datetime.now().year, dry_run=False, con_stipendi=False)
+        logger.info("[SCHEDULER-CATEGORIE-BANCA] %s", {k: v for k, v in r.items() if isinstance(v, (int, str))})
+
+    scheduler.add_job(
+        _categorie_banca_job,
+        'interval', hours=1,
+        next_run_time=avvio + timedelta(minutes=15),
+        misfire_grace_time=900,
+        coalesce=True,
+        id="categorie_banca",
+        name="Categorie dei movimenti bancari senza categoria (ogni ora)",
+        replace_existing=True,
+    )
+
+    async def _pec_cartelle_job():
+        from app.database import Database
+        from app.services.notifiche_pec_cartelle import ripassa_notifiche_dalla_posta
+        await ripassa_notifiche_dalla_posta(Database.get_db())
+
+    scheduler.add_job(
+        _pec_cartelle_job,
+        'interval', hours=6,
+        next_run_time=avvio + timedelta(minutes=12),
+        misfire_grace_time=900,
+        coalesce=True,
+        id="pec_cartelle_notifiche",
+        name="Date di notifica delle cartelle dalla PEC (ogni 6 ore)",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
@@ -1918,6 +1967,7 @@ def start_scheduler():
     logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
     logger.info("   - Recupero Fatture PayPal mancanti: ogni giorno ore 5:30")
+    logger.info("   - PayPal automatico (API, banca, fatture, posta): ore 3:20 e 14:20")
 
 
 def stop_scheduler():
