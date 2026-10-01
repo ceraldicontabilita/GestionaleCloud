@@ -92,7 +92,7 @@ def ambiente(monkeypatch):
     smistati = []
     esiti = {}
 
-    async def smista(nome, contenuto, contesto):
+    async def smista(nome, contenuto, contesto, tipo=None):
         smistati.append((nome, contesto))
         return esiti.get(nome, {"success": True, "tipo_rilevato": "fattura_xml", "invoice_id": "inv-" + nome})
 
@@ -100,6 +100,12 @@ def ambiente(monkeypatch):
     monkeypatch.setattr(cu, "_service", lambda: drive)
     monkeypatch.setattr(cu, "_cartelle", lambda service, root: dict(CARTELLE))
     monkeypatch.setattr(cu, "_smista", smista)
+
+    async def rileva(nome, contenuto):
+        return "fattura_xml"
+
+    monkeypatch.setattr(cu, "_rileva", rileva)
+    cu._azzera_cache()
     import app.services.drive_download as dd
     monkeypatch.setattr(dd, "scarica_bytes", lambda service, fid: drive.file[fid]["contenuto"])
     return drive, smistati, esiti
@@ -166,7 +172,7 @@ def test_eccezione_manda_in_errori_col_motivo(ambiente, monkeypatch):
     db = AsyncMongoMockClient()["t"]
     drive.aggiungi("e1", "rotto.pdf", b"%PDF rotto", "inbox")
 
-    async def esplode(nome, contenuto, contesto):
+    async def esplode(nome, contenuto, contesto, tipo=None):
         raise ValueError("pagina illeggibile")
 
     monkeypatch.setattr(cu, "_smista", esplode)
@@ -510,3 +516,193 @@ def test_secondo_giro_non_rielabora_niente(ambiente):
     assert run(cu.giro(db))["elaborati"] == 4
     seconda = run(cu.giro(db))
     assert seconda["letti"] == 0 and seconda["elaborati"] == 0 and len(smistati) == 4
+
+
+# --- Velocita' 2: backoff, cache dell'archivio, tipo letto una volta sola ---
+
+class _Http(Exception):
+    def __init__(self, stato, testo=""):
+        super().__init__(testo or f"HttpError {stato}")
+        self.resp = type("R", (), {"status": stato})()
+
+
+def test_riprova_con_backoff_su_429_e_5xx_poi_riesce(monkeypatch):
+    import app.services.drive_download as dd
+
+    attese = []
+    monkeypatch.setattr(dd, "_dormi", attese.append)
+    stati = iter([429, 503, None])
+
+    def fn():
+        s = next(stati)
+        if s:
+            raise _Http(s)
+        return "ok"
+
+    assert dd.riprova(fn) == "ok"
+    assert len(attese) == 2 and attese[1] > attese[0]  # crescente: 1 s, 2 s (con un po' di casualita')
+
+
+def test_riprova_non_insiste_su_404_e_si_arrende_dopo_i_tentativi(monkeypatch):
+    import app.services.drive_download as dd
+
+    attese = []
+    monkeypatch.setattr(dd, "_dormi", attese.append)
+    chiamate = []
+
+    def non_trovato():
+        chiamate.append(1)
+        raise _Http(404)
+
+    with pytest.raises(_Http):
+        dd.riprova(non_trovato)
+    assert len(chiamate) == 1 and attese == []
+
+    chiamate.clear()
+
+    def sempre_503():
+        chiamate.append(1)
+        raise _Http(503)
+
+    with pytest.raises(_Http):
+        dd.riprova(sempre_503, tentativi=3)
+    assert len(chiamate) == 3 and len(attese) == 2
+
+
+def test_riprova_il_403_di_quota_ma_non_quello_di_permesso():
+    import app.services.drive_download as dd
+
+    assert dd.e_transitorio(_Http(403, "rateLimitExceeded")) is True
+    assert dd.e_transitorio(_Http(403, "cannotAddParent")) is False
+    assert dd.e_transitorio(ConnectionResetError("rete")) is True
+    assert dd.e_transitorio(_Http(404)) is False
+
+
+def test_secondo_giro_usa_la_cache_dell_archivio_e_non_rilegge_tutto(ambiente, monkeypatch):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("e0", "vecchio.xml", b"<xml>0</xml>", "elaborate")
+    drive.aggiungi("f1", "uno.xml", b"<xml>1</xml>", "inbox")
+    letti = []
+    vero = drive.list
+
+    def list_spia(q, **kw):
+        letti.append(q)
+        return vero(q, **kw)
+
+    monkeypatch.setattr(drive, "list", list_spia)
+    e1 = run(cu.giro(db))
+    assert e1["archivio_da_cache"] is False and any(
+        "'elaborate' in parents" in q and "createdTime >" not in q for q in letti)
+    letti.clear()
+    drive.aggiungi("f2", "due.xml", b"<xml>2</xml>", "inbox")
+    e2 = run(cu.giro(db))
+    assert e2["archivio_da_cache"] is True
+    # ELABORATE: solo la richiesta dei file nuovi, mai l'elenco intero.
+    q_arch = [q for q in letti if "'elaborate' in parents" in q]
+    assert q_arch and all("createdTime >" in q for q in q_arch)
+    assert e2["elaborati"] == 1 and drive.file["f2"]["parent"] == "elaborate"
+
+
+def test_la_cache_conosce_gli_originali_appena_archiviati_e_cestina_la_copia(ambiente):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("f1", "uno.xml", b"<xml>1</xml>", "inbox")
+    run(cu.giro(db))
+    # Nuova copia identica dopo il primo giro: la trova senza rielencare ELABORATE.
+    drive.aggiungi("f9", "uno (2).xml", b"<xml>1</xml>", "inbox")
+    e = run(cu.giro(db))
+    assert e["archivio_da_cache"] is True and e["doppioni_cestinati"] == 1
+    assert "f9" in drive.cestinati and len(smistati) == 1
+
+
+def test_candidato_sparito_dall_archivio_non_manda_il_file_in_errori(ambiente, monkeypatch):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("e0", "vecchio.xml", b"<xml>1</xml>", "elaborate")
+    drive.aggiungi("f1", "uno.xml", b"<xml>1</xml>", "inbox")
+    import app.services.drive_download as dd
+
+    def scarica(service, fid):
+        if fid == "e0":
+            raise _Http(404)
+        return drive.file[fid]["contenuto"]
+
+    monkeypatch.setattr(dd, "scarica_bytes", scarica)
+    e = run(cu.giro(db))
+    # La copia in archivio non c'e' piu': il file si smista, non e' un errore.
+    assert e["errori"] == 0 and e["elaborati"] == 1 and e["doppioni_cestinati"] == 0
+
+
+def test_il_tipo_si_rileva_una_volta_sola_e_arriva_allo_smistatore(ambiente, monkeypatch):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("f1", "uno.xml", b"<xml>1</xml>", "inbox")
+    drive.aggiungi("f2", "due.xml", b"<xml>2</xml>", "inbox")
+    rilevati, passati = [], []
+
+    async def rileva(nome, contenuto):
+        rilevati.append(nome)
+        return "fattura_xml"
+
+    async def smista(nome, contenuto, contesto, tipo=None):
+        passati.append((nome, tipo))
+        return {"success": True, "tipo_rilevato": tipo}
+
+    monkeypatch.setattr(cu, "_rileva", rileva)
+    monkeypatch.setattr(cu, "_smista", smista)
+    e = run(cu.giro(db))
+    assert sorted(rilevati) == ["due.xml", "uno.xml"]  # una lettura per file, in anticipo
+    assert sorted(passati) == [("due.xml", "fattura_xml"), ("uno.xml", "fattura_xml")]
+    assert e["tempi_s"]["smista"] >= 0 and "attesa_precarico" in e["tempi_s"]  # strumentazione presente
+
+
+def test_una_copia_probabile_non_viene_riconosciuta_in_anticipo(ambiente, monkeypatch):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("e0", "vecchio.xml", b"<xml>1</xml>", "elaborate")
+    drive.aggiungi("f1", "copia.xml", b"<xml>1</xml>", "inbox")
+    rilevati = []
+
+    async def rileva(nome, contenuto):
+        rilevati.append(nome)
+        return "fattura_xml"
+
+    monkeypatch.setattr(cu, "_rileva", rileva)
+    e = run(cu.giro(db))
+    assert e["doppioni_cestinati"] == 1 and rilevati == []
+
+
+def test_un_guasto_passeggero_di_supabase_rimanda_il_file_e_poi_va_in_errori(ambiente):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("f1", "uno.xml", b"<xml>1</xml>", "inbox")
+    esiti["uno.xml"] = {"success": False, "tipo_rilevato": "fattura_xml",
+                        "message": "Errore durante l'importazione: Supabase RPC gc_upsert_documents fallita (HTTP 503)"}
+    e = run(cu.giro(db))
+    # Resta in DA ELABORARE: il guasto non e' del file.
+    assert drive.file["f1"]["parent"] == "inbox" and e["rinviati"] == 1 and e["errori"] == 0
+    run(cu.giro(db))
+    assert drive.file["f1"]["parent"] == "inbox"
+    e3 = run(cu.giro(db))  # terzo tentativo: non passa mai, vale come errore
+    assert drive.file["f1"]["parent"] == "errori" and e3["errori"] == 1
+
+
+def test_guasto_di_supabase_nel_registro_si_rimette_in_coda():
+    assert cu.e_guasto_transitorio("SupabaseRPCError: Supabase RPC gc_upsert_documents fallita (HTTP 503): schema cache")
+    assert cu.e_guasto_transitorio("Errore durante l'importazione: Supabase RPC gc_fetch_documents_exact fallita (HTTP 500)")
+    assert not cu.e_guasto_transitorio("F24 non quadrato o non validato")
+    assert not cu.e_guasto_transitorio("Supabase RPC x fallita (HTTP 400)")
+
+
+def test_rimessa_in_coda_dei_guasti_di_supabase_ha_un_tetto(ambiente):
+    drive, smistati, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    motivo = "Errore durante l'importazione: Supabase RPC gc_fetch_documents_exact fallita (HTTP 503)"
+    drive.aggiungi("r1", "a.pdf", b"%PDF a", "errori")
+    drive.aggiungi("r2", "b.pdf", b"%PDF b", "errori")
+    run(db[cu.REGISTRO].insert_one({"id": "r1", "nome": "a.pdf", "cartella": cu.ERRORI, "motivo": motivo, "tipo": "x"}))
+    run(db[cu.REGISTRO].insert_one({"id": "r2", "nome": "b.pdf", "cartella": cu.ERRORI, "motivo": motivo,
+                                    "tipo": "x", "rinvii": cu.MAX_RINVII}))
+    rimessi = run(cu.rimetti_in_coda_buste_gia_presenti(db, drive, dict(CARTELLE)))
+    assert rimessi == 1 and drive.file["r1"]["parent"] == "inbox" and drive.file["r2"]["parent"] == "errori"

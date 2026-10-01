@@ -311,3 +311,42 @@ def test_controlla_scadenze_f24_senza_data_scadenza_usa_il_codice_tributo(monkey
     # secondo giro: nessun doppione
     asyncio.run(fs._controlla_scadenze_f24(db))
     assert len(db["agenti_segnalazioni"].docs) == 1
+
+
+def test_scadenza_derivata_dal_codice_senza_finte_l_alert_parte_per_il_non_pagato(monkeypatch):
+    """Nessun F24 ha `data_scadenza`: la data viene dal codice (6009 = IVA settembre → 16/10/2026).
+
+    Parte per il modello da pagare; non per quello con la quietanza in archivio, non
+    per quello pagato e non per uno lontano dalla scadenza. Nessun motore sostituito.
+    """
+    from datetime import date as _date
+
+    import app.agents.fiscale_sentinella as modulo
+
+    class _Oggi(_date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 5)
+
+    monkeypatch.setattr(modulo, "date", _Oggi)
+
+    def modello(id_, codice, **extra):
+        return {"id": id_, "status": "da_pagare",
+                "sezione_erario": [{"codice_tributo": codice, "anno": "2026",
+                                    "importo_debito_cents": 20000, "importo_credito_cents": 0}],
+                "totali": {"saldo_netto": 200.0}, **extra}
+
+    db = _Db()
+    db["f24_unificato"].docs.extend([
+        modello("f24-da-pagare", "6009"),
+        modello("f24-con-quietanza", "6009", quietanza_id="q1"),
+        modello("f24-pagato", "6009", status="pagato"),
+        modello("f24-lontano", "6012"),     # IVA dicembre: 16/01/2027
+    ])
+    asyncio.run(FiscaleSentinella()._controlla_scadenze_f24(db))
+    segn = db["agenti_segnalazioni"].docs
+    assert [s["dati_riferimento"]["f24_id"] for s in segn] == ["f24-da-pagare"]
+    assert segn[0]["scadenza"] == "2026-10-16"
+    assert "regola IVA mensile" in segn[0]["descrizione"]
+    asyncio.run(FiscaleSentinella()._controlla_scadenze_f24(db))
+    assert len(db["agenti_segnalazioni"].docs) == 1
