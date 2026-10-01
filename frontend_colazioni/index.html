@@ -496,8 +496,7 @@ async function eventoOspite(finalita,azione="concesso",extra={}){
  const r=await fetch("/api/colazioni/ospite/evento",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({voucher_id:G.d.id,fonte:G.fonte,finalita,azione,informativa_versione:versione,...extra})});
  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Servizio consensi non disponibile");return j}
 async function privacyInit(){
- G.privacy=await rpc("bb_ospite_privacy_stato",{vid:G.d.id}).catch(()=>({informativa_versione:"2026-10-01-v1",informativa_url:"/privacy"}));privacyRender();
- eventoOspite("apertura").catch(()=>{});
+ G.privacy=await eventoOspite("apertura").catch(()=>({informativa_versione:"2026-10-01-v1",informativa_url:"/privacy"}));privacyRender();
 }
 function privacyRender(){
  const p=G.privacy||{},e=$("#g_privacy");if(!e)return;

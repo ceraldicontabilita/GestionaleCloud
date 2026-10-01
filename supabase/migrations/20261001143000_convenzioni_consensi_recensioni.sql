@@ -129,7 +129,7 @@ language sql stable security definer set search_path='' as $$
   'tripadvisor_url',public.bb_cfg('review_tripadvisor_url',''))
 $$;
 revoke all on function public.bb_ospite_privacy_stato(text) from public, anon, authenticated;
-grant execute on function public.bb_ospite_privacy_stato(text) to anon, authenticated;
+grant execute on function public.bb_ospite_privacy_stato(text) to service_role;
 
 create or replace function public.bb_ospite_evento_runtime(
   vid text, pfonte text, pfinalita text, pazion text, pversione text,

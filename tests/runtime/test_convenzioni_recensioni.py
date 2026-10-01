@@ -25,6 +25,7 @@ def test_interfaccia_canali_e_consensi_espliciti_separati():
     assert "navigator.geolocation.getCurrentPosition" in html
     assert 'eventoOspite("geolocalizzazione","revocato")' in html
     assert 'eventoOspite("whatsapp","revocato")' in html
+    assert 'rpc("bb_ospite_privacy_stato"' not in html
     assert 'p.google_url||RECENSIONE_GOOGLE' in html
     assert 'p.tripadvisor_url||RECENSIONE_TRIPADVISOR' in html
     assert 'f("review_invite_delay_minutes"' in html
@@ -54,6 +55,7 @@ def test_migrazione_protegge_dati_e_registra_audit_e_coda():
     assert "consenso_attivo=false" in sql
     assert "for update skip locked" in sql
     assert "perform public.gc_assert_runtime_secret()" in sql
+    assert "grant execute on function public.bb_ospite_privacy_stato(text) to service_role" in sql
     assert "if eventi_ora>=120" in sql
     assert "'review_google_url','review_tripadvisor_url'" in sql
     assert "'msg_invito','sumup_merchant_code','supplemento_tavolo'" in sql
