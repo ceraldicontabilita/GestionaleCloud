@@ -6,7 +6,7 @@ viene copiato in piu' collection e rimane sempre possibile risalire alla prova.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 from app.services.entity_relations import upsert_entity_relation
 from app.services.identity_matching import identita_coincide, nome_presente_nel_testo
@@ -139,7 +139,10 @@ def payment_document_ref(transfer: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def collega_bonifico_fatture(db, transfer: Dict[str, Any], invoices: List[Dict[str, Any]], *, auto: bool) -> None:
+async def collega_bonifico_fatture(
+    db, transfer: Dict[str, Any], invoices: List[Dict[str, Any]], *, auto: bool,
+    evidenze: Optional[List[str]] = None, regola: Optional[str] = None,
+) -> None:
     """Collega documento e fatture e registra la prova canonica idempotente.
 
     Il collegamento non cambia da solo lo stato ``pagata`` della fattura: il
@@ -152,7 +155,10 @@ async def collega_bonifico_fatture(db, transfer: Dict[str, Any], invoices: List[
     invoice_ids = [str(inv.get("id")) for inv in invoices if inv.get("id")]
     if not transfer_id or not invoice_ids:
         return
-    evidence = ["numero_fattura_in_causale", "importo_esatto_al_centesimo", "identita_fornitore"]
+    # Di norma il numero della fattura sta nella causale; chi collega per un'altra prova
+    # (es. il movimento d'estratto con lo stesso riferimento banca) la dichiara qui.
+    evidence = list(evidenze) if evidenze else [
+        "numero_fattura_in_causale", "importo_esatto_al_centesimo", "identita_fornitore"]
     await db.bonifici_transfers.update_one(
         {"id": transfer_id},
         {"$set": {
@@ -179,7 +185,7 @@ async def collega_bonifico_fatture(db, transfer: Dict[str, Any], invoices: List[
         await propaga_documento_pagamento(db, movement_id, transfer_id, invoice_ids)
 
     actor = "automatic_reconciliation" if auto else "manual_confirmation"
-    rule = (
+    rule = regola or (
         "invoice_number+exact_cents+supplier_identity"
         if auto
         else "manual_confirmation_after_strong_validation"

@@ -1998,6 +1998,22 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _bonifici_estratto_job():
+        from app.database import Database
+        from app.services.bonifici_da_estratto import abbina_bonifici_via_estratto
+        await abbina_bonifici_via_estratto(Database.get_db())
+
+    scheduler.add_job(
+        _bonifici_estratto_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=18),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="bonifici_via_estratto",
+        name="Bonifici PDF abbinati al movimento d'estratto per riferimento banca (ogni 30 min)",
+        replace_existing=True,
+    )
+
     async def _pec_cartelle_job():
         from app.database import Database
         from app.services.notifiche_pec_cartelle import ripassa_notifiche_dalla_posta
