@@ -1,10 +1,14 @@
 // Impostazioni: un solo punto d'ingresso per tutta la configurazione del
 // titolare. Ogni sezione porta alla pagina che già la gestisce: qui non c'è
 // una seconda copia di nessuna impostazione (una sola fonte per funzione).
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { toast } from "sonner";
 import {
   Building2, Users, ShieldCheck, LayoutGrid, Refrigerator, Printer, Globe, Lock, DatabaseBackup,
   BookMarked, ClipboardCheck, FlaskConical, ChevronRight,
 } from "lucide-react";
+import { API } from "../../utils/constants";
 
 export const SEZIONI_IMPOSTAZIONI = [
   { id: "azienda", titolo: "Azienda", testo: "Ragione sociale, indirizzo, P.IVA e responsabile HACCP stampati sui registri.", icona: Building2, vai: "personale" },
@@ -23,6 +27,62 @@ const ALTRE = [
   { titolo: "Configurazione guidata", icona: ClipboardCheck, vai: "configura" },
   { titolo: "Collaudi", icona: FlaskConical, vai: "collaudi" },
 ];
+
+const DICHIARAZIONE_HACCP =
+  "Sotto la mia responsabilita dichiaro che dal 01/01/2023 i giri giornalieri delle temperature sono risultati conformi. Le anomalie eventualmente riscontrate vengono registrate manualmente con il valore misurato.";
+
+function AttestazioneHaccp() {
+  const [stato, setStato] = useState(null);
+  const [occupato, setOccupato] = useState(false);
+
+  useEffect(() => {
+    axios.get(`${API}/haccp-auto/verifica-oggi`)
+      .then((r) => setStato(r.data?.attestazione_continuativa || null))
+      .catch(() => setStato(null));
+  }, []);
+
+  const applica = async () => {
+    setOccupato(true);
+    try {
+      const r = await axios.post(`${API}/haccp-auto/attesta-storico`, {
+        data_inizio: "2023-01-01",
+        dichiarazione: DICHIARAZIONE_HACCP,
+        attesta_sanificazioni_registrate: true,
+        attiva_giro_automatico_ore_7: true,
+      });
+      const e = r.data || {};
+      setStato({ attivo: true, data_inizio: e.data_inizio, data_fine: e.data_fine });
+      toast.success(
+        e.idempotente
+          ? "Attestazione gia applicata: nessun dato duplicato"
+          : `Attestazione applicata: ${e.temperature_popolate || 0} controlli completati, ${e.sanificazioni_attestate || 0} sanificazioni firmate`,
+      );
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Attestazione HACCP non riuscita");
+    } finally {
+      setOccupato(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-xl border border-[#d7e3da] bg-[#f3f7f4] p-3">
+      <p className="m-0 text-xs font-extrabold text-[#3f5a4e]">Temperature e sanificazioni dal 2023</p>
+      <p className="m-0 mt-1 text-xs text-[#6b7669]">
+        Completa i controlli mancanti come conformi senza inventare gradi, firma le sanificazioni gia registrate e attiva il giro automatico delle 07:00. Anomalie e misure manuali restano intatte.
+      </p>
+      {stato?.attivo && (
+        <p className="m-0 mt-2 text-xs font-bold text-[#3d8168]">
+          Attiva dal {stato.data_inizio || "01/01/2023"}{stato.data_fine ? ` al ${stato.data_fine}` : ""}
+        </p>
+      )}
+      <button type="button" onClick={applica} disabled={occupato}
+        data-testid="attesta-haccp-storico"
+        className="mt-3 min-h-[44px] w-full rounded-xl bg-[#3f5a4e] px-3 text-sm font-extrabold text-white disabled:opacity-60">
+        {occupato ? "Applicazione in corso…" : stato?.attivo ? "Verifica e completa dal 2023" : "Applica dichiarazione dal 2023"}
+      </button>
+    </div>
+  );
+}
 
 export default function ImpostazioniView({ onNavigate }) {
   return (
@@ -56,6 +116,7 @@ export default function ImpostazioniView({ onNavigate }) {
                 {a.label}
               </button>
             ))}
+            {id === "sicurezza" && <AttestazioneHaccp />}
           </div>
         ))}
       </div>
