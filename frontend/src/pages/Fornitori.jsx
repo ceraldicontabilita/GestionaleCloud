@@ -52,6 +52,7 @@ import {
 import { ePagata } from '../utils/statoFattura';
 import MagazzinoFornitore from '../components/MagazzinoFornitore';
 import MetodoDalFornitore from '../components/MetodoDalFornitore';
+import DoppioniFornitori from '../components/DoppioniFornitori';
 
 // Hook per debounce
 function useDebounce(value, delay) {
@@ -1353,6 +1354,16 @@ function SupplierCard({
           </div>
           <div style={{ marginTop: 2, color: COLORS.textMuted, fontSize: isMobile ? 10.5 : 12 }}>
             P.IVA <span style={{ fontFamily: 'monospace' }}>{piva}</span>
+            {supplier.piva_da_verificare && (
+              <Badge
+                variant="warning"
+                title={supplier.piva_motivo || 'P.IVA da verificare'}
+                data-testid="badge-piva-da-verificare"
+                style={{ marginLeft: 6, fontSize: 10, padding: '2px 6px' }}
+              >
+                P.IVA da verificare
+              </Badge>
+            )}
             {supplier.comune && (
               <span>
                 {' '}
@@ -2070,6 +2081,8 @@ export default function Fornitori() {
           style={{ marginBottom: 14 }}
         />
 
+        <DoppioniFornitori onMerged={reloadData} />
+
         {/* PR #5e850c8: Badge contatori filtri avanzati (navy/gold) */}
         <div
           style={{
@@ -2565,7 +2578,12 @@ export default function Fornitori() {
                   label: 'P.IVA',
                   mono: true,
                   ruoloCard: 'omesso',
-                  render: s => s.partita_iva || s.piva || '-',
+                  render: s => (
+                    <span title={s.piva_motivo || undefined}>
+                      {s.partita_iva || s.piva || '-'}
+                      {s.piva_da_verificare ? ' · da verificare' : ''}
+                    </span>
+                  ),
                   tdStyle: { fontSize: 13, color: COLORS.textMuted },
                 },
                 {

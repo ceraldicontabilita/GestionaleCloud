@@ -429,6 +429,21 @@ async def check_fornitori_duplicati_task():
         logger.error(f"👥 [SCHEDULER] Errore controllo fornitori duplicati: {e}")
 
 
+async def unifica_fornitori_duplicati_task():
+    """Ogni giorno alle 06:20: fonde i doppioni fornitore CERTI e i probabili con un solo
+    candidato (`fornitori_dedupe.giro_unifica_fornitori`); il resto resta in «da decidere».
+    Idempotente: il secondo giro non trova niente."""
+    try:
+        from app.services.fornitori_dedupe import giro_unifica_fornitori
+        esito = await giro_unifica_fornitori(dry_run=False)
+        logger.info(
+            "👥 [SCHEDULER] Unifica fornitori: %s fusi, %s P.IVA completate, %s da decidere",
+            len(esito["fusi"]), esito["piva_completate"], esito["da_decidere"],
+        )
+    except Exception as e:
+        logger.error("👥 [SCHEDULER] Unifica fornitori fallito (%s): %s", type(e).__name__, e)
+
+
 async def paypal_recupera_fatture_email_task():
     """Task eseguito ogni giorno alle 5:30."""
     from app.config import settings
@@ -1920,6 +1935,16 @@ def start_scheduler():
         CronTrigger(hour=6, minute=0),
         id="fornitori_duplicati_check",
         name="Controllo Fornitori Duplicati (ogni giorno ore 6:00)",
+        replace_existing=True
+    )
+
+    scheduler.add_job(
+        unifica_fornitori_duplicati_task,
+        CronTrigger(hour=6, minute=20),
+        id="fornitori_unifica_duplicati",
+        name="Unifica Fornitori Duplicati (ogni giorno ore 6:20)",
+        misfire_grace_time=3600,
+        coalesce=True,
         replace_existing=True
     )
 

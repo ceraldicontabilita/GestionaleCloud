@@ -20,6 +20,7 @@ from app.services.magazzino_fornitore import (
     MOTIVO_MODIFICA_SCHEDA, anteprima as anteprima_magazzino, applica as applica_magazzino,
     allinea_da_lotti, carica_decisioni, vista_scheda,
 )
+from app.services.piva_validazione import vista_piva
 from app.services.metodo_fornitore_dal import applica as applica_metodo_dal, stato as stato_metodo_dal
 from app.services.payment_allocation_validator import allocation_summary, is_credit_note
 from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA, importo_documento_con_segno
@@ -372,6 +373,8 @@ async def list_suppliers(
             {"match_key": {"$in": list(piva_con_prodotto)}},
         ]})
     
+    # Un fornitore unificato in un altro (`merged_into`) non e' piu' in elenco.
+    suppliers_query["merged_into"] = {"$exists": False}
     saved_suppliers = await db[Collections.SUPPLIERS].find(suppliers_query, {"_id": 0}).to_list(1000)
     
     for raw_supplier in saved_suppliers:
@@ -535,6 +538,7 @@ async def list_suppliers(
     decisioni_magazzino = await carica_decisioni(db)
     for s_ in suppliers:
         s_.update(vista_scheda(s_, decisioni_magazzino))
+        s_.update(vista_piva(s_))
     if esclude_magazzino is not None:
         suppliers = [s_ for s_ in suppliers
                      if bool(s_.get("esclude_magazzino")) == esclude_magazzino]
@@ -692,43 +696,50 @@ async def list_suppliers_filtered(
 
 
 @router.get("/duplicati")
-async def get_fornitori_duplicati() -> Dict[str, Any]:
-    """
-    Gruppi di fornitori sospetti duplicati (stessa P.IVA o denominazione
-    simile). Colma il gap #1 di memoria/moduli/FORNITORI.md: prima non
-    esisteva alcuna funzione di deduplica per fornitori, a differenza di
-    Dipendenti (app/services/dipendenti_dedupe.py).
-    """
+async def get_fornitori_duplicati(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Gruppi di fornitori sospetti duplicati (stessa P.IVA/CF o nome simile)."""
     from app.services.fornitori_dedupe import trova_duplicati
     return await trova_duplicati()
+
+
+@router.get("/duplicati/da-decidere")
+async def get_fornitori_da_decidere(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Sola lettura: i doppioni che il giro automatico non fonde, con candidati e motivo."""
+    from app.services.fornitori_dedupe import da_decidere
+    return await da_decidere()
 
 
 @router.post("/duplicati/merge")
 async def merge_fornitori_duplicati(
     target_id: str = Body(...),
     duplicate_id: str = Body(...),
-    soft: bool = Body(True),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
-    """Unifica duplicate_id dentro target_id (fatture e scadenze re-puntate)."""
-    from app.services.fornitori_dedupe import merge_fornitori
+    """Unifica duplicate_id dentro target_id (soft: il perdente resta, marcato `unificato`).
+
+    Due P.IVA valide diverse sono rifiutate.
+    """
+    from app.services.fornitori_dedupe import merge_fornitori, _invalida_cache
     if not target_id or not duplicate_id:
         raise HTTPException(status_code=400, detail="target_id e duplicate_id sono obbligatori")
     try:
-        return await merge_fornitori(target_id, duplicate_id, soft=soft)
+        esito = await merge_fornitori(target_id, duplicate_id, motivo="scelta del titolare")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    await _invalida_cache()
+    return esito
 
 
 @router.post("/duplicati/auto-merge")
 async def auto_merge_fornitori_duplicati(
     dry_run: bool = Query(True, description="True = solo anteprima, nessuna scrittura"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
-    """
-    Merge automatico dei soli duplicati a certezza alta (stessa P.IVA).
-    I duplicati per solo nome simile richiedono sempre conferma manuale via
-    /duplicati/merge — un nome simile non è prova sufficiente per un'unione
-    automatica di un'anagrafica fiscale.
-    """
+    """Lo stesso giro dello scheduler: certi e probabili con un solo candidato."""
     from app.services.fornitori_dedupe import auto_merge_tutti
     return await auto_merge_tutti(dry_run=dry_run)
 
@@ -755,6 +766,7 @@ async def get_supplier(supplier_id: str) -> Dict[str, Any]:
         supplier["fatture_recenti"] = invoices
 
     supplier.update(vista_scheda(supplier, await carica_decisioni(db)))
+    supplier.update(vista_piva(supplier))
     return supplier
 
 
