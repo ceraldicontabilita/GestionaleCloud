@@ -1990,6 +1990,29 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _identifica_web_lotti_job():
+        # Lotti, Dizionario: il web identifica il prodotto delle righe senza categoria certa
+        # (5 a giro, tetto giornaliero, una riga cercata non si ricerca per 30 giorni).
+        try:
+            from app.lotti.db import database as db_lotti
+            from app.lotti.servizi.lettura_articoli_ai import identifica_col_web
+            r = await identifica_col_web(db_lotti)
+            if r.get("cercate") or r.get("errori"):
+                logger.info("[SCHEDULER-LOTTI] identifica col web %s", r)
+        except Exception as e:
+            logger.error("[SCHEDULER-LOTTI] identifica col web: %s: %s", type(e).__name__, e)
+
+    scheduler.add_job(
+        _identifica_web_lotti_job,
+        'interval', minutes=25,
+        next_run_time=avvio + timedelta(minutes=14),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="lotti_identifica_col_web",
+        name="Lotti: identificazione prodotti col web (ogni 25 min)",
+        replace_existing=True,
+    )
+
     async def _paypal_automatico_job():
         from app.database import Database
         from app.services.paypal_automatico import giro_paypal

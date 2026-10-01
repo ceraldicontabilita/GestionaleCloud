@@ -831,6 +831,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `nome_mapping` resta l'ingrediente per le ricette, non l'articolo da ordinare. **Scelto un prodotto (catalogo, Ordini o
   confronto), la riga del carrello va al fornitore che costa meno** (`GET /confronto-fornitori/migliore`) e il toast lo dice;
   un cartone fatturato senza i pezzi scritti prende il numero dal listino dello stesso articolo, con la nota «da verificare».
+- **Il web identifica i prodotti con un motore solo** (`servizi/lettura_articoli_ai.py`): `cerca_sul_web` è l'unica chiamata a `web_search_20250305` (stessa `ANTHROPIC_API_KEY`, la usa anche la ricerca delle schede tecniche); `identifica_col_web` (giro `lotti_identifica_col_web` ogni 25 min, 5 righe, tetto 120 chiamate al giorno, `web_cercato_at` = 30 giorni di pausa) dà una categoria del Dizionario da sola **solo** se il web (alta confidenza, almeno una fonte) e il testo di fattura concordano e la categoria è in `CATEGORIE` (`categoria_fonte="web"`, `abbinato_ai`, fonti); il resto è proposta `nome_mapping` fonte `web`.
 - Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili col peso del pezzo.
 - Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
   colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e
@@ -1007,6 +1008,8 @@ non certificano tutte le relazioni del deposito reale. Runner backend:
 locale e marker fixture prima delle scritture.
 
 ## Aperto (togliere la voce quando si chiude)
+
+- **Lotti, due giri di ricerca web sulle descrizioni di fattura**: `identifica_col_web` (`lettura_articoli_ai.py`, giro `lotti_identifica_col_web`, categoria del Dizionario, `web_cercato_at`) e la campagna `ricerca_web_prodotti` (`app/lotti/routers/scheduler.py`, schede e `nome_mapping`, `ricerca_web_tentativi`, mai un tentativo registrato). Condividono l'helper `cerca_sul_web` ma sono due code e due contatori: fonderli in un giro solo.
 
 - **Fornitori, da lanciare dopo il merge** (admin, prima `dry_run`): `POST /api/suppliers/magazzino/allinea` (le 88 esclusioni di Lotti sull'anagrafica); per BIG FOOD SRL `POST /api/suppliers/{id}/applica-metodo-dal` dopo aver messo «Metodo valido dal» 01/01/2025 sulla scheda (oggi è 30/09/2026 per un salvataggio della scheda). Le 6 fatture BIG FOOD già pagate con assegno, banca o dichiarazione in banca (2.711,38 €) restano dove sono finché il titolare non dice diversamente. Il «30 giorni» della scheda fornitore (`giorni_pagamento`, default alla creazione) è un residuo di scadenza che le regole non prevedono: la scheda non lo mostra più, il campo nel form resta da togliere.
 
