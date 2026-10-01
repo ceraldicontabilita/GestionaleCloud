@@ -24,6 +24,8 @@ GET  /api/ricette-ripubblica-menu/stato
 GET  /api/tablet/{reparto}          — prodotti per vista tablet
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Body, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
@@ -49,6 +51,8 @@ from app.lotti.servizi.cestino_ricette import archivia_ricetta, elenca_cestino, 
 from app.lotti.servizi.reparti_ricette import _categorizza_reparto, _reparto_finale_auto
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Ricette"])
 
