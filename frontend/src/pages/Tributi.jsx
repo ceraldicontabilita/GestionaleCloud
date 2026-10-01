@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Badge, Button, PageHeader, PageLoader, Tabs } from '../components/ds';
 import RegistroVersamenti from '../components/tributi/RegistroVersamenti';
 import Scadenzario from '../components/tributi/Scadenzario';
+import TerminiRecupero from '../components/tributi/TerminiRecupero';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import { COLORS, FONT, formatEuro, useIsMobile } from '../lib/utils';
 import api from '../api';
@@ -242,11 +243,14 @@ export default function Tributi() {
           { key: 'crediti', label: 'Crediti e compensazioni' },
           { key: 'deleghe', label: 'Deleghe F24' },
           { key: 'scadenzario', label: 'Scadenzario' },
+          { key: 'termini', label: 'Termini di recupero' },
         ]}
         style={{ marginBottom: 12 }}
       />
 
       {vista === 'scadenzario' && <Scadenzario anno={anno} stato={stato} imposta={imposta} />}
+
+      {vista === 'termini' && <TerminiRecupero />}
 
       {['versamenti', 'crediti', 'deleghe'].includes(vista) && (
         <RegistroVersamenti vista={vista} anno={anno} origine={origine} imposta={imposta} onApri={(url, titolo) => setPdf({ url, titolo })} />
