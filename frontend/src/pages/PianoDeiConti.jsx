@@ -11,6 +11,21 @@ import { Button, Badge, StatCard, Input, Select, Table, TableWrap, Th, Td } from
 
 const MONO = FONT.mono;
 
+/**
+ * Un saldo negativo su un conto del passivo non e' un debito: e' un saldo in DARE.
+ * Per l'Erario (35.*) vuol dire credito (IVA a credito sugli acquisti), che il bilancio
+ * mostrava tra parentesi in rosso come se fosse un debito.
+ */
+export function lato_saldo(conto = {}) {
+  const saldo = Number(conto.saldo || 0);
+  if (saldo >= 0) return null;
+  const categoria = String(conto.categoria || '').toLowerCase();
+  if (categoria === 'passivo' && String(conto.codice || '').startsWith('35.')) {
+    return { testo: 'credito verso Erario', favorevole: true };
+  }
+  return { testo: categoria === 'passivo' || categoria === 'patrimonio netto' ? 'saldo in dare' : 'saldo in avere', favorevole: false };
+}
+
 export function buildBalanceSummary(grouped = {}) {
   const totale = categoria =>
     (grouped[categoria] || []).reduce((somma, conto) => somma + Number(conto.saldo || 0), 0);
@@ -400,10 +415,15 @@ export default function PianoDeiConti() {
                                     mono
                                     style={{
                                       fontWeight: 'bold',
-                                      color: conto.saldo >= 0 ? COLORS.success : COLORS.danger,
+                                      color: conto.saldo >= 0 || lato_saldo(conto)?.favorevole ? COLORS.success : COLORS.danger,
                                     }}
                                   >
-                                    {formatEuro(conto.saldo)}
+                                    {lato_saldo(conto) ? formatEuro(Math.abs(conto.saldo)) : formatEuro(conto.saldo)}
+                                    {lato_saldo(conto) && (
+                                      <span style={{ display: 'block', fontSize: 11, fontWeight: 'normal' }}>
+                                        {lato_saldo(conto).testo}
+                                      </span>
+                                    )}
                                   </Td>
                                 </tr>
                               ))}
@@ -525,8 +545,10 @@ export default function PianoDeiConti() {
                     {[
                       {
                         label: 'Saldo',
-                        val: formatEuro(selectedConto.saldo || 0),
-                        color: (selectedConto.saldo || 0) >= 0 ? COLORS.success : COLORS.danger,
+                        val: lato_saldo(selectedConto)
+                          ? `${formatEuro(Math.abs(selectedConto.saldo))} · ${lato_saldo(selectedConto).testo}`
+                          : formatEuro(selectedConto.saldo || 0),
+                        color: (selectedConto.saldo || 0) >= 0 || lato_saldo(selectedConto)?.favorevole ? COLORS.success : COLORS.danger,
                       },
                       { label: 'Natura', val: selectedConto.natura || '—', color: COLORS.textMuted },
                       {

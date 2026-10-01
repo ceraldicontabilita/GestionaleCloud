@@ -164,8 +164,8 @@ def test_sync_incrementale_non_interroga_paypal_per_finestre_di_pochi_secondi(mo
         assert dopo["last_success_end"] == recente
         assert dopo["status"] == "up_to_date"
 
-        # intervallo piu' vecchio del minimo: PayPal viene interrogato
-        vecchio = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        # intervallo piu' vecchio del minimo + 3 ore di ritardo dati: PayPal viene interrogato
+        vecchio = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
         await db[sync_module.CHECKPOINT_COLL].update_one(
             {"id": "paypal_default_account"},
             {"$set": {"last_success_end": vecchio, "lock_until": "2000-01-01T00:00:00+00:00"}},
@@ -195,5 +195,54 @@ def test_endpoint_sync_incrementale_risponde_502_su_errore_paypal(monkeypatch):
             assert "PayPal" in exc.detail
         else:
             raise AssertionError("atteso HTTPException 502")
+
+    _run(scenario())
+
+
+def test_sync_incrementale_chiude_la_finestra_tre_ore_prima_di_adesso(monkeypatch):
+    async def scenario():
+        from datetime import timedelta
+
+        db = ClientArchivioMemoria().db
+        finestre = []
+
+        async def fake_period(_db, start, end):
+            finestre.append((start, end))
+            return {"total": 0, "enriched": 0}
+
+        monkeypatch.setattr(sync_module, "sync_paypal_period", fake_period)
+        await sync_module.sync_paypal_incremental(db)
+
+        assert finestre
+        assert datetime.now(timezone.utc) - finestre[0][1] >= timedelta(hours=3) - timedelta(seconds=5)
+
+    _run(scenario())
+
+
+def test_sync_incrementale_con_404_non_e_un_errore_e_non_sposta_il_checkpoint(monkeypatch):
+    async def scenario():
+        import httpx
+        from datetime import timedelta
+
+        db = ClientArchivioMemoria().db
+        precedente = (datetime.now(timezone.utc) - timedelta(hours=9)).isoformat()
+        await db[sync_module.CHECKPOINT_COLL].insert_one({
+            "id": "paypal_default_account",
+            "lock_until": "2000-01-01T00:00:00+00:00",
+            "last_success_end": precedente,
+        })
+
+        async def non_trovato(_db, start, end):
+            richiesta = httpx.Request("GET", "https://api.paypal.com/v1/reporting/transactions")
+            raise httpx.HTTPStatusError("404", request=richiesta, response=httpx.Response(404, request=richiesta))
+
+        monkeypatch.setattr(sync_module, "sync_paypal_period", non_trovato)
+
+        esito = await sync_module.sync_paypal_incremental(db)
+
+        assert esito["status"] == "nessun_dato"
+        dopo = await db[sync_module.CHECKPOINT_COLL].find_one({"id": "paypal_default_account"}, {"_id": 0})
+        assert dopo["last_success_end"] == precedente
+        assert dopo["status"] == "nessun_dato"
 
     _run(scenario())
