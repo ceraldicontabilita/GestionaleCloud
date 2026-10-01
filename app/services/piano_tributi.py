@@ -25,6 +25,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.services import f24_controllo_incrociato as registro_f24
 from app.services.calendario_lavorativo import e_festivo
+from app.services.scadenzario_tributi import termine_effettivo
 from app.services.expectation_policy import (
     ExpectationStatus, expectation_fields, mandatory_expectations_closed,
 )
@@ -133,18 +134,38 @@ PIANO_BASE: List[Dict[str, Any]] = [
 # ── calendario delle scadenze ─────────────────────────────────────────────
 
 def scadenza_effettiva(nominale: date) -> date:
-    """Il 16 agosto slitta al 20 (proroga estiva); un festivo al primo lavorativo."""
-    if (nominale.month, nominale.day) == (8, 16):
-        nominale = date(nominale.year, 8, 20)
-    while e_festivo(nominale):
-        nominale += timedelta(days=1)
-    return nominale
+    """Il termine vero: un festivo slitta al primo lavorativo, le scadenze di agosto al 20.
+
+    Un solo calendario per tutti: lo scadenzario dei tributi (``termine_effettivo``)
+    che decide anche se un versamento e' in ritardo da ravvedere.
+    """
+    return termine_effettivo(nominale)
+
+
+def motivo_slittamento(nominale: date, effettiva: date) -> Optional[str]:
+    """Perche' la scadenza non e' il giorno scritto: festivo/weekend o proroga d'agosto."""
+    if effettiva == nominale:
+        return None
+    if nominale.month == 8 and nominale.day <= 20 and effettiva.month == 8 and effettiva.day == 20:
+        if not e_festivo(date(nominale.year, 8, 20)):
+            return "proroga di agosto"
+    return "giorno festivo"
+
+
+def giorni_ritardo(data_versamento: Optional[date], effettiva: Optional[date]) -> Optional[int]:
+    """Giorni di ritardo sul termine EFFETTIVO: pagare il primo lavorativo dopo un 16 festivo
+    non e' ritardo, e quindi non serve il ravvedimento. ``None`` se manca una delle due date."""
+    if not data_versamento or not effettiva:
+        return None
+    return max(0, (data_versamento - effettiva).days)
+
+
+def _nominale_mensile(anno: int, mese: int) -> date:
+    return date(anno + 1, 1, 16) if mese == 12 else date(anno, mese + 1, 16)
 
 
 def _scadenza_mensile(anno: int, mese: int) -> date:
-    if mese == 12:
-        return scadenza_effettiva(date(anno + 1, 1, 16))
-    return scadenza_effettiva(date(anno, mese + 1, 16))
+    return scadenza_effettiva(_nominale_mensile(anno, mese))
 
 
 # ── il piano salvato ──────────────────────────────────────────────────────
@@ -266,7 +287,7 @@ _PRIORITA = [PAGATO, DA_CONFERMARE_BANCA, QUIETANZA_SENZA_BANCA, SCADUTO_NON_PAG
 def _casella(
     voce: Dict[str, Any], anno: int, chiave_periodo: str, etichetta_periodo: str,
     scadenza: Optional[date], trovati: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]],
-    registro: Dict[str, Any], oggi: date,
+    registro: Dict[str, Any], oggi: date, nominale: Optional[date] = None,
 ) -> Dict[str, Any]:
     credito = voce.get("natura") == "credito"
     modelli: List[Dict[str, Any]] = []
@@ -276,6 +297,10 @@ def _casella(
         modelli.append({
             "f24_id": f24.get("id"),
             "data_versamento": prove["data_versamento"],
+            "giorni_ritardo": giorni_ritardo(_data(prove["data_versamento"]), scadenza),
+            "giorni_dopo_nominale": (
+                (_data(prove["data_versamento"]) - nominale).days
+                if nominale and _data(prove["data_versamento"]) else None),
             "stato": stato,
             "debito_cents": sum(r["importo_debito_cents"] for r in righe),
             "credito_cents": sum(r["importo_credito_cents"] for r in righe),
@@ -316,10 +341,20 @@ def _casella(
 
     debito = sum(m["debito_cents"] for m in versamenti)
     credito_cents = sum(m["credito_cents"] for m in versamenti)
+    ritardi = [m["giorni_ritardo"] for m in versamenti if m["giorni_ritardo"] is not None]
     return {
         "periodo": chiave_periodo,
         "etichetta_periodo": etichetta_periodo,
         "scadenza": scadenza.isoformat() if scadenza else None,
+        "scadenza_nominale": nominale.isoformat() if nominale else None,
+        "slittamento": motivo_slittamento(nominale, scadenza) if nominale and scadenza else None,
+        # Il ritardo peggiore fra i versamenti trovati (0 = nei termini); senza versamento
+        # niente: «da quanti giorni e' scaduto» e' un altro dato, sotto.
+        "giorni_ritardo": max(ritardi) if ritardi else None,
+        "giorni_scaduto": (
+            (oggi - scadenza).days
+            if not versamenti and scadenza and scadenza < oggi and voce.get("periodo") != "manuale" and not credito
+            else None),
         "stato": stato,
         "etichetta_stato": ETICHETTE[stato],
         "importo": _euro(debito) if versamenti and debito else None,
@@ -359,13 +394,15 @@ def caselle_voce(voce: Dict[str, Any], anno: int, modelli, registro, oggi: date)
                 if mie:
                     trovati.append((f24, mie))
             caselle.append(_casella(voce, anno, f"{mese:02d}", f"{mese:02d}/{anno}",
-                                    _scadenza_mensile(anno, mese), trovati, registro, oggi))
+                                    _scadenza_mensile(anno, mese), trovati, registro, oggi,
+                                    nominale=_nominale_mensile(anno, mese)))
     elif periodo == "anno":
         anno_riga = _anno_riga(voce, anno)
         entro = voce.get("versamento_entro")
         dal = voce.get("versamento_dal")
         for mese_s, giorno_s in voce.get("scadenze") or []:
-            scadenza = scadenza_effettiva(date(anno, int(mese_s), int(giorno_s)))
+            nominale = date(anno, int(mese_s), int(giorno_s))
+            scadenza = scadenza_effettiva(nominale)
             trovati = []
             for f24, righe in modelli:
                 mie = [r for r in _righe_voce(voce, righe) if r["anno"] == anno_riga]
@@ -377,10 +414,11 @@ def caselle_voce(voce: Dict[str, Any], anno: int, modelli, registro, oggi: date)
                 if mie:
                     trovati.append((f24, mie))
             caselle.append(_casella(voce, anno, f"{int(mese_s):02d}", f"scad. {scadenza:%d/%m/%Y}",
-                                    scadenza, trovati, registro, oggi))
+                                    scadenza, trovati, registro, oggi, nominale=nominale))
     elif periodo == "versamento":
         for mese_s, giorno_s in voce.get("scadenze") or []:
-            scadenza = scadenza_effettiva(date(anno, int(mese_s), int(giorno_s)))
+            nominale = date(anno, int(mese_s), int(giorno_s))
+            scadenza = scadenza_effettiva(nominale)
             trovati = []
             for f24, righe in modelli:
                 dv = _data(registro_f24.data_versamento_modello(f24))
@@ -388,12 +426,13 @@ def caselle_voce(voce: Dict[str, Any], anno: int, modelli, registro, oggi: date)
                 if mie and dv and (dv.year, dv.month) == (scadenza.year, scadenza.month):
                     trovati.append((f24, mie))
             caselle.append(_casella(voce, anno, f"{int(mese_s):02d}", f"scad. {scadenza:%d/%m/%Y}",
-                                    scadenza, trovati, registro, oggi))
+                                    scadenza, trovati, registro, oggi, nominale=nominale))
     else:  # manuale
         for mese_s, giorno_s in voce.get("scadenze") or []:
-            scadenza = scadenza_effettiva(date(anno, int(mese_s), int(giorno_s)))
+            nominale = date(anno, int(mese_s), int(giorno_s))
+            scadenza = scadenza_effettiva(nominale)
             caselle.append(_casella(voce, anno, f"{int(mese_s):02d}", f"scad. {scadenza:%d/%m/%Y}",
-                                    scadenza, [], registro, oggi))
+                                    scadenza, [], registro, oggi, nominale=nominale))
     return caselle
 
 
@@ -421,13 +460,7 @@ def _codici_fuori_piano(voci, modelli, anno: int) -> List[Dict[str, Any]]:
     return sorted(trovati.values(), key=lambda v: v["codice"])
 
 
-async def griglia(db, anno: int, oggi: Optional[date] = None) -> Dict[str, Any]:
-    """Il piano dell'anno con lo stato di ogni casella, in una sola lettura del registro."""
-    oggi = oggi or datetime.now(timezone.utc).date()
-    voci = [v for v in await voci_piano(db) if v.get("attivo", True)]
-    registro = await registro_f24.carica_registro(db)
-    modelli = _modelli_con_righe(registro)
-
+def _griglia_anno(voci, registro, modelli, anno: int, oggi: date) -> Dict[str, Any]:
     righe_griglia = []
     tutte: List[Dict[str, Any]] = []
     for voce in voci:
@@ -450,8 +483,9 @@ async def griglia(db, anno: int, oggi: Optional[date] = None) -> Dict[str, Any]:
         "conteggi": conteggi,
         "etichette": ETICHETTE,
         "mancano": [
-            {"voce": r["voce"]["etichetta"], "codici": r["voce"]["codici"],
-             "periodo": c["etichetta_periodo"], "scadenza": c["scadenza"], "stato": c["stato"]}
+            {"anno": anno, "voce": r["voce"]["etichetta"], "codici": r["voce"]["codici"],
+             "periodo": c["etichetta_periodo"], "scadenza": c["scadenza"], "stato": c["stato"],
+             "giorni_scaduto": c["giorni_scaduto"]}
             for r in righe_griglia for c in r["caselle"]
             if c["mandatory"] and c["stato"] in (MANCA_F24, SCADUTO_NON_PAGATO)
         ],
@@ -459,4 +493,69 @@ async def griglia(db, anno: int, oggi: Optional[date] = None) -> Dict[str, Any]:
         # L'anno e' chiuso solo quando ogni attesa obbligatoria e' positiva.
         "anno_chiuso": mandatory_expectations_closed(obbligatorie),
         "fuori_piano": _codici_fuori_piano(voci, modelli, anno),
+    }
+
+
+async def griglia(db, anno: int, oggi: Optional[date] = None) -> Dict[str, Any]:
+    """Il piano dell'anno con lo stato di ogni casella, in una sola lettura del registro."""
+    oggi = oggi or datetime.now(timezone.utc).date()
+    voci = [v for v in await voci_piano(db) if v.get("attivo", True)]
+    registro = await registro_f24.carica_registro(db)
+    return _griglia_anno(voci, registro, _modelli_con_righe(registro), anno, oggi)
+
+
+ANNO_PRIMO_PIANO = 2019
+
+
+def anni_richiesti(testo: Optional[str], modelli, oggi: date) -> List[int]:
+    """«2026», «2024-2026», «2024,2026» o «tutti» -> anni dal piu' recente.
+
+    «tutti» parte dal primo anno con un F24 in archivio (mai prima del 2019) e
+    arriva all'anno in corso. Un valore non valido e' un errore, mai un anno
+    scelto al posto di chi chiede.
+    """
+    t = (testo or "").strip().lower()
+    if not t:
+        return [oggi.year]
+    if t == "tutti":
+        anni_f24 = [d.year for f24, _ in modelli
+                    if (d := _data(registro_f24.data_versamento_modello(f24)))]
+        primo = max(ANNO_PRIMO_PIANO, min(anni_f24)) if anni_f24 else oggi.year
+        return list(range(oggi.year, primo - 1, -1))
+    try:
+        if "-" in t:
+            da, a = (int(x) for x in t.split("-", 1))
+            anni = list(range(min(da, a), max(da, a) + 1))
+        else:
+            anni = sorted({int(x) for x in t.split(",")})
+    except ValueError as exc:
+        raise ValueError(f"Anni non validi: {testo!r}") from exc
+    if not anni or anni[0] < ANNO_PRIMO_PIANO or anni[-1] > 2100 or len(anni) > 15:
+        raise ValueError(f"Anni fuori intervallo: {testo!r}")
+    return sorted(anni, reverse=True)
+
+
+async def griglia_anni(db, testo: Optional[str], oggi: Optional[date] = None) -> Dict[str, Any]:
+    """Il piano di piu' anni (o di tutti) con una sola lettura del registro."""
+    oggi = oggi or datetime.now(timezone.utc).date()
+    voci = [v for v in await voci_piano(db) if v.get("attivo", True)]
+    registro = await registro_f24.carica_registro(db)
+    modelli = _modelli_con_righe(registro)
+    anni = anni_richiesti(testo, modelli, oggi)
+    if len(anni) == 1:
+        return _griglia_anno(voci, registro, modelli, anni[0], oggi)
+    per_anno = [_griglia_anno(voci, registro, modelli, a, oggi) for a in anni]
+    conteggi: Dict[str, int] = {}
+    for g in per_anno:
+        for stato, n in g["conteggi"].items():
+            conteggi[stato] = conteggi.get(stato, 0) + n
+    return {
+        "multi": True,
+        "anni": per_anno,
+        "oggi": oggi.isoformat(),
+        "conteggi": conteggi,
+        "etichette": ETICHETTE,
+        # Il piu' recente per primo, poi per anno decrescente.
+        "mancano": [m for g in per_anno for m in g["mancano"]],
+        "modelli_doppi": sum(g["modelli_doppi"] for g in per_anno),
     }

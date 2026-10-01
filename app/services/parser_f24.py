@@ -276,6 +276,37 @@ def _periodi_da_testo_inps(row_text: str, mese: str, anno: str) -> Dict[str, str
     return {"periodo_da": da, "periodo_a": da}
 
 
+def _unisci_codici_a_caselle(row):
+    """Riunisce un codice tributo scritto una cifra per casella («1 0 0 1» -> «1001»).
+
+    Il modello stampato dal consulente (gestionale paghe, PCL2PDF) mette ogni
+    cifra del codice in una casella e il testo del PDF le dà come quattro parole:
+    la riga Erario/Regioni/IMU non si riconosceva e restava fuori dal modello.
+    Si uniscono solo serie di ESATTAMENTE quattro cifre vicine (una casella dopo
+    l'altra): un codice fiscale (11), una data (8) o «0 5» (regione) non si toccano.
+    """
+    uniti, i = [], 0
+    while i < len(row):
+        gruppo = [row[i]]
+        if re.fullmatch(r"\d", row[i]["word"]):
+            j = i + 1
+            while (j < len(row) and re.fullmatch(r"\d", row[j]["word"])
+                   and 0 < row[j]["x"] - row[j - 1]["x"] <= 18):
+                gruppo.append(row[j])
+                j += 1
+        if len(gruppo) == 4:
+            uniti.append({
+                "x": gruppo[0]["x"], "x1": gruppo[-1]["x1"], "y": gruppo[0]["y"],
+                "word": "".join(g["word"] for g in gruppo),
+            })
+        else:
+            # una serie di altra lunghezza (CF, data, regione) resta com'e', tutta intera:
+            # le sue ultime quattro cifre non sono un codice tributo.
+            uniti.extend(gruppo)
+        i += len(gruppo)
+    return uniti
+
+
 def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
     """
     Parsa un F24 PDF della commercialista ed estrae tutti i dati.
@@ -462,7 +493,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
 
         # Processa ogni riga
         for y_key in sorted(rows.keys()):
-            row = sorted(rows[y_key], key=lambda r: r['x'])
+            row = _unisci_codici_a_caselle(sorted(rows[y_key], key=lambda r: r['x']))
             row_text = ' '.join([r['word'] for r in row])
             if "EURO" in row_text and "+" in row_text:
                 _unused_cents, saldo_documento_cents = extract_importo_cents(row)

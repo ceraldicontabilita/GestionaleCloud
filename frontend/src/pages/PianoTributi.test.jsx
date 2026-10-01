@@ -18,18 +18,18 @@ const piano = {
   anno: 2026,
   conteggi: { pagato: 1, manca_f24: 1 },
   etichette: { manca_f24: 'Manca F24' },
-  mancano: [{ voce: 'Ritenute lavoro dipendente', codici: ['1001'], periodo: '06/2026', scadenza: '2026-07-16', stato: 'manca_f24' }],
+  mancano: [{ voce: 'Ritenute lavoro dipendente', codici: ['1001'], periodo: '06/2026', scadenza: '2026-07-16', stato: 'manca_f24', giorni_scaduto: 77 }],
   modelli_doppi: 1,
   fuori_piano: [{ codice: '1631', descrizione: 'Somme rimborsate', versamenti: [{}] }],
   voci: [{
     voce: { id: 'ritenute_1001', gruppo: 'Erario', etichetta: 'Ritenute lavoro dipendente', codici: ['1001'], periodo: 'mese', obbligatorio: true },
     caselle: [
       casella('05', 'pagato', 'Pagato (banca)', {
-        importo: '1026.51',
+        importo: '1026.51', giorni_ritardo: 0, scadenza_nominale: '2026-06-16', slittamento: null,
         modelli: [{ f24_id: 'f1', data_versamento: '2026-06-16', debito_cents: 102651, credito_cents: 0,
           pdf_url: '/api/pdf/f1', quietanze: [], movimenti: [{ id: 'm1', data: '2026-06-17', agganciato: true, link: '/riconciliazione/banca?movimento=m1' }] }],
       }),
-      casella('06', 'manca_f24', 'Manca F24'),
+      casella('06', 'manca_f24', 'Manca F24', { giorni_scaduto: 77 }),
     ],
   }],
 };
@@ -66,5 +66,39 @@ describe('PianoTributi', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cerca' }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/f24-riconciliazione/verifica-codice/1001?anno=2026'));
     expect(await screen.findByText(/Nessun F24 con questo codice/)).toBeInTheDocument();
+  });
+
+  it('mostra i giorni di ritardo accanto a ogni casella', async () => {
+    render(<MemoryRouter><PianoTributi /></MemoryRouter>);
+    await screen.findByText('Da guardare subito');
+    expect(screen.getByText('nei termini')).toBeInTheDocument();
+    expect(screen.getAllByText(/scaduto da 77 giorni/).length).toBeGreaterThan(0);
+  });
+
+  it('un festivo che slitta la scadenza lo spiega: nessun ravvedimento fino al primo lavorativo', async () => {
+    api.get.mockImplementation(() => Promise.resolve({ data: {
+      ...piano,
+      voci: [{ voce: piano.voci[0].voce, caselle: [casella('04', 'pagato', 'Pagato (banca)', {
+        giorni_ritardo: 0, scadenza: '2026-05-18', scadenza_nominale: '2026-05-16', slittamento: 'giorno festivo',
+      })] }],
+    } }));
+    render(<MemoryRouter><PianoTributi /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: /04\/2026: Pagato/ }));
+    expect(screen.getByText(/cade in un giorno festivo/)).toBeInTheDocument();
+    expect(screen.getByText(/senza ravvedimento \(fino a 2 giorni dopo la data scritta\)/)).toBeInTheDocument();
+  });
+
+  it('permette di vedere piu anni o tutti, dal piu recente', async () => {
+    const annoDi = n => ({ ...piano, anno: n, mancano: [], fuori_piano: [] });
+    api.get.mockImplementation(url => Promise.resolve({ data: url.includes('anno=tutti')
+      ? { multi: true, anni: [annoDi(2026), annoDi(2025)], conteggi: {}, etichette: {}, mancano: [], modelli_doppi: 0 }
+      : piano }));
+    render(<MemoryRouter><PianoTributi /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Tutti gli anni' }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/f24/piano-tributi?anno=tutti'));
+    const titoli = (await screen.findAllByRole('heading', { level: 2 })).map(h => h.textContent).filter(t => /^Anno \d{4}$/.test(t));
+    expect(titoli).toEqual(['Anno 2026', 'Anno 2025']);
+    fireEvent.click(screen.getByRole('button', { name: 'Ultimi 3 anni' }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/f24/piano-tributi?anno=2024-2026'));
   });
 });

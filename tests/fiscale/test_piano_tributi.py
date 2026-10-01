@@ -59,8 +59,9 @@ def test_il_piano_crea_l_attesa_prima_della_prova():
     assert giugno["source_fact_id"] == "piano:ritenute_1001:2026:06"
     assert giugno["scadenza"] == "2026-07-16"
     assert _mese(g, "ritenute_1001", 10)["stato"] == piano.FUTURO
-    assert {"voce": "Ritenute lavoro dipendente", "codici": ["1001"], "periodo": "06/2026",
-            "scadenza": "2026-07-16", "stato": piano.MANCA_F24} in g["mancano"]
+    assert {"anno": 2026, "voce": "Ritenute lavoro dipendente", "codici": ["1001"], "periodo": "06/2026",
+            "scadenza": "2026-07-16", "stato": piano.MANCA_F24,
+            "giorni_scaduto": (OGGI - date(2026, 7, 16)).days} in g["mancano"]
 
 
 def test_la_prova_bancaria_soddisfa_e_conserva_gli_id():
@@ -179,3 +180,65 @@ def test_rotte_solo_admin_e_prima_della_rotta_dinamica():
         assert percorsi.index(p) < dinamica_get
         for rotta in (r for r in router.routes if r.path == p):
             assert get_current_admin_user in [d.call for d in rotta.dependant.dependencies]
+
+
+def test_scadenza_festiva_slitta_e_pagare_il_primo_lavorativo_non_e_ritardo():
+    """Il 16/05/2026 e' sabato: si paga lunedi' 18 senza ravvedimento (0 giorni di ritardo)."""
+    f = _f24("f-apr", "2026-05-18", erario=[("1001", 4, 2026, 94079, 0)], movimento_bancario_id="m1")
+    aprile = _mese(run(piano.griglia(_db(f), 2026, oggi=OGGI)), "ritenute_1001", 4)
+    assert aprile["scadenza_nominale"] == "2026-05-16"
+    assert aprile["scadenza"] == "2026-05-18"
+    assert aprile["slittamento"] == "giorno festivo"
+    assert aprile["giorni_ritardo"] == 0
+    assert aprile["modelli"][0]["giorni_dopo_nominale"] == 2
+
+
+def test_il_ritardo_si_conta_dal_termine_effettivo_e_il_ferragosto_va_al_20():
+    ritardo = _f24("f-mag", "2026-06-19", erario=[("1001", 5, 2026, 102651, 0)], movimento_bancario_id="m2")
+    maggio = _mese(run(piano.griglia(_db(ritardo), 2026, oggi=OGGI)), "ritenute_1001", 5)
+    assert maggio["scadenza"] == "2026-06-16" and maggio["giorni_ritardo"] == 3
+    # luglio 2026: il 16/08 slitta al 20/08 (proroga estiva), non e' un giorno festivo qualunque
+    luglio = _mese(run(piano.griglia(_db(), 2026, oggi=OGGI)), "ritenute_1001", 7)
+    assert luglio["scadenza_nominale"] == "2026-08-16" and luglio["scadenza"] == "2026-08-20"
+    assert luglio["slittamento"] == "proroga di agosto"
+
+
+def test_un_tributo_non_pagato_dice_da_quanti_giorni_e_scaduto():
+    g = run(piano.griglia(_db(), 2026, oggi=OGGI))
+    giugno = _mese(g, "ritenute_1001", 6)
+    assert giugno["giorni_ritardo"] is None
+    assert giugno["giorni_scaduto"] == (OGGI - date(2026, 7, 16)).days
+    assert _mese(g, "ritenute_1001", 10)["giorni_scaduto"] is None   # non ancora scaduto
+
+
+def test_piu_anni_e_tutti_dal_piu_recente():
+    f = _f24("f-old", "2023-02-16", erario=[("1001", 1, 2023, 50000, 0)], movimento_bancario_id="m3")
+    db = _db(f)
+    g = run(piano.griglia_anni(db, "2024-2026", oggi=OGGI))
+    assert g["multi"] is True and [x["anno"] for x in g["anni"]] == [2026, 2025, 2024]
+    tutti = run(piano.griglia_anni(db, "tutti", oggi=OGGI))
+    assert [x["anno"] for x in tutti["anni"]] == [2026, 2025, 2024, 2023]   # dal primo anno con un F24
+    assert run(piano.griglia_anni(db, "2026", oggi=OGGI))["anno"] == 2026   # un anno solo: forma di sempre
+    for sbagliato in ("abc", "2010", "2026-3000"):
+        try:
+            run(piano.griglia_anni(db, sbagliato, oggi=OGGI))
+        except ValueError:
+            continue
+        raise AssertionError(f"{sbagliato!r} doveva essere rifiutato")
+
+
+def test_codice_tributo_scritto_una_cifra_per_casella_si_riunisce():
+    """Il modello del consulente (PCL2PDF) dà «1 0 0 1» in quattro caselle: va letto come 1001."""
+    from app.services.parser_f24 import _unisci_codici_a_caselle
+
+    def parola(x, w):
+        return {"x": x, "x1": x + 6, "y": 225, "word": w}
+
+    riga = [parola(161, "1"), parola(175, "0"), parola(190, "0"), parola(204, "1"),
+            {"x": 233, "x1": 260, "y": 225, "word": "0002"}, {"x": 361, "x1": 390, "y": 225, "word": "384,66"}]
+    assert [r["word"] for r in _unisci_codici_a_caselle(riga)] == ["1001", "0002", "384,66"]
+    # un codice fiscale (11 cifre) o la regione «0 5» non si toccano
+    cf = [parola(100 + 12 * i, str(i % 10)) for i in range(11)]
+    assert len(_unisci_codici_a_caselle(cf)) == 11
+    regione = [parola(24, "0"), parola(39, "5")]
+    assert [r["word"] for r in _unisci_codici_a_caselle(regione)] == ["0", "5"]
