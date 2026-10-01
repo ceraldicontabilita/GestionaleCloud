@@ -38,8 +38,12 @@ import io
 import logging
 import os
 import re
-from datetime import datetime, timezone
+import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+
+from app.services.drive_download import riprova
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +127,12 @@ def _precarica_byte_max() -> int:
     idratare la coda in RAM (servizio da 2 GB, gia' andato in OOM).
     ``DRIVE_PRECARICA_MB``. Un file piu' grande del tetto passa da solo."""
     return _intero_env("DRIVE_PRECARICA_MB", 48, 1, 256) * 1024 * 1024
+
+
+def _precarica_rileva() -> int:
+    """Riconoscimenti del tipo in anticipo, in contemporanea (difetto 1: un PDF
+    scansionato in OCR tiene un core e centinaia di MB). ``DRIVE_PRECARICA_RILEVA``."""
+    return _intero_env("DRIVE_PRECARICA_RILEVA", 1, 1, 4)
 
 
 async def precarica_in_ordine(files: List[Dict[str, Any]], scarica, *, paralleli: int, byte_max: int):
@@ -215,19 +225,19 @@ TIMEOUT_DRIVE = 120
 
 def _cartella(service, parent_id: str, nome: str) -> Optional[str]:
     """La sottocartella ``nome`` di ``parent_id``; se manca la crea."""
-    risposta = service.files().list(
+    risposta = riprova(lambda: service.files().list(
         q=(f"name = '{nome}' and '{parent_id}' in parents "
            f"and mimeType = '{CARTELLA_MIME}' and trashed = false"),
         fields="files(id)", pageSize=1,
         supportsAllDrives=True, includeItemsFromAllDrives=True,
-    ).execute()
+    ).execute(), quale=f"cartella {nome}")
     trovate = risposta.get("files", [])
     if trovate:
         return trovate[0]["id"]
-    creata = service.files().create(
+    creata = riprova(lambda: service.files().create(
         body={"name": nome, "mimeType": CARTELLA_MIME, "parents": [parent_id]},
         fields="id", supportsAllDrives=True,
-    ).execute()
+    ).execute(), quale=f"crea {nome}")
     return creata.get("id")
 
 
@@ -242,19 +252,24 @@ PREFISSI_DA_ELIMINARE = ("DUPLICATO DA ELIMINARE - ", "FILE TECNICO DA ELIMINARE
 
 
 def _elenca(service, parent_id: str, campi: str, limite: Optional[int] = None,
-            escludi_marcati: bool = False) -> List[Dict[str, Any]]:
-    """Tutti i file (non cartelle) di una cartella, paginando fino in fondo."""
+            escludi_marcati: bool = False, creati_dopo: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Tutti i file (non cartelle) di una cartella, paginando fino in fondo.
+
+    ``creati_dopo`` (RFC 3339) limita l'elenco ai file creati da quel momento:
+    serve alla cache di ELABORATE, che non rilegge ogni volta migliaia di file."""
     trovati: List[Dict[str, Any]] = []
     token = None
     filtro = "".join(f" and not name contains '{p.strip()}'" for p in PREFISSI_DA_ELIMINARE) \
         if escludi_marcati else ""
+    if creati_dopo:
+        filtro += f" and createdTime > '{creati_dopo}'"
     while True:
-        risposta = service.files().list(
+        risposta = riprova(lambda: service.files().list(
             q=f"'{parent_id}' in parents and trashed = false and mimeType != '{CARTELLA_MIME}'{filtro}",
             fields=f"nextPageToken, files({campi})", pageSize=1000 if limite is None else min(limite, 1000),
             orderBy="createdTime", pageToken=token,
             supportsAllDrives=True, includeItemsFromAllDrives=True,
-        ).execute()
+        ).execute(), quale="elenco")
         trovati.extend(risposta.get("files", []))
         token = risposta.get("nextPageToken")
         if not token or (limite is not None and len(trovati) >= limite):
@@ -263,19 +278,19 @@ def _elenca(service, parent_id: str, campi: str, limite: Optional[int] = None,
 
 def _sposta(service, file_id: str, da: str, a: str, motivo: Optional[str] = None) -> None:
     corpo = {"description": f"Gestionale: {motivo}"[:1000]} if motivo else None
-    service.files().update(
+    riprova(lambda: service.files().update(
         fileId=file_id, addParents=a, removeParents=da, body=corpo,
         fields="id, parents", supportsAllDrives=True,
-    ).execute()
+    ).execute(), quale="sposta")
 
 
 def _cestina(service, file_id: str, copia_di: str) -> bool:
     """Cestino (mai eliminazione). Falso se Drive non lo consente (403)."""
     try:
-        service.files().update(
+        riprova(lambda: service.files().update(
             fileId=file_id, supportsAllDrives=True, fields="id, trashed",
             body={"trashed": True, "description": f"Gestionale: copia identica di {copia_di}"},
-        ).execute()
+        ).execute(), quale="cestina")
         return True
     except Exception as exc:
         if getattr(getattr(exc, "resp", None), "status", None) == 403:
@@ -286,8 +301,10 @@ def _cestina(service, file_id: str, copia_di: str) -> bool:
 class _FileCaricato:
     """Lo stesso oggetto che riceve l'upload di Documenti > Import."""
 
-    def __init__(self, nome: str, contenuto: bytes, source_context: Dict[str, Any]):
+    def __init__(self, nome: str, contenuto: bytes, source_context: Dict[str, Any],
+                 tipo_rilevato_noto: Optional[str] = None):
         self.filename = nome
+        self.tipo_rilevato_noto = tipo_rilevato_noto
         self.file = io.BytesIO(contenuto)
         self.source_context = source_context
         self._contenuto = contenuto
@@ -296,15 +313,25 @@ class _FileCaricato:
         return self._contenuto
 
 
-async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any]) -> Dict[str, Any]:
+async def _rileva(nome: str, contenuto: bytes) -> str:
+    from app.routers.documenti import rileva_tipo_documento
+
+    return await rileva_tipo_documento(nome, contenuto)
+
+
+async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any],
+                  tipo: Optional[str] = None) -> Dict[str, Any]:
+    """``tipo``: gia' rilevato in anticipo dal precarico; senza, si rileva qui.
+    Lo smistatore lo riceve sul file e non rilegge il PDF una seconda volta."""
     from fastapi import HTTPException
 
-    from app.routers.documenti import rileva_tipo_documento, upload_documento_automatico
+    from app.routers.documenti import upload_documento_automatico
 
     # Un tipo non riconosciuto resta su Drive in ERRORI: lo smistatore lo
     # copierebbe in base64 dentro documents_inbox, una seconda copia
     # dell'originale che la cartella unica esiste per evitare.
-    tipo = await rileva_tipo_documento(nome, contenuto)
+    if tipo is None:
+        tipo = await _rileva(nome, contenuto)
     if tipo == "auto":
         return {"success": False, "tipo_rilevato": "non_riconosciuto",
                 "fuori_contabilita": motivo_fuori_contabilita(nome)}
@@ -318,7 +345,7 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any]) -> Dict
             return {"success": False, "tipo_rilevato": tipo, "arretrato": True,
                     "anno": anno, "anno_minimo": minimo}
     try:
-        return await upload_documento_automatico(file=_FileCaricato(nome, contenuto, contesto))
+        return await upload_documento_automatico(file=_FileCaricato(nome, contenuto, contesto, tipo))
     except HTTPException as exc:
         # Memoria esaurita per l'OCR: il file non e' sbagliato, si riprova al giro dopo.
         return {"success": False, "message": str(exc.detail), "http_status": exc.status_code,
@@ -439,37 +466,6 @@ _BUSTE_GIA_PRESENTI = re.compile(r"^Cedolino non registrato: \d+ buste lette$")
 # Un guasto di connessione durante la lettura non e' un difetto del file: si rilegge.
 _GUASTO_DI_RETE = re.compile(r"^(SSLError|ConnectionError|ConnectionResetError|TimeoutError|timeout|"
                              r"RemoteDisconnected|BrokenPipeError|IncompleteRead)\b")
-# Un errore transitorio del database (timeout di una RPC, 5xx, memoria esaurita per
-# l'OCR) non e' un difetto del file: si rilegge con attesa crescente, al massimo
-# `TENTATIVI_TRANSITORI` volte (15, 30, 60, 120, 240 minuti dall'ultimo errore),
-# poi il file resta in ERRORI col suo motivo. Il NUL nel testo (OCR) rifiutato da
-# Postgres e' lo stesso caso: dopo la correzione di `_rpc` un rilancio basta.
-_ERRORE_TRANSITORIO = re.compile(
-    r"statement timeout|canceling statement|"
-    r"Supabase RPC \w+ fallita \(HTTP (?:408|429|5\d\d)\)|"
-    r"memoria insufficiente|unsupported Unicode escape", re.IGNORECASE)
-TENTATIVI_TRANSITORI = 5
-ATTESA_TRANSITORI_MINUTI = 15
-
-
-def transitorio_da_ritentare(motivo: str, tentativi: int, aggiornato_il: Any,
-                             adesso: Optional[datetime] = None) -> bool:
-    """True se `motivo` e' un guasto transitorio e l'attesa crescente e' trascorsa."""
-    if not _ERRORE_TRANSITORIO.search(motivo or ""):
-        return False
-    if tentativi >= TENTATIVI_TRANSITORI:
-        return False
-    try:
-        ultimo = datetime.fromisoformat(str(aggiornato_il))
-    except ValueError:
-        return True  # senza la data dell'ultimo errore l'attesa non si misura: si prova
-    if ultimo.tzinfo is None:
-        ultimo = ultimo.replace(tzinfo=timezone.utc)
-    adesso = adesso or datetime.now(timezone.utc)
-    attesa = ATTESA_TRANSITORI_MINUTI * (2 ** max(0, tentativi))
-    return (adesso - ultimo).total_seconds() >= attesa * 60
-
-
 async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
                                              limite: Optional[int] = None) -> int:
     """Riporta in DA ELABORARE le buste finite in ERRORI solo perche' gia' registrate.
@@ -480,7 +476,7 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
     righe = await db[REGISTRO].find(
         {"cartella": {"$in": [ERRORI, ARRETRATO]}},
         {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1, "cartella": 1,
-         "regole_non_riconosciuti": 1, "tentativi_transitori": 1, "aggiornato_il": 1},
+         "regole_non_riconosciuti": 1, "rinvii": 1},
     ).to_list(None)
     rimessi = 0
     for riga in righe:
@@ -508,10 +504,11 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
             # degli anni passati vanno in ARRETRATO.
             da_rileggere = (motivo == NON_RICONOSCIUTO
                             and int(riga.get("regole_non_riconosciuti") or 0) < REGOLE_NON_RICONOSCIUTI)
-            transitorio = transitorio_da_ritentare(
-                motivo, int(riga.get("tentativi_transitori") or 0), riga.get("aggiornato_il"))
+            transitorio = (e_guasto_transitorio(motivo)
+                           and int(riga.get("rinvii") or 0) < MAX_RINVII)
             if (not gia_presente and not busta_come_estratto and not da_rileggere
-                    and not _GUASTO_DI_RETE.match(motivo) and not transitorio):
+                    and not _GUASTO_DI_RETE.match(motivo)
+                    and not (e_guasto_transitorio(motivo) and int(riga.get("rinvii") or 0) < MAX_RINVII)):
                 continue
         try:
             await asyncio.to_thread(_sposta, service, riga["id"], cartelle[riga["cartella"]],
@@ -520,8 +517,7 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
                             motivo=("rileggere con le regole nuove" if da_rileggere
                                     else "guasto transitorio, si rilegge" if transitorio
                                     else "busta gia' in archivio, non un errore"),
-                            **({"tentativi_transitori": int(riga.get("tentativi_transitori") or 0) + 1}
-                               if transitorio else {}))
+                            )
             rimessi += 1
         except Exception as exc:
             logger.warning("[cartella-unica] %s non rimesso in coda: %s: %s",
@@ -529,6 +525,103 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
             await _registra(db, riga["id"], cartella="SCONOSCIUTA", esito="non_trovato",
                             motivo=f"non piu' in ERRORI: {type(exc).__name__}")
     return rimessi
+
+
+@contextmanager
+def _fase(esito: Dict[str, Any], nome: str):
+    """Cronometra una fase del giro: secondi e conteggio in ``tempi_s`` / ``tempi_n``
+    (finiscono in ``sistema_stato``). Solo contatori, nessun dato del documento."""
+    inizio = time.perf_counter()
+    try:
+        yield
+    finally:
+        _somma(esito, nome, time.perf_counter() - inizio)
+        conteggi = esito.setdefault("tempi_n", {})
+        conteggi[nome] = conteggi.get(nome, 0) + 1
+
+
+def _somma(esito: Dict[str, Any], nome: str, secondi: float) -> None:
+    tempi = esito.setdefault("tempi_s", {})
+    tempi[nome] = round(tempi.get(nome, 0.0) + secondi, 3)
+
+
+# Cache fra un giro e l'altro (il giro dura minuti, lo svuotamento ore):
+# gli id delle cartelle non cambiano e l'elenco di ELABORATE (migliaia di
+# file, una pagina Drive ogni mille) si rilegge intero solo ogni mezz'ora; nel
+# mezzo si chiedono i soli file nuovi. Le modifiche proprie la tengono
+# aggiornata (``per_md5`` riceve ogni originale appena archiviato); un file
+# sparito dall'archivio per mano d'altri si scopre al confronto (404) e si scarta.
+CACHE_CARTELLE_S = 3600
+CACHE_ARCHIVIO_S = 1800
+MARGINE_DELTA_S = 300
+RIMESSA_OGNI_S = 600
+_cache: Dict[str, Any] = {}
+
+
+def _azzera_cache() -> None:
+    _cache.clear()
+
+
+async def _cartelle_in_cache(service) -> Dict[str, str]:
+    voce = _cache.get("cartelle")
+    if voce and voce["radice"] == radice() and time.monotonic() - voce["ts"] < CACHE_CARTELLE_S:
+        return voce["valore"]
+    valore = await asyncio.to_thread(_cartelle, service, radice())
+    _cache["cartelle"] = {"radice": radice(), "ts": time.monotonic(), "valore": valore}
+    return valore
+
+
+async def _md5_archivio(service, cartella_id: str, esito: Dict[str, Any]) -> Dict[str, List[str]]:
+    """md5 → id dei file gia' in ELABORATE, dalla cache se fresca."""
+    ora = time.monotonic()
+    voce = _cache.get("archivio")
+    adesso = datetime.now(timezone.utc)
+    if voce and voce["cartella"] == cartella_id and ora - voce["pieno"] < CACHE_ARCHIVIO_S:
+        da = (voce["cursore"] - timedelta(seconds=MARGINE_DELTA_S)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with _fase(esito, "elenco_archivio_delta"):
+            nuovi = await asyncio.to_thread(_elenca, service, cartella_id, "id, md5Checksum", None, False, da)
+        for f in nuovi:
+            md5 = f.get("md5Checksum")
+            if md5 and f["id"] not in voce["per_md5"].setdefault(md5, []):
+                voce["per_md5"][md5].append(f["id"])
+        voce["cursore"] = adesso
+        esito["archivio_da_cache"] = True
+        return voce["per_md5"]
+    with _fase(esito, "elenco_archivio"):
+        archivio = await asyncio.to_thread(_elenca, service, cartella_id, "id, md5Checksum")
+    per_md5: Dict[str, List[str]] = {}
+    for f in archivio:
+        if f.get("md5Checksum"):
+            per_md5.setdefault(f["md5Checksum"], []).append(f["id"])
+    _cache["archivio"] = {"cartella": cartella_id, "per_md5": per_md5, "pieno": ora, "cursore": adesso}
+    esito["archivio_da_cache"] = False
+    return per_md5
+
+
+class _Preparato:
+    """Un file gia' scaricato e di cui si conosce il tipo (``tipo`` None = da rilevare)."""
+    __slots__ = ("contenuto", "tipo")
+
+    def __init__(self, contenuto: bytes, tipo: Optional[str]):
+        self.contenuto = contenuto
+        self.tipo = tipo
+
+
+# Un guasto dell'infrastruttura (Supabase 5xx, schema cache che si ricarica,
+# statement timeout) non e' un difetto del file: resta in DA ELABORARE e si
+# riprova. Dopo ``MAX_RINVII`` tentativi vale come errore, o un file che non
+# passa mai terrebbe la testa della coda.
+# Stessa famiglia: memoria esaurita per l'OCR e il NUL nel testo rifiutato da
+# Postgres (dopo la correzione di `_rpc` un rilancio basta).
+_GUASTO_SUPABASE = re.compile(
+    r"Supabase RPC .{0,80}\(HTTP (5\d\d|408|429)\)|schema cache|statement timeout|canceling statement|"
+    r"memoria insufficiente|unsupported Unicode escape",
+    re.IGNORECASE)
+MAX_RINVII = 3
+
+
+def e_guasto_transitorio(testo: Any) -> bool:
+    return bool(_GUASTO_SUPABASE.search(str(testo or "")))
 
 
 async def giro(db) -> Dict[str, Any]:
@@ -547,35 +640,50 @@ async def _giro(db) -> Dict[str, Any]:
     from app.services.drive_download import scarica_bytes
 
     iniziato = datetime.now(timezone.utc).isoformat()
+    t_giro = time.perf_counter()
     esito: Dict[str, Any] = {"letti": 0, "elaborati": 0, "errori": 0, "doppioni_cestinati": 0, "arretrati": 0,
                              "dettagli": [], "iniziato_at": iniziato}
     try:
-        service = await asyncio.to_thread(_service)
-        cartelle = await asyncio.to_thread(_cartelle, service, radice())
-        esito["buste_rimesse_in_coda"] = await rimetti_in_coda_buste_gia_presenti(db, service, cartelle)
+        with _fase(esito, "servizio"):
+            service = await asyncio.to_thread(_service)
+        with _fase(esito, "cartelle"):
+            cartelle = await _cartelle_in_cache(service)
+        if time.monotonic() - _cache.get("rimessa_ts", -RIMESSA_OGNI_S) >= RIMESSA_OGNI_S:
+            # Rilegge dal registro migliaia di righe ERRORI/ARRETRATO: una volta
+            # ogni dieci minuti, non a ogni lotto di cento file.
+            with _fase(esito, "rimessa_in_coda"):
+                esito["buste_rimesse_in_coda"] = await rimetti_in_coda_buste_gia_presenti(db, service, cartelle)
+            _cache["rimessa_ts"] = time.monotonic()
         campi = "id, name, md5Checksum, size, mimeType, createdTime"
         # Prima i file lasciati sciolti nella radice, poi DA ELABORARE
         # (decisione del titolare, 26/09/2026): la cartella unica si usa come
         # calderone e nessuno deve smistare a mano. Le sottocartelle restano
         # escluse da _elenca. Si elenca tutto (solo metadati) per poter mettere
         # in testa le fatture e le chiusure RT: erano dietro centinaia di PDF.
-        in_coda = [{**f, "_da": radice()} for f in await asyncio.to_thread(
-            _elenca, service, radice(), campi, None, True)]
-        in_coda += [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
-            _elenca, service, cartelle[INBOX], campi, None, True)]
+        with _fase(esito, "elenco_coda"):
+            in_coda = [{**f, "_da": radice()} for f in await asyncio.to_thread(
+                _elenca, service, radice(), campi, None, True)]
+            in_coda += [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
+                _elenca, service, cartelle[INBOX], campi, None, True)]
         esito["in_coda_totale"] = len(in_coda)
         in_coda = ordina_coda(in_coda)[:_batch()]
-        archivio = await asyncio.to_thread(_elenca, service, cartelle[ARCHIVIO], "id, md5Checksum")
+        per_md5 = await _md5_archivio(service, cartelle[ARCHIVIO], esito)
     except Exception as exc:
         esito["errore"] = f"{type(exc).__name__}: {exc}"
         logger.warning("[cartella-unica] giro non avviato: %s", esito["errore"])
         await _salva_stato(db, esito)
         return esito
 
-    per_md5: Dict[str, List[str]] = {}
-    for f in archivio:
-        if f.get("md5Checksum"):
-            per_md5.setdefault(f["md5Checksum"], []).append(f["id"])
+    async def rinvia_per_guasto(f: Dict[str, Any], nome: str, motivo: str) -> bool:
+        """Lascia il file in coda per un guasto passeggero. Falso se ha esaurito i tentativi."""
+        riga = await db[REGISTRO].find_one({"id": f["id"]}, {"_id": 0, "rinvii": 1}) or {}
+        rinvii = int(riga.get("rinvii") or 0) + 1
+        if rinvii >= MAX_RINVII:
+            return False
+        await _registra(db, f["id"], nome=nome, rinvii=rinvii, esito="rinviato", motivo=motivo[:300])
+        esito["rinviati"] = esito.get("rinviati", 0) + 1
+        esito["dettagli"].append({"file": nome, "esito": "rinviato", "motivo": motivo[:200]})
+        return True
 
     async def lavora(f: Dict[str, Any], drive=None, pre=None) -> None:
         # La connessione Drive (httplib2) non regge due thread insieme: ogni
@@ -584,23 +692,42 @@ async def _giro(db) -> Dict[str, Any]:
         esito["letti"] += 1
         fid, nome = f["id"], f.get("name") or f["id"]
         try:
+            tipo = None
             if isinstance(pre, BaseException):
                 raise pre
-            contenuto = pre if pre is not None else await asyncio.to_thread(scarica_bytes, drive, fid)
-            sha256 = hashlib.sha256(contenuto).hexdigest()
+            if isinstance(pre, _Preparato):
+                contenuto, tipo = pre.contenuto, pre.tipo
+            elif pre is not None:
+                contenuto = pre
+            else:
+                with _fase(esito, "scarico"):
+                    contenuto = await asyncio.to_thread(scarica_bytes, drive, fid)
+            with _fase(esito, "hash"):
+                sha256 = hashlib.sha256(contenuto).hexdigest()
             copia_di = None
-            for candidato in per_md5.get(f.get("md5Checksum") or "", []):
-                if await asyncio.to_thread(scarica_bytes, drive, candidato) == contenuto:
-                    copia_di = candidato
-                    break
+            with _fase(esito, "confronto_doppioni"):
+                for candidato in list(per_md5.get(f.get("md5Checksum") or "", [])):
+                    try:
+                        altro = await asyncio.to_thread(scarica_bytes, drive, candidato)
+                    except Exception as exc:
+                        # Un originale tolto dall'archivio da altri (cache vecchia): non e' piu' un candidato.
+                        if getattr(getattr(exc, "resp", None), "status", None) in (403, 404):
+                            per_md5[f["md5Checksum"]] = [c for c in per_md5[f["md5Checksum"]] if c != candidato]
+                            continue
+                        raise
+                    if altro == contenuto:
+                        copia_di = candidato
+                        break
             if copia_di:
                 cartella = "CESTINO"
-                if not await asyncio.to_thread(_cestina, drive, fid, copia_di):
-                    cartella = DOPPIONI
-                    await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[DOPPIONI],
-                                            f"copia identica di {copia_di}")
-                await _registra(db, fid, nome=nome, sha256=sha256, esito="doppione_cestinato",
-                                cartella=cartella, duplicato_di=copia_di)
+                with _fase(esito, "sposta"):
+                    if not await asyncio.to_thread(_cestina, drive, fid, copia_di):
+                        cartella = DOPPIONI
+                        await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[DOPPIONI],
+                                                f"copia identica di {copia_di}")
+                with _fase(esito, "registro"):
+                    await _registra(db, fid, nome=nome, sha256=sha256, esito="doppione_cestinato",
+                                    cartella=cartella, duplicato_di=copia_di)
                 esito["doppioni_cestinati"] += 1
                 esito["dettagli"].append({"file": nome, "esito": "doppione", "copia_di": copia_di,
                                           "cartella": cartella})
@@ -608,23 +735,32 @@ async def _giro(db) -> Dict[str, Any]:
 
             contesto = {"channel": "drive_cartella_unica", "drive_file_id": fid,
                         "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256}
-            risultato = await _smista(nome, contenuto, contesto)
+            with _fase(esito, "smista"):
+                risultato = await (_smista(nome, contenuto, contesto, tipo) if tipo
+                                   else _smista(nome, contenuto, contesto))
             if risultato.get("rinviato"):
                 # Resta in DA ELABORARE, mai in ERRORI: un file e' «errore» solo se e' lui a esserlo.
                 esito["rinviati"] = esito.get("rinviati", 0) + 1
                 esito["dettagli"].append({"file": nome, "esito": "rinviato", "motivo": risultato.get("message")})
                 logger.warning("[cartella-unica] %s rinviato: %s", nome, risultato.get("message"))
                 return
+            if (not risultato.get("success") and not risultato.get("duplicate")
+                    and e_guasto_transitorio(risultato.get("message") or risultato.get("error"))
+                    and await rinvia_per_guasto(f, nome, str(risultato.get("message") or risultato.get("error")))):
+                logger.warning("[cartella-unica] %s rinviato per un guasto passeggero", nome)
+                return
             destinazione, motivo = esito_del_risultato(risultato)
-            await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[destinazione], motivo or None)
+            with _fase(esito, "sposta"):
+                await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[destinazione], motivo or None)
             riferimenti = {k: risultato[k] for k in _CHIAVI_RIFERIMENTO if risultato.get(k)}
-            await _registra(
-                db, fid, nome=nome, sha256=sha256, md5=f.get("md5Checksum"),
-                tipo=risultato.get("tipo_rilevato"), cartella=destinazione,
-                esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),
-                gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None,
-                riferimenti=riferimenti, regole_non_riconosciuti=REGOLE_NON_RICONOSCIUTI,
-            )
+            with _fase(esito, "registro"):
+                await _registra(
+                    db, fid, nome=nome, sha256=sha256, md5=f.get("md5Checksum"),
+                    tipo=risultato.get("tipo_rilevato"), cartella=destinazione,
+                    esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),
+                    gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None,
+                    riferimenti=riferimenti, regole_non_riconosciuti=REGOLE_NON_RICONOSCIUTI,
+                )
             if destinazione == ARCHIVIO:
                 esito["elaborati"] += 1
                 if f.get("md5Checksum"):
@@ -637,6 +773,14 @@ async def _giro(db) -> Dict[str, Any]:
                                       "esito": destinazione, "motivo": motivo or None})
         except Exception as exc:
             motivo = f"{type(exc).__name__}: {exc}"[:500]
+            if e_guasto_transitorio(motivo):
+                try:
+                    if await rinvia_per_guasto(f, nome, motivo):
+                        logger.warning("[cartella-unica] %s rinviato per un guasto passeggero: %s", nome, motivo)
+                        return
+                except Exception as exc3:
+                    logger.warning("[cartella-unica] %s: rinvio non registrato: %s: %s",
+                                   nome, type(exc3).__name__, exc3)
             logger.warning("[cartella-unica] %s non elaborato: %s", nome, motivo)
             esito["errori"] += 1
             esito["dettagli"].append({"file": nome, "esito": ERRORI, "motivo": motivo})
@@ -669,32 +813,50 @@ async def _giro(db) -> Dict[str, Any]:
 
     await asyncio.gather(*(lavora_busta(f) for f in buste))
     # Gli altri file restano elaborati uno alla volta (la dedup dei motori non
-    # regge due letture insieme), ma il loro download corre in anticipo, in
-    # parallelo e con tetto ai byte in volo.
+    # regge due letture insieme), ma download e riconoscimento del tipo corrono
+    # in anticipo: il tipo si legge una volta sola, mentre il file davanti si
+    # registra, e lo smistatore lo riceve gia' deciso.
     altri = [f for f in in_coda if not e_busta(f)]
     if altri:
         n_conn = min(_precarica_paralleli(), len(altri))
         pool: "asyncio.Queue" = asyncio.Queue()
         for _ in range(n_conn):
             pool.put_nowait(await asyncio.to_thread(_service))
+        semaforo_rileva = asyncio.Semaphore(_precarica_rileva())
 
         async def scarica_altro(f):
             drive = await pool.get()
             try:
-                return await asyncio.to_thread(scarica_bytes, drive, f["id"])
+                inizio = time.perf_counter()
+                contenuto = await asyncio.to_thread(scarica_bytes, drive, f["id"])
+                _somma(esito, "precarico_scarico", time.perf_counter() - inizio)
             finally:
                 pool.put_nowait(drive)
+            md5 = f.get("md5Checksum")
+            if md5 and per_md5.get(md5):
+                # Probabile copia di un originale: il confronto la cestina senza leggerla.
+                return _Preparato(contenuto, None)
+            async with semaforo_rileva:
+                inizio = time.perf_counter()
+                tipo = await _rileva(f.get("name") or f["id"], contenuto)
+                _somma(esito, "precarico_rileva", time.perf_counter() - inizio)
+            return _Preparato(contenuto, tipo)
 
+        attesa = time.perf_counter()
         async for f, pre in precarica_in_ordine(altri, scarica_altro, paralleli=n_conn,
                                                 byte_max=_precarica_byte_max()):
+            _somma(esito, "attesa_precarico", time.perf_counter() - attesa)
             await lavora(f, None, pre)
+            attesa = time.perf_counter()
     esito["dettagli"] = esito["dettagli"][:100]
     esito["restanti"] = max(0, int(esito.get("in_coda_totale") or 0) - esito["letti"])
+    esito["durata_s"] = round(time.perf_counter() - t_giro, 1)
     await _salva_stato(db, esito)
     return esito
 
 
 _svuotamento: Dict[str, Any] = {"in_corso": False}
+RIPROVE_GIRO = (20, 60, 120)
 
 
 def svuotamento_in_corso() -> bool:
@@ -713,17 +875,38 @@ async def svuota(db, *, max_giri: int = 60) -> Dict[str, Any]:
         return {"saltato": "svuotamento_in_corso"}
     _svuotamento["in_corso"] = True
     totale = {"giri": 0, "letti": 0, "elaborati": 0, "errori": 0, "doppioni_cestinati": 0}
+    errori_di_fila = 0
     try:
         for _ in range(max_giri):
             esito = await giro(db)
-            if esito.get("saltato") or esito.get("errore"):
-                totale["fermato_da"] = esito.get("saltato") or esito.get("errore")
+            if esito.get("saltato"):
+                totale["fermato_da"] = esito["saltato"]
                 break
+            if esito.get("errore"):
+                # Un guasto di Drive o di rete a inizio giro (500 passeggero)
+                # non deve costare l'intero svuotamento fino al prossimo
+                # turno dello scheduler: qualche tentativo con attesa crescente.
+                if errori_di_fila < len(RIPROVE_GIRO):
+                    logger.warning("[cartella-unica] giro non avviato, riprovo fra %s s: %s",
+                                   RIPROVE_GIRO[errori_di_fila], esito["errore"])
+                    await asyncio.sleep(RIPROVE_GIRO[errori_di_fila])
+                    errori_di_fila += 1
+                    continue
+                totale["fermato_da"] = esito["errore"]
+                break
+            errori_di_fila = 0
             totale["giri"] += 1
             for chiave in ("letti", "elaborati", "errori", "doppioni_cestinati"):
                 totale[chiave] += int(esito.get(chiave) or 0)
+            for chiave, valore in (esito.get("tempi_s") or {}).items():
+                _somma(totale, chiave, float(valore))
             totale["restanti"] = int(esito.get("restanti") or 0)
             if not esito.get("letti") or not totale["restanti"]:
+                break
+            if int(esito.get("rinviati") or 0) >= int(esito["letti"]):
+                # Tutto il lotto e' stato rimandato (guasto passeggero, memoria):
+                # insistere subito rilegge gli stessi file. Riprende il prossimo turno.
+                totale["fermato_da"] = "lotto_rinviato"
                 break
         return totale
     finally:

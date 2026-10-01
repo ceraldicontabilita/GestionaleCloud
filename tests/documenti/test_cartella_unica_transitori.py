@@ -22,26 +22,28 @@ def _fa(minuti: float) -> str:
 
 
 def test_il_motivo_transitorio_e_riconosciuto_e_non_il_difetto_del_file():
-    adesso = datetime.now(timezone.utc)
-    assert cu.transitorio_da_ritentare(TIMEOUT, 0, _fa(20), adesso)
-    assert cu.transitorio_da_ritentare("503: memoria insufficiente per l'OCR", 0, _fa(20), adesso)
-    assert cu.transitorio_da_ritentare(
-        "Supabase RPC gc_upsert_documents fallita (HTTP 400): unsupported Unicode escape sequence",
-        0, _fa(20), adesso)
+    # un solo meccanismo (quello della cartella unica): `e_guasto_transitorio`
+    assert cu.e_guasto_transitorio(TIMEOUT)
+    assert cu.e_guasto_transitorio("503: memoria insufficiente per l'OCR")
+    assert cu.e_guasto_transitorio(
+        "Supabase RPC gc_upsert_documents fallita (HTTP 400): unsupported Unicode escape sequence")
     # un F24 che non quadra e' un difetto del lettore: non si rilegge da solo
-    assert not cu.transitorio_da_ritentare(
-        "Errore import F24: F24 non quadrato o non validato: salvataggio bloccato", 0, _fa(999), adesso)
-    assert not cu.transitorio_da_ritentare("tipo di documento non riconosciuto", 0, _fa(999), adesso)
+    assert not cu.e_guasto_transitorio(
+        "Errore import F24: F24 non quadrato o non validato: salvataggio bloccato")
+    assert not cu.e_guasto_transitorio("tipo di documento non riconosciuto")
 
 
-def test_attesa_crescente_e_tetto_ai_tentativi():
-    adesso = datetime.now(timezone.utc)
-    assert not cu.transitorio_da_ritentare(TIMEOUT, 0, _fa(10), adesso)   # attesa 15'
-    assert cu.transitorio_da_ritentare(TIMEOUT, 0, _fa(16), adesso)
-    assert not cu.transitorio_da_ritentare(TIMEOUT, 1, _fa(16), adesso)   # attesa 30'
-    assert cu.transitorio_da_ritentare(TIMEOUT, 1, _fa(31), adesso)
-    assert cu.transitorio_da_ritentare(TIMEOUT, 4, _fa(241), adesso)      # attesa 240'
-    assert not cu.transitorio_da_ritentare(TIMEOUT, cu.TENTATIVI_TRANSITORI, _fa(99999), adesso)
+def test_il_tetto_ai_rinvii_e_uno_solo():
+    drive = DriveFinto()
+    drive.aggiungi("t3", "dichiarazione.pdf", b"%PDF-3", "errori")
+    db = AsyncMongoMockClient()["t"]
+    run(db[cu.REGISTRO].insert_one({
+        "id": "t3", "nome": "dichiarazione.pdf", "cartella": cu.ERRORI, "esito": "errore",
+        "tipo": "dichiarazione_fiscale", "motivo": TIMEOUT, "rinvii": cu.MAX_RINVII,
+        "aggiornato_il": _fa(99999)}))
+    # oltre MAX_RINVII il file resta in ERRORI col suo motivo
+    assert run(cu.rimetti_in_coda_buste_gia_presenti(db, drive, dict(CARTELLE))) == 0
+    assert drive.file["t3"]["parent"] == "errori"
 
 
 def test_rimessi_in_coda_una_volta_e_il_secondo_giro_non_rimette_niente():
@@ -61,7 +63,7 @@ def test_rimessi_in_coda_una_volta_e_il_secondo_giro_non_rimette_niente():
     assert drive.file["t1"]["parent"] == "inbox"
     assert drive.file["t2"]["parent"] == "errori"          # difetto del lettore: resta li'
     riga = run(db[cu.REGISTRO].find_one({"id": "t1"}))
-    assert riga["tentativi_transitori"] == 1 and riga["cartella"] == cu.INBOX
+    assert riga["cartella"] == cu.INBOX
 
     # secondo giro: t1 e' gia' in coda, t2 non e' transitorio -> nuovi = 0
     assert run(cu.rimetti_in_coda_buste_gia_presenti(db, drive, dict(CARTELLE))) == 0
