@@ -366,7 +366,9 @@ def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
                            f"(anno minimo {risultato.get('anno_minimo')})")
     if risultato.get("success") or risultato.get("duplicate"):
         return ARCHIVIO, ""
-    return ERRORI, str(risultato.get("message") or risultato.get("error") or "registrazione non riuscita")[:500]
+    # 900: il dettaglio di quadratura di un F24 (righe lette, saldo stampato, colonne) e' il
+    # solo modo di capire la causa senza riaprire il PDF, e a 500 caratteri lo tagliava.
+    return ERRORI, str(risultato.get("message") or risultato.get("error") or "registrazione non riuscita")[:900]
 
 
 _ESTENSIONI_XML = (".xml", ".xml.p7m", ".p7m", ".zip")
@@ -437,6 +439,35 @@ _BUSTE_GIA_PRESENTI = re.compile(r"^Cedolino non registrato: \d+ buste lette$")
 # Un guasto di connessione durante la lettura non e' un difetto del file: si rilegge.
 _GUASTO_DI_RETE = re.compile(r"^(SSLError|ConnectionError|ConnectionResetError|TimeoutError|timeout|"
                              r"RemoteDisconnected|BrokenPipeError|IncompleteRead)\b")
+# Un errore transitorio del database (timeout di una RPC, 5xx, memoria esaurita per
+# l'OCR) non e' un difetto del file: si rilegge con attesa crescente, al massimo
+# `TENTATIVI_TRANSITORI` volte (15, 30, 60, 120, 240 minuti dall'ultimo errore),
+# poi il file resta in ERRORI col suo motivo. Il NUL nel testo (OCR) rifiutato da
+# Postgres e' lo stesso caso: dopo la correzione di `_rpc` un rilancio basta.
+_ERRORE_TRANSITORIO = re.compile(
+    r"statement timeout|canceling statement|"
+    r"Supabase RPC \w+ fallita \(HTTP (?:408|429|5\d\d)\)|"
+    r"memoria insufficiente|unsupported Unicode escape", re.IGNORECASE)
+TENTATIVI_TRANSITORI = 5
+ATTESA_TRANSITORI_MINUTI = 15
+
+
+def transitorio_da_ritentare(motivo: str, tentativi: int, aggiornato_il: Any,
+                             adesso: Optional[datetime] = None) -> bool:
+    """True se `motivo` e' un guasto transitorio e l'attesa crescente e' trascorsa."""
+    if not _ERRORE_TRANSITORIO.search(motivo or ""):
+        return False
+    if tentativi >= TENTATIVI_TRANSITORI:
+        return False
+    try:
+        ultimo = datetime.fromisoformat(str(aggiornato_il))
+    except ValueError:
+        return True  # senza la data dell'ultimo errore l'attesa non si misura: si prova
+    if ultimo.tzinfo is None:
+        ultimo = ultimo.replace(tzinfo=timezone.utc)
+    adesso = adesso or datetime.now(timezone.utc)
+    attesa = ATTESA_TRANSITORI_MINUTI * (2 ** max(0, tentativi))
+    return (adesso - ultimo).total_seconds() >= attesa * 60
 
 
 async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
@@ -449,7 +480,7 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
     righe = await db[REGISTRO].find(
         {"cartella": {"$in": [ERRORI, ARRETRATO]}},
         {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1, "cartella": 1,
-         "regole_non_riconosciuti": 1},
+         "regole_non_riconosciuti": 1, "tentativi_transitori": 1, "aggiornato_il": 1},
     ).to_list(None)
     rimessi = 0
     for riga in righe:
@@ -457,6 +488,7 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
             break
         motivo = str(riga.get("motivo") or "")
         da_rileggere = False
+        transitorio = False
         if riga.get("cartella") == ARRETRATO:
             # Una busta presa per estratto conto (cita la banca d'appoggio) e
             # parcheggiata fra l'arretrato degli estratti: va riletta da busta.
@@ -476,15 +508,20 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
             # degli anni passati vanno in ARRETRATO.
             da_rileggere = (motivo == NON_RICONOSCIUTO
                             and int(riga.get("regole_non_riconosciuti") or 0) < REGOLE_NON_RICONOSCIUTI)
+            transitorio = transitorio_da_ritentare(
+                motivo, int(riga.get("tentativi_transitori") or 0), riga.get("aggiornato_il"))
             if (not gia_presente and not busta_come_estratto and not da_rileggere
-                    and not _GUASTO_DI_RETE.match(motivo)):
+                    and not _GUASTO_DI_RETE.match(motivo) and not transitorio):
                 continue
         try:
             await asyncio.to_thread(_sposta, service, riga["id"], cartelle[riga["cartella"]],
                                     cartelle[INBOX], "da rileggere")
             await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
                             motivo=("rileggere con le regole nuove" if da_rileggere
-                                    else "busta gia' in archivio, non un errore"))
+                                    else "guasto transitorio, si rilegge" if transitorio
+                                    else "busta gia' in archivio, non un errore"),
+                            **({"tentativi_transitori": int(riga.get("tentativi_transitori") or 0) + 1}
+                               if transitorio else {}))
             rimessi += 1
         except Exception as exc:
             logger.warning("[cartella-unica] %s non rimesso in coda: %s: %s",

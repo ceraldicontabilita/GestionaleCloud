@@ -117,6 +117,33 @@ def _json_default(value: Any) -> str:
     return str(value)
 
 
+def _senza_nul(valore: Any) -> Any:
+    """Toglie il carattere NUL dalle stringhe di un payload.
+
+    Postgres rifiuta ``\\u0000`` in un jsonb («unsupported Unicode escape sequence»):
+    il testo letto da un OCR o da un PDF ne puo' portare uno, e una dichiarazione
+    intera restava fuori per quel solo carattere. Il controllo e' una sola
+    serializzazione in C; si ricostruisce il payload solo se il NUL c'e'.
+    """
+    try:
+        if "\\u0000" not in json.dumps(valore, default=_json_default):
+            return valore
+    except (TypeError, ValueError):
+        return valore
+    return _pulisci_nul(valore)
+
+
+def _pulisci_nul(valore: Any) -> Any:
+    if isinstance(valore, str):
+        return valore.replace("\x00", "")
+    if isinstance(valore, dict):
+        return {(k.replace("\x00", "") if isinstance(k, str) else k): _pulisci_nul(v)
+                for k, v in valore.items()}
+    if isinstance(valore, (list, tuple)):
+        return [_pulisci_nul(v) for v in valore]
+    return valore
+
+
 def _normalise_document(document: dict[str, Any]) -> dict[str, Any]:
     """Converte il documento nello stesso JSON che verra' salvato da Postgres."""
     return json.loads(json.dumps(document, ensure_ascii=False, default=_json_default))
@@ -1030,6 +1057,7 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
         return self._session
 
     async def _rpc(self, function_name: str, payload: dict[str, Any]) -> Any:
+        payload = _senza_nul(payload)
         session = await self._get_session()
         url = f"{self._url}/rest/v1/rpc/{function_name}"
         async with session.post(url, json=payload) as response:

@@ -47,6 +47,8 @@ def test_errore_di_quadratura_elenca_le_righe_lette():
         richiedi_quadratura_f24(parsed)
     testo = str(errore.value)
     assert "saldo stampato: 100 cent" in testo and "E1001/2022 D56967 C0" in testo
+    # il bordo destro degli importi (punti) e' nell'errore: debito a 350+larghezza, credito a 470+larghezza
+    assert "x1 d/c: 374/486" in testo
 
 
 def test_due_pagine_senza_numero_modello_hanno_un_saldo_per_pagina():

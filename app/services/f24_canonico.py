@@ -62,8 +62,11 @@ def _dettaglio_quadratura(parsed: Dict[str, Any]) -> str:
         ("L", "sezione_tributi_locali"), ("N", "sezione_inail"),
     )
     voci = []
+    geometria: list[str] = []
     for sigla, nome in sezioni:
         for riga in parsed.get(nome) or []:
+            colonne = riga.get("colonne_x1") or {}
+            geometria.append(f"{colonne.get('debito') or '-'}/{colonne.get('credito') or '-'}")
             voci.append(
                 f"{sigla}{riga.get('codice_tributo') or riga.get('causale') or '?'}"
                 f"/{riga.get('anno') or ''}"
@@ -72,7 +75,11 @@ def _dettaglio_quadratura(parsed: Dict[str, Any]) -> str:
             )
     saldo = (parsed.get("totali") or {}).get("saldo_delega_cents")
     testa = f" [saldo stampato: {'non letto' if saldo is None else saldo} cent; righe {len(voci)}: "
-    return testa + "; ".join(voci[:14]) + ("; …" if len(voci) > 14 else "") + "]"
+    # «x1 d/c»: bordo destro (in punti) dell'importo letto come debito e come credito, riga per
+    # riga. Un debito che cade a destra della soglia finisce fra i crediti: da qui si vede
+    # senza riaprire il PDF, e la colonna si calibra sui dati veri.
+    coda = (" | x1 d/c: " + " ".join(geometria[:14])) if any(g != "-/-" for g in geometria) else ""
+    return testa + "; ".join(voci[:14]) + ("; …" if len(voci) > 14 else "") + coda + "]"
 
 
 def normalizza_righe_tributo(doc: Dict[str, Any]) -> list[Dict[str, Any]]:
