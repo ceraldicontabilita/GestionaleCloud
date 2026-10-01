@@ -89,8 +89,12 @@ def riga_indice(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 def costruisci_filtro(origine_tipo: Optional[str] = None, destinazione_tipo: Optional[str] = None,
                       relazione: Optional[str] = None, stato: Optional[str] = None,
-                      entita_id: Optional[str] = None) -> Dict[str, Any]:
+                      entita_id: Optional[str] = None, documento: Optional[str] = None) -> Dict[str, Any]:
+    """``documento`` = ``drive_id``: le relazioni che hanno quel file per originale (target ``documento``)."""
     filtro: Dict[str, Any] = {}
+    if documento:
+        filtro["target.type"] = "documento"
+        filtro["target.id"] = documento
     if origine_tipo:
         filtro["source.type"] = origine_tipo
     if destinazione_tipo:
@@ -117,8 +121,11 @@ async def leggi_righe(db, filtro: Optional[Dict[str, Any]] = None, *, limite: in
 def riepilogo(righe: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     per_stato = Counter(r["stato"] for r in righe)
     per_coppia = Counter(f"{r['origine_tipo']} > {r['destinazione_tipo']}" for r in righe)
+    per_regola = Counter(r["regola"] for r in righe if r["regola"])
+    per_motivo = Counter(r["motivo"] for r in righe if r.get("motivo"))
     return {"totale": len(righe), "per_stato": dict(sorted(per_stato.items())),
-            "per_coppia": dict(sorted(per_coppia.items()))}
+            "per_coppia": dict(sorted(per_coppia.items())),
+            "per_regola": dict(sorted(per_regola.items())), "per_motivo": dict(sorted(per_motivo.items()))}
 
 
 # ── esportazione ─────────────────────────────────────────────────────────────

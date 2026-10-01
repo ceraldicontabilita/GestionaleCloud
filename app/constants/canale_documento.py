@@ -19,7 +19,8 @@ banca la riconcilia. Gli alert sono ``aperto`` | ``risolto`` | ``ignorato``.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional
+import re
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 CANALE_POSTA = "posta"
 CANALE_DRIVE = "drive"
@@ -90,6 +91,75 @@ def canale_obbligatorio(fonte: Any, *, drive_file_id: Any = None) -> str:
     if drive_file_id:
         return CANALE_DRIVE
     return canale or CANALE_ALTRO
+
+
+# Etichette che dicono *chi* ha scritto la riga (motore, archivio di origine), non
+# da che canale e' arrivato il file: `canale_da_fonte` le ridurrebbe a «altro» e
+# nei conteggi per canale finirebbe un nome di programma.
+ETICHETTE_NON_CANALE = frozenset({
+    "cedolino_v2", "gestionale_cloud", "fiscal_documents", "salari_unificati_v2",
+})
+_CAMPI_ETICHETTA = ("fonte", "source", "origine", "import_source", "source_module",
+                    "source_container", "gestionale_source")
+# `AAAA-MM-GG_mittente@dominio_nomefile`: il nome con cui l'allegato di posta e'
+# salvato (senza cartella davanti).
+_PERCORSO_POSTA = re.compile(r"^\d{4}-\d{2}-\d{2}_[^/\s]+@[^/\s]+_")
+# Le cartelle dello smistatore Drive (cartella unica e vecchi alberi per persona).
+_CARTELLE_DRIVE = frozenset({"DA ELABORARE", "ELABORATE", "ERRORI"})
+
+
+def _canale_da_percorso(percorso: Any) -> Optional[str]:
+    testo = str(percorso or "").strip()
+    if not testo:
+        return None
+    if _PERCORSO_POSTA.match(testo):
+        return CANALE_POSTA
+    parti = [p.strip().upper() for p in testo.split("/") if p.strip()]
+    if len(parti) > 1 and any(p in _CARTELLE_DRIVE for p in parti[:-1]):
+        return CANALE_DRIVE
+    return None
+
+
+def canale_ricavabile(doc: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    """Il canale di un documento gia' in archivio, dai campi storici: ``(canale, regola)``.
+
+    ``(None, None)`` se nessun campo lo dice: **non si inventa**. Il
+    normalizzatore e' uno solo (``canale_da_fonte``); qui si decide l'ordine delle prove:
+
+    1. ``canale`` gia' scritto: la prima copia arrivata lo ha fissato, non cambia;
+    2. un'etichetta di provenienza che dice posta, Drive o caricato (le etichette
+       che nominano un motore o un archivio, ``ETICHETTE_NON_CANALE``, non contano);
+    3. posta: ``email_info``, id del messaggio, nome del file salvato dalla posta;
+    4. Drive: id Drive scritto sul documento (anche nelle copie), cartella dello smistatore;
+    5. un'etichetta scritta ma sconosciuta vale ``altro`` (come alla creazione).
+    """
+    esistente = canale_da_fonte(doc.get("canale"))
+    if esistente:
+        return esistente, "canale_esistente"
+    etichette: List[Tuple[str, str]] = []
+    for campo in _CAMPI_ETICHETTA:
+        valore = str(doc.get(campo) or "").strip()
+        if valore and valore.lower() not in ETICHETTE_NON_CANALE:
+            etichette.append((campo, valore))
+    for campo, valore in etichette:
+        c = canale_da_fonte(valore)
+        if c and c != CANALE_ALTRO:
+            return c, f"etichetta:{campo}"
+    if doc.get("email_info") or doc.get("gmail_message_id") or doc.get("email_id"):
+        return CANALE_POSTA, "email"
+    da_percorso = _canale_da_percorso(doc.get("source_path"))
+    if da_percorso == CANALE_POSTA:
+        return CANALE_POSTA, "percorso"
+    occorrenze = doc.get("source_occurrences")
+    if doc.get("drive_file_id") or any(
+            isinstance(o, dict) and o.get("drive_file_id")
+            for o in (occorrenze if isinstance(occorrenze, list) else [])):
+        return CANALE_DRIVE, "drive_file_id"
+    if da_percorso:
+        return da_percorso, "percorso"
+    if etichette:
+        return CANALE_ALTRO, f"etichetta:{etichette[0][0]}"
+    return None, None
 
 
 def canali_documento(doc: Dict[str, Any], *, fonti_registro: Iterable[str] = ()) -> List[str]:
