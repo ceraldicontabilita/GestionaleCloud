@@ -403,17 +403,39 @@ describe('Fatture provvisorie in attesa banca', () => {
     />);
 
     fireEvent.click(screen.getByRole('button', { name: /Cassa$/i }));
+    // La fattura e' fra i provvisori perche' il metodo del fornitore non c'e': si sceglie nella scheda.
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Come hai pagato Fornitore Test');
+    fireEvent.click(screen.getByRole('button', { name: 'Registra in Cassa' }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      '/api/prima-nota/provvisori/conferma',
-      {
-        fattura_id: 'fatt-cassa',
-        metodo: 'cassa',
-        approva_metodo_fattura: true,
-      },
+      '/api/prima-nota/provvisori/imposta-metodo-fornitore',
+      { fattura_id: 'fatt-cassa', metodo: 'cassa', altre_fattura_ids: [] },
     ));
+    await waitFor(() => expect(onRicarica).toHaveBeenCalledWith({ silent: true }));
     expect(onRicarica).toHaveBeenCalledTimes(1);
-    expect(onRicarica).toHaveBeenCalledWith({ silent: true });
+  });
+
+  it('dalla scheda del metodo sposta anche le altre fatture dello stesso fornitore nella pagina', async () => {
+    api.post.mockResolvedValue({ data: { success: true, message: '3 fatture registrate', esiti: [], scartate: 0 } });
+    render(<Provvisori
+      provvisori={[
+        { fattura_id: 'a', fattura_numero: '1', fattura_data: '2026-07-28', fornitore: 'Sommella', fornitore_piva: 'IT1', importo: 10 },
+        { fattura_id: 'b', fattura_numero: '2', fattura_data: '2026-07-29', fornitore: 'Sommella', fornitore_piva: 'IT1', importo: 20 },
+        { fattura_id: 'c', fattura_numero: '3', fattura_data: '2026-07-30', fornitore: 'Altro', fornitore_piva: 'IT2', importo: 30 },
+      ]}
+      attesaBanca={[]}
+      onRicarica={vi.fn().mockResolvedValue(undefined)}
+    />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Cassa$/i })[0]);
+    expect(await screen.findByRole('dialog')).toHaveTextContent('le altre 1 fattura di Sommella');
+    fireEvent.click(screen.getByRole('button', { name: /Registra in Cassa \(2\)/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    const [, corpo] = api.post.mock.calls.find(c => c[0].endsWith('imposta-metodo-fornitore'));
+    expect(corpo.metodo).toBe('cassa');
+    expect(corpo.altre_fattura_ids).toHaveLength(1);              // l'altro fornitore non c'e'
+    expect(corpo.altre_fattura_ids).not.toContain('c');
   });
 
   it('in selezione veloce assegna metodi diversi senza smontare filtri e lista', async () => {
@@ -490,6 +512,7 @@ describe('Fatture provvisorie in attesa banca', () => {
     />);
 
     fireEvent.click(screen.getByRole('button', { name: /Cassa$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Registra in Cassa' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Pagamento non registrato');
   });

@@ -15,6 +15,7 @@ import FinanziamentoSoci from './FinanziamentoSoci';
 import { PageHeader } from '../components/ds/PageHeader';
 import { voceDi } from '../navigation.config';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import ScegliMetodoFornitore from '../components/provvisori/ScegliMetodoFornitore';
 import {
   Banknote,
   CreditCard,
@@ -1433,6 +1434,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
   const [esitiMultipli, setEsitiMultipli] = useState(null);
   const [busyMultiplo, setBusyMultiplo] = useState(false);
   const [modalitaRapida, setModalitaRapida] = useState(false);
+  const [sceltaMetodo, setSceltaMetodo] = useState(null);
   const [vista, setVista] = useState('da_lavorare');
   const [paginaDaLavorare, setPaginaDaLavorare] = useState(1);
   const [paginaTutte, setPaginaTutte] = useState(1);
@@ -1603,17 +1605,12 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       await conferma(p, 'cassa', { approva_metodo_fattura: true });
       return;
     }
-    const numero = p.fattura_numero || p.numero_fattura || p.invoice_number || 'senza numero';
-    const fornitore = p.fornitore || p.supplier_name || 'Fornitore';
-    const approvato = await confirm({
-      title: 'Conferma pagamento in contanti',
-      message: `Confermi che la fattura ${numero} di ${fornitore}, per ${eur(p.importo)}, e' stata pagata in contanti?\n\nVerra' registrata in Prima Nota Cassa. Il metodo predefinito del fornitore non verra' modificato.`,
-      confirmText: 'Registra in Cassa',
-      cancelText: 'Annulla',
-      variant: 'warning',
-    });
-    if (!approvato) return;
-    await conferma(p, 'cassa', { approva_metodo_fattura: true });
+    // La fattura e' fra i provvisori perche' il metodo del fornitore non c'e': si sceglie qui,
+    // una volta sola, e vale anche per le altre fatture dello stesso fornitore nella pagina.
+    setErrore('');
+    setErroreRiga(null);
+    setEsito('');
+    setSceltaMetodo(p);
   };
 
   const attendiBanca = async p => {
@@ -2202,6 +2199,23 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
 
       {fatturaView && (
         <ModalFattura fatturaId={fatturaView.id} numero={fatturaView.numero} onClose={() => setFatturaView(null)} />
+      )}
+
+      {sceltaMetodo && (
+        <ScegliMetodoFornitore
+          fattura={sceltaMetodo}
+          // Le altre fatture dello stesso fornitore fra quelle che si vedono in questa pagina
+          altre={provvisoriPagina.filter(q => q.fattura_id !== sceltaMetodo.fattura_id && (
+            sceltaMetodo.fornitore_piva
+              ? q.fornitore_piva === sceltaMetodo.fornitore_piva
+              : (q.fornitore && q.fornitore === sceltaMetodo.fornitore)))}
+          onClose={() => setSceltaMetodo(null)}
+          onFatto={async data => {
+            setSceltaMetodo(null);
+            setEsitiMultipli(data);
+            await onRicarica({ silent: true });
+          }}
+        />
       )}
     </div>
   );
