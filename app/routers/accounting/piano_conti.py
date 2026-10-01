@@ -5,7 +5,6 @@ Gestione del piano dei conti secondo i principi di ragioneria italiana.
 from fastapi import APIRouter, HTTPException, Body, Depends, Query
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-import uuid
 import logging
 
 from app.database import Database
@@ -37,7 +36,6 @@ router = APIRouter()
 # alias (``app/services/mapping_piano_conti.py``).
 COLLECTION_PIANO_CONTI = "piano_conti"
 COLLECTION_MOVIMENTI_CONTABILI = "movimenti_contabili"
-COLLECTION_REGOLE_CATEGORIZZAZIONE = "regole_categorizzazione"
 
 MESSAGGIO_PIANO_CEE = (
     "Il piano dei conti e' quello CEE ufficiale del bilancio "
@@ -363,111 +361,11 @@ async def delete_conto(conto_id: str) -> Dict[str, Any]:
     raise HTTPException(status_code=409, detail=f"Conto {conto_id} non eliminabile. {MESSAGGIO_PIANO_CEE}")
 
 
-# ============== REGOLE DI CATEGORIZZAZIONE (tab "Regole" del Piano dei Conti) ==============
-#
-# ATTENZIONE (consolidamento 19/09/2026, chiude i "4 motori disconnessi"
-# trovati dall'audit di sola lettura): la collezione ``regole_categorizzazione``
-# e questi due endpoint alimentavano `determina_conti_fattura` con 8 regole
-# hardcoded, MA nessuna scrittura fatta dall'utente qui aveva effetto reale
-# sulla registrazione (era un secondo sistema, parallelo a quello scritto
-# davvero dalla pagina Excel `regole_categorizzazione.py`). Ora
-# `determina_conti_fattura` usa SOLO le regole scritte dall'Excel
-# (`regole_categorizzazione_fornitori` / `_descrizioni` / `regole_categorie`,
-# vedi sotto) più il motore ricco `categorizzazione_contabile`.
-#
-# Questi endpoint E la collezione restano invariati (non eliminati) solo per
-# compatibilita': il frontend `frontend/src/pages/PianoDeiConti.jsx` (tab
-# "Regole Categorizzazione") li chiama ancora davvero (`api.get('/api/piano-
-# conti/regole')`, `api.post('/api/piano-conti/regole', ...)`). Eliminarli
-# romperebbe quella pagina. Sono pero' oggi PURAMENTE INFORMATIVI/STORICI:
-# una regola creata da qui non cambia più il conto scelto per nessuna nuova
-# fattura. Per correggere davvero la categorizzazione automatica si usa la
-# pagina "Regole Categorizzazione" (Excel, `/api/regole/*`).
-
-@router.get("/regole")
-@handle_errors
-async def get_regole_categorizzazione() -> Dict[str, Any]:
-    """Regole della VECCHIA collezione ``regole_categorizzazione`` (vedi nota
-    sopra): sola lettura/scrittura per la tab del Piano dei Conti, non
-    alimentano più `determina_conti_fattura`."""
-    db = Database.get_db()
-
-    regole = await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].find({}, {"_id": 0}).to_list(100)
-
-    # Se non esistono regole, inizializza con quelle base
-    if not regole:
-        regole = await inizializza_regole_base(db)
-
-    return {"regole": regole, "totale": len(regole)}
-
-
-async def inizializza_regole_base(db) -> List[Dict[str, Any]]:
-    """Inizializza le regole di categorizzazione base."""
-    regole_base = [
-        # Regole per fornitore (keyword nel nome)
-        {"tipo": "fornitore", "pattern": "ENEL", "conto_dare": "05.02.02", "conto_avere": "02.01.01", "descrizione": "Utenze elettricità"},
-        {"tipo": "fornitore", "pattern": "ENI|EDISON", "conto_dare": "05.02.02", "conto_avere": "02.01.01", "descrizione": "Utenze gas"},
-        {"tipo": "fornitore", "pattern": "TELECOM|TIM|VODAFONE|WIND", "conto_dare": "05.02.01", "conto_avere": "02.01.01", "descrizione": "Telefonia"},
-        {"tipo": "fornitore", "pattern": "ALIMENTARI|FOOD|DISTRIBUZIONE", "conto_dare": "05.01.01", "conto_avere": "02.01.01", "descrizione": "Acquisto merci"},
-
-        # Regole per tipo documento
-        {"tipo": "tipo_documento", "pattern": "TD01", "conto_dare": "05.01.01", "conto_avere": "02.01.01", "descrizione": "Fattura acquisto merce"},
-        {"tipo": "tipo_documento", "pattern": "TD04", "conto_dare": "02.01.01", "conto_avere": "05.01.01", "descrizione": "Nota di credito ricevuta"},
-
-        # Regole per pagamento
-        {"tipo": "pagamento", "pattern": "contanti|cassa", "conto_dare": "02.01.01", "conto_avere": "01.01.01", "descrizione": "Pagamento in contanti"},
-        {"tipo": "pagamento", "pattern": "banca|bonifico", "conto_dare": "02.01.01", "conto_avere": "01.01.02", "descrizione": "Pagamento tramite banca"},
-    ]
-
-    now = datetime.now(timezone.utc).isoformat()
-    regole = []
-
-    for r in regole_base:
-        regola = {
-            "id": str(uuid.uuid4()),
-            "tipo": r["tipo"],
-            "pattern": r["pattern"],
-            "conto_dare": r["conto_dare"],
-            "conto_avere": r["conto_avere"],
-            "descrizione": r["descrizione"],
-            "attiva": True,
-            "created_at": now
-        }
-        regole.append(regola)
-
-    if regole:
-        # Persistiamo copie e manteniamo la risposta JSON separata dai record.
-        await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].insert_many(
-            [regola.copy() for regola in regole]
-        )
-
-    return regole
-
-
-@router.post("/regole")
-@handle_errors
-async def create_regola(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea una regola nella VECCHIA collezione ``regole_categorizzazione``
-    (vedi nota sopra): non influenza più `determina_conti_fattura`."""
-    db = Database.get_db()
-
-    now = datetime.now(timezone.utc).isoformat()
-    regola = {
-        "id": str(uuid.uuid4()),
-        "tipo": data.get("tipo", "fornitore"),
-        "pattern": data.get("pattern", ""),
-        "conto_dare": data.get("conto_dare", ""),
-        "conto_avere": data.get("conto_avere", ""),
-        "descrizione": data.get("descrizione", ""),
-        "attiva": True,
-        "created_at": now
-    }
-
-    await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].insert_one(regola.copy())
-    regola.pop("_id", None)
-
-    return {"success": True, "regola": regola}
-
+# Le regole di categorizzazione NON stanno qui: l'unico sistema e' la pagina Learning Machine >
+# Regole categorizzazione (`/api/regole/*`, `regole_categorizzazione_fornitori|descrizioni`,
+# `regole_categorie`). La vecchia collezione `regole_categorizzazione` e i suoi endpoint
+# `/api/piano-conti/regole` (consolidamento 19/09/2026: il motore non li leggeva piu') sono
+# stati tolti il 01/10/2026; i dati restano in archivio, nessuno li legge.
 
 # ============== REGISTRAZIONE CONTABILE FATTURA ==============
 
