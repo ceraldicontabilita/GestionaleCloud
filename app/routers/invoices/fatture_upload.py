@@ -329,13 +329,26 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     # Cerca fornitore per P.IVA (supporta sia 'piva' che 'partita_iva' come field name)
     # NB: niente proiezione {"_id": 0} — l'_id serve come filtro di update
     # perché i fornitori storici possono non avere il campo "id".
+    # Identita' P.IVA -> CF -> nome (fornitori_dedupe e' l'unico motore): la
+    # P.IVA si cerca in tutte le sue scritture (con/senza IT) e un fornitore
+    # gia' unificato (`merged_into`) non si riattiva.
+    from app.services.fornitori_dedupe import varianti_piva
+    _varianti = varianti_piva(supplier_vat) or [supplier_vat]
     existing = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [
-            {"partita_iva": supplier_vat},
-            {"piva": supplier_vat}
-        ]},
+        {"merged_into": {"$exists": False},
+         "$or": [{campo: v} for v in _varianti for campo in ("partita_iva", "piva")]},
         session=session
     )
+
+    # Stesso codice fiscale (persona o ditta) e nessuna P.IVA diversa: e' lui.
+    _cf_xml = re.sub(r"[^0-9A-Z]", "", str((parsed_invoice.get("fornitore") or {}).get("codice_fiscale") or "").upper())
+    if not existing and len(_cf_xml) >= 11 and _cf_xml != supplier_match_key:
+        _cand_cf = await db[Collections.SUPPLIERS].find_one(
+            {"merged_into": {"$exists": False}, "codice_fiscale": _cf_xml}, session=session)
+        if _cand_cf:
+            _p_cand = (_cand_cf.get("partita_iva") or _cand_cf.get("piva") or "").strip().upper().replace(" ", "")
+            if not _p_cand or _p_cand.lstrip("IT") == cedente_piva_norm.lstrip("IT"):
+                existing = _cand_cf
 
     # Se non trovato per P.IVA, cerca per denominazione/nome.
     # SOLO uguaglianza esatta (normalizzata): il vecchio match a prefisso
@@ -347,7 +360,8 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         import re as _re
         safe_name = _re.escape(supplier_name[:60])
         candidato = await db[Collections.SUPPLIERS].find_one(
-            {"$or": [
+            {"merged_into": {"$exists": False},
+             "$or": [
                 {"nome": {"$regex": f"^{safe_name}$", "$options": "i"}},
                 {"ragione_sociale": {"$regex": f"^{safe_name}$", "$options": "i"}},
                 {"denominazione": {"$regex": f"^{safe_name}$", "$options": "i"}}
