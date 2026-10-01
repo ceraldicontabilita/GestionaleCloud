@@ -4,25 +4,20 @@ import axios from "axios";
 import { toast } from "sonner";
 import { X, Check, Edit2, BookOpen, RefreshCw } from "lucide-react";
 import { API } from "../../../utils/constants";
+import { useCategorieDizionario } from "../../../utils/categorieDizionario";
 
 const SALVIA = "#3f5a4e";
 const SAGE = "#5b7a6b";
 const CREAM = "#faf7f0";
 const LINE = "#e6e0d4";
 
-const CATEGORIE = [
-  "Farine e Cereali", "Latticini e Grassi", "Uova", "Frutta Secca",
-  "Frutta e Verdura", "Dolcificanti", "Aromi", "Condimenti",
-  "Conserve e Condimenti", "Cioccolato e Cacao", "Lieviti e Addensanti",
-  "Alcolici e Liquori", "Bevande", "Carne e Salumi", "Pesce",
-  "Varie Alimentari", "Non Alimentare",
-];
 
 /**
  * Modal per revisionare e correggere a mano le associazioni
  * nome commerciale → nome usuale del dizionario.
  */
 export default function ModalRevisioneDizionario({ onClose }) {
+  const CATEGORIE = useCategorieDizionario();
   const [tab, setTab] = useState("revisione");
   const [daRevisionare, setDaRevisionare] = useState([]);
   const [nomiUsuali, setNomiUsuali] = useState([]);

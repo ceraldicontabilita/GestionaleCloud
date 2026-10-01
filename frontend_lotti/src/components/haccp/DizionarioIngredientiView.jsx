@@ -7,19 +7,11 @@ import { API } from "../../utils/constants";
 import { isAdmin } from "../../auth";
 import { BookMarked, RefreshCw, Search, Check, X, DatabaseZap, Layers } from "lucide-react";
 import ProposteArticoliPanel from "./ProposteArticoliPanel";
+import { useCategorieDizionario } from "../../utils/categorieDizionario";
 
 const SAGE = "#5b7a6b";
 const inputCls =
   "w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 focus:border-[#5b7a6b] focus:outline-none focus:ring-2 focus:ring-[#5b7a6b]/20";
-
-// Elenco compatto delle categorie merceologiche usate dal sistema di normalizzazione,
-// per il menu a tendina della conferma rapida.
-const CATEGORIE = [
-  "Farine e Cereali", "Dolcificanti", "Latticini e Grassi", "Uova",
-  "Frutta e Verdura", "Frutta Secca", "Formaggi", "Semilavorati Pasticceria",
-  "Aromi", "Bagne e Aromi", "Lieviti e Addensanti", "Cioccolato e Cacao",
-  "Condimenti", "Decorazioni", "Varie Alimentari",
-];
 
 // Ultimo acquisto COME IN FATTURA: prezzo, quantità (litro/boccione/cartone) e
 // unità — così Enzo riconosce il prodotto senza ricerche (richiesta 04/07/2026).
@@ -41,11 +33,13 @@ function UltimoAcquisto({ p }) {
   return kg > 0 ? <div className="text-xs font-semibold text-[#5b7a6b]">€ {kg.toFixed(2)}/kg</div> : null;
 }
 
-function RigaProdotto({ p, onSalva, onEscludi, vistaEsclusi = false }) {
+function RigaProdotto({ p, onSalva, onEscludi, categorie, vistaEsclusi = false }) {
   // La PROPOSTA automatica arriva già pre-compilata nel campo: Enzo conferma
   // con un tocco o corregge ("van." → Vaniglia) — regola mani-sporche.
   const [nome, setNome] = useState(p.ingrediente_canonico || p.nome_canonico || p.proposta_canonico || "");
-  const [categoria, setCategoria] = useState("Varie Alimentari");
+  // La categoria parte da quella già salvata sulla riga (o proposta dal sistema):
+  // mai «Varie Alimentari» per tutte.
+  const [categoria, setCategoria] = useState(p.categoria_canonica || "Varie Alimentari");
   const [salvando, setSalvando] = useState(false);
   const associato = !!(p.ingrediente_canonico || p.nome_canonico);
   const eProposta = !associato && !!p.proposta_canonico && nome === p.proposta_canonico;
@@ -116,7 +110,7 @@ function RigaProdotto({ p, onSalva, onEscludi, vistaEsclusi = false }) {
       </td>
       <td className="p-2.5 align-top">
         <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className={inputCls}>
-          {CATEGORIE.map((c) => <option key={c}>{c}</option>)}
+          {(categorie.includes(categoria) ? categorie : [categoria, ...categorie]).map((c) => <option key={c}>{c}</option>)}
         </select>
       </td>
       <td className="p-2.5 align-top text-right">
@@ -155,6 +149,7 @@ export default function DizionarioIngredientiView() {
   // fornitori Magazzino+Lotti (richiesta Enzo 04/07/2026)
   const [soloCompleti, setSoloCompleti] = useState(true);
   const [canonici, setCanonici] = useState([]);
+  const categorie = useCategorieDizionario();
   const [q, setQ] = useState("");
   const [skip, setSkip] = useState(0);
   const LIMIT = 100;
@@ -387,7 +382,7 @@ export default function DizionarioIngredientiView() {
               <tbody>
                 {prodotti.map((p) => (
                   <RigaProdotto key={p.id || p.nome_normalizzato} p={p} onSalva={salvaRiga}
-                    onEscludi={escludiRiga} vistaEsclusi={vista === "escluse"} />
+                    onEscludi={escludiRiga} categorie={categorie} vistaEsclusi={vista === "escluse"} />
                 ))}
               </tbody>
             </table>
