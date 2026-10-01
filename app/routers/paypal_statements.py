@@ -302,7 +302,7 @@ def _id_movimento(mov: Dict[str, Any]) -> str:
 # Importo esatto + segno coerente + data entro 10 giorni (10 + 55 + 5): basta
 # se la coppia e' biunivoca. L'addebito SDD di PayPal arriva anche 4-7 giorni
 # dopo l'operazione, e con la soglia a 85 restava «Da associare» ogni
-# addebito oltre i 3 giorni (24/08/2026: 165,96 € per MongoDB del 20/08).
+# addebito oltre i 3 giorni (24/08/2026: 165,96 € di un abbonamento in dollari pagato il 20/08).
 SOGLIA_SCORE_MATCH_BANCA = 70
 # Il prelievo del saldo PayPal verso la banca lo decide il titolare quando
 # vuole: l'accredito puo' seguire l'incasso di settimane.
