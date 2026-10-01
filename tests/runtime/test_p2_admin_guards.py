@@ -118,10 +118,14 @@ _ERP_SENZA_TOKEN = {
 }
 
 # (dominio, percorso) -> (metodi ammessi, motivo). Sotto-app senza dipendenza di accesso.
-_SOTTOAPP_SENZA_TOKEN = {
-    ("lotti", "/lotti/api/health"): ({"GET"}, "liveness"),
+# Esistono solo dove il bundle del frontend e' compilato (non in CI): non sono voci morte.
+_STATICHE_OPZIONALI = {
     ("hr", "/hr/{full_path:path}"): ({"GET"}, "pagine statiche dell'app HR: nessun dato, solo il bundle"),
     ("menu", "/menu/{full_path:path}"): ({"GET"}, "pagine statiche del Menu: nessun dato, solo il bundle"),
+}
+
+_SOTTOAPP_SENZA_TOKEN = {
+    ("lotti", "/lotti/api/health"): ({"GET"}, "liveness"),
     ("hr", "/hr/api/health"): ({"GET"}, "liveness"),
     ("menu", "/menu/api/health"): ({"GET"}, "liveness"),
     ("hr", "/hr/api/auth/dipendenti-attivi"): ({"GET"}, "tocca il tuo nome: solo nomi, non sono un segreto"),
@@ -212,7 +216,7 @@ def test_nessuna_route_di_hr_lotti_menu_senza_dipendenza_di_accesso():
             continue
         if any(d.startswith("require_") or d in {"dipendenza", "_checker"} for d in dip):
             continue  # require_roles(...) / require_permesso(...) producono funzioni interne
-        ammessa = _SOTTOAPP_SENZA_TOKEN.get((dominio, percorso))
+        ammessa = _SOTTOAPP_SENZA_TOKEN.get((dominio, percorso)) or _STATICHE_OPZIONALI.get((dominio, percorso))
         if ammessa is None or not metodi <= ammessa[0]:
             difetti.append(f"{dominio} {sorted(metodi)} {percorso}")
     assert not difetti, "route senza autenticazione e non in lista bianca motivata: " + "; ".join(difetti)
