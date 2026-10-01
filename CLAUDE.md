@@ -256,6 +256,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
     fa fallire l'intera pipeline.** `$trim` mancava, e con lui sono morte per mesi
     la ricerca web prodotti (644 giri falliti di fila) e gli sconti merce: prima di
     usarne uno nuovo, `archivio_documenti_memoria.evaluate_expression` deve conoscerlo.
+16. **Il calcolo puro su una collezione intera non gira sull'event loop**: oltre 5 s di loop bloccato l'health check di Render scade e
+    il servizio si riavvia, azzerando i timer di tutti i giri lunghi (un giro che parte «18 minuti dopo l'avvio» non parte mai se si
+    riavvia ogni 20). Si porta in `asyncio.to_thread` (`collega_ravvedimenti`: 10 s di calcolo, causa dei riavvii del 01/10/2026);
+    il segnale è `[loop bloccato] ripartito dopo N s` in `sorveglianza_loop`.
 
 ## Identità, prove e attese
 

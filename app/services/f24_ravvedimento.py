@@ -35,6 +35,7 @@ Nessun giudizio fiscale: fatti e differenze da verificare col commercialista.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -341,7 +342,9 @@ async def collega_ravvedimenti(db, *, dry_run: bool = False) -> Dict[str, Any]:
     """Il giro: modelli e quietanze letti una volta, legami scritti per id."""
     modelli = await db[COLL_F24].find({}, {"_id": 0, "pdf_data": 0}).to_list(5000)
     quietanze = await db[COLL_QUIETANZE_F24].find({}, {"_id": 0, "pdf_data": 0}).to_list(5000)
-    esito = abbina_ravvedimenti(modelli, quietanze)
+    # Calcolo puro su migliaia di documenti: ~10 s sull'event loop facevano scadere l'health check di
+    # Render (5 s) e riavviavano il servizio ogni ~20 minuti, azzerando i timer degli altri giri.
+    esito = await asyncio.to_thread(abbina_ravvedimenti, modelli, quietanze)
     if dry_run:
         return {"dry_run": True, **esito}
     return {"dry_run": False, **esito, "scritti": await applica_ravvedimenti(db, esito)}
