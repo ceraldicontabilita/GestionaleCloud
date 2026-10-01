@@ -110,6 +110,27 @@ def _ingresso_reale(ponte, monkeypatch, quantita=2, source_hash="hash-1", lines=
     return item, detail
 
 
+def test_sync_collega_ricette_una_volta_senza_match_fuzzy(ponte, monkeypatch):
+    module, _database = ponte
+    _ingresso_reale(ponte, monkeypatch)
+
+    fuzzy = AsyncMock(side_effect=AssertionError("il sync non deve usare il matcher fuzzy"))
+    canonico = AsyncMock(return_value={"ingredienti_collegati": 4})
+    monkeypatch.setattr(
+        "app.lotti.routers.aggiornamento_ricette.aggiorna_ricette_da_fattura", fuzzy
+    )
+    monkeypatch.setattr(
+        "app.lotti.routers.ricette.collega_ingredienti_canonico", canonico
+    )
+
+    esito = run(module.esegui_sync_gestionale(anno=2026, massimo=40, anteprima=False))
+
+    assert esito["importate"] == 1
+    assert esito["ingredienti_ricette_collegati"] == 4
+    fuzzy.assert_not_awaited()
+    canonico.assert_awaited_once()
+
+
 @pytest.mark.parametrize("retry", ["evento", "sync"])
 def test_carico_bar_parziale_non_terminalizza_e_retry_completa_per_riga(ponte, monkeypatch, retry):
     module, database = ponte
@@ -350,7 +371,7 @@ def test_evento_import_fallito_resta_recuperabile_e_retry_non_duplica(ponte, mon
     async def dettaglio(_source_id):
         return {**_item(), "xml_raw": "<FatturaElettronica/>"}
 
-    async def importa_fallita(_files):
+    async def importa_fallita(_files, **_kwargs):
         return {"fatture_processate": 0, "errori": ["XML non elaborabile"]}
 
     monkeypatch.setattr(module, "_dettaglio_locale", dettaglio)
@@ -362,7 +383,7 @@ def test_evento_import_fallito_resta_recuperabile_e_retry_non_duplica(ponte, mon
     assert run(database.gestionale_fatture_ricevute.count_documents({})) == 0
     assert run(module._source_id_gia_presi()) == {}
 
-    async def importa_riprovata(_files):
+    async def importa_riprovata(_files, **_kwargs):
         await database.fatture.update_one(
             {"id": "lotti-recuperata"},
             {"$set": {"numero_fattura": "42/A", "piva": "01234567890"}},
@@ -389,7 +410,7 @@ def test_id_restituito_senza_documento_non_diventa_ricevuta(ponte, monkeypatch, 
     async def elenco(_client, _anno):
         return [_item()], 1
 
-    async def importa(_files):
+    async def importa(_files, **_kwargs):
         return {"fatture_processate": 1, "fatture_ids": ["fattura-inesistente"]}
 
     monkeypatch.setattr(module, "_dettaglio_locale", dettaglio)

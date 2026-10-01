@@ -520,7 +520,9 @@ def _estrai_xml(raw: bytes) -> bytes:
     return raw
 
 
-async def importa_fattura_xml(files: List[UploadFile]):
+async def importa_fattura_xml(
+    files: List[UploadFile], *, collega_ricette: bool = True
+):
     """Importa fatture XML e aggiorna automaticamente le materie prime.
 
     Non e' un endpoint: le fatture entrano solo dal gestionale, e l'unico
@@ -1120,7 +1122,6 @@ async def importa_fattura_xml(files: List[UploadFile]):
     if ids_completi:
         try:
             from app.lotti.routers.pipeline import esegui_pipeline_post_import
-            from app.lotti.routers.aggiornamento_ricette import aggiorna_ricette_da_fattura
             from app.lotti.routers.ricette import collega_ingredienti_canonico
             import asyncio
 
@@ -1130,42 +1131,17 @@ async def importa_fattura_xml(files: List[UploadFile]):
                 )
             )
 
-            # Aggiorna ingredienti ricette con i dati delle fatture appena importate
-            # Per ogni fattura processata, aggiorna le ricette che usano quegli ingredienti
-            for file in files:
-                try:
-                    # Rileggi la fattura appena salvata dal DB per avere l'id
-                    pass  # fatto nel loop sopra: la fattura è già in DB
-                except Exception:
-                    logger.debug("[fatture] errore non bloccante ignorato")
-
-            # Usa solo i documenti completati da QUESTO import, non gli ultimi
-            # N dell'archivio (che possono appartenere a un altro ingresso).
-            fatture_recenti = (
-                await db.fatture.find({"id": {"$in": ids_completi}}, {"_id": 0})
-                .to_list(len(ids_completi))
-            )
-
-            for fatt in fatture_recenti:
-                try:
-                    res = await aggiorna_ricette_da_fattura(fatt)
-                    if res.get("aggiornate", 0) > 0:
-                        risultati.setdefault("ricette_aggiornate", 0)
-                        risultati["ricette_aggiornate"] += res["aggiornate"]
-                        risultati.setdefault("match_ingredienti_ricette", [])
-                        risultati["match_ingredienti_ricette"].extend(res.get("match", []))
-                except Exception as e:
-                    logger.warning(f"[fatture] aggiornamento ricette fallito: {e}")
-
             # Il collegamento salvato sulla ricetta usa il matcher canonico
-            # deterministico (lo stesso delle righe fattura). Le mappature
-            # apprese sopra, da sole, non valorizzavano ``nome_canonico`` e il
-            # Controllo dati continuava a mostrare migliaia di ingredienti
-            # scollegati anche dopo l'arrivo delle fatture.
-            collegamenti = await collega_ingredienti_canonico()
-            risultati["ingredienti_ricette_collegati"] = collegamenti.get(
-                "ingredienti_collegati", 0
-            )
+            # deterministico (lo stesso delle righe fattura). Il vecchio
+            # aggiornamento fuzzy attraversava prodotti x ricette x ingredienti
+            # e, oltre a suggerire associazioni non certe, poteva tenere un giro
+            # fatture occupato per oltre quindici minuti. Il ponte a lotti passa
+            # ``collega_ricette=False`` e lo esegue una sola volta a fine giro.
+            if collega_ricette:
+                collegamenti = await collega_ingredienti_canonico()
+                risultati["ingredienti_ricette_collegati"] = collegamenti.get(
+                    "ingredienti_collegati", 0
+                )
 
         except Exception as e:
             logger.warning(f"[fatture] Avvio pipeline post-import fallito: {e}")

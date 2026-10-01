@@ -561,9 +561,10 @@ async def esegui_sync_gestionale(
                     continue
                 from app.lotti.routers.fatture import _UF, importa_fattura_xml
 
-                imported = await importa_fattura_xml([
-                    _UF(f"gestionale-{source_id}.xml", xml_raw.encode("utf-8"))
-                ])
+                imported = await importa_fattura_xml(
+                    [_UF(f"gestionale-{source_id}.xml", xml_raw.encode("utf-8"))],
+                    collega_ricette=False,
+                )
                 if imported.get("errori"):
                     raise RuntimeError("Import operativo incompleto: " + "; ".join(imported["errori"]))
                 ids = [i for i in (imported.get("fatture_ids") or []) if i]
@@ -602,6 +603,22 @@ async def esegui_sync_gestionale(
             except Exception as exc:
                 result["errori"].append(
                     f"{item.get('invoice_number') or source_id}: {_descrivi(exc)}"
+                )
+
+        # Un giro puo' importare decine di fatture. Il collegamento canonico
+        # attraversa l'intero ricettario e deve quindi girare una volta sola,
+        # dopo che tutti i nuovi prodotti/mapping sono disponibili.
+        if result["importate"] and not anteprima:
+            try:
+                from app.lotti.routers.ricette import collega_ingredienti_canonico
+
+                collegamenti = await collega_ingredienti_canonico()
+                result["ingredienti_ricette_collegati"] = collegamenti.get(
+                    "ingredienti_collegati", 0
+                )
+            except Exception as exc:
+                result["errori"].append(
+                    f"Collegamento ingredienti ricette: {_descrivi(exc)}"
                 )
     except Exception as exc:
         result["ok"] = False
