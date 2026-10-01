@@ -23,6 +23,7 @@ import {
   Network,
   ShieldCheck,
   Fish,
+  Hotel,
 } from "lucide-react";
 import { API } from "../../utils/constants";
 import { isAdmin } from "../../auth";
@@ -131,6 +132,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
   const [venditeOggi, setVenditeOggi] = useState([]);
   const [ordiniBozza, setOrdiniBozza] = useState(0);
   const [ordiniInviati, setOrdiniInviati] = useState(0);
+  const [ordiniHotel, setOrdiniHotel] = useState({ pendenti: 0, da_incassare: 0 });
   const [cruscotto, setCruscotto] = useState(null);
   const [sommarioSupervisore, setSommarioSupervisore] = useState(null);
   const [produzioneDaDecidere, setProduzioneDaDecidere] = useState(0);
@@ -150,19 +152,20 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
     setLoading(true);
     try {
       const domani = new Date(); domani.setDate(domani.getDate() + 1);
-      const [scadenze, produzioni, vendite, ordini, ordiniInv, crusc, sommario, prodConsigliata] = await Promise.allSettled([
+      const [scadenze, produzioni, vendite, ordini, ordiniInv, ordHotel, crusc, sommario, prodConsigliata] = await Promise.allSettled([
         axios.get(`${API}/supervisor/lotti-in-scadenza?giorni=7&limit=10`, { timeout: 15000 }),
         axios.get(`${API}/produzioni/per-oggi`, { timeout: 15000 }),
         axios.get(`${API}/vendita-banco/oggi`, { timeout: 15000 }),
         axios.get(`${API}/ordini-fornitori?stato=bozza&limit=100`, { timeout: 15000 }),
         axios.get(`${API}/ordini-fornitori?stato=inviato&limit=100`, { timeout: 15000 }),
+        axios.get(`${API}/ordini-hotel/riepilogo`, { timeout: 15000 }),
         axios.get(`${API}/supervisor/cruscotto`, { timeout: 45000 }),
         axios.get(`${API}/supervisor/sommario`, { timeout: 15000 }),
         axios.get(`${API}/produzione-consigliata`, { params: { data: domani.toISOString().slice(0, 10) }, timeout: 15000 }),
       ]);
       const nomi = ["lotti in scadenza", "produzioni di oggi", "banco di oggi", "ordini in bozza",
-        "ordini inviati", "cruscotto", "alert HACCP", "produzione consigliata"];
-      const esiti = [scadenze, produzioni, vendite, ordini, ordiniInv, crusc, sommario, prodConsigliata];
+        "ordini inviati", "ordini hotel", "cruscotto", "alert HACCP", "produzione consigliata"];
+      const esiti = [scadenze, produzioni, vendite, ordini, ordiniInv, ordHotel, crusc, sommario, prodConsigliata];
       setFontiMancanti(esiti.map((e, i) => (e.status === "fulfilled" ? null : nomi[i])).filter(Boolean));
       setCruscotto(crusc.status === "fulfilled" ? (crusc.value.data || null) : null);
       if (scadenze.status === "fulfilled") setLottiScadenza(scadenze.value.data?.lotti || []);
@@ -170,6 +173,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
       if (vendite.status === "fulfilled") setVenditeOggi(vendite.value.data || []);
       if (ordini.status === "fulfilled") setOrdiniBozza((ordini.value.data || []).length);
       if (ordiniInv.status === "fulfilled") setOrdiniInviati((ordiniInv.value.data || []).length);
+      if (ordHotel.status === "fulfilled") setOrdiniHotel(ordHotel.value.data || { pendenti: 0, da_incassare: 0 });
       if (sommario.status === "fulfilled") setSommarioSupervisore(sommario.value.data || null);
       if (prodConsigliata.status === "fulfilled") {
         const suggeriti = prodConsigliata.value.data?.suggerimenti || [];
@@ -293,6 +297,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
             <ActionCard icon={Store} title="Banco vendita" subtitle="Apri il banco, registra vendita e scarica lotti." badge={riepilogo.bancoAperto ? `${riepilogo.bancoAperto} aperto` : "Tablet"} tone="sandV" onClick={() => navigate("tablet/vendita")} />
             <ActionCard icon={Package} title="Magazzino" subtitle="Scarichi rapidi, giacenze e movimenti con la sessione attiva." badge="Tablet" tone="sandDarkV" onClick={() => navigate("tablet/magazzino")} />
             <ActionCard icon={AlertTriangle} title="Cosa usare oggi" subtitle="Lotti per urgenza scadenza e valore economico, con azioni rapide." badge={riepilogo.scadenzeUrgenti ? `${riepilogo.scadenzeUrgenti} urgenti` : "OK"} tone={riepilogo.scadenzeUrgenti ? "red" : "amber"} onClick={() => navigate("cosa_usare_oggi")} />
+            <ActionCard icon={Hotel} title="Ordini hotel" subtitle="Dolce e salato richiesti dalle strutture, con allergeni e lotti." badge={ordiniHotel.pendenti ? `${ordiniHotel.pendenti} nuovi` : "OK"} tone={ordiniHotel.pendenti ? "amber" : "green"} onClick={() => navigate("ordini_hotel")} />
           </div>
         </div>
       </section>

@@ -131,7 +131,7 @@ def test_frontend_e_migrazione_espongono_selezione_per_struttura():
     ).read_text(encoding="utf-8")
 
     assert '"prodotti","Prodotti hotel"' in html
-    assert '"prodotti","Prodotti"' in html
+    assert '"prodotti","Prodotti e ordini"' in html
     assert "bb_tit_prodotti_salva" in html
     assert "bb_alb_prodotti" in html
     assert "primary key (struttura_id, prodotto_chiave)" in sql
@@ -145,6 +145,13 @@ def test_frontend_e_migrazione_espongono_selezione_per_struttura():
     assert "'tavolo',v.servizio_tavolo" in sql_tavolo
     assert "servizio_tavolo:!!r.tavolo" in html
     assert "c.prezzo+(r.tavolo?sup():0)" in html
+    assert "function ntServ(i,v)" in html
+    assert "function crServ(i,v)" in html
+    assert "☕ Banco" in html
+    assert "🪑 Tavolo +${eur(sup())}" in html
+    assert "const crDefaultTavolo=()=>false" in html
+    assert "Banco selezionato di default" in html
+    assert 'id="in_tav"' not in html
 
 
 def test_pagina_ospite_qr_offre_recensione_google_e_tripadvisor_senza_incentivi():
@@ -156,3 +163,40 @@ def test_pagina_ospite_qr_offre_recensione_google_e_tripadvisor_senza_incentivi(
     assert "Com’è stata la tua esperienza?" in html
     assert "Nessun premio o incentivo è associato alla recensione." in html
     assert 'if(p[1]==="recensioni")return recensioniOspite' in html
+
+
+def test_guida_napoli_ospite_usa_fonti_ufficiali_e_portami_maps():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+
+    assert "NAP_GUIDE" in html
+    assert "🚇 Linee ANM" in html
+    assert "🎫 Biglietti" in html
+    assert "🏛️ Musei e luoghi" in html
+    assert "ℹ️ Infopoint" in html
+    assert "https://www.google.com/maps/dir/?api=1&destination=" in html
+    assert "📍 Portami" in html
+    assert "MappaReteSuFerroPDF" in html
+    assert "cartadellamobilita25" in html
+    assert "museoarcheologiconapoli.it/orari-e-biglietti" in html
+    assert "museosansevero.it/organizza-la-tua-visita/orari-e-tariffe" in html
+    assert "capodimonte.cultura.gov.it/biglietti" in html
+    assert "static-www.comune.napoli.it" in html
+    assert "Dati e collegamenti ufficiali verificati il 01/10/2026" in html
+
+
+def test_albergatore_puo_ordinare_prodotti_e_il_titolare_riceve_avviso():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    servizio = (ROOT / "app" / "lotti" / "servizi" / "ordini_hotel.py").read_text(encoding="utf-8")
+    vista_lotti = (ROOT / "frontend_lotti" / "src" / "components" / "haccp" / "OrdiniHotelView.jsx").read_text(encoding="utf-8")
+
+    assert "🥐 Ordine mattutino dolce e salato" in html
+    assert "function apInvia()" in html
+    assert "/api/colazioni/ordini-prodotti/albergatore" in html
+    assert "Ordini prodotti" in html
+    assert "da incassare" in html
+    assert "tracciabilita_stato" in servizio
+    assert "fatture_origine" in servizio
+    assert "produzione_da_registrare" in servizio
+    assert "lotto_fornitore_da_associare" in servizio
+    assert "Apri ricetta / Produci" in vista_lotti
+    assert "Associa lotto" in vista_lotti

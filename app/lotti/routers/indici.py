@@ -33,6 +33,7 @@ async def crea_indici(db):
         "fatture": ["fornitore", "numero_fattura", "data_fattura"],
         "corrispettivi": ["data"],
         "ordini_fornitori": ["stato", "data_ordine"],
+        "ordini_hotel": ["id", "idempotenza", "struttura_id", "stato", "data_consegna", "pagamento"],
         "dizionario_prodotti": ["nome_normalizzato"],
     }
 

@@ -11,15 +11,19 @@ backend, `bb_tit_sessione_apri` risponde «accesso negato».
 Il PIN degli albergatori, invece, e' loro: lo scelgono con l'invito e lo
 recuperano con il codice di recupero (vedi CLAUDE.md, «Colazioni B&B»).
 """
+import asyncio
 import hashlib
 import logging
 import re
 import unicodedata
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Mapping, Optional
+from zoneinfo import ZoneInfo
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.utils.dependencies import get_current_admin_user
@@ -38,6 +42,30 @@ _CAMPI_CODICE_PRODOTTO = (
     "codice_aqv_2025",
     "acquaviva_id",
 )
+
+
+class RigaOrdineHotel(BaseModel):
+    chiave: str = Field(min_length=1, max_length=180)
+    quantita: int = Field(ge=1, le=200)
+
+
+class OrdineHotelRequest(BaseModel):
+    sid: str = Field(min_length=1, max_length=80)
+    p: str = Field(min_length=1, max_length=300)
+    data_consegna: date
+    righe: List[RigaOrdineHotel]
+    nota: str = Field(default="", max_length=500)
+    idempotenza: str = Field(default="", max_length=80)
+
+
+class ElencoOrdiniHotelRequest(BaseModel):
+    sid: str = Field(min_length=1, max_length=80)
+    p: str = Field(min_length=1, max_length=300)
+
+
+class AggiornaOrdineHotelRequest(BaseModel):
+    stato: Optional[str] = None
+    pagamento: Optional[str] = None
 
 
 def _testo_normalizzato(valore: Any) -> str:
@@ -290,3 +318,98 @@ async def catalogo_prodotti_hotel(
         "vandemoortele": sum(p["origine"] == "vandemoortele" for p in catalogo),
         "produzione_interna": sum(p["origine"] == "produzione_interna" for p in catalogo),
     }
+
+
+async def _rpc_bb(fn: str, args: Mapping[str, Any]) -> Any:
+    """Chiama una RPC bb_* dal backend senza esporre segreti applicativi."""
+    url = (settings.SUPABASE_URL or "").strip().rstrip("/")
+    chiave = (settings.SUPABASE_PUBLISHABLE_KEY or "").strip()
+    if not (url and chiave):
+        raise HTTPException(status_code=503, detail="Colazioni B&B non configurato")
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as sessione:
+            async with sessione.post(
+                f"{url}/rest/v1/rpc/{fn}",
+                json=dict(args),
+                headers={"apikey": chiave, "Authorization": f"Bearer {chiave}",
+                         "Content-Type": "application/json"},
+            ) as risposta:
+                corpo = await risposta.json(content_type=None)
+                if risposta.status >= 400:
+                    logger.warning("%s rifiutata: HTTP %s", fn, risposta.status)
+                    raise HTTPException(status_code=401, detail="Sessione albergatore non valida")
+                return corpo
+    except aiohttp.ClientError as exc:
+        logger.error("%s non raggiungibile: %s", fn, exc)
+        raise HTTPException(status_code=502, detail="Colazioni B&B non raggiungibile") from exc
+
+
+async def _contesto_ordine_albergatore(sid: str, token: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    prodotti, stato = await asyncio.gather(
+        _rpc_bb("bb_alb_prodotti", {"sid": sid, "p": token}),
+        _rpc_bb("bb_alb_stato", {"sid": sid, "p": token}),
+    )
+    if not isinstance(prodotti, list) or not isinstance(stato, dict):
+        raise HTTPException(status_code=502, detail="Dati della struttura non disponibili")
+    return {str(x.get("chiave") or ""): x for x in prodotti}, stato
+
+
+@router.post("/ordini-prodotti/albergatore", summary="Invia un ordine mattutino dall'hotel")
+async def crea_ordine_prodotti_hotel(richiesta: OrdineHotelRequest) -> Dict[str, Any]:
+    oggi = datetime.now(ZoneInfo("Europe/Rome")).date()
+    if richiesta.data_consegna < oggi or richiesta.data_consegna > oggi + timedelta(days=30):
+        raise HTTPException(status_code=422, detail="La consegna deve essere tra oggi e i prossimi 30 giorni")
+    if not richiesta.righe or len(richiesta.righe) > 100:
+        raise HTTPException(status_code=422, detail="Il carrello deve contenere da 1 a 100 prodotti")
+    catalogo, stato = await _contesto_ordine_albergatore(richiesta.sid, richiesta.p)
+    struttura = stato.get("struttura") or {}
+    from app.lotti.servizi.ordini_hotel import crea_ordine
+    try:
+        ordine = await crea_ordine(
+            struttura_id=richiesta.sid,
+            struttura_nome=str(struttura.get("nome") or "Struttura partner"),
+            data_consegna=richiesta.data_consegna.isoformat(),
+            catalogo=catalogo,
+            righe=[r.model_dump() if hasattr(r, "model_dump") else r.dict() for r in richiesta.righe],
+            nota=richiesta.nota,
+            idempotenza=richiesta.idempotenza,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, "ordine": ordine}
+
+
+@router.post("/ordini-prodotti/albergatore/elenco", summary="Storico ordini mattutini dell'hotel")
+async def elenco_ordini_prodotti_hotel(richiesta: ElencoOrdiniHotelRequest) -> Dict[str, Any]:
+    await _contesto_ordine_albergatore(richiesta.sid, richiesta.p)
+    from app.lotti.servizi.ordini_hotel import lista_ordini
+    ordini = await lista_ordini({"struttura_id": richiesta.sid}, 100)
+    return {"ordini": ordini}
+
+
+@router.get("/ordini-prodotti", summary="Ordini mattutini ricevuti dagli hotel")
+async def elenco_ordini_prodotti_titolare(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    from app.lotti.servizi.ordini_hotel import lista_ordini
+    ordini = await lista_ordini({}, 300)
+    da_lavorare = sum(o.get("stato") not in ("consegnato", "annullato") for o in ordini)
+    da_incassare = sum(float(o.get("totale") or 0) for o in ordini if o.get("pagamento") != "incassato" and o.get("stato") != "annullato")
+    return {"ordini": ordini, "da_lavorare": da_lavorare, "da_incassare": round(da_incassare, 2)}
+
+
+@router.patch("/ordini-prodotti/{ordine_id}", summary="Aggiorna stato o incasso ordine hotel")
+async def aggiorna_ordine_prodotti_titolare(
+    ordine_id: str,
+    richiesta: AggiornaOrdineHotelRequest,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    from app.lotti.servizi.ordini_hotel import aggiorna_ordine
+    try:
+        ordine = await aggiorna_ordine(
+            ordine_id, stato=richiesta.stato, pagamento=richiesta.pagamento, da="titolare_convenzioni")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not ordine:
+        raise HTTPException(status_code=404, detail="Ordine non trovato")
+    return {"ok": True, "ordine": ordine}
