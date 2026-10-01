@@ -125,15 +125,17 @@ async def _rate_in_banca(db) -> Dict[tuple, Dict[str, Any]]:
 
 def _mutuo_da_piano(
     piano: Dict[str, Any], in_banca: Dict[tuple, Dict[str, Any]],
-    prove: Optional[Dict[str, Dict[str, Any]]] = None,
+    prove: Optional[Dict[str, List[Dict[str, Any]]]] = None,
     dichiarazioni: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Il piano documentale nella forma che la pagina Mutui legge.
 
     ``stato`` e' quello effettivo: «Pagata» se la rata e' provata (banca,
-    quietanza, estratto annuale), dichiarata dal titolare o scritta pagata sul
-    piano; ``stato_piano`` conserva quello del PDF e ``prova`` dice chi la
-    regge. ``riconciliata`` resta solo l'addebito in Prima Nota Banca.
+    quietanza, estratto annuale) con l'importo che torna, dichiarata dal
+    titolare o scritta pagata sul piano; «Da verificare» se c'e' un pagamento
+    con la stessa scadenza ma l'importo oltre la tolleranza (la differenza e'
+    in ``differenza_importo_cents``); ``stato_piano`` conserva quello del PDF
+    e ``prova`` dice chi la regge. ``riconciliata`` resta solo l'addebito in Prima Nota Banca.
     """
     delibera = str(piano.get("numero_delibera"))
     cifre = _cifre_mutuo(delibera)
@@ -148,9 +150,14 @@ def _mutuo_da_piano(
         attiva = esito["dichiarazione_attiva"]
         rate.append({
             **rata,
-            "stato": "Pagata" if esito["pagata"] else rata.get("stato"),
+            "stato": ("Pagata" if esito["pagata"]
+                      else "Da verificare" if esito["da_verificare"] else rata.get("stato")),
             "stato_piano": rata.get("stato"),
             "prova": esito["prova"],
+            "prova_non_conforme": esito["prova_non_conforme"],
+            "importo_provato_cents": esito["importo_provato_cents"],
+            "differenza_importo_cents": esito["differenza_cents"],
+            "tolleranza_importo_cents": esito["tolleranza_cents"],
             "dichiarata_titolare": esito["prova"] == dichiarate.PROVA_DICHIARATA,
             "dichiarazione_sostituita": esito["dichiarazione_sostituita"],
             "dichiarata_da": (dichiarazione or {}).get("dichiarato_da") if attiva else None,
@@ -182,6 +189,7 @@ def _mutuo_da_piano(
         "totale_rate": len(rate),
         "rate_pagate": rate_pagate,
         "rate_da_pagare": rate_da_pagare,
+        "rate_da_verificare": sum(1 for r in rate if r.get("stato") == "Da verificare"),
         "rate_dichiarate_titolare": sum(1 for r in rate if r["dichiarata_titolare"]),
         "rate_provate": sum(1 for r in rate if r["prova"] in dichiarate.PROVE_REALI),
         "rate_residue_dichiarate": piano.get("rate_residue_dichiarate"),
@@ -246,6 +254,7 @@ async def get_mutui(
         "rate_totali": sum(m["totale_rate"] for m in mutui),
         "rate_pagate": sum(m["rate_pagate"] for m in mutui),
         "rate_da_pagare": sum(m["rate_da_pagare"] for m in mutui),
+        "rate_da_verificare": sum(m["rate_da_verificare"] for m in mutui),
     }
     return {
         "success": True,
@@ -306,6 +315,7 @@ async def get_statistiche_mutui():
             "rate_totali": sum(m["totale_rate"] for m in mutui),
             "rate_pagate": rate_pagate,
             "rate_da_pagare": sum(m["rate_da_pagare"] for m in mutui),
+            "rate_da_verificare": sum(m["rate_da_verificare"] for m in mutui),
             "rate_riconciliate": rate_riconciliate,
             "percentuale_completamento": (
                 round(capitale_pagato / accordato * 100, 2) if accordato > 0 else 0
@@ -353,6 +363,7 @@ async def riconcilia_mutui_con_estratto_conto():
     esito: Dict[str, Any] = {
         "dichiarazioni_sostituite_da_prova": sostituite["sostituite"],
         "rate_dichiarate_senza_prova": 0,
+        "rate_importo_da_verificare": 0,
         "totale_rate_processate": 0,
         "riconciliazioni_automatiche": 0,
         "riconciliazioni_manuali_richieste": 0,
@@ -360,6 +371,18 @@ async def riconcilia_mutui_con_estratto_conto():
     }
     for mutuo in mutui:
         for rata in mutuo["rate"]:
+            if rata.get("stato") == "Da verificare":
+                # Pagamento trovato ma con l'importo diverso dalla rata: ne' pagata ne' da pagare.
+                esito["rate_importo_da_verificare"] += 1
+                esito["dettagli"].append({
+                    "mutuo_id": mutuo["mutuo_id"], "mutuo_nome": mutuo.get("nome"),
+                    "rata_numero": rata.get("numero_rata"), "data_scadenza": rata.get("data_scadenza"),
+                    "importo": rata.get("importo_totale"),
+                    "importo_provato_cents": rata.get("importo_provato_cents"),
+                    "differenza_importo_cents": rata.get("differenza_importo_cents"),
+                    "status": "importo_da_verificare",
+                })
+                continue
             if rata.get("stato") != "Pagata":
                 continue
             if rata.get("dichiarata_titolare"):

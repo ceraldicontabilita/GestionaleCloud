@@ -21,6 +21,16 @@ anche la scrittura; una rata dichiarata e mai provata non inventa ne' costi
 ne' movimenti (l'importo del piano e' una stima se il tasso e' variabile).
 Anno attivo e anni passati sono trattati allo stesso modo, e l'anteprima dice
 quante rate sono dell'anno attivo.
+
+**Una prova regge la rata solo se l'importo torna.** Identita' = numero del
+mutuo e scadenza, ma l'importo pagato (riga di banca, quietanza, estratto
+annuale) si confronta con quello della rata al centesimo, in ``Decimal``. Il
+tasso e' variabile e il piano e' un'istantanea, quindi lo scarto entro
+``TOLLERANZA_IMPORTO_CENTS`` (5,00 euro, la soglia «PARZIALE» dell'F24) resta
+una prova buona e la differenza si mostra; oltre, la rata e' ``da_verificare``
+con la differenza visibile, mai «Pagata»: un pagamento parziale non vale come
+pagamento. Sui dati veri lo scarto e' costante (2,75 euro sul mutuo Retail) e
+rientra. Un importo non leggibile su un lato non e' una prova.
 """
 from __future__ import annotations
 
@@ -48,6 +58,11 @@ PROVA_DICHIARATA = "dichiarata_titolare"
 PROVA_PIANO = "piano"
 PROVE_REALI = (PROVA_BANCA, PROVA_QUIETANZA, PROVA_ESTRATTO)
 
+# Scarto ammesso fra l'importo della rata sul piano e quello pagato (centesimi).
+# Il piano e' l'importo certo solo a tasso fisso, e nel piano non c'e' scritto
+# se lo e': finche' nessuno lo dichiara, vale per tutti la stessa tolleranza.
+TOLLERANZA_IMPORTO_CENTS = 500
+
 # Motivi a scelta: nessun testo libero salvo «Altro» (le mani sporche).
 MOTIVI = {
     "estratti_precedenti_non_disponibili": "Estratti precedenti non disponibili",
@@ -63,7 +78,7 @@ MOTIVI_RITIRO = {
 
 _PROIEZIONE_BANCA = {
     "_id": 0, "id": 1, "numero_mutuo": 1, "rata_scadenza": 1, "movimento_bancario_id": 1,
-    "status": 1, "entity_status": 1, "data": 1,
+    "status": 1, "entity_status": 1, "data": 1, "importo": 1,
 }
 
 
@@ -79,6 +94,17 @@ def _cents(valore: Any) -> int:
     except Exception as exc:  # noqa: BLE001 - dato non leggibile: si dice quale, non si nasconde
         logger.warning("Importo rata mutuo non leggibile (%r, %s): contato 0", valore, type(exc).__name__)
         return 0
+
+
+def _cents_o_none(valore: Any) -> Optional[int]:
+    """Centesimi, oppure ``None`` se il valore manca o non si legge (mai 0 di comodo)."""
+    if valore is None or valore == "":
+        return None
+    try:
+        return int((Decimal(str(valore)) * 100).to_integral_value())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Importo mutuo non leggibile (%r, %s): la prova non regge", valore, type(exc).__name__)
+        return None
 
 
 def _importo_leggibile(valore: Any) -> bool:
@@ -114,20 +140,28 @@ def chiave_dichiarazione(cifre: str, numero_rata: Any) -> str:
 # Prove
 # --------------------------------------------------------------------------
 
-async def carica_prove(db) -> Dict[str, Dict[str, Dict[str, Any]]]:
-    """Prove per mutuo (cifre) e scadenza gg/mm/aaaa: la piu' forte vince.
+async def carica_prove(db) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    """Prove per mutuo (cifre) e scadenza gg/mm/aaaa: l'elenco di ogni fonte.
 
     Identita' = numero del mutuo e scadenza, mai l'importo: il tasso e'
-    variabile e l'importo addebitato differisce di qualche euro dal piano.
+    variabile e l'importo addebitato differisce di qualche euro dal piano. Ma
+    l'importo pagato resta nella prova (``importo_cents``) e lo confronta
+    ``valuta_prove``: chi decide se la rata e' pagata e' ``esito_rata``, non la
+    sola presenza della riga. La stessa riga letta due volte (copia, doppia
+    chiave scadenza/valuta) conta una volta (``identita``).
     """
-    prove: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    prove: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
 
-    def _metti(cifre: str, scadenza: str, prova: str, **extra: Any) -> None:
+    def _metti(cifre: str, scadenza: str, prova: str, identita: str, importo: Any, **extra: Any) -> None:
         if not cifre or not scadenza:
             return
-        attuale = prove.setdefault(cifre, {}).get(scadenza)
-        if attuale is None or PROVE_REALI.index(prova) < PROVE_REALI.index(attuale["prova"]):
-            prove[cifre][scadenza] = {"prova": prova, **extra}
+        elenco = prove.setdefault(cifre, {}).setdefault(scadenza, [])
+        if any(p["prova"] == prova and p["identita"] == identita for p in elenco):
+            return
+        cents = _cents_o_none(importo)
+        # Un'uscita puo' essere scritta col segno: l'importo della rata e' sempre positivo.
+        elenco.append({"prova": prova, "identita": identita,
+                       "importo_cents": abs(cents) if cents is not None else None, **extra})
 
     righe = await db["prima_nota_banca"].find(
         {"tipo_classificazione_contabile": "rata_mutuo"}, _PROIEZIONE_BANCA,
@@ -136,26 +170,66 @@ async def carica_prove(db) -> Dict[str, Dict[str, Dict[str, Any]]]:
         if riga.get("status") in ("deleted", "archived") or riga.get("entity_status") == "deleted":
             continue
         _metti(_cifre_mutuo(riga.get("numero_mutuo")), _data_gma(riga.get("rata_scadenza")), PROVA_BANCA,
+               str(riga.get("movimento_bancario_id") or riga.get("id")), riga.get("importo"),
                movimento_bancario_id=riga.get("movimento_bancario_id"),
                prima_nota_banca_id=riga.get("id"), data_pagamento=riga.get("data"))
     quietanze = await db["mutui_quietanze"].find(
-        {}, {"_id": 0, "numero_finanziamento": 1, "data_scadenza": 1, "sha256": 1},
+        {}, {"_id": 0, "numero_finanziamento": 1, "data_scadenza": 1, "sha256": 1, "importo_totale": 1},
     ).to_list(None)
     for q in quietanze:
         _metti(_cifre_mutuo(q.get("numero_finanziamento")), _data_gma(q.get("data_scadenza")),
-               PROVA_QUIETANZA, sha256=q.get("sha256"))
+               PROVA_QUIETANZA, str(q.get("sha256")), q.get("importo_totale"), sha256=q.get("sha256"))
     estratti = await db["mutui_estratti_annuali"].find(
         {}, {"_id": 0, "numero_finanziamento": 1, "pagamenti": 1, "sha256": 1, "anno": 1},
     ).to_list(None)
     for estratto in estratti:
         cifre = _cifre_mutuo(estratto.get("numero_finanziamento"))
         for pagamento in estratto.get("pagamenti") or []:
+            identita = f"{estratto.get('sha256')}:{pagamento.get('data_operazione')}:{pagamento.get('importo')}"
             # La scadenza della rata puo' slittare (festivo): vale sia quella
             # del piano scritta come scadenza sia come valuta.
             for campo in ("data_scadenza", "data_valuta"):
-                _metti(cifre, _data_gma(pagamento.get(campo)), PROVA_ESTRATTO,
-                       sha256=estratto.get("sha256"), anno_estratto=estratto.get("anno"))
+                _metti(cifre, _data_gma(pagamento.get(campo)), PROVA_ESTRATTO, identita,
+                       pagamento.get("importo"), sha256=estratto.get("sha256"),
+                       anno_estratto=estratto.get("anno"))
     return prove
+
+
+def valuta_prove(
+    proposte: Optional[List[Dict[str, Any]]], importo_rata_cents: Optional[int],
+    tolleranza_cents: int = TOLLERANZA_IMPORTO_CENTS,
+) -> Dict[str, Any]:
+    """Quale prova regge la rata: la piu' forte il cui importo torna.
+
+    Per ogni fonte vale il singolo pagamento, oppure la somma dei pagamenti
+    distinti della stessa fonte (rata versata in due tempi). Importo della rata
+    o del pagamento mancante: la prova non regge. Se nessuna regge,
+    ``non_conforme`` porta la fonte piu' forte con la differenza (pagato meno
+    rata, in centesimi) del pagamento piu' vicino.
+    """
+    non_conforme: Optional[Dict[str, Any]] = None
+    for fonte in PROVE_REALI:
+        della_fonte = [p for p in (proposte or []) if p["prova"] == fonte]
+        if not della_fonte:
+            continue
+        candidati: List[tuple] = []
+        if importo_rata_cents is not None:
+            importi = [p["importo_cents"] for p in della_fonte]
+            if all(i is not None for i in importi):
+                candidati = [(i, p) for i, p in zip(importi, della_fonte)]
+                if len(importi) > 1:
+                    candidati.append((sum(importi), della_fonte[0]))
+        if candidati:
+            importo, prova = min(candidati, key=lambda c: abs(c[0] - importo_rata_cents))
+            differenza = importo - importo_rata_cents
+            if abs(differenza) <= tolleranza_cents:
+                return {"vincente": {**prova, "importo_cents": importo, "differenza_cents": differenza},
+                        "non_conforme": None}
+            if non_conforme is None:
+                non_conforme = {"prova": fonte, "importo_cents": importo, "differenza_cents": differenza}
+        elif non_conforme is None:
+            non_conforme = {"prova": fonte, "importo_cents": None, "differenza_cents": None}
+    return {"vincente": None, "non_conforme": non_conforme}
 
 
 async def carica_dichiarazioni(db) -> Dict[str, Dict[int, Dict[str, Any]]]:
@@ -171,24 +245,42 @@ async def carica_dichiarazioni(db) -> Dict[str, Dict[int, Dict[str, Any]]]:
 
 
 def esito_rata(
-    rata: Dict[str, Any], prova: Optional[Dict[str, Any]], dichiarazione: Optional[Dict[str, Any]],
+    rata: Dict[str, Any], prove_rata: Optional[List[Dict[str, Any]]], dichiarazione: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Stato effettivo della rata: quale prova la regge (la piu' forte vince)."""
+    """Stato effettivo della rata: quale prova la regge (la piu' forte vince).
+
+    Una prova con l'importo che non torna (``valuta_prove``) non regge nulla e
+    non lascia passare nemmeno la dichiarazione o il «Pagata» del piano:
+    ``da_verificare`` con la differenza, finche' un'altra prova o il titolare
+    non chiariscono.
+    """
     attiva = bool(dichiarazione and dichiarazione.get("stato") == STATO_DICHIARATA)
-    if prova:
-        origine = prova["prova"]
+    importo_rata = _cents_o_none(rata.get("importo_totale"))
+    valutazione = valuta_prove(prove_rata, importo_rata)
+    vincente = valutazione["vincente"]
+    non_conforme = valutazione["non_conforme"]
+    if vincente:
+        origine = vincente["prova"]
+    elif non_conforme:
+        origine = None
     elif attiva:
         origine = PROVA_DICHIARATA
     elif rata.get("stato") == "Pagata":
         origine = PROVA_PIANO
     else:
         origine = None
+    riferimento = vincente or non_conforme or {}
     return {
         "prova": origine,
         "pagata": origine is not None,
+        "da_verificare": bool(non_conforme and not vincente),
+        "prova_non_conforme": (non_conforme or {}).get("prova") if not vincente else None,
+        "importo_provato_cents": riferimento.get("importo_cents"),
+        "differenza_cents": riferimento.get("differenza_cents"),
+        "tolleranza_cents": TOLLERANZA_IMPORTO_CENTS,
         "dichiarazione_attiva": attiva,
         # Dichiarata ma ora provata: la prova vince, la dichiarazione resta nello storico.
-        "dichiarazione_sostituita": bool(attiva and prova),
+        "dichiarazione_sostituita": bool(attiva and vincente),
     }
 
 
@@ -239,7 +331,7 @@ async def anteprima_dichiarazione(
     candidate: List[Dict[str, Any]] = []
     gruppi: Dict[str, List[int]] = {
         "gia_provate": [], "gia_dichiarate": [], "gia_pagate_sul_piano": [],
-        "future_escluse": [], "senza_scadenza": [], "senza_importo": [],
+        "future_escluse": [], "senza_scadenza": [], "senza_importo": [], "da_verificare": [],
     }
     for rata in sorted(piano.get("rate") or [], key=lambda r: int(r.get("numero_rata") or 0)):
         numero = int(rata.get("numero_rata") or 0)
@@ -251,7 +343,10 @@ async def anteprima_dichiarazione(
             gruppi["future_escluse"].append(numero)
             continue
         esito = esito_rata(rata, prove.get(_data_gma(rata.get("data_scadenza"))), dichiarazioni.get(numero))
-        if esito["prova"] in PROVE_REALI:
+        if esito["da_verificare"]:
+            # Un pagamento con l'importo diverso non si dichiara pagato: lo decide chi lo guarda.
+            gruppi["da_verificare"].append(numero)
+        elif esito["prova"] in PROVE_REALI:
             gruppi["gia_provate"].append(numero)
         elif esito["dichiarazione_attiva"]:
             gruppi["gia_dichiarate"].append(numero)
@@ -415,7 +510,10 @@ async def assorbi_dichiarazioni_rate(db) -> Dict[str, int]:
         for numero, riga in per_rata.items():
             if riga.get("stato") != STATO_DICHIARATA:
                 continue
-            prova = prove.get(cifre, {}).get(_data_gma(riga.get("data_scadenza")))
+            prova = valuta_prove(
+                prove.get(cifre, {}).get(_data_gma(riga.get("data_scadenza"))),
+                riga.get("importo_totale_cents"),
+            )["vincente"]
             if not prova:
                 continue
             adesso = _ora()
