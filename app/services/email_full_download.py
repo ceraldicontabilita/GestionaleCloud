@@ -638,23 +638,6 @@ class EmailFullDownloader:
 
         return pdfs
 
-    async def _notifica_cartella_da_pec(self, msg, subject: str, date_str: str) -> None:
-        """«POSTA CERTIFICATA: Notifica cartella di pagamento n. …»: la data della PEC e' la notifica."""
-        from app.services.cartelle_pagamento import leggi_oggetto_pec, registra_notifica_pec
-
-        if not leggi_oggetto_pec(subject):
-            return
-        try:
-            from email.utils import parsedate_to_datetime
-            from zoneinfo import ZoneInfo
-
-            giorno = parsedate_to_datetime(date_str).astimezone(ZoneInfo("Europe/Rome")).date().isoformat()
-            esito = await registra_notifica_pec(
-                self.db, subject, giorno, messaggio_id=(msg.get("Message-ID") or "").strip() or None)
-            logger.info("PEC di notifica cartella: %s", (esito or {}).get("esito"))
-        except Exception as exc:  # noqa: BLE001 - la posta non si ferma per una PEC illeggibile
-            logger.warning("PEC di notifica cartella non registrata: %s: %s", type(exc).__name__, exc)
-
     async def process_email(self, email_uid: bytes, msg: email.message.Message, source_folder: str = "INBOX") -> int:
         """
         Processa una singola email ed estrae i PDF.
@@ -667,8 +650,6 @@ class EmailFullDownloader:
         subject = decode_mime_header(msg.get("Subject", ""))
         from_addr = decode_mime_header(msg.get("From", ""))
         date_str = msg.get("Date", "")
-
-        await self._notifica_cartella_da_pec(msg, subject, date_str)
 
         # Estrai body per categorizzazione
         body = ""
