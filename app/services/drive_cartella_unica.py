@@ -393,7 +393,9 @@ def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
                            f"(anno minimo {risultato.get('anno_minimo')})")
     if risultato.get("success") or risultato.get("duplicate"):
         return ARCHIVIO, ""
-    return ERRORI, str(risultato.get("message") or risultato.get("error") or "registrazione non riuscita")[:500]
+    # 900: il dettaglio di quadratura di un F24 (righe lette, saldo stampato, colonne) e' il
+    # solo modo di capire la causa senza riaprire il PDF, e a 500 caratteri lo tagliava.
+    return ERRORI, str(risultato.get("message") or risultato.get("error") or "registrazione non riuscita")[:900]
 
 
 _ESTENSIONI_XML = (".xml", ".xml.p7m", ".p7m", ".zip")
@@ -464,8 +466,6 @@ _BUSTE_GIA_PRESENTI = re.compile(r"^Cedolino non registrato: \d+ buste lette$")
 # Un guasto di connessione durante la lettura non e' un difetto del file: si rilegge.
 _GUASTO_DI_RETE = re.compile(r"^(SSLError|ConnectionError|ConnectionResetError|TimeoutError|timeout|"
                              r"RemoteDisconnected|BrokenPipeError|IncompleteRead)\b")
-
-
 async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
                                              limite: Optional[int] = None) -> int:
     """Riporta in DA ELABORARE le buste finite in ERRORI solo perche' gia' registrate.
@@ -484,6 +484,7 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
             break
         motivo = str(riga.get("motivo") or "")
         da_rileggere = False
+        transitorio = False
         if riga.get("cartella") == ARRETRATO:
             # Una busta presa per estratto conto (cita la banca d'appoggio) e
             # parcheggiata fra l'arretrato degli estratti: va riletta da busta.
@@ -503,6 +504,8 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
             # degli anni passati vanno in ARRETRATO.
             da_rileggere = (motivo == NON_RICONOSCIUTO
                             and int(riga.get("regole_non_riconosciuti") or 0) < REGOLE_NON_RICONOSCIUTI)
+            transitorio = (e_guasto_transitorio(motivo)
+                           and int(riga.get("rinvii") or 0) < MAX_RINVII)
             if (not gia_presente and not busta_come_estratto and not da_rileggere
                     and not _GUASTO_DI_RETE.match(motivo)
                     and not (e_guasto_transitorio(motivo) and int(riga.get("rinvii") or 0) < MAX_RINVII)):
@@ -512,7 +515,9 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
                                     cartelle[INBOX], "da rileggere")
             await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
                             motivo=("rileggere con le regole nuove" if da_rileggere
-                                    else "busta gia' in archivio, non un errore"))
+                                    else "guasto transitorio, si rilegge" if transitorio
+                                    else "busta gia' in archivio, non un errore"),
+                            )
             rimessi += 1
         except Exception as exc:
             logger.warning("[cartella-unica] %s non rimesso in coda: %s: %s",
@@ -606,8 +611,11 @@ class _Preparato:
 # statement timeout) non e' un difetto del file: resta in DA ELABORARE e si
 # riprova. Dopo ``MAX_RINVII`` tentativi vale come errore, o un file che non
 # passa mai terrebbe la testa della coda.
+# Stessa famiglia: memoria esaurita per l'OCR e il NUL nel testo rifiutato da
+# Postgres (dopo la correzione di `_rpc` un rilancio basta).
 _GUASTO_SUPABASE = re.compile(
-    r"Supabase RPC .{0,80}\(HTTP (5\d\d|408|429)\)|schema cache|statement timeout|canceling statement",
+    r"Supabase RPC .{0,80}\(HTTP (5\d\d|408|429)\)|schema cache|statement timeout|canceling statement|"
+    r"memoria insufficiente|unsupported Unicode escape",
     re.IGNORECASE)
 MAX_RINVII = 3
 
