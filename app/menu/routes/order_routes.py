@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from typing import List, Optional
 from datetime import datetime
 
@@ -34,10 +34,21 @@ def order_in(doc: dict) -> dict:
 # ================== PUBLIC ==================
 
 @router.post("/", response_model=Order)
-async def create_order(payload: OrderCreate):
-    """Crea un nuovo ordine (dal menu digitale del cliente o dal banco/cassa)."""
+async def create_order(payload: OrderCreate, authorization: str = Header(None)):
+    """Crea un nuovo ordine (dal menu digitale del cliente o dal banco/cassa).
+
+    Senza il token dello staff l'ordine e' sempre del cliente e non pagato: che
+    un ordine sia «cassa» o «gia' pagato» lo puo' dichiarare solo chi ha la
+    sessione del Gestionale (CounterPage manda il token), mai il corpo di una
+    richiesta anonima.
+    """
     if not payload.items:
         raise HTTPException(status_code=400, detail="L'ordine deve contenere almeno un prodotto")
+    try:
+        await verify_token(authorization)
+    except Exception:  # noqa: BLE001 - qualunque dubbio sulla sessione = cliente, mai staff
+        payload.source = "cliente"
+        payload.paid = False
 
     sala_nome = None
     totale_coperto = 0.0

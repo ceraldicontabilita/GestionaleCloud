@@ -227,6 +227,9 @@ def _register_employees(app: FastAPI):
     # in sola lettura e applicazione a lotti (services/cedolini_versioni).
     from app.routers import cedolini_versioni
     app.include_router(cedolini_versioni.router, prefix="/api/cedolini", tags=["Cedolini"])
+    # Bonifica del solo canale d'ingresso delle buste (MINI-09.6): `/canale` e' fisso, prima della scheda.
+    from app.routers import cedolini_canale
+    app.include_router(cedolini_canale.router, prefix="/api/cedolini", tags=["Cedolini"])
     # Scheda e PDF di una busta (vista React): DOPO `/versioni`, che e' fisso.
     from app.routers import cedolini_scheda
     app.include_router(cedolini_scheda.router, prefix="/api/cedolini", tags=["Cedolini"])

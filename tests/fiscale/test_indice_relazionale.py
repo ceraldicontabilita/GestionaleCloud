@@ -147,8 +147,9 @@ def test_cedolino_per_impronta_md5_nota_e_impronta_sha256_fuori():
     protocollo = [{"drive_id": "D-CED", "md5": MD5_A, "collegamento_tipo": None, "collegamento_id": None}]
     esito = _run(doc.esegui(db, dry_run=False, protocollo=protocollo))
     assert [(r["source"]["type"], r["source"]["id"], r["target"]["id"]) for r in _relazioni(db)] == [("payslip", "c1", "D-CED")]
-    assert esito["cedolini_con_md5"] == 2 and esito["cedolini_md5_senza_file"] == 1
-    assert esito["cedolini_sha256_non_collegabili"] == 1
+    busta = esito["per_fonte_dati"]["payslip"]
+    assert busta["con_impronta"] == 3 and busta["con_file"] == 1
+    assert busta["impronta_senza_file"] == 2        # c2 (MD5 sconosciuta) e c3 (SHA-256 fuori dal registro)
 
 
 def test_impronta_su_due_file_e_ambigua():
@@ -199,7 +200,7 @@ def test_protocollo_non_raggiungibile_si_dichiara_non_si_inventa():
         raise RuntimeError("DSN")
 
     esito = _run(doc.esegui(db, leggi_prot=_guasto))
-    assert esito["protocollo"] == "non_disponibile" and "cedolini_con_md5" not in esito
+    assert esito["protocollo"] == "non_disponibile" and esito["impronte_md5"] == "protocollo_non_disponibile"
     assert esito["previste"] == 4         # solo i campi drive_file_id
 
 
