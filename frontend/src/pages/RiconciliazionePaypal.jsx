@@ -235,7 +235,7 @@ export default function RiconciliazionePaypal() {
                 <option value="non_associata">Non associata</option>
               </select>
             </div>
-            {isMobile ? <TransactionCards righe={righe} onSaveDescription={salvaDescrizione} /> : <TransactionTable righe={righe} onSaveDescription={salvaDescrizione} />}
+            <TransactionCards righe={righe} onSaveDescription={salvaDescrizione} onLinked={() => caricaDati()} />
           </>
         )}
 
@@ -256,7 +256,7 @@ export default function RiconciliazionePaypal() {
 
 function TransactionId({ value: id }) {
   if (!id) return <span>-</span>;
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><code title={id}>{compactId(id)}</code><button type="button" aria-label={`Copia ID transazione ${id}`} title="Copia ID" onClick={() => navigator.clipboard?.writeText(String(id))} style={copyButton}>Copia</button></span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><code title={id} style={{ overflowWrap: 'anywhere' }}>{id}</code><button type="button" aria-label={`Copia ID transazione ${id}`} title="Copia ID" onClick={() => navigator.clipboard?.writeText(String(id))} style={copyButton}>Copia</button></span>;
 }
 
 function TransactionAmount({ tx }) {
@@ -267,12 +267,109 @@ function TransactionAmount({ tx }) {
   return <span>{gross}</span>;
 }
 
-function TransactionCards({ righe, onSaveDescription }) {
-  return <div data-testid="paypal-transaction-cards" style={cards}>{righe.map(tx => <article key={tx.transaction_id || tx.id} style={card}><strong>{tx.descrizione || '-'}</strong><UserDescription tx={tx} onSave={onSaveDescription} /><TransactionId value={tx.transaction_id || tx.id} /><span>{tx.nome_controparte || '-'}</span><span>{dataIT(tx.data || tx.date)} - <TransactionAmount tx={tx} /></span><span>{statoFatturaLabel(tx.stato_collegamento_fattura)}</span>{tx.bank_movement ? <a href={`/prima-nota#sezione=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Vedi prova bancaria {compactId(tx.bank_movement.id)}</a> : <span>Banca da verificare</span>}</article>)}</div>;
+/**
+ * Una card per ogni transazione, a qualsiasi larghezza: l'ID lungo e la descrizione
+ * restano leggibili per intero invece di essere schiacciati in una colonna di tabella.
+ */
+function TransactionCards({ righe, onSaveDescription, onLinked }) {
+  return (
+    <div data-testid="paypal-transaction-cards" style={cards}>
+      {righe.map(tx => <TransactionCard key={tx.transaction_id || tx.id} tx={tx} onSaveDescription={onSaveDescription} onLinked={onLinked} />)}
+    </div>
+  );
 }
 
-function TransactionTable({ righe, onSaveDescription }) {
-  return <div data-testid="paypal-transactions-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'ID', 'Controparte', 'Descrizione PayPal', 'Descrizione utente', 'Importo/valuta', 'Fattura', 'Banca', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(tx => <tr key={tx.transaction_id || tx.id}><td style={td}>{dataIT(tx.data || tx.date)}</td><td style={td}><TransactionId value={tx.transaction_id || tx.id} /></td><td style={td}>{tx.nome_controparte || '-'}</td><td style={td}>{tx.descrizione || '-'}</td><td style={{ ...td, minWidth: 240 }}><UserDescription tx={tx} onSave={onSaveDescription} /></td><td style={td}><TransactionAmount tx={tx} /></td><td style={td}>{tx.fattura_associata?.numero || tx.fattura_numero || '-'}</td><td style={td}>{tx.bank_movement ? <a href={`/prima-nota#sezione=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Prova {compactId(tx.bank_movement.id)}</a> : 'Da verificare'}</td><td style={td}>{statoFatturaLabel(tx.stato_collegamento_fattura)}</td></tr>)}</tbody></table></div>;
+function Campo({ etichetta, children }) {
+  return <div style={{ minWidth: 0 }}><div style={campoEtichetta}>{etichetta}</div><div style={{ fontSize: 14, overflowWrap: 'anywhere' }}>{children}</div></div>;
+}
+
+function TransactionCard({ tx, onSaveDescription, onLinked }) {
+  const id = tx.transaction_id || tx.id;
+  return (
+    <article data-testid="paypal-transaction-card" style={card}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
+        <strong style={{ fontSize: 15 }}>{tx.nome_controparte || '-'}</strong>
+        <strong style={{ fontVariantNumeric: 'tabular-nums' }}><TransactionAmount tx={tx} /></strong>
+      </div>
+      <div style={{ ...campi }}>
+        <Campo etichetta="Data">{dataIT(tx.data || tx.date)}</Campo>
+        <Campo etichetta="Descrizione PayPal">{tx.descrizione || '-'}</Campo>
+        <Campo etichetta="Fattura">{tx.fattura_associata?.numero || tx.fattura_numero || '-'}</Campo>
+        <Campo etichetta="Stato fattura">{statoFatturaLabel(tx.stato_collegamento_fattura)}</Campo>
+        <Campo etichetta="ID transazione"><TransactionId value={id} /></Campo>
+      </div>
+      <UserDescription tx={tx} onSave={onSaveDescription} />
+      <BankLink tx={tx} onLinked={onLinked} />
+    </article>
+  );
+}
+
+function BankLink({ tx, onLinked }) {
+  const id = tx.transaction_id || tx.id;
+  const [aperto, setAperto] = useState(false);
+  const [stato, setStato] = useState({ caricamento: false, candidati: null, motivo: '', errore: '' });
+
+  if (tx.bank_movement) {
+    return (
+      <div style={rigaBanca}>
+        <span style={campoEtichetta}>Banca</span>
+        <a href={`/prima-nota#sezione=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Prova in Prima Nota Banca · {compactId(tx.bank_movement.id)}</a>
+      </div>
+    );
+  }
+
+  const apri = async () => {
+    setAperto(true);
+    setStato({ caricamento: true, candidati: null, motivo: '', errore: '' });
+    try {
+      const r = await api.get(`/api/paypal-statements/transazione/${encodeURIComponent(id)}/candidati-banca`);
+      setStato({ caricamento: false, candidati: r.data?.candidati || [], motivo: r.data?.motivo || '', errore: '' });
+    } catch (e) {
+      setStato({ caricamento: false, candidati: null, motivo: '', errore: e.response?.data?.detail || 'Ricerca dei movimenti non riuscita.' });
+    }
+  };
+
+  const scegli = async movimento => {
+    setStato(prev => ({ ...prev, errore: '' }));
+    try {
+      await api.post(`/api/paypal-statements/transazione/${encodeURIComponent(id)}/collega-banca`, { movimento_id: movimento.id });
+      setAperto(false);
+      onLinked?.(tx, movimento);
+    } catch (e) {
+      const detail = e.response?.data?.detail;
+      setStato(prev => ({ ...prev, errore: (typeof detail === 'string' ? detail : detail?.messaggio) || 'Collegamento non riuscito.' }));
+    }
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <div style={rigaBanca}>
+        <span style={campoEtichetta}>Banca</span>
+        <span>Nessuna prova bancaria</span>
+        {!aperto && <button type="button" onClick={apri} style={buttonStyle}>Collega a un addebito in banca</button>}
+      </div>
+      {aperto && (
+        <div data-testid="paypal-candidati-banca" style={{ border: '1px solid #e6e3d9', borderRadius: 8, padding: 10, display: 'grid', gap: 8, background: '#faf9f5' }}>
+          <div style={{ fontSize: 13, color: '#5f5c55' }}>
+            Per i pagamenti PayPal addebitati sul conto e non su carta. Compaiono gli addebiti non ancora collegati con lo stesso importo al centesimo, vicini nel tempo.
+          </div>
+          {stato.caricamento && <span role="status">Cerco gli addebiti…</span>}
+          {stato.errore && <span role="alert" style={{ color: '#b0362b' }}>{stato.errore}</span>}
+          {stato.candidati && stato.candidati.length === 0 && <span>{stato.motivo || 'Nessun addebito in banca con questo importo nelle date vicine.'}</span>}
+          {(stato.candidati || []).map(m => (
+            <div key={m.id} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #e6e3d9', paddingTop: 8 }}>
+              <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                <strong>{dataIT(m.data)}</strong> · {m.descrizione || '-'} · {denaro(m.importo)}
+                {m.citata_paypal ? ' · cita PayPal' : ''}
+              </span>
+              <button type="button" onClick={() => scegli(m)} style={{ ...buttonStyle, background: '#c15f3c', color: '#fff' }}>Collega questo</button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setAperto(false)} style={{ ...buttonStyle, justifySelf: 'start' }}>Chiudi</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function UserDescription({ tx, onSave }) {
@@ -308,6 +405,9 @@ function SourceTable({ fonti }) {
 
 const card = { background: '#fff', border: '1px solid #e6e3d9', borderRadius: 10, padding: 14, display: 'grid', gap: 6 };
 const cards = { display: 'grid', gap: 10 };
+const campi = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '8px 16px' };
+const campoEtichetta = { fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#7a776e' };
+const rigaBanca = { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 14 };
 const buttonStyle = { minHeight: 40, padding: '8px 14px', borderRadius: 8, border: '1px solid #d0ccbe', background: '#fff', cursor: 'pointer', fontWeight: 700 };
 const inputStyle = { width: '100%', minHeight: 40, padding: '8px 10px', border: '1px solid #d0ccbe', borderRadius: 8 };
 const messageStyle = { padding: 12, color: '#7a776e', borderRadius: 8, marginBottom: 12 };

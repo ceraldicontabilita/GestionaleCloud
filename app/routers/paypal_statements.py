@@ -2,7 +2,7 @@
 Router per gestione estratti conto PayPal (MSR/CSR).
 Import PDF, visualizzazione transazioni, riconciliazione con estratto conto bancario.
 """
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import calendar
@@ -11,6 +11,7 @@ import logging
 import re
 
 from app.database import Database
+from app.utils.dependencies import get_current_admin_user
 from app.db_collections import (
     COLL_ESTRATTO_CONTO,
     COLL_INVOICES,
@@ -1453,6 +1454,145 @@ async def associa_transazione(transaction_id: str, body: Dict[str, Any] = Body(.
         {"$set": set_data},
     )
     return {"success": True, **set_data}
+
+
+GIORNI_PRIMA_ADDEBITO = 3
+GIORNI_DOPO_ADDEBITO = 20
+
+
+async def _importo_eur_pagamento(db, tx: Dict[str, Any]) -> Optional[str]:
+    """Importo in euro (positivo, due decimali) di un pagamento PayPal; None se non si sa.
+
+    Un pagamento in valuta estera vale per l'addebito in banca solo con la sua
+    gamba di conversione in euro: senza, l'importo non si inventa.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    valuta = str(tx.get("currency") or tx.get("valuta") or "EUR").upper()
+    grezzo = tx.get("importo_eur")
+    if grezzo in (None, ""):
+        if valuta != "EUR":
+            gambe = await db[COLL_PAYPAL_TRANSACTIONS].find(
+                {"paypal_reference_id": tx.get("transaction_id"), "currency": "EUR"}, {"_id": 0},
+            ).to_list(10)
+            gambe = [g for g in gambe if str(g.get("tipo", "")).startswith("T02") and float(g.get("lordo") or 0) < 0]
+            grezzo = gambe[0].get("lordo") if len(gambe) == 1 else None
+        else:
+            grezzo = tx.get("lordo") if tx.get("lordo") not in (None, "") else tx.get("importo")
+    try:
+        valore = abs(Decimal(str(grezzo)))
+    except (InvalidOperation, TypeError):
+        return None
+    return str(valore.quantize(Decimal("0.01"))) if valore > 0 else None
+
+
+async def _candidati_banca(db, tx: Dict[str, Any]) -> Dict[str, Any]:
+    """Addebiti bancari non ancora collegati con lo stesso importo al centesimo, vicini nel tempo.
+
+    La descrizione NON deve citare PayPal: un pagamento PayPal finanziato dal conto
+    puo' comparire con il nome del commerciante. Il candidato e' una proposta: lo
+    sceglie il titolare (nessun collegamento per solo importo senza la sua scelta).
+    """
+    from datetime import date, timedelta
+
+    importo = await _importo_eur_pagamento(db, tx)
+    giorno = str(tx.get("data") or tx.get("date") or "")[:10]
+    if not importo or not giorno:
+        return {"importo_eur": importo, "candidati": [],
+                "motivo": "importo in euro o data della transazione non noti"}
+    try:
+        d = date.fromisoformat(giorno)
+    except ValueError:
+        return {"importo_eur": importo, "candidati": [], "motivo": "data della transazione non valida"}
+    da = (d - timedelta(days=GIORNI_PRIMA_ADDEBITO)).isoformat()
+    a = (d + timedelta(days=GIORNI_DOPO_ADDEBITO)).isoformat()
+    righe = await db[COLL_ESTRATTO_CONTO].find({"$or": [
+        {"data": {"$gte": da, "$lte": a + "~"}},
+        {"data_contabile": {"$gte": da, "$lte": a + "~"}},
+    ]}, {"_id": 0}).to_list(3000)
+    candidati = []
+    for mov in righe:
+        if mov.get("riconciliato") is True or mov.get("paypal_transaction_id"):
+            continue
+        if _direzione_movimento_banca(mov) != "uscita":
+            continue
+        if not amounts_equal_to_cent(abs(float(mov.get("importo") or 0)), importo):
+            continue
+        data_mov = str(mov.get("data") or mov.get("data_contabile") or "")[:10]
+        if not (da <= data_mov <= a):
+            continue
+        candidati.append({
+            "id": _id_movimento(mov), "data": data_mov, "descrizione": _descrizione_banca(mov),
+            "importo": f"-{importo}", "citata_paypal": "paypal" in _descrizione_banca(mov).lower(),
+        })
+    candidati = [c for c in candidati if c["id"]]
+    candidati.sort(key=lambda c: abs((date.fromisoformat(c["data"]) - d).days) if c["data"] else 999)
+    return {"importo_eur": importo, "candidati": candidati[:20]}
+
+
+async def _transazione_o_404(db, transaction_id: str) -> Dict[str, Any]:
+    tx = await db[COLL_PAYPAL_TRANSACTIONS].find_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]}, {"_id": 0},
+    )
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transazione PayPal non trovata")
+    return tx
+
+
+@router.get("/transazione/{transaction_id}/candidati-banca")
+async def candidati_banca_transazione(
+    transaction_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Addebiti bancari (Prima Nota Banca) a cui il titolare puo' collegare la transazione."""
+    db = Database.get_db()
+    tx = await _transazione_o_404(db, transaction_id)
+    return {"transaction_id": tx.get("transaction_id") or tx.get("id"), **await _candidati_banca(db, tx)}
+
+
+@router.post("/transazione/{transaction_id}/collega-banca")
+async def collega_banca_transazione(
+    transaction_id: str, body: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Il titolare collega la transazione PayPal a un addebito bancario (body: {movimento_id}).
+
+    Vale solo per un movimento tra i candidati (importo al centesimo, uscita, finestra di
+    date, non gia' collegato): la sua scelta sostituisce la causale, mai l'importo.
+    """
+    db = Database.get_db()
+    tx = await _transazione_o_404(db, transaction_id)
+    tx_id = str(tx.get("transaction_id") or tx.get("id"))
+    movimento_id = str(body.get("movimento_id") or "").strip()
+    if not movimento_id:
+        raise HTTPException(status_code=400, detail="Indicare movimento_id")
+    if tx.get("riconciliato_banca") or tx.get("movimento_banca_id"):
+        raise HTTPException(status_code=409, detail="La transazione ha gia' una prova bancaria")
+    proposta = next((c for c in (await _candidati_banca(db, tx))["candidati"] if c["id"] == movimento_id), None)
+    if not proposta:
+        raise HTTPException(status_code=409, detail={
+            "messaggio": "Il movimento non e' un candidato valido (importo al centesimo, addebito, date vicine, non collegato)"})
+    now = datetime.now(timezone.utc).isoformat()
+    evidenze = ["scelta_titolare", "importo_al_centesimo"]
+    await db[COLL_PAYPAL_TRANSACTIONS].update_one(
+        {"$or": [{"transaction_id": tx_id}, {"id": tx_id}]},
+        {"$set": {
+            "riconciliato_banca": True, "riconciliato_con_estratto_banca": True,
+            "movimento_banca_id": movimento_id, "estratto_conto_movimento_id": movimento_id,
+            "data_banca": proposta["data"], "riconciliazione_banca_evidenze": evidenze,
+            "riconciliazione_banca_manuale": True, "riconciliato_il": now,
+        }},
+    )
+    await db[COLL_ESTRATTO_CONTO].update_one(
+        {"$or": [{"id": movimento_id}, {"_id": movimento_id}], "riconciliato": {"$ne": True}},
+        {"$set": {
+            "riconciliato": True, "tipo_riconciliazione": "paypal_scelto_dal_titolare",
+            "paypal_transaction_id": tx_id, "riconciliazione_evidenze": evidenze,
+            "data_riconciliazione": now,
+        }},
+    )
+    await finalizza_transazione_paypal_se_completa(db, tx_id)
+    return {"success": True, "transaction_id": tx_id, "movimento_id": movimento_id,
+            "prima_nota": f"/prima-nota#sezione=banca&selected={movimento_id}"}
 
 
 @router.post("/auto-associa")
