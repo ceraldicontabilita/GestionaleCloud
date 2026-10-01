@@ -206,6 +206,9 @@ export default function Documenti() {
               fontSize: 13,
               fontWeight: 700,
               textDecoration: 'none',
+              minHeight: 44,
+              display: 'inline-flex',
+              alignItems: 'center',
             }}
           >
             Vai a Carica documenti
