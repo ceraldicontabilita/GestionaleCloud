@@ -72,14 +72,14 @@ def test_scheda_con_due_versioni_mostra_decisione_e_canale(monkeypatch):
         assert corpo["versione"]["storico_netto"][0]["prima"] == 1400.0
         # la sostituita non e' attiva: il gruppo mostra solo le righe vive, la scheda dice il suo stato
         assert client.get("/api/cedolini/a").json()["sostituito"] is True
-        assert "pdf_data" not in corpo and corpo["pdf_url"] == "/api/cedolini/b/pdf"
+        assert "pdf_data" not in corpo and corpo["pdf_url"] == "/api/originale/cedolino/b"
 
 
 def test_pdf_senza_marcatore_si_prova_per_id(monkeypatch):
     app, admin = _client(monkeypatch, [{"id": "m", "pdf_data": base64.b64encode(PDF).decode(), **_busta(1500.0)}])
     app.dependency_overrides[admin] = lambda: {"role": "admin"}
     with TestClient(app) as client:
-        assert client.get("/api/cedolini/m").json()["pdf_url"] == "/api/cedolini/m/pdf"
+        assert client.get("/api/cedolini/m").json()["pdf_url"] == "/api/originale/cedolino/m"
 
 
 def test_scheda_importi_assenti_restano_none_e_pdf_assente(monkeypatch):
@@ -91,11 +91,10 @@ def test_scheda_importi_assenti_restano_none_e_pdf_assente(monkeypatch):
         corpo = client.get("/api/cedolini/z").json()
         assert corpo["netto"] is None and corpo["lordo"] is None and corpo["totale_trattenute"] is None
         assert corpo["pdf_disponibile"] is False and corpo["pdf_url"] is None
-        assert client.get("/api/cedolini/z/pdf").status_code == 404
         assert client.get("/api/cedolini/non-esiste").status_code == 404
 
 
-def test_pdf_originale_e_versioni_resta_raggiungibile(monkeypatch):
+def test_versioni_resta_raggiungibile_e_il_pdf_non_ha_piu_un_indirizzo_proprio(monkeypatch):
     app, admin = _client(monkeypatch, [
         {"id": "p", "filename": "busta.pdf", "pdf_data": base64.b64encode(PDF).decode(), **_busta(1500.0)},
     ])
@@ -103,9 +102,8 @@ def test_pdf_originale_e_versioni_resta_raggiungibile(monkeypatch):
         assert client.get("/api/cedolini/p").status_code in (401, 403)
     app.dependency_overrides[admin] = lambda: {"role": "admin"}
     with TestClient(app) as client:
-        res = client.get("/api/cedolini/p/pdf")
-        assert res.status_code == 200 and res.content == PDF
-        assert res.headers["content-type"] == "application/pdf"
+        # l'originale si apre da `/api/originale/cedolino/{id}` (DRV-04), non da qui
+        assert client.get("/api/cedolini/p/pdf").status_code == 404
         # `/versioni` e' un indirizzo fisso, non un id di busta
         rapporto = client.get("/api/cedolini/versioni")
         assert rapporto.status_code == 200 and "gruppi" in rapporto.json()

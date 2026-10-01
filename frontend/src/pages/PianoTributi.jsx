@@ -5,6 +5,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, FONT, formatEuro, useIsMobile } from '../lib/utils';
 import api from '../api';
 import { scaricaOriginale } from '../lib/scaricaOriginale';
+import ApriOriginale from '../components/ApriOriginale';
 
 const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
@@ -127,7 +128,7 @@ function DettaglioCasella({ voce, casella }) {
             F24 del {m.data_versamento ? dataIt(m.data_versamento) : 'data non letta'}
             {' · '}{importo(m.debito_cents / 100)}
             {m.credito_cents > 0 && <> · credito {importo(m.credito_cents / 100)}</>}
-            {' · '}<a href={m.pdf_url} target="_blank" rel="noreferrer">apri il PDF</a>
+            {' · '}<ApriOriginale url={m.pdf_url} variante="ghost" titolo={`F24 del ${m.data_versamento ? dataIt(m.data_versamento) : 'periodo'}`}>apri il PDF</ApriOriginale>
             {m.giorni_ritardo !== null && m.giorni_ritardo !== undefined && (
               <> · {m.giorni_ritardo === 0 ? 'versato nei termini' : `versato con ${giorni(m.giorni_ritardo)} di ritardo`}</>
             )}
@@ -214,7 +215,7 @@ function RicercaCodice({ anno }) {
                     {riga.importo_credito ? ` · credito ${importo(riga.importo_credito)}` : ''}
                   </div>
                 ))}
-                <a href={r.pdf_url} target="_blank" rel="noreferrer">apri il PDF</a>
+                <ApriOriginale url={r.pdf_url} variante="ghost" titolo="F24 del periodo">apri il PDF</ApriOriginale>
               </div>
             ))}
           </div>

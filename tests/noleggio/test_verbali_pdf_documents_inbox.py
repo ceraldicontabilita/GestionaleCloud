@@ -39,14 +39,15 @@ def test_documento_inbox_compare_nel_dettaglio_senza_base64():
     assert "content_base64" not in metadata[0]
 
 
-def test_endpoint_pdf_legge_documents_inbox_e_numero_con_slash(monkeypatch):
+def test_originale_legge_documents_inbox_e_numero_con_slash():
+    """L'endpoint unico (DRV-04) apre il PDF del verbale per numero, anche con la barra."""
+    from app.services import originale_documento as originale
+
     db, _ = _database()
-    monkeypatch.setattr(verbali_noleggio.Database, "get_db", lambda: db)
 
-    result = asyncio.run(verbali_noleggio.get_pdf_verbale("VV/24990121765", 0))
+    result = asyncio.run(originale.apri(db, "verbale", "VV/24990121765", 0))
 
-    assert result["document_id"] == "documento-test"
-    assert base64.b64decode(result["content_base64"]).startswith(b"%PDF")
+    assert result.mime == "application/pdf" and result.contenuto.startswith(b"%PDF")
 
 
 def test_endpoint_dettaglio_path_include_pdf_inbox(monkeypatch):

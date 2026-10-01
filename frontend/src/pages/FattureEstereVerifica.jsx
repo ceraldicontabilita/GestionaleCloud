@@ -3,7 +3,8 @@ import { COLORS, BORDER_RADIUS, formatDateIT, formatEuroD } from '../lib/utils';
 import { Button, Badge, Card, PageHeader, Input } from '../components/ds';
 import { toast } from 'sonner';
 import { CheckCircle2, FileSearch, Eye } from 'lucide-react';
-import DocumentViewerModal from '../components/DocumentViewerModal';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import AssociaBonificoFattura from '../components/AssociaBonificoFattura';
 import api from '../api';
 
@@ -295,9 +296,9 @@ export default function FattureEstereVerifica() {
       )}
 
       {pdfDoc && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={`📄 ${pdfDoc.filename}`}
-          fetchUrl={`/api/documenti/documento/${pdfDoc.documento_inbox_id}/download`}
+          url={urlOriginale({ tipo: 'documento', id: pdfDoc.documento_inbox_id })}
           onClose={() => setPdfDoc(null)}
           maxWidth={1000}
         />

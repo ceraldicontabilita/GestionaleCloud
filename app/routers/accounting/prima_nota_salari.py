@@ -26,7 +26,7 @@ from app.services.salari_periodo import (
     filtro_periodo_prima_nota,
     periodo_ammesso_in_prima_nota,
 )
-from app.utils.dependencies import get_current_admin_user, get_current_user
+from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -267,79 +267,6 @@ async def get_prima_nota_salari(
         salario["bonifico_documento_disponibile"] = bool(bonifico_ids)
     
     return salari
-
-
-@router.get("/salari/{record_id}/cedolino-pdf")
-async def get_cedolino_pdf(
-    record_id: str,
-    _current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """Visualizza il PDF originale collegato alla riga del dipendente."""
-
-    db = Database.get_db()
-    salario = await db["prima_nota_salari"].find_one(
-        {"id": record_id},
-        {
-            "_id": 0, "cedolino_id": 1, "codice_fiscale": 1,
-            "mese": 1, "anno": 1, "tipo_cedolino": 1,
-        },
-    )
-    if not salario:
-        salario = await db["salari_ricostruiti"].find_one(
-            {"id": record_id},
-            {
-                "_id": 0, "cedolino_id": 1, "dipendente": 1,
-                "mese": 1, "anno": 1, "tipo_cedolino": 1,
-                "fonte_cedolino": 1,
-            },
-        )
-    if not salario:
-        raise HTTPException(status_code=404, detail="Riga salario non trovata")
-
-    cedolino = None
-    if salario.get("cedolino_id"):
-        cedolino = await db["cedolini"].find_one(
-            {"id": salario["cedolino_id"]},
-            {"_id": 0, "pdf_data": 1, "drive_file_id": 1},
-        )
-    if (not cedolino or not (cedolino.get("pdf_data") or cedolino.get("drive_file_id"))) and salario.get("fonte_cedolino"):
-        cedolino = await db["cedolini"].find_one(
-            {
-                "filename": salario["fonte_cedolino"],
-                "pdf_data": {"$exists": True, "$nin": [None, ""]},
-            },
-            {"_id": 0, "pdf_data": 1},
-        )
-    if not cedolino or not (cedolino.get("pdf_data") or cedolino.get("drive_file_id")):
-        from app.services.salari_unificati_v2 import _cedolino_identity_filter
-        fallback_query = _cedolino_identity_filter(
-            salario.get("codice_fiscale"),
-            salario.get("mese"),
-            salario.get("anno"),
-            salario.get("tipo_cedolino") or "mensile",
-        )
-        cedolino = await db["cedolini"].find_one(
-            fallback_query,
-            {"_id": 0, "pdf_data": 1, "drive_file_id": 1},
-        )
-    if not cedolino or not (cedolino.get("pdf_data") or cedolino.get("drive_file_id")):
-        raise HTTPException(status_code=404, detail="PDF del cedolino non disponibile")
-
-    try:
-        from app.services.cedolino_originale import carica_originale
-        pdf_bytes = await carica_originale(cedolino)
-    except Exception as exc:
-        logger.warning("PDF cedolino non decodificabile per record %s: %s", record_id, exc)
-        raise HTTPException(status_code=422, detail="PDF del cedolino non leggibile") from exc
-
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": "inline; filename=cedolino.pdf",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
 
 
 async def _leggi_pdf_allegato(file: UploadFile) -> bytes:
@@ -629,45 +556,6 @@ async def allega_bonifico_pdf(
         "riconciliato": False,
         "message": "Bonifico allegato; riconciliazione bancaria ancora da verificare",
     }
-
-
-@router.get("/salari/{record_id}/bonifico-pdf")
-async def get_bonifico_pdf_salario(
-    record_id: str,
-    _current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """Visualizza il primo PDF bonifico collegato alla riga selezionata."""
-    import base64
-
-    db = Database.get_db()
-    salario = await db["prima_nota_salari"].find_one(
-        {"id": record_id}, {"_id": 0, "bonifico_documenti_ids": 1}
-    )
-    if not salario:
-        raise HTTPException(status_code=404, detail="Riga salario non trovata")
-    documento = None
-    for transfer_id in salario.get("bonifico_documenti_ids") or []:
-        documento = await db["bonifici_transfers"].find_one(
-            {"id": transfer_id, "pdf_data": {"$exists": True, "$nin": [None, ""]}},
-            {"_id": 0, "pdf_data": 1, "source_file": 1},
-        )
-        if documento:
-            break
-    if not documento:
-        raise HTTPException(status_code=404, detail="PDF del bonifico non disponibile")
-    try:
-        pdf_bytes = base64.b64decode(documento["pdf_data"], validate=True)
-    except Exception as exc:
-        logger.warning("PDF bonifico non decodificabile per record %s: %s", record_id, exc)
-        raise HTTPException(status_code=422, detail="PDF del bonifico non leggibile") from exc
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": "inline; filename=bonifico.pdf",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
 
 
 @router.get("/salari/riepilogo")

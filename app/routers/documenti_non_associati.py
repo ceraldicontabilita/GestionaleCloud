@@ -4,56 +4,16 @@ Permette di visualizzare e associare manualmente i documenti.
 """
 
 from fastapi import APIRouter, HTTPException, Query, Body
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from datetime import datetime, timezone
 import uuid
 import re
 import logging
-import base64
 
 from app.database import Database
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Documenti Non Associati"])
-
-
-def extract_pdf_from_p7s(p7s_data: bytes) -> Optional[bytes]:
-    """
-    Estrae il PDF contenuto in un file P7S/P7M firmato digitalmente.
-    Cerca i marker PDF nel contenuto binario.
-    """
-    try:
-        # Cerca marker PDF start e end
-        pdf_start = p7s_data.find(b'%PDF-')
-        if pdf_start == -1:
-            return None
-        
-        # Cerca l'ultimo %%EOF
-        pdf_end = p7s_data.rfind(b'%%EOF')
-        if pdf_end == -1:
-            # Prova con altri marker di fine
-            pdf_end = p7s_data.rfind(b'endstream')
-            if pdf_end == -1:
-                pdf_end = len(p7s_data)
-            else:
-                # Trova la fine corretta dopo endstream
-                pdf_end = p7s_data.find(b'%%EOF', pdf_end)
-                if pdf_end == -1:
-                    pdf_end = len(p7s_data)
-        else:
-            pdf_end += 5  # Includi %%EOF
-        
-        # Estrai il PDF
-        pdf_content = p7s_data[pdf_start:pdf_end]
-        
-        # Verifica che sia un PDF valido
-        if pdf_content[:4] == b'%PDF':
-            return pdf_content
-        
-        return None
-    except Exception as e:
-        logger.error(f"Errore estrazione PDF da P7S: {e}")
-        return None
 
 
 # Collezioni target per associazione
@@ -516,120 +476,6 @@ async def lista_collezioni_disponibili() -> List[Dict[str, str]]:
         {"value": info["collection"], "label": info["label"]}
         for key, info in TARGET_COLLECTIONS.items()
     ]
-
-
-@router.get("/pdf/{documento_id}")
-async def visualizza_pdf_documento(documento_id: str):
-    """
-    Restituisce il file del documento per la visualizzazione.
-    Supporta PDF, immagini (PNG, JPG, etc.), e file P7S firmati.
-    """
-    from fastapi.responses import Response
-    
-    db = Database.get_db()
-    
-    doc = await db["documenti_non_associati"].find_one(
-        {"id": documento_id},
-        {"_id": 0, "pdf_data": 1, "filename": 1}
-    )
-    
-    if not doc:
-        raise HTTPException(status_code=404, detail="Documento non trovato")
-    
-    pdf_data = doc.get("pdf_data")
-    if not pdf_data:
-        raise HTTPException(status_code=404, detail="File non disponibile")
-    
-    # Decodifica se base64
-    if isinstance(pdf_data, str):
-        try:
-            file_bytes = base64.b64decode(pdf_data)
-        except Exception:
-            file_bytes = pdf_data.encode()
-    else:
-        file_bytes = pdf_data
-    
-    filename = doc.get("filename", "documento.pdf")
-    # Sanitize filename - remove newlines and other illegal header characters
-    filename = filename.replace('\r', '').replace('\n', ' ').strip()
-    # Also remove any other control characters
-    filename = ''.join(c for c in filename if ord(c) >= 32 or c in '\t')
-    filename_lower = filename.lower()
-    
-    # Determina il media type in base all'estensione
-    media_type_map = {
-        '.pdf': 'application/pdf',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.bmp': 'image/bmp',
-        '.svg': 'image/svg+xml',
-        '.xml': 'application/xml',
-        '.txt': 'text/plain',
-        '.csv': 'text/csv',
-        '.html': 'text/html',
-    }
-    
-    # Trova l'estensione
-    ext = ''
-    for e in media_type_map.keys():
-        if filename_lower.endswith(e):
-            ext = e
-            break
-    
-    # Se è un file P7S/P7M firmato, estrai il PDF interno
-    if filename_lower.endswith(('.p7s', '.p7m', '.p7c')):
-        extracted_pdf = extract_pdf_from_p7s(file_bytes)
-        if extracted_pdf:
-            file_bytes = extracted_pdf
-            filename = filename.rsplit('.', 1)[0]
-            if not filename.lower().endswith('.pdf'):
-                filename += '.pdf'
-            ext = '.pdf'
-        else:
-            raise HTTPException(
-                status_code=422, 
-                detail="Impossibile estrarre il PDF dal file firmato digitalmente."
-            )
-    
-    # Se è un PDF, verifica che sia valido
-    if ext == '.pdf' or filename_lower.endswith('.pdf'):
-        if file_bytes[:4] != b'%PDF':
-            # Potrebbe essere un file firmato non riconosciuto
-            extracted = extract_pdf_from_p7s(file_bytes)
-            if extracted:
-                file_bytes = extracted
-            else:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Il file non è un PDF valido"
-                )
-        media_type = 'application/pdf'
-    elif ext:
-        media_type = media_type_map[ext]
-    else:
-        # Rileva dal magic number
-        if file_bytes[:4] == b'%PDF':
-            media_type = 'application/pdf'
-        elif file_bytes[:8] == b'\x89PNG\r\n\x1a\n':
-            media_type = 'image/png'
-        elif file_bytes[:2] == b'\xff\xd8':
-            media_type = 'image/jpeg'
-        elif file_bytes[:6] in (b'GIF87a', b'GIF89a'):
-            media_type = 'image/gif'
-        else:
-            media_type = 'application/octet-stream'
-    
-    return Response(
-        content=file_bytes,
-        media_type=media_type,
-        headers={
-            "Content-Disposition": f'inline; filename="{filename}"',
-            "Cache-Control": "no-cache"
-        }
-    )
 
 
 @router.delete("/{documento_id}")

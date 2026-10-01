@@ -16,8 +16,8 @@ describe('scaricaOriginale', () => {
       data: new Blob(['%PDF'], { type: 'application/pdf' }),
       headers: { 'content-type': 'application/pdf', 'content-disposition': 'inline; filename="F24 aprile.pdf"' },
     });
-    expect(await scaricaOriginale('/api/f24-public/pdf/1', 'F24')).toBe('F24 aprile.pdf');
-    expect(api.get).toHaveBeenCalledWith('/api/f24-public/pdf/1', { responseType: 'blob' });
+    expect(await scaricaOriginale('/api/originale/f24/1', 'F24')).toBe('F24 aprile.pdf');
+    expect(api.get).toHaveBeenCalledWith('/api/originale/f24/1', { responseType: 'blob' });
   });
 
   it('senza nome dal server prende l estensione dal tipo del file', async () => {

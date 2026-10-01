@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import api from '../api';
-import { conEstensione, salvaBlob, scaricaOriginale } from '../lib/scaricaOriginale';
+import { conEstensione, messaggioErroreOriginale, salvaBlob, scaricaOriginale } from '../lib/scaricaOriginale';
 
 /**
  * Componente CANONICO "Vedi Documento" (PROMPT_DEFINITIVO §8.2): modale in-page per
@@ -81,7 +81,7 @@ export default function DocumentViewerModal({
       await scaricaOriginale(urlInterno, nomeFile);
     } catch (e) {
       toast.error('Documento non scaricabile', {
-        description: e?.response?.data?.detail || e?.message,
+        description: await messaggioErroreOriginale(e, e?.message),
       });
     }
   }, [blobUrl, fetchUrl, urlInterno, nomeFile, mimeType]);
@@ -169,17 +169,17 @@ export default function DocumentViewerModal({
       .get(fetchUrl, { responseType: 'blob' })
       .then(response => {
         if (revoked) return;
-        url = window.URL.createObjectURL(new Blob([response.data], { type: mimeType }));
+        // Il tipo lo dice il server (l'originale puo' essere un PDF, un XML, un'immagine).
+        const tipoServer = String(response.headers?.['content-type'] || '').split(';')[0].trim();
+        url = window.URL.createObjectURL(new Blob([response.data], { type: tipoServer || mimeType }));
         setBlobUrl(url);
       })
-      .catch(error => {
-        if (revoked) return;
+      .catch(async error => {
         const status = error.response?.status;
-        setLoadError(
-          status === 502 || status === 504
-            ? 'Il documento è troppo grande o il servizio è momentaneamente non disponibile. Riprova tra qualche istante.'
-            : `Errore visualizzazione documento: ${error.message}`
-        );
+        const messaggio = status === 502 || status === 504
+          ? 'Il documento è troppo grande o il servizio è momentaneamente non disponibile. Riprova tra qualche istante.'
+          : await messaggioErroreOriginale(error, 'Documento non disponibile');
+        if (!revoked) setLoadError(messaggio);
       });
     return () => {
       revoked = true;

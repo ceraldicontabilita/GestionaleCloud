@@ -3,7 +3,6 @@ F24 Public Router - Endpoints F24 senza autenticazione
 NOTA: Usa f24_commercialista come collezione unica per F24
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Query
-from fastapi.responses import Response
 from typing import Dict, Any
 from datetime import datetime, timezone
 import logging
@@ -300,34 +299,11 @@ async def _importa(file: UploadFile, *, source: str) -> Dict[str, Any]:
 
 
 @router.get("/pdf/{f24_id}")
-@handle_errors
 async def get_f24_pdf(f24_id: str):
-    """Restituisce il PDF originale dell'F24."""
-    db = Database.get_db()
+    """Alias: l'originale si apre da `/api/originale/f24/{id}` (DRV-04)."""
+    from app.routers.originale import reindirizza_a_originale
 
-    f24 = await db[F24_COLLECTION].find_one({"id": f24_id})
-    original_type = "f24"
-    if not f24:
-        f24 = await db["quietanze_f24"].find_one({"id": f24_id})
-        original_type = "quietanza"
-
-    if not f24:
-        raise HTTPException(status_code=404, detail="F24 non trovato")
-
-    filename = f24.get("file_name", f24.get("filename", f"F24_{f24_id}.pdf"))
-    from app.services.f24_originale import carica_originale
-    pdf_bytes = await carica_originale(f24, tipo=original_type)
-
-    if not pdf_bytes:
-        raise HTTPException(status_code=404, detail="PDF non disponibile per questo F24")
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'inline; filename="{filename}"'
-        }
-    )
+    return reindirizza_a_originale("f24", f24_id)
 
 
 @router.put("/models/{f24_id}/pagato")

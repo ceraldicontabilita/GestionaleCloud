@@ -164,6 +164,8 @@ jobs:
         run: node scripts/audit-viewer.cjs
       - name: E2E viste fiscali e del personale
         run: node scripts/audit-viste-fiscali.cjs
+      - name: E2E apertura dell'originale (F24, quietanza, fattura, cedolino, verbale, PagoPA, protocollo)
+        run: node scripts/audit-originale.cjs
 
   deploy:
     name: GestionaleCloud live serve questo commit

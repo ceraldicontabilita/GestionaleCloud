@@ -288,26 +288,3 @@ class _Db:
 
     def __getitem__(self, name):
         return self.collections[name]
-
-
-def test_pdf_cedolino_visualizzabile_dalla_riga_salario(monkeypatch):
-    from app.database import Database
-    from app.routers.accounting.prima_nota_salari import get_cedolino_pdf
-
-    contenuto = b"%PDF-1.4\ncedolino sintetico\n%%EOF"
-    db = _Db(
-        {"id": "sal-1", "cedolino_id": "ced-1", "codice_fiscale": "TEST", "mese": 5, "anno": 2026},
-        {"id": "ced-1", "pdf_data": base64.b64encode(contenuto).decode()},
-    )
-    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))
-
-    async def _leggi():
-        response = await get_cedolino_pdf("sal-1", _current_user={"user_id": "test"})
-        body = b"".join([chunk async for chunk in response.body_iterator])
-        return response, body
-
-    response, body = asyncio.run(_leggi())
-
-    assert response.media_type == "application/pdf"
-    assert body == contenuto
-    assert response.headers["content-disposition"].startswith("inline")

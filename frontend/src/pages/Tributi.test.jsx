@@ -15,7 +15,7 @@ const voce = (extra = {}) => ({
   atteso_cents: 70000, residuo_cents: 0, scadenza: '2026-04-16', ultimo_pagamento: '2026-04-16', in_ritardo: false,
   stato: 'PAGATO', stato_label: 'Pagato (quietanza)',
   documenti: [
-    { tipo: 'quietanza', data: '2026-04-16', protocollo: '26041535212746370/000001', importo_cents: 49000, credito_cents: 0, pdf_url: '/api/f24-public/pdf/q1', copie: 1 },
+    { tipo: 'quietanza', data: '2026-04-16', protocollo: '26041535212746370/000001', importo_cents: 49000, credito_cents: 0, pdf_url: '/api/originale/f24/q1', copie: 1 },
     { tipo: 'ritenuta', numero_fattura: '12', fornitore: 'STUDIO B', data: '2026-03-20', importo_cents: 28000, scadenza: '2026-04-16',
       versata: true, data_pagamento: '2026-04-16', quietanza_protocollo: '26041535212746370/000001', link: '/fatture?invoice_id=f1' },
   ],

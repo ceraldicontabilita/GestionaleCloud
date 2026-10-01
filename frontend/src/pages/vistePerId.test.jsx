@@ -62,7 +62,7 @@ describe('Scheda F24 /fiscale/f24/:id', () => {
     const apri = screen.getByTestId('f24-apri-originale');
     expect(apri).toHaveTextContent(/Importo versato .*1\.000,00/);
     fireEvent.click(apri);
-    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/f24-public/pdf/Q1');
+    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/originale/quietanza/Q1');
   });
 
   it('il riscontro con la banca porta livello e motivazione', async () => {
@@ -112,7 +112,7 @@ describe('Vista tributo /fiscale/tributi/:codice', () => {
     chiave: 'erario|6003|2026|3', codice: '6003', descrizione: 'IVA marzo', anno: 2026, mese: 3, periodo: '03/2026',
     inviato_cents: 0, quietanza_cents: 120000, ravvedimento_cents: 0, credito_cents: 0, residuo_cents: 0,
     stato: 'PAGATO', stato_label: 'Pagato (quietanza)', ultimo_pagamento: '2026-04-16',
-    documenti: [{ tipo: 'quietanza', data: '2026-04-16', protocollo: 'P1', pdf_url: '/api/f24-public/pdf/Q9', importo_cents: 120000 }],
+    documenti: [{ tipo: 'quietanza', data: '2026-04-16', protocollo: 'P1', pdf_url: '/api/originale/quietanza/Q9', importo_cents: 120000 }],
     ...extra,
   });
   const incroci = {
@@ -159,7 +159,7 @@ describe('Vista tributo /fiscale/tributi/:codice', () => {
     const apri = await screen.findByTestId('apri-quietanza-erario|6003|2026|3');
     expect(apri).toHaveTextContent('1.200,00');
     fireEvent.click(apri);
-    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/f24-public/pdf/Q9');
+    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/originale/quietanza/Q9');
     expect(screen.getByTestId('scheda-f24-erario|6003|2026|3')).toHaveAttribute('href', '/fiscale/f24/Q9');
   });
 
@@ -171,7 +171,7 @@ describe('Vista tributo /fiscale/tributi/:codice', () => {
     expect(blocco).toHaveTextContent('Torna');
     expect(blocco).not.toHaveTextContent('Aprile');
     fireEvent.click(screen.getByTestId('apri-versamento-Q9'));
-    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/f24-public/pdf/Q9');
+    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/originale/quietanza/Q9');
   });
 
   it('codice senza pagamenti: messaggio con la via d uscita, non una tabella vuota', async () => {
@@ -204,7 +204,7 @@ describe('Scheda busta paga /personale/cedolini/:id', () => {
       { id: 'c1', netto: 1500, stampa_di_controllo: false, variante: 2, filename: 'rossi.pdf', corrente: true },
     ],
     decisione: { esito: 'vincitore', motivo: 'la busta definitiva batte la stampa di controllo', vincitore: 'c1' },
-    pdf_disponibile: true, pdf_url: '/api/cedolini/c1/pdf', ...extra,
+    pdf_disponibile: true, pdf_url: '/api/originale/cedolino/c1', ...extra,
   });
 
   it('mostra netto, fonte, canale, versione e apre l originale', async () => {
@@ -218,7 +218,7 @@ describe('Scheda busta paga /personale/cedolini/:id', () => {
     expect(screen.getAllByTestId('cedolino-versione')).toHaveLength(2);
     expect(screen.getByTestId('cedolino-storico')).toHaveTextContent('02/07/2025');
     fireEvent.click(screen.getByTestId('cedolino-apri-originale'));
-    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/cedolini/c1/pdf');
+    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/originale/cedolino/c1');
   });
 
   it('netto assente = Dato non disponibile, mai zero; senza PDF lo dice', async () => {

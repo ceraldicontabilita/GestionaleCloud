@@ -9,6 +9,8 @@ import InAttesaDocumento from '../components/InAttesaDocumento';
 import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import DocumentImportLink from '../components/DocumentImportLink';
 import BancaDiretta from '../components/BancaDiretta';
 import FinanziamentoSoci from './FinanziamentoSoci';
@@ -382,10 +384,10 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
         </div>
       ))}
       {attoAperto && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={`${attoAperto.etichetta} ${attoAperto.numero_sentenza}`}
           subtitle={[attoAperto.tribunale && `Tribunale di ${attoAperto.tribunale}`, attoAperto.ruolo_generale && `R.G. ${attoAperto.ruolo_generale}`].filter(Boolean).join(' · ')}
-          fetchUrl={`/api/documenti/atti-giudiziari/${encodeURIComponent(attoAperto.id)}/file`}
+          url={urlOriginale({ tipo: 'atto', id: attoAperto.id })}
           documentType="atto_giudiziario"
           onClose={() => setAttoAperto(null)}
           testIdPrefix="atto-giudiziario-viewer"

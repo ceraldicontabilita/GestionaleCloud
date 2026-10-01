@@ -333,14 +333,14 @@ async def source_certainty(
 
 
 async def _originale_fiscale(db, document: dict[str, Any]) -> tuple[bytes, str]:
-    """PDF originale di un documento fiscale, dal deposito Documenti."""
-    inbox_id = (document.get("metadata") or {}).get("documents_inbox_id")
-    query = ({"id": inbox_id, "company_id": _company()} if inbox_id
-             else {"company_id": _company(), "fiscal_document_id": document.get("id")})
-    source = await db["documents_inbox"].find_one(query, {"_id": 0, "pdf_data": 1, "filename": 1})
-    if not source or not source.get("pdf_data"):
-        raise HTTPException(404, "Originale non disponibile nel deposito Documenti")
-    return base64.b64decode(source["pdf_data"]), str(source.get("filename") or "documento.pdf")
+    """PDF originale di un documento fiscale: il servizio unico (DRV-04)."""
+    from app.services import originale_documento as originale_svc
+
+    try:
+        originale = await originale_svc.apri(db, "documento_fiscale", str(document.get("id")))
+    except originale_svc.OriginaleErrore as exc:
+        raise HTTPException(exc.stato, exc.message) from exc
+    return originale.contenuto, originale.nome
 
 
 @router.get("/declarations/{document_id}/field-certainty")
@@ -590,13 +590,10 @@ async def evidence(entity_type: str, entity_id: str, _admin: Dict[str, Any] = De
 
 @router.get("/documents/{document_id}/content")
 async def document_content(document_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user)):
-    db = Database.get_db()
-    document = await db[COLL_FISCAL_DOCUMENTS].find_one({"company_id": _company(), "id": document_id}, {"_id": 0})
-    if not document:
-        raise HTTPException(404, "Documento fiscale non trovato")
-    content, filename = await _originale_fiscale(db, document)
-    safe_filename = filename.replace('"', "_").replace("\r", "_").replace("\n", "_")
-    return StreamingResponse(io.BytesIO(content), media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{safe_filename}"'})
+    """Alias: l'originale si apre da `/api/originale/documento_fiscale/{id}` (DRV-04)."""
+    from app.routers.originale import reindirizza_a_originale
+
+    return reindirizza_a_originale("documento_fiscale", document_id)
 
 
 @router.post("/collection-snapshots/dry-run")

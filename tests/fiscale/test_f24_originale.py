@@ -33,7 +33,7 @@ def test_originale_f24_rifiuta_contenuto_non_pdf(monkeypatch):
 
     import app.services.drive_download as drive_download
     monkeypatch.setattr(drive_download, "scarica_originale", fake_download)
-    with pytest.raises(ValueError, match="non e' un PDF"):
+    with pytest.raises(ValueError, match="non è un PDF"):
         asyncio.run(f24_originale.carica_originale({"drive_file_id": "drive-f24-1"}))
 
 

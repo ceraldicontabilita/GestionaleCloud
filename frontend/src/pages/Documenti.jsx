@@ -4,7 +4,9 @@ import { toast } from 'sonner';
 
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
-import DocumentViewerModal from '../components/DocumentViewerModal';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
+import { messaggioErroreOriginale, scaricaOriginale } from '../lib/scaricaOriginale';
 import {
   Badge,
   Button,
@@ -164,21 +166,9 @@ export default function Documenti() {
   const downloadDocument = async doc => {
     if (!doc.id) return;
     try {
-      const response = await api.get(`/api/documenti/documento/${doc.id}/download`, {
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = doc.filename || 'documento.pdf';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      await scaricaOriginale(urlOriginale({ tipo: 'documento', id: doc.id }), doc.filename || 'documento.pdf');
     } catch (requestError) {
-      toast.error('Documento non scaricabile', {
-        description: requestError.response?.data?.detail || requestError.message,
-      });
+      toast.error('Documento non scaricabile', { description: await messaggioErroreOriginale(requestError) });
     }
   };
 
@@ -495,10 +485,10 @@ export default function Documenti() {
       </div>
 
       {selectedDocument && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={selectedDocument.filename || 'Documento'}
           subtitle={`${selectedDocument.category_label || categoryStyle(selectedDocument).label} · ${sourceLabel(selectedDocument)}`}
-          fetchUrl={`/api/documenti/documento/${selectedDocument.id}/download`}
+          url={urlOriginale({ tipo: 'documento', id: selectedDocument.id })}
           onClose={() => setSelectedDocument(null)}
           onDownload={() => downloadDocument(selectedDocument)}
           maxWidth={1000}

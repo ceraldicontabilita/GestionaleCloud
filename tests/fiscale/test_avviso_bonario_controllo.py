@@ -105,7 +105,7 @@ def test_da_pagare_quando_il_modello_esiste_senza_prove():
     assert riga["descrizione_tributo"] == "Ritenute su retribuzioni"
     assert riga["righe_f24"][0]["data_versamento_it"] == "20/12/2019"
     assert riga["righe_f24"][0]["saldo_modello"] == 2738.28
-    assert riga["righe_f24"][0]["pdf_url"].endswith("/149f2355-cb6c-4553-a9da-33f4b0391e44/pdf")
+    assert riga["righe_f24"][0]["pdf_url"].endswith("/149f2355-cb6c-4553-a9da-33f4b0391e44")
     assert esito["riepilogo"]["totale_scoperto"] == 1455.21
     assert esito["riepilogo"]["totale_coperto"] == 0.0
     assert esito["sola_lettura"] is True

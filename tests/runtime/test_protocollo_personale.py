@@ -317,8 +317,10 @@ def test_nessun_modulo_contabile_legge_il_protocollo_personale():
     radice = Path(__file__).resolve().parents[2] / "app"
     lettori = {p.relative_to(radice).as_posix() for p in radice.rglob("*.py")
                if "protocollo_personale" in p.read_text(encoding="utf-8", errors="ignore")}
+    # `originale_documento.py` (DRV-04) apre il file del protocollo per SHA-256: legge una riga,
+    # non conosce importi ne' conti, e non scrive niente.
     assert lettori == {"services/protocollo_personale.py", "routers/protocollo_personale.py",
-                       "document_repository.py", "router_registry.py"}
+                       "document_repository.py", "router_registry.py", "services/originale_documento.py"}
 
 
 def test_ponte_legge_le_relazioni_documentali_senza_crearne():

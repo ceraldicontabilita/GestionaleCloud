@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Badge, PageHeader, PageLoader } from '../components/ds';
-import ApriOriginale from '../components/vista/ApriOriginale';
+import ApriOriginale from '../components/ApriOriginale';
 import FiltroAnnoVista, { useAnnoVista } from '../components/vista/FiltroAnnoVista';
 import LegendaRegole from '../components/vista/LegendaRegole';
 import { Messaggio, Riquadro, paginaStile } from '../components/vista/Elementi';

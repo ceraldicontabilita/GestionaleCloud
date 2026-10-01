@@ -6,7 +6,7 @@ API per scaricare, visualizzare e processare documenti dalle email.
 from fastapi import APIRouter, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Header
 from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 from app.utils.ruoli import richiedi_admin
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from pathlib import Path
@@ -106,109 +106,6 @@ async def cartelle_drive_con_link_reale(
     _drive_folder_links_cache["at"] = now
     _drive_folder_links_cache["data"] = result
     return result
-
-
-@router.get("/drive/index/status")
-async def stato_indice_documentale_drive(
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Verifica l'indice Excel senza importare documenti nel database."""
-    import asyncio
-    from app.services.drive_document_index import get_status
-    try:
-        return await asyncio.to_thread(get_status)
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.get("/drive/index/search")
-async def cerca_indice_documentale_drive(
-    q: Optional[str] = Query(None, max_length=200),
-    domain: Optional[str] = Query(None, max_length=100),
-    year: Optional[str] = Query(None, max_length=10),
-    extension: Optional[str] = Query(None, max_length=20),
-    status: Optional[str] = Query(None, max_length=100),
-    limit: int = Query(100, ge=1, le=500),
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Cerca nell'Excel Drive; non scarica i documenti trovati."""
-    import asyncio
-    from app.services.drive_document_index import search_catalog
-    try:
-        return await asyncio.to_thread(
-            search_catalog, q=q, domain=domain, year=year,
-            extension=extension, status=status, limit=limit,
-        )
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.get("/drive/index/overview")
-async def riepilogo_indice_documentale_drive(
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Quadrature e dimensioni del catalogo senza dati binari."""
-    import asyncio
-    from app.services.drive_document_index import get_overview
-    try:
-        return await asyncio.to_thread(get_overview)
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.get("/drive/index/f24")
-async def elenco_f24_indice_drive(
-    q: Optional[str] = Query(None, max_length=200),
-    year: Optional[str] = Query(None, max_length=10),
-    tax_code: Optional[str] = Query(None, max_length=20),
-    limit: int = Query(200, ge=1, le=500),
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Modelli F24 e righe tributo, distinti dalla prova bancaria."""
-    import asyncio
-    from app.services.drive_document_index import list_f24_documents
-    try:
-        return await asyncio.to_thread(
-            list_f24_documents, q=q, year=year, tax_code=tax_code, limit=limit,
-        )
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.get("/drive/index/declarations")
-async def elenco_dichiarazioni_indice_drive(
-    q: Optional[str] = Query(None, max_length=200),
-    year: Optional[str] = Query(None, max_length=10),
-    declaration_type: Optional[str] = Query(None, max_length=100),
-    limit: int = Query(200, ge=1, le=500),
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Dichiarazioni collegate in modo univoco agli originali Drive."""
-    import asyncio
-    from app.services.drive_document_index import list_declarations
-    try:
-        return await asyncio.to_thread(
-            list_declarations, q=q, year=year,
-            declaration_type=declaration_type, limit=limit,
-        )
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.get("/drive/index/document/{document_id}")
-async def dettaglio_indice_documentale_drive(
-    document_id: str,
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
-) -> Dict[str, Any]:
-    """Risolve il link del file originale verificandone il percorso su Drive."""
-    import asyncio
-    from app.services.drive_document_index import get_document
-    try:
-        return await asyncio.to_thread(get_document, document_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 # ── Protocollo-indice vivo (gestionale.protocollo_drive) ──────────────────────
@@ -1032,90 +929,15 @@ async def get_documento(doc_id: str) -> Dict[str, Any]:
 # (oltre a documents_inbox usato da Drive/upload manuale). Il download generico
 # deve risolvere l'id anche qui, altrimenti gli allegati email danno 404
 # (fix 13/07/2026, P0-2 verifica Documenti).
-_COLLEZIONI_DOWNLOAD = [
-    "documents_inbox",
-    "documenti_non_associati",
-    "f24_email_attachments",
-    "fatture_email_attachments",
-    "cedolini_email_attachments",
-    "estratti_email_attachments",
-    "quietanze_email_attachments",
-    "bonifici_email_attachments",
-    "verbali_email_attachments",
-    "certificati_email_attachments",
-    "cartelle_email_attachments",
-    "avvisi_bonari_email_attachments",
-    "dichiarazioni_iva_email_attachments",
-]
-
-
-async def _trova_documento_scaricabile(db, doc_id: str):
-    """Cerca il documento per id nelle collezioni inbox + allegati email."""
-    for coll in _COLLEZIONI_DOWNLOAD:
-        doc = await db[coll].find_one({"id": doc_id}, {"_id": 0})
-        if doc:
-            return doc
-    return None
-
-
 @router.get("/documento/{doc_id}/download")
-@handle_errors
 async def download_documento(doc_id: str):
-    """Scarica il file del documento da Drive/Supabase (architettura Drive/Supabase)."""
-    db = Database.get_db()
+    """Alias: l'originale si apre da `/api/originale/documento/{id}` (DRV-04).
 
-    doc = await _trova_documento_scaricabile(db, doc_id)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Documento non trovato")
+    Resta perche' i link scritti nei fogli Excel gia' inviati puntano qui.
+    """
+    from app.routers.originale import reindirizza_a_originale
 
-    # I documenti piccoli storici possono avere ancora il payload nel registro;
-    # gli originali fiscali nuovi restano invece su Drive e l'archivio conserva il
-    # riferimento verificabile. Il download resta sempre mediato da questo
-    # endpoint autenticato, mai da un URL Drive pubblico.
-    pdf_data = doc.get("pdf_data")
-    if not pdf_data:
-        drive_document_id = (
-            doc.get("drive_document_id")
-            or (doc.get("source_metadata") or {}).get("drive_document_id")
-        )
-        if not drive_document_id:
-            raise HTTPException(status_code=404, detail="PDF non disponibile nel catalogo Drive/Supabase")
-        try:
-            import asyncio
-            from app.services.drive_document_index import get_document
-            from app.services.fiscal_document_ingestion import download_drive_file
-            from app.services.drive_document_index import build_drive_service
-
-            drive_doc = await asyncio.to_thread(get_document, str(drive_document_id))
-            content = await asyncio.to_thread(
-                download_drive_file, build_drive_service(), drive_doc["drive_file_id"]
-            )
-        except (RuntimeError, ValueError, KeyError) as exc:
-            raise HTTPException(status_code=404, detail=f"Originale Drive non disponibile: {exc}") from exc
-        nome_sicuro = re.sub(r'[\r\n"]+', " ", doc.get("filename") or "documento.pdf").strip()
-        return StreamingResponse(
-            iter([content]), media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{nome_sicuro}"'},
-        )
-
-    def _decode_chunks():
-        # Niente più `base64.b64decode(pdf_data)` in un colpo solo: su file grandi
-        # teneva in RAM contemporaneamente stringa base64 + bytes decodificati,
-        # causando OOM-kill del processo (502 lato Render). Chunk multiplo di 4
-        # perché ogni blocco base64 deve decodificarsi autonomamente.
-        chunk_size = 1_048_576
-        for i in range(0, len(pdf_data), chunk_size):
-            yield base64.b64decode(pdf_data[i:i + chunk_size])
-
-    # Filename sanificato: alcuni allegati email hanno un a-capo nel nome
-    # ("Libro unico -\r\n 2026-...") e un header con CR/LF rende la risposta
-    # HTTP invalida → 502 dal gateway (bug segnalato 18/07/2026).
-    nome_sicuro = re.sub(r'[\r\n"]+', " ", doc.get("filename") or "documento.pdf").strip()
-    return StreamingResponse(
-        _decode_chunks(),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{nome_sicuro}"'}
-    )
+    return reindirizza_a_originale("documento", doc_id, scarica=True)
 
 
 @router.post("/documento/{doc_id}/processa")
@@ -3155,46 +2977,6 @@ async def censimento_doppioni_drive_csv(
     return StreamingResponse(
         iter(["\ufeff" + buffer.getvalue()]), media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="doppioni_gestionale.csv"'},
-    )
-
-
-@router.get("/atti-giudiziari/{atto_id}/file")
-@handle_errors
-async def scarica_atto_giudiziario(atto_id: str):
-    """L'originale di una sentenza, di un precetto o di una relata, com'e' stato caricato."""
-    from app.services.atti_giudiziari import contenuto
-
-    trovato = await contenuto(Database.get_db(), atto_id)
-    if not trovato:
-        raise HTTPException(status_code=404, detail="Originale dell'atto non disponibile")
-    dati, nome = trovato
-    nome_sicuro = re.sub(r"[^A-Za-z0-9._() -]+", "-", nome).strip("-") or "atto.pdf"
-    return Response(content=dati, media_type="application/pdf",
-                    headers={"Content-Disposition": f'inline; filename="{nome_sicuro}"'})
-
-
-@router.get("/originale")
-@handle_errors
-async def apri_originale_cartella_unica(
-    drive_file_id: Optional[str] = Query(None),
-    sha256: Optional[str] = Query(None),
-):
-    """«Vedi documento»: apre l'originale solo dalla cartella unica ELABORATE."""
-    from app.services import drive_cartella_unica as cu
-
-    if not drive_file_id and not sha256:
-        raise HTTPException(status_code=400, detail="Indicare drive_file_id oppure sha256")
-    trovato = await cu.originale(Database.get_db(), drive_file_id=drive_file_id, sha256=sha256)
-    if not trovato:
-        raise HTTPException(status_code=404, detail="Originale non presente nella cartella unica ELABORATE")
-    from urllib.parse import quote
-
-    nome_sicuro = re.sub(r'[\r\n"]+', " ", trovato["nome"] or "documento").strip()
-    nome_ascii = nome_sicuro.encode("ascii", "replace").decode("ascii")
-    return StreamingResponse(
-        iter([trovato["contenuto"]]), media_type=trovato["mime"] or "application/octet-stream",
-        headers={"Content-Disposition": (
-            f"inline; filename=\"{nome_ascii}\"; filename*=UTF-8''{quote(nome_sicuro)}")},
     )
 
 

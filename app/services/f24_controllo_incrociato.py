@@ -32,6 +32,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
+from app.services.originale_documento import url_originale
 from app.db_collections import (
     COLL_ESTRATTO_CONTO, COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_QUIETANZE_F24,
 )
@@ -74,7 +75,7 @@ TOLLERANZA_IMPORTO_CENTS = 1
 TOLLERANZA_AGGANCIO_CENTS = 0
 
 REGEX_MOVIMENTI_F24 = "I24|F24|AGENZIA.*ENTRATE"
-PDF_F24_URL = "/api/f24-riconciliazione/commercialista/{f24_id}/pdf"
+PDF_F24_URL = "/api/originale/f24/{f24_id}"
 
 _RE_NOME_QUIETANZA = re.compile(
     r"^(?P<data>\d{4}-\d{2}-\d{2})__F24_(?P<n>\d+)__quietanza_AE(?:__prot_(?P<prot>[0-9A-Za-z-]+))?",
@@ -988,8 +989,8 @@ def url_pdf_quietanza(q: Dict[str, Any]) -> Optional[str]:
     if not q.get("id"):
         return None
     if q.get("fonte") == COLL_FISCAL_DOCUMENTS:
-        return f"/api/fiscal/documents/{q['id']}/content"
-    return f"/api/f24-public/pdf/{q['id']}"
+        return url_originale("documento_fiscale", q["id"])
+    return url_originale("quietanza" if q.get("fonte") == "quietanze_f24" else "f24", q["id"])
 
 
 def data_invio_protocollo(protocollo: Any) -> Optional[str]:
@@ -1096,7 +1097,7 @@ def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
         "dilazione_inps": p.get("dilazione_inps"),
         # Pagamento di ravvedimento: gli F24 del commercialista che ravvede.
         "ravvedimento_di": [
-            {"f24_id": oid, "pdf_url": f"/api/f24-public/pdf/{oid}"} for oid in p.get("ravvedimento_di") or []
+            {"f24_id": oid, "pdf_url": url_originale("f24", oid)} for oid in p.get("ravvedimento_di") or []
         ],
     }
 

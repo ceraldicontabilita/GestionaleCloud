@@ -5,7 +5,6 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
-from pathlib import Path
 import io
 import base64
 import zipfile
@@ -14,7 +13,6 @@ import re as _re_zip
 from app.database import Database, Collections
 from app.db_collections import COLL_BONIFICI_TRANSFERS
 from app.document_repository import metadata_projection
-from .common import UPLOAD_DIR
 from .classification import classifica_destinazione_dipendente
 
 
@@ -158,77 +156,11 @@ async def delete_transfer(transfer_id: str) -> Dict[str, bool]:
     return {'deleted': True}
 
 
-async def get_bonifico_pdf(transfer_id: str) -> StreamingResponse:
-    """Restituisce il PDF originale del bonifico se disponibile."""
-    import base64
-    from fastapi.responses import Response
-    
-    db = Database.get_db()
-    
-    bonifico = await db.bonifici_transfers.find_one({"id": transfer_id}, {"_id": 0})
-    if not bonifico:
-        raise HTTPException(status_code=404, detail="Bonifico non trovato")
-    
-    pdf_bytes = None
-    source_file = bonifico.get("source_file", "")
-    job_id = bonifico.get("job_id", "")
-    
-    # 1. Cerca pdf_data nel documento
-    if bonifico.get("pdf_data"):
-        pdf_bytes = base64.b64decode(bonifico["pdf_data"])
-    
-    # 2. Cerca nel file system
-    if not pdf_bytes and source_file:
-        possible_paths = [
-            UPLOAD_DIR / job_id / source_file,
-            UPLOAD_DIR / source_file,
-            Path(f"/tmp/bonifici_uploads/{job_id}/{source_file}"),
-        ]
-        
-        for p in possible_paths:
-            if p.exists():
-                with open(p, "rb") as f:
-                    pdf_bytes = f.read()
-                # Salva nel database per le prossime volte
-                pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-                await db.bonifici_transfers.update_one(
-                    {"id": transfer_id},
-                    {"$set": {"pdf_data": pdf_b64}}
-                )
-                break
-    
-    # 3. Cerca in bonifici_email_attachments
-    if not pdf_bytes:
-        attachment = await db["bonifici_email_attachments"].find_one(
-            {"filename": source_file, "associato": False},
-            {"pdf_data": 1, "filename": 1}
-        )
-        if attachment and attachment.get("pdf_data"):
-            pdf_bytes = base64.b64decode(attachment["pdf_data"])
-            # Copia nel bonifico
-            await db.bonifici_transfers.update_one(
-                {"id": transfer_id},
-                {"$set": {"pdf_data": attachment["pdf_data"]}}
-            )
-            # Marca come associato
-            await db["bonifici_email_attachments"].update_one(
-                {"id": attachment.get("id")},
-                {"$set": {"associato": True, "documento_associato_id": transfer_id}}
-            )
-    
-    if not pdf_bytes:
-        raise HTTPException(
-            status_code=404, 
-            detail="Il file PDF originale non è più disponibile."
-        )
-    
-    filename = source_file or f"bonifico_{transfer_id}.pdf"
-    
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'}
-    )
+async def get_bonifico_pdf(transfer_id: str):
+    """Alias: l'originale si apre da `/api/originale/bonifico/{id}` (DRV-04)."""
+    from app.routers.originale import reindirizza_a_originale
+
+    return reindirizza_a_originale("bonifico", transfer_id)
 
 
 async def bulk_delete(job_id: Optional[str] = None) -> Dict[str, int]:

@@ -4,7 +4,7 @@ import { Badge, Button, PageHeader, PageLoader, Tabs } from '../components/ds';
 import RegistroVersamenti from '../components/tributi/RegistroVersamenti';
 import Scadenzario from '../components/tributi/Scadenzario';
 import TerminiRecupero from '../components/tributi/TerminiRecupero';
-import DocumentViewerModal from '../components/DocumentViewerModal';
+import { VisoreOriginale } from '../components/ApriOriginale';
 import { COLORS, FONT, formatEuro, useIsMobile } from '../lib/utils';
 import api from '../api';
 
@@ -387,7 +387,7 @@ export default function Tributi() {
       </>)}
 
       {pdf && (
-        <DocumentViewerModal title={pdf.titolo} fetchUrl={pdf.url} documentType="documento_fiscale" onClose={() => setPdf(null)} />
+        <VisoreOriginale title={pdf.titolo} url={pdf.url} documentType="documento_fiscale" onClose={() => setPdf(null)} />
       )}
     </div>
   );

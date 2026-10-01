@@ -17,6 +17,7 @@ Configurazione (variabili d'ambiente):
                      la chat ricade sul motore a parole chiave esistente)
   ANTHROPIC_MODEL    opzionale, default "claude-sonnet-5"
 """
+from app.services.originale_documento import url_originale
 import json
 import logging
 import os
@@ -670,7 +671,7 @@ def _documenti_citati_da_tool(tool_name: str, risultato: Any) -> List[Dict[str, 
             per = "/".join(str(r.get(k)) for k in ("mese", "anno") if r.get(k))
             out.append({"tipo": "cedolino", "id": rid,
                         "etichetta": f"Cedolino {nome} {per}".strip(),
-                        "download_url": f"/api/cedolini/{rid}/pdf",
+                        "download_url": url_originale("cedolino", rid),
                         "page_url": "/riconciliazione/stipendi"})
         elif tool_name == "cerca_fatture":
             num = r.get("invoice_number") or ""
@@ -684,12 +685,12 @@ def _documenti_citati_da_tool(tool_name: str, risultato: Any) -> List[Dict[str, 
             # (data_scadenza), non 'data_versamento' che restava sempre vuoto.
             out.append({"tipo": "f24", "id": rid,
                         "etichetta": f"F24 {r.get('data_scadenza') or ''}".strip(),
-                        "download_url": f"/api/f24-public/pdf/{rid}",
+                        "download_url": url_originale("f24", rid),
                         "page_url": "/riconciliazione/f24"})
         elif tool_name == "cerca_documenti":
             out.append({"tipo": "documento", "id": rid,
                         "etichetta": r.get("filename") or "Documento",
-                        "download_url": f"/api/documenti/documento/{rid}/download",
+                        "download_url": url_originale("documento", rid),
                         "page_url": "/documenti"})
     return out
 

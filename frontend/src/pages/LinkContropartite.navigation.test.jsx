@@ -256,7 +256,7 @@ describe('Riconciliazione banca → fattura / prima nota, F24 → quietanza / ba
           documento_collegato: {
             quietanza_id: 'Q-1', protocollo_quietanza: '26010112345', quietanza_fonte: 'fiscal_documents',
             quietanza_url: '/api/fiscal/documents/Q-1/content',
-            f24_pdf_url: '/api/f24-public/pdf/f24-a',
+            f24_pdf_url: '/api/originale/f24/f24-a',
             movimento_bancario_id: 'EC-2026-02-16-1500.00-aa', movimenti_bancari_ids: ['EC-2026-02-16-1500.00-aa'],
             pagamento_verificato_banca: true, data_pagamento_effettivo: '2026-02-16',
           },

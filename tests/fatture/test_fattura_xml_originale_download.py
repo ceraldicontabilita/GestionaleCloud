@@ -5,15 +5,15 @@ grezzo di una fattura, nemmeno quando era salvato nel database, e il
 modale "vedi fattura" poteva mostrare silenziosamente un riepilogo
 ricostruito senza segnalarlo.
 
-Copre: app.routers.fatture_module.crud.download_xml_originale (nuovo
-endpoint) e il banner di avviso in generate_invoice_html quando si mostra
+Copre: il lettore `fattura` del servizio unico `originale_documento` (DRV-04,
+era `download_xml_originale`) e il banner di avviso in generate_invoice_html quando si mostra
 il fallback ricostruito invece dell'originale."""
 import asyncio
 import tempfile
 import os
 
 import pytest
-from fastapi import HTTPException
+from app.services import originale_documento as svc
 
 from app.routers.fatture_module import crud as crud_mod
 from app.routers.fatture_module.helpers import generate_invoice_html
@@ -46,6 +46,13 @@ class _FakeDb:
         return self.collections.setdefault(name, _FakeCollection())
 
 
+def _apri(ident):
+    """L'originale XML della fattura dal servizio unico (stessa risoluzione della vista ASSO)."""
+    from app.database import Database
+
+    return _run(svc.apri(Database.get_db(), "fattura", ident))
+
+
 def _patch_db(monkeypatch, db):
     monkeypatch.setattr(crud_mod.Database, "get_db", staticmethod(lambda: db))
 
@@ -53,10 +60,10 @@ def _patch_db(monkeypatch, db):
 def test_download_xml_originale_404_se_fattura_non_esiste(monkeypatch):
     _patch_db(monkeypatch, _FakeDb())
 
-    with pytest.raises(HTTPException) as exc:
-        _run(crud_mod.download_xml_originale("non-esiste"))
-    assert exc.value.status_code == 404
-    assert "non trovata" in exc.value.detail.lower()
+    with pytest.raises(svc.DocumentoNonTrovato) as exc:
+        _apri("non-esiste")
+    assert exc.value.stato == 404
+    assert "non trovata" in exc.value.message.lower()
 
 
 def test_download_xml_originale_404_se_xml_non_salvato(monkeypatch):
@@ -64,10 +71,10 @@ def test_download_xml_originale_404_se_xml_non_salvato(monkeypatch):
     db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "20"}]
     _patch_db(monkeypatch, db)
 
-    with pytest.raises(HTTPException) as exc:
-        _run(crud_mod.download_xml_originale("fatt-1"))
-    assert exc.value.status_code == 404
-    assert "non disponibile" in exc.value.detail.lower()
+    with pytest.raises(svc.OriginaleNonDisponibile) as exc:
+        _apri("fatt-1")
+    assert exc.value.stato == 404
+    assert "non disponibile" in exc.value.message.lower()
 
 
 def test_download_xml_originale_ritorna_i_bytes_xml_raw(monkeypatch):
@@ -76,11 +83,11 @@ def test_download_xml_originale_ritorna_i_bytes_xml_raw(monkeypatch):
     db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "20", "xml_raw": xml_content}]
     _patch_db(monkeypatch, db)
 
-    res = _run(crud_mod.download_xml_originale("fatt-1"))
+    res = _apri("fatt-1")
 
-    assert res.body.decode("utf-8") == xml_content
-    assert res.media_type == "application/xml"
-    assert "fattura_20.xml" in res.headers["content-disposition"]
+    assert res.contenuto.decode("utf-8") == xml_content
+    assert res.mime == "application/xml"
+    assert res.nome == "fattura_20.xml"
 
 
 def test_download_xml_originale_normalizza_dichiarazione_encoding_a_utf8(monkeypatch):
@@ -102,13 +109,13 @@ def test_download_xml_originale_normalizza_dichiarazione_encoding_a_utf8(monkeyp
     db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "20", "xml_raw": xml_content}]
     _patch_db(monkeypatch, db)
 
-    res = _run(crud_mod.download_xml_originale("fatt-1"))
+    res = _apri("fatt-1")
 
-    assert b'encoding="ISO-8859-1"' not in res.body
-    assert b'encoding="UTF-8"' in res.body
+    assert b'encoding="ISO-8859-1"' not in res.contenuto
+    assert b'encoding="UTF-8"' in res.contenuto
     # I bytes devono essere realmente decodificabili come UTF-8 (coerenti
     # con quanto dichiarato) e col testo accentato intatto.
-    assert "Società Àccentata" in res.body.decode("utf-8")
+    assert "Società Àccentata" in res.contenuto.decode("utf-8")
 
 
 def test_download_xml_originale_fattura_soft_deleted_da_404(monkeypatch):
@@ -124,9 +131,9 @@ def test_download_xml_originale_fattura_soft_deleted_da_404(monkeypatch):
     }]
     _patch_db(monkeypatch, db)
 
-    with pytest.raises(HTTPException) as exc:
-        _run(crud_mod.download_xml_originale("fatt-1"))
-    assert exc.value.status_code == 404
+    with pytest.raises(svc.DocumentoNonTrovato) as exc:
+        _apri("fatt-1")
+    assert exc.value.stato == 404
 
 
 def test_download_xml_originale_fattura_entity_status_deleted_da_404(monkeypatch):
@@ -138,9 +145,9 @@ def test_download_xml_originale_fattura_entity_status_deleted_da_404(monkeypatch
     }]
     _patch_db(monkeypatch, db)
 
-    with pytest.raises(HTTPException) as exc:
-        _run(crud_mod.download_xml_originale("fatt-1"))
-    assert exc.value.status_code == 404
+    with pytest.raises(svc.DocumentoNonTrovato) as exc:
+        _apri("fatt-1")
+    assert exc.value.stato == 404
 
 
 def test_download_xml_originale_sanitizza_numero_fattura_nel_filename(monkeypatch):
@@ -157,13 +164,11 @@ def test_download_xml_originale_sanitizza_numero_fattura_nel_filename(monkeypatc
     }]
     _patch_db(monkeypatch, db)
 
-    res = _run(crud_mod.download_xml_originale("fatt-1"))
+    res = _apri("fatt-1")
 
-    disposition = res.headers["content-disposition"]
-    assert "\r" not in disposition
-    assert "\n" not in disposition
-    assert disposition.count('"') == 2  # solo le due virgolette del filename="...", nessuna iniettata
-    assert "evil" in disposition
+    # il nome file non porta mai CR/LF o virgolette: l'intestazione la scrive il router da questo nome
+    assert "\r" not in res.nome and "\n" not in res.nome and '"' not in res.nome
+    assert "evil" in res.nome
 
 
 def test_download_xml_originale_p7m_binario_non_estraibile_da_404_non_binario(monkeypatch):
@@ -180,10 +185,10 @@ def test_download_xml_originale_p7m_binario_non_estraibile_da_404_non_binario(mo
         db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "20", "xml_file_path": path}]
         _patch_db(monkeypatch, db)
 
-        with pytest.raises(HTTPException) as exc:
-            _run(crud_mod.download_xml_originale("fatt-1"))
-        assert exc.value.status_code == 404
-        assert "non disponibile" in exc.value.detail.lower()
+        with pytest.raises(svc.OriginaleNonDisponibile) as exc:
+            _apri("fatt-1")
+        assert exc.value.stato == 404
+        assert "non disponibile" in exc.value.message.lower()
     finally:
         os.unlink(path)
 
@@ -200,9 +205,9 @@ def test_download_xml_originale_p7m_con_xml_embedded_lo_estrae(monkeypatch):
         db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "20", "xml_file_path": path}]
         _patch_db(monkeypatch, db)
 
-        res = _run(crud_mod.download_xml_originale("fatt-1"))
+        res = _apri("fatt-1")
 
-        assert res.body == xml_content
+        assert res.contenuto == xml_content
     finally:
         os.unlink(path)
 
