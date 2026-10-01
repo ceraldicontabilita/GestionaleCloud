@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
@@ -94,5 +95,29 @@ describe('Finanziaria', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Dati finanziari non disponibili');
     expect(screen.getByRole('alert')).toHaveTextContent('servizio non disponibile');
+  });
+
+  it('dice fino a quando e aggiornato ogni conto e avvisa se manca un estratto conto', async () => {
+    api.get.mockResolvedValue({ data: {
+      ...summary,
+      cassa: { ...summary.cassa, aggiornato_al: '2026-09-18' },
+      banca: { ...summary.banca, aggiornato_al: '2026-09-28' },
+      avvisi_aggiornamento: [{
+        conto: 'banca',
+        messaggio: "Banca BPM: l'ultimo estratto conto arriva al 31/03/2026.",
+        azione: { etichetta: 'Carica estratto conto', percorso: '/documenti/import' },
+      }],
+    } });
+    render(<MemoryRouter><Finanziaria /></MemoryRouter>);
+
+    expect(await screen.findByTestId('finanziaria-aggiornato-cassa')).toHaveTextContent('aggiornato al 18/09/2026');
+    expect(screen.getByTestId('finanziaria-aggiornato-banca')).toHaveTextContent('aggiornato al 28/09/2026');
+    expect(screen.getByTestId('finanziaria-avviso-banca')).toHaveTextContent('31/03/2026');
+    expect(screen.getByRole('link', { name: 'Carica estratto conto' })).toHaveAttribute('href', '/documenti/import');
+  });
+
+  it('senza data dell ultimo movimento lo dice, non la inventa', async () => {
+    render(<Finanziaria />);
+    expect(await screen.findByTestId('finanziaria-aggiornato-cassa')).toHaveTextContent('data ultimo movimento non nota');
   });
 });

@@ -16,6 +16,7 @@ chiamanti (FE, interni, test): rimosse. Storia completa in git.
 from fastapi import APIRouter, Query
 
 from app.database import Database
+from app.middleware.performance import istantanea
 from app.services.liquidita_service import calcola_liquidita
 
 router = APIRouter()
@@ -28,6 +29,7 @@ router = APIRouter()
 # ============================================
 
 @router.get("/disponibilita-liquide")
+@istantanea(ttl=120, max_eta=1800, persistente=True)
 async def get_disponibilita_liquide(
     anno: int = Query(..., description="Anno di riferimento"),
     data_rif: str | None = Query(None, description="Data ISO (YYYY-MM-DD) per saldo al giorno; default=oggi"),

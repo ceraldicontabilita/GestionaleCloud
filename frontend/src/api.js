@@ -32,6 +32,9 @@ export const ATTESE_RITENTATIVI_MS = [2000, 4000, 8000, 12000, 16000, 20000];
 const ID_AVVISO_RIAVVIO = 'riavvio-servizio';
 
 export function eErroreTransitorio(error) {
+  // Una richiesta annullata dalla pagina (si e' cambiata schermata) non e' un
+  // riavvio del servizio: ritentarla mostrava «si sta aggiornando» a vuoto.
+  if (axios.isCancel(error) || error?.code === 'ERR_CANCELED') return false;
   const status = error?.response?.status;
   return !error?.response || status === 502 || status === 503 || status === 504;
 }

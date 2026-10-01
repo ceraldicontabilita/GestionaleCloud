@@ -205,3 +205,94 @@ def test_il_server_di_collaudo_ha_le_stesse_istantanee_della_produzione():
     radice = Path(__file__).resolve().parents[2]
     for sorgente in ("app/main.py", "scripts/e2e_distruttivo_server.py"):
         assert "app.add_middleware(IstantaneeMiddleware)" in (radice / sorgente).read_text(encoding="utf-8"), sorgente
+
+
+# --- Copia salvata (01/10/2026): sopravvive al riavvio, una scrittura la invalida -----------
+
+class _StatoFinto:
+    """Il minimo di ``sistema_stato``: find_one e update_one per chiave."""
+
+    def __init__(self):
+        self.documenti = {}
+
+    async def find_one(self, filtro, _proiezione=None):
+        return self.documenti.get(filtro["chiave"])
+
+    async def update_one(self, filtro, aggiornamento, upsert=False):
+        self.documenti[filtro["chiave"]] = dict(aggiornamento["$set"])
+
+
+def _con_stato(monkeypatch):
+    stato = _StatoFinto()
+    monkeypatch.setattr(performance, "_archivio_stato", lambda: stato)
+    monkeypatch.setattr(performance, "_svuotate_at_iso", "")
+    return stato
+
+
+def test_dopo_un_riavvio_si_serve_la_copia_salvata_e_si_ricalcola(monkeypatch):
+    stato = _con_stato(monkeypatch)
+    _pulisci()
+    valori = iter([{"n": 1}, {"n": 2}])
+
+    @istantanea(ttl=60, persistente=True)
+    async def riepilogo_persistente(anno: int):
+        await asyncio.sleep(0.01)
+        return next(valori)
+
+    async def scenario():
+        prima = await riepilogo_persistente(anno=2026)
+        await asyncio.sleep(0.05)
+        assert len(stato.documenti) == 1
+        await performance.cache.clear_all()  # il riavvio: la memoria e' vuota
+        dopo_riavvio = await riepilogo_persistente(anno=2026)
+        await asyncio.sleep(0.05)
+        rinfrescata = await riepilogo_persistente(anno=2026)
+        return prima, dopo_riavvio, rinfrescata
+
+    prima, dopo, rinfrescata = _run(scenario())
+    assert prima["n"] == 1 and prima["istantanea"]["in_aggiornamento"] is False
+    # Subito la copia di prima, dichiarata «in aggiornamento» e venuta dalla copia salvata...
+    assert dopo["n"] == 1
+    assert dopo["istantanea"]["in_aggiornamento"] is True
+    assert dopo["istantanea"]["da_copia_salvata"] is True
+    # ...e il ricalcolo in sottofondo la sostituisce.
+    assert rinfrescata["n"] == 2
+
+
+def test_una_scrittura_invalida_la_copia_salvata(monkeypatch):
+    stato = _con_stato(monkeypatch)
+    _pulisci()
+    valori = iter([{"n": 1}, {"n": 2}])
+
+    @istantanea(ttl=60, persistente=True)
+    async def riepilogo_invalidato(anno: int):
+        return next(valori)
+
+    async def scenario():
+        await riepilogo_invalidato(anno=2026)
+        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.01)
+        await performance.svuota_istantanee()  # l'utente salva qualcosa
+        return await riepilogo_invalidato(anno=2026)
+
+    dopo_scrittura = _run(scenario())
+    # Niente copia di prima della scrittura: si ricalcola e si aspetta il dato vero.
+    assert dopo_scrittura["n"] == 2
+    assert "da_copia_salvata" not in dopo_scrittura["istantanea"]
+    assert stato is not None
+
+
+def test_senza_persistente_non_si_salva_niente(monkeypatch):
+    stato = _con_stato(monkeypatch)
+    _pulisci()
+
+    @istantanea(ttl=60)
+    async def riepilogo_solo_memoria():
+        return {"n": 1}
+
+    async def scenario():
+        await riepilogo_solo_memoria()
+        await asyncio.sleep(0.05)
+
+    _run(scenario())
+    assert stato.documenti == {}

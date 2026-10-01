@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from app.database import Database
+from app.middleware.performance import istantanea
 from app.services.verifica_coerenza import (
     VerificaCoerenza, 
     esegui_verifica_completa,
@@ -129,6 +130,7 @@ async def widget_discrepanze(
 
 
 @router.get("/confronto-iva-completo/{anno}")
+@istantanea(ttl=120, max_eta=1800, persistente=True)
 async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
     """
     Confronto completo IVA per tutto l'anno.

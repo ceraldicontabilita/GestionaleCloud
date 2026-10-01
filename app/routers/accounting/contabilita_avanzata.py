@@ -17,6 +17,7 @@ import io
 
 
 from app.database import Database
+from app.middleware.performance import istantanea
 from app.services.categorizzazione_contabile import (
     get_categorizzatore,
     categorizza_fattura_completa,
@@ -185,6 +186,7 @@ async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str)
 
 @router.get("/calcolo-imposte")
 @handle_errors
+@istantanea(ttl=120, max_eta=1800, persistente=True)
 async def calcola_imposte_realtime(
     regione: str = Query("default", description="Regione per aliquota IRAP"),
     anno: int = Query(default=None, description="Anno fiscale (default: tutti)")
@@ -266,6 +268,7 @@ async def calcola_imposte_realtime(
 
 @router.get("/bilancio-dettagliato")
 @handle_errors
+@istantanea(ttl=120, max_eta=1800, persistente=True)
 async def get_bilancio_dettagliato(
     anno: Optional[int] = Query(None, ge=2000, le=2100, description="Anno; vuoto = tutto il registro"),
 ) -> Dict[str, Any]:
@@ -469,6 +472,7 @@ async def get_aliquote_irap() -> Dict[str, Any]:
 
 @router.get("/statistiche-categorizzazione")
 @handle_errors
+@istantanea(ttl=120, max_eta=1800, persistente=True)
 async def get_statistiche_categorizzazione() -> Dict[str, Any]:
     """
     Statistiche sulla categorizzazione delle fatture.

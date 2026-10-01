@@ -6,6 +6,7 @@ from uuid import uuid4
 import logging
 
 from app.database import Database
+from app.middleware.performance import istantanea
 from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
     appartenenza_conto_bpm,
@@ -25,6 +26,7 @@ router = APIRouter()
 
 @router.get("/summary", summary="Get financial summary")
 @handle_errors
+@istantanea(ttl=120, max_eta=1800, persistente=True)
 async def get_financial_summary(
     anno: Optional[int] = Query(None, description="Anno di riferimento")
 ) -> Dict[str, Any]:
@@ -109,6 +111,73 @@ async def get_financial_summary(
         riporto_cassa = saldi_cassa["saldo_precedente"]
         riporto_banca = saldi_banca["saldo_precedente"]
         
+        # «Aggiornato al»: l'ultimo movimento che regge il saldo di ogni conto, e
+        # l'avviso se la fonte che lo dovrebbe alimentare e' ferma (estratto
+        # conto, corrispettivi, SumUp). Un saldo senza la sua data sembra certo.
+        async def _ultima_data_conto(collezione, filtro):
+            try:
+                r = await db[collezione].aggregate([
+                    {"$match": filtro},
+                    {"$group": {"_id": None, "ultima": {"$max": "$data"}}},
+                ]).to_list(1)
+            except Exception as exc:  # noqa: BLE001 - senza la data resta «non nota», mai inventata
+                logger.warning("Finanziaria: ultima data di %s non letta (%s: %s)",
+                               collezione, type(exc).__name__, exc)
+                return None
+            return str(r[0]["ultima"])[:10] if r and r[0].get("ultima") else None
+
+        cassa_aggiornata = await _ultima_data_conto(
+            "prima_nota_cassa", {"$and": [prima_nota_match_cassa, {"data": date_range}]})
+        banca_aggiornata = await _ultima_data_conto(
+            "prima_nota_banca", {"$and": [prima_nota_match_banca, {"data": date_range},
+                                          appartenenza_conto_bpm()]})
+        sumup_aggiornata = await _ultima_data_conto(
+            "prima_nota_banca", {"$and": [prima_nota_match_banca, {"data": date_range},
+                                          {"conto_contabile": conti_pos.CONTO_SUMUP_MASTERCARD}]})
+        try:
+            from app.services.fonti_ferme import GIORNI_TOLLERATI, stato_fonti
+            fonti = {f["fonte"]: f for f in await stato_fonti(db)}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Finanziaria: stato delle fonti non letto (%s: %s)", type(exc).__name__, exc)
+            fonti, GIORNI_TOLLERATI = {}, 7
+
+        def _it(iso):
+            return f"{iso[8:10]}/{iso[5:7]}/{iso[0:4]}" if iso else "—"
+
+        avvisi_aggiornamento = []
+        estratto = fonti.get("estratto_conto") or {}
+        if estratto.get("ferma"):
+            avvisi_aggiornamento.append({
+                "conto": "banca",
+                "messaggio": (
+                    f"Banca BPM: l'ultimo estratto conto arriva al {_it(estratto.get('ultima_data'))} "
+                    f"({estratto.get('giorni_fermi')} giorni fa). Il saldo può non comprendere i "
+                    "movimenti successivi: carica l'estratto conto aggiornato."
+                ),
+                "azione": {"etichetta": "Carica estratto conto", "percorso": "/documenti/import"},
+            })
+        corrispettivi = fonti.get("corrispettivi") or {}
+        if corrispettivi.get("ferma"):
+            avvisi_aggiornamento.append({
+                "conto": "cassa",
+                "messaggio": (
+                    f"Cassa: gli incassi dei corrispettivi arrivano al {_it(corrispettivi.get('ultima_data'))}. "
+                    "Il saldo di cassa non comprende i giorni dopo: carica gli XML dei corrispettivi."
+                ),
+                "azione": {"etichetta": "Carica corrispettivi", "percorso": "/documenti/import"},
+            })
+        if sumup_aggiornata:
+            giorni_sumup = (date.today() - date.fromisoformat(sumup_aggiornata)).days
+            if giorni_sumup > GIORNI_TOLLERATI:
+                avvisi_aggiornamento.append({
+                    "conto": "sumup",
+                    "messaggio": (
+                        f"Mastercard SumUp: l'ultimo movimento è del {_it(sumup_aggiornata)} "
+                        f"({giorni_sumup} giorni fa). Carica l'estratto conto SumUp per aggiornare il saldo."
+                    ),
+                    "azione": {"etichetta": "Carica estratto SumUp", "percorso": "/documenti/import"},
+                })
+
         # ============ IVA DAI CORRISPETTIVI (DEBITO) ============
         corr_pipeline = [
             {"$match": {
@@ -241,6 +310,7 @@ async def get_financial_summary(
             "flow_balance": variazione_finanziaria,
             "available_balance": saldo_totale,
             "opening_balance": riporto_totale,
+            "avvisi_aggiornamento": avvisi_aggiornamento,
             "financial_basis": "prima_nota_cassa_banca",
             "financial_note": (
                 "Entrate e uscite escludono i trasferimenti interni. La disponibilita "
@@ -251,6 +321,7 @@ async def get_financial_summary(
                 "uscite": round(cassa_uscite, 2),
                 "riporto": round(riporto_cassa, 2),
                 "saldo": saldi_cassa["saldo"],
+                "aggiornato_al": cassa_aggiornata,
                 "nota_flussi": "Entrate/uscite escludono i trasferimenti interni; il saldo li include.",
             },
             # Solo Banca BPM (19.01.01 e righe storiche senza conto): saldo di
@@ -260,6 +331,8 @@ async def get_financial_summary(
                 "uscite": round(banca_uscite, 2),  # Include già salari e F24
                 "riporto": round(riporto_banca, 2),
                 "saldo": saldi_banca["saldo"],
+                "aggiornato_al": banca_aggiornata,
+                "ultimo_estratto_conto": estratto.get("ultima_data"),
                 "conto": conti_pos.CONTO_BPM,
                 "fonte": "prima_nota_banca",
                 "saldo_certificato": False,
@@ -270,6 +343,7 @@ async def get_financial_summary(
                 "uscite": round(sumup_uscite, 2),
                 "riporto": 0.0,
                 "saldo": saldi_sumup["saldo"],
+                "aggiornato_al": sumup_aggiornata,
                 "conto": conti_pos.CONTO_SUMUP_MASTERCARD,
                 "fonte": "prima_nota_banca",
                 "saldo_certificato": False,

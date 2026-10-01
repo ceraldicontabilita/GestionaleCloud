@@ -79,3 +79,46 @@ def test_summary_non_inventa_crediti_clienti(monkeypatch):
     assert result["receivables"] is None
     assert result["receivables_available"] is False
     assert "fonte canonica" in result["receivables_note"]
+
+
+def test_summary_dice_fino_a_quando_e_aggiornato_e_avvisa_se_manca_l_estratto(monkeypatch):
+    from app.middleware import performance
+    from app.services import fonti_ferme
+
+    _run(performance.cache.clear_all())
+    db = ClientArchivioMemoria()["test_finanziaria_aggiornato"]
+    _run(db["prima_nota_cassa"].insert_many([
+        {"data": "2026-09-18", "tipo": "entrata", "importo": 10.0,
+         "categoria": "Corrispettivi", "source": "manuale", "status": "active"},
+        {"data": "2026-09-10", "tipo": "uscita", "importo": 5.0,
+         "categoria": "Fatture", "source": "manuale", "status": "active"},
+    ]))
+
+    async def saldi(_db, _collection, _query, _anno):
+        return {"saldo_precedente": 0.0, "saldo": 5.0}
+
+    async def saldi_per_conto(_db, _data, _anno):
+        zero = {"saldo_precedente": 0.0, "saldo": 0.0}
+        return {"bpm": zero, "sumup": zero, "altri": zero, "totale": 0.0}
+
+    async def fonti(_db, **_):
+        return [
+            {"fonte": "estratto_conto", "ultima_data": "2026-03-31", "giorni_fermi": 183, "ferma": True},
+            {"fonte": "corrispettivi", "ultima_data": "2026-09-18", "giorni_fermi": 1, "ferma": False},
+        ]
+
+    monkeypatch.setattr(finanziaria.Database, "get_db", staticmethod(lambda: db))
+    monkeypatch.setattr(finanziaria, "aggrega_saldo_prima_nota", saldi)
+    monkeypatch.setattr(finanziaria, "saldi_banca_per_conto", saldi_per_conto)
+    monkeypatch.setattr(fonti_ferme, "stato_fonti", fonti)
+
+    result = _run(finanziaria.get_financial_summary(anno=2026))
+
+    assert result["cassa"]["aggiornato_al"] == "2026-09-18"
+    # Nessun movimento BPM in Prima Nota: la data non si inventa.
+    assert result["banca"]["aggiornato_al"] is None
+    assert result["banca"]["ultimo_estratto_conto"] == "2026-03-31"
+    avvisi = {a["conto"]: a for a in result["avvisi_aggiornamento"]}
+    assert set(avvisi) == {"banca"}
+    assert "31/03/2026" in avvisi["banca"]["messaggio"]
+    assert avvisi["banca"]["azione"]["percorso"] == "/documenti/import"
