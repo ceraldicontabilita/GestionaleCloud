@@ -37,6 +37,8 @@ from .base import (
     get_fatture_fornitore, get_dati_da_fatture,
     anteprima_magazzino_fornitore, imposta_magazzino_fornitore, allinea_magazzino_da_lotti,
     applica_metodo_fornitore_dal, stato_metodo_fornitore_dal,
+    get_fornitori_duplicati, get_fornitori_da_decidere,
+    merge_fornitori_duplicati, auto_merge_fornitori_duplicati,
 )
 
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
@@ -72,6 +74,11 @@ router.add_api_route("/filtered", list_suppliers_filtered, methods=["GET"])
 router.add_api_route("/stats", get_suppliers_stats, methods=["GET"])
 router.add_api_route("/scadenze", get_payment_deadlines, methods=["GET"])
 router.add_api_route("/magazzino/allinea", allinea_magazzino_da_lotti, methods=["POST"])
+# Doppioni (admin): statiche, prima di `/{supplier_id}` che altrimenti le prende per un id.
+router.add_api_route("/duplicati", get_fornitori_duplicati, methods=["GET"])
+router.add_api_route("/duplicati/da-decidere", get_fornitori_da_decidere, methods=["GET"])
+router.add_api_route("/duplicati/merge", merge_fornitori_duplicati, methods=["POST"])
+router.add_api_route("/duplicati/auto-merge", auto_merge_fornitori_duplicati, methods=["POST"])
 
 # === ROTTE DINAMICHE (devono venire DOPO le statiche) ===
 router.add_api_route("/ricerca-iban-singolo/{supplier_id}", ricerca_iban_singolo_web, methods=["POST"])

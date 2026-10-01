@@ -326,3 +326,14 @@ def test_import_aggancia_la_stessa_piva_con_prefisso_e_ignora_gli_unificati(db):
     res = _run(ensure_supplier_exists(db, _fattura(PIVA_TOP, "TOP DISTRBUZIONE SRL")))
     assert res["supplier_exists"] is True and res["supplier_created"] is False
     assert res["supplier_id"] == "nuovo"
+
+
+def test_le_rotte_dei_doppioni_sono_registrate_prima_di_supplier_id():
+    """Senza la registrazione nel pacchetto `/duplicati` finiva su `/{supplier_id}` (404 «Fornitore non trovato»)."""
+    from app.routers.suppliers_module import router
+
+    percorsi = [(r.path, tuple(sorted(r.methods))) for r in router.routes]
+    for voce in [("/duplicati", ("GET",)), ("/duplicati/da-decidere", ("GET",)),
+                 ("/duplicati/merge", ("POST",)), ("/duplicati/auto-merge", ("POST",))]:
+        assert voce in percorsi
+        assert percorsi.index(voce) < percorsi.index(("/{supplier_id}", ("GET",)))
