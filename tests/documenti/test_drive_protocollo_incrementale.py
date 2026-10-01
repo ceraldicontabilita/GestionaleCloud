@@ -294,7 +294,7 @@ def test_riallinea_solo_i_documenti_il_cui_file_e_ora_nel_protocollo(monkeypatch
         ]),
     )
     esito = _run(modulo.riallinea_prove(db, conn=conn))
-    assert esito == {"esito": "ok", "senza_origine": 3, "con_file_ora_presente": 2, "riallineati": 2}
+    assert esito == {"esito": "ok", "senza_origine": 3, "gia_provati": 0, "con_file_ora_presente": 2, "riallineati": 2}
     assert [f for f, _ in db["quietanze_f24"].aggiornati] == [{"_id": "q1-riga"}]       # per _id, non per il campo id
     assert [f for f, _ in db["cedolini"].aggiornati] == [{"_id": "c1-riga"}]
     nome, valore = next(iter(db["quietanze_f24"].aggiornati[0][1]["$set"].items()))
@@ -307,7 +307,7 @@ def test_riallinea_niente_se_nessun_documento_e_senza_origine(monkeypatch):
     conn = ConnFinta()
     _configura(monkeypatch, conn)
     db = _Db(quietanze_f24=_Coll([]), cedolini=_Coll([]))
-    assert _run(modulo.riallinea_prove(db, conn=conn)) == {"esito": "ok", "senza_origine": 0, "riallineati": 0}
+    assert _run(modulo.riallinea_prove(db, conn=conn)) == {"esito": "ok", "senza_origine": 0, "gia_provati": 0, "riallineati": 0}
     assert not any("protocollo_drive" in s for s in conn.sql)                      # nemmeno una query al protocollo
 
 
@@ -411,3 +411,29 @@ def test_riallinea_con_il_motore_documentale_vero_filtro_annidato_e_chiave_di_ri
     assert esito["senza_origine"] == 1 and esito["riallineati"] == 1
     assert "prova_riallineata_il" in riga and riga["pdf_data"] == "AAAA"       # il payload non si perde
     assert "prova_riallineata_il" not in altra                                # chi ha gia' l'origine non si riscrive
+
+
+def test_si_sceglie_con_le_stesse_chiavi_del_trigger_e_non_si_riscrive_a_ogni_giro(monkeypatch):
+    """Il trigger cerca i cedolini solo per `source_file_hash_md5` e `prova.drive_id`: un cedolino
+    con solo `drive_file_id` non si aggancia, e riscriverlo ogni 20 minuti non cambierebbe niente."""
+    assert modulo.chiavi_prova("quietanze_f24", {"drive_file_id": "D1", "drive_md5": "m", "pdf_hash": "h"}) == ("D1", "m")
+    assert modulo.chiavi_prova("quietanze_f24", {"prova": {"drive_id": "DP"}, "pdf_hash": "h"}) == ("DP", "h")
+    assert modulo.chiavi_prova("cedolini", {"drive_file_id": "D1", "source_file_hash_md5": "m"}) == (None, "m")
+    assert modulo.chiavi_prova("cedolini", {"prova": {"drive_id": "DP"}}) == ("DP", None)
+    assert modulo.chiavi_prova("cedolini", {}) == (None, None)
+
+    conn = ConnFinta()
+    conn.presenti = [{"drive_id": "D1", "md5": None}]
+    _configura(monkeypatch, conn)
+    db = _Db(
+        quietanze_f24=_Coll([
+            {"_id": "q-gia", "drive_file_id": "D1", "prova": {"stato": "senza_origine"},
+             "prova_riallineata_il": "2026-10-01T03:00:00+00:00"},                     # gia' provato: non si ritocca
+        ]),
+        cedolini=_Coll([
+            {"_id": "c-solo-drive-file-id", "drive_file_id": "D1", "prova": {"stato": "senza_origine"}},  # il trigger lo ignora
+        ]),
+    )
+    esito = _run(modulo.riallinea_prove(db, conn=conn))
+    assert esito["riallineati"] == 0 and esito["gia_provati"] == 1 and esito["con_file_ora_presente"] == 0
+    assert db["quietanze_f24"].aggiornati == [] and db["cedolini"].aggiornati == []

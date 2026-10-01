@@ -539,6 +539,24 @@ async def sincronizza_incrementale(service=None, conn=None) -> Dict[str, Any]:
                 await conn.close()
 
 
+def chiavi_prova(collezione: str, documento: Dict[str, Any]) -> tuple:
+    """(id Drive, MD5) con cui il trigger ``prova_origine`` cerca il file nel protocollo,
+    escluse quelle che non userebbe: scegliere un documento per una chiave che il
+    trigger ignora vorrebbe dire riscriverlo a ogni giro senza che cambi niente.
+
+    - quietanze: ``drive_file_id`` (altrimenti ``prova.drive_id``) e ``drive_md5`` o ``pdf_hash``;
+    - cedolini: solo ``prova.drive_id`` e ``source_file_hash_md5``.
+    """
+    prova = documento.get("prova") or {}
+    if collezione == "quietanze_f24":
+        drive_id = documento.get("drive_file_id") or prova.get("drive_id")
+        md5 = documento.get("drive_md5") or documento.get("pdf_hash")
+    else:
+        drive_id = prova.get("drive_id")
+        md5 = documento.get("source_file_hash_md5")
+    return (drive_id or None, md5 or None)
+
+
 async def riallinea_prove(db, conn=None, limite: int = LIMITE_RIALLINEA) -> Dict[str, Any]:
     """Rifa la prova d'origine dei documenti rimasti ``senza_origine`` il cui
     file Drive e' ora nel protocollo.
@@ -559,16 +577,21 @@ async def riallinea_prove(db, conn=None, limite: int = LIMITE_RIALLINEA) -> Dict
         from app.document_repository import metadata_projection
 
         candidati = []
+        gia_provati = 0
         for nome in COLLEZIONI_CON_PROVA:
             # `_id` e' la chiave del runtime ERP (riga di `documents`) e puo' differire
             # dal campo `id` del documento: si riscrive per `_id`, mai per `id`.
             righe = await db[nome].find({"prova.stato": "senza_origine"}, metadata_projection(nome, {"_id": 1})).to_list(None)
             for r in righe:
-                drive_id = r.get("drive_file_id") or (r.get("prova") or {}).get("drive_id")
-                md5 = r.get("drive_md5") or r.get("pdf_hash") or r.get("source_file_hash_md5")
+                if r.get("prova_riallineata_il"):
+                    # Gia' riscritto e ancora senza origine: il trigger non l'aggancia
+                    # (nemmeno con il file presente). Riscriverlo a ogni giro non serve.
+                    gia_provati += 1
+                    continue
+                drive_id, md5 = chiavi_prova(nome, r)
                 candidati.append((nome, r.get("_id"), drive_id, md5))
         if not candidati:
-            return {"esito": "ok", "senza_origine": 0, "riallineati": 0}
+            return {"esito": "ok", "senza_origine": gia_provati, "gia_provati": gia_provati, "riallineati": 0}
         ids = [c[2] for c in candidati if c[2]]
         md5s = [c[3] for c in candidati if c[3]]
         presenti = await conn.fetch(
@@ -582,8 +605,8 @@ async def riallinea_prove(db, conn=None, limite: int = LIMITE_RIALLINEA) -> Dict
         for nome, doc_id, _drive_id, _md5 in da_riscrivere[:max(1, limite)]:
             await db[nome].update_one({"_id": doc_id}, {"$set": {"prova_riallineata_il": adesso}})
             riallineati += 1
-        esito = {"esito": "ok", "senza_origine": len(candidati), "con_file_ora_presente": len(da_riscrivere),
-                 "riallineati": riallineati}
+        esito = {"esito": "ok", "senza_origine": len(candidati) + gia_provati, "gia_provati": gia_provati,
+                 "con_file_ora_presente": len(da_riscrivere), "riallineati": riallineati}
         logger.info("[PROTOCOLLO-DRIVE] prove riallineate: %s", esito)
         return esito
     finally:

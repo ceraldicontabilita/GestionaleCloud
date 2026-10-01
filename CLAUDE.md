@@ -359,7 +359,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   collegamenti se non ha scritto niente. Un giro `in_corso` da oltre 3 ore e' di un processo
   morto e si chiude `interrotto`. Dopo ogni giro `riallinea_prove` riscrive (marcatore
   `prova_riallineata_il`) i documenti `senza_origine` il cui file e' ora nel protocollo: la prova
-  la rifa il trigger `prova_origine` (`prova_calcola`, per MD5 o id Drive). Senza il file nel
+  la rifa il trigger `prova_origine` (`prova_calcola`, per MD5 o id Drive: si sceglie con le **stesse chiavi** che il trigger usa, `chiavi_prova`; un documento gia'
+  riscritto e ancora senza origine non si ritocca). Senza il file nel
   protocollo la prova dice la verita' («nessun file Drive con la stessa impronta»), mai un'origine
   inventata: dal 17/09 al 01/10/2026 il protocollo non ha visto nessun file nuovo.
 - **I canali Drive per sezione non esistono piu'** (DRV-16): moduli `drive_*_ingest`, router `/drive/sync|quadratura`,
