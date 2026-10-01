@@ -18,7 +18,8 @@ import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { PageLayout } from '../components/PageLayout';
 import { PageHeader } from '../components/ds/PageHeader';
-import DocumentViewerModal from '../components/DocumentViewerModal';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import CartellePagamento from '../components/CartellePagamento';
 import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
 import {
@@ -48,7 +49,7 @@ export const paymentAmountParts = receipt => ({
 });
 
 export default function GestionePagoPA() {
-  const [pdfViewer, setPdfViewer] = useState(null); // {title, src} — viewer canonico §8
+  const [pdfViewer, setPdfViewer] = useState(null); // {title, url} — viewer canonico §8
   const isMobile = useIsMobile();
   const [ricevute, setRicevute] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -761,7 +762,7 @@ export default function GestionePagoPA() {
                                   onClick={() =>
                                     setPdfViewer({
                                       title: `📄 Ricevuta PagoPA ${ricevuta.iuv || ricevuta.id}`,
-                                      src: `/api/pagopa/ricevute/${ricevuta.id}/pdf`,
+                                      url: urlOriginale({ tipo: 'ricevuta_pagopa', id: ricevuta.id }),
                                     })
                                   }
                                   style={{
@@ -776,7 +777,7 @@ export default function GestionePagoPA() {
                                   👁️
                                 </button>
                                 <a
-                                  href={`/api/pagopa/ricevute/${ricevuta.id}/pdf?download=true`}
+                                  href={`${urlOriginale({ tipo: 'ricevuta_pagopa', id: ricevuta.id })}?scarica=true`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   style={{
@@ -804,9 +805,9 @@ export default function GestionePagoPA() {
       </div>
 
       {pdfViewer && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={pdfViewer.title}
-          src={pdfViewer.src}
+          url={pdfViewer.url}
           documentType="pagopa"
           onClose={() => setPdfViewer(null)}
         />

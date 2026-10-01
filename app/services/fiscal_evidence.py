@@ -6,6 +6,7 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from app.services.originale_documento import url_originale
 from app.db_collections import (
     COLL_FISCAL_DOCUMENTS,
     COLL_FISCAL_DOCUMENT_VERSIONS,
@@ -143,5 +144,5 @@ async def find_linked_evidence(db, *, company_id: str, entity_type: str, entity_
     for link in links:
         link["evidence"] = [by_id[eid] for eid in link.get("evidence_ids", []) if eid in by_id]
         for item in link["evidence"]:
-            item["viewer_url"] = f"/api/fiscal/documents/{item['document_id']}/content#page={item['page_number']}"
+            item["viewer_url"] = f"{url_originale('documento_fiscale', item['document_id'])}#page={item['page_number']}"
     return links

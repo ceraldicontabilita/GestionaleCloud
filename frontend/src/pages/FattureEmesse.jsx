@@ -5,6 +5,7 @@ import api, { messaggioErrore } from '../api';
 import { COLORS, formatDateIT, formatEuroD } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { scaricaOriginale } from '../lib/scaricaOriginale';
+import { urlOriginale } from '../lib/vista';
 import { PageLoading, PageEmpty, PageError } from '../components/PageLayout';
 import { Badge, Button, ListaAdattiva, PageHeader, RowActions, RowActionButton } from '../components/ds';
 
@@ -122,7 +123,7 @@ export default function FattureEmesse() {
     setAvviso('');
     try {
       const url = formato === 'xml'
-        ? `/api/invoices/emesse/${encodeURIComponent(fattura.id)}/xml`
+        ? urlOriginale({ tipo: 'fattura_emessa', id: fattura.id })
         : `/api/invoices/emesse/${encodeURIComponent(fattura.id)}/vista?scarica=true`;
       await scaricaOriginale(url, `fattura_${fattura.numero_fattura}`);
     } catch (e) {

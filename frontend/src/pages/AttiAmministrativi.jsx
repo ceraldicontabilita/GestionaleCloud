@@ -4,6 +4,8 @@ import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { Badge, Button, Card, StatCard } from '../components/ds';
 import { PageHeader } from '../components/ds/PageHeader';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 
 const AREAS = [
   ['tutti', 'Tutti'],
@@ -83,24 +85,14 @@ export default function AttiAmministrativi() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openDocument = async item => {
-    try {
-      if (item.source_kind === 'drive_index') {
-        const detail = await api.get(`/api/documenti/drive/index/document/${encodeURIComponent(item.id)}`);
-        if (!detail.data?.drive_url) throw new Error('Collegamento Drive non disponibile');
-        window.open(detail.data.drive_url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-      const response = await api.get(`/api/documenti/documento/${encodeURIComponent(item.id)}/download`, {
-        responseType: 'blob',
-      });
-      const url = URL.createObjectURL(response.data);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
-      toast.error('Documento non disponibile', { description: error.response?.data?.detail || error.message });
-    }
-  };
+  // L'originale lo apre l'endpoint unico (DRV-04): per impronta SHA-256 quando
+  // l'indice la porta, altrimenti per id del documento. Mai un indirizzo Drive da fuori.
+  const [originale, setOriginale] = useState(null);
+  const openDocument = item => setOriginale({
+    url: item.source_kind === 'drive_index' && item.sha256
+      ? urlOriginale({ sha256: item.sha256 }) : urlOriginale({ tipo: 'documento', id: item.id }),
+    titolo: item.filename || 'Documento',
+  });
 
   const selectedAreaLabel = useMemo(() => AREA_LABELS[area], [area]);
   const overview = payload.overview || {};
@@ -175,7 +167,7 @@ export default function AttiAmministrativi() {
                 {item.accounting_excluded && <Badge variant="info" style={{ marginLeft: 6 }}>Escluso dalla contabilità aziendale</Badge>}
                 <div style={{ color: '#5f5c55', marginTop: 5 }}>{item.filename}</div>
               </div>
-              <Button size="sm" variant="secondary" onClick={() => openDocument(item)}>{item.source_kind === 'drive_index' ? 'Apri su Drive' : 'Apri PDF'}</Button>
+              <Button size="sm" variant="secondary" onClick={() => openDocument(item)}>Apri originale</Button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 8, marginTop: 10 }}>
               <span><small>Area</small><br /><strong>{AREA_LABELS[item.administrative_area] || item.administrative_area}</strong></span>
@@ -213,6 +205,7 @@ export default function AttiAmministrativi() {
           </article>;
         })}
       </Card>
+      {originale && <VisoreOriginale url={originale.url} titolo={originale.titolo} onClose={() => setOriginale(null)} />}
     </div>
   );
 }

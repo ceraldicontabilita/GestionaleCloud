@@ -1,4 +1,4 @@
-import api from '../api';
+import api, { messaggioErrore } from '../api';
 
 // Un solo modo di scaricare il file originale (PDF, XML) da un endpoint
 // autenticato: prima c'erano sei copie dello stesso codice, e la maggior parte
@@ -44,6 +44,22 @@ export function conEstensione(nome, tipo) {
   if (/\.[a-z0-9]{2,5}$/i.test(nome || '')) return nome;
   const base = String(tipo || '').split(';')[0].trim().toLowerCase();
   return `${nome || 'documento'}${ESTENSIONI[base] || ''}`;
+}
+
+// Con `responseType: 'blob'` anche l'errore del server arriva come blob: si
+// rilegge il JSON (`code`, `message`, `correlation_id`) per dire all'utente
+// perche' l'originale non c'e', non «Request failed with status code 404».
+export async function messaggioErroreOriginale(errore, predefinito = 'Originale non disponibile') {
+  const dati = errore?.response?.data;
+  if (dati instanceof Blob && /json/i.test(dati.type || '')) {
+    try {
+      const json = JSON.parse(await dati.text());
+      return messaggioErrore({ ...errore, response: { ...errore.response, data: json } }, predefinito);
+    } catch {
+      /* il corpo non era JSON: vale il messaggio generico */
+    }
+  }
+  return messaggioErrore(errore, predefinito);
 }
 
 export async function scaricaOriginale(url, nomeSuggerito = 'documento', mimeType) {

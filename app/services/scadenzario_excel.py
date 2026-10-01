@@ -24,6 +24,7 @@ import re
 from datetime import date
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from app.services.originale_documento import url_originale
 from app.services import f24_controllo_incrociato as registro_f24
 from app.services.prospetti_contabili import COLL_PROSPETTI, CANONICA
 from app.services.scadenzario_tributi import scadenza_da_regola
@@ -156,7 +157,7 @@ def costruisci_xlsx(righe: List[Dict[str, Any]], base_url: str = "") -> bytes:
             c.hyperlink, c.font = f"{base}/fiscale/f24/{riga['quietanza_id']}", link_font
         if riga["prospetto"] and riga["prospetto"].get("documento_id") and base:
             c = ws.cell(n, 11)
-            c.hyperlink, c.font = f"{base}/api/documenti/documento/{riga['prospetto']['documento_id']}/download", link_font
+            c.hyperlink, c.font = f"{base}{url_originale('documento', riga['prospetto']['documento_id'])}", link_font
         if riga["giorni_ritardo"]:
             ws.cell(n, 10).font = Font(bold=True, color="C00000")
 

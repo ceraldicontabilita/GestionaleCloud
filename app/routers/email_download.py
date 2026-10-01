@@ -419,41 +419,6 @@ async def get_statistiche_allegati() -> Dict[str, Any]:
     return stats
 
 
-@router.get("/pdf/{collection}/{pdf_id}")
-async def get_pdf_content(collection: str, pdf_id: str):
-    """
-    Recupera il contenuto di un PDF specifico.
-    """
-    from fastapi.responses import Response
-    import base64
-
-    db = Database.get_db()
-
-    # Verifica che la collezione sia valida
-    valid_collections = list(CATEGORY_COLLECTIONS.values()) + ["documents_inbox"]
-    if collection not in valid_collections:
-        raise HTTPException(status_code=400, detail="Collezione non valida")
-
-    doc = await db[collection].find_one({"id": pdf_id})
-    if not doc:
-        raise HTTPException(status_code=404, detail="PDF non trovato")
-
-    pdf_data = doc.get("pdf_data")
-    if not pdf_data:
-        raise HTTPException(status_code=404, detail="Contenuto PDF non disponibile")
-
-    pdf_bytes = base64.b64decode(pdf_data)
-    # CR/LF nel nome file rendono l'header invalido → 502 (fix 18/07/2026)
-    import re as _re
-    filename = _re.sub(r'[\r\n"]+', " ", doc.get("filename") or "documento.pdf").strip()
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'}
-    )
-
-
 @router.get("/inbox-documents")
 async def list_inbox_documents(
     category: str = Query(default=None),

@@ -19,10 +19,10 @@ describe('Vedi documento: il file si puo sempre scaricare', () => {
       data: new Blob(['%PDF'], { type: 'application/pdf' }),
       headers: { 'content-type': 'application/pdf', 'content-disposition': 'inline; filename="Quietanza.pdf"' },
     });
-    render(<DocumentViewerModal title="Quietanza F24 04/2026" src="/api/f24-public/pdf/q1" onClose={() => {}} />);
+    render(<DocumentViewerModal title="Quietanza F24 04/2026" src="/api/originale/quietanza/q1" onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('document-viewer-download'));
     await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith('/api/f24-public/pdf/q1', { responseType: 'blob' })
+      expect(api.get).toHaveBeenCalledWith('/api/originale/quietanza/q1', { responseType: 'blob' })
     );
   });
 

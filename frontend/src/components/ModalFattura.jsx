@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import api from '../api';
 import DocumentViewerModal from './DocumentViewerModal';
-import { scaricaOriginale } from '../lib/scaricaOriginale';
+import { messaggioErroreOriginale, scaricaOriginale } from '../lib/scaricaOriginale';
+import { urlOriginale } from '../lib/vista';
 
 /**
  * Modale in-page per visualizzare una fattura (view-assoinvoice), senza
@@ -59,13 +60,13 @@ export default function ModalFattura({ fatturaId, numero, onClose }) {
   const scaricaXmlOriginale = async () => {
     try {
       await scaricaOriginale(
-        `/api/fatture-ricevute/fattura/${fatturaId}/xml-originale`,
+        urlOriginale({ tipo: 'fattura', id: fatturaId }),
         `fattura_${numero || fatturaId}.xml`,
         'application/xml',
       );
     } catch (error) {
       toast.error('XML originale non disponibile', {
-        description: error.response?.data?.detail || error.message,
+        description: await messaggioErroreOriginale(error, error.message),
       });
     }
   };
@@ -95,7 +96,7 @@ export default function ModalFattura({ fatturaId, numero, onClose }) {
             onClick={() => setPagamentoSelezionato({
               id: `allegato-${allegato.indice}`,
               nome_file: allegato.nome,
-              view_url: `/api/fatture-ricevute/fattura/${fatturaId}/pdf/${allegato.indice}`,
+              view_url: urlOriginale({ tipo: 'allegato_fattura', id: fatturaId, indice: allegato.indice }),
               allegato: true,
             })}
             aria-label={`Vedi allegato ${allegato.nome}`} title={allegato.descrizione || allegato.nome}

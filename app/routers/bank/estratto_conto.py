@@ -3,7 +3,6 @@ Gestione Estratto Conto
 Salva e visualizza tutti i movimenti bancari importati con campi strutturati.
 """
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
-from fastapi.responses import Response
 from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timezone
@@ -2379,19 +2378,3 @@ async def elenco_estratti_originali() -> Dict[str, Any]:
 
     voci = await elenco(Database.get_db())
     return {"estratti": voci, "totale": len(voci)}
-
-
-@router.get("/originali/{voce_id}/file")
-@handle_errors
-async def scarica_estratto_originale(voce_id: str) -> Response:
-    """Il file originale dell'estratto, cosi' come e' stato caricato."""
-    import re as _re
-    from app.services.estratti_originali import contenuto
-
-    trovato = await contenuto(Database.get_db(), voce_id)
-    if not trovato:
-        raise HTTPException(status_code=404, detail="Originale dell'estratto non disponibile")
-    dati, nome, mime = trovato
-    nome_sicuro = _re.sub(r"[^A-Za-z0-9._() -]+", "-", nome).strip("-") or "estratto"
-    return Response(content=dati, media_type=mime,
-                    headers={"Content-Disposition": f'inline; filename="{nome_sicuro}"'})

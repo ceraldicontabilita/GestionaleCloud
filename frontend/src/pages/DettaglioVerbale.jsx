@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { PageLayout, PageSection } from '../components/PageLayout';
-import DocumentViewerModal from '../components/DocumentViewerModal';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import { formatEuro, formatDateIT, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { Button, Badge } from '../components/ds';
 import { toast } from 'sonner';
@@ -14,7 +15,6 @@ export default function DettaglioVerbale() {
   const [verbale, setVerbale] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [openingPdf, setOpeningPdf] = useState(null);
   const [pdfViewer, setPdfViewer] = useState(null);
   const [pdfUploading, setPdfUploading] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
@@ -89,37 +89,15 @@ export default function DettaglioVerbale() {
     }
   };
 
-  useEffect(() => () => {
-    if (pdfViewer?.src) URL.revokeObjectURL(pdfViewer.src);
-  }, [pdfViewer]);
-
-  const openPdf = async (pdf, idx) => {
+  // L'originale lo apre l'endpoint unico (DRV-04): il viewer lo scarica per id,
+  // il PDF non passa piu' dal payload del verbale.
+  const openPdf = (pdf, idx) => {
     const numeroPdf = verbale?.numero_verbale || verbaleId;
     const indice = pdf.indice ?? idx;
-    setOpeningPdf(indice);
-    try {
-      const response = await api.get(
-        `/api/verbali-noleggio/pdf/${encodeURIComponent(numeroPdf)}?indice=${indice}`
-      );
-      const encoded = response.data?.content_base64;
-      if (!encoded) {
-        toast.error('PDF non disponibile');
-        return;
-      }
-      const raw = atob(encoded);
-      const bytes = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
-      const src = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-      setPdfViewer({
-        src,
-        filename: pdf.filename || pdf.nome || `verbale_${numeroPdf}.pdf`,
-        title: pdf.nome || pdf.filename || `Documento verbale ${numeroPdf}`,
-      });
-    } catch (e) {
-      toast.error(`Errore apertura PDF: ${e.response?.data?.detail || e.message}`);
-    } finally {
-      setOpeningPdf(null);
-    }
+    setPdfViewer({
+      url: urlOriginale({ tipo: 'verbale', id: numeroPdf, indice }),
+      title: pdf.nome || pdf.filename || `Documento verbale ${numeroPdf}`,
+    });
   };
 
   const uploadVerbalePdf = async event => {
@@ -304,11 +282,10 @@ export default function DettaglioVerbale() {
                   variant="outline"
                   size="sm"
                   style={{ marginTop: 10 }}
-                  disabled={openingPdf === item.document.indice}
                   onClick={() => openPdf(item.document, item.document.indice || 0)}
                   data-testid={`open-verbale-pdf-${item.document.indice ?? 0}`}
                 >
-                  {openingPdf === item.document.indice ? 'Apertura…' : 'Apri documento'}
+                  Apri documento
                 </Button>
               )}
             </div>
@@ -416,16 +393,10 @@ export default function DettaglioVerbale() {
       )}
 
       {pdfViewer && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={pdfViewer.title}
-          src={pdfViewer.src}
+          url={pdfViewer.url}
           documentType="verbale"
-          onDownload={() => {
-            const link = document.createElement('a');
-            link.href = pdfViewer.src;
-            link.download = pdfViewer.filename;
-            link.click();
-          }}
           onClose={() => setPdfViewer(null)}
         />
       )}

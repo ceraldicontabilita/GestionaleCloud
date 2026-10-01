@@ -7,9 +7,8 @@ import { formatDateIT, formatEuro } from './utils';
  * - Un valore che manca e' «Dato non disponibile», mai zero: un importo `0`
  *   arriva dal server solo quando lo zero e' vero.
  * - Date sempre gg/mm/aaaa, importi in euro.
- * - Un solo modo di aprire un originale (`urlOriginale`): e' il pezzo di
- *   frontend di DRV-04 che serve a queste viste; le pagine non compongono
- *   indirizzi di download da sole.
+ * - Un solo modo di aprire un originale (`urlOriginale` e `ApriOriginale`,
+ *   DRV-04): le pagine non compongono indirizzi di download da sole.
  */
 export const NON_DISPONIBILE = 'Dato non disponibile';
 
@@ -39,7 +38,7 @@ export const euroCentesimiOTrattino = v => (vuoto(v) ? NON_DISPONIBILE : Number(
 /** Il codice tributo e' sempre testo: mai convertito a numero. */
 export const codiceTributo = v => String(v ?? '').trim();
 
-export const ID_F24_DA_URL = /^\/api\/f24-public\/pdf\/([^/?#]+)/;
+export const ID_F24_DA_URL = /^\/api\/(?:originale\/(?:f24|quietanza)|f24-public\/pdf)\/([^/?#]+)/;
 
 /** L'id di un modello o di una quietanza F24 dal suo indirizzo PDF, o `null`. */
 export const idF24DaUrl = url => {
@@ -47,14 +46,24 @@ export const idF24DaUrl = url => {
   return m ? decodeURIComponent(m[1]) : null;
 };
 
-/** Indirizzo dell'originale per tipo di documento; `null` = non apribile. */
-export function urlOriginale({ tipo, id, url } = {}) {
+const segmenti = id => String(id).split('/').map(encodeURIComponent).join('/');
+
+/**
+ * L'indirizzo dell'originale (DRV-04): un endpoint solo, `/api/originale`.
+ * - `tipo` + `id` (f24, quietanza, cedolino, fattura, documento, verbale,
+ *   protocollo...; `indice` per il secondo PDF di un verbale o l'allegato di
+ *   una fattura);
+ * - `driveId` o `sha256` per un originale della cartella unica;
+ * - `url` gia' pronto (quello che il server scrive in `pdf_url`).
+ * Senza chiave `null` = non apribile. Il tipo lo valida il server.
+ */
+export function urlOriginale({ tipo, id, indice, driveId, sha256, url } = {}) {
   if (url) return url;
-  if (vuoto(id)) return null;
-  const chiave = encodeURIComponent(String(id));
-  if (tipo === 'f24' || tipo === 'quietanza') return `/api/f24-public/pdf/${chiave}`;
-  if (tipo === 'cedolino') return `/api/cedolini/${chiave}/pdf`;
-  return null;
+  if (!vuoto(driveId)) return `/api/originale?drive_id=${encodeURIComponent(String(driveId))}`;
+  if (!vuoto(sha256)) return `/api/originale?sha256=${encodeURIComponent(String(sha256))}`;
+  if (vuoto(id) || vuoto(tipo)) return null;
+  const base = `/api/originale/${encodeURIComponent(String(tipo))}/${segmenti(id)}`;
+  return indice ? `${base}?indice=${Number(indice)}` : base;
 }
 
 export const percorsoF24 = id => `/fiscale/f24/${encodeURIComponent(String(id))}`;

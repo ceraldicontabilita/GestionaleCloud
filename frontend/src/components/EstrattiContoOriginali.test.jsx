@@ -21,7 +21,7 @@ describe('Estratti conto caricati', () => {
     expect(screen.getByText('Carta Nexi')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('estratto-originale-nexi_statement:x'));
     expect(api.get).toHaveBeenCalledWith(
-      '/api/estratto-conto-movimenti/originali/nexi_statement%3Ax/file',
+      '/api/originale/estratto/nexi_statement%3Ax',
       expect.anything(),
     );
   });

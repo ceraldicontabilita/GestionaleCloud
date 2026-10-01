@@ -2,10 +2,9 @@
 Fatture Module - CRUD e Visualizzazione fatture.
 """
 from fastapi import HTTPException, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-import base64
 import calendar
 import re
 
@@ -570,38 +569,6 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
     return fattura, xml_bytes
 
 
-async def download_xml_originale(fattura_id: str) -> Response:
-    """Scarica l'XML FatturaPA ORIGINALE della fattura, cosi' come arrivato
-    (nessuna ricostruzione/riepilogo): richiesta esplicita utente 19/07/2026
-    ("io ho bisogno di vedere sempre l'originale la fattura così come
-    arriva altrimenti non potrei mai vedere se c'è un errore") — prima non
-    esisteva nessun modo di scaricare/vedere il testo XML grezzo, nemmeno
-    quando era salvato nel database.
-    """
-    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
-    if fattura is None:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-    if not xml_bytes:
-        raise HTTPException(
-            status_code=404,
-            detail="XML originale non disponibile per questa fattura (non salvato in fase di import).",
-        )
-
-    numero = fattura.get("invoice_number") or fattura.get("numero_fattura") or fattura_id
-    # Il numero fattura arriva dall'XML (attaccante-controllabile in linea di
-    # principio, es. un file malformato/malevolo): CR/LF o virgolette non
-    # neutralizzate finirebbero grezze nell'header Content-Disposition,
-    # rischiando una risposta HTTP malformata/split (bug reale, review Codex
-    # PR #71). Tiene solo caratteri filename-safe.
-    numero_sicuro = re.sub(r'[^A-Za-z0-9._-]+', '-', str(numero)).strip('-') or "sconosciuto"
-    nome_file = f"fattura_{numero_sicuro}.xml"
-    return Response(
-        content=xml_bytes,
-        media_type="application/xml",
-        headers={"Content-Disposition": f'attachment; filename="{nome_file}"'},
-    )
-
-
 def html_fattura_da_xml(xml_bytes: bytes, indice: int = 0, etichetta: str = "") -> Optional[str]:
     """La fattura leggibile dal suo XML col foglio ASSO Software, oppure
     ``None`` se la trasformazione non riesce. Un solo punto per fatture
@@ -719,35 +686,6 @@ async def elenca_allegati_fattura(fattura_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
     allegati = allegati_da_xml(xml_bytes) if xml_bytes else []
     return {"allegati": [{k: v for k, v in a.items() if k != "_base64"} for a in allegati]}
-
-
-async def download_pdf_allegato(fattura_id: str, allegato_id: str) -> Response:
-    """L'allegato numero ``allegato_id`` (0, 1, ...) dell'XML della fattura."""
-    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
-    if fattura is None:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-    allegati = allegati_da_xml(xml_bytes) if xml_bytes else []
-    try:
-        allegato = allegati[int(allegato_id)]
-    except (ValueError, IndexError) as exc:
-        raise HTTPException(status_code=404, detail="Allegato non trovato") from exc
-    try:
-        contenuto = base64.b64decode(re.sub(r"\s+", "", allegato["_base64"]), validate=False)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=422, detail="Allegato non leggibile nell'XML") from exc
-
-    formato = allegato["formato"] or (allegato["nome"].rsplit(".", 1)[-1].upper() if "." in allegato["nome"] else "")
-    if contenuto[:4] == b"%PDF":
-        formato = "PDF"
-    media_type = _MIME_ALLEGATO.get(formato, "application/octet-stream")
-    nome = re.sub(r'[^A-Za-z0-9._-]+', '-', allegato["nome"]).strip('-') or f"allegato_{allegato_id}"
-    if formato == "PDF" and not nome.lower().endswith(".pdf"):
-        nome += ".pdf"
-    return Response(
-        content=contenuto,
-        media_type=media_type,
-        headers={"Content-Disposition": f'inline; filename="{nome}"'},
-    )
 
 
 async def get_fattura_dettaglio(fattura_id: str) -> Dict[str, Any]:

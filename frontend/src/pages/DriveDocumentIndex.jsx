@@ -1,60 +1,41 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  BadgeCheck, Database, ExternalLink, FileCheck2, FileText,
-  LoaderCircle, ReceiptText, RefreshCw, Search, ShieldCheck, X,
+  BadgeCheck, ExternalLink, FileText, LoaderCircle, RefreshCw, Search, X,
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import './DriveDocumentIndex.css';
 
+// Una scheda sola: il protocollo vivo (`gestionale.protocollo_drive`). F24 e
+// dichiarazioni stanno in Situazione fiscale, sul registro unico F24: l'indice
+// Excel (`drive_document_index`) non alimenta piu' nessuna scheda di questa pagina.
 const TABS = [
-  { id: 'overview', label: 'Controlli', Icon: ShieldCheck },
   { id: 'documents', label: 'Documenti', Icon: FileText },
-  { id: 'f24', label: 'F24 e tributi', Icon: ReceiptText },
-  { id: 'declarations', label: 'Dichiarazioni', Icon: FileCheck2 },
 ];
-
-const CHECK_LABELS = {
-  document_ids_unique: 'ID documento univoci',
-  document_hashes_unique: 'SHA-256 univoci',
-  drive_paths_unique: 'Percorsi Drive univoci',
-  all_f24_documents_exist: 'Ogni riga F24 ha il documento',
-  all_f24_sha_match_document: 'SHA F24 coerenti con i documenti',
-  all_f24_paths_match_document: 'Percorsi F24 coerenti con i documenti',
-  f24_amounts_nonnegative: 'Importi F24 validi',
-  all_declarations_link_exactly_one_document: 'Dichiarazioni collegate una sola volta',
-};
-
-const euro = value => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value || 0);
 
 export default function DriveDocumentIndex() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const folderQuery = searchParams.get('folder') || '';
   const isVerbaliFolder = /verbali(?:\s+auto)?/i.test(folderQuery);
-  const [activeTab, setActiveTab] = useState(folderQuery ? 'documents' : 'overview');
+  const [activeTab, setActiveTab] = useState('documents');
   const [query, setQuery] = useState(folderQuery);
   const [year, setYear] = useState('');
   const [showRemoved, setShowRemoved] = useState(false);
   const [onlyDuplicates, setOnlyDuplicates] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [taxCode, setTaxCode] = useState('');
   const [status, setStatus] = useState(null);
-  const [overview, setOverview] = useState(null);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null);
-  const [opening, setOpening] = useState('');
+  const [originale, setOriginale] = useState(null);
 
   // "Documenti" legge il protocollo vivo (gestionale.protocollo_drive):
-  // una riga per file su Drive, aggiornata dal giro periodico. F24 e
-  // dichiarazioni restano sull'indice Excel, che porta i dati di merito.
-  const endpoint = useMemo(() => ({
-    documents: '/api/documenti/drive/protocollo/search',
-    f24: '/api/documenti/drive/index/f24',
-    declarations: '/api/documenti/drive/index/declarations',
-  })[activeTab], [activeTab]);
+  // una riga per file su Drive, aggiornata dal giro periodico.
+  const endpoint = '/api/documenti/drive/protocollo/search';
 
   const search = useCallback(async () => {
     if (!endpoint || isVerbaliFolder) return;
@@ -65,9 +46,8 @@ export default function DriveDocumentIndex() {
         params: {
           q: query || undefined,
           year: year || undefined,
-          tax_code: activeTab === 'f24' && taxCode ? taxCode : undefined,
-          includi_rimossi: activeTab === 'documents' && showRemoved ? true : undefined,
-          solo_duplicati: activeTab === 'documents' && onlyDuplicates ? true : undefined,
+          includi_rimossi: showRemoved ? true : undefined,
+          solo_duplicati: onlyDuplicates ? true : undefined,
           limit: 200,
         },
       });
@@ -77,7 +57,7 @@ export default function DriveDocumentIndex() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, endpoint, isVerbaliFolder, query, taxCode, year, showRemoved, onlyDuplicates]);
+  }, [endpoint, isVerbaliFolder, query, year, showRemoved, onlyDuplicates]);
 
   const refreshProtocol = async () => {
     setRefreshing(true);
@@ -99,19 +79,11 @@ export default function DriveDocumentIndex() {
       return undefined;
     }
     let active = true;
-    // Il protocollo vivo e l'indice Excel sono due sorgenti: se una manca,
-    // l'altra resta usabile (prima un solo errore spegneva tutta la pagina).
     api.get('/api/documenti/drive/protocollo/status')
       .then(response => { if (active) setStatus(response.data); })
       .catch(requestError => {
         if (active) setError(requestError.response?.data?.detail || 'Protocollo Drive non disponibile');
       });
-    api.get('/api/documenti/drive/index/overview')
-      .then(response => { if (active) setOverview(response.data); })
-      .catch(requestError => {
-        if (active) setError(requestError.response?.data?.detail || 'Indice Excel dei controlli non disponibile');
-      })
-      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [isVerbaliFolder, navigate]);
 
@@ -119,31 +91,23 @@ export default function DriveDocumentIndex() {
     if (isVerbaliFolder) return;
     setResults([]);
     setSelected(null);
-    if (activeTab !== 'overview') search();
+    search();
   }, [activeTab, isVerbaliFolder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDocument = async documentId => {
-    setOpening(documentId);
     setError('');
     try {
-      const detailEndpoint = activeTab === 'documents'
-        ? `/api/documenti/drive/protocollo/documento/${encodeURIComponent(documentId)}`
-        : `/api/documenti/drive/index/document/${encodeURIComponent(documentId)}`;
-      const response = await api.get(detailEndpoint);
+      const response = await api.get(`/api/documenti/drive/protocollo/documento/${encodeURIComponent(documentId)}`);
       setSelected(response.data);
-      return response.data;
     } catch (requestError) {
-      setError(requestError.response?.data?.detail || 'Documento non disponibile su Drive');
-      return null;
-    } finally {
-      setOpening('');
+      setError(requestError.response?.data?.detail || 'Documento non presente nel protocollo');
     }
   };
 
-  const openOriginal = async documentId => {
-    const document = await loadDocument(documentId);
-    if (document?.drive_url) window.open(document.drive_url, '_blank', 'noopener,noreferrer');
-  };
+  // L'originale lo apre l'endpoint unico (DRV-04), mai un indirizzo Drive da fuori.
+  const openOriginal = document => setOriginale({
+    url: urlOriginale({ driveId: document.document_id }), titolo: document.filename || 'Documento',
+  });
 
   const submit = event => {
     event.preventDefault();
@@ -157,9 +121,8 @@ export default function DriveDocumentIndex() {
   const documentButton = document => (
     <div className="drive-index__row-actions">
       <button type="button" className="is-secondary" onClick={() => loadDocument(document.document_id)}>Dettagli</button>
-      <button type="button" onClick={() => openOriginal(document.document_id)} disabled={opening === document.document_id}>
-        {opening === document.document_id ? <LoaderCircle className="is-spinning" size={16} /> : <ExternalLink size={16} />}
-        Apri originale
+      <button type="button" onClick={() => openOriginal(document)}>
+        <ExternalLink size={16} /> Apri originale
       </button>
       <button
         type="button"
@@ -200,75 +163,33 @@ export default function DriveDocumentIndex() {
         ))}
       </nav>
 
-      {activeTab !== 'overview' && (
-        <form className="drive-index__filters" onSubmit={submit}>
-          <label>
-            <span>Cerca</span>
-            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Nome, protocollo, categoria o SHA-256" />
-          </label>
-          <label>
-            <span>Anno</span>
-            <input value={year} onChange={event => setYear(event.target.value)} placeholder="es. 2026" inputMode="numeric" />
-          </label>
-          {activeTab === 'f24' && (
+      <form className="drive-index__filters" onSubmit={submit}>
+        <label>
+          <span>Cerca</span>
+          <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Nome, protocollo, categoria o SHA-256" />
+        </label>
+        <label>
+          <span>Anno</span>
+          <input value={year} onChange={event => setYear(event.target.value)} placeholder="es. 2026" inputMode="numeric" />
+        </label>
+        {activeTab === 'documents' && (
+          <>
             <label>
-              <span>Codice tributo</span>
-              <input value={taxCode} onChange={event => setTaxCode(event.target.value)} placeholder="es. 1001" />
+              <span>Rimossi da Drive</span>
+              <input type="checkbox" checked={showRemoved} onChange={event => setShowRemoved(event.target.checked)} />
             </label>
-          )}
-          {activeTab === 'documents' && (
-            <>
-              <label>
-                <span>Rimossi da Drive</span>
-                <input type="checkbox" checked={showRemoved} onChange={event => setShowRemoved(event.target.checked)} />
-              </label>
-              <label>
-                <span>Solo duplicati</span>
-                <input type="checkbox" checked={onlyDuplicates} onChange={event => setOnlyDuplicates(event.target.checked)} />
-              </label>
-            </>
-          )}
-          <button type="submit" disabled={loading}>
-            {loading ? <LoaderCircle className="is-spinning" size={17} /> : <Search size={17} />} Cerca
-          </button>
-        </form>
-      )}
+            <label>
+              <span>Solo duplicati</span>
+              <input type="checkbox" checked={onlyDuplicates} onChange={event => setOnlyDuplicates(event.target.checked)} />
+            </label>
+          </>
+        )}
+        <button type="submit" disabled={loading}>
+          {loading ? <LoaderCircle className="is-spinning" size={17} /> : <Search size={17} />} Cerca
+        </button>
+      </form>
 
       {error && <div className="drive-index__error" role="alert">{error}</div>}
-
-      {activeTab === 'overview' && overview && (
-        <div className="drive-index__overview">
-          <div className="drive-index__stats">
-            <button type="button" onClick={() => setActiveTab('documents')} aria-label={`Apri ${overview.validation.counts.documents} documenti`}>
-              <FileText /><strong>{overview.validation.counts.documents}</strong><span>Documenti</span>
-            </button>
-            <button type="button" onClick={() => setActiveTab('f24')} aria-label={`Apri ${overview.validation.counts.f24_documents} documenti F24`}>
-              <ReceiptText /><strong>{overview.validation.counts.f24_documents}</strong><span>Documenti F24</span>
-            </button>
-            <button type="button" onClick={() => setActiveTab('f24')} aria-label={`Apri ${overview.validation.counts.f24_rows} righe tributo`}>
-              <Database /><strong>{overview.validation.counts.f24_rows}</strong><span>Righe tributo</span>
-            </button>
-            <button type="button" onClick={() => setActiveTab('declarations')} aria-label={`Apri ${overview.validation.counts.declarations} dichiarazioni`}>
-              <FileCheck2 /><strong>{overview.validation.counts.declarations}</strong><span>Dichiarazioni</span>
-            </button>
-          </div>
-          <div className={`drive-index__boolean ${overview.validation.all_true ? 'is-ok' : 'is-error'}`}>
-            <h3><ShieldCheck size={20} /> Verifica booleana: {overview.validation.all_true ? 'TUTTO VERO' : 'ANOMALIE'}</h3>
-            <div>
-              {Object.entries(overview.validation.checks).map(([key, value]) => (
-                <span key={key} className={value ? 'is-true' : 'is-false'}>{value ? 'VERO' : 'FALSO'} · {CHECK_LABELS[key] || key}</span>
-              ))}
-            </div>
-          </div>
-          <div className="drive-index__semantics">
-            <strong>Regole delle interconnessioni</strong>
-            <span>Il modello F24 non equivale al pagamento bancario.</span>
-            <span>La quietanza è prova documentale, distinta dal movimento bancario.</span>
-            <span>Le relazioni ambigue non vengono confermate automaticamente.</span>
-            <span>Nessun contenuto binario viene salvato nel database.</span>
-          </div>
-        </div>
-      )}
 
       {activeTab === 'documents' && (
         <div className="drive-index__results drive-index__table-wrap">
@@ -291,38 +212,7 @@ export default function DriveDocumentIndex() {
         </div>
       )}
 
-      {activeTab === 'f24' && (
-        <div className="drive-index__results">
-          {results.map(item => (
-            <article key={item.document.document_id} className="drive-index__row">
-              <div className="drive-index__main">
-                <strong>{item.document.filename}</strong>
-                <span>{item.payment_date || item.payment_year} / protocollo {item.protocol || 'non presente'} / {item.tax_rows} righe</span>
-                <small>Tributi: {item.tax_codes.join(', ')} · Debiti {euro(item.total_debit)} · Crediti {euro(item.total_credit)}</small>
-                <em>{item.evidence_state === 'QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA' ? 'Quietanza documentale' : 'Modello F24'}: pagamento bancario non confermato</em>
-              </div>
-              {documentButton(item.document)}
-            </article>
-          ))}
-        </div>
-      )}
-
-      {activeTab === 'declarations' && (
-        <div className="drive-index__results">
-          {results.map((item, index) => (
-            <article key={`${item.archive_path}-${index}`} className="drive-index__row">
-              <div className="drive-index__main">
-                <strong>{item.document?.filename || item.archive_path}</strong>
-                <span>{item.type} / {item.year} / protocollo {item.protocol || 'nel nome del documento'}</span>
-                <small>{item.relation_state === 'CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO' ? 'Relazione univoca confermata' : 'Relazione da verificare'}</small>
-              </div>
-              {item.document && documentButton(item.document)}
-            </article>
-          ))}
-        </div>
-      )}
-
-      {activeTab !== 'overview' && !loading && !error && results.length === 0 && (
+      {!loading && !error && results.length === 0 && (
         <p className="drive-index__empty">Nessun elemento trovato.</p>
       )}
 
@@ -336,28 +226,12 @@ export default function DriveDocumentIndex() {
             <div><dt>Percorso</dt><dd>{selected.drive_path}</dd></div>
             <div><dt>Provenienza</dt><dd>{selected.source_zip || 'Archivio Drive'} · {selected.source_path || 'file originale'}</dd></div>
           </dl>
-          <button type="button" className="drive-index__open" onClick={() => window.open(selected.drive_url, '_blank', 'noopener,noreferrer')}>
-            <ExternalLink size={16} /> Apri originale su Drive
+          <button type="button" className="drive-index__open" onClick={() => openOriginal({ document_id: selected.document_id, filename: selected.filename })}>
+            <ExternalLink size={16} /> Apri originale
           </button>
-          {selected.relations?.f24_rows?.length > 0 && (
-            <section>
-              <h4>Righe F24 ({selected.relations.f24_rows.length})</h4>
-              {selected.relations.f24_rows.map((row, index) => (
-                <div className="drive-index__relation" key={`${row.tax_code}-${row.tax_period}-${index}`}>
-                  <strong>{row.tax_code} · {row.description}</strong>
-                  <span>{row.tax_period || row.payment_date} · debito {euro(row.debit)} · credito {euro(row.credit)}</span>
-                </div>
-              ))}
-              <p className="drive-index__notice">{selected.relations.relation_note}</p>
-            </section>
-          )}
-          {selected.relations?.declarations?.length > 0 && (
-            <section><h4>Dichiarazioni collegate</h4>{selected.relations.declarations.map((row, index) => (
-              <div className="drive-index__relation" key={`${row.archive_path}-${index}`}><strong>{row.type} {row.year}</strong><span>{row.archive_path}</span></div>
-            ))}</section>
-          )}
         </aside>
       )}
+      {originale && <VisoreOriginale url={originale.url} titolo={originale.titolo} onClose={() => setOriginale(null)} />}
     </section>
   );
 }

@@ -2,14 +2,15 @@
 
 Sola lettura sul registro ``cedolini``. Un dato assente resta ``None``: la
 pagina scrive «Dato non disponibile», mai zero. Il PDF non viaggia nella
-scheda: si apre a parte da ``/api/cedolini/{id}/pdf`` con lo stesso
-``carica_originale`` di modelli e quietanze F24 (pdf_data o Drive).
+scheda: si apre a parte dall'endpoint unico degli originali
+(``/api/originale/cedolino/{id}``, DRV-04).
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
 from app.services import cedolini_versioni as versioni
+from app.services.originale_documento import url_originale
 
 _ESCLUSI = {"_id": 0, "pdf_data": 0, "_raw_text": 0, "pdf_text": 0}
 _MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto",
@@ -90,5 +91,5 @@ async def scheda(db, cedolino_id: str) -> Optional[Dict[str, Any]]:
                        "vincitore": (decisione.get("vincitore") or {}).get("id")}
                       if decisione else None),
         "pdf_disponibile": disponibile,
-        "pdf_url": f"/api/cedolini/{doc.get('id')}/pdf" if disponibile else None,
+        "pdf_url": url_originale("cedolino", doc.get("id")) if disponibile else None,
     }

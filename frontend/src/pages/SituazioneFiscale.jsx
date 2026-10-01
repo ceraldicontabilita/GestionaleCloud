@@ -3,6 +3,8 @@ import { Link, Navigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import { Badge, Button, Card, PageLoader, StatCard } from '../components/ds';
 import './SituazioneFiscale.css';
 
@@ -257,28 +259,12 @@ function ElenchiFiscali() {
     } finally { setCaricaAltri(false); }
   };
 
-  const openDocument = async documentId => {
-    try {
-      const response = await api.get(`/api/fiscal/documents/${encodeURIComponent(documentId)}/content`, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
-      toast.error('Prova documentale non disponibile', { description: error.response?.data?.detail || error.message });
-    }
-  };
-
-  // PDF del modello F24 dal registro (endpoint autenticato, mai un link Drive).
-  const openF24Pdf = async pdfUrl => {
-    try {
-      const response = await api.get(pdfUrl, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
-      toast.error('PDF del modello F24 non disponibile', { description: error.response?.data?.detail || error.message });
-    }
-  };
+  // Un solo modo di aprire un originale (DRV-04): il visualizzatore dell'endpoint unico.
+  const [originaleAperto, setOriginaleAperto] = useState(null);
+  const openDocument = documentId => setOriginaleAperto({
+    url: urlOriginale({ tipo: 'documento_fiscale', id: documentId }), titolo: 'Documento fiscale',
+  });
+  const openF24Pdf = pdfUrl => setOriginaleAperto({ url: pdfUrl, titolo: 'Modello F24' });
 
   const uploadDeclaration = async event => {
     const file = event.target.files?.[0];
@@ -769,6 +755,9 @@ function ElenchiFiscali() {
           </Button>
         </nav>}
       </Card>
+      {originaleAperto && (
+        <VisoreOriginale url={originaleAperto.url} titolo={originaleAperto.titolo} onClose={() => setOriginaleAperto(null)} />
+      )}
     </PageLayout>
   );
 }

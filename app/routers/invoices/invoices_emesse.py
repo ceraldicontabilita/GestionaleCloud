@@ -1,6 +1,6 @@
 """Invoices Emesse router - Issued invoices."""
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -116,17 +116,6 @@ def _nome_file(fattura: Dict[str, Any], estensione: str) -> str:
 
     numero = re.sub(r"[^A-Za-z0-9._-]+", "-", str(fattura.get("numero_fattura") or "")).strip("-")
     return f"fattura_emessa_{numero or 'senza-numero'}_{fattura.get('data_fattura') or ''}.{estensione}"
-
-
-@router.get("/{invoice_id}/xml", summary="Scarica l'XML originale")
-async def scarica_xml_fattura_emessa(
-    invoice_id: str = Path(...),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Response:
-    fattura = await _fattura_con_xml(invoice_id)
-    return Response(
-        content=fattura["xml_raw"].encode("utf-8"), media_type="application/xml",
-        headers={"Content-Disposition": f'attachment; filename="{_nome_file(fattura, "xml")}"'})
 
 
 @router.get("/{invoice_id}/vista", summary="La fattura leggibile (foglio ASSO)")

@@ -4,7 +4,6 @@ Gestisce il flusso completo: F24 commercialista → Quietanza → Banca
 Con supporto per ravvedimento e F24 duplicati
 """
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import Response
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from app.database import Database
@@ -328,27 +327,11 @@ async def mark_f24_pagato(f24_id: str) -> Dict[str, Any]:
 
 
 @router.get("/commercialista/{f24_id}/pdf")
-@handle_errors
 async def get_f24_pdf(f24_id: str):
-    """Restituisce il PDF di un F24 commercialista."""
+    """Alias: l'originale si apre da `/api/originale/f24/{id}` (DRV-04)."""
+    from app.routers.originale import reindirizza_a_originale
 
-    db = Database.get_db()
-    f24 = await db[COLL_F24_COMMERCIALISTA].find_one({"id": f24_id})
-    if not f24:
-        raise HTTPException(status_code=404, detail="F24 non trovato")
-
-    filename = f24.get("file_name", f24.get("filename", "F24.pdf"))
-    from app.services.f24_originale import carica_originale
-    pdf_bytes = await carica_originale(f24, tipo="f24")
-
-    if not pdf_bytes:
-        raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Supabase")
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'}
-    )
+    return reindirizza_a_originale("f24", f24_id)
 
 
 @router.get("/commercialista/{f24_id}")

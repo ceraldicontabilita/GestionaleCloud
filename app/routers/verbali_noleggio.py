@@ -226,42 +226,6 @@ async def correggi_trasgressore_verbale(
             "trasgressore": trasgressore, "trasgressore_precedente": previous}
 
 
-@router.get("/pdf/{numero_verbale:path}")
-@handle_errors
-async def get_pdf_verbale(numero_verbale: str, indice: int = 0) -> Dict[str, Any]:
-    """
-    Ottiene il PDF del verbale in base64.
-    indice: quale PDF se ce ne sono più di uno (default primo)
-    """
-    db = Database.get_db()
-
-    verbale = await db[COLLECTION_VERBALI].find_one(
-        {"$or": [
-            {"numero_verbale": numero_verbale},
-            {"numero_verbale_old": numero_verbale},
-        ]},
-        {"_id": 0}
-    )
-
-    if not verbale:
-        raise HTTPException(status_code=404, detail="Verbale non trovato")
-
-    from app.services.verbali_pdf_service import collect_verbale_pdfs
-
-    pdfs = await collect_verbale_pdfs(db, verbale)
-    pdf = next((item for item in pdfs if item.get("indice") == indice), None)
-    if pdf and pdf.get("content_base64"):
-        return {
-            "numero_verbale": verbale.get("numero_verbale", numero_verbale),
-            "filename": pdf.get("filename"),
-            "content_base64": pdf.get("content_base64"),
-            "size": pdf.get("size") or 0,
-            "document_id": pdf.get("document_id"),
-        }
-
-    raise HTTPException(status_code=404, detail="PDF non trovato")
-
-
 @router.get("/verbali-completi")
 @handle_errors
 async def get_verbali_completi(

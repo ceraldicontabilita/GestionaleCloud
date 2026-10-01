@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Badge, PageHeader, PageLoader } from '../components/ds';
+import ApriOriginale from '../components/ApriOriginale';
 import LegendaRegole from '../components/vista/LegendaRegole';
 import { Campo, GrigliaCampi, Messaggio, Riquadro, paginaStile } from '../components/vista/Elementi';
 import { AMBITI, CAMPI_SCHEDA_PROTOCOLLO as CAMPI, STATO_PROTOCOLLO, leggiProtocollo } from '../lib/protocolloVista';
@@ -16,9 +17,9 @@ import { COLORS } from '../lib/utils';
  * MINI-07). Il documento personale non entra mai nei conti dell'azienda: lo
  * dice la pagina, sempre. I documenti che la contabilita' conosce gia' (stessa
  * impronta SHA-256) sono un ponte solo informativo: link alla sezione
- * esistente, mai dati copiati qui. L'originale si apre con DRV-04, che per il
- * protocollo non c'e' ancora: la pagina mostra il nome del file, senza
- * aprire indirizzi Drive da fuori.
+ * esistente, mai dati copiati qui. L'originale si apre con `ApriOriginale`
+ * (DRV-04) solo se il registro porta il suo SHA-256: il server lo ricalcola
+ * sui byte e, se non torna, non lo serve. Mai un indirizzo Drive aperto da fuori.
  * `carica` si puo' sostituire (test, anteprime).
  */
 export default function ProtocolloScheda({ carica = leggiProtocollo }) {
@@ -75,6 +76,12 @@ export default function ProtocolloScheda({ carica = leggiProtocollo }) {
             <Campo etichetta={CAMPI.nome_file}>{dati.nome_file}</Campo>
             <Campo etichetta={CAMPI.canale}>{dati.canale ? (CANALI[dati.canale] || dati.canale) : null}</Campo>
           </GrigliaCampi>
+          <div style={{ marginTop: 12 }}>
+            <ApriOriginale
+              tipo="protocollo" id={dati.sha256 ? dati.numero : null}
+              titolo={`Protocollo ${dati.numero || ''}`.trim()} documentType="protocollo" testId="protocollo-apri-originale"
+            />
+          </div>
           {dati.stato === 'rimosso' && dati.rimosso_motivo && (
             <p style={{ margin: '12px 0 0', fontSize: 13.5 }}>Motivo: {dati.rimosso_motivo}</p>
           )}

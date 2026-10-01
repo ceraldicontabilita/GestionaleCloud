@@ -13,8 +13,8 @@ vi.mock('react-router-dom', async importOriginal => ({
 }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 vi.mock('../components/DocumentViewerModal', () => ({
-  default: ({ title, onClose }) => (
-    <div data-testid="verbale-viewer">
+  default: ({ title, fetchUrl, onClose }) => (
+    <div data-testid="verbale-viewer" data-url={fetchUrl}>
       <span>{title}</span>
       <button type="button" onClick={onClose}>Chiudi viewer</button>
     </div>
@@ -28,12 +28,9 @@ describe('DettaglioVerbale viewer PDF', () => {
     URL.revokeObjectURL = vi.fn();
   });
 
-  it('apre nel viewer interno anche i PDF senza url nel payload dettaglio', async () => {
+  it('apre nel viewer interno il PDF dall endpoint unico, senza passarlo dal payload', async () => {
     api.get.mockImplementation(url => {
       if (url === '/api/dipendenti') return Promise.resolve({ data: [] });
-      if (url.startsWith('/api/verbali-noleggio/pdf/')) return Promise.resolve({
-        data: { content_base64: 'JVBERi0xLjQ=' },
-      });
       return Promise.resolve({
         data: {
           numero_verbale: 'V-TEST-001',
@@ -46,19 +43,15 @@ describe('DettaglioVerbale viewer PDF', () => {
 
     render(<DettaglioVerbale />);
 
-    const open = await screen.findByTestId('open-verbale-pdf-1');
-    fireEvent.click(open);
+    fireEvent.click(await screen.findByTestId('open-verbale-pdf-1'));
 
-    await waitFor(() => {
-      expect(api.get).toHaveBeenLastCalledWith(
-        '/api/verbali-noleggio/pdf/V-TEST-001?indice=1'
-      );
-    });
-    expect(await screen.findByTestId('verbale-viewer')).toHaveTextContent('quietanza-test.pdf');
-    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    const viewer = await screen.findByTestId('verbale-viewer');
+    expect(viewer).toHaveTextContent('quietanza-test.pdf');
+    expect(viewer).toHaveAttribute('data-url', '/api/originale/verbale/V-TEST-001?indice=1');
+    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('/api/verbali-noleggio/pdf/'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Chiudi viewer' }));
-    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:verbale-test'));
+    await waitFor(() => expect(screen.queryByTestId('verbale-viewer')).toBeNull());
   });
 
   it('mostra le azioni per associare e rileggere il PDF originale', async () => {

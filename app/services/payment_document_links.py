@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.services.entity_relations import upsert_entity_relation
+from app.services.originale_documento import url_originale
 from app.services.identity_matching import identita_coincide, nome_presente_nel_testo
 from app.services.payment_invoice_matching import amounts_equal_to_cent, invoice_reference_in_text
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
@@ -135,7 +136,7 @@ def payment_document_ref(transfer: Dict[str, Any]) -> Dict[str, Any]:
         "sha256": transfer.get("document_hash") or transfer.get("sha256"),
         "data": str(transfer.get("data") or "")[:10],
         "importo": abs(float(transfer.get("importo") or 0)),
-        "view_url": f"/api/archivio-bonifici/transfers/{transfer_id}/pdf",
+        "view_url": url_originale("bonifico", transfer_id),
     }
 
 

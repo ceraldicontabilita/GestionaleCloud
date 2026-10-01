@@ -10,6 +10,7 @@ import re
 from collections import defaultdict
 from typing import Any, Dict, Iterable, Optional
 
+from app.services.originale_documento import url_originale
 from app.services.tax_payment_query import TaxPaymentQueryService
 
 
@@ -107,7 +108,7 @@ async def _avvisi(db, anno: int) -> list[dict]:
             "filename": doc.get("filename") or doc.get("file_name") or "Avviso Agenzia delle Entrate",
             "periodo": period,
             "codice_tributo": _codice_avviso(doc, signal),
-            "url": f"/api/documenti/documento/{doc_id}/download",
+            "url": url_originale("documento", doc_id),
         })
     return result
 
@@ -121,7 +122,7 @@ async def _receipt_urls(db, ids: Iterable[str]) -> dict[str, str]:
         {"id": {"$in": ids}}, {"_id": 0, "id": 1},
     ), len(ids))
     for receipt in fiscal:
-        result[str(receipt["id"])] = f"/api/fiscal/documents/{receipt['id']}/content"
+        result[str(receipt["id"])] = url_originale("documento_fiscale", receipt["id"])
     legacy = await _to_list(db["quietanze_f24"].find(
         {"id": {"$in": ids}}, {"_id": 0, "id": 1},
     ), len(ids))

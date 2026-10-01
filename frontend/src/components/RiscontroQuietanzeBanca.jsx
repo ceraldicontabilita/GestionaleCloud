@@ -5,7 +5,7 @@ import api from '../api';
 import { COLORS, formatEuro, formatDateIT } from '../lib/utils';
 import { Esito, ListaAdattiva } from './ds';
 import { ROTTE_CONTROPARTITA } from './LinkContropartita';
-import DocumentViewerModal from './DocumentViewerModal';
+import { VisoreOriginale } from './ApriOriginale';
 
 /**
  * Quietanze F24 ↔ addebiti I24 in banca.
@@ -313,9 +313,9 @@ export default function RiscontroQuietanzeBanca({ anno }) {
       )}
 
       {pdf && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={pdf.title}
-          fetchUrl={pdf.fetchUrl}
+          url={pdf.fetchUrl}
           documentType="f24"
           onClose={() => setPdf(null)}
         />

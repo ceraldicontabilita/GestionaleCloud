@@ -9,23 +9,20 @@ import DriveDocumentIndex from './DriveDocumentIndex';
 vi.mock('../api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }));
+vi.mock('../components/DocumentViewerModal', () => ({
+  default: ({ title, fetchUrl, onClose }) => (
+    <div data-testid="viewer-finto" data-url={fetchUrl}>{title}<button onClick={onClose}>chiudi</button></div>
+  ),
+}));
 
-const validation = {
-  all_true: true,
-  counts: { documents: 941, f24_documents: 320, f24_rows: 1297, declarations: 60 },
-  checks: {
-    document_ids_unique: true,
-    document_hashes_unique: true,
-    drive_paths_unique: true,
-    all_f24_documents_exist: true,
-    all_f24_sha_match_document: true,
-    all_f24_paths_match_document: true,
-    f24_amounts_nonnegative: true,
-    all_declarations_link_exactly_one_document: true,
-  },
+const documento = {
+  document_id: 'DRIVE-A', subject: 'Pane Giuseppina', year: '2023',
+  display_title: 'Domanda Rottamazione-quater', document_type_label: 'Definizione agevolata AdeR',
+  filename: 'PNAGPP58D48F839K_R-DA-2023.pdf', summary: 'Richiesta presentata ad AdeR',
+  status: 'VERIFICATO', drive_path: 'CARTELLE ESATTORIALI/file.pdf',
 };
 
-describe('Indice documentale Drive', () => {
+describe('Archivio Drive: solo il protocollo vivo, originale dall endpoint unico', () => {
   const renderIndex = (route = '/documenti/drive') => render(
     <MemoryRouter initialEntries={[route]}>
       <Routes>
@@ -37,68 +34,39 @@ describe('Indice documentale Drive', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.get.mockImplementation(url => {
-      if (url.endsWith('/status')) return Promise.resolve({ data: { documents: 941, validation } });
-      if (url.endsWith('/overview')) return Promise.resolve({ data: { validation } });
-      if (url.endsWith('/f24')) return Promise.resolve({ data: { results: [{
-        document: { document_id: 'DOC-1', filename: 'f24.pdf' },
-        payment_year: '2026', payment_date: '16/03/2026', protocol: 'P1',
-        tax_rows: 2, tax_codes: ['1001'], total_debit: 100, total_credit: 0,
-        evidence_state: 'MODELLO_F24_NON_PROVA_BANCARIA',
-      }] } });
-      return Promise.resolve({ data: { results: [] } });
+      if (url.endsWith('/status')) return Promise.resolve({ data: { documents: 941 } });
+      if (url.endsWith('/search')) return Promise.resolve({ data: { results: [documento] } });
+      return Promise.resolve({ data: {} });
     });
   });
 
-  it('mostra la quadratura booleana e non importa dati', async () => {
+  it('non legge piu l indice Excel: F24 e dichiarazioni stanno in Situazione fiscale', async () => {
     renderIndex();
-    expect(await screen.findByText('Verifica booleana: TUTTO VERO')).toBeInTheDocument();
-    expect(screen.getByText('941')).toBeInTheDocument();
-    expect(screen.getByText('1297')).toBeInTheDocument();
-    expect(screen.getByText('Il modello F24 non equivale al pagamento bancario.')).toBeInTheDocument();
+    expect(await screen.findByText('Pane Giuseppina')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /F24 e tributi/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Dichiarazioni/i })).toBeNull();
+    const chiamate = api.get.mock.calls.map(([url]) => url);
+    expect(chiamate.some(url => url.includes('/drive/index/'))).toBe(false);
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('naviga ai documenti F24 mantenendo distinta la prova bancaria', async () => {
+  it('apre l originale per id Drive dall endpoint unico, mai un indirizzo Drive da fuori', async () => {
+    const aperta = vi.spyOn(window, 'open').mockImplementation(() => null);
     renderIndex();
-    await screen.findByText('Verifica booleana: TUTTO VERO');
-    fireEvent.click(screen.getByRole('button', { name: /F24 e tributi/i }));
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
-      '/api/documenti/drive/index/f24', expect.any(Object)
-    ));
-    expect(await screen.findByText('f24.pdf')).toBeInTheDocument();
-    expect(screen.getByText(/pagamento bancario non confermato/i)).toBeInTheDocument();
-  });
-
-  it('apre dai contatori la lista esatta dei casi', async () => {
-    renderIndex();
-    await screen.findByText('Verifica booleana: TUTTO VERO');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Apri 1297 righe tributo' }));
-
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
-      '/api/documenti/drive/index/f24', expect.any(Object)
-    ));
-    expect(await screen.findByText('f24.pdf')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Apri originale/ }));
+    expect(screen.getByTestId('viewer-finto')).toHaveAttribute('data-url', '/api/originale?drive_id=DRIVE-A');
+    expect(aperta).not.toHaveBeenCalled();
+    aperta.mockRestore();
   });
 
   it('mostra un errore esplicito quando l archivio Drive non e configurato', async () => {
-    api.get.mockRejectedValueOnce({ response: { data: { detail: 'Indice Drive non configurato' } } });
+    api.get.mockRejectedValue({ response: { data: { detail: 'Indice Drive non configurato' } } });
     renderIndex();
-    expect(await screen.findByRole('alert')).toHaveTextContent('Indice Drive non configurato');
+    expect(await screen.findAllByRole('alert')).not.toHaveLength(0);
+    expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent('Indice Drive non configurato');
   });
 
   it('apre una cartella cliccata come indice tabellare leggibile', async () => {
-    api.get.mockImplementation(url => {
-      if (url.endsWith('/status')) return Promise.resolve({ data: { documents: 1, validation } });
-      if (url.endsWith('/overview')) return Promise.resolve({ data: { validation } });
-      if (url.endsWith('/search')) return Promise.resolve({ data: { results: [{
-        document_id: 'DOC-A', subject: 'Pane Giuseppina', year: '2023',
-        display_title: 'Domanda Rottamazione-quater', document_type_label: 'Definizione agevolata AdeR',
-        filename: 'PNAGPP58D48F839K_R-DA-2023.pdf', summary: 'Richiesta presentata ad AdeR',
-        status: 'VERIFICATO', drive_path: 'CARTELLE ESATTORIALI/file.pdf',
-      }] } });
-      return Promise.resolve({ data: { results: [] } });
-    });
     renderIndex('/documenti/drive?folder=CARTELLE%20ESATTORIALI');
     expect(await screen.findByText(/Contenuto cartella:/)).toBeInTheDocument();
     expect(await screen.findByText('Pane Giuseppina')).toBeInTheDocument();
@@ -110,6 +78,6 @@ describe('Indice documentale Drive', () => {
     renderIndex('/documenti/drive?folder=VERBALI%20AUTO');
 
     expect(await screen.findByText('Sezione Verbali Noleggio')).toBeInTheDocument();
-    expect(api.get).not.toHaveBeenCalled();
+    await waitFor(() => expect(api.get).not.toHaveBeenCalled());
   });
 });

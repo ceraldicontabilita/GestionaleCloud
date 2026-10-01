@@ -10,7 +10,7 @@
  * link diretto e che i collegamenti funzionino davvero:
  *
  *   1. TRIBUTO -> QUIETANZA: da `/fiscale/tributi/6003` l'importo versato apre
- *      la quietanza (il PDF viene davvero richiesto a `/api/f24-public/pdf/…`
+ *      la quietanza (il PDF viene davvero richiesto a `/api/originale/quietanza/…`
  *      e appare nel visualizzatore) e «Scheda dell'F24» porta a `/fiscale/f24/:id`
  *      con le righe tributo.
  *   2. FILTRO ANNO GLOBALE: l'anno del selettore in alto arriva alla richiesta
@@ -48,7 +48,7 @@ const VOCE_6003 = {
   chiave: 'erario|6003|2026|3', codice: '6003', descrizione: 'IVA mensile marzo', anno: 2026, mese: 3, periodo: '03/2026',
   inviato_cents: 0, quietanza_cents: 120000, ravvedimento_cents: 0, credito_cents: 0, residuo_cents: 0,
   stato: 'PAGATO', stato_label: 'Pagato (quietanza)', ultimo_pagamento: '2026-04-16',
-  documenti: [{ tipo: 'quietanza', data: '2026-04-16', protocollo: 'P1', importo_cents: 120000, pdf_url: '/api/f24-public/pdf/Q9' }],
+  documenti: [{ tipo: 'quietanza', data: '2026-04-16', protocollo: 'P1', importo_cents: 120000, pdf_url: '/api/originale/quietanza/Q9' }],
 };
 
 const RIGA_F24 = n => ({
@@ -66,7 +66,7 @@ const BUSTA = {
     { id: 'c1', netto: 1500, stampa_di_controllo: false, variante: 2, filename: 'rossi.pdf', corrente: true },
   ],
   decisione: { esito: 'vincitore', motivo: 'la busta definitiva batte la stampa di controllo', vincitore: 'c1' },
-  pdf_disponibile: true, pdf_url: '/api/cedolini/c1/pdf',
+  pdf_disponibile: true, pdf_url: '/api/originale/cedolino/c1',
 };
 const PROTOCOLLO = {
   numero: '2023/000123', data_protocollo: '2023-05-04', data_documento: null, tipo_documento: 'TARI', direzione: 'ENTRATA',
@@ -105,7 +105,7 @@ async function nuovaPagina(browser, opzioni, richieste) {
     if (percorso === '/api/fiscal/f24-rows') return json(route, { items: [RIGA_F24(1), RIGA_F24(2)] });
     if (percorso === '/api/f24/quietanze/Q9') return json(route, { canale: 'posta' });
     if (percorso === '/api/f24-riconciliazione/quietanze-banca') return json(route, { riscontrati: [] });
-    if (percorso === '/api/f24-public/pdf/Q9' || percorso === '/api/cedolini/c1/pdf') {
+    if (percorso === '/api/originale/quietanza/Q9' || percorso === '/api/originale/cedolino/c1') {
       return route.fulfill({ status: 200, contentType: 'application/pdf', body: PDF_FINTO });
     }
     if (percorso === '/api/protocollo-personale/2023/123') return json(route, PROTOCOLLO);
@@ -151,7 +151,7 @@ const CASI = [
     await attendi(page, 'document-viewer-overlay');
     verifica(true, 'il visualizzatore della quietanza si apre');
     await page.waitForTimeout(800);
-    verifica(richieste.some(r => r.startsWith('/api/f24-public/pdf/Q9')), 'il PDF della quietanza e stato richiesto davvero');
+    verifica(richieste.some(r => r.startsWith('/api/originale/quietanza/Q9')), 'il PDF della quietanza e stato richiesto davvero');
     await page.keyboard.press('Escape');
     await page.locator('[data-testid="scheda-f24-erario|6003|2026|3"]:visible').first().click();
     await attendi(page, 'vista-f24');
@@ -190,7 +190,7 @@ const CASI = [
     await page.locator('[data-testid="cedolino-apri-originale"]:visible').first().click();
     await attendi(page, 'document-viewer-overlay');
     await page.waitForTimeout(800);
-    verifica(richieste.some(r => r.startsWith('/api/cedolini/c1/pdf')), 'il PDF della busta e stato richiesto davvero');
+    verifica(richieste.some(r => r.startsWith('/api/originale/cedolino/c1')), 'il PDF della busta e stato richiesto davvero');
     await page.keyboard.press('Escape');
     await vai(page, '/personale/cedolini/c2');
     await attendi(page, 'cedolino-scheda');

@@ -20,7 +20,8 @@ import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
-import DocumentViewerModal from '../components/DocumentViewerModal';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import { toast } from 'sonner';
 
 const formatDate = formatDateIT;
@@ -1543,10 +1544,10 @@ export default function ArchivioBonifici() {
         )}
       </div>
       {bonificoPdf && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={`Bonifico ${bonificoPdf.cro_trn || ''}`.trim()}
           subtitle={`${bonificoPdf.data || ''} · ${bonificoPdf.beneficiario_nome || bonificoPdf.beneficiario || ''}`}
-          fetchUrl={`/api/archivio-bonifici/transfers/${bonificoPdf.id}/pdf`}
+          url={urlOriginale({ tipo: 'bonifico', id: bonificoPdf.id })}
           documentType="pdf"
           onClose={() => setBonificoPdf(null)}
           testIdPrefix="bonifico-pdf-viewer"

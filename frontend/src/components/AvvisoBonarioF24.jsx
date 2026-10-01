@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { formatEuro } from '../lib/utils';
-import DocumentViewerModal from './DocumentViewerModal';
+import { VisoreOriginale } from './ApriOriginale';
 
 /**
  * Interroga avviso bonario (PR 11 dell'audit del commercialista).
@@ -305,7 +305,7 @@ export default function AvvisoBonarioF24() {
                     {r.differenza == null ? '—' : formatEuro(r.differenza)}
                   </td>
                   <td style={{ ...stileTd, minWidth: 320 }}>
-                    <ListaProve riga={r} onApriPdf={(m) => setPdfViewer({ title: `F24 ${m.file_name || m.f24_id}`, src: m.pdf_url })} />
+                    <ListaProve riga={r} onApriPdf={(m) => setPdfViewer({ title: `F24 ${m.file_name || m.f24_id}`, url: m.pdf_url })} />
                   </td>
                   <td style={{ ...stileTd, minWidth: 220, color: PALETTE.grigio }}>
                     {r.motivazione}
@@ -317,7 +317,7 @@ export default function AvvisoBonarioF24() {
                         {(r.scadenzario.note || []).map(n => <div key={n}>{n}</div>)}
                       </div>
                     )}
-                    <ListaIndizi indizi={r.indizi} onApriPdf={(i) => setPdfViewer({ title: `F24 ${i.file_name || i.f24_id}`, src: i.pdf_url })} />
+                    <ListaIndizi indizi={r.indizi} onApriPdf={(i) => setPdfViewer({ title: `F24 ${i.file_name || i.f24_id}`, url: i.pdf_url })} />
                   </td>
                 </tr>
               ))}
@@ -327,9 +327,9 @@ export default function AvvisoBonarioF24() {
       )}
 
       {pdfViewer && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={pdfViewer.title}
-          src={pdfViewer.src}
+          url={pdfViewer.url}
           documentType="f24"
           onClose={() => setPdfViewer(null)}
         />

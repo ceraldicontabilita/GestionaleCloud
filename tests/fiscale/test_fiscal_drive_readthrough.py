@@ -77,7 +77,7 @@ def test_f24_rows_separano_modello_e_quietanza(monkeypatch):
     per_doc = {(r["document_id"], r["tax_code"]): r for r in payload["items"]}
     modello = per_doc[("F24-COPERTO", "2003")]
     assert modello["evidence_state"] == "MODELLO_F24_NON_PROVA_BANCARIA"
-    assert modello["pdf_url"] == "/api/f24-riconciliazione/commercialista/F24-COPERTO/pdf"
+    assert modello["pdf_url"] == "/api/originale/f24/F24-COPERTO"
     quietanza = per_doc[("Q-GIUGNO", "2003")]
     assert quietanza["documentary_payment_status"] == "QUIETANZA_PRESENTE"
     assert quietanza["bank_status"] == "DA_VERIFICARE"

@@ -18,10 +18,10 @@ const RISPOSTA = {
   conteggi: { fuori_periodo_estratto: 234 },
   riscontrati: [{
     chiave: 'p1', data: '2026-08-20', importo: 654.33, protocollo: '26082011065626134/000001',
-    quietanze: [{ id: 'q1', pdf_url: '/api/f24-public/pdf/q1', filename: 'q1.pdf' }],
+    quietanze: [{ id: 'q1', pdf_url: '/api/originale/f24/q1', filename: 'q1.pdf' }],
     addebito: { movimento_id: 'm1', data: '2026-08-20', importo: 654.33 },
     motivazione: 'importo 654.33 EUR uguale al centesimo; DATA INCASSO nella causale: 20/08/2026',
-    ravvedimento_di: [{ f24_id: 'orig', pdf_url: '/api/f24-public/pdf/orig' }],
+    ravvedimento_di: [{ f24_id: 'orig', pdf_url: '/api/originale/f24/orig' }],
     inviato_il_it: '20/08/2026', programmato: false, tipo_versamento: 'ravvedimento', senza_modello: false,
   }],
   tributi_ripetuti: [{
@@ -30,11 +30,11 @@ const RISPOSTA = {
     pagamenti: [
       { chiave: 'a', protocollo: '26060212304532735/000001', importo: 1969.1, inviato_il_it: '02/06/2026',
         programmato: true, tipo_versamento: 'ordinario', senza_modello: true,
-        quietanze: [{ id: 'qa', pdf_url: '/api/f24-public/pdf/qa' }],
+        quietanze: [{ id: 'qa', pdf_url: '/api/originale/f24/qa' }],
         addebito: { movimento_id: 'ma', data: '2026-06-17', importo: 1969.1 } },
       { chiave: 'b', protocollo: '26061631545528157/000001', importo: 2179.1, inviato_il_it: '16/06/2026',
         programmato: false, tipo_versamento: 'ordinario', senza_modello: true,
-        quietanze: [{ id: 'qb', pdf_url: '/api/f24-public/pdf/qb' }],
+        quietanze: [{ id: 'qb', pdf_url: '/api/originale/f24/qb' }],
         addebito: { movimento_id: 'mb', data: '2026-06-17', importo: 2179.1 } },
     ],
   }],

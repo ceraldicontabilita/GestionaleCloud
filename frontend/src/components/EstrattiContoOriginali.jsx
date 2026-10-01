@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { Card, ListaAdattiva } from './ds';
-import DocumentViewerModal from './DocumentViewerModal';
+import { VisoreOriginale } from './ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import { COLORS } from '../lib/utils';
 
 // Gli estratti conto caricati (banca e carta Nexi), con il file originale da
@@ -70,10 +71,10 @@ export default function EstrattiContoOriginali() {
         />
       )}
       {aperto && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={aperto.nome || 'Estratto conto'}
           subtitle={aperto.tipo === 'nexi' ? `Carta Nexi · ${aperto.periodo || ''}` : 'Banca'}
-          fetchUrl={`/api/estratto-conto-movimenti/originali/${encodeURIComponent(aperto.id)}/file`}
+          url={urlOriginale({ tipo: 'estratto', id: aperto.id })}
           documentType="estratto_conto"
           onClose={() => setAperto(null)}
           testIdPrefix="estratto-originale-viewer"

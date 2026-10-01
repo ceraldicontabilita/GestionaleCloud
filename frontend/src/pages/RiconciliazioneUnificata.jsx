@@ -19,7 +19,8 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 import { PageLayout } from '../components/PageLayout';
-import DocumentViewerModal from '../components/DocumentViewerModal';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
 import AvvisoBonarioF24 from '../components/AvvisoBonarioF24';
 import RiscontroQuietanzeBanca from '../components/RiscontroQuietanzeBanca';
 import LinkContropartita, {
@@ -2178,9 +2179,9 @@ export function TabellaAnalisiF24({ anno }) {
         </div>
       )}
       {pdfViewer && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={pdfViewer.title}
-          fetchUrl={pdfViewer.fetchUrl}
+          url={pdfViewer.fetchUrl}
           documentType="f24"
           onClose={() => setPdfViewer(null)}
         />
@@ -2486,12 +2487,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                     <button
                       onClick={async () => {
                         if (f.pdf_url) {
-                          setPdfViewer({ title: `📄 F24 ${f.descrizione || f.numero || ''}`, src: f.pdf_url });
-                        } else if (f.file_path) {
-                          setPdfViewer({
-                            title: `📄 F24 ${f.descrizione || f.numero || ''}`,
-                            src: `/api/download/${encodeURIComponent(f.file_path)}`,
-                          });
+                          setPdfViewer({ title: `📄 F24 ${f.descrizione || f.numero || ''}`, url: f.pdf_url });
                         } else {
                           await confirm({
                             title: 'PDF non disponibile',
@@ -2504,7 +2500,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                       style={{
                         padding: '4px 10px',
                         minHeight: 40,
-                        background: f.pdf_url || f.file_path ? '#c15f3c' : '#a19d92',
+                        background: f.pdf_url ? '#c15f3c' : '#a19d92',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
@@ -2512,7 +2508,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                         fontSize: 12,
                       }}
                       title={
-                        f.pdf_url || f.file_path ? 'Visualizza PDF F24' : 'PDF non disponibile'
+                        f.pdf_url ? 'Visualizza PDF F24' : 'PDF non disponibile'
                       }
                     >
                       👁️ Vedi PDF
@@ -2526,9 +2522,9 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
       </div>
 
       {pdfViewer && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={pdfViewer.title}
-          src={pdfViewer.src}
+          url={pdfViewer.url}
           documentType="f24"
           onClose={() => setPdfViewer(null)}
         />
@@ -2606,7 +2602,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
     // pattern di Documenti.jsx/FattureEstereVerifica.jsx).
     setPdfViewer({
       title: `📄 ${doc.filename || doc.nome || 'Documento'}`,
-      fetchUrl: `/api/documenti-non-associati/pdf/${doc.id}`,
+      fetchUrl: urlOriginale({ tipo: 'documento', id: doc.id }),
     });
   };
 
@@ -3026,10 +3022,9 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
       </div>
 
       {pdfViewer && (
-        <DocumentViewerModal
+        <VisoreOriginale
           title={pdfViewer.title}
-          src={pdfViewer.src}
-          fetchUrl={pdfViewer.fetchUrl}
+          url={pdfViewer.fetchUrl}
           documentType="documento_fiscale"
           onClose={() => setPdfViewer(null)}
         />

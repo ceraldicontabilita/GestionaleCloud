@@ -36,16 +36,24 @@ describe('vista: valori mancanti e formati', () => {
 
 describe('vista: originali e percorsi', () => {
   it('un solo modo di comporre l indirizzo dell originale', () => {
-    expect(urlOriginale({ tipo: 'quietanza', id: 'q 1' })).toBe('/api/f24-public/pdf/q%201');
-    expect(urlOriginale({ tipo: 'f24', id: 'm1' })).toBe('/api/f24-public/pdf/m1');
-    expect(urlOriginale({ tipo: 'cedolino', id: 'c1' })).toBe('/api/cedolini/c1/pdf');
-    expect(urlOriginale({ url: '/api/x/pdf' })).toBe('/api/x/pdf');
-    expect(urlOriginale({ tipo: 'sconosciuto', id: '1' })).toBeNull();
+    expect(urlOriginale({ tipo: 'quietanza', id: 'q 1' })).toBe('/api/originale/quietanza/q%201');
+    expect(urlOriginale({ tipo: 'f24', id: 'm1' })).toBe('/api/originale/f24/m1');
+    expect(urlOriginale({ tipo: 'cedolino', id: 'c1' })).toBe('/api/originale/cedolino/c1');
+    expect(urlOriginale({ tipo: 'verbale', id: 'A/123', indice: 1 })).toBe('/api/originale/verbale/A/123?indice=1');
+    expect(urlOriginale({ tipo: 'protocollo', id: '2023/000123' })).toBe('/api/originale/protocollo/2023/000123');
+    expect(urlOriginale({ driveId: 'D 1' })).toBe('/api/originale?drive_id=D%201');
+    expect(urlOriginale({ sha256: 'ab12' })).toBe('/api/originale?sha256=ab12');
+    expect(urlOriginale({ url: '/api/originale/f24/x' })).toBe('/api/originale/f24/x');
     expect(urlOriginale({ tipo: 'f24' })).toBeNull();
+    expect(urlOriginale({ id: '1' })).toBeNull();
+    expect(urlOriginale({})).toBeNull();
   });
 
   it('riconosce l id F24 dall indirizzo del PDF', () => {
+    expect(idF24DaUrl('/api/originale/f24/abc-1')).toBe('abc-1');
+    expect(idF24DaUrl('/api/originale/quietanza/q-2')).toBe('q-2');
     expect(idF24DaUrl('/api/f24-public/pdf/abc-1')).toBe('abc-1');
+    expect(idF24DaUrl('/api/originale/cedolino/c1')).toBeNull();
     expect(idF24DaUrl('/api/altro/abc')).toBeNull();
     expect(idF24DaUrl(null)).toBeNull();
   });

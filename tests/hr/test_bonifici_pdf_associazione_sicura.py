@@ -271,7 +271,7 @@ def test_documento_pagamento_e_un_riferimento_non_una_copia_pdf():
         "id": "b1", "source_file": "bonifico.pdf", "document_hash": "abc",
         "data": "2026-07-17", "importo": 42.62, "pdf_data": "BASE64",
     })
-    assert riferimento["view_url"] == "/api/archivio-bonifici/transfers/b1/pdf"
+    assert riferimento["view_url"] == "/api/originale/bonifico/b1"
     assert riferimento["sha256"] == "abc"
     assert "pdf_data" not in riferimento
 

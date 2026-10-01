@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from app.services.originale_documento import url_originale
 from app.database import Database
 from app.engines import tributi_engine as te
 from app.services import f24_anomalie as fa
@@ -236,12 +237,12 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
                 # Il file vero, mai la scheda JSON: per le quietanze in
                 # `quietanze_f24` il PDF lo serve lo stesso lettore dell'F24.
                 "quietanza_url": (
-                    f"/api/fiscal/documents/{quietanza_id}/content"
+                    url_originale("documento_fiscale", quietanza_id)
                     if fonte == "fiscal_documents"
-                    else f"/api/f24-public/pdf/{quietanza_id}"
+                    else url_originale("quietanza", quietanza_id)
                     if fonte == "quietanze_f24" else None
                 ),
-                "f24_pdf_url": f"/api/f24-public/pdf/{d.get('id')}" if d.get("id") else None,
+                "f24_pdf_url": url_originale("f24", d.get("id")) if d.get("id") else None,
                 "movimento_bancario_id": movimenti_banca[0] if movimenti_banca else None,
                 "movimenti_bancari_ids": movimenti_banca,
                 "pagamento_verificato_banca": bool(d.get("pagamento_verificato_banca")),
@@ -251,16 +252,16 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
             "ravvedimento": {
                 "f24_ravvedimento_id": ravv.get("f24_ravvedimento_id"),
                 "f24_ravvedimento_pdf_url": (
-                    f"/api/f24-public/pdf/{ravv['f24_ravvedimento_id']}" if ravv.get("f24_ravvedimento_id") else None),
+                    url_originale("f24", ravv["f24_ravvedimento_id"]) if ravv.get("f24_ravvedimento_id") else None),
                 "quietanza_ids": ravv.get("quietanza_ids") or [],
                 "quietanza_pdf_url": (
-                    f"/api/f24-public/pdf/{ravv['quietanza_ids'][0]}" if ravv.get("quietanza_ids") else None),
+                    url_originale("quietanza", ravv["quietanza_ids"][0]) if ravv.get("quietanza_ids") else None),
                 "importo_ravvedimento": ravv.get("importo_ravvedimento"),
                 "data_pagamento": ravv.get("data_pagamento"),
             } if ravv.get("stato") == "RAVVEDUTO" else None,
             "etichetta": d.get("etichetta"),
             "ravvedimento_di": [
-                {"f24_id": oid, "pdf_url": f"/api/f24-public/pdf/{oid}"} for oid in d.get("ravvedimento_di") or []
+                {"f24_id": oid, "pdf_url": url_originale("f24", oid)} for oid in d.get("ravvedimento_di") or []
             ],
             "saldo_finale": a["saldo_finale"],
             "motivazione": "; ".join(motivi) or "versamento ordinario",
