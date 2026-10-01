@@ -90,6 +90,9 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .catalog-card input[type=checkbox]{width:22px;height:22px;margin:0;flex:none}
 .catalog-card input[type=number]{margin:4px 0 0;max-width:120px}
 .catalog-origin{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--brand)}
+.privacy-choice{display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.privacy-choice input[type=checkbox]{width:22px;height:22px;flex:none;margin:2px 0}
+.channel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:10px}
 @media(max-width:620px){.catalog-tools{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px 1fr}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}}
 </style>
 </head>
@@ -151,7 +154,7 @@ async function render(){
  const h=location.hash||"#/";const p=h.split("/");
  $("#back").hidden=h==="#/"||h==="#"||["ospite","hotel","invito","recupero"].includes(p[1])||(!!sess&&sess.r==="alb"&&p[1]==="albergatore");
  app.classList.toggle("wide",p[1]==="titolare"&&!!sess);
- if(p[1]==="ospite")return ospite(p[2]);
+ if(p[1]==="ospite")return ospite(p[2],p[3]);
  if(p[1]==="hotel"){if(p[3]&&sess&&sess.r==="alb"&&sess.c===p[2])return alb(p[3]);return hotelLogin(p[2])}
  if(p[1]==="invito")return invito(p[2]);
  if(p[1]==="recupero")return recupero(p[2]);
@@ -160,7 +163,9 @@ async function render(){
  home()}
 function qr(el,text,size=200){el.innerHTML="";if(window.QRCode)new QRCode(el,{text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});else el.textContent=text}
 const base=()=>location.href.split("#")[0];
-const linkOspite=id=>base()+"#/ospite/"+id;
+const fontiOspite=["qr","nfc","wifi","link","whatsapp"];
+const fonteOspite=x=>fontiOspite.includes(String(x||"").toLowerCase())?String(x).toLowerCase():"link";
+const linkOspite=(id,fonte="link")=>base()+"#/ospite/"+id+"/"+fonteOspite(fonte);
 const tabsHtml=(tabs,sec,pre)=>`<div class="tabs">${tabs.map(t=>`<button class="${t[0]===sec?"on":""}" onclick="go('#/${pre}/${t[0]}')">${t[1]}</button>`).join("")}<button onclick="esci()">Esci</button></div>`;
 const camNome=v=>{const c=(v.camera||"").trim();if(!c)return v.ospite||"";return /^(camera|suite|stanza|appartamento|junior|room|studio|mansarda)\b/i.test(c)?c:"Camera "+c};
 const ospTxt=n=>`${n} ospit${n>1?"i":"e"}`;
@@ -431,14 +436,18 @@ async function ricaricaSumup(imp){
  if(r&&r.url)location.href=r.url}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
 function mostraQR(id){
- const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id);
+ const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id,"whatsapp");
  app.innerHTML=`<div class="card" style="text-align:center"><h3>${esc(descV(v,false))}</h3><p class="mute">${dRange(v)}</p><div class="qr" id="qrbox"></div>
  <p><b style="letter-spacing:2px;font-size:20px">${id}</b></p>
- <button class="btn" id="sh">Invia all'ospite</button> <button class="btn sec" onclick="stampaIds(['${id}'])">🖨 Stampa</button>
- <button class="btn sec" onclick="go('#/albergatore/lista')">Chiudi</button></div>`;
+ <button class="btn" id="sh">💬 Invia al cliente con WhatsApp</button> <button class="btn sec" onclick="copiaCanale('${id}','nfc')">📱 Copia link per NFC</button> <button class="btn sec" onclick="stampaIds(['${id}'])">🖨 Stampa</button>
+ <button class="btn sec" onclick="go('#/albergatore/lista')">Chiudi</button></div>
+ <div class="card"><h3>Accesso senza app</h3><p class="mute">Usa lo stesso voucher con canali distinti e tracciabili. Il consenso alla posizione e a WhatsApp viene chiesto soltanto nella pagina dell'ospite.</p>
+ <div class="qr" id="qraccesso"></div><div class="channel-grid"><button class="btn sm" onclick="copiaCanale('${id}','qr')">Copia link QR</button><button class="btn sm sec" onclick="copiaCanale('${id}','nfc')">Copia link NFC</button><button class="btn sm sec" onclick="copiaCanale('${id}','wifi')">Copia link Wi-Fi</button></div></div>`;
  qr($("#qrbox"),id);
+ qr($("#qraccesso"),linkOspite(id,"qr"),160);
  const msg=(ALB.config.msg||"{link}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}",l);
- $("#sh").onclick=()=>navigator.share?navigator.share({title:"La tua colazione",text:msg,url:l}).catch(()=>{}):navigator.clipboard.writeText(msg+" ").then(()=>toast("Messaggio copiato"))}
+ $("#sh").onclick=()=>window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener")}
+const copiaCanale=(id,fonte)=>navigator.clipboard.writeText(linkOspite(id,fonte)).then(()=>toast("Link "+fonte.toUpperCase()+" copiato"));
 /* --- editor camere (albergatore e titolare) --- */
 let CR=[],CRSID=null;
 function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi nome e ospiti. Spunta Tavolo solo per le camere che hanno normalmente il servizio al tavolo: durante ogni prenotazione potrai ancora cambiarlo.</p><div id="ce"></div>
@@ -461,13 +470,13 @@ const modChi=m=>m.chi&&m.chi!=="Tutti"?` <span class="mute">(${esc(m.chi)})</spa
 let G=null;
 const RECENSIONE_GOOGLE="https://g.page/r/CQqRnemKplctEBM/review";
 const RECENSIONE_TRIPADVISOR="https://www.tripadvisor.it/UserReviewEdit-g187785-d2695184-Ceraldi_Caffe-Naples_Province_of_Naples_Campania.html";
-const recensioniOspite=()=>`<div class="card" style="text-align:center"><h2 style="margin-bottom:6px">Com’è stata la tua esperienza da Ceraldi Caffè?</h2><p class="mute">Se ti va, scegli dove raccontarcela. La recensione è libera e non dà diritto a sconti, omaggi o premi.</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="${RECENSIONE_GOOGLE}" target="_blank" rel="noopener">⭐ Recensisci su Google</a><a class="btn sec" href="${RECENSIONE_TRIPADVISOR}" target="_blank" rel="noopener">🟢 Recensisci su Tripadvisor</a></div></div>`;
-async function ospite(id){
+const recensioniOspite=(p={})=>`<div class="card" style="text-align:center"><h2 style="margin-bottom:6px">Com’è stata la tua esperienza da Ceraldi Caffè?</h2><p class="mute">Se ti va, scegli dove raccontarcela. La recensione è libera e non dà diritto a sconti, omaggi o premi.</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="${esc(p.google_url||RECENSIONE_GOOGLE)}" target="_blank" rel="noopener" onclick="recClick('google')">⭐ Recensisci su Google</a><a class="btn sec" href="${esc(p.tripadvisor_url||RECENSIONE_TRIPADVISOR)}" target="_blank" rel="noopener" onclick="recClick('tripadvisor')">🟢 Recensisci su Tripadvisor</a></div></div>`;
+async function ospite(id,fonteRaw){
  $("#ttl").textContent="☕ La tua colazione";loading();
  const d=await rpc("bb_ospite",{vid:id||""}).catch(()=>null);
  if(!d){app.innerHTML=`<div class="card">Codice non valido.</div>`;return}
  const r=d.richieste||{};
- G={d,req:{allergie:r.allergie||[],nota:r.nota||"",modifiche:r.modifiche||[]},cart:{},cata:null,sub:"",q:"",form:null,sporco:false};
+ G={d,fonte:fonteOspite(fonteRaw),privacy:null,req:{allergie:r.allergie||[],nota:r.nota||"",modifiche:r.modifiche||[]},cart:{},cata:null,sub:"",q:"",form:null,sporco:false};
  (d.extra||[]).forEach(e=>{if(e.id)G.cart[e.id]=e.qta});
  const b=d.bar||{},maps=b.bar_maps||"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((b.bar_nome||"Bar Pasticceria Ceraldi")+" "+(b.bar_indirizzo||"Napoli"));
  const persone=d.ospiti||1,titolo=descV(d,false);
@@ -477,10 +486,36 @@ async function ospite(id){
  <div class="alert ok" style="text-align:left"><b>${d.tavolo?"🪑 La colazione sarà servita al tavolo":"☕ La colazione sarà servita al banco"}</b></div><div class="qr" id="qrbox"></div><p><b style="letter-spacing:2px;font-size:20px">${d.id}</b></p><p class="mute">Mostra questo codice al bancone di ${esc(b.bar_nome||"Bar Pasticceria Ceraldi")}.</p>
  <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(maps)}" target="_blank" rel="noopener">📍 Come arrivare al bar</a>
  ${b.bar_indirizzo?`<p class="mute">${esc(b.bar_indirizzo)}${b.bar_orari?" · "+esc(b.bar_orari):""}</p>`:""}${b.bar_tel||b.bar_whatsapp||b.bar_email?`<p>${b.bar_tel?`<a href="tel:${esc(b.bar_tel)}">📞 Chiama</a> `:""}${b.bar_whatsapp?`<a href="https://wa.me/${esc(String(b.bar_whatsapp).replace(/\D/g,""))}" target="_blank" rel="noopener">💬 WhatsApp</a> `:""}${b.bar_email?`<a href="mailto:${esc(b.bar_email)}">✉️ Email</a>`:""}</p>`:""}</div>
- ${albergoHtml(d.indirizzo)}<div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>${recensioniOspite()}
+ ${albergoHtml(d.indirizzo)}<div id="g_privacy"></div><div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div><div id="g_reviews">${recensioniOspite()}</div>
  <h2>Napoli oggi</h2>${napoli()}`;
  qr($("#qrbox"),d.id);gRender();
+ privacyInit();
  loadExt().then(E=>{$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)})}
+async function eventoOspite(finalita,azione="concesso",extra={}){
+ const versione=(G.privacy&&G.privacy.informativa_versione)||"2026-10-01-v1";
+ const r=await fetch("/api/colazioni/ospite/evento",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({voucher_id:G.d.id,fonte:G.fonte,finalita,azione,informativa_versione:versione,...extra})});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Servizio consensi non disponibile");return j}
+async function privacyInit(){
+ G.privacy=await rpc("bb_ospite_privacy_stato",{vid:G.d.id}).catch(()=>({informativa_versione:"2026-10-01-v1",informativa_url:"/privacy"}));privacyRender();
+ eventoOspite("apertura").catch(()=>{});
+}
+function privacyRender(){
+ const p=G.privacy||{},e=$("#g_privacy");if(!e)return;
+ e.innerHTML=`<div class="card"><h2 style="margin-top:0">Le tue scelte privacy</h2><p class="mute">Accesso da <b>${esc(G.fonte.toUpperCase())}</b>. Nessun consenso è preselezionato: posizione e WhatsApp sono separati e facoltativi.</p>
+ <label class="privacy-choice"><input id="geo_ok" type="checkbox" onchange="geoToggle(this.checked)"><span><b>Usa la mia posizione</b><br><span class="mute">Solo per registrare la presenza collegata a questa colazione. Il browser chiederà comunque il permesso.</span></span></label>
+ <label class="privacy-choice"><input id="wa_ok" type="checkbox" onchange="waToggle(this.checked)"><span><b>Ricevi l'invito alla recensione su WhatsApp</b><br><span class="mute">Messaggio dopo il consumo. Puoi revocare qui finché non è stato inviato.</span></span></label>
+ <div id="wa_phone" hidden><label>Numero WhatsApp in formato internazionale</label><input id="wa_num" type="tel" autocomplete="tel" placeholder="+39 333 1234567"><button class="btn sm" onclick="waConferma()">Conferma WhatsApp</button></div>
+ ${p.telefono_finale?`<p class="mute">Recapito attivo: •••• ${esc(p.telefono_finale)}</p>`:""}<p class="mute">Informativa <b>${esc(p.informativa_versione||"")}</b> · <a href="${esc(p.informativa_url||"/privacy")}" target="_blank" rel="noopener">leggi l'informativa</a></p></div>`;
+ $("#geo_ok").checked=!!p.geolocalizzazione;$("#wa_ok").checked=!!p.whatsapp;
+ const r=$("#g_reviews");if(r)r.innerHTML=recensioniOspite(p);
+}
+async function geoToggle(attivo){
+ if(!attivo){try{G.privacy=await eventoOspite("geolocalizzazione","revocato");toast("Consenso alla posizione revocato")}catch(e){toast(e.message)}privacyRender();return}
+ if(!navigator.geolocation){toast("Geolocalizzazione non disponibile");privacyRender();return}
+ navigator.geolocation.getCurrentPosition(async pos=>{try{G.privacy=await eventoOspite("geolocalizzazione","concesso",{posizione:{latitudine:pos.coords.latitude,longitudine:pos.coords.longitude,accuratezza_m:pos.coords.accuracy}});toast("Posizione autorizzata")}catch(e){toast(e.message)}privacyRender()},async()=>{await eventoOspite("geolocalizzazione","negato").catch(()=>{});toast("Posizione non autorizzata");privacyRender()},{enableHighAccuracy:false,timeout:10000,maximumAge:300000})}
+async function waToggle(attivo){if(attivo){$("#wa_phone").hidden=false;return}try{G.privacy=await eventoOspite("whatsapp","revocato");toast("Consenso WhatsApp revocato")}catch(e){toast(e.message)}privacyRender()}
+async function waConferma(){const telefono=$("#wa_num").value.trim();try{G.privacy=await eventoOspite("whatsapp","concesso",{telefono});toast("Invito WhatsApp attivato")}catch(e){toast(e.message)}privacyRender()}
+const recClick=d=>G&&eventoOspite("recensione_"+d).catch(()=>{});
 const gChiuso=()=>G.d.annullato||fine(G.d)<G.d.oggi;
 const gA=()=>Object.fromEntries(G.d.allergeni_elenco.map(a=>[a.id,a]));
 function gRender(){
@@ -984,6 +1019,8 @@ function pImpostazioni(){
  <textarea rows="3" onchange="salvaCfg('msg_ospite',this.value)">${esc(c.msg_ospite||"")}</textarea></div>
  <div class="card"><h3>📨 Messaggio di invito ai B&B</h3><p class="mute">Testo proposto quando inviate il link a un nuovo B&B. Puoi usare <b>{hotel}</b>, <b>{bar}</b> e <b>{link}</b>.</p>
  <textarea rows="3" onchange="salvaCfg('msg_invito',this.value)">${esc(c.msg_invito||"")}</textarea></div>
+ <div class="card"><h3>⭐ Recensioni e privacy ospite</h3><p class="mute">Collegamenti mostrati al cliente e impostazioni dell'eventuale invito WhatsApp dopo la colazione.</p>
+ ${f("review_google_url","Link recensione Google","https://…","url")}${f("review_tripadvisor_url","Link recensione Tripadvisor","https://…","url")}${f("review_invite_delay_minutes","Attesa dopo la colazione (minuti)","180","number","Da 0 a 10080 minuti (7 giorni).")}${f("privacy_notice_version","Versione informativa privacy","es. 2026-10-01-v1")}${f("privacy_notice_url","Link informativa privacy","/privacy","text","Percorso interno /… oppure link https://…")}</div>
  <div class="card"><h3>💳 Pagamenti con carta (SumUp)</h3>
  ${TIT.sumup?`<div class="alert ok"><b>✅ Attivo</b>${c.sumup_merchant_code?` · codice esercente <b>${esc(c.sumup_merchant_code)}</b>`:""}<br>Gli albergatori possono ricaricare il borsellino con carta e il saldo si aggiorna da solo.</div>
  <p class="mute">Per cambiare chiave, incollane una nuova qui sotto.</p>`:`<div class="alert"><b>Non ancora attivo.</b> Gli albergatori pagano al bar e tu confermi con "Incassata".</div>

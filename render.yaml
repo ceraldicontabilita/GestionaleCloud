@@ -62,6 +62,21 @@ services:
         sync: false
       - key: SUPABASE_RUNTIME_SECRET
         sync: false
+      # Inviti recensione WhatsApp: restano disattivati senza configurazione.
+      - key: WHATSAPP_REVIEW_PROVIDER
+        value: "disabled"
+      - key: WHATSAPP_REVIEW_API_BASE
+        value: "https://graph.facebook.com/v23.0"
+      - key: WHATSAPP_REVIEW_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_REVIEW_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_REVIEW_DATA_KEY
+        sync: false
+      - key: WHATSAPP_REVIEW_TEMPLATE
+        value: "ceraldi_review_invite"
+      - key: WHATSAPP_REVIEW_LANGUAGE
+        value: "it"
       # Lettura AI delle descrizioni di fatture e listini in Lotti
       # (servizi/lettura_articoli_ai.py, modello Haiku, una chiamata per lotto di
       # descrizioni, mai rilette) e, opzionale, estrazione AI di documenti.

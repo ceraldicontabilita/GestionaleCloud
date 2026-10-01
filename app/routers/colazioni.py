@@ -16,10 +16,11 @@ import logging
 import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import Any, Dict, Iterable, List, Literal, Mapping, Optional
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.utils.dependencies import get_current_admin_user
@@ -29,6 +30,45 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 ORE_SESSIONE = 12
+
+
+class PosizioneOspite(BaseModel):
+    latitudine: float = Field(ge=-90, le=90)
+    longitudine: float = Field(ge=-180, le=180)
+    accuratezza_m: Optional[float] = Field(default=None, ge=0, le=100_000)
+
+
+class EventoOspite(BaseModel):
+    voucher_id: str = Field(min_length=6, max_length=40)
+    fonte: Literal["qr", "nfc", "wifi", "link", "whatsapp"] = "link"
+    finalita: Literal[
+        "apertura", "geolocalizzazione", "whatsapp",
+        "recensione_google", "recensione_tripadvisor",
+    ]
+    azione: Literal["concesso", "negato", "revocato"] = "concesso"
+    informativa_versione: str = Field(min_length=1, max_length=80)
+    telefono: Optional[str] = Field(default=None, max_length=32)
+    posizione: Optional[PosizioneOspite] = None
+
+
+@router.post("/ospite/evento", summary="Consenso o evento della pagina colazione")
+async def evento_ospite(evento: EventoOspite) -> Dict[str, Any]:
+    """Endpoint pubblico ristretto al voucher: cifra il telefono prima del DB."""
+    from app.services.convenzioni_recensioni import registra_evento
+
+    dati = evento.model_dump()
+    if evento.finalita == "geolocalizzazione" and evento.azione == "concesso" and not evento.posizione:
+        raise HTTPException(status_code=422, detail="Posizione mancante")
+    if evento.finalita == "whatsapp" and evento.azione == "concesso" and not evento.telefono:
+        raise HTTPException(status_code=422, detail="Numero WhatsApp mancante")
+    try:
+        esito = await registra_evento(dati)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        logger.warning("Evento ospite non registrato: %s", exc)
+        raise HTTPException(status_code=503, detail="Servizio consensi non disponibile") from exc
+    return esito if isinstance(esito, dict) else {"ok": True}
 
 _FORNITORE_VANDEMOORTELE = re.compile(r"vand(?:e)?moo?rte?le|vandermortel", re.IGNORECASE)
 _CAMPI_CODICE_PRODOTTO = (

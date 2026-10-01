@@ -70,6 +70,10 @@ PUBLIC_PATHS = {
     "/api/terms",
     "/api/data-deletion",
 
+    # La pagina pubblica dell'ospite registra solo eventi legati al voucher.
+    # Numero e posizione vengono validati/cifrati dal backend prima del DB.
+    "/api/colazioni/ospite/evento",
+
     # OpenAPI docs (only in development)
     "/docs",
     "/redoc",

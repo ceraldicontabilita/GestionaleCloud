@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     SUPABASE_PUBLISHABLE_KEY: Optional[str] = None
     SUPABASE_RUNTIME_SECRET: Optional[str] = None
 
+    # Colazioni B&B: gli inviti recensione restano spenti finche' provider,
+    # credenziali e chiave di cifratura non sono configurati su Render.
+    WHATSAPP_REVIEW_PROVIDER: str = "disabled"
+    WHATSAPP_REVIEW_API_BASE: str = "https://graph.facebook.com/v23.0"
+    WHATSAPP_REVIEW_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_REVIEW_ACCESS_TOKEN: Optional[str] = None
+    WHATSAPP_REVIEW_TEMPLATE: str = "ceraldi_review_invite"
+    WHATSAPP_REVIEW_LANGUAGE: str = "it"
+    WHATSAPP_REVIEW_DATA_KEY: Optional[str] = None
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000

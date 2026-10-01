@@ -502,6 +502,15 @@ def start_scheduler():
     logger.info("🚀 [SCHEDULER] Configurazione scheduler...")
     avvio = datetime.now()
 
+    async def _convenzioni_recensioni_job():
+        from app.services.convenzioni_recensioni import processa_inviti_recensione
+        try:
+            esito = await processa_inviti_recensione()
+            if esito.get("stato") != "disattivato" or esito.get("processati"):
+                logger.info("[SCHEDULER-CONVENZIONI-RECENSIONI] %s", esito)
+        except Exception as exc:
+            logger.error("[SCHEDULER-CONVENZIONI-RECENSIONI] errore: %s", exc)
+
     async def _tesoreria_shadow_job():
         from app.agents.orchestrator import run_agenti
         from app.database import Database
@@ -1233,6 +1242,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="sumup_sync", name="Sincronizzazione SumUp (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _convenzioni_recensioni_job,
+        'interval', minutes=5,
+        next_run_time=avvio + timedelta(minutes=4),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="convenzioni_recensioni",
+        name="Inviti recensione WhatsApp Colazioni B&B (ogni 5 min)",
         replace_existing=True,
     )
     scheduler.add_job(

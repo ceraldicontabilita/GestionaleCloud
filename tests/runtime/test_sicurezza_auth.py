@@ -166,6 +166,9 @@ class TestAllowlistCongelata:
         # gestionale; vale solo con lo state monouso generato da «Collega»
         # (15 minuti, impronta SHA-256), e non espone dati.
         "/api/banca/enable-banking/callback",
+        # Voucher bearer della pagina ospite: valida il payload, cifra il
+        # numero e delega a una RPC runtime senza esporre tabelle o segreti.
+        "/api/colazioni/ospite/evento",
     }
 
     ALLOWLIST_PREFISSI_ATTESA = ["/docs", "/redoc"]
