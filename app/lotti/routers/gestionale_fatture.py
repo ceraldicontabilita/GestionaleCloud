@@ -28,6 +28,7 @@ from app.lotti.servizi.identita_fatture import query_identita_fattura
 
 router = APIRouter(prefix="/gestionale-fatture", tags=["GestionaleCloud Fatture"])
 RECEIPTS = "gestionale_fatture_ricevute"
+_STATI_NON_IMPORTABILI = {"senza_contenuto", "senza_identita_fornitore"}
 _LUCCHETTI_INGRESSO = weakref.WeakKeyDictionary()
 
 
@@ -398,6 +399,7 @@ async def esegui_sync_gestionale(
         # ma non si rileggono a ogni giro (occuperebbero il tetto per sempre)
         "conflitti_noti": 0,
         "non_importabili_noti": 0,
+        "senza_identita_fornitore": 0,
         "conflitti": [],
         "errori": [],
     }
@@ -436,7 +438,7 @@ async def esegui_sync_gestionale(
         non_importabili_noti = {
             str(r.get("source_id") or ""): str(r.get("source_hash") or "")
             for r in await getattr(db, RECEIPTS).find(
-                {"stato": "senza_contenuto"},
+                {"stato": {"$in": sorted(_STATI_NON_IMPORTABILI)}},
                 {"_id": 0, "source_id": 1, "source_hash": 1},
             ).to_list(100000)
         }
@@ -555,7 +557,36 @@ async def esegui_sync_gestionale(
 
             try:
                 detail = await _leggi_dettaglio(client, source_id)
-                xml_raw = str(detail.get("xml_raw") or "") or _xml_from_projection(detail)
+                xml_fattura = str(detail.get("xml_raw") or "")
+                nome_fornitore = str(
+                    detail.get("supplier_name") or item.get("supplier_name") or ""
+                ).strip()
+                piva_fornitore = str(
+                    detail.get("supplier_vat") or item.get("supplier_vat") or ""
+                ).strip()
+                # Alcuni documenti fiscali generici (per esempio un avviso
+                # PagoPA caricato via email) vivono nell'archivio `invoices`
+                # con righe e content_hash, ma non sono FatturaElettronica e
+                # non hanno un cedente. Non si deve inventare un fornitore ne'
+                # ritentarli come errore ogni 15 minuti: restano nel Gestionale
+                # e Lotti registra soltanto che non sono importabili.
+                if not xml_fattura and not (nome_fornitore or piva_fornitore):
+                    result["importabili"] -= 1
+                    result["senza_identita_fornitore"] += 1
+                    await getattr(db, RECEIPTS).update_one(
+                        {"source_id": source_id},
+                        {"$set": {
+                            "source_id": source_id,
+                            "source_hash": source_hash,
+                            "stato": "senza_identita_fornitore",
+                            "numero_fattura": item.get("invoice_number"),
+                            "data_fattura": item.get("invoice_date"),
+                            "ultimo_controllo": now,
+                        }},
+                        upsert=True,
+                    )
+                    continue
+                xml_raw = xml_fattura or _xml_from_projection(detail)
                 if not xml_raw:
                     result["senza_xml"] += 1
                     continue
