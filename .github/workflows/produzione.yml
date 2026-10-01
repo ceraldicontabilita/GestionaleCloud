@@ -117,6 +117,8 @@ jobs:
     name: Audit layout e viewer
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
     defaults:
       run:
         working-directory: frontend
@@ -131,8 +133,21 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Build frontend ERP per il collaudo visivo
         run: yarn build:erp
+      - name: Cache browser Playwright
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.playwright-browsers
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/yarn.lock') }}
       - name: Installa Chromium per Playwright
-        run: npx playwright-core install --with-deps chromium || npx playwright install --with-deps chromium
+        # Si e' visto fermarsi per 20 minuti sul download: tetto di 6 minuti
+        # sul passo e due tentativi da 170 secondi, senza saltare nessun test.
+        timeout-minutes: 6
+        run: |
+          for tentativo in 1 2; do
+            timeout 170 npx playwright-core install --with-deps chromium && exit 0
+            echo "Installazione Chromium: tentativo $tentativo non riuscito"
+          done
+          exit 1
       - name: Avvia preview
         run: |
           npx vite preview --port 4173 &
