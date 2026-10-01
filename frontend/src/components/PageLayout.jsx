@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { Inbox } from 'lucide-react';
 import { PageHeader } from './ds/PageHeader';
 import { COLORS, SPACING, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
 
@@ -103,7 +104,7 @@ export function PageGrid({ cols = 2, gap = 20, minWidth, children }) {
   );
 }
 
-export function PageEmpty({ icon = '□', message = 'Nessun dato disponibile' }) {
+export function PageEmpty({ icon = <Inbox size={48} aria-hidden="true" />, message = 'Nessun dato disponibile' }) {
   return (
     <div
       style={{
@@ -113,7 +114,7 @@ export function PageEmpty({ icon = '□', message = 'Nessun dato disponibile' })
         fontFamily: FONT.family,
       }}
     >
-      <div style={{ fontSize: 48, marginBottom: SPACING.lg }}>{icon}</div>
+      {typeof icon !== 'string' && <div style={{ marginBottom: SPACING.lg }}>{icon}</div>}
       <p style={{ margin: 0, fontSize: 15 }}>{message}</p>
     </div>
   );

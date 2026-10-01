@@ -21,7 +21,7 @@ import { TableWrap, Table, Th, Td } from './Table';
  * Spec colonna:
  *  { key, label, render?(item), align?, mono?, tdStyle?|fn(item),
  *    ruoloCard: 'titolo'|'sottotitolo'|'importo'|'dettaglio'|'azioni'|'omesso',
- *    iconaCard?, hideMobile?, hideDesktop? }
+ *    hideMobile?, hideDesktop? }
  */
 export function ListaAdattiva({
   colonne = [],
@@ -243,7 +243,7 @@ export function ListaAdattiva({
                     >
                       {colDettagli.map(c => (
                         <span key={c.key} style={{ whiteSpace: 'nowrap' }}>
-                          {c.iconaCard ? `${c.iconaCard} ` : `${c.label}: `}
+                          {`${c.label}: `}
                           {valore(c, item)}
                         </span>
                       ))}

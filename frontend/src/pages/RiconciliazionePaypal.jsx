@@ -213,7 +213,7 @@ export default function RiconciliazionePaypal() {
 
         {!loading && tab === 'transazioni' && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) minmax(190px, 260px)', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: 10, marginBottom: 12 }}>
               <input value={ricerca} onChange={e => setRicerca(e.target.value)} placeholder="Cerca ID, controparte, descrizione o email" style={inputStyle} />
               <select aria-label="Stato collegamento fattura" value={statoCollegamento} onChange={e => setStatoCollegamento(e.target.value)} style={inputStyle}>
                 <option value="tutti">Tutti gli stati</option>

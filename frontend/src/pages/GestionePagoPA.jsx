@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  formatEuro,
   formatDateIT,
   STYLES,
   COLORS,
@@ -31,10 +30,12 @@ export const paymentKindLabel = kind => ({
   RICEVUTA_BOLLETTINO_POSTALE: 'Bollettino postale', RICEVUTA_PAGOPA: 'PagoPA',
 }[kind] || 'Pagamento documentale');
 
+const importoOppureNull = v => (v === null || v === undefined || v === '' ? null : Number(v));
+
 export const paymentAmountParts = receipt => ({
-  operation: Number(receipt.operation_amount ?? receipt.importo ?? 0),
-  fee: Number(receipt.fee_amount ?? 0),
-  bankTotal: Number(receipt.bank_debit_total ?? receipt.operation_amount ?? receipt.importo ?? 0),
+  operation: importoOppureNull(receipt.operation_amount ?? receipt.importo),
+  fee: importoOppureNull(receipt.fee_amount),
+  bankTotal: importoOppureNull(receipt.bank_debit_total ?? receipt.operation_amount ?? receipt.importo),
 });
 
 export default function GestionePagoPA() {
@@ -158,10 +159,10 @@ export default function GestionePagoPA() {
 
   const cellaImporto = (ricevuta, idx) => (
     <>
-                          {formatEuro(paymentAmountParts(ricevuta).operation)}
+                          {euroOppure(paymentAmountParts(ricevuta).operation)}
                           <div style={{ fontSize: 11, color: '#7a776e', fontWeight: 400, marginTop: 3 }}>
-                            Commissione {formatEuro(paymentAmountParts(ricevuta).fee)}<br />
-                            Addebito banca {formatEuro(paymentAmountParts(ricevuta).bankTotal)}
+                            Commissione {euroOppure(paymentAmountParts(ricevuta).fee)}<br />
+                            Addebito banca {euroOppure(paymentAmountParts(ricevuta).bankTotal)}
                           </div>
     </>
   );

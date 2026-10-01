@@ -615,7 +615,7 @@ export default function MappaGestionale() {
         </div>
       </section>
 
-      <div style={styles.mainGrid}>
+      <div style={isMobile ? { ...styles.mainGrid, gridTemplateColumns: 'minmax(0, 1fr)' } : styles.mainGrid}>
         <section>
           <div style={styles.cardGrid}>
             {filteredAreas.map(area => (
@@ -629,7 +629,7 @@ export default function MappaGestionale() {
           </div>
         </section>
 
-        <aside style={styles.stickyPanel}>
+        <aside style={isMobile ? { position: 'static' } : styles.stickyPanel}>
           <DetailPanel area={activeArea} relatedAreas={relatedAreas} onSelectArea={setActiveId} />
         </aside>
       </div>
@@ -880,6 +880,7 @@ const styles = {
     lineHeight: 1.35,
   },
   openLink: {
+    minHeight: 44,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',

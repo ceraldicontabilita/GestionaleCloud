@@ -115,7 +115,8 @@ button { font-family: inherit; font-size: inherit; color: inherit; max-width: 10
    quando una tabella o una toolbar usa dimensioni compatte. min-* prevale
    sulle vecchie width/height inline senza alterare il layout desktop. */
 @media (max-width: 768px) {
-  button, [role="button"] { min-width: 36px; min-height: 36px; }
+  button, [role="button"], select { min-width: 44px !important; min-height: 44px !important; }
+  a[data-testid="nav-brand"], .fiscal-tabs a, a[data-testid^="link-"] { display: inline-flex; align-items: center; justify-content: center; min-width: 44px !important; min-height: 44px !important; }
 }
 
 img, video, svg, iframe, canvas { max-width: 100%; height: auto; }

@@ -93,4 +93,8 @@ describe('GestionePagoPA - semantica documentale', () => {
       operation_amount: 126.68, fee_amount: 2.85, bank_debit_total: 129.53,
     })).toEqual({ operation: 126.68, fee: 2.85, bankTotal: 129.53 });
   });
+
+  it('un importo assente resta assente, non diventa zero', () => {
+    expect(paymentAmountParts({})).toEqual({ operation: null, fee: null, bankTotal: null });
+  });
 });

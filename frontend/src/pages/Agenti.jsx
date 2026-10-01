@@ -46,7 +46,7 @@ function AgenteCard({ agente, onRun }) {
     Icon: Circle,
   };
   return (
-    <div style={{ ...STYLES.card, display: 'flex', alignItems: 'center', gap: 16 }}>
+    <div style={{ ...STYLES.card, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
       <div
         style={{
           width: 48,
@@ -71,7 +71,7 @@ function AgenteCard({ agente, onRun }) {
           <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
         </svg>
       </div>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: '1 1 160px', minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 14, color: '#141413', marginBottom: 4 }}>
           {agente.agente}
         </div>
