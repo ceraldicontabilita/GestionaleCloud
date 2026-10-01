@@ -12,6 +12,7 @@ import BulkPrezziView from "./BulkPrezziView";
 import CatalogoFornitoreView from "./CatalogoFornitoreView";
 import CatalogoGenericoView from "./CatalogoGenericoView";
 import SaimaRicettariView from "./SaimaRicettariView";
+import CartelliIngredientiBarView from "./CartelliIngredientiBarView";
 import ModalProdotto from "./prodotti/ModalProdotto";
 import ProdottoCard from "./prodotti/ProdottoCard";
 import SenzaPesoPanel from "./prodotti/SenzaPesoPanel";
@@ -270,7 +271,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
               : "Gestione centralizzata prodotti, prezzi e margini"}
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap justify-end">
+        {paginaTab !== "cartelli_bar" && <div className="flex items-center gap-3 flex-wrap justify-end">
           <button onClick={() => setBulkPrezziOpen(true)} data-testid="btn-bulk-prezzi"
             className="flex items-center gap-2 px-4 py-2 bg-[#f2f6f3] border border-[#cfdfd5] text-[#5b7a6b] rounded-xl text-sm hover:bg-[#dce8e0] transition-all font-medium">
             <DollarSign size={14} /> Imposta Prezzi ({stats.totale - stats.conPrezzo || 0})
@@ -298,7 +299,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
               <Plus size={14} /> Nuovo Prodotto
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Tab pagina */}
@@ -306,6 +307,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
         {[
           { id: "miei", label: "Miei Prodotti", count: prodotti.filter(p => p.fonte !== "acquaviva").length },
           { id: "acquaviva", label: "Acquaviva catalogo", count: null },
+          { id: "cartelli_bar", label: "Cartelli ingredienti bar", count: null },
           { id: "saima", label: "SAIMA S.p.a.", count: null },
           { id: "saima_ricettari", label: "Ricettari SAIMA", count: null },
           { id: "mepa", label: "MEPA Alimentari", count: null },
@@ -327,6 +329,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
 
       {/* Catalogo esterno (SAIMA / MEPA) */}
       {paginaTab === "acquaviva" && <CatalogoFornitoreView fornitore="acquaviva" nome="Dolciaria Acquaviva" />}
+      {paginaTab === "cartelli_bar" && <CartelliIngredientiBarView />}
       {paginaTab === "saima" && <CatalogoFornitoreView fornitore="saima" nome="SAIMA S.p.a." />}
       {paginaTab === "saima_ricettari" && <SaimaRicettariView />}
       {paginaTab === "mepa" && <CatalogoFornitoreView fornitore="mepa" nome="MEPA Alimentari" />}

@@ -170,6 +170,7 @@ def test_endpoint_distruttivi_dichiarano_require_admin():
         # 25/07/2026 (TRANCHE 2): import e sincronizzazioni di MASSA. Ognuno
         # riscrive cataloghi o listini interi in un colpo solo.
         ("app.lotti.routers.acquaviva", ("/import-listino-2026", "/import-listino-pdf",
+                               "/import-ingredienti-pdf",
                                "/sync-prezzi", "/import-alpha")),
         ("app.lotti.routers.listino", ("/sync-da-fatture",)),
         ("app.lotti.routers.sconti_merce", ("/importa-da-fatture", "/valorizza-da-fatture")),

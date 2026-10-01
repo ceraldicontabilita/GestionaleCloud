@@ -113,8 +113,8 @@ async def check_temperature_oggi(alerts: list):
                     codice,
                     f"Temperature {nome} non registrate oggi",
                     f"Nessuna rilevazione vera per il {oggi.strftime('%d/%m/%Y')}{elenco}. "
-                    "Le temperature le scrive una persona: registrale con il tuo PIN, "
-                    "oppure, se hai fatto il giro, usa «Giro fatto: tutto conforme».",
+                    "Verifica la dichiarazione continuativa del titolare e il giro delle 07:00; "
+                    "se hai riscontrato un'anomalia, registra la temperatura misurata col tuo PIN.",
                     "critica",
                     pagina,
                 )

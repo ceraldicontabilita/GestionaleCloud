@@ -39,14 +39,15 @@ def test_no_wifi_password_is_hardcoded_in_source():
     assert '"password":' not in source
 
 
-def test_daily_haccp_reports_expected_readings_without_writing_them():
+def test_daily_haccp_without_signed_attestation_writes_nothing():
     from app.lotti.routers import haccp_auto
 
     result = run(haccp_auto.verifica_e_popola_oggi())
 
     assert result["ok"] is True
     assert result["generato"] is False
-    assert result["elementi"] == []
+    assert result["dichiarate"] == 0
+    assert result["reason"] == "nessuna_attestazione_continuativa_attiva"
 
 
 def test_historical_haccp_population_is_disabled():

@@ -36,11 +36,10 @@ DEFAULT_AZIENDA = {
     "studio_consulenza": os.environ.get("AZIENDA_STUDIO", ""),
     # Il responsabile dell'attivita' dichiara di eseguire di persona il
     # controllo visivo del ciclo di produzione e igienizzazione, e se ne
-    # assume la responsabilita'. Con questo acceso, finito il giro, tocca
-    # «Giro fatto: tutto conforme» e il registro annota l'ESITO del controllo,
-    # firmato da lui e all'ora vera (POST /haccp-auto/dichiara-conformi-oggi).
-    # Il sistema non lo dichiara piu' da solo: il turno delle 07:00 apre solo
-    # le caselle da rilevare.
+    # assume la responsabilita'. La dichiarazione continuativa firmata vive nel
+    # documento `haccp_attestazione_continua`: alle 07:00 registra l'ESITO
+    # conforme senza inventare gradi. Una misura manuale, soprattutto anomala,
+    # sostituisce sempre l'esito automatico e conserva la storia della casella.
     "controllo_visivo_responsabile": os.environ.get("AZIENDA_CONTROLLO_VISIVO", ""),
     "controllo_visivo_ogni_ore": os.environ.get("AZIENDA_CONTROLLO_ORE", "2"),
 }

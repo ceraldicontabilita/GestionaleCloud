@@ -11,7 +11,6 @@ import SegnalaGuasto from "./shared/SegnalaGuasto";
 import { giorniNelMese } from "../../utils/dateUtils";
 import { testoFirmatari } from "../../utils/firmatari";
 import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
-import DichiaraConformiButton from "./DichiaraConformiButton";
 import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
 import { LEGENDA_STATI_HACCP, statoCellaHaccp } from "../../utils/statoCellaHaccp";
 
@@ -356,7 +355,6 @@ const TemperatureNegativeView = () => {
           <button onClick={() => cambiaMese(-1)} className="p-2 hover:bg-gray-100 rounded"><ChevronLeft size={20}/></button>
           <span className="font-semibold min-w-[150px] text-center">{MESI_IT[mese-1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="p-2 hover:bg-gray-100 rounded"><ChevronRight size={20}/></button>
-          <DichiaraConformiButton onFatto={fetchSchede} />
           <Button onClick={stampaScheda} variant="secondary" size="sm">
             <Printer size={16}/> Stampa
           </Button>

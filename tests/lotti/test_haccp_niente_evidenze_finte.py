@@ -126,28 +126,23 @@ def test_gli_endpoint_che_popolavano_non_esistono_piu():
     assert "HTTPException" in sorgente and "410" in sorgente
 
 
-def test_verifica_oggi_non_scrive_niente():
-    """L'unico automatismo chiamato dallo scheduler ogni mattina alle 07:00."""
+def test_verifica_oggi_senza_attestazione_non_scrive_niente():
+    """Senza una dichiarazione firmata il giro delle 07:00 resta innocuo."""
     import asyncio
+    from mongomock_motor import AsyncMongoMockClient
 
     import app.lotti.routers.haccp_auto as haccp
 
-    class _ArchivioCheEsplode:
-        def __getattr__(self, nome):
-            raise AssertionError(
-                f"verifica_e_popola_oggi ha toccato `{nome}`: "
-                "il job delle 07:00 non deve scrivere nessuna evidenza."
-            )
-
     originale = haccp.db
-    haccp.db = _ArchivioCheEsplode()
+    haccp.db = AsyncMongoMockClient()["Haccp_Senza_Attestazione"]
     try:
         esito = asyncio.run(haccp.verifica_e_popola_oggi())
     finally:
         haccp.db = originale
 
     assert esito["generato"] is False
-    assert esito["elementi"] == []
+    assert esito["dichiarate"] == 0
+    assert esito["reason"] == "nessuna_attestazione_continuativa_attiva"
 
 
 def test_il_marcatore_dei_giorni_scoperti_non_inventa_la_temperatura():

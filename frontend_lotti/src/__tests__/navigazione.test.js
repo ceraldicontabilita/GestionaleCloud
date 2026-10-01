@@ -100,7 +100,7 @@ describe("apertura route da hash (alias e fallback)", () => {
     expect(risolvi("")).toBe("dashboard");
   });
 
-  test.each(["acquaviva", "saima", "mepa"])(
+  test.each(["acquaviva", "cartelli_bar", "saima", "mepa"])(
     "il deep-link %s apre il sotto-tab dei cataloghi",
     (fornitore) => {
       const hash = `#prodotti/${fornitore}`;
