@@ -743,29 +743,14 @@ async def _identifica_con_ricerca_web(descrizione: str, fornitore: str = "",
             "formato/confezione/imballo (es. 'cartone da 48 pz', '80 g/pezzo', '52x80g'). "
             "NON inventare: se non trovi il prodotto esatto, usa confidenza bassa e lascia vuoti i campi dubbi."
         )
+    from app.lotti.servizi.lettura_articoli_ai import RicercaWebErrore, cerca_sul_web
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=90) as c:
-            r = await c.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
-                         "content-type": "application/json"},
-                json={
-                    "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 1500,
-                    "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-        data = r.json()
-        if r.status_code != 200:
-            raise HTTPException(502, f"ricerca web fallita: {str(data.get('error', {}).get('message', r.status_code))[:120]}")
-    except HTTPException:
-        raise
+        txt = (await cerca_sul_web(prompt))["testo"]
+    except RicercaWebErrore as e:
+        raise HTTPException(502, f"ricerca web fallita: {str(e)[:120]}") from e
     except Exception as e:
         logger.warning("[schede-tecniche] ricerca web fallita: %s %s", type(e).__name__, e)
         raise HTTPException(502, f"ricerca web fallita ({type(e).__name__})") from e
-    txt = "".join(b.get("text", "") for b in (data.get("content") or []) if b.get("type") == "text")
     res = _estrai_json(txt)
     if not res.get("prodotto_identificato"):
         return {"confidenza": "bassa", "prodotto_identificato": "", "marca": "",

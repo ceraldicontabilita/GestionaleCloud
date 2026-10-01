@@ -13,9 +13,10 @@ Un solo posto per:
 * ``associa_automatico``: per le righe senza categoria (o ferme su «Varie
   Alimentari») propone la categoria giusta dal nome, solo quando e' certa.
 
-Il runtime non fa ricerche sul web: la certezza viene da parole del nome di
-fattura, dal nome canonico gia' associato e dalla lettura AI
-(``articoli_letti_ai``: marca e prodotto), che devono **concordare**. Una
+La certezza viene da parole del nome di fattura, dal nome canonico gia'
+associato e dalla lettura AI (``articoli_letti_ai``: marca e prodotto), che
+devono **concordare**; per le righe che restano senza categoria il web le
+identifica (``lettura_articoli_ai.identifica_col_web``, stesse regole). Una
 categoria scritta da una persona (``categoria_fonte = "manuale"``) non si tocca.
 """
 from __future__ import annotations

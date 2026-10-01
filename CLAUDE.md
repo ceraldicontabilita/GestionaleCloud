@@ -831,6 +831,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `nome_mapping` resta l'ingrediente per le ricette, non l'articolo da ordinare. **Scelto un prodotto (catalogo, Ordini o
   confronto), la riga del carrello va al fornitore che costa meno** (`GET /confronto-fornitori/migliore`) e il toast lo dice;
   un cartone fatturato senza i pezzi scritti prende il numero dal listino dello stesso articolo, con la nota «da verificare».
+- **Il web identifica i prodotti con un motore solo** (`servizi/lettura_articoli_ai.py`): `cerca_sul_web` è l'unica chiamata a `web_search_20250305` (stessa `ANTHROPIC_API_KEY`, la usa anche la ricerca delle schede tecniche); `identifica_col_web` (giro `lotti_identifica_col_web` ogni 25 min, 5 righe, tetto 120 chiamate al giorno, `web_cercato_at` = 30 giorni di pausa) dà una categoria del Dizionario da sola **solo** se il web (alta confidenza, almeno una fonte) e il testo di fattura concordano e la categoria è in `CATEGORIE` (`categoria_fonte="web"`, `abbinato_ai`, fonti); il resto è proposta `nome_mapping` fonte `web`.
 - Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili col peso del pezzo.
 - Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
   colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e

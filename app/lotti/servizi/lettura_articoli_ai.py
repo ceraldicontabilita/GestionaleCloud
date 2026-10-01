@@ -20,6 +20,16 @@ descrizione gia' letta non si rilegge, finche' non cambia ``VERSIONE``. Il
 giro gira in sottofondo con lo stato in ``sync_status`` (``_id =
 "lettura_articoli_ai"``). ``nome_mapping`` resta un'altra cosa: l'ingrediente
 per le ricette («Burro»), non l'articolo commerciale da ordinare.
+
+**Identificazione col web** (``identifica_col_web``): per le righe del Dizionario
+senza categoria certa il modello cerca il prodotto con lo strumento server-side
+di Anthropic (``cerca_sul_web``, lo stesso della ricerca delle schede tecniche:
+stessa chiave, nessuna variabile nuova). La categoria si scrive da sola **solo**
+se web e testo della fattura concordano (marca o prodotto nella descrizione, o
+EAN), con confidenza alta e almeno una fonte, e si dichiara (``categoria_fonte =
+"web"``, ``abbinato_ai``, ``categoria_web_fonti``); i dubbi restano proposte in
+``nome_mapping`` (``fonte = "web"``, ``GET /proposte-web``). Mai categorie fuori
+da ``dizionario_ingredienti.CATEGORIE``; non certo = nessuna categoria + motivo.
 """
 from __future__ import annotations
 
@@ -40,6 +50,7 @@ COLLEZIONE = "articoli_letti_ai"
 STATO_ID = "lettura_articoli_ai"
 VERSIONE = 1
 MODELLO = "claude-haiku-4-5"
+MODELLO_WEB = "claude-haiku-4-5-20251001"  # lo stesso modello della ricerca delle schede tecniche
 PER_CHIAMATA = 25
 MAX_TOKEN = 8000
 IN_PARALLELO = 4
@@ -312,3 +323,268 @@ async def leggi_mancanti(db, descrizioni: Iterable[str], limite: int = 3000) -> 
                      ultimo_errore=ultimo_errore, da_leggere=restano)
         logger.info("[lettura_ai] lette %d descrizioni, %d non lette, restano %d", letti, errori, restano)
         return {"ok": True, "letti": letti, "errori": errori, "restano": restano}
+
+
+# ── ricerca sul web (strumento server-side di Anthropic) ────────────────────
+
+
+class RicercaWebErrore(RuntimeError):
+    """La ricerca web e' fallita (risposta non 200 o corpo illeggibile)."""
+
+
+async def cerca_sul_web(prompt: str, *, max_tokens: int = 1500, max_uses: int = 3,
+                        client=None) -> Dict[str, Any]:
+    """Una domanda al modello con ``web_search_20250305``: l'unico punto che lo chiama.
+
+    Torna ``{"testo": risposta, "fonti": [url delle pagine consultate]}``. Le
+    fonti vengono dai blocchi del tool (non da cio' che il modello scrive)."""
+    chiave = _chiave_api()
+    if not chiave:
+        raise RicercaWebErrore("manca ANTHROPIC_API_KEY")
+    import httpx
+
+    intestazioni = {"x-api-key": chiave, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    corpo = {"model": MODELLO_WEB, "max_tokens": max_tokens,
+             "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": max_uses}],
+             "messages": [{"role": "user", "content": prompt}]}
+    proprio = client is None
+    client = client or httpx.AsyncClient(timeout=90)
+    try:
+        r = await client.post("https://api.anthropic.com/v1/messages", headers=intestazioni, json=corpo)
+        dati = r.json()
+    finally:
+        if proprio:
+            await client.aclose()
+    if r.status_code != 200:
+        raise RicercaWebErrore(str((dati.get("error") or {}).get("message", r.status_code)))
+    blocchi = [b for b in (dati.get("content") or []) if isinstance(b, dict)]
+    testo = "".join(b.get("text", "") for b in blocchi if b.get("type") == "text")
+    fonti: List[str] = []
+    for b in blocchi:
+        if b.get("type") == "web_search_tool_result" and isinstance(b.get("content"), list):
+            for voce in b["content"]:
+                url = str(voce.get("url") or "") if isinstance(voce, dict) else ""
+                if url.startswith("http") and url not in fonti:
+                    fonti.append(url)
+    return {"testo": testo, "fonti": fonti}
+
+
+# ── identificazione del prodotto col web per il Dizionario ──────────────────
+
+# Costi: 5 descrizioni a giro (un giro ogni 20 minuti nello scheduler), 2 ricerche
+# per descrizione, al massimo TETTO_WEB_GIORNALIERO chiamate al giorno (giorno di Roma).
+# Una descrizione cercata non si ricerca per RIPROVA_WEB_GIORNI giorni.
+WEB_PER_GIRO = 5
+WEB_MAX_USES = 2
+TETTO_WEB_GIORNALIERO = 120
+RIPROVA_WEB_GIORNI = 30
+STATO_WEB_ID = "identifica_col_web"
+
+_SISTEMA_WEB = (
+    "Sei l'assistente di magazzino di una pasticceria italiana. Ti do la descrizione ESATTA di una riga di fattura "
+    "di un grossista alimentare (abbreviata, maiuscola, con formato e confezione). Cerca sul web che prodotto e', "
+    "preferendo la pagina del produttore o di un catalogo affidabile. "
+    "Rispondi SOLO con un oggetto JSON piatto, nessun altro testo: "
+    '{"marca": "...", "prodotto": "...", "formato": "...", "categoria": "...", "ean": "...", '
+    '"confidenza": "alta|media|bassa", "motivo": "..."}. '
+    "categoria DEVE essere esattamente una di queste: {categorie}. "
+    'Se non sei certo del prodotto reale usa "categoria": null e spiega in motivo: non inventare mai. '
+    'ean solo se lo hai letto in una pagina, altrimenti "". confidenza alta solo se hai trovato il prodotto esatto.'
+)
+
+
+def _adesso_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _json_piatto(testo: str) -> Dict[str, Any]:
+    for grezzo in reversed(re.findall(r"\{[^{}]*\}", testo or "", re.S)):
+        try:
+            dato = json.loads(grezzo)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(dato, dict):
+            return dato
+    return {}
+
+
+def _parole(testo: Any) -> List[str]:
+    return [p for p in re.findall(r"[a-zà-ÿ0-9]+", str(testo or "").lower()) if len(p) >= 4 and not p.isdigit()]
+
+
+def _compare_nel_testo(valore: Any, descrizione: str) -> bool:
+    """Una parola significativa del valore compare (anche abbreviata, min. 4 lettere) nella descrizione."""
+    nel_testo = _parole(descrizione)
+    return any(a.startswith(b) or b.startswith(a) for a in _parole(valore) for b in nel_testo)
+
+
+def valida_identificazione(dato: Dict[str, Any], descrizione: str) -> Dict[str, Any]:
+    """La risposta del web ripulita. ``categoria`` e' None se fuori elenco; ``concorda``
+    dice se il testo di fattura conferma marca/prodotto o l'EAN."""
+    from app.lotti.servizi.dizionario_ingredienti import CATEGORIE
+
+    def t(campo: str, massimo: int = 120) -> str:
+        return re.sub(r"\s+", " ", str(dato.get(campo) or "")).strip()[:massimo]
+
+    ufficiali = {c.lower(): c for c in CATEGORIE}
+    categoria = ufficiali.get(t("categoria").lower())
+    motivo = t("motivo", 300)
+    if t("categoria") and not categoria:
+        motivo = f"categoria fuori elenco: {t('categoria', 40)}"
+    elif not categoria and not motivo:
+        motivo = "il web non ha identificato il prodotto"
+    confidenza = t("confidenza", 10).lower()
+    ean = re.sub(r"\D", "", t("ean", 20))
+    ean_scritto = len(ean) in (8, 12, 13, 14) and ean in re.sub(r"\D", "", str(descrizione))
+    marca, prodotto = t("marca", 60), t("prodotto", 100)
+    concorda = ean_scritto or _compare_nel_testo(marca, descrizione) or _compare_nel_testo(prodotto, descrizione)
+    return {"marca": marca, "prodotto": prodotto, "formato": t("formato", 60), "categoria": categoria,
+            "confidenza": confidenza if confidenza in ("alta", "media", "bassa") else "bassa",
+            "motivo": motivo, "concorda": bool(concorda)}
+
+
+def decidi_associazione(ident: Dict[str, Any], fonti: List[str], descrizione: str) -> str:
+    """``certo`` (si scrive da sola), ``proposta`` (da confermare) o ``niente``.
+
+    Certo solo con categoria ufficiale, confidenza alta, almeno una fonte, concordanza col testo
+    di fattura e nessun contrasto con la categoria che il nome dice da solo."""
+    from app.lotti.servizi.dizionario_ingredienti import categoria_da_testo
+
+    if not ident.get("categoria"):
+        return "niente"
+    dal_nome = categoria_da_testo(descrizione)
+    if (ident["confidenza"] == "alta" and fonti and ident["concorda"]
+            and (dal_nome is None or dal_nome == ident["categoria"])):
+        return "certo"
+    return "proposta" if ident.get("prodotto") else "niente"
+
+
+def _oggi_roma() -> str:
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
+
+
+async def _stato_web(db, **campi: Any) -> None:
+    await db.sync_status.update_one({"_id": STATO_WEB_ID}, {"$set": campi}, upsert=True)
+
+
+async def _chiamate_oggi(db) -> int:
+    stato = await db.sync_status.find_one({"_id": STATO_WEB_ID}, {"_id": 0, "giorno": 1, "chiamate": 1}) or {}
+    return int(stato.get("chiamate") or 0) if stato.get("giorno") == _oggi_roma() else 0
+
+
+async def _conta_chiamata(db) -> None:
+    await _stato_web(db, giorno=_oggi_roma(), chiamate=await _chiamate_oggi(db) + 1)
+
+
+async def _candidati_web(db, limite: int) -> List[Dict[str, Any]]:
+    """Righe del Dizionario senza categoria certa mai cercate (o cercate piu' di N giorni fa)."""
+    from datetime import timedelta
+
+    from app.lotti.servizi.dizionario_ingredienti import e_bevanda
+
+    soglia = (datetime.now(timezone.utc) - timedelta(days=RIPROVA_WEB_GIORNI)).isoformat()
+    righe = await db.dizionario_prodotti.find(
+        {"$and": [
+            {"categoria_fonte": {"$ne": "manuale"}},
+            {"escluso_ricette": {"$ne": True}},
+            {"$or": [{"categoria_canonica": {"$in": [None, "", "Varie Alimentari"]}},
+                     {"categoria_canonica": {"$exists": False}}]},
+            {"$or": [{"web_cercato_at": {"$exists": False}}, {"web_cercato_at": None},
+                     {"web_cercato_at": {"$lt": soglia}}]},
+        ]},
+        {"_id": 0, "id": 1, "nome_originale": 1, "nome_normalizzato": 1, "fornitore": 1,
+         "categoria_canonica": 1},
+    ).to_list(1000)
+    servizi = {str(d.get("id")) for d in await getattr(db, COLLEZIONE).find(
+        {"servizio": True}, {"_id": 0, "id": 1}).to_list(None)}
+    out = []
+    for r in righe:
+        nome = str(r.get("nome_originale") or "").strip()
+        if not r.get("id") or len(nome) < 4 or e_bevanda(r) or impronta_descrizione(nome) in servizi:
+            continue
+        out.append(r)
+        if len(out) >= limite:
+            break
+    return out
+
+
+async def _proponi_mapping(db, riga: Dict[str, Any], ident: Dict[str, Any], fonti: List[str]) -> bool:
+    """Proposta da confermare in ``nome_mapping`` (fonte web). Mai su una riga che esiste gia'
+    e non e' una proposta web: la conferma o l'apprendimento di una persona vincono."""
+    from app.lotti.servizi.articoli_fattura import chiave_descrizione, invalida_cache
+
+    chiave = chiave_descrizione(riga.get("nome_originale"))
+    if not chiave:
+        return False
+    esistente = await db.nome_mapping.find_one({"descrizione_key": chiave}, {"_id": 0, "fonte": 1, "confermato": 1})
+    if esistente and (esistente.get("confermato") is True or esistente.get("fonte") != "web"):
+        return False
+    campi = {
+        "descrizione_key": chiave, "descrizione_originale": str(riga.get("nome_originale") or "").strip(),
+        "nome_canc": ident["prodotto"], "ingredienti_ricetta": [],
+        "alimentare": ident["categoria"] != "Non Alimentare",
+        "fonte": "web", "confermato": False, "proposto_at": _adesso_iso(),
+        "categoria": ident["categoria"], "confidenza": ident["confidenza"],
+        "cosa_e": " ".join(x for x in (ident["marca"], ident["prodotto"], ident["formato"]) if x),
+        "fornitore": riga.get("fornitore") or "",
+    }
+    if fonti:
+        campi["fonte_url"] = fonti[0]
+    if ident["motivo"]:
+        campi["note"] = ident["motivo"]
+    await db.nome_mapping.update_one({"descrizione_key": chiave}, {"$set": campi}, upsert=True)
+    invalida_cache()
+    return True
+
+
+async def identifica_col_web(db, limite: int = WEB_PER_GIRO, client=None) -> Dict[str, Any]:
+    """Un giro: cerca sul web le prime ``limite`` righe senza categoria certa.
+
+    Idempotente: ogni riga cercata porta ``web_cercato_at`` e per ``RIPROVA_WEB_GIORNI`` giorni non
+    si ricerca, quindi il secondo giro sulle stesse righe trova 0 candidati. Un errore dell'API non
+    marca la riga (si riprova al giro dopo) e ferma il giro."""
+    from app.lotti.servizi.dizionario_ingredienti import CATEGORIE
+
+    esito: Dict[str, Any] = {"ok": True, "cercate": 0, "associate": 0, "proposte": 0,
+                             "non_identificate": 0, "errori": 0}
+    if not _chiave_api():
+        return {**esito, "ok": False, "motivo": "ANTHROPIC_API_KEY non configurata"}
+    disponibili = TETTO_WEB_GIORNALIERO - await _chiamate_oggi(db)
+    if disponibili <= 0:
+        return {**esito, "motivo": "tetto giornaliero raggiunto"}
+    sistema = _SISTEMA_WEB.replace("{categorie}", "; ".join(CATEGORIE))
+    for riga in await _candidati_web(db, min(limite, disponibili)):
+        descrizione = str(riga["nome_originale"]).strip()
+        forn = f' Il fornitore e\' "{riga["fornitore"]}".' if riga.get("fornitore") else ""
+        await _conta_chiamata(db)
+        try:
+            ris = await cerca_sul_web(f"{sistema}\n\nDescrizione di fattura: «{descrizione}».{forn}",
+                                      max_uses=WEB_MAX_USES, client=client)
+        except Exception as exc:  # noqa: BLE001 - la riga non si marca: si riprova al giro dopo
+            esito["errori"] += 1
+            esito["ultimo_errore"] = f"{type(exc).__name__}: {exc}"[:300]
+            logger.warning("[identifica_web] ricerca fallita: %s: %s", type(exc).__name__, exc)
+            break
+        esito["cercate"] += 1
+        ident = valida_identificazione(_json_piatto(ris["testo"]), descrizione)
+        decisione = decidi_associazione(ident, ris["fonti"], descrizione)
+        adesso = _adesso_iso()
+        campi: Dict[str, Any] = {"web_cercato_at": adesso, "web_esito": decisione}
+        if decisione == "certo":
+            campi.update({"categoria_canonica": ident["categoria"], "categoria_fonte": "web",
+                          "categoria_auto_il": adesso, "categoria_web_fonti": ris["fonti"][:3],
+                          "abbinato_ai": True,
+                          "web_prodotto": " ".join(x for x in (ident["marca"], ident["prodotto"],
+                                                               ident["formato"]) if x)})
+            esito["associate"] += 1
+        elif decisione == "proposta":
+            if await _proponi_mapping(db, riga, ident, ris["fonti"]):
+                esito["proposte"] += 1
+        else:
+            campi["web_motivo"] = ident["motivo"]
+            esito["non_identificate"] += 1
+        await db.dizionario_prodotti.update_one({"id": riga["id"]}, {"$set": campi})
+    await _stato_web(db, ultimo_giro=_adesso_iso(), ultimo_esito={k: v for k, v in esito.items() if k != "ok"})
+    return esito
