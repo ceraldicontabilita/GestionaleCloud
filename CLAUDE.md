@@ -1009,6 +1009,8 @@ locale e marker fixture prima delle scritture.
 
 ## Aperto (togliere la voce quando si chiude)
 
+- **Lotti, due giri di ricerca web sulle descrizioni di fattura**: `identifica_col_web` (`lettura_articoli_ai.py`, giro `lotti_identifica_col_web`, categoria del Dizionario, `web_cercato_at`) e la campagna `ricerca_web_prodotti` (`app/lotti/routers/scheduler.py`, schede e `nome_mapping`, `ricerca_web_tentativi`, mai un tentativo registrato). Condividono l'helper `cerca_sul_web` ma sono due code e due contatori: fonderli in un giro solo.
+
 - **Fornitori, da lanciare dopo il merge** (admin, prima `dry_run`): `POST /api/suppliers/magazzino/allinea` (le 88 esclusioni di Lotti sull'anagrafica); per BIG FOOD SRL `POST /api/suppliers/{id}/applica-metodo-dal` dopo aver messo «Metodo valido dal» 01/01/2025 sulla scheda (oggi è 30/09/2026 per un salvataggio della scheda). Le 6 fatture BIG FOOD già pagate con assegno, banca o dichiarazione in banca (2.711,38 €) restano dove sono finché il titolare non dice diversamente. Il «30 giorni» della scheda fornitore (`giorni_pagamento`, default alla creazione) è un residuo di scadenza che le regole non prevedono: la scheda non lo mostra più, il campo nel form resta da togliere.
 
 - **Termini di recupero**: la regola dei termini vive in una vista SQL (`verifica.tabulato_tributi_termini`, migrazioni `…013008` e `…013741`), non in Python con test: se cresce o va corretta, portarla in `termini_recupero.py` con i casi del foglio del 01/10/2026 (27 righe ancora recuperabili su 98 senza versamento al 01/10).
