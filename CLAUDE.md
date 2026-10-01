@@ -832,7 +832,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel PDF.
 - **Listini** (`servizi/listino_fornitore.py`, `POST /catalogo-forno/importa-listino`, Excel/CSV letto per intestazione): prezzo
   che il fornitore dichiara oggi (Barone: catalogo riservato, bundlato in `data/listino_barone_2026-09-28.json` e caricato
-  all'avvio solo se piu' nuovo di quello in archivio). Vivono in `catalogo_forno_prodotti` (`fonte_catalogo="listino"`,
+  all'avvio solo se piu' nuovo di quello in archivio; stessa strada per `data/listini_catalogo_ceraldi_2026-07.json`, catalogo bar del vecchio archivio con un listino per fornitore, prezzi IVA esclusa, codici `CC-nnnn`). Vivono in `catalogo_forno_prodotti` (`fonte_catalogo="listino"`,
   `prezzo_listino` stringa Decimal per l'unita' «12 PZ») con la fonte `tipo="listino"` in `fonti_catalogo_esterne`; un articolo
   uscito dal listino resta con `nel_listino=False`. Nel confronto compaiono con scritta «listino» e data, mai come prezzo pagato.
 - **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →
@@ -1040,8 +1040,7 @@ locale e marker fixture prima delle scritture.
 
 - `legacy_staging` (5 tabelle, ~1 MB; le altre 51 sono state cancellate: gia' nel gestionale al centesimo): restano i dati che il gestionale non puo' ricevere senza una via con admin.
   `residui_fatture_2026` (le 21 righe gia' nel gestionale per numero e importo non ci sono piu'; restano **8 parcelle FPR pagate** nel 2026 senza XML: Carini 3.206,40, Marotta 1.122,24 + 1.517,70 + 1.656,64,
-  Ferrantini 1.122,24 ×3, Graziuso 2.300,00 contanti — servono gli XML dal portale AdE), `catalogo_ceraldi`
-  (525 prodotti bar, prezzi IVA esclusa per fornitore, luglio 2026: 435 da importare come listino dichiarato con codici `CC-nnnn`, fornitore per P.IVA (Di Vincenzo = Di Vincenzo Group; Cristiani e Acquaviva senza P.IVA), i 90 senza fornitore esclusi; non sono prezzi pagati), `movimenti_carta`
+  Ferrantini 1.122,24 ×3, Graziuso 2.300,00 contanti — servono gli XML dal portale AdE), `catalogo_ceraldi` (caricato all'avvio come listini, vedi «Listini»: dopo il deploy verificare 808 righe in `catalogo_forno_prodotti` e togliere la tabella), `movimenti_carta`
   (34 movimenti carta gen–giu 2026, 18 con fattura collegata a mano: gli estratti Nexi correnti sono PDF mensili senza righe), `presenze_acconti` (da registrare in HR
   l'acconto TFR di 1.800 € a Capezzuto del 31/07/2026 e uno stipendio di agosto) e `presenze_profili` (IBAN e profilo di Murolo, assente dall'HR corrente: da chiedere al titolare se e' un ex dipendente).
   Si migrano con le vie normali (mai con SQL a mano: l'acconto TFR scrive anche il giornale), poi lo schema si cancella.
