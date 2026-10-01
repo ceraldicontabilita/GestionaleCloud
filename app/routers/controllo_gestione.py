@@ -7,6 +7,7 @@ from typing import Dict, Any
 import logging
 
 from app.database import Database
+from app.middleware.performance import istantanea
 from app.services.conto_economico_gestionale import costo_personale, ricavi_corrispettivi
 from app.services.fatture_report_ae import FILTRO_FATTURE_ATTIVE
 from app.utils.error_handler import handle_errors
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/costi-ricavi")
 @handle_errors
+@istantanea(ttl=120, max_eta=1800, persistente=True)
 async def get_analisi_costi_ricavi(
     anno: int,
     mese: int = None

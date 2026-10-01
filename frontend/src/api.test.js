@@ -53,6 +53,10 @@ describe('letture durante il riavvio del servizio', () => {
     expect(eErroreTransitorio({ response: { status: 500 } })).toBe(false);
   });
 
+  it('una richiesta annullata dalla pagina non e un riavvio: nessun avviso e nessun nuovo tentativo', () => {
+    expect(eErroreTransitorio({ code: 'ERR_CANCELED', message: 'canceled' })).toBe(false);
+  });
+
   it('le attese coprono circa un minuto: un riavvio di Render non arriva all\'errore rosso', () => {
     const totale = ATTESE_RITENTATIVI_MS.reduce((a, b) => a + b, 0);
     expect(totale).toBeGreaterThanOrEqual(60000);

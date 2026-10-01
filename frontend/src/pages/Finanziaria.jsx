@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { COLORS, FONT, formatEuro } from '../lib/utils';
+import { COLORS, FONT, formatEuro, formatDateIT } from '../lib/utils';
 import { Badge, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
 import {
   PageLayout,
@@ -210,6 +211,32 @@ export default function Finanziaria() {
 
       {/* Dettaglio Prima Nota */}
       <PageSection title="Dettaglio Prima Nota" icon="📒" style={{ marginTop: 20 }}>
+        {(summary?.avvisi_aggiornamento || []).map((a) => (
+          <div
+            key={a.conto}
+            role="alert"
+            data-testid={`finanziaria-avviso-${a.conto}`}
+            style={{
+              display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: 12,
+              marginBottom: 12, borderRadius: 8, background: COLORS.warningLight || COLORS.bgAlt,
+              border: `1px solid ${COLORS.warning}`, color: COLORS.text,
+            }}
+          >
+            <span style={{ flex: '1 1 260px', fontSize: 14 }}>{a.messaggio}</span>
+            {a.azione && (
+              <Link
+                to={a.azione.percorso}
+                style={{
+                  minHeight: 44, display: 'inline-flex', alignItems: 'center', padding: '0 16px',
+                  borderRadius: 8, background: COLORS.primary, color: '#fff', fontWeight: 600,
+                  textDecoration: 'none',
+                }}
+              >
+                {a.azione.etichetta}
+              </Link>
+            )}
+          </div>
+        ))}
         <TableWrap>
           <Table>
             <thead>
@@ -226,8 +253,11 @@ export default function Finanziaria() {
                 <Td>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Wallet size={16} color={COLORS.textMuted} /> Cassa
-                  </span>
-                </Td>
+                    </span>
+                    <div data-testid="finanziaria-aggiornato-cassa" style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                      {summary?.cassa?.aggiornato_al ? `aggiornato al ${formatDateIT(summary.cassa.aggiornato_al)}` : 'data ultimo movimento non nota'}
+                    </div>
+                  </Td>
                 <Td align="right" mono>{formatEuro(summary?.cassa?.riporto)}</Td>
                 <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
                   {formatEuro(summary?.cassa?.entrate)}
@@ -243,8 +273,11 @@ export default function Finanziaria() {
                 <Td>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Building2 size={16} color={COLORS.textMuted} /> Banca BPM
-                  </span>
-                </Td>
+                    </span>
+                    <div data-testid="finanziaria-aggiornato-banca" style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                      {summary?.banca?.aggiornato_al ? `aggiornato al ${formatDateIT(summary.banca.aggiornato_al)}` : 'data ultimo movimento non nota'}
+                    </div>
+                  </Td>
                 <Td align="right" mono>{formatEuro(summary?.banca?.riporto)}</Td>
                 <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
                   {formatEuro(summary?.banca?.entrate)}
@@ -262,6 +295,9 @@ export default function Finanziaria() {
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Building2 size={16} color={COLORS.textMuted} /> Mastercard SumUp
                     </span>
+                    <div data-testid="finanziaria-aggiornato-sumup" style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                      {summary?.sumup?.aggiornato_al ? `aggiornato al ${formatDateIT(summary.sumup.aggiornato_al)}` : 'data ultimo movimento non nota'}
+                    </div>
                   </Td>
                   <Td align="right" mono>{formatEuro(summary.sumup.riporto)}</Td>
                   <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
@@ -304,7 +340,8 @@ export default function Finanziaria() {
           </Table>
         </TableWrap>
         <p style={{ color: COLORS.textMuted, fontSize: 13, margin: '12px 0 0' }}>
-          {summary?.financial_note} I pagamenti di salari e F24 sono già compresi nelle uscite
+          Il saldo non è «riporto + entrate − uscite»: entrate e uscite escludono i versamenti e i
+          trasferimenti fra Cassa, Banca e SumUp, che invece il saldo comprende. {summary?.financial_note} I pagamenti di salari e F24 sono già compresi nelle uscite
           bancarie e non vengono sommati una seconda volta.
         </p>
         <p

@@ -128,12 +128,18 @@ export default function ContabilitaAvanzata() {
   // vuota senza spiegare quale endpoint fosse rotto.
   const [erroriBlocchi, setErroriBlocchi] = useState([]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setImposte(null);
-    setStatistiche(null);
-    setBilancio(null);
-    setDisponibilita(null);
+  // Copia salvata dal server: se un riepilogo e' stato servito dall'ultima copia
+  // e si sta ricalcolando, la pagina si apre subito e lo dice (poi si rinfresca da sola).
+  const [copiaDel, setCopiaDel] = useState(null);
+
+  const fetchData = async ({ silenzioso = false } = {}) => {
+    if (!silenzioso) {
+      setLoading(true);
+      setImposte(null);
+      setStatistiche(null);
+      setBilancio(null);
+      setDisponibilita(null);
+    }
     const errori = [];
     const conErrore = nome => e => {
       errori.push(`${nome} (${e?.response?.status || e?.message || 'endpoint non raggiungibile'})`);
@@ -161,6 +167,12 @@ export default function ContabilitaAvanzata() {
       setAliquoteIrap(aliqRes.data.aliquote || {});
     }
     setDisponibilita(dispRes?.data ?? null);
+    const inAggiornamento = [impRes, statRes, bilRes, dispRes]
+      .map(r => r?.data?.istantanea)
+      .filter(i => i?.in_aggiornamento && i?.calcolata_at);
+    setCopiaDel(inAggiornamento.length
+      ? inAggiornamento.map(i => i.calcolata_at).sort()[0]
+      : null);
     setErroriBlocchi(errori);
     if (errori.length) console.warn('Contabilità Avanzata, blocchi in errore:', errori);
     setLoading(false);
@@ -170,6 +182,15 @@ export default function ContabilitaAvanzata() {
   useEffect(() => {
     fetchData();
   }, [regione, selectedYear]);
+
+  // Dati serviti dalla copia: dopo qualche secondo si rileggono senza far
+  // sparire la pagina, e l'avviso sparisce quando arriva il dato fresco.
+  useEffect(() => {
+    if (!copiaDel) return undefined;
+    const timer = setTimeout(() => fetchData({ silenzioso: true }), 8000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copiaDel]);
 
   const handleRicategorizza = async () => {
     setProcessing(true);
@@ -257,6 +278,26 @@ export default function ContabilitaAvanzata() {
             Scarica PDF
           </Button>
         </div>
+
+        {copiaDel && (
+          <div
+            role="status"
+            data-testid="avviso-copia-salvata"
+            style={{
+              display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: 12,
+              marginBottom: 12, borderRadius: 8, background: COLORS.warningLight,
+              border: `1px solid ${COLORS.warning}`, color: COLORS.text,
+            }}
+          >
+            <span style={{ flex: '1 1 260px', fontSize: 14 }}>
+              Questi dati sono l'ultima copia salvata ({new Date(copiaDel).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}):
+              si stanno aggiornando in sottofondo.
+            </span>
+            <Button variant="primary" onClick={() => fetchData({ silenzioso: true })}>
+              Aggiorna ora
+            </Button>
+          </div>
+        )}
 
         {/* Message */}
         {message && (
