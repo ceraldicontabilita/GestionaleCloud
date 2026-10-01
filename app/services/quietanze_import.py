@@ -205,6 +205,41 @@ def _firma_contenuto(parsed: dict, data_pagamento: Any, saldo: Any) -> str | Non
     return "c1:" + hashlib.sha256(dati.encode()).hexdigest()
 
 
+def _firma_righe(parsed: dict, saldo: Any) -> str | None:
+    """Impronta di saldo e righe, SENZA data: lega la copia del Cassetto (senza data di
+    pagamento) alla quietanza con la data, quando e' la stessa delega."""
+    righe = []
+    for sezione in ("sezione_erario", "sezione_inps", "sezione_regioni",
+                    "sezione_tributi_locali", "sezione_inail"):
+        for r in parsed.get(sezione, []) or []:
+            righe.append((
+                sezione, str(r.get("codice_tributo") or r.get("causale") or r.get("codice_atto") or ""),
+                str(r.get("periodo_riferimento") or r.get("periodo_raw") or ""),
+                int(r.get("importo_debito_cents") or 0), int(r.get("importo_credito_cents") or 0),
+            ))
+    if not righe:
+        return None
+    return "r1:" + hashlib.sha256(json.dumps([saldo_cents({"saldo": saldo}), sorted(righe)]).encode()).hexdigest()
+
+
+def _quietanza_da_stampa_cassetto(content: bytes) -> dict | None:
+    """Legge con il lettore dei modelli la stampa del Cassetto, che ha la forma del modello F24.
+
+    Il lettore delle quietanze non ne trova le righe; il lettore dei modelli si': le righe e la
+    quadratura sono le sue, la natura e' quella di una quietanza senza data di pagamento.
+    """
+    from app.services.parser_f24 import parse_f24_commercialista
+
+    modello = parse_f24_commercialista(pdf_content=content)
+    if not modello or modello.get("error"):
+        return None
+    dg = dict(modello.get("dati_generali") or {})
+    dg.update({"natura_documento": "QUIETANZA_STAMPA_CASSETTO", "data_pagamento": None,
+               "protocollo_telematico": ""})
+    modello["dati_generali"] = dg
+    return modello
+
+
 async def importa_quietanza_bytes(
     db, content: bytes, filename: str, fonte: str = "upload_manuale",
     source_metadata: Dict[str, Any] | None = None,
@@ -250,6 +285,12 @@ async def importa_quietanza_bytes(
     except Exception as e:
         logger.error(f"Errore parsing quietanza {filename}: {e}")
         return {"success": False, "filename": filename, "error": f"Errore parsing: {e}"}
+
+    if parsed and not parsed.get("error") and not normalizza_righe_tributo(parsed):
+        from app.services.f24_parser import e_stampa_cassetto, extract_text_from_pdf
+
+        if e_stampa_cassetto(extract_text_from_pdf(pdf_content=content)):
+            parsed = _quietanza_da_stampa_cassetto(content) or parsed
 
     if not parsed or (parsed.get("error")):
         return {"success": False, "filename": filename,
@@ -307,7 +348,34 @@ async def importa_quietanza_bytes(
     data_pagamento = dg.get("data_pagamento")
     codice_fiscale = dg.get("codice_fiscale", "")
     firma_contenuto = None
+    firma_righe = None
     if not str(protocollo or "").strip():
+        # La copia del Cassetto (righe e saldo, niente data) e la quietanza con la data
+        # sono la stessa delega quando saldo e righe tornano al centesimo: l'abbinamento
+        # parte all'arrivo del secondo pezzo, in qualunque ordine arrivino.
+        firma_righe = _firma_righe(parsed, saldo_quietanza)
+        if firma_righe:
+            candidate = await db[COLL_QUIETANZE].find(
+                {"saldo": saldo_quietanza, "protocollo_telematico": {"$in": ["", None]},
+                 "status": {"$ne": "eliminato"}},
+                {"_id": 0},
+            ).to_list(50)
+            # Due date diverse sono due pagamenti (anche con saldo e righe uguali): si abbina
+            # solo se questo documento non ha la data, oppure e' la gemella a non averla.
+            gemella = next((q for q in candidate
+                            if (not guscio or q.get("id") != existing.get("id"))
+                            and (not data_pagamento or not q.get("data_pagamento"))
+                            and _firma_righe(q, q.get("saldo")) == firma_righe), None)
+            if gemella and (not data_pagamento or gemella.get("data_pagamento")):
+                # Gia' in archivio (con la data, o senza e nemmeno questa la porta): una sola.
+                await db[COLL_QUIETANZE].update_one(
+                    {"id": gemella["id"]}, {"$addToSet": {"source_occurrences": occurrence}},
+                )
+                return {"success": True, "duplicate": True, "quietanza_id": gemella["id"],
+                        "filename": filename, "motivo": "stessa delega (saldo e righe uguali, senza protocollo)"}
+            if gemella:
+                # La gemella senza data riceve quella di questo documento: stesso id, stesse prove.
+                existing, guscio = gemella, True
         # Senza protocollo (F24 del 2018-2019, modulo con i dati sovrapposti) la
         # delega e' il suo contenuto fiscale: data, saldo e righe. Stampata due
         # volte con PDF diversi e' una sola quietanza.
@@ -370,6 +438,8 @@ async def importa_quietanza_bytes(
     }
     if firma_contenuto:
         quietanza_doc["firma_contenuto"] = firma_contenuto
+    if firma_righe:
+        quietanza_doc["firma_righe"] = firma_righe
     if protocollo_condiviso:
         # Da confermare a vista: due deleghe col protocollo uguale e saldi diversi.
         quietanza_doc["protocollo_condiviso_con"] = protocollo_condiviso

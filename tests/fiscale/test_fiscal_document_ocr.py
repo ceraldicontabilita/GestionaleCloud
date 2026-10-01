@@ -17,9 +17,12 @@ def _blank_pdf() -> bytes:
 
 
 def test_pagina_fiscale_raster_usa_ocr_locale_con_confidenza(monkeypatch):
+    import contextlib
+
+    monkeypatch.setattr(ingestion, "motore", lambda: contextlib.nullcontext(object()))
     monkeypatch.setattr(
         ingestion, "_ocr_page",
-        lambda _page: (
+        lambda _page, _engine: (
             "VP1 Mese 7\nVP4 100,00\nVP5 20,00\nVP14 80,00", 0.93,
             [{"x0": 10, "y0": 10, "x1": 20, "y1": 20, "text": "VP1"}],
         ),

@@ -60,3 +60,18 @@ def test_servizio_indice_usa_la_cartella_unica(monkeypatch):
     sentinella = object()
     monkeypatch.setattr(cu, "_service", lambda: sentinella)
     assert drive_document_index.build_drive_service() is sentinella
+
+
+def test_file_segnalato_come_malware_si_riprova_con_la_conferma(monkeypatch):
+    class _Servizio:
+        def close(self):
+            pass
+
+    def _scarica(_s, file_id, conferma_abuso=False):
+        if not conferma_abuso:
+            raise RuntimeError("cannotDownloadAbusiveFile")
+        return b"%PDF-ok"
+
+    monkeypatch.setattr(cu, "_service", lambda: _Servizio())
+    monkeypatch.setattr(drive_download, "scarica_bytes", _scarica)
+    assert asyncio.run(drive_download.scarica_originale("x")) == b"%PDF-ok"

@@ -154,7 +154,7 @@ export default function Ritenute() {
                 <div style={{ fontSize: 11.5, color: '#4c4a44', marginTop: 4 }}>
                   Quietanza AdE del {formatDateIT(r.quietanza_data)} · protocollo {r.quietanza_protocollo}
                   {r.f24_associazione_tipo === 'aggregata' ? ' · 1040 del periodo sommato' : ''}
-                  <div style={{ marginTop: 3 }}><a href="/tributi?cerca=1040">Apri Tributi</a></div>
+                  <div style={{ marginTop: 3 }}><a href="/situazione-fiscale/tributi-per-codice?cerca=1040">Apri Tributi</a></div>
                 </div>
               )}
               {!r.f24_id && r.stato === 'da_verificare_associazione_f24' && (

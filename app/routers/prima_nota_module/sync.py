@@ -3975,3 +3975,114 @@ async def conferma_provvisorie_multiple(data: Dict = Body(...)) -> Dict:
             + (f", {scartate} scartate (vedi dettaglio)" if scartate else "")
         ),
     }
+
+
+_METODI_CASSA = {"cassa", "contanti"}
+
+
+async def imposta_metodo_fornitore_provvisoria(data: Dict = Body(...)) -> Dict:
+    """Imposta il metodo di pagamento del fornitore e sposta in Prima Nota le sue fatture.
+
+    Una fattura sta fra i provvisori perche' il metodo del fornitore non e' impostato
+    (``sospesa``): da questa scheda si sceglie il metodo UNA volta sola. Il metodo va
+    sull'anagrafica (con la sua data «dal», dallo stesso PUT della scheda Fornitori), poi
+    questa fattura e le altre **dello stesso fornitore** passano dal giro della conferma
+    multipla, con tutte le sue guardie (gia' pagata, esclusa, pagamento parziale): Cassa per
+    il contante, «attendi banca» per tutto il resto.
+
+    Body: { fattura_id, metodo: "cassa"|"banca", altre_fattura_ids?: [...], cambia_metodo?: bool }
+
+    Le altre fatture le sceglie la pagina, ma il server controlla che la partita IVA sia
+    quella del fornitore: una fattura di un altro fornitore non si sposta mai da qui.
+    Se il fornitore ha gia' un metodo diverso non lo cambia di nascosto (409), a meno che
+    chi chiede dica ``cambia_metodo``.
+    """
+    from app.constants.metodi_pagamento import metodo_non_configurato
+
+    db = Database.get_db()
+    scelta = str(data.get("metodo") or "").strip().lower()
+    if scelta not in ("cassa", "banca"):
+        raise HTTPException(status_code=400, detail="Metodo non valido: scegli 'cassa' oppure 'banca'")
+    fattura_id = data.get("fattura_id")
+    if fattura_id in (None, ""):
+        raise HTTPException(status_code=400, detail="Fattura non indicata")
+    altre_raw = data.get("altre_fattura_ids") or []
+    if not isinstance(altre_raw, list):
+        raise HTTPException(status_code=400, detail="altre_fattura_ids deve essere una lista")
+    altre = list(dict.fromkeys(str(f).strip() for f in altre_raw if str(f or "").strip()))
+    altre = [f for f in altre if f != str(fattura_id).strip()]
+    if len(altre) > 199:
+        raise HTTPException(status_code=400, detail="Massimo 200 fatture per giro: seleziona un blocco piu' piccolo")
+
+    def _candidati(valore) -> list:
+        testo = str(valore).strip()
+        return [testo] + ([int(testo)] if testo.isdigit() else [])
+
+    fattura = await db["invoices"].find_one({"id": {"$in": _candidati(fattura_id)}}, {"_id": 0})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    piva = str(fattura.get("supplier_vat") or fattura.get("cedente_piva") or "").strip()
+    if not piva:
+        raise HTTPException(
+            status_code=409,
+            detail="La fattura non ha la partita IVA del fornitore: imposta il metodo dalla scheda Fornitori.")
+    filtro_fornitore = {"$or": [{"partita_iva": piva}, {"piva": piva}, {"vat_number": piva}]}
+    fornitore = await db[Collections.SUPPLIERS].find_one(filtro_fornitore, {"_id": 0})
+    if not fornitore:
+        raise HTTPException(status_code=404, detail="Fornitore non in anagrafica: crealo dalla scheda Fornitori.")
+
+    attuale = fornitore.get("metodo_pagamento")
+    cambiato = False
+    if metodo_non_configurato(attuale):
+        da_scrivere = scelta
+    else:
+        stesso_gruppo = (str(attuale).lower() in _METODI_CASSA) == (scelta == "cassa")
+        if stesso_gruppo:
+            da_scrivere = None                                   # gia' impostato nello stesso senso
+        elif data.get("cambia_metodo") is True:
+            da_scrivere = scelta
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Il fornitore ha gia' il metodo «{attuale}»: per cambiarlo conferma "
+                        "il cambio di metodo o modificalo dalla scheda Fornitori."))
+    if da_scrivere:
+        from app.routers.suppliers_module.base import update_supplier
+
+        await update_supplier(piva, {"metodo_pagamento": da_scrivere})
+        cambiato = True
+
+    # Le altre fatture: solo se davvero dello stesso fornitore (la pagina propone, il server verifica).
+    stesse: list = []
+    scartate_altro_fornitore: list = []
+    if altre:
+        trovate = await db["invoices"].find(
+            {"id": {"$in": [c for f in altre for c in _candidati(f)]}},
+            {"_id": 0, "id": 1, "supplier_vat": 1, "cedente_piva": 1},
+        ).to_list(len(altre) * 2)
+        per_id = {str(f.get("id")): f for f in trovate}
+        for f in altre:
+            riga = per_id.get(f)
+            if riga and str(riga.get("supplier_vat") or riga.get("cedente_piva") or "").strip() == piva:
+                stesse.append(f)
+            else:
+                scartate_altro_fornitore.append(f)
+
+    esito = await conferma_provvisorie_multiple({
+        "fattura_ids": [str(fattura_id).strip(), *stesse],
+        "metodo": "cassa" if scelta == "cassa" else "attendi_banca",
+    })
+    nome = fornitore.get("denominazione") or fornitore.get("ragione_sociale") or piva
+    return {
+        **esito,
+        "fornitore": nome,
+        "metodo_fornitore": da_scrivere or attuale,
+        "metodo_fornitore_cambiato": cambiato,
+        "altre_incluse": len(stesse),
+        "altre_escluse": scartate_altro_fornitore,
+        "message": (
+            f"Metodo di {nome}: {(da_scrivere or attuale)}. {esito['message']}"
+            + (f" ({len(scartate_altro_fornitore)} fatture non del fornitore: non spostate)"
+               if scartate_altro_fornitore else "")
+        ),
+    }

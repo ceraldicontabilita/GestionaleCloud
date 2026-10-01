@@ -673,6 +673,20 @@ class EmailFullDownloader:
         # ============================================================
         admin_keywords = await self._load_admin_keywords()
 
+        # PEC che notifica una cartella di pagamento: la data della notifica sta solo qui (il PDF
+        # non la porta) e da lei partono i 60 giorni. Si legge e si mette sulla cartella; poi la
+        # mail prosegue come sempre (la cartella allegata entra dal suo smistamento).
+        from app.services.notifiche_pec_cartelle import e_notifica_cartella, registra_notifica_email
+
+        if e_notifica_cartella(subject):
+            try:
+                esito_notifica = await registra_notifica_email(
+                    self.db, subject, body, messaggio_id=msg.get("Message-ID") or None)
+                logger.info(f"[Gmail] notifica cartella {esito_notifica.get('numero')}: "
+                            f"{esito_notifica.get('stato')} {esito_notifica.get('data_notifica') or ''}")
+            except Exception as e:  # noqa: BLE001 - la mail resta in Gmail e si riprova al giro dopo
+                logger.warning(f"[Gmail] notifica cartella non registrata: {type(e).__name__}: {e}")
+
         # Schede tecniche dei fornitori (mittente autorizzato con tipo
         # «scheda_tecnica»): non passano dalle parole chiave amministrative,
         # che non le conoscono, e hanno uno smistamento proprio.

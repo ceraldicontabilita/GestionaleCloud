@@ -47,10 +47,11 @@ describe('navigation.config', () => {
     expect(voceDi('/pagina-inesistente')).toBeNull();
   });
 
-  it('le viste per id (MINI-08) stanno sotto Tributi, senza rubare gli altri prefissi', () => {
-    expect(voceDi('/fiscale/tributi/1040').voce.label).toBe('Tributi');
-    expect(voceDi('/fiscale/f24/abc').voce.label).toBe('Tributi');
-    expect(voceDi('/tributi').voce.label).toBe('Tributi');
+  it('le viste per id (MINI-08) stanno sotto Situazione fiscale, senza rubare gli altri prefissi', () => {
+    expect(voceDi('/fiscale/tributi/1040').voce.label).toBe('Situazione fiscale');
+    expect(voceDi('/fiscale/f24/abc').voce.label).toBe('Situazione fiscale');
+    expect(voceDi('/tributi').voce.label).toBe('Situazione fiscale');
+    expect(voceDi('/situazione-fiscale/ritenute').voce.label).toBe('Situazione fiscale');
     expect(voceDi('/fiscale/altro')).toBeNull();
   });
 

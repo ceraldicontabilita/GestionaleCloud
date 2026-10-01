@@ -182,7 +182,7 @@ export default function TributoCodice() {
       />
 
       <div style={{ margin: '12px 0' }}><FiltroAnnoVista stato={filtro} /></div>
-      <Link to="/tributi" style={{ fontSize: 13, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Tutti i codici tributo</Link>
+      <Link to="/situazione-fiscale/tributi-per-codice" style={{ fontSize: 13, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Tutti i codici tributo</Link>
 
       {errore && <Messaggio tono="errore" testId="tributo-errore">{errore}</Messaggio>}
       {!dati && !errore && <PageLoader />}

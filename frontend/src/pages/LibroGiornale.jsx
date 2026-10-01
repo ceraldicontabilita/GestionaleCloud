@@ -132,6 +132,18 @@ export default function LibroGiornale() {
   const [controllo60, setControllo60] = useState(null);
   const [proveFiscali, setProveFiscali] = useState([]);
   const [mostraProveFiscali, setMostraProveFiscali] = useState(false);
+  // Una scrittura sbagliata si storna, non si cancella (regola vincolante): resta nel registro con il
+  // suo storno. Qui, per leggere, si possono nascondere le coppie «stornata + storno».
+  const [nascondiStornate, setNascondiStornate] = useState(true);
+  const scritturaStornata = React.useMemo(() => {
+    const tutte = giornale?.scritture || [];
+    const stornata = scrittura => scrittura.stato === 'stornato' || String(scrittura.tipo || '').startsWith('storno_');
+    return { contate: tutte.filter(stornata).length, e: stornata };
+  }, [giornale]);
+  const scrittureMostrate = React.useMemo(() => {
+    const tutte = giornale?.scritture || [];
+    return nascondiStornate ? tutte.filter(sc => !scritturaStornata.e(sc)) : tutte;
+  }, [giornale, nascondiStornate, scritturaStornata]);
 
   // Deep-link dal bilancio di verifica (audit 03/09/2026 §6, PR 16):
   //   ?conto=<codice>&data_da=&data_a=  → solo le scritture di quel conto
@@ -379,6 +391,16 @@ export default function LibroGiornale() {
         <>
           <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <strong style={{ color: COLORS.text }}>{giornale?.totale ?? 0} scritture</strong>
+            {scritturaStornata.contate > 0 && (
+              <label data-testid="nascondi-stornate" style={{ display: 'inline-flex', gap: 8, alignItems: 'center', minHeight: 44, fontSize: 13, cursor: 'pointer' }}>
+                <input
+                  type="checkbox" checked={nascondiStornate} style={{ width: 20, height: 20 }}
+                  onChange={e => setNascondiStornate(e.target.checked)}
+                />
+                Nascondi le {scritturaStornata.contate} scritture stornate e i loro storni
+                <span style={{ color: COLORS.textMuted }}>(restano nel registro, il saldo non cambia)</span>
+              </label>
+            )}
             <span style={{ color: COLORS.textMuted, fontSize: 13 }}>
               DARE € {eur(giornale?.totale_dare)} · AVERE € {eur(giornale?.totale_avere)}
             </span>
@@ -388,7 +410,7 @@ export default function LibroGiornale() {
           </div>
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {(giornale?.scritture || []).map(s => (
+              {scrittureMostrate.map(s => (
                 <div
                   key={s.id}
                   ref={s.id === scritturaRichiesta ? rigaEvidenziataRef : null}
@@ -464,7 +486,7 @@ export default function LibroGiornale() {
                 </tr>
               </thead>
               <tbody>
-                {(giornale?.scritture || []).map(s => (
+                {scrittureMostrate.map(s => (
                   <React.Fragment key={s.id}>
                     <tr style={stileRigaScrittura(s, { borderBottom: `1px solid ${COLORS.border}`, cursor: 'pointer' })}
                       ref={s.id === scritturaRichiesta ? rigaEvidenziataRef : null}
@@ -515,7 +537,7 @@ export default function LibroGiornale() {
             </table>
           </div>
           )}
-          {(giornale?.scritture || []).length === 0 && (
+          {scrittureMostrate.length === 0 && (
             <div style={{ color: COLORS.textMuted, padding: 24, textAlign: 'center' }}>
               Nessuna scrittura definitiva per il {anno}{contoFiltro ? ` sul conto ${contoFiltro}` : ''}.
               Le scritture nascono da sole all'arrivo di fatture e corrispettivi

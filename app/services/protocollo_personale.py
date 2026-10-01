@@ -42,6 +42,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import quote
 
+from fastapi import HTTPException
+
 from app.constants.canale_documento import CANALE_DRIVE
 from app.document_repository import metadata_projection
 
@@ -478,6 +480,10 @@ async def allega_testo_pdf(db, numero: str, contenuto_pdf: bytes) -> Dict[str, A
 
             testo = ((await asyncio.to_thread(_righe_ocr_per_posizione, contenuto_pdf)) or "").strip()
             fonte = "ocr_rapidocr"
+        except HTTPException as exc:
+            if getattr(exc, "rinviabile", False):
+                raise          # memoria insufficiente: il testo si legge al prossimo tentativo
+            logger.warning("Protocollo personale: OCR non riuscito (%s)", type(exc).__name__)
         except Exception as exc:
             logger.warning("Protocollo personale: OCR non riuscito (%s)", type(exc).__name__)
     if not testo:

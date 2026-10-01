@@ -155,4 +155,34 @@ describe('LibroGiornale', () => {
       .toHaveAttribute('href', '/api/documenti/documento/A-1/download');
     expect(screen.getByText(/Pagamento richiesto da Agenzia delle Entrate pagato/)).toBeInTheDocument();
   });
+
+  it('nasconde per leggere le coppie stornata + storno, che restano nel registro', async () => {
+    const riga = (id, n, tipo, stato, descr) => ({
+      id, numero_registrazione: n, data: '2026-01-02', tipo, stato, descrizione: descr,
+      totale_dare: 5169, totale_avere: 5169, righe: [],
+    });
+    api.get.mockImplementation(url => {
+      if (url.includes('/libro-giornale/prove-fiscali?')) return Promise.resolve({ data: proveFiscali });
+      if (url.includes('/libro-giornale?')) {
+        return Promise.resolve({ data: { ...giornale, totale: 3, totale_disponibile: 3, scritture: [
+          riga('a', 530, 'corrispettivo', 'stornato', 'Corrispettivo del 2026-01-02 (provvisorio)'),
+          riga('b', 1099, 'corrispettivo', 'registrato', 'Corrispettivo del 2026-01-02'),
+          riga('c', 1100, 'storno_corrispettivo', 'registrato', 'Storno Corrispettivo del 2026-01-02'),
+        ] } });
+      }
+      if (url.includes('/libro-mastro?')) return Promise.resolve({ data: mastro });
+      return Promise.resolve({ data: { conforme: true } });
+    });
+
+    render(<MemoryRouter><LibroGiornale /></MemoryRouter>);
+
+    expect(await screen.findByText('Corrispettivo del 2026-01-02')).toBeInTheDocument();
+    expect(screen.queryByText(/provvisorio/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Storno Corrispettivo/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('nascondi-stornate')).toHaveTextContent('Nascondi le 2 scritture stornate');
+
+    fireEvent.click(screen.getByRole('checkbox'));       // nessuna scrittura e' mai cancellata
+    expect(screen.getByText(/provvisorio/)).toBeInTheDocument();
+    expect(screen.getByText(/^Storno Corrispettivo/)).toBeInTheDocument();
+  });
 });

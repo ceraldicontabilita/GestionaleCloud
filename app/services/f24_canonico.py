@@ -89,9 +89,17 @@ async def importa_quietanza(
     """Ingresso canonico delle quietanze, condiviso da ogni canale."""
     from app.services.quietanze_import import importa_quietanza_bytes
 
-    return await importa_quietanza_bytes(
+    esito = await importa_quietanza_bytes(
         db, content, filename, fonte=source, source_metadata=source_metadata,
     )
+    if esito.get("success") and not esito.get("duplicate"):
+        # Un prospetto del consulente gia' agganciato all'F24 trova adesso la sua quietanza.
+        try:
+            from app.services.prospetti_contabili import collega_prospetti
+            await collega_prospetti(db)
+        except Exception as exc:  # noqa: BLE001 - la quietanza resta importata
+            logger.exception("Quietanza arrivata: prospetti contabili non ripassati (%s)", type(exc).__name__)
+    return esito
 
 
 async def cerca_controparti_f24(db, saldo: Any = None) -> Dict[str, Any]:
@@ -122,6 +130,12 @@ async def cerca_controparti_f24(db, saldo: Any = None) -> Dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 - il modello resta importato
         logger.exception("F24 arrivato: addebito in banca non cercato (%s)", type(exc).__name__)
         esito["banca"] = {"errore": type(exc).__name__}
+    try:
+        from app.services.prospetti_contabili import collega_prospetti
+        esito["prospetti"] = await collega_prospetti(db)
+    except Exception as exc:  # noqa: BLE001 - il modello resta importato
+        logger.exception("F24 arrivato: prospetti contabili non agganciati (%s)", type(exc).__name__)
+        esito["prospetti"] = {"errore": type(exc).__name__}
     return esito
 
 

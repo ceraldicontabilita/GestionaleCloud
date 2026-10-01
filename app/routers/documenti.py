@@ -2309,6 +2309,11 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
 
     if e_dilazione_inps(compact_pdf_text):
         return TIPO_DILAZIONE_INPS
+    # Prospetto contabile del consulente del lavoro: cosa l'F24 del mese dovra' versare.
+    from app.services.prospetti_contabili import TIPO as TIPO_PROSPETTO, riconosci as e_prospetto_contabile
+
+    if lower.endswith(".pdf") and e_prospetto_contabile(pdf_text):
+        return TIPO_PROSPETTO
     if any(marker in compact_pdf_text for marker in (
         "NOTA DI RETTIFICA", "STAMPA SINTESI RETTIFICA", "MODELLO DMRA",
         "DIFFERENZE CONTRIBUTIVE",
@@ -2424,6 +2429,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         "DELEGAIRREVOCABILE" in marker_pdf_text
         or "MODELLODIPAGAMENTOUNIFICATO" in marker_pdf_text
     ) and sum(f24_structure_markers) >= 2:
+        # La stampa del Cassetto fiscale («Data/Ore/Utente», «Soggetto: ... ( cf )») ha la forma
+        # del modello ma e' la copia di una delega VERSATA: una quietanza, anche senza protocollo.
+        from app.services.f24_parser import e_stampa_cassetto
+
+        if lower.endswith(".pdf") and e_stampa_cassetto(pdf_text):
+            return "quietanza_f24"
         return "f24"
     # F24 pagata del 2018-2019: il modulo con i dati sovrapposti. Nessuna intestazione
     # («delega irrevocabile» non c'e'): comincia col codice banca+data (B, ABI, CAB, ggmmaa)
@@ -2904,6 +2915,7 @@ async def _archive_non_payment_document(
         "documento_identita": "Documento di identita allegato",
         "componente_770": "Quadro del 770",
         "dilazione_inps": "Dilazione INPS (piano di ammortamento)",
+        "prospetto_contabile": "Prospetto contabile del consulente",
     }
     negative_outcome = document_type == "esito_pagopa_negativo"
     evidence_roles = {
@@ -2917,6 +2929,7 @@ async def _archive_non_payment_document(
         "documento_identita": "allegato_identita",
         "componente_770": "componente_dichiarazione",
         "dilazione_inps": "obbligazione",
+        "prospetto_contabile": "documento_di_supporto",
     }
     if metadata is None and document_type in {
         "tari_avviso", "tari_istanza_compensazione", "visura_camerale",
@@ -3716,6 +3729,15 @@ async def upload_documento_automatico(
             from app.services.dilazioni_inps import archivia_dilazione
 
             return await archivia_dilazione(
+                db, filename=filename, content=content,
+                testo=await asyncio.to_thread(_pdf_text_for_detection, content),
+                source_context=source_context,
+            )
+
+        elif tipo_rilevato == 'prospetto_contabile':
+            from app.services.prospetti_contabili import archivia_prospetto
+
+            return await archivia_prospetto(
                 db, filename=filename, content=content,
                 testo=await asyncio.to_thread(_pdf_text_for_detection, content),
                 source_context=source_context,
