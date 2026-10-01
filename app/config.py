@@ -136,6 +136,12 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID: Optional[str] = None
     GOOGLE_DRIVE_QUARANTENA_FOLDER_ID: Optional[str] = None
     PROTOCOLLO_DRIVE_ENABLED: bool = True
+    # Giro INCREMENTALE del protocollo (01/10/2026): registra solo i file nuovi o
+    # modificati dall'ultimo giro riuscito, a memoria costante (una pagina alla
+    # volta). Indipendente dal giro completo sopra, che resta spento per la RAM:
+    # senza di lui ogni file arrivato dopo il 17/09 risultava `senza_origine`.
+    # Interruttore di emergenza: PROTOCOLLO_DRIVE_INCREMENTALE=false.
+    PROTOCOLLO_DRIVE_INCREMENTALE: bool = True
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
 
     # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
