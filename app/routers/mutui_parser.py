@@ -9,15 +9,17 @@ e le importa nell'archivio del runtime.
 import re
 import pdfplumber
 from typing import List, Dict, Optional
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 import tempfile
 import os
 import logging
 
 from app.database import Database
+from app.routers.mutui import _admin_mutui
 from app.utils.upload_validation import verifica_pdf_reale
 
-router = APIRouter(tags=["Mutui Parser PDF"])
+# Legge e importa piani di ammortamento (dati finanziari): solo admin, come il router Mutui.
+router = APIRouter(tags=["Mutui Parser PDF"], dependencies=[Depends(_admin_mutui)])
 logger = logging.getLogger(__name__)
 
 
@@ -180,7 +182,7 @@ async def parse_mutuo_pdf_endpoint(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Errore parsing PDF: {e}")
+        logger.error("Errore parsing PDF (%s): %s", type(e).__name__, e)
         raise HTTPException(status_code=500, detail=f"Errore parsing PDF: {str(e)}") from e
 
 
@@ -251,6 +253,7 @@ async def parse_multiple_pdfs(files: List[UploadFile] = File(...)):
                 os.unlink(tmp_path)
 
         except Exception as e:
+            logger.warning("Parsing PDF mutuo non riuscito (%s): %s", type(e).__name__, e)
             results.append({
                 "filename": file.filename,
                 "success": False,
