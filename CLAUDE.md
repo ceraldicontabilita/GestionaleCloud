@@ -943,10 +943,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Stato attuale (al 30/09/2026 — riscrivere sul posto)
 
-- Ogni merge su `main` fa ridistribuire Render e ricaricare ~77.000 righe: per qualche minuto la produzione è `degraded`. Non si accodano merge.
-- TFR: `hr.app_tfr_accantonamenti` vuota, il codice scrive in `tfr_accantonamenti` (1.175 righe, 273.025,37 €); ingest cedolini 0 file su 49 caselle.
+- Ogni merge su `main` fa ridistribuire Render: per qualche minuto la produzione può essere `degraded`. Non si accodano merge. La health del commit `0187a45f`, letta il 30/09 alle 17:54 UTC, dichiarava `hydrated_rows=249598`, `hydration_errors=0`; il vecchio valore ~77.000 non è una misura corrente.
+- TFR: la lettura RPC del runtime il 30/09 misura **1.239** righe in `tfr_accantonamenti`. L'assenza nel deposito relazionale HR, l'importo aggregato e lo stato dell'ingest posta restano baseline da riconfermare; non sono stati interrogati nell'audit in sola lettura.
 - **Spento**: `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica Drive, ponte pagamenti HR, dedup fatture.
-- Fatture **1.431**, tutte del 2026 (0 orfani, 0 collisioni): il pre-2026 non è in archivio, solo su Drive.
+- Fatture: lettura RPC del 30/09, **1.539** righe, **1.526 del 2026** e 13 precedenti (8 del 2024, 2 del 2019, 2 del 2022, 1 del 2025). `invoice_date`, `invoice_number`, `total_amount` presenti su tutte; `id` testuale su 753, numerico su 786. Orfani e collisioni non rimisurati: non assumere zero. Il pre-2026 non è quindi interamente fuori archivio.
 - **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
 - **Numia dismesso** dal 05/09/2026: dal 01/08 al 04/09 le chiusure Numia vengono dagli accrediti in banca (50 giornate 2026 ancora da ricostruire al 28/09, 43.115,18 €: le fa il job bancario corto). POS corrente = solo SumUp (API).
 - **Estratto ufficiale BPM**: in archivio fino al 31/03/2026; il PDF al 30/06/2026 va caricato in Documenti > Import (lettore corretto il 28/09); operativo fino al 28/09 da CSV e Enable Banking.
@@ -954,9 +954,39 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Corrispettivi fino al 18/09/2026** (ZIP RT caricato a mano il 23/09; la copia serale RT è ferma dal 28/08). 08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
 - **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
 - Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. DRV-16 chiuso nel codice: nessuna lettura di `GOOGLE_DRIVE_*_FOLDER_ID` per sezione, `DRIVE_*_FOLDER_ID`, `DRIVE_FOLDER_REGISTRY_JSON`, `GOOGLE_SERVICE_ACCOUNT_JSON_*`, `DRIVE_SIMULAZIONE_{BATCH,EDIZIONE,SOLO_TIPO}`, `ADMIN_PASSWORD(_HASH)`; su Render si cancellano a mano. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
-- Solo 108 prodotti del Menu su 325 hanno allergeni (obbligo di legge).
+- Lettura del Menu pubblico del 30/09: **323** prodotti, **108** con allergeni e **215** senza elenco. Le esclusioni motivate e le conferme «nessuno» richiedono il controllo riservato prima di classificare tutti i 215 come violazioni.
   Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social in `collegamentiPubblici.js`, privacy e cookie sono pagine del Menu (`/menu/privacy`, `/menu/cookie`) col titolare da `/api/menu/titolare`.
 - **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
+
+Correzioni dell'audit del 30/09 preparate nel workspace, **non pubblicate**:
+GitHub nega push e apertura PR con HTTP 403. Il ponte Lotti verifica che
+l'ID restituito dall'importatore esista prima di creare la ricevuta; una
+ricevuta incompleta o riferita a fattura eliminata resta recuperabile. HR e
+Lotti verificano stato/PIN nell'anagrafica anche sui token già emessi; il
+rinnovo conserva l'istante dell'autenticazione originale. Il responsabile
+turni accede alle operazioni Turni, non a PIN, paghe e fascicoli; un 403 non
+cancella la sessione. `GET turni-config` non scrive e non sceglie omonimi.
+La carta clienti del Menu legge gli stessi `menu_*` dell'admin e di Lotti,
+con prezzi pubblicabili e categorie non vuote; i prodotti Lotti si
+modificano nella ricetta. Qromo resta fonte di dettagli, orari e ordine,
+senza sostituire i dati canonici aggiornati. Il router Mutui richiede admin
+anche per le letture. I dati storici non sono stati riparati o migrati.
+
+Giornale, lettura RPC del 30/09 alle 18:37 UTC: **1.801** scritture, **1.786
+attive** secondo il predicato canonico; **1.746 quadrate** e **40 non
+quadrate** (una è uno storno), con differenze assolute complessive **848,25
+€**. Il valore non è un saldo da rettificare automaticamente. Tutte le
+attive hanno `idempotency_key`, senza gruppi duplicati. La verifica definitiva
+dei protocolli per anno e la ricostruzione da fonti restano aperte.
+
+Collaudo locale delle patch: **6.439 test backend passati**, **337 saltati**
+(332 HTTP senza backend dedicato, 4 PDF campione assenti, 1 parametro vuoto
+nel controllo palette). Frontend: ERP 564, HR 19, Lotti 169, Menu 24 passati.
+E2E ERP: 74 schermate e operazioni Cassa/Banca/Provvisori; HR: turno
+gestione↔portale; Menu: admin↔carta e pubblicazione. Queste prove usano fixture,
+non certificano tutte le relazioni del deposito reale. Runner backend:
+`python scripts/collaudo_isolato.py -q`; gli E2E HR/Menu controllano host
+locale e marker fixture prima delle scritture.
 
 ## Aperto (togliere la voce quando si chiude)
 

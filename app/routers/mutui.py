@@ -31,14 +31,26 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.database import Database
 from app.services import mutui_rate_dichiarate as dichiarate
-from app.utils.dependencies import get_current_admin_user
+from app.utils.dependencies import get_current_admin_user, get_current_user, security
 
-router = APIRouter(tags=["Mutui"])
+
+async def _admin_mutui(request: Request, credentials=Depends(security)):
+    # Il middleware verifica firma, revoca e ruolo anche per il cookie
+    # httpOnly. Riusiamo quella identita'; senza middleware resta richiesta
+    # la validazione Bearer canonica (nessuna fiducia in un cookie grezzo).
+    if getattr(request.state, "user_id", None) and getattr(request.state, "user_role", None):
+        user = {"user_id": request.state.user_id, "role": request.state.user_role,
+                "email": getattr(request.state, "user_email", None)}
+    else:
+        user = await get_current_user(credentials=credentials)
+    return await get_current_admin_user(current_user=user)
+
+router = APIRouter(tags=["Mutui"], dependencies=[Depends(_admin_mutui)])
 logger = logging.getLogger(__name__)
 
 COLL_PIANI = "mutui_piani_documentali"
@@ -402,7 +414,7 @@ def _attore(utente: Dict[str, Any]) -> str:
 
 @router.post("/{mutuo_id}/rate-dichiarate", summary="Segna le rate scadute come pagate (dichiarato dal titolare)")
 async def dichiara_rate_pagate(
-    mutuo_id: str, corpo: DichiarazioneRate, utente: Dict[str, Any] = Depends(get_current_admin_user),
+    mutuo_id: str, corpo: DichiarazioneRate, utente: Dict[str, Any] = Depends(_admin_mutui),
 ):
     """Le rate scadute senza prova diventano `pagata_dichiarata_titolare`.
 
@@ -425,7 +437,7 @@ async def dichiara_rate_pagate(
 
 @router.post("/{mutuo_id}/rate-dichiarate/ritira", summary="Ritira la dichiarazione delle rate pagate")
 async def ritira_rate_dichiarate(
-    mutuo_id: str, corpo: RitiroDichiarazione, utente: Dict[str, Any] = Depends(get_current_admin_user),
+    mutuo_id: str, corpo: RitiroDichiarazione, utente: Dict[str, Any] = Depends(_admin_mutui),
 ):
     """Le rate tornano com'erano sul piano; la dichiarazione resta nello storico."""
     esito = await dichiarate.ritira_dichiarazioni(

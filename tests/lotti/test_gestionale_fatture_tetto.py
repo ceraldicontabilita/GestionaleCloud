@@ -93,9 +93,12 @@ def test_il_secondo_giro_prende_le_fatture_che_il_primo_ha_lasciato(ponte, monke
     _monta_elenco(module, monkeypatch, fatture)
 
     # Il primo giro ha gia' preso le prime 1.000: lo registriamo come farebbe lui.
+    run(database.fatture.insert_many([
+        {"id": f["source_id"]} for f in fatture[:1000]
+    ]))
     run(database.gestionale_fatture_ricevute.insert_many([
         {"source_id": f["source_id"], "source_hash": f["source_hash"],
-         "stato": "importata"}
+         "stato": "importata", "fattura_id": f["source_id"]}
         for f in fatture[:1000]
     ]))
 

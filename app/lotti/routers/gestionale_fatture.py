@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import asyncio
+import weakref
+from functools import wraps
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
@@ -25,6 +28,22 @@ from app.lotti.servizi.identita_fatture import query_identita_fattura
 
 router = APIRouter(prefix="/gestionale-fatture", tags=["GestionaleCloud Fatture"])
 RECEIPTS = "gestionale_fatture_ricevute"
+_LUCCHETTI_INGRESSO = weakref.WeakKeyDictionary()
+
+
+def _ingresso_serializzato(funzione):
+    """Evento e sync condividono il tratto verifica/import nel singolo worker.
+
+    Il document store Lotti supporta una sola istanza. Questo lucchetto non
+    sostituisce una transazione o una garanzia fra processi distinti.
+    """
+    @wraps(funzione)
+    async def esegui(*args, **kwargs):
+        loop = asyncio.get_running_loop()
+        lock = _LUCCHETTI_INGRESSO.setdefault(loop, asyncio.Lock())
+        async with lock:
+            return await funzione(*args, **kwargs)
+    return esegui
 
 
 def set_database(database):
@@ -258,7 +277,16 @@ def _descrivi(exc: BaseException) -> str:
     return f"{tipo}: {testo[:180]}" if testo else tipo
 
 
-async def _source_id_gia_presi() -> dict[str, str]:
+async def _fatture_presenti() -> set[str]:
+    return {
+        str(f["id"])
+        for f in await db.fatture.find({}, {"_id": 0, "id": 1, "haccp_import_completo": 1,
+                                           "haccp_import_ambiguo": 1}).to_list(100000)
+        if f.get("id") and f.get("haccp_import_completo") is not False and not f.get("haccp_import_ambiguo")
+    }
+
+
+async def _source_id_gia_presi(presenti: set[str] | None = None) -> dict[str, str]:
     """`source_id` -> `source_hash` delle fatture gia' prese E ANCORA PRESENTI.
 
     Solo gli stati terminali: un `conflitto_hash` deve essere riesaminato ogni
@@ -277,22 +305,75 @@ async def _source_id_gia_presi() -> dict[str, str]:
         {"stato": {"$in": ["importata", "collegata_esistente"]}},
         {"_id": 0, "source_id": 1, "source_hash": 1, "fattura_id": 1},
     ).to_list(100000)
-    presenti = {
-        str(f.get("id") or "")
-        for f in await db.fatture.find({}, {"_id": 0, "id": 1}).to_list(100000)
-    }
+    if presenti is None:
+        presenti = await _fatture_presenti()
     presi: dict[str, str] = {}
     for r in righe:
         sid = str(r.get("source_id") or "")
         if not sid:
             continue
         fattura_id = str(r.get("fattura_id") or "")
-        if fattura_id and fattura_id not in presenti:
+        if not fattura_id or fattura_id not in presenti:
             continue  # il registro dice presa, ma in Lotti non c'e' piu'
         presi[sid] = str(r.get("source_hash") or "")
     return presi
 
 
+async def _verifica_xml_ricevuto(item, receipt, *, client=None, dettaglio=None,
+                               anteprima=False):
+    """Una sola regola XML per l'ingresso evento e per il giro periodico."""
+    source_id = str(item.get("source_id") or "")
+    source_hash = str(item.get("source_hash") or "")
+    chiavi = [_invoice_query(item)]
+    if receipt and receipt.get("fattura_id"):
+        chiavi.append({"id": receipt["fattura_id"]})
+    existing = await db.fatture.find_one(
+        {"$or": chiavi}, {"_id": 0, "id": 1, "haccp_xml_sha256": 1,
+                           "xml_raw": 1, "haccp_import_completo": 1, "haccp_import_ambiguo": 1},
+    )
+    if not existing:
+        return None
+    if existing.get("haccp_import_ambiguo"):
+        return {"stato": "errore", "fattura_id": existing.get("id"),
+                "motivo": "Carico stock con esito incerto: verificare fattura e movimenti "
+                          "prima di autorizzare un nuovo tentativo"}
+    if receipt and receipt.get("source_hash") == source_hash:
+        return None
+    sha_lotti = existing.get("haccp_xml_sha256") or _sha_xml(existing.get("xml_raw"))
+    if not receipt and not sha_lotti:
+        return None  # copia legacy senza impronta da confrontare
+    if dettaglio is None:
+        dettaglio = await _leggi_dettaglio(client, source_id)
+    xml_fonte = str(dettaglio.get("xml_raw") or "") or _xml_from_projection(dettaglio)
+    sha_fonte = _sha_xml(xml_fonte)
+    now = datetime.now(timezone.utc).isoformat()
+    if sha_lotti and sha_lotti == sha_fonte:
+        if existing.get("haccp_import_completo") is False or not receipt:
+            return None  # il documento parziale va ripreso dal motore
+        if not anteprima:
+            await getattr(db, RECEIPTS).update_one(
+                {"source_id": source_id},
+                {"$set": {"source_hash": source_hash, "stato": "collegata_esistente",
+                          "fattura_id": existing.get("id"), "ultimo_controllo": now},
+                 "$unset": {"nuovo_source_hash": "", "conflitto_verificato": ""}},
+            )
+            await db.fatture.update_one({"id": existing["id"]},
+                                       {"$set": {"gestionale_source_hash": source_hash}})
+        return {"stato": "riallineata", "fattura_id": existing.get("id")}
+    motivo = ("L'XML della fattura e' cambiato dopo la prima ricezione" if sha_lotti and sha_fonte
+              else "Impossibile verificare l'XML della fattura gia' ricevuta")
+    if not anteprima:
+        await getattr(db, RECEIPTS).update_one(
+            {"source_id": source_id},
+            {"$set": {"source_id": source_id, "stato": "conflitto_hash",
+                      "nuovo_source_hash": source_hash, "conflitto_verificato": True,
+                      "fattura_id": existing.get("id"), "ultimo_controllo": now}},
+            upsert=True,
+        )
+    return {"stato": "conflitto_hash", "fattura_id": existing.get("id"), "motivo": motivo}
+
+
+@_ingresso_serializzato
 async def esegui_sync_gestionale(
     *, anno: int | None = None, massimo: int = 1000, anteprima: bool = False
 ) -> dict[str, Any]:
@@ -339,15 +420,17 @@ async def esegui_sync_gestionale(
         # Ora si scartano prima quelle gia' prese, poi si taglia: ogni giro
         # lavora fatture NUOVE, e `arretrato` dice quante restano per il giro
         # dopo, cosi' il ritardo e' un numero che si legge.
-        gia_presi = await _source_id_gia_presi()
+        presenti = await _fatture_presenti()
+        gia_presi = await _source_id_gia_presi(presenti)
         noti = {
             str(r.get("source_id") or ""): str(r.get("nuovo_source_hash") or "")
             for r in await getattr(db, RECEIPTS).find(
                 # solo quelli confermati dalla regola attuale (XML diverso con
                 # la fattura in Lotti): i vecchi si riesaminano una volta
                 {"stato": "conflitto_hash", "conflitto_verificato": True},
-                {"_id": 0, "source_id": 1, "nuovo_source_hash": 1}
+                {"_id": 0, "source_id": 1, "nuovo_source_hash": 1, "fattura_id": 1}
             ).to_list(100000)
+            if str(r.get("fattura_id") or "") in presenti
         }
         da_prendere = []
         for item in items:
@@ -394,49 +477,29 @@ async def esegui_sync_gestionale(
             # quando in Lotti non c'era: 163 fatture alimentari da giugno 2026
             # mai arrivate. Conflitto vero = la fattura e' in Lotti con un XML
             # diverso; se manca si importa, se l'XML e' lo stesso si riallinea.
-            if receipt and receipt.get("source_hash") != source_hash:
-                chiavi = [_invoice_query(item)]
-                if receipt.get("fattura_id"):
-                    chiavi.append({"id": receipt["fattura_id"]})
-                in_lotti = await db.fatture.find_one(
-                    {"$or": chiavi}, {"_id": 0, "id": 1, "haccp_xml_sha256": 1, "xml_raw": 1},
-                )
-                if in_lotti:
-                    sha_lotti = in_lotti.get("haccp_xml_sha256") or _sha_xml(in_lotti.get("xml_raw"))
-                    try:
-                        sha_fonte = _sha_xml((await _leggi_dettaglio(client, source_id)).get("xml_raw"))
-                    except Exception as exc:
-                        result["errori"].append(f"{item.get('invoice_number') or source_id}: {_descrivi(exc)}")
-                        continue
-                    if sha_lotti and sha_lotti == sha_fonte:
-                        result["riallineate"] += 1
-                        if not anteprima:
-                            await getattr(db, RECEIPTS).update_one(
-                                {"source_id": source_id},
-                                {"$set": {"source_hash": source_hash, "stato": "collegata_esistente",
-                                          "fattura_id": in_lotti.get("id"), "ultimo_controllo": now},
-                                 "$unset": {"nuovo_source_hash": ""}},
-                            )
-                        continue
-                    result["conflitti"].append({
-                        "source_id": source_id,
-                        "numero": item.get("invoice_number"),
-                        "motivo": "L'XML della fattura e' cambiato dopo la prima ricezione",
-                    })
-                    if not anteprima:
-                        await getattr(db, RECEIPTS).update_one(
-                            {"source_id": source_id},
-                            {"$set": {"stato": "conflitto_hash", "nuovo_source_hash": source_hash,
-                                      "conflitto_verificato": True, "ultimo_controllo": now}},
-                        )
-                    continue
+            try:
+                controllo = await _verifica_xml_ricevuto(item, receipt, client=client,
+                                                        anteprima=anteprima)
+            except Exception as exc:
+                result["errori"].append(f"{item.get('invoice_number') or source_id}: {_descrivi(exc)}")
+                continue
+            if controllo:
+                if controllo["stato"] == "riallineata":
+                    result["riallineate"] += 1
+                elif controllo["stato"] == "errore":
+                    result["errori"].append(controllo["motivo"])
+                else:
+                    result["conflitti"].append({"source_id": source_id,
+                                                "numero": item.get("invoice_number"),
+                                                "motivo": controllo["motivo"]})
+                continue
 
             existing = await db.fatture.find_one(
                 _invoice_query(item),
                 {"_id": 0, "id": 1, "prodotti": 1, "xml_raw": 1,
-                 "haccp_pipeline_version": 1},
+                 "haccp_pipeline_version": 1, "haccp_import_completo": 1},
             )
-            if existing and (
+            if existing and existing.get("haccp_import_completo") is not False and (
                 existing.get("prodotti") or existing.get("xml_raw")
                 or existing.get("haccp_pipeline_version")
             ):
@@ -477,12 +540,14 @@ async def esegui_sync_gestionale(
                 imported = await importa_fattura_xml([
                     _UF(f"gestionale-{source_id}.xml", xml_raw.encode("utf-8"))
                 ])
+                if imported.get("errori"):
+                    raise RuntimeError("Import operativo incompleto: " + "; ".join(imported["errori"]))
                 ids = [i for i in (imported.get("fatture_ids") or []) if i]
                 if not ids and imported.get("fatture_saltate_escluse"):
                     result["escluse_fornitore"] += 1
                     continue
                 invoice = (
-                    {"id": ids[0]} if ids
+                    await db.fatture.find_one({"id": ids[0]}, {"_id": 0, "id": 1}) if ids
                     else await db.fatture.find_one(_invoice_query(item), {"_id": 0, "id": 1})
                 )
                 if not invoice:
@@ -560,6 +625,7 @@ async def sync_gestionale_fatture(
     return await esegui_sync_gestionale(anno=anno, massimo=limit, anteprima=anteprima)
 
 
+@_ingresso_serializzato
 async def alimenta_lotti_da_fattura(source_id: str) -> dict[str, Any]:
     """Porta UNA fattura del gestionale dentro Lotti, subito.
 
@@ -595,11 +661,25 @@ async def alimenta_lotti_da_fattura(source_id: str) -> dict[str, Any]:
         esito["motivo"] = "nessun XML ne' righe strutturate"
         return esito
 
+    receipt = await getattr(db, RECEIPTS).find_one({"source_id": source_id}, {"_id": 0})
+    controllo = await _verifica_xml_ricevuto(dettaglio, receipt, dettaglio=dettaglio)
+    if controllo:
+        if controllo["stato"] in {"conflitto_hash", "errore"}:
+            esito.update(controllo)
+        else:
+            esito.update({"stato": "alimentata", "fattura_id": controllo["fattura_id"],
+                          "prodotti": 0, "lotti": 0})
+        return esito
+
     from app.lotti.routers.fatture import _UF, importa_fattura_xml
 
     importata = await importa_fattura_xml([
         _UF(f"gestionale-{source_id}.xml", xml_raw.encode("utf-8"))
     ])
+    if importata.get("errori"):
+        esito.update({"stato": "errore", "motivo": "Import operativo incompleto: "
+                      + "; ".join(importata["errori"])})
+        return esito
     now = datetime.now(timezone.utc).isoformat()
     relazione = {
         "gestionale_source_id": source_id,
@@ -612,11 +692,20 @@ async def alimenta_lotti_da_fattura(source_id: str) -> dict[str, Any]:
         return esito
     ids = [i for i in (importata.get("fatture_ids") or []) if i]
     fattura = (
-        {"id": ids[0]} if ids
+        await db.fatture.find_one({"id": ids[0]}, {"_id": 0, "id": 1}) if ids
         else await db.fatture.find_one(_invoice_query(dettaglio), {"_id": 0, "id": 1})
     )
-    if fattura:
-        await db.fatture.update_one({"id": fattura["id"]}, {"$set": relazione})
+    if not fattura:
+        # L'importatore puo' restituire errori senza sollevare: dichiararlo
+        # importato creava una ricevuta senza fattura che il giro successivo
+        # saltava per sempre, lasciando il magazzino privo della merce.
+        esito.update({
+            "stato": "errore",
+            "motivo": "Import completato senza fattura operativa: "
+                      + ("; ".join(importata.get("errori") or []) or "nessun esito dal motore"),
+        })
+        return esito
+    await db.fatture.update_one({"id": fattura["id"]}, {"$set": relazione})
     await getattr(db, RECEIPTS).update_one(
         {"source_id": source_id},
         {"$set": {**relazione, "source_id": source_id,
@@ -634,7 +723,7 @@ async def alimenta_lotti_da_fattura(source_id: str) -> dict[str, Any]:
     esito.update({
         "stato": "alimentata",
         "fattura_id": (fattura or {}).get("id"),
-        "prodotti": importata.get("prodotti_creati", 0),
-        "lotti": importata.get("lotti_creati", 0),
+        "prodotti": importata.get("prodotti_trovati", 0),
+        "lotti": importata.get("nuove_materie", 0),
     })
     return esito

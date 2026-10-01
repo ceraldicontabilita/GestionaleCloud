@@ -43,13 +43,18 @@ Senza la build, `/hr`, `/menu` e `/lotti` rispondono solo con le API.
 Test:
 
 ```bash
-python -m pytest -q                 # suite backend, cartella tests/ per area
+python scripts/collaudo_isolato.py -q # suite backend senza credenziali cloud ereditate
 yarn --cwd frontend test            # test del frontend ERP
-AUTH_SECRET=test python -m pytest app/lotti/tests
-python -m pytest tests/hr           # HR nella suite principale; i fixture sono lì
+python scripts/collaudo_isolato.py tests/lotti # Lotti su fixture isolate
+python scripts/collaudo_isolato.py tests/hr # HR su fixture isolate
 ```
 
 I test sono raggruppati per area: `tests/banca`, `tests/contabilita`, `tests/documenti`, `tests/fatture`, `tests/fiscale`, `tests/frontend`, `tests/hr`, `tests/lotti`, `tests/menu`, `tests/noleggio`, `tests/runtime`.
+
+Il runner imposta `ENVIRONMENT=test`, rimuove anche gli alias Mongo/JWT e impedisce
+che `.env` o file di segreti reintroducano connessioni nell'ERP. Gli E2E con
+scritture usano esclusivamente server locali identificati dal marker fixture.
+Un esito verde su questi dati non certifica le relazioni o i saldi di produzione.
 
 ## Configurazione e segreti
 

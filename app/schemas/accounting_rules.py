@@ -25,8 +25,8 @@ F24_ERARIO_CODES = {
     "3882": {"descrizione": "IRAP - Maggior acconto seconda rata", "conto": "4.3.02", "tipo": "imposte"},
     
     # IVA
-    "6001": {"descrizione": "IVA - Versamento saldo", "conto": "2.1.02", "tipo": "debiti_tributari"},
-    "6002": {"descrizione": "IVA - Versamento acconto", "conto": "2.1.02", "tipo": "debiti_tributari"},
+    "6001": {"descrizione": "IVA mensile - Gennaio", "conto": "2.1.02", "tipo": "debiti_tributari"},
+    "6002": {"descrizione": "IVA mensile - Febbraio", "conto": "2.1.02", "tipo": "debiti_tributari"},
     
     # IRPEF (per imprenditori individuali o soci)
     "4001": {"descrizione": "IRPEF - Saldo", "conto": "4.3.02", "tipo": "imposte"},

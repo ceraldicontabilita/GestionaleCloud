@@ -43,7 +43,7 @@ function setState(menu){
   if(menu){
     const col='#'+menu.col, tc=txtCol(menu.col);
     mainMC.setAttribute('style',MENU_VARS+`--business-color: ${col}; --business-color-alpha20: ${col}32; --business-color-alpha40: ${col}64; --business-color-alpha60: ${col}96; --business-color-alpha80: ${col}CC; --business-text-color: ${tc};`);
-    if(menu.pic) imgMenu.src=IMG[menu.pic];
+    imgMenu.src=menu.pic?IMG[menu.pic]:ICONS.generic; imgMenu.alt=menu.n;
     cls(imgMulti,['hidden','hiding'],[]); cls(imgMenu,[],['hidden','hiding']);
     cls(spacer,[],['hiddenBack']); cls(blockBtn,[],['hidingBack','hiddenBack']);
     cls(absBar,['visible'],['hidingBack','hiddenBack']);cls(absBar.querySelector('.search-container'),['visible'],[]);
@@ -72,7 +72,7 @@ function renderMenus(){
     el.setAttribute('style',`--menu-color: ${col}; --menu-color-alpha80: ${col}cc; --menu-color-alpha40: ${col}66; --menu-color-alpha20: ${col}33; --menu-text-color: ${txtCol(m.col)};`);
     el.querySelector('canvas')&&el.querySelector('canvas').remove();
     const ic=el.querySelector('.items-counter-container');ic&&ic.remove();
-    const im=el.querySelector('.menu-banner img'); if(m.pic) im.src=IMG[m.pic]; else im.remove();
+    const im=el.querySelector('.menu-banner img'); if(m.pic){im.src=IMG[m.pic];im.alt=m.n} else im.remove();
     el.querySelector('.menu-title').textContent=m.n;
     el.setAttribute('role','button');el.tabIndex=0;
     el.addEventListener('click',()=>openMenu(m.id));
@@ -122,7 +122,7 @@ function renderCats(){
     const head=el.querySelector('.category-head');head.id='cat-head-'+c.id;
     el.querySelector('.category-title .title').textContent=c.n;
     const ic=el.querySelector('.items-counter-container');ic&&ic.remove();
-    const im=el.querySelector('.category-banner img'); if(c.pic){im.src=IMG[c.pic];im.alt=c.n}else im.src=ICONS.generic;
+    const im=el.querySelector('.category-banner img'); im.alt=c.n; im.src=c.pic?IMG[c.pic]:ICONS.generic;
     head.setAttribute('role','button');head.tabIndex=0;
     const tog=()=>{const open=!head.classList.contains('open');setOpen(el,open);if(open)setTimeout(()=>head.scrollIntoView({behavior:'smooth',block:'start'}),60)};
     head.addEventListener('click',tog);head.addEventListener('keydown',e=>{if(e.key==='Enter')tog()});
@@ -211,6 +211,12 @@ function openItem(id){
 
 // ---------- filtro allergeni ----------
 const counter=$('.filter-icon-container .filtered-number'), fic=$('.filter-icon-container'), fbox=$('.container-allergens');
+$$('.allergen[data-k]',filt).forEach(a=>{
+  const n=D.items.filter(i=>itemVisible(i)&&i.a.includes(a.dataset.k)).length;
+  a.classList.toggle('withProducts',n>0);
+  const conteggio=a.querySelector('.allergen-products');
+  if(conteggio)conteggio.textContent=n===1?'Un prodotto':`${n} prodotti`;
+});
 function syncFilter(){
   $$('.allergen[data-k]',filt).forEach(a=>a.classList.toggle('off',excluded.has(a.dataset.k)));
   $$('.category-container',filt).forEach(cc=>{const all=$$('.allergen[data-k]',cc);const sw=cc.querySelector('.menu-switch');if(sw)sw.classList.toggle('active',!all.every(a=>excluded.has(a.dataset.k)))});

@@ -702,6 +702,24 @@ class SupabaseCollection:
         docs = await self._seleziona(filtro, escludi, limite=1)
         return _proietta(docs[0], proiezione) if docs else None
 
+    async def find_one_for_auth(self, identita: str, proiezione: dict):
+        """SELECT per PK senza cache, idratazione o DDL: revoche immediate.
+
+        Limitato ai campi esplicitamente richiesti dal gate di autenticazione.
+        Un errore SQL risale al gate; non si usa una copia stale in grazia.
+        """
+        campi = [k for k, v in proiezione.items() if v and k != "_id"]
+        if not all(_NOME_OK.fullmatch(k) for k in campi):
+            raise ValueError("campo di autorizzazione non valido")
+        sql = ("SELECT (SELECT jsonb_object_agg(k, v) FROM jsonb_each(doc) AS f(k, v) "
+               "WHERE k = ANY($2::text[])) AS doc FROM %s WHERE id = $1") % self._sql_tab
+        async with self._db._pool.acquire() as con:
+            riga = await con.fetchrow(sql, identita, campi)
+        if riga is None:
+            return None
+        doc = riga["doc"]
+        return json.loads(doc) if isinstance(doc, str) else (doc or {})
+
     def find(self, filtro=None, proiezione=None, **_) -> _Cursore:
         return _Cursore(self, filtro, proiezione)
 

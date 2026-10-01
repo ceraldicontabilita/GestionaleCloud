@@ -351,19 +351,21 @@ def _genera_html_fallback(fattura: dict, errore: str = None) -> str:
 
 
 # ── Import XML manuale ────────────────────────────────────────────────────────
-async def _carico_magazzino_bar_da_fattura(prodotti, numero_fattura, fornitore):
+async def _carico_magazzino_bar_da_fattura(prodotti, numero_fattura, fornitore, fattura_id=None):
     """Aggancio fattura -> magazzino bar. Per ogni riga che corrisponde a un prodotto
     bar (per nome) o a una categoria bar (allowlist), incrementa lo stock. Le materie
     prime (farine, latticini, uova...) NON entrano qui: restano nei lotti. Idempotente
-    per coppia fornitore+numero fattura: numeri uguali di fornitori diversi non sono
-    la stessa prova documentale. Non solleva mai: l'ingestione non deve rompersi."""
+    per riga della coppia fornitore+numero fattura. Il registro movimenti gia'
+    esistente permette di riprendere un carico parziale senza raddoppiare le
+    righe completate. Un errore torna al motore d'import, che resta incompleto."""
     try:
         source_key = hashlib.sha256(
             f"{(fornitore or '').strip().casefold()}|{(numero_fattura or '').strip()}".encode("utf-8")
         ).hexdigest()
         if numero_fattura:
             gia = await db.magazzino_bar_movimenti.find_one(
-                {"fattura_source_key": source_key, "origine": "fattura"}, {"_id": 1}
+                {"fattura_source_key": source_key, "origine": "fattura",
+                 "fattura_riga_key": {"$exists": False}}, {"_id": 1}
             )
             if gia:
                 return {"caricati": 0, "creati": 0, "gia_fatto": True}
@@ -390,7 +392,8 @@ async def _carico_magazzino_bar_da_fattura(prodotti, numero_fattura, fornitore):
         # Classificatore UNICO (classificatore_alimenti): niente servizi,
         # niente non-food fisico (candeggina, cavi, monitor...) in giacenza.
         from app.lotti.routers.classificatore_alimenti import e_merce_alimentare
-        for prodotto in (prodotti or []):
+        gia_caricate = 0
+        for indice_riga, prodotto in enumerate(prodotti or []):
             desc = re.sub(r"\s+", " ", (prodotto.get("descrizione") or "").strip())
             if not desc:
                 continue
@@ -401,6 +404,12 @@ async def _carico_magazzino_bar_da_fattura(prodotti, numero_fattura, fornitore):
             except Exception:
                 qt = 0
             if qt <= 0:
+                continue
+            riga_key = f"{source_key}:{indice_riga}"
+            if await db.magazzino_bar_movimenti.find_one(
+                {"fattura_riga_key": riga_key, "origine": "fattura"}, {"_id": 1},
+            ):
+                gia_caricate += 1
                 continue
             norm = normalize_nome(desc)
             prod = idx.get(norm)
@@ -426,20 +435,37 @@ async def _carico_magazzino_bar_da_fattura(prodotti, numero_fattura, fornitore):
             ppc = float(prod.get("pezzi_per_collo", 1) or 1)
             pezzi = qt * ppc if ppc > 1 else qt
             from app.lotti.routers.magazzino_bar import applica_movimento_stock
+            if fattura_id:
+                # Persistito PRIMA della scrittura stock: anche un arresto
+                # del processo fra incremento e registro lascia una prova
+                # dell'operazione incerta e impedisce un retry automatico.
+                marker = await db.fatture.update_one(
+                    {"id": fattura_id}, {"$set": {"haccp_import_ambiguo": True,
+                                                  "haccp_stock_riga_in_corso": riga_key}},
+                )
+                if not marker.matched_count:
+                    raise RuntimeError("Fattura operativa assente prima del carico stock")
             nuovo, _mov = await applica_movimento_stock(
                 prod, pezzi, "carico", "Sistema (fattura)",
                 nota=("Carico da fattura " + (numero_fattura or "") + " - " + (fornitore or "")).strip(),
                 extra={"quantita_colli": (qt if ppc > 1 else None), "origine": "fattura",
                        "fattura_ref": numero_fattura or "", "fattura_fornitore": fornitore or "",
-                       "fattura_source_key": source_key},
+                       "fattura_source_key": source_key, "fattura_riga_key": riga_key},
             )
+            if fattura_id:
+                await db.fatture.update_one(
+                    {"id": fattura_id}, {"$unset": {"haccp_import_ambiguo": "",
+                                                    "haccp_stock_riga_in_corso": ""}},
+                )
             prod["stock"] = nuovo
             caricati += 1
-        return {"caricati": caricati, "creati": creati}
+        return {"caricati": caricati, "creati": creati,
+                "gia_fatto": caricati == 0 and gia_caricate > 0}
     except Exception as e:
         import logging
         logging.getLogger("fatture").exception("carico bar da fattura: %s", e)
-        return {"errore": f"carico bar non riuscito ({type(e).__name__})"}
+        return {"errore": f"carico bar non riuscito ({type(e).__name__})",
+                "esito_incerto": bool(getattr(e, "esito_stock_incerto", False))}
 
 
 class _UF:
@@ -516,6 +542,7 @@ async def importa_fattura_xml(files: List[UploadFile]):
         # l'identita' (P.IVA e numero scritti diversamente la perdevano).
         "fatture_ids": [],
     }
+    ids_completi = []
 
     fornitori_esclusi_docs = await db.fornitori.find({"escluso": True}, {"nome": 1}).to_list(5000)
     fornitori_esclusi = {f["nome"].lower() for f in fornitori_esclusi_docs}
@@ -631,17 +658,27 @@ async def importa_fattura_xml(files: List[UploadFile]):
             esistente = (
                 await db.fatture.find_one(
                     chiave_esistente,
-                    {"_id": 0, "id": 1, "xml_raw": 1, "haccp_xml_sha256": 1},
+                    {"_id": 0, "id": 1, "xml_raw": 1, "haccp_xml_sha256": 1,
+                     "haccp_import_completo": 1, "haccp_import_ambiguo": 1},
                 )
                 if chiave_esistente is not None
                 else None
             )
             hash_esistente = (esistente or {}).get("haccp_xml_sha256", "")
+            if (esistente or {}).get("haccp_import_ambiguo"):
+                # Il blocco vive anche nel motore canonico: una chiamata
+                # diretta o un XML mutato non deve aggirare il ponte e
+                # ripetere uno stock di esito incerto.
+                risultati["errori"].append(
+                    f"{file.filename}: carico stock con esito incerto, verifica richiesta prima del retry"
+                )
+                continue
             if not hash_esistente and (esistente or {}).get("xml_raw"):
                 hash_esistente = hashlib.sha256(
                     str(esistente["xml_raw"]).encode("utf-8")
                 ).hexdigest()
-            if esistente and hash_esistente == xml_sha256:
+            if (esistente and hash_esistente == xml_sha256
+                    and esistente.get("haccp_import_completo") is not False):
                 await db.fatture.update_one(
                     {"id": esistente.get("id")} if esistente.get("id") else chiave_esistente,
                     {"$set": {
@@ -671,6 +708,10 @@ async def importa_fattura_xml(files: List[UploadFile]):
             fattura_dict["xml_raw"] = content.decode("utf-8", errors="replace")
             fattura_dict["haccp_xml_sha256"] = xml_sha256
             fattura_dict["haccp_pipeline_version"] = 1
+            # La fattura e' scritta prima dei lotti: l'hash da solo non prova
+            # che tutte le righe operative siano state elaborate. Un errore
+            # dopo questo punto deve permettere il retry dello stesso XML.
+            fattura_dict["haccp_import_completo"] = False
 
             # Chiave anti-duplicato: DEVE combaciare con l'indice unico del DB
             # `uniq_numero_piva` (numero_fattura + piva) nel database di Lotti.
@@ -875,12 +916,21 @@ async def importa_fattura_xml(files: List[UploadFile]):
             # Aggancio magazzino bar (carico stock da fattura)
             try:
                 _bar = await _carico_magazzino_bar_da_fattura(
-                    fattura_data["prodotti"], fattura_data.get("numero_fattura", ""), fattura_data["fornitore"])
+                    fattura_data["prodotti"], fattura_data.get("numero_fattura", ""), fattura_data["fornitore"],
+                    fattura_id=(salvata or {}).get("id"))
+                if (_bar or {}).get("errore"):
+                    if _bar.get("esito_incerto"):
+                        await db.fatture.update_one(
+                            chiave_salvata, {"$set": {"haccp_import_ambiguo": True}},
+                        )
+                    raise RuntimeError(_bar["errore"])
                 risultati.setdefault("magazzino_bar", {"caricati": 0, "creati": 0})
                 risultati["magazzino_bar"]["caricati"] += (_bar or {}).get("caricati", 0)
                 risultati["magazzino_bar"]["creati"] += (_bar or {}).get("creati", 0)
-            except Exception:
-                logger.debug("[fatture] errore non bloccante ignorato")
+            except Exception as exc:
+                # La fattura esiste ma il carico non e' completo. Non marcare
+                # il documento finito: il retry riprende dal registro righe.
+                raise RuntimeError("Carico magazzino bar incompleto") from exc
             # Aggiorna listino prezzi per fornitore (sync con listino_prodotti)
             for prodotto in fattura_data["prodotti"]:
                 try:
@@ -1049,11 +1099,17 @@ async def importa_fattura_xml(files: List[UploadFile]):
             except Exception as _re:
                 logger.debug(f"[fatture] riconciliazione ordine skip: {_re}")
 
+            await db.fatture.update_one(
+                chiave_salvata, {"$set": {"haccp_import_completo": True}},
+            )
+            if salvata and salvata.get("id"):
+                ids_completi.append(salvata["id"])
+
         except Exception as e:
             risultati["errori"].append(f"{file.filename}: {str(e)}")
 
     # Trigger pipeline + aggiornamento ricette automatico
-    if risultati["fatture_processate"] > 0:
+    if ids_completi:
         try:
             from app.lotti.routers.pipeline import esegui_pipeline_post_import
             from app.lotti.routers.aggiornamento_ricette import aggiorna_ricette_da_fattura
@@ -1061,7 +1117,7 @@ async def importa_fattura_xml(files: List[UploadFile]):
 
             asyncio.create_task(
                 esegui_pipeline_post_import(
-                    motivo=f"xml_manuale_{risultati['fatture_processate']}_fatture"
+                    motivo=f"xml_manuale_{len(ids_completi)}_fatture"
                 )
             )
 
@@ -1074,11 +1130,11 @@ async def importa_fattura_xml(files: List[UploadFile]):
                 except Exception:
                     logger.debug("[fatture] errore non bloccante ignorato")
 
-            # Aggiorna ricette per tutte le fatture processate (dalle ultime N)
+            # Usa solo i documenti completati da QUESTO import, non gli ultimi
+            # N dell'archivio (che possono appartenere a un altro ingresso).
             fatture_recenti = (
-                await db.fatture.find({}, {"_id": 0})
-                .sort("created_at", -1)
-                .to_list(risultati["fatture_processate"])
+                await db.fatture.find({"id": {"$in": ids_completi}}, {"_id": 0})
+                .to_list(len(ids_completi))
             )
 
             for fatt in fatture_recenti:
@@ -1097,7 +1153,7 @@ async def importa_fattura_xml(files: List[UploadFile]):
 
     from app.lotti.eventi import publish
     await publish("FATTURA_IMPORTATA", {
-        "fatture": risultati.get("fatture_processate", 0),
+        "fatture": len(ids_completi),
         "righe": risultati.get("prodotti_trovati", 0),
     })
     return risultati

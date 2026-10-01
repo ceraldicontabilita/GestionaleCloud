@@ -12,6 +12,19 @@ from app.hr.utils.identity import get_identity
 from app.services.workforce_tokens import create_workforce_token
 
 
+@pytest.fixture(autouse=True)
+def dipendente_canonico(monkeypatch):
+    from mongomock_motor import AsyncMongoMockClient
+    from app.hr.database import Database
+
+    db = AsyncMongoMockClient()["identita_hr_test"]
+    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))
+    asyncio.run(db.dipendenti.insert_one({
+        "id": "dipendente-42", "stato": "attivo", "ruolo_app": "dipendente",
+        "pin_hash": "hash-sintetico",
+    }))
+
+
 class _Credenziali:
     def __init__(self, token):
         self.credentials = token

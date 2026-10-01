@@ -222,11 +222,40 @@ def test_riscontro_non_conta_le_dichiarate_come_addebiti_mancanti(db):
     assert esito["riconciliazioni_automatiche"] == 1
 
 
-def test_l_endpoint_e_solo_admin():
-    import inspect
+@pytest.mark.parametrize("suffisso", ["rate-dichiarate", "rate-dichiarate/ritira"])
+@pytest.mark.parametrize("trasporto", ["cookie", "bearer"])
+@pytest.mark.parametrize("ruolo,atteso", [("admin", 200), ("operatore", 403), ("sola_lettura", 403)])
+def test_l_endpoint_e_solo_admin_con_sessione_reale(db, suffisso, trasporto, ruolo, atteso):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.middleware.authentication import AuthenticationMiddleware
+    from tests.banca.test_mutui_permessi import _token_fixture
 
-    from app.utils.dependencies import get_current_admin_user
+    app = FastAPI()
+    app.add_middleware(AuthenticationMiddleware)
+    app.include_router(mod.router, prefix="/api/mutui")
+    token = _token_fixture(ruolo)
+    kwargs = ({"cookies": {"access_token": token}} if trasporto == "cookie"
+              else {"headers": {"Authorization": "Bearer " + token}})
+    prima = {nome: _run(db[nome].count_documents({}))
+             for nome in ("mutui_rate_dichiarate", "giornale", "prima_nota_banca")}
+    with TestClient(app) as client:
+        response = client.post(f"/api/mutui/{MUTUO}/{suffisso}",
+                               json={"dry_run": True, "data_limite": "2026-09-30"}, **kwargs)
+        assert response.status_code == atteso
+        if atteso == 200:
+            assert response.json()["data"]["dry_run"] is True
+    assert {nome: _run(db[nome].count_documents({})) for nome in prima} == prima
 
-    for funzione in (mod.dichiara_rate_pagate, mod.ritira_rate_dichiarate):
-        default = inspect.signature(funzione).parameters["utente"].default
-        assert default.dependency is get_current_admin_user
+
+@pytest.mark.parametrize("suffisso", ["rate-dichiarate", "rate-dichiarate/ritira"])
+def test_l_endpoint_senza_sessione_non_accede(db, suffisso):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.middleware.authentication import AuthenticationMiddleware
+
+    app = FastAPI()
+    app.add_middleware(AuthenticationMiddleware)
+    app.include_router(mod.router, prefix="/api/mutui")
+    with TestClient(app) as client:
+        assert client.post(f"/api/mutui/{MUTUO}/{suffisso}", json={"dry_run": True}).status_code == 401

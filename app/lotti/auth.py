@@ -89,7 +89,7 @@ def _load_or_create_persistent_secret() -> str:
 
 
 def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = None, sid: str = "",
-               auth_at: int = None) -> str:
+               auth_at: int = None, pin_version: str = None) -> str:
     return create_workforce_token(
         sub=sub,
         name=nome,
@@ -100,6 +100,7 @@ def make_token(sub: str, nome: str, ruolo: str, via: str = "pin", ore: int = Non
         auth_method=via,
         sid=sid,
         auth_at=auth_at,
+        pin_version=pin_version,
     )
 
 
@@ -237,6 +238,24 @@ async def auth_dependency(request: Request):
 
     data = await _token_valido_e_non_revocato(request)
     if data:
+        if request.method in ("POST", "PUT", "DELETE", "PATCH") and (
+            data.get("auth_method") or data.get("via")
+        ) != "sessione_erp":
+            from app.hr.services.auth_dipendenti import sessione_dipendente_corrente, sessione_pin_corrente
+
+            dip = await _dipendente_hr_da_token(data)
+            if not dip or dip.get("lotti_operatore") is False:
+                raise HTTPException(401, "Sessione operatore revocata: rifare l'accesso")
+            corrente = (
+                await sessione_dipendente_corrente(data, dipendente=dip)
+                if (data.get("auth_method") or data.get("via")) != "pin"
+                else sessione_pin_corrente(dip, data)
+            )
+            if not corrente:
+                raise HTTPException(401, "Sessione operatore revocata: rifare l'accesso")
+            # Memoria limitata a QUESTA richiesta: il gate di ruolo puo'
+            # riusare la stessa scheda senza una seconda lettura Supabase.
+            request.state.dipendente_hr = dip
         request.state.user = data
         return  # autenticato: via libera
 
@@ -269,30 +288,53 @@ async def require_admin(request: Request):
     raise HTTPException(status_code=403, detail="Operazione riservata all'amministratore")
 
 
-async def profilo_da_token(data: dict) -> dict | None:
-    """Ruolo e reparti ATTUALI di chi ha il token, dalla proiezione HR.
+async def _dipendente_hr_da_token(data: dict) -> dict | None:
+    """Identita' HR canonica; il tablet storico fornisce solo il collegamento."""
+    sub = str(data.get("sub") or "")
+    if not sub:
+        return None
+    from app.lotti.routers.tablet_operatori import _db_hr
 
-    Il token dice chi sei, non cosa puoi fare: il ruolo si rilegge a ogni
-    operazione riservata, così un ruolo tolto nella scheda HR vale subito.
-    Un operatore non più in carico non ha profilo (fallisce chiuso)."""
+    db_hr = _db_hr()
+    if db_hr is None:
+        raise HTTPException(503, "Anagrafica HR non disponibile: riprovare tra poco")
+    try:
+        from app.hr.services.auth_dipendenti import leggi_dipendente_per_sessione
+
+        dip = await leggi_dipendente_per_sessione(sub, db=db_hr)
+        if dip is None:
+            # I JWT precedenti all'unificazione portavano l'id del tablet.
+            # Nessun ruolo o flag attivo della proiezione autorizza la persona.
+            from app.lotti.db import database as db_lotti
+
+            op = await db_lotti.tablet_operatori.find_one(
+                {"id": sub}, {"_id": 0, "hr_id": 1, "gestionale_dipendente_id": 1})
+            identita = {str(v) for v in (
+                (op or {}).get("hr_id"), (op or {}).get("gestionale_dipendente_id")
+            ) if v}
+            if len(identita) == 1:
+                dip = await leggi_dipendente_per_sessione(identita.pop(), db=db_hr)
+    except Exception:
+        # La proiezione tablet puo' contenere un ruolo appena revocato in HR:
+        # durante un guasto non puo' diventare una fonte di autorizzazione.
+        raise HTTPException(503, "Anagrafica HR non disponibile: riprovare tra poco") from None
+    return dip
+
+
+async def profilo_da_token(data: dict, *, dipendente: dict | None = None) -> dict | None:
+    """Ruolo e reparti attuali dalla scheda HR, senza cache di autorizzazioni."""
     from app.lotti.servizi import ruoli
+    from app.hr.services.stato_rapporto import e_in_forza
 
     if not data:
         return None
     if data.get("ruolo") == ruoli.AMMINISTRATORE:
         return {"ruolo": ruoli.AMMINISTRATORE, "reparti": list(ruoli.REPARTI)}
-    sub = str(data.get("sub") or "")
-    if not sub:
+    dip = dipendente if dipendente is not None else await _dipendente_hr_da_token(data)
+    if not e_in_forza(dip) or dip.get("lotti_operatore") is False:
         return None
-    from app.lotti.db import database as db
-
-    op = await db.tablet_operatori.find_one(
-        {"attivo": True, "hr_id": sub, "gestionale_dipendente_id": sub},
-        {"_id": 0, "ruolo_lotti": 1, "reparti_lotti": 1})
-    if not op:
-        return None
-    return {"ruolo": ruoli.normalizza_ruolo(op.get("ruolo_lotti")),
-            "reparti": ruoli.normalizza_reparti(op.get("reparti_lotti"))}
+    return {"ruolo": ruoli.normalizza_ruolo(dip.get("lotti_ruolo")),
+            "reparti": ruoli.normalizza_reparti(dip.get("lotti_reparti"))}
 
 
 @functools.lru_cache(maxsize=None)
@@ -314,7 +356,7 @@ def require_permesso(permesso: str):
         data = await _token_valido_e_non_revocato(request)
         if not data:
             raise HTTPException(status_code=401, detail="Autenticazione richiesta per questa operazione")
-        profilo = await profilo_da_token(data)
+        profilo = await profilo_da_token(data, dipendente=getattr(request.state, "dipendente_hr", None))
         if not profilo or not ruoli.ha_permesso(profilo["ruolo"], permesso):
             raise HTTPException(
                 status_code=403,
@@ -491,7 +533,8 @@ async def refresh_token(request: Request):
     # `sid` un token rinnovato sopravviverebbe al logout.
     nuovo = make_token(sub=data.get("sub", "op"), nome=data.get("nome", "Operatore"),
                        ruolo=ruolo, via=data.get("via", "pin"),
-                       sid=data.get("sid", ""), auth_at=auth_at)
+                       sid=data.get("sid", ""), auth_at=auth_at,
+                       pin_version=data.get("pin_version"))
     return {"ok": True, "token": nuovo}
 
 

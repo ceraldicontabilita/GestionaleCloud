@@ -88,6 +88,7 @@ def create_workforce_token(
     email: str = "",
     sid: str = "",
     auth_at: Optional[int] = None,
+    pin_version: Optional[str] = None,
 ) -> str:
     """Crea un JWT leggibile in modo coerente sia da HR sia da Lotti.
 
@@ -113,6 +114,8 @@ def create_workforce_token(
     })
     if email:
         payload["email"] = email
+    if pin_version is not None:
+        payload["pin_version"] = pin_version
     if sid:
         # Impronta della sessione del Gestionale da cui nasce il token: il
         # logout la revoca per tutte le app (`group_session`).

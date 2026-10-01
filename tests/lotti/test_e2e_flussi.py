@@ -649,11 +649,12 @@ def test_carico_bar_da_fattura_idempotente_per_fornitore_e_numero(dbmock):
     assert len({m["fattura_source_key"] for m in movimenti}) == 2
 
 
-def test_compilazione_di_massa_porta_la_base_a_un_chilo(dbmock):
+def test_compilazione_di_massa_porta_la_base_a_un_chilo(dbmock, monkeypatch):
     """Enzo 25/07/2026: le ricette compilate in automatico devono uscire con
     dosi da laboratorio — l'ingrediente base a 1 kg — e vanno compilate anche
     quelle che hanno gli ingredienti ma nessuna quantità."""
     import app.lotti.routers.food_cost as fc
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     run(dbmock.ricette.insert_many([
         {"id": "R-vuota", "nome": "Sfogliatella riccia", "porzioni": 10,
          "ingredienti_dettaglio": [], "ingredienti": []},
@@ -685,6 +686,25 @@ def test_compilazione_di_massa_porta_la_base_a_un_chilo(dbmock):
                           for i in pesabili)
             assert abs(massimo - 1000) < 1, f"{rid}: la base deve stare a 1 kg, trovato {massimo}"
             assert doc.get("dose_riferimento", "").startswith("1 kg di ")
+
+
+@pytest.mark.parametrize("dose_iniziale,fattore", [(1000, 1.0), (500, 2.0)])
+def test_dose_di_riferimento_presente_anche_senza_riscalare(dbmock, monkeypatch, dose_iniziale, fattore):
+    import app.lotti.routers.food_cost as fc
+
+    async def proposta(_nome, _porzioni):
+        return {"ingredienti": [{"nome": "Farina", "quantita": dose_iniziale, "unita": "g"}],
+                "fonte": "ricetta di prova"}
+
+    monkeypatch.setattr(fc, "_proponi_ingredienti_per_nome", proposta)
+    run(dbmock.ricette.insert_one({"id": "R-riferimento", "nome": "Pane di prova", "porzioni": 10}))
+
+    run(fc.proponi_ingredienti_tutte(fc.ProponiTutteReq(limite=1), _admin=None))
+    ricetta = run(dbmock.ricette.find_one({"id": "R-riferimento"}))
+    assert ricetta["ingredienti_dettaglio"][0]["quantita"] == 1000
+    assert ricetta["dose_riferimento"] == "1 kg di Farina"
+    assert ricetta["dose_fattore"] == fattore
+    assert ricetta["porzioni"] == 10 * fattore
 
 
 def test_dose_di_produzione_riscala_sulla_farina(dbmock):

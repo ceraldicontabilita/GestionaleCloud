@@ -93,15 +93,15 @@ def register_routers():
     ADMIN = [Depends(require_admin)]
 
     from .routers.employees import dipendenti, buste_paga, employee_contracts, giustificativi, shifts, fascicolo_dipendente, accessi
-    app.include_router(dipendenti.router, prefix="/api/dipendenti", tags=["Dipendenti"], dependencies=STAFF)
+    app.include_router(dipendenti.router, prefix="/api/dipendenti", tags=["Dipendenti"], dependencies=ADMIN)
     app.include_router(accessi.router, prefix="/api/accessi", tags=["Accessi"])  # già protetto per-endpoint (admin)
     app.include_router(buste_paga.router, prefix="/api", tags=["Buste Paga"], dependencies=ADMIN)
     # Contratti: solo amministratore (JWT valido + ruolo admin).
     app.include_router(employee_contracts.router, prefix="/api/contracts", tags=["Contratti"],
                        dependencies=ADMIN)
-    app.include_router(giustificativi.router, prefix="/api/giustificativi", tags=["Giustificativi"], dependencies=STAFF)
+    app.include_router(giustificativi.router, prefix="/api/giustificativi", tags=["Giustificativi"], dependencies=ADMIN)
     app.include_router(shifts.router, prefix="/api/shifts", tags=["Turni"], dependencies=STAFF)
-    app.include_router(fascicolo_dipendente.router, prefix="/api", tags=["Fascicolo"], dependencies=STAFF)
+    app.include_router(fascicolo_dipendente.router, prefix="/api", tags=["Fascicolo"], dependencies=ADMIN)
 
     from .routers import cedolini, tfr, attendance, richieste, portale_buste, turni, notifiche
     from .routers import dipendenti_cloud
@@ -114,8 +114,8 @@ def register_routers():
     app.include_router(turni.router, prefix="/api/turni", tags=["Turni"])
     app.include_router(notifiche.router, prefix="/api/notifiche", tags=["Notifiche"])
     # App "Dipendenti in Cloud" (8 pagine HR) -> /api/dipendenti-cloud
-    # Area gestione: JWT valido + ruolo admin o responsabile_turni (la pagina
-    # Turni del responsabile carica dati da questo router).
+    # Il router applica la policy per operazione: al responsabile soltanto
+    # Turni, all'amministratore l'intera gestione.
     app.include_router(dipendenti_cloud.router, prefix="/api", tags=["Dipendenti Cloud"],
                        dependencies=[Depends(require_staff)])
     app.include_router(cedolini.router, prefix="/api/cedolini", tags=["Cedolini"], dependencies=ADMIN)
@@ -124,7 +124,7 @@ def register_routers():
     from .routers import posizione_dipendente
     app.include_router(posizione_dipendente.router, prefix="/api/posizione-dipendente",
                        tags=["Posizione dipendente"], dependencies=ADMIN)
-    app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=STAFF)
+    app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=ADMIN)
 
     # Cedolini e Libro Unico ERP: un solo motore, `app/services/cedolini_motore.py`,
     # chiamato dalla pipeline di ingest documentale. La copia `app/hr/routers/libro_unico_parser.py`, registrata

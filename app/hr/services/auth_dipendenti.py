@@ -9,6 +9,7 @@ selettore, mai l'id interno) + pin, così non ci sono collisioni tra PIN uguali.
 import hashlib
 import hmac
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 
@@ -71,6 +72,7 @@ def crea_token_dipendente(dip: Dict[str, Any]) -> str:
         algorithm=settings.ALGORITHM,
         expires_in=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         auth_method="pin_dipendente",
+        pin_version=versione_pin(dip),
     )
 
 
@@ -85,10 +87,9 @@ async def login_dipendente_per_nome(nome: str, pin: str) -> Optional[Dict[str, A
     db = Database.get_db()
     tokens = [t for t in nome.lower().split() if t]
     candidati = []
-    async for d in db[Collections.EMPLOYEES].find(
-            {"attivo": {"$ne": False},
-             "merged_into": {"$exists": False},
-             "stato": {"$nin": ["cessato", "dimesso", "archiviato"]}}):
+    async for d in db[Collections.EMPLOYEES].find({"merged_into": {"$exists": False}}):
+        if not _dipendente_eleggibile(d):
+            continue
         completo = (d.get("nome_completo") or f"{d.get('nome', '')} {d.get('cognome', '')}").lower()
         if all(t in completo for t in tokens):
             candidati.append(d)
@@ -123,6 +124,77 @@ def _dipendente_eleggibile(dip: Dict[str, Any]) -> bool:
     from app.hr.services.stato_rapporto import e_in_forza
 
     return e_in_forza(dip)
+
+
+async def sessione_dipendente_corrente(payload: Dict[str, Any], *,
+                                     dipendente: Optional[Dict[str, Any]] = None) -> bool:
+    """Una sessione personale segue lo stato e i permessi dell'anagrafica.
+
+    Il JWT dura sette giorni, ma la cessazione, la revoca del PIN o un cambio
+    di ruolo devono avere effetto anche sui token gia' emessi. Le sessioni
+    dell'amministratore sono invece verificate da ``group_session``.
+    """
+    metodo = payload.get("auth_method") or payload.get("via") or "token"
+    if metodo == "sessione_erp":
+        return payload.get("role") in {"admin", "amministratore"}
+    if metodo not in {"pin", "pin_dipendente", "token"}:
+        return False
+    dip = dipendente
+    if dip is None:
+        dip = await leggi_dipendente_per_sessione(payload.get("sub"))
+    return bool(sessione_pin_corrente(dip, payload)
+                and (payload.get("role") == "dipendente" if metodo == "pin"
+                     else (dip.get("ruolo_app") or "dipendente") == payload.get("role")))
+
+
+async def leggi_dipendente_per_sessione(identita, *, db=None):
+    """Attributi di autorizzazione correnti: mai la cache delle pagine HR."""
+    from fastapi import HTTPException
+
+    campi = {"_id": 0, "id": 1, "stato": 1, "attivo": 1, "in_carico": 1,
+             "merged_into": 1, "ruolo_app": 1, "pin_hash": 1, "pin_updated_at": 1,
+             "lotti_operatore": 1, "lotti_ruolo": 1, "lotti_reparti": 1}
+    try:
+        coll = (db if db is not None else Database.get_db())[Collections.EMPLOYEES]
+        if getattr(type(coll), "find_one_for_auth", None) is not None:
+            return await coll.find_one_for_auth(str(identita or ""), campi)
+        return await coll.find_one({"id": identita}, campi)
+    except Exception:
+        raise HTTPException(503, "Anagrafica HR non disponibile: riprovare tra poco") from None
+
+
+def versione_pin(dip: Dict[str, Any]) -> str:
+    """Versione opaca: vincola il JWT al PIN e alla data completa del reset."""
+    contenuto = f"{dip.get('pin_hash') or ''}\0{dip.get('pin_updated_at') or ''}"
+    return hmac.new(str(settings.SECRET_KEY).encode(),
+                    b"hr-sessione-pin-v1\0" + contenuto.encode(), hashlib.sha256).hexdigest()
+
+
+def sessione_pin_corrente(dip: Optional[Dict[str, Any]], payload: Dict[str, Any]) -> bool:
+    """Validita' del PIN della scheda HR, comune a portale e tablet Lotti.
+
+    Il chiamante risolve l'id canonico e controlla i propri ruoli/reparti;
+    questo controllo non traduce ruoli ne' concede permessi.
+    """
+    if not dip or not _dipendente_eleggibile(dip) or not dip.get("pin_hash"):
+        return False
+    if "pin_version" in payload:
+        return bool(isinstance(payload["pin_version"], str)
+                    and hmac.compare_digest(payload["pin_version"], versione_pin(dip)))
+    # Token storici: non hanno la versione. Un reset nello stesso secondo
+    # li chiude; il nuovo login emette la versione senza arrotondare la data.
+    aggiornato = dip.get("pin_updated_at")
+    if aggiornato:
+        try:
+            ts = datetime.fromisoformat(str(aggiornato).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            ingresso = float(payload.get("auth_at") or payload.get("iat") or 0)
+            if not math.isfinite(ingresso) or ingresso < ts.timestamp():
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 async def login_dipendente(dipendente_id: str, pin: str) -> Optional[Dict[str, Any]]:
