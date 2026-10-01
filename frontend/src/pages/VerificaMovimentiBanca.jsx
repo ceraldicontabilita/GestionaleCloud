@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PageHeader } from '../components/ds/PageHeader';
 import {
   CheckCircle2,
@@ -41,6 +41,9 @@ function DecisionModal({ row, categories, onClose, onSaved }) {
   // di causale. Si mostrano prima quanti sono e quali: mai alla cieca.
   const [simili, setSimili] = useState(null);
   const [applicaSimili, setApplicaSimili] = useState(false);
+  // «Vedi le fatture» di un fornitore scelto nell'elenco, per collegare il movimento a una fattura precisa.
+  const [fattureFornitore, setFattureFornitore] = useState({});
+  const daSelezionare = useRef(null);
 
   const selectedCategory = categories.find(item => item.id === category);
   const requiresTarget = Boolean(selectedCategory?.requires_target);
@@ -81,9 +84,42 @@ function DecisionModal({ row, categories, onClose, onSaved }) {
 
   useEffect(() => {
     if (!selectedCategory) return;
+    const scelta = daSelezionare.current;
+    daSelezionare.current = null;
+    if (scelta && selectedCategory.id === 'fattura') {
+      // Arrivo da «Vedi le fatture» di un fornitore: la fattura e' gia' scelta, l'elenco e' quello del fornitore.
+      setTargetId(scelta.id);
+      loadCandidates(selectedCategory, scelta.cerca);
+      return;
+    }
     setTargetId(previous.category === selectedCategory.id ? previous.target_id || '' : '');
     loadCandidates(selectedCategory);
   }, [selectedCategory?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const vediFatture = async candidate => {
+    const aperto = fattureFornitore[candidate.id];
+    if (aperto) {
+      setFattureFornitore(prev => { const resto = { ...prev }; delete resto[candidate.id]; return resto; });
+      return;
+    }
+    setFattureFornitore(prev => ({ ...prev, [candidate.id]: { caricamento: true, fatture: [] } }));
+    try {
+      const params = new URLSearchParams({ category: 'fattura', limit: '30', search: candidate.label });
+      const response = await api.get(`/api/prima-nota/indice-operazioni/${encodeURIComponent(row.id)}/candidati?${params}`);
+      setFattureFornitore(prev => ({ ...prev, [candidate.id]: { caricamento: false, fatture: response.data?.candidates || [] } }));
+    } catch (requestError) {
+      setFattureFornitore(prev => ({ ...prev, [candidate.id]: {
+        caricamento: false, fatture: [],
+        errore: requestError?.response?.data?.detail || requestError?.message || 'Fatture non disponibili',
+      } }));
+    }
+  };
+
+  const collegaAFattura = (fattura, fornitore) => {
+    daSelezionare.current = { id: fattura.id, cerca: fornitore.label };
+    setSearch(fornitore.label);
+    setCategory('fattura');
+  };
 
   const save = async () => {
     if (!category) {
@@ -134,6 +170,13 @@ function DecisionModal({ row, categories, onClose, onSaved }) {
           <strong>Movimento originale</strong>
           <span>{row.description || 'Descrizione non disponibile'}</span>
         </div>
+        <p data-testid="a-cosa-serve" style={{ margin: '10px 20px 0', fontSize: 12.5, color: '#5f5c55', lineHeight: 1.45 }}>
+          La banca ha registrato questo movimento ma il gestionale non ha saputo dire a che cosa si riferisce:
+          qui lo dici tu. La scelta resta come indicazione e <b>non crea pagamenti né scritture</b>.
+          {row.type === 'entrata' && (
+            <> È un’<b>entrata</b>: di solito è un rimborso, un acconto di un cliente o l’incasso del POS, non il pagamento di una fattura d’acquisto.</>
+          )}
+        </p>
 
         <div className="operation-step">
           <div className="operation-step-title"><span>1</span> Che cos’è?</div>
@@ -173,24 +216,62 @@ function DecisionModal({ row, categories, onClose, onSaved }) {
                     <div className="candidate-empty">Nessun dato mostrato. Prova una ricerca più precisa.</div>
                   )}
                   {!loadingCandidates && candidates.map(candidate => (
-                    <label key={candidate.id} className={`candidate-row ${targetId === candidate.id ? 'selected' : ''}`}>
-                      <input
-                        type="radio"
-                        name="operation-target"
-                        checked={targetId === candidate.id}
-                        onChange={() => setTargetId(candidate.id)}
-                      />
-                      <span className="candidate-main">
-                        <strong>{candidate.label}</strong>
-                        <small>{[
-                          formatDate(candidate.date),
-                          candidate.amount_cents ? euroCents(candidate.amount_cents) : '',
-                          candidate.details?.payment_method
-                            ? `Metodo fornitore: ${candidate.details.payment_method}`
-                            : '',
-                        ].filter(Boolean).join(' · ')}</small>
-                      </span>
-                    </label>
+                    <React.Fragment key={candidate.id}>
+                      <label className={`candidate-row ${targetId === candidate.id ? 'selected' : ''}`}>
+                        <input
+                          type="radio"
+                          name="operation-target"
+                          checked={targetId === candidate.id}
+                          onChange={() => setTargetId(candidate.id)}
+                        />
+                        <span className="candidate-main">
+                          <strong>{candidate.label}</strong>
+                          <small>{[
+                            formatDate(candidate.date),
+                            candidate.amount_cents ? euroCents(candidate.amount_cents) : '',
+                            candidate.details?.payment_method
+                              ? `Metodo fornitore: ${candidate.details.payment_method}`
+                              : '',
+                          ].filter(Boolean).join(' · ')}</small>
+                        </span>
+                        {selectedCategory.id === 'fornitore' && (
+                          <button
+                            type="button" className="row-action" style={{ marginLeft: 'auto', minHeight: 36 }}
+                            aria-expanded={Boolean(fattureFornitore[candidate.id])}
+                            onClick={event => { event.preventDefault(); vediFatture(candidate); }}
+                          >
+                            {fattureFornitore[candidate.id] ? 'Chiudi le fatture' : 'Vedi le fatture'}
+                          </button>
+                        )}
+                      </label>
+                      {fattureFornitore[candidate.id] && (
+                        <div style={{ padding: '4px 10px 10px 34px', background: '#faf9f5', borderBottom: '1px solid #f6f4ee' }} data-testid="fatture-del-fornitore">
+                          {fattureFornitore[candidate.id].caricamento && <small>Cerco le fatture…</small>}
+                          {fattureFornitore[candidate.id].errore && <small style={{ color: '#9f1239' }}>{fattureFornitore[candidate.id].errore}</small>}
+                          {!fattureFornitore[candidate.id].caricamento && !fattureFornitore[candidate.id].errore
+                            && fattureFornitore[candidate.id].fatture.length === 0 && (
+                            <small>Nessuna fattura trovata per questo fornitore: il movimento resta collegato solo al fornitore.</small>
+                          )}
+                          {fattureFornitore[candidate.id].fatture.map(fattura => (
+                            <div key={fattura.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid #f0ede4', flexWrap: 'wrap' }}>
+                              <span style={{ flex: 1, minWidth: 180 }}>
+                                <strong style={{ fontSize: 12.5 }}>{fattura.details?.invoice_number ? `Fatt. ${fattura.details.invoice_number}` : fattura.label}</strong>
+                                <small style={{ display: 'block', color: '#7a776e' }}>{[
+                                  formatDate(fattura.date),
+                                  fattura.amount_cents ? euroCents(fattura.amount_cents) : '',
+                                ].filter(Boolean).join(' · ')}</small>
+                              </span>
+                              <button
+                                type="button" className="row-action" style={{ minHeight: 36 }}
+                                onClick={() => collegaAFattura(fattura, candidate)}
+                              >
+                                Collega a questa fattura
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </React.Fragment>
                   ))}
                 </div>
               </>

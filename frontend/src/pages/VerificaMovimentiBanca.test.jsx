@@ -180,4 +180,42 @@ describe('Eccezioni da riconciliare', () => {
       expect.objectContaining({ applica_a_simili: false }),
     ));
   });
+
+  it('dall\'elenco dei fornitori si vedono le loro fatture e si collega il movimento a una precisa', async () => {
+    const categorieConFornitore = [
+      { id: 'fornitore', label: 'Fornitore (senza fattura)', target_type: 'supplier', requires_target: true,
+        help: 'Scegli il fornitore quando non esiste una fattura precisa.' },
+      ...categories,
+    ];
+    api.get.mockImplementation((url) => {
+      if (url.includes('category=fornitore')) {
+        return Promise.resolve({ data: { candidates: [{ id: 'sup-amazon', label: 'Amazon EU S.a r.l.', date: '2026-09-01', amount_cents: 0 }] } });
+      }
+      if (url.includes('category=fattura')) {
+        return Promise.resolve({ data: { candidates: [
+          { id: 'inv-1', label: 'Amazon EU - 88', date: '2026-09-28', amount_cents: 5083, details: { invoice_number: '88' } },
+        ] } });
+      }
+      return Promise.resolve({ data: {
+        ...indexResponse, categories: categorieConFornitore,
+        rows: [{ ...indexResponse.rows[0], id: 'mov-amz', type: 'entrata', amount_cents: 5083, description: 'ACCREDITO AMAZON' }],
+      } });
+    });
+    render(<VerificaMovimentiBanca />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Classifica' }));
+    // a cosa serve: lo dice subito, e per un'entrata avverte che non e' il pagamento di una fattura d'acquisto
+    expect(screen.getByTestId('a-cosa-serve')).toHaveTextContent('non crea pagamenti né scritture');
+    expect(screen.getByTestId('a-cosa-serve')).toHaveTextContent('È un’entrata');
+
+    fireEvent.click(screen.getByText('Fornitore (senza fattura)'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Vedi le fatture' }));
+    expect(await screen.findByText('Fatt. 88')).toBeInTheDocument();
+    expect(api.get.mock.calls.some(c => c[0].includes('category=fattura') && c[0].includes('search=Amazon'))).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collega a questa fattura' }));
+    // passa alla scelta della fattura esatta, con questa gia' spuntata
+    await waitFor(() => expect(screen.getByRole('radio', { checked: true })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Conferma scelta/ })).toBeEnabled();
+  });
 });
