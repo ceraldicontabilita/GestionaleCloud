@@ -90,6 +90,37 @@ def test_esclusione_ricetta_conserva_dati_e_permette_ripristino(monkeypatch):
     assert [r["id"] for r in run(module.get_tablet("pasticceria"))["prodotti"]] == ["ricetta-1"]
 
 
+def test_categorie_rapide_si_aggiornano_senza_riscrivere_la_ricetta(monkeypatch):
+    import app.lotti.routers.ricette as module
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+    originale = {
+        "id": "ricetta-rapida", "nome": "Pastiera", "reparto": "pasticceria",
+        "ingredienti": ["Ricotta"], "note": "Ricetta verificata",
+    }
+    run(database.ricette.insert_one(originale.copy()))
+
+    result = run(module.imposta_categorie_rapide_ricetta(
+        "ricetta-rapida",
+        module.CategorieRapideRicetta(categorie=["pasqua", "ricorrenze", "pasqua"]),
+        _admin={"nome": "Admin"},
+    ))
+
+    assert result["categorie_rapide"] == ["pasqua", "ricorrenze"]
+    salvata = run(database.ricette.find_one({"id": "ricetta-rapida"}, {"_id": 0}))
+    assert salvata["categorie_rapide"] == ["pasqua", "ricorrenze"]
+    assert {k: salvata[k] for k in originale} == originale
+
+
+def test_categorie_rapide_rifiutano_valori_inventati():
+    import pytest
+    from pydantic import ValidationError
+    from app.lotti.routers.ricette import CategorieRapideRicetta
+
+    with pytest.raises(ValidationError):
+        CategorieRapideRicetta(categorie=["categoria-non-prevista"])
+
+
 def test_salvataggio_ricetta_fornitore_la_rende_operativa(monkeypatch):
     import app.lotti.routers.ricette as module
     database = AsyncMongoMockClient()["Gestionale_Test"]

@@ -1652,6 +1652,24 @@ class VisibilitaTabletRicetta(BaseModel):
     visibile: bool
 
 
+CATEGORIE_RAPIDE_RICETTA = {
+    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua",
+}
+
+
+class CategorieRapideRicetta(BaseModel):
+    categorie: List[str] = Field(default_factory=list)
+
+    @field_validator("categorie")
+    @classmethod
+    def _categorie_consentite(cls, valori: List[str]) -> List[str]:
+        pulite = list(dict.fromkeys(str(v or "").strip().lower() for v in valori if v))
+        non_valide = [v for v in pulite if v not in CATEGORIE_RAPIDE_RICETTA]
+        if non_valide:
+            raise ValueError(f"categorie non valide: {', '.join(non_valide)}")
+        return pulite
+
+
 @router.put("/ricette/{ricetta_id}/visibilita-tablet")
 async def imposta_visibilita_tablet_ricetta(
     ricetta_id: str,
@@ -1665,6 +1683,25 @@ async def imposta_visibilita_tablet_ricetta(
     if result.matched_count == 0:
         raise HTTPException(404, "Ricetta non trovata")
     return {"id": ricetta_id, "visibile_tablet": richiesta.visibile}
+
+
+@router.put("/ricette/{ricetta_id}/categorie-rapide")
+async def imposta_categorie_rapide_ricetta(
+    ricetta_id: str,
+    richiesta: CategorieRapideRicetta,
+    _admin=Depends(require_admin),
+):
+    """Classifica dalla card, senza aprire o riscrivere la scheda ricetta."""
+    result = await db.ricette.update_one(
+        {"id": ricetta_id},
+        {"$set": {
+            "categorie_rapide": richiesta.categorie,
+            "categorie_rapide_aggiornate_il": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Ricetta non trovata")
+    return {"id": ricetta_id, "categorie_rapide": richiesta.categorie}
 
 
 @router.get("/ricette/{ricetta_id}", response_model=Ricetta)
