@@ -26,6 +26,20 @@ def test_posizione_viene_richiesta_solo_dopo_consenso():
 def test_link_struttura_distinguono_le_tre_fonti():
     assert '["qr","nfc","wifi"]' in HTML
     assert '"#/recensioni/"+REVT.token+"/"+fonte' in HTML
+    assert '"qr","nfc","wifi","link","whatsapp"' in HTML
+
+
+def test_albergatore_invia_al_cliente_con_whatsapp_o_nfc():
+    assert "Invia al cliente con WhatsApp" in HTML
+    assert "Copia link per NFC" in HTML
+    assert 'run("bb_alb_recensioni_link"' in HTML
+    assert 'rec("whatsapp")' in HTML
+    assert 'rec("nfc")' in HTML
+
+
+def test_revoca_elimina_i_dati_collegati():
+    assert "update bb_recensioni_visite set telefono=null" in SQL
+    assert "delete from bb_recensioni_posizioni where visita_id=v.id" in SQL
 
 
 def test_vecchio_blocco_hardcoded_non_esiste_piu():
