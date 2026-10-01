@@ -56,7 +56,7 @@ rimisurate restano tali. Nessuna PR nuova creata: GitHub rifiuta le scritture.
 - 11 — PARZIALE: router Mutui riservato admin, test di autorizzazione e rate; quadratura di ogni mutuo reale non certificata.
 - 12 — PARZIALE: recupero ricevute Lotti e secondo import idempotente, revoca HR anche sulle scritture ordinarie, dose di riferimento 1 kg; backlog e ripristino reale non rimisurati.
 - 13 — PARZIALE: carta sul catalogo canonico e E2E admin↔clienti; 108/323 prodotti pubblici con allergeni, 215 da distinguere dalle esclusioni approvate; Qromo continua a sostituire le modifiche ai propri prodotti.
-- 14 — NON_ESEGUITO: convenzioni B&B live e versamenti partner non collaudati.
+- 14 — PARZIALE: [PR #996](https://github.com/ceraldicontabilita/GestionaleCloud/pull/996) e [PR #998](https://github.com/ceraldicontabilita/GestionaleCloud/pull/998) integrano in Convenzioni i link per struttura QR/NFC/Wi-Fi, l'invio diretto dell'albergatore al cliente via WhatsApp o NFC, consensi separati e revocabili per posizione/WhatsApp, cancellazione dei dati alla revoca, coda post-consumo e pulsanti Google/Tripadvisor senza incentivi. Restano non collaudati l'invio Meta reale (richiede credenziali e template approvato) e i versamenti partner.
 - 15 — NON_ESEGUITO: invio email e pacchetto reale al commercialista richiedono destinatario confermato e dati riservati.
 - 16 — NON_ESEGUITO: protocollo personale live non collaudato; nessun documento personale nel report.
 - 17 — PARZIALE: browser pubblico live a 360/390/768 e flussi HR/Menu isolati; revisione visiva di tutte le schermate private ancora aperta.

@@ -23,7 +23,7 @@ create table if not exists bb_recensioni_visite (
  sessione uuid not null unique default gen_random_uuid(),
  review_token uuid not null unique default gen_random_uuid(),
  struttura_id uuid not null references bb_strutture(id) on delete cascade,
- fonte text not null check (fonte in ('qr','nfc','wifi','link')),
+ fonte text not null check (fonte in ('qr','nfc','wifi','link','whatsapp')),
  informativa_versione text not null,
  informativa_url text not null default '',
  telefono text,
@@ -99,7 +99,7 @@ declare l bb_recensioni_link; v bb_recensioni_visite;
 begin
  select * into l from bb_recensioni_link where token=ptoken and attivo;
  if not found then raise exception 'Link non valido o disattivato'; end if;
- if pfonte not in ('qr','nfc','wifi','link') then pfonte:='link'; end if;
+ if pfonte not in ('qr','nfc','wifi','link','whatsapp') then pfonte:='link'; end if;
  insert into bb_recensioni_visite(struttura_id,fonte,informativa_versione,informativa_url)
  values(l.struttura_id,pfonte,bb_cfg('recensioni_informativa_versione','2026-10-01-v1'),bb_cfg('recensioni_informativa_url','')) returning * into v;
  return json_build_object('sessione',v.sessione,'creato',v.creato);
@@ -159,6 +159,9 @@ begin
  values(v.id,pfinalita,'revocato',v.informativa_versione,'pagina_colazione',bb_ip(),left(coalesce(pclient,''),300),jsonb_build_object('azione_esplicita',true));
  if pfinalita='whatsapp' then
   update bb_recensioni_inviti set stato='annullato',aggiornato=now() where visita_id=v.id and stato in ('in_attesa','errore');
+  update bb_recensioni_visite set telefono=null where id=v.id;
+ else
+  delete from bb_recensioni_posizioni where visita_id=v.id;
  end if;
  return json_build_object('revocato',true,'avvenuto',now());
 end $$;
@@ -203,6 +206,18 @@ begin
  insert into bb_recensioni_click(visita_id,destinazione) values(vid,pdestinazione);
 end $$;
 grant execute on function bb_recensioni_click(uuid,text) to anon,authenticated;
+
+create or replace function bb_alb_recensioni_link(sid uuid,p text) returns uuid
+language plpgsql security definer set search_path=public,extensions as $$
+declare l bb_recensioni_link;
+begin
+ perform bb_check_alb(sid,p);
+ insert into bb_recensioni_link(struttura_id) values(sid) on conflict(struttura_id) do nothing;
+ select * into l from bb_recensioni_link where struttura_id=sid and attivo;
+ if not found then raise exception 'Inviti recensione disattivati per questa struttura'; end if;
+ return l.token;
+end $$;
+grant execute on function bb_alb_recensioni_link(uuid,text) to anon,authenticated;
 
 create or replace function bb_tit_recensioni_stato(p text, sid uuid) returns json
 language plpgsql security definer set search_path=public,extensions as $$

@@ -200,7 +200,7 @@ function home(){
 let REC=null;
 async function recensioniOspite(token,fonte){
  $("#ttl").textContent="Ceraldi Caffè";loading();
- fonte=["qr","nfc","wifi","link"].includes(fonte)?fonte:"link";
+ fonte=["qr","nfc","wifi","link","whatsapp"].includes(fonte)?fonte:"link";
  try{
   const info=await rpc("bb_recensioni_link_pubblico",{ptoken:token});
   if(!info)throw new Error("Link non valido o disattivato");
@@ -512,15 +512,19 @@ async function ricaricaSumup(imp){
  const r=await run("bb_alb_ricarica_sumup",{sid:sess.s,p:sess.p,imp:i,ret:base()+"#/albergatore/borsellino"});
  if(r&&r.url)location.href=r.url}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
-function mostraQR(id){
- const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id);
+async function mostraQR(id){
+ const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id),token=await run("bb_alb_recensioni_link",{sid:sess.s,p:sess.p});if(!token)return;
+ const rec=fonte=>base()+"#/recensioni/"+token+"/"+fonte,wa=rec("whatsapp"),nfc=rec("nfc");
  app.innerHTML=`<div class="card" style="text-align:center"><h3>${esc(descV(v,false))}</h3><p class="mute">${dRange(v)}</p><div class="qr" id="qrbox"></div>
  <p><b style="letter-spacing:2px;font-size:20px">${id}</b></p>
- <button class="btn" id="sh">Invia all'ospite</button> <button class="btn sec" onclick="stampaIds(['${id}'])">🖨 Stampa</button>
- <button class="btn sec" onclick="go('#/albergatore/lista')">Chiudi</button></div>`;
+ <button class="btn" id="sh">💬 Invia al cliente con WhatsApp</button> <button class="btn sec" id="nfc">📱 Copia link per NFC</button> <button class="btn sec" onclick="stampaIds(['${id}'])">🖨 Stampa</button>
+ <button class="btn sec" onclick="go('#/albergatore/lista')">Chiudi</button></div>
+ <div class="card" style="text-align:center"><h3>Accesso recensioni e consensi</h3><p class="mute">Il cliente sceglie separatamente posizione e invito WhatsApp; nessuna opzione è preselezionata.</p><div class="qr" id="recqr"></div></div>`;
  qr($("#qrbox"),id);
- const msg=(ALB.config.msg||"{link}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}",l);
- $("#sh").onclick=()=>navigator.share?navigator.share({title:"La tua colazione",text:msg,url:l}).catch(()=>{}):navigator.clipboard.writeText(msg+" ").then(()=>toast("Messaggio copiato"))}
+ qr($("#recqr"),nfc,160);
+ const msg=(ALB.config.msg||"{link}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}",l)+"\n\nScelte privacy e invito recensione: "+wa;
+ $("#sh").onclick=()=>window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener");
+ $("#nfc").onclick=()=>navigator.clipboard.writeText(nfc).then(()=>toast("Link NFC copiato"))}
 /* --- editor camere (albergatore e titolare) --- */
 let CR=[],CRSID=null;
 function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi nome e ospiti. Spunta Tavolo solo per le camere che hanno normalmente il servizio al tavolo: durante ogni prenotazione potrai ancora cambiarlo.</p><div id="ce"></div>
