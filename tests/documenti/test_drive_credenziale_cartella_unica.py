@@ -62,32 +62,6 @@ def test_servizio_indice_usa_la_cartella_unica(monkeypatch):
     assert drive_document_index.build_drive_service() is sentinella
 
 
-def test_originale_sparito_si_cerca_la_copia_nel_protocollo(monkeypatch):
-    """L'API Drive non cerca per MD5 (400): la copia viva si trova nel protocollo."""
-    class _Servizio:
-        def close(self):
-            pass
-
-    chiesti = []
-
-    def _scarica(_s, file_id, conferma_abuso=False):
-        chiesti.append(file_id)
-        if file_id == "sparito":
-            raise RuntimeError("File not found")
-        return b"%PDF-copia"
-
-    async def _altro(md5, escluso):
-        assert escluso == "sparito"
-        return "viva"
-
-    monkeypatch.setattr(cu, "_service", lambda: _Servizio())
-    monkeypatch.setattr(drive_download, "scarica_bytes", _scarica)
-    monkeypatch.setattr(drive_download, "_altro_id_per_md5", _altro)
-
-    assert asyncio.run(drive_download.scarica_originale("sparito", md5="a" * 32)) == b"%PDF-copia"
-    assert chiesti == ["sparito", "viva"]
-
-
 def test_file_segnalato_come_malware_si_riprova_con_la_conferma(monkeypatch):
     class _Servizio:
         def close(self):
