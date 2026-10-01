@@ -130,7 +130,10 @@ _RATEIZZAZIONI_ADE_KEYWORDS = ("CBILL AGENZIA DELLE ENTRATE",)
 _TASSA_AUTO_KEYWORDS = ("CBILL REGIONE CAMPANIA",)
 # Il saldo mensile della carta di credito aziendale: un giroconto verso la
 # carta, non un costo; i costi sono le spese dell'estratto Nexi.
-_CARTA_CREDITO_KEYWORDS = ("SPESA CON CARTA DI CREDITO NEXI",)
+# «ADDEBITO NEXI - SDD CORE: … NEXI PAYMENTS S.P.A.» e' lo stesso fatto visto
+# dall'altro lato (titolare, 01/10/2026): l'addebito mensile della carta. Il
+# riscontro con l'estratto Nexi lo fa `nexi_carta.verifica_addebiti_nexi`.
+_CARTA_CREDITO_KEYWORDS = ("SPESA CON CARTA DI CREDITO NEXI", "ADDEBITO NEXI")
 
 _PATTERN_BUCKETS: Dict[str, tuple] = {
     "F24": _F24_KEYWORDS,
@@ -155,6 +158,11 @@ _RE_ACCONTO_CLIENTE = re.compile(r"\bTORT[AE]\b")
 # 30/08/26 PDV …». Solo con il circuito e il giorno: «FATTURA NUMIA» e le
 # commissioni del gestore non sono un incasso.
 _RE_ACCREDITO_POS = re.compile(r"\bNUMIA-[A-Z]+\s+DEL\s+\d{2}/\d{2}/\d{2}|\bREMUNERAZIONE\s+DCC\b")
+# Giroconto fra conti della stessa societa' (titolare, 01/10/2026): la causale lo
+# dice da sola («Giroconto da Mastercard SumUp», «BON.DA ceraldi group srl
+# Giroconto»): non e' un incasso ne' un costo e non ha un fornitore.
+_RE_GIROCONTO = re.compile(
+    r"\bGIROCONTO\b|\bMASTERCARD\s+SUMUP\b|\bBON\.?\s*DA\s+CERALDI\s+GROUP\b")
 _RE_RATA_MUTUO = re.compile(r"\bMUTUO\s+N\.?\s*\d{3,5}[\s/]+[\d/]{5,}\s+RATA\b")
 
 
@@ -177,6 +185,8 @@ def _categorie_da_causale(desc: str) -> List[str]:
         trovate.append("Pagamento PayPal")
     if _RE_RATA_MUTUO.search(desc):
         trovate.append("Rata mutuo")
+    if _RE_GIROCONTO.search(desc):
+        trovate.append("Giroconto")
     # «COMPETENZE» da sola e' la liquidazione trimestrale del conto; con altre
     # parole (es. «competenze agosto» in un bonifico) puo' essere uno stipendio.
     if desc.strip() == "COMPETENZE":

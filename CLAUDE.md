@@ -468,6 +468,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   vince sul generico, ma un pattern di solo vocabolario bancario comune (es.
   "COMMISSIONI SU BONIFICI", senza un nome di fornitore) è rifiutato alla
   creazione. Eliminare una regola non tocca i movimenti già categorizzati. L'**indice operazioni** (`operation_index.py`, Movimenti › Classifica) è un'altra cosa: una natura senza documento (commissione, trasferimento, altro) si applica anche ai movimenti della stessa **famiglia di causale** (`famiglia_causale`: il testo prima del trattino, senza numeri), solo dopo averli visti e spuntati; una natura con documento (fattura, cedolino…) è di un movimento solo.
+- **«Movimenti da insegnare» (Regole banca)**: il motore unico riconosce da solo l'«ADDEBITO NEXI - SDD CORE» (= addebito carta, riscontro con l'estratto Nexi del mese prima) e i giroconti della società («Giroconto», «Mastercard SumUp», «BON.DA ceraldi group srl» → categoria `Giroconto`, mai un fornitore). Per il resto la pagina non chiede «a chi appartiene»: `GET /api/regole-riconoscimento-banca/proposte/{id}` (sola lettura, admin) dice cosa legge il motore e elenca i candidati per importo al centesimo (verbali, cartelle, fatture non pagate), e la scelta si fa in «Classifica e collega»; la regola per fornitore resta il modo di insegnare una famiglia di causali.
 - Pagamenti stipendio via nome: regola in «Personale». Qui vale solo il
   corollario bancario — un professionista omonimo di un dipendente, o un
   pagamento occasionale a lui, non entra nel fascicolo stipendi

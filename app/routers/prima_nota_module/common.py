@@ -51,6 +51,7 @@ CATEGORIE_BANCA = [
     "Rateizzazioni AdE",
     "Tassa automobilistica",
     "Addebito carta di credito",
+    "Giroconto",
     "Finanziamento soci",
     "Acconti clienti",
     "Risarcimenti e proventi straordinari",
