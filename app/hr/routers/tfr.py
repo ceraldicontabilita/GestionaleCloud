@@ -17,6 +17,77 @@ from app.hr.utils.error_handler import handle_errors
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
+def _db_giornale():
+    """L'archivio del libro giornale (``movimenti_contabili``): e' del gestionale.
+
+    Lo schema HR (``hr.app_*``) non e' letto da bilancio, giornale e Prima Nota:
+    una scrittura finita li' non esiste per i conti. Si prende **prima** di
+    scrivere qualsiasi altra cosa, cosi' un archivio non raggiungibile ferma
+    l'operazione invece di lasciarla a meta'."""
+    from app.database import Database as DatabaseGestionale
+
+    return DatabaseGestionale.get_db()
+
+
+async def _ricalcola_mese_acconto(db, acconto: Dict[str, Any]) -> None:
+    """Lo stato del mese (registro paghe) conta gli acconti di stipendio come pagamenti:
+    quando un acconto nasce, cambia o sparisce lo si riallinea subito, senza aspettare
+    il giro periodico che ricostruisce il registro dai cedolini."""
+    from app.hr.routers.dipendenti_cloud import _ricalcola_stato_paga
+    from app.services.posizione_dipendente import TIPI_ACCONTO_STIPENDIO
+
+    if str(acconto.get("tipo") or "") not in TIPI_ACCONTO_STIPENDIO or not acconto.get("dipendente_id"):
+        return
+    competenza = str(acconto.get("scalato_su_anno_mese") or str(acconto.get("data") or "")[:7])
+    try:
+        anno, mese = int(competenza[:4]), int(competenza[5:7])
+    except ValueError:
+        return
+    await _ricalcola_stato_paga(db, acconto["dipendente_id"], anno, mese)
+
+
+async def _allinea_giornale_acconto_tfr(giornale, acconto: Dict[str, Any], importo_nuovo: float) -> None:
+    """Porta il giornale a dire ``importo_nuovo`` per un acconto TFR gia' registrato.
+
+    Una scrittura sbagliata si **storna**, non si cancella (CLAUDE.md, regola 8):
+    l'acconto eliminato (``importo_nuovo = 0``) o corretto di importo lascia la
+    scrittura originale e ne aggiunge una di rettifica per la differenza, con le
+    gambe invertite se diminuisce. Se l'acconto non ha mai avuto la sua scrittura
+    non se ne inventa una."""
+    from app.services.registrazione_contabile import (
+        registra_scrittura_semplice, riga, _C_FONDO_TFR, _C_PERSONALE_LIQUIDAZIONE,
+    )
+    scritture = await giornale["movimenti_contabili"].find(
+        {"acconto_id": acconto["id"], "tipo": {"$in": ["acconto_tfr", "acconto_tfr_rettifica"]}},
+        {"_id": 0},
+    ).to_list(100)
+    if not any(m.get("tipo") == "acconto_tfr" for m in scritture):
+        return
+    registrato = round(sum(float(m.get("importo_con_segno", m.get("importo")) or 0) for m in scritture), 2)
+    delta = round(float(importo_nuovo) - registrato, 2)
+    if delta == 0:
+        return
+    imp = abs(delta)
+    nome = acconto.get("dipendente_nome", "")
+    gambe = [(_C_FONDO_TFR, "dare"), (_C_PERSONALE_LIQUIDAZIONE, "avere")]
+    if delta < 0:
+        gambe = [(_C_PERSONALE_LIQUIDAZIONE, "dare"), (_C_FONDO_TFR, "avere")]
+    ora = datetime.now(timezone.utc).isoformat()
+    await registra_scrittura_semplice(
+        giornale,
+        movimento={
+            "id": str(uuid4()), "data": ora[:10],
+            "descrizione": f"Rettifica acconto TFR - {nome}",
+            "tipo": "acconto_tfr_rettifica", "importo": imp, "importo_con_segno": delta,
+            "dipendente_id": acconto.get("dipendente_id"), "acconto_id": acconto["id"],
+            "created_at": ora,
+        },
+        righe=[riga(conto, descrizione="Rettifica acconto TFR", **{lato: imp}) for conto, lato in gambe],
+        chiave_naturale={"tipo": "acconto_tfr_rettifica", "acconto_id": acconto["id"],
+                         "progressivo": len(scritture)},
+    )
+
 # Cartella upload buste paga
 PAYSLIPS_FOLDER = "/app/uploads/paghe"
 
@@ -136,6 +207,7 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
         Dettaglio dell'accantonamento registrato
     """
     db = Database.get_db()
+    giornale = _db_giornale()
     
     if input_data.retribuzione_annua <= 0:
         raise HTTPException(status_code=400, detail="La retribuzione annua deve essere positiva")
@@ -248,7 +320,7 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
     )
     imp_accantonamento = round(totale_accantonamento, 2)
     await registra_scrittura_semplice(
-        db,
+        giornale,
         movimento={
             "id": str(uuid4()),
             "data": f"{input_data.anno}-12-31",
@@ -304,6 +376,7 @@ async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
         Dettaglio della liquidazione con importo lordo, ritenute e netto
     """
     db = Database.get_db()
+    giornale = _db_giornale()
     
     # Recupera dipendente
     dipendente = await db["dipendenti"].find_one(
@@ -404,7 +477,7 @@ async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await registra_scrittura_semplice(
-        db,
+        giornale,
         movimento=movimento_fondo,
         righe=[
             riga(_C_FONDO_TFR, dare=imp_lordo, descrizione="Utilizzo fondo TFR"),
@@ -429,7 +502,7 @@ async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await registra_scrittura_semplice(
-            db,
+            giornale,
             movimento=movimento_ritenute,
             righe=[
                 riga(_C_PERSONALE_LIQUIDAZIONE, dare=imp_ritenute, descrizione="Ritenute TFR"),
@@ -775,6 +848,8 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
     saranno aggiunti nei task successivi.
     """
     db = Database.get_db()
+    # il giornale serve solo all'acconto TFR; lo si prende prima di scrivere
+    giornale = _db_giornale() if input_data.tipo == "tfr" else None
 
     # Verifica dipendente
     dipendente = await db["dipendenti"].find_one(
@@ -861,6 +936,7 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
     }
 
     await db["acconti_dipendenti"].insert_one(acconto.copy())
+    await _ricalcola_mese_acconto(db, acconto)
 
     # Se è un acconto TFR, aggiorna anche il TFR del dipendente (logica preesistente)
     if input_data.tipo == "tfr":
@@ -890,7 +966,7 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
             "created_at": now_iso,
         }
         await registra_scrittura_semplice(
-            db,
+            giornale,
             movimento=movimento,
             righe=[
                 riga(_C_FONDO_TFR, dare=imp_acconto, descrizione="Acconto TFR"),
@@ -927,6 +1003,7 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
     acconto = await db["acconti_dipendenti"].find_one({"id": acconto_id})
     if not acconto:
         raise HTTPException(status_code=404, detail="Acconto non trovato")
+    giornale = _db_giornale() if acconto.get("tipo") == "tfr" else None
 
     # Prepara aggiornamento
     update_fields: Dict[str, Any] = {}
@@ -940,6 +1017,7 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
 
         # Se è un acconto TFR, aggiorna il saldo del dipendente
         if acconto.get("tipo") == "tfr":
+            await _allinea_giornale_acconto_tfr(giornale, acconto, nuovo_importo)
             dipendente = await db["dipendenti"].find_one({"id": acconto["dipendente_id"]})
             if dipendente:
                 tfr_attuale = float(dipendente.get("tfr_accantonato", 0))
@@ -1011,6 +1089,9 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
             {"id": acconto_id},
             {"$set": update_fields}
         )
+        # il mese di prima e quello di dopo (se cambia la data o la competenza)
+        await _ricalcola_mese_acconto(db, acconto)
+        await _ricalcola_mese_acconto(db, {**acconto, **update_fields})
 
     return {
         "success": True,
@@ -1031,8 +1112,10 @@ async def elimina_acconto(acconto_id: str) -> Dict[str, Any]:
     if not acconto:
         raise HTTPException(status_code=404, detail="Acconto non trovato")
     
-    # Se era un acconto TFR, ripristina il valore
+    # Se era un acconto TFR, ripristina il valore (e storna la scrittura del giornale)
     if acconto.get("tipo") == "tfr":
+        giornale = _db_giornale()
+        await _allinea_giornale_acconto_tfr(giornale, acconto, 0.0)
         dipendente = await db["dipendenti"].find_one({"id": acconto["dipendente_id"]})
         if dipendente:
             tfr_attuale = float(dipendente.get("tfr_accantonato", 0))
@@ -1044,6 +1127,7 @@ async def elimina_acconto(acconto_id: str) -> Dict[str, Any]:
     
     # Elimina acconto
     await db["acconti_dipendenti"].delete_one({"id": acconto_id})
+    await _ricalcola_mese_acconto(db, acconto)
     
     return {
         "success": True,

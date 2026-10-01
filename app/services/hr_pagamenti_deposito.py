@@ -106,7 +106,8 @@ _CF_RE = re.compile(r"\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", re.I)
 # causale come "VESPA VINCENZO ACCONTO STIPENDIO MARZO 2026 + RIMBORSO KM"
 # sparirebbe del tutto solo perche' contiene anche "rimborso".
 _ESCLUSIONE_DURA_RE = re.compile(
-    r"\bTFR\b|fattur|\bFPR\b|\bFT\b\s*\d|prestit|finanziament|COMM\.?\s*SU|"
+    # TFR in ogni grafia della banca: «TFR», «TFR2025», «T.F.R.», «trattamento di fine rapporto»
+    r"\bTFR(?![A-Za-z])|\bT\.\s?F\.\s?R\b|trattamento\s+(?:di\s+)?fine\s+rapporto|fattur|\bFPR\b|\bFT\b\s*\d|prestit|finanziament|COMM\.?\s*SU|"
     r"\bnota\s+spese|"
     # Un bonifico a Ceraldi Group e' un giroconto fra i conti della societa';
     # l'ordinante non entra mai nel testo esaminato, quindi il nome qui e'

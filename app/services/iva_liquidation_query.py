@@ -51,7 +51,7 @@ async def corrispettivi_periodo(db, periodo: str) -> Dict[str, Any]:
     docs = [
         item for item in docs
         if item.get("entity_status") != "deleted"
-        and item.get("status") not in ("deleted", "archived")
+        and item.get("status") not in ("deleted", "archived", "archiviata")
     ]
     seen: set[str] = set()
     total_cents = 0

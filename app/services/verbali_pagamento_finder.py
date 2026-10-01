@@ -411,7 +411,14 @@ async def _cerca_in_estratto_conto(db, iuv, numero_verbale, targa, importo, verb
             ]},
         ],
     }).limit(20).to_list(20)
-    movimenti = [m for m in movimenti if amounts_equal_to_cent(m.get("importo"), imp)]
+    # Il pagamento di un verbale e' un'uscita: un accredito che ne cita il numero
+    # (rimborso, storno) non lo paga; stesso criterio di verso della proiezione bancaria.
+    from app.services.proiezione_bancaria import _verso
+
+    movimenti = [
+        m for m in movimenti
+        if amounts_equal_to_cent(m.get("importo"), imp) and _verso(m) == "uscita"
+    ]
     if len(movimenti) != 1:
         return None
     mov = movimenti[0]

@@ -34,6 +34,7 @@ from typing import Any, Dict, List
 from fastapi import HTTPException
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+from app.services.stato_pagamento_fattura import e_pagata
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,12 @@ def _dichiarata_altrove(f: Dict[str, Any]) -> str:
     ha detto come e' stata pagata e il metodo del fornitore non lo scavalca."""
     if any(isinstance(a, dict) for a in (f.get("assegni_collegati") or [])):
         return "assegno collegato: segue il registro assegni"
-    if (str(f.get("prima_nota_tipo") or "").lower() == "banca" or f.get("prima_nota_banca_id")
+    # La riga di Banca che l'import scrive da sola per un fornitore a bonifico (`provvisorio`, in attesa
+    # dell'estratto) non e' una dichiarazione: su una fattura che nessuno ha detto pagata non conta.
+    # Conta `prima_nota_tipo=banca` solo se qualcosa dice che la fattura e' stata pagata.
+    pagata_dichiarata = e_pagata(f)
+    if (((str(f.get("prima_nota_tipo") or "").lower() == "banca" or f.get("prima_nota_banca_id"))
+            and pagata_dichiarata)
             or f.get("in_attesa_riscontro_banca")
             or str(f.get("stato_pagamento") or "").lower() == "in_attesa_banca"
             or str(f.get("stato_finanziario") or "").lower().startswith("pagata_dichiarata")):

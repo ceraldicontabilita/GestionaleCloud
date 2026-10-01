@@ -171,12 +171,23 @@ async def _vehicle_context(
 ) -> Dict[str, Any]:
     if not targa:
         return {}
-    vehicle = await db["veicoli_noleggio"].find_one(
+    veicoli = await db["veicoli_noleggio"].find(
         {"targa": {"$regex": f"^{re.escape(targa)}$", "$options": "i"}},
         {"_id": 0},
-    )
-    if not vehicle:
+    ).limit(5).to_list(5)
+    if not veicoli:
         return {}
+    if len({str(v.get("id") or v.get("targa")) for v in veicoli}) > 1:
+        # Targa non univoca: nessun veicolo e nessun driver, si mostrano i candidati.
+        return {
+            "veicolo_candidati": [
+                {"veicolo_id": v.get("id"), "contratto": v.get("contratto"),
+                 "fornitore_noleggio": v.get("fornitore_noleggio")}
+                for v in veicoli
+            ],
+            "driver_requires_review": True,
+        }
+    vehicle = veicoli[0]
     context = {
         "veicolo_id": vehicle.get("id"),
         "contratto": vehicle.get("contratto"),
@@ -197,21 +208,38 @@ async def _vehicle_context(
         })
     elif prova.get("fonte") == "da_assegnare":
         context["driver_requires_review"] = True
+        if prova.get("candidati"):
+            context["driver_candidati"] = prova["candidati"]
     return context
 
 
 def _extract_violation_date(text: str) -> Optional[str]:
     # Solo le diciture del fatto: «data verbale» e' la data dell'atto redatto,
-    # un'altra data (campo `data_verbale`), e non e' la violazione.
-    match = re.search(
-        r"(?:data\s+(?:della\s+)?(?:violazione|infrazione)|\bdata\s*:|violazione\s+del|"
-        r"commess[ao]\s+il|accertat[ao]\s+il|in\s+data|il\s+giorno)\s*:?[ ]*(\d{2}/\d{2}/\d{4})",
-        text or "", re.I,
-    )
-    if not match:
+    # un'altra data (campo `data_verbale`), e non e' la violazione. Le diciture
+    # esplicite della violazione vincono sulle generiche («in data», «data:»,
+    # «il giorno») a prescindere dall'ordine nel testo: «emesso in data
+    # 20/07/2026 … violazione commessa il 10/04/2026» e' del 10/04, non del 20/07.
+    if not text:
         return None
-    day, month, year = match.group(1).split("/")
-    return f"{year}-{month}-{day}"
+    data = r"\s*:?[ ]*(\d{2}/\d{2}/\d{4})"
+    esplicite = (
+        r"data\s+(?:della\s+)?(?:violazione|infrazione)",
+        r"violazione\s+del",
+        r"(?:violazione|infrazione)\s+(?:commess[ao]|accertat[ao])\s+(?:il|in\s+data)",
+        r"commess[ao]\s+il",
+        r"accertat[ao]\s+il",
+    )
+    generiche = (
+        r"in\s+data",
+        r"\bdata\s*:",
+        r"il\s+giorno",
+    )
+    for gruppo in (esplicite, generiche):
+        match = re.search("(?:" + "|".join(gruppo) + ")" + data, text, re.I)
+        if match:
+            day, month, year = match.group(match.lastindex).split("/")
+            return f"{year}-{month}-{day}"
+    return None
 
 
 def _extract_iso_date(pattern: str, text: str) -> Optional[str]:

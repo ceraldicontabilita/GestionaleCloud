@@ -103,7 +103,20 @@ def _bank_amounts(text: str) -> tuple[Decimal | None, Decimal | None, Decimal | 
     fee_match = re.search(r"COMMISSIONI\s*([\d.]+,\d{2})-?", clean, re.IGNORECASE)
     operation = _money_decimal(operation_match.group(1)) if operation_match else None
     fee = _money_decimal(fee_match.group(1)) if fee_match else Decimal("0.00")
-    return operation, fee, operation + fee if operation is not None else None
+    if operation is None:
+        return None, fee, None
+    # Il totale non si ricalcola in silenzio: se la ricevuta ne stampa uno (o piu') e nessuno e'
+    # operazione + commissione (o la sola operazione) al centesimo, la somma delle voci non
+    # torna e il pagamento resta da verificare (totale ignoto), mai «corretto» dal lettore.
+    stampati = [
+        _money_decimal(valore) for valore in re.findall(
+            r"(?:TOTALE\s+ADDEBITO|IMPORTO\s+TOTALE|TOTALE)\s*:?\s*([\d.]+,\d{2})-?", clean, re.IGNORECASE,
+        )
+    ]
+    stampati = [valore for valore in stampati if valore is not None]
+    if stampati and not any(valore in (operation + fee, operation) for valore in stampati):
+        return operation, fee, None
+    return operation, fee, operation + fee
 
 
 def _parse_bpm_payment(text: str) -> dict[str, Any]:

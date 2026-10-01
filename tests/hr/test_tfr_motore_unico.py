@@ -93,6 +93,11 @@ class _FakeDb(dict):
         self[k] = _FakeCollection()
         return self[k]
 
+    def __getattr__(self, nome):  # `db.paghe_mensili`, come l'adattatore HR
+        if nome.startswith("_"):
+            raise AttributeError(nome)
+        return self[nome]
+
 
 DIPENDENTE = {
     "id": "dip-1",
@@ -106,6 +111,16 @@ def _db_con_dipendente(**overrides):
     dip = dict(DIPENDENTE, **overrides)
     db["dipendenti"].docs.append(dip)
     return db
+
+
+def _collega(monkeypatch, db):
+    """Un archivio finto solo, per HR e per il gestionale (il giornale sta nel
+    gestionale): qui si guarda cosa viene scritto; che finisca nell'archivio
+    giusto lo prova `test_scenari_funzionali_tfr_cessazione.py`."""
+    from app.database import Database as DatabaseGestionale
+
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    monkeypatch.setattr(DatabaseGestionale, "get_db", classmethod(lambda cls: db))
 
 
 def _righe_per_tipo(db, tipo):
@@ -125,7 +140,7 @@ def _assert_bilanciata(movimento):
 
 def test_accantonamento_scrittura_bilanciata_e_idempotente(monkeypatch):
     db = _db_con_dipendente(tfr_accantonato=0.0)
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _collega(monkeypatch, db)
 
     input_data = mod.AccantonamentoTFRInput(
         dipendente_id="dip-1", anno=2026, retribuzione_annua=27000.0, indice_istat=1.0,
@@ -158,7 +173,7 @@ def test_accantonamento_scrittura_bilanciata_e_idempotente(monkeypatch):
 def test_accantonamento_numero_registrazione_progressivo(monkeypatch):
     db = _db_con_dipendente(tfr_accantonato=0.0)
     db["dipendenti"].docs.append({"id": "dip-2", "nome_completo": "Anna Bianchi", "tfr_accantonato": 0.0})
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _collega(monkeypatch, db)
 
     _run(mod.registra_accantonamento_tfr(mod.AccantonamentoTFRInput(
         dipendente_id="dip-1", anno=2026, retribuzione_annua=20000.0)))
@@ -178,7 +193,7 @@ def test_accantonamento_ripetuto_con_dati_diversi_non_diverge(monkeypatch):
     bloccava solo movimenti_contabili: tre fonti divergenti. Ora il secondo
     POST si ferma prima di toccare qualsiasi cosa."""
     db = _db_con_dipendente(tfr_accantonato=0.0)
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _collega(monkeypatch, db)
 
     esito1 = _run(mod.registra_accantonamento_tfr(mod.AccantonamentoTFRInput(
         dipendente_id="dip-1", anno=2026, retribuzione_annua=20000.0)))
@@ -207,7 +222,7 @@ def test_accantonamento_totale_negativo_rifiutato(monkeypatch):
     from fastapi import HTTPException
 
     db = _db_con_dipendente(tfr_accantonato=5000.0)
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _collega(monkeypatch, db)
 
     input_data = mod.AccantonamentoTFRInput(
         dipendente_id="dip-1", anno=2026, retribuzione_annua=1000.0, indice_istat=-50.0,
@@ -229,7 +244,7 @@ def test_accantonamento_totale_negativo_rifiutato(monkeypatch):
 
 def test_liquidazione_fondo_e_ritenute_bilanciate_e_idempotenti(monkeypatch):
     db = _db_con_dipendente(tfr_accantonato=3000.0)
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _collega(monkeypatch, db)
 
     input_data = mod.LiquidazioneTFRInput(
         dipendente_id="dip-1", data_liquidazione="2026-06-30", motivo="dimissioni",
@@ -270,7 +285,7 @@ def test_liquidazione_senza_ritenute_non_scrive_seconda_scrittura(monkeypatch):
     scrittura non deve comparire: verificato forzando ritenute=0 a livello di
     modulo per isolare il comportamento del ramo `if ritenute > 0`."""
     db = _db_con_dipendente(tfr_accantonato=1000.0)
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _collega(monkeypatch, db)
     monkeypatch.setattr(mod, "ALIQUOTA_TFR", 0.0)
 
     _run(mod.liquida_tfr(mod.LiquidazioneTFRInput(
@@ -286,7 +301,7 @@ def test_liquidazione_senza_ritenute_non_scrive_seconda_scrittura(monkeypatch):
 
 def test_acconto_tfr_scrittura_bilanciata_e_idempotente(monkeypatch):
     db = _db_con_dipendente(tfr_accantonato=2000.0)
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _collega(monkeypatch, db)
 
     input_data = mod.AccontoInput(
         dipendente_id="dip-1", tipo="tfr", importo=500.0, data="2026-05-10",
@@ -316,7 +331,7 @@ def test_acconto_tfr_chiave_naturale_e_specifica_dell_acconto(monkeypatch):
     `acconto_id` (retry di rete sullo stesso POST, pattern di cespiti.py) non
     duplica la scrittura."""
     db = _db_con_dipendente(tfr_accantonato=2000.0)
-    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _collega(monkeypatch, db)
 
     from app.services.registrazione_contabile import registra_scrittura_semplice, riga, _C_FONDO_TFR, _C_PERSONALE_LIQUIDAZIONE
 

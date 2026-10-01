@@ -28,6 +28,7 @@ from fastapi import APIRouter, Query
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 from app.services.f24_payment_evidence import stato_evidenza_pagamento
 from app.services.f24_canonico import normalizza_righe_tributo
 from app.services.payment_allocation_validator import to_cents
@@ -202,9 +203,30 @@ async def _carica_pagamenti_quietanza(db) -> List[Dict[str, Any]]:
     return pagamenti_da_quietanze([q for q in quietanze if q.get("righe")])
 
 
+def _versato_copre(
+    richiesto_cents: int, versato_cents: int, *, ravveduto: bool,
+    scadenza: Optional[str], data_pagamento: Optional[str],
+) -> bool:
+    """La riga 1040 versata copre la ritenuta: uguale al centesimo, oppure ravveduta con gli interessi.
+
+    Nel ravvedimento di una ritenuta gli interessi legali si cumulano al tributo (Ris. AdE 18/E del
+    28/04/2023: 280,00 diventa 280,31) e la sanzione ha il suo codice. Una riga maggiore della ritenuta
+    vale solo con una sanzione nello stesso periodo e se l'eccedenza e' quella degli interessi legali dalla
+    scadenza al versamento (con la stessa tolleranza dello Scadenzario): mai un importo vicino qualunque.
+    """
+    if versato_cents == richiesto_cents:
+        return True
+    if not ravveduto or not scadenza or not data_pagamento:
+        return False
+    from app.services.scadenzario_tributi import eccedenza_da_interessi
+
+    return eccedenza_da_interessi(richiesto_cents, versato_cents, scadenza, data_pagamento)
+
+
 def _quietanze_1040(
     pagamenti: List[Dict[str, Any]], periodo: Optional[str], importo_cents: int,
     stesso_importo: int, totale_gruppo_cents: int, gruppo_multiplo: bool,
+    scadenza: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Pagamenti con il 1040 del periodo che coprono la ritenuta al centesimo.
 
@@ -225,16 +247,20 @@ def _quietanze_1040(
         ]
         if not righe:
             continue
-        if stesso_importo == 1 and any(int(r["importo_debito_cents"]) == importo_cents for r in righe):
+        ravveduto = _ravveduta_da_quietanza(pagamento, periodo)
+
+        def copre(richiesto: int, versato: int) -> bool:
+            return _versato_copre(richiesto, versato, ravveduto=ravveduto, scadenza=scadenza,
+                                  data_pagamento=pagamento.get("data"))
+
+        if stesso_importo == 1 and any(copre(importo_cents, int(r["importo_debito_cents"])) for r in righe):
             trovati.append({"pagamento": pagamento, "tipo": "singola"})
-        elif sum(int(r["importo_debito_cents"]) for r in righe) == totale_gruppo_cents:
+        elif copre(totale_gruppo_cents, sum(int(r["importo_debito_cents"]) for r in righe)):
             trovati.append({"pagamento": pagamento, "tipo": "aggregata" if gruppo_multiplo else "singola"})
     return trovati
 
 
 def _ravveduta_da_quietanza(pagamento: Dict[str, Any], periodo: str) -> bool:
-    from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
-
     anno, mese = int(periodo[:4]), int(periodo[5:7])
     codici = set(CODICI_RAVVEDIMENTO) | set(CODICI_RAVVEDIMENTO_RITENUTE)
     return any(
@@ -308,15 +334,25 @@ async def _riconcilia_ritenuta(
                 continue
 
             tipo = None
+            ravveduto = bool(periodo_riga) and any(
+                t["codice"] in set(CODICI_RAVVEDIMENTO) | set(CODICI_RAVVEDIMENTO_RITENUTE)
+                and t.get("periodo") == periodo_riga for t in _tributi_di(f24))
+
+            def copre(richiesto: int) -> bool:
+                return _versato_copre(
+                    richiesto, tributo["importo_cents"], ravveduto=ravveduto,
+                    scadenza=rit.get("scadenza_legale") or rit.get("scadenza"),
+                    data_pagamento=_data_pagamento_f24(f24))
+
             # Una riga senza periodo può essere usata solo per un importo
             # individuale univoco, mai per un'aggregazione mensile.
-            if tributo["importo_cents"] == importo_cents and stesso_importo == 1:
+            if copre(importo_cents) and stesso_importo == 1:
                 tipo = "singola"
             if (
                 len(gruppo) > 1
                 and periodo
                 and periodo_riga == periodo
-                and tributo["importo_cents"] == totale_gruppo_cents
+                and copre(totale_gruppo_cents)
             ):
                 tipo = "aggregata"
             if not tipo:
@@ -333,7 +369,7 @@ async def _riconcilia_ritenuta(
         due = rit.get("scadenza_legale") or rit["scadenza"]
         trovati = _quietanze_1040(
             pagamenti_quietanza or [], periodo, importo_cents, stesso_importo,
-            totale_gruppo_cents, len(gruppo) > 1,
+            totale_gruppo_cents, len(gruppo) > 1, scadenza=due,
         )
         if len(trovati) > 1:
             upd.update({

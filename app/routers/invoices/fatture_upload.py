@@ -25,6 +25,7 @@ from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.database import Database, Collections
+from app.utils.id_fattura import filtro_id
 from app.engines.prima_nota_engine import (
     normalizza_metodo_pagamento,
 )
@@ -2417,7 +2418,7 @@ async def _registra_in_partita_doppia(db, fattura_id: Optional[str]) -> Dict[str
         return {"stato": "saltato", "motivo": "fattura senza id"}
     try:
         from app.services.registrazione_contabile import registra_documento_import
-        fattura_db = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0})
+        fattura_db = await db[Collections.INVOICES].find_one(filtro_id(fattura_id), {"_id": 0})
         if not fattura_db:
             return {"stato": "saltato", "motivo": "fattura non trovata"}
         return await registra_documento_import(db, "fattura", fattura_db)
@@ -2883,7 +2884,7 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
     }
 
     result = await db[Collections.INVOICES].update_one(
-        {"id": invoice_id},
+        filtro_id(invoice_id),
         {"$set": update_data}
     )
 
@@ -2907,7 +2908,7 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
         cdc_config = CENTRI_COSTO.get(centro_costo_id) or next(
             (cfg for cfg in CENTRI_COSTO.values() if cfg.get("codice") == centro_costo_id), None,
         ) or (cdc if cdc and cdc.get("detraibilita_iva") is not None else None)
-        fattura_db = await db[Collections.INVOICES].find_one({"id": invoice_id}, {"_id": 0})
+        fattura_db = await db[Collections.INVOICES].find_one(filtro_id(invoice_id), {"_id": 0})
         if cdc_config is not None and fattura_db:
             imponibile = float(fattura_db.get("imponibile") or fattura_db.get("subtotal") or 0)
             iva = float(fattura_db.get("iva") or fattura_db.get("total_tax") or 0)
@@ -2946,8 +2947,8 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
             if cdc_config.get("limite_annuo"):
                 aggiornamento["numero_contratto_noleggio"] = numero_contratto_noleggio
                 aggiornamento["imponibile_limitato_periodo"] = importi.get("imponibile_limitato_periodo")
-            await db[Collections.INVOICES].update_one({"id": invoice_id}, {"$set": aggiornamento})
-            fattura_db = await db[Collections.INVOICES].find_one({"id": invoice_id}, {"_id": 0})
+            await db[Collections.INVOICES].update_one(filtro_id(invoice_id), {"$set": aggiornamento})
+            fattura_db = await db[Collections.INVOICES].find_one(filtro_id(invoice_id), {"_id": 0})
             registrazione = await registra_documento_import(db, "fattura", fattura_db)
         elif fattura_db is not None:
             registrazione = {"stato": "saltato",
@@ -2978,7 +2979,7 @@ async def paga_fattura(invoice_id: str) -> Dict[str, Any]:
     db = Database.get_db()
 
     # Trova la fattura
-    invoice = await db[Collections.INVOICES].find_one({"id": invoice_id})
+    invoice = await db[Collections.INVOICES].find_one(filtro_id(invoice_id))
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
@@ -3059,7 +3060,7 @@ async def delete_invoice(
     db = Database.get_db()
 
     # Recupera fattura
-    invoice = await db[Collections.INVOICES].find_one({"id": invoice_id})
+    invoice = await db[Collections.INVOICES].find_one(filtro_id(invoice_id))
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
@@ -3124,7 +3125,7 @@ async def get_entita_correlate_fattura(invoice_id: str) -> Dict[str, Any]:
 
     db = Database.get_db()
 
-    invoice = await db[Collections.INVOICES].find_one({"id": invoice_id})
+    invoice = await db[Collections.INVOICES].find_one(filtro_id(invoice_id))
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 

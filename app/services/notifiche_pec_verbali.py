@@ -116,22 +116,50 @@ async def registra_notifica_pec(
     }
     voce = {k: v for k, v in voce.items() if v not in (None, "", [], {})}
     altre = [n for n in esistenti if (n.get("upec_id") or n.get("oggetto")) != chiave]
-    if any((n.get("upec_id") or n.get("oggetto")) == chiave and n == voce for n in esistenti):
-        return False
     campi: Dict[str, Any] = {
         "notifiche_pec": altre + [voce],
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    if not verbale.get("data_notifica") and notifica.get("data_notifica"):
-        campi["data_notifica"] = notifica["data_notifica"]
+    prima = None
     if notifica.get("data_notifica"):
-        # I termini contano dalla prima notifica: una seconda PEC non li sposta.
+        # La PEC e' la prova della notifica: i termini contano dalla **prima** PEC
+        # (una seconda non li sposta) e `data_notifica` e' quella data, anche se il
+        # verbale ne portava un'altra nata dalla ricezione di una mail.
         prima = min(
             [n.get("data_notifica") for n in altre + [voce] if n.get("data_notifica")],
             default=notifica["data_notifica"],
         )
+        campi["data_notifica"] = prima
+        campi["data_notifica_fonte"] = "pec"
         campi["scadenze_ricorso"] = scadenze_da_notifica(prima)
+        # La decisione «pagare ridotto» ha la sua scadenza: parte dalla notifica.
+        ridotto = campi["scadenze_ricorso"].get("pagamento_ridotto")
+        incorporate = [dict(a) for a in (verbale.get("workflow_expectations") or []) if isinstance(a, dict)]
+        for attesa in incorporate:
+            if attesa.get("expectation_type") == "DECISIONE_VERBALE" and ridotto:
+                attesa["discount_deadline"] = ridotto
+        if incorporate:
+            campi["workflow_expectations"] = incorporate
+    gia_allineata = (
+        any((n.get("upec_id") or n.get("oggetto")) == chiave and n == voce for n in esistenti)
+        and (prima is None or (
+            verbale.get("data_notifica") == prima
+            and (verbale.get("scadenze_ricorso") or {}) == campi.get("scadenze_ricorso")
+            and all(
+                a.get("discount_deadline") == campi["scadenze_ricorso"].get("pagamento_ridotto")
+                for a in (verbale.get("workflow_expectations") or [])
+                if isinstance(a, dict) and a.get("expectation_type") == "DECISIONE_VERBALE"
+            )
+        ))
+    )
+    if gia_allineata:
+        return False
     await db["verbali_noleggio"].update_one({"id": verbale["id"]}, {"$set": campi})
+    if prima:
+        await db["workflow_expectations"].update_one(
+            {"id": f"verbale:{verbale['id']}:DECISIONE_VERBALE"},
+            {"$set": {"discount_deadline": campi["scadenze_ricorso"].get("pagamento_ridotto")}},
+        )
     return True
 
 
@@ -140,7 +168,11 @@ async def _verbale_per_numero(db, numero: str) -> Optional[Dict[str, Any]]:
     candidati = await db["verbali_noleggio"].find(
         {"numero_verbale": numero}, {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
     ).to_list(10)
-    veri = [v for v in candidati if v.get("id") and v.get("source") != "gmail_scan"]
+    # Una riga in quarantena non e' un verbale (e' un numero di fattura letto come verbale):
+    # non conta per l'unicita' e non riceve la notifica.
+    veri = [v for v in candidati
+            if v.get("id") and v.get("source") != "gmail_scan"
+            and str(v.get("stato") or "").lower() != "quarantena"]
     return veri[0] if len(veri) == 1 else None
 
 

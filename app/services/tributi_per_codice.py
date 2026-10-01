@@ -241,9 +241,11 @@ def _aggiungi_modelli(
     voci: Dict[Chiave, Dict[str, Any]], registro: Dict[str, Any], quietanze_con_righe: set,
 ) -> None:
     for f24 in registro["f24"]:
-        # Il modello di ravvedimento rifatto dal titolare non e' del
-        # commercialista: lo racconta la sua quietanza.
-        if str(f24.get("etichetta") or "").upper() == "RAVVEDIMENTO":
+        # Il modello di ravvedimento (etichettato, o con sanzioni e interessi nelle sue righe) non e' del
+        # commercialista: la sua data e' quella del versamento, non una scadenza, e il suo tributo comprende
+        # gli interessi cumulati. Contarlo qui nascondeva il ritardo (Scadenzario «puntuale» il giorno stesso
+        # del versamento) e dava un dovuto maggiorato (interessi «insufficienti»): lo racconta la sua quietanza.
+        if reg.e_modello_di_ravvedimento(f24):
             continue
         fid = str(f24.get("id") or "")
         prove = reg.prove_modello(f24, registro)
@@ -336,6 +338,13 @@ def _chiudi_voce(voce: Dict[str, Any], oggi: str) -> Dict[str, Any]:
     if voce["codice"] == "1040" and voce["sezione"] == "sezione_erario":
         if voce["atteso_cents"] and pagato and pagato != voce["atteso_cents"]:
             voce["scarto_cents"] = pagato - voce["atteso_cents"]
+            # Ravvedimento: gli interessi legali si cumulano al tributo (280,00 → 280,31), non e' uno scarto.
+            if voce["ravvedimento_cents"] and voce["scadenza"] and voce["ultimo_pagamento"]:
+                from app.services.scadenzario_tributi import eccedenza_da_interessi
+
+                if eccedenza_da_interessi(voce["atteso_cents"], pagato, voce["scadenza"], voce["ultimo_pagamento"]):
+                    voce["interessi_cumulati_cents"] = voce["scarto_cents"]
+                    voce["scarto_cents"] = 0
         elif pagato and not voce["atteso_cents"]:
             voce["fatture_da_associare"] = True
     scadenza = voce["scadenza"]

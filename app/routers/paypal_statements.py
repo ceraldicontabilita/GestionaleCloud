@@ -164,6 +164,12 @@ def _pagamenti_paypal_in_euro(
         tipo = str(tx.get("tipo") or tx.get("event_code") or "")
         if tipo.startswith("T02"):
             continue
+        # Il prelievo del saldo verso la banca (T04xx) non e' un acquisto: spiega l'accredito
+        # «BON.DA PayPal» (`_accrediti_paypal`). Contato anche qui, restava due volte nello
+        # stesso giro e si contendeva con un pagamento dello stesso importo l'addebito SDD
+        # (entrambi «ambigui», nessuno abbinato), e gonfiava il «totale speso» del report.
+        if tipo.startswith("T04"):
+            continue
         importo = _importo_paypal(tx)
         valuta = str(tx.get("currency") or tx.get("valuta") or "EUR").upper()
         if valuta != "EUR":

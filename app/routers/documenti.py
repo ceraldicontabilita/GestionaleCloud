@@ -3792,6 +3792,7 @@ async def upload_documento_automatico(
                     f"{esito_csv['aggiornati']} aggiornate, {esito_csv['gia_definitivi']} già coperte dall'XML"
                     + (f", {len(esito_csv['discordanze_con_xml'])} con imponibile diverso dall'XML" if esito_csv["discordanze_con_xml"] else "")
                     + (f", {len(esito_csv['conflitti'])} in conflitto con una riga manuale" if esito_csv["conflitti"] else "")
+                    + (f", {esito_csv['fuori_anno']} righe di un anno diverso dal {esito_csv['anno_attivo']} non importate" if esito_csv["fuori_anno"] else "")
                     + (f", {len(esito_csv['errori'])} righe da controllare" if esito_csv["errori"] else "")
                     + ": l'XML del registratore le sostituirà"
                 ),

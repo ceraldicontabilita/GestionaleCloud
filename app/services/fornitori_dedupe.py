@@ -59,6 +59,8 @@ RIFERIMENTI_ID: Tuple[Tuple[str, str], ...] = (
     ("alerts", "fornitore_id"),
     ("estratto_conto_movimenti", "fornitore_id"),
     ("supplier_update_proposals", "supplier_id"),
+    # il debito aperto di una fattura si legge per fornitore: la partita segue l'anagrafica vincente
+    ("partite_aperte", "controparte_id"),
 )
 # Riferimenti per P.IVA testuale (campo `fornitore_piva`).
 RIFERIMENTI_PIVA: Tuple[str, ...] = (

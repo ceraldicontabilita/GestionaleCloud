@@ -9,39 +9,16 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Dict
 
+from app.services.calendario_lavorativo import e_festivo
+
 
 CALENDAR_RULE_VERSION = "fiscal_deadlines_it_v1"
 
 
-def _easter_sunday(year: int) -> date:
-    """Algoritmo gregoriano di Meeus/Jones/Butcher."""
-    a = year % 19
-    b, c = divmod(year, 100)
-    d, e = divmod(b, 4)
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = divmod(c, 4)
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = (h + l - 7 * m + 114) % 31 + 1
-    return date(year, month, day)
-
-
-def italian_public_holidays(year: int) -> set[date]:
-    fixed = {
-        (1, 1), (1, 6), (4, 25), (5, 1), (6, 2),
-        (8, 15), (11, 1), (12, 8), (12, 25), (12, 26),
-    }
-    holidays = {date(year, month, day) for month, day in fixed}
-    holidays.add(_easter_sunday(year) + timedelta(days=1))
-    return holidays
-
-
 def next_business_day(value: date) -> date:
+    """Primo giorno lavorativo da ``value`` in poi (calendario unico: ``calendario_lavorativo``)."""
     result = value
-    while result.weekday() >= 5 or result in italian_public_holidays(result.year):
+    while e_festivo(result):
         result += timedelta(days=1)
     return result
 

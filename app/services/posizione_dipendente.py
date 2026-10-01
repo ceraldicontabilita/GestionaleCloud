@@ -721,6 +721,35 @@ async def modifica_pagamento(db, conciliazione_id: str, pagamento_id: str,
     return vista_conciliazione(conc)
 
 
+def acconti_registro_del_mese(acconti: Iterable[Dict[str, Any]], anno: int, mese: int,
+                              acconti_in_busta: Iterable[Dict[str, Any]] = ()) -> Decimal:
+    """Quanto del registro acconti (``acconti_dipendenti``) la busta di quel mese ha gia' avuto.
+
+    Gli stessi criteri della posizione (``componi_movimenti``): un acconto e' un
+    pagamento, conta se e' di stipendio (``TIPI_ACCONTO_STIPENDIO``), non e'
+    annullato, ha una data valida e la sua competenza (``scalato_su_anno_mese``,
+    altrimenti il mese della data) e' questa busta; lo stesso (data, importo)
+    gia' scritto fra gli acconti in contanti del registro paghe non si conta due
+    volte. Lo stato del mese (``paghe_mensili``) e la posizione devono dire la
+    stessa cosa: senza questo una busta chiusa dalla posizione restava «parziale»."""
+    if not 1 <= int(mese) <= 12:
+        return ZERO
+    visti = {(_data_iso(a.get("data")), importo(a.get("importo"))) for a in acconti_in_busta}
+    totale = ZERO
+    for acc in acconti:
+        if str(acc.get("tipo") or "") not in TIPI_ACCONTO_STIPENDIO or acc.get("stato") == "annullato":
+            continue
+        imp, data = importo(acc.get("importo")), _data_iso(acc.get("data"))
+        if not imp or imp <= 0 or not data or (data, imp) in visti:
+            continue
+        comp = str(acc.get("scalato_su_anno_mese") or data[:7])
+        if (_intero(comp[:4]), _intero(comp[5:7])) != (int(anno), int(mese)):
+            continue
+        visti.add((data, imp))
+        totale += imp
+    return totale
+
+
 async def registra_acconto_da_coda(db, in_coda: Dict[str, Any], dip: Dict[str, Any],
                                    anno: int, mese: int) -> Dict[str, Any]:
     """Un bonifico della coda che e' un acconto: va nel registro unico degli

@@ -106,14 +106,31 @@ async def upload_quietanza_verbale(
             raise _errore(400, "PDF_NON_VALIDO", "pdf_base64 non e' base64") from exc
         verifica_pdf_reale(contenuto, data.get("filename", "quietanza.pdf"))
         impronta = hashlib.sha256(contenuto).hexdigest()
-        if verbale.get("quietanza_ricevuta") and verbale.get("quietanza_hash") == impronta:
-            return {"success": True, "duplicato": True,
-                    "message": f"Quietanza gia' caricata per il verbale {verbale.get('numero_verbale', '')}"}
+    # Stessa quietanza (stesso PDF) rimandata: il verbale non si riscrive, ma la nota e la
+    # proposta di trattenuta si completano se mancavano (quietanza caricata prima che il
+    # driver fosse assegnato); con tutto gia' al suo posto non nasce niente di nuovo.
+    ripetuta = bool(impronta and verbale.get("quietanza_ricevuta") and verbale.get("quietanza_hash") == impronta)
 
+    # La quietanza aggiunge una prova, non ne toglie: una prova documentale o bancaria
+    # gia' presente non si perde rimandando i dati senza PDF, e lo stato sale a
+    # «riconciliato» solo con documento E banca (stessa regola di
+    # `applica_pagamento_a_verbale`).
+    documentale = bool(
+        impronta or verbale.get("pagato_documentalmente") is True or verbale.get("quietanza_ricevuta") is True
+        or verbale.get("ricevuta_pagopa_id") or verbale.get("paypal_transaction_id")
+    )
+    banca = bool(verbale.get("banca_verificata") is True or verbale.get("movimento_banca_id"))
+    if documentale and banca:
+        stato, stato_pratica = "riconciliato", "RICONCILIATO_BANCA"
+    elif documentale:
+        stato, stato_pratica = "pagato", "PAGATO_DOCUMENTALE"
+    else:
+        stato, stato_pratica = "pagato_attesa_quietanza", "ATTESA_QUIETANZA"
     update = {
-        "stato": "pagato" if impronta else "pagato_attesa_quietanza",
-        "quietanza_ricevuta": bool(impronta),
-        "pagato_documentalmente": bool(impronta),
+        "stato": stato,
+        "stato_pratica": stato_pratica,
+        "quietanza_ricevuta": bool(impronta or verbale.get("quietanza_ricevuta") is True),
+        "pagato_documentalmente": documentale,
         "data_pagamento": data_pagamento,
         "metodo_pagamento": data.get("metodo", "bollettino_manuale"),
         # Importi come testo Decimal al centesimo (mai float binario).
@@ -124,9 +141,11 @@ async def upload_quietanza_verbale(
         update["quietanza_filename"] = data.get("filename", "quietanza.pdf")
         update["quietanza_hash"] = impronta
 
-    await db[COLLECTION].update_one({"id": verbale_id}, {"$set": update})
+    if not ripetuta:
+        await db[COLLECTION].update_one({"id": verbale_id}, {"$set": update})
 
     # Crea nota presenze per consulente del lavoro (una per verbale)
+    creato = False
     driver_id = verbale.get("driver_id") or verbale.get("driver_cf")
     if driver_id:
         from datetime import timezone
@@ -135,22 +154,28 @@ async def upload_quietanza_verbale(
         anno_nota = dt.year if dt.month < 12 else dt.year + 1
 
         nota_id = f"nota_trattenuta_verbale_{verbale_id}"
-        await db["note_presenze_consulente"].update_one(
-            {"id": nota_id},
-            {"$set": {
-                "id": nota_id,
-                "dipendente_id": driver_id,
-                "dipendente_nome": verbale.get("driver", ""),
-                "tipo": "trattenuta_verbale",
-                "mese": mese_nota,
-                "anno": anno_nota,
-                "importo": str(importo),
-                "descrizione": f"TRATTENUTA VERBALE {verbale.get('numero_verbale','')} - Targa {verbale.get('targa','')} - Pagato {data_pagamento}",
-                "evidenza": True,
-                "verbale_id": verbale_id,
-            }, "$setOnInsert": {"inviato_consulente": False, "created_at": dt.isoformat()}},
-            upsert=True,
-        )
+        nota = await db["note_presenze_consulente"].find_one({"id": nota_id}, {"_id": 0, "id": 1})
+        if not nota:
+            # Una nota si scrive una volta: rimandarla non sposta mese e anno (ne' dopo l'invio al consulente).
+            await db["note_presenze_consulente"].update_one(
+                {"id": nota_id},
+                {"$setOnInsert": {
+                    "id": nota_id,
+                    "dipendente_id": driver_id,
+                    "dipendente_nome": verbale.get("driver", ""),
+                    "tipo": "trattenuta_verbale",
+                    "mese": mese_nota,
+                    "anno": anno_nota,
+                    "importo": str(importo),
+                    "descrizione": f"TRATTENUTA VERBALE {verbale.get('numero_verbale','')} - Targa {verbale.get('targa','')} - Pagato {data_pagamento}",
+                    "evidenza": True,
+                    "verbale_id": verbale_id,
+                    "inviato_consulente": False,
+                    "created_at": dt.isoformat(),
+                }},
+                upsert=True,
+            )
+            creato = True
 
         # Anche in trattenute_dipendenti: PROPOSTA di trattenuta con il ciclo di vita
         # completo (proposta -> confermata -> comunicata -> ...), una per verbale.
@@ -158,7 +183,7 @@ async def upload_quietanza_verbale(
             {"verbale_id": verbale_id, "tipo": "verbale_multa"}, {"_id": 0, "id": 1})
         if not gia:
             from app.services.trattenute_verbali_service import costruisci_trattenuta_da_verbale
-            verbale_aggiornato = {**verbale, **update}
+            verbale_aggiornato = verbale if ripetuta else {**verbale, **update}
             trattenuta = await costruisci_trattenuta_da_verbale(
                 db, verbale_aggiornato,
                 data_pagamento=data_pagamento,
@@ -166,6 +191,7 @@ async def upload_quietanza_verbale(
                 fonte="upload_quietanza_manuale",
             )
             await db["trattenute_dipendenti"].insert_one(trattenuta)
+            creato = True
 
             from app.services.audit_logger import log_evento
             await log_evento(
@@ -180,6 +206,9 @@ async def upload_quietanza_verbale(
                 ),
             )
 
+    if ripetuta and not creato:
+        return {"success": True, "duplicato": True,
+                "message": f"Quietanza gia' caricata per il verbale {verbale.get('numero_verbale', '')}"}
     return {"success": True, "duplicato": False,
             "message": f"Quietanza caricata per verbale {verbale.get('numero_verbale','')}"}
 

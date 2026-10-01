@@ -10,9 +10,11 @@ from datetime import datetime, timezone
 import uuid
 
 from app.database import Database
+from app.utils.id_fattura import filtro_id, varianti_id
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger,
     aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
+    campi_dopo_spostamento, riga_con_prova_bancaria,
 )
 from .sync import determina_tipo_movimento_fattura
 from .cassa import _movimento_e_bancario_errato_in_cassa
@@ -938,14 +940,15 @@ async def ripristina_provvisori_metodo_errato(
                 "data": {"$regex": f"^{anno}"},
             },
             {"_id": 0, "id": 1, "fattura_id": 1, "riferimento": 1, "importo": 1, "data": 1,
-             "descrizione": 1, "source": 1, "riconciliato": 1, "estratto_conto_id": 1},
+             "descrizione": 1, "source": 1, "riconciliato": 1, "estratto_conto_id": 1,
+             "movimento_bancario_id": 1, "movimento_estratto_conto_id": 1, "movimento_banca_id": 1},
         ).to_list(20000)
 
         for mov in movimenti:
             fid = mov.get("fattura_id") or (mov.get("riferimento") or "")[5:]
             mov["fattura_id"] = fid
             fattura = await db["invoices"].find_one(
-                {"id": fid},
+                filtro_id(fid),
                 {"_id": 0, "supplier_vat": 1, "cedente_piva": 1,
                  "invoice_number": 1, "supplier_name": 1,
                  "total_amount": 1, "importo_totale": 1,
@@ -978,6 +981,24 @@ async def ripristina_provvisori_metodo_errato(
                 # Pagamento realmente confermato a mano: mai annullarlo solo
                 # perche' oggi l'anagrafica del fornitore e' cambiata.
                 continue
+            # Il metodo del fornitore e' una previsione, la banca e' una prova: una riga legata a un
+            # movimento d'estratto, o una fattura gia' provata da un'altra riga, non torna mai provvisoria
+            # solo perche' oggi l'anagrafica dice un altro metodo. La riga provvisoria rimasta accanto alla
+            # prova (non conta nei saldi) non vale come pagamento da annullare.
+            if mov.get("riconciliato") or riga_con_prova_bancaria(mov):
+                continue
+            prova_altrove = None
+            for registro in (COLLECTION_PRIMA_NOTA_BANCA, COLLECTION_PRIMA_NOTA_CASSA):
+                prova_altrove = await db[registro].find_one({
+                    "fattura_id": {"$in": varianti_id(fid)}, "id": {"$ne": mov["id"]},
+                    "status": {"$nin": ["deleted", "archived"]},
+                    "$or": [{"riconciliato": True}, {"estratto_conto_id": {"$nin": [None, ""]}},
+                            {"movimento_bancario_id": {"$nin": [None, ""]}}],
+                }, {"_id": 0, "id": 1})
+                if prova_altrove:
+                    break
+            if prova_altrove:
+                continue
             piva = str(fattura.get("supplier_vat") or fattura.get("cedente_piva") or "").strip()
             destinazione = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))
             senza_riconciliazione = (
@@ -1007,7 +1028,7 @@ async def ripristina_provvisori_metodo_errato(
                           "deleted_reason": "lato_errato_vs_metodo_fornitore"}},
             )
             await db["invoices"].update_one(
-                {"id": mov["fattura_id"]},
+                filtro_id(mov["fattura_id"]),
                 {"$set": {
                     # Tutte le viste usano ancora alias storici diversi.
                     # Lasciarne uno solo a True rendeva la fattura
@@ -1446,6 +1467,15 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     if not mov:
         raise HTTPException(status_code=404, detail=f"Movimento {movimento_id} non trovato in {da}")
 
+    # Una riga con la prova della banca non si declassa a Cassa: l'addebito resterebbe riconciliato
+    # sull'estratto e la stessa uscita peserebbe anche sul contante.
+    if da == "banca" and a == "cassa" and riga_con_prova_bancaria(mov):
+        raise HTTPException(
+            status_code=409,
+            detail=("La riga e' legata a un movimento dell'estratto conto: non si sposta in Cassa. "
+                    "Per cambiare destinazione si annulla prima l'associazione con la banca."),
+        )
+
     if not req.conferma:
         return {
             "success": True,
@@ -1463,6 +1493,8 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     mov.pop("_id", None)
     mov["moved_from"] = da
     mov["moved_at"] = datetime.now(timezone.utc).isoformat()
+    # stessa riga, stesso id: ma conto di tesoreria e metodo sono quelli del registro di arrivo
+    mov.update(campi_dopo_spostamento(mov, da, a))
 
     await db[dest_coll].insert_one(mov)
     await db[source_coll].delete_one({"id": movimento_id})
@@ -1473,6 +1505,8 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     if mov.get("fattura_id"):
         upd = {
             "prima_nota_tipo": a,
+            "prima_nota_id": movimento_id,
+            "metodo_pagamento_effettivo": a,
             "prima_nota_cassa_id": movimento_id if a == "cassa" else None,
             "prima_nota_banca_id": movimento_id if a == "banca" else None,
             "prima_nota_riclassificazione": {
@@ -1482,7 +1516,7 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
                 "confermato_at": datetime.now(timezone.utc).isoformat(),
             },
         }
-        r = await db["invoices"].update_one({"id": mov["fattura_id"]}, {"$set": upd})
+        r = await db["invoices"].update_one(filtro_id(mov["fattura_id"]), {"$set": upd})
         fattura_aggiornata = r.modified_count > 0
 
     # NIENTE evento "trasferimento.creato" qui (rimosso 17/07/2026):

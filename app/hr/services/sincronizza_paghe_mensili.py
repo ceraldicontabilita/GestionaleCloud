@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.hr.database import Collections
+from app.services.posizione_dipendente import acconti_registro_del_mese
 
 
 def _num(v: Any) -> Optional[float]:
@@ -104,6 +105,12 @@ async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
     async for p in db["paghe_mensili"].find({}, {"_id": 0}):
         esistenti_idx[(p.get("dipendente_id"), p.get("anno"), p.get("mese"))] = p
 
+    # Acconti del registro unico, letti una volta: sono pagamenti sulla busta come
+    # per la posizione dipendente e per `_ricalcola_stato_paga` (stesso conto).
+    acconti_per_dip: Dict[Any, list] = {}
+    async for a in db["acconti_dipendenti"].find({}, {"_id": 0}):
+        acconti_per_dip.setdefault(a.get("dipendente_id"), []).append(a)
+
     adesso = datetime.now(timezone.utc).isoformat()
     creati = aggiornati = saltati_manuali = 0
 
@@ -143,7 +150,10 @@ async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
             "origine": "cedolino",
             "updated_at": adesso,
         }
-        doc.update(_stato_e_saldo(c["netto"], bonifico_importo))
+        in_busta = (esistente or {}).get("acconti") or []
+        acconti_pagati = (sum(_num(a.get("importo")) or 0 for a in in_busta)
+                          + float(acconti_registro_del_mese(acconti_per_dip.get(dip, []), anno_c, mese_c, in_busta)))
+        doc.update(_stato_e_saldo(c["netto"], round(bonifico_importo + acconti_pagati, 2)))
         doc = {k: v for k, v in doc.items() if v is not None or k in ("acconti",)}
 
         await db["paghe_mensili"].update_one(

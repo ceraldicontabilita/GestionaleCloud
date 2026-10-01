@@ -260,12 +260,30 @@ async def _applica_ricevuta(db, cartella: Dict[str, Any], ricevuta: Dict[str, An
     return campi["expectation_status"]
 
 
+def _forme_del_codice(codice: Any) -> List[str]:
+    """Lo stesso pagamento citato come IUV (17 cifre) o come codice avviso (cifra iniziale + IUV).
+
+    La ricevuta CBILL della banca riporta il codice avviso di 18 cifre
+    («180071502664980543»), la cartella tiene lo IUV senza la cifra iniziale: sono lo
+    stesso identificativo, e confrontarli per uguaglianza di stringa lasciava la cartella
+    aperta anche dopo il pagamento. Resta testo (mai numero: lo zero iniziale conta).
+    """
+    testo = re.sub(r"\s+", "", str(codice or ""))
+    if not testo.isdigit():
+        return [testo] if testo else []
+    forme = [testo]
+    if len(testo) == 18:
+        forme.append(testo[1:])
+    return forme
+
+
 async def chiudi_da_ricevuta(db, ricevuta: Dict[str, Any]) -> Optional[str]:
     """Arriva una ricevuta: se cita lo IUV di una cartella aperta, la chiude (importo uguale) o la segnala."""
-    iuv = str(ricevuta.get("identificativo_bolletta") or ricevuta.get("iuv") or "").strip()
-    if not iuv:
+    forme = _forme_del_codice(ricevuta.get("identificativo_bolletta") or ricevuta.get("iuv"))
+    if not forme:
         return None
-    cartella = await db[COLL].find_one({"iuv": iuv}, {"_id": 0})
+    cartella = await db[COLL].find_one(
+        {"$or": [{"iuv": {"$in": forme}}, {"codice_avviso": {"$in": forme}}]}, {"_id": 0})
     if not cartella:
         return None
     return await _applica_ricevuta(db, cartella, ricevuta)
@@ -276,8 +294,10 @@ async def chiudi_da_ricevuta_esistente(db, cartella_id: str) -> Optional[str]:
     cartella = await db[COLL].find_one({"id": cartella_id}, {"_id": 0})
     if not cartella or not cartella.get("iuv"):
         return None
+    forme = list(dict.fromkeys(
+        _forme_del_codice(cartella["iuv"]) + _forme_del_codice(cartella.get("codice_avviso"))))
     ricevuta = await db["ricevute_pagopa"].find_one(
-        {"identificativo_bolletta": cartella["iuv"]}, {"_id": 0, "pdf_data": 0},
+        {"identificativo_bolletta": {"$in": forme}}, {"_id": 0, "pdf_data": 0},
     )
     return await _applica_ricevuta(db, cartella, ricevuta) if ricevuta else None
 

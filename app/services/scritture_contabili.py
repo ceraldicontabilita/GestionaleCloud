@@ -222,6 +222,13 @@ FILTRO_MOVIMENTO_ATTIVO: Dict[str, Any] = {
     "entity_status": {"$ne": "deleted"},
 }
 
+#: Chiusura RT viva: fuori le giornate ritirate/archiviate (stesso criterio di
+#: ``conto_economico_gestionale.FILTRO_CORRISPETTIVI_VALIDI``).
+FILTRO_CORRISPETTIVO_ATTIVO: Dict[str, Any] = {
+    "status": {"$nin": ["deleted", "archived", "archiviata"]},
+    "entity_status": {"$ne": "deleted"},
+}
+
 
 def chiave_idempotenza_corrispettivo(
     corrispettivo_id: Any, tipo: str, gestore: Any = None,
@@ -770,15 +777,19 @@ async def registra_chiusura_pos_reale(
             "solo_evidenza": True,
         }
 
+    # Solo una chiusura ATTIVA: la riga ritirata (sostituita dall'XML) resta
+    # per l'audit ma non e' piu' la giornata, e il credito POS non puo'
+    # agganciarsi a lei.
     corr = await db["corrispettivi"].find_one(
-        {"data": data}, {"_id": 0, "id": 1, "totale": 1,
-                         "pagato_elettronico": 1}
+        {"data": data, **FILTRO_CORRISPETTIVO_ATTIVO},
+        {"_id": 0, "id": 1, "totale": 1, "pagato_elettronico": 1}
     )
     corr_id = (corr or {}).get("id")
     # Non sovrascrivere mai pagato_elettronico: e' il valore fiscale XML.
-    await db["corrispettivi"].update_one(
-        {"data": data},
+    await db["corrispettivi"].update_many(
+        {"data": data, **FILTRO_CORRISPETTIVO_ATTIVO},
         {"$set": {"pos_reale_serale": totale_giorno,
+                  "pos_stato": "pos_reale_disponibile",
                   "pos_reale_fonte": "fonti_pos_reali",
                   "pos_reale_updated_at": now}},
     )
@@ -941,6 +952,15 @@ async def registra_chiusura_pos_reale(
             banca_id = await scrivi_movimento(
                 db, "banca", nuovo_movimento_banca
             )
+
+    # Una chiusura corretta DOPO che l'accredito l'aveva riconciliata cambia
+    # l'importo atteso: le righe dell'estratto conto agganciate non possono
+    # restare «riconciliate» verso un credito che ora non quadra (o che non
+    # c'e' piu', se la chiusura e' a zero). Si ricalcola il gruppo, con lo
+    # stesso motore dell'accredito.
+    ids_accrediti = list((banca_mov or {}).get("estratto_conto_ids") or [])
+    if ids_accrediti and gestore == conti_pos.NUMIA and action != "noop":
+        await _riesamina_accrediti_collegati(db, ids_accrediti)
 
     # L'entrata Cassa e' la sola quota contanti dell'XML: il totale dei
     # terminali si annota a parte e non la tocca. Fino al 28/09/2026 qui si
@@ -1188,8 +1208,11 @@ async def _marca_stato_pos(db, data: str, stato: str) -> None:
     andare a buon fine. Un'annotazione non puo' far fallire una scrittura.
     """
     try:
-        await db["corrispettivi"].update_one(
-            {"data": data}, {"$set": {"pos_stato": stato}},
+        # Solo le chiusure ATTIVE del giorno: una giornata ritirata (sostituita
+        # dall'XML) e' un `status: deleted` che resta per l'audit e non va
+        # aggiornata al posto di quella viva.
+        await db["corrispettivi"].update_many(
+            {"data": data, **FILTRO_CORRISPETTIVO_ATTIVO}, {"$set": {"pos_stato": stato}},
         )
     except Exception:
         logger.debug("Stato POS non annotato per %s", data, exc_info=True)
@@ -1219,32 +1242,37 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
     # stesso giorno). L'accredito con causale NUMIA deve agganciare il
     # trasferimento NUMIA: senza questo filtro poteva prendere quello SumUp
     # del medesimo giorno e "riconciliare" il circuito sbagliato.
-    trasferimento = await db["prima_nota_banca"].find_one({
+    candidati = await _leggi_tutti(db["prima_nota_banca"].find({
         "source": "trasferimento_pos",
         "$and": [
             {"$or": [{"giorno_vendita": giorno_vendita}, {"data": giorno_vendita}]},
             filtro_gestore_pos(conti_pos.NUMIA),
         ],
         "status": {"$nin": ["deleted", "archived"]},
-    })
-    if not trasferimento:
-        # nessun trasferimento per quel giorno (corrispettivo mancante?):
-        # l'EC resta non riconciliato e il collaudo lo evidenzierà
+    }), 3)
+    if len(candidati) != 1:
+        # Attesa mancante (corrispettivo o chiusura del terminale non arrivati)
+        # o MULTIPLA (due crediti NUMIA lo stesso giorno): l'EC resta non
+        # riconciliato e DA_VERIFICARE, la banca non sceglie e non crea la
+        # chiusura. Stessa regola di `recupera_pos_storico_da_estratto`: prima
+        # qui si agganciava il primo candidato a caso.
         await db["estratto_conto_movimenti"].update_one(
             {"id": ec_id},
             {"$set": {
                 "riconciliato": False,
                 "importato_prima_nota": False,
                 "stato_riconciliazione": "da_verificare",
-                "tipo_riconciliazione": "evidenza_senza_attesa",
+                "tipo_riconciliazione": (
+                    "evidenza_senza_attesa" if not candidati else "attese_pos_ambigue"),
                 "dettagli_riconciliazione": {
                     "giorno_vendita": giorno_vendita,
                     "importo_accreditato": importo,
-                    "attese_candidate": 0,
+                    "attese_candidate": len(candidati),
                 },
             }},
         )
         return False
+    trasferimento = candidati[0]
 
     # Lo scheduler riesamina le righe aperte. Sommare il valore gia'
     # memorizzato duplicava lo stesso accredito a ogni passaggio. La fonte di
@@ -1304,6 +1332,17 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
                       "tipo_riconciliazione": "accredito_pos_non_quadrato",
                       "dettagli_riconciliazione": dettagli}})
     return True
+
+
+async def _riesamina_accrediti_collegati(db, estratto_conto_ids: List[str]) -> None:
+    """Rilancia `riconcilia_accredito_pos_ec` sulle righe d'estratto gia' agganciate
+    a un credito POS il cui importo atteso e' cambiato. Il motore ricalcola la
+    somma del gruppo; si passano tutte le righe perche', se il credito non c'e'
+    piu' (chiusura a zero), ognuna va segnata «senza attesa»."""
+    for ec_id in estratto_conto_ids:
+        riga = await db["estratto_conto_movimenti"].find_one({"id": ec_id}, {"_id": 0})
+        if riga:
+            await riconcilia_accredito_pos_ec(db, riga)
 
 
 def query_accrediti_pos_ec(anno: int) -> Dict[str, Any]:
