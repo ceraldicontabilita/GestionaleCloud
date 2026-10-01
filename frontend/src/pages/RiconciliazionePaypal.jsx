@@ -96,32 +96,17 @@ export default function RiconciliazionePaypal() {
       : '');
   }, [anno]);
 
+  // La pagina legge soltanto: sincronizzazione PayPal, abbinamento con la banca, le fatture e la
+  // posta girano da sole di notte (3:20) e a meta' giornata (14:20), vedi `paypal_automatico`.
+  // Prima ogni apertura chiamava l'API PayPal e riprocessava tutto: lenta, e se PayPal rispondeva
+  // 404 restava ferma con «Sincronizzazione da verificare».
   useEffect(() => {
     let attivo = true;
     setLoading(true);
-    const avvia = async () => {
-      const status = await api.get('/api/paypal-api/status');
-      if (status.data?.api_configurata) {
-        setSincronizzazione('in_corso');
-        await api.post('/api/paypal-api/sync/incremental');
-        setSincronizzazione('completata');
-      } else {
-        setSincronizzazione('non_configurata');
-      }
-      // Applica sempre il motore end-to-end anche allo storico gia' presente:
-      // la sincronizzazione API da sola non associa fattura e prova bancaria.
-      const riprocessato = await api.post(`/api/paypal-statements/riprocessa?anno=${anno}`);
-      const dopo = riprocessato.data?.collegamenti_dopo || {};
-      setRiprocessamento(`Associate ${dopo.associate || 0} · finalizzate ${dopo.finalizzate || 0} · ambigue ${dopo.ambigue || 0}`);
-      await caricaDati();
-    };
-    avvia()
+    caricaDati()
+      .then(() => { if (attivo) setSincronizzazione('automatica'); })
       .catch(() => {
-        if (attivo) {
-          setSincronizzazione('errore');
-          setErrore('Sincronizzazione PayPal non completata. I dati mostrati possono non essere aggiornati.');
-          caricaDati().catch(() => {});
-        }
+        if (attivo) setErrore('Dati PayPal non caricati. I valori mostrati possono essere incompleti.');
       })
       .finally(() => { if (attivo) setLoading(false); });
     return () => { attivo = false; };
@@ -191,10 +176,9 @@ export default function RiconciliazionePaypal() {
           actions={(
             <>
           <span data-testid="paypal-sync-status" style={{ color: '#5f5c55', fontSize: 13 }}>
-            {sincronizzazione === 'in_corso' ? 'Sincronizzazione incrementale…' :
-              sincronizzazione === 'completata' ? `Aggiornato${statoApi?.ultimo_sync ? ` alle ${new Date(statoApi.ultimo_sync).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}` : ''}` :
-                sincronizzazione === 'non_configurata' ? 'API non configurata' :
-                  sincronizzazione === 'errore' ? 'Sincronizzazione da verificare' : 'Verifica aggiornamenti…'}
+            {sincronizzazione === 'automatica'
+              ? `Aggiornamento automatico alle 03:20 e 14:20${statoApi?.ultimo_sync ? ` · ultimo dato ${new Date(statoApi.ultimo_sync).toLocaleDateString('it-IT')}` : ''}`
+              : 'Verifica aggiornamenti…'}
           </span>
           <button type="button" onClick={riprocessaStorico} disabled={loading} style={buttonStyle}>
             Riprocessa {anno}
@@ -279,6 +263,14 @@ function TransactionCards({ righe, onSaveDescription, onLinked }) {
   );
 }
 
+function descrizioneFattura(tx) {
+  const fa = tx.fattura_associata || {};
+  const numero = fa.numero || fa.numero_fattura || tx.fattura_numero;
+  const fornitore = fa.fornitore || fa.fornitore_nome || tx.fornitore_nome;
+  if (numero || fornitore) return [numero && `n. ${numero}`, fornitore].filter(Boolean).join(' · ');
+  return 'Nessuna fattura associata: la cerco da sola';
+}
+
 function Campo({ etichetta, children }) {
   return <div style={{ minWidth: 0 }}><div style={campoEtichetta}>{etichetta}</div><div style={{ fontSize: 14, overflowWrap: 'anywhere' }}>{children}</div></div>;
 }
@@ -294,7 +286,10 @@ function TransactionCard({ tx, onSaveDescription, onLinked }) {
       <div style={{ ...campi }}>
         <Campo etichetta="Data">{dataIT(tx.data || tx.date)}</Campo>
         <Campo etichetta="Descrizione PayPal">{tx.descrizione || '-'}</Campo>
-        <Campo etichetta="Fattura">{tx.fattura_associata?.numero || tx.fattura_numero || '-'}</Campo>
+        <Campo etichetta="Fattura e fornitore">{descrizioneFattura(tx)}</Campo>
+        {tx.gmail_associata?.gmail_link && (
+          <Campo etichetta="Email"><a href={tx.gmail_associata.gmail_link} target="_blank" rel="noopener noreferrer">{tx.gmail_associata.subject || 'Apri messaggio'}</a></Campo>
+        )}
         <Campo etichetta="Stato fattura">{statoFatturaLabel(tx.stato_collegamento_fattura)}</Campo>
         <Campo etichetta="ID transazione"><TransactionId value={id} /></Campo>
       </div>

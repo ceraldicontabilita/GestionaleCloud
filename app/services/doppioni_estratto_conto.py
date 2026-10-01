@@ -402,6 +402,42 @@ async def _applica_una_tantum(db) -> None:
     )
 
 
+# Import letti col lettore sbagliato, messi in quarantena dal titolare («lancia pure ed elimina
+# movimenti errati», 01/10/2026): l'export «Spese» di SumUp letto come estratto BPM. Una tantum,
+# per id, con motivo; le righe vere stanno nell'estratto SumUp.
+IMPORT_ERRATI_AUTORIZZATI = ("expenses_2026-08-01_2026-09-22.xlsx",)
+MARCATORE_IMPORT_ERRATI = "import_errato_spese_sumup_20261001_v1"
+MOTIVO_SPESE_SUMUP = "export «Spese» di SumUp letto come estratto BPM (importo = IVA, causale = categoria)"
+
+
+async def _applica_import_errati(db) -> None:
+    corrente = await db["migration_runs"].find_one({"id": MARCATORE_IMPORT_ERRATI})
+    if corrente and corrente.get("status") == "completed":
+        return
+    stato = "failed"
+    try:
+        risultato = {
+            nome: await quarantena_import_errato(db, nome, MOTIVO_SPESE_SUMUP, dry_run=False,
+                                                 actor="migrazione_avvio")
+            for nome in IMPORT_ERRATI_AUTORIZZATI
+        }
+        stato = "completed"
+    except Exception as exc:  # noqa: BLE001 - l'esito resta in migration_runs
+        logger.exception("Quarantena import errati non completata (%s)", type(exc).__name__)
+        risultato = {"success": False, "reason": f"{type(exc).__name__}: {exc}"}
+    await db["migration_runs"].update_one(
+        {"id": MARCATORE_IMPORT_ERRATI},
+        {"$set": {"id": MARCATORE_IMPORT_ERRATI, "status": stato,
+                  "finished_at": _oggi(), "result": risultato}},
+        upsert=True,
+    )
+
+
+async def _applica_tutto_all_avvio(db) -> None:
+    await _applica_una_tantum(db)
+    await _applica_import_errati(db)
+
+
 def avvia_in_background(db) -> None:
     """All'avvio, fuori dal percorso dell'health check: sono centinaia di
     scritture e l'avvio non deve aspettarle."""
@@ -410,7 +446,7 @@ def avvia_in_background(db) -> None:
     global _task_avvio
     if db is None or (_task_avvio is not None and not _task_avvio.done()):
         return
-    _task_avvio = asyncio.create_task(_applica_una_tantum(db))
+    _task_avvio = asyncio.create_task(_applica_tutto_all_avvio(db))
 
 
 # ── unificazione permanente delle copie ──────────────────────────────────────
