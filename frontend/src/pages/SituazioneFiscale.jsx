@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
@@ -775,8 +775,15 @@ function ElenchiFiscali() {
 
 
 export default function SituazioneFiscale() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const incorporata = SCHEDE_INCORPORATE.find(([id]) => pathname.endsWith(`/${id}`));
+  // Aprendo «Situazione fiscale» senza scheda si arriva sul Piano tributi: le tre schede
+  // che erano pagine a se' (Piano tributi, Tributi, Ritenute) sono la porta d'ingresso,
+  // non qualcosa da cercare in fondo alla riga.
+  const senzaScheda = !TABS.some(([id]) => pathname.endsWith(`/${id}`)) && !incorporata;
+  if (senzaScheda && /^\/situazione-fiscale\/?$/.test(pathname)) {
+    return <Navigate to={`/situazione-fiscale/piano${search || ''}`} replace />;
+  }
   if (!incorporata) return <ElenchiFiscali />;
   const [id, , Scheda] = incorporata;
   return (

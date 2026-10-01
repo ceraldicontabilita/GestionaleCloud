@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import Database
 from app.middleware.performance import istantanea
@@ -90,7 +90,11 @@ async def scadenzario(
 @istantanea(ttl=300)
 async def _termini() -> Dict[str, Any]:
     # La vista costa circa 5 secondi: si serve pronta e si ricalcola in sottofondo.
-    return {"righe": await Database.get_db().termini_recupero()}
+    db = Database.get_db()
+    if not hasattr(db, "termini_recupero"):
+        # Archivio senza la vista dei termini (non e' Supabase): non si inventa una lista.
+        raise HTTPException(status_code=503, detail="Fonte dei termini di recupero non disponibile in questo archivio")
+    return {"righe": await db.termini_recupero()}
 
 
 @router.get("/tributi/termini",
