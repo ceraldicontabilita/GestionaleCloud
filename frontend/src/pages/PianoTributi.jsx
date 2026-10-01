@@ -38,6 +38,13 @@ const dataIt = iso => {
 
 const importo = valore => (valore === null || valore === undefined ? null : formatEuro(Number(valore)));
 
+// Una fila di piccole card che va a capo da sola: mai una colonna lunga.
+const FILA_CARD = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 8 };
+const PICCOLA_CARD = {
+  padding: '8px 10px', borderRadius: 8, fontSize: 12, lineHeight: 1.35,
+  border: `1px solid ${COLORS.border}`, background: COLORS.card, color: COLORS.text,
+};
+
 function etichettaCasella(voce, casella) {
   if (voce.periodo === 'mese') return MESI[Number(casella.periodo) - 1] || casella.periodo;
   return casella.etichetta_periodo;
@@ -162,23 +169,25 @@ function RicercaCodice({ anno }) {
             {esito.codice_tributo}{esito.descrizione ? ` · ${esito.descrizione}` : ''} · periodo {esito.periodo_cercato}
           </div>
           {!esito.righe_f24.length && <div style={{ marginTop: 6 }}>Nessun F24 con questo codice nel periodo cercato.</div>}
-          {esito.righe_f24.map(r => (
-            <div key={r.f24_id} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}` }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                <span>F24 del {r.data_versamento_it || 'data non letta'}</span>
-                <Badge variant={r.pagamento_verificato_banca ? 'success' : r.quietanze.length ? 'warning' : 'danger'}>
-                  {r.pagamento_verificato_banca ? 'Pagato (banca)' : r.quietanze.length ? 'Quietanza, banca da verificare' : 'Nessun pagamento trovato'}
-                </Badge>
-              </div>
-              {r.righe.map((riga, i) => (
-                <div key={i} style={{ color: COLORS.textMuted }}>
-                  {riga.codice_tributo} · {riga.periodo_riferimento || 'periodo non letto'} · {importo(riga.importo_debito)}
-                  {riga.importo_credito ? ` · credito ${importo(riga.importo_credito)}` : ''}
+          <div style={{ ...FILA_CARD, marginTop: 8 }}>
+            {esito.righe_f24.map(r => (
+              <div key={r.f24_id} style={PICCOLA_CARD}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>F24 del {r.data_versamento_it || 'data non letta'}</div>
+                <div style={{ margin: '4px 0' }}>
+                  <Badge variant={r.pagamento_verificato_banca ? 'success' : r.quietanze.length ? 'warning' : 'danger'}>
+                    {r.pagamento_verificato_banca ? 'Pagato (banca)' : r.quietanze.length ? 'Quietanza, banca da verificare' : 'Nessun pagamento trovato'}
+                  </Badge>
                 </div>
-              ))}
-              <a href={r.pdf_url} target="_blank" rel="noreferrer">apri il PDF</a>
-            </div>
-          ))}
+                {r.righe.map((riga, i) => (
+                  <div key={i} style={{ color: COLORS.textMuted }}>
+                    {riga.codice_tributo} · {riga.periodo_riferimento || 'periodo non letto'} · {importo(riga.importo_debito)}
+                    {riga.importo_credito ? ` · credito ${importo(riga.importo_credito)}` : ''}
+                  </div>
+                ))}
+                <a href={r.pdf_url} target="_blank" rel="noreferrer">apri il PDF</a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </Card>
@@ -238,12 +247,19 @@ export default function PianoTributi() {
           {(dati.mancano || []).length > 0 && (
             <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.danger}` }}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Da guardare subito</div>
-              {dati.mancano.map((m, i) => (
-                <div key={i} style={{ fontSize: 13, padding: '4px 0' }}>
-                  <strong>{m.voce}</strong> ({m.codici.join(', ')}) · {m.periodo} · scadenza {m.scadenza ? dataIt(m.scadenza) : '-'}
-                  {' · '}{dati.etichette[m.stato]}
-                </div>
-              ))}
+              <div style={FILA_CARD}>
+                {dati.mancano.map((m, i) => (
+                  <div
+                    key={i}
+                    style={{ ...PICCOLA_CARD, borderLeft: `3px solid ${COLORS.danger}`, background: COLORS.dangerLight }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{m.voce}</div>
+                    <div style={{ color: COLORS.textMuted }}>{m.codici.join(', ')} · {m.periodo}</div>
+                    <div>scadenza {m.scadenza ? dataIt(m.scadenza) : '-'}</div>
+                    <div style={{ fontWeight: 700 }}>{dati.etichette[m.stato]}</div>
+                  </div>
+                ))}
+              </div>
             </Card>
           )}
           {dati.modelli_doppi > 0 && (
@@ -289,13 +305,15 @@ export default function PianoTributi() {
           {(dati.fuori_piano || []).length > 0 && (
             <section>
               <h2 style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.02em', margin: '8px 0' }}>Altri codici versati nel {anno}</h2>
-              <Card>
+              <div style={FILA_CARD}>
                 {dati.fuori_piano.map(v => (
-                  <div key={v.codice} style={{ fontSize: 13, padding: '4px 0' }}>
-                    <strong>{v.codice}</strong>{v.descrizione ? ` · ${v.descrizione}` : ''} · {v.versamenti.length} versamenti
+                  <div key={v.codice} style={PICCOLA_CARD}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{v.codice}</div>
+                    {v.descrizione && <div style={{ color: COLORS.textMuted }}>{v.descrizione}</div>}
+                    <div>{v.versamenti.length} versamenti</div>
                   </div>
                 ))}
-              </Card>
+              </div>
             </section>
           )}
         </>
