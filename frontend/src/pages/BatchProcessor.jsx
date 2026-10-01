@@ -91,7 +91,10 @@ const styles = {
   },
 
   logContainer: {
-    background: COLORS.primaryDark,
+    // Sfondo chiaro con testo scuro: sul terracotta pieno i colori semantici dei
+    // messaggi (verde, rosso, ocra) non si leggevano.
+    background: COLORS.bgAlt,
+    border: `1px solid ${COLORS.border}`,
     borderRadius: BORDER_RADIUS.md,
     padding: 16,
     maxHeight: 300,
@@ -102,11 +105,11 @@ const styles = {
 
   logEntry: {
     padding: '4px 0',
-    borderBottom: '1px solid rgba(255,255,255,0.1)',
+    borderBottom: `1px solid ${COLORS.border}`,
   },
 
   logTime: {
-    color: COLORS.textSubtle,
+    color: COLORS.textMuted,
     marginRight: 8,
   },
 
@@ -575,7 +578,7 @@ export default function BatchProcessor() {
                     ...styles.taskItem,
                     background:
                       currentTask === task.id
-                        ? `${task.color}`
+                        ? `${task.color}1f`
                         : result?.success
                           ? `${COLORS.success}08`
                           : result?.error
