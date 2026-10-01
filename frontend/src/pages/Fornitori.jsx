@@ -169,7 +169,6 @@ const emptySupplier = {
   iban: '',
   iban_lista: [], // Lista di IBAN aggiuntivi estratti dalle fatture
   metodo_pagamento: 'banca',
-  giorni_pagamento: 30,
   esclude_cassa_banca: false,
   cessato: false,
   note: '',
@@ -745,33 +744,6 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       </option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label
-                    style={{
-                      display: 'block',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      color: COLORS.gray[700],
-                      marginBottom: '6px',
-                    }}
-                  >
-                    Giorni Pagamento
-                  </label>
-                  <input
-                    type="number"
-                    value={form.giorni_pagamento || 30}
-                    onChange={e => handleChange('giorni_pagamento', parseInt(e.target.value) || 30)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      border: `1px solid ${COLORS.border}`,
-                      borderRadius: BORDER_RADIUS.md,
-                      fontSize: '14px',
-                      boxSizing: 'border-box',
-                    }}
-                    min={0}
-                  />
                 </div>
                 {!isNew && (
                   <div>
@@ -2692,14 +2664,6 @@ export default function Fornitori() {
                       </Badge>
                     );
                   },
-                },
-                {
-                  key: 'giorni_pagamento',
-                  label: 'Giorni',
-                  align: 'center',
-                  ruoloCard: 'dettaglio',
-                  hideDesktop: true,
-                  render: s => s.giorni_pagamento || 30,
                 },
                 {
                   key: 'metodo_pagamento',

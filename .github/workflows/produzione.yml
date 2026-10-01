@@ -117,6 +117,8 @@ jobs:
     name: Audit layout e viewer
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
     defaults:
       run:
         working-directory: frontend
@@ -131,8 +133,27 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Build frontend ERP per il collaudo visivo
         run: yarn build:erp
+      - name: Cache browser Playwright
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.playwright-browsers
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/yarn.lock') }}
       - name: Installa Chromium per Playwright
-        run: npx playwright-core install --with-deps chromium || npx playwright install --with-deps chromium
+        # Si e' visto fermarsi per 20 minuti sul download dei pacchetti apt:
+        # due tentativi da 200 secondi, ma fra uno e l'altro si aspetta che l'apt
+        # rimasto vivo liberi il blocco di dpkg (il timeout uccide solo
+        # playwright, non il suo apt-get). Tetto del passo 10 minuti.
+        timeout-minutes: 10
+        run: |
+          for tentativo in 1 2; do
+            timeout -k 10 200 npx playwright-core install --with-deps chromium && exit 0
+            echo "Installazione Chromium: tentativo $tentativo non riuscito"
+            for i in $(seq 1 24); do
+              pgrep -x 'apt-get|apt|dpkg' > /dev/null || break
+              sleep 5
+            done
+          done
+          exit 1
       - name: Avvia preview
         run: |
           npx vite preview --port 4173 &

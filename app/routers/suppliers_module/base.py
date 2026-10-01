@@ -91,9 +91,6 @@ def _legacy_supplier_view(supplier: Dict[str, Any]) -> Dict[str, Any]:
             or supplier.get("default_payment_method")
             or ""
         ),
-        "giorni_pagamento": supplier.get(
-            "giorni_pagamento", supplier.get("payment_days", 30)
-        ),
         "comune": supplier.get("comune") or supplier.get("locality") or "",
         # Solo la scelta scritta. Il vecchio ripiego `not inventory_enabled`
         # (campo che nessuno dei 198 fornitori ha) faceva risultare escluso chi
@@ -816,7 +813,6 @@ async def create_supplier(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "iban": data.get("iban") or "",
         "metodo_pagamento": metodo,
         "metodo_pagamento_dal": now[:10] if metodo else None,
-        "giorni_pagamento": data.get("giorni_pagamento") or 30,
         "note": data.get("note") or "",
         "attivo": True,
         # niente `esclude_magazzino: False` d'ufficio: sarebbe una decisione che
@@ -874,11 +870,6 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
             datetime.strptime(str(data["metodo_pagamento_dal"]), "%Y-%m-%d")
         except ValueError:
             raise HTTPException(status_code=400, detail="Data «metodo valido dal» non valida")
-    
-    if "termini_pagamento" in data:
-        term = next((t for t in PAYMENT_TERMS if t["code"] == data["termini_pagamento"]), None)
-        if term:
-            data["giorni_pagamento"] = term["days"]
     
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     

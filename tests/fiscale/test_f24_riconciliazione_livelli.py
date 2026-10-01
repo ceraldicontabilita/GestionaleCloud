@@ -227,6 +227,29 @@ def test_un_modello_lontano_dalla_data_non_si_aggancia_per_solo_importo():
     assert _run(db[COLL_F24].find_one({"id": "f-l"}))["pagato"] is False
 
 
+def test_un_modello_senza_data_di_versamento_si_dichiara_e_non_si_abbina():
+    """Prima era saltato in silenzio: ora l'esito dice quale dato manca, le regole non cambiano."""
+    senza_data = _modello("f-sd", None, 400.00)
+    senza_data["dati_generali"] = {}
+    senza_saldo = _modello("f-ss", "2026-03-16", 0)
+    senza_saldo["totali"] = {}
+    senza_saldo["sezione_erario"] = []
+    db = _db(movimenti=[_m("m1", "2026-03-16", -400.00)],
+             modelli=[senza_data, senza_saldo, _modello("f-ok", "2026-05-18", 99.00)])
+    esito = _run(reg.riconcilia_f24_banca(db))["modelli"]
+
+    voci = {v["f24_id"]: v for v in esito["non_riscontrabili"]}
+    assert voci["f-sd"]["esito"] == reg.ESITO_DATA_VERSAMENTO_ASSENTE
+    assert voci["f-ss"]["esito"] == reg.ESITO_SALDO_ASSENTE
+    assert "f-ok" not in voci            # ha data e saldo: solo nessun addebito
+    assert esito["conteggi"]["data_versamento_assente"] == 1 and esito["conteggi"]["saldo_assente"] == 1
+    # lo stesso importo in banca NON lo aggancia: la regola d'abbinamento e' quella di sempre
+    assert esito["riscontrati"] == [] and esito["da_verificare"] == []
+    assert not _run(db[COLL_F24].find_one({"id": "f-sd"}))["pagato"]
+    # secondo giro: stesso esito, nessuna scrittura
+    assert _run(reg.riconcilia_f24_banca(db))["scritti"]["modelli"] == {"modelli": 0, "relazioni": 0}
+
+
 def test_un_modello_con_quietanza_e_provato_dall_addebito_della_quietanza():
     quietanza = _q("q1", "2026-08-20", 654.33)
     db = _db([quietanza], [_m("m1", "2026-08-20", -654.33, "20/08/2026")],
