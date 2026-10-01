@@ -1,9 +1,12 @@
 """Configurazione comune dei test Lotti.
 
-I vecchi file ``test_iteration*`` che usano ``requests`` sono collaudi HTTP
-contro un backend avviato appositamente: non sono test unitari e non devono
-provare per errore a contattare localhost o la produzione. Restano eseguibili
-impostando esplicitamente ``REACT_APP_BACKEND_URL``.
+I pochi collaudi HTTP manuali rimasti usano ``requests`` contro un backend
+avviato appositamente. Non sono test unitari e non devono provare per errore a
+contattare localhost o la produzione. Restano eseguibili impostando
+esplicitamente ``REACT_APP_BACKEND_URL``.
+
+Questi file restano temporaneamente perché coprono comportamenti attivi che
+non hanno ancora un equivalente isolato nella suite automatica.
 """
 
 import os
@@ -14,22 +17,9 @@ import pytest
 
 LIVE_HTTP_TEST_FILES = {
     "test_email_ordini_iter66.py",
-    "test_giacenze_iter69.py",
-    "test_iteration46_features.py",
-    "test_iteration47_features.py",
-    "test_iteration48_features.py",
-    "test_iteration52_features.py",
-    "test_iteration53_features.py",
-    "test_iteration54_features.py",
-    "test_iteration55_bugfixes.py",
     "test_iteration56_nutritional.py",
     "test_iteration57_bom.py",
-    "test_iteration72_bugfixes.py",
-    "test_magazzino_bar_iter68.py",
-    "test_magazzino_unificato_iter71.py",
-    "test_ordini_fornitori_iter70.py",
     "test_ordini_fornitori.py",
-    "test_p1_p2_features.py",
     "test_prezzi_alert_iter67.py",
 }
 
