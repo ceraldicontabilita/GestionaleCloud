@@ -15,6 +15,7 @@ import {
   SchedeTecnicheView,
 } from "../components/haccp";
 import OrdiniView from "../components/haccp/OrdiniView";
+import OrdiniHotelView from "../components/haccp/OrdiniHotelView";
 import { StoricoProduzioniView } from "../components/haccp/StoricoProduzioniView";
 import BackofficeView from "../components/haccp/BackofficeView";
 import { isAdmin } from "../auth";
@@ -115,6 +116,7 @@ const PAGINE = {
   allergeni: { render: () => <RegistroAllergeniView /> },
   schede_tecniche: { render: () => <SchedeTecnicheView /> },
   ordini: { render: () => <OrdiniView /> },
+  ordini_hotel: { render: (ctx) => <OrdiniHotelView onNavigate={ctx.handleTabChange} /> },
   backoffice: { render: () => <BackofficeView /> },
   controllo_dati: { render: () => <ControlloDatiView /> },
   cataloghi_esterni: { render: () => <CataloghiEsterniView /> },

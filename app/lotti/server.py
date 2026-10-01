@@ -90,6 +90,7 @@ from app.lotti.routers.magazzino_bar import router as r_magazzino_bar
 from app.lotti.routers.magazzino_unificato import router as r_magazzino_unificato
 from app.lotti.routers.ordini_fornitori import router as r_ordini_fornitori
 from app.lotti.routers.email_ordini import router as r_email_ordini
+from app.lotti.routers.ordini_hotel import router as r_ordini_hotel
 
 # ── Cataloghi esterni (scraping) ────────────────────────────────────────────
 from app.lotti.routers.saima import router as r_saima
@@ -134,7 +135,7 @@ for r in [
     r_fornitori_dedup, r_fornitori_schede, r_fornitori_qualifica, r_fatture,
     r_sconti, r_prodotti_vendita, r_acquaviva, r_colazione, r_vendita_banco, r_listino, r_azienda, r_magazzino_bar, r_magazzino_unificato,
     r_gestionale_fatture,
-    r_ordini_fornitori, r_email_ordini, r_saima, r_saima_ricettari,
+    r_ordini_fornitori, r_email_ordini, r_ordini_hotel, r_saima, r_saima_ricettari,
     r_mepa, r_cataloghi_arricchimento, r_costi_giornalieri, r_corrispettivi, r_attrezzature, r_pipeline, r_scheduler,
     r_controllo_dati, r_backup, r_supervisor, r_tablet_operatori, r_log_attivita, r_utils, r_stampanti,
     r_gelati, r_auth, r_digest, r_catalogo_forno, r_cataloghi_prezzi, r_fornitori_rivendita, r_fonti_catalogo, r_collaudi,

@@ -1,7 +1,7 @@
 import {
   AlertCircle, AlertTriangle, BarChart3, BookMarked, BookOpen, Bug,
   Building2, ChefHat, ClipboardCheck, FileText, Flame, FlaskConical,
-  Globe, HelpCircle, IceCreamBowl, Layers, Network, Package, PackageX,
+  Globe, HelpCircle, Hotel, IceCreamBowl, Layers, Network, Package, PackageX,
   Refrigerator, Scale, Settings, ShieldCheck, ShoppingCart, Snowflake,
   Sparkles, Tag, Thermometer, TrendingUp, Truck, UtensilsCrossed, Users,
   Wheat,
@@ -31,6 +31,7 @@ export const SECONDARY_TABS = [
   // sta fra le voci di vendita, non nel backoffice (è un contenitore visivo
   // dei prodotti da vendere, non una pagina di amministrazione).
   { section: "Acquisti e vendita", id: "in_menu", label: "In menu", icon: UtensilsCrossed },
+  { section: "Acquisti e vendita", id: "ordini_hotel", label: "Ordini hotel", icon: Hotel },
   { section: "Acquisti e vendita", id: "fornitori", label: "Fornitori", icon: Building2 },
   { section: "Acquisti e vendita", id: "comparatore", label: "Confronto prezzi", icon: Scale },
   { section: "Acquisti e vendita", id: "prodotti", label: "Listini e cataloghi", icon: Tag },
