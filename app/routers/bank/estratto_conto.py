@@ -672,6 +672,16 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     
     elif filename.endswith(('.xlsx', '.xls')):
         try:
+            from app.services.sumup_conto import e_export_spese_sumup
+            import openpyxl as _opx
+
+            _intestazioni = [str(c.value or "") for c in _opx.load_workbook(io.BytesIO(contents), read_only=True).active[1]]
+            if e_export_spese_sumup(_intestazioni):
+                # L'export «Spese» di SumUp ha Importo netto E Importo IVA: il parser generico
+                # prendeva l'ultima colonna «importo» (l'IVA) e scriveva 0,00 sul conto BPM.
+                raise HTTPException(status_code=422, detail=(
+                    "Questo e' l'export Spese di SumUp (netto, IVA, fornitore), non un estratto conto BPM: "
+                    "caricalo da Documenti > Import, arricchisce i movimenti SumUp gia' presenti."))
             enti_rows = parse_enti_file_contabili_xlsx(contents)
             if enti_rows is not None:
                 movimenti.extend(enti_rows)
@@ -1803,6 +1813,21 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
         "saldo": round(entrate - uscite, 2),
         "nota": "I record esistenti e le riconciliazioni NON sono stati toccati"
     }
+
+
+@router.post("/quarantena-import-errato")
+async def quarantena_import_errato_endpoint(
+    source_filename: str = Query(..., min_length=3, max_length=200),
+    motivo: str = Query("file letto con il lettore sbagliato", max_length=200),
+    dry_run: bool = Query(True, description="True = solo anteprima (predefinito)"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Toglie dall'estratto conto, per id e in quarantena, le righe di un import sbagliato (solo admin)."""
+    from app.services.doppioni_estratto_conto import quarantena_import_errato
+
+    return await quarantena_import_errato(
+        Database.get_db(), source_filename, motivo, dry_run=dry_run,
+        actor=str(_admin.get("email") or _admin.get("sub") or "admin"))
 
 
 @router.get("/movimenti")

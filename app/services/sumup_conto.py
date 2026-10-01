@@ -556,3 +556,134 @@ async def registra_giroconti(db, codici: List[str]) -> List[Dict[str, Any]]:
             continue
         esiti.append(await registra_giroconto(db, riga))
     return esiti
+
+
+# ── Export «Spese» di SumUp (xlsx): fornitore, categoria e IVA di movimenti che l'estratto ha già ──
+
+#: Intestazioni dell'export spese (11/2026: N., Data, Descrizione, Importo netto, Importo IVA,
+#: Aliquota IVA, Categoria, Fornitore, Paese, Cod. Fisc./P. IVA, Stato del pagamento).
+INTESTAZIONI_SPESE_SUMUP = ("importo netto", "importo iva", "fornitore", "stato del pagamento")
+FINESTRA_GIORNI_SPESE = 3
+
+
+def e_export_spese_sumup(intestazioni: List[str]) -> bool:
+    chiavi = {str(h or "").strip().casefold() for h in intestazioni}
+    return all(h in chiavi for h in INTESTAZIONI_SPESE_SUMUP)
+
+
+def _decimale_spese(valore: Any):
+    """«137,7» -> 137.70, «10.000» -> 10000 (punto delle migliaia), 1095 -> 1095. Solo Decimal."""
+    from decimal import Decimal, InvalidOperation
+
+    if valore in (None, ""):
+        return None
+    if isinstance(valore, (int, float)):
+        return Decimal(str(valore))
+    testo = str(valore).strip().replace(" ", "")
+    if "," in testo:
+        testo = testo.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}(\.\d{3})+", testo):
+        testo = testo.replace(".", "")
+    try:
+        return Decimal(testo)
+    except InvalidOperation:
+        return None
+
+
+def leggi_spese_sumup_xlsx(contenuto: bytes) -> Dict[str, Any]:
+    """Righe dell'export spese, per intestazione. Il lordo e' netto + IVA: ``Importo netto`` da
+    solo NON e' quanto e' uscito dal conto, e ``Importo IVA`` non e' mai l'importo."""
+    import io
+
+    import openpyxl
+
+    cartella = openpyxl.load_workbook(io.BytesIO(contenuto), data_only=True)
+    foglio = cartella.active
+    intestazioni = [str(c.value or "").strip() for c in foglio[1]]
+    if not e_export_spese_sumup(intestazioni):
+        cartella.close()
+        raise ValueError("Non e' l'export Spese di SumUp (mancano Importo netto, Importo IVA, Fornitore, Stato del pagamento)")
+    chiavi = [h.casefold() for h in intestazioni]
+    righe: List[Dict[str, Any]] = []
+    errori: List[str] = []
+    for numero in range(2, foglio.max_row + 1):
+        valori = {chiavi[i]: foglio.cell(row=numero, column=i + 1).value for i in range(len(chiavi))}
+        if not any(v not in (None, "") for v in valori.values()):
+            continue
+        quando = valori.get("data")
+        giorno = quando.date().isoformat() if isinstance(quando, datetime) else str(quando or "")[:10]
+        netto, iva = _decimale_spese(valori.get("importo netto")), _decimale_spese(valori.get("importo iva"))
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", giorno) or netto is None or iva is None:
+            errori.append(f"Riga {numero}: data o importi non leggibili")
+            continue
+        righe.append({
+            "riga": numero, "numero": valori.get("n."), "data": giorno,
+            "descrizione": str(valori.get("descrizione") or "").strip(),
+            "netto_cents": int((netto * 100).to_integral_value()), "iva_cents": int((iva * 100).to_integral_value()),
+            "aliquota": str(valori.get("aliquota iva") or "").strip() or None,
+            "categoria": str(valori.get("categoria") or "").strip() or None,
+            "fornitore": str(valori.get("fornitore") or "").strip() or None,
+            "paese": str(valori.get("paese") or "").strip() or None,
+            "cf_piva": str(valori.get("cod. fisc./p. iva") or "").strip() or None,
+            "stato_pagamento": str(valori.get("stato del pagamento") or "").strip() or None,
+        })
+    cartella.close()
+    return {"righe": righe, "errori": errori}
+
+
+async def arricchisci_da_spese_sumup(db, contenuto: bytes, filename: str, *, dry_run: bool = False) -> Dict[str, Any]:
+    """Aggiunge fornitore, categoria e IVA ai movimenti SumUp che l'estratto ha gia' (mai ne crea).
+
+    Identita': uscita con importo uguale al lordo (netto + IVA) al centesimo, entro 3 giorni
+    dalla data della spesa, un solo candidato non gia' arricchito. Ambiguo o assente: si elenca.
+    L'importo del movimento non si tocca; nessuna scrittura contabile.
+    """
+    from datetime import date as _date
+    from decimal import Decimal
+
+    letto = leggi_spese_sumup_xlsx(contenuto)
+    movimenti = await db[COLL_MOVIMENTI].find({}, {
+        "_id": 0, "id": 1, "data": 1, "importo": 1, "spesa_fonte": 1}).to_list(20000)
+    usati: set = set()
+    esito: Dict[str, Any] = {
+        "dry_run": dry_run, "righe": len(letto["righe"]), "arricchiti": 0, "gia_arricchiti": 0,
+        "ambigui": [], "senza_movimento": [], "errori": list(letto["errori"]),
+    }
+    for r in letto["righe"]:
+        lordo = r["netto_cents"] + r["iva_cents"]
+        giorno = _date.fromisoformat(r["data"])
+        candidati = []
+        for m in movimenti:
+            if m["id"] in usati or not str(m.get("importo") or "").startswith("-"):
+                continue
+            try:
+                cents = int((abs(Decimal(str(m["importo"]))) * 100).to_integral_value())
+                distanza = abs((_date.fromisoformat(str(m["data"])[:10]) - giorno).days)
+            except (ValueError, ArithmeticError):
+                continue
+            if cents == lordo and distanza <= FINESTRA_GIORNI_SPESE:
+                candidati.append((distanza, m))
+        candidati.sort(key=lambda c: c[0])
+        scelto = None
+        if len(candidati) == 1:
+            scelto = candidati[0][1]
+        elif len(candidati) > 1 and candidati[0][0] < candidati[1][0]:
+            scelto = candidati[0][1]
+        if scelto is None:
+            voce = {"riga": r["riga"], "data": r["data"], "lordo_cents": lordo, "fornitore": r["fornitore"]}
+            (esito["ambigui"] if candidati else esito["senza_movimento"]).append(voce)
+            continue
+        usati.add(scelto["id"])
+        if scelto.get("spesa_fonte") == filename:
+            esito["gia_arricchiti"] += 1
+            continue
+        esito["arricchiti"] += 1
+        if not dry_run:
+            await db[COLL_MOVIMENTI].update_one({"id": scelto["id"]}, {"$set": {
+                "spesa_fornitore": r["fornitore"], "spesa_categoria": r["categoria"],
+                "spesa_descrizione": r["descrizione"], "spesa_imponibile_cents": r["netto_cents"],
+                "spesa_iva_cents": r["iva_cents"], "spesa_aliquota_iva": r["aliquota"],
+                "spesa_cf_piva": r["cf_piva"], "spesa_stato_pagamento": r["stato_pagamento"],
+                "spesa_fonte": filename,
+            }})
+    return esito

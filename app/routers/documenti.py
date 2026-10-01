@@ -2541,6 +2541,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
                 return "pagamenti_buoni"
             if all(m in content_str for m in ("ID INVIO", "MATRICOLA DISPOSITIVO", "AMMONTARE DELLE VENDITE")):
                 return "corrispettivi_csv_ade"
+        if all(marker in content_str for marker in ("IMPORTO NETTO", "IMPORTO IVA", "FORNITORE", "STATO DEL PAGAMENTO")):
+            return "spese_sumup"
         if all(marker in content_str for marker in (
             "ID SDI", "METODO DI PAGAMENTO", "TOTALE DOCUMENTO",
             "NETTO A PAGARE", "FORNITORE",
@@ -4087,6 +4089,26 @@ async def upload_documento_automatico(
                     "Estratto Nexi già presente; verifica aggiornata."
                     if nexi_result.get("duplicate")
                     else f"Estratto Nexi importato: {nexi_result.get('operazioni', 0)} operazioni."
+                ),
+            })
+
+        elif tipo_rilevato == 'spese_sumup':
+            # Export «Spese» di SumUp: fornitore, categoria e IVA dei movimenti della carta che
+            # l'estratto ha gia' (sumup_conto.arricchisci_da_spese_sumup). Mai un estratto BPM.
+            from app.services.sumup_conto import arricchisci_da_spese_sumup
+
+            esito_spese = await arricchisci_da_spese_sumup(db, content, filename)
+            result.update({
+                "workflow": "SPESE_SUMUP_ARRICCHIMENTO",
+                "imported": esito_spese["arricchiti"],
+                "duplicate": esito_spese["arricchiti"] == 0 and esito_spese["gia_arricchiti"] > 0,
+                "data": esito_spese,
+                "message": (
+                    f"Spese SumUp: {esito_spese['arricchiti']} movimenti arricchiti con fornitore e IVA, "
+                    f"{esito_spese['gia_arricchiti']} già arricchiti"
+                    + (f", {len(esito_spese['senza_movimento'])} senza movimento nell'estratto SumUp (carica l'estratto del periodo)"
+                       if esito_spese["senza_movimento"] else "")
+                    + (f", {len(esito_spese['ambigui'])} ambigui" if esito_spese["ambigui"] else "")
                 ),
             })
 

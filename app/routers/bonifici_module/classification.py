@@ -22,6 +22,11 @@ _CAUSALE_RETRIBUTIVA = re.compile(
 )
 
 
+# Una causale che cita una fattura dice che e' un fornitore, anche col nome di un dipendente
+# (l'esclusione vince sul nome, stessa regola del ponte HR): la pagina propone la fattura, non il periodo.
+_CAUSALE_FATTURA = re.compile(r"fattur|\bFPR\b|\bFT\b\s*\d", re.IGNORECASE)
+
+
 def _testo_bancario(bonifico: Dict[str, Any]) -> str:
     """Unisce solo i campi probatori del movimento bancario."""
     nome_beneficiario, iban_beneficiario = _beneficiario(bonifico)
@@ -109,6 +114,15 @@ def classifica_destinazione_dipendente(
             "dipendente_nome_rilevato": bonifico.get("dipendente_nome"),
             "dipendente_id": bonifico.get("dipendente_id"),
             "identita_univoca": bool(bonifico.get("dipendente_id")),
+        }
+
+    if _CAUSALE_FATTURA.search(testo_bancario) and not _CAUSALE_RETRIBUTIVA.search(testo_bancario):
+        return {
+            "destinazione_dipendente": False,
+            "motivo_destinazione": "causale_fattura",
+            "dipendente_nome_rilevato": None,
+            "dipendente_id": None,
+            "identita_univoca": False,
         }
 
     candidati_iban = []
