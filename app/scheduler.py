@@ -2054,7 +2054,7 @@ def start_scheduler():
     scheduler.add_job(
         _bonifici_estratto_job,
         'interval', minutes=30,
-        next_run_time=avvio + timedelta(minutes=18),
+        next_run_time=avvio + timedelta(minutes=4),
         misfire_grace_time=600,
         coalesce=True,
         id="bonifici_via_estratto",
