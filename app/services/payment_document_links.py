@@ -174,7 +174,8 @@ async def collega_bonifico_fatture(
     )
     for invoice_id in invoice_ids:
         await db.invoices.update_one(
-            {"id": invoice_id},
+            # Su `invoices` l'`id` e' un numero in meta' delle righe: con il solo testo la fattura non si trova.
+            {"id": {"$in": [invoice_id, int(invoice_id)] if invoice_id.isdigit() else [invoice_id]}},
             {"$set": {
                 "bonifico_associato": True,
                 "bonifico_id": transfer_id,
