@@ -11,6 +11,11 @@ lo stesso IUV e importo diverso resta ``DA_VERIFICARE``.
   aggancia solo se e' uno solo e la targa coincide; altrimenti si mostrano i
   candidati e nessun collegamento viene applicato.
 - L'originale si conserva una volta sola per SHA-256, come gli atti giudiziari.
+- **La PEC «Notifica cartella di pagamento n. …» e' la prova della notifica**: la sua
+  data diventa `data_notifica` (fonte `pec`) se il numero coincide e il codice fiscale
+  dell'oggetto non e' di un altro soggetto. Una data scritta dal titolare non si
+  sovrascrive; una PEC arrivata prima della cartella resta in `cartelle_notifiche_pec`
+  e si applica alla registrazione.
 """
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ from app.services.expectation_policy import (
 logger = logging.getLogger(__name__)
 
 COLL = "cartelle_pagamento"
+COLL_PEC = "cartelle_notifiche_pec"
 PREFISSO_BLOB = "cartella-pagamento:"
 TIPO_ATTESA = "CARTELLA_DA_PAGARE"
 OWNER_ATTESA = "fiscale"
@@ -212,10 +218,11 @@ async def registra_cartella(
     else:
         documento["contenuto_b64"] = contenuto_b64
     await db[COLL].insert_one(documento)
+    notifica = await applica_notifica_pec_in_attesa(db, id_cartella)
     verbali = await collega_verbali(db, id_cartella)
     ricevuta = await chiudi_da_ricevuta_esistente(db, id_cartella)
     return {"success": True, "duplicate": False, "id": id_cartella, **dati,
-            "verbali": verbali, "ricevuta": ricevuta}
+            "verbali": verbali, "ricevuta": ricevuta, "notifica_pec": notifica}
 
 
 async def imposta_notifica(db, cartella_id: str, data_notifica: str) -> Dict[str, Any]:
@@ -233,6 +240,71 @@ async def imposta_notifica(db, cartella_id: str, data_notifica: str) -> Dict[str
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }})
     return {"success": True, "scadenza": scadenza}
+
+
+_OGGETTO_PEC = re.compile(
+    r"POSTA\s+CERTIFICATA\s*:\s*NOTIFICA\s+CARTELLA\s+DI\s+PAGAMENTO\s+N\.?\s*(\d{20})"
+    r"(?:\s+CODICE\s+FISCALE\s+([A-Z0-9]{11,16}))?", re.IGNORECASE)
+
+
+def leggi_oggetto_pec(oggetto: Optional[str]) -> Optional[Dict[str, Optional[str]]]:
+    """Numero (20 cifre, come nell'id) e codice fiscale dell'oggetto di una PEC di notifica."""
+    m = _OGGETTO_PEC.search(re.sub(r"\s+", " ", oggetto or ""))
+    if not m:
+        return None
+    return {"numero": m.group(1), "codice_fiscale": (m.group(2) or "").upper() or None}
+
+
+async def _applica_notifica_pec(db, cartella: Dict[str, Any], pec: Dict[str, Any]) -> str:
+    """Scrive la data della PEC sulla cartella; mai sopra una data diversa gia' presente."""
+    cf_cartella = (cartella.get("codice_fiscale_destinatario") or "").upper()
+    if pec.get("codice_fiscale") and cf_cartella and pec["codice_fiscale"] != cf_cartella:
+        return "codice_fiscale_diverso"
+    attuale = cartella.get("data_notifica")
+    if attuale:
+        return "gia_presente" if attuale == pec["data_notifica"] else "discordante"
+    esito = await imposta_notifica(db, cartella["id"], pec["data_notifica"])
+    if not esito.get("success"):
+        return "non_valida"
+    await db[COLL].update_one({"id": cartella["id"]}, {"$set": {
+        "data_notifica_fonte": "pec", "notifica_pec_messaggio": pec.get("messaggio_id"),
+    }})
+    return "applicata"
+
+
+async def registra_notifica_pec(
+    db, oggetto: str, data_notifica: str, *, messaggio_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """PEC di notifica -> data di notifica della cartella (o promemoria se la cartella manca).
+
+    ``data_notifica`` e' ISO (giorno di Roma della PEC). None se l'oggetto non e' una notifica.
+    """
+    letto = leggi_oggetto_pec(oggetto)
+    if not letto:
+        return None
+    id_cartella = "cartella:" + letto["numero"]
+    pec = {"id": "pec:" + letto["numero"], "numero": letto["numero"], "cartella_id": id_cartella,
+           "codice_fiscale": letto["codice_fiscale"], "data_notifica": data_notifica,
+           "messaggio_id": messaggio_id}
+    precedente = await db[COLL_PEC].find_one({"id": pec["id"]}, {"_id": 0})
+    if precedente and precedente.get("data_notifica") and precedente["data_notifica"] <= data_notifica:
+        pec["data_notifica"] = precedente["data_notifica"]       # la prima PEC e' la notifica
+    else:
+        await db[COLL_PEC].update_one({"id": pec["id"]}, {"$set": pec}, upsert=True)
+    cartella = await db[COLL].find_one({"id": id_cartella}, {"_id": 0})
+    if not cartella:
+        return {"cartella_id": id_cartella, "esito": "cartella_non_ancora_caricata",
+                "data_notifica": pec["data_notifica"]}
+    return {"cartella_id": id_cartella, "data_notifica": pec["data_notifica"],
+            "esito": await _applica_notifica_pec(db, cartella, pec)}
+
+
+async def applica_notifica_pec_in_attesa(db, cartella_id: str) -> Optional[str]:
+    pec = await db[COLL_PEC].find_one({"cartella_id": cartella_id}, {"_id": 0})
+    cartella = await db[COLL].find_one({"id": cartella_id}, {"_id": 0})
+    if not pec or not cartella:
+        return None
+    return await _applica_notifica_pec(db, cartella, pec)
 
 
 def _stesso_importo(totale: Optional[str], importo: Any) -> bool:
