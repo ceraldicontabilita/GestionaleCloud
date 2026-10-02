@@ -100,7 +100,7 @@ async def scan_verbali_email_task():
 
         # Esegui scan completo con priorità (orchestratore verbali_email_logic:
         # FASE 1 quietanze via PayPal/PagoPA/EC + IMAP, PDF; FASE 2 nuovi)
-        result = await scan_email_con_priorita(db, days_back=30)
+        result = await scan_email_con_priorita(db, days_back=5)
 
         fase1 = result.get("fase_1_completamenti", {})
         fase2 = result.get("fase_2_nuovi", {})
@@ -482,12 +482,13 @@ async def paypal_recupera_fatture_email_task():
 
 
 async def gmail_full_scan_task():
-    """Ogni ora: posta di tutte le cartelle, con cursore per cartella.
+    """Ogni giorno alle 5:45: posta di tutte le cartelle, con cursore per cartella.
 
-    Il primo giro parte dai messaggi piu' recenti e scende fino al primo della
-    casella; da li' in poi legge solo i nuovi. Il cursore sta su Supabase e il
-    giro riprende dopo un riavvio. Un login rifiutato apre un alert e manda
-    un Telegram: non e' un giro vuoto.
+    Ogni giro legge i messaggi arrivati dopo l'ultimo e, per lo storico,
+    scende solo fino a 5 giorni fa (GIORNI_STORICO_POSTA in
+    email_full_download): i documenti piu' vecchi sono gia' su Drive.
+    Il cursore sta su Supabase e il giro riprende dopo un riavvio. Un login
+    rifiutato apre un alert e manda un Telegram: non e' un giro vuoto.
     """
     from app.config import settings
     if not getattr(settings, "ENABLE_GMAIL_IMAP", True):
@@ -606,7 +607,7 @@ def start_scheduler():
         from app.database import Database
         from app.services.verbali_gmail_scanner import scan_gmail_verbali
         try:
-            result = await scan_gmail_verbali(Database.get_db(), days_back=2)
+            result = await scan_gmail_verbali(Database.get_db(), days_back=5)
             logger.info(f"[SCHEDULER-VERBALI-GMAIL] {result}")
         except Exception as e:
             logger.error(f"[SCHEDULER-VERBALI-GMAIL] errore: {e}")
@@ -1244,20 +1245,19 @@ def start_scheduler():
 
     scheduler.add_job(
         _sumup_sync_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=3),
         misfire_grace_time=300,
         coalesce=True,
-        id="sumup_sync", name="Sincronizzazione SumUp (ogni 30 min)",
+        id="sumup_sync", name="Sincronizzazione SumUp (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _scan_gmail_verbali_job,
-        'interval', minutes=30,
-        next_run_time=avvio + timedelta(minutes=6),
+        "cron", hour=6, minute=15,
         misfire_grace_time=300,
         coalesce=True,
-        id="scan_gmail_verbali", name="Scan Gmail Verbali CdS (ogni 30 min)",
+        id="scan_gmail_verbali", name="Scan Gmail Verbali CdS (ogni giorno 6:15, ultimi 5 giorni)",
         replace_existing=True,
     )
     scheduler.add_job(
@@ -1352,21 +1352,21 @@ def start_scheduler():
 
     scheduler.add_job(
         _protocollo_drive_incrementale_job,
-        'interval', minutes=20,
+        "interval", minutes=180,
         next_run_time=avvio + timedelta(minutes=5),
         misfire_grace_time=300,
         coalesce=True,
-        id="protocollo_drive_incrementale", name="Protocollo Drive incrementale (ogni 20 min)",
+        id="protocollo_drive_incrementale", name="Protocollo Drive incrementale (ogni 3 ore)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _stampe_controllo_job,
-        'interval', minutes=15,
+        "interval", minutes=180,
         next_run_time=avvio + timedelta(minutes=4),
         misfire_grace_time=300,
         coalesce=True,
-        id="cedolini_stampe_controllo", name="Stampe di controllo buste: via da Drive (ogni 15 min)",
+        id="cedolini_stampe_controllo", name="Stampe di controllo buste: via da Drive (ogni 3 ore)",
         replace_existing=True,
     )
 
@@ -1382,11 +1382,11 @@ def start_scheduler():
 
     scheduler.add_job(
         _import_cartelle_drive_job,
-        'interval', minutes=10,
+        "interval", minutes=30,
         next_run_time=avvio + timedelta(minutes=2),
         misfire_grace_time=300,
         coalesce=True,
-        id="import_cartelle_drive", name="Import cartelle Drive in sola lettura (ogni 10 minuti, se configurato)",
+        id="import_cartelle_drive", name="Import cartelle Drive in sola lettura (ogni 30 minuti, se configurato)",
         replace_existing=True,
     )
 
@@ -1412,12 +1412,11 @@ def start_scheduler():
 
     scheduler.add_job(
         _drive_censimento_doppioni_job,
-        'interval', minutes=5,
-        next_run_time=avvio + timedelta(minutes=6),
+        "cron", hour=2, minute=40,
         misfire_grace_time=300,
         coalesce=True,
         id="drive_censimento_doppioni",
-        name="Censimento doppioni cartella GESTIONALE, solo rinomina (ogni 5 min)",
+        name="Censimento doppioni cartella GESTIONALE, solo rinomina (ogni notte 2:40)",
         replace_existing=True,
     )
 
@@ -1435,12 +1434,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _bonifici_pdf_inbox_job,
-        'interval', minutes=10,
+        "interval", minutes=30,
         next_run_time=avvio + timedelta(minutes=4),
         misfire_grace_time=300,
         coalesce=True,
         id="bonifici_pdf_inbox",
-        name="Elabora PDF bonifico da Import documenti (ogni 10 min)",
+        name="Elabora PDF bonifico da Import documenti (ogni 30 min)",
         replace_existing=True,
     )
 
@@ -1460,12 +1459,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _allinea_status_documenti_job,
-        'interval', minutes=15,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(seconds=20),
         misfire_grace_time=300,
         coalesce=True,
         id="allinea_status_documenti",
-        name="Riallinea badge documenti processati (ogni 15 minuti)",
+        name="Riallinea badge documenti processati (ogni ora)",
         replace_existing=True,
     )
 
@@ -1581,34 +1580,32 @@ def start_scheduler():
 
     scheduler.add_job(
         _cedolini_hr_riverifica_job,
-        'interval', minutes=20,
-        next_run_time=avvio + timedelta(minutes=7),
+        "cron", hour="1-5", minute=20,
         misfire_grace_time=300,
         coalesce=True,
         id="cedolini_hr_riverifica",
-        name="Netti HR riletti dal PDF della busta (un lotto ogni 20 minuti)",
+        name="Netti HR riletti dal PDF della busta (un lotto ogni ora, 01-05)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _cedolini_tipo_dal_pdf_job,
-        'interval', minutes=20,
-        next_run_time=avvio + timedelta(minutes=9),
+        "cron", hour="1-5", minute=40,
         misfire_grace_time=300,
         coalesce=True,
         id="cedolini_tipo_dal_pdf",
-        name="13a/14a dei cedolini: tipo riletto dal PDF (un lotto ogni 20 minuti)",
+        name="13a/14a dei cedolini: tipo riletto dal PDF (un lotto ogni ora, 01-05)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _hr_pagamenti_deposito_job,
-        'interval', minutes=15,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=6),
         misfire_grace_time=300,
         coalesce=True,
         id="hr_pagamenti_deposito",
-        name="Deposita bonifici ed estratti conto nei pagamenti HR (ogni 15 minuti)",
+        name="Deposita bonifici ed estratti conto nei pagamenti HR (ogni ora)",
         replace_existing=True,
     )
 
@@ -1620,7 +1617,7 @@ def start_scheduler():
         )
         try:
             db = Database.get_db()
-            result = await sync_email_documents(db, giorni=1)
+            result = await sync_email_documents(db, giorni=5)
             result["status_documenti_allineati"] = await allinea_status_documenti_processati(db)
             if result.get("success") is False:
                 logger.info(f"[SCHEDULER-MITTENTI-EMAIL] non eseguito: {result.get('error')}")
@@ -1632,12 +1629,11 @@ def start_scheduler():
 
     scheduler.add_job(
         _mittenti_email_job,
-        'interval', hours=1,
-        next_run_time=avvio + timedelta(minutes=27),
+        "cron", hour=6, minute=5,
         misfire_grace_time=300,
         coalesce=True,
         id="mittenti_email_sync",
-        name="Documenti da mittenti email attendibili: fatture estere XML + altri tipi (ogni ora)",
+        name="Documenti da mittenti email attendibili: fatture estere XML + altri tipi (ogni giorno 6:05, ultimi 5 giorni)",
         replace_existing=True,
     )
 
@@ -1664,12 +1660,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _foto_ricette_storage_job,
-        'interval', minutes=3,
+        "interval", minutes=240,
         next_run_time=avvio + timedelta(seconds=150),
         misfire_grace_time=300,
         coalesce=True,
         id="foto_ricette_storage",
-        name="Foto ricette Lotti da Drive a Supabase Storage (10 per giro, ogni 3 minuti)",
+        name="Foto ricette Lotti da Drive a Supabase Storage (10 per giro, ogni 4 ore)",
         replace_existing=True,
     )
 
@@ -1743,82 +1739,82 @@ def start_scheduler():
 
     scheduler.add_job(
         _dedup_fatture_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=4),
         misfire_grace_time=300,
         coalesce=True,
         id="dedup_fatture",
-        name="Dedup fatture: identita' dall'XML, doppioni per hash, storni (ogni 30 min)",
+        name="Dedup fatture: identita' dall'XML, doppioni per hash, storni (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _quietanze_orfane_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=3),
         misfire_grace_time=300,
         coalesce=True,
         id="quietanze_orfane",
-        name="Quietanze F24 senza modello: ricollega al loro F24 (ogni 30 min)",
+        name="Quietanze F24 senza modello: ricollega al loro F24 (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _pagamenti_dichiarati_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=5),
         misfire_grace_time=300,
         coalesce=True,
         id="pagamenti_dichiarati",
-        name="Report del titolare: pagamenti dichiarati ancora aperti (ogni 30 min)",
+        name="Report del titolare: pagamenti dichiarati ancora aperti (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _banca_versamenti_proiezione_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=2),
         misfire_grace_time=300,
         coalesce=True,
         id="banca_versamenti_proiezione",
-        name="Banca: assegni, versamenti contanti e proiezione in Prima Nota (ogni 30 min)",
+        name="Banca: assegni, versamenti contanti e proiezione in Prima Nota (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _f24_quietanze_banca_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=4),
         misfire_grace_time=300,
         coalesce=True,
         id="f24_quietanze_banca",
-        name="F24: ravvedimenti, quietanze con gli addebiti in banca, rate delle dilazioni INPS (ogni 30 min)",
+        name="F24: ravvedimenti, quietanze con gli addebiti in banca, rate delle dilazioni INPS (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _fatture_emesse_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=3),
         misfire_grace_time=300,
         coalesce=True,
         id="fatture_emesse",
-        name="Fatture emesse: fuori dalle passive, aggancio al corrispettivo (ogni 30 min)",
+        name="Fatture emesse: fuori dalle passive, aggancio al corrispettivo (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _fatture_estere_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=5),
         misfire_grace_time=300,
         coalesce=True,
         id="fatture_estere_riallineamento",
-        name="Fatture estere da confermare: classificazione e registrazione alle regole attuali (ogni 30 min)",
+        name="Fatture estere da confermare: classificazione e registrazione alle regole attuali (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _automazioni_prima_nota_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=13),
         misfire_grace_time=300,
         coalesce=True,
         id="automazioni_prima_nota",
-        name="Automazioni Prima Nota: corrispettivi + provvisori + riconciliazione (ogni 30 min)",
+        name="Automazioni Prima Nota: corrispettivi + provvisori + riconciliazione (ogni ora)",
         replace_existing=True,
     )
 
@@ -1966,13 +1962,12 @@ def start_scheduler():
 
     scheduler.add_job(
         gmail_full_scan_task,
-        'interval',
+        "cron", hour=5, minute=45,
         hours=3,
-        next_run_time=avvio + timedelta(minutes=7),
         misfire_grace_time=300,
         coalesce=True,
         id="gmail_full_scan",
-        name="Gmail Full Scan Multi-Cartella (ogni 3 ore)",
+        name="Gmail Full Scan Multi-Cartella (ogni giorno 5:45, ultimi 5 giorni)",
         replace_existing=True
     )
 
@@ -1997,12 +1992,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _dizionario_lotti_job,
-        'interval', minutes=20,
+        "interval", minutes=180,
         next_run_time=avvio + timedelta(minutes=9),
         misfire_grace_time=300,
         coalesce=True,
         id="lotti_dizionario_categorie",
-        name="Lotti: categorie del Dizionario ingredienti (ogni 20 min)",
+        name="Lotti: categorie del Dizionario ingredienti (ogni 3 ore)",
         replace_existing=True,
     )
 
@@ -2020,12 +2015,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _identifica_web_lotti_job,
-        'interval', minutes=25,
+        "interval", minutes=180,
         next_run_time=avvio + timedelta(minutes=14),
         misfire_grace_time=300,
         coalesce=True,
         id="lotti_identifica_col_web",
-        name="Lotti: identificazione prodotti col web (ogni 25 min)",
+        name="Lotti: identificazione prodotti col web (ogni 3 ore)",
         replace_existing=True,
     )
 
@@ -2045,12 +2040,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _agenti_proposte_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=11),
         misfire_grace_time=600,
         coalesce=True,
         id="agenti_proposte",
-        name="Agenti AI: proposte sui documenti fermi (ogni 30 min)",
+        name="Agenti AI: proposte sui documenti fermi (ogni ora)",
         replace_existing=True,
     )
 
@@ -2094,12 +2089,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _bonifici_estratto_job,
-        'interval', minutes=30,
+        "interval", minutes=60,
         next_run_time=avvio + timedelta(minutes=4),
         misfire_grace_time=600,
         coalesce=True,
         id="bonifici_via_estratto",
-        name="Bonifici PDF abbinati al movimento d'estratto per riferimento banca (ogni 30 min)",
+        name="Bonifici PDF abbinati al movimento d'estratto per riferimento banca (ogni ora)",
         replace_existing=True,
     )
 
@@ -2128,19 +2123,19 @@ def start_scheduler():
 
     scheduler.add_job(
         _notifiche_colazioni_job,
-        "interval",
+        "interval", minutes=10,
         minutes=1,
         next_run_time=avvio + timedelta(seconds=30),
         misfire_grace_time=60,
         coalesce=True,
         id="notifiche_operative_colazioni",
-        name="Acquisti Colazioni B&B al titolare via Telegram (ogni minuto)",
+        name="Acquisti Colazioni B&B al titolare via Telegram (ogni 10 min)",
         replace_existing=True,
     )
 
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
-    logger.info("   - Gmail Full Scan (tutte cartelle): ogni 3 ore")
+    logger.info("   - Gmail Full Scan (tutte cartelle): ogni giorno 5:45, ultimi 5 giorni")
     logger.info("   - Verbali Email: ogni ora")
     logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
