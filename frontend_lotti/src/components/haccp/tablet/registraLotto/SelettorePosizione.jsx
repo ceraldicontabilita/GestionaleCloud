@@ -64,6 +64,12 @@ export default function SelettorePosizione({
           )}
         </select>
       </div>
+      {destinazione === "banco" && (
+        <p style={{ fontSize: 10, color: "#7a4a14", margin: "6px 0 0", lineHeight: 1.35 }}>
+          “Subito al banco” sceglie solo la destinazione. Il lotto viene salvato nel Registro lotti
+          quando premi il pulsante finale; resta tracciato come consumato al banco con residuo zero.
+        </p>
+      )}
       {posizioneMancante && (
         <p style={{ fontSize: 11, fontWeight: 700, color: "#7c2d12", margin: "6px 0 0" }}>
           {banco
