@@ -27,17 +27,32 @@ function formattaRangeTemperatura(range) {
   return `${minimo}…${massimo}`;
 }
 
+export function rangeConformeHaccp(range, { operatore, valoreRegistrato } = {}) {
+  const rangeFormattato = formattaRangeTemperatura(range);
+  if (!rangeFormattato) return null;
+  const haValoreRegistrato = valoreRegistrato !== undefined && valoreRegistrato !== null;
+  return {
+    value: `${rangeFormattato}°`,
+    stampa: `${rangeFormattato} °C`,
+    className: "bg-[#e6efe9] text-[#3d8168] font-bold text-[9px] whitespace-nowrap",
+    stile: "background:#e6efe9;color:#3d8168;font-weight:bold;",
+    title: `Range conforme dichiarato: ${rangeFormattato} °C. ${haValoreRegistrato ? `Lettura registrata: ${valoreRegistrato}°C` : "Non è una misurazione numerica"}${operatore ? `, firmato da ${operatore}` : ""}`,
+    stato: "conforme",
+  };
+}
+
 export function statoCellaHaccp(record, range = null) {
   if (!record || typeof record !== "object") return null;
   if (record.temp !== undefined && record.temp !== null) return null;
   if (record.stato === STATO_CONFORME || record.esito === STATO_CONFORME) {
-    const rangeFormattato = formattaRangeTemperatura(range);
+    const rangeConforme = rangeConformeHaccp(range, { operatore: record.operatore });
+    if (rangeConforme) return rangeConforme;
     return {
-      value: rangeFormattato ? `${rangeFormattato}°` : "Conforme",
-      stampa: rangeFormattato ? `${rangeFormattato} °C` : "Conforme",
+      value: "Conforme",
+      stampa: "Conforme",
       className: "bg-[#e6efe9] text-[#3d8168] font-bold text-[9px] whitespace-nowrap",
       stile: "background:#e6efe9;color:#3d8168;font-weight:bold;",
-      title: `${rangeFormattato ? `Range conforme dichiarato: ${rangeFormattato} °C. Non è una misurazione numerica` : "Conforme: controllo visivo del responsabile"}${record.operatore ? `, firmato da ${record.operatore}` : ""}`,
+      title: `Conforme: controllo visivo del responsabile${record.operatore ? `, firmato da ${record.operatore}` : ""}`,
       stato: "conforme",
     };
   }
