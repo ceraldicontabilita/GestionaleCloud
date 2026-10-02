@@ -99,11 +99,13 @@ def _prodotti_pubblici(rows) -> list:
     return [prod_out(r) for r in rows if _pubblicabile(r)]
 
 
-async def _fetch_all():
+async def _fetch_all(*, catalogo_carta=False):
     categories = [cat_out(r) for r in supabase.table("menu_categories").select("*").order("id").execute().data]
     subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").order("id").execute().data]
     righe = supabase.table("menu_products").select("*").order("id").execute().data
-    products = _prodotti_pubblici(righe)
+    products = [prod_out(r) for r in righe if _pubblicabile(r) or (
+        catalogo_carta and r.get("origine") == "lotti" and _visibile(r)
+    )]
     return categories, subcategories, products
 
 

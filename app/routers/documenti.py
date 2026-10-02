@@ -3907,6 +3907,7 @@ async def upload_documento_automatico(
 
             nexi_result = await importa_estratto_nexi_pdf(
                 db, filename, content, source="documenti_upload_auto_nexi",
+                drive_file_id=source_context.get("drive_file_id"),
             )
             if not nexi_result.get("success"):
                 raise ValueError(nexi_result.get("message") or "Parsing Nexi fallito")

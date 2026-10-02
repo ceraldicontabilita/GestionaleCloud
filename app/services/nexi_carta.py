@@ -436,7 +436,9 @@ async def importa_estratto_nexi_pdf(
     condizioni = [{"content_sha256": content_sha256}]
     if drive_file_id:
         condizioni.append({"drive_file_id": drive_file_id})
-    existing = await db[COLL_ESTRATTI].find_one({"$or": condizioni}, {"_id": 0, "id": 1})
+    existing = await db[COLL_ESTRATTI].find_one(
+        {"$or": condizioni}, {"_id": 0, "id": 1, "drive_file_id": 1},
+    )
     statement_is_duplicate = bool(existing)
     if existing:
         # Un parser migliorato deve poter arricchire anche un PDF gia' noto
@@ -444,13 +446,16 @@ async def importa_estratto_nexi_pdf(
         # Continuiamo comunque fino alle transazioni: cosi' i record storici
         # ricevono la chiave operazione stabile e un import interrotto puo'
         # completare solo le righe realmente mancanti.
-        await db[COLL_ESTRATTI].update_one(
-            {"id": existing.get("id")},
-            {"$set": {
-                "metadata": result.get("metadata", {}),
-                "parser_updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
-        )
+        aggiorna = {
+            "metadata": result.get("metadata", {}),
+            "parser_updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        # Il collegamento al file Drive si scrive una volta e non si sovrascrive:
+        # lo statement nato da email o da Import non lo aveva.
+        if drive_file_id and not existing.get("drive_file_id"):
+            aggiorna["drive_file_id"] = drive_file_id
+            aggiorna["content_sha256"] = content_sha256
+        await db[COLL_ESTRATTI].update_one({"id": existing.get("id")}, {"$set": aggiorna})
 
     transazioni = result.get("transazioni", [])
     if not transazioni:

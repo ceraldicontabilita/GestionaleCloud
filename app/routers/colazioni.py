@@ -67,6 +67,20 @@ class AggiornaOrdineHotelRequest(BaseModel):
     pagamento: Optional[str] = None
 
 
+class MenuOspiteRequest(BaseModel):
+    codice: str = Field(min_length=4, max_length=80)
+    giorno: date
+
+
+class RigaMenuOspite(BaseModel):
+    prodotto_id: int = Field(gt=0)
+    quantita: int = Field(ge=1, le=20)
+
+
+class OrdineMenuOspiteRequest(MenuOspiteRequest):
+    righe: List[RigaMenuOspite] = Field(max_length=40)
+
+
 def _testo_normalizzato(valore: Any) -> str:
     testo = unicodedata.normalize("NFKD", str(valore or ""))
     testo = "".join(c for c in testo if not unicodedata.combining(c))
@@ -379,6 +393,58 @@ async def _rpc_bb(fn: str, args: Mapping[str, Any]) -> Any:
     except aiohttp.ClientError as exc:
         logger.error("%s non raggiungibile: %s", fn, exc)
         raise HTTPException(status_code=502, detail="Colazioni B&B non raggiungibile") from exc
+
+
+@router.post("/menu-ospite/catalogo", summary="Menu unico con i prezzi dell'hotel")
+async def catalogo_menu_ospite(richiesta: MenuOspiteRequest) -> Dict[str, Any]:
+    """Restituisce la carta pubblica filtrata dal listino assegnato al voucher.
+
+    Foto, descrizioni, sezioni e allergeni arrivano dal Menu digitale canonico;
+    Supabase aggiunge soltanto il prezzo concordato per la struttura.
+    """
+    assegnati = await _rpc_bb(
+        "bb_menu_ospite",
+        {"vid": richiesta.codice, "pgiorno": richiesta.giorno.isoformat()},
+    )
+    if not isinstance(assegnati, dict) or assegnati.get("errore"):
+        raise HTTPException(status_code=404, detail=(assegnati or {}).get("errore", "Codice non valido"))
+    from app.menu.carta_qromo import carta_pubblica
+
+    carta = await carta_pubblica()
+    prezzi = {
+        int(p["prodotto_id"]): int(Decimal(str(p["prezzo"])) * 100)
+        for p in assegnati.get("prodotti", [])
+        if p.get("prodotto_id") is not None and _decimale_positivo(p.get("prezzo"))
+    }
+    items = [{**i, "p": prezzi[i["id"]], "fp": prezzi[i["id"]]} for i in carta["items"] if i["id"] in prezzi]
+    categorie = {i["c"] for i in items}
+    cats = [c for c in carta["cats"] if c["id"] in categorie]
+    menu_ids = {c["m"] for c in cats}
+    return {
+        "menus": [m for m in carta["menus"] if m["id"] in menu_ids],
+        "cats": cats,
+        "items": items,
+        "bb": {
+            "codice": richiesta.codice.upper().strip(),
+            "giorno": richiesta.giorno.isoformat(),
+            "struttura": assegnati.get("struttura", ""),
+        },
+    }
+
+
+@router.post("/menu-ospite/ordine", summary="Salva il carrello del cliente B&B")
+async def salva_menu_ospite(richiesta: OrdineMenuOspiteRequest) -> Dict[str, Any]:
+    risultato = await _rpc_bb(
+        "bb_ospite_menu_salva",
+        {
+            "vid": richiesta.codice,
+            "pgiorno": richiesta.giorno.isoformat(),
+            "righe": [r.model_dump() for r in richiesta.righe],
+        },
+    )
+    if not isinstance(risultato, dict) or risultato.get("errore"):
+        raise HTTPException(status_code=422, detail=(risultato or {}).get("errore", "Ordine non salvato"))
+    return risultato
 
 
 async def _contesto_ordine_albergatore(sid: str, token: str) -> tuple[dict[str, Any], dict[str, Any]]:

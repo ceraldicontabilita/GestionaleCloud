@@ -186,6 +186,7 @@ function CardInMenu({ ricetta, indice, onApri }) {
 // Le ricette già in archivio prima del ponte non sono mai arrivate nel Menu.
 // Mai in automatico all'apertura: prima la simulazione, poi la conferma.
 function RipubblicaMenu() {
+  const [pubblicaTutte, setPubblicaTutte] = useState(true);
   const [anteprima, setAnteprima] = useState(null);
   const [stato, setStato] = useState(null);
   const [occupato, setOccupato] = useState("");
@@ -206,6 +207,8 @@ function RipubblicaMenu() {
         timer.current = setTimeout(sonda, 2500);
       } else if (r.data?.stato === "completato") {
         toast("Ripubblicazione nel Menu completata");
+      } else if (r.data?.stato === "completato_parziale") {
+        toast(`Ripubblicazione parziale: ${r.data?.risultato?.errori || 0} prodotti da verificare`, "err");
       } else if (r.data?.stato === "errore") {
         toast(`Ripubblicazione interrotta: ${r.data?.errore || "errore sconosciuto"}`, "err");
       }
@@ -217,7 +220,7 @@ function RipubblicaMenu() {
   const simula = async () => {
     setOccupato("dry");
     try {
-      const r = await axios.post(`${API}/ricette-ripubblica-menu?dry_run=true`);
+      const r = await axios.post(`${API}/ricette-ripubblica-menu?dry_run=true&pubblica_tutte=${pubblicaTutte}`);
       setAnteprima(r.data || null);
     } catch (e) {
       toast(messaggio(e, "Simulazione non riuscita"), "err");
@@ -231,15 +234,15 @@ function RipubblicaMenu() {
     const ok = await conferma(
       `Rimando nel Menu tutte le ${a.ricette_totali ?? "?"} ricette?\n\n` +
       `• ${a.visibili ?? "?"} resteranno visibili ai clienti\n` +
-      `• ${a.nascoste ?? "?"} arriveranno nascoste (non le hai spuntate)\n` +
-      `• ${a.senza_prezzo_tavolo ?? "?"} non hanno prezzo al tavolo: mostreranno quello al banco\n\n` +
+      `• ${a.nascoste ?? "?"} arriveranno nascoste\n` +
+      `• ${a.senza_prezzo ?? "?"} senza prezzo appariranno nella carta con «Prezzo da definire»\n\n` +
       "Il giro non crea doppioni: aggiorna ciò che c'è già.",
       { titolo: "Ripubblica nel Menu", ok: "Ripubblica" },
     );
     if (!ok) return;
     setOccupato("run");
     try {
-      const r = await axios.post(`${API}/ricette-ripubblica-menu`);
+      const r = await axios.post(`${API}/ricette-ripubblica-menu?pubblica_tutte=${pubblicaTutte}`);
       toast(r.data?.messaggio || "Ripubblicazione avviata");
       setStato({ stato: "in_corso", in_corso: true, avanzamento: { fatte: 0, totale: anteprima?.ricette_totali || 0 } });
       sonda();
@@ -266,10 +269,15 @@ function RipubblicaMenu() {
         </h2>
       </div>
       <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: "var(--text-2)", lineHeight: 1.45 }}>
-        Le ricette salvate prima che esistesse il ponte non sono mai arrivate nel Menu.
-        Questo giro le rimanda tutte: chi non è spuntato arriva <strong>nascosto</strong>, mai visibile.
-        Prima guarda i numeri, poi conferma.
+        Pubblica le ricette nella carta con la categoria del reparto e le foto già associate.
+        Senza prezzo compare «Prezzo da definire»; gli ordini richiedono un prezzo valido.
       </p>
+
+      <label style={{display: "flex", alignItems: "center", gap: 10, minHeight: 44, fontWeight: 700}}>
+        <input type="checkbox" checked={pubblicaTutte} disabled={!!occupato || inCorso}
+          onChange={e => { setPubblicaTutte(e.target.checked); setAnteprima(null); }} />
+        Spunta tutte le ricette per il Menu pubblico
+      </label>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" onClick={simula} disabled={!!occupato || inCorso} style={bottone(false)}>
@@ -295,6 +303,7 @@ function RipubblicaMenu() {
           <span>Ricette in tutto: {anteprima.ricette_totali ?? 0}</span>
           <span>Visibili ai clienti: {anteprima.visibili ?? 0} · nascoste: {anteprima.nascoste ?? 0}</span>
           <span>Senza prezzo al tavolo: {anteprima.senza_prezzo_tavolo ?? 0} (esporranno il prezzo al banco)</span>
+          <span>Senza prezzo: {anteprima.senza_prezzo ?? 0} (nella carta: Prezzo da definire)</span>
           {(anteprima.campioni_senza_prezzo_tavolo || []).length > 0 && (
             <span style={{ fontWeight: 600 }}>
               Per esempio: {(anteprima.campioni_senza_prezzo_tavolo || []).slice(0, 5).map((c) => c.nome).join(", ")}
@@ -313,6 +322,7 @@ function RipubblicaMenu() {
           <span>
             {inCorso ? `In corso: ${avanz.fatte ?? 0} di ${avanz.totale ?? 0}`
               : stato.stato === "completato" ? "Completata"
+                : stato.stato === "completato_parziale" ? `Parziale: ${stato.risultato?.errori || 0} errori`
                 : stato.stato === "errore" ? `Errore: ${stato.errore || "sconosciuto"}`
                   : "Nessuna ripubblicazione in corso"}
           </span>
