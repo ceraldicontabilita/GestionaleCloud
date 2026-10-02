@@ -12,16 +12,32 @@
 export const STATO_CONFORME = "conforme";
 export const STATO_DA_RILEVARE = "da_rilevare";
 
-export function statoCellaHaccp(record) {
+function formattaLimiteTemperatura(value, mostraPiu = false) {
+  const numero = Number(value);
+  if (!Number.isFinite(numero)) return null;
+  if (numero < 0) return `−${Math.abs(numero)}`;
+  if (mostraPiu && numero > 0) return `+${numero}`;
+  return String(numero);
+}
+
+function formattaRangeTemperatura(range) {
+  const minimo = formattaLimiteTemperatura(range?.min);
+  const massimo = formattaLimiteTemperatura(range?.max, true);
+  if (minimo === null || massimo === null) return null;
+  return `${minimo}…${massimo}`;
+}
+
+export function statoCellaHaccp(record, range = null) {
   if (!record || typeof record !== "object") return null;
   if (record.temp !== undefined && record.temp !== null) return null;
   if (record.stato === STATO_CONFORME || record.esito === STATO_CONFORME) {
+    const rangeFormattato = formattaRangeTemperatura(range);
     return {
-      value: "C",
-      stampa: "C",
-      className: "bg-[#e6efe9] text-[#3d8168] font-bold",
+      value: rangeFormattato ? `${rangeFormattato}°` : "Conforme",
+      stampa: rangeFormattato ? `${rangeFormattato} °C` : "Conforme",
+      className: "bg-[#e6efe9] text-[#3d8168] font-bold text-[9px] whitespace-nowrap",
       stile: "background:#e6efe9;color:#3d8168;font-weight:bold;",
-      title: `Conforme: controllo visivo del responsabile${record.operatore ? `, firmato da ${record.operatore}` : ""}`,
+      title: `${rangeFormattato ? `Range conforme dichiarato: ${rangeFormattato} °C. Non è una misurazione numerica` : "Conforme: controllo visivo del responsabile"}${record.operatore ? `, firmato da ${record.operatore}` : ""}`,
       stato: "conforme",
     };
   }
@@ -49,4 +65,4 @@ export function statoCellaHaccp(record) {
 }
 
 export const LEGENDA_STATI_HACCP =
-  "C = conforme (controllo visivo firmato dal responsabile) · N.R. = non rilevato · D.R. / … = da rilevare";
+  "Intervallo in cella = range conforme dichiarato (non misura numerica) · N.R. = non rilevato · D.R. / … = da rilevare";
