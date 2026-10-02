@@ -18,9 +18,9 @@ from pydantic import BaseModel, Field
 
 from app.database import Database
 from app.services import f24_controllo_incrociato as controllo
-from app.utils.dependencies import get_current_user
+from app.utils.dependencies import get_current_admin_user
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_admin_user)])
 
 
 class RigaAvvisoBonario(BaseModel):
@@ -44,7 +44,6 @@ class AvvisoBonarioRequest(BaseModel):
 @router.post("/avviso-bonario/controllo", summary="Interroga un avviso bonario: controllo incrociato per riga")
 async def controllo_avviso_bonario(
     body: AvvisoBonarioRequest,
-    _user: Dict[str, Any] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     db = Database.get_db()
     try:

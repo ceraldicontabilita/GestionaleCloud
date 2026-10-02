@@ -25,7 +25,8 @@ from app.services import f24_anomalie as fa
 from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+# Dati fiscali del titolare: ogni rotta e' solo admin (prima solo PUT e rileva lo erano).
+router = APIRouter(dependencies=[Depends(get_current_admin_user)])
 
 # Consolidamento F24 (P1 §5.1): collezione canonica UNICA `f24_unificato`. La
 # vecchia `f24_commercialista` (letterale) è stata migrata qui in modo non
