@@ -332,16 +332,19 @@ def test_router_riservato_all_amministratore():
 
 def test_regolarizza_chiusure_sostituisce_solo_non_firmate_e_salva_originale():
     archivio = AsyncMongoMockClient()["chiusure_test"]
+    run(archivio.attrezzature_config.insert_one({
+        "tipo": "congelatore", "numero": 1, "attivo": True,
+    }))
     run(archivio.temperature_negative.insert_many([
         {
-            "id": "neg-2026", "anno": "2026", "attivo": True,
+            "id": "neg-2026", "anno": "2026", "congelatore_numero": 1,
             "temperature": {"4": {
                 "5": {"temp": -19, "firma_verificata": False, "origine": "import_excel"},
                 "6": {"temp": -20, "firma_verificata": True},
             }},
         },
         {
-            "id": "neg-dismesso", "anno": 2026, "attivo": False,
+            "id": "neg-dismesso", "anno": 2026, "congelatore_numero": 5,
             "temperature": {"4": {"5": {"temp": -18, "firma_verificata": False}}},
         },
     ]))

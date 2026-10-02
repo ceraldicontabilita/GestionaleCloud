@@ -469,15 +469,36 @@ async def regolarizza_temperature_chiusure(
     firmate_saltate = 0
     vuote_saltate = 0
 
+    # `attivo` sulle schede annuali non e' un dato persistito affidabile: la
+    # vista lo calcola dalla configurazione centralizzata.  Filtrare il campo
+    # della scheda lasciava quindi passare vecchi Foglio5/Foglio6.  La fonte
+    # canonica e' `attrezzature_config`, la stessa usata dalla pagina degli
+    # apparecchi e dai registri correnti.
+    configurazione = {}
+    for tipo, collection, campo_numero in (
+        ("frigo", "temperature_positive", "frigorifero_numero"),
+        ("congelatore", "temperature_negative", "congelatore_numero"),
+    ):
+        attivi = await db.attrezzature_config.find(
+            {"tipo": tipo, "attivo": {"$ne": False}}, {"_id": 0, "numero": 1}
+        ).to_list(None)
+        configurazione[collection] = {
+            "campo": campo_numero,
+            "numeri": {int(x["numero"]) for x in attivi if x.get("numero") is not None},
+        }
+
     for collection in TEMPERATURE:
+        cfg = configurazione[collection]
         docs = await getattr(db, collection).find(
-            {
-                "anno": {"$in": [anno, str(anno)]},
-                "attivo": {"$ne": False},
-            },
-            {"_id": 0},
+            {"anno": {"$in": [anno, str(anno)]}}, {"_id": 0}
         ).to_list(None)
         for doc in docs:
+            try:
+                numero = int(doc.get(cfg["campo"]))
+            except (TypeError, ValueError):
+                continue
+            if numero not in cfg["numeri"]:
+                continue
             for data_calendario, info in sorted(chiusure.items()):
                 try:
                     if "/" in data_calendario:
