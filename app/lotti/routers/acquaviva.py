@@ -108,6 +108,11 @@ async def inizializza_mapping_vandemoortele_2026() -> dict:
             "peso_totale_cartone_g": round(grammi * pezzi, 2) if grammi and pezzi else 0,
             "categoria_aqv": riga.get("categoria_aqv", ""),
             "categoria_vdm": riga.get("categoria_vdm", ""),
+            # Il sito e le fatture arrivano dal distributore Acquaviva, ma le
+            # referenze presenti nel listino VDM hanno una provenienza prodotto
+            # distinta. Prima tutte le 259 righe risultavano Acquaviva.
+            "fonte": "vandemoortele",
+            "distributore": "Dolciaria Acquaviva",
             "data_listino": "2026-01-01",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -132,6 +137,48 @@ async def inizializza_mapping_vandemoortele_2026() -> dict:
         "alias_aggiornati": len(operazioni) - aggiornati_listino,
         "righe_listino": len(payload.get("prodotti", [])),
     }
+
+
+_CAMPI_LINK_RICETTA = (
+    "prodotto_master_id", "master_id", "prodotto_id",
+    "prodotto_dizionario_id", "prodotto_key",
+)
+
+
+def _identita_link(documento: dict) -> set[str]:
+    if not isinstance(documento, dict):
+        return set()
+    return {
+        str(documento.get(campo)).strip()
+        for campo in _CAMPI_LINK_RICETTA
+        if str(documento.get(campo) or "").strip()
+    }
+
+
+async def _stato_uso_ricette(ids_catalogo: set[str]) -> tuple[set[str], set[str]]:
+    """Restituisce (usati davvero, disponibili nell'autocomplete).
+
+    ``in_ricette`` non deve significare soltanto che il prodotto e' stato
+    copiato nel dizionario: e' vero esclusivamente quando una ricetta conserva
+    lo stesso id canonico in un ingrediente strutturato.
+    """
+    disponibili_docs = await db.dizionario_prodotti.find(
+        {"id": {"$in": list(ids_catalogo)}, "attivo": {"$ne": False}},
+        {"_id": 0, "id": 1},
+    ).to_list(5000) if ids_catalogo else []
+    disponibili = {str(p.get("id")) for p in disponibili_docs if p.get("id")}
+    usati: set[str] = set()
+    ricette = await db.ricette.find(
+        {}, {"_id": 0, "ingredienti_dettaglio": 1, "ingredienti": 1}
+    ).to_list(5000)
+    for ricetta in ricette:
+        dettagli = [
+            *(ricetta.get("ingredienti_dettaglio") or []),
+            *(ricetta.get("ingredienti") or []),
+        ]
+        for dettaglio in dettagli:
+            usati.update(_identita_link(dettaglio) & ids_catalogo)
+    return usati, disponibili
 
 ACQUAVIVA_CATEGORIE = [
     {"nome": "Prelievitati", "img": ""},
@@ -591,14 +638,12 @@ async def get_acquaviva_prodotti(
     if categoria:
         query["categoria"] = {"$regex": categoria, "$options": "i"}
     items = await db.acquaviva_prodotti.find(query, {"_id": 0}).sort("nome", 1).to_list(1000)
-    ids = [p.get("id") for p in items if p.get("id")]
-    if ids:
-        attivi = await db.dizionario_prodotti.find(
-            {"id": {"$in": ids}, "attivo": {"$ne": False}}, {"_id": 0, "id": 1}
-        ).to_list(2000)
-        attivi_ids = {p.get("id") for p in attivi}
-        for prodotto in items:
-            prodotto["in_ricette"] = prodotto.get("id") in attivi_ids
+    ids = {str(p.get("id")) for p in items if p.get("id")}
+    usati_ids, disponibili_ids = await _stato_uso_ricette(ids)
+    for prodotto in items:
+        pid = str(prodotto.get("id") or "")
+        prodotto["in_ricette"] = pid in usati_ids
+        prodotto["disponibile_ricette"] = pid in disponibili_ids
     # Prezzo e flag "già acquistato" SOLO dalle fatture reali (match per nome ufficiale),
     # stesso meccanismo di SAIMA/MEPA. I prodotti mai comprati restano senza prezzo.
     try:
@@ -1229,16 +1274,12 @@ async def get_cartelli_bar(
             {"codice_aqv_2026": {"$regex": re.escape(search), "$options": "i"}},
         ]
     prodotti = await db.acquaviva_prodotti.find(query, {"_id": 0}).sort("nome", 1).to_list(5000)
-    ids = [p.get("id") for p in prodotti if p.get("id")]
-    attivi = set()
-    if ids:
-        usati = await db.dizionario_prodotti.find(
-            {"id": {"$in": ids}, "attivo": {"$ne": False}}, {"_id": 0, "id": 1}
-        ).to_list(5000)
-        attivi = {p.get("id") for p in usati}
+    ids = {str(p.get("id")) for p in prodotti if p.get("id")}
+    usati, disponibili = await _stato_uso_ricette(ids)
     risultato = []
     for prodotto in prodotti:
-        in_ricette = prodotto.get("id") in attivi
+        pid = str(prodotto.get("id") or "")
+        in_ricette = pid in usati
         if solo_in_ricette and not in_ricette:
             continue
         risultato.append({
@@ -1250,9 +1291,130 @@ async def get_cartelli_bar(
             "ingredienti": prodotto.get("ingredienti_str"),
             "allergeni": prodotto.get("allergeni") or [],
             "in_ricette": in_ricette,
+            "disponibile_ricette": pid in disponibili,
             "fonte": prodotto.get("fonte"),
         })
     return {"prodotti": risultato, "totale": len(risultato)}
+
+
+@router.post("/bonifica-allergeni-cartelli")
+async def bonifica_allergeni_cartelli(
+    dry_run: bool = Query(True),
+    conferma: str = Query(""),
+    _admin=Depends(require_admin),
+):
+    """Rende attendibili allergeni, fonte e flag ricetta del catalogo.
+
+    Le liste ingredienti del PDF sono la sola fonte usata per dichiarare gli
+    allergeni. Per i prodotti senza lista non si deduce nulla dal nome o dalla
+    descrizione: i vecchi suggerimenti vengono conservati in un campo storico,
+    ma tolti dalla dichiarazione vigente e il cartello resta non stampabile.
+    """
+    if not dry_run and conferma != "BONIFICA_CATALOGO":
+        raise HTTPException(400, "Per scrivere serve conferma=BONIFICA_CATALOGO")
+    from app.lotti.allergeni import rileva_allergeni as rileva_allergeni_ufficiali
+
+    payload = json.loads(_LISTINO_2026_PATH.read_text(encoding="utf-8"))
+    codici_vdm = {
+        re.sub(r"\s+", "", str(r.get(campo) or "")).upper()
+        for r in payload.get("prodotti", [])
+        for campo in ("codice_aqv_2025", "codice_aqv_2026")
+        if str(r.get(campo) or "").strip()
+    }
+    prodotti = await db.acquaviva_prodotti.find(
+        {"fonte": {"$in": ["acquaviva", "vandemoortele"]}}, {"_id": 0}
+    ).to_list(5000)
+    ids = {str(p.get("id")) for p in prodotti if p.get("id")}
+    usati, disponibili = await _stato_uso_ricette(ids)
+    ora = datetime.now(timezone.utc).isoformat()
+    riepilogo = {
+        "dry_run": dry_run, "totale": len(prodotti), "con_lista": 0,
+        "senza_lista": 0, "cartelli_stampabili": 0, "in_ricette": len(usati),
+        "disponibili_ricette": len(disponibili), "vandemoortele": 0,
+        "acquaviva": 0, "aggiornati": 0,
+    }
+    allergeni_per_id: dict[str, list[str]] = {}
+    for prodotto in prodotti:
+        pid = str(prodotto.get("id") or "")
+        ingredienti = str(prodotto.get("ingredienti_str") or prodotto.get("ingredienti") or "").strip()
+        codice_set = {c.upper() for c in _codici_catalogo(prodotto)}
+        fonte = "vandemoortele" if codice_set & codici_vdm else "acquaviva"
+        riepilogo[fonte] += 1
+        campi = {
+            "fonte": fonte,
+            "distributore": "Dolciaria Acquaviva",
+            "in_ricette": pid in usati,
+            "disponibile_ricette": pid in disponibili,
+            "bonifica_catalogo_il": ora,
+        }
+        if ingredienti:
+            allergeni, _ = rileva_allergeni_ufficiali([ingredienti])
+            campi.update({
+                "allergeni": allergeni,
+                "allergeni_verificati": True,
+                "allergeni_da_verificare": False,
+                "cartello_stampabile": bool(prodotto.get("foto_url") or prodotto.get("immagine_url")),
+            })
+            allergeni_per_id[pid] = allergeni
+            riepilogo["con_lista"] += 1
+            riepilogo["cartelli_stampabili"] += int(campi["cartello_stampabile"])
+        else:
+            precedenti = list(
+                prodotto.get("allergeni_precedenti_non_verificati")
+                or prodotto.get("allergeni")
+                or []
+            )
+            campi.update({
+                "allergeni": [],
+                "allergeni_precedenti_non_verificati": precedenti,
+                "allergeni_verificati": False,
+                "allergeni_da_verificare": True,
+                "cartello_stampabile": False,
+            })
+            riepilogo["senza_lista"] += 1
+        if not dry_run:
+            await db.acquaviva_prodotti.update_one({"id": pid}, {"$set": campi})
+            for collection in (db.dizionario_prodotti, db.dizionario_ingredienti):
+                await collection.update_one({"id": pid}, {"$set": campi})
+            riepilogo["aggiornati"] += 1
+
+    if not dry_run and allergeni_per_id:
+        ricette = await db.ricette.find(
+            {}, {"_id": 0, "id": 1, "ingredienti_dettaglio": 1,
+                 "ingredienti": 1, "allergeni": 1, "allergeni_auto": 1,
+                 "allergeni_da_confermare": 1}
+        ).to_list(5000)
+        ricette_aggiornate = 0
+        for ricetta in ricette:
+            collegati: list[str] = []
+            dettagli = [*(ricetta.get("ingredienti_dettaglio") or []), *(ricetta.get("ingredienti") or [])]
+            for dettaglio in dettagli:
+                for pid in _identita_link(dettaglio):
+                    for allergene in allergeni_per_id.get(pid, []):
+                        if allergene not in collegati:
+                            collegati.append(allergene)
+            if not collegati:
+                continue
+            vigenti = list(ricetta.get("allergeni") or [])
+            automatici = list(ricetta.get("allergeni_auto") or [])
+            nuovi = [a for a in collegati if a not in vigenti]
+            for allergene in collegati:
+                if allergene not in vigenti:
+                    vigenti.append(allergene)
+                if allergene not in automatici:
+                    automatici.append(allergene)
+            await db.ricette.update_one({"id": ricetta["id"]}, {"$set": {
+                "allergeni": vigenti,
+                "allergeni_auto": automatici,
+                "allergeni_catalogo_fornitore": collegati,
+                "allergeni_catalogo_aggiornati_il": ora,
+                "allergeni_da_confermare": bool(
+                    ricetta.get("allergeni_da_confermare") or nuovi
+                ),
+            }})
+            ricette_aggiornate += 1
+        riepilogo["ricette_aggiornate"] = ricette_aggiornate
+    return riepilogo
 
 
 @router.put("/prodotti/{prodotto_id}/prezzo")
