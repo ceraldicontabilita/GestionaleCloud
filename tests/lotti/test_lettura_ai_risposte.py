@@ -32,23 +32,16 @@ def test_senza_array_niente():
     assert ai._estrai_array("") == []
 
 
-class _Risposta:
-    def __init__(self, corpo):
-        self._corpo = corpo
-
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self._corpo
-
-
 class _Client:
+    """Un ``LlmChat`` finto: torna il testo scelto con lo ``stop_reason`` scelto."""
+
     def __init__(self, testo, stop="end_turn"):
         self.testo, self.stop = testo, stop
 
-    async def post(self, *a, **k):
-        return _Risposta({"content": [{"type": "text", "text": self.testo}], "stop_reason": self.stop})
+    async def crea_messaggio(self, messages, **kw):
+        return {"content": [{"type": "text", "text": self.testo}], "stop_reason": self.stop,
+                "testo": self.testo, "fonti_web": [], "usage": {"input_tokens": 1, "output_tokens": 1},
+                "modello": "finto", "tentativi": 1}
 
 
 def test_la_diagnosi_dice_perche_una_risposta_e_vuota(monkeypatch):

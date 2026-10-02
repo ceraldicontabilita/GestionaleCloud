@@ -18,10 +18,8 @@ Prezzo (decisione del titolare 19/09/2026): la ricetta ha due prezzi, al banco
 (``prezzo_vendita``, quello del food cost) e al tavolo (``prezzo_tavolo``). Il
 Menu digitale mostra il prezzo AL TAVOLO. Finche' il prezzo al tavolo non e'
 stato deciso si continua a esporre quello al banco (vedi ``prezzo_per_menu``).
-Una ricetta **senza nessuno dei due prezzi** viene pubblicata ma resta
-nascosta (``visible = false``): senza prezzo il carrello del Menu la
-conterebbe 0 euro. Il caso e' segnalato nell'esito (``prezzo_mancante``,
-``motivo_nascosto``) e contato dal backfill.
+Una ricetta senza prezzo compare nella carta con «Prezzo da definire».
+Le API del catalogo ordinabile la escludono finche' non ha un prezzo valido.
 
 Categoria: ogni ricetta operativa va nella categoria canonica "Produzione
 Ceraldi" e nella sottocategoria derivata dal reparto. Non esiste una seconda
@@ -351,10 +349,10 @@ def _immagine_per_prodotto(ricetta: dict, foto: Optional[dict], esistente: Optio
     """URL da scrivere in ``image``: lo stesso oggetto Storage di Lotti;
     per una foto storica copia i byte una sola volta, altrimenti conserva un
     eventuale URL assoluto gia' pubblico o quello gia' presente."""
+    if foto and foto.get("storage_path"):
+        from app.lotti.servizi import supabase_foto_ricette
+        return supabase_foto_ricette.url_pubblico(str(foto["storage_path"]))
     if foto and foto.get("data"):
-        if foto.get("storage_path"):
-            from app.lotti.servizi import supabase_foto_ricette
-            return supabase_foto_ricette.url_pubblico(str(foto["storage_path"]))
         foto_id = str(foto["_id"])
         attuale = (esistente or {}).get("image") or ""
         if f"/{STORAGE_PREFIX}/{foto_id}." in attuale:
@@ -375,16 +373,11 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
     immagine = _immagine_per_prodotto(ricetta, foto, esistente)
     prezzo, prezzo_origine = prezzo_per_menu(ricetta)
 
-    # Senza NESSUN prezzo (ne' tavolo ne' banco) la riga non puo' diventare
-    # visibile: `price` resterebbe "" e il carrello del Menu la conteggerebbe
-    # 0 euro (`order_models.compute_total` scarta il valore non numerico e
-    # continua), cioe' un prodotto ordinabile gratis. La riga si pubblica
-    # comunque, ma nascosta: resta idempotente per `lotti_ref` e torna
-    # visibile da sola appena il titolare mette un prezzo. Non si inventa un
-    # prezzo di ripiego.
+    # La carta mostra anche le ricette senza prezzo come catalogo. Le API
+    # dei prodotti ordinabili continuano a richiedere un prezzo valido.
     prezzo_mancante = prezzo is None
     visibile_richiesta = bool(visibile)
-    visibile_effettivo = visibile_richiesta and not prezzo_mancante
+    visibile_effettivo = visibile_richiesta
 
     riga = {
         "category_id": categoria_id,
@@ -399,6 +392,7 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         "origine": ORIGINE_LOTTI,
         "lotti_ref": lotti_ref,
         "visible": visibile_effettivo,
+        "menu_bb": ricetta.get("menu_bb") is not False,
     }
 
     if esistente:
@@ -422,9 +416,7 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         "price": prezzo or "",
         "prezzo_origine": prezzo_origine,
         "prezzo_mancante": prezzo_mancante,
-        "motivo_nascosto": (
-            "prezzo_assente" if prezzo_mancante and visibile_richiesta else None
-        ),
+        "motivo_nascosto": None,
     }
 
 
@@ -439,12 +431,9 @@ def _rimuovi_sync(lotti_ref: str) -> dict:
 async def _foto_ricetta(ricetta: dict, db: Any) -> Optional[dict]:
     storage_path = str(ricetta.get("foto_storage_path") or "").strip()
     if storage_path:
-        from app.lotti.servizi import supabase_foto_ricette
-        contenuto = await asyncio.to_thread(supabase_foto_ricette.leggi, storage_path)
         return {
             "_id": str(ricetta.get("foto_id") or storage_path),
             "mime": str(ricetta.get("foto_content_type") or "image/jpeg"),
-            "data": contenuto,
             "sha256": ricetta.get("foto_sha256"),
             "storage_path": storage_path,
         }

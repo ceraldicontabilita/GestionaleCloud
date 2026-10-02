@@ -960,7 +960,6 @@ async def _proponi_ingredienti_per_nome(nome: str, porzioni: int = 10) -> dict:
     archivio. In coda, i gusti scritti nel nome entrano sempre.
     Estratto dall'endpoint (25/07/2026) per riusarlo nella compilazione di
     massa: unica logica, un solo posto da correggere."""
-    import os
 
     class _R:  # compat con il corpo storico (req.porzioni)
         pass
@@ -970,29 +969,22 @@ async def _proponi_ingredienti_per_nome(nome: str, porzioni: int = 10) -> dict:
 
     ingredienti = None
     fonte = "kb"
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    from app.services.anthropic_llm_client import LlmChat, UserMessage, chiave_api, modello_veloce
+    key = chiave_api()
     if key:
         try:
-            import asyncio
-            from anthropic import Anthropic
             # timeout esplicito: senza, una chiamata appesa tiene il bottone
             # «Proponi» su "Penso…" per sempre (l'utente la vede come rotta)
-            client = Anthropic(api_key=key, timeout=25.0, max_retries=1)
+            chat = LlmChat(key, model=modello_veloce(), timeout_s=25.0, tentativi=2, max_tokens=700,
+                           scopo="lotti_ricette")
             prompt = (
                 f"Sei un esperto di pasticceria e rosticceria italiana e napoletana. "
                 f"Per la ricetta \"{nome}\" elenca gli ingredienti tipici per circa {req.porzioni} porzioni. "
                 f"Rispondi SOLO con un array JSON di oggetti con chiavi: nome (stringa), quantita (numero), "
                 f"unita (g, ml oppure pz). Nessun testo prima o dopo l'array."
             )
-            # client sincrono: la chiamata (secondi) va in un thread, non deve
-            # bloccare l'event loop dell'intera app
-            msg = await asyncio.to_thread(
-                client.messages.create,
-                model="claude-haiku-4-5-20251001",
-                max_tokens=700,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            txt = "".join(getattr(b, "text", "") for b in msg.content)
+            # la chiamata (secondi) gira in un thread dentro al client, non sul loop
+            txt = await chat.send_message(UserMessage(content=prompt))
             m = re.search(r"\[.*\]", txt, re.S)
             if m:
                 arr = _json.loads(m.group(0))
@@ -1506,8 +1498,8 @@ async def leggi_ingredienti_foto(req: LeggiFotoReq):
     """AI-visione: riceve la FOTO di un'etichetta/confezione (base64) e ne estrae
     la lista ingredienti pronta per l'editor ricetta. Ritorna lo stesso formato di
     /suggerisci-ingredienti: {ok, fonte, ingredienti:[{nome,quantita,unita}]}."""
-    import os
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    from app.services.anthropic_llm_client import ImageContent, LlmChat, UserMessage, chiave_api, modello_veloce
+    key = chiave_api()
     if not key:
         raise HTTPException(503, "AI-visione non disponibile (manca ANTHROPIC_API_KEY)")
     img = (req.immagine_base64 or "").strip()
@@ -1521,25 +1513,15 @@ async def leggi_ingredienti_foto(req: LeggiFotoReq):
         except Exception:
             pass
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                json={
-                    "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 900,
-                    "messages": [{"role": "user", "content": [
-                        {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img}},
-                        {"type": "text", "text": (
-                            "Leggi l'etichetta/confezione alimentare in foto ed estrai la lista degli INGREDIENTI. "
-                            "Rispondi SOLO con un array JSON di oggetti con chiavi: nome (stringa), quantita (numero, "
-                            "0 se non indicata), unita (g, ml oppure pz). Niente testo prima o dopo l'array."
-                        )},
-                    ]}],
-                },
-            )
-        txt = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
+        chat = LlmChat(key, model=modello_veloce(), timeout_s=60.0, tentativi=1, max_tokens=900,
+                       scopo="lotti_foto_ingredienti")
+        txt = await chat.send_message(UserMessage(
+            content=(
+                "Leggi l'etichetta/confezione alimentare in foto ed estrai la lista degli INGREDIENTI. "
+                "Rispondi SOLO con un array JSON di oggetti con chiavi: nome (stringa), quantita (numero, "
+                "0 se non indicata), unita (g, ml oppure pz). Niente testo prima o dopo l'array."
+            ),
+            images=[ImageContent(image_data=img, mime_type=media_type)]))
     except Exception as e:
         logging.getLogger(__name__).warning("[food-cost] AI-visione fallita: %s %s", type(e).__name__, e)
         raise HTTPException(502, f"AI-visione fallita ({type(e).__name__}): riprova o compila a mano") from e

@@ -34,6 +34,7 @@ import ColazioneAcquavivaView from "./ColazioneAcquavivaView";
 import { API, fotoSrc }       from "../../utils/constants";
 import { clearTabletSession, getTabletSession } from "../../utils/tabletSession";
 import { logout } from "../../auth";
+import GruppiProduzioneRicette from "./GruppiProduzioneRicette";
 
 const REPARTI_INFO = {
   pasticceria: { emoji:"🍰", label:"Pasticceria", grad:"linear-gradient(135deg,#fb923c,#ea580c)", colore:"#c2410c", cruscotto:true },
@@ -56,6 +57,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   const [prodotti,            setProdotti]            = useState([]);
   const [loading,             setLoading]             = useState(true);
   const [search,              setSearch]              = useState("");
+  const [gruppo, setGruppo] = useState("tutte");
   const [prodottoSel,         setProdottoSel]         = useState(null);
   const [showAdmin,           setShowAdmin]           = useState(false);
   const [cambiaFotoProd,      setCambiaFotoProd]      = useState(null);
@@ -63,7 +65,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   // dipendente deve poter LEGGERE la ricetta, non modificarla).
   const [ricettaDaVedere,     setRicettaDaVedere]     = useState(null);
   const [showAlpha,           setShowAlpha]           = useState(false);
-  const [showColazione,       setShowColazione]       = useState(false);
+  const [showColazione,       setShowColazione]       = useState(() => window.location.hash.includes("/colazione"));
   const [showRichiediMerce,   setShowRichiediMerce]   = useState(false);
   const [showAggiungi,        setShowAggiungi]        = useState(false);
   const [escludendoId,        setEscludendoId]        = useState(null);
@@ -72,16 +74,36 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   const [showTask,            setShowTask]            = useState(false);
   // Pasticceria e Rosticceria si aprono sul cruscotto del reparto; le card
   // dei prodotti sono la vista «Produci».
-  const [vista,               setVista]               = useState(REPARTI_INFO[repartoIniziale]?.cruscotto ? "cruscotto" : "prodotti");
+  const [vista,               setVista]               = useState(window.location.hash.endsWith("/produci") ? "prodotti" : REPARTI_INFO[repartoIniziale]?.cruscotto ? "cruscotto" : "prodotti");
+  useEffect(() => {
+    const leggi = () => {
+      setShowColazione(window.location.hash.includes("/colazione"));
+      setVista(window.location.hash.endsWith("/produci") ? "prodotti" : REPARTI_INFO[repartoIniziale]?.cruscotto ? "cruscotto" : "prodotti");
+    };
+    window.addEventListener("hashchange", leggi);
+    return () => window.removeEventListener("hashchange", leggi);
+  }, [repartoIniziale]);
   // Frigoriferi/congelatori REALI configurati dal titolare (Attrezzature),
   // non l'elenco generico di fallback — richiesta Enzo 20/07/2026: "non mi
   // fa scegliere in quale congelatore o frigo, mancano".
   const [attrezzature,        setAttrezzature]        = useState({ frigoriferi: [], congelatori: [] });
-  useEffect(() => {
-    axios.get(`${API}/attrezzature/`)
-      .then(r => setAttrezzature(r.data || { frigoriferi: [], congelatori: [] }))
-      .catch(() => {});
+  const caricaDestinazioni = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API}/attrezzature/destinazioni`, { timeout: 15000 });
+      setAttrezzature({
+        frigoriferi: Array.isArray(r.data?.frigoriferi) ? r.data.frigoriferi : [],
+        congelatori: Array.isArray(r.data?.congelatori) ? r.data.congelatori : [],
+      });
+    } catch {
+      toast.error("Frigoriferi e congelatori non caricati: riprovo quando apri un prodotto.");
+    }
   }, []);
+  useEffect(() => { caricaDestinazioni(); }, [caricaDestinazioni]);
+  useEffect(() => {
+    if (prodottoSel && attrezzature.frigoriferi.length === 0 && attrezzature.congelatori.length === 0) {
+      caricaDestinazioni();
+    }
+  }, [prodottoSel, attrezzature.frigoriferi.length, attrezzature.congelatori.length, caricaDestinazioni]);
 
   // Carica task del giorno per questo reparto
   const caricaTask = useCallback(async () => {
@@ -138,6 +160,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
 
   const tutti = Object.keys(REPARTI_INFO).filter(r => r !== reparto); // BUG FIX: escludeva sempre Pasticceria
   const prodottiFiltrati = prodotti
+    .filter(p => gruppo === "tutte" || (p.categorie_rapide || []).includes(gruppo))
     .filter(p=>!search||norm(p.nome).includes(norm(search)))  // stesso motore di ricerca dell'app: senza accenti ("babà"→"baba")
     .sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","it"));
 
@@ -219,14 +242,14 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
               Acquaviva/Alpha e Aggiungi prodotto NON sono più qui (gestione da sezione dedicata). */}
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             {info.cruscotto && vista === "prodotti" && (
-              <button onClick={()=>setVista("cruscotto")} data-testid="torna-cruscotto"
+              <button onClick={()=>{window.location.hash=`tablet/${reparto}`;}} data-testid="torna-cruscotto"
                 style={{minHeight:44,padding:"9px 16px",border:"none",borderRadius:12,background:"#fff",color:"#2a3329",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(0,0,0,.15)",display:"inline-flex",alignItems:"center",gap:6}}>
                 <LayoutDashboard size={16} aria-hidden="true" /> Cruscotto
               </button>
             )}
             {vista === "prodotti" && reparto === "pasticceria" && (
               <>
-                <button onClick={()=>setShowColazione(true)}
+                <button onClick={()=>{window.location.hash="tablet/pasticceria/colazione";}}
                   style={{padding:"9px 16px",border:"none",borderRadius:12,background:"#fff",color:"#2a3329",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>
                   ☕ Colazione
                 </button>
@@ -275,10 +298,10 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
             label={info.label}
             colore={info.colore}
             operatore={operatore}
-            onProduci={()=>setVista("prodotti")}
+            onProduci={()=>{window.location.hash=`tablet/${reparto}/produci`;}}
             onRicette={()=>{ window.location.hash = "ricette"; }}
             onRichiediMerce={()=>setShowRichiediMerce(true)}
-            onColazione={reparto === "pasticceria" ? ()=>setShowColazione(true) : undefined}
+            onColazione={reparto === "pasticceria" ? ()=>{window.location.hash="tablet/pasticceria/colazione";} : undefined}
             onAlpha={reparto === "pasticceria" ? ()=>setShowAlpha(true) : undefined}
             onCambiaOperatore={cambiaOperatore}
             onReparti={()=>{ window.location.hash = "tablet/home"; }}
@@ -289,6 +312,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
       {/* Corpo */}
       {vista === "prodotti" && (
         <div style={{flex:1,minHeight:0,padding:"14px 16px",overflowY:"auto"}}>
+          {['pasticceria', 'rosticceria'].includes(reparto) && <GruppiProduzioneRicette reparto={reparto} ricette={prodotti} selezionato={gruppo} onScegli={setGruppo} />}
 
           {/* Widget task del giorno */}
           {taskOggi.length > 0 && !showTask && (
@@ -348,7 +372,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
           ) : prodottiFiltrati.length === 0 && !search ? (
             <div style={{textAlign:"center",padding:"60px 0",color:"#9aa593"}}>
               <div style={{fontSize:48,marginBottom:12}}>🍽️</div>
-              <p style={{fontSize:16}}>Nessun prodotto per {reparto}</p>
+              <p style={{fontSize:16}}>{gruppo === "tutte" ? `Nessun prodotto per ${reparto}` : "Nessuna ricetta selezionata in questo gruppo. Le spunte si impostano in Ricette."}</p>
             </div>
           ) : (
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:12}}>
@@ -383,7 +407,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
       {prodottoSel && <ModalRegistraLotto prodotto={prodottoSel} reparto={reparto} onClose={()=>setProdottoSel(null)} onSuccess={carica} onRefreshLista={carica} frigoriferi={attrezzature.frigoriferi} congelatori={attrezzature.congelatori}/>}
       {showAdmin && <PannelloReparti onClose={()=>{setShowAdmin(false);carica();}}/>}
       {showAlpha && <ModalAlpha modo="banco" onClose={()=>setShowAlpha(false)}/>}
-      {showColazione && <ColazioneAcquavivaView modoTablet={true} onClose={()=>{setShowColazione(false);carica();}}/>}
+      {showColazione && <ColazioneAcquavivaView modoTablet={true} onClose={()=>{window.location.hash=`tablet/${reparto}`;carica();}}/>}
       {showRichiediMerce && <ModalRichiediMerce operatoreNome={operatore?.nome || ""} reparto={reparto} onClose={()=>setShowRichiediMerce(false)}/>}
       {showAggiungi && <ModalAggiungiProdotto reparto={reparto} onClose={()=>setShowAggiungi(false)} onSalvato={()=>{setShowAggiungi(false);carica();}}/>}
     </div>

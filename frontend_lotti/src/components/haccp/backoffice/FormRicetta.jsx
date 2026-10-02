@@ -175,7 +175,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     if (!ricetta) {
       return { nome:"", reparto:"pasticceria", porzioni:"", peso_pezzo_g:"", peso_uovo_g:"", metodo_conservazione:"frigo",
                prezzo_vendita:"", prezzo_tavolo:"", descrizione:"",
-               note:"", ingredienti:[], fornitore_rivendita:"" };
+               note:"", ingredienti:[], fornitore_rivendita:"", menu_pubblico:true, menu_bb:true, visibile_tablet:true };
     }
     // Converte ingredienti_dettaglio (o la lista legacy) nel formato editabile
     // {nome, quantita, unita}, così l'editor e il "+ Aggiungi" funzionano sempre.
@@ -194,6 +194,9 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     return {
       ...ricetta,
       ingredienti,
+      menu_pubblico: ricetta.menu_pubblico ?? true,
+      menu_bb: ricetta.menu_bb ?? true,
+      visibile_tablet: ricetta.visibile_tablet ?? true,
       // I campi Menu nascono `null` sulle ricette vecchie: negli input devono
       // essere stringa vuota, altrimenti React passa da controllato a non
       // controllato al primo carattere.
@@ -572,6 +575,8 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
         // Menu digitale (Enzo 03/09/2026): la ricetta va SEMPRE anche nel Menu
         // con la stessa foto; questo flag decide se i clienti la vedono.
         menu_pubblico: !!form.menu_pubblico,
+        menu_bb: !!form.menu_bb,
+        visibile_tablet: !!form.visibile_tablet,
         ...(form.ricetta_base_id && { ricetta_base_id: form.ricetta_base_id,
                                        ricetta_base_nome: form.ricetta_base_nome || "" }),
       };
@@ -762,11 +767,18 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
             <span style={{display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
               <span style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>Mostra nel menu pubblico (Menu digitale)</span>
               <span style={{fontSize:12,fontWeight:600,color:"var(--text-2)"}}>
-                La ricetta va comunque nel Menu con la stessa foto: spunta per farla vedere ai clienti.
+                Visibile per impostazione predefinita, nella categoria del reparto e con la stessa foto.
               </span>
             </span>
           </label>
 
+          {[{id:"menu_bb", label:"Visibile nelle Colazioni B&B", nota:"Disponibile da scegliere quando componi una colazione per gli hotel."},
+            {id:"visibile_tablet", label:"Visibile nelle ricette operative", nota:"Compare nelle card del reparto. Se togli la spunta, la ricetta resta recuperabile tra le Escluse."}].map(flag => (
+            <label key={flag.id} style={{display:"flex", alignItems:"center", gap:12, minHeight:44, padding:"10px 14px", border:"1.5px solid var(--border)", borderRadius:10, cursor:"pointer"}}>
+              <input type="checkbox" checked={!!form[flag.id]} onChange={e=>setField(flag.id,e.target.checked)} style={{width:20,height:20}} />
+              <span><strong>{flag.label}</strong><span style={{display:"block",fontSize:12,color:"var(--text-2)"}}>{flag.nota}</span></span>
+            </label>
+          ))}
           <div>
             <label style={lbl} htmlFor="menu-descrizione">Descrizione breve (nel Menu)</label>
             <textarea
@@ -786,7 +798,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
 
           <div style={{fontSize:12,fontWeight:700,color:"var(--text-2)",background:"var(--bg)",
             border:"1.5px solid var(--border)",borderRadius:10,padding:"9px 11px"}}>
-            Categoria Menu automatica: <strong>Produzione Ceraldi</strong>, nella sezione del reparto scelto.
+            Categoria Menu automatica: <strong>{form.reparto === "rosticceria" ? "Food · Rosticceria" : "Dolci"}</strong>, secondo il reparto scelto.
           </div>
           {form.menu_pubblico && !form.prezzo_tavolo ? (
             <div style={{fontSize:12,fontWeight:700,color:"var(--warning-text)",background:"var(--warning-soft)",
@@ -1010,14 +1022,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
         {saving ? "Salvo…" : ricetta?.id ? "💾 Aggiorna ricetta" : "✨ Crea ricetta"}
       </button>
 
-      {ricetta?.id && onVisibilita && (
-        <button type="button" onClick={() => onVisibilita(ricetta)}
-          style={{width:"100%",minHeight:44,marginTop:10,padding:"10px",border:"1px solid #cfdfd5",borderRadius:10,
-            background:"#f2f6f3",color:"#3f5a4e",fontFamily:"var(--font)",
-            fontSize:13,fontWeight:700,cursor:"pointer"}}>
-          {ricetta.visibile_tablet === false ? "↩ Ripristina nei reparti" : "⊘ Escludi dai reparti"}
-        </button>
-      )}
       </div>
     </div>
     </div>

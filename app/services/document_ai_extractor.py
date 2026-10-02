@@ -18,7 +18,7 @@ from PIL import Image
 import io
 import base64
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 from dotenv import load_dotenv
 
@@ -440,7 +440,7 @@ def extract_text_from_image(image_data: bytes) -> str:
 async def extract_structured_data(
     text: str,
     document_type: str = None,
-    model: str = "claude-sonnet-4-5-20250929"
+    model: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Usa LLM per estrarre dati strutturati dal testo.
@@ -453,7 +453,9 @@ async def extract_structured_data(
     Returns:
         Dati strutturati in formato dict
     """
-    from app.services.anthropic_llm_client import LlmChat, UserMessage
+    from app.services.anthropic_llm_client import LlmChat, UserMessage, document_model_name
+
+    model = model or document_model_name()
     
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY non configurata")
@@ -471,20 +473,13 @@ async def extract_structured_data(
     prompt = prompt_template.format(text=text[:150000])
     
     try:
-        # Inizializza chat LLM
-        # Determina provider dal nome del modello
-        if model.startswith("claude"):
-            provider = "anthropic"
-        elif model.startswith("gemini"):
-            provider = "gemini"
-        else:
-            provider = "openai"
-        
+        # Il solo client: il modello e' quello documentale configurato, salvo richiesta esplicita
         chat = LlmChat(
             api_key=ANTHROPIC_API_KEY,
             session_id=f"doc_extract_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            system_prompt="Sei un assistente specializzato nell'estrazione di dati da documenti italiani. Rispondi SEMPRE e SOLO con JSON valido."
-        ).with_model(provider, model)
+            system_prompt="Sei un assistente specializzato nell'estrazione di dati da documenti italiani. Rispondi SEMPRE e SOLO con JSON valido.",
+            model=model or document_model_name(), scopo="estrazione_documenti",
+        )
 
         # Invia messaggio
         user_message = UserMessage(content=prompt)
@@ -531,7 +526,7 @@ async def process_document(
     file_data: bytes,
     filename: str,
     document_type: str = None,
-    model: str = "claude-sonnet-4-5-20250929"
+    model: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Processa un documento completo: estrae testo e poi dati strutturati.
@@ -545,6 +540,9 @@ async def process_document(
     Returns:
         Risultato con testo estratto e dati strutturati
     """
+    from app.services.anthropic_llm_client import document_model_name
+
+    model = model or document_model_name()
     result = {
         "filename": filename,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -587,11 +585,14 @@ async def process_document_from_base64(
     base64_data: str,
     filename: str,
     document_type: str = None,
-    model: str = "claude-sonnet-4-5-20250929"
+    model: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Processa un documento da base64.
     """
+    from app.services.anthropic_llm_client import document_model_name
+
+    model = model or document_model_name()
     try:
         file_data = base64.b64decode(base64_data)
         return await process_document(file_data, filename, document_type, model)

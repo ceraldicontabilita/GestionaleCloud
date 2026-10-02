@@ -12,7 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.menu.routes import menu_routes as mr
-from app.menu.models.menu_models import ProductCreate, ProductUpdate
+from app.menu.models.menu_models import ProductCreate, ProductUpdate, ProductVisibility
 
 
 def _run(coro):
@@ -91,6 +91,43 @@ def _prodotto(id_, sub, nome, **extra):
     }
     riga.update(extra)
     return riga
+
+
+def test_x_qromo_nasconde_e_ripristina_senza_cancellare(finto):
+    assert _run(mr.imposta_visibilita_prodotto(100, ProductVisibility(visible=False), "admin"))["success"]
+    assert finto.tabelle["menu_products"][0]["visible"] is False
+    assert len(finto.tabelle["menu_products"]) == 3
+    _run(mr.imposta_visibilita_prodotto(100, ProductVisibility(visible=True), "admin"))
+    assert finto.tabelle["menu_products"][0]["visible"] is True
+    assert all(c[2] == {"visible": c[2]["visible"]} for c in finto.chiamate)
+
+
+def test_x_lotti_scrive_solo_la_scelta_canonica_esatta(finto, monkeypatch):
+    from unittest.mock import AsyncMock
+    import app.lotti.routers.ricette as ricette
+    writer = AsyncMock(return_value={"menu_sync": {"esito": "aggiornato"}})
+    monkeypatch.setattr(ricette, "aggiorna_campo_ricetta", writer)
+    risposta = _run(mr.imposta_visibilita_prodotto(1000000, ProductVisibility(visible=True), "admin"))
+    writer.assert_awaited_once_with("r1", {"menu_pubblico": True}, {"ruolo": "amministratore"})
+    assert risposta["menu_sync"]["esito"] == "aggiornato" and not finto.chiamate
+    finto.tabelle["menu_products"][-1]["lotti_ref"] = "fattura:non-ricetta"
+    with pytest.raises(HTTPException) as e:
+        _run(mr.imposta_visibilita_prodotto(1000000, ProductVisibility(visible=False), "admin"))
+    assert e.value.status_code == 409
+    assert writer.await_count == 1
+
+
+def test_x_richiede_admin_e_booleano_stretto(finto):
+    from pydantic import ValidationError
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    for valore in ("false", "true", 1, 0, None):
+        with pytest.raises(ValidationError):
+            ProductVisibility(visible=valore)
+    app = FastAPI()
+    app.include_router(mr.router)
+    assert TestClient(app).put("/api/menu/admin/products/100/visibilita", json={"visible": False}).status_code in (401, 403)
+    assert not finto.chiamate
 
 
 @pytest.fixture

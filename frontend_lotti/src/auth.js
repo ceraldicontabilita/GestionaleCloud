@@ -162,6 +162,7 @@ export function cachedAuthConfig() {
 }
 
 let _installed = false;
+let _recuperoSessione = null;
 /** Installa una volta sola gli interceptor axios: allega il token a ogni
  *  richiesta e, su 401, lo azzera e notifica il gate. */
 export function setupAxiosAuth() {
@@ -177,10 +178,29 @@ export function setupAxiosAuth() {
   });
   axios.interceptors.response.use(
     (r) => r,
-    (err) => {
-      if (err && err.response && err.response.status === 401) {
-        clearToken();
-        try { window.dispatchEvent(new Event("lotti-auth-changed")); } catch { /* no-op */ }
+    async (err) => {
+      const config = err?.config;
+      if (err?.response?.status === 401 && config && String(config.url || "").startsWith(API)) {
+        const inviato = String(config.headers?.Authorization || "").replace(/^Bearer /, "");
+        if (!config._sessioneRiprovata) {
+          // Una sola verifica del cookie ERP lato server, anche con GET parallele.
+          // Mai ripetere automaticamente una registrazione o un salvataggio.
+          if ((!getToken() || getToken() === inviato) && isAdmin()) {
+            if (!_recuperoSessione) _recuperoSessione = entraDalGestionale().then(async operatore => {
+              if (operatore) {
+                const { allineaSessioneTitolare } = await import("./utils/tabletSession");
+                allineaSessioneTitolare(operatore);
+              }
+              return operatore;
+            }).finally(() => { _recuperoSessione = null; });
+            await _recuperoSessione;
+          }
+          if (getToken() && getToken() !== inviato && String(config.method || "get").toLowerCase() === "get") {
+            return axios({ ...config, _sessioneRiprovata: true });
+          }
+        }
+        // Un vecchio 401 non deve cancellare un token appena rinnovato.
+        if (!getToken() || getToken() === inviato) logout();
       }
       return Promise.reject(err);
     }

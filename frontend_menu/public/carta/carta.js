@@ -1,13 +1,17 @@
-fetch('../api/menu/carta',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(D=>{
+const CC_PARAMS=new URLSearchParams(location.search),CC_BB=(CC_PARAMS.get('bb')||'').trim(),CC_GIORNO=CC_PARAMS.get('giorno')||'';
+const CC_DATI=CC_BB?fetch('/api/colazioni/menu-ospite/catalogo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codice:CC_BB,giorno:CC_GIORNO})}):fetch('../api/menu/carta',{cache:'no-store'});
+CC_DATI.then(async r=>{if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.detail||r.status)}return r.json()}).then(D=>{
 const TPL=JSON.parse(document.getElementById('tpl').textContent);
 const ICONS=JSON.parse(document.getElementById('icons').textContent);
 const IMG=new Proxy({},{get:(_,k)=>k}); // le foto sono gia' URL
 const AL={celery:'Sedano',clams:'Molluschi',dioxide:'Solfiti',egg:'Uova',fish:'Pesce',gluten:'Glutine',lupins:'Lupini',milk:'Latte',mustard:'Senape',peanuts:'Arachidi',sesame:'Sesamo',shellfish:'Crostacei',soia:'Soia',wot:'Frutta a guscio',almond:'Mandorle',barley:'Orzo',brazil_nuts:'Noci del Brasile',cashew:'Anacardi',hazelnuts:'Nocciole',macadamia:'Macadamia',oats:'Avena',pecan:'Noci pecan',pistachios:'Pistacchi',rye:'Segale',spelt:'Farro',walnuts:'Noci',wheat:'Grano',kamut:'Kamut',alcohol:'Alcol',halal:'Halal',kosher:'Kosher',vegan:'Vegano',vegetarian:'Vegetariano',no_allergens:'Nessun allergene',gluten_free:'Senza glutine',bio:'Biologico',spicy:'Piccante',frost:'Surgelato',super_frost:'Abbattuto'};
 const $=s=>document.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const frag=h=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild};
-const eur=c=>'€ '+(c/100).toFixed(2).replace('.',',');
+const eur=c=>c==null?'Prezzo da definire':'€ '+(c/100).toFixed(2).replace('.',',');
 const txtCol=h=>{h=(h||'a67b01').replace('#','');const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);return (r*299+g*587+b*114)/1000>=160?'#000000':'#ffffff'};
 const store={get(k,d){try{const v=localStorage.getItem('cc_'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('cc_'+k,JSON.stringify(v))}catch(e){}}};
+const CART_KEY='bb_cart_'+CC_BB+'_'+CC_GIORNO;
+let cart=CC_BB?store.get(CART_KEY,{}):{};
 
 const itemsBy={},catsBy={};
 D.items.forEach(i=>(itemsBy[i.c]=itemsBy[i.c]||[]).push(i));
@@ -92,6 +96,10 @@ function itemEl(i){
   const pr=el.querySelector('.price'); pr.textContent=eur(i.p);
   const img=el.querySelector('.item-image img'); img.alt=i.n; img.src=i.pic?IMG[i.pic]:ICONS.generic; img.loading='lazy';
   const ctr=el.querySelector('.item-counter');ctr&&ctr.remove();
+  if(CC_BB){
+    const add=document.createElement('button');add.className='cc-add';add.type='button';add.textContent='＋ Aggiungi';add.setAttribute('aria-label','Aggiungi '+i.n+' al carrello');
+    add.addEventListener('click',e=>{e.stopPropagation();cartQ(i.id,1)});el.appendChild(add);
+  }
   if(i.deep||i.lists){el.addEventListener('click',()=>openItem(i.id));el.tabIndex=0;el.addEventListener('keydown',e=>{if(e.key==='Enter')openItem(i.id)})}
   else el.classList.add('noDeep');
   return el;
@@ -167,6 +175,31 @@ if(sc){
 }
 const rm=absBar.querySelector('.read-mode-container'); if(rm) rm.remove();
 
+// ---------- carrello B&B: stessa carta, prezzi specifici della struttura ----------
+let cartButton=null,cartPanel=null;
+function cartQ(id,d){const n=Math.max(0,Math.min(20,(+cart[id]||0)+d));if(n)cart[id]=n;else delete cart[id];store.set(CART_KEY,cart);renderCart()}
+function cartTotals(){return Object.entries(cart).reduce((a,[id,q])=>{const i=itemById[id];if(i){a.pezzi+=q;a.totale+=i.p*q}return a},{pezzi:0,totale:0})}
+function renderCart(){
+  if(!CC_BB)return;const t=cartTotals();
+  cartButton.innerHTML=`🛒 <b>${t.pezzi}</b><span>${eur(t.totale)}</span>`;cartButton.hidden=!t.pezzi;
+  const righe=Object.entries(cart).map(([id,q])=>{const i=itemById[id];return i?`<div class="cc-cart-line"><div><b>${i.n}</b><small>${eur(i.p)} ciascuno</small></div><div class="cc-step"><button onclick="cartQ(${i.id},-1)">−</button><b>${q}</b><button onclick="cartQ(${i.id},1)">+</button></div></div>`:''}).join('');
+  cartPanel.querySelector('.cc-cart-body').innerHTML=righe||'<p>Il carrello è vuoto.</p>';
+  cartPanel.querySelector('.cc-cart-total').textContent=eur(t.totale);
+  cartPanel.querySelector('.cc-cart-send').disabled=!t.pezzi;
+}
+function openCart(v=true){cartPanel.classList.toggle('open',v);cartPanel.setAttribute('aria-hidden',v?'false':'true')}
+async function sendCart(){
+  const b=cartPanel.querySelector('.cc-cart-send'),righe=Object.entries(cart).map(([id,quantita])=>({prodotto_id:+id,quantita}));if(!righe.length)return;
+  b.disabled=true;b.textContent='Invio…';
+  try{const r=await fetch('/api/colazioni/menu-ospite/ordine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codice:CC_BB,giorno:CC_GIORNO,righe})}),j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.detail||j.errore||'Ordine non salvato');cart={};store.set(CART_KEY,cart);renderCart();cartPanel.querySelector('.cc-cart-body').innerHTML=`<div class="cc-cart-ok"><b>Ordine inviato al bar ✓</b><br>Totale da pagare al ritiro: ${eur(Math.round((+j.totale||0)*100))}</div>`;b.textContent='Ordine inviato';setTimeout(()=>location.href='/convenzioni/#/ospite/'+encodeURIComponent(CC_BB),1200)}catch(e){alert(e.message);b.disabled=false;b.textContent='Invia ordine al bar'}}
+function initCart(){
+  if(!CC_BB)return;document.body.classList.add('cc-bb');
+  Object.assign(window,{cartQ,openCart,sendCart});
+  const info=document.createElement('div');info.className='cc-bb-head';info.innerHTML=`<b>Menu per la colazione del ${CC_GIORNO.split('-').reverse().join('/')}</b><span>${D.bb&&D.bb.struttura?D.bb.struttura:''} · scegli solo per questo giorno</span>`;document.body.appendChild(info);
+  cartButton=document.createElement('button');cartButton.className='cc-cart-button';cartButton.onclick=()=>openCart(true);document.body.appendChild(cartButton);
+  cartPanel=document.createElement('div');cartPanel.className='cc-cart-panel';cartPanel.setAttribute('aria-hidden','true');cartPanel.innerHTML=`<div class="cc-cart-sheet"><div class="cc-cart-title"><h2>Il tuo carrello</h2><button onclick="openCart(false)" aria-label="Chiudi">×</button></div><p class="cc-cart-note">Prodotti extra del ${CC_GIORNO.split('-').reverse().join('/')} · pagamento al bar al ritiro.</p><div class="cc-cart-body"></div><div class="cc-cart-footer"><div>Totale <b class="cc-cart-total">€ 0,00</b></div><button class="cc-cart-send" onclick="sendCart()">Invia ordine al bar</button><a href="/convenzioni/#/ospite/${encodeURIComponent(CC_BB)}">Torna alla colazione</a></div></div>`;cartPanel.addEventListener('click',e=>{if(e.target===cartPanel)openCart(false)});document.body.appendChild(cartPanel);renderCart();
+}
+
 // ---------- schede in basso ----------
 function openOverlay(el){el.classList.remove('hidden');document.body.style.overflow='hidden';const m=el.querySelector('.bottom-sheet-measurer');m&&m.classList.add('activeScroll');m&&(m.scrollTop=0)}
 function closeOverlay(el){el.classList.add('hidden');document.body.style.overflow=''}
@@ -206,6 +239,7 @@ function openItem(id){
     (sp.querySelector('.descriptions-container')||sp.querySelector('.carousel-container')||sp.querySelector('.head-container')).after(lc);
   }
   const qn=sp.querySelector('.title .quantity');qn&&qn.remove();
+  if(CC_BB){const f=sp.querySelector('.details-footer');const add=document.createElement('button');add.type='button';add.className='cc-add-detail';add.textContent='＋ Aggiungi al carrello';add.addEventListener('click',()=>{cartQ(i.id,1);closeOverlay(sheet)});f.prepend(add)}
   openOverlay(sheet);
 }
 
@@ -229,5 +263,5 @@ fbox.style.cursor='pointer';fbox.addEventListener('click',()=>openOverlay(filt))
 function refresh(){ if(current){const open=$$('.page-content.active-page .menu-category').filter(e=>e.querySelector('.category-head.open')).map(e=>e.dataset.c);renderCats();open.forEach(id=>{const e=document.querySelector(`.menu-category[data-c="${id}"]`);e&&setOpen(e,true)})} }
 
 // ---------- avvio ----------
-renderMenus(); syncFilter(); setState(null);
+renderMenus(); syncFilter(); setState(null);initCart();
 }).catch(e=>{document.querySelector('.menus-container').textContent='Menu non disponibile, riprova tra poco.';console.error(e)});

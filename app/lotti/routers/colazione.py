@@ -255,9 +255,12 @@ async def toggle_preferito(data: dict = Body(...), _admin=Depends(require_admin)
     if not pid:
         raise HTTPException(400, "prodotto_id obbligatorio")
     now = datetime.now(timezone.utc).isoformat()
+    azione = data.get("azione", "toggle")
+    if azione not in ("toggle", "aggiungi"):
+        raise HTTPException(400, "azione non valida")
 
     esiste = await db.colazione_preferiti.find_one({"prodotto_id": pid})
-    if esiste:
+    if esiste and azione == "toggle":
         await db.colazione_preferiti.delete_one({"prodotto_id": pid})
         # Toglie il preferito, ma NON rimuove il prodotto dalle stagioni già
         # configurate (potrebbe essere stato tarato a mano) — la rimozione
@@ -268,7 +271,7 @@ async def toggle_preferito(data: dict = Body(...), _admin=Depends(require_admin)
     foto_url = data.get("foto_url")
     categoria = data.get("categoria")
     prezzo_vendita = data.get("prezzo_vendita") or 0
-    await db.colazione_preferiti.insert_one({
+    await db.colazione_preferiti.update_one({"prodotto_id": pid}, {"$setOnInsert": {
         "prodotto_id": pid,
         "prodotto_nome": nome_prodotto,
         "foto_url": foto_url,
@@ -276,7 +279,7 @@ async def toggle_preferito(data: dict = Body(...), _admin=Depends(require_admin)
         "prezzo_vendita": prezzo_vendita,
         "fonte": data.get("fonte"),
         "creato_il": now,
-    })
+    }}, upsert=True)
 
     aggiunto_a = []
     for nome_stagione in _STAGIONI_DEFAULT:
@@ -571,7 +574,7 @@ async def get_storico_colazioni(limit: int = 30):
 
 # ── GET: prodotti disponibili per colazione (tutti Acquaviva visibili) ─────────
 @router.get("/prodotti-disponibili")
-async def get_prodotti_disponibili(catalogo: bool = False, solo_acquistati: bool = True):
+async def get_prodotti_disponibili(catalogo: bool = False, solo_acquistati: bool = True, includi_rosticceria: bool = False):
     from app.lotti.routers.fornitori_rivendita import fonti_attive, regex_fatture_attive
     fonti = await fonti_attive("colazione") or ["acquaviva", "vandemoortele"]
     fonti_regex = "|".join(fonti)
@@ -654,7 +657,7 @@ async def get_prodotti_disponibili(catalogo: bool = False, solo_acquistati: bool
 
         cat = await db.acquaviva_prodotti.find(
             {"fonte": {"$in": fonti}},
-            {"_id": 0, "codice": 1, "nome": 1, "foto_url": 1, "categoria": 1},
+            {"_id": 0, "codice": 1, "nome": 1, "foto_url": 1, "categoria": 1, "fonte": 1},
         ).sort("nome", 1).to_list(5000)
         out = []
         for c in cat:
@@ -678,17 +681,28 @@ async def get_prodotti_disponibili(catalogo: bool = False, solo_acquistati: bool
                 "pezzi_cartone": pvp.get("pezzi_cartone"),
                 "gia_acquistato": comprato,
                 "fonte": "rivendita",
+                "fornitore": c.get("fonte") or "",
+                "reparto": "pasticceria",
+                "ammesso_colazione": True,
             })
 
         # Prodotti FATTI IN CASA — SOLO pasticceria (23/07/2026: i salati di
         # rosticceria non c'entrano con la colazione). "gia_acquistato": True
         # per non mostrare il fuorviante "mai acquistato" sui nostri prodotti.
+        from app.lotti.routers.ricette import _reparto_operativo_ricetta, _ricetta_visibile_tablet
         ricette_casa = await db.ricette.find(
-            {"reparto": "pasticceria"},
-            {"_id": 0, "id": 1, "nome": 1, "foto_url": 1, "reparto": 1, "prezzo_vendita": 1},
+            {"reparto": {"$in": ["pasticceria", "rosticceria"]}},
+            {"_id": 0, "id": 1, "nome": 1, "foto_url": 1, "reparto": 1, "prezzo_vendita": 1,
+             "categorie_rapide": 1, "ingredienti_dettaglio": 1, "ricetta_base_nome": 1,
+             "visibile_tablet": 1, "sola_lettura": 1, "origine": 1},
         ).to_list(2000)
         for r in ricette_casa:
-            if _e_salato("", r.get("nome")):
+            if not _ricetta_visibile_tablet(r):
+                continue
+            reparto = _reparto_operativo_ricetta(r)
+            if reparto not in ("pasticceria", "rosticceria"):
+                continue
+            if reparto == "rosticceria" and not includi_rosticceria:
                 continue
             out.append({
                 "id": r["id"],
@@ -700,6 +714,9 @@ async def get_prodotti_disponibili(catalogo: bool = False, solo_acquistati: bool
                 "pezzi_cartone": None,
                 "gia_acquistato": True,
                 "fonte": "casa",
+                "reparto": reparto,
+                "categorie_rapide": r.get("categorie_rapide") or [],
+                "ammesso_colazione": reparto == "pasticceria",
             })
 
         # Ordine: prima i fatti in casa, poi Acquaviva; dentro ogni gruppo per nome

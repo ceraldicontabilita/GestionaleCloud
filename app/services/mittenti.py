@@ -19,7 +19,6 @@ from email.utils import parseaddr
 from typing import Any, Dict, List, Optional, Set
 
 COLL = "mittenti_email"
-COLL_LEGACY = "mittenti_attendibili"
 
 
 # Mittenti istituzionali gia' previsti dai servizi Verbali/PagoPA, resi
@@ -101,14 +100,14 @@ def _sender_address(sender: Any) -> str:
 
 
 async def trusted_sender_rules(db, canale: str = "gmail") -> List[Dict[str, str]]:
-    """Carica una sola volta le regole attive canoniche e legacy.
+    """Carica una sola volta le regole attive.
 
     La funzione e' pensata per scansioni massive, evitando una query per ogni
     documento. Una regola disattivata non viene mai riabilitata implicitamente.
     """
     channel = str(canale or "gmail").strip().lower()
     rules: Dict[tuple[str, str], Dict[str, str]] = {}
-    for collection in (COLL, COLL_LEGACY):
+    for collection in (COLL,):
         try:
             query = {
                 "$and": [
@@ -163,14 +162,6 @@ async def senders_attendibili(db, tipo_documento: str, canale: str) -> Set[str]:
         a = _addr(m)
         if a:
             out.add(a)
-    # Back-compat: unisce la legacy finché la migrazione non è stata eseguita.
-    try:
-        async for m in db[COLL_LEGACY].find(filtro):
-            a = _addr(m)
-            if a:
-                out.add(a)
-    except Exception:
-        pass
     return out
 
 
@@ -203,41 +194,3 @@ async def assicura_mittenti_builtin(db) -> Dict[str, Any]:
         else:
             gia_presenti += 1
     return {"inseriti": inseriti, "gia_presenti": gia_presenti}
-
-
-async def migra_mittenti_legacy(db, dry_run: bool = True) -> Dict[str, Any]:
-    """Copia i mittenti da `mittenti_attendibili` a `mittenti_email` (canonica),
-    saltando quelli già presenti (per pattern+canale). Idempotente. Con
-    `dry_run=True` non scrive nulla: riporta solo cosa farebbe."""
-    legacy = await db[COLL_LEGACY].find({}).to_list(1000)
-    migrati = gia_presenti = senza_indirizzo = 0
-    for m in legacy:
-        addr = _addr(m)
-        if not addr:
-            senza_indirizzo += 1
-            continue
-        canale = (m.get("canale") or "gmail").lower()
-        if await db[COLL].find_one({"pattern": addr, "canale": canale}):
-            gia_presenti += 1
-            continue
-        if not dry_run:
-            await db[COLL].insert_one({
-                "id": str(uuid.uuid4()),
-                "pattern": addr,
-                "indirizzo_email": m.get("indirizzo_email") or addr,
-                "canale": canale,
-                "tipo_documento": m.get("tipo_documento") or "generico",
-                "descrizione": m.get("descrizione") or "migrato da mittenti_attendibili",
-                "attivo": bool(m.get("attivo", True)),
-                "builtin": False,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "migrato_da": COLL_LEGACY,
-            })
-        migrati += 1
-    return {
-        "totale_legacy": len(legacy),
-        "migrati": migrati,
-        "gia_presenti": gia_presenti,
-        "senza_indirizzo": senza_indirizzo,
-        "dry_run": dry_run,
-    }

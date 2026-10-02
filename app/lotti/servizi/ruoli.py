@@ -7,7 +7,8 @@ Decisione del titolare (26/09/2026). Oltre all'operatore esistono:
 - **caporeparto** (``caporeparto``): ricette e produzione del **proprio**
   reparto, smaltimento lotti.
 
-Il titolare (``amministratore``) entra solo dal Gestionale e può tutto.
+Il titolare (``amministratore``) entra dal Gestionale oppure col proprio PIN
+personale associato alla scheda HR e può tutto.
 
 Il ruolo sta sulla **scheda HR** (``lotti_ruolo``, ``lotti_reparti``):
 l'anagrafica HR comanda e Lotti ne tiene solo la proiezione in

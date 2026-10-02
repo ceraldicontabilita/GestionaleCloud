@@ -480,39 +480,26 @@ async def match_livello1(nome: str) -> Optional[str]:
 
 async def match_livello3_llm(nome: str) -> Optional[str]:
     """
-    Livello 3: LLM (Claude Sonnet) per i casi che L1 e L2 non risolvono.
+    Livello 3: LLM (modello veloce del client unico) per i casi che L1 e L2 non risolvono.
     Usa un singolo prompt per ottenere il nome cucina dell'ingrediente.
     """
     try:
-        import httpx
+        from app.services.anthropic_llm_client import LlmChat, UserMessage, chiave_api, modello_veloce
 
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        api_key = chiave_api()
         if not api_key:
             return None
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-haiku-4-5",
-                    "max_tokens": 50,
-                    "system": (
-                        "Sei un esperto di terminologia culinaria italiana. "
-                        "Dato il nome commerciale di un prodotto alimentare presente in una fattura, "
-                        "rispondi SOLO con il nome generico usato in cucina (es: 'farina 00', 'olio extravergine', 'petto di pollo'). "
-                        "Massimo 4 parole, minuscolo. Se non è un alimento, rispondi 'non-alimentare'."
-                    ),
-                    "messages": [{"role": "user", "content": f"Nome prodotto fattura: '{nome}'"}],
-                },
-            )
-            data = r.json()
-            risposta = data.get("content", [{}])[0].get("text", "")
-            return risposta.strip().lower() if risposta else None
+        chat = LlmChat(
+            api_key, model=modello_veloce(), timeout_s=15.0, tentativi=1, max_tokens=50, scopo="lotti_ingredienti",
+            system_prompt=(
+                "Sei un esperto di terminologia culinaria italiana. "
+                "Dato il nome commerciale di un prodotto alimentare presente in una fattura, "
+                "rispondi SOLO con il nome generico usato in cucina (es: 'farina 00', 'olio extravergine', 'petto di pollo'). "
+                "Massimo 4 parole, minuscolo. Se non è un alimento, rispondi 'non-alimentare'."
+            ))
+        risposta = await chat.send_message(UserMessage(content=f"Nome prodotto fattura: '{nome}'"))
+        return risposta.strip().lower() if risposta else None
 
     except Exception as e:
         logger.warning(f"[L3] LLM fallito per '{nome}': {e}")

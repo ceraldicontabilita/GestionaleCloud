@@ -325,6 +325,33 @@ def test_importa_pdf_drive_e_idempotente_per_hash(monkeypatch):
     assert len(db["estratto_conto_movimenti"].docs) == 1
 
 
+def test_pdf_noto_senza_drive_file_id_lo_riceve_una_volta_sola(monkeypatch):
+    """Lo statement nato da email o da Import non porta il file Drive: quando lo stesso
+    contenuto passa dalla cartella unica il collegamento si scrive, e una terza copia
+    con un altro id non lo sovrascrive."""
+    def fake_parse(pdf_content):
+        return {
+            "success": True,
+            "metadata": {"data_estratto_iso": "2026-01-31"},
+            "transazioni": [{"data": "2026-01-05", "descrizione": "Fornitore", "importo": 10.0}],
+        }
+
+    monkeypatch.setattr(
+        "app.parsers.estratto_conto_nexi_parser.parse_estratto_conto_nexi", fake_parse
+    )
+    db = _DB()
+    _run(importa_estratto_nexi_pdf(db, "gennaio.pdf", b"%PDF-stesso"))
+    assert db["estratto_conto_nexi"].docs[0].get("drive_file_id") is None
+
+    _run(importa_estratto_nexi_pdf(db, "Estratto_Conto (13).pdf", b"%PDF-stesso", drive_file_id="drive-1"))
+    assert db["estratto_conto_nexi"].docs[0]["drive_file_id"] == "drive-1"
+
+    _run(importa_estratto_nexi_pdf(db, "copia.pdf", b"%PDF-stesso", drive_file_id="drive-2"))
+    assert db["estratto_conto_nexi"].docs[0]["drive_file_id"] == "drive-1"
+    assert len(db["estratto_conto_nexi"].docs) == 1
+    assert len(db["estratto_conto_movimenti"].docs) == 1
+
+
 def test_reimport_pdf_noto_backfill_chiave_operazione_legacy(monkeypatch):
     """Un documento gia' archiviato deve migrare le sue righe legacy senza
     creare copie: l'idempotenza vale anche durante il passaggio alle chiavi

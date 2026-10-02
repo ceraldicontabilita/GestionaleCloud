@@ -302,6 +302,17 @@ async def get_storico(anno: int = None):
 # ==================== ENDPOINTS SANIFICAZIONE APPARECCHI REFRIGERANTI ====================
 
 
+async def _nome_apparecchio(tipo: str, numero: int) -> str:
+    """Restituisce il nome canonico condiviso con i registri temperature."""
+    from app.lotti.servizi.schede_temperature import apparecchi_attivi
+
+    etichetta = "Frigorifero" if tipo == "frigo" else "Congelatore"
+    for apparecchio in await apparecchi_attivi(tipo):
+        if apparecchio.get("numero") == numero:
+            return apparecchio.get("nome") or f"{etichetta} N°{numero}"
+    return f"{etichetta} N°{numero}"
+
+
 @router.get("/apparecchi/{anno}")
 async def get_scheda_apparecchi(anno: int):
     """
@@ -311,17 +322,20 @@ async def get_scheda_apparecchi(anno: int):
     from app.lotti.servizi.schede_temperature import apparecchi_attivi
 
     scheda = dict(await get_or_create_scheda_apparecchi(anno))
-    # Le colonne sono gli apparecchi censiti più chi ha registrazioni
-    # nell'anno: non più 12 fissi.
+    # Con una configurazione centralizzata, la vista corrente mostra soltanto
+    # gli apparecchi attivi. Le registrazioni dei vecchi numeri restano intatte
+    # nell'archivio, ma non ricreano colonne generiche accanto ai nomi correnti.
+    # Il ripiego sulla storia serve solo alle installazioni non ancora censite.
     for tipo, chiave, etichetta, campo in (
         ("frigo", "frigoriferi", "Frigorifero", "registrazioni_frigoriferi"),
         ("congelatore", "congelatori", "Congelatore", "registrazioni_congelatori"),
     ):
         voci = {int(a["numero"]): a.get("nome") or f"{etichetta} N°{a['numero']}"
                 for a in await apparecchi_attivi(tipo) if a.get("numero") is not None}
-        for n, regs in (scheda.get(campo) or {}).items():
-            if regs and str(n).isdigit():
-                voci.setdefault(int(n), f"{etichetta} N°{n}")
+        if not voci:
+            for n, regs in (scheda.get(campo) or {}).items():
+                if regs and str(n).isdigit():
+                    voci[int(n)] = f"{etichetta} N°{n}"
         scheda[f"apparecchi_{chiave}"] = [{"numero": n, "nome": voci[n]} for n in sorted(voci)]
     return scheda
 
@@ -337,7 +351,7 @@ async def get_sanificazioni_frigorifero(anno: int, numero: int):
     return {
         "anno": anno,
         "frigorifero": numero,
-        "nome": f"Frigorifero N°{numero}",
+        "nome": await _nome_apparecchio("frigo", numero),
         "operatore_designato": OPERATORE_SANIFICAZIONE,
         "sanificazioni": sanificazioni,
         "totale": len(sanificazioni),
@@ -357,7 +371,7 @@ async def get_sanificazioni_congelatore(anno: int, numero: int):
     return {
         "anno": anno,
         "congelatore": numero,
-        "nome": f"Congelatore N°{numero}",
+        "nome": await _nome_apparecchio("congelatore", numero),
         "operatore_designato": OPERATORE_SANIFICAZIONE,
         "sanificazioni": sanificazioni,
         "totale": len(sanificazioni),

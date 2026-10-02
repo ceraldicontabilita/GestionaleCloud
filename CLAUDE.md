@@ -153,6 +153,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Endpoint senza frontend, scheduler, integrazione o test restano in
   quarantena e non si ricreano; un alias legacy reindirizza al canonico, mai
   con una risposta finta.
+- **Niente «legacy»: una sola collezione, un solo sistema per funzione.** Una collezione, un alias, un endpoint, un campo o uno
+  script di migrazione «vecchio» si **toglie nello stesso commit** che ne toglie l'ultimo lettore, ma solo dopo aver **contato sul
+  database** che in produzione non ha righe (mai presumerlo: `piano_conti` ha dati, `attendance_presenze_calendario` e
+  `email_fornitori` hanno ancora un writer vivo). Una migrazione una tantum si cancella a migrazione fatta; una lettura «in
+  transizione» che unisce la vecchia e la nuova collezione conta due volte lo stesso dato. Una collezione senza righe non resta
+  come costante «deprecata»: non c'è. I test che vietano scritture su un nome morto usano la stringa, non una costante.
 - **Due copie dello stesso modulo non si tengono allineate a mano.** Quando un
   sottopercorso esiste sia in `app/` sia in `app/hr/`, la logica va in un
   modulo solo sotto `app/` e il lato HR diventa un **re-export** (solo import,
@@ -215,7 +221,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
    dei 30 minuti; l'estratto conto lo **accoda in sottofondo**, mai lo aspetta.
 5. Migrazioni DDL su `gestionale.documents` a database scarico o con
    `create index concurrently`. Ogni DDL fa ricaricare lo schema a PostgREST
-   (503 per minuti): l'HR fa DDL solo se la tabella manca davvero. Ogni migrazione applicata al progetto si salva nello stesso giorno in `supabase/migrations/<versione>_<nome>.sql`, con la versione del registro `supabase_migrations.schema_migrations`: il file e' l'unico modo di ricostruire il database da zero.
+   (503 per minuti): l'HR fa DDL solo se la tabella manca davvero. Ogni migrazione applicata al progetto si salva nello stesso giorno in `supabase/migrations/<versione>_<nome>.sql`, con la versione del registro `supabase_migrations.schema_migrations` (letta dal registro, mai inventata: tre file del 01/10 con una versione a mano erano doppioni del registro); il file e' l'unico modo di ricostruire il database da zero.
 6. **Nessuna cancellazione con filtro**: solo per id, con
    `gc_delete_documents` / `gc_delete_blobs` / `lotti_delete_*`. `DELETE` e
    `TRUNCATE` a mano sono bloccati su `gestionale.documents`, `.blobs`,
@@ -267,7 +273,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   eccezione, regola del titolare: un assegno paga la fattura di pari importo emessa nei 15 giorni prima dell'addebito,
   se è l'unica (`REGOLA_TITOLARE_GIORNI_PRECEDENTI`); il numero scritto nel report «Fatture ricevute» vince sempre.
 - Nei casi ambigui mostra i candidati (`Scegli fattura`, `Scegli driver`,
-  `Scegli verbale`) e non applicare il collegamento.
+  `Scegli verbale`) e non applicare il collegamento. Una proposta aperta il cui movimento è poi riconciliato (da un giro o da un altro motore) si chiude `superata` per id (`chiudi_proposte_superate`, a ogni giro bancario e a ogni abbinamento), mai cancellata: in «Scegli fattura» restano solo le domande vive. L'aggiornamento richiede ancora `stato=da_confermare` e conta soltanto le righe modificate, preservando le decisioni concorrenti del titolare.
 - Fattura, disposizione, ricevuta, quietanza e movimento bancario sono prove
   **distinte**, collegate da `operation_id`, mai fuse in un solo record.
 - I documenti originali restano immutabili: hash, fonte, versione, timestamp e
@@ -295,6 +301,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ## Ingresso documenti
 
+- **Un file si riconosce dal contenuto, mai dal titolo** (regola del titolare, 02/10/2026). Il tipo, il periodo, il conto e l'identità di un PDF o di un XML li decidono le parole, le cifre e la struttura **dentro** il documento (intestazione dell'emittente, numeri, righe, coordinate); il nome del file, la cartella e la data di modifica non decidono mai un tipo, un periodo o un esito, e non provano che un file sia già stato letto: possono solo **ordinare** il lavoro (cosa leggere prima) o spiegarlo in un messaggio. Un titolo come «Estratto_Conto (13)» o «marzo nexi» non dice niente: «Milano, 31 Agosto 2026 … Nexi … carta 9998» sì. Conseguenza: **un file entra nel gestionale solo se passa dallo smistatore** (cartella unica `DA ELABORARE` o radice, oppure Documenti > Import); un file messo a mano in `ELABORATE`, `DOPPIONI`, `ARRETRATO` o `ERRORI` **non è stato letto**, e «sta in ELABORATE» non prova che il gestionale lo conosca: la prova è la riga nel registro con il suo SHA-256. Un file in `ELABORATE` senza riga nel registro si rimette in coda e si rilegge, mai si dà per fatto.
 - `Documenti > Import` è l'unico ingresso manuale operativo, e lo stesso smistatore serve la cartella unica
   Drive (`DA ELABORARE | ELABORATE | ERRORI`); il suo id sta su Render, non in questo file.
 - Le fatture elettroniche arrivano dal canale Drive/SDI configurato. Una
@@ -311,7 +318,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Un errore di parsing **conserva email e allegato** e crea una coda visibile:
   non si scarta nulla.
 - **ZIP oltre 100 MB**: restano su Drive e si importano con `POST /api/admin/documenti/import-zip-drive?file_id=…` (`drive_zip_import.py`, `dry_run` per difetto = solo anteprima): indice e voci a intervalli di byte, ogni voce dallo smistatore della cartella unica (stessi doppioni), cursore in `sistema_stato`, si riprende dopo un riavvio; niente si sposta né si cancella su Drive. Avanzamento: `GET …/stato`. Lo stesso endpoint importa una **cartella** Drive con le sottocartelle (in sola lettura: lo smistatore della cartella unica non ci scende); `DRIVE_IMPORT_CARTELLE_ID` la fa girare da sola, un controllo al giorno. **Ripasso degli errori**: ogni correzione a un lettore alza `VERSIONE_RIPASSO`; al primo giro dopo il deploy la cartella già completata rilegge **solo i file in errore** (non l'intera cartella), una volta per versione, salvando l'avanzamento ogni 10 file (un deploy lo interrompe e riprende). Un file «non quadrato» non si forza mai: si corregge il lettore e si ripassa. **Un guasto transitorio non è un errore del file**: timeout di una RPC Supabase, 5xx, memoria esaurita per l'OCR e il NUL nel testo (tolto dal payload in `_rpc`, Postgres lo rifiuta nel jsonb) restano in coda (`e_guasto_transitorio`, un solo meccanismo con i rinvii dello svuotamento: `rinvii` nel registro, al massimo `MAX_RINVII` volte, anche per le righe ERRORI nate così, rimesse in coda dal registro); poi il file resta in ERRORI col suo motivo, e il secondo giro non sposta niente. Il motivo di un F24 non quadrato porta righe lette, saldo stampato e `x1 d/c` (bordo destro in punti degli importi letti come debito e credito).
-- **Cruscotto Agenti** (`/agenti`, voce «Agenti» ne «I controlli», solo admin, `routers/agenti.py`): la scheda «Settori» (`services/agenti_settori.py`, `GET /api/agenti/settori`, `@istantanea` persistente) dice per verbali, cedolini, bonifici, fatture, corrispettivi e F24 l'ultimo giro (da `sistema_stato`) e le **code ferme** con numero, link alla pagina e motivo: file in `ERRORI` per tipo, F24 non quadrati, chiusure RT scartate, verbali aperti senza driver, buste senza netto verificato, varianti da decidere, bonifici HR da associare, banca senza categoria, fatture aperte senza metodo, letture AI da rivedere; un conteggio che fallisce è `None` («Dato non disponibile»), mai zero. **Gli agenti AI non scrivono dati: scrivono proposte** (`services/agenti_proposte.py`, giro `agenti_proposte` ogni 30 minuti con lease, lotti da 10): leggono i file fermi in `ERRORI` della cartella unica e l'inbox senza categoria e salvano in `agenti_proposte` tipo dello smistatore, campi, confidenza e prove (JSON validato: tipo fuori lista = `non_riconosciuto`, importi in centesimi, codici tributo stringhe). Il titolare conferma (`POST /api/agenti/proposte/{id}/conferma`, «Conferma tutte le sicure» solo ad alta confidenza) e la conferma applica il **motore deterministico del tipo** (Drive → `drive_cartella_unica.rielabora_con_tipo`, lo stesso `_smista` con `tipo_rilevato_noto`; inbox → `upload_documento_automatico`, poi `categoria`/`processed` come la classificazione esistente), o rifiuta con motivo a chip (`tipo_sbagliato|dati_sbagliati|non_contabile|doppione|altro`); una proposta decisa non si riapplica (`gia_decisa`), un motore che fallisce la lascia aperta col motivo, ogni esito va in `audit_log`. **Un solo client**, `anthropic_llm_client.LlmChat` (timeout, 3 tentativi solo su 429/5xx/rete, `send_message_con_usage`): ogni chiamata in `agenti_ai_chiamate` (giorno di Roma, token), tetto `AGENTI_AI_TETTO_GIORNALIERO` (200) sulle chiamate vere, cache per SHA-256 + `VERSIONE_PROMPT` (la copia identica non richiama il modello); `AGENTI_AI=false` spegne il giro, senza `ANTHROPIC_API_KEY` non fa nulla e lo scrive nello stato (`sistema_stato`, `agenti_proposte`). Nessun altro lettore AI va aggiunto: quelli esistenti sono doppioni da ridurre (vedi «Aperto»).
+- **Cruscotto Agenti** (`/agenti`, voce «Agenti» ne «I controlli», solo admin, `routers/agenti.py`): la scheda «Settori» (`services/agenti_settori.py`, `GET /api/agenti/settori`, `@istantanea` persistente) dice per verbali, cedolini, bonifici, fatture, corrispettivi e F24 l'ultimo giro (da `sistema_stato`) e le **code ferme** con numero, link alla pagina e motivo: file in `ERRORI` per tipo, F24 non quadrati, chiusure RT scartate, verbali aperti senza driver, buste senza netto verificato, varianti da decidere, bonifici HR da associare, banca senza categoria, fatture aperte senza metodo, letture AI da rivedere; un conteggio che fallisce è `None` («Dato non disponibile»), mai zero. **Gli agenti AI non scrivono dati: scrivono proposte** (`services/agenti_proposte.py`, giro `agenti_proposte` ogni 30 minuti con lease, lotti da 10): leggono i file fermi in `ERRORI` della cartella unica e l'inbox senza categoria e salvano in `agenti_proposte` tipo dello smistatore, campi, confidenza e prove (JSON validato: tipo fuori lista = `non_riconosciuto`, importi in centesimi, codici tributo stringhe). Il titolare conferma (`POST /api/agenti/proposte/{id}/conferma`, «Conferma tutte le sicure» solo ad alta confidenza) e la conferma applica il **motore deterministico del tipo** (Drive → `drive_cartella_unica.rielabora_con_tipo`, lo stesso `_smista` con `tipo_rilevato_noto`; inbox → `upload_documento_automatico`, poi `categoria`/`processed` come la classificazione esistente), o rifiuta con motivo a chip (`tipo_sbagliato|dati_sbagliati|non_contabile|doppione|altro`); una proposta decisa non si riapplica (`gia_decisa`), un motore che fallisce la lascia aperta col motivo, ogni esito va in `audit_log`. **Un solo client**, `anthropic_llm_client.LlmChat`, per tutte e quattro le app (`tests/runtime/test_ai_client_unico.py`: nessun altro modulo importa `anthropic`, chiama `api.anthropic.com` o cabla un modello): timeout, 3 tentativi solo su 429/5xx/rete, chiamata fuori dal loop, `send_message` per un messaggio con immagini o PDF, `crea_messaggio` per conversazioni a turni, strumenti propri (la chat) e server-side (`cerca_sul_web`, ricerca web di Lotti). Modelli solo da `document_model_name()` (`ANTHROPIC_MODEL`, letture documentali) e `modello_veloce()` (`ANTHROPIC_MODEL_VELOCE`, classificazioni brevi), mai uno snapshot datato nel codice. **Registro unico** `agenti_ai_chiamate` (giorno di Roma, `scopo`, modello, token, esito; un solo scrittore, `registra_chiamata`) e **tetto** `AI_TETTO_GIORNALIERO` (1.000, tutti gli scopi: `TettoRaggiunto` prima di chiamare); gli agenti tengono il loro tetto `AGENTI_AI_TETTO_GIORNALIERO` (200) sullo scopo `agenti_proposte`, con cache per SHA-256 + `VERSIONE_PROMPT` (la copia identica non richiama il modello); `AGENTI_AI=false` spegne il giro, senza `ANTHROPIC_API_KEY` non fa nulla e lo scrive nello stato (`sistema_stato`, `agenti_proposte`). Nessun altro lettore AI va aggiunto: quelli esistenti sono doppioni da ridurre (vedi «Aperto»).
 - Gli ZIP si validano prima dell'estrazione (path traversal, zip-bomb,
   estensioni vietate, limite di dimensione), poi si deduplicano e inventariano.
 - Deduplica documentale certa solo con SHA-256 **e** confronto byte; mai per
@@ -322,12 +329,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   alert, non viene assegnato a caso.
 - Pulizia Drive: solo copie esatte, **Cestino mai eliminazione permanente**,
   con anteprima e autorizzazione esplicita.
-- Estratti conto: inbox unica per sei fonti; riconoscimento nell'ordine
-  percorso → nome file (solo segni esclusivi) → contenuto, e il contenuto si
-  prova SumUp → Nexi → PayPal → mutuo → banca. «estratto conto» da solo non è un
-  segno. Il PDF ufficiale BPM cambia impaginazione dal trimestre al 30/06/2026 (tre date — contabile, valuta, disponibile — poi l'importo: con la descrizione sulla stessa riga per le entrate, nelle righe dopo per le uscite; la data in coda è del movimento successivo): `parsers/estratto_conto_bpm_parser.py` le conosce entrambe, e la prova è l'archivio riga per riga (844 su 844 al 30/06/2026). All'import ufficiale anche le righe riconosciute solo per giorno, verso e importo (`accoppia`: la causale del PDF non ha il prefisso dell'export) si promuovono a ufficiali. La quietanza di rata «Mutui - Quietanza di pagamento_…» ha una colonna «totale netto»: si riconosce prima della guardia busta paga e va al modulo mutui. Non riconosciuto → cartella Errori col motivo scritto, **mai
+- Estratti conto: inbox unica per sei fonti; il **contenuto** decide (SumUp → Nexi → PayPal → mutuo → banca), mai percorso né nome file (vedi «Un file si riconosce dal contenuto»; il codice oggi li consulta ancora prima: vedi «Aperto»). «estratto conto» da solo non è un
+  segno. Il nome della banca (una bolletta Enel che scrive «addebito presso Banco BPM») e il titolo (un sollecito «INVIO ESTRATTO CONTO - FATTURE SCADUTE») da soli non fanno un estratto: serve la forma, cioè i saldi, le colonne data contabile/valuta o il titolo con l'ABI 05034 (`ha_struttura_di_estratto`); il «Dettaglio movimento» dell'home banking prova un movimento, non è un estratto. La stampa PDF di una fattura italiana va in `ARRETRATO` (`fuori_contabilita`), mai in `ERRORI`; un file in `ERRORI` letto con `REGOLE_CLASSIFICAZIONE` più vecchia si rilegge una volta sola. Il PDF ufficiale BPM cambia impaginazione dal trimestre al 30/06/2026 (tre date — contabile, valuta, disponibile — poi l'importo: con la descrizione sulla stessa riga per le entrate, nelle righe dopo per le uscite; la data in coda è del movimento successivo): `parsers/estratto_conto_bpm_parser.py` le conosce entrambe, e la prova è l'archivio riga per riga (844 su 844 al 30/06/2026). All'import ufficiale anche le righe riconosciute solo per giorno, verso e importo (`accoppia`: la causale del PDF non ha il prefisso dell'export) si promuovono a ufficiali. La quietanza di rata «Mutui - Quietanza di pagamento_…» ha una colonna «totale netto»: si riconosce prima della guardia busta paga e va al modulo mutui. Non riconosciuto → cartella Errori col motivo scritto, **mai
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
-  conto. Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
+  conto. Lo statement Nexi (`estratto_conto_nexi`: PDF, `content_sha256`, `totale_transazioni`) e le sue righe (`estratto_conto_movimenti`, `tipo=carta_credito`, `estratto_id`) portano il `drive_file_id` del file di origine quando arriva dalla cartella unica (le righe già scritte non si riscrivono); sullo statement già noto lo si aggiunge una volta sola, mai sovrascritto (`importa_estratto_nexi_pdf`). Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
   nome o contenuto sotto `DRIVE_ESTRATTI_ANNO_MINIMO` (difetto 2025: l'anno prima si legge per riconciliare; 0 = nessun filtro) va in `ARRETRATO`, non si registra.
 - **CSV «Corrispettivi» del portale AdE = dato provvisorio** (`corrispettivi_service.importa_csv_ade`, da Documenti > Import o `POST /api/corrispettivi/import-csv?dry_run=`): «Ammontare delle vendite» è l'**imponibile** (coincide al centesimo con l'XML di settembre) e «Imposta» l'IVA; il totale è derivato (`totale_derivato`) e contanti/POS restano `None`, mai per differenza. Le giornate già `definitivo_xml` non si toccano (si dichiara solo la discordanza di imponibile), una riga manuale è un conflitto, un invio = una riga (`id_invio`: secondo import `nuovi=0`, due chiusure dello stesso giorno restano due). Né Prima Nota, né giornale, né evento finché non arriva l'XML: data + matricola lo agganciano, `stato` diventa `definitivo_xml` e importi e quote si sovrascrivono (il CSV resta in `csv_ade` come storico).
 - Corrispettivi: la via **primaria** è l'import degli XML (Documenti > Import, cartella unica); la copia serale RT è
@@ -369,7 +374,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   la rifa il trigger `prova_origine` (`prova_calcola`, per MD5 o id Drive: si sceglie con le **stesse chiavi** che il trigger usa, `chiavi_prova`; un documento gia'
   riscritto e ancora senza origine non si ritocca). Senza il file nel
   protocollo la prova dice la verita' («nessun file Drive con la stessa impronta»), mai un'origine
-  inventata: dal 17/09 al 01/10/2026 il protocollo non ha visto nessun file nuovo.
+  inventata: dal 17/09 al 01/10/2026 il protocollo non ha visto nessun file nuovo. **Il collegamento protocollo ↔ documento ha due
+  chiavi**: l'impronta (`SQL_COLLEGA`, per MD5) e il `drive_file_id` scritto su F24 e quietanze
+  (`gestionale.collega_protocollo_per_drive_file_id()`, SECURITY DEFINER perché `hr_app` non legge `documents`;
+  `drive_protocollo.collega_per_drive_file_id`, idempotente): lo chiama lo svuotamento della cartella unica appena ha
+  elaborato un file (`protocollo_collegati` nell'esito) e il giro incrementale dopo le impronte. Senza la seconda chiave
+  le quietanze arrivate dopo il 15/09 restavano scollegate anche col file nel protocollo.
 - **I canali Drive per sezione non esistono piu'** (DRV-16): moduli `drive_*_ingest`, router `/drive/sync|quadratura`,
   registro JSON delle cartelle e credenziali per canale tolti; lo smistatore non ne usava i parser. Restano la
   cartella unica e le foto ricette di Lotti; `fonti_ferme` e `cedolini_bloccati` (`cedolini_bloccati.py`) hanno un job proprio.
@@ -723,7 +733,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   collisione **e** `status` non archiviato.
 - **Una fattura con la stessa chiave contabile si decide in un posto solo**, `decidi_stessa_chiave` (`fatture_upload.py`), per Drive **e** Documenti > Import: stesso originale (SHA-256 o impronta canonica) = già presente, `nuovi=0`; originale diverso = collisione (`stato_import=collisione_identita_da_verificare`, `status=da_verificare`, derivati bloccati, alert `FATTURA_IDENTITA_DA_VERIFICARE`), mai scartata in silenzio. Anche l'import manuale salva `content_hash` e `content_hash_canonico`.
 - Note di credito ricevute (TD04/TD08, `TIPI_NOTA_CREDITO`): non costi; ledger (`prima_nota_module/sync.py`) e giornale
-  (`registra_fattura`) leggono `tipo_documento` e scrivono l'inverso (meno costo, IVA a credito e debito, mai cespite).
+  (`registra_fattura`) leggono `tipo_documento` e scrivono l'inverso (meno costo, IVA a credito e debito, mai cespite). **Il rimborso in banca chiude la nota di credito** (`services/rimborsi_note_credito.py`, nel motore bancario sulle entrate, prima di POS e versamenti): bonifico in entrata con l'ordinante dopo `BON.DA` (letto dal lettore unico `soggetto_causale_bancaria`) coerente col fornitore della nota, importo al centesimo, da 0 a 62 giorni dopo la nota; un solo candidato si applica, più note uguali dello stesso fornitore si chiudono in ordine di data, fornitori diversi con lo stesso importo non si scelgono. Scrive con `registra_pagamento_fattura` (entrata «Nota credito fornitore» con la prova), la riga dichiarata dal titolare lascia il posto (`assorbi_righe_dichiarate`) e la riga Cassa provvisoria nata dal metodo del fornitore si ritira per id con motivo (mai una confermata).
+- **Collettore di pagamento di un gruppo = stesso soggetto** (`identity_matching._COLLETTORI_DI_GRUPPO`, titolare 02/10/2026): «AMAZON PAYMENTS EUROPE S.C.A.» incassa SDD e dispone i rimborsi per ogni società Amazon («Amazon Business EU S.a.r.l», «Amazon EU S.a r.l.»), quindi l'SDD Amazon si abbina da solo e non va in «Scegli fattura»; fuori dalla tabella un solo marchio in comune resta un soggetto diverso («ALFA PAYMENTS EUROPE» per «Alfa Forniture Srl»: proposta). Amazon paga sempre con metodo tracciato: il fornitore ha metodo «banca».
 - **Fattura emessa = cedente è la nostra P.IVA** (`FISCAL_COMPANY_ID`), da ogni ingresso: `fatture_emesse`
   (`services/fatture_emesse.py`), mai `invoices`. Fatta dopo lo scontrino: **non aumenta ricavi, IVA né crediti**; si
   aggancia al corrispettivo del giorno dello scontrino (dalla causale, se no data fattura) se unico; clienti per P.IVA→C.F.
@@ -866,7 +877,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `nome_mapping` resta l'ingrediente per le ricette, non l'articolo da ordinare. **Scelto un prodotto (catalogo, Ordini o
   confronto), la riga del carrello va al fornitore che costa meno** (`GET /confronto-fornitori/migliore`) e il toast lo dice;
   un cartone fatturato senza i pezzi scritti prende il numero dal listino dello stesso articolo, con la nota «da verificare».
-- **Il web identifica i prodotti con un motore solo** (`servizi/lettura_articoli_ai.py`): `cerca_sul_web` è l'unica chiamata a `web_search_20250305` (stessa `ANTHROPIC_API_KEY`, la usa anche la ricerca delle schede tecniche); `identifica_col_web` (giro `lotti_identifica_col_web` ogni 25 min, 5 righe, tetto 120 chiamate al giorno, `web_cercato_at` = 30 giorni di pausa) dà una categoria del Dizionario da sola **solo** se il web (alta confidenza, almeno una fonte) e il testo di fattura concordano e la categoria è in `CATEGORIE` (`categoria_fonte="web"`, `abbinato_ai`, fonti); il resto è proposta `nome_mapping` fonte `web`.
+- **Il web identifica i prodotti con un motore solo** (`servizi/lettura_articoli_ai.py`): `cerca_sul_web` è l'unica chiamata allo strumento server-side di ricerca (`LlmChat.cerca_sul_web`, stessa chiave, la usa anche la ricerca delle schede tecniche); `identifica_col_web` (giro `lotti_identifica_col_web` ogni 25 min, 5 righe, tetto 120 chiamate al giorno contate nel registro unico con scopo `lotti_web`, `web_cercato_at` = 30 giorni di pausa) dà una categoria del Dizionario da sola **solo** se il web (alta confidenza, almeno una fonte) e il testo di fattura concordano e la categoria è in `CATEGORIE` (`categoria_fonte="web"`, `abbinato_ai`, fonti); il resto è proposta `nome_mapping` fonte `web`.
 - Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili col peso del pezzo.
 - Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
   colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e
@@ -918,10 +929,13 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   l'unica strada ricetta → prodotto (il «Collega a una ricetta» dell'admin
   Menu era un doppione dal lato sbagliato, rimosso). Ogni ricetta la replica
   il ponte `app/lotti/servizi/menu_bridge.py` con la stessa foto
-  (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` → `visible`):
+  (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` → `visible`,
+  `menu_bb` → `menu_bb`):
   le righe di Lotti sopravvivono alla sync Qromo e l'esito `menu_sync` non fa
   mai fallire l'endpoint Lotti. Pregresso con
-  `POST /api/ricette-ripubblica-menu` (admin, in background).
+  `POST /api/ricette-ripubblica-menu` (admin, in background). La visibilita'
+  pubblica delle nuove ricette e' spuntata per default; `pubblica_tutte=true`
+  spunta anche l'archivio esistente e conserva i valori precedenti nello stato del giro.
 - **Il menu pubblico non mostra categorie e sottocategorie senza prodotti
   visibili** (`menu_routes._build_hierarchy`): un riquadro vuoto in home ha
   l'immagine rotta e «0 prodotti». Il filtro sta in lettura perché è l'unico
@@ -939,26 +953,70 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   resta visibile (`prezzo_tavolo_impostato`): non si copia l'uno nell'altro, o
   un prezzo mai scelto sembrerebbe deciso. **Valido solo se finito e maggiore
   di zero**: negativi, `nan` e `inf` sono 400 all'ingresso, `0` significa
-  «togli il prezzo». Una ricetta **senza nessuno dei due** entra nel Menu
-  **nascosta** (sarebbe ordinabile a 0 €) ed è contata nel backfill
-  (`senza_prezzo`, `nascoste_per_prezzo`): non si inventa un ripiego.
-- La categoria del Menu si sceglie sulla ricetta (`menu_category_id`,
-  `menu_subcategory_id`); senza scelta resta «Produzione Ceraldi» più la
-  sottocategoria per reparto. Le categorie si leggono e si creano da Lotti con
+  «togli il prezzo». Una ricetta **senza nessuno dei due** compare nella carta
+  `/menu/carta/index.html` con **Prezzo da definire**; le API dei prodotti
+  ordinabili continuano a richiedere un prezzo valido. Il backfill conta
+  `senza_prezzo`, senza inventare un ripiego.
+- In Lotti, **Ricette → Menu e prezzi → Prezzi da completare** permette all'amministratore di
+  inserire il prezzo al tavolo accanto a foto e prodotto, senza aprire la scheda.
+  Usa il solo endpoint canonico `PUT /api/ricette/{id}/prezzo-tavolo`: non cambia
+  banco o ingredienti. La riga scompare dopo salvataggio e sincronizzazione Menu;
+  un errore resta visibile e si puo' riprovare. Ricerca e reparto filtrano i dati gia' letti.
+- Le spunte di Ricette **Rosticceria del giorno** e **Pasticceria classica**
+  usano `categorie_rapide`, senza un secondo archivio di produzione. Sono gruppi
+  operativi modificabili (non si azzerano a mezzanotte): compaiono anche in Produci.
+  La scelta esplicita salva anche il reparto tramite il writer parziale canonico
+  e aggiorna il Menu (Food/Dolci); Rosticceria esclude Colazioni
+  e Pasticceria classica. Nessun lotto o quantitativo nasce dalla sola spunta.
+- La carta riunisce Colazione/Dolci di «Bar & Dolci» e Pasticceria di Lotti
+  nella card **Dolci**; bevande in **Bar**, Rosticceria in **Food**. Il reparto
+  misto Altro resta in **Altri prodotti**, senza dedurre il reparto dal nome.
+  E' un raggruppamento di presentazione: ID, prezzi e categorie sorgenti restano intatti.
+- **Un solo editor per la produzione:** Menu admin → Prodotti → Ricetta apre
+  `/lotti/#ricette/<id>`, non un secondo form. Nella ricetta le tre spunte
+  indipendenti decidono menu pubblico, catalogo B&B e ricette operative
+  (`visibile_tablet`; le escluse restano recuperabili). Il Menu legge il
+  proprio catalogo replicato dal ponte, non rilegge le ricette per B&B.
+  Composizione colazioni, assegnazione hotel e carta ospite usano la stessa
+  destinazione `bb`; le RPC esistenti conservano autorizzazioni e prezzi hotel.
+  Il frontend B&B legge `/menu/api/menu/carta?destinazione=bb`, sotto la
+  sub-app Menu: il prefisso ERP `/api/` richiede invece la sessione ERP.
+  `#in_menu` resta un alias di `#ricette/prezzi`, non una seconda pagina.
+- In Menu admin → Prodotti, la **X nasconde**, non cancella: resta per Qromo
+  e aggiorna `visible`; per Lotti la scelta sta nella ricetta.
+  La sync Qromo conserva i false gia' salvati sullo stesso ID. «Mostra anche nascosti»
+  permette il ripristino. «Possibili doppioni» confronta solo il nome, mai fonde o elimina automaticamente.
+- La categoria delle ricette nel Menu e' «Produzione Ceraldi» piu' la
+  sottocategoria derivata dal reparto. Le categorie si leggono e si creano da Lotti con
   `/api/menu-categorie`, sempre con `origine` valorizzata; se esiste già una
   categoria con quel nome di **altra** origine la creazione riesce ma la
   risposta porta un `avviso` (due riquadri «Bar» in home). **Una categoria di
   Qromo (`origine IS NULL`) non è agganciabile**: la sync la cancella e un
   prodotto di Lotti appeso lì farebbe fallire la cancellazione per chiave
   esterna.
-- Chi allergeni da dichiarare non ne ha (distillati, bibite in bottiglia) si
-  esclude dalla verifica, per prodotto o per reparto. Le esclusioni vivono in
+- Bibite e liquori non compaiono nella lista di lavoro degli allergeni;
+  il filtro non cancella allergeni registrati e non attesta la loro assenza.
+  Le ulteriori esclusioni manuali, per prodotto o reparto, vivono in
   `menu.menu_allergeni_esclusioni`, **non** in una colonna di `menu_products`:
   la sync Qromo cancellerebbe qualunque flag messo lì, mentre gli id Qromo
-  restano stabili. Escludere significa «non richiede la dichiarazione», non
-  «nascondilo dal menu»: è conformità, si conserva e si revoca.
+  restano stabili. L'esclusione manuale conserva motivo e revoca; non nasconde
+  il prodotto dal Menu.
+
+- **Colazione del reparto:** la configurazione stagionale separa Pasticceria,
+  Rosticceria, Acquaviva e altri fornitori, con filtri sulle categorie richieste.
+  I filtri ricavati dal nome sono soltanto di presentazione, non assegnano
+  gruppi operativi persistenti. I salati rimandano alla produzione di
+  Rosticceria. L'azione esplicita «Tutte le 4 stagioni» aggiunge il singolo
+  prodotto in modo idempotente, conserva quantità esistenti e chiede conferma.
+  Il caricamento fallito non viene rappresentato come un menu vuoto.
 
 ### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
+
+- Il compositore «Prodotto dal menu» legge il catalogo canonico con
+  `/menu/api/menu/carta?destinazione=bb`, tutte le categorie, ricerca e
+  paginazione; non mantiene una seconda lista né inventa prezzi mancanti.
+  «Usa come prezzo» aggiorna i nomi automatici «Colazione da €…» e conserva
+  i nomi personalizzati. Le spunte B&B dei prodotti Lotti arrivano dal ponte.
 
 - **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
@@ -1011,7 +1069,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   con un template Meta approvato e ricontrolla l'ultimo consenso prima di acquisirla. URL Google/Tripadvisor, informativa
   e ritardo si configurano dalla scheda; token e phone number id Meta restano nelle variabili Render.
 
-## Stato attuale (al 01/10/2026 — riscrivere sul posto)
+## Stato attuale (al 02/10/2026 — riscrivere sul posto)
 
 - Ogni merge su `main` fa ridistribuire Render: per qualche minuto la produzione può essere `degraded`. Non si accodano merge. La health del commit `0187a45f`, letta il 30/09 alle 17:54 UTC, dichiarava `hydrated_rows=249598`, `hydration_errors=0`; il vecchio valore ~77.000 non è una misura corrente.
 - TFR: la lettura RPC del runtime il 30/09 misura **1.239** righe in `tfr_accantonamenti`. L'assenza nel deposito relazionale HR, l'importo aggregato e lo stato dell'ingest posta restano baseline da riconfermare; non sono stati interrogati nell'audit in sola lettura.
@@ -1060,20 +1118,24 @@ locale e marker fixture prima delle scritture.
 
 ## Aperto (togliere la voce quando si chiude)
 
+- **Credenziali vere nella cronologia git** (`backend/.env` in 23 commit, `memory/test_credentials.md`, `memoria/DIARIO.md`, `push_impeccable.py`, fra febbraio e aprile 2026, visibili finché il repository era pubblico; oggi non sono in `main`). Prima il titolare **ruota** tutto ciò che c'era (token GitHub, PEC Aruba, password app Gmail/IMAP, client secret PayPal, URI MongoDB Atlas, token WhatsApp, `SECRET_KEY`/`CRON_SECRET`, password admin, codice gestione riservata, chiave Emergent); poi, **solo col suo ok**, la cronologia si riscrive con `git filter-repo --invert-paths` su quei quattro percorsi, push forzato di `main`, tutti i branch e i tag, e ogni checkout si riclona (il PC del titolare compreso). Mai riscrivere la cronologia prima della rotazione: la riscrittura non revoca niente.
+
 - **Lotti, due giri di ricerca web sulle descrizioni di fattura**: `identifica_col_web` (`lettura_articoli_ai.py`, giro `lotti_identifica_col_web`, categoria del Dizionario, `web_cercato_at`) e la campagna `ricerca_web_prodotti` (`app/lotti/routers/scheduler.py`, schede e `nome_mapping`, `ricerca_web_tentativi`, mai un tentativo registrato). Condividono l'helper `cerca_sul_web` ma sono due code e due contatori: fonderli in un giro solo.
 
-- **Lettori AI doppi, da ridurre a `LlmChat`**: `ai_document_parser` (vision, catena `mittenti_email_sync`, coda `/ai-parser/da-rivedere`, `BatchProcessor.jsx autoMode`), `llm_document_parser` (verbali), `enhanced_document_parser` (cedolini), `document_ai_extractor` (fatture estere, modello fisso `claude-sonnet-4-5`), `hr/document_ai_extractor` (guscio), `ai_categorizzazione` (haiku fisso), `chat_ai_engine`, `fiscal_agents`: due lettori per verbali, cedolini e fatture, tre pipeline di classificazione dell'inbox (`documents_inbox_classify.auto_classify`, `ai_integration_service`, proposte), otto client Anthropic propri senza tetto né `usage` comune. Anche `cerca_sul_web` di Lotti deve contare sul tetto di `LlmChat`, non su `sync_status`. **Dopo il deploy**: `POST /api/agenti/proposte/giro` (admin) per il primo lotto, poi in `/agenti` › Settori provare che «Vedi» apra un file in `ERRORI` e che una conferma lo sposti davvero in `ELABORATE`.
+- **Lettori AI doppi, da fondere**: il client è uno solo (fatto), ma i lettori restano più d'uno per lo stesso documento: `ai_document_parser` (vision, catena `mittenti_email_sync`, coda `/ai-parser/da-rivedere`, `BatchProcessor.jsx autoMode`), `llm_document_parser` (verbali), `enhanced_document_parser` (cedolini), `document_ai_extractor` (fatture estere), `fiscal_agents`: due lettori per verbali, cedolini e fatture, tre pipeline di classificazione dell'inbox (`documents_inbox_classify.auto_classify`, `ai_integration_service`, proposte). La strada canonica è quella delle proposte degli agenti (lettura → proposta → conferma → motore deterministico): gli altri lettori si tolgono quando il loro ingresso passa da lì, un flusso alla volta e con il titolare che decide quale tenere. **Dopo il deploy**: `POST /api/agenti/proposte/giro` (admin) per il primo lotto, poi in `/agenti` › Settori provare che «Vedi» apra un file in `ERRORI` e che una conferma lo sposti davvero in `ELABORATE`.
 - **Fornitori, da lanciare dopo il merge** (admin, prima `dry_run`): `POST /api/suppliers/magazzino/allinea` (le 88 esclusioni di Lotti sull'anagrafica); per BIG FOOD SRL `POST /api/suppliers/{id}/applica-metodo-dal` dopo aver messo «Metodo valido dal» 01/01/2025 sulla scheda (oggi è 30/09/2026 per un salvataggio della scheda). Le 6 fatture BIG FOOD già pagate con assegno, banca o dichiarazione in banca (2.711,38 €) restano dove sono finché il titolare non dice diversamente.
 
 - **Termini di recupero**: la regola dei termini vive in una vista SQL (`verifica.tabulato_tributi_termini`, migrazioni `…013008` e `…013741`), non in Python con test: se cresce o va corretta, portarla in `termini_recupero.py` con i casi del foglio del 01/10/2026 (27 righe ancora recuperabili su 98 senza versamento al 01/10).
 
 - `legacy_staging` (5 tabelle, ~1 MB; le altre 51 sono state cancellate: gia' nel gestionale al centesimo): restano i dati che il gestionale non puo' ricevere senza una via con admin.
   `residui_fatture_2026` (le 21 righe gia' nel gestionale per numero e importo non ci sono piu'; restano **8 parcelle FPR pagate** nel 2026 senza XML: Carini 3.206,40, Marotta 1.122,24 + 1.517,70 + 1.656,64,
-  Ferrantini 1.122,24 ×3, Graziuso 2.300,00 contanti — servono gli XML dal portale AdE), `catalogo_ceraldi` (caricato all'avvio come listini, vedi «Listini»: dopo il deploy verificare 808 righe in `catalogo_forno_prodotti` e togliere la tabella), `movimenti_carta`
-  (34 movimenti carta gen–giu 2026, 18 con fattura collegata a mano: gli estratti Nexi correnti sono PDF mensili senza righe), `presenze_acconti` (da registrare in HR
+  Ferrantini 1.122,24 ×3, Graziuso 2.300,00 contanti — servono gli XML dal portale AdE), `catalogo_ceraldi` (caricato in produzione come listini, vedi «Listini»: 808 righe verificate; la tabella si cancella con `select gestionale.consenti_cancellazione();` e `drop table legacy_staging.catalogo_ceraldi;`), `movimenti_carta`
+  (34 movimenti carta gen–giu 2026, 18 con fattura collegata a mano: le righe sono già tutte in `estratto_conto_movimenti`, ritrovate per data e importo 34 su 34; la tabella si cancella), `presenze_acconti` (da registrare in HR
   l'acconto TFR di 1.800 € a Capezzuto del 31/07/2026 e uno stipendio di agosto) e `presenze_profili` (IBAN e profilo di Murolo, assente dall'HR corrente: da chiedere al titolare se e' un ex dipendente).
   Si migrano con le vie normali (mai con SQL a mano: l'acconto TFR scrive anche il giornale), poi lo schema si cancella.
 - **Collaudo funzionale dei flussi, resto**: HR — `riepilogo-aziendale` HR filtra `status` dove l'anagrafica usa `stato` (da verificare), la liquidazione TFR di HR attinge solo dal valore manuale e non dalle quote da buste, il percorso HR «Buste da email» (`/paghe/importa-email`) ha un lettore proprio fuori dal motore unico dei cedolini; corrispettivi — unificare la dedup delle due strade (`ingest_corrispettivo_parsed`, `importa_csv_ade`); F24 — all'import di un modello l'addebito si cerca due volte con la stessa funzione idempotente (`cerca_controparti_f24` e handler `on_f24_acquisito_riprocessa`): togliere il passo `banca` dal primo. **Da lanciare dopo il deploy** (admin, prima `dry_run`): `POST /api/admin/f24/ripubblica-evento-acquisito`. Decisioni del titolare in attesa: nessuna (le dodici del 02/10/2026 sono nel codice; Flotta: targhe→driver→dal da scrivere quando il titolare è al PC).
+- **Riconoscimento dal contenuto, dove il codice ancora guarda il titolo o la cartella** (regola «Un file si riconosce dal contenuto»): `detect_document_type` (`routers/documenti.py`) decide `documento_identita`, `visura_camerale` e `tari_istanza_compensazione` dal solo nome del PDF, e `commissioni_` nel nome esclude un POS; l'estratto conto passa ancora per percorso e nome prima del contenuto. Da fare: togliere le decisioni per nome (lasciando il nome solo per ordinare la coda) e verificare se un file messo a mano in `ELABORATE` senza riga nel registro `drive_cartella_unica` viene mai riletto (la riga del registro ha un id interno, l'id Drive sta in `drive_file_id`: si cerca per quello). **Il registro `drive_cartella_unica` si cerca per `drive_file_id`, mai per `id`** (l'`id` della riga è interno): cercare per `id` fece dichiarare «mai letti» quattro estratti Nexi che il registro conosceva.
+- **Residui «legacy» con dati o writer vivi** (da decidere uno a uno, non si cancellano alla cieca): `piano_conti` (31 righe, letta da `_conti_operativi_legacy` in `routers/accounting/piano_conti.py`; il piano ufficiale è in Python), `attendance_presenze_calendario` (HR, `set-presenza` la scrive ancora), `email_fornitori` (Lotti, `email_ordini.py` la scrive e la elenca), `hash_pin_legacy` (HR: i PIN col vecchio hash restano validi finché ogni persona non ne imposta uno nuovo), `extracted_documents` (vuota; `/da-rivedere` e `/da-rivedere/{id}/classifica` in `ai_parser.py` da verificare), gli alias 307 e `LegacyRouteResolver` (indirizzi già in circolazione), e i rami «schema legacy» di `alerts.py`, `scadenze.py`, `fiscalita_italiana.py`, `suppliers_module/base.py` (`_legacy_supplier_view`): togliere ognuno solo dopo aver contato le righe con quello schema.
 - **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 tenute fuori dal giornale dal
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - **All'avvio un solo `server_failed`** (02/10/2026, dopo #1020 e #1021): nei primi 5 minuti i giri di recupero partono insieme (quietanze orfane, lettura articoli AI di Lotti, letture `ssl`/`aiohttp decompress_sync` del caricamento cache) e il loop resta fermo 4-6 s; il riavvio ogni 20 minuti è chiuso, resta da scaglionare i giri d'avvio o portarli in thread.
@@ -1151,5 +1213,7 @@ Per ogni modifica pertinente:
 8. controllo live del flusso interessato senza mutare dati non autorizzati.
 
 **I minuti di GitHub Actions sono a consumo** (repository privato; il 02/10/2026 il limite di spesa ha fermato ogni run, anche su `main`), e sono l'unica voce che cresce col numero di PR: Render e Supabase hanno un canone fisso e un deploy in più non costa niente. Regole del titolare (02/10/2026): **una PR solo a lavoro finito** e collaudato in locale (test backend, test e build dei quattro frontend), mai una per ogni pezzo; sulla PR gira solo `ci.yml`, mentre `produzione.yml` (E2E col browser, audit layout, verifica live) gira **solo su `main`** o a mano; **ogni sessione finisce con un push sul branch di salvataggio** `<branch>-lavori` (un push su un branch senza PR non fa partire nessun workflow: è gratis), perché il contenitore cloud della sessione è temporaneo e il PC del titolare può essere spento: ciò che non è pushato è perso, e la sessione successiva — da PC o da telefono — riparte da `git pull` dello stesso branch, mai da un secondo tronco. Un commit di salvataggio può contenere lavoro a metà; la PR finale no.
+
+**Segreti**: `ci.yml` ha il job «Segreti (gitleaks)» (binario fissato, `.gitleaks.toml` con i soli falsi positivi noti: chiavi di idempotenza, fixture, chiave pubblicabile Supabase, nomi delle variabili in `render.yaml`). Scansiona i file presenti, non la cronologia. Un segreto vero non si aggiunge mai alla lista bianca: si toglie dal codice e si ruota.
 
 Produzione: **https://gestionalecloud.onrender.com**

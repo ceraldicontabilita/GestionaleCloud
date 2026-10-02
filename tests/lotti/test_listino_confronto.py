@@ -213,42 +213,27 @@ def test_lettura_ai_completa_il_formato_e_unisce_le_descrizioni():
 
 
 class _ClientFinto:
+    """Un ``LlmChat`` finto: legge le descrizioni numerate del prompt e risponde con l'array."""
+
     def __init__(self):
         self.chiamate = 0
 
-    async def post(self, url, headers=None, json=None):
+    async def crea_messaggio(self, messages, **kw):
         self.chiamate += 1
-        testo = json["messages"][0]["content"]
+        testo = messages[0]["content"]
         righe = [r.split(". ", 1)[1] for r in testo.splitlines()[1:]]
         risposta = [{"i": i + 1, "nome": r.title(), "marca": "", "prodotto": r.split()[0].lower(),
                      "variante": "", "misura": None, "unita": None, "pezzi": None, "servizio": False}
                     for i, r in enumerate(righe)]
-
-        class R:
-            def raise_for_status(self):
-                return None
-
-            def json(self):
-                return {"content": [{"type": "text", "text": __import__("json").dumps(risposta)}]}
-
-        return R()
-
-    async def aclose(self):
-        return None
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a):
-        return None
+        corpo = __import__("json").dumps(risposta)
+        return {"content": [{"type": "text", "text": corpo}], "stop_reason": "end_turn", "testo": corpo,
+                "fonti_web": [], "usage": {"input_tokens": 1, "output_tokens": 1}, "modello": "finto", "tentativi": 1}
 
 
 def test_giro_di_lettura_idempotente(monkeypatch):
-    import httpx
-
     db = AsyncMongoMockClient()["Lotti_Test_Lettura"]
     client = _ClientFinto()
-    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: client)
+    monkeypatch.setattr(lai, "_client", lambda *a, **k: client)   # il solo client, finto
     monkeypatch.setenv("ANTHROPIC_API_KEY", "prova")
     descrizioni = ["SALE FINO KG. 1 X12 ITALKALI", "SALE FINO KG. 1 X12 ITALKALI\n0\n", "POMODORI PELATI KG.3"]
     esito = run(lai.leggi_mancanti(db, descrizioni))

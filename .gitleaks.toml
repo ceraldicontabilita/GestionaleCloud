@@ -1,0 +1,22 @@
+# Scansione dei segreti (gitleaks, job «Segreti» di ci.yml) sull'albero di
+# lavoro. Qui stanno solo i falsi positivi noti, per percorso o per regola:
+# un segreto vero non si aggiunge mai a questa lista, si toglie dal codice.
+title = "GestionaleCloud"
+
+[extend]
+useDefault = true
+
+[allowlist]
+regexTarget = "line"
+description = "Falsi positivi noti (nessun segreto): chiavi di idempotenza, chiavi di prova, nomi di variabili"
+paths = [
+  '''app/hr/data/contabilita_seed\.json''',          # match_key dei dati di prova HR
+  '''supabase/migrations/.*\.sql''',                  # idempotency_key e nomi di funzione
+  '''tests/.*''',                                      # chiavi fisse delle fixture
+  '''frontend/scripts/audit-.*\.cjs''',                # TEST_SECRET dei collaudi E2E con API finte
+  '''scripts/collaudo_isolato\.py''',                  # SECRET_KEY fissa del runner isolato
+]
+regexes = [
+  '''SB_KEY="sb_publishable_[A-Za-z0-9_-]+"''',        # chiave pubblicabile Supabase: e' fatta per stare nel sito
+  '''- key: [A-Z0-9_]+$''',                            # render.yaml: nome della variabile, mai il valore
+]

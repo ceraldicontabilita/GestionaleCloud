@@ -167,8 +167,10 @@ class RicettaCreate(BaseModel):
     stagionale: Optional[bool] = False
     # Menu digitale (richiesta titolare 03/09/2026): la ricetta e' sempre
     # replicata nel Menu, questo flag decide se compare nel menu PUBBLICO.
-    # None in aggiornamento = lascia il valore gia' salvato; in creazione = False.
+    # None in aggiornamento = lascia il valore gia' salvato; in creazione = True.
     menu_pubblico: Optional[bool] = None
+    menu_bb: Optional[bool] = None
+    visibile_tablet: Optional[bool] = None
 
     @field_validator("prezzo_vendita", "prezzo_tavolo")
     @classmethod
@@ -203,7 +205,7 @@ async def _sincronizza_menu(ricetta_id: str) -> dict:
         if not ricetta:
             return {"esito": "errore", "errore": "ricetta non trovata"}
         return await menu_bridge.pubblica_prodotto_nel_menu(
-            ricetta, visibile=bool(ricetta.get("menu_pubblico")), db=db
+            ricetta, visibile=ricetta.get("menu_pubblico") is not False, db=db
         )
     except Exception as e:
         _LOG_INIT.exception("Lotti->Menu: sincronizzazione ricetta %s fallita", ricetta_id)
@@ -281,6 +283,11 @@ def _nomi_ingredienti_ricetta(ricetta: dict) -> List[str]:
 
 def _reparto_operativo_ricetta(ricetta: dict) -> str:
     """Corregge dolce/salato solo quando nome/base/ingredienti sono chiari."""
+    categorie = ricetta.get("categorie_rapide") or []
+    if "rosticceria_giorno" in categorie:
+        return "rosticceria"
+    if "pasticceria_classica" in categorie:
+        return "pasticceria"
     corrente = (ricetta.get("reparto") or "").lower().strip()
     calcolato = _categorizza_reparto(
         ricetta.get("nome", ""),
@@ -1653,7 +1660,7 @@ class VisibilitaTabletRicetta(BaseModel):
 
 
 CATEGORIE_RAPIDE_RICETTA = {
-    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua",
+    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua", "rosticceria_giorno", "pasticceria_classica",
 }
 
 
@@ -1667,6 +1674,9 @@ class CategorieRapideRicetta(BaseModel):
         non_valide = [v for v in pulite if v not in CATEGORIE_RAPIDE_RICETTA]
         if non_valide:
             raise ValueError(f"categorie non valide: {', '.join(non_valide)}")
+        if "rosticceria_giorno" in pulite:
+            if "pasticceria_classica" in pulite or "colazioni" in pulite:
+                raise ValueError("Rosticceria del giorno non si abbina a Colazioni o Pasticceria classica")
         return pulite
 
 
@@ -1692,16 +1702,9 @@ async def imposta_categorie_rapide_ricetta(
     _admin=Depends(require_admin),
 ):
     """Classifica dalla card, senza aprire o riscrivere la scheda ricetta."""
-    result = await db.ricette.update_one(
-        {"id": ricetta_id},
-        {"$set": {
-            "categorie_rapide": richiesta.categorie,
-            "categorie_rapide_aggiornate_il": datetime.now(timezone.utc).isoformat(),
-        }},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(404, "Ricetta non trovata")
-    return {"id": ricetta_id, "categorie_rapide": richiesta.categorie}
+    profilo = {**(_admin if isinstance(_admin, dict) else {}), "ruolo": "amministratore"}
+    esito = await aggiorna_campo_ricetta(ricetta_id, {"categorie_rapide": richiesta.categorie}, profilo)
+    return {"id": ricetta_id, **esito["aggiornato"], "menu_sync": esito["menu_sync"]}
 
 
 @router.get("/ricette/{ricetta_id}", response_model=Ricetta)
@@ -1760,8 +1763,9 @@ async def create_ricetta(item: RicettaCreate, _ruolo=Depends(require_permesso("r
     else:
         doc["descrizione"] = descrizione_da_ingredienti(doc)
         doc["descrizione_origine"] = "automatica" if doc["descrizione"] else None
-    doc["menu_pubblico"] = bool(item.menu_pubblico)
-    doc.setdefault("visibile_tablet", True)
+    doc["menu_pubblico"] = item.menu_pubblico is not False
+    doc["menu_bb"] = item.menu_bb is not False
+    doc["visibile_tablet"] = item.visibile_tablet is not False
     doc.setdefault("ricetta_operativa", True)
 
     await db.ricette.insert_one(doc)
@@ -1806,8 +1810,9 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _ruolo=Depends(re
     payload.pop("menu_category_id", None)
     payload.pop("menu_subcategory_id", None)
     # Flag Menu non inviato = non toccare la scelta gia' fatta dal titolare.
-    if payload.get("menu_pubblico") is None:
-        payload.pop("menu_pubblico", None)
+    for flag in ("menu_pubblico", "menu_bb", "visibile_tablet"):
+        if payload.get(flag) is None:
+            payload.pop(flag, None)
     # Un form che non manda prezzo al tavolo o descrizione non li azzera. Per
     # svuotarli si usa la PATCH, dove il valore arriva esplicito.
     for campo_menu in ("prezzo_tavolo", "descrizione"):
@@ -1858,7 +1863,7 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _ruolo=Depends(re
     # Salvare dal form «Ricette» trasforma il riferimento ufficiale del
     # fornitore in una ricetta operativa Ceraldi, senza perdere la provenienza.
     if _riferimento_ricettario_fornitore(precedente) and not precedente.get("ricetta_operativa"):
-        payload["visibile_tablet"] = True
+        payload.setdefault("visibile_tablet", True)
         payload["ricetta_operativa"] = True
         payload["adattata_da_ricettario_fornitore_at"] = datetime.now(timezone.utc).isoformat()
 
@@ -1907,6 +1912,7 @@ async def backfill_allergeni_verificato(_admin=Depends(require_admin)):
 @router.post("/ricette-ripubblica-menu")
 async def ripubblica_ricette_nel_menu(
     dry_run: bool = Query(False, description="Solo conteggi, nessuna scrittura sul Menu"),
+    pubblica_tutte: bool = Query(False, description="Spunta e pubblica tutte le ricette nella carta"),
     _admin=Depends(require_admin),
 ):
     """Rimanda nel Menu digitale TUTTE le ricette di Lotti (recupero del pregresso).
@@ -1914,15 +1920,15 @@ async def ripubblica_ricette_nel_menu(
     Il ponte scatta al salvataggio: le ricette gia' in archivio prima che
     esistesse non sono mai arrivate nel Menu. Il giro e' idempotente (il ponte
     scrive per `lotti_ref`, quindi il secondo passaggio aggiorna e non duplica)
-    e rispetta la scelta del titolare: chi non ha `menu_pubblico` arriva nel
-    Menu NASCOSTO, mai visibile.
+    e rispetta `menu_pubblico=False`. Con `pubblica_tutte=true` spunta anche
+    le ricette esistenti, conservando la visibilita' precedente nello stato.
 
     Parte in background e risponde subito; avanzamento ed esito su
     `GET /api/ricette-ripubblica-menu/stato`. Con `?dry_run=true` risponde
     invece subito con i conteggi, compreso quante ricette non hanno ancora un
     prezzo al tavolo e stanno quindi esponendo nel Menu quello al banco, e
-    quante non hanno NESSUN prezzo (`senza_prezzo`) e quindi non possono
-    entrare visibili nel Menu. Se l'archivio supera `LIMITE_RICETTE` il
+    quante non hanno NESSUN prezzo (`senza_prezzo`): nella carta compaiono
+    con «Prezzo da definire». Se l'archivio supera `LIMITE_RICETTE` il
     risultato porta `troncato: true` con le ricette non trattate.
     """
     from app.lotti.servizi.menu_backfill import (
@@ -1930,12 +1936,12 @@ async def ripubblica_ricette_nel_menu(
     )
 
     if dry_run:
-        return await ripubblica_menu(db, dry_run=True)
+        return await ripubblica_menu(db, dry_run=True, pubblica_tutte=pubblica_tutte is True)
     if ripubblicazione_in_corso():
         return {"ok": True, "stato": "in_corso",
                 "messaggio": "Ripubblicazione gia' in corso",
                 "stato_url": "/api/ricette-ripubblica-menu/stato"}
-    avvia_ripubblicazione_in_background(db)
+    avvia_ripubblicazione_in_background(db, pubblica_tutte=pubblica_tutte is True)
     return {"ok": True, "stato": "avviata",
             "messaggio": "Ripubblicazione nel Menu avviata in background",
             "stato_url": "/api/ricette-ripubblica-menu/stato"}
@@ -3175,11 +3181,22 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict, _ruolo=Depends(req
         "ricetta_base_nome",
         "ingredienti",
         "menu_pubblico",
+        "categorie_rapide",
         # Per quale lievitazione vale il lievito scritto in ricetta: serve a
         # ricalcolarlo quando cambiano ore o temperatura (27/09/2026).
         "lievitazione_riferimento",
     }
     update = {k: v for k, v in body.items() if k in campi_permessi}
+    if "categorie_rapide" in update:
+        try:
+            update["categorie_rapide"] = CategorieRapideRicetta(categorie=update["categorie_rapide"]).categorie
+        except ValueError as exc:
+            raise HTTPException(422, "Categorie rapide non valide") from exc
+        update["categorie_rapide_aggiornate_il"] = datetime.now(timezone.utc).isoformat()
+        if "rosticceria_giorno" in update["categorie_rapide"]:
+            update["reparto"] = "rosticceria"
+        elif "pasticceria_classica" in update["categorie_rapide"]:
+            update["reparto"] = "pasticceria"
     if "lievitazione_riferimento" in update and update["lievitazione_riferimento"] is not None:
         from app.lotti.servizi.lievitazione import DatoNonValido, condizioni
         try:

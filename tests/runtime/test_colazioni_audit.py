@@ -41,8 +41,8 @@ def test_il_qr_del_voucher_e_il_link_ospite_e_lo_scanner_lo_capisce():
     assert 'qr($("#qrbox"),linkOspite(d.id))' in JS
     assert 'qr($("#qrbox"),l)' in JS  # mostraQR dell'albergatore
     assert re.search(r"match\(/#\\/ospite\\/\(\[A-Za-z0-9\]\+\)/i\)", JS)
-    assert "navigator.clipboard.writeText(l)" in JS  # «Copia link per NFC» copia il link ospite
-    assert 'id="nfcrec"' in JS  # il link recensioni ha un bottone suo
+    assert 'navigator.share({title:"La tua colazione",text:msg,url:l})' in JS
+    assert 'id="nfcrec"' not in JS  # niente secondo collegamento recensioni
 
 
 def test_le_liste_si_leggono_sempre_come_liste():

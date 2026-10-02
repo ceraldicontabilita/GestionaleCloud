@@ -1,7 +1,8 @@
 // Cosa può fare chi è davanti al tablet. La regola vive nel backend
 // (app/lotti/servizi/ruoli.py), che la ricontrolla a ogni operazione: qui
 // arriva al login (`operatore.profilo`) e serve solo a non mostrare comandi
-// che risponderebbero 403. Il titolare, entrato dal Gestionale, può tutto.
+// che risponderebbero 403. Il titolare, entrato dal Gestionale o col proprio
+// PIN personale HR, può tutto.
 import { isAdmin } from "../auth";
 import { getTabletSession } from "./tabletSession";
 

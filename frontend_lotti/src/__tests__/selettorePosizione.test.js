@@ -29,4 +29,11 @@ describe("posizione del lotto", () => {
     const html = mostra({ reparto: "bar" });
     expect(html).not.toContain("Subito al banco");
   });
+
+  test("spiega che banco si salva soltanto col pulsante finale", () => {
+    const html = mostra({ destinazione: "banco", posizioneMancante: false });
+    expect(html).toContain("sceglie solo la destinazione");
+    expect(html).toContain("salvato nel Registro lotti");
+    expect(html).toContain("residuo zero");
+  });
 });

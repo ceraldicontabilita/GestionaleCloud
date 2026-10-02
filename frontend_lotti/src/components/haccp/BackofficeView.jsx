@@ -9,7 +9,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { conferma } from "../../utils/conferma";
 import axios from "axios";
-import { getOperatoreNome } from "../../auth";
+import { getOperatoreNome, loginGestionale } from "../../auth";
+import { CATEGORIE_PRODOTTI, categorieProdotto } from "../../utils/categorieProdotti";
+import { apiError } from "../../utils/apiError";
 import { stampaDoc } from "../../utils/stampa";
 import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";
 import { SchedaEditorModal } from "./RicetteDashboardView";
@@ -20,6 +22,8 @@ import FormRicetta, { REPARTI } from "./backoffice/FormRicetta";
 import TabProdotti from "./backoffice/TabProdotti";
 import TabFornitori from "./backoffice/TabFornitori";
 import { toast } from "./backoffice/toastBackoffice";
+import GruppiProduzioneRicette, { GRUPPI_PRODUZIONE, categorieConGruppo } from "./GruppiProduzioneRicette";
+import MenuVetrinaView from "./MenuVetrinaView";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
@@ -36,12 +40,11 @@ const CATEGORIE_RAPIDE = [
   { id: "dolci_secchi", label: "Dolci secchi", breve: "Secchi", icona: "🍪" },
   { id: "natale", label: "Natale", breve: "Natale", icona: "🎄" },
   { id: "pasqua", label: "Pasqua", breve: "Pasqua", icona: "🐣" },
+  ...GRUPPI_PRODUZIONE,
 ];
 const TAB_CATEGORIE_RAPIDE = [
   { id: "tutte", label: "Tutte" },
-  ...CATEGORIE_RAPIDE.slice(0, 2),
-  { id: "ricorrenze", label: "Ricorrenze" },
-  ...CATEGORIE_RAPIDE.slice(2),
+  ...CATEGORIE_PRODOTTI.map(c => ({ ...c, id: c.id === "pasticceria_classica" ? "categoria_pasticceria" : c.id })),
 ];
 
 
@@ -50,8 +53,15 @@ const TAB_CATEGORIE_RAPIDE = [
 // ══════════════════════════════════════════════════════════════════
 
 function TabRicette({ solaLetturaOperatore = false }) {
+  const [mostraPrezzi, setMostraPrezzi] = useState(() => ["#in_menu", "#ricette/prezzi"].includes(window.location.hash));
+  useEffect(() => {
+    const cambia = () => setMostraPrezzi(window.location.hash === "#ricette/prezzi");
+    window.addEventListener("hashchange", cambia);
+    return () => window.removeEventListener("hashchange", cambia);
+  }, []);
   const [ricette,    setRicette]    = useState([]);
   const [loading,    setLoading]    = useState(true);
+  const [errore, setErrore] = useState("");
   const [search,     setSearch]     = useState("");
   const [repFiltro,  setRepFiltro]  = useState("tutti");
   const [categoriaFiltro, setCategoriaFiltro] = useState("tutte");
@@ -75,10 +85,11 @@ function TabRicette({ solaLetturaOperatore = false }) {
 
   const carica = useCallback(async () => {
     setLoading(true);
+    setErrore("");
     try {
       const r = await axios.get(`${API}/ricette-unificate`);
       setRicette(r.data || []);
-    } catch { toast("Errore caricamento ricette","err"); }
+    } catch (e) { setErrore(apiError(e)); toast("Errore caricamento ricette","err"); }
     finally { setLoading(false); }
   }, []);
 
@@ -86,9 +97,10 @@ function TabRicette({ solaLetturaOperatore = false }) {
 
   // Apertura diretta di una ricetta nell'editor (es. dal pulsante Modifica del tablet).
   useEffect(() => {
-    if (solaLetturaOperatore) return;
+    if (solaLetturaOperatore || mostraPrezzi) return;
     let id;
-    try { id = sessionStorage.getItem("apri_ricetta_id"); } catch (_) { id = null; }
+    const daHash = window.location.hash.match(/^#ricette\/([^/]+)$/);
+    try { id = daHash ? decodeURIComponent(daHash[1]) : sessionStorage.getItem("apri_ricetta_id"); } catch (_) { id = null; }
     if (!id) return;
     try { sessionStorage.removeItem("apri_ricetta_id"); } catch (_) { /* no-op */ }
     (async () => {
@@ -97,7 +109,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
         if (r.data) { setEditRicetta(r.data); setShowForm(true); }
       } catch { /* ignora */ }
     })();
-  }, [solaLetturaOperatore]);
+  }, [solaLetturaOperatore, mostraPrezzi]);
 
   const impostaVisibilita = async (ricetta, visibile) => {
     if (!ricetta?.id || cambiandoVisibilita) return false;
@@ -114,13 +126,11 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const impostaCategoriaRapida = async (ricetta, categoria, attiva) => {
     if (!ricetta?.id || cambiandoVisibilita) return;
     const correnti = Array.isArray(ricetta.categorie_rapide) ? ricetta.categorie_rapide : [];
-    const categorie = attiva
-      ? [...new Set([...correnti, categoria])]
-      : correnti.filter(c => c !== categoria);
+    const categorie = categorieConGruppo(correnti, categoria, attiva);
     setCambiandoVisibilita(ricetta.id);
     try {
-      await axios.put(`${API}/ricette/${ricetta.id}/categorie-rapide`, { categorie });
-      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, categorie_rapide:categorie} : r));
+      const { data } = await axios.put(`${API}/ricette/${encodeURIComponent(ricetta.id)}/categorie-rapide`, { categorie });
+      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, categorie_rapide:data.categorie_rapide, ...(data.reparto ? {reparto:data.reparto} : {})} : r));
     } catch { toast("Impossibile aggiornare la categoria rapida", "err"); }
     finally { setCambiandoVisibilita(null); }
   };
@@ -210,9 +220,12 @@ function TabRicette({ solaLetturaOperatore = false }) {
     const esclusa = r.visibile_tablet === false && !riferimentoFornitoreNonAttivo(r);
     if (statoFiltro === "attive" && esclusa) return false;
     if (statoFiltro === "escluse" && !esclusa) return false;
-    const categorie = Array.isArray(r.categorie_rapide) ? r.categorie_rapide : [];
+    const operative = Array.isArray(r.categorie_rapide) ? r.categorie_rapide : [];
+    const categorie = categorieProdotto(r);
+    if (GRUPPI_PRODUZIONE.some(g => g.id === categoriaFiltro)) return operative.includes(categoriaFiltro) && (!search || r.nome?.toLowerCase().includes(search.toLowerCase()));
+    if (categoriaFiltro === "categoria_pasticceria" && !categorie.includes("pasticceria_classica")) return false;
     if (categoriaFiltro === "ricorrenze" && !categorie.some(c => ["ricorrenze", "natale", "pasqua"].includes(c))) return false;
-    if (!["tutte", "ricorrenze"].includes(categoriaFiltro) && !categorie.includes(categoriaFiltro)) return false;
+    if (!["tutte", "ricorrenze", "categoria_pasticceria"].includes(categoriaFiltro) && !categorie.includes(categoriaFiltro)) return false;
     if (search && !r.nome?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }).sort((a,b) => (a.nome||"").localeCompare(b.nome||"","it"));
@@ -221,6 +234,12 @@ function TabRicette({ solaLetturaOperatore = false }) {
 
   return (
     <div>
+      {!solaLetturaOperatore && <div role="tablist" aria-label="Gestione unica ricette" style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:16}}>
+        {[{prezzi:false,label:"Ricette e categorie"},{prezzi:true,label:"Menu e prezzi"}].map(tab=><button key={tab.label} role="tab" aria-selected={mostraPrezzi===tab.prezzi}
+          onClick={()=>{window.location.hash=tab.prezzi?"ricette/prezzi":"ricette";setMostraPrezzi(tab.prezzi);}}
+          style={{minHeight:44,padding:"10px 16px",borderRadius:10,border:"1px solid var(--border)",background:mostraPrezzi===tab.prezzi?"var(--primary)":"var(--card)",color:mostraPrezzi===tab.prezzi?"#fff":"var(--text)",fontWeight:700}}>{tab.label}</button>)}
+      </div>}
+      {mostraPrezzi && !solaLetturaOperatore ? <MenuVetrinaView /> : <>
       {/* Header */}
       <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)}
@@ -266,7 +285,8 @@ function TabRicette({ solaLetturaOperatore = false }) {
         </button>}
       </div>
 
-      <div role="tablist" aria-label="Categorie rapide ricette" style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:10,marginBottom:8}}>
+      {!loading && !errore && <GruppiProduzioneRicette ricette={ricette.filter(r => r.visibile_tablet !== false)} selezionato={categoriaFiltro} onScegli={c => { setCategoriaFiltro(c); setRepFiltro("tutti"); }} />}
+      <div role="tablist" aria-label="Categorie rapide ricette" style={{display:"flex",gap:7,flexWrap:"wrap",paddingBottom:10,marginBottom:8}}>
         {TAB_CATEGORIE_RAPIDE.map(c => (
           <button key={c.id} type="button" role="tab" aria-selected={categoriaFiltro===c.id}
             onClick={() => setCategoriaFiltro(c.id)}
@@ -277,11 +297,17 @@ function TabRicette({ solaLetturaOperatore = false }) {
         ))}
       </div>
 
-      {!solaLetturaOperatore && !mostraCestino && !loading &&
+      {!solaLetturaOperatore && !mostraCestino && !loading && !errore &&
         <ImportaFotoRicette ricette={ricette} onCompletata={carica} />}
 
       {mostraCestino ? <RicetteCestino onRipristinata={carica} /> : loading ? (
         <div style={{textAlign:"center",padding:"40px",color:"var(--text-3)"}}>Caricamento…</div>
+      ) : errore ? (
+        <div role="alert" style={{ padding:24, background:"var(--warning-soft)", borderRadius:12 }}>
+          <h3>Ricette non disponibili</h3><p>{errore}</p>
+          <p>Il caricamento è fallito: non è un ricettario vuoto.</p>
+          <button onClick={carica} style={{ minHeight:44 }}>Riprova</button>{" "}<a href={loginGestionale()}>Rifai l'accesso</a>
+        </div>
       ) : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(210px, 1fr))",gap:14}}>
           {filtrate.map(r => {
@@ -337,10 +363,10 @@ function TabRicette({ solaLetturaOperatore = false }) {
                 {!solaLetturaOperatore && <div aria-label={`Categorie rapide ${r.nome}`} style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                   {CATEGORIE_RAPIDE.map(c => {
                     const attiva = (r.categorie_rapide || []).includes(c.id);
-                    return <label key={c.id} title={`Mostra in ${c.label}`} style={{display:"flex",alignItems:"center",gap:3,padding:"4px 6px",borderRadius:7,border:`1px solid ${attiva?"#9db9a8":"var(--border)"}`,background:attiva?"#edf4ef":"#fff",fontSize:10,fontWeight:800,color:attiva?"#3f5a4e":"var(--text-3)",cursor:"pointer"}}>
+                    return <label key={c.id} title={`Mostra in ${c.label}`} style={{display:"flex",alignItems:"center",gap:3,padding:"4px 6px",minHeight:44,borderRadius:7,border:`1px solid ${attiva?"#9db9a8":"var(--border)"}`,background:attiva?"#edf4ef":"#fff",fontSize:10,fontWeight:800,color:attiva?"#3f5a4e":"var(--text-3)",cursor:"pointer"}}>
                       <input type="checkbox" checked={attiva} disabled={cambiandoVisibilita===r.id}
                         onChange={e => impostaCategoriaRapida(r, c.id, e.target.checked)} style={{width:12,height:12}} />
-                      {c.icona} {c.breve}
+                      {c.Icona ? <c.Icona size={14} aria-hidden="true" /> : c.icona} {c.breve}
                     </label>;
                   })}
                 </div>}
@@ -364,6 +390,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
           )}
         </div>
       )}
+      </>}
       {produciR && (
         <ModalRegistraLotto
           prodotto={produciR}

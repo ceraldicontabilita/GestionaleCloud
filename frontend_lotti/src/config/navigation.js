@@ -10,7 +10,7 @@ import {
 // Le cinque destinazioni più frequenti restano sempre visibili.
 export const PRIMARY_TABS = [
   { id: "dashboard", label: "Oggi", icon: BarChart3 },
-  { id: "ricette", label: "Produzione", icon: ChefHat },
+  { id: "ricette", label: "Ricette", icon: ChefHat },
   { id: "lotti", label: "Tracciabilità", icon: Layers },
   { id: "movimenti_magazzino", label: "Magazzino", icon: Package },
   { id: "ordini", label: "Acquisti", icon: ShoppingCart },
@@ -30,7 +30,6 @@ export const SECONDARY_TABS = [
   // 19/09/2026 — la vetrina di ciò che i clienti vedono nel Menu digitale:
   // sta fra le voci di vendita, non nel backoffice (è un contenitore visivo
   // dei prodotti da vendere, non una pagina di amministrazione).
-  { section: "Acquisti e vendita", id: "in_menu", label: "In menu", icon: UtensilsCrossed },
   { section: "Acquisti e vendita", id: "ordini_hotel", label: "Ordini hotel", icon: Hotel },
   { section: "Acquisti e vendita", id: "fornitori", label: "Fornitori", icon: Building2 },
   { section: "Acquisti e vendita", id: "comparatore", label: "Confronto prezzi", icon: Scale },

@@ -138,12 +138,11 @@ def _nomi_mancanti():
 def test_mancanti_elenca_solo_chi_non_ha_allergeni_con_il_suo_reparto(tabelle):
     esito = _run(ar.prodotti_senza_allergeni(_username="admin"))
     assert esito["totale_prodotti"] == 4
-    assert esito["senza_allergeni"] == 3
+    assert esito["senza_allergeni"] == 1
     assert esito["esclusi"] == 0
-    assert [p["name_it"] for p in esito["prodotti"]] == ["Brioche", "Lagavulin 16", "Talisker 10"]
-    whisky = esito["prodotti"][1]
-    assert whisky["categoria_nome"] == "Cantina"
-    assert whisky["sottocategoria_nome"] == "Whisky"
+    assert [p["name_it"] for p in esito["prodotti"]] == ["Brioche"]
+    assert esito["bevande_fuori_lista"] == 2
+    assert esito["prodotti"][0]["sottocategoria_nome"] == "Caffetteria"
 
 
 # ---------- esclusione di un prodotto ----------
@@ -157,7 +156,7 @@ def test_prodotto_escluso_sparisce_dai_mancanti(tabelle):
 
     esito_mancanti = _run(ar.prodotti_senza_allergeni(_username="admin"))
     assert "Brioche" not in [p["name_it"] for p in esito_mancanti["prodotti"]]
-    assert esito_mancanti["senza_allergeni"] == 2
+    assert esito_mancanti["senza_allergeni"] == 0
     assert esito_mancanti["esclusi"] == 1
 
 
@@ -207,7 +206,7 @@ def test_revocare_l_esclusione_li_fa_ricomparire(tabelle):
 
     esito = _run(ar.revoca_esclusione(tipo="categoria", riferimento_id=2, _username="admin"))
     assert esito["success"] is True
-    assert _nomi_mancanti() == ["Brioche", "Lagavulin 16", "Talisker 10"]
+    assert _nomi_mancanti() == ["Brioche"]  # i liquori restano fuori dalla lista di lavoro
     assert tabelle["menu_allergeni_esclusioni"] == []
 
 

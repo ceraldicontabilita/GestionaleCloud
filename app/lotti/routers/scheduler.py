@@ -542,13 +542,8 @@ def setup_scheduler():
 
     TZ = "Europe/Rome"
 
-    scheduler.add_job(
-        job_keep_warm,
-        CronTrigger(minute="*/10", hour="4-22", timezone=TZ),
-        id="keep_warm",
-        name="Keep-warm Render (self-ping ogni 10 min, 04:00-22:59)",
-        replace_existing=True,
-    )
+    # Keep-warm tolto il 02/10/2026: sul piano a pagamento il servizio non va
+    # in pausa e le automazioni girano nel Background Worker.
     scheduler.add_job(
         job_aggiorna_riferimenti_fatture,
         CronTrigger(hour=1, minute=0, timezone=TZ),
@@ -604,33 +599,33 @@ def setup_scheduler():
     # giro (~200/giorno). Permanente: una riga identificata non si ricerca più.
     scheduler.add_job(
         job_ricerca_web_prodotti,
-        CronTrigger(minute="*/20", hour="6-22", timezone=TZ),
+        CronTrigger(minute=20, hour="6-22/3", timezone=TZ),
         id="ricerca_web_prodotti",
-        name="Ricerca web prodotti da fatture (ogni 20 min, 06-22)",
+        name="Ricerca web prodotti da fatture (ogni 3 ore, 06-22)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         job_sincronizza_operatori_hr,
-        CronTrigger(minute="*/10", timezone=TZ),
+        CronTrigger(hour=5, minute=50, timezone=TZ),
         id="sincronizza_operatori_hr",
-        name="Operatori tablet = anagrafica HR (ogni 10 min)",
+        name="Operatori tablet = anagrafica HR (ogni giorno 5:50)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         job_sync_gestionale_fatture,
-        CronTrigger(minute="5,20,35,50", hour="5-22", timezone=TZ),
+        CronTrigger(minute="5,35", hour="5-22", timezone=TZ),
         id="sync_gestionale_fatture",
-        name="Ricezione fatture da GestionaleCloud (ogni 15 min, 05-22)",
+        name="Ricezione fatture da GestionaleCloud (ogni 30 min, 05-22)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         job_lettura_articoli_ai,
-        CronTrigger(minute=40, hour="6-22", timezone=TZ),
+        CronTrigger(minute=40, hour="6-22/3", timezone=TZ),
         id="lettura_articoli_ai",
-        name="Lettura AI descrizioni articoli per il confronto prezzi (ogni ora, 06-22)",
+        name="Lettura AI descrizioni articoli per il confronto prezzi (ogni 3 ore, 06-22)",
         replace_existing=True,
     )
 
@@ -639,7 +634,7 @@ def setup_scheduler():
     asyncio.create_task(_lettura_articoli_ai_dopo_avvio())
     print(
         "[Scheduler] Avviato — 01:00 ref-fatture | 01:30 pulizia-lotti | "
-        "ogni:15 GestionaleCloud-fatture | 02:30 backup | 03:00 normalizza | 04:00 pipeline | 07:00 HACCP+riordino"
+        "ogni:30 GestionaleCloud-fatture | 02:30 backup | 03:00 normalizza | 04:00 pipeline | 07:00 HACCP+riordino"
     )
 
     # ── CATCHUP ALL'AVVIO ────────────────────────────────────────────────────

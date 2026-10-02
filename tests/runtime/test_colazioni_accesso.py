@@ -24,6 +24,11 @@ from app.utils.dependencies import get_current_admin_user
 PUBBLICI_MOTIVATI = {
     "/api/colazioni/ordini-prodotti/albergatore": "token tk: dell'albergatore verificato da bb_alb_stato",
     "/api/colazioni/ordini-prodotti/albergatore/elenco": "token tk: dell'albergatore verificato da bb_alb_stato",
+    "/api/colazioni/ricariche/sumup": "token tk: verificato dalla preparazione atomica della ricarica",
+    "/api/colazioni/ricariche/sumup/sincronizza": "token tk: verificato da bb_alb_portafoglio",
+    "/api/colazioni/ricariche/sumup/webhook": "evento riletto e verificato tramite API SumUp autenticata",
+    "/api/colazioni/menu-ospite/catalogo": "codice voucher e giornata verificati da bb_menu_ospite",
+    "/api/colazioni/menu-ospite/ordine": "codice voucher, giornata e prezzi verificati da bb_ospite_menu_salva",
 }
 
 

@@ -152,6 +152,50 @@ async def _alert_match_ambiguo(db, mov_id: Optional[str], motivo: str) -> None:
         logger.exception(f"Errore generazione alert RIC_MATCH_AMBIGUO per {mov_id}")
 
 
+async def chiudi_proposte_superate(db, movimento_id: Optional[str] = None) -> int:
+    """Una proposta «da confermare» il cui movimento e' gia' riconciliato non
+    ha piu' niente da chiedere: si chiude ``superata`` (per id, col motivo),
+    mai cancellata. Con ``movimento_id`` chiude le proposte di quel solo
+    movimento; senza, ripassa tutte le aperte (le 10 proposte «soggetto
+    pagante diverso» di Amazon restavano in «Scegli fattura» anche dopo che
+    il collettore di gruppo aveva abbinato l'SDD da solo). Ritorna quante ne
+    ha chiuse. Idempotente."""
+    filtro: Dict[str, Any] = {"stato": "da_confermare"}
+    if movimento_id:
+        filtro["movimento_ec_id"] = movimento_id
+    proposte = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].find(
+        filtro, {"_id": 0, "id": 1, "movimento_ec_id": 1},
+    ).to_list(2000)
+    if not proposte:
+        return 0
+    ora = datetime.now(timezone.utc).isoformat()
+    chiuse = 0
+    riconciliati: Dict[str, bool] = {}
+    for proposta in proposte:
+        mov_id = str(proposta.get("movimento_ec_id") or "")
+        if not mov_id:
+            continue
+        if mov_id not in riconciliati:
+            movimento = await db[COLLECTION_ESTRATTO_CONTO].find_one(
+                {"id": mov_id}, {"_id": 0, "riconciliato": 1},
+            )
+            riconciliati[mov_id] = bool(movimento and movimento.get("riconciliato") is True)
+        if not riconciliati[mov_id]:
+            continue
+        # Una decisione manuale arrivata dopo la lettura non va sovrascritta.
+        esito = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].update_one(
+            {"id": proposta["id"], "stato": "da_confermare"},
+            {"$set": {
+                "stato": "superata",
+                "superata_da": "movimento_riconciliato",
+                "superata_at": ora,
+                "updated_at": ora,
+            }},
+        )
+        chiuse += esito.modified_count
+    return chiuse
+
+
 async def _crea_operazione_da_confermare_idempotente(db, operazione: dict) -> bool:
     """Inserisce una riga in operazioni_da_confermare SOLO se non ne esiste già
     una aperta (stato="da_confermare") per lo stesso movimento_ec_id.
@@ -865,8 +909,10 @@ def _evidenza_sdd_fattura_banca(
     giorni = _giorni_pagamento_plausibili(data_movimento, data_fattura)
     data_coerente = giorni is not None and 0 <= giorni <= 62
     # Audit 03/09/2026 (PR 4): il marchio in comune non basta. Se la causale
-    # dichiara un soggetto diverso ("AMAZON PAYMENTS EUROPE S.C.A." per una
-    # fattura di "Amazon Business EU S.a.r.l"), l'abbinamento resta proposta.
+    # dichiara un soggetto diverso ("ALFA PAYMENTS EUROPE" per una fattura di
+    # "Alfa Forniture Srl"), l'abbinamento resta proposta. Il collettore di
+    # gruppo dichiarato ("AMAZON PAYMENTS EUROPE S.C.A." per ogni societa'
+    # Amazon) e' invece lo stesso soggetto (identity_matching).
     soggetto_coerente = soggetto_pagante_coerente(
         fornitore, testo, alias=alias_fornitore(fattura),
     )
@@ -1106,6 +1152,7 @@ async def riconcilia_movimenti_banca(
         "commissioni_ignorate": 0,
         "dubbi": 0,
         "non_trovati": 0,
+        "proposte_superate": 0,
         "errors": []
     }
 
@@ -1134,6 +1181,14 @@ async def riconcilia_movimenti_banca(
         # Un'anomalia circoscritta agli assegni non deve impedire a POS, F24,
         # bonifici e SDD di essere processati nello stesso estratto conto.
         results["errors"].append(f"Sincronizzazione assegni: {exc}")
+
+    # Le proposte aperte di movimenti gia' riconciliati (da un altro motore o
+    # da un giro precedente) non devono restare in «Scegli fattura».
+    try:
+        results["proposte_superate"] = await chiudi_proposte_superate(db)
+    except Exception as exc:
+        results["proposte_superate"] = 0
+        results["errors"].append(f"Chiusura proposte superate: {type(exc).__name__}: {exc}")
 
     # Carica movimenti EC non riconciliati. Dopo un import il chiamante passa
     # gli ID appena inseriti/promossi: riesaminare ogni volta l'intero storico
@@ -1780,6 +1835,19 @@ async def riconcilia_movimenti_banca(
                         if creata:
                             await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
 
+            # === 2-bis. RIMBORSO DI UNA NOTA DI CREDITO (per ENTRATE) ===
+            # Il fornitore che storna una fattura rimborsa con un bonifico
+            # in entrata ("BON.DA AMAZON BUSINESS EU SARL ..."): identita'
+            # coerente, importo al centesimo, entro 62 giorni dalla nota.
+            if tipo == "entrata" and not match_found:
+                from app.services.rimborsi_note_credito import abbina_rimborso_nota_credito
+                dettagli_rimborso = await abbina_rimborso_nota_credito(db, mov)
+                if dettagli_rimborso:
+                    match_found = True
+                    match_type = "rimborso_nota_credito"
+                    match_details = dettagli_rimborso
+                    results["riconciliati_fatture"] += 1
+
             # === 3. CERCA POS (per ENTRATE - accrediti) ===
             if tipo == "entrata" and not match_found:
                 # NUMIA accredita separatamente bancomat, carte e Amex. La
@@ -1890,6 +1958,7 @@ async def riconcilia_movimenti_banca(
                     }}
                 )
                 await chiudi_alert_movimento_riconciliato(db, mov_id)
+                results["proposte_superate"] += await chiudi_proposte_superate(db, mov_id)
             elif not blocca_match_singolo:
                 results["non_trovati"] += 1
                 await _alert_non_riconciliato(db, mov_id, importo, descrizione)

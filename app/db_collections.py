@@ -26,7 +26,6 @@ COLL_ALLEGATI_FATTURE = "allegati_fatture"
 
 # Fatture Emesse (fatture attive)
 COLL_FATTURE_EMESSE = "fatture_emesse"  # CANONICA (P1 §5.5): unico posto reale per le fatture emesse (writer CRUD + tutti i lettori contabili/IVA/dashboard)
-COLL_INVOICES_EMESSE = "invoices_emesse"  # LEGACY/DEPRECATA (P1 §5.5): alias inglese; migrare in fatture_emesse con app/scripts/migra_invoices_emesse_a_fatture.py; NON scrivere qui
 
 # Fornitori
 COLL_SUPPLIERS = "fornitori"  # FIX: ora punta a "fornitori" (canonica). "suppliers" era alias inglese deprecato.
@@ -48,7 +47,6 @@ COLL_DIPENDENTI = "dipendenti"  # Collection canonica (usa questa, identica a CO
 
 # Cedolini/Buste paga
 COLL_CEDOLINI = "cedolini"  # 916 docs - Collezione principale
-COLL_PAYSLIPS = "payslips"  # 480 docs - LEGACY/DEPRECATA (P1 §5.3): migrare in cedolini con app/scripts/migra_payslips_a_cedolini.py; NON scrivere qui
 COLL_CEDOLINI_EMAIL = "cedolini_email_attachments"  # 224 docs
 COLL_RIEPILOGO_CEDOLINI = "riepilogo_cedolini"  # 190 docs
 
@@ -66,7 +64,6 @@ COLL_TFR_LIQUIDAZIONI = "tfr_liquidazioni"
 # Presenze e Giustificativi
 COLL_PRESENZE = "presenze"
 COLL_PRESENZE_MENSILI = "presenze_mensili"  # 211 docs - Da parser Libro Unico
-COLL_LIBRO_UNICO_PRESENZE = "libro_unico_presenze"  # LEGACY/ARCHIVIO (§13.2, 2026-07-13): scritta solo dalla famiglia /libro-unico/* rimossa da dipendenti.py (con libro_unico_salaries); il flusso LUL canonico usa presenze_mensili/buste_paga via import-libro-unico
 COLL_ATTENDANCE_CALENDARIO = "attendance_presenze_calendario"  # 114 docs
 COLL_ATTENDANCE_TIMBRATURE = "attendance_timbrature"
 COLL_ATTENDANCE_ASSENZE = "attendance_assenze"
@@ -85,7 +82,6 @@ COLL_SHIFTS = "shifts"
 
 COLL_F24 = "f24_unificato"  # 83 docs - Collezione UNICA per F24
 COLL_F24_UNIFICATO = "f24_unificato"  # Alias esplicito
-COLL_F24_MODELS = "f24_models"  # LEGACY/DEPRECATA (P1 §5.1) - migrare in f24_unificato con app/scripts/migra_f24_unificato.py; NON scrivere qui
 COLL_F24_COMMERCIALISTA = "f24_unificato"  # Alias retrocompatibilità
 COLL_QUIETANZE_F24 = "quietanze_f24"  # 303 docs
 COLL_F24_ALERTS = "f24_riconciliazione_alerts"  # 50 docs
@@ -133,11 +129,9 @@ COLL_LEGAL_RULE_VERSIONS = "legal_rule_versions"
 # Estratti Conto
 COLL_ESTRATTO_CONTO = "estratto_conto_movimenti"  # CANONICA (P1 §5.6): MOVIMENTI bancari (unica sorgente riconciliazione/saldi) - 4261 docs
 COLL_ESTRATTI_CONTO_DOCUMENTI = "estratti_conto"  # SEPARATA (P1 §5.6): registro dei DOCUMENTI estratto conto caricati (file/banca/periodo/saldo), NON i movimenti - come riepilogo_cedolini vs cedolini
-COLL_ESTRATTO_CONTO_LEGACY = "estratto_conto"  # LEGACY/DEPRECATA (P1 §5.6): backup archivio senza lettori; NON unire nella canonica (rischio doppio conteggio movimenti/saldi errati)
 COLL_ESTRATTO_CONTO_NEXI = "estratto_conto_nexi"  # 52 docs
 COLL_ESTRATTO_CONTO_BNL = "estratto_conto_bnl"
 COLL_ESTRATTO_CONTO_FORNITORI = "estratto_conto_fornitori"
-COLL_BANK_STATEMENTS = "bank_statements"  # LEGACY/DEPRECATA (P1 §5.6): alias inglese senza accessi diretti; usare COLL_ESTRATTO_CONTO. NB Collections.BANK_STATEMENTS risolve già a estratto_conto_movimenti
 
 # Prima Nota
 COLL_PRIMA_NOTA_CASSA = "prima_nota_cassa"  # 1428 docs
@@ -238,10 +232,8 @@ COLL_WAREHOUSE_CONFIG = "warehouse_config"
 COLL_DOCUMENTS = "documents"
 COLL_DOCUMENTS_INBOX = "documents_inbox"  # 803 docs
 COLL_DOCUMENTI_CLASSIFICATI = "documenti_classificati"  # CANONICA (P1 §5.8, scelta utente): unica collezione doc classificati (Learning Machine + pipeline email) - 1967 docs
-COLL_DOCUMENTS_CLASSIFIED = "documenti_classificati"  # LEGACY/DEPRECATA (P1 §5.8): alias inglese ora unificato sulla canonica; migrare con app/scripts/migra_documents_classified.py
 COLL_DOCUMENTI_NON_ASSOCIATI = "documenti_non_associati"  # 285 docs
 COLL_INDICE_DOCUMENTI = "indice_documenti"  # DEPRECATA - dati migrati in invoices. Tenere per email_reconciliation index
-COLL_EXTRACTED_DOCUMENTS = "extracted_documents"  # LEGACY/ARCHIVIO (P1 §5.8): gli upload AI manuali ora scrivono nella canonica documenti_classificati (fonte="upload_ai"); migrare lo storico con app/scripts/migra_extracted_documents.py. Resta viva SOLO per il flusso "da rivedere" di ai_parser (campo status).
 COLL_PORTAL_DOCUMENTS = "portal_documents"
 
 # Email
@@ -349,7 +341,6 @@ COLL_UTILE_OBIETTIVO = "utile_obiettivo"
 COLL_ABBUONI = "abbuoni_arrotondamenti"
 COLL_BUDGET = "budget"
 COLL_PLANNING_EVENTS = "planning_events"
-COLL_STAFF = "staff"  # LEGACY/DEPRECATA (P1 §5.2): alias anagrafica; migrare in dipendenti con app/scripts/migra_staff_a_dipendenti.py; NON scrivere qui
 COLL_CARTS = "carts"
 COLL_ADR = "adr_definizione_agevolata"
 COLL_DELIBERE_FONSI = "delibere_fonsi"

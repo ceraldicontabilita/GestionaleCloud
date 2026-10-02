@@ -67,10 +67,12 @@ export default function TurnoHaccpOggi({ onAggiornato }) {
 
   const dichiara = async () => {
     const aperte = turno?.quante_da_rilevare ?? 0;
+    const daFirmare = turno?.da_firmare ?? 0;
     const ok = await conferma(
-      `Dichiari conformi ${conta(aperte, "casella aperta", "caselle aperte")} di oggi? ` +
-      "Il registro scrive «conforme, controllo visivo del responsabile» con la tua firma e l'ora di adesso, " +
-      "senza nessun valore numerico. Le temperature già registrate non si toccano.",
+      `Confermi ${conta(aperte, "casella aperta", "caselle aperte")} e firmi ` +
+      `${conta(daFirmare, "controllo già registrato", "controlli già registrati")} di oggi? ` +
+      "Le caselle aperte diventano «conformi» senza inventare gradi. Le temperature già registrate, " +
+      "comprese eventuali anomalie, non vengono modificate: si aggiunge soltanto la tua firma.",
       { titolo: "Controlli di oggi", ok: "Dichiaro conformi" },
     );
     if (!ok) return;
@@ -78,7 +80,8 @@ export default function TurnoHaccpOggi({ onAggiornato }) {
     setEsito("");
     try {
       const { data } = await axios.post(`${API}/haccp-auto/dichiara-conformi-oggi`, null, { timeout: 30000 });
-      const testo = `Dichiarate conformi ${conta(data?.dichiarate ?? 0, "casella", "caselle")}, firmato da ${data?.firmato_da || "—"}`;
+      const testo = `Confermate ${conta(data?.dichiarate ?? 0, "casella aperta", "caselle aperte")} e firmati ` +
+        `${conta(data?.firmate ?? 0, "controllo registrato", "controlli registrati")}, da ${data?.firmato_da || "—"}`;
       setEsito(testo);
       toast.success(testo);
       await aggiorna();
@@ -111,6 +114,8 @@ export default function TurnoHaccpOggi({ onAggiornato }) {
 
   const aperte = turno?.quante_da_rilevare ?? null;
   const rilevate = turno?.gia_rilevate ?? null;
+  const daFirmare = turno?.da_firmare ?? 0;
+  const giaFirmate = turno?.gia_firmate ?? 0;
   const senzaCasella = turno?.quante_senza_casella ?? 0;
   const controlloVisivo = turno?.controllo_visivo_attivo !== false;
 
@@ -127,6 +132,8 @@ export default function TurnoHaccpOggi({ onAggiornato }) {
           {errore ? errore : turno === null ? "Lettura in corso…" : (
             <>
               {conta(aperte, "casella aperta", "caselle aperte")} da dichiarare, {conta(rilevate, "già rilevata", "già rilevate")}
+              {daFirmare > 0 ? ` · ${conta(daFirmare, "controllo da firmare", "controlli da firmare")}` : ""}
+              {giaFirmate > 0 ? ` · ${conta(giaFirmate, "controllo già firmato", "controlli già firmati")}` : ""}
               {senzaCasella > 0 ? ` · ${conta(senzaCasella, "apparecchio", "apparecchi")} senza casella: ${(turno.senza_casella || []).join(", ")}` : ""}
               {!controlloVisivo ? " · Il controllo visivo del responsabile non è attivo nelle Impostazioni." : ""}
             </>
@@ -141,8 +148,8 @@ export default function TurnoHaccpOggi({ onAggiornato }) {
           </button>
         ) : null}
         {puoDichiarare && controlloVisivo ? (
-          <button type="button" onClick={dichiara} disabled={!!occupato || !aperte} style={bottone(true, occupato === "dichiara")}
-            title={aperte ? `${aperte} caselle verranno dichiarate conformi` : "Nessuna casella aperta da dichiarare"}>
+          <button type="button" onClick={dichiara} disabled={!!occupato || !(aperte || daFirmare)} style={bottone(true, occupato === "dichiara")}
+            title={(aperte || daFirmare) ? `${aperte} caselle da chiudere, ${daFirmare} controlli da firmare` : "Tutti i controlli di oggi sono già firmati"}>
             <ClipboardCheck size={16} aria-hidden="true" /> Dichiaro conformi i controlli di oggi
           </button>
         ) : null}

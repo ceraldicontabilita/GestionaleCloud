@@ -5,6 +5,25 @@ import Button from "../ui/Button";
 import { API } from "../../utils/constants";
 import { intestazioneAuth } from "../../auth";
 
+export const SEZIONI_STAMPA_MANUALE = [
+  ["principi_haccp", "Piano e principi HACCP"],
+  ["personale", "Personale e igiene"],
+  ["allergeni", "Allergeni"],
+  ["ricevimento_merci", "Ricevimento merci"],
+  ["fornitori_qualificati", "Fornitori qualificati"],
+  ["temperature", "Temperature frigoriferi e congelatori"],
+  ["sanificazione", "Sanificazione"],
+  ["controllo_olio", "Controllo olio friggitrice"],
+  ["lotti", "Lotti di produzione"],
+  ["anomalie", "Anomalie e azioni correttive"],
+  ["disinfestazione", "Disinfestazione"],
+];
+
+const selezioneCompleta = () => Object.fromEntries(SEZIONI_STAMPA_MANUALE.map(([id]) => [id, true]));
+const selezioneTemperatureELotti = () => Object.fromEntries(
+  SEZIONI_STAMPA_MANUALE.map(([id]) => [id, id === "temperature" || id === "lotti"]),
+);
+
 const ManualeHACCPView = () => {
   const [anno, setAnno] = useState(new Date().getFullYear());
   const [showShareModal, setShowShareModal] = useState(false);
@@ -13,20 +32,10 @@ const ManualeHACCPView = () => {
   const [loadingManuale, setLoadingManuale] = useState(false);
   const [dataDa, setDataDa] = useState("");
   const [dataA, setDataA] = useState("");
-  const [sezioniSelezionate, setSezioniSelezionate] = useState({
-    temperature_positive: true,
-    temperature_negative: true,
-    sanificazione: true,
-    disinfestazione: true,
-    anomalie: true,
-    fornitori_qualificati: true,
-    ricevimento_merci: true,
-    allergeni: true,
-    principi_haccp: true,
-    personale: true,
-  });
+  const [sezioniSelezionate, setSezioniSelezionate] = useState(selezioneCompleta);
 
-  const anni = [2022, 2023, 2024, 2025, 2026];
+  const annoCorrente = new Date().getFullYear();
+  const anni = Array.from({ length: Math.max(1, annoCorrente - 2023 + 1) }, (_, i) => 2023 + i);
 
   const sezioniStr = Object.entries(sezioniSelezionate)
     .filter(([, v]) => v).map(([k]) => k).join(",");
@@ -37,6 +46,16 @@ const ManualeHACCPView = () => {
     (sezioniStr ? `&sezioni=${sezioniStr}` : "");
 
   const apriViewer = async () => {
+    if (!sezioniStr) {
+      setManualeHtml('<div style="padding:40px;color:#8f3829;font-size:16px;">Seleziona almeno una scheda da includere.</div>');
+      setShowViewer(true);
+      return;
+    }
+    if (dataDa && dataA && dataDa > dataA) {
+      setManualeHtml('<div style="padding:40px;color:#8f3829;font-size:16px;">Il periodo non è valido: la data iniziale viene dopo quella finale.</div>');
+      setShowViewer(true);
+      return;
+    }
     setLoadingManuale(true);
     setShowViewer(true);
     try {
@@ -252,19 +271,21 @@ const ManualeHACCPView = () => {
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-gray-500">Sezioni da includere</p>
               <div className="flex gap-2">
-                <button onClick={() => setSezioniSelezionate(Object.fromEntries(Object.keys(sezioniSelezionate).map(k => [k, true])))}
+                <button onClick={() => setSezioniSelezionate(selezioneTemperatureELotti())}
+                  className="text-xs text-[#5b7a6b] hover:underline">Solo Temperature e Lotti</button>
+                <button onClick={() => setSezioniSelezionate(selezioneCompleta())}
                   className="text-xs text-[#5b7a6b] hover:underline">Tutte</button>
                 <button onClick={() => setSezioniSelezionate(Object.fromEntries(Object.keys(sezioniSelezionate).map(k => [k, false])))}
                   className="text-xs text-gray-400 hover:underline">Nessuna</button>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
-              {Object.entries(sezioniSelezionate).map(([k, v]) => (
+              {SEZIONI_STAMPA_MANUALE.map(([k, etichetta]) => (
                 <label key={k} className="flex items-center gap-2 text-xs cursor-pointer select-none">
-                  <input type="checkbox" checked={v}
+                  <input type="checkbox" checked={!!sezioniSelezionate[k]}
                     onChange={e => setSezioniSelezionate(prev => ({ ...prev, [k]: e.target.checked }))}
                     className="rounded" />
-                  <span className="text-gray-700">{k.replace(/_/g, ' ')}</span>
+                  <span className="text-gray-700">{etichetta}</span>
                 </label>
               ))}
             </div>

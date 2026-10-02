@@ -43,7 +43,7 @@ describe("turno HACCP di oggi: dichiarazione e apertura delle caselle", () => {
   const bottone = (testo) => Array.from(node.querySelectorAll("button")).find((b) => b.textContent.includes(testo));
 
   test("dice quante caselle aperte verranno dichiarate, chiede conferma e mostra l'esito", async () => {
-    const post = jest.spyOn(axios, "post").mockResolvedValue({ data: { success: true, dichiarate: 3, firmato_da: "Ceraldi Vincenzo" } });
+    const post = jest.spyOn(axios, "post").mockResolvedValue({ data: { success: true, dichiarate: 3, firmate: 1, firmato_da: "Ceraldi Vincenzo" } });
     const onAggiornato = jest.fn();
     await monta(TURNO, { onAggiornato });
 
@@ -59,8 +59,24 @@ describe("turno HACCP di oggi: dichiarazione e apertura delle caselle", () => {
     expect(window.confirm.mock.calls[0][0]).toContain("3 caselle aperte");
     expect(post).toHaveBeenCalledTimes(1);
     expect(post.mock.calls[0][0]).toMatch(/\/haccp-auto\/dichiara-conformi-oggi$/);
-    expect(node.textContent).toContain("Dichiarate conformi 3 caselle, firmato da Ceraldi Vincenzo");
+    expect(node.textContent).toContain("Confermate 3 caselle aperte e firmati 1 controllo registrato, da Ceraldi Vincenzo");
     expect(onAggiornato).toHaveBeenCalled();
+  });
+
+  test("con zero caselle aperte firma le temperature già rilevate", async () => {
+    const post = jest.spyOn(axios, "post").mockResolvedValue({
+      data: { success: true, dichiarate: 0, firmate: 14, firmato_da: "Ceraldi Vincenzo" },
+    });
+    await monta({ ...TURNO, quante_da_rilevare: 0, gia_rilevate: 14, da_firmare: 14 });
+
+    const dichiara = bottone("Dichiaro conformi i controlli di oggi");
+    expect(dichiara.disabled).toBe(false);
+    expect(node.textContent).toContain("14 controlli da firmare");
+    await act(async () => dichiara.click());
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(window.confirm.mock.calls[0][0]).toContain("14 controlli già registrati");
+    expect(node.textContent).toContain("firmati 14 controlli registrati");
   });
 
   test("senza conferma non chiama il backend", async () => {
