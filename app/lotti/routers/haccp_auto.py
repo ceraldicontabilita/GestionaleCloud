@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import uuid
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, File, Request, UploadFile
 
 from app.lotti.auth import request_actor, require_admin, require_permesso
 from pydantic import BaseModel
@@ -16,6 +16,45 @@ from app.lotti.db import database as db
 from app.lotti.servizi.registro_haccp import FUSO
 
 router = APIRouter(prefix="/haccp-auto", tags=["HACCP Automazione"])
+
+
+@router.post("/importa-registri-excel")
+async def importa_registri_excel(
+    request: Request,
+    temperature_negative: UploadFile = File(...),
+    temperature_positive: UploadFile = File(...),
+    sanificazione: UploadFile = File(...),
+    conferma: bool = False,
+    _admin=Depends(require_admin),
+):
+    """Anteprima o sostituzione protetta dei registri HACCP dell'anno corrente.
+
+    L'anteprima non scrive nulla. Con ``conferma=true`` viene prima conservato
+    un backup completo nel database; un errore durante la sostituzione avvia il
+    ripristino automatico.
+    """
+    from app.lotti.servizi.import_haccp_excel import (
+        prepara_importazione,
+        riepilogo,
+        sostituisci_archivio,
+    )
+    from app.utils.upload_guard import leggi_upload
+
+    neg_raw = await leggi_upload(temperature_negative)
+    pos_raw = await leggi_upload(temperature_positive)
+    san_raw = await leggi_upload(sanificazione)
+    preparata = prepara_importazione(
+        neg_raw,
+        temperature_negative.filename or "temperature-negative.xlsx",
+        pos_raw,
+        temperature_positive.filename or "temperature-positive.xlsx",
+        san_raw,
+        sanificazione.filename or "sanificazione.xlsx",
+    )
+    if not conferma:
+        return {"success": True, "anteprima": True, **riepilogo(preparata)}
+    esito = await sostituisci_archivio(db, preparata, request_actor(request) or {})
+    return {"success": True, "anteprima": False, **esito}
 
 
 class PopulateResult(BaseModel):
