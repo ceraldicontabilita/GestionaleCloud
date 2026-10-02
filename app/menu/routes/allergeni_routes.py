@@ -1,11 +1,9 @@
 """Allergeni del Menu: alert dei prodotti senza dichiarazione ed esclusioni
 di chi una dichiarazione non deve averla.
 
-Gli allergeni sono un obbligo di legge (Regolamento UE 1169/2011, D.Lgs.
-231/2017): questa pagina serve a non lasciarne scoperto nessuno. Ma l'elenco
-"senza allergeni dichiarati" contiene anche whisky, distillati e bibite in
-bottiglia, che allergeni da dichiarare non ne hanno: finche' restano li' il
-numero non scende mai e l'alert diventa rumore.
+Questa pagina e' una lista di lavoro, non un'attestazione di assenza di
+allergeni. Bibite e liquori sono filtrati dalla lista su richiesta del
+titolare; eventuali allergeni registrati restano nel catalogo e nel Menu.
 
 19/09/2026 (richiesta del titolare): si esclude un prodotto - o un'intera
 categoria/sottocategoria - dalla verifica. L'esclusione dice "non richiede la
@@ -28,6 +26,7 @@ ricetta nel Menu con gli allergeni gia' calcolati dagli ingredienti. Averne
 una seconda, manuale e dal lato sbagliato, era un doppione.
 """
 from typing import Literal, Optional
+import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -38,6 +37,18 @@ from app.menu.supabase_client import supabase
 router = APIRouter(prefix="/api/admin/allergeni", tags=["Allergeni"])
 
 TABELLA_ESCLUSIONI = "menu_allergeni_esclusioni"
+
+# Filtro della lista di lavoro richiesto dal titolare: non cancella allergeni,
+# non modifica il menu e non costituisce un'esenzione dalla dichiarazione.
+_BEVANDE_FUORI_LISTA = {
+    "bibite", "liquori", "distillati", "amari", "grappe", "rum", "whisky",
+    "whiskey", "brandy & cognac", "brandy e cognac",
+}
+
+
+def _bevanda_fuori_lista(nome: str) -> bool:
+    normalizzato = " ".join(unicodedata.normalize("NFKC", nome or "").casefold().split())
+    return normalizzato in _BEVANDE_FUORI_LISTA
 
 Tipo = Literal["prodotto", "categoria", "sottocategoria"]
 
@@ -97,10 +108,12 @@ async def prodotti_senza_allergeni(_username: str = Depends(verify_token)):
     esclusi = _insiemi_esclusi(_leggi_esclusioni())
 
     senza_allergeni = [p for p in tutti if not (p.get("allergens") or [])]
-    da_dichiarare = [p for p in senza_allergeni if not _prodotto_escluso(p, esclusi)]
-
     nomi_categorie = _nomi("menu_categories")
     nomi_sottocategorie = _nomi("menu_subcategories")
+    candidati = [p for p in senza_allergeni if not _prodotto_escluso(p, esclusi)]
+    da_dichiarare = [p for p in candidati if not _bevanda_fuori_lista(
+        nomi_sottocategorie.get(p.get("subcategory_id")) or nomi_categorie.get(p.get("category_id"))
+    )]
 
     prodotti = [
         {
@@ -118,7 +131,8 @@ async def prodotti_senza_allergeni(_username: str = Depends(verify_token)):
     return {
         "totale_prodotti": len(tutti),
         "senza_allergeni": len(prodotti),
-        "esclusi": len(senza_allergeni) - len(prodotti),
+        "esclusi": len(senza_allergeni) - len(candidati),
+        "bevande_fuori_lista": len(candidati) - len(prodotti),
         "prodotti": sorted(prodotti, key=lambda p: (p["name_it"] or "").lower()),
     }
 

@@ -7,8 +7,9 @@ export const PAGE_NAMES = (() => {
   const names = {};
   [...PRIMARY_TABS, ...SECONDARY_TABS, ...HACCP_TABS, ...IMPOSTAZIONI_TABS].forEach((tab) => { names[tab.id] = tab.label; });
   Object.assign(names, {
-    backup: "Backup", ricettario: "Produzione",
-    food_cost: "Produzione", listino: "Listino", magazzino_prodotti: "Giacenze",
+    backup: "Backup", ricettario: "Ricette",
+    food_cost: "Ricette", listino: "Listino", magazzino_prodotti: "Giacenze",
+    in_menu: "Ricette · Menu e prezzi",
     sconti_merce: "Sconti merce", stampanti: "Stampanti",
   });
   return names;

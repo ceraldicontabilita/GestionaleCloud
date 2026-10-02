@@ -561,7 +561,7 @@ async def catalogo_menu_ospite(richiesta: MenuOspiteRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=(assegnati or {}).get("errore", "Codice non valido"))
     from app.menu.carta_qromo import carta_pubblica
 
-    carta = await carta_pubblica()
+    carta = await carta_pubblica(destinazione="bb")
     prezzi = {
         int(p["prodotto_id"]): int(Decimal(str(p["prezzo"])) * 100)
         for p in assegnati.get("prodotti", [])

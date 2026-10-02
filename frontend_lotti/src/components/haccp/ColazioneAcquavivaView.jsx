@@ -4,7 +4,9 @@ import { apiError } from "../../utils/apiError";
 import axios from "axios";
 import { toast } from "sonner";
 import { API, BACKEND_URL } from "../../utils/constants";
-import { apriDocumentoAutenticato } from "../../auth";
+import { apriDocumentoAutenticato, loginGestionale } from "../../auth";
+import { ChevronRight, X } from "lucide-react";
+import CatalogoColazione from "./CatalogoColazione";
 
 /**
  * ColazioneAcquaviva — UI ottimizzata per tablet pasticceria.
@@ -19,73 +21,86 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
   const [presetSel, setPresetSel]     = useState(null);   // nome preset stagione attivo
   const [template, setTemplate]       = useState({ nome: "", items: [], note: "" });
   const [loading, setLoading]         = useState(true);
+  const [erroreCaricamento, setErroreCaricamento] = useState("");
   const [saving, setSaving]           = useState(false);
   const [registrando, setRegistrando] = useState(false);
   const [risultato, setRisultato]     = useState(null);
   const [search, setSearch]           = useState("");
-  const [modalita, setModalita]       = useState("avvia"); // "avvia" | "configura"
-  const [piuUsati, setPiuUsati]       = useState([]);
-  const [preferiti, setPreferiti]     = useState(new Set());
+  const [modalita, setModalita]       = useState(() => window.location.hash.includes("/colazione/configura") ? "configura" : "avvia");
   const [modificaPeriodo, setModificaPeriodo] = useState(false);
   const [periodoForm, setPeriodoForm] = useState({ data_inizio: "", data_fine: "" });
   // Rete di sicurezza (23/07/2026): se un prodotto comprato non viene
   // riconosciuto dal matching, questa spunta mostra TUTTO il catalogo.
-  const [mostraTutti, setMostraTutti] = useState(false);
+  const [aggiungendoStagioni, setAggiungendoStagioni] = useState(null);
+  const salvatoRef = React.useRef("");
+  const operazioneRef = React.useRef(false);
   const [popolandoAcquisti, setPopolandoAcquisti] = useState(false);
   // La lista scorre: quando cambia la ricerca si torna in cima (23/07/2026:
   // "se faccio cerca esco giù a tutto")
   const listaRef = React.useRef(null);
+  const modificheNonSalvate = () => !!salvatoRef.current && JSON.stringify(template) !== salvatoRef.current;
+  const lasciaPagina = async (azione) => {
+    if (operazioneRef.current || saving || registrando) return;
+    if (modificheNonSalvate() && !await conferma("Uscire senza salvare le modifiche?", { titolo: "Modifiche non salvate", ok: "Esci senza salvare" })) return;
+    azione();
+  };
+  const naviga = (hash) => lasciaPagina(() => { window.location.hash = hash; });
   useEffect(() => { listaRef.current?.scrollTo?.({ top: 0 }); }, [search]);
 
   // Carica un preset specifico (stagione)
   const caricaPreset = useCallback(async (nome) => {
     try {
       const res = await axios.get(`${API}/colazione-acquaviva`, { params: { nome } });
-      setTemplate(res.data?.items ? res.data : { nome, items: [], note: "" });
+      const letto = res.data?.items ? res.data : { nome, items: [], note: "" };
+      setTemplate(letto);
+      salvatoRef.current = JSON.stringify(letto);
     } catch (e) {
-      toast.error("Errore caricamento preset: " + apiError(e));
+      setErroreCaricamento(apiError(e));
+      throw e;
     }
   }, []);
 
   const carica = useCallback(async () => {
     setLoading(true);
+    setErroreCaricamento("");
     try {
-      const [resProdotti, resPreset, resPiuUsati, resPreferiti, resStagioneAttiva] = await Promise.all([
-        axios.get(`${API}/colazione-acquaviva/prodotti-disponibili?catalogo=true&solo_acquistati=${!mostraTutti}`),
+      const [resProdotti, resPreset, resStagioneAttiva] = await Promise.all([
+        axios.get(`${API}/colazione-acquaviva/prodotti-disponibili?catalogo=true&solo_acquistati=false&includi_rosticceria=true`),
         axios.get(`${API}/colazione-acquaviva/preset`),
-        axios.get(`${API}/colazione-acquaviva/prodotti-piu-usati`),
-        axios.get(`${API}/colazione-acquaviva/preferiti`),
-        axios.get(`${API}/colazione-acquaviva/stagione-attiva`).catch(() => null),
+        axios.get(`${API}/colazione-acquaviva/stagione-attiva`),
       ]);
       setProdottiDisponibili(resProdotti.data || []);
       const lista = resPreset.data || [];
       setPresetList(lista);
-      setPiuUsati(resPiuUsati.data || []);
-      setPreferiti(new Set(resPreferiti.data || []));
       // Pre-seleziona la stagione il cui periodo (equinozi/solstizi, modificabili)
       // contiene la data di oggi — niente più scelta manuale ogni mattina.
       const stagioneOggi = resStagioneAttiva?.data?.stagione;
       const primo = (stagioneOggi && lista.some(p => p.nome === stagioneOggi))
-        ? stagioneOggi : (lista[0]?.nome || "Estiva");
+        ? stagioneOggi : lista[0]?.nome;
+      if (!primo) throw new Error("Nessuna stagione disponibile: verifica i menu colazione.");
       setPresetSel(primo);
       await caricaPreset(primo);
     } catch (e) {
+      setErroreCaricamento(apiError(e));
       toast.error("Errore caricamento: " + apiError(e));
     } finally {
       setLoading(false);
     }
-  }, [caricaPreset, mostraTutti]);
+  }, [caricaPreset]);
 
-  const togglePreferito = async (prod) => {
-    const eraPreferito = preferiti.has(prod.id);
-    // Ottimistico: aggiorna subito la stella, poi conferma dal server
-    setPreferiti(prev => {
-      const next = new Set(prev);
-      eraPreferito ? next.delete(prod.id) : next.add(prod.id);
-      return next;
-    });
+  const aggiungiTutteStagioni = async (prod) => {
+    if (operazioneRef.current || prod.ammesso_colazione === false) return;
+    const modificato = JSON.stringify(template) !== salvatoRef.current;
+    operazioneRef.current = true;
+    if (!await conferma(`Aggiungere “${prod.nome}” alle quattro stagioni?\n\nLe quantità già impostate restano invariate. Dove manca, verrà aggiunto con 6 pezzi, modificabili.${modificato ? "\nVerranno salvate anche le modifiche di questa stagione." : ""}`, { titolo: "Un prodotto in tutte le stagioni", ok: "Aggiungi alle 4 stagioni" })) { operazioneRef.current = false; return; }
+    setAggiungendoStagioni(prod.id);
     try {
+      if (modificato) {
+        await axios.put(`${API}/colazione-acquaviva`, { ...template, nome: presetSel });
+        salvatoRef.current = JSON.stringify(template);
+      }
       const res = await axios.post(`${API}/colazione-acquaviva/preferito`, {
+        azione: "aggiungi",
         prodotto_id: prod.id,
         prodotto_nome: prod.nome,
         foto_url: prod.foto_url || null,
@@ -94,21 +109,14 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
         fonte: prod.fonte || null,
       });
       if (res.data.preferito) {
-        toast.success(`⭐ ${prod.nome} aggiunto a tutte e 4 le stagioni`);
+        toast.success(`${prod.nome} presente in tutte e 4 le stagioni`);
         const resPreset = await axios.get(`${API}/colazione-acquaviva/preset`);
         setPresetList(resPreset.data || []);
         if (presetSel) await caricaPreset(presetSel);
-      } else {
-        toast(`${prod.nome} tolto dai preferiti`);
       }
     } catch (e) {
       toast.error("Errore: " + apiError(e));
-      setPreferiti(prev => {
-        const next = new Set(prev);
-        eraPreferito ? next.add(prod.id) : next.delete(prod.id);
-        return next;
-      });
-    }
+    } finally { operazioneRef.current = false; setAggiungendoStagioni(null); }
   };
 
   const popolaDaAcquisti = async () => {
@@ -154,9 +162,16 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
   useEffect(() => { carica(); }, [carica]);
 
   const cambiaPreset = async (nome) => {
-    setPresetSel(nome);
-    setRisultato(null);
-    await caricaPreset(nome);
+    if (saving || operazioneRef.current) return;
+    if (JSON.stringify(template) !== salvatoRef.current && !await conferma("Cambiare stagione senza salvare le modifiche?", { titolo: "Modifiche non salvate", ok: "Cambia senza salvare" })) return;
+    setLoading(true);
+    setErroreCaricamento("");
+    try {
+      await caricaPreset(nome);
+      setPresetSel(nome);
+      setRisultato(null);
+    } catch (e) { toast.error("Stagione non disponibile: " + apiError(e)); }
+    finally { setLoading(false); }
   };
 
   // Creazione nuova colazione con input INLINE (niente window.prompt: brutto
@@ -199,6 +214,7 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
   const getItem = (id) => template.items.find(i => i.prodotto_id === id);
 
   const toggleProdotto = (prod) => {
+    if (operazioneRef.current || prod.ammesso_colazione === false) return;
     setTemplate(prev => {
       const exists = prev.items.find(i => i.prodotto_id === prod.id);
       if (exists) {
@@ -239,21 +255,26 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
 
   // ── Salva template ──────────────────────────────────────────────────────────
   const salvaTemplate = async () => {
+    if (operazioneRef.current || loading || erroreCaricamento || !presetSel) return;
+    operazioneRef.current = true;
     setSaving(true);
     try {
       await axios.put(`${API}/colazione-acquaviva`, { ...template, nome: presetSel });
       toast.success(`Menù "${presetSel}" salvato!`);
+      salvatoRef.current = JSON.stringify(template);
       // Menù sistemato → si torna alla schermata del mattino (un passaggio in meno)
       setModalita("avvia");
     } catch (e) {
       toast.error("Errore salvataggio");
     } finally {
       setSaving(false);
+      operazioneRef.current = false;
     }
   };
 
   // ── Avvia colazione → manda tutto al banco ──────────────────────────────────
   const avviaColazione = async () => {
+    if (registrando || loading || erroreCaricamento || !presetSel) return;
     const attivi = template.items.filter(i => i.attivo);
     if (attivi.length === 0) { toast.error("Seleziona almeno un prodotto"); return; }
     setRegistrando(true);
@@ -261,9 +282,8 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
       await axios.put(`${API}/colazione-acquaviva`, { ...template, nome: presetSel });
       const res = await axios.post(`${API}/colazione-acquaviva/registra`, { nome: presetSel });
       setRisultato(res.data);
-      toast.success(`Colazione avviata: ${attivi.length} prodotti, ${totPezzi} pezzi`);
-      // Auto-chiudi modale dopo 1.5 secondi
-      if (onClose) setTimeout(() => onClose(), 1500);
+      if (res.data?.errori?.length) toast.error("Registrazione parziale: controlla i prodotti non registrati.");
+      else toast.success(`Colazione avviata: ${res.data.prodotti_registrati} prodotti, ${res.data.pezzi_totali} pezzi`);
     } catch (e) {
       toast.error("Errore: " + apiError(e));
     } finally {
@@ -300,6 +320,17 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
     })
     .filter(p => (p.nome || "").toLowerCase().includes(search.toLowerCase()));
 
+  useEffect(() => {
+    const precedente = document.title;
+    document.title = `Lotti · Colazione · ${modalita === "configura" ? "Menu stagionale" : "Preparazione del mattino"}${presetSel ? ` · ${presetSel}` : ""}`;
+    return () => { document.title = precedente; };
+  }, [modalita, presetSel]);
+
+  const tornaAlMattino = async () => {
+    if (JSON.stringify(template) !== salvatoRef.current) { await salvaTemplate(); return; }
+    setModalita("avvia");
+  };
+
   // ── Schermata risultato ─────────────────────────────────────────────────────
   if (risultato) {
     return (
@@ -315,9 +346,10 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
         }}>
           <div style={{ fontSize: 60, marginBottom: 12 }}>☕</div>
           <h2 style={{ margin: "0 0 4px", fontSize: 26, fontWeight: 800, color: "var(--success-dark)" }}>
-            Colazione Registrata!
+            {risultato.errori?.length ? "Registrazione parziale" : "Colazione registrata"}
           </h2>
           <p style={{ color: "#6b7669", margin: "0 0 24px", fontSize: 14 }}>{risultato.data}</p>
+          {risultato.errori?.length > 0 && <div role="alert"><p>Non ripetere tutta la produzione: questi prodotti non sono stati registrati.</p>{risultato.errori.map((e,i)=><p key={i}>{e.nome}: {e.errore}</p>)}</div>}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
             <div style={{ background: "#f0fdf4", borderRadius: 14, padding: "14px", border: "2px solid #bbf7d0" }}>
@@ -375,8 +407,8 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
         margin: modoTablet ? 0 : "16px",
         borderRadius: modoTablet ? 0 : 20,
         overflow: "hidden",
-        maxWidth: modoTablet ? "100%" : 700,
-        alignSelf: "center", width: "100%"
+        maxWidth: modoTablet ? "100%" : 1100,
+        alignSelf: "center", width: modoTablet ? "100%" : "calc(100% - 32px)"
       }}>
 
         {/* ── Header ── La mattina serve UNA cosa sola: spuntare e avviare.
@@ -388,41 +420,47 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
           background: "linear-gradient(135deg, var(--warning-text), var(--warning-dark))",
           padding: "14px 16px"
         }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <nav aria-label="Percorso Colazione" className="colazione-percorso">
+            <a href="#tablet/home" onClick={e => { e.preventDefault(); naviga("tablet/home"); }}>Reparti</a><ChevronRight size={14} />
+            <a href="#tablet/pasticceria" onClick={e => { e.preventDefault(); naviga("tablet/pasticceria"); }}>Pasticceria</a><ChevronRight size={14} />
+            <span>Colazione</span><ChevronRight size={14} />
+            <span aria-current="page">{modalita === "configura" ? "Menu stagionale" : "Preparazione del mattino"}{presetSel ? ` · ${presetSel}` : ""}</span>
+          </nav>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <div style={{ minWidth: 0 }}>
               <h2 style={{ color: "#fff", margin: 0, fontSize: 20, fontWeight: 800 }}>
                 {modalita === "avvia" ? "Colazione" : "Menù colazione"}{presetSel ? ` · ${presetSel}` : ""}
               </h2>
               <p style={{ color: "rgba(255,255,255,0.8)", margin: "2px 0 0", fontSize: 12 }}>
-                {attivi.length} prodotti · {totPezzi} pezzi · €{totValore.toFixed(2)}
+                {loading ? "Caricamento della stagione…" : erroreCaricamento ? "Dati non disponibili" : `${attivi.length} prodotti · ${totPezzi} pezzi · €${totValore.toFixed(2)}`}
               </p>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
               {modalita === "avvia" ? (
-                <button onClick={() => setModalita("configura")} style={{
+                <button disabled={loading || !!erroreCaricamento} onClick={() => setModalita("configura")} style={{
                   background: "rgba(255,255,255,0.16)", border: "2px solid rgba(255,255,255,0.5)",
                   color: "#fff", borderRadius: 10, padding: "8px 14px",
                   fontWeight: 800, cursor: "pointer", fontSize: 13
                 }}>⚙️ Modifica menù</button>
               ) : (
-                <button onClick={() => setModalita("avvia")} style={{
+                <button onClick={tornaAlMattino} disabled={saving || !!aggiungendoStagioni} style={{
                   background: "#fff", border: "none",
                   color: "var(--warning-text)", borderRadius: 10, padding: "8px 14px",
                   fontWeight: 800, cursor: "pointer", fontSize: 13
                 }}>← Torna alla colazione</button>
               )}
               {onClose && (
-                <button onClick={onClose} style={{
+                <button aria-label="Chiudi Colazione" onClick={() => lasciaPagina(onClose)} style={{
                   background: "rgba(255,255,255,0.2)", border: "none",
                   color: "#fff", borderRadius: 10, padding: "8px 14px",
                   fontWeight: 700, cursor: "pointer", fontSize: 16
-                }}>✕</button>
+                }}><X size={20} /></button>
               )}
             </div>
           </div>
 
           {/* Gestione stagioni: SOLO in modalità menù */}
-          {modalita === "configura" && (
+          {modalita === "configura" && !loading && !erroreCaricamento && (
             <>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "12px 0 0", alignItems: "center" }}>
                 {presetList.map(p => (
@@ -435,6 +473,10 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                     {p.nome}{p.n_prodotti ? ` · ${p.n_prodotti}` : ""}
                   </button>
                 ))}
+              </div>
+              <details style={{ marginTop: 10, color: "#fff" }}>
+                <summary style={{ minHeight: 44, cursor: "pointer", display: "flex", alignItems: "center", fontWeight: 700 }}>Altre opzioni stagioni</summary>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {nuovaColazione === null ? (
                   <button onClick={() => setNuovaColazione("")} style={{
                     padding: "6px 12px", borderRadius: 999, fontWeight: 800, fontSize: 12, cursor: "pointer",
@@ -498,7 +540,8 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                     padding: "6px 12px", borderRadius: 999, fontWeight: 800, fontSize: 12, cursor: "pointer",
                     border: "2px solid rgba(255,255,255,0.6)", background: "rgba(255,255,255,0.12)", color: "#fff"
                   }}>⬇️ Zip foto Acquaviva</button>
-              </div>
+                </div>
+              </details>
 
               {/* Periodo stagione (richiesta Enzo 03/07/2026): la stagione entra in
                   vigore da sola alla data giusta — qui si corregge se serve. */}
@@ -538,7 +581,7 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
         </div>
 
         {/* ── Barra ricerca ── */}
-        <div style={{ padding: "10px 14px", borderBottom: "1px solid #e6e0d4", background: "#fafafa" }}>
+        {modalita === "avvia" && !erroreCaricamento && <div style={{ padding: "10px 14px", borderBottom: "1px solid #e6e0d4", background: "#fafafa" }}>
           <input
             type="text" placeholder="Cerca prodotto..."
             value={search} onChange={e => setSearch(e.target.value)}
@@ -553,126 +596,30 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
               Nessun prodotto in questo menù. Tocca <b>⚙️ Modifica menù</b> in alto per aggiungerne.
             </p>
           )}
-          {/* Più usati: scorciatoia per non scorrere tutto il catalogo ogni
-              volta (richiesta Enzo 03/07/2026) — solo a ricerca vuota. */}
-          {modalita === "configura" && !search && piuUsati.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#6b7669", textTransform: "uppercase" }}>
-                ⭐ Più usati
-              </p>
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-                {piuUsati.map(prod => {
-                  const inTemplate = getItem(prod.id);
-                  return (
-                    <button key={prod.id} onClick={() => toggleProdotto(prod)}
-                      style={{
-                        flexShrink: 0, padding: "7px 12px", borderRadius: 20, whiteSpace: "nowrap",
-                        border: `2px solid ${inTemplate ? "var(--warning)" : "#e6e0d4"}`,
-                        background: inTemplate ? "var(--warning-soft)" : "#fff",
-                        color: inTemplate ? "var(--warning-text)" : "#495247",
-                        fontSize: 12, fontWeight: 700, cursor: "pointer"
-                      }}>
-                      {inTemplate ? "✓ " : ""}{prod.nome}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+        </div>}
 
         {/* ── Lista prodotti ── */}
         <div ref={listaRef} style={{ flex: 1, overflowY: "auto", padding: "10px 12px" }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: 60, color: "#9aa593" }}>Caricamento...</div>
+          ) : erroreCaricamento ? (
+            <div role="alert" style={{ padding: 24, background: "var(--warning-soft)", borderRadius: 12 }}>
+              <h3>Impossibile caricare la colazione</h3>
+              <p>{erroreCaricamento}</p><p>Questo non significa che i prodotti siano stati eliminati.</p>
+              <button onClick={carica} style={{ minHeight: 44 }}>Riprova</button>{" "}
+              <a href={loginGestionale()}>Rifai l'accesso</a>
+            </div>
           ) : (
             <>
               {/* MODALITA CONFIGURA: tutti i prodotti con toggle aggiungi/rimuovi */}
               {modalita === "configura" && (
                 <>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#6b7669", textTransform: "uppercase" }}>
-                      {prodottiDisponibili.length} prodotti disponibili — tocca per aggiungerli al menù
-                    </p>
-                    {/* Rete di sicurezza: se un prodotto comprato non viene
-                        riconosciuto, questa spunta mostra tutto il catalogo */}
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#6b7669", cursor: "pointer" }}>
-                      <input type="checkbox" checked={mostraTutti} onChange={e => setMostraTutti(e.target.checked)} />
-                      mostra anche mai acquistati
-                    </label>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8, marginBottom: 16 }}>
-                    {prodottiDisponibili
-                      .filter(p => (p.nome || "").toLowerCase().includes(search.toLowerCase()))
-                      .map(prod => {
-                        const inTemplate = getItem(prod.id);
-                        return (
-                          <div key={prod.id}
-                            onClick={() => toggleProdotto(prod)}
-                            style={{
-                              borderRadius: 12, overflow: "hidden",
-                              border: `2px solid ${inTemplate ? "var(--warning)" : "#e6e0d4"}`,
-                              background: inTemplate ? "var(--warning-soft)" : "#fff",
-                              cursor: "pointer", position: "relative",
-                              boxShadow: inTemplate ? "0 2px 10px rgba(245,158,11,0.2)" : "0 1px 4px rgba(0,0,0,0.06)"
-                            }}
-                          >
-                            {inTemplate && (
-                              <div style={{
-                                position: "absolute", top: 5, right: 5,
-                                background: "var(--warning)", color: "#fff", borderRadius: "50%",
-                                width: 22, height: 22, display: "flex", alignItems: "center",
-                                justifyContent: "center", fontSize: 13, fontWeight: 900, zIndex: 2
-                              }}>✓</div>
-                            )}
-                            {/* Preferito (richiesta Enzo 03/07/2026): marca il
-                                prodotto come da inserire SEMPRE in tutte e 4 le
-                                stagioni, senza doverlo ricercare ogni volta. */}
-                            <button
-                              onClick={e => { e.stopPropagation(); togglePreferito(prod); }}
-                              title={preferiti.has(prod.id) ? "Preferito colazione — tocca per togliere" : "Segna come preferito colazione (va in tutte le stagioni)"}
-                              style={{
-                                position: "absolute", top: 5, left: 5, zIndex: 2,
-                                width: 22, height: 22, borderRadius: "50%", border: "none",
-                                background: preferiti.has(prod.id) ? "#fff" : "rgba(0,0,0,0.35)",
-                                color: preferiti.has(prod.id) ? "var(--warning)" : "#fff",
-                                fontSize: 13, cursor: "pointer", display: "flex",
-                                alignItems: "center", justifyContent: "center"
-                              }}>
-                              {preferiti.has(prod.id) ? "★" : "☆"}
-                            </button>
-                            {fotoSrc(prod.foto_url) && (
-                              <img src={fotoSrc(prod.foto_url)} alt={prod.nome}
-                                onError={(e) => { e.target.style.display = "none"; }}
-                                style={{ width: "100%", height: 80, objectFit: "cover", objectPosition: "center", background: "#faf7f0" }} />
-                            )}
-                            <div style={{ padding: "8px 10px" }}>
-                              {prod.fonte === "casa" && (
-                                <p style={{ margin: "0 0 2px", fontSize: 9, fontWeight: 800, color: "var(--success-text, #234d3d)", textTransform: "uppercase", letterSpacing: 0.3 }}>
-                                  🏠 fatto in casa
-                                </p>
-                              )}
-                              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#3f5a4e", lineHeight: 1.3 }}>
-                                {prod.nome}
-                              </p>
-                              {prod.fonte !== "casa" && prod.gia_acquistato === false && !inTemplate && (
-                                <p style={{ margin: "2px 0 0", fontSize: 10, color: "#9aa593", fontWeight: 600 }}>
-                                  mai acquistato
-                                </p>
-                              )}
-                              {inTemplate && (
-                                <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--warning-text)", fontWeight: 700 }}>
-                                  {inTemplate.pezzi} pz
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
+                  <CatalogoColazione prodotti={prodottiDisponibili} template={template} stagione={presetSel}
+                    onNavigate={naviga}
+                    fotoSrc={fotoSrc} onToggle={toggleProdotto} onTutteStagioni={aggiungiTutteStagioni} busy={aggiungendoStagioni} />
 
                   {/* Template corrente */}
-                  {template.items.length > 0 && (
+                  {(
                     <>
                       <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#6b7669", textTransform: "uppercase" }}>
                         Nel menù ({template.items.length} prodotti) — regola le quantità del mattino
@@ -811,7 +758,7 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
         </div>
 
         {/* ── Footer con bottone Avvia ── */}
-        {modalita === "avvia" && attivi.length > 0 && (
+        {modalita === "avvia" && !loading && !erroreCaricamento && attivi.length > 0 && (
           <div style={{
             padding: "14px 16px",
             background: "#fff",

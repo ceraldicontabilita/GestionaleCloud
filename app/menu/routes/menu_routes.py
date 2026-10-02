@@ -69,6 +69,8 @@ def prod_out(row: dict) -> dict:
         # visible/origine: prodotti creati da Lotti (origine "lotti") nascono con
         # visible = scelta del titolare in Lotti ("menu_pubblico").
         "visible": _visibile(row), "pubblicabile": _pubblicabile(row), "origine": row.get("origine"),
+        "lotti_ref": row.get("lotti_ref"),
+        "menu_bb": row.get("menu_bb") is not False,
     }
 
 
@@ -99,13 +101,19 @@ def _prodotti_pubblici(rows) -> list:
     return [prod_out(r) for r in rows if _pubblicabile(r)]
 
 
-async def _fetch_all(*, catalogo_carta=False):
+async def _fetch_all(*, catalogo_carta=False, catalogo_bb=False):
     categories = [cat_out(r) for r in supabase.table("menu_categories").select("*").order("id").execute().data]
     subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").order("id").execute().data]
     righe = supabase.table("menu_products").select("*").order("id").execute().data
-    products = [prod_out(r) for r in righe if _pubblicabile(r) or (
-        catalogo_carta and r.get("origine") == "lotti" and _visibile(r)
-    )]
+    if catalogo_bb:
+        # La spunta arriva dal ponte Lotti: Menu non rilegge le ricette.
+        products = [prod_out(r) for r in righe if r.get("menu_bb") is not False and (
+            r.get("origine") == "lotti" or _pubblicabile(r)
+        )]
+    else:
+        products = [prod_out(r) for r in righe if _pubblicabile(r) or (
+            catalogo_carta and r.get("origine") == "lotti" and _visibile(r)
+        )]
     return categories, subcategories, products
 
 
