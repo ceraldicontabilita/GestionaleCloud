@@ -1,6 +1,8 @@
 import axios from "axios";
 import { API } from "./constants";
+import { toast } from "sonner";
 import { apriDocumentoAutenticato } from "../auth";
+import { MODI, getModoStampa, stampaEtichettaLotto } from "./stampaEpson";
 
 // Modalità "stampa automatica": i documenti vengono accodati all'agente locale
 // che li manda alla stampante giusta per categoria. Se spenta, si apre la
@@ -25,6 +27,24 @@ export function setStampaAuto(on) {
  * @returns {Promise<{accodato:boolean}>}
  */
 export async function stampaDoc({ categoria, url, formato = "pdf", titolo = "", reparto = "" }) {
+  // Diretta dal dispositivo (Epson ePOS): solo per l'etichetta di un lotto.
+  const lotto = categoria === "etichette" && getModoStampa() === MODI.EPSON
+    ? /\/stampa\/lotto\/([^/?]+)\/?(?:\?|$)/.exec(url || "")
+    : null;
+  if (lotto) {
+    try {
+      await stampaEtichettaLotto(decodeURIComponent(lotto[1]), reparto);
+      toast.success("Etichetta stampata");
+      return { accodato: false, diretta: true };
+    } catch (e) {
+      // Mai perdere l'etichetta: motivo in chiaro e il documento resta apribile.
+      toast.error(e.message, {
+        duration: 20000,
+        action: { label: "Apri PDF", onClick: () => apriDocumentoAutenticato(url) },
+      });
+      return { accodato: false, diretta: false, errore: e.message };
+    }
+  }
   if (isStampaAuto()) {
     await axios.post(`${API}/stampanti/coda`, { categoria, url, formato, titolo, reparto });
     return { accodato: true };

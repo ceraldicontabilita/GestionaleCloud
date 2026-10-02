@@ -561,6 +561,32 @@ async def stampa_lotto(lotto_id: str, mostra_nutrizionali: bool = False):
     return HTMLResponse(content=html)
 
 
+@router.get("/lotto/{lotto_id}/dati")
+async def stampa_lotto_dati(lotto_id: str):
+    """Dati dell'etichetta lotto in JSON, per chi la disegna da solo (tablet con
+    stampa diretta Epson ePOS). Stessa fonte dell'HTML e dell'ESC/POS: un campo
+    che il lotto non ha resta vuoto, non si inventa."""
+    lotto, ingredienti, allergeni = await _carica_lotto_tracciato(lotto_id)
+    az = await get_azienda() or {}
+    return {
+        "azienda": az.get("ragione_sociale") or "Ceraldi Group S.r.l.",
+        "indirizzo": az.get("indirizzo") or "",
+        "prodotto": lotto.get("prodotto") or lotto.get("prodotto_nome") or "",
+        "numero_lotto": lotto.get("numero_lotto") or "",
+        "quantita": lotto.get("pezzi") or lotto.get("quantita"),
+        "unita": lotto.get("unita") or lotto.get("unita_misura") or "pz",
+        "data_produzione": lotto.get("data_produzione") or "",
+        "data_scadenza": lotto.get("data_scadenza") or "",
+        "scadenza_abbattuto": lotto.get("scadenza_abbattuto") or "",
+        "frigo": lotto.get("frigo_numero") or "",
+        "operatore": lotto.get("operatore_nome") or lotto.get("operatore") or "",
+        "reparto": lotto.get("reparto") or "",
+        "allergeni": list(allergeni),
+        "ingredienti": [re.sub(r"<[^>]+>", "", str(i)) for i in ingredienti],
+        "stampato": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/lotto/{lotto_id}/escpos")
 async def stampa_lotto_escpos(lotto_id: str):
     """Etichetta lotto in ESC/POS puro (byte) per stampa diretta su Epson di rete
