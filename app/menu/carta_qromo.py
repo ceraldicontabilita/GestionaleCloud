@@ -192,6 +192,59 @@ def carta_da_menu(categorie, sottocategorie, prodotti, dettagli, imgmap):
     menus = [{**menu_extra.get(c["id"], {}), "id": c["id"], "n": c["nameIT"] or c["name"],
               "pic": foto(c) or foto_menu.get(c["id"]), "on": 1, "col": menu_extra.get(c["id"], {}).get("col") or "5b7a6b"}
              for c in ordine(categorie, dettagli["menus"]) if c["id"] in menu_pieni]
+    return _raggruppa_carta({"menus": menus, "cats": cats, "items": items})
+
+
+def _raggruppa_carta(carta):
+    """Organizzazione della carta, non un secondo catalogo: conserva gli ID
+    prodotto e non modifica le categorie operative o gli originali Qromo."""
+    menus, cats, items = carta["menus"], carta["cats"], carta["items"]
+    produzione = next((m for m in menus if m["n"].casefold() == "produzione ceraldi"), None)
+    bar = next((m for m in menus if m["n"].casefold() == "bar & dolci"), None)
+    food = next((m for m in menus if m["n"].casefold() == "food"), None)
+    dolci_qromo = next((c for c in cats if bar and c["m"] == bar["id"] and c["n"].casefold() == "dolci"), None)
+    colazioni = [c for c in cats if bar and c["m"] == bar["id"] and c["n"].casefold() in {"dolci", "colazione"}]
+    if not produzione and not colazioni:
+        return carta
+    dolci = produzione or {"id": "dolci", "n": "Dolci", "on": 1, "col": "5b7a6b", "pic": None}
+    if not produzione:
+        menus.append(dolci)
+    dolci["n"] = "Dolci"
+    for c in colazioni:
+        c["m"] = dolci["id"]
+    if bar:
+        bar["n"] = "Bar"
+    for c in cats:
+        if not produzione or c["m"] != produzione["id"] or c in colazioni:
+            continue
+        if c["n"].casefold() == "pasticceria":
+            if dolci_qromo:
+                for i in items:
+                    if i["c"] == c["id"]:
+                        i["c"] = dolci_qromo["id"]
+            continue
+        if c["n"].casefold() == "rosticceria":
+            if not food:
+                food = {"id": "food_lotti", "n": "Food", "on": 1, "col": "5b7a6b", "pic": c.get("pic")}
+                menus.append(food)
+            c["m"] = food["id"]
+        elif c["n"].casefold() == "bar" and bar:
+            c["m"] = bar["id"]
+        else:
+            # Il reparto Altro contiene sia dolci sia salati: nessuna associazione inventata.
+            altri = next((m for m in menus if m["id"] == "altri_prodotti"), None)
+            if not altri:
+                altri = {"id": "altri_prodotti", "n": "Altri prodotti", "on": 1, "col": "5b7a6b", "pic": c.get("pic")}
+                menus.append(altri)
+            c["m"] = altri["id"]
+    piene = {i["c"] for i in items}
+    cats = [c for c in cats if c["id"] in piene]
+    menu_pieni = {c["m"] for c in cats}
+    menus = [m for m in menus if m["id"] in menu_pieni]
+    for m in menus:
+        if m["n"] == "Dolci":
+            # Non usare la foto della rosticceria per la nuova card dei dolci.
+            m["pic"] = next((i["pic"] for i in items if i.get("pic") and i["c"] in {c["id"] for c in cats if c["m"] == m["id"]}), None)
     return {"menus": menus, "cats": cats, "items": items}
 
 

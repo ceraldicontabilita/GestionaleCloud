@@ -330,7 +330,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Pulizia Drive: solo copie esatte, **Cestino mai eliminazione permanente**,
   con anteprima e autorizzazione esplicita.
 - Estratti conto: inbox unica per sei fonti; il **contenuto** decide (SumUp → Nexi → PayPal → mutuo → banca), mai percorso né nome file (vedi «Un file si riconosce dal contenuto»; il codice oggi li consulta ancora prima: vedi «Aperto»). «estratto conto» da solo non è un
-  segno. Il PDF ufficiale BPM cambia impaginazione dal trimestre al 30/06/2026 (tre date — contabile, valuta, disponibile — poi l'importo: con la descrizione sulla stessa riga per le entrate, nelle righe dopo per le uscite; la data in coda è del movimento successivo): `parsers/estratto_conto_bpm_parser.py` le conosce entrambe, e la prova è l'archivio riga per riga (844 su 844 al 30/06/2026). All'import ufficiale anche le righe riconosciute solo per giorno, verso e importo (`accoppia`: la causale del PDF non ha il prefisso dell'export) si promuovono a ufficiali. La quietanza di rata «Mutui - Quietanza di pagamento_…» ha una colonna «totale netto»: si riconosce prima della guardia busta paga e va al modulo mutui. Non riconosciuto → cartella Errori col motivo scritto, **mai
+  segno. Il nome della banca (una bolletta Enel che scrive «addebito presso Banco BPM») e il titolo (un sollecito «INVIO ESTRATTO CONTO - FATTURE SCADUTE») da soli non fanno un estratto: serve la forma, cioè i saldi, le colonne data contabile/valuta o il titolo con l'ABI 05034 (`ha_struttura_di_estratto`); il «Dettaglio movimento» dell'home banking prova un movimento, non è un estratto. La stampa PDF di una fattura italiana va in `ARRETRATO` (`fuori_contabilita`), mai in `ERRORI`; un file in `ERRORI` letto con `REGOLE_CLASSIFICAZIONE` più vecchia si rilegge una volta sola. Il PDF ufficiale BPM cambia impaginazione dal trimestre al 30/06/2026 (tre date — contabile, valuta, disponibile — poi l'importo: con la descrizione sulla stessa riga per le entrate, nelle righe dopo per le uscite; la data in coda è del movimento successivo): `parsers/estratto_conto_bpm_parser.py` le conosce entrambe, e la prova è l'archivio riga per riga (844 su 844 al 30/06/2026). All'import ufficiale anche le righe riconosciute solo per giorno, verso e importo (`accoppia`: la causale del PDF non ha il prefisso dell'export) si promuovono a ufficiali. La quietanza di rata «Mutui - Quietanza di pagamento_…» ha una colonna «totale netto»: si riconosce prima della guardia busta paga e va al modulo mutui. Non riconosciuto → cartella Errori col motivo scritto, **mai
   indovinato**: indovinare significa registrare le spese Nexi come uscite dal
   conto. Lo statement Nexi (`estratto_conto_nexi`: PDF, `content_sha256`, `totale_transazioni`) e le sue righe (`estratto_conto_movimenti`, `tipo=carta_credito`, `estratto_id`) portano il `drive_file_id` del file di origine quando arriva dalla cartella unica (le righe già scritte non si riscrivono); sullo statement già noto lo si aggiunge una volta sola, mai sovrascritto (`importa_estratto_nexi_pdf`). Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
   nome o contenuto sotto `DRIVE_ESTRATTI_ANNO_MINIMO` (difetto 2025: l'anno prima si legge per riconciliare; 0 = nessun filtro) va in `ARRETRATO`, non si registra.
@@ -956,6 +956,25 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `/menu/carta/index.html` con **Prezzo da definire**; le API dei prodotti
   ordinabili continuano a richiedere un prezzo valido. Il backfill conta
   `senza_prezzo`, senza inventare un ripiego.
+- In Lotti, **In menu → Prezzi da completare** permette all'amministratore di
+  inserire il prezzo al tavolo accanto a foto e prodotto, senza aprire la scheda.
+  Usa il solo endpoint canonico `PUT /api/ricette/{id}/prezzo-tavolo`: non cambia
+  banco o ingredienti. La riga scompare dopo salvataggio e sincronizzazione Menu;
+  un errore resta visibile e si puo' riprovare. Ricerca e reparto filtrano i dati gia' letti.
+- Le spunte di Ricette **Rosticceria del giorno** e **Pasticceria classica**
+  usano `categorie_rapide`, senza un secondo archivio di produzione. Sono gruppi
+  operativi modificabili (non si azzerano a mezzanotte): compaiono anche in Produci.
+  La scelta esplicita salva anche il reparto tramite il writer parziale canonico
+  e aggiorna il Menu (Food/Dolci); Rosticceria esclude Colazioni
+  e Pasticceria classica. Nessun lotto o quantitativo nasce dalla sola spunta.
+- La carta riunisce Colazione/Dolci di «Bar & Dolci» e Pasticceria di Lotti
+  nella card **Dolci**; bevande in **Bar**, Rosticceria in **Food**. Il reparto
+  misto Altro resta in **Altri prodotti**, senza dedurre il reparto dal nome.
+  E' un raggruppamento di presentazione: ID, prezzi e categorie sorgenti restano intatti.
+- In Menu admin → Prodotti, la **X nasconde**, non cancella: per Lotti passa
+  dall'aggiornamento canonico di `menu_pubblico`, per Qromo aggiorna `visible`
+  e la sync conserva i false gia' salvati sullo stesso ID. «Mostra anche nascosti»
+  permette il ripristino. «Possibili doppioni» confronta solo il nome, mai fonde o elimina automaticamente.
 - La categoria delle ricette nel Menu e' «Produzione Ceraldi» piu' la
   sottocategoria derivata dal reparto. Le categorie si leggono e si creano da Lotti con
   `/api/menu-categorie`, sempre con `origine` valorizzata; se esiste già una

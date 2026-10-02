@@ -355,6 +355,12 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any],
 # Versione delle regole per i documenti non riconosciuti: un file gia' in
 # ERRORI con una versione piu' vecchia si rilegge una volta, mai a ogni giro.
 REGOLE_NON_RICONOSCIUTI = 1
+# Versione della classificazione degli estratti conto e delle fatture PDF: un file in ERRORI
+# letto con una versione piu' vecchia si rilegge una volta (2: estratto = forma dell'estratto,
+# non la sola parola o il nome della banca; fattura PDF italiana = ARRETRATO).
+REGOLE_CLASSIFICAZIONE = 2
+_ESTRATTO_NON_ESTRATTO = "Formato Banco BPM non riconosciuto"
+_FATTURA_PDF_ITALIANA = "Fattura PDF senza partita IVA estera"
 NON_RICONOSCIUTO = "tipo di documento non riconosciuto"
 
 _CONTABILE_FILIALE = re.compile(r"^Contabile di filiale", re.IGNORECASE)
@@ -384,9 +390,10 @@ def motivo_fuori_contabilita(nome: str, *, anno_attivo: Optional[int] = None) ->
 
 def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
     """(cartella di destinazione, motivo). Registrato o gia' presente → archivio."""
+    if risultato.get("fuori_contabilita") and risultato.get("tipo_rilevato") in (
+            "non_riconosciuto", "fattura_pdf"):
+        return ARRETRATO, risultato["fuori_contabilita"]
     if risultato.get("tipo_rilevato") == "non_riconosciuto":
-        if risultato.get("fuori_contabilita"):
-            return ARRETRATO, risultato["fuori_contabilita"]
         return ERRORI, NON_RICONOSCIUTO
     if risultato.get("arretrato"):
         return ARRETRATO, (f"estratto del {risultato.get('anno')}: arretrato fermo "
@@ -476,7 +483,7 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
     righe = await db[REGISTRO].find(
         {"cartella": {"$in": [ERRORI, ARRETRATO]}},
         {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1, "cartella": 1,
-         "regole_non_riconosciuti": 1, "rinvii": 1},
+         "regole_non_riconosciuti": 1, "regole_classificazione": 1, "rinvii": 1},
     ).to_list(None)
     rimessi = 0
     for riga in righe:
@@ -506,6 +513,13 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
                             and int(riga.get("regole_non_riconosciuti") or 0) < REGOLE_NON_RICONOSCIUTI)
             transitorio = (e_guasto_transitorio(motivo)
                            and int(riga.get("rinvii") or 0) < MAX_RINVII)
+            # Classificazione corretta dopo: bollette, solleciti e stampe della banca prese per
+            # estratto conto, fatture PDF italiane che ora vanno in ARRETRATO. Una volta sola.
+            if int(riga.get("regole_classificazione") or 0) < REGOLE_CLASSIFICAZIONE:
+                tipo_riga = str(riga.get("tipo") or "")
+                da_rileggere = da_rileggere or (
+                    (tipo_riga.startswith("estratto_conto") and _ESTRATTO_NON_ESTRATTO in motivo)
+                    or (tipo_riga == "fattura_pdf" and motivo.startswith(_FATTURA_PDF_ITALIANA)))
             if (not gia_presente and not busta_come_estratto and not da_rileggere
                     and not _GUASTO_DI_RETE.match(motivo)
                     and not (e_guasto_transitorio(motivo) and int(riga.get("rinvii") or 0) < MAX_RINVII)):
@@ -760,6 +774,7 @@ async def _giro(db) -> Dict[str, Any]:
                     esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),
                     gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None,
                     riferimenti=riferimenti, regole_non_riconosciuti=REGOLE_NON_RICONOSCIUTI,
+                    regole_classificazione=REGOLE_CLASSIFICAZIONE,
                 )
             if destinazione == ARCHIVIO:
                 esito["elaborati"] += 1

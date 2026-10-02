@@ -243,6 +243,13 @@ def _sostituisci_tabelle(righe: Dict[str, List[Dict[str, Any]]]) -> None:
     categoria "Produzione Ceraldi", le sue sottocategorie e i prodotti creati
     da Lotti (``origine = "lotti"``, vedi app/lotti/servizi/menu_bridge.py)
     sopravvivono alla sincronizzazione."""
+    # La X dell'amministratore e' una scelta persistente sullo stesso ID Qromo.
+    # Il catalogo viene riletto, ma non deve riaccendere i doppioni nascosti.
+    nascosti = {r["id"] for r in (supabase.table(TABELLA_PRODOTTI).select("id,visible")
+                                  .is_("origine", "null").eq("visible", False).execute().data or [])}
+    for riga in righe["products"]:
+        if riga["id"] in nascosti:
+            riga["visible"] = False
     supabase.table(TABELLA_PRODOTTI).delete().is_("origine", "null").execute()
     supabase.table(TABELLA_SOTTOCATEGORIE).delete().is_("origine", "null").execute()
     supabase.table(TABELLA_CATEGORIE).delete().is_("origine", "null").execute()

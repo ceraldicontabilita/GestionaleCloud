@@ -23,6 +23,7 @@ import { conferma } from "../../utils/conferma";
 import { isAdmin } from "../../auth";
 import { toast } from "./backoffice/toastBackoffice";
 import { useCategorieMenu } from "../../hooks/useCategorieMenu";
+import PrezziMenuRapidi from "./PrezziMenuRapidi";
 import {
   ORDINE_PROBLEMI, PROBLEMI, allergeniRicetta, destinazioneMenu, fotoRicetta,
   ordinaPerUrgenza, prezzoPerMenu, problemiRicettaMenu, riepilogoProblemi, ricetteInMenu,
@@ -131,9 +132,9 @@ function CardInMenu({ ricetta, indice, onApri }) {
         <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>
           <Tags size={14} style={{ marginTop: 2, flexShrink: 0 }} aria-hidden="true" />
           <span>
-            {dest.categoria}
+            Catalogo: {dest.categoria}
             {dest.sottocategoria ? <> <ChevronRight size={11} style={{ verticalAlign: "-1px" }} aria-hidden="true" /> {dest.sottocategoria}</> : null}
-            <span style={{ fontWeight: 600, color: "var(--text-3)" }}> · assegnata automaticamente</span>
+            <span style={{ fontWeight: 600, color: "var(--text-3)" }}> · nella carta: {{ Pasticceria: "Dolci", Rosticceria: "Food", Bar: "Bar", Altro: "Altri prodotti" }[dest.sottocategoria] || "Altri prodotti"}</span>
           </span>
         </div>
 
@@ -192,8 +193,6 @@ function RipubblicaMenu() {
   const [occupato, setOccupato] = useState("");
   const timer = useRef(null);
 
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-
   const messaggio = (e, fallback) => {
     const d = e?.response?.data?.detail;
     return typeof d === "string" && d ? d : fallback;
@@ -216,6 +215,17 @@ function RipubblicaMenu() {
       toast(messaggio(e, "Non riesco a leggere lo stato della ripubblicazione"), "err");
     }
   }, []);
+
+  // Recupera anche un giro avviato prima di ricaricare la pagina, senza rilanciarlo.
+  useEffect(() => {
+    let annullato = false;
+    axios.get(`${API}/ricette-ripubblica-menu/stato`).then(r => {
+      if (annullato) return;
+      setStato(r.data || null);
+      if (r.data?.in_corso || r.data?.stato === "in_corso") timer.current = setTimeout(sonda, 2500);
+    }).catch(() => {});
+    return () => { annullato = true; if (timer.current) clearTimeout(timer.current); };
+  }, [sonda]);
 
   const simula = async () => {
     setOccupato("dry");
@@ -342,6 +352,7 @@ export default function MenuVetrinaView({ onNavigate }) {
   const [ricette, setRicette] = useState([]);
   const [caricando, setCaricando] = useState(true);
   const [filtro, setFiltro] = useState("");   // "" = tutte, altrimenti codice problema
+  const [prezziRapidi, setPrezziRapidi] = useState(true);
   const { indice, errore: erroreCategorie, ricarica: ricaricaCategorie } = useCategorieMenu();
   const amministratore = isAdmin();
 
@@ -417,10 +428,13 @@ export default function MenuVetrinaView({ onNavigate }) {
         )}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => setFiltro("")} style={chip(filtro === "")}>
-            Tutti ({riepilogo.totale})
+          <button type="button" onClick={() => { setFiltro(""); setPrezziRapidi(false); }} style={chip(filtro === "" && (!amministratore || !prezziRapidi))}>
+            Vetrina prodotti ({riepilogo.totale})
           </button>
-          {ORDINE_PROBLEMI.filter((c) => riepilogo.conteggio[c] > 0).map((c) => (
+          {amministratore && <button type="button" onClick={() => setPrezziRapidi(true)} style={chip(prezziRapidi)}>
+            Prezzi da completare ({inMenu.filter(r => prezzoPerMenu(r).origine !== "tavolo").length})
+          </button>}
+          {(!amministratore || !prezziRapidi) && ORDINE_PROBLEMI.filter((c) => riepilogo.conteggio[c] > 0).map((c) => (
             <button key={c} type="button" onClick={() => setFiltro(filtro === c ? "" : c)}
               style={chip(filtro === c)} title={PROBLEMI[c].aiuto}>
               {PROBLEMI[c].etichetta} ({riepilogo.conteggio[c]})
@@ -429,11 +443,13 @@ export default function MenuVetrinaView({ onNavigate }) {
         </div>
       </section>
 
-      {amministratore && <RipubblicaMenu />}
+      {amministratore && <details><summary style={{ ...bottone(false), width: "fit-content" }}>Ripubblicazione archivio nel Menu</summary><RipubblicaMenu /></details>}
 
       {/* Vetrina */}
       {caricando ? (
         <div style={{ textAlign: "center", padding: 40, color: "var(--text-3)", fontWeight: 700 }}>Caricamento…</div>
+      ) : amministratore && prezziRapidi ? (
+        <PrezziMenuRapidi ricette={inMenu} onSalvato={(id, prezzo) => setRicette(p => p.map(r => r.id === id ? { ...r, prezzo_tavolo: prezzo } : r))} />
       ) : visibili.length === 0 ? (
         <div style={{
           textAlign: "center", padding: "48px 20px", background: "var(--card)",

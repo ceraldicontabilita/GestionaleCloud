@@ -1,6 +1,7 @@
 """La carta del menu: tre livelli come nella replica Qromo, dati dal repository o dall'admin."""
 import asyncio
 import json
+from copy import deepcopy
 
 import pytest
 
@@ -10,6 +11,39 @@ from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def test_card_dolci_unifica_sorgenti_conservando_id_prezzi_e_allergeni():
+    dati = {
+        "menus": [{"id": 1, "n": "Bar & Dolci"}, {"id": 2, "n": "Food"}, {"id": 3, "n": "Produzione Ceraldi", "pic": "salato.jpg"}],
+        "cats": [{"id": 10, "m": 1, "n": "Dolci"}, {"id": 11, "m": 1, "n": "Colazione"}, {"id": 12, "m": 1, "n": "Caffè"},
+                 {"id": 20, "m": 2, "n": "Piatti"}, {"id": 30, "m": 3, "n": "Pasticceria"}, {"id": 31, "m": 3, "n": "Rosticceria"}, {"id": 32, "m": 3, "n": "Altro"}],
+        "items": [{"id": c["id"] * 10, "c": c["id"], "p": None if c["id"] == 30 else 250, "a": ["milk"], "pic": f"foto-{c['id']}.jpg"} for c in
+                  [{"id": i} for i in (10, 11, 12, 20, 30, 31, 32)]],
+    }
+    originale = deepcopy(dati)
+    risultato = carta._raggruppa_carta(dati)
+    assert {m["n"] for m in risultato["menus"]} == {"Bar", "Food", "Dolci", "Altri prodotti"}
+    cats = {c["id"]: c for c in risultato["cats"]}
+    assert cats[10]["m"] == cats[11]["m"] == 3 and 30 not in cats
+    assert cats[12]["m"] == 1 and cats[31]["m"] == 2 and cats[32]["m"] == "altri_prodotti"
+    assert next(i for i in risultato["items"] if i["id"] == 300)["c"] == 10
+    assert next(m for m in risultato["menus"] if m["n"] == "Dolci")["pic"] != "salato.jpg"
+    for campo in ("id", "p", "a", "pic"):
+        assert [i[campo] for i in risultato["items"]] == [i[campo] for i in originale["items"]]
+    assert carta._raggruppa_carta(deepcopy(risultato)) == risultato
+
+
+def test_card_dolci_senza_produzione_e_food_non_perde_prodotti():
+    dati = {"menus": [{"id": 1, "n": "Bar & Dolci"}], "cats": [{"id": 10, "m": 1, "n": "Dolci"}],
+            "items": [{"id": 100, "c": 10, "pic": None}]}
+    risultato = carta._raggruppa_carta(dati)
+    assert [m["n"] for m in risultato["menus"]] == ["Dolci"]
+    assert risultato["cats"][0]["m"] == "dolci"
+    risultato = carta._raggruppa_carta({"menus": [{"id": 2, "n": "Produzione Ceraldi"}],
+        "cats": [{"id": 20, "m": 2, "n": "Rosticceria"}], "items": [{"id": 200, "c": 20}]})
+    assert [m["n"] for m in risultato["menus"]] == ["Food"]
+    assert risultato["cats"][0]["m"] == "food_lotti"
 
 
 @pytest.fixture
