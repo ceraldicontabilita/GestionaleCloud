@@ -470,7 +470,7 @@ export default function TemperaturePositiveView() {
 
       <div className="flex flex-wrap items-center gap-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-orange-50" /> Temp OK</span>
-        <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#e6efe9] px-1 text-[10px] font-bold text-[#3d8168]">C</span> Conforme (controllo visivo firmato)</span>
+        <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#e6efe9] px-1 text-[10px] font-bold text-[#3d8168]">0…+4°</span> Range conforme dichiarato</span>
         <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#f6ebe0] px-1 text-[10px] font-bold text-[#9a6a32]">N.R.</span> Non rilevato</span>
         <span className="flex items-center gap-1"><span className="h-4 rounded border border-dashed border-[#c4894a] px-1 text-[10px] text-[#8a6f47]">…</span> Da rilevare</span>
         <span className="flex items-center gap-1"><span className="h-4 w-4 rounded border bg-red-100" /> Fuori range</span>
