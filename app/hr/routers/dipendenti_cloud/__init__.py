@@ -15,6 +15,9 @@ import hashlib
 import base64
 import tempfile
 import logging
+import unicodedata
+import json
+import calendar
 from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal, InvalidOperation
 
@@ -2230,6 +2233,212 @@ async def create_presenze_batch(presenze: List[PresenzaCloud]):
     return {"message": f"Inserite/aggiornate {len(created)} presenze"}
 
 
+@router.post("/presenze/importa-excel")
+async def importa_presenze_excel(
+    file: UploadFile = File(...),
+    applica: bool = False,
+    conferma_hash: Optional[str] = None,
+    sempre_presenti_ids: str = Form("[]"),
+    sostituzioni_nomi: str = Form("{}"),
+    sostituisci_mese: bool = Form(False),
+):
+    """Importa il foglio mensile con anteprima obbligatoria.
+
+    Le righe del file sono associate tramite codice fiscale. Le integrazioni
+    "sempre presente" sono dipendenti scelti esplicitamente dall'interfaccia e
+    vengono risolte tramite il loro ID HR. Una cella gia' compilata con un codice
+    diverso resta un conflitto, salvo la scelta esplicita ``sostituisci_mese``:
+    in quel caso l'anteprima conta separatamente le celle da aggiornare e la
+    conferma le riallinea al file.
+    """
+    import openpyxl
+    from app.hr.services.presenze_excel import analizza_presenze_workbook, nome_norm
+
+    raw = await file.read()
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Il file supera 10 MB")
+    if raw[:2] != b"PK":
+        raise HTTPException(400, "Il file deve essere un .xlsx")
+    impronta = hashlib.sha256(raw).hexdigest()
+    if applica and conferma_hash != impronta:
+        raise HTTPException(409, "Il file non coincide con l'anteprima confermata")
+    try:
+        ids_aggiuntivi = json.loads(sempre_presenti_ids or "[]")
+        if not isinstance(ids_aggiuntivi, list) or not all(isinstance(x, str) for x in ids_aggiuntivi):
+            raise ValueError
+        ids_aggiuntivi = list(dict.fromkeys(x.strip() for x in ids_aggiuntivi if x.strip()))
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(400, "Elenco 'sempre presenti' non valido") from exc
+    try:
+        sostituzioni = json.loads(sostituzioni_nomi or "{}")
+        if not isinstance(sostituzioni, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in sostituzioni.items()
+        ):
+            raise ValueError
+        sostituzioni = {nome_norm(k): v.strip() for k, v in sostituzioni.items() if k.strip() and v.strip()}
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(400, "Associazioni nominativi non valide") from exc
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
+        analisi = analizza_presenze_workbook(wb)
+        wb.close()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(400, f"Foglio presenze non valido: {exc}") from exc
+
+    db = get_db()
+    dipendenti = await db.dipendenti.find(
+        {"merged_into": {"$exists": False}},
+        {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1,
+         "codice_fiscale": 1, "stato": 1, "attivo": 1},
+    ).to_list(2000)
+    per_cf: Dict[str, List[Dict[str, Any]]] = {}
+    per_id = {d.get("id"): d for d in dipendenti if d.get("id")}
+    for dip in dipendenti:
+        cf = re.sub(r"\s+", "", str(dip.get("codice_fiscale") or "")).upper()
+        if cf:
+            per_cf.setdefault(cf, []).append(dip)
+
+    candidati: Dict[tuple, Dict[str, Any]] = {}
+    da_verificare = [e for e in analisi["errori"] if nome_norm(e.get("nome")) not in sostituzioni]
+    associazioni_applicate = []
+    for voce in analisi["record"]:
+        dip_sostitutivo = per_id.get(sostituzioni.get(nome_norm(voce.get("nome_file"))))
+        associati = [dip_sostitutivo] if dip_sostitutivo else per_cf.get(voce["codice_fiscale"], [])
+        if len(associati) != 1:
+            da_verificare.append({
+                "nome": voce["nome_file"], "data": voce["data"],
+                "codice_fiscale": voce["codice_fiscale"],
+                "motivo": "dipendente non trovato" if not associati else "codice fiscale duplicato in HR",
+            })
+            continue
+        dip = associati[0]
+        if dip_sostitutivo and not any(a["nome_file"] == voce["nome_file"] for a in associazioni_applicate):
+            associazioni_applicate.append({
+                "nome_file": voce["nome_file"], "dipendente_id": dip["id"],
+                "nome_hr": dip.get("nome_completo") or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip(),
+            })
+        item = dict(voce)
+        item["dipendente_id"] = dip["id"]
+        item["nome"] = dip.get("nome_completo") or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
+        candidati[(dip["id"], voce["data"])] = item
+
+    anno, mese = (int(x) for x in analisi["periodo"].split("-"))
+    giorni_mese = calendar.monthrange(anno, mese)[1]
+    integrazioni = []
+    for dip_id in ids_aggiuntivi:
+        dip = per_id.get(dip_id)
+        if not dip:
+            da_verificare.append({"dipendente_id": dip_id, "motivo": "dipendente aggiuntivo non trovato in HR"})
+            continue
+        nome = dip.get("nome_completo") or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
+        integrazioni.append({"dipendente_id": dip_id, "nome": nome, "giorni": giorni_mese})
+        for giorno in range(1, giorni_mese + 1):
+            data_giorno = f"{anno:04d}-{mese:02d}-{giorno:02d}"
+            key = (dip_id, data_giorno)
+            if key in candidati:
+                continue
+            candidati[key] = {
+                "dipendente_id": dip_id, "nome": nome, "nome_file": nome,
+                "codice_fiscale": re.sub(r"\s+", "", str(dip.get("codice_fiscale") or "")).upper(),
+                "data": data_giorno, "stato": "presente", "giustificativo": "P",
+                "entrata": None, "note": "Sempre presente — correzione confermata nell'import Excel",
+                "fonti": [{"foglio": "Correzioni import", "riga": None}],
+            }
+
+    esistenti = await db.presenze_cloud.find(
+        {"data": {"$regex": f"^{anno:04d}-{mese:02d}"}}, {"_id": 0}
+    ).to_list(10000)
+    per_cella = {(p.get("dipendente_id"), p.get("data")): p for p in esistenti}
+    righe = []
+    da_inserire = []
+    da_aggiornare = []
+    per_dipendente: Dict[str, Dict[str, Any]] = {}
+    for key, voce in sorted(candidati.items(), key=lambda kv: (kv[1]["nome"], kv[1]["data"])):
+        esistente = per_cella.get(key)
+        codice_esistente = None
+        if esistente:
+            codice_esistente = esistente.get("giustificativo") or (
+                "P" if esistente.get("stato") == "presente" else "AS" if esistente.get("stato") == "assente" else None
+            )
+        if not esistente:
+            stato_riga = "nuova"
+            da_inserire.append(voce)
+        elif codice_esistente == voce["giustificativo"]:
+            stato_riga = "invariata"
+        elif sostituisci_mese:
+            stato_riga = "aggiornamento"
+            da_aggiornare.append((esistente, voce))
+        else:
+            stato_riga = "conflitto"
+        righe.append({
+            "dipendente_id": voce["dipendente_id"], "nome": voce["nome"],
+            "data": voce["data"], "codice": voce["giustificativo"],
+            "stato": stato_riga, "codice_esistente": codice_esistente,
+        })
+        sintesi = per_dipendente.setdefault(voce["dipendente_id"], {
+            "dipendente_id": voce["dipendente_id"], "nome": voce["nome"],
+            "P": 0, "M": 0, "F": 0, "PE": 0, "R": 0, "AS": 0,
+            "nuove": 0, "aggiornamenti": 0, "invariate": 0, "conflitti": 0,
+        })
+        sintesi[voce["giustificativo"]] = sintesi.get(voce["giustificativo"], 0) + 1
+        sintesi[{"nuova": "nuove", "aggiornamento": "aggiornamenti",
+                 "invariata": "invariate", "conflitto": "conflitti"}[stato_riga]] += 1
+
+    inseriti = 0
+    aggiornati = 0
+    if applica:
+        for voce in da_inserire:
+            documento = {
+                "id": generate_id(), "dipendente_id": voce["dipendente_id"],
+                "data": voce["data"], "entrata": voce.get("entrata"), "uscita": None,
+                "stato": voce["stato"], "giustificativo": voce["giustificativo"],
+                "ore_lavorate": 0, "note": voce.get("note") or None,
+                "origine": "import_excel_presenze", "import_hash": impronta,
+                "created_at": now_iso(),
+            }
+            # Ultima barriera contro una scrittura concorrente tra anteprima e conferma.
+            if await db.presenze_cloud.find_one({
+                "dipendente_id": documento["dipendente_id"], "data": documento["data"]
+            }):
+                continue
+            await db.presenze_cloud.insert_one(documento)
+            inseriti += 1
+        for esistente, voce in da_aggiornare:
+            filtro = {"id": esistente["id"]} if esistente.get("id") else {
+                "dipendente_id": voce["dipendente_id"], "data": voce["data"]}
+            await db.presenze_cloud.update_one(filtro, {"$set": {
+                "entrata": voce.get("entrata"), "uscita": None,
+                "stato": voce["stato"], "giustificativo": voce["giustificativo"],
+                "ore_lavorate": 0, "note": voce.get("note") or None,
+                "origine": "import_excel_presenze", "import_hash": impronta,
+                "updated_at": now_iso(),
+            }})
+            aggiornati += 1
+
+    conteggi = {stato: sum(1 for r in righe if r["stato"] == stato)
+                for stato in ("nuova", "aggiornamento", "invariata", "conflitto")}
+    codici = {}
+    for r in righe:
+        codici[r["codice"]] = codici.get(r["codice"], 0) + 1
+    return {
+        "dry_run": not applica, "hash_sha256": impronta, "periodo": analisi["periodo"],
+        "inseriti": inseriti, "aggiornati": aggiornati,
+        "sostituisci_mese": sostituisci_mese, "conteggi": conteggi, "codici": codici,
+        "dipendenti": sorted(per_dipendente.values(), key=lambda x: x["nome"]),
+        "integrazioni": integrazioni, "associazioni_nomi": associazioni_applicate,
+        "nominativi_da_associare": analisi.get("nominativi_da_associare", []),
+        "da_verificare": da_verificare,
+        "conflitti": [r for r in righe if r["stato"] == "conflitto"],
+        "regole": [
+            "Le assenze certificate prevalgono sulle timbrature sovrapposte.",
+            "Le festivita non vengono dedotte dal riepilogo mensile.",
+            "Le celle esistenti con un codice diverso non vengono sovrascritte.",
+        ],
+    }
+
+
 _MESI_PRES = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio",
               "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 # Colori codici presenza (RGB 0-1) coerenti col frontend (niente blu/viola)
@@ -3378,57 +3587,214 @@ _MESI_IT = {"gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4, "maggio": 5, "
             "quattordicesima": 14, "14ma": 14, "14a": 14}
 
 
+_ANAGRAFICA_HEADER = {
+    "nome": {"nome"},
+    "cognome": {"cognome"},
+    "nome_file": {"dipendente", "nome completo", "nominativo"},
+    "codice_fiscale": {"cf", "codice fiscale"},
+    "data_nascita": {"data nascita", "data di nascita", "nascita"},
+    "mansione": {"mansione", "ruolo"},
+    "telefono": {"telefono", "cellulare", "cell"},
+    "email": {"email", "e mail", "mail"},
+    "indirizzo": {"indirizzo", "residenza"},
+    "iban": {"iban", "iban per il bonifico"},
+    "data_assunzione": {"data assunzione", "data di assunzione", "assunzione"},
+}
+_ANAGRAFICA_CAMPI_SCRIVIBILI = (
+    "nome", "cognome", "codice_fiscale", "data_nascita", "mansione",
+    "telefono", "email", "indirizzo", "iban", "data_assunzione",
+)
+
+
+def _testo_header(value: Any) -> str:
+    testo = unicodedata.normalize("NFKD", str(value or ""))
+    testo = "".join(c for c in testo if not unicodedata.combining(c)).lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", testo).split())
+
+
+def _mappa_header_anagrafica(row: tuple) -> Dict[str, int]:
+    mappa: Dict[str, int] = {}
+    normalizzati = [_testo_header(c) for c in row]
+    for campo, aliases in _ANAGRAFICA_HEADER.items():
+        aliases_norm = {_testo_header(a) for a in aliases}
+        for i, valore in enumerate(normalizzati):
+            if valore in aliases_norm:
+                mappa[campo] = i
+                break
+    return mappa
+
+
+def _trova_foglio_anagrafica(wb):
+    """Sceglie il foglio esplicito; il fallback richiede CF + Nome + Cognome.
+
+    Non usa il primo foglio alla cieca: nel consolidato il primo e' il riepilogo
+    paghe e contiene CF/importi, ma non e' un tracciato anagrafico importabile.
+    """
+    preferiti = [ws for ws in wb.worksheets if _testo_header(ws.title) == "anagrafiche dipendenti"]
+    candidati = preferiti or list(wb.worksheets)
+    for ws in candidati:
+        for numero, row in enumerate(ws.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
+            mappa = _mappa_header_anagrafica(row)
+            if "codice_fiscale" not in mappa:
+                continue
+            if preferiti or ("nome" in mappa and "cognome" in mappa):
+                return ws, numero, mappa, row
+    raise HTTPException(
+        400,
+        "Foglio anagrafico non trovato: usa 'Anagrafiche Dipendenti' oppure un foglio con Nome, Cognome e Codice fiscale.",
+    )
+
+
+def _valore_riga(row: tuple, indice: Optional[int]):
+    if indice is None or indice >= len(row):
+        return None
+    valore = row[indice]
+    if valore is None:
+        return None
+    if isinstance(valore, str):
+        valore = valore.strip()
+        return valore or None
+    return valore
+
+
+def _data_iso_anagrafica(value: Any) -> Optional[str]:
+    if value in (None, "", "-") or str(value).strip() in {"—", "-"}:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value.strftime("%Y-%m-%d")
+    testo = str(value).strip()[:10]
+    for formato in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(testo, formato).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    raise ValueError("data non valida")
+
+
+def _iban_valido(value: str) -> bool:
+    iban = re.sub(r"\s+", "", value or "").upper()
+    if not re.fullmatch(r"IT\d{2}[A-Z]\d{10}[A-Z0-9]{12}", iban):
+        return False
+    numerico = "".join(str(ord(c) - 55) if c.isalpha() else c for c in iban[4:] + iban[:4])
+    resto = 0
+    for c in numerico:
+        resto = (resto * 10 + int(c)) % 97
+    return resto == 1
+
+
+def _normalizza_riga_anagrafica(row: tuple, mappa: Dict[str, int]) -> tuple[Dict[str, Any], List[str]]:
+    errori: List[str] = []
+    out: Dict[str, Any] = {}
+    for campo in _ANAGRAFICA_CAMPI_SCRIVIBILI:
+        valore = _valore_riga(row, mappa.get(campo))
+        if valore in (None, ""):
+            continue
+        if campo == "codice_fiscale":
+            valore = re.sub(r"\s+", "", str(valore)).upper()
+            if not re.fullmatch(r"[A-Z0-9]{16}", valore):
+                errori.append("codice fiscale non valido")
+        elif campo == "iban":
+            valore = re.sub(r"\s+", "", str(valore)).upper()
+            if not _iban_valido(valore):
+                errori.append("IBAN non valido")
+        elif campo in ("data_nascita", "data_assunzione"):
+            try:
+                valore = _data_iso_anagrafica(valore)
+            except ValueError:
+                errori.append(f"{campo.replace('_', ' ')} non valida")
+                continue
+        else:
+            valore = str(valore).strip()
+        if valore not in (None, ""):
+            out[campo] = valore
+    return out, errori
+
+
 @router.post("/dipendenti/importa-anagrafica")
-async def importa_anagrafica(file: UploadFile = File(...)):
-    """Importa/aggiorna l'anagrafica da Excel (Cognome, Nome, CF, Data di nascita,
-    Mansione, Telefono, Email, Indirizzo). Match per codice fiscale: aggiorna se esiste,
-    altrimenti crea."""
-    import io
+async def importa_anagrafica(
+    file: UploadFile = File(...), applica: bool = False, conferma_hash: Optional[str] = None,
+):
+    """Anteprima per difetto; applica soltanto aggiornamenti confermati allo stesso file.
+
+    Identita' = codice fiscale esatto. Nomi, importi o posizione nel foglio non
+    creano mai un'associazione. Righe senza CF, CF duplicati e dipendenti non
+    presenti restano da verificare e non vengono creati automaticamente.
+    """
     import openpyxl
     raw = await file.read()
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Il file supera 10 MB")
     if raw[:2] != b"PK":
         raise HTTPException(400, "Il file deve essere un .xlsx")
-    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
-    ws = wb[wb.sheetnames[0]]
-    rows = list(ws.iter_rows(values_only=True))
-    header = [(str(c).strip().lower() if c is not None else "") for c in rows[0]]
+    impronta = hashlib.sha256(raw).hexdigest()
+    if applica and conferma_hash != impronta:
+        raise HTTPException(409, "Il file non coincide con l'anteprima confermata")
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
+    except Exception as exc:
+        raise HTTPException(400, f"Excel non valido: {exc}") from exc
+    ws, header_row, mappa, header_originale = _trova_foglio_anagrafica(wb)
 
-    def col(*names):
-        for i, h in enumerate(header):
-            if any(n in h for n in names):
-                return i
-        return None
-    ci = {"cognome": col("cognome"), "nome": col("nome"), "cf": col("cf", "codice fiscale"),
-          "nascita": col("nascita"), "mansione": col("mansione"), "tel": col("telefono", "cell"),
-          "email": col("email", "mail"), "indirizzo": col("indirizzo")}
+    colonne_riconosciute = {i for i in mappa.values()}
+    colonne_ignorate = [str(v).strip() for i, v in enumerate(header_originale)
+                        if v not in (None, "") and i not in colonne_riconosciute]
     db = get_db()
-    creati, aggiornati = 0, 0
+    esistenti = await db.dipendenti.find(
+        {"merged_into": {"$exists": False}}, {"_id": 0, "pdf_data": 0}).to_list(2000)
+    per_cf: Dict[str, List[Dict[str, Any]]] = {}
+    for dip in esistenti:
+        cf = re.sub(r"\s+", "", str(dip.get("codice_fiscale") or "")).upper()
+        if cf:
+            per_cf.setdefault(cf, []).append(dip)
 
-    def val(r, k):
-        i = ci.get(k)
-        if i is None or i >= len(r) or r[i] is None:
-            return None
-        return str(r[i]).strip()
-    for r in rows[1:]:
-        cf = (val(r, "cf") or "").upper().replace(" ", "")
-        nome, cognome = val(r, "nome"), val(r, "cognome")
-        if not (cf or (nome and cognome)):
+    righe = []
+    visti_file: Dict[str, int] = {}
+    for numero, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
+        dati, errori = _normalizza_riga_anagrafica(row, mappa)
+        cf = dati.get("codice_fiscale")
+        nominativo = _valore_riga(row, mappa.get("nome_file"))
+        if not dati and not nominativo:
             continue
-        campi = {"nome": nome, "cognome": cognome, "codice_fiscale": cf or None,
-                 "data_nascita": (val(r, "nascita") or "")[:10] or None,
-                 "mansione": val(r, "mansione"), "telefono": val(r, "tel"),
-                 "email": val(r, "email"), "indirizzo": val(r, "indirizzo")}
-        campi = {k: v for k, v in campi.items() if v}
-        campi["nome_completo"] = f"{cognome or ''} {nome or ''}".strip()
-        esistente = await db.dipendenti.find_one({"codice_fiscale": cf}) if cf else None
-        if esistente:
-            await db.dipendenti.update_one({"id": esistente["id"]}, {"$set": campi})
-            aggiornati += 1
-        else:
-            campi.update({"id": generate_id(), "attivo": True, "stato": "attivo", "created_at": now_iso()})
-            await db.dipendenti.insert_one(campi)
-            creati += 1
-    return {"creati": creati, "aggiornati": aggiornati}
+        if not cf:
+            righe.append({"riga": numero, "stato": "da_verificare", "motivi": errori or ["codice fiscale mancante"]})
+            continue
+        if cf in visti_file:
+            righe.append({"riga": numero, "codice_fiscale": cf, "stato": "conflitto",
+                          "motivi": [f"codice fiscale duplicato nel file (prima riga {visti_file[cf]})"]})
+            continue
+        visti_file[cf] = numero
+        if errori:
+            righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare", "motivi": errori})
+            continue
+        candidati = per_cf.get(cf, [])
+        if len(candidati) != 1:
+            motivo = "dipendente non presente in anagrafica" if not candidati else "codice fiscale duplicato in anagrafica"
+            righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare", "motivi": [motivo]})
+            continue
+        dip = candidati[0]
+        modifiche = {k: v for k, v in dati.items() if k != "codice_fiscale" and dip.get(k) != v}
+        if "nome" in modifiche or "cognome" in modifiche:
+            nome = modifiche.get("nome", dip.get("nome") or "")
+            cognome = modifiche.get("cognome", dip.get("cognome") or "")
+            nome_completo = f"{cognome} {nome}".strip()
+            if nome_completo:
+                modifiche["nome_completo"] = nome_completo
+        stato = "aggiornabile" if modifiche else "invariato"
+        voce = {"riga": numero, "dipendente_id": dip.get("id"), "codice_fiscale": cf,
+                "nome": dip.get("nome_completo") or nominativo or "", "stato": stato,
+                "campi": sorted(modifiche)}
+        righe.append(voce)
+        if applica and modifiche:
+            await db.dipendenti.update_one({"id": dip["id"]}, {"$set": modifiche})
+
+    conteggi = {stato: sum(1 for r in righe if r["stato"] == stato)
+                for stato in ("aggiornabile", "invariato", "da_verificare", "conflitto")}
+    return {
+        "dry_run": not applica, "hash_sha256": impronta, "foglio": ws.title,
+        "riga_intestazioni": header_row, "righe_lette": len(righe),
+        "aggiornati": conteggi["aggiornabile"] if applica else 0,
+        "conteggi": conteggi, "righe": righe, "colonne_ignorate": colonne_ignorate,
+    }
 
 
 @router.post("/riduzioni-orario")
