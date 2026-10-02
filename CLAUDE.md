@@ -992,6 +992,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
 
+- **Condivisione inviti:** il testo contiene il link una volta sola; se il modello personalizzato non usa `{link}`, il collegamento viene aggiunto prima di condividere o copiare. La barra dell'albergatore resta una griglia compatta anche su desktop; l'area hotel usa il tema chiaro indipendentemente dal tema del dispositivo.
 - **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
   la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
