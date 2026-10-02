@@ -90,3 +90,4 @@ begin
 end $$;
 revoke all on function public.bb_alb_prodotti(uuid,text) from public, anon, authenticated;
 grant execute on function public.bb_alb_prodotti(uuid,text) to anon, authenticated;
+

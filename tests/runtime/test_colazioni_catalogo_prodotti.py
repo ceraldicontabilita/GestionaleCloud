@@ -197,13 +197,13 @@ def test_frontend_e_migrazione_espongono_selezione_per_struttura():
         ROOT
         / "supabase"
         / "migrations"
-        / "20261001130000_convenzioni_catalogo_prodotti_strutture.sql"
+        / "20261001113238_convenzioni_catalogo_prodotti_strutture.sql"
     ).read_text(encoding="utf-8")
     sql_tavolo = (
         ROOT
         / "supabase"
         / "migrations"
-        / "20261001131500_colazioni_servizio_tavolo_per_camera.sql"
+        / "20261001113247_colazioni_servizio_tavolo_per_camera.sql"
     ).read_text(encoding="utf-8")
 
     assert '"prodotti","Prodotti hotel"' in html

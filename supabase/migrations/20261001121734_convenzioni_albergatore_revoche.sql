@@ -56,3 +56,4 @@ begin
 end $$;
 revoke all on function public.bb_recensioni_revoca(uuid,text,text) from public,anon,authenticated;
 grant execute on function public.bb_recensioni_revoca(uuid,text,text) to anon,authenticated;
+
