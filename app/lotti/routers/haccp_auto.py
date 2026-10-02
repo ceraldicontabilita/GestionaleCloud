@@ -213,23 +213,14 @@ async def applica_attestazione_storica(
         "firmatario_id": attore.get("id") or "",
         "dichiarazione": testo,
     })
-    if gia and gia.get("ultima_esecuzione"):
-        precedente = gia["ultima_esecuzione"]
-        return {
-            "success": True,
-            "attestazione_id": precedente.get("attestazione_id"),
-            "data_inizio": data_inizio.isoformat(),
-            "data_fine": data_fine.isoformat(),
-            "temperature_popolate": 0,
-            "misure_esistenti_attestate": 0,
-            "temperature_non_sovrascritte": 0,
-            "sanificazioni_attestate": 0,
-            "schede_sanificazione_riparate": 0,
-            "idempotente": True,
-        }
-
-    attestazione_id = str(uuid.uuid4())
-    sottoscritta_il = datetime.now(timezone.utc).isoformat()
+    # Non basta che la dichiarazione esista: un'importazione Excel successiva
+    # puo' aver sostituito le caselle e rimosso le firme. In quel caso la stessa
+    # attestazione deve essere riapplicata ai nuovi valori, senza crearne una
+    # fittizia o cambiare la data della sottoscrizione originale.
+    attestazione_id = str((gia or {}).get("attestazione_id") or uuid.uuid4())
+    sottoscritta_il = str(
+        (gia or {}).get("sottoscritta_il") or datetime.now(timezone.utc).isoformat()
+    )
     firma = _firma_da_attore(attore, attestazione_id, sottoscritta_il)
     riepilogo = {
         "temperature_popolate": 0,
@@ -332,7 +323,13 @@ async def applica_attestazione_storica(
         },
     }
     await db.impostazioni.replace_one({"_id": _DOC_ATTESTAZIONE}, documento, upsert=True)
-    return {**documento["ultima_esecuzione"], "idempotente": False}
+    scritture = (
+        riepilogo["temperature_popolate"]
+        + riepilogo["misure_esistenti_attestate"]
+        + riepilogo["sanificazioni_attestate"]
+        + riepilogo["schede_sanificazione_riparate"]
+    )
+    return {**documento["ultima_esecuzione"], "idempotente": scritture == 0}
 
 
 @router.post("/attesta-storico")
