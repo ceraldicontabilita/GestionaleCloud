@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#7a2e1d">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://lohczjdiawjryuopncwc.supabase.co; img-src 'self' data: blob: https:; media-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>Colazioni B&B · Bar Ceraldi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
 <style>
 :root{--bg:#fbf6ee;--card:#fff;--ink:#2b1d16;--mute:#7b6a60;--brand:#7a2e1d;--brand2:#c8873a;--ok:#2f7d4f;--warn:#b7791f;--bad:#b3261e;--line:#eadfce;--r:16px}
 @media(prefers-color-scheme:dark){:root{--bg:#1c1410;--card:#2a1e18;--ink:#f4e9dd;--mute:#b5a294;--line:#3d2c23;--brand:#e0a06a;--brand2:#c8873a}}
@@ -207,7 +208,16 @@ function stampa(items){
  d.innerHTML=items.map((c,i)=>`<div class="pcard"><small>${esc(c.sopra||"")}</small><h3>${esc(c.titolo)}</h3><div>${esc(c.riga||"")}</div><div class="qr" id="pq${i}"></div><b style="font-size:16pt;letter-spacing:2px">${esc(c.codice||"")}</b><div><small>${esc(c.sotto||"")}</small></div></div>`).join("");
  document.body.appendChild(d);items.forEach((c,i)=>qr(document.getElementById("pq"+i),c.qr,170));
  setTimeout(()=>{print()},250)}
-const cardVoucher=(v,menu,struttura)=>({sopra:struttura,titolo:camNome(v),riga:(v.camera?ospTxt(v.ospiti||1):`${v.qta} colazion${v.qta>1?"i":"e"}`)+` · ${dRange(v)}`,qr:v.id,codice:v.id,sotto:menu||"Mostra questo QR al bar"});
+/* il QR del voucher e' il link completo della pagina ospite: lo scanner del bar ne estrae il codice */
+const cardVoucher=(v,menu,struttura)=>({sopra:struttura,titolo:camNome(v),riga:(v.camera?ospTxt(v.ospiti||1):`${v.qta} colazion${v.qta>1?"i":"e"}`)+` · ${dRange(v)}`,qr:linkOspite(v.id),codice:v.id,sotto:menu||"Mostra questo QR al bar"});
+/* scelta di un motivo da chip (piu' «Altro»): niente testo libero obbligatorio */
+function scegliMotivo(titolo,opzioni,nota){return new Promise(res=>{document.getElementById("sheet")?.remove();const d=document.createElement("div");d.id="sheet";d.className="sheet-bg";let scelta="";
+ d.innerHTML=`<div class="sheet"><div class="in"><h3>${esc(titolo)}</h3>${nota?`<p class="mute">${esc(nota)}</p>`:""}<div class="tabs" style="flex-wrap:wrap" id="mot_chips">${opzioni.map(o=>`<button type="button" data-m="${esc(o)}">${esc(o)}</button>`).join("")}<button type="button" data-m="*">Altro (scrivi tu)</button></div><input id="mot_txt" maxlength="200" placeholder="Scrivi il motivo" hidden><div class="row" style="margin-top:10px"><button class="btn sec" id="mot_no">Annulla</button><button class="btn" id="mot_ok">Conferma</button></div></div></div>`;
+ d.querySelectorAll("#mot_chips button").forEach(b=>b.onclick=()=>{d.querySelectorAll("#mot_chips button").forEach(x=>x.classList.toggle("on",x===b));scelta=b.dataset.m;const t=d.querySelector("#mot_txt");t.hidden=scelta!=="*";if(scelta==="*")t.focus()});
+ const chiudi=v=>{d.remove();res(v)};
+ d.querySelector("#mot_no").onclick=()=>chiudi(null);d.onclick=e=>{if(e.target===d)chiudi(null)};
+ d.querySelector("#mot_ok").onclick=()=>{const v=scelta==="*"?d.querySelector("#mot_txt").value.trim():scelta;if(!v)return toast("Scegli o scrivi il motivo");chiudi(v)};
+ document.body.appendChild(d)})}
 
 const hero=(nome,sfondo,msg)=>sfondo?`<div class="hero img" role="img" aria-label="${esc(nome)}" style="background-image:url('${esc(sfondo)}')"></div>`:`<div class="hero"><h1>${esc(nome)}</h1>${msg?`<p>${esc(msg)}</p>`:""}</div>`;
 function home(){
@@ -229,11 +239,14 @@ async function recensioniOspite(token,fonte){
   recPagina()}
  catch(e){app.innerHTML='<div class="card"><h2>Invito non disponibile</h2><p class="mute">'+esc(e.message)+'</p></div>'}}
 function recPagina(){
- const i=REC.info,privacy=i.informativa_url?'<a href="'+esc(i.informativa_url)+'" target="_blank" rel="noopener">Leggi l’informativa completa</a>.':'L’informativa completa sarà resa disponibile dal titolare.';
+ const i=REC.info,ha=!!i.informativa_url,privacy=ha?'<a href="'+esc(i.informativa_url)+'" target="_blank" rel="noopener">Leggi l’informativa completa</a>.':'L’informativa completa non è ancora pubblicata: senza informativa non è possibile acconsentire, puoi solo continuare senza.';
+ /* senza informativa pubblicata un consenso non e' informato: resta solo «Non acconsento / continua» (il database rifiuta comunque un si') */
+ const geo=ha?'<div class="consent-actions"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento</button><button class="btn sec" id="rg1" onclick="recScelta(\'geolocalizzazione\',true)">Acconsento</button></div>':'<div class="consent-actions" style="grid-template-columns:1fr"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento / continua</button></div>';
+ const wa=ha?'<div class="consent-actions"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento</button><button class="btn sec" id="rw1" onclick="recScelta(\'whatsapp\',true)">Acconsento</button></div>':'<div class="consent-actions" style="grid-template-columns:1fr"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento / continua</button></div>';
  app.innerHTML='<div class="review-hero"><div class="mute" style="color:#fff">OSPITE DI '+esc(i.struttura).toUpperCase()+'</div><h2>La colazione ha il suo rito.</h2><p>Le scelte sulla privacy restano tue, sempre.</p></div>'+
  '<div class="card"><h2>Come vuoi vivere l’esperienza?</h2>'+
- '<div class="consent-box"><h3>Geolocalizzazione</h3><p class="mute">Serve solo a registrare la presenza nel luogo della colazione. Il browser chiederà la posizione esclusivamente dopo il tuo consenso.</p><div class="consent-actions"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento</button><button class="btn sec" id="rg1" onclick="recScelta(\'geolocalizzazione\',true)">Acconsento</button></div></div>'+
- '<div class="consent-box"><h3>Invito WhatsApp</h3><p class="mute">Ricevi un solo messaggio post-consumo con i link Google e Tripadvisor. Nessun messaggio promozionale.</p><div class="consent-actions"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento</button><button class="btn sec" id="rw1" onclick="recScelta(\'whatsapp\',true)">Acconsento</button></div></div>'+
+ '<div class="consent-box"><h3>Geolocalizzazione</h3><p class="mute">Serve solo a registrare la presenza nel luogo della colazione. Il browser chiederà la posizione esclusivamente dopo il tuo consenso.</p>'+geo+'</div>'+
+ '<div class="consent-box"><h3>Invito WhatsApp</h3><p class="mute">Ricevi un solo messaggio post-consumo con i link Google e Tripadvisor. Nessun messaggio promozionale.</p>'+wa+'</div>'+
  '<p class="privacy-note">Nessuna opzione è preselezionata. Puoi revocare in ogni momento. Versione informativa: '+esc(i.informativa_versione)+'. '+privacy+'</p>'+
  '<div id="rec_next"></div></div>'}
 async function recScelta(finalita,si){
@@ -241,7 +254,7 @@ async function recScelta(finalita,si){
   await rpc("bb_recensioni_consenso",{psessione:REC.sessione,pfinalita:finalita,pacconsento:si,pversione:REC.info.informativa_versione,pclient:navigator.userAgent});
   REC.scelte[finalita]=si;
   const pre=finalita==="geolocalizzazione"?"rg":"rw";
-  $("#"+pre+"0").classList.toggle("chosen",!si);$("#"+pre+"1").classList.toggle("chosen",si);
+  $("#"+pre+"0").classList.toggle("chosen",!si);if($("#"+pre+"1"))$("#"+pre+"1").classList.toggle("chosen",si);
   if(finalita==="geolocalizzazione"&&si)recPosizione();
   recAvanti()}
  catch(e){toast(e.message)}}
@@ -281,9 +294,10 @@ async function recensioneInvito(token){
  try{
   const i=await rpc("bb_recensioni_invito_pubblico",{ptoken:token});
   if(!i)throw new Error("Invito non valido o scaduto");
-  const g=i.google_url?'<button class="btn review-destination" onclick="recApri(\''+token+'\',\'google\',decodeURIComponent(\''+encodeURIComponent(i.google_url)+'\'))">Recensisci su Google</button>':'';
-  const t=i.tripadvisor_url?'<button class="btn sec review-destination" onclick="recApri(\''+token+'\',\'tripadvisor\',decodeURIComponent(\''+encodeURIComponent(i.tripadvisor_url)+'\'))">Recensisci su Tripadvisor</button>':'';
-  app.innerHTML='<div class="review-hero"><div class="mute" style="color:#fff">GRAZIE DA '+esc(i.struttura).toUpperCase()+'</div><h2>Com’è stata la tua esperienza?</h2><p>La tua opinione ci aiuta a servire una colazione ancora migliore.</p></div><div class="card"><h2>Scegli liberamente dove recensire</h2>'+g+t+'<p class="privacy-note">Nessun premio o incentivo è associato alla recensione.</p>'+(g||t?"":'<div class="alert">I link alle recensioni non sono ancora configurati.</div>')+'</div>'}
+  const g=i.google_url?'<button class="btn review-destination" data-dest="google">Recensisci su Google</button>':'';
+  const t=i.tripadvisor_url?'<button class="btn sec review-destination" data-dest="tripadvisor">Recensisci su Tripadvisor</button>':'';
+  app.innerHTML='<div class="review-hero"><div class="mute" style="color:#fff">GRAZIE DA '+esc(i.struttura).toUpperCase()+'</div><h2>Com’è stata la tua esperienza?</h2><p>La tua opinione ci aiuta a servire una colazione ancora migliore.</p></div><div class="card"><h2>Scegli liberamente dove recensire</h2>'+g+t+'<p class="privacy-note">Nessun premio o incentivo è associato alla recensione.</p>'+(g||t?"":'<div class="alert">I link alle recensioni non sono ancora configurati.</div>')+'</div>';
+  app.querySelectorAll("[data-dest]").forEach(b=>b.onclick=()=>recApri(token,b.dataset.dest,b.dataset.dest==="google"?i.google_url:i.tripadvisor_url))}
  catch(e){app.innerHTML='<div class="card"><h2>Invito non disponibile</h2><p class="mute">'+esc(e.message)+'</p></div>'}}
 async function recApri(token,destinazione,url){
  try{await rpc("bb_recensioni_click",{ptoken:token,pdestinazione:destinazione})}catch(e){}
@@ -295,9 +309,11 @@ async function hotelLogin(cod){
  const h=await rpc("bb_hotel_info",{codice:cod||""}).catch(()=>null);
  if(!h){app.innerHTML=`<div class="card">Link non valido. Chiedi al bar di inviartene uno nuovo.</div>`;return}
  if(sess&&sess.r==="alb"&&sess.s===h.id){go("#/albergatore/home");return}
+ if(h.disattivata){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">Questo accesso è stato disattivato dal bar. Per informazioni contatta ${esc((h.bar&&h.bar.bar_nome)||"il bar")}.</div>`;return}
  if(!h.attivo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">L'accesso non è ancora attivo. Usa il <b>link di invito</b> che ti ha inviato il bar.</div>`;return}
- app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card"><label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" onkeydown="if(event.key==='Enter')hotelEntra('${h.id}','${esc(cod)}')"><button class="btn" onclick="hotelEntra('${h.id}','${esc(cod)}')">Entra</button>
-  <p style="text-align:center;margin:12px 0 0"><a href="#/recupero/${esc(cod)}">Ho perso il PIN</a></p></div>`}
+ app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card"><label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password"><button class="btn" id="lp_btn">Entra</button>
+  <p style="text-align:center;margin:12px 0 0"><a href="#/recupero/${esc(cod)}">Ho perso il PIN</a></p></div>`;
+ $("#lp").onkeydown=e=>{if(e.key==="Enter")hotelEntra(h.id,cod)};$("#lp_btn").onclick=()=>hotelEntra(h.id,cod)}
 async function hotelEntra(id,cod){
  const pin=$("#lp")?$("#lp").value:"";if(!pin)return toast("Scrivi il tuo PIN");
  const r=await run("bb_alb_login",{paccesso:cod,ppin:pin});if(!r||r===true)return;
@@ -312,10 +328,11 @@ async function recupero(cod){
   <p class="mute">Scrivi il <b>codice di recupero</b> che hai ricevuto quando hai attivato l'accesso (sono 8 caratteri, per esempio K7QM-2XPD) e scegli un nuovo PIN.</p>
   <label>Codice di recupero</label><input id="rc" autocapitalize="characters" autocomplete="off" placeholder="XXXX-XXXX">
   <label>Nuovo PIN (almeno 4 caratteri)</label><input id="rp" type="password" autocomplete="new-password"><label>Ripeti il nuovo PIN</label><input id="rp2" type="password" autocomplete="new-password">
-  <button class="btn" onclick="recuperoOk('${esc(cod)}')">Imposta il nuovo PIN</button></div>
+  <button class="btn" id="rc_btn">Imposta il nuovo PIN</button></div>
   <div class="card"><h3>Non trovi il codice?</h3><p class="mute">Chiedi al bar: ti manda un nuovo link per scegliere un PIN.</p>
-  <label>Un recapito (facoltativo)</label><input id="ra" placeholder="il tuo numero, se diverso da quello del bar"><button class="btn sec" onclick="recuperoAiuto('${esc(cod)}')">Chiedi aiuto al bar</button>
-  <p style="text-align:center;margin:12px 0 0"><a href="#/hotel/${esc(cod)}">← Torna all'accesso</a></p></div>`}
+  <label>Un recapito (facoltativo)</label><input id="ra" placeholder="il tuo numero, se diverso da quello del bar"><button class="btn sec" id="ra_btn">Chiedi aiuto al bar</button>
+  <p style="text-align:center;margin:12px 0 0"><a href="#/hotel/${esc(cod)}">← Torna all'accesso</a></p></div>`;
+ $("#rc_btn").onclick=()=>recuperoOk(cod);$("#ra_btn").onclick=()=>recuperoAiuto(cod)}
 async function recuperoOk(cod){
  const n=$("#rp").value;if(n!==$("#rp2").value)return toast("I due PIN non coincidono");
  const r=await run("bb_alb_recupera",{paccesso:cod,pcodice:$("#rc").value,pnuovo:n});if(!r||r===true)return;
@@ -330,8 +347,9 @@ function codiceRecupero(codice,titolo){
   <p>Questo è il tuo <b>codice di recupero</b>. Se un giorno perdi il PIN, con questo codice ne scegli uno nuovo senza chiamare nessuno.</p>
   <div style="font-size:32px;font-weight:800;letter-spacing:4px;margin:14px 0">${esc(codice)}</div>
   <p class="mute">Salvalo adesso: fai uno screenshot o scrivilo. Per motivi di sicurezza non si può rivedere: se lo perdi, ne crei uno nuovo dal Profilo.</p>
-  <button class="btn sec" onclick="navigator.clipboard.writeText('${esc(codice)}').then(()=>toast('Codice copiato'))">Copia il codice</button>
-  <button class="btn" onclick="go('#/albergatore/profilo')">Ho salvato il codice</button></div>`}
+  <button class="btn sec" id="cr_copy">Copia il codice</button>
+  <button class="btn" onclick="go('#/albergatore/profilo')">Ho salvato il codice</button></div>`;
+ $("#cr_copy").onclick=()=>navigator.clipboard.writeText(codice).then(()=>toast("Codice copiato"))}
 async function invito(tok){
  $("#ttl").textContent="☕ Colazioni B&B";loading();
  const h=await rpc("bb_invito_info",{token:tok||""}).catch(()=>null);
@@ -340,7 +358,8 @@ async function invito(tok){
  <label>PIN (almeno 4 caratteri)</label><input id="i_p" type="password" autocomplete="new-password"><label>Ripeti il PIN</label><input id="i_p2" type="password" autocomplete="new-password">
  <label>Indirizzo della struttura</label><input id="i_a" value="${esc(h.indirizzo)}"><label>Telefono</label><input id="i_t" type="tel" value="${esc(h.telefono)}"><label>Email</label><input id="i_e" type="email" value="${esc(h.email)}">
  <h3 style="margin-top:16px">🧾 Dati per la fattura</h3>${fiscaliForm({})}
- <button class="btn" onclick="invitoOk('${esc(tok)}')">Attiva il mio accesso</button></div>`}
+ <button class="btn" id="i_btn">Attiva il mio accesso</button></div>`;
+ $("#i_btn").onclick=()=>invitoOk(tok)}
 async function invitoOk(tok){
  const p=$("#i_p").value;if(p!==$("#i_p2").value)return toast("I due PIN non coincidono");
  const r=await run("bb_invito_accetta",{token:tok,ppin:p,pindirizzo:$("#i_a").value,ptelefono:$("#i_t").value,pemail:$("#i_e").value});if(!r||r===true)return;
@@ -386,7 +405,7 @@ function pfHtml(s){
  <p class="mute" style="margin-top:14px">Il codice di recupero serve se perdi il PIN. Se non lo hai più, ne puoi creare uno nuovo (il vecchio smette di funzionare).</p>
  <button class="btn sec" onclick="recuperoNuovo()">Crea un nuovo codice di recupero</button></div>
  <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(link)}</p>
- <button class="btn sm sec" onclick="navigator.clipboard.writeText('${esc(link)}').then(()=>toast('Link copiato'))">Copia link</button></div>`}
+ <button class="btn sm sec" id="pf_copy">Copia link</button></div>`}
 function pfPrev(){const e=$("#pf_h");if(e)e.innerHTML=hero(ALB.struttura.nome,PF.sfondo,$("#pf_b")?$("#pf_b").value:"")}
 const pfPos=()=>{const e=$("#pf_pos");if(e)e.hidden=!PF.img};
 function pfFile(el){
@@ -445,7 +464,7 @@ async function alb(sec){
   ${(ALB.fatture||[]).length?`<h3>Le tue fatture</h3><div class="card scroll"><table>${ALB.fatture.map(f=>`<tr><td>${new Date(f.pagata_il).toLocaleDateString("it-IT")}</td><td>Ricarica ${eur(f.importo)}</td><td style="text-align:right">${statoFatt(f)}</td></tr>`).join("")}</table></div><p class="mute">La fattura ti arriva dal bar via email o PEC.</p>`:""}`;
  }
  app.innerHTML=(sec==="home"?hero(s.nome,HOT&&HOT.sfondo,s.benvenuto):"")+tabsHtml(tabs,sec,"albergatore")+body;
- if(sec==="profilo"){pfPrev();const e=$("#pf_q");if(e)qr(e,base()+"#/hotel/"+s.accesso,140)}
+ if(sec==="profilo"){pfPrev();const e=$("#pf_q");if(e)qr(e,base()+"#/hotel/"+s.accesso,140);const cb=$("#pf_copy");if(cb)cb.onclick=()=>navigator.clipboard.writeText(base()+"#/hotel/"+s.accesso).then(()=>toast("Link copiato"))}
  if(sec==="nuova"&&$("#nt")){ntTab();ricalcNuova()}
  if(sec==="lista")filtraAlb();
  if(sec==="prodotti")albProdotti();
@@ -529,8 +548,9 @@ function filtraAlb(){
  const q=($("#q").value||"").toLowerCase(),oggi=ALB.oggi;
  const l=ALB.vouchers.filter(v=>!q||(v.ospite+" "+v.camera).toLowerCase().includes(q)||v.id.toLowerCase().includes(q));
  $("#al").innerHTML=l.map(v=>{const [t,c]=stato(v,oggi);return `<div class="card row"><div><b>${esc(descV(v))}</b><div class="mute">${dRange(v)}${v.colazione_nome?" · "+esc(v.colazione_nome):""} · ritirate ${v.usate}/${v.qta}</div>
- <div>${v.has_richieste?`<span class="pill p-warn">richieste dell'ospite</span> `:""}${v.extra_totale>0?`<span class="pill p-ok">extra ${eur(v.extra_totale)} da pagare al bar</span>`:""}</div></div>
- <div style="text-align:right"><span class="pill ${c}">${t}</span><br><button class="btn sm sec" onclick="mostraQR('${v.id}')">QR</button> ${!v.annullato&&v.usate<v.qta?`<button class="btn sm sec" onclick="annullaAlb('${v.id}')">Annulla</button>`:""}</div></div>`}).join("")||`<p class="mute">Nessun risultato.</p>`}
+ <div>${v.has_richieste?`<span class="pill p-warn">richieste dell'ospite</span> `:""}${v.extra_da_pagare>0?`<span class="pill p-ok">extra ${eur(v.extra_da_pagare)} da pagare al bar</span>`:v.extra_totale>0?`<span class="pill">extra incassati</span>`:""}</div></div>
+ <div style="text-align:right"><span class="pill ${c}">${t}</span><br><button class="btn sm sec" onclick="mostraQR('${v.id}')">QR</button> ${!v.annullato&&v.usate<v.qta&&fine(v)>=oggi?`<button class="btn sm sec" onclick="annullaAlb('${v.id}')">Annulla</button>`:""}</div></div>`}).join("")||`<p class="mute">Nessun risultato.</p>`}
+/* l'albergatore annulla solo entro il soggiorno (dopo la data di fine decide il bar, con motivo) */
 async function annullaAlb(id){if(!confirm("Annullare questa colazione? Le non ritirate tornano nel borsellino."))return;const r=await run("bb_alb_annulla",{sid:sess.s,p:sess.p,vid:id});if(r){toast("Rimborsati "+eur(r.rimborsato));alb("lista")}}
 function stampaIds(ids){stampa(ids.map(id=>cardVoucher(ALB.vouchers.find(x=>x.id===id),"",ALB.struttura.nome)))}
 async function ricaricaSumup(imp){
@@ -547,12 +567,13 @@ async function mostraQR(id){
  <p><b style="letter-spacing:2px;font-size:20px">${id}</b></p>
  <button class="btn" id="sh">💬 Invia al cliente con WhatsApp</button> <button class="btn sec" id="nfc">📱 Copia link per NFC</button> <button class="btn sec" onclick="stampaIds(['${id}'])">🖨 Stampa</button>
  <button class="btn sec" onclick="go('#/albergatore/lista')">Chiudi</button></div>
- <div class="card" style="text-align:center"><h3>Accesso recensioni e consensi</h3><p class="mute">Il cliente sceglie separatamente posizione e invito WhatsApp; nessuna opzione è preselezionata.</p><div class="qr" id="recqr"></div></div>`;
- qr($("#qrbox"),id);
+ <div class="card" style="text-align:center"><h3>Accesso recensioni e consensi</h3><p class="mute">Il cliente sceglie separatamente posizione e invito WhatsApp; nessuna opzione è preselezionata.</p><div class="qr" id="recqr"></div><button class="btn sm sec" id="nfcrec">⭐ Copia link recensioni</button></div>`;
+ qr($("#qrbox"),l);
  qr($("#recqr"),nfc,160);
  const msg=(ALB.config.msg||"{link}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}",l)+"\n\nScelte privacy e invito recensione: "+wa;
  $("#sh").onclick=()=>window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener");
- $("#nfc").onclick=()=>navigator.clipboard.writeText(nfc).then(()=>toast("Link NFC copiato"))}
+ $("#nfc").onclick=()=>navigator.clipboard.writeText(l).then(()=>toast("Link della colazione copiato (per il tag NFC)"));
+ $("#nfcrec").onclick=()=>navigator.clipboard.writeText(nfc).then(()=>toast("Link recensioni copiato"))}
 /* --- editor camere (albergatore e titolare) --- */
 let CR=[],CRSID=null;
 function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi nome e ospiti, poi scegli Banco o Tavolo per ogni camera. Durante ogni prenotazione potrai ancora cambiare la scelta.</p><div id="ce"></div>
