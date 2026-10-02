@@ -2029,6 +2029,31 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _agenti_proposte_job():
+        # Agenti AI per settore (titolare, 02/10/2026): un lotto di file fermi
+        # (ERRORI della cartella unica, inbox senza categoria) letto dal modello,
+        # una proposta per file, mai un'applicazione. AGENTI_AI=false lo spegne;
+        # senza ANTHROPIC_API_KEY non fa nulla e lo scrive nello stato.
+        from app.database import Database
+        from app.services.agenti_proposte import giro
+        try:
+            r = await giro(Database.get_db())
+            if r.get("candidati") or r.get("errori") or r.get("motivo"):
+                logger.info("[SCHEDULER-AGENTI] proposte %s", {k: v for k, v in r.items() if k != "eseguito_at"})
+        except Exception as e:
+            logger.error("[SCHEDULER-AGENTI] proposte: %s: %s", type(e).__name__, e)
+
+    scheduler.add_job(
+        _agenti_proposte_job,
+        'interval', minutes=30,
+        next_run_time=avvio + timedelta(minutes=11),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="agenti_proposte",
+        name="Agenti AI: proposte sui documenti fermi (ogni 30 min)",
+        replace_existing=True,
+    )
+
     async def _paypal_automatico_job():
         from app.database import Database
         from app.services.paypal_automatico import giro_paypal

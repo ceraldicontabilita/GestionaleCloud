@@ -8,6 +8,7 @@ import { Bot, Brain, CheckCircle2, Circle, LoaderCircle, ShieldCheck } from 'luc
 import { COLORS, STYLES, button, badge, useIsMobile } from '../lib/utils';
 import { euroOppure, dataOppure } from '../lib/vista';
 import { PageLayout, PageSection, PageEmpty, PageLoading } from '../components/PageLayout';
+import AgentiSettori from './AgentiSettori';
 
 // ---- costanti ----
 const TIPO_CFG = {
@@ -436,7 +437,7 @@ function CashFlowPanel({ previsione }) {
 export default function AgentiPage() {
   const confirm = useConfirm();
   const { isAdmin } = useAuth();
-  const [hs, setHs] = useHashState({ tab: 'agenti' });
+  const [hs, setHs] = useHashState({ tab: 'settori' });
   const activeTab = hs.tab;
   const setActiveTab = t => setHs('tab', t);
   const [stati, setStati] = useState([]);
@@ -551,6 +552,7 @@ export default function AgentiPage() {
   const urgenti = segnPerTipo('urgente').length + segnPerTipo('anomalia').length;
 
   const TABS = [
+    { key: 'settori', label: 'Settori' },
     { key: 'agenti', label: `Agenti (${stati.length})` },
     { key: 'decisioni', label: `Decisioni (${decisioni.length})` },
     { key: 'cash-flow', label: 'Cash flow 13 settimane' },
@@ -664,6 +666,8 @@ export default function AgentiPage() {
         <PageLoading />
       ) : (
         <>
+          {activeTab === 'settori' && <AgentiSettori onMessaggio={setMsg} />}
+
           {activeTab === 'agenti' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {stati.length === 0 ? (

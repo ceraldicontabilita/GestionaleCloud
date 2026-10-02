@@ -495,10 +495,10 @@ TIPI: Dict[str, Any] = {
 # ── per id Drive e per impronta ────────────────────────────────────────────
 
 async def apri_per_drive_id(db, drive_id: str) -> Originale:
-    """Un originale della cartella unica (ELABORATE), per id Drive."""
+    """Un originale della cartella unica (ELABORATE, o fermo in ERRORI/ARRETRATO), per id Drive."""
     from app.services import drive_cartella_unica as cu
 
-    provato = ["cartella_unica:ELABORATE"]
+    provato = ["cartella_unica:ELABORATE", "cartella_unica:ERRORI+ARRETRATO"]
     try:
         trovato = await cu.originale(db, drive_file_id=drive_id)
     except RuntimeError as exc:

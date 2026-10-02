@@ -107,7 +107,7 @@ const router = createBrowserRouter([
       { path: "riconciliazione/*", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       { path: "documenti/*", element: <LazyPage><DocumentiHub /></LazyPage> },
       { path: "strumenti/*", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "agenti", element: <LazyPage><AgentiPage /></LazyPage> },
+      { path: "agenti", element: <RequireAdmin><LazyPage><AgentiPage /></LazyPage></RequireAdmin> },
       { path: "impostazioni-f24-email", element: <RequireAdmin><LazyPage><ImpostazioniF24Email /></LazyPage></RequireAdmin> },
       { path: "impostazioni-ai", element: <LazyPage><ImpostazioniAI /></LazyPage> },
       { path: "integrazioni/*", element: <LazyPage><IntegrazioniHub /></LazyPage> },

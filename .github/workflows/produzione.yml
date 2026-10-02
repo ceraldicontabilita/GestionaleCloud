@@ -1,29 +1,13 @@
-# I collaudi isolati (dati finti) girano anche sulle PR, prima della fusione.
-# La verifica live gira solo su main e parla unicamente con
-# https://gestionalecloud.onrender.com (ERP + HR + Menu + Lotti).
+# I collaudi isolati (dati finti, browser reale) e la verifica live girano
+# solo dopo la fusione su main, o a mano (workflow_dispatch): sulle PR resta
+# ci.yml, che basta per il verde prima di unire. Decisione del titolare del
+# 02/10/2026: ogni run sulla PR costava quanto quello su main e i minuti di
+# Actions del repository privato sono a consumo. La verifica live parla
+# unicamente con https://gestionalecloud.onrender.com (ERP + HR + Menu + Lotti).
 name: Produzione
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - "app/**"
-      - "backend/**"
-      - "frontend/**"
-      - "frontend_hr/**"
-      - "frontend_lotti/**"
-      - "frontend_menu/**"
-      - "frontend_shared/**"
-      - "frontend_colazioni/**"
-      - "supabase/migrations/**"
-      - "tests/**"
-      - "scripts/e2e_distruttivo_server.py"
-      - "scripts/smoke_app.py"
-      - "scripts/build_frontends.sh"
-      - "page_catalog.json"
-      - "render.yaml"
-      - ".github/workflows/produzione.yml"
   push:
     branches: [main]
     paths:

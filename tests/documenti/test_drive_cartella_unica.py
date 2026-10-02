@@ -195,7 +195,10 @@ def test_originale_solo_da_elaborate(ambiente):
     assert aperto["contenuto"] == b"%PDF buono" and aperto["nome"] == "buono.pdf"
     per_impronta = run(cu.originale(db, sha256=hashlib.sha256(b"%PDF buono").hexdigest().upper()))
     assert per_impronta["contenuto"] == b"%PDF buono"
-    assert run(cu.originale(db, drive_file_id="ko")) is None  # in ERRORI
+    # in ERRORI: per id si apre (il titolare lo vede per decidere), per impronta no
+    fermo = run(cu.originale(db, drive_file_id="ko"))
+    assert fermo["contenuto"] == b"%PDF cattivo" and fermo["nome"] == "cattivo.pdf"
+    assert run(cu.originale(db, sha256=hashlib.sha256(b"%PDF cattivo").hexdigest().upper())) is None
     assert run(cu.originale(db, drive_file_id="sconosciuto")) is None
     assert run(cu.originale(db)) is None
 

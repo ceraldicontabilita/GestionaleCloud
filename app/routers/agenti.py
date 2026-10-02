@@ -1,19 +1,22 @@
-"""Router Agenti AI — segnalazioni, stato, gestione."""
+"""Router Agenti AI — segnalazioni, stato, gestione, cruscotto per settore e proposte AI.
+
+Ogni route e' solo admin: il cruscotto legge code e giri di tutta la contabilita'.
+"""
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from typing import Any, Dict, Optional
 from datetime import datetime, timezone
 
 from app.database import Database
-from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user, get_current_user
+from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 
 router = APIRouter(tags=["Agenti AI"])
 
 
 @router.get("/cash-flow-13-settimane")
 async def get_cash_flow_13_settimane(
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
-    """Previsione aggregata e di sola lettura; richiede una sessione valida."""
+    """Previsione aggregata e di sola lettura; solo admin, come tutto il cruscotto."""
     from app.services.cash_flow_13w_service import calcola_cash_flow_13_settimane
 
     return await calcola_cash_flow_13_settimane(Database.get_db())
@@ -23,7 +26,8 @@ async def get_cash_flow_13_settimane(
 async def get_segnalazioni(
     non_lette: bool = Query(False),
     tipo: Optional[str] = Query(None),
-    limit: int = Query(50)
+    limit: int = Query(50),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """Restituisce le segnalazioni degli agenti AI."""
     db = Database.get_db()
@@ -39,7 +43,7 @@ async def get_segnalazioni(
 
 
 @router.get("/segnalazioni/count")
-async def get_count_non_lette():
+async def get_count_non_lette(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Contatore badge segnalazioni non lette."""
     db = Database.get_db()
     count = await db["agenti_segnalazioni"].count_documents({"letta": False})
@@ -47,7 +51,7 @@ async def get_count_non_lette():
 
 
 @router.get("/segnalazioni/summary")
-async def get_segnalazioni_summary():
+async def get_segnalazioni_summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Contatori per tipo — usato dal widget dashboard."""
     db = Database.get_db()
     pipeline = [
@@ -67,7 +71,7 @@ async def get_segnalazioni_summary():
 
 
 @router.put("/segnalazioni/{sid}/letta")
-async def segna_letta(sid: str):
+async def segna_letta(sid: str, _admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Segna una segnalazione come letta."""
     db = Database.get_db()
     await db["agenti_segnalazioni"].update_one(
@@ -78,7 +82,7 @@ async def segna_letta(sid: str):
 
 
 @router.put("/segnalazioni/{sid}/risolta")
-async def segna_risolta(sid: str):
+async def segna_risolta(sid: str, _admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Segna una segnalazione come risolta."""
     db = Database.get_db()
     await db["agenti_segnalazioni"].update_one(
@@ -89,7 +93,7 @@ async def segna_risolta(sid: str):
 
 
 @router.get("/stato")
-async def get_stato_agenti():
+async def get_stato_agenti(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Stato di tutti gli agenti AI."""
     db = Database.get_db()
     stati = await db["agenti_stato"].find({}, {"_id": 0}).to_list(20)
@@ -97,7 +101,8 @@ async def get_stato_agenti():
 
 
 @router.post("/run")
-async def run_agenti_manuale(agente: Optional[str] = Query(None)):
+async def run_agenti_manuale(agente: Optional[str] = Query(None),
+                             _admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Esegue manualmente gli agenti AI. Se 'agente' e' passato (bottone
     'Esegui ora' sulla singola card), esegue solo quell'agente — prima il
     parametro non esisteva e ogni card, qualunque fosse, lanciava sempre
@@ -117,7 +122,8 @@ async def run_agenti_manuale(agente: Optional[str] = Query(None)):
 
 
 @router.get("/pattern-appresi")
-async def get_pattern_appresi(categoria: str = Query(None)):
+async def get_pattern_appresi(categoria: str = Query(None),
+                              _admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Pattern appresi dalla LearningCervello."""
     db = Database.get_db()
     query = {"confidenza": {"$gte": 0.3}}
@@ -136,6 +142,7 @@ async def get_decisioni(
     agente: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     includi_storico: bool = Query(False),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """Registro decisioni: una riga corrente per problema, storico opzionale."""
     from app.agents.decision_engine import decisioni_correnti
@@ -156,7 +163,7 @@ async def get_decisioni(
 
 
 @router.get("/decisioni/{decision_id}/eventi")
-async def get_eventi_decisione(decision_id: str):
+async def get_eventi_decisione(decision_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user)):
     """Cronologia append-only di una decisione."""
     db = Database.get_db()
     eventi = await db["ai_decision_events"].find(
@@ -218,7 +225,7 @@ async def rifiuta_decisione(
 
 
 @router.get("/automazioni/stato")
-async def get_stato_automazioni():
+async def get_stato_automazioni(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     from app.agents.decision_engine import automazioni_sospese
 
     sospese = await automazioni_sospese(Database.get_db())
@@ -237,3 +244,86 @@ async def riprendi_automazioni(admin: Dict[str, Any] = Depends(get_current_admin
     from app.agents.decision_engine import imposta_automazioni
 
     return await imposta_automazioni(Database.get_db(), False, _identita_admin(admin))
+
+
+# ---------------------------------------------------------------------------
+# Cruscotto per settore e proposte AI (decisione del titolare, 02/10/2026)
+# ---------------------------------------------------------------------------
+from app.middleware.performance import istantanea  # noqa: E402
+from app.services import agenti_proposte  # noqa: E402
+
+
+@istantanea(ttl=60, max_eta=900, persistente=True)
+async def _settori_istantanea() -> Dict[str, Any]:
+    from app.services.agenti_settori import stato_settori
+
+    return await stato_settori(Database.get_db())
+
+
+@router.get("/settori")
+async def get_settori(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Per settore: ultimi giri, code ferme e proposte AI in attesa. Istantanea: pronta, si ricalcola in sottofondo."""
+    return await _settori_istantanea()
+
+
+@router.get("/proposte")
+async def get_proposte(
+    settore: Optional[str] = Query(None),
+    stato: Optional[str] = Query(agenti_proposte.STATO_PROPOSTA),
+    limit: int = Query(200, ge=1, le=1000),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Le proposte dell'agente AI (``stato`` vuoto = tutte)."""
+    righe = await agenti_proposte.elenco(Database.get_db(), settore=settore, stato_filtro=stato or None, limite=limit)
+    return {"proposte": righe, "totale": len(righe), "motivi_rifiuto": list(agenti_proposte.MOTIVI_RIFIUTO)}
+
+
+@router.post("/proposte/giro")
+async def giro_proposte(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Un lotto subito (lo stesso giro dello scheduler): legge, propone, mai applica."""
+    return await agenti_proposte.giro(Database.get_db())
+
+
+@router.post("/proposte/conferma-sicure")
+async def conferma_proposte_sicure(
+    settore: Optional[str] = Query(None),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Conferma tutte le proposte a confidenza alta, ognuna col motore del suo tipo."""
+    return await agenti_proposte.conferma_sicure(Database.get_db(), _identita_admin(admin), settore=settore)
+
+
+@router.post("/proposte/{proposta_id}/conferma")
+async def conferma_proposta(proposta_id: str, admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Applica la proposta col motore deterministico del tipo; una gia' decisa non si riapplica."""
+    try:
+        esito = await agenti_proposte.conferma(Database.get_db(), proposta_id, _identita_admin(admin))
+    except agenti_proposte.PropostaNonTrovata:
+        raise HTTPException(status_code=404, detail="Proposta non trovata")
+    except agenti_proposte.PropostaNonApplicabile as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not esito.get("gia_decisa") and not (esito.get("esito") or {}).get("success"):
+        raise HTTPException(status_code=409, detail={
+            "code": "PROPOSTA_NON_APPLICATA",
+            "message": str((esito.get("esito") or {}).get("message") or (esito.get("esito") or {}).get("motivo")
+                           or "il motore del tipo proposto non ha registrato il documento"),
+            "esito": esito.get("esito"),
+        })
+    return esito
+
+
+@router.post("/proposte/{proposta_id}/rifiuta")
+async def rifiuta_proposta(
+    proposta_id: str,
+    body: Optional[Dict[str, Any]] = Body(None),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Rifiuta con un motivo a chip (``motivo``), nota solo per «altro»."""
+    dati = body or {}
+    try:
+        return await agenti_proposte.rifiuta(Database.get_db(), proposta_id, _identita_admin(admin),
+                                             str(dati.get("motivo") or ""), str(dati.get("nota") or ""))
+    except agenti_proposte.PropostaNonTrovata:
+        raise HTTPException(status_code=404, detail="Proposta non trovata")
+    except agenti_proposte.PropostaNonApplicabile as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
