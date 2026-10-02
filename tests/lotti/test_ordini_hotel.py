@@ -88,3 +88,37 @@ def test_non_scambia_lotto_fornitore_con_lotto_di_produzione(monkeypatch):
 
     with pytest.raises(ValueError, match="Lotto reale di produzione non trovato"):
         run(servizio.associa_lotto("OH-TIPO", "interno:p1", "VDM-001", da="test"))
+
+
+def test_menu_unico_conserva_tracciabilita_solo_quando_documentata(monkeypatch):
+    db = AsyncMongoMockClient()["ordini_hotel_menu_unico_test"]
+    monkeypatch.setattr(servizio, "db", db)
+    run(db.ricette.insert_one({
+        "id": "ric-menu", "reparto": "pasticceria", "allergeni": ["Uova"],
+    }))
+    catalogo = {
+        "menu:prodotto-ricetta": {
+            "chiave": "menu:prodotto-ricetta", "nome": "Treccia",
+            "prezzo": 2.5, "allergeni": ["Latte"], "lotti_ref": "ricetta:ric-menu",
+        },
+        "menu:prodotto-generico": {
+            "chiave": "menu:prodotto-generico", "nome": "Bibita", "prezzo": 2,
+        },
+    }
+
+    ordine = run(servizio.crea_ordine(
+        struttura_id="hotel-1", struttura_nome="Hotel Vesuvio", data_consegna="2026-10-03",
+        catalogo=catalogo,
+        righe=[
+            {"chiave": "menu:prodotto-ricetta", "quantita": 1},
+            {"chiave": "menu:prodotto-generico", "quantita": 1},
+        ],
+    ))
+
+    produzione, generico = ordine["righe"]
+    assert produzione["menu_prodotto_id"] == "prodotto-ricetta"
+    assert produzione["ricetta_id"] == "ric-menu"
+    assert produzione["tracciabilita_tipo"] == "lotto_produzione"
+    assert set(produzione["allergeni"]) == {"Latte", "Uova"}
+    assert generico["tracciabilita_tipo"] == "da_classificare"
+    assert generico["tracciabilita_stato"] == "origine_da_verificare"

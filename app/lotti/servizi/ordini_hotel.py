@@ -135,6 +135,21 @@ async def _arricchisci_riga(catalogo: Mapping[str, Any], quantita: int,
             "tracciabilita_tipo": "lotto_produzione",
             "tracciabilita_stato": "produzione_da_registrare" if ricetta_id else "ricetta_da_verificare",
         })
+    elif chiave.startswith("menu:"):
+        # Il listino hotel usa il Menu digitale canonico. Se il prodotto e'
+        # pubblicato da una ricetta Lotti conserviamo il confine forte del
+        # lotto di produzione; per gli altri prodotti non inventiamo la fonte.
+        lotti_ref = str(catalogo.get("lotti_ref") or "")
+        ricetta_id = lotti_ref.split(":", 1)[1] if lotti_ref.startswith("ricetta:") else ""
+        ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0}) if ricetta_id else None
+        riga.update({
+            "menu_prodotto_id": chiave.split(":", 1)[1],
+            "ricetta_id": ricetta_id or None,
+            "reparto": str((ricetta or {}).get("reparto") or ""),
+            "allergeni": normalizza_allergeni([*allergeni, *((ricetta or {}).get("allergeni") or [])]),
+            "tracciabilita_tipo": "lotto_produzione" if ricetta_id else "da_classificare",
+            "tracciabilita_stato": "produzione_da_registrare" if ricetta_id else "origine_da_verificare",
+        })
     else:
         digest = chiave.split(":", 1)[1] if ":" in chiave else ""
         prove = list(fatture_vdm.get(digest) or [])
