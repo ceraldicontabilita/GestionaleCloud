@@ -55,6 +55,8 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;b
 .alert.bad{border-color:var(--bad)}.alert.ok{border-color:var(--ok)}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:12px;z-index:9;font-size:14px}
 .demo{font-size:12px;background:#fff3cd;color:#664d03;padding:6px 10px;text-align:center}
+.wallet-custom{justify-content:flex-start;align-items:stretch;gap:8px}.wallet-custom input{margin:0;max-width:240px}.recharge-choice{min-width:105px}.wallet-kpis .k{font-size:27px}
+@media(max-width:640px){.wallet-custom{display:grid;grid-template-columns:1fr}.wallet-custom input{max-width:none}.wallet-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.wallet-kpis .card{padding:12px 8px}.wallet-kpis .k{font-size:20px}}
 
 main.wide{max-width:1100px}
 .tabs button.on{font-weight:700}
@@ -469,7 +471,8 @@ async function pfSalva(){
 
 async function alb(sec){
  loading();
- ALB=await run("bb_alb_stato",{sid:sess.s,p:sess.p});if(!ALB||ALB===true)return sess?esci():undefined;
+ const dati=await Promise.all([run("bb_alb_stato",{sid:sess.s,p:sess.p}),run("bb_alb_portafoglio",{sid:sess.s,p:sess.p})]);
+ ALB=dati[0];if(!ALB||ALB===true)return sess?esci():undefined;ALB.portafoglio=dati[1]||{};
  if(!HOT||HOT.id!==ALB.struttura.id)HOT=await rpc("bb_hotel_info",{codice:ALB.struttura.accesso}).catch(()=>null);
  const s=ALB.struttura,my=ALB.vouchers,oggi=ALB.oggi;
  $("#ttl").textContent="🏨 "+s.nome;
@@ -494,13 +497,14 @@ async function alb(sec){
  }else if(sec==="camere"){
   CR=ALB.camere.map(c=>({nome:c.nome,ospiti:c.ospiti,servizio_tavolo:!!c.servizio_tavolo}));body=camereEditor("Le tue camere");
  }else if(sec==="borsellino"){
-  body=fiscBanner()+`<div class="card"><div class="mute">Saldo disponibile</div><div class="k" style="font-size:32px;font-weight:800">${eur(s.saldo)}</div>
-  ${ALB.sumup?`<label>Ricarica veloce con carta</label><div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">${[50,100,200,300,400,500].filter(v=>v>=ALB.config.ricarica_min&&v<=ALB.config.ricarica_max).map(v=>`<button class="btn" style="min-width:96px" onclick="ricaricaSumup(${v})">${v} €</button>`).join("")}</div><div class="mute" style="margin-bottom:10px">Tocca un importo: si apre il pagamento con carta e, appena è confermato, il saldo sale da solo.</div>`:""}
-  <label>Oppure un altro importo (€)</label><input id="r_i" type="number" min="${ALB.config.ricarica_min}" max="${ALB.config.ricarica_max}" value="${Math.max(50,ALB.config.ricarica_min)}"><div class="mute" style="margin:-6px 0 10px">Da ${eur(ALB.config.ricarica_min)} a ${eur(ALB.config.ricarica_max)}</div>
-  ${ALB.sumup?`<button class="btn" onclick="ricaricaSumup()">💳 Paga con carta (SumUp)</button> <button class="btn sec" onclick="doRicarica()">Pago al bar</button>
-  <p class="mute">Con la carta il saldo si aggiorna subito dopo il pagamento. Se scegli "Pago al bar", il saldo si aggiorna quando il bar conferma l'incasso.</p>`:`<button class="btn" onclick="doRicarica()">Richiedi ricarica</button>
-  <p class="mute">Paga al bar: il saldo si aggiorna appena il bar conferma l'incasso.</p>`}</div>
-  <h3>Movimenti</h3><div class="card scroll"><table>${ALB.movimenti.map(m=>`<tr><td>${new Date(m.t).toLocaleDateString("it-IT")}</td><td>${esc(m.nota)}${m.confermato?"":(m.sumup_url?` <a href="${esc(m.sumup_url)}">completa il pagamento</a>`:" <span class='pill p-warn'>in attesa</span>")}</td><td style="text-align:right;color:${m.importo<0?"var(--bad)":"var(--ok)"}">${eur(m.importo)}</td></tr>`).join("")}</table></div>
+  const w=ALB.portafoglio||{},ric=w.ricariche||[];
+  body=fiscBanner()+`<div class="kpis wallet-kpis"><div class="card"><div class="mute">Disponibile</div><div class="k">${eur(w.disponibile??s.saldo)}</div></div><div class="card"><div class="mute">Impegnato nei QR</div><div class="k">${eur(w.impegnato||0)}</div></div><div class="card"><div class="mute">Consumato</div><div class="k">${eur(w.consumato||0)}</div></div></div>
+  <div class="card"><h3>Ricarica credito</h3><p class="mute">Il pagamento è intestato a <b>${esc(s.nome)}</b>. Il saldo aumenta solo dopo la conferma effettiva di SumUp.</p>
+  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin:12px 0">${[100,250,500].filter(v=>v>=ALB.config.ricarica_min&&v<=ALB.config.ricarica_max).map(v=>`<button class="btn recharge-choice" onclick="ricaricaSumup(${v})">${v} €</button>`).join("")}</div>
+  <label for="r_i">Oppure scegli un altro importo (€)</label><div class="row wallet-custom"><input id="r_i" type="number" step="0.01" min="${ALB.config.ricarica_min}" max="${ALB.config.ricarica_max}" value="${Math.max(100,ALB.config.ricarica_min)}"><button class="btn" onclick="ricaricaSumup()">Ricarica con SumUp</button></div>
+  <div class="mute">Da ${eur(ALB.config.ricarica_min)} a ${eur(ALB.config.ricarica_max)}. I prodotti extra scelti dall’ospite restano da pagare alla cassa.</div></div>
+  <h3>Storico ricariche</h3><div class="card scroll">${ric.length?`<table>${ric.map(r=>`<tr><td><b>${esc(r.riferimento)}</b><div class="mute">${new Date(r.creato).toLocaleDateString("it-IT")}</div></td><td>${statoRicarica(r)}${r.rimborsato>0?`<div class="mute">Rimborsati ${eur(r.rimborsato)}</div>`:""}${r.stato==="PENDING"&&r.hosted_url?`<div><a href="${esc(r.hosted_url)}">Completa pagamento</a></div>`:""}</td><td style="text-align:right"><b>${eur(r.importo)}</b></td></tr>`).join("")}</table>`:`<p class="mute">Nessuna ricarica SumUp ancora effettuata.</p>`}</div>
+  <h3>Movimenti del credito</h3><div class="card scroll"><table>${ALB.movimenti.filter(m=>m.confermato).map(m=>`<tr><td>${new Date(m.t).toLocaleDateString("it-IT")}</td><td>${esc(m.nota)}</td><td style="text-align:right;color:${m.importo<0?"var(--bad)":"var(--ok)"}">${eur(m.importo)}</td></tr>`).join("")}</table></div>
   ${(ALB.fatture||[]).length?`<h3>Le tue fatture</h3><div class="card scroll"><table>${ALB.fatture.map(f=>`<tr><td>${new Date(f.pagata_il).toLocaleDateString("it-IT")}</td><td>Ricarica ${eur(f.importo)}</td><td style="text-align:right">${statoFatt(f)}</td></tr>`).join("")}</table></div><p class="mute">La fattura ti arriva dal bar via email o PEC.</p>`:""}`;
  }
  app.innerHTML=(sec==="home"?hero(s.nome,HOT&&HOT.sfondo,s.benvenuto):"")+tabsHtml(tabs,sec,"albergatore")+body;
@@ -509,6 +513,7 @@ async function alb(sec){
  if(sec==="lista")filtraAlb();
  if(sec==="prodotti")albProdotti();
  if(sec==="camere")crTab();
+ if(sec==="borsellino")setTimeout(sincronizzaRicariche,0);
 }
 let AP={prodotti:[],cart:{},ordini:[]};
 async function albProdotti(){
@@ -593,12 +598,16 @@ function filtraAlb(){
 /* l'albergatore annulla solo entro il soggiorno (dopo la data di fine decide il bar, con motivo) */
 async function annullaAlb(id){if(!confirm("Annullare questa colazione? Le non ritirate tornano nel borsellino."))return;const r=await run("bb_alb_annulla",{sid:sess.s,p:sess.p,vid:id});if(r){toast("Rimborsati "+eur(r.rimborsato));alb("lista")}}
 function stampaIds(ids){stampa(ids.map(id=>cardVoucher(ALB.vouchers.find(x=>x.id===id),"",ALB.struttura.nome)))}
+function statoRicarica(r){const m={PAID:["Pagata","p-ok"],PENDING:["In attesa","p-warn"],CREATA:["In preparazione","p-warn"],EXPIRED:["Scaduta",""],FAILED:["Non riuscita","p-bad"],ERROR:["Da verificare","p-bad"],PARTIALLY_REFUNDED:["Rimborso parziale","p-warn"],REFUNDED:["Rimborsata",""]},x=m[r.stato]||[r.stato,""];return `<span class="pill ${x[1]}">${esc(x[0])}</span>`}
+let WSYNC=0;
+async function sincronizzaRicariche(){if(Date.now()-WSYNC<5000)return;WSYNC=Date.now();try{const r=await fetch("/api/colazioni/ricariche/sumup/sincronizza",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p})}),j=await r.json().catch(()=>({}));if(r.ok&&j.aggiornate>0)alb("borsellino")}catch(e){}}
 async function ricaricaSumup(imp){
  if(ALB.fiscali&&!ALB.fiscali.completi){toast("Prima inserisci i dati per la fattura");go("#/albergatore/profilo");return}
  const i=imp!==undefined?+imp:+$("#r_i").value;if(!(i>=ALB.config.ricarica_min))return toast("Importo minimo "+eur(ALB.config.ricarica_min));
- if(imp!==undefined&&!confirm("Ricaricare "+eur(i)+" con carta?"))return;
- const r=await run("bb_alb_ricarica_sumup",{sid:sess.s,p:sess.p,imp:i,ret:base()+"#/albergatore/borsellino"});
- if(r&&r.url)location.href=r.url}
+ if(i>ALB.config.ricarica_max)return toast("Importo massimo "+eur(ALB.config.ricarica_max));
+ if(!confirm("Ricaricare "+eur(i)+" con SumUp?"))return;
+ document.querySelectorAll(".recharge-choice,.wallet-custom button").forEach(b=>b.disabled=true);
+ try{const r=await fetch("/api/colazioni/ricariche/sumup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p,importo:i,idempotenza:crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random()})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Pagamento non disponibile");if(j.url)location.href=j.url;else throw new Error("Pagina SumUp non disponibile")}catch(e){toast(e.message);document.querySelectorAll(".recharge-choice,.wallet-custom button").forEach(b=>b.disabled=false)}}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
 async function mostraQR(id,continua=false){
  const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id);

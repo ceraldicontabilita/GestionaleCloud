@@ -2157,6 +2157,25 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _ricariche_sumup_hotel_job():
+        from app.services.colazioni_sumup import sincronizza_ricariche
+
+        esito = await sincronizza_ricariche()
+        if esito.get("controllate") or esito.get("fallite"):
+            logger.info("[RICARICHE-SUMUP-HOTEL] %s", esito)
+
+    scheduler.add_job(
+        _ricariche_sumup_hotel_job,
+        "interval",
+        minutes=10,
+        next_run_time=avvio + timedelta(minutes=2),
+        misfire_grace_time=120,
+        coalesce=True,
+        id="ricariche_sumup_hotel",
+        name="Ricariche SumUp portafoglio hotel (ogni 10 minuti)",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
