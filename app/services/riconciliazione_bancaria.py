@@ -182,8 +182,9 @@ async def chiudi_proposte_superate(db, movimento_id: Optional[str] = None) -> in
             riconciliati[mov_id] = bool(movimento and movimento.get("riconciliato") is True)
         if not riconciliati[mov_id]:
             continue
-        await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].update_one(
-            {"id": proposta["id"]},
+        # Una decisione manuale arrivata dopo la lettura non va sovrascritta.
+        esito = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].update_one(
+            {"id": proposta["id"], "stato": "da_confermare"},
             {"$set": {
                 "stato": "superata",
                 "superata_da": "movimento_riconciliato",
@@ -191,7 +192,7 @@ async def chiudi_proposte_superate(db, movimento_id: Optional[str] = None) -> in
                 "updated_at": ora,
             }},
         )
-        chiuse += 1
+        chiuse += esito.modified_count
     return chiuse
 
 

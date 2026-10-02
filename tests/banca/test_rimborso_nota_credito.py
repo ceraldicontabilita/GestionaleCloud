@@ -255,3 +255,25 @@ def test_proposta_aperta_si_chiude_quando_il_movimento_e_riconciliato(monkeypatc
         assert (await db.operazioni_da_confermare.find_one({"id": "op-2"}))["stato"] == "superata"
 
     _run(scenario())
+
+
+def test_chiusura_proposte_non_sovrascrive_una_decisione_arrivata_dopo_la_lettura(monkeypatch):
+    async def scenario():
+        db = _db(monkeypatch, "proposte-decisione-concorrente")
+        proposte = db.operazioni_da_confermare
+        await proposte.insert_one({"id": "op-concorrente", "movimento_ec_id": "EC-chiuso", "stato": "da_confermare"})
+        await db.estratto_conto_movimenti.insert_one({"id": "EC-chiuso", "riconciliato": True})
+        aggiorna = proposte.update_one
+
+        async def decisione_prima_della_chiusura(filtro, modifica, *args, **kwargs):
+            await aggiorna({"id": "op-concorrente"}, {"$set": {"stato": "ignorata", "motivo": "Decisione del titolare"}})
+            return await aggiorna(filtro, modifica, *args, **kwargs)
+
+        monkeypatch.setattr(proposte, "update_one", decisione_prima_della_chiusura)
+        assert await mod.chiudi_proposte_superate(db, "EC-chiuso") == 0
+        proposta = await proposte.find_one({"id": "op-concorrente"})
+        assert proposta["stato"] == "ignorata"
+        assert proposta["motivo"] == "Decisione del titolare"
+        assert "superata_at" not in proposta
+
+    _run(scenario())
