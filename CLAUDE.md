@@ -1012,6 +1012,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
 
+- **Condivisione inviti:** il testo contiene il link una volta sola; se il modello personalizzato non usa `{link}`, il collegamento viene aggiunto prima di condividere o copiare. La barra dell'albergatore resta una griglia compatta anche su desktop; l'area hotel usa il tema chiaro indipendentemente dal tema del dispositivo.
 - Il compositore «Prodotto dal menu» legge il catalogo canonico con
   `/menu/api/menu/carta?destinazione=bb`, tutte le categorie, ricerca e
   paginazione; non mantiene una seconda lista né inventa prezzi mancanti.
