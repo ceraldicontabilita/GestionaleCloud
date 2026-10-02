@@ -21,6 +21,10 @@ from pymongo.errors import DuplicateKeyError
 
 from app.lotti.allergeni import normalizza_allergeni
 from app.lotti.db import database as db
+from app.lotti.servizi.catalogo_acquaviva_hotel import (
+    digest_identita,
+    identita_riga,
+)
 
 
 STATI_ORDINE = ("ricevuto", "confermato", "in_preparazione", "pronto", "consegnato", "annullato")
@@ -59,11 +63,32 @@ async def _fatture_vandemoortele_per_chiavi(chiavi: Iterable[str]) -> dict[str, 
         {"_id": 0, "id": 1, "numero_fattura": 1, "data_fattura": 1,
          "fornitore": 1, "fornitore_ragione_sociale": 1, "prodotti": 1},
     ).to_list(500)
+    catalogo = await db.acquaviva_prodotti.find(
+        {"fonte": {"$in": ["acquaviva", "vandemoortele"]}, "attivo": {"$ne": False}},
+        {
+            "_id": 0,
+            "id": 1,
+            "nome": 1,
+            "nome_display": 1,
+            "nome_verificato": 1,
+            "descrizione": 1,
+            "descrizione_lunga": 1,
+            "codice": 1,
+            "codice_articolo": 1,
+            "codice_aqv_2025": 1,
+            "codice_aqv_2026": 1,
+            "codici_alias": 1,
+            "alias_fattura": 1,
+        },
+    ).to_list(5000)
     for fattura in fatture:
         for riga in fattura.get("prodotti") or []:
             descrizione = riga.get("descrizione") or riga.get("description") or riga.get("nome")
-            digest = _digest_vdm(descrizione)
-            if digest not in attese:
+            identita, _prodotto = identita_riga(str(descrizione or ""), riga, catalogo)
+            digest_canonico = digest_identita(identita)
+            digest_storico = _digest_vdm(descrizione)
+            digest_trovati = {digest_canonico, digest_storico} & attese
+            if not digest_trovati:
                 continue
             riferimento = {
                 "fattura_id": str(fattura.get("id") or ""),
@@ -73,8 +98,9 @@ async def _fatture_vandemoortele_per_chiavi(chiavi: Iterable[str]) -> dict[str, 
                 "descrizione_riga": str(descrizione or ""),
                 "codice_articolo": str(riga.get("codice_articolo") or riga.get("codice") or ""),
             }
-            if riferimento not in esito[digest]:
-                esito[digest].append(riferimento)
+            for digest in digest_trovati:
+                if riferimento not in esito[digest]:
+                    esito[digest].append(riferimento)
     return esito
 
 
