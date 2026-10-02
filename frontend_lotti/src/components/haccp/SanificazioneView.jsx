@@ -304,8 +304,8 @@ const SanificazioneView = () => {
                   <tr>
                     <th className="px-3 py-2 text-left font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[60px]">Giorno</th>
                     {frigoriferiSan.map((a) => (
-                      <th key={a.numero} className="px-1 py-2 text-center font-medium text-gray-600 min-w-[55px]" title={a.nome}>
-                        <span className="text-xs">Frigo</span><br/>{a.numero}
+                      <th key={a.numero} className="px-2 py-2 text-center font-medium text-gray-700 min-w-[150px]" title={a.nome}>
+                        <span className="block text-xs leading-tight whitespace-normal">{a.nome}</span>
                       </th>
                     ))}
                   </tr>
@@ -363,8 +363,8 @@ const SanificazioneView = () => {
                   <tr>
                     <th className="px-3 py-2 text-left font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[60px]">Giorno</th>
                     {congelatoriSan.map((a) => (
-                      <th key={a.numero} className="px-1 py-2 text-center font-medium text-gray-600 min-w-[55px]" title={a.nome}>
-                        <span className="text-xs">Cong</span><br/>{a.numero}
+                      <th key={a.numero} className="px-2 py-2 text-center font-medium text-gray-700 min-w-[170px]" title={a.nome}>
+                        <span className="block text-xs leading-tight whitespace-normal">{a.nome}</span>
                       </th>
                     ))}
                   </tr>
