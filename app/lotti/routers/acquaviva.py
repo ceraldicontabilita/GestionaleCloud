@@ -34,11 +34,37 @@ ACQUAVIVA_HEADERS = {
 }
 
 _LISTINO_2026_PATH = Path(__file__).resolve().parent.parent / "data" / "listino_acquaviva_vandemoortele_2026.json"
+_SCRAPING_ACQUAVIVA_PROCESSO = uuid.uuid4().hex
+_scraping_acquaviva_attivo = False
 _ALIAS_FATTURA_PER_CODICE = {
-    "57216": ["AQV CROI STR CIN CRM BTR 95G 4.94KG", "CROISSANT DRITTO CREMA CANNELLA BURRO G. 95"],
-    "57356": ["AQV CROI STR PSTCH BTR 95G 4.94KG", "CROISSANT DRITTO PISTACCHIO BURRO 95G SG"],
-    "60935": ["AQV CRNT VGN STR ORANGE 80G 3.6KG", "CORNETTO VEGANO DRITTO ALL'ARANCIA"],
     "57245": ["AQV BABY CRNT CALI STRA 35G 3.15KG", "BABY CORNETTO CALISE DRITTO VUOTO"],
+    "57380": ["AQV CARUSO SICILIAN LMN CR 90G 4.95KG"],
+    "CI0004L": ["AQV CMBLL MAXI SUGARED 100G 3KG", "CIAMBELLA MAXI ZUCCHERATA G. 100"],
+    "CI0002": ["AQV CMBLL MINI SUGARED 22G 2.64KG", "CIAMBELLA MINI ZUCCHERATA G. 22/25"],
+    "57408": ["AQV CODA D'ARAGOSTA 100G 7.5KG"],
+    "57406": ["AQV CODA D'ARAGOSTA MGN 29G 7KG", "CODA D'ARAGOSTA MIG.GR.28/30"],
+    "62020": ["AQV CORNETTO VEG BLACK AI FDB 80G 3,84KG"],
+    "62018": ["AQV CORNETTO VEG CURCUMA VUOTO 75G 4,6KG"],
+    "60944": ["AQV CRNT CALI STRA 95G 3.8KG", "CORNETTO CALISE DRITTO VUOTO 95G SG"],
+    "60945": ["AQV CRNT CALI STRA CREA 105G 4.2KG"],
+    "60933": ["AQV CRNT CURVED MLTCER BER 80G 4.16KG", "CORNETTO CURVO MULTICEREALI FRUTTI DI"],
+    "57184": ["AQV CRNT STR MLTCER HONEY 80G 4.48KG", "CORNETTO DRITTO MULTIC. AL MIELE PREL."],
+    "57177": ["AQV CRNT STR WHML 65G 4.03KG", "CORNETTO DRITTO INTGRALE VUOTO 65G S.G."],
+    "60934": ["AQV CRNT VGN CURVED 70G 3.64KG", 'CORNETTO "VEGANO" CURVO VUOTO G. 70 SG'],
+    "57204": ["AQV CRNT VGN POM & OATS 85G 3.825KG", "CORNETTO VEGANO MELAGRANA E AVENA G. 85"],
+    "60935": ["AQV CRNT VGN STR ORANGE 80G 3.6KG", "CORNETTO VEGANO DRITTO ALL'ARANCIA"],
+    "60937": ["AQV CROI DRMI STR PSTCH 95G 4.94KG"],
+    "57216": ["AQV CROI STR CIN CRM BTR 95G 4.94KG", "CROISSANT DRITTO CREMA CANNELLA BURRO G."],
+    "57356": ["AQV CROI STR PSTCH BTR 95G 4.94KG", "CROISSANT DRITTO PISTACCHIO BURRO 95G SG"],
+    "57363": ["AQV GRAN CRNT CARUSO CRVD 85G 3.825KG", "GRAN CORNETTO CARUSO CURVO VUOTO GLASSAT"],
+    "57629": ["AQV SFOGLIATELLA FROLLA MI 35G 7KG", "SFOGLIAT.FROLLA MIGNON GR.30"],
+    "57625": ["AQV SFOGLIATELLA NAPOLETAN 35G 7KG", "SFOGL.NAP.MIGNON GR.30"],
+    "57557": ["AQV SOFIA 82G 4.592KG"],
+    "57659": ["AQV TAPPI GRANDI 57G 6KG", "TAPPI GRANDI G 55/60"],
+    "57657": ["AQV TAPPI MIGNON FOR SFOGL 20G 4KG", "TAPPI MIGNON PER SFOGLIATE GR.20"],
+    "SGC001": ["CORNETTO SENZA GLUTINE VUOTO G. 100"],
+    "SGC002": ["CORNETTO SENZA GLUTINE ALBICOCCA G. 100"],
+    "57530": ["PANCAKE G. 40"],
 }
 
 
@@ -72,7 +98,6 @@ async def inizializza_mapping_vandemoortele_2026() -> dict:
             continue
         grammi = float(riga.get("grammi") or 0)
         pezzi = float(riga.get("qty_cartone") or 0)
-        alias = _ALIAS_FATTURA_PER_CODICE.get(nuovo, [])
         campi = {
             "codice_aqv_2025": vecchio,
             "codice_aqv_2026": nuovo,
@@ -86,12 +111,27 @@ async def inizializza_mapping_vandemoortele_2026() -> dict:
             "data_listino": "2026-01-01",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        if alias:
-            campi["alias_fattura"] = alias
         operazioni.append(UpdateOne({"id": prodotto["id"]}, {"$set": campi}))
+    aggiornati_listino = len(operazioni)
+    # Alcune referenze storiche non sono nel listino JSON corrente ma sono gia'
+    # presenti nel catalogo web. Le colleghiamo solo tramite il codice ufficiale.
+    for codice, alias in _ALIAS_FATTURA_PER_CODICE.items():
+        prodotto = lookup.get(codice.upper())
+        if not prodotto or not prodotto.get("id"):
+            continue
+        operazioni.append(
+            UpdateOne(
+                {"id": prodotto["id"]},
+                {"$addToSet": {"alias_fattura": {"$each": alias}}},
+            )
+        )
     if operazioni:
         await db.acquaviva_prodotti.bulk_write(operazioni, ordered=False)
-    return {"aggiornati": len(operazioni), "righe_listino": len(payload.get("prodotti", []))}
+    return {
+        "aggiornati": aggiornati_listino,
+        "alias_aggiornati": len(operazioni) - aggiornati_listino,
+        "righe_listino": len(payload.get("prodotti", [])),
+    }
 
 ACQUAVIVA_CATEGORIE = [
     {"nome": "Prelievitati", "img": ""},
@@ -614,10 +654,18 @@ async def dettaglio_prodotto_acquaviva(url: str = Query(...)):
 
 
 async def _esegui_scraping_acquaviva(con_dettagli: bool = False):
+    global _scraping_acquaviva_attivo
+    _scraping_acquaviva_attivo = True
     iniziato = datetime.now(timezone.utc).isoformat()
     await db.sync_status.update_one(
         {"_id": "scraping_acquaviva"},
-        {"$set": {"stato": "in_corso", "iniziato": iniziato, "errore": ""}},
+        {"$set": {
+            "stato": "in_corso",
+            "iniziato": iniziato,
+            "errore": "",
+            "processo": _SCRAPING_ACQUAVIVA_PROCESSO,
+            "con_dettagli": con_dettagli,
+        }},
         upsert=True,
     )
     importati = aggiornati = pagine = 0
@@ -681,6 +729,10 @@ async def _esegui_scraping_acquaviva(con_dettagli: bool = False):
                         importati += 1
                 await asyncio.sleep(0.35)
 
+        # Le schede create durante questo aggiornamento devono ricevere subito
+        # i codici e gli alias fattura: in questo modo il menu hotel usa il nome
+        # ufficiale senza attendere un riavvio dell'applicazione.
+        await inizializza_mapping_vandemoortele_2026()
         fine = datetime.now(timezone.utc).isoformat()
         log = {
             "fonte": "acquaviva",
@@ -712,6 +764,8 @@ async def _esegui_scraping_acquaviva(con_dettagli: bool = False):
             }},
             upsert=True,
         )
+    finally:
+        _scraping_acquaviva_attivo = False
 
 
 @router.post("/scraping/avvia")
@@ -720,11 +774,22 @@ async def avvia_scraping_acquaviva(
     con_dettagli: bool = Query(False),
     _admin=Depends(require_admin),
 ):
+    global _scraping_acquaviva_attivo
     stato = await db.sync_status.find_one({"_id": "scraping_acquaviva"}, {"_id": 0})
-    if stato and stato.get("stato") == "in_corso":
+    stesso_processo = (stato or {}).get("processo") == _SCRAPING_ACQUAVIVA_PROCESSO
+    if _scraping_acquaviva_attivo or (
+        stato and stato.get("stato") == "in_corso" and stesso_processo
+    ):
         return {"avviato": False, "messaggio": "Aggiornamento Acquaviva già in corso"}
+    # Uno stato in_corso appartenente a un altro processo indica che un deploy
+    # ha interrotto il task. Lo si puo' riprendere senza interventi sul DB.
+    _scraping_acquaviva_attivo = True
     background_tasks.add_task(_esegui_scraping_acquaviva, con_dettagli)
-    return {"avviato": True, "messaggio": "Aggiornamento Acquaviva avviato"}
+    return {
+        "avviato": True,
+        "ripreso": bool(stato and stato.get("stato") == "in_corso"),
+        "messaggio": "Aggiornamento Acquaviva avviato",
+    }
 
 
 @router.get("/scraping/stato")
@@ -734,11 +799,19 @@ async def stato_scraping_acquaviva():
         {"fonte": "acquaviva"}, {"_id": 0}, sort=[("data", -1)]
     )
     totale = await db.acquaviva_prodotti.count_documents({"fonte": "acquaviva"})
+    stato_visibile = (stato or {}).get("stato", "mai_eseguito")
+    errore = (stato or {}).get("errore", "")
+    if (
+        stato_visibile == "in_corso"
+        and (stato or {}).get("processo") != _SCRAPING_ACQUAVIVA_PROCESSO
+    ):
+        stato_visibile = "interrotto"
+        errore = "Aggiornamento interrotto da un riavvio: puo' essere ripreso."
     return {
         "prodotti_nel_db": totale,
         "ultimo_scraping": ultimo,
-        "stato": (stato or {}).get("stato", "mai_eseguito"),
-        "errore": (stato or {}).get("errore", ""),
+        "stato": stato_visibile,
+        "errore": errore,
     }
 
 

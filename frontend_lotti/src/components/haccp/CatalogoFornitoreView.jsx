@@ -595,7 +595,9 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
     if (!statoScraping || autoAvvioTentato.current) return;
     if (Number(statoScraping.prodotti_nel_db || 0) === 0 && statoScraping.stato !== "in_corso") {
       autoAvvioTentato.current = true;
-      axios.post(`${API}/${fornitore}/scraping/avvia`).then(() => {
+      axios.post(`${API}/${fornitore}/scraping/avvia`, null, {
+        params: fornitore === "acquaviva" ? { con_dettagli: true } : undefined,
+      }).then(() => {
         setStatoScraping(prev => ({ ...(prev || {}), stato: "in_corso" }));
       }).catch(() => {});
     }
@@ -672,7 +674,9 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   const handleAvviaScraping = async () => {
     setScrapingInCorso(true);
     try {
-      await axios.post(`${API}/${fornitore}/scraping/avvia`);
+      await axios.post(`${API}/${fornitore}/scraping/avvia`, null, {
+        params: fornitore === "acquaviva" ? { con_dettagli: true } : undefined,
+      });
       toast.success(`Aggiornamento ${nome} avviato in background: puoi continuare a lavorare`, { duration: 6000 });
       setStatoScraping(prev => ({ ...(prev || {}), stato: "in_corso" }));
     } catch { toast.error("Errore avvio scraping"); }

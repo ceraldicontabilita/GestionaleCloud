@@ -1,4 +1,6 @@
 -- Colazioni B&B · correzioni dell'audit del 02/10/2026 (difetti 2-7, 9-13 e geolocalizzazione).
+-- Va applicata DOPO supabase-24 e supabase-25 (Codex, 02/10): bb_alb_login e bb_hotel_info qui conservano
+-- il rifiuto delle strutture demo e il campo `demo` di v24.
 -- Idempotente: solo `create or replace`, `add column if not exists`, `drop function if exists`.
 -- Nessuna tabella viene eliminata. Dopo l'applicazione PostgREST ricarica lo schema (notify in coda).
 --
@@ -109,6 +111,8 @@ begin
  select * into s from public.bb_strutture where accesso=lower(trim(coalesce(paccesso,'')));
  if found and s.disattivata_il is not null then return json_build_object('ok',false,'msg','Struttura disattivata: contatta il bar'); end if;
  if not found or s.pin_hash is null then return json_build_object('ok',false,'msg','Accesso non ancora attivato'); end if;
+ -- v24: una struttura demo deve prima registrare il gestore (invito), mai entrare col PIN di prova
+ if s.demo then return json_build_object('ok',false,'registrazione_richiesta',true,'msg','Registrati con il link condiviso dal bar e scegli il tuo PIN personale'); end if;
  k := 'alb:'||s.accesso; ki := public.bb_chiave_ip();
  sec := greatest(public.bb_blocco(k),coalesce(public.bb_blocco(ki),0));
  if sec>0 then return json_build_object('ok',false,'bloccato',sec,'msg','Troppi tentativi: riprova tra '||ceil(sec/60.0)::int||' minuti'); end if;
@@ -151,7 +155,7 @@ grant execute on function public.bb_alb_recupera(text,text,text) to anon, authen
 
 create or replace function public.bb_hotel_info(codice text) returns json language sql security definer set search_path=public as $$
  select json_build_object('id',id,'nome',nome,'sfondo',sfondo,'benvenuto',benvenuto,
-   'attivo',(pin_hash is not null and disattivata_il is null),'disattivata',(disattivata_il is not null),
+   'attivo',(pin_hash is not null and disattivata_il is null),'disattivata',(disattivata_il is not null),'demo',demo,
    'pin_off',public.bb_pin_off(),'bar',public.bb_bar_pubblico())
  from public.bb_strutture where accesso=lower(trim(codice)) $$;
 revoke all on function public.bb_hotel_info(text) from public;

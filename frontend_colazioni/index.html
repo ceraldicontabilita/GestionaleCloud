@@ -38,6 +38,7 @@ label{font-size:13px;color:var(--mute);font-weight:600}
 .tabs{display:flex;gap:6px;overflow-x:auto;margin:6px 0 10px}
 .tabs button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;border-radius:99px;font-size:14px}
 .tabs button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.hotel-tabs{position:sticky;top:58px;z-index:4;background:color-mix(in srgb,var(--bg) 94%,transparent);padding:7px 0;backdrop-filter:blur(10px)}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;border-bottom:1px solid var(--line);text-align:left}
 .qr{display:flex;justify-content:center;padding:14px;background:#fff;border-radius:14px}
 .alert{border-left:5px solid var(--warn);background:var(--card);border-radius:10px;padding:10px 12px;margin:8px 0}
@@ -97,6 +98,14 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .service-choice{display:inline-flex;gap:3px;padding:3px;background:var(--bg);border:1px solid var(--line);border-radius:12px;white-space:nowrap}
 .service-choice button{border:0;background:transparent;color:var(--mute);padding:7px 9px;border-radius:9px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
 .service-choice button.on{background:var(--brand);color:#fff;box-shadow:0 2px 7px rgba(0,0,0,.14)}
+.booking-room{border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;background:linear-gradient(145deg,var(--card),color-mix(in srgb,var(--card) 88%,var(--brand2)))}
+.booking-room-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.booking-room-head h4{margin:0;font-size:19px}.booking-room-total{font-size:20px;font-weight:800;color:var(--brand);white-space:nowrap}
+.booking-room-grid{display:grid;grid-template-columns:minmax(120px,.7fr) minmax(190px,1.3fr);gap:12px;align-items:end}
+.booking-room .stepper{min-height:46px}.booking-room .stepper button{width:40px;height:40px}
+.booking-room .service-choice{display:grid;grid-template-columns:1fr 1fr;width:100%;margin-top:5px}
+.booking-room .service-choice button{min-height:44px;white-space:normal}
+.booking-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}.booking-actions .btn{width:100%;min-height:50px}
 .nap-guide{overflow:hidden;padding:0}
 .nap-hero{padding:18px;background:linear-gradient(135deg,#063f4d,#14788a);color:#fff}
 .nap-hero h3{font-size:20px}.nap-hero p{margin:5px 0 0;color:#d8f4f5;font-size:14px}
@@ -114,7 +123,12 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .morning-card{position:relative}.morning-card .stepper{margin-top:8px}.morning-card.in-cart{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
 .morning-cart{position:sticky;bottom:74px;z-index:4;box-shadow:0 8px 30px rgba(0,0,0,.18)}
 .order-line{padding:7px 0;border-bottom:1px solid var(--line)}
-@media(max-width:620px){.catalog-tools{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px 1fr}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}}
+@media(max-width:620px){
+ main{padding-left:12px;padding-right:12px}.catalog-tools{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px 1fr}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}
+ .hotel-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;margin-left:-4px;margin-right:-4px;top:56px}
+ .hotel-tabs button{width:100%;min-width:0;padding:8px 4px;border-radius:11px;font-size:11px;line-height:1.15;white-space:normal;min-height:42px}
+ .booking-room-grid{grid-template-columns:1fr}.booking-room-head{align-items:flex-start}.booking-room{padding:12px}
+}
 .review-hero{padding:26px 18px;background:linear-gradient(145deg,var(--brand),#a4492b);color:#fff;border-radius:var(--r);margin-bottom:12px}
 .review-hero h2{font-size:28px;line-height:1.08;letter-spacing:-.02em;margin:4px 0 10px}.review-hero p{margin:0;opacity:.9}
 .consent-box{border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}.consent-box h3{margin-bottom:5px}.consent-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.consent-actions .btn{min-height:44px}.consent-actions .chosen{background:var(--ok);border-color:var(--ok);color:#fff}
@@ -191,7 +205,7 @@ async function render(){
 function qr(el,text,size=200){el.innerHTML="";if(window.QRCode)new QRCode(el,{text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});else el.textContent=text}
 const base=()=>location.href.split("#")[0];
 const linkOspite=id=>base()+"#/ospite/"+id;
-const tabsHtml=(tabs,sec,pre)=>`<div class="tabs">${tabs.map(t=>`<button class="${t[0]===sec?"on":""}" onclick="go('#/${pre}/${t[0]}')">${t[1]}</button>`).join("")}<button onclick="esci()">Esci</button></div>`;
+const tabsHtml=(tabs,sec,pre)=>`<nav class="tabs ${pre==="albergatore"?"hotel-tabs":""}" aria-label="Sezioni ${pre}">${tabs.map(t=>`<button class="${t[0]===sec?"on":""}" onclick="go('#/${pre}/${t[0]}')">${t[1]}</button>`).join("")}<button onclick="esci()">Esci</button></nav>`;
 const camNome=v=>{const c=(v.camera||"").trim();if(!c)return v.ospite||"";return /^(camera|suite|stanza|appartamento|junior|room|studio|mansarda)\b/i.test(c)?c:"Camera "+c};
 const ospTxt=n=>`${n} ospit${n>1?"i":"e"}`;
 const descV=(v,prezzo=true)=>{const eu=prezzo&&v.fascia!=null?" · colazione da €"+String(v.fascia).replace(".",","):"";return v.camera?camNome(v)+" · "+ospTxt(v.ospiti||1)+eu:camNome(v)+eu};
@@ -310,6 +324,7 @@ async function hotelLogin(cod){
  if(!h){app.innerHTML=`<div class="card">Link non valido. Chiedi al bar di inviartene uno nuovo.</div>`;return}
  if(sess&&sess.r==="alb"&&sess.s===h.id){go("#/albergatore/home");return}
  if(h.disattivata){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">Questo accesso è stato disattivato dal bar. Per informazioni contatta ${esc((h.bar&&h.bar.bar_nome)||"il bar")}.</div>`;return}
+ if(h.demo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card"><h3>Registrazione del gestore richiesta</h3><p>Questo collegamento appartiene ancora ai dati di prova. Non inserire il PIN dimostrativo: chiedi al bar di condividere il link di registrazione, poi scegli il tuo PIN personale.</p></div>`;return}
  if(!h.attivo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">L'accesso non è ancora attivo. Usa il <b>link di invito</b> che ti ha inviato il bar.</div>`;return}
  app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card"><label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password"><button class="btn" id="lp_btn">Entra</button>
   <p style="text-align:center;margin:12px 0 0"><a href="#/recupero/${esc(cod)}">Ho perso il PIN</a></p></div>`;
@@ -354,7 +369,7 @@ async function invito(tok){
  $("#ttl").textContent="☕ Colazioni B&B";loading();
  const h=await rpc("bb_invito_info",{token:tok||""}).catch(()=>null);
  if(!h){app.innerHTML=`<div class="card">Invito non valido o già utilizzato. Se hai già attivato l'accesso, usa il tuo link personale; altrimenti chiedi al bar un nuovo invito.</div>`;return}
- app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto||"Benvenuto! Attiva il tuo accesso in pochi secondi.")+`<div class="card"><h3>Attiva il tuo accesso</h3><p class="mute">Scegli un PIN personale: ti servirà ogni volta che entri.</p>
+ app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto||"Benvenuto! Attiva il tuo accesso in pochi secondi.")+`<div class="card"><h3>Registrati come gestore</h3><p class="mute">Scegli un PIN personale: ti servirà ogni volta che entri. I PIN dimostrativi non sono accettati.</p>
  <label>PIN (almeno 4 caratteri)</label><input id="i_p" type="password" autocomplete="new-password"><label>Ripeti il PIN</label><input id="i_p2" type="password" autocomplete="new-password">
  <label>Indirizzo della struttura</label><input id="i_a" value="${esc(h.indirizzo)}"><label>Telefono</label><input id="i_t" type="tel" value="${esc(h.telefono)}"><label>Email</label><input id="i_e" type="email" value="${esc(h.email)}">
  <h3 style="margin-top:16px">🧾 Dati per la fattura</h3>${fiscaliForm({})}
@@ -362,6 +377,7 @@ async function invito(tok){
  $("#i_btn").onclick=()=>invitoOk(tok)}
 async function invitoOk(tok){
  const p=$("#i_p").value;if(p!==$("#i_p2").value)return toast("I due PIN non coincidono");
+ if(["1111","2222","3333"].includes(p))return toast("Scegli un PIN personale diverso da quello di prova");
  const r=await run("bb_invito_accetta",{token:tok,ppin:p,pindirizzo:$("#i_a").value,ptelefono:$("#i_t").value,pemail:$("#i_e").value});if(!r||r===true)return;
  const fd=fiscaliLeggi();
  if(Object.values(fd).some(x=>String(x).trim())){const q=await rpc("bb_alb_fiscali_salva",{sid:r.id,p:r.token,pdati:fd}).catch(e=>({ok:false,msg:e.message}));if(!q||!q.ok)toast("Dati per la fattura non salvati ("+((q&&q.msg)||"errore")+"): li completi dal Profilo")}
@@ -476,23 +492,24 @@ async function albProdotti(){
  if(!Array.isArray(prodotti))return;AP.prodotti=prodotti;AP.ordini=storico.ordini||[];AP.cart={};apDisegna();apStorico()}
 function apQ(i,d){const p=AP.prodotti[i];if(!p)return;AP.cart[i]=Math.max(0,Math.min(200,(AP.cart[i]||0)+d));if(!AP.cart[i])delete AP.cart[i];apDisegna()}
 function apDisegna(){const el=$("#alb_prodotti");if(!el)return;const righe=Object.entries(AP.cart),tot=righe.reduce((a,[i,q])=>a+q*Number(AP.prodotti[i].prezzo||0),0),pezzi=righe.reduce((a,[,q])=>a+q,0);
- el.innerHTML=(AP.prodotti.length?`<div class="catalog-grid">${AP.prodotti.map((p,i)=>`<article class="catalog-card morning-card ${AP.cart[i]?"in-cart":""}">${p.immagine?`<img loading="lazy" src="${esc(p.immagine)}" alt="${esc(p.nome)}" onerror="this.outerHTML='<div class=&quot;no-photo&quot;>Foto non disponibile</div>'">`:`<div class="no-photo">Foto non disponibile</div>`}<div><div class="catalog-origin">${esc(p.origine==="vandemoortele"?"Vandemoortele":p.origine==="senza_glutine"?"Senza glutine":"Produzione interna")}</div><b>${esc(p.nome)}</b>${p.descrizione?`<div class="mute">${esc(p.descrizione)}</div>`:""}${(p.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${p.allergeni.map(esc).join(", ")}</div>`:`<div class="mute">Allergeni non documentati: chiedere conferma al bar.</div>`}<div class="row"><div class="price" style="font-size:20px;margin-top:5px">${eur(p.prezzo)}</div><div class="stepper"><button onclick="apQ(${i},-1)">−</button><b>${AP.cart[i]||0}</b><button onclick="apQ(${i},1)">+</button></div></div></div></article>`).join("")}</div>`:`<div class="card"><p class="mute">Il bar non ha ancora pubblicato prodotti per questa struttura.</p></div>`)+
+ el.innerHTML=(AP.prodotti.length?`<div class="catalog-grid">${AP.prodotti.map((p,i)=>`<article class="catalog-card morning-card ${AP.cart[i]?"in-cart":""}">${p.immagine?`<img loading="lazy" src="${esc(p.immagine)}" alt="${esc(p.nome)}" onerror="this.remove()">`:""}<div><div class="catalog-origin">${esc(p.origine==="vandemoortele"?"Acquaviva":p.origine==="senza_glutine"?"Senza glutine":"Produzione interna")}</div><b>${esc(p.nome)}</b>${p.descrizione&&String(p.descrizione).trim().toLocaleLowerCase()!==String(p.nome).trim().toLocaleLowerCase()?`<div class="mute">${esc(p.descrizione)}</div>`:""}${(p.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${p.allergeni.map(esc).join(", ")}</div>`:""}<div class="row"><div class="price" style="font-size:20px;margin-top:5px">${eur(p.prezzo)}</div><div class="stepper"><button onclick="apQ(${i},-1)">−</button><b>${AP.cart[i]||0}</b><button onclick="apQ(${i},1)">+</button></div></div></div></article>`).join("")}</div>`:`<div class="card"><p class="mute">Il bar non ha ancora pubblicato prodotti per questa struttura.</p></div>`)+
  (pezzi?`<div class="card morning-cart"><div class="row"><div><b>🛒 ${pezzi} prodotti</b><div class="mute">Importo da pagare al bar</div></div><span class="price">${eur(tot)}</span></div><div class="filters" style="margin-top:9px"><div><label>Consegna richiesta</label><input id="ap_data" type="date" min="${ALB.oggi}" max="${addDays(ALB.oggi,30)}" value="${addDays(ALB.oggi,1)}"></div><div><label>Nota</label><input id="ap_nota" maxlength="500" placeholder="es. consegna entro le 07:00"></div></div><button class="btn" id="ap_send" onclick="apInvia()">Invia ordine al bar</button></div>`:"")}
 async function apInvia(){const righe=Object.entries(AP.cart).map(([i,q])=>({chiave:AP.prodotti[i].chiave,quantita:q}));if(!righe.length)return toast("Il carrello è vuoto");const b=$("#ap_send");b.disabled=true;
  const payload={sid:sess.s,p:sess.p,data_consegna:$("#ap_data").value,nota:$("#ap_nota").value,righe,idempotenza:(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random())};
  try{const r=await fetch("/api/colazioni/ordini-prodotti/albergatore",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Ordine non inviato");AP.cart={};toast("Ordine "+j.ordine.id+" inviato ✓");await albProdotti()}catch(e){toast(e.message);b.disabled=false}}
 function apStorico(){const el=$("#alb_ordini");if(!el)return;el.innerHTML=`<h2>I tuoi ordini prodotti</h2>`+(AP.ordini.length?AP.ordini.map(o=>`<div class="card"><div class="row"><div><b>${esc(o.id)} · consegna ${dmy(o.data_consegna)}</b><div class="mute">${esc(String(o.stato||"").replaceAll("_"," "))} · ${o.pagamento==="incassato"?"pagato":"da pagare"}</div></div><span class="price" style="font-size:20px">${eur(o.totale)}</span></div>${(o.righe||[]).map(r=>`<div class="order-line"><b>${r.quantita}× ${esc(r.nome)}</b> · ${eur(r.totale)}${(r.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${r.allergeni.map(esc).join(", ")}</div>`:""}${(r.lotti_associati||[]).length?`<div class="mute">Lotto: ${r.lotti_associati.map(x=>esc(x.numero_lotto||x.id)).join(", ")}</div>`:`<div class="mute">Tracciabilità: ${esc(String(r.tracciabilita_stato||"in verifica").replaceAll("_"," "))}</div>`}</div>`).join("")}${o.nota?`<p class="mute">Nota: ${esc(o.nota)}</p>`:""}</div>`).join(""):`<div class="card"><p class="mute">Nessun ordine prodotti inviato.</p></div>`)}
 /* --- nuova colazione: tutto in una pagina --- */
-let NR=[],DEF={};
+let NR=[],DEF={},NRSEL=-1;
 const colById=id=>ALB.colazioni.find(c=>c.id===id);
 const sup=()=>+(ALB.struttura.supp_tavolo||0);
 function nuovaHtml(){
  const oggi=ALB.oggi,C=ALB.camere,cols=ALB.colazioni;
  if(!cols.length)return `<div class="card"><h3>Nessuna colazione disponibile</h3><p class="mute">Il bar non ha ancora attivato le colazioni per la tua struttura. Contatta ${esc(ALB.bar.bar_nome||"il bar")}.</p></div>`;
  DEF={dal:oggi,al:oggi,col:cols[0].id};
- NR=C.map(c=>({camera:c.nome,ospiti:c.ospiti,dal:oggi,al:oggi,col:cols[0].id,on:false,tavolo:!!c.servizio_tavolo}));
+ NR=C.map(c=>({camera:c.nome,ospiti:c.ospiti,dal:oggi,al:oggi,col:cols[0].id,on:false,tavolo:!!c.servizio_tavolo}));NRSEL=-1;
+ if(!C.length){NR.push({camera:"",ospiti:2,dal:oggi,al:oggi,col:cols[0].id,on:true,libera:true,tavolo:false});NRSEL=0}
  const pre=[["Oggi",0],["Domani",1],["2 notti",2],["3 notti",3],["1 settimana",6]];
- return `<div class="card"><h3>1 · Periodo e colazione</h3><p class="mute">Imposta una volta sola: vale per tutte le camere. Poi, se serve, cambi la singola riga.</p>
+ return `<div class="card"><h3>1 · Periodo e colazione</h3><p class="mute">Imposta il periodo una volta: resta pronto anche quando passi alla camera successiva.</p>
   <div class="chips" style="margin-bottom:8px">${pre.map(p=>`<button class="btn sm sec" onclick="ntPre(${p[1]},${p[0]==="Domani"?1:0})">${p[0]}</button>`).join(" ")}</div>
   <div class="filters">
   <div><label>Dal</label><input id="n_dal" type="date" value="${oggi}" min="${oggi}" max="${addDays(oggi,ALB.config.anticipo)}" onchange="ntDef()"></div>
@@ -501,11 +518,10 @@ function nuovaHtml(){
   <div class="mute">Per ogni camera scegli <b>☕ Banco</b> oppure <b>🪑 Tavolo</b>. Solo Tavolo aggiunge ${eur(sup())} a persona per ogni colazione.</div>
   <div id="n_cd" class="mute"></div>
   ${ALB.config.limite_ora?`<div class="mute">Per il giorno stesso ordina entro le ${esc(ALB.config.limite_ora)} del giorno prima.</div>`:""}</div>
- <div class="card"><div class="row"><h3 style="margin:0">2 · Camere e ospiti</h3><span><button class="btn sm sec" onclick="selTutte(true)">Tutte</button> <button class="btn sm sec" onclick="selTutte(false)">Nessuna</button></span></div>
-  ${C.length?"":`<p class="mute">Non hai ancora inserito le camere: aggiungile qui sotto oppure <a href="#/albergatore/camere">salvale una volta per sempre</a>.</p>`}
-  <div class="scroll"><table id="nt"></table></div>
-  <button class="btn sm sec" onclick="NR.push({camera:'',ospiti:2,dal:DEF.dal,al:DEF.al,col:DEF.col,on:true,libera:true,tavolo:false});ntTab();ricalcNuova()">+ Camera non in elenco</button></div>
- <div class="card"><div class="row"><span class="mute" id="n_s"></span><span class="price" id="n_t"></span></div><div id="n_w"></div><button class="btn" id="n_b" onclick="doNuova()">Crea colazioni e QR</button></div>`}
+ <div class="card"><h3>2 · Camera e ospiti</h3><p class="mute">Seleziona e salva una camera alla volta. Per inserirne un'altra ripeti questo passaggio: non serve scorrere lateralmente.</p>
+  ${C.length?"":`<p class="mute">Non hai ancora inserito camere: scrivine una qui oppure <a href="#/albergatore/camere">salvala una volta per sempre</a>.</p>`}
+  <div id="nt"></div></div>
+ <div class="card"><div class="row"><span class="mute" id="n_s"></span><span class="price" id="n_t"></span></div><div id="n_w"></div><div class="booking-actions"><button class="btn" id="n_b" onclick="doNuova()">Salva questa camera e crea il QR</button></div></div>`}
 function ntPre(n,start){const oggi=ALB.oggi,d=addDays(oggi,start);$("#n_dal").value=d;$("#n_al").value=addDays(d,start?Math.max(0,n-1):n);ntDef()}
 function ntDef(){
  let d=$("#n_dal").value||ALB.oggi,a=$("#n_al").value||d;if(a<d)a=d;if(a>addDays(d,30))a=addDays(d,30);$("#n_al").value=a;$("#n_al").min=d;
@@ -514,32 +530,31 @@ function ntDef(){
  ntTab();ricalcNuova()}
 function ntRow(i,k,v){const r=NR[i];r[k]=v;if(k==="dal"&&r.al<v)r.al=v;if(k==="al"&&v<r.dal)r.dal=v;if(r.al>addDays(r.dal,30))r.al=addDays(r.dal,30);ntTab();ricalcNuova()}
 function rigaTot(r){const c=colById(r.col);return c?(c.prezzo+(r.tavolo?sup():0))*r.ospiti*nGiorni(r.dal,r.al):0}
+function ntScegliCamera(v){
+ if(v==="nuova"){NR.push({camera:"",ospiti:2,dal:DEF.dal,al:DEF.al,col:DEF.col,on:true,libera:true,tavolo:false});NRSEL=NR.length-1}
+ else NRSEL=Number(v);
+ NR.forEach((r,i)=>r.on=i===NRSEL);ntTab();ricalcNuova()}
 function ntTab(){
- const oggi=ALB.oggi,mx=addDays(oggi,ALB.config.anticipo);
-  $("#nt").innerHTML=`<tr><th></th><th>Camera</th><th>Ospiti</th><th>Dal</th><th>Al</th><th>Colazione</th><th>Servizio</th><th style="text-align:right">Totale</th></tr>`+NR.map((r,i)=>`<tr style="${r.on?"":"opacity:.55"}"><td><input type="checkbox" ${r.on?"checked":""} onchange="NR[${i}].on=this.checked;ntTab();ricalcNuova()" style="width:auto;margin:0"></td>
-  <td>${r.libera?`<input value="${esc(r.camera)}" placeholder="Camera" oninput="NR[${i}].camera=this.value" style="margin:0;min-width:100px">`:`<b>${esc(r.camera)}</b>`}</td>
-  <td><div class="stepper"><button onclick="ntOsp(${i},-1)">−</button><b>${r.ospiti}</b><button onclick="ntOsp(${i},1)">+</button></div></td>
-  <td><input type="date" value="${r.dal}" min="${oggi}" max="${mx}" onchange="ntRow(${i},'dal',this.value||'${oggi}')" style="margin:0;min-width:130px"></td>
-  <td><input type="date" value="${r.al}" min="${r.dal}" onchange="ntRow(${i},'al',this.value||'${r.dal}')" style="margin:0;min-width:130px"></td>
-  <td><select onchange="ntRow(${i},'col',this.value)" style="margin:0">${ALB.colazioni.map(c=>`<option value="${c.id}" ${c.id===r.col?"selected":""}>${esc(c.nome)} · ${eur(c.prezzo+(r.tavolo?sup():0))}</option>`).join("")}</select></td>
-  <td><div class="service-choice" role="group" aria-label="Servizio per ${esc(r.camera||"camera")}"><button type="button" class="${r.tavolo?"":"on"}" aria-pressed="${r.tavolo?"false":"true"}" onclick="ntServ(${i},false)">☕ Banco</button><button type="button" class="${r.tavolo?"on":""}" aria-pressed="${r.tavolo?"true":"false"}" onclick="ntServ(${i},true)">🪑 Tavolo +${eur(sup())}</button></div></td>
-  <td style="text-align:right;white-space:nowrap">${r.on?eur(rigaTot(r)):"–"}</td></tr>`).join("")}
+ const el=$("#nt");if(!el)return;const r=NRSEL>=0?NR[NRSEL]:null;
+ el.innerHTML=`<label for="n_cam">Camera</label><select id="n_cam" onchange="ntScegliCamera(this.value)"><option value="" ${NRSEL<0?"selected":""} disabled>Scegli una camera…</option>${NR.map((x,i)=>`<option value="${i}" ${i===NRSEL?"selected":""}>${esc(x.camera||"Camera non in elenco")}</option>`).join("")}<option value="nuova">+ Camera non in elenco</option></select>`+
+ (r?`<section class="booking-room" aria-label="Dettagli camera selezionata"><div class="booking-room-head"><div>${r.libera?`<label for="n_cam_nome">Nome camera</label><input id="n_cam_nome" value="${esc(r.camera)}" placeholder="es. Camera 12" oninput="NR[${NRSEL}].camera=this.value" style="margin:3px 0 0">`:`<h4>${esc(r.camera)}</h4><div class="mute">Periodo scelto sopra</div>`}</div><div class="booking-room-total">${eur(rigaTot(r))}</div></div>
+ <div class="booking-room-grid"><div><label>Ospiti</label><div class="stepper"><button type="button" aria-label="Diminuisci ospiti" onclick="ntOsp(${NRSEL},-1)">−</button><b>${r.ospiti}</b><button type="button" aria-label="Aumenta ospiti" onclick="ntOsp(${NRSEL},1)">+</button></div></div><div><label for="n_cam_col">Colazione</label><select id="n_cam_col" onchange="ntRow(${NRSEL},'col',this.value)" style="margin:3px 0 0">${ALB.colazioni.map(c=>`<option value="${c.id}" ${c.id===r.col?"selected":""}>${esc(c.nome)} · ${eur(c.prezzo+(r.tavolo?sup():0))}</option>`).join("")}</select></div></div>
+ <label>Servizio</label><div class="service-choice" role="group" aria-label="Servizio per ${esc(r.camera||"camera")}"><button type="button" class="${r.tavolo?"":"on"}" aria-pressed="${r.tavolo?"false":"true"}" onclick="ntServ(${NRSEL},false)">☕ Banco</button><button type="button" class="${r.tavolo?"on":""}" aria-pressed="${r.tavolo?"true":"false"}" onclick="ntServ(${NRSEL},true)">🪑 Tavolo +${eur(sup())}</button></div></section>`:`<div class="hint">Scegli la camera da prenotare. Dopo il salvataggio potrai passare subito alla successiva.</div>`)}
 function ntOsp(i,d){NR[i].ospiti=Math.min(10,Math.max(1,NR[i].ospiti+d));ntTab();ricalcNuova()}
 function ntServ(i,v){NR[i].tavolo=!!v;ntTab();ricalcNuova()}
-function selTutte(v){NR.forEach(r=>r.on=v);ntTab();ricalcNuova()}
 function ricalcNuova(){
- const on=NR.filter(r=>r.on),pers=on.reduce((a,r)=>a+r.ospiti,0),tot=on.reduce((a,r)=>a+rigaTot(r),0),dopo=ALB.struttura.saldo-tot;
- $("#n_t").textContent=eur(tot);$("#n_s").textContent=`${on.length} camere · ${pers} ospiti · saldo dopo: ${eur(dopo)}`;
+ const on=NRSEL>=0&&NR[NRSEL]?[NR[NRSEL]]:[],pers=on.reduce((a,r)=>a+r.ospiti,0),tot=on.reduce((a,r)=>a+rigaTot(r),0),dopo=ALB.struttura.saldo-tot;
+ $("#n_t").textContent=on.length?eur(tot):"";$("#n_s").textContent=on.length?`${pers} ospiti · saldo dopo: ${eur(dopo)}`:"Scegli una camera";
  $("#n_w").innerHTML=dopo<0?`<div class="alert bad">Saldo insufficiente: mancano ${eur(-dopo)}. <a href="#/albergatore/borsellino">Ricarica il borsellino</a></div>`:""}
 async function doNuova(){
- const righe=NR.filter(r=>r.on).map(r=>({camera:r.camera.trim(),ospiti:r.ospiti,dal:r.dal,al:r.al,colazione_id:r.col,servizio_tavolo:!!r.tavolo}));
- if(!righe.length)return toast("Seleziona almeno una camera");
+ const righe=NRSEL>=0&&NR[NRSEL]?[NR[NRSEL]].map(r=>({camera:r.camera.trim(),ospiti:r.ospiti,dal:r.dal,al:r.al,colazione_id:r.col,servizio_tavolo:!!r.tavolo})):[];
+ if(!righe.length)return toast("Seleziona una camera");
  if(righe.some(r=>!r.camera))return toast("Scrivi il nome della camera");
  $("#n_b").disabled=true;
  const r=await run("bb_alb_crea_soggiorni",{sid:sess.s,p:sess.p,righe});
  if(!r){$("#n_b").disabled=false;return}
  ALB=await run("bb_alb_stato",{sid:sess.s,p:sess.p});
- if(r.creati.length===1)return mostraQR(r.creati[0].id);
+ if(r.creati.length===1)return mostraQR(r.creati[0].id,true);
  const ids=r.creati.map(c=>c.id);
  app.innerHTML=`<div class="card"><h3>${ids.length} colazioni create · ${eur(r.totale)}</h3><p class="mute">Ogni camera ha il suo QR da inviare all'ospite.</p><button class="btn" onclick='stampaIds(${JSON.stringify(ids)})'>🖨 Stampa tutti i QR</button> <button class="btn sec" onclick="go('#/albergatore/lista')">Vai all'elenco</button></div>`+
   r.creati.map(c=>`<div class="card row"><div><b>${esc(camNome({camera:c.camera,ospite:c.nome}))}</b></div><button class="btn sm sec" onclick="mostraQR('${c.id}')">QR</button></div>`).join("")}
@@ -560,13 +575,13 @@ async function ricaricaSumup(imp){
  const r=await run("bb_alb_ricarica_sumup",{sid:sess.s,p:sess.p,imp:i,ret:base()+"#/albergatore/borsellino"});
  if(r&&r.url)location.href=r.url}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
-async function mostraQR(id){
+async function mostraQR(id,continua=false){
  const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id),token=await run("bb_alb_recensioni_link",{sid:sess.s,p:sess.p});if(!token)return;
  const rec=fonte=>base()+"#/recensioni/"+token+"/"+fonte,wa=rec("whatsapp"),nfc=rec("nfc");
  app.innerHTML=`<div class="card" style="text-align:center"><h3>${esc(descV(v,false))}</h3><p class="mute">${dRange(v)}</p><div class="qr" id="qrbox"></div>
  <p><b style="letter-spacing:2px;font-size:20px">${id}</b></p>
  <button class="btn" id="sh">💬 Invia al cliente con WhatsApp</button> <button class="btn sec" id="nfc">📱 Copia link per NFC</button> <button class="btn sec" onclick="stampaIds(['${id}'])">🖨 Stampa</button>
- <button class="btn sec" onclick="go('#/albergatore/lista')">Chiudi</button></div>
+ <button class="btn sec" onclick="go('${continua?"#/albergatore/nuova":"#/albergatore/lista"}')">${continua?"Continua con una nuova camera":"Chiudi"}</button></div>
  <div class="card" style="text-align:center"><h3>Accesso recensioni e consensi</h3><p class="mute">Il cliente sceglie separatamente posizione e invito WhatsApp; nessuna opzione è preselezionata.</p><div class="qr" id="recqr"></div><button class="btn sm sec" id="nfcrec">⭐ Copia link recensioni</button></div>`;
  qr($("#qrbox"),l);
  qr($("#recqr"),nfc,160);
@@ -987,25 +1002,27 @@ async function invitaCrea(){
  go("#/titolare/invito/"+r.id)}
 function pInvito(id){
  const s=TIT.strutture.find(x=>x.id===id);if(!s)return `<div class="card">Struttura non trovata.</div>`;
+ const registrazione=s.demo||!!s.invito_token||!s.attivo;
  return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2><span class="pill ${s.attivo?"p-ok":"p-warn"}">${s.attivo?"attivo":"in attesa di attivazione"}</span></div>
- ${s.invito_token?`<div class="card"><h3>📨 Invito da inviare</h3><p class="mute">Il B&B apre il link, sceglie il suo PIN e attiva l'accesso. Puoi modificare il messaggio prima di inviarlo.</p>
-  <textarea id="inv_t" rows="4">${esc(msgInvito(s,linkInvito(s)))}</textarea>
-  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px"><button class="btn" onclick="invSend('wa','${id}')">💬 WhatsApp</button><button class="btn sec" onclick="invSend('mail','${id}')">✉️ Email</button><button class="btn sec" onclick="invSend('copia','${id}')">Copia messaggio</button><button class="btn sec" onclick="invSend('share','${id}')">Condividi…</button></div>
-  <div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(linkInvito(s))}</p></div></div>`:""}
- ${!s.invito_token?`<div class="card"><h3>📨 Condividi l'app con ${esc(s.nome)}</h3><p class="mute">Manda il link personale: l'albergatore entra con il suo PIN. Puoi cambiare il messaggio prima di inviarlo.</p>
-  <textarea id="acc_t" rows="4">${esc(msgAccesso(s,linkHotel(s)))}</textarea>
-  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px"><button class="btn" onclick="invSend('wa','${id}','acc_t')">💬 WhatsApp</button><button class="btn sec" onclick="invSend('mail','${id}','acc_t')">✉️ Email</button><button class="btn sec" onclick="invSend('copia','${id}','acc_t')">Copia messaggio</button><button class="btn sec" onclick="invSend('share','${id}','acc_t')">Condividi…</button><button class="btn sec" onclick="stampaAccesso('${id}')">🖨 Stampa QR</button></div>
+ ${registrazione?`<div class="card"><h3>Registrazione del gestore</h3><p class="mute">Condividi l'invito: il gestore si registra e sceglie un PIN personale. Non deve usare il PIN di prova.</p>
+  <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
+  ${s.invito_token?`<div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(linkInvito(s))}</p></div>`:`<p class="mute">Il link di registrazione verrà creato quando tocchi Condividi.</p>`}</div>`:""}
+ ${!registrazione?`<div class="card"><h3>Condividi l'accesso con ${esc(s.nome)}</h3><p class="mute">Il gestore è già registrato: questo collegamento apre l'accesso con il suo PIN personale.</p>
+  <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
   <div style="text-align:center;margin-top:12px"><div class="qr" id="accqr2" style="display:inline-flex"></div></div></div>`:""}
- <div class="card"><h3>🔗 Link di accesso personale</h3><p class="mute">È il link che il B&B userà ogni volta per entrare (con il suo PIN). Mostra solo il nome del suo albergo.</p><p style="word-break:break-all">${esc(linkHotel(s))}</p>
-  <button class="btn sm sec" id="acc_copy">Copia link</button> <a class="btn sm sec" style="text-decoration:none;display:inline-block" href="${linkHotel(s)}" target="_blank" rel="noopener">Apri come lo vede il B&B</a></div>
+ ${!s.demo?`<div class="card"><h3>🔗 Link di accesso personale</h3><p class="mute">È il link che il B&B userà ogni volta per entrare (con il suo PIN). Mostra solo il nome del suo albergo.</p><p style="word-break:break-all">${esc(linkHotel(s))}</p>
+  <button class="btn sm sec" id="acc_copy">Copia link</button> <a class="btn sm sec" style="text-decoration:none;display:inline-block" href="${linkHotel(s)}" target="_blank" rel="noopener">Apri come lo vede il B&B</a></div>`:""}
  <div class="card"><h3>${s.attivo?"PIN dimenticato?":"Invito scaduto o perso?"}</h3><p class="mute">Crea un nuovo invito: chi lo apre potrà scegliere un nuovo PIN.</p><button class="btn sec" onclick="invRigenera('${id}')">Genera un nuovo invito</button></div>`}
 pInvito.after=id=>{const s=TIT.strutture.find(x=>x.id===id);if(!s)return;const e=$("#invqr");if(e&&s.invito_token)qr(e,linkInvito(s),150);const a=$("#accqr2");if(a&&!s.invito_token)qr(a,linkHotel(s),150);const c=$("#acc_copy");if(c)c.onclick=()=>navigator.clipboard.writeText(linkHotel(s)).then(()=>toast("Link copiato"))};
-function invSend(tipo,id,campo){
- const s=TIT.strutture.find(x=>x.id===id),t=$("#"+(campo||"inv_t")).value;
- if(tipo==="wa")window.open("https://wa.me/"+digits(s.telefono)+"?text="+encodeURIComponent(t),"_blank");
- else if(tipo==="mail")location.href="mailto:"+(s.email||"")+"?subject="+encodeURIComponent("Il tuo accesso a Colazioni B&B")+"&body="+encodeURIComponent(t);
- else if(tipo==="copia")navigator.clipboard.writeText(t).then(()=>toast("Messaggio copiato"));
- else if(navigator.share)navigator.share({text:t}).catch(()=>{});else navigator.clipboard.writeText(t).then(()=>toast("Messaggio copiato"))}
+async function condividiGestore(id){
+ const s=TIT.strutture.find(x=>x.id===id);if(!s)return;
+ const registrazione=s.demo||!!s.invito_token||!s.attivo;let link,testo;
+ if(registrazione){
+  if(!s.invito_token){const r=await run("bb_tit_invito_rigenera",{p:sess.p,sid:id});if(!r||!r.invito)return;s.invito_token=r.invito}
+  link=linkInvito(s);testo=msgInvito(s,link)
+ }else{link=linkHotel(s);testo=msgAccesso(s,link)}
+ if(navigator.share)return navigator.share({title:"Colazioni B&B",text:testo,url:link}).catch(e=>{if(e.name!=="AbortError")toast("Condivisione non riuscita")});
+ navigator.clipboard.writeText(testo).then(()=>toast("Messaggio copiato: ora puoi condividerlo"))}
 async function invRigenera(id){if(!confirm("Creare un nuovo invito? Il vecchio link smette di funzionare."))return;if(await run("bb_tit_invito_rigenera",{p:sess.p,sid:id},"Nuovo invito creato"))go("#/titolare/invito/"+id)}
 function pStruttura(id){
  const s=TIT.strutture.find(x=>x.id===id);if(!s)return `<div class="card">Struttura non trovata.</div>`;
@@ -1071,9 +1088,9 @@ async function recConfigSalva(){
 /* --- Catalogo prodotti separato per struttura --- */
 let CP={base:null,lista:[],sid:"",q:"",origine:"tutti"};
 const cpNorm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
-const cpOrigine=o=>o==="vandemoortele"?"Vandemoortele":o==="senza_glutine"?"Senza glutine":"Produzione interna";
+const cpOrigine=o=>o==="vandemoortele"?"Acquaviva":o==="senza_glutine"?"Senza glutine":"Produzione interna";
 function pProdottiHotel(id){
- return `<div class="card"><h2 style="margin:0 0 6px">Prodotti e prezzi per hotel</h2><p class="mute">Scegli una struttura, seleziona i prodotti che deve vedere e indica il suo prezzo di vendita. Vandemoortele deriva dagli acquisti in fattura; Produzione interna deriva dalle nostre ricette. Foto, descrizioni e allergeni compaiono solo quando sono già documentati.</p><div id="cp_head"><p class="mute">Caricamento catalogo…</p></div></div><div id="cp_body"></div>`}
+ return `<div class="card"><h2 style="margin:0 0 6px">Prodotti e prezzi per hotel</h2><p class="mute">Scegli una struttura, seleziona i prodotti che deve vedere e indica il suo prezzo di vendita. Acquaviva comprende solo gli articoli realmente acquistati; Produzione interna deriva dalle nostre ricette. Foto, descrizioni e allergeni compaiono solo quando sono documentati.</p><div id="cp_head"><p class="mute">Caricamento catalogo…</p></div></div><div id="cp_body"></div>`}
 pProdottiHotel.after=id=>cpAvvia(id);
 async function cpAvvia(id){
  if(!CP.base){
@@ -1088,7 +1105,7 @@ async function cpAvvia(id){
   }catch(e){$("#cp_head").innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;return}
  }
  const scelta=id&&TIT.strutture.some(s=>s.id===id)?id:(CP.sid&&TIT.strutture.some(s=>s.id===CP.sid)?CP.sid:(TIT.strutture[0]||{}).id);
- $("#cp_head").innerHTML=TIT.strutture.length?`<label>Struttura che vedrà il listino</label><select id="cp_sid" onchange="cpCarica(this.value)">${TIT.strutture.map(s=>`<option value="${s.id}" ${s.id===scelta?"selected":""}>${esc(s.nome)}${s.demo?" (DEMO)":""}</option>`).join("")}</select><div class="catalog-tools"><input id="cp_q" placeholder="Cerca prodotto…" oninput="CP.q=this.value;cpDisegna()"><select id="cp_o" onchange="CP.origine=this.value;cpDisegna()"><option value="tutti">Tutte le provenienze</option><option value="vandemoortele">Vandemoortele acquistati</option><option value="produzione_interna">Produzione interna</option><option value="senza_glutine">Senza glutine</option></select><button class="btn" onclick="cpSalva()">Salva prodotti e prezzi</button></div><div id="cp_stat" class="mute"></div>`:`<div class="alert">Prima crea almeno una struttura.</div>`;
+ $("#cp_head").innerHTML=TIT.strutture.length?`<label>Struttura che vedrà il listino</label><select id="cp_sid" onchange="cpCarica(this.value)">${TIT.strutture.map(s=>`<option value="${s.id}" ${s.id===scelta?"selected":""}>${esc(s.nome)}${s.demo?" (DEMO)":""}</option>`).join("")}</select><div class="catalog-tools"><input id="cp_q" placeholder="Cerca prodotto…" oninput="CP.q=this.value;cpDisegna()"><select id="cp_o" onchange="CP.origine=this.value;cpDisegna()"><option value="tutti">Tutte le provenienze</option><option value="vandemoortele">Acquaviva acquistati</option><option value="produzione_interna">Produzione interna</option><option value="senza_glutine">Senza glutine</option></select><button class="btn" onclick="cpSalva()">Salva prodotti e prezzi</button></div><div id="cp_stat" class="mute"></div>`:`<div class="alert">Prima crea almeno una struttura.</div>`;
  if(scelta)await cpCarica(scelta);
 }
 async function cpCarica(sid){
@@ -1103,7 +1120,7 @@ function cpDisegna(){
  const q=cpNorm(CP.q),vis=CP.lista.filter(p=>(CP.origine==="tutti"||p.origine===CP.origine)&&(!q||cpNorm([p.nome,p.descrizione,p.categoria].join(" ")).includes(q)));
  const scelti=CP.lista.filter(p=>p.on),mancanti=scelti.filter(p=>!(p.prezzo>0));
  if($("#cp_stat"))$("#cp_stat").innerHTML=`${scelti.length} selezionati${mancanti.length?` · <b>${mancanti.length} senza prezzo</b>`:""} · ${vis.length} mostrati`;
- $("#cp_body").innerHTML=vis.length?`<div class="catalog-grid">${vis.map(p=>{const i=CP.lista.indexOf(p);return `<article class="catalog-card ${p.on?"selected":""}">${p.immagine?`<img loading="lazy" src="${esc(p.immagine)}" alt="${esc(p.nome)}" onerror="this.style.visibility='hidden'">`:`<div class="no-photo">Foto non disponibile</div>`}<div><div class="row" style="align-items:flex-start;gap:7px"><label style="display:flex;gap:7px;align-items:flex-start;flex:1;color:var(--ink)"><input type="checkbox" ${p.on?"checked":""} onchange="cpSel(${i},this.checked)"><span><span class="catalog-origin">${esc(cpOrigine(p.origine))}</span><br><b>${esc(p.nome)}</b></span></label></div>${p.descrizione?`<div class="mute">${esc(p.descrizione)}</div>`:""}${(p.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${p.allergeni.map(esc).join(", ")}</div>`:`<div class="mute">Allergeni non inseriti</div>`}${p.non_in_fonte?`<div class="alert" style="padding:5px;margin:5px 0">Non più presente nella fonte: resta selezionato finché non lo togli.</div>`:""}<label>Prezzo per questa struttura (€)</label><input type="number" min="0" step="0.10" value="${p.prezzo||""}" placeholder="da inserire" oninput="CP.lista[${i}].prezzo=+this.value;cpAggiornaStat()"></div></article>`}).join("")}</div>`:`<div class="card"><p class="mute">Nessun prodotto corrisponde ai filtri.</p></div>`;
+ $("#cp_body").innerHTML=vis.length?`<div class="catalog-grid">${vis.map(p=>{const i=CP.lista.indexOf(p);return `<article class="catalog-card ${p.on?"selected":""}">${p.immagine?`<img loading="lazy" src="${esc(p.immagine)}" alt="${esc(p.nome)}" onerror="this.remove()">`:""}<div><div class="row" style="align-items:flex-start;gap:7px"><label style="display:flex;gap:7px;align-items:flex-start;flex:1;color:var(--ink)"><input type="checkbox" ${p.on?"checked":""} onchange="cpSel(${i},this.checked)"><span><span class="catalog-origin">${esc(cpOrigine(p.origine))}</span><br><b>${esc(p.nome)}</b></span></label></div>${p.descrizione&&String(p.descrizione).trim().toLocaleLowerCase()!==String(p.nome).trim().toLocaleLowerCase()?`<div class="mute">${esc(p.descrizione)}</div>`:""}${(p.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${p.allergeni.map(esc).join(", ")}</div>`:""}${p.non_in_fonte?`<div class="alert" style="padding:5px;margin:5px 0">Non più presente nella fonte: resta selezionato finché non lo togli.</div>`:""}<label>Prezzo hotel (€)</label><input type="number" min="0" step="0.10" value="${p.prezzo||""}" placeholder="Inserisci prezzo" oninput="CP.lista[${i}].prezzo=+this.value;cpAggiornaStat()"></div></article>`}).join("")}</div>`:`<div class="card"><p class="mute">Nessun prodotto corrisponde ai filtri.</p></div>`;
 }
 function cpAggiornaStat(){const s=CP.lista.filter(p=>p.on),m=s.filter(p=>!(p.prezzo>0));if($("#cp_stat"))$("#cp_stat").innerHTML=`${s.length} selezionati${m.length?` · <b>${m.length} senza prezzo</b>`:""}`}
 function cpSel(i,v){CP.lista[i].on=v;cpDisegna()}

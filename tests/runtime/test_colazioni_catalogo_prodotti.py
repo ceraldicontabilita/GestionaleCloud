@@ -96,6 +96,82 @@ def test_nessun_match_per_somiglianza_e_nessun_prezzo_inventato():
     assert riga["prezzo"] is None
 
 
+def test_alias_fattura_esatti_uniscono_lo_stesso_articolo_e_usano_la_scheda_ufficiale():
+    fatture = [
+        {
+            "fornitore": "Vandemoortele",
+            "prodotti": [
+                {"descrizione": "AQV BABY CRNT CALI STRA 35G 3.15KG", "quantita": 2},
+                {"descrizione": "BABY CORNETTO CALISE DRITTO VUOTO", "quantita": 3},
+                {"descrizione": "LIQUIDAZ EX DA PFA 3% OBJ 2025", "quantita": 1},
+            ],
+        }
+    ]
+    catalogo_acquaviva = [
+        {
+            "id": "baby-calise",
+            "nome_verificato": "Baby Calise dritto",
+            "alias_fattura": [
+                "AQV BABY CRNT CALI STRA 35G 3.15KG",
+                "BABY CORNETTO CALISE DRITTO VUOTO",
+            ],
+            "immagine_prodotto": "https://dolciariaacquaviva.com/baby.webp",
+            "allergeni": ["Glutine", "Latte"],
+            "link_prodotto": "https://dolciariaacquaviva.com/prodotto/baby-calise-dritto/",
+        }
+    ]
+
+    [riga] = costruisci_catalogo_prodotti_hotel(fatture, [], catalogo_acquaviva)
+
+    assert riga["nome"] == "Baby Calise dritto"
+    assert riga["descrizione"] == (
+        "Cornetto baby vuoto, soffice e friabile, con impasto brioche e sfoglia."
+    )
+    assert riga["quantita_acquistata"] == Decimal("5")
+    assert len(riga["descrizioni_fattura"]) == 2
+    assert riga["collegamento_catalogo"] is True
+    assert riga["immagine"] == "https://dolciariaacquaviva.com/baby.webp"
+
+
+def test_alias_non_collegato_ha_presentazione_breve_senza_inventare_allergeni():
+    fatture = [
+        {
+            "fornitore": "Vandemoortele",
+            "prodotti": [
+                {"descrizione": "AQV CRNT GLUTEN FREE 80G 1.6KG", "quantita": 1}
+            ],
+        }
+    ]
+
+    [riga] = costruisci_catalogo_prodotti_hotel(fatture, [], [])
+
+    assert riga["nome"] == "Croissant senza glutine"
+    assert riga["descrizione"] == "Croissant vuoto senza glutine."
+    assert riga["allergeni"] == []
+    assert riga["collegamento_catalogo"] is False
+
+
+def test_due_descrizioni_tecniche_della_stessa_ciambella_diventano_una_sola_voce():
+    fatture = [
+        {
+            "fornitore": "Vandemoortele",
+            "prodotti": [
+                {"descrizione": "AQV CMBLL MAXI SUGARED 100G 3KG", "quantita": 2},
+                {"descrizione": "CIAMBELLA MAXI ZUCCHERATA G. 100", "quantita": 3},
+            ],
+        }
+    ]
+
+    [riga] = costruisci_catalogo_prodotti_hotel(fatture, [], [])
+
+    assert riga["nome"] == "Ciambella maxi zuccherata"
+    assert riga["descrizione"] == "Ciambella soffice ricoperta di zucchero."
+    assert riga["quantita_acquistata"] == Decimal("5")
+    assert len(riga["descrizioni_fattura"]) == 2
+    assert riga["allergeni"] == []
+    assert riga["collegamento_catalogo"] is False
+
+
 def test_tutti_i_lievitati_richiesti_entrano_se_collegati_a_ricetta():
     nomi = [
         "Croissant vuoto",
@@ -152,6 +228,10 @@ def test_frontend_e_migrazione_espongono_selezione_per_struttura():
     assert "const crDefaultTavolo=()=>false" in html
     assert "Banco selezionato di default" in html
     assert 'id="in_tav"' not in html
+    assert "Foto non disponibile" not in html
+    assert "Allergeni non inseriti" not in html
+    assert "Allergeni non documentati" not in html
+    assert "Prezzo hotel (€)" in html
 
 
 def test_pagina_ospite_qr_offre_recensione_google_e_tripadvisor_senza_incentivi():
