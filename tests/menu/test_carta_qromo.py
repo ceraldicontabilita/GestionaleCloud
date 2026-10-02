@@ -94,7 +94,7 @@ def test_salvataggio_admin_compare_nella_carta_usata_dai_clienti(db):
     assert prodotto["d"] == "Ingredienti confermati" and prodotto["mat"] is None
 
 
-def test_carta_include_lotti_ed_esclude_prezzi_mancanti_e_categorie_vuote(db):
+def test_carta_include_lotti_senza_prezzo_ma_non_li_rende_ordinabili(db):
     client = carta.menu_routes.supabase
     tabelle = client.tabelle
     tabelle["menu_categories"].append({"id": 1000000, "name": "Produzione", "name_it": "Produzione"})
@@ -108,10 +108,15 @@ def test_carta_include_lotti_ed_esclude_prezzi_mancanti_e_categorie_vuote(db):
         tabelle["menu_products"].append({**base, "id": 1000000 + indice, "price": prezzo})
     risultato = _run(carta.carta_pubblica())
     ricette = [i for i in risultato["items"] if i["id"] >= 1000000]
-    assert [i["id"] for i in ricette] == [1000000]
+    assert [i["id"] for i in ricette] == list(range(1000000, 1000006))
+    assert all(i["p"] is None for i in ricette[1:])
     assert ricette[0]["p"] == 450 and ricette[0]["a"] == ["egg"]
     assert [c["id"] for c in risultato["cats"] if c["m"] == 1000000] == [1000000]
     from fastapi import HTTPException
+    for id_ in range(1000001, 1000006):
+        with pytest.raises(HTTPException) as errore:
+            _run(carta.menu_routes.get_product(id_))
+        assert errore.value.status_code == 404
     with pytest.raises(HTTPException) as e:
         _run(carta.imposta_prodotto(1000000, carta.SceltaProdotto(prezzo_centesimi=500), "admin"))
     assert e.value.status_code == 409

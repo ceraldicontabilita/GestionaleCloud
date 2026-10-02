@@ -5,7 +5,7 @@ const IMG=new Proxy({},{get:(_,k)=>k}); // le foto sono gia' URL
 const AL={celery:'Sedano',clams:'Molluschi',dioxide:'Solfiti',egg:'Uova',fish:'Pesce',gluten:'Glutine',lupins:'Lupini',milk:'Latte',mustard:'Senape',peanuts:'Arachidi',sesame:'Sesamo',shellfish:'Crostacei',soia:'Soia',wot:'Frutta a guscio',almond:'Mandorle',barley:'Orzo',brazil_nuts:'Noci del Brasile',cashew:'Anacardi',hazelnuts:'Nocciole',macadamia:'Macadamia',oats:'Avena',pecan:'Noci pecan',pistachios:'Pistacchi',rye:'Segale',spelt:'Farro',walnuts:'Noci',wheat:'Grano',kamut:'Kamut',alcohol:'Alcol',halal:'Halal',kosher:'Kosher',vegan:'Vegano',vegetarian:'Vegetariano',no_allergens:'Nessun allergene',gluten_free:'Senza glutine',bio:'Biologico',spicy:'Piccante',frost:'Surgelato',super_frost:'Abbattuto'};
 const $=s=>document.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const frag=h=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild};
-const eur=c=>'€ '+(c/100).toFixed(2).replace('.',',');
+const eur=c=>c==null?'Prezzo da definire':'€ '+(c/100).toFixed(2).replace('.',',');
 const txtCol=h=>{h=(h||'a67b01').replace('#','');const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);return (r*299+g*587+b*114)/1000>=160?'#000000':'#ffffff'};
 const store={get(k,d){try{const v=localStorage.getItem('cc_'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('cc_'+k,JSON.stringify(v))}catch(e){}}};
 

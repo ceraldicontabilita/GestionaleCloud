@@ -932,7 +932,9 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` → `visible`):
   le righe di Lotti sopravvivono alla sync Qromo e l'esito `menu_sync` non fa
   mai fallire l'endpoint Lotti. Pregresso con
-  `POST /api/ricette-ripubblica-menu` (admin, in background).
+  `POST /api/ricette-ripubblica-menu` (admin, in background). La visibilita'
+  pubblica delle nuove ricette e' spuntata per default; `pubblica_tutte=true`
+  spunta anche l'archivio esistente e conserva i valori precedenti nello stato del giro.
 - **Il menu pubblico non mostra categorie e sottocategorie senza prodotti
   visibili** (`menu_routes._build_hierarchy`): un riquadro vuoto in home ha
   l'immagine rotta e «0 prodotti». Il filtro sta in lettura perché è l'unico
@@ -950,12 +952,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   resta visibile (`prezzo_tavolo_impostato`): non si copia l'uno nell'altro, o
   un prezzo mai scelto sembrerebbe deciso. **Valido solo se finito e maggiore
   di zero**: negativi, `nan` e `inf` sono 400 all'ingresso, `0` significa
-  «togli il prezzo». Una ricetta **senza nessuno dei due** entra nel Menu
-  **nascosta** (sarebbe ordinabile a 0 €) ed è contata nel backfill
-  (`senza_prezzo`, `nascoste_per_prezzo`): non si inventa un ripiego.
-- La categoria del Menu si sceglie sulla ricetta (`menu_category_id`,
-  `menu_subcategory_id`); senza scelta resta «Produzione Ceraldi» più la
-  sottocategoria per reparto. Le categorie si leggono e si creano da Lotti con
+  «togli il prezzo». Una ricetta **senza nessuno dei due** compare nella carta
+  `/menu/carta/index.html` con **Prezzo da definire**; le API dei prodotti
+  ordinabili continuano a richiedere un prezzo valido. Il backfill conta
+  `senza_prezzo`, senza inventare un ripiego.
+- La categoria delle ricette nel Menu e' «Produzione Ceraldi» piu' la
+  sottocategoria derivata dal reparto. Le categorie si leggono e si creano da Lotti con
   `/api/menu-categorie`, sempre con `origine` valorizzata; se esiste già una
   categoria con quel nome di **altra** origine la creazione riesce ma la
   risposta porta un `avviso` (due riquadri «Bar» in home). **Una categoria di

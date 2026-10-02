@@ -14,16 +14,14 @@ Due garanzie, entrambe coperte dai test:
 
 * **idempotente** — il ponte scrive per ``lotti_ref = "ricetta:<id>"``, quindi
   il secondo giro aggiorna le stesse righe e non ne crea nemmeno una in piu';
-* **non pubblica nulla di nascosto** — ``visible`` resta la scelta del
-  titolare (``menu_pubblico``): una ricetta senza quel flag arriva nel Menu
-  nascosta, il backfill non la mostra mai ai clienti.
+* **visibilita' esplicita** — ``menu_pubblico=False`` resta nascosto; con
+  ``pubblica_tutte=True`` il titolare spunta anche le ricette gia' esistenti.
 
 Il conteggio ``senza_prezzo_tavolo`` e' il modo per vedere quante ricette
 stanno ancora esponendo nel Menu il prezzo al banco perche' quello al tavolo
 non e' mai stato deciso (vedi ``menu_bridge.prezzo_per_menu``). Il conteggio
-``senza_prezzo`` (e ``nascoste_per_prezzo``) e' piu' grave: sono le ricette
-che non hanno **nessuno** dei due prezzi e che quindi il ponte pubblica
-nascoste, perche' una riga senza prezzo nel Menu sarebbe ordinabile a 0 euro.
+``senza_prezzo`` conta le ricette che nella carta mostrano «Prezzo da definire».
+Le API dei prodotti ordinabili continuano a richiedere un prezzo valido.
 
 ``troncato`` dice se il giro si e' fermato al tetto di ``LIMITE_RICETTE``:
 senza questo campo un backfill parziale si sarebbe dichiarato «completato».
@@ -46,7 +44,10 @@ PROIEZIONE = {
     "_id": 0, "id": 1, "nome": 1, "reparto": 1,
     "prezzo_vendita": 1, "prezzo_tavolo": 1, "descrizione": 1,
     "allergeni": 1, "allergeni_auto": 1, "foto_url": 1,
-    "menu_pubblico": 1,
+    "menu_pubblico": 1, "foto_storage_path": 1, "foto_id": 1,
+    "foto_content_type": 1, "foto_sha256": 1, "foto_drive_id": 1,
+    "foto_drive_folder_id": 1, "descrizione_origine": 1,
+    "ingredienti": 1, "ingredienti_dettaglio": 1,
 }
 
 LIMITE_RICETTE = 5000
@@ -58,7 +59,7 @@ def _now() -> str:
 
 
 async def ripubblica_menu(
-    db, *, dry_run: bool = False, on_progress=None,
+    db, *, dry_run: bool = False, on_progress=None, pubblica_tutte: bool = False,
 ) -> Dict[str, Any]:
     """Rimanda al Menu tutte le ricette di Lotti.
 
@@ -90,18 +91,18 @@ async def ripubblica_menu(
         {"id": r.get("id"), "nome": r.get("nome")}
         for r in ricette if menu_bridge.prezzo_menu(r.get("prezzo_tavolo")) is None
     ]
-    # Nessuno dei due prezzi: il ponte le pubblica NASCOSTE (una riga senza
-    # prezzo sarebbe ordinabile a 0 euro). Il titolare deve vedere quali sono.
+    # Nella carta restano consultabili, ma non diventano ordinabili a zero euro.
     senza_prezzo = [
         {"id": r.get("id"), "nome": r.get("nome"),
-         "menu_pubblico": bool(r.get("menu_pubblico"))}
+         "menu_pubblico": pubblica_tutte or r.get("menu_pubblico") is not False}
         for r in ricette if menu_bridge.prezzo_per_menu(r)[0] is None
     ]
-    visibili = sum(1 for r in ricette if r.get("menu_pubblico"))
+    visibili = sum(1 for r in ricette if pubblica_tutte or r.get("menu_pubblico") is not False)
 
     base: Dict[str, Any] = {
         "ok": True,
         "dry_run": dry_run,
+        "pubblica_tutte": pubblica_tutte,
         "menu_configurato": menu_bridge.menu_configurato(),
         "ricette_totali": totale,
         "troncato": troncato,
@@ -124,13 +125,24 @@ async def ripubblica_menu(
                 "nascoste_per_prezzo": 0, "campioni_nascoste_per_prezzo": [],
                 "esito": "non_configurato"}
 
+    if pubblica_tutte:
+        precedenti = [
+            {"id": r["id"], "menu_pubblico": r.get("menu_pubblico")}
+            for r in ricette if r.get("id") and r.get("menu_pubblico") is not True
+        ]
+        if precedenti:
+            await _salva_stato(db, visibilita_precedente=precedenti)
+
     pubblicate = aggiornate = errori = nascoste_per_prezzo = 0
     campioni_errori: List[Dict[str, Any]] = []
     campioni_nascoste_per_prezzo: List[Dict[str, Any]] = []
 
     for indice, ricetta in enumerate(ricette, start=1):
+        if pubblica_tutte and ricetta.get("menu_pubblico") is not True:
+            await db.ricette.update_one({"id": ricetta["id"]}, {"$set": {"menu_pubblico": True}})
+            ricetta["menu_pubblico"] = True
         esito = await menu_bridge.pubblica_prodotto_nel_menu(
-            ricetta, visibile=bool(ricetta.get("menu_pubblico")), db=db,
+            ricetta, visibile=ricetta.get("menu_pubblico") is not False, db=db,
         )
         stato = esito.get("esito")
         if stato == "pubblicato":
@@ -144,8 +156,7 @@ async def ripubblica_menu(
                     "id": ricetta.get("id"), "nome": ricetta.get("nome"),
                     "esito": stato, "errore": esito.get("errore"),
                 })
-        # Il titolare aveva spuntato «inserisci in menu» ma manca il prezzo:
-        # la riga resta nascosta e questo e' il posto dove lo legge.
+        # Compatibilita' con gli esiti delle precedenti versioni del ponte.
         if esito.get("motivo_nascosto") == "prezzo_assente":
             nascoste_per_prezzo += 1
             if len(campioni_nascoste_per_prezzo) < MAX_CAMPIONI:
@@ -189,7 +200,7 @@ def ripubblicazione_in_corso() -> bool:
     return _in_corso
 
 
-async def _ripubblica_in_background(db) -> None:
+async def _ripubblica_in_background(db, *, pubblica_tutte: bool = False) -> None:
     global _in_corso
     _in_corso = True
     await _salva_stato(db, stato="in_corso", avviato_at=_now(), risultato=None,
@@ -199,9 +210,10 @@ async def _ripubblica_in_background(db) -> None:
         await _salva_stato(db, avanzamento={"fatte": fatte, "totale": totale})
 
     try:
-        risultato = await ripubblica_menu(db, dry_run=False, on_progress=progresso)
+        risultato = await ripubblica_menu(db, dry_run=False, on_progress=progresso,
+                                         pubblica_tutte=pubblica_tutte)
         # «completato» non deve mentire: oltre LIMITE_RICETTE il giro e' parziale.
-        stato = "completato_parziale" if risultato.get("troncato") else "completato"
+        stato = "completato_parziale" if risultato.get("troncato") or risultato.get("errori") else "completato"
         await _salva_stato(db, stato=stato, terminato_at=_now(), risultato=risultato)
     except Exception as exc:  # noqa: BLE001 - lo stato deve restare leggibile
         logger.exception("Ripubblicazione ricette nel Menu interrotta")
@@ -210,7 +222,7 @@ async def _ripubblica_in_background(db) -> None:
         _in_corso = False
 
 
-def avvia_ripubblicazione_in_background(db) -> bool:
+def avvia_ripubblicazione_in_background(db, *, pubblica_tutte: bool = False) -> bool:
     """Risponde subito; l'avanzamento si segue con ``stato_ripubblicazione_menu``.
     Un secondo avvio mentre e' in corso non parte (ritorna ``False``)."""
     global _in_corso, _task_in_corso
@@ -220,5 +232,5 @@ def avvia_ripubblicazione_in_background(db) -> bool:
     # Alzato qui e non dentro la coroutine: `create_task` la mette solo in
     # coda, quindi due POST ravvicinati partivano entrambi.
     _in_corso = True
-    _task_in_corso = asyncio.create_task(_ripubblica_in_background(db))
+    _task_in_corso = asyncio.create_task(_ripubblica_in_background(db, pubblica_tutte=pubblica_tutte))
     return True

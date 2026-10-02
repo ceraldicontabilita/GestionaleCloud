@@ -175,7 +175,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     if (!ricetta) {
       return { nome:"", reparto:"pasticceria", porzioni:"", peso_pezzo_g:"", peso_uovo_g:"", metodo_conservazione:"frigo",
                prezzo_vendita:"", prezzo_tavolo:"", descrizione:"",
-               note:"", ingredienti:[], fornitore_rivendita:"" };
+               note:"", ingredienti:[], fornitore_rivendita:"", menu_pubblico:true };
     }
     // Converte ingredienti_dettaglio (o la lista legacy) nel formato editabile
     // {nome, quantita, unita}, così l'editor e il "+ Aggiungi" funzionano sempre.
@@ -194,6 +194,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     return {
       ...ricetta,
       ingredienti,
+      menu_pubblico: ricetta.menu_pubblico ?? true,
       // I campi Menu nascono `null` sulle ricette vecchie: negli input devono
       // essere stringa vuota, altrimenti React passa da controllato a non
       // controllato al primo carattere.
@@ -762,7 +763,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
             <span style={{display:"flex",flexDirection:"column",gap:2,minWidth:0}}>
               <span style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>Mostra nel menu pubblico (Menu digitale)</span>
               <span style={{fontSize:12,fontWeight:600,color:"var(--text-2)"}}>
-                La ricetta va comunque nel Menu con la stessa foto: spunta per farla vedere ai clienti.
+                Visibile per impostazione predefinita, nella categoria del reparto e con la stessa foto.
               </span>
             </span>
           </label>
