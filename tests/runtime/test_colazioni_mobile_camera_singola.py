@@ -18,6 +18,15 @@ def test_area_hotel_resta_chiara_anche_con_tema_scuro_del_dispositivo():
     assert '--bg:#fbf8f2;--card:#fff;--ink:#243229' in HTML
 
 
+def test_immagine_profilo_resta_nella_card_e_si_salva_anche_con_i_dati_fiscali():
+    assert ".hero{width:100%;max-width:100%;overflow:hidden" in HTML
+    assert "#pf_h{width:100%;max-width:100%;min-width:0;overflow:hidden}" in HTML
+    blocco = HTML[HTML.index("async function pfFiscali"):HTML.index("const fiscBanner")]
+    assert 'bb_alb_profilo_salva' in blocco
+    assert 'psfondo:PF.cambiato?PF.sfondo:null' in blocco
+    assert "Profilo e dati per la fattura salvati" in blocco
+
+
 def test_prenotazione_gestisce_una_sola_camera_senza_date_nella_card():
     assert "let NR=[],DEF={},NRSEL=-1" in HTML
     assert "Seleziona e salva una camera alla volta" in HTML
@@ -39,6 +48,9 @@ def test_aree_bar_e_hotel_sono_distinte_visivamente():
     assert 'body[data-area="hotel"]' in HTML
     assert 'body[data-area="bar"]' in HTML
     assert 'area==="bar"?"Area Bar":area==="hotel"?"Area Hotel"' in HTML
+    assert "SEI NELL’AREA BAR CERALDI" in HTML
+    assert "Non sei entrato come albergatore" in HTML
+    assert '" · gestisci "+gestita.nome' in HTML
 
 
 def test_albergatore_puo_segnalare_un_intolleranza_senza_promessa_contaminazioni():
