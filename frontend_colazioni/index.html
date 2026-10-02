@@ -142,6 +142,11 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .production-hotels{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.production-hotels .pill{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 .production-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.production-summary div{border-radius:12px;background:var(--bg);padding:10px;text-align:center}.production-summary b{display:block;font-size:21px;color:var(--brand)}
 .production-extra,.production-request{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;background:var(--card)}
+.guest-day{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center;text-align:center}.guest-day button{width:44px;height:44px;padding:0}.guest-day b{display:block;font-size:17px}.guest-day span{display:block}
+.guest-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.guest-actions .btn{min-height:52px;padding:10px;font-size:14px}.guest-actions .primary{grid-column:1/-1}
+.guest-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.guest-line:last-child{border-bottom:0}.guest-line .btn{min-width:88px;min-height:44px}
+.guest-panel-head{display:flex;align-items:center;gap:9px;margin-bottom:10px}.guest-panel-head .btn{width:44px;height:44px;padding:0}.guest-panel-head h3{margin:0}
+.guest-saved{border:1px solid var(--ok);border-radius:12px;padding:9px 11px;margin-top:10px;color:var(--ok);font-weight:700}
 @media(max-width:620px){
  main{padding-left:12px;padding-right:12px}.card{margin-left:0;margin-right:0}.catalog-tools{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px minmax(0,1fr)}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}.catalog-price-row{align-items:center}.catalog-price-row input{flex-basis:108px}
  .hotel-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;margin-left:-4px;margin-right:-4px;top:56px}
@@ -151,6 +156,7 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
  .booking-room-grid{grid-template-columns:1fr}.booking-room-head{align-items:flex-start}.booking-room{padding:12px}
  .production-toolbar{grid-template-columns:repeat(3,1fr)}.production-toolbar .date-field{grid-column:1/3;width:100%!important}.production-toolbar .print-production{width:100%}
  .production-head{align-items:center}.production-composition{font-size:14px}.production-hotels .pill{font-size:11px}
+ .guest-actions{grid-template-columns:1fr 1fr}.guest-actions .btn{font-size:13px}
 }
 .review-hero{padding:26px 18px;background:linear-gradient(145deg,var(--brand),#a4492b);color:#fff;border-radius:var(--r);margin-bottom:12px}
 .review-hero h2{font-size:28px;line-height:1.08;letter-spacing:-.02em;margin:4px 0 10px}.review-hero p{margin:0;opacity:.9}
@@ -620,9 +626,9 @@ async function ospite(id){
  $("#ttl").textContent="☕ La tua colazione";loading();
  const d=await rpc("bb_ospite",{vid:id||""}).catch(()=>null);
  if(!d){app.innerHTML=`<div class="card">Codice non valido.</div>`;return}
- const r=d.richieste||{};
- G={d,req:{allergie:r.allergie||[],nota:r.nota||"",modifiche:r.modifiche||[]},cart:{},cata:null,sub:"",q:"",form:null,sporco:false};
- (d.extra||[]).forEach(e=>{if(e.id)G.cart[e.id]=e.qta});
+ const giorno=greatestDay(d.data,leastDay(d.oggi,fine(d)));
+ G={d,day:giorno,req:{allergie:[],nota:"",modifiche:[]},cart:{},cata:null,sub:"",q:"",form:null,panel:"home",sporco:false,saved:false};
+ gCaricaGiorno(giorno);
  const b=d.bar||{},maps=b.bar_maps||"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((b.bar_nome||"Bar Pasticceria Ceraldi")+" "+(b.bar_indirizzo||"Napoli"));
  const persone=d.ospiti||1,titolo=descV(d,false);
  app.innerHTML=hero(d.struttura,d.sfondo,d.benvenuto)+`<div class="card" style="text-align:center"><h2 style="margin:4px 0">${esc(titolo)}</h2>
@@ -631,32 +637,50 @@ async function ospite(id){
  <div class="alert ok" style="text-align:left"><b>${d.tavolo?"🪑 La colazione sarà servita al tavolo":"☕ La colazione sarà servita al banco"}</b></div><div class="qr" id="qrbox"></div><p><b style="letter-spacing:2px;font-size:20px">${d.id}</b></p><p class="mute">Mostra questo codice al bancone di ${esc(b.bar_nome||"Bar Pasticceria Ceraldi")}.</p>
  <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(maps)}" target="_blank" rel="noopener">📍 Come arrivare al bar</a>
  ${b.bar_indirizzo?`<p class="mute">${esc(b.bar_indirizzo)}${b.bar_orari?" · "+esc(b.bar_orari):""}</p>`:""}${b.bar_tel||b.bar_whatsapp||b.bar_email?`<p>${b.bar_tel?`<a href="tel:${esc(b.bar_tel)}">📞 Chiama</a> `:""}${b.bar_whatsapp?`<a href="https://wa.me/${esc(String(b.bar_whatsapp).replace(/\D/g,""))}" target="_blank" rel="noopener">💬 WhatsApp</a> `:""}${b.bar_email?`<a href="mailto:${esc(b.bar_email)}">✉️ Email</a>`:""}</p>`:""}</div>
- ${albergoHtml(d.indirizzo)}<div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
- <h2>Napoli oggi</h2>${napoli()}`;
+ <div id="g_day"></div><div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
+ ${albergoHtml(d.indirizzo)}<details class="card"><summary><b>Informazioni utili su Napoli</b></summary><div style="margin-top:12px">${napoli()}</div></details>`;
  qr($("#qrbox"),d.id);gRender();
  loadExt().then(E=>{$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)})}
-const gChiuso=()=>G.d.annullato||fine(G.d)<G.d.oggi;
+const leastDay=(a,b)=>a<b?a:b,greatestDay=(a,b)=>a>b?a:b;
+const gDefaultDay=d=>greatestDay(d.data,leastDay(d.oggi,fine(d)));
+const gScelta=(d,g)=>d.scelte&&d.scelte[g]?d.scelte[g]:{
+ richieste:{allergie:(d.richieste||{}).allergie||[],nota:(d.richieste||{}).nota||"",modifiche:g===gDefaultDay(d)?((d.richieste||{}).modifiche||[]):[]},
+ extra:g===gDefaultDay(d)?(d.extra||[]):[],extra_totale:g===gDefaultDay(d)?(+d.extra_totale||0):0,extra_pagato:g===gDefaultDay(d)&&!!d.extra_pagato};
+function gCaricaGiorno(g){
+ const s=gScelta(G.d,g),r=s.richieste||{};G.day=g;G.choice=s;
+ G.req={allergie:[...(r.allergie||[])],nota:r.nota||"",modifiche:[...(r.modifiche||[])]};G.cart={};
+ (s.extra||[]).filter(e=>e.id&&!e.glutine).forEach(e=>G.cart[e.id]=e.qta);G.form=null;G.panel="home";G.sporco=false;G.saved=false;
+}
+const gChiuso=()=>G.d.annullato||G.day<G.d.oggi;
 const gA=()=>Object.fromEntries(G.d.allergeni_elenco.map(a=>[a.id,a]));
+const gDayLabel=()=>G.day===G.d.oggi?"Colazione di oggi":G.day===addDays(G.d.oggi,1)?"Colazione di domani":"Colazione del "+dmy(G.day);
+function gCambiaGiorno(n){
+ if(G.sporco&&!confirm("Hai modifiche non salvate. Cambiare giorno senza inviarle?"))return;
+ const g=addDays(G.day,n);if(g<G.d.data||g>fine(G.d))return;gCaricaGiorno(g);gRender();window.scrollTo({top:document.getElementById("g_day").offsetTop-70,behavior:"smooth"})}
+function gApri(p){G.panel=p;G.form=null;gRender();document.getElementById("g_menu").scrollIntoView({behavior:"smooth",block:"start"})}
 function gRender(){
  const d=G.d,A=gA(),ch=gChiuso(),sel=G.req.allergie;
  const chip=id=>`<span class="pill p-warn">${(A[id]||{}).icon||""} ${esc((A[id]||{}).nome||id)}</span>`;
- $("#g_menu").innerHTML=`<h2>La tua colazione</h2>`+(d.voci.length?d.voci.map((v,i)=>{
+ $("#g_day").innerHTML=`<div class="card"><div class="guest-day"><button class="btn sec" aria-label="Giorno precedente" ${G.day<=d.data?"disabled":""} onclick="gCambiaGiorno(-1)">‹</button><div><b>${gDayLabel()}</b><span class="mute">${dmy(G.day)} · stesso QR</span></div><button class="btn sec" aria-label="Giorno successivo" ${G.day>=fine(d)?"disabled":""} onclick="gCambiaGiorno(1)">›</button></div>${G.saved?`<div class="guest-saved">Scelte salvate per il ${dmy(G.day)}</div>`:""}</div>`;
+ const riepilogo=`<div class="card"><h3 style="margin-bottom:6px">Incluso nella colazione</h3>${d.voci.length?d.voci.map(v=>`<div class="guest-line"><span><b>${v.qta>1?v.qta+"× ":""}${esc(v.nome)}</b></span></div>`).join(""):`<p>${esc(d.menu||"")}</p>`}
+  ${(G.req.modifiche||[]).length?`<div class="guest-saved">${G.req.modifiche.length} modifica${G.req.modifiche.length===1?"":"he"} per questa giornata</div>`:""}
+  ${(G.choice.extra||[]).length?`<div class="guest-saved">${(G.choice.extra||[]).filter(e=>!e.glutine).reduce((a,e)=>a+e.qta,0)} prodotti extra · ${eur(G.choice.extra_totale||0)}</div>`:""}
+  ${ch?`<p class="mute">Questa giornata non è più modificabile.</p>`:`<div class="guest-actions"><button class="btn sec primary" onclick="gApri('custom')">Cambia un prodotto</button><button class="btn sec" onclick="gApri('extra')">Aggiungi extra</button><button class="btn sec" onclick="gApri('allergy')">Allergie</button></div>`}</div>`;
+ let menu=riepilogo;
+ if(G.panel==="custom")menu=`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Cambia un prodotto</h3></div>`+(d.voci.length?d.voci.map((v,i)=>{
   const conf=v.allergeni.filter(a=>sel.includes(a));
-  return `<div class="card" style="margin:8px 0"><div class="row"><b>${v.qta>1?v.qta+"× ":""}${esc(v.nome)}</b>${ch?"":`<button class="btn sm sec" onclick="gRic(${i})">Personalizza</button>`}</div>
-  <div style="margin-top:6px">${v.allergeni.length?v.allergeni.map(chip).join(" "):`<span class="mute">Nessun allergene dichiarato</span>`}</div>
-  ${v.ingredienti.length?`<div class="mute" style="margin-top:4px">Con: ${v.ingredienti.map(esc).join(", ")}</div>`:""}
+  return `<div class="guest-line"><div><b>${v.qta>1?v.qta+"× ":""}${esc(v.nome)}</b>${conf.length?`<div class="mute">Contiene: ${conf.map(a=>esc((A[a]||{}).nome||a)).join(", ")}</div>`:""}</div><button class="btn sm sec" onclick="gRic(${i})">Cambia</button></div>
   ${conf.length?`<div class="alert bad"><b>Attenzione:</b> contiene ${conf.map(a=>esc((A[a]||{}).nome||a)).join(", ")}, che hai segnalato. Chiedi una variante o una sostituzione.</div>`:""}
-  ${G.req.modifiche.map((m,j)=>m.voce===v.nome?`<div class="alert ok">✏️ ${modTxt(m)}${modChi(m)}${m.diff>0?` <b>+${eur(m.diff)}</b>`:""} ${ch?"":`<a href="#" onclick="gDelMod(${j});return false">✕</a>`}</div>`:"").join("")}</div>`}).join(""):`<div class="card">${esc(d.menu||"")}</div>`)+
-  (G.req.modifiche.filter(m=>!d.voci.some(v=>v.nome===m.voce)).map((m,j)=>`<div class="alert ok">✏️ ${esc(m.voce)}: ${modTxt(m)}</div>`).join(""))+
-  (ch&&!d.annullato?`<p class="mute">Le modifiche non sono più possibili${d.usate>0?": la colazione è già stata ritirata":""}.</p>`:"");
+  ${G.req.modifiche.map((m,j)=>m.voce===v.nome?`<div class="alert ok">${modTxt(m)}${modChi(m)}${m.diff>0?` <b>+${eur(m.diff)}</b>`:""} <a href="#" onclick="gDelMod(${j});return false">Elimina</a></div>`:"").join("")}`}).join(""):`<p>${esc(d.menu||"")}</p>`)+`</div>`;
+ $("#g_menu").innerHTML=menu;
  $("#g_form").innerHTML=G.form===null?"":gFormHtml();
- $("#g_all").innerHTML=`<div class="card"><h3>⚠️ Allergie e intolleranze</h3><p class="mute">Seleziona quelle che hai: il bar lo vedrà prima di preparare la colazione.</p>
+ $("#g_all").innerHTML=G.panel!=="allergy"?"":`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Allergie e intolleranze</h3></div><p class="mute">Segnalazione per maggiore attenzione: non garantisce l'assenza di contaminazioni. Chiedi conferma al bar.</p>
   <div class="tabs" style="flex-wrap:wrap">${d.allergeni_elenco.map(a=>`<button class="${sel.includes(a.id)?"on":""}" ${ch?"disabled":""} onclick="gAll('${a.id}')">${a.icon} ${esc(a.nome)}</button>`).join("")}</div>
   <textarea rows="2" ${ch?"disabled":""} placeholder="Altre note (es. celiachia, intolleranza al lattosio…)" oninput="G.req.nota=this.value;gSporco()">${esc(G.req.nota)}</textarea></div>`;
  gCartRender();
- const tot=gTot(),pag=d.extra_pagato;
- $("#g_bar").innerHTML=ch?"":`<div class="sticky-bar"><div><b>${tot>0?(pag?"Extra già pagati":"Da pagare al bar: "+eur(tot)):"Nessun extra"}</b><div class="mute">${G.sporco?"Modifiche non ancora inviate":"Le tue richieste sono salvate"}</div></div><button class="btn" onclick="gSalva()">${G.sporco?"Invia al bar":"Aggiorna"}</button></div>`}
-const gSporco=()=>{if(!G.sporco){G.sporco=true;const b=$("#g_bar .mute");if(b)b.textContent="Modifiche non ancora inviate"}};
+ const tot=gTot(),pag=G.choice.extra_pagato;
+ $("#g_bar").innerHTML=ch||!G.sporco?"":`<div class="sticky-bar"><div><b>${tot>0?(pag?"Extra già pagati":"Da pagare al bar: "+eur(tot)):"Salva le modifiche"}</b><div class="mute">Solo per il ${dmy(G.day)}</div></div><button class="btn" onclick="gSalva()">Invia al bar</button></div>`}
+const gSporco=()=>{G.sporco=true;gBarRefresh()};
 function gAll(id){const a=G.req.allergie,i=a.indexOf(id);i<0?a.push(id):a.splice(i,1);G.sporco=true;gRender()}
 function gDelMod(j){G.req.modifiche.splice(j,1);G.sporco=true;gRender()}
 function gRic(i){G.form={i,tipo:"senza"};gRender();$("#g_form").scrollIntoView({behavior:"smooth"})}
@@ -680,15 +704,15 @@ function rfAdd(){
  G.req.modifiche.push({voce:v.nome,tipo:t,testo:x.slice(0,120),chi:$("#rf_c")?$("#rf_c").value:"Tutti",...extra});G.form=null;G.sporco=true;gRender()}
 /* --- carrello extra (l'ospite vede i prezzi solo degli extra) --- */
 const gGlu=()=>G.req.modifiche.reduce((a,m)=>a+(m.variante?(m.diff||0):0),0);
-const gTot=()=>(G.cata?Object.entries(G.cart).reduce((a,[id,q])=>{const p=G.cata.find(x=>x.id==id);return a+(p?p.prezzo*q:0)},0):G.d.extra.filter(e=>!e.glutine).reduce((a,e)=>a+e.prezzo*e.qta,0))+gGlu();
+const gTot=()=>(G.cata?Object.entries(G.cart).reduce((a,[id,q])=>{const p=G.cata.find(x=>x.id==id);return a+(p?p.prezzo*q:0)},0):(G.choice.extra||[]).filter(e=>!e.glutine).reduce((a,e)=>a+e.prezzo*e.qta,0))+gGlu();
 function gCartRender(){
  const d=G.d,ch=gChiuso(),ids=Object.keys(G.cart).filter(i=>G.cart[i]>0);
- const nome=id=>{const p=G.cata&&G.cata.find(x=>x.id==id);const e=d.extra.find(x=>x.id==id);return p?p.nome:e?e.nome:"Prodotto"},prezzo=id=>{const p=G.cata&&G.cata.find(x=>x.id==id);const e=d.extra.find(x=>x.id==id);return p?p.prezzo:e?e.prezzo:0};
- $("#g_cart").innerHTML=`<div class="card"><h3>🛒 Aggiungi alla tua colazione</h3><p class="mute">Scegli altri prodotti del nostro menù: li paghi al bar quando ritiri la colazione.</p>
-  ${ids.map(id=>`<div class="row" style="margin:6px 0"><span>${G.cart[id]}× ${esc(nome(id))}</span><span>${eur(prezzo(id)*G.cart[id])} ${ch||d.extra_pagato?"":`<button class="btn sm sec" onclick="gQta(${id},-${G.cart[id]})">✕</button>`}</span></div>`).join("")}
+ const nome=id=>{const p=G.cata&&G.cata.find(x=>x.id==id);const e=(G.choice.extra||[]).find(x=>x.id==id);return p?p.nome:e?e.nome:"Prodotto"},prezzo=id=>{const p=G.cata&&G.cata.find(x=>x.id==id);const e=(G.choice.extra||[]).find(x=>x.id==id);return p?p.prezzo:e?e.prezzo:0};
+ $("#g_cart").innerHTML=G.panel!=="extra"?"":`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Aggiungi extra</h3></div><p class="mute">Solo per il ${dmy(G.day)}. Paghi al bar al ritiro.</p>
+  ${ids.map(id=>`<div class="row" style="margin:6px 0"><span>${G.cart[id]}× ${esc(nome(id))}</span><span>${eur(prezzo(id)*G.cart[id])} ${ch||G.choice.extra_pagato?"":`<button class="btn sm sec" onclick="gQta(${id},-${G.cart[id]})">✕</button>`}</span></div>`).join("")}
   ${G.req.modifiche.map(m=>m.variante?`<div class="row" style="margin:6px 0"><span>Senza glutine: ${esc(m.testo)}</span><span>${eur(m.diff||0)}</span></div>`:"").join("")}
   ${ids.length||gGlu()>0?`<div class="row"><b>Totale extra</b><b>${eur(gTot())}</b></div>`:""}
-  ${d.extra_pagato?`<div class="alert ok">Extra già pagati al bar.</div>`:ch?"":`<button class="btn sec" onclick="gApriCat()">+ Sfoglia il menù</button>`}</div>`}
+  ${G.choice.extra_pagato?`<div class="alert ok">Extra già pagati al bar.</div>`:ch?"":`<button class="btn sec" onclick="gApriCat()">Sfoglia il menù</button>`}</div>`}
 let XTRA=null;
 async function loadXtra(){if(!XTRA)XTRA=await fetch("menu-img/extra.json").then(r=>r.json()).catch(()=>({}));return XTRA}
 const imgOf=p=>{const x=XTRA&&XTRA[p.id];return x&&x.i?"menu-img/"+x.i:(p.img||"")};
@@ -696,7 +720,7 @@ function phErr(img){const d=document.createElement("div");d.className=img.classL
 const prodImg=(p,big)=>{const u=imgOf(p);return u?`<img class="${big?"big":"pimg"}" loading="lazy" src="${esc(u)}" alt="" onerror="phErr(this)">`:`<div class="${big?"bigph":"pimg ph"}">☕</div>`};
 async function gApriCat(){
  if(!G.cata){const [c]=await Promise.all([run("bb_catalogo"),loadXtra()]);if(!c||c===true)return;G.cata=c}
- G.catAperto=true;gCatRender();$("#g_cat").scrollIntoView({behavior:"smooth"})}
+ G.panel="extra";G.catAperto=true;gCatRender();$("#g_cat").scrollIntoView({behavior:"smooth"})}
 function gCatRender(){
  const cats=[...new Set(G.cata.map(p=>p.cat))],subs=[...new Set(G.cata.filter(p=>!G.cat||p.cat===G.cat).map(p=>p.sub||p.cat))];
  $("#g_cat").innerHTML=`<div class="card"><div class="row"><h3 style="margin:0">Il nostro menù</h3><button class="btn sm sec" onclick="G.catAperto=false;$('#g_cat').innerHTML=''">Chiudi</button></div>
@@ -721,12 +745,12 @@ function gDettaglio(id){
   <p class="mute" style="font-size:12px">Per informazioni complete sugli allergeni chiedi al bancone (Reg. UE 1169/2011).</p>
   <div class="row" style="margin-top:12px"><div class="stepper"><button onclick="gQta(${id},-1);$('#sq').textContent=G.cart[${id}]||0">−</button><b id="sq">${G.cart[id]||0}</b><button onclick="gQta(${id},1);$('#sq').textContent=G.cart[${id}]||0">+</button></div><button class="btn" onclick="document.getElementById('sheet').remove()">Fatto</button></div></div></div>`;
  document.body.appendChild(d)}
-function gQta(id,d){G.cart[id]=Math.max(0,Math.min(20,(G.cart[id]||0)+d));G.sporco=true;gCartRender();const e=document.getElementById("q"+id);if(e)e.textContent=G.cart[id];const b=$("#g_bar");if(b)gBarRefresh()}
-function gBarRefresh(){const t=gTot(),bb=$("#g_bar b");if(bb)bb.textContent=t>0?"Da pagare al bar: "+eur(t):"Nessun extra";const m=$("#g_bar .mute");if(m)m.textContent="Modifiche non ancora inviate";const bt=$("#g_bar .btn");if(bt)bt.textContent="Invia al bar"}
+function gQta(id,d){G.cart[id]=Math.max(0,Math.min(20,(G.cart[id]||0)+d));G.sporco=true;gCartRender();const e=document.getElementById("q"+id);if(e)e.textContent=G.cart[id];gRender()}
+function gBarRefresh(){if(!G||gChiuso()||!G.sporco)return;const t=gTot(),pag=G.choice.extra_pagato;$("#g_bar").innerHTML=`<div class="sticky-bar"><div><b>${t>0?(pag?"Extra già pagati":"Da pagare al bar: "+eur(t)):"Salva le modifiche"}</b><div class="mute">Solo per il ${dmy(G.day)}</div></div><button class="btn" onclick="gSalva()">Invia al bar</button></div>`}
 async function gSalva(){
  const extra=Object.entries(G.cart).filter(([,q])=>q>0).map(([id,qta])=>({id:+id,qta}));
- const r=await run("bb_ospite_salva",{vid:G.d.id,prichieste:G.req,pextra:extra},"Inviato al bar ✓");
- if(r&&r.id){G.d=r;G.sporco=false;G.cart={};r.extra.forEach(e=>{if(e.id)G.cart[e.id]=e.qta});gRender()}}
+ const giorno=G.day,r=await run("bb_ospite_salva_giorno",{vid:G.d.id,pgiorno:giorno,prichieste:G.req,pextra:extra},"Scelte del "+dmy(giorno)+" inviate al bar");
+ if(r&&r.id){G.d=r;gCaricaGiorno(giorno);G.saved=true;gRender()}}
 const ANM="https://www.anm.it";
 const ANM_MAPPA="https://www.anm.it/resource/1749111448000/MappaReteSuFerroPDF";
 const ANM_PUNTI="https://www.anm.it/resource/1768990802000/cartadellamobilita25";
@@ -888,6 +912,9 @@ pProduzione.after=()=>prodTab();
 const setPd=n=>{PDAY=addDays(TIT.oggi,n);$("#pd").value=PDAY;prodTab()};
 const tA=()=>Object.fromEntries((TIT.allergeni_elenco||[]).map(a=>[a.id,a]));
 const hasReq=r=>r&&((r.allergie&&r.allergie.length)||r.nota||(r.modifiche&&r.modifiche.length));
+function vGiorno(v,g){
+ const x=v.giorni&&v.giorni[g];if(x)return {...v,richieste:x.richieste||{},extra:x.extra||[],extra_totale:+x.extra_totale||0,extra_pagato:!!x.extra_pagato};
+ const base=greatestDay(v.data,leastDay(TIT.oggi,fine(v)));return {...v,richieste:{allergie:(v.richieste||{}).allergie||[],nota:(v.richieste||{}).nota||"",modifiche:g===base?((v.richieste||{}).modifiche||[]):[]},extra:g===base?(v.extra||[]):[],extra_totale:g===base?(+v.extra_totale||0):0,extra_pagato:g===base&&!!v.extra_pagato}}
 function reqHtml(v){
  const r=v.richieste||{},A=tA();let h="";
  if(r.allergie&&r.allergie.length)h+=`<div class="alert bad"><b>⚠️ ALLERGIE:</b> ${r.allergie.map(a=>esc((A[a]||{}).nome||a)).join(", ")}</div>`;
@@ -896,7 +923,7 @@ function reqHtml(v){
  if((v.extra||[]).length)h+=`<div class="alert ok">🛒 Extra: ${v.extra.map(e=>e.qta+"× "+esc(e.nome)).join(", ")} — <b>${eur(v.extra_totale)}</b> ${v.extra_pagato?"(incassato)":"<b>da incassare</b>"}</div>`;
  return h}
 function prodTab(){
- const day=attivi(TIT.vouchers).filter(v=>copre(v,PDAY));
+ const day=attivi(TIT.vouchers).filter(v=>copre(v,PDAY)).map(v=>vGiorno(v,PDAY));
  const per={};day.forEach(v=>{const k=colNome(v)+"|"+v.fascia,o=per[k]||(per[k]={v,tot:0,fatte:0,s:{}});const n=perDay(v);o.tot+=n;o.fatte+=doneOn(v,PDAY);o.s[v.struttura]=(o.s[v.struttura]||0)+n});
  const ks=Object.keys(per).sort((a,b)=>per[a].v.fascia-per[b].v.fascia);
  const sp=day.filter(v=>hasReq(v.richieste)||(v.extra||[]).length);

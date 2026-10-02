@@ -962,7 +962,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
   la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
-  La catena e' completa fino a v26: v1-4, 7, 8, 10 e 13-26 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
+  La catena e' completa fino a v27: v1-4, 7, 8, 10 e 13-27 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
   in `supabase/migrations/` come `…_colazioni_bb_vN_*.sql`; una migrazione si applica una volta sola e resta nel registro Supabase.
 - **Tre ruoli, tre link**: titolare (`#/titolare`), albergatore (`#/hotel/<accesso>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**).
 - **Titolare: nessun PIN suo, vale quello del gestionale.** La pagina chiama `POST /api/colazioni/accesso` (`app/routers/colazioni.py`, solo admin,
@@ -993,6 +993,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   I prezzi in uso sono quelli **banco** (i prezzi tavolo restano in `prezzo_tavolo`); gli allergeni sono l'unione di Qromo e del gestionale.
   Foto, testi lunghi e ingredienti sono file statici in `frontend_colazioni/menu-img/` (`extra.json`). Extra dell'ospite: prezzi calcolati
   dal server, si pagano al bar; le versioni senza glutine (`bb_senza_glutine`) aggiungono solo la differenza.
+- **Scelte giornaliere dell'ospite** (v27): il QR resta unico per tutto il soggiorno, ma modifiche, sostituzioni ed extra sono salvati
+  in `bb_voucher_giorni` per la singola data. Aprendo lo stesso QR viene proposta la giornata corrente; l'ospite puo' preparare anche
+  una giornata futura con tre sole azioni (cambia prodotto, aggiungi extra, allergie). Produzione, scanner e incasso leggono esclusivamente
+  la scelta della data interessata; le allergie e la nota di attenzione restano visibili per l'intero soggiorno.
 - **Avvisi operativi esterni** (v26): l'inserimento di un voucher da parte dell'albergatore e ogni nuova composizione di extra dell'ospite
   accodano nella stessa transazione una riga idempotente in `bb_notifiche_operative`. Lo scheduler la consegna al Telegram del titolare
   senza dipendere dall'app aperta e senza mostrare l'avviso all'albergatore; il testo non contiene il nome dell'ospite. Fallimenti temporanei
