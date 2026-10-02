@@ -14,7 +14,7 @@ export function testoAzioneRegistrazione({ loading, stepRegistrazione, bloccatoD
   if (stepRegistrazione === "base" && bloccatoDaGiacenza) return "🧊 Manda al banco o conferma sopra";
   if (stepRegistrazione === "base" && bloccatoDaPosizioneMancante) return "📍 Scegli la destinazione";
   if (stepRegistrazione === "base" && haComponenti) return "Avanti →";
-  return stampare ? "🖨️ Stampa etichetta" : "Registra senza stampare";
+  return stampare ? "🖨️ Registra lotto e stampa" : "Registra lotto senza stampare";
 }
 
 export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHome, onRefreshLista, frigoriferi = [], congelatori = [] }) {
@@ -617,7 +617,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
             {/* Guida: è già tutto pronto, basta il pulsante in fondo */}
             {stepRegistrazione === "base" && giacenzaLotti.length === 0 && (
               <div style={{ fontSize: 11, color: "#7a7266", textAlign: "center", marginBottom: 8 }}>
-                Già pronto: scegli la destinazione e tocca <b>Stampa etichetta</b>. 👇
+                Già pronto: scegli la destinazione e tocca <b>Registra lotto e stampa</b>. 👇
               </div>
             )}
 

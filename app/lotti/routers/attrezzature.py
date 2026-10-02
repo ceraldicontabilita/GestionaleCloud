@@ -116,6 +116,42 @@ async def _build_list(tipo: str, fallback_tipo: str) -> list[dict]:
     ]
 
 
+async def _build_destinazioni(tipo: str) -> list[dict]:
+    """Elenco leggero per la posizione di un lotto nel tablet.
+
+    La lista amministrativa completa aggiunge il responsabile HACCP leggendo
+    anche le impostazioni azienda. La produzione non deve dipendere da quella
+    lettura: se e' lenta, frigoriferi e congelatori devono restare selezionabili.
+    """
+    docs = await _get_config(tipo)
+    if docs:
+        return [
+            {
+                "tipo": tipo,
+                "numero": d["numero"],
+                "nome": d["nome"],
+                "label": d["nome"],
+                "fuori_servizio": bool(d.get("fuori_servizio")),
+            }
+            for d in docs
+        ]
+
+    coll = db.temperature_positive if tipo == "frigo" else db.temperature_negative
+    campo_num = "frigorifero_numero" if tipo == "frigo" else "congelatore_numero"
+    haccp_docs = await coll.find({}, {"_id": 0, campo_num: 1}).to_list(None)
+    numeri = sorted({d.get(campo_num) for d in haccp_docs if d.get(campo_num)})
+    return [
+        {
+            "tipo": tipo,
+            "numero": n,
+            "nome": _label_default(tipo, n),
+            "label": _label_default(tipo, n),
+            "fuori_servizio": False,
+        }
+        for n in numeri
+    ]
+
+
 # ─── GET principale ───────────────────────────────────────────────────────────
 @router.get("/")
 async def get_attrezzature():
@@ -127,6 +163,14 @@ async def get_attrezzature():
         "congelatori": congelatori,
         "tutti": frigoriferi + congelatori,
     }
+
+
+@router.get("/destinazioni")
+async def get_destinazioni_lotto():
+    """Lista operativa, senza responsabili o firme amministrative."""
+    frigoriferi = await _build_destinazioni("frigo")
+    congelatori = await _build_destinazioni("congelatore")
+    return {"frigoriferi": frigoriferi, "congelatori": congelatori}
 
 
 @router.get("/frigo")
