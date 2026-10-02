@@ -242,14 +242,14 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
               Acquaviva/Alpha e Aggiungi prodotto NON sono più qui (gestione da sezione dedicata). */}
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             {info.cruscotto && vista === "prodotti" && (
-              <button onClick={()=>setVista("cruscotto")} data-testid="torna-cruscotto"
+              <button onClick={()=>{window.location.hash=`tablet/${reparto}`;}} data-testid="torna-cruscotto"
                 style={{minHeight:44,padding:"9px 16px",border:"none",borderRadius:12,background:"#fff",color:"#2a3329",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(0,0,0,.15)",display:"inline-flex",alignItems:"center",gap:6}}>
                 <LayoutDashboard size={16} aria-hidden="true" /> Cruscotto
               </button>
             )}
             {vista === "prodotti" && reparto === "pasticceria" && (
               <>
-                <button onClick={()=>setShowColazione(true)}
+                <button onClick={()=>{window.location.hash="tablet/pasticceria/colazione";}}
                   style={{padding:"9px 16px",border:"none",borderRadius:12,background:"#fff",color:"#2a3329",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>
                   ☕ Colazione
                 </button>

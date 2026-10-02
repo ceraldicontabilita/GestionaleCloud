@@ -977,6 +977,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   indipendenti decidono menu pubblico, catalogo B&B e ricette operative
   (`visibile_tablet`; le escluse restano recuperabili). Il Menu legge il
   proprio catalogo replicato dal ponte, non rilegge le ricette per B&B.
+  Composizione colazioni, assegnazione hotel e carta ospite usano la stessa
+  destinazione `bb`; le RPC esistenti conservano autorizzazioni e prezzi hotel.
   `#in_menu` resta un alias di `#ricette/prezzi`, non una seconda pagina.
 - In Menu admin → Prodotti, la **X nasconde**, non cancella: resta per Qromo
   e aggiorna `visible`; per Lotti la scelta sta nella ricetta.
