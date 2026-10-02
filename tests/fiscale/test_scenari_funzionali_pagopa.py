@@ -229,7 +229,7 @@ def test_iuv_con_zero_iniziale_resta_testo_dal_pdf_all_archivio():
     iuv = "01234567890123456"
     letto = _run(vdi.leggi_documento_verbale(
         _pdf(["Avviso di pagamento", "Verbale n. A26110812778", f"IUV {iuv}", "Importo da pagare: 57,05"]),
-        "avviso.pdf", usa_ai=False))
+        "avviso.pdf"))
     assert letto["iuv"] == iuv and isinstance(letto["iuv"], str)
     # un intero ha gia' perso lo zero: non si indovina; un float ha perso le cifre
     assert vdi.normalizza_iuv(1234567890123456) is None

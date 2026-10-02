@@ -121,14 +121,13 @@ def test_stato_pagato_legacy_senza_importo_verificato_non_appare_come_pagato():
 def test_riconciliazione_verbale_e_preview_first_e_parser_non_persiste_importo():
     root = Path(__file__).resolve().parents[2]
     router_source = (root / "app/routers/verbali_riconciliazione.py").read_text(encoding="utf-8")
-    parser_source = (root / "app/services/llm_document_parser.py").read_text(encoding="utf-8")
 
     assert "dry_run: bool = Query(" in router_source
     assert "if updates and not dry_run:" in router_source
     assert '"richiede_conferma": bool(proposte) and dry_run' in router_source
-    assert 'update["importo"] = parsed["importo"]' not in parser_source
-    assert 'update = {"importo": importo}' not in parser_source
-    assert '"importo_candidato_centesimi": amount_to_cents(importo)' in parser_source
+    # Il lettore LLM dei verbali (targa, importo e numero scritti da solo sul
+    # verbale) non esiste piu': l'agente scrive proposte, il titolare conferma.
+    assert not (root / "app/services/llm_document_parser.py").exists()
 
 
 def test_anteprima_riconciliazione_non_scrive_e_applicazione_confermata_si(monkeypatch):

@@ -362,18 +362,44 @@ async def _schedule_verbale_notifications(
         )
 
 
+FONTE_CAMPI_PROPOSTA = "agenti_proposta"
+
+
+def metadata_da_proposta(campi: Dict[str, Any] | None) -> Dict[str, Any]:
+    """I campi di una proposta dell'agente confermata dal titolare, nelle chiavi del lettore.
+
+    Numero, IUV, targa e importo (da centesimi) sono la parola del titolare su una
+    scansione che il lettore non sa leggere; la «data» generica della proposta non
+    dice se e' quella della violazione o dell'atto e non si passa. Senza campi
+    utili torna vuoto: il lettore legge da solo.
+    """
+    if not isinstance(campi, dict):
+        return {}
+    metadati: Dict[str, Any] = {}
+    for chiave_proposta, chiave_lettore in (("numero", "numero_verbale"), ("iuv", "iuv"), ("targa", "targa")):
+        valore = str(campi.get(chiave_proposta) or "").strip()
+        if valore:
+            metadati[chiave_lettore] = valore
+    cents = campi.get("importo_cents")
+    if isinstance(cents, int) and not isinstance(cents, bool) and cents > 0:
+        metadati["importo"] = float(Decimal(cents) / 100)
+    if metadati:
+        metadati["fonte_campi"] = FONTE_CAMPI_PROPOSTA
+    return metadati
+
+
 async def leggi_documento_verbale(
     content: bytes,
     filename: str,
     parsed_metadata: Dict[str, Any] | None = None,
-    *,
-    usa_ai: bool = True,
 ) -> Dict[str, Any]:
     """Legge il PDF di un verbale/avviso/ricevuta: l'unico lettore, senza scrivere.
 
     Numero, IUV, targa e importo vengono dal **contenuto** (mai dal nome del file
     come fonte del numero se il testo lo contiene); l'importo ha la sua
-    provenienza. `usa_ai=False` toglie il ripiego vision (anteprime e test).
+    provenienza. Nessun lettore AI qui dentro: una scansione senza testo resta
+    «da revisionare», la legge l'agente (`agenti_proposte`) e la conferma del
+    titolare porta qui i suoi campi come `parsed_metadata` (`metadata_da_proposta`).
     """
     sha256 = hashlib.sha256(content).hexdigest()
     try:
@@ -399,21 +425,7 @@ async def leggi_documento_verbale(
         "indirizzo_violazione": parsed_metadata.get("indirizzo_violazione"),
     }
     ai_data = {key: value for key, value in ai_data.items() if value not in (None, "")}
-    ai_was_used = False
-    ai_error: Optional[str] = None
-    # Il fallback vision serve solo per veri PDF scansione. Questa guardia
-    # evita chiamate esterne su payload corrotti o sui fixture testuali.
-    if usa_ai and content.startswith(b"%PDF") and len(text.strip()) < 80:
-        try:
-            from app.services.ai_document_parser import parse_verbale_ai
-            ai_result = await parse_verbale_ai(file_bytes=content)
-            if ai_result.get("success"):
-                ai_data.update(ai_result)
-                ai_was_used = True
-            else:
-                ai_error = str(ai_result.get("error") or "estrazione AI non disponibile")
-        except Exception as exc:
-            ai_error = str(exc)
+    fonte_campi = parsed_metadata.get("fonte_campi") if ai_data else None
 
     combined = f"{filename}\n{text}"
     local_details = _extract_verbale_details(combined)
@@ -463,7 +475,7 @@ async def leggi_documento_verbale(
     )
     return {
         "sha256": sha256, "text": text, "parsed_metadata": parsed_metadata,
-        "ai_data": ai_data, "ai_was_used": ai_was_used, "ai_error": ai_error,
+        "ai_data": ai_data, "fonte_campi": fonte_campi,
         "pagopa_data": pagopa_data, "numero": numero, "iuv": iuv, "targa": targa,
         "importo": importo, "importo_fonte": importo_fonte,
         "importo_conflitto": importo_conflitto, "data_pagamento": data_pagamento,
@@ -485,7 +497,6 @@ async def process_verbale_document(
     letto = await leggi_documento_verbale(content, filename, parsed_metadata)
     sha256, text = letto["sha256"], letto["text"]
     parsed_metadata, ai_data = letto["parsed_metadata"], letto["ai_data"]
-    ai_was_used, ai_error = letto["ai_was_used"], letto["ai_error"]
     pagopa_data = letto["pagopa_data"]
     numero, iuv, targa = letto["numero"], letto["iuv"], letto["targa"]
     importo, importo_fonte = letto["importo"], letto["importo_fonte"]
@@ -504,9 +515,8 @@ async def process_verbale_document(
         "codice_cbill_estratto": pagopa_data.get("codice_cbill"),
         "data_scadenza_estratta": pagopa_data.get("data_scadenza"),
         "document_text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-        "estrazione_ai_usata": ai_was_used,
         "estrazione_parser_locale": bool(parsed_metadata),
-        "estrazione_ai_errore": ai_error,
+        "campi_da_proposta_agente": letto["fonte_campi"] == FONTE_CAMPI_PROPOSTA,
         "updated_at": now,
     }
 

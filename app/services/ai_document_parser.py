@@ -470,15 +470,6 @@ async def parse_busta_paga_ai(file_path: str = None, file_bytes: bytes = None) -
     )
 
 
-async def parse_verbale_ai(file_path: str = None, file_bytes: bytes = None) -> Dict[str, Any]:
-    """Wrapper per verbali e documenti PagoPA, inclusi PDF scansione."""
-    return await parse_document_with_ai(
-        file_path=file_path,
-        file_bytes=file_bytes,
-        document_type="verbale"
-    )
-
-
 async def batch_parse_documents(
     file_paths: List[str],
     document_type: str = "auto"

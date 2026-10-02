@@ -3,7 +3,6 @@ import copy
 import re
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
-from app.services import ai_document_parser
 from app.services import verbali_document_import as mod
 
 
@@ -145,39 +144,57 @@ def test_importo_testuale_5164_centesimi_prevale_su_ocr_5164_euro():
     assert conflict is True
 
 
-def test_pdf_scansione_usa_vision_e_crea_verbale_amministrativo(monkeypatch):
+def test_pdf_scansione_resta_da_revisionare_senza_lettore_ai(monkeypatch):
+    """Una scansione senza testo non chiama nessun modello: resta «da revisionare»
+    e la legge l'agente (proposta), mai il lettore."""
     db = _Db()
     db["documents_inbox"].docs = [{"id": "doc-scan"}]
     monkeypatch.setattr(mod, "_extract_text", lambda _content: "")
 
-    async def fake_ai(**_kwargs):
-        return {
-            "success": True,
-            "tipo_documento": "verbale",
-            "numero_verbale": "VV/24990121765",
-            "data_verbale": "2026-05-13",
-            "data_violazione": "2026-04-24",
-            "importo_ridotto": 25.82,
-            "ente_creditore": "Comune di Napoli",
-            "partita_iva_responsabile": "04523831214",
-            "targa": None,
-        }
-
-    monkeypatch.setattr(ai_document_parser, "parse_verbale_ai", fake_ai)
     result = _run(mod.process_verbale_document(
-        db,
-        document_id="doc-scan",
-        content=b"%PDF-1.7 scanned",
-        filename="VERBALE N. 24990121765.pdf",
+        db, document_id="doc-scan", content=b"%PDF-1.7 scanned", filename="scansione.pdf",
+    ))
+
+    assert result["status"] == "review" and result["reason"] == "numero_e_iuv_assenti"
+    assert db["verbali_noleggio"].docs == []
+    riga = db["documents_inbox"].docs[0]
+    assert riga["status"] == "da_revisionare" and riga["processed"] is False
+    assert riga["campi_da_proposta_agente"] is False
+    assert "estrazione_ai_usata" not in riga
+
+
+def test_metadata_da_proposta_porta_solo_i_campi_utili():
+    assert mod.metadata_da_proposta(None) == {}
+    assert mod.metadata_da_proposta({"numero": None, "importo_cents": None, "data": "2026-04-24"}) == {}
+    metadati = mod.metadata_da_proposta({
+        "numero": " VV/24990121765 ", "iuv": "01234567890123456", "targa": "ab123cd",
+        "importo_cents": 2582, "data": "2026-04-24", "controparte": "Comune di Napoli",
+    })
+    assert metadati == {"numero_verbale": "VV/24990121765", "iuv": "01234567890123456", "targa": "ab123cd",
+                        "importo": 25.82, "fonte_campi": mod.FONTE_CAMPI_PROPOSTA}
+    # un importo falso (bool, zero, negativo) non entra
+    assert "importo" not in mod.metadata_da_proposta({"numero": "1", "importo_cents": True})
+    assert "importo" not in mod.metadata_da_proposta({"numero": "1", "importo_cents": 0})
+
+
+def test_campi_confermati_dal_titolare_creano_il_verbale_dalla_scansione(monkeypatch):
+    db = _Db()
+    db["documents_inbox"].docs = [{"id": "doc-scan", "status": "da_revisionare", "processed": False}]
+    monkeypatch.setattr(mod, "_extract_text", lambda _content: "")
+
+    result = _run(mod.process_verbale_document(
+        db, document_id="doc-scan", content=b"%PDF-1.7 scanned", filename="scansione.pdf",
+        parsed_metadata=mod.metadata_da_proposta({"numero": "VV/24990121765", "importo_cents": 2582,
+                                                   "targa": None, "iuv": None}),
     ))
 
     assert result["status"] == "linked"
     verbale = db["verbali_noleggio"].docs[0]
     assert verbale["numero_verbale"] == "VV/24990121765"
     assert verbale["importo"] == 25.82
-    assert verbale["ambito"] == "amministrativo"
     assert verbale["targa"] is None
-    assert db["documents_inbox"].docs[0]["estrazione_ai_usata"] is True
+    riga = db["documents_inbox"].docs[0]
+    assert riga["campi_da_proposta_agente"] is True and riga["estrazione_parser_locale"] is True
 
 
 def test_documento_senza_numero_o_iuv_resta_da_revisionare(monkeypatch):

@@ -227,7 +227,7 @@ async def ricostruisci_verbali_da_pdf(
             visti_hash.add(impronta)
             try:
                 letto = await leggi_documento_verbale(
-                    contenuto, pdf.get("filename") or "verbale.pdf", usa_ai=False)
+                    contenuto, pdf.get("filename") or "verbale.pdf")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Verbali ricostruzione: PDF non letto: %s: %s", type(exc).__name__, exc)
                 esito["illeggibili"] += 1

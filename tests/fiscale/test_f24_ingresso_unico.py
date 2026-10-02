@@ -213,5 +213,5 @@ def test_parse_f24_llm_e_alias_della_pipeline_posta(monkeypatch):
     monkeypatch.setattr(email_download.Database, "get_db", staticmethod(lambda: "db"))
     esito = asyncio.run(email_download.parse_f24_con_llm(limit=5))
     assert esito["success"] is True and chiamate == ["db"]
-    import app.services.llm_document_parser as llm
-    assert not hasattr(llm, "batch_parse_f24") and not hasattr(llm, "parse_f24_pdf")
+    import importlib.util
+    assert importlib.util.find_spec("app.services.llm_document_parser") is None

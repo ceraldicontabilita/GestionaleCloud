@@ -472,17 +472,29 @@ async def _applica_inbox(db, proposta: Dict[str, Any], tipo: str, utente: str) -
     contenuto = await leggi_byte(db, {"origine": "inbox", "inbox_id": doc["inbox_id"]})
     contesto = {"channel": "documents_inbox", "inbox_id": doc["inbox_id"], "source_sha256": doc.get("sha256"),
                 "tipo_deciso_da": utente}
+    campi = (proposta.get("proposta") or {}).get("campi")
+    if campi:
+        contesto["campi_proposta"] = dict(campi)
     try:
         risultato = await upload_documento_automatico(file=FileCaricato(doc.get("nome") or "documento", contenuto,
                                                                          contesto, tipo))
     except HTTPException as exc:
         return {"success": False, "message": str(exc.detail), "http_status": exc.status_code}
     ok = bool(risultato.get("success") or risultato.get("duplicate"))
+    associazione = risultato.get("association") if isinstance(risultato.get("association"), dict) else {}
+    if associazione.get("status") == "review":
+        # Il verbale e' gia' in archivio ma anche coi campi confermati resta senza
+        # numero ne' IUV: la riga non si chiude, la proposta resta aperta col motivo.
+        return {"success": False, "message": "verbale ancora senza numero ne' IUV: resta da revisionare",
+                "duplicate": bool(risultato.get("duplicate")), "tipo_rilevato": risultato.get("tipo_rilevato"),
+                "association": associazione}
     if ok:
+        # Un verbale gia' archiviato e ora collegato coi campi confermati e' elaborato, non un doppione.
+        elaborato = bool(risultato.get("success")) or associazione.get("status") == "linked"
         await db["documents_inbox"].update_one({"id": doc["inbox_id"]}, {"$set": {
             "categoria": tipo, "auto_classified_at": _adesso(), "classificato_da": utente,
             "agente_proposta_id": proposta["id"], "processed": True,
-            "status": "elaborato" if risultato.get("success") else "duplicato",
+            "status": "elaborato" if elaborato else "duplicato",
         }})
     return {"success": ok, "message": risultato.get("message"), "duplicate": bool(risultato.get("duplicate")),
             "tipo_rilevato": risultato.get("tipo_rilevato")}
@@ -504,7 +516,8 @@ async def conferma(db, proposta_id: str, utente: str) -> Dict[str, Any]:
     if doc.get("origine") == "drive" and doc.get("drive_id"):
         from app.services.drive_cartella_unica import rielabora_con_tipo
 
-        esito = await rielabora_con_tipo(db, doc["drive_id"], tipo, deciso_da=utente)
+        esito = await rielabora_con_tipo(db, doc["drive_id"], tipo, deciso_da=utente,
+                                         campi=(proposta.get("proposta") or {}).get("campi") or None)
     elif doc.get("origine") == "inbox" and doc.get("inbox_id"):
         esito = await _applica_inbox(db, proposta, tipo, utente)
     else:

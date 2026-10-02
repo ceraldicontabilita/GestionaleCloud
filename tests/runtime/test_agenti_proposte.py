@@ -149,7 +149,7 @@ def test_conferma_applica_col_motore_una_volta_sola(ambiente, monkeypatch):
 
     applicazioni = []
 
-    async def rielabora(db_, drive_id, tipo, *, deciso_da):
+    async def rielabora(db_, drive_id, tipo, *, deciso_da, campi=None):
         applicazioni.append((drive_id, tipo, deciso_da))
         return {"success": True, "cartella": "ELABORATE", "motivo": None, "tipo_rilevato": tipo,
                 "duplicate": False, "message": "ok", "riferimenti": {"quietanza_id": "Q1"}}
@@ -182,7 +182,7 @@ def test_conferma_fallita_lascia_la_proposta_aperta(ambiente, monkeypatch):
     asyncio.run(ap.giro(db, client=client))
     proposta = asyncio.run(db["agenti_proposte"].find_one({"documento.drive_id": "DRV-A"}, {"_id": 0}))
 
-    async def rielabora(db_, drive_id, tipo, *, deciso_da):
+    async def rielabora(db_, drive_id, tipo, *, deciso_da, campi=None):
         return {"success": False, "cartella": "ERRORI", "motivo": "F24 non quadrato: saldo 10,00 righe 9,00"}
 
     import app.services.drive_cartella_unica as cu
@@ -241,3 +241,79 @@ def test_inbox_senza_categoria_si_legge_e_la_conferma_classifica(ambiente, monke
     assert ricevuti == [("scansione.pdf", "cedolino", b"%PDF scan", "upload_1")]
     riga = asyncio.run(db["documents_inbox"].find_one({"id": "upload_1"}, {"_id": 0}))
     assert riga["categoria"] == "cedolino" and riga["processed"] is True and riga["agente_proposta_id"] == p["id"]
+
+
+def test_conferma_passa_i_campi_della_proposta_al_motore(ambiente, monkeypatch):
+    """La parola del titolare sulla scansione (numero, importo) arriva al motore del
+    tipo come `campi`; Drive e inbox la portano nello stesso `campi_proposta`."""
+    import base64
+
+    db = ambiente
+    asyncio.run(db["documents_inbox"].insert_one(
+        {"id": "upload_v", "filename": "verbale_scan.pdf", "status": "da_revisionare", "processed": False,
+         "pdf_data": base64.b64encode(b"%PDF scan verbale").decode(), "downloaded_at": "2026-10-02"}))
+    client = ClientFinto({
+        "quietanza.pdf": _risposta("quietanza_f24"),
+        "verbale.pdf": _risposta("verbale_codice_strada", numero="VV/1", importo_cents=2582, targa="GX037HJ"),
+        "verbale_scan.pdf": _risposta("verbale_codice_strada", numero="VV/2", importo_cents=5000),
+    })
+    asyncio.run(ap.giro(db, client=client))
+
+    ricevuti = []
+
+    async def rielabora(db_, drive_id, tipo, *, deciso_da, campi=None):
+        ricevuti.append(("drive", drive_id, tipo, campi))
+        return {"success": True, "cartella": "ELABORATE", "tipo_rilevato": tipo, "duplicate": False,
+                "message": "ok", "riferimenti": {"verbale_id": "VB1"}}
+
+    async def smistatore(file):
+        ricevuti.append(("inbox", file.source_context["inbox_id"], file.tipo_rilevato_noto,
+                         file.source_context.get("campi_proposta")))
+        return {"success": False, "duplicate": True, "tipo_rilevato": "verbale_codice_strada",
+                "association": {"status": "linked", "verbale_id": "VB2"}}
+
+    import app.routers.documenti as documenti
+    import app.services.drive_cartella_unica as cu
+
+    monkeypatch.setattr(cu, "rielabora_con_tipo", rielabora)
+    monkeypatch.setattr(documenti, "upload_documento_automatico", smistatore)
+
+    p_drive = asyncio.run(db["agenti_proposte"].find_one({"documento.drive_id": "DRV-B"}, {"_id": 0}))
+    p_inbox = asyncio.run(db["agenti_proposte"].find_one({"documento.inbox_id": "upload_v"}, {"_id": 0}))
+    assert asyncio.run(ap.conferma(db, p_drive["id"], "t"))["esito"]["success"] is True
+    assert asyncio.run(ap.conferma(db, p_inbox["id"], "t"))["esito"]["success"] is True
+    assert ricevuti[0][:3] == ("drive", "DRV-B", "verbale_codice_strada")
+    assert ricevuti[0][3]["numero"] == "VV/1" and ricevuti[0][3]["importo_cents"] == 2582
+    assert ricevuti[0][3]["targa"] == "GX037HJ"
+    assert ricevuti[1][:3] == ("inbox", "upload_v", "verbale_codice_strada")
+    assert ricevuti[1][3]["numero"] == "VV/2" and ricevuti[1][3]["importo_cents"] == 5000
+    # il verbale gia' archiviato e ora collegato e' «elaborato», non un doppione
+    riga = asyncio.run(db["documents_inbox"].find_one({"id": "upload_v"}, {"_id": 0}))
+    assert riga["status"] == "elaborato" and riga["processed"] is True and riga["categoria"] == "verbale_codice_strada"
+
+
+def test_inbox_verbale_ancora_senza_numero_resta_aperta(ambiente, monkeypatch):
+    import base64
+
+    db = ambiente
+    asyncio.run(db["documents_inbox"].insert_one(
+        {"id": "upload_v", "filename": "verbale_scan.pdf", "status": "da_revisionare", "processed": False,
+         "pdf_data": base64.b64encode(b"%PDF scan verbale").decode(), "downloaded_at": "2026-10-02"}))
+    client = ClientFinto({"quietanza.pdf": _risposta("quietanza_f24"), "verbale.pdf": _risposta("verbale_codice_strada"),
+                          "verbale_scan.pdf": _risposta("verbale_codice_strada")})
+    asyncio.run(ap.giro(db, client=client))
+
+    async def smistatore(file):
+        return {"success": False, "duplicate": True, "tipo_rilevato": "verbale_codice_strada",
+                "association": {"status": "review", "reason": "numero_e_iuv_assenti"}}
+
+    import app.routers.documenti as documenti
+
+    monkeypatch.setattr(documenti, "upload_documento_automatico", smistatore)
+    p = asyncio.run(db["agenti_proposte"].find_one({"documento.inbox_id": "upload_v"}, {"_id": 0}))
+    r = asyncio.run(ap.conferma(db, p["id"], "t"))
+    assert r["esito"]["success"] is False and "senza numero" in r["esito"]["message"]
+    dopo = asyncio.run(db["agenti_proposte"].find_one({"id": p["id"]}, {"_id": 0}))
+    assert dopo["stato"] == "proposta"
+    riga = asyncio.run(db["documents_inbox"].find_one({"id": "upload_v"}, {"_id": 0}))
+    assert riga["status"] == "da_revisionare" and riga["processed"] is False and "categoria" not in riga

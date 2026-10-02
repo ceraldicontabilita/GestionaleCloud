@@ -256,21 +256,6 @@ async def processa_pipeline_completa() -> Dict[str, Any]:
     }
 
 
-@router.post("/parse-verbali-llm")
-async def parse_verbali_con_llm(
-    limit: int = Query(default=50, description="Max verbali da processare")
-) -> Dict[str, Any]:
-    """
-    Parsing LLM dei verbali senza targa.
-    Estrae: targa, importo, data, ente emittente dal PDF.
-    Collega automaticamente a veicolo e dipendente (driver).
-    """
-    from app.services.llm_document_parser import batch_parse_verbali
-    db = Database.get_db()
-    stats = await batch_parse_verbali(db, limit=limit)
-    return {"success": True, "stats": stats}
-
-
 @router.post("/parse-f24-llm")
 async def parse_f24_con_llm(
     limit: int = Query(default=50, description="Ignorato: alias legacy")
@@ -361,34 +346,6 @@ async def confronto_pos_endpoint(anno: int = Query(default=2026)) -> Dict[str, A
     return await confronta_pos_corrispettivi(db, anno)
 
 
-
-
-@router.post("/estrai-importi-verbali")
-async def estrai_importi_verbali(
-    limit: int = Query(default=76, description="Max verbali da processare")
-) -> Dict[str, Any]:
-    """
-    Estrae importi dai verbali PDF che non hanno importo.
-    Usa regex + LLM per estrarre l'importo della sanzione.
-    """
-    from app.services.llm_document_parser import batch_extract_importi_verbali
-    db = Database.get_db()
-    stats = await batch_extract_importi_verbali(db, limit=limit)
-    return {"success": True, "stats": stats}
-
-
-@router.post("/fix-numeri-verbali")
-async def fix_numeri_verbali(
-    limit: int = Query(default=102, description="Max verbali da processare")
-) -> Dict[str, Any]:
-    """
-    Corregge numeri verbale PEC-xxx/DOC-xxx estraendo il vero numero
-    dal contenuto PDF con regex + LLM.
-    """
-    from app.services.llm_document_parser import batch_fix_numeri_verbali
-    db = Database.get_db()
-    stats = await batch_fix_numeri_verbali(db, limit=limit)
-    return {"success": True, "stats": stats}
 
 
 

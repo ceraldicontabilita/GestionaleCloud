@@ -3652,18 +3652,24 @@ async def upload_documento_automatico(
             return archived
 
         elif tipo_rilevato == 'verbale_codice_strada':
+            from app.services.verbali_document_import import metadata_da_proposta, process_verbale_document
+
+            # I campi della proposta dell'agente confermata dal titolare: il lettore
+            # li usa dove il contenuto non si legge (scansione). Col doppione (verbale
+            # gia' archiviato «da revisionare») il motore gira lo stesso sulla riga che c'e'.
+            campi_confermati = metadata_da_proposta(source_context.get("campi_proposta"))
             archived = await _archive_non_payment_document(
                 db, filename=filename, content=content,
                 document_type=tipo_rilevato,
                 source_context=source_context,
             )
-            if archived.get("duplicate"):
+            if archived.get("duplicate") and not (campi_confermati and archived.get("doc_id")):
                 return archived
-            from app.services.verbali_document_import import process_verbale_document
 
             association = await process_verbale_document(
                 db, document_id=archived["doc_id"], content=content,
                 filename=filename, source="documenti_upload_auto",
+                parsed_metadata=campi_confermati or None,
             )
             archived["association"] = association
             archived["workflow"] = "VERBALE_DOCUMENTALE"
