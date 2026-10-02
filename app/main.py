@@ -123,10 +123,11 @@ async def lifespan(app: FastAPI):
     # funzione avvia_* cattura le proprie eccezioni: un errore non ferma mai il
     # gestionale. HR e Lotti hanno uno scheduler proprio: partono solo quando
     # anche quello dell'ERP e' attivo (mai nel ruolo "web" o nei test).
-    if scheduler_attivo:
-        from app.lotti.embed import avvia_lotti
+    # Lotti parte sempre (handler eventi, seed, cataloghi servono alle API);
+    # solo il suo scheduler segue il ruolo del processo.
+    from app.lotti.embed import avvia_lotti
 
-        await avvia_lotti()
+    await avvia_lotti(avvia_scheduler=scheduler_attivo)
 
     # La connessione al DB di HR serve anche quando gli scheduler sono spenti
     # (ruolo web o ENABLE_SCHEDULER=false). Solo i job periodici seguono il flag.
