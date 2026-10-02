@@ -27,10 +27,17 @@ def telegram(monkeypatch):
     return inviati
 
 
-def _parcella(db, data, fid="fatt-1"):
+def _parcella(db, data, fid="fatt-1", pagata_il=None):
+    """Parcella con ritenuta, pagata al professionista (per difetto lo stesso giorno).
+
+    Il periodo del 1040 e' il mese del PAGAMENTO al professionista (decisione
+    del 02/10/2026), non il mese della fattura: queste scene pagano la parcella
+    nel mese della fattura, cosi' il 1040 atteso resta quello del mese.
+    """
     return run(ritenute.upsert_ritenuta_da_fattura(db, {
         "id": fid, "invoice_number": "12/2026", "invoice_date": data, "supplier_name": "STUDIO ROSSI",
-        "supplier_vat": "01234567890", "xml_raw": XML}))
+        "supplier_vat": "01234567890", "xml_raw": XML,
+        "stato": "pagata", "data_pagamento": pagata_il or data}))
 
 
 def _paga_1040(db, letti, periodo, data, righe_extra=(), importo="280.00", n=1):

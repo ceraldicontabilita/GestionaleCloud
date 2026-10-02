@@ -176,21 +176,31 @@ def _corrispettivo():
 
 
 def test_senza_pos_reale_l_uscita_non_si_inventa():
-    """Divieto di fallback XML (utente 07/08/2026).
-
-    L'XML dice che 600 sono elettronici, ma non dice quanti da Numia e
-    quanti da SumUp. Scrivere un'uscita indistinta da 600 creava un
-    trasferimento che nessun accredito avrebbe potuto riconciliare.
-    """
+    """Niente uscita POS dall'XML (utente 07/08/2026): l'XML dice che 600 sono
+    elettronici, non quanti da Numia e quanti da SumUp. Dal 02/10/2026 apre
+    pero' il CREDITO verso il gestore, senza circuito (15.07), marcato
+    «senza chiusura terminale»: una riga storica senza XML non lo apre."""
     db = _Db()
     esito = _run(registra_corrispettivo(db, _corrispettivo()))
 
     assert esito["prima_nota_cassa_id"]          # l'entrata XML si scrive
     assert esito["pos_stato"] == "attende_chiusura_pos_reale"
     assert not esito.get("prima_nota_cassa_uscita_pos_id")
-    assert not esito.get("prima_nota_banca_id")
+    assert not esito.get("prima_nota_banca_id")  # non e' una chiusura XML
     assert len(db["prima_nota_cassa"].docs) == 1  # solo l'entrata
     assert db["prima_nota_banca"].docs == []
+
+    db = _Db()
+    esito = _run(registra_corrispettivo(db, {**_corrispettivo(), "stato": "definitivo_xml"}))
+
+    assert esito["pos_stato"] == "attende_chiusura_pos_reale"
+    assert esito["prima_nota_banca_id"] == esito["credito_pos_xml_id"]
+    assert [d for d in db["prima_nota_cassa"].docs if d["tipo"] == "uscita"] == []
+    (credito,) = db["prima_nota_banca"].docs
+    assert credito["importo"] == 600.0 and credito["natura"] == "credito_pos"
+    assert credito["conto_contabile"] == "15.07" and credito["gestore"] == "pos_da_xml"
+    assert credito["fonte_credito"] == "xml" and credito["senza_chiusura_terminale"] is True
+    assert credito["idempotency_key"] == "corr:C1:banca_credito:pos_da_xml"
 
 
 def test_ogni_circuito_reale_ha_il_suo_credito_senza_uscita_cassa():

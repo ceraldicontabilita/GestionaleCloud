@@ -57,11 +57,26 @@ def test_corregge_solo_l_importo_del_pagamento(hr):
     assert exc.value.status_code == 404
 
 
-def test_sposta_su_un_mese_senza_busta_crea_la_riga(hr):
+def test_sposta_su_un_mese_senza_busta_crea_la_riga_in_attesa_della_busta(hr):
     esito = _run(mod.modifica_pagamento_esito("ecm:m-1", {"mese": 11, "anno": 2025}))
-    assert esito["stati"]["2025-11"] == "pagato"  # busta 0, erogato > 0: il motore unico dice pagato
+    # busta non ancora in archivio, erogato > 0: non e' «pagato» (titolare 02/10/2026)
+    assert esito["stati"]["2025-11"] == "in_attesa_busta"
     riga = _run(hr.paghe_mensili.find_one({"dipendente_id": "dip-1", "anno": 2025, "mese": 11}))
     assert riga["bonifico_importo"] == 1300.0 and riga["bonifico_da_esiti"] is True
+    assert "importo_busta" not in riga and riga["saldo"] is None   # mai uno 0 di comodo
+
+
+def test_pagato_solo_al_centesimo_nessuna_tolleranza(hr):
+    # 1.300,00 di bonifico su una busta di 1.300,01: manca un centesimo, e' parziale
+    esito = _run(mod.modifica_importo_busta({"dipendente_id": "dip-1", "anno": 2026, "mese": 1,
+                                             "importo_busta": 1300.01}))
+    assert esito["stato"] == "parziale"
+    paga = _run(hr.paghe_mensili.find_one({"dipendente_id": "dip-1", "anno": 2026, "mese": 1}))
+    assert paga["saldo"] == 0.01
+    assert _run(mod.paghe_in_attesa())["righe"][0]["saldo"] == 0.01
+    esito = _run(mod.modifica_importo_busta({"dipendente_id": "dip-1", "anno": 2026, "mese": 1,
+                                             "importo_busta": 1300.00}))
+    assert esito["stato"] == "pagato"
 
 
 def test_corregge_importo_busta_e_la_sincronizzazione_non_lo_sovrascrive(hr):

@@ -42,6 +42,15 @@ ZERO = Decimal("0.00")
 SCARTO_ARROTONDAMENTO = Decimal("1.00")
 
 COLL_CONCILIAZIONI = "conciliazioni"
+#: Eccedenze dei pagamenti di conciliazione (titolare 02/10/2026): il bonifico
+#: copre la conciliazione al centesimo, quello che avanza resta qui
+#: ``da_attribuire`` finche' il titolare non sceglie stipendio, acconto o bonus.
+COLL_ECCEDENZE = "eccedenze_pagamenti"
+ECCEDENZA_DA_ATTRIBUIRE = "da_attribuire"
+ECCEDENZA_ATTRIBUITA = "attribuita"
+#: Dove puo' andare un'eccedenza: mai da sola, sempre una scelta del titolare.
+DESTINAZIONI_ECCEDENZA = {"stipendio": "Stipendio del mese", "acconto": "Acconto",
+                          "bonus": "Bonus della conciliazione"}
 PREFISSO_BLOB = "conciliazione:"
 DOCUMENTO_MAX_BYTE = 15 * 1024 * 1024
 MIME_DOCUMENTO = {
@@ -366,8 +375,13 @@ def _mov(data: str, tipo: str, descrizione: str, *, dare: Optional[Decimal] = No
 
 def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[str, Any]],
                       cedolini: Iterable[Dict[str, Any]], acconti: Iterable[Dict[str, Any]],
-                      conciliazioni: Iterable[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    """Tutti i movimenti di UN dipendente: ``registro`` (paghe) e ``bonus`` a parte."""
+                      conciliazioni: Iterable[Dict[str, Any]],
+                      eccedenze: Iterable[Dict[str, Any]] = ()) -> Dict[str, List[Dict[str, Any]]]:
+    """Tutti i movimenti di UN dipendente: ``registro`` (paghe) e ``bonus`` a parte.
+
+    Un'eccedenza ``da_attribuire`` compare nel registro **senza** dare ne'
+    avere, con l'avviso: non e' un pagamento di stipendio finche' il titolare
+    non lo dice (una attribuita e' gia' un bonifico, un acconto o un bonus)."""
     registro: List[Dict[str, Any]] = []
     bonus: List[Dict[str, Any]] = []
 
@@ -505,6 +519,17 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
                        link={**link, "pagamento_id": p.get("id")})
             (bonus if p.get("parte") == "bonus" else registro).append(mov)
 
+    for ecc in eccedenze:
+        if ecc.get("stato") != ECCEDENZA_DA_ATTRIBUIRE:
+            continue
+        imp, data = importo(ecc.get("importo")), _data_iso(ecc.get("data"))
+        if not imp or not data:
+            continue
+        registro.append(_mov(data, "eccedenza", f"Eccedenza di {imp:.2f} € sul pagamento di conciliazione",
+                             competenza=(int(data[:4]), int(data[5:7])), fonte="eccedenze_pagamenti",
+                             link={"eccedenza_id": ecc.get("id"), "conciliazione_id": ecc.get("conciliazione_id")},
+                             avviso="da attribuire: scegli stipendio, acconto o bonus (non entra nel saldo)"))
+
     ordina = lambda x: (x["data"], x["ordine"], x["tipo"], x["descrizione"])  # noqa: E731
     return {"registro": sorted(registro, key=ordina), "bonus": sorted(bonus, key=ordina)}
 
@@ -637,8 +662,23 @@ async def carica_movimenti(db, dipendente_id: str) -> Dict[str, List[Dict[str, A
     acconti = await db.acconti_dipendenti.find({"dipendente_id": dipendente_id}, {"_id": 0}).to_list(2000)
     conc = await db[COLL_CONCILIAZIONI].find(
         {"dipendente_id": dipendente_id}, {"_id": 0, "file_data": 0}).to_list(500)
+    ecc = await db[COLL_ECCEDENZE].find({"dipendente_id": dipendente_id}, {"_id": 0}).to_list(500)
     return componi_movimenti(paghe=paghe, esiti=esiti, cedolini=cedolini, acconti=acconti,
-                             conciliazioni=conc)
+                             conciliazioni=conc, eccedenze=ecc)
+
+
+def vista_eccedenza(ecc: Dict[str, Any]) -> Dict[str, Any]:
+    out = {k: v for k, v in ecc.items() if k != "_id"}
+    out["importo"] = _txt(importo(ecc.get("importo")))
+    out["destinazioni"] = [{"id": k, "label": v} for k, v in DESTINAZIONI_ECCEDENZA.items()]
+    return out
+
+
+async def eccedenze_da_attribuire(db, dipendente_id: str) -> List[Dict[str, Any]]:
+    righe = await db[COLL_ECCEDENZE].find(
+        {"dipendente_id": dipendente_id, "stato": ECCEDENZA_DA_ATTRIBUIRE}, {"_id": 0}).to_list(500)
+    righe.sort(key=lambda r: r.get("data") or "")
+    return [vista_eccedenza(r) for r in righe]
 
 
 async def posizione_dipendente(db, dipendente_id: str, anno: Optional[int] = None) -> Dict[str, Any]:
@@ -646,6 +686,9 @@ async def posizione_dipendente(db, dipendente_id: str, anno: Optional[int] = Non
         {"id": dipendente_id}, {"_id": 0, "data_assunzione": 1, "data_cessazione": 1}) or {}
     out = posizione(await carica_movimenti(db, dipendente_id), anno, rapporto)
     out["dipendente_id"] = dipendente_id
+    # Le eccedenze da attribuire si mostrano sempre, di qualunque anno: sono
+    # soldi usciti che non hanno ancora una destinazione.
+    out["eccedenze_da_attribuire"] = await eccedenze_da_attribuire(db, dipendente_id)
     return out
 
 
@@ -659,8 +702,27 @@ def _adesso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def residuo_parte(conc: Dict[str, Any], parte: str) -> Optional[Decimal]:
+    """Quanto manca a coprire la parte (``conciliazione`` o ``bonus``), al
+    centesimo; ``None`` se gli importi non sono compilati."""
+    totale = importo(conc.get("totale"))
+    if totale is None:
+        return None
+    bonus = importo(conc.get("bonus")) or ZERO
+    dovuto = bonus if parte == "bonus" else totale - bonus
+    pagato = sum((importo(p.get("importo")) or ZERO for p in conc.get("pagamenti") or []
+                  if p.get("parte") == parte), ZERO)
+    return dovuto - pagato
+
+
 async def aggiungi_pagamento(db, conciliazione_id: str, dati: Dict[str, Any]) -> Dict[str, Any]:
-    """Un pagamento sulla conciliazione; idempotente per bonifico della coda."""
+    """Un pagamento sulla conciliazione; idempotente per bonifico della coda.
+
+    Titolare (02/10/2026): il pagamento copre la parte scelta **al centesimo**;
+    quello che supera il residuo non si attribuisce da solo a niente: resta in
+    ``eccedenze_pagamenti`` ``da_attribuire`` sulla posizione del dipendente,
+    e il titolare sceglie stipendio, acconto o bonus (``attribuisci_eccedenza``).
+    La risposta porta ``eccedenza`` quando ne nasce una."""
     conc = await db[COLL_CONCILIAZIONI].find_one({"id": conciliazione_id}, {"_id": 0, "file_data": 0})
     if not conc or conc.get("annullata"):
         raise ErrorePosizione("CONCILIAZIONE_NON_TROVATA", "Conciliazione non trovata o annullata")
@@ -669,14 +731,135 @@ async def aggiungi_pagamento(db, conciliazione_id: str, dati: Dict[str, Any]) ->
     pag = normalizza_pagamento(dati, conc)
     pagamenti = list(conc.get("pagamenti") or [])
     coda = pag.get("bonifico_da_associare_id")
-    if coda and any(p.get("bonifico_da_associare_id") == coda for p in pagamenti):
+    if coda and (any(p.get("bonifico_da_associare_id") == coda for p in pagamenti)
+                 or await db[COLL_ECCEDENZE].find_one({"bonifico_da_associare_id": coda}, {"_id": 0, "id": 1})):
         return vista_conciliazione(conc)
+
+    versato = importo(pag["importo"])
+    residuo = residuo_parte(conc, pag["parte"])
+    eccedenza: Optional[Dict[str, Any]] = None
+    if residuo is not None and versato > residuo:
+        avanzo = versato - max(residuo, ZERO)
+        eccedenza = {
+            "id": str(uuid.uuid4()), "dipendente_id": conc["dipendente_id"],
+            "conciliazione_id": conciliazione_id, "pagamento_id": pag["id"] if residuo > 0 else None,
+            "parte": pag["parte"], "data": pag["data"], "importo": _txt(avanzo),
+            "importo_versato": _txt(versato), "residuo_coperto": _txt(max(residuo, ZERO)),
+            "modalita": pag["modalita"], "origine": pag.get("origine"),
+            "bonifico_da_associare_id": coda, "movimento_id": pag.get("movimento_id"),
+            "stato": ECCEDENZA_DA_ATTRIBUIRE, "valuta": VALUTA,
+            "created_at": _adesso(), "updated_at": _adesso(),
+        }
+        await db[COLL_ECCEDENZE].insert_one(dict(eccedenza))
+        if residuo <= 0:
+            # parte gia' coperta: niente da scrivere sulla conciliazione
+            out = vista_conciliazione(conc)
+            out["eccedenza"] = vista_eccedenza(eccedenza)
+            return out
+        pag["importo"] = _txt(residuo)
+        pag["eccedenza_id"] = eccedenza["id"]
+        pag["importo_versato"] = _txt(versato)
     pagamenti.append(pag)
     conc["pagamenti"] = pagamenti
     agg = {"pagamenti": pagamenti, "stato": stato_conciliazione(conc), "updated_at": _adesso()}
     await db[COLL_CONCILIAZIONI].update_one({"id": conciliazione_id}, {"$set": agg})
     conc.update(agg)
-    return vista_conciliazione(conc)
+    out = vista_conciliazione(conc)
+    if eccedenza:
+        out["eccedenza"] = vista_eccedenza(eccedenza)
+    return out
+
+
+async def attribuisci_eccedenza(db, eccedenza_id: str, dati: Dict[str, Any],
+                                attore: Optional[str] = None) -> Dict[str, Any]:
+    """Il titolare dice dove va un'eccedenza: ``stipendio`` (bonifico del mese,
+    ``pagamenti_esiti``), ``acconto`` (registro unico ``acconti_dipendenti``) o
+    ``bonus`` (pagamento del bonus della stessa conciliazione, solo se ci sta
+    al centesimo). Mai da sola; una gia' attribuita non si tocca."""
+    ecc = await db[COLL_ECCEDENZE].find_one({"id": eccedenza_id}, {"_id": 0})
+    if not ecc:
+        raise ErrorePosizione("ECCEDENZA_NON_TROVATA", "Eccedenza non trovata")
+    if ecc.get("stato") != ECCEDENZA_DA_ATTRIBUIRE:
+        raise ErrorePosizione("ECCEDENZA_GIA_ATTRIBUITA", "Questa eccedenza è già stata attribuita",
+                              {"stato": ecc.get("stato"), "attribuita_a": ecc.get("attribuita_a")})
+    destinazione = _scelta(dati.get("destinazione"), DESTINAZIONI_ECCEDENZA, "destinazione")
+    imp, data = importo(ecc.get("importo")), _data_iso(ecc.get("data"))
+    if not imp or imp <= 0 or not data:
+        raise ErrorePosizione("ECCEDENZA_INCOMPLETA", "L'eccedenza non ha importo o data")
+    dip_id = ecc["dipendente_id"]
+    anno = _intero(dati.get("anno")) or int(data[:4])
+    mese = _intero(dati.get("mese")) or int(data[5:7])
+    if not (1 <= mese <= 14) or anno < 2000:
+        raise ErrorePosizione("PERIODO_NON_VALIDO", "mese 1-14 e anno >= 2000", {"anno": anno, "mese": mese})
+    ora = _adesso()
+    riferimento: Dict[str, Any]
+
+    if destinazione == "bonus":
+        conc = await db[COLL_CONCILIAZIONI].find_one({"id": ecc.get("conciliazione_id")}, {"_id": 0, "file_data": 0})
+        if not conc or conc.get("annullata"):
+            raise ErrorePosizione("CONCILIAZIONE_NON_TROVATA", "Conciliazione non trovata o annullata")
+        residuo = residuo_parte(conc, "bonus")
+        if residuo is None or residuo < imp:
+            raise ErrorePosizione("OLTRE_BONUS", "Il bonus della conciliazione non copre l'eccedenza al centesimo",
+                                  {"residuo_bonus": _txt(residuo), "eccedenza": _txt(imp)})
+        pag = normalizza_pagamento({"data": data, "importo": imp, "parte": "bonus",
+                                    "modalita": ecc.get("modalita") or "bonifico",
+                                    "origine": "eccedenza_attribuita",
+                                    "movimento_id": ecc.get("movimento_id"),
+                                    "nota": "eccedenza attribuita dal titolare"}, conc)
+        pag["eccedenza_id"] = eccedenza_id
+        pagamenti = list(conc.get("pagamenti") or []) + [pag]
+        conc["pagamenti"] = pagamenti
+        await db[COLL_CONCILIAZIONI].update_one(
+            {"id": conc["id"]}, {"$set": {"pagamenti": pagamenti, "stato": stato_conciliazione(conc),
+                                          "updated_at": ora}})
+        riferimento = {"conciliazione_id": conc["id"], "pagamento_id": pag["id"]}
+    elif destinazione == "acconto":
+        dip = await db.dipendenti.find_one({"id": dip_id}, {"_id": 0, "nome_completo": 1}) or {}
+        acconto = {
+            "id": str(uuid.uuid4()), "dipendente_id": dip_id, "dipendente_nome": dip.get("nome_completo", ""),
+            "tipo": "stipendio", "importo": float(imp), "data": data,
+            "anno": int(data[:4]), "mese": int(data[5:7]),
+            "note": "eccedenza del pagamento di conciliazione, attribuita dal titolare",
+            "natura_acconto": "su_futuro", "tipo_bonifico": "standard",
+            "scalato_su_anno_mese": "%04d-%02d" % (anno, mese),
+            "stato": "registrato", "movimento_bancario_id": ecc.get("movimento_id"), "riconciliato_il": None,
+            "cedolino_id": None, "importo_scalato_effettivo": None,
+            "source": "eccedenze_pagamenti", "eccedenza_id": eccedenza_id,
+            "created_at": ora, "updated_at": ora,
+        }
+        await db.acconti_dipendenti.insert_one(dict(acconto))
+        riferimento = {"acconto_id": acconto["id"], "anno": anno, "mese": mese}
+    else:
+        dip = await db.dipendenti.find_one({"id": dip_id}, {"_id": 0, "nome_completo": 1}) or {}
+        key = f"eccedenza:{eccedenza_id}"
+        esito = {"key": key, "cro": None, "dipendente_id": dip_id, "data": data, "importo": float(imp),
+                 "causale": "Eccedenza del pagamento di conciliazione attribuita a stipendio",
+                 "beneficiario": dip.get("nome_completo"), "mese": mese, "anno": anno,
+                 "origine": "eccedenze_pagamenti", "eccedenza_id": eccedenza_id,
+                 "bonifico_da_associare_id": ecc.get("bonifico_da_associare_id")}
+        await db.pagamenti_esiti.update_one({"key": key}, {"$set": esito}, upsert=True)
+        await db.paghe_mensili.update_one(
+            {"dipendente_id": dip_id, "anno": anno, "mese": mese},
+            {"$set": {"dipendente_id": dip_id, "anno": anno, "mese": mese, "updated_at": ora}}, upsert=True)
+        riferimento = {"key": key, "anno": anno, "mese": mese}
+
+    if destinazione in ("stipendio", "acconto"):
+        # lo stato del mese segue subito (motore unico delle paghe)
+        from app.hr.routers.dipendenti_cloud import _ricalcola_bonifico_periodo, _ricalcola_stato_paga
+
+        if destinazione == "stipendio":
+            await _ricalcola_bonifico_periodo(db, dip_id, anno, mese)
+        else:
+            await _ricalcola_stato_paga(db, dip_id, anno, mese)
+
+    agg = {"stato": ECCEDENZA_ATTRIBUITA, "attribuita_a": destinazione, "attribuita_il": ora,
+           "attribuita_da": attore, "riferimento": riferimento, "updated_at": ora,
+           "storico": list(ecc.get("storico") or []) + [{"azione": "attribuisci", "destinazione": destinazione,
+                                                          "da": attore, "il": ora, **riferimento}]}
+    await db[COLL_ECCEDENZE].update_one({"id": eccedenza_id}, {"$set": agg})
+    ecc.update(agg)
+    return vista_eccedenza(ecc)
 
 
 #: Campi che il titolare puo' correggere su un pagamento scritto da lui.
@@ -843,4 +1026,5 @@ def vocabolari() -> Dict[str, Any]:
     return {"voci": lista(VOCI_CONCILIAZIONE), "tipi": lista(TIPI_CONCILIAZIONE),
             "modalita": lista(MODALITA_PAGAMENTO), "parti": lista(PARTI_PAGAMENTO),
             "tipi_bonifico_coda": lista(TIPI_BONIFICO_CODA), "voce_bonus": VOCE_BONUS,
+            "destinazioni_eccedenza": lista(DESTINAZIONI_ECCEDENZA),
             "valuta": VALUTA}

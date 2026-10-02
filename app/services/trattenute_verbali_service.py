@@ -19,8 +19,10 @@ import logging
 import re
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from app.constants.stati_verbale import e_pagato
 from app.db_collections import COLL_EMPLOYEES
 from app.services.verbali_evidence import data_evento_verbale
 
@@ -323,6 +325,110 @@ async def costruisci_trattenuta_da_verbale(
         "fonte": fonte,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def verbale_pagato_con_quietanza(verbale: Dict[str, Any]) -> bool:
+    """La trattenuta nasce solo da un verbale **pagato con quietanza**: stato di
+    pagamento piu' prova documentale (PDF della quietanza o ricevuta pagoPA).
+    L'assegnazione del driver, un pagamento dichiarato senza PDF
+    (`pagato_attesa_quietanza`) o la sola prova bancaria non bastano.
+    """
+    if not e_pagato(verbale.get("stato")):
+        return False
+    return bool(
+        verbale.get("pagato_documentalmente") is True
+        or verbale.get("quietanza_ricevuta") is True
+        or verbale.get("ricevuta_pagopa_id")
+    )
+
+
+async def proponi_trattenuta_verbale_pagato(
+    db,
+    verbale: Dict[str, Any],
+    *,
+    importo_pagato: Any,
+    data_pagamento: Optional[str],
+    fonte: str,
+) -> Dict[str, Any]:
+    """L'unico punto che apre la PROPOSTA di trattenuta (e la nota per il consulente).
+
+    Decisione del titolare (02/10/2026): nasce **solo** a verbale pagato con
+    quietanza e importo certo, mai all'assegnazione del driver; resta `proposta`
+    finche' il titolare non la conferma. Idempotente per verbale: la seconda
+    chiamata non crea niente. Ritorna cosa ha creato e, se no, perche'.
+    """
+    verbale_id = verbale.get("id")
+    driver_id = verbale.get("driver_id") or verbale.get("driver_cf")
+    esito = {"nota_creata": False, "trattenuta_creata": False, "motivo": None}
+    if not verbale_id:
+        esito["motivo"] = "verbale_senza_id"
+        return esito
+    if not driver_id:
+        esito["motivo"] = "driver_non_assegnato"
+        return esito
+    if not verbale_pagato_con_quietanza(verbale):
+        esito["motivo"] = "verbale_non_pagato_con_quietanza"
+        return esito
+    importo = Decimal(str(importo_pagato)).quantize(Decimal("0.01")) if importo_pagato not in (None, "") else None
+    if importo is None or importo <= 0:
+        esito["motivo"] = "importo_non_certo"
+        return esito
+
+    dt = datetime.now(timezone.utc)
+    mese_nota = dt.month + 1 if dt.month < 12 else 1
+    anno_nota = dt.year if dt.month < 12 else dt.year + 1
+    nota_id = f"nota_trattenuta_verbale_{verbale_id}"
+    nota = await db["note_presenze_consulente"].find_one({"id": nota_id}, {"_id": 0, "id": 1})
+    if not nota:
+        # Una nota si scrive una volta: rimandarla non sposta mese e anno (ne' dopo l'invio al consulente).
+        await db["note_presenze_consulente"].update_one(
+            {"id": nota_id},
+            {"$setOnInsert": {
+                "id": nota_id,
+                "dipendente_id": driver_id,
+                "dipendente_nome": verbale.get("driver", ""),
+                "tipo": "trattenuta_verbale",
+                "mese": mese_nota,
+                "anno": anno_nota,
+                "importo": str(importo),
+                "descrizione": (
+                    f"TRATTENUTA VERBALE {verbale.get('numero_verbale', '')} - "
+                    f"Targa {verbale.get('targa', '')} - Pagato {data_pagamento}"
+                ),
+                "evidenza": True,
+                "verbale_id": verbale_id,
+                "inviato_consulente": False,
+                "created_at": dt.isoformat(),
+            }},
+            upsert=True,
+        )
+        esito["nota_creata"] = True
+
+    gia = await db[COLL_TRATTENUTE].find_one(
+        {"verbale_id": verbale_id, "tipo": "verbale_multa"}, {"_id": 0, "id": 1})
+    if gia:
+        esito["motivo"] = "proposta_gia_presente"
+        return esito
+    trattenuta = await costruisci_trattenuta_da_verbale(
+        db, verbale, data_pagamento=data_pagamento, importo_pagato=float(importo), fonte=fonte,
+    )
+    await db[COLL_TRATTENUTE].insert_one(trattenuta)
+    esito["trattenuta_creata"] = True
+    esito["trattenuta_id"] = trattenuta["id"]
+
+    from app.services.audit_logger import log_evento
+    await log_evento(
+        modulo="trattenute_verbali", azione="proposta_creata",
+        entita_id=trattenuta["id"], entita_collection=COLL_TRATTENUTE,
+        db=db, nuovo_stato={"stato": trattenuta["stato"]},
+        fonte=fonte,
+        dettaglio=(
+            f"Proposta trattenuta per verbale {verbale.get('numero_verbale', '')} "
+            f"— €{trattenuta['importo_da_recuperare']:.2f}, "
+            f"cedolino suggerito {trattenuta['mese_cedolino_suggerito']}"
+        ),
+    )
+    return esito
 
 
 # ============================================================

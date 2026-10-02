@@ -987,25 +987,17 @@ async def _associate_receipt_to_verbale(
     if len(candidates) > 1:
         return {"matched": False, "reason": "candidati_ambigui", "candidate_count": len(candidates)}
 
-    created = False
-    if candidates:
-        verbale = next(iter(candidates.values()))
-    elif numero and iuv:
-        now = datetime.now(timezone.utc).isoformat()
-        verbale_id = f"verbale_{hashlib.sha256(f'{numero}:{iuv}'.encode()).hexdigest()[:32]}"
-        verbale = {
-            "id": verbale_id, "numero_verbale": numero, "iuv": iuv,
-            "targa": parsed.get("targa"), "importo": float(amount),
-            "data_violazione": parsed.get("data_violazione"),
-            "source": "ricevuta_pagopa", "stato": "salvato",
-            "created_at": now, "updated_at": now,
+    if found and not candidates:
+        return {"matched": False, "reason": "importo_non_coincide", "candidate_count": len(found)}
+    if not candidates:
+        # La ricevuta prova un pagamento, non l'esistenza del verbale: non ne crea
+        # mai uno (decisione del titolare, 02/10/2026). Resta «senza verbale», con
+        # alert, finche' il verbale con quel numero o IUV non arriva.
+        return {
+            "matched": False, "reason": "verbale_non_trovato",
+            "stato_verbale": STATO_RICEVUTA_SENZA_VERBALE if (numero or parsed.get("targa")) else None,
         }
-        await db["verbali_noleggio"].update_one(
-            {"id": verbale_id}, {"$setOnInsert": verbale}, upsert=True,
-        )
-        created = True
-    else:
-        return {"matched": False, "reason": "verbale_non_trovato"}
+    verbale = next(iter(candidates.values()))
 
     from app.services.verbali_pagamento_finder import applica_pagamento_a_verbale
 
@@ -1022,9 +1014,89 @@ async def _associate_receipt_to_verbale(
     return {
         "matched": bool(applied), "verbale_id": verbale_id,
         "numero_verbale": numero or verbale.get("numero_verbale"),
-        "created_from_receipt": created,
+        "created_from_receipt": False,
         "rule": "iuv_o_numero_verbale_e_importo_esatto",
     }
+
+
+#: La ricevuta cita un verbale (numero o targa) che non e' in archivio: si conserva
+#: cosi', con l'alert, e si aggancia da sola quando il verbale arriva.
+STATO_RICEVUTA_SENZA_VERBALE = "senza_verbale"
+STATO_RICEVUTA_AGGANCIATA = "agganciata"
+CODICE_ALERT_SENZA_VERBALE = "RICEVUTA_PAGOPA_SENZA_VERBALE"
+
+
+async def segna_ricevuta_senza_verbale(db, receipt: dict[str, Any], esito: dict[str, Any]) -> None:
+    """Scrive lo stato «senza verbale» sulla ricevuta e apre l'alert (idempotente)."""
+    receipt_id = receipt["id"]
+    patch = {"stato_verbale": STATO_RICEVUTA_SENZA_VERBALE, "riconciliazione_verbale": esito}
+    receipt.update(patch)
+    await db[COLLECTION_RICEVUTE].update_one({"id": receipt_id}, {"$set": patch})
+    from app.services.alert_engine import genera_alert
+
+    riferimento = receipt.get("numero_verbale") or receipt.get("identificativo_bolletta") or receipt.get("iuv")
+    await genera_alert(
+        CODICE_ALERT_SENZA_VERBALE, str(receipt_id), COLLECTION_RICEVUTE,
+        f"Ricevuta pagoPA del {receipt.get('data_pagamento') or '?'} per il verbale {riferimento} "
+        f"({receipt.get('importo')} €): nessun verbale con quel numero o IUV in archivio. "
+        "La ricevuta resta conservata e si aggancia all'arrivo del verbale; nessun verbale viene creato.",
+        db,
+        extra={"numero_verbale": receipt.get("numero_verbale"), "iuv": receipt.get("identificativo_bolletta") or receipt.get("iuv"),
+               "targa": receipt.get("targa"), "importo": receipt.get("importo")},
+    )
+
+
+async def aggancia_ricevute_in_attesa(db, verbale: dict[str, Any]) -> dict[str, Any]:
+    """Il verbale e' arrivato: le ricevute «senza verbale» con il suo numero o IUV e
+    l'importo al centesimo gli si agganciano, e il loro alert si chiude.
+
+    Chiamato da `process_verbale_document`; una ricevuta con importo diverso resta
+    com'e' (non si inventa un pagamento parziale).
+    """
+    esito = {"agganciate": 0, "importo_diverso": 0}
+    riferimenti = []
+    numero = str(verbale.get("numero_verbale") or "").strip().upper()
+    iuv = str(verbale.get("iuv") or "").strip()
+    if numero:
+        riferimenti.append({"numero_verbale": numero})
+    if iuv:
+        riferimenti.append({"identificativo_bolletta": iuv})
+        riferimenti.append({"iuv": iuv})
+    if not riferimenti or not verbale.get("id"):
+        return esito
+    attese = await db[COLLECTION_RICEVUTE].find(
+        {"stato_verbale": STATO_RICEVUTA_SENZA_VERBALE, "$or": riferimenti}, {"_id": 0, "pdf_data": 0},
+    ).to_list(50)
+    if not attese:
+        return esito
+    from app.services.alert_engine import risolvi_alert
+    from app.services.verbali_pagamento_finder import applica_pagamento_a_verbale
+
+    for ricevuta in attese:
+        if not amounts_equal_to_cent(verbale.get("importo"), ricevuta.get("importo")):
+            esito["importo_diverso"] += 1
+            continue
+        applied = await applica_pagamento_a_verbale(db, verbale["id"], {
+            "fonte": "ricevuta_pagopa", "psp": "PagoPA",
+            "importo": float(ricevuta["importo"]),
+            "data_pagamento": ricevuta.get("data_pagamento"),
+            "metodo_pagamento": "PagoPA",
+            "ricevuta_pagopa_id": ricevuta["id"],
+            "iuv_usato": ricevuta.get("identificativo_bolletta") or ricevuta.get("iuv"),
+        })
+        if not applied:
+            continue
+        await db[COLLECTION_RICEVUTE].update_one(
+            {"id": ricevuta["id"]},
+            {"$set": {
+                "stato_verbale": STATO_RICEVUTA_AGGANCIATA, "verbale_id": verbale["id"],
+                "riconciliazione_verbale": {"matched": True, "verbale_id": verbale["id"],
+                                            "rule": "verbale_arrivato_dopo_la_ricevuta"},
+            }},
+        )
+        await risolvi_alert(CODICE_ALERT_SENZA_VERBALE, str(ricevuta["id"]), db, "verbale_arrivato")
+        esito["agganciate"] += 1
+    return esito
 
 
 async def import_receipt(
@@ -1169,6 +1241,8 @@ async def import_receipt(
                 "riconciliazione_verbale": verbale_match,
             }},
         )
+    elif verbale_match.get("stato_verbale") == STATO_RICEVUTA_SENZA_VERBALE:
+        await segna_ricevuta_senza_verbale(db, receipt, verbale_match)
 
     from app.services.fiscal_evidence import register_document
     from app.services.fiscal_payment_reconciliation import reconcile_fiscal_payment

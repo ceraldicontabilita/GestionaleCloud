@@ -508,6 +508,16 @@ export function formatDateTimeIT(dateStr) {
   }
 }
 
+/** Istante di un'assegnazione veicolo→driver: «aaaa-mm-gg» → gg/mm/aaaa,
+ *  «aaaa-mm-ggThh:mm» → gg/mm/aaaa hh:mm. Una riga senza ora vale il giorno
+ *  intero, e si mostra senza ora (mai un «00:00» inventato). */
+export function formatIstanteIT(valore) {
+  if (!valore) return '-';
+  const testo = String(valore);
+  if (testo.length >= 16 && testo[10] === 'T') return `${formatDateIT(testo.slice(0, 10))} ${testo.slice(11, 16)}`;
+  return formatDateIT(testo.slice(0, 10));
+}
+
 export function formatDateShort(dateStr) {
   if (!dateStr) return '-';
   try {

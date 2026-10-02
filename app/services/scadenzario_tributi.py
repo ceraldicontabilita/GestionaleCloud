@@ -150,22 +150,21 @@ def scadenza_da_regola(sezione: str, codice: str, anno: Optional[int], mese: Opt
     return None, "nessuna regola per il codice"
 
 
-def scadenza_modello(f24: Dict[str, Any]) -> Tuple[Optional[date], str]:
-    """Scadenza di un modello F24 non ancora pagato: la piu' vicina fra le sue
-    righe a debito, ognuna dalla regola del suo codice e periodo.
+def righe_modello_con_scadenza(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Le righe a debito di un modello F24, ognuna con la scadenza della regola del suo codice.
 
-    Un modello non ha `data_scadenza` (nessun F24 in archivio la porta): la
-    scadenza sta sulle righe tributo. Senza righe o senza regola resta None
-    con il motivo, mai una data inventata.
+    Ogni riga porta `codice`, `sezione`, `anno`, `mese`, `importo_cents`,
+    `scadenza` (date o None) e `fonte` (la regola, o il motivo per cui non c'e').
+    Vista canonica delle righe (`normalize_f24_evidence_rows`): un modello
+    importato prima dei fix di lettura si legge giusto lo stesso.
     """
     from app.services.f24_fiscal_evidence import normalize_f24_evidence_rows
 
-    righe = [r for r in normalize_f24_evidence_rows(f24) if int(r.get("debit_cents") or 0) > 0]
-    if not righe:
-        return None, "nessuna riga a debito"
-    candidate: List[Tuple[date, str]] = []
-    motivi: List[str] = []
-    for r in righe:
+    righe: List[Dict[str, Any]] = []
+    for r in normalize_f24_evidence_rows(f24):
+        importo = int(r.get("debit_cents") or 0)
+        if importo <= 0:
+            continue
         periodo = r.get("reference_period") or ""
         anno = int(periodo[:4]) if len(periodo) >= 4 and periodo[:4].isdigit() else None
         mese = int(periodo[5:7]) if len(periodo) >= 7 and periodo[5:7].isdigit() else None
@@ -176,14 +175,64 @@ def scadenza_modello(f24: Dict[str, Any]) -> Tuple[Optional[date], str]:
             except ValueError:
                 anno = None
         sezione = f"sezione_{str(r.get('section') or '').lower()}"
-        scadenza, fonte = scadenza_da_regola(sezione, r.get("tax_code"), anno, mese)
-        if scadenza:
-            candidate.append((scadenza, f"{r.get('tax_code')}: {fonte}"))
-        else:
-            motivi.append(f"{r.get('tax_code')}: {fonte}")
+        codice = str(r.get("tax_code") or "").upper()
+        scadenza, fonte = scadenza_da_regola(sezione, codice, anno, mese)
+        righe.append({"codice": codice, "sezione": sezione, "anno": anno, "mese": mese,
+                      "importo_cents": importo, "scadenza": scadenza, "fonte": fonte})
+    return righe
+
+
+def scadenza_modello(f24: Dict[str, Any]) -> Tuple[Optional[date], str]:
+    """Scadenza di un modello F24 non ancora pagato: la piu' vicina fra le sue
+    righe a debito, ognuna dalla regola del suo codice e periodo.
+
+    Un modello non ha `data_scadenza` (nessun F24 in archivio la porta): la
+    scadenza sta sulle righe tributo. Senza righe o senza regola resta None
+    con il motivo, mai una data inventata.
+    """
+    righe = righe_modello_con_scadenza(f24)
+    if not righe:
+        return None, "nessuna riga a debito"
+    candidate = [(r["scadenza"], f"{r['codice']}: {r['fonte']}") for r in righe if r["scadenza"]]
     if not candidate:
-        return None, "; ".join(motivi)
+        return None, "; ".join(f"{r['codice']}: {r['fonte']}" for r in righe)
     return min(candidate, key=lambda c: c[0])
+
+
+def ravvedimento_atteso_modello(f24: Dict[str, Any], al: date) -> Dict[str, Any]:
+    """Quanto costerebbe ravvedere OGGI un modello F24 non pagato (cresce ogni giorno).
+
+    Per ogni riga a debito scaduta prima di `al`: sanzione ridotta per fascia
+    (`percentuale_ravvedimento`, regime secondo la data della violazione) e
+    interessi legali dalla scadenza ad `al`. Le righe INPS/INAIL hanno sanzioni
+    civili fuori dall'art. 13: si contano a parte (`righe_da_verificare`), mai
+    stimate. Un importo stimato e' un'indicazione per il titolare, non un dovuto.
+    """
+    sanzione = interessi = base = 0
+    righe: List[Dict[str, Any]] = []
+    da_verificare: List[Dict[str, Any]] = []
+    giorni_max = 0
+    for r in righe_modello_con_scadenza(f24):
+        scad = r["scadenza"]
+        if not scad or scad >= al:
+            continue
+        giorni = (al - scad).days
+        giorni_max = max(giorni_max, giorni)
+        voce = {"codice": r["codice"], "periodo": _periodo_testo(r["anno"], r["mese"]),
+                "importo_cents": r["importo_cents"], "scadenza": scad.isoformat(), "giorni_ritardo": giorni}
+        if r["sezione"] in ("sezione_inps", "sezione_inail"):
+            da_verificare.append({**voce, "motivo": "contributi: sanzioni civili INPS/INAIL, non il ravvedimento art. 13"})
+            continue
+        pct, regime, fascia = percentuale_ravvedimento(giorni, scad)
+        s = int((Decimal(r["importo_cents"]) * pct / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        i = interessi_legali_cents(r["importo_cents"], scad, al)
+        sanzione += s
+        interessi += i
+        base += r["importo_cents"]
+        righe.append({**voce, "sanzione_cents": s, "interessi_cents": i, "fascia": fascia, "regime": regime})
+    return {"al": al.isoformat(), "giorni_ritardo": giorni_max, "tributo_cents": base,
+            "sanzione_cents": sanzione, "interessi_cents": interessi,
+            "totale_cents": base + sanzione + interessi, "righe": righe, "righe_da_verificare": da_verificare}
 
 
 # ── ravvedimento ─────────────────────────────────────────────────────────

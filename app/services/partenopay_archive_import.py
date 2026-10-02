@@ -11,6 +11,8 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
+from app.services.verbali_importo_atteso import FONTE_ORDINARIO
+
 
 ROOT = "package_clean/"
 DATA_PATH = ROOT + "data.json"
@@ -357,9 +359,15 @@ async def dispatch_due_verbali_notifications(db) -> Dict[str, Any]:
     }, {"_id": 0}).limit(200).to_list(200)
     sent = failed = 0
     for item in due:
-        verbale = await db["verbali_noleggio"].find_one({"id": item.get("verbale_id")}, {"_id": 0})
+        verbale = await db["verbali_noleggio"].find_one({"id": item.get("verbale_id")}, {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0})
         number = (verbale or {}).get("numero_verbale") or item.get("verbale_id")
         message = f"Verbale {number}: {item.get('evento')}. Verifica scadenza, driver e pagamento nel gestionale."
+        if (verbale or {}).get("importo_atteso_fonte") == FONTE_ORDINARIO:
+            # Scaduti i 5 giorni dalla notifica PEC: il promemoria dice l'importo che ora si deve.
+            message += (
+                f" Scaduti i 5 giorni dalla notifica: importo ordinario {verbale.get('importo_atteso')} €"
+                + (f" (ridotto {verbale.get('importo_ridotto')} € non piu' valido)." if verbale.get("importo_ridotto") not in (None, "") else ".")
+            )
         channels = []
         try:
             from app.services.websocket_manager import notify_data_change

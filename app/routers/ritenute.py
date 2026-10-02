@@ -81,6 +81,100 @@ def _scadenze_ritenuta(data_iso: str) -> Dict[str, Any]:
     return monthly_deadline(int(data_iso[:4]), int(data_iso[5:7]))
 
 
+# ── periodo della ritenuta = mese del pagamento al professionista ──────────
+#
+# Decisione del titolare (02/10/2026): la ritenuta d'acconto si versa con il
+# 1040 del mese in cui la parcella e' stata PAGATA (bonifico, assegno, cassa),
+# entro il 16 del mese dopo — art. 25 DPR 600/1973: la ritenuta nasce
+# «all'atto del pagamento». Il mese della fattura non c'entra: una parcella di
+# marzo pagata ad aprile va nel 1040 di aprile, versato entro il 16 maggio.
+# Finche' la fattura non e' pagata il periodo resta vuoto («in attesa del
+# pagamento»), mai il mese della fattura.
+
+STATO_PERIODO_IN_ATTESA_PAGAMENTO = "in_attesa_pagamento"
+STATO_PERIODO_DA_PAGAMENTO = "mese_del_pagamento"
+STATO_PERIODO_PAGATA_SENZA_DATA = "pagata_senza_data"
+
+#: Campi della fattura che servono a decidere il periodo (proiezione minima).
+CAMPI_PAGAMENTO_FATTURA = {
+    "data_pagamento": 1, "stato": 1, "stato_pagamento": 1, "payment_status": 1,
+    "pagato": 1, "paid": 1,
+}
+
+
+def data_pagamento_fattura(fattura: Dict[str, Any]) -> Optional[str]:
+    """La data in cui la parcella e' stata pagata al professionista (ISO), o None.
+
+    Vale solo se la fattura e' pagata secondo l'unico giudice (`e_pagata`): un
+    `data_pagamento` rimasto su una fattura riaperta non e' un pagamento.
+    """
+    from app.services.stato_pagamento_fattura import e_pagata
+
+    if not e_pagata(fattura):
+        return None
+    data = str(fattura.get("data_pagamento") or "")[:10]
+    return data if re.fullmatch(r"\d{4}-\d{2}-\d{2}", data) else None
+
+
+def periodo_da_pagamento(fattura: Dict[str, Any]) -> Dict[str, Any]:
+    """Periodo 1040, scadenze e stato del periodo dalla data di pagamento della parcella."""
+    from app.services.stato_pagamento_fattura import e_pagata
+
+    data = data_pagamento_fattura(fattura)
+    if data:
+        return {
+            "data_pagamento_fattura": data,
+            "periodo_ritenuta": data[:7],
+            "periodo_fonte": STATO_PERIODO_DA_PAGAMENTO,
+            "scadenza": _scadenza_16_mese_successivo(data),
+            **_scadenze_ritenuta(data),
+        }
+    return {
+        "data_pagamento_fattura": None,
+        "periodo_ritenuta": None,
+        "periodo_fonte": (STATO_PERIODO_PAGATA_SENZA_DATA if e_pagata(fattura)
+                          else STATO_PERIODO_IN_ATTESA_PAGAMENTO),
+        "scadenza": None,
+        "scadenza_nominale": None,
+        "scadenza_legale": None,
+        "regola_scadenza": None,
+        "motivi_differimento": [],
+    }
+
+
+async def _allinea_periodo_al_pagamento(db, ritenute: List[Dict[str, Any]]) -> int:
+    """Rilegge dalle fatture la data di pagamento e aggiorna il periodo delle ritenute.
+
+    La fattura si paga dopo l'import (bonifico, assegno, cassa, dichiarazione
+    del titolare) e nessuno di quei flussi passa da qui: il giro F24 e la
+    pagina Ritenute riallineano il periodo prima di cercare il 1040. Scrive
+    solo le righe che cambiano; torna quante.
+    """
+    from app.utils.id_fattura import filtro_id_in, varianti_id
+
+    ids = [r.get("fattura_id") for r in ritenute if r.get("fattura_id") not in (None, "")]
+    if not ids:
+        return 0
+    fatture = await db["invoices"].find(filtro_id_in(ids), {"_id": 0, "id": 1, **CAMPI_PAGAMENTO_FATTURA}).to_list(5000)
+    per_id: Dict[str, Dict[str, Any]] = {}
+    for f in fatture:
+        for v in varianti_id(f.get("id")):
+            per_id[str(v)] = f
+    cambiate = 0
+    for rit in ritenute:
+        fattura = per_id.get(str(rit.get("fattura_id")))
+        if fattura is None:
+            continue
+        nuovo = periodo_da_pagamento(fattura)
+        if all(rit.get(k) == v for k, v in nuovo.items()):
+            continue
+        rit.update(nuovo)
+        if rit.get("id"):
+            await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": nuovo})
+        cambiate += 1
+    return cambiate
+
+
 def _isola_body_xml(xml_raw: str, body_index: int) -> str:
     """Isola il testo del body_index-esimo <FatturaElettronicaBody> dentro
     xml_raw. Un file FatturaPA raggruppato condivide lo stesso xml_raw fra
@@ -165,11 +259,9 @@ def _data_pagamento_f24(f24: Dict[str, Any]) -> Optional[str]:
 
 
 def _periodo_ritenuta(rit: Dict[str, Any]) -> Optional[str]:
+    """Il periodo del 1040: mese del pagamento al professionista, mai il mese della fattura."""
     periodo = str(rit.get("periodo_ritenuta") or "").strip()
-    if re.fullmatch(r"\d{4}-\d{2}", periodo):
-        return periodo
-    data = str(rit.get("data_fattura") or "")[:7]
-    return data if re.fullmatch(r"\d{4}-\d{2}", data) else None
+    return periodo if re.fullmatch(r"\d{4}-\d{2}", periodo) else None
 
 
 def _id_f24(f24: Dict[str, Any]) -> str:
@@ -311,6 +403,12 @@ async def _riconcilia_ritenuta(
         "quietanza_pdf_url": None,
     }
     periodo = _periodo_ritenuta(rit)
+    if not periodo and not (rit.get("scadenza_legale") or rit.get("scadenza")):
+        # Parcella non ancora pagata: il 1040 non ha periodo ne' scadenza.
+        # Non si cerca nessun F24 (il mese della fattura non e' il periodo).
+        upd["stato"] = STATO_PERIODO_IN_ATTESA_PAGAMENTO
+        upd["periodo_fonte"] = rit.get("periodo_fonte") or STATO_PERIODO_IN_ATTESA_PAGAMENTO
+        return upd
     gruppo = [
         r for r in (ritenute_periodo or [rit])
         if _periodo_ritenuta(r) == periodo
@@ -497,9 +595,9 @@ async def upsert_ritenuta_da_fattura(db, fattura: Dict[str, Any]) -> Optional[Di
         "importo_cents": dati["importo_cents"],
         "aliquota": dati["aliquota"],
         "causale": dati["causale"],
-        "periodo_ritenuta": invoice_date[:7],
-        "scadenza": _scadenza_16_mese_successivo(invoice_date),
-        **_scadenze_ritenuta(invoice_date),
+        # Periodo e scadenza dal MESE DEL PAGAMENTO al professionista, mai
+        # dalla data della fattura; senza pagamento restano vuoti.
+        **periodo_da_pagamento(fattura),
         "source_document_id": fattura_id,
         "projection_source": "documenti_import_auto",
         "updated_at": now,
@@ -530,12 +628,18 @@ async def avvisa_ritenuta_da_versare(db, ritenuta: Dict[str, Any]) -> None:
     Telegram. Un avviso mancato non ferma l'import della fattura.
     """
     scadenza = ritenuta.get("scadenza_legale") or ritenuta.get("scadenza")
+    if scadenza:
+        termine = (f"entro il {_data_it(scadenza)} (periodo {ritenuta.get('periodo_ritenuta')}, "
+                   f"mese del pagamento al professionista).")
+    else:
+        termine = ("entro il 16 del mese successivo al pagamento della parcella: "
+                   "in attesa del pagamento, il periodo del 1040 non e' ancora fissato.")
     dettaglio = (
         f"Parcella {ritenuta.get('numero_fattura') or '?'} di "
         f"{ritenuta.get('fornitore') or 'fornitore sconosciuto'} del "
         f"{_data_it(ritenuta.get('data_fattura'))}: ritenuta d'acconto "
         f"{_euro_it(ritenuta.get('importo_cents'))} da versare con F24, codice 1040, "
-        f"entro il {_data_it(scadenza)}."
+        f"{termine}"
     )
     try:
         from app.services.alert_engine import genera_alert
@@ -642,7 +746,7 @@ async def allinea_ritenute_fatture(db) -> Dict[str, Any]:
          "xml_raw": {"$regex": "DatiRitenuta"}},
         {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
          "supplier_name": 1, "supplier_vat": 1, "cedente_piva": 1, "xml_raw": 1,
-         "xml_body_index": 1, "importo_ritenuta": 1},
+         "xml_body_index": 1, "importo_ritenuta": 1, **CAMPI_PAGAMENTO_FATTURA},
     ).to_list(5000)
     aggiornate = 0
     for f in fatture:
@@ -675,6 +779,7 @@ async def riconcilia_ritenute_esistenti(db) -> Dict[str, Any]:
     ritenute = await db[COLLECTION].find({}, {"_id": 0}).to_list(10000)
     if not ritenute:
         return {"analizzate": 0, "aggiornate": 0}
+    periodi_allineati = await _allinea_periodo_al_pagamento(db, ritenute)
     f24_docs = await _carica_f24(db)
     pagamenti = await _carica_pagamenti_quietanza(db)
     aggiornate = 0
@@ -687,7 +792,7 @@ async def riconcilia_ritenute_esistenti(db) -> Dict[str, Any]:
         aggiornate += int(getattr(result, "modified_count", 0) > 0)
         await _chiudi_avviso_se_versata(db, rit, upd)
     return {"analizzate": len(ritenute), "aggiornate": aggiornate,
-            "f24_analizzati": len(f24_docs)}
+            "periodi_allineati": periodi_allineati, "f24_analizzati": len(f24_docs)}
 
 
 @router.post("/scan")
@@ -702,7 +807,7 @@ async def scan_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
          "xml_raw": {"$regex": "DatiRitenuta"}},
         {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
          "supplier_name": 1, "supplier_vat": 1, "cedente_piva": 1, "xml_raw": 1,
-         "xml_body_index": 1},
+         "xml_body_index": 1, **CAMPI_PAGAMENTO_FATTURA},
     ).to_list(5000)
 
     nuove = aggiornate = 0
@@ -741,6 +846,8 @@ async def lista_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
     ritenute = await db[COLLECTION].find(
         {"data_fattura": {"$regex": f"^{anno}"}}, {"_id": 0}
     ).sort("scadenza", -1).to_list(2000)
+    # Il periodo segue il pagamento della parcella, che avviene dopo l'import.
+    await _allinea_periodo_al_pagamento(db, ritenute)
     f24_docs = await _carica_f24(db)
     pagamenti = await _carica_pagamenti_quietanza(db)
     for row in ritenute:

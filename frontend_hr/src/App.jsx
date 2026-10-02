@@ -4379,6 +4379,73 @@ function RigheMovimenti({ righe, vuoto }) {
   );
 }
 
+const MESI_BREVI = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+
+function EccedenzeDaAttribuire({ righe, onFatto }) {
+  // Titolare 02/10/2026: il bonifico copre la conciliazione al centesimo; quello
+  // che avanza resta qui finche' lui non sceglie stipendio, acconto o bonus.
+  // Niente attribuzione automatica: solo tendine e un bottone.
+  const [scelte, setScelte] = useState({});
+  const [busy, setBusy] = useState(null);
+  if (!righe?.length) return null;
+  const scelta = (e) => scelte[e.id] || { destinazione: "stipendio", anno: Number(e.data?.slice(0, 4)), mese: Number(e.data?.slice(5, 7)) };
+  const imposta = (e, campo, valore) => setScelte({ ...scelte, [e.id]: { ...scelta(e), [campo]: valore } });
+  const attribuisci = async (e) => {
+    const s = scelta(e);
+    setBusy(e.id);
+    try {
+      await axios.post(`${POS_API}/eccedenze/${e.id}/attribuisci`, s);
+      toast(`Eccedenza di € ${eurPos(e.importo)} attribuita`, "ok");
+      onFatto();
+    } catch (err) { toast(erroreApi(err, "Attribuzione non riuscita"), "err"); }
+    finally { setBusy(null); }
+  };
+  const anni = [...new Set(righe.map(e => Number(e.data?.slice(0, 4))).concat([new Date().getFullYear()]))].sort();
+  return (
+    <div className="dc-card" style={{ padding: 0, marginBottom: 14, borderLeft: "4px solid #c4894a" }} aria-label="Eccedenze da attribuire">
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid #e6e0d4" }}>
+        <h3 style={{ margin: 0 }}><AlertTriangle size={15} aria-hidden="true" /> Eccedenze da attribuire</h3>
+        <p className="dc-muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+          Pagamenti di conciliazione oltre il dovuto: la conciliazione è coperta al centesimo, questo resto non è ancora di nessun conto. Scegli tu dove va.
+        </p>
+      </div>
+      {righe.map(e => {
+        const s = scelta(e);
+        return (
+          <div key={e.id} style={{ padding: 12, borderBottom: "1px solid #efe9dd", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: "1 1 220px" }}>
+              <div><b>€ {eurPos(e.importo)}</b> del {formatDate(e.data)}</div>
+              <div className="dc-muted" style={{ fontSize: 12 }}>versati € {eurPos(e.importo_versato)}, coperti € {eurPos(e.residuo_coperto)} ({e.parte === "bonus" ? "bonus" : "parte ordinaria"})</div>
+            </div>
+            <label className="dc-form-group" style={{ flex: "0 1 190px" }}><span className="dc-label">Destinazione</span>
+              <select value={s.destinazione} onChange={ev => imposta(e, "destinazione", ev.target.value)} style={{ minHeight: 44 }}>
+                {(e.destinazioni || []).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+              </select>
+            </label>
+            {s.destinazione !== "bonus" && (<>
+              <label className="dc-form-group" style={{ flex: "0 1 110px" }}><span className="dc-label">Mese</span>
+                <select value={s.mese} onChange={ev => imposta(e, "mese", Number(ev.target.value))} style={{ minHeight: 44 }}>
+                  {MESI_BREVI.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  <option value={13}>13ª</option><option value={14}>14ª</option>
+                </select>
+              </label>
+              <label className="dc-form-group" style={{ flex: "0 1 100px" }}><span className="dc-label">Anno</span>
+                <select value={s.anno} onChange={ev => imposta(e, "anno", Number(ev.target.value))} style={{ minHeight: 44 }}>
+                  {anni.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </label>
+            </>)}
+            <button type="button" className="dc-btn dc-btn-primary" style={{ minHeight: 44 }} disabled={busy === e.id}
+              aria-label={`Attribuisci l'eccedenza di € ${eurPos(e.importo)} del ${formatDate(e.data)}`} onClick={() => attribuisci(e)}>
+              {busy === e.id ? "Attribuisco…" : "Attribuisci"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const vociVuote = () => [{ voce: "straordinari", importo: "", descrizione: "" }];
 
 function ModuloConciliazione({ vocab, dipendente, iniziale, onClose, onSalvata }) {
@@ -4874,6 +4941,8 @@ function PosizioneDipendentePage({ dipendenti }) {
             </div>
           )}
 
+          <EccedenzeDaAttribuire righe={dati.eccedenze_da_attribuire} onFatto={carica} />
+
           <div className="dc-card" style={{ padding: 0, marginBottom: 18 }}>
             <h3 style={{ margin: 0, padding: "12px 14px", borderBottom: "1px solid #e6e0d4" }}>Dare e avere {dati.anno}</h3>
             <RigheMovimenti righe={dati.righe} vuoto="Nessun movimento nell'anno." />
@@ -5266,7 +5335,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
     parziale: { label: "Parziale", variant: "warning" },
     da_verificare: { label: "Da verificare", variant: "warning" },
     da_pagare: { label: "Da pagare", variant: "danger" },
-    bonifico_senza_busta: { label: "Bonifico senza busta", variant: "info" },
+    in_attesa_busta: { label: "In attesa della busta", variant: "info" },
   };
   const QUALITA = {
     esatto: { txt: "Confermato · importo coerente", col: "#234d3d", bg: "#e2efe8", bd: "#c2ddd0" },
@@ -5495,7 +5564,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
           <option value="parziale">Parziali</option>
           <option value="da_verificare">Da verificare</option>
           <option value="da_pagare">Da pagare</option>
-          <option value="bonifico_senza_busta">Bonifico senza busta</option>
+          <option value="in_attesa_busta">In attesa della busta</option>
         </select>
         <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 13 }}><input type="checkbox" checked={griglia} onChange={e => setGriglia(e.target.checked)} /> Griglia annuale</label>
         <button className="dc-btn" onClick={load} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -5508,7 +5577,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <div style={card}><div style={lbl}>Totale buste</div><div style={val}>€ {eur(t.buste)}</div></div>
         <div style={card}><div style={lbl}>Bonifici</div><div style={{ ...val, color: "#3d8168" }}>€ {eur(t.bonifici)}</div></div>
         <div style={card}><div style={lbl}>Acconti</div><div style={val}>€ {eur(t.acconti)}</div></div>
-        <div style={card}><div style={lbl}>Saldo da pagare</div><div style={{ ...val, color: (t.saldo > 0.5 ? "#b04a3a" : "#3d8168") }}>€ {eur(t.saldo)}</div></div>
+        <div style={card}><div style={lbl}>Saldo da pagare</div><div style={{ ...val, color: (t.saldo > 0 ? "#b04a3a" : "#3d8168") }}>€ {eur(t.saldo)}</div></div>
         <div style={card}><div style={lbl}>Pagati</div><div style={{ ...val, color: "#3d8168" }}>{t.pagati || 0}</div></div>
         <div style={card}><div style={lbl}>Da pagare</div><div style={{ ...val, color: "#b04a3a" }}>{t.da_pagare || 0}</div></div>
         <div style={card}><div style={lbl}>Da verificare</div><div style={{ ...val, color: "#7a3b32" }}>{t.da_verificare || 0}</div></div>
@@ -5529,16 +5598,16 @@ function PagheBonificiPage({ dipendenti = [] }) {
                       let txt = "·", col = "#cbd2c9", title = `${m}: nessun dato`;
                       if (r) {
                         if (r.stato === "pagato") { txt = "✓"; col = "#3d8168"; title = `${m}: pagato (busta € ${eur(r.busta)})`; }
-                        else if (r.stato === "bonifico_senza_busta") { txt = "+" + eur(r.erogato); col = "#7d5526"; title = `${m}: erogato € ${eur(r.erogato)} senza busta`; }
+                        else if (r.stato === "in_attesa_busta") { txt = "+" + eur(r.erogato); col = "#7d5526"; title = `${m}: erogato € ${eur(r.erogato)}, in attesa della busta`; }
                         else if (r.stato === "da_verificare") { txt = "?"; col = "#7a3b32"; title = `${m}: da verificare (erogato € ${eur(r.erogato)} su busta € ${eur(r.busta)})`; }
-                        else if (r.saldo > 0.5) { txt = eur(r.saldo); col = "#d35f4e"; title = `${m}: manca € ${eur(r.saldo)} (busta € ${eur(r.busta)}, erogato € ${eur(r.erogato)})`; }
+                        else if (r.saldo > 0) { txt = eur(r.saldo); col = "#d35f4e"; title = `${m}: manca € ${eur(r.saldo)} (busta € ${eur(r.busta)}, erogato € ${eur(r.erogato)})`; }
                         else { txt = "+" + eur(-r.saldo); col = "#7d5526"; title = `${m}: eccedenza € ${eur(-r.saldo)}`; }
                       }
                       return <td key={i} style={{ ...td, textAlign: "right", color: col, fontWeight: 700 }} title={title}>{txt}</td>;
                     })}
                     <td style={{ ...td, textAlign: "right" }}>{eur(g.busta)}</td>
                     <td style={{ ...td, textAlign: "right" }}>{eur(g.erogato)}</td>
-                    <td style={{ ...td, textAlign: "right", fontWeight: 700, color: g.busta - g.erogato > 0.5 ? "#d35f4e" : "#3d8168" }}>{eur(g.erogato - g.busta)}</td>
+                    <td style={{ ...td, textAlign: "right", fontWeight: 700, color: g.busta - g.erogato > 0 ? "#d35f4e" : "#3d8168" }}>{eur(g.erogato - g.busta)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -5606,8 +5675,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
                         {r.fonte && <div style={{ fontSize: 10, color: "#9aa295", fontWeight: 400 }}>{FONTI[r.fonte] || r.fonte}</div>}
                       </td>
                       <td style={{ ...td, textAlign: "right" }}>{r.acconti > 0 ? `€ ${eur(r.acconti)}` : "—"}</td>
-                      <td style={{ ...td, textAlign: "right", color: r.saldo > 0.5 ? "#b04a3a" : "#3d8168" }}>
-                        {Math.abs(r.saldo) > 0.5 ? `€ ${eur(r.saldo)}` : "✓"}
+                      <td style={{ ...td, textAlign: "right", color: r.saldo > 0 ? "#b04a3a" : "#3d8168" }}>
+                        {r.saldo == null ? <span title="Saldo sconosciuto: la busta non è ancora arrivata">—</span> : r.saldo !== 0 ? `€ ${eur(r.saldo)}` : "✓"}
                       </td>
                       <td style={td}><Badge variant={stInfo.variant}>{stInfo.label}</Badge></td>
                       <td style={td}>
@@ -5635,7 +5704,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                         <button className="dc-btn" onClick={() => setAperta(exp ? null : k)} style={{ fontSize: 12, padding: "4px 8px" }}>
                           {exp ? "Nascondi" : `Dettagli${r.n_bonifici ? ` (${r.n_bonifici})` : ""}`}
                         </button>
-                        {(r.bonifico > 0 || r.stato === "bonifico_senza_busta") && (
+                        {(r.bonifico > 0 || r.stato === "in_attesa_busta") && (
                           r.riconciliato
                             ? <button className="dc-btn" disabled={busy === k} onClick={() => conferma(r, false)} style={{ fontSize: 12, padding: "4px 8px", marginLeft: 6 }}>Annulla</button>
                             : <button className="dc-btn" disabled={busy === k} onClick={() => conferma(r, true)} style={{ fontSize: 12, padding: "4px 8px", marginLeft: 6 }}>Conferma</button>
@@ -5753,12 +5822,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
                         <td>{x.mese >= 1 && x.mese <= 12 ? mesi[x.mese - 1] : x.mese} {x.anno}</td>
                         <td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
                         <td style={{ textAlign: "right" }}>{x.erogato ? eur(x.erogato) : "—"}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700, color: x.saldo_progressivo > 0.5 ? "#d35f4e" : x.saldo_progressivo < -0.5 ? "#7d5526" : "#3d8168" }}>{eur(x.saldo_progressivo)}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700, color: x.saldo_progressivo > 0 ? "#d35f4e" : x.saldo_progressivo < 0 ? "#7d5526" : "#3d8168" }}>{eur(x.saldo_progressivo)}</td>
                       </tr>
                     ))}
                     <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4" }}>
                       <td colSpan={3}>Saldo finale (positivo = ancora da pagare)</td>
-                      <td style={{ textAlign: "right", color: pnDett.saldo_finale > 0.5 ? "#d35f4e" : "#3d8168" }}>{eur(pnDett.saldo_finale)}</td>
+                      <td style={{ textAlign: "right", color: pnDett.saldo_finale > 0 ? "#d35f4e" : "#3d8168" }}>{eur(pnDett.saldo_finale)}</td>
                     </tr>
                   </tbody>
                 </table>

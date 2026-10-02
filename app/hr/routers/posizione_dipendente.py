@@ -169,6 +169,26 @@ async def togli_pagamento(conciliazione_id: str, pagamento_id: str):
     return pos.vista_conciliazione(conc)
 
 
+@router.get("/eccedenze")
+async def elenco_eccedenze(dipendente_id: str):
+    """Eccedenze dei pagamenti di conciliazione ancora da attribuire (titolare 02/10/2026)."""
+    db = _db()
+    await _dipendente(db, dipendente_id)
+    return {"righe": await pos.eccedenze_da_attribuire(db, dipendente_id)}
+
+
+@router.post("/eccedenze/{eccedenza_id}/attribuisci")
+async def attribuisci_eccedenza(eccedenza_id: str, dati: Dict[str, Any] = Body(...)):
+    """Il titolare sceglie dove va l'eccedenza: ``destinazione`` stipendio, acconto o bonus
+    (``anno``/``mese`` per stipendio e acconto; senza, il mese della data). Mai automatico."""
+    try:
+        return await pos.attribuisci_eccedenza(_db(), eccedenza_id, dati, attore="Titolare")
+    except pos.ErrorePosizione as exc:
+        stato = {"ECCEDENZA_NON_TROVATA": 404, "CONCILIAZIONE_NON_TROVATA": 404,
+                 "ECCEDENZA_GIA_ATTRIBUITA": 409}
+        raise _errore(exc, stato.get(exc.code, 400)) from exc
+
+
 @router.post("/conciliazioni/{conciliazione_id}/documento")
 async def carica_documento(conciliazione_id: str, file: UploadFile = File(...)):
     contenuto = await file.read()

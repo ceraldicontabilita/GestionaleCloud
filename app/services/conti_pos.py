@@ -69,6 +69,15 @@ CIRCUITI: Dict[str, Dict[str, str]] = {
 
 COMMISSIONI_ALTRO = "75.01.07.04"
 
+# Credito aperto dall'XML del registratore quando nessun terminale ha ancora
+# risposto (decisione del titolare, 02/10/2026): il circuito NON si conosce e
+# non si inventa, quindi il credito va sul gruppo «Crediti verso gestori
+# incassi» (15.07), non su un sottoconto di circuito. Lo sostituisce la
+# chiusura del terminale, lo chiude l'accredito in banca.
+CIRCUITO_NON_NOTO = "pos_da_xml"
+CONTO_CREDITO_CIRCUITO_NON_NOTO = "15.07"
+ETICHETTA_CIRCUITO_NON_NOTO = "gestore POS (circuito da chiusura terminale)"
+
 # Sigla con cui il circuito compare in Prima Nota. Nexi accredita tramite
 # Numia, ed e' "NUMIA" che l'utente legge sull'estratto conto: chiamarla cosi'
 # rende la riga riconoscibile senza tradurre.
@@ -100,7 +109,9 @@ CATEGORIE_USCITA_POS = [CATEGORIA_USCITA_STORICA] + [
 
 # Tutti i conti di credito verso gestori: sono cio' che va tenuto FUORI dai
 # saldi bancari reali.
-CONTI_CREDITO = tuple(sorted(c["credito"] for c in CIRCUITI.values()))
+CONTI_CREDITO = tuple(sorted(
+    [c["credito"] for c in CIRCUITI.values()] + [CONTO_CREDITO_CIRCUITO_NON_NOTO]
+))
 CONTI_COMMISSIONI = tuple(sorted(
     [c["commissioni"] for c in CIRCUITI.values()] + [COMMISSIONI_ALTRO]
 ))
@@ -135,7 +146,12 @@ def _voce(circuito: str, chiave: str, predefinito: str = "") -> str:
 
 
 def conto_credito(circuito: Any) -> str:
-    """Conto del credito verso il gestore. Vuoto se il circuito e' ignoto."""
+    """Conto del credito verso il gestore. Vuoto se il circuito e' ignoto.
+
+    ``CIRCUITO_NON_NOTO`` (credito aperto dall'XML) va sul gruppo 15.07.
+    """
+    if normalizza(circuito) == CIRCUITO_NON_NOTO:
+        return CONTO_CREDITO_CIRCUITO_NON_NOTO
     return _voce(circuito, "credito")
 
 
@@ -150,6 +166,8 @@ def conto_accredito(circuito: Any) -> str:
 
 
 def etichetta(circuito: Any) -> str:
+    if normalizza(circuito) == CIRCUITO_NON_NOTO:
+        return ETICHETTA_CIRCUITO_NON_NOTO
     return _voce(circuito, "etichetta") or normalizza(circuito).upper()
 
 

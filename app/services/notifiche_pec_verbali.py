@@ -160,19 +160,29 @@ async def registra_notifica_pec(
             {"id": f"verbale:{verbale['id']}:DECISIONE_VERBALE"},
             {"$set": {"discount_deadline": campi["scadenze_ricorso"].get("pagamento_ridotto")}},
         )
+        # L'abbinamento parte all'arrivo del secondo pezzo: se la PEC arriva quando i 5
+        # giorni sono gia' passati, l'atteso passa subito all'ordinario (idempotente).
+        from app.services.verbali_importo_atteso import applica_importo_ordinario
+
+        await applica_importo_ordinario(db, {**verbale, **campi})
     return True
 
 
-async def _verbale_per_numero(db, numero: str) -> Optional[Dict[str, Any]]:
-    """Il verbale vero con quel numero: mai le righe nate dalla sola PEC (`VERB-…`)."""
+async def _verbali_veri_per_numero(db, numero: str) -> List[Dict[str, Any]]:
+    """I verbali veri con quel numero: mai le righe nate dalla sola PEC (`VERB-…`)."""
     candidati = await db["verbali_noleggio"].find(
         {"numero_verbale": numero}, {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
     ).to_list(10)
     # Una riga in quarantena non e' un verbale (e' un numero di fattura letto come verbale):
     # non conta per l'unicita' e non riceve la notifica.
-    veri = [v for v in candidati
+    return [v for v in candidati
             if v.get("id") and v.get("source") != "gmail_scan"
             and str(v.get("stato") or "").lower() != "quarantena"]
+
+
+async def _verbale_per_numero(db, numero: str) -> Optional[Dict[str, Any]]:
+    """Il verbale vero con quel numero, solo se e' uno solo."""
+    veri = await _verbali_veri_per_numero(db, numero)
     return veri[0] if len(veri) == 1 else None
 
 
@@ -186,7 +196,8 @@ async def aggancia_notifiche_pec(db, *, dry_run: bool = True) -> Dict[str, Any]:
     from app.services.verbali_document_import import _extract_text
 
     esito = {"dry_run": dry_run, "notifiche": 0, "agganciate": 0, "gia_agganciate": 0,
-             "da_agganciare": 0, "senza_numero": 0, "errori": 0, "elenco_da_agganciare": []}
+             "da_agganciare": 0, "senza_verbale": 0, "ambigue": 0, "senza_numero": 0, "errori": 0,
+             "elenco_da_agganciare": []}
     righe = await db[COLL_ALLEGATI].find(
         {}, {"_id": 0, "pdf_data": 0}
     ).to_list(5000)
@@ -217,17 +228,25 @@ async def aggancia_notifiche_pec(db, *, dry_run: bool = True) -> Dict[str, Any]:
         if not numero:
             esito["senza_numero"] += 1
             continue
-        verbale = await _verbale_per_numero(db, numero)
-        if not verbale:
+        veri = await _verbali_veri_per_numero(db, numero)
+        if len(veri) != 1:
+            # Zero verbali veri = «senza verbale»; piu' di uno = ambigua: in entrambi i
+            # casi la PEC resta «da agganciare», non si sceglie e non si crea niente.
             esito["da_agganciare"] += 1
-            esito["elenco_da_agganciare"].append({"upec_id": upec, "numero_verbale": numero})
+            esito["senza_verbale" if not veri else "ambigue"] += 1
+            esito["elenco_da_agganciare"].append({
+                "upec_id": upec, "numero_verbale": numero,
+                "motivo": "senza_verbale" if not veri else "verbali_ambigui",
+            })
             if not dry_run:
                 for allegato in allegati:
                     await db[COLL_ALLEGATI].update_one(
                         {"id": allegato["id"]},
-                        {"$set": {"notifica_stato": "da_agganciare", "numero_verbale_letto": numero}},
+                        {"$set": {"notifica_stato": "da_agganciare", "numero_verbale_letto": numero,
+                                  "notifica_motivo": "senza_verbale" if not veri else "verbali_ambigui"}},
                     )
             continue
+        verbale = veri[0]
         if dry_run:
             esito["agganciate"] += 1
             continue
@@ -243,3 +262,42 @@ async def aggancia_notifiche_pec(db, *, dry_run: bool = True) -> Dict[str, Any]:
             )
     esito["elenco_da_agganciare"] = esito["elenco_da_agganciare"][:100]
     return esito
+
+
+CHIAVE_STATO_GIRO = "notifiche_pec_verbali_ultimo_giro"
+
+
+async def giro_aggancio_automatico(db) -> Dict[str, Any]:
+    """L'aggancio delle PEC gira da solo nel giro giornaliero dei verbali (07:10).
+
+    Decisione del titolare (02/10/2026): niente bottone, niente PIN. Scrive davvero
+    (`dry_run=False`), e' idempotente (una PEC si lega solo al verbale vero con lo
+    stesso numero, le altre restano «da agganciare», secondo giro = 0 nuovi agganci)
+    e lascia l'esito in `sistema_stato` (`notifiche_pec_verbali_ultimo_giro`).
+    """
+    esito = await aggancia_notifiche_pec(db, dry_run=False)
+    adesso = datetime.now(timezone.utc).isoformat()
+    stato = {
+        "chiave": CHIAVE_STATO_GIRO,
+        "eseguito_at": adesso,
+        "totali": esito["notifiche"],
+        "agganciate": esito["agganciate"],
+        "gia_agganciate": esito["gia_agganciate"],
+        "senza_verbale": esito["senza_verbale"],
+        "ambigue": esito["ambigue"],
+        "da_agganciare": esito["da_agganciare"],
+        "senza_numero": esito["senza_numero"],
+        "errori": esito["errori"],
+        "elenco_da_agganciare": esito["elenco_da_agganciare"],
+        "updated_at": adesso,
+    }
+    try:
+        await db["sistema_stato"].update_one({"chiave": CHIAVE_STATO_GIRO}, {"$set": stato}, upsert=True)
+    except Exception as exc:  # noqa: BLE001 - l'esito e' comunque nel log
+        logger.error("[PEC-VERBALI] stato non salvato: %s: %s", type(exc).__name__, exc)
+    logger.info(
+        "[PEC-VERBALI] giro automatico: totali=%s agganciate=%s gia_agganciate=%s senza_verbale=%s ambigue=%s errori=%s",
+        stato["totali"], stato["agganciate"], stato["gia_agganciate"], stato["senza_verbale"],
+        stato["ambigue"], stato["errori"],
+    )
+    return stato

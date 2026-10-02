@@ -178,6 +178,10 @@ def test_incasso_in_contanti_poi_versamento_la_cassa_si_azzera_e_i_ricavi_non_ca
     saldo_cassa = somma(r["importo"] for r in cassa if r["tipo"] == "entrata") \
         - somma(r["importo"] for r in cassa if r["tipo"] == "uscita")
     assert saldo_cassa == D("0.00")
-    assert somma(r["importo"] for r in banca if r["tipo"] == "entrata") == D("300.00")
+    # In banca entra il versamento (300). Il credito POS da XML (700, natura
+    # credito_pos) e' un credito verso il gestore, non denaro sul conto.
+    assert somma(r["importo"] for r in banca
+                 if r["tipo"] == "entrata" and r.get("natura") != "credito_pos") == D("300.00")
+    assert somma(r["importo"] for r in banca if r.get("natura") == "credito_pos") == D("700.00")
     assert len(run(attive(db, "movimenti_contabili"))) == 1                    # nessun ricavo in piu'
     assert len(run(attive(db, "corrispettivi"))) == 1

@@ -182,7 +182,9 @@ def test_nuova_parcella_apre_avviso_ritenuta_una_volta(db, monkeypatch):
     monkeypatch.setattr(telegram_notifications, "send_notification", finto_invio)
 
     async def scenario():
-        fattura = _parcella(xml_raw=PARCELLA_XML)
+        # Pagata al professionista ad agosto: il 1040 e' quello di agosto, entro il 16/09
+        # (il periodo e' il mese del pagamento, non della fattura: decisione del 02/10/2026).
+        fattura = _parcella(xml_raw=PARCELLA_XML, stato="pagata", data_pagamento="2026-08-20")
         await ritenute.upsert_ritenuta_da_fattura(db, fattura)
         await ritenute.upsert_ritenuta_da_fattura(db, fattura)  # reimport
         return await db["alerts"].find({"codice": "RITENUTA_DA_VERSARE"}, {"_id": 0}).to_list(10)

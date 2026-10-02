@@ -13,6 +13,8 @@ import {
   parseTotaliPosTesto,
   CellaCircuito,
   TESTO_SENZA_CHIUSURA,
+  TESTO_CREDITO_XML,
+  creditoXmlAperto,
 } from './CoerenzaPOSCorrispettivi';
 
 vi.mock('../api', () => ({
@@ -356,5 +358,60 @@ describe('NUMIA senza chiusura del terminale', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Mensile' }));
     fireEvent.click(screen.getByTestId('mensile-tutte-colonne'));
     expect(screen.getByTestId('mensile-7')).toHaveTextContent('Non verificabile');
+  });
+});
+
+describe('Credito POS aperto dal solo XML (senza chiusura del terminale)', () => {
+  // Decisione del titolare (02/10/2026): l'XML apre il credito verso il gestore;
+  // la pagina lo evidenzia finche' la banca non lo prova o il terminale non lo sostituisce.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation(url => {
+      if (url.includes('/verifica-coerenza')) return Promise.resolve({ data: {
+        riepilogo: {}, riepilogo_giornaliero: [], anomalie: [], anomalie_count: 0,
+      } });
+      if (url.includes('/riepilogo-mensile')) return Promise.resolve({ data: { mesi: [], totali: {} } });
+      if (url.includes('/sumup/')) return Promise.resolve({ data: { configured: false } });
+      return Promise.resolve({ data: {
+        statistiche: {
+          fase2_ok: 0, fase2_saldo_finale: 0,
+          fase2_crediti_xml_aperti: 1, fase2_crediti_xml_aperti_totale: 700,
+          fase2_crediti_xml_differenza_terminale: 0,
+        },
+        giorni: [{
+          data: '2026-09-10', stato_serale: 'no_dati', stato_corrispettivo: 'definitivo_xml',
+          stato_accredito: 'no_pos_manuale', riconciliato_banca_reale: false,
+          accredito_banca: 0, diff_accredito: 0, pos_manuale_presente: false,
+          pos_manuale: 0, xml_elettronico: 700,
+          pos_per_circuito: { numia: null, sumup: null },
+          fonte_pos_per_circuito: {},
+          fase2_per_circuito: { sumup: { stato: 'no_pos_sumup' } },
+          credito_pos_da_xml: {
+            importo: 700, accreditato: 0, riconciliato: false,
+            stato: 'senza_chiusura_terminale', differenza_terminale: null,
+          },
+        }],
+        riepilogo_settimanale: [],
+      } });
+    });
+  });
+
+  it('dice a parole che il credito e\' aperto e lo tiene fra i problemi', async () => {
+    render(<CoerenzaPOSCorrispettivi />);
+
+    expect(await screen.findByTestId('avviso-credito-xml')).toHaveTextContent(`${TESTO_CREDITO_XML}: 1`);
+    expect(screen.getByTestId('credito-xml-2026-09-10')).toHaveTextContent('aperto, senza chiusura terminale');
+    expect(screen.queryByText('Riconciliato banca')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Solo problemi' }));
+    expect(screen.getByTestId('credito-xml-2026-09-10')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Solo OK' }));
+    expect(screen.queryByTestId('credito-xml-2026-09-10')).toBeNull();
+  });
+
+  it('un credito chiuso dall\'accredito non e\' piu\' un problema', () => {
+    expect(creditoXmlAperto({ credito_pos_da_xml: { stato: 'riconciliato' } })).toBe(false);
+    expect(creditoXmlAperto({ credito_pos_da_xml: { stato: 'differenza_con_chiusura_terminale' } })).toBe(true);
+    expect(creditoXmlAperto({ credito_pos_da_xml: null })).toBe(false);
   });
 });

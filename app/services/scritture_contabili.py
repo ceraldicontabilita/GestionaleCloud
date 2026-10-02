@@ -13,12 +13,18 @@ REGOLA CANONICA POS (utente, 18/07/2026 — confermata a voce e definitiva):
 - CASSA uscita "POS <CIRCUITO> Verso Banca" = il POS REALE del terminale,
   UNA RIGA PER CIRCUITO (POS NUMIA inserito a mano, POS SUMUP scritto
   dall'API). I circuiti non si fondono mai in un'unica riga.
-- NIENTE FALLBACK XML (decisione utente 07/08/2026, che SUPERA la regola
-  del 18/07/2026): senza dati reali dei terminali l'uscita POS non si
-  scrive affatto e la giornata resta "attende_chiusura_pos_reale". L'XML è
-  la fonte fiscale del corrispettivo e non sa quanta parte sia passata da
-  Numia e quanta da SumUp: usarlo produceva un trasferimento indistinto
-  che nessun accredito poteva riconciliare.
+- NIENTE USCITA POS DALL'XML (decisione utente 07/08/2026, che SUPERA la
+  regola del 18/07/2026): l'XML non sa quanta parte sia passata da Numia e
+  quanta da SumUp, quindi non scrive mai un trasferimento per circuito e la
+  giornata resta "attende_chiusura_pos_reale".
+- CREDITO POS DA XML (decisione del titolare 02/10/2026): senza chiusura del
+  terminale l'XML apre comunque il credito verso il gestore per il suo
+  ``pagato_elettronico``, sul gruppo 15.07 (circuito non noto, mai
+  inventato), marcato ``senza_chiusura_terminale`` e ``fonte_credito="xml"``.
+  La chiusura del terminale lo SOSTITUISCE (non lo affianca) se i totali
+  coincidono al centesimo, altrimenti resta e porta la differenza;
+  l'accredito in banca al centesimo lo chiude. Reimport dell'XML = nessuna
+  seconda riga.
 - BANCA entrata  = la STESSA cifra del suo circuito, come CREDITO verso il
   gestore (source "trasferimento_pos", conto 15.07.xx), non come denaro già
   sul conto. MAI una seconda registrazione indipendente.
@@ -34,6 +40,7 @@ import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, List, Optional
 
 
@@ -69,6 +76,7 @@ def _sessione(session) -> Dict[str, Any]:
 
 from app.services import conti_pos
 from app.services.expectation_policy import (
+    ExpectationStatus,
     expectation_evidence_fields,
     expectation_fields,
 )
@@ -81,6 +89,25 @@ REGISTRI = {"cassa": "prima_nota_cassa", "banca": "prima_nota_banca"}
 # gia' sul conto. Serve a tenerle fuori dai saldi bancari reali senza doverle
 # riconoscere dal codice di conto, che puo' cambiare.
 NATURA_CREDITO_POS = "credito_pos"
+
+# Chi ha aperto il credito POS: la chiusura del terminale (o l'API/export del
+# gestore) oppure il solo XML del registratore, quando il terminale non ha
+# ancora risposto. Le righe scritte prima del 02/10/2026 non hanno il campo:
+# sono tutte del terminale.
+FONTE_CREDITO_TERMINALE = "terminale"
+FONTE_CREDITO_XML = "xml"
+# Stato del credito da XML rispetto alla chiusura del terminale.
+CREDITO_XML_SENZA_TERMINALE = "senza_chiusura_terminale"
+CREDITO_XML_SOSTITUITO = "sostituito_da_chiusura_terminale"
+CREDITO_XML_DIFFERENZA = "differenza_con_chiusura_terminale"
+# Quota POS letta dall'XML: NON e' il ``quota_pos_fonte="xml"`` delle righe
+# del vecchio ripiego (che ``bonifica_pos_xml`` archivia).
+QUOTA_POS_FONTE_XML = "elettronico_xml"
+
+_SOURCE_CHIUSURA_XML = frozenset({
+    "xml", "xml_import", "corrispettivo_import", "corrispettivo_xml",
+    "sincronizzazione", "corrispettivi_sync", "zip_upload",
+})
 
 _OPERATION_ID_FIELDS = (
     "operation_id", "idempotency_key", "estratto_conto_id",
@@ -610,6 +637,116 @@ async def pos_reale_del_giorno(db, data: str) -> Dict[str, Any]:
     return esito
 
 
+def e_chiusura_xml(corr_doc: Dict[str, Any]) -> bool:
+    """La giornata e' una chiusura del registratore (XML), non una riga
+    manuale o storica senza documento. Stesso criterio di
+    ``pos_corrispettivi_check._e_corrispettivo_xml``."""
+    if corr_doc.get("stato") == "definitivo_xml":
+        return True
+    if corr_doc.get("data_import_xml") or corr_doc.get("totale_xml") is not None:
+        return True
+    if str(corr_doc.get("source") or "").strip().lower() in _SOURCE_CHIUSURA_XML:
+        return True
+    nome_file = str(corr_doc.get("filename") or "").strip().lower()
+    return bool(corr_doc.get("content_hash") and nome_file.endswith(".xml"))
+
+
+def _cents(valore: Any) -> int:
+    """Importo in centesimi, via Decimal: mai un confronto fra float."""
+    try:
+        return int((Decimal(str(valore if valore is not None else 0))
+                    .quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) * 100)
+    except (ArithmeticError, ValueError):
+        return 0
+
+
+async def crediti_pos_da_xml_del_giorno(db, data: str) -> List[Dict[str, Any]]:
+    """Crediti POS aperti dal solo XML, ancora attivi, per il giorno di vendita."""
+    try:
+        return await _leggi_tutti(db["prima_nota_banca"].find({
+            "source": "trasferimento_pos",
+            "fonte_credito": FONTE_CREDITO_XML,
+            "$or": [{"giorno_vendita": data}, {"data": data}],
+            **FILTRO_MOVIMENTO_ATTIVO,
+        }), 10)
+    except AttributeError:
+        # backend/fake senza la collezione
+        return []
+
+
+async def _sostituisci_credito_xml(
+    db, data: str, totale_terminale: float, banca_id: Optional[str], now: str,
+) -> Optional[Dict[str, Any]]:
+    """La chiusura del terminale SOSTITUISCE il credito aperto dall'XML.
+
+    Se la somma dei terminali del giorno coincide al centesimo con la quota
+    elettronica dell'XML, il credito da XML si ritira (``archived``,
+    ``sostituito_da``: resta per l'audit, esce dai registri e dai saldi) e gli
+    accrediti che gia' lo provavano si riesaminano verso la riga del
+    terminale. Altrimenti resta, con la differenza scritta sopra: due numeri
+    diversi non si fondono in silenzio e li guarda il titolare in Coerenza POS.
+    """
+    righe = await crediti_pos_da_xml_del_giorno(db, data)
+    if not righe:
+        return None
+    cents_xml = sum(_cents(r.get("importo")) for r in righe)
+    cents_terminale = _cents(totale_terminale)
+    differenza = (cents_terminale - cents_xml) / 100
+    esito = {
+        "importo_xml": cents_xml / 100,
+        "importo_terminale": cents_terminale / 100,
+        "differenza": round(differenza, 2),
+        "righe": [r.get("id") for r in righe],
+    }
+    if cents_xml == cents_terminale:
+        ids_accrediti: List[str] = []
+        for riga in righe:
+            ids_accrediti.extend(riga.get("estratto_conto_ids") or [])
+            await db["prima_nota_banca"].update_one(
+                {"id": riga.get("id")},
+                {"$set": {
+                    "status": "archived", "deleted": True,
+                    "deleted_reason": CREDITO_XML_SOSTITUITO,
+                    "deleted_at": now, "updated_at": now,
+                    "stato_credito_xml": CREDITO_XML_SOSTITUITO,
+                    "sostituito_da": banca_id,
+                    "expectation_status": ExpectationStatus.SUPERATO.value,
+                }},
+            )
+        # L'accredito che provava il credito da XML prova ora quello del
+        # terminale: si ricalcola il gruppo col motore unico, mai a mano.
+        if ids_accrediti:
+            await _riesamina_accrediti_collegati(db, list(dict.fromkeys(ids_accrediti)))
+        esito["stato"] = CREDITO_XML_SOSTITUITO
+    else:
+        for riga in righe:
+            await db["prima_nota_banca"].update_one(
+                {"id": riga.get("id")},
+                {"$set": {
+                    "stato_credito_xml": CREDITO_XML_DIFFERENZA,
+                    "differenza_terminale": round(differenza, 2),
+                    "importo_terminale": cents_terminale / 100,
+                    "updated_at": now,
+                }},
+            )
+        esito["stato"] = CREDITO_XML_DIFFERENZA
+    await _marca_credito_xml(db, data, esito["stato"], esito["differenza"])
+    return esito
+
+
+async def _marca_credito_xml(db, data: str, stato: str, differenza: Optional[float]) -> None:
+    """Annota sulla chiusura viva lo stato del suo credito da XML (servizio,
+    come ``_marca_stato_pos``: non puo' far fallire una scrittura)."""
+    try:
+        await db["corrispettivi"].update_many(
+            {"data": data, **FILTRO_CORRISPETTIVO_ATTIVO},
+            {"$set": {"credito_pos_xml_stato": stato,
+                      "credito_pos_xml_differenza": differenza}},
+        )
+    except Exception:
+        logger.debug("Stato del credito da XML non annotato per %s", data, exc_info=True)
+
+
 async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
     """Solo il TOTALE del POS reale del giorno, o None se nessuna fonte.
 
@@ -953,6 +1090,12 @@ async def registra_chiusura_pos_reale(
                 db, "banca", nuovo_movimento_banca
             )
 
+    # Il credito che l'XML aveva aperto senza terminale viene SOSTITUITO da
+    # quello del terminale (totali uguali al centesimo) o resta con la
+    # differenza scritta: mai due crediti per lo stesso incasso.
+    credito_xml = await _sostituisci_credito_xml(
+        db, data, totale_giorno, banca_id if importo > 0 else None, now)
+
     # Una chiusura corretta DOPO che l'accredito l'aveva riconciliata cambia
     # l'importo atteso: le righe dell'estratto conto agganciate non possono
     # restare «riconciliate» verso un credito che ora non quadra (o che non
@@ -1018,7 +1161,62 @@ async def registra_chiusura_pos_reale(
         "prima_nota_cassa_id": cassa_id,
         "prima_nota_banca_id": banca_id,
         "trasferimento_id": trasferimento_id if totale_giorno > 0 else None,
+        "credito_xml": credito_xml,
     }
+
+
+async def _apri_credito_pos_da_xml(
+    db, corr_doc: Dict[str, Any], data: str, elettronico: float,
+    anno: int, mese: int,
+) -> tuple:
+    """Senza chiusura del terminale l'XML apre il credito verso il gestore.
+
+    Il circuito non si conosce e non si inventa: conto 15.07 (gruppo),
+    ``gestore=CIRCUITO_NON_NOTO``, ``senza_chiusura_terminale``. Una riga per
+    chiusura RT (chiave ``corr:<id>:banca_credito:pos_da_xml``): il reimport
+    dello stesso XML la ritrova, non ne scrive una seconda.
+    """
+    filtro_attivo = dict(FILTRO_MOVIMENTO_ATTIVO)
+    corr_id = corr_doc.get("id")
+    query = {
+        "data": data, "tipo": "entrata", "source": "trasferimento_pos",
+        "fonte_credito": FONTE_CREDITO_XML, **filtro_attivo,
+        **({"$or": [{"corrispettivo_id": {"$exists": False}},
+                    {"corrispettivo_id": {"$in": [None, "", corr_id]}}]}
+           if corr_id else {}),
+    }
+    esistente = await db["prima_nota_banca"].find_one(query)
+    trasferimento_id = (esistente or {}).get("trasferimento_id") or str(uuid.uuid4())
+    circuito = conti_pos.CIRCUITO_NON_NOTO
+    conto = conti_pos.conto_credito(circuito)
+    return await _scrivi_se_assente(db, "banca", query, {
+        "corrispettivo_id": corr_id,
+        **_campo_chiave(chiave_idempotenza_corrispettivo(corr_id, "banca_credito", circuito)),
+        "data": data, "tipo": "entrata", "importo": _cents(elettronico) / 100,
+        "descrizione": (f"Credito POS da XML — {conti_pos.data_italiana(data)} "
+                        f"(senza chiusura terminale)"),
+        "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
+        "natura": NATURA_CREDITO_POS,
+        "conto_contabile": conto,
+        "conto_nome": conti_pos.descrizione_conto(conto),
+        "gestore": circuito,
+        "circuito_noto": False,
+        "quota_pos_fonte": QUOTA_POS_FONTE_XML,
+        "fonte_credito": FONTE_CREDITO_XML,
+        "senza_chiusura_terminale": True,
+        "stato_credito_xml": CREDITO_XML_SENZA_TERMINALE,
+        "trasferimento_id": trasferimento_id,
+        "operation_id": trasferimento_id,
+        "giorno_vendita": data,
+        "anno": anno, "mese": mese,
+        "riconciliato": False,
+        "in_transito": True,
+        **expectation_fields(
+            expectation_type="pos_bank_credit",
+            owner="corrispettivo_xml",
+            source_fact_id=f"corrispettivo:{corr_id or data}",
+        ),
+    })
 
 
 async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Optional[str]]:
@@ -1135,6 +1333,20 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         esito["pos_stato"] = "attende_chiusura_pos_reale"
         esito["pos_reale"] = None
         await _marca_stato_pos(db, data, "attende_chiusura_pos_reale")
+        # Decisione del titolare (02/10/2026): l'XML apre comunque il credito
+        # verso il gestore, senza circuito, marcato «senza chiusura
+        # terminale». Solo per una chiusura del registratore con quota
+        # elettronica dichiarata: mai per una riga storica o manuale.
+        if elettronico_dichiarato and elettronico > 0 and e_chiusura_xml(corr_doc):
+            credito_id, gia = await _apri_credito_pos_da_xml(
+                db, corr_doc, data, elettronico, anno, mese)
+            esito["prima_nota_banca_id"] = credito_id
+            esito["credito_pos_xml_id"] = credito_id
+            esito["credito_pos_xml_gia_esistente"] = gia
+            esito["trasferimenti_pos"] = {
+                conti_pos.CIRCUITO_NON_NOTO: {"cassa": None, "banca": credito_id}}
+            if not gia:
+                await _marca_credito_xml(db, data, CREDITO_XML_SENZA_TERMINALE, None)
         return esito
 
     esito["pos_stato"] = "pos_reale_disponibile"
@@ -1218,6 +1430,30 @@ async def _marca_stato_pos(db, data: str, stato: str) -> None:
         logger.debug("Stato POS non annotato per %s", data, exc_info=True)
 
 
+async def attese_pos_numia_del_giorno(db, giorno_vendita: str) -> List[Dict[str, Any]]:
+    """Crediti POS che un accredito NUMIA del giorno di vendita puo' chiudere.
+
+    Dal 07/08/2026 i trasferimenti sono per circuito (Numia E SumUp nello
+    stesso giorno): l'accredito con causale NUMIA aggancia il trasferimento
+    NUMIA, mai quello SumUp. Se il terminale non ha ancora risposto l'attesa
+    e' il credito aperto dall'XML (02/10/2026): lo stesso accredito al
+    centesimo lo chiude. Il terminale, quando c'e', vince sull'XML.
+    """
+    base = {
+        "source": "trasferimento_pos",
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    giorno = [{"$or": [{"giorno_vendita": giorno_vendita}, {"data": giorno_vendita}]}]
+    candidati = await _leggi_tutti(db["prima_nota_banca"].find({
+        **base, "$and": giorno + [filtro_gestore_pos(conti_pos.NUMIA)],
+    }), 3)
+    if candidati:
+        return candidati
+    return await _leggi_tutti(db["prima_nota_banca"].find({
+        **base, "fonte_credito": FONTE_CREDITO_XML, "$and": giorno,
+    }), 3)
+
+
 async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
     """REGOLA CANONICA: l'accredito POS dell'estratto conto NON crea
     un'entrata — riconcilia il TRASFERIMENTO del suo giorno di vendita
@@ -1238,18 +1474,7 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
     giorno_vendita = _giorno_operazione_pos(descr, data_acc)
     importo = abs(float(mov_ec.get("importo") or 0))
 
-    # Dal 07/08/2026 i trasferimenti sono per circuito (Numia E SumUp nello
-    # stesso giorno). L'accredito con causale NUMIA deve agganciare il
-    # trasferimento NUMIA: senza questo filtro poteva prendere quello SumUp
-    # del medesimo giorno e "riconciliare" il circuito sbagliato.
-    candidati = await _leggi_tutti(db["prima_nota_banca"].find({
-        "source": "trasferimento_pos",
-        "$and": [
-            {"$or": [{"giorno_vendita": giorno_vendita}, {"data": giorno_vendita}]},
-            filtro_gestore_pos(conti_pos.NUMIA),
-        ],
-        "status": {"$nin": ["deleted", "archived"]},
-    }), 3)
+    candidati = await attese_pos_numia_del_giorno(db, giorno_vendita)
     if len(candidati) != 1:
         # Attesa mancante (corrispettivo o chiusura del terminale non arrivati)
         # o MULTIPLA (due crediti NUMIA lo stesso giorno): l'EC resta non
@@ -1440,14 +1665,7 @@ async def _recupera_pos_storico_da_estratto_impl(
     riconciliati = senza_attesa = attese_ambigue = 0
     dettagli = []
     for giorno, evidenza in sorted(gruppi.items()):
-        candidati = await _leggi_tutti(db["prima_nota_banca"].find({
-            "source": "trasferimento_pos",
-            "$and": [
-                {"$or": [{"giorno_vendita": giorno}, {"data": giorno}]},
-                filtro_gestore_pos(conti_pos.NUMIA),
-            ],
-            "status": {"$nin": ["deleted", "archived"]},
-        }), 3)
+        candidati = await attese_pos_numia_del_giorno(db, giorno)
         if len(candidati) != 1:
             stato = (
                 "evidenza_senza_attesa" if not candidati

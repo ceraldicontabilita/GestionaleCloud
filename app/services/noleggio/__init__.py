@@ -24,6 +24,8 @@ from .controlli import (
     DICITURE_CESSAZIONE,
     contiene_segnali_cessazione,
     driver_alla_data,
+    istante_assegnazione,
+    normalizza_istante_assegnazione,
     controlla_regolarita_canoni,
 )
 
@@ -50,5 +52,7 @@ __all__ = [
     "DICITURE_CESSAZIONE",
     "contiene_segnali_cessazione",
     "driver_alla_data",
+    "istante_assegnazione",
+    "normalizza_istante_assegnazione",
     "controlla_regolarita_canoni",
 ]

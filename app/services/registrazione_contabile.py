@@ -244,13 +244,70 @@ def totali_righe(righe: list) -> "tuple[float, float]":
 
 
 def differenza_ammessa(dare: Decimal, avere: Decimal) -> bool:
-    """Scarto fra DARE e AVERE entro un centesimo (arrotondamenti per aliquota), in Decimal."""
+    """Scarto fra DARE e AVERE entro un centesimo (arrotondamenti per aliquota), in Decimal.
+
+    Entro la tolleranza la scrittura si puo' salvare, ma NON cosi' com'e': lo
+    scarto va su una riga di arrotondamento (``riga_arrotondamento``), cosi'
+    quello che finisce nel giornale quadra al centesimo esatto."""
     return abs(dare - avere) <= _TOLLERANZA_QUADRATURA
 
 
 def scrittura_quadrata(righe: list) -> bool:
+    """DARE = AVERE al centesimo ESATTO (decisione del titolare 02/10/2026,
+    n. 12): nel libro giornale non resta nessuno scarto residuo."""
     dare, avere = totali_decimali(righe)
-    return bool(righe) and differenza_ammessa(dare, avere)
+    return bool(righe) and dare == avere
+
+
+# Decisione del titolare 02/10/2026 (n. 12): la tolleranza di un centesimo
+# resta per gli arrotondamenti IVA, ma lo scarto non si lascia nella
+# scrittura: va su una riga propria nel conto «arrotondamenti» del piano CEE
+# ufficiale (`piano_conti_ufficiale.py`), cosi' ogni scrittura salvata quadra
+# esattamente. Il conto lo sceglie il segno dello scarto: se il DARE eccede
+# manca un AVERE, cioe' un provento (arrotondamento ATTIVO, 53.01.29); se
+# l'AVERE eccede manca un DARE, cioe' un onere (arrotondamento PASSIVO,
+# 71.03.17). Sono i due conti generici del piano ufficiale, validi per
+# fatture, corrispettivi e scritture semplici; 55.05.03 («Abbuoni e
+# arrotond. attivi su acquisti») ha solo il lato attivo e resta fuori.
+_C_ARROTONDAMENTI_ATTIVI = ("53.01.29", "Arrotondamenti attivi diversi")
+_C_ARROTONDAMENTI_PASSIVI = ("71.03.17", "Arrotondamenti passivi diversi")
+DESCRIZIONE_ARROTONDAMENTO = "Arrotondamento IVA"
+
+
+def riga_arrotondamento(righe: list, tipo: Any = None) -> Optional[Dict[str, Any]]:
+    """La riga che porta lo scarto DARE/AVERE sul conto arrotondamenti.
+
+    ``None`` se la scrittura quadra gia'. Oltre un centesimo solleva
+    ``ScritturaNonQuadrata``: un bollo o una riga esclusa dall'imponibile non
+    sono un arrotondamento e non si quadrano d'ufficio."""
+    dare, avere = totali_decimali(righe)
+    scarto = dare - avere
+    if scarto == 0:
+        return None
+    if not differenza_ammessa(dare, avere):
+        raise ScritturaNonQuadrata(
+            f"Scrittura {tipo or ''} non quadrata: DARE {dare:.2f} != AVERE {avere:.2f}".replace("  ", " "))
+    if scarto > 0:
+        conto, importo_dare, importo_avere = _C_ARROTONDAMENTI_ATTIVI, 0.0, float(scarto)
+    else:
+        conto, importo_dare, importo_avere = _C_ARROTONDAMENTI_PASSIVI, float(-scarto), 0.0
+    return {
+        "conto_codice": conto[0], "conto_nome": conto[1],
+        "dare": importo_dare, "avere": importo_avere,
+        "centro_costo": None,
+        "descrizione": DESCRIZIONE_ARROTONDAMENTO,
+        "arrotondamento": True,
+    }
+
+
+def quadra_righe(righe: list, tipo: Any = None) -> list:
+    """Le righe con, se serve, la riga di arrotondamento in coda: il risultato
+    quadra al centesimo esatto (o ``ScritturaNonQuadrata``)."""
+    righe = list(righe or [])
+    riga_extra = riga_arrotondamento(righe, tipo)
+    if riga_extra is not None:
+        righe.append(riga_extra)
+    return righe
 
 
 async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[str, Any]:
@@ -268,10 +325,30 @@ async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[
     e la coppia originale + storno somma comunque a zero su ogni conto.
     """
     from app.routers.accounting.piano_conti import aggiorna_saldo_conto
-    if not movimento.get("storno_di") and not scrittura_quadrata(movimento.get("righe") or []):
-        dare, avere = totali_righe(movimento.get("righe") or [])
-        raise ScritturaNonQuadrata(
-            f"Scrittura {movimento.get('tipo')} non quadrata: DARE {dare:.2f} != AVERE {avere:.2f}")
+    saldi = list(saldi or [])
+    if not movimento.get("storno_di"):
+        righe = movimento.get("righe") or []
+        if not righe:
+            raise ScritturaNonQuadrata(
+                f"Scrittura {movimento.get('tipo')} senza righe: nessuna partita doppia")
+        # Decisione del titolare 02/10/2026 (n. 12): lo scarto entro il
+        # centesimo va su una riga di arrotondamento, oltre e' un rifiuto.
+        # UNICO punto: fatture, corrispettivi, scritture semplici e storni
+        # passano tutti di qui.
+        riga_extra = riga_arrotondamento(righe, movimento.get("tipo"))
+        if riga_extra is not None:
+            movimento["righe"] = [*righe, riga_extra]
+            dare, avere = totali_decimali(movimento["righe"])
+            movimento["totale_dare"] = float(dare)
+            movimento["totale_avere"] = float(avere)
+            if riga_extra["dare"]:
+                saldi.append((riga_extra["conto_codice"], riga_extra["dare"], "dare"))
+            else:
+                saldi.append((riga_extra["conto_codice"], riga_extra["avere"], "avere"))
+        if not scrittura_quadrata(movimento["righe"]):
+            dare, avere = totali_righe(movimento["righe"])
+            raise ScritturaNonQuadrata(
+                f"Scrittura {movimento.get('tipo')} non quadrata: DARE {dare:.2f} != AVERE {avere:.2f}")
     # Il numero si prenota solo per una scrittura che si salva davvero: una
     # scrittura rifiutata dalla quadratura non brucia un numero del protocollo.
     if movimento.get("numero_registrazione") is None:
@@ -1339,27 +1416,31 @@ async def registra_scrittura_semplice(db, movimento: Dict[str, Any],
     if esistente:
         return {"id": esistente["id"], "gia_presente": True}
 
+    # Stesso punto di quadratura di fatture, corrispettivi e storni
+    # (``_scrivi_movimento``): oltre il centesimo ``ScritturaNonQuadrata``
+    # (un ``ValueError``), entro il centesimo la riga di arrotondamento.
     tot_dare, tot_avere = totali_decimali(righe)
     if not differenza_ammessa(tot_dare, tot_avere):
-        raise ValueError(
+        raise ScritturaNonQuadrata(
             f"Scrittura non bilanciata: DARE {tot_dare} != AVERE {tot_avere}")
 
     doc = dict(movimento)
     doc.setdefault("id", str(uuid.uuid4()))
+    doc.setdefault("tipo", "scrittura_semplice")
     if doc.get("data"):
         doc.setdefault("data_documento", doc["data"])
     anno = doc.get("anno")
     if anno is None:
         anno = _anno_da_data(doc.get("data_documento") or doc.get("data"))
         doc["anno"] = anno
-    doc["righe"] = righe
+    doc["righe"] = list(righe)
     doc["totale_dare"] = tot_dare
     doc["totale_avere"] = tot_avere
-    doc["numero_registrazione"] = await _prossimo_numero(db, anno)
+    # Il numero lo prenota _scrivi_movimento dopo la quadratura.
+    doc.setdefault("numero_registrazione", None)
     doc.setdefault("created_at", _now())
-    await db[COLL_MOVIMENTI].insert_one(dict(doc))
-    await _audit(db, "scrittura_semplice", doc["id"],
-                 f"{doc.get('tipo', '?')} DARE={tot_dare} AVERE={tot_avere}")
+    # Nessun saldo: il bilancio CEE aggrega dai documenti sorgente.
+    doc = await _scrivi_movimento(db, doc, [])
     doc.pop("_id", None)
-    doc["gia_presente"] = False
+    doc["gia_presente"] = bool(doc.get("gia_registrato"))
     return doc

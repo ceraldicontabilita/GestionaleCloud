@@ -13,6 +13,39 @@ Tre famiglie di costanti, tutte usate da piu' moduli:
 """
 from __future__ import annotations
 
+from decimal import Decimal
+from typing import Optional
+
+# ── stato del mese (``paghe_mensili.stato_pagamento``) ──────────────────────
+#: Nessuna busta e nessun pagamento.
+STATO_PAGA_VUOTO = "vuoto"
+#: La busta c'e', il pagamento no.
+STATO_PAGA_IN_ATTESA_PAGAMENTO = "in_attesa_pagamento"
+#: Il bonifico c'e', la busta non e' ancora arrivata (titolare, 02/10/2026):
+#: ``importo_busta`` resta assente, mai 0; all'arrivo della busta
+#: (``sincronizza_paghe_mensili``) il pagamento si aggancia da solo.
+STATO_PAGA_IN_ATTESA_BUSTA = "in_attesa_busta"
+STATO_PAGA_PARZIALE = "parziale"
+STATO_PAGA_PAGATO = "pagato"
+#: Stati con un residuo da pagare (pannelli «buste in attesa»).
+STATI_PAGA_APERTI = (STATO_PAGA_IN_ATTESA_PAGAMENTO, STATO_PAGA_PARZIALE)
+
+
+def stato_paga_mese(busta: Optional[Decimal], erogato: Decimal) -> str:
+    """Lo stato di un mese dal confronto busta ↔ erogato, **al centesimo**:
+    nessuna tolleranza (titolare, 02/10/2026; prima 0,50 € di comodo).
+    ``busta`` ``None`` = busta non ancora in archivio (non e' uno zero)."""
+    if busta is None:
+        return STATO_PAGA_IN_ATTESA_BUSTA if erogato > 0 else STATO_PAGA_VUOTO
+    if busta <= 0 and erogato <= 0:
+        return STATO_PAGA_VUOTO
+    if erogato <= 0:
+        return STATO_PAGA_IN_ATTESA_PAGAMENTO
+    if erogato >= busta:
+        return STATO_PAGA_PAGATO
+    return STATO_PAGA_PARZIALE
+
+
 # ── conferma manuale ─────────────────────────────────────────────────────────
 #: Il titolare ha associato questo bonifico a mano: nessun motore lo riassegna,
 #: e per gli altri dipendenti e' gia' consumato.

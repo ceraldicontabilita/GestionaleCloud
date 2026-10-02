@@ -166,6 +166,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "F24 scaduto non pagato",
         "condizione_chiusura": "Pagamento avvenuto"
     },
+    "F24_PAGAMENTO_IN_RITARDO": {
+        "modulo": "f24",
+        "severita": "critical",
+        "titolo": "F24 pagato in ritardo: scadenza passata senza quietanza ne' addebito in banca",
+        "condizione_chiusura": "Arriva la quietanza o l'addebito CERTO in banca (f24_scadenze_notifiche)"
+    },
     "F24_NON_RICONCILIATO": {
         "modulo": "f24",
         "severita": "info",
@@ -604,6 +610,20 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "severita": "info",
         "titolo": "Probabile cessazione contratto noleggio (dicitura in fattura)",
         "condizione_chiusura": "Stato contratto confermato dall'utente sulla scheda veicolo"
+    },
+
+    # --- Verbali ---
+    "VERBALE_IMPORTO_ORDINARIO": {
+        "modulo": "fatture",
+        "severita": "warning",
+        "titolo": "Verbale: scaduti i 5 giorni dalla notifica, importo ordinario",
+        "condizione_chiusura": "Verbale pagato o chiuso (verbali_importo_atteso)"
+    },
+    "RICEVUTA_PAGOPA_SENZA_VERBALE": {
+        "modulo": "fatture",
+        "severita": "warning",
+        "titolo": "Ricevuta pagoPA di un verbale che non e' in archivio",
+        "condizione_chiusura": "Arriva il verbale con lo stesso numero o IUV e la ricevuta si aggancia (pagopa_receipts)"
     },
 
     # --- Riconciliazione ---

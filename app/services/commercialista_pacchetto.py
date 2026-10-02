@@ -948,7 +948,10 @@ async def allegati_voce(db, voce: Dict[str, Any], p: Periodo,
             if not pc.ha_presenze(foglio["righe"]):
                 continue
             allegati += pc.allegati_presenze(m["anno"], m["mese"], foglio["giorni"], foglio["righe"])
-            inclusi.append({"anno": m["anno"], "mese": m["mese"], "n_dipendenti": len(foglio["righe"])})
+            note_mese = await pc.note_consulente_mese(m["anno"], m["mese"])
+            allegati += pc.allegato_note(m["anno"], m["mese"], note_mese)
+            inclusi.append({"anno": m["anno"], "mese": m["mese"], "n_dipendenti": len(foglio["righe"]),
+                            "note": len(note_mese)})
         return allegati, {"presenze_mesi": inclusi}
     return ([(pdf_voce(voce, p.etichetta, p.dal, p.al), "application", "pdf",
               nome_file(voce["voce"], p, "pdf"))], {})

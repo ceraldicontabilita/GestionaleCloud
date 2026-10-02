@@ -229,27 +229,194 @@ async def controlla_scadenze_f24() -> Dict[str, Any]:
     }
 
 
+# ── F24 pagato in ritardo (decisione del titolare, 02/10/2026) ───────────────
+#
+# Il giorno DOPO la scadenza un modello F24 a debito senza quietanza ne'
+# addebito CERTO in banca apre l'alert `F24_PAGAMENTO_IN_RITARDO`, nel
+# catalogo unico. Il messaggio porta i giorni di ritardo e il ravvedimento
+# calcolato dallo scadenzario (sanzione ridotta per fascia + interessi legali),
+# che cresce ogni giorno: l'alert aperto si AGGIORNA, non si duplica. Si chiude
+# da solo con la quietanza o l'addebito CERTO; un alert ignorato dal titolare
+# non rinasce. Gira nel job delle 08:00 (`check_scadenze_f24_task`), lo stesso
+# delle notifiche: non e' un secondo giro.
+
+CODICE_ALERT_RITARDO = "F24_PAGAMENTO_IN_RITARDO"
+#: Oltre questa finestra un modello scaduto e' storia (2018-2024 senza
+#: quietanza abbinata): si conta (`oltre_finestra`), non si segnala.
+FINESTRA_RITARDO_GIORNI = 365
+_STATI_F24_FUORI = {"eliminato", "deleted", "annullato", "cancelled", "pagato", "paid"}
+
+
+def _euro(cents: int) -> str:
+    testo = f"{int(cents) / 100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{testo} €"
+
+
+def _e_modello_f24(f24: Dict[str, Any]) -> bool:
+    """Un modello (del commercialista o caricato), non una quietanza ne' un ravvedimento."""
+    from app.services.f24_controllo_incrociato import e_modello_di_ravvedimento
+
+    if f24.get("entity_status") == "deleted":
+        return False
+    if str(f24.get("status") or f24.get("stato") or "").lower() in _STATI_F24_FUORI:
+        return False
+    tipo = str(f24.get("tipo_documento") or f24.get("document_kind") or "").lower()
+    if "quietanza" in tipo:
+        return False
+    return not e_modello_di_ravvedimento(f24)
+
+
+def _scadenza_del_modello(f24: Dict[str, Any]):
+    """(scadenza, fonte): `data_scadenza` se il modello la porta, altrimenti la regola del codice."""
+    from app.services.scadenzario_tributi import scadenza_modello
+
+    testo = str(f24.get("data_scadenza") or "")[:10]
+    if testo:
+        try:
+            return date.fromisoformat(testo), "data_scadenza del modello"
+        except ValueError:
+            pass
+    return scadenza_modello(f24)
+
+
+def testo_alert_ritardo(f24: Dict[str, Any], scadenza: date, fonte: str, ravvedimento: Dict[str, Any]) -> str:
+    giorni = (date.fromisoformat(ravvedimento["al"]) - scadenza).days
+    descrizione = f24.get("descrizione") or f24.get("file_name") or f24.get("filename") or str(f24.get("id"))
+    codici = ", ".join(sorted({f"{r['codice']} {r['periodo']}" for r in ravvedimento["righe"] + ravvedimento["righe_da_verificare"]}))
+    testo = (
+        f"F24 {descrizione} scaduto il {scadenza.strftime('%d/%m/%Y')} ({fonte}): "
+        f"{giorni} giorni di ritardo, nessuna quietanza ne' addebito in banca. "
+        f"Tributi a debito {_euro(ravvedimento['tributo_cents'])}"
+        + (f" ({codici})" if codici else "") + ". "
+    )
+    if ravvedimento["righe"]:
+        fasce = sorted({r["fascia"] for r in ravvedimento["righe"]})
+        testo += (
+            f"Ravvedimento al {date.fromisoformat(ravvedimento['al']).strftime('%d/%m/%Y')}: sanzione "
+            f"{_euro(ravvedimento['sanzione_cents'])} ({'; '.join(fasce)}) + interessi legali "
+            f"{_euro(ravvedimento['interessi_cents'])} = {_euro(ravvedimento['totale_cents'])} in tutto; "
+            "cresce ogni giorno. "
+        )
+    if ravvedimento["righe_da_verificare"]:
+        testo += (
+            "Righe INPS/INAIL: sanzioni civili dell'ente, da verificare col consulente "
+            f"({', '.join(r['codice'] for r in ravvedimento['righe_da_verificare'])}). "
+        )
+    return testo.strip()
+
+
+async def segnala_f24_in_ritardo(db, oggi: Optional[date] = None) -> Dict[str, Any]:
+    """Apre, aggiorna e chiude gli alert `F24_PAGAMENTO_IN_RITARDO`. Idempotente."""
+    from app.constants.canale_documento import (
+        STATO_ALERT_APERTO, STATO_ALERT_IGNORATO,
+    )
+    from app.db_collections import COLL_QUIETANZE_F24
+    from app.services.alert_engine import COLL_ALERTS, genera_alert, risolvi_alert
+    from app.services.f24_payment_evidence import stato_evidenza_pagamento
+    from app.services.scadenzario_tributi import ravvedimento_atteso_modello
+
+    oggi = oggi or date.today()
+    esito = {"data": oggi.isoformat(), "aperti": 0, "aggiornati": 0, "chiusi": 0, "ignorati": 0,
+             "senza_scadenza": 0, "oltre_finestra": 0, "in_ritardo": [], "chiusi_ids": []}
+
+    modelli = [f for f in await db[COLLECTION_F24].find(
+        {"status": {"$nin": sorted(_STATI_F24_FUORI)}}, {"_id": 0, "pdf_data": 0},
+    ).to_list(5000) if _e_modello_f24(f)]
+
+    # Quietanze agganciate dal lato della quietanza (`f24_associati`): il
+    # modello non sempre porta `quietanza_id`.
+    con_quietanza = set()
+    for q in await db[COLL_QUIETANZE_F24].find({}, {"_id": 0, "f24_associati": 1, "status": 1,
+                                                    "entity_status": 1}).to_list(5000):
+        if q.get("entity_status") == "deleted" or str(q.get("status") or "").lower() in {"eliminato", "deleted"}:
+            continue
+        con_quietanza.update(str(v) for v in (q.get("f24_associati") or []) if v)
+
+    alert_esistenti: Dict[str, Dict[str, Any]] = {}
+    for a in await db[COLL_ALERTS].find(
+        {"codice": CODICE_ALERT_RITARDO, "stato": {"$in": [STATO_ALERT_APERTO, STATO_ALERT_IGNORATO]}},
+        {"_id": 0, "id": 1, "entita_id": 1, "stato": 1},
+    ).to_list(5000):
+        alert_esistenti[str(a.get("entita_id"))] = a
+
+    for f24 in modelli:
+        fid = str(f24.get("id") or "")
+        if not fid:
+            continue
+        esistente = alert_esistenti.get(fid)
+        provato = (stato_evidenza_pagamento(f24)["versato_documentalmente"] or fid in con_quietanza)
+        if provato:
+            if esistente and esistente.get("stato") == STATO_ALERT_APERTO:
+                esito["chiusi"] += await risolvi_alert(CODICE_ALERT_RITARDO, fid, db,
+                                                       resolved_by="quietanza_o_addebito_banca")
+                esito["chiusi_ids"].append(fid)
+            continue
+        scadenza, fonte = _scadenza_del_modello(f24)
+        if scadenza is None:
+            esito["senza_scadenza"] += 1
+            continue
+        if scadenza >= oggi:
+            continue  # scade oggi o dopo: non e' in ritardo (il giorno DOPO lo e')
+        if (oggi - scadenza).days > FINESTRA_RITARDO_GIORNI:
+            esito["oltre_finestra"] += 1
+            continue
+        ravvedimento = ravvedimento_atteso_modello(f24, oggi)
+        dettaglio = testo_alert_ritardo(f24, scadenza, fonte, ravvedimento)
+        extra = {"f24_id": fid, "scadenza": scadenza.isoformat(), "scadenza_fonte": fonte,
+                 "giorni_ritardo": (oggi - scadenza).days, "ravvedimento": ravvedimento}
+        esito["in_ritardo"].append({"f24_id": fid, "scadenza": scadenza.isoformat(),
+                                    "giorni_ritardo": (oggi - scadenza).days,
+                                    "ravvedimento_totale_cents": ravvedimento["totale_cents"]})
+        if esistente and esistente.get("stato") == STATO_ALERT_IGNORATO:
+            esito["ignorati"] += 1
+            continue
+        if esistente:
+            # Il ravvedimento cresce ogni giorno: si aggiorna l'alert aperto, non se ne apre un altro.
+            await db[COLL_ALERTS].update_one(
+                {"id": esistente["id"], "stato": STATO_ALERT_APERTO},
+                {"$set": {"dettaglio": dettaglio, "extra": extra,
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+            esito["aggiornati"] += 1
+            continue
+        creato = await genera_alert(
+            CODICE_ALERT_RITARDO, fid, COLLECTION_F24, dettaglio, db, extra=extra,
+        )
+        esito["aperti"] += int(bool(creato))
+    return esito
+
+
 async def invia_notifiche_scadenze() -> Dict[str, Any]:
     """
     Invia notifiche push (Telegram + Email) per scadenze F24 imminenti.
     Chiamata dal scheduler giornaliero.
     """
     db = Database.get_db()
-    
+
+    # F24 gia' scaduti senza prova di pagamento: alert nel catalogo unico, stesso giro.
+    try:
+        ritardi = await segnala_f24_in_ritardo(db)
+        logger.info("[F24] pagamenti in ritardo: aperti=%s aggiornati=%s chiusi=%s ignorati=%s",
+                    ritardi["aperti"], ritardi["aggiornati"], ritardi["chiusi"], ritardi["ignorati"])
+    except Exception as exc:  # noqa: BLE001 - il ritardo non ferma le notifiche di scadenza
+        logger.error("[F24] alert pagamenti in ritardo non calcolati (%s: %s)", type(exc).__name__, exc)
+        ritardi = {"errore": f"{type(exc).__name__}: {exc}"}
+
     # Prima controlla le scadenze
     risultato = await controlla_scadenze_f24()
-    
+
     tutte_scadenze = risultato["scadenze_scadute"] + risultato["scadenze_imminenti"]
-    
+
     if not tutte_scadenze:
         logger.info("📅 [F24] Nessuna scadenza imminente")
-        return {"notifiche_inviate": 0, "messaggio": "Nessuna scadenza imminente"}
-    
+        return {"notifiche_inviate": 0, "messaggio": "Nessuna scadenza imminente", "ritardi": ritardi}
+
     # Filtra solo quelle non ancora notificate oggi
     da_notificare = [s for s in tutte_scadenze if s["livello"] in ["SCADUTA", "CRITICA", "ALTA", "MEDIA"]]
-    
+
     if not da_notificare:
-        return {"notifiche_inviate": 0, "messaggio": "Tutte le scadenze già notificate o non urgenti"}
+        return {"notifiche_inviate": 0, "messaggio": "Tutte le scadenze già notificate o non urgenti",
+                "ritardi": ritardi}
     
     notifiche_telegram = 0
     notifiche_email = 0
@@ -358,6 +525,7 @@ async def invia_notifiche_scadenze() -> Dict[str, Any]:
         "notifiche_telegram": notifiche_telegram,
         "notifiche_email": notifiche_email,
         "scadenze_notificate": len(da_notificare),
+        "ritardi": ritardi,
         "dettaglio": [
             {
                 "descrizione": s["descrizione"],

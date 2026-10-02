@@ -213,19 +213,14 @@ def _importo_elettronico_xml(corrispettivo: Dict[str, Any]) -> float:
 
 
 def _e_corrispettivo_xml(corrispettivo: Dict[str, Any]) -> bool:
-    """Riconosce gli XML canonici e gli XML Drive importati prima dell'unificazione."""
-    if corrispettivo.get("stato") == "definitivo_xml":
-        return True
-    if corrispettivo.get("data_import_xml") or corrispettivo.get("totale_xml") is not None:
-        return True
-    source = str(corrispettivo.get("source") or "").strip().lower()
-    if source in {
-        "xml", "xml_import", "corrispettivo_import", "corrispettivo_xml",
-        "sincronizzazione", "corrispettivi_sync", "zip_upload",
-    }:
-        return True
-    filename = str(corrispettivo.get("filename") or "").strip().lower()
-    return bool(corrispettivo.get("content_hash") and filename.endswith(".xml"))
+    """Riconosce gli XML canonici e gli XML Drive importati prima dell'unificazione.
+
+    Un criterio solo, quello del motore contabile (``e_chiusura_xml``): lo
+    stesso che decide se l'XML apre il credito POS senza terminale.
+    """
+    from app.services.scritture_contabili import e_chiusura_xml
+
+    return e_chiusura_xml(corrispettivo)
 
 
 def _id_movimento_pos(movimento: Dict[str, Any]) -> str:
@@ -1258,6 +1253,66 @@ def _data_accredito_attesa(data_incasso_str: str) -> str:
     return prevista if prevista else data_incasso_str
 
 
+async def _carica_crediti_pos_da_xml(
+    db, data_da: str, data_a: str,
+) -> Dict[str, Dict[str, Any]]:
+    """Crediti POS aperti dal solo XML (decisione del titolare, 02/10/2026).
+
+    Un giorno con XML e senza chiusura del terminale ha comunque un credito
+    verso il gestore in Prima Nota Banca (``fonte_credito="xml"``): qui si
+    legge per evidenziarlo finche' l'accredito in banca non lo prova, o
+    finche' la chiusura del terminale non lo sostituisce. Le righe ritirate
+    (sostituite) non compaiono: sono audit, non attese.
+    Ritorna ``{giorno: {importo, riconciliato, accreditato, stato, ...}}``.
+    """
+    from app.services.scritture_contabili import (
+        CREDITO_XML_DIFFERENZA, CREDITO_XML_SENZA_TERMINALE, FONTE_CREDITO_XML,
+    )
+
+    crediti: Dict[str, Dict[str, Any]] = {}
+    async for riga in db["prima_nota_banca"].find(
+        {
+            "source": "trasferimento_pos",
+            "fonte_credito": FONTE_CREDITO_XML,
+            "data": {"$gte": data_da, "$lte": data_a},
+            "status": {"$nin": ["deleted", "archived"]},
+            "entity_status": {"$ne": "deleted"},
+        },
+        {"_id": 0, "id": 1, "data": 1, "giorno_vendita": 1, "importo": 1,
+         "riconciliato": 1, "accreditato_ec": 1, "stato_credito_xml": 1,
+         "differenza_terminale": 1, "importo_terminale": 1,
+         "estratto_conto_ids": 1},
+    ):
+        giorno = str(riga.get("giorno_vendita") or riga.get("data") or "")[:10]
+        if not giorno:
+            continue
+        voce = crediti.setdefault(giorno, {
+            "importo": 0.0, "accreditato": 0.0, "riconciliato": True,
+            "stato": "aperto", "differenza_terminale": None,
+            "importo_terminale": None, "prima_nota_ids": [],
+            "numero_movimenti_banca": 0,
+        })
+        voce["importo"] = round(voce["importo"] + float(riga.get("importo") or 0), 2)
+        voce["accreditato"] = round(
+            voce["accreditato"] + float(riga.get("accreditato_ec") or 0), 2)
+        voce["riconciliato"] = bool(voce["riconciliato"] and riga.get("riconciliato"))
+        voce["prima_nota_ids"].append(riga.get("id"))
+        voce["numero_movimenti_banca"] += len(riga.get("estratto_conto_ids") or [])
+        if riga.get("stato_credito_xml") == CREDITO_XML_DIFFERENZA:
+            voce["differenza_terminale"] = riga.get("differenza_terminale")
+            voce["importo_terminale"] = riga.get("importo_terminale")
+    for voce in crediti.values():
+        # Lo stato lo decide la prova: l'accredito al centesimo chiude,
+        # il terminale con un totale diverso lascia la differenza in vista.
+        if voce["riconciliato"]:
+            voce["stato"] = "riconciliato"
+        elif voce["differenza_terminale"] is not None:
+            voce["stato"] = CREDITO_XML_DIFFERENZA
+        else:
+            voce["stato"] = CREDITO_XML_SENZA_TERMINALE
+    return crediti
+
+
 async def _carica_pos_per_circuito(db) -> Dict[str, Dict[str, float]]:
     """POS reale per giorno, SCOMPOSTO per circuito.
 
@@ -1653,9 +1708,10 @@ async def controllo_incassi_due_fasi(
         for giorno, per_circuito in pos_per_circuito.items()
     }
     payout_sumup = await _carica_payout_sumup_per_giorno(db, data_da, data_a)
+    crediti_xml = await _carica_crediti_pos_da_xml(db, data_da, data_a)
 
     # Unione di tutte le date che hanno almeno un dato (corrispettivo o chiusura manuale)
-    date_note = set()
+    date_note = set(d for d in crediti_xml if data_da <= d <= data_a)
     for c in corrispettivi:
         d = c.get("data")
         if isinstance(d, datetime):
@@ -1692,6 +1748,13 @@ async def controllo_incassi_due_fasi(
         # stesso, quindi la fase 2 non ha niente da verificare.
         "fase2_senza_chiusura_terminale": 0,
         "fase2_accrediti_senza_chiusura_totale": 0.0,
+        # Crediti POS aperti dal solo XML (nessuna chiusura del terminale):
+        # aperti finche' la banca non li prova al centesimo; «differenza» se
+        # il terminale poi dice un altro totale.
+        "fase2_crediti_xml_aperti": 0,
+        "fase2_crediti_xml_aperti_totale": 0.0,
+        "fase2_crediti_xml_riconciliati": 0,
+        "fase2_crediti_xml_differenza_terminale": 0,
         # Importi aggregati
         "importo_tot_da_compensare_piu": 0.0,
         "importo_tot_da_compensare_meno": 0.0,
@@ -1970,6 +2033,16 @@ async def controllo_incassi_due_fasi(
         if pos_sumup is not None:
             stats["fase2_sumup_pos_totale"] += float(pos_sumup or 0)
 
+        credito_xml = crediti_xml.get(d)
+        if credito_xml:
+            if credito_xml["stato"] == "riconciliato":
+                stats["fase2_crediti_xml_riconciliati"] += 1
+            else:
+                stats["fase2_crediti_xml_aperti"] += 1
+                stats["fase2_crediti_xml_aperti_totale"] += float(credito_xml["importo"] or 0)
+                if credito_xml["differenza_terminale"] is not None:
+                    stats["fase2_crediti_xml_differenza_terminale"] += 1
+
         giorni.append({
             "data": d,
             # Fase 0 (v3): stato corrispettivo
@@ -2015,6 +2088,9 @@ async def controllo_incassi_due_fasi(
             "diff_accredito": diff_accr,
             "stato_accredito": stato_accr,
             "riconciliato_banca_reale": riconciliato_banca_reale,
+            # Credito aperto dal solo XML (senza chiusura del terminale):
+            # None se il giorno non ne ha uno attivo.
+            "credito_pos_da_xml": credito_xml,
             "numero_movimenti_banca": numero_movimenti_banca,
             "numero_movimenti_banca_raw": numero_movimenti_banca_raw,
             "duplicati_banca_unificati": duplicati_banca_unificati,
@@ -2059,6 +2135,9 @@ async def controllo_incassi_due_fasi(
     stats["fase2_accrediti_totale"] = round(stats["fase2_accrediti_totale"], 2)
     stats["fase2_accrediti_senza_chiusura_totale"] = round(
         stats["fase2_accrediti_senza_chiusura_totale"], 2
+    )
+    stats["fase2_crediti_xml_aperti_totale"] = round(
+        stats["fase2_crediti_xml_aperti_totale"], 2
     )
     stats["fase2_sumup_pos_totale"] = round(stats["fase2_sumup_pos_totale"], 2)
     stats["pos_numia_reale_annuo"] = round(stats["pos_numia_reale_annuo"], 2)

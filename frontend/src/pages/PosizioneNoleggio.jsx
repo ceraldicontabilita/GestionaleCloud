@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { COLORS, formatDateIT, useIsMobile } from '../lib/utils';
+import { COLORS, formatDateIT, formatIstanteIT, useIsMobile } from '../lib/utils';
 import { euroOppure } from '../lib/vista';
 import { PageSection } from '../components/PageLayout';
 import { StatCard, Badge, Select, PageLoader, ListaAdattiva, Button } from '../components/ds';
@@ -486,7 +486,7 @@ export default function PosizioneNoleggio() {
                   <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 8 }}>
                     Storico:{' '}
                     {v.assegnazioni
-                      .map(a => `${a.driver || a.driver_id} dal ${formatDateIT(a.dal)}${a.al ? ` al ${formatDateIT(a.al)}` : ''}`)
+                      .map(a => `${a.driver || a.driver_id} dal ${formatIstanteIT(a.dal)}${a.al ? ` al ${formatIstanteIT(a.al)}` : ''}`)
                       .join(' · ')}
                   </div>
                 )}
