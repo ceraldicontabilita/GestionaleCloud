@@ -12,11 +12,12 @@ const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 // Card del tablet.
 // REGOLA ENZO 25/07/2026: «il dipendente deve solo produrre e vedere le
 // ricette, tutto il resto lo guardo io e lo utilizzo io». Le card restano
-// tutte visibili; quelle marcate `soloAdmin` si aprono solo al titolare, e il
-// titolare si riconosce dalla sessione del Gestionale (/auth/session): il PIN
-// amministratore si digita solo nel login del Gestionale, mai qui (26/09/2026).
-// Le card di reparto chiedono il PIN personale: identifica chi firma HACCP e
-// produzioni.
+// tutte visibili; quelle marcate `soloAdmin` si aprono solo al titolare. Il
+// titolare si riconosce dalla sessione del Gestionale (/auth/session) oppure
+// dal proprio PIN personale collegato alla scheda HR, che conserva il ruolo
+// amministratore. Il PIN amministratore centrale si usa solo nel Gestionale e
+// non e' accettato dal tablet. Le card di reparto chiedono il PIN personale:
+// identifica chi firma HACCP e produzioni.
 const REPARTI = [
   { id: "pasticceria", label: "Pasticceria", emoji: "🍰", grad: "linear-gradient(135deg,#fb923c,#ea580c)", shadow: "rgba(234,88,12,.5)" },
   { id: "rosticceria", label: "Rosticceria", emoji: "🥙", grad: "linear-gradient(135deg,#86efac,#22c55e)", shadow: "rgba(34,197,94,.5)" },

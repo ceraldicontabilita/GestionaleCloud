@@ -6,10 +6,10 @@
    "gruppo": "Per iniziare",
    "titolo": "Come si entra (PIN, ruoli, uscita)",
    "indirizzo": "",
-   "scopo": "Chi lavora nei reparti entra col suo PIN personale: identifica chi produce e chi firma i controlli HACCP. Una volta inserito, puoi passare liberamente tra Pasticceria, Rosticceria, Bar, Lavagna e Magazzino senza digitarlo a ogni cambio; al cambio turno si tocca «Cambia operatore». Il titolare non ha un PIN amministratore dentro Lotti: entra dal login del Gestionale e torna qui già riconosciuto.",
+   "scopo": "Chi lavora nei reparti entra col suo PIN personale: identifica chi produce e chi firma i controlli HACCP. Una volta inserito, puoi passare liberamente tra Pasticceria, Rosticceria, Bar, Lavagna e Magazzino senza digitarlo a ogni cambio; al cambio turno si tocca «Cambia operatore». Il titolare può entrare dal Gestionale oppure col proprio PIN personale: la scheda HR lo riconosce come amministratore e caporeparto con accesso completo.",
    "passi": [
     "Inserisci il PIN sul tastierino: con 6 cifre entra da solo, con 4 premi Conferma.",
-    "Il bottone «Esci» in alto a destra chiude tutto: al rientro il dipendente rimette il suo PIN, il titolare rientra dal Gestionale.",
+    "Il bottone «Esci» in alto a destra chiude tutto: al rientro ogni persona rimette il proprio PIN; il titolare può anche rientrare dal Gestionale.",
     "Sui tablet il PIN identifica la persona che lavora. Per «Preleva» e «OK preso» viene chiesta una nuova conferma solo se sono trascorsi più di 10 minuti dall'ultima conferma."
    ],
    "bottoni": [
