@@ -12,7 +12,6 @@ Il PIN degli albergatori, invece, e' loro: lo scelgono con l'invito e lo
 recuperano con il codice di recupero (vedi CLAUDE.md, «Colazioni B&B»).
 """
 import asyncio
-import hashlib
 import logging
 import re
 import unicodedata
@@ -26,6 +25,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.lotti.servizi.catalogo_acquaviva_hotel import (
+    descrizione_breve as descrizione_breve_acquaviva,
+    digest_identita,
+    identita_riga,
+    presentazione_fattura,
+)
 from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
@@ -35,15 +40,9 @@ router = APIRouter()
 ORE_SESSIONE = 12
 
 _FORNITORE_VANDEMOORTELE = re.compile(r"vand(?:e)?moo?rte?le|vandermortel", re.IGNORECASE)
-_CAMPI_CODICE_PRODOTTO = (
-    "codice_prodotto",
-    "codice_articolo",
-    "codice_aqv_2026",
-    "codice_aqv_2025",
-    "acquaviva_id",
+_RIGA_FATTURA_NON_PRODOTTO = re.compile(
+    r"\b(?:LIQUIDAZ(?:IONE)?|SCONTO|ABBUONO|CONTRIBUTO)\b", re.IGNORECASE
 )
-
-
 class RigaOrdineHotel(BaseModel):
     chiave: str = Field(min_length=1, max_length=180)
     quantita: int = Field(ge=1, le=200)
@@ -82,55 +81,16 @@ def _decimale_positivo(valore: Any) -> Optional[Decimal]:
     return numero if numero > 0 else None
 
 
-def _codici_prodotto(prodotto: Mapping[str, Any]) -> set[str]:
-    return {
-        _testo_normalizzato(prodotto.get(campo)).replace(" ", "")
-        for campo in _CAMPI_CODICE_PRODOTTO
-        if prodotto.get(campo)
-    }
-
-
-def _prodotto_certo_da_riga(
-    descrizione: str,
-    riga: Mapping[str, Any],
-    prodotti: Iterable[Mapping[str, Any]],
-) -> Optional[Mapping[str, Any]]:
-    """Collega la fattura al catalogo solo con una prova univoca.
-
-    Non usa somiglianze o parole in comune: valgono un codice esplicito oppure
-    l'uguaglianza del nome/descrizione normalizzati. In caso di ambiguita' la
-    riga resta senza foto e allergeni, invece di inventare un'associazione.
-    """
-
-    codici_riga = {
-        _testo_normalizzato(riga.get(campo)).replace(" ", "")
-        for campo in ("codice", "codice_articolo", "codice_prodotto", "sku")
-        if riga.get(campo)
-    }
-    testo_riga = _testo_normalizzato(descrizione)
-    candidati: List[Mapping[str, Any]] = []
-    for prodotto in prodotti:
-        codici = _codici_prodotto(prodotto)
-        codice_nel_testo = any(
-            len(codice) >= 4 and re.search(rf"(?:^|\s){re.escape(codice)}(?:\s|$)", testo_riga)
-            for codice in codici
-        )
-        stesso_testo = testo_riga and testo_riga in {
-            _testo_normalizzato(prodotto.get("nome")),
-            _testo_normalizzato(prodotto.get("descrizione")),
-        }
-        if (codici_riga and codici_riga & codici) or codice_nel_testo or stesso_testo:
-            candidati.append(prodotto)
-    return candidati[0] if len(candidati) == 1 else None
-
-
 def costruisci_catalogo_prodotti_hotel(
     fatture: Iterable[Mapping[str, Any]],
     prodotti_vendita: Iterable[Mapping[str, Any]],
+    prodotti_acquaviva: Iterable[Mapping[str, Any]] = (),
 ) -> List[Dict[str, Any]]:
     """Catalogo verificabile per gli hotel, senza modificare i dati sorgente."""
 
     prodotti = [p for p in prodotti_vendita if p.get("attivo", True)]
+    catalogo_acquaviva = [p for p in prodotti_acquaviva if p.get("attivo", True)]
+    fonti_collegabili = [*prodotti, *catalogo_acquaviva]
     risultato: List[Dict[str, Any]] = []
 
     # Tutto cio' che produciamo: il legame alla ricetta e' la prova, non il nome.
@@ -168,7 +128,11 @@ def costruisci_catalogo_prodotti_hotel(
             descrizione = str(
                 riga.get("descrizione") or riga.get("description") or riga.get("nome") or ""
             ).strip()
-            if not descrizione or not _decimale_positivo(riga.get("quantita")):
+            if (
+                not descrizione
+                or _RIGA_FATTURA_NON_PRODOTTO.search(descrizione)
+                or not _decimale_positivo(riga.get("quantita"))
+            ):
                 continue
             identita = _testo_normalizzato(descrizione)
             if not identita:
@@ -183,26 +147,68 @@ def costruisci_catalogo_prodotti_hotel(
             )
             voce["quantita"] += _decimale_positivo(riga.get("quantita")) or Decimal("0")
 
-    for identita, voce in acquistati.items():
+    referenze: Dict[str, Dict[str, Any]] = {}
+    for _identita_fattura, voce in acquistati.items():
         riga = voce["riga"]
-        collegato = _prodotto_certo_da_riga(voce["descrizione_fattura"], riga, prodotti)
-        nome = str((collegato or {}).get("nome") or voce["descrizione_fattura"]).strip()
-        digest = hashlib.sha256(identita.encode("utf-8")).hexdigest()[:24]
+        identita, collegato = identita_riga(
+            voce["descrizione_fattura"], riga, fonti_collegabili
+        )
+        aggregata = referenze.setdefault(
+            identita,
+            {
+                "quantita": Decimal("0"),
+                "descrizioni_fattura": [],
+                "righe": [],
+                "collegato": collegato,
+            },
+        )
+        aggregata["quantita"] += voce["quantita"]
+        aggregata["righe"].append(riga)
+        if voce["descrizione_fattura"] not in aggregata["descrizioni_fattura"]:
+            aggregata["descrizioni_fattura"].append(voce["descrizione_fattura"])
+
+    for identita, voce in referenze.items():
+        collegato = voce["collegato"]
+        descrizioni_fattura = voce["descrizioni_fattura"]
+        descrizione_fattura = descrizioni_fattura[0]
+        nome_fattura, descrizione_fallback = presentazione_fattura(descrizione_fattura)
+        nome = str(
+            (collegato or {}).get("nome_verificato")
+            or (collegato or {}).get("nome_display")
+            or (collegato or {}).get("nome")
+            or nome_fattura
+        ).strip()
+        descrizione = (
+            descrizione_breve_acquaviva(collegato)
+            if collegato
+            else descrizione_fallback
+        )
+        digest = digest_identita(identita)
         risultato.append(
             {
                 "chiave": f"vandemoortele:{digest}",
                 "origine": "vandemoortele",
                 "nome": nome,
-                "descrizione": str((collegato or {}).get("descrizione") or voce["descrizione_fattura"]).strip(),
+                "descrizione": descrizione,
                 "allergeni": list((collegato or {}).get("allergeni") or []),
-                "immagine": (collegato or {}).get("immagine_url") or None,
+                "immagine": (
+                    (collegato or {}).get("immagine_prodotto")
+                    or (collegato or {}).get("immagine_url")
+                    or (collegato or {}).get("foto_url")
+                    or None
+                ),
                 "prezzo": _decimale_positivo((collegato or {}).get("prezzo_vendita")),
-                "categoria": str((collegato or {}).get("categoria") or "Vandemoortele").strip()
-                or "Vandemoortele",
+                "categoria": str(
+                    (collegato or {}).get("categoria")
+                    or (collegato or {}).get("categoria_aqv")
+                    or "Acquaviva"
+                ).strip() or "Acquaviva",
                 "prova": "fattura",
-                "descrizione_fattura": voce["descrizione_fattura"],
+                "descrizione_fattura": descrizione_fattura,
+                "descrizioni_fattura": descrizioni_fattura,
                 "quantita_acquistata": voce["quantita"],
                 "collegamento_catalogo": bool(collegato),
+                "fonte_catalogo": (collegato or {}).get("link_prodotto") or None,
             }
         )
 
@@ -311,7 +317,38 @@ async def catalogo_prodotti_hotel(
             "attivo": 1,
         },
     ).to_list(2000)
-    catalogo = costruisci_catalogo_prodotti_hotel(fatture, prodotti)
+    prodotti_acquaviva = await db.acquaviva_prodotti.find(
+        {"fonte": {"$in": ["acquaviva", "vandemoortele"]}, "attivo": {"$ne": False}},
+        {
+            "_id": 0,
+            "id": 1,
+            "nome": 1,
+            "nome_display": 1,
+            "nome_verificato": 1,
+            "descrizione": 1,
+            "descrizione_breve": 1,
+            "descrizione_lunga": 1,
+            "categoria": 1,
+            "categoria_aqv": 1,
+            "allergeni": 1,
+            "allergeni_fonte": 1,
+            "immagine_url": 1,
+            "immagine_prodotto": 1,
+            "foto_url": 1,
+            "link_prodotto": 1,
+            "prezzo_vendita": 1,
+            "codice": 1,
+            "codice_articolo": 1,
+            "codice_aqv_2026": 1,
+            "codice_aqv_2025": 1,
+            "codici_alias": 1,
+            "alias_fattura": 1,
+            "attivo": 1,
+        },
+    ).to_list(5000)
+    catalogo = costruisci_catalogo_prodotti_hotel(
+        fatture, prodotti, prodotti_acquaviva
+    )
     return {
         "prodotti": catalogo,
         "totale": len(catalogo),
