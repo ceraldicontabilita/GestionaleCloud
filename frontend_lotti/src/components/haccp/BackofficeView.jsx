@@ -369,7 +369,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
           prodotto={produciR}
           reparto={produciR.reparto || "pasticceria"}
           onClose={() => setProduciR(null)}
-          onSuccess={() => { setProduciR(null); carica(); }}
+          onSuccess={carica}
           frigoriferi={attrezzature.frigoriferi}
           congelatori={attrezzature.congelatori}
         />
