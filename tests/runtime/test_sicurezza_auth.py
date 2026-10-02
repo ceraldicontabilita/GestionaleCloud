@@ -166,6 +166,9 @@ class TestAllowlistCongelata:
         # token di sessione Supabase (tk:), verificato dall'handler con bb_alb_stato.
         "/api/colazioni/ordini-prodotti/albergatore",
         "/api/colazioni/ordini-prodotti/albergatore/elenco",
+        "/api/colazioni/ricariche/sumup",
+        "/api/colazioni/ricariche/sumup/sincronizza",
+        "/api/colazioni/ricariche/sumup/webhook",
         "/api/colazioni/menu-ospite/catalogo",
         "/api/colazioni/menu-ospite/ordine",
         # Ritorno da Banco BPM (Enable Banking): lo apre la banca, non il
