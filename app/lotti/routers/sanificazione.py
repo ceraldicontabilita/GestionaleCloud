@@ -302,6 +302,17 @@ async def get_storico(anno: int = None):
 # ==================== ENDPOINTS SANIFICAZIONE APPARECCHI REFRIGERANTI ====================
 
 
+async def _nome_apparecchio(tipo: str, numero: int) -> str:
+    """Restituisce il nome canonico condiviso con i registri temperature."""
+    from app.lotti.servizi.schede_temperature import apparecchi_attivi
+
+    etichetta = "Frigorifero" if tipo == "frigo" else "Congelatore"
+    for apparecchio in await apparecchi_attivi(tipo):
+        if apparecchio.get("numero") == numero:
+            return apparecchio.get("nome") or f"{etichetta} N°{numero}"
+    return f"{etichetta} N°{numero}"
+
+
 @router.get("/apparecchi/{anno}")
 async def get_scheda_apparecchi(anno: int):
     """
@@ -337,7 +348,7 @@ async def get_sanificazioni_frigorifero(anno: int, numero: int):
     return {
         "anno": anno,
         "frigorifero": numero,
-        "nome": f"Frigorifero N°{numero}",
+        "nome": await _nome_apparecchio("frigo", numero),
         "operatore_designato": OPERATORE_SANIFICAZIONE,
         "sanificazioni": sanificazioni,
         "totale": len(sanificazioni),
@@ -357,7 +368,7 @@ async def get_sanificazioni_congelatore(anno: int, numero: int):
     return {
         "anno": anno,
         "congelatore": numero,
-        "nome": f"Congelatore N°{numero}",
+        "nome": await _nome_apparecchio("congelatore", numero),
         "operatore_designato": OPERATORE_SANIFICAZIONE,
         "sanificazioni": sanificazioni,
         "totale": len(sanificazioni),

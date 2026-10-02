@@ -322,7 +322,9 @@ async def _genera_manuale_impl(
         anno = datetime.now().year
 
     # Sezioni abilitate: None = tutte, altrimenti solo quelle nella stringa CSV
-    sezioni_abilitate = set(s.strip() for s in sezioni.split(",")) if sezioni else None
+    sezioni_abilitate = set(s.strip() for s in sezioni.split(",") if s.strip()) if sezioni else None
+    ids_sezioni = {s["id"] for s in SEZIONI_MANUALE}
+    manuale_intero = sezioni_abilitate is None or ids_sezioni.issubset(sezioni_abilitate)
 
     def includi(nome_sezione: str) -> bool:
         return sezioni_abilitate is None or nome_sezione in sezioni_abilitate
@@ -695,8 +697,9 @@ async def _genera_manuale_impl(
     </div>
     """
 
-    # Indice
-    indice = """
+    # Indice: se si stampa un fascicolo parziale mostra soltanto le schede
+    # richieste, non l'indice del manuale completo.
+    indice_completo = """
     <div class="section">
         <h2>📑 INDICE</h2>
         <ol>
@@ -724,6 +727,18 @@ async def _genera_manuale_impl(
         </ol>
     </div>
     """
+    if manuale_intero:
+        indice = indice_completo
+    else:
+        voci_indice = "".join(
+            f"<li>{s['titolo']}</li>" for s in SEZIONI_MANUALE if includi(s["id"])
+        )
+        indice = f"""
+        <div class="section">
+            <h2>📑 SCHEDE INCLUSE NEL FASCICOLO</h2>
+            <ol>{voci_indice}</ol>
+        </div>
+        """
 
     # Dati azienda
     dati_azienda_html = f"""
@@ -868,20 +883,39 @@ async def _genera_manuale_impl(
                             giorno_n = int(giorno)
                         except (ValueError, TypeError):
                             continue
-                        if valore is None or isinstance(valore, dict):
+                        if valore is None:
                             continue
                         try:
                             data_iso = f"{int(anno_scheda):04d}-{mese_n:02d}-{giorno_n:02d}"
                         except (ValueError, TypeError):
                             continue
-                        if _in_periodo(data_iso):
-                            righe += f"<tr><td>{nome}</td><td>{giorno_n:02d}/{mese_n:02d}/{anno_scheda}</td><td>{valore}°C</td></tr>"
+                        if not _in_periodo(data_iso):
+                            continue
+                        firmatario = ""
+                        if isinstance(valore, dict):
+                            temperatura = valore.get("temp")
+                            if temperatura is not None:
+                                esito = f"{temperatura}°C"
+                            elif valore.get("stato") == "conforme" or valore.get("esito") == "conforme":
+                                esito = "Conforme (controllo visivo)"
+                            elif valore.get("non_rilevato"):
+                                esito = "N.R."
+                            else:
+                                continue
+                            if valore.get("firma_verificata") is True:
+                                firmatario = valore.get("operatore") or valore.get("operatore_nome") or ""
+                        else:
+                            esito = f"{valore}°C"
+                        righe += (
+                            f"<tr><td>{nome}</td><td>{giorno_n:02d}/{mese_n:02d}/{anno_scheda}</td>"
+                            f"<td>{esito}</td><td>{firmatario}</td></tr>"
+                        )
             return f"""
             <div class="section page-break">
                 <h2>🌡️ {titolo}</h2>
                 <table>
-                    <tr><th>Punto di controllo</th><th>Data</th><th>Temperatura</th></tr>
-                    {righe or '<tr><td colspan="3">Nessuna rilevazione nel periodo</td></tr>'}
+                    <tr><th>Punto di controllo</th><th>Data</th><th>Esito / Temperatura</th><th>Firma verificata</th></tr>
+                    {righe or '<tr><td colspan="4">Nessuna rilevazione nel periodo</td></tr>'}
                 </table>
             </div>
             """
@@ -942,10 +976,12 @@ async def _genera_manuale_impl(
         sezioni_body.append(GESTIONE_NON_CONFORMITA)
     if includi("disinfestazione"):
         sezioni_body.append(CONTROLLO_INFESTANTI)
-    sezioni_body += [APPROVVIGIONAMENTO_IDRICO, PROCEDURE_EMERGENZA, PLANIMETRIA_LOCALE]
+    if manuale_intero:
+        sezioni_body += [APPROVVIGIONAMENTO_IDRICO, PROCEDURE_EMERGENZA, PLANIMETRIA_LOCALE]
     if includi("allergeni"):
         sezioni_body += [GESTIONE_ALLERGENI, MATRICE_ALLERGENI_HTML]
-    sezioni_body.append(RINTRACCIABILITA)
+    if includi("lotti"):
+        sezioni_body.append(RINTRACCIABILITA)
     if includi("fornitori_qualificati"):
         sezioni_body.append(REGISTRO_FORNITORI_HTML)
     if includi("ricevimento_merci"):
@@ -954,7 +990,8 @@ async def _genera_manuale_impl(
         sezioni_body += [PROCEDURE_IGIENE, operatori_html, FORMAZIONE_PERSONALE]
     if includi("sanificazione"):
         sezioni_body += [PROCEDURE_PULIZIA, DETERGENTI_SANIFICANTI]
-    sezioni_body += [GESTIONE_RIFIUTI, MANUTENZIONE_ATTREZZATURE, ALLEGATI_INFO]
+    if manuale_intero:
+        sezioni_body += [GESTIONE_RIFIUTI, MANUTENZIONE_ATTREZZATURE, ALLEGATI_INFO]
 
     # Footer con periodo
     data_stampa = datetime.now().strftime("%d/%m/%Y %H:%M")

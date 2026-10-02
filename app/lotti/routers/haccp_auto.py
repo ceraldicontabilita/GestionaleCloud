@@ -817,12 +817,14 @@ async def apri_rilevazioni_oggi(_ruolo=Depends(require_permesso("haccp_registri"
 
 @router.post("/dichiara-conformi-oggi")
 async def dichiara_conformi_oggi(request: Request, pin: str = "", _ruolo=Depends(require_permesso("haccp_conformita"))):
-    """Il responsabile, finito il giro, dichiara conformi le caselle ancora aperte.
+    """Il responsabile, finito il giro, firma i controlli e chiude le caselle aperte.
 
     Vale solo se nelle Impostazioni il metodo e' il controllo visivo del
     responsabile. Firma chi tocca il pulsante (PIN o sessione verificata),
     all'ora in cui lo tocca; una firma non verificata non dichiara niente.
-    Non tocca le caselle gia' registrate (una temperatura vera vince).
+    Una temperatura gia' registrata resta identica: viene aggiunta soltanto la
+    firma verificata. Le caselle ancora aperte diventano conformi senza
+    inventare gradi. L'operazione e' idempotente.
     """
     from app.lotti.azienda import get_azienda
     from app.lotti.servizi.registro_haccp import firma_registrazione
@@ -845,6 +847,8 @@ async def dichiara_conformi_oggi(request: Request, pin: str = "", _ruolo=Depends
     ts = adesso.isoformat()
     ogni_ore = str(azienda.get("controllo_visivo_ogni_ore") or "2").strip()
     dichiarate = 0
+    firmate = 0
+    gia_firmate = 0
     for tipo, collezione, chiave_numero in (
         ("frigo", db.temperature_positive, "frigorifero_numero"),
         ("congelatore", db.temperature_negative, "congelatore_numero"),
@@ -857,31 +861,56 @@ async def dichiara_conformi_oggi(request: Request, pin: str = "", _ruolo=Depends
             if not scheda:
                 continue
             attuale = (scheda.get("temperature") or {}).get(str(adesso.month), {}).get(str(adesso.day))
-            if attuale is not None and not (
+            aperta = attuale is None or (
                 isinstance(attuale, dict) and attuale.get("stato") == STATO_DA_RILEVARE
-            ):
-                continue
-            casella = {
-                "temp": None,
-                "esito": "conforme",
-                "stato": STATO_CONFORME,
-                "soglie": {"min": scheda.get("temp_min"), "max": scheda.get("temp_max")},
-                "metodo": METODO_CONTROLLO_VISIVO,
-                "controllo_ogni_ore": ogni_ore,
-                "operatore": firma["operatore"],
-                "dipendente_id": firma.get("dipendente_id") or "",
-                "firma_verificata": True,
-                "firma_via": firma.get("firma_via") or "",
-                "dichiarato_dal_responsabile": True,
-                "allarme": False,
-                "timestamp": ts,
-            }
+            )
+            if aperta:
+                casella = {
+                    "temp": None,
+                    "esito": "conforme",
+                    "stato": STATO_CONFORME,
+                    "soglie": {"min": scheda.get("temp_min"), "max": scheda.get("temp_max")},
+                    "metodo": METODO_CONTROLLO_VISIVO,
+                    "controllo_ogni_ore": ogni_ore,
+                    "operatore": firma["operatore"],
+                    "dipendente_id": firma.get("dipendente_id") or "",
+                    "firma_verificata": True,
+                    "firma_via": firma.get("firma_via") or "",
+                    "firma_significato": "conferma_controllo_giornaliero",
+                    "dichiarato_dal_responsabile": True,
+                    "allarme": False,
+                    "timestamp": ts,
+                }
+                dichiarate += 1
+            else:
+                # Una misura vera, anche anomala, non diventa mai "conforme":
+                # si conserva ogni campo e si aggiunge soltanto la firma di chi
+                # ha verificato il giro. I valori legacy numerici vengono
+                # avvolti senza cambiarne il significato.
+                if isinstance(attuale, dict):
+                    casella = dict(attuale)
+                elif isinstance(attuale, (int, float)) and not isinstance(attuale, bool):
+                    casella = {"temp": attuale}
+                else:
+                    continue
+                if casella.get("firma_verificata") is True and casella.get("operatore"):
+                    gia_firmate += 1
+                    continue
+                casella.update({
+                    "operatore": firma["operatore"],
+                    "dipendente_id": firma.get("dipendente_id") or "",
+                    "firma_verificata": True,
+                    "firma_via": firma.get("firma_via") or "",
+                    "firma_significato": "conferma_controllo_giornaliero",
+                    "verificato_il": ts,
+                })
+                firmate += 1
             await collezione.update_one(
                 {"_id": scheda["_id"]},
                 {"$set": {f"temperature.{adesso.month}.{adesso.day}": casella, "updated_at": ts}},
             )
-            dichiarate += 1
-    return {"success": True, "dichiarate": dichiarate, "firmato_da": firma["operatore"]}
+    return {"success": True, "dichiarate": dichiarate, "firmate": firmate,
+            "gia_firmate": gia_firmate, "firmato_da": firma["operatore"]}
 
 
 @router.get("/turno-oggi")
@@ -900,7 +929,7 @@ async def turno_di_oggi():
 
     adesso = datetime.now(FUSO)
     mese, giorno = str(adesso.month), str(adesso.day)
-    da_fare, fatte, senza_casella = [], 0, []
+    da_fare, fatte, da_firmare, gia_firmate, senza_casella = [], 0, 0, 0, []
     for tipo, collezione, chiave_numero in (
         ("frigo", db.temperature_positive, "frigorifero_numero"),
         ("congelatore", db.temperature_negative, "congelatore_numero"),
@@ -921,10 +950,17 @@ async def turno_di_oggi():
             if not isinstance(casella, dict):
                 if casella is not None:
                     fatte += 1
+                    if isinstance(casella, (int, float)) and not isinstance(casella, bool):
+                        da_firmare += 1
                 continue
             if casella.get("temp") is not None or casella.get("stato") == STATO_CONFORME \
                     or casella.get("non_rilevato"):
                 fatte += 1
+                if not casella.get("non_rilevato"):
+                    if casella.get("firma_verificata") is True and casella.get("operatore"):
+                        gia_firmate += 1
+                    else:
+                        da_firmare += 1
                 continue
             da_fare.append({
                 "tipo": tipo,
@@ -935,5 +971,6 @@ async def turno_di_oggi():
             })
     return {"data": adesso.date().isoformat(), "da_rilevare": da_fare,
             "quante_da_rilevare": len(da_fare), "gia_rilevate": fatte,
+            "da_firmare": da_firmare, "gia_firmate": gia_firmate,
             "senza_casella": senza_casella, "quante_senza_casella": len(senza_casella),
             "controllo_visivo_attivo": controllo_visivo_attivo(await get_azienda())}
