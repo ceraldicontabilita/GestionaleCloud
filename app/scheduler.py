@@ -1963,7 +1963,6 @@ def start_scheduler():
     scheduler.add_job(
         gmail_full_scan_task,
         "cron", hour=5, minute=45,
-        hours=3,
         misfire_grace_time=300,
         coalesce=True,
         id="gmail_full_scan",
@@ -2124,7 +2123,6 @@ def start_scheduler():
     scheduler.add_job(
         _notifiche_colazioni_job,
         "interval", minutes=10,
-        minutes=1,
         next_run_time=avvio + timedelta(seconds=30),
         misfire_grace_time=60,
         coalesce=True,
