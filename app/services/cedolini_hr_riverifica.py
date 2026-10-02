@@ -29,13 +29,15 @@ from app.services.hr_cedolini_deposito import TABELLA_CEDOLINI, tipo_cedolino_hr
 
 logger = logging.getLogger(__name__)
 
-VERSIONE = "riverifica_pdf_v3"
+VERSIONE = "riverifica_pdf_v4"
 #: La v1 toglieva l'acconto recuperato quando la riga HR non lo annotava: le
 #: sue «correzioni» si rivalutano partendo dal netto che c'era prima.
 VERSIONE_V1 = "riverifica_pdf_v1"
-#: La v3 e' la v2 piu' il rateo 13a/14a nei dati chiave: stessa logica sul netto.
+#: La v3 e' la v2 piu' il rateo 13a/14a nei dati chiave; la v4 aggiunge l'anticipo
+#: TFR pagato in busta (voce 000081): stessa logica sul netto.
 CAMPI_RATEO = ("rateo_13ma_presente", "rateo_13ma_importo",
-               "rateo_14ma_presente", "rateo_14ma_importo")
+               "rateo_14ma_presente", "rateo_14ma_importo",
+               "anticipo_tfr_busta", "anticipo_tfr_voce")
 #: Arrotondamento della busta fra netto del mese e busta + acconto.
 SCARTO_ARROTONDAMENTO = Decimal("1.00")
 LOTTO = 120
@@ -47,7 +49,10 @@ _SQL_DA_RILEGGERE = (
     "doc->'storico_netto_ultimo'->>'prima' AS prima_v1, "
     "doc->'storico_netto_ultimo'->>'fonte' AS fonte_ultima FROM " + TABELLA_CEDOLINI + " "
     "WHERE doc ? 'pdf_data' AND length(doc->>'pdf_data') > 100 "
-    "AND coalesce(doc->>'netto_riverificato_versione', '') <> $1 ORDER BY id LIMIT $2"
+    "AND coalesce(doc->>'netto_riverificato_versione', '') <> $1 "
+    # Le buste piu' recenti per prime: un anticipo TFR appena pagato non aspetta
+    # che il giro rilegga tutto l'archivio.
+    "ORDER BY doc->>'anno' DESC, lpad(doc->>'mese', 2, '0') DESC, id LIMIT $2"
 )
 _SQL_PDF = "SELECT doc->>'pdf_data' FROM " + TABELLA_CEDOLINI + " WHERE id = $1"
 _SQL_AGGIORNA = "UPDATE " + TABELLA_CEDOLINI + " SET doc = doc || $2::jsonb WHERE id = $1"
@@ -154,13 +159,18 @@ def correzione(riga: Dict[str, Any], esito: Dict[str, Any], now: str) -> Dict[st
     return patch
 
 
-async def riverifica_lotto(con, *, dry_run: bool = False, lotto: int = LOTTO) -> Dict[str, Any]:
-    """Rilegge al massimo ``lotto`` buste non ancora riverificate."""
+async def riverifica_lotto(con, *, dry_run: bool = False, lotto: int = LOTTO,
+                           db=None) -> Dict[str, Any]:
+    """Rilegge al massimo ``lotto`` buste non ancora riverificate.
+
+    Con ``db`` (l'archivio del gestionale) l'anticipo TFR trovato nella busta va
+    nel motore degli acconti TFR (``tfr_anticipo_busta``, idempotente)."""
     from app.services.cedolini_motore import leggi_pdf
 
     righe = [dict(r) for r in await con.fetch(_SQL_DA_RILEGGERE, VERSIONE, lotto)]
     conteggi: Dict[str, int] = {}
     correzioni: List[Dict[str, Any]] = []
+    anticipi: List[Dict[str, Any]] = []
     for riga in righe:
         now = datetime.now(timezone.utc).isoformat()
         try:
@@ -181,7 +191,17 @@ async def riverifica_lotto(con, *, dry_run: bool = False, lotto: int = LOTTO) ->
             # Lo storico cresce, non si riscrive: la voce si accoda a quelle che ci sono.
             patch["storico_netto"] = (await _storico(con, riga["id"])) + [patch["storico_netto_ultimo"]]
         await con.execute(_SQL_AGGIORNA, riga["id"], json.dumps(patch))
-    return {"lette": len(righe), "conteggi": conteggi, "correzioni": correzioni, "dry_run": dry_run}
+        chiave = (patch.get("dati_chiave") or {})
+        if db is not None and chiave.get("anticipo_tfr_busta"):
+            from app.services.tfr_anticipo_busta import registra_dalla_busta
+
+            esito_tfr = await registra_dalla_busta(db, {
+                "codice_fiscale": riga["cf"], "anno": riga["anno"], "mese": riga["mese"],
+                "dati_chiave": chiave})
+            anticipi.append({"id": riga["id"], "cf": riga["cf"], "anno": riga["anno"],
+                             "mese": riga["mese"], **(esito_tfr or {})})
+    return {"lette": len(righe), "conteggi": conteggi, "correzioni": correzioni,
+            "anticipi_tfr": anticipi, "dry_run": dry_run}
 
 
 async def _storico(con, riga_id: str) -> List[Dict[str, Any]]:

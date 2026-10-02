@@ -38,7 +38,7 @@ from app.parsers.busta_paga_multi_template import (
     parse_template_zucchetti_presenze,
 )
 from app.parsers.cedolino_voci import (
-    acconto_recuperato_in_busta, importi_ratei_da_coordinate, leggi_corpo_cedolino,
+    acconto_recuperato_in_busta, anticipo_tfr_in_busta, importi_ratei_da_coordinate, leggi_corpo_cedolino,
     leggi_foglio_presenze,
 )
 
@@ -291,6 +291,13 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
         busta["dati_chiave"] = {**(busta.get("dati_chiave") or {}),
                                 "acconto_recuperato_busta": acconto["importo"],
                                 "acconto_recuperato_voce": acconto["codice"]}
+    # Anticipo TFR pagato dentro la busta (voce codificata): resta nei dati chiave
+    # e il motore degli acconti TFR lo scala dal fondo (`tfr_anticipo_busta`).
+    anticipo = anticipo_tfr_in_busta(testo)
+    if anticipo:
+        busta["dati_chiave"] = {**(busta.get("dati_chiave") or {}),
+                                "anticipo_tfr_busta": anticipo["importo"],
+                                "anticipo_tfr_voce": anticipo["codice"]}
     # Ferie, ROL, contributi e TFR letti dal testo: vanno nella scheda
     # Markdown, cosi' la ricarica non ha bisogno del PDF.
     extra = {k: v for k, v in (estrai_ferie_rol_from_text(testo) if testo else {}).items()
