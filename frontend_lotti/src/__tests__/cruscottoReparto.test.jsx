@@ -68,6 +68,22 @@ describe("cruscotto del reparto", () => {
     expect(blocco("blocco-richieste")).toContain("Farina");
   });
 
+  test("il titolare resta amministratore e caporeparto nel reparto", async () => {
+    jest.spyOn(axios, "get").mockImplementation((url) => rispondi(url));
+    await monta({ operatore: { nome: "Ceraldi Vincenzo", ruolo: "amministratore" } });
+    expect(node.querySelector('[data-testid="operatore-attivo"]').textContent).toBe("Ceraldi Vincenzo");
+    expect(node.querySelector('[data-testid="ruolo-operatore-attivo"]').textContent)
+      .toBe("Amministratore · Caporeparto · Pasticceria");
+  });
+
+  test("il nome dell'azione lotto resta su un solo rigo", async () => {
+    jest.spyOn(axios, "get").mockImplementation((url) => rispondi(url));
+    await monta();
+    const etichetta = node.querySelector('[data-testid="azione-produci"] span');
+    expect(etichetta.textContent).toBe("Produci e registra lotto");
+    expect(etichetta.style.whiteSpace).toBe("nowrap");
+  });
+
   test("una lettura fallita è «non disponibile», non zero", async () => {
     jest.spyOn(axios, "get").mockImplementation((url) => rispondi(url));
     await monta();

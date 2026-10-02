@@ -7,9 +7,11 @@ Modello:
     `Authorization: Bearer <token>`. PIN e token non sono due fattori distinti.
   - `auth_dependency` è agganciata a TUTTO l'api_router. `AUTH_ENFORCE` è
     attivo per default; le scritture non-tablet richiedono sempre un token.
-  - L'amministratore entra solo dal Gestionale (`/auth/session`, cookie
-    ERP): il suo token porta il `sid` della sessione ERP e il logout del
-    Gestionale lo revoca (`group_session.sessione_derivata_valida`).
+  - L'amministratore entra dal Gestionale (`/auth/session`, cookie ERP) oppure
+    dal tablet con il proprio PIN personale registrato in HR. La sessione ERP
+    porta il `sid` e viene revocata dal logout del Gestionale; la sessione PIN
+    resta legata all'identita' HR e alla versione del PIN. Il PIN centrale di
+    amministrazione non e' un'identita' tablet e non viene accettato qui.
   - Anti brute-force: tentativi persistiti su Supabase, per client e globali.
 
 Env usate (tutte opzionali, con default sicuri):
