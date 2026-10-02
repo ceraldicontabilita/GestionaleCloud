@@ -271,17 +271,18 @@ async function recensioniOspite(token,fonte){
   REC={token,fonte,info,sessione:visita.sessione,scelte:{},telefono:false};
   recPagina()}
  catch(e){app.innerHTML='<div class="card"><h2>Invito non disponibile</h2><p class="mute">'+esc(e.message)+'</p></div>'}}
+function recMostra(html){const h=REC&&REC.host&&$("#"+REC.host);if(h)h.innerHTML=html;else app.innerHTML=html}
 function recPagina(){
  const i=REC.info,ha=!!i.informativa_url,privacy=ha?'<a href="'+esc(i.informativa_url)+'" target="_blank" rel="noopener">Leggi l’informativa completa</a>.':'L’informativa completa non è ancora pubblicata: senza informativa non è possibile acconsentire, puoi solo continuare senza.';
  /* senza informativa pubblicata un consenso non e' informato: resta solo «Non acconsento / continua» (il database rifiuta comunque un si') */
  const geo=ha?'<div class="consent-actions"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento</button><button class="btn sec" id="rg1" onclick="recScelta(\'geolocalizzazione\',true)">Acconsento</button></div>':'<div class="consent-actions" style="grid-template-columns:1fr"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento / continua</button></div>';
  const wa=ha?'<div class="consent-actions"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento</button><button class="btn sec" id="rw1" onclick="recScelta(\'whatsapp\',true)">Acconsento</button></div>':'<div class="consent-actions" style="grid-template-columns:1fr"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento / continua</button></div>';
- app.innerHTML='<div class="review-hero"><div class="mute" style="color:#fff">OSPITE DI '+esc(i.struttura).toUpperCase()+'</div><h2>La colazione ha il suo rito.</h2><p>Le scelte sulla privacy restano tue, sempre.</p></div>'+
+ recMostra('<div class="review-hero"><div class="mute" style="color:#fff">OSPITE DI '+esc(i.struttura).toUpperCase()+'</div><h2>La colazione ha il suo rito.</h2><p>Le scelte sulla privacy restano tue, sempre.</p></div>'+
  '<div class="card"><h2>Come vuoi vivere l’esperienza?</h2>'+
  '<div class="consent-box"><h3>Geolocalizzazione</h3><p class="mute">Serve solo a registrare la presenza nel luogo della colazione. Il browser chiederà la posizione esclusivamente dopo il tuo consenso.</p>'+geo+'</div>'+
  '<div class="consent-box"><h3>Invito WhatsApp</h3><p class="mute">Ricevi un solo messaggio post-consumo con i link Google e Tripadvisor. Nessun messaggio promozionale.</p>'+wa+'</div>'+
  '<p class="privacy-note">Nessuna opzione è preselezionata. Puoi revocare in ogni momento. Versione informativa: '+esc(i.informativa_versione)+'. '+privacy+'</p>'+
- '<div id="rec_next"></div></div>'}
+ '<div id="rec_next"></div></div>')}
 async function recScelta(finalita,si){
  try{
   await rpc("bb_recensioni_consenso",{psessione:REC.sessione,pfinalita:finalita,pacconsento:si,pversione:REC.info.informativa_versione,pclient:navigator.userAgent});
@@ -307,7 +308,7 @@ async function recSalvaTelefono(){
  try{await rpc("bb_recensioni_telefono",{psessione:REC.sessione,ptelefono:telefono});REC.telefono=true;recPronto()}
  catch(e){toast(e.message)}}
 function recPronto(){
- app.innerHTML='<div class="review-hero"><h2>Buona colazione.</h2><p>Il tuo momento Ceraldi può iniziare.</p></div><div class="card review-success"><h2>Quando hai terminato</h2><p class="mute">Conferma la fine della colazione. Se hai scelto WhatsApp, l’unico invito sarà programmato da quel momento.</p><button class="btn review-destination" onclick="recFine()">Ho terminato la colazione</button><div id="rec_revoche"></div></div>';
+ recMostra('<div class="review-hero"><h2>Buona colazione.</h2><p>Il tuo momento Ceraldi può iniziare.</p></div><div class="card review-success"><h2>Quando hai terminato</h2><p class="mute">Conferma la fine della colazione. Se hai scelto WhatsApp, l’unico invito sarà programmato da quel momento.</p><button class="btn review-destination" onclick="recFine()">Ho terminato la colazione</button><div id="rec_revoche"></div></div>');
  recRevoche()}
 function recRevoche(){
  const a=[];
@@ -320,7 +321,11 @@ async function recRevoca(finalita,bottone){
 async function recFine(){
  try{
   const r=await rpc("bb_recensioni_completa",{psessione:REC.sessione});
-  app.innerHTML='<div class="card review-success"><h2>Grazie, a presto.</h2><p class="mute">'+(r.invito_pianificato?"Riceverai un solo invito WhatsApp all’orario previsto.":"Nessun messaggio verrà inviato.")+'</p></div>'}
+  const g=r.google_url?'<button class="btn review-destination" data-rec-fine="google">Recensisci su Google</button>':'';
+  const t=r.tripadvisor_url?'<button class="btn sec review-destination" data-rec-fine="tripadvisor">Recensisci su Tripadvisor</button>':'';
+  recMostra('<div class="card review-success"><h2>Grazie, a presto.</h2><p class="mute">'+(r.invito_pianificato?"Riceverai anche un solo promemoria WhatsApp all’orario previsto.":"Nessun messaggio verrà inviato.")+'</p><h3>Se vuoi, lascia ora una recensione</h3>'+g+t+'<p class="privacy-note">Nessun premio o incentivo è associato alla recensione.</p>'+(g||t?"":'<div class="alert">I link alle recensioni non sono ancora configurati.</div>')+'</div>');
+  const root=REC.host?$("#"+REC.host):app;
+  root.querySelectorAll("[data-rec-fine]").forEach(b=>b.onclick=()=>recApri(r.review_token,b.dataset.recFine,b.dataset.recFine==="google"?r.google_url:r.tripadvisor_url))}
  catch(e){toast(e.message)}}
 async function recensioneInvito(token){
  $("#ttl").textContent="Ceraldi Caffè";loading();
@@ -596,19 +601,15 @@ async function ricaricaSumup(imp){
  if(r&&r.url)location.href=r.url}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
 async function mostraQR(id,continua=false){
- const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id),token=await run("bb_alb_recensioni_link",{sid:sess.s,p:sess.p});if(!token)return;
- const rec=fonte=>base()+"#/recensioni/"+token+"/"+fonte,wa=rec("whatsapp"),nfc=rec("nfc");
+ const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id);
  app.innerHTML=`<div class="card" style="text-align:center"><h3>${esc(descV(v,false))}</h3><p class="mute">${dRange(v)}</p><div class="qr" id="qrbox"></div>
  <p><b style="letter-spacing:2px;font-size:20px">${id}</b></p>
- <button class="btn" id="sh">💬 Invia al cliente con WhatsApp</button> <button class="btn sec" id="nfc">📱 Copia link per NFC</button> <button class="btn sec" onclick="stampaIds(['${id}'])">🖨 Stampa</button>
- <button class="btn sec" onclick="go('${continua?"#/albergatore/nuova":"#/albergatore/lista"}')">${continua?"Continua con una nuova camera":"Chiudi"}</button></div>
- <div class="card" style="text-align:center"><h3>Accesso recensioni e consensi</h3><p class="mute">Il cliente sceglie separatamente posizione e invito WhatsApp; nessuna opzione è preselezionata.</p><div class="qr" id="recqr"></div><button class="btn sm sec" id="nfcrec">⭐ Copia link recensioni</button></div>`;
+ <p class="mute">Questo unico accesso contiene colazione, consensi e recensioni.</p>
+ <button class="btn" id="sh">Condividi con il cliente</button> <button class="btn sec" onclick="stampaIds(['${id}'])">��� Stampa</button>
+ <button class="btn sec" onclick="go('${continua?"#/albergatore/nuova":"#/albergatore/lista"}')">${continua?"Continua con una nuova camera":"Chiudi"}</button></div>`;
  qr($("#qrbox"),l);
- qr($("#recqr"),nfc,160);
- const msg=(ALB.config.msg||"{link}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}",l)+"\n\nScelte privacy e invito recensione: "+wa;
- $("#sh").onclick=()=>window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener");
- $("#nfc").onclick=()=>navigator.clipboard.writeText(l).then(()=>toast("Link della colazione copiato (per il tag NFC)"));
- $("#nfcrec").onclick=()=>navigator.clipboard.writeText(nfc).then(()=>toast("Link recensioni copiato"))}
+ const msg=(ALB.config.msg||"La tua colazione da {bar}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}","").trim();
+ $("#sh").onclick=()=>navigator.share?navigator.share({title:"La tua colazione",text:msg,url:l}).catch(()=>{}):navigator.clipboard.writeText((msg?msg+"\n":"")+l).then(()=>toast("Link unico copiato"))}
 /* --- editor camere (albergatore e titolare) --- */
 let CR=[],CRSID=null;
 function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi nome e ospiti, poi scegli Banco o Tavolo per ogni camera. Durante ogni prenotazione potrai ancora cambiare la scelta.</p><div id="ce"></div>
@@ -630,6 +631,12 @@ async function crSalva(){
 const modTxt=m=>m.tipo==="senza"?`Senza ${esc(m.testo)}`:m.tipo==="senza_glutine"?"Versione senza glutine"+(m.testo?": "+esc(m.testo):""):esc(m.testo)+"";
 const modChi=m=>m.chi&&m.chi!=="Tutti"?` <span class="mute">(${esc(m.chi)})</span>`:"";
 let G=null;
+async function recensioniVoucher(){
+ try{
+  const info=await rpc("bb_recensioni_voucher_apri",{vid:G.d.id});
+  REC={token:null,fonte:"qr",info,sessione:info.sessione,scelte:{},telefono:false,host:"g_rec"};
+  recPagina();$("#g_rec").scrollIntoView({behavior:"smooth"})}
+ catch(e){toast(e.message)}}
 async function ospite(id){
  $("#ttl").textContent="☕ La tua colazione";loading();
  const d0=await rpc("bb_ospite",{vid:id||""}).catch(e=>({errore:e.message}));
@@ -645,7 +652,7 @@ async function ospite(id){
  <div class="alert ok" style="text-align:left"><b>${d.tavolo?"🪑 La colazione sarà servita al tavolo":"☕ La colazione sarà servita al banco"}</b></div><div class="qr" id="qrbox"></div><p><b style="letter-spacing:2px;font-size:20px">${d.id}</b></p><p class="mute">Mostra questo codice al bancone di ${esc(b.bar_nome||"Bar Pasticceria Ceraldi")}.</p>
  <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(maps)}" target="_blank" rel="noopener">📍 Come arrivare al bar</a>
  ${b.bar_indirizzo?`<p class="mute">${esc(b.bar_indirizzo)}${b.bar_orari?" · "+esc(b.bar_orari):""}</p>`:""}${b.bar_tel||b.bar_whatsapp||b.bar_email?`<p>${b.bar_tel?`<a href="tel:${esc(b.bar_tel)}">📞 Chiama</a> `:""}${b.bar_whatsapp?`<a href="https://wa.me/${esc(String(b.bar_whatsapp).replace(/\D/g,""))}" target="_blank" rel="noopener">💬 WhatsApp</a> `:""}${b.bar_email?`<a href="mailto:${esc(b.bar_email)}">✉️ Email</a>`:""}</p>`:""}</div>
- <div id="g_day"></div><div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
+ <div id="g_rec"><div class="card"><h2>Recensioni e privacy</h2><p class="mute">Da questo stesso accesso puoi scegliere separatamente geolocalizzazione e invito WhatsApp, senza opzioni preselezionate. Al termine puoi recensire su Google o Tripadvisor.</p><button class="btn" onclick="recensioniVoucher()">Apri recensioni e consensi</button></div></div><div id="g_day"></div><div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
  ${albergoHtml(d.indirizzo)}<details class="card"><summary><b>Informazioni utili su Napoli</b></summary><div style="margin-top:12px">${napoli()}</div></details>`;
  qr($("#qrbox"),linkOspite(d.id));gSetGiorno(G.giorno);
  loadExt().then(E=>{$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)})}
