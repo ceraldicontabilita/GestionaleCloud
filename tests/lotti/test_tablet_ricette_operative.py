@@ -122,10 +122,13 @@ def test_categorie_rapide_rifiutano_valori_inventati():
 
 
 def test_gruppi_operativi_persistono_senza_modificare_dosi_o_menu(monkeypatch):
+    from unittest.mock import AsyncMock
     import app.lotti.routers.ricette as module
     import app.lotti.routers.lotti_produzione as lotti
     database = AsyncMongoMockClient()["Gestionale_Test"]
     monkeypatch.setattr(module, "db", database)
+    sync = AsyncMock(return_value={"esito": "aggiornato"})
+    monkeypatch.setattr(module, "_sincronizza_menu", sync)
 
     async def vuota(_nomi):
         return {}
@@ -136,11 +139,14 @@ def test_gruppi_operativi_persistono_senza_modificare_dosi_o_menu(monkeypatch):
     run(database.ricette.insert_one(originale.copy()))
     run(module.imposta_categorie_rapide_ricetta("salato-manuale", module.CategorieRapideRicetta(categorie=["rosticceria_giorno"]), {}))
     persistita = run(database.ricette.find_one({"id": "salato-manuale"}))
-    assert all(persistita[k] == v for k, v in originale.items())
+    assert all(persistita[k] == v for k, v in originale.items() if k != "reparto")
+    assert persistita["reparto"] == "rosticceria"
+    sync.assert_awaited_once_with("salato-manuale")
     assert persistita["categorie_rapide"] == ["rosticceria_giorno"]
     assert [p["id"] for p in run(module.get_tablet("rosticceria"))["prodotti"]] == ["salato-manuale"]
     assert run(module.get_tablet("pasticceria"))["prodotti"] == []
     run(module.imposta_categorie_rapide_ricetta("salato-manuale", module.CategorieRapideRicetta(categorie=["pasticceria_classica"]), {}))
+    assert run(database.ricette.find_one({"id": "salato-manuale"}))["reparto"] == "pasticceria"
     assert [p["id"] for p in run(module.get_tablet("pasticceria"))["prodotti"]] == ["salato-manuale"]
     run(module.imposta_categorie_rapide_ricetta("salato-manuale", module.CategorieRapideRicetta(categorie=[]), {}))
     assert run(database.ricette.find_one({"id": "salato-manuale"}))["categorie_rapide"] == []

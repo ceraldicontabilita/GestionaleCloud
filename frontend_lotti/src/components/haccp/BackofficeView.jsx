@@ -120,7 +120,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
     setCambiandoVisibilita(ricetta.id);
     try {
       const { data } = await axios.put(`${API}/ricette/${encodeURIComponent(ricetta.id)}/categorie-rapide`, { categorie });
-      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, categorie_rapide:data.categorie_rapide} : r));
+      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, categorie_rapide:data.categorie_rapide, ...(data.reparto ? {reparto:data.reparto} : {})} : r));
     } catch { toast("Impossibile aggiornare la categoria rapida", "err"); }
     finally { setCambiandoVisibilita(null); }
   };

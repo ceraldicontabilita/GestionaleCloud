@@ -963,7 +963,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Le spunte di Ricette **Rosticceria del giorno** e **Pasticceria classica**
   usano `categorie_rapide`, senza un secondo archivio di produzione. Sono gruppi
   operativi modificabili (non si azzerano a mezzanotte): compaiono anche in Produci.
-  La scelta esplicita determina il reparto operativo; Rosticceria esclude Colazioni
+  La scelta esplicita salva anche il reparto tramite il writer parziale canonico
+  e aggiorna il Menu (Food/Dolci); Rosticceria esclude Colazioni
   e Pasticceria classica. Nessun lotto o quantitativo nasce dalla sola spunta.
 - La carta riunisce Colazione/Dolci di «Bar & Dolci» e Pasticceria di Lotti
   nella card **Dolci**; bevande in **Bar**, Rosticceria in **Food**. Il reparto

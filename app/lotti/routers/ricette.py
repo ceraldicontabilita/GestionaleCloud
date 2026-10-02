@@ -1700,16 +1700,9 @@ async def imposta_categorie_rapide_ricetta(
     _admin=Depends(require_admin),
 ):
     """Classifica dalla card, senza aprire o riscrivere la scheda ricetta."""
-    result = await db.ricette.update_one(
-        {"id": ricetta_id},
-        {"$set": {
-            "categorie_rapide": richiesta.categorie,
-            "categorie_rapide_aggiornate_il": datetime.now(timezone.utc).isoformat(),
-        }},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(404, "Ricetta non trovata")
-    return {"id": ricetta_id, "categorie_rapide": richiesta.categorie}
+    profilo = {**(_admin if isinstance(_admin, dict) else {}), "ruolo": "amministratore"}
+    esito = await aggiorna_campo_ricetta(ricetta_id, {"categorie_rapide": richiesta.categorie}, profilo)
+    return {"id": ricetta_id, **esito["aggiornato"], "menu_sync": esito["menu_sync"]}
 
 
 @router.get("/ricette/{ricetta_id}", response_model=Ricetta)
@@ -3184,11 +3177,22 @@ async def aggiorna_campo_ricetta(ricetta_id: str, body: dict, _ruolo=Depends(req
         "ricetta_base_nome",
         "ingredienti",
         "menu_pubblico",
+        "categorie_rapide",
         # Per quale lievitazione vale il lievito scritto in ricetta: serve a
         # ricalcolarlo quando cambiano ore o temperatura (27/09/2026).
         "lievitazione_riferimento",
     }
     update = {k: v for k, v in body.items() if k in campi_permessi}
+    if "categorie_rapide" in update:
+        try:
+            update["categorie_rapide"] = CategorieRapideRicetta(categorie=update["categorie_rapide"]).categorie
+        except ValueError as exc:
+            raise HTTPException(422, "Categorie rapide non valide") from exc
+        update["categorie_rapide_aggiornate_il"] = datetime.now(timezone.utc).isoformat()
+        if "rosticceria_giorno" in update["categorie_rapide"]:
+            update["reparto"] = "rosticceria"
+        elif "pasticceria_classica" in update["categorie_rapide"]:
+            update["reparto"] = "pasticceria"
     if "lievitazione_riferimento" in update and update["lievitazione_riferimento"] is not None:
         from app.lotti.servizi.lievitazione import DatoNonValido, condizioni
         try:
