@@ -167,7 +167,7 @@ class RicettaCreate(BaseModel):
     stagionale: Optional[bool] = False
     # Menu digitale (richiesta titolare 03/09/2026): la ricetta e' sempre
     # replicata nel Menu, questo flag decide se compare nel menu PUBBLICO.
-    # None in aggiornamento = lascia il valore gia' salvato; in creazione = False.
+    # None in aggiornamento = lascia il valore gia' salvato; in creazione = True.
     menu_pubblico: Optional[bool] = None
 
     @field_validator("prezzo_vendita", "prezzo_tavolo")
@@ -203,7 +203,7 @@ async def _sincronizza_menu(ricetta_id: str) -> dict:
         if not ricetta:
             return {"esito": "errore", "errore": "ricetta non trovata"}
         return await menu_bridge.pubblica_prodotto_nel_menu(
-            ricetta, visibile=bool(ricetta.get("menu_pubblico")), db=db
+            ricetta, visibile=ricetta.get("menu_pubblico") is not False, db=db
         )
     except Exception as e:
         _LOG_INIT.exception("Lotti->Menu: sincronizzazione ricetta %s fallita", ricetta_id)
@@ -1760,7 +1760,7 @@ async def create_ricetta(item: RicettaCreate, _ruolo=Depends(require_permesso("r
     else:
         doc["descrizione"] = descrizione_da_ingredienti(doc)
         doc["descrizione_origine"] = "automatica" if doc["descrizione"] else None
-    doc["menu_pubblico"] = bool(item.menu_pubblico)
+    doc["menu_pubblico"] = item.menu_pubblico is not False
     doc.setdefault("visibile_tablet", True)
     doc.setdefault("ricetta_operativa", True)
 
@@ -1907,6 +1907,7 @@ async def backfill_allergeni_verificato(_admin=Depends(require_admin)):
 @router.post("/ricette-ripubblica-menu")
 async def ripubblica_ricette_nel_menu(
     dry_run: bool = Query(False, description="Solo conteggi, nessuna scrittura sul Menu"),
+    pubblica_tutte: bool = Query(False, description="Spunta e pubblica tutte le ricette nella carta"),
     _admin=Depends(require_admin),
 ):
     """Rimanda nel Menu digitale TUTTE le ricette di Lotti (recupero del pregresso).
@@ -1914,15 +1915,15 @@ async def ripubblica_ricette_nel_menu(
     Il ponte scatta al salvataggio: le ricette gia' in archivio prima che
     esistesse non sono mai arrivate nel Menu. Il giro e' idempotente (il ponte
     scrive per `lotti_ref`, quindi il secondo passaggio aggiorna e non duplica)
-    e rispetta la scelta del titolare: chi non ha `menu_pubblico` arriva nel
-    Menu NASCOSTO, mai visibile.
+    e rispetta `menu_pubblico=False`. Con `pubblica_tutte=true` spunta anche
+    le ricette esistenti, conservando la visibilita' precedente nello stato.
 
     Parte in background e risponde subito; avanzamento ed esito su
     `GET /api/ricette-ripubblica-menu/stato`. Con `?dry_run=true` risponde
     invece subito con i conteggi, compreso quante ricette non hanno ancora un
     prezzo al tavolo e stanno quindi esponendo nel Menu quello al banco, e
-    quante non hanno NESSUN prezzo (`senza_prezzo`) e quindi non possono
-    entrare visibili nel Menu. Se l'archivio supera `LIMITE_RICETTE` il
+    quante non hanno NESSUN prezzo (`senza_prezzo`): nella carta compaiono
+    con «Prezzo da definire». Se l'archivio supera `LIMITE_RICETTE` il
     risultato porta `troncato: true` con le ricette non trattate.
     """
     from app.lotti.servizi.menu_backfill import (
@@ -1930,12 +1931,12 @@ async def ripubblica_ricette_nel_menu(
     )
 
     if dry_run:
-        return await ripubblica_menu(db, dry_run=True)
+        return await ripubblica_menu(db, dry_run=True, pubblica_tutte=pubblica_tutte is True)
     if ripubblicazione_in_corso():
         return {"ok": True, "stato": "in_corso",
                 "messaggio": "Ripubblicazione gia' in corso",
                 "stato_url": "/api/ricette-ripubblica-menu/stato"}
-    avvia_ripubblicazione_in_background(db)
+    avvia_ripubblicazione_in_background(db, pubblica_tutte=pubblica_tutte is True)
     return {"ok": True, "stato": "avviata",
             "messaggio": "Ripubblicazione nel Menu avviata in background",
             "stato_url": "/api/ricette-ripubblica-menu/stato"}
