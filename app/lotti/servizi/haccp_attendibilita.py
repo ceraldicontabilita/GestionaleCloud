@@ -471,7 +471,11 @@ async def regolarizza_temperature_chiusure(
 
     for collection in TEMPERATURE:
         docs = await getattr(db, collection).find(
-            {"anno": {"$in": [anno, str(anno)]}}, {"_id": 0}
+            {
+                "anno": {"$in": [anno, str(anno)]},
+                "attivo": {"$ne": False},
+            },
+            {"_id": 0},
         ).to_list(None)
         for doc in docs:
             for data_calendario, info in sorted(chiusure.items()):

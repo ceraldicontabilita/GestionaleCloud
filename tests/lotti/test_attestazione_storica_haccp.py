@@ -86,6 +86,39 @@ def test_attestazione_e_idempotente(archivio):
     assert secondo["misure_esistenti_attestate"] == 0
 
 
+def test_attestazione_si_riapplica_dopo_una_nuova_importazione(archivio):
+    from app.lotti.routers.haccp_auto import applica_attestazione_storica
+
+    temperature = _temperature_vuote()
+    temperature["1"]["1"] = {"temp": -20, "firma_verificata": False}
+    run(archivio.temperature_negative.insert_one({
+        "anno": 2023, "congelatore_numero": 1, "temperature": temperature,
+        "temp_min": -22, "temp_max": -18,
+    }))
+    attore = {"id": "titolare-1", "nome": "Titolare", "ruolo": "amministratore", "via": "sessione_erp"}
+    primo = run(applica_attestazione_storica(
+        date(2023, 1, 1), date(2023, 1, 1), attore, "Dichiarazione verificata",
+        attesta_sanificazioni_registrate=False,
+    ))
+    attestazione_id = primo["attestazione_id"]
+
+    # Simula la sostituzione della casella da parte di un import Excel successivo.
+    run(archivio.temperature_negative.update_one(
+        {"congelatore_numero": 1},
+        {"$set": {"temperature.1.1": {"temp": -19, "firma_verificata": False}}},
+    ))
+    secondo = run(applica_attestazione_storica(
+        date(2023, 1, 1), date(2023, 1, 1), attore, "Dichiarazione verificata",
+        attesta_sanificazioni_registrate=False,
+    ))
+
+    assert secondo["idempotente"] is False
+    assert secondo["misure_esistenti_attestate"] == 1
+    assert secondo["attestazione_id"] == attestazione_id
+    doc = run(archivio.temperature_negative.find_one({"congelatore_numero": 1}))
+    assert doc["temperature"]["1"]["1"]["firma_verificata"] is True
+
+
 def test_sanificazioni_attesta_solo_le_x_esistenti_e_ripara_la_chiave_spezzata(archivio):
     from app.lotti.routers.haccp_auto import applica_attestazione_storica
 
