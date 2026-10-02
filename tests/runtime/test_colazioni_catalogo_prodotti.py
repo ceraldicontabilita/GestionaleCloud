@@ -234,6 +234,35 @@ def test_frontend_e_migrazione_espongono_selezione_per_struttura():
     assert "Prezzo hotel (€)" in html
 
 
+def test_schede_catalogo_sono_compatte_senza_marchi_o_provenienze_visibili():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+
+    assert "catalog-title" in html
+    assert "catalog-desc" in html
+    assert "catalog-allergens" in html
+    assert "catalog-price-row" in html
+    assert "cpOrigine" not in html
+    assert "Acquaviva acquistati" not in html
+    assert ">Produzione interna<" not in html
+    assert "Prodotti acquistati" in html
+    assert "Preparati dal bar" in html
+    assert "immagine:p.immagine||foto||null" in html
+    assert "catalogParole(p.descrizione)!==catalogParole(p.nome)" in html
+
+
+def test_segnalazione_alimentare_albergatore_e_salvata_nel_voucher():
+    sql = (
+        ROOT
+        / "supabase"
+        / "migrations"
+        / "20261002133000_colazioni_attenzione_alimentare_albergatore.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "attenzione_alimentare" in sql
+    assert "jsonb_build_object('nota',attenzione)" in sql
+    assert "length(attenzione)>500" in sql
+
+
 def test_pagina_ospite_qr_offre_recensione_google_e_tripadvisor_senza_incentivi():
     html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
 

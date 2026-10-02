@@ -27,3 +27,15 @@ def test_periodo_rimane_unico_nella_card_superiore():
     assert 'id="n_dal" type="date"' in HTML
     assert 'id="n_al" type="date"' in HTML
     assert "Periodo scelto sopra" in HTML
+
+
+def test_aree_bar_e_hotel_sono_distinte_visivamente():
+    assert 'body[data-area="hotel"]' in HTML
+    assert 'body[data-area="bar"]' in HTML
+    assert 'area==="bar"?"Area Bar":area==="hotel"?"Area Hotel"' in HTML
+
+
+def test_albergatore_puo_segnalare_un_intolleranza_senza_promessa_contaminazioni():
+    assert "Allergie o intolleranze segnalate dall’ospite" in HTML
+    assert "non garantisce l’assenza di contaminazioni o tracce" in HTML
+    assert "attenzione_alimentare:(r.attenzione||\"\").trim()" in HTML
