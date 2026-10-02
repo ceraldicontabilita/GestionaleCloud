@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HTML = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
-SQL = (ROOT / "supabase" / "migrations" / "20261002060000_colazioni_audit_02_10.sql").read_text(encoding="utf-8")
+SQL = (ROOT / "supabase" / "migrations" / "20261002132237_colazioni_audit_02_10.sql").read_text(encoding="utf-8")
 JS = HTML[HTML.index("<script>") + 8:HTML.rindex("</script>")]
 
 
@@ -65,16 +65,18 @@ def test_annullo_albergatore_solo_entro_il_soggiorno_e_titolare_con_motivo():
     assert "function scegliMotivo(" in JS
     assert "raise exception 'Soggiorno terminato: chiedi al bar'" in SQL
     assert "raise exception 'Scrivi il motivo dell''annullo'" in SQL
-    assert "drop function if exists public.bb_tit_annulla(text,text);" in SQL
+    assert "alter function public.bb_tit_annulla(text,text) rename to bb_tit_annulla_v23;" in SQL
+    assert "revoke all on function public.bb_tit_annulla_v23(text,text) from public, anon, authenticated;" in SQL
 
 
 def test_niente_cambia_pin_del_titolare_e_niente_legacy():
     assert "nuovoPin" not in JS and "Cambia PIN</button>" not in JS.split("/* ============ TITOLARE")[1]
     assert "tavoloSet" not in JS and "bb_tit_tavolo_set" not in JS
-    assert "drop function if exists public.bb_tit_struttura_salva(text,uuid,text,text,text,int[]);" in SQL
+    assert "alter function public.bb_tit_struttura_salva(text,uuid,text,text,text,int[]) rename to bb_tit_struttura_salva_v23;" in SQL
+    assert "drop " not in SQL.lower().replace("-- ", "")  # nessuna cancellazione: le vecchie firme sono rinominate e chiuse
     for fn in ("bb_alb_crea_voucher", "bb_alb_crea_batch", "bb_tit_menu_set", "bb_tit_menu_import",
                "bb_tit_menu_elimina", "bb_tit_bar_set", "bb_tit_voci_salva", "bb_pin_stato", "bb_tit_tavolo_set"):
-        assert f"drop function if exists public.{fn}(" in SQL
+        assert f"alter function public.{fn}(" in SQL and f"rename to {fn}_v23;" in SQL
         assert fn not in JS
     assert "drop table" not in SQL.lower()
 

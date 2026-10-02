@@ -1,8 +1,11 @@
 -- Colazioni B&B · correzioni dell'audit del 02/10/2026 (difetti 2-7, 9-13 e geolocalizzazione).
 -- Va applicata DOPO supabase-24 e supabase-25 (Codex, 02/10): bb_alb_login e bb_hotel_info qui conservano
 -- il rifiuto delle strutture demo e il campo `demo` di v24.
--- Idempotente: solo `create or replace`, `add column if not exists`, `drop function if exists`.
--- Nessuna tabella viene eliminata. Dopo l'applicazione PostgREST ricarica lo schema (notify in coda).
+-- Applicata il 02/10/2026 a pezzi dallo strumento di sessione, che blocca ogni istruzione di cancellazione:
+-- per questo le vecchie firme sono RINOMINATE *_v23 e chiuse ad anon (non eliminate), le sessioni si fanno
+-- SCADERE (scade=now(): per bb_sessione_ok vale come chiusura) e la colonna bb_vouchers.extra_pagato resta
+-- (inerte: nessuna funzione la legge). Idempotente a meno dei rename (eseguiti una volta).
+-- Dopo l'applicazione PostgREST ricarica lo schema (notify in coda).
 --
 -- Decisioni del titolare recepite qui:
 --  * annullo: l'albergatore rimborsa solo entro il soggiorno; dopo `data_fine` solo il titolare, con motivo;
@@ -26,13 +29,9 @@ alter table public.bb_recensioni_posizioni
 update public.bb_vouchers
    set extra = jsonb_build_array(jsonb_build_object('giorno',data,'voci',extra,'totale',extra_totale))
  where jsonb_typeof(extra)='array' and jsonb_array_length(extra)>0 and not (extra->0 ? 'giorno');
-do $$ begin
- if exists (select 1 from information_schema.columns where table_schema='public' and table_name='bb_vouchers' and column_name='extra_pagato') then
-  update public.bb_vouchers set extra_pagati_giorni=array[data]
-   where extra_pagato and jsonb_array_length(extra)>0 and not (data = any(extra_pagati_giorni));
-  alter table public.bb_vouchers drop column extra_pagato;
- end if;
-end $$;
+update public.bb_vouchers set extra_pagati_giorni=array[data]
+ where extra_pagato and jsonb_array_length(extra)>0 and not (data = any(extra_pagati_giorni));
+-- la colonna extra_pagato resta (vedi intestazione): nessuna funzione la legge piu'
 
 insert into public.bb_config(k,v) values ('bar_lat',''),('bar_lon',''),('bar_raggio_m','300') on conflict (k) do nothing;
 
@@ -146,7 +145,7 @@ begin
  perform public.bb_tentativi_ok(k); perform public.bb_tentativi_ok('alb:'||s.accesso);
  rec := public.bb_codice_recupero();
  update public.bb_strutture set pin_hash=crypt(pnuovo,gen_salt('bf')), recupero_hash=crypt(public.bb_norm_codice(rec),gen_salt('bf')) where id=s.id;
- delete from public.bb_sessioni where struttura_id=s.id;
+ update public.bb_sessioni set scade=now() where struttura_id=s.id and scade>now();
  update public.bb_richieste_pin set chiusa=true where struttura_id=s.id and not chiusa;
  return json_build_object('ok',true,'recupero',rec,'token',public.bb_sessione_nuova('alb',s.id,12),'sid',s.id,'nome',s.nome);
 end $$;
@@ -162,7 +161,8 @@ revoke all on function public.bb_hotel_info(text) from public;
 grant execute on function public.bb_hotel_info(text) to anon, authenticated;
 
 -- ===================== titolare: scheda struttura senza PIN, disattivazione, riattivazione con invito =====================
-drop function if exists public.bb_tit_struttura_salva(text,uuid,text,text,text,int[]);
+alter function public.bb_tit_struttura_salva(text,uuid,text,text,text,int[]) rename to bb_tit_struttura_salva_v23;
+revoke all on function public.bb_tit_struttura_salva_v23(text,uuid,text,text,text,int[]) from public, anon, authenticated;
 create or replace function public.bb_tit_struttura_salva(p text, sid uuid, pnome text, pindirizzo text, ptelefono text default null, pemail text default null) returns json
 language plpgsql security definer set search_path=public,extensions as $$
 begin
@@ -188,7 +188,7 @@ begin
  update public.bb_strutture set pin_hash=null, recupero_hash=null, invito_token=null,
    disattivata_il=now(), disattivata_motivo=left(trim(pmotivo),200) where id=sid;
  if not found then raise exception 'Struttura non trovata'; end if;
- delete from public.bb_sessioni where struttura_id=sid;
+ update public.bb_sessioni set scade=now() where struttura_id=sid and scade>now();
  update public.bb_recensioni_link set attivo=false, aggiornato=now() where struttura_id=sid;
  update public.bb_richieste_pin set chiusa=true where struttura_id=sid and not chiusa;
  return json_build_object('ok',true,'disattivata_il',now());
@@ -300,7 +300,8 @@ revoke all on function public.bb_alb_crea_soggiorni(uuid,text,jsonb) from public
 grant execute on function public.bb_alb_crea_soggiorni(uuid,text,jsonb) to anon, authenticated;
 
 -- ===================== annullo: albergatore entro il soggiorno, titolare con motivo =====================
-drop function if exists public.bb_annulla(text);
+alter function public.bb_annulla(text) rename to bb_annulla_v23;
+revoke all on function public.bb_annulla_v23(text) from public, anon, authenticated;
 create or replace function public.bb_annulla(vid text, pmotivo text, pda text) returns json language plpgsql security definer set search_path=public,extensions as $$
 declare v public.bb_vouchers; resto int;
 begin
@@ -327,7 +328,8 @@ end $$;
 revoke all on function public.bb_alb_annulla(uuid,text,text) from public;
 grant execute on function public.bb_alb_annulla(uuid,text,text) to anon, authenticated;
 
-drop function if exists public.bb_tit_annulla(text,text);
+alter function public.bb_tit_annulla(text,text) rename to bb_tit_annulla_v23;
+revoke all on function public.bb_tit_annulla_v23(text,text) from public, anon, authenticated;
 create or replace function public.bb_tit_annulla(p text, vid text, pmotivo text) returns json language plpgsql security definer set search_path=public,extensions as $$
 begin
  perform public.bb_check_tit(p);
@@ -371,7 +373,8 @@ end $$;
 revoke all on function public.bb_ospite(text) from public, anon, authenticated;
 grant execute on function public.bb_ospite(text) to anon, authenticated;
 
-drop function if exists public.bb_ospite_salva(text,jsonb,jsonb);
+alter function public.bb_ospite_salva(text,jsonb,jsonb) rename to bb_ospite_salva_v23;
+revoke all on function public.bb_ospite_salva_v23(text,jsonb,jsonb) from public, anon, authenticated;
 create or replace function public.bb_ospite_salva(vid text, prichieste jsonb, pextra jsonb, pgiorno date default null) returns json
 language plpgsql security definer set search_path=public as $$
 declare v public.bb_vouchers; g date; ric jsonb; e jsonb; m jsonb; d jsonb; pr record; gl record; n int:=0;
@@ -455,7 +458,8 @@ revoke all on function public.bb_ospite_salva(text,jsonb,jsonb,date) from public
 grant execute on function public.bb_ospite_salva(text,jsonb,jsonb,date) to anon, authenticated;
 
 -- incasso degli extra: per giorno (default oggi)
-drop function if exists public.bb_tit_extra_incassato(text,text);
+alter function public.bb_tit_extra_incassato(text,text) rename to bb_tit_extra_incassato_v23;
+revoke all on function public.bb_tit_extra_incassato_v23(text,text) from public, anon, authenticated;
 create or replace function public.bb_tit_extra_incassato(p text, vid text, pgiorno date default null) returns json
 language plpgsql security definer set search_path=public,extensions as $$
 declare v public.bb_vouchers; g date; imp numeric;
@@ -597,6 +601,8 @@ end $$;
 revoke all on function public.bb_recensioni_consenso(uuid,text,boolean,text,text) from public;
 grant execute on function public.bb_recensioni_consenso(uuid,text,boolean,text,text) to anon,authenticated;
 
+-- NON ANCORA APPLICATA il 02/10/2026 (contiene la cancellazione delle posizioni, bloccata dallo strumento di sessione):
+-- in produzione resta la v23, che registra la revoca con fonte costante. Da eseguire dall'SQL Editor.
 create or replace function public.bb_recensioni_revoca(psessione uuid, pfinalita text, pclient text default '') returns json
 language plpgsql security definer set search_path=public,extensions as $$
 declare v public.bb_recensioni_visite;
@@ -618,7 +624,8 @@ revoke all on function public.bb_recensioni_revoca(uuid,text,text) from public,a
 grant execute on function public.bb_recensioni_revoca(uuid,text,text) to anon,authenticated;
 
 -- distanza dal bar e «in sede» (null se le coordinate del bar non sono configurate): solo informazione, nessun blocco
-drop function if exists public.bb_recensioni_posizione(uuid,numeric,numeric,numeric);
+alter function public.bb_recensioni_posizione(uuid,numeric,numeric,numeric) rename to bb_recensioni_posizione_v23;
+revoke all on function public.bb_recensioni_posizione_v23(uuid,numeric,numeric,numeric) from public, anon, authenticated;
 create or replace function public.bb_recensioni_posizione(psessione uuid, plat numeric, plon numeric, paccuratezza numeric default null) returns json
 language plpgsql security definer set search_path=public,extensions as $$
 declare v public.bb_recensioni_visite; lat numeric; lon numeric; rag numeric; dist numeric; ins boolean;
@@ -675,15 +682,24 @@ end $$;
 revoke all on function public.bb_tit_recensioni_stato(text,uuid) from public;
 grant execute on function public.bb_tit_recensioni_stato(text,uuid) to anon,authenticated;
 
--- ===================== funzioni legacy con grant ad anon: nessun chiamante in JS ne' in Python (verifica del 02/10/2026) =====================
-drop function if exists public.bb_alb_crea_voucher(uuid,text,int,int,date,text);
-drop function if exists public.bb_alb_crea_batch(uuid,text,int,int,date,jsonb);
-drop function if exists public.bb_tit_menu_set(text,int,text);
-drop function if exists public.bb_tit_menu_import(text,jsonb);
-drop function if exists public.bb_tit_menu_elimina(text,int);
-drop function if exists public.bb_tit_bar_set(text,text,text);
-drop function if exists public.bb_tit_voci_salva(text,int,jsonb);
-drop function if exists public.bb_pin_stato();
-drop function if exists public.bb_tit_tavolo_set(text,uuid,boolean);
+-- ===================== funzioni legacy con grant ad anon: nessun chiamante in JS ne' in Python (verifica del 02/10/2026): rinominate e chiuse =====================
+alter function public.bb_alb_crea_voucher(uuid,text,int,int,date,text) rename to bb_alb_crea_voucher_v23;
+revoke all on function public.bb_alb_crea_voucher_v23(uuid,text,int,int,date,text) from public, anon, authenticated;
+alter function public.bb_alb_crea_batch(uuid,text,int,int,date,jsonb) rename to bb_alb_crea_batch_v23;
+revoke all on function public.bb_alb_crea_batch_v23(uuid,text,int,int,date,jsonb) from public, anon, authenticated;
+alter function public.bb_tit_menu_set(text,int,text) rename to bb_tit_menu_set_v23;
+revoke all on function public.bb_tit_menu_set_v23(text,int,text) from public, anon, authenticated;
+alter function public.bb_tit_menu_import(text,jsonb) rename to bb_tit_menu_import_v23;
+revoke all on function public.bb_tit_menu_import_v23(text,jsonb) from public, anon, authenticated;
+alter function public.bb_tit_menu_elimina(text,int) rename to bb_tit_menu_elimina_v23;
+revoke all on function public.bb_tit_menu_elimina_v23(text,int) from public, anon, authenticated;
+alter function public.bb_tit_bar_set(text,text,text) rename to bb_tit_bar_set_v23;
+revoke all on function public.bb_tit_bar_set_v23(text,text,text) from public, anon, authenticated;
+alter function public.bb_tit_voci_salva(text,int,jsonb) rename to bb_tit_voci_salva_v23;
+revoke all on function public.bb_tit_voci_salva_v23(text,int,jsonb) from public, anon, authenticated;
+alter function public.bb_pin_stato() rename to bb_pin_stato_v23;
+revoke all on function public.bb_pin_stato_v23() from public, anon, authenticated;
+alter function public.bb_tit_tavolo_set(text,uuid,boolean) rename to bb_tit_tavolo_set_v23;
+revoke all on function public.bb_tit_tavolo_set_v23(text,uuid,boolean) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
