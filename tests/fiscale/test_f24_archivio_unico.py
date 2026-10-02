@@ -13,7 +13,7 @@ puntava a `hr.app_f24_pagamenti`, che nello schema HR non esiste, e nessun
 frontend chiamava le sue sei rotte.
 
 L'ingest F24 vivo passa tutto da `services/f24_canonico.salva_f24`
-(`document_data_saver`, `llm_document_parser`, `post_download_pipeline`).
+(`document_data_saver`, `post_download_pipeline`).
 """
 import re
 from pathlib import Path

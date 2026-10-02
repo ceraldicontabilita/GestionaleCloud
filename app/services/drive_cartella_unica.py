@@ -947,12 +947,15 @@ async def _salva_stato(db, esito: Dict[str, Any]) -> None:
         logger.warning("[cartella-unica] stato non salvato: %s: %s", type(exc).__name__, exc)
 
 
-async def rielabora_con_tipo(db, drive_file_id: str, tipo: str, *, deciso_da: str) -> Dict[str, Any]:
+async def rielabora_con_tipo(db, drive_file_id: str, tipo: str, *, deciso_da: str,
+                             campi: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Un file del registro in ERRORI/ARRETRATO riletto dallo smistatore con il tipo deciso dal titolare.
 
     E' la stessa strada della cartella unica (``_smista`` con ``tipo_rilevato_noto``,
     ``esito_del_risultato``, spostamento e registro): nessun motore nuovo. Il file
     resta su Drive dov'e' se la lettura fallisce ancora, col motivo aggiornato.
+    ``campi``: i campi della proposta confermata (`campi_proposta` nel contesto): il
+    motore del tipo li usa dove il contenuto non si legge (verbale scansionato).
     """
     from app.services.drive_download import scarica_bytes
 
@@ -970,6 +973,8 @@ async def rielabora_con_tipo(db, drive_file_id: str, tipo: str, *, deciso_da: st
     contesto = {"channel": "drive_cartella_unica", "drive_file_id": drive_file_id,
                 "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256,
                 "tipo_deciso_da": deciso_da}
+    if campi:
+        contesto["campi_proposta"] = dict(campi)
     risultato = await _smista(nome, contenuto, contesto, tipo)
     destinazione, motivo = esito_del_risultato(risultato)
     if destinazione != riga.get("cartella"):
