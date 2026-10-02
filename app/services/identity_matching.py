@@ -64,7 +64,8 @@ def nome_presente_nel_testo(nome: str, testo: str) -> bool:
 
 # Forme societarie e parole che non identificano un soggetto: "Amazon
 # Business EU S.a.r.l, Sede Secondaria" e "AMAZON BUSINESS EU SARL, IT
-# BRANCH" sono lo stesso soggetto; "AMAZON PAYMENTS EUROPE S.C.A." no.
+# BRANCH" sono lo stesso soggetto; "Alfa Forniture Srl" e "ALFA PAYMENTS
+# EUROPE S.A." no (salvo i collettori di gruppo dichiarati sotto).
 _FORME_SOCIETARIE_TOKEN = {
     "srl", "srls", "spa", "sas", "snc", "ss", "sarl", "sca", "scarl", "scpa",
     "gmbh", "ltd", "llc", "bv", "nv", "ag", "sa", "se", "plc", "inc", "co",
@@ -76,6 +77,17 @@ _TOKEN_GENERICI_SOGGETTO = {
     "gruppo", "holding", "rappresentante", "fiscale",
 }
 
+# Collettori di pagamento di un gruppo: la causale dichiara la societa' che
+# incassa per conto del fornitore. "AMAZON PAYMENTS EUROPE S.C.A." riscuote
+# gli SDD di ogni societa' Amazon ("Amazon Business EU S.a.r.l", "Amazon EU
+# S.a r.l."): e' lo stesso gruppo, non un soggetto diverso (titolare,
+# 02/10/2026: Amazon paga sempre con metodo tracciato, l'SDD e' la prova).
+# Chiave: token identificativi del collettore; valore: il marchio che il
+# fornitore deve portare nel nome.
+_COLLETTORI_DI_GRUPPO: dict[frozenset[str], str] = {
+    frozenset({"amazon", "payments"}): "amazon",
+}
+
 _SDD_SOGGETTO_RE = re.compile(
     r"\bSDD\s*(?:CORE|B2B)?\s*:\s*(\S+)\s+(.+)$", re.IGNORECASE,
 )
@@ -84,6 +96,14 @@ _BONIFICO_SOGGETTO_RE = re.compile(
     re.IGNORECASE,
 )
 _FINE_SOGGETTO_RE = re.compile(r"\s+-\s+|\s+NOTPROVIDE\b|\s+ADD\.\s*(?:TOT|SPE)\b", re.IGNORECASE)
+# Bonifico in entrata: l'ordinante dopo ``BON.DA`` ("BONIF. VS. FAVORE -
+# BON.DA AMAZON BUSINESS EU SARL, IT BRANCH 408 -3630067-4208347 ..."). Il
+# numero d'ordine o il riferimento che segue il nome non e' parte del
+# soggetto.
+_BONIFICO_ORDINANTE_RE = re.compile(r"\bBON\.?\s*DA\s+(.+)$", re.IGNORECASE)
+_FINE_ORDINANTE_RE = re.compile(
+    r"\s+\d[\d\s]*-\d|\s+NR\.\s*BONIFICO\b|\s+AMZN\b|\s+RIF\.?\s", re.IGNORECASE,
+)
 
 
 def soggetto_causale_bancaria(descrizione: str) -> str | None:
@@ -91,8 +111,10 @@ def soggetto_causale_bancaria(descrizione: str) -> str | None:
 
     - addebiti diretti: il nome che segue il codice mandato
       (``SDD CORE: <mandato> AMAZON PAYMENTS EUROPE S.C.A.``);
-    - bonifici: il beneficiario dopo ``FAVORE`` / ``A FAVORE DI`` /
-      ``BENEFICIARIO``.
+    - bonifici disposti: il beneficiario dopo ``FAVORE`` / ``A FAVORE DI`` /
+      ``BENEFICIARIO``;
+    - bonifici ricevuti: l'ordinante dopo ``BON.DA`` (rimborsi, note di
+      credito), letto prima del ``FAVORE`` della stessa causale.
 
     Restituisce ``None`` quando la causale non dichiara nessuna controparte
     (nessun giudizio possibile), mai una stringa vuota.
@@ -102,6 +124,10 @@ def soggetto_causale_bancaria(descrizione: str) -> str | None:
         return None
     match = _SDD_SOGGETTO_RE.search(testo)
     soggetto = match.group(2) if match else None
+    if soggetto is None:
+        match = _BONIFICO_ORDINANTE_RE.search(testo)
+        if match:
+            soggetto = _FINE_ORDINANTE_RE.split(match.group(1), maxsplit=1)[0]
     if soggetto is None:
         match = _BONIFICO_SOGGETTO_RE.search(testo)
         if not match:
@@ -132,9 +158,12 @@ def soggetto_pagante_coerente(
     - ``True``: la controparte e' un'abbreviazione del fornitore ("Eni Spa"
       per "Eni Plenitude S.p.A."), lo stesso nome con forma societaria o
       sede diversa, oppure uno degli ``alias`` dichiarati in anagrafica;
+    - ``True`` anche quando la controparte e' il collettore di pagamento del
+      gruppo del fornitore (``_COLLETTORI_DI_GRUPPO``: "AMAZON PAYMENTS
+      EUROPE S.C.A." per ogni societa' Amazon);
     - ``False``: la controparte porta un'identita' diversa. Un solo marchio
-      in comune ("AMAZON" tra "Amazon Business EU S.a.r.l" e "AMAZON
-      PAYMENTS EUROPE S.C.A.") non basta: sono due soggetti.
+      in comune ("ALFA" tra "Alfa Forniture Srl" e "ALFA PAYMENTS EUROPE")
+      non basta: sono due soggetti, salvo i collettori di gruppo dichiarati.
     """
     soggetto = soggetto_causale_bancaria(descrizione)
     if not soggetto:
@@ -142,6 +171,9 @@ def soggetto_pagante_coerente(
     tokens_soggetto = tokens_identita_soggetto(soggetto)
     if not tokens_soggetto:
         return None
+    for tokens_collettore, marchio in _COLLETTORI_DI_GRUPPO.items():
+        if tokens_collettore <= tokens_soggetto and marchio in tokens_identita_soggetto(str(fornitore or "")):
+            return True
     for nome in (fornitore, *(alias or ())):
         tokens_fornitore = tokens_identita_soggetto(str(nome or ""))
         if not tokens_fornitore:

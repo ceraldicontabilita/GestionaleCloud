@@ -87,11 +87,23 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   // non l'elenco generico di fallback — richiesta Enzo 20/07/2026: "non mi
   // fa scegliere in quale congelatore o frigo, mancano".
   const [attrezzature,        setAttrezzature]        = useState({ frigoriferi: [], congelatori: [] });
-  useEffect(() => {
-    axios.get(`${API}/attrezzature/`)
-      .then(r => setAttrezzature(r.data || { frigoriferi: [], congelatori: [] }))
-      .catch(() => {});
+  const caricaDestinazioni = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API}/attrezzature/destinazioni`, { timeout: 15000 });
+      setAttrezzature({
+        frigoriferi: Array.isArray(r.data?.frigoriferi) ? r.data.frigoriferi : [],
+        congelatori: Array.isArray(r.data?.congelatori) ? r.data.congelatori : [],
+      });
+    } catch {
+      toast.error("Frigoriferi e congelatori non caricati: riprovo quando apri un prodotto.");
+    }
   }, []);
+  useEffect(() => { caricaDestinazioni(); }, [caricaDestinazioni]);
+  useEffect(() => {
+    if (prodottoSel && attrezzature.frigoriferi.length === 0 && attrezzature.congelatori.length === 0) {
+      caricaDestinazioni();
+    }
+  }, [prodottoSel, attrezzature.frigoriferi.length, attrezzature.congelatori.length, caricaDestinazioni]);
 
   // Carica task del giorno per questo reparto
   const caricaTask = useCallback(async () => {

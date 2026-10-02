@@ -75,6 +75,24 @@ def test_lista_attrezzature_non_scrive(db):
     assert _run(db.attrezzature_config.count_documents({})) == 0
 
 
+def test_destinazioni_lotto_non_dipendono_dal_responsabile_haccp(db, monkeypatch):
+    from app.lotti.routers import attrezzature as attr
+
+    _run(db.attrezzature_config.insert_many([
+        {"tipo": "frigo", "numero": 5, "nome": "FRIGO PASTICCERIA 5", "attivo": True},
+        {"tipo": "congelatore", "numero": 1, "nome": "CONGELATORE PASTICCERIA 1", "attivo": True},
+    ]))
+
+    async def responsabile_non_disponibile():
+        raise AssertionError("la destinazione non deve leggere le impostazioni del responsabile")
+
+    monkeypatch.setattr(attr, "responsabile_predefinito", responsabile_non_disponibile)
+    risposta = _run(attr.get_destinazioni_lotto())
+
+    assert [f["nome"] for f in risposta["frigoriferi"]] == ["FRIGO PASTICCERIA 5"]
+    assert [c["nome"] for c in risposta["congelatori"]] == ["CONGELATORE PASTICCERIA 1"]
+
+
 def test_sanificazione_usa_i_nomi_canonici_degli_apparecchi(db):
     from app.lotti.routers import sanificazione as san
 
