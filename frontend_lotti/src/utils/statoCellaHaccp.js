@@ -41,6 +41,20 @@ export function rangeConformeHaccp(range, { operatore, valoreRegistrato } = {}) 
   };
 }
 
+export function temperaturaNumericaHaccp(valore, { operatore } = {}) {
+  const numero = Number(valore);
+  if (!Number.isFinite(numero)) return null;
+  const formattato = formattaLimiteTemperatura(numero);
+  return {
+    value: `${formattato}°`,
+    stampa: `${formattato} °C`,
+    className: "bg-[#e6efe9] text-[#3d8168] font-bold text-[10px] whitespace-nowrap",
+    stile: "background:#e6efe9;color:#3d8168;font-weight:bold;",
+    title: `Temperatura rilevata: ${formattato}°C${operatore ? `, firmata da ${operatore}` : ""}`,
+    stato: "temperatura",
+  };
+}
+
 export function statoCellaHaccp(record, range = null) {
   if (!record || typeof record !== "object") return null;
   if (record.temp !== undefined && record.temp !== null) return null;
