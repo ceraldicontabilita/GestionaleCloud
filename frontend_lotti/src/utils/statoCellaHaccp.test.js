@@ -1,4 +1,4 @@
-import { statoCellaHaccp } from "./statoCellaHaccp";
+import { rangeConformeHaccp, statoCellaHaccp } from "./statoCellaHaccp";
 
 describe("statoCellaHaccp", () => {
   test("conforme, non rilevato e da rilevare sono tre cose diverse", () => {
@@ -22,6 +22,13 @@ describe("statoCellaHaccp", () => {
     const c = statoCellaHaccp({ temp: null, stato: "conforme" }, { min: 0, max: 4 });
     expect(c.value).toBe("0…+4°");
     expect(c.stampa).toBe("0…+4 °C");
+  });
+
+  test("il range può rappresentare una lettura numerica conforme senza perderla", () => {
+    const c = rangeConformeHaccp({ min: -22, max: -18 }, { valoreRegistrato: -19.4 });
+    expect(c.value).toBe("−22…−18°");
+    expect(c.title).toContain("Lettura registrata: -19.4°C");
+    expect(c.title).not.toContain("Non è una misurazione numerica");
   });
 
   test("una temperatura vera non è uno stato", () => {

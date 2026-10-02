@@ -12,7 +12,7 @@ import { giorniNelMese } from "../../utils/dateUtils";
 import { testoFirmatari } from "../../utils/firmatari";
 import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
 import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
-import { LEGENDA_STATI_HACCP, statoCellaHaccp } from "../../utils/statoCellaHaccp";
+import { LEGENDA_STATI_HACCP, rangeConformeHaccp, statoCellaHaccp } from "../../utils/statoCellaHaccp";
 
 // Dati aziendali Ceraldi Group
 const AZIENDA_INFO = {
@@ -282,20 +282,31 @@ const TemperatureNegativeView = () => {
       if (record.temp !== undefined && record.temp !== null) {
         const temp = record.temp;
         const fuoriRange = temp > (scheda?.temp_max || -18) || temp < (scheda?.temp_min || -22);
+        if (!fuoriRange) {
+          const range = rangeConformeHaccp(
+            { min: scheda?.temp_min ?? -22, max: scheda?.temp_max ?? -18 },
+            { valoreRegistrato: temp },
+          );
+          return { ...range, class: range.className };
+        }
         return {
           value: `${temp}°`,
-          class: fuoriRange ? "bg-red-100 text-red-700 font-bold" : "bg-[#f2f6f3] text-[#34483f]",
+          class: "bg-red-100 text-red-700 font-bold",
           // Nessun operatore: rilevazione automatica
-          title: fuoriRange ? `⚠ ${temp}°C — fuori range` : `${temp}°C`
+          title: `⚠ ${temp}°C — fuori range`
         };
       }
     } else if (record !== null) {
       const temp = record;
       const fuoriRange = temp > -18 || temp < -22;
+      if (!fuoriRange) {
+        const range = rangeConformeHaccp({ min: -22, max: -18 }, { valoreRegistrato: temp });
+        return { ...range, class: range.className };
+      }
       return {
         value: `${temp}°`,
-        class: fuoriRange ? "bg-red-100 text-red-700 font-bold" : "bg-[#f2f6f3] text-[#34483f]",
-        title: fuoriRange ? `⚠ ${temp}°C — fuori range` : `${temp}°C`
+        class: "bg-red-100 text-red-700 font-bold",
+        title: `⚠ ${temp}°C — fuori range`
       };
     }
     
