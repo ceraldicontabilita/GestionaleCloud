@@ -6,7 +6,7 @@ from app.menu.supabase_client import supabase
 from app.menu.models.menu_models import (
     Category, CategoryCreate, CategoryUpdate,
     SubcategoryCreate, SubcategoryUpdate,
-    ProductCreate, ProductUpdate,
+    ProductCreate, ProductUpdate, ProductVisibility,
     Allergen, MenuResponse
 )
 
@@ -426,6 +426,25 @@ async def delete_product(product_id: int, username: str = Depends(verify_token))
         raise HTTPException(status_code=404, detail="Product not found")
 
     return {"success": True, "message": "Product deleted"}
+
+
+@router.put("/admin/products/{product_id}/visibilita")
+async def imposta_visibilita_prodotto(product_id: int, body: ProductVisibility, username: str = Depends(verify_token)):
+    """X reversibile: nessun DELETE. Le ricette restano possedute da Lotti."""
+    righe = supabase.table("menu_products").select("id,origine,lotti_ref").eq("id", product_id).limit(1).execute().data or []
+    if not righe:
+        raise HTTPException(404, "Prodotto non trovato")
+    riga = righe[0]
+    if riga.get("origine") == ORIGINE_LOTTI:
+        riferimento = str(riga.get("lotti_ref") or "")
+        if not riferimento.startswith("ricetta:") or not riferimento[8:]:
+            raise HTTPException(409, "Riferimento alla ricetta non valido: verifica in Lotti")
+        from app.lotti.routers.ricette import aggiorna_campo_ricetta
+        # verify_token accetta esclusivamente la sessione amministratore derivata dall'ERP.
+        esito = await aggiorna_campo_ricetta(riferimento[8:], {"menu_pubblico": body.visible}, {"ruolo": "amministratore"})
+        return {"success": True, "visible": body.visible, "menu_sync": esito["menu_sync"]}
+    await update_product(product_id, ProductUpdate(visible=body.visible), username)
+    return {"success": True, "visible": body.visible}
 
 
 # --- Bulk operations ---

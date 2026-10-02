@@ -102,8 +102,17 @@ def test_trasforma_catalogo_colonne_uguali_al_seed_originale():
 # ---------- scrittura: client Supabase finto ----------
 
 class _Query:
-    def __init__(self, registro, tabella):
+    def __init__(self, registro, tabella, nascosti):
         self.registro, self.tabella, self.op, self.payload = registro, tabella, None, None
+        self.nascosti, self.data = nascosti, []
+
+    def select(self, *_):
+        self.op = "select"
+        return self
+
+    def eq(self, colonna, valore):
+        assert (colonna, valore) == ("visible", False)
+        return self
 
     def delete(self):
         self.op = "delete"
@@ -123,15 +132,18 @@ class _Query:
 
     def execute(self):
         self.registro.append((self.op, self.tabella, self.payload))
+        if self.op == "select":
+            self.data = [r for r in self.nascosti if r.get("origine") is None and r.get("visible") is False]
         return self
 
 
 class _FakeSupabase:
     def __init__(self):
         self.chiamate = []
+        self.nascosti = []
 
     def table(self, nome):
-        return _Query(self.chiamate, nome)
+        return _Query(self.chiamate, nome, self.nascosti)
 
 
 class _SorgenteFinta:
@@ -165,6 +177,7 @@ def test_sincronizza_cancella_in_ordine_fk_safe_e_reinserisce(finto):
 
     ops = [(op, tab) for op, tab, _ in finto.chiamate]
     assert ops == [
+        ("select", "menu_products"),
         ("delete", "menu_products"), ("delete", "menu_subcategories"), ("delete", "menu_categories"),
         ("insert", "menu_categories"), ("insert", "menu_subcategories"), ("insert", "menu_products"),
     ]
@@ -199,3 +212,12 @@ def test_inserimento_a_lotti(finto, monkeypatch):
     qs._sostituisci_tabelle(righe)
     lotti = [len(rows) for op, tab, rows in finto.chiamate if op == "insert" and tab == "menu_products"]
     assert lotti == [2, 2, 1]
+
+
+def test_sync_conserva_solo_la_visibilita_nascosta_sullo_stesso_id(finto):
+    finto.nascosti = [{"id": 100, "visible": False}, {"id": 101, "visible": True},
+                     {"id": 102, "visible": False, "origine": "lotti"}]
+    righe = {"categories": [], "subcategories": [], "products": [{"id": i} for i in (100, 101, 102)]}
+    qs._sostituisci_tabelle(righe)
+    inseriti = next(rows for op, tab, rows in finto.chiamate if op == "insert" and tab == "menu_products")
+    assert inseriti == [{"id": 100, "visible": False}, {"id": 101}, {"id": 102}]

@@ -281,6 +281,11 @@ def _nomi_ingredienti_ricetta(ricetta: dict) -> List[str]:
 
 def _reparto_operativo_ricetta(ricetta: dict) -> str:
     """Corregge dolce/salato solo quando nome/base/ingredienti sono chiari."""
+    categorie = ricetta.get("categorie_rapide") or []
+    if "rosticceria_giorno" in categorie:
+        return "rosticceria"
+    if "pasticceria_classica" in categorie:
+        return "pasticceria"
     corrente = (ricetta.get("reparto") or "").lower().strip()
     calcolato = _categorizza_reparto(
         ricetta.get("nome", ""),
@@ -1653,7 +1658,7 @@ class VisibilitaTabletRicetta(BaseModel):
 
 
 CATEGORIE_RAPIDE_RICETTA = {
-    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua",
+    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua", "rosticceria_giorno", "pasticceria_classica",
 }
 
 
@@ -1667,6 +1672,9 @@ class CategorieRapideRicetta(BaseModel):
         non_valide = [v for v in pulite if v not in CATEGORIE_RAPIDE_RICETTA]
         if non_valide:
             raise ValueError(f"categorie non valide: {', '.join(non_valide)}")
+        if "rosticceria_giorno" in pulite:
+            if "pasticceria_classica" in pulite or "colazioni" in pulite:
+                raise ValueError("Rosticceria del giorno non si abbina a Colazioni o Pasticceria classica")
         return pulite
 
 

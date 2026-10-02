@@ -25,6 +25,9 @@ const ProductManager = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [syncingQromo, setSyncingQromo] = useState(false);
+  const [soloDoppioni, setSoloDoppioni] = useState(false);
+  const [mostraNascosti, setMostraNascosti] = useState(false);
+  const [visibilitaInCorso, setVisibilitaInCorso] = useState(null);
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -75,14 +78,31 @@ const ProductManager = () => {
     }
   };
 
+  const nomeConfronto = p => (p.nameIT || p.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const nomi = products.filter(p => p.visible !== false).reduce((m, p) => {
+    const nome = nomeConfronto(p); if (nome) m[nome] = (m[nome] || 0) + 1; return m;
+  }, {});
+  const cambiaVisibilita = async product => {
+    const visible = product.visible === false;
+    if (!window.confirm(`${visible ? 'Ripristinare' : 'Nascondere'} «${product.nameIT}» nel Menu pubblico? La ricetta e la tracciabilità non vengono cancellate.`)) return;
+    setVisibilitaInCorso(product.id);
+    try {
+      const { data } = await axios.put(`${BACKEND_URL}/api/menu/admin/products/${product.id}/visibilita`, { visible }, { headers: authHeaders() });
+      if (!data.success || (data.menu_sync && !['pubblicato', 'aggiornato'].includes(data.menu_sync.esito))) throw new Error('Scelta salvata in Lotti, ma Menu non aggiornato: riprova.');
+      setProducts(p => p.map(r => r.id === product.id ? { ...r, visible } : r));
+      toast({ title: visible ? 'Prodotto ripristinato' : 'Prodotto nascosto', description: 'Scelta salvata: nessuna ricetta eliminata.' });
+    } catch (e) {
+      toast({ title: 'Visibilità non aggiornata', description: e.response?.data?.detail || e.message, variant: 'destructive' });
+    } finally { setVisibilitaInCorso(null); }
+  };
   const filteredProducts = products.filter(product => {
     const search = searchTerm.toLowerCase();
-    return (
+    return (mostraNascosti || product.visible !== false) && (!soloDoppioni || nomi[nomeConfronto(product)] > 1) && (
       (product.nameIT || '').toLowerCase().includes(search) ||
       (product.name || '').toLowerCase().includes(search) ||
       (product.price || '').toLowerCase().includes(search)
     );
-  });
+  }).sort((a, b) => nomeConfronto(a).localeCompare(nomeConfronto(b), 'it'));
 
   const handleEdit = (product) => {
     setEditingProduct({ ...product });
@@ -147,6 +167,11 @@ const ProductManager = () => {
               className="pl-10"
             />
           </div>
+          <div className="flex flex-wrap gap-4 mt-3">
+            <label className="flex items-center gap-2 min-h-[44px]"><input type="checkbox" checked={soloDoppioni} onChange={e => setSoloDoppioni(e.target.checked)} />Possibili doppioni (stesso nome)</label>
+            <label className="flex items-center gap-2 min-h-[44px]"><input type="checkbox" checked={mostraNascosti} onChange={e => setMostraNascosti(e.target.checked)} />Mostra anche nascosti</label>
+          </div>
+          <p className="text-sm mt-2 text-gray-600">Confronta foto, prezzo e provenienza prima di usare la X. Il nome uguale non prova che porzioni o varianti siano identiche. La X nasconde dal Menu, non elimina la ricetta; puoi ripristinare la voce.</p>
         </CardContent>
       </Card>
 
@@ -161,7 +186,7 @@ const ProductManager = () => {
             </Button>
           </CardTitle>
           <p className="text-sm text-gray-600">
-            Sincronizza da Qromo sostituisce i prodotti del catalogo Qromo, incluse le modifiche fatte qui a prezzi, allergeni e pubblicazione. Le ricette di Lotti restano separate.
+            Sincronizza da Qromo sostituisce prezzi e allergeni del catalogo Qromo, ma conserva i prodotti nascosti con la X sullo stesso ID. Le ricette di Lotti restano gestite in Lotti.
           </p>
         </CardHeader>
         <CardContent>
@@ -184,7 +209,7 @@ const ProductManager = () => {
                       <h4 className="font-semibold text-gray-900">{product.nameIT}</h4>
                       <p className="text-xs text-gray-600">
                         {product.visible === false ? 'Nascosto ai clienti'
-                          : product.pubblicabile === false ? 'Nascosto: prezzo da completare' : 'Visibile ai clienti'}
+                          : product.pubblicabile === false ? (daLotti(product) ? 'Nella carta: Prezzo da definire' : 'Nascosto: prezzo da completare') : 'Visibile ai clienti'}
                         {daLotti(product) ? ' · Gestito in Lotti' : ''}
                       </p>
                       <p className="text-sm text-gray-500">{product.name}</p>
@@ -212,6 +237,11 @@ const ProductManager = () => {
                     </div>
                   </div>
                 </div>
+                <Button size="sm" variant="outline" disabled={visibilitaInCorso !== null}
+                  aria-label={`${product.visible === false ? 'Ripristina' : 'Nascondi'} ${product.nameIT}`}
+                  onClick={() => cambiaVisibilita(product)} className="min-w-[44px] min-h-[44px] ml-2">
+                  {product.visible === false ? 'Ripristina' : <X className="w-4 h-4" />}
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"

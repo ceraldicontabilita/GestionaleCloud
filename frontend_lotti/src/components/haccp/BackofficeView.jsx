@@ -20,6 +20,7 @@ import FormRicetta, { REPARTI } from "./backoffice/FormRicetta";
 import TabProdotti from "./backoffice/TabProdotti";
 import TabFornitori from "./backoffice/TabFornitori";
 import { toast } from "./backoffice/toastBackoffice";
+import GruppiProduzioneRicette, { GRUPPI_PRODUZIONE, categorieConGruppo } from "./GruppiProduzioneRicette";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
@@ -36,12 +37,13 @@ const CATEGORIE_RAPIDE = [
   { id: "dolci_secchi", label: "Dolci secchi", breve: "Secchi", icona: "🍪" },
   { id: "natale", label: "Natale", breve: "Natale", icona: "🎄" },
   { id: "pasqua", label: "Pasqua", breve: "Pasqua", icona: "🐣" },
+  ...GRUPPI_PRODUZIONE,
 ];
 const TAB_CATEGORIE_RAPIDE = [
   { id: "tutte", label: "Tutte" },
   ...CATEGORIE_RAPIDE.slice(0, 2),
   { id: "ricorrenze", label: "Ricorrenze" },
-  ...CATEGORIE_RAPIDE.slice(2),
+  ...CATEGORIE_RAPIDE.slice(2, 4),
 ];
 
 
@@ -114,13 +116,11 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const impostaCategoriaRapida = async (ricetta, categoria, attiva) => {
     if (!ricetta?.id || cambiandoVisibilita) return;
     const correnti = Array.isArray(ricetta.categorie_rapide) ? ricetta.categorie_rapide : [];
-    const categorie = attiva
-      ? [...new Set([...correnti, categoria])]
-      : correnti.filter(c => c !== categoria);
+    const categorie = categorieConGruppo(correnti, categoria, attiva);
     setCambiandoVisibilita(ricetta.id);
     try {
-      await axios.put(`${API}/ricette/${ricetta.id}/categorie-rapide`, { categorie });
-      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, categorie_rapide:categorie} : r));
+      const { data } = await axios.put(`${API}/ricette/${encodeURIComponent(ricetta.id)}/categorie-rapide`, { categorie });
+      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, categorie_rapide:data.categorie_rapide} : r));
     } catch { toast("Impossibile aggiornare la categoria rapida", "err"); }
     finally { setCambiandoVisibilita(null); }
   };
@@ -266,7 +266,8 @@ function TabRicette({ solaLetturaOperatore = false }) {
         </button>}
       </div>
 
-      <div role="tablist" aria-label="Categorie rapide ricette" style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:10,marginBottom:8}}>
+      <GruppiProduzioneRicette ricette={ricette.filter(r => r.visibile_tablet !== false)} selezionato={categoriaFiltro} onScegli={c => { setCategoriaFiltro(c); setRepFiltro("tutti"); }} />
+      <div role="tablist" aria-label="Categorie rapide ricette" style={{display:"flex",gap:7,flexWrap:"wrap",paddingBottom:10,marginBottom:8}}>
         {TAB_CATEGORIE_RAPIDE.map(c => (
           <button key={c.id} type="button" role="tab" aria-selected={categoriaFiltro===c.id}
             onClick={() => setCategoriaFiltro(c.id)}
@@ -337,10 +338,10 @@ function TabRicette({ solaLetturaOperatore = false }) {
                 {!solaLetturaOperatore && <div aria-label={`Categorie rapide ${r.nome}`} style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                   {CATEGORIE_RAPIDE.map(c => {
                     const attiva = (r.categorie_rapide || []).includes(c.id);
-                    return <label key={c.id} title={`Mostra in ${c.label}`} style={{display:"flex",alignItems:"center",gap:3,padding:"4px 6px",borderRadius:7,border:`1px solid ${attiva?"#9db9a8":"var(--border)"}`,background:attiva?"#edf4ef":"#fff",fontSize:10,fontWeight:800,color:attiva?"#3f5a4e":"var(--text-3)",cursor:"pointer"}}>
+                    return <label key={c.id} title={`Mostra in ${c.label}`} style={{display:"flex",alignItems:"center",gap:3,padding:"4px 6px",minHeight:44,borderRadius:7,border:`1px solid ${attiva?"#9db9a8":"var(--border)"}`,background:attiva?"#edf4ef":"#fff",fontSize:10,fontWeight:800,color:attiva?"#3f5a4e":"var(--text-3)",cursor:"pointer"}}>
                       <input type="checkbox" checked={attiva} disabled={cambiandoVisibilita===r.id}
                         onChange={e => impostaCategoriaRapida(r, c.id, e.target.checked)} style={{width:12,height:12}} />
-                      {c.icona} {c.breve}
+                      {c.Icona ? <c.Icona size={14} aria-hidden="true" /> : c.icona} {c.breve}
                     </label>;
                   })}
                 </div>}
