@@ -18,11 +18,11 @@ header{background:linear-gradient(135deg,#7a2e1d,#a4492b);color:#fff;padding:14p
 header h1{font-size:18px;margin:0;flex:1}
 header button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:10px;padding:6px 10px;font-size:13px}
 .area-badge{border:1px solid rgba(255,255,255,.5);border-radius:99px;padding:4px 9px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
-body[data-area="hotel"]{--brand:#0c6965;--brand2:#42a29a}
-body[data-area="hotel"] header{background:linear-gradient(135deg,#074b49,#13817b)}
-body[data-area="hotel"] .demo{background:#dff3f0;color:#073f3c}
+body[data-area="hotel"]{--brand:#3f5a4e;--brand2:#5b7a6b}
+body[data-area="hotel"] header{background:linear-gradient(135deg,#3f5a4e,#5b7a6b)}
+body[data-area="hotel"] .demo{background:#e7efe9;color:#2a3329}
 body[data-area="bar"] header{background:linear-gradient(135deg,#7a2e1d,#a4492b)}
-main{max-width:760px;margin:0 auto;padding:16px 16px 90px}
+main{width:100%;max-width:760px;margin:0 auto;padding:16px 16px 90px;overflow-x:hidden}
 h2{font-size:20px;margin:18px 0 8px}h3{font-size:16px;margin:0 0 6px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:10px 0}
 .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
@@ -116,27 +116,41 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .booking-room .service-choice button{min-height:44px;white-space:normal}
 .booking-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}.booking-actions .btn{width:100%;min-height:50px}
 .nap-guide{overflow:hidden;padding:0}
-.nap-hero{padding:18px;background:linear-gradient(135deg,#063f4d,#14788a);color:#fff}
-.nap-hero h3{font-size:20px}.nap-hero p{margin:5px 0 0;color:#d8f4f5;font-size:14px}
+.nap-hero{padding:18px;background:linear-gradient(135deg,#3f5a4e,#5b7a6b);color:#fff}
+.nap-hero h3{font-size:20px}.nap-hero p{margin:5px 0 0;color:#eef4ee;font-size:14px}
 .nap-tabs{display:flex;gap:7px;overflow-x:auto;padding:12px 12px 4px}
 .nap-tabs button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px;border-radius:99px;font-weight:750;cursor:pointer}
-.nap-tabs button.on{background:#0b6574;border-color:#0b6574;color:#fff}
+.nap-tabs button.on{background:#3f5a4e;border-color:#3f5a4e;color:#fff}
 .nap-list{display:grid;gap:9px;padding:10px 12px 14px}
 .nap-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--card)}
 .nap-card h4{margin:0 0 4px;font-size:16px}.nap-card p{margin:4px 0}
 .nap-meta{color:var(--mute);font-size:13px}
 .nap-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
 .nap-actions a{display:inline-block;text-decoration:none;padding:8px 11px;border-radius:9px;font-size:13px;font-weight:800}
-.nap-go{background:#0b6574;color:#fff!important}.nap-info{border:1px solid #0b6574;color:#0b6574!important;background:transparent}
+.nap-go{background:#3f5a4e;color:#fff!important}.nap-info{border:1px solid #3f5a4e;color:#3f5a4e!important;background:transparent}
 .nap-note{padding:0 13px 13px;color:var(--mute);font-size:12px}
 .morning-card{position:relative}.morning-card .stepper{margin-top:8px}.morning-card.in-cart{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
 .morning-cart{position:sticky;bottom:74px;z-index:4;box-shadow:0 8px 30px rgba(0,0,0,.18)}
 .order-line{padding:7px 0;border-bottom:1px solid var(--line)}
+.production-toolbar{display:grid;grid-template-columns:repeat(3,max-content) minmax(170px,1fr) max-content;gap:8px;align-items:center}
+.production-toolbar input,.production-toolbar button{margin:0;min-height:40px}
+.production-list{display:grid;gap:10px;margin-top:12px}
+.production-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:linear-gradient(145deg,var(--card),color-mix(in srgb,var(--card) 90%,var(--brand2)))}
+.production-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.production-head h4{margin:0;font-size:17px}.production-count{font-size:28px;font-weight:800;color:var(--brand);line-height:1}
+.production-composition{margin:7px 0;color:var(--ink)}
+.production-hotels{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.production-hotels .pill{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+.production-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.production-summary div{border-radius:12px;background:var(--bg);padding:10px;text-align:center}.production-summary b{display:block;font-size:21px;color:var(--brand)}
+.production-extra,.production-request{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;background:var(--card)}
 @media(max-width:620px){
- main{padding-left:12px;padding-right:12px}.catalog-tools{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px minmax(0,1fr)}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}.catalog-price-row{align-items:center}.catalog-price-row input{flex-basis:108px}
+ main{padding-left:12px;padding-right:12px}.card{margin-left:0;margin-right:0}.catalog-tools{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px minmax(0,1fr)}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}.catalog-price-row{align-items:center}.catalog-price-row input{flex-basis:108px}
  .hotel-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;margin-left:-4px;margin-right:-4px;top:56px}
  .hotel-tabs button{width:100%;min-width:0;padding:8px 4px;border-radius:11px;font-size:11px;line-height:1.15;white-space:normal;min-height:42px}
+ .owner-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;overflow:visible}
+ .owner-tabs button{width:100%;min-width:0;padding:8px 4px;border-radius:11px;font-size:11px;line-height:1.15;white-space:normal;min-height:42px}
  .booking-room-grid{grid-template-columns:1fr}.booking-room-head{align-items:flex-start}.booking-room{padding:12px}
+ .production-toolbar{grid-template-columns:repeat(3,1fr)}.production-toolbar .date-field{grid-column:1/3;width:100%!important}.production-toolbar .print-production{width:100%}
+ .production-head{align-items:center}.production-composition{font-size:14px}.production-hotels .pill{font-size:11px}
 }
 .review-hero{padding:26px 18px;background:linear-gradient(145deg,var(--brand),#a4492b);color:#fff;border-radius:var(--r);margin-bottom:12px}
 .review-hero h2{font-size:28px;line-height:1.08;letter-spacing:-.02em;margin:4px 0 10px}.review-hero p{margin:0;opacity:.9}
@@ -216,7 +230,7 @@ function setArea(area){document.body.dataset.area=area;const b=$("#area_badge");
 function qr(el,text,size=200){el.innerHTML="";if(window.QRCode)new QRCode(el,{text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});else el.textContent=text}
 const base=()=>location.href.split("#")[0];
 const linkOspite=id=>base()+"#/ospite/"+id;
-const tabsHtml=(tabs,sec,pre)=>`<nav class="tabs ${pre==="albergatore"?"hotel-tabs":""}" aria-label="Sezioni ${pre}">${tabs.map(t=>`<button class="${t[0]===sec?"on":""}" onclick="go('#/${pre}/${t[0]}')">${t[1]}</button>`).join("")}<button onclick="esci()">Esci</button></nav>`;
+const tabsHtml=(tabs,sec,pre)=>`<nav class="tabs ${pre==="albergatore"?"hotel-tabs":""} ${pre==="titolare"?"owner-tabs":""}" aria-label="Sezioni ${pre}">${tabs.map(t=>`<button class="${t[0]===sec?"on":""}" onclick="go('#/${pre}/${t[0]}')">${t[1]}</button>`).join("")}<button onclick="esci()">Esci</button></nav>`;
 const camNome=v=>{const c=(v.camera||"").trim();if(!c)return v.ospite||"";return /^(camera|suite|stanza|appartamento|junior|room|studio|mansarda)\b/i.test(c)?c:"Camera "+c};
 const ospTxt=n=>`${n} ospit${n>1?"i":"e"}`;
 const descV=(v,prezzo=true)=>{const eu=prezzo&&v.fascia!=null?" · colazione da €"+String(v.fascia).replace(".",","):"";return v.camera?camNome(v)+" · "+ospTxt(v.ospiti||1)+eu:camNome(v)+eu};
@@ -867,9 +881,9 @@ const conferma=async id=>{if(await run("bb_tit_conferma_ricarica",{p:sess.p,mid:
 
 /* --- Produzione --- */
 let PDAY=null;
-function pProduzione(){PDAY=PDAY||TIT.oggi;return `<div class="card"><div class="row" style="justify-content:flex-start;flex-wrap:wrap">
+function pProduzione(){PDAY=PDAY||TIT.oggi;return `<div class="card"><div class="production-toolbar">
  <button class="btn sm sec" onclick="setPd(0)">Oggi</button><button class="btn sm sec" onclick="setPd(1)">Domani</button><button class="btn sm sec" onclick="setPd(2)">Dopodomani</button>
- <input id="pd" type="date" value="${PDAY}" style="width:auto;margin:0" onchange="PDAY=this.value;prodTab()"><button class="btn sm" onclick="stampaProd()">🖨 Stampa</button></div></div><div id="pt"></div>`}
+ <input class="date-field" id="pd" type="date" value="${PDAY}" onchange="PDAY=this.value;prodTab()"><button class="btn sm print-production" onclick="stampaProd()">🖨 Stampa</button></div></div><div id="pt"></div>`}
 pProduzione.after=()=>prodTab();
 const setPd=n=>{PDAY=addDays(TIT.oggi,n);$("#pd").value=PDAY;prodTab()};
 const tA=()=>Object.fromEntries((TIT.allergeni_elenco||[]).map(a=>[a.id,a]));
@@ -887,11 +901,11 @@ function prodTab(){
  const ks=Object.keys(per).sort((a,b)=>per[a].v.fascia-per[b].v.fascia);
  const sp=day.filter(v=>hasReq(v.richieste)||(v.extra||[]).length);
  const ex={};day.forEach(v=>(v.extra||[]).forEach(e=>{ex[e.nome]=(ex[e.nome]||0)+e.qta}));
- $("#pt").innerHTML=`<div class="card" id="prodprint"><h3>Produzione del ${dmy(PDAY)}</h3>${ks.length?`<table><tr><th>Colazione</th><th>Composizione</th><th>Struttura (qtà)</th><th style="text-align:right">Totale</th><th style="text-align:right">Ritirate</th></tr>
- ${ks.map(k=>`<tr><td><b>${esc(colNome(per[k].v))}</b><div class="mute">${eur(+per[k].v.fascia)}</div></td><td>${esc(colVoci(per[k].v))}</td><td>${Object.entries(per[k].s).map(([n,q])=>esc(n.replace(" (DEMO)",""))+" ("+q+")").join(", ")}</td><td style="text-align:right"><b style="font-size:20px">${per[k].tot}</b></td><td style="text-align:right">${per[k].fatte}</td></tr>`).join("")}
- <tr><td colspan="3"><b>Totale</b></td><td style="text-align:right"><b>${ks.reduce((a,k)=>a+per[k].tot,0)}</b></td><td style="text-align:right"><b>${ks.reduce((a,k)=>a+per[k].fatte,0)}</b></td></tr></table>`:`<p class="mute">Nessuna colazione prenotata per questo giorno.</p>`}
- ${Object.keys(ex).length?`<h3 style="margin-top:14px">🛒 Extra da preparare</h3>${Object.entries(ex).map(([n,q])=>`<div class="row"><span>${esc(n)}</span><b>${q}</b></div>`).join("")}`:""}
- ${sp.length?`<h3 style="margin-top:14px">⚠️ Richieste degli ospiti (${sp.length})</h3>${sp.map(v=>`<div style="margin:8px 0"><b>${esc(v.struttura.replace(" (DEMO)",""))} · ${esc(descV(v))}</b> <span class="mute">${v.id}</span>${reqHtml(v)}</div>`).join("")}`:""}</div>`}
+ $("#pt").innerHTML=`<div class="card" id="prodprint"><h3>Produzione del ${dmy(PDAY)}</h3>${ks.length?`<div class="production-list">
+ ${ks.map(k=>`<article class="production-item"><div class="production-head"><div><h4>${esc(colNome(per[k].v))}</h4><span class="mute">${eur(+per[k].v.fascia)} a colazione</span></div><div class="production-count" aria-label="${per[k].tot} da preparare">${per[k].tot}</div></div><div class="production-composition">${esc(colVoci(per[k].v))}</div><div class="production-hotels">${Object.entries(per[k].s).map(([n,q])=>`<span class="pill">${esc(n.replace(" (DEMO)",""))} · ${q}</span>`).join("")}</div><div class="mute" style="margin-top:8px">Ritirate: ${per[k].fatte}</div></article>`).join("")}</div>
+ <div class="production-summary"><div><span class="mute">Da preparare</span><b>${ks.reduce((a,k)=>a+per[k].tot,0)}</b></div><div><span class="mute">Già ritirate</span><b>${ks.reduce((a,k)=>a+per[k].fatte,0)}</b></div></div>`:`<p class="mute">Nessuna colazione prenotata per questo giorno.</p>`}
+ ${Object.keys(ex).length?`<h3 style="margin-top:14px">🛒 Extra da preparare</h3>${Object.entries(ex).map(([n,q])=>`<div class="production-extra row"><span>${esc(n)}</span><b>${q}</b></div>`).join("")}`:""}
+ ${sp.length?`<h3 style="margin-top:14px">⚠️ Richieste degli ospiti (${sp.length})</h3>${sp.map(v=>`<div class="production-request"><b>${esc(v.struttura.replace(" (DEMO)",""))} · ${esc(descV(v))}</b> <span class="mute">${v.id}</span>${reqHtml(v)}</div>`).join("")}`:""}</div>`}
 function stampaProd(){const w=window.open("","_blank");w.document.write(`<title>Produzione</title><body style="font-family:system-ui">${document.getElementById("prodprint").outerHTML}<script>print()<\/script>`);w.document.close()}
 
 /* --- Scanner --- */

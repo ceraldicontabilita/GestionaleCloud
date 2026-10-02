@@ -2113,6 +2113,25 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _notifiche_colazioni_job():
+        from app.services.colazioni_notifiche import processa_notifiche_colazioni
+
+        esito = await processa_notifiche_colazioni()
+        if esito.get("presi") or esito.get("falliti"):
+            logger.info("[NOTIFICHE-COLAZIONI] %s", esito)
+
+    scheduler.add_job(
+        _notifiche_colazioni_job,
+        "interval",
+        minutes=1,
+        next_run_time=avvio + timedelta(seconds=30),
+        misfire_grace_time=60,
+        coalesce=True,
+        id="notifiche_operative_colazioni",
+        name="Acquisti Colazioni B&B al titolare via Telegram (ogni minuto)",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")

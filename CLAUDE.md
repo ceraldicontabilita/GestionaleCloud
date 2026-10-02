@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-10-01
+reviewed_at: 2026-10-02
 storage_architecture: supabase
 -->
 
-Aggiornato il 01/10/2026 sul codice di `main` del repository canonico
+Aggiornato il 02/10/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -962,8 +962,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
   la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
-  La catena e' completa fino a v23: v1-4, 7, 8, 10 e 13-23 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
-  in `supabase/migrations/` come `…_colazioni_bb_vN_*.sql`; sono gia' applicate, i file non vanno rieseguiti.
+  La catena e' completa fino a v26: v1-4, 7, 8, 10 e 13-26 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
+  in `supabase/migrations/` come `…_colazioni_bb_vN_*.sql`; una migrazione si applica una volta sola e resta nel registro Supabase.
 - **Tre ruoli, tre link**: titolare (`#/titolare`), albergatore (`#/hotel/<accesso>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**).
 - **Titolare: nessun PIN suo, vale quello del gestionale.** La pagina chiama `POST /api/colazioni/accesso` (`app/routers/colazioni.py`, solo admin,
   cookie o Bearer dell'ERP, MFA compresa); il backend chiede al database `bb_tit_sessione_apri` con la chiave di runtime `x-gc-api-key`
@@ -993,6 +993,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   I prezzi in uso sono quelli **banco** (i prezzi tavolo restano in `prezzo_tavolo`); gli allergeni sono l'unione di Qromo e del gestionale.
   Foto, testi lunghi e ingredienti sono file statici in `frontend_colazioni/menu-img/` (`extra.json`). Extra dell'ospite: prezzi calcolati
   dal server, si pagano al bar; le versioni senza glutine (`bb_senza_glutine`) aggiungono solo la differenza.
+- **Avvisi operativi esterni** (v26): l'inserimento di un voucher da parte dell'albergatore e ogni nuova composizione di extra dell'ospite
+  accodano nella stessa transazione una riga idempotente in `bb_notifiche_operative`. Lo scheduler la consegna al Telegram del titolare
+  senza dipendere dall'app aperta e senza mostrare l'avviso all'albergatore; il testo non contiene il nome dell'ospite. Fallimenti temporanei
+  restano in coda con tentativi progressivi, protetti dalle RPC runtime `bb_notifiche_operative_*`.
 - **Dati esterni** (navi e scioperi) in cache `bb_esterni`, aggiornata dal database con l'estensione `http` (Guardia Costiera EMSWe per le navi,
   RSS del MIT per gli scioperi), al massimo ogni 20 minuti.
 - **Recensioni post-consumo** (v23): dalla scheda di ogni struttura il titolare genera i link QR/NFC/Wi-Fi
