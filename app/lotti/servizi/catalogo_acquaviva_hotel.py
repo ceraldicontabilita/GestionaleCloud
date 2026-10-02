@@ -25,20 +25,84 @@ CAMPI_CODICE = (
 
 _PRESENTAZIONE_FATTURA_ESATTA = {
     "AQV CRNT GLUTEN FREE 80G 1 6KG": (
+        "croissant-senza-glutine-80g",
         "Croissant senza glutine",
         "Croissant vuoto senza glutine.",
     ),
     "AQV DORAMAO CROISSANT ALMONDS 95G 494KG": (
+        "croissant-dorami-mandorle-95g",
         "Croissant Dorami alle mandorle",
         "Croissant dritto alle mandorle.",
     ),
     "FAGOTTO DUBAI STYLE": (
+        "fagotto-dubai-style",
         "Fagotto Dubai Style",
         "Fagotto dolce in stile Dubai.",
     ),
     "POLPETTINE DI CARNE G 10 12": (
+        "polpettine-carne-10-12g",
         "Polpettine di carne",
         "Polpettine di carne in formato mignon.",
+    ),
+    "AQV CMBLL MAXI SUGARED 100G 3KG": (
+        "ciambella-maxi-zuccherata-100g",
+        "Ciambella maxi zuccherata",
+        "Ciambella soffice ricoperta di zucchero.",
+    ),
+    "CIAMBELLA MAXI ZUCCHERATA G 100": (
+        "ciambella-maxi-zuccherata-100g",
+        "Ciambella maxi zuccherata",
+        "Ciambella soffice ricoperta di zucchero.",
+    ),
+    "AQV CMBLL MINI SUGARED 22G 2 64KG": (
+        "ciambella-mini-zuccherata-22g",
+        "Mini ciambella zuccherata",
+        "Mini ciambella soffice ricoperta di zucchero.",
+    ),
+    "CIAMBELLA MINI ZUCCHERATA G 22 25": (
+        "ciambella-mini-zuccherata-22g",
+        "Mini ciambella zuccherata",
+        "Mini ciambella soffice ricoperta di zucchero.",
+    ),
+    "AQV CORNETTO VEG CURCUMA VUOTO 75G 4 6KG": (
+        "cornetto-vegano-curcuma-75g",
+        "Cornetto vegano alla curcuma",
+        "Cornetto vegano curvo alla curcuma.",
+    ),
+    "AQV SOFIA 82G 4 592KG": (
+        "sofia-82g",
+        "Sofia",
+        "Cornetto dritto con burro e lievito naturale.",
+    ),
+    "AQV TAPPI GRANDI 57G 6KG": (
+        "tappi-grandi-57g",
+        "Tappi grandi",
+        "Basi di sfoglia da farcire.",
+    ),
+    "TAPPI GRANDI G 55 60": (
+        "tappi-grandi-57g",
+        "Tappi grandi",
+        "Basi di sfoglia da farcire.",
+    ),
+    "AQV TAPPI MIGNON FOR SFOGL 20G 4KG": (
+        "tappi-mignon-20g",
+        "Tappi mignon",
+        "Basi di sfoglia mignon da farcire.",
+    ),
+    "TAPPI MIGNON PER SFOGLIATE GR 20": (
+        "tappi-mignon-20g",
+        "Tappi mignon",
+        "Basi di sfoglia mignon da farcire.",
+    ),
+    "CORNETTO SENZA GLUTINE VUOTO G 100": (
+        "cornetto-senza-glutine-vuoto-100g",
+        "Cornetto senza glutine vuoto",
+        "Cornetto vuoto senza glutine.",
+    ),
+    "CORNETTO SENZA GLUTINE ALBICOCCA G 100": (
+        "cornetto-senza-glutine-albicocca-100g",
+        "Cornetto senza glutine all'albicocca",
+        "Cornetto senza glutine farcito all'albicocca.",
     ),
 }
 
@@ -118,6 +182,9 @@ def identita_riga(
     prodotto_id = str((collegato or {}).get("id") or "").strip()
     if prodotto_id:
         return f"catalogo:{prodotto_id}", collegato
+    presentazione = _PRESENTAZIONE_FATTURA_ESATTA.get(testo_normalizzato(descrizione))
+    if presentazione:
+        return f"fattura_alias:{presentazione[0]}", None
     return f"fattura:{testo_normalizzato(descrizione)}", None
 
 
@@ -129,7 +196,10 @@ def presentazione_fattura(descrizione: str) -> tuple[str, str]:
     """Testo breve per alias noti, senza attribuire una scheda catalogo."""
 
     testo = testo_normalizzato(descrizione)
-    return _PRESENTAZIONE_FATTURA_ESATTA.get(testo, (str(descrizione or "").strip(), ""))
+    presentazione = _PRESENTAZIONE_FATTURA_ESATTA.get(testo)
+    if presentazione:
+        return presentazione[1], presentazione[2]
+    return str(descrizione or "").strip(), ""
 
 
 def descrizione_breve(prodotto: Mapping[str, Any]) -> str:

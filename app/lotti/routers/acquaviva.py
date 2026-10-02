@@ -729,6 +729,10 @@ async def _esegui_scraping_acquaviva(con_dettagli: bool = False):
                         importati += 1
                 await asyncio.sleep(0.35)
 
+        # Le schede create durante questo aggiornamento devono ricevere subito
+        # i codici e gli alias fattura: in questo modo il menu hotel usa il nome
+        # ufficiale senza attendere un riavvio dell'applicazione.
+        await inizializza_mapping_vandemoortele_2026()
         fine = datetime.now(timezone.utc).isoformat()
         log = {
             "fonte": "acquaviva",

@@ -151,6 +151,27 @@ def test_alias_non_collegato_ha_presentazione_breve_senza_inventare_allergeni():
     assert riga["collegamento_catalogo"] is False
 
 
+def test_due_descrizioni_tecniche_della_stessa_ciambella_diventano_una_sola_voce():
+    fatture = [
+        {
+            "fornitore": "Vandemoortele",
+            "prodotti": [
+                {"descrizione": "AQV CMBLL MAXI SUGARED 100G 3KG", "quantita": 2},
+                {"descrizione": "CIAMBELLA MAXI ZUCCHERATA G. 100", "quantita": 3},
+            ],
+        }
+    ]
+
+    [riga] = costruisci_catalogo_prodotti_hotel(fatture, [], [])
+
+    assert riga["nome"] == "Ciambella maxi zuccherata"
+    assert riga["descrizione"] == "Ciambella soffice ricoperta di zucchero."
+    assert riga["quantita_acquistata"] == Decimal("5")
+    assert len(riga["descrizioni_fattura"]) == 2
+    assert riga["allergeni"] == []
+    assert riga["collegamento_catalogo"] is False
+
+
 def test_tutti_i_lievitati_richiesti_entrano_se_collegati_a_ricetta():
     nomi = [
         "Croissant vuoto",
