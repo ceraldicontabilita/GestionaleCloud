@@ -7,6 +7,7 @@ preview e lo stesso token non puo' autorizzare un file o un tipo diverso.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import mimetypes
@@ -223,7 +224,7 @@ async def build_import_preview(
 ) -> dict[str, Any]:
     sha256 = hashlib.sha256(content).hexdigest()
     md5 = hashlib.md5(content).hexdigest()
-    parsed = _specialist_preview(content, filename, document_type)
+    parsed = await asyncio.to_thread(_specialist_preview, content, filename, document_type)
     parser_error = parsed.get("error") if isinstance(parsed, dict) else None
     validation = (parsed.get("validazione") or {}) if isinstance(parsed, dict) else {}
     blocking_errors: list[str] = []

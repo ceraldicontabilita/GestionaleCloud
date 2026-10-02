@@ -7,6 +7,7 @@ il writer unico. Non viene mai usata la sola uguaglianza dell'importo.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone
@@ -473,7 +474,8 @@ async def proietta_movimenti_bancari_semantici(
             )
         if causale_classification and ec_id:
             stats["causali_deterministiche"] += 1
-        classificazione = classifica_movimento_ec(movimento_ec, dipendenti)
+        # Il confronto dei nomi e' calcolo puro: un thread per movimento lascia respirare il loop (regola 16).
+        classificazione = await asyncio.to_thread(classifica_movimento_ec, movimento_ec, dipendenti)
         if not classificazione or not ec_id or not data or importo <= 0:
             stats["non_classificati"] += 1
             continue

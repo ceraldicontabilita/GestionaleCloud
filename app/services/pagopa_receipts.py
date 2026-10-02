@@ -1,6 +1,7 @@
 """Import canonico e parsing conservativo delle ricevute PagoPA/CBILL."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import inspect
@@ -1027,10 +1028,11 @@ async def import_receipt(
     # vecchia firma a un solo argomento, senza rinunciare al filename quando
     # il parser corrente puo usarlo come evidenza secondaria.
     parser_parameters = inspect.signature(parse_receipt_pdf).parameters
-    parsed = (
-        parse_receipt_pdf(content, filename=filename)
+    # La lettura (testo, OCR) e' calcolo puro: fuori dall'event loop (regola 16).
+    parsed = await (
+        asyncio.to_thread(parse_receipt_pdf, content, filename=filename)
         if "filename" in parser_parameters
-        else parse_receipt_pdf(content)
+        else asyncio.to_thread(parse_receipt_pdf, content)
     )
     if "is_payment_receipt" not in parsed:
         parsed["is_payment_receipt"] = bool(parsed.get("data_pagamento"))

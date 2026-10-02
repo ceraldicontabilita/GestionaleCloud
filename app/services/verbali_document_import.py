@@ -1,6 +1,7 @@
 """Classificazione e collegamento conservativo dei PDF Verbali/PagoPA da Drive."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import io
@@ -418,7 +419,7 @@ async def leggi_documento_verbale(
             ai_data[key] = value
     from app.services.pagopa_receipts import parse_receipt_pdf
 
-    pagopa_data = parse_receipt_pdf(content, filename=filename)
+    pagopa_data = await asyncio.to_thread(parse_receipt_pdf, content, filename=filename)
     numero = (
         _normalizza_numero(ai_data.get("numero_verbale"))
         or _normalizza_numero(pagopa_data.get("numero_verbale"))
