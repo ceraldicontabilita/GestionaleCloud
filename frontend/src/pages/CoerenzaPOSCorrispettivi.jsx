@@ -214,6 +214,27 @@ export default function CoerenzaPOSCorrispettivi() {
           {' '}Non entrano nelle quadrature né nel saldo: inserisci la chiusura serale per verificarli.
         </div>
       )}
+      {(statsPos.fase2_crediti_xml_aperti || 0) > 0 && (
+        <div
+          data-testid="avviso-credito-xml"
+          style={{
+            marginTop: -8,
+            marginBottom: 16,
+            padding: '10px 12px',
+            background: COLORS.warningLight,
+            borderRadius: BORDER_RADIUS.md,
+            color: COLORS.warning,
+            fontSize: 13,
+          }}
+        >
+          {TESTO_CREDITO_XML}: <strong>{statsPos.fase2_crediti_xml_aperti}</strong>
+          {' '}giorni senza chiusura del terminale, {euroOppure(statsPos.fase2_crediti_xml_aperti_totale)} di credito verso il gestore non ancora provato dalla banca
+          {(statsPos.fase2_crediti_xml_differenza_terminale || 0) > 0 && (
+            <>, di cui <strong>{statsPos.fase2_crediti_xml_differenza_terminale}</strong> con un totale diverso dal terminale</>
+          )}.
+          {' '}La chiusura del terminale lo sostituisce, l’accredito al centesimo lo chiude.
+        </div>
+      )}
       {(statsPos.fase2_duplicati_banca_unificati || 0) > 0 && (
         <div
           style={{
@@ -473,6 +494,7 @@ function ControlloDueFasi({ dati, isMobile, onReload, focusProblemiRequest = 0 }
     return (!['ok', 'no_dati', 'in_attesa_xml', 'chiusa_col_giorno_dopo'].includes(g.stato_serale)) ||
            (g.stato_accredito !== 'ok' && g.stato_accredito !== 'in_attesa' && g.stato_accredito !== 'no_pos_manuale') ||
            !sumUpOk ||
+           creditoXmlAperto(g) ||
            g.stato_corrispettivo === 'manca_xml';
   });
 
@@ -1047,6 +1069,22 @@ function RigaGiornaliera({ g, even, onReload }) {
             {g.numero_movimenti_banca === 1 ? 'movimento' : 'movimenti'}
           </div>
         )}
+        {g.credito_pos_da_xml && (
+          <div
+            data-testid={`credito-xml-${g.data}`}
+            style={{
+              fontSize: 10, marginTop: 3, fontWeight: 600,
+              color: creditoXmlAperto(g) ? COLORS.warning : COLORS.success,
+            }}
+          >
+            {TESTO_CREDITO_XML} {euroOppure(g.credito_pos_da_xml.importo)}
+            {' · '}
+            {TESTO_CREDITO_XML_STATO[g.credito_pos_da_xml.stato] || g.credito_pos_da_xml.stato}
+            {g.credito_pos_da_xml.differenza_terminale !== null
+              && g.credito_pos_da_xml.differenza_terminale !== undefined
+              && ` (${formatEuroConSegno(g.credito_pos_da_xml.differenza_terminale)})`}
+          </div>
+        )}
       </Td>
       <Td align="right" style={{ fontWeight: 600 }}>
         {faseSumUp.stato === 'no_pos_sumup' ? '—' : faseSumUp.stato === 'nessun_incasso' ? (
@@ -1506,6 +1544,20 @@ export function esitoGiorno(stato) {
 
 /** Giorno NUMIA il cui POS e' letto dall'accredito stesso: niente da verificare. */
 export const TESTO_SENZA_CHIUSURA = 'Senza chiusura terminale: accredito non verificabile';
+
+/** Credito POS aperto dal solo XML (nessuna chiusura del terminale). */
+export const TESTO_CREDITO_XML = 'Credito POS da XML';
+export const TESTO_CREDITO_XML_STATO = {
+  senza_chiusura_terminale: 'aperto, senza chiusura terminale',
+  differenza_con_chiusura_terminale: 'il terminale dice un altro totale',
+  riconciliato: 'chiuso dall’accredito',
+};
+
+/** Il credito da XML e' ancora un'attesa (non provato dalla banca). */
+export function creditoXmlAperto(g) {
+  const credito = g && g.credito_pos_da_xml;
+  return Boolean(credito && credito.stato !== 'riconciliato');
+}
 
 const TESTO_STATO = {
   ok: 'Chiuso',

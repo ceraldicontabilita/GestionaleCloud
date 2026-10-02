@@ -4,6 +4,7 @@ import api from '../api';
 import {
   formatEuro,
   formatDateIT,
+  formatIstanteIT,
   STYLES,
   COLORS,
   SHADOWS,
@@ -36,6 +37,14 @@ import {
 import { ChevronDown, ChevronUp, Route, Tag, Wrench, Car, ChartColumn, Check, ClipboardList, Download, Eye, Hourglass, Pencil, Plus, RefreshCw, Save, Search, Trash2, Wallet, X } from 'lucide-react';
 
 const ICO = { verticalAlign: '-2px', flexShrink: 0 };
+
+// Storico assegnazioni veicolo→driver: `dal`/`al` in «aaaa-mm-gg» (giorno intero)
+// o «aaaa-mm-ggThh:mm» (istante preciso). Il verbale va al driver attivo alla
+// data E ora dell'infrazione (`driver_alla_data`). Giorno e ora si scrivono in
+// due campi: una riga senza ora resta senza ora, mai un «00:00» inventato.
+const giornoDi = v => (v ? String(v).slice(0, 10) : '');
+const oraDi = v => (v && String(v).length >= 16 && String(v)[10] === 'T' ? String(v).slice(11, 16) : '');
+const istanteDa = (giorno, ora) => (giorno ? (ora ? `${giorno}T${ora}` : giorno) : null);
 
 export default function NoleggioAuto() {
   const isMobile = useIsMobile();
@@ -1459,6 +1468,142 @@ export default function NoleggioAuto() {
                     placeholder="Nome e Cognome"
                   />
                 )}
+              </div>
+
+              {/* Storico assegnazioni: chi aveva l'auto, con data e ora */}
+              <div>
+                <label
+                  style={{ display: 'block', fontSize: 12, fontWeight: '500', marginBottom: 4 }}
+                >
+                  Storico assegnazioni (driver alla data e ora dell&apos;infrazione)
+                </label>
+                <p style={{ fontSize: 11, color: COLORS.textMuted, margin: '0 0 8px 0' }}>
+                  Una riga senza ora vale il giorno intero. Un verbale va al driver attivo alla data e ora
+                  dell&apos;infrazione; se nessuna riga la copre resta «da assegnare».
+                </p>
+                {(editingVeicolo.assegnazioni || []).map((a, i) => {
+                  const aggiorna = patch =>
+                    setEditingVeicolo(prev => ({
+                      ...prev,
+                      assegnazioni: (prev.assegnazioni || []).map((r, j) => (j === i ? { ...r, ...patch } : r)),
+                    }));
+                  return (
+                    <div
+                      key={i}
+                      data-testid="assegnazione-riga"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr 1fr 1fr auto',
+                        gap: 6,
+                        alignItems: 'end',
+                        marginBottom: 8,
+                        padding: 8,
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: BORDER_RADIUS.md,
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontSize: 11, color: COLORS.textMuted }}>Driver</span>
+                        {drivers.length > 0 ? (
+                          <Select
+                            aria-label={`Driver assegnazione ${i + 1}`}
+                            value={a.driver_id || ''}
+                            onChange={e => {
+                              const d = drivers.find(x => x.id === e.target.value);
+                              aggiorna({ driver_id: e.target.value, driver: d?.nome_completo || a.driver || '' });
+                            }}
+                            style={{ width: '100%' }}
+                          >
+                            <option value="">-- Driver --</option>
+                            {drivers.map(d => (
+                              <option key={d.id} value={d.id}>
+                                {d.nome_completo}
+                              </option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <Input
+                            aria-label={`Driver assegnazione ${i + 1}`}
+                            type="text"
+                            value={a.driver || ''}
+                            onChange={e => aggiorna({ driver: e.target.value })}
+                            placeholder="Nome e Cognome"
+                          />
+                        )}
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 11, color: COLORS.textMuted }}>Dal giorno</span>
+                        <Input
+                          aria-label={`Dal giorno assegnazione ${i + 1}`}
+                          type="date"
+                          value={giornoDi(a.dal)}
+                          onChange={e => aggiorna({ dal: istanteDa(e.target.value, oraDi(a.dal)) })}
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 11, color: COLORS.textMuted }}>Ora (facolt.)</span>
+                        <Input
+                          aria-label={`Dall'ora assegnazione ${i + 1}`}
+                          type="time"
+                          value={oraDi(a.dal)}
+                          onChange={e => aggiorna({ dal: istanteDa(giornoDi(a.dal), e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 11, color: COLORS.textMuted }}>Al giorno</span>
+                        <Input
+                          aria-label={`Al giorno assegnazione ${i + 1}`}
+                          type="date"
+                          value={giornoDi(a.al)}
+                          onChange={e => aggiorna({ al: istanteDa(e.target.value, oraDi(a.al)) })}
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 11, color: COLORS.textMuted }}>Ora (facolt.)</span>
+                        <Input
+                          aria-label={`All'ora assegnazione ${i + 1}`}
+                          type="time"
+                          value={oraDi(a.al)}
+                          onChange={e => aggiorna({ al: istanteDa(giornoDi(a.al), e.target.value) })}
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Togli assegnazione ${i + 1}`}
+                        style={{ minHeight: 44 }}
+                        onClick={() =>
+                          setEditingVeicolo(prev => ({
+                            ...prev,
+                            assegnazioni: (prev.assegnazioni || []).filter((_, j) => j !== i),
+                          }))
+                        }
+                      >
+                        <Trash2 size={14} aria-hidden="true" style={ICO} />
+                      </Button>
+                      <div style={{ gridColumn: '1 / -1', fontSize: 11, color: COLORS.textMuted }}>
+                        {a.driver || a.driver_id || 'driver da scegliere'} dal {formatIstanteIT(a.dal)}
+                        {a.al ? ` al ${formatIstanteIT(a.al)}` : ' (in corso)'}
+                      </div>
+                    </div>
+                  );
+                })}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  style={{ minHeight: 44 }}
+                  onClick={() =>
+                    setEditingVeicolo(prev => ({
+                      ...prev,
+                      assegnazioni: [
+                        ...(prev.assegnazioni || []),
+                        { driver_id: prev.driver_id || '', driver: prev.driver || '', dal: null, al: null },
+                      ],
+                    }))
+                  }
+                >
+                  <Plus size={14} aria-hidden="true" style={ICO} /> Aggiungi periodo
+                </Button>
               </div>
 
               {/* Contratto e Codice Cliente */}

@@ -27,7 +27,8 @@ CODICI_TRIBUTO_F24 = {
     "1012": {
         "descrizione": "Ritenute su indennità per cessazione di rapporto di lavoro",
         "tipo": "misto",
-        "sezione": "ERARIO"
+        "sezione": "ERARIO",
+        "scadenza": "16 del mese successivo"
     },
     "1040": {
         "descrizione": "Ritenute su redditi di lavoro autonomo: compensi per l'esercizio di arti e professioni",

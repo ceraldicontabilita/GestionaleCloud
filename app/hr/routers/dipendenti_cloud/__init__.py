@@ -18,6 +18,10 @@ import logging
 from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal, InvalidOperation
 
+from app.constants.stati_associazione_bonifico import (
+    STATI_PAGA_APERTI, STATO_PAGA_IN_ATTESA_BUSTA, STATO_PAGA_IN_ATTESA_PAGAMENTO,
+    STATO_PAGA_PAGATO, STATO_PAGA_PARZIALE, stato_paga_mese,
+)
 from app.hr.database import Database
 from app.hr.services import stato_rapporto
 from app.hr.utils.dependencies import require_staff
@@ -638,32 +642,30 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
     p = await db.paghe_mensili.find_one({"dipendente_id": dip, "anno": anno, "mese": mese})
     if not p:
         return None
-    tot_esiti, n_esiti = 0.0, 0
-    async for e in db.pagamenti_esiti.find({"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "importo": 1}):
-        tot_esiti += e.get("importo") or 0
-        n_esiti += 1
-    bonifico = round(tot_esiti, 2) if n_esiti else float(p.get("bonifico_importo") or 0)
-    busta = float(p.get("importo_busta") or 0)
-    acc = sum(float(a.get("importo") or 0) for a in (p.get("acconti") or []))
-    # Gli acconti del registro unico (anche quelli nati da «Bonifici da associare»)
-    # sono pagamenti sulla busta come per la posizione dipendente: lo stesso conto.
+    # Importi in Decimal e confronto al centesimo (titolare 02/10/2026: niente
+    # tolleranza). Una busta non ancora in archivio e' ``None``, mai 0: il
+    # bonifico arrivato prima della busta resta «in attesa della busta».
     from app.services import posizione_dipendente as pos
 
+    tot_esiti, n_esiti = pos.ZERO, 0
+    async for e in db.pagamenti_esiti.find({"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "importo": 1}):
+        tot_esiti += pos.importo(e.get("importo")) or pos.ZERO
+        n_esiti += 1
+    bonifico = tot_esiti if n_esiti else (pos.importo(p.get("bonifico_importo")) or pos.ZERO)
+    busta = pos.importo(p.get("importo_busta"))
+    acc = sum((pos.importo(a.get("importo")) or pos.ZERO for a in (p.get("acconti") or [])), pos.ZERO)
+    # Gli acconti del registro unico (anche quelli nati da «Bonifici da associare»)
+    # sono pagamenti sulla busta come per la posizione dipendente: lo stesso conto.
     acconti_registro = await db.acconti_dipendenti.find(
         {"dipendente_id": dip}, {"_id": 0}).to_list(2000)
-    acc += float(pos.acconti_registro_del_mese(acconti_registro, anno, mese, p.get("acconti") or []))
+    acc += pos.acconti_registro_del_mese(acconti_registro, anno, mese, p.get("acconti") or [])
     erogato = bonifico + acc
-    if busta <= 0 and erogato <= 0:
-        stato = "vuoto"
-    elif erogato <= 0:
-        stato = "in_attesa_pagamento"
-    elif erogato + 0.5 >= busta:
-        stato = "pagato"
-    else:
-        stato = "parziale"
-    upd = {"stato_pagamento": stato, "saldo": round(busta - erogato, 2), "updated_at": now_iso()}
+    stato = stato_paga_mese(busta, erogato)
+    upd = {"stato_pagamento": stato,
+           "saldo": float(busta - erogato) if busta is not None else None,
+           "updated_at": now_iso()}
     if n_esiti:
-        upd["bonifico_importo"] = bonifico
+        upd["bonifico_importo"] = float(bonifico)
         upd["bonifico_ricevuto"] = bonifico > 0
     await db.paghe_mensili.update_one({"dipendente_id": dip, "anno": anno, "mese": mese}, {"$set": upd})
     return stato
@@ -2568,13 +2570,19 @@ async def invia_presenze_commercialista(data: dict = Body(...)):
         allegati.append((pdf_bytes, "application", "pdf", f"{base}.pdf"))
     if csv.strip():
         allegati.append((csv.encode("utf-8"), "text", "csv", f"{base}.csv"))
+    # Le note per il consulente (trattenute dei verbali pagati) partono con le presenze.
+    from app.hr.services import presenze_consulente as pc
+    note_mese = await pc.note_consulente_mese(anno, mese)
+    allegati += pc.allegato_note(anno, mese, note_mese)
+    blocco_note = pc.testo_note(note_mese)
 
     try:
         import asyncio
         await asyncio.to_thread(
             invia_email, dest, f"Presenze {periodo} — Ceraldi Group S.r.l.",
             f"In allegato il riepilogo presenze di {periodo} (PDF + CSV).\n\n"
-            f"Messaggio generato automaticamente dal gestionale Ceraldi Group.",
+            + (blocco_note + "\n\n" if blocco_note else "")
+            + f"Messaggio generato automaticamente dal gestionale Ceraldi Group.",
             allegati)
     except Exception as e:
         # Log con traceback completo: l'errore esatto (auth Gmail, porta SMTP
@@ -3610,11 +3618,11 @@ async def paghe_in_attesa():
                async for d in db.dipendenti.find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1})}
     out = []
     async for p in db.paghe_mensili.find(
-            {"stato_pagamento": {"$in": ["in_attesa_pagamento", "parziale"]}}, {"_id": 0}):
+            {"stato_pagamento": {"$in": list(STATI_PAGA_APERTI)}}, {"_id": 0}):
         saldo = p.get("saldo")
         if saldo is None:
             saldo = round(float(p.get("importo_busta") or 0) - float(p.get("bonifico_importo") or 0), 2)
-        if not saldo or saldo <= 0.5:
+        if not saldo or saldo <= 0:   # al centesimo: anche 0,01 € e' un residuo
             continue
         out.append({"dipendente_id": p.get("dipendente_id"),
                     "dipendente": dip_map.get(p.get("dipendente_id"), p.get("dipendente_id")),
@@ -3654,11 +3662,11 @@ async def associazioni_bonifici(anno: Optional[int] = None, mese: Optional[int] 
     """Vista UNICA cedolino↔bonifico. Per ogni busta del periodo mostra l'importo busta,
     i bonifici REALMENTE pagati (collezione pagamenti_esiti: data, importo, causale, riferimento/CRO),
     gli acconti, il saldo e lo stato di associazione:
-      - pagato            = erogato (bonifici+acconti) ≥ busta, con prova confermata
+      - pagato            = erogato (bonifici+acconti) ≥ busta al centesimo, con prova confermata
       - parziale          = erogato > 0 ma < busta, con prova confermata
       - da_verificare     = importo candidato presente, ma prova non confermata
       - da_pagare         = busta presente, nessun pagamento
-      - bonifico_senza_busta = pagamento presente ma nessuna busta
+      - in_attesa_busta   = pagamento presente ma la busta non e' ancora arrivata (saldo sconosciuto)
     Inoltre indica la 'fonte' del bonifico (banca/prima_nota/manuale), la 'qualita' del match
     (esatto/per_importo/aggregato/da_verificare) e se esiste il PDF del cedolino.
     Sorgente dati = sistema vivo paghe_mensili + pagamenti_esiti (nessun sistema parallelo)."""
@@ -3721,11 +3729,17 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
            "pagati": 0, "parziali": 0, "da_pagare": 0, "senza_busta": 0,
            "associati": 0, "da_verificare": 0}
 
+    from app.services.posizione_dipendente import ZERO, importo as _dec
+
     async for p in db.paghe_mensili.find(q, {"_id": 0}):
-        busta = float(p.get("importo_busta") or 0)
-        bon = float(p.get("bonifico_importo") or 0)
+        # busta assente (``None``) = non ancora arrivata, non uno zero
+        busta_dec = _dec(p.get("importo_busta"))
+        busta = float(busta_dec or ZERO)
+        bon_dec = _dec(p.get("bonifico_importo")) or ZERO
+        bon = float(bon_dec)
         acc_list = p.get("acconti") or []
-        acc = sum(float(a.get("importo") or 0) for a in acc_list)
+        acc_dec = sum((_dec(a.get("importo")) or ZERO for a in acc_list), ZERO)
+        acc = float(acc_dec)
         if busta <= 0 and bon <= 0 and acc <= 0:
             continue
 
@@ -3745,15 +3759,14 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "pdf_key": e.get("key") if e.get("ha_pdf") else None,
         } for e in esiti_idx.get((dip_id, p.get("mese"), p.get("anno")), [])]
 
-        erogato = bon + acc
-        if busta <= 0 and erogato > 0:
-            stato_importo = "bonifico_senza_busta"
-        elif erogato <= 0:
+        erogato_dec = bon_dec + acc_dec
+        erogato = float(erogato_dec)
+        # Stesso motore dello stato del mese (al centesimo); qui «in attesa del
+        # pagamento» si chiama ``da_pagare`` e una busta assente e' «in attesa della busta».
+        stato_importo = stato_paga_mese(busta_dec, erogato_dec)
+        if stato_importo == STATO_PAGA_IN_ATTESA_PAGAMENTO:
             stato_importo = "da_pagare"
-        elif erogato + 0.5 >= busta:
-            stato_importo = "pagato"
-        else:
-            stato_importo = "parziale"
+        senza_busta = stato_importo == STATO_PAGA_IN_ATTESA_BUSTA
 
         # Fonte del bonifico
         if esiti:
@@ -3775,18 +3788,19 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         # numerico. Conserviamo quel calcolo come candidato, ma finché manca
         # una conferma reversibile della prova bancaria/assegno esponiamo
         # DA_VERIFICARE e non PAGATO/PARZIALE.
-        if erogato > 0 and not riconciliato:
+        # Senza busta non c'e' niente da verificare: resta «in attesa della busta».
+        if erogato > 0 and not riconciliato and not senza_busta:
             st = "da_verificare"
         else:
             st = stato_importo
 
-        if st == "pagato":
+        if st == STATO_PAGA_PAGATO:
             tot["pagati"] += 1
-        elif st == "parziale":
+        elif st == STATO_PAGA_PARZIALE:
             tot["parziali"] += 1
         elif st == "da_pagare":
             tot["da_pagare"] += 1
-        elif st == "bonifico_senza_busta":
+        elif st == STATO_PAGA_IN_ATTESA_BUSTA:
             tot["senza_busta"] += 1
         elif st == "da_verificare":
             tot["da_verificare"] += 1
@@ -3795,9 +3809,10 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         elif not riconciliato:
             qualita = "da_verificare"
         elif esiti:
-            if len(esiti) == 1 and busta > 0 and abs(esiti[0]["importo"] - busta) <= 0.5:
+            # confronti al centesimo: nessuna tolleranza (titolare 02/10/2026)
+            if len(esiti) == 1 and busta_dec and busta_dec > 0 and _dec(esiti[0]["importo"]) == busta_dec:
                 qualita = "esatto"          # un solo bonifico che combacia con la busta
-            elif busta > 0 and abs(bon - busta) <= 0.5:
+            elif busta_dec and busta_dec > 0 and bon_dec == busta_dec:
                 qualita = "per_importo"     # somma bonifici = busta
             elif len(esiti) > 1:
                 qualita = "aggregato"       # più bonifici nello stesso mese
@@ -3807,7 +3822,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             qualita = "da_verificare"       # importo inserito a mano / da prima nota, senza prova banca
 
         associato = riconciliato
-        if st in ("pagato", "parziale", "bonifico_senza_busta"):
+        if st in (STATO_PAGA_PAGATO, STATO_PAGA_PARZIALE, STATO_PAGA_IN_ATTESA_BUSTA):
             if associato:
                 tot["associati"] += 1
 
@@ -3823,7 +3838,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         tot["buste"] += busta
         tot["bonifici"] += bon
         tot["acconti"] += acc
-        tot["saldo"] += (busta - erogato)
+        if not senza_busta:
+            tot["saldo"] += (busta - erogato)
 
         righe.append({
             "dipendente_id": dip_id,
@@ -3835,7 +3851,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "acconti": round(acc, 2),
             "acconti_dettaglio": [{"importo": round(float(a.get("importo") or 0), 2), "data": a.get("data")} for a in acc_list],
             "erogato": round(erogato, 2),
-            "saldo": round(busta - erogato, 2),
+            # senza busta il saldo non si conosce: mai uno zero o un negativo di comodo
+            "saldo": None if senza_busta else round(busta - erogato, 2),
             "stato": st,
             "stato_importo": stato_importo,
             "fonte": fonte,
@@ -3888,7 +3905,7 @@ async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: O
         cell.alignment = Alignment(horizontal="center")
 
     stati_lbl = {"pagato": "Pagato", "parziale": "Parziale", "da_pagare": "Da pagare",
-                 "bonifico_senza_busta": "Bonifico senza busta"}
+                 "da_verificare": "Da verificare", STATO_PAGA_IN_ATTESA_BUSTA: "In attesa della busta"}
     qualita_lbl = {"esatto": "Match esatto", "per_importo": "Match per importo",
                    "aggregato": "Più bonifici", "da_verificare": "Da verificare"}
     for r in dati["righe"]:
@@ -4430,12 +4447,12 @@ async def get_dashboard_stats():
     importo_storico = 0.0
     anno_corrente = datetime.now().year
     async for p in get_db().paghe_mensili.find(
-            {"stato_pagamento": {"$in": ["in_attesa_pagamento", "parziale"]}},
+            {"stato_pagamento": {"$in": list(STATI_PAGA_APERTI)}},
             {"_id": 0, "saldo": 1, "importo_busta": 1, "bonifico_importo": 1, "anno": 1}):
         saldo = p.get("saldo")
         if saldo is None:
             saldo = float(p.get("importo_busta") or 0) - float(p.get("bonifico_importo") or 0)
-        if saldo and saldo > 0.5:
+        if saldo and saldo > 0:   # al centesimo, nessuna tolleranza
             if int(p.get("anno") or 0) >= anno_corrente:
                 buste_attesa += 1
                 importo_attesa += saldo

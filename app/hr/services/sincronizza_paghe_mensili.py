@@ -18,12 +18,18 @@ quindi "netto dovuto meno bonifico ricevuto", il confronto piu' sicuro.
 
 Non tocca un mese che un umano ha gia' modificato a mano (`origine` diverso da
 "cedolino"): l'inserimento manuale vince sempre sulla sincronizzazione.
+
+Un bonifico arrivato **prima** della busta lascia il mese `in_attesa_busta`
+(riga senza `importo_busta`, scritta dal motore unico `_ricalcola_stato_paga`):
+qui, all'arrivo del cedolino, la riga riceve la busta e i pagamenti gia'
+depositati (`pagamenti_esiti`, acconti) la chiudono da soli: pagato o parziale.
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from app.constants.stati_associazione_bonifico import stato_paga_mese
 from app.hr.database import Collections
-from app.services.posizione_dipendente import acconti_registro_del_mese
+from app.services.posizione_dipendente import ZERO, acconti_registro_del_mese, importo
 
 
 def _num(v: Any) -> Optional[float]:
@@ -35,16 +41,14 @@ def _num(v: Any) -> Optional[float]:
         return None
 
 
-def _stato_e_saldo(busta: float, bonifico: float) -> Dict[str, Any]:
-    if busta <= 0 and bonifico <= 0:
-        stato = "vuoto"
-    elif bonifico <= 0:
-        stato = "in_attesa_pagamento"
-    elif bonifico + 0.5 >= busta:
-        stato = "pagato"
-    else:
-        stato = "parziale"
-    return {"stato_pagamento": stato, "saldo": round(busta - bonifico, 2)}
+def _stato_e_saldo(busta: Any, erogato: Any) -> Dict[str, Any]:
+    """Stesso motore di ``_ricalcola_stato_paga``: confronto in Decimal al
+    centesimo, nessuna tolleranza (titolare 02/10/2026)."""
+    busta_d = importo(busta)
+    erogato_d = importo(erogato) or ZERO
+    stato = stato_paga_mese(busta_d, erogato_d)
+    return {"stato_pagamento": stato,
+            "saldo": float(busta_d - erogato_d) if busta_d is not None else None}
 
 
 def _mese_registro(c: Dict[str, Any]) -> int:

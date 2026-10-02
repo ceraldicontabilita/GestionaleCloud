@@ -144,67 +144,17 @@ async def upload_quietanza_verbale(
     if not ripetuta:
         await db[COLLECTION].update_one({"id": verbale_id}, {"$set": update})
 
-    # Crea nota presenze per consulente del lavoro (una per verbale)
-    creato = False
-    driver_id = verbale.get("driver_id") or verbale.get("driver_cf")
-    if driver_id:
-        from datetime import timezone
-        dt = datetime.now(timezone.utc)
-        mese_nota = dt.month + 1 if dt.month < 12 else 1
-        anno_nota = dt.year if dt.month < 12 else dt.year + 1
+    # Nota per il consulente e PROPOSTA di trattenuta (una per verbale): nascono solo a
+    # verbale pagato **con quietanza** (PDF, importo certo), mai senza PDF ne' alla sola
+    # assegnazione del driver; la conferma resta del titolare
+    # (`proponi_trattenuta_verbale_pagato`, l'unico punto che le scrive).
+    from app.services.trattenute_verbali_service import proponi_trattenuta_verbale_pagato
 
-        nota_id = f"nota_trattenuta_verbale_{verbale_id}"
-        nota = await db["note_presenze_consulente"].find_one({"id": nota_id}, {"_id": 0, "id": 1})
-        if not nota:
-            # Una nota si scrive una volta: rimandarla non sposta mese e anno (ne' dopo l'invio al consulente).
-            await db["note_presenze_consulente"].update_one(
-                {"id": nota_id},
-                {"$setOnInsert": {
-                    "id": nota_id,
-                    "dipendente_id": driver_id,
-                    "dipendente_nome": verbale.get("driver", ""),
-                    "tipo": "trattenuta_verbale",
-                    "mese": mese_nota,
-                    "anno": anno_nota,
-                    "importo": str(importo),
-                    "descrizione": f"TRATTENUTA VERBALE {verbale.get('numero_verbale','')} - Targa {verbale.get('targa','')} - Pagato {data_pagamento}",
-                    "evidenza": True,
-                    "verbale_id": verbale_id,
-                    "inviato_consulente": False,
-                    "created_at": dt.isoformat(),
-                }},
-                upsert=True,
-            )
-            creato = True
-
-        # Anche in trattenute_dipendenti: PROPOSTA di trattenuta con il ciclo di vita
-        # completo (proposta -> confermata -> comunicata -> ...), una per verbale.
-        gia = await db["trattenute_dipendenti"].find_one(
-            {"verbale_id": verbale_id, "tipo": "verbale_multa"}, {"_id": 0, "id": 1})
-        if not gia:
-            from app.services.trattenute_verbali_service import costruisci_trattenuta_da_verbale
-            verbale_aggiornato = verbale if ripetuta else {**verbale, **update}
-            trattenuta = await costruisci_trattenuta_da_verbale(
-                db, verbale_aggiornato,
-                data_pagamento=data_pagamento,
-                importo_pagato=float(importo),
-                fonte="upload_quietanza_manuale",
-            )
-            await db["trattenute_dipendenti"].insert_one(trattenuta)
-            creato = True
-
-            from app.services.audit_logger import log_evento
-            await log_evento(
-                modulo="trattenute_verbali", azione="proposta_creata",
-                entita_id=trattenuta["id"], entita_collection="trattenute_dipendenti",
-                db=db, nuovo_stato={"stato": trattenuta["stato"]},
-                fonte="upload_quietanza_manuale",
-                dettaglio=(
-                    f"Proposta trattenuta per verbale {verbale.get('numero_verbale','')} "
-                    f"— €{trattenuta['importo_da_recuperare']:.2f}, "
-                    f"cedolino suggerito {trattenuta['mese_cedolino_suggerito']}"
-                ),
-            )
+    proposta = await proponi_trattenuta_verbale_pagato(
+        db, verbale if ripetuta else {**verbale, **update},
+        importo_pagato=importo, data_pagamento=data_pagamento, fonte="upload_quietanza_manuale",
+    )
+    creato = bool(proposta["nota_creata"] or proposta["trattenuta_creata"])
 
     if ripetuta and not creato:
         return {"success": True, "duplicato": True,

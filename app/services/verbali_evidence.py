@@ -5,6 +5,7 @@ alimentare liste operative, dashboard o stati di pagamento finche' una fonte
 documentale o un operatore non lo ha confermato esplicitamente.
 """
 
+import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Optional
 
@@ -124,6 +125,25 @@ def data_evento_verbale(record: Dict[str, Any]) -> tuple[Optional[str], str]:
     if redatto:
         return redatto[:10], "data_verbale"
     return None, "assente"
+
+
+def data_ora_evento_verbale(record: Dict[str, Any]) -> tuple[Optional[str], str]:
+    """Istante del fatto per il driver alla data: ``AAAA-MM-GGTHH:MM`` se il verbale
+    porta ``ora_violazione``, altrimenti il solo giorno.
+
+    L'ora vale solo con la data della violazione (con il ripiego sulla data
+    dell'atto non c'entra: e' un altro giorno). Chi legge lo storico assegnazioni
+    (`driver_alla_data`) accetta tutte e due le forme.
+    """
+    giorno, fonte = data_evento_verbale(record)
+    if not giorno or fonte != "violazione":
+        return giorno, fonte
+    ora = str(record.get("ora_violazione") or "").strip()
+    if re.fullmatch(r"\d{1,2}:\d{2}", ora):
+        ore, minuti = ora.split(":")
+        if 0 <= int(ore) <= 23 and 0 <= int(minuti) <= 59:
+            return f"{giorno}T{int(ore):02d}:{minuti}", fonte
+    return giorno, fonte
 
 
 def describe_verbale_date(record: Dict[str, Any]) -> Dict[str, Any]:

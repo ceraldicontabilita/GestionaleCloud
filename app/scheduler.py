@@ -152,7 +152,23 @@ async def scan_verbali_email_task():
 async def verbali_notifications_task():
     from app.database import Database
     from app.services.partenopay_archive_import import dispatch_due_verbali_notifications
-    result = await dispatch_due_verbali_notifications(Database.get_db())
+    from app.services.verbali_importo_atteso import aggiorna_importi_attesi
+    from app.services.notifiche_pec_verbali import giro_aggancio_automatico
+    db = Database.get_db()
+    # Prima le PEC di notifica si agganciano ai verbali veri (da sole, senza bottone),
+    # poi l'importo atteso (scaduti i 5 giorni dalla PEC → ordinario), poi i
+    # promemoria, che cosi' dicono l'importo giusto.
+    try:
+        pec = await giro_aggancio_automatico(db)
+        logger.info("[SCHEDULER-VERBALI] PEC agganciate: %s", {k: pec[k] for k in ("totali", "agganciate", "senza_verbale", "ambigue")})
+    except Exception as exc:  # noqa: BLE001 - il resto del giro parte lo stesso
+        logger.error("[SCHEDULER-VERBALI] aggancio PEC non riuscito: %s: %s", type(exc).__name__, exc)
+    try:
+        attesi = await aggiorna_importi_attesi(db)
+        logger.info("[SCHEDULER-VERBALI] importi attesi: %s", attesi)
+    except Exception as exc:  # noqa: BLE001 - i promemoria partono lo stesso
+        logger.error("[SCHEDULER-VERBALI] importi attesi non aggiornati: %s: %s", type(exc).__name__, exc)
+    result = await dispatch_due_verbali_notifications(db)
     logger.info("[SCHEDULER-VERBALI] notifiche: %s", result)
 
 

@@ -9,6 +9,7 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query, Body, HTTPException
 
@@ -21,6 +22,8 @@ from app.services.noleggio import (
     scan_fatture_noleggio,
     categorizza_spesa,
     estrai_causale_note,
+    istante_assegnazione,
+    normalizza_istante_assegnazione,
     scegli_veicolo_per_fattura
 )
 from app.services.noleggio.associations import (
@@ -32,7 +35,7 @@ from app.services.noleggio.associations import (
 from app.utils.error_handler import handle_errors
 from app.constants.stati_verbale import e_chiuso
 from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
-from app.services.verbali_evidence import data_evento_verbale, data_violazione_verbale
+from app.services.verbali_evidence import data_violazione_verbale
 from app.services.verbali_collegamento_fattura import (
     campi_da_fattura, fattura_id_del_verbale, fattura_numero_del_verbale,
 )
@@ -134,8 +137,9 @@ async def _get_verbali_completi_per_targa(
     veicolo = await db[COLLECTION].find_one({"targa": targa_upper}, {"_id": 0})
     if veicolo:
         from app.services.noleggio import driver_alla_data
+        from app.services.verbali_evidence import data_ora_evento_verbale
         for v in verbali_per_numero.values():
-            v["driver_competente"] = driver_alla_data(veicolo, data_evento_verbale(v)[0])
+            v["driver_competente"] = driver_alla_data(veicolo, data_ora_evento_verbale(v)[0])
 
     return sorted(
         verbali_per_numero.values(),
@@ -929,6 +933,41 @@ async def create_veicolo(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     return veicolo
 
 
+def _assegnazioni_valide(righe: Any) -> list:
+    """Lo storico driver come si scrive: `dal`/`al` in ``AAAA-MM-GG`` o ``AAAA-MM-GGTHH:MM``.
+
+    Una riga senza ora vale il giorno intero (`driver_alla_data`); una data
+    illeggibile, un `dal` mancante o un `al` prima del `dal` sono un 400, mai
+    una riga salvata a meta' che poi non copre nessun verbale.
+    """
+    if righe in (None, ""):
+        return []
+    if not isinstance(righe, list):
+        raise HTTPException(status_code=400, detail="assegnazioni: deve essere un elenco")
+    valide = []
+    for indice, riga in enumerate(righe, start=1):
+        if not isinstance(riga, dict):
+            raise HTTPException(status_code=400, detail=f"assegnazioni[{indice}]: riga non valida")
+        if not (riga.get("driver_id") or riga.get("driver")):
+            raise HTTPException(status_code=400, detail=f"assegnazioni[{indice}]: driver mancante")
+        dal = normalizza_istante_assegnazione(riga.get("dal"))
+        if not dal:
+            raise HTTPException(
+                status_code=400,
+                detail=f"assegnazioni[{indice}]: 'dal' mancante o non valido (aaaa-mm-gg o aaaa-mm-ggThh:mm)")
+        al = None
+        if riga.get("al") not in (None, ""):
+            al = normalizza_istante_assegnazione(riga.get("al"))
+            if not al:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"assegnazioni[{indice}]: 'al' non valido (aaaa-mm-gg o aaaa-mm-ggThh:mm)")
+            if istante_assegnazione(al)[0] < istante_assegnazione(dal)[0]:
+                raise HTTPException(status_code=400, detail=f"assegnazioni[{indice}]: 'al' precede 'dal'")
+        valide.append({**riga, "dal": dal, "al": al})
+    return valide
+
+
 @router.put("/veicoli/{targa}")
 @handle_errors
 async def update_veicolo(
@@ -966,15 +1005,19 @@ async def update_veicolo(
                   "canone_mensile", "anno_immatricolazione", "alimentazione",
                   "potenza_kw", "cilindrata",
                   "stato_contratto", "stato_veicolo", "canone_previsto",
-                  "fringe_benefit", "assegnazioni"]:
+                  "fringe_benefit"]:
         if campo in data:
             update_data[campo] = data[campo]
+    if "assegnazioni" in data:
+        update_data["assegnazioni"] = _assegnazioni_valide(data.get("assegnazioni"))
 
     # Cambio driver = nuovo capitolo dello storico assegnazioni: chiudiamo
     # l'assegnazione aperta e ne apriamo una nuova, così i verbali futuri
-    # trovano il responsabile GIUSTO alla data dell'infrazione.
+    # trovano il responsabile GIUSTO alla data e ora dell'infrazione. Il
+    # passaggio e' un istante (ora di Roma al minuto), non un giorno: cosi' un
+    # verbale di stamattina resta al driver di stamattina.
     if data.get("driver") or data.get("driver_id"):
-        oggi = datetime.now(timezone.utc).date().isoformat()
+        adesso = datetime.now(ZoneInfo("Europe/Rome")).strftime("%Y-%m-%dT%H:%M")
         esistente = await db[COLLECTION].find_one(
             {"targa": targa.upper()}, {"_id": 0, "driver": 1, "driver_id": 1, "assegnazioni": 1}
         ) or {}
@@ -984,14 +1027,15 @@ async def update_veicolo(
             storico = esistente.get("assegnazioni") or []
             aperte = [a for a in storico if not a.get("al")]
             for a in aperte:
-                a["al"] = oggi
+                a["al"] = adesso
             storico = [a for a in storico if a.get("al")] + [{
                 "driver": update_data.get("driver", esistente.get("driver")),
                 "driver_id": update_data.get("driver_id", esistente.get("driver_id")),
-                "dal": oggi,
+                "dal": adesso,
                 "al": None,
             }]
-            update_data["assegnazioni"] = data.get("assegnazioni", storico)
+            if "assegnazioni" not in data:
+                update_data["assegnazioni"] = storico
     
     result = await db[COLLECTION].update_one(
         {"targa": targa.upper()},

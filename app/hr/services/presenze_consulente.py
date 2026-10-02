@@ -23,6 +23,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 logger = logging.getLogger(__name__)
 
 COLLEZIONE_INVII = "presenze_invii"
+# Note per il consulente scritte dal gestionale (trattenute dei verbali pagati:
+# `trattenute_verbali_service`): vivono nell'archivio dell'ERP, non in HR.
+COLLEZIONE_NOTE = "note_presenze_consulente"
 ESITO_INVIATO = "inviato"
 ESITO_ERRORE = "errore"
 ORIGINI = ("hr", "erp")
@@ -178,6 +181,63 @@ async def mese_ha_presenze(anno: int, mese: int) -> bool:
                for f in ferie)
 
 
+def _db_gestionale():
+    from app.database import Database
+
+    return Database.get_db()
+
+
+async def note_consulente_mese(anno: int, mese: int) -> List[Dict[str, Any]]:
+    """Le note del mese per il consulente (trattenute verbali e simili), dal gestionale.
+
+    Fino al 02/10/2026 nessuno le leggeva: la nota nasceva alla quietanza del verbale e
+    restava in archivio senza mai partire con le presenze.
+    """
+    note = await _db_gestionale()[COLLEZIONE_NOTE].find(
+        {"anno": int(anno), "mese": int(mese)}, {"_id": 0}).to_list(500)
+    return sorted(note, key=lambda n: (str(n.get("dipendente_nome") or ""), str(n.get("id") or "")))
+
+
+def testo_note(note: Sequence[Dict[str, Any]]) -> str:
+    """Il blocco di testo per il corpo dell'email: una riga per nota, vuoto senza note."""
+    if not note:
+        return ""
+    righe = []
+    for n in note:
+        importo = str(n.get("importo") or "").replace(".", ",")
+        righe.append(f"- {n.get('dipendente_nome') or n.get('dipendente_id') or ''}: "
+                     f"{n.get('descrizione') or n.get('tipo') or ''}"
+                     + (f" — {importo} €" if importo else ""))
+    return "Note per il consulente (da riportare in busta):\n" + "\n".join(righe)
+
+
+def allegato_note(anno: int, mese: int, note: Sequence[Dict[str, Any]]) -> List[Tuple[bytes, str, str, str]]:
+    """CSV delle note del mese (dipendente, tipo, importo, descrizione); nessun allegato senza note."""
+    if not note:
+        return []
+    import csv
+    import io
+
+    out = io.StringIO()
+    w = csv.writer(out, delimiter=";")
+    w.writerow(["dipendente", "tipo", "importo", "descrizione", "riferimento"])
+    for n in note:
+        w.writerow([n.get("dipendente_nome") or n.get("dipendente_id") or "", n.get("tipo") or "",
+                    str(n.get("importo") or "").replace(".", ","), n.get("descrizione") or "",
+                    n.get("verbale_id") or ""])
+    return [(out.getvalue().encode("utf-8"), "text", "csv",
+             f"note_presenze_{anno}_{str(mese).zfill(2)}.csv")]
+
+
+async def segna_note_inviate(anno: int, mese: int, invio_id: str) -> int:
+    """Dopo un invio riuscito le note del mese risultano inviate (con l'id dell'invio)."""
+    res = await _db_gestionale()[COLLEZIONE_NOTE].update_many(
+        {"anno": int(anno), "mese": int(mese), "inviato_consulente": {"$ne": True}},
+        {"$set": {"inviato_consulente": True, "invio_id": invio_id,
+                  "inviato_il": datetime.now(timezone.utc).isoformat()}})
+    return int(getattr(res, "modified_count", 0) or 0)
+
+
 async def invii_presenze(anno: int, mese: int) -> List[Dict[str, Any]]:
     """Gli invii riusciti del mese, dal piu' recente. Un errore non conta come inviato."""
     invii = await _db().presenze_invii.find(
@@ -202,6 +262,8 @@ async def registra_invio(anno: int, mese: int, destinatario: str, *, n_dipendent
     if errore:
         rec["errore"] = errore
     await _db().presenze_invii.insert_one(dict(rec))
+    if esito == ESITO_INVIATO:
+        rec["note_inviate"] = await segna_note_inviate(anno, mese, rec["id"])
     return rec
 
 

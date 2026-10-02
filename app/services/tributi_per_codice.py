@@ -293,7 +293,10 @@ def _aggiungi_modelli(
 
 def _aggiungi_ritenute(voci: Dict[Chiave, Dict[str, Any]], ritenute: List[Dict[str, Any]]) -> None:
     for rit in ritenute:
-        periodo = str(rit.get("periodo_ritenuta") or rit.get("data_fattura") or "")[:7]
+        # Il periodo del 1040 e' il mese del pagamento al professionista
+        # (decisione del 02/10/2026): una parcella non ancora pagata non ha
+        # periodo e resta fuori dal registro, mai nel mese della fattura.
+        periodo = str(rit.get("periodo_ritenuta") or "")[:7]
         if len(periodo) != 7:
             continue
         anno, mese = int(periodo[:4]), int(periodo[5:7])

@@ -81,25 +81,89 @@ def contiene_segnali_cessazione(invoice: Dict[str, Any]) -> List[str]:
     return [d for d in DICITURE_CESSAZIONE if d in testo]
 
 
-def driver_alla_data(veicolo: Dict[str, Any], data_evento: Optional[str]) -> Dict[str, Any]:
-    """Responsabile del veicolo alla data dell'evento (YYYY-MM-DD).
+_ISTANTE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?")
 
-    Usa lo storico `assegnazioni` [{driver, driver_id, dal, al}] se
-    presente; l'assegnazione corrente vale come voce aperta (al=None).
-    Se lo storico c'e' ma non copre la data, il responsabile **non si sa**:
+
+def istante_assegnazione(valore: Any) -> Optional[tuple[datetime, bool]]:
+    """Legge ``dal``/``al`` di un'assegnazione o la data di un evento.
+
+    Ritorna ``(istante, con_ora)``: ``AAAA-MM-GG`` da solo e' un giorno intero
+    (``con_ora=False``), ``AAAA-MM-GGTHH:MM`` (anche con secondi, spazio o fuso
+    in coda) e' un istante preciso. Un valore illeggibile e' ``None``.
+    """
+    testo = str(valore or "").strip()
+    trovato = _ISTANTE_RE.match(testo)
+    if not trovato:
+        return None
+    try:
+        giorno = datetime.strptime(trovato.group(1), "%Y-%m-%d")
+    except ValueError:
+        return None
+    if trovato.group(2) is None:
+        return giorno, False
+    ore, minuti, secondi = int(trovato.group(2)), int(trovato.group(3)), int(trovato.group(4) or 0)
+    if not (0 <= ore <= 23 and 0 <= minuti <= 59 and 0 <= secondi <= 59):
+        return None
+    return giorno.replace(hour=ore, minute=minuti, second=secondi), True
+
+
+def normalizza_istante_assegnazione(valore: Any) -> Optional[str]:
+    """Il valore come si scrive in archivio: ``AAAA-MM-GG`` o ``AAAA-MM-GGTHH:MM``."""
+    letto = istante_assegnazione(valore)
+    if letto is None:
+        return None
+    istante, con_ora = letto
+    return istante.strftime("%Y-%m-%dT%H:%M") if con_ora else istante.strftime("%Y-%m-%d")
+
+
+_FINE_GIORNO = {"hour": 23, "minute": 59, "second": 59}
+
+
+def _intervallo_assegnazione(a: Dict[str, Any]) -> Optional[tuple[datetime, Optional[datetime]]]:
+    """``[inizio, fine]`` dell'assegnazione: senza ora, dal 00:00 del `dal` alle 23:59:59 dell'`al`."""
+    dal = istante_assegnazione(a.get("dal"))
+    if dal is None:
+        return None
+    inizio = dal[0]
+    al = istante_assegnazione(a.get("al")) if a.get("al") else None
+    if a.get("al") and al is None:
+        return None
+    fine = None
+    if al is not None:
+        fine = al[0] if al[1] else al[0].replace(**_FINE_GIORNO)
+    return inizio, fine
+
+
+def driver_alla_data(veicolo: Dict[str, Any], data_evento: Optional[str]) -> Dict[str, Any]:
+    """Responsabile del veicolo alla data **e ora** dell'evento.
+
+    ``data_evento`` e' ``AAAA-MM-GG`` oppure ``AAAA-MM-GGTHH:MM`` (l'ora
+    dell'infrazione, `data_ora_evento_verbale`). Usa lo storico `assegnazioni`
+    [{driver, driver_id, dal, al}] se presente, con `dal`/`al` nello stesso
+    formato: una riga senza ora vale il giorno intero (dal 00:00 del `dal` alle
+    23:59:59 dell'`al`); l'assegnazione corrente vale come voce aperta (al=None).
+    Un evento senza ora copre tutto il suo giorno: se in quel giorno l'auto e'
+    passata di mano, i due driver sono candidati e non se ne sceglie uno.
+    Se lo storico c'e' ma non copre l'istante, il responsabile **non si sa**:
     ``driver=None`` con motivo «da assegnare», mai il driver di oggi (un
     canone di un periodo scoperto finiva su chi ha l'auto adesso). Solo un
     veicolo senza storico, o un evento senza data, ripiega sul driver
     attuale, con fonte esplicita così l'interfaccia può distinguere.
     """
-    data = (data_evento or "")[:10]
+    evento = istante_assegnazione(data_evento)
     assegnazioni = veicolo.get("assegnazioni") or []
-    if data and assegnazioni:
+    if evento and assegnazioni:
+        if evento[1]:
+            da, a_ = evento[0], evento[0]
+        else:
+            da, a_ = evento[0], evento[0].replace(**_FINE_GIORNO)
         coperte = []
         for a in assegnazioni:
-            dal = (a.get("dal") or "")[:10]
-            al = (a.get("al") or "")[:10]
-            if dal and data >= dal and (not al or data <= al):
+            intervallo = _intervallo_assegnazione(a)
+            if intervallo is None:
+                continue
+            inizio, fine = intervallo
+            if inizio <= a_ and (fine is None or fine >= da):
                 coperte.append({"driver": a.get("driver"), "driver_id": a.get("driver_id")})
         # Lo stesso driver registrato due volte non e' un'ambiguita'; due driver
         # diversi sulla stessa data si': non se ne sceglie uno, si mostrano i candidati.

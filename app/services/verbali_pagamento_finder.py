@@ -542,6 +542,20 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
             await db["ricevute_pagopa"].update_one(
                 {"id": match["ricevuta_pagopa_id"]}, {"$set": reverse}
             )
+        if incoming_documentary_id and verbale.get("driver_id"):
+            # Verbale pagato con quietanza (ricevuta pagoPA/PayPal) e importo certo:
+            # l'unico momento in cui nasce la proposta di trattenuta, da confermare.
+            from app.services.trattenute_verbali_service import proponi_trattenuta_verbale_pagato
+
+            try:
+                await proponi_trattenuta_verbale_pagato(
+                    db, {**verbale, **update},
+                    importo_pagato=match.get("importo"), data_pagamento=match.get("data_pagamento"),
+                    fonte=f"pagamento_{match.get('fonte') or 'documentale'}",
+                )
+            except Exception as exc:  # noqa: BLE001 - il pagamento e' gia' scritto
+                logger.warning("Proposta di trattenuta non creata per il verbale %s: %s: %s",
+                               verbale.get("id"), type(exc).__name__, exc)
     return res.modified_count > 0
 
 

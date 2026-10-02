@@ -93,7 +93,9 @@ def test_senza_verbale_resta_da_agganciare_e_non_ne_crea(monkeypatch):
     db = _db_con_pec(numero_verbale_reale=False)
     esito = _run(mod.aggancia_notifiche_pec(db, dry_run=False))
     assert esito["da_agganciare"] == 1 and esito["agganciate"] == 0
-    assert esito["elenco_da_agganciare"] == [{"upec_id": "7468533", "numero_verbale": "A24110662140"}]
+    assert esito["elenco_da_agganciare"] == [
+        {"upec_id": "7468533", "numero_verbale": "A24110662140", "motivo": "senza_verbale"}]
+    assert esito["senza_verbale"] == 1 and esito["ambigue"] == 0
     att = _run(db["verbali_email_attachments"].find_one({"id": "att1"}))
     assert att["notifica_stato"] == "da_agganciare" and att["numero_verbale_letto"] == "A24110662140"
     assert len(_run(db["verbali_noleggio"].find({}).to_list(10))) == 1

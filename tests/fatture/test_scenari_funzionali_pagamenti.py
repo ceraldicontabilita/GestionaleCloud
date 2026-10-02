@@ -391,7 +391,11 @@ def test_parcella_con_ritenuta_al_fornitore_esce_il_netto_e_la_ritenuta_resta_da
         col_lordo = await fattura(db, fid)
         await _estratto_ufficiale(monkeypatch, [("2026-09-16", CAUSALE_BONIFICO, -1020.0)])
         col_netto = await fattura(db, fid)
+        # il periodo del 1040 segue il pagamento: il giro F24 lo riallinea dalla fattura pagata
+        from app.routers import ritenute
+        await ritenute.riconcilia_ritenute_esistenti(db)
         return {"fid": fid, "inizio": inizio, "col_lordo": col_lordo, "col_netto": col_netto,
+                "rit_dopo": (await tutti(db, "ritenute_acconto"))[0],
                 "righe": await righe_che_contano(db, "prima_nota_banca", fid),
                 "alert_dopo_bonifico": await tutti(db, "alerts", {"codice": "RITENUTA_DA_VERSARE"})}
 
@@ -399,11 +403,15 @@ def test_parcella_con_ritenuta_al_fornitore_esce_il_netto_e_la_ritenuta_resta_da
     from app.services.stato_pagamento_fattura import e_pagata
 
     assert _d(r["inizio"]["fattura"]["importo_ritenuta"]) == Decimal("200.00")
-    # la ritenuta nasce con la parcella: attesa 1040, scadenza il 16 del mese dopo, alert aperto
+    # la ritenuta nasce con la parcella: attesa 1040 e alert aperto, ma senza periodo ne' scadenza
+    # finche' il professionista non e' pagato (titolare, 02/10/2026: il periodo e' il mese del pagamento)
     assert len(r["inizio"]["rit"]) == 1
     rit = r["inizio"]["rit"][0]
-    assert rit["importo_cents"] == 20000 and rit["scadenza"] == "2026-10-16" and rit["fattura_id"] == r["fid"]
+    assert rit["importo_cents"] == 20000 and rit["fattura_id"] == r["fid"]
+    assert not rit.get("scadenza") and rit.get("periodo_fonte") == "in_attesa_pagamento"
     assert [a["stato"] for a in r["inizio"]["alert"]] == ["aperto"]
+    # pagata il 16/09: periodo settembre, versamento entro il 16 del mese dopo
+    assert r["rit_dopo"]["scadenza"] == "2026-10-16" and r["rit_dopo"]["periodo_fonte"] == "mese_del_pagamento"
     # la riga provvisoria di Banca porta il netto, mai il lordo
     assert _d(r["inizio"]["banca"][0]["importo"]) == Decimal("1020.00")
     assert not e_pagata(r["col_lordo"]), "un bonifico di 1.220,00 non e' il netto della parcella"
@@ -433,6 +441,8 @@ def test_il_1040_versato_chiude_l_alert_della_ritenuta(archivio_scenari, monkeyp
     async def scenario():
         await crea_fornitore(db, metodo="bonifico")
         await importa(db, _parcella(), "drive")
+        # il 1040 ha un periodo solo quando il professionista e' pagato: netto addebitato il 16/09
+        await _estratto_ufficiale(monkeypatch, [("2026-09-16", CAUSALE_BONIFICO, -1020.0)])
         # un F24 col 1040 di importo diverso non chiude
         await db["quietanze_f24"].insert_one(quietanza(19999))
         await ritenute.riconcilia_ritenute_esistenti(db)

@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 from app.services.noleggio.controlli import driver_alla_data
 from app.services.payment_invoice_matching import amounts_equal_to_cent
+from app.services.verbali_evidence import data_ora_evento_verbale
 
 
 _IUV_RE = re.compile(r"\b(3\d{17}|0\d{16,17})\b")
@@ -529,17 +530,18 @@ async def process_verbale_document(
             upsert=True,
         )
         candidates = []
+        riferiti = []
         references = []
         if numero:
             references.append({"numero_verbale": numero})
         if iuv:
             references.append({"iuv": iuv})
         if references and importo:
-            candidates = await db["verbali_noleggio"].find(
+            riferiti = await db["verbali_noleggio"].find(
                 {"$or": references}, {"_id": 0}
             ).limit(20).to_list(20)
             candidates = [
-                item for item in candidates
+                item for item in riferiti
                 if amounts_equal_to_cent(item.get("importo"), importo)
             ]
         linked_verbale = None
@@ -562,6 +564,16 @@ async def process_verbale_document(
                     {"id": receipt_id},
                     {"$set": {"stato": "associata", "verbale_id": linked_verbale}},
                 )
+        if not linked_verbale and not riferiti and (numero or targa):
+            # Nessun verbale con quel numero/IUV (uno con importo diverso e' un altro
+            # caso, «importo non coincide»): la ricevuta resta conservata «senza
+            # verbale» con l'alert, e non ne crea uno (si aggancia quando arriva).
+            from app.services.pagopa_receipts import segna_ricevuta_senza_verbale
+
+            await segna_ricevuta_senza_verbale(
+                db, {**receipt, "identificativo_bolletta": iuv},
+                {"matched": False, "reason": "verbale_non_trovato", "stato_verbale": "senza_verbale"},
+            )
         await db["documents_inbox"].update_one(
             {"id": document_id},
             {"$set": {
@@ -593,7 +605,11 @@ async def process_verbale_document(
     existing = await db["verbali_noleggio"].find_one(identity, {"_id": 0})
     verbale_id = str((existing or {}).get("id") or f"verbale_{hashlib.sha256(str(identity).encode()).hexdigest()[:32]}")
     violation_date = letto["data_violazione"]
-    vehicle = await _vehicle_context(db, targa, violation_date)
+    # Il driver e' quello all'ora dell'infrazione, se il PDF la dice.
+    vehicle = await _vehicle_context(
+        db, targa,
+        data_ora_evento_verbale({"data_violazione": violation_date, "ora_violazione": ai_data.get("ora_violazione")})[0],
+    )
     notification_date = (
         parsed_metadata.get("data_notifica")
         or parsed_metadata.get("email_received_date")
@@ -703,6 +719,17 @@ async def process_verbale_document(
     await _schedule_verbale_notifications(
         db, verbale_id=verbale_id, notification_date=notification_date, now_iso=now,
     )
+    # Il secondo pezzo e' arrivato: le ricevute pagoPA rimaste «senza verbale» con
+    # questo numero o IUV gli si agganciano adesso, e il loro alert si chiude.
+    ricevute_agganciate = {}
+    if not is_notice:
+        from app.services.pagopa_receipts import aggancia_ricevute_in_attesa
+
+        scritto = await db["verbali_noleggio"].find_one(
+            verbale_query, {"_id": 0, "id": 1, "numero_verbale": 1, "iuv": 1, "importo": 1},
+        )
+        if scritto:
+            ricevute_agganciate = await aggancia_ricevute_in_attesa(db, scritto)
     await db["documents_inbox"].update_one(
         {"id": document_id},
         {"$set": {
@@ -712,4 +739,5 @@ async def process_verbale_document(
             "status": "processato",
         }},
     )
-    return {"status": "linked", "tipo": "verbale", "verbale_id": verbale_id}
+    return {"status": "linked", "tipo": "verbale", "verbale_id": verbale_id,
+            "ricevute_agganciate": ricevute_agganciate}

@@ -4,8 +4,10 @@ Ogni test e' un'azione dell'utente (Documenti > Import, chiusura del terminale,
 secondo import) e verifica il RISULTATO sui dati, secondo CLAUDE.md:
 
 * in Prima Nota Cassa entra **solo la quota contanti**; il POS non muove contante;
-* la quota POS diventa un credito verso il gestore in Prima Nota Banca solo
-  dalla chiusura **reale del terminale** (mai dall'XML: decisione del 07/08/2026);
+* la quota POS e' un credito verso il gestore in Prima Nota Banca: dalla chiusura
+  **reale del terminale** (per circuito), o — finche' il terminale non risponde —
+  dall'XML, senza circuito (decisione del 02/10/2026; i casi stanno in
+  `test_scenari_funzionali_credito_pos_xml.py`);
 * il libro giornale quadra Dare = Avere e i ricavi sono all'**imponibile**;
 * il secondo import della stessa fonte non scrive niente (`nuovi = 0`);
 * due chiusure vere dello stesso giorno si sommano; una giornata senza
@@ -43,9 +45,13 @@ def test_xml_giornata_cassa_solo_contanti_e_giornale_quadrato(monkeypatch):
         ("entrata", "Corrispettivi", D("300.00"))]
     # Nessuna uscita POS dalla cassa e nessuna riga da 700 o da 1.000.
     assert not [r for r in cassa if r["tipo"] == "uscita"]
-    # Senza chiusura reale del terminale la banca non riceve niente: la quota
-    # POS dell'XML non e' un'attesa (l'XML non sa Numia da SumUp).
-    assert run(attive(db, "prima_nota_banca")) == []
+    # Senza chiusura del terminale l'XML apre comunque il credito verso il
+    # gestore (decisione del 02/10/2026), senza circuito: non e' denaro in
+    # banca (natura credito_pos) e aspetta il terminale o l'accredito.
+    (credito,) = run(attive(db, "prima_nota_banca"))
+    assert (D(credito["importo"]), credito["fonte_credito"], credito["natura"]) == (
+        D("700.00"), "xml", "credito_pos")
+    assert credito["senza_chiusura_terminale"] is True and credito["conto_contabile"] == "15.07"
     (corr,) = run(attive(db, "corrispettivi"))
     assert corr["pos_stato"] == "attende_chiusura_pos_reale"
     assert corr["stato"] == "definitivo_xml" and corr["source"] == "xml"
