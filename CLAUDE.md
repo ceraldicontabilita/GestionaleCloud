@@ -153,6 +153,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - Endpoint senza frontend, scheduler, integrazione o test restano in
   quarantena e non si ricreano; un alias legacy reindirizza al canonico, mai
   con una risposta finta.
+- **Niente «legacy»: una sola collezione, un solo sistema per funzione.** Una collezione, un alias, un endpoint, un campo o uno
+  script di migrazione «vecchio» si **toglie nello stesso commit** che ne toglie l'ultimo lettore, ma solo dopo aver **contato sul
+  database** che in produzione non ha righe (mai presumerlo: `piano_conti` ha dati, `attendance_presenze_calendario` e
+  `email_fornitori` hanno ancora un writer vivo). Una migrazione una tantum si cancella a migrazione fatta; una lettura «in
+  transizione» che unisce la vecchia e la nuova collezione conta due volte lo stesso dato. Una collezione senza righe non resta
+  come costante «deprecata»: non c'è. I test che vietano scritture su un nome morto usano la stringa, non una costante.
 - **Due copie dello stesso modulo non si tengono allineate a mano.** Quando un
   sottopercorso esiste sia in `app/` sia in `app/hr/`, la logica va in un
   modulo solo sotto `app/` e il lato HR diventa un **re-export** (solo import,
@@ -1011,7 +1017,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   con un template Meta approvato e ricontrolla l'ultimo consenso prima di acquisirla. URL Google/Tripadvisor, informativa
   e ritardo si configurano dalla scheda; token e phone number id Meta restano nelle variabili Render.
 
-## Stato attuale (al 01/10/2026 — riscrivere sul posto)
+## Stato attuale (al 02/10/2026 — riscrivere sul posto)
 
 - Ogni merge su `main` fa ridistribuire Render: per qualche minuto la produzione può essere `degraded`. Non si accodano merge. La health del commit `0187a45f`, letta il 30/09 alle 17:54 UTC, dichiarava `hydrated_rows=249598`, `hydration_errors=0`; il vecchio valore ~77.000 non è una misura corrente.
 - TFR: la lettura RPC del runtime il 30/09 misura **1.239** righe in `tfr_accantonamenti`. L'assenza nel deposito relazionale HR, l'importo aggregato e lo stato dell'ingest posta restano baseline da riconfermare; non sono stati interrogati nell'audit in sola lettura.
@@ -1069,11 +1075,12 @@ locale e marker fixture prima delle scritture.
 
 - `legacy_staging` (5 tabelle, ~1 MB; le altre 51 sono state cancellate: gia' nel gestionale al centesimo): restano i dati che il gestionale non puo' ricevere senza una via con admin.
   `residui_fatture_2026` (le 21 righe gia' nel gestionale per numero e importo non ci sono piu'; restano **8 parcelle FPR pagate** nel 2026 senza XML: Carini 3.206,40, Marotta 1.122,24 + 1.517,70 + 1.656,64,
-  Ferrantini 1.122,24 ×3, Graziuso 2.300,00 contanti — servono gli XML dal portale AdE), `catalogo_ceraldi` (caricato all'avvio come listini, vedi «Listini»: dopo il deploy verificare 808 righe in `catalogo_forno_prodotti` e togliere la tabella), `movimenti_carta`
+  Ferrantini 1.122,24 ×3, Graziuso 2.300,00 contanti — servono gli XML dal portale AdE), `catalogo_ceraldi` (caricato in produzione come listini, vedi «Listini»: 808 righe verificate; la tabella si cancella con `select gestionale.consenti_cancellazione();` e `drop table legacy_staging.catalogo_ceraldi;`), `movimenti_carta`
   (34 movimenti carta gen–giu 2026, 18 con fattura collegata a mano: gli estratti Nexi correnti sono PDF mensili senza righe), `presenze_acconti` (da registrare in HR
   l'acconto TFR di 1.800 € a Capezzuto del 31/07/2026 e uno stipendio di agosto) e `presenze_profili` (IBAN e profilo di Murolo, assente dall'HR corrente: da chiedere al titolare se e' un ex dipendente).
   Si migrano con le vie normali (mai con SQL a mano: l'acconto TFR scrive anche il giornale), poi lo schema si cancella.
 - **Collaudo funzionale dei flussi, resto**: HR — `riepilogo-aziendale` HR filtra `status` dove l'anagrafica usa `stato` (da verificare), la liquidazione TFR di HR attinge solo dal valore manuale e non dalle quote da buste, il percorso HR «Buste da email» (`/paghe/importa-email`) ha un lettore proprio fuori dal motore unico dei cedolini; corrispettivi — unificare la dedup delle due strade (`ingest_corrispettivo_parsed`, `importa_csv_ade`); F24 — all'import di un modello l'addebito si cerca due volte con la stessa funzione idempotente (`cerca_controparti_f24` e handler `on_f24_acquisito_riprocessa`): togliere il passo `banca` dal primo. **Da lanciare dopo il deploy** (admin, prima `dry_run`): `POST /api/admin/f24/ripubblica-evento-acquisito`. Decisioni del titolare in attesa: nessuna (le dodici del 02/10/2026 sono nel codice; Flotta: targhe→driver→dal da scrivere quando il titolare è al PC).
+- **Residui «legacy» con dati o writer vivi** (da decidere uno a uno, non si cancellano alla cieca): `piano_conti` (31 righe, letta da `_conti_operativi_legacy` in `routers/accounting/piano_conti.py`; il piano ufficiale è in Python), `attendance_presenze_calendario` (HR, `set-presenza` la scrive ancora), `email_fornitori` (Lotti, `email_ordini.py` la scrive e la elenca), `hash_pin_legacy` (HR: i PIN col vecchio hash restano validi finché ogni persona non ne imposta uno nuovo), `extracted_documents` (vuota; `/da-rivedere` e `/da-rivedere/{id}/classifica` in `ai_parser.py` da verificare), gli alias 307 e `LegacyRouteResolver` (indirizzi già in circolazione), e i rami «schema legacy» di `alerts.py`, `scadenze.py`, `fiscalita_italiana.py`, `suppliers_module/base.py` (`_legacy_supplier_view`): togliere ognuno solo dopo aver contato le righe con quello schema.
 - **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 tenute fuori dal giornale dal
   non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
 - **All'avvio un solo `server_failed`** (02/10/2026, dopo #1020 e #1021): nei primi 5 minuti i giri di recupero partono insieme (quietanze orfane, lettura articoli AI di Lotti, letture `ssl`/`aiohttp decompress_sync` del caricamento cache) e il loop resta fermo 4-6 s; il riavvio ogni 20 minuti è chiuso, resta da scaglionare i giri d'avvio o portarli in thread.

@@ -89,10 +89,9 @@ const ProductManager = () => {
   };
 
   const daLotti = (product) => product?.origine === 'lotti';
-  const sceltaLegacy = (product) => product?.compat_override_legacy === true;
 
   const handleSave = async () => {
-    if (!editingProduct || daLotti(editingProduct) || sceltaLegacy(editingProduct)) return;
+    if (!editingProduct || daLotti(editingProduct)) return;
     setSaving(true);
     try {
       const { id, name, nameIT, price, description, descriptionIT, allergens, image, visible } = editingProduct;
@@ -187,7 +186,6 @@ const ProductManager = () => {
                         {product.visible === false ? 'Nascosto ai clienti'
                           : product.pubblicabile === false ? 'Nascosto: prezzo da completare' : 'Visibile ai clienti'}
                         {daLotti(product) ? ' · Gestito in Lotti' : ''}
-                        {sceltaLegacy(product) ? ' · Scelta della vecchia carta da migrare' : ''}
                       </p>
                       <p className="text-sm text-gray-500">{product.name}</p>
                       <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -236,7 +234,7 @@ const ProductManager = () => {
           </DialogHeader>
           {editingProduct && (
             <div className="space-y-4 mt-4">
-              <fieldset disabled={saving || daLotti(editingProduct) || sceltaLegacy(editingProduct)} className="space-y-4 min-w-0">
+              <fieldset disabled={saving || daLotti(editingProduct)} className="space-y-4 min-w-0">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="prodotto-nome-it">Nome Italiano</Label>
@@ -326,12 +324,6 @@ const ProductManager = () => {
               </div>
               </fieldset>
 
-              {sceltaLegacy(editingProduct) && (
-                <p role="status" className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-                  Questo prodotto conserva prezzo e pubblicazione della vecchia carta. Prima di modificarli occorre approvare la migrazione di questa scelta nel catalogo Menu.
-                </p>
-              )}
-
               {daLotti(editingProduct) && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <p className="text-sm text-yellow-800">
@@ -345,7 +337,7 @@ const ProductManager = () => {
               )}
 
               <div className="flex gap-2 pt-4">
-                <Button onClick={handleSave} className="flex-1" disabled={saving || daLotti(editingProduct) || sceltaLegacy(editingProduct)}>
+                <Button onClick={handleSave} className="flex-1" disabled={saving || daLotti(editingProduct)}>
                   <Save className="w-4 h-4 mr-2" />
                   {saving ? 'Salvataggio…' : 'Salva'}
                 </Button>

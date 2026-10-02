@@ -7,8 +7,6 @@ import pathlib
 from app.db_collections import (
     COLL_ESTRATTO_CONTO,
     COLL_ESTRATTI_CONTO_DOCUMENTI,
-    COLL_ESTRATTO_CONTO_LEGACY,
-    COLL_BANK_STATEMENTS,
 )
 from app.database import Collections
 
@@ -36,5 +34,5 @@ def _writers(coll: str) -> list:
 
 
 def test_nessun_writer_su_legacy():
-    for coll in (COLL_ESTRATTO_CONTO_LEGACY, COLL_BANK_STATEMENTS, "movimenti_f24_banca"):
-        assert _writers(coll) == [], f"writer inatteso sulla legacy {coll}: {_writers(coll)}"
+    for coll in ("estratto_conto", "bank_statements", "movimenti_f24_banca"):
+        assert _writers(coll) == [], f"writer su una collezione che non esiste piu' {coll}: {_writers(coll)}"
