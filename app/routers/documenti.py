@@ -3585,7 +3585,7 @@ async def upload_documento_automatico(
                 from app.services.pagopa_receipts import parse_receipt_pdf
                 from app.services.fiscal_accounting_policy import build_journal_proposal
 
-                metadata = parse_receipt_pdf(content, filename=filename)
+                metadata = await asyncio.to_thread(parse_receipt_pdf, content, filename=filename)
                 metadata["obligation_status"] = "APERTO"
                 metadata["journal_proposal"] = build_journal_proposal(
                     metadata, document_type="AVVISO_PAGOPA"

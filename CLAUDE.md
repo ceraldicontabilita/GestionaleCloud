@@ -258,7 +258,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
     usarne uno nuovo, `archivio_documenti_memoria.evaluate_expression` deve conoscerlo.
 16. **Il calcolo puro su una collezione intera non gira sull'event loop**: oltre 5 s di loop bloccato l'health check di Render scade e
     il servizio si riavvia, azzerando i timer di tutti i giri lunghi (un giro che parte «18 minuti dopo l'avvio» non parte mai se si
-    riavvia ogni 20). Si porta in `asyncio.to_thread` (`collega_ravvedimenti`: 10 s di calcolo, causa dei riavvii del 01/10/2026);
+    riavvia ogni 20). Si porta in `asyncio.to_thread` (`collega_ravvedimenti`: 10 s di calcolo, causa dei riavvii del 01/10/2026; la lettura delle ricevute `parse_receipt_pdf`, con l'OCR di un PDF scansionato, dal giro della cartella unica: un riavvio ogni 20 minuti fino al 02/10/2026);
     il segnale è `[loop bloccato] ripartito dopo N s` in `sorveglianza_loop`.
 
 ## Identità, prove e attese
