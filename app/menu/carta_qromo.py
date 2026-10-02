@@ -5,8 +5,6 @@ del ponte Lotti. Il catalogo Qromo (``menu_carta`` o seme) aggiunge solamente
 colori, foto locali, orari e dettagli non modificati: non decide prezzo,
 allergeni o pubblicazione. Non si espongono listini interni o prodotti
 rimossi usando una seconda copia del catalogo.
-Le scelte della vecchia ``menu_carta_override`` restano leggibili tramite
-lo stesso adattatore delle API Menu finche' il titolare ne approva la migrazione.
 
 Endpoint:
     GET  /api/menu/carta                     pubblico, per la pagina /menu/carta/
@@ -129,7 +127,7 @@ async def carta_pubblica():
 
 async def _carta_dai_dati(dati):
     dettagli = costruisci_carta(dati["pub"], dati["extras"], dati.get("imgmap") or {})
-    categorie, sottocategorie, prodotti = await menu_routes._fetch_all()
+    categorie, sottocategorie, prodotti = await menu_routes._fetch_all(catalogo_carta=True)
     return carta_da_menu(categorie, sottocategorie, prodotti, dettagli, dati.get("imgmap") or {})
 
 
@@ -163,7 +161,7 @@ def carta_da_menu(categorie, sottocategorie, prodotti, dettagli, imgmap):
     for p in ordine(prodotti, dettagli["items"]):
         sub = sub_by_id.get(p["subcategory_id"])
         prezzo = menu_routes.prezzo_centesimi(p.get("price"))
-        if p.get("visible") is False or prezzo is None or not sub or sub["category_id"] != p["category_id"]:
+        if p.get("visible") is False or (prezzo is None and p.get("origine") != "lotti") or not sub or sub["category_id"] != p["category_id"]:
             continue
         extra = item_extra.get(p["id"], {})
         descrizione = (p.get("descriptionIT") or p.get("description") or "").strip() or None
@@ -178,13 +176,21 @@ def carta_da_menu(categorie, sottocategorie, prodotti, dettagli, imgmap):
             "mat": extra.get("mat") if testo_invariato else None, "lists": extra.get("lists"),
         })
     sub_piene = {i["c"] for i in items}
+    foto_sub = {}
+    for item in items:
+        if item.get("pic"):
+            foto_sub.setdefault(item["c"], item["pic"])
     cats = [{**cat_extra.get(s["id"], {}), "id": s["id"], "m": s["category_id"],
-             "n": s["nameIT"] or s["name"], "pic": foto(s), "on": 1,
+             "n": s["nameIT"] or s["name"], "pic": foto(s) or foto_sub.get(s["id"]), "on": 1,
              "col": cat_extra.get(s["id"], {}).get("col") or "5b7a6b"}
             for s in ordine(sottocategorie, dettagli["cats"]) if s["id"] in sub_piene]
     menu_pieni = {c["m"] for c in cats}
+    foto_menu = {}
+    for categoria in cats:
+        if categoria.get("pic"):
+            foto_menu.setdefault(categoria["m"], categoria["pic"])
     menus = [{**menu_extra.get(c["id"], {}), "id": c["id"], "n": c["nameIT"] or c["name"],
-              "pic": foto(c), "on": 1, "col": menu_extra.get(c["id"], {}).get("col") or "5b7a6b"}
+              "pic": foto(c) or foto_menu.get(c["id"]), "on": 1, "col": menu_extra.get(c["id"], {}).get("col") or "5b7a6b"}
              for c in ordine(categorie, dettagli["menus"]) if c["id"] in menu_pieni]
     return {"menus": menus, "cats": cats, "items": items}
 
@@ -208,14 +214,11 @@ async def stato(_utente: str = Depends(verify_token)):
     salvato = await db[COLLEZIONE].find_one({"id": ID_DATASET}, {"_id": 0, "importato_il": 1})
     dati = await _dataset()
     carta = await _carta_dai_dati(dati)
-    scelte_legacy = await menu_routes._scelte_legacy()
     return {
         "fonte": "importato" if salvato else "seme",
         "catalogo": "menu_products",
         "importato_il": (salvato or {}).get("importato_il"),
         "menu": len(carta["menus"]), "categorie": len(carta["cats"]), "prodotti": len(carta["items"]),
-        "override": len(scelte_legacy),
-        "compatibilita_legacy": bool(scelte_legacy),
     }
 
 

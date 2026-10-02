@@ -28,11 +28,9 @@ logger = logging.getLogger(__name__)
 # Dati fiscali del titolare: ogni rotta e' solo admin (prima solo PUT e rileva lo erano).
 router = APIRouter(dependencies=[Depends(get_current_admin_user)])
 
-# Consolidamento F24 (P1 §5.1): collezione canonica UNICA `f24_unificato`. La
-# vecchia `f24_commercialista` (letterale) è stata migrata qui in modo non
-# distruttivo (app/scripts/migra_f24_unificato.py); leggere entrambe dopo la
-# migrazione avrebbe contato due volte lo stesso F24. Il motore lavora sul
-# documento, non sulla collezione.
+# Collezione F24 UNICA: `f24_unificato`. Non esiste una seconda collezione da
+# leggere in parallelo: due letture contano due volte lo stesso F24. Il motore
+# lavora sul documento, non sulla collezione.
 _COLLEZIONI_F24 = ("f24_unificato",)
 
 

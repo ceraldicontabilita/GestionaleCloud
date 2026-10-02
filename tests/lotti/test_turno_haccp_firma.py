@@ -327,7 +327,7 @@ def test_senza_firma_verificata_non_si_dichiara_niente(responsabile, monkeypatch
     assert e.value.status_code == 401
 
 
-def test_la_dichiarazione_non_copre_una_temperatura_vera(responsabile, monkeypatch):
+def test_la_dichiarazione_firma_ma_non_copre_una_temperatura_vera(responsabile, monkeypatch):
     import app.lotti.auth as auth
     from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno, dichiara_conformi_oggi
 
@@ -339,10 +339,18 @@ def test_la_dichiarazione_non_copre_una_temperatura_vera(responsabile, monkeypat
     ))
     monkeypatch.setattr(auth, "request_actor", lambda _r: {
         "id": "hr-1", "nome": "Ceraldi Vincenzo", "ruolo": "amministratore", "via": "pin"})
-    assert run(dichiara_conformi_oggi(request=object(), pin=""))["dichiarate"] == 2
+    esito = run(dichiara_conformi_oggi(request=object(), pin=""))
+    assert esito["dichiarate"] == 2 and esito["firmate"] == 1
     casella = run(db.temperature_positive.find_one({"frigorifero_numero": 1}))[
         "temperature"][str(oggi.month)][str(oggi.day)]
-    assert casella["temp"] == 10.0
+    assert casella["temp"] == 10.0 and casella["allarme"] is True
+    assert casella["firma_verificata"] is True
+    assert casella["operatore"] == "Ceraldi Vincenzo"
+    assert casella["firma_significato"] == "conferma_controllo_giornaliero"
+
+    secondo = run(dichiara_conformi_oggi(request=object(), pin=""))
+    assert secondo["dichiarate"] == 0 and secondo["firmate"] == 0
+    assert secondo["gia_firmate"] == 3
 
 
 def test_l_anomalia_trovata_sostituisce_la_conformita(responsabile):

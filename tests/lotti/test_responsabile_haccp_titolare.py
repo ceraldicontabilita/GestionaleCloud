@@ -266,7 +266,8 @@ def test_il_titolare_dichiara_conformi_con_la_sessione_del_gestionale(archivio, 
 
     esito = run(dichiara_conformi_oggi(request=object(), pin=""))
 
-    assert esito == {"success": True, "dichiarate": 3, "firmato_da": "Ceraldi Vincenzo"}
+    assert esito == {"success": True, "dichiarate": 3, "firmate": 0,
+                     "gia_firmate": 0, "firmato_da": "Ceraldi Vincenzo"}
     for collezione, campo in ((db.temperature_positive, "frigorifero_numero"),
                               (db.temperature_negative, "congelatore_numero")):
         casella = run(collezione.find_one({campo: 1}))["temperature"][str(oggi.month)][str(oggi.day)]

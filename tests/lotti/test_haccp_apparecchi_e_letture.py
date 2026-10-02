@@ -25,11 +25,12 @@ def db(monkeypatch):
     import app.lotti.routers.attrezzature as attr
     import app.lotti.routers.haccp_auto as ha
     import app.lotti.routers.lotti as lotti
+    import app.lotti.routers.sanificazione as san
     import app.lotti.routers.temperature_negative as tn
     import app.lotti.routers.temperature_positive as tp
     import app.lotti.servizi.schede_temperature as st
 
-    for modulo in (attr, ha, lotti, tn, tp, st):
+    for modulo in (attr, ha, lotti, san, tn, tp, st):
         monkeypatch.setattr(modulo, "db", database)
     return database
 
@@ -72,6 +73,30 @@ def test_lista_attrezzature_non_scrive(db):
     risposta = _run(attr.get_attrezzature())
     assert [f["numero"] for f in risposta["frigoriferi"]] == [5]  # letto, non censito
     assert _run(db.attrezzature_config.count_documents({})) == 0
+
+
+def test_sanificazione_usa_i_nomi_canonici_degli_apparecchi(db):
+    from app.lotti.routers import sanificazione as san
+
+    _run(db.attrezzature_config.insert_many([
+        {"tipo": "frigo", "numero": 5, "nome": "FRIGO PASTICCERIA 5", "attivo": True},
+        {"tipo": "congelatore", "numero": 1, "nome": "CONGELATORE PASTICCERIA 1", "attivo": True},
+    ]))
+    _run(db.sanificazione_apparecchi.insert_one({
+        "anno": 2026,
+        "registrazioni_frigoriferi": {"8": [{"mese": 1, "giorno": 1, "eseguita": True}]},
+        "registrazioni_congelatori": {"11": [{"mese": 1, "giorno": 1, "eseguita": True}]},
+    }))
+
+    scheda = _run(san.get_scheda_apparecchi(2026))
+    assert scheda["apparecchi_frigoriferi"] == [
+        {"numero": 5, "nome": "FRIGO PASTICCERIA 5"},
+    ]
+    assert scheda["apparecchi_congelatori"] == [
+        {"numero": 1, "nome": "CONGELATORE PASTICCERIA 1"},
+    ]
+    assert _run(san.get_sanificazioni_frigorifero(2026, 5))["nome"] == "FRIGO PASTICCERIA 5"
+    assert _run(san.get_sanificazioni_congelatore(2026, 1))["nome"] == "CONGELATORE PASTICCERIA 1"
 
 
 def test_turno_crea_la_scheda_mancante_e_apre_la_casella(db):

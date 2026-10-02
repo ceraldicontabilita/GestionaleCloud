@@ -51,6 +51,14 @@ async def lista_stampanti():
     return docs
 
 
+@router.get("/per-categoria")
+async def stampante_per_categoria(categoria: str, reparto: str = ""):
+    """Stampante attiva da usare per reparto + categoria (stessa regola della coda).
+    La usa il tablet per la stampa diretta: l'IP viene sempre dalla configurazione."""
+    st = await _stampante_per_categoria(categoria, reparto)
+    return {"stampante": st}
+
+
 @router.post("")
 async def crea_stampante(s: Stampante, _admin=Depends(require_admin)):
     d = s.dict()

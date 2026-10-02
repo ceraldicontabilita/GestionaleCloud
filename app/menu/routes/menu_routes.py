@@ -11,40 +11,6 @@ from app.menu.models.menu_models import (
 )
 
 router = APIRouter(prefix="/api/menu", tags=["Menu"])
-COLLEZIONE_OVERRIDE_LEGACY = "menu_carta_override"
-
-
-async def _db_legacy():
-    from app.database import Database
-    return Database.db
-
-
-async def _scelte_legacy():
-    db = await _db_legacy()
-    if db is None:
-        return []  # Il Menu isolato non possiede il registro ERP legacy.
-    return await db[COLLEZIONE_OVERRIDE_LEGACY].find({}, {"_id": 0}).to_list(5000)
-
-
-async def _prodotti_con_scelte_legacy(righe):
-    """Compatibilita' unica per carta, API pubbliche e amministrazione.
-
-    Legge soltanto ID canonici ancora presenti; nessuna migrazione implicita.
-    I prodotti di Lotti restano di proprieta' delle ricette.
-    """
-    scelte = {str(r["id"]): r for r in await _scelte_legacy() if r.get("id") is not None}
-    risultato = []
-    for riga in righe:
-        p = dict(riga)
-        scelta = scelte.get(str(p["id"])) if p.get("origine") != "lotti" else None
-        if scelta:
-            p["compat_override_legacy"] = True
-            if scelta.get("disponibile") is not None:
-                p["visible"] = scelta["disponibile"]
-            if scelta.get("prezzo_centesimi") is not None:
-                p["price"] = f"{Decimal(scelta['prezzo_centesimi']) / 100:.2f}€"
-        risultato.append(p)
-    return risultato
 
 
 # ================== Mappatura colonne DB (snake_case) <-> API (camelCase) ==================
@@ -103,7 +69,6 @@ def prod_out(row: dict) -> dict:
         # visible/origine: prodotti creati da Lotti (origine "lotti") nascono con
         # visible = scelta del titolare in Lotti ("menu_pubblico").
         "visible": _visibile(row), "pubblicabile": _pubblicabile(row), "origine": row.get("origine"),
-        "compat_override_legacy": bool(row.get("compat_override_legacy")),
     }
 
 
@@ -134,11 +99,13 @@ def _prodotti_pubblici(rows) -> list:
     return [prod_out(r) for r in rows if _pubblicabile(r)]
 
 
-async def _fetch_all():
+async def _fetch_all(*, catalogo_carta=False):
     categories = [cat_out(r) for r in supabase.table("menu_categories").select("*").order("id").execute().data]
     subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").order("id").execute().data]
-    righe = await _prodotti_con_scelte_legacy(supabase.table("menu_products").select("*").order("id").execute().data)
-    products = _prodotti_pubblici(righe)
+    righe = supabase.table("menu_products").select("*").order("id").execute().data
+    products = [prod_out(r) for r in righe if _pubblicabile(r) or (
+        catalogo_carta and r.get("origine") == "lotti" and _visibile(r)
+    )]
     return categories, subcategories, products
 
 
@@ -226,7 +193,7 @@ async def get_category(category_id: int):
     category = cat_out(res.data[0])
 
     subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").eq("category_id", category_id).order("id").execute().data]
-    products = _prodotti_pubblici(await _prodotti_con_scelte_legacy(supabase.table("menu_products").select("*").eq("category_id", category_id).order("id").execute().data))
+    products = _prodotti_pubblici(supabase.table("menu_products").select("*").eq("category_id", category_id).order("id").execute().data)
 
     # Come nel menu completo: le sezioni senza prodotti visibili non si mostrano.
     category['subcategories'] = _sottocategorie_con_prodotti(subcategories, products)
@@ -241,7 +208,7 @@ async def get_subcategory(subcategory_id: int):
         raise HTTPException(status_code=404, detail="Subcategory not found")
     subcategory = subcat_out(res.data[0])
 
-    products = _prodotti_pubblici(await _prodotti_con_scelte_legacy(supabase.table("menu_products").select("*").eq("subcategory_id", subcategory_id).order("id").execute().data))
+    products = _prodotti_pubblici(supabase.table("menu_products").select("*").eq("subcategory_id", subcategory_id).order("id").execute().data)
 
     subcategory['items'] = products
     return subcategory
@@ -251,7 +218,7 @@ async def get_subcategory(subcategory_id: int):
 async def get_product(product_id: int):
     """Get a specific product"""
     res = supabase.table("menu_products").select("*").eq("id", product_id).limit(1).execute()
-    righe = await _prodotti_con_scelte_legacy(res.data)
+    righe = res.data
     if not righe or not _pubblicabile(righe[0]):
         raise HTTPException(status_code=404, detail="Product not found")
     return prod_out(righe[0])
@@ -278,7 +245,7 @@ async def search_products(q: str, limit: int = 20):
         .limit(limit)
         .execute()
     )
-    products = _prodotti_pubblici(await _prodotti_con_scelte_legacy(res.data))
+    products = _prodotti_pubblici(res.data)
     return {"results": products, "count": len(products)}
 
 
@@ -424,8 +391,6 @@ async def _verifica_prodotto_modificabile(product_id: int):
         raise HTTPException(status_code=404, detail="Product not found")
     if (esistente.data[0].get("origine") or "") == ORIGINE_LOTTI:
         raise HTTPException(status_code=409, detail=MESSAGGIO_RIGA_DI_LOTTI)
-    if any(str(r.get("id")) == str(product_id) for r in await _scelte_legacy()):
-        raise HTTPException(status_code=409, detail="Questo prodotto conserva una scelta della vecchia carta. Prezzo e pubblicazione sono mostrati anche qui; prima di modificarli occorre approvare la migrazione di quella scelta nel catalogo Menu. Nessun dato e' stato modificato.")
 
 
 @router.put("/admin/products/{product_id}")
@@ -467,7 +432,7 @@ async def delete_product(product_id: int, username: str = Depends(verify_token))
 @router.get("/admin/products/all")
 async def get_all_products_flat(username: str = Depends(verify_token)):
     """Get all products in a flat list for admin management"""
-    products = [prod_out(r) for r in await _prodotti_con_scelte_legacy(supabase.table("menu_products").select("*").order("id").execute().data)]
+    products = [prod_out(r) for r in supabase.table("menu_products").select("*").order("id").execute().data]
 
     categories = {r['id']: r['name_it'] for r in supabase.table("menu_categories").select("id,name_it").execute().data}
     subcategories = {r['id']: r['name_it'] for r in supabase.table("menu_subcategories").select("id,name_it").execute().data}

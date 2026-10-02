@@ -1,0 +1,5 @@
+-- v30: il compositore del titolare cerca nel Menu digitale vero, comprese le
+-- ricette Lotti ancora senza prezzo. Migrazione canonica:
+-- supabase/migrations/20261002142300_colazioni_catalogo_menu_digitale.sql
+-- Applicare la migrazione canonica tramite il sistema migrazioni del progetto.
+-- Questo promemoria non duplica SQL e non dipende dai comandi psql.

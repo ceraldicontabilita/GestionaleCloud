@@ -333,6 +333,33 @@ def test_backfill_dry_run_non_scrive_e_conta_i_prezzi_tavolo_mancanti(ambiente):
     assert finto.tabelle.get("menu_products", []) == []
 
 
+def test_pubblica_tutte_spunta_archivio_senza_doppioni_e_con_foto(ambiente):
+    _, database, finto = ambiente
+    _semina(database, 2, menu_pubblico=False, foto_url="https://foto.test/prodotto.jpg")
+    anteprima = run(menu_backfill.ripubblica_menu(database, dry_run=True, pubblica_tutte=True))
+    assert anteprima["visibili"] == 2 and anteprima["nascoste"] == 0
+    assert run(database.ricette.count_documents({"menu_pubblico": False})) == 2
+    assert finto.tabelle.get("menu_products", []) == []
+    esito = run(menu_backfill.ripubblica_menu(database, pubblica_tutte=True))
+    assert esito["pubblicate"] == 2 and esito["errori"] == 0
+    assert run(database.ricette.count_documents({"menu_pubblico": True})) == 2
+    assert all(p["visible"] and p["image"] == "https://foto.test/prodotto.jpg"
+               for p in finto.tabelle["menu_products"])
+    stato = run(menu_backfill.stato_ripubblicazione_menu(database))
+    assert len(stato["visibilita_precedente"]) == 2
+    secondo = run(menu_backfill.ripubblica_menu(database, pubblica_tutte=True))
+    assert secondo["pubblicate"] == 0 and secondo["aggiornate"] == 2
+
+
+def test_backfill_conserva_riferimento_foto_storage(ambiente, monkeypatch):
+    _, database, finto = ambiente
+    from app.lotti.servizi import supabase_foto_ricette
+    monkeypatch.setattr(supabase_foto_ricette, "url_pubblico", lambda p: f"https://foto.test/{p}")
+    _semina(database, 1, foto_storage_path="lotti/ricette/foto.jpg")
+    run(menu_backfill.ripubblica_menu(database))
+    assert _riga_menu(finto)["image"] == "https://foto.test/lotti/ricette/foto.jpg"
+
+
 def test_stato_backfill_leggibile_dopo_il_giro(ambiente):
     _, database, _ = ambiente
     _semina(database, 1)
@@ -385,7 +412,7 @@ def test_put_reparto_accetta_bar(ambiente):
 # 6) Una ricetta senza prezzo non diventa MAI visibile nel Menu
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_ricetta_senza_prezzo_non_diventa_visibile_ed_e_segnalata(ambiente):
+def test_ricetta_senza_prezzo_visibile_nella_carta_senza_prezzo_inventato(ambiente):
     """Una riga con `price` vuoto entrerebbe nell'ordine contando 0 euro
     (`app/menu/models/order_models.py::compute_total` scarta il valore e
     continua): un prodotto ordinabile gratis. Si pubblica nascosta, e il
@@ -397,10 +424,10 @@ def test_ricetta_senza_prezzo_non_diventa_visibile_ed_e_segnalata(ambiente):
     sync = creata["menu_sync"]
     assert sync["prezzo_mancante"] is True
     assert sync["visibile_richiesta"] is True
-    assert sync["visible"] is False
-    assert sync["motivo_nascosto"] == "prezzo_assente"
+    assert sync["visible"] is True
+    assert sync["motivo_nascosto"] is None
     riga = _riga_menu(finto)
-    assert riga["price"] == "" and riga["visible"] is False
+    assert riga["price"] == "" and riga["visible"] is True
     # Pubblicata comunque: resta idempotente e recuperabile
     assert riga["lotti_ref"] == f"ricetta:{creata['id']}"
 
@@ -409,7 +436,7 @@ def test_appena_arriva_un_prezzo_la_ricetta_diventa_visibile(ambiente):
     ricette, _, finto = ambiente
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(
         nome="Senza prezzo", prezzo_vendita=None, menu_pubblico=True))))
-    assert _riga_menu(finto)["visible"] is False
+    assert _riga_menu(finto)["visible"] is True
 
     esito = run(ricette.set_prezzo_tavolo(creata["id"], 2.50))
     assert esito["menu_sync"]["prezzo_mancante"] is False
@@ -425,7 +452,7 @@ def test_senza_prezzo_ma_gia_nascosta_nessun_motivo_da_segnalare(ambiente):
     non e' il prezzo a nasconderla e il cruscotto non deve segnalarla."""
     ricette, _, _ = ambiente
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(
-        nome="Bozza", prezzo_vendita=None))))
+        nome="Bozza", prezzo_vendita=None, menu_pubblico=False))))
     assert creata["menu_sync"]["prezzo_mancante"] is True
     assert creata["menu_sync"]["motivo_nascosto"] is None
 
@@ -445,14 +472,12 @@ def test_backfill_conta_e_campiona_le_ricette_senza_prezzo(ambiente):
     assert esito["senza_prezzo"] == 2
     assert {c["nome"] for c in esito["campioni_senza_prezzo"]} == {
         "Seminata da _seed_lotto_nomi", "Import Excel"}
-    # Solo quella che il titolare voleva mostrare viene segnalata come nascosta
-    assert esito["nascoste_per_prezzo"] == 1
-    assert [c["nome"] for c in esito["campioni_nascoste_per_prezzo"]] == [
-        "Seminata da _seed_lotto_nomi"]
+    assert esito["nascoste_per_prezzo"] == 0
+    assert esito["campioni_nascoste_per_prezzo"] == []
 
     visibili = {p["name_it"]: p["visible"] for p in finto.tabelle["menu_products"]}
-    assert visibili == {"Con prezzo": True, "Seminata da _seed_lotto_nomi": False,
-                        "Import Excel": False}
+    assert visibili == {"Con prezzo": True, "Seminata da _seed_lotto_nomi": True,
+                        "Import Excel": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
