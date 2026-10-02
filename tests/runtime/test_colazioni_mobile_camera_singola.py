@@ -8,8 +8,14 @@ HTML = (
 
 def test_menu_albergatore_mobile_non_richiede_scroll_orizzontale():
     assert 'pre==="albergatore"?"hotel-tabs":""' in HTML
-    assert "grid-template-columns:repeat(4,minmax(0,1fr))" in HTML
+    assert ".hotel-tabs{position:sticky" in HTML
+    assert "display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible" in HTML
     assert ".hotel-tabs button{width:100%;min-width:0" in HTML
+
+
+def test_area_hotel_resta_chiara_anche_con_tema_scuro_del_dispositivo():
+    assert 'body[data-area="hotel"]{color-scheme:light' in HTML
+    assert '--bg:#fbf8f2;--card:#fff;--ink:#243229' in HTML
 
 
 def test_prenotazione_gestisce_una_sola_camera_senza_date_nella_card():
