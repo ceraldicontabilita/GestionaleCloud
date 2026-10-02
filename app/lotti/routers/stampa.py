@@ -352,23 +352,35 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
     CP437 = b"\x1b\x74\x00"       # ESC t 0  codepage
     AL_C = b"\x1b\x61\x01"; AL_L = b"\x1b\x61\x00"   # align center / left
     B_ON = b"\x1b\x45\x01"; B_OFF = b"\x1b\x45\x00"  # bold on/off
-    SZ = lambda n: b"\x1d\x21" + bytes([n])          # GS ! n  (0=normale,0x11=2x,0x01=2xh)
+    FONT_A = b"\x1b\x4d\x00"; FONT_B = b"\x1b\x4d\x01"  # 48 / 64 colonne su 80 mm
+    CHAR_SP_0 = b"\x1b\x20\x00"                         # niente spazio extra tra caratteri
+    SZ = lambda n: b"\x1d\x21" + bytes([n])          # GS ! n  (0=normale,0x10=altezza 2x)
     NL = b"\n"
     CUT = b"\n\n\n\x1d\x56\x42\x00"                   # feed + full cut
     sep = _esc_enc("-" * larghezza) + NL
 
-    def line(s="", center=False, bold=False, big=False):
+    def nowrap(s):
+        """Una riga ESC/POS non deve contenere a-capo o spazi ripetuti dai dati."""
+        return re.sub(r"\s+", " ", str(s or "")).strip()
+
+    def line(s="", center=False, bold=False, big=False, compact=False):
         out = bytearray()
         out += AL_C if center else AL_L
+        out += FONT_B if compact else FONT_A
+        out += CHAR_SP_0
         if big:
-            out += SZ(0x11)
+            # Altezza doppia, larghezza normale: il numero lotto resta grande
+            # senza dimezzare le colonne disponibili e quindi senza spezzarsi.
+            out += SZ(0x10)
         if bold:
             out += B_ON
-        out += _esc_enc(s) + NL
+        out += _esc_enc(nowrap(s)) + NL
         if bold:
             out += B_OFF
         if big:
             out += SZ(0x00)
+        if compact:
+            out += FONT_A
         return bytes(out)
 
     prodotto = lotto.get("prodotto") or lotto.get("prodotto_nome") or ""
@@ -384,7 +396,7 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
     lotti_scalati = (lotto.get("lotti_fornitori") or {}).get("lotti_scalati") or []
     trac = {}
     for ls in lotti_scalati:
-        k = (ls.get("ingrediente") or ls.get("prodotto") or "").strip().lower()
+        k = re.sub(r"\s+", " ", (ls.get("ingrediente") or ls.get("prodotto") or "")).strip().lower()
         if not k:
             continue
         fat = str(ls.get("fattura_ref") or "").strip()
@@ -399,7 +411,7 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
             trac[k] = et
 
     def trac_for(ing):
-        kk = ing.lower()
+        kk = re.sub(r"\s+", " ", str(ing or "")).strip().lower()
         for k, v in trac.items():
             if k and (k in kk or kk in k):
                 return v
@@ -412,21 +424,21 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
     if pezzi:
         buf += line(f"QTA: {pezzi} {unita}", center=True, bold=True)
     buf += sep
-    buf += line(f"PRODOTTO: {prodotto}", bold=True)
-    buf += line(f"PRODUZIONE: {data_prod}")
-    buf += line(f"SCADENZA: {data_scad}", bold=True)
+    buf += line(f"PRODOTTO: {prodotto}", bold=True, compact=True)
+    buf += line(f"PRODUZIONE: {data_prod}", compact=True)
+    buf += line(f"SCADENZA: {data_scad}", bold=True, compact=True)
     if scad_abb:
-        buf += line(f"SCAD -18°C: {scad_abb}")
+        buf += line(f"SCAD -18°C: {scad_abb}", compact=True)
     if frigo:
-        buf += line(f"FRIGO: {frigo}")
+        buf += line(f"FRIGO: {frigo}", compact=True)
     if ingredienti:
         buf += sep
         buf += line("INGREDIENTI + TRACCIABILITA:", bold=True)
         for i in ingredienti:
-            buf += line(f"- {i}")
+            buf += line(f"- {i}", compact=True)
             et = trac_for(i)
             if et:
-                buf += line(f"    {et}")
+                buf += line(f"  {et}", compact=True)
     buf += sep
     if allergeni:
         buf += line("ALLERGENI (Reg. UE 1169/2011):", bold=True)
@@ -434,7 +446,7 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
     else:
         buf += line("Non contiene allergeni dichiarati")
     buf += sep
-    buf += line(f"{prodotto.upper()} - {data_prod}", center=True, bold=True)
+    buf += line(f"{prodotto.upper()} - {data_prod}", center=True, bold=True, compact=True)
     buf += line(f"Stampato: {datetime.now().strftime('%d/%m/%Y %H:%M')}", center=True)
     buf += line("Reg. CE 178/2002", center=True)
     buf += CUT
