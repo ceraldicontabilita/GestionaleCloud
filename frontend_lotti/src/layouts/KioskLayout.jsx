@@ -34,7 +34,7 @@ export default function KioskLayout({ hash }) {
 
   // Home kiosk — nessuna autenticazione richiesta, solo selezione reparto
   if (reparto === "home") {
-    return <TabletHome onEntra={(rep) => { window.location.hash = rep === "ricette" ? "ricette" : `tablet/${rep}`; }} />;
+    return <TabletHome />;
   }
 
   // Tutti gli altri reparti richiedono sessione operatore
@@ -52,7 +52,7 @@ export default function KioskLayout({ hash }) {
     // ruolo salvato nel browser.
     const titolare = opObj ? opObj.ruolo === "amministratore" : sessioneTitolareAttiva();
     if (!titolare) {
-      return <TabletHome onEntra={(rep) => { window.location.hash = rep === "ricette" ? "ricette" : `tablet/${rep}`; }} preselectReparto={reparto} />;
+      return <TabletHome preselectReparto={reparto} hashRichiesto={hash} />;
     }
   }
 
@@ -63,7 +63,7 @@ export default function KioskLayout({ hash }) {
 
   if (!opObj && !REPARTI_SOLO_ADMIN.includes(reparto)) {
     // Nessuna sessione (o reparto diverso) → home con reparto pre-selezionato
-    return <TabletHome onEntra={(rep) => { window.location.hash = rep === "ricette" ? "ricette" : `tablet/${rep}`; }} preselectReparto={reparto} />;
+    return <TabletHome preselectReparto={reparto} hashRichiesto={hash} />;
   }
 
   const esciGestionale = () => {

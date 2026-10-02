@@ -1013,6 +1013,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Rosticceria. L'azione esplicita «Tutte le 4 stagioni» aggiunge il singolo
   prodotto in modo idempotente, conserva quantità esistenti e chiede conferma.
   Il caricamento fallito non viene rappresentato come un menu vuoto.
+  Dopo il PIN personale il router conserva la sottopagina richiesta
+  (Colazione o Produci), soltanto nello stesso reparto; la navigazione dopo
+  l'accesso ha un unico proprietario, `TabletHome`, senza un secondo rinvio
+  al cruscotto in `KioskLayout`.
 
 ### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
 
