@@ -9,6 +9,14 @@ import SelettoreQuantita from "./registraLotto/SelettoreQuantita";
 import SelettorePosizione from "./registraLotto/SelettorePosizione";
 import PannelloLievito from "../shared/PannelloLievito";
 
+export function testoAzioneRegistrazione({ loading, stepRegistrazione, bloccatoDaGiacenza, bloccatoDaPosizioneMancante, haComponenti, stampare }) {
+  if (loading) return "...";
+  if (stepRegistrazione === "base" && bloccatoDaGiacenza) return "🧊 Manda al banco o conferma sopra";
+  if (stepRegistrazione === "base" && bloccatoDaPosizioneMancante) return "📍 Scegli la destinazione";
+  if (stepRegistrazione === "base" && haComponenti) return "Avanti →";
+  return stampare ? "🖨️ Stampa etichetta" : "Registra senza stampare";
+}
+
 export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHome, onRefreshLista, frigoriferi = [], congelatori = [] }) {
   const [pezzi, setPezzi]               = useState(1);
   const [unita, setUnita]               = useState("pz");
@@ -429,7 +437,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
         toast.error(`⚠️ ${i.ingrediente}: mancavano ${i.mancante} ${i.unita} — giacenza insufficiente, controlla gli ordini`)
       );
 
-      if (stampare && destinazione !== "banco") {
+      if (stampare) {
         setTimeout(() => handleStampa(res.data), 600);
       }
       onSuccess && onSuccess(res.data);
@@ -609,7 +617,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
             {/* Guida: è già tutto pronto, basta il pulsante in fondo */}
             {stepRegistrazione === "base" && giacenzaLotti.length === 0 && (
               <div style={{ fontSize: 11, color: "#7a7266", textAlign: "center", marginBottom: 8 }}>
-                Già pronto: tocca <b>Registra</b> in fondo. Cambia solo ciò che serve. 👇
+                Già pronto: scegli la destinazione e tocca <b>Stampa etichetta</b>. 👇
               </div>
             )}
 
@@ -625,29 +633,29 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
               posizioneMancante={posizioneMancante}
             />
 
-            {/* Stampa */}
-            {destinazione !== "banco" ? (
-              <div style={{
-                display: "flex", alignItems: "center", gap: 7, padding: "6px 10px",
-                background: stampare ? "var(--info-soft)" : "#faf7f0",
-                border: `1.5px solid ${stampare ? "var(--info-border)" : "#e6e0d4"}`,
-                borderRadius: 8, marginBottom: 10, cursor: "pointer"
-              }} onClick={() => setStampare(v => !v)}>
-                <div style={{ width: 16, height: 16, borderRadius: 4,
-                  border: `2px solid ${stampare ? "var(--info)" : "#cfc6b4"}`,
-                  background: stampare ? "var(--info)" : "#fff", display: "flex",
-                  alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  {stampare && <span style={{ color: "#fff", fontSize: 10, fontWeight: 900 }}>✓</span>}
+            {/* La stampa e' un'azione distinta dalla destinazione del lotto. */}
+            <div role="checkbox" aria-checked={stampare} tabIndex={0} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+              background: stampare ? "var(--info-soft)" : "#faf7f0",
+              border: `1.5px solid ${stampare ? "var(--info-border)" : "#e6e0d4"}`,
+              borderRadius: 8, marginBottom: 10, cursor: "pointer"
+            }} onClick={() => setStampare(v => !v)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setStampare(v => !v); } }}>
+              <div style={{ width: 18, height: 18, borderRadius: 4,
+                border: `2px solid ${stampare ? "var(--info)" : "#cfc6b4"}`,
+                background: stampare ? "var(--info)" : "#fff", display: "flex",
+                alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {stampare && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 12, color: "#36423a" }}>
+                  🖨️ Stampa etichetta
                 </div>
-                <span style={{ margin: 0, fontWeight: 600, fontSize: 11, color: "#495247" }}>
-                  Stampa etichetta {stampare ? "— attiva" : "— no"}
-                </span>
+                <div style={{ fontSize: 10, color: "#7a7266" }}>
+                  {stampare ? "Verrà stampata appena registri il lotto" : "Disattivata: il lotto verrà solo registrato"}
+                </div>
               </div>
-            ) : (
-              <div style={{ padding: "8px 12px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0", marginBottom: 10 }}>
-                <span style={{ fontSize: 12, color: "var(--success)" }}>✓ Salvato direttamente in archivio lotti</span>
-              </div>
-            )}
+            </div>
 
             {/* Anteprima codice lotto */}
             {codiceLottoPreview && (
@@ -794,19 +802,14 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
                 cursor: (loading || (stepRegistrazione === "base" && (bloccatoDaGiacenza || bloccatoDaPosizioneMancante))) ? "not-allowed" : "pointer",
                 opacity: loading ? 0.7 : 1
               }}>
-                {loading ? "..." : (stepRegistrazione === "base" && bloccatoDaGiacenza)
-                  ? "🧊 Manda al banco o conferma sopra"
-                  : (stepRegistrazione === "base" && bloccatoDaPosizioneMancante)
-                  ? "📍 Scegli dove va"
-                  : stepRegistrazione === "componenti"
-                  ? "Conferma Registrazione"
-                  : destinazione === "banco"
-                  ? `🛒 ${pezzi}${unita} al Banco`
-                  : destinazione === "abbattitore"
-                    ? `❄️ Abbattitore ${pezzi}${unita}`
-                    : bomComponenti.length > 0
-                      ? "Avanti →"
-                      : `🧊 Frigo ${pezzi}${unita}`}
+                {testoAzioneRegistrazione({
+                  loading,
+                  stepRegistrazione,
+                  bloccatoDaGiacenza,
+                  bloccatoDaPosizioneMancante,
+                  haComponenti: bomComponenti.length > 0,
+                  stampare,
+                })}
               </button>
             </div>
           </>
@@ -900,7 +903,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
               <button onClick={() => handleStampa(lottoCreato)} style={{
                 flex: 1, padding: "9px 0", borderRadius: 8, border: "2px solid #e6e0d4",
                 background: "#faf7f0", fontWeight: 600, fontSize: 12, cursor: "pointer", color: "#495247"
-              }}>Stampa</button>
+              }}>Ristampa etichetta</button>
               <button onClick={onClose} style={{
                 flex: 2, padding: "9px 0", borderRadius: 8, border: "none",
                 background: "linear-gradient(135deg,#22c55e,var(--success))",

@@ -27,7 +27,12 @@ export default function SelettorePosizione({
   };
   return (
     <div style={{ marginBottom: 8 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: "#495247", display: "block", marginBottom: 4 }}>Dove va questo lotto?</span>
+      <span style={{ fontSize: 11, fontWeight: 800, color: "#495247", display: "block", marginBottom: 2 }}>
+        Destinazione del lotto
+      </span>
+      <span style={{ fontSize: 10, color: "#7a7266", display: "block", marginBottom: 5 }}>
+        Indica solo dove conservi il prodotto. La stampa si sceglie sotto.
+      </span>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "stretch" }}>
         {banco && (
           <button type="button" onClick={() => { setDestinazione("banco"); setFrigo(""); }}
@@ -38,7 +43,7 @@ export default function SelettorePosizione({
               background: destinazione === "banco" ? `${banco.color}18` : "#faf7f0",
               color: destinazione === "banco" ? banco.color : "#495247",
             }}>
-            {destinazione === "banco" ? "✓ " : ""}Banco
+            {destinazione === "banco" ? "✓ " : ""}Subito al banco
           </button>
         )}
         <select aria-label="Frigorifero o congelatore" value={apparecchio} onChange={(e) => scegli(e.target.value)}
@@ -46,7 +51,7 @@ export default function SelettorePosizione({
             flex: "1 1 200px", minHeight: 44, padding: "0 10px", borderRadius: 8, fontWeight: 700, fontSize: 13,
             border: `2px solid ${apparecchio ? "#5b7a6b" : "#e6e0d4"}`, background: "#faf7f0", color: "#2a3329",
           }}>
-          <option value="">Frigorifero o congelatore…</option>
+          <option value="">Conserva in frigorifero o congelatore…</option>
           {opzioniFrigo.length > 0 && (
             <optgroup label="Frigoriferi">
               {opzioniFrigo.map((nome) => <option key={`frigo:${nome}`} value={`frigo:${nome}`}>{nome}</option>)}
@@ -61,7 +66,9 @@ export default function SelettorePosizione({
       </div>
       {posizioneMancante && (
         <p style={{ fontSize: 11, fontWeight: 700, color: "#7c2d12", margin: "6px 0 0" }}>
-          Scegli il banco oppure un apparecchio dal menu: nessun ripiano da indicare.
+          {banco
+            ? "Scegli “Subito al banco” oppure l'apparecchio in cui conserverai il lotto."
+            : "Scegli l'apparecchio in cui conserverai il lotto."}
         </p>
       )}
     </div>

@@ -380,7 +380,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
         onSalvato={carica}
         onClose={()=>setRicettaDaVedere(null)}
       />}
-      {prodottoSel && <ModalRegistraLotto prodotto={prodottoSel} reparto={reparto} onClose={()=>setProdottoSel(null)} onSuccess={()=>{setProdottoSel(null);carica();}} onRefreshLista={carica} frigoriferi={attrezzature.frigoriferi} congelatori={attrezzature.congelatori}/>}
+      {prodottoSel && <ModalRegistraLotto prodotto={prodottoSel} reparto={reparto} onClose={()=>setProdottoSel(null)} onSuccess={carica} onRefreshLista={carica} frigoriferi={attrezzature.frigoriferi} congelatori={attrezzature.congelatori}/>}
       {showAdmin && <PannelloReparti onClose={()=>{setShowAdmin(false);carica();}}/>}
       {showAlpha && <ModalAlpha modo="banco" onClose={()=>setShowAlpha(false)}/>}
       {showColazione && <ColazioneAcquavivaView modoTablet={true} onClose={()=>{setShowColazione(false);carica();}}/>}

@@ -112,6 +112,15 @@ def test_url_relativo_completato_col_backend(monkeypatch):
     assert server.richieste[-1].full_url == "https://gestionalecloud.onrender.com/lotti/api/stampa/lotto/L1"
 
 
+def test_documento_del_dominio_pubblico_e_accettato(monkeypatch):
+    sessione, server = _sessione(monkeypatch, lambda req: b"etichetta")
+    sessione.token = "jwt-1"
+    dati = sessione.chiama("GET", "https://impresasemplice.online/lotti/api/stampa/lotto/L1")
+    assert dati == b"etichetta"
+    assert server.richieste[-1].full_url == "https://impresasemplice.online/lotti/api/stampa/lotto/L1"
+    assert server.richieste[-1].get_header("Authorization") == "Bearer jwt-1"
+
+
 def test_token_scaduto_durante_un_lavoro_nuovo_login_e_un_solo_tentativo(monkeypatch):
     stato = {"documento": 0}
 

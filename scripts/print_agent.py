@@ -51,6 +51,7 @@ CONFIG_PATH = os.path.join(QUI, "print_agent_config.json")
 
 BACKEND_PREDEFINITO = "https://gestionalecloud.onrender.com/lotti"
 HOST_VIVO = "gestionalecloud.onrender.com"
+HOSTS_SERVIZIO = {HOST_VIVO, "impresasemplice.online"}
 VARIABILE_PIN = "LOTTI_PRINT_AGENT_PIN"
 
 
@@ -124,7 +125,8 @@ class Sessione:
             b = urlsplit(self.backend)
             testo = f"{b.scheme}://{b.netloc}{testo}"
         parti = urlsplit(testo)
-        if parti.scheme not in ("http", "https") or parti.hostname != self.host:
+        stesso_servizio = self.host in HOSTS_SERVIZIO and parti.hostname in HOSTS_SERVIZIO
+        if parti.scheme not in ("http", "https") or (parti.hostname != self.host and not stesso_servizio):
             raise ValueError(f"URL del documento fuori dal backend di Lotti: {parti.hostname or url!r}")
         if "token=" in (parti.query or ""):
             raise ValueError("URL del documento con un token in query: rifiutato")
