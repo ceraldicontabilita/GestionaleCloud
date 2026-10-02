@@ -19,7 +19,8 @@ def test_condividi_demo_crea_un_invito_di_registrazione():
     pagina = HTML[HTML.index("function pInvito"):HTML.index("async function invRigenera")]
     assert "s.demo||!!s.invito_token||!s.attivo" in blocco
     assert "bb_tit_invito_rigenera" in blocco
-    assert "navigator.share" in blocco
+    assert 'navigator.share({title:"Colazioni B&B",text:testo})' in blocco
+    assert 'text:testo,url:link' not in blocco
     assert "WhatsApp" not in pagina
     assert "mailto:" not in pagina
 

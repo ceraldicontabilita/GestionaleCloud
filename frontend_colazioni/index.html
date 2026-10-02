@@ -1053,7 +1053,8 @@ async function condividiGestore(id){
   if(!s.invito_token){const r=await run("bb_tit_invito_rigenera",{p:sess.p,sid:id});if(!r||!r.invito)return;s.invito_token=r.invito}
   link=linkInvito(s);testo=msgInvito(s,link)
  }else{link=linkHotel(s);testo=msgAccesso(s,link)}
- if(navigator.share)return navigator.share({title:"Colazioni B&B",text:testo,url:link}).catch(e=>{if(e.name!=="AbortError")toast("Condivisione non riuscita")});
+ /* Il testo contiene gia' il collegamento: passarlo anche come `url` lo duplica in WhatsApp. */
+ if(navigator.share)return navigator.share({title:"Colazioni B&B",text:testo}).catch(e=>{if(e.name!=="AbortError")toast("Condivisione non riuscita")});
  navigator.clipboard.writeText(testo).then(()=>toast("Messaggio copiato: ora puoi condividerlo"))}
 async function invRigenera(id){if(!confirm("Creare un nuovo invito? Il vecchio link smette di funzionare."))return;if(await run("bb_tit_invito_rigenera",{p:sess.p,sid:id},"Nuovo invito creato"))go("#/titolare/invito/"+id)}
 function pStruttura(id){
