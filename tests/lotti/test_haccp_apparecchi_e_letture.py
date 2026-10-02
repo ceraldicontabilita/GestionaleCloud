@@ -82,6 +82,11 @@ def test_sanificazione_usa_i_nomi_canonici_degli_apparecchi(db):
         {"tipo": "frigo", "numero": 5, "nome": "FRIGO PASTICCERIA 5", "attivo": True},
         {"tipo": "congelatore", "numero": 1, "nome": "CONGELATORE PASTICCERIA 1", "attivo": True},
     ]))
+    _run(db.sanificazione_apparecchi.insert_one({
+        "anno": 2026,
+        "registrazioni_frigoriferi": {"8": [{"mese": 1, "giorno": 1, "eseguita": True}]},
+        "registrazioni_congelatori": {"11": [{"mese": 1, "giorno": 1, "eseguita": True}]},
+    }))
 
     scheda = _run(san.get_scheda_apparecchi(2026))
     assert scheda["apparecchi_frigoriferi"] == [
