@@ -865,8 +865,10 @@ def _evidenza_sdd_fattura_banca(
     giorni = _giorni_pagamento_plausibili(data_movimento, data_fattura)
     data_coerente = giorni is not None and 0 <= giorni <= 62
     # Audit 03/09/2026 (PR 4): il marchio in comune non basta. Se la causale
-    # dichiara un soggetto diverso ("AMAZON PAYMENTS EUROPE S.C.A." per una
-    # fattura di "Amazon Business EU S.a.r.l"), l'abbinamento resta proposta.
+    # dichiara un soggetto diverso ("ALFA PAYMENTS EUROPE" per una fattura di
+    # "Alfa Forniture Srl"), l'abbinamento resta proposta. Il collettore di
+    # gruppo dichiarato ("AMAZON PAYMENTS EUROPE S.C.A." per ogni societa'
+    # Amazon) e' invece lo stesso soggetto (identity_matching).
     soggetto_coerente = soggetto_pagante_coerente(
         fornitore, testo, alias=alias_fornitore(fattura),
     )
@@ -1779,6 +1781,19 @@ async def riconcilia_movimenti_banca(
                         results["dubbi"] += 1
                         if creata:
                             await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
+
+            # === 2-bis. RIMBORSO DI UNA NOTA DI CREDITO (per ENTRATE) ===
+            # Il fornitore che storna una fattura rimborsa con un bonifico
+            # in entrata ("BON.DA AMAZON BUSINESS EU SARL ..."): identita'
+            # coerente, importo al centesimo, entro 62 giorni dalla nota.
+            if tipo == "entrata" and not match_found:
+                from app.services.rimborsi_note_credito import abbina_rimborso_nota_credito
+                dettagli_rimborso = await abbina_rimborso_nota_credito(db, mov)
+                if dettagli_rimborso:
+                    match_found = True
+                    match_type = "rimborso_nota_credito"
+                    match_details = dettagli_rimborso
+                    results["riconciliati_fatture"] += 1
 
             # === 3. CERCA POS (per ENTRATE - accrediti) ===
             if tipo == "entrata" and not match_found:
