@@ -304,6 +304,28 @@ def test_create_ricetta_menu_pubblico_true_e_visibile(ambiente):
     assert [s["name_it"] for s in finto.tabelle["menu_subcategories"]] == ["Rosticceria"]
 
 
+def test_spunte_destinazioni_indipendenti_e_conservate_dal_vecchio_form(ambiente):
+    ricette, database, finto = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(
+        menu_pubblico=False, menu_bb=True, visibile_tablet=False,
+    ))))
+    riga = finto.tabelle["menu_products"][0]
+    assert riga["visible"] is False
+    assert riga["menu_bb"] is True
+    assert creata["visibile_tablet"] is False
+    # Il form legacy modifica un nome senza mandare le tre spunte.
+    run(ricette.update_ricetta(creata["id"], ricette.RicettaCreate(**_payload(nome="Babà nuovo")),
+                              _ruolo={"ruolo": "amministratore"}))
+    salvata = run(database.ricette.find_one({"id": creata["id"]}))
+    assert (salvata["menu_pubblico"], salvata["menu_bb"], salvata["visibile_tablet"]) == (False, True, False)
+    run(ricette.update_ricetta(creata["id"], ricette.RicettaCreate(**_payload(
+        menu_pubblico=True, menu_bb=False, visibile_tablet=True,
+    )), _ruolo={"ruolo": "amministratore"}))
+    assert riga["visible"] is True
+    assert riga["menu_bb"] is False
+    assert len(finto.tabelle["menu_products"]) == 1
+
+
 def test_seconda_ricetta_riusa_categoria_e_sottocategoria(ambiente):
     ricette, _, finto = ambiente
     run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Uno"))))

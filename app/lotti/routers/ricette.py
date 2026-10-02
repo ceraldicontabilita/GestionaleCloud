@@ -169,6 +169,8 @@ class RicettaCreate(BaseModel):
     # replicata nel Menu, questo flag decide se compare nel menu PUBBLICO.
     # None in aggiornamento = lascia il valore gia' salvato; in creazione = True.
     menu_pubblico: Optional[bool] = None
+    menu_bb: Optional[bool] = None
+    visibile_tablet: Optional[bool] = None
 
     @field_validator("prezzo_vendita", "prezzo_tavolo")
     @classmethod
@@ -1762,7 +1764,8 @@ async def create_ricetta(item: RicettaCreate, _ruolo=Depends(require_permesso("r
         doc["descrizione"] = descrizione_da_ingredienti(doc)
         doc["descrizione_origine"] = "automatica" if doc["descrizione"] else None
     doc["menu_pubblico"] = item.menu_pubblico is not False
-    doc.setdefault("visibile_tablet", True)
+    doc["menu_bb"] = item.menu_bb is not False
+    doc["visibile_tablet"] = item.visibile_tablet is not False
     doc.setdefault("ricetta_operativa", True)
 
     await db.ricette.insert_one(doc)
@@ -1807,8 +1810,9 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _ruolo=Depends(re
     payload.pop("menu_category_id", None)
     payload.pop("menu_subcategory_id", None)
     # Flag Menu non inviato = non toccare la scelta gia' fatta dal titolare.
-    if payload.get("menu_pubblico") is None:
-        payload.pop("menu_pubblico", None)
+    for flag in ("menu_pubblico", "menu_bb", "visibile_tablet"):
+        if payload.get(flag) is None:
+            payload.pop(flag, None)
     # Un form che non manda prezzo al tavolo o descrizione non li azzera. Per
     # svuotarli si usa la PATCH, dove il valore arriva esplicito.
     for campo_menu in ("prezzo_tavolo", "descrizione"):
@@ -1859,7 +1863,7 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _ruolo=Depends(re
     # Salvare dal form «Ricette» trasforma il riferimento ufficiale del
     # fornitore in una ricetta operativa Ceraldi, senza perdere la provenienza.
     if _riferimento_ricettario_fornitore(precedente) and not precedente.get("ricetta_operativa"):
-        payload["visibile_tablet"] = True
+        payload.setdefault("visibile_tablet", True)
         payload["ricetta_operativa"] = True
         payload["adattata_da_ricettario_fornitore_at"] = datetime.now(timezone.utc).isoformat()
 

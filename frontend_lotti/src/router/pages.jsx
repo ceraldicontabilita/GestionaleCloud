@@ -47,7 +47,6 @@ import ControlloMagazzinoView from "../components/haccp/ControlloMagazzinoView";
 import ConfrontoProdottoView from "../components/haccp/ConfrontoProdottoView";
 import AttendibilitaHaccpView from "../components/haccp/AttendibilitaHaccpView";
 import ProdottiHubView from "../components/haccp/ProdottiHubView";
-import MenuVetrinaView from "../components/haccp/MenuVetrinaView";
 import ImpostazioniView from "../components/haccp/ImpostazioniView";
 import MerceFermaView from "../components/haccp/MerceFermaView";
 import CalcolatoreImpastiView from "../components/haccp/CalcolatoreImpastiView";
@@ -68,10 +67,7 @@ const PAGINE = {
   movimenti_magazzino: { render: () => <ControlloMagazzinoView /> },
   sconti_merce: { render: () => <ProdottiConTabFornitore initialSub="sconti" /> },
   corrispettivi: { render: () => <CorrispettiviView /> },
-  // Vetrina «In menu» (19/09/2026): elenca le ricette pubblicate nel Menu
-  // digitale. Da una card si torna alla scheda ricetta con lo stesso
-  // meccanismo del Supervisore (sessionStorage + pagina Produzione).
-  in_menu: { render: (ctx) => <MenuVetrinaView onNavigate={ctx.handleTabChange} /> },
+  // Il vecchio #in_menu è un alias di #ricette/prezzi, non una seconda pagina.
   ricette: { render: () => <BackofficeView initialTab="ricette" solo solaLetturaOperatore={!isAdmin()} /> },
   lotti: {
     render: (ctx) => (

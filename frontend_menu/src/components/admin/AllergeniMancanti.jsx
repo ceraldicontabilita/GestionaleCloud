@@ -49,9 +49,8 @@ const auth = () => ({
  * 19/09/2026 — "Collega a una ricetta" e' stato tolto da qui: la strada
  * ricetta -> prodotto del Menu e' quella del ponte di Lotti, che pubblica la
  * ricetta con gli allergeni gia' calcolati dagli ingredienti.
- * Al suo posto l'esclusione: whisky, distillati e bibite in bottiglia non
- * hanno allergeni da dichiarare e non devono restare nell'alert per sempre.
- * L'esclusione non nasconde nulla dal menu, e si revoca.
+ * Bibite e liquori sono fuori da questa lista di lavoro, senza cancellare
+ * i dati allergeni né modificare i prodotti pubblicati nel menu.
  */
 const AllergeniMancanti = () => {
   const [dati, setDati] = useState(null);
@@ -165,7 +164,7 @@ const AllergeniMancanti = () => {
             {nessunoDaDichiarare ? (
               <span className="flex items-center gap-2" style={{ color: SUCCESSO }}>
                 <CheckCircle2 className="w-5 h-5 shrink-0" />
-                Tutti i prodotti hanno una dichiarazione allergeni o sono esclusi.
+                Nessun prodotto da completare in questa lista.
               </span>
             ) : (
               <span className="flex items-center gap-2" style={{ color: AVVISO }}>
@@ -175,7 +174,7 @@ const AllergeniMancanti = () => {
             )}
           </CardTitle>
           <p className="text-sm" style={{ color: SALVIA_SCURA }}>
-            Dichiarare i 14 allergeni UE è un obbligo di legge (Reg. UE 1169/2011).
+            Bibite e liquori non compaiono in questa lista di lavoro. Gli allergeni registrati restano nel menu.
             {dati.esclusi > 0 && ` ${dati.esclusi} prodotti sono esclusi dalla verifica.`}
           </p>
           {(dati.esclusi > 0 || esclusioni.length > 0) && (

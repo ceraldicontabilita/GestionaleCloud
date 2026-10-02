@@ -8,8 +8,48 @@ dell'anno esattamente una volta, incluso il periodo Invernale che
 attraversa il capodanno (dicembre -> marzo dell'anno dopo).
 """
 from datetime import date, timedelta
+import asyncio
+
+import pytest
+from fastapi import HTTPException
+from mongomock_motor import AsyncMongoMockClient
 
 from app.lotti.routers.colazione import _data_in_periodo, _DATE_STAGIONI_DEFAULT
+
+
+def test_aggiungi_quattro_stagioni_idempotente_conserva_quantita(monkeypatch):
+    from app.lotti.routers import colazione
+    db = AsyncMongoMockClient()["colazione_test"]
+    monkeypatch.setattr(colazione, "db", db)
+
+    async def scenario():
+        await db.colazione_template.insert_one({"nome": "Autunnale", "note": "Nota conservata", "items": [
+            {"prodotto_id": "acq:prodotto1", "pezzi": 17, "attivo": False},
+            {"prodotto_id": "altro", "pezzi": 9},
+        ]})
+        payload = {"azione": "aggiungi", "prodotto_id": "acq:prodotto1", "prodotto_nome": "Cornetto"}
+        prima = await colazione.toggle_preferito(payload, _admin={})
+        seconda = await colazione.toggle_preferito(payload, _admin={})
+        assert len(prima["aggiunto_a_stagioni"]) == 3
+        assert seconda["aggiunto_a_stagioni"] == []
+        assert seconda["preferito"] is True
+        assert await db.colazione_preferiti.count_documents({}) == 1
+        presets = await db.colazione_template.find({}).to_list(10)
+        assert len(presets) == 4
+        for preset in presets:
+            item = [i for i in preset["items"] if i["prodotto_id"] == payload["prodotto_id"]]
+            assert len(item) == 1
+            if preset["nome"] == "Autunnale":
+                assert item[0]["pezzi"] == 17 and item[0]["attivo"] is False
+                assert preset["note"] == "Nota conservata"
+                assert len(preset["items"]) == 2
+            else:
+                assert item[0]["pezzi"] == 6
+        with pytest.raises(HTTPException) as err:
+            await colazione.toggle_preferito({**payload, "azione": "cancella_tutto"}, _admin={})
+        assert err.value.status_code == 400
+
+    asyncio.run(scenario())
 
 
 def test_esempi_concreti():

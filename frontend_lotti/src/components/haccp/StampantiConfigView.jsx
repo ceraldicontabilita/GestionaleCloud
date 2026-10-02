@@ -4,6 +4,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { apiError } from "../../utils/apiError";
 import { API } from "../../utils/constants";
+import { stampaRawbt } from "../../utils/stampa";
 import { MODI, getModoStampa, setModoStampa, provaStampa } from "../../utils/stampaEpson";
 import { Printer, Save, Trash2, Plus, RefreshCw, Network, FlaskConical } from "lucide-react";
 
@@ -11,6 +12,7 @@ const MODALITA = [
   { v: MODI.FINESTRA, l: "Finestra di stampa", d: "Si apre il documento e stampi dal browser." },
   { v: MODI.AGENTE, l: "Agente PC", d: "I documenti vanno in coda e il print-agent sul PC del negozio li stampa." },
   { v: MODI.EPSON, l: "Diretta Epson ePOS", d: "Il tablet stampa da solo sulla Epson di rete, senza PC né finestra." },
+  { v: MODI.RAWBT, l: "Tablet Android · RawBT", d: "Richiede RawBT installata e la stampante scelta nell'app (LAN, Bluetooth o USB)." },
 ];
 
 const REPARTI = [
@@ -36,6 +38,17 @@ export default function StampantiConfigView() {
   const [salvando, setSalvando] = useState(null);
   const [modo, setModo] = useState(getModoStampa());
   const [provando, setProvando] = useState(null);
+
+  const provaRawbt = async () => {
+    try {
+      const { data } = await axios.get(`${API}/lotti`, { params: { limit: 1 } });
+      const l = (Array.isArray(data) ? data : data?.lotti || [])[0];
+      if (!l) return toast.error("Nessun lotto per la prova");
+      await stampaRawbt(`${API}/stampa/lotto/${encodeURIComponent(l.numero_lotto || l.id)}`);
+    } catch (e) {
+      toast.error("Prova di stampa fallita: " + apiError(e));
+    }
+  };
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -159,6 +172,11 @@ export default function StampantiConfigView() {
           ))}
         </div>
       </div>
+
+      {modo === MODI.RAWBT && <button type="button" onClick={provaRawbt}
+        className="mb-4 px-3 min-h-[44px] rounded-lg bg-[#5b7a6b] text-white text-sm font-bold">
+        Stampa etichetta di prova · RawBT
+      </button>}
 
       {modo === MODI.EPSON && (
         <div className="bg-[#fffefb] border border-[#e6e0d4] rounded-xl px-4 py-3 mb-5 text-sm text-[#2a3329]">
