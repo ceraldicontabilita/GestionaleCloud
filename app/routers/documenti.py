@@ -2357,8 +2357,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             return "f24"
         if any(marker in content_str for marker in ("CEDOLINO", "BUSTA PAGA", "LIBRO UNICO")):
             return "cedolino"
+        # «estratto conto» da solo non e' un segno: i fornitori lo scrivono nei solleciti
+        # («INVIO ESTRATTO CONTO - FATTURE SCADUTE»). Serve anche la forma dell'estratto.
+        from app.services.classificazione_estratti import ha_struttura_di_estratto
+
         if (
-            "ESTRATTO CONTO" in content_str
+            ("ESTRATTO CONTO" in content_str and ha_struttura_di_estratto(content_str))
             or ("SALDO INIZIALE" in content_str and "SALDO FINALE" in content_str)
         ):
             return "estratto_conto"
@@ -3302,6 +3306,10 @@ async def upload_documento_automatico(
             ):
                 result["success"] = False
                 result["tipo_rilevato"] = "fattura_pdf"
+                # Decisione del titolare (28/09/2026): la stampa PDF di una fattura che arriva
+                # dall'XML non e' un errore da guardare; la cartella unica la manda in ARRETRATO.
+                result["fuori_contabilita"] = (
+                    "copia PDF di una fattura italiana: la fattura entra dall'XML dello SDI")
                 result["message"] = (
                     "Fattura PDF senza partita IVA estera: le fatture italiane "
                     "arrivano come XML dallo SDI, il PDF non si importa")
