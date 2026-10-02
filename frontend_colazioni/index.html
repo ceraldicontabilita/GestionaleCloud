@@ -19,11 +19,11 @@ header{background:linear-gradient(135deg,#7a2e1d,#a4492b);color:#fff;padding:14p
 header h1{font-size:18px;margin:0;flex:1}
 header button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:10px;padding:6px 10px;font-size:13px}
 .area-badge{border:1px solid rgba(255,255,255,.5);border-radius:99px;padding:4px 9px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
-body[data-area="hotel"]{--brand:#0c6965;--brand2:#42a29a}
-body[data-area="hotel"] header{background:linear-gradient(135deg,#074b49,#13817b)}
-body[data-area="hotel"] .demo{background:#dff3f0;color:#073f3c}
+body[data-area="hotel"]{--brand:#3f5a4e;--brand2:#5b7a6b}
+body[data-area="hotel"] header{background:linear-gradient(135deg,#3f5a4e,#5b7a6b)}
+body[data-area="hotel"] .demo{background:#e7efe9;color:#2a3329}
 body[data-area="bar"] header{background:linear-gradient(135deg,#7a2e1d,#a4492b)}
-main{max-width:760px;margin:0 auto;padding:16px 16px 90px}
+main{width:100%;max-width:760px;margin:0 auto;padding:16px 16px 90px;overflow-x:hidden}
 h2{font-size:20px;margin:18px 0 8px}h3{font-size:16px;margin:0 0 6px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:10px 0}
 .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
@@ -44,6 +44,11 @@ label{font-size:13px;color:var(--mute);font-weight:600}
 .tabs button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;border-radius:99px;font-size:14px}
 .tabs button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
 .hotel-tabs{position:sticky;top:58px;z-index:4;background:color-mix(in srgb,var(--bg) 94%,transparent);padding:7px 0;backdrop-filter:blur(10px)}
+.guest-day{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center;text-align:center}.guest-day button{width:44px;height:44px;padding:0}.guest-day b{display:block;font-size:17px}.guest-day span{display:block}
+.guest-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.guest-actions .btn{min-height:52px;padding:10px;font-size:14px}.guest-actions .primary{grid-column:1/-1}
+.guest-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.guest-line:last-child{border-bottom:0}.guest-line .btn{min-width:88px;min-height:44px}
+.guest-panel-head{display:flex;align-items:center;gap:9px;margin-bottom:10px}.guest-panel-head .btn{width:44px;height:44px;padding:0}.guest-panel-head h3{margin:0}.guest-saved{border:1px solid var(--ok);border-radius:12px;padding:9px 11px;margin-top:10px;color:var(--ok);font-weight:700}
+.production-toolbar{display:grid;grid-template-columns:auto auto auto minmax(170px,1fr) auto;gap:8px;align-items:center}.production-list{display:grid;gap:10px}.production-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--card)}.production-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.production-head h4{margin:0;font-size:17px}.production-count{min-width:48px;height:48px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:22px;font-weight:800}.production-composition{margin-top:8px}.production-hotels{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.production-hotels .pill{background:var(--bg);color:var(--ink);border:1px solid var(--line)}.production-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.production-summary div{border-radius:12px;background:var(--bg);padding:10px;text-align:center}.production-summary b{display:block;font-size:21px;color:var(--brand)}.production-extra,.production-request{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;background:var(--card)}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;border-bottom:1px solid var(--line);text-align:left}
 .qr{display:flex;justify-content:center;padding:14px;background:#fff;border-radius:14px}
 .alert{border-left:5px solid var(--warn);background:var(--card);border-radius:10px;padding:10px 12px;margin:8px 0}
@@ -117,27 +122,29 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .booking-room .service-choice button{min-height:44px;white-space:normal}
 .booking-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}.booking-actions .btn{width:100%;min-height:50px}
 .nap-guide{overflow:hidden;padding:0}
-.nap-hero{padding:18px;background:linear-gradient(135deg,#063f4d,#14788a);color:#fff}
+.nap-hero{padding:18px;background:linear-gradient(135deg,#3f5a4e,#5b7a6b);color:#fff}
 .nap-hero h3{font-size:20px}.nap-hero p{margin:5px 0 0;color:#d8f4f5;font-size:14px}
 .nap-tabs{display:flex;gap:7px;overflow-x:auto;padding:12px 12px 4px}
 .nap-tabs button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px;border-radius:99px;font-weight:750;cursor:pointer}
-.nap-tabs button.on{background:#0b6574;border-color:#0b6574;color:#fff}
+.nap-tabs button.on{background:#3f5a4e;border-color:#3f5a4e;color:#fff}
 .nap-list{display:grid;gap:9px;padding:10px 12px 14px}
 .nap-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--card)}
 .nap-card h4{margin:0 0 4px;font-size:16px}.nap-card p{margin:4px 0}
 .nap-meta{color:var(--mute);font-size:13px}
 .nap-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
 .nap-actions a{display:inline-block;text-decoration:none;padding:8px 11px;border-radius:9px;font-size:13px;font-weight:800}
-.nap-go{background:#0b6574;color:#fff!important}.nap-info{border:1px solid #0b6574;color:#0b6574!important;background:transparent}
+.nap-go{background:#3f5a4e;color:#fff!important}.nap-info{border:1px solid #3f5a4e;color:#3f5a4e!important;background:transparent}
 .nap-note{padding:0 13px 13px;color:var(--mute);font-size:12px}
 .morning-card{position:relative}.morning-card .stepper{margin-top:8px}.morning-card.in-cart{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
 .morning-cart{position:sticky;bottom:74px;z-index:4;box-shadow:0 8px 30px rgba(0,0,0,.18)}
 .order-line{padding:7px 0;border-bottom:1px solid var(--line)}
 @media(max-width:620px){
- main{padding-left:12px;padding-right:12px}.catalog-tools{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px minmax(0,1fr)}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}.catalog-price-row{align-items:center}.catalog-price-row input{flex-basis:108px}
+ main{padding-left:12px;padding-right:12px}.card{margin-left:0;margin-right:0}.catalog-tools{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px minmax(0,1fr)}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}.catalog-price-row{align-items:center}.catalog-price-row input{flex-basis:108px}
  .hotel-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;margin-left:-4px;margin-right:-4px;top:56px}
  .hotel-tabs button{width:100%;min-width:0;padding:8px 4px;border-radius:11px;font-size:11px;line-height:1.15;white-space:normal;min-height:42px}
+ .owner-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;overflow:visible}.owner-tabs button{width:100%;min-width:0;padding:8px 4px;border-radius:11px;font-size:11px;line-height:1.15;white-space:normal;min-height:42px}
  .booking-room-grid{grid-template-columns:1fr}.booking-room-head{align-items:flex-start}.booking-room{padding:12px}
+ .production-toolbar{grid-template-columns:repeat(3,1fr)}.production-toolbar .date-field{grid-column:1/3;width:100%!important}.production-toolbar .print-production{width:100%}.guest-actions .btn{font-size:13px}
 }
 .review-hero{padding:26px 18px;background:linear-gradient(145deg,var(--brand),#a4492b);color:#fff;border-radius:var(--r);margin-bottom:12px}
 .review-hero h2{font-size:28px;line-height:1.08;letter-spacing:-.02em;margin:4px 0 10px}.review-hero p{margin:0;opacity:.9}
@@ -217,7 +224,7 @@ function setArea(area){document.body.dataset.area=area;const b=$("#area_badge");
 function qr(el,text,size=200){el.innerHTML="";if(window.QRCode)new QRCode(el,{text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});else el.textContent=text}
 const base=()=>location.href.split("#")[0];
 const linkOspite=id=>base()+"#/ospite/"+id;
-const tabsHtml=(tabs,sec,pre)=>`<nav class="tabs ${pre==="albergatore"?"hotel-tabs":""}" aria-label="Sezioni ${pre}">${tabs.map(t=>`<button class="${t[0]===sec?"on":""}" onclick="go('#/${pre}/${t[0]}')">${t[1]}</button>`).join("")}<button onclick="esci()">Esci</button></nav>`;
+const tabsHtml=(tabs,sec,pre)=>`<nav class="tabs ${pre==="albergatore"?"hotel-tabs":""} ${pre==="titolare"?"owner-tabs":""}" aria-label="Sezioni ${pre}">${tabs.map(t=>`<button class="${t[0]===sec?"on":""}" onclick="go('#/${pre}/${t[0]}')">${t[1]}</button>`).join("")}<button onclick="esci()">Esci</button></nav>`;
 const camNome=v=>{const c=(v.camera||"").trim();if(!c)return v.ospite||"";return /^(camera|suite|stanza|appartamento|junior|room|studio|mansarda)\b/i.test(c)?c:"Camera "+c};
 const ospTxt=n=>`${n} ospit${n>1?"i":"e"}`;
 const descV=(v,prezzo=true)=>{const eu=prezzo&&v.fascia!=null?" · colazione da €"+String(v.fascia).replace(".",","):"";return v.camera?camNome(v)+" · "+ospTxt(v.ospiti||1)+eu:camNome(v)+eu};
@@ -264,17 +271,18 @@ async function recensioniOspite(token,fonte){
   REC={token,fonte,info,sessione:visita.sessione,scelte:{},telefono:false};
   recPagina()}
  catch(e){app.innerHTML='<div class="card"><h2>Invito non disponibile</h2><p class="mute">'+esc(e.message)+'</p></div>'}}
+function recMostra(html){const h=REC&&REC.host&&$("#"+REC.host);if(h)h.innerHTML=html;else app.innerHTML=html}
 function recPagina(){
  const i=REC.info,ha=!!i.informativa_url,privacy=ha?'<a href="'+esc(i.informativa_url)+'" target="_blank" rel="noopener">Leggi l’informativa completa</a>.':'L’informativa completa non è ancora pubblicata: senza informativa non è possibile acconsentire, puoi solo continuare senza.';
  /* senza informativa pubblicata un consenso non e' informato: resta solo «Non acconsento / continua» (il database rifiuta comunque un si') */
  const geo=ha?'<div class="consent-actions"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento</button><button class="btn sec" id="rg1" onclick="recScelta(\'geolocalizzazione\',true)">Acconsento</button></div>':'<div class="consent-actions" style="grid-template-columns:1fr"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento / continua</button></div>';
  const wa=ha?'<div class="consent-actions"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento</button><button class="btn sec" id="rw1" onclick="recScelta(\'whatsapp\',true)">Acconsento</button></div>':'<div class="consent-actions" style="grid-template-columns:1fr"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento / continua</button></div>';
- app.innerHTML='<div class="review-hero"><div class="mute" style="color:#fff">OSPITE DI '+esc(i.struttura).toUpperCase()+'</div><h2>La colazione ha il suo rito.</h2><p>Le scelte sulla privacy restano tue, sempre.</p></div>'+
+ recMostra('<div class="review-hero"><div class="mute" style="color:#fff">OSPITE DI '+esc(i.struttura).toUpperCase()+'</div><h2>La colazione ha il suo rito.</h2><p>Le scelte sulla privacy restano tue, sempre.</p></div>'+
  '<div class="card"><h2>Come vuoi vivere l’esperienza?</h2>'+
  '<div class="consent-box"><h3>Geolocalizzazione</h3><p class="mute">Serve solo a registrare la presenza nel luogo della colazione. Il browser chiederà la posizione esclusivamente dopo il tuo consenso.</p>'+geo+'</div>'+
  '<div class="consent-box"><h3>Invito WhatsApp</h3><p class="mute">Ricevi un solo messaggio post-consumo con i link Google e Tripadvisor. Nessun messaggio promozionale.</p>'+wa+'</div>'+
  '<p class="privacy-note">Nessuna opzione è preselezionata. Puoi revocare in ogni momento. Versione informativa: '+esc(i.informativa_versione)+'. '+privacy+'</p>'+
- '<div id="rec_next"></div></div>'}
+ '<div id="rec_next"></div></div>')}
 async function recScelta(finalita,si){
  try{
   await rpc("bb_recensioni_consenso",{psessione:REC.sessione,pfinalita:finalita,pacconsento:si,pversione:REC.info.informativa_versione,pclient:navigator.userAgent});
@@ -300,7 +308,7 @@ async function recSalvaTelefono(){
  try{await rpc("bb_recensioni_telefono",{psessione:REC.sessione,ptelefono:telefono});REC.telefono=true;recPronto()}
  catch(e){toast(e.message)}}
 function recPronto(){
- app.innerHTML='<div class="review-hero"><h2>Buona colazione.</h2><p>Il tuo momento Ceraldi può iniziare.</p></div><div class="card review-success"><h2>Quando hai terminato</h2><p class="mute">Conferma la fine della colazione. Se hai scelto WhatsApp, l’unico invito sarà programmato da quel momento.</p><button class="btn review-destination" onclick="recFine()">Ho terminato la colazione</button><div id="rec_revoche"></div></div>';
+ recMostra('<div class="review-hero"><h2>Buona colazione.</h2><p>Il tuo momento Ceraldi può iniziare.</p></div><div class="card review-success"><h2>Quando hai terminato</h2><p class="mute">Conferma la fine della colazione. Se hai scelto WhatsApp, l’unico invito sarà programmato da quel momento.</p><button class="btn review-destination" onclick="recFine()">Ho terminato la colazione</button><div id="rec_revoche"></div></div>');
  recRevoche()}
 function recRevoche(){
  const a=[];
@@ -313,7 +321,11 @@ async function recRevoca(finalita,bottone){
 async function recFine(){
  try{
   const r=await rpc("bb_recensioni_completa",{psessione:REC.sessione});
-  app.innerHTML='<div class="card review-success"><h2>Grazie, a presto.</h2><p class="mute">'+(r.invito_pianificato?"Riceverai un solo invito WhatsApp all’orario previsto.":"Nessun messaggio verrà inviato.")+'</p></div>'}
+  const g=r.google_url?'<button class="btn review-destination" data-rec-fine="google">Recensisci su Google</button>':'';
+  const t=r.tripadvisor_url?'<button class="btn sec review-destination" data-rec-fine="tripadvisor">Recensisci su Tripadvisor</button>':'';
+  recMostra('<div class="card review-success"><h2>Grazie, a presto.</h2><p class="mute">'+(r.invito_pianificato?"Riceverai anche un solo promemoria WhatsApp all’orario previsto.":"Nessun messaggio verrà inviato.")+'</p><h3>Se vuoi, lascia ora una recensione</h3>'+g+t+'<p class="privacy-note">Nessun premio o incentivo è associato alla recensione.</p>'+(g||t?"":'<div class="alert">I link alle recensioni non sono ancora configurati.</div>')+'</div>');
+  const root=REC.host?$("#"+REC.host):app;
+  root.querySelectorAll("[data-rec-fine]").forEach(b=>b.onclick=()=>recApri(r.review_token,b.dataset.recFine,b.dataset.recFine==="google"?r.google_url:r.tripadvisor_url))}
  catch(e){toast(e.message)}}
 async function recensioneInvito(token){
  $("#ttl").textContent="Ceraldi Caffè";loading();
@@ -589,19 +601,15 @@ async function ricaricaSumup(imp){
  if(r&&r.url)location.href=r.url}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
 async function mostraQR(id,continua=false){
- const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id),token=await run("bb_alb_recensioni_link",{sid:sess.s,p:sess.p});if(!token)return;
- const rec=fonte=>base()+"#/recensioni/"+token+"/"+fonte,wa=rec("whatsapp"),nfc=rec("nfc");
+ const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id);
  app.innerHTML=`<div class="card" style="text-align:center"><h3>${esc(descV(v,false))}</h3><p class="mute">${dRange(v)}</p><div class="qr" id="qrbox"></div>
  <p><b style="letter-spacing:2px;font-size:20px">${id}</b></p>
- <button class="btn" id="sh">💬 Invia al cliente con WhatsApp</button> <button class="btn sec" id="nfc">📱 Copia link per NFC</button> <button class="btn sec" onclick="stampaIds(['${id}'])">🖨 Stampa</button>
- <button class="btn sec" onclick="go('${continua?"#/albergatore/nuova":"#/albergatore/lista"}')">${continua?"Continua con una nuova camera":"Chiudi"}</button></div>
- <div class="card" style="text-align:center"><h3>Accesso recensioni e consensi</h3><p class="mute">Il cliente sceglie separatamente posizione e invito WhatsApp; nessuna opzione è preselezionata.</p><div class="qr" id="recqr"></div><button class="btn sm sec" id="nfcrec">⭐ Copia link recensioni</button></div>`;
+ <p class="mute">Questo unico accesso contiene colazione, consensi e recensioni.</p>
+ <button class="btn" id="sh">Condividi con il cliente</button> <button class="btn sec" onclick="stampaIds(['${id}'])">��� Stampa</button>
+ <button class="btn sec" onclick="go('${continua?"#/albergatore/nuova":"#/albergatore/lista"}')">${continua?"Continua con una nuova camera":"Chiudi"}</button></div>`;
  qr($("#qrbox"),l);
- qr($("#recqr"),nfc,160);
- const msg=(ALB.config.msg||"{link}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}",l)+"\n\nScelte privacy e invito recensione: "+wa;
- $("#sh").onclick=()=>window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener");
- $("#nfc").onclick=()=>navigator.clipboard.writeText(l).then(()=>toast("Link della colazione copiato (per il tag NFC)"));
- $("#nfcrec").onclick=()=>navigator.clipboard.writeText(nfc).then(()=>toast("Link recensioni copiato"))}
+ const msg=(ALB.config.msg||"La tua colazione da {bar}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}","").trim();
+ $("#sh").onclick=()=>navigator.share?navigator.share({title:"La tua colazione",text:msg,url:l}).catch(()=>{}):navigator.clipboard.writeText((msg?msg+"\n":"")+l).then(()=>toast("Link unico copiato"))}
 /* --- editor camere (albergatore e titolare) --- */
 let CR=[],CRSID=null;
 function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi nome e ospiti, poi scegli Banco o Tavolo per ogni camera. Durante ogni prenotazione potrai ancora cambiare la scelta.</p><div id="ce"></div>
@@ -623,13 +631,19 @@ async function crSalva(){
 const modTxt=m=>m.tipo==="senza"?`Senza ${esc(m.testo)}`:m.tipo==="senza_glutine"?"Versione senza glutine"+(m.testo?": "+esc(m.testo):""):esc(m.testo)+"";
 const modChi=m=>m.chi&&m.chi!=="Tutti"?` <span class="mute">(${esc(m.chi)})</span>`:"";
 let G=null;
+async function recensioniVoucher(){
+ try{
+  const info=await rpc("bb_recensioni_voucher_apri",{vid:G.d.id});
+  REC={token:null,fonte:"qr",info,sessione:info.sessione,scelte:{},telefono:false,host:"g_rec"};
+  recPagina();$("#g_rec").scrollIntoView({behavior:"smooth"})}
+ catch(e){toast(e.message)}}
 async function ospite(id){
  $("#ttl").textContent="☕ La tua colazione";loading();
  const d0=await rpc("bb_ospite",{vid:id||""}).catch(e=>({errore:e.message}));
  if(d0&&d0.errore){app.innerHTML=`<div class="card">${esc(d0.errore)}</div>`;return}
  if(!d0){app.innerHTML=`<div class="card">Codice non valido.</div>`;return}
  const d=gNorm(d0),r=(d.richieste&&typeof d.richieste==="object")?d.richieste:{};
- G={d,req:{allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:Array.isArray(r.modifiche)?r.modifiche:[]},cart:{},cata:null,sub:"",q:"",form:null,sporco:false,giorno:d.oggi<d.data?d.data:(d.oggi<=fine(d)?d.oggi:fine(d))};
+ G={d,req:{allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:[]},cart:{},cata:null,sub:"",q:"",form:null,sporco:false,giorno:d.oggi<d.data?d.data:(d.oggi<=fine(d)?d.oggi:fine(d)),panel:"home",saved:false};
  const b=d.bar||{},maps=b.bar_maps||"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((b.bar_nome||"Bar Pasticceria Ceraldi")+" "+(b.bar_indirizzo||"Napoli"));
  const persone=d.ospiti||1,titolo=descV(d,false);
  app.innerHTML=hero(d.struttura,d.sfondo,d.benvenuto)+`<div class="card" style="text-align:center"><h2 style="margin:4px 0">${esc(titolo)}</h2>
@@ -638,38 +652,36 @@ async function ospite(id){
  <div class="alert ok" style="text-align:left"><b>${d.tavolo?"🪑 La colazione sarà servita al tavolo":"☕ La colazione sarà servita al banco"}</b></div><div class="qr" id="qrbox"></div><p><b style="letter-spacing:2px;font-size:20px">${d.id}</b></p><p class="mute">Mostra questo codice al bancone di ${esc(b.bar_nome||"Bar Pasticceria Ceraldi")}.</p>
  <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(maps)}" target="_blank" rel="noopener">📍 Come arrivare al bar</a>
  ${b.bar_indirizzo?`<p class="mute">${esc(b.bar_indirizzo)}${b.bar_orari?" · "+esc(b.bar_orari):""}</p>`:""}${b.bar_tel||b.bar_whatsapp||b.bar_email?`<p>${b.bar_tel?`<a href="tel:${esc(b.bar_tel)}">📞 Chiama</a> `:""}${b.bar_whatsapp?`<a href="https://wa.me/${esc(String(b.bar_whatsapp).replace(/\D/g,""))}" target="_blank" rel="noopener">💬 WhatsApp</a> `:""}${b.bar_email?`<a href="mailto:${esc(b.bar_email)}">✉️ Email</a>`:""}</p>`:""}</div>
- ${albergoHtml(d.indirizzo)}<div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
- <h2>Napoli oggi</h2>${napoli()}`;
+ <div id="g_rec"><div class="card"><h2>Recensioni e privacy</h2><p class="mute">Da questo stesso accesso puoi scegliere separatamente geolocalizzazione e invito WhatsApp, senza opzioni preselezionate. Al termine puoi recensire su Google o Tripadvisor.</p><button class="btn" onclick="recensioniVoucher()">Apri recensioni e consensi</button></div></div><div id="g_day"></div><div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
+ ${albergoHtml(d.indirizzo)}<details class="card"><summary><b>Informazioni utili su Napoli</b></summary><div style="margin-top:12px">${napoli()}</div></details>`;
  qr($("#qrbox"),linkOspite(d.id));gSetGiorno(G.giorno);
  loadExt().then(E=>{$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)})}
 /* la risposta del database si legge con le forme attese: una lista mancante e' una lista vuota, mai un TypeError */
 function gNorm(d){
  d.voci=(Array.isArray(d.voci)?d.voci:[]).map(v=>({...v,nome:String(v.nome||""),allergeni:Array.isArray(v.allergeni)?v.allergeni:[],ingredienti:Array.isArray(v.ingredienti)?v.ingredienti:[]}));
  d.extra=(Array.isArray(d.extra)?d.extra:[]).map(e=>({...e,voci:Array.isArray(e.voci)?e.voci:[],totale:+e.totale||0}));
+ d.scelte=d.scelte&&typeof d.scelte==="object"?d.scelte:{};
  d.allergeni_elenco=Array.isArray(d.allergeni_elenco)?d.allergeni_elenco:[];d.glutine=Array.isArray(d.glutine)?d.glutine:[];
  d.extra_da_pagare=+d.extra_da_pagare||0;return d}
-const gChiuso=()=>G.d.annullato||fine(G.d)<G.d.oggi;
+const gChiuso=()=>G.d.annullato||G.giorno<G.d.oggi;
 const gA=()=>Object.fromEntries(G.d.allergeni_elenco.map(a=>[a.id,a]));
+const gDayLabel=()=>G.giorno===G.d.oggi?"Colazione di oggi":G.giorno===addDays(G.d.oggi,1)?"Colazione di domani":"Colazione del "+dmy(G.giorno);
+function gCambiaGiorno(n){if(G.sporco&&!confirm("Hai modifiche non salvate. Cambiare giorno senza inviarle?"))return;const g=addDays(G.giorno,n);if(g<G.d.data||g>fine(G.d))return;gSetGiorno(g);document.getElementById("g_day").scrollIntoView({behavior:"smooth",block:"start"})}
+function gApri(p){G.panel=p;G.form=null;gRender();document.getElementById("g_menu").scrollIntoView({behavior:"smooth",block:"start"})}
 function gRender(){
- const d=G.d,A=gA(),ch=gChiuso(),sel=G.req.allergie;
- const chip=id=>`<span class="pill p-warn">${(A[id]||{}).icon||""} ${esc((A[id]||{}).nome||id)}</span>`;
- $("#g_menu").innerHTML=`<h2>La tua colazione</h2>`+(d.voci.length?d.voci.map((v,i)=>{
-  const conf=v.allergeni.filter(a=>sel.includes(a));
-  return `<div class="card" style="margin:8px 0"><div class="row"><b>${v.qta>1?v.qta+"× ":""}${esc(v.nome)}</b>${ch?"":`<button class="btn sm sec" onclick="gRic(${i})">Personalizza</button>`}</div>
-  <div style="margin-top:6px">${v.allergeni.length?v.allergeni.map(chip).join(" "):`<span class="mute">Nessun allergene dichiarato</span>`}</div>
-  ${v.ingredienti.length?`<div class="mute" style="margin-top:4px">Con: ${v.ingredienti.map(esc).join(", ")}</div>`:""}
-  ${conf.length?`<div class="alert bad"><b>Attenzione:</b> contiene ${conf.map(a=>esc((A[a]||{}).nome||a)).join(", ")}, che hai segnalato. Chiedi una variante o una sostituzione.</div>`:""}
-  ${G.req.modifiche.map((m,j)=>m.voce===v.nome?`<div class="alert ok">✏️ ${modTxt(m)}${modChi(m)}${m.diff>0?` <b>+${eur(m.diff)}</b>`:""} ${ch?"":`<a href="#" onclick="gDelMod(${j});return false">✕</a>`}</div>`:"").join("")}</div>`}).join(""):`<div class="card">${esc(d.menu||"")}</div>`)+
-  (G.req.modifiche.filter(m=>!d.voci.some(v=>v.nome===m.voce)).map((m,j)=>`<div class="alert ok">✏️ ${esc(m.voce)}: ${modTxt(m)}</div>`).join(""))+
-  (ch&&!d.annullato?`<p class="mute">Le modifiche non sono più possibili${d.usate>0?": la colazione è già stata ritirata":""}.</p>`:"");
- $("#g_form").innerHTML=G.form===null?"":gFormHtml();
- $("#g_all").innerHTML=`<div class="card"><h3>⚠️ Allergie e intolleranze</h3><p class="mute">Seleziona quelle che hai: il bar lo vedrà prima di preparare la colazione.</p>
-  <div class="tabs" style="flex-wrap:wrap">${d.allergeni_elenco.map(a=>`<button class="${sel.includes(a.id)?"on":""}" ${ch?"disabled":""} onclick="gAll('${a.id}')">${a.icon} ${esc(a.nome)}</button>`).join("")}</div>
-  <textarea rows="2" ${ch?"disabled":""} placeholder="Altre note (es. celiachia, intolleranza al lattosio…)" oninput="G.req.nota=this.value;gSporco()">${esc(G.req.nota)}</textarea></div>`;
- gCartRender();
- $("#g_bar").innerHTML=ch?"":`<div class="sticky-bar"><div><b>${gBarTesto()}</b><div class="mute">${G.sporco?"Modifiche non ancora inviate":"Le tue richieste sono salvate"}</div></div><button class="btn" onclick="gSalva()">${G.sporco?"Invia al bar":"Aggiorna"}</button></div>`}
-const gBarTesto=()=>{const t=gTot(),g=dmy(G.giorno).slice(0,5);return t>0?(gPagato(G.giorno)?"Extra del "+g+" già pagati":"Da pagare al bar il "+g+": "+eur(t)):"Nessun extra per il "+g};
-const gSporco=()=>{if(!G.sporco){G.sporco=true;const b=$("#g_bar .mute");if(b)b.textContent="Modifiche non ancora inviate"}};
+ const d=G.d,A=gA(),ch=gChiuso(),sel=G.req.allergie,extra=gExtraDi(G.giorno);
+ $("#g_day").innerHTML=`<div class="card"><div class="guest-day"><button class="btn sec" aria-label="Giorno precedente" ${G.giorno<=d.data?"disabled":""} onclick="gCambiaGiorno(-1)">‹</button><div><b>${gDayLabel()}</b><span class="mute">${dmy(G.giorno)} · stesso QR</span></div><button class="btn sec" aria-label="Giorno successivo" ${G.giorno>=fine(d)?"disabled":""} onclick="gCambiaGiorno(1)">›</button></div>${G.saved?`<div class="guest-saved">Scelte salvate per il ${dmy(G.giorno)}</div>`:""}</div>`;
+ const riepilogo=`<div class="card"><h3 style="margin-bottom:6px">Incluso nella colazione</h3>${d.voci.length?d.voci.map(v=>`<div class="guest-line"><span><b>${v.qta>1?v.qta+"× ":""}${esc(v.nome)}</b></span></div>`).join(""):`<p>${esc(d.menu||"")}</p>`}
+  ${G.req.modifiche.length?`<div class="guest-saved">${G.req.modifiche.length} modifica${G.req.modifiche.length===1?"":"he"} per questa giornata</div>`:""}
+  ${extra&&extra.voci.length?`<div class="guest-saved">${extra.voci.filter(e=>!e.glutine).reduce((a,e)=>a+(+e.qta||0),0)} prodotti extra · ${eur(extra.totale)}</div>`:""}
+  ${ch?`<p class="mute">Questa giornata non è più modificabile.</p>`:`<div class="guest-actions"><button class="btn sec primary" onclick="gApri('custom')">Cambia un prodotto</button><button class="btn sec" onclick="gApri('extra')">Aggiungi extra</button><button class="btn sec" onclick="gApri('allergy')">Allergie</button></div>`}</div>`;
+ let menu=riepilogo;
+ if(G.panel==="custom")menu=`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Cambia un prodotto</h3></div>`+(d.voci.length?d.voci.map((v,i)=>{const conf=v.allergeni.filter(a=>sel.includes(a));return `<div class="guest-line"><div><b>${v.qta>1?v.qta+"× ":""}${esc(v.nome)}</b>${conf.length?`<div class="mute">Contiene: ${conf.map(a=>esc((A[a]||{}).nome||a)).join(", ")}</div>`:""}</div><button class="btn sm sec" onclick="gRic(${i})">Cambia</button></div>${G.req.modifiche.map((m,j)=>m.voce===v.nome?`<div class="alert ok">${modTxt(m)}${modChi(m)}${m.diff>0?` <b>+${eur(m.diff)}</b>`:""} <a href="#" onclick="gDelMod(${j});return false">Elimina</a></div>`:"").join("")}`}).join(""):`<p>${esc(d.menu||"")}</p>`)+`</div>`;
+ $("#g_menu").innerHTML=menu;$("#g_form").innerHTML=G.form===null?"":gFormHtml();
+ $("#g_all").innerHTML=G.panel!=="allergy"?"":`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Allergie e intolleranze</h3></div><p class="mute">Segnalazione per maggiore attenzione: non garantisce l'assenza di contaminazioni. Chiedi conferma al bar.</p><div class="tabs" style="flex-wrap:wrap">${d.allergeni_elenco.map(a=>`<button class="${sel.includes(a.id)?"on":""}" ${ch?"disabled":""} onclick="gAll('${a.id}')">${a.icon} ${esc(a.nome)}</button>`).join("")}</div><textarea rows="2" ${ch?"disabled":""} placeholder="Altre note" oninput="G.req.nota=this.value;gSporco()">${esc(G.req.nota)}</textarea></div>`;
+ gCartRender();$("#g_bar").innerHTML=ch||!G.sporco?"":`<div class="sticky-bar"><div><b>${gBarTesto()}</b><div class="mute">Solo per il ${dmy(G.giorno)}</div></div><button class="btn" onclick="gSalva()">Invia al bar</button></div>`}
+const gBarTesto=()=>{const t=gTot();return t>0?(gPagato(G.giorno)?"Extra già pagati":"Da pagare al bar: "+eur(t)):"Salva le modifiche"};
+const gSporco=()=>{G.sporco=true;gBarRefresh()};
 function gAll(id){const a=G.req.allergie,i=a.indexOf(id);i<0?a.push(id):a.splice(i,1);G.sporco=true;gRender()}
 function gDelMod(j){G.req.modifiche.splice(j,1);G.sporco=true;gRender()}
 function gRic(i){G.form={i,tipo:"senza"};gRender();$("#g_form").scrollIntoView({behavior:"smooth"})}
@@ -695,21 +707,18 @@ function rfAdd(){
 const gGiorni=()=>{const d=G.d,l=[];for(let x=d.data;x<=fine(d)&&l.length<32;x=addDays(x,1))l.push(x);return l};
 const gExtraDi=g=>G.d.extra.find(e=>e.giorno===g)||null;
 const gPagato=g=>{const e=gExtraDi(g);return !!(e&&e.pagato)};
-function gSetGiorno(g){G.giorno=g;G.cart={};const e=gExtraDi(g);(e?e.voci:[]).forEach(x=>{if(x.id)G.cart[x.id]=x.qta});G.sporco=false;gRender()}
+function gSetGiorno(g){G.giorno=g;G.cart={};const e=gExtraDi(g),s=(G.d.scelte||{})[g]||{},r=s.richieste||{};(e?e.voci:[]).forEach(x=>{if(x.id)G.cart[x.id]=x.qta});G.req={allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:Array.isArray(r.modifiche)?r.modifiche:[]};G.form=null;G.panel="home";G.sporco=false;G.saved=false;gRender()}
 const gGlu=()=>G.req.modifiche.reduce((a,m)=>a+(m.variante?(+m.diff||0):0),0);
 const gPrezzo=id=>{const p=G.cata&&G.cata.find(x=>x.id==id);if(p)return +p.prezzo||0;const e=gExtraDi(G.giorno),v=e&&e.voci.find(x=>x.id==id);return v?+v.prezzo||0:0};
 const gTot=()=>Object.entries(G.cart).reduce((a,[id,q])=>a+gPrezzo(id)*q,0)+gGlu();
 function gCartRender(){
  const d=G.d,ch=gChiuso(),g=G.giorno,pag=gPagato(g),ids=Object.keys(G.cart).filter(i=>G.cart[i]>0);
  const nome=id=>{const p=G.cata&&G.cata.find(x=>x.id==id);const e=gExtraDi(g),v=e&&e.voci.find(x=>x.id==id);return p?p.nome:v?v.nome:"Prodotto"};
- const altri=d.extra.filter(x=>x.giorno!==g&&x.totale>0);
- $("#g_cart").innerHTML=`<div class="card"><h3>🛒 Aggiungi alla tua colazione</h3><p class="mute">Scegli il giorno e poi i prodotti del nostro menù: li paghi al bar quando ritiri la colazione di quel giorno.</p>
-  <div class="tabs" style="flex-wrap:wrap">${gGiorni().map(x=>`<button class="${x===g?"on":""}" ${x<d.oggi?"disabled":""} data-g="${x}" onclick="gSetGiorno(this.dataset.g)">${dmy(x).slice(0,5)}${gPagato(x)?" ✓":(gExtraDi(x)||{}).totale>0?" •":""}</button>`).join("")}</div>
+ $("#g_cart").innerHTML=G.panel!=="extra"?"":`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Aggiungi extra</h3></div><p class="mute">Solo per il ${dmy(g)}. Paghi al bar al ritiro.</p>
   ${ids.map(id=>`<div class="row" style="margin:6px 0"><span>${G.cart[id]}× ${esc(nome(id))}</span><span>${eur(gPrezzo(id)*G.cart[id])} ${ch||pag?"":`<button class="btn sm sec" onclick="gQta(${+id},-${G.cart[id]})">✕</button>`}</span></div>`).join("")}
   ${G.req.modifiche.map(m=>m.variante?`<div class="row" style="margin:6px 0"><span>Senza glutine: ${esc(m.testo)}</span><span>${eur(+m.diff||0)}</span></div>`:"").join("")}
   ${ids.length||gGlu()>0?`<div class="row"><b>Totale extra del ${dmy(g)}</b><b>${eur(gTot())}</b></div>`:""}
-  ${pag?`<div class="alert ok">Extra del ${dmy(g)} già pagati al bar.</div>`:ch?"":`<button class="btn sec" onclick="gApriCat()">+ Sfoglia il menù</button>`}
-  ${altri.length?`<div class="mute" style="margin-top:8px">Altri giorni: ${altri.map(x=>dmy(x.giorno).slice(0,5)+" "+eur(x.totale)+(x.pagato?" (pagati)":"")).join(" · ")}</div>`:""}</div>`}
+  ${pag?`<div class="alert ok">Extra del ${dmy(g)} già pagati al bar.</div>`:ch?"":`<button class="btn sec" onclick="gApriCat()">Sfoglia il menù</button>`}</div>`}
 let XTRA=null;
 async function loadXtra(){if(!XTRA)XTRA=await fetch("menu-img/extra.json").then(r=>r.json()).catch(()=>({}));return XTRA}
 const imgOf=p=>{const x=XTRA&&XTRA[p.id];return x&&x.i?"menu-img/"+x.i:(p.img||"")};
@@ -717,7 +726,7 @@ function phErr(img){const d=document.createElement("div");d.className=img.classL
 const prodImg=(p,big)=>{const u=imgOf(p);return u?`<img class="${big?"big":"pimg"}" loading="lazy" src="${esc(u)}" alt="" onerror="phErr(this)">`:`<div class="${big?"bigph":"pimg ph"}">☕</div>`};
 async function gApriCat(){
  if(!G.cata){const [c]=await Promise.all([run("bb_catalogo"),loadXtra()]);if(!c||c===true)return;G.cata=c}
- G.catAperto=true;gCatRender();$("#g_cat").scrollIntoView({behavior:"smooth"})}
+ G.panel="extra";G.catAperto=true;gCatRender();$("#g_cat").scrollIntoView({behavior:"smooth"})}
 function gCatRender(){
  const cats=[...new Set(G.cata.map(p=>p.cat))],subs=[...new Set(G.cata.filter(p=>!G.cat||p.cat===G.cat).map(p=>p.sub||p.cat))];
  $("#g_cat").innerHTML=`<div class="card"><div class="row"><h3 style="margin:0">Il nostro menù</h3><button class="btn sm sec" onclick="G.catAperto=false;$('#g_cat').innerHTML=''">Chiudi</button></div>
@@ -742,13 +751,13 @@ function gDettaglio(id){
   <p class="mute" style="font-size:12px">Per informazioni complete sugli allergeni chiedi al bancone (Reg. UE 1169/2011).</p>
   <div class="row" style="margin-top:12px"><div class="stepper"><button onclick="gQta(${id},-1);$('#sq').textContent=G.cart[${id}]||0">−</button><b id="sq">${G.cart[id]||0}</b><button onclick="gQta(${id},1);$('#sq').textContent=G.cart[${id}]||0">+</button></div><button class="btn" onclick="document.getElementById('sheet').remove()">Fatto</button></div></div></div>`;
  document.body.appendChild(d)}
-function gQta(id,d){if(gPagato(G.giorno))return toast("Extra del "+dmy(G.giorno).slice(0,5)+" già pagati: scegli un altro giorno");G.cart[id]=Math.max(0,Math.min(20,(G.cart[id]||0)+d));G.sporco=true;gCartRender();const e=document.getElementById("q"+id);if(e)e.textContent=G.cart[id];const b=$("#g_bar");if(b)gBarRefresh()}
-function gBarRefresh(){const bb=$("#g_bar b");if(bb)bb.textContent=gBarTesto();const m=$("#g_bar .mute");if(m)m.textContent="Modifiche non ancora inviate";const bt=$("#g_bar .btn");if(bt)bt.textContent="Invia al bar"}
+function gQta(id,d){if(gPagato(G.giorno))return toast("Extra del "+dmy(G.giorno).slice(0,5)+" già pagati");G.cart[id]=Math.max(0,Math.min(20,(G.cart[id]||0)+d));G.sporco=true;gRender()}
+function gBarRefresh(){if(!G||gChiuso()||!G.sporco)return;$("#g_bar").innerHTML=`<div class="sticky-bar"><div><b>${gBarTesto()}</b><div class="mute">Solo per il ${dmy(G.giorno)}</div></div><button class="btn" onclick="gSalva()">Invia al bar</button></div>`}
 async function gSalva(){
  const extra=Object.entries(G.cart).filter(([,q])=>q>0).map(([id,qta])=>({id:+id,qta}));
  const r=await run("bb_ospite_salva",{vid:G.d.id,prichieste:G.req,pextra:gPagato(G.giorno)?[]:extra,pgiorno:G.giorno});
  if(r&&r.errore)return toast(r.errore);
- if(r&&r.id){toast("Inviato al bar ✓");G.d=gNorm(r);gSetGiorno(G.giorno)}}
+ if(r&&r.id){const g=G.giorno;toast("Scelte del "+dmy(g)+" inviate al bar");G.d=gNorm(r);gSetGiorno(g);G.saved=true;gRender()}}
 const ANM="https://www.anm.it";
 const ANM_MAPPA="https://www.anm.it/resource/1749111448000/MappaReteSuFerroPDF";
 const ANM_PUNTI="https://www.anm.it/resource/1768990802000/cartadellamobilita25";
@@ -903,18 +912,20 @@ const conferma=async id=>{if(await run("bb_tit_conferma_ricarica",{p:sess.p,mid:
 
 /* --- Produzione --- */
 let PDAY=null;
-function pProduzione(){PDAY=PDAY||TIT.oggi;return `<div class="card"><div class="row" style="justify-content:flex-start;flex-wrap:wrap">
+function pProduzione(){PDAY=PDAY||TIT.oggi;return `<div class="card"><div class="production-toolbar">
  <button class="btn sm sec" onclick="setPd(0)">Oggi</button><button class="btn sm sec" onclick="setPd(1)">Domani</button><button class="btn sm sec" onclick="setPd(2)">Dopodomani</button>
- <input id="pd" type="date" value="${PDAY}" style="width:auto;margin:0" onchange="PDAY=this.value;prodTab()"><button class="btn sm" onclick="stampaProd()">🖨 Stampa</button></div></div><div id="pt"></div>`}
+ <input class="date-field" id="pd" type="date" value="${PDAY}" onchange="PDAY=this.value;prodTab()"><button class="btn sm print-production" onclick="stampaProd()">🖨 Stampa</button></div></div><div id="pt"></div>`}
 pProduzione.after=()=>prodTab();
 const setPd=n=>{PDAY=addDays(TIT.oggi,n);$("#pd").value=PDAY;prodTab()};
 const tA=()=>Object.fromEntries((TIT.allergeni_elenco||[]).map(a=>[a.id,a]));
 /* le richieste arrivano dal database gia' validate, ma si leggono sempre con la forma attesa (liste) */
 const reqListe=r=>{r=r&&typeof r==="object"?r:{};return {allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:Array.isArray(r.modifiche)?r.modifiche:[]}};
 const hasReq=r=>{const x=reqListe(r);return !!(x.allergie.length||x.nota||x.modifiche.length)};
+const hasAnyReq=v=>hasReq(v.richieste)||Object.values(v.modifiche_giorni||{}).some(x=>Array.isArray(x)&&x.length);
 /* extra per giorno: una voce {giorno, voci, totale, pagato} per ogni giorno ordinato */
 const extraDi=(v,g)=>(Array.isArray(v.extra)?v.extra:[]).find(e=>e&&e.giorno===g)||null;
 const hasExtra=(v,g)=>{const e=extraDi(v,g);return !!(e&&e.totale>0)};
+const vGiorno=(v,g)=>{const r=reqListe(v.richieste),m=v.modifiche_giorni&&Array.isArray(v.modifiche_giorni[g])?v.modifiche_giorni[g]:[];return {...v,richieste:{allergie:r.allergie,nota:r.nota,modifiche:m}}};
 function reqHtml(v,giorno){
  const r=reqListe(v.richieste),A=tA();let h="";
  if(r.allergie.length)h+=`<div class="alert bad"><b>⚠️ ALLERGIE:</b> ${r.allergie.map(a=>esc((A[a]||{}).nome||a)).join(", ")}</div>`;
@@ -924,16 +935,14 @@ function reqHtml(v,giorno){
  if(e&&Array.isArray(e.voci)&&e.voci.length)h+=`<div class="alert ok">🛒 Extra del ${dmy(e.giorno).slice(0,5)}: ${e.voci.map(x=>x.qta+"× "+esc(x.nome)).join(", ")} — <b>${eur(e.totale)}</b> ${e.pagato?"(incassati)":"<b>da incassare</b>"}</div>`;
  return h}
 function prodTab(){
- const day=attivi(TIT.vouchers).filter(v=>copre(v,PDAY));
+ const day=attivi(TIT.vouchers).filter(v=>copre(v,PDAY)).map(v=>vGiorno(v,PDAY));
  const per={};day.forEach(v=>{const k=colNome(v)+"|"+v.fascia,o=per[k]||(per[k]={v,tot:0,fatte:0,s:{}});const n=perDay(v);o.tot+=n;o.fatte+=doneOn(v,PDAY);o.s[v.struttura]=(o.s[v.struttura]||0)+n});
  const ks=Object.keys(per).sort((a,b)=>per[a].v.fascia-per[b].v.fascia);
  const sp=day.filter(v=>hasReq(v.richieste)||hasExtra(v,PDAY));
  const ex={};day.forEach(v=>{const e=extraDi(v,PDAY);(e&&Array.isArray(e.voci)?e.voci:[]).forEach(x=>{ex[x.nome]=(ex[x.nome]||0)+(+x.qta||0)})});
- $("#pt").innerHTML=`<div class="card" id="prodprint"><h3>Produzione del ${dmy(PDAY)}</h3>${ks.length?`<table><tr><th>Colazione</th><th>Composizione</th><th>Struttura (qtà)</th><th style="text-align:right">Totale</th><th style="text-align:right">Ritirate</th></tr>
- ${ks.map(k=>`<tr><td><b>${esc(colNome(per[k].v))}</b><div class="mute">${eur(+per[k].v.fascia)}</div></td><td>${esc(colVoci(per[k].v))}</td><td>${Object.entries(per[k].s).map(([n,q])=>esc(n.replace(" (DEMO)",""))+" ("+q+")").join(", ")}</td><td style="text-align:right"><b style="font-size:20px">${per[k].tot}</b></td><td style="text-align:right">${per[k].fatte}</td></tr>`).join("")}
- <tr><td colspan="3"><b>Totale</b></td><td style="text-align:right"><b>${ks.reduce((a,k)=>a+per[k].tot,0)}</b></td><td style="text-align:right"><b>${ks.reduce((a,k)=>a+per[k].fatte,0)}</b></td></tr></table>`:`<p class="mute">Nessuna colazione prenotata per questo giorno.</p>`}
- ${Object.keys(ex).length?`<h3 style="margin-top:14px">🛒 Extra da preparare</h3>${Object.entries(ex).map(([n,q])=>`<div class="row"><span>${esc(n)}</span><b>${q}</b></div>`).join("")}`:""}
- ${sp.length?`<h3 style="margin-top:14px">⚠️ Richieste degli ospiti (${sp.length})</h3>${sp.map(v=>`<div style="margin:8px 0"><b>${esc(v.struttura.replace(" (DEMO)",""))} · ${esc(descV(v))}</b> <span class="mute">${v.id}</span>${reqHtml(v,PDAY)}</div>`).join("")}`:""}</div>`}
+ $("#pt").innerHTML=`<div class="card" id="prodprint"><h3>Produzione del ${dmy(PDAY)}</h3>${ks.length?`<div class="production-list">${ks.map(k=>`<article class="production-item"><div class="production-head"><div><h4>${esc(colNome(per[k].v))}</h4><span class="mute">${eur(+per[k].v.fascia)} a colazione</span></div><div class="production-count">${per[k].tot}</div></div><div class="production-composition">${esc(colVoci(per[k].v))}</div><div class="production-hotels">${Object.entries(per[k].s).map(([n,q])=>`<span class="pill">${esc(n.replace(" (DEMO)",""))} · ${q}</span>`).join("")}</div><div class="mute" style="margin-top:8px">Ritirate: ${per[k].fatte}</div></article>`).join("")}</div><div class="production-summary"><div><span class="mute">Da preparare</span><b>${ks.reduce((a,k)=>a+per[k].tot,0)}</b></div><div><span class="mute">Già ritirate</span><b>${ks.reduce((a,k)=>a+per[k].fatte,0)}</b></div></div>`:`<p class="mute">Nessuna colazione prenotata per questo giorno.</p>`}
+ ${Object.keys(ex).length?`<h3 style="margin-top:14px">🛒 Extra da preparare</h3>${Object.entries(ex).map(([n,q])=>`<div class="production-extra row"><span>${esc(n)}</span><b>${q}</b></div>`).join("")}`:""}
+ ${sp.length?`<h3 style="margin-top:14px">⚠️ Richieste degli ospiti (${sp.length})</h3>${sp.map(v=>`<div class="production-request"><b>${esc(v.struttura.replace(" (DEMO)",""))} · ${esc(descV(v))}</b> <span class="mute">${v.id}</span>${reqHtml(v,PDAY)}</div>`).join("")}`:""}</div>`}
 function stampaProd(){const w=window.open("","_blank");w.document.write(`<title>Produzione</title><body style="font-family:system-ui">${document.getElementById("prodprint").outerHTML}<script>print()<\/script>`);w.document.close()}
 
 /* --- Scanner --- */
@@ -979,7 +988,7 @@ function ordTab(){
  ORD=TIT.vouchers.filter(v=>(!s||v.struttura_id===s)&&(!t||stato(v,oggi)[0]===t)&&(!a||fine(v)>=a)&&(!b||v.data<=b)&&(!q||(v.ospite+" "+v.camera).toLowerCase().includes(q)||v.id.toLowerCase().includes(q))).sort((x,y)=>y.data.localeCompare(x.data));
  $("#f_n").textContent=`${ORD.length} ordini · consegnato ${eur(consegnato(attivi(ORD)))}`;
  $("#ot").innerHTML=`<tr><th>Periodo</th><th>Struttura</th><th>Camera / ospite</th><th>Colazione</th><th>Ritirate</th><th>Stato</th><th>Note</th><th>Codice</th><th></th></tr>`+ORD.slice(0,300).map(v=>{const[t,c]=stato(v,oggi);return `<tr><td>${dRange(v)}</td><td>${esc(v.struttura.replace(" (DEMO)",""))}</td><td>${esc(descV(v,false))}</td><td>${esc(colNome(v))}<div class="mute">${v.qta}× ${eur(v.fascia)}</div></td><td>${v.usate}/${v.qta}</td><td><span class="pill ${c}">${t}</span></td>
- <td>${hasReq(v.richieste)?`<span title="Richieste dell'ospite">⚠️</span>`:""}${v.extra_totale>0?`<span title="Extra ${eur(v.extra_totale)}${v.extra_da_pagare>0?", da incassare "+eur(v.extra_da_pagare):" incassati"}"> 🛒${v.extra_da_pagare>0?"":"✓"}</span>`:""}${v.annullato&&v.annullo_motivo?`<div class="mute">${esc(v.annullo_motivo)}</div>`:""}</td><td>${v.id}</td>
+ <td>${hasAnyReq(v)?`<span title="Richieste dell'ospite">⚠️</span>`:""}${v.extra_totale>0?`<span title="Extra ${eur(v.extra_totale)}${v.extra_da_pagare>0?", da incassare "+eur(v.extra_da_pagare):" incassati"}"> 🛒${v.extra_da_pagare>0?"":"✓"}</span>`:""}${v.annullato&&v.annullo_motivo?`<div class="mute">${esc(v.annullo_motivo)}</div>`:""}</td><td>${v.id}</td>
  <td style="white-space:nowrap"><button class="btn sm sec" onclick="stampaUno('${v.id}')">QR</button>${!v.annullato&&v.usate<v.qta?` <button class="btn sm sec" onclick="annullaTit('${v.id}')">Annulla</button>`:""}</td></tr>`}).join("")}
 const csvOrdini=()=>download("ordini-colazioni.csv",csvRows([["dal","al","struttura","camera","ospite","colazione","prezzo","qta","ritirate","stato","codice","importo_consegnato"],...ORD.map(v=>[v.data,fine(v),v.struttura,v.camera,v.ospite,colNome(v),v.fascia,v.qta,v.usate,stato(v,TIT.oggi)[0],v.id,v.annullato?0:v.usate*v.fascia])]));
 const cardTit=v=>cardVoucher(v,colNome(v),v.struttura);

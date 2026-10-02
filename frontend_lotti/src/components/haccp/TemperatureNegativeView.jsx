@@ -13,7 +13,7 @@ import { giorniNelMese } from "../../utils/dateUtils";
 import { testoFirmatari } from "../../utils/firmatari";
 import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
 import { CellaTemperatura, ModalAzioneCorrettiva } from "./shared/CellaTemperatura";
-import { LEGENDA_STATI_HACCP, rangeConformeHaccp, statoCellaHaccp } from "../../utils/statoCellaHaccp";
+import { LEGENDA_STATI_HACCP, statoCellaHaccp, temperaturaNumericaHaccp } from "../../utils/statoCellaHaccp";
 
 // Dati aziendali Ceraldi Group
 const AZIENDA_INFO = {
@@ -284,11 +284,8 @@ const TemperatureNegativeView = () => {
         const temp = record.temp;
         const fuoriRange = temp > (scheda?.temp_max || -18) || temp < (scheda?.temp_min || -22);
         if (!fuoriRange) {
-          const range = rangeConformeHaccp(
-            { min: scheda?.temp_min ?? -22, max: scheda?.temp_max ?? -18 },
-            { valoreRegistrato: temp },
-          );
-          return { ...range, class: range.className };
+          const rilevata = temperaturaNumericaHaccp(temp, { operatore: record.operatore });
+          return { ...rilevata, class: rilevata.className };
         }
         return {
           value: `${temp}°`,
@@ -301,8 +298,8 @@ const TemperatureNegativeView = () => {
       const temp = record;
       const fuoriRange = temp > -18 || temp < -22;
       if (!fuoriRange) {
-        const range = rangeConformeHaccp({ min: -22, max: -18 }, { valoreRegistrato: temp });
-        return { ...range, class: range.className };
+        const rilevata = temperaturaNumericaHaccp(temp);
+        return { ...rilevata, class: rilevata.className };
       }
       return {
         value: `${temp}°`,
@@ -453,7 +450,7 @@ const TemperatureNegativeView = () => {
 
       {/* Legenda */}
       <div className="flex items-center gap-4 text-xs text-gray-600 bg-gray-50 p-3 rounded-lg flex-wrap">
-        <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#e6efe9] px-1 text-[10px] font-bold text-[#3d8168]">−22…−18°</span> Range conforme dichiarato</span>
+        <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#e6efe9] px-1 text-[10px] font-bold text-[#3d8168]">−20°</span> Temperatura rilevata conforme</span>
         <span className="flex items-center gap-1"><span className="h-4 rounded bg-[#f6ebe0] px-1 text-[10px] font-bold text-[#9a6a32]">N.R.</span> Non rilevato</span>
         <span className="flex items-center gap-1"><span className="h-4 rounded border border-dashed border-[#c4894a] px-1 text-[10px] text-[#8a6f47]">…</span> Da rilevare</span>
         <span className="flex items-center gap-1">

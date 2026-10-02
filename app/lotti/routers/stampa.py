@@ -140,6 +140,38 @@ def _ingredienti_reali(ingredienti_raw: list) -> list[str]:
     return result
 
 
+def _indice_tracciabilita(lotto: dict) -> dict[str, dict[str, str]]:
+    """Indicizza la provenienza una volta sola per HTML ed ESC/POS."""
+    indice: dict[str, dict[str, str]] = {}
+    lotti_scalati = (lotto.get("lotti_fornitori") or {}).get("lotti_scalati") or []
+    for riga in lotti_scalati:
+        chiave = re.sub(
+            r"\s+", " ", str(riga.get("ingrediente") or riga.get("prodotto") or "")
+        ).strip().lower()
+        if not chiave:
+            continue
+        riferimento = str(riga.get("fattura_ref") or "").strip()
+        lotto_fornitore = str(riga.get("lotto_id_fornitore") or "").strip()
+        if not riferimento and lotto_fornitore.upper().startswith("FAT-"):
+            riferimento = lotto_fornitore[4:]
+        indice.setdefault(chiave, {
+            "fornitore": str(riga.get("fornitore") or "").strip(),
+            "fattura": riferimento,
+            "data_fattura": str(riga.get("data_fattura") or "").strip(),
+        })
+    return indice
+
+
+def _tracciabilita_ingrediente(nome: str, indice: dict[str, dict[str, str]]) -> dict[str, str]:
+    chiave = re.sub(r"\s+", " ", str(nome or "")).strip().lower()
+    if chiave in indice:
+        return indice[chiave]
+    for candidata, provenienza in indice.items():
+        if candidata and (candidata in chiave or chiave in candidata):
+            return provenienza
+    return {"fornitore": "", "fattura": "", "data_fattura": ""}
+
+
 def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: str = "", azienda=None) -> str:
     _az = azienda or {}
     _nome_az = _az.get("ragione_sociale") or "Ceraldi Group S.r.l."
@@ -150,50 +182,21 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
     if ingredienti:
         # Mappa ingrediente -> fornitore/fattura (dalla tracciabilità FIFO), così
         # la sezione INGREDIENTI mostra DA DOVE viene ogni ingrediente.
-        _ls_map = (lotto.get("lotti_fornitori") or {}).get("lotti_scalati") or []
-        trac_map = {}
-        for ls in _ls_map:
-            k = (ls.get("ingrediente") or ls.get("prodotto") or "").strip().lower()
-            if not k:
-                continue
-            lid = ls.get("lotto_id_fornitore") or ""
-            fat = str(ls.get("fattura_ref") or "").strip()
-            if fat:
-                src = "Fatt. " + fat
-            elif lid.startswith("FAT-"):
-                src = "Fatt. " + lid.replace("FAT-", "")
-            elif ls.get("da_dizionario"):
-                src = "MAG"
-            elif lid and lid.upper() != "N/D":
-                src = "LOT " + lid
-            else:
-                src = ""
-            # DATA della fattura accanto al numero (richiesta Enzo 25/07/2026:
-            # sull'etichetta c'era "Fatt. 1/56437" ma non quando è arrivata la
-            # merce — davanti all'ASL il numero da solo non basta a datare il
-            # lotto d'origine).
-            data_f = str(ls.get("data_fattura") or "").strip()
-            if data_f and src.startswith("Fatt."):
-                src += f" del {data_f}"
-            etich = " · ".join(p for p in (ls.get("fornitore") or "", src) if p)
-            if etich:
-                trac_map.setdefault(k, etich)
-
-        def _trac_for(nome):
-            kk = (nome or "").strip().lower()
-            if kk in trac_map:
-                return trac_map[kk]
-            for key, val in trac_map.items():
-                if key and (key in kk or kk in key):
-                    return val
-            return ""
-
+        trac_map = _indice_tracciabilita(lotto)
         parti = []
         for i in ingredienti:
             cls = "ing  allergene" if ("contiene" in i.lower() and "non contiene" not in i.lower()) else "ing"
-            et = _trac_for(i)
-            src_html = f'<span class="ing-source">Origine: {et}</span>' if et else ""
-            parti.append(f'<div class="{cls}">• {i}{src_html}</div>')
+            traccia = _tracciabilita_ingrediente(i, trac_map)
+            fornitore = html.escape(traccia["fornitore"] or "—")
+            ingrediente = html.escape(str(i))
+            fattura = html.escape(traccia["fattura"] or "—")
+            data_fattura = html.escape(traccia["data_fattura"] or "—")
+            parti.append(
+                f'<div class="{cls}"><b>FORNITORE:</b> {fornitore}'
+                f' · <b>INGREDIENTE:</b> {ingrediente}'
+                f' · <b>FATTURA:</b> {fattura}'
+                f' · <b>DATA FATTURA:</b> {data_fattura}</div>'
+            )
         righe_ing = "".join(parti)
     else:
         righe_ing = '<div class="ing">Dati non disponibili</div>'
@@ -272,7 +275,6 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
   {f'<div class="row frigo"><span class="label">FRIGO:</span><span class="val">{frigo}</span></div>' if frigo else ""}
   {ing_section}
   {nutri_html}
-  {sezione_allergeni}
   <div class="etichetta-finale">
     {timbro_trac}
   </div>
@@ -280,6 +282,7 @@ def build_pos_html(lotto: dict, allergeni: list, ingredienti: list, nutri_html: 
     Stampato: {data_ora}<br/>
     {_nome_az}
   </div>
+  {sezione_allergeni}
   <script>window.onload = () => {{ setTimeout(() => {{ window.print(); window.onafterprint = () => window.close(); }}, 250); }}</script>
 </body>
 </html>"""
@@ -352,23 +355,35 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
     CP437 = b"\x1b\x74\x00"       # ESC t 0  codepage
     AL_C = b"\x1b\x61\x01"; AL_L = b"\x1b\x61\x00"   # align center / left
     B_ON = b"\x1b\x45\x01"; B_OFF = b"\x1b\x45\x00"  # bold on/off
-    SZ = lambda n: b"\x1d\x21" + bytes([n])          # GS ! n  (0=normale,0x11=2x,0x01=2xh)
+    FONT_A = b"\x1b\x4d\x00"; FONT_B = b"\x1b\x4d\x01"  # 48 / 64 colonne su 80 mm
+    CHAR_SP_0 = b"\x1b\x20\x00"                         # niente spazio extra tra caratteri
+    SZ = lambda n: b"\x1d\x21" + bytes([n])          # GS ! n  (0=normale,0x10=altezza 2x)
     NL = b"\n"
     CUT = b"\n\n\n\x1d\x56\x42\x00"                   # feed + full cut
     sep = _esc_enc("-" * larghezza) + NL
 
-    def line(s="", center=False, bold=False, big=False):
+    def nowrap(s):
+        """Una riga ESC/POS non deve contenere a-capo o spazi ripetuti dai dati."""
+        return re.sub(r"\s+", " ", str(s or "")).strip()
+
+    def line(s="", center=False, bold=False, big=False, compact=False):
         out = bytearray()
         out += AL_C if center else AL_L
+        out += FONT_B if compact else FONT_A
+        out += CHAR_SP_0
         if big:
-            out += SZ(0x11)
+            # Altezza doppia, larghezza normale: il numero lotto resta grande
+            # senza dimezzare le colonne disponibili e quindi senza spezzarsi.
+            out += SZ(0x10)
         if bold:
             out += B_ON
-        out += _esc_enc(s) + NL
+        out += _esc_enc(nowrap(s)) + NL
         if bold:
             out += B_OFF
         if big:
             out += SZ(0x00)
+        if compact:
+            out += FONT_A
         return bytes(out)
 
     prodotto = lotto.get("prodotto") or lotto.get("prodotto_nome") or ""
@@ -380,30 +395,7 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
     scad_abb = lotto.get("scadenza_abbattuto") or ""
     frigo = lotto.get("frigo_numero") or ""
 
-    # Mappa ingrediente -> "Fornitore - Fatt. X" (dalla tracciabilità, come l'HTML)
-    lotti_scalati = (lotto.get("lotti_fornitori") or {}).get("lotti_scalati") or []
-    trac = {}
-    for ls in lotti_scalati:
-        k = (ls.get("ingrediente") or ls.get("prodotto") or "").strip().lower()
-        if not k:
-            continue
-        fat = str(ls.get("fattura_ref") or "").strip()
-        lid = ls.get("lotto_id_fornitore") or ""
-        src = ("Fatt. " + fat) if fat else (("Fatt. " + lid.replace("FAT-", "")) if lid.startswith("FAT-") else "")
-        # stessa aggiunta della stampa HTML: numero fattura + data (25/07/2026)
-        data_f = str(ls.get("data_fattura") or "").strip()
-        if data_f and src.startswith("Fatt."):
-            src += f" del {data_f}"
-        et = " - ".join(p for p in ((ls.get("fornitore") or ""), src) if p)
-        if et:
-            trac[k] = et
-
-    def trac_for(ing):
-        kk = ing.lower()
-        for k, v in trac.items():
-            if k and (k in kk or kk in k):
-                return v
-        return ""
+    trac = _indice_tracciabilita(lotto)
 
     buf = bytearray()
     buf += INIT + CP437
@@ -412,31 +404,38 @@ def build_escpos(lotto: dict, allergeni: list, ingredienti: list, larghezza: int
     if pezzi:
         buf += line(f"QTA: {pezzi} {unita}", center=True, bold=True)
     buf += sep
-    buf += line(f"PRODOTTO: {prodotto}", bold=True)
-    buf += line(f"PRODUZIONE: {data_prod}")
-    buf += line(f"SCADENZA: {data_scad}", bold=True)
+    buf += line(f"PRODOTTO: {prodotto}", bold=True, compact=True)
+    buf += line(f"PRODUZIONE: {data_prod}", compact=True)
+    buf += line(f"SCADENZA: {data_scad}", bold=True, compact=True)
     if scad_abb:
-        buf += line(f"SCAD -18°C: {scad_abb}")
+        buf += line(f"SCAD -18°C: {scad_abb}", compact=True)
     if frigo:
-        buf += line(f"FRIGO: {frigo}")
+        buf += line(f"FRIGO: {frigo}", compact=True)
     if ingredienti:
         buf += sep
         buf += line("INGREDIENTI + TRACCIABILITA:", bold=True)
         for i in ingredienti:
-            buf += line(f"- {i}")
-            et = trac_for(i)
-            if et:
-                buf += line(f"    {et}")
+            provenienza = _tracciabilita_ingrediente(i, trac)
+            buf += line(
+                " | ".join((
+                    f"FORNITORE: {provenienza['fornitore'] or '-'}",
+                    f"INGREDIENTE: {i}",
+                    f"FATTURA: {provenienza['fattura'] or '-'}",
+                    f"DATA FATTURA: {provenienza['data_fattura'] or '-'}",
+                )),
+                compact=True,
+            )
     buf += sep
-    if allergeni:
-        buf += line("ALLERGENI (Reg. UE 1169/2011):", bold=True)
-        buf += line(" - ".join(allergeni), bold=True)
-    else:
-        buf += line("Non contiene allergeni dichiarati")
-    buf += sep
-    buf += line(f"{prodotto.upper()} - {data_prod}", center=True, bold=True)
+    buf += line(f"{prodotto.upper()} - {data_prod}", center=True, bold=True, compact=True)
     buf += line(f"Stampato: {datetime.now().strftime('%d/%m/%Y %H:%M')}", center=True)
     buf += line("Reg. CE 178/2002", center=True)
+    buf += sep
+    if allergeni:
+        buf += line("!!! ALLERGENI !!!", center=True, bold=True, big=True)
+        buf += line(" - ".join(allergeni), center=True, bold=True)
+        buf += line("Reg. UE 1169/2011", center=True, bold=True)
+    else:
+        buf += line("NON CONTIENE ALLERGENI DICHIARATI", center=True, bold=True)
     buf += CUT
     return bytes(buf)
 

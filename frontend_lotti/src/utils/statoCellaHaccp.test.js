@@ -1,4 +1,4 @@
-import { rangeConformeHaccp, statoCellaHaccp } from "./statoCellaHaccp";
+import { rangeConformeHaccp, statoCellaHaccp, temperaturaNumericaHaccp } from "./statoCellaHaccp";
 
 describe("statoCellaHaccp", () => {
   test("conforme, non rilevato e da rilevare sono tre cose diverse", () => {
@@ -35,5 +35,13 @@ describe("statoCellaHaccp", () => {
     expect(statoCellaHaccp({ temp: 3.2, stato: "conforme" })).toBeNull();
     expect(statoCellaHaccp(null)).toBeNull();
     expect(statoCellaHaccp(4)).toBeNull();
+  });
+
+  test("una temperatura negativa conforme viene mostrata come numero reale", () => {
+    const c = temperaturaNumericaHaccp(-20);
+    expect(c.value).toBe("−20°");
+    expect(c.stampa).toBe("−20 °C");
+    expect(c.title).toContain("Temperatura rilevata: −20°C");
+    expect(c.value).not.toContain("…");
   });
 });

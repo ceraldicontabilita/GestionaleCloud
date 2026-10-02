@@ -51,6 +51,11 @@ const chip = (attivo, colore = "var(--primary)") => ({
   borderColor: attivo ? colore : "var(--border)",
 });
 
+export const nomeProdottoConInizialiMaiuscole = (valore) => String(valore || "")
+  .toLocaleLowerCase("it-IT")
+  .replace(/(^|[\s/(\-])([\p{L}])/gu, (_testo, separatore, lettera) =>
+    `${separatore}${lettera.toLocaleUpperCase("it-IT")}`);
+
 function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
   const [sugg, setSugg] = useState([]);
   const [open, setOpen] = useState(false);
@@ -88,10 +93,9 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const titleCase = (s) => (s || "").replace(/\b\w/g, (c) => c.toUpperCase());
   const scegli = (p) => {
     justPicked.current = true;
-    const nome = p.nome_canonico || titleCase(p.nome_normalizzato || p.nome || "");
+    const nome = nomeProdottoConInizialiMaiuscole(p.nome_canonico || p.nome_normalizzato || p.nome || "");
     onChange(idx, "nome", nome);
     setOpen(false);
     setSugg([]);
@@ -104,7 +108,10 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
       <div ref={boxRef} style={{flex:"1 1 180px",position:"relative",minWidth:140}}>
         <input
           value={ing.nome || ""}
-          onChange={e => onChange(idx,"nome",e.target.value)}
+          onChange={e => {
+            digitando.current = true;
+            onChange(idx,"nome",e.target.value);
+          }}
           onFocus={() => { if (sugg.length) setOpen(true); }}
           placeholder="Ingrediente (cerca dalle fatture)…"
           style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",border:"1.5px solid var(--border)",borderRadius:9,fontSize:15,fontWeight:700,color:"var(--text)",fontFamily:"var(--font)"}}
@@ -116,7 +123,7 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
               <button key={i} type="button" onClick={() => scegli(p)}
                 style={{display:"block",width:"100%",textAlign:"left",border:"none",background:"transparent",padding:"10px 12px",cursor:"pointer",fontFamily:"var(--font)",borderBottom:"1px solid var(--bg)"}}
                 onMouseDown={(e)=>e.preventDefault()}>
-                <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{p.nome_canonico || titleCase(p.nome_normalizzato || "")}</div>
+                <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{nomeProdottoConInizialiMaiuscole(p.nome_canonico || p.nome_normalizzato || "")}</div>
                 <div style={{fontSize:12,color:"var(--text-3)"}}>
                   {p.fornitore || "—"}{p.prezzo_kg ? ` · €${Number(p.prezzo_kg).toFixed(2)}/kg` : ""}
                 </div>

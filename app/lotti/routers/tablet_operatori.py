@@ -18,10 +18,10 @@ Operatori del tablet HACCP = anagrafica HR. Decisione del titolare 14/09/2026
   I PIN storici di Lotti (bcrypt) sono migrati UNA volta in HR
   (``migra_pin_in_hr``), senza mai passare in chiaro.
 * **R4 — niente PIN condiviso** fra Vincenzo e Valerio: ognuno firma col PIN
-  personale della propria scheda HR. Il PIN amministratore centrale
-  (ERP/Menu/Lotti/HR, decisione 05/09/2026) continua a sbloccare le PAGINE
-  amministrative (``pin_amministratore_valido``) ma non e' un'identita' di
-  firma.
+  personale della propria scheda HR. Se la scheda HR qualifica la persona
+  come amministratore, quel PIN personale conserva il ruolo anche nel tablet
+  Lotti; il PIN amministratore centrale resta separato e non e' un'identita'
+  di firma.
 * **R6 — qui restano solo i dati HACCP** della persona: postazione (proposta
   dal ruolo HR, modificabile) e scadenza del libretto sanitario.
 """
@@ -303,12 +303,11 @@ class AggiornaDipendente(BaseModel):
 def _op_response(doc):
     if not doc.get("dipendente_id"):
         raise HTTPException(401, "Identita' dipendente HR non disponibile")
-    # Il PIN personale identifica chi firma, non apre l'amministrazione: anche
-    # il titolare, entrato col suo PIN, lavora da operatore. L'amministratore
-    # entra solo dal Gestionale (`/auth/session`).
+    # Il ruolo viene dalla scheda HR sincronizzata, non dal nome né dal PIN.
+    # Il titolare deve restare amministratore anche quando entra nel reparto
+    # col proprio PIN personale: così firma come se stesso e conserva tutti i
+    # permessi. Il PIN amministratore centrale continua a non passare da qui.
     ruolo = doc.get("ruolo") or "operatore"
-    if ruolo == "amministratore":
-        ruolo = "operatore"
     op = {"dipendente_id": doc["dipendente_id"], "nome": doc.get("nome", "Operatore"), "ruolo": ruolo}
     token = make_token(sub=op["dipendente_id"], nome=op["nome"], ruolo=op["ruolo"], via="pin",
                        pin_version=doc.get("pin_version"))

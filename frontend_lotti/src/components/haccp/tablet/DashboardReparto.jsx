@@ -118,7 +118,7 @@ function Azione({ icona: Icona, label, onClick, colore, testId }) {
     <button type="button" onClick={onClick} data-testid={testId}
       style={{ minHeight: 76, borderRadius: 16, border: "none", background: colore, color: "#fff", fontFamily: "inherit", fontSize: 16, fontWeight: 800, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", boxShadow: "0 4px 14px rgba(42,51,41,.18)", padding: "10px 8px" }}>
       <Icona size={24} aria-hidden="true" />
-      {label}
+      <span title={label} style={{ display: "block", width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: "clamp(13px, 1.25vw, 16px)" }}>{label}</span>
     </button>
   );
 }
@@ -147,6 +147,9 @@ export default function DashboardReparto({
   const scaduti = d.scadenze ? d.scadenze.lotti.filter((l) => (l.giorni_alla_scadenza ?? 0) < 0).length : 0;
 
   const stato = (valore, seZero, seNonZero) => (valore === null || valore === undefined ? "ignoto" : valore > 0 ? seNonZero : seZero);
+  const ruoloAttivo = operatore?.ruolo === "amministratore"
+    ? "Amministratore · Caporeparto"
+    : (operatore?.profilo?.ruolo_etichetta || "Operatore");
 
   return (
     <div data-testid={`cruscotto-${reparto}`} style={{ padding: "14px 16px 28px", display: "grid", gap: 14, maxWidth: 1100, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
@@ -156,7 +159,7 @@ export default function DashboardReparto({
           <UserRound size={22} color="#fff" aria-hidden="true" />
         </div>
         <div style={{ flex: 1, minWidth: 160 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: MUTED }}>Operatore attivo · {label}</div>
+          <div data-testid="ruolo-operatore-attivo" style={{ fontSize: 12, fontWeight: 700, color: MUTED }}>{ruoloAttivo} · {label}</div>
           <div data-testid="operatore-attivo" style={{ fontSize: 18, fontWeight: 800, color: INK }}>{operatore?.nome || "—"}</div>
         </div>
         <button type="button" onClick={aggiorna} disabled={carico} aria-label="Aggiorna i dati del reparto"

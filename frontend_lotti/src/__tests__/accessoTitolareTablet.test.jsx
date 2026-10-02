@@ -11,9 +11,10 @@ import { getTabletSession, saveTabletSession } from "../utils/tabletSession";
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
-// Il PIN amministratore si digita solo nel login del Gestionale (26/09/2026):
-// dentro Lotti non c'e' nessun tastierino da titolare. Il PIN personale resta
-// per le card di reparto: identifica chi firma HACCP e produzioni.
+// Il PIN amministratore centrale si digita solo nel login del Gestionale:
+// dentro Lotti non c'e' nessun tastierino dedicato. Il PIN personale resta
+// per le card di reparto: identifica chi firma HACCP e produzioni e conserva
+// il ruolo amministratore presente nella scheda HR.
 
 const SRC = path.join(__dirname, "..");
 
@@ -88,6 +89,18 @@ describe("card riservate al titolare e cambio reparto", () => {
     expect(login).not.toHaveBeenCalled();
     expect(tastierino()).toBe(false);
     expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-titolare", ruolo: "amministratore", reparto: "ordini" });
+  });
+
+  test("col PIN personale il titolare conserva l'accesso alle card amministrative", async () => {
+    saveTabletSession({ dipendente_id: "hr-v", nome: "Ceraldi Vincenzo", ruolo: "amministratore" }, "pasticceria");
+    saveRuolo("amministratore");
+    const entra = jest.spyOn(authLotti, "entraDalGestionale");
+    await act(async () => root.render(<TabletHome />));
+    await act(async () => card("Ordini").click());
+    expect(entra).not.toHaveBeenCalled();
+    expect(login).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("#tablet/ordini");
+    expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-v", ruolo: "amministratore", reparto: "ordini" });
   });
 
   test("senza sessione del Gestionale la card Ordini rimanda al suo login, niente tastierino", async () => {
