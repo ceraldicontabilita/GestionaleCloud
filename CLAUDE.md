@@ -6,12 +6,14 @@ reviewed_at: 2026-10-01
 storage_architecture: supabase
 -->
 
-Aggiornato il 02/10/2026 sul codice di `main` del repository canonico
+Aggiornato il 03/10/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
-**Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
-programma e piano approvato). Audit, mappe generate, changelog e diari raccontano com'erano le cose
-in una certa data e impediscono di capire quali logiche siano in vigore: non si tengono.
+**Gli unici documenti sono questo file e `README.md`. `CLAUDE.md` è l'unica
+fonte normativa e l'unica memoria del repository.** Il README è soltanto una
+guida d'ingresso. Audit, piani separati, mappe generate, changelog e diari
+raccontano com'erano le cose in una certa data e impediscono di capire quali
+logiche siano in vigore: non si tengono.
 
 ## Come si tiene questo file
 
@@ -28,6 +30,22 @@ in una certa data e impediscono di capire quali logiche siano in vigore: non si 
   (decisione del titolare, 30/09/2026): si scrive quanto serve, senza ripetere la stessa regola due volte.
 - Il codice, i test e la configurazione live vincono sempre su questo file.
   Se trovi una contraddizione, **correggi questo file** nello stesso commit.
+
+## Direzione della ristrutturazione
+
+La ristrutturazione resta aperta, ma non ha un secondo documento: lo stato
+verificato vive in «Stato attuale» e il lavoro residuo in «Aperto».
+
+- Procedere per micro-tranche verificabili, mai con una riscrittura unica.
+- Ordine: infrastruttura e identità canonica; fatture e inventario; cedolini e
+  HR; Lotti; Menu; frontend e toolchain unici; ritiro delle compatibilità.
+- Prima di eliminare un percorso verificare import statici e dinamici, route,
+  frontend, job, API esterne e dati persistiti. Un test che cita un modulo non
+  dimostra che il modulo sia raggiungibile in produzione.
+- Il target resta un solo servizio, una sessione e gestione accessi coerente,
+  un writer per fatto, una build frontend e nessun bridge transitorio.
+- Le attività concluse si tolgono da «Aperto»: commit, PR, CI e cronaca del
+  rilascio restano nella storia di GitHub, non in questo file.
 
 ## Il gruppo Ceraldi è un solo servizio
 
@@ -1180,7 +1198,7 @@ locale e marker fixture prima delle scritture.
 - **Notifiche PEC dei verbali**: circa 136 PEC in archivio (`verbali_email_attachments`) non sono ancora agganciate ai verbali veri, e nate come righe `VERB-…` senza targa né importo: prima l'anteprima (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run`), poi l'aggancio. Le righe `VERB-…` non si cancellano; si decide dopo l'anteprima se metterle in quarantena. La ricostruzione dal PDF (sopra) completa i campi del verbale vero dalla copia conforme.
 - **IVA, cosa manca** (verificato sul codice): acconto 6013 e saldo 6099 come calcolo, maggiorazione 1% dopo il 16/03, credito annuale da dichiarazione e compensazione orizzontale (soglia 25.000 €), conguaglio di dicembre; il confronto con la LIPE non copre 6013, 6099, trimestrali e credito riportato. La scadenza fissa del 27/12 (`fiscalita_italiana.py`) non si sposta al lunedì. `schemas/accounting_rules.py` descrive 6001/6002 come «saldo» e «acconto» ma sono gennaio e febbraio. `_credito_precedente` esiste in due copie (`routers/iva.py`, `iva_liquidation_query.py`): ridurle a una.
 - **Bilancio e competenza**: `routers/accounting/bilancio.py` seleziona i costi per data documento **oppure** data ricezione e ignora `data_competenza` (una fattura di dicembre ricevuta a gennaio può finire nell'esercizio sbagliato o in due); il debito nello stato patrimoniale usa lo stato «pagata» di oggi, non la data di pagamento rispetto a fine esercizio; il costo del personale è il solo lordo (contributi `None`).
-- **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. `scrittura_imposte` e `scrittura_versamento_iva` (`contabilita_generale.py`) non hanno chiamanti: chi le usa deve sapere che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
+- **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. Il vecchio motore isolato che simulava queste scritture è stato eliminato perché non aveva chiamanti: l'implementazione futura deve entrare nel motore canonico e ricordare che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
 - **Apertura dell'originale, resto**: il portale HR e l'HR admin hanno i loro indirizzi di file (`/hr/api/portale/buste/{id}/pdf`, `…/documenti/{id}/file`, `cedolini/{id}/download`, contratti, esiti paghe), con le regole del portale (un dipendente vede solo le sue buste) che l'endpoint unico, riservato all'admin dell'ERP, non ha: restano finché non si decide come far valere lo stesso servizio con un token da operatore. `drive_document_index` (indice Excel) non alimenta più nessuna scheda, ma lo leggono ancora `AttiAmministrativi` (`list_administrative_documents`), `/drive/fiscal/sync` e i due upload `drive_f24_model_upload`/`drive_declaration_upload`, che lo aggiornano: va tolto con loro (DRV-16).
 - **F24 e banca**: il motore a livelli confronta il saldo intero, non il codice tributo (l'allocazione per singola riga è stata tolta: 0 modelli l'avevano); un modello senza data di versamento (285 su 341 modelli attivi al 01/10, quasi tutti storici) o senza saldo letto non si confronta con la banca e ora lo **dichiara** (`non_riscontrabili`, esiti `data_versamento_assente` e `saldo_assente`, nei conteggi di `riscontri_modelli_banca` e in `quietanze-banca`) senza cambiare le regole d'abbinamento. Le quietanze provate dall'addebito non promuovono ancora da sole il modello a «pagato in banca» se il saldo differisce (ravvedimenti). L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
 - **Colazioni B&B, da chiudere**: attivare SumUp incollando la chiave in Impostazioni; dall'SQL Editor applicare `bb_recensioni_revoca` dell'audit del 02/10 (in produzione resta la v23: contiene la cancellazione delle posizioni che lo strumento di sessione blocca) ed eliminare le funzioni `*_v23` e la colonna `bb_vouchers.extra_pagato`; «Esci» del titolare non revoca ancora la sessione DB; configurare i due URL recensione e l'informativa dalla scheda

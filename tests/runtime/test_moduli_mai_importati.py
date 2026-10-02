@@ -43,7 +43,7 @@ def _sorgenti() -> tuple[Path, ...]:
 
 
 def _nome_modulo(percorso: Path) -> str:
-    return str(percorso.relative_to(RADICE).with_suffix("")).replace("/", ".")
+    return percorso.relative_to(RADICE).with_suffix("").as_posix().replace("/", ".")
 
 
 @lru_cache(maxsize=1)
@@ -51,7 +51,7 @@ def _importati(sorgenti: tuple[Path, ...]) -> frozenset[str]:
     visti: set[str] = set()
     for percorso in sorgenti:
         testo = percorso.read_text(encoding="utf-8", errors="ignore")
-        pacchetto = str(percorso.parent.relative_to(RADICE)).replace("/", ".")
+        pacchetto = percorso.parent.relative_to(RADICE).as_posix().replace("/", ".")
         try:
             albero = ast.parse(testo)
         except SyntaxError:
@@ -91,7 +91,7 @@ def _orfani() -> frozenset[str]:
         nome = _nome_modulo(percorso)
         if nome in visti or any(v.startswith(nome + ".") for v in visti):
             continue
-        orfani.add(str(relativo))
+        orfani.add(relativo.as_posix())
     return frozenset(orfani)
 
 
