@@ -121,6 +121,8 @@ _ERP_SENZA_TOKEN = {
     # dall'handler con bb_alb_stato (401 se il database lo rifiuta).
     "/api/colazioni/ordini-prodotti/albergatore": ({"POST"}, "token di sessione dell'albergatore verificato da bb_alb_stato"),
     "/api/colazioni/ordini-prodotti/albergatore/elenco": ({"POST"}, "token di sessione dell'albergatore verificato da bb_alb_stato"),
+    "/api/colazioni/menu-ospite/catalogo": ({"POST"}, "codice voucher e giornata verificati da bb_menu_ospite"),
+    "/api/colazioni/menu-ospite/ordine": ({"POST"}, "codice voucher, giornata e prezzi verificati da bb_ospite_menu_salva"),
     "/privacy": ({"GET"}, "pagina legale"),
     "/terms": ({"GET"}, "pagina legale"),
     "/data-deletion": ({"GET"}, "pagina legale"),
