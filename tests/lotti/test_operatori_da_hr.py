@@ -244,6 +244,32 @@ def test_pin_titolare_legacy_o_non_personale_non_apre_lotti(basi):
         assert exc.value.status_code == 401
 
 
+def test_sessione_titolare_non_apre_durante_guasto_hr(basi, monkeypatch):
+    from app.lotti import auth
+    from app.hr.database import Database as DatabaseHR, DatabaseNonConfigurato
+    token = _sessione_titolare_personale(basi)
+    monkeypatch.setattr(DatabaseHR, "get_db", classmethod(lambda cls: DatabaseNonConfigurato()))
+    with pytest.raises(HTTPException) as exc:
+        run(auth.auth_dependency(_richiesta_lotti(token)))
+    assert exc.value.status_code == 503
+
+
+@pytest.mark.parametrize("difetto", ["scaduto", "manomesso"])
+def test_sessione_titolare_scaduta_o_manomessa_non_apre_lotti(basi, difetto):
+    from app.lotti import auth
+    token = _sessione_titolare_personale(basi)
+    if difetto == "scaduto":
+        token = auth.make_token("hr-vince", "Ceraldi Vincenzo", "amministratore",
+                                ore=-1, pin_version=auth.verify_token(token)["pin_version"])
+    else:
+        parti = token.split(".")
+        parti[2] = ("A" if parti[2][0] != "A" else "B") + parti[2][1:]
+        token = ".".join(parti)
+    with pytest.raises(HTTPException) as exc:
+        run(auth.auth_dependency(_richiesta_lotti(token)))
+    assert exc.value.status_code == 401
+
+
 def test_pin_non_univoco_non_sceglie_una_persona_a_caso(monkeypatch):
     from app.lotti.routers import tablet_operatori as t
 
