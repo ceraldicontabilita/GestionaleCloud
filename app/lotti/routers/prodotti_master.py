@@ -29,6 +29,7 @@ ENDPOINT:
   GET  /api/prodotti-master/stats                  — distribuzione per fonte
 """
 
+import asyncio
 import re
 import uuid
 import logging
@@ -794,7 +795,11 @@ async def _esegui_rebuild():
     _fornitori_esclusi = {(d.get("nome") or "").strip().lower() for d in _fornitori_esclusi_docs}
 
     # 1. fatture.prodotti (priorità: portano i codici)
+    _nf = 0
     async for f in db.fatture.find({}, {"prodotti": 1, "fornitore": 1, "data_fattura": 1}):
+        _nf += 1
+        if _nf % 50 == 0:
+            await asyncio.sleep(0)
         forn = f.get("fornitore", "")
         if forn and forn.strip().lower() in _fornitori_esclusi:
             continue
@@ -925,7 +930,11 @@ async def _esegui_rebuild():
     diz_canonico = await _carica_dizionario_canonico()
 
     docs = []
-    for m in master.values():
+    for _n, m in enumerate(master.values()):
+        # Il rebuild gira sullo stesso event loop dell'health check: senza una
+        # cessione ogni tanto Render lo vede appeso e riavvia il servizio.
+        if _n % 40 == 0:
+            await asyncio.sleep(0)
         m["aliases"] = sorted(list(m["aliases"]))[:20]
         m["codici"] = sorted(list(m["codici"]))[:10]
         m["fornitori"] = sorted(list(m["fornitori"]))[:10]
@@ -1069,6 +1078,7 @@ async def _esegui_rebuild():
         ]
         for i in range(0, len(ops), 500):
             await db.prodotti_master.bulk_write(ops[i : i + 500], ordered=False)
+            await asyncio.sleep(0)
 
     # Elimina documenti stale (key non più nelle fonti)
     if keys_attuali:

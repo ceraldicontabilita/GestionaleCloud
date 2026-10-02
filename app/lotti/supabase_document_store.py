@@ -148,6 +148,8 @@ class SupabaseRpcStore:
         for original in docs:
             doc = copy.deepcopy(original)
             rows.append({"doc_id": _doc_id(doc), "data": _json_safe(doc)})
+            if len(rows) % 50 == 0:
+                await asyncio.sleep(0)
             if len(rows) >= 200:
                 total += int(await self._rpc("lotti_upsert_docs", {
                     "p_secret": self.secret, "p_collection": collection, "p_rows": rows
@@ -452,6 +454,7 @@ class PersistentCollection:
         async with self._write_lock:
             await self._ensure_loaded()
             prima = {d["_id"]: d for d in await self.raw.find({}).to_list(None)}
+            await asyncio.sleep(0)
             try:
                 result = await self.raw.bulk_write(requests, *args, **kwargs)
             finally:
@@ -464,7 +467,11 @@ class PersistentCollection:
         dopo = await self.raw.find({}).to_list(None)
         presenti = set()
         cambiati = []
-        for doc in dopo:
+        for n, doc in enumerate(dopo):
+            # Collezioni da migliaia di documenti: si cede il loop ogni tanto,
+            # o l'health check di Render scade durante il confronto.
+            if n % 300 == 0:
+                await asyncio.sleep(0)
             presenti.add(doc["_id"])
             if prima.get(doc["_id"]) != doc:
                 cambiati.append(doc)
