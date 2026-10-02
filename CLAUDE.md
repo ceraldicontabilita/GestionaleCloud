@@ -215,7 +215,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
    dei 30 minuti; l'estratto conto lo **accoda in sottofondo**, mai lo aspetta.
 5. Migrazioni DDL su `gestionale.documents` a database scarico o con
    `create index concurrently`. Ogni DDL fa ricaricare lo schema a PostgREST
-   (503 per minuti): l'HR fa DDL solo se la tabella manca davvero. Ogni migrazione applicata al progetto si salva nello stesso giorno in `supabase/migrations/<versione>_<nome>.sql`, con la versione del registro `supabase_migrations.schema_migrations`: il file e' l'unico modo di ricostruire il database da zero.
+   (503 per minuti): l'HR fa DDL solo se la tabella manca davvero. Ogni migrazione applicata al progetto si salva nello stesso giorno in `supabase/migrations/<versione>_<nome>.sql`, con la versione del registro `supabase_migrations.schema_migrations` (letta dal registro, mai inventata: tre file del 01/10 con una versione a mano erano doppioni del registro); il file e' l'unico modo di ricostruire il database da zero.
 6. **Nessuna cancellazione con filtro**: solo per id, con
    `gc_delete_documents` / `gc_delete_blobs` / `lotti_delete_*`. `DELETE` e
    `TRUNCATE` a mano sono bloccati su `gestionale.documents`, `.blobs`,
@@ -369,7 +369,12 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   la rifa il trigger `prova_origine` (`prova_calcola`, per MD5 o id Drive: si sceglie con le **stesse chiavi** che il trigger usa, `chiavi_prova`; un documento gia'
   riscritto e ancora senza origine non si ritocca). Senza il file nel
   protocollo la prova dice la verita' («nessun file Drive con la stessa impronta»), mai un'origine
-  inventata: dal 17/09 al 01/10/2026 il protocollo non ha visto nessun file nuovo.
+  inventata: dal 17/09 al 01/10/2026 il protocollo non ha visto nessun file nuovo. **Il collegamento protocollo ↔ documento ha due
+  chiavi**: l'impronta (`SQL_COLLEGA`, per MD5) e il `drive_file_id` scritto su F24 e quietanze
+  (`gestionale.collega_protocollo_per_drive_file_id()`, SECURITY DEFINER perché `hr_app` non legge `documents`;
+  `drive_protocollo.collega_per_drive_file_id`, idempotente): lo chiama lo svuotamento della cartella unica appena ha
+  elaborato un file (`protocollo_collegati` nell'esito) e il giro incrementale dopo le impronte. Senza la seconda chiave
+  le quietanze arrivate dopo il 15/09 restavano scollegate anche col file nel protocollo.
 - **I canali Drive per sezione non esistono piu'** (DRV-16): moduli `drive_*_ingest`, router `/drive/sync|quadratura`,
   registro JSON delle cartelle e credenziali per canale tolti; lo smistatore non ne usava i parser. Restano la
   cartella unica e le foto ricette di Lotti; `fonti_ferme` e `cedolini_bloccati` (`cedolini_bloccati.py`) hanno un job proprio.
@@ -1053,6 +1058,8 @@ locale e marker fixture prima delle scritture.
 
 ## Aperto (togliere la voce quando si chiude)
 
+- **Credenziali vere nella cronologia git** (`backend/.env` in 23 commit, `memory/test_credentials.md`, `memoria/DIARIO.md`, `push_impeccable.py`, fra febbraio e aprile 2026, visibili finché il repository era pubblico; oggi non sono in `main`). Prima il titolare **ruota** tutto ciò che c'era (token GitHub, PEC Aruba, password app Gmail/IMAP, client secret PayPal, URI MongoDB Atlas, token WhatsApp, `SECRET_KEY`/`CRON_SECRET`, password admin, codice gestione riservata, chiave Emergent); poi, **solo col suo ok**, la cronologia si riscrive con `git filter-repo --invert-paths` su quei quattro percorsi, push forzato di `main`, tutti i branch e i tag, e ogni checkout si riclona (il PC del titolare compreso). Mai riscrivere la cronologia prima della rotazione: la riscrittura non revoca niente.
+
 - **Lotti, due giri di ricerca web sulle descrizioni di fattura**: `identifica_col_web` (`lettura_articoli_ai.py`, giro `lotti_identifica_col_web`, categoria del Dizionario, `web_cercato_at`) e la campagna `ricerca_web_prodotti` (`app/lotti/routers/scheduler.py`, schede e `nome_mapping`, `ricerca_web_tentativi`, mai un tentativo registrato). Condividono l'helper `cerca_sul_web` ma sono due code e due contatori: fonderli in un giro solo.
 
 - **Lettori AI doppi, da ridurre a `LlmChat`**: `ai_document_parser` (vision, catena `mittenti_email_sync`, coda `/ai-parser/da-rivedere`, `BatchProcessor.jsx autoMode`), `llm_document_parser` (verbali), `enhanced_document_parser` (cedolini), `document_ai_extractor` (fatture estere, modello fisso `claude-sonnet-4-5`), `hr/document_ai_extractor` (guscio), `ai_categorizzazione` (haiku fisso), `chat_ai_engine`, `fiscal_agents`: due lettori per verbali, cedolini e fatture, tre pipeline di classificazione dell'inbox (`documents_inbox_classify.auto_classify`, `ai_integration_service`, proposte), otto client Anthropic propri senza tetto né `usage` comune. Anche `cerca_sul_web` di Lotti deve contare sul tetto di `LlmChat`, non su `sync_status`. **Dopo il deploy**: `POST /api/agenti/proposte/giro` (admin) per il primo lotto, poi in `/agenti` › Settori provare che «Vedi» apra un file in `ERRORI` e che una conferma lo sposti davvero in `ELABORATE`.
@@ -1144,5 +1151,7 @@ Per ogni modifica pertinente:
 8. controllo live del flusso interessato senza mutare dati non autorizzati.
 
 **I minuti di GitHub Actions sono a consumo** (repository privato; il 02/10/2026 il limite di spesa ha fermato ogni run, anche su `main`), e sono l'unica voce che cresce col numero di PR: Render e Supabase hanno un canone fisso e un deploy in più non costa niente. Regole del titolare (02/10/2026): **una PR solo a lavoro finito** e collaudato in locale (test backend, test e build dei quattro frontend), mai una per ogni pezzo; sulla PR gira solo `ci.yml`, mentre `produzione.yml` (E2E col browser, audit layout, verifica live) gira **solo su `main`** o a mano; **ogni sessione finisce con un push sul branch di salvataggio** `<branch>-lavori` (un push su un branch senza PR non fa partire nessun workflow: è gratis), perché il contenitore cloud della sessione è temporaneo e il PC del titolare può essere spento: ciò che non è pushato è perso, e la sessione successiva — da PC o da telefono — riparte da `git pull` dello stesso branch, mai da un secondo tronco. Un commit di salvataggio può contenere lavoro a metà; la PR finale no.
+
+**Segreti**: `ci.yml` ha il job «Segreti (gitleaks)» (binario fissato, `.gitleaks.toml` con i soli falsi positivi noti: chiavi di idempotenza, fixture, chiave pubblicabile Supabase, nomi delle variabili in `render.yaml`). Scansiona i file presenti, non la cronologia. Un segreto vero non si aggiunge mai alla lista bianca: si toglie dal codice e si ruota.
 
 Produzione: **https://gestionalecloud.onrender.com**

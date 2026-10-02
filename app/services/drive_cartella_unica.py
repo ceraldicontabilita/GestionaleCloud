@@ -908,6 +908,12 @@ async def svuota(db, *, max_giri: int = 60) -> Dict[str, Any]:
                 # insistere subito rilegge gli stessi file. Riprende il prossimo turno.
                 totale["fermato_da"] = "lotto_rinviato"
                 break
+        if totale["elaborati"]:
+            # I modelli e le quietanze F24 appena registrati portano il
+            # `drive_file_id` del loro originale: la riga del protocollo si
+            # collega subito, senza aspettare il giro incrementale.
+            from app.services import drive_protocollo
+            totale["protocollo_collegati"] = await drive_protocollo.collega_per_drive_file_id()
         return totale
     finally:
         _svuotamento["in_corso"] = False

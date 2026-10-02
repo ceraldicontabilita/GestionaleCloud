@@ -709,3 +709,34 @@ def test_rimessa_in_coda_dei_guasti_di_supabase_ha_un_tetto(ambiente):
                                     "tipo": "x", "rinvii": cu.MAX_RINVII}))
     rimessi = run(cu.rimetti_in_coda_buste_gia_presenti(db, drive, dict(CARTELLE)))
     assert rimessi == 1 and drive.file["r1"]["parent"] == "inbox" and drive.file["r2"]["parent"] == "errori"
+
+
+# ── svuotamento: collegamento al protocollo per drive_file_id ─────────────────
+
+def _svuota_con_giri(monkeypatch, esiti, collegati=5):
+    from app.services import drive_protocollo
+    coda = list(esiti)
+    chiamate = []
+
+    async def giro(db):
+        return coda.pop(0)
+
+    async def collega(conn=None):
+        chiamate.append(conn)
+        return collegati
+
+    monkeypatch.setattr(cu, "giro", giro)
+    monkeypatch.setattr(drive_protocollo, "collega_per_drive_file_id", collega)
+    monkeypatch.setattr(cu, "_svuotamento", {"in_corso": False})
+    return run(cu.svuota(None, max_giri=5)), chiamate
+
+
+def test_svuota_collega_il_protocollo_dopo_un_giro_con_file_elaborati(monkeypatch):
+    totale, chiamate = _svuota_con_giri(monkeypatch, [{"letti": 2, "elaborati": 2, "restanti": 0}])
+    assert totale["elaborati"] == 2 and totale["protocollo_collegati"] == 5
+    assert chiamate == [None]                       # una volta, a fine svuotamento, con la propria connessione
+
+
+def test_svuota_senza_file_elaborati_non_tocca_il_protocollo(monkeypatch):
+    totale, chiamate = _svuota_con_giri(monkeypatch, [{"letti": 0, "elaborati": 0, "restanti": 0}])
+    assert "protocollo_collegati" not in totale and chiamate == []

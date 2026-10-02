@@ -18,6 +18,7 @@ on:
       - "frontend/**"
       - "tests/**"
       - ".github/workflows/ci.yml"
+      - ".gitleaks.toml"
   pull_request:
     branches: [main]
     paths:
@@ -33,6 +34,7 @@ on:
       - "frontend/**"
       - "tests/**"
       - ".github/workflows/ci.yml"
+      - ".gitleaks.toml"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -111,3 +113,25 @@ jobs:
         run: npm --prefix frontend_hr test
       - name: Test Menu
         run: CI=true npm --prefix frontend_menu test -- --watchAll=false
+
+  # Segreti nell'albero di lavoro (gitleaks, binario fissato: nessuna licenza
+  # né azione di terzi). Dal 02/10/2026: la cronologia del repository ha
+  # contenuto credenziali vere (backend/.env e file di memoria caricati fra
+  # febbraio e aprile 2026); questo job impedisce che ne entrino di nuove. I
+  # falsi positivi noti stanno in .gitleaks.toml. Scansiona solo i file
+  # presenti, non la cronologia: quella si ripulisce con git filter-repo dopo
+  # la rotazione delle credenziali, con l'ok del titolare.
+  segreti:
+    name: Segreti (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scarica gitleaks
+        env:
+          GITLEAKS_VERSION: "8.21.2"
+        run: |
+          curl -sSL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar xzf gitleaks.tgz gitleaks
+      - name: Scansione dei file presenti
+        run: ./gitleaks dir . --config .gitleaks.toml --no-banner --redact --exit-code 1
