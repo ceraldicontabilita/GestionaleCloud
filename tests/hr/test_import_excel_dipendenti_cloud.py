@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import io
 import unittest
 import zipfile
@@ -7,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import openpyxl
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 
 from app.hr.routers import dipendenti_cloud
 
@@ -100,6 +101,34 @@ class FakeDatabase:
         self.pagamenti_storico = HistoricalPaymentsCollection()
 
 
+class SafeEmployeeCollection:
+    def __init__(self):
+        self.documents = [{
+            "id": "employee-safe",
+            "nome": "Mario",
+            "cognome": "Rossi",
+            "nome_completo": "Rossi Mario",
+            "codice_fiscale": "RSSMRA80A01H501U",
+            "iban": "IT02L1234567890123456789012",
+            "stato": "attivo",
+        }]
+        self.updates = []
+
+    def find(self, *args, **kwargs):
+        return AsyncCursor(self.documents)
+
+    async def update_one(self, query, update, **kwargs):
+        self.updates.append((query, update))
+        document = next(d for d in self.documents if d["id"] == query["id"])
+        document.update(update.get("$set", {}))
+        return SimpleNamespace(matched_count=1, modified_count=1)
+
+
+class SafeAnagraficaDatabase:
+    def __init__(self):
+        self.dipendenti = SafeEmployeeCollection()
+
+
 def workbook_bytes(headers, rows, sheet_name="Prima Nota"):
     workbook = openpyxl.Workbook()
     worksheet = workbook.active
@@ -112,7 +141,76 @@ def workbook_bytes(headers, rows, sheet_name="Prima Nota"):
     return output.getvalue()
 
 
+def anagrafica_con_riepilogo_bytes():
+    workbook = openpyxl.Workbook()
+    riepilogo = workbook.active
+    riepilogo.title = "Riepilogo Consulente"
+    riepilogo.append(["Dipendente", "Codice fiscale", "IBAN (per il bonifico)", "Paga giorn. (€)"])
+    riepilogo.append(["ROSSI MARIO", "RSSMRA80A01H501U", "IT60X0542811101000000123456", 55])
+    anagrafica = workbook.create_sheet("Anagrafiche Dipendenti")
+    anagrafica.append(["Dipendente", "Codice fiscale", "IBAN", "Data assunzione", "Ferie residue"])
+    anagrafica.append(["ROSSI MARIO", "RSSMRA80A01H501U", "IT60X0542811101000000123456", date(2024, 3, 21), 2.2])
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
 class GestionaleCloudImportCompatibilityTests(unittest.TestCase):
+    def test_anagrafica_preview_uses_named_sheet_and_never_writes(self):
+        data = anagrafica_con_riepilogo_bytes()
+        database = SafeAnagraficaDatabase()
+        upload = UploadFile(filename="anagrafiche.xlsx", file=io.BytesIO(data))
+
+        with patch.object(dipendenti_cloud, "get_db", return_value=database):
+            result = asyncio.run(dipendenti_cloud.importa_anagrafica(upload, applica=False))
+
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(result["foglio"], "Anagrafiche Dipendenti")
+        self.assertEqual(result["conteggi"]["aggiornabile"], 1)
+        self.assertEqual(result["aggiornati"], 0)
+        self.assertEqual(result["righe"][0]["campi"], ["data_assunzione", "iban"])
+        self.assertIn("Ferie residue", result["colonne_ignorate"])
+        self.assertEqual(database.dipendenti.updates, [])
+
+    def test_anagrafica_apply_requires_same_file_hash_and_updates_only_allowed_fields(self):
+        data = anagrafica_con_riepilogo_bytes()
+        database = SafeAnagraficaDatabase()
+
+        with patch.object(dipendenti_cloud, "get_db", return_value=database):
+            with self.assertRaises(HTTPException) as caught:
+                asyncio.run(dipendenti_cloud.importa_anagrafica(
+                    UploadFile(filename="anagrafiche.xlsx", file=io.BytesIO(data)),
+                    applica=True,
+                    conferma_hash="hash-diverso",
+                ))
+            self.assertEqual(caught.exception.status_code, 409)
+            result = asyncio.run(dipendenti_cloud.importa_anagrafica(
+                UploadFile(filename="anagrafiche.xlsx", file=io.BytesIO(data)),
+                applica=True,
+                conferma_hash=hashlib.sha256(data).hexdigest(),
+            ))
+
+        self.assertFalse(result["dry_run"])
+        self.assertEqual(result["aggiornati"], 1)
+        self.assertEqual(len(database.dipendenti.updates), 1)
+        written = database.dipendenti.updates[0][1]["$set"]
+        self.assertEqual(written, {
+            "iban": "IT60X0542811101000000123456",
+            "data_assunzione": "2024-03-21",
+        })
+        self.assertEqual(database.dipendenti.documents[0]["nome_completo"], "Rossi Mario")
+
+    def test_anagrafica_without_named_sheet_rejects_payroll_summary(self):
+        data = workbook_bytes(
+            ["Dipendente", "Codice fiscale", "IBAN", "Paga giornaliera"],
+            [["ROSSI MARIO", "RSSMRA80A01H501U", "IT60X0542811101000000123456", 55]],
+            sheet_name="Riepilogo Consulente",
+        )
+        upload = UploadFile(filename="riepilogo.xlsx", file=io.BytesIO(data))
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(dipendenti_cloud.importa_anagrafica(upload, applica=False))
+        self.assertEqual(caught.exception.status_code, 400)
+
     def test_numeric_month_and_separate_payments_are_aggregated(self):
         data = workbook_bytes(
             ["Dipendente", "Mese", "Anno", "Stipendio Netto", "Importo Erogato"],

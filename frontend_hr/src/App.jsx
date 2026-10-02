@@ -840,6 +840,8 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
   const [filter, setFilter] = useState("attivi");
   const anagRef = useRef(null);
   const [anagBusy, setAnagBusy] = useState(false);
+  const [anagFile, setAnagFile] = useState(null);
+  const [anagPreview, setAnagPreview] = useState(null);
   const oggiISO = new Date().toISOString().slice(0, 10);
 
   const handleImportAnagrafica = async (e) => {
@@ -848,11 +850,31 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
     setAnagBusy(true);
     try {
       const fd = new FormData(); fd.append("file", fl);
-      const r = await axios.post(`${API}/dipendenti/importa-anagrafica`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast(`Anagrafica importata: ${r.data.creati} creati, ${r.data.aggiornati} aggiornati.`);
-      reload && reload();
-    } catch (err) { toast(err?.response?.data?.detail || "Errore import anagrafica", "err"); }
+      const r = await axios.post(`${API}/dipendenti/importa-anagrafica?applica=false`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setAnagFile(fl);
+      setAnagPreview(r.data);
+    } catch (err) {
+      setAnagFile(null); setAnagPreview(null);
+      toast(err?.response?.data?.detail || "Errore verifica anagrafica", "err");
+    }
     finally { setAnagBusy(false); if (anagRef.current) anagRef.current.value = ""; }
+  };
+  const chiudiAnteprimaAnagrafica = () => {
+    if (anagBusy) return;
+    setAnagPreview(null); setAnagFile(null);
+  };
+  const confermaImportAnagrafica = async () => {
+    if (!anagFile || !anagPreview?.hash_sha256) return;
+    setAnagBusy(true);
+    try {
+      const fd = new FormData(); fd.append("file", anagFile);
+      const hash = encodeURIComponent(anagPreview.hash_sha256);
+      const r = await axios.post(`${API}/dipendenti/importa-anagrafica?applica=true&conferma_hash=${hash}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast(`Anagrafica aggiornata: ${r.data.aggiornati} schede. Nessun nuovo dipendente creato.`);
+      setAnagPreview(null); setAnagFile(null);
+      reload && reload();
+    } catch (err) { toast(err?.response?.data?.detail || "Errore aggiornamento anagrafica", "err"); }
+    finally { setAnagBusy(false); }
   };
   const [showRid, setShowRid] = useState(false);
   const [ridRows, setRidRows] = useState([]);
@@ -1014,8 +1036,8 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
             <option value="tutti">Tutti ({dipendenti.length})</option>
           </select>
           <input ref={anagRef} type="file" accept=".xlsx" onChange={handleImportAnagrafica} style={{ display: "none" }} />
-          <button onClick={() => anagRef.current?.click()} disabled={anagBusy} className="dc-btn" title="Importa/aggiorna l'anagrafica da Excel (Cognome, Nome, CF, …)">
-            {anagBusy ? "Importo…" : "📥 Importa anagrafica (Excel)"}
+          <button onClick={() => anagRef.current?.click()} disabled={anagBusy} className="dc-btn" title="Verifica l'Excel e mostra l'anteprima prima di aggiornare l'anagrafica">
+            <ShieldCheck size={16} /> {anagBusy ? "Verifico…" : "Verifica anagrafica Excel"}
           </button>
           <button onClick={apriRid} className="dc-btn" title="Riduzione oraria collettiva: ore/giorno, paga oraria e scadenza sorvegliata">
             ⏱️ Riduzione orario
@@ -1070,6 +1092,60 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
           </tbody>
         </table>
       </div>
+
+      {anagPreview && (
+        <Modal wide title="Anteprima aggiornamento anagrafica" onClose={chiudiAnteprimaAnagrafica}>
+          <div className="dc-modal-body">
+            <p style={{ marginTop: 0 }}>
+              Foglio <b>{anagPreview.foglio}</b>, riga intestazioni {anagPreview.riga_intestazioni}.
+              Nessun dato è stato modificato: questa è una verifica.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              <Badge variant="success">{anagPreview.conteggi?.aggiornabile || 0} aggiornabili</Badge>
+              <Badge variant="default">{anagPreview.conteggi?.invariato || 0} invariati</Badge>
+              <Badge variant="warning">{anagPreview.conteggi?.da_verificare || 0} da verificare</Badge>
+              <Badge variant="danger">{anagPreview.conteggi?.conflitto || 0} conflitti</Badge>
+            </div>
+            {(anagPreview.colonne_ignorate || []).length > 0 && (
+              <div style={{ marginBottom: 12, display: "flex", gap: 8, alignItems: "flex-start", padding: 12,
+                border: "1px solid #d9b98c", borderRadius: 10, background: "#fff6e8", color: "#7d5526" }}>
+                <AlertTriangle size={17} />
+                <span><b>Colonne non importate:</b> {anagPreview.colonne_ignorate.join(", ")}.
+                  Ferie, paga e ratei restano fuori dall'anagrafica finché non è definita la loro fonte canonica.</span>
+              </div>
+            )}
+            <div style={{ maxHeight: "52vh", overflow: "auto" }}>
+              <table className="dc-table dc-table--cards">
+                <thead><tr><th>RIGA</th><th>DIPENDENTE</th><th>ESITO</th><th>CAMPI / MOTIVO</th></tr></thead>
+                <tbody>
+                  {(anagPreview.righe || []).map((r) => (
+                    <tr key={r.riga}>
+                      <td data-label="Riga">{r.riga}</td>
+                      <td data-label="Dipendente">{r.nome || r.codice_fiscale || "—"}</td>
+                      <td data-label="Esito">
+                        <Badge variant={r.stato === "aggiornabile" ? "success" : r.stato === "invariato" ? "default" : r.stato === "conflitto" ? "danger" : "warning"}>
+                          {r.stato.replaceAll("_", " ")}
+                        </Badge>
+                      </td>
+                      <td data-label="Campi / motivo">{(r.campi || r.motivi || []).join(", ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="dc-muted" style={{ fontSize: 12 }}>
+              L'aggiornamento usa soltanto il codice fiscale esatto, non crea nuovi dipendenti e non cancella valori esistenti con celle vuote.
+            </p>
+            <div className="dc-modal-footer">
+              <button type="button" className="dc-btn" onClick={chiudiAnteprimaAnagrafica} disabled={anagBusy}>Annulla</button>
+              <button type="button" className="dc-btn dc-btn-primary" onClick={confermaImportAnagrafica}
+                disabled={anagBusy || !(anagPreview.conteggi?.aggiornabile > 0)}>
+                {anagBusy ? "Aggiorno…" : `Aggiorna ${anagPreview.conteggi?.aggiornabile || 0} schede`}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Modale scheda */}
       {showModal && (
