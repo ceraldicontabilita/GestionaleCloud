@@ -78,15 +78,21 @@ async def firma_registrazione(
         firma["firma_via"] = "pin"
         return firma
     from app.lotti.auth import request_actor
+    from app.lotti.servizi import responsabile_haccp
 
     attore = request_actor(request) if request is not None else None
-    # Una sessione aperta dal Gestionale firma solo se porta l'identita' HR
-    # del titolare; un token «erp:...» apre le pagine ma non e' una persona.
-    anonima_erp = attore and attore.get("via") == "sessione_erp" and str(attore.get("id") or "").startswith("erp:")
-    if attore and attore.get("id") and attore.get("ruolo") != "automazione" and not anonima_erp:
+    # La sessione amministratore aperta dal Gestionale e' la firma del
+    # titolare (decisione del 02/10/2026): nome dal token se porta la sua
+    # identita' HR, altrimenti dalle Impostazioni. Il token anonimo «erp:...»
+    # senza un nome scritto da nessuna parte apre le pagine ma non firma.
+    if responsabile_haccp.e_sessione_admin(attore):
+        firma = await responsabile_haccp.firma_sessione_admin(attore)
+        if firma:
+            return firma
+    elif attore and attore.get("id") and attore.get("ruolo") != "automazione":
         return {
             "operatore": attore.get("nome") or "",
-            "dipendente_id": attore["id"] if attore.get("via") in ("pin", "sessione_erp") else "",
+            "dipendente_id": attore["id"] if attore.get("via") == "pin" else "",
             "firma_verificata": True,
             "firma_via": attore.get("via") or "sessione",
         }

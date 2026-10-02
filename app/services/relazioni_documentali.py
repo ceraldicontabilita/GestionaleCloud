@@ -86,7 +86,9 @@ class Sorgente:
 SORGENTI: Tuple[Sorgente, ...] = (
     Sorgente("invoices", "invoice"),
     Sorgente("f24_unificato", "f24_model", ("pdf_hash",), True),
-    Sorgente("quietanze_f24", "f24_receipt", ("pdf_hash",), True),
+    # `pdf_hash` e' lo SHA-256 (dal 02/10/2026); le righe precedenti portano l'MD5
+    # in `pdf_hash` e, una volta rilette, in `pdf_hash_md5`.
+    Sorgente("quietanze_f24", "f24_receipt", ("pdf_hash", "pdf_hash_md5"), True),
     Sorgente("cedolini", "payslip", ("source_file_hash",), True, id_preferito="id"),
     Sorgente("documents_inbox", "inbox_document", ("sha256", "file_hash")),
     Sorgente("bonifici_transfers", "bonifico_pdf", ("document_hash",)),

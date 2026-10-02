@@ -669,17 +669,21 @@ async def processa_cedolino_v2(
         
         if riconc:
             result["riconciliato"] = True
-            # Aggiorna cedolino come pagato
-            await db["cedolini"].update_one(
-                {"id": cedolino_id},
-                {"$set": {
-                    "pagato": True,
-                    "importo_pagato": netto,
-                    "saldo_residuo": 0,
-                    "metodo_pagamento": "bonifico",
-                    "riconciliato_auto": True
-                }}
-            )
+            # Il cedolino e' pagato: lo scrive il solo scrittore dello stato
+            # (``cedolini_pagamento``), lo stesso dell'associazione manuale HR.
+            from app.services.cedolini_pagamento import FONTE_AUTOMATICA, segna_cedolino_pagato
+
+            pn_id = result.get("prima_nota_id") or (existing_pn or {}).get("id", "")
+            riga_pn = await db["prima_nota_salari"].find_one(
+                {"id": pn_id}, {"_id": 0, "data_pagamento": 1, "importo_bonifico": 1}) or {}
+            ced_doc = await db["cedolini"].find_one(
+                {"id": cedolino_id}, {"_id": 0, "id": 1, "netto": 1, "netto_mese": 1,
+                                      "pagamenti": 1, "metodo_pagamento": 1}) or {"id": cedolino_id, "netto": netto}
+            await segna_cedolino_pagato(
+                db, ced_doc,
+                importo=riga_pn.get("importo_bonifico") or netto, data=riga_pn.get("data_pagamento"),
+                riferimento=f"prima_nota_salari:{pn_id}", fonte=FONTE_AUTOMATICA, pagato=True,
+                campi_extra={"riconciliato_auto": True})
 
         result["success"] = True
 
@@ -863,28 +867,17 @@ async def registra_pagamento_salario(
     }
     
     await db["pagamenti_salari"].insert_one(dict(pagamento).copy())
-    
-    # Aggiorna cedolino
-    pagamenti_lista = cedolino.get("pagamenti", [])
-    pagamenti_lista.append({
-        "id": pagamento_id,
-        "importo": importo,
-        "metodo": metodo,
-        "data": data_pagamento,
-        "tipo": tipo_pagamento
-    })
-    
-    update_ced = {
-        "importo_pagato": round(nuovo_pagato, 2),
-        "saldo_residuo": nuovo_residuo,
-        "pagamenti": pagamenti_lista,
-        "pagato": nuovo_residuo <= 0.01,  # Pagato se saldo ≤ 0.01€
-        "metodo_pagamento": metodo,
-        "data_pagamento": data_pagamento,
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db["cedolini"].update_one({"id": cedolino_id}, {"$set": update_ced})
+
+    # Aggiorna cedolino: un solo scrittore dello stato di pagamento
+    # (``cedolini_pagamento``), lo stesso del motore automatico e dell'HR.
+    from app.services.cedolini_pagamento import FONTE_MANUALE, segna_cedolino_pagato
+
+    await segna_cedolino_pagato(
+        db, cedolino, importo=importo, data=data_pagamento, metodo=metodo,
+        riferimento=f"pagamenti_salari:{pagamento_id}", fonte=FONTE_MANUALE,
+        tipo_pagamento=tipo_pagamento, extra={"id": pagamento_id, "note": note})
+    nuovo_pagato = float(cedolino.get("importo_pagato") or 0)
+    nuovo_residuo = round(netto - nuovo_pagato, 2)
     
     # Registra in prima nota
     pn_collection = "prima_nota_cassa" if metodo in ["contanti", "cassa"] else "prima_nota_banca"

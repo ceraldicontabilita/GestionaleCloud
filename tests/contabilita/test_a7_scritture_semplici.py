@@ -59,8 +59,8 @@ def _scrittura_tfr(db, anno=2026, dip="d1", importo=1000.0):
         movimento={"data": f"{anno}-12-31", "tipo": "tfr_accantonamento",
                    "importo": importo, "dipendente_id": dip, "anno": anno,
                    "dettaglio": {"quota_annuale": importo}},
-        righe=[rc.riga(rc._C_TFR_COSTO, dare=importo),
-               rc.riga(rc._C_TFR_DEBITO, avere=importo)],
+        righe=[rc.riga(rc._C_QUOTE_TFR, dare=importo),
+               rc.riga(rc._C_FONDO_TFR, avere=importo)],
         chiave_naturale={"tipo": "tfr_accantonamento",
                          "dipendente_id": dip, "anno": anno},
     )
@@ -76,9 +76,9 @@ def test_scrittura_bilanciata_e_campi_preservati():
     assert salvato["tipo"] == "tfr_accantonamento"
     assert salvato["importo"] == 1000.0
     assert salvato["dettaglio"] == {"quota_annuale": 1000.0}
-    # righe in partita doppia sui conti ESISTENTI del piano operativo
+    # righe in partita doppia sui conti CEE ufficiali del TFR
     conti = {r["conto_codice"] for r in salvato["righe"]}
-    assert conti == {"05.03.03", "02.04.01"}
+    assert conti == {"67.01.07.01", "29.01.01"}
     assert salvato["numero_registrazione"] == 1
 
 
@@ -96,8 +96,8 @@ def test_scrittura_sbilanciata_rifiutata():
         _run(rc.registra_scrittura_semplice(
             db,
             movimento={"tipo": "test"},
-            righe=[rc.riga(rc._C_TFR_COSTO, dare=100.0),
-                   rc.riga(rc._C_TFR_DEBITO, avere=90.0)],
+            righe=[rc.riga(rc._C_QUOTE_TFR, dare=100.0),
+                   rc.riga(rc._C_FONDO_TFR, avere=90.0)],
             chiave_naturale={"tipo": "test"},
         ))
     assert len(db[rc.COLL_MOVIMENTI].docs) == 0
@@ -132,8 +132,8 @@ def test_protocollo_anno_derivato_dalla_data_se_assente():
     doc = _run(rc.registra_scrittura_semplice(
         db,
         movimento={"data": "2027-03-15", "tipo": "test_senza_anno"},
-        righe=[rc.riga(rc._C_TFR_COSTO, dare=10.0),
-               rc.riga(rc._C_TFR_DEBITO, avere=10.0)],
+        righe=[rc.riga(rc._C_QUOTE_TFR, dare=10.0),
+               rc.riga(rc._C_FONDO_TFR, avere=10.0)],
         chiave_naturale={"tipo": "test_senza_anno"},
     ))
     salvato = db[rc.COLL_MOVIMENTI].docs[0]
@@ -143,8 +143,8 @@ def test_protocollo_anno_derivato_dalla_data_se_assente():
     doc2 = _run(rc.registra_scrittura_semplice(
         db,
         movimento={"data": "2027-06-01", "tipo": "test_senza_anno_2"},
-        righe=[rc.riga(rc._C_TFR_COSTO, dare=5.0),
-               rc.riga(rc._C_TFR_DEBITO, avere=5.0)],
+        righe=[rc.riga(rc._C_QUOTE_TFR, dare=5.0),
+               rc.riga(rc._C_FONDO_TFR, avere=5.0)],
         chiave_naturale={"tipo": "test_senza_anno_2"},
     ))
     assert doc2["numero_registrazione"] == 2

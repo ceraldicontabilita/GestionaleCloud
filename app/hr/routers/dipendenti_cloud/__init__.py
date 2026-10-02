@@ -24,6 +24,7 @@ from app.constants.stati_associazione_bonifico import (
 )
 from app.hr.database import Database
 from app.hr.services import stato_rapporto
+from app.services.cedolini_pagamento import allinea_cedolino_gestionale_da_paghe
 from app.hr.utils.dependencies import require_staff
 
 logger = logging.getLogger(__name__)
@@ -735,6 +736,11 @@ def _attore(utente: Optional[Dict[str, Any]]) -> str:
     return str(utente.get("name") or utente.get("sub") or utente.get("role") or "admin")
 
 
+def _riferimento_coda(bonifico_id: str) -> str:
+    """Il riferimento con cui un bonifico associato a mano compare in ``cedolini.pagamenti``."""
+    return f"hr:bonifici_da_associare:{bonifico_id}"
+
+
 def _db_gestionale():
     """L'archivio del gestionale, o None se non raggiungibile (si dice nel log)."""
     try:
@@ -890,7 +896,13 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
         {"$set": {"dipendente_id": dipendente_id, "anno": anno_i, "mese": mese_i,
                   "updated_at": now_iso()}}, upsert=True)
     await _ricalcola_stato_paga(db, dipendente_id, anno_i, mese_i)
-    return {"ok": True, "bonifico": nuovo}
+    # Lo stato del mese (motore unico) si riflette sul cedolino del gestionale
+    # (`pagato`, `importo_pagato`, `pagamenti[]`): un solo scrittore, lo stesso
+    # della riconciliazione automatica. `ritira-conferma` lo riapre.
+    cedolino_gest = await allinea_cedolino_gestionale_da_paghe(
+        db, _db_gestionale(), dipendente_id, anno_i, mese_i,
+        riferimento=_riferimento_coda(bonifico_id), importo=in_coda.get("importo"), data=in_coda.get("data"))
+    return {"ok": True, "bonifico": nuovo, "cedolino_gestionale": cedolino_gest}
 
 
 @router.post("/bonifici-da-associare/{bonifico_id}/ritira-conferma")
@@ -931,6 +943,10 @@ async def ritira_conferma_bonifico(bonifico_id: str, utente: Dict[str, Any] = De
             {"dipendente_id": dip_id, "anno": anno_i, "mese": mese_i},
             {"$set": {"bonifico_importo": round(tot, 2), "bonifico_ricevuto": tot > 0, "updated_at": now_iso()}})
         await _ricalcola_stato_paga(db, dip_id, anno_i, mese_i)
+        # il cedolino del gestionale perde questo pagamento e si riapre se non resta altro
+        await allinea_cedolino_gestionale_da_paghe(
+            db, _db_gestionale(), dip_id, anno_i, mese_i,
+            riferimento=_riferimento_coda(bonifico_id), ritira=True)
     campi = campi_ritiro()
     await db.bonifici_da_associare.update_one(
         {"id": bonifico_id},
@@ -3967,11 +3983,21 @@ async def conferma_associazione(data: dict):
         set_doc["associazione_confermata_at"] = now_iso()
     if data.get("nota") is not None:
         set_doc["associazione_nota"] = str(data.get("nota"))
-    res = await get_db().paghe_mensili.update_one(
+    db = get_db()
+    res = await db.paghe_mensili.update_one(
         {"dipendente_id": dip, "anno": int(anno), "mese": int(mese)}, {"$set": set_doc})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Busta non trovata per quel dipendente/mese")
-    return {"ok": True, "riconciliato": val}
+    # La conferma porta sul cedolino del gestionale lo stato del mese (il bonifico
+    # ricevuto del registro paghe come pagamento); l'annullo lo toglie.
+    paga = await db.paghe_mensili.find_one(
+        {"dipendente_id": dip, "anno": int(anno), "mese": int(mese)}, {"_id": 0, "bonifico_importo": 1})
+    cedolino_gest = await allinea_cedolino_gestionale_da_paghe(
+        db, _db_gestionale(), dip, int(anno), int(mese),
+        riferimento=f"hr:conferma_associazione:{dip}:{int(anno)}-{int(mese):02d}",
+        importo=(paga or {}).get("bonifico_importo"), data=set_doc.get("associazione_confermata_at"),
+        ritira=not val)
+    return {"ok": True, "riconciliato": val, "cedolino_gestionale": cedolino_gest}
 
 
 # ============ BUSTE PAGA ============

@@ -133,8 +133,10 @@ async def run_morning_automation(
         """Il turno del mattino, alle 07:00: prima che arrivino gli operatori.
 
         Apre la casella di oggi su ogni apparecchio attivo e ci scrive CHI deve
-        rilevare (il responsabile assegnato, nome preso da HR). La temperatura
-        la mette la persona dal tablet, col suo PIN: quella e' la firma.
+        rilevare (il responsabile assegnato, nome preso da HR; senza
+        assegnazione il titolare, nome dalle Impostazioni). La temperatura
+        la mette la persona dal tablet, col suo PIN, oppure il titolare con
+        la sessione del Gestionale: quella e' la firma.
         I giorni passati senza nessuna lettura restano dichiarati «non
         rilevati» col motivo, mai riempiti d'ufficio.
         """

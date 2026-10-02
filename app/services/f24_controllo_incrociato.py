@@ -931,6 +931,19 @@ NOTA_COMMERCIALISTA = "da verificare con il commercialista"
 # esito d'abbinamento da dire, solo il dato che manca).
 ESITO_DATA_VERSAMENTO_ASSENTE = "data_versamento_assente"
 ESITO_SALDO_ASSENTE = "saldo_assente"
+# La parola del titolare su un PROBABILE o PARZIALE: stesso pagamento del CERTO,
+# relazione `confirmed` con `actor=titolare` e il motivo scelto da questa lista
+# (chip, mai testo libero; «altro» e' l'eccezione e vuole il testo).
+REGOLA_CONFERMA_TITOLARE = "conferma_titolare"
+LIVELLI_CONFERMABILI = (LIVELLO_PROBABILE, LIVELLO_PARZIALE)
+MOTIVI_CONFERMA_TITOLARE: Dict[str, str] = {
+    "causale_senza_data_incasso": "La causale non riporta la data d'incasso: è l'addebito di quella delega",
+    "unico_addebito_compatibile": "È l'unico addebito di delega compatibile per data e importo",
+    "verificato_cassetto_fiscale": "Verificato sul Cassetto fiscale: la delega risulta pagata con questo addebito",
+    "verificato_home_banking": "Verificato sull'home banking: la disposizione è questa",
+    "differenza_commissioni": "La differenza è di commissioni o arrotondamento della banca",
+    "altro": "Altro (scrivi tu)",
+}
 _RE_ADDEBITO_DELEGA = re.compile(r"\bI24\b|\bF24\b|DELEGA\s+UNIFICATA", re.I)
 _RE_DATA_INCASSO = re.compile(r"DATA\s+INCASSO\s+(\d{2})/(\d{2})/(\d{4})", re.I)
 
@@ -1510,12 +1523,15 @@ ALERT_TRIBUTO_DUE_VOLTE = "F24_TRIBUTO_VERSATO_DUE_VOLTE"
 
 async def applica_riscontri_quietanze(
     db, esito: Dict[str, Any], *, con_alert: bool = True,
+    conferma: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, int]:
     """Scrive i riscontri certi su quietanze e addebito; apre e chiude gli alert.
 
     Idempotente: un riscontro gia' scritto uguale non si riscrive. Il
     movimento non diventa «riconciliato»: e' spiegato dalla quietanza, ma il
-    modello F24 (se manca) resta da caricare.
+    modello F24 (se manca) resta da caricare. Con ``conferma`` (titolare su un
+    PROBABILE o PARZIALE) il riscontro porta chi ha deciso, il motivo e la
+    differenza al centesimo; la relazione e' ``confirmed`` con ``actor``.
     """
     from app.services.alert_engine import genera_alert, risolvi_alert
 
@@ -1527,6 +1543,12 @@ async def applica_riscontri_quietanze(
             "stato": RISCONTRO_CERTO, "livello": r["livello"], "movimento_id": a["movimento_id"], "data_addebito": a["data"],
             "importo": a["importo"], "data_incasso": a["data_incasso"], "motivazione": r["motivazione"],
         }
+        regola = f"f24_banca:{r['livello']}"
+        if conferma:
+            riscontro["conferma_titolare"] = {**conferma, "confermato_il": now}
+            if conferma.get("differenza_cents") is not None:
+                riscontro["differenza_cents"] = conferma["differenza_cents"]
+            regola += f":{REGOLA_CONFERMA_TITOLARE}"
         for q in r["quietanze"]:
             collezione = q.get("fonte") or COLL_QUIETANZE_F24
             attuale = await db[collezione].find_one({"id": q["id"]}, {"_id": 0, "riscontro_banca": 1})
@@ -1540,8 +1562,10 @@ async def applica_riscontri_quietanze(
                 scritti["quietanze"] += 1
             scritti["relazioni"] += await _scrivi_relazione(
                 db, movimento_id=a["movimento_id"], tipo_target="f24_receipt", target_id=str(q["id"]),
-                status="confirmed", rule=f"f24_banca:{r['livello']}",
-                importo_cents=centesimi(a["importo"]), collezione_target=collezione)
+                status="confirmed", rule=regola,
+                importo_cents=centesimi(a["importo"]), collezione_target=collezione,
+                actor=conferma["actor"] if conferma else "system",
+                motivo=conferma["motivo_testo"] if conferma else None)
             scritti["relazioni"] += await _revoca_candidate_altrove(
                 db, "f24_receipt", str(q["id"]), a["movimento_id"])
         ids = sorted(str(q["id"]) for q in r["quietanze"] if q.get("id"))
@@ -1597,6 +1621,7 @@ async def applica_riscontri_quietanze(
 async def _scrivi_relazione(
     db, *, movimento_id: str, tipo_target: str, target_id: str, status: str, rule: str,
     importo_cents: Optional[int], collezione_target: str,
+    actor: str = "system", motivo: Optional[str] = None,
 ) -> int:
     """Relazione movimento → pagamento in ``entity_relations``; 1 solo se e' cambiata."""
     from app.db_collections import COLL_ENTITY_RELATIONS
@@ -1608,13 +1633,17 @@ async def _scrivi_relazione(
         {"relation_key": chiave}, {"_id": 0, "status": 1, "rule": 1})
     if attuale and attuale.get("status") == status and attuale.get("rule") == rule:
         return 0
+    evidence = [{"type": "bank_movement_id", "value": movimento_id},
+                {"type": "livello", "value": rule.split(":")[1] if ":" in rule else rule}]
+    if motivo:
+        evidence.append({"type": "motivo", "value": motivo})
     await upsert_entity_relation(
         db, source_type="bank_movement", source_id=movimento_id, relation_type=tipo_relazione,
         target_type=tipo_target, target_id=target_id, status=status, rule=rule,
-        evidence=[{"type": "bank_movement_id", "value": movimento_id},
-                  {"type": "livello", "value": rule.split(":")[-1]}],
+        evidence=evidence,
         amount=euro(importo_cents) if importo_cents is not None else None,
         provenance={"source_collection": COLL_ESTRATTO_CONTO, "target_collection": collezione_target},
+        actor=actor,
     )
     return 1
 
@@ -1638,8 +1667,16 @@ async def _revoca_candidate_altrove(db, tipo_target: str, target_id: str, movime
     return ritirate
 
 
-async def applica_riscontri_modelli(db, esito: Dict[str, Any]) -> Dict[str, int]:
-    """Scrive la prova bancaria dei soli modelli CERTI; gli altri livelli sono relazioni pending."""
+async def applica_riscontri_modelli(
+    db, esito: Dict[str, Any], *, conferma: Optional[Dict[str, Any]] = None,
+) -> Dict[str, int]:
+    """Scrive la prova bancaria dei soli modelli CERTI; gli altri livelli sono relazioni pending.
+
+    Con ``conferma`` (la parola del titolare su un PROBABILE o PARZIALE,
+    ``conferma_riscontro_titolare``) scrive lo **stesso** pagamento del CERTO
+    e in piu' annota chi ha deciso, il motivo e, per il PARZIALE, la differenza
+    al centesimo (``differenza_banca_cents``): nessun conguaglio inventato.
+    """
     from app.services.accounting_relation_writers import record_f24_bank_allocations
     from app.services.alert_engine import chiudi_alert_movimento_riconciliato
 
@@ -1655,6 +1692,12 @@ async def applica_riscontri_modelli(db, esito: Dict[str, Any]) -> Dict[str, int]
                 riferimento=r.get("riferimento")),
             "importo_residuo": 0.0, "criterio_aggancio_banca": r["criterio"], "updated_at": now,
         }
+        if conferma:
+            patch["livello_riscontro_banca"] = r["livello"]
+            patch["conferma_titolare_banca"] = {**conferma, "confermato_il": now}
+            if conferma.get("differenza_cents") is not None:
+                patch["differenza_banca_cents"] = conferma["differenza_cents"]
+                patch["differenza_banca"] = euro(conferma["differenza_cents"])
         await db[COLL_F24].update_one({"id": r["f24_id"]}, {"$set": patch})
         await db[COLL_ESTRATTO_CONTO].update_one(
             {"$or": [{"id": r["movimento_id"]}, {"fingerprint": r["movimento_id"]}]},
@@ -1669,6 +1712,14 @@ async def applica_riscontri_modelli(db, esito: Dict[str, Any]) -> Dict[str, int]
         except Exception as exc:  # noqa: BLE001 - la relazione e' un indice, non la prova
             logger.exception("Relazione bancaria F24 %s non registrata (%s)", r["f24_id"],
                              type(exc).__name__)
+        if conferma:
+            scritti["relazioni"] += await _scrivi_relazione(
+                db, movimento_id=r["movimento_id"], tipo_target="f24_model", target_id=r["f24_id"],
+                status="confirmed", rule=f"f24_banca:{r['livello']}:{REGOLA_CONFERMA_TITOLARE}",
+                importo_cents=centesimi(r.get("importo")), collezione_target=COLL_F24,
+                actor=conferma["actor"], motivo=conferma["motivo_testo"])
+            scritti["relazioni"] += await _revoca_candidate_altrove(
+                db, "f24_model", r["f24_id"], r["movimento_id"])
         scritti["modelli"] += 1
     for r in esito["da_verificare"]:
         for mid in ([r["movimento_id"]] if r.get("movimento_id") else
@@ -1742,3 +1793,159 @@ async def riconcilia_f24_arrivato(db, importo: Any) -> Dict[str, Any]:
     esito_modelli = riscontri_modelli_banca(registro, esito)
     scritti["modelli"] = await applica_riscontri_modelli(db, esito_modelli)
     return {**esito["conteggi"], "modelli": esito_modelli["conteggi"], "scritti": scritti}
+
+
+# ── la conferma del titolare su un PROBABILE o PARZIALE ───────────────────────
+
+class ConfermaNonAmmessa(Exception):
+    """La conferma non si applica: il motivo e' in ``code`` e ``details``."""
+
+    def __init__(self, code: str, message: str, details: Optional[Dict[str, Any]] = None, stato: int = 409):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.details = details or {}
+        self.stato = stato
+
+
+def _candidati_riga(r: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [r["addebito"]] if r.get("addebito") else list(r.get("candidati") or [])
+
+
+def _riga_da_confermare(
+    registro: Dict[str, Any], esito: Dict[str, Any], f24_id: str,
+) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """La riga PROBABILE/PARZIALE del modello ``f24_id`` o della sua quietanza (anche
+    quando ``f24_id`` e' l'id della quietanza stessa: la scheda e' una sola)."""
+    for r in esito["modelli"]["da_verificare"]:
+        if str(r.get("f24_id")) == f24_id and r.get("livello") in LIVELLI_CONFERMABILI:
+            return "modello", r
+    quietanze_del_modello = {str(q.get("id")) for q in registro["quietanze_per_f24"].get(f24_id, [])}
+    quietanze_del_modello.add(f24_id)
+    for r in esito["da_verificare"]:
+        if r.get("livello") not in LIVELLI_CONFERMABILI:
+            continue
+        if any(str(q.get("id")) in quietanze_del_modello for q in r.get("quietanze") or []):
+            return "quietanza", r
+    return "", None
+
+
+async def conferma_riscontro_titolare(
+    db, *, f24_id: str, movimento_id: str, motivo: str, motivo_testo: Optional[str] = None,
+    actor: str = "titolare", utente: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Il titolare conferma un addebito PROBABILE o PARZIALE: si scrive il pagamento
+    con lo stesso motore del CERTO (nessun secondo writer), la relazione passa a
+    ``confirmed`` con ``actor`` e motivo, e per il PARZIALE si registra la
+    differenza al centesimo senza inventare conguagli.
+
+    Un movimento che il motore non ha proposto per quel pagamento e' rifiutato
+    (``MOVIMENTO_NON_CANDIDATO``): la conferma sceglie fra i candidati, non ne
+    crea di nuovi. Un pagamento gia' provato dallo stesso addebito e' idempotente.
+    """
+    motivo = str(motivo or "").strip()
+    if motivo not in MOTIVI_CONFERMA_TITOLARE:
+        raise ConfermaNonAmmessa("MOTIVO_NON_AMMESSO", "Motivo non in elenco",
+                                 {"motivi": list(MOTIVI_CONFERMA_TITOLARE)}, stato=422)
+    testo_motivo = MOTIVI_CONFERMA_TITOLARE[motivo]
+    if motivo == "altro":
+        testo_motivo = str(motivo_testo or "").strip()
+        if len(testo_motivo) < 3:
+            raise ConfermaNonAmmessa("MOTIVO_TESTO_OBBLIGATORIO", "«Altro» richiede il testo del motivo",
+                                     stato=422)
+    f24_id, movimento_id = str(f24_id), str(movimento_id)
+
+    registro = await carica_registro(db)
+    await causali_export_banca(db, registro["movimenti"])
+    esito = riscontri_quietanze_banca(registro["quietanze"], registro["movimenti"])
+    esito["modelli"] = riscontri_modelli_banca(registro, esito)
+
+    # Gia' provato da questo stesso addebito (modello o quietanza): niente da riscrivere.
+    modello = next((f for f in registro["f24"] if str(f.get("id")) == f24_id), None)
+    if modello and str(modello.get("movimento_bancario_id") or "") == movimento_id:
+        return {"gia_confermato": True, "f24_id": f24_id, "movimento_id": movimento_id}
+    quietanza = next((q for q in registro["quietanze"] if str(q.get("id")) == f24_id), None)
+    if quietanza:
+        doc_q = quietanza.get("documento") or {}
+        riscontro = doc_q.get("riscontro_banca") or {}
+        if movimento_id in (str(doc_q.get("movimento_bancario_id") or ""), str(riscontro.get("movimento_id") or "")):
+            return {"gia_confermato": True, "f24_id": f24_id, "movimento_id": movimento_id}
+
+    natura, riga = _riga_da_confermare(registro, esito, f24_id)
+    if riga is None:
+        raise ConfermaNonAmmessa(
+            "NESSUN_RISCONTRO_DA_CONFERMARE",
+            "Nessun riscontro probabile o parziale da confermare per questo F24",
+            {"f24_id": f24_id, "livelli_confermabili": list(LIVELLI_CONFERMABILI)})
+    addebito = next((a for a in _candidati_riga(riga) if str(a.get("movimento_id")) == movimento_id), None)
+    if addebito is None:
+        raise ConfermaNonAmmessa(
+            "MOVIMENTO_NON_CANDIDATO",
+            "L'addebito non e' fra i candidati proposti dal motore per questo pagamento",
+            {"f24_id": f24_id, "movimento_id": movimento_id,
+             "candidati": [a.get("movimento_id") for a in _candidati_riga(riga)]})
+
+    livello = riga["livello"]
+    importo_atteso = centesimi(riga.get("importo"))  # saldo del modello o importo della quietanza
+    differenza_cents = None
+    if livello == LIVELLO_PARZIALE and importo_atteso is not None:
+        differenza_cents = (centesimi(addebito.get("importo")) or 0) - importo_atteso
+    conferma = {"actor": actor, "utente": utente, "motivo": motivo, "motivo_testo": testo_motivo,
+                "livello": livello, "movimento_id": movimento_id, "differenza_cents": differenza_cents}
+    nota = f"; confermato dal titolare: {testo_motivo}"
+    if differenza_cents is not None:
+        nota += f" (differenza {differenza_cents / 100:+.2f} EUR registrata, nessun conguaglio)"
+
+    movimento = next((m for m in registro["movimenti"] if _mid(m) == movimento_id), {})
+    esito_vuoto = {k: [] for k in ("riscontrati", "da_verificare", "quietanze_senza_addebito",
+                                   "quietanze_senza_estratto", "addebiti_senza_quietanza",
+                                   "quietanze_incomplete", "compensate_saldo_zero", "tributi_ripetuti")}
+    if natura == "modello":
+        voce = {**riga, "movimento_id": movimento_id, "addebito": addebito,
+                "data_movimento": addebito.get("data"),
+                "riferimento": (movimento.get("f24_info") or {}).get("riferimento"),
+                "criterio": f"{REGOLA_CONFERMA_TITOLARE}:{livello}",
+                "motivazione": (riga.get("motivazione") or "") + nota}
+        voce.pop("candidati", None)
+        scritti = {"quietanze": {}, "modelli": await applica_riscontri_modelli(
+            db, {"riscontrati": [voce], "da_verificare": []}, conferma=conferma)}
+        if not scritti["modelli"]["modelli"]:
+            raise ConfermaNonAmmessa("MODELLO_NON_APERTO", "Il modello non e' piu' aperto in banca",
+                                     {"f24_id": f24_id})
+    else:
+        voce = {**riga, "addebito": addebito, "stato": RISCONTRO_CERTO,
+                "motivazione": (riga.get("motivazione") or "") + nota}
+        voce.pop("candidati", None)
+        if differenza_cents is not None:
+            voce["differenza"] = euro(differenza_cents)
+        esito_q = {**esito_vuoto, "riscontrati": [voce]}
+        scritti = {"quietanze": await applica_riscontri_quietanze(db, esito_q, con_alert=False, conferma=conferma)}
+        # La catena dovuto → F24 → quietanza → addebito: il modello della quietanza
+        # e' provato dallo stesso addebito, con lo stesso motore (`via_quietanza`).
+        esito_modelli = riscontri_modelli_banca(registro, esito_q)
+        modelli_provati = [r for r in esito_modelli["riscontrati"] if r.get("criterio") == "via_quietanza"]
+        if not modelli_provati and differenza_cents is not None:
+            # PARZIALE: il saldo del modello e' quello della quietanza, non dell'addebito;
+            # la parola del titolare copre la differenza anche per il modello.
+            ids_quietanze = {str(q.get("id")) for q in riga.get("quietanze") or []}
+            for f in registro["f24"]:
+                fid = str(f.get("id"))
+                sue = {str(q.get("id")) for q in registro["quietanze_per_f24"].get(fid, [])}
+                if not (sue & ids_quietanze) or not _f24_aperto_banca(f):
+                    continue
+                if saldo_modello_cents(f) != importo_atteso:
+                    continue
+                dv = data_versamento_modello(f)
+                modelli_provati.append({
+                    "f24_id": fid, "file_name": f.get("file_name"), "data": dv, "data_it": data_italiana(dv),
+                    "importo": euro(saldo_modello_cents(f)), "livello": livello, "criterio": "via_quietanza",
+                    "movimento_id": movimento_id, "addebito": addebito, "data_movimento": addebito.get("data"),
+                    "riferimento": (movimento.get("f24_info") or {}).get("riferimento"),
+                    "motivazione": f"quietanza confermata dal titolare sull'addebito del {addebito.get('data_it')}" + nota,
+                })
+        scritti["modelli"] = await applica_riscontri_modelli(
+            db, {"riscontrati": modelli_provati, "da_verificare": []}, conferma=conferma)
+    return {"gia_confermato": False, "natura": natura, "f24_id": f24_id, "movimento_id": movimento_id,
+            "livello": livello, "motivo": motivo, "motivo_testo": testo_motivo,
+            "differenza_cents": differenza_cents, "differenza": euro(differenza_cents),
+            "scritti": scritti}

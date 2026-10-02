@@ -3244,7 +3244,20 @@ async def upload_documento_automatico(
                     result["tipo_documento"] = "corrispettivo"
                     data_str = ingest.get("data", "N/A")
                     tot_str = f"{ingest.get('totale', 0):.2f}"
-                    if ingest["action"] == "duplicate":
+                    if ingest["action"] == "scartato":
+                        # Lordo dei riepiloghi oltre contanti + POS senza voce
+                        # dichiarata: la giornata non entra, il file va in ERRORI.
+                        result["success"] = False
+                        result["imported"] = 0
+                        result["motivo"] = ingest.get("motivo")
+                        result["message"] = (
+                            f"Corrispettivo del {data_str} scartato ({ingest.get('motivo')}): "
+                            f"lordo riepiloghi {ingest.get('lordo_riepiloghi')} €, contanti "
+                            f"{ingest.get('pagato_contanti')} €, elettronico "
+                            f"{ingest.get('pagato_elettronico')} €, non riscosso dichiarato "
+                            f"{ingest.get('pagato_non_riscosso')} €"
+                        )
+                    elif ingest["action"] == "duplicate":
                         result["success"] = False
                         result["duplicate"] = True
                         result["message"] = (
@@ -3416,6 +3429,14 @@ async def upload_documento_automatico(
                     result["imported"] = len(importati)
                     if len(importati) > 1:
                         result["message"] += f" (+{len(importati) - 1} fatture aggiuntive nello stesso file)"
+                    collisioni = [f for f in importati if f.get("collisione_identita")]
+                    if collisioni:
+                        # Stessa chiave di una fattura in archivio ma originale
+                        # diverso: entrata «da verificare», con alert, non scartata.
+                        result["collisione_identita"] = len(collisioni)
+                        result["message"] += (
+                            ": stesso numero, fornitore e data di una fattura gia' in archivio "
+                            "ma contenuto diverso, da verificare (alert aperto)")
                 elif altro_anno and ultimo_errore_duplicato is None:
                     result["imported"] = 0
                     result["skipped_altro_anno"] = len(altro_anno)

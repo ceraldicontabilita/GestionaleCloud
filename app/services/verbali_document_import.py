@@ -7,11 +7,12 @@ import hashlib
 import io
 import re
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Dict, Optional
 
 from app.services.noleggio.controlli import driver_alla_data
 from app.services.payment_invoice_matching import amounts_equal_to_cent
-from app.services.verbali_evidence import data_ora_evento_verbale
+from app.services.verbali_evidence import amount_to_cents, data_ora_evento_verbale
 
 
 _IUV_RE = re.compile(r"\b(3\d{17}|0\d{16,17})\b")
@@ -103,18 +104,18 @@ def normalizza_iuv(value: Any) -> Optional[str]:
     return testo if re.fullmatch(r"[0-9A-Z]{15,35}", testo) else None
 
 
+def _euro_da_cents(cents: Optional[int]) -> Optional[float]:
+    """Centesimi -> euro per l'archivio (che conserva `importo` in euro): il valore
+    e' il decimale esatto, mai il risultato di un'operazione float."""
+    if cents is None:
+        return None
+    return float(Decimal(cents) / Decimal(100))
+
+
 def _float_or_none(value: Any) -> Optional[float]:
-    if value in (None, ""):
-        return None
-    try:
-        if isinstance(value, str):
-            raw = value.strip().replace("€", "").replace(" ", "")
-            if "," in raw:
-                raw = raw.replace(".", "").replace(",", ".")
-            return float(raw)
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    """Importo letto -> euro per l'archivio, passando dai centesimi interi
+    (`amount_to_cents`): «1.234,56», «1234.56» e 1234.56 danno lo stesso valore."""
+    return _euro_da_cents(amount_to_cents(value))
 
 
 def _extract_amount(text: str) -> Optional[float]:
@@ -126,10 +127,9 @@ def _extract_amount(text: str) -> Optional[float]:
         match = re.search(pattern, text or "", re.I)
         if not match:
             continue
-        try:
-            return float(match.group(1).replace(".", "").replace(",", "."))
-        except ValueError:
-            continue
+        importo = _float_or_none(match.group(1))
+        if importo is not None:
+            return importo
     return None
 
 
@@ -138,20 +138,22 @@ def _select_document_amount(ai_data: Dict[str, Any], pagopa_data: Dict[str, Any]
 
     Il testo vettoriale/estratto dal PDF e il parser PagoPA sono evidenze piu'
     forti di un numero AI privo di separatore. Non effettua correzioni arbitrarie:
-    risolve soltanto il conflitto esatto x100 tra le fonti.
+    risolve soltanto il conflitto esatto x100 tra le fonti. Ogni confronto e'
+    in centesimi interi (`amount_to_cents`): «uguale» non si decide mai con un
+    float.
     """
-    ai_amount = _float_or_none(ai_data.get("importo_ridotto")) or _float_or_none(ai_data.get("importo_ordinario"))
-    pagopa_amount = _float_or_none(pagopa_data.get("importo"))
-    text_amount = _extract_amount(text)
-    documentary = pagopa_amount or text_amount
-    if ai_amount and documentary and round(ai_amount, 2) == round(documentary * 100, 2):
-        return round(documentary, 2), "pdf_testo_conflitto_ocr_x100", True
-    if pagopa_amount is not None:
-        return round(pagopa_amount, 2), "parser_pagopa", bool(ai_amount and round(ai_amount, 2) != round(pagopa_amount, 2))
-    if text_amount is not None:
-        return round(text_amount, 2), "pdf_testo", bool(ai_amount and round(ai_amount, 2) != round(text_amount, 2))
-    if ai_amount is not None:
-        return round(ai_amount, 2), "parser_ai", False
+    ai_cents = amount_to_cents(ai_data.get("importo_ridotto")) or amount_to_cents(ai_data.get("importo_ordinario"))
+    pagopa_cents = amount_to_cents(pagopa_data.get("importo"))
+    text_cents = amount_to_cents(_extract_amount(text))
+    documentary = pagopa_cents or text_cents
+    if ai_cents and documentary and ai_cents == documentary * 100:
+        return _euro_da_cents(documentary), "pdf_testo_conflitto_ocr_x100", True
+    if pagopa_cents is not None:
+        return _euro_da_cents(pagopa_cents), "parser_pagopa", bool(ai_cents and ai_cents != pagopa_cents)
+    if text_cents is not None:
+        return _euro_da_cents(text_cents), "pdf_testo", bool(ai_cents and ai_cents != text_cents)
+    if ai_cents is not None:
+        return _euro_da_cents(ai_cents), "parser_ai", False
     return None, "non_rilevato", False
 
 
@@ -630,6 +632,7 @@ async def process_verbale_document(
         "iuv": iuv,
         "targa": targa,
         "importo": importo,
+        "importo_centesimi": amount_to_cents(importo),
         "importo_fonte": importo_fonte,
         "importo_conflitto_risolto": importo_conflitto,
         "data_verbale": ai_data.get("data_verbale"),

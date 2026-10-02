@@ -405,4 +405,10 @@ async def salva_f24(
     doc.setdefault("id", str(uuid4()))
     doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
     await db[COLL].insert_one(doc.copy())
+    # Il fatto nasce qui, una volta sola: alla prima scrittura del modello, da
+    # qualunque ingresso. Le copie successive (sopra) non lo ripubblicano, e una
+    # quietanza non e' un modello (`e_quietanza`).
+    from app.services.f24_evento_acquisito import pubblica_f24_acquisito
+
+    await pubblica_f24_acquisito(db, doc, source_module=source or "salva_f24")
     return doc["id"]

@@ -20,8 +20,56 @@ import { toast } from "sonner";
 import { conferma } from "../../utils/conferma";
 import { apiError } from "../../utils/apiError";
 import { API } from "../../utils/constants";
-import { Refrigerator, Snowflake, Plus, Trash2, Check, RotateCcw } from "lucide-react";
+import { Refrigerator, Snowflake, Plus, Trash2, Check, RotateCcw, UserCheck } from "lucide-react";
 import SegnalaGuasto from "./shared/SegnalaGuasto";
+
+// Valore di `operatore_id` che dice «il titolare» (lo stesso del backend,
+// servizi/responsabile_haccp.py). Il suo nome viene dalle Impostazioni.
+export const ID_TITOLARE = "titolare";
+
+// Tendina del responsabile dell'apparecchio: un dipendente in carico, oppure
+// il titolare, che risponde comunque di ogni apparecchio non assegnato
+// (decisione del 02/10/2026). Il nome non si scrive qui: lo mette il
+// backend, da HR o dalle Impostazioni.
+function SceltaResponsabile({ item, gruppo, operatori, responsabilePredefinito, onScegli }) {
+  const [salvando, setSalvando] = useState(false);
+  const valore = item.responsabile_predefinito || !item.operatore_id ? ID_TITOLARE : item.operatore_id;
+  const etichettaTitolare = responsabilePredefinito
+    ? `Titolare (${responsabilePredefinito})`
+    : "Titolare (nome da scrivere nelle Impostazioni)";
+
+  const cambia = async (e) => {
+    setSalvando(true);
+    try {
+      await onScegli(gruppo.tipo, item.numero, e.target.value);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#3f5a4e", fontSize: 13, fontWeight: 700 }}>
+      <UserCheck size={16} aria-hidden="true" />
+      <select
+        value={valore}
+        onChange={cambia}
+        disabled={salvando}
+        aria-label={`Responsabile ${gruppo.singolare} numero ${item.numero}`}
+        style={{
+          minHeight: 44, minWidth: 180, padding: "0 10px", borderRadius: 12, fontFamily: "inherit",
+          fontSize: 14, fontWeight: 700, color: "#2a3329", background: "#fff",
+          border: `2px solid ${item.responsabile_predefinito ? "#e6e0d4" : "#5b7a6b"}`,
+          cursor: salvando ? "wait" : "pointer",
+        }}
+      >
+        <option value={ID_TITOLARE}>{etichettaTitolare}</option>
+        {operatori.map((o) => (
+          <option key={o.dipendente_id} value={o.dipendente_id}>{o.nome}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 const GRUPPI = [
   {
@@ -49,7 +97,7 @@ const GRUPPI = [
 // Una riga = un apparecchio. Il nome è modificabile sul posto; il bottone
 // «Salva» compare solo quando il testo è davvero cambiato, così un tocco per
 // sbaglio non riscrive nulla.
-function RigaAttrezzatura({ item, gruppo, onRinomina, onElimina }) {
+function RigaAttrezzatura({ item, gruppo, onRinomina, onElimina, operatori, responsabilePredefinito, onResponsabile }) {
   const [nome, setNome] = useState(item.nome || "");
   const [salvando, setSalvando] = useState(false);
   useEffect(() => { setNome(item.nome || ""); }, [item.nome]);
@@ -90,6 +138,14 @@ function RigaAttrezzatura({ item, gruppo, onRinomina, onElimina }) {
           border: cambiato ? "2px solid #5b7a6b" : "2px solid #e6e0d4",
           borderRadius: 12, background: "#fff", boxSizing: "border-box",
         }}
+      />
+
+      <SceltaResponsabile
+        item={item}
+        gruppo={gruppo}
+        operatori={operatori}
+        responsabilePredefinito={responsabilePredefinito}
+        onScegli={onResponsabile}
       />
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
@@ -134,6 +190,8 @@ export default function AttrezzatureView() {
   const [loading, setLoading] = useState(true);
   const [nuovi, setNuovi] = useState({ frigo: "", congelatore: "" });
   const [aggiungendo, setAggiungendo] = useState(null);
+  const [operatori, setOperatori] = useState([]);
+  const [responsabilePredefinito, setResponsabilePredefinito] = useState("");
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -150,7 +208,33 @@ export default function AttrezzatureView() {
     }
   }, []);
 
-  useEffect(() => { carica(); }, [carica]);
+  // Chi si puo' scegliere come responsabile: i dipendenti in carico (da HR)
+  // e il titolare, col nome delle Impostazioni. Letti una volta.
+  const caricaResponsabili = useCallback(async () => {
+    const [ops, azienda] = await Promise.allSettled([
+      axios.get(`${API}/tablet-operatori`),
+      axios.get(`${API}/azienda`),
+    ]);
+    if (ops.status === "fulfilled") {
+      setOperatori((Array.isArray(ops.value.data) ? ops.value.data : [])
+        .filter((o) => o.dipendente_id && o.in_carico !== false && o.ruolo !== "amministratore"));
+    }
+    if (azienda.status === "fulfilled") {
+      setResponsabilePredefinito(String(azienda.value.data?.responsabile_haccp || "").trim());
+    }
+  }, []);
+
+  useEffect(() => { carica(); caricaResponsabili(); }, [carica, caricaResponsabili]);
+
+  const assegnaResponsabile = async (tipo, numero, operatoreId) => {
+    try {
+      const { data } = await axios.put(`${API}/attrezzature/${tipo}/${numero}/responsabile`, { operatore_id: operatoreId });
+      toast.success(data?.message || "Responsabile aggiornato");
+      await carica();
+    } catch (e) {
+      toast.error("Errore: " + apiError(e));
+    }
+  };
 
   const rinomina = async (tipo, numero, nome) => {
     try {
@@ -203,7 +287,9 @@ export default function AttrezzatureView() {
         pasticceria</strong>, <strong>Pozzetto gelati</strong>. Il nome che scrivi
         compare dappertutto — nei registri delle temperature, sulle etichette dei
         lotti e nella scelta del posto dal tablet — e si aggiorna anche sui
-        controlli già registrati, così il registro resta leggibile.
+        controlli già registrati, così il registro resta leggibile. Per ogni
+        apparecchio scegli chi ne rileva la temperatura: se non scegli nessuno
+        risponde il titolare, col nome scritto nelle Impostazioni.
       </div>
 
       {loading ? (
@@ -247,6 +333,9 @@ export default function AttrezzatureView() {
                   gruppo={g}
                   onRinomina={rinomina}
                   onElimina={elimina}
+                  operatori={operatori}
+                  responsabilePredefinito={responsabilePredefinito}
+                  onResponsabile={assegnaResponsabile}
                 />
               ))}
             </div>

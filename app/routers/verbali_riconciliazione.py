@@ -36,6 +36,7 @@ from app.constants.stati_verbale import (
     FILTRO_STATO_APERTO,
     FILTRO_STATO_PAGATO,
     STATI_PAGATI,
+    STATO_QUARANTENA,
 )
 from app.services.verbali_evidence import (
     describe_verbale_amount,
@@ -651,7 +652,10 @@ def _punteggio_completezza(v: Dict[str, Any]) -> int:
 
 @router.post("/pulisci-duplicati")
 @handle_errors
-async def pulisci_duplicati_verbali(dry_run: bool = Query(True)) -> Dict[str, Any]:
+async def pulisci_duplicati_verbali(
+    dry_run: bool = Query(True),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
     """
     verbali_noleggio è scritto da 8 percorsi indipendenti (scan email, scan
     fatture, trigger fattura, pipeline post-download, scanner PagoPA, ecc.):
@@ -663,25 +667,40 @@ async def pulisci_duplicati_verbali(dry_run: bool = Query(True)) -> Dict[str, An
 
     Questo endpoint raggruppa per numero_verbale, sceglie come "canonico" il
     documento più completo (più campi valorizzati, poi più recente), vi
-    riversa i campi mancanti dagli altri duplicati, ed elimina i duplicati.
-    Con dry_run=True (default) non scrive nulla, restituisce solo l'anteprima.
+    riversa i campi mancanti dagli altri duplicati e mette i duplicati in
+    **quarantena** per id (`stato=quarantena`, `motivo_quarantena`,
+    `doppione_di`): niente si cancella, una riga in quarantena non è né
+    aperta né pagata e non rientra al giro dopo. Con dry_run=True (default)
+    non scrive nulla, restituisce solo l'anteprima.
     """
     db = Database.get_db()
+    return await quarantena_duplicati_verbali(db, dry_run=dry_run)
 
+
+MOTIVO_DOPPIONE_VERBALE = "doppione dello stesso numero di verbale"
+
+
+async def quarantena_duplicati_verbali(db, *, dry_run: bool = True) -> Dict[str, Any]:
+    """Un solo verbale per numero: le copie vanno in quarantena per id, mai cancellate."""
     pipeline = [
-        {"$match": {"numero_verbale": {"$exists": True, "$nin": [None, ""]}}},
+        {"$match": {"numero_verbale": {"$exists": True, "$nin": [None, ""]},
+                    "stato": {"$ne": STATO_QUARANTENA}}},
         {"$group": {"_id": "$numero_verbale", "count": {"$sum": 1}, "ids": {"$push": "$_id"}}},
         {"$match": {"count": {"$gt": 1}}},
     ]
     gruppi = await db["verbali_noleggio"].aggregate(pipeline).to_list(2000)
 
     gruppi_processati = 0
-    documenti_eliminati = 0
+    documenti_in_quarantena = 0
     dettaglio = []
+    ora = datetime.now(timezone.utc).isoformat()
 
     for gruppo in gruppi:
         numero_verbale = gruppo["_id"]
-        docs = await db["verbali_noleggio"].find({"numero_verbale": numero_verbale}).to_list(20)
+        docs = [
+            d for d in await db["verbali_noleggio"].find({"numero_verbale": numero_verbale}).to_list(20)
+            if d.get("stato") != STATO_QUARANTENA
+        ]
         if len(docs) < 2:
             continue
 
@@ -699,12 +718,14 @@ async def pulisci_duplicati_verbali(dry_run: bool = Query(True)) -> Dict[str, An
                 if v not in (None, "", []) and canonico.get(k) in (None, "", []):
                     campi_mancanti[k] = v
 
+        canonico_id = canonico.get("id") or str(canonico["_id"])
         gruppi_processati += 1
-        documenti_eliminati += len(duplicati)
+        documenti_in_quarantena += len(duplicati)
         dettaglio.append({
             "numero_verbale": numero_verbale,
-            "canonico_id": str(canonico["_id"]),
-            "duplicati_eliminati": len(duplicati),
+            "canonico_id": canonico_id,
+            "duplicati_in_quarantena": len(duplicati),
+            "ids_in_quarantena": [d.get("id") or str(d["_id"]) for d in duplicati],
             "campi_recuperati": list(campi_mancanti.keys()),
         })
 
@@ -713,15 +734,25 @@ async def pulisci_duplicati_verbali(dry_run: bool = Query(True)) -> Dict[str, An
                 await db["verbali_noleggio"].update_one(
                     {"_id": canonico["_id"]}, {"$set": campi_mancanti}
                 )
-            await db["verbali_noleggio"].delete_many(
-                {"_id": {"$in": [d["_id"] for d in duplicati]}}
-            )
+            # Una riga per volta, per id: mai una cancellazione, mai un filtro.
+            for dup in duplicati:
+                await db["verbali_noleggio"].update_one(
+                    {"_id": dup["_id"], "stato": {"$ne": STATO_QUARANTENA}},
+                    {"$set": {
+                        "stato": STATO_QUARANTENA,
+                        "stato_precedente": dup.get("stato"),
+                        "motivo_quarantena": MOTIVO_DOPPIONE_VERBALE,
+                        "doppione_di": canonico_id,
+                        "quarantena_at": ora,
+                        "quarantena_da": "pulisci_duplicati",
+                    }},
+                )
 
     return {
         "dry_run": dry_run,
         "gruppi_duplicati_trovati": len(gruppi),
         "gruppi_processati": gruppi_processati,
-        "documenti_eliminati": documenti_eliminati,
+        "documenti_in_quarantena": documenti_in_quarantena,
         "dettaglio": dettaglio[:50],
     }
 

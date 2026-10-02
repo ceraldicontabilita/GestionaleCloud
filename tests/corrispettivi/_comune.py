@@ -50,9 +50,19 @@ def xml_chiusura(*, data: str = "2026-09-10", progressivo: str = "2700",
                  matricola: str = MATRICOLA, contanti: str = "300.00",
                  elettronico: str = "700.00", imponibile: str = "909.09",
                  imposta: str = "90.91", importo_parziale: Optional[str] = None,
-                 documenti_n: int = 40) -> str:
-    """Chiusura RT COR10 reale (solo gli elementi che il parser legge)."""
+                 documenti_n: int = 40, non_riscosso_servizi: Optional[str] = None,
+                 non_riscosso_fatture: Optional[str] = None) -> str:
+    """Chiusura RT COR10 reale (solo gli elementi che il parser legge).
+
+    `non_riscosso_servizi` / `non_riscosso_fatture` sono le voci con cui l'RT
+    **dichiara** il non riscosso nel blocco `Totali` (sospesi, buoni, fattura).
+    """
     parziale = f"<ImportoParziale>{importo_parziale}</ImportoParziale>" if importo_parziale else ""
+    non_riscosso = ""
+    if non_riscosso_servizi:
+        non_riscosso += f"<NonRiscossoServizi>{non_riscosso_servizi}</NonRiscossoServizi>"
+    if non_riscosso_fatture:
+        non_riscosso += f"<NonRiscossoFatture>{non_riscosso_fatture}</NonRiscossoFatture>"
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<n1:DatiCorrispettivi xmlns:n1="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/'
@@ -67,7 +77,7 @@ def xml_chiusura(*, data: str = "2026-09-10", progressivo: str = "2700",
         f"<Ammontare>{imponibile}</Ammontare>{parziale}</Riepilogo>"
         f"<Totali><NumeroDocCommerciali>{documenti_n}</NumeroDocCommerciali>"
         f"<PagatoContanti>{contanti}</PagatoContanti>"
-        f"<PagatoElettronico>{elettronico}</PagatoElettronico></Totali>"
+        f"<PagatoElettronico>{elettronico}</PagatoElettronico>{non_riscosso}</Totali>"
         "</DatiRT></n1:DatiCorrispettivi>"
     )
 

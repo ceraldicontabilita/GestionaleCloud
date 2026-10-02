@@ -55,6 +55,12 @@ from app.utils.id_fattura import filtro_id, filtro_id_in
 logger = logging.getLogger(__name__)
 
 ATTORE = "report_pagamenti_titolare"
+
+#: `data_pagamento_fonte` sulla fattura: `dichiarata` finche' vale la parola del
+#: titolare (report o assegno compilato), `addebito_banca` quando l'addebito
+#: dell'assegno nell'estratto ufficiale la sostituisce con la sua data.
+DATA_PAGAMENTO_DICHIARATA = "dichiarata"
+DATA_PAGAMENTO_ADDEBITO_BANCA = "addebito_banca"
 CHIAVE_JOB = "pagamenti_dichiarati_titolare"
 
 # Esiti dopo i quali il giro automatico non ripassa la riga: o e' fatta, o
@@ -344,7 +350,10 @@ async def dichiara_pagamento_banca(
         "prima_nota_id": pn_id,
         "prima_nota_banca_id": pn_id,
         "prima_nota_tipo": "banca",
+        # La data e' quella dichiarata (report o compilazione dell'assegno):
+        # l'addebito in banca, quando arriva, la sostituisce con la sua.
         "data_pagamento": data,
+        "data_pagamento_fonte": DATA_PAGAMENTO_DICHIARATA,
         "updated_at": _oggi(),
     }})
     return pn_id, False
@@ -399,6 +408,7 @@ async def ritira_dichiarazione_banca(db, fattura_id: str, *, motivo: str) -> boo
         "assegno_numero_dichiarato": None,
         "prima_nota_id": None, "prima_nota_banca_id": None, "prima_nota_tipo": None,
         "data_pagamento": None,
+        "data_pagamento_fonte": None,
         "dichiarazione_ritirata_motivo": motivo,
         "updated_at": now,
     }})

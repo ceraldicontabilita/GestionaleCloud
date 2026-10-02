@@ -202,29 +202,11 @@ async def create_f24(
 
     from app.services.f24_canonico import salva_f24
 
+    # `f24.acquisito` lo pubblica `salva_f24` alla prima scrittura, con il
+    # payload unico di `f24_evento_acquisito` (importo, scadenza, periodo e
+    # codici letti dal modello): lo stesso fatto da ogni ingresso, una volta.
     f24["id"] = await salva_f24(db, f24, source="f24_manual_create")
     f24.pop("_id", None)
-
-    # --- EVENT BUS: F24 acquisito (Chat 9c) ---
-    # Bug trovato in audit 15/07/2026: il payload leggeva chiavi che non
-    # esistono nel dict f24 sopra (importo_totale/data_scadenza/periodo/
-    # codice_tributo invece di importo/scadenza/periodo_riferimento/
-    # codici_tributo) — sempre None, quindi on_f24_acquisito_crea_partita
-    # (app/services/handlers/f24_handlers.py) usciva subito senza creare
-    # la partita aperta, e l'except silenzioso non lo segnalava mai.
-    try:
-        from app.services.event_bus import propagate_event, EventTypes
-        codici_tributo = f24.get("codici_tributo") or []
-        await propagate_event(EventTypes.F24_ACQUISITO, {
-            "f24_id": f24.get("id"),
-            "importo_totale": f24.get("importo"),
-            "data_scadenza": f24.get("scadenza"),
-            "periodo": f24.get("periodo_riferimento"),
-            "codice_tributo": ", ".join(codici_tributo) if isinstance(codici_tributo, list) else codici_tributo,
-            "data_acquisizione": f24.get("created_at"),
-        }, db, source_module="f24_create")
-    except Exception:
-        logger.exception(f"Errore propagazione f24.acquisito per {f24.get('id')}")
 
     return f24
 

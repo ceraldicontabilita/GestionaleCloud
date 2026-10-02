@@ -48,7 +48,9 @@ SQL_RIAGGANCIA = (
 def _md5_dell_entita(doc: Dict[str, Any]) -> Dict[str, str]:
     """md5 -> come lo porta l'entita': ``propria`` o ``occorrenza``."""
     out: Dict[str, str] = {}
-    for campo in ("drive_md5", "pdf_hash"):
+    # `pdf_hash` delle quietanze e' SHA-256 dal 02/10/2026: l'MD5 sta in `pdf_hash_md5`
+    # (e in `pdf_hash` solo sulle righe non ancora rilette). Il filtro per forma li distingue.
+    for campo in ("drive_md5", "pdf_hash", "pdf_hash_md5"):
         h = _t(doc.get(campo)).lower()
         if _MD5_RE.match(h):
             out[h] = "propria"
@@ -67,7 +69,8 @@ async def _archivio_per_tipo(db) -> Dict[str, Dict[str, Any]]:
     for tipo, s in _COLLEZIONI.items():
         righe = await db[s.collezione].find({}, {
             "_id": 1, "id": 1, "status": 1, "stato_import": 1, "entity_status": 1, "deleted": 1,
-            "drive_md5": 1, "pdf_hash": 1, "source_occurrences": 1, "doppione_di": 1}).to_list(length=None)
+            "drive_md5": 1, "pdf_hash": 1, "pdf_hash_md5": 1, "source_occurrences": 1,
+            "doppione_di": 1}).to_list(length=None)
         esistenti: Dict[str, Dict[str, Any]] = {}
         vivi: Set[str] = set()
         per_md5: Dict[str, Dict[str, str]] = defaultdict(dict)

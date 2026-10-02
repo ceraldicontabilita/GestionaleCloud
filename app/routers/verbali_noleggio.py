@@ -16,10 +16,12 @@ from typing import Dict, Any
 import base64
 import hashlib
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.utils.dependencies import get_current_admin_user
+from app.services.verbali_evidence import amount_to_cents
 
 router = APIRouter(prefix="/api/verbali-noleggio", tags=["Verbali Noleggio"])
 
@@ -166,15 +168,15 @@ async def correggi_importo_verbale(
     collection, verbale = await _find_verbale(db, numero_verbale)
     if not verbale:
         raise HTTPException(status_code=404, detail="Verbale non trovato")
-    try:
-        amount = round(float(data.get("importo")), 2)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail="Importo non valido") from exc
-    if amount <= 0 or amount > 100000:
+    amount_cents = amount_to_cents(data.get("importo"))
+    if amount_cents is None:
+        raise HTTPException(status_code=400, detail="Importo non valido")
+    if amount_cents <= 0 or amount_cents > 100000 * 100:
         raise HTTPException(status_code=400, detail="Importo fuori intervallo")
+    amount = float(Decimal(amount_cents) / Decimal(100))
     now = datetime.now(timezone.utc).isoformat()
     previous = verbale.get("importo")
-    update = {"importo": amount, "importo_fonte": "correzione_manuale_da_pdf",
+    update = {"importo": amount, "importo_centesimi": amount_cents, "importo_fonte": "correzione_manuale_da_pdf",
               "importo_precedente": previous, "importo_corretto_at": now,
               "importo_corretto_da": admin.get("email") or admin.get("user_id"), "updated_at": now}
     query = {"id": verbale.get("id")} if verbale.get("id") else {"numero_verbale": verbale.get("numero_verbale")}

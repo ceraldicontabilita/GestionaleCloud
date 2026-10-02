@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Badge, PageHeader, PageLoader } from '../components/ds';
 import ApriOriginale from '../components/ApriOriginale';
+import ConfermaAddebitoF24 from '../components/ConfermaAddebitoF24';
 import LegendaRegole from '../components/vista/LegendaRegole';
 import { Campo, GrigliaCampi, Messaggio, Riquadro, paginaStile } from '../components/vista/Elementi';
 import { CANALI, LIVELLI_RISCONTRO } from '../lib/legendaRegole';
@@ -17,7 +18,9 @@ import api from '../api';
  * righe da `/api/fiscal/f24-rows` (registro unico F24), riscontro da
  * `/api/f24-riconciliazione/quietanze-banca` (il motore a livelli, che qui
  * non ricalcola niente). Il riscontro e' una seconda lettura: se fallisce la
- * scheda resta e lo dice.
+ * scheda resta e lo dice. L'unica azione e' «Conferma questo addebito» su un
+ * riscontro probabile o parziale (`ConfermaAddebitoF24`): la scrittura e' la
+ * stessa del certo, sul backend.
  */
 
 const VARIANTE_LIVELLO = {
@@ -42,7 +45,7 @@ function Importo({ valore }) {
   );
 }
 
-function Riscontro({ stato }) {
+function Riscontro({ stato, f24Id, onConfermato }) {
   if (stato.errore) {
     return <Messaggio testId="riscontro-errore" tono="errore">Riscontro bancario non disponibile: {stato.errore}</Messaggio>;
   }
@@ -74,6 +77,17 @@ function Riscontro({ stato }) {
                 </Link>
               </div>
             )}
+            {!r.pagamenti && (
+              <div style={{ marginTop: 8 }}>
+                <ConfermaAddebitoF24
+                  f24Id={f24Id}
+                  livello={r.livello}
+                  candidati={r.addebito ? [r.addebito] : (r.candidati || [])}
+                  motivi={stato.motivi || {}}
+                  onConfermato={onConfermato}
+                />
+              </div>
+            )}
           </div>
         );
       })}
@@ -89,6 +103,7 @@ export default function F24Scheda() {
   const [dettaglio, setDettaglio] = useState(null);
   const [riscontro, setRiscontro] = useState({ dati: null, errore: '' });
   const [mostrate, setMostrate] = useState(RIGHE_PER_PAGINA);
+  const [versioneRiscontro, setVersioneRiscontro] = useState(0);
 
   useEffect(() => {
     let attivo = true;
@@ -118,11 +133,11 @@ export default function F24Scheda() {
         const gruppi = ['riscontrati', 'da_verificare', 'quietanze_senza_addebito', 'quietanze_senza_estratto',
           'modelli_da_verificare', 'addebiti_senza_quietanza', 'quietanze_incomplete', 'tributi_ripetuti', 'compensate_saldo_zero'];
         const trovati = gruppi.flatMap(g => (r.data?.[g] || []).filter(x => tocca(x, id)));
-        setRiscontro({ dati: trovati, errore: '' });
+        setRiscontro({ dati: trovati, errore: '', motivi: r.data?.conferma?.motivi || {} });
       })
       .catch(e => { if (attivo) setRiscontro({ dati: null, errore: e.response?.data?.detail || e.message || 'lettura non riuscita' }); });
     return () => { attivo = false; };
-  }, [id, testata, eQuietanza, anno]);
+  }, [id, testata, eQuietanza, anno, versioneRiscontro]);
 
   const totali = useMemo(() => {
     const debito = (righe || []).reduce((s, r) => s + centesimi(r.debit_amount), 0);
@@ -232,7 +247,7 @@ export default function F24Scheda() {
         </Riquadro>
 
         <Riquadro titolo="Riscontro con la banca" testId="f24-riscontro">
-          <Riscontro stato={riscontro} />
+          <Riscontro stato={riscontro} f24Id={id} onConfermato={() => setVersioneRiscontro(v => v + 1)} />
         </Riquadro>
       </>)}
 

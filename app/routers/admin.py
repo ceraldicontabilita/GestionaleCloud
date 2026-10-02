@@ -474,6 +474,40 @@ async def fatture_ripubblica_evento_created_stato(
 
 
 @router.post(
+    "/f24/ripubblica-evento-acquisito",
+    summary="Ripubblica f24.acquisito per i modelli F24 rimasti senza partita aperta",
+)
+async def f24_ripubblica_evento_acquisito(
+    dry_run: bool = Query(True, description="Se True conta soltanto i candidati, senza propagare"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Fino al 02/10/2026 `f24.acquisito` partiva solo dalla creazione a mano:
+    i modelli importati (posta, Drive, Documenti > Import) non hanno partita
+    aperta ne' alert `F24_NON_PAGATO`/`F24_SCADUTO`. Ripubblica **lo stesso
+    evento sugli stessi handler** idempotenti, mai per le quietanze e mai per
+    un modello gia' provato in banca. In sottofondo, stato in `sistema_stato`:
+    `GET /f24/ripubblica-evento-acquisito/stato`.
+    """
+    richiedi_admin(current_user)
+    from app.services import f24_evento_acquisito
+
+    return await f24_evento_acquisito.avvia_ripubblicazione(Database.get_db(), dry_run=dry_run)
+
+
+@router.get(
+    "/f24/ripubblica-evento-acquisito/stato",
+    summary="Esito dell'ultima ripubblicazione di f24.acquisito",
+)
+async def f24_ripubblica_evento_acquisito_stato(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    richiedi_admin(current_user)
+    from app.services import f24_evento_acquisito
+
+    return await f24_evento_acquisito.stato_ripubblicazione(Database.get_db())
+
+
+@router.post(
     "/fatture/pagamenti-dichiarati",
     summary="Registra in Prima Nota i pagamenti del report fatture del titolare",
 )
