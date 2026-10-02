@@ -12,6 +12,37 @@ export function setStampaAuto(on) {
   try { localStorage.setItem("stampa_auto", on ? "1" : "0"); } catch { /* no-op */ }
 }
 
+// Modalità "tablet Android": l'etichetta lotto si scarica in ESC/POS e si passa
+// all'app RawBT (LAN, Bluetooth o USB), che la manda all'Epson. Un browser non
+// può aprire socket TCP, quindi l'app Android fa da ponte.
+export function isStampaRawbt() {
+  try { return localStorage.getItem("stampa_rawbt") === "1"; } catch { return false; }
+}
+export function setStampaRawbt(on) {
+  try { localStorage.setItem("stampa_rawbt", on ? "1" : "0"); } catch { /* no-op */ }
+}
+
+export function bytesToBase64(bytes) {
+  let bin = "";
+  const u8 = new Uint8Array(bytes);
+  for (let i = 0; i < u8.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+export function urlRawbt(bytes) {
+  return `intent:base64,${bytesToBase64(bytes)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
+}
+
+/** Scarica l'ESC/POS di un'etichetta lotto e lo consegna a RawBT. */
+export async function stampaRawbt(url) {
+  const base = url.split("?")[0].replace(/\/$/, "");
+  const esc = base.endsWith("/escpos") ? base : `${base}/escpos`;
+  const { data } = await axios.get(esc, { responseType: "arraybuffer" });
+  window.location.href = urlRawbt(data);
+}
+
 /**
  * Stampa un documento del backend.
  * @param {object} o
@@ -25,6 +56,10 @@ export function setStampaAuto(on) {
  * @returns {Promise<{accodato:boolean}>}
  */
 export async function stampaDoc({ categoria, url, formato = "pdf", titolo = "", reparto = "" }) {
+  if (isStampaRawbt() && /\/stampa\/lotto\//.test(url)) {
+    await stampaRawbt(url);
+    return { accodato: false, rawbt: true };
+  }
   if (isStampaAuto()) {
     await axios.post(`${API}/stampanti/coda`, { categoria, url, formato, titolo, reparto });
     return { accodato: true };

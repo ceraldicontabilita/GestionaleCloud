@@ -4,7 +4,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { apiError } from "../../utils/apiError";
 import { API } from "../../utils/constants";
-import { isStampaAuto, setStampaAuto } from "../../utils/stampa";
+import { isStampaAuto, setStampaAuto, isStampaRawbt, setStampaRawbt, stampaRawbt } from "../../utils/stampa";
 import { Printer, Save, Trash2, Plus, RefreshCw, Network } from "lucide-react";
 
 const REPARTI = [
@@ -29,6 +29,18 @@ export default function StampantiConfigView() {
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(null);
   const [autoOn, setAutoOn] = useState(isStampaAuto());
+  const [rawbtOn, setRawbtOn] = useState(isStampaRawbt());
+
+  const provaRawbt = async () => {
+    try {
+      const { data } = await axios.get(`${API}/lotti`, { params: { limit: 1 } });
+      const l = (Array.isArray(data) ? data : data?.lotti || [])[0];
+      if (!l) return toast.error("Nessun lotto per la prova");
+      await stampaRawbt(`${API}/stampa/lotto/${encodeURIComponent(l.numero_lotto || l.id)}`);
+    } catch (e) {
+      toast.error("Prova di stampa fallita: " + apiError(e));
+    }
+  };
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -117,6 +129,27 @@ export default function StampantiConfigView() {
         Indirizzo di rete (IP) e porta della stampante associata a ciascun reparto. La porta
         standard delle stampanti di rete è 9100.
       </p>
+
+      {/* Stampa diretta da questo tablet (app RawBT) */}
+      <div className="flex items-center justify-between bg-[#f2f6f3] border border-[#cfdfd5] rounded-xl px-4 py-3 mb-3">
+        <div>
+          <div className="text-sm font-bold text-[#3f5a4e]">Stampa diretta da questo tablet (RawBT)</div>
+          <div className="text-xs text-[#5b7a6b]">
+            Richiede l'app RawBT installata e la stampante Epson scelta al suo interno. Vale solo per questo tablet.
+          </div>
+          <button type="button" onClick={provaRawbt}
+            className="mt-2 px-3 min-h-[44px] rounded-lg bg-[#5b7a6b] text-white text-sm font-bold">
+            Stampa etichetta di prova
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setStampaRawbt(!rawbtOn); setRawbtOn(!rawbtOn); }}
+          className={`relative w-12 h-7 rounded-full transition ${rawbtOn ? "bg-[#4d6a5c]" : "bg-gray-300"}`}
+        >
+          <span className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition ${rawbtOn ? "translate-x-5" : ""}`} />
+        </button>
+      </div>
 
       {/* Interruttore stampa automatica (richiede l'agente locale avviato sul PC) */}
       <div className="flex items-center justify-between bg-[#f2f6f3] border border-[#cfdfd5] rounded-xl px-4 py-3 mb-5">
