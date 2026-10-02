@@ -114,10 +114,14 @@ def test_un_token_finto_dell_albergatore_e_rifiutato_dall_handler(monkeypatch):
     c = _client_gestionale(monkeypatch, "tk:buono")
     r = c.post("/api/colazioni/ordini-prodotti/albergatore/elenco", json={"sid": "hotel-1", "p": "tk:finto"})
     assert r.status_code == 401
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    domani = (datetime.now(ZoneInfo("Europe/Rome")).date() + timedelta(days=1)).isoformat()
     r = c.post("/api/colazioni/ordini-prodotti/albergatore",
-               json={"sid": "hotel-1", "p": "tk:finto", "data_consegna": "2099-01-01",
+               json={"sid": "hotel-1", "p": "tk:finto", "data_consegna": domani,
                      "righe": [{"chiave": "interno:p1", "quantita": 1}]})
-    assert r.status_code == 401
+    assert r.status_code == 401, r.text
 
 
 def test_gli_altri_endpoint_colazioni_restano_chiusi_dal_middleware(monkeypatch):

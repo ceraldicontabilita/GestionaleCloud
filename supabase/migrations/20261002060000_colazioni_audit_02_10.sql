@@ -630,7 +630,7 @@ begin
  if lat is not null and lon is not null then
   dist := round(public.bb_distanza_m(lat,lon,plat,plon),1); ins := dist<=rag;
  end if;
- insert into public.bb_recensioni_posizioni(visita_id,latitudine,longitudine,accuratezza_m,distanza_m,in_sede) values(v.id,plat,plon,paccuratezza,dist,ins);
+ insert into public.bb_recensioni_posizioni(visita_id,latitudine,longitudine,accuratezza_m,distanza_m,in_sede,rilevato) values(v.id,plat,plon,paccuratezza,dist,ins,clock_timestamp());
  return json_build_object('salvato',true,'distanza_m',dist,'in_sede',ins);
 end $$;
 revoke all on function public.bb_recensioni_posizione(uuid,numeric,numeric,numeric) from public;
