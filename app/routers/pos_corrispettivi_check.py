@@ -199,8 +199,8 @@ def _termini_confronto_serale(
 def _importo_elettronico_xml(corrispettivo: Dict[str, Any]) -> float:
     """Legge la quota elettronica sia dal modello canonico sia da quello Drive storico.
 
-    Il vecchio ``CorrispettiviService`` usato dallo scheduler Drive salvava
-    ``pagato_pos``. Gli upload diretti salvano invece ``pagato_elettronico``.
+    Il vecchio servizio usato dallo scheduler Drive (tolto il 02/10/2026) salvava
+    ``pagato_pos``. Il motore unico salva ``pagato_elettronico``.
     La pagina Coerenza POS deve leggere entrambi senza migrare o inventare dati.
     """
     valore = corrispettivo.get("pagato_elettronico")

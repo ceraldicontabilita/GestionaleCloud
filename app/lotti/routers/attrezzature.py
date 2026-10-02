@@ -10,6 +10,7 @@ POST /api/attrezzature/congelatore           — aggiunge nuovo congelatore
 
 PUT  /api/attrezzature/frigo/{numero}/rinomina    — rinomina frigorifero
 PUT  /api/attrezzature/congelatore/{numero}/rinomina — rinomina congelatore
+PUT  /api/attrezzature/{tipo}/{numero}/responsabile — responsabile (dipendente HR, titolare, nessuno)
 
 DELETE /api/attrezzature/frigo/{numero}      — elimina frigorifero
 DELETE /api/attrezzature/congelatore/{numero} — elimina congelatore
@@ -36,6 +37,9 @@ from datetime import datetime, timezone
 
 from app.lotti.auth import require_admin, require_permesso
 from app.lotti.db import database as db
+from app.lotti.servizi.responsabile_haccp import (
+    ID_TITOLARE, responsabile_apparecchio, responsabile_predefinito,
+)
 
 router = APIRouter(prefix="/attrezzature", tags=["Attrezzature"])
 
@@ -85,9 +89,11 @@ async def _build_list(tipo: str, fallback_tipo: str) -> list[dict]:
     # si censisce solo da «Frigoriferi e congelatori».
     docs = await _get_config(tipo)
     if docs:
+        predefinito = await responsabile_predefinito()
         return [
             {"tipo": tipo, "numero": d["numero"], "nome": d["nome"], "label": d["nome"],
-             "fuori_servizio": bool(d.get("fuori_servizio"))}
+             "fuori_servizio": bool(d.get("fuori_servizio")),
+             **responsabile_apparecchio(d, predefinito)}
             for d in docs
         ]
 
@@ -282,39 +288,27 @@ async def elimina_congelatore(numero: int, _admin=Depends(require_admin)):
     return {"success": True, "message": f"Congelatore N°{numero} rimosso dalla lista"}
 
 
-# ─── Assegnazione a un operatore ──────────────────────────────────────────────
+# ─── Responsabile dell'apparecchio ────────────────────────────────────────────
 # Ogni apparecchio ha un responsabile: e' lui che ne rileva la temperatura, ed
 # e' il suo nome che deve comparire sul registro. L'assegnazione vive QUI, sulla
 # scheda dell'apparecchio, non su quella del dipendente: gli apparecchi sono 24
 # e i dipendenti cambiano, mentre il frigorifero N°3 resta il frigorifero N°3.
 # L'identita' resta quella di HR (`operatore_id` = id del dipendente): il nome
 # e' solo una copia leggibile per la stampa, e si riallinea a ogni assegnazione.
+# Senza assegnazione il responsabile e' il titolare (`ID_TITOLARE`), col nome
+# delle Impostazioni (`servizi/responsabile_haccp.py`).
 
 
-class AssegnaOperatore(BaseModel):
-    operatore_id: str = ""     # vuoto = togli l'assegnazione
-    operatore_nome: str = ""
-
-
-async def operatore_assegnato(tipo: str, numero: int) -> dict:
-    """Chi e' responsabile di questo apparecchio. Dizionario vuoto se nessuno."""
-    doc = await db.attrezzature_config.find_one(
-        {"tipo": tipo, "numero": numero, "attivo": {"$ne": False}},
-        {"_id": 0, "operatore_id": 1, "operatore_nome": 1},
-    ) or {}
-    if not doc.get("operatore_id"):
-        return {}
-    return {
-        "operatore_id": doc.get("operatore_id", ""),
-        "operatore_nome": doc.get("operatore_nome", ""),
-    }
+class AssegnaResponsabile(BaseModel):
+    operatore_id: str = ""     # id HR, `titolare`, oppure vuoto = nessuna assegnazione (vale il titolare)
 
 
 @router.get("/assegnazioni")
 async def elenco_assegnazioni():
     """Chi e' responsabile di cosa, per la pagina di configurazione e per il
-    turno del mattino. Include gli apparecchi senza responsabile: sono quelli
-    su cui il registro restera' senza firma."""
+    turno del mattino. Senza assegnazione risponde il titolare; resta «senza
+    responsabile» solo l'apparecchio per cui nessun nome e' disponibile."""
+    predefinito = await responsabile_predefinito()
     righe = []
     for tipo in ("frigo", "congelatore"):
         for doc in await _get_config(tipo):
@@ -322,46 +316,56 @@ async def elenco_assegnazioni():
                 "tipo": tipo,
                 "numero": doc.get("numero"),
                 "nome": doc.get("nome", ""),
-                "operatore_id": doc.get("operatore_id", ""),
-                "operatore_nome": doc.get("operatore_nome", ""),
+                **responsabile_apparecchio(doc, predefinito),
             })
-    senza = [r for r in righe if not r["operatore_id"]]
+    senza = [r for r in righe if not r["operatore_nome"]]
     return {
         "attrezzature": righe,
         "totale": len(righe),
         "assegnate": len(righe) - len(senza),
+        "responsabile_predefinito": predefinito.get("operatore_nome") or "",
         "senza_responsabile": [r["nome"] for r in senza],
     }
 
 
-@router.put("/{tipo}/{numero}/operatore")
-async def assegna_operatore(
-    tipo: str, numero: int, dati: AssegnaOperatore, _ruolo=Depends(require_permesso("frigoriferi")),
+@router.put("/{tipo}/{numero}/responsabile")
+async def assegna_responsabile(
+    tipo: str, numero: int, dati: AssegnaResponsabile, _ruolo=Depends(require_permesso("frigoriferi")),
 ):
-    """Assegna (o toglie) il responsabile di un apparecchio.
+    """Assegna il responsabile di un apparecchio: un dipendente di HR, il
+    titolare, oppure nessuno (e allora vale il titolare).
 
-    Il nome non si scrive a mano: si prende dall'anagrafica HR a partire
-    dall'id, cosi' il registro non puo' portare un nome che in azienda non
-    esiste o e' scritto in un altro modo."""
+    Il nome non si scrive a mano: per un dipendente si prende dall'anagrafica
+    HR a partire dall'id, per il titolare dalle Impostazioni, cosi' il
+    registro non puo' portare un nome che in azienda non esiste o e' scritto
+    in un altro modo."""
     if tipo not in ("frigo", "congelatore"):
         raise HTTPException(status_code=400, detail="Tipo non valido: frigo o congelatore")
 
+    operatore_id = (dati.operatore_id or "").strip()
     nome = ""
-    if dati.operatore_id:
+    if operatore_id == ID_TITOLARE:
+        nome = (await responsabile_predefinito()).get("operatore_nome") or ""
+        if not nome:
+            raise HTTPException(
+                status_code=409,
+                detail="Scrivi prima il nome del responsabile HACCP nelle Impostazioni azienda",
+            )
+    elif operatore_id:
         from app.lotti.routers.tablet_operatori import operatore_per_id
 
-        operatore = await operatore_per_id(dati.operatore_id)
+        operatore = await operatore_per_id(operatore_id)
         if not operatore:
             raise HTTPException(
                 status_code=404,
                 detail="Dipendente non trovato o non in forza: l'assegnazione userebbe un nome che non c'e'",
             )
-        nome = operatore.get("nome_completo") or dati.operatore_nome
+        nome = operatore.get("nome_completo") or ""
 
     esito = await db.attrezzature_config.update_one(
         {"tipo": tipo, "numero": numero},
         {"$set": {
-            "operatore_id": dati.operatore_id or "",
+            "operatore_id": operatore_id,
             "operatore_nome": nome,
             "operatore_assegnato_il": datetime.now(timezone.utc).isoformat(),
         }},
@@ -371,9 +375,10 @@ async def assegna_operatore(
     return {
         "success": True,
         "tipo": tipo, "numero": numero,
-        "operatore_id": dati.operatore_id or "",
+        "operatore_id": operatore_id,
         "operatore_nome": nome,
-        "message": (f"Responsabile: {nome}" if nome else "Responsabile rimosso"),
+        "responsabile_predefinito": not operatore_id,
+        "message": (f"Responsabile: {nome}" if nome else "Nessuna assegnazione: risponde il titolare"),
     }
 
 

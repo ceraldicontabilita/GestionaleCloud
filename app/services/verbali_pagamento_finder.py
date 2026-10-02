@@ -10,11 +10,12 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Dict, Any, Optional
 from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 from app.config import settings
-from app.services.payment_invoice_matching import amounts_equal_to_cent
+from app.services.payment_invoice_matching import amounts_equal_to_cent, money_cents
 from app.services.verbali_iuv_extractor import get_iuv_from_verbale
 
 logger = logging.getLogger(__name__)
@@ -97,8 +98,11 @@ async def _cerca_in_paypal(db, iuv, numero_verbale, targa, importo):
             {"transaction_subject": {"$regex": re.escape(numero_verbale)}},
             {"ricevuta_dati.verbale": numero_verbale},
         ]})
-    if targa and importo and float(importo) > 0:
-        imp = float(importo)
+    importo_cents = money_cents(importo)
+    if targa and importo_cents and importo_cents > 0:
+        # Prefiltro largo sul database (±2 EUR): la decisione «uguale» e' sotto,
+        # al centesimo (`amounts_equal_to_cent`), mai su questo intervallo.
+        imp = float(Decimal(importo_cents) / Decimal(100))
         queries.append({
             "$or": [
                 {"targa_collegata": targa},
@@ -367,9 +371,12 @@ def _genera_pdf_da_testo(testo, path, titolo="Ricevuta"):
 
 
 async def _cerca_in_estratto_conto(db, iuv, numero_verbale, targa, importo, verbale):
-    if not importo or float(importo) <= 0:
+    importo_cents = money_cents(importo)
+    if not importo_cents or importo_cents <= 0:
         return None
-    imp = float(importo)
+    # Prefiltro sul database (mezzo centesimo di tolleranza sul float salvato);
+    # la decisione resta `amounts_equal_to_cent`, al centesimo.
+    imp = float(Decimal(importo_cents) / Decimal(100))
     from app.services.verbali_evidence import data_evento_verbale
 
     # La finestra del pagamento parte dall'atto redatto; senza, dal giorno del fatto.

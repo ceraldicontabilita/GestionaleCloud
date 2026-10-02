@@ -17,6 +17,7 @@ import {
 import Button from "../ui/Button";
 import { API, MESI_IT } from "../../utils/constants";
 import SegnalaGuasto from "./shared/SegnalaGuasto";
+import TurnoHaccpOggi from "./shared/TurnoHaccpOggi";
 import { giorniNelMese } from "../../utils/dateUtils";
 import { printHtml } from "../../utils/printHtml";
 import { apiError } from "../../utils/apiError";
@@ -409,6 +410,8 @@ export default function TemperaturePositiveView() {
           <button onClick={fetchSchede} className="ml-3 rounded bg-red-600 px-3 py-1 text-xs font-bold text-white">Riprova</button>
         </div>
       ) : null}
+
+      <TurnoHaccpOggi onAggiornato={fetchSchede} />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">

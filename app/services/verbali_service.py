@@ -12,9 +12,11 @@ import re
 import uuid
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Dict, Any, List, Optional
 
 from app.database import Database
+from app.services.verbali_evidence import amount_to_cents
 
 logger = logging.getLogger(__name__)
 
@@ -141,14 +143,16 @@ async def scansiona_fatture_per_verbali(anno: Optional[int] = None) -> Dict[str,
                 data_verbale = estrai_data_verbale(desc)
 
                 # Estrai importo
-                importo = float(linea.get("prezzo_totale") or linea.get("PrezzoTotale") or
-                               linea.get("prezzo_unitario") or linea.get("PrezzoUnitario") or 0)
+                importo_cents = abs(amount_to_cents(
+                    linea.get("prezzo_totale") or linea.get("PrezzoTotale") or
+                    linea.get("prezzo_unitario") or linea.get("PrezzoUnitario") or 0) or 0)
 
                 verbale = {
                     "numero_verbale": numero_verbale,
                     "targa": targa,
                     "data_verbale": data_verbale,
-                    "importo": round(abs(importo), 2),
+                    "importo": float(Decimal(importo_cents) / Decimal(100)),
+                    "importo_centesimi": importo_cents,
                     "descrizione": desc,
                     "fattura_id": str(fattura.get("_id", fattura.get("id"))),
                     "numero_fattura": fattura.get("invoice_number"),

@@ -93,6 +93,8 @@ def _build_corrispettivo_doc(parsed: Dict[str, Any], filename: str, source: str)
         "quadratura_iva_status": quadratura_iva,
         "iva_source": "XML_STAMPATO" if iva_printed else "NON_DISPONIBILE",
         "pagato_non_riscosso": _to_float(parsed.get("pagato_non_riscosso", 0)),
+        # Il non riscosso entra solo se l'RT lo scrive: la fonte lo dice.
+        "non_riscosso_fonte": "dichiarato_rt" if parsed.get("non_riscosso_dichiarato") else None,
         "totale_ammontare_annulli": _to_float(parsed.get("totale_ammontare_annulli", 0)),
         "numero_documenti": int(_to_float(parsed.get("numero_documenti", 0))),
         "riepilogo_iva": righe_iva,
@@ -400,6 +402,31 @@ async def ingest_corrispettivo_parsed(
     corr_doc = _build_corrispettivo_doc(parsed, filename, source)
     data_str = corr_doc.get("data", "")
     totale = corr_doc.get("totale", 0.0)
+
+    # Il lordo dei riepiloghi supera contanti + POS senza una voce di non
+    # riscosso dichiarata (o con una che non fa il totale): la giornata si
+    # scarta intera, col motivo, mai fatta quadrare per differenza.
+    motivo_scarto = parsed.get("motivo_scarto")
+    if motivo_scarto:
+        logger.warning(
+            "[Corrispettivi] %s del %s scartato: %s (lordo riepiloghi %s, contanti %s, "
+            "elettronico %s, non riscosso dichiarato %s)",
+            filename, data_str, motivo_scarto, parsed.get("lordo_riepiloghi"),
+            corr_doc.get("pagato_contanti"), corr_doc.get("pagato_elettronico"),
+            corr_doc.get("pagato_non_riscosso"))
+        return {
+            "action": "scartato",
+            "motivo": motivo_scarto,
+            "corrispettivo_id": None,
+            "data": data_str,
+            "totale": totale,
+            "lordo_riepiloghi": parsed.get("lordo_riepiloghi"),
+            "pagato_contanti": corr_doc.get("pagato_contanti"),
+            "pagato_elettronico": corr_doc.get("pagato_elettronico"),
+            "pagato_non_riscosso": corr_doc.get("pagato_non_riscosso"),
+            "prima_nota_cassa_id": None,
+            "prima_nota_banca_id": None,
+        }
 
     existing = await _find_existing_corrispettivo(db, corr_doc)
 

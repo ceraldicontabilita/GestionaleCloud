@@ -1426,44 +1426,26 @@ async def update_supplier_payment_method(
     supplier_id: str,
     metodo_pagamento: str = Body(..., embed=True)
 ) -> Dict[str, Any]:
-    """Aggiorna il metodo di pagamento di un fornitore."""
-    db = Database.get_db()
-    
-    metodi_validi = ["contanti", "bonifico", "assegno", "rid", "riba", "cassa", "banca"]
-    metodo_lower = metodo_pagamento.lower().strip()
-    
-    if metodo_lower in ["cassa", "cash"]:
-        metodo_lower = "contanti"
-    elif metodo_lower in ["banca", "bank", "bon"]:
-        metodo_lower = "bonifico"
-    
-    if metodo_lower not in metodi_validi:
-        raise HTTPException(status_code=400, detail=f"Metodo non valido. Ammessi: {metodi_validi}")
-    
-    result = await db[Collections.SUPPLIERS].update_one(
-        _filtro_fornitore(supplier_id),
-        {"$set": {"metodo_pagamento": metodo_lower, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Fornitore non trovato")
-    
-    try:
-        await cache.delete("suppliers_list_default")
-    except Exception:
-        pass
+    """Alias di `PUT /{supplier_id}`: il metodo del fornitore ha un solo scrittore.
 
-    # --- EVENT BUS: fornitore aggiornato (Chat 9) ---
-    try:
-        from app.services.event_bus import propagate_event, EventTypes
-        await propagate_event(EventTypes.FORNITORE_UPDATED, {
-            "fornitore_id": supplier_id,
-            "metodo_pagamento": metodo_lower,
-        }, db, source_module="fornitori_metodo_pagamento")
-    except Exception:
-        pass
+    Fino al 02/10/2026 questa rotta scriveva `metodo_pagamento` da sola, senza
+    «metodo valido dal» ne' storico: un fornitore cambiato da qui non valeva
+    mai per il passato (`applica-metodo-dal`) e la scheda non ne aveva
+    traccia. Ora passa dallo stesso aggiornamento della scheda, che stampa
+    `metodo_pagamento_dal` solo a un cambio vero e accoda lo storico.
+    """
+    metodo = (metodo_pagamento or "").lower().strip()
+    # Sinonimi accettati dai vecchi chiamanti; il vocabolario e' PAYMENT_METHODS.
+    metodo = {"cash": "cassa", "bank": "banca", "bon": "bonifico"}.get(metodo, metodo)
+    if metodo not in PAYMENT_METHODS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Metodo non valido. Ammessi: {sorted(PAYMENT_METHODS)}")
 
-    return {"success": True, "metodo_pagamento": metodo_lower}
+    esito = await update_supplier(supplier_id, {"metodo_pagamento": metodo})
+    return {"success": True, "metodo_pagamento": metodo,
+            "metodo_pagamento_dal": (esito.get("supplier") or {}).get("metodo_pagamento_dal"),
+            "supplier": esito.get("supplier")}
 
 
 @router.put("/{supplier_id}/nome")

@@ -1,148 +1,55 @@
-"""Bug segnalato dall'utente 15/07/2026 (screenshot: saldo Prima Nota
-Banca sballato di decine di migliaia di euro, importi elettronico dei
-corrispettivi mancanti sia in Cassa che in Banca).
+"""Dedup delle chiusure RT per dispositivo, sul motore unico.
 
-Causa: CorrispettiviService.process_xml controllava i duplicati SOLO per
-data ("un corrispettivo per questa data esiste già → scarta"), ignorando
-id_dispositivo (la matricola del registratore telematico che ha emesso il
-corrispettivo). Precisazione utente: l'attività ha UN SOLO registratore,
-ma la sua matricola può cambiare nel tempo (es. al risigillo triennale
-obbligatorio in occasione della verifica fiscale periodica) — senza
-guardare la matricola, un corrispettivo con matricola diversa da quella
-già vista sulla stessa data veniva scartato come "duplicato" invece di
-essere salvato, sparendo del tutto da Prima Nota Cassa/Banca."""
-import asyncio
+Bug del 15/07/2026: il vecchio `CorrispettiviService` (tolto il 02/10/2026,
+nessun chiamante) controllava i duplicati solo per data, e una chiusura con la
+matricola cambiata dal risigillo triennale spariva come «doppione». Le stesse
+prove valgono oggi su `ingest_corrispettivo_parsed`, l'unico che scrive una
+chiusura: matricole diverse lo stesso giorno sono due chiusure, lo stesso XML
+due volte e' una riga sola.
+"""
+from decimal import Decimal
 
-from app.services.corrispettivi_service import CorrispettiviService
+from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
+from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed
+from tests.corrispettivi._comune import attive, nuovo_db, run, xml_chiusura
 
-
-class _FakeCollection:
-    def __init__(self, docs=None):
-        self.docs = docs or []
-
-    async def find_one(self, query, *a, **k):
-        for d in self.docs:
-            if all(d.get(k) == v for k, v in query.items() if not isinstance(v, dict)):
-                # gestisce {"$ne": ...} sul campo entity_status
-                ok = True
-                for k2, v2 in query.items():
-                    if isinstance(v2, dict) and "$ne" in v2:
-                        if d.get(k2) == v2["$ne"]:
-                            ok = False
-                if ok:
-                    return dict(d)
-        return None
-
-    async def insert_one(self, doc, *a, **k):
-        self.docs.append(dict(doc))
-
-    async def update_one(self, query, update, *a, **k):
-        for d in self.docs:
-            if all(d.get(k) == v for k, v in query.items()):
-                d.update(update.get("$set", {}))
-                return
-
-    async def find_one_and_update(self, query, update, upsert=False):
-        # Stessa identica logica di match di find_one qui sopra (inclusa la
-        # gestione di {"$ne": ...}), solo consolidata in un'unica chiamata.
-        for d in self.docs:
-            if all(d.get(k) == v for k, v in query.items() if not isinstance(v, dict)):
-                ok = True
-                for k2, v2 in query.items():
-                    if isinstance(v2, dict) and "$ne" in v2:
-                        if d.get(k2) == v2["$ne"]:
-                            ok = False
-                if ok:
-                    return dict(d)
-        if upsert:
-            self.docs.append(dict(update.get("$setOnInsert", {})))
-        return None
-
-    async def delete_many(self, query, *a, **k):
-        def matches(d):
-            for k2, v2 in query.items():
-                if isinstance(v2, dict) and "$in" in v2:
-                    if d.get(k2) not in v2["$in"]:
-                        return False
-                elif d.get(k2) != v2:
-                    return False
-            return True
-        before = len(self.docs)
-        self.docs = [d for d in self.docs if not matches(d)]
-        return type("R", (), {"deleted_count": before - len(self.docs)})()
+GIORNO = "2026-07-14"
 
 
-class _FakeDb:
-    def __init__(self):
-        self.collections = {}
-
-    def __getitem__(self, name):
-        return self.collections.setdefault(name, _FakeCollection())
-
-    def __setitem__(self, name, value):
-        self.collections[name] = value
-
-
-def _run(c):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(c)
-    finally:
-        loop.close()
-
-
-def _corr_xml(*, id_dispositivo, totale, contanti, pos):
-    return f"""<?xml version="1.0"?>
-    <RicevutaTelematica>
-      <DataOraRilevazione>2026-07-14T20:00:00</DataOraRilevazione>
-      <IdDispositivo>{id_dispositivo}</IdDispositivo>
-      <ImportoTotale>{totale}</ImportoTotale>
-      <Pagamento><Tipo>CONTANTI</Tipo><Importo>{contanti}</Importo></Pagamento>
-      <Pagamento><Tipo>POS</Tipo><Importo>{pos}</Importo></Pagamento>
-    </RicevutaTelematica>""".encode()
+def _importa(db, xml: str, nome: str):
+    parsed = parse_corrispettivo_xml(xml)
+    assert not parsed.get("error"), parsed
+    return run(ingest_corrispettivo_parsed(db, parsed, filename=nome, source="xml"))
 
 
 def test_matricole_diverse_stessa_data_non_sono_duplicati():
-    # Simula il caso reale segnalato dall'utente: stesso registratore, ma
-    # matricola diversa da quella già vista sulla stessa data (es. a
-    # cavallo di un risigillo triennale) — non deve essere trattato come
-    # un duplicato del corrispettivo già salvato.
-    db = _FakeDb()
-    svc = CorrispettiviService(db=db)
+    db = nuovo_db("dedup_matricole")
+    vecchia = xml_chiusura(data=GIORNO, progressivo="11", matricola="00011", contanti="300.00",
+                           elettronico="200.00", imponibile="454.55", imposta="45.45")
+    nuova = xml_chiusura(data=GIORNO, progressivo="12", matricola="00012", contanti="250.00",
+                         elettronico="150.00", imponibile="363.64", imposta="36.36")
 
-    xml_matricola_vecchia = _corr_xml(id_dispositivo="00011", totale="500.00", contanti="300.00", pos="200.00")
-    xml_matricola_nuova = _corr_xml(id_dispositivo="00012", totale="400.00", contanti="250.00", pos="150.00")
+    esito1 = _importa(db, vecchia, "matricola_vecchia.xml")
+    esito2 = _importa(db, nuova, "matricola_nuova.xml")
 
-    esito1 = _run(svc.process_xml(xml_matricola_vecchia, "matricola_vecchia.xml"))
-    esito2 = _run(svc.process_xml(xml_matricola_nuova, "matricola_nuova.xml"))
-
-    assert esito1["status"] == "created"
-    assert esito2["status"] == "created", esito2  # bug: prima risultava "duplicate"
-
-    corrispettivi = db["corrispettivi"].docs
-    assert len(corrispettivi) == 2
-    assert {c["id_dispositivo"] for c in corrispettivi} == {"00011", "00012"}
-    assert {c["matricola_rt"] for c in corrispettivi} == {"00011", "00012"}
-
-    # Entrambi devono aver propagato a Prima Nota (nessuno scartato).
-    assert esito1["prima_nota_id"] is not None
-    assert esito2["prima_nota_id"] is not None
-    cassa = db["prima_nota_cassa"].docs
-    entrate = [c for c in cassa if c["tipo"] == "entrata"]
+    assert esito1["action"] == "created"
+    assert esito2["action"] == "created", esito2
+    righe = run(attive(db, "corrispettivi"))
+    assert {r["matricola_rt"] for r in righe} == {"00011", "00012"}
     # In Cassa entra soltanto la quota materialmente incassata in contanti.
-    assert {round(c["importo"], 2) for c in entrate} == {300.0, 250.0}
+    entrate = [Decimal(str(r["importo"])) for r in run(attive(db, "prima_nota_cassa"))
+               if r.get("tipo") == "entrata"]
+    assert sorted(entrate) == [Decimal("250.0"), Decimal("300.0")]
 
 
-def test_stesso_dispositivo_stessa_data_resta_duplicato():
-    db = _FakeDb()
-    svc = CorrispettiviService(db=db)
+def test_stesso_dispositivo_stesso_xml_resta_duplicato():
+    db = nuovo_db("dedup_stesso_xml")
+    xml = xml_chiusura(data=GIORNO, progressivo="11", matricola="00011")
 
-    xml = _corr_xml(id_dispositivo="00011", totale="500.00", contanti="300.00", pos="200.00")
-    xml_ripetuto = _corr_xml(id_dispositivo="00011", totale="500.00", contanti="300.00", pos="200.00")
+    esito1 = _importa(db, xml, "cassa1.xml")
+    esito2 = _importa(db, xml, "cassa1_ridownload.xml")
 
-    esito1 = _run(svc.process_xml(xml, "cassa1.xml"))
-    esito2 = _run(svc.process_xml(xml_ripetuto, "cassa1_ridownload.xml"))
-
-    assert esito1["status"] == "created"
-    assert esito2["status"] == "duplicate"
-    assert len(db["corrispettivi"].docs) == 1
+    assert esito1["action"] == "created"
+    assert esito2["action"] == "duplicate"
+    assert len(run(attive(db, "corrispettivi"))) == 1
+    assert len(run(attive(db, "prima_nota_cassa"))) == 1

@@ -80,10 +80,16 @@ def test_il_turno_apre_una_casella_per_apparecchio_senza_scrivere_la_temperatura
     assert casella["operatore_id"] == "hr-7"
 
 
-def test_il_turno_segnala_gli_apparecchi_senza_responsabile(archivio):
-    """Il Frigorifero N°2 non e' assegnato: il suo registro restera' senza firma."""
+def test_il_turno_segnala_gli_apparecchi_senza_responsabile(archivio, monkeypatch):
+    """Il Frigorifero N°2 non e' assegnato e nelle Impostazioni non c'e' il
+    nome del titolare: il suo registro restera' senza firma. Con il nome
+    scritto risponde il titolare (`test_responsabile_haccp_titolare.py`)."""
     from app.lotti.routers.haccp_auto import apri_rilevazioni_del_giorno
 
+    async def azienda():
+        return {"responsabile_haccp": ""}
+
+    monkeypatch.setattr("app.lotti.azienda.get_azienda", azienda)
     esito = run(apri_rilevazioni_del_giorno())
 
     assert esito["senza_responsabile"] == ["Frigorifero N°2"], (

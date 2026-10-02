@@ -5,8 +5,8 @@ Supporta formato Banco BPM
 NOTA: Questo router è registrato con prefix /api/f24-riconciliazione
 insieme a f24_riconciliazione.py per gli endpoint banca-specifici.
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from typing import Optional
+from fastapi import APIRouter, Body, Depends, UploadFile, File, HTTPException
+from typing import Any, Dict, Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 import logging
@@ -16,6 +16,8 @@ from app.db_collections import (
     COLL_ESTRATTO_CONTO,
     QUERY_F24_PATTERN
 )
+from app.middleware.error_handler import risposta_errore
+from app.utils.dependencies import get_current_admin_user
 
 from app.services.estratto_conto_bpm_parser import parse_estratto_conto_bpm
 
@@ -200,10 +202,14 @@ async def quietanze_banca(anno: Optional[int] = None):
     minuti (`f24_controllo_incrociato.riconcilia_f24_banca`), che e'
     l'unico a scrivere. Ogni riga porta la motivazione del suo esito.
     """
-    from app.services.f24_controllo_incrociato import riconcilia_f24_banca
+    from app.services.f24_controllo_incrociato import (
+        LIVELLI_CONFERMABILI, MOTIVI_CONFERMA_TITOLARE, riconcilia_f24_banca,
+    )
 
     esito = await riconcilia_f24_banca(Database.get_db(), dry_run=True)
     esito["modelli_da_verificare"] = esito["modelli"]["da_verificare"]
+    # La tendina dei motivi della conferma: una fonte sola, il motore.
+    esito["conferma"] = {"livelli": list(LIVELLI_CONFERMABILI), "motivi": dict(MOTIVI_CONFERMA_TITOLARE)}
     if anno:
         prefisso = str(int(anno))
         for chiave in ("riscontrati", "da_verificare", "quietanze_senza_addebito",
@@ -213,6 +219,41 @@ async def quietanze_banca(anno: Optional[int] = None):
             esito[chiave] = [r for r in esito.get(chiave, []) if str(r.get("data") or "").startswith(prefisso)]
         esito["anno"] = int(anno)
     return esito
+
+
+@router.post("/quietanze-banca/{f24_id}/conferma")
+async def conferma_quietanza_banca(
+    f24_id: str,
+    body: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Il titolare conferma un addebito PROBABILE o PARZIALE per un F24 (modello o quietanza).
+
+    Body: `{"movimento_id": "...", "motivo": "<chiave di MOTIVI_CONFERMA_TITOLARE>",
+    "motivo_testo": "..." (solo per «altro»)}`. Scrive con lo stesso motore del
+    CERTO (`conferma_riscontro_titolare`): pagamento sul modello, relazione
+    `confirmed` con `actor=titolare` e motivo, differenza registrata per il
+    PARZIALE. Un movimento non candidato e' 409; un motivo fuori elenco 422.
+    """
+    import uuid as _uuid
+
+    from app.services.f24_controllo_incrociato import ConfermaNonAmmessa, conferma_riscontro_titolare
+
+    movimento_id = str(body.get("movimento_id") or "").strip()
+    if not movimento_id:
+        return risposta_errore(422, message="movimento_id obbligatorio", detail="movimento_id obbligatorio",
+                               code="MOVIMENTO_OBBLIGATORIO", correlation_id=_uuid.uuid4().hex[:12])
+    try:
+        return await conferma_riscontro_titolare(
+            Database.get_db(), f24_id=f24_id, movimento_id=movimento_id,
+            motivo=str(body.get("motivo") or ""), motivo_testo=body.get("motivo_testo"),
+            actor="titolare", utente=str(_admin.get("email") or _admin.get("user_id") or ""),
+        )
+    except ConfermaNonAmmessa as exc:
+        cid = _uuid.uuid4().hex[:12]
+        logger.warning("[%s] conferma F24 %s con %s rifiutata: %s", cid, f24_id, movimento_id, exc.code)
+        return risposta_errore(exc.stato, message=exc.message, detail=exc.message, details=exc.details,
+                               code=exc.code, correlation_id=cid)
 
 
 @router.get("/stato-riconciliazione")

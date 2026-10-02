@@ -6,7 +6,10 @@ Usato da:
   - cartella unica Google Drive (via Documenti > Import)
 
 Per ogni PDF: parsing (f24_parser.parse_quietanza_f24), dedup per impronta
-md5 (`pdf_hash`), salvataggio in `quietanze_f24` e MATCHING AUTOMATICO con
+SHA-256 (`pdf_hash`; l'MD5 resta in `pdf_hash_md5` solo per ritrovare la copia
+identica su Drive, e per le righe scritte prima del passaggio a SHA-256,
+che portano ancora l'MD5 in `pdf_hash`), salvataggio in `quietanze_f24` e
+MATCHING AUTOMATICO con
 gli F24 del commercialista (confronto per codice tributo + periodo +
 importo esatto al centesimo e contribuente quando disponibile): match univoco →
 F24 segnato pagato; nessun match → alert.
@@ -91,7 +94,8 @@ async def _marca_scadenze_calendario(db, f24: dict, data_pagamento: str, quietan
             tipi.add(tipo)
 
     marcate = []
-    for tipo in tipi:
+    for tipo in sorted(tipi):
+        anno_sid = anno_pag
         if tipo == 'RITENUTE':
             sid = f"ritenute_{anno_pag}_{mese_pag:02d}"
         elif tipo == 'INPS':
@@ -101,20 +105,31 @@ async def _marca_scadenze_calendario(db, f24: dict, data_pagamento: str, quietan
             # competenza = mese di pagamento - 1.
             mese_comp = mese_pag - 1 if mese_pag > 1 else 12
             anno_comp = anno_pag if mese_pag > 1 else anno_pag - 1
+            anno_sid = anno_comp
             sid = f"iva_liq_{anno_comp}_{mese_comp:02d}"
         else:
             continue
+        # Il calendario e' un modello generato in memoria (`genera_scadenze_anno`):
+        # in archivio sta solo lo stato della scadenza, e la riga nasce qui alla
+        # prima prova. Una scadenza gia' completata (a mano o da un'altra
+        # quietanza) non si tocca.
+        esistente = await db[COLL_CALENDARIO].find_one(
+            {"id": sid, "anno": anno_sid}, {"_id": 0, "completato": 1})
+        if esistente and esistente.get("completato"):
+            continue
         res = await db[COLL_CALENDARIO].update_one(
-            {"id": sid, "completato": {"$ne": True}},
+            {"id": sid, "anno": anno_sid},
             {"$set": {
                 "completato": True,
                 "data_completamento": data_pagamento,
                 "completato_da": "quietanza_f24",
                 "quietanza_id": quietanza_id,
                 "f24_id": f24.get("id"),
-            }},
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
         )
-        if res.modified_count:
+        if res.modified_count or getattr(res, "upserted_id", None):
             marcate.append(sid)
     if marcate:
         logger.info(f"Quietanza {quietanza_id}: scadenze calendario completate: {marcate}")
@@ -186,6 +201,31 @@ def _e_guscio_vuoto(quietanza: dict) -> bool:
     return not any(quietanza.get(k) for k in sezioni)
 
 
+async def trova_quietanza_per_impronta(db, *, sha256: str, md5: str | None = None) -> dict | None:
+    """La quietanza con quel file: SHA-256 in `pdf_hash`, oppure (righe scritte prima
+    del passaggio a SHA-256) l'MD5 in `pdf_hash` o in `pdf_hash_md5`."""
+    condizioni = [{"pdf_hash": sha256}]
+    if md5:
+        condizioni += [{"pdf_hash": md5}, {"pdf_hash_md5": md5}]
+    return await db[COLL_QUIETANZE].find_one({"$or": condizioni}, {"_id": 0})
+
+
+async def promuovi_pdf_hash_sha256(db, quietanza: dict, *, sha256: str, md5: str) -> bool:
+    """Una riga che porta ancora l'MD5 in `pdf_hash` passa a SHA-256, conservando
+    l'MD5 in `pdf_hash_md5`. Chi ha gia' lo SHA-256 non si tocca."""
+    if quietanza.get("pdf_hash") == sha256 and quietanza.get("pdf_hash_md5"):
+        return False
+    if quietanza.get("pdf_hash") not in (None, "", md5, sha256):
+        return False  # un altro file: non e' la stessa impronta
+    await db[COLL_QUIETANZE].update_one(
+        {"id": quietanza["id"]},
+        {"$set": {"pdf_hash": sha256, "pdf_hash_md5": md5,
+                  "idempotency_key": f"quietanza_f24:{sha256}"}},
+    )
+    quietanza["pdf_hash"], quietanza["pdf_hash_md5"] = sha256, md5
+    return True
+
+
 def _firma_contenuto(parsed: dict, data_pagamento: Any, saldo: Any) -> str | None:
     """Impronta del contenuto fiscale: data, saldo e ogni riga (sezione, codice, periodo, importi)."""
     if not data_pagamento:
@@ -250,22 +290,26 @@ async def importa_quietanza_bytes(
       success, duplicate, quietanza_id, protocollo, saldo, data_pagamento,
       codici_tributo (conteggio), f24_matchati (lista), warning/error.
     """
-    pdf_hash = hashlib.md5(content).hexdigest()
+    pdf_hash = hashlib.sha256(content).hexdigest()
+    pdf_hash_md5 = hashlib.md5(content).hexdigest()  # noqa: S324 - solo per la copia identica su Drive
     source_metadata = dict(source_metadata or {})
     occurrence = {
         "source": fonte,
         "drive_file_id": source_metadata.get("drive_file_id"),
         "drive_parent_id": source_metadata.get("drive_parent_id"),
         "drive_path": source_metadata.get("drive_path"),
-        "md5": pdf_hash,
+        "md5": pdf_hash_md5,
+        "sha256": pdf_hash,
     }
     occurrence = {k: v for k, v in occurrence.items() if v not in (None, "")}
 
     # Dedup per impronta: la stessa quietanza (da Drive, email o upload)
-    # non deve mai creare un doppione.
-    existing = await db[COLL_QUIETANZE].find_one(
-        {"pdf_hash": pdf_hash}, {"_id": 0}
-    )
+    # non deve mai creare un doppione. Una riga scritta prima del passaggio a
+    # SHA-256 porta l'MD5 in `pdf_hash`: si riconosce lo stesso e si promuove
+    # (SHA-256 in `pdf_hash`, il vecchio valore in `pdf_hash_md5`).
+    existing = await trova_quietanza_per_impronta(db, sha256=pdf_hash, md5=pdf_hash_md5)
+    if existing:
+        await promuovi_pdf_hash_sha256(db, existing, sha256=pdf_hash, md5=pdf_hash_md5)
     guscio = bool(existing) and _e_guscio_vuoto(existing)
     if existing and not guscio:
         await db[COLL_QUIETANZE].update_one(
@@ -416,6 +460,7 @@ async def importa_quietanza_bytes(
         "id": file_id,
         "filename": filename,
         "pdf_hash": pdf_hash,
+        "pdf_hash_md5": pdf_hash_md5,
         "idempotency_key": f"quietanza_f24:{pdf_hash}",
         "dati_generali": dg,
         "protocollo_telematico": protocollo,
@@ -448,7 +493,7 @@ async def importa_quietanza_bytes(
             "drive_file_id": source_metadata["drive_file_id"],
             "drive_parent_id": source_metadata.get("drive_parent_id"),
             "drive_path": source_metadata.get("drive_path"),
-            "drive_md5": source_metadata.get("drive_md5") or pdf_hash,
+            "drive_md5": source_metadata.get("drive_md5") or pdf_hash_md5,
             "original_storage": "google_drive",
             "source_metadata": source_metadata,
         })
@@ -795,8 +840,15 @@ async def abbina_quietanza_a_f24(db, quietanza: dict) -> Dict[str, Any]:
         logger.exception(
             "Errore registrazione relazione quietanza %s / F24 %s", file_id, f24.get("id"),
         )
-    # La quietanza collega il documento, ma la scadenza diventa completata
-    # solo dopo l'addebito bancario.
+    # La quietanza dell'Agenzia e' la prova documentale del versamento: la
+    # scadenza del calendario fiscale si segna completata con quella evidenza
+    # (`completato_da=quietanza_f24`, distinta dalla conferma a mano e non
+    # riapribile a mano). Il debito contabile resta aperto fino all'addebito.
+    try:
+        scadenze_completate = await _marca_scadenze_calendario(db, f24, data_pagamento, file_id)
+    except Exception as exc:  # noqa: BLE001 - il collegamento quietanza-F24 resta scritto
+        logger.exception("Quietanza %s: calendario fiscale non aggiornato (%s)", file_id, type(exc).__name__)
+        scadenze_completate = []
     esito["f24_matchati"].append({
         "f24_id": f24["id"],
         "f24_filename": f24.get("file_name"),
@@ -805,7 +857,7 @@ async def abbina_quietanza_a_f24(db, quietanza: dict) -> Dict[str, Any]:
         "tributi_matchati": f"{len(principali)}/{len(principali)}",
         "ravveduto": is_ravveduto,
         "importo_ravvedimento": importo_ravv / 100 if is_ravveduto else 0,
-        "scadenze_completate": [],
+        "scadenze_completate": scadenze_completate,
     })
     return esito
 

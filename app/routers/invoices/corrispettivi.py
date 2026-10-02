@@ -144,56 +144,6 @@ async def corrispettivi_del_periodo(
     }
 
 
-@router.post("/ricalcola-annulli-non-riscosso")
-@handle_errors
-async def ricalcola_annulli_non_riscosso() -> Dict[str, Any]:
-    """Ricalcola pagato_non_riscosso su tutti i corrispettivi esistenti.
-    
-    Pagato Non Riscosso = totale lordo riepiloghi - (PagatoContanti + PagatoElettronico)
-    """
-    db = Database.get_db()
-    
-    corrispettivi = await db["corrispettivi"].find({}, {"_id": 0}).to_list(10000)
-    
-    updated = 0
-    for corr in corrispettivi:
-        riepilogo_iva = corr.get("riepilogo_iva", [])
-        pagato_contanti = float(corr.get("pagato_contanti", 0) or 0)
-        pagato_elettronico = float(corr.get("pagato_elettronico", 0) or 0)
-        totale_corrispettivi = pagato_contanti + pagato_elettronico
-        
-        # Calcola totale lordo dai riepiloghi
-        totale_ammontare = sum(float(r.get('ammontare', 0) or 0) for r in riepilogo_iva)
-        totale_importo_parziale = sum(float(r.get('importo_parziale', 0) or 0) for r in riepilogo_iva)
-        
-        # Usa importo_parziale se presente (è già il lordo), altrimenti ammontare + imposta
-        if totale_importo_parziale > 0:
-            totale_lordo = totale_importo_parziale
-        else:
-            totale_imposta = sum(float(r.get('imposta', 0) or 0) for r in riepilogo_iva)
-            totale_lordo = totale_ammontare + totale_imposta
-        
-        # Pagato non riscosso = lordo - (contanti + elettronico)
-        pagato_non_riscosso = max(0, round(totale_lordo - totale_corrispettivi, 2))
-        
-        # Inizializza totale_ammontare_annulli a 0 se non presente
-        # (verrà aggiornato quando reimportano gli XML)
-        update_data = {
-            "pagato_non_riscosso": pagato_non_riscosso
-        }
-        
-        if "totale_ammontare_annulli" not in corr:
-            update_data["totale_ammontare_annulli"] = 0
-        
-        await db["corrispettivi"].update_one(
-            {"id": corr.get("id")},
-            {"$set": update_data}
-        )
-        updated += 1
-    
-    return {"updated": updated, "message": f"Ricalcolati annulli/non riscosso su {updated} corrispettivi"}
-
-
 @router.get("/totals")
 @handle_errors
 async def get_corrispettivi_totals() -> Dict[str, Any]:
@@ -1563,13 +1513,15 @@ async def normalizza_campi_pagamento(
        `pagato_elettronico` → 37 giorni risultavano senza ripartizione;
     2. `pagato_non_riscosso` era calcolato doppio-contando imponibile e
        lordo dei riepiloghi (€244k di 'non riscosso' impossibili).
-    Qui: allineamento campi + ricalcolo non_riscosso = max(0, totale -
-    contanti - elettronico) per tutto l'anno."""
+    Qui: solo l'allineamento dei campi legacy. Il non riscosso **non si
+    ricalcola** (dal 02/10/2026): lo scrive solo il parser dalle voci che l'RT
+    dichiara, mai `totale − contanti − elettronico`; un valore storico nato
+    per differenza si vede nel riepilogo e si corregge rileggendo l'XML."""
     db = Database.get_db()
     docs = await db["corrispettivi"].find(
         {"data": {"$regex": f"^{anno}"}}, {"_id": 0}).to_list(1000)
 
-    aggiornati = campi_migrati = non_riscosso_corretti = 0
+    aggiornati = campi_migrati = 0
     tot = {"totale": 0.0, "contanti": 0.0, "elettronico": 0.0, "non_riscosso": 0.0}
     for c in docs:
         totale = float(c.get("totale") or 0)
@@ -1580,27 +1532,22 @@ async def normalizza_campi_pagamento(
             pc = float(c.get("contanti") or 0)
             pe = float(c.get("elettronico") or 0)
             migra = True
-        nr_nuovo = max(0.0, round(totale - pc - pe, 2))
-        nr_vecchio = round(float(c.get("pagato_non_riscosso") or 0), 2)
+        nr = round(float(c.get("pagato_non_riscosso") or 0), 2)
 
         tot["totale"] += totale
         tot["contanti"] += pc
         tot["elettronico"] += pe
-        tot["non_riscosso"] += nr_nuovo
+        tot["non_riscosso"] += nr
 
-        if not migra and abs(nr_nuovo - nr_vecchio) < 0.01:
+        if not migra:
             continue
         aggiornati += 1
-        if migra:
-            campi_migrati += 1
-        if abs(nr_nuovo - nr_vecchio) >= 0.01:
-            non_riscosso_corretti += 1
+        campi_migrati += 1
         if not dry_run:
             chiave = {"id": c["id"]} if c.get("id") else {"xml_hash": c.get("xml_hash")}
             await db["corrispettivi"].update_one(chiave, {"$set": {
                 "pagato_contanti": round(pc, 2),
                 "pagato_elettronico": round(pe, 2),
-                "pagato_non_riscosso": nr_nuovo,
                 "pagamenti_normalizzati_at": datetime.now(timezone.utc).isoformat(),
             }})
 
@@ -1609,6 +1556,5 @@ async def normalizza_campi_pagamento(
     return {"dry_run": dry_run, "anno": anno, "giorni": len(docs),
             "aggiornati" if not dry_run else "da_aggiornare": aggiornati,
             "campi_legacy_migrati": campi_migrati,
-            "non_riscosso_ricalcolati": non_riscosso_corretti,
             "totali_dopo": tot,
             "quadratura": round(tot["totale"] - tot["contanti"] - tot["elettronico"] - tot["non_riscosso"], 2)}

@@ -332,22 +332,72 @@ def test_non_riscosso_negativo_non_entra():
     assert run(attive(db, "movimenti_contabili")) == []
 
 
-def test_xml_con_lordo_dei_riepiloghi_oltre_l_incassato_mai_registrato_sbilanciato(monkeypatch):
-    """Il totale dell'XML e' l'INCASSATO (contanti + elettronico); se imponibile + IVA
-    del riepilogo lo superano lo scarto resta fuori. Qualunque sia l'esito (giornata
-    scartata con motivo, o registrata col non riscosso) il giornale non deve mai
-    contenere una scrittura sbilanciata e il motivo deve stare sul documento."""
+def test_xml_con_lordo_oltre_l_incassato_senza_voce_dichiarata_si_scarta_con_il_motivo(monkeypatch):
+    """Imponibile + IVA = 1.100 contro contanti 300 + POS 700: l'RT non dichiara
+    nessun non riscosso, quindi i 100 non diventano un credito per differenza.
+    La giornata non entra (nessuna riga, nessuna Prima Nota, nessun giornale) e
+    l'esito porta il motivo, cosi' il file va in ERRORI e non in ELABORATE."""
     db = nuovo_db("s4_xml_lordo")
     imp = Importatore(db, monkeypatch)
-    imp.importa("2702.xml", xml_chiusura(progressivo="2702", imponibile="1000.00", imposta="100.00"))
+    esito = imp.importa("2702.xml", xml_chiusura(progressivo="2702", imponibile="1000.00", imposta="100.00"))
 
-    for s in run(attive(db, "movimenti_contabili")):
-        dare, avere = totali_scrittura(s)
-        assert dare == avere
+    assert esito["success"] is False and esito.get("imported", 0) == 0
+    assert esito["motivo"] == "non_riscosso_non_dichiarato"
+    assert "1100.0" in esito["message"] and "non riscosso dichiarato 0.0" in esito["message"]
+    assert run(righe(db, "corrispettivi")) == []
+    assert run(righe(db, "prima_nota_cassa")) == [] and run(righe(db, "movimenti_contabili")) == []
+
+
+def test_il_non_riscosso_dichiarato_dall_rt_entra_come_credito_e_la_giornata_quadra(monkeypatch):
+    """`NonRiscossoServizi` 100 nel blocco Totali: contanti 300 + POS 700 + 100 =
+    1.100 = imponibile + IVA al centesimo. Cassa solo i contanti, crediti 100,
+    ricavo intero all'imponibile; il totale della giornata e' il lordo."""
+    db = nuovo_db("s4_xml_dichiarato")
+    imp = Importatore(db, monkeypatch)
+    esito = imp.importa("2703.xml", xml_chiusura(
+        progressivo="2703", imponibile="1000.00", imposta="100.00", non_riscosso_servizi="100.00"))
+
+    assert esito["imported"] == 1, esito
     (corr,) = run(attive(db, "corrispettivi"))
-    assert D(corr["pagato_non_riscosso"]) == D("100.00")
-    if not run(attive(db, "movimenti_contabili")):
-        assert corr["registrazione_contabile_esito"]["stato"] == "da_verificare"
+    assert D(corr["pagato_non_riscosso"]) == D("100.00") and corr["non_riscosso_fonte"] == "dichiarato_rt"
+    assert D(corr["totale"]) == D("1100.00") and D(corr["pagato_contanti"]) == D("300.00")
+    assert [D(r["importo"]) for r in run(attive(db, "prima_nota_cassa"))] == [D("300.00")]
+    (s,) = run(attive(db, "movimenti_contabili"))
+    dare, avere = totali_scrittura(s)
+    assert dare == avere == D("1100.00")
+    assert importo_conto(s, "01.02.01", "dare") == D("100.00")
+    assert importo_conto(s, "04.01.02", "avere") == D("1000.00")
+
+
+def test_il_non_riscosso_dichiarato_che_non_fa_il_lordo_scarta_la_giornata(monkeypatch):
+    """Dichiarati 50 su uno scarto di 100: i 50 che mancano non si inventano."""
+    db = nuovo_db("s4_xml_dichiarato_scarto")
+    imp = Importatore(db, monkeypatch)
+    esito = imp.importa("2704.xml", xml_chiusura(
+        progressivo="2704", imponibile="1000.00", imposta="100.00", non_riscosso_servizi="50.00"))
+
+    assert esito["success"] is False and esito["motivo"] == "non_riscosso_non_quadrato"
+    assert run(righe(db, "corrispettivi")) == []
+
+
+def test_il_parser_non_ricava_mai_il_non_riscosso_per_differenza():
+    """Prova sul parser, senza archivio: senza voce dichiarata il campo e' 0 e
+    il motivo di scarto e' scritto; con la voce la somma delle voci e' il valore."""
+    from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
+
+    senza = parse_corrispettivo_xml(xml_chiusura(imponibile="1000.00", imposta="100.00"))
+    assert (senza["pagato_non_riscosso"], senza["non_riscosso_dichiarato"]) == (0, False)
+    assert senza["motivo_scarto"] == "non_riscosso_non_dichiarato"
+    assert D(senza["totale"]) == D("1000.00")  # l'incassato, non il lordo
+
+    con = parse_corrispettivo_xml(xml_chiusura(
+        imponibile="1000.00", imposta="100.00", non_riscosso_servizi="60.00", non_riscosso_fatture="40.00"))
+    assert con["motivo_scarto"] is None and D(con["pagato_non_riscosso"]) == D("100.00")
+    assert [v["voce"] for v in con["non_riscosso_voci"]] == ["NonRiscossoServizi", "NonRiscossoFatture"]
+    assert D(con["totale"]) == D("1100.00")
+
+    quadrata = parse_corrispettivo_xml(xml_chiusura())
+    assert quadrata["motivo_scarto"] is None and quadrata["pagato_non_riscosso"] == 0
 
 
 def test_la_chiusura_del_terminale_dopo_la_sostituzione_si_aggancia_alla_giornata_viva(monkeypatch):

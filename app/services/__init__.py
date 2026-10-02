@@ -4,7 +4,7 @@ Business logic layer for all operations.
 
 ARCHITETTURA:
 - business_rules.py: Regole di business centralizzate e validazioni
-- corrispettivi_service.py: Gestione corrispettivi con propagazione Prima Nota
+- corrispettivi_service.py: CSV AdE dei corrispettivi (dato provvisorio)
 - *_service.py: Altri servizi specifici
 """
 from .auth_service import AuthService
@@ -13,7 +13,6 @@ from .cash_service import CashService
 from .chart_service import ChartOfAccountsService
 from .email_service import EmailService
 from .business_rules import BusinessRules, ValidationResult, DataFlowManager
-from .corrispettivi_service import CorrispettiviService, get_corrispettivi_service
 
 from .data_propagation import DataPropagationService, get_propagation_service
 
@@ -34,9 +33,6 @@ __all__ = [
     "CashService",
     "ChartOfAccountsService",
     "EmailService",
-    # V2 Services with Security
-    "CorrispettiviService",
-    "get_corrispettivi_service",
     # Propagation
     "DataPropagationService",
     "get_propagation_service",

@@ -602,6 +602,13 @@ STATO_CONFORME = "conforme"
 METODO_CONTROLLO_VISIVO = "controllo visivo del responsabile dell'attivita'"
 
 
+def controllo_visivo_attivo(azienda: dict) -> bool:
+    """Nelle Impostazioni il metodo e' il controllo visivo del responsabile."""
+    return str((azienda or {}).get("controllo_visivo_responsabile") or "").strip().lower() in (
+        "1", "true", "si", "sì", "x"
+    )
+
+
 async def applica_dichiarazione_continua_oggi(quando=None) -> dict:
     adesso = quando or datetime.now(FUSO)
     attestazione = await db.impostazioni.find_one({"_id": _DOC_ATTESTAZIONE}) or {}
@@ -690,15 +697,22 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
     casella che ha gia' un valore.
 
     Ritorna il riepilogo del turno: quante aperte, e su quali apparecchi manca
-    il responsabile (quelli il cui registro restera' senza firma finche'
-    qualcuno non li assegna).
+    il responsabile. Senza assegnazione risponde il titolare (nome dalle
+    Impostazioni): resta «senza responsabile» solo se quel nome non c'e'.
     """
+    from app.lotti.servizi.responsabile_haccp import responsabile_apparecchio, responsabile_predefinito
+
     adesso = quando or datetime.now(FUSO)
     anno, mese, giorno = adesso.year, adesso.month, adesso.day
     campo = f"temperature.{mese}.{giorno}"
     ts = adesso.isoformat()
 
+    # Un apparecchio senza responsabile assegnato e' del titolare (decisione
+    # del 02/10/2026): il nome viene dalle Impostazioni, letto una volta per
+    # giro. Se nessuno l'ha scritto, l'apparecchio resta senza responsabile.
+    predefinito = await responsabile_predefinito()
     esito = {"aperte": 0, "gia_presenti": 0, "senza_responsabile": [],
+             "responsabile_predefinito": predefinito.get("operatore_nome") or "",
              "data": adesso.date().isoformat()}
 
     # Prima fase del turno: apre le caselle senza inventare misure. Subito dopo
@@ -734,14 +748,16 @@ async def apri_rilevazioni_del_giorno(quando=None) -> dict:
             if (scheda.get("temperature") or {}).get(str(mese), {}).get(str(giorno)) is not None:
                 esito["gia_presenti"] += 1
                 continue
-            if not apparecchio.get("operatore_id"):
+            responsabile = responsabile_apparecchio(apparecchio, predefinito)
+            if not responsabile["operatore_nome"]:
                 esito["senza_responsabile"].append(apparecchio.get("nome", f"{tipo} {numero}"))
 
             casella = {
                 "temp": None,                       # la misura la fa una persona
                 "stato": STATO_DA_RILEVARE,
-                "operatore_id": apparecchio.get("operatore_id", ""),
-                "operatore_nome": apparecchio.get("operatore_nome", ""),
+                "operatore_id": responsabile["operatore_id"] if responsabile["operatore_nome"] else "",
+                "operatore_nome": responsabile["operatore_nome"],
+                "responsabile_predefinito": bool(responsabile["responsabile_predefinito"]),
                 "aperta_il": ts,
                 "allarme": False,
             }
@@ -773,9 +789,7 @@ async def dichiara_conformi_oggi(request: Request, pin: str = "", _ruolo=Depends
     from app.lotti.servizi.registro_haccp import firma_registrazione
 
     azienda = await get_azienda()
-    if str(azienda.get("controllo_visivo_responsabile") or "").strip().lower() not in (
-        "1", "true", "si", "sì", "x"
-    ):
+    if not controllo_visivo_attivo(azienda):
         raise HTTPException(
             status_code=409,
             detail="Il controllo visivo del responsabile non e' attivo nelle Impostazioni.",
@@ -837,19 +851,34 @@ async def turno_di_oggi():
 
     Compilata = una temperatura, oppure l'esito «conforme» dichiarato dal
     responsabile col controllo visivo (senza numero, per scelta). Prima una
-    casella dichiarata conforme risultava ancora «da rilevare»."""
+    casella dichiarata conforme risultava ancora «da rilevare».
+
+    `senza_casella` sono gli apparecchi attivi che oggi non hanno nessuna
+    casella (aggiunti dopo le 07:00, o servizio spento al turno): si aprono
+    con «Apri le caselle di oggi». `controllo_visivo_attivo` dice se la
+    dichiarazione di conformita' e' ammessa dalle Impostazioni."""
+    from app.lotti.azienda import get_azienda
+
     adesso = datetime.now(FUSO)
     mese, giorno = str(adesso.month), str(adesso.day)
-    da_fare, fatte = [], 0
+    da_fare, fatte, senza_casella = [], 0, []
     for tipo, collezione, chiave_numero in (
         ("frigo", db.temperature_positive, "frigorifero_numero"),
         ("congelatore", db.temperature_negative, "congelatore_numero"),
     ):
-        for scheda in await collezione.find(
+        schede = await collezione.find(
             {"anno": adesso.year}, {"_id": 0, chiave_numero: 1, "temperature": 1,
                                     "frigorifero_nome": 1, "congelatore_nome": 1},
-        ).to_list(100):
-            casella = (scheda.get("temperature") or {}).get(mese, {}).get(giorno)
+        ).to_list(100)
+        caselle_per_numero = {
+            scheda.get(chiave_numero): (scheda.get("temperature") or {}).get(mese, {}).get(giorno)
+            for scheda in schede
+        }
+        for apparecchio in await _apparecchi_attivi(tipo):
+            if caselle_per_numero.get(apparecchio.get("numero")) is None:
+                senza_casella.append(apparecchio.get("nome") or f"{tipo} {apparecchio.get('numero')}")
+        for scheda in schede:
+            casella = caselle_per_numero.get(scheda.get(chiave_numero))
             if not isinstance(casella, dict):
                 if casella is not None:
                     fatte += 1
@@ -866,4 +895,6 @@ async def turno_di_oggi():
                 "operatore_nome": casella.get("operatore_nome", ""),
             })
     return {"data": adesso.date().isoformat(), "da_rilevare": da_fare,
-            "quante_da_rilevare": len(da_fare), "gia_rilevate": fatte}
+            "quante_da_rilevare": len(da_fare), "gia_rilevate": fatte,
+            "senza_casella": senza_casella, "quante_senza_casella": len(senza_casella),
+            "controllo_visivo_attivo": controllo_visivo_attivo(await get_azienda())}

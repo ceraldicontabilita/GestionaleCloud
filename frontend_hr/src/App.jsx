@@ -3199,6 +3199,13 @@ const CCNL_LIVELLI_2026 = [
 function TfrPage({ dipendenti, getDipendente }) {
   const API_TFR = "/hr/api/tfr";
   const eur = (n) => (Number(n) || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Un valore mancante e' «Dato non disponibile», mai zero.
+  const eurOpt = (n) => (n === null || n === undefined ? "Dato non disponibile" : `€ ${eur(n)}`);
+  const FONTE_TFR = {
+    manuale: "Valore della scheda HR (import LUL o accantonamento registrato): vince sulle quote da buste, che restano visibili accanto.",
+    buste: "Somma delle quote TFR lette dalle buste paga importate nel gestionale.",
+    nessuna: "Nessun valore in scheda e nessuna busta con la quota TFR: dato non disponibile.",
+  };
   const [dipId, setDipId] = useState(dipendenti[0]?.id || "");
   const [situazione, setSituazione] = useState(null);
   const [sim, setSim] = useState(null);
@@ -3496,12 +3503,37 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
         <>
           {situazione && (
             <div className="dc-card" style={{ marginBottom: 16 }}>
-              <h3 style={{ marginTop: 0 }}>Situazione ufficiale (calcolo automatico dai cedolini)</h3>
+              <h3 style={{ marginTop: 0 }}>Situazione ufficiale</h3>
+              <p className="dc-muted" style={{ fontSize: 13, marginTop: -6 }}>
+                {FONTE_TFR[situazione.tfr_fonte] || FONTE_TFR.nessuna}
+              </p>
               <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-                <div><div className="dc-muted" style={{ fontSize: 12.5 }}>TFR accantonato</div><div style={{ fontWeight: 700, fontSize: 20 }}>€ {eur(situazione.tfr_accantonato)}</div></div>
+                <div><div className="dc-muted" style={{ fontSize: 12.5 }}>TFR accantonato</div><div style={{ fontWeight: 700, fontSize: 20 }}>{eurOpt(situazione.tfr_accantonato)}</div></div>
+                <div>
+                  <div className="dc-muted" style={{ fontSize: 12.5 }}>Quota da buste (gestionale)</div>
+                  <div style={{ fontWeight: 700, fontSize: 20 }}>{situazione.quota_da_buste_disponibile ? eurOpt(situazione.quota_da_buste) : "Dato non disponibile"}</div>
+                  {!situazione.quota_da_buste_disponibile && situazione.quota_da_buste_motivo && (
+                    <div className="dc-muted" style={{ fontSize: 12 }}>{situazione.quota_da_buste_motivo}</div>
+                  )}
+                </div>
                 <div><div className="dc-muted" style={{ fontSize: 12.5 }}>Già liquidato</div><div style={{ fontWeight: 700, fontSize: 20 }}>€ {eur(situazione.totale_liquidato)}</div></div>
-                <div><div className="dc-muted" style={{ fontSize: 12.5 }}>Disponibile</div><div style={{ fontWeight: 700, fontSize: 20, color: "#3d8168" }}>€ {eur(situazione.tfr_disponibile)}</div></div>
+                <div><div className="dc-muted" style={{ fontSize: 12.5 }}>Disponibile</div><div style={{ fontWeight: 700, fontSize: 20, color: "#3d8168" }}>{eurOpt(situazione.tfr_disponibile)}</div></div>
               </div>
+              {situazione.accantonamenti_buste?.length > 0 && (
+                <details style={{ marginTop: 10 }}>
+                  <summary className="dc-muted" style={{ cursor: "pointer", fontSize: 13 }}>
+                    Quote mensili dalle buste ({situazione.accantonamenti_buste.length})
+                  </summary>
+                  <table className="dc-table" style={{ marginTop: 8 }}>
+                    <thead><tr><th>Periodo</th><th style={{ textAlign: "right" }}>Quota €</th></tr></thead>
+                    <tbody>
+                      {situazione.accantonamenti_buste.map(a => (
+                        <tr key={a.id || a.periodo}><td>{a.periodo}</td><td style={{ textAlign: "right" }}>{eur(a.quota)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
             </div>
           )}
 

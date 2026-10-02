@@ -6,6 +6,7 @@ import { COLORS, formatEuro, formatDateIT } from '../lib/utils';
 import { Esito, ListaAdattiva } from './ds';
 import { ROTTE_CONTROPARTITA } from './LinkContropartita';
 import { VisoreOriginale } from './ApriOriginale';
+import ConfermaAddebitoF24, { LIVELLI_CONFERMABILI } from './ConfermaAddebitoF24';
 
 /**
  * Quietanze F24 ↔ addebiti I24 in banca.
@@ -14,9 +15,13 @@ import { VisoreOriginale } from './ApriOriginale';
  * affiancate, con l'esito e la sua motivazione (importo, date e causale
  * confrontati). Il motore e' uno solo, `f24_controllo_incrociato`, a livelli
  * (certo, probabile, parziale, nessun match, movimento orfano): scrive solo il
- * certo, nel giro dei 30 minuti; questa pagina legge soltanto. Nessun giudizio
- * fiscale: fatti e discrepanze, da verificare col commercialista.
+ * certo, nel giro dei 30 minuti; questa pagina legge soltanto. L'unica azione
+ * e' la conferma del titolare su un probabile o parziale
+ * (`ConfermaAddebitoF24`): sceglie fra i candidati del motore e dice il
+ * perche' a chip; la scrittura e' la stessa del certo, sul backend. Nessun
+ * giudizio fiscale: fatti e discrepanze, da verificare col commercialista.
  */
+const GRUPPI_CONFERMABILI = ['da_verificare', 'modelli_da_verificare'];
 
 const LIVELLI = {
   CERTO: 'Certo',
@@ -215,8 +220,10 @@ export default function RiscontroQuietanzeBanca({ anno }) {
       render: r => {
         const as = addebitiDi(r);
         if (!as.length) return <span style={{ color: COLORS.textMuted }}>nessuno</span>;
+        const confermabile = GRUPPI_CONFERMABILI.includes(r._gruppo.chiave) && LIVELLI_CONFERMABILI.includes(r.livello);
+        const f24Id = r.f24_id || quietanzeDi(r)[0]?.id;
         return (
-          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 6 }}>
             {as.map(a => (
               <Link
                 key={a.movimento_id}
@@ -227,6 +234,15 @@ export default function RiscontroQuietanzeBanca({ anno }) {
                 {formatDateIT(a.data)} · {formatEuro(a.importo)} <ArrowUpRight size={14} aria-hidden="true" />
               </Link>
             ))}
+            {confermabile && f24Id && (
+              <ConfermaAddebitoF24
+                f24Id={f24Id}
+                livello={r.livello}
+                candidati={as}
+                motivi={dati?.conferma?.motivi || {}}
+                onConfermato={carica}
+              />
+            )}
           </span>
         );
       },

@@ -4,7 +4,7 @@ Formato COR10 dell'Agenzia delle Entrate.
 Estrae: dati trasmissione, riepilogo IVA, pagamento contanti e elettronico.
 """
 import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import logging
 import re
@@ -42,6 +42,67 @@ def clean_xml_namespaces(xml_content: str) -> str:
     xml_content = re.sub(r'\s+[a-zA-Z0-9_]+:([a-zA-Z0-9_]+)=', r' \1=', xml_content)
     
     return xml_content
+
+
+#: Motivo di scarto di una chiusura il cui lordo (imponibile + IVA dei
+#: riepiloghi) supera contanti + POS senza che l'RT dichiari un non riscosso.
+MOTIVO_NON_RISCOSSO_NON_DICHIARATO = "non_riscosso_non_dichiarato"
+#: Il non riscosso e' dichiarato ma contanti + POS + non riscosso non fanno il lordo.
+MOTIVO_NON_RISCOSSO_NON_QUADRATO = "non_riscosso_non_quadrato"
+
+#: Nomi locali delle voci con cui il tracciato COR10 dichiara il non riscosso.
+_VOCI_NON_RISCOSSO = ("NonRiscossoServizi", "NonRiscossoFatture", "NonRiscossoDCRaSSN",
+                      "NonRiscossoOmaggio", "PagatoNonRiscosso")
+
+
+def _cents(valore: Any) -> int:
+    """Centesimi interi da un importo letto dall'XML (testo o float gia' letto)."""
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        return int((Decimal(str(valore or 0).replace(",", ".")) * 100).to_integral_value())
+    except (InvalidOperation, ValueError):
+        return 0
+
+
+def _non_riscosso_dichiarato(totali, dati_rt) -> tuple:
+    """(centesimi, voci) del non riscosso **scritto** nel documento.
+
+    Si cerca nel blocco `Totali`; se li' non c'e' nessuna voce, nei riepiloghi
+    (tracciati che lo spezzano per aliquota). Mai in entrambi: lo stesso
+    importo si conterebbe due volte. Nessuna voce = non dichiarato.
+    """
+    for radice in (totali, dati_rt):
+        if radice is None:
+            continue
+        voci = []
+        for el in radice.iter():
+            nome = el.tag.split('}')[-1] if '}' in el.tag else el.tag
+            if nome in _VOCI_NON_RISCOSSO or nome.startswith("NonRiscosso"):
+                voci.append({"voce": nome, "importo_cents": _cents(el.text)})
+        if voci:
+            return sum(v["importo_cents"] for v in voci), voci
+    return 0, []
+
+
+def _motivo_scarto_giornata(*, lordo_riepiloghi: float, contanti: float, elettronico: float,
+                            non_riscosso_cents: int, dichiarato: bool) -> Optional[str]:
+    """Il motivo per cui la giornata non si registra, oppure None.
+
+    Vale solo quando il documento ripartisce il pagamento (contanti o POS
+    letti): una chiusura legacy senza `Totali` resta com'era. Con la
+    ripartizione, contanti + POS + non riscosso dichiarato devono fare il
+    lordo dei riepiloghi al centesimo: lo scarto non e' un non riscosso.
+    """
+    incassato = _cents(contanti) + _cents(elettronico)
+    if incassato <= 0:
+        return None
+    lordo = _cents(round(lordo_riepiloghi, 2))
+    if lordo <= 0:
+        return None
+    if incassato + non_riscosso_cents == lordo:
+        return None
+    return MOTIVO_NON_RISCOSSO_NON_QUADRATO if dichiarato else MOTIVO_NON_RISCOSSO_NON_DICHIARATO
 
 
 def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
@@ -214,24 +275,34 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
         
         # Estrai TotaleAmmontareAnnulli
         totale_ammontare_annulli = get_float(totali, 'TotaleAmmontareAnnulli')
-        
-        # Totale corrispettivi = contanti + elettronico
-        totale_corrispettivi = pagato_contanti + pagato_elettronico
-        
+
+        # ========== NON RISCOSSO: SOLO SE IL DOCUMENTO LO DICHIARA ==========
+        # Fino al 02/10/2026 era `lordo dei riepiloghi − (contanti + POS)`:
+        # una differenza qualunque (riga mancante, resi, un centesimo di
+        # arrotondamento) diventava un credito verso clienti e la giornata
+        # entrava quadrata d'ufficio. Ora si leggono solo le voci che l'RT
+        # scrive (`NonRiscossoServizi`, `NonRiscossoFatture`,
+        # `NonRiscossoDCRaSSN`, `NonRiscossoOmaggio`, `PagatoNonRiscosso`);
+        # lo scarto che resta e' un motivo di scarto, mai un importo.
+        non_riscosso_cents, voci_non_riscosso = _non_riscosso_dichiarato(totali, dati_rt)
+        pagato_non_riscosso = non_riscosso_cents / 100
+
+        # Totale corrispettivi = incassato (contanti + elettronico) piu' il non
+        # riscosso dichiarato: e' il lordo della giornata e deve coincidere
+        # con imponibile + IVA dei riepiloghi.
+        totale_corrispettivi = round(pagato_contanti + pagato_elettronico + pagato_non_riscosso, 2)
+
         # Se totale è 0, prova a calcolarlo dai riepiloghi
         if totale_corrispettivi == 0:
             totale_corrispettivi = totale_ammontare_lordo or totale_generico
-        
-        # ========== CALCOLO PAGATO NON RISCOSSO ==========
-        # FIX 18/07/2026 (segnalazione utente: 'non riscosso' da €244k
-        # impossibili): la vecchia formula sommava Ammontare (imponibile) +
-        # ImportoParziale (lordo) DOPPIO-contando lo stesso incasso. Il lordo
-        # di ogni riepilogo è già in importo_lordo (ImportoParziale se
-        # presente, altrimenti Ammontare+Imposta): il non riscosso è la
-        # parte di lordo non coperta da contanti+elettronico.
+
         totale_lordo_riepiloghi = sum(r.get('importo_lordo', 0) for r in riepilogo_iva)
-        pagato_non_riscosso = max(0, round(totale_lordo_riepiloghi - totale_corrispettivi, 2))
-        
+        motivo_scarto = _motivo_scarto_giornata(
+            lordo_riepiloghi=totale_lordo_riepiloghi,
+            contanti=pagato_contanti, elettronico=pagato_elettronico,
+            non_riscosso_cents=non_riscosso_cents, dichiarato=bool(voci_non_riscosso),
+        )
+
         # L'IVA assente non viene inventata mediante scorporo. Il documento
         # resta importabile come evidenza RT, ma la quadratura IVA viene
         # marcata NON_VERIFICABILE finche non esiste un valore XML stampato.
@@ -277,6 +348,12 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
             # Annulli e Non Riscosso
             "totale_ammontare_annulli": totale_ammontare_annulli,
             "pagato_non_riscosso": pagato_non_riscosso,
+            "non_riscosso_dichiarato": bool(voci_non_riscosso),
+            "non_riscosso_voci": voci_non_riscosso,
+            "lordo_riepiloghi": round(totale_lordo_riepiloghi, 2),
+            # Valorizzato solo quando la giornata non si puo' registrare: il
+            # motore unico la scarta con questo motivo, mai la fa quadrare.
+            "motivo_scarto": motivo_scarto,
             
             # IVA
             "totale_imponibile": totale_imponibile,

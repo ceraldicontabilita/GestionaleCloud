@@ -8,6 +8,7 @@ import { Snowflake, RefreshCw, ChevronLeft, ChevronRight, Printer, FileText, Edi
 import Button from "../ui/Button";
 import { API, MESI_IT } from "../../utils/constants";
 import SegnalaGuasto from "./shared/SegnalaGuasto";
+import TurnoHaccpOggi from "./shared/TurnoHaccpOggi";
 import { giorniNelMese } from "../../utils/dateUtils";
 import { testoFirmatari } from "../../utils/firmatari";
 import { CLASSE_NA, LEGENDA_NA, STILE_NA_STAMPA, eNonAttendibile, titoloNa } from "../../utils/attendibilita";
@@ -374,6 +375,8 @@ const TemperatureNegativeView = () => {
           </Button>
         </div>
       </div>
+
+      <TurnoHaccpOggi onAggiornato={fetchSchede} />
 
       {/* Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

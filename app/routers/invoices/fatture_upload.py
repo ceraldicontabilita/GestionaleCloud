@@ -1127,13 +1127,18 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     )
 
     async def _do_import(session) -> Dict[str, Any]:
-        # Controlla duplicati (l'indice unico su invoice_key resta la
-        # garanzia ultima contro una race fra due transazioni concorrenti)
+        # Stessa chiave contabile: decide `decidi_stessa_chiave`, lo stesso
+        # punto del giro Drive. Stesso originale → 409 «gia' presente» (il
+        # chiamante lo conta come doppione, nuovi=0); originale diverso →
+        # collisione: la copia entra «da verificare», bloccata e con alert.
         existing = await db[Collections.INVOICES].find_one(
             {"invoice_key": invoice_key}, session=session
         )
+        identity_collision_ids: List[Any] = []
         if existing:
-            raise HTTPException(status_code=409, detail=duplicate_detail)
+            if decidi_stessa_chiave(existing, None, xml_raw) == GIA_PRESENTE:
+                raise HTTPException(status_code=409, detail=duplicate_detail)
+            identity_collision_ids = [existing.get("id")]
 
         # Assicura che il fornitore esista
         supplier_result = await ensure_supplier_exists(db, parsed, session=session)
@@ -1236,6 +1241,10 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "source": "xml_upload",
             "filename": filename,
             "xml_raw": xml_raw,
+            # Le impronte dell'originale: senza, la prossima copia con la
+            # stessa chiave non si puo' confrontare e passa per collisione.
+            "content_hash": _xml_content_hash(xml_raw),
+            "content_hash_canonico": _impronta_canonica(xml_raw),
             "xml_body_index": parsed.get("body_index", 0),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "cedente_piva": parsed.get("supplier_vat", ""),
@@ -1249,12 +1258,27 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
             "dati_ddt": parsed.get("dati_ddt", []),
             "tipo_documento_desc": parsed.get("tipo_documento_desc", ""),
+            "duplicate_review_required": False,
+            "identity_collision_with_ids": [],
+            **(campi_collisione_identita(identity_collision_ids) if identity_collision_ids else {}),
         }
 
         await db[Collections.INVOICES].insert_one(invoice.copy(), session=session)
         invoice.pop("_id", None)
 
         logger.info(f"Fattura importata: {invoice.get('invoice_number')} - {invoice.get('supplier_name')}")
+
+        if identity_collision_ids:
+            # Collisione: nessun assegno, nessuna Prima Nota, nessuna nota di
+            # credito collegata finche' gli originali non sono confrontati.
+            await segna_collisione_identita(db, invoice, identity_collision_ids, session=session)
+            return {
+                "invoice": invoice,
+                "supplier_id": supplier_id,
+                "supplier_result": supplier_result,
+                "intento_assegno": {},
+                "collisione_identita": True,
+            }
 
         from app.services.assegni_fattura_intent import collega_intento_assegno_a_fattura
         intento_assegno = await collega_intento_assegno_a_fattura(
@@ -1300,6 +1324,12 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     invoice = outcome["invoice"]
     supplier_id = outcome["supplier_id"]
     supplier_result = outcome["supplier_result"]
+    if outcome.get("collisione_identita"):
+        # Stessa decisione del giro Drive: niente evento `fattura.created`,
+        # niente partita, giornale, report del titolare o riscontri bancari
+        # finche' un operatore non confronta i due originali.
+        invoice["collisione_identita"] = True
+        return invoice
     intento_assegno = outcome.get("intento_assegno") or {}
     if intento_assegno.get("completamento_banca_pendente"):
         from app.services.assegni_estratto_conto import (
@@ -1817,6 +1847,73 @@ def _same_documentary_original(
     return _same_original(left, _documentary_candidate(source_metadata, xml_raw))
 
 
+#: Esiti di `decidi_stessa_chiave`: la fattura con la stessa chiave contabile
+#: e' lo stesso documento (`gia_presente`, nessuna scrittura) oppure un altro
+#: originale (`collisione`: entra «da verificare», con alert, mai scartata).
+GIA_PRESENTE = "gia_presente"
+COLLISIONE = "collisione"
+
+
+def decidi_stessa_chiave(
+    existing: Dict[str, Any], source_metadata: Optional[Dict[str, Any]],
+    xml_raw: Optional[str],
+) -> str:
+    """L'unico punto che decide cosa fare di una fattura con la chiave gia' in archivio.
+
+    Numero, fornitore e data uguali non bastano a dire «doppione»: lo dice solo
+    l'originale (SHA-256 dei byte, impronta canonica del contenuto, id Drive).
+    Stesso originale → `GIA_PRESENTE` (`nuovi=0`). Originale diverso →
+    `COLLISIONE`: fino al 02/10/2026 Documenti > Import rispondeva «duplicata»
+    e buttava la seconda copia, mentre il giro Drive la metteva da verificare
+    con l'alert. Senza nessuna prova documentale (ne' XML ne' metadati) non si
+    puo' dimostrare la differenza, e vale il doppione.
+    """
+    if not (source_metadata or xml_raw):
+        return GIA_PRESENTE
+    if _same_documentary_original(existing, source_metadata, xml_raw):
+        return GIA_PRESENTE
+    return COLLISIONE
+
+
+def campi_collisione_identita(collision_ids: List[Any]) -> Dict[str, Any]:
+    """I campi che marcano una copia in collisione: stato non archiviato,
+    derivati bloccati, `stato_import` di collisione, riferimento reciproco."""
+    ids = [i for i in collision_ids if i]
+    return {
+        "status": "da_verificare",
+        "stato_derivati": "bloccato_collisione_identita",
+        "stato_import": "collisione_identita_da_verificare",
+        "duplicate_review_required": True,
+        "identity_collision_with_ids": ids,
+    }
+
+
+async def segna_collisione_identita(db, invoice: Dict[str, Any], collision_ids: List[Any],
+                                    session=None) -> None:
+    """Collega le due copie fra loro e apre l'alert: nessun pagamento, scadenza
+    o giornale finche' un operatore non confronta gli originali."""
+    ids = [i for i in collision_ids if i]
+    if not ids:
+        return
+    await db[Collections.INVOICES].update_one(
+        {"id": ids[0]},
+        {"$set": {"duplicate_review_required": True},
+         "$addToSet": {"identity_collision_with_ids": invoice["id"]}},
+        session=session,
+    )
+    try:
+        from app.services.alert_engine import genera_alert
+        await genera_alert(
+            "FATTURA_IDENTITA_DA_VERIFICARE", invoice["id"],
+            Collections.INVOICES,
+            "Chiave contabile coincidente ma originale documentale diverso",
+            db,
+            extra={"collision_with_ids": ids},
+        )
+    except Exception:
+        logger.exception("Creazione alert collisione fattura fallita")
+
+
 def _source_metadata_fields(
     metadata: Optional[Dict[str, Any]],
     existing: Optional[Dict[str, Any]] = None,
@@ -1917,6 +2014,12 @@ async def _consegna_chiusura_rt(
 
     esito = await ingest_corrispettivo_parsed(
         db, parsed, filename=filename, source="xml", update_if_exists=False)
+    if esito.get("action") == "scartato":
+        # Chi smista manda il file in ERRORI col motivo: non e' una giornata
+        # importata, e nemmeno un doppione.
+        return {"status": "error", "filename": filename, "data": esito.get("data"),
+                "motivo": esito.get("motivo"),
+                "error": f"chiusura RT del {esito.get('data')} scartata: {esito.get('motivo')}"}
     logger.info(
         "[Fatture] %s non e' una fattura ma la chiusura RT del %s, arrivata nel "
         "canale fatture da %s: consegnata ai corrispettivi (%s)",
@@ -2155,9 +2258,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         {"invoice_key": invoice_key}, {"_id": 0}
     )
     if existing_invoice and str(existing_invoice.get("id")) != str(existing_invoice_id or ""):
-        has_documentary_evidence = bool(source_metadata or xml_raw)
-        if (not has_documentary_evidence or
-                _same_documentary_original(existing_invoice, source_metadata, xml_raw)):
+        if decidi_stessa_chiave(existing_invoice, source_metadata, xml_raw) == GIA_PRESENTE:
             provenance = _source_metadata_fields(source_metadata, existing_invoice)
             if provenance:
                 await db[Collections.INVOICES].update_one(
@@ -2223,7 +2324,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
         "dati_ddt": parsed.get("dati_ddt", []),
         "metodo_pagamento": metodo_pagamento,
-        "status": "da_verificare" if identity_collision_ids else "imported",
+        "status": "imported",
         "source": base_existing.get("source") or source,
         "source_history": list(dict.fromkeys([
             *(base_existing.get("source_history") or []),
@@ -2243,19 +2344,14 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "importo_totale": float(parsed.get("total_amount", 0) or 0),
         "anno": int(invoice_date[:4]) if invoice_date[:4].isdigit() else None,
         "replay_storico": replay_storico,
-        "stato_derivati": (
-            "bloccato_collisione_identita" if identity_collision_ids
-            else "da_ricalcolare"
-        ),
-        "stato_import": (
-            "collisione_identita_da_verificare" if identity_collision_ids
-            else "promosso_da_archivio" if existing_invoice_id else "attivo"
-        ),
+        "stato_derivati": "da_ricalcolare",
+        "stato_import": "promosso_da_archivio" if existing_invoice_id else "attivo",
         "promotion_source": source if existing_invoice_id else None,
         "promoted_at": datetime.now(timezone.utc).isoformat() if existing_invoice_id else None,
-        "duplicate_review_required": bool(identity_collision_ids),
-        "identity_collision_with_ids": [i for i in identity_collision_ids if i],
+        "duplicate_review_required": False,
+        "identity_collision_with_ids": [],
         **_source_metadata_fields(source_metadata, base_existing),
+        **(campi_collisione_identita(identity_collision_ids) if identity_collision_ids else {}),
     }
     if existing_invoice_id:
         await db[Collections.INVOICES].update_one(
@@ -2278,25 +2374,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         )
 
     if identity_collision_ids:
-        # Collegamento reciproco alla collisione, non alla stessa fattura:
-        # nessun pagamento, scadenza o giornale viene generato finche' un
-        # operatore non verifica gli originali.
-        await db[Collections.INVOICES].update_one(
-            {"id": identity_collision_ids[0]},
-            {"$set": {"duplicate_review_required": True},
-             "$addToSet": {"identity_collision_with_ids": invoice["id"]}},
-        )
-        try:
-            from app.services.alert_engine import genera_alert
-            await genera_alert(
-                "FATTURA_IDENTITA_DA_VERIFICARE", invoice["id"],
-                Collections.INVOICES,
-                "Chiave contabile coincidente ma originale documentale diverso",
-                db,
-                extra={"collision_with_ids": identity_collision_ids},
-            )
-        except Exception:
-            logger.exception("Creazione alert collisione fattura fallita")
+        await segna_collisione_identita(db, invoice, identity_collision_ids)
         return {
             "status": "imported", "requires_review": True,
             "filename": filename,

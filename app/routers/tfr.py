@@ -159,19 +159,57 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
     
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    
+
+    # Un accantonamento gia' presente per dipendente+anno non si ricalcola ne'
+    # si riscrive (stessa guardia del gemello HR): un secondo POST con una
+    # retribuzione diversa aggiornava due volte tfr_accantonato e inseriva un
+    # secondo record, mentre il giornale restava fermo alla prima scrittura.
+    esistente = await db["tfr_accantonamenti"].find_one(
+        {"dipendente_id": input_data.dipendente_id, "anno": input_data.anno},
+        {"_id": 0},
+    )
+    if esistente:
+        return {
+            "success": True,
+            "gia_registrato": True,
+            "accantonamento_id": esistente["id"],
+            "messaggio": (
+                f"TFR {input_data.anno} gia' accantonato per "
+                f"{dipendente.get('nome_completo', '')}"
+            ),
+            "dettaglio": {
+                "quota_annuale": esistente.get("quota_annuale"),
+                "rivalutazione": esistente.get("rivalutazione"),
+                "totale_accantonato": esistente.get("totale_accantonamento"),
+                "nuovo_tfr_totale": esistente.get("nuovo_tfr_totale"),
+            },
+        }
+
     # Calcola quota annuale
     quota_annuale = input_data.retribuzione_annua / TFR_DIVISORE
-    
+
     # Calcola rivalutazione sul TFR accumulato precedente
     tfr_precedente = float(dipendente.get("tfr_accantonato", 0))
     # Art. 2120 c.c.: 1.5% fisso + 75% dell'indice ISTAT
     tasso_rivalutazione = (RIVALUTAZIONE_FISSA + input_data.indice_istat * 0.75) / 100
     rivalutazione = tfr_precedente * tasso_rivalutazione
-    
+
     # Totale accantonamento anno
     totale_accantonamento = quota_annuale + rivalutazione
-    
+
+    # Un indice ISTAT anomalo puo' rendere la rivalutazione piu' negativa della
+    # quota: la scrittura quadrerebbe con DARE e AVERE negativi, invertita.
+    # Si rifiuta prima di scrivere (stessa guardia del gemello HR).
+    if totale_accantonamento <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Accantonamento TFR calcolato non positivo "
+                f"({round(totale_accantonamento, 2)}): verificare indice ISTAT "
+                "e TFR precedente prima di registrare"
+            ),
+        )
+
     # Nuovo TFR totale
     nuovo_tfr_totale = tfr_precedente + totale_accantonamento
     
@@ -200,10 +238,11 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
         {"$set": {"tfr_accantonato": round(nuovo_tfr_totale, 2)}}
     )
     
-    # Registra scrittura contabile in partita doppia (motore §6.1/A7):
-    # DARE costo TFR, AVERE debito/fondo TFR. Idempotente per dipendente+anno.
+    # Scrittura in partita doppia col motore unico, sui conti CEE ufficiali
+    # (gli stessi del gemello HR): DARE 67.01.07.01 Quote TFR, AVERE 29.01.01
+    # Fondo TFR. Idempotente per dipendente+anno.
     from app.services.registrazione_contabile import (
-        registra_scrittura_semplice, riga, _C_TFR_COSTO, _C_TFR_DEBITO,
+        registra_scrittura_semplice, riga, _C_QUOTE_TFR, _C_FONDO_TFR,
     )
     imp = round(totale_accantonamento, 2)
     await registra_scrittura_semplice(
@@ -220,8 +259,12 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
                 "rivalutazione": round(rivalutazione, 2)
             },
         },
-        righe=[riga(_C_TFR_COSTO, dare=imp, descrizione="Accantonamento TFR"),
-               riga(_C_TFR_DEBITO, avere=imp, descrizione="Debito TFR")],
+        righe=[
+            riga(_C_QUOTE_TFR, dare=imp,
+                 descrizione=f"Quote TFR {input_data.anno} - {dipendente.get('nome_completo', '')}"),
+            riga(_C_FONDO_TFR, avere=imp,
+                 descrizione=f"Accantonamento a fondo TFR {input_data.anno}"),
+        ],
         chiave_naturale={"tipo": "tfr_accantonamento",
                          "dipendente_id": input_data.dipendente_id,
                          "anno": input_data.anno},
@@ -334,13 +377,15 @@ async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
         {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
     )
     
-    # Registra scritture contabili in partita doppia (motore §6.1/A7),
-    # idempotenti sulla liquidazione.
+    # Scritture in partita doppia col motore unico, sui conti CEE ufficiali
+    # (gli stessi del gemello HR), idempotenti sulla liquidazione.
     from app.services.registrazione_contabile import (
-        registra_scrittura_semplice, riga, _C_TFR_DEBITO, _C_DEBITI_TRIBUTARI,
-        _C_BANCA,
+        registra_scrittura_semplice, riga,
+        _C_FONDO_TFR, _C_PERSONALE_LIQUIDAZIONE, _C_ERARIO_TFR,
     )
-    # 1. Utilizzo fondo TFR: DARE fondo (lordo), AVERE banca
+    # 1. Utilizzo fondo TFR: DARE 29.01.01 fondo, AVERE 39.07.05 debito v/dipendente
+    # per il lordo. Il pagamento in banca e' un fatto successivo e separato
+    # (la proiezione bancaria), non lo scrive la liquidazione.
     lordo = round(importo_lordo, 2)
     await registra_scrittura_semplice(
         db,
@@ -353,13 +398,17 @@ async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
             "motivo": input_data.motivo,
             "liquidazione_id": liquidazione["id"],
         },
-        righe=[riga(_C_TFR_DEBITO, dare=lordo, descrizione="Utilizzo fondo TFR"),
-               riga(_C_BANCA, avere=lordo, descrizione="Pagamento TFR")],
+        righe=[
+            riga(_C_FONDO_TFR, dare=lordo, descrizione="Utilizzo fondo TFR"),
+            riga(_C_PERSONALE_LIQUIDAZIONE, avere=lordo,
+                 descrizione=f"Debito v/dipendente per liquidazione TFR - {dipendente.get('nome_completo', '')}"),
+        ],
         chiave_naturale={"tipo": "tfr_liquidazione",
                          "liquidazione_id": liquidazione["id"]},
     )
 
-    # 2. Ritenute trattenute: DARE banca (netto trattenuto), AVERE debiti tributari
+    # 2. Ritenute: il dovuto al dipendente scende di quanto trattenuto come
+    # imposta sostitutiva, che diventa debito v/erario (35.03.15).
     if ritenute > 0:
         rit = round(ritenute, 2)
         await registra_scrittura_semplice(
@@ -372,8 +421,11 @@ async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
                 "dipendente_id": input_data.dipendente_id,
                 "liquidazione_id": liquidazione["id"],
             },
-            righe=[riga(_C_BANCA, dare=rit, descrizione="Ritenuta trattenuta"),
-                   riga(_C_DEBITI_TRIBUTARI, avere=rit, descrizione="Debito ritenute TFR")],
+            righe=[
+                riga(_C_PERSONALE_LIQUIDAZIONE, dare=rit, descrizione="Ritenute TFR"),
+                riga(_C_ERARIO_TFR, avere=rit,
+                     descrizione=f"Debito v/erario imposta sostitutiva TFR - {dipendente.get('nome_completo', '')}"),
+            ],
             chiave_naturale={"tipo": "ritenuta_tfr",
                              "liquidazione_id": liquidazione["id"]},
         )
@@ -827,37 +879,12 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
 
     await db["acconti_dipendenti"].insert_one(acconto.copy())
 
-    # Se è un acconto TFR, aggiorna anche il TFR del dipendente (logica preesistente)
+    # Acconto TFR: scala il fondo del dipendente e scrive il giornale
+    # (29.01.01 / 39.07.05) col motore unico, lo stesso del gemello HR.
     if input_data.tipo == "tfr":
-        tfr_attuale = float(dipendente.get("tfr_accantonato", 0))
-        nuovo_tfr = max(0, tfr_attuale - input_data.importo)
-        await db["dipendenti"].update_one(
-            {"id": input_data.dipendente_id},
-            {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
-        )
+        from app.services.tfr_acconti import registra_acconto_tfr
 
-        # Registra scrittura contabile in partita doppia (motore §6.1/A7):
-        # DARE fondo TFR (riduzione), AVERE banca. Idempotente sull'acconto.
-        from app.services.registrazione_contabile import (
-            registra_scrittura_semplice, riga, _C_TFR_DEBITO, _C_BANCA,
-        )
-        imp = round(input_data.importo, 2)
-        await registra_scrittura_semplice(
-            db,
-            movimento={
-                "data": input_data.data,
-                "descrizione": f"Acconto TFR - {dipendente.get('nome_completo', '')}",
-                "tipo": "acconto_tfr",
-                "importo": imp,
-                "dipendente_id": input_data.dipendente_id,
-                "note": input_data.note or "",
-                "acconto_id": acconto["id"],
-                "created_at": now_iso,
-            },
-            righe=[riga(_C_TFR_DEBITO, dare=imp, descrizione="Acconto su TFR"),
-                   riga(_C_BANCA, avere=imp, descrizione="Pagamento acconto TFR")],
-            chiave_naturale={"tipo": "acconto_tfr", "acconto_id": acconto["id"]},
-        )
+        await registra_acconto_tfr(db, db, acconto, dipendente)
 
     return {
         "success": True,
@@ -897,17 +924,12 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
             raise HTTPException(status_code=400, detail="L'importo deve essere positivo")
         update_fields["importo"] = round(nuovo_importo, 2)
 
-        # Se è un acconto TFR, aggiorna il saldo del dipendente
-        if acconto.get("tipo") == "tfr":
-            dipendente = await db["dipendenti"].find_one({"id": acconto["dipendente_id"]})
-            if dipendente:
-                tfr_attuale = float(dipendente.get("tfr_accantonato", 0))
-                # Ripristina il vecchio importo e sottrai il nuovo
-                nuovo_tfr = tfr_attuale + vecchio_importo - nuovo_importo
-                await db["dipendenti"].update_one(
-                    {"id": acconto["dipendente_id"]},
-                    {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
-                )
+        # Acconto TFR: il giornale si rettifica per la differenza (mai cancellato)
+        # e il fondo del dipendente si riallinea, col motore unico.
+        if acconto.get("tipo") == "tfr" and round(nuovo_importo, 2) != round(float(vecchio_importo or 0), 2):
+            from app.services.tfr_acconti import correggi_importo_acconto_tfr
+
+            await correggi_importo_acconto_tfr(db, db, acconto, nuovo_importo)
 
     if "data" in input_data and input_data["data"]:
         nuova_data = input_data["data"]
@@ -990,17 +1012,12 @@ async def elimina_acconto(acconto_id: str) -> Dict[str, Any]:
     if not acconto:
         raise HTTPException(status_code=404, detail="Acconto non trovato")
     
-    # Se era un acconto TFR, ripristina il valore
+    # Acconto TFR: il fondo torna com'era e la scrittura si storna, mai cancellata
     if acconto.get("tipo") == "tfr":
-        dipendente = await db["dipendenti"].find_one({"id": acconto["dipendente_id"]})
-        if dipendente:
-            tfr_attuale = float(dipendente.get("tfr_accantonato", 0))
-            nuovo_tfr = tfr_attuale + acconto.get("importo", 0)
-            await db["dipendenti"].update_one(
-                {"id": acconto["dipendente_id"]},
-                {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
-            )
-    
+        from app.services.tfr_acconti import ritira_acconto_tfr
+
+        await ritira_acconto_tfr(db, db, acconto)
+
     # Elimina acconto
     await db["acconti_dipendenti"].delete_one({"id": acconto_id})
     

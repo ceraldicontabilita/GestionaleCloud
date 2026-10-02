@@ -199,11 +199,11 @@ export default function VerbaliRiconciliazione() {
         setSuccessMsg('Nessun verbale duplicato trovato');
         return;
       }
-      // Azione distruttiva/irreversibile (unisce ed elimina righe duplicate): conferma esplicita obbligatoria.
+      // Le copie vanno in quarantena per id (mai cancellate): conferma esplicita comunque.
       if (
         !(await confirm({
-          title: 'Pulizia verbali duplicati',
-          message: `Trovati ${nGruppi} verbali duplicati (${anteprima.data.documenti_eliminati} righe da unire). Procedere con la pulizia?`,
+          title: 'Verbali duplicati in quarantena',
+          message: `Trovati ${nGruppi} verbali duplicati (${anteprima.data.documenti_in_quarantena} copie da mettere in quarantena). Procedere?`,
           variant: 'danger',
         }))
       ) {
@@ -211,7 +211,7 @@ export default function VerbaliRiconciliazione() {
       }
       const res = await api.post('/api/verbali-riconciliazione/pulisci-duplicati?dry_run=false');
       setSuccessMsg(
-        `Puliti ${res.data.gruppi_processati} verbali duplicati (${res.data.documenti_eliminati} righe rimosse)`
+        `Uniti ${res.data.gruppi_processati} verbali duplicati (${res.data.documenti_in_quarantena} copie in quarantena, nessuna cancellata)`
       );
       loadDashboard();
       loadVerbali();
@@ -392,10 +392,10 @@ export default function VerbaliRiconciliazione() {
             onClick={handlePulisciDuplicati}
             disabled={pulendoDuplicati}
             data-testid="btn-pulisci-duplicati"
-            title="Unisce i verbali duplicati (stesso numero verbale in più righe)"
+            title="Unisce i verbali duplicati (stesso numero in più righe): le copie vanno in quarantena, nessuna cancellata"
             style={{ background: COLORS.gray[500], color: '#fff', borderColor: COLORS.gray[500] }}
           >
-            {pulendoDuplicati ? 'Pulizia...' : 'Pulisci Duplicati'}
+            {pulendoDuplicati ? 'Verifica...' : 'Duplicati in quarantena'}
           </Button>
         </div>
 

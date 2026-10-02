@@ -28,6 +28,7 @@ from app.services.alert_engine import (
     COLL_ALERTS,
     risolvi_alert_per_id,
 )
+from app.services.pagamenti_dichiarati_titolare import DATA_PAGAMENTO_ADDEBITO_BANCA
 from app.utils.id_fattura import filtro_id, filtro_id_in
 
 logger = logging.getLogger(__name__)
@@ -390,13 +391,17 @@ async def fatture_pagate_con_assegno(db) -> Dict[str, int]:
     for fattura_id, voce in per_fattura.items():
         fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0, "id": 1, "status": 1,
             "stato_import": 1, "entity_status": 1, "deleted": 1, "total_amount": 1,
-            "data_pagamento": 1, **{campo: 1 for campo in CAMPI_FATTURA_PAGATA}})
+            "data_pagamento": 1, "data_pagamento_fonte": 1,
+            **{campo: 1 for campo in CAMPI_FATTURA_PAGATA}})
         if not fattura or not fattura_attiva(fattura):
             continue
         if centesimi(fattura.get("total_amount")) != voce["cent"]:
             esito["totale_diverso"] += 1
             continue
-        atteso = {**CAMPI_FATTURA_PAGATA, "data_pagamento": max(voce["date"])}
+        # La data del pagamento e' quella dell'addebito in banca, mai quella
+        # di compilazione dell'assegno o della dichiarazione del titolare.
+        atteso = {**CAMPI_FATTURA_PAGATA, "data_pagamento": max(voce["date"]),
+                  "data_pagamento_fonte": DATA_PAGAMENTO_ADDEBITO_BANCA}
         if all(fattura.get(k) == v for k, v in atteso.items()):
             continue
         await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
