@@ -295,6 +295,7 @@ async function hotelLogin(cod){
  const h=await rpc("bb_hotel_info",{codice:cod||""}).catch(()=>null);
  if(!h){app.innerHTML=`<div class="card">Link non valido. Chiedi al bar di inviartene uno nuovo.</div>`;return}
  if(sess&&sess.r==="alb"&&sess.s===h.id){go("#/albergatore/home");return}
+ if(h.demo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card"><h3>Registrazione del gestore richiesta</h3><p>Questo collegamento appartiene ancora ai dati di prova. Non inserire il PIN dimostrativo: chiedi al bar di condividere il link di registrazione, poi scegli il tuo PIN personale.</p></div>`;return}
  if(!h.attivo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">L'accesso non è ancora attivo. Usa il <b>link di invito</b> che ti ha inviato il bar.</div>`;return}
  app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card"><label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" onkeydown="if(event.key==='Enter')hotelEntra('${h.id}','${esc(cod)}')"><button class="btn" onclick="hotelEntra('${h.id}','${esc(cod)}')">Entra</button>
   <p style="text-align:center;margin:12px 0 0"><a href="#/recupero/${esc(cod)}">Ho perso il PIN</a></p></div>`}
@@ -336,13 +337,14 @@ async function invito(tok){
  $("#ttl").textContent="☕ Colazioni B&B";loading();
  const h=await rpc("bb_invito_info",{token:tok||""}).catch(()=>null);
  if(!h){app.innerHTML=`<div class="card">Invito non valido o già utilizzato. Se hai già attivato l'accesso, usa il tuo link personale; altrimenti chiedi al bar un nuovo invito.</div>`;return}
- app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto||"Benvenuto! Attiva il tuo accesso in pochi secondi.")+`<div class="card"><h3>Attiva il tuo accesso</h3><p class="mute">Scegli un PIN personale: ti servirà ogni volta che entri.</p>
+ app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto||"Benvenuto! Attiva il tuo accesso in pochi secondi.")+`<div class="card"><h3>Registrati come gestore</h3><p class="mute">Scegli un PIN personale: ti servirà ogni volta che entri. I PIN dimostrativi non sono accettati.</p>
  <label>PIN (almeno 4 caratteri)</label><input id="i_p" type="password" autocomplete="new-password"><label>Ripeti il PIN</label><input id="i_p2" type="password" autocomplete="new-password">
  <label>Indirizzo della struttura</label><input id="i_a" value="${esc(h.indirizzo)}"><label>Telefono</label><input id="i_t" type="tel" value="${esc(h.telefono)}"><label>Email</label><input id="i_e" type="email" value="${esc(h.email)}">
  <h3 style="margin-top:16px">🧾 Dati per la fattura</h3>${fiscaliForm({})}
  <button class="btn" onclick="invitoOk('${esc(tok)}')">Attiva il mio accesso</button></div>`}
 async function invitoOk(tok){
  const p=$("#i_p").value;if(p!==$("#i_p2").value)return toast("I due PIN non coincidono");
+ if(["1111","2222","3333"].includes(p))return toast("Scegli un PIN personale diverso da quello di prova");
  const r=await run("bb_invito_accetta",{token:tok,ppin:p,pindirizzo:$("#i_a").value,ptelefono:$("#i_t").value,pemail:$("#i_e").value});if(!r||r===true)return;
  const fd=fiscaliLeggi();
  if(Object.values(fd).some(x=>String(x).trim())){const q=await rpc("bb_alb_fiscali_salva",{sid:r.id,p:r.token,pdati:fd}).catch(e=>({ok:false,msg:e.message}));if(!q||!q.ok)toast("Dati per la fattura non salvati ("+((q&&q.msg)||"errore")+"): li completi dal Profilo")}
@@ -940,25 +942,27 @@ async function invitaCrea(){
  go("#/titolare/invito/"+r.id)}
 function pInvito(id){
  const s=TIT.strutture.find(x=>x.id===id);if(!s)return `<div class="card">Struttura non trovata.</div>`;
+ const registrazione=s.demo||!!s.invito_token||!s.attivo;
  return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2><span class="pill ${s.attivo?"p-ok":"p-warn"}">${s.attivo?"attivo":"in attesa di attivazione"}</span></div>
- ${s.invito_token?`<div class="card"><h3>📨 Invito da inviare</h3><p class="mute">Il B&B apre il link, sceglie il suo PIN e attiva l'accesso. Puoi modificare il messaggio prima di inviarlo.</p>
-  <textarea id="inv_t" rows="4">${esc(msgInvito(s,linkInvito(s)))}</textarea>
-  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px"><button class="btn" onclick="invSend('wa','${id}')">💬 WhatsApp</button><button class="btn sec" onclick="invSend('mail','${id}')">✉️ Email</button><button class="btn sec" onclick="invSend('copia','${id}')">Copia messaggio</button><button class="btn sec" onclick="invSend('share','${id}')">Condividi…</button></div>
-  <div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(linkInvito(s))}</p></div></div>`:""}
- ${!s.invito_token?`<div class="card"><h3>📨 Condividi l'app con ${esc(s.nome)}</h3><p class="mute">Manda il link personale: l'albergatore entra con il suo PIN. Puoi cambiare il messaggio prima di inviarlo.</p>
-  <textarea id="acc_t" rows="4">${esc(msgAccesso(s,linkHotel(s)))}</textarea>
-  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px"><button class="btn" onclick="invSend('wa','${id}','acc_t')">💬 WhatsApp</button><button class="btn sec" onclick="invSend('mail','${id}','acc_t')">✉️ Email</button><button class="btn sec" onclick="invSend('copia','${id}','acc_t')">Copia messaggio</button><button class="btn sec" onclick="invSend('share','${id}','acc_t')">Condividi…</button><button class="btn sec" onclick="stampaAccesso('${id}')">🖨 Stampa QR</button></div>
+ ${registrazione?`<div class="card"><h3>Registrazione del gestore</h3><p class="mute">Condividi l'invito: il gestore si registra e sceglie un PIN personale. Non deve usare il PIN di prova.</p>
+  <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
+  ${s.invito_token?`<div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(linkInvito(s))}</p></div>`:`<p class="mute">Il link di registrazione verrà creato quando tocchi Condividi.</p>`}</div>`:""}
+ ${!registrazione?`<div class="card"><h3>Condividi l'accesso con ${esc(s.nome)}</h3><p class="mute">Il gestore è già registrato: questo collegamento apre l'accesso con il suo PIN personale.</p>
+  <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
   <div style="text-align:center;margin-top:12px"><div class="qr" id="accqr2" style="display:inline-flex"></div></div></div>`:""}
- <div class="card"><h3>🔗 Link di accesso personale</h3><p class="mute">È il link che il B&B userà ogni volta per entrare (con il suo PIN). Mostra solo il nome del suo albergo.</p><p style="word-break:break-all">${esc(linkHotel(s))}</p>
-  <button class="btn sm sec" onclick="navigator.clipboard.writeText('${linkHotel(s)}').then(()=>toast('Link copiato'))">Copia link</button> <a class="btn sm sec" style="text-decoration:none;display:inline-block" href="${linkHotel(s)}" target="_blank" rel="noopener">Apri come lo vede il B&B</a></div>
+ ${!s.demo?`<div class="card"><h3>🔗 Link di accesso personale</h3><p class="mute">È il link che il B&B userà ogni volta per entrare (con il suo PIN). Mostra solo il nome del suo albergo.</p><p style="word-break:break-all">${esc(linkHotel(s))}</p>
+  <button class="btn sm sec" onclick="navigator.clipboard.writeText('${linkHotel(s)}').then(()=>toast('Link copiato'))">Copia link</button> <a class="btn sm sec" style="text-decoration:none;display:inline-block" href="${linkHotel(s)}" target="_blank" rel="noopener">Apri come lo vede il B&B</a></div>`:""}
  <div class="card"><h3>${s.attivo?"PIN dimenticato?":"Invito scaduto o perso?"}</h3><p class="mute">Crea un nuovo invito: chi lo apre potrà scegliere un nuovo PIN.</p><button class="btn sec" onclick="invRigenera('${id}')">Genera un nuovo invito</button></div>`}
 pInvito.after=id=>{const s=TIT.strutture.find(x=>x.id===id);const e=$("#invqr");if(e&&s.invito_token)qr(e,linkInvito(s),150);const a=$("#accqr2");if(a&&!s.invito_token)qr(a,linkHotel(s),150)};
-function invSend(tipo,id,campo){
- const s=TIT.strutture.find(x=>x.id===id),t=$("#"+(campo||"inv_t")).value;
- if(tipo==="wa")window.open("https://wa.me/"+digits(s.telefono)+"?text="+encodeURIComponent(t),"_blank");
- else if(tipo==="mail")location.href="mailto:"+(s.email||"")+"?subject="+encodeURIComponent("Il tuo accesso a Colazioni B&B")+"&body="+encodeURIComponent(t);
- else if(tipo==="copia")navigator.clipboard.writeText(t).then(()=>toast("Messaggio copiato"));
- else if(navigator.share)navigator.share({text:t}).catch(()=>{});else navigator.clipboard.writeText(t).then(()=>toast("Messaggio copiato"))}
+async function condividiGestore(id){
+ const s=TIT.strutture.find(x=>x.id===id);if(!s)return;
+ const registrazione=s.demo||!!s.invito_token||!s.attivo;let link,testo;
+ if(registrazione){
+  if(!s.invito_token){const r=await run("bb_tit_invito_rigenera",{p:sess.p,sid:id});if(!r||!r.invito)return;s.invito_token=r.invito}
+  link=linkInvito(s);testo=msgInvito(s,link)
+ }else{link=linkHotel(s);testo=msgAccesso(s,link)}
+ if(navigator.share)return navigator.share({title:"Colazioni B&B",text:testo,url:link}).catch(e=>{if(e.name!=="AbortError")toast("Condivisione non riuscita")});
+ navigator.clipboard.writeText(testo).then(()=>toast("Messaggio copiato: ora puoi condividerlo"))}
 async function invRigenera(id){if(!confirm("Creare un nuovo invito? Il vecchio link smette di funzionare."))return;if(await run("bb_tit_invito_rigenera",{p:sess.p,sid:id},"Nuovo invito creato"))go("#/titolare/invito/"+id)}
 function pStruttura(id){
  const s=TIT.strutture.find(x=>x.id===id);if(!s)return `<div class="card">Struttura non trovata.</div>`;
