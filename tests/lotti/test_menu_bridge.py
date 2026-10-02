@@ -260,11 +260,11 @@ def test_descrizione_automatica_si_salva_si_aggiorna_e_rispetta_manuale(ambiente
     assert finto.tabelle["menu_products"][0]["description_it"] is None
 
 
-def test_create_ricetta_pubblica_nel_menu_nascosta_per_default(ambiente):
+def test_create_ricetta_pubblica_nel_menu_visibile_per_default(ambiente):
     ricette, database, finto = ambiente
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
 
-    assert creata["menu_pubblico"] is False
+    assert creata["menu_pubblico"] is True
     assert creata["menu_sync"]["esito"] == "pubblicato"
     assert creata["menu_sync"]["lotti_ref"] == f"ricetta:{creata['id']}"
 
@@ -273,7 +273,7 @@ def test_create_ricetta_pubblica_nel_menu_nascosta_per_default(ambiente):
     riga = prodotti[0]
     assert riga["lotti_ref"] == f"ricetta:{creata['id']}"
     assert riga["origine"] == "lotti"
-    assert riga["visible"] is False
+    assert riga["visible"] is True
     assert riga["name"] == riga["name_it"] == "Babà al rum"
     assert riga["price"] == "3.50€"
     assert riga["description_it"] == "Babà classico napoletano"
@@ -293,7 +293,7 @@ def test_create_ricetta_pubblica_nel_menu_nascosta_per_default(ambiente):
 
     # Salvata in Lotti con il flag
     salvata = run(database.ricette.find_one({"id": creata["id"]}))
-    assert salvata["menu_pubblico"] is False
+    assert salvata["menu_pubblico"] is True
 
 
 def test_create_ricetta_menu_pubblico_true_e_visibile(ambiente):
@@ -461,7 +461,7 @@ def test_errore_pulizia_precedente_non_nega_upload_gia_persistito(ambiente, monk
 
 def test_patch_menu_pubblico_aggiorna_visible(ambiente):
     ricette, database, finto = ambiente
-    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(menu_pubblico=False))))
     assert finto.tabelle["menu_products"][0]["visible"] is False
 
     esito = run(ricette.aggiorna_campo_ricetta(creata["id"], {"menu_pubblico": True}))
@@ -524,7 +524,7 @@ def test_menu_non_configurato_esito_e_endpoint_200(monkeypatch):
     assert risposta.status_code == 200, risposta.text
     corpo = risposta.json()
     assert corpo["menu_sync"]["esito"] == "non_configurato"
-    assert corpo["menu_pubblico"] is False
+    assert corpo["menu_pubblico"] is True
     assert run(database.ricette.count_documents({})) == 1
 
     assert run(menu_bridge.rimuovi_prodotto_dal_menu("ricetta:x")) == {"esito": "non_configurato", "lotti_ref": "ricetta:x"}

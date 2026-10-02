@@ -91,6 +91,7 @@ async def lifespan(app: FastAPI):
         _allinea_badge_documenti_in_background(Database.get_db()),
         name="startup_allinea_badge_documenti",
     )
+    menu_pubblico_task = None
 
     # Bus eventi unico (app/services/event_bus.py): include anche gli handler
     # migrati dal vecchio bus core (app/core/event_bus.py, rimosso).
@@ -123,10 +124,22 @@ async def lifespan(app: FastAPI):
     # funzione avvia_* cattura le proprie eccezioni: un errore non ferma mai il
     # gestionale. HR e Lotti hanno uno scheduler proprio: partono solo quando
     # anche quello dell'ERP e' attivo (mai nel ruolo "web" o nei test).
-    if scheduler_attivo:
-        from app.lotti.embed import avvia_lotti
+    # Lotti parte sempre (handler eventi, seed, cataloghi servono alle API);
+    # solo il suo scheduler segue il ruolo del processo.
+    from app.lotti.embed import avvia_lotti
 
-        await avvia_lotti()
+    await avvia_lotti(avvia_scheduler=scheduler_attivo)
+    if scheduler_attivo:
+        try:
+            from app.lotti.db import database as lotti_db
+            from app.lotti.servizi.menu_pubblico_default import applica_sicuro as applica_menu_pubblico
+
+            menu_pubblico_task = asyncio.create_task(
+                applica_menu_pubblico(lotti_db),
+                name="startup_menu_pubblico_ricette",
+            )
+        except Exception as e:
+            logger.warning("Attivazione predefinita ricette nel Menu rimandata: %s", e)
 
     # La connessione al DB di HR serve anche quando gli scheduler sono spenti
     # (ruolo web o ENABLE_SCHEDULER=false). Solo i job periodici seguono il flag.
@@ -680,6 +693,10 @@ async def lifespan(app: FastAPI):
         badge_alignment_task.cancel()
         with suppress(asyncio.CancelledError):
             await badge_alignment_task
+    if menu_pubblico_task is not None and not menu_pubblico_task.done():
+        menu_pubblico_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await menu_pubblico_task
     try:
         from app.services.email_monitor_service import stop_monitor
 

@@ -62,7 +62,7 @@ export function moveTabletSessionTo(reparto) {
   return saveTabletSession(session, reparto);
 }
 
-/** Il titolare e' entrato dal Gestionale (token amministratore di Lotti). */
+/** La sessione corrente ha un token amministratore di Lotti, da ERP o PIN HR. */
 export function sessioneTitolareAttiva() {
   return !!getToken() && isAdmin();
 }

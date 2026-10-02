@@ -16,8 +16,7 @@ Il censimento fallisce in due modi, e tutti e due li ho fatti quel giorno:
   per morti 61 moduli invece di 14, compreso un router da 2.759 righe montato
   in `app/hr/main.py`;
 - **import dinamici non visti** (`__import__("app.scripts.migra_...")`): dava
-  per morti i sei script di migrazione, che `scripts/verifica_migrazioni_
-  produzione.py` carica per nome.
+  per morti sei script di migrazione, caricati per nome da un altro script.
 Per questo si guarda **tutto** il repository, non solo `app/` e `tests/`, e si
 cercano anche le stringhe `"app.qualcosa"`.
 """
@@ -113,13 +112,21 @@ def test_la_lista_dei_tollerati_non_cresce() -> None:
     )
 
 
-def test_il_censimento_vede_gli_import_dinamici() -> None:
-    """Prova del bug che mi ha fatto dare per morti sei script vivi."""
-    visti = _importati(_sorgenti())
-    assert "app.scripts.migra_f24_unificato" in visti, (
-        "`scripts/verifica_migrazioni_produzione.py` carica gli script di "
-        "migrazione per nome: se non li vediamo, li cancelliamo per errore"
-    )
+def test_il_censimento_vede_gli_import_dinamici(tmp_path, monkeypatch) -> None:
+    """Prova del bug che mi ha fatto dare per morti sei script vivi: un modulo
+    caricato per nome (``__import__("app.x")``) non e' orfano."""
+    import tests.runtime.test_moduli_mai_importati as questo
+
+    (tmp_path / "scripts").mkdir()
+    sorgente = tmp_path / "scripts" / "carica.py"
+    sorgente.write_text('mod = __import__("app.scripts.esempio", fromlist=["x"])\n', encoding="utf-8")
+    monkeypatch.setattr(questo, "RADICE", tmp_path)
+    questo._importati.cache_clear()
+    try:
+        visti = questo._importati((sorgente,))
+    finally:
+        questo._importati.cache_clear()
+    assert "app.scripts.esempio" in visti, "se non vediamo gli import dinamici, cancelliamo per errore"
 
 
 def test_il_censimento_risolve_gli_import_relativi() -> None:

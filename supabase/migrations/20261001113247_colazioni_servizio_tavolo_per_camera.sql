@@ -201,3 +201,4 @@ begin
 end $$;
 revoke all on function public.bb_tit_stato(text) from public, anon, authenticated;
 grant execute on function public.bb_tit_stato(text) to anon, authenticated;
+

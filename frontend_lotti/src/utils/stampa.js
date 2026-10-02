@@ -1,6 +1,8 @@
 import axios from "axios";
 import { API } from "./constants";
+import { toast } from "sonner";
 import { apriDocumentoAutenticato } from "../auth";
+import { MODI, getModoStampa, stampaEtichettaLotto, base64Di } from "./stampaEpson";
 
 // Modalità "stampa automatica": i documenti vengono accodati all'agente locale
 // che li manda alla stampante giusta per categoria. Se spenta, si apre la
@@ -15,20 +17,8 @@ export function setStampaAuto(on) {
 // Modalità "tablet Android": l'etichetta lotto si scarica in ESC/POS e si passa
 // all'app RawBT (LAN, Bluetooth o USB), che la manda all'Epson. Un browser non
 // può aprire socket TCP, quindi l'app Android fa da ponte.
-export function isStampaRawbt() {
-  try { return localStorage.getItem("stampa_rawbt") === "1"; } catch { return false; }
-}
-export function setStampaRawbt(on) {
-  try { localStorage.setItem("stampa_rawbt", on ? "1" : "0"); } catch { /* no-op */ }
-}
-
 export function bytesToBase64(bytes) {
-  let bin = "";
-  const u8 = new Uint8Array(bytes);
-  for (let i = 0; i < u8.length; i += 0x8000) {
-    bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
-  }
-  return btoa(bin);
+  return base64Di(new Uint8Array(bytes));
 }
 
 export function urlRawbt(bytes) {
@@ -56,9 +46,27 @@ export async function stampaRawbt(url) {
  * @returns {Promise<{accodato:boolean}>}
  */
 export async function stampaDoc({ categoria, url, formato = "pdf", titolo = "", reparto = "" }) {
-  if (isStampaRawbt() && /\/stampa\/lotto\//.test(url)) {
+  if (categoria === "etichette" && getModoStampa() === MODI.RAWBT && /\/stampa\/lotto\//.test(url)) {
     await stampaRawbt(url);
     return { accodato: false, rawbt: true };
+  }
+  // Diretta dal dispositivo (Epson ePOS): solo per l'etichetta di un lotto.
+  const lotto = categoria === "etichette" && getModoStampa() === MODI.EPSON
+    ? /\/stampa\/lotto\/([^/?]+)\/?(?:\?|$)/.exec(url || "")
+    : null;
+  if (lotto) {
+    try {
+      await stampaEtichettaLotto(decodeURIComponent(lotto[1]), reparto);
+      toast.success("Etichetta stampata");
+      return { accodato: false, diretta: true };
+    } catch (e) {
+      // Mai perdere l'etichetta: motivo in chiaro e il documento resta apribile.
+      toast.error(e.message, {
+        duration: 20000,
+        action: { label: "Apri PDF", onClick: () => apriDocumentoAutenticato(url) },
+      });
+      return { accodato: false, diretta: false, errore: e.message };
+    }
   }
   if (isStampaAuto()) {
     await axios.post(`${API}/stampanti/coda`, { categoria, url, formato, titolo, reparto });

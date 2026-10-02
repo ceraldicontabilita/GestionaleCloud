@@ -603,7 +603,7 @@ def test_etichetta_mostra_la_data_della_fattura(dbmock):
     testo = html if isinstance(html, str) else getattr(html, "body", b"").decode("utf-8", "ignore")
     assert "1/56437" in testo, "il numero fattura c'era già"
     assert "12/06/2026" in testo, "manca la DATA della fattura sull'etichetta"
-    assert "del 12/06/2026" in testo
+    assert "<b>DATA FATTURA:</b> 12/06/2026" in testo
     assert "Sfogliatella riccia" in testo
     assert "PRODUZIONE:</span><span class=\"val\">2026-07-02" in testo
     assert "Peso impasto totale" not in testo

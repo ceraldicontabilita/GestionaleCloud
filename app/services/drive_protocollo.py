@@ -305,6 +305,11 @@ update gestionale.protocollo_drive p
  where i.md5 = p.md5 and i.md5 is not null
    and p.collegamento_id is null
 """
+# F24 e quietanze portano il `drive_file_id` del loro originale: la riga del
+# protocollo con quel `drive_id` si collega senza passare dall'impronta
+# (migrazione 20261002140632, stessa regola della bonifica del 01/10/2026).
+# hr_app non legge gestionale.documents: la funzione e' SECURITY DEFINER.
+SQL_COLLEGA_DRIVE_FILE_ID = "select gestionale.collega_protocollo_per_drive_file_id()"
 
 
 def _conta(esito: Any) -> int:
@@ -516,6 +521,7 @@ async def sincronizza_incrementale(service=None, conn=None) -> Dict[str, Any]:
                     except Exception as exc:  # noqa: BLE001 - un'impronta non ferma il giro
                         logger.warning("[PROTOCOLLO-DRIVE] impronte %s saltate: %s: %s", origine, type(exc).__name__, exc)
                 collegati = _conta(await conn.execute(SQL_COLLEGA))
+                collegati += await collega_per_drive_file_id(conn)
             fine = datetime.now(timezone.utc)
             await conn.execute(
                 "update gestionale.protocollo_drive_giri set fine=$2, esito='ok', file_visti=$3, nuovi=$4, "
@@ -615,6 +621,30 @@ async def riallinea_prove(db, conn=None, limite: int = LIMITE_RIALLINEA) -> Dict
 
 
 # ── letture per l'interfaccia ─────────────────────────────────────────────────
+
+async def collega_per_drive_file_id(conn=None) -> int:
+    """Collega al protocollo i documenti F24/quietanze per ``drive_file_id``.
+
+    Un file fermo nel protocollo e un documento che lo cita per id sono la
+    stessa cosa anche quando l'impronta manca (quietanza salvata senza MD5,
+    file del protocollo senza `md5Checksum`). Torna quante righe ha collegato;
+    il secondo giro torna 0. Senza connessione Postgres torna 0 e lo scrive nel
+    log: non ferma mai il giro che la chiama.
+    """
+    propria = conn is None
+    try:
+        if propria:
+            conn = await _connessione()
+        valore = await conn.fetchval(SQL_COLLEGA_DRIVE_FILE_ID)
+        return int(valore or 0)
+    except Exception as exc:  # noqa: BLE001 - il collegamento non ferma il giro
+        logger.warning("[PROTOCOLLO-DRIVE] collegamento per drive_file_id saltato: %s: %s",
+                       type(exc).__name__, exc)
+        return 0
+    finally:
+        if propria and conn is not None:
+            await conn.close()
+
 
 async def _connessione():
     dsn = postgres_diretto.dsn()

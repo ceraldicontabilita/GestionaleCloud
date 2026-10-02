@@ -7,7 +7,6 @@ Il mapping viene salvato in MongoDB (collezione `nome_mapping`) e riutilizzato.
 Nuove fatture vengono processate solo per i prodotti ancora sconosciuti.
 """
 
-import os
 import re
 from app.lotti.servizi.dizionario_ingredienti import CATEGORIE
 from datetime import datetime, timezone
@@ -22,7 +21,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/normalizzazione", tags=["Normalizzazione"])
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+
+def _chiave() -> str:
+    from app.services.anthropic_llm_client import chiave_api
+
+    return chiave_api()
+
+
+def _chat(system: str, max_tokens: int, timeout_s: float):
+    """Il solo client: modello veloce, un tentativo, registro e tetto del gestionale."""
+    from app.services.anthropic_llm_client import LlmChat, modello_veloce
+
+    return LlmChat(_chiave(), system_prompt=system, model=modello_veloce(), timeout_s=timeout_s, tentativi=1,
+                   max_tokens=max_tokens, scopo="lotti_normalizzazione")
 
 # ─── Mappa statica rapida (senza AI) ─────────────────────────────────────────
 SINONIMI_STATICI: dict[str, dict] = {
@@ -287,42 +299,26 @@ async def normalizza_batch_con_ai(descrizioni: list) -> dict:
     Classifica fino a 20 descrizioni in una sola chiamata AI.
     Ritorna {descrizione: {"nome_canc": str, "categoria": str}} per quelle classificate.
     """
-    if not ANTHROPIC_API_KEY or not descrizioni:
+    if not _chiave() or not descrizioni:
         return {}
 
     batch = descrizioni[:20]
     try:
-        import httpx, json as _json
+        import json as _json
+
+        from app.services.anthropic_llm_client import UserMessage
 
         lista = "\n".join(f"{i+1}. {d}" for i, d in enumerate(batch))
-        async with httpx.AsyncClient(timeout=30) as hclient:
-            r = await hclient.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-haiku-4-5",
-                    "max_tokens": 800,
-                    "system": (
-                        "Sei un esperto di prodotti alimentari per ristorazione italiana. "
-                        "Dato un elenco numerato di descrizioni da fatture fornitore, "
-                        "rispondi SOLO con un JSON array: "
-                        '[{"i":1,"nome_canc":"Nome Breve","categoria":"Categoria"}, ...] '
-                        "Nessuna spiegazione. Il nome canonico: breve (2-4 parole), in italiano. "
-                        "Categorie valide: " + ", ".join(CATEGORIE) + "."
-                    ),
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": f"Classifica questi {len(batch)} prodotti:\n{lista}",
-                        }
-                    ],
-                },
-            )
-            risposta = r.json().get("content", [{}])[0].get("text", "")
+        chat = _chat(
+            (
+                "Sei un esperto di prodotti alimentari per ristorazione italiana. "
+                "Dato un elenco numerato di descrizioni da fatture fornitore, "
+                "rispondi SOLO con un JSON array: "
+                '[{"i":1,"nome_canc":"Nome Breve","categoria":"Categoria"}, ...] '
+                "Nessuna spiegazione. Il nome canonico: breve (2-4 parole), in italiano. "
+                "Categorie valide: " + ", ".join(CATEGORIE) + "."
+            ), max_tokens=800, timeout_s=30.0)
+        risposta = await chat.send_message(UserMessage(content=f"Classifica questi {len(batch)} prodotti:\n{lista}"))
 
         # Parse JSON array dalla risposta
         match = re.search(r"\[.*\]", risposta, re.DOTALL)
@@ -348,42 +344,24 @@ async def normalizza_con_ai(descrizione: str) -> Optional[dict]:
     Chiama l'AI per classificare una descrizione fattura.
     Ritorna {"nome_canc": str, "categoria": str} o None se fallisce.
     """
-    if not ANTHROPIC_API_KEY:
+    if not _chiave():
         return None
 
     try:
-        import httpx
+        from app.services.anthropic_llm_client import UserMessage
 
-        async with httpx.AsyncClient(timeout=15) as hclient:
-            r = await hclient.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-haiku-4-5",
-                    "max_tokens": 150,
-                    "system": (
-                        "Sei un esperto di prodotti alimentari per la ristorazione italiana. "
-                        "Dato una descrizione di un prodotto da una fattura fornitore, rispondi SOLO con un JSON "
-                        'nel formato: {"nome_canc": "Nome Canonico Italiano", "categoria": "Categoria"} '
-                        "senza spiegazioni. Il nome canonico deve essere breve (2-4 parole), in italiano. "
-                        "La categoria deve essere una di: Farine e Cereali, Dolcificanti, Latticini e Grassi, "
-                        "Uova, Formaggi, Frutta e Verdura, Conserve e Condimenti, Cioccolato e Cacao, "
-                        "Lieviti e Addensanti, Semilavorati Pasticceria, Alcolici e Liquori, "
-                        "Carni e Salumi, Pesce, Condimenti, Bevande, Varie Alimentari, Non Alimentare."
-                    ),
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": f"Classifica questo prodotto da fattura: '{descrizione}'",
-                        }
-                    ],
-                },
-            )
-            risposta = r.json().get("content", [{}])[0].get("text", "")
+        chat = _chat(
+            (
+                "Sei un esperto di prodotti alimentari per la ristorazione italiana. "
+                "Dato una descrizione di un prodotto da una fattura fornitore, rispondi SOLO con un JSON "
+                'nel formato: {"nome_canc": "Nome Canonico Italiano", "categoria": "Categoria"} '
+                "senza spiegazioni. Il nome canonico deve essere breve (2-4 parole), in italiano. "
+                "La categoria deve essere una di: Farine e Cereali, Dolcificanti, Latticini e Grassi, "
+                "Uova, Formaggi, Frutta e Verdura, Conserve e Condimenti, Cioccolato e Cacao, "
+                "Lieviti e Addensanti, Semilavorati Pasticceria, Alcolici e Liquori, "
+                "Carni e Salumi, Pesce, Condimenti, Bevande, Varie Alimentari, Non Alimentare."
+            ), max_tokens=150, timeout_s=15.0)
+        risposta = await chat.send_message(UserMessage(content=f"Classifica questo prodotto da fattura: '{descrizione}'"))
 
         # Parse JSON dalla risposta
         match = re.search(r"\{[^}]+\}", risposta)
@@ -1005,7 +983,7 @@ async def _costruisci_dizionario_da_fatture(usa_ai: bool = True):
             await _set(stato="in_corso", fatte=fatte, totali=totali, risolti=risolti, ai=ai_usati, finiti=finiti, ignoti=len(residui))
 
     # 4) AI a batch sui residui (se disponibile)
-    if usa_ai and ANTHROPIC_API_KEY and residui:
+    if usa_ai and _chiave() and residui:
         for i in range(0, len(residui), 20):
             chunk = residui[i:i + 20]
             try:
@@ -1027,7 +1005,7 @@ async def _costruisci_dizionario_da_fatture(usa_ai: bool = True):
     await _set(
         stato="completata", completata=now(), fatte=fatte, totali=totali,
         risolti=risolti, ai=ai_usati, finiti=finiti, ignoti=len(ignoti_finali),
-        ai_disponibile=bool(ANTHROPIC_API_KEY),
+        ai_disponibile=bool(_chiave()),
         esito={"descrizioni_distinte": totali, "mappature_risolte": risolti,
                "via_ai": ai_usati, "prodotti_finiti_scartati": finiti,
                "ancora_ignoti": len(ignoti_finali)},

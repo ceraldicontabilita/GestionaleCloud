@@ -34,6 +34,7 @@ import ColazioneAcquavivaView from "./ColazioneAcquavivaView";
 import { API, fotoSrc }       from "../../utils/constants";
 import { clearTabletSession, getTabletSession } from "../../utils/tabletSession";
 import { logout } from "../../auth";
+import GruppiProduzioneRicette from "./GruppiProduzioneRicette";
 
 const REPARTI_INFO = {
   pasticceria: { emoji:"🍰", label:"Pasticceria", grad:"linear-gradient(135deg,#fb923c,#ea580c)", colore:"#c2410c", cruscotto:true },
@@ -56,6 +57,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   const [prodotti,            setProdotti]            = useState([]);
   const [loading,             setLoading]             = useState(true);
   const [search,              setSearch]              = useState("");
+  const [gruppo, setGruppo] = useState("tutte");
   const [prodottoSel,         setProdottoSel]         = useState(null);
   const [showAdmin,           setShowAdmin]           = useState(false);
   const [cambiaFotoProd,      setCambiaFotoProd]      = useState(null);
@@ -77,11 +79,23 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   // non l'elenco generico di fallback — richiesta Enzo 20/07/2026: "non mi
   // fa scegliere in quale congelatore o frigo, mancano".
   const [attrezzature,        setAttrezzature]        = useState({ frigoriferi: [], congelatori: [] });
-  useEffect(() => {
-    axios.get(`${API}/attrezzature/`)
-      .then(r => setAttrezzature(r.data || { frigoriferi: [], congelatori: [] }))
-      .catch(() => {});
+  const caricaDestinazioni = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API}/attrezzature/destinazioni`, { timeout: 15000 });
+      setAttrezzature({
+        frigoriferi: Array.isArray(r.data?.frigoriferi) ? r.data.frigoriferi : [],
+        congelatori: Array.isArray(r.data?.congelatori) ? r.data.congelatori : [],
+      });
+    } catch {
+      toast.error("Frigoriferi e congelatori non caricati: riprovo quando apri un prodotto.");
+    }
   }, []);
+  useEffect(() => { caricaDestinazioni(); }, [caricaDestinazioni]);
+  useEffect(() => {
+    if (prodottoSel && attrezzature.frigoriferi.length === 0 && attrezzature.congelatori.length === 0) {
+      caricaDestinazioni();
+    }
+  }, [prodottoSel, attrezzature.frigoriferi.length, attrezzature.congelatori.length, caricaDestinazioni]);
 
   // Carica task del giorno per questo reparto
   const caricaTask = useCallback(async () => {
@@ -138,6 +152,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
 
   const tutti = Object.keys(REPARTI_INFO).filter(r => r !== reparto); // BUG FIX: escludeva sempre Pasticceria
   const prodottiFiltrati = prodotti
+    .filter(p => gruppo === "tutte" || (p.categorie_rapide || []).includes(gruppo))
     .filter(p=>!search||norm(p.nome).includes(norm(search)))  // stesso motore di ricerca dell'app: senza accenti ("babà"→"baba")
     .sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","it"));
 
@@ -289,6 +304,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
       {/* Corpo */}
       {vista === "prodotti" && (
         <div style={{flex:1,minHeight:0,padding:"14px 16px",overflowY:"auto"}}>
+          {['pasticceria', 'rosticceria'].includes(reparto) && <GruppiProduzioneRicette reparto={reparto} ricette={prodotti} selezionato={gruppo} onScegli={setGruppo} />}
 
           {/* Widget task del giorno */}
           {taskOggi.length > 0 && !showTask && (
@@ -348,7 +364,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
           ) : prodottiFiltrati.length === 0 && !search ? (
             <div style={{textAlign:"center",padding:"60px 0",color:"#9aa593"}}>
               <div style={{fontSize:48,marginBottom:12}}>🍽️</div>
-              <p style={{fontSize:16}}>Nessun prodotto per {reparto}</p>
+              <p style={{fontSize:16}}>{gruppo === "tutte" ? `Nessun prodotto per ${reparto}` : "Nessuna ricetta selezionata in questo gruppo. Le spunte si impostano in Ricette."}</p>
             </div>
           ) : (
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:12}}>

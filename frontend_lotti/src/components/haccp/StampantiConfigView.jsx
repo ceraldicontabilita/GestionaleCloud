@@ -4,8 +4,16 @@ import axios from "axios";
 import { toast } from "sonner";
 import { apiError } from "../../utils/apiError";
 import { API } from "../../utils/constants";
-import { isStampaAuto, setStampaAuto, isStampaRawbt, setStampaRawbt, stampaRawbt } from "../../utils/stampa";
-import { Printer, Save, Trash2, Plus, RefreshCw, Network } from "lucide-react";
+import { stampaRawbt } from "../../utils/stampa";
+import { MODI, getModoStampa, setModoStampa, provaStampa } from "../../utils/stampaEpson";
+import { Printer, Save, Trash2, Plus, RefreshCw, Network, FlaskConical } from "lucide-react";
+
+const MODALITA = [
+  { v: MODI.FINESTRA, l: "Finestra di stampa", d: "Si apre il documento e stampi dal browser." },
+  { v: MODI.AGENTE, l: "Agente PC", d: "I documenti vanno in coda e il print-agent sul PC del negozio li stampa." },
+  { v: MODI.EPSON, l: "Diretta Epson ePOS", d: "Il tablet stampa da solo sulla Epson di rete, senza PC né finestra." },
+  { v: MODI.RAWBT, l: "Tablet Android · RawBT", d: "Richiede RawBT installata e la stampante scelta nell'app (LAN, Bluetooth o USB)." },
+];
 
 const REPARTI = [
   { v: "banco", l: "Banco" },
@@ -28,8 +36,8 @@ export default function StampantiConfigView() {
   const [stampanti, setStampanti] = useState([]);
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(null);
-  const [autoOn, setAutoOn] = useState(isStampaAuto());
-  const [rawbtOn, setRawbtOn] = useState(isStampaRawbt());
+  const [modo, setModo] = useState(getModoStampa());
+  const [provando, setProvando] = useState(null);
 
   const provaRawbt = async () => {
     try {
@@ -83,6 +91,18 @@ export default function StampantiConfigView() {
     }
   };
 
+  const prova = async (s) => {
+    setProvando(s.id);
+    try {
+      await provaStampa(s.indirizzo_rete);
+      toast.success("Prova inviata: controlla che sia uscita la riga e il taglio");
+    } catch (e) {
+      toast.error(e.message, { duration: 20000 });
+    } finally {
+      setProvando(null);
+    }
+  };
+
   const aggiungi = async () => {
     try {
       const { data } = await axios.post(`${API}/stampanti`, {
@@ -130,44 +150,47 @@ export default function StampantiConfigView() {
         standard delle stampanti di rete è 9100.
       </p>
 
-      {/* Stampa diretta da questo tablet (app RawBT) */}
-      <div className="flex items-center justify-between bg-[#f2f6f3] border border-[#cfdfd5] rounded-xl px-4 py-3 mb-3">
-        <div>
-          <div className="text-sm font-bold text-[#3f5a4e]">Stampa diretta da questo tablet (RawBT)</div>
-          <div className="text-xs text-[#5b7a6b]">
-            Richiede l'app RawBT installata e la stampante Epson scelta al suo interno. Vale solo per questo tablet.
-          </div>
-          <button type="button" onClick={provaRawbt}
-            className="mt-2 px-3 min-h-[44px] rounded-lg bg-[#5b7a6b] text-white text-sm font-bold">
-            Stampa etichetta di prova
-          </button>
+      {/* Modalità di stampa di QUESTO dispositivo (salvata nel browser) */}
+      <div className="bg-[#f2f6f3] border border-[#cfdfd5] rounded-xl px-4 py-3 mb-5">
+        <div className="text-sm font-bold text-[#3f5a4e] mb-1">Come stampa questo dispositivo</div>
+        <div className="text-xs text-[#5b7a6b] mb-3">La scelta vale solo per questo tablet o PC.</div>
+        <div role="radiogroup" aria-label="Modalità di stampa" className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          {MODALITA.map((m) => (
+            <button
+              key={m.v}
+              type="button"
+              role="radio"
+              aria-checked={modo === m.v}
+              onClick={() => { setModoStampa(m.v); setModo(m.v); }}
+              className={`text-left rounded-lg border px-3 py-3 min-h-[44px] ${
+                modo === m.v ? "bg-[#4d6a5c] text-white border-[#3f5a4e]" : "bg-white text-[#2a3329] border-[#e6e0d4]"
+              }`}
+            >
+              <div className="text-sm font-bold">{m.l}</div>
+              <div className={`text-xs ${modo === m.v ? "text-white/90" : "text-[#5b7a6b]"}`}>{m.d}</div>
+            </button>
+          ))}
         </div>
-        <button
-          type="button"
-          onClick={() => { setStampaRawbt(!rawbtOn); setRawbtOn(!rawbtOn); }}
-          className={`relative w-12 h-7 rounded-full transition ${rawbtOn ? "bg-[#4d6a5c]" : "bg-gray-300"}`}
-        >
-          <span className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition ${rawbtOn ? "translate-x-5" : ""}`} />
-        </button>
       </div>
 
-      {/* Interruttore stampa automatica (richiede l'agente locale avviato sul PC) */}
-      <div className="flex items-center justify-between bg-[#f2f6f3] border border-[#cfdfd5] rounded-xl px-4 py-3 mb-5">
-        <div>
-          <div className="text-sm font-bold text-[#3f5a4e]">Stampa automatica (agente locale)</div>
-          <div className="text-xs text-[#5b7a6b]">
-            Se attiva, i documenti vanno alla stampante giusta per categoria senza finestra.
-            Richiede il print-agent avviato sul PC del negozio.
-          </div>
+      {modo === MODI.RAWBT && <button type="button" onClick={provaRawbt}
+        className="mb-4 px-3 min-h-[44px] rounded-lg bg-[#5b7a6b] text-white text-sm font-bold">
+        Stampa etichetta di prova · RawBT
+      </button>}
+
+      {modo === MODI.EPSON && (
+        <div className="bg-[#fffefb] border border-[#e6e0d4] rounded-xl px-4 py-3 mb-5 text-sm text-[#2a3329]">
+          <div className="font-bold text-[#3f5a4e] mb-1">Prima volta su questo tablet (una tantum)</div>
+          <ol className="list-decimal pl-5 space-y-1">
+            <li>Qui sotto inserisci l'IP della stampante (es. quello della Epson TM-T20III) e salva.</li>
+            <li>Apri in Chrome <span className="font-mono">https://&lt;IP della stampante&gt;</span>, scegli «Avanzate → Procedi» e accetta il certificato.</li>
+            <li>Nella pagina web della stampante controlla che <b>ePOS-Print</b> sia attivo (impostazioni ePOS-Print / Web Config).</li>
+            <li>Se Chrome chiede l'accesso alla rete locale, tocca <b>Consenti</b>. Se l'hai negato: lucchetto accanto all'indirizzo → Impostazioni sito → «Dispositivi in rete locale» → Consenti.</li>
+            <li>Premi <b>Prova stampa</b>: deve uscire una riga e il taglio.</li>
+          </ol>
+          <div className="text-xs text-[#8a6f47] mt-2">Se la stampa diretta non riesce, l'app spiega il motivo e offre «Apri PDF»: l'etichetta non si perde.</div>
         </div>
-        <button
-          type="button"
-          onClick={() => { setStampaAuto(!autoOn); setAutoOn(!autoOn); }}
-          className={`relative w-12 h-7 rounded-full transition ${autoOn ? "bg-[#4d6a5c]" : "bg-gray-300"}`}
-        >
-          <span className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition ${autoOn ? "translate-x-5" : ""}`} />
-        </button>
-      </div>
+      )}
 
       {loading ? (
         <div className="text-gray-500 py-10 text-center">Caricamento…</div>
@@ -293,7 +316,17 @@ export default function StampantiConfigView() {
                 </div>
               </div>
 
-              <div className="flex justify-end mt-3">
+              <div className="flex justify-end gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => prova(s)}
+                  disabled={provando === s.id || !(s.indirizzo_rete || "").trim()}
+                  className="flex items-center gap-2 border border-[#4d6a5c] text-[#3f5a4e] px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 min-h-[44px]"
+                  title="Stampa una riga di prova e taglia (modalità diretta Epson)"
+                >
+                  <FlaskConical size={16} />
+                  {provando === s.id ? "Invio…" : "Prova stampa"}
+                </button>
                 <button
                   onClick={() => salva(s)}
                   disabled={salvando === s.id}

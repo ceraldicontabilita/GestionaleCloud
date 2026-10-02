@@ -8,9 +8,8 @@ Questo modulo fornisce:
 - `salva_f24(db, doc, source)`: unico punto di scrittura canonico, idempotente
   (upsert per chiave naturale, non duplica).
 
-Le collezioni legacy dei MODELLI F24 (`f24_models`, `f24_commercialista` letterale,
-`f24_uploaded`, `f24`) vanno migrate qui con `app/scripts/migra_f24_unificato.py`
-(non distruttivo). Il sottosistema parser paghe (`f24_pagamenti`/`tributi_pagati`/
+I MODELLI F24 vivono solo in `f24_unificato`: non esiste un'altra collezione di
+modelli. Il sottosistema parser paghe (`f24_pagamenti`/`tributi_pagati`/
 `distinte_f24`) e la classificazione (`f24_tributi`) restano separati: sono vivi e
 verranno consolidati in una fase dedicata.
 """

@@ -138,6 +138,26 @@ _BUSTA_PAGA = re.compile(
 )
 
 
+# Cosa distingue un estratto dalla bolletta o dal sollecito che cita la stessa banca:
+# l'estratto ha i saldi o le colonne data contabile/valuta (l'export CSV/Excel), oppure porta l'ABI Banco BPM insieme al titolo (lo stesso segno che esige il lettore ``parse_estratto_conto_bpm``).
+_STRUTTURA_ESTRATTO = (
+    "saldo iniziale", "saldo finale", "saldo contabile", "data contabile", "data valuta",
+)
+
+
+def ha_struttura_di_estratto(testo: str) -> bool:
+    """Il testo ha la forma di un estratto bancario, non basta che ne dica il nome.
+
+    Una bolletta Enel scrive «addebito automatico presso Banco BPM» e un sollecito
+    di fornitore «INVIO ESTRATTO CONTO - FATTURE SCADUTE»: il nome della banca o il
+    titolo da soli non provano niente (236 file finiti in ERRORI per questo).
+    """
+    testo = _pulisci(testo)
+    if any(segno in testo for segno in _STRUTTURA_ESTRATTO):
+        return True
+    return "estratto conto" in testo and "05034" in testo
+
+
 def route_da_testo(testo: str) -> Optional[str]:
     """Fonte riconosciuta dall'intestazione del documento.
 
@@ -158,6 +178,10 @@ def route_da_testo(testo: str) -> Optional[str]:
     if "mutui: quietanza" in testo or ("mutuo" in testo and "rata n" in testo):
         return MUTUO
     if _BUSTA_PAGA.search(testo):
+        return None
+    # «Dettaglio movimento» dell'home banking: prova di UN movimento (ha data contabile e
+    # valuta come l'estratto, ma non lo e'); non si legge con il lettore degli estratti.
+    if "dettaglio movimento" in testo:
         return None
 
     # Carta Mastercard SumUp (conto 19.01.05): ha colonne «data», «saldo» e
@@ -187,7 +211,7 @@ def route_da_testo(testo: str) -> Optional[str]:
     if any(segno in testo for segno in (
         "banca nazionale del lavoro", "banco bpm", "banca popolare di milano",
         "bnl bnp paribas",
-    )):
+    )) and ha_struttura_di_estratto(testo):
         return BANCA
 
     # Intestazione dell'export movimenti della banca: le colonne sono sue e

@@ -101,3 +101,52 @@ def test_un_solo_font_quello_del_gruppo():
             f"Seconda famiglia di caratteri: {famiglia.strip()}. Un titolo si "
             "distingue dal peso, mai dal carattere (CLAUDE.md)."
         )
+
+
+def test_temperature_e_lotti_del_periodo_generano_solo_le_schede_scelte(monkeypatch):
+    from mongomock_motor import AsyncMongoMockClient
+    from app.lotti.routers import manuale_haccp as modulo
+
+    archivio = AsyncMongoMockClient()["manuale_periodo"]
+    monkeypatch.setattr(modulo, "db", archivio)
+
+    async def azienda():
+        return {}
+
+    monkeypatch.setattr(modulo, "get_azienda", azienda)
+
+    async def scenario():
+        await archivio.temperature_negative.insert_one({
+            "anno": 2026, "congelatore_numero": 1, "congelatore_nome": "Congelatore Pasticceria",
+            "temperature": {"9": {
+                "10": {"temp": -19.4, "firma_verificata": True, "operatore": "Ceraldi Vincenzo"},
+                "11": {"temp": -20.1},
+                "30": {"temp": -18.8},
+            }},
+        })
+        await archivio.lotti.insert_many([
+            {"numero_lotto": "LOT-IN", "prodotto": "Babà", "data_produzione": "2026-09-11"},
+            {"numero_lotto": "LOT-OUT", "prodotto": "Sfogliatella", "data_produzione": "2026-08-31"},
+        ])
+        risposta = await modulo._genera_manuale_impl(
+            anno=2026, data_da="2026-09-10", data_a="2026-09-20", sezioni="temperature,lotti",
+        )
+        return risposta.body.decode()
+
+    html = asyncio.run(scenario())
+    assert "REGISTRO TEMPERATURE CONGELATORI" in html
+    assert "-19.4°C" in html and "Ceraldi Vincenzo" in html
+    assert "-20.1°C" in html and "-18.8°C" not in html
+    assert "LOT-IN" in html and "LOT-OUT" not in html
+    assert "I 7 PRINCIPI DEL SISTEMA HACCP" not in html
+    assert "PROCEDURE DI PULIZIA" not in html
+    assert "Periodo: 2026-09-10 → 2026-09-20" in html
+
+
+def test_pagina_principale_usa_gli_id_reali_di_temperature_e_lotti():
+    sorgente = (Path(__file__).resolve().parents[2]
+                / "frontend_lotti/src/components/haccp/ManualeHACCPView.jsx").read_text(encoding="utf-8")
+    assert '["temperature", "Temperature frigoriferi e congelatori"]' in sorgente
+    assert '["lotti", "Lotti di produzione"]' in sorgente
+    assert "temperature_positive" not in sorgente and "temperature_negative" not in sorgente
+    assert "Solo Temperature e Lotti" in sorgente

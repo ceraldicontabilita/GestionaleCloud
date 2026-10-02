@@ -1809,6 +1809,17 @@ async def process_cedolini_to_prima_nota(db: ArchivioDocumenti) -> Dict[str, Any
 # server web mentre la posta si legge.
 
 CHIAVE_CURSORI_POSTA = "gmail_cursori_cartelle"
+# Lo storico della casella si legge solo fino a questi giorni fa: i documenti
+# piu' vecchi sono gia' su Drive (decisione del titolare, 02/10/2026).
+GIORNI_STORICO_POSTA = 5
+_MESI_IMAP = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _since_imap(giorni: int) -> str:
+    """Data IMAP (es. 27-Sep-2026) di `giorni` fa, indipendente dal locale."""
+    d = datetime.now() - timedelta(days=giorni)
+    return f"{d.day:02d}-{_MESI_IMAP[d.month - 1]}-{d.year}"
 CODICE_ALERT_POSTA = "POSTA_NON_RAGGIUNGIBILE"
 _SEGNI_ALLEGATO = ('"NAME"', '"FILENAME"', '"ATTACHMENT"')
 
@@ -1965,7 +1976,7 @@ async def scarica_posta_con_cursori(
                                cartella, type(exc).__name__, exc)
             await _salva_cursori(db, {**stato, "cartelle": cartelle_stato})
 
-        # 2) Lo storico, dal piu' recente al primo messaggio della casella.
+        # 2) Lo storico, dal piu' recente fino a GIORNI_STORICO_POSTA giorni fa.
         for cartella in cartelle:
             if tetto():
                 break
@@ -1981,7 +1992,8 @@ async def scarica_posta_con_cursori(
                     cur["completo"] = True
                     continue
                 typ, risposta = await asyncio.to_thread(
-                    conn.uid, "SEARCH", None, f"UID 1:{basso - 1}")
+                    conn.uid, "SEARCH", None,
+                    f"UID 1:{basso - 1} SINCE {_since_imap(GIORNI_STORICO_POSTA)}")
                 vecchi = sorted((u for u in (_uid_da_risposta(risposta) if typ == "OK" else [])
                                  if u < basso), reverse=True)
                 for n, uid in enumerate(vecchi, 1):

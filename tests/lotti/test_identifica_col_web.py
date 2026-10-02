@@ -21,14 +21,20 @@ class Risposta:
 
 
 class ClientFinto:
-    """Risponde in ordine; registra gli invii (tool e modello)."""
+    """Un ``LlmChat`` finto: risponde in ordine e registra gli invii (prompt e usi del tool)."""
 
     def __init__(self, *risposte):
         self.risposte, self.invii = list(risposte), []
 
-    async def post(self, url, headers=None, json=None):
-        self.invii.append((url, json))
-        return self.risposte.pop(0)
+    async def cerca_sul_web(self, prompt, *, max_tokens=1500, max_uses=3):
+        from app.services.anthropic_llm_client import fonti_web_dei_blocchi, testo_dei_blocchi
+
+        self.invii.append({"prompt": prompt, "max_uses": max_uses, "max_tokens": max_tokens})
+        r = self.risposte.pop(0)
+        if r.status_code != 200:
+            raise RuntimeError(str((r.json().get("error") or {}).get("message", r.status_code)))
+        blocchi = r.json()["content"]
+        return {"testo": testo_dei_blocchi(blocchi), "fonti": fonti_web_dei_blocchi(blocchi)}
 
 
 def web(oggetto, fonti=("https://www.produttore.it/p",)):
@@ -65,11 +71,10 @@ def test_concordi_si_associa_e_si_dichiara():
     d = leggi(db, "1")
     assert d["categoria_fonte"] == "web" and d["abbinato_ai"] is True
     assert d["categoria_web_fonti"] == ["https://www.produttore.it/p"]
-    # stessa chiamata di schede_tecniche: tool server-side, nessun secondo client
-    url, corpo = client.invii[0]
-    assert url == "https://api.anthropic.com/v1/messages"
-    assert corpo["tools"][0]["type"] == "web_search_20250305" and corpo["tools"][0]["max_uses"] == la.WEB_MAX_USES
-    assert "Pasta" in corpo["messages"][0]["content"]  # l'elenco ufficiale delle categorie
+    # stessa chiamata di schede_tecniche: strumento server-side del client unico, nessun secondo client
+    invio = client.invii[0]
+    assert invio["max_uses"] == la.WEB_MAX_USES
+    assert "Pasta" in invio["prompt"]  # l'elenco ufficiale delle categorie
 
 
 def test_secondo_giro_nessuna_nuova_ricerca():

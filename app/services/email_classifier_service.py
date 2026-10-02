@@ -587,7 +587,7 @@ async def process_documents_with_ai(
     process_all: bool = False,
     document_types: List[str] = None,
     save_to_gestionale: bool = True,
-    model: str = "claude-sonnet-4-5-20250929"
+    model: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Processa i documenti classificati usando Document AI per estrarre dati strutturati.

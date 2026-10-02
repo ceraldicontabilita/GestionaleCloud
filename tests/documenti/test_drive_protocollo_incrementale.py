@@ -88,6 +88,7 @@ class ConnFinta:
         self.ultimo_ok, self.esistenti = ultimo_ok, set(esistenti)
         self.sql, self.chiamate, self.upsert = [], [], []
         self.presenti = []
+        self.per_drive_file_id = 0
         self.chiusa = False
 
     async def fetchval(self, sql, *args):
@@ -97,6 +98,8 @@ class ConnFinta:
             return self.ultimo_ok
         if "insert into gestionale.protocollo_drive_giri" in sql:
             return 67
+        if "collega_protocollo_per_drive_file_id" in sql:
+            return self.per_drive_file_id
         return None
 
     async def execute(self, sql, *args):
@@ -164,6 +167,7 @@ def test_registra_solo_i_file_dentro_la_radice_una_pagina_alla_volta(monkeypatch
     assert esito["file_visti"] == 4 and esito["fuori_radice"] == 1
     assert esito["nuovi"] == 2 and esito["aggiornati"] == 1 and esito["giro_id"] == 67
     assert esito["duplicati_marcati"] == 2 and esito["collegati"] == 1
+    assert "collega_protocollo_per_drive_file_id" in conn.testo()    # F24/quietanze per drive_file_id
     # memoria costante: un upsert per pagina, mai l'intero elenco insieme
     assert [len(u) for u in conn.upsert] == [2, 1]
     righe = {r[0]: r for u in conn.upsert for r in u}
@@ -335,7 +339,7 @@ class _SchedulerFinto:
         self.running = True
 
 
-def test_il_giro_incrementale_e_registrato_ogni_20_minuti(monkeypatch):
+def test_il_giro_incrementale_e_registrato_ogni_3_ore(monkeypatch):
     import app.scheduler as scheduler_mod
 
     finto = _SchedulerFinto()
@@ -343,7 +347,7 @@ def test_il_giro_incrementale_e_registrato_ogni_20_minuti(monkeypatch):
     scheduler_mod.start_scheduler()
     job = [j for j in finto.jobs if isinstance(j[2], dict) and j[2].get("id") == "protocollo_drive_incrementale"]
     assert len(job) == 1
-    assert job[0][1][0] == "interval" and job[0][2]["minutes"] == 20
+    assert job[0][1][0] == "interval" and job[0][2]["minutes"] == 180
     # il giro completo non e' stato riacceso da nessuna parte
     assert not [j for j in finto.jobs if isinstance(j[2], dict) and j[2].get("id") == "protocollo_drive"]
 
@@ -437,3 +441,43 @@ def test_si_sceglie_con_le_stesse_chiavi_del_trigger_e_non_si_riscrive_a_ogni_gi
     esito = _run(modulo.riallinea_prove(db, conn=conn))
     assert esito["riallineati"] == 0 and esito["gia_provati"] == 1 and esito["con_file_ora_presente"] == 0
     assert db["quietanze_f24"].aggiornati == [] and db["cedolini"].aggiornati == []
+
+
+# ── collegamento per drive_file_id ───────────────────────────────────────────
+
+def test_i_collegati_del_giro_sommano_quelli_per_drive_file_id(monkeypatch):
+    conn = ConnFinta()
+    conn.per_drive_file_id = 3
+    _configura(monkeypatch, conn)
+    esito = _run(modulo.sincronizza_incrementale(service=DriveFinto(CARTELLE, [[_file("F1", "a.pdf", "DAE")]]), conn=conn))
+    assert esito["collegati"] == 1 + 3
+    testo = conn.testo()
+    assert testo.index("set collegamento_tipo") < testo.index("collega_protocollo_per_drive_file_id") < testo.index("esito='ok'")
+
+
+def test_collega_per_drive_file_id_apre_e_chiude_la_propria_connessione(monkeypatch):
+    conn = ConnFinta()
+    conn.per_drive_file_id = 2
+    _configura(monkeypatch, conn)
+    assert _run(modulo.collega_per_drive_file_id()) == 2
+    assert conn.chiusa and conn.testo() == modulo.SQL_COLLEGA_DRIVE_FILE_ID
+
+
+def test_collega_per_drive_file_id_senza_postgres_torna_zero_e_non_alza(monkeypatch):
+    monkeypatch.delenv("SUPABASE_DB_URL", raising=False)
+
+    async def connetti(dsn):
+        raise RuntimeError("niente rete")
+
+    monkeypatch.setattr(postgres_diretto, "connetti", connetti)
+    assert _run(modulo.collega_per_drive_file_id()) == 0
+
+
+def test_la_funzione_sql_e_security_definer_e_concessa_al_ruolo_applicativo():
+    from pathlib import Path
+    radice = Path(__file__).resolve().parents[2]
+    sql = (radice / "supabase/migrations/20261002140632_collega_protocollo_per_drive_file_id.sql").read_text("utf-8")
+    assert "create or replace function gestionale.collega_protocollo_per_drive_file_id()" in sql
+    assert "security definer" in sql and "to hr_app" in sql
+    assert "d.data->>'drive_file_id' = p.drive_id" in sql and "p.collegamento_id is null" in sql
+    assert "collega_protocollo_per_drive_file_id()" in modulo.SQL_COLLEGA_DRIVE_FILE_ID

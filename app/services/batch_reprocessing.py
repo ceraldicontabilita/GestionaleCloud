@@ -148,8 +148,8 @@ class BatchReprocessingService:
         if not self.stats["start_time"]:
             self.stats["start_time"] = datetime.now(timezone.utc).isoformat()
 
-        # Collezioni che contengono cedolini con PDF
-        collections = ["cedolini", "payslips", "buste_paga", "extracted_documents"]
+        # Unica collezione dei cedolini con PDF
+        collections = ["cedolini"]
 
         for coll_name in collections:
             try:

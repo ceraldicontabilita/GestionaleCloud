@@ -29,12 +29,13 @@ def test_link_struttura_distinguono_le_tre_fonti():
     assert '"qr","nfc","wifi","link","whatsapp"' in HTML
 
 
-def test_albergatore_invia_al_cliente_con_whatsapp_o_nfc():
-    assert "Invia al cliente con WhatsApp" in HTML
-    assert "Copia link per NFC" in HTML
-    assert 'run("bb_alb_recensioni_link"' in HTML
-    assert 'rec("whatsapp")' in HTML
-    assert 'rec("nfc")' in HTML
+def test_albergatore_condivide_un_solo_link_del_cliente():
+    blocco = HTML[HTML.index("async function mostraQR"):HTML.index("/* --- editor camere")]
+    assert "Condividi con il cliente" in blocco
+    assert 'navigator.share({title:"La tua colazione",text:msg,url:l})' in blocco
+    assert 'qr($("#qrbox"),l)' in blocco
+    assert "bb_alb_recensioni_link" not in blocco
+    assert "recqr" not in blocco
 
 
 def test_revoca_elimina_i_dati_collegati():

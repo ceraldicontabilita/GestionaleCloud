@@ -197,20 +197,21 @@ def test_frontend_e_migrazione_espongono_selezione_per_struttura():
         ROOT
         / "supabase"
         / "migrations"
-        / "20261001130000_convenzioni_catalogo_prodotti_strutture.sql"
+        / "20261001113238_convenzioni_catalogo_prodotti_strutture.sql"
     ).read_text(encoding="utf-8")
     sql_tavolo = (
         ROOT
         / "supabase"
         / "migrations"
-        / "20261001131500_colazioni_servizio_tavolo_per_camera.sql"
+        / "20261001113247_colazioni_servizio_tavolo_per_camera.sql"
     ).read_text(encoding="utf-8")
 
     assert '"prodotti","Prodotti hotel"' in html
     assert '"prodotti","Prodotti e ordini"' in html
-    assert "bb_tit_prodotti_salva" in html
+    assert "bb_tit_menu_prodotti_salva" in html
     assert "bb_alb_prodotti" in html
-    assert "primary key (struttura_id, prodotto_chiave)" in sql
+    menu_unico = (ROOT / "supabase" / "migrations" / "20261002150500_convenzioni_menu_unico_carrello.sql").read_text(encoding="utf-8")
+    assert "primary key (struttura_id, prodotto_id)" in menu_unico
     assert "check (prezzo > 0)" in sql
     assert "enable row level security" in sql
     assert "revoke all on public.bb_struttura_prodotti from public, anon, authenticated" in sql
@@ -244,9 +245,9 @@ def test_schede_catalogo_sono_compatte_senza_marchi_o_provenienze_visibili():
     assert "cpOrigine" not in html
     assert "Acquaviva acquistati" not in html
     assert ">Produzione interna<" not in html
-    assert "Prodotti acquistati" in html
-    assert "Preparati dal bar" in html
-    assert "immagine:p.immagine||foto||null" in html
+    assert "Tutte le sezioni" in html
+    assert "Spunta sezione" in html
+    assert 'chiave:"menu:"+p.id' in html
     assert "catalogParole(p.descrizione)!==catalogParole(p.nome)" in html
 
 

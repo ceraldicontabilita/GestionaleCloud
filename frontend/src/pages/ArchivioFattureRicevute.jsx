@@ -294,7 +294,7 @@ export default function ArchivioFatture() {
 
   const toggleSelezionaTutte = () => {
     setSelezionate(prev =>
-      prev.size === fatture.length ? new Set() : new Set(fatture.map(f => f.id))
+      prev.size === fattureFiltrate.length ? new Set() : new Set(fattureFiltrate.map(f => f.id))
     );
   };
 
@@ -469,11 +469,22 @@ export default function ArchivioFatture() {
     fetchFornitori();
   }, []);
 
+  // Il testo scritto nel campo «Fornitore» filtra anche l'elenco delle fatture,
+  // non solo la tendina: scrivere «amazon» senza scegliere una voce mostrava
+  // tutte le fatture (titolare, 02/10/2026).
+  const fattureFiltrate = useMemo(() => {
+    const query = ricercaFornitore.trim().toLowerCase();
+    if (!query || fornitore) return fatture;
+    return fatture.filter(f =>
+      `${f.supplier_name || f.fornitore_ragione_sociale || ''} ${f.supplier_vat || f.fornitore_partita_iva || ''}`
+        .toLowerCase().includes(query)
+    );
+  }, [fatture, fornitore, ricercaFornitore]);
   const fattureVisibili = useMemo(
-    () => fatture.slice(0, pagina * PER_PAGINA),
-    [fatture, pagina]
+    () => fattureFiltrate.slice(0, pagina * PER_PAGINA),
+    [fattureFiltrate, pagina]
   );
-  const fattureRimanenti = Math.max(0, fatture.length - fattureVisibili.length);
+  const fattureRimanenti = Math.max(0, fattureFiltrate.length - fattureVisibili.length);
   const fornitoriFiltrati = useMemo(() => {
     const query = ricercaFornitore.trim().toLowerCase();
     if (!query) return fornitori;
@@ -827,12 +838,12 @@ export default function ArchivioFatture() {
             >
               <input
                 type="checkbox"
-                checked={fatture.length > 0 && selezionate.size === fatture.length}
+                checked={fattureFiltrate.length > 0 && selezionate.size === fattureFiltrate.length}
                 onChange={toggleSelezionaTutte}
                 style={{ width: 18, height: 18, accentColor: '#c15f3c' }}
                 data-testid="seleziona-tutte-fatture"
               />
-              Seleziona tutte ({fatture.length})
+              Seleziona tutte ({fattureFiltrate.length})
             </label>
             {fattureVisibili.map((f, idx) => {
               const isPaid = ePagata(f);
@@ -983,7 +994,7 @@ export default function ArchivioFatture() {
                   <Th align="center" style={{ width: 36 }}>
                     <input
                       type="checkbox"
-                      checked={fatture.length > 0 && selezionate.size === fatture.length}
+                      checked={fattureFiltrate.length > 0 && selezionate.size === fattureFiltrate.length}
                       onChange={toggleSelezionaTutte}
                       style={{ width: 16, height: 16, accentColor: '#c15f3c', cursor: 'pointer' }}
                       title="Seleziona tutte"

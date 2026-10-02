@@ -546,14 +546,9 @@ async def classifica_ambigue_con_ai(limite: int = 25) -> Dict[str, Any]:
     )
 
     try:
-        import anthropic
-        from app.services.chat_ai_engine import _model_name  # stesso modello della Chat
-        client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", "").strip())
-        resp = await client.messages.create(
-            model=_model_name(), max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        testo = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        from app.services.anthropic_llm_client import LlmChat, UserMessage, chiave_api
+        chat = LlmChat(chiave_api(), max_tokens=4000, scopo="centri_costo", db=db)
+        testo = await chat.send_message(UserMessage(content=prompt))
         inizio, fine = testo.find("["), testo.rfind("]")
         decisioni = _json.loads(testo[inizio:fine + 1]) if inizio >= 0 else []
     except Exception as e:

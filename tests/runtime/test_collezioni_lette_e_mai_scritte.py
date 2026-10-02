@@ -40,18 +40,11 @@ NOTE = {
     "dati_isa_snapshot",
     "dizionario_articoli",
     "documenti_scaricati",
-    "documents_classified",
     "email_download_log",
-    "employees",                   # l'anagrafica vera e' `hr.app_dipendenti`
-    "fatture_passive",             # le fatture ricevute stanno in `invoices`
-    "invoices_emesse",             # la collezione vera e' `fatture_emesse`
     "libro_unico_presenze",
-    "mittenti_attendibili",
     "pagamenti_esiti",
-    "payslips",                    # i cedolini stanno in `cedolini`
     "prima_nota_saldi_iniziali",
     "quietanze",
-    "staff",
     "tax_collection_claims",
     "tfr_acconti",
     "verbali_autovelox",
@@ -60,13 +53,6 @@ NOTE = {
 #: Non e' un nome di collezione: compare dentro una docstring che spiega
 #: l'adattatore HR (`db["coll"]`).
 FALSI_POSITIVI = {"coll"}
-
-# Compatibilita' di dati storici: il writer era in carta_qromo prima del
-# passaggio a menu_products. Il deploy non puo' ignorare le scelte esistenti
-# o ricreare un secondo writer; la migrazione richiede un riscontro separato.
-# tests/menu/test_carta_qromo.py prova lettura coerente e PUT/DELETE 409 senza
-# modifiche ai dati. Non sono nuove collezioni applicative da popolare.
-STORICHE_SOLA_LETTURA = {"menu_carta_override"}
 
 
 def _lette_e_mai_scritte() -> set:
@@ -96,17 +82,11 @@ def _lette_e_mai_scritte() -> set:
 
 
 def test_nessuna_collezione_letta_e_mai_scritta_in_piu() -> None:
-    nuove = sorted(_lette_e_mai_scritte() - NOTE - STORICHE_SOLA_LETTURA)
+    nuove = sorted(_lette_e_mai_scritte() - NOTE)
     assert not nuove, (
         "Collezioni lette che nessuno scrive: la query non potra' mai "
         f"restituire niente e non dara' errore. {nuove}"
     )
-
-
-def test_la_compatibilita_storica_non_introduce_writer_paralleli() -> None:
-    # Quando la migrazione ritira il lettore, va tolta anche questa voce.
-    # Se compare un writer, il catalogo parallelo non passa silenziosamente.
-    assert STORICHE_SOLA_LETTURA <= _lette_e_mai_scritte()
 
 
 def test_la_lista_puo_solo_accorciarsi() -> None:

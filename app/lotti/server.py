@@ -179,12 +179,15 @@ async def health():
 
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event(avvia_scheduler: bool = True):
     logging.info(f"[STARTUP] DB: {DB_NAME} ({STORAGE})")
     from app.lotti.eventi import registra_handlers
     registra_handlers()
-    from app.lotti.routers.scheduler import setup_scheduler
-    setup_scheduler()
+    # Nel ruolo 'web' i job periodici di Lotti girano nel Background Worker
+    # (PROCESS_ROLE=scheduler): qui restano solo handler, seed e cataloghi.
+    if avvia_scheduler:
+        from app.lotti.routers.scheduler import setup_scheduler
+        setup_scheduler()
     from app.lotti.routers.tablet_operatori import seed_operatori
     await seed_operatori()
     from app.lotti.routers.magazzino_bar import seed_magazzino_bar
