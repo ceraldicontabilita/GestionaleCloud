@@ -70,6 +70,11 @@ PUBLIC_PATHS = {
     # Senza queste due voci il middleware rispondeva 401 prima dell'handler.
     "/api/colazioni/ordini-prodotti/albergatore",
     "/api/colazioni/ordini-prodotti/albergatore/elenco",
+    "/api/colazioni/ricariche/sumup",
+    "/api/colazioni/ricariche/sumup/sincronizza",
+    # Il webhook non si fida del corpo ricevuto: il backend rilegge sempre il
+    # checkout con la propria chiave SumUp prima di accreditare il portafoglio.
+    "/api/colazioni/ricariche/sumup/webhook",
     # L'ospite arriva dal QR e non possiede un JWT ERP. Il codice voucher e
     # la giornata vengono verificati dalle RPC Supabase prima di restituire il
     # listino o accettare il carrello; codici falsi/scaduti restano chiusi.

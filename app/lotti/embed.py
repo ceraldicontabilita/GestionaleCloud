@@ -33,10 +33,10 @@ logger = logging.getLogger("uvicorn.error")
 __all__ = ["lotti_app", "avvia_lotti", "arresta_lotti", "monta_frontend"]
 
 
-async def avvia_lotti() -> bool:
+async def avvia_lotti(avvia_scheduler: bool = True) -> bool:
     """Esegue lo startup di Lotti; ``False`` se e' fallito (mai un'eccezione)."""
     try:
-        await startup_event()
+        await startup_event(avvia_scheduler=avvia_scheduler)
         logger.info("[LOTTI] sotto-applicazione avviata")
         return True
     except Exception:

@@ -11,11 +11,11 @@ const base = {
 
 describe("azione principale del modale lotto", () => {
   test("mostra la stampa senza confonderla con frigo o congelatore", () => {
-    expect(testoAzioneRegistrazione(base)).toBe("🖨️ Stampa etichetta");
+    expect(testoAzioneRegistrazione(base)).toBe("🖨️ Registra lotto e stampa");
   });
 
   test("distingue la registrazione senza stampa", () => {
-    expect(testoAzioneRegistrazione({ ...base, stampare: false })).toBe("Registra senza stampare");
+    expect(testoAzioneRegistrazione({ ...base, stampare: false })).toBe("Registra lotto senza stampare");
   });
 
   test("prima dei componenti mostra avanti", () => {
