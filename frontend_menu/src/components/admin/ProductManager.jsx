@@ -105,6 +105,11 @@ const ProductManager = () => {
   }).sort((a, b) => nomeConfronto(a).localeCompare(nomeConfronto(b), 'it'));
 
   const handleEdit = (product) => {
+    if (product?.origine === 'lotti') {
+      const ref = String(product.lotti_ref || '');
+      window.location.assign(`/lotti/#ricette${ref.startsWith('ricetta:') ? '/' + encodeURIComponent(ref.slice(8)) : ''}`);
+      return;
+    }
     setEditingProduct({ ...product });
   };
 
@@ -237,18 +242,18 @@ const ProductManager = () => {
                     </div>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" disabled={visibilitaInCorso !== null}
+                {!daLotti(product) && <Button size="sm" variant="outline" disabled={visibilitaInCorso !== null}
                   aria-label={`${product.visible === false ? 'Ripristina' : 'Nascondi'} ${product.nameIT}`}
                   onClick={() => cambiaVisibilita(product)} className="min-w-[44px] min-h-[44px] ml-2">
                   {product.visible === false ? 'Ripristina' : <X className="w-4 h-4" />}
-                </Button>
+                </Button>}
                 <Button
                   size="sm"
                   variant="outline"
                   aria-label={`Modifica ${product.nameIT}`}
                   onClick={() => handleEdit(product)}
                 >
-                  <Edit className="w-4 h-4" />
+                  {daLotti(product) ? <><ExternalLink className="w-4 h-4 mr-1" /> Ricetta</> : <Edit className="w-4 h-4" />}
                 </Button>
               </div>
             ))}

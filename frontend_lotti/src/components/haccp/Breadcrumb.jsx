@@ -5,11 +5,12 @@
  */
 import { useState, useEffect } from "react";
 import { ChevronRight, Home } from "lucide-react";
+import { PAGE_NAMES } from "../../config/pageMeta";
 
 const LABELS = {
   // Tab principali
   dashboard:    "Dashboard",
-  ricette:      "Ricettario",
+  ricette:      "Ricette",
   lotti:        "Lotti",
   fornitori:    "Fornitori",
   prodotti:     "Prodotti",
@@ -36,6 +37,7 @@ const LABELS = {
 /** Converte slug URL in label leggibile */
 function slugToLabel(slug) {
   if (!slug) return null;
+  if (PAGE_NAMES[slug]) return PAGE_NAMES[slug];
   if (LABELS[slug]) return LABELS[slug];
   // Slug categoria: "pane-e-panificati" → "Pane e Panificati"
   return slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
@@ -56,7 +58,7 @@ export default function Breadcrumb() {
     return () => window.removeEventListener("hashchange", parseHash);
   }, []);
 
-  if (segs.length <= 1) return null; // Nasconde se solo tab principale
+  if (segs.length === 0) return null;
 
   return (
     <div
@@ -76,6 +78,7 @@ export default function Breadcrumb() {
       }}
     >
       <Home size={12} style={{ flexShrink: 0, color: "#9aa593" }} />
+      <span>Lotti</span>
       {segs.map((seg, i) => {
         const label = slugToLabel(seg);
         const isLast = i === segs.length - 1;

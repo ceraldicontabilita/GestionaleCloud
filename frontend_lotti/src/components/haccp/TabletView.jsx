@@ -65,7 +65,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   // dipendente deve poter LEGGERE la ricetta, non modificarla).
   const [ricettaDaVedere,     setRicettaDaVedere]     = useState(null);
   const [showAlpha,           setShowAlpha]           = useState(false);
-  const [showColazione,       setShowColazione]       = useState(false);
+  const [showColazione,       setShowColazione]       = useState(() => window.location.hash.includes("/colazione"));
   const [showRichiediMerce,   setShowRichiediMerce]   = useState(false);
   const [showAggiungi,        setShowAggiungi]        = useState(false);
   const [escludendoId,        setEscludendoId]        = useState(null);
@@ -74,7 +74,15 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
   const [showTask,            setShowTask]            = useState(false);
   // Pasticceria e Rosticceria si aprono sul cruscotto del reparto; le card
   // dei prodotti sono la vista «Produci».
-  const [vista,               setVista]               = useState(REPARTI_INFO[repartoIniziale]?.cruscotto ? "cruscotto" : "prodotti");
+  const [vista,               setVista]               = useState(window.location.hash.endsWith("/produci") ? "prodotti" : REPARTI_INFO[repartoIniziale]?.cruscotto ? "cruscotto" : "prodotti");
+  useEffect(() => {
+    const leggi = () => {
+      setShowColazione(window.location.hash.includes("/colazione"));
+      setVista(window.location.hash.endsWith("/produci") ? "prodotti" : REPARTI_INFO[repartoIniziale]?.cruscotto ? "cruscotto" : "prodotti");
+    };
+    window.addEventListener("hashchange", leggi);
+    return () => window.removeEventListener("hashchange", leggi);
+  }, [repartoIniziale]);
   // Frigoriferi/congelatori REALI configurati dal titolare (Attrezzature),
   // non l'elenco generico di fallback — richiesta Enzo 20/07/2026: "non mi
   // fa scegliere in quale congelatore o frigo, mancano".
@@ -278,10 +286,10 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
             label={info.label}
             colore={info.colore}
             operatore={operatore}
-            onProduci={()=>setVista("prodotti")}
+            onProduci={()=>{window.location.hash=`tablet/${reparto}/produci`;}}
             onRicette={()=>{ window.location.hash = "ricette"; }}
             onRichiediMerce={()=>setShowRichiediMerce(true)}
-            onColazione={reparto === "pasticceria" ? ()=>setShowColazione(true) : undefined}
+            onColazione={reparto === "pasticceria" ? ()=>{window.location.hash="tablet/pasticceria/colazione";} : undefined}
             onAlpha={reparto === "pasticceria" ? ()=>setShowAlpha(true) : undefined}
             onCambiaOperatore={cambiaOperatore}
             onReparti={()=>{ window.location.hash = "tablet/home"; }}
@@ -387,7 +395,7 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
       {prodottoSel && <ModalRegistraLotto prodotto={prodottoSel} reparto={reparto} onClose={()=>setProdottoSel(null)} onSuccess={carica} onRefreshLista={carica} frigoriferi={attrezzature.frigoriferi} congelatori={attrezzature.congelatori}/>}
       {showAdmin && <PannelloReparti onClose={()=>{setShowAdmin(false);carica();}}/>}
       {showAlpha && <ModalAlpha modo="banco" onClose={()=>setShowAlpha(false)}/>}
-      {showColazione && <ColazioneAcquavivaView modoTablet={true} onClose={()=>{setShowColazione(false);carica();}}/>}
+      {showColazione && <ColazioneAcquavivaView modoTablet={true} onClose={()=>{window.location.hash=`tablet/${reparto}`;carica();}}/>}
       {showRichiediMerce && <ModalRichiediMerce operatoreNome={operatore?.nome || ""} reparto={reparto} onClose={()=>setShowRichiediMerce(false)}/>}
       {showAggiungi && <ModalAggiungiProdotto reparto={reparto} onClose={()=>setShowAggiungi(false)} onSalvato={()=>{setShowAggiungi(false);carica();}}/>}
     </div>

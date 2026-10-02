@@ -10,7 +10,7 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 describe('X reversibile per i possibili doppioni del Menu', () => {
   let node, root;
   const products = [
-    {id:100,nameIT:'Babà',name:'Babà',price:'3.00€',image:'/menu/baba.jpg',origine:'lotti'},
+    {id:100,nameIT:'Babà',name:'Babà',price:'3.00€',image:'/menu/baba.jpg'},
     {id:101,nameIT:'BABA',name:'BABA',price:'4.00€'},
     {id:102,nameIT:'Cannolo',name:'Cannolo',price:'5.00€'},
   ];
@@ -33,6 +33,13 @@ describe('X reversibile per i possibili doppioni del Menu', () => {
     expect(button('Nascondi Babà')).not.toBeNull();
     expect(button('Nascondi BABA')).not.toBeNull();
     expect(button('Nascondi Cannolo')).toBeNull();
+    expect(axios.put).not.toHaveBeenCalled();
+  });
+  test('un prodotto Lotti non offre un secondo punto di modifica della visibilità', async () => {
+    axios.get.mockImplementation(url=>Promise.resolve({data:url.includes('/all')?{products:[{...products[0],origine:'lotti',lotti_ref:'ricetta:r1'}]}:[]}));
+    await render();
+    expect(button('Nascondi Babà')).toBeNull();
+    expect(button('Modifica Babà').textContent).toContain('Ricetta');
     expect(axios.put).not.toHaveBeenCalled();
   });
   test('nasconde solo ID scelto dopo conferma e permette ripristino', async () => {

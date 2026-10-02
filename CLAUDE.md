@@ -928,7 +928,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   l'unica strada ricetta → prodotto (il «Collega a una ricetta» dell'admin
   Menu era un doppione dal lato sbagliato, rimosso). Ogni ricetta la replica
   il ponte `app/lotti/servizi/menu_bridge.py` con la stessa foto
-  (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` → `visible`):
+  (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` → `visible`,
+  `menu_bb` → `menu_bb`):
   le righe di Lotti sopravvivono alla sync Qromo e l'esito `menu_sync` non fa
   mai fallire l'endpoint Lotti. Pregresso con
   `POST /api/ricette-ripubblica-menu` (admin, in background). La visibilita'
@@ -955,7 +956,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `/menu/carta/index.html` con **Prezzo da definire**; le API dei prodotti
   ordinabili continuano a richiedere un prezzo valido. Il backfill conta
   `senza_prezzo`, senza inventare un ripiego.
-- In Lotti, **In menu → Prezzi da completare** permette all'amministratore di
+- In Lotti, **Ricette → Menu e prezzi → Prezzi da completare** permette all'amministratore di
   inserire il prezzo al tavolo accanto a foto e prodotto, senza aprire la scheda.
   Usa il solo endpoint canonico `PUT /api/ricette/{id}/prezzo-tavolo`: non cambia
   banco o ingredienti. La riga scompare dopo salvataggio e sincronizzazione Menu;
@@ -970,9 +971,15 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   nella card **Dolci**; bevande in **Bar**, Rosticceria in **Food**. Il reparto
   misto Altro resta in **Altri prodotti**, senza dedurre il reparto dal nome.
   E' un raggruppamento di presentazione: ID, prezzi e categorie sorgenti restano intatti.
-- In Menu admin → Prodotti, la **X nasconde**, non cancella: per Lotti passa
-  dall'aggiornamento canonico di `menu_pubblico`, per Qromo aggiorna `visible`
-  e la sync conserva i false gia' salvati sullo stesso ID. «Mostra anche nascosti»
+- **Un solo editor per la produzione:** Menu admin → Prodotti → Ricetta apre
+  `/lotti/#ricette/<id>`, non un secondo form. Nella ricetta le tre spunte
+  indipendenti decidono menu pubblico, catalogo B&B e ricette operative
+  (`visibile_tablet`; le escluse restano recuperabili). Il Menu legge il
+  proprio catalogo replicato dal ponte, non rilegge le ricette per B&B.
+  `#in_menu` resta un alias di `#ricette/prezzi`, non una seconda pagina.
+- In Menu admin → Prodotti, la **X nasconde**, non cancella: resta per Qromo
+  e aggiorna `visible`; per Lotti la scelta sta nella ricetta.
+  La sync Qromo conserva i false gia' salvati sullo stesso ID. «Mostra anche nascosti»
   permette il ripristino. «Possibili doppioni» confronta solo il nome, mai fonde o elimina automaticamente.
 - La categoria delle ricette nel Menu e' «Produzione Ceraldi» piu' la
   sottocategoria derivata dal reparto. Le categorie si leggono e si creano da Lotti con
@@ -982,14 +989,29 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   Qromo (`origine IS NULL`) non è agganciabile**: la sync la cancella e un
   prodotto di Lotti appeso lì farebbe fallire la cancellazione per chiave
   esterna.
-- Chi allergeni da dichiarare non ne ha (distillati, bibite in bottiglia) si
-  esclude dalla verifica, per prodotto o per reparto. Le esclusioni vivono in
+- Bibite e liquori non compaiono nella lista di lavoro degli allergeni;
+  il filtro non cancella allergeni registrati e non attesta la loro assenza.
+  Le ulteriori esclusioni manuali, per prodotto o reparto, vivono in
   `menu.menu_allergeni_esclusioni`, **non** in una colonna di `menu_products`:
   la sync Qromo cancellerebbe qualunque flag messo lì, mentre gli id Qromo
-  restano stabili. Escludere significa «non richiede la dichiarazione», non
-  «nascondilo dal menu»: è conformità, si conserva e si revoca.
+  restano stabili. L'esclusione manuale conserva motivo e revoca; non nasconde
+  il prodotto dal Menu.
+
+- **Colazione del reparto:** la configurazione stagionale separa Pasticceria,
+  Rosticceria, Acquaviva e altri fornitori, con filtri sulle categorie richieste.
+  I filtri ricavati dal nome sono soltanto di presentazione, non assegnano
+  gruppi operativi persistenti. I salati rimandano alla produzione di
+  Rosticceria. L'azione esplicita «Tutte le 4 stagioni» aggiunge il singolo
+  prodotto in modo idempotente, conserva quantità esistenti e chiede conferma.
+  Il caricamento fallito non viene rappresentato come un menu vuoto.
 
 ### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
+
+- Il compositore «Prodotto dal menu» legge il catalogo canonico con
+  `/menu/api/menu/carta?destinazione=bb`, tutte le categorie, ricerca e
+  paginazione; non mantiene una seconda lista né inventa prezzi mancanti.
+  «Usa come prezzo» aggiorna i nomi automatici «Colazione da €…» e conserva
+  i nomi personalizzati. Le spunte B&B dei prodotti Lotti arrivano dal ponte.
 
 - **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
   Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:

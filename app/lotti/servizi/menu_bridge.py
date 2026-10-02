@@ -392,6 +392,7 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         "origine": ORIGINE_LOTTI,
         "lotti_ref": lotti_ref,
         "visible": visibile_effettivo,
+        "menu_bb": ricetta.get("menu_bb") is not False,
     }
 
     if esistente:

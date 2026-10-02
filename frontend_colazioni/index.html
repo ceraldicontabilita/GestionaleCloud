@@ -1169,15 +1169,19 @@ function glTab(){$("#gl").innerHTML=GL.length?`<div class="scroll"><table><tr><t
 function glImporta(){const r=$("#glt").value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{const c=l.split(l.includes(";")?";":"\t").map(x=>x.trim());return {nome:c[0]||"",differenza:parseFloat(String(c[1]||"0").replace("€","").replace(",","."))||0,per:c[2]||""}}).filter(x=>x.nome);if(!r.length)return toast("Nessuna riga valida");GL.push(...r);$("#glt").value="";glTab();toast(r.length+" prodotti aggiunti: ricorda di salvare")}
 async function glSalva(){const n=await run("bb_tit_glutine_salva",{p:sess.p,righe:GL.filter(g=>g.nome.trim())},"Elenco senza glutine salvato");if(n!==undefined&&n!==true)toast(n+" prodotti salvati")}
 
-let CE=[],CESAVED=[],CEOPEN=-1,CESID=null,CATA=null,CEJ=null;
+let CE=[],CESAVED=[],CEOPEN=-1,CESID=null,CATA=null,CEJ=null,CECATLOAD=null,CELIMIT=60;
 const ceCopy=x=>JSON.parse(JSON.stringify(x));
 function ceInit(sid,open=-1){CESID=sid;CESAVED=ceCopy(sid==="std"?(TIT.standard||[]):sid?((TIT.colazioni||{})[sid]||[]):[]);CE=ceCopy(CESAVED);CEOPEN=open;ceTab();ceCat()}
-async function ceCat(){if(CATA)return;const c=await rpc("bb_tit_catalogo",{p:sess.p}).catch(()=>null);if(Array.isArray(c)){CATA=c;loadXtra();ceTab()}}
+function ceCatalogoCarta(carta){
+ const menus=new Map(carta.menus.map(m=>[m.id,m])),cats=new Map(carta.cats.map(c=>[c.id,c]));
+ return carta.items.filter(p=>p.on!==0&&cats.has(p.c)).map(p=>{const c=cats.get(p.c);return {id:p.id,nome:p.n,desc:p.d||"",prezzo:Number.isFinite(p.p)&&p.p>0?p.p/100:null,allergeni:p.allergeni_menu||[],cat:(menus.get(c.m)||{}).n||"Altro",sub:c.n,img:p.pic||null}}).sort((a,b)=>a.nome.localeCompare(b.nome,"it"))}
+async function ceCat(){if(CATA)return CATA;if(!CECATLOAD)CECATLOAD=fetch("/menu/api/menu/carta?destinazione=bb",{credentials:"same-origin"}).then(r=>{if(!r.ok)throw Error("Catalogo non disponibile");return r.json()}).then(c=>{CATA=ceCatalogoCarta(c);loadXtra();ceTab();return CATA}).finally(()=>{CECATLOAD=null});try{return await CECATLOAD}catch(e){toast("Catalogo non disponibile: riprova da Prodotto dal menù");return null}}
 const ceList=v=>{const p=CATA&&v.prodotto_id?CATA.find(x=>x.id===v.prodotto_id):null;return p?p.prezzo:null};
 const cePz=v=>v.prezzo!=null?v.prezzo:ceList(v);
 const ceSomma=c=>Math.round(c.voci.reduce((a,v)=>a+(cePz(v)||0)*v.qta,0)*100)/100;
 const ceSumHtml=(c,i)=>{const t=ceSomma(c);return t>0&&t!==c.prezzo?`Somma delle voci: <b>${eur(t)}</b> · <a href="#" onmousedown="event.preventDefault();ceUsa(${i})" onclick="return false">usa come prezzo</a>`:""};
-const ceUsa=i=>{CE[i].prezzo=ceSomma(CE[i]);const e=document.getElementById("ceprice"+i);if(e)e.value=CE[i].prezzo;ceSumRef(i);toast("Prezzo della colazione aggiornato")};
+function ceImpostaPrezzo(i,valore){const c=CE[i],prezzo=Number(String(valore).replace(",","."));if(!Number.isFinite(prezzo)||prezzo<0)return;c.prezzo=prezzo;if(/^Colazione da\s*€\s*\d+(?:[.,]\d+)?\s*$/i.test(c.nome||"")){c.nome="Colazione da €"+prezzo.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});const nome=document.getElementById("cenome"+i);if(nome)nome.value=c.nome}ceSumRef(i)}
+const ceUsa=i=>{if(CE[i].voci.some(v=>cePz(v)==null))return toast("Completa i prezzi mancanti prima di usare la somma");ceImpostaPrezzo(i,ceSomma(CE[i]));const e=document.getElementById("ceprice"+i);if(e)e.value=CE[i].prezzo;toast("Prezzo e nome automatico aggiornati")};
 const ceSumRef=i=>{const e=document.getElementById("cesum"+i);if(e)e.innerHTML=ceSumHtml(CE[i],i)};
 const ceRiga=c=>({id:c.id||null,nome:c.nome.trim(),prezzo:c.prezzo,descrizione:(c.descrizione||"").trim(),attiva:c.attiva,voci:c.voci.map(v=>({nome:v.nome.trim(),qta:v.qta,prodotto_id:v.prodotto_id,prezzo:v.prezzo,ingredienti:v.ingredienti,allergeni:v.allergeni}))});
 const ceSporca=c=>{if(!c.id)return true;const s=CESAVED.find(x=>x.id===c.id);return !s||JSON.stringify(ceRiga(c))!==JSON.stringify(ceRiga(s))};
@@ -1195,7 +1199,7 @@ function ceTab(){
  const chiusa=(c,i)=>`<div class="card row" id="cec${i}" onclick="ceOpen(${i})" style="cursor:pointer;margin:6px 0;padding:10px 14px;${c.attiva?"":"opacity:.6"}"><div style="min-width:0"><b>${esc(c.nome||"(senza nome)")}</b> ${c.attiva?"":`<span class="pill p-warn">disattivata</span> `}${ceSporca(c)?`<span class="pill p-warn">da salvare</span>`:""}
    <div class="mute" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.voci.map(v=>(v.qta>1?v.qta+"× ":"")+v.nome).join(" · ")||"nessuna voce")}</div></div><span class="price" style="font-size:18px">${eur(c.prezzo)}</span></div>`;
  const aperta=(c,i)=>`<div class="card" id="cec${i}" style="margin:6px 0;padding:12px 14px;border-color:var(--brand,#7a2e1c)">
-  <div class="row" style="gap:6px;align-items:center"><input value="${esc(c.nome)}" placeholder="Nome (es. Colazione Vesuvio)" oninput="CE[${i}].nome=this.value" style="margin:0;font-weight:700"><input id="ceprice${i}" type="number" min="0" step="0.1" value="${c.prezzo}" oninput="CE[${i}].prezzo=+this.value" style="margin:0;width:88px" title="Prezzo a persona in €"><span>€</span><a href="#" onclick="ceOpen(${i});return false" title="Chiudi" style="text-decoration:none">▲</a></div>
+  <div class="row" style="gap:6px;align-items:center"><input id="cenome${i}" value="${esc(c.nome)}" placeholder="Nome (es. Colazione Vesuvio)" oninput="CE[${i}].nome=this.value" style="margin:0;font-weight:700"><input id="ceprice${i}" type="number" min="0" step="0.1" value="${c.prezzo}" oninput="ceImpostaPrezzo(${i},this.value)" style="margin:0;width:88px" title="Prezzo a persona in €"><span>€</span><a href="#" onclick="ceOpen(${i});return false" title="Chiudi" style="text-decoration:none">▲</a></div>
   <input value="${esc(c.descrizione||"")}" oninput="CE[${i}].descrizione=this.value" placeholder="Descrizione breve (facoltativa)" style="margin:6px 0">
   ${c.voci.map((v,j)=>`<div style="border-top:1px solid var(--line,#0002);padding:6px 0"><div class="row" style="gap:6px;align-items:center">
     <div style="flex:1;min-width:0">${v.prodotto_id?`<b>${esc(v.nome)}</b> <a href="#" onclick="cePick(${i},${j});return false" title="Sostituisci con un altro prodotto">cambia</a><div class="mute">${v.allergeni.map(a=>esc((A[a]||{}).icon||"")).join(" ")||"nessun allergene"}</div>`:`<input list="cemenu" value="${esc(v.nome)}" oninput="CE[${i}].voci[${j}].nome=this.value" onchange="ceAuto(${i},${j},this.value)" placeholder="Scrivi le prime lettere del prodotto" style="margin:0">`}</div>
@@ -1214,11 +1218,12 @@ function ceAuto(i,j,nome){const p=(CATA||[]).find(x=>cpNorm(x.nome)===cpNorm(nom
 function ceVQ(i,j,d){const v=CE[i].voci[j];v.qta=Math.min(10,Math.max(1,v.qta+d));ceTab()}
 function ceAll(i,j,a){const x=CE[i].voci[j].allergeni,k=x.indexOf(a);k<0?x.push(a):x.splice(k,1);ceTab()}
 async function cePick(i,j){CEJ=j===undefined?null:j;
- if(!CATA){const c=await run("bb_tit_catalogo",{p:sess.p});if(!c||c===true)return;CATA=c;loadXtra()}
- $("#cep"+i).innerHTML=`<div class="card" style="margin:8px 0;padding:8px"><input id="mq" placeholder="${CEJ!==null?"Cerca il prodotto che lo sostituisce…":"Cerca nel menù (es. croissant, cappuccino…)"}" oninput="ceRes(${i})" style="margin:0 0 6px"><div id="mr" style="max-height:320px;overflow:auto"></div></div>`;$("#mq").focus();ceRes(i)}
+ if(!CATA&&!await ceCat())return;CELIMIT=60;
+ const categorie=[...new Set(CATA.map(p=>p.cat))].sort((a,b)=>a.localeCompare(b,"it"));
+ $("#cep"+i).innerHTML=`<div class="card" style="margin:8px 0;padding:8px"><input id="mq" placeholder="Cerca tra tutti i prodotti che vendiamo…" oninput="CELIMIT=60;ceRes(${i})" style="margin:0 0 6px"><select id="mc" aria-label="Categoria prodotti" onchange="CELIMIT=60;ceRes(${i})"><option value="">Tutte le categorie</option>${categorie.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("")}</select><div id="mr" style="max-height:320px;overflow:auto"></div></div>`;$("#mq").focus();ceRes(i)}
 function ceRes(i){
- const q=$("#mq").value.toLowerCase(),A=tA(),l=CATA.filter(p=>!q||p.nome.toLowerCase().includes(q)).slice(0,60);
- $("#mr").innerHTML=l.map(p=>`<div class="prod" style="cursor:pointer" onclick="ceAdd2(${i},${p.id})">${prodImg(p)}<div class="pinfo"><b>${esc(p.nome)}</b><div class="mute">${esc(p.sub||p.cat)} · ${eur(p.prezzo)} · ${p.allergeni.map(a=>(A[a]||{}).icon||"").join("")}</div></div><span class="btn sm">${CEJ!==null?"Scegli":"Aggiungi"}</span></div>`).join("")||`<p class="mute">Nessun risultato.</p>`}
+ const q=$("#mq").value.toLowerCase(),categoria=$("#mc").value,A=tA(),tutti=CATA.filter(p=>(!q||p.nome.toLowerCase().includes(q))&&(!categoria||p.cat===categoria)),l=tutti.slice(0,CELIMIT);
+ $("#mr").innerHTML=`<p class="mute">${tutti.length} prodotti · ${l.length} mostrati</p>`+(l.map(p=>`<div class="prod" style="cursor:pointer" onclick="ceAdd2(${i},${p.id})">${prodImg(p)}<div class="pinfo"><b>${esc(p.nome)}</b><div class="mute">${esc(p.sub||p.cat)} · ${p.prezzo==null?"Prezzo da definire":eur(p.prezzo)} · ${p.allergeni.map(a=>(A[a]||{}).icon||"").join("")}</div></div><span class="btn sm">${CEJ!==null?"Scegli":"Aggiungi"}</span></div>`).join("")||`<p class="mute">Nessun risultato.</p>`)+(l.length<tutti.length?`<button class="btn sm sec" onclick="CELIMIT+=60;ceRes(${i})">Mostra altri prodotti</button>`:"")}
 function ceAdd2(i,id){const p=CATA.find(x=>x.id===id);
  if(CEJ!==null){const v=CE[i].voci[CEJ];v.nome=p.nome;v.prodotto_id=p.id;v.allergeni=p.allergeni;v.ingredienti=[];CEJ=null;ceTab();return toast("Sostituito con: "+p.nome)}
  const k=CE[i].voci.find(v=>v.prodotto_id===id);if(k)k.qta=Math.min(10,k.qta+1);else CE[i].voci.push({nome:p.nome,qta:1,prodotto_id:p.id,ingredienti:[],allergeni:p.allergeni,prezzo:null});

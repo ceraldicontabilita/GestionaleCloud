@@ -120,15 +120,28 @@ async def _dataset() -> Dict[str, Any]:
 
 
 @router_pubblico.get("/carta")
-async def carta_pubblica():
+async def carta_pubblica(destinazione: str = "pubblico"):
+    if destinazione not in {"pubblico", "bb"}:
+        raise HTTPException(400, "Destinazione non valida")
     dati = await _dataset()
-    return await _carta_dai_dati(dati)
+    return await _carta_dai_dati(dati, destinazione=destinazione)
 
 
-async def _carta_dai_dati(dati):
+async def _carta_dai_dati(dati, *, destinazione="pubblico"):
     dettagli = costruisci_carta(dati["pub"], dati["extras"], dati.get("imgmap") or {})
-    categorie, sottocategorie, prodotti = await menu_routes._fetch_all(catalogo_carta=True)
-    return carta_da_menu(categorie, sottocategorie, prodotti, dettagli, dati.get("imgmap") or {})
+    if destinazione == "bb":
+        categorie, sottocategorie, prodotti = await menu_routes._fetch_all(catalogo_bb=True)
+        # Destinazione indipendente dalla carta pubblica. La selezione usa
+        # soltanto la riga Menu replicata dal ponte, mai il database ricette.
+        prodotti = [dict(p, visible=True) for p in prodotti if p.get("menu_bb") is not False]
+    else:
+        categorie, sottocategorie, prodotti = await menu_routes._fetch_all(catalogo_carta=True)
+    carta = carta_da_menu(categorie, sottocategorie, prodotti, dettagli, dati.get("imgmap") or {})
+    if destinazione == "bb":
+        allergeni = {p["id"]: p.get("allergens", []) for p in prodotti}
+        for item in carta["items"]:
+            item["allergeni_menu"] = allergeni[item["id"]]
+    return carta
 
 
 ALLERGENI_CARTA = {

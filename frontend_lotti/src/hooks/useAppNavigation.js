@@ -9,7 +9,7 @@ import { PAGE_NAMES } from "../config/pageMeta";
 import { puoAprireTab, tabRiservataAdmin } from "../config/permissions";
 
 // Alias storici: i vecchi deep-link #ricettario/#food_cost aprono Ricette
-const ALIAS_TAB = { ricettario: "ricette", food_cost: "ricette" };
+const ALIAS_TAB = { ricettario: "ricette", food_cost: "ricette", in_menu: "ricette" };
 
 export function getInitialTab() {
   const hash = window.location.hash.replace("#", "").split("/")[0];
@@ -43,6 +43,7 @@ export function useAppNavigation() {
         return;
       }
       const dest = ALIAS_TAB[hash] || hash;
+      if (hash === "in_menu") window.location.hash = "ricette/prezzi";
       if (dest && dest !== activeTab) setActiveTab(dest);
     };
     window.addEventListener("hashchange", onHash);
@@ -54,7 +55,7 @@ export function useAppNavigation() {
     const nome = PAGE_NAMES[activeTab] || "Gestionale";
     document.title = `${nome} · HACCP Ceraldi`;
     const cur = window.location.hash.replace("#", "").split("/")[0];
-    if (activeTab && cur !== activeTab) window.location.hash = activeTab;
+    if (activeTab && cur !== activeTab) window.location.hash = cur === "in_menu" ? "ricette/prezzi" : activeTab;
   }, [activeTab]);
 
   return { activeTab, setActiveTab, handleTabChange };
