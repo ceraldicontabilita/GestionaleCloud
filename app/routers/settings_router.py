@@ -125,15 +125,15 @@ async def get_anthropic_settings(
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
     """Stato della chiave Anthropic per l'assistente AI (mai in chiaro)."""
-    import os
+    from app.services.anthropic_llm_client import chiave_api, document_model_name
     db = Database.get_db()
     doc = await db["settings"].find_one({"chiave": "anthropic"}, {"_id": 0})
-    env_presente = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    env_presente = bool(chiave_api())
     db_presente = bool(doc and doc.get("api_key"))
     return {
         "configurata": env_presente or db_presente,
         "fonte": "env" if env_presente else ("database" if db_presente else None),
-        "modello": os.environ.get("ANTHROPIC_MODEL", "").strip() or "claude-sonnet-5",
+        "modello": document_model_name(),
         "aggiornato_il": doc.get("aggiornato_il") if doc else None,
     }
 
@@ -269,17 +269,13 @@ async def _test_openai(api_key: str, modello: str = "gpt-4o-mini") -> Dict[str, 
 
 
 async def _test_anthropic(api_key: str, modello: str = None) -> Dict[str, Any]:
-    """Chiamata minima per validare la chiave/il modello."""
+    """Chiamata minima per validare la chiave/il modello (un solo client, senza ritentativi)."""
+    from app.services.anthropic_llm_client import LlmChat, UserMessage, document_model_name
+
+    modello = modello or document_model_name()
     try:
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=api_key)
-        modello = modello or "claude-sonnet-5"
-        resp = await client.messages.create(
-            model=modello, max_tokens=8,
-            messages=[{"role": "user", "content": "ping"}],
-            timeout=20.0,
-        )
-        _ = resp  # risposta non usata: conta solo che non sollevi errori
+        chat = LlmChat(api_key, model=modello, timeout_s=20.0, tentativi=1, max_tokens=8, scopo="prova_chiave")
+        await chat.send_message(UserMessage(content="ping"))
         return {"ok": True, "messaggio": f"Chiave valida (modello {modello})"}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}

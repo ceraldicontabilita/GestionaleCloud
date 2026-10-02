@@ -15,7 +15,8 @@ Architettura (da app/knowledge/chat_kb.json, "implementazione_chat_intelligente"
 Configurazione (variabili d'ambiente):
   ANTHROPIC_API_KEY  obbligatoria (senza, il motore non e' configurato e
                      la chat ricade sul motore a parole chiave esistente)
-  ANTHROPIC_MODEL    opzionale, default "claude-sonnet-5"
+  ANTHROPIC_MODEL    opzionale (il default e' quello del client unico,
+                     ``anthropic_llm_client.document_model_name``)
 """
 from app.services.originale_documento import url_originale
 import json
@@ -37,7 +38,6 @@ MAX_RISULTATI_DEFAULT = 25
 MAX_RISULTATI_TETTO = 100
 STORICO_MESSAGGI_CONTESTO = 10
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
-ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5"
 
 
 def is_configured() -> bool:
@@ -112,7 +112,9 @@ def _model_name(provider: Optional[str] = None) -> str:
     per i chiamanti legacy che usano ancora direttamente il client Anthropic."""
     if provider == "openai":
         return os.getenv("OPENAI_MODEL", "").strip() or OPENAI_DEFAULT_MODEL
-    return os.getenv("ANTHROPIC_MODEL", "").strip() or ANTHROPIC_DEFAULT_MODEL
+    from app.services.anthropic_llm_client import document_model_name
+
+    return document_model_name()
 
 
 # ============================================================================
@@ -993,11 +995,15 @@ async def rispondi(domanda: str, session_id: str, db,
             model=provider_info.get("model")
         )
 
-    import anthropic
+    from app.services.anthropic_llm_client import LlmChat
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
     modello_anthropic = provider_info.get("model") or _model_name("anthropic")
     system = _system_prompt(domanda)
+    # Il solo client: la chiamata gira fuori dal loop, con timeout e registro.
+    # P2-7: timeout esplicito sulla chiamata LLM (evita attese indefinite
+    # se il provider non risponde; oltre soglia si ricade sul motore keyword).
+    chat = LlmChat(api_key, session_id=session_id, system_prompt=system, model=modello_anthropic,
+                   timeout_s=60.0, tentativi=1, max_tokens=2000, scopo="chat", db=db)
 
     messages: List[Dict[str, Any]] = []
     for voce in (storico or [])[-STORICO_MESSAGGI_CONTESTO:]:
@@ -1016,26 +1022,17 @@ async def rispondi(domanda: str, session_id: str, db,
                 documenti_citati.append(d)
 
     for _ in range(MAX_ITERAZIONI_TOOL):
-        # P2-7: timeout esplicito sulla chiamata LLM (evita attese indefinite
-        # se il provider non risponde; oltre soglia si ricade sul motore keyword).
-        response = await client.messages.create(
-            model=modello_anthropic,
-            max_tokens=2000,
-            # Temperature bassa (scelta utente): risposte coerenti e
-            # riproducibili, adatte a un assistente contabile-fiscale, ma con
-            # un minimo di naturalezza nel linguaggio.
-            temperature=0.3,
-            system=system,
-            messages=messages,
-            tools=TOOLS_SCHEMA,
-            timeout=60.0,
-        )
+        # Temperature bassa (scelta utente): risposte coerenti e
+        # riproducibili, adatte a un assistente contabile-fiscale, ma con
+        # un minimo di naturalezza nel linguaggio.
+        risposta = await chat.crea_messaggio(messages, tools=TOOLS_SCHEMA, temperature=0.3)
+        blocchi = risposta["content"]
 
-        tool_uses = [b for b in response.content if b.type == "tool_use"]
+        tool_uses = [b for b in blocchi if b.get("type") == "tool_use"]
         if not tool_uses:
             # Il modello ha risposto in testo libero senza componi_risposta:
             # accettiamo comunque, con affidabilita' prudente.
-            testo = "".join(b.text for b in response.content if b.type == "text").strip()
+            testo = risposta["testo"].strip()
             return {
                 "risposta_testuale": testo or "Non sono riuscito a produrre una risposta.",
                 "livello_affidabilita": "dubbio",
@@ -1046,12 +1043,13 @@ async def rispondi(domanda: str, session_id: str, db,
                 "motore": "ai",
             }
 
-        messages.append({"role": "assistant", "content": response.content})
+        messages.append({"role": "assistant", "content": blocchi})
 
         tool_results = []
         for tu in tool_uses:
-            if tu.name == "componi_risposta":
-                strutturata = dict(tu.input or {})
+            nome_tool, input_tool, id_tool = tu.get("name"), tu.get("input") or {}, tu.get("id")
+            if nome_tool == "componi_risposta":
+                strutturata = dict(input_tool)
                 strutturata.setdefault("documenti_consultati", [])
                 strutturata["documenti_consultati"] = list(strutturata["documenti_consultati"]) + \
                     [s for s in strumenti_usati if s not in strutturata["documenti_consultati"]]
@@ -1064,29 +1062,29 @@ async def rispondi(domanda: str, session_id: str, db,
                 strutturata["motore"] = "ai"
                 return strutturata
 
-            executor = _TOOL_EXECUTORS.get(tu.name)
+            executor = _TOOL_EXECUTORS.get(nome_tool)
             t0 = time.monotonic()
             try:
                 if executor is None:
-                    risultato: Any = {"errore": f"strumento sconosciuto: {tu.name}"}
+                    risultato: Any = {"errore": f"strumento sconosciuto: {nome_tool}"}
                     esito = "sconosciuto"
                 else:
-                    risultato = await executor(db, tu.input or {})
+                    risultato = await executor(db, input_tool)
                     esito = "ok"
                     strumenti_usati.append(
-                        f"{tu.name}({len(risultato) if isinstance(risultato, list) else 1} risultati)"
+                        f"{nome_tool}({len(risultato) if isinstance(risultato, list) else 1} risultati)"
                     )
-                    _aggiungi_citati(_documenti_citati_da_tool(tu.name, risultato))
+                    _aggiungi_citati(_documenti_citati_da_tool(nome_tool, risultato))
             except Exception as e:
-                logger.exception(f"Chat AI: errore strumento {tu.name}")
+                logger.exception(f"Chat AI: errore strumento {nome_tool}")
                 risultato = {"errore": str(e)[:300]}
                 esito = "errore"
             durata_ms = int((time.monotonic() - t0) * 1000)
-            await _log_tool_call(db, session_id, tu.name, tu.input or {}, esito, durata_ms)
+            await _log_tool_call(db, session_id, nome_tool, input_tool, esito, durata_ms)
 
             tool_results.append({
                 "type": "tool_result",
-                "tool_use_id": tu.id,
+                "tool_use_id": id_tool,
                 "content": json.dumps(risultato, ensure_ascii=False, default=str)[:30000],
             })
 

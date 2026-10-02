@@ -6,7 +6,6 @@ Usa LLM per:
 2. Suggerire categoria prodotto e Piano dei Conti
 3. Migliorare il pattern matching nel tempo
 """
-import os
 import logging
 import json
 from datetime import timezone
@@ -77,15 +76,16 @@ async def categorizza_articoli_con_ai(
         Lista di categorizzazioni con categoria_haccp, conto, confidenza
     """
     try:
-        from app.services.anthropic_llm_client import LlmChat, UserMessage
+        from app.services.anthropic_llm_client import LlmChat, UserMessage, chiave_api, modello_veloce
     except ImportError:
         logger.error("LLM stub non disponibile")
         return []
     
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    api_key = chiave_api()
     if not api_key:
         logger.error("ANTHROPIC_API_KEY non trovata")
         return []
+    modello = modello_veloce()
     
     risultati = []
     
@@ -135,8 +135,9 @@ Rispondi SOLO con il JSON array, nessun altro testo."""
             chat = LlmChat(
                 api_key=api_key,
                 session_id=f"categorizzazione_{i}",
-                system_prompt=system_message
-            ).with_model("anthropic", "claude-haiku-4-5")
+                system_prompt=system_message,
+                model=modello, scopo="categorizzazione_conti",
+            )
 
             response = await chat.send_message(UserMessage(content=user_prompt))
             
@@ -159,7 +160,7 @@ Rispondi SOLO con il JSON array, nessun altro testo."""
                         "conto": cat.get("conto", "05.01.01"),
                         "confidenza": cat.get("confidenza", 0.7),
                         "ragione_ai": cat.get("ragione", ""),
-                        "categorizzato_da": "claude-haiku-4-5"
+                        "categorizzato_da": modello
                     })
             
             logger.info(f"Batch {i//batch_size + 1}: {len(categorizzazioni)} articoli categorizzati")
@@ -233,7 +234,7 @@ async def aggiorna_dizionario_con_ai(db, limite: int = 100) -> Dict[str, Any]:
                     "conto": ris["conto"],
                     "confidenza": ris["confidenza"],
                     "ragione_ai": ris.get("ragione_ai", ""),
-                    "categorizzato_da": "claude-sonnet-4.5",
+                    "categorizzato_da": ris.get("categorizzato_da") or "ai",
                     "ai_updated_at": __import__("datetime").datetime.now(timezone.utc).isoformat()
                 }}
             )
