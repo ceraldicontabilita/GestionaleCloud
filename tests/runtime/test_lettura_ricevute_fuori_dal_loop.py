@@ -37,3 +37,11 @@ def test_i_chiamanti_async_usano_to_thread():
     assert "asyncio.to_thread(parse_receipt_pdf" in inspect.getsource(documenti)
     assert "asyncio.to_thread(parse_receipt_pdf" in inspect.getsource(verbali_document_import)
     assert "asyncio.to_thread(parse_receipt_pdf" in inspect.getsource(pagopa_receipts.import_receipt)
+
+
+def test_la_proiezione_bancaria_classifica_i_movimenti_in_un_thread():
+    import inspect
+    from app.services import proiezione_bancaria
+
+    sorgente = inspect.getsource(proiezione_bancaria.proietta_movimenti_bancari_semantici)
+    assert "asyncio.to_thread(classifica_movimento_ec" in sorgente
