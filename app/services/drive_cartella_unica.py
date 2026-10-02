@@ -298,7 +298,7 @@ def _cestina(service, file_id: str, copia_di: str) -> bool:
         raise
 
 
-class _FileCaricato:
+class FileCaricato:
     """Lo stesso oggetto che riceve l'upload di Documenti > Import."""
 
     def __init__(self, nome: str, contenuto: bytes, source_context: Dict[str, Any],
@@ -345,7 +345,7 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any],
             return {"success": False, "tipo_rilevato": tipo, "arretrato": True,
                     "anno": anno, "anno_minimo": minimo}
     try:
-        return await upload_documento_automatico(file=_FileCaricato(nome, contenuto, contesto, tipo))
+        return await upload_documento_automatico(file=FileCaricato(nome, contenuto, contesto, tipo))
     except HTTPException as exc:
         # Memoria esaurita per l'OCR: il file non e' sbagliato, si riprova al giro dopo.
         return {"success": False, "message": str(exc.detail), "http_status": exc.status_code,

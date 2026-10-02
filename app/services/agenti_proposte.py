@@ -463,14 +463,14 @@ async def _applica_inbox(db, proposta: Dict[str, Any], tipo: str, utente: str) -
     from fastapi import HTTPException
 
     from app.routers.documenti import upload_documento_automatico
-    from app.services.drive_cartella_unica import _FileCaricato
+    from app.services.drive_cartella_unica import FileCaricato
 
     doc = proposta["documento"]
     contenuto = await leggi_byte(db, {"origine": "inbox", "inbox_id": doc["inbox_id"]})
     contesto = {"channel": "documents_inbox", "inbox_id": doc["inbox_id"], "source_sha256": doc.get("sha256"),
                 "tipo_deciso_da": utente}
     try:
-        risultato = await upload_documento_automatico(file=_FileCaricato(doc.get("nome") or "documento", contenuto,
+        risultato = await upload_documento_automatico(file=FileCaricato(doc.get("nome") or "documento", contenuto,
                                                                          contesto, tipo))
     except HTTPException as exc:
         return {"success": False, "message": str(exc.detail), "http_status": exc.status_code}

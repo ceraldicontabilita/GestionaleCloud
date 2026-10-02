@@ -153,7 +153,7 @@ async def _errori_per_tipo(db) -> Dict[str, Dict[str, int]]:
         cartella = r.get("cartella")
         if cartella in esito:
             esito[cartella][tipo] = esito[cartella].get(tipo, 0) + 1
-        if cartella == ERRORI and tipo in ("non_riconosciuto", "auto", "None"):
+        if cartella == ERRORI and tipo in ("non_riconosciuto", "auto"):
             esito["non_riconosciuti"]["n"] += 1
         if cartella == ERRORI and tipo == "f24" and str(r.get("motivo") or "").startswith(PREFISSO_F24_NON_QUADRATO):
             esito["f24_non_quadrati"]["n"] += 1
