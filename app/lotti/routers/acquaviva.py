@@ -34,6 +34,8 @@ ACQUAVIVA_HEADERS = {
 }
 
 _LISTINO_2026_PATH = Path(__file__).resolve().parent.parent / "data" / "listino_acquaviva_vandemoortele_2026.json"
+_SCRAPING_ACQUAVIVA_PROCESSO = uuid.uuid4().hex
+_scraping_acquaviva_attivo = False
 _ALIAS_FATTURA_PER_CODICE = {
     "57245": ["AQV BABY CRNT CALI STRA 35G 3.15KG", "BABY CORNETTO CALISE DRITTO VUOTO"],
     "57380": ["AQV CARUSO SICILIAN LMN CR 90G 4.95KG"],
@@ -652,10 +654,18 @@ async def dettaglio_prodotto_acquaviva(url: str = Query(...)):
 
 
 async def _esegui_scraping_acquaviva(con_dettagli: bool = False):
+    global _scraping_acquaviva_attivo
+    _scraping_acquaviva_attivo = True
     iniziato = datetime.now(timezone.utc).isoformat()
     await db.sync_status.update_one(
         {"_id": "scraping_acquaviva"},
-        {"$set": {"stato": "in_corso", "iniziato": iniziato, "errore": ""}},
+        {"$set": {
+            "stato": "in_corso",
+            "iniziato": iniziato,
+            "errore": "",
+            "processo": _SCRAPING_ACQUAVIVA_PROCESSO,
+            "con_dettagli": con_dettagli,
+        }},
         upsert=True,
     )
     importati = aggiornati = pagine = 0
@@ -750,6 +760,8 @@ async def _esegui_scraping_acquaviva(con_dettagli: bool = False):
             }},
             upsert=True,
         )
+    finally:
+        _scraping_acquaviva_attivo = False
 
 
 @router.post("/scraping/avvia")
@@ -758,11 +770,22 @@ async def avvia_scraping_acquaviva(
     con_dettagli: bool = Query(False),
     _admin=Depends(require_admin),
 ):
+    global _scraping_acquaviva_attivo
     stato = await db.sync_status.find_one({"_id": "scraping_acquaviva"}, {"_id": 0})
-    if stato and stato.get("stato") == "in_corso":
+    stesso_processo = (stato or {}).get("processo") == _SCRAPING_ACQUAVIVA_PROCESSO
+    if _scraping_acquaviva_attivo or (
+        stato and stato.get("stato") == "in_corso" and stesso_processo
+    ):
         return {"avviato": False, "messaggio": "Aggiornamento Acquaviva già in corso"}
+    # Uno stato in_corso appartenente a un altro processo indica che un deploy
+    # ha interrotto il task. Lo si puo' riprendere senza interventi sul DB.
+    _scraping_acquaviva_attivo = True
     background_tasks.add_task(_esegui_scraping_acquaviva, con_dettagli)
-    return {"avviato": True, "messaggio": "Aggiornamento Acquaviva avviato"}
+    return {
+        "avviato": True,
+        "ripreso": bool(stato and stato.get("stato") == "in_corso"),
+        "messaggio": "Aggiornamento Acquaviva avviato",
+    }
 
 
 @router.get("/scraping/stato")
@@ -772,11 +795,19 @@ async def stato_scraping_acquaviva():
         {"fonte": "acquaviva"}, {"_id": 0}, sort=[("data", -1)]
     )
     totale = await db.acquaviva_prodotti.count_documents({"fonte": "acquaviva"})
+    stato_visibile = (stato or {}).get("stato", "mai_eseguito")
+    errore = (stato or {}).get("errore", "")
+    if (
+        stato_visibile == "in_corso"
+        and (stato or {}).get("processo") != _SCRAPING_ACQUAVIVA_PROCESSO
+    ):
+        stato_visibile = "interrotto"
+        errore = "Aggiornamento interrotto da un riavvio: puo' essere ripreso."
     return {
         "prodotti_nel_db": totale,
         "ultimo_scraping": ultimo,
-        "stato": (stato or {}).get("stato", "mai_eseguito"),
-        "errore": (stato or {}).get("errore", ""),
+        "stato": stato_visibile,
+        "errore": errore,
     }
 
 
