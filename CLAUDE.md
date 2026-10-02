@@ -6,7 +6,7 @@ reviewed_at: 2026-10-01
 storage_architecture: supabase
 -->
 
-Aggiornato il 01/10/2026 sul codice di `main` del repository canonico
+Aggiornato il 02/10/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file, `README.md` e `PIANO_RISTRUTTURAZIONE.md`** (registro del
@@ -1140,5 +1140,7 @@ Per ogni modifica pertinente:
 6. unione su `main` (è la consegna: Render pubblica solo da lì);
 7. CI verde e verifica `/api/health` sul commit pubblicato;
 8. controllo live del flusso interessato senza mutare dati non autorizzati.
+
+**I minuti di GitHub Actions sono a consumo** (repository privato; il 02/10/2026 il limite di spesa ha fermato ogni run, anche su `main`), e sono l'unica voce che cresce col numero di PR: Render e Supabase hanno un canone fisso e un deploy in più non costa niente. Regole del titolare (02/10/2026): **una PR solo a lavoro finito** e collaudato in locale (test backend, test e build dei quattro frontend), mai una per ogni pezzo; sulla PR gira solo `ci.yml`, mentre `produzione.yml` (E2E col browser, audit layout, verifica live) gira **solo su `main`** o a mano; **ogni sessione finisce con un push sul branch di salvataggio** `<branch>-lavori` (un push su un branch senza PR non fa partire nessun workflow: è gratis), perché il contenitore cloud della sessione è temporaneo e il PC del titolare può essere spento: ciò che non è pushato è perso, e la sessione successiva — da PC o da telefono — riparte da `git pull` dello stesso branch, mai da un secondo tronco. Un commit di salvataggio può contenere lavoro a metà; la PR finale no.
 
 Produzione: **https://gestionalecloud.onrender.com**

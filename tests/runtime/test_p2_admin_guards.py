@@ -54,6 +54,22 @@ def test_endpoint_distruttivi_sono_admin_only():
         ("/decisioni/{decision_id}/rifiuta", "POST"),
         ("/automazioni/ferma", "POST"),
         ("/automazioni/riprendi", "POST"),
+        # Cruscotto Agenti (02/10/2026): ogni route e' solo admin, anche le letture
+        # (prima segnalazioni, stato e run erano senza guardia di ruolo).
+        ("/api/agenti/segnalazioni", "GET"),
+        ("/api/agenti/segnalazioni/count", "GET"),
+        ("/api/agenti/stato", "GET"),
+        ("/api/agenti/run", "POST"),
+        ("/api/agenti/pattern-appresi", "GET"),
+        ("/api/agenti/decisioni", "GET"),
+        ("/api/agenti/automazioni/stato", "GET"),
+        ("/api/agenti/cash-flow-13-settimane", "GET"),
+        ("/api/agenti/settori", "GET"),
+        ("/api/agenti/proposte", "GET"),
+        ("/api/agenti/proposte/giro", "POST"),
+        ("/api/agenti/proposte/conferma-sicure", "POST"),
+        ("/api/agenti/proposte/{proposta_id}/conferma", "POST"),
+        ("/api/agenti/proposte/{proposta_id}/rifiuta", "POST"),
     ]
     for frag, metodo in casi:
         res = _route_ha_admin(app, frag, metodo)
@@ -102,6 +118,10 @@ _ERP_SENZA_TOKEN = {
     "/api/auth/pin-login": ({"POST"}, "login: nasce qui la sessione, limitato per tentativi"),
     "/api/auth/mfa/verify-login": ({"POST"}, "seconda fase del login: challenge firmata piu' OTP"),
     "/api/banca/enable-banking/callback": ({"GET"}, "ritorno dalla banca: vale solo con lo state monouso"),
+    # Colazioni B&B: l'albergatore porta il token `tk:` di Supabase, verificato
+    # dall'handler con bb_alb_stato (401 se il database lo rifiuta).
+    "/api/colazioni/ordini-prodotti/albergatore": ({"POST"}, "token di sessione dell'albergatore verificato da bb_alb_stato"),
+    "/api/colazioni/ordini-prodotti/albergatore/elenco": ({"POST"}, "token di sessione dell'albergatore verificato da bb_alb_stato"),
     "/privacy": ({"GET"}, "pagina legale"),
     "/terms": ({"GET"}, "pagina legale"),
     "/data-deletion": ({"GET"}, "pagina legale"),

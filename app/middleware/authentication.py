@@ -63,6 +63,14 @@ PUBLIC_PATHS = {
     "/api/banca/enable-banking/callback",
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
+    # Colazioni B&B, ordini mattutini dell'albergatore (app/routers/colazioni.py).
+    # L'albergatore non ha un JWT dell'ERP: la sua credenziale e' il token di
+    # sessione `tk:` emesso da Supabase (bb_alb_login), e l'handler lo verifica
+    # a ogni chiamata passandolo a `bb_alb_stato` (401 se il database lo rifiuta).
+    # Senza queste due voci il middleware rispondeva 401 prima dell'handler.
+    "/api/colazioni/ordini-prodotti/albergatore",
+    "/api/colazioni/ordini-prodotti/albergatore/elenco",
+
     # Pagine legali: già pubbliche in versione non-/api (bypass generico
     # "non è /api/"), whitelistate anche qui per coerenza sulla variante
     # /api/ usata da eventuali link esterni (revisione app Meta ecc.).

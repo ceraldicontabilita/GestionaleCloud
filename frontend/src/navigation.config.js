@@ -158,6 +158,7 @@ export const NAV_GRUPPI = [
       { to: '/contabilita/controllo', label: 'Controllo mensile', Icon: CalendarCheck, perche: "Il registratore di cassa, il terminale POS e la banca devono raccontare lo stesso mese. Qui si vede dove non lo fanno." },
       { to: '/contabilita/verifica', label: 'Verifica bilancio', Icon: BadgeCheck, perche: "Il saldo di ogni conto, dare contro avere: se non quadra, qui si vede dove." },
       { to: '/strumenti', label: 'Verifica coerenza', Icon: ShieldCheck, perche: "I controlli di coerenza fra archivi: quello che dovrebbe coincidere e non coincide." },
+      { to: '/agenti', label: 'Agenti', Icon: Bot, adminOnly: true, perche: "Per ogni settore: cosa ha letto e associato l'ultimo giro, cosa è fermo, e le proposte dell'AI sui documenti che i lettori non riconoscono. Confermi tu, applica il motore." },
     ],
   },
   {
