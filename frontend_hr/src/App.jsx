@@ -11,7 +11,7 @@ import {
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
   MapPin, Euro, Download, RefreshCw, ChevronLeft, Grid3X3,
   User, FolderOpen, Settings, LogOut, ArrowLeft, AlertTriangle,
-  Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send, ShieldCheck, Scale
+  Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send, ShieldCheck, Scale, Upload
 } from "lucide-react";
 import { esciDalGruppo } from "../../frontend_shared/SessioneGruppo";
 import SelettoreSezioni from "./SelettoreSezioni";
@@ -1350,6 +1350,12 @@ function PresenzePage({ dipendenti, reload }) {
   const [ferieList, setFerieList] = useState([]);
   const [turniMese, setTurniMese] = useState([]);
   const [tipiTurno, setTipiTurno] = useState([]);
+  const [showImportPresenze, setShowImportPresenze] = useState(false);
+  const [importPresenzeFile, setImportPresenzeFile] = useState(null);
+  const [importPresenzePreview, setImportPresenzePreview] = useState(null);
+  const [importPresenzeBusy, setImportPresenzeBusy] = useState(false);
+  const [importPresenzeMap, setImportPresenzeMap] = useState({});
+  const importPresenzeRef = useRef(null);
 
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre","13ª","14ª"];
   const daysInMonth = new Date(anno, mese, 0).getDate();
@@ -1365,6 +1371,47 @@ function PresenzePage({ dipendenti, reload }) {
   };
 
   useEffect(() => { loadPresenze(); }, [anno, mese]);
+
+  const formImportPresenze = (file, mappa = importPresenzeMap) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("sempre_presenti_ids", "[]");
+    fd.append("sostituzioni_nomi", JSON.stringify(mappa));
+    return fd;
+  };
+  const anteprimaImportPresenze = async (file = importPresenzeFile, mappa = importPresenzeMap) => {
+    if (!file) return;
+    setImportPresenzeBusy(true);
+    try {
+      const r = await axios.post(`${API}/presenze/importa-excel?applica=false`, formImportPresenze(file, mappa), { headers: { "Content-Type": "multipart/form-data" } });
+      setImportPresenzeFile(file);
+      setImportPresenzePreview(r.data);
+      if (r.data.periodo) {
+        const [a, m] = r.data.periodo.split("-").map(Number);
+        setAnno(a); setMese(m);
+      }
+    } catch (err) {
+      setImportPresenzePreview(null);
+      toast(err?.response?.data?.detail || "Impossibile leggere il foglio presenze", "err");
+    } finally { setImportPresenzeBusy(false); }
+  };
+  const scegliFilePresenze = (e) => {
+    const file = (e.target.files || [])[0];
+    if (file) { setImportPresenzeMap({}); anteprimaImportPresenze(file, {}); }
+    e.target.value = "";
+  };
+  const confermaImportPresenze = async () => {
+    if (!importPresenzeFile || !importPresenzePreview?.hash_sha256) return;
+    setImportPresenzeBusy(true);
+    try {
+      const hash = encodeURIComponent(importPresenzePreview.hash_sha256);
+      const r = await axios.post(`${API}/presenze/importa-excel?applica=true&conferma_hash=${hash}`, formImportPresenze(importPresenzeFile), { headers: { "Content-Type": "multipart/form-data" } });
+      toast(`Import completato: ${r.data.inseriti} presenze inserite; ${r.data.conteggi.conflitto} conflitti lasciati invariati.`);
+      setShowImportPresenze(false); setImportPresenzeFile(null); setImportPresenzePreview(null); setImportPresenzeMap({});
+      await loadPresenze(); reload && reload();
+    } catch (err) { toast(err?.response?.data?.detail || "Importazione presenze non riuscita", "err"); }
+    finally { setImportPresenzeBusy(false); }
+  };
 
   // Carica ferie, tipi turno e i turni delle settimane che toccano il mese (per derivare le presenze)
   useEffect(() => {
@@ -1687,9 +1734,19 @@ function PresenzePage({ dipendenti, reload }) {
     { code: "FNL", label: "Festività Non Lav.", color: "#a6724a" },
   ];
 
-  // Calcola statistiche
-  const totalePresenti = presenze.filter(p => p.stato === 'presente').length;
-  const totaleAssenti = presenze.filter(p => p.stato === 'assente').length;
+  // Statistiche della stessa griglia visualizzata: prima ROL e ALTRI erano fissi a zero.
+  const conteggiMese = (() => {
+    const out = {};
+    dipendenti.forEach(d => { for (let g = 1; g <= daysInMonth; g++) {
+      const codice = codiceDerivato(d.id, g);
+      if (codice) out[codice] = (out[codice] || 0) + 1;
+    }});
+    return out;
+  })();
+  const totalePresenti = conteggiMese.P || 0;
+  const totaleAssenti = conteggiMese.AS || 0;
+  const totaleMalattia = conteggiMese.M || 0;
+  const totaleFeriePermessi = (conteggiMese.F || 0) + (conteggiMese.PE || 0) + (conteggiMese.R || 0);
 
   // Malattie del mese: raggruppa i giorni 'M' per dipendente in periodi, con protocollo.
   const estraiProtocollo = (note) => {
@@ -1734,12 +1791,40 @@ function PresenzePage({ dipendenti, reload }) {
       <div className="dc-page-header">
         <div>
           <h1>Presenze Mensili</h1>
-          <p>{dipendenti.length} dipendenti attivi</p>
+          <p>{dipendenti.length} dipendenti attivi · compilazione, controllo e invio del foglio mensile</p>
         </div>
+        <button onClick={() => setShowImportPresenze(true)} className="dc-btn dc-btn-primary">
+          <Upload size={16} /> Importa Excel
+        </button>
       </div>
 
-      {/* Stats Row */}
-      <div className="dc-presenze-stats">
+      <div className="dc-card dc-presenze-toolbar">
+        <div className="dc-month-nav">
+          <button onClick={prevMonth} className="dc-btn-icon" aria-label="Mese precedente"><ChevronLeft size={20} /></button>
+          <span className="dc-month-label">{mesi[mese - 1]} {anno}</span>
+          <button onClick={nextMonth} className="dc-btn-icon" aria-label="Mese successivo"><ChevronRight size={20} /></button>
+        </div>
+        <div className="dc-presenze-toolbar-group">
+          <button onClick={handleTuttiPresenti} className="dc-btn dc-btn-success"><Check size={16} /> Tutti presenti oggi</button>
+          <button onClick={consolidaDaTurni} className="dc-btn" title="Crea le presenze dei giorni passati a partire dai turni assegnati (non sovrascrive il manuale)">
+            <RefreshCw size={16} /> Consolida da turni
+          </button>
+        </div>
+        <details className="dc-presenze-export-menu">
+          <summary className="dc-btn">Esporta e invia</summary>
+          <div className="dc-presenze-export-actions">
+            <button onClick={scaricaPDF} className="dc-btn"><Download size={16} /> PDF</button>
+            <button onClick={scaricaPresenze} className="dc-btn"><Download size={16} /> CSV</button>
+            <button onClick={stampaPresenze} className="dc-btn">🖨 Stampa</button>
+            <button onClick={toggleAnteprimaC} disabled={previewCBusy} className="dc-btn">👁 {previewC ? "Nascondi" : "Vedi"} riepilogo</button>
+            <button onClick={scaricaRiepilogoCommercialista} className="dc-btn">📄 PDF commercialista</button>
+            <button onClick={inviaCommercialista} className="dc-btn dc-btn-primary"><Send size={16} /> Invia</button>
+            <button onClick={cambiaEmailCommercialista} className="dc-btn" title={emailCommercialista ? `Destinatario: ${emailCommercialista}` : "Imposta l'email del commercialista"}>✎ {emailCommercialista || "imposta email"}</button>
+          </div>
+        </details>
+      </div>
+
+      <div className="dc-presenze-stats dc-presenze-stats-normalized">
         <div className="dc-presenze-stat">
           <span className="dc-presenze-stat-label">PRESENTI</span>
           <span className="dc-presenze-stat-value dc-text-green">{totalePresenti}</span>
@@ -1749,52 +1834,68 @@ function PresenzePage({ dipendenti, reload }) {
           <span className="dc-presenze-stat-value dc-text-red">{totaleAssenti}</span>
         </div>
         <div className="dc-presenze-stat">
-          <span className="dc-presenze-stat-label">ROL</span>
-          <span className="dc-presenze-stat-value dc-text-red">0</span>
+          <span className="dc-presenze-stat-label">MALATTIA</span>
+          <span className="dc-presenze-stat-value" style={{ color: "#c47c12" }}>{totaleMalattia}</span>
         </div>
         <div className="dc-presenze-stat">
-          <span className="dc-presenze-stat-label">ALTRI</span>
-          <span className="dc-presenze-stat-value">0</span>
+          <span className="dc-presenze-stat-label">FERIE · PERMESSI · ROL</span>
+          <span className="dc-presenze-stat-value">{totaleFeriePermessi}</span>
         </div>
 
-        {/* Month Navigation */}
-        <div className="dc-month-nav">
-          <button onClick={prevMonth} className="dc-btn-icon" aria-label="Mese precedente"><ChevronLeft size={20} /></button>
-          <span className="dc-month-label">{mesi[mese - 1]} {anno}</span>
-          <button onClick={nextMonth} className="dc-btn-icon" aria-label="Mese successivo"><ChevronRight size={20} /></button>
-        </div>
-
-        {/* Action Buttons */}
-        <button onClick={handleTuttiPresenti} className="dc-btn dc-btn-success">
-          <Check size={16} /> Tutti Presenti
-        </button>
-        <button onClick={consolidaDaTurni} className="dc-btn" title="Crea le presenze dei giorni passati a partire dai turni assegnati (non sovrascrive il manuale)">
-          <RefreshCw size={16} /> Consolida da turni
-        </button>
-        <button onClick={scaricaPDF} className="dc-btn" title="Scarica il PDF del mese (una pagina, pulito e stampabile)">
-          <Download size={16} /> PDF
-        </button>
-        <button onClick={scaricaPresenze} className="dc-btn" title="Scarica in Excel/CSV">
-          <Download size={16} /> CSV
-        </button>
-        <button onClick={stampaPresenze} className="dc-btn" title="Stampa su una sola pagina (o salva come PDF dalla finestra di stampa)">
-          🖨 Stampa
-        </button>
-        <button onClick={toggleAnteprimaC} disabled={previewCBusy} className="dc-btn" title="Vedi qui il riepilogo per il commercialista, senza scaricare nulla">
-          👁 {previewC ? "Nascondi" : "Vedi"} Opzione C
-        </button>
-        <button onClick={scaricaRiepilogoCommercialista} className="dc-btn" title="Documento leggero per il commercialista: riepilogo totali per dipendente + dettaglio dei periodi di assenza con le date (niente griglia giorno-per-giorno)">
-          📄 Riepilogo per commercialista
-        </button>
-        <button onClick={inviaCommercialista} className="dc-btn dc-btn-primary"
-          title={emailCommercialista ? `Invia a ${emailCommercialista}` : "Imposta prima l'email del commercialista"}>
-          <Send size={16} /> Invia
-        </button>
-        <button onClick={cambiaEmailCommercialista} className="dc-btn" style={{ padding: "9px 10px" }}
-          title={emailCommercialista ? `Destinatario: ${emailCommercialista} — clicca per cambiarlo` : "Imposta l'email del commercialista"}>
-          ✎ {emailCommercialista || "imposta email"}
-        </button>
       </div>
+
+      {showImportPresenze && (
+        <Modal title="Importa presenze da Excel" onClose={() => !importPresenzeBusy && setShowImportPresenze(false)} maxWidth={920}>
+          <div className="dc-import-presenze">
+            <div className="dc-import-dropzone">
+              <Upload size={24} />
+              <div><b>Foglio presenze mensile</b><div className="dc-muted">Anteprima obbligatoria: nessuna cella esistente viene sovrascritta.</div></div>
+              <button className="dc-btn" onClick={() => importPresenzeRef.current?.click()} disabled={importPresenzeBusy}>Scegli file .xlsx</button>
+              <input ref={importPresenzeRef} type="file" accept=".xlsx" hidden onChange={scegliFilePresenze} />
+            </div>
+            {importPresenzeBusy && <p className="dc-muted">Verifica del foglio in corso…</p>}
+            {importPresenzePreview && <>
+              <div className="dc-import-summary">
+                <div><span>Periodo</span><b>{importPresenzePreview.periodo}</b></div>
+                <div><span>Nuove celle</span><b>{importPresenzePreview.conteggi.nuova}</b></div>
+                <div><span>Presenti</span><b>{importPresenzePreview.codici.P || 0}</b></div>
+                <div><span>Malattia</span><b>{importPresenzePreview.codici.M || 0}</b></div>
+                <div><span>Conflitti protetti</span><b>{importPresenzePreview.conteggi.conflitto}</b></div>
+              </div>
+              {(importPresenzePreview.nominativi_da_associare || []).map(nome => (
+                <label className="dc-import-mapping" key={nome}>
+                  <span><b>{nome}</b><small>Nome presente nel dettaglio ma non nel riepilogo</small></span>
+                  <select value={importPresenzeMap[nome] || ""} onChange={e => setImportPresenzeMap(m => ({ ...m, [nome]: e.target.value }))}>
+                    <option value="">Da associare…</option>
+                    {dipendenti.map(d => <option value={d.id} key={d.id}>{`${d.cognome || ""} ${d.nome || ""}`.trim()}</option>)}
+                  </select>
+                </label>
+              ))}
+              {(importPresenzePreview.nominativi_da_associare || []).length > 0 && (
+                <button className="dc-btn" disabled={importPresenzeBusy || importPresenzePreview.nominativi_da_associare.some(nome => !importPresenzeMap[nome])} onClick={() => anteprimaImportPresenze()}>
+                  Ricalcola con le associazioni
+                </button>
+              )}
+              {(importPresenzePreview.associazioni_nomi || []).map(a => (
+                <div className="dc-import-rule dc-import-rule-ok" key={a.nome_file}>✓ {a.nome_file} → <b>{a.nome_hr}</b></div>
+              ))}
+              <div className="dc-import-rule">Le festività non lavorate non vengono dedotte dal riepilogo: entrano solo se dichiarate nel dettaglio giornaliero.</div>
+              <div className="dc-scroll-x">
+                <table className="dc-table dc-import-table"><thead><tr><th>Dipendente</th><th>P</th><th>M</th><th>Nuove</th><th>Già presenti</th><th>Conflitti</th></tr></thead>
+                  <tbody>{importPresenzePreview.dipendenti.map(d => <tr key={d.dipendente_id}><td>{d.nome}</td><td>{d.P}</td><td>{d.M}</td><td>{d.nuove}</td><td>{d.invariate}</td><td>{d.conflitti}</td></tr>)}</tbody>
+                </table>
+              </div>
+              {importPresenzePreview.da_verificare.length > 0 && <div className="dc-alert dc-alert-warning">Restano {importPresenzePreview.da_verificare.length} elementi da verificare. Completa le associazioni prima di importare.</div>}
+              <div className="dc-modal-footer">
+                <button className="dc-btn" onClick={() => setShowImportPresenze(false)} disabled={importPresenzeBusy}>Annulla</button>
+                <button className="dc-btn dc-btn-primary" onClick={confermaImportPresenze} disabled={importPresenzeBusy || importPresenzePreview.da_verificare.length > 0}>
+                  <Check size={16} /> Conferma {importPresenzePreview.conteggi.nuova} nuove presenze
+                </button>
+              </div>
+            </>}
+          </div>
+        </Modal>
+      )}
 
       {previewC && (
         <div className="dc-card" style={{ marginBottom: 12 }}>
