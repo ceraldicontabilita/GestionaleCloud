@@ -1967,12 +1967,12 @@ def start_scheduler():
     scheduler.add_job(
         gmail_full_scan_task,
         'interval',
-        hours=1,
+        hours=3,
         next_run_time=avvio + timedelta(minutes=7),
         misfire_grace_time=300,
         coalesce=True,
         id="gmail_full_scan",
-        name="Gmail Full Scan Multi-Cartella (ogni ora)",
+        name="Gmail Full Scan Multi-Cartella (ogni 3 ore)",
         replace_existing=True
     )
 
@@ -2119,25 +2119,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    async def _recensioni_colazioni_job():
-        from app.services.colazioni_recensioni import processa_inviti_recensioni
-
-        esito = await processa_inviti_recensioni()
-        if esito.get("presi") or esito.get("falliti"):
-            logger.info("[RECENSIONI-COLAZIONI] %s", esito)
-
-    scheduler.add_job(
-        _recensioni_colazioni_job,
-        "interval",
-        minutes=1,
-        next_run_time=avvio + timedelta(minutes=1),
-        misfire_grace_time=60,
-        coalesce=True,
-        id="recensioni_colazioni_whatsapp",
-        name="Inviti recensione Colazioni B&B via WhatsApp (ogni minuto)",
-        replace_existing=True,
-    )
-
     async def _notifiche_colazioni_job():
         from app.services.colazioni_notifiche import processa_notifiche_colazioni
 
@@ -2159,7 +2140,7 @@ def start_scheduler():
 
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
-    logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
+    logger.info("   - Gmail Full Scan (tutte cartelle): ogni 3 ore")
     logger.info("   - Verbali Email: ogni ora")
     logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
