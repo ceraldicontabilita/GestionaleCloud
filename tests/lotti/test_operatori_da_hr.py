@@ -175,6 +175,101 @@ def test_un_solo_percorso_pin_lotti():
     assert sum("POST" in route.methods and route.path == "/tablet-operatori/login" for route in tablet_router.routes) == 1
 
 
+def _sessione_titolare_personale(basi):
+    t, _db, hr = basi
+    from app.hr.services import auth_dipendenti
+    run(hr.dipendenti.insert_many(_persone_hr()))
+    run(auth_dipendenti.imposta_pin("hr-vince", PIN_A))
+    run(t.sincronizza_operatori_da_hr())
+    return run(t.login_pin(t.PinLogin(pin=PIN_A)))["token"]
+
+
+def _richiesta_lotti(token, path="/lotti/api/colazione-acquaviva/preset", method="GET"):
+    from starlette.requests import Request
+    return Request({"type": "http", "method": method, "path": path,
+                    "root_path": "/lotti", "query_string": b"",
+                    "headers": [(b"authorization", f"Bearer {token}".encode())]})
+
+
+def test_pin_personale_titolare_resta_valido_dopo_login_e_cambio_pagina(basi):
+    from app.lotti import auth
+    from app.services.group_session import token_di_gruppo_ammesso
+    token = _sessione_titolare_personale(basi)
+    # Il confine amministrativo delle altre app resta chiuso al PIN tablet.
+    assert run(token_di_gruppo_ammesso(auth.verify_token(token))) is False
+    for path in ("/lotti/api/tablet/pasticceria", "/lotti/api/ricette",
+                 "/lotti/api/colazione-acquaviva/preset"):
+        request = _richiesta_lotti(token, path)
+        run(auth.auth_dependency(request))
+        assert request.state.user["sub"] == "hr-vince"
+        run(auth.require_admin(request))
+        assert run(auth.require_permesso("ricette")(request))["ruolo"] == "amministratore"
+    refreshed = run(auth.refresh_token(_richiesta_lotti(token)))["token"]
+    assert auth.verify_token(refreshed)["pin_version"] == auth.verify_token(token)["pin_version"]
+    run(auth.auth_dependency(_richiesta_lotti(refreshed)))
+
+
+@pytest.mark.parametrize("revoca", ["ruolo", "cessazione", "lotti", "pin", "rimozione_pin"])
+def test_sessione_personale_titolare_revocata_anche_sulle_letture(basi, revoca):
+    from app.lotti import auth
+    from app.hr.services import auth_dipendenti
+    token = _sessione_titolare_personale(basi)
+    _t, _db, hr = basi
+    if revoca == "pin":
+        run(auth_dipendenti.imposta_pin("hr-vince", PIN_B))
+    elif revoca == "rimozione_pin":
+        run(auth_dipendenti.rimuovi_pin("hr-vince"))
+    else:
+        cambiamenti = {"ruolo": {"ruolo_app": "dipendente"},
+                       "cessazione": {"stato": "cessato", "attivo": False},
+                       "lotti": {"lotti_operatore": False}}
+        run(hr.dipendenti.update_one({"id": "hr-vince"}, {"$set": cambiamenti[revoca]}))
+    with pytest.raises(HTTPException) as exc:
+        run(auth.auth_dependency(_richiesta_lotti(token)))
+    assert exc.value.status_code == 401
+
+
+def test_pin_titolare_legacy_o_non_personale_non_apre_lotti(basi):
+    from app.lotti import auth
+    token = _sessione_titolare_personale(basi)
+    versione = auth.verify_token(token)["pin_version"]
+    for sub, via, pin_version in (("hr-vince", "pin", None),
+                                 ("hr-vince", "google", versione),
+                                 ("hr-vince", "pin", "versione-estranea"),
+                                 ("hr-pocci", "pin", versione)):
+        falso = auth.make_token(sub, "Nome non autorizzante", "amministratore",
+                                via=via, pin_version=pin_version)
+        with pytest.raises(HTTPException) as exc:
+            run(auth.auth_dependency(_richiesta_lotti(falso)))
+        assert exc.value.status_code == 401
+
+
+def test_sessione_titolare_non_apre_durante_guasto_hr(basi, monkeypatch):
+    from app.lotti import auth
+    from app.hr.database import Database as DatabaseHR, DatabaseNonConfigurato
+    token = _sessione_titolare_personale(basi)
+    monkeypatch.setattr(DatabaseHR, "get_db", classmethod(lambda cls: DatabaseNonConfigurato()))
+    with pytest.raises(HTTPException) as exc:
+        run(auth.auth_dependency(_richiesta_lotti(token)))
+    assert exc.value.status_code == 503
+
+
+@pytest.mark.parametrize("difetto", ["scaduto", "manomesso"])
+def test_sessione_titolare_scaduta_o_manomessa_non_apre_lotti(basi, difetto):
+    from app.lotti import auth
+    token = _sessione_titolare_personale(basi)
+    if difetto == "scaduto":
+        token = auth.make_token("hr-vince", "Ceraldi Vincenzo", "amministratore",
+                                ore=-1, pin_version=auth.verify_token(token)["pin_version"])
+    else:
+        parti = token.split(".")
+        parti[2] = ("A" if parti[2][0] != "A" else "B") + parti[2][1:]
+        token = ".".join(parti)
+    with pytest.raises(HTTPException) as exc:
+        run(auth.auth_dependency(_richiesta_lotti(token)))
+    assert exc.value.status_code == 401
+
+
 def test_pin_non_univoco_non_sceglie_una_persona_a_caso(monkeypatch):
     from app.lotti.routers import tablet_operatori as t
 
