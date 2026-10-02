@@ -241,6 +241,10 @@ def test_chiavi_mese_giorno_tolleranti():
     assert ha.e_non_attendibile(doc, (3, 5), 2.0)
     assert not ha.e_non_attendibile(doc, (3, 6), 2.0)
     assert not ha.e_non_attendibile({}, (3, 5), 2.0)
+    # Una regolarizzazione successiva a "Chiuso" prevale sul vecchio segno n.a.
+    assert not ha.e_non_attendibile(
+        doc, (3, 5), {"temp": None, "is_chiuso": True, "stato": "chiuso"}
+    )
 
 
 # ── report mensile ─────────────────────────────────────────────────────────
@@ -324,3 +328,40 @@ def test_router_riservato_all_amministratore():
     for route in router.router.routes:
         dipendenze = [d.call for d in route.dependant.dependencies]
         assert require_admin in dipendenze or require_permesso("haccp_registri") in dipendenze, route.path
+
+
+def test_regolarizza_chiusure_sostituisce_solo_non_firmate_e_salva_originale():
+    archivio = AsyncMongoMockClient()["chiusure_test"]
+    run(archivio.temperature_negative.insert_one({
+        "id": "neg-2026", "anno": "2026",
+        "temperature": {"4": {
+            "5": {"temp": -19, "firma_verificata": False, "origine": "import_excel"},
+            "6": {"temp": -20, "firma_verificata": True},
+        }},
+    }))
+    chiusure = {
+        "05/04/2026": {"is_chiuso": True, "motivo": "Pasqua"},
+        "06/04/2026": {"is_chiuso": True, "motivo": "Pasquetta"},
+    }
+
+    anteprima = run(ha.regolarizza_temperature_chiusure(
+        archivio, 2026, chiusure, {"id": "1", "nome": "Titolare"}, dry_run=True,
+    ))
+    assert anteprima["celle_da_regolarizzare"] == 1
+    assert anteprima["firmate_saltate"] == 1
+
+    fatto = run(ha.regolarizza_temperature_chiusure(
+        archivio, 2026, chiusure, {"id": "1", "nome": "Titolare"}, dry_run=False,
+    ))
+    assert fatto["celle_regolarizzate"] == 1
+    doc = run(archivio.temperature_negative.find_one({"id": "neg-2026"}))
+    assert doc["temperature"]["4"]["5"]["is_chiuso"] is True
+    assert doc["temperature"]["4"]["5"]["temp"] is None
+    assert doc["temperature"]["4"]["6"]["temp"] == -20
+    log = run(archivio.haccp_regolarizzazioni_log.find_one({}))
+    assert log["modifiche"][0]["originale"]["temp"] == -19
+
+    secondo = run(ha.regolarizza_temperature_chiusure(
+        archivio, 2026, chiusure, {"id": "1", "nome": "Titolare"}, dry_run=False,
+    ))
+    assert secondo["celle_regolarizzate"] == 0

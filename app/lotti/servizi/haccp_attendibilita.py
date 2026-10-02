@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 REGOLA = "GC-02h: registrazione senza firma verificata"
 CAMPO = "non_attendibili"
 COLLEZIONE_LOG = "haccp_attendibilita_log"
+COLLEZIONE_REGOLARIZZAZIONI = "haccp_regolarizzazioni_log"
 
 TEMPERATURE = ("temperature_positive", "temperature_negative")
 SCHEDE = "sanificazione_schede"
@@ -299,7 +300,14 @@ def caselle_segnate(doc: dict) -> set:
 
 def non_attendibile_in(segnate: set, coordinate: Tuple[Any, ...], valore_attuale: Any) -> bool:
     """Come `e_non_attendibile`, con le coordinate gia' lette dal documento."""
-    if not segnate or firmata(valore_attuale):
+    if (
+        not segnate
+        or firmata(valore_attuale)
+        or (isinstance(valore_attuale, dict) and (
+            valore_attuale.get("is_chiuso") is True
+            or valore_attuale.get("non_rilevato") is True
+        ))
+    ):
         return False
     return _coordinata_norm(coordinate) in segnate
 
@@ -438,4 +446,100 @@ async def segna(db, attore: Optional[dict], dry_run: bool = True) -> Dict[str, A
             "GC-02h: %s caselle segnate su %s documenti da %s",
             esito["caselle_segnate"], esito["documenti_modificati"], firmatario.get("nome"),
         )
+    return esito
+
+
+async def regolarizza_temperature_chiusure(
+    db,
+    anno: int,
+    chiusure: dict[str, dict],
+    attore: Optional[dict],
+    dry_run: bool = True,
+) -> Dict[str, Any]:
+    """Sostituisce solo letture *non firmate* in giorni dichiarati chiusi.
+
+    L'originale non viene perso: prima della scrittura viene copiato nel log
+    immutabile della regolarizzazione. Celle firmate e giorni gia' chiusi non
+    vengono toccati. La seconda esecuzione non produce altre modifiche.
+    """
+    attore = attore or {}
+    ora = datetime.now(timezone.utc).isoformat()
+    modifiche: list[dict] = []
+    gia_chiuse = 0
+    firmate_saltate = 0
+    vuote_saltate = 0
+
+    for collection in TEMPERATURE:
+        docs = await getattr(db, collection).find(
+            {"anno": {"$in": [anno, str(anno)]}}, {"_id": 0}
+        ).to_list(None)
+        for doc in docs:
+            for data_calendario, info in sorted(chiusure.items()):
+                try:
+                    if "/" in data_calendario:
+                        giorno, mese, a = (int(x) for x in data_calendario.split("/"))
+                    else:
+                        a, mese, giorno = (int(x) for x in data_calendario.split("-"))
+                except (TypeError, ValueError):
+                    continue
+                if a != anno or not info.get("is_chiuso", True):
+                    continue
+                data_iso = f"{a:04d}-{mese:02d}-{giorno:02d}"
+                valore = ((doc.get("temperature") or {}).get(str(mese)) or {}).get(str(giorno))
+                if isinstance(valore, dict) and valore.get("is_chiuso"):
+                    gia_chiuse += 1
+                    continue
+                if firmata(valore):
+                    firmate_saltate += 1
+                    continue
+                if valore in (None, ""):
+                    vuote_saltate += 1
+                    continue
+                nuovo = {
+                    "temp": None,
+                    "stato": "chiuso",
+                    "is_chiuso": True,
+                    "motivo": info.get("motivo") or info.get("nome") or "Chiusura aziendale",
+                    "regolarizzato_il": ora,
+                    "regola": "chiusura aziendale prevale su import Excel non firmato",
+                }
+                modifica = {
+                    "collezione": collection,
+                    "documento_id": doc.get("id"),
+                    "data": data_iso,
+                    "originale": valore,
+                    "sostituzione": nuovo,
+                }
+                modifiche.append(modifica)
+                if dry_run:
+                    continue
+                if not doc.get("id"):
+                    raise ValueError(f"{collection}: documento senza id")
+                await getattr(db, collection).update_one(
+                    {"id": doc["id"]},
+                    {"$set": {f"temperature.{mese}.{giorno}": nuovo}},
+                )
+
+    esito = {
+        "dry_run": dry_run,
+        "anno": anno,
+        "celle_da_regolarizzare": len(modifiche),
+        "celle_regolarizzate": 0 if dry_run else len(modifiche),
+        "gia_chiuse": gia_chiuse,
+        "firmate_saltate": firmate_saltate,
+        "vuote_saltate": vuote_saltate,
+        "modifiche": modifiche,
+    }
+    if not dry_run and modifiche:
+        await getattr(db, COLLEZIONE_REGOLARIZZAZIONI).insert_one({
+            "id": str(uuid.uuid4()),
+            "tipo": "temperature_giorni_chiusura",
+            "anno": anno,
+            "eseguito_il": ora,
+            "eseguito_da": {
+                "id": str(attore.get("id") or ""),
+                "nome": str(attore.get("nome") or ""),
+            },
+            "modifiche": modifiche,
+        })
     return esito

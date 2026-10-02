@@ -74,9 +74,58 @@ def test_cartelli_bar_restituisce_solo_prodotti_con_lista(monkeypatch):
          "ingredienti_str": "Latte"},
     ]))
     run(database.dizionario_prodotti.insert_one({"id": "con", "attivo": True}))
+    run(database.ricette.insert_one({
+        "id": "r-cartello", "nome": "Ricetta cartello",
+        "ingredienti_dettaglio": [{"nome": "Con lista", "prodotto_id": "con"}],
+    }))
 
     esito = run(acquaviva.get_cartelli_bar(search=None, solo_in_ricette=False))
 
     assert esito["totale"] == 1
     assert esito["prodotti"][0]["id"] == "con"
     assert esito["prodotti"][0]["in_ricette"] is True
+
+
+def test_bonifica_catalogo_ricalcola_solo_da_lista_e_distingue_uso_ricetta(monkeypatch):
+    database = AsyncMongoMockClient()["catalogo_bonifica"]
+    monkeypatch.setattr(acquaviva, "db", database)
+    run(database.acquaviva_prodotti.insert_many([
+        {"id": "p1", "fonte": "acquaviva", "codice": "57245", "nome": "Con lista",
+         "ingredienti_str": "Farina di FRUMENTO, LATTE", "allergeni": ["Pesce"],
+         "foto_url": "https://example.invalid/1.jpg"},
+        {"id": "p2", "fonte": "acquaviva", "codice": "NO-LISTINO", "nome": "Senza lista",
+         "allergeni": ["Pesce"], "foto_url": "https://example.invalid/2.jpg"},
+    ]))
+    run(database.dizionario_prodotti.insert_many([
+        {"id": "p1", "attivo": True}, {"id": "p2", "attivo": True},
+    ]))
+    run(database.ricette.insert_one({
+        "id": "r1", "nome": "Ricetta", "ingredienti_dettaglio": [
+            {"nome": "Prodotto", "prodotto_id": "p1"},
+        ], "allergeni": [], "allergeni_auto": [],
+    }))
+
+    anteprima = run(acquaviva.bonifica_allergeni_cartelli(
+        dry_run=True, conferma="", _admin={},
+    ))
+    assert anteprima["con_lista"] == 1 and anteprima["senza_lista"] == 1
+    assert anteprima["in_ricette"] == 1 and anteprima["disponibili_ricette"] == 2
+
+    esito = run(acquaviva.bonifica_allergeni_cartelli(
+        dry_run=False, conferma="BONIFICA_CATALOGO", _admin={},
+    ))
+    assert esito["aggiornati"] == 2 and esito["ricette_aggiornate"] == 1
+    p1 = run(database.acquaviva_prodotti.find_one({"id": "p1"}))
+    p2 = run(database.acquaviva_prodotti.find_one({"id": "p2"}))
+    assert p1["allergeni"] == ["Glutine", "Latte"]
+    assert p1["cartello_stampabile"] is True and p1["in_ricette"] is True
+    assert p2["allergeni"] == []
+    assert p2["allergeni_precedenti_non_verificati"] == ["Pesce"]
+    assert p2["cartello_stampabile"] is False and p2["in_ricette"] is False
+
+    # La bonifica e' idempotente e non perde la precedente dichiarazione dubbia.
+    run(acquaviva.bonifica_allergeni_cartelli(
+        dry_run=False, conferma="BONIFICA_CATALOGO", _admin={},
+    ))
+    p2 = run(database.acquaviva_prodotti.find_one({"id": "p2"}))
+    assert p2["allergeni_precedenti_non_verificati"] == ["Pesce"]

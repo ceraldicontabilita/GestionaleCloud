@@ -674,6 +674,66 @@ def _nome_ingrediente(ing) -> str:
     return str(ing or "")
 
 
+_CAMPI_IDENTITA_PRODOTTO = (
+    "prodotto_master_id", "master_id", "prodotto_id",
+    "prodotto_dizionario_id", "prodotto_key",
+)
+
+
+def _identita_prodotto(documento: dict) -> set[str]:
+    """Identita' persistenti; nomi e parole descrittive non sono prove."""
+    if not isinstance(documento, dict):
+        return set()
+    return {
+        str(documento.get(campo)).strip()
+        for campo in _CAMPI_IDENTITA_PRODOTTO
+        if str(documento.get(campo) or "").strip()
+    }
+
+
+def _indice_ricette_per_prodotto(ricette: list[dict]) -> dict[str, set[str]]:
+    indice: dict[str, set[str]] = {}
+    for ricetta in ricette:
+        nome = str(ricetta.get("nome") or "").strip()
+        if not nome:
+            continue
+        dettagli = [
+            *(ricetta.get("ingredienti_dettaglio") or []),
+            *(ricetta.get("ingredienti") or []),
+        ]
+        for dettaglio in dettagli:
+            for identita in _identita_prodotto(dettaglio):
+                indice.setdefault(identita, set()).add(nome)
+    return indice
+
+
+def _registro_tracciabilita_esatto(fatture: list[dict], ricette: list[dict]) -> list[dict]:
+    """Collega una riga fattura solo a ricette con la stessa identita' salvata."""
+    indice = _indice_ricette_per_prodotto(ricette)
+    registro = []
+    for fattura_indice, fattura in enumerate(fatture):
+        for prodotto in fattura.get("prodotti") or []:
+            identita = _identita_prodotto(prodotto)
+            correlate: set[str] = set()
+            for chiave in identita:
+                correlate.update(indice.get(chiave, set()))
+            if not correlate:
+                continue
+            registro.append({
+                "fattura_indice": fattura_indice,
+                "fornitore": fattura.get("fornitore", "N/A"),
+                "data_fattura": fattura.get("data_fattura", "N/A"),
+                "numero_fattura": fattura.get("numero_fattura", "N/A"),
+                "prodotto": prodotto.get("descrizione", ""),
+                "quantita": prodotto.get("quantita", ""),
+                "prezzo_unitario": prodotto.get("prezzo_unitario", ""),
+                "ricette": sorted(correlate),
+                "identita_prodotto": sorted(identita),
+                "tipo_collegamento": "identita_canonica",
+            })
+    return registro
+
+
 @router.get("/registro-tracciabilita", response_class=HTMLResponse)
 async def get_registro_tracciabilita():
     """Genera il registro di tracciabilità fatture-ricette (Reg. CE 178/2002)"""
@@ -683,37 +743,8 @@ async def get_registro_tracciabilita():
     fatture = [f for f in fatture if f.get("fornitore", "").lower().strip() not in nomi_esclusi]
     ricette = await db.ricette.find({}, {"_id": 0}).to_list(5000)
 
-    ingrediente_ricette = {}
-    for ricetta in ricette:
-        for ing in ricetta.get("ingredienti", []):
-            for parola in [p for p in _nome_ingrediente(ing).lower().split() if len(p) > 3]:
-                ingrediente_ricette.setdefault(parola, set()).add(ricetta.get("nome", ""))
-
-    registro = []
-    prodotti_utilizzati = set()
-    for fattura in fatture:
-        fornitore = fattura.get("fornitore", "N/A")
-        data_fattura = fattura.get("data_fattura", "N/A")
-        numero_fattura = fattura.get("numero_fattura", "N/A")
-        for prodotto in fattura.get("prodotti", []):
-            desc = prodotto.get("descrizione", "")
-            ricette_correlate = set()
-            for parola in [p for p in desc.lower().split() if len(p) > 3]:
-                for chiave, ricette_set in ingrediente_ricette.items():
-                    if parola in chiave or chiave in parola:
-                        ricette_correlate.update(ricette_set)
-            if ricette_correlate:
-                prodotti_utilizzati.add(desc)
-                registro.append(
-                    {
-                        "fornitore": fornitore,
-                        "data_fattura": data_fattura,
-                        "numero_fattura": numero_fattura,
-                        "prodotto": desc,
-                        "quantita": prodotto.get("quantita", ""),
-                        "ricette": list(ricette_correlate)[:10],
-                    }
-                )
+    registro = _registro_tracciabilita_esatto(fatture, ricette)
+    prodotti_utilizzati = {r["prodotto"] for r in registro}
 
     # AUDIT_REGISTRI_STAMPE §5: la stampa mostra al massimo 500 righe mentre le
     # statistiche in testa dichiarano il totale VERO. Prima nessuno lo diceva:
@@ -759,6 +790,7 @@ th{{background:#2e7d32;color:white}}
 </style></head><body>
 <div class="header"><h1>REGISTRO TRACCIABILITÀ FATTURE - RICETTE</h1>
 <p><strong>Ceraldi Group S.R.L.</strong> - Piazza Carità 14, 80134 Napoli (NA)</p>
+<p>Solo collegamenti provati da un'identità prodotto canonica condivisa; le somiglianze di testo sono escluse.</p>
 <p>Generato il: {datetime.now().strftime('%d/%m/%Y alle %H:%M')}</p></div>
 <div class="stats">
 <div class="stat"><div class="stat-value">{len(fatture)}</div><div>FATTURE TOTALI</div></div>
@@ -784,27 +816,16 @@ async def get_registro_tracciabilita_csv():
     fatture = [f for f in fatture if f.get("fornitore", "").lower().strip() not in nomi_esclusi]
     ricette = await db.ricette.find({}, {"_id": 0}).to_list(5000)
 
-    ingrediente_ricette = {}
-    for ricetta in ricette:
-        for ing in ricetta.get("ingredienti", []):
-            for parola in [p for p in _nome_ingrediente(ing).lower().split() if len(p) > 3]:
-                ingrediente_ricette.setdefault(parola, set()).add(ricetta.get("nome", ""))
-
+    registro = _registro_tracciabilita_esatto(fatture, ricette)
     lines = ["Data Fattura;Fornitore;N° Fattura;Prodotto;Quantità;Prezzo;Ricette Correlate"]
-    for fattura in fatture:
-        for prodotto in fattura.get("prodotti", []):
-            desc = prodotto.get("descrizione", "").replace(";", ",")
-            ricette_correlate = set()
-            for parola in [p for p in desc.lower().split() if len(p) > 3]:
-                for chiave, rs in ingrediente_ricette.items():
-                    if parola in chiave or chiave in parola:
-                        ricette_correlate.update(rs)
-            ricette_str = ", ".join(list(ricette_correlate)[:10]).replace(";", ",")
-            fornitore = fattura.get("fornitore", "").replace(";", ",")
-            numero = fattura.get("numero_fattura", "").replace(";", ",")
-            lines.append(
-                f'"{fattura.get("data_fattura","")}";"{fornitore}";"{numero}";"{desc}";"{prodotto.get("quantita","")}";"{prodotto.get("prezzo_unitario","")}";"{ricette_str}"'
-            )
+    for riga in registro:
+        desc = str(riga["prodotto"]).replace(";", ",")
+        ricette_str = ", ".join(riga["ricette"][:10]).replace(";", ",")
+        fornitore = str(riga["fornitore"]).replace(";", ",")
+        numero = str(riga["numero_fattura"]).replace(";", ",")
+        lines.append(
+            f'"{riga["data_fattura"]}";"{fornitore}";"{numero}";"{desc}";"{riga["quantita"]}";"{riga["prezzo_unitario"]}";"{ricette_str}"'
+        )
 
     filename = f"registro_tracciabilita_{datetime.now().strftime('%Y%m%d')}.csv"
     return Response(
@@ -822,33 +843,29 @@ async def get_registro_tracciabilita_json():
     fatture = [f for f in fatture if f.get("fornitore", "").lower().strip() not in nomi_esclusi]
     ricette = await db.ricette.find({}, {"_id": 0}).to_list(5000)
 
-    ingrediente_ricette = {}
-    for ricetta in ricette:
-        for ing in ricetta.get("ingredienti", []):
-            for parola in [p for p in _nome_ingrediente(ing).lower().split() if len(p) > 3]:
-                if ricetta.get("nome", "") not in ingrediente_ricette.setdefault(parola, []):
-                    ingrediente_ricette[parola].append(ricetta.get("nome", ""))
-
+    righe = _registro_tracciabilita_esatto(fatture, ricette)
     registro = []
-    for fattura in fatture:
+    for fattura_indice, fattura in enumerate(fatture):
+        prodotti_esatti = [
+            r for r in righe
+            if r["fattura_indice"] == fattura_indice
+        ]
+        if not prodotti_esatti:
+            continue
         entry = {
             "fornitore": fattura.get("fornitore", ""),
             "data_fattura": fattura.get("data_fattura", ""),
             "numero_fattura": fattura.get("numero_fattura", ""),
             "prodotti": [],
         }
-        for prodotto in fattura.get("prodotti", []):
-            desc = prodotto.get("descrizione", "")
-            ricette_correlate = set()
-            for parola in [p for p in desc.lower().split() if len(p) > 3]:
-                for chiave, rl in ingrediente_ricette.items():
-                    if parola in chiave or chiave in parola:
-                        ricette_correlate.update(rl)
+        for prodotto in prodotti_esatti:
             entry["prodotti"].append(
                 {
-                    "descrizione": desc,
-                    "quantita": prodotto.get("quantita", ""),
-                    "ricette_correlate": list(ricette_correlate)[:10],
+                    "descrizione": prodotto["prodotto"],
+                    "quantita": prodotto["quantita"],
+                    "ricette_correlate": prodotto["ricette"],
+                    "identita_prodotto": prodotto["identita_prodotto"],
+                    "tipo_collegamento": prodotto["tipo_collegamento"],
                 }
             )
         registro.append(entry)

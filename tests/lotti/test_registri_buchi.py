@@ -269,7 +269,8 @@ def test_registro_tracciabilita_dichiara_il_troncamento(dbmock):
     # arriva da certe proposte automatiche e prima mandava in errore 500
     # l'intero registro richiesto dall'ASL.
     run(dbmock.ricette.insert_one({
-        "nome": "Sfogliatella", "ingredienti": ["Farina 00", "Zucchero semolato"],
+            "nome": "Sfogliatella", "ingredienti": ["Farina 00", "Zucchero semolato"],
+            "ingredienti_dettaglio": [{"nome": "Farina 00", "prodotto_master_id": "farina-00"}],
     }))
     run(dbmock.ricette.insert_one({
         "nome": "Babà", "ingredienti": [{"nome": "Farina 00", "quantita": 1}],
@@ -280,7 +281,8 @@ def test_registro_tracciabilita_dichiara_il_troncamento(dbmock):
             "fornitore": f"Fornitore {i}", "numero_fattura": f"F{i:04d}",
             "data_fattura": "01/07/2026",
             "prodotti": [
-                {"descrizione": f"Farina 00 sacco {j}", "quantita": 1} for j in range(10)
+                    {"descrizione": f"Farina 00 sacco {j}", "quantita": 1,
+                     "prodotto_master_id": "farina-00"} for j in range(10)
             ],
         })
     run(dbmock.fatture.insert_many(fatture))

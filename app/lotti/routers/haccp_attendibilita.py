@@ -10,10 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.lotti.auth import request_actor, require_admin, require_permesso
 from app.lotti.db import database as db
 from app.lotti.servizi import haccp_attendibilita
+from app.lotti.routers.chiusure import get_tutte_chiusure
 
 router = APIRouter(prefix="/haccp-attendibilita", tags=["HACCP attendibilita'"])
 
 CONFERMA = "SEGNA"
+CONFERMA_CHIUSURE = "INSERISCI_CHIUSO"
 
 
 @router.get("/anteprima")
@@ -36,3 +38,27 @@ async def segna_non_attendibili(
             detail=f"Per scrivere serve conferma={CONFERMA}: senza, usa dry_run=true.",
         )
     return await haccp_attendibilita.segna(db, request_actor(request), dry_run=dry_run)
+
+
+@router.post("/regolarizza-chiusure")
+async def regolarizza_chiusure(
+    request: Request,
+    anno: int = Query(..., ge=2000, le=2100),
+    dry_run: bool = Query(default=True),
+    conferma: str = Query(default=""),
+    _ruolo=Depends(require_permesso("haccp_registri")),
+):
+    """Scrive «Chiuso» sulle temperature importate e non firmate dei giorni chiusi."""
+    if not dry_run and conferma != CONFERMA_CHIUSURE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Per scrivere serve conferma={CONFERMA_CHIUSURE}.",
+        )
+    calendario = await get_tutte_chiusure(anno)
+    chiuse = {
+        data: info for data, info in calendario["chiusure_dict"].items()
+        if info.get("is_chiuso", True)
+    }
+    return await haccp_attendibilita.regolarizza_temperature_chiusure(
+        db, anno, chiuse, request_actor(request), dry_run=dry_run,
+    )
