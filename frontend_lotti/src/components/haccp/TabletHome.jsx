@@ -190,7 +190,7 @@ function Orologio() {
   return <div style={{ textAlign: "center", marginBottom: 48 }}><div style={{ fontSize: 72, fontWeight: 900, color: "#f5f2ea", letterSpacing: -2, lineHeight: 1 }}>{now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}</div><div style={{ fontSize: 17, color: "#9aa593", marginTop: 8, textTransform: "capitalize" }}>{now.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}</div></div>;
 }
 
-export default function TabletHome({ onEntra, preselectReparto }) {
+export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = "" }) {
   // Il tastierino si apre solo per le card di reparto (PIN personale).
   const [repSel, setRepSel] = useState(REPARTI.find(r => r.id === preselectReparto && !r.soloAdmin) ? preselectReparto : null);
   const [erroreGestionale, setErroreGestionale] = useState("");
@@ -265,7 +265,12 @@ export default function TabletHome({ onEntra, preselectReparto }) {
     saveRuolo(operatore?.ruolo || "operatore");
     saveTabletSession(operatore, repartoCorrente);
     setRepSel(null);
-    const targetHash = repartoCorrente === "ricette" ? "ricette" : `tablet/${repartoCorrente}`;
+    // Il login riapre la sottopagina richiesta, non il cruscotto del reparto.
+    // Non trasferire però Colazione/Produci quando si sceglie un altro reparto.
+    // La destinazione viene dal router, non dall'hash letto dopo la risposta PIN.
+    const repartoHash = `tablet/${repartoCorrente}`;
+    const targetHash = repartoCorrente === "ricette" ? "ricette"
+      : hashRichiesto.startsWith(`${repartoHash}/`) ? hashRichiesto : repartoHash;
     if (window.location.hash !== `#${targetHash}`) window.location.hash = targetHash;
     window.dispatchEvent(new Event("tablet-auth"));
     onEntra?.(repartoCorrente, operatore);
