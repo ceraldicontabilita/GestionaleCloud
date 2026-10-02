@@ -69,6 +69,16 @@ services:
       # Senza chiave la lettura AI resta ferma in stato «senza_chiave».
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Agenti AI per settore (services/agenti_proposte.py, giro ogni 30 min):
+      # leggono i documenti fermi (ERRORI della cartella unica, inbox senza
+      # categoria) e propongono tipo e dati; applica solo il titolare dal
+      # cruscotto /agenti. AGENTI_AI=false spegne il giro; il tetto e' il numero
+      # massimo di chiamate al modello al giorno (ora di Roma), la cache per
+      # impronta SHA-256 non conta. Non segreti. Proprietario: titolare.
+      - key: AGENTI_AI
+        value: "true"
+      - key: AGENTI_AI_TETTO_GIORNALIERO
+        value: "200"
       # Telegram, unico canale degli avvisi (fonti ferme, posta, ritenute).
       # Proprietario: titolare. Token del bot da @BotFather (segreto, si ruota
       # revocandolo li'), chat id della chat del titolare. Senza i due valori

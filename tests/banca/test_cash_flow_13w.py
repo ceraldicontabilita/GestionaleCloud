@@ -171,7 +171,7 @@ def test_orchestratore_conosce_agente_cash_flow():
 
 def test_endpoint_cash_flow_richiede_utente_autenticato():
     from app.routers.agenti import get_cash_flow_13_settimane
-    from app.utils.dependencies import get_current_user
+    from app.utils.dependencies import get_current_admin_user
 
-    parametro = inspect.signature(get_cash_flow_13_settimane).parameters["current_user"]
-    assert parametro.default.dependency is get_current_user
+    parametro = inspect.signature(get_cash_flow_13_settimane).parameters["_admin"]
+    assert parametro.default.dependency is get_current_admin_user

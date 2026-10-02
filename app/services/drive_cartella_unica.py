@@ -298,7 +298,7 @@ def _cestina(service, file_id: str, copia_di: str) -> bool:
         raise
 
 
-class _FileCaricato:
+class FileCaricato:
     """Lo stesso oggetto che riceve l'upload di Documenti > Import."""
 
     def __init__(self, nome: str, contenuto: bytes, source_context: Dict[str, Any],
@@ -345,7 +345,7 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any],
             return {"success": False, "tipo_rilevato": tipo, "arretrato": True,
                     "anno": anno, "anno_minimo": minimo}
     try:
-        return await upload_documento_automatico(file=_FileCaricato(nome, contenuto, contesto, tipo))
+        return await upload_documento_automatico(file=FileCaricato(nome, contenuto, contesto, tipo))
     except HTTPException as exc:
         # Memoria esaurita per l'OCR: il file non e' sbagliato, si riprova al giro dopo.
         return {"success": False, "message": str(exc.detail), "http_status": exc.status_code,
@@ -926,15 +926,57 @@ async def _salva_stato(db, esito: Dict[str, Any]) -> None:
         logger.warning("[cartella-unica] stato non salvato: %s: %s", type(exc).__name__, exc)
 
 
+async def rielabora_con_tipo(db, drive_file_id: str, tipo: str, *, deciso_da: str) -> Dict[str, Any]:
+    """Un file del registro in ERRORI/ARRETRATO riletto dallo smistatore con il tipo deciso dal titolare.
+
+    E' la stessa strada della cartella unica (``_smista`` con ``tipo_rilevato_noto``,
+    ``esito_del_risultato``, spostamento e registro): nessun motore nuovo. Il file
+    resta su Drive dov'e' se la lettura fallisce ancora, col motivo aggiornato.
+    """
+    from app.services.drive_download import scarica_bytes
+
+    riga = await db[REGISTRO].find_one({"id": drive_file_id}, {"_id": 0})
+    if not riga:
+        return {"success": False, "message": "file non presente nel registro della cartella unica"}
+    if riga.get("cartella") not in (ERRORI, ARRETRATO):
+        return {"success": False, "message": f"file gia' in {riga.get('cartella')}: non si rilegge",
+                "cartella": riga.get("cartella")}
+    service = await asyncio.to_thread(_service)
+    cartelle = await _cartelle_in_cache(service)
+    nome = riga.get("nome") or drive_file_id
+    contenuto = await asyncio.to_thread(scarica_bytes, service, drive_file_id)
+    sha256 = hashlib.sha256(contenuto).hexdigest()
+    contesto = {"channel": "drive_cartella_unica", "drive_file_id": drive_file_id,
+                "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256,
+                "tipo_deciso_da": deciso_da}
+    risultato = await _smista(nome, contenuto, contesto, tipo)
+    destinazione, motivo = esito_del_risultato(risultato)
+    if destinazione != riga.get("cartella"):
+        await asyncio.to_thread(_sposta, service, drive_file_id, cartelle[riga["cartella"]],
+                                cartelle[destinazione], motivo or None)
+    riferimenti = {k: risultato[k] for k in _CHIAVI_RIFERIMENTO if risultato.get(k)}
+    await _registra(
+        db, drive_file_id, nome=nome, sha256=sha256, tipo=risultato.get("tipo_rilevato") or tipo,
+        cartella=destinazione, esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),
+        gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None, riferimenti=riferimenti,
+        tipo_deciso_da=deciso_da,
+    )
+    return {"success": destinazione == ARCHIVIO, "cartella": destinazione, "motivo": motivo or None,
+            "tipo_rilevato": risultato.get("tipo_rilevato"), "duplicate": bool(risultato.get("duplicate")),
+            "message": risultato.get("message"), "riferimenti": riferimenti}
+
+
 async def originale(db, drive_file_id: Optional[str] = None,
                     sha256: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Il documento da aprire, solo se e' un originale della cartella unica.
 
     Si cerca per id Drive oppure per SHA-256 del contenuto (l'impronta che i
-    motori conservano come ``source_sha256``): mai per nome.
+    motori conservano come ``source_sha256``): mai per nome. Per id si apre
+    anche un file fermo in ERRORI/ARRETRATO (e' registrato, non un id
+    qualunque): il titolare deve poterlo guardare per decidere una proposta.
     """
     if drive_file_id:
-        filtro = {"id": drive_file_id, "cartella": ARCHIVIO}
+        filtro = {"id": drive_file_id, "cartella": {"$in": [ARCHIVIO, ERRORI, ARRETRATO]}}
     elif sha256:
         filtro = {"sha256": sha256.strip().lower(), "cartella": ARCHIVIO}
     else:
