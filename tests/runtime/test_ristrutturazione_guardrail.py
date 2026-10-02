@@ -276,10 +276,21 @@ ROUTER_MORTI_FASE_1C = {
     "app/routers/dati_provvisori.py",
 }
 
+MODULI_PARALLELI_MORTI = {
+    "app/engines/fiscale_engine.py",
+    "app/services/contabilita_generale.py",
+    "app/services/libro_giornale.py",
+}
+
 
 def test_router_morti_fase_1c_non_ritornano():
     presenti = [p for p in sorted(ROUTER_MORTI_FASE_1C) if (ROOT / p).exists()]
     assert not presenti, "Router morti Fase 1C ricomparsi: " + ", ".join(presenti)
+
+
+def test_motori_paralleli_morti_non_ritornano():
+    presenti = [p for p in sorted(MODULI_PARALLELI_MORTI) if (ROOT / p).exists()]
+    assert not presenti, "Motori paralleli morti ricomparsi: " + ", ".join(presenti)
 
 
 def test_servizi_vivi_fase_1c_restano_disponibili():

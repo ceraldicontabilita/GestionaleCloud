@@ -4,7 +4,9 @@ Gestionale su misura di **Ceraldi Group S.r.l.** (bar e pasticceria, Napoli, P.I
 
 Produzione: **https://gestionalecloud.onrender.com**
 
-> Le regole di progetto stanno in **`CLAUDE.md`**, che è l'unica memoria del repository. Questo README spiega solo com'è fatto il servizio e come si lavora; se i due file si contraddicono, vince `CLAUDE.md`.
+> Le regole, lo stato attuale e il lavoro aperto stanno soltanto in
+> **`CLAUDE.md`**, unica memoria normativa del repository. Questo README è
+> una guida d'ingresso; cronache e piani separati non sono documenti canonici.
 
 ## Un solo servizio, quattro app
 

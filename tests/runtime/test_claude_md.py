@@ -1,11 +1,7 @@
-"""Guardia sui documenti canonici del repository.
+"""Guardia sui due documenti canonici del repository.
 
-Sono ammessi solo CLAUDE.md, README.md e PIANO_RISTRUTTURAZIONE.md. Il 18/09/2026
-i 116 .md sparsi in docs/, memoria/ e .github/ sono stati cancellati: erano
-diari e audit datati che rendevano impossibile capire quali regole fossero in
-vigore. Il piano di ristrutturazione è invece un registro operativo esplicitamente
-richiesto dal titolare e deve restare aggiornato insieme al codice. La guardia
-continua a impedire la ricrescita di documentazione parallela.
+CLAUDE.md è l'unica memoria normativa; README.md è la guida d'ingresso.
+Piani, diari e audit separati duplicano stato e regole e non sono ammessi.
 """
 from __future__ import annotations
 
@@ -15,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TESTO = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-AMMESSI = {"CLAUDE.md", "README.md", "PIANO_RISTRUTTURAZIONE.md"}
+AMMESSI = {"CLAUDE.md", "README.md"}
 
 
 def _markdown_tracciati() -> set[str]:
@@ -33,7 +29,7 @@ def _markdown_tracciati() -> set[str]:
 def test_solo_documenti_canonici_nel_repository() -> None:
     trovati = _markdown_tracciati()
     assert trovati == AMMESSI, (
-        "I soli .md ammessi sono CLAUDE.md, README.md e PIANO_RISTRUTTURAZIONE.md. In piu' o in meno: "
+        "I soli .md ammessi sono CLAUDE.md e README.md. In piu' o in meno: "
         f"{sorted(trovati.symmetric_difference(AMMESSI))}"
     )
 
