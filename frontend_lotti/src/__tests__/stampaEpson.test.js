@@ -38,4 +38,16 @@ describe("stampa diretta Epson", () => {
     expect(getModoStampa()).toBe(MODI.EPSON);
     expect(localStorage.getItem("stampa_auto")).toBe("0");
   });
+
+  test("RawBT usa la stessa scelta di modalita, non un secondo interruttore", () => {
+    localStorage.clear();
+    localStorage.setItem("stampa_rawbt", "1");
+    expect(getModoStampa()).toBe(MODI.RAWBT);
+    setModoStampa(MODI.EPSON);
+    expect(getModoStampa()).toBe(MODI.EPSON);
+    expect(localStorage.getItem("stampa_rawbt")).toBeNull();
+    setModoStampa(MODI.RAWBT);
+    expect(getModoStampa()).toBe(MODI.RAWBT);
+    expect(localStorage.getItem("stampa_auto")).toBe("0");
+  });
 });

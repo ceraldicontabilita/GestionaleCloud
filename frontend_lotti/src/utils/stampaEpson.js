@@ -12,12 +12,13 @@ export const LARGHEZZA_PUNTI = 576; // 80 mm a 203 dpi
 const NS = "http://www.epson-pos.com/schemas/2011/03/epos-print";
 
 // ── Modalita' di stampa, per dispositivo ────────────────────────────────────
-export const MODI = { FINESTRA: "finestra", AGENTE: "agente", EPSON: "epson" };
+export const MODI = { FINESTRA: "finestra", AGENTE: "agente", EPSON: "epson", RAWBT: "rawbt" };
 
 export function getModoStampa() {
   try {
     const m = localStorage.getItem("stampa_modo");
     if (Object.values(MODI).includes(m)) return m;
+    if (localStorage.getItem("stampa_rawbt") === "1") return MODI.RAWBT;
     // Compatibilita': prima esisteva solo l'interruttore dell'agente PC.
     return localStorage.getItem("stampa_auto") === "1" ? MODI.AGENTE : MODI.FINESTRA;
   } catch { return MODI.FINESTRA; }
@@ -27,6 +28,7 @@ export function setModoStampa(modo) {
     localStorage.setItem("stampa_modo", modo);
     // Tiene allineato il vecchio flag che legge ancora stampaDoc/agente.
     localStorage.setItem("stampa_auto", modo === MODI.AGENTE ? "1" : "0");
+    localStorage.removeItem("stampa_rawbt");
   } catch { /* no-op */ }
 }
 
