@@ -339,7 +339,7 @@ class _SchedulerFinto:
         self.running = True
 
 
-def test_il_giro_incrementale_e_registrato_ogni_20_minuti(monkeypatch):
+def test_il_giro_incrementale_e_registrato_ogni_3_ore(monkeypatch):
     import app.scheduler as scheduler_mod
 
     finto = _SchedulerFinto()
@@ -347,7 +347,7 @@ def test_il_giro_incrementale_e_registrato_ogni_20_minuti(monkeypatch):
     scheduler_mod.start_scheduler()
     job = [j for j in finto.jobs if isinstance(j[2], dict) and j[2].get("id") == "protocollo_drive_incrementale"]
     assert len(job) == 1
-    assert job[0][1][0] == "interval" and job[0][2]["minutes"] == 20
+    assert job[0][1][0] == "interval" and job[0][2]["minutes"] == 180
     # il giro completo non e' stato riacceso da nessuna parte
     assert not [j for j in finto.jobs if isinstance(j[2], dict) and j[2].get("id") == "protocollo_drive"]
 
