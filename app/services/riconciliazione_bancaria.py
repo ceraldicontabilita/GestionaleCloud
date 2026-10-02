@@ -152,6 +152,49 @@ async def _alert_match_ambiguo(db, mov_id: Optional[str], motivo: str) -> None:
         logger.exception(f"Errore generazione alert RIC_MATCH_AMBIGUO per {mov_id}")
 
 
+async def chiudi_proposte_superate(db, movimento_id: Optional[str] = None) -> int:
+    """Una proposta «da confermare» il cui movimento e' gia' riconciliato non
+    ha piu' niente da chiedere: si chiude ``superata`` (per id, col motivo),
+    mai cancellata. Con ``movimento_id`` chiude le proposte di quel solo
+    movimento; senza, ripassa tutte le aperte (le 10 proposte «soggetto
+    pagante diverso» di Amazon restavano in «Scegli fattura» anche dopo che
+    il collettore di gruppo aveva abbinato l'SDD da solo). Ritorna quante ne
+    ha chiuse. Idempotente."""
+    filtro: Dict[str, Any] = {"stato": "da_confermare"}
+    if movimento_id:
+        filtro["movimento_ec_id"] = movimento_id
+    proposte = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].find(
+        filtro, {"_id": 0, "id": 1, "movimento_ec_id": 1},
+    ).to_list(2000)
+    if not proposte:
+        return 0
+    ora = datetime.now(timezone.utc).isoformat()
+    chiuse = 0
+    riconciliati: Dict[str, bool] = {}
+    for proposta in proposte:
+        mov_id = str(proposta.get("movimento_ec_id") or "")
+        if not mov_id:
+            continue
+        if mov_id not in riconciliati:
+            movimento = await db[COLLECTION_ESTRATTO_CONTO].find_one(
+                {"id": mov_id}, {"_id": 0, "riconciliato": 1},
+            )
+            riconciliati[mov_id] = bool(movimento and movimento.get("riconciliato") is True)
+        if not riconciliati[mov_id]:
+            continue
+        await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].update_one(
+            {"id": proposta["id"]},
+            {"$set": {
+                "stato": "superata",
+                "superata_da": "movimento_riconciliato",
+                "superata_at": ora,
+                "updated_at": ora,
+            }},
+        )
+        chiuse += 1
+    return chiuse
+
+
 async def _crea_operazione_da_confermare_idempotente(db, operazione: dict) -> bool:
     """Inserisce una riga in operazioni_da_confermare SOLO se non ne esiste già
     una aperta (stato="da_confermare") per lo stesso movimento_ec_id.
@@ -1108,6 +1151,7 @@ async def riconcilia_movimenti_banca(
         "commissioni_ignorate": 0,
         "dubbi": 0,
         "non_trovati": 0,
+        "proposte_superate": 0,
         "errors": []
     }
 
@@ -1136,6 +1180,14 @@ async def riconcilia_movimenti_banca(
         # Un'anomalia circoscritta agli assegni non deve impedire a POS, F24,
         # bonifici e SDD di essere processati nello stesso estratto conto.
         results["errors"].append(f"Sincronizzazione assegni: {exc}")
+
+    # Le proposte aperte di movimenti gia' riconciliati (da un altro motore o
+    # da un giro precedente) non devono restare in «Scegli fattura».
+    try:
+        results["proposte_superate"] = await chiudi_proposte_superate(db)
+    except Exception as exc:
+        results["proposte_superate"] = 0
+        results["errors"].append(f"Chiusura proposte superate: {type(exc).__name__}: {exc}")
 
     # Carica movimenti EC non riconciliati. Dopo un import il chiamante passa
     # gli ID appena inseriti/promossi: riesaminare ogni volta l'intero storico
@@ -1905,6 +1957,7 @@ async def riconcilia_movimenti_banca(
                     }}
                 )
                 await chiudi_alert_movimento_riconciliato(db, mov_id)
+                results["proposte_superate"] += await chiudi_proposte_superate(db, mov_id)
             elif not blocca_match_singolo:
                 results["non_trovati"] += 1
                 await _alert_non_riconciliato(db, mov_id, importo, descrizione)

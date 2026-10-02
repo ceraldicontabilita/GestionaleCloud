@@ -212,3 +212,46 @@ def test_una_cassa_confermata_non_si_ritira(monkeypatch):
         assert cassa.get("status") != "deleted"
 
     _run(scenario())
+
+
+def test_proposta_aperta_si_chiude_quando_il_movimento_e_riconciliato(monkeypatch):
+    """Le proposte «soggetto pagante diverso» rimaste da prima della regola del
+    collettore non devono restare in «Scegli fattura» una volta che il
+    movimento e' stato abbinato (dal giro o da un altro motore)."""
+    async def scenario():
+        db = _db(monkeypatch, "proposte-superate")
+        await db.operazioni_da_confermare.insert_many([
+            {"id": "op-1", "movimento_ec_id": "EC-chiuso", "stato": "da_confermare",
+             "match_type": "soggetto_pagante_diverso"},
+            {"id": "op-2", "movimento_ec_id": "EC-aperto", "stato": "da_confermare",
+             "match_type": "soggetto_pagante_diverso"},
+            {"id": "op-3", "movimento_ec_id": "EC-chiuso", "stato": "ignorata"},
+        ])
+        await db.estratto_conto_movimenti.insert_many([
+            {"id": "EC-chiuso", "data": "2026-02-16", "tipo": "uscita", "importo": 11.99,
+             "descrizione_originale": "SDD CORE: X AMAZON PAYMENTS EUROPE S.C.A.", "riconciliato": True},
+            {"id": "EC-aperto", "data": "2026-02-17", "tipo": "uscita", "importo": 12.99,
+             "descrizione_originale": "SDD CORE: X AMAZON PAYMENTS EUROPE S.C.A.", "riconciliato": False},
+        ])
+        risultato = await mod.riconcilia_movimenti_banca()
+        assert risultato["proposte_superate"] == 1
+        chiusa = await db.operazioni_da_confermare.find_one({"id": "op-1"}, {"_id": 0})
+        assert chiusa["stato"] == "superata"
+        assert chiusa["superata_da"] == "movimento_riconciliato"
+        assert (await db.operazioni_da_confermare.find_one({"id": "op-2"}))["stato"] == "da_confermare"
+        assert (await db.operazioni_da_confermare.find_one({"id": "op-3"}))["stato"] == "ignorata"
+        # secondo giro: niente da chiudere
+        assert (await mod.riconcilia_movimenti_banca())["proposte_superate"] == 0
+
+        # l'abbinamento automatico chiude la sua proposta nello stesso giro
+        await db.invoices.insert_one(_nota("nc-x", "IT6X", 12.99, data="2026-02-15"))
+        await db.estratto_conto_movimenti.update_one(
+            {"id": "EC-aperto"},
+            {"$set": {"tipo": "entrata", "descrizione_originale": CAUSALE_BUSINESS}},
+        )
+        risultato = await mod.riconcilia_movimenti_banca()
+        assert risultato["riconciliati_fatture"] == 1
+        assert risultato["proposte_superate"] == 1
+        assert (await db.operazioni_da_confermare.find_one({"id": "op-2"}))["stato"] == "superata"
+
+    _run(scenario())

@@ -273,7 +273,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   eccezione, regola del titolare: un assegno paga la fattura di pari importo emessa nei 15 giorni prima dell'addebito,
   se è l'unica (`REGOLA_TITOLARE_GIORNI_PRECEDENTI`); il numero scritto nel report «Fatture ricevute» vince sempre.
 - Nei casi ambigui mostra i candidati (`Scegli fattura`, `Scegli driver`,
-  `Scegli verbale`) e non applicare il collegamento.
+  `Scegli verbale`) e non applicare il collegamento. Una proposta aperta il cui movimento è poi riconciliato (da un giro o da un altro motore) si chiude `superata` per id (`chiudi_proposte_superate`, a ogni giro bancario e a ogni abbinamento), mai cancellata: in «Scegli fattura» restano solo le domande vive.
 - Fattura, disposizione, ricevuta, quietanza e movimento bancario sono prove
   **distinte**, collegate da `operation_id`, mai fuse in un solo record.
 - I documenti originali restano immutabili: hash, fonte, versione, timestamp e
