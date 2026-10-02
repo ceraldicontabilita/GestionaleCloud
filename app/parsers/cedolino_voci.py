@@ -252,6 +252,15 @@ VOCI_ACCONTO_RECUPERATO = (
 #: Buste TFR: anticipo del fondo, non stipendio. Mai sommato al dovuto.
 VOCI_ACCONTO_TFR = ("ACCONTI GIA' EROGATI",)
 
+#: Anticipo del TFR pagato **dentro** la busta del mese (Zucchetti, voce 000081
+#: «Anticipazione T.F.R.»): e' una competenza che il netto gia' contiene, tassata
+#: a parte (imponibile T.F.R., aliquota T.F.R.), e nei progressivi finisce in
+#: «TFR a fondi Anticipi». Non e' stipendio: il motore degli acconti TFR lo
+#: scala dal fondo (``tfr_anticipo_busta``). Un solo elenco: codice, descrizione.
+VOCI_ANTICIPO_TFR = (
+    ("000081", "ANTICIPAZIONE T.F.R."),      # Zucchetti
+)
+
 _IMPORTO_VOCE = r"(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})"
 
 
@@ -274,6 +283,25 @@ def acconto_recuperato_in_busta(testo: str) -> Optional[Dict[str, str]]:
     """
     alto = re.sub(r"\s+", " ", str(testo or "").upper())
     for codice, descrizione, regola in _REGOLE_ACCONTO:
+        m = regola.search(alto)
+        if m:
+            return {"codice": codice, "descrizione": descrizione, "importo": m.group(1)}
+    return None
+
+
+_REGOLE_ANTICIPO_TFR = [(c, d, _regola_voce(c, d)) for c, d in VOCI_ANTICIPO_TFR]
+
+
+def anticipo_tfr_in_busta(testo: str) -> Optional[Dict[str, str]]:
+    """La voce di anticipo TFR stampata nella busta, o None.
+
+    Il testo del PDF puo' mandare a capo l'importo («000081 Anticipazione T.F.R.»
+    e sotto «1.800,00»): si cerca sul testo con gli spazi ridotti a uno. Solo i
+    codici di ``VOCI_ANTICIPO_TFR``: l'importo e' quello della **competenza**
+    (lordo), mai l'imponibile T.F.R. ne' il progressivo «TFR a fondi Anticipi».
+    """
+    alto = re.sub(r"\s+", " ", str(testo or "").upper())
+    for codice, descrizione, regola in _REGOLE_ANTICIPO_TFR:
         m = regola.search(alto)
         if m:
             return {"codice": codice, "descrizione": descrizione, "importo": m.group(1)}

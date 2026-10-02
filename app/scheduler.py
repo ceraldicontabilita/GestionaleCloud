@@ -1499,11 +1499,12 @@ def start_scheduler():
             return
         con = await deposito.connetti_hr(dsn)
         try:
-            r = await riverifica_lotto(con)
+            r = await riverifica_lotto(con, db=Database.get_db())
         finally:
             await con.close()
         if r["lette"]:
-            logger.info("[SCHEDULER-HR-NETTI] lette=%s esiti=%s", r["lette"], r["conteggi"])
+            logger.info("[SCHEDULER-HR-NETTI] lette=%s esiti=%s anticipi_tfr=%s",
+                        r["lette"], r["conteggi"], r.get("anticipi_tfr") or [])
             db = Database.get_db()
             stato = await db["sistema_stato"].find_one({"chiave": "cedolini_hr_riverifica"}, {"_id": 0}) or {}
             conteggi = dict(stato.get("conteggi") or {})
@@ -1585,6 +1586,16 @@ def start_scheduler():
         coalesce=True,
         id="cedolini_hr_riverifica",
         name="Netti HR riletti dal PDF della busta (un lotto ogni ora, 01-05)",
+        replace_existing=True,
+    )
+    # Un primo lotto subito dopo l'avvio: le buste piu' recenti (con un eventuale
+    # anticipo TFR) non aspettano la notte. Il giro e' idempotente.
+    scheduler.add_job(
+        _cedolini_hr_riverifica_job,
+        'date', run_date=avvio + timedelta(minutes=7),
+        misfire_grace_time=600,
+        id="cedolini_hr_riverifica_avvio",
+        name="Netti HR riletti dal PDF della busta (primo lotto all'avvio)",
         replace_existing=True,
     )
 

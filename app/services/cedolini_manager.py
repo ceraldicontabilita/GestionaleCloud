@@ -108,9 +108,19 @@ async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Op
     E' l'unico punto di scrittura di una busta, sia dalla lettura di un PDF
     sia dalla ricarica di una scheda Markdown (``schede_markdown``).
     """
+    from app.services.tfr_anticipo_busta import registra_dalla_busta
+
     async with _lock_busta(ced):
         await _registra_busta(db, ced, filename=filename, pdf_data=pdf_data,
                               pdf_text=pdf_text, results=results)
+        # Anticipo TFR pagato dentro la busta: va nel motore degli acconti TFR
+        # (una volta sola, idempotente), anche se la busta e' gia' in archivio.
+        # Sotto lo stesso lock: due copie della busta non lo registrano due volte.
+        esito = await registra_dalla_busta(db, ced)
+        if esito:
+            results.setdefault("anticipi_tfr", []).append(
+                {"codice_fiscale": ced.get("codice_fiscale"), "anno": ced.get("anno"),
+                 "mese": ced.get("mese"), **esito})
 
 
 def _annota_busta(results: Dict[str, Any], ced: Dict[str, Any], esito: str) -> None:
