@@ -540,8 +540,8 @@ async def leggi_foto_ai(payload: dict = Body(...)):
     scheda tipo='produttore' (come /parse-etichetta). Usato solo quando l'OCR gratuito
     del browser resta povero. Body: {immagine_base64, media_type?, prodotto_key?,
     nome_prodotto?, produttore?, salva?}"""
-    import os as _osx
-    api_key = _osx.environ.get("ANTHROPIC_API_KEY", "")
+    from app.services.anthropic_llm_client import ImageContent, LlmChat, UserMessage, chiave_api, modello_veloce
+    api_key = chiave_api()
     if not api_key:
         raise HTTPException(503, "AI-visione non disponibile (manca ANTHROPIC_API_KEY)")
     img = (payload.get("immagine_base64") or "").strip()
@@ -555,26 +555,16 @@ async def leggi_foto_ai(payload: dict = Body(...)):
         except Exception:
             pass
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                json={
-                    "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 1024,
-                    "messages": [{"role": "user", "content": [
-                        {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img}},
-                        {"type": "text", "text": (
-                            "Trascrivi TUTTO il testo leggibile di questa etichetta alimentare, in italiano. "
-                            "Mantieni in particolare la riga che inizia con 'Ingredienti:' con l'elenco completo, "
-                            "additivi e coloranti (codici E...), e le diciture sugli allergeni. "
-                            "Rispondi SOLO con il testo trascritto, senza commenti."
-                        )},
-                    ]}],
-                },
-            )
-        txt = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
+        chat = LlmChat(api_key, model=modello_veloce(), timeout_s=60.0, tentativi=1, max_tokens=1024,
+                       scopo="lotti_foto_etichetta")
+        txt = await chat.send_message(UserMessage(
+            content=(
+                "Trascrivi TUTTO il testo leggibile di questa etichetta alimentare, in italiano. "
+                "Mantieni in particolare la riga che inizia con 'Ingredienti:' con l'elenco completo, "
+                "additivi e coloranti (codici E...), e le diciture sugli allergeni. "
+                "Rispondi SOLO con il testo trascritto, senza commenti."
+            ),
+            images=[ImageContent(image_data=img, mime_type=media_type)]))
     except Exception as e:
         logger.warning("[schede-tecniche] AI-visione fallita: %s %s", type(e).__name__, e)
         raise HTTPException(502, f"AI-visione fallita ({type(e).__name__}): riprova o compila a mano") from e
@@ -701,8 +691,8 @@ async def _identifica_con_ricerca_web(descrizione: str, fornitore: str = "",
     tipo='chimico' (detersivi, richiesta Enzo per HACCP) → prodotto_identificato,
     marca, url_scheda (scheda di SICUREZZA), principi_attivi, pericoli,
     velenoso, confidenza."""
-    api_key = _os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
+    from app.services.anthropic_llm_client import chiave_api
+    if not chiave_api():
         raise HTTPException(503, "Ricerca web non disponibile (manca ANTHROPIC_API_KEY)")
     contesto_forn = f' Il fornitore della fattura è "{fornitore}".' if fornitore else ""
     if tipo == "chimico":

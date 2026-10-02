@@ -16,6 +16,7 @@ from app.services.document_ai_extractor import (
     PROMPTS
 )
 from app.database import get_database
+from app.services.anthropic_llm_client import document_model_name
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ router = APIRouter()
 async def extract_from_file(
     file: UploadFile = File(...),
     document_type: Optional[str] = Form(None),
-    model: str = Form("claude-sonnet-4-5-20250929"),
+    model: Optional[str] = Form(None),
     save_to_db: bool = Form(False)
 ):
     """
@@ -82,7 +83,7 @@ async def extract_from_file(
                 "extracted_data": result.get("structured_data", {}).get("data"),
                 "text_preview": result.get("text", "")[:1000],
                 "ocr_used": result.get("ocr_used"),
-                "model_used": model,
+                "model_used": model or document_model_name(),
                 "file_base64": base64.b64encode(content).decode('utf-8'),
                 "has_pdf": True,
                 "processato": True,
@@ -110,7 +111,7 @@ async def extract_from_base64(
     base64_data: str = Body(...),
     filename: str = Body(...),
     document_type: Optional[str] = Body(None),
-    model: str = Body("claude-sonnet-4-5-20250929"),
+    model: Optional[str] = Body(None),
     save_to_db: bool = Body(False)
 ):
     """
@@ -137,7 +138,7 @@ async def extract_from_base64(
                 "extracted_data": result.get("structured_data", {}).get("data"),
                 "text_preview": result.get("text", "")[:1000],
                 "ocr_used": result.get("ocr_used"),
-                "model_used": model,
+                "model_used": model or document_model_name(),
                 "processato": True,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
@@ -292,7 +293,7 @@ async def delete_extracted_document(doc_id: str):
 @router.post("/process-classified-email")
 async def process_classified_email(
     email_id: str = Body(...),
-    model: str = Body("claude-sonnet-4-5-20250929")
+    model: Optional[str] = Body(None)
 ):
     """
     Processa un documento classificato dal sistema email.
@@ -335,7 +336,7 @@ async def process_classified_email(
             {
                 "$set": {
                     "extracted_data": result["structured_data"]["data"],
-                    "extraction_model": model,
+                    "extraction_model": model or document_model_name(),
                     "extracted_at": datetime.now(timezone.utc).isoformat(),
                     "processed": True
                 }
@@ -351,7 +352,7 @@ async def process_all_classified_documents(
     process_all: bool = False,
     document_types: Optional[str] = None,
     save_to_gestionale: bool = True,
-    model: str = "claude-sonnet-4-5-20250929"
+    model: Optional[str] = None
 ):
     """
     Processa TUTTI i documenti classificati usando Document AI.
@@ -429,7 +430,7 @@ async def get_classified_documents_stats():
 
 @router.post("/reprocess-and-save")
 async def reprocess_and_save_all(
-    model: str = "claude-sonnet-4-5-20250929"
+    model: Optional[str] = None
 ):
     """
     Riprocessa TUTTI i documenti in memoria e salva i dati nelle collection del gestionale.

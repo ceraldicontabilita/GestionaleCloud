@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 COLL_PROPOSTE = "agenti_proposte"
 COLL_CHIAMATE = "agenti_ai_chiamate"
+SCOPO = "agenti_proposte"
 CHIAVE_STATO = "agenti_proposte"
 VERSIONE_PROMPT = 1
 LOTTO = 10
@@ -114,8 +115,11 @@ def settore_del_tipo(tipo: Any) -> str:
     return SETTORE_DEL_TIPO.get(str(tipo or ""), SETTORE_ALTRO)
 
 
-def nuovo_client(client=None):
-    """Il solo client ammesso: ``LlmChat``. Senza chiave torna None."""
+def nuovo_client(client=None, db=None):
+    """Il solo client ammesso: ``LlmChat``. Senza chiave torna None.
+
+    ``registra=False``: il registro lo scrive questo modulo con i suoi campi
+    (impronta, versione del prompt, proposta), con lo stesso scrittore unico."""
     if client is not None:
         return client
     chiave = chiave_api()
@@ -124,7 +128,7 @@ def nuovo_client(client=None):
     from app.services.anthropic_llm_client import LlmChat, document_model_name
 
     return LlmChat(chiave, system_prompt=_SISTEMA.replace("{tipi}", ", ".join(sorted(TIPI_SMISTATORE))),
-                   model=document_model_name())
+                   model=document_model_name(), scopo=SCOPO, db=db, registra=False)
 
 
 # ---------------------------------------------------------------------------
@@ -132,19 +136,18 @@ def nuovo_client(client=None):
 # ---------------------------------------------------------------------------
 
 async def chiamate_oggi(db) -> int:
-    return await db[COLL_CHIAMATE].count_documents({"giorno": oggi_roma()})
+    from app.services.anthropic_llm_client import chiamate_oggi as _chiamate
+
+    return await _chiamate(db, scopo=SCOPO)
 
 
 async def _registra_chiamata(db, *, sha256: str, esito: str, usage: Optional[Dict[str, Any]],
                              modello: Optional[str], tentativi: int, errore: Optional[str],
                              proposta: Optional[Dict[str, Any]]) -> None:
-    await db[COLL_CHIAMATE].insert_one({
-        "id": f"aic_{uuid.uuid4().hex[:12]}", "giorno": oggi_roma(), "creato": _adesso(),
-        "sha256": sha256, "versione_prompt": VERSIONE_PROMPT, "esito": esito,
-        "input_tokens": int((usage or {}).get("input_tokens") or 0),
-        "output_tokens": int((usage or {}).get("output_tokens") or 0),
-        "modello": modello, "tentativi": tentativi, "errore": errore, "proposta": proposta,
-    })
+    from app.services.anthropic_llm_client import registra_chiamata
+
+    await registra_chiamata(db, scopo=SCOPO, esito=esito, usage=usage, modello=modello, tentativi=tentativi,
+                            errore=errore, sha256=sha256, versione_prompt=VERSIONE_PROMPT, proposta=proposta)
 
 
 async def _risposta_in_cache(db, sha256: str) -> Optional[Dict[str, Any]]:
@@ -362,7 +365,7 @@ async def giro(db, *, client=None, limite: int = LOTTO) -> Dict[str, Any]:
         esito["motivo"] = "spento (AGENTI_AI=false)"
         await _salva_stato(db, esito)
         return esito
-    client = nuovo_client(client)
+    client = nuovo_client(client, db)
     if client is None:
         esito["motivo"] = "ANTHROPIC_API_KEY non configurata"
         await _salva_stato(db, esito)

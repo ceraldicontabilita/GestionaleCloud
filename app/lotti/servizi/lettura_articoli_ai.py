@@ -24,7 +24,8 @@ per le ricette («Burro»), non l'articolo commerciale da ordinare.
 **Identificazione col web** (``identifica_col_web``): per le righe del Dizionario
 senza categoria certa il modello cerca il prodotto con lo strumento server-side
 di Anthropic (``cerca_sul_web``, lo stesso della ricerca delle schede tecniche:
-stessa chiave, nessuna variabile nuova). La categoria si scrive da sola **solo**
+stessa chiave, nessuna variabile nuova; la chiamata e il suo registro sono
+quelli del client unico ``anthropic_llm_client.LlmChat``, scopo ``lotti_web``). La categoria si scrive da sola **solo**
 se web e testo della fattura concordano (marca o prodotto nella descrizione, o
 EAN), con confidenza alta e almeno una fonte, e si dichiara (``categoria_fonte =
 "web"``, ``abbinato_ai``, ``categoria_web_fonti``); i dubbi restano proposte in
@@ -36,21 +37,21 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.lotti.servizi.confronto_fornitori import impronta_descrizione, pulisci
+from app.services.anthropic_llm_client import LlmChat, chiave_api, modello_veloce
 
 logger = logging.getLogger(__name__)
 
 COLLEZIONE = "articoli_letti_ai"
 STATO_ID = "lettura_articoli_ai"
 VERSIONE = 1
-MODELLO = "claude-haiku-4-5"
-MODELLO_WEB = "claude-haiku-4-5-20251001"  # lo stesso modello della ricerca delle schede tecniche
+SCOPO = "lotti_letture"
+SCOPO_WEB = "lotti_web"
 PER_CHIAMATA = 25
 MAX_TOKEN = 8000
 IN_PARALLELO = 4
@@ -78,7 +79,13 @@ _SISTEMA = (
 
 
 def _chiave_api() -> str:
-    return os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    return chiave_api()
+
+
+def _client(scopo: str, *, system: str = "", max_tokens: int) -> LlmChat:
+    """Il solo client (modello veloce, registro e tetto del gestionale)."""
+    return LlmChat(_chiave_api(), system_prompt=system, model=modello_veloce(), timeout_s=90.0,
+                   max_tokens=max_tokens, scopo=scopo)
 
 
 def _numeri_scritti(testo: str) -> List[Decimal]:
@@ -168,33 +175,19 @@ def _estrai_array(testo: str) -> List[Dict[str, Any]]:
 async def leggi_con_ai(descrizioni: List[str], client=None,
                        diagnosi: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
     """Una chiamata per al massimo ``PER_CHIAMATA`` descrizioni.
-    Torna {descrizione: lettura validata}; le mancanti restano da leggere."""
-    chiave = _chiave_api()
-    if not chiave or not descrizioni:
+    Torna {descrizione: lettura validata}; le mancanti restano da leggere.
+    ``client``: un ``LlmChat`` (o un finto con ``crea_messaggio``)."""
+    if not _chiave_api() or not descrizioni:
         return {}
-    import httpx
-
+    client = client or _client(SCOPO, system=_SISTEMA, max_tokens=MAX_TOKEN)
     lista = "\n".join(f"{i + 1}. {pulisci(d)}" for i, d in enumerate(descrizioni))
-    corpo = {
-        "model": MODELLO,
-        "max_tokens": MAX_TOKEN,
-        "system": _SISTEMA,
-        "messages": [{"role": "user", "content": f"Leggi queste {len(descrizioni)} descrizioni:\n{lista}"}],
-    }
-    intestazioni = {"x-api-key": chiave, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-    proprio = client is None
-    client = client or httpx.AsyncClient(timeout=90)
-    try:
-        r = await client.post("https://api.anthropic.com/v1/messages", headers=intestazioni, json=corpo)
-        r.raise_for_status()
-        risposta = r.json()
-        testo = "".join(b.get("text", "") for b in risposta.get("content", []) if isinstance(b, dict))
-        if diagnosi is not None:
-            diagnosi["stop_reason"] = risposta.get("stop_reason")
-            diagnosi["inizio_risposta"] = testo[:120]
-    finally:
-        if proprio:
-            await client.aclose()
+    risposta = await client.crea_messaggio(
+        [{"role": "user", "content": f"Leggi queste {len(descrizioni)} descrizioni:\n{lista}"}],
+        system=_SISTEMA, max_tokens=MAX_TOKEN)
+    testo = risposta.get("testo") or ""
+    if diagnosi is not None:
+        diagnosi["stop_reason"] = risposta.get("stop_reason")
+        diagnosi["inizio_risposta"] = testo[:120]
     out: Dict[str, Dict[str, Any]] = {}
     for item in _estrai_array(testo):
         try:
@@ -220,7 +213,7 @@ async def _salva(db, letture: Dict[str, Dict[str, Any]]) -> int:
     for descrizione, lettura in letture.items():
         impronta = impronta_descrizione(descrizione)
         doc = {**lettura, "id": impronta, "descrizione": pulisci(descrizione), "versione": VERSIONE,
-               "modello": MODELLO, "letto_il": adesso}
+               "modello": modello_veloce(), "letto_il": adesso}
         ops.append(UpdateOne({"id": impronta}, {"$set": doc, "$setOnInsert": {"_id": impronta}}, upsert=True))
     await getattr(db, COLLEZIONE).bulk_write(ops, ordered=False)
     return len(ops)
@@ -264,7 +257,7 @@ async def leggi_mancanti(db, descrizioni: Iterable[str], limite: int = 3000) -> 
                          ultimo_errore="ANTHROPIC_API_KEY non configurata: nessuna lettura AI")
             return {"ok": False, "motivo": "ANTHROPIC_API_KEY non configurata", "da_leggere": len(uniche)}
         await _stato(db, stato="in_corso", iniziato_il=adesso, da_leggere=len(uniche), in_questo_giro=len(da_leggere),
-                     letti=0, errori=0, ultimo_errore=None, modello=MODELLO, versione=VERSIONE)
+                     letti=0, errori=0, ultimo_errore=None, modello=modello_veloce(), versione=VERSIONE)
         blocchi = [da_leggere[i:i + PER_CHIAMATA] for i in range(0, len(da_leggere), PER_CHIAMATA)]
         semaforo = asyncio.Semaphore(IN_PARALLELO)
         letti = errori = 0
@@ -272,9 +265,10 @@ async def leggi_mancanti(db, descrizioni: Iterable[str], limite: int = 3000) -> 
         in_attesa: Dict[str, Dict[str, Any]] = {}
         scrittura = asyncio.Lock()
 
-        import httpx
+        import contextlib
 
-        async with httpx.AsyncClient(timeout=90) as client:
+        # un solo client per tutto il giro (le chiamate corrono in parallelo nel suo thread pool)
+        async with contextlib.nullcontext(_client(SCOPO, system=_SISTEMA, max_tokens=MAX_TOKEN)) as client:
             async def uno(blocco: List[str]) -> None:
                 nonlocal letti, errori, ultimo_errore
                 async with semaforo:
@@ -334,45 +328,27 @@ class RicercaWebErrore(RuntimeError):
 
 async def cerca_sul_web(prompt: str, *, max_tokens: int = 1500, max_uses: int = 3,
                         client=None) -> Dict[str, Any]:
-    """Una domanda al modello con ``web_search_20250305``: l'unico punto che lo chiama.
+    """Una domanda al modello con lo strumento server-side di ricerca web: l'unico punto che lo chiama.
 
     Torna ``{"testo": risposta, "fonti": [url delle pagine consultate]}``. Le
-    fonti vengono dai blocchi del tool (non da cio' che il modello scrive)."""
-    chiave = _chiave_api()
-    if not chiave:
+    fonti vengono dai blocchi del tool (non da cio' che il modello scrive).
+    Un errore dell'API (risposta non 200, tetto) e' ``RicercaWebErrore``."""
+    if not _chiave_api():
         raise RicercaWebErrore("manca ANTHROPIC_API_KEY")
-    import httpx
-
-    intestazioni = {"x-api-key": chiave, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-    corpo = {"model": MODELLO_WEB, "max_tokens": max_tokens,
-             "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": max_uses}],
-             "messages": [{"role": "user", "content": prompt}]}
-    proprio = client is None
-    client = client or httpx.AsyncClient(timeout=90)
+    client = client or _client(SCOPO_WEB, max_tokens=max_tokens)
     try:
-        r = await client.post("https://api.anthropic.com/v1/messages", headers=intestazioni, json=corpo)
-        dati = r.json()
-    finally:
-        if proprio:
-            await client.aclose()
-    if r.status_code != 200:
-        raise RicercaWebErrore(str((dati.get("error") or {}).get("message", r.status_code)))
-    blocchi = [b for b in (dati.get("content") or []) if isinstance(b, dict)]
-    testo = "".join(b.get("text", "") for b in blocchi if b.get("type") == "text")
-    fonti: List[str] = []
-    for b in blocchi:
-        if b.get("type") == "web_search_tool_result" and isinstance(b.get("content"), list):
-            for voce in b["content"]:
-                url = str(voce.get("url") or "") if isinstance(voce, dict) else ""
-                if url.startswith("http") and url not in fonti:
-                    fonti.append(url)
-    return {"testo": testo, "fonti": fonti}
+        return await client.cerca_sul_web(prompt, max_tokens=max_tokens, max_uses=max_uses)
+    except RicercaWebErrore:
+        raise
+    except Exception as exc:  # noqa: BLE001 - un solo tipo di errore per chi chiama
+        raise RicercaWebErrore(f"{type(exc).__name__}: {str(exc)[:200]}") from exc
 
 
 # ── identificazione del prodotto col web per il Dizionario ──────────────────
 
 # Costi: 5 descrizioni a giro (un giro ogni 20 minuti nello scheduler), 2 ricerche
-# per descrizione, al massimo TETTO_WEB_GIORNALIERO chiamate al giorno (giorno di Roma).
+# per descrizione, al massimo TETTO_WEB_GIORNALIERO chiamate al giorno (giorno di Roma, contate
+# nel registro unico del client, scopo ``lotti_web``).
 # Una descrizione cercata non si ricerca per RIPROVA_WEB_GIORNI giorni.
 WEB_PER_GIRO = 5
 WEB_MAX_USES = 2
@@ -470,12 +446,23 @@ async def _stato_web(db, **campi: Any) -> None:
 
 
 async def _chiamate_oggi(db) -> int:
+    """Chiamate web di oggi dal registro unico del gestionale (scopo ``lotti_web``);
+    senza l'archivio del gestionale (test) si conta sullo stato di Lotti."""
+    from app.services.anthropic_llm_client import _archivio, chiamate_oggi
+
+    archivio = _archivio()
+    if archivio is not None:
+        return await chiamate_oggi(archivio, scopo=SCOPO_WEB)
     stato = await db.sync_status.find_one({"_id": STATO_WEB_ID}, {"_id": 0, "giorno": 1, "chiamate": 1}) or {}
     return int(stato.get("chiamate") or 0) if stato.get("giorno") == _oggi_roma() else 0
 
 
 async def _conta_chiamata(db) -> None:
-    await _stato_web(db, giorno=_oggi_roma(), chiamate=await _chiamate_oggi(db) + 1)
+    """Contatore di riserva per quando il registro unico non c'e' (test)."""
+    from app.services.anthropic_llm_client import _archivio
+
+    if _archivio() is None:
+        await _stato_web(db, giorno=_oggi_roma(), chiamate=await _chiamate_oggi(db) + 1)
 
 
 async def _candidati_web(db, limite: int) -> List[Dict[str, Any]]:
