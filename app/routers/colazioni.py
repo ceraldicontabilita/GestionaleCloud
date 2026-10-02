@@ -18,10 +18,11 @@ import unicodedata
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Mapping, Optional
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import aiohttp
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -60,6 +61,11 @@ class OrdineHotelRequest(BaseModel):
 class ElencoOrdiniHotelRequest(BaseModel):
     sid: str = Field(min_length=1, max_length=80)
     p: str = Field(min_length=1, max_length=300)
+
+
+class RicaricaSumUpRequest(ElencoOrdiniHotelRequest):
+    importo: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    idempotenza: str = Field(min_length=8, max_length=80)
 
 
 class AggiornaOrdineHotelRequest(BaseModel):
@@ -393,6 +399,151 @@ async def _rpc_bb(fn: str, args: Mapping[str, Any]) -> Any:
     except aiohttp.ClientError as exc:
         logger.error("%s non raggiungibile: %s", fn, exc)
         raise HTTPException(status_code=502, detail="Colazioni B&B non raggiungibile") from exc
+
+
+async def _rpc_runtime_bb(fn: str, args: Mapping[str, Any]) -> Any:
+    """RPC riservata al backend, protetta dal segreto di runtime."""
+    url = (settings.SUPABASE_URL or "").strip().rstrip("/")
+    chiave = (settings.SUPABASE_PUBLISHABLE_KEY or "").strip()
+    segreto = (settings.SUPABASE_RUNTIME_SECRET or "").strip()
+    if not (url and chiave and segreto):
+        raise HTTPException(status_code=503, detail="Portafoglio hotel non configurato")
+    headers = {
+        "apikey": chiave,
+        "x-gc-api-key": segreto,
+        "Content-Type": "application/json",
+    }
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=20), headers=headers
+        ) as sessione:
+            async with sessione.post(
+                f"{url}/rest/v1/rpc/{fn}", json=dict(args)
+            ) as risposta:
+                corpo = await risposta.json(content_type=None)
+                if risposta.status >= 400:
+                    logger.error("%s: HTTP %s", fn, risposta.status)
+                    raise HTTPException(status_code=502, detail="Portafoglio hotel non raggiungibile")
+                return corpo
+    except aiohttp.ClientError as exc:
+        logger.error("%s non raggiungibile: %s", fn, exc)
+        raise HTTPException(status_code=502, detail="Portafoglio hotel non raggiungibile") from exc
+
+
+def _url_ricariche() -> tuple[str, str]:
+    pubblica = (settings.COLAZIONI_PUBLIC_URL or "").strip()
+    parti = urlsplit(pubblica)
+    if parti.scheme != "https" or not parti.netloc:
+        raise HTTPException(status_code=503, detail="Indirizzo pubblico colazioni non configurato")
+    origine = f"{parti.scheme}://{parti.netloc}"
+    return (
+        f"{origine}/convenzioni/#/albergatore/borsellino",
+        f"{origine}/api/colazioni/ricariche/sumup/webhook",
+    )
+
+
+async def _applica_checkout_sumup(checkout_id: str) -> Dict[str, Any]:
+    from app.services.colazioni_sumup import leggi_checkout
+
+    esito = await leggi_checkout(checkout_id)
+    return await _rpc_runtime_bb(
+        "bb_ricarica_applica_sumup",
+        {
+            "pcheckout": esito["checkout_id"],
+            "preference": esito["riferimento"],
+            "pamount": str(esito["importo"]),
+            "pcurrency": esito["valuta"],
+            "pmerchant": esito["merchant_code"],
+            "pstatus": esito["stato"],
+            "ptransaction_id": esito["transaction_id"],
+            "ptransaction_code": esito["transaction_code"],
+            "prefunded": str(esito["rimborsato"]),
+            "praw": esito["audit"],
+        },
+    )
+
+
+@router.post("/ricariche/sumup", summary="Crea una ricarica SumUp per l'hotel")
+async def crea_ricarica_sumup(richiesta: RicaricaSumUpRequest) -> Dict[str, Any]:
+    preparata = await _rpc_bb(
+        "bb_alb_ricarica_prepara",
+        {
+            "sid": richiesta.sid,
+            "p": richiesta.p,
+            "imp": str(richiesta.importo),
+            "pidempotenza": richiesta.idempotenza,
+        },
+    )
+    if not isinstance(preparata, dict) or not preparata.get("id"):
+        raise HTTPException(status_code=502, detail="Ricarica non preparata")
+    if preparata.get("url"):
+        return {"url": preparata["url"], "riferimento": preparata.get("riferimento")}
+
+    from app.services.colazioni_sumup import (
+        SumUpRicaricheErrore,
+        SumUpRicaricheNonConfigurato,
+        crea_checkout,
+    )
+
+    redirect_url, webhook_url = _url_ricariche()
+    try:
+        checkout = await crea_checkout(
+            riferimento=str(preparata["riferimento"]),
+            importo=Decimal(str(preparata["importo"])),
+            struttura=str(preparata.get("struttura") or "Struttura partner"),
+            redirect_url=redirect_url,
+            webhook_url=webhook_url,
+        )
+        await _rpc_runtime_bb(
+            "bb_ricarica_collega_checkout",
+            {
+                "prid": preparata["id"],
+                "pcheckout": checkout["id"],
+                "purl": checkout["url"],
+                "pmerchant": checkout["merchant_code"],
+                "pstatus": checkout["status"],
+            },
+        )
+    except (SumUpRicaricheErrore, SumUpRicaricheNonConfigurato) as exc:
+        await _rpc_runtime_bb(
+            "bb_ricarica_errore", {"prid": preparata["id"], "perrore": str(exc)}
+        )
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"url": checkout["url"], "riferimento": preparata["riferimento"]}
+
+
+@router.post("/ricariche/sumup/sincronizza", summary="Aggiorna le ricariche dell'hotel")
+async def sincronizza_ricariche_hotel(richiesta: ElencoOrdiniHotelRequest) -> Dict[str, Any]:
+    # La RPC albergatore valida il token prima di consentire una verifica mirata.
+    await _rpc_bb("bb_alb_portafoglio", {"sid": richiesta.sid, "p": richiesta.p})
+    checkout_ids = await _rpc_runtime_bb(
+        "bb_sumup_ricariche_da_verificare",
+        {"plimite": 20, "psid": richiesta.sid},
+    )
+    aggiornate = 0
+    for checkout_id in checkout_ids or []:
+        try:
+            await _applica_checkout_sumup(str(checkout_id))
+            aggiornate += 1
+        except Exception as exc:
+            logger.warning("Verifica ricarica %s: %s", checkout_id, type(exc).__name__)
+    portafoglio = await _rpc_bb(
+        "bb_alb_portafoglio", {"sid": richiesta.sid, "p": richiesta.p}
+    )
+    return {"aggiornate": aggiornate, "portafoglio": portafoglio}
+
+
+@router.post("/ricariche/sumup/webhook", summary="Webhook ricariche SumUp", status_code=204)
+async def webhook_ricariche_sumup(request: Request) -> Response:
+    payload = await request.json()
+    if str(payload.get("event_type") or "") != "CHECKOUT_STATUS_CHANGED":
+        return Response(status_code=204)
+    checkout_id = str(payload.get("id") or "").strip()
+    if not checkout_id or len(checkout_id) > 100:
+        return Response(status_code=204)
+    # Il payload non e' fidato: lo stato viene sempre riletto dall'API SumUp.
+    await _applica_checkout_sumup(checkout_id)
+    return Response(status_code=204)
 
 
 @router.post("/menu-ospite/catalogo", summary="Menu unico con i prezzi dell'hotel")
