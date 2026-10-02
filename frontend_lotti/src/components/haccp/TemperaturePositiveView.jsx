@@ -325,7 +325,10 @@ export default function TemperaturePositiveView() {
       if (record.is_chiuso || record.tipo === "chiusura") return { value: "🚫", className: "bg-gray-400 text-white", title: "CHIUSO" };
       if (record.is_manutenzione || record.tipo === "manutenzione") return { value: "🔧", className: "bg-yellow-200 text-yellow-800", title: "MANUTENZIONE" };
       if (record.is_non_usato) return { value: "⏸", className: "bg-gray-200 text-gray-600", title: "NON USATO" };
-      const stato = statoCellaHaccp(record);
+      const stato = statoCellaHaccp(record, {
+        min: scheda?.temp_min ?? 0,
+        max: scheda?.temp_max ?? 4,
+      });
       if (stato) return stato;
       if (record.temp !== undefined && record.temp !== null) {
         const temp = Number(record.temp);

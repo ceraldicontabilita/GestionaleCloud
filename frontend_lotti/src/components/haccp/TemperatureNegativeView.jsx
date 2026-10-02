@@ -274,7 +274,10 @@ const TemperatureNegativeView = () => {
       if (isNonUsato) {
         return { value: "⏸", class: "bg-gray-200 text-gray-600", title: "NON USATO" };
       }
-      const stato = statoCellaHaccp(record);
+      const stato = statoCellaHaccp(record, {
+        min: scheda?.temp_min ?? -22,
+        max: scheda?.temp_max ?? -18,
+      });
       if (stato) return { ...stato, class: stato.className };
       if (record.temp !== undefined && record.temp !== null) {
         const temp = record.temp;
