@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 from app.utils.id_fattura import varianti_id
 from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
 from app.services.identity_matching import nome_presente_nel_testo
-from app.services.payment_document_links import collega_bonifico_fatture
+from app.services.payment_document_links import collega_bonifico_fatture, propaga_documento_pagamento
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +138,7 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
     esito: Dict[str, Any] = {
         "dry_run": dry_run, "esaminati": 0, "movimento_trovato": 0, "fatture_collegate": 0,
         "destinazioni_certe": 0, "senza_esito_certo": 0, "fattura_non_collegabile": 0, "acconti_collegati": 0,
+        "movimenti_collegati_a_fatture_decise": 0,
     }
     filtro: Dict[str, Any] = {}
     if anno:
@@ -148,7 +149,14 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
     if not dry_run:
         esito["fatture_riallineate"] = await _riallinea_bonifico_ids(db, trasferimenti)
     da_fare = [t for t in trasferimenti if not _gia_decisa(t) and (t.get("rif_interno") or t.get("cro_trn"))]
-    if not da_fare:
+    # Il bonifico gia' legato alla fattura dal numero in causale non passava mai di qui (`_gia_decisa`):
+    # la sua fattura e' decisa, ma il movimento d'estratto che lo prova restava scollegato.
+    da_collegare = [
+        t for t in trasferimenti
+        if t.get("fattura_associata") is True and (t.get("fattura_ids") or t.get("fattura_id"))
+        and not t.get("movimento_estratto_conto_id") and t.get("rif_interno")
+    ]
+    if not da_fare and not da_collegare:
         return esito
 
     movimenti = await db["estratto_conto_movimenti"].find(
@@ -167,6 +175,21 @@ async def abbina_bonifici_via_estratto(db, *, anno: Optional[int] = None, dry_ru
             per_chiave.setdefault((rif, cents), []).append(m)
 
     ora = datetime.now(timezone.utc).isoformat()
+    for t in da_collegare:
+        rif, cents = _rif(t.get("rif_interno")), _cents(t.get("importo"))
+        candidati = per_chiave.get((rif, cents), []) if rif and cents else []
+        if len(candidati) != 1:
+            continue  # nessun movimento, o piu' di uno: non si indovina
+        movimento = candidati[0]
+        ids_fattura = [str(x) for x in (t.get("fattura_ids") or [t.get("fattura_id")]) if x]
+        punta = _id_fattura_del_movimento(movimento)
+        if punta and str(punta) not in ids_fattura:
+            continue  # il motore bancario ha puntato un'altra fattura: lo decide una persona
+        if not dry_run:
+            await db["bonifici_transfers"].update_one(
+                {"id": t["id"]}, {"$set": {"movimento_estratto_conto_id": movimento["id"], "updated_at": ora}})
+            await propaga_documento_pagamento(db, movimento["id"], str(t["id"]), ids_fattura)
+        esito["movimenti_collegati_a_fatture_decise"] += 1
     acconti: Dict[str, Dict[str, Any]] = {}
     for t in da_fare:
         esito["esaminati"] += 1

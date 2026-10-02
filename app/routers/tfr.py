@@ -699,7 +699,11 @@ async def get_acconti_dipendente(dipendente_id: str) -> Dict[str, Any]:
         "dipendente_nome": dipendente.get("nome_completo", ""),
         "tfr_accantonato": round(tfr_totale, 2),
         "tfr_acconti": round(totali["tfr"], 2),
-        "tfr_saldo": round(tfr_totale - totali["tfr"], 2),
+        # `tfr_accantonato` del dipendente e' GIA' al netto degli acconti (la
+        # registrazione lo scala, la cancellazione lo ripristina): sottrarli
+        # ancora li contava due volte.
+        "tfr_saldo": round(tfr_totale, 2),
+        "tfr_prima_degli_acconti": round(tfr_totale + totali["tfr"], 2),
         "ferie_acconti": round(totali["ferie"], 2),
         "tredicesima_acconti": round(totali["tredicesima"], 2),
         "quattordicesima_acconti": round(totali["quattordicesima"], 2),
@@ -1073,7 +1077,7 @@ async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
 
     # Query movimenti candidati
     # La collezione canonica è estratto_conto_movimenti.
-    # data_contabile_obj è datetime per range query efficienti.
+    # Il range data lavora sulla stringa `data` (YYYY-MM-DD).
     query: Dict[str, Any] = {
         # Movimento di uscita: tipo='uscita' OR importo<0
         "$or": [
@@ -1091,8 +1095,10 @@ async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
                 ]
             }}
         ],
-        # Range data
-        "data_contabile_obj": {"$gte": data_min, "$lte": data_max},
+        # Range data: `data` e' la stringa YYYY-MM-DD che scrivono tutti gli
+        # importer (`data_contabile_obj` non lo valorizza nessuno: il filtro
+        # non trovava mai un candidato).
+        "data": {"$gte": data_min.strftime("%Y-%m-%d"), "$lte": data_max.strftime("%Y-%m-%d")},
         # Esclude movimenti già usati per altri acconti
         "$nor": [
             {"acconto_id": {"$exists": True, "$nin": [None, ""]}},
@@ -1101,7 +1107,7 @@ async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
 
     movimenti = await db["estratto_conto_movimenti"].find(
         query, {"_id": 0}
-    ).sort("data_contabile_obj", 1).limit(50).to_list(50)
+    ).sort("data", 1).limit(50).to_list(50)
 
     # Calcolo score per ranking
     candidati = []
@@ -1111,9 +1117,11 @@ async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
 
         # Data: esatta = +50, ±1gg = +30, oltre = +10
         try:
-            data_mov = m.get("data_contabile_obj")
+            data_mov = m.get("data") or m.get("data_contabile_obj")
             if isinstance(data_mov, str):
-                data_mov = datetime.fromisoformat(data_mov.replace("Z", ""))
+                data_mov = datetime.fromisoformat(data_mov.replace("Z", "")[:19])
+            if getattr(data_mov, "tzinfo", None):
+                data_mov = data_mov.replace(tzinfo=None)
             delta_giorni = abs((data_mov - data_acconto).days) if data_mov else 99
             if delta_giorni == 0:
                 score += 50
@@ -1142,7 +1150,7 @@ async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
 
         candidati.append({
             "movimento_id": m.get("id"),
-            "data": m.get("data") or (m.get("data_contabile_obj").strftime("%Y-%m-%d") if m.get("data_contabile_obj") else None),
+            "data": m.get("data"),
             "descrizione": m.get("descrizione", ""),
             "importo": m.get("importo"),
             "categoria": m.get("categoria"),

@@ -865,7 +865,14 @@ async def find_bank_movement(db, code: str | list[str], amount: Any):
         "$or": references,
         "$and": [non_collegato("ricevuta_pagopa_id")],
     }, {"_id": 0}).limit(20).to_list(20)
-    exact = [item for item in movements if amounts_equal_to_cent(item.get("importo"), amount)]
+    # Una ricevuta pagoPA documenta un pagamento: il movimento e' un'USCITA.
+    # `amounts_equal_to_cent` ignora il segno, quindi un'entrata (rimborso)
+    # con lo stesso codice e importo si sarebbe agganciata al pagamento.
+    from app.services.fornitore_da_fattura_banca import _e_uscita
+    exact = [
+        item for item in movements
+        if amounts_equal_to_cent(item.get("importo"), amount) and _e_uscita(item)
+    ]
     return exact[0] if len(exact) == 1 else None
 
 

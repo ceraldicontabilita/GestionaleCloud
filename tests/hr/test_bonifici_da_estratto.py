@@ -226,3 +226,34 @@ def test_il_riallineamento_rimette_il_bonifico_sulla_fattura_collegata_dal_solo_
     assert run(abbina_bonifici_via_estratto(db))["fatture_riallineate"] == 1
     assert run(db["invoices"].find_one({"id": 1785340207136}))["bonifico_ids"] == ["b0"]
     assert run(abbina_bonifici_via_estratto(db))["fatture_riallineate"] == 0   # secondo giro: niente di nuovo
+
+
+def test_il_bonifico_gia_legato_per_numero_in_causale_trova_il_suo_movimento():
+    """Fattura decisa dal numero in causale, movimento mai collegato: il riferimento banca lo lega, la fattura non cambia."""
+    db = _db(movimento={
+        "id": "m1", "data": "2026-08-14", "tipo": "uscita", "importo": -2752.98, "categoria": "Fatture",
+        "descrizione": f"VOSTRA DISPOSIZIONE - VS.DISP. RIF. {RIF}/00111152 FAVORE Edenred Italia S.r.l."},
+        bonifico={
+            "id": "b1", "data": "2026-08-14T00:00:00+00:00", "importo": 2752.98, "rif_interno": RIF,
+            "beneficiario": {"nome": "Edenred Italia S.r.l."}, "fattura_associata": True,
+            "fattura_ids": ["850878"], "fattura_associata_id": "850878"})
+    esito = run(abbina_bonifici_via_estratto(db))
+    assert esito["movimenti_collegati_a_fatture_decise"] == 1
+    t = run(db["bonifici_transfers"].find_one({"id": "b1"}))
+    assert t["movimento_estratto_conto_id"] == "m1" and t["fattura_associata_id"] == "850878"
+    m = run(db["estratto_conto_movimenti"].find_one({"id": "m1"}))
+    assert m["bonifico_transfer_id"] == "b1"
+    # secondo giro: niente di nuovo
+    assert run(abbina_bonifici_via_estratto(db))["movimenti_collegati_a_fatture_decise"] == 0
+
+
+def test_il_movimento_che_punta_un_altra_fattura_non_si_collega():
+    db = _db(movimento={
+        "id": "m1", "data": "2026-08-14", "tipo": "uscita", "importo": -2752.98, "categoria": "Fatture",
+        "candidate_fattura_id": "999",
+        "descrizione": f"VOSTRA DISPOSIZIONE - VS.DISP. RIF. {RIF}/001 FAVORE Edenred Italia S.r.l."},
+        bonifico={
+            "id": "b1", "data": "2026-08-14T00:00:00+00:00", "importo": 2752.98, "rif_interno": RIF,
+            "beneficiario": {"nome": "Edenred"}, "fattura_associata": True, "fattura_ids": ["850878"]})
+    assert run(abbina_bonifici_via_estratto(db))["movimenti_collegati_a_fatture_decise"] == 0
+    assert "movimento_estratto_conto_id" not in run(db["bonifici_transfers"].find_one({"id": "b1"}))

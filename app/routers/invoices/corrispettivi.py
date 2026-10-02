@@ -144,39 +144,6 @@ async def corrispettivi_del_periodo(
     }
 
 
-@router.post("/ricalcola-iva")
-@handle_errors
-async def ricalcola_iva_corrispettivi() -> Dict[str, Any]:
-    """Ricalcola IVA con scorporo 10%."""
-    db = Database.get_db()
-    
-    corrispettivi = await db["corrispettivi"].find(
-        {"$or": [{"totale_iva": 0}, {"totale_iva": None}], "totale": {"$gt": 0}},
-        {"_id": 0}
-    ).to_list(10000)
-    
-    updated = 0
-    for corr in corrispettivi:
-        totale = float(corr.get("totale", 0) or 0)
-        if totale <= 0:
-            continue
-        
-        iva = totale - (totale / 1.10)
-        imponibile = totale / 1.10
-        
-        await db["corrispettivi"].update_one(
-            {"id": corr.get("id")},
-            {"$set": {
-                "totale_iva": round(iva, 2),
-                "totale_imponibile": round(imponibile, 2),
-                "iva_calcolata_scorporo": True
-            }}
-        )
-        updated += 1
-    
-    return {"updated": updated, "message": f"IVA ricalcolata su {updated} corrispettivi"}
-
-
 @router.post("/ricalcola-annulli-non-riscosso")
 @handle_errors
 async def ricalcola_annulli_non_riscosso() -> Dict[str, Any]:
