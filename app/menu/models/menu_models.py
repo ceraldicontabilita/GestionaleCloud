@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictBool
 from typing import List, Optional
 
 
@@ -32,6 +32,10 @@ class Product(ProductBase):
 class ProductCreate(ProductBase):
     category_id: int
     subcategory_id: int
+
+
+class ProductVisibility(BaseModel):
+    visible: StrictBool
 
 
 class ProductUpdate(BaseModel):

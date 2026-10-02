@@ -955,6 +955,25 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `/menu/carta/index.html` con **Prezzo da definire**; le API dei prodotti
   ordinabili continuano a richiedere un prezzo valido. Il backfill conta
   `senza_prezzo`, senza inventare un ripiego.
+- In Lotti, **In menu → Prezzi da completare** permette all'amministratore di
+  inserire il prezzo al tavolo accanto a foto e prodotto, senza aprire la scheda.
+  Usa il solo endpoint canonico `PUT /api/ricette/{id}/prezzo-tavolo`: non cambia
+  banco o ingredienti. La riga scompare dopo salvataggio e sincronizzazione Menu;
+  un errore resta visibile e si puo' riprovare. Ricerca e reparto filtrano i dati gia' letti.
+- Le spunte di Ricette **Rosticceria del giorno** e **Pasticceria classica**
+  usano `categorie_rapide`, senza un secondo archivio di produzione. Sono gruppi
+  operativi modificabili (non si azzerano a mezzanotte): compaiono anche in Produci.
+  La scelta esplicita salva anche il reparto tramite il writer parziale canonico
+  e aggiorna il Menu (Food/Dolci); Rosticceria esclude Colazioni
+  e Pasticceria classica. Nessun lotto o quantitativo nasce dalla sola spunta.
+- La carta riunisce Colazione/Dolci di «Bar & Dolci» e Pasticceria di Lotti
+  nella card **Dolci**; bevande in **Bar**, Rosticceria in **Food**. Il reparto
+  misto Altro resta in **Altri prodotti**, senza dedurre il reparto dal nome.
+  E' un raggruppamento di presentazione: ID, prezzi e categorie sorgenti restano intatti.
+- In Menu admin → Prodotti, la **X nasconde**, non cancella: per Lotti passa
+  dall'aggiornamento canonico di `menu_pubblico`, per Qromo aggiorna `visible`
+  e la sync conserva i false gia' salvati sullo stesso ID. «Mostra anche nascosti»
+  permette il ripristino. «Possibili doppioni» confronta solo il nome, mai fonde o elimina automaticamente.
 - La categoria delle ricette nel Menu e' «Produzione Ceraldi» piu' la
   sottocategoria derivata dal reparto. Le categorie si leggono e si creano da Lotti con
   `/api/menu-categorie`, sempre con `origine` valorizzata; se esiste già una
