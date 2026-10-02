@@ -22,13 +22,40 @@ def test_gestione_hotel_usa_solo_il_catalogo_menu():
     html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
     sql = (ROOT / "supabase" / "migrations" / "20261002150500_convenzioni_menu_unico_carrello.sql").read_text(encoding="utf-8")
 
-    assert html.count('fetch("/api/menu/carta?destinazione=bb"') == 2
+    assert html.count('fetch("/menu/api/menu/carta?destinazione=bb"') == 2
     assert "bb_tit_menu_prodotti_struttura" in html
     assert "bb_tit_menu_prodotti_salva" in html
     assert "bb_struttura_menu_prodotti" in sql
     assert "join menu.menu_products" in sql
     assert "bb_ospite_menu_salva" in sql
     assert "revoke all on public.bb_struttura_menu_prodotti" in sql
+
+
+def test_catalogo_bb_montato_non_richiede_la_sessione_erp(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.middleware.authentication import AuthenticationMiddleware
+    from app.menu import carta_qromo
+
+    async def dataset():
+        return carta_qromo._seme()
+
+    async def catalogo(**kwargs):
+        assert kwargs == {"catalogo_bb": True}
+        return [], [], []
+
+    monkeypatch.setattr(carta_qromo, "_dataset", dataset)
+    monkeypatch.setattr(carta_qromo.menu_routes, "_fetch_all", catalogo)
+    menu = FastAPI()
+    menu.include_router(carta_qromo.router_pubblico)
+    erp = FastAPI()
+    erp.add_middleware(AuthenticationMiddleware)
+    erp.mount("/menu", menu)
+    with TestClient(erp) as client:
+        assert client.get("/api/menu/carta?destinazione=bb").status_code == 401
+        risposta = client.get("/menu/api/menu/carta?destinazione=bb")
+        assert risposta.status_code == 200
+        assert risposta.json()["items"] == []
 
 
 def test_ricette_nuove_sono_preselezionate_per_il_menu():

@@ -979,6 +979,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   proprio catalogo replicato dal ponte, non rilegge le ricette per B&B.
   Composizione colazioni, assegnazione hotel e carta ospite usano la stessa
   destinazione `bb`; le RPC esistenti conservano autorizzazioni e prezzi hotel.
+  Il frontend B&B legge `/menu/api/menu/carta?destinazione=bb`, sotto la
+  sub-app Menu: il prefisso ERP `/api/` richiede invece la sessione ERP.
   `#in_menu` resta un alias di `#ricette/prezzi`, non una seconda pagina.
 - In Menu admin → Prodotti, la **X nasconde**, non cancella: resta per Qromo
   e aggiorna `visible`; per Lotti la scelta sta nella ricetta.

@@ -1132,7 +1132,7 @@ pProdottiHotel.after=id=>cpAvvia(id);
 async function cpAvvia(id){
  if(!CP.base){
   try{
-   const r=await fetch("/api/menu/carta?destinazione=bb",{cache:"no-store"});
+   const r=await fetch("/menu/api/menu/carta?destinazione=bb",{cache:"no-store"});
    if(!r.ok)throw new Error("Menu digitale non disponibile.");
    const j=await r.json(),cat=new Map((j.cats||[]).map(x=>[x.id,x])),menu=new Map((j.menus||[]).map(x=>[x.id,x]));
    CP.base=(j.items||[]).map(p=>{const s=cat.get(p.c)||{},m=menu.get(s.m)||{};return {prodotto_id:p.id,chiave:"menu:"+p.id,origine:"menu",nome:p.n,descrizione:p.d||p.long||"",allergeni:p.a||[],immagine:p.pic||null,prezzo:(+p.p||0)/100,categoria:m.n||"Menu",sezione:s.n||""}});
@@ -1184,7 +1184,7 @@ function ceInit(sid,open=-1){CESID=sid;CESAVED=ceCopy(sid==="std"?(TIT.standard|
 function ceCatalogoCarta(carta){
  const menus=new Map(carta.menus.map(m=>[m.id,m])),cats=new Map(carta.cats.map(c=>[c.id,c]));
  return carta.items.filter(p=>p.on!==0&&cats.has(p.c)).map(p=>{const c=cats.get(p.c);return {id:p.id,nome:p.n,desc:p.d||"",prezzo:Number.isFinite(p.p)&&p.p>0?p.p/100:null,allergeni:p.allergeni_menu||[],cat:(menus.get(c.m)||{}).n||"Altro",sub:c.n,img:p.pic||null}}).sort((a,b)=>a.nome.localeCompare(b.nome,"it"))}
-async function ceCat(){if(CATA)return CATA;if(!CECATLOAD)CECATLOAD=fetch("/api/menu/carta?destinazione=bb",{credentials:"same-origin"}).then(r=>{if(!r.ok)throw Error("Catalogo non disponibile");return r.json()}).then(c=>{CATA=ceCatalogoCarta(c);loadXtra();ceTab();return CATA}).finally(()=>{CECATLOAD=null});try{return await CECATLOAD}catch(e){toast("Catalogo non disponibile: riprova da Prodotto dal menù");return null}}
+async function ceCat(){if(CATA)return CATA;if(!CECATLOAD)CECATLOAD=fetch("/menu/api/menu/carta?destinazione=bb",{credentials:"same-origin"}).then(r=>{if(!r.ok)throw Error("Catalogo non disponibile");return r.json()}).then(c=>{CATA=ceCatalogoCarta(c);loadXtra();ceTab();return CATA}).finally(()=>{CECATLOAD=null});try{return await CECATLOAD}catch(e){toast("Catalogo non disponibile: riprova da Prodotto dal menù");return null}}
 const ceList=v=>{const p=CATA&&v.prodotto_id?CATA.find(x=>x.id===v.prodotto_id):null;return p?p.prezzo:null};
 const cePz=v=>v.prezzo!=null?v.prezzo:ceList(v);
 const ceSomma=c=>Math.round(c.voci.reduce((a,v)=>a+(cePz(v)||0)*v.qta,0)*100)/100;
