@@ -183,6 +183,26 @@ async def _token_valido_e_non_revocato(request: Request):
     data = _ha_token_valido(request)
     if data and await token_di_gruppo_ammesso(data):
         return data
+    # Il PIN personale HR del titolare e' emesso dal login tablet con ruolo
+    # amministratore, ma non e' il vecchio PIN amministratore condiviso.
+    # Eccezione SOLO Lotti: ruolo HR attuale, identita' canonica e versione
+    # del PIN obbligatori, controllati anche sulle letture. HR/Menu/ERP
+    # mantengono il loro confine di sessione amministrativa del Gestionale.
+    if (data and data.get("ruolo") == "amministratore"
+            and data.get("via") == "pin"
+            and data.get("auth_method") == "pin"
+            and isinstance(data.get("pin_version"), str) and data["pin_version"]):
+        from app.hr.services.auth_dipendenti import sessione_pin_corrente
+
+        dip = getattr(request.state, "dipendente_hr", None)
+        if dip is None:
+            dip = await _dipendente_hr_da_token(data)
+        if (dip and dip.get("id") == data.get("sub")
+                and dip.get("ruolo_app") == "admin"
+                and dip.get("lotti_operatore") is not False
+                and sessione_pin_corrente(dip, data)):
+            request.state.dipendente_hr = dip
+            return data
     return None
 
 
@@ -245,7 +265,9 @@ async def auth_dependency(request: Request):
         ) != "sessione_erp":
             from app.hr.services.auth_dipendenti import sessione_dipendente_corrente, sessione_pin_corrente
 
-            dip = await _dipendente_hr_da_token(data)
+            dip = getattr(request.state, "dipendente_hr", None)
+            if dip is None:
+                dip = await _dipendente_hr_da_token(data)
             if not dip or dip.get("lotti_operatore") is False:
                 raise HTTPException(401, "Sessione operatore revocata: rifare l'accesso")
             corrente = (

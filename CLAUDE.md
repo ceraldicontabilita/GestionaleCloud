@@ -623,7 +623,10 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, `app/services/admin_pin.py`) e si digita **solo nel login ERP**:
   HR, Lotti e Menu leggono quel cookie (`group_session.py`, `/auth/session`), senza login admin proprio (PIN, password,
   Google). Il login email + password (`/api/auth/login`, `ADMIN_PASSWORD_HASH`) non esiste piu'. Il token ERP porta un `sid` stabile nei rinnovi; i token derivati lo copiano e il logout lo revoca per
-  tutte (`token_di_gruppo_ammesso`): un token admin non nato da lì non vale, il PIN personale del titolare è da operatore.
+  tutte (`token_di_gruppo_ammesso`): un token admin non nato da lì non apre HR/Menu/ERP.
+  Solo Lotti accetta il PIN personale del titolare col ruolo amministratore: richiede ID HR canonico,
+  ruolo admin e stato attivo correnti, abilitazione Lotti e versione valida del PIN anche sulle letture.
+  Il PIN centrale condiviso e i vecchi token admin senza versione del PIN restano esclusi.
 - **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima Nota salari; l'archivio che
   si vede è **solo in HR** (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o per
   CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte). Una 13ª/14ª salvata come «mensile» nell'ERP si riconosce solo rileggendo il PDF (`cedolini_tipo_dal_pdf.py`: busta con stesso CF, anno e netto al centesimo), mai dal mese; da solo si applica solo mensile → 13ª/14ª, il verso contrario resta `da_decidere` al titolare. Nelle buste CSC la 13ª/14ª è la voce a codice «850 13 MENSILITA'»/«852 14A MENSILITA'» quando è l'unica competenza.
