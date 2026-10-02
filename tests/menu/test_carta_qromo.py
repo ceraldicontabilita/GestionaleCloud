@@ -20,7 +20,6 @@ def db(monkeypatch):
         return finto
 
     monkeypatch.setattr(carta, "_db", _finto)
-    monkeypatch.setattr(carta.menu_routes, "_db_legacy", _finto)
     from app.menu.qromo_sync import trasforma_catalogo
     from tests.menu.test_menu_public_visible import _FakeSupabase
     righe = trasforma_catalogo(carta._seme()["pub"])
@@ -63,7 +62,6 @@ def test_la_scelta_dell_admin_cambia_prezzo_e_disponibilita_e_sopravvive_all_imp
     assert p["p"] == 300 and p["on"] == 1, "un nuovo import non cancella le scelte"
     _run(carta.imposta_prodotto(152788, carta.SceltaProdotto(disponibile=False), "admin"))
     assert not any(i["id"] == 152788 for i in _run(carta.carta_pubblica())["items"])
-    assert _run(db["menu_carta_override"].count_documents({})) == 0
 
 
 def test_il_vecchio_reset_non_cancella_dati_e_indica_la_modifica_canonica(db):
@@ -71,31 +69,6 @@ def test_il_vecchio_reset_non_cancella_dati_e_indica_la_modifica_canonica(db):
     with pytest.raises(HTTPException) as e:
         _run(carta.toglie_override(152788, "admin"))
     assert e.value.status_code == 410
-
-
-def test_legacy_preservato_in_lettura_senza_creare_o_migrare_prodotti(db):
-    client = carta.menu_routes.supabase
-    prima = [dict(p) for p in client.tabelle["menu_products"]]
-    _run(db["menu_carta_override"].insert_many([
-        {"id": 152788, "prezzo_centesimi": 999, "disponibile": True},
-        {"id": 999999999, "prezzo_centesimi": 500, "disponibile": True},
-    ]))
-    risultato = _run(carta.carta_pubblica())
-    assert next(p for p in risultato["items"] if p["id"] == 152788)["p"] == 999
-    assert _run(carta.menu_routes.get_product(152788))["price"] == "9.99€"
-    prodotto_admin = next(p for p in _run(carta.menu_routes.get_all_products_flat("admin"))["products"] if p["id"] == 152788)
-    assert prodotto_admin["price"] == "9.99€" and prodotto_admin["compat_override_legacy"] is True
-    assert not any(p["id"] == 999999999 for p in risultato["items"])
-    stato = _run(carta.stato("admin"))
-    assert stato["override"] == 2 and stato["compatibilita_legacy"] is True
-    _run(db["menu_carta_override"].update_one({"id": 152788}, {"$set": {"disponibile": False}}))
-    assert not any(p["id"] == 152788 for p in _run(carta.carta_pubblica())["items"])
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as conflitto:
-        _run(carta.imposta_prodotto(152788, carta.SceltaProdotto(prezzo_centesimi=300), "admin"))
-    assert conflitto.value.status_code == 409 and "migrazione" in conflitto.value.detail
-    assert client.tabelle["menu_products"] == prima
-    assert _run(db["menu_carta_override"].count_documents({})) == 2
 
 
 def test_import_dettagli_dichiara_che_non_cambia_catalogo(db):

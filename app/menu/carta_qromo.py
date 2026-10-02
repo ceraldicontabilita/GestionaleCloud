@@ -5,8 +5,6 @@ del ponte Lotti. Il catalogo Qromo (``menu_carta`` o seme) aggiunge solamente
 colori, foto locali, orari e dettagli non modificati: non decide prezzo,
 allergeni o pubblicazione. Non si espongono listini interni o prodotti
 rimossi usando una seconda copia del catalogo.
-Le scelte della vecchia ``menu_carta_override`` restano leggibili tramite
-lo stesso adattatore delle API Menu finche' il titolare ne approva la migrazione.
 
 Endpoint:
     GET  /api/menu/carta                     pubblico, per la pagina /menu/carta/
@@ -208,14 +206,11 @@ async def stato(_utente: str = Depends(verify_token)):
     salvato = await db[COLLEZIONE].find_one({"id": ID_DATASET}, {"_id": 0, "importato_il": 1})
     dati = await _dataset()
     carta = await _carta_dai_dati(dati)
-    scelte_legacy = await menu_routes._scelte_legacy()
     return {
         "fonte": "importato" if salvato else "seme",
         "catalogo": "menu_products",
         "importato_il": (salvato or {}).get("importato_il"),
         "menu": len(carta["menus"]), "categorie": len(carta["cats"]), "prodotti": len(carta["items"]),
-        "override": len(scelte_legacy),
-        "compatibilita_legacy": bool(scelte_legacy),
     }
 
 

@@ -379,10 +379,10 @@ def test_motore_scrive_solo_memoria_assistente_ed_e_idempotente():
     _run(scenario())
 
 
-def test_mittenti_attendibili_supportano_legacy_wildcard_e_disattivazione():
+def test_mittenti_attendibili_supportano_wildcard_e_disattivazione():
     async def scenario():
         db = _database()
-        await db["mittenti_attendibili"].insert_many(
+        await db["mittenti_email"].insert_many(
             [
                 {"indirizzo_email": "studio@example.it", "tipo_documento": "f24"},
                 {
