@@ -332,13 +332,19 @@ def test_router_riservato_all_amministratore():
 
 def test_regolarizza_chiusure_sostituisce_solo_non_firmate_e_salva_originale():
     archivio = AsyncMongoMockClient()["chiusure_test"]
-    run(archivio.temperature_negative.insert_one({
-        "id": "neg-2026", "anno": "2026",
-        "temperature": {"4": {
-            "5": {"temp": -19, "firma_verificata": False, "origine": "import_excel"},
-            "6": {"temp": -20, "firma_verificata": True},
-        }},
-    }))
+    run(archivio.temperature_negative.insert_many([
+        {
+            "id": "neg-2026", "anno": "2026", "attivo": True,
+            "temperature": {"4": {
+                "5": {"temp": -19, "firma_verificata": False, "origine": "import_excel"},
+                "6": {"temp": -20, "firma_verificata": True},
+            }},
+        },
+        {
+            "id": "neg-dismesso", "anno": 2026, "attivo": False,
+            "temperature": {"4": {"5": {"temp": -18, "firma_verificata": False}}},
+        },
+    ]))
     chiusure = {
         "05/04/2026": {"is_chiuso": True, "motivo": "Pasqua"},
         "06/04/2026": {"is_chiuso": True, "motivo": "Pasquetta"},
