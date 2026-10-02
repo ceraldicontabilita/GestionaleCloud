@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import calendar
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -188,10 +189,36 @@ def analizza_presenze_workbook(wb) -> Dict[str, Any]:
             }
             corrente += timedelta(days=1)
 
-    record = sorted(celle.values(), key=lambda x: (x["nome_file"], x["data"]))
-    periodi = sorted({r["data"][:7] for r in record})
+    # Il foglio elenca le sole giornate lavorate e le assenze certificate.
+    # Per ogni persona effettivamente presente nel dettaglio, i giorni residui
+    # del mese sono quindi riposi. Non estendiamo la regola ai nominativi che
+    # compaiono soltanto nel riepilogo (es. una persona senza alcuna giornata).
+    periodi = sorted({r["data"][:7] for r in celle.values()})
     if len(periodi) != 1:
         raise ValueError("il file deve contenere un solo mese di presenze")
+    anno, mese = (int(x) for x in periodi[0].split("-"))
+    giorni_mese = calendar.monthrange(anno, mese)[1]
+    identita = {}
+    for key, voce in celle.items():
+        identita[key[0]] = {
+            "codice_fiscale": voce.get("codice_fiscale"),
+            "nome_file": voce["nome_file"],
+            "nome_norm": voce.get("nome_norm") or nome_norm(voce["nome_file"]),
+        }
+    for ident, persona in identita.items():
+        for giorno in range(1, giorni_mese + 1):
+            data_giorno = f"{anno:04d}-{mese:02d}-{giorno:02d}"
+            key = (ident, data_giorno)
+            if key in celle:
+                continue
+            celle[key] = {
+                **persona, "data": data_giorno, "stato": "giustificato",
+                "giustificativo": "RS", "entrata": None,
+                "note": "Riposo — nessuna presenza nel dettaglio giornaliero Excel",
+                "fonti": [{"foglio": giornaliere.title, "riga": None}],
+            }
+
+    record = sorted(celle.values(), key=lambda x: (x["nome_file"], x["data"]))
     conteggi: Dict[str, int] = {}
     for r in record:
         codice = r["giustificativo"]

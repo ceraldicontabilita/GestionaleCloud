@@ -2224,13 +2224,16 @@ async def importa_presenze_excel(
     conferma_hash: Optional[str] = None,
     sempre_presenti_ids: str = Form("[]"),
     sostituzioni_nomi: str = Form("{}"),
+    sostituisci_mese: bool = Form(False),
 ):
-    """Importa il foglio mensile con anteprima obbligatoria e senza sovrascritture.
+    """Importa il foglio mensile con anteprima obbligatoria.
 
     Le righe del file sono associate tramite codice fiscale. Le integrazioni
     "sempre presente" sono dipendenti scelti esplicitamente dall'interfaccia e
     vengono risolte tramite il loro ID HR. Una cella gia' compilata con un codice
-    diverso resta un conflitto e non viene toccata, anche in fase di applicazione.
+    diverso resta un conflitto, salvo la scelta esplicita ``sostituisci_mese``:
+    in quel caso l'anteprima conta separatamente le celle da aggiornare e la
+    conferma le riallinea al file.
     """
     import openpyxl
     from app.hr.services.presenze_excel import analizza_presenze_workbook, nome_norm
@@ -2334,6 +2337,7 @@ async def importa_presenze_excel(
     per_cella = {(p.get("dipendente_id"), p.get("data")): p for p in esistenti}
     righe = []
     da_inserire = []
+    da_aggiornare = []
     per_dipendente: Dict[str, Dict[str, Any]] = {}
     for key, voce in sorted(candidati.items(), key=lambda kv: (kv[1]["nome"], kv[1]["data"])):
         esistente = per_cella.get(key)
@@ -2347,6 +2351,9 @@ async def importa_presenze_excel(
             da_inserire.append(voce)
         elif codice_esistente == voce["giustificativo"]:
             stato_riga = "invariata"
+        elif sostituisci_mese:
+            stato_riga = "aggiornamento"
+            da_aggiornare.append((esistente, voce))
         else:
             stato_riga = "conflitto"
         righe.append({
@@ -2357,12 +2364,14 @@ async def importa_presenze_excel(
         sintesi = per_dipendente.setdefault(voce["dipendente_id"], {
             "dipendente_id": voce["dipendente_id"], "nome": voce["nome"],
             "P": 0, "M": 0, "F": 0, "PE": 0, "R": 0, "AS": 0,
-            "nuove": 0, "invariate": 0, "conflitti": 0,
+            "nuove": 0, "aggiornamenti": 0, "invariate": 0, "conflitti": 0,
         })
         sintesi[voce["giustificativo"]] = sintesi.get(voce["giustificativo"], 0) + 1
-        sintesi[{"nuova": "nuove", "invariata": "invariate", "conflitto": "conflitti"}[stato_riga]] += 1
+        sintesi[{"nuova": "nuove", "aggiornamento": "aggiornamenti",
+                 "invariata": "invariate", "conflitto": "conflitti"}[stato_riga]] += 1
 
     inseriti = 0
+    aggiornati = 0
     if applica:
         for voce in da_inserire:
             documento = {
@@ -2380,15 +2389,27 @@ async def importa_presenze_excel(
                 continue
             await db.presenze_cloud.insert_one(documento)
             inseriti += 1
+        for esistente, voce in da_aggiornare:
+            filtro = {"id": esistente["id"]} if esistente.get("id") else {
+                "dipendente_id": voce["dipendente_id"], "data": voce["data"]}
+            await db.presenze_cloud.update_one(filtro, {"$set": {
+                "entrata": voce.get("entrata"), "uscita": None,
+                "stato": voce["stato"], "giustificativo": voce["giustificativo"],
+                "ore_lavorate": 0, "note": voce.get("note") or None,
+                "origine": "import_excel_presenze", "import_hash": impronta,
+                "updated_at": now_iso(),
+            }})
+            aggiornati += 1
 
     conteggi = {stato: sum(1 for r in righe if r["stato"] == stato)
-                for stato in ("nuova", "invariata", "conflitto")}
+                for stato in ("nuova", "aggiornamento", "invariata", "conflitto")}
     codici = {}
     for r in righe:
         codici[r["codice"]] = codici.get(r["codice"], 0) + 1
     return {
         "dry_run": not applica, "hash_sha256": impronta, "periodo": analisi["periodo"],
-        "inseriti": inseriti, "conteggi": conteggi, "codici": codici,
+        "inseriti": inseriti, "aggiornati": aggiornati,
+        "sostituisci_mese": sostituisci_mese, "conteggi": conteggi, "codici": codici,
         "dipendenti": sorted(per_dipendente.values(), key=lambda x: x["nome"]),
         "integrazioni": integrazioni, "associazioni_nomi": associazioni_applicate,
         "nominativi_da_associare": analisi.get("nominativi_da_associare", []),

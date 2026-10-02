@@ -776,7 +776,7 @@ a.dc-sidebar-logo {
   background: #f7f8f3;
 }
 .dc-import-dropzone > div { flex: 1; }
-.dc-import-summary { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); gap: 0.55rem; }
+.dc-import-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.55rem; }
 .dc-import-summary > div { padding: 0.7rem; border-radius: 10px; background: #eef1ea; display: grid; gap: 0.15rem; }
 .dc-import-summary span { color: #6b7669; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; }
 .dc-import-summary b { font-size: 1.2rem; color: #344233; }

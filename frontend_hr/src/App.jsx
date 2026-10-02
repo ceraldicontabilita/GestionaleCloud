@@ -1348,8 +1348,6 @@ function PresenzePage({ dipendenti, reload }) {
   const [, setSelVer] = useState(0);
   const [invii, setInvii] = useState([]);
   const [ferieList, setFerieList] = useState([]);
-  const [turniMese, setTurniMese] = useState([]);
-  const [tipiTurno, setTipiTurno] = useState([]);
   const [showImportPresenze, setShowImportPresenze] = useState(false);
   const [importPresenzeFile, setImportPresenzeFile] = useState(null);
   const [importPresenzePreview, setImportPresenzePreview] = useState(null);
@@ -1377,6 +1375,7 @@ function PresenzePage({ dipendenti, reload }) {
     fd.append("file", file);
     fd.append("sempre_presenti_ids", "[]");
     fd.append("sostituzioni_nomi", JSON.stringify(mappa));
+    fd.append("sostituisci_mese", "true");
     return fd;
   };
   const anteprimaImportPresenze = async (file = importPresenzeFile, mappa = importPresenzeMap) => {
@@ -1406,33 +1405,21 @@ function PresenzePage({ dipendenti, reload }) {
     try {
       const hash = encodeURIComponent(importPresenzePreview.hash_sha256);
       const r = await axios.post(`${API}/presenze/importa-excel?applica=true&conferma_hash=${hash}`, formImportPresenze(importPresenzeFile), { headers: { "Content-Type": "multipart/form-data" } });
-      toast(`Import completato: ${r.data.inseriti} presenze inserite; ${r.data.conteggi.conflitto} conflitti lasciati invariati.`);
+      toast(`Import completato: ${r.data.inseriti} celle inserite e ${r.data.aggiornati} riallineate al foglio Excel.`);
       setShowImportPresenze(false); setImportPresenzeFile(null); setImportPresenzePreview(null); setImportPresenzeMap({});
       await loadPresenze(); reload && reload();
     } catch (err) { toast(err?.response?.data?.detail || "Importazione presenze non riuscita", "err"); }
     finally { setImportPresenzeBusy(false); }
   };
 
-  // Carica ferie, tipi turno e i turni delle settimane che toccano il mese (per derivare le presenze)
+  // Le ferie approvate restano visibili; i turni pianificati non diventano
+  // automaticamente presenze reali.
   useEffect(() => {
     axios.get(`${API}/ferie`).then(r => setFerieList(r.data || [])).catch(() => {});
-    axios.get(`${API}/turni`).then(r => setTipiTurno(r.data || [])).catch(() => {});
-    const isoD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const lunSet = new Set();
-    for (let g = 1; g <= daysInMonth; g++) {
-      const dt = new Date(anno, mese - 1, g); const off = (dt.getDay() + 6) % 7;
-      const lun = new Date(dt); lun.setDate(dt.getDate() - off); lunSet.add(isoD(lun));
-    }
-    Promise.all([...lunSet].map(s => axios.get(`${API}/assegnazioni-turni?settimana=${s}`).then(r => r.data || []).catch(() => [])))
-      .then(arrs => setTurniMese(arrs.flat()));
   }, [anno, mese]);
 
   const isoD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const NOMI_G = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
-  const lunISOdi = (date) => { const off = (date.getDay() + 6) % 7; const l = new Date(date); l.setDate(date.getDate() - off); return isoD(l); };
   const ferieDi = (dipId, dateStr) => ferieList.find(f => f.dipendente_id === dipId && f.data_inizio <= dateStr && (f.data_fine || f.data_inizio) >= dateStr);
-  const turnoDi = (dipId, date) => turniMese.find(a => a.dipendente_id === dipId && a.settimana === lunISOdi(date) && a.giorno === NOMI_G[date.getDay()]);
-  const nomeTurnoId = (id) => (tipiTurno.find(t => t.id === id) || {}).nome;
 
   // Codice giustificativo derivato per una cella: presenza salvata > ferie/permesso > turno.
   // Regola: NON si può essere "presenti" in un giorno futuro (oggi compreso = ok).
@@ -1450,8 +1437,8 @@ function PresenzePage({ dipendenti, reload }) {
     }
     const fer = ferieDi(dipId, dStr);
     if (fer) return fer.tipo === 'Permesso' ? 'PE' : fer.tipo === 'Malattia' ? 'M' : fer.tipo === 'ROL' ? 'R' : 'F';
-    const t = turnoDi(dipId, date);
-    if (t) { const n = nomeTurnoId(t.turno_id); if (n === 'Riposo') return 'RS'; if (n === 'Ferie') return 'F'; return (n && !futuro) ? 'P' : null; }
+    // I turni pianificati non sono presenze reali. Entrano nella griglia solo
+    // dopo "Consolida da turni" oppure tramite l'import Excel confermato.
     return null;
   };
 
@@ -1469,9 +1456,7 @@ function PresenzePage({ dipendenti, reload }) {
     return (fer && (fer.note || fer.protocollo)) || "";
   };
 
-  // Riposi attesi nel mese = numero di domeniche (≈ una settimana di riposo a testa per settimana).
-  const domenicheMese = (() => { let n = 0; for (let d = 1; d <= daysInMonth; d++) if (new Date(anno, mese - 1, d).getDay() === 0) n++; return n; })();
-  // Conta solo i giorni di Riposo settimanale (RS): ferie e permessi NON contano.
+  // Conta solo i giorni di Riposo settimanale (RS): ferie e permessi non contano.
   const contaRiposi = (dipId) => { let n = 0; for (let d = 1; d <= daysInMonth; d++) if (codiceDerivato(dipId, d) === 'RS') n++; return n; };
 
   // Pennello: applica il giustificativo selezionato a uno o tutti i dipendenti, in qualsiasi giorno.
@@ -1860,7 +1845,8 @@ function PresenzePage({ dipendenti, reload }) {
                 <div><span>Nuove celle</span><b>{importPresenzePreview.conteggi.nuova}</b></div>
                 <div><span>Presenti</span><b>{importPresenzePreview.codici.P || 0}</b></div>
                 <div><span>Malattia</span><b>{importPresenzePreview.codici.M || 0}</b></div>
-                <div><span>Conflitti protetti</span><b>{importPresenzePreview.conteggi.conflitto}</b></div>
+                <div><span>Riposi</span><b>{importPresenzePreview.codici.RS || 0}</b></div>
+                <div><span>Da sostituire</span><b>{importPresenzePreview.conteggi.aggiornamento || 0}</b></div>
               </div>
               {(importPresenzePreview.nominativi_da_associare || []).map(nome => (
                 <label className="dc-import-mapping" key={nome}>
@@ -1881,15 +1867,15 @@ function PresenzePage({ dipendenti, reload }) {
               ))}
               <div className="dc-import-rule">Le festività non lavorate non vengono dedotte dal riepilogo: entrano solo se dichiarate nel dettaglio giornaliero.</div>
               <div className="dc-scroll-x">
-                <table className="dc-table dc-import-table"><thead><tr><th>Dipendente</th><th>P</th><th>M</th><th>Nuove</th><th>Già presenti</th><th>Conflitti</th></tr></thead>
-                  <tbody>{importPresenzePreview.dipendenti.map(d => <tr key={d.dipendente_id}><td>{d.nome}</td><td>{d.P}</td><td>{d.M}</td><td>{d.nuove}</td><td>{d.invariate}</td><td>{d.conflitti}</td></tr>)}</tbody>
+                <table className="dc-table dc-import-table"><thead><tr><th>Dipendente</th><th>P</th><th>RS</th><th>M</th><th>Nuove</th><th>Da sostituire</th><th>Già corrette</th></tr></thead>
+                  <tbody>{importPresenzePreview.dipendenti.map(d => <tr key={d.dipendente_id}><td>{d.nome}</td><td>{d.P}</td><td>{d.RS || 0}</td><td>{d.M}</td><td>{d.nuove}</td><td>{d.aggiornamenti || 0}</td><td>{d.invariate}</td></tr>)}</tbody>
                 </table>
               </div>
               {importPresenzePreview.da_verificare.length > 0 && <div className="dc-alert dc-alert-warning">Restano {importPresenzePreview.da_verificare.length} elementi da verificare. Completa le associazioni prima di importare.</div>}
               <div className="dc-modal-footer">
                 <button className="dc-btn" onClick={() => setShowImportPresenze(false)} disabled={importPresenzeBusy}>Annulla</button>
                 <button className="dc-btn dc-btn-primary" onClick={confermaImportPresenze} disabled={importPresenzeBusy || importPresenzePreview.da_verificare.length > 0}>
-                  <Check size={16} /> Conferma {importPresenzePreview.conteggi.nuova} nuove presenze
+                  <Check size={16} /> Conferma {importPresenzePreview.conteggi.nuova + (importPresenzePreview.conteggi.aggiornamento || 0)} celle dal file
                 </button>
               </div>
             </>}
@@ -2013,9 +1999,9 @@ function PresenzePage({ dipendenti, reload }) {
                     <Avatar nome={dip.nome} cognome={dip.cognome} size="sm" />
                     <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
                       <span>{dip.cognome ? `${dip.cognome} ${dip.nome?.[0] || ''}.` : dip.nome}</span>
-                      {(() => { const r = contaRiposi(dip.id); const ok = r >= domenicheMese; return (
-                        <span style={{ fontSize: 10, fontWeight: 700, color: ok ? "#3d8168" : "#d35f4e" }} title="Riposi del mese rispetto agli attesi">
-                          {ok ? "✓" : "⚠"} {r}/{domenicheMese} riposi
+                      {(() => { const r = contaRiposi(dip.id); return (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: r ? "#3d8168" : "#9aa593" }} title="Riposi registrati nel foglio presenze">
+                          {r} {r === 1 ? "riposo" : "riposi"}
                         </span>); })()}
                     </div>
                   </div>

@@ -25,7 +25,7 @@ def test_assenza_prevale_sulla_timbratura_e_fnl_non_viene_inventata():
     risultato = analizza_presenze_workbook(wb)
 
     assert risultato["periodo"] == "2026-09"
-    assert risultato["conteggi"] == {"P": 1, "M": 2}
+    assert risultato["conteggi"] == {"P": 1, "M": 2, "RS": 27}
     assert "FNL" not in risultato["conteggi"]
     sovrapposta = next(r for r in risultato["record"] if r["data"] == "2026-09-02")
     assert sovrapposta["giustificativo"] == "M"
@@ -40,7 +40,7 @@ def test_nominativo_giornaliero_fuori_riepilogo_resta_associabile_in_anteprima()
 
     risultato = analizza_presenze_workbook(wb)
 
-    assert risultato["conteggi"] == {"P": 1}
+    assert risultato["conteggi"] == {"P": 1, "RS": 29}
     assert risultato["nominativi_da_associare"] == ["Liliana Strazzullo"]
     assert risultato["record"][0]["codice_fiscale"] is None
     assert risultato["errori"][0]["motivo"].startswith("nominativo giornaliero assente")
