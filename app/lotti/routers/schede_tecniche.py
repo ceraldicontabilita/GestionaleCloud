@@ -18,7 +18,6 @@ Collection: schede_tecniche
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Annotated
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Body, HTTPException, Query, Depends, File, Form, UploadFile
@@ -297,7 +296,7 @@ async def anteprima_import_schede(
 async def conferma_import_schede(
     files: list[UploadFile] = File(...),
     preview_tokens: list[str] = Form(...),
-    associazioni_confermate: Annotated[list[str] | None, Form()] = None,
+    associazioni_confermate: list[str] = Form(...),
     _admin=Depends(require_admin),
 ):
     """Conferma la stessa anteprima e deposita un solo originale per SHA-256."""
