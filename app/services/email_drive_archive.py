@@ -79,7 +79,9 @@ def _escape_query(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def _already_archived(service, parent_id: str, filename: str, digest: str) -> dict[str, Any] | None:
+def _already_archived(
+    service, parent_id: str, filename: str, digest: str, content: bytes,
+) -> dict[str, Any] | None:
     # Prima l'impronta forte, indipendente dal nome: due copie byte-identiche
     # devono riusare lo stesso originale Drive e lo stesso documento logico.
     by_sha = service.files().list(
@@ -92,12 +94,40 @@ def _already_archived(service, parent_id: str, filename: str, digest: str) -> di
         return by_sha["files"][0]
     result = service.files().list(
         q=f"name = '{_escape_query(filename)}' and '{parent_id}' in parents and trashed = false",
-        fields="files(id, appProperties, md5Checksum)", pageSize=20, supportsAllDrives=True,
+        fields="files(id, name, appProperties, md5Checksum)", pageSize=20, supportsAllDrives=True,
         includeItemsFromAllDrives=True,
     ).execute()
+    # I service account non dispongono sempre di quota propria. In quel caso il
+    # titolare puo' depositare l'originale in ELABORATE dal proprio Drive: lo
+    # riconosciamo soltanto se nome, MD5 Drive e SHA-256 dei byte riletti
+    # coincidono. Il solo nome non e' mai prova d'identita'.
+    content_md5 = hashlib.md5(content, usedforsecurity=False).hexdigest()
     for item in result.get("files", []):
         props = item.get("appProperties") or {}
         if props.get("gestionale_sha256") == digest:
+            return item
+        if item.get("md5Checksum") != content_md5:
+            continue
+        try:
+            originale = service.files().get_media(fileId=item["id"]).execute()
+        except Exception as exc:  # il candidato non verificabile non si riusa
+            logger.warning("Originale Drive %s non verificabile: %s", item.get("id"), type(exc).__name__)
+            continue
+        if hashlib.sha256(originale).hexdigest() != digest:
+            continue
+        try:
+            aggiornato = service.files().update(
+                fileId=item["id"],
+                body={"appProperties": {**props, "gestionale_sha256": digest,
+                                        "gestionale_source": "caricato_titolare"}},
+                fields="id,name,appProperties,md5Checksum", supportsAllDrives=True,
+            ).execute()
+            return aggiornato or item
+        except Exception as exc:
+            # La rilettura byte-per-byte basta per riusare l'originale; i
+            # metadati sono un'ottimizzazione, non una scorciatoia d'identita'.
+            logger.warning("Metadati originali Drive %s non aggiornati: %s",
+                           item.get("id"), type(exc).__name__)
             return item
     return None
 
@@ -123,7 +153,7 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
 
     filename = str(doc.get("filename") or f"documento-{doc.get('id', 'email')}.pdf").strip()
     digest = hashlib.sha256(content).hexdigest()
-    existing = _already_archived(service, folder_id, filename, digest)
+    existing = _already_archived(service, folder_id, filename, digest, content)
     if existing:
         return {"status": "duplicate", "area": area, "drive_file_id": existing.get("id"),
                 "sha256": digest, "archived_at": datetime.now(timezone.utc).isoformat()}
