@@ -1779,7 +1779,7 @@ function PresenzePage({ dipendenti, reload }) {
           <p>{dipendenti.length} dipendenti attivi · compilazione, controllo e invio del foglio mensile</p>
         </div>
         <button onClick={() => setShowImportPresenze(true)} className="dc-btn dc-btn-primary">
-          <Upload size={16} /> Importa Excel
+          <Upload size={16} /> Importa Excel/CSV
         </button>
       </div>
 
@@ -1830,13 +1830,13 @@ function PresenzePage({ dipendenti, reload }) {
       </div>
 
       {showImportPresenze && (
-        <Modal title="Importa presenze da Excel" onClose={() => !importPresenzeBusy && setShowImportPresenze(false)} maxWidth={920}>
+        <Modal title="Importa presenze da Excel o CSV" onClose={() => !importPresenzeBusy && setShowImportPresenze(false)} maxWidth={920}>
           <div className="dc-import-presenze">
             <div className="dc-import-dropzone">
               <Upload size={24} />
               <div><b>Foglio presenze mensile</b><div className="dc-muted">Anteprima obbligatoria: nessuna cella esistente viene sovrascritta.</div></div>
-              <button className="dc-btn" onClick={() => importPresenzeRef.current?.click()} disabled={importPresenzeBusy}>Scegli file .xlsx</button>
-              <input ref={importPresenzeRef} type="file" accept=".xlsx" hidden onChange={scegliFilePresenze} />
+              <button className="dc-btn" onClick={() => importPresenzeRef.current?.click()} disabled={importPresenzeBusy}>Scegli file .xlsx o .csv</button>
+              <input ref={importPresenzeRef} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={scegliFilePresenze} />
             </div>
             {importPresenzeBusy && <p className="dc-muted">Verifica del foglio in corso…</p>}
             {importPresenzePreview && <>
