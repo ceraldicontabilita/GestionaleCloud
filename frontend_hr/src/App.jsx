@@ -7,6 +7,8 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import Sortable from "sortablejs";
 import { isIntentionalPaintDrag } from "./presenzeSelection";
+import { buildPresenzePrintHtml } from "./presenzePrint";
+import { buildPresenzeCsv } from "./presenzeCsv";
 import { 
   Users, Calendar, Clock, FileText, Briefcase, Home, 
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
@@ -1338,6 +1340,9 @@ function PresenzePage({ dipendenti, reload }) {
   const [anno, setAnno] = useState(new Date().getFullYear());
   const [mese, setMese] = useState(new Date().getMonth() + 1);
   const [presenze, setPresenze] = useState([]);
+  const [presenzeLoading, setPresenzeLoading] = useState(false);
+  const [printBusy, setPrintBusy] = useState(false);
+  const loadPresenzeSeqRef = useRef(0);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     dipendente_id: "", tipo: "P", data_inizio: "", data_fine: "", nota: "", protocollo: ""
@@ -1355,21 +1360,33 @@ function PresenzePage({ dipendenti, reload }) {
   const [importPresenzeBusy, setImportPresenzeBusy] = useState(false);
   const [importPresenzeMap, setImportPresenzeMap] = useState({});
   const importPresenzeRef = useRef(null);
+  const [previewC, setPreviewC] = useState(null);
+  const [previewCBusy, setPreviewCBusy] = useState(false);
 
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre","13ª","14ª"];
   const daysInMonth = new Date(anno, mese, 0).getDate();
   const firstDayOfWeek = new Date(anno, mese - 1, 1).getDay();
 
-  const loadPresenze = async () => {
+  const loadPresenze = async (targetAnno = anno, targetMese = mese) => {
+    const seq = ++loadPresenzeSeqRef.current;
+    setPresenzeLoading(true);
     try {
-      const res = await axios.get(`${API}/presenze?anno=${anno}&mese=${mese}`);
-      setPresenze(res.data || []);
+      const res = await axios.get(`${API}/presenze?anno=${targetAnno}&mese=${targetMese}`);
+      if (seq === loadPresenzeSeqRef.current) setPresenze(res.data || []);
+      return res.data || [];
     } catch (e) {
       console.error(e);
+      return [];
+    } finally {
+      if (seq === loadPresenzeSeqRef.current) setPresenzeLoading(false);
     }
   };
 
-  useEffect(() => { loadPresenze(); }, [anno, mese]);
+  useEffect(() => {
+    setPresenze([]);
+    setPreviewC(null);
+    loadPresenze(anno, mese).catch(() => {});
+  }, [anno, mese]);
 
   const formImportPresenze = (file, mappa = importPresenzeMap) => {
     const fd = new FormData();
@@ -1424,11 +1441,11 @@ function PresenzePage({ dipendenti, reload }) {
 
   // Codice giustificativo derivato per una cella: presenza salvata > ferie/permesso > turno.
   // Regola: NON si può essere "presenti" in un giorno futuro (oggi compreso = ok).
-  const codiceDerivato = (dipId, day) => {
+  const codiceDerivato = (dipId, day, source = presenze) => {
     const date = new Date(anno, mese - 1, day);
     const dStr = isoD(date);
     const futuro = dStr > isoD(new Date());
-    const pres = getPresenza(dipId, day);
+    const pres = getPresenza(dipId, day, source);
     if (pres) {
       const g = pres.giustificativo;
       if (g === 'P' || (!g && pres.stato === 'presente')) return futuro ? null : 'P';
@@ -1443,14 +1460,14 @@ function PresenzePage({ dipendenti, reload }) {
     return null;
   };
 
-  const getPresenza = (dipId, day) => {
+  const getPresenza = (dipId, day, source = presenze) => {
     const dataStr = `${anno}-${String(mese).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    return presenze.find(p => p.dipendente_id === dipId && p.data === dataStr);
+    return source.find(p => p.dipendente_id === dipId && p.data === dataStr);
   };
 
   // Nota della cella (es. malattia → numero di protocollo del certificato medico).
-  const notaDi = (dipId, day) => {
-    const p = getPresenza(dipId, day);
+  const notaDi = (dipId, day, source = presenze) => {
+    const p = getPresenza(dipId, day, source);
     if (p && (p.note || p.nota)) return p.note || p.nota;
     const date = new Date(anno, mese - 1, day);
     const fer = ferieDi(dipId, isoD(date));
@@ -1585,35 +1602,38 @@ function PresenzePage({ dipendenti, reload }) {
   }, []);
 
   // ---- Esporta / stampa / invia il foglio del mese ----
-  const buildRighe = () => ({
+  const buildRighe = (source = presenze) => ({
     giorni: daysInMonth,
     righe: dipendenti.map(dip => ({
       nome: `${dip.cognome || ''} ${dip.nome || ''}`.trim(),
-      celle: Array.from({ length: daysInMonth }, (_, i) => codiceDerivato(dip.id, i + 1) || ""),
+      celle: Array.from({ length: daysInMonth }, (_, i) => {
+        const p = getPresenza(dip.id, i + 1, source);
+        if (!p) return codiceDerivato(dip.id, i + 1, source) || "";
+        return p.giustificativo || (p.stato === "presente" ? "P" : p.stato === "assente" ? "AS" : "");
+      }),
       // Nota di ogni giorno (es. protocollo INPS malattia): usata nel documento
       // "per il commercialista" (Opzione C) per annotare i periodi.
-      note: Array.from({ length: daysInMonth }, (_, i) => notaDi(dip.id, i + 1) || ""),
+      note: Array.from({ length: daysInMonth }, (_, i) => notaDi(dip.id, i + 1, source) || ""),
     })),
   });
-  const buildCSV = () => {
-    const sep = ";";
-    const { giorni, righe } = buildRighe();
-    const intest = ["Dipendente", ...Array.from({ length: giorni }, (_, i) => String(i + 1))].join(sep);
-    const body = righe.map(r => [r.nome, ...r.celle].join(sep));
-    const legenda = "Legenda: P=Presente · AS=Assente · F=Ferie · PE=Permesso · M=Malattia · R=ROL · RS=Riposo · CH=Chiuso · FNL=Festivita non lav.";
-    return [`Presenze ${mesi[mese - 1]} ${anno} - Ceraldi Group S.r.l.`, "", intest, ...body, "", legenda].join("\n");
+  const righeComplete = async () => {
+    const r = await axios.get(`${API}/presenze?anno=${anno}&mese=${mese}`);
+    return buildRighe(r.data || []);
   };
-  const scaricaPresenze = () => {
-    const csv = "﻿" + buildCSV();
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `presenze_${anno}_${String(mese).padStart(2, '0')}.csv`; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    toast("Foglio presenze scaricato (CSV)");
+  const scaricaPresenze = async () => {
+    try {
+      const { giorni, righe } = await righeComplete();
+      const csv = buildPresenzeCsv({ giorni, righe });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = `presenze_${anno}_${String(mese).padStart(2, '0')}.csv`; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      toast("Foglio presenze scaricato (CSV)");
+    } catch { toast("Errore generazione CSV", "err"); }
   };
   const scaricaPDF = async () => {
     try {
-      const r = await axios.post(`${API}/presenze/pdf`, { anno, mese, ...buildRighe() }, { responseType: "blob" });
+      const r = await axios.post(`${API}/presenze/pdf`, { anno, mese, ...await righeComplete() }, { responseType: "blob" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(r.data);
       a.download = `presenze_${anno}_${String(mese).padStart(2, '0')}.pdf`; a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
@@ -1624,7 +1644,7 @@ function PresenzePage({ dipendenti, reload }) {
   // molto più leggero della griglia giorno-per-giorno (che resta per l'uso interno).
   const scaricaRiepilogoCommercialista = async () => {
     try {
-      const r = await axios.post(`${API}/presenze/pdf-riepilogo`, { anno, mese, ...buildRighe() }, { responseType: "blob" });
+      const r = await axios.post(`${API}/presenze/pdf-riepilogo`, { anno, mese, ...await righeComplete() }, { responseType: "blob" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(r.data);
       a.download = `presenze_riepilogo_${anno}_${String(mese).padStart(2, '0')}.pdf`; a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
@@ -1632,34 +1652,31 @@ function PresenzePage({ dipendenti, reload }) {
     } catch (e) { toast("Errore generazione riepilogo", "err"); }
   };
   // Anteprima Opzione C direttamente in pagina (stessi dati del PDF, senza scaricare nulla)
-  const [previewC, setPreviewC] = useState(null);
-  const [previewCBusy, setPreviewCBusy] = useState(false);
   const toggleAnteprimaC = async () => {
     if (previewC) { setPreviewC(null); return; }
     setPreviewCBusy(true);
     try {
-      const r = await axios.post(`${API}/presenze/riepilogo-dati`, { anno, mese, ...buildRighe() });
+      const r = await axios.post(`${API}/presenze/riepilogo-dati`, { anno, mese, ...await righeComplete() });
       setPreviewC(r.data);
     } catch (e) { toast("Errore nel calcolo del riepilogo", "err"); }
     finally { setPreviewCBusy(false); }
   };
-  const COLST = { P: "#3d8168", AS: "#d35f4e", F: "#5b7a6b", PE: "#7d5526", M: "#f59e0b", R: "#8a9a5b", RS: "#9aa593", CH: "#6b7669", FNL: "#a6724a", X: "#495247" };
-  const stampaPresenze = () => {
-    const { giorni, righe } = buildRighe();
-    const th = Array.from({ length: giorni }, (_, i) => `<th>${i + 1}</th>`).join("");
-    const rows = righe.map(r => `<tr><td class="nm">${r.nome}</td>${r.celle.map(c => `<td style="background:${COLST[c] || '#fff'};color:${c ? '#fff' : '#000'}">${c || ''}</td>`).join("")}</tr>`).join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Presenze ${mesi[mese - 1]} ${anno}</title>
-      <style>@page{size:A4 landscape;margin:8mm} body{font-family:Arial,sans-serif;margin:0}
-      h2{margin:0 0 6px;font-size:14px} table{border-collapse:collapse;width:100%;table-layout:fixed}
-      th,td{border:1px solid #ccc;text-align:center;font-size:8px;padding:1px;overflow:hidden}
-      td.nm,th.nm{text-align:left;width:110px;font-size:8px;padding:2px 4px;overflow:hidden;white-space:nowrap}
-      thead th{background:#eee}</style></head>
-      <body onload="setTimeout(function(){window.print()},250)"><h2>Presenze ${mesi[mese - 1]} ${anno} — Ceraldi Group S.r.l.</h2>
-      <table><thead><tr><th class="nm">Dipendente</th>${th}</tr></thead><tbody>${rows}</tbody></table>
-      <p style="font-size:8px;color:#555;margin-top:6px">Legenda: P=Presente · AS=Assente · F=Ferie · PE=Permesso · M=Malattia · R=ROL · RS=Riposo · CH=Chiuso · FNL=Festività non lav.</p>
-      </body></html>`;
+  const stampaPresenze = async () => {
     const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); } else toast("Consenti i popup per stampare", "err");
+    if (!w) { toast("Consenti i popup per stampare", "err"); return; }
+    w.document.write(`<p style="font-family:Arial,sans-serif">Caricamento presenze di ${mesi[mese - 1]} ${anno}…</p>`);
+    setPrintBusy(true);
+    try {
+      // La stampa non usa una fotografia potenzialmente incompleta della UI:
+      // rilegge sempre dal server il mese indicato nel titolo del pulsante.
+      const r = await axios.get(`${API}/presenze?anno=${anno}&mese=${mese}`);
+      const { giorni, righe } = buildRighe(r.data || []);
+      const html = buildPresenzePrintHtml({ anno, meseLabel: mesi[mese - 1], giorni, righe });
+      w.document.open(); w.document.write(html); w.document.close();
+    } catch (e) {
+      w.document.open(); w.document.write("<p>Impossibile caricare tutte le presenze del mese.</p>"); w.document.close();
+      toast("Errore caricamento presenze per la stampa", "err");
+    } finally { setPrintBusy(false); }
   };
   // Email del commercialista: salvata in app (non nel browser) — "Invia" la
   // usa sempre in automatico, senza richiederla ogni volta.
@@ -1692,7 +1709,7 @@ function PresenzePage({ dipendenti, reload }) {
       if (!window.confirm(`Le presenze di ${mesi[mese - 1]} ${anno} risultano già inviate il ${quando} a ${giaInviati[0].destinatario}. Rinviarle?`)) return;
     }
     try {
-      const r = await axios.post(`${API}/presenze/invia-commercialista`, { anno, mese, ...buildRighe() });
+      const r = await axios.post(`${API}/presenze/invia-commercialista`, { anno, mese, ...await righeComplete() });
       toast(`Presenze inviate a ${r.data.destinatario}`);
       loadInvii();
     } catch (e) { toast(e?.response?.data?.detail || "Invio non riuscito (SMTP da configurare su Render)", "err"); }
@@ -1822,7 +1839,7 @@ function PresenzePage({ dipendenti, reload }) {
           <div className="dc-presenze-export-actions">
             <button onClick={scaricaPDF} className="dc-btn"><Download size={16} /> PDF</button>
             <button onClick={scaricaPresenze} className="dc-btn"><Download size={16} /> CSV</button>
-            <button onClick={stampaPresenze} className="dc-btn">🖨 Stampa</button>
+            <button onClick={stampaPresenze} disabled={presenzeLoading || printBusy} className="dc-btn">🖨 {printBusy ? "Preparazione…" : `Stampa ${mesi[mese - 1]} ${anno}`}</button>
             <button onClick={toggleAnteprimaC} disabled={previewCBusy} className="dc-btn">👁 {previewC ? "Nascondi" : "Vedi"} riepilogo</button>
             <button onClick={scaricaRiepilogoCommercialista} className="dc-btn">📄 PDF commercialista</button>
             <button onClick={inviaCommercialista} className="dc-btn dc-btn-primary"><Send size={16} /> Invia</button>
