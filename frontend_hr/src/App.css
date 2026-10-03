@@ -841,8 +841,14 @@ a.dc-sidebar-logo {
   padding: 0;
 }
 
+/* La vista mensile usa tutta la larghezza disponibile: sui monitor desktop i
+   30/31 giorni entrano nella pagina, mentre sui dispositivi stretti resta lo
+   scroll orizzontale con la colonna dipendente bloccata. */
+.dc-presenze-page { max-width: none; width: 100%; }
+
 .dc-presenze-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.8rem;
 }
@@ -852,7 +858,8 @@ a.dc-sidebar-logo {
   left: 0;
   background: #fffefb;
   z-index: 1;
-  min-width: 180px;
+  width: 156px;
+  min-width: 156px;
   padding: 0.5rem;
   text-align: left;
   font-weight: 600;
@@ -860,7 +867,8 @@ a.dc-sidebar-logo {
 }
 
 .dc-presenze-th-day {
-  min-width: 36px;
+  width: calc((100% - 156px) / var(--presenze-days));
+  min-width: 0;
   text-align: center;
   padding: 0.25rem;
   border-bottom: 1px solid #e6e0d4;
@@ -892,7 +900,8 @@ a.dc-sidebar-logo {
 
 .dc-presenze-td-day {
   text-align: center;
-  padding: 0.25rem;
+  min-width: 0;
+  padding: 0.18rem 0.08rem;
   border-bottom: 1px solid #faf7f0;
 }
 
@@ -904,8 +913,8 @@ a.dc-sidebar-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: clamp(20px, 1.7vw, 24px);
+  height: clamp(20px, 1.7vw, 24px);
   border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 600;
@@ -914,6 +923,12 @@ a.dc-sidebar-logo {
 
 .dc-presenza-empty {
   color: #d6cfc0;
+}
+
+.dc-app .dc-cell-btn-presenza {
+  min-width: 0;
+  min-height: 30px;
+  padding: 1px 0;
 }
 
 /* Giustificativo Grid */
@@ -1232,6 +1247,10 @@ a.dc-sidebar-logo {
   /* Presenze più leggibili su mobile: celle/badge più grandi, tap facile,
      colonna nome fissa con ombra. */
   .dc-presenze-table { font-size: 0.9rem; }
+  .dc-presenze-table {
+    min-width: calc(130px + (var(--presenze-days) * 40px));
+    table-layout: fixed;
+  }
   .dc-presenze-th-name, .dc-presenze-td-name {
     min-width: 130px; box-shadow: 2px 0 4px rgba(0,0,0,.06);
   }

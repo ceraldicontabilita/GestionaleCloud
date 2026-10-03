@@ -1772,7 +1772,7 @@ function PresenzePage({ dipendenti, reload }) {
   };
 
   return (
-    <div className="dc-page">
+    <div className="dc-page dc-presenze-page">
       <div className="dc-page-header">
         <div>
           <h1>Presenze Mensili</h1>
@@ -1974,7 +1974,7 @@ function PresenzePage({ dipendenti, reload }) {
           il browser evidenziava i nomi dei dipendenti invece di disegnare. */}
       <div className="dc-card dc-presenze-grid-container"
         style={penna ? { userSelect: "none", WebkitUserSelect: "none" } : undefined}>
-        <table className="dc-presenze-table">
+        <table className="dc-presenze-table" style={{ "--presenze-days": daysInMonth }}>
           <thead>
             <tr>
               <th className="dc-presenze-th-name">Dipendente</th>
