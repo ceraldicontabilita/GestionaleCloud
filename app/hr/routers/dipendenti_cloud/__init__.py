@@ -2222,9 +2222,18 @@ async def create_presenze_batch(presenze: List[PresenzaCloud]):
         })
         
         if existing:
+            # L'id identifica la riga gia esistente e non deve mai finire nel
+            # $set. In precedenza il nuovo UUID generato sopra sostituiva solo
+            # doc.id, non la primary key Postgres, rendendo poi impossibili
+            # aggiornamenti e cancellazioni affidabili dello stesso record.
+            campi_aggiornabili = {
+                k: v for k, v in pres_dict.items()
+                if k not in {"id", "created_at"}
+            }
+            campi_aggiornabili["updated_at"] = now_iso()
             await get_db().presenze_cloud.update_one(
                 {"id": existing["id"]},
-                {"$set": pres_dict}
+                {"$set": campi_aggiornabili}
             )
         else:
             await get_db().presenze_cloud.insert_one(pres_dict)

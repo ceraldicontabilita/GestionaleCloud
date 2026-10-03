@@ -76,6 +76,12 @@ class PoolFinto:
         self.tabelle.setdefault(tab, {})[str(doc["id"])] = dict(doc)
         self.xmin.setdefault(tab, {})[str(doc["id"])] = self.tx
 
+    def scrivi_esterno_con_chiave(self, tab, chiave, doc):
+        """Riproduce una riga legacy con primary key diversa da doc.id."""
+        self.tx += 1
+        self.tabelle.setdefault(tab, {})[str(chiave)] = dict(doc)
+        self.xmin.setdefault(tab, {})[str(chiave)] = self.tx
+
     def cancella_esterno(self, tab, chiave):
         self.tx += 1
         self.tabelle.get(tab, {}).pop(chiave, None)
@@ -139,6 +145,11 @@ class PoolFinto:
             campi = re.findall(r"'([a-z_]+)'", sql.split("FROM")[0])
             return [{"doc": json.dumps({k: v for k, v in d.items() if k not in campi})}
                     for d in righe_tab.values()]
+        if sql.startswith("SELECT id, doc FROM"):
+            return [{"id": chiave, "doc": json.dumps(doc)} for chiave, doc in righe_tab.items()]
+        if sql.startswith("SELECT doc FROM") and "WHERE id = $1" in sql:
+            doc = righe_tab.get(args[0])
+            return [] if doc is None else [{"doc": json.dumps(doc)}]
         if sql.startswith("SELECT doc FROM"):
             return [{"doc": json.dumps(d)} for d in righe_tab.values()]
         if sql.startswith("INSERT INTO"):
@@ -287,6 +298,46 @@ def test_scritture_del_processo_aggiornano_la_copia_senza_rileggere(monkeypatch)
     assert len(pool.letture_complete()) == 1
     assert pool.tabelle["app_dipendenti"]["d2"]["turno"] == "mattina"
     assert "d1" not in pool.tabelle["app_dipendenti"]
+
+
+def test_update_e_delete_usano_la_chiave_fisica_se_doc_id_e_legacy():
+    pool = _pool()
+    pool.scrivi_esterno_con_chiave(
+        "app_dipendenti", "pk-originale",
+        {"id": "id-riscritto", "nome": "Legacy", "attivo": True},
+    )
+    db = _db(pool)
+
+    async def scenario():
+        aggiornato = await db["dipendenti"].update_one(
+            {"id": "id-riscritto"}, {"$set": {"nome": "Corretto"}},
+        )
+        cancellato = await db["dipendenti"].delete_one({"id": "id-riscritto"})
+        return aggiornato, cancellato
+
+    aggiornato, cancellato = _run(scenario())
+    assert aggiornato.matched_count == 1
+    assert cancellato.deleted_count == 1
+    assert "pk-originale" not in pool.tabelle["app_dipendenti"]
+
+
+def test_delete_many_elimina_anche_documenti_con_id_diverso_dalla_chiave():
+    pool = _pool()
+    pool.scrivi_esterno_con_chiave(
+        "app_dipendenti", "pk-legacy-1",
+        {"id": "doc-legacy-1", "gruppo": "legacy"},
+    )
+    pool.scrivi_esterno_con_chiave(
+        "app_dipendenti", "pk-legacy-2",
+        {"id": "doc-legacy-2", "gruppo": "legacy"},
+    )
+    db = _db(pool)
+
+    risultato = _run(db["dipendenti"].delete_many({"gruppo": "legacy"}))
+
+    assert risultato.deleted_count == 2
+    assert "pk-legacy-1" not in pool.tabelle["app_dipendenti"]
+    assert "pk-legacy-2" not in pool.tabelle["app_dipendenti"]
 
 
 def test_pdf_letto_per_id_solo_quando_serve_e_mai_perso_da_un_update():
