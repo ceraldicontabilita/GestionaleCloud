@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback, useRef, Fragment } from "react
 import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import Sortable from "sortablejs";
+import { isIntentionalPaintDrag } from "./presenzeSelection";
 import { 
   Users, Calendar, Clock, FileText, Briefcase, Home, 
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
@@ -1499,6 +1500,7 @@ function PresenzePage({ dipendenti, reload }) {
   // bisognava ripassare riga per riga.
   const keyCell = (dipId, day) => `${dipId}|${day}`;
   const ancoraRef = useRef(null);   // { riga, giorno } da cui parte il rettangolo
+  const paintStartPointRef = useRef(null);
 
   // Celle del rettangolo fra l'ancora e la casella corrente.
   // Con "Applica a tutti" le righe non contano: si prendono tutti i dipendenti.
@@ -1514,7 +1516,7 @@ function PresenzePage({ dipendenti, reload }) {
   };
   const cellsForDay = (dipId, day) => (tuttiMode ? dipendenti.map(d => keyCell(d.id, day)) : [keyCell(dipId, day)]);
 
-  const startPaint = (riga, day, estendi = false) => {
+  const startPaint = (riga, day, estendi = false, point = null) => {
     if (!penna) return;
     // shift+clic: chiude il rettangolo sull'ancora precedente senza trascinare.
     // Serve sui mesi lunghi, dove trascinare obbligherebbe a scorrere la tabella.
@@ -1525,11 +1527,28 @@ function PresenzePage({ dipendenti, reload }) {
     }
     paintingRef.current = true;
     ancoraRef.current = { riga, giorno: day };
+    paintStartPointRef.current = point;
     selRef.current = new Set(cellsForRect(ancoraRef.current, ancoraRef.current));
     setSelVer(v => v + 1);
   };
-  const extendPaint = (riga, day) => {
+  const cancelPaint = () => {
+    paintingRef.current = false;
+    paintStartPointRef.current = null;
+    selRef.current = new Set();
+    setSelVer(v => v + 1);
+  };
+  const extendPaint = (riga, day, e) => {
     if (!paintingRef.current || !ancoraRef.current) return;
+    // Se il mouseup e' avvenuto fuori dalla finestra, non deve restare una
+    // selezione fantasma che si estende passando sopra un'altra riga.
+    if ((e.buttons & 1) !== 1) {
+      cancelPaint();
+      return;
+    }
+    // Il normale clic puo' muoversi di pochi pixel e sconfinare nella cella
+    // sopra/sotto. Finche' non c'e' un trascinamento reale resta selezionata
+    // esclusivamente la casella di partenza.
+    if (!isIntentionalPaintDrag(paintStartPointRef.current, { x: e.clientX, y: e.clientY })) return;
     selRef.current = new Set(cellsForRect(ancoraRef.current, { riga, giorno: day }));
     setSelVer(v => v + 1);
   };
@@ -1548,6 +1567,7 @@ function PresenzePage({ dipendenti, reload }) {
   const endPaint = () => {
     if (!paintingRef.current) return;
     paintingRef.current = false;
+    paintStartPointRef.current = null;
     const cells = Array.from(selRef.current);
     selRef.current = new Set();
     setSelVer(v => v + 1);
@@ -1557,9 +1577,11 @@ function PresenzePage({ dipendenti, reload }) {
   endPaintRef.current = endPaint;
   useEffect(() => {
     const h = () => endPaintRef.current && endPaintRef.current();
+    const cancel = () => cancelPaint();
     window.addEventListener("mouseup", h);
     window.addEventListener("touchend", h);
-    return () => { window.removeEventListener("mouseup", h); window.removeEventListener("touchend", h); };
+    window.addEventListener("blur", cancel);
+    return () => { window.removeEventListener("mouseup", h); window.removeEventListener("touchend", h); window.removeEventListener("blur", cancel); };
   }, []);
 
   // ---- Esporta / stampa / invia il foglio del mese ----
@@ -2019,8 +2041,8 @@ function PresenzePage({ dipendenti, reload }) {
                   const inSel = selRef.current.has(keyCell(dip.id, day));
                   return (
                     <td key={i} className={`dc-presenze-td-day ${isWeekend ? 'weekend' : ''}`}
-                      onMouseDown={(e) => { if (penna) { e.preventDefault(); startPaint(rowIdx, day, e.shiftKey); } }}
-                      onMouseEnter={() => extendPaint(rowIdx, day)}
+                      onMouseDown={(e) => { if (penna && e.button === 0) { e.preventDefault(); startPaint(rowIdx, day, e.shiftKey, { x: e.clientX, y: e.clientY }); } }}
+                      onMouseEnter={(e) => extendPaint(rowIdx, day, e)}
                       onTouchStart={() => { if (penna) applicaCelle(cellsForDay(dip.id, day)); }}
                       style={{ cursor: penna ? "cell" : "default", position: "relative", userSelect: "none",
                         outline: inSel ? "2px solid #5b7a6b" : "none", background: inSel ? "#e8efe9" : undefined }}
