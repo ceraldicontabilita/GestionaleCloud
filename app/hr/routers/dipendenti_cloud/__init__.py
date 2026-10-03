@@ -2287,7 +2287,7 @@ async def importa_presenze_excel(
     sostituzioni_nomi: str = Form("{}"),
     sostituisci_mese: bool = Form(False),
 ):
-    """Importa il foglio mensile con anteprima obbligatoria.
+    """Importa il foglio mensile XLSX o CSV con anteprima obbligatoria.
 
     Le righe del file sono associate tramite codice fiscale. Le integrazioni
     "sempre presente" sono dipendenti scelti esplicitamente dall'interfaccia e
@@ -2297,13 +2297,14 @@ async def importa_presenze_excel(
     conferma le riallinea al file.
     """
     import openpyxl
-    from app.hr.services.presenze_excel import analizza_presenze_workbook, nome_norm
+    from app.hr.services.presenze_excel import (
+        analizza_presenze_csv, analizza_presenze_workbook,
+        indicizza_dipendenti_per_nome, nome_norm,
+    )
 
     raw = await file.read()
     if len(raw) > 10 * 1024 * 1024:
         raise HTTPException(413, "Il file supera 10 MB")
-    if raw[:2] != b"PK":
-        raise HTTPException(400, "Il file deve essere un .xlsx")
     impronta = hashlib.sha256(raw).hexdigest()
     if applica and conferma_hash != impronta:
         raise HTTPException(409, "Il file non coincide con l'anteprima confermata")
@@ -2324,9 +2325,14 @@ async def importa_presenze_excel(
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(400, "Associazioni nominativi non valide") from exc
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
-        analisi = analizza_presenze_workbook(wb)
-        wb.close()
+        if raw[:2] == b"PK":
+            wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
+            try:
+                analisi = analizza_presenze_workbook(wb, file.filename or "")
+            finally:
+                wb.close()
+        else:
+            analisi = analizza_presenze_csv(raw, file.filename or "")
     except HTTPException:
         raise
     except Exception as exc:
@@ -2340,26 +2346,50 @@ async def importa_presenze_excel(
     ).to_list(2000)
     per_cf: Dict[str, List[Dict[str, Any]]] = {}
     per_id = {d.get("id"): d for d in dipendenti if d.get("id")}
+    per_nome = indicizza_dipendenti_per_nome(dipendenti)
     for dip in dipendenti:
         cf = re.sub(r"\s+", "", str(dip.get("codice_fiscale") or "")).upper()
         if cf:
             per_cf.setdefault(cf, []).append(dip)
 
     candidati: Dict[tuple, Dict[str, Any]] = {}
-    da_verificare = [e for e in analisi["errori"] if nome_norm(e.get("nome")) not in sostituzioni]
+    nomi_risolti = {
+        nome for nome, candidati_nome in per_nome.items()
+        if len(candidati_nome) == 1
+    }
+    def _errore_identita_risolto(errore: Dict[str, Any]) -> bool:
+        motivo = str(errore.get("motivo") or "").lower()
+        riguarda_identita = (
+            "codice fiscale mancante" in motivo
+            or "nominativo giornaliero assente" in motivo
+            or "nominativo senza codice fiscale" in motivo
+        )
+        nome = nome_norm(errore.get("nome"))
+        return riguarda_identita and (nome in sostituzioni or nome in nomi_risolti)
+
+    da_verificare = [e for e in analisi["errori"] if not _errore_identita_risolto(e)]
     associazioni_applicate = []
+    nominativi_non_risolti = set()
     for voce in analisi["record"]:
         dip_sostitutivo = per_id.get(sostituzioni.get(nome_norm(voce.get("nome_file"))))
-        associati = [dip_sostitutivo] if dip_sostitutivo else per_cf.get(voce["codice_fiscale"], [])
+        if dip_sostitutivo:
+            associati = [dip_sostitutivo]
+        elif voce.get("codice_fiscale"):
+            associati = per_cf.get(voce["codice_fiscale"], [])
+        else:
+            associati = per_nome.get(nome_norm(voce.get("nome_file")), [])
         if len(associati) != 1:
-            da_verificare.append({
-                "nome": voce["nome_file"], "data": voce["data"],
-                "codice_fiscale": voce["codice_fiscale"],
-                "motivo": "dipendente non trovato" if not associati else "codice fiscale duplicato in HR",
-            })
+            prima_occorrenza = voce["nome_file"] not in nominativi_non_risolti
+            nominativi_non_risolti.add(voce["nome_file"])
+            if prima_occorrenza:
+                da_verificare.append({
+                    "nome": voce["nome_file"], "data": voce["data"],
+                    "codice_fiscale": voce["codice_fiscale"],
+                    "motivo": "dipendente non trovato" if not associati else "nominativo o codice fiscale duplicato in HR",
+                })
             continue
         dip = associati[0]
-        if dip_sostitutivo and not any(a["nome_file"] == voce["nome_file"] for a in associazioni_applicate):
+        if not voce.get("codice_fiscale") and not any(a["nome_file"] == voce["nome_file"] for a in associazioni_applicate):
             associazioni_applicate.append({
                 "nome_file": voce["nome_file"], "dipendente_id": dip["id"],
                 "nome_hr": dip.get("nome_completo") or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip(),
@@ -2473,7 +2503,7 @@ async def importa_presenze_excel(
         "sostituisci_mese": sostituisci_mese, "conteggi": conteggi, "codici": codici,
         "dipendenti": sorted(per_dipendente.values(), key=lambda x: x["nome"]),
         "integrazioni": integrazioni, "associazioni_nomi": associazioni_applicate,
-        "nominativi_da_associare": analisi.get("nominativi_da_associare", []),
+        "nominativi_da_associare": sorted(nominativi_non_risolti),
         "da_verificare": da_verificare,
         "conflitti": [r for r in righe if r["stato"] == "conflitto"],
         "regole": [

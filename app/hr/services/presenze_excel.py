@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 import unicodedata
 import calendar
+import csv
+import io
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -67,7 +69,139 @@ def _unisci_note(*parti: Any) -> str:
     return " · ".join(viste)
 
 
-def analizza_presenze_workbook(wb) -> Dict[str, Any]:
+_CODICI_GRIGLIA = {"P", "AS", "F", "PE", "M", "R", "RS", "CH", "FNL", "X"}
+_MESI = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+    "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+    "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+}
+
+
+def _periodo_griglia(righe: List[tuple], nome_file: str = "") -> Tuple[int, int]:
+    primi = " ".join(str(v or "") for row in righe[:3] for v in row)
+    testo = testo_norm(primi)
+    anno_match = re.search(r"\b(20\d{2})\b", testo)
+    mese = next((numero for nome, numero in _MESI.items() if nome in testo), None)
+    if anno_match and mese:
+        return int(anno_match.group(1)), mese
+    file_match = re.search(r"(20\d{2})[_-](0?[1-9]|1[0-2])", nome_file or "")
+    if file_match:
+        return int(file_match.group(1)), int(file_match.group(2))
+    raise ValueError("mese e anno non riconoscibili dal titolo o dal nome del file")
+
+
+def analizza_presenze_griglia(righe: Iterable[Iterable[Any]], nome_file: str = "") -> Dict[str, Any]:
+    """Legge la griglia giorno-per-giorno esportata dalla pagina Presenze."""
+    righe = [tuple(row) for row in righe]
+    anno, mese = _periodo_griglia(righe, nome_file)
+    giorni_mese = calendar.monthrange(anno, mese)[1]
+    header_idx = None
+    colonne_giorni: Dict[int, int] = {}
+    for idx, row in enumerate(righe[:12]):
+        if not row or testo_norm(row[0]) != "dipendente":
+            continue
+        for colonna, valore in enumerate(row[1:], 1):
+            try:
+                giorno = int(str(valore).strip())
+            except (TypeError, ValueError):
+                continue
+            if 1 <= giorno <= giorni_mese:
+                colonne_giorni[giorno] = colonna
+        if set(colonne_giorni) == set(range(1, giorni_mese + 1)):
+            header_idx = idx
+            break
+    if header_idx is None:
+        raise ValueError("griglia non valida: servono Dipendente e tutti i giorni del mese")
+
+    record: List[Dict[str, Any]] = []
+    errori: List[Dict[str, Any]] = []
+    nominativi = set()
+    for numero, row in enumerate(righe[header_idx + 1:], header_idx + 2):
+        nome = str(row[0] if row else "").strip()
+        if not nome:
+            continue
+        if testo_norm(nome).startswith("legenda"):
+            break
+        nominativi.add(nome)
+        for giorno, colonna in colonne_giorni.items():
+            valore = row[colonna] if colonna < len(row) else None
+            codice = str(valore or "").strip().upper()
+            if not codice:
+                continue
+            if codice not in _CODICI_GRIGLIA:
+                errori.append({"foglio": nome_file or "Griglia presenze", "riga": numero,
+                               "nome": nome, "motivo": f"codice non riconosciuto al giorno {giorno}: {codice}"})
+                continue
+            record.append({
+                "codice_fiscale": None,
+                "nome_norm": nome_norm(nome),
+                "nome_file": nome,
+                "data": f"{anno:04d}-{mese:02d}-{giorno:02d}",
+                "stato": "presente" if codice == "P" else "assente" if codice == "AS" else "giustificato",
+                "giustificativo": codice,
+                "entrata": None,
+                "note": "Importato dalla griglia mensile Presenze",
+                "fonti": [{"foglio": nome_file or "Griglia presenze", "riga": numero}],
+            })
+    if not record:
+        raise ValueError("la griglia non contiene alcun codice presenza")
+    conteggi: Dict[str, int] = {}
+    for voce in record:
+        codice = voce["giustificativo"]
+        conteggi[codice] = conteggi.get(codice, 0) + 1
+    return {
+        "periodo": f"{anno:04d}-{mese:02d}",
+        "record": sorted(record, key=lambda x: (x["nome_file"], x["data"])),
+        "conteggi": conteggi,
+        "errori": errori,
+        "dipendenti_file": [],
+        "nominativi_da_associare": sorted(nominativi),
+        "formato": "griglia",
+    }
+
+
+def analizza_presenze_csv(raw: bytes, nome_file: str = "") -> Dict[str, Any]:
+    try:
+        testo = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        testo = raw.decode("cp1252")
+    try:
+        dialetto = csv.Sniffer().sniff(testo[:4096], delimiters=";,\t")
+        righe = csv.reader(io.StringIO(testo), dialect=dialetto)
+    except csv.Error:
+        righe = csv.reader(io.StringIO(testo), delimiter=";")
+    return analizza_presenze_griglia(righe, nome_file)
+
+
+def indicizza_dipendenti_per_nome(dipendenti: Iterable[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    indice: Dict[str, List[Dict[str, Any]]] = {}
+    for dip in dipendenti:
+        varianti = {
+            nome_norm(dip.get("nome_completo")),
+            nome_norm(f"{dip.get('cognome', '')} {dip.get('nome', '')}"),
+            nome_norm(f"{dip.get('nome', '')} {dip.get('cognome', '')}"),
+        }
+        for variante in varianti - {""}:
+            if dip not in indice.setdefault(variante, []):
+                indice[variante].append(dip)
+    return indice
+
+
+def analizza_presenze_workbook(wb, nome_file: str = "") -> Dict[str, Any]:
+    titoli = {testo_norm(ws.title) for ws in wb.worksheets}
+    richiesti = {testo_norm(x) for x in ("Riepilogo Consulente", "Presenze Giornaliere", "Assenze, Ferie, Malattie")}
+    if not richiesti.issubset(titoli):
+        ultimo_errore = None
+        for ws in wb.worksheets:
+            try:
+                return analizza_presenze_griglia(ws.iter_rows(values_only=True), nome_file or ws.title)
+            except ValueError as exc:
+                ultimo_errore = exc
+        raise ValueError(str(ultimo_errore or "griglia presenze non riconosciuta"))
+    return _analizza_presenze_consulente(wb)
+
+
+def _analizza_presenze_consulente(wb) -> Dict[str, Any]:
     """Restituisce celle P/M/F/PE/R/AS, senza inventare festivita' o riposi.
 
     Le assenze certificate prevalgono sulle timbrature fisiche. In particolare,
