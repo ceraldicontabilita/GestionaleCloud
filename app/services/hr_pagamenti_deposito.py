@@ -485,7 +485,9 @@ async def _arricchisci_esito(ctx: ContestoHR, esistente: Dict[str, Any],
     """Completa i soli campi vuoti dell'esito gia' presente (mai sovrascrive)."""
     aggiunte: Dict[str, Any] = {}
     for campo in ("cro", "hash", "pdf_data", "beneficiario", "causale",
-                  "gestionale_transfer_id", "gestionale_movimento_id", "gestionale_fonte"):
+                  "gestionale_transfer_id", "gestionale_movimento_id", "gestionale_fonte",
+                  "associazione_certa", "associazione_certa_motivo",
+                  "associazione_certa_fonte", "data_cessazione_rapporto"):
         if nuovo.get(campo) and not esistente.get(campo):
             aggiunte[campo] = nuovo[campo]
     if aggiunte.get("pdf_data"):
@@ -551,12 +553,18 @@ async def _ricalcola_periodi(ctx: ContestoHR) -> None:
     while ctx.periodi_toccati:
         dip, anno, mese = ctx.periodi_toccati.pop()
         tot = 0.0
+        tutti_certi = True
+        n_esiti = 0
         async for e in ctx.db.pagamenti_esiti.find(
-                {"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "importo": 1}):
+                {"dipendente_id": dip, "mese": mese, "anno": anno},
+                {"_id": 0, "importo": 1, "associazione_certa": 1}):
             tot += float(e.get("importo") or 0)
+            tutti_certi = tutti_certi and bool(e.get("associazione_certa"))
+            n_esiti += 1
         await ctx.db.paghe_mensili.update_one(
             {"dipendente_id": dip, "anno": anno, "mese": mese},
             {"$set": {"bonifico_importo": round(tot, 2), "bonifico_ricevuto": tot > 0,
+                      "bonifico_riconciliato_auto": bool(n_esiti and tutti_certi),
                       "bonifico_da_esiti": True, "updated_at": _now_iso()}})
         await _ricalcola_stato_paga(ctx.db, dip, anno, mese)
 
@@ -636,11 +644,20 @@ async def _deposita(
 
     mese, anno = periodo
     esistente, come = ctx.esito_equivalente(dip["id"], importo, data, hash_pdf, key)
+    from app.hr.services.regole_pagamenti_dipendenti import data_cessazione
+
     nuovo = {
         "key": key, "hash": hash_pdf, "cro": cro, "dipendente_id": dip["id"],
         "data": data, "importo": importo, "causale": causale,
         "beneficiario": _nome_dipendente(dip), "mese": mese, "anno": anno,
         "origine": origine, "pdf_data": pdf_data, "ha_pdf": bool(pdf_data),
+        # Il documento o la riga bancaria citano un solo dipendente (CF, nome
+        # completo o cognome univoco): per decisione del titolare questo e' un
+        # legame certo, non un candidato da confermare a mano.
+        "associazione_certa": motivo in {"cf", "nome", "cognome"},
+        "associazione_certa_motivo": motivo,
+        "associazione_certa_fonte": origine,
+        "data_cessazione_rapporto": data_cessazione(dip),
         **riferimento,
     }
     if esistente is not None:

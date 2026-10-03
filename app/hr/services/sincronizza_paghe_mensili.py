@@ -29,6 +29,7 @@ from typing import Any, Dict, Optional
 
 from app.constants.stati_associazione_bonifico import stato_paga_mese
 from app.hr.database import Collections
+from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
 from app.services.posizione_dipendente import ZERO, acconti_registro_del_mese, importo
 
 
@@ -115,6 +116,13 @@ async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
     async for a in db["acconti_dipendenti"].find({}, {"_id": 0}):
         acconti_per_dip.setdefault(a.get("dipendente_id"), []).append(a)
 
+    dipendenti_idx: Dict[Any, Dict[str, Any]] = {}
+    async for d in db["dipendenti"].find(
+            {}, {"_id": 0, "id": 1, "stato": 1, "attivo": 1, "in_carico": 1,
+                 "data_fine_rapporto": 1, "data_cessazione": 1,
+                 "data_dimissione": 1, "data_cessazione_prevista": 1}):
+        dipendenti_idx[d.get("id")] = d
+
     adesso = datetime.now(timezone.utc).isoformat()
     creati = aggiornati = saltati_manuali = 0
 
@@ -154,7 +162,8 @@ async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
             "origine": "cedolino",
             "updated_at": adesso,
         }
-        in_busta = (esistente or {}).get("acconti") or []
+        in_busta, _ = filtra_acconti_contanti(
+            dipendenti_idx.get(dip, {}), (esistente or {}).get("acconti") or [])
         acconti_pagati = (sum(_num(a.get("importo")) or 0 for a in in_busta)
                           + float(acconti_registro_del_mese(acconti_per_dip.get(dip, []), anno_c, mese_c, in_busta)))
         doc.update(_stato_e_saldo(c["netto"], round(bonifico_importo + acconti_pagati, 2)))

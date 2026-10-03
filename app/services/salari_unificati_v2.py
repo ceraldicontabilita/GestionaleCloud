@@ -839,6 +839,23 @@ async def registra_pagamento_salario(
     
     if not data_pagamento:
         data_pagamento = datetime.now(timezone.utc).isoformat()[:10]
+
+    data_fine_rapporto = None
+    if str(metodo or "").strip().lower() in {"contanti", "cassa", "cash"}:
+        from app.hr.services.regole_pagamenti_dipendenti import valuta_contanti
+
+        dipendente = await db["dipendenti"].find_one(
+            {"id": cedolino.get("dipendente_id")}, {"_id": 0})
+        if not dipendente and cedolino.get("codice_fiscale"):
+            dipendente = await db["dipendenti"].find_one(
+                {"codice_fiscale": cedolino.get("codice_fiscale")}, {"_id": 0})
+        ammesso, motivo, data_fine_rapporto = valuta_contanti(
+            dipendente or {}, data_pagamento)
+        if not ammesso:
+            return {"success": False, "errore": "Pagamento in contanti non ammesso",
+                    "codice": "CONTANTI_NON_AMMESSI", "motivo": motivo,
+                    "data_pagamento": data_pagamento,
+                    "data_cessazione": data_fine_rapporto}
     
     # Calcola nuovo saldo
     nuovo_pagato = pagato_finora + importo
@@ -865,6 +882,8 @@ async def registra_pagamento_salario(
         "anno": cedolino.get("anno"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    if data_fine_rapporto:
+        pagamento["data_cessazione_rapporto"] = data_fine_rapporto
     
     await db["pagamenti_salari"].insert_one(dict(pagamento).copy())
 
@@ -896,6 +915,8 @@ async def registra_pagamento_salario(
         "source": "pagamento_salario_v2",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    if data_fine_rapporto:
+        pn_movimento["data_cessazione_rapporto"] = data_fine_rapporto
     
     await db[pn_collection].insert_one(dict(pn_movimento).copy())
     

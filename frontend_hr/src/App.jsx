@@ -5355,10 +5355,13 @@ function PagheBonificiPage({ dipendenti = [] }) {
         dipendente_id: editAcc.dipendente_id, anno: editAcc.anno, mese: editAcc.mese,
         acconti: editAcc.acconti.filter(a => a.importo !== "" && a.importo != null),
       });
-      toast(`Acconti salvati (${r.data?.acconti?.length || 0}) · stato ${r.data?.stato}`);
+      toast(`Contanti salvati (${r.data?.acconti?.length || 0}) · stato ${r.data?.stato}`);
       setEditAcc(null);
       await load();
-    } catch (e) { toast(e?.response?.data?.detail || "Errore nel salvataggio degli acconti", "err"); }
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      toast(typeof detail === "string" ? detail : detail?.messaggio || "Errore nel salvataggio dei contanti", "err");
+    }
     finally { setBusy(null); }
   };
 
@@ -5568,9 +5571,10 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <div>
           <h2 style={{ margin: 0, color: "#2a3329" }}>Archivio paghe</h2>
           <p className="dc-muted" style={{ marginTop: 4 }}>
-            Per ogni busta: importo dal cedolino, <b>bonifici realmente pagati</b> (banca), acconti in contanti e saldo.
+            Per ogni busta: importo dal cedolino, <b>bonifici realmente pagati</b> (banca), eventuali contanti ammessi e saldo.
             Una sola pagina, un solo motore: i bonifici arrivano da soli dal gestionale (fascicoli Drive ed estratto conto),
-            quelli da decidere a mano stanno in «Bonifici da associare». Clicca il nome per la prima nota del dipendente.
+            quelli da decidere a mano stanno in «Bonifici da associare». Dal 1 luglio 2018 i contanti sono ammessi solo
+            dopo una cessazione registrata con data. Clicca il nome per la prima nota del dipendente.
           </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }} aria-label="Archivi collegati">
             <a href="/hr/portale" className="dc-btn" title="Apre il minisito mobile con PIN usato dai collaboratori">
@@ -5839,6 +5843,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                 const stInfo = STATI[r.stato] || { label: r.stato, variant: "default" };
                 const qInfo = r.qualita ? QUALITA[r.qualita] : null;
                 const periodoLbl = (r.mese >= 1 && r.mese <= 12) ? `${mesi[r.mese - 1]} ${r.anno}` : r.mese === 13 ? `13ª ${r.anno}` : r.mese === 14 ? `14ª ${r.anno}` : `${r.mese}/${r.anno}`;
+                const contantiAmmessi = r.anno < 2018 || (r.anno === 2018 && r.mese < 7) || Boolean(r.data_cessazione_rapporto);
                 return (
                   <Fragment key={k}>
                     <tr style={{ background: exp ? "#f7f4ec" : "transparent" }}>
@@ -5876,7 +5881,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                       <td style={td}><Badge variant={stInfo.variant}>{stInfo.label}</Badge></td>
                       <td style={td}>
                         {r.riconciliato
-                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#234d3d", fontWeight: 700, fontSize: 12 }}><CheckCircle2 size={14} /> Confermata</span>
+                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#234d3d", fontWeight: 700, fontSize: 12 }}><CheckCircle2 size={14} /> {r.riconciliato_auto ? "Certa da riferimento" : "Confermata"}</span>
                           : qInfo
                             ? <span style={{ background: qInfo.bg, color: qInfo.col, border: `1px solid ${qInfo.bd}`, borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{qInfo.txt}</span>
                             : <span style={{ color: "#9aa295", fontSize: 12 }}>—</span>}
@@ -5900,9 +5905,9 @@ function PagheBonificiPage({ dipendenti = [] }) {
                           {exp ? "Nascondi" : `Dettagli${r.n_bonifici ? ` (${r.n_bonifici})` : ""}`}
                         </button>
                         {(r.bonifico > 0 || r.stato === "in_attesa_busta") && (
-                          r.riconciliato
+                          r.riconciliato && !r.riconciliato_auto
                             ? <button className="dc-btn" disabled={busy === k} onClick={() => conferma(r, false)} style={{ fontSize: 12, padding: "4px 8px", marginLeft: 6 }}>Annulla</button>
-                            : <button className="dc-btn" disabled={busy === k} onClick={() => conferma(r, true)} style={{ fontSize: 12, padding: "4px 8px", marginLeft: 6 }}>Conferma</button>
+                            : !r.riconciliato && <button className="dc-btn" disabled={busy === k} onClick={() => conferma(r, true)} style={{ fontSize: 12, padding: "4px 8px", marginLeft: 6 }}>Conferma</button>
                         )}
                       </td>
                     </tr>
@@ -5970,7 +5975,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                             </table>
                           </>)}
                           <div style={{ marginTop: r.bonifici.length ? 12 : 0 }}>
-                            <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Acconti in contanti (massimo 3)</div>
+                            <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Contanti ammessi (massimo 3)</div>
                             {editAcc && editAcc.k === k ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 {editAcc.acconti.map((a, i) => (
@@ -5989,7 +5994,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
                             ) : (
                               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
                                 <span>{r.acconti > 0 ? `€ ${eur(r.acconti)} già registrati` : "nessun acconto"}</span>
-                                <button className="dc-btn" onClick={() => setEditAcc({ k, dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, acconti: (r.acconti_dettaglio || []).map(a => ({ importo: a.importo ?? "", data: a.data || "" })) })} style={{ fontSize: 12, padding: "3px 8px" }}>Modifica acconti</button>
+                                {contantiAmmessi
+                                  ? <button className="dc-btn" onClick={() => setEditAcc({ k, dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, acconti: (r.acconti_dettaglio || []).map(a => ({ importo: a.importo ?? "", data: a.data || "" })) })} style={{ fontSize: 12, padding: "3px 8px" }}>Modifica contanti</button>
+                                  : <span style={{ color: "#7a8576", fontSize: 12 }}>Non ammessi: rapporto non cessato</span>}
+                                {r.data_cessazione_rapporto && <span style={{ color: "#7a8576", fontSize: 12 }}>Cessazione: {r.data_cessazione_rapporto}</span>}
+                                {r.acconti_non_ammessi > 0 && <span style={{ color: "#7d5526", fontSize: 12 }}>{r.acconti_non_ammessi} movimento/i esclusi dal saldo e conservati nello storico</span>}
                               </div>
                             )}
                           </div>
