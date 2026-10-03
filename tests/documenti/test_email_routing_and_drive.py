@@ -1,3 +1,5 @@
+import hashlib
+
 from app.services.email_drive_archive import route_for_document_type
 from app.services import email_drive_archive
 from app.services.email_monitor_service import _risolvi_tipo_documento_email
@@ -99,6 +101,35 @@ class _DriveFilesDuplicate(_DriveFiles):
         raise AssertionError("un SHA-256 gia' presente non va caricato di nuovo")
 
 
+class _DriveFilesOwnerUpload(_DriveFiles):
+    def __init__(self, content):
+        super().__init__()
+        self.content = content
+        self.updated_body = None
+
+    def list(self, **kwargs):
+        self.list_calls += 1
+        if self.list_calls == 1:
+            return _DriveRequest({"files": [{"id": "elaborate-folder"}]})
+        if "gestionale_sha256" in kwargs.get("q", ""):
+            return _DriveRequest({"files": []})
+        return _DriveRequest({"files": [{
+            "id": "owner-1", "name": "scheda.pdf", "appProperties": {},
+            "md5Checksum": hashlib.md5(self.content, usedforsecurity=False).hexdigest(),
+        }]})
+
+    def get_media(self, **kwargs):
+        assert kwargs["fileId"] == "owner-1"
+        return _DriveRequest(self.content)
+
+    def update(self, **kwargs):
+        self.updated_body = kwargs["body"]
+        return _DriveRequest({"id": kwargs["fileId"], **kwargs["body"]})
+
+    def create(self, **kwargs):
+        raise AssertionError("l'originale del titolare gia' verificato non va duplicato")
+
+
 class _DriveService:
     def __init__(self):
         self.files_api = _DriveFiles()
@@ -121,6 +152,24 @@ def test_archivio_deduplica_per_sha256_anche_con_nome_diverso(monkeypatch):
     assert result["status"] == "duplicate"
     assert result["drive_file_id"] == "canonical-1"
     assert len(result["sha256"]) == 64
+
+
+def test_archivio_riusa_upload_del_titolare_solo_dopo_verifica_dei_byte(monkeypatch):
+    content = b"%PDF-originale-del-titolare"
+    service = _DriveService()
+    service.files_api = _DriveFilesOwnerUpload(content)
+    monkeypatch.setenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "radice-dati")
+    monkeypatch.setattr(email_drive_archive, "_drive_service", lambda: service)
+
+    result = email_drive_archive.archive_document_copy(
+        {"id": "scheda-1", "filename": "scheda.pdf", "content": content},
+        "scheda_tecnica",
+    )
+
+    assert result["status"] == "duplicate"
+    assert result["drive_file_id"] == "owner-1"
+    assert result["sha256"] == hashlib.sha256(content).hexdigest()
+    assert service.files_api.updated_body["appProperties"]["gestionale_sha256"] == result["sha256"]
 
 
 def test_archivio_usa_elaborate_della_cartella_unica_e_registra_quota(monkeypatch):
