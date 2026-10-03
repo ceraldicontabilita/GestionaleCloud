@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { apiError } from "../../utils/apiError";
 import axios from "axios";
 import { toast } from "sonner";
 import {
-  FileText, Search, ExternalLink, Check, Trash2, Plus, X, AlertCircle, Bell,
+  FileText, Search, ExternalLink, Check, Trash2, Plus, X, AlertCircle, Bell, Upload,
 } from "lucide-react";
 import { API } from "../../utils/constants";
 import { apriDocumentoAutenticato } from "../../auth";
@@ -143,6 +143,10 @@ export default function SchedeTecnicheView() {
   const [search, setSearch] = useState("");
   const [filtro, setFiltro] = useState("tutti");
   const [modalProd, setModalProd] = useState(null);
+  const [filesImport, setFilesImport] = useState([]);
+  const [previewImport, setPreviewImport] = useState(null);
+  const [importando, setImportando] = useState(false);
+  const importLock = useRef(false);
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -161,6 +165,64 @@ export default function SchedeTecnicheView() {
   }, []);
 
   useEffect(() => { carica(); }, [carica]);
+
+  const preparaImport = async (scelti) => {
+    const files = Array.from(scelti || []);
+    if (!files.length || importLock.current) return;
+    importLock.current = true;
+    setImportando(true);
+    setFilesImport(files);
+    setPreviewImport(null);
+    try {
+      const form = new FormData();
+      files.forEach((file) => form.append("files", file));
+      const risposta = await axios.post(`${API}/schede-tecniche/importa/anteprima`, form);
+      setPreviewImport({
+        ...risposta.data,
+        schede: (risposta.data?.schede || []).map((scheda) => ({
+          ...scheda,
+          associazione_confermata: scheda.associazione?.stato === "proposta_certa" ? scheda.associazione.nome : "",
+        })),
+      });
+    } catch (e) {
+      setFilesImport([]);
+      toast.error("Anteprima non riuscita: " + apiError(e));
+    } finally {
+      importLock.current = false;
+      setImportando(false);
+    }
+  };
+
+  const confermaImport = async () => {
+    if (!previewImport || filesImport.length !== previewImport.schede?.length || importLock.current) return;
+    importLock.current = true;
+    setImportando(true);
+    try {
+      const form = new FormData();
+      filesImport.forEach((file) => form.append("files", file));
+      previewImport.schede.forEach((scheda) => form.append("preview_tokens", scheda.preview_token));
+      previewImport.schede.forEach((scheda) => form.append("associazioni_confermate", scheda.associazione_confermata || ""));
+      const risposta = await axios.post(`${API}/schede-tecniche/importa/conferma`, form);
+      toast.success(`${risposta.data?.nuovi_originali || 0} nuovi originali archiviati`);
+      setFilesImport([]);
+      setPreviewImport(null);
+      await carica();
+    } catch (e) {
+      toast.error("Import non riuscito: " + apiError(e));
+    } finally {
+      importLock.current = false;
+      setImportando(false);
+    }
+  };
+
+  const aggiornaAssociazioneImport = (indice, nome) => {
+    setPreviewImport((corrente) => ({
+      ...corrente,
+      schede: corrente.schede.map((scheda, i) => (
+        i === indice ? { ...scheda, associazione_confermata: nome } : scheda
+      )),
+    }));
+  };
 
   const elimina = async (key, tipo) => {
     try {
@@ -188,6 +250,79 @@ export default function SchedeTecnicheView() {
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: SALVIA, maxWidth: 700, margin: "0 auto" }}>
       {/* Titolo nell'intestazione uniforme di pagina */}
+
+      <div style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <Upload size={17} color={SAGE} />
+          <strong style={{ fontSize: 14 }}>Carica schede PDF</strong>
+        </div>
+        <div style={{ fontSize: 12, color: "#6b7669", lineHeight: 1.45, marginBottom: 10 }}>
+          Seleziona più file. Prima vedrai SHA-256, dati letti, duplicati e associazioni; nessun originale viene archiviato senza conferma.
+        </div>
+        <input
+          type="file" accept="application/pdf,.pdf" multiple disabled={importando}
+          onChange={(e) => preparaImport(e.target.files)}
+          style={{ ...INPUT, padding: 8 }}
+        />
+        <datalist id="prodotti-schede-tecniche">
+          {prodotti.map((p) => <option key={p.prodotto_key} value={p.nome} />)}
+        </datalist>
+        {importando && <div style={{ fontSize: 12, color: "#6b7669", marginTop: 8 }}>Lettura in corso…</div>}
+        {previewImport && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+              {previewImport.files_ricevuti} file · {previewImport.originali_unici} originali unici
+            </div>
+            <div style={{ display: "grid", gap: 7, maxHeight: 360, overflowY: "auto" }}>
+              {previewImport.schede.map((s, i) => (
+                <div key={`${s.sha256}-${i}`} style={{ border: `1px solid ${LINE}`, borderRadius: 9, padding: 9, fontSize: 11, color: "#2a3329" }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <strong style={{ flex: 1, overflowWrap: "anywhere" }}>{s.filename}</strong>
+                    {s.duplicato_nel_lotto && <span style={{ color: "#9c6a32", fontWeight: 700 }}>copia identica</span>}
+                  </div>
+                  <div style={{ fontFamily: "monospace", overflowWrap: "anywhere", color: "#6b7669", marginTop: 3 }}>SHA-256 {s.sha256}</div>
+                  <div style={{ marginTop: 4 }}>
+                    Codice: {s.codice_fornitore || "non disponibile"} · Prodotto nel PDF: {s.nome_dichiarato || "da verificare"}
+                  </div>
+                  {s.metadati_tecnici?.produttore_dichiarato && <div>Produttore: {s.metadati_tecnici.produttore_dichiarato}</div>}
+                  {(s.metadati_tecnici?.revisione_dichiarata || s.metadati_tecnici?.data_documento_dichiarata) && (
+                    <div>
+                      Documento: {s.metadati_tecnici.revisione_dichiarata || "revisione non dichiarata"}
+                      {s.metadati_tecnici.data_documento_dichiarata ? ` · data ${s.metadati_tecnici.data_documento_dichiarata}` : ""}
+                    </div>
+                  )}
+                  <div>
+                    Allergeni: {(s.allergeni || []).length ? nomiAllergeni(s.allergeni) : "nessuno letto"}
+                    {(s.allergeni_tracce || []).length ? ` · tracce: ${nomiAllergeni(s.allergeni_tracce)}` : ""}
+                    {s.allergeni_stato === "da_verificare" ? " · DA VERIFICARE" : ""}
+                  </div>
+                  <div style={{ color: s.associazione?.stato === "proposta_certa" ? "#3d8168" : "#c4894a", fontWeight: 700 }}>
+                    {s.associazione?.stato === "proposta_certa"
+                      ? `Associazione esatta: ${s.associazione.nome}`
+                      : `Associazione DA VERIFICARE: ${s.associazione?.motivo || "nessuna prova"}`}
+                  </div>
+                  <label style={{ display: "block", marginTop: 6, fontWeight: 700 }}>
+                    Associazione confermata (nome esatto già presente)
+                    <input
+                      list="prodotti-schede-tecniche"
+                      value={s.associazione_confermata || ""}
+                      onChange={(e) => aggiornaAssociazioneImport(i, e.target.value)}
+                      placeholder="Lascia vuoto per conservare DA VERIFICARE"
+                      style={{ ...INPUT, padding: "6px 8px", fontSize: 11, marginTop: 3 }}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button onClick={() => { setPreviewImport(null); setFilesImport([]); }} disabled={importando} style={btn(CREAM, "#6b7669", { flex: 1, border: `1px solid ${LINE}` })}>Annulla</button>
+              <button onClick={confermaImport} disabled={importando} style={btn(SAGE, "#fff", { flex: 1 })}>
+                <Check size={14} /> Conferma originali
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Proposte nuovi prodotti */}
       {proposte.length > 0 && (

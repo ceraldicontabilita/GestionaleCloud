@@ -408,7 +408,7 @@ async def stato_integrazioni(_admin=Depends(require_admin)):
             "destinatari_default": len(wa_dest),
         },
         "database": {
-            "tipo": "supabase" if has("LOTTI_SUPABASE_URL") else "memoria_non_persistente",
+            "tipo": "supabase" if has("LOTTI_SUPABASE_URL") else "configurazione_assente",
             "LOTTI_SUPABASE_URL": has("LOTTI_SUPABASE_URL"),
             "LOTTI_SUPABASE_ANON_KEY": has("LOTTI_SUPABASE_ANON_KEY"),
             "LOTTI_DB_SECRET": has("LOTTI_DB_SECRET"),

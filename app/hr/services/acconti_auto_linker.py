@@ -10,7 +10,6 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ def _find_dipendente_by_name(cognome_nome: str, dipendenti_cache: Dict[str, Dict
     return None
 
 
-async def scan_and_link_acconti(db: AsyncIOMotorDatabase, dry_run: bool = False) -> Dict[str, Any]:
+async def scan_and_link_acconti(db: Any, dry_run: bool = False) -> Dict[str, Any]:
     """
     Scansiona estratto_conto_movimenti per bonifici a dipendenti,
     crea record in pagamenti_dipendenti con link al cedolino del mese.
@@ -157,7 +156,7 @@ async def scan_and_link_acconti(db: AsyncIOMotorDatabase, dry_run: bool = False)
     return stats
 
 
-async def get_pagamenti_dipendente(db: AsyncIOMotorDatabase, dipendente_id: str, anno: Optional[int] = None) -> List[Dict[str, Any]]:
+async def get_pagamenti_dipendente(db: Any, dipendente_id: str, anno: Optional[int] = None) -> List[Dict[str, Any]]:
     q: Dict[str, Any] = {"dipendente_id": dipendente_id}
     if anno:
         q["anno_riferimento"] = anno

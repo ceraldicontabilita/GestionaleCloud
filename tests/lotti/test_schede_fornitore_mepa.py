@@ -7,8 +7,10 @@ quoted-printable (``=0A``, ``=09``, a capo morbidi) con le entità HTML
 fattura ME.PA.: è la chiave che lega scheda, fattura, lotto e ricetta.
 """
 import asyncio
+import io
 
 import pytest
+from fastapi import UploadFile
 from mongomock_motor import AsyncMongoMockClient
 
 from app.lotti.servizi import articoli_fattura
@@ -16,6 +18,7 @@ from app.lotti.servizi.schede_fornitore import (
     completa_allergeni_con_schede,
     estrai_codice_e_descrizione,
     leggi_allergeni,
+    leggi_metadati_tecnici,
     leggi_valori_nutrizionali,
     registra_scheda_tecnica,
 )
@@ -75,6 +78,35 @@ def test_scheda_senza_allergeni_non_inventa_niente():
     assert esito["allergeni"] == [] and esito["allergeni_stato"] == "da_verificare"
 
 
+def test_x_di_tabella_senza_coordinate_non_diventa_un_allergene_falso():
+    testo = """INGREDIENTI (come da Reg. UE n. 1169/2011)
+    Farina di frumento, zucchero, uova in polvere, latte scremato in polvere.
+    ALLERGENI  Assenza  Presenza certa (tra gli ingredienti)  Presenza possibile di tracce
+    Cereali contenenti glutine X
+    Crostacei X
+    Uova X
+    Soia X
+    Latte X
+    Senape X"""
+    esito = leggi_allergeni(testo)
+    assert set(esito["allergeni"]) == {"glutine", "uova", "latte"}
+    assert "crostacei" not in esito["allergeni"] and "senape" not in esito["allergeni"]
+    assert esito["tabella_colonne_da_verificare"] is True
+    assert esito["allergeni_stato"] == "da_verificare"
+
+
+def test_ingredienti_e_tracce_restano_distinti_anche_con_tabella_x_ambigua():
+    testo = """Ingredienti: zucchero, armelline (27%), mandorle (25%), acqua.
+    Può contenere tracce di altra frutta a guscio e soia.
+    ALLERGENI Assenza Presenza certa Presenza possibile di tracce
+    Frutta a guscio +
+    Soia +"""
+    esito = leggi_allergeni(testo)
+    assert esito["allergeni"] == ["frutta_guscio"]
+    assert esito["allergeni_tracce"] == ["soia"]
+    assert esito["allergeni_stato"] == "da_verificare"
+
+
 def test_valori_nutrizionali_solo_dopo_la_tabella_e_come_stringhe():
     testo = """Ingredienti: zucchero, sale, grassi vegetali.
     VALORI NUTRIZIONALI MEDI per 100 g
@@ -95,6 +127,38 @@ def test_valori_nutrizionali_solo_dopo_la_tabella_e_come_stringhe():
 def test_nessuna_tabella_nessun_valore():
     v = leggi_valori_nutrizionali("Ingredienti: sale 2 g, grassi 3 g")
     assert all(x is None for x in v.values())
+
+
+def test_metadati_tecnici_solo_da_campi_espliciti():
+    testo = """PRE GEL S.P.A.
+    Scheda Tecnica UNIVERSAL CAKE
+    Rev. 3.1 del 11/09/2024
+    INGREDIENTI
+    Farina di frumento, zucchero, uova in polvere.
+    CONSERVAZIONE - SHELF LIFE
+    Conservare nell'imballaggio originale in luogo fresco e asciutto.
+    18 mesi dalla data di produzione.
+    IMBALLAGGIO - PALLETTIZZAZIONE
+    Sacco da 10 kg in cartone."""
+    m = leggi_metadati_tecnici(testo)
+    assert m["produttore_dichiarato"] == "PRE GEL S.P.A"
+    assert "Farina di frumento" in m["composizione_dichiarata"]
+    assert "luogo fresco e asciutto" in m["conservazione_dichiarata"]
+    assert "Sacco da 10 kg" in m["confezionamento_dichiarato"]
+    assert m["revisione_dichiarata"] == "Rev. 3.1 del 11/09/2024"
+    assert m["data_documento_dichiarata"] == "11/09/2024"
+
+
+def test_metadati_assenti_restano_vuoti():
+    m = leggi_metadati_tecnici("Descrizione libera priva di campi tecnici")
+    assert all(v is None for v in m.values())
+
+
+def test_energia_pregel_kj_kcal_nello_stesso_valore():
+    v = leggi_valori_nutrizionali("""DICHIARAZIONE NUTRIZIONALE (per 100 g)
+    ENERGIA GRASSI CARBOIDRATI PROTEINE SALE
+    527 / 126 (kJ / kcal)""")
+    assert v["energia_kj"] == "527" and v["energia_kcal"] == "126"
 
 
 def test_registra_idempotente_per_codice_e_conserva_i_pdf(db):
@@ -145,6 +209,27 @@ def test_lotto_consumato_con_la_stessa_descrizione_aggancia_la_scheda(db):
         corpo="del prodotto BADA001 - WHITE CREAM RICOTTA CONGELATA CF 6 KG Order Sender"))
     info = run(completa_allergeni_con_schede(db, ["WHITE CREAM RICOTTA CONGELATA CF 6 KG"], _info_vuota()))
     assert info["allergeni_presenti"] == ["latte"]
+
+
+def test_ricetta_apre_lo_stesso_originale_da_mapping_confermato(db, monkeypatch):
+    from app.lotti.routers import schede_tecniche as router
+
+    monkeypatch.setattr(router, "db", db)
+    run(registra_scheda_tecnica(
+        db, documento_id="doc-strutto", pdf_sha256="c" * 64,
+        testo_pdf="Ingredienti\nGrasso animale.\nAllergeni: nessuno",
+        oggetto="cod. articolo MIO002",
+        corpo="del prodotto MIO002 - MIO STRUTTO 15 KG Order Sender",
+        drive_file_id="DRV-STRUTTO"))
+    run(db.nome_mapping.insert_one({
+        "descrizione_key": "mio strutto 15 kg", "nome_canc": "Strutto",
+        "confermato": True, "alimentare": True, "ingredienti_ricetta": ["strutto"],
+    }))
+    articoli_fattura.invalida_cache()
+    esito = run(router.risolvi_scheda("strutto"))
+    assert esito["fonte"] == "mapping_confermato"
+    assert esito["scheda"]["documento_id"] == "doc-strutto"
+    assert esito["scheda"]["url"] == "/lotti/api/schede-tecniche/pdf/doc-strutto"
 
 
 def test_guasto_delle_schede_non_blocca_la_produzione():
@@ -252,3 +337,91 @@ def test_ricostruzione_rilegge_i_pdf_archiviati_senza_duplicare(db, monkeypatch)
         esito = run(router._ricostruisci_schede(500))
         assert esito["lette"] == 1 and esito["registrate"] == 1 and esito["errori"] == []
     assert run(db.schede_tecniche.count_documents({})) == 1
+
+
+def test_anteprima_multipla_conta_due_mio002_come_un_originale(db, monkeypatch):
+    from app.lotti.routers import schede_tecniche as router
+
+    monkeypatch.setattr(router, "db", db)
+    monkeypatch.setattr("app.services.pdf_text_extraction.extract_pdf_text", lambda _b: "Scheda tecnica\nGRANELLA DI ZUCCHERO")
+    contenuto = b"%PDF-1.4 stessa scheda"
+    files = [
+        UploadFile(filename="Scheda_prodotto_MIO002_20260917131156.pdf", file=io.BytesIO(contenuto)),
+        UploadFile(filename="Scheda_prodotto_MIO002_20260917131156 (1).pdf", file=io.BytesIO(contenuto)),
+    ]
+    esito = run(router.anteprima_import_schede(files=files, _admin=None))
+    assert esito["files_ricevuti"] == 2 and esito["originali_unici"] == 1
+    assert esito["schede"][0]["duplicato_nel_lotto"] is False
+    assert esito["schede"][1]["duplicato_nel_lotto"] is True
+    assert esito["schede"][0]["sha256"] == esito["schede"][1]["sha256"]
+
+
+def test_conferma_multipla_riusa_documento_e_drive_per_sha256(db, monkeypatch):
+    from app.database import Database
+    from app.lotti.routers import schede_tecniche as router
+
+    erp = AsyncMongoMockClient()["Erp_Test"]
+    monkeypatch.setattr(router, "db", db)
+    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: erp))
+    monkeypatch.setattr("app.services.pdf_text_extraction.extract_pdf_text", lambda _b: "Scheda tecnica\nPRODOTTO SENZA MATCH")
+    chiamate = []
+
+    def archivia(doc, tipo):
+        chiamate.append((doc, tipo))
+        return {"status": "archived", "drive_file_id": "DRV-1", "sha256": __import__("hashlib").sha256(doc["content"]).hexdigest()}
+
+    monkeypatch.setattr("app.services.email_drive_archive.archive_document_copy", archivia)
+    contenuto = b"%PDF-1.4 stessa scheda"
+    preview_files = [UploadFile(filename=f"Scheda_prodotto_MIO002_20260917131156{suffix}.pdf", file=io.BytesIO(contenuto))
+                     for suffix in ("", " (1)")]
+    preview = run(router.anteprima_import_schede(files=preview_files, _admin=None))
+    confirm_files = [UploadFile(filename=f"Scheda_prodotto_MIO002_20260917131156{suffix}.pdf", file=io.BytesIO(contenuto))
+                     for suffix in ("", " (1)")]
+    esito = run(router.conferma_import_schede(
+        files=confirm_files,
+        preview_tokens=[r["preview_token"] for r in preview["schede"]],
+        _admin=None,
+    ))
+    assert esito["ricevuti"] == 2 and esito["nuovi_originali"] == 1
+    assert len(chiamate) == 1
+    assert esito["risultati"][0]["documento_id"] == esito["risultati"][1]["documento_id"]
+    assert run(erp.schede_tecniche_email_attachments.count_documents({})) == 1
+
+
+def test_correzione_associazione_accetta_solo_nome_esatto_esistente(db, monkeypatch):
+    from app.database import Database
+    from app.lotti.routers import schede_tecniche as router
+
+    erp = AsyncMongoMockClient()["Erp_Test"]
+    run(db.dizionario_prodotti.insert_one({
+        "id": "p1", "nome_originale": "MIO STRUTTO 15 KG", "nome_normalizzato": "Mio Strutto 15 kg",
+    }))
+    monkeypatch.setattr(router, "db", db)
+    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: erp))
+    monkeypatch.setattr("app.services.pdf_text_extraction.extract_pdf_text", lambda _b: "Scheda tecnica\nPRODOTTO")
+    monkeypatch.setattr("app.services.email_drive_archive.archive_document_copy", lambda _doc, _tipo: {
+        "status": "archived", "drive_file_id": "DRV-MIO",
+    })
+    contenuto = b"%PDF-1.4 scheda strutto"
+    preview = run(router.anteprima_import_schede(
+        files=[UploadFile(filename="Scheda_prodotto_MIO002_20260917.pdf", file=io.BytesIO(contenuto))],
+        _admin=None,
+    ))
+    esito = run(router.conferma_import_schede(
+        files=[UploadFile(filename="Scheda_prodotto_MIO002_20260917.pdf", file=io.BytesIO(contenuto))],
+        preview_tokens=[preview["schede"][0]["preview_token"]],
+        associazioni_confermate=["MIO STRUTTO 15 KG"],
+        _admin=None,
+    ))
+    assert esito["risultati"][0]["associazione"]["stato"] == "confermata_titolare"
+    salvata = run(db.schede_tecniche.find_one({}, {"_id": 0}))
+    assert salvata["nome_prodotto"] == "MIO STRUTTO 15 KG"
+
+
+def test_correzione_associazione_rifiuta_nome_non_esistente(db, monkeypatch):
+    from app.lotti.routers import schede_tecniche as router
+
+    monkeypatch.setattr(router, "db", db)
+    with pytest.raises(Exception) as exc:
+        run(router._conferma_associazione_esatta("PRODOTTO INVENTATO"))
+    assert getattr(exc.value, "status_code", None) == 409

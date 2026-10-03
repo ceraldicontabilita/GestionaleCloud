@@ -49,7 +49,7 @@ def _file_con_lista_propria():
     """File che elencano a mano piu' di un valore di «non configurato»."""
     colpevoli = []
     for percorso in sorted(RADICE.rglob("*.py")):
-        relativo = str(percorso.relative_to(RADICE))
+        relativo = percorso.relative_to(RADICE).as_posix()
         if relativo in AMMESSI:
             continue
         testo = percorso.read_text(encoding="utf-8")

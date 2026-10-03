@@ -31,6 +31,7 @@ __all__ = [
     "estrai_codice_e_descrizione",
     "leggi_allergeni",
     "leggi_valori_nutrizionali",
+    "leggi_metadati_tecnici",
     "registra_scheda_tecnica",
     "allergeni_da_schede",
     "completa_allergeni_con_schede",
@@ -62,7 +63,7 @@ ALLERGENI_UE: Dict[str, List[str]] = {
     "molluschi": ["molluschi"],
 }
 
-_SI = r"(?:s[iì]|yes|x|presente|contiene|present)"
+_SI = r"(?:s[iì]|yes|presente|contiene|present)"
 _NO = r"(?:no|assente|absent|non presente)"
 
 
@@ -78,6 +79,149 @@ def _trova_allergeni(testo: str) -> List[str]:
                 trovati.append(aid)
                 break
     return trovati
+
+
+def _sezione_ingredienti(testo: str) -> str:
+    """Restituisce solo la dichiarazione ingredienti, fermandosi al titolo dopo.
+
+    Nei PDF reali i titoli sono spesso numerati (``7 Ingredienti``, ``9
+    Allergeni``). Una regex libera finiva per includere l'intera tabella degli
+    allergeni e trasformava tutte le sue etichette in ingredienti presenti.
+    """
+    righe = testo.splitlines()
+    raccolte: list[str] = []
+    dentro = False
+    stop = re.compile(
+        r"^\s*(?:\d+\s+)?(?:allergeni|cross contamination|modalit[aà]|caratteristiche|packaging|"
+        r"conservazione|parametri|dichiarazione nutrizionale|valori nutrizionali|etichettatura|imballaggio|"
+        r"(?:il prodotto\s+)?pu[oò] contenere)\b",
+        re.I,
+    )
+    start = re.compile(r"^\s*(?:\d+\s+)?(?:ingredienti|composizione merceologica|composition)\b", re.I)
+    for riga in righe:
+        if not dentro:
+            if not start.search(riga) or re.search(r"ingredienti\s*/\s*allergeni", riga, re.I):
+                continue
+            dentro = True
+            coda = re.sub(start, "", riga, count=1).lstrip(" :.-")
+            if coda:
+                raccolte.append(coda)
+            continue
+        if stop.search(riga):
+            break
+        # ``8 Composizione`` continua la stessa dichiarazione.
+        if re.match(r"^\s*\d+\s+composizione\b", riga, re.I):
+            continue
+        raccolte.append(riga)
+        if len(raccolte) >= 40 or sum(map(len, raccolte)) >= 1800:
+            break
+    return "\n".join(raccolte)
+
+
+def _blocco_esplicito(testo: str, start: str, stop: str, *, max_righe: int = 12) -> Optional[str]:
+    """Legge un blocco etichettato senza completarlo con dati dedotti."""
+    righe = (testo or "").replace("\r", "").splitlines()
+    raccolte: list[str] = []
+    dentro = False
+    rx_start = re.compile(start, re.I)
+    rx_stop = re.compile(stop, re.I)
+    for riga in righe:
+        pulita = re.sub(r"\s+", " ", riga).strip()
+        if not dentro:
+            if not rx_start.search(pulita):
+                continue
+            dentro = True
+            coda = rx_start.sub("", pulita, count=1).lstrip(" :.-–—")
+            if coda:
+                raccolte.append(coda)
+            continue
+        if raccolte and rx_stop.search(pulita):
+            break
+        if pulita:
+            raccolte.append(pulita)
+        if len(raccolte) >= max_righe or sum(map(len, raccolte)) >= 1800:
+            break
+    valore = "\n".join(raccolte).strip()
+    return valore or None
+
+
+def leggi_metadati_tecnici(testo_pdf: str) -> Dict[str, Optional[str]]:
+    """Metadati dichiarati nella scheda, come testo originale verificabile.
+
+    I layout dei produttori non sono uniformi. Questa funzione riconosce solo
+    intestazioni esplicite e non ricava produttore, durata o confezione dal nome
+    del file o da conoscenze esterne.
+    """
+    testo = (testo_pdf or "").replace("\r", "")
+    stop_comune = (
+        r"^(?:\d+\s+)?(?:caratteristiche|allergeni|valori nutrizionali|dichiarazione nutrizionale|"
+        r"conservazione|condizioni di conservazione|modalit[aà].*conservazione|confezione|packaging|"
+        r"imballaggio|utilizzo|dosaggio|informazioni prodotto)\b"
+    )
+    composizione = _sezione_ingredienti(testo) or _blocco_esplicito(
+        testo, r"^(?:\d+\s+)?composizione merceologica\b", stop_comune)
+    conservazione = _blocco_esplicito(
+        testo,
+        r"^(?:\d+\s+)?(?:condizioni di conservazione|modalit[aà].*conservazione|conservazione)\b",
+        r"^(?:\d+\s+)?(?:imballaggio|packaging|confezione|allergeni|ingredienti|valori nutrizionali|"
+        r"dichiarazione nutrizionale|caratteristiche|etichettatura)\b",
+        max_righe=10,
+    )
+    shelf_life = _blocco_esplicito(
+        testo,
+        r"^(?:\d+\s+)?(?:t\.m\.c\.?\s*/?\s*shelf\s*life|shelf\s*-?\s*life|conservabilit[aà]|"
+        r"termine minimo di conservazione|durata di conservazione)\b",
+        r"^(?:\d+\s+)?(?:imballaggio|packaging|confezione|allergeni|ingredienti|valori nutrizionali|"
+        r"dichiarazione nutrizionale|caratteristiche|etichettatura)\b",
+        max_righe=6,
+    )
+    confezionamento = _blocco_esplicito(
+        testo,
+        r"^(?:\d+\s+)?(?:imballaggio(?:\s*-\s*pallettizzazione)?|packaging(?: information)?|"
+        r"confezione|confezionamento)\b",
+        r"^(?:\d+\s+)?(?:conservazione|condizioni di conservazione|shelf\s*-?\s*life|allergeni|"
+        r"ingredienti|valori nutrizionali|dichiarazione nutrizionale|caratteristiche)\b",
+        max_righe=10,
+    )
+
+    produttore = None
+    for riga in testo.splitlines()[:80]:
+        pulita = re.sub(r"\s+", " ", riga).strip(" .")
+        if re.search(r"\b(?:s\.\s*p\.\s*a\.?|s\.\s*r\.\s*l\.?)\b", pulita, re.I) \
+                and not re.search(r"societ[aà] soggetta|cap\. soc", pulita, re.I):
+            produttore = pulita[:240]
+            break
+
+    revisione = None
+    for pattern in (
+        r"(?im)^\s*((?:rev(?:isione)?\.?|versione)\s*[:.]?\s*[A-Z0-9.]+(?:\s+(?:del|data|dd)\s*:?\s*\d{1,2}[./-]\d{1,2}[./-]\d{2,4})?)",
+        r"(?im)^\s*(Mod\.[^\n]{0,80}\bRev\.?\s*[A-Z0-9.]+[^\n]{0,40})$",
+    ):
+        m = re.search(pattern, testo)
+        if m:
+            revisione = re.sub(r"\s+", " ", m.group(1)).strip()
+            break
+
+    data_documento = None
+    m = re.search(r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b", revisione or "")
+    if not m:
+        m = re.search(
+            r"(?im)\b(?:approvata?[^\n]{0,25}\bin data|stampato il|agg\.?)\s*:?\s*"
+            r"(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b",
+            testo,
+        )
+    if m:
+        data_documento = m.group(1)
+
+    return {
+        "produttore_dichiarato": produttore,
+        "composizione_dichiarata": composizione,
+        "conservazione_dichiarata": conservazione,
+        "shelf_life_dichiarata": shelf_life,
+        "confezionamento_dichiarato": confezionamento,
+        "revisione_dichiarata": revisione,
+        "data_documento_dichiarata": data_documento,
+    }
 
 
 def testo_corpo(corpo: str) -> str:
@@ -129,19 +273,38 @@ def leggi_allergeni(testo_pdf: str) -> Dict[str, Any]:
     tracce: List[str] = []
     righe_tabella = 0
 
+    tabella_contaminazione = bool(
+        re.search(r"(?is)cross.?contamination.{0,500}(?:carry-over|stabilimento)", testo)
+        or re.search(r"(?is)cross-.{0,1000}contamination", testo)
+    )
+    tabella_simboli_ambigua = bool(re.search(
+        r"(?i)allergeni.{0,300}\b(?:assenza|presenza certa|presenza possibile)\b", testo, re.S))
     for riga in testo.split("\n"):
         if re.search(r"pu[oò] contenere|tracce", riga):
             continue
-        trovati = _trova_allergeni(riga)
-        if len(trovati) != 1:
-            continue
-        coda = riga.split(":", 1)[-1] if ":" in riga else riga
-        if re.search(rf"(?<![a-zà-ù]){_SI}(?![a-zà-ù])\s*$", coda.strip()):
-            presenti.append(trovati[0]); righe_tabella += 1
-        elif re.search(rf"(?<![a-zà-ù]){_NO}(?![a-zà-ù])\s*$", coda.strip()):
-            assenti.append(trovati[0]); righe_tabella += 1
+        for segmento in re.split(r"[]", riga):
+            trovati = _trova_allergeni(segmento)
+            if len(trovati) != 1:
+                continue
+            coda = segmento.split(":", 1)[-1] if ":" in segmento else segmento
+            if not tabella_contaminazione and re.search(rf"(?<![a-zà-ù]){_SI}(?![a-zà-ù])\s*$", coda.strip()):
+                presenti.append(trovati[0]); righe_tabella += 1
+            elif not tabella_contaminazione and re.search(rf"(?<![a-zà-ù]){_NO}(?![a-zà-ù])\s*$", coda.strip()):
+                assenti.append(trovati[0]); righe_tabella += 1
+            elif not tabella_simboli_ambigua and re.search(r"\+\s*$", coda.strip()):
+                presenti.append(trovati[0]); righe_tabella += 1
+            elif not tabella_simboli_ambigua and re.search(r"-\s*$", coda.strip()):
+                assenti.append(trovati[0]); righe_tabella += 1
 
-    for m in re.finditer(r"(?:allergeni(?: presenti)?|contiene)\s*[:\-]\s*([^\n]{0,240})", testo):
+    # La composizione e' una dichiarazione esplicita. E' piu' affidabile delle
+    # tabelle estratte come testo: in molti PDF le tre colonne
+    # assenza/presenza/tracce collassano e resta soltanto una ``X`` senza la sua
+    # coordinata. Una X isolata non viene quindi mai interpretata.
+    ingredienti = _sezione_ingredienti(testo)
+    if ingredienti:
+        presenti.extend(_trova_allergeni(ingredienti))
+
+    for m in re.finditer(r"(?:allergeni(?: presenti)?|contiene(?:\s+allergen[ei])?)\s*[:\-]?\s*([^\n]{0,240})", testo):
         span = m.group(1)
         if re.match(r"\s*(nessuno|assenti|non contiene)", span):
             continue
@@ -152,19 +315,28 @@ def leggi_allergeni(testo_pdf: str) -> Dict[str, Any]:
 
     presenti = list(dict.fromkeys(presenti))
     tracce = [a for a in dict.fromkeys(tracce) if a not in presenti]
+    tabella_x_ambigua = tabella_simboli_ambigua or bool(
+        re.search(r"(?im)^\s*(?:x|cc)\s*$", testo)
+    ) or bool(re.search(r"(?is)trasformazione diretta.{0,250}possibile contaminazione", testo)) \
+        or tabella_contaminazione
     riconosciuto = bool(presenti or tracce or righe_tabella or re.search(r"allergen", testo))
+    stato = "letti" if (presenti or righe_tabella or tracce) and not tabella_x_ambigua else (
+        "da_verificare" if tabella_x_ambigua else (
+            "sezione_senza_allergeni" if riconosciuto else "da_verificare"
+        )
+    )
     return {
         "allergeni": presenti,
         "allergeni_tracce": tracce,
         "allergeni_assenti": list(dict.fromkeys(assenti)),
-        "allergeni_stato": "letti" if (presenti or righe_tabella or tracce) else (
-            "sezione_senza_allergeni" if riconosciuto else "da_verificare"),
+        "allergeni_stato": stato,
+        "tabella_colonne_da_verificare": tabella_x_ambigua,
     }
 
 
 _VOCI_NUTRIZIONALI = {
-    "energia_kj": r"energia[^\n\d]{0,40}?(\d+(?:[.,]\d+)?)\s*kj",
-    "energia_kcal": r"(\d+(?:[.,]\d+)?)\s*kcal",
+    "energia_kj": r"energia[^\n\d]{0,40}?(\d+(?:[.,]\d+)?)[ \t]*kj",
+    "energia_kcal": r"(\d+(?:[.,]\d+)?)[ \t]*kcal",
     "grassi_g": r"(?<!di cui )grassi(?! saturi)[^\n\d]{0,30}?(\d+(?:[.,]\d+)?)\s*g",
     "grassi_saturi_g": r"saturi[^\n\d]{0,30}?(\d+(?:[.,]\d+)?)\s*g",
     "carboidrati_g": r"carboidrati[^\n\d]{0,30}?(\d+(?:[.,]\d+)?)\s*g",
@@ -190,6 +362,27 @@ def leggi_valori_nutrizionali(testo_pdf: str) -> Dict[str, Optional[str]]:
     for chiave, pattern in _VOCI_NUTRIZIONALI.items():
         trovato = re.search(pattern, tabella)
         valori[chiave] = trovato.group(1).replace(",", ".") if trovato else None
+    # Formato PreGel: ``527 / 126 (kJ / kcal)``. Le etichette e i valori sono
+    # spesso su righe diverse, quindi il parser precedente non vedeva energia.
+    coppia = re.search(r"(\d+(?:[.,]\d+)?)\s*/\s*(\d+(?:[.,]\d+)?)\s*\(\s*kj\s*/\s*kcal\s*\)", tabella)
+    if coppia:
+        valori["energia_kj"] = coppia.group(1).replace(",", ".")
+        valori["energia_kcal"] = coppia.group(2).replace(",", ".")
+    coppia_inversa = re.search(
+        r"(\d+(?:[.,]\d+)?)\s*/\s*(\d+(?:[.,]\d+)?)\s*(?:kcal\s*/\s*k\s*j|kcal\s*/\s*kj)", tabella)
+    if coppia_inversa:
+        valori["energia_kcal"] = coppia_inversa.group(1).replace(".", "").replace(",", ".")
+        valori["energia_kj"] = coppia_inversa.group(2).replace(".", "").replace(",", ".")
+    kcal_kj = re.search(
+        r"kcal[ \t]+(\d+(?:[.,]\d+)?)[ \t]+k(?:joule|j)[ \t]+(\d+(?:[.,]\d+)?)", tabella)
+    if kcal_kj:
+        valori["energia_kcal"] = kcal_kj.group(1).replace(".", "").replace(",", ".")
+        valori["energia_kj"] = kcal_kj.group(2).replace(".", "").replace(",", ".")
+    valori_su_righe = re.search(
+        r"(\d+(?:[.,]\d+)?)[ \t]*kcal[ \t]*\n[ \t]*(\d+(?:[.,]\d+)?)[ \t]*kj", tabella)
+    if valori_su_righe:
+        valori["energia_kcal"] = valori_su_righe.group(1).replace(".", "").replace(",", ".")
+        valori["energia_kj"] = valori_su_righe.group(2).replace(".", "").replace(",", ".")
     return valori
 
 
@@ -204,6 +397,8 @@ async def registra_scheda_tecnica(
     email_uid: str = "",
     email_data: str = "",
     fornitore: str = FORNITORE_MEPA,
+    drive_file_id: str | None = None,
+    filename: str = "",
 ) -> Dict[str, Any]:
     """Crea o aggiorna la scheda tecnica di un articolo in ``schede_tecniche``.
 
@@ -217,6 +412,7 @@ async def registra_scheda_tecnica(
         return {"registrata": False, "motivo": "codice e descrizione assenti"}
     allergeni = leggi_allergeni(testo_pdf)
     nutrizione = leggi_valori_nutrizionali(testo_pdf)
+    metadati = leggi_metadati_tecnici(testo_pdf)
     adesso = datetime.now(timezone.utc).isoformat()
     filtro = ({"fornitore": fornitore, "codice_articolo": ident["codice_articolo"], "tipo": "tecnica"}
               if ident["codice_articolo"] else {"prodotto_key": chiave, "tipo": "tecnica",
@@ -238,11 +434,18 @@ async def registra_scheda_tecnica(
         "pdf_ricevuti": ricevuti,
         "fonte": FONTE_EMAIL_FORNITORE,
         "verificato": False,
+        "composizione": [r.strip() for r in (metadati.get("composizione_dichiarata") or "").splitlines()
+                         if r.strip()],
         **allergeni,
         "valori_nutrizionali_100g": nutrizione,
         "nutrizione_stato": "letti" if any(nutrizione.values()) else "da_verificare",
+        "metadati_tecnici": metadati,
         "aggiornato_at": adesso,
     }
+    if drive_file_id:
+        doc["drive_file_id"] = drive_file_id
+    if filename:
+        doc["filename"] = filename
     await db_lotti.schede_tecniche.update_one(filtro, {"$set": doc}, upsert=True)
     return {"registrata": True, "prodotto_key": chiave, "codice_articolo": ident["codice_articolo"],
             "allergeni": allergeni["allergeni"], "allergeni_stato": allergeni["allergeni_stato"],

@@ -117,8 +117,8 @@ services:
         sync: false
       - key: HR_JWT_SECRET
         sync: false
-      # DSN Postgres della vecchia AppDipendenti: resta come fallback di
-      # HR_SUPABASE_DB_URL (stesso database).
+      # Alias temporaneo della stessa DSN Postgres: resta come fallback di
+      # HR_SUPABASE_DB_URL finche' la dashboard non usa soltanto il nome canonico.
       - key: APPDIPENDENTI_DB_URL
         sync: false
       # --- Cartella unica «DATI SOCIETA CERALDI» (25/09/2026): DA ELABORARE /

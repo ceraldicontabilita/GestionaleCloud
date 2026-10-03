@@ -9,10 +9,10 @@ le credenziali delle RPC dai client delle altre aree:
   LOTTI_DB_SECRET           segreto applicativo richiesto dalle RPC ``lotti_*``
   LOTTI_DB_NAME             nome logico del database (default ``Gestionale``)
 
-Senza ``LOTTI_SUPABASE_URL`` l'archivio e' un mock compatibile Mongo in memoria
-(``mongomock-motor``): utile per test e collaudi locali, ma i dati NON
-sopravvivono al riavvio del processo. Nessuna connessione Motor/pymongo verso
-un server reale viene mai aperta.
+Il mock in memoria e' ammesso soltanto quando la suite imposta esplicitamente
+``LOTTI_TEST_MEMORY=1``. In ogni altro runtime una configurazione Supabase
+mancante blocca l'avvio: nessun fallback silenzioso e nessuna perdita al
+riavvio. Nessuna connessione Motor/pymongo verso un server reale viene aperta.
 
 Il caricamento delle variabili d'ambiente (.env) e' responsabilita' della
 configurazione di GestionaleCloud (``app/config.py``).
@@ -31,16 +31,18 @@ if os.environ.get("LOTTI_SUPABASE_URL"):
     database = build_supabase_database()
     _client = None
     STORAGE = "supabase"
-else:
+elif os.environ.get("LOTTI_TEST_MEMORY") == "1":
     from mongomock_motor import AsyncMongoMockClient
 
     _client = AsyncMongoMockClient()
     database = _client[DB_NAME]
     STORAGE = "memoria"
-    logger.warning(
-        "Lotti: archivio in memoria, dati non persistenti (impostare "
-        "LOTTI_SUPABASE_URL, LOTTI_SUPABASE_ANON_KEY e LOTTI_DB_SECRET per "
-        "la persistenza su Supabase)"
+    logger.info("Lotti: archivio isolato in memoria abilitato dalla suite di test")
+else:
+    raise RuntimeError(
+        "Configurazione Supabase Lotti assente: impostare LOTTI_SUPABASE_URL, "
+        "LOTTI_SUPABASE_ANON_KEY e LOTTI_DB_SECRET. Il fallback non persistente "
+        "non e' consentito nel runtime."
     )
 
 

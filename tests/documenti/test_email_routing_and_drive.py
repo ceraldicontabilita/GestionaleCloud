@@ -27,6 +27,7 @@ def test_routing_drive_documenti_amministrativi():
     assert route_for_document_type("avviso_bonario") == ("avvisi_bonari", "Avvisi bonari")
     assert route_for_document_type("verbale") == ("verbali", "Verbali")
     assert route_for_document_type("busta_paga") == ("cedolini", "Cedolini")
+    assert route_for_document_type("scheda_tecnica") == ("schede_tecniche", "Schede tecniche")
     assert route_for_document_type("altro") is None
 
 
@@ -85,12 +86,41 @@ class _DriveFiles:
         return _DriveRequest(error=_QuotaError())
 
 
+class _DriveFilesDuplicate(_DriveFiles):
+    def list(self, **kwargs):
+        self.list_calls += 1
+        if self.list_calls == 1:
+            return _DriveRequest({"files": [{"id": "elaborate-folder"}]})
+        if "gestionale_sha256" in kwargs.get("q", ""):
+            return _DriveRequest({"files": [{"id": "canonical-1", "name": "prima-copia.pdf"}]})
+        return _DriveRequest({"files": []})
+
+    def create(self, **kwargs):
+        raise AssertionError("un SHA-256 gia' presente non va caricato di nuovo")
+
+
 class _DriveService:
     def __init__(self):
         self.files_api = _DriveFiles()
 
     def files(self):
         return self.files_api
+
+
+def test_archivio_deduplica_per_sha256_anche_con_nome_diverso(monkeypatch):
+    service = _DriveService()
+    service.files_api = _DriveFilesDuplicate()
+    monkeypatch.setenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "radice-dati")
+    monkeypatch.setattr(email_drive_archive, "_drive_service", lambda: service)
+
+    result = email_drive_archive.archive_document_copy(
+        {"id": "scheda-1", "filename": "seconda-copia.pdf", "content": b"%PDF-stesso"},
+        "scheda_tecnica",
+    )
+
+    assert result["status"] == "duplicate"
+    assert result["drive_file_id"] == "canonical-1"
+    assert len(result["sha256"]) == 64
 
 
 def test_archivio_usa_elaborate_della_cartella_unica_e_registra_quota(monkeypatch):

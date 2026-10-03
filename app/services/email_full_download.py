@@ -4,6 +4,7 @@ Scarica TUTTI i PDF dalla posta e li salva nel database.
 Gestisce deduplicazione e documenti non associati.
 """
 
+import asyncio
 import imaplib
 import email
 from email.header import decode_header
@@ -378,6 +379,23 @@ class EmailFullDownloader:
                 continue  # stesso PDF gia' archiviato
             salvati += 1
             try:
+                # Drive e' il deposito fisico canonico. Il record Supabase
+                # conserva soltanto indice e riferimenti; il Base64 resta
+                # temporaneamente solo se Drive non e' raggiungibile, cosi' un
+                # guasto non perde l'originale ricevuto per posta.
+                from app.services.email_drive_archive import archive_document_copy
+                drive = await asyncio.to_thread(
+                    archive_document_copy,
+                    {"id": doc_id, "filename": filename, "content": content},
+                    "scheda_tecnica",
+                )
+                if drive.get("status") in {"archived", "duplicate"} and drive.get("drive_file_id"):
+                    await self.db[CATEGORY_COLLECTIONS["scheda_tecnica"]].update_one(
+                        {"id": doc_id},
+                        {"$set": {"drive_file_id": drive["drive_file_id"],
+                                  "sha256": drive["sha256"], "archivio_originale": "drive"},
+                         "$unset": {"pdf_data": ""}},
+                    )
                 from app.lotti.db import database as db_lotti
                 from app.lotti.servizi.schede_fornitore import registra_scheda_tecnica
                 from app.services.pdf_text_extraction import extract_pdf_text
@@ -388,6 +406,7 @@ class EmailFullDownloader:
                     db_lotti, documento_id=doc_id, pdf_sha256=hashlib.sha256(content).hexdigest(),
                     testo_pdf=testo, oggetto=subject, corpo=corpo,
                     email_uid=email_info["uid"], email_data=date_str,
+                    drive_file_id=drive.get("drive_file_id"), filename=filename,
                 )
                 logger.info(f"[Gmail] scheda tecnica {filename}: {esito}")
             except Exception as e:
