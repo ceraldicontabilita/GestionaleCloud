@@ -18,9 +18,10 @@ Collection: schede_tecniche
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Annotated
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Body, HTTPException, Query, Depends
+from fastapi import APIRouter, Body, HTTPException, Query, Depends, File, Form, UploadFile
 
 from app.lotti.db import database as db
 from app.lotti.auth import require_admin
@@ -29,6 +30,94 @@ from app.lotti.servizi.schede_fornitore import FONTE_EMAIL_FORNITORE
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/schede-tecniche", tags=["Schede Tecniche"])
+
+
+def _codice_da_nome_file(filename: str) -> str:
+    m = re.search(r"(?i)^scheda_prodotto_([a-z0-9._-]+?)(?:_\d{8,}|\s*\(|\.pdf$)", filename or "")
+    return m.group(1).upper() if m else ""
+
+
+def _nome_dichiarato_nel_pdf(testo: str) -> str:
+    """Nome commerciale dichiarato nel contenuto, mai ricavato dal filename."""
+    patterns = (
+        r"(?is)nome prodotto\s*:\s*n\.\s*art\.\s*fornitore\s*:\s*\n\s*[“\"]?([^\n]{2,140})",
+        r"(?im)^\s*denominazione di vendita\s+([^\n]{2,140})$",
+        r"(?is)nome del prodotto\s+product name\s*\n\s*([^\n]{2,140})",
+        r"(?im)^\s*prodotto finito\s+([^\n]{2,140})$",
+        r"(?im)^\s*prodotto\s*:\s*([^\n]{2,140})$",
+        r"(?im)^\s*cod\.\s*articolo\s*:\s*\S+\s+([^\n]{2,140})$",
+        r"(?im)^\s*scheda tecnica\s*\n\s*(?!technical sheet\s*$)([^\n]{2,140})$",
+        r"(?im)^\s*scheda tecnica\s+([^\n]{2,140})$",
+        r"(?im)^\s*nome\s*:\s*([^\n]{2,140})$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, testo or "")
+        if m:
+            nome = re.sub(r"\s+", " ", m.group(1)).strip(" ._–—-”“\"")
+            nome = re.sub(r"\s+\d{2,3}\s+\d{2,3}$", "", nome).strip(" ._–—-”“\"")
+            parole = nome.split()
+            if len(parole) % 2 == 0 and parole[:len(parole) // 2] == parole[len(parole) // 2:]:
+                nome = " ".join(parole[:len(parole) // 2])
+            if nome.lower() not in {"technical sheet", "scheda tecnica", "product name"} \
+                    and not re.search(r"(?i)\b(?:tel\.?|e-?mail|persona di riferimento)\b", nome):
+                return nome
+    return ""
+
+
+async def _associazione_esatta(codice: str, nome_pdf: str) -> dict:
+    """Candidato solo per identita' esatta; nessuna somiglianza del nome."""
+    candidati = []
+    if codice:
+        esistente = await db.schede_tecniche.find_one(
+            {"fornitore": "ME.PA. ALIMENTARI S.R.L.", "codice_articolo": codice}, {"_id": 0})
+        if esistente and esistente.get("nome_prodotto"):
+            candidati.append({"nome": esistente["nome_prodotto"], "via": "codice_fornitore_esistente"})
+        prodotti_codice = await db.dizionario_prodotti.find(
+            {"$or": [{"codice_articolo": codice}, {"codice": codice}]},
+            {"_id": 0, "nome_originale": 1, "nome_normalizzato": 1},
+        ).to_list(3)
+        for prodotto in prodotti_codice:
+            nome = prodotto.get("nome_originale") or prodotto.get("nome_normalizzato")
+            if nome:
+                candidati.append({"nome": nome, "via": "codice_fornitore"})
+    if nome_pdf:
+        chiave = _key(nome_pdf)
+        prodotti_nome = await db.dizionario_prodotti.find(
+            {"$or": [{"nome_originale": {"$regex": f"^{re.escape(nome_pdf)}$", "$options": "i"}},
+                     {"nome_normalizzato": {"$regex": f"^{re.escape(nome_pdf)}$", "$options": "i"}}]},
+            {"_id": 0, "nome_originale": 1, "nome_normalizzato": 1},
+        ).to_list(3)
+        for prodotto in prodotti_nome:
+            nome = prodotto.get("nome_originale") or prodotto.get("nome_normalizzato")
+            if nome and _key(nome) == chiave:
+                candidati.append({"nome": nome, "via": "nome_pdf_esatto"})
+    unici = {(c["nome"], c["via"]): c for c in candidati}
+    nomi = {_key(c["nome"]) for c in unici.values()}
+    if len(nomi) == 1:
+        scelto = next(iter(unici.values()))
+        return {"stato": "proposta_certa", **scelto}
+    if len(nomi) > 1:
+        return {"stato": "da_verificare", "motivo": "piu_associazioni_esatte", "candidati": list(unici.values())}
+    return {"stato": "da_verificare", "motivo": "nessuna_associazione_esatta", "candidati": []}
+
+
+async def _conferma_associazione_esatta(nome_richiesto: str) -> dict:
+    """Accetta una correzione umana solo se identifica un prodotto esistente."""
+    nome = re.sub(r"\s+", " ", (nome_richiesto or "")).strip()
+    if not nome:
+        raise HTTPException(400, "Associazione confermata vuota")
+    prodotti = await db.dizionario_prodotti.find(
+        {"$or": [
+            {"nome_originale": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}},
+            {"nome_normalizzato": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}},
+        ]},
+        {"_id": 0, "nome_originale": 1, "nome_normalizzato": 1},
+    ).to_list(5)
+    nomi = {p.get("nome_originale") or p.get("nome_normalizzato") for p in prodotti}
+    nomi = {n for n in nomi if n and _key(n) == _key(nome)}
+    if len(nomi) != 1:
+        raise HTTPException(409, f"Prodotto non identificato in modo univoco: {nome}")
+    return {"stato": "confermata_titolare", "nome": next(iter(nomi)), "via": "conferma_utente"}
 
 
 def _key(nome: str) -> str:
@@ -157,6 +246,140 @@ async def lista_prodotti_con_schede(
 _COLL_PDF_SCHEDE = "schede_tecniche_email_attachments"
 
 
+async def _anteprima_file(file: UploadFile) -> tuple[bytes, dict]:
+    import hashlib
+    from app.utils.upload_guard import leggi_upload
+    from app.utils.upload_validation import verifica_pdf_reale
+    from app.services.document_import_preview import create_confirmation_token
+    from app.services.pdf_text_extraction import extract_pdf_text
+    from app.lotti.servizi.schede_fornitore import (
+        leggi_allergeni, leggi_metadati_tecnici, leggi_valori_nutrizionali,
+    )
+
+    contenuto = await leggi_upload(file)
+    verifica_pdf_reale(contenuto, file.filename)
+    sha256 = hashlib.sha256(contenuto).hexdigest()
+    testo = extract_pdf_text(contenuto)
+    codice = _codice_da_nome_file(file.filename or "")
+    nome_pdf = _nome_dichiarato_nel_pdf(testo)
+    associazione = await _associazione_esatta(codice, nome_pdf)
+    allergeni = leggi_allergeni(testo)
+    nutrizione = leggi_valori_nutrizionali(testo)
+    metadati = leggi_metadati_tecnici(testo)
+    return contenuto, {
+        "filename": file.filename or "scheda.pdf", "sha256": sha256,
+        "codice_fornitore": codice or None, "nome_dichiarato": nome_pdf or None,
+        "associazione": associazione, **allergeni,
+        "valori_nutrizionali_100g": nutrizione,
+        "nutrizione_stato": "letti" if any(nutrizione.values()) else "da_verificare",
+        "metadati_tecnici": metadati,
+        "preview_token": create_confirmation_token(sha256, "scheda_tecnica"),
+    }
+
+
+@router.post("/importa/anteprima")
+async def anteprima_import_schede(
+    files: list[UploadFile] = File(...), _admin=Depends(require_admin),
+):
+    """Legge piu' PDF senza scrivere dati e segnala i duplicati per SHA-256."""
+    if not files or len(files) > 50:
+        raise HTTPException(400, "Selezionare da 1 a 50 PDF")
+    righe, visti = [], set()
+    for file in files:
+        _contenuto, riga = await _anteprima_file(file)
+        riga["duplicato_nel_lotto"] = riga["sha256"] in visti
+        visti.add(riga["sha256"])
+        righe.append(riga)
+    return {"files_ricevuti": len(righe), "originali_unici": len(visti), "schede": righe}
+
+
+@router.post("/importa/conferma")
+async def conferma_import_schede(
+    files: list[UploadFile] = File(...),
+    preview_tokens: list[str] = Form(...),
+    associazioni_confermate: Annotated[list[str] | None, Form()] = None,
+    _admin=Depends(require_admin),
+):
+    """Conferma la stessa anteprima e deposita un solo originale per SHA-256."""
+    import asyncio
+    from app.database import Database
+    from app.services.document_import_preview import verify_confirmation_token
+    from app.services.email_drive_archive import archive_document_copy
+    from app.services.pdf_text_extraction import extract_pdf_text
+    from app.lotti.servizi.schede_fornitore import registra_scheda_tecnica
+
+    if len(files) != len(preview_tokens):
+        raise HTTPException(400, "File e token di anteprima non corrispondono")
+    associazioni_confermate = associazioni_confermate or [""] * len(files)
+    if len(associazioni_confermate) != len(files):
+        raise HTTPException(400, "File e associazioni confermate non corrispondono")
+    archivio = Database.get_db()[_COLL_PDF_SCHEDE]
+    risultati = []
+    for file, token, nome_confermato in zip(files, preview_tokens, associazioni_confermate):
+        contenuto, preview = await _anteprima_file(file)
+        testo_pdf = extract_pdf_text(contenuto)
+        sha256 = preview["sha256"]
+        if not verify_confirmation_token(token, sha256, "scheda_tecnica"):
+            raise HTTPException(409, f"Anteprima scaduta o file cambiato: {file.filename}")
+        associazione = preview["associazione"]
+        if nome_confermato.strip():
+            associazione = await _conferma_associazione_esatta(nome_confermato)
+        esistente = await archivio.find_one({"sha256": sha256}, {"_id": 0})
+        if esistente and esistente.get("drive_file_id"):
+            drive = {"status": "duplicate", "drive_file_id": esistente["drive_file_id"], "sha256": sha256}
+            documento_id = esistente["id"]
+            nuovo = False
+            await archivio.update_one(
+                {"id": documento_id},
+                {"$addToSet": {"source_occurrences": {
+                    "filename": preview["filename"], "sha256": sha256, "canale": "caricato",
+                }}, "$set": {"associazione": associazione,
+                              "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+        else:
+            drive = await asyncio.to_thread(
+                archive_document_copy,
+                {"filename": preview["filename"], "content": contenuto, "source": "caricato"},
+                "scheda_tecnica",
+            )
+            if drive.get("status") not in {"archived", "duplicate"} or not drive.get("drive_file_id"):
+                raise HTTPException(503, f"Originale non archiviato su Drive: {drive.get('reason') or drive.get('status')}")
+            documento_id = (esistente or {}).get("id") or f"scheda-{sha256[:32]}"
+            nuovo = esistente is None
+            await archivio.update_one(
+                {"id": documento_id},
+                {"$set": {
+                    "id": documento_id, "filename": preview["filename"], "sha256": sha256,
+                    "pdf_size": len(contenuto), "category": "scheda_tecnica",
+                    "drive_file_id": drive["drive_file_id"], "archivio_originale": "drive",
+                    "canale": "caricato", "testo_estratto": testo_pdf[:20000],
+                    "associazione": associazione,
+                    "metadati_tecnici": preview["metadati_tecnici"],
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }, "$addToSet": {"source_occurrences": {
+                    "filename": preview["filename"], "sha256": sha256, "canale": "caricato",
+                }}}, upsert=True,
+            )
+        registrata = None
+        if associazione.get("stato") in {"proposta_certa", "confermata_titolare"}:
+            codice = preview.get("codice_fornitore") or ""
+            nome = associazione["nome"]
+            registrata = await registra_scheda_tecnica(
+                db, documento_id=documento_id, pdf_sha256=sha256,
+                testo_pdf=testo_pdf,
+                oggetto=f"Scheda prodotto cod. articolo {codice}" if codice else "Scheda tecnica",
+                corpo=f"del prodotto {codice} - {nome} Order Sender" if codice else "",
+                drive_file_id=drive["drive_file_id"], filename=preview["filename"],
+            )
+        risultati.append({
+            "filename": preview["filename"], "sha256": sha256, "documento_id": documento_id,
+            "drive_file_id": drive["drive_file_id"], "nuovo_originale": nuovo,
+            "associazione": associazione, "scheda_registrata": bool(registrata and registrata.get("registrata")),
+        })
+    return {"ok": True, "ricevuti": len(risultati),
+            "nuovi_originali": sum(1 for r in risultati if r["nuovo_originale"]), "risultati": risultati}
+
+
 @router.get("/pdf/{documento_id}")
 async def pdf_scheda(documento_id: str):
     """Il PDF originale della scheda, come arrivato dal fornitore (per l'ASL)."""
@@ -165,11 +388,22 @@ async def pdf_scheda(documento_id: str):
     from app.database import Database
 
     doc = await Database.get_db()[_COLL_PDF_SCHEDE].find_one(
-        {"id": documento_id}, {"_id": 0, "pdf_data": 1, "filename": 1})
-    if not doc or not doc.get("pdf_data"):
+        {"id": documento_id}, {"_id": 0, "pdf_data": 1, "filename": 1, "drive_file_id": 1})
+    if not doc:
         raise HTTPException(404, "Scheda non trovata")
     nome = re.sub(r"[^A-Za-z0-9._-]", "_", doc.get("filename") or "scheda.pdf")
-    return Response(content=base64.b64decode(doc["pdf_data"]), media_type="application/pdf",
+    contenuto = None
+    if doc.get("drive_file_id"):
+        from app.services.drive_download import scarica_originale
+        try:
+            contenuto = await scarica_originale(str(doc["drive_file_id"]))
+        except Exception as exc:  # noqa: BLE001 - fallback storico sotto
+            logger.warning("Scheda %s non letta da Drive: %s: %s", documento_id, type(exc).__name__, exc)
+    if contenuto is None and doc.get("pdf_data"):
+        contenuto = base64.b64decode(doc["pdf_data"])
+    if contenuto is None:
+        raise HTTPException(404, "Originale della scheda non disponibile")
+    return Response(content=contenuto, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{nome}"'})
 
 
@@ -616,13 +850,30 @@ def _carica_schede_base():
 
 
 async def risolvi_scheda(nome: str) -> dict:
-    """Logica condivisa: scheda SALVATA (db.schede_tecniche tipo=produttore) oppure
-    composizione BASE da schede_prodotti.json quando un alias e' contenuto nel nome.
-    Riusata da /scheda (SchedaFonteModal) e dalla cascata allergeni delle ricette."""
+    """Risolve una scheda per identita' esatta o mapping gia' confermato.
+
+    Le schede PDF del fornitore hanno precedenza sulle fonti web. Se il nome
+    della ricetta non coincide con la descrizione di fattura, il collegamento
+    e' ammesso soltanto tramite ``nome_mapping`` confermato e univoco.
+    """
     key = _key(nome)
-    salvata = await db.schede_tecniche.find_one({"prodotto_key": key, "tipo": "produttore"}, {"_id": 0})
+    salvata = await db.schede_tecniche.find_one(
+        {"prodotto_key": key, "tipo": {"$in": ["tecnica", "produttore"]}}, {"_id": 0})
     if salvata:
         return {"trovata": True, "fonte": "salvata", "scheda": salvata}
+
+    from app.lotti.servizi.articoli_fattura import carica_associazioni, serve_ingrediente
+    associazioni = await carica_associazioni(db)
+    chiavi = [chiave for chiave, assoc in associazioni.items()
+              if assoc.get("confermato") and serve_ingrediente(assoc, nome)]
+    if chiavi:
+        collegate = await db.schede_tecniche.find(
+            {"prodotto_key": {"$in": chiavi}, "tipo": {"$in": ["tecnica", "produttore"]}},
+            {"_id": 0},
+        ).to_list(3)
+        uniche = {s.get("documento_id") or f"{s.get('prodotto_key')}:{s.get('tipo')}": s for s in collegate}
+        if len(uniche) == 1:
+            return {"trovata": True, "fonte": "mapping_confermato", "scheda": next(iter(uniche.values()))}
 
     low = key
     for s in _carica_schede_base():

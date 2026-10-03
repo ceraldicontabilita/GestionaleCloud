@@ -36,13 +36,11 @@ COLLEZIONI = [
 ]
 
 # Variabili d'ambiente: (nome, obbligatoria?, a cosa serve)
-# Dentro GestionaleCloud i nomi sono prefissati HR_ (vedi config.py/database.py):
-# il controllo accetta sia il nome prefissato sia quello originale (fallback).
+# Dentro GestionaleCloud i nomi sono prefissati HR_ (vedi config.py/database.py).
 ENV_VARS = [
-    ("HR_SUPABASE_DB_URL|APPDIPENDENTI_DB_URL|SUPABASE_DB_URL|HR_MONGO_URL|MONGO_URL", True, "Connessione database"),
+    ("HR_SUPABASE_DB_URL|APPDIPENDENTI_DB_URL|SUPABASE_DB_URL", True, "Connessione Supabase/Postgres"),
     ("HR_JWT_SECRET|JWT_SECRET", True, "Firma token login"),
     ("PIN_HASH_ADMIN", True, "PIN amministratore centrale GestionaleCloud"),
-    ("HR_DB_NAME|DB_NAME", False, "Nome database (solo Mongo)"),
     ("IMAP_HOST", False, "Import documenti da Gmail"),
     ("IMAP_USER", False, "Import documenti da Gmail"),
     ("IMAP_PASSWORD", False, "Import documenti da Gmail (App Password)"),
@@ -65,9 +63,9 @@ async def diagnostica() -> Dict[str, Any]:
     try:
         db = Database.get_db()
         await db.command("ping")
-        add("Database", "Connessione MongoDB", "ok", "Connesso")
+        add("Database", "Connessione Supabase/Postgres", "ok", "Connesso")
     except Exception as e:
-        add("Database", "Connessione MongoDB", "err", str(e)[:200])
+        add("Database", "Connessione Supabase/Postgres", "err", str(e)[:200])
 
     # ---- COLLEZIONI LEGGIBILI ----
     if db is not None:

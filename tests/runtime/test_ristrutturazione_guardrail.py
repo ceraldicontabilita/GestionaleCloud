@@ -301,9 +301,7 @@ def test_servizi_vivi_fase_1c_restano_disponibili():
 # Costruttori DB autonomi presenti prima della fusione ERP+HR+Lotti+Menu.
 # La whitelist puo' solo accorciarsi.
 CLIENT_DB_LEGACY_TEMPORANEI = {
-    ("app/hr/database.py", "AsyncIOMotorClient"),
     ("app/hr/db_supabase.py", "asyncpg.create_pool"),
-    ("app/hr/config.py", "MongoClient"),
     ("app/menu/supabase_client.py", "create_client"),
     ("app/lotti/db.py", "AsyncMongoMockClient"),
     ("app/lotti/supabase_document_store.py", "AsyncMongoMockClient"),

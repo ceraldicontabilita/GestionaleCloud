@@ -10,8 +10,8 @@ def _env(*nomi: str, default: str = "") -> str:
     """Prima variabile d'ambiente impostata tra quelle elencate, altrimenti `default`.
 
     Dentro GestionaleCloud le variabili dell'app originale sono prefissate `HR_`
-    (per non collidere con quelle omonime dell'app ospite: SECRET_KEY, MONGO_URL,
-    DB_NAME...); i nomi originali restano come fallback, escluso il PIN admin.
+    (per non collidere con quelle omonime dell'app ospite); i nomi originali
+    compatibili restano come fallback, escluso il PIN admin.
     """
     for nome in nomi:
         val = os.environ.get(nome)
@@ -23,39 +23,10 @@ def _env(*nomi: str, default: str = "") -> str:
 def _shared_auth_secret() -> str:
     """Segreto JWT UNIFICATO per tutte le app Ceraldi.
 
-    Fonte unica: collezione `sistema_stato` (chiave `auth_secret`) sul DB condiviso
-    `Gestionale` — lo stesso meccanismo usato da Lotti. Così le tre app firmano e
-    validano i token con la STESSA chiave, senza sincronizzare variabili a mano, e
-    quando verranno fuse l'autenticazione è già coerente.
-    Fallback: env JWT_SECRET, poi una chiave di processo.
+    La fonte e' esclusivamente il secret store del runtime. Nessun import di
+    configurazione apre connessioni a database e nessun segreto viene scritto
+    in una collezione applicativa.
     """
-    try:
-        from pymongo import MongoClient
-        uri = _env("HR_MONGO_URL", "MONGO_URL")
-        if uri:
-            cli = MongoClient(uri, serverSelectionTimeoutMS=4000)
-            coll = cli[_env("HR_DB_NAME", "DB_NAME", default="Gestionale")]["sistema_stato"]
-            doc = coll.find_one({"chiave": "auth_secret"})
-            if doc and doc.get("valore"):
-                cli.close()
-                return doc["valore"]
-            import secrets as _s
-            configurato = _env("HR_JWT_SECRET", "JWT_SECRET")
-            if not configurato:
-                logger.warning(
-                    "⚠️ HR_JWT_SECRET/JWT_SECRET non configurata: genero un secret "
-                    "JWT effimero (verrà comunque condiviso via sistema_stato finché "
-                    "il processo resta attivo, ma cambia a ogni deploy/restart senza "
-                    "la variabile). Configurare HR_JWT_SECRET nel secret store di Render."
-                )
-            val = configurato or _s.token_urlsafe(64)
-            coll.update_one({"chiave": "auth_secret"}, {"$set": {"valore": val}}, upsert=True)
-            cli.close()
-            return val
-    except Exception:
-        pass
-    # Ultima spiaggia: env JWT_SECRET, altrimenti un segreto casuale di processo
-    # (mai un literal prevedibile come "changeme": permetterebbe di forgiare token).
     import secrets as _s
     configurato = _env("HR_JWT_SECRET", "JWT_SECRET")
     if not configurato:

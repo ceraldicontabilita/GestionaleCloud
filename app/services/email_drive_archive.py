@@ -44,6 +44,7 @@ _ROUTES: dict[str, tuple[str, str]] = {
     "satispay": ("satispay", "Satispay"),
     "bolletta_energia": ("utenze_energia", "Bollette energia"),
     "partenopay": ("partenopay", "PARTENOPAY"),
+    "scheda_tecnica": ("schede_tecniche", "Schede tecniche"),
 }
 
 
@@ -78,17 +79,27 @@ def _escape_query(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def _already_archived(service, parent_id: str, filename: str, digest: str) -> bool:
+def _already_archived(service, parent_id: str, filename: str, digest: str) -> dict[str, Any] | None:
+    # Prima l'impronta forte, indipendente dal nome: due copie byte-identiche
+    # devono riusare lo stesso originale Drive e lo stesso documento logico.
+    by_sha = service.files().list(
+        q=(f"'{parent_id}' in parents and trashed = false and "
+           f"appProperties has {{ key='gestionale_sha256' and value='{_escape_query(digest)}' }}"),
+        fields="files(id, name, appProperties, md5Checksum)", pageSize=20, supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute()
+    if by_sha.get("files"):
+        return by_sha["files"][0]
     result = service.files().list(
         q=f"name = '{_escape_query(filename)}' and '{parent_id}' in parents and trashed = false",
         fields="files(id, appProperties, md5Checksum)", pageSize=20, supportsAllDrives=True,
         includeItemsFromAllDrives=True,
     ).execute()
-    return any(
-        (item.get("appProperties") or {}).get("gestionale_hash") == digest
-        or item.get("md5Checksum") == digest
-        for item in result.get("files", [])
-    )
+    for item in result.get("files", []):
+        props = item.get("appProperties") or {}
+        if props.get("gestionale_sha256") == digest:
+            return item
+    return None
 
 
 def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
@@ -111,19 +122,22 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
     folder_id = cu._cartella(service, root_id, cu.ARCHIVIO)
 
     filename = str(doc.get("filename") or f"documento-{doc.get('id', 'email')}.pdf").strip()
-    digest = str(doc.get("file_hash") or hashlib.md5(content).hexdigest())
-    if _already_archived(service, folder_id, filename, digest):
-        return {"status": "duplicate", "area": area, "archived_at": datetime.now(timezone.utc).isoformat()}
+    digest = hashlib.sha256(content).hexdigest()
+    existing = _already_archived(service, folder_id, filename, digest)
+    if existing:
+        return {"status": "duplicate", "area": area, "drive_file_id": existing.get("id"),
+                "sha256": digest, "archived_at": datetime.now(timezone.utc).isoformat()}
 
     from googleapiclient.http import MediaIoBaseUpload
     mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=False)
     try:
-        service.files().create(
+        created = service.files().create(
             body={
                 "name": filename,
                 "parents": [folder_id],
-                "appProperties": {"gestionale_hash": digest, "gestionale_source": "email"},
+                "appProperties": {"gestionale_sha256": digest,
+                                  "gestionale_source": str(doc.get("source") or "email")[:40]},
             },
             media_body=media,
             fields="id",
@@ -139,4 +153,5 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
             return {"status": "blocked_owner_auth", "area": area,
                     "reason": "drive_permission_denied"}
         raise
-    return {"status": "archived", "area": area, "archived_at": datetime.now(timezone.utc).isoformat()}
+    return {"status": "archived", "area": area, "drive_file_id": created.get("id"),
+            "sha256": digest, "archived_at": datetime.now(timezone.utc).isoformat()}

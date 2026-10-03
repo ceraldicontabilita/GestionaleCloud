@@ -909,9 +909,19 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   quantità di riordino a 1.
 - Campi vincolanti: `ingredienti_dettaglio[].unita_misura` (non `unita`), `lotti.data_scadenza` gg/mm/aaaa,
   `fornitori` per `nome` e non `id`.
-- **Schede tecniche ME.PA.** (`servizi/schede_fornitore.py`): la descrizione nella mail è la riga di fattura
-  e fa da chiave. Il PDF per l'ASL non si elimina né si sovrascrive; allergeni e valori per 100 g solo se
-  scritti, in etichetta solo da articolo confermato o lotto consumato con la stessa descrizione.
+- **Schede tecniche ME.PA.** (`servizi/schede_fornitore.py`, `routers/schede_tecniche.py`): la descrizione
+  nella mail è la riga di fattura e fa da chiave. L'import manuale è multiplo e in due fasi
+  (anteprima/conferma): SHA-256 prima di ogni scrittura, un originale Drive e un `documento_id` per contenuto,
+  occorrenze duplicate conservate nell'indice Supabase. L'associazione automatica richiede codice fornitore o
+  nome nel PDF con identità esatta; la correzione umana deve indicare un nome esatto già nel dizionario,
+  altrimenti resta `DA_VERIFICARE`. Produttore, composizione, conservazione, shelf-life, confezionamento,
+  data e revisione sono conservati soltanto quando espliciti. Una `X` estratta senza la coordinata della
+  colonna non prova presenza/assenza/traccia. Il PDF per l'ASL non si elimina né si sovrascrive; allergeni e
+  valori per 100 g solo se scritti, in etichetta solo da articolo confermato o lotto consumato con la stessa
+  descrizione. Ricette e ingredienti risolvono lo stesso originale autenticato per identità esatta o
+  `nome_mapping` confermato e univoco. Le nuove schede email passano a Drive prima che il Base64 temporaneo sia
+  rimosso dal record. Lotti senza configurazione Supabase fallisce chiuso; il mock in memoria richiede
+  `LOTTI_TEST_MEMORY=1` ed è riservato alla suite.
 - Spostando un lotto si scrivono **sempre** sia `posizione` sia `frigo_numero`; per azioni reali sui lotti
   di un'attrezzatura si usa il match esatto sul nome, mai uno snapshot troncato («Frigorifero N°2» e «N°9»
   si confondono). La produzione sceglie con **un solo tocco** banco oppure un apparecchio attivo censito: niente destinazione predefinita, testo libero, ripiani o «senza posizione»; il banco passa sempre dal prelievo canonico, il lotto non resta disponibile anche nel registro banco e ogni cambio posizione ha audit.

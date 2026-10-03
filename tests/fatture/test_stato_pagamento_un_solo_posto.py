@@ -66,7 +66,7 @@ def _filtri_a_mano() -> tuple[list[str], list[str]]:
     for percorso in sorted((RADICE / "app").rglob("*.py")):
         if "__pycache__" in str(percorso):
             continue
-        relativo = str(percorso.relative_to(RADICE))
+        relativo = percorso.relative_to(RADICE).as_posix()
         if relativo in DEROGHE:
             continue
         righe = percorso.read_text(encoding="utf-8", errors="ignore").splitlines()
@@ -110,7 +110,7 @@ def test_una_sola_definizione_di_cosa_sia_chiusa():
     for percorso in sorted((RADICE / "app").rglob("*.py")):
         if "__pycache__" in str(percorso):
             continue
-        relativo = str(percorso.relative_to(RADICE))
+        relativo = percorso.relative_to(RADICE).as_posix()
         if relativo == CANONICO_PY:
             continue
         for n, riga in enumerate(percorso.read_text(encoding="utf-8", errors="ignore")

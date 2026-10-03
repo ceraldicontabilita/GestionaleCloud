@@ -11,6 +11,10 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
 
+# Il mock documentale e' una scelta esplicita della suite. Il runtime Lotti
+# senza Supabase deve invece fallire chiuso e non perdere dati al riavvio.
+os.environ.setdefault("LOTTI_TEST_MEMORY", "1")
+
 # Aggiungi app al path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
