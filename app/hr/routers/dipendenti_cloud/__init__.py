@@ -2526,14 +2526,18 @@ _COL_PRES = {
 
 
 def _csv_presenze(anno, mese, giorni, righe):
+    """CSV rettangolare e riconosciuto da Excel con tutte le colonne giorno."""
+    giorni = calendar.monthrange(int(anno), int(mese))[1]
     sep = ";"
     intest = ["Dipendente"] + [str(i + 1) for i in range(giorni)]
-    out = [f"Presenze {_MESI_PRES[mese - 1]} {anno} - Ceraldi Group S.r.l.", "", sep.join(intest)]
+    out = ["sep=;", sep.join(intest)]
     for r in righe:
-        out.append(sep.join([str(r.get("nome", ""))] + [str(c or "") for c in (r.get("celle") or [])]))
-    out.append("")
-    out.append("Legenda: P=Presente · AS=Assente · F=Ferie · PE=Permesso · M=Malattia · R=ROL · RS=Riposo · CH=Chiuso · FNL=Festivita non lav.")
-    return "\n".join(out)
+        celle = list(r.get("celle") or [])[:giorni]
+        celle.extend([""] * (giorni - len(celle)))
+        values = [str(r.get("nome", ""))] + [str(c or "") for c in celle]
+        out.append(sep.join('"' + v.replace('"', '""') + '"' if any(ch in v for ch in ';"\r\n') else v
+                            for v in values))
+    return "\ufeff" + "\r\n".join(out) + "\r\n"
 
 
 def _pdf_presenze(anno, mese, giorni, righe):
@@ -2834,7 +2838,7 @@ async def lista_invii_presenze(anno: Optional[int] = None, mese: Optional[int] =
 @router.post("/presenze/invia-commercialista")
 async def invia_presenze_commercialista(data: dict = Body(...)):
     """Invia via email al commercialista il foglio presenze del mese (allegati PDF
-    riepilogo+periodi + CSV). Salva lo storico dell'invio (destinatario + data).
+    completo giorno-per-giorno + CSV). Salva lo storico dell'invio (destinatario + data).
     Destinatario dal body o dalla env COMMERCIALISTA_EMAIL. Credenziali email da
     services/email_smtp.py (SMTP_*/PEC_*/GMAIL_APP_PASSWORD — punto unico)."""
     from app.hr.services.email_smtp import credenziali_smtp, invia_email
@@ -2856,12 +2860,13 @@ async def invia_presenze_commercialista(data: dict = Body(...)):
 
     periodo = f"{_MESI_PRES[mese - 1]} {anno}"
     base = f"presenze_{anno}_{str(mese).zfill(2)}"
-    # PDF leggibile (riepilogo + periodi, Opzione C) per la lettura umana; il CSV
-    # (griglia giorno-per-giorno) resta come allegato per l'import nel software paghe.
+    # Il PDF inviato è il foglio completo giorno-per-giorno: il consulente vede
+    # subito tutte le colonne del mese senza dover aprire il CSV.
     pdf_bytes = None
     if righe:
         try:
-            pdf_bytes = _pdf_riepilogo_periodi(anno, mese, giorni, righe)
+            giorni = calendar.monthrange(anno, mese)[1]
+            pdf_bytes = _pdf_presenze(anno, mese, giorni, righe)
         except Exception:
             pdf_bytes = None
 
