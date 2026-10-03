@@ -380,12 +380,58 @@ def test_conferma_multipla_riusa_documento_e_drive_per_sha256(db, monkeypatch):
     esito = run(router.conferma_import_schede(
         files=confirm_files,
         preview_tokens=[r["preview_token"] for r in preview["schede"]],
+        associazioni_confermate=["", ""],
         _admin=None,
     ))
     assert esito["ricevuti"] == 2 and esito["nuovi_originali"] == 1
     assert len(chiamate) == 1
     assert esito["risultati"][0]["documento_id"] == esito["risultati"][1]["documento_id"]
     assert run(erp.schede_tecniche_email_attachments.count_documents({})) == 1
+
+
+def test_conferma_multipart_accetta_lista_associazioni_da_browser(db, monkeypatch):
+    """La richiesta multipart reale deve legare i campi ripetuti a ``list[str]``."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.database import Database
+    from app.lotti.routers import schede_tecniche as router
+
+    erp = AsyncMongoMockClient()["Erp_Test"]
+    run(db.dizionario_prodotti.insert_one({
+        "id": "p-browser", "nome_originale": "MIO STRUTTO 15 KG",
+        "nome_normalizzato": "Mio Strutto 15 kg",
+    }))
+    monkeypatch.setattr(router, "db", db)
+    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: erp))
+    monkeypatch.setattr(
+        "app.services.pdf_text_extraction.extract_pdf_text",
+        lambda _b: "Scheda tecnica\nPRODOTTO",
+    )
+    monkeypatch.setattr(
+        "app.services.email_drive_archive.archive_document_copy",
+        lambda _doc, _tipo: {"status": "archived", "drive_file_id": "DRV-BROWSER"},
+    )
+    contenuto = b"%PDF-1.4 scheda multipart browser"
+    preview = run(router.anteprima_import_schede(
+        files=[UploadFile(filename="Scheda_prodotto_MIO002_20260917.pdf", file=io.BytesIO(contenuto))],
+        _admin=None,
+    ))
+
+    app = FastAPI()
+    app.include_router(router.router, prefix="/lotti/api")
+    app.dependency_overrides[router.require_admin] = lambda: {"role": "admin"}
+    response = TestClient(app).post(
+        "/lotti/api/schede-tecniche/importa/conferma",
+        files=[("files", ("Scheda_prodotto_MIO002_20260917.pdf", contenuto, "application/pdf"))],
+        data={
+            "preview_tokens": [preview["schede"][0]["preview_token"]],
+            "associazioni_confermate": ["MIO STRUTTO 15 KG"],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["risultati"][0]["associazione"]["stato"] == "confermata_titolare"
 
 
 def test_correzione_associazione_accetta_solo_nome_esatto_esistente(db, monkeypatch):
