@@ -23,9 +23,16 @@ async def sincronizza_paghe_periodico():
     try:
         from app.hr.routers.dipendenti_cloud import (
             sincronizza_paghe_da_cedolini, sincronizza_bonifici_storici)
+        from app.hr.database import Database
+        from app.hr.services.regole_pagamenti_dipendenti import bonifica_storico
         r1 = await sincronizza_paghe_da_cedolini()
         r2 = await sincronizza_bonifici_storici()
-        logger.info(f"Sincronizzazione paghe periodica: cedolini={r1} bonifici_storici={r2}")
+        # Idempotente e marcata in sistema_stato: al primo giro dopo il deploy
+        # corregge lo storico; nei giri successivi e' un no-op. Le nuove
+        # scritture sono gia' protette dagli endpoint e dal ponte banca/PDF.
+        r3 = await bonifica_storico(Database.get_db(), dry_run=False)
+        logger.info(f"Sincronizzazione paghe periodica: cedolini={r1} bonifici_storici={r2} "
+                    f"bonifica_regole={r3}")
     except Exception as e:
         logger.error(f"Sincronizzazione paghe periodica fallita: {e}")
 

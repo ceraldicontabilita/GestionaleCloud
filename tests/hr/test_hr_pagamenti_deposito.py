@@ -279,8 +279,10 @@ def test_uscita_bancaria_favore_dipendente_con_stip_entra_in_hr(basi):
     assert esito["importo"] == 1377.0 and esito["data"] == "2026-08-06"
     assert esito["cro"] == "MB0B00923006/90679785"
     assert esito["ha_pdf"] is False and esito["origine"] == ponte.ORIGINE_BANCA
+    assert esito["associazione_certa"] is True and esito["associazione_certa_motivo"] == "nome"
     paga = _run(hr.paghe_mensili.find_one({"dipendente_id": "dip-vespa", "anno": 2026, "mese": 7}))
     assert paga["stato_pagamento"] == "pagato"
+    assert paga["bonifico_riconciliato_auto"] is True
     assert _run(db.estratto_conto_movimenti.find_one({"id": mov["id"]}))["hr_deposito"]["esito"] == "depositato"
 
 

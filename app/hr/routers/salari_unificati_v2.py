@@ -13,6 +13,7 @@ Endpoint:
 from fastapi import APIRouter, HTTPException, Query, Body
 from typing import Dict, Any, Optional
 import logging
+from datetime import datetime, timezone
 
 from app.hr.database import Database
 from app.hr.utils.error_handler import handle_errors
@@ -87,15 +88,30 @@ async def registra_pagamento(
     if importo <= 0:
         raise HTTPException(status_code=400, detail="importo deve essere > 0")
     
-    # Validazione contanti post-2018
+    # Dal 01/07/2018 i contanti sono ammessi soltanto dopo una cessazione
+    # registrata con data. La data resta legata alla prova del pagamento.
     cedolino = await db["cedolini"].find_one({"id": cedolino_id})
     if cedolino and metodo.lower() in ["contanti", "cassa", "cash"]:
-        anno_ced = int(cedolino.get("anno", 0))
-        mese_ced = int(cedolino.get("mese", 0))
-        if anno_ced > 2018 or (anno_ced == 2018 and mese_ced >= 7):
+        from app.hr.services.regole_pagamenti_dipendenti import valuta_contanti
+
+        dip = await db["dipendenti"].find_one(
+            {"id": cedolino.get("dipendente_id")}, {"_id": 0})
+        if not dip and cedolino.get("codice_fiscale"):
+            dip = await db["dipendenti"].find_one(
+                {"codice_fiscale": cedolino.get("codice_fiscale")}, {"_id": 0})
+        data_effettiva = data_pag or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        ammesso, motivo, fine = valuta_contanti(dip or {}, data_effettiva)
+        if not ammesso:
             raise HTTPException(
                 status_code=422,
-                detail="Pagamento stipendio in contanti vietato dal 1/7/2018 (L.205/2017)"
+                detail={
+                    "codice": "CONTANTI_NON_AMMESSI",
+                    "messaggio": ("Pagamento in contanti non ammesso dal 1 luglio 2018: "
+                                  "serve un rapporto cessato con data e il pagamento deve essere successivo"),
+                    "motivo": motivo,
+                    "data_pagamento": data_effettiva,
+                    "data_cessazione": fine,
+                },
             )
     
     return await registra_pagamento_salario(

@@ -627,6 +627,30 @@ async def imposta_acconti(payload: AccontiCloud):
             continue
         acconti.append({"importo": importo, "data": (a.get("data") or None)})
     db = get_db()
+    dipendente = await db.dipendenti.find_one(
+        {"id": payload.dipendente_id},
+        {"_id": 0, "stato": 1, "attivo": 1, "in_carico": 1,
+         "data_fine_rapporto": 1, "data_cessazione": 1,
+         "data_dimissione": 1, "data_cessazione_prevista": 1},
+    )
+    if not dipendente:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
+
+    acconti, non_ammessi = filtra_acconti_contanti(dipendente, acconti)
+    if non_ammessi:
+        primo = non_ammessi[0]
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "codice": "CONTANTI_NON_AMMESSI",
+                "messaggio": ("Dal 1 luglio 2018 i contanti sono ammessi solo dopo la cessazione "
+                              "del rapporto, con data di cessazione salvata"),
+                "data_pagamento": primo.get("data"),
+                "data_cessazione": primo.get("data_cessazione_rapporto"),
+                "motivo": primo.get("dettaglio_motivo"),
+            },
+        )
     await db.paghe_mensili.update_one(
         {"dipendente_id": payload.dipendente_id, "anno": int(payload.anno), "mese": int(payload.mese)},
         {"$set": {"acconti": acconti, "updated_at": now_iso()},
@@ -657,7 +681,19 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
         n_esiti += 1
     bonifico = tot_esiti if n_esiti else (pos.importo(p.get("bonifico_importo")) or pos.ZERO)
     busta = pos.importo(p.get("importo_busta"))
-    acc = sum((pos.importo(a.get("importo")) or pos.ZERO for a in (p.get("acconti") or [])), pos.ZERO)
+    from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
+
+    acconti_salvati = p.get("acconti") or []
+    dipendente = {}
+    if acconti_salvati:
+        dipendente = await db.dipendenti.find_one(
+            {"id": dip},
+            {"_id": 0, "stato": 1, "attivo": 1, "in_carico": 1,
+             "data_fine_rapporto": 1, "data_cessazione": 1,
+             "data_dimissione": 1, "data_cessazione_prevista": 1},
+        ) or {}
+    acconti_validi, _ = filtra_acconti_contanti(dipendente, acconti_salvati)
+    acc = sum((pos.importo(a.get("importo")) or pos.ZERO for a in acconti_validi), pos.ZERO)
     # Gli acconti del registro unico (anche quelli nati da «Bonifici da associare»)
     # sono pagamenti sulla busta come per la posizione dipendente: lo stesso conto.
     acconti_registro = await db.acconti_dipendenti.find(
@@ -4064,6 +4100,20 @@ async def associazioni_bonifici(anno: Optional[int] = None, mese: Optional[int] 
     return await _calcola_associazioni_bonifici(get_db(), anno, mese, stato)
 
 
+@router.post("/paghe/bonifica-regole-pagamento")
+async def bonifica_regole_pagamento(dry_run: bool = True, force: bool = False):
+    """Bonifica reversibile dello storico: anteprima per difetto.
+
+    Rimuove dal saldo (conservandoli nello storico della riga) i contanti non
+    ammessi dal 01/07/2018 e rende certe le prove documentali/bancarie che
+    citano un solo dipendente. ``force`` serve solo a ripetere una migrazione
+    gia' completata dopo l'arrivo di dati storici ulteriori.
+    """
+    from app.hr.services.regole_pagamenti_dipendenti import bonifica_storico
+
+    return await bonifica_storico(get_db(), dry_run=dry_run, force=force)
+
+
 async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: Optional[int] = None,
                                          stato: Optional[str] = None):
     q = {}
@@ -4073,7 +4123,11 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         q["mese"] = int(mese)
 
     dip_map = {}
-    async for d in db.dipendenti.find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1}):
+    async for d in db.dipendenti.find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1,
+                                            "codice_fiscale": 1, "stato": 1, "attivo": 1,
+                                            "in_carico": 1, "data_fine_rapporto": 1,
+                                            "data_cessazione": 1, "data_dimissione": 1,
+                                            "data_cessazione_prevista": 1}):
         dip_map[d["id"]] = d
 
     # Prefetch in blocco (UNA lettura per tabella) invece che una query per ogni
@@ -4121,6 +4175,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
            "associati": 0, "da_verificare": 0}
 
     from app.services.posizione_dipendente import ZERO, importo as _dec
+    from app.hr.services import stato_rapporto as stato_rapporto_service
+    from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
 
     async for p in db.paghe_mensili.find(q, {"_id": 0}):
         # busta assente (``None``) = non ancora arrivata, non uno zero
@@ -4128,14 +4184,14 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         busta = float(busta_dec or ZERO)
         bon_dec = _dec(p.get("bonifico_importo")) or ZERO
         bon = float(bon_dec)
-        acc_list = p.get("acconti") or []
+        dip_id = p.get("dipendente_id")
+        dip = dip_map.get(dip_id) or {}
+        acc_list, acc_scartati = filtra_acconti_contanti(dip, p.get("acconti") or [])
         acc_dec = sum((_dec(a.get("importo")) or ZERO for a in acc_list), ZERO)
         acc = float(acc_dec)
         if busta <= 0 and bon <= 0 and acc <= 0:
             continue
 
-        dip_id = p.get("dipendente_id")
-        dip = dip_map.get(dip_id) or {}
         nome = f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip() or dip_id
 
         # Bonifici reali pagati (esiti banca) per questo dipendente/mese/anno
@@ -4174,7 +4230,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         # confermano da soli il collegamento. Solo la conferma esplicita e
         # reversibile ``bonifico_riconciliato`` trasforma il candidato in un
         # legame verificato.
-        riconciliato = bool(p.get("bonifico_riconciliato"))
+        riconciliato = bool(p.get("bonifico_riconciliato") or p.get("bonifico_riconciliato_auto"))
         # Lo stato contabile effettivo non può derivare dal solo quadramento
         # numerico. Conserviamo quel calcolo come candidato, ma finché manca
         # una conferma reversibile della prova bancaria/assegno esponiamo
@@ -4241,6 +4297,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "bonifico": round(bon, 2),
             "acconti": round(acc, 2),
             "acconti_dettaglio": [{"importo": round(float(a.get("importo") or 0), 2), "data": a.get("data")} for a in acc_list],
+            "acconti_non_ammessi": len(acc_scartati),
+            "data_cessazione_rapporto": stato_rapporto_service.data_fine_rapporto(dip),
             "erogato": round(erogato, 2),
             # senza busta il saldo non si conosce: mai uno zero o un negativo di comodo
             "saldo": None if senza_busta else round(busta - erogato, 2),
@@ -4250,6 +4308,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "qualita": qualita,
             "associato": associato,
             "riconciliato": riconciliato,
+            "riconciliato_auto": bool(p.get("bonifico_riconciliato_auto")),
             "bonifico_data": p.get("bonifico_data"),
             "bonifici": esiti,
             "n_bonifici": len(esiti),
@@ -4687,7 +4746,12 @@ def classifica_documento(text: str, filename: str = "") -> str:
 async def _indici_dipendenti(db):
     """Indici per riconoscere il dipendente da CF/nome nei documenti."""
     dips = await db.dipendenti.find({"merged_into": {"$exists": False}},
-                                    {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1, "codice_fiscale": 1}).to_list(1000)
+                                    {"_id": 0, "id": 1, "nome": 1, "cognome": 1,
+                                     "nome_completo": 1, "codice_fiscale": 1,
+                                     "stato": 1, "attivo": 1, "in_carico": 1,
+                                     "data_fine_rapporto": 1, "data_cessazione": 1,
+                                     "data_dimissione": 1,
+                                     "data_cessazione_prevista": 1}).to_list(1000)
     return indici_da_dipendenti(dips)
 
 

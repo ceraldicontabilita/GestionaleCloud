@@ -376,7 +376,8 @@ def _mov(data: str, tipo: str, descrizione: str, *, dare: Optional[Decimal] = No
 def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[str, Any]],
                       cedolini: Iterable[Dict[str, Any]], acconti: Iterable[Dict[str, Any]],
                       conciliazioni: Iterable[Dict[str, Any]],
-                      eccedenze: Iterable[Dict[str, Any]] = ()) -> Dict[str, List[Dict[str, Any]]]:
+                      eccedenze: Iterable[Dict[str, Any]] = (),
+                      rapporto: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
     """Tutti i movimenti di UN dipendente: ``registro`` (paghe) e ``bonus`` a parte.
 
     Un'eccedenza ``da_attribuire`` compare nel registro **senza** dare ne'
@@ -454,10 +455,17 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
                              avere=imp, competenza=(a, m), fonte="pagamenti_esiti",
                              link={"key": e.get("key"), "anno": a, "mese": m}))
 
-    # AVERE: acconti in contanti del registro paghe e acconti del registro acconti
+    # AVERE: acconti in contanti del registro paghe e acconti del registro acconti.
+    # Dal 01/07/2018 i contanti non entrano nel saldo durante un rapporto in
+    # corso; una cessazione vale soltanto con la sua data e per pagamenti
+    # successivi. La bonifica persistente conserva gli scarti nello storico,
+    # ma la vista applica la regola anche prima che quella bonifica sia passata.
+    from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
+
     visti = set()
     for (a, m), paga in sorted(paghe_idx.items()):
-        for acc in paga.get("acconti") or []:
+        acconti_validi, _ = filtra_acconti_contanti(rapporto or {}, paga.get("acconti") or [])
+        for acc in acconti_validi:
             imp = importo(acc.get("importo"))
             if not imp or imp <= 0:
                 continue
@@ -663,8 +671,14 @@ async def carica_movimenti(db, dipendente_id: str) -> Dict[str, List[Dict[str, A
     conc = await db[COLL_CONCILIAZIONI].find(
         {"dipendente_id": dipendente_id}, {"_id": 0, "file_data": 0}).to_list(500)
     ecc = await db[COLL_ECCEDENZE].find({"dipendente_id": dipendente_id}, {"_id": 0}).to_list(500)
+    rapporto = await db.dipendenti.find_one(
+        {"id": dipendente_id},
+        {"_id": 0, "stato": 1, "attivo": 1, "in_carico": 1,
+         "data_fine_rapporto": 1, "data_cessazione": 1,
+         "data_dimissione": 1, "data_cessazione_prevista": 1},
+    ) or {}
     return componi_movimenti(paghe=paghe, esiti=esiti, cedolini=cedolini, acconti=acconti,
-                             conciliazioni=conc, eccedenze=ecc)
+                             conciliazioni=conc, eccedenze=ecc, rapporto=rapporto)
 
 
 def vista_eccedenza(ecc: Dict[str, Any]) -> Dict[str, Any]:
@@ -683,7 +697,10 @@ async def eccedenze_da_attribuire(db, dipendente_id: str) -> List[Dict[str, Any]
 
 async def posizione_dipendente(db, dipendente_id: str, anno: Optional[int] = None) -> Dict[str, Any]:
     rapporto = await db.dipendenti.find_one(
-        {"id": dipendente_id}, {"_id": 0, "data_assunzione": 1, "data_cessazione": 1}) or {}
+        {"id": dipendente_id},
+        {"_id": 0, "data_assunzione": 1, "stato": 1, "attivo": 1, "in_carico": 1,
+         "data_fine_rapporto": 1, "data_cessazione": 1,
+         "data_dimissione": 1, "data_cessazione_prevista": 1}) or {}
     out = posizione(await carica_movimenti(db, dipendente_id), anno, rapporto)
     out["dipendente_id"] = dipendente_id
     # Le eccedenze da attribuire si mostrano sempre, di qualunque anno: sono
