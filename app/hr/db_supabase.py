@@ -641,6 +641,75 @@ class SupabaseCollection:
             scelti = [{k: v for k, v in d.items() if k not in escludi} for d in scelti]
         return scelti
 
+    async def _seleziona_con_chiavi_fisiche(
+        self, filtro, *, completi: bool = True, limite: Optional[int] = None,
+    ) -> List[Tuple[str, Dict[str, Any]]]:
+        """Ritorna ``(chiave Postgres, documento)`` per le scritture.
+
+        Normalmente la chiave fisica e ``doc.id`` coincidono. Vecchie versioni
+        dell'endpoint presenze, pero, includevano un nuovo ``id`` nel ``$set``:
+        il JSON cambiava id mentre la primary key della riga restava invariata.
+        Usare ``doc.id`` per UPDATE/DELETE faceva quindi risultare l'operazione
+        riuscita senza modificare alcuna riga. La cache conserva gia la chiave
+        fisica: per le scritture la portiamo esplicitamente fino alla query SQL.
+        """
+        await self._assicura_tabella()
+        usati = _campi_usati(filtro)
+        if not (usati & set(_CAMPI_PESANTI)):
+            leggeri = await self._leggeri()
+            if leggeri is not None:
+                scelti = [
+                    (chiave, dict(doc))
+                    for chiave, doc in self._cache.items()
+                    if _match(doc, filtro)
+                ]
+                if limite:
+                    scelti = scelti[:limite]
+                if completi:
+                    per_chiave = {chiave: doc for chiave, doc in scelti}
+                    campi = set().union(*(
+                        self._pesanti.get(chiave, set()) for chiave in per_chiave
+                    ))
+                    if campi:
+                        colonne = sorted(campi)
+                        sql = 'SELECT id, %s FROM %s WHERE id = ANY($1::text[])' % (
+                            ", ".join(
+                                "doc -> '%s' AS c%d" % (campo, indice)
+                                for indice, campo in enumerate(colonne)
+                            ),
+                            self._sql_tab,
+                        )
+                        chiavi = list(per_chiave)
+                        for inizio in range(0, len(chiavi), _IDRATAZIONE_LOTTO):
+                            async with self._db._pool.acquire() as con:
+                                righe = await con.fetch(
+                                    sql, chiavi[inizio:inizio + _IDRATAZIONE_LOTTO],
+                                )
+                            for riga in righe:
+                                doc = per_chiave.get(str(riga["id"]))
+                                if doc is None:
+                                    continue
+                                for indice, campo in enumerate(colonne):
+                                    valore = riga["c%d" % indice]
+                                    if valore is not None:
+                                        doc[campo] = (
+                                            json.loads(valore)
+                                            if isinstance(valore, str) else valore
+                                        )
+                return scelti
+
+        async with self._db._pool.acquire() as con:
+            righe = await con.fetch('SELECT id, doc FROM %s' % self._sql_tab)
+        scelti = []
+        for riga in righe:
+            doc = riga["doc"]
+            doc = json.loads(doc) if isinstance(doc, str) else doc
+            if _match(doc, filtro):
+                scelti.append((str(riga["id"]), doc))
+                if limite and len(scelti) >= limite:
+                    break
+        return scelti
+
     async def _tutti(self, escludi=None) -> List[Dict[str, Any]]:
         """Tutti i documenti (copie), senza i campi in `escludi`."""
         escludi = list(escludi or [])
@@ -746,8 +815,8 @@ class SupabaseCollection:
         await self._assicura_tabella()
         # documento COMPLETO (campi pesanti idratati per id): viene riscritto
         # per intero, senza il PDF lo cancellerebbe
-        trovati = await self._seleziona(filtro, limite=1)
-        esistente = trovati[0] if trovati else None
+        trovati = await self._seleziona_con_chiavi_fisiche(filtro, limite=1)
+        chiave_fisica, esistente = trovati[0] if trovati else (None, None)
 
         if esistente is None:
             if not upsert:
@@ -766,22 +835,23 @@ class SupabaseCollection:
             await self._scrivi_cache(chiave, nuovo)
             return _Risultato(0, 0, chiave)
 
-        chiave = str(esistente.get("id") or esistente.get("_id"))
         nuovo = _applica_update(esistente, update, inserito=False)
         async with self._db._pool.acquire() as con:
             await con.execute(
                 'UPDATE %s SET doc = $2::jsonb WHERE id = $1' % self._sql_tab,
-                chiave, json.dumps(nuovo, default=str),
+                chiave_fisica, json.dumps(nuovo, default=str),
             )
-        await self._scrivi_cache(chiave, nuovo)
+        await self._scrivi_cache(chiave_fisica, nuovo)
         return _Risultato(1, 1 if nuovo != esistente else 0)
 
     async def delete_one(self, filtro, **_) -> _Risultato:
         await self._assicura_tabella()
-        trovati = await self._seleziona(filtro, list(_CAMPI_PESANTI), completi=False, limite=1)
+        trovati = await self._seleziona_con_chiavi_fisiche(
+            filtro, completi=False, limite=1,
+        )
         if not trovati:
             return _Risultato(0, 0)
-        chiave = str(trovati[0].get("id") or trovati[0].get("_id"))
+        chiave = trovati[0][0]
         async with self._db._pool.acquire() as con:
             await con.execute(
                 'DELETE FROM %s WHERE id = $1' % self._sql_tab, chiave
@@ -808,12 +878,11 @@ class SupabaseCollection:
         # JSONB lato SQL per ogni punto di scrittura, non solo qui: fuori
         # scope per un fix mirato, da valutare se in futuro la concorrenza
         # reale aumenta.
-        docs = await self._seleziona(filtro)
+        docs = await self._seleziona_con_chiavi_fisiche(filtro)
         matched = len(docs)
-        for d in docs:
+        for chiave, d in docs:
             nuovo = _applica_update(d, update, inserito=False)
             if nuovo != d:
-                chiave = str(d.get("id") or d.get("_id"))
                 async with self._db._pool.acquire() as con:
                     await con.execute(
                         'UPDATE %s SET doc = $2::jsonb WHERE id = $1' % self._sql_tab,
@@ -828,8 +897,9 @@ class SupabaseCollection:
         # stesso limite di concorrenza documentato sopra in update_many: la
         # lista di id viene fissata alla lettura, non ri-verificata alla DELETE.
         chiavi = [
-            str(d.get("id") or d.get("_id"))
-            for d in await self._seleziona(filtro, list(_CAMPI_PESANTI), completi=False)
+            chiave for chiave, _ in await self._seleziona_con_chiavi_fisiche(
+                filtro, completi=False,
+            )
         ]
         if chiavi:
             async with self._db._pool.acquire() as con:
