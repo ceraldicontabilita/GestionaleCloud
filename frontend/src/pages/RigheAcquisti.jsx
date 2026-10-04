@@ -17,6 +17,11 @@ import {
 } from '../components/ds';
 
 const PER_PAGINA = 200;
+const NATURE_RIGA = [
+  'prodotto', 'ingrediente', 'servizio', 'trasporto', 'sconto', 'arrotondamento',
+  'utensile', 'attrezzatura', 'cespite', 'pulizia', 'cancelleria', 'canone',
+  'consulenza', 'spesa', 'reso', 'altro',
+];
 
 const euro = value => {
   if (value === null || value === undefined || value === '') return '—';
@@ -126,7 +131,19 @@ function DettaglioRiga({ riga, onClose, onDecision, busy }) {
                       ['centro_costo', 'Centro di costo'], ['destinazione_operativa', 'Destinazione operativa'],
                     ].map(([key, label]) => (
                       <label key={key} style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
-                        {label}<Input aria-label={label} value={campi[key]} onChange={event => aggiornaCampo(key, event.target.value)} />
+                        {label}
+                        {key === 'natura' ? (
+                          <select
+                            aria-label={label}
+                            value={campi[key]}
+                            onChange={event => aggiornaCampo(key, event.target.value)}
+                            style={{ minHeight: 42, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: '0 10px', background: COLORS.card, color: COLORS.text }}
+                          >
+                            {NATURE_RIGA.map(natura => <option key={natura} value={natura}>{natura}</option>)}
+                          </select>
+                        ) : (
+                          <Input aria-label={label} value={campi[key]} onChange={event => aggiornaCampo(key, event.target.value)} />
+                        )}
                       </label>
                     ))}
                   </div>

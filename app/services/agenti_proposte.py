@@ -15,6 +15,7 @@ senza ``ANTHROPIC_API_KEY`` non fa nulla e lo dice nello stato.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -146,9 +147,11 @@ def nuovo_client(client=None, db=None):
 # ---------------------------------------------------------------------------
 
 async def chiamate_oggi(db) -> int:
-    from app.services.anthropic_llm_client import chiamate_oggi as _chiamate
-
-    return await _chiamate(db, scopo=SCOPO)
+    """Chiamate di tutti gli agenti propositivi soggette al tetto comune."""
+    return await db[COLL_CHIAMATE].count_documents({
+        "giorno": oggi_roma(),
+        "scopo": {"$in": [SCOPO, SCOPO_RIGHE_ACQUISTI]},
+    })
 
 
 async def _registra_chiamata(db, *, sha256: str, esito: str, usage: Optional[Dict[str, Any]],
@@ -643,9 +646,13 @@ def identita_regola_riga(riga: Dict[str, Any]) -> Optional[str]:
     return f"piva:{piva}|descrizione:{descrizione}" if descrizione else None
 
 
-def valida_classificazione_riga(grezzo: Dict[str, Any]) -> Dict[str, Any]:
+def valida_classificazione_riga(grezzo: Dict[str, Any], *, rigorosa: bool = False) -> Dict[str, Any]:
     natura = str(grezzo.get("natura") or "altro").strip().lower()
     if natura not in NATURE_RIGA:
+        if rigorosa:
+            raise PropostaNonApplicabile(
+                f"natura non ammessa: scegliere uno tra {', '.join(sorted(NATURE_RIGA))}"
+            )
         natura = "altro"
     try:
         confidenza = max(0.0, min(1.0, float(grezzo.get("confidenza") or 0)))
@@ -716,18 +723,39 @@ async def _salva_proposta_riga(
         "versione_prompt": VERSIONE_PROMPT_RIGHE, "fonte": fonte, "modello": modello,
         "aggiornato_il": adesso,
     }
-    esistente = await db[COLL_RIGHE_ACQUISTI].find_one({"id": riga["id"]}, {"_id": 0, "creato_il": 1})
-    if esistente:
-        await db[COLL_RIGHE_ACQUISTI].update_one({"id": riga["id"]}, {"$set": record})
-    else:
-        await db[COLL_RIGHE_ACQUISTI].insert_one({**record, "creato_il": adesso})
+    await db[COLL_RIGHE_ACQUISTI].update_one(
+        {"id": riga["id"]},
+        {"$set": record, "$setOnInsert": {"creato_il": adesso}},
+        upsert=True,
+    )
+
+
+_lock_righe_acquisti = asyncio.Lock()
 
 
 async def giro_righe_acquisti(db, *, client=None, limite: int = 20) -> Dict[str, Any]:
+    """Serializza giri manuali e pianificati anche durante un rolling deploy."""
+    lease_factory = getattr(type(db), "scheduler_lease", None)
+    if callable(lease_factory):
+        async with lease_factory(db, "agenti_righe_acquisti_servizio", ttl_seconds=900) as acquired:
+            if not acquired:
+                return {
+                    "eseguito_at": _adesso(), "abilitato": righe_acquisti_attive(),
+                    "candidate": 0, "proposte": 0, "riuso_regole": 0,
+                    "conflitti_regole": 0, "chiamate": 0, "saltati_tetto": 0,
+                    "errori": [], "motivo": "giro gia in corso",
+                }
+            return await _giro_righe_acquisti(db, client=client, limite=limite)
+    async with _lock_righe_acquisti:
+        return await _giro_righe_acquisti(db, client=client, limite=limite)
+
+
+async def _giro_righe_acquisti(db, *, client=None, limite: int = 20) -> Dict[str, Any]:
     """Propone classificazioni persistenti solo per righe nuove o modificate; non le conferma."""
     esito: Dict[str, Any] = {
         "eseguito_at": _adesso(), "abilitato": righe_acquisti_attive(), "candidate": 0,
-        "proposte": 0, "riuso_regole": 0, "chiamate": 0, "errori": [],
+        "proposte": 0, "riuso_regole": 0, "conflitti_regole": 0,
+        "chiamate": 0, "saltati_tetto": 0, "errori": [],
     }
     if not esito["abilitato"] and client is None:
         esito["motivo"] = "disabilitato: AGENTI_AI_RIGHE_ACQUISTI=false"
@@ -762,14 +790,27 @@ async def giro_righe_acquisti(db, *, client=None, limite: int = 20) -> Dict[str,
     confermate = await db[COLL_RIGHE_ACQUISTI].find(
         {"stato": STATO_CONFERMATA}, {"_id": 0, "identita_regola": 1, "classificazione_confermata": 1},
     ).to_list(None)
-    regole = {
-        r.get("identita_regola"): r.get("classificazione_confermata") for r in confermate
-        if r.get("identita_regola") and isinstance(r.get("classificazione_confermata"), dict)
-    }
+    gruppi_regole: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for confermata in confermate:
+        identita = confermata.get("identita_regola")
+        classificazione = confermata.get("classificazione_confermata")
+        if not identita or not isinstance(classificazione, dict):
+            continue
+        normalizzata = valida_classificazione_riga(classificazione)
+        chiave = json.dumps(normalizzata, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        gruppi_regole.setdefault(str(identita), {})[chiave] = normalizzata
+    regole = {identita: next(iter(valori.values())) for identita, valori in gruppi_regole.items() if len(valori) == 1}
+    conflitti = {identita for identita, valori in gruppi_regole.items() if len(valori) > 1}
     da_chiamare = []
     for riga in candidate:
         identita = identita_regola_riga(riga)
-        if identita and identita in regole:
+        if identita in conflitti:
+            esito["conflitti_regole"] += 1
+            esito["errori"].append({
+                "id": riga["id"],
+                "motivo": "classificazioni umane in conflitto: riga lasciata DA_VERIFICARE",
+            })
+        elif identita and identita in regole:
             proposta = {**regole[identita], "spiegazione": "Proposta da precedente conferma sulla stessa identita stabile."}
             await _salva_proposta_riga(db, riga, proposta, fonte="regola_confermata")
             esito["proposte"] += 1
@@ -778,6 +819,12 @@ async def giro_righe_acquisti(db, *, client=None, limite: int = 20) -> Dict[str,
             da_chiamare.append(riga)
 
     if da_chiamare:
+        tetto = tetto_giornaliero()
+        if tetto > 0 and await chiamate_oggi(db) >= tetto:
+            esito["saltati_tetto"] = len(da_chiamare)
+            esito["motivo"] = f"tetto giornaliero agenti raggiunto ({tetto})"
+            await _salva_stato_righe(db, esito)
+            return esito
         if client is None:
             from app.services.anthropic_llm_client import LlmChat, modello_veloce
 
@@ -853,12 +900,15 @@ async def decidi_riga_acquisto(
     # decisione umana sulla versione corrente.
     from app.routers.righe_acquisti import costruisci_righe
 
-    invoices = await db["invoices"].find(
-        {"status": {"$nin": ["deleted", "archived"]}},
+    fattura_id = str(record.get("fattura_id") or "").strip()
+    if not fattura_id:
+        raise PropostaNonApplicabile("proposta senza riferimento alla fattura: genera una nuova proposta")
+    invoice = await db["invoices"].find_one(
+        {"id": fattura_id, "status": {"$nin": ["deleted", "archived"]}},
         {"_id": 0, "xml_raw": 0, "xml_content": 0, "fattura_allegata": 0,
          "document_original_ref": 0, "foto": 0},
-    ).to_list(None)
-    riga_corrente = next((r for r in costruisci_righe(invoices) if r.get("id") == riga_id), None)
+    )
+    riga_corrente = next((r for r in costruisci_righe([invoice] if invoice else []) if r.get("id") == riga_id), None)
     if not riga_corrente or record.get("impronta_riga") != impronta_riga(riga_corrente):
         raise PropostaNonApplicabile("la riga e' cambiata: genera una nuova proposta")
     prima = {"stato": record.get("stato"), "proposta": record.get("proposta"),
@@ -871,7 +921,7 @@ async def decidi_riga_acquisto(
         scelta = record.get("proposta") if azione == "conferma" else correzione
         if not isinstance(scelta, dict):
             raise PropostaNonApplicabile("classificazione corretta mancante")
-        scelta = valida_classificazione_riga(scelta)
+        scelta = valida_classificazione_riga(scelta, rigorosa=azione == "correggi")
         if scelta.get("natura") == "cespite" and not str(regola_fiscale or "").strip():
             raise PropostaNonApplicabile("la conferma di un cespite richiede una regola fiscale esplicita")
         patch = {
@@ -879,12 +929,28 @@ async def decidi_riga_acquisto(
             "deciso_da": utente, "deciso_il": adesso, "motivazione": motivazione[:500],
             "regola_fiscale": str(regola_fiscale or "").strip()[:500] or None,
         }
-    await db[COLL_RIGHE_ACQUISTI].update_one({"id": riga_id}, {"$set": patch})
-    dopo = await db[COLL_RIGHE_ACQUISTI].find_one({"id": riga_id}, {"_id": 0})
-    await log_evento(
-        modulo="righe_acquisti", azione=f"classificazione_{azione}", entita_id=riga_id,
-        entita_collection=COLL_RIGHE_ACQUISTI, db=db, vecchio_stato=prima,
-        nuovo_stato={"stato": dopo.get("stato"), "classificazione_confermata": dopo.get("classificazione_confermata")},
-        fonte="decisione_umana", utente=utente, dettaglio=motivazione[:500],
+    stato_dopo = {
+        "stato": patch["stato"],
+        "classificazione_confermata": patch.get("classificazione_confermata"),
+    }
+    patch["audit_decisione"] = {
+        "azione": azione, "utente": utente, "deciso_il": adesso,
+        "motivazione": motivazione[:500], "prima": prima, "dopo": stato_dopo,
+    }
+    aggiornamento = await db[COLL_RIGHE_ACQUISTI].update_one(
+        {"id": riga_id, "stato": STATO_PROPOSTA, "impronta_riga": record.get("impronta_riga")},
+        {"$set": patch},
     )
+    if not getattr(aggiornamento, "matched_count", 0):
+        raise PropostaNonApplicabile("la proposta e' gia stata decisa o e' cambiata")
+    dopo = await db[COLL_RIGHE_ACQUISTI].find_one({"id": riga_id}, {"_id": 0})
+    try:
+        await log_evento(
+            modulo="righe_acquisti", azione=f"classificazione_{azione}", entita_id=riga_id,
+            entita_collection=COLL_RIGHE_ACQUISTI, db=db, vecchio_stato=prima,
+            nuovo_stato={"stato": dopo.get("stato"), "classificazione_confermata": dopo.get("classificazione_confermata")},
+            fonte="decisione_umana", utente=utente, dettaglio=motivazione[:500],
+        )
+    except Exception as exc:  # noqa: BLE001 - il record conserva gia' l'audit atomico
+        logger.error("[RIGHE-ACQUISTI-AI] audit esterno non scritto per %s: %s: %s", riga_id, type(exc).__name__, exc)
     return dopo

@@ -5,6 +5,7 @@ import pytest
 
 from app.routers.righe_acquisti import costruisci_righe
 from app.services import agenti_proposte as ap
+from app.services import audit_logger
 from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 
@@ -86,7 +87,7 @@ def test_cespite_non_si_conferma_senza_regola_fiscale_esplicita():
     riga = costruisci_righe([fattura])[0]
     asyncio.run(db["invoices"].insert_one(fattura))
     asyncio.run(db[ap.COLL_RIGHE_ACQUISTI].insert_one({
-        "id": "fatt-1:1", "stato": "proposta", "proposta": {"natura": "cespite"},
+        "id": "fatt-1:1", "fattura_id": "fatt-1", "stato": "proposta", "proposta": {"natura": "cespite"},
         "impronta_riga": ap.impronta_riga(riga),
     }))
     with pytest.raises(ap.PropostaNonApplicabile, match="regola fiscale"):
@@ -108,3 +109,120 @@ def test_una_proposta_vecchia_non_puo_essere_confermata_dopo_la_modifica_della_r
         asyncio.run(ap.decidi_riga_acquisto(
             db, "fatt-1:1", "titolare", azione="conferma", motivazione="Confermo",
         ))
+
+
+def test_due_decisioni_concorrenti_non_si_sovrascrivono():
+    db = ArchivioDocumenti()
+    client = ClientRigheFinto()
+    asyncio.run(db["invoices"].insert_one(_fattura()))
+    asyncio.run(ap.giro_righe_acquisti(db, client=client))
+
+    async def decidi_due_volte():
+        risultati = await asyncio.gather(
+            ap.decidi_riga_acquisto(
+                db, "fatt-1:1", "primo", azione="conferma", motivazione="Prima decisione",
+            ),
+            ap.decidi_riga_acquisto(
+                db, "fatt-1:1", "secondo", azione="rifiuta", motivazione="Seconda decisione",
+            ),
+            return_exceptions=True,
+        )
+        return risultati
+
+    risultati = asyncio.run(decidi_due_volte())
+    assert sum(isinstance(r, dict) for r in risultati) == 1
+    assert sum(isinstance(r, ap.PropostaNonApplicabile) for r in risultati) == 1
+
+
+def test_decisione_conserva_audit_nel_record_anche_se_log_esterno_fallisce(monkeypatch):
+    db = ArchivioDocumenti()
+    client = ClientRigheFinto()
+    asyncio.run(db["invoices"].insert_one(_fattura()))
+    asyncio.run(ap.giro_righe_acquisti(db, client=client))
+
+    async def audit_non_disponibile(**_kwargs):
+        raise RuntimeError("audit non disponibile")
+
+    monkeypatch.setattr(audit_logger, "log_evento", audit_non_disponibile)
+    deciso = asyncio.run(ap.decidi_riga_acquisto(
+        db, "fatt-1:1", "titolare", azione="conferma", motivazione="Conferma verificata",
+    ))
+
+    assert deciso["audit_decisione"]["utente"] == "titolare"
+    assert deciso["audit_decisione"]["prima"]["stato"] == "proposta"
+    assert deciso["audit_decisione"]["dopo"]["stato"] == "confermata"
+
+
+def test_tetto_agenti_include_le_chiamate_documentali_prima_delle_righe(monkeypatch):
+    db = ArchivioDocumenti()
+    client = ClientRigheFinto()
+    asyncio.run(db["invoices"].insert_one(_fattura()))
+    asyncio.run(db[ap.COLL_CHIAMATE].insert_many([
+        {"id": f"call-{i}", "giorno": ap.oggi_roma(), "scopo": ap.SCOPO, "esito": "ok"}
+        for i in range(ap.TETTO_DEFAULT)
+    ]))
+    monkeypatch.setenv("AGENTI_AI_TETTO_GIORNALIERO", str(ap.TETTO_DEFAULT))
+
+    esito = asyncio.run(ap.giro_righe_acquisti(db, client=client))
+
+    assert client.chiamate == 0
+    assert esito["saltati_tetto"] == 1
+
+
+def test_regole_umane_in_conflitto_non_generano_riuso_ne_chiamata_ai():
+    db = ArchivioDocumenti()
+    client = ClientRigheFinto()
+    fattura = _fattura()
+    riga = costruisci_righe([fattura])[0]
+    identita = ap.identita_regola_riga(riga)
+    asyncio.run(db["invoices"].insert_one(fattura))
+    asyncio.run(db[ap.COLL_RIGHE_ACQUISTI].insert_many([
+        {
+            "id": "vecchia-1:1", "stato": ap.STATO_CONFERMATA, "identita_regola": identita,
+            "classificazione_confermata": {"natura": "utensile", "categoria": "cucina"},
+        },
+        {
+            "id": "vecchia-2:1", "stato": ap.STATO_CONFERMATA, "identita_regola": identita,
+            "classificazione_confermata": {"natura": "attrezzatura", "categoria": "cucina"},
+        },
+    ]))
+
+    esito = asyncio.run(ap.giro_righe_acquisti(db, client=client))
+
+    assert client.chiamate == 0
+    assert esito["conflitti_regole"] == 1
+    assert asyncio.run(db[ap.COLL_RIGHE_ACQUISTI].find_one({"id": "fatt-1:1"})) is None
+
+
+def test_correzione_umana_rifiuta_una_natura_non_ammessa():
+    db = ArchivioDocumenti()
+    client = ClientRigheFinto()
+    asyncio.run(db["invoices"].insert_one(_fattura()))
+    asyncio.run(ap.giro_righe_acquisti(db, client=client))
+
+    with pytest.raises(ap.PropostaNonApplicabile, match="natura non ammessa"):
+        asyncio.run(ap.decidi_riga_acquisto(
+            db, "fatt-1:1", "titolare", azione="correggi", motivazione="Correzione manuale",
+            correzione={"natura": "attrezzatura_typo"},
+        ))
+
+
+def test_decisione_legge_solo_la_fattura_del_record():
+    db = ArchivioDocumenti()
+    client = ClientRigheFinto()
+    asyncio.run(db["invoices"].insert_one(_fattura()))
+    asyncio.run(ap.giro_righe_acquisti(db, client=client))
+    originale = db["invoices"]
+
+    class SoloFindOne:
+        async def find_one(self, *args, **kwargs):
+            return await originale.find_one(*args, **kwargs)
+
+        def find(self, *_args, **_kwargs):
+            raise AssertionError("una decisione non deve scansionare tutte le fatture")
+
+    db._tables["invoices"] = SoloFindOne()
+    deciso = asyncio.run(ap.decidi_riga_acquisto(
+        db, "fatt-1:1", "titolare", azione="conferma", motivazione="Conferma verificata",
+    ))
+    assert deciso["stato"] == ap.STATO_CONFERMATA
