@@ -85,6 +85,24 @@ def _data_documento_fattura(doc: dict):
     )
 
 
+def _e_documento_trasporto(doc: dict) -> bool:
+    """I DDT sono prove di consegna, non fatture ricevute.
+
+    Il pregresso fotografico li ha importati in ``invoices`` con ``tipo=ddt``;
+    il fallback ``TD01`` dell'archivio li faceva poi apparire come fatture.
+    Li riconosciamo solo da campi espliciti, mai da numero/data/importo.
+    """
+    valori = (
+        doc.get("tipo"), doc.get("document_type"), doc.get("tipo_documento"),
+        doc.get("document_role"),
+    )
+    normalizzati = {
+        re.sub(r"[^a-z0-9]+", " ", str(valore or "").casefold()).strip()
+        for valore in valori
+    }
+    return bool(normalizzati & {"ddt", "documento di trasporto", "delivery note"})
+
+
 def _supplier_counter_key(fattura: dict) -> str:
     """Identita' conservativa per il solo contatore dei fornitori.
 
@@ -306,6 +324,11 @@ async def get_archivio_fatture(
     # Numero, fornitore, data e importo identici restano collisioni visibili.
     from app.routers.invoices.invoices_main import _dedupe_invoices
     docs_inv_raw = _dedupe_invoices(docs_inv_raw)
+    # Il DDT fotografico resta nel suo archivio documentale, ma non e' una
+    # fattura e non deve ricevere il fallback TD01. Caso reale SAIMA 69011:
+    # la fattura canonica collegata e' 1/66288; mostrare entrambi raddoppiava
+    # documento, pagamento e potenzialmente contabilita'.
+    docs_inv_raw = [doc for doc in docs_inv_raw if not _e_documento_trasporto(doc)]
 
     # ── Normalizza ────────────────────────────────────────────────────────────
     normalized_inv = [_normalizza_da_invoices(d) for d in docs_inv_raw]

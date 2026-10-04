@@ -6,20 +6,23 @@ from typing import Dict, List
 
 def generate_invoice_html(fattura: Dict, righe_fattura: List[Dict] = None) -> str:
     """Genera HTML preview della fattura stile AssoInvoice - layout intuitivo e leggibile."""
+    fornitore_annidato = fattura.get("fornitore")
+    if not isinstance(fornitore_annidato, dict):
+        fornitore_annidato = {}
     fornitore = (fattura.get("fornitore_ragione_sociale") or 
                  fattura.get("supplier_name") or 
                  fattura.get("cedente_denominazione") or 
-                 fattura.get("fornitore", {}).get("denominazione") or "N/A")
+                 fornitore_annidato.get("denominazione") or "N/A")
     piva = (fattura.get("fornitore_partita_iva") or 
             fattura.get("supplier_vat") or 
             fattura.get("cedente_piva") or 
-            fattura.get("fornitore", {}).get("partita_iva") or "N/A")
+            fornitore_annidato.get("partita_iva") or "N/A")
     cf = (fattura.get("fornitore_codice_fiscale") or 
           fattura.get("cedente_cf") or 
-          fattura.get("fornitore", {}).get("codice_fiscale") or "")
+          fornitore_annidato.get("codice_fiscale") or "")
     indirizzo_fornitore = (fattura.get("fornitore_indirizzo") or 
                            fattura.get("cedente_indirizzo") or 
-                           fattura.get("fornitore", {}).get("indirizzo") or "")
+                           fornitore_annidato.get("indirizzo") or "")
     numero = fattura.get("numero_documento") or fattura.get("invoice_number") or fattura.get("numero") or "N/A"
     data = fattura.get("data_documento") or fattura.get("invoice_date") or fattura.get("data") or "N/A"
     

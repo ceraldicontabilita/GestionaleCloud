@@ -321,6 +321,17 @@ def test_generate_invoice_html_fallback_avvisa_che_non_e_loriginale():
     assert "NON è il documento XML originale" in html
 
 
+def test_generate_invoice_html_accetta_fornitore_legacy_come_stringa():
+    html = generate_invoice_html({
+        "invoice_number": "69011",
+        "total_amount": 87.82,
+        "fornitore": "SAIMA S.p.A.",
+    }, [])
+
+    assert "Fattura 69011" in html
+    assert "NON è il documento XML originale" in html
+
+
 def test_html_assosoftware_viene_centrato_nel_visualizzatore():
     html = (
         "<html><head><title>Fattura</title></head><body>"
