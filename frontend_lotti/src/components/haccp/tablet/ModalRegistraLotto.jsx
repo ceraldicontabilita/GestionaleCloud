@@ -253,44 +253,6 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
   const [lottiDisponibili, setLottiDisponibili] = useState({});
   const [lottiSelezionati, setLottiSelezionati] = useState({});
 
-  // ── Aggiungi a colazione ──────────────────────────────────────────────────
-  const [colPicker, setColPicker]   = useState(false);
-  const [colPresets, setColPresets] = useState([]);
-  const [colBusy, setColBusy]       = useState(false);
-
-  const addAColazione = async (preset) => {
-    if (!preset) return;
-    setColBusy(true);
-    try {
-      await axios.post(`${API}/colazione-acquaviva/aggiungi-prodotto`, {
-        preset,
-        prodotto_id: prodotto.id,
-        prodotto_nome: prodotto.nome,
-        pezzi,
-        foto_url: prodotto.foto_url || null,
-        categoria: prodotto.categoria || null,
-      });
-      toast.success(`✓ ${prodotto.nome} aggiunto alla colazione ${preset} (${pezzi}${unita})`);
-      setColPicker(false);
-    } catch (e) {
-      toast.error("Errore: " + (e?.response?.data?.detail || e?.message || ""));
-    } finally {
-      setColBusy(false);
-    }
-  };
-
-  const apriColazione = async () => {
-    try {
-      const res = await axios.get(`${API}/colazione-acquaviva/preset`);
-      const lista = res.data || [];
-      if (lista.length <= 1) { await addAColazione(lista[0]?.nome || "Estiva"); return; }
-      setColPresets(lista);
-      setColPicker(true);
-    } catch (e) {
-      toast.error("Errore colazione: " + (e?.message || ""));
-    }
-  };
-
   useEffect(() => {
     if (!prodotto?.id) return;
     axios.get(`${API}/ricette/${prodotto.id}/bom`)
@@ -746,37 +708,6 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
                     cursor: "pointer", textDecoration: "underline", marginTop: 2 }}>
                   Torna indietro
                 </button>
-              </div>
-            )}
-
-            {/* Aggiungi a colazione (solo pasticceria) */}
-            {reparto === "pasticceria" && (
-              <div style={{ marginBottom: 8 }}>
-                {!colPicker ? (
-                  <button onClick={apriColazione} disabled={colBusy} style={{
-                    width: "100%", padding: "11px 0", borderRadius: 9, border: "2px solid var(--warning)",
-                    background: "var(--warning-soft)", color: "var(--warning-text)", fontWeight: 800,
-                    fontSize: 13, cursor: colBusy ? "default" : "pointer"
-                  }}>
-                    ☕ Aggiungi anche al menù colazione ({pezzi}{unita})
-                  </button>
-                ) : (
-                  <div style={{ border: "2px solid var(--warning)", borderRadius: 10, padding: 8, background: "#fffdf7" }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: "#92400e", marginBottom: 6 }}>In quale menù colazione lo metto? (lo ritrovi nel tasto ☕ Colazione)</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {colPresets.map(p => (
-                        <button key={p.nome} onClick={() => addAColazione(p.nome)} disabled={colBusy} style={{
-                          padding: "7px 12px", borderRadius: 999, border: "2px solid var(--warning)",
-                          background: "#fff", color: "var(--warning-text)", fontWeight: 800, fontSize: 12, cursor: "pointer"
-                        }}>{p.nome}</button>
-                      ))}
-                      <button onClick={() => setColPicker(false)} style={{
-                        padding: "7px 12px", borderRadius: 999, border: "2px solid #e6e0d4",
-                        background: "#faf7f0", color: "#7a7266", fontWeight: 700, fontSize: 12, cursor: "pointer"
-                      }}>Annulla</button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
