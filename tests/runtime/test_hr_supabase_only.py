@@ -13,6 +13,13 @@ def test_database_hr_e_supabase_only():
     assert 'backend = "mongo"' not in source
 
 
+def test_health_hr_non_conserva_un_fallback_mongo_morto():
+    source = (ROOT / "app/hr/main.py").read_text(encoding="utf-8")
+    assert 'backend == "mongo"' not in source
+    assert 'backend in ("supabase", "mongo")' not in source
+    assert 'db.command("ping")' not in source
+
+
 def test_config_hr_non_legge_o_scrive_segreti_su_mongo():
     source = (ROOT / "app/hr/config.py").read_text(encoding="utf-8")
     assert "MongoClient" not in source

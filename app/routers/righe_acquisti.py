@@ -14,9 +14,11 @@ import unicodedata
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from app.database import Database
+from app.services import agenti_proposte
+from app.utils.dependencies import get_current_admin_user
 
 
 router = APIRouter()
@@ -391,8 +393,13 @@ async def lista_righe_acquisti(
             "foto": 0,
         },
     ).sort("invoice_date", -1).to_list(None)
+    rows_costruite = costruisci_righe(invoices)
+    # Le classificazioni sono sparse: leggerle in un'unica query evita un
+    # filtro ``IN`` con migliaia di id fattura/riga su PostgREST.
+    classificazioni = await agenti_proposte.classificazioni_righe(db)
     rows = _filtra(
-        costruisci_righe(invoices), anno=anno, fornitore=fornitore, testo=testo,
+        agenti_proposte.sovrapponi_classificazioni(rows_costruite, classificazioni),
+        anno=anno, fornitore=fornitore, testo=testo,
         natura=natura, conto=conto, metodo=metodo, stato_ai=stato_ai, anomalie=anomalie,
     )
     total = len(rows)
@@ -406,3 +413,41 @@ async def lista_righe_acquisti(
         "da_verificare": sum(1 for row in rows if row["classificazione"]["stato"] == "DA_VERIFICARE"),
         "anomalie": sum(1 for row in rows if row.get("anomalie")),
     }
+
+
+@router.get("/classificazione/stato")
+async def stato_classificazione_righe(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    return await agenti_proposte.stato_righe_acquisti(Database.get_db())
+
+
+@router.post("/classificazione/giro")
+async def avvia_classificazione_righe(
+    limit: int = Query(20, ge=1, le=50),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Elabora un lotto; salva soltanto proposte e non scritture contabili."""
+    return await agenti_proposte.giro_righe_acquisti(Database.get_db(), limite=limit)
+
+
+@router.post("/classificazione/{riga_id:path}/decisione")
+async def decidi_classificazione_riga(
+    riga_id: str,
+    body: Dict[str, Any] = Body(...),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    utente = str(admin.get("email") or admin.get("user_id") or "admin")
+    try:
+        record = await agenti_proposte.decidi_riga_acquisto(
+            Database.get_db(), riga_id, utente,
+            azione=str(body.get("azione") or ""),
+            motivazione=str(body.get("motivazione") or ""),
+            correzione=body.get("classificazione") if isinstance(body.get("classificazione"), dict) else None,
+            regola_fiscale=str(body.get("regola_fiscale") or ""),
+        )
+    except agenti_proposte.PropostaNonTrovata as exc:
+        raise HTTPException(status_code=404, detail="Proposta di riga non trovata") from exc
+    except agenti_proposte.PropostaNonApplicabile as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"classificazione": record}

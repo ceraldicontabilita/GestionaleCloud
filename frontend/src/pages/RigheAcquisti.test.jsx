@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
 import RigheAcquisti from './RigheAcquisti';
 
-vi.mock('../api', () => ({ default: { get: vi.fn() } }));
+vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('../contexts/AnnoContext', () => ({ useAnnoGlobale: () => ({ anno: 2026 }) }));
 vi.mock('../lib/utils', async importOriginal => {
   const actual = await importOriginal();
@@ -50,5 +50,31 @@ describe('Righe acquisti', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Servizio temporaneamente non disponibile');
     await waitFor(() => expect(screen.queryByText('Nessuna riga trovata con questi filtri.')).not.toBeInTheDocument());
+  });
+
+  it('conferma soltanto la proposta della singola riga con motivazione', async () => {
+    const proposta = {
+      ...riga,
+      classificazione: {
+        stato: 'PROPOSTA', natura: 'utensile', categoria: 'utensili cucina', conto: '05.01.06',
+        confidenza: 0.91, spiegazione: 'Descrizione inequivocabile', regola: 'SKU esatto', versione: 1,
+      },
+    };
+    api.get.mockImplementation(url => Promise.resolve({ data: url.endsWith('/stato')
+      ? { abilitato: false, proposte_aperte: 1 }
+      : { righe: [proposta], totale: 1, da_verificare: 0, anomalie: 1, has_more: false } }));
+    api.post.mockResolvedValue({ data: { classificazione: { stato: 'confermata' } } });
+    render(<RigheAcquisti />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Dettagli' }));
+    const conferma = screen.getByRole('button', { name: /Conferma/ });
+    expect(conferma).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Motivazione decisione'), { target: { value: 'Verificata sul documento' } });
+    fireEvent.click(conferma);
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/righe-acquisti/classificazione/f-1%3A1/decisione',
+      { azione: 'conferma', motivazione: 'Verificata sul documento', regola_fiscale: '' },
+    ));
   });
 });

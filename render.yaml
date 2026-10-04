@@ -79,6 +79,11 @@ services:
         value: "true"
       - key: AGENTI_AI_TETTO_GIORNALIERO
         value: "200"
+      # Classificazione propositiva per singola riga acquisto. E' separata per
+      # evitare consumo di quota AI non approvato: il codice e lo scheduler
+      # restano pronti, ma l'attivazione va concordata col titolare.
+      - key: AGENTI_AI_RIGHE_ACQUISTI
+        value: "false"
       # Telegram, unico canale degli avvisi (fonti ferme, posta, ritenute).
       # Proprietario: titolare. Token del bot da @BotFather (segreto, si ruota
       # revocandolo li'), chat id della chat del titolare. Senza i due valori

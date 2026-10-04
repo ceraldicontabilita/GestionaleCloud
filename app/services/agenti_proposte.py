@@ -30,9 +30,13 @@ logger = logging.getLogger(__name__)
 
 COLL_PROPOSTE = "agenti_proposte"
 COLL_CHIAMATE = "agenti_ai_chiamate"
+COLL_RIGHE_ACQUISTI = "righe_acquisti_classificazioni"
 SCOPO = "agenti_proposte"
+SCOPO_RIGHE_ACQUISTI = "righe_acquisti"
 CHIAVE_STATO = "agenti_proposte"
+CHIAVE_STATO_RIGHE = "righe_acquisti_ai"
 VERSIONE_PROMPT = 1
+VERSIONE_PROMPT_RIGHE = 1
 LOTTO = 10
 TETTO_DEFAULT = 200
 MAX_BYTE_DOCUMENTO = 20 * 1024 * 1024
@@ -42,6 +46,12 @@ STATO_PROPOSTA, STATO_CONFERMATA, STATO_RIFIUTATA = "proposta", "confermata", "r
 CONFIDENZE = ("alta", "media", "bassa")
 #: Motivi di rifiuto a chip (le mani sporche: niente testo libero, «altro» e' l'eccezione).
 MOTIVI_RIFIUTO = ("tipo_sbagliato", "dati_sbagliati", "non_contabile", "doppione", "altro")
+
+NATURE_RIGA = frozenset({
+    "prodotto", "ingrediente", "servizio", "trasporto", "sconto", "arrotondamento",
+    "utensile", "attrezzatura", "cespite", "pulizia", "cancelleria", "canone",
+    "consulenza", "spesa", "reso", "altro",
+})
 
 #: I tipi che lo smistatore di Documenti > Import sa consegnare a un lettore
 #: (``rileva_tipo_documento``): una proposta fuori da questi non si applica.
@@ -579,3 +589,302 @@ async def conferma_sicure(db, utente: str, *, settore: Optional[str] = None) -> 
         esito["dettagli"].append({"id": p["id"], "esito": "confermata" if ok else "non_applicata",
                                   "motivo": (r.get("esito") or {}).get("message") or (r.get("esito") or {}).get("motivo")})
     return esito
+
+
+# ---------------------------------------------------------------------------
+# Proposte per singola riga acquisto
+# ---------------------------------------------------------------------------
+
+_SISTEMA_RIGHE = """Sei il classificatore propositivo delle singole righe di fatture passive di un ERP italiano.
+Non classificare mai l'intero fornitore. Non decidere deducibilita, IVA detraibile o natura fiscale di cespite.
+Trasporti, servizi, sconti e arrotondamenti non sono prodotti o ingredienti. Un dato incerto resta null.
+Rispondi SOLO con un array JSON, una voce per ciascun id ricevuto, con le chiavi:
+id, natura, categoria, conto, centro_costo, destinazione_operativa, confidenza, spiegazione, regola.
+natura deve essere uno tra: {nature}. confidenza e' un numero tra 0 e 1. regola descrive soltanto
+le condizioni verificabili usate per proporre la classificazione; non e' una regola fiscale."""
+
+
+def righe_acquisti_attive() -> bool:
+    """Opt-in separato: abilitarlo puo' consumare quota AI del piano corrente."""
+    return os.getenv("AGENTI_AI_RIGHE_ACQUISTI", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+def impronta_riga(riga: Dict[str, Any]) -> str:
+    campi = {
+        "fattura_id": riga.get("fattura_id"),
+        "numero_linea": riga.get("numero_linea"),
+        "hash_originale": riga.get("hash_originale"),
+        "descrizione_originale": riga.get("descrizione_originale"),
+        "codici_articolo": riga.get("codici_articolo") or [],
+        "partita_iva": riga.get("partita_iva"),
+        "tipo_documento": riga.get("tipo_documento"),
+        "quantita": riga.get("quantita"),
+        "unita_misura": riga.get("unita_misura"),
+        "imponibile": riga.get("imponibile"),
+        "aliquota_iva": riga.get("aliquota_iva"),
+        "natura_iva": riga.get("natura_iva"),
+    }
+    raw = json.dumps(campi, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def identita_regola_riga(riga: Dict[str, Any]) -> Optional[str]:
+    """Identita riusabile solo con P.IVA e codice articolo, o descrizione esatta."""
+    piva = re.sub(r"\W", "", str(riga.get("partita_iva") or "").upper())
+    if not piva:
+        return None
+    codici = sorted(
+        f"{str(c.get('tipo') or '').strip().upper()}:{str(c.get('valore') or '').strip().upper()}"
+        for c in (riga.get("codici_articolo") or []) if isinstance(c, dict) and c.get("valore")
+    )
+    if codici:
+        return f"piva:{piva}|codice:{'|'.join(codici)}"
+    descrizione = re.sub(r"\s+", " ", str(riga.get("descrizione_normalizzata") or "").strip().upper())
+    return f"piva:{piva}|descrizione:{descrizione}" if descrizione else None
+
+
+def valida_classificazione_riga(grezzo: Dict[str, Any]) -> Dict[str, Any]:
+    natura = str(grezzo.get("natura") or "altro").strip().lower()
+    if natura not in NATURE_RIGA:
+        natura = "altro"
+    try:
+        confidenza = max(0.0, min(1.0, float(grezzo.get("confidenza") or 0)))
+    except (TypeError, ValueError):
+        confidenza = 0.0
+    return {
+        "natura": natura,
+        "categoria": str(grezzo.get("categoria") or "").strip()[:120] or None,
+        "conto": str(grezzo.get("conto") or "").strip()[:120] or None,
+        "centro_costo": str(grezzo.get("centro_costo") or "").strip()[:120] or None,
+        "destinazione_operativa": str(grezzo.get("destinazione_operativa") or "").strip()[:120] or None,
+        "confidenza": confidenza,
+        "spiegazione": str(grezzo.get("spiegazione") or "").strip()[:500],
+        "regola": str(grezzo.get("regola") or "").strip()[:500],
+        "versione": VERSIONE_PROMPT_RIGHE,
+    }
+
+
+def _array_json(testo: str) -> List[Dict[str, Any]]:
+    pulito = re.sub(r"^```(?:json)?\s*|\s*```$", "", (testo or "").strip())
+    try:
+        dato = json.loads(pulito)
+    except json.JSONDecodeError:
+        inizio, fine = pulito.find("["), pulito.rfind("]")
+        if inizio < 0 or fine <= inizio:
+            return []
+        try:
+            dato = json.loads(pulito[inizio:fine + 1])
+        except json.JSONDecodeError:
+            return []
+    return [x for x in dato if isinstance(x, dict)] if isinstance(dato, list) else []
+
+
+async def classificazioni_righe(db, ids: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
+    filtro: Dict[str, Any] = {"id": {"$in": ids}} if ids else {}
+    righe = await db[COLL_RIGHE_ACQUISTI].find(filtro, {"_id": 0}).to_list(None)
+    return {str(r.get("id")): r for r in righe if r.get("id")}
+
+
+def sovrapponi_classificazioni(
+    righe: List[Dict[str, Any]], record: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    for riga in righe:
+        salvata = record.get(str(riga.get("id")))
+        if not salvata or salvata.get("impronta_riga") != impronta_riga(riga):
+            continue
+        stato = salvata.get("stato")
+        proposta = salvata.get("classificazione_confermata") if stato == STATO_CONFERMATA else salvata.get("proposta")
+        if stato == STATO_RIFIUTATA:
+            riga["classificazione"] = {
+                "stato": "DA_VERIFICARE", "spiegazione": "Proposta rifiutata; serve una nuova verifica umana.",
+                "versione": salvata.get("versione_prompt"), "rifiuto": salvata.get("rifiuto"),
+            }
+        elif isinstance(proposta, dict):
+            riga["classificazione"] = {**proposta, "stato": "CONFERMATA" if stato == STATO_CONFERMATA else "PROPOSTA"}
+        riga["classificazione_record_id"] = salvata.get("id")
+    return righe
+
+
+async def _salva_proposta_riga(
+    db, riga: Dict[str, Any], proposta: Dict[str, Any], *, fonte: str, modello: Optional[str] = None,
+) -> None:
+    adesso = _adesso()
+    record = {
+        "id": riga["id"], "fattura_id": riga.get("fattura_id"), "numero_linea": riga.get("numero_linea"),
+        "impronta_riga": impronta_riga(riga), "identita_regola": identita_regola_riga(riga),
+        "stato": STATO_PROPOSTA, "proposta": valida_classificazione_riga(proposta),
+        "versione_prompt": VERSIONE_PROMPT_RIGHE, "fonte": fonte, "modello": modello,
+        "aggiornato_il": adesso,
+    }
+    esistente = await db[COLL_RIGHE_ACQUISTI].find_one({"id": riga["id"]}, {"_id": 0, "creato_il": 1})
+    if esistente:
+        await db[COLL_RIGHE_ACQUISTI].update_one({"id": riga["id"]}, {"$set": record})
+    else:
+        await db[COLL_RIGHE_ACQUISTI].insert_one({**record, "creato_il": adesso})
+
+
+async def giro_righe_acquisti(db, *, client=None, limite: int = 20) -> Dict[str, Any]:
+    """Propone classificazioni persistenti solo per righe nuove o modificate; non le conferma."""
+    esito: Dict[str, Any] = {
+        "eseguito_at": _adesso(), "abilitato": righe_acquisti_attive(), "candidate": 0,
+        "proposte": 0, "riuso_regole": 0, "chiamate": 0, "errori": [],
+    }
+    if not esito["abilitato"] and client is None:
+        esito["motivo"] = "disabilitato: AGENTI_AI_RIGHE_ACQUISTI=false"
+        await _salva_stato_righe(db, esito)
+        return esito
+    if not attivo() and client is None:
+        esito["motivo"] = "disabilitato: AGENTI_AI=false"
+        await _salva_stato_righe(db, esito)
+        return esito
+    if client is None and not chiave_api():
+        esito["motivo"] = "senza_chiave"
+        await _salva_stato_righe(db, esito)
+        return esito
+
+    from app.routers.righe_acquisti import costruisci_righe
+
+    invoices = await db["invoices"].find(
+        {"status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "xml_raw": 0, "xml_content": 0, "fattura_allegata": 0, "document_original_ref": 0, "foto": 0},
+    ).to_list(None)
+    tutte = costruisci_righe(invoices)
+    presenti = await classificazioni_righe(db)
+    candidate = [
+        r for r in tutte
+        if not presenti.get(r["id"]) or presenti[r["id"]].get("impronta_riga") != impronta_riga(r)
+    ][:max(1, min(int(limite), 50))]
+    esito["candidate"] = len(candidate)
+    if not candidate:
+        await _salva_stato_righe(db, esito)
+        return esito
+
+    confermate = await db[COLL_RIGHE_ACQUISTI].find(
+        {"stato": STATO_CONFERMATA}, {"_id": 0, "identita_regola": 1, "classificazione_confermata": 1},
+    ).to_list(None)
+    regole = {
+        r.get("identita_regola"): r.get("classificazione_confermata") for r in confermate
+        if r.get("identita_regola") and isinstance(r.get("classificazione_confermata"), dict)
+    }
+    da_chiamare = []
+    for riga in candidate:
+        identita = identita_regola_riga(riga)
+        if identita and identita in regole:
+            proposta = {**regole[identita], "spiegazione": "Proposta da precedente conferma sulla stessa identita stabile."}
+            await _salva_proposta_riga(db, riga, proposta, fonte="regola_confermata")
+            esito["proposte"] += 1
+            esito["riuso_regole"] += 1
+        else:
+            da_chiamare.append(riga)
+
+    if da_chiamare:
+        if client is None:
+            from app.services.anthropic_llm_client import LlmChat, modello_veloce
+
+            client = LlmChat(
+                chiave_api(), system_prompt=_SISTEMA_RIGHE.replace("{nature}", ", ".join(sorted(NATURE_RIGA))),
+                model=modello_veloce(), scopo=SCOPO_RIGHE_ACQUISTI, db=db,
+            )
+        payload = [{
+            "id": r["id"], "descrizione": r.get("descrizione_originale"),
+            "codici_articolo": r.get("codici_articolo"), "fornitore": r.get("fornitore"),
+            "partita_iva": r.get("partita_iva"), "tipo_documento": r.get("tipo_documento"),
+            "quantita": r.get("quantita"), "unita_misura": r.get("unita_misura"),
+            "imponibile": r.get("imponibile"), "aliquota_iva": r.get("aliquota_iva"),
+        } for r in da_chiamare]
+        try:
+            from app.services.anthropic_llm_client import UserMessage
+
+            risposta = await client.send_message_con_usage(UserMessage(
+                content="Classifica queste righe, senza deduzioni fiscali:\n" + json.dumps(payload, ensure_ascii=False)
+            ))
+            esito["chiamate"] = 1
+            per_id = {str(x.get("id")): x for x in _array_json(risposta.get("testo") or "") if x.get("id")}
+            for riga in da_chiamare:
+                proposta = per_id.get(riga["id"])
+                if not proposta:
+                    esito["errori"].append({"id": riga["id"], "motivo": "risposta assente o non valida"})
+                    continue
+                await _salva_proposta_riga(db, riga, proposta, fonte="ai", modello=risposta.get("modello"))
+                esito["proposte"] += 1
+        except Exception as exc:  # noqa: BLE001 - lo stato deve restare recuperabile
+            logger.error("[RIGHE-ACQUISTI-AI] %s: %s", type(exc).__name__, exc)
+            esito["errori"].append({"motivo": f"{type(exc).__name__}: {exc}"[:300]})
+    await _salva_stato_righe(db, esito)
+    return esito
+
+
+async def _salva_stato_righe(db, esito: Dict[str, Any]) -> None:
+    await db["sistema_stato"].update_one(
+        {"chiave": CHIAVE_STATO_RIGHE},
+        {"$set": {"chiave": CHIAVE_STATO_RIGHE, "ultimo_giro": esito.get("eseguito_at"), "esito": esito}},
+        upsert=True,
+    )
+
+
+async def stato_righe_acquisti(db) -> Dict[str, Any]:
+    riga = await db["sistema_stato"].find_one({"chiave": CHIAVE_STATO_RIGHE}, {"_id": 0}) or {}
+    aperte = await db[COLL_RIGHE_ACQUISTI].count_documents({"stato": STATO_PROPOSTA})
+    return {
+        "abilitato": righe_acquisti_attive(), "configurato": bool(chiave_api()),
+        "ultimo_giro": riga.get("ultimo_giro"), "ultimo_esito": riga.get("esito"), "proposte_aperte": aperte,
+    }
+
+
+async def decidi_riga_acquisto(
+    db, riga_id: str, utente: str, *, azione: str, motivazione: str,
+    correzione: Optional[Dict[str, Any]] = None, regola_fiscale: str = "",
+) -> Dict[str, Any]:
+    """Conferma, corregge o rifiuta una proposta, conservando prima/dopo nell'audit."""
+    from app.services.audit_logger import log_evento
+
+    if azione not in ("conferma", "correggi", "rifiuta"):
+        raise PropostaNonApplicabile("azione non ammessa")
+    if not str(motivazione or "").strip():
+        raise PropostaNonApplicabile("la motivazione e' obbligatoria")
+    record = await db[COLL_RIGHE_ACQUISTI].find_one({"id": riga_id}, {"_id": 0})
+    if not record:
+        raise PropostaNonTrovata(riga_id)
+    if record.get("stato") != STATO_PROPOSTA:
+        raise PropostaNonApplicabile("la proposta e' gia stata decisa")
+
+    # Una riga modificata dopo la proposta non puo' essere confermata tramite
+    # una richiesta diretta: deve passare da un nuovo giro e da una nuova
+    # decisione umana sulla versione corrente.
+    from app.routers.righe_acquisti import costruisci_righe
+
+    invoices = await db["invoices"].find(
+        {"status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "xml_raw": 0, "xml_content": 0, "fattura_allegata": 0,
+         "document_original_ref": 0, "foto": 0},
+    ).to_list(None)
+    riga_corrente = next((r for r in costruisci_righe(invoices) if r.get("id") == riga_id), None)
+    if not riga_corrente or record.get("impronta_riga") != impronta_riga(riga_corrente):
+        raise PropostaNonApplicabile("la riga e' cambiata: genera una nuova proposta")
+    prima = {"stato": record.get("stato"), "proposta": record.get("proposta"),
+             "classificazione_confermata": record.get("classificazione_confermata")}
+    adesso = _adesso()
+    if azione == "rifiuta":
+        patch = {"stato": STATO_RIFIUTATA, "rifiuto": {"motivazione": motivazione[:500]},
+                 "deciso_da": utente, "deciso_il": adesso}
+    else:
+        scelta = record.get("proposta") if azione == "conferma" else correzione
+        if not isinstance(scelta, dict):
+            raise PropostaNonApplicabile("classificazione corretta mancante")
+        scelta = valida_classificazione_riga(scelta)
+        if scelta.get("natura") == "cespite" and not str(regola_fiscale or "").strip():
+            raise PropostaNonApplicabile("la conferma di un cespite richiede una regola fiscale esplicita")
+        patch = {
+            "stato": STATO_CONFERMATA, "classificazione_confermata": scelta,
+            "deciso_da": utente, "deciso_il": adesso, "motivazione": motivazione[:500],
+            "regola_fiscale": str(regola_fiscale or "").strip()[:500] or None,
+        }
+    await db[COLL_RIGHE_ACQUISTI].update_one({"id": riga_id}, {"$set": patch})
+    dopo = await db[COLL_RIGHE_ACQUISTI].find_one({"id": riga_id}, {"_id": 0})
+    await log_evento(
+        modulo="righe_acquisti", azione=f"classificazione_{azione}", entita_id=riga_id,
+        entita_collection=COLL_RIGHE_ACQUISTI, db=db, vecchio_stato=prima,
+        nuovo_stato={"stato": dopo.get("stato"), "classificazione_confermata": dopo.get("classificazione_confermata")},
+        fonte="decisione_umana", utente=utente, dettaglio=motivazione[:500],
+    )
+    return dopo

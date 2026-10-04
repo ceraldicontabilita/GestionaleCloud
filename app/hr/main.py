@@ -164,8 +164,6 @@ async def _ping_database() -> None:
     db = Database.db
     if Database.backend == "supabase":
         await db.ping()
-    elif Database.backend == "mongo":
-        await db.command("ping")
     else:
         raise RuntimeError(f"backend HR non connesso ({Database.backend or 'avvio non completato'})")
 
@@ -191,7 +189,7 @@ async def health(strict: bool = False):
     Risponde entro ``_HEALTH_TIMEOUT`` secondi anche con il database appeso
     (``degraded``, HTTP 200); ``?strict=true`` rende 503 un guasto certo.
     """
-    if Database.backend in ("supabase", "mongo"):
+    if Database.backend == "supabase":
         esito_db = await _probe_database.esito(_ping_database, timeout=_HEALTH_TIMEOUT)
     elif Database.backend == "non_configurato":
         esito_db = None  # nessuna DSN: lo dice risposta_salute
