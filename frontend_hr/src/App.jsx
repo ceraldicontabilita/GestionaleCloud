@@ -825,6 +825,8 @@ const MOTIVI_CESSAZIONE = [
 const FORM_DIP_VUOTO = {
   nome: "", cognome: "", ruolo: "", email: "", telefono: "", codice_fiscale: "", matricola: "",
   data_nascita: "", indirizzo: "", contratto: "", data_assunzione: "", iban: "", livello: "",
+  codice_fiscale_azienda: "", sesso: "", regione_residenza: "", provincia_residenza: "", comune_residenza: "",
+  regione_domicilio: "", provincia_domicilio: "", comune_domicilio: "", cittadinanza: "", titolo_studio: "",
   ore_settimanali: "", lotti_operatore: true,
 };
 const CAMPI_FORM_DIP = Object.keys(FORM_DIP_VUOTO);
@@ -1185,6 +1187,24 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                   <span className="dc-label">Data di nascita</span>
                   <input type="date" value={formData.data_nascita} onChange={(e) => setFormData({...formData, data_nascita: e.target.value})} />
                 </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">Sesso</span>
+                  <select value={formData.sesso} onChange={(e) => setFormData({...formData, sesso: e.target.value})}>
+                    <option value="">— non indicato —</option><option value="M">M</option><option value="F">F</option>
+                  </select>
+                </label>
+                <label className="dc-form-group">
+                  <span className="dc-label">CF azienda</span>
+                  <input value={formData.codice_fiscale_azienda} onChange={(e) => setFormData({...formData, codice_fiscale_azienda: e.target.value.toUpperCase()})} />
+                </label>
+                <label className="dc-form-group"><span className="dc-label">Cittadinanza</span><input value={formData.cittadinanza} onChange={(e) => setFormData({...formData, cittadinanza: e.target.value})} /></label>
+                <label className="dc-form-group"><span className="dc-label">Titolo di studio</span><input value={formData.titolo_studio} onChange={(e) => setFormData({...formData, titolo_studio: e.target.value})} /></label>
+                <label className="dc-form-group"><span className="dc-label">Regione di residenza</span><input value={formData.regione_residenza} onChange={(e) => setFormData({...formData, regione_residenza: e.target.value})} /></label>
+                <label className="dc-form-group"><span className="dc-label">Provincia di residenza</span><input value={formData.provincia_residenza} onChange={(e) => setFormData({...formData, provincia_residenza: e.target.value})} /></label>
+                <label className="dc-form-group"><span className="dc-label">Comune di residenza</span><input value={formData.comune_residenza} onChange={(e) => setFormData({...formData, comune_residenza: e.target.value})} /></label>
+                <label className="dc-form-group"><span className="dc-label">Regione di domicilio</span><input value={formData.regione_domicilio} onChange={(e) => setFormData({...formData, regione_domicilio: e.target.value})} placeholder="solo se diversa dalla residenza" /></label>
+                <label className="dc-form-group"><span className="dc-label">Provincia di domicilio</span><input value={formData.provincia_domicilio} onChange={(e) => setFormData({...formData, provincia_domicilio: e.target.value})} placeholder="solo se diversa dalla residenza" /></label>
+                <label className="dc-form-group"><span className="dc-label">Comune di domicilio</span><input value={formData.comune_domicilio} onChange={(e) => setFormData({...formData, comune_domicilio: e.target.value})} placeholder="solo se diversa dalla residenza" /></label>
                 <label className="dc-form-group">
                   <span className="dc-label">Data assunzione</span>
                   <input type="date" value={formData.data_assunzione} onChange={(e) => setFormData({...formData, data_assunzione: e.target.value})} />
