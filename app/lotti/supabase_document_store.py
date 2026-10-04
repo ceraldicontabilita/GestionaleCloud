@@ -28,6 +28,8 @@ import httpx
 from bson import Binary, ObjectId
 from mongomock_motor import AsyncMongoMockClient
 
+from app.lotti.bulk_compat import bulk_write_compat
+
 
 def _json_safe(value: Any) -> Any:
     if isinstance(value, ObjectId):
@@ -456,7 +458,11 @@ class PersistentCollection:
             prima = {d["_id"]: d for d in await self.raw.find({}).to_list(None)}
             await asyncio.sleep(0)
             try:
-                result = await self.raw.bulk_write(requests, *args, **kwargs)
+                result = await bulk_write_compat(
+                    self.raw,
+                    requests,
+                    ordered=bool(kwargs.get("ordered", True)),
+                )
             finally:
                 # Anche un lotto non ordinato fallito a meta' lascia in memoria
                 # le operazioni riuscite: vanno persistite comunque.

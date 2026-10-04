@@ -1,7 +1,5 @@
 """Cartella di pagamento: lettura, attesa «da pagare», verbale e ricevuta con lo stesso IUV (dati inventati)."""
 import asyncio
-import os
-
 import fitz
 from mongomock_motor import AsyncMongoMockClient
 
@@ -31,18 +29,12 @@ RIGHE = [
     "1" + IUV,
 ]
 
-_FONT = next((f for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                          "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")
-              if os.path.exists(f)), None)
-
-
 def _pdf(righe=RIGHE) -> bytes:
     doc = fitz.open()
     pagina = doc.new_page()
-    pagina.insert_font(fontname="F1", fontfile=_FONT)
     y = 30
     for riga in righe:
-        pagina.insert_text((30, y), riga, fontsize=8, fontname="F1")
+        pagina.insert_text((30, y), riga, fontsize=8, fontname="helv")
         y += 12
     contenuto = doc.tobytes()
     doc.close()

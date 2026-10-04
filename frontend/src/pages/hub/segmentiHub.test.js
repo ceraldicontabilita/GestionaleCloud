@@ -39,4 +39,8 @@ describe('sezione fatture emesse', () => {
   it('riconosce /fatture/emesse', () => {
     expect(sezioneFatture('/fatture/emesse')).toBe('emesse');
   });
+
+  it('riconosce la vista canonica delle righe acquisti', () => {
+    expect(sezioneFatture('/fatture/righe')).toBe('righe');
+  });
 });

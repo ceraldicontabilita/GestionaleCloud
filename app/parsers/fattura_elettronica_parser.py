@@ -377,6 +377,27 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
     for linea in find_all_elements(body, 'DettaglioLinee'):
         descrizione = get_text(linea, 'Descrizione')
 
+        codici_articolo = []
+        for codice in find_all_elements(linea, 'CodiceArticolo'):
+            codice_data = {
+                "tipo": get_text(codice, 'CodiceTipo'),
+                "valore": get_text(codice, 'CodiceValore'),
+            }
+            codice_data = {k: v for k, v in codice_data.items() if v}
+            if codice_data.get("valore"):
+                codici_articolo.append(codice_data)
+
+        sconti_maggiorazioni = []
+        for variazione in find_all_elements(linea, 'ScontoMaggiorazione'):
+            variazione_data = {
+                "tipo": get_text(variazione, 'Tipo'),
+                "percentuale": get_text(variazione, 'Percentuale'),
+                "importo": get_text(variazione, 'Importo'),
+            }
+            variazione_data = {k: v for k, v in variazione_data.items() if v}
+            if variazione_data:
+                sconti_maggiorazioni.append(variazione_data)
+
         # AltriDatiGestionali: campi liberi TipoDato/RiferimentoTesto usati da
         # molti fornitori (es. Leasys, ALD) per veicolare dati strutturati
         # (codice cliente, contratto, targa, telaio, causali reali) che non
@@ -402,6 +423,8 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
             "prezzo_totale": get_text(linea, 'PrezzoTotale', '0'),
             "aliquota_iva": get_text(linea, 'AliquotaIVA', '0'),
             "natura": get_text(linea, 'Natura'),
+            "codici_articolo": codici_articolo,
+            "sconti_maggiorazioni": sconti_maggiorazioni,
             "data_inizio_periodo": get_text(linea, 'DataInizioPeriodo'),
             "data_fine_periodo": get_text(linea, 'DataFinePeriodo'),
             "altri_dati_gestionali": altri_dati_gestionali,
