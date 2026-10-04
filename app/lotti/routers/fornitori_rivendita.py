@@ -29,7 +29,7 @@ _TIPI = ("colazione", "senza_glutine")  # nomi dei flag booleani per-fornitore
 _SEED = [
     {"nome": "Acquaviva",     "fonte": "acquaviva",     "colazione": True,  "senza_glutine": False, "match_fattura": "acquaviva"},
     {"nome": "Vandemoortele", "fonte": "vandemoortele", "colazione": True,  "senza_glutine": False, "match_fattura": "vandemoortele"},
-    {"nome": "Alfa Service",  "fonte": "alpha",         "colazione": False, "senza_glutine": True,  "match_fattura": "alfa|alpha"},
+    {"nome": "Alfa Service",  "fonte": "alpha",         "colazione": False, "senza_glutine": True,  "match_fattura": "progetto alpha"},
 ]
 
 
@@ -40,6 +40,10 @@ async def _ensure_seed():
             await db.fornitori_rivendita.insert_one(
                 {"id": str(uuid.uuid4()), "attivo": True, "created_at": now, **s}
             )
+    # «alfa|alpha» prendeva anche Alfa Service (cannucce, bicchieri): il fornitore
+    # senza glutine è Progetto Alpha. Si corregge solo il valore cablato dal seme.
+    await db.fornitori_rivendita.update_many(
+        {"fonte": "alpha", "match_fattura": "alfa|alpha"}, {"$set": {"match_fattura": "progetto alpha"}})
     # Migrazione: vecchi documenti con 'tipo' (valore singolo) → due flag booleani
     async for d in db.fornitori_rivendita.find({"tipo": {"$exists": True}}, {"_id": 0, "id": 1, "tipo": 1}):
         await db.fornitori_rivendita.update_one(

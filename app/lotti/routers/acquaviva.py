@@ -5,6 +5,7 @@ Router per prodotti semilavorati commerciali (Acquaviva, Vandemoortele, Alpha, e
 Gestisce: listino, vendite giornaliere, registro invenduto e prezzo per pezzo.
 """
 from fastapi import Depends, APIRouter, HTTPException, Query, Body, UploadFile, File, BackgroundTasks
+from pydantic import BaseModel, Field
 from datetime import datetime, timezone, date
 from typing import Optional, List
 from pymongo import UpdateOne
@@ -927,7 +928,16 @@ async def export_foto_zip():
 @router.get("/prodotti/senza-glutine")
 async def get_prodotti_senza_glutine(search: Optional[str] = Query(None)):
     """Prodotti senza glutine di TUTTI i fornitori attivi tipo 'senza_glutine' (registro)."""
-    from app.lotti.routers.fornitori_rivendita import fonti_attive
+    from app.lotti.routers.fornitori_rivendita import fonti_attive, regex_fatture_attive
+    import time as _time
+    # I prodotti arrivano dalle fatture XML: il catalogo si allinea da solo (idempotente,
+    # al massimo ogni 10 minuti) invece di aspettare un import a mano.
+    if _time.monotonic() - _SG_IMPORT["ultimo"] > 600:
+        _SG_IMPORT["ultimo"] = _time.monotonic()
+        try:
+            await importa_senza_glutine_da_fatture()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[senza-glutine] import da fatture non riuscito: %s %s", type(exc).__name__, exc)
     fonti = await fonti_attive("senza_glutine")
     query = {"fonte": {"$in": fonti or ["alpha"]}}
     if search:
@@ -941,6 +951,9 @@ async def get_prodotti_senza_glutine(search: Optional[str] = Query(None)):
         attivi_ids = {p.get("id") for p in attivi}
         for prodotto in items:
             prodotto["in_ricette"] = prodotto.get("id") in attivi_ids
+    giacenze = await _giacenze_senza_glutine(await regex_fatture_attive("senza_glutine"))
+    for prodotto in items:
+        prodotto["giacenza"] = (giacenze.get(_chiave_nome_sg(prodotto.get("nome"))) or {}).get("stock", 0)
     # Prezzo/quantità SOLO da fatture reali (stesso motore degli altri cataloghi):
     # chi sfoglia vede subito quali prodotti senza glutine sono già stati comprati.
     try:
@@ -950,6 +963,130 @@ async def get_prodotti_senza_glutine(search: Optional[str] = Query(None)):
     except Exception:
         logger.debug("[acquaviva] aggancio prezzi senza-glutine fallito (non bloccante)")
     return items
+
+
+_SG_IMPORT = {"ultimo": 0.0}
+_SG_ANNO_MINIMO = 2026
+
+
+def _chiave_nome_sg(nome: str) -> str:
+    """Nome confrontabile fra riga di fattura, catalogo e lotto di magazzino."""
+    from app.lotti.routers.classificatore_alimenti import strip_accents
+    return re.sub(r"\s+", " ", strip_accents(str(nome or "")).strip().lower())
+
+
+async def _giacenze_senza_glutine(regex_fornitori: str) -> dict:
+    """Giacenza in PEZZI dei lotti dei fornitori senza glutine, per nome prodotto."""
+    from app.lotti.routers.magazzino_unificato import _fattore_collo, _pulisci_nome_display
+    if not regex_fornitori or regex_fornitori == "___nomatch___":
+        return {}
+    lotti = await db.lotti_fornitori.find(
+        {"esaurito": {"$ne": True}, "quantita_disponibile": {"$gt": 0},
+         "fornitore": {"$regex": regex_fornitori, "$options": "i"}},
+        {"_id": 0, "id": 1, "prodotto_nome": 1, "quantita_disponibile": 1, "unita_misura": 1,
+         "data_fattura": 1},
+    ).to_list(2000)
+    out: dict = {}
+    for lotto in lotti:
+        chiave = _chiave_nome_sg(_pulisci_nome_display(lotto.get("prodotto_nome")))
+        fattore = _fattore_collo(lotto) or 1
+        voce = out.setdefault(chiave, {"stock": 0.0, "lotti_ids": []})
+        voce["stock"] = round(voce["stock"] + float(lotto.get("quantita_disponibile") or 0) * fattore, 3)
+        voce["lotti_ids"].append(lotto["id"])
+    return out
+
+
+async def importa_senza_glutine_da_fatture(dry_run: bool = False) -> dict:
+    """Porta nel catalogo senza glutine i prodotti delle fatture XML (dal 2026) dei
+    fornitori con il flag «senza glutine» nel registro. Idempotente: un prodotto
+    già in catalogo (stesso nome) non si riscrive, il secondo giro dà nuovi=0."""
+    from app.lotti.routers.fornitori_rivendita import _ensure_seed
+    from app.lotti.routers.utils import parse_data_flessibile
+    await _ensure_seed()
+    registro = await db.fornitori_rivendita.find(
+        {"senza_glutine": True, "attivo": True}, {"_id": 0, "fonte": 1, "match_fattura": 1}
+    ).to_list(100)
+    fornitori = [(str(r.get("fonte") or "").strip(),
+                  [a.strip().lower() for a in str(r.get("match_fattura") or r.get("fonte") or "").split("|") if a.strip()])
+                 for r in registro]
+    fonti = [f for f, _ in fornitori if f]
+    esistenti = {_chiave_nome_sg(d.get("nome")) for d in await db.acquaviva_prodotti.find(
+        {"fonte": {"$in": fonti}}, {"_id": 0, "nome": 1}).to_list(5000)} if fonti else set()
+    visti: dict = {}
+    fatture_lette = 0
+    async for f in db.fatture.find({}, {"_id": 0, "fornitore": 1, "data_fattura": 1, "prodotti": 1}):
+        forn = (f.get("fornitore") or "").lower()
+        fonte = next((fo for fo, alt in fornitori if fo and any(a in forn for a in alt)), None)
+        if not fonte:
+            continue
+        data = parse_data_flessibile(f.get("data_fattura"))
+        if not data or data.year < _SG_ANNO_MINIMO:
+            continue
+        fatture_lette += 1
+        for riga in f.get("prodotti") or []:
+            nome = re.sub(r"\s+", " ", str(riga.get("descrizione") or "")).strip()
+            try:
+                prezzo = float(riga.get("prezzo") or 0)
+            except (TypeError, ValueError):
+                prezzo = 0.0
+            chiave = _chiave_nome_sg(nome)
+            if not chiave or prezzo <= 0 or chiave in esistenti:
+                continue
+            prec = visti.get(chiave)
+            if not prec or data > prec["data"]:
+                visti[chiave] = {"nome": nome, "fonte": fonte, "prezzo": prezzo, "data": data,
+                                 "codice": str(riga.get("codice_articolo") or "").strip()}
+    if not dry_run:
+        adesso = datetime.now(timezone.utc).isoformat()
+        for v in visti.values():
+            await db.acquaviva_prodotti.insert_one({
+                "id": str(uuid.uuid4()), "nome": v["nome"], "codice": v["codice"], "fonte": v["fonte"],
+                "categoria": "Senza glutine", "unita_misura": "PZ", "pz_confezione": 1, "qty_cartone": 1,
+                "prezzo_acquisto_confezione": v["prezzo"], "prezzo_singolo": v["prezzo"],
+                "prezzo_vendita": 0, "gia_acquistato": True, "foto_url": "", "descrizione": "",
+                "ingredienti_str": "", "allergeni": rileva_allergeni(nome=v["nome"], descrizione=v["nome"], categoria=""),
+                "origine": "fattura_xml", "created_at": adesso, "updated_at": adesso,
+            })
+    return {"dry_run": dry_run, "fatture_lette": fatture_lette, "nuovi": len(visti),
+            "gia_presenti": len(esistenti), "prodotti": sorted(v["nome"] for v in visti.values())}
+
+
+@router.post("/prodotti/senza-glutine/importa-da-fatture")
+async def importa_senza_glutine_endpoint(dry_run: bool = Query(False), _admin=Depends(require_admin)):
+    """Rilegge le fatture XML del 2026 e importa i prodotti senza glutine (admin)."""
+    return await importa_senza_glutine_da_fatture(dry_run=dry_run)
+
+
+class SenzaGlutineBancoIn(BaseModel):
+    quantita: int = Field(..., ge=1, le=500)
+    operatore_nome: Optional[str] = ""
+
+
+@router.post("/prodotti/senza-glutine/{prodotto_id}/al-banco")
+async def senza_glutine_al_banco(prodotto_id: str, payload: SenzaGlutineBancoIn):
+    """Manda al banco N pezzi e li SCALA dal magazzino (FIFO sui lotti di fattura).
+    Senza giacenza sufficiente non si registra niente."""
+    from app.lotti.routers.fornitori_rivendita import regex_fatture_attive
+    from app.lotti.routers.magazzino_unificato import ScaricoPayload, scarico_unificato
+    from app.lotti.servizi.vendita_banco_service import VenditaBancoIn, registra_vendita_banco
+    prodotto = await db.acquaviva_prodotti.find_one({"id": prodotto_id}, {"_id": 0})
+    if not prodotto:
+        raise HTTPException(404, "Prodotto non trovato")
+    giacenze = await _giacenze_senza_glutine(await regex_fatture_attive("senza_glutine"))
+    voce = giacenze.get(_chiave_nome_sg(prodotto.get("nome")))
+    if not voce or voce["stock"] <= 0:
+        raise HTTPException(409, f"{prodotto.get('nome')}: nessuna giacenza in magazzino")
+    if payload.quantita > voce["stock"] + 0.001:
+        raise HTTPException(409, f"{prodotto.get('nome')}: in magazzino ne restano {voce['stock']:g}")
+    operatore = (payload.operatore_nome or "").strip() or "Tablet"
+    esito = await scarico_unificato(ScaricoPayload(
+        prodotto_id=voce["lotti_ids"][0], source="fornitori", quantita=payload.quantita,
+        operatore_nome=operatore, nota="Senza glutine al banco", lotti_ids=voce["lotti_ids"]))
+    await registra_vendita_banco(VenditaBancoIn(
+        prodotto_id=prodotto_id, prodotto_nome=prodotto.get("nome") or "", reparto="pasticceria",
+        pezzi_prodotti=payload.quantita, foto_url=prodotto.get("foto_url") or None,
+        operatore_nome=operatore, consumo_immediato=True))
+    return {"ok": True, "pezzi": payload.quantita, "giacenza_residua": esito.get("stock_nuovo")}
 
 
 @router.post("/import-listino-2026")
