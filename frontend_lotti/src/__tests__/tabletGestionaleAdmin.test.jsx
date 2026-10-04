@@ -64,21 +64,15 @@ describe("uscita dal tablet verso il gestionale", () => {
     expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-admin", ruolo: "amministratore" });
   });
 
-  test("un dipendente viene mandato al login del Gestionale, niente tastierino", async () => {
+  test("un dipendente identificato non vede il pulsante del Gestionale", async () => {
     jest.spyOn(authLotti, "entraDalGestionale").mockResolvedValue(false);
     saveTabletSession({ dipendente_id: "hr-dipendente", nome: "Dipendente", ruolo: "operatore" }, "pasticceria");
     saveRuolo("operatore");
-    const get = jest.spyOn(axios, "get").mockResolvedValue({ data: { richieste: [] } });
+    jest.spyOn(axios, "get").mockResolvedValue({ data: { richieste: [] } });
     await act(async () => root.render(<TabletHome />));
-    // La home rilegge il ruolo di Lotti una volta; il tocco su «Gestionale»
-    // non deve verificare il dipendente come amministratore.
-    const letture = () => get.mock.calls.filter(([url]) => String(url).includes("/auth/me")).length;
-    const primaDelTocco = letture();
-    await clicca();
-    expect(window.location.hash).toBe("#tablet/home");
-    expect(login).toHaveBeenCalledWith("/lotti/#dashboard");
-    expect(node.textContent).not.toContain("PIN Amministratore");
-    expect(letture()).toBe(primaDelTocco);
+    // Il Gestionale e' del titolare: all'operatore il pulsante non compare nemmeno.
+    expect([...node.querySelectorAll("button")].some((b) => b.textContent.includes("Gestionale"))).toBe(false);
+    expect(login).not.toHaveBeenCalled();
   });
 
   test("un token di altro dipendente non apre il gestionale", async () => {
