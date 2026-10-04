@@ -5,7 +5,7 @@ import axios from "axios";
 import { LayoutDashboard, Lock, LogOut, Thermometer, CalendarClock, ShieldCheck } from "lucide-react";
 import { cambiaOperatore } from "./tablet/BarraReparto";
 import { apiError } from "../../utils/apiError";
-import { allineaSessioneTitolare, getTabletSession, moveTabletSessionTo, saveTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
+import { allineaSessioneTitolare, getTabletSession, moveTabletSessionTo, repartiAmmessi, saveTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
@@ -196,6 +196,9 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
   const [erroreGestionale, setErroreGestionale] = useState("");
   const [verificaGestionale, setVerificaGestionale] = useState(false);
   const sessione = getTabletSession();
+  // Un operatore vede solo le card della sua mansione; il titolare tutte.
+  const ammessi = repartiAmmessi(sessione);
+  const titolareInSessione = !sessione || sessione.ruolo === "amministratore";
   const [richiesteOrdini, setRichiesteOrdini] = useState(0);
   const [avvisoTitolare, setAvvisoTitolare] = useState("");
 
@@ -222,7 +225,7 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
   // sessione una volta sola, senza rimandare di nuovo al login (niente giri).
   useEffect(() => {
     const rep = REPARTI.find((r) => r.id === preselectReparto);
-    if (rep?.soloAdmin) apriRiservata(rep, false);
+    if (rep?.soloAdmin && !ammessi?.includes(rep.id)) apriRiservata(rep, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselectReparto]);
 
@@ -263,7 +266,7 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
     // se entra un dipendente, un eventuale "amministratore" rimasto in memoria
     // da una sessione precedente viene declassato (25/07/2026).
     saveRuolo(operatore?.ruolo || "operatore");
-    saveTabletSession(operatore, repartoCorrente);
+    saveTabletSession({ ...operatore, reparto_pin: repartoCorrente }, repartoCorrente);
     setRepSel(null);
     // Il login riapre la sottopagina richiesta, non il cruscotto del reparto.
     // Non trasferire però Colazione/Produci quando si sceglie un altro reparto.
@@ -326,7 +329,7 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
 
   const scegliReparto = (rep) => {
     const session = getTabletSession();
-    if (rep.soloAdmin) {
+    if (rep.soloAdmin && !ammessi?.includes(rep.id)) {
       // Un dipendente identificato sul tablet non passa per il ruolo salvato:
       // si riverifica la sessione del Gestionale, che riallinea la persona.
       if (session?.ruolo === "amministratore" || (!session && sessioneTitolareAttiva())) {
@@ -355,12 +358,12 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
         <div style={{ fontSize: 13, color: "#6b7669", fontWeight: 800, letterSpacing: 4, textTransform: "uppercase" }}>Ceraldi Group</div>
         <div style={{ fontSize: 12, color: "#8a8478", marginTop: 5 }}>{sessione ? `Seleziona reparto · ${sessione.nome}` : "Seleziona reparto e inserisci il tuo PIN"}</div>
       </div>
-      <StatoGiorno attivo={!!sessione} />
+      <StatoGiorno attivo={!!sessione && titolareInSessione} />
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center", maxWidth: 760, marginBottom: 48 }}>
-        {REPARTI.map(r => (
+        {REPARTI.filter(r => !ammessi || ammessi.includes(r.id)).map(r => (
           <button key={r.id} onClick={() => scegliReparto(r)}
             style={{ position: "relative", width: 220, height: 200, borderRadius: 24, border: "none", background: r.grad, color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, boxShadow: `0 8px 32px ${r.shadow}`, fontFamily: "inherit" }}>
-            {r.soloAdmin && (
+            {r.soloAdmin && !ammessi?.includes(r.id) && (
               <span style={{ position: "absolute", top: 12, right: 12, display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(0,0,0,.35)", borderRadius: 999, padding: "4px 10px", fontSize: 11, fontWeight: 800, letterSpacing: .3 }}>
                 <Lock size={12} /> Solo titolare
               </span>
@@ -397,10 +400,10 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
             <LogOut size={18} aria-hidden="true" /> Cambia operatore · {sessione.nome}
           </button>
         )}
-        <button onClick={chiediEsciAdmin} disabled={verificaGestionale} data-testid="home-gestionale"
+        {titolareInSessione && <button onClick={chiediEsciAdmin} disabled={verificaGestionale} data-testid="home-gestionale"
           style={{ minHeight: 56, padding: "0 22px", borderRadius: 16, border: "1px solid #4a5a50", background: "transparent", color: "#e6e0d4", fontSize: 16, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, fontFamily: "inherit" }}>
           <LayoutDashboard size={18} aria-hidden="true" /> Gestionale <Lock size={14} aria-hidden="true" /> solo titolare
-        </button>
+        </button>}
       </div>
       {repSel && (() => {
         const rep = REPARTI.find(r => r.id === repSel);
