@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Filter, Search, TriangleAlert, X } from 'lucide-react';
+import { Ban, Check, ExternalLink, Filter, Pencil, Search, TriangleAlert, X } from 'lucide-react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
@@ -51,9 +51,18 @@ function SelectFiltro({ label, value, onChange, children }) {
   );
 }
 
-function DettaglioRiga({ riga, onClose }) {
+function DettaglioRiga({ riga, onClose, onDecision, busy }) {
   const ai = riga.classificazione || {};
   const codici = (riga.codici_articolo || []).map(item => [item.tipo, item.valore].filter(Boolean).join(': '));
+  const [motivazione, setMotivazione] = useState('');
+  const [regolaFiscale, setRegolaFiscale] = useState('');
+  const [correggi, setCorreggi] = useState(false);
+  const [campi, setCampi] = useState({
+    natura: ai.natura || '', categoria: ai.categoria || '', conto: ai.conto || '',
+    centro_costo: ai.centro_costo || '', destinazione_operativa: ai.destinazione_operativa || '',
+    confidenza: ai.confidenza ?? 0, spiegazione: ai.spiegazione || '', regola: ai.regola || '',
+  });
+  const aggiornaCampo = (key, value) => setCampi(current => ({ ...current, [key]: value }));
   return (
     <div
       role="dialog"
@@ -108,6 +117,39 @@ function DettaglioRiga({ riga, onClose }) {
               <div>Spiegazione: {ai.spiegazione || 'Nessuna proposta salvata per questa riga.'}</div>
               <div>Regola/versione: {[ai.regola, ai.versione].filter(Boolean).join(' · ') || 'non disponibile'}</div>
             </div>
+            {ai.stato === 'PROPOSTA' && (
+              <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+                {correggi && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                    {[
+                      ['natura', 'Natura'], ['categoria', 'Categoria'], ['conto', 'Conto'],
+                      ['centro_costo', 'Centro di costo'], ['destinazione_operativa', 'Destinazione operativa'],
+                    ].map(([key, label]) => (
+                      <label key={key} style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+                        {label}<Input aria-label={label} value={campi[key]} onChange={event => aggiornaCampo(key, event.target.value)} />
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+                  Motivazione obbligatoria
+                  <Input aria-label="Motivazione decisione" value={motivazione} onChange={event => setMotivazione(event.target.value)} />
+                </label>
+                {(ai.natura === 'cespite' || (correggi && campi.natura === 'cespite')) && (
+                  <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+                    Regola fiscale esplicita obbligatoria per il cespite
+                    <Input aria-label="Regola fiscale cespite" value={regolaFiscale} onChange={event => setRegolaFiscale(event.target.value)} />
+                  </label>
+                )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <Button type="button" disabled={busy || !motivazione.trim() || (ai.natura === 'cespite' && !regolaFiscale.trim())} onClick={() => onDecision('conferma', motivazione, null, regolaFiscale)}><Check size={16} /> Conferma</Button>
+                  <Button type="button" variant="secondary" disabled={busy} onClick={() => setCorreggi(value => !value)}><Pencil size={16} /> Correggi</Button>
+                  {correggi && <Button type="button" disabled={busy || !motivazione.trim() || (campi.natura === 'cespite' && !regolaFiscale.trim())} onClick={() => onDecision('correggi', motivazione, campi, regolaFiscale)}>Salva correzione</Button>}
+                  <Button type="button" variant="danger" disabled={busy || !motivazione.trim()} onClick={() => onDecision('rifiuta', motivazione)}><Ban size={16} /> Rifiuta</Button>
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted }}>La decisione riguarda solo questa riga e conserva prima/dopo, autore, data e motivazione.</div>
+              </div>
+            )}
           </Card>
 
           <Card style={{ padding: 14 }}>
@@ -171,6 +213,9 @@ export default function RigheAcquisti() {
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState('');
   const [dettaglio, setDettaglio] = useState(null);
+  const [aiStato, setAiStato] = useState(null);
+  const [decisioneBusy, setDecisioneBusy] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     setFiltri(current => ({ ...current, anno: String(anno) }));
@@ -205,7 +250,15 @@ export default function RigheAcquisti() {
       }
     }, 250);
     return () => { active = false; clearTimeout(timer); };
-  }, [paramsBase]);
+  }, [paramsBase, reloadKey]);
+
+  useEffect(() => {
+    let active = true;
+    api.get('/api/righe-acquisti/classificazione/stato')
+      .then(({ data }) => { if (active) setAiStato(data); })
+      .catch(() => { if (active) setAiStato(null); });
+    return () => { active = false; };
+  }, [reloadKey]);
 
   const aggiorna = (key, value) => setFiltri(current => ({ ...current, [key]: value }));
 
@@ -223,6 +276,23 @@ export default function RigheAcquisti() {
     }
   };
 
+  const decidi = async (azione, motivazione, classificazione, regolaFiscale) => {
+    setDecisioneBusy(true);
+    setErrore('');
+    try {
+      await api.post(`/api/righe-acquisti/classificazione/${encodeURIComponent(dettaglio.id)}/decisione`, {
+        azione, motivazione, regola_fiscale: regolaFiscale || '',
+        ...(classificazione ? { classificazione } : {}),
+      });
+      setDettaglio(null);
+      setReloadKey(value => value + 1);
+    } catch (error) {
+      setErrore(error?.response?.data?.detail || 'Decisione non salvata. Riprova senza perdere la proposta.');
+    } finally {
+      setDecisioneBusy(false);
+    }
+  };
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div>
@@ -237,6 +307,16 @@ export default function RigheAcquisti() {
         <StatCard label="Da verificare" value={meta.da_verificare || 0} />
         <StatCard label="Con anomalie" value={meta.anomalie || 0} />
       </div>
+
+      {aiStato && (
+        <Card style={{ padding: 12, fontSize: 13 }}>
+          <strong>Classificazione propositiva per singola riga</strong>
+          <div style={{ marginTop: 5, color: COLORS.textMuted }}>
+            {aiStato.abilitato ? 'Attiva' : 'Disattivata per evitare consumo di quota AI non approvato'} · proposte aperte {aiStato.proposte_aperte || 0}
+            {aiStato.ultimo_giro ? ` · ultimo giro ${dataIT(aiStato.ultimo_giro)}` : ''}
+          </div>
+        </Card>
+      )}
 
       <Card style={{ padding: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}><Filter size={17} /><strong>Filtri</strong></div>
@@ -313,7 +393,7 @@ export default function RigheAcquisti() {
       ) : null}
 
       {meta.has_more && <Button type="button" variant="secondary" disabled={loading} onClick={mostraAltre} style={{ justifySelf: 'center', minHeight: 44 }}>Mostra altre 200</Button>}
-      {dettaglio && <DettaglioRiga riga={dettaglio} onClose={() => setDettaglio(null)} />}
+      {dettaglio && <DettaglioRiga riga={dettaglio} onClose={() => setDettaglio(null)} onDecision={decidi} busy={decisioneBusy} />}
     </div>
   );
 }

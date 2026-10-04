@@ -2050,12 +2050,35 @@ def start_scheduler():
 
     scheduler.add_job(
         _agenti_proposte_job,
-        "interval", minutes=60,
+        "interval", minutes=30,
         next_run_time=avvio + timedelta(minutes=11),
         misfire_grace_time=600,
         coalesce=True,
         id="agenti_proposte",
-        name="Agenti AI: proposte sui documenti fermi (ogni ora)",
+        name="Agenti AI: proposte sui documenti fermi (ogni 30 minuti)",
+        replace_existing=True,
+    )
+
+    async def _agenti_righe_acquisti_job():
+        # Stesso sistema di proposte e stesso client: una classificazione per
+        # riga nuova/modificata, mai una conferma o scrittura contabile.
+        from app.database import Database
+        from app.services.agenti_proposte import giro_righe_acquisti
+        try:
+            r = await giro_righe_acquisti(Database.get_db())
+            if r.get("candidate") or r.get("errori"):
+                logger.info("[SCHEDULER-AGENTI] righe acquisti %s", r)
+        except Exception as e:
+            logger.error("[SCHEDULER-AGENTI] righe acquisti: %s: %s", type(e).__name__, e)
+
+    scheduler.add_job(
+        _agenti_righe_acquisti_job,
+        "interval", minutes=30,
+        next_run_time=avvio + timedelta(minutes=16),
+        misfire_grace_time=600,
+        coalesce=True,
+        id="agenti_righe_acquisti",
+        name="Agenti AI: proposte sulle righe acquisti (ogni 30 minuti)",
         replace_existing=True,
     )
 
