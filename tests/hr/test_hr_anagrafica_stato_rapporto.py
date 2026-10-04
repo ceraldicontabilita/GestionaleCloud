@@ -71,6 +71,43 @@ def test_put_aggiorna_solo_i_campi_inviati_e_non_tocca_lo_stato(hr):
         _run(mod.update_dipendente("manca", mod.DipendenteCloud(nome="a", cognome="b")))
 
 
+def test_anagrafica_estesa_si_salva_e_compare_nella_vista(hr):
+    dati = mod.DipendenteCloud(
+        nome="Emanuele", cognome="Moscato", codice_fiscale_azienda="04523831214",
+        sesso="m", regione_residenza="CAMPANIA", provincia_residenza="napoli",
+        comune_residenza="NAPOLI", regione_domicilio="", provincia_domicilio="",
+        comune_domicilio="", cittadinanza="ITALIA",
+        titolo_studio="DIPLOMA DI TECNICO SUPERIORE (ITS)",
+    )
+    esito = _run(mod.update_dipendente("dip-mosc", dati))["dipendente"]
+    assert esito["codice_fiscale_azienda"] == "04523831214"
+    assert esito["sesso"] == "M"
+    assert esito["provincia_residenza"] == "napoli"
+    assert esito["comune_domicilio"] == ""
+    assert esito["titolo_studio"] == "DIPLOMA DI TECNICO SUPERIORE (ITS)"
+
+
+def test_import_anagrafica_riconosce_il_tracciato_esteso():
+    intestazioni = (
+        "CF Azienda", "CODICE FISCALE LAVORATORE", "SESSO", "DATA_NASCITA",
+        "REGIONE DI RESIDENZA", "PROVINCIA DI RESIDENZA", "COMUNE DI RESIDENZA",
+        "REGIONE DI DOMICILIO\n(compilare se diversa da regione di residenza)",
+        "PROVINCIA DI DOMICILIO\n(compilare se diversa da regione di residenza)",
+        "COMUNE DI DOMICILIO\n(compilare se diversa da regione di residenza)",
+        "CITTADINANZA", "TITOLO_STUDIO",
+    )
+    mappa = mod._mappa_header_anagrafica(intestazioni)
+    riga = ("04523831214", "MSCMNL88R26F839C", "M", "26/10/1988", "CAMPANIA",
+            "napoli", "NAPOLI", None, None, None, "ITALIA", "DIPLOMA DI TECNICO SUPERIORE (ITS)")
+    dati, errori = mod._normalizza_riga_anagrafica(riga, mappa)
+    assert errori == []
+    assert dati["codice_fiscale_azienda"] == "04523831214"
+    assert dati["codice_fiscale"] == "MSCMNL88R26F839C"
+    assert dati["data_nascita"] == "1988-10-26"
+    assert dati["comune_residenza"] == "NAPOLI"
+    assert dati["titolo_studio"] == "DIPLOMA DI TECNICO SUPERIORE (ITS)"
+
+
 def test_cessa_con_data_motivo_riferimento_e_riattiva(hr):
     with pytest.raises(HTTPException) as exc:
         _run(mod.cessa_dipendente("dip-pocci", mod.CessazioneCloud(data_cessazione="", motivo="dimissioni")))
