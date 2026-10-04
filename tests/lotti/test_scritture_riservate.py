@@ -19,6 +19,7 @@ RADICE = Path(__file__).resolve().parents[2] / "app" / "lotti" / "routers"
 GUARDIE = ("require_admin", "require_automation_or_admin", "require_permesso")
 
 OPERAZIONI_DI_REPARTO = {
+    "acquaviva:senza_glutine_al_banco",
     "anomalie:registra_anomalia",
     "anomalie:sposta_lotti_massivo",
     "colazione:registra_colazione",

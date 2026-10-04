@@ -139,6 +139,9 @@ def test_login_tablet_usa_il_pin_della_scheda_hr(basi):
     # Lesina entra col PIN migrato (bcrypt, senza impronta -> ripara e la salva)
     res = run(t.login_pin(t.PinLogin(pin=PIN_A)))
     profilo = res["operatore"].pop("profilo")
+    # Lesina e' barista: al tablet le spettano Magazzino e Ordini
+    ammessi = res["operatore"].pop("reparti_ammessi")
+    assert ammessi == ["magazzino", "ordini"]
     assert res["operatore"] == {"dipendente_id": "hr-lesina", "nome": "Lesina Angela", "ruolo": "operatore"} and res["token"]
     # senza ruolo sulla scheda HR si e' operatori, senza permessi in piu'
     assert profilo["ruolo"] == "operatore" and profilo["permessi"] == []
