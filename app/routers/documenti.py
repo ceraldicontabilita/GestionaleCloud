@@ -694,12 +694,17 @@ async def lista_atti_amministrativi(
         if (item.get("parsed_metadata") or {}).get("requires_review"):
             filtered_requires_review += 1
 
-    overview_counts = {
-        group: await db["documents_inbox"].count_documents({
-            "category": {"$in": sorted(group_categories)},
-        })
-        for group, group_categories in _ADMINISTRATIVE_CATEGORIES.items()
-    }
+    overview_counts: Dict[str, int] = {}
+    for group, group_categories in _ADMINISTRATIVE_CATEGORIES.items():
+        # ``famiglia`` e' una vista documentale separata e oggi non ha
+        # categorie di documents_inbox. Supabase/PostgREST non deve ricevere
+        # un filtro ``$in: []``: sul live causava il 500 dell'intera pagina.
+        overview_counts[group] = (
+            await db["documents_inbox"].count_documents({
+                "category": {"$in": sorted(group_categories)},
+            })
+            if group_categories else 0
+        )
     all_categories = sorted(set().union(*_ADMINISTRATIVE_CATEGORIES.values()))
     overview_requires_review = await db["documents_inbox"].count_documents({
         "category": {"$in": all_categories},

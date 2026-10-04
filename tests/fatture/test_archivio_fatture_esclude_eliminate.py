@@ -81,6 +81,31 @@ def test_archivio_fatture_esclude_eliminate(monkeypatch):
     assert "f2" not in ids
 
 
+def test_archivio_fatture_esclude_ddt_legacy_senza_nascondere_la_fattura(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["invoices"].docs = [
+        {
+            "id": 1776931298244, "invoice_number": "69011",
+            "invoice_date": "2026-04-23", "supplier_name": "SAIMA S.p.A.",
+            "total_amount": 87.82, "tipo": "ddt", "fonte": "legacy_staging_2026",
+        },
+        {
+            "id": "653d9a55", "invoice_number": "1/66288",
+            "invoice_date": "2026-04-23", "supplier_name": "SAIMA S.p.A.",
+            "supplier_vat": "01992440618", "total_amount": 87.82,
+            "tipo_documento": "TD24", "file_hash": "xml-saima",
+        },
+    ]
+
+    esito = _run(mod.get_archivio_fatture(
+        anno=2026, mese=None, fornitore_piva=None, fornitore_nome=None,
+        stato=None, search=None, limit=200, skip=0,
+    ))
+
+    assert [fattura["numero_documento"] for fattura in esito["fatture"]] == ["1/66288"]
+
+
 def test_archivio_usa_metodo_canonico_prima_del_legacy(monkeypatch):
     db = _FakeDb()
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
