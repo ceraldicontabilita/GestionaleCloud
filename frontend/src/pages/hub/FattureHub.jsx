@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { FileOutput, FileStack, Wallet } from 'lucide-react';
+import { FileOutput, FileStack, ShoppingCart, Wallet } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
@@ -7,11 +7,13 @@ import { PageHeader } from '../../components/ds/PageHeader';
 import { sezioneFatture } from './segmentiHub';
 
 const ArchivioContent = lazy(() => import('../ArchivioFattureRicevute.jsx'));
+const RigheAcquistiContent = lazy(() => import('../RigheAcquisti.jsx'));
 const CorrispettiviContent = lazy(() => import('../Corrispettivi.jsx'));
 const EmesseContent = lazy(() => import('../FattureEmesse.jsx'));
 
 const SEZIONI = {
   archivio: ArchivioContent,
+  righe: RigheAcquistiContent,
   corrispettivi: CorrispettiviContent,
   emesse: EmesseContent,
 };
@@ -44,6 +46,7 @@ export default function FattureHub() {
         onSelect={tab => navigate(tab.to)}
         tabs={[
           { id: 'archivio', label: 'Fatture ricevute', Icon: FileStack, to: '/fatture' },
+          { id: 'righe', label: 'Righe acquisti', Icon: ShoppingCart, to: '/fatture/righe' },
           { id: 'emesse', label: 'Fatture emesse', Icon: FileOutput, to: '/fatture/emesse' },
           { id: 'corrispettivi', label: 'Corrispettivi', Icon: Wallet, to: '/fatture/corrispettivi' },
         ]}

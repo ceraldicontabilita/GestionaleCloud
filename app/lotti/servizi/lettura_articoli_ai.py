@@ -207,6 +207,7 @@ async def _salva(db, letture: Dict[str, Dict[str, Any]]) -> int:
     if not letture:
         return 0
     from pymongo import UpdateOne
+    from app.lotti.bulk_compat import bulk_write_compat
 
     adesso = datetime.now(timezone.utc).isoformat()
     ops = []
@@ -215,7 +216,7 @@ async def _salva(db, letture: Dict[str, Dict[str, Any]]) -> int:
         doc = {**lettura, "id": impronta, "descrizione": pulisci(descrizione), "versione": VERSIONE,
                "modello": modello_veloce(), "letto_il": adesso}
         ops.append(UpdateOne({"id": impronta}, {"$set": doc, "$setOnInsert": {"_id": impronta}}, upsert=True))
-    await getattr(db, COLLEZIONE).bulk_write(ops, ordered=False)
+    await bulk_write_compat(getattr(db, COLLEZIONE), ops, ordered=False)
     return len(ops)
 
 

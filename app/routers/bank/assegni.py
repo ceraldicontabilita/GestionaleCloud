@@ -11,6 +11,7 @@ import asyncio
 import uuid
 import logging
 import re
+from difflib import SequenceMatcher
 
 from app.database import Database
 from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE, fornitore_esclude_assegno
@@ -36,6 +37,13 @@ router = APIRouter()
 
 # Collection name
 COLLECTION_ASSEGNI = "assegni"
+
+
+def _token_set_ratio(left: str, right: str) -> int:
+    """Percentuale fuzzy senza dipendenze opzionali non dichiarate."""
+    a = " ".join(sorted(set(re.findall(r"[A-Z0-9]+", left.upper()))))
+    b = " ".join(sorted(set(re.findall(r"[A-Z0-9]+", right.upper()))))
+    return round(100 * SequenceMatcher(None, a, b).ratio()) if a and b else 0
 
 
 def _genera_sequenza_carnet(numero_primo: str, quantita: int) -> tuple[List[str], str]:
@@ -756,8 +764,6 @@ async def verifica_associazioni_assegni(
         Lista di associazioni problematiche. Le alternative sono suggerite
         solo quando coincidono numero fattura dichiarato e importo al centesimo.
     """
-    from thefuzz import fuzz
-    
     db = Database.get_db()
     
     # Carica tutti gli assegni con fattura associata
@@ -873,7 +879,7 @@ async def verifica_associazioni_assegni(
         
         # PROBLEMA 3: Fornitore diverso (fuzzy match < 60%)
         if beneficiario and fornitore:
-            similarity = fuzz.token_set_ratio(beneficiario.upper(), fornitore.upper())
+            similarity = _token_set_ratio(beneficiario, fornitore)
             if similarity < 60:
                 problema["problemi"].append(f"Beneficiario diverso da fornitore (match: {similarity}%)")
                 problema["similarity_score"] = similarity
@@ -928,7 +934,7 @@ async def verifica_associazioni_assegni(
                     amounts_equal_to_cent(f_importo, importo_assegno)
                     and _assegno_riferisce_fattura(assegno, f)
                 ):
-                    similarity = fuzz.token_set_ratio(beneficiario.upper(), f_fornitore.upper()) if beneficiario else 0
+                    similarity = _token_set_ratio(beneficiario, f_fornitore) if beneficiario else 0
                     suggerimenti.append({
                         "fattura_id": f.get("id"),
                         "numero": f.get("invoice_number") or f.get("numero_documento"),

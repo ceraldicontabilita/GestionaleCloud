@@ -167,21 +167,14 @@ def test_importo_originario_della_cartella_non_e_una_voce_di_pagamento():
     assert (r["importo_tributi"], r["diritti_notifica"]) == (41.06, 5.88)
 
 
-_FONT_EURO = next(
-    (f for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-              "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf") if os.path.exists(f)),
-    None,
-)
-
-
 def _pdf(*righe: str) -> bytes:
     doc = fitz.open()
     pagina = doc.new_page()
-    # Il font di base non ha l'euro (lo rende come "·"): serve un font vero.
-    pagina.insert_font(fontname="F1", fontfile=_FONT_EURO)
     y = 40
     for riga in righe:
-        pagina.insert_text((30, y), riga, fontsize=9, fontname="F1")
+        # I font PDF di base non includono il simbolo euro: ``EUR`` mantiene
+        # il significato della fixture ed evita font esterni dipendenti dal SO.
+        pagina.insert_text((30, y), riga.replace("€", "EUR"), fontsize=9, fontname="helv")
         y += 14
     contenuto = doc.tobytes()
     doc.close()

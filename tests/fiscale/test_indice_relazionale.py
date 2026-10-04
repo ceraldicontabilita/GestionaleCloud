@@ -288,8 +288,8 @@ def test_formato_non_valido():
 def test_golden_indice_uguale_all_export_e_senza_dati_personali():
     db = _fixture_indice()
     righe = _run(indice.leggi_righe(db))["righe"]
-    assert indice.esporta_csv(righe) == (GOLDEN / "indice.csv").read_bytes()
-    assert indice.esporta_json(righe) == (GOLDEN / "indice.json").read_bytes()
+    assert indice.esporta_csv(righe) == (GOLDEN / "indice.csv").read_bytes().replace(b"\r\n", b"\n")
+    assert indice.esporta_json(righe) == (GOLDEN / "indice.json").read_bytes().replace(b"\r\n", b"\n")
     testo = (GOLDEN / "indice.csv").read_text("utf-8") + (GOLDEN / "indice.json").read_text("utf-8")
     assert not re.search(r"\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b", testo)       # codice fiscale
     assert not re.search(r"\bIT\d{2}[A-Z]\d{10}[A-Z0-9]{12}\b", testo)                # IBAN

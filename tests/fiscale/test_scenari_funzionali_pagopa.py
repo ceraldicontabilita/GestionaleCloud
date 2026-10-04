@@ -8,8 +8,6 @@ Scenari dell'utente (CLAUDE.md, «Ricevute di pagamento pagoPA» e «Cartella di
 - la natura la sceglie il titolare; l'IUV e' sempre testo.
 """
 import asyncio
-import os
-
 import fitz
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -19,11 +17,6 @@ from app.services import pagopa_receipts as modulo
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.pagopa_receipts import import_receipt, parse_receipt_pdf
 
-_FONT = next((f for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                          "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")
-              if os.path.exists(f)), None)
-
-
 def _run(coro):
     return asyncio.run(coro)
 
@@ -31,10 +24,9 @@ def _run(coro):
 def _pdf(righe) -> bytes:
     doc = fitz.open()
     pagina = doc.new_page()
-    pagina.insert_font(fontname="F1", fontfile=_FONT)
     y = 30
     for riga in righe:
-        pagina.insert_text((30, y), riga, fontsize=8, fontname="F1")
+        pagina.insert_text((30, y), riga, fontsize=8, fontname="helv")
         y += 12
     contenuto = doc.tobytes()
     doc.close()

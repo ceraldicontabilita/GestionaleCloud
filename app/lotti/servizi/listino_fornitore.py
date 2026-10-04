@@ -20,6 +20,8 @@ Importi ``Decimal``, salvati come stringa (``"8.52"``).
 """
 from __future__ import annotations
 
+from app.lotti.bulk_compat import bulk_write_compat
+
 import csv
 import hashlib
 import io
@@ -335,7 +337,7 @@ async def importa(db, esito: EsitoLettura, *, fornitore_nome: str, fornitore_key
             operazioni.append(UpdateOne({"fornitore": key, "codice_articolo": codice},
                                         {"$set": {"nel_listino": False, "uscito_dal_listino_il": data_listino}}))
     if operazioni:
-        await prodotti.bulk_write(operazioni, ordered=False)
+        await bulk_write_compat(prodotti, operazioni, ordered=False)
 
     fonti = getattr(db, COLLEZIONE_FONTI)
     fonte = await fonti.find_one({"fornitore_key": key}, {"_id": 0})

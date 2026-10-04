@@ -17,7 +17,7 @@ export function sezioneStrumenti(pathname = '') {
 }
 
 export function sezioneFatture(pathname = '') {
-  return primoSegmentoDopo(pathname, '/fatture', ['corrispettivi', 'emesse'], 'archivio');
+  return primoSegmentoDopo(pathname, '/fatture', ['righe', 'corrispettivi', 'emesse'], 'archivio');
 }
 
 export function sezionePrimaNota(pathname = '') {

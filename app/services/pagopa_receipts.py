@@ -474,7 +474,7 @@ def _parse_ader_attestazione(text: str) -> dict[str, Any]:
         return trovato.group(1).strip() if trovato else None
 
     def cifra(etichetta: str, blocco: str = text) -> Decimal | None:
-        return _importo_ader(campo(rf"{etichetta}\s*:\s*€\s*([\d.,]+)", blocco))
+        return _importo_ader(campo(rf"{etichetta}\s*:\s*(?:€|EUR)\s*([\d.,]+)", blocco))
 
     prima, *dettagli = re.split(r"Dettaglio\s+documento\s+n\.", text, flags=re.IGNORECASE)
     documenti: list[dict[str, Any]] = []
@@ -486,7 +486,7 @@ def _parse_ader_attestazione(text: str) -> dict[str, Any]:
             {"etichetta": re.sub(r"\s+", " ", etichetta).strip(),
              "importo": float(_importo_ader(valore) or 0)}
             for etichetta, valore in re.findall(
-                r"^\s*([A-Za-zÀ-ÿ' ./]+?)\s*:\s*€\s*([\d.,]+)\s*$", blocco, re.MULTILINE)
+                r"^\s*([A-Za-zÀ-ÿ' ./]+?)\s*:\s*(?:€|EUR)\s*([\d.,]+)\s*$", blocco, re.MULTILINE)
             if not etichetta.strip().lower().startswith(("totale", "importo originario"))
         ]
         totale = cifra("Totale pagato", blocco)

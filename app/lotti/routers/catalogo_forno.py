@@ -13,6 +13,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Body, Depends, Fi
 from typing import List, Optional
 from pydantic import BaseModel
 from pymongo import UpdateOne
+
+from app.lotti.bulk_compat import bulk_write_compat
 from app.lotti.db import database as db
 from app.lotti.auth import require_admin
 
@@ -125,7 +127,7 @@ async def sincronizza_catalogo_ufficiale(fornitore: str) -> dict:
             upsert=True,
         ))
     if ops:
-        await db.catalogo_forno_prodotti.bulk_write(ops, ordered=False)
+        await bulk_write_compat(db.catalogo_forno_prodotti, ops, ordered=False)
     con_foto = sum(bool(record.get("immagine_url")) for record in records.values())
     return {"ok": True, "fornitore": fornitore, "prodotti": len(ops), "con_foto": con_foto, "fonte": config["fonte"]}
 
@@ -173,7 +175,7 @@ async def importa_catalogo_precaricato(fornitore: str) -> dict:
             upsert=True,
         ))
     if operazioni:
-        await db.catalogo_forno_prodotti.bulk_write(operazioni, ordered=False)
+        await bulk_write_compat(db.catalogo_forno_prodotti, operazioni, ordered=False)
     return {"ok": True, "importati": len(operazioni), "fonte": payload.get("_fonte", "")}
 
 
