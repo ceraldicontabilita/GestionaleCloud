@@ -11,7 +11,7 @@ Una riga con ``azione`` = «rimuovi» scollega il file dal verbale (il file su D
 togliere resta in ``documenti_drive_rimossi`` con data e motivo).
 
 Regole: ``dry_run`` per difetto; un verbale si trova solo per numero (mai per targa o
-importo); lo stesso ``drive_id`` non si aggiunge due volte; se il foglio dice un altro tipo o nome per un file
+importo); un verbale senza numero (nato dal solo avviso pagoPA) si indica col suo ``id`` (``verbale_<hash>``); lo stesso ``drive_id`` non si aggiunge due volte; se il foglio dice un altro tipo o nome per un file
 gia' collegato, li corregge (il tipo si legge dal contenuto, il tipo precedente resta in ``tipo_precedente``); un verbale senza riga nel gestionale resta nell'elenco «non trovati».
 """
 from __future__ import annotations
@@ -75,7 +75,8 @@ async def _verbali_per_numero(db, numero: str) -> List[tuple]:
     for collezione in COLLEZIONI_VERBALI:
         try:
             doc = await db[collezione].find_one(
-                {"$or": [{"numero_verbale": numero}, {"numero_verbale_old": numero}]}, {"_id": 0})
+                {"$or": [{"numero_verbale": numero}, {"numero_verbale_old": numero}, {"id": numero.lower()}]},
+                {"_id": 0})
         except Exception as exc:
             logger.warning("Collegamenti Drive: lettura %s non riuscita (%s)", collezione, type(exc).__name__)
             continue
