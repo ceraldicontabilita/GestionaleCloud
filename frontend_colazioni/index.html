@@ -444,7 +444,8 @@ async function pfFiscali(){
  const profilo=await run("bb_alb_profilo_salva",{sid:sess.s,p:sess.p,pbenvenuto:$("#pf_b").value,psfondo:PF.cambiato?PF.sfondo:null,pindirizzo:$("#pf_a").value,ptelefono:$("#pf_t").value});if(!profilo)return;
  const r=await run("bb_alb_fiscali_salva",{sid:sess.s,p:sess.p,pdati:fiscaliLeggi()});if(!r||r===true)return;
  if(!r.ok)return toast(r.msg||"Dati non validi");HOT=null;toast("Profilo e dati per la fattura salvati ✓");alb("profilo")}
-const fiscBanner=()=>ALB.fiscali&&!ALB.fiscali.completi?`<div class="alert"><b>🧾 Completa i dati per la fattura</b> — ti servono per ricaricare con carta. <a href="#/albergatore/profilo">Vai al Profilo</a></div>`:"";
+/* La ricarica con carta non richiede piu' i dati per la fattura: il bar emette lo scontrino fiscale; i dati restano facoltativi nel Profilo. */
+const fiscBanner=()=>"";
 const statoFatt=f=>f.stato==="emessa"?`<span class="pill p-ok">emessa${f.numero?" n. "+esc(f.numero):""}</span>`:f.stato==="non_dovuta"?`<span class="pill">non dovuta</span>`:`<span class="pill p-warn">in preparazione</span>`;
 let ALB=null,HOT=null,PF={};
 async function pinCambia(){
@@ -466,12 +467,12 @@ function pfHtml(s){
  <div id="pf_pos" hidden><label>Sposta l'immagine: sinistra ⟷ destra</label><input type="range" min="0" max="100" value="50" id="pf_px" oninput="PF.px=+this.value;pfRitaglia()"><label>Sposta l'immagine: alto ⟷ basso</label><input type="range" min="0" max="100" value="50" id="pf_py" oninput="PF.py=+this.value;pfRitaglia()"><button class="btn sm sec" onclick="PF.px=50;PF.py=50;$('#pf_px').value=50;$('#pf_py').value=50;pfRitaglia()">Centra</button></div>
  <label>Indirizzo</label><input id="pf_a" value="${esc(s.indirizzo)}"><label>Telefono</label><input id="pf_t" type="tel" value="${esc(s.telefono)}">
  <button class="btn" onclick="pfSalva()">Salva profilo e immagine</button></div>
- <div class="card"><h3>🧾 Dati per la fattura</h3>${fiscaliForm(ALB.fiscali)}<button class="btn" onclick="pfFiscali()">Salva dati fiscali e profilo</button></div>
+ <div class="card"><h3>🧾 Dati per la fattura <span class="mute">(facoltativi)</span></h3><p class="mute">Servono solo se vuoi la fattura invece dello scontrino.</p>${fiscaliForm(ALB.fiscali)}<button class="btn" onclick="pfFiscali()">Salva dati fiscali e profilo</button></div>
  <div class="card"><h3>🔐 Sicurezza</h3><label>PIN attuale</label><input id="sp0" type="password" autocomplete="current-password"><label>Nuovo PIN (almeno 4 caratteri)</label><input id="sp1" type="password" autocomplete="new-password"><label>Ripeti il nuovo PIN</label><input id="sp2" type="password" autocomplete="new-password">
  <button class="btn" onclick="pinCambia()">Cambia PIN</button>
  <p class="mute" style="margin-top:14px">Il codice di recupero serve se perdi il PIN. Se non lo hai più, ne puoi creare uno nuovo (il vecchio smette di funzionare).</p>
  <button class="btn sec" onclick="recuperoNuovo()">Crea un nuovo codice di recupero</button></div>
- <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(link)}</p>
+ <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div>
  <button class="btn sm sec" id="pf_copy">Copia link</button></div>`}
 function pfPrev(){const e=$("#pf_h");if(e)e.innerHTML=hero(ALB.struttura.nome,PF.sfondo,$("#pf_b")?$("#pf_b").value:"")}
 const pfPos=()=>{const e=$("#pf_pos");if(e)e.hidden=!PF.img};
@@ -632,7 +633,6 @@ function statoRicarica(r){const m={PAID:["Pagata","p-ok"],PENDING:["In attesa","
 let WSYNC=0;
 async function sincronizzaRicariche(){if(Date.now()-WSYNC<5000)return;WSYNC=Date.now();try{const r=await fetch("/api/colazioni/ricariche/sumup/sincronizza",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p})}),j=await r.json().catch(()=>({}));if(r.ok&&j.aggiornate>0)alb("borsellino")}catch(e){}}
 async function ricaricaSumup(imp){
- if(ALB.fiscali&&!ALB.fiscali.completi){toast("Prima inserisci i dati per la fattura");go("#/albergatore/profilo");return}
  const i=imp!==undefined?+imp:+$("#r_i").value;if(!(i>=ALB.config.ricarica_min))return toast("Importo minimo "+eur(ALB.config.ricarica_min));
  if(i>ALB.config.ricarica_max)return toast("Importo massimo "+eur(ALB.config.ricarica_max));
  if(!confirm("Ricaricare "+eur(i)+" con SumUp?"))return;
@@ -1070,7 +1070,7 @@ function pInvito(id){
  return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2><span class="pill ${s.attivo?"p-ok":"p-warn"}">${s.attivo?"attivo":"in attesa di attivazione"}</span></div>
  ${registrazione?`<div class="card"><h3>Registrazione del gestore</h3><p class="mute">Condividi l'invito: il gestore si registra e sceglie un PIN personale. Non deve usare il PIN di prova.</p>
   <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
-  ${s.invito_token?`<div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(linkInvito(s))}</p></div>`:`<p class="mute">Il link di registrazione verrà creato quando tocchi Condividi.</p>`}</div>`:""}
+  ${s.invito_token?`<div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div></div>`:`<p class="mute">Il link di registrazione verrà creato quando tocchi Condividi.</p>`}</div>`:""}
  ${!registrazione?`<div class="card"><h3>Condividi l'accesso con ${esc(s.nome)}</h3><p class="mute">Il gestore è già registrato: questo collegamento apre l'accesso con il suo PIN personale.</p>
   <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
   <div style="text-align:center;margin-top:12px"><div class="qr" id="accqr2" style="display:inline-flex"></div></div></div>`:""}

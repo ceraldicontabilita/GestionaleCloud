@@ -425,3 +425,12 @@ def test_dopo_l_ordine_l_albergatore_vede_conferma_pagamento_e_saldo():
     assert "Pagato dal borsellino:" in html and "saldo residuo" in html
     assert "e invia l'ordine" in html and "paghi in loco" in html
     assert "AP.esito={id:j.ordine.id" in html
+
+
+def test_ricarica_con_carta_non_richiede_i_dati_fiscali_e_sotto_i_qr_non_c_e_il_link():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    assert "Prima inserisci i dati per la fattura" not in html
+    assert 'const fiscBanner=()=>"";' in html
+    assert "(facoltativi)" in html
+    assert 'id="pf_q" style="display:inline-flex"></div><p' not in html
+    assert 'id="invqr" style="display:inline-flex"></div><p' not in html
