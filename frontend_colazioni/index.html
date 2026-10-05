@@ -633,10 +633,18 @@ function stampaIds(ids){stampa(ids.map(id=>cardVoucher(ALB.vouchers.find(x=>x.id
 function statoRicarica(r){const m={PAID:["Pagata","p-ok"],PENDING:["In attesa","p-warn"],CREATA:["In preparazione","p-warn"],EXPIRED:["Scaduta",""],FAILED:["Non riuscita","p-bad"],ERROR:["Da verificare","p-bad"],PARTIALLY_REFUNDED:["Rimborso parziale","p-warn"],REFUNDED:["Rimborsata",""]},x=m[r.stato]||[r.stato,""];return `<span class="pill ${x[1]}">${esc(x[0])}</span>`}
 let WSYNC=0;
 async function sincronizzaRicariche(){if(Date.now()-WSYNC<5000)return;WSYNC=Date.now();try{const r=await fetch("/api/colazioni/ricariche/sumup/sincronizza",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p})}),j=await r.json().catch(()=>({}));if(r.ok&&j.aggiornate>0)alb("borsellino")}catch(e){}}
+const fiscCompleti=()=>{const f=ALB&&ALB.fiscali;if(!f)return false;if(f.completi!==undefined)return !!f.completi;return !!(f.ragione_sociale&&(f.piva||f.codice_fiscale)&&f.indirizzo&&f.cap&&f.comune&&f.provincia&&(f.codice_destinatario||f.pec))};
+function fiscScelta(i){return new Promise(ok=>{const d=document.createElement("div");d.style.cssText="position:fixed;inset:0;background:rgba(42,51,41,.55);z-index:99;display:flex;align-items:center;justify-content:center;padding:16px";
+ d.innerHTML=`<div class="card" style="max-width:420px;width:100%"><h3>Ricarica di ${eur(i)}</h3><p class="mute">Mancano i dati per la fattura. Come preferisci procedere?</p>
+ <button class="btn" style="width:100%;margin:6px 0;min-height:48px" data-s="dati">Compila i dati per la fatturazione</button>
+ <button class="btn sec" style="width:100%;margin:6px 0;min-height:48px" data-s="scontrino">Acquista con scontrino fiscale</button>
+ <button class="btn sec" style="width:100%;margin:6px 0;min-height:48px" data-s="annulla">Annulla</button></div>`;
+ d.onclick=e=>{const b=e.target.closest("[data-s]");if(!b)return;d.remove();ok(b.dataset.s)};document.body.appendChild(d)})}
 async function ricaricaSumup(imp){
  const i=imp!==undefined?+imp:+$("#r_i").value;if(!(i>=ALB.config.ricarica_min))return toast("Importo minimo "+eur(ALB.config.ricarica_min));
  if(i>ALB.config.ricarica_max)return toast("Importo massimo "+eur(ALB.config.ricarica_max));
- if(!confirm("Ricaricare "+eur(i)+" con SumUp?"))return;
+ if(!fiscCompleti()){const sc=await fiscScelta(i);if(sc==="dati")return go("#/albergatore/profilo");if(sc!=="scontrino")return}
+ else if(!confirm("Ricaricare "+eur(i)+" con SumUp?"))return;
  document.querySelectorAll(".recharge-choice,.wallet-custom button").forEach(b=>b.disabled=true);
  try{const r=await fetch("/api/colazioni/ricariche/sumup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p,importo:i,idempotenza:crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random()})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Pagamento non disponibile");if(j.url)location.href=j.url;else throw new Error("Pagina SumUp non disponibile")}catch(e){toast(e.message);document.querySelectorAll(".recharge-choice,.wallet-custom button").forEach(b=>b.disabled=false)}}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
