@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 
 const ETICHETTE_DOCUMENTO_DRIVE = {
   verbale: 'Verbale', notifica: 'Notifica', quietanza: 'Quietanza', bonifico: 'Bonifico',
-  avviso_pagopa: 'Avviso pagoPA', ricevuta: 'Ricevuta', altro: 'Documento',
+  avviso_pagopa: 'Avviso pagoPA', ricevuta: 'Ricevuta di pagamento', presa_in_carico: 'Presa in carico', altro: 'Documento',
 };
 
 export default function DettaglioVerbale() {

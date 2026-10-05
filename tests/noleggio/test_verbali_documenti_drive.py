@@ -84,3 +84,18 @@ def test_endpoint_solo_admin_e_anteprima_per_difetto(monkeypatch):
     corpo = TestClient(app).post("/api/verbali-noleggio/documenti-drive/collega", files=files).json()
     assert corpo["dry_run"] is True and corpo["collegati"] == 1
     assert "documenti_drive" not in _run(db["verbali_noleggio"].find_one({"id": "v1"}))
+
+
+def test_il_foglio_corregge_tipo_e_nome_di_un_file_gia_collegato():
+    db = _db()
+    riga = {"numero_verbale": "B22122949454", "drive_id": ID1, "tipo": "quietanza", "nome_file": "a.pdf"}
+    _run(collega_documenti_drive(db, [riga], dry_run=False))
+    corretta = {**riga, "tipo": "avviso_pagopa", "nome_file": "Avviso.pdf"}
+    anteprima = _run(collega_documenti_drive(db, [corretta], dry_run=True))
+    assert anteprima["corretti"] == 1 and anteprima["collegati"] == 0
+    assert _run(db["verbali_noleggio"].find_one({"id": "v1"}))["documenti_drive"][0]["tipo"] == "quietanza"
+    scritto = _run(collega_documenti_drive(db, [corretta], dry_run=False))
+    assert scritto["corretti"] == 1
+    voce = _run(db["verbali_noleggio"].find_one({"id": "v1"}))["documenti_drive"][0]
+    assert (voce["tipo"], voce["nome"], voce["tipo_precedente"]) == ("avviso_pagopa", "Avviso.pdf", "quietanza")
+    assert _run(collega_documenti_drive(db, [corretta], dry_run=False))["corretti"] == 0
