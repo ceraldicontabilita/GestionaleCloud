@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from app.menu.models.qrcode_models import MenuUrlUpdate, AdminLoginResponse
 from datetime import UTC, datetime, timedelta
@@ -127,6 +129,24 @@ async def aggiorna_menu_url(payload: MenuUrlUpdate, username: str = Depends(veri
             {"id": CONFIG_ID, "menu_url": url, "updated_at": adesso, "updated_by": username}
         ).execute()
     return {"url": url, "updated_at": adesso, "updated_by": username}
+
+
+@router.get("/prodotto/{codice}")
+async def qr_prodotto(codice: str, canale: Optional[str] = None, _username: str = Depends(verify_token)):
+    """Indirizzo del QR del singolo prodotto (il QR lo disegna il browser). ``url`` e' ``null`` finche'
+    il menu clienti non ha un indirizzo pubblico: non si inventa."""
+    from app.menu.qr_prodotto import codice_valido, url_prodotto
+
+    if not codice_valido(codice):
+        raise HTTPException(status_code=400, detail="Codice prodotto non valido")
+    righe = supabase.table("menu_products").select("id,codice_prodotto").eq("codice_prodotto", codice).limit(1).execute().data
+    if not righe:
+        raise HTTPException(status_code=404, detail="Prodotto non trovato")
+    try:
+        url = url_prodotto((_get_config_row() or {}).get("menu_url"), codice, canale)
+    except ValueError as errore:
+        raise HTTPException(status_code=400, detail=str(errore)) from errore
+    return {"codice": codice, "url": url, "canale": canale or None}
 
 
 @router.get("/generate/wifi")

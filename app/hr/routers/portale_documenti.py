@@ -17,6 +17,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List
 
+import json
+
 from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
@@ -37,6 +39,7 @@ TIPI: Dict[str, Dict[str, Any]] = {
     "certificazione_unica":   {"label": "Certificazione Unica (CU)", "modulo": False, "upload_dip": False},
     "unilav":                 {"label": "Unilav",                    "modulo": False, "upload_dip": False},
     "documento_riconoscimento": {"label": "Documento di riconoscimento", "modulo": False, "upload_dip": True},
+    "attestato_haccp":        {"label": "Attestato formazione alimentarista (HACCP)", "modulo": False, "upload_dip": False},
 }
 
 
@@ -179,6 +182,69 @@ async def admin_upload(
     }
     await Database.get_db()[COLL].insert_one(doc)
     return {"ok": True, "id": doc["id"]}
+
+
+# ---- Attestati HACCP: l'amministratore li vede e li carica per ogni dipendente ----
+@router.get("/admin/attestati-haccp", summary="(Azienda) attestati HACCP per dipendente")
+async def admin_lista_attestati(dipendente_id: str = "", identity: Dict[str, Any] = Depends(get_identity)):
+    if not _is_admin(identity):
+        raise HTTPException(403, "Riservato all'azienda")
+    from app.hr.services.attestati_haccp import lista_per_dipendente
+    return await lista_per_dipendente(dipendente_id or None)
+
+
+@router.get("/admin/{doc_id}/file", summary="(Azienda) scarico un attestato HACCP")
+async def admin_scarica_attestato(doc_id: str, identity: Dict[str, Any] = Depends(get_identity)):
+    if not _is_admin(identity):
+        raise HTTPException(403, "Riservato all'azienda")
+    from app.hr.services.attestati_haccp import leggi_file
+    f = await leggi_file(doc_id)
+    if not f:
+        raise HTTPException(404, "Attestato non trovato")
+    return StreamingResponse(
+        io.BytesIO(f["contenuto"]), media_type=f["mime"],
+        headers={"Content-Disposition": f'attachment; filename="{f["nome_file"]}"'},
+    )
+
+
+@router.post("/admin/attestati-haccp", summary="(Azienda) importo attestati HACCP da un PDF con più pagine")
+async def admin_importa_attestati(
+    file: UploadFile = File(...),
+    dry_run: bool = Form(True),
+    assegnazioni: str = Form(""),
+    identity: Dict[str, Any] = Depends(get_identity),
+):
+    """Divide il PDF e abbina ogni pagina al dipendente dal contenuto. Anteprima per difetto."""
+    if not _is_admin(identity):
+        raise HTTPException(403, "Riservato all'azienda")
+    from app.hr.services.attestati_haccp import importa_pdf
+    try:
+        scelte = json.loads(assegnazioni) if assegnazioni else {}
+        return await importa_pdf(await file.read(), dry_run=dry_run, assegnazioni=scelte)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/admin/attestato-haccp", summary="(Azienda) allego un attestato HACCP a un dipendente")
+async def admin_allega_attestato(
+    dipendente_id: str = Form(...),
+    file: UploadFile = File(...),
+    identity: Dict[str, Any] = Depends(get_identity),
+):
+    if not _is_admin(identity):
+        raise HTTPException(403, "Riservato all'azienda")
+    from app.hr.services.attestati_haccp import MAX_BYTES as MAX_ATT, salva_attestato
+    contenuto = await file.read()
+    if not contenuto:
+        raise HTTPException(400, "File vuoto")
+    if len(contenuto) > MAX_ATT:
+        raise HTTPException(413, "File troppo grande (max 12 MB)")
+    esito = await salva_attestato(
+        dipendente_id, contenuto, {}, nome_file=file.filename or "attestato.pdf",
+        mime=file.content_type or "application/pdf", fonte="caricato_dalla_scheda")
+    if esito["esito"] == "dipendente_non_trovato":
+        raise HTTPException(404, "Dipendente non trovato")
+    return esito
 
 
 def _genera_modulo(tipo: str, label: str, nome_dip: str) -> bytes:

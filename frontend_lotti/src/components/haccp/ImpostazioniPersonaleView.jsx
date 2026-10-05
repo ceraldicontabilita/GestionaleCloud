@@ -16,7 +16,8 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { apiError } from "../../utils/apiError";
 import axios from "axios";
 import { toast } from "sonner";
-import { IdCard, Save, Users, Printer, ExternalLink, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, KeyRound, LockKeyhole, Delete, X } from "lucide-react";
+import { IdCard, Save, Users, Printer, ExternalLink, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, KeyRound, LockKeyhole, Delete, X, GraduationCap, Upload, FileText } from "lucide-react";
+import { apriDocumentoAutenticato } from "../../auth";
 import { API } from "../../utils/constants";
 import StampantiConfigView from "./StampantiConfigView";
 import { createPinModal } from "../../../../frontend_shared/PinModal";
@@ -90,6 +91,11 @@ export default function ImpostazioniPersonaleView() {
   const [salvatoAlle, setSalvatoAlle] = useState({});
   const [sincronizzando, setSincronizzando] = useState(false);
   const [mostraNonInCarico, setMostraNonInCarico] = useState(false);
+  // Attestati di formazione alimentarista: documenti del dipendente in HR
+  // (li vede anche lui nel portale). {dipendente_id: [attestato]}
+  const [attestati, setAttestati] = useState({});
+  const [caricandoAtt, setCaricandoAtt] = useState(null);
+  const [importazione, setImportazione] = useState(null); // {file, anteprima, scelte, occupato}
 
   const [azienda, setAzienda] = useState(null);
   const [azSaving, setAzSaving] = useState(false);
@@ -157,7 +163,69 @@ export default function ImpostazioniPersonaleView() {
     }
   }, [carica]);
 
-  useEffect(() => { riallinea(false); caricaAzienda(); }, [riallinea, caricaAzienda]);
+  const caricaAttestati = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API}/tablet-operatori/attestati/elenco`);
+      setAttestati(r.data && typeof r.data === "object" ? r.data : {});
+    } catch (e) {
+      toast.error(apiError(e, "Attestati non caricati"));
+    }
+  }, []);
+
+  useEffect(() => { riallinea(false); caricaAzienda(); caricaAttestati(); }, [riallinea, caricaAzienda, caricaAttestati]);
+
+  const allegaAttestato = async (d, file) => {
+    if (!file) return;
+    setCaricandoAtt(d.dipendente_id);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await axios.post(`${API}/tablet-operatori/${encodeURIComponent(d.dipendente_id)}/attestato`, fd, { timeout: 60000 });
+      toast.success(r.data?.esito === "gia_presente" ? "Attestato già presente" : `Attestato allegato a ${d.nome}`);
+      await caricaAttestati();
+    } catch (e) {
+      toast.error(apiError(e, "Attestato non allegato"));
+    } finally {
+      setCaricandoAtt(null);
+    }
+  };
+
+  // PDF con più attestati: si divide e ogni pagina si abbina dal contenuto.
+  // Prima l'anteprima, poi la conferma; le pagine senza una sola persona
+  // compatibile si assegnano a mano.
+  const anteprimaImportazione = async (file) => {
+    if (!file) return;
+    setImportazione({ file, anteprima: null, scelte: {}, occupato: true });
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("dry_run", "true");
+      const r = await axios.post(`${API}/tablet-operatori/attestati/importa`, fd, { timeout: 180000 });
+      setImportazione({ file, anteprima: r.data, scelte: {}, occupato: false });
+    } catch (e) {
+      toast.error(apiError(e, "PDF non letto"));
+      setImportazione(null);
+    }
+  };
+
+  const confermaImportazione = async () => {
+    if (!importazione?.file) return;
+    setImportazione((i) => ({ ...i, occupato: true }));
+    try {
+      const fd = new FormData();
+      fd.append("file", importazione.file);
+      fd.append("dry_run", "false");
+      fd.append("assegnazioni", JSON.stringify(importazione.scelte || {}));
+      const r = await axios.post(`${API}/tablet-operatori/attestati/importa`, fd, { timeout: 180000 });
+      const q = r.data?.riepilogo || {};
+      toast.success(`Attestati: ${q.nuovi || 0} allegati, ${q.gia_presenti || 0} già presenti${q.da_assegnare ? `, ${q.da_assegnare} da assegnare` : ""}`);
+      setImportazione(q.da_assegnare ? { file: importazione.file, anteprima: r.data, scelte: importazione.scelte, occupato: false } : null);
+      await caricaAttestati();
+    } catch (e) {
+      toast.error(apiError(e, "Importazione non riuscita"));
+      setImportazione((i) => (i ? { ...i, occupato: false } : i));
+    }
+  };
 
   const setCampo = (id, campo, val) =>
     setValori((s) => ({ ...s, [id]: { ...s[id], [campo]: val } }));
@@ -267,6 +335,32 @@ export default function ImpostazioniPersonaleView() {
     );
   };
 
+  const AttestatiOperatore = ({ d }) => {
+    const lista = attestati[d.dipendente_id] || [];
+    return (
+      <div style={{ marginBottom: 10 }} data-testid={`attestati-${d.dipendente_id}`}>
+        <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>
+          <GraduationCap size={11} style={{ verticalAlign: "middle" }} aria-hidden="true" /> Attestati di formazione (visibili anche al dipendente)
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {lista.length === 0 && <span style={pill("#fbf0dd", WARN)}>nessun attestato</span>}
+          {lista.map((a) => (
+            <button key={a.id} type="button" onClick={() => apriDocumentoAutenticato(`${API}/tablet-operatori/attestati/${encodeURIComponent(a.id)}/file`)}
+              title={a.nome_file}
+              style={{ ...pill("#e7f0ea", OK), border: `1px solid ${LINE}`, cursor: "pointer", minHeight: 44, display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <FileText size={12} /> {a.titulo || "Attestato"}{a.data_attestato ? ` · ${dataIt(a.data_attestato)}` : ""}
+            </button>
+          ))}
+          <label style={{ ...pill("#f4f8f3", SALVIA), border: `1px solid ${LINE}`, cursor: "pointer", minHeight: 44, display: "inline-flex", alignItems: "center", gap: 5, opacity: caricandoAtt === d.dipendente_id ? 0.6 : 1 }}>
+            <Upload size={12} /> {caricandoAtt === d.dipendente_id ? "Carico…" : "Allega attestato"}
+            <input type="file" accept="application/pdf,image/*" style={{ display: "none" }} disabled={caricandoAtt === d.dipendente_id}
+              onChange={(e) => { allegaAttestato(d, e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+        </div>
+      </div>
+    );
+  };
+
   const SchedaOperatore = ({ d }) => {
     const v = valori[d.dipendente_id] || {};
     const badge = statoLibretto(v.libretto_sanitario_scadenza);
@@ -298,6 +392,7 @@ export default function ImpostazioniPersonaleView() {
           </div>
         </div>
         {d.dipendente_id && d.in_carico !== false && <RuoloOperatore d={d} />}
+        {d.dipendente_id && <AttestatiOperatore d={d} />}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
           <div>
             <label htmlFor={`postazione-${d.dipendente_id}`} style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
@@ -369,6 +464,68 @@ export default function ImpostazioniPersonaleView() {
             <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 8 }}>AMMINISTRATORI (firmano col proprio PIN personale della scheda HR)</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {amministratori.map((d) => <SchedaOperatore key={d.dipendente_id} d={d} />)}
+            </div>
+          </div>
+        )}
+      </section>
+
+
+      {/* ── Attestati di formazione: importazione da PDF con più persone ── */}
+      <section style={sezione} data-testid="importa-attestati">
+        <h3 style={titoloSez}><GraduationCap size={18} color={SAGE} /> Attestati di formazione alimentarista</h3>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: MUTED }}>
+          Carica il PDF con gli attestati di più persone: si divide pagina per pagina, ogni pagina si riconosce dal nome scritto
+          nell'attestato e si allega alla scheda giusta (la vede anche il dipendente nel suo portale). Prima vedi l'anteprima.
+        </p>
+        {!importazione && (
+          <label style={{ ...btn(SAGE), display: "inline-flex", cursor: "pointer" }}>
+            <Upload size={15} /> Scegli il PDF
+            <input type="file" accept="application/pdf" style={{ display: "none" }} onChange={(e) => { anteprimaImportazione(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+        )}
+        {importazione?.occupato && !importazione.anteprima && <div style={{ color: MUTED, fontSize: 13 }}>Leggo il PDF… può richiedere qualche decina di secondi.</div>}
+        {importazione?.anteprima && (
+          <div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 8 }}>
+              {importazione.file?.name} · {importazione.anteprima.riepilogo.pagine} pagine ·{" "}
+              {importazione.anteprima.riepilogo.nuovi} da allegare · {importazione.anteprima.riepilogo.gia_presenti} già presenti ·{" "}
+              {importazione.anteprima.riepilogo.da_assegnare} da assegnare
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {importazione.anteprima.righe.map((r) => {
+                const scelta = importazione.scelte[String(r.pagina)] || "";
+                return (
+                  <div key={r.pagina} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "8px 10px", border: `1px solid ${LINE}`, borderRadius: 10 }}>
+                    <span style={{ ...pill("#f4f8f3", SALVIA), minWidth: 54, textAlign: "center" }}>pag. {r.pagina}</span>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontWeight: 700, color: SALVIA, fontSize: 14 }}>
+                        {r.dipendente || ((r.letto.cognome || r.letto.nome) ? `${cap(r.letto.cognome || "")} ${cap(r.letto.nome || "")}`.trim() : "Nome non letto")}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: MUTED }}>
+                        {r.letto.data_attestato ? `corso del ${dataIt(r.letto.data_attestato)}` : "data non letta"}{r.letto.ore_corso ? ` · ${r.letto.ore_corso} ore` : ""}
+                        {r.stato_dipendente === "cessato" ? " · dipendente cessato" : ""}
+                      </div>
+                    </div>
+                    {r.esito === "da_assegnare" ? (
+                      <select aria-label={`Assegna la pagina ${r.pagina}`} value={scelta} style={{ ...inp, background: "#fff", minWidth: 200 }}
+                        onChange={(e) => setImportazione((i) => ({ ...i, scelte: { ...i.scelte, [String(r.pagina)]: e.target.value } }))}>
+                        <option value="">Scegli il dipendente…</option>
+                        {(r.candidati.length ? r.candidati : operatori.filter((o) => o.dipendente_id).map((o) => ({ id: o.dipendente_id, nome: o.nome }))).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                      </select>
+                    ) : (
+                      <span style={pill(r.esito === "gia_presente" ? "#f4f8f3" : "#e7f0ea", r.esito === "gia_presente" ? MUTED : OK)}>
+                        {r.esito === "gia_presente" ? "già presente" : "da allegare"}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              <button type="button" onClick={confermaImportazione} disabled={importazione.occupato} style={{ ...btn(SAGE), opacity: importazione.occupato ? 0.6 : 1 }}>
+                <Save size={15} /> {importazione.occupato ? "Allego…" : "Conferma e allega"}
+              </button>
+              <button type="button" onClick={() => setImportazione(null)} style={{ ...btn("transparent"), color: SALVIA, border: `1px solid ${LINE}` }}>Annulla</button>
             </div>
           </div>
         )}

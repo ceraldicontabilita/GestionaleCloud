@@ -711,6 +711,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   vengono sovrascritte dalla sincronizzazione.
 - **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni** dalla decorrenza
   (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015 art. 26).
+- **Attestati di formazione alimentarista (HACCP)** (`hr/services/attestati_haccp.py`, categoria `ATTESTATO_HACCP` in `documenti_cloud`): sono documenti del dipendente, visibili a lui nel portale e all'amministratore in HR › Documenti e in Lotti › Personale (un solo posto dove vivono, due viste dello stesso record). Un PDF con più attestati si divide per pagina e ogni pagina si riconosce **dal contenuto** (nome e cognome scritti, data del corso, ore; OCR se manca il livello testo) e si abbina solo se **un** dipendente è compatibile per nome e cognome (anche cessato); altrimenti resta «da assegnare» e sceglie il titolare. Anteprima (`dry_run`) per difetto, stesso SHA-256 o stessa data di corso = già presente (secondo giro `nuovi=0`). Numero attestato (scritto a mano) e scadenza non si leggono e restano vuoti.
 - **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026 e ferie 15–23/08/2026
   non sono corrispettivi mancanti.
 - **Dello storico interessano solo cedolini e F24**: fatture e corrispettivi precedenti all'anno attivo
@@ -996,6 +997,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   /api/menu/admin/products/{id}` le rifiuta con 409 (il ponte le riscrive
   intere a ogni salvataggio della ricetta, una correzione fatta nel Menu
   sparirebbe senza avviso).
+- **ID prodotto unico `PRD-000123`** (titolare, 05/10/2026): lo stesso codice in Menu, B&B e Lotti, **assegnato solo dal database** (`menu.menu_products.codice_prodotto`, trigger `trg_codice_prodotto`, mai scritto da app né da PostgREST: `trg_codice_prodotto_fisso` lo blocca) e tenuto in `menu.prodotti_codici`, un registro che **non si cancella mai**. Una ricetta si riconosce per `lotti_ref`, mai per `id` (un id Menu si può riusare): ricreare la riga Menu di una ricetta non cambia il codice; un prodotto Qromo lo tiene per il suo id Qromo, stabile fra le sync (che cancellano e reinseriscono). `bb_prodotti.id` è lo stesso `menu_products.id`; il B&B legge il codice dalla carta (`cod`), Lotti da `GET /api/prodotti-codici` (`{ricetta_id: codice}`, sola lettura) e lo mostra sulla card ricetta; ricerca per codice in Lotti, Menu admin e compositore B&B; la carta pubblica lo mostra nel dettaglio del prodotto. Il gateway `public.menu_products` è una vista `select *` espansa alla creazione: una colonna nuova su `menu.menu_products` richiede di **rifarla**.
+- **Scheda prodotto: la catena del piatto sotto il suo ID** (titolare, 05/10/2026: piatto → prezzo → reparto → ingredienti → allergeni → varianti → aggiunte/rimozioni → costo → food cost → disponibilità → foto → valori nutrizionali → sala → delivery → QR). `GET /api/prodotti/{PRD-000123 o id ricetta}/scheda` (Lotti, `routers/scheda_prodotto.py`, solo admin) **non ha motori propri**: food cost dagli stessi campi di `/ricette-prezzi` (`costo_totale`/porzioni su prezzo al banco, `None` col motivo se manca uno dei due), giacenza da `verifica_disponibilita_ricetta`, valori da `get_nutrizionali`, codice e indirizzo dal ponte Menu; un anello che non si legge è `None` col motivo, mai un valore plausibile. **Dato nuovo, sulla ricetta** (`PUT /api/ricette/{id}/scheda-vendita`, solo admin, campi facoltativi): `vendita_sala`, `vendita_delivery`, `esaurito`, `aggiunte` (nome + prezzo, salvato in centesimi, niente doppioni, max 20) e `rimozioni` (scelte **fra gli ingredienti della ricetta**, mai testo libero); il ponte le replica nel Menu (`vendita_sala`, `vendita_delivery`, `disponibile`, `aggiunte`, `rimozioni`: `scheda_vendita_da_ricetta`, un solo punto). **Disponibilità = «Esaurito oggi» deciso dal titolare**; la giacenza degli ingredienti è un'informazione accanto, non cambia il Menu da sola. La carta (`/menu/api/menu/carta`, item `cod`, `sala`, `dlv`, `disp`, `ag`, `rm`) accetta `?canale=sala|delivery` e toglie i prodotti non venduti in quel canale; la carta pubblica mostra «Esaurito», le aggiunte e le rimozioni nel dettaglio, e `?p=PRD-000123` apre la scheda del prodotto. **QR per prodotto**: l'indirizzo lo costruisce `app/menu/qr_prodotto.py` da `menu_qrcode_config.menu_url` (`/menu/carta/?p=…`, con `&canale=`), il QR lo disegna il browser; senza indirizzo pubblico del menu il QR non c'è e lo dice (`GET /api/qrcode/prodotto/{codice}`). **I valori nutrizionali sono una stima da tabelle standard**: stanno nella scheda interna con la copertura degli ingredienti e **non si pubblicano ai clienti** finché non c'è un'analisi che li renda dichiarabili (Reg. UE 1169/2011).
 - La ricetta ha **due prezzi**: `prezzo_vendita` è quello **al banco** (base di
   food cost e margine), `prezzo_tavolo` quello **al tavolo**, mostrato dal Menu
   digitale. Finché il tavolo non è deciso il Menu espone il banco e il ripiego
@@ -1180,6 +1183,576 @@ locale e marker fixture prima delle scritture.
 - **Lettori AI doppi, da fondere**: il client è uno solo (fatto), ma i lettori restano più d'uno per lo stesso documento: `ai_document_parser` (vision, catena `mittenti_email_sync`, coda `/ai-parser/da-rivedere`, `BatchProcessor.jsx autoMode`; il suo `PROMPT_VERBALE` resta raggiungibile solo da `ripielaborazione_documenti`), `enhanced_document_parser` (cedolini), `document_ai_extractor` (fatture estere), `fiscal_agents`: due lettori per cedolini e fatture (i verbali sono fatti: lettore unico senza AI, proposte dell'agente), tre pipeline di classificazione dell'inbox (`documents_inbox_classify.auto_classify`, `ai_integration_service`, proposte). La strada canonica è quella delle proposte degli agenti (lettura → proposta → conferma → motore deterministico): gli altri lettori si tolgono quando il loro ingresso passa da lì, un flusso alla volta e con il titolare che decide quale tenere. **Dopo il deploy**: `POST /api/agenti/proposte/giro` (admin) per il primo lotto, poi in `/agenti` › Settori provare che «Vedi» apra un file in `ERRORI` e che una conferma lo sposti davvero in `ELABORATE`.
 - **Fornitori, da lanciare dopo il merge** (admin, prima `dry_run`): `POST /api/suppliers/magazzino/allinea` (le 88 esclusioni di Lotti sull'anagrafica); per BIG FOOD SRL `POST /api/suppliers/{id}/applica-metodo-dal` dopo aver messo «Metodo valido dal» 01/01/2025 sulla scheda (oggi è 30/09/2026 per un salvataggio della scheda). Le 6 fatture BIG FOOD già pagate con assegno, banca o dichiarazione in banca (2.711,38 €) restano dove sono finché il titolare non dice diversamente.
 
+- **ID prodotto unico: da applicare la migrazione** (admin, a database scarico: la vista `public.menu_products` fa ricaricare PostgREST) `supabase/migrations/20261005150000_menu_codice_prodotto.sql` (codice PRD, registro, trigger e le cinque colonne di vendita); se il registro delle migrazioni assegna un'altra versione, rinominare il file. Finché non c'è il ponte Lotti pubblica lo stesso (senza le colonne di vendita) e la scheda dice «ID non ancora assegnato». Collaudata su Postgres 16 locale (due applicazioni di fila senza errori, backfill 8/8 distinti, ricetta ricreata = stesso codice, id riusato = codice nuovo, codice non forzabile), mai su produzione. Dopo l'applicazione: `POST /api/ricette-ripubblica-menu` (admin) per portare canali/aggiunte delle ricette già pubblicate e controllare che un prodotto mostri lo stesso codice in Menu, B&B e Lotti.
+- **Termini di recupero** (`termini_recupero.py`, `GET /api/f24/tributi/termini`, tab della pagina Tributi, solo admin): sola lettura sulla vista `verifica.tabulato_tributi_termini`, **unica fonte dei termini** (il servizio non applica nessuna regola di legge: porta l'importo in centesimi, conta i giorni sul fuso Roma, ordina). Lo schema `verifica` non e' leggibile dal ruolo applicativo: l'ingresso e' `public.gc_termini_recupero()` (segreto runtime come le altre `gc_*`), letta da `SupabaseRuntimeDatabase.termini_recupero`; la vista costa ~5 s, quindi `@istantanea`. Predefinito: tributi senza versamento (`MANCANTE`, `F24_SENZA_QUIETANZA`), prima gli «ancora recuperabili» dalla data piu' vicina; sotto 120 giorni la riga e' rossa **e** porta la scritta; senza termine = «da verificare», mai «recuperabile». I termini sono **indicativi** (atti gia' notificati, sospensioni, denuncia del lavoratore, ruoli AdER 2020-2021 con +24 mesi): il banner «da confermare con il commercialista» e' fisso.
+- **Doppio pagamento F24** (`services/f24_anomalie.py`, motore `tributi_engine.rileva_doppio_pagamento`): una riga per coppia in `f24_anomalie_doppio_pagamento` con `stato` (`da_verificare`, `confermato_doppio_pagamento`, `non_duplicato`, `rimborsato_compensato`, `chiuso_dal_consulente`) e `storico`; il titolare cambia stato con `PUT /api/f24-analisi/doppi-pagamenti/{id}/stato` (motivo obbligatorio), l'alert `POSSIBILE_DOPPIO_PAGAMENTO_F24` si chiude quando lo stato esce da `da_verificare`, una coppia decisa non si riapre. Controlli di forma (`controlli_f24`: Regione/Comune assenti o fuori tabella, riga INAIL incompleta, causale INPS sconosciuta) in un solo alert `F24_CONTROLLO_DA_VERIFICARE` per modello. Il motore F24 legge la **vista canonica** delle righe (`normalize_f24_evidence_rows`), mai le sezioni grezze: un modello importato prima dei fix di lettura si legge giusto lo stesso. Debito e credito di una riga si decidono dal **bordo destro** dell'importo (le colonne sono allineate a destra: «5.024,76» parte più a sinistra di «667,40»).
+- **Ritenute**: le chiude anche la sola quietanza (1040 del periodo: riga uguale e univoca, o somma delle righe = totale del periodo; due candidate → nessuna scelta); al primo versamento Telegram «Ritenuta pagata» col protocollo, una volta (`avviso_versamento_at`), muto oltre 45 giorni.
+- **Il periodo del 1040 di una parcella con ritenuta è il mese del PAGAMENTO al professionista** (`data_pagamento` della fattura, solo se `e_pagata`), versamento entro il 16 del mese dopo (`ritenute.periodo_da_pagamento`); finché la fattura non è pagata periodo e scadenza restano vuoti (`in_attesa_pagamento`), mai il mese della fattura, e nessun F24 si aggancia; il periodo si riallinea dalle fatture nel giro F24, all'import delle quietanze e all'apertura della pagina Ritenute (`_allinea_periodo_al_pagamento`). Le descrizioni e le scadenze di 1001, 1012, 3802 e DM10 (tutti al 16 del mese successivo) sono quelle AdE in `codici_tributo_f24.py`, confermate dal titolare il 02/10/2026 (`test_codici_tributo_coerenti.py` le fissa); un codice fuori dal registro versionato blocca la `journal_proposal` (`CODICE_TRIBUTO_NON_VALIDATO`).
+- **F24 del 2018-2019 senza protocollo** (modulo con i dati sovrapposti, nome `NN_…_A0GHE_…`): `parse_quietanza_f24` legge data (una cifra per casella) e totale in alto, righe per coordinate, mese scritto «00MM». Senza protocollo la quietanza è il suo contenuto (`firma_contenuto`: data, saldo, righe): la stessa stampata due volte è una sola. Un guscio vuoto già in archivio (stesso `pdf_hash`, nessuna riga) si rilegge sul posto, mai «già importato».
+- **F24 ravveduto** (`f24_ravvedimento.py`): l'originale del commercialista resta; modello o quietanza con sanzioni gli si affianca
+  (RAVVEDIMENTO) se ogni riga codice+periodo torna al centesimo, o è maggiore solo nel periodo sanzionato (interessi cumulati).
+- **Un F24 è il suo contenuto fiscale** (contribuente, data di versamento, saldo, righe codice/periodo/importo), non il PDF: `salva_f24`
+  non crea un secondo modello da un'altra copia del file e ne annota la provenienza (`f24_doppioni.py`). I doppioni vanno in quarantena
+  reversibile (`status=eliminato`, `motivo_quarantena`, `doppione_di`), la copia pagata in banca resta; `F24_QUARANTENA_DOPPIONI` accende il giro. **Modello e quietanza si confrontano riga per riga sulla stessa vista** (`normalize_f24_evidence_rows`): «01 / 01 2021» è la rata unica, mai gennaio, e una riga INPS (sede, causale, matricola) che il modello del commercialista lascia in Erario col codice = anno torna in INPS. Senza questi due riallineamenti la quietanza restava «non corrispondente» a un modello uguale.
+- **Lettura degli importi F24** (`parser_f24._importo_cents_da_token`): certi PDF perdono la virgola nel livello testo, quindi «1.03712» è 1.037,12 e «99035» è 990,35 (senza virgola le ultime due cifre sono sempre i centesimi; letto come 1.037 × 100 il saldo sbagliava di centinaia di migliaia di euro). Il codice 4xxx (es. 4731) è un codice Erario come 1xxx/2xxx; il periodo INPS può essere scritto unito («072022») e il comune dei tributi locali in una parola («F839»). Una delega su più pagine **senza «MOD NUM»** ha un saldo per pagina (si confronta pagina per pagina, mai la somma di tutto col saldo della prima). Un F24 che non quadra non si salva, e l'errore elenca saldo stampato e righe lette (`f24_canonico._dettaglio_quadratura`): la causa si legge da lì, non riaprendo il PDF. **Il reimport dello stesso modello rinfresca le righe e non riscrive lo stato**: un modello già pagato in banca o in quarantena resta com'è (`f24_canonico`). Un modello che è esso stesso un ravvedimento (righe 89xx/19xx, `e_modello_di_ravvedimento`) non fa da modello del commercialista: la sua data è il giorno del versamento, mai la scadenza.
+
+- **Indice relazionale e relazioni documentali** (`indice_relazionale.py`, `relazioni_documentali.py`, `/api/indice-relazionale`, solo admin): l'indice è una vista di sola lettura su `entity_relations`, non un secondo registro (filtri anche per `documento` = `drive_id`; il riepilogo dice per regola e per motivo). Export csv/json/xlsx **riproducibile** (righe per chiave, nessuna data di generazione, importi `Decimal`, gg/mm/aaaa in csv/xlsx). Un originale su Drive è la relazione `has_source_document` verso target `documento` (id = `drive_id`); `POST …/relazioni-documentali/backfill` è `dry_run` per difetto, in sottofondo (`sistema_stato`, chiave `relazioni_documentali`), a lotti (`limite`, si ripete finché `restanti`=0), il secondo giro dà 0, una relazione revocata non rinasce. Fonti, lette una volta (un prefetch): `drive_file_id` del documento (se c'è vale solo quello); poi, dove manca, l'**impronta del file** (SHA-256 col registro `drive_cartella_unica` solo in `ELABORATE` — `registro_originali.py`: fra copie identiche l'originale è l'unico non `gia_presente`, altrimenti `pending` `impronta_su_piu_file_identici`; MD5 col protocollo, solo per ritrovare la copia identica) su fatture, F24, quietanze, buste, inbox, bonifici, ricevute PagoPA, cartelle, estratti conto (originali, Nexi, PayPal, SumUp, mutui); i `collegamento_*` del protocollo verso entità vive (le id HR si verificano in `hr.app_cedolini`/`app_bonifici`, chiave `id` testo; se l'HR non risponde si dichiara `non_verificato`, non si scarta); le **occorrenze** (`source_occurrences`: copie dello stesso contenuto che il motore ha visto arrivare, confermate, non ambiguità). Mai per nome o importo. `pending` (DA_VERIFICARE): entità con più file non attestati, file con più fatture/F24/quietanze; busta e cedolino HR possono avere più file e condividerli (documento combinato). **Il `drive_file_id` del cedolino** si scrive (solo con `dry_run=false`, mai sovrascritto) quando l'originale è uno: l'impronta propria della busta o l'unico file in cui compare; con più copie senza impronta propria resta vuoto (`drive_file_id_da_verificare`) e le copie restano relazioni. **Collegamenti del protocollo verso entità sparite** (la quietanza fusa con una copia ha cambiato id): `POST …/protocollo-collegamenti/bonifica` (`protocollo_collegamenti.py`, `dry_run`, per `drive_id` e solo se il collegamento è ancora quello letto) riaggancia solo con MD5 del file fra le occorrenze (o la propria impronta) di **una sola** entità viva, o con `doppione_di` dichiarato; zero o più candidati si elencano e non si toccano.
+
+## Personale: un solo sistema per funzione
+
+- **L'anagrafica HR comanda** (`hr.app_dipendenti`): Lotti ne legge una proiezione
+  (`sincronizza_operatori_da_hr`), il gestionale si riallinea a HR. Un solo stato del rapporto: `attivo` |
+  `cessato` con data e motivo; la cessazione revoca il PIN. `PUT /dipendenti/{id}` aggiorna **solo i campi
+  inviati**. La revoca, la chiusura dei contratti, il rifiuto delle richieste di assenza future e
+  l'annullamento delle partite stipendio residue stanno tutti in un punto solo, `on_dipendente_cessato`:
+  le pagine si limitano a pubblicare `dipendente.cessato`, non ripetono la pulizia a mano.
+- **Import anagrafica Excel** (`POST /dipendenti-cloud/dipendenti/importa-anagrafica`): anteprima per
+  difetto e conferma sullo stesso SHA-256; identità solo per codice fiscale esatto, mai per nome o importo.
+  Non crea persone, compila soltanto campi HR vuoti e lascia ogni valore già presente e diverso come
+  conflitto. Nel riepilogo consolidato usa solo CF e campi anagrafici verificabili; paga, ferie, ratei e
+  importi restano nelle loro fonti canoniche. Un CF duplicato nel file blocca tutte le sue righe.
+- **Un PIN per persona, nella scheda HR**: vale per il portale e per firmare in Lotti (bcrypt più impronta
+  HMAC; mai due persone in forza con lo stesso PIN; mai un cessato). Il **PIN amministratore è uno solo
+  per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, `app/services/admin_pin.py`) e si digita **solo nel login ERP**:
+  HR, Lotti e Menu leggono quel cookie (`group_session.py`, `/auth/session`), senza login admin proprio (PIN, password,
+  Google). Il login email + password (`/api/auth/login`, `ADMIN_PASSWORD_HASH`) non esiste piu'. Il token ERP porta un `sid` stabile nei rinnovi; i token derivati lo copiano e il logout lo revoca per
+  tutte (`token_di_gruppo_ammesso`): un token admin non nato da lì non apre HR/Menu/ERP.
+  Solo Lotti accetta il PIN personale del titolare col ruolo amministratore: richiede ID HR canonico,
+  ruolo admin e stato attivo correnti, abilitazione Lotti e versione valida del PIN anche sulle letture.
+  Il PIN centrale condiviso e i vecchi token admin senza versione del PIN restano esclusi.
+- **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima Nota salari; l'archivio che
+  si vede è **solo in HR** (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o per
+  CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte). Una 13ª/14ª salvata come «mensile» nell'ERP si riconosce solo rileggendo il PDF (`cedolini_tipo_dal_pdf.py`: busta con stesso CF, anno e netto al centesimo), mai dal mese; da solo si applica solo mensile → 13ª/14ª, il verso contrario resta `da_decidere` al titolare. Nelle buste CSC la 13ª/14ª è la voce a codice «850 13 MENSILITA'»/«852 14A MENSILITA'» quando è l'unica competenza.
+- Il netto si legge solo dalla cella graficamente associata a `TOTALE NETTO` / `NETTO DEL MESE` / `NETTO
+  IN BUSTA`: mai da `ARR. PREC.`, competenze, trattenute, TFR, arrotondamenti o dal nome file. Cella vuota
+  → nullo, **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`, `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`,
+  `MULTIPLE_NETS_DA_VERIFICARE`, `ERRORE_PARSER` (in `app/constants/stati_netto.py`); solo il primo
+  alimenta Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`, che fallisce
+  **chiuso**: uno stato assente, vuoto o sconosciuto non passa. Su un dato che diventa un bonifico
+  l'assenza di prova non vale come prova.
+  Zucchetti/CSC: cella **sotto** l'etichetta (`_netto_dalla_cella`); competenze − trattenute è solo un controllo, e i totali si leggono come righe intere (le trattenute «6.691,15» non sono «691,15»). I netti HR si rileggono dal PDF della riga (`cedolini_hr_riverifica.py`, un lotto ogni 20 min): cambia solo un netto verificato, il vecchio resta in `storico_netto`. In HR il netto è quello della busta **più l'acconto già recuperato** (`acconti.acconto_recuperato`, decisione del titolare del 28/09/2026): il totale del mese, non un errore di lettura.
+- Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il femminile non esiste su nessun
+  documento e un filtro che lo cerca passa sempre.
+- **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi` (identità completa, acconti,
+  residuo). Nessun percorso può cercarsi da solo «il primo movimento con importo vicino e il nome nella
+  descrizione»: un omonimo o due buste uguali nello stesso mese bastano ad attaccare il movimento
+  sbagliato. Lo stesso per gli F24: `riconcilia_f24_banca`. Un movimento vale come prova solo se
+  ha **evidenza bancaria ufficiale** e non è `in_attesa_estratto_ufficiale`.
+- **Un solo motore per ogni cedolino** (posta, Drive, Documenti > Import, pipeline email): legge
+  `services/cedolini_motore.leggi_pdf` (Zucchetti classico e «s», Libro Unico, Teamsystem anche 13ª/14ª
+  «14a MENS.», CSC), scrive solo `cedolini_manager.processa_tutti_cedolini_pdf`. Niente Document AI, regex
+  storico o Libro Unico a parte. L'esito è sempre dichiarato: `buste`, `presenze` (foglio Aut. 301, non è
+  una busta), `fuori_periodo` (prima del 2018), `non_cedolino` (contratti), `illeggibile`. Una busta con
+  la cella del netto vuota entra **solo in HR** col netto nullo, mai in Prima Nota. Voci codificate e
+  **dati chiave** (ratei 13ª e 14ª, L.207/24, trattamento integrativo L.21) da `parsers/cedolino_voci.py`.
+- **Ogni PDF letto è una scheda Markdown** (`schede_markdown.py`); registro per anno riscritto a ogni scheda; ricarica dalle schede, mai dai PDF.
+- **Doppioni d'archivio** (`doppioni_archivio.py`): stessa busta (CF, periodo, tipo, netto, lordo, trattenute), quietanza
+  (protocollo **e** saldo: col saldo diverso è un'altra delega, `protocollo_condiviso_con`) o bonifico (CRO+importo; il RIF. INTERNO BPM «MB…», quello dell'estratto conto, è `rif_interno`) non si riscrive; le copie vanno in `<collezione>_quarantena`, resta la pagata. Una busta già in archivio è un esito (`gia_presenti` → ELABORATE), mai un errore; la «STAMPA DI CONTROLLO» con la definitiva identica (CF, periodo, netto) va nel Cestino (`cedolini_stampe_controllo.py`).
+- **Versioni della stessa busta** (`cedolini_versioni.py`, stessi CF, anno, mese e tipo con netti diversi): la definitiva batte la «STAMPA DI CONTROLLO», la «Variante N» più alta batte le altre; senza marcatore nessuno decide (`varianti_da_decidere`, decide il titolare). La perdente resta in archivio con `status=sostituito` (mai costo, Prima Nota, HR o dovuto), la vincente porta `versioni_scartate`, `rettificato` e `storico_netto`; una perdente pagata o già in Prima Nota salari blocca il gruppo. All'arrivo la busta perdente si salva subito sostituita, mai come secondo cedolino attivo. Rapporto `GET /api/cedolini/versioni`, applicazione `POST …/applica` (`dry_run` per difetto, in sottofondo). Ogni busta porta `netto_fonte` (`cella` | `non_letto_da_lul` | assente, `constants/stati_netto.py`): competenze − trattenute non diventa mai il netto, e la pagina del Libro Unico in cui sotto «NETTO» non c'è nessun valore resta `non_letto_da_lul` col netto nullo. Il lettore per posizione del LUL **è `_netto_dalla_cella`** (CSC 2011–2020, Zucchetti 2023–2025, provato su campioni reali: ogni cella stampata si legge, una vuota è vuota davvero: mese a zero, cassa integrazione a pagamento diretto, stampa di controllo senza totali); le buste anteriori al 2018 sono `fuori_periodo` (`PAYROLL_MIN_YEAR`) e non entrano in archivio.
+- Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.
+- **Pagamenti stipendio**: un solo ponte gestionale→HR (`hr_pagamenti_deposito`). Dipendente da CF → nome
+  completo univoco → cognome univoco (in banca in testa al beneficiario dopo «FAVORE»): la corrispondenza univoca **basta da sola** («il nome di un
+  dipendente è un dipendente»: non serve la parola «stipendio» in causale né un lotto paghe). Resta il
+  veto: TFR, fatture, commissioni e fornitori non entrano mai, nemmeno in coda, **anche con un nome
+  dipendente dentro** la causale — l'esclusione vince sul nome (anche «ADD.SPE», giroconti a Ceraldi Group, società semplici e aziende agricole). Ambiguo o `BENEFICIARI VARI` → coda, **una riga per bonifico**: il RIF. INTERNO «MB…» (`rif_banca`) unisce ricevuta ed estratto, la seconda prova completa la riga. Il
+  **lotto paghe** (≥3 dipendenti lo stesso giorno) resta un segnale per i casi non risolti altrimenti.
+  Competenza da causale o nome file, altrimenti **regola del giorno 25**: prima del 25 = mese precedente,
+  dal 25 = corrente. Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un solo esito,
+  arricchito, mai duplicato.
+- **Contanti dipendenti dal 01/07/2018** (`hr/services/regole_pagamenti_dipendenti.py`): non entrano nel
+  saldo durante un rapporto in corso. Sono ammessi solo se l'anagrafica e' cessata, porta una data di fine
+  rapporto e il pagamento non la precede; la data di cessazione resta copiata sulla prova. La bonifica
+  idempotente sposta gli acconti non ammessi in `acconti_scartati_regola_2018` (mai cancellazione senza
+  storico). Un PDF di bonifico o una riga dell'estratto che cita CF/nome completo/cognome univoco del
+  dipendente rende l'associazione certa; esclusioni TFR/fatture/commissioni/fornitori e beneficiari vari
+  continuano a prevalere. Il mese e' `bonifico_riconciliato_auto` solo se tutte le sue prove sono certe.
+- **Stato del mese, TFR e cessazione**: lo stato di `paghe_mensili` conta gli acconti di `acconti_dipendenti` come la posizione (`acconti_registro_del_mese`), e l'associazione di un acconto lo ricalcola subito. Il veto TFR copre anche «T.F.R.» e «trattamento di fine rapporto»; l'acconto TFR e l'accantonamento scrivono il **giornale del gestionale** (29.01.01 / 39.07.05), mai quello dello schema HR, e un acconto eliminato o corretto si storna con `acconto_tfr_rettifica`. `on_dipendente_cessato` lavora ciascun archivio dove vive la sua collezione: contratti e assenze in HR, partite stipendio nel gestionale.
+- **Acconto TFR, un motore solo** (`services/tfr_acconti.py`, usato da `app/routers/tfr.py` e `app/hr/routers/tfr.py`): scala `tfr_accantonato` nell'archivio dell'anagrafica e scrive nel giornale **del gestionale** DARE 29.01.01 / AVERE 39.07.05; una correzione o l'eliminazione **storna** (`acconto_tfr_rettifica`, per differenza), mai cancella. Accantonamento (67.01.07.01 / 29.01.01, idempotente per dipendente+anno, totale ≤ 0 rifiutato) e liquidazione (29.01.01 / 39.07.05, ritenute 39.07.05 / 35.03.15) usano gli stessi conti nei due router; i conti 05.03.03, 02.04.01, 02.02.01 non esistono più in `registrazione_contabile`. **L'anticipo TFR pagato dentro la busta** (Zucchetti, voce `000081 Anticipazione T.F.R.`, tassato a parte: il netto lo contiene già, nessun bonifico da cercare) lo legge `cedolino_voci.anticipo_tfr_in_busta` (`dati_chiave.anticipo_tfr_busta` e `anticipo_tfr_voce`, importo della competenza lorda, mai l'imponibile T.F.R. né il progressivo «TFR a fondi Anticipi») e lo registra `services/tfr_anticipo_busta.py` con lo stesso motore: acconto `tipo=tfr` con id `tfr-busta-<CF>-<AAAAMM>-<voce>`, data = ultimo giorno del mese, `tfr_registrato` come guardia (il motore scala il fondo a ogni chiamata: si chiama una volta sola, sotto il lock della busta in `cedolini_manager.registra_busta`); le buste già in HR le recupera il ripasso `cedolini_hr_riverifica` (v4, prime le più recenti, un primo lotto 7 minuti dopo l'avvio). La pagina TFR di HR mostra le **quote da buste** del gestionale (`services/tfr_quote_buste.py`: righe mensili di `tfr_accantonamenti`, dipendente per CF o stesso id, mai per nome) accanto al valore HR senza sommarle: `tfr_fonte` ∈ `manuale|buste|nessuna`, il manuale vince, senza nessuno dei due `tfr_accantonato` è `null`, mai zero.
+- **`cedolini.pagato` ha un solo scrittore**, `services/cedolini_pagamento.py` (`segna_cedolino_pagato`/`riapri_cedolino`: voce in `pagamenti[]` con `riferimento` univoco, `importo_pagato` = somma, `pagato` al centesimo o dichiarato): lo usano il motore automatico (`salari_unificati_v2`), il pagamento manuale e l'HR. L'associazione manuale di un bonifico stipendio (`/bonifici-da-associare/{id}/associa`, `/paghe/conferma-associazione`) porta sul cedolino del gestionale lo stato di `paghe_mensili.stato_pagamento` (per `gestionale_cedolino_id`, altrimenti CF+anno+mese+tipo; una versione `sostituito` non conta, due attivi non si scelgono); `/ritira-conferma` lo riapre; un gestionale non raggiungibile non blocca l'HR (esito in `cedolino_gestionale`).
+- **«Pagato» del mese si decide in un posto solo**, `stato_paga_mese` (`constants/stati_associazione_bonifico.py`), in `Decimal` e **al centesimo**: nessuna tolleranza (titolare 02/10/2026; prima 0,50 € in tre copie), nemmeno nei filtri dei pannelli e del frontend. Un bonifico di stipendio arrivato **prima della busta** lascia il mese `in_attesa_busta` (`paghe_mensili` senza `importo_busta`, mai 0, saldo nullo), visibile in Archivio paghe e fuori da «in attesa di pagamento»; all'arrivo del cedolino `sincronizza_paghe_mensili` gli dà la busta e il pagamento già depositato lo chiude da solo, secondo giro a zero. Un pagamento di conciliazione copre la parte scelta **al centesimo**; l'eccedenza va in `eccedenze_pagamenti` `da_attribuire` (riga con avviso nella posizione, mai in dare/avere) e la destinazione (stipendio, acconto o bonus della stessa conciliazione solo se ci sta al centesimo) la sceglie il titolare con `POST /hr/api/posizione-dipendente/eccedenze/{id}/attribuisci`; mai in automatico, una attribuita non si tocca.
+- **Posizione dipendente** (`services/posizione_dipendente.py`, pagina HR, solo admin; «Prima nota» di Archivio paghe è la stessa, per mese): DARE = netto di ogni busta **più l'acconto recuperato in busta** (voci `cedolino_voci.VOCI_ACCONTO_RECUPERATO`, poi `acconti.acconto_recuperato`, poi competenze − trattenute oltre 1,00 €), 13ª/14ª, parte non bonus delle conciliazioni; AVERE = bonifici, contanti, acconti fuori busta (`acconti_dipendenti`: pagamento, mai sommato a un netto). Saldo con riporto d'anno.
+  Conciliazioni (`conciliazioni`, verbale in `gestionale.blobs`): totale = somma delle voci al centesimo, «importi non compilati» = totale nullo, mai inventato; il **bonus** ha un conto suo, fuori dalle paghe. In «Bonifici da associare» si sceglie il tipo: stipendio, acconto, conciliazione o bonus. Un pagamento in contanti o scritto a mano si corregge (data, importo, parte; il prima resta in `storico`), uno provato dal bonifico mai.
+- **Bonifico associato a mano = `confermato_manuale`** (`services/conferma_bonifico.py`, `constants/stati_associazione_bonifico.py`): segna riga in coda, bonifico, esito e movimento; nessun motore automatico lo riassegna (`associa_bonifici_stipendi`, riallineamento competenza, ponte HR) e sparisce dai candidati degli altri dipendenti; `POST /bonifici-da-associare/{id}/ritira-conferma` (solo stipendi, con `storico`). La coda mostra fino a **10 candidati** (`services/candidati_bonifico.py`: CF > nome completo > cognome con importo uguale al residuo > importo con periodo scritto in causale; cognome condiviso elenca tutti senza proposta; **l'importo da solo non produce candidati**, nessun candidato si applica da sé), l'**avviso multi-dipendente** calcolato (nota di terzi, beneficiari vari, cognome condiviso, stesso importo su più buste) e CRO + rif. banca. Il **riscontro per busta** (`services/riscontro_bonifici.py`: confermato, da_verificare, differenza, nessun_bonifico_trovato, non_riscontrabile; priorità manuale > ricevuta > estratto) è di sola lettura: `GET /hr/api/posizione-dipendente/riscontro-bonifici`.
+- **Il bonifico PDF si abbina da solo al suo movimento d'estratto** (`bonifici_da_estratto.py`, giro ogni 30 minuti, il primo 4 minuti dopo l'avvio: con deploy ravvicinati un primo giro tardivo non parte mai): il «Rif. interno» della ricevuta (`MBVT…`) è nella causale della riga d'estratto, e con l'importo al centesimo vale come identità (senza riferimento: nome completo del beneficiario in causale, importo al centesimo, al massimo 3 giorni, un solo candidato). Dal movimento il PDF eredita la fattura che il motore bancario ha individuato (`candidate_fattura_id`: attiva, non legata ad altro bonifico, importo al netto della ritenuta uguale; se punta una copia archiviata vale la gemella attiva con stessi numero, totale e P.IVA, solo se unica; la stessa operazione letta da due fonti — stesso riferimento e importo — vale con la copia che porta la fattura, se le copie non ne indicano due diverse; più bonifici dello stesso fornitore sulla stessa fattura, acconti, si collegano solo se con quelli già legati sommano il totale al centesimo, ognuno col suo riferimento banca; il riferimento è `MBVT…` o `MB0B…`; l'`id` della fattura può essere un numero, quindi si cerca e si aggiorna con testo e intero, e ogni giro rimette sulla fattura il `bonifico_ids` che il solo lato del bonifico aveva perso) o una destinazione senza documento (`destinazione_automatica`, categoria letta dall'estratto); le prove dichiarate sono quelle vere (`rif_banca_in_estratto`, mai «numero in causale»). Gli stipendi restano al motore HR. In Archivio bonifici gli esiti HR `arricchito`/`depositato` contano come associati, i `duplicato` non compaiono, e la colonna del salario non dice nulla su un pagamento che non è di un dipendente.
+- «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale `DA_ASSEGNARE`: non imposta
+  bonifico eseguito, movimento, data di pagamento né riconciliazione.
+- Cedolini e bonifici salario si associano per dipendente, periodo e regole temporali: non si richiedono
+  importi identici quando esistono acconti o trattenute. Le correzioni a mano in «Paghe e bonifici» non
+  vengono sovrascritte dalla sincronizzazione.
+- **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni** dalla decorrenza
+  (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015 art. 26).
+- **Attestati di formazione alimentarista (HACCP)** (`hr/services/attestati_haccp.py`, categoria `ATTESTATO_HACCP` in `documenti_cloud`): sono documenti del dipendente, visibili a lui nel portale e all'amministratore in HR › Documenti e in Lotti › Personale (un solo posto dove vivono, due viste dello stesso record). Un PDF con più attestati si divide per pagina e ogni pagina si riconosce **dal contenuto** (nome e cognome scritti, data del corso, ore; OCR se manca il livello testo) e si abbina solo se **un** dipendente è compatibile per nome e cognome (anche cessato); altrimenti resta «da assegnare» e sceglie il titolare. Anteprima (`dry_run`) per difetto, stesso SHA-256 o stessa data di corso = già presente (secondo giro `nuovi=0`). Numero attestato (scritto a mano) e scadenza non si leggono e restano vuoti.
+- **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026 e ferie 15–23/08/2026
+  non sono corrispettivi mancanti.
+- **Dello storico interessano solo cedolini e F24**: fatture e corrispettivi precedenti all'anno attivo
+  non entrano in `invoices`/`corrispettivi`, e dal 20/09/2026 non ci entrano **nemmeno come archivio di
+  consultazione** (il `stato_import: archivio_storico` delle fatture e' stato tolto: erano 1.127 documenti
+  e 52 MB fuori da ogni conto, che tornavano a ogni ricostruzione Drive). L'originale sta su Drive. Per
+  rivedere un anno intero: cambiare l'anno attivo e rilanciare la ricostruzione, che rilegge tutti gli
+  XML. Eccezione 1: la **parcella con ritenuta** (`DatiRitenuta`) di qualunque anno entra come fattura intera da Documenti > Import (`_e_parcella_con_ritenuta`, decisione del 29/09/2026: ogni 1040 ha la prova della sua fattura). Eccezione 2: la fattura dell'**anno prima** pagata quest'anno entra solo come **debito** (`debiti_anno_precedente.py`: niente
+  costo né IVA; il bonifico la chiude per fornitore e importo al centesimo, debiti uguali in ordine di data, entro 180 giorni; un importo che il fornitore fattura anche quest'anno è un canone e vuole il numero in causale; va in Prima Nota Banca su 33.03.01). Gli **accrediti in entrata del 2023** (ricevuta «A VOSTRO CREDITO»: Satispay, giroconti, rimborsi)
+  non si registrano (`ANNI_ACCREDITI_NON_REGISTRATI`); i bonifici disposti di ogni anno restano.
+- Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato, Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile salvia.
+
+## Fatture: identità e duplicati
+
+- Fornitore univoco per P.IVA → CF → id esterno verificato; gli alias sono solo di supporto.
+  `canonical_id` stabile: un cambio di ragione sociale non crea una seconda anagrafica, e un merge
+  conserva alias, IBAN, id precedenti, documenti e audit.
+- **Doppioni fornitori: un motore solo** (`services/fornitori_dedupe.py`; la P.IVA si valida e normalizza solo in `piva_validazione.py`: Luhn, prefisso IT, zeri, IdPaese UE). Il giro delle 06:20 (`unifica_fornitori_duplicati_task`) fonde da solo i **certi** (stessa P.IVA normalizzata o stesso CF) e i **probabili** (nome uguale/contenuto/con refuso, perdente senza P.IVA né CF, un solo candidato forte); il resto è «da decidere» (`GET /api/suppliers/duplicati/da-decidere`, card nella pagina Fornitori). **Due P.IVA valide diverse non si fondono mai**, nemmeno a mano. La fusione è soft (`status='unificato'`, `merged_into`, mai DELETE): ripunta per id fatture, scadenze, acquisti, metodi, parole chiave, alert, movimenti e proposte, `partite_aperte.controparte_id`, per P.IVA Prima Nota/assegni/pagamenti, e lascia alias, `iban_alternativi`, `id_precedenti`, `storico_fusioni`. Un fornitore senza P.IVA la riceve dalle sue fatture solo se è una sola e valida (`piva_fonte='fatture'`); una P.IVA che non torna resta com'è e la scheda dice «P.IVA da verificare» (`vista_piva`), mai corretta. L'import fatture cerca la P.IVA in tutte le sue scritture e il CF, e non riattiva un fornitore unificato. Lotti tiene i suoi `fornitori` per nome (decisioni di esclusione): non si fondono da qui.
+- **Il metodo del fornitore ha una data** (`metodo_pagamento_dal`, ISO nel database, gg/mm/aaaa in pagina, la stessa dello storico): lo stampa a oggi solo un cambio di metodo, mai un semplice salvataggio della scheda. «Sempre per cassa dal 01/01/2025» si applica alle fatture già importate con `POST /api/suppliers/{id}/applica-metodo-dal` (`services/metodo_fornitore_dal.py`, admin, `dry_run` per difetto, in background, stato in `sistema_stato`): usa la stessa conferma di Prima Nota Cassa (`conferma_fattura_provvisoria`, la parola del titolare è l'approvazione), non un motore nuovo; solo per la Cassa. Non tocca una fattura con prova in banca, un assegno o una dichiarazione in banca del titolare (le elenca come conflitto), né note di credito, estere, rate multiple e pagamenti parziali; il secondo giro chiude zero.
+- Il metodo del fornitore ha **un solo scrittore**, `update_supplier` (`PUT /api/suppliers/{id}`); `PUT …/metodo-pagamento` è un alias che lo chiama: data «dal» e storico vengono sempre da lì. `data_pagamento` di una fattura pagata con assegno è la data dell'addebito in banca (`fatture_pagate_con_assegno`, `data_pagamento_fonte=addebito_banca`); prima dell'addebito è quella dichiarata (`data_pagamento_fonte=dichiarata`), mai la data di compilazione.
+- Il metodo di pagamento si legge **solo dall'anagrafica fornitore**, mai dedotto dalla fattura; se non configurato
+  la fattura resta `sospesa`, mai con un default «bonifico» **né un ripiego in cassa**: le righe storiche di quel
+  ripiego restano per audit, fuori da elenchi e saldi (`SOURCES_ESCLUSE` in `prima_nota_module/common.py`).
+- **Come è stata pagata una fattura lo dice il titolare** (report «Fatture ricevute» con colonne metodo/carta/assegno,
+  Documenti > Import): `pagamenti_dichiarati_titolare.py` usa solo i motori esistenti; il metodo del fornitore (uno → quello, più → `misto`) lo scrive **solo se manca**. Fino all'ultima data del report (`data_limite_dichiarazioni`) comanda il report, poi il fornitore. La cassa d'ufficio `metodo_fornitore_assente_provvisorio` non prova un pagamento.
+  Banca/carta/PayPal/assegno dichiarati: riga Prima Nota Banca `dichiarato_titolare`, fattura pagata e `in_attesa_riscontro_banca`; il movimento trovato la **sostituisce** (`assorbi_righe_dichiarate`), mai affianca.
+- «Metodo di pagamento non configurato» ha un vocabolario solo, `app/constants/metodi_pagamento.py`:
+  `sospesa` (quello che scrive l'import), `da_configurare`, `none`, vuoto e campo assente valgono uguale.
+  Chi tiene la propria lista si perde il caso più frequente.
+- **Le fatture fornitore non hanno scadenza.** Decisione del titolare (19/09/2026): «decido io quando
+  pagare». Non si leggono le condizioni di pagamento dell'XML, non si leggono le date sul documento e non
+  si inventa un «+30»: `data_scadenza` resta vuota. Il piano rate si conserva come dato dell'originale ma
+  non guida niente. `check_scadenze_partite_task` salta le partite fornitore e `FAT_DA_PAGARE_SCADUTA` non
+  nasce più; F24 e stipendi, che una scadenza vera ce l'hanno, restano invariati.
+- **«È pagata?» si chiede in un posto solo**: `e_pagata` / `FILTRO_NON_PAGATE` di
+  `app/services/stato_pagamento_fattura.py`, e `ePagata` di `frontend/src/utils/statoFattura.js`. Lo stato
+  vive in cinque campi (`stato`, `stato_pagamento`, `payment_status`, `pagato`, `paid`) e nessuno copre
+  l'archivio: leggerne uno solo dichiarava non pagate 639 fatture da 311.838,20 €, e `{"pagato": {"$ne":
+  True}}` le riportava tutte fra le aperte. In archivio una fattura aperta si dichiara pagata da **una tendina sola** («Pagata con…», `ScegliPagamentoFattura.jsx`: cassa con data → `provvisori/conferma`, banca → estratto conto, assegno → registro assegni): nessun motore nuovo, e su una fattura già in Cassa o Banca non compare. `status` è lo stato del documento e `stato_finanziario` quello
+  della riconciliazione: nessuno dei due dice se è pagata. Pagata con assegni addebitati (prova ufficiale, quote = totale al centesimo): i cinque campi e `data_pagamento` si allineano alla banca (`fatture_pagate_con_assegno`, job bancario corto).
+- Il payload di `fattura.created` si costruisce solo con
+  `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così import e recupero del
+  pregresso propagano lo stesso evento.
+- Un import che **non** pubblica `fattura.created` lascia la fattura senza partita aperta, senza alert e
+  senza audit: nessun errore, nessuna traccia. Il recupero è `POST
+  /api/admin/fatture/ripubblica-evento-created` (admin, background, `dry_run` per difetto), sugli stessi
+  handler idempotenti.
+- Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture **con lo stesso ID**. Lo spostamento riallinea anche il conto di tesoreria (19.03.03 cassa, 19.01.01 banca) e `metodo_pagamento_effettivo`, e una riga banca con prova d'estratto non si sposta in cassa (409): sarebbe un'uscita doppia. Il ripasso `ripristina_provvisori_metodo_errato` (cambio metodo del fornitore) non tocca mai una riga con prova bancaria né la fattura che ne è provata. Parcella con ritenuta: al fornitore esce il **netto** (`importo_ritenuta` dal `DatiRitenuta`), la ritenuta va in F24 (all'arrivo alert `RITENUTA_DA_VERSARE` più Telegram, chiuso dal 1040 versato); una riga con prova bancaria non si declassa mai a dichiarata.
+- `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso parser dell'import.
+  L'impronta del **contenuto** (`content_hash_canonico`, prefisso di versione `c2:`, insensibile a BOM, a
+  capo, codifica e caratteri non ASCII) prova che due XML sono la stessa fattura. La dedup tiene la copia
+  già nel giornale e **storna** la scrittura del doppione. Collisioni aperte = `stato_import` di
+  collisione **e** `status` non archiviato.
+- **Una fattura con la stessa chiave contabile si decide in un posto solo**, `decidi_stessa_chiave` (`fatture_upload.py`), per Drive **e** Documenti > Import: stesso originale (SHA-256 o impronta canonica) = già presente, `nuovi=0`; originale diverso = collisione (`stato_import=collisione_identita_da_verificare`, `status=da_verificare`, derivati bloccati, alert `FATTURA_IDENTITA_DA_VERIFICARE`), mai scartata in silenzio. Anche l'import manuale salva `content_hash` e `content_hash_canonico`.
+- Note di credito ricevute (TD04/TD08, `TIPI_NOTA_CREDITO`): non costi; ledger (`prima_nota_module/sync.py`) e giornale
+  (`registra_fattura`) leggono `tipo_documento` e scrivono l'inverso (meno costo, IVA a credito e debito, mai cespite). **Il rimborso in banca chiude la nota di credito** (`services/rimborsi_note_credito.py`, nel motore bancario sulle entrate, prima di POS e versamenti): bonifico in entrata con l'ordinante dopo `BON.DA` (letto dal lettore unico `soggetto_causale_bancaria`) coerente col fornitore della nota, importo al centesimo, da 0 a 62 giorni dopo la nota; un solo candidato si applica, più note uguali dello stesso fornitore si chiudono in ordine di data, fornitori diversi con lo stesso importo non si scelgono. Scrive con `registra_pagamento_fattura` (entrata «Nota credito fornitore» con la prova), la riga dichiarata dal titolare lascia il posto (`assorbi_righe_dichiarate`) e la riga Cassa provvisoria nata dal metodo del fornitore si ritira per id con motivo (mai una confermata).
+- **Righe acquisti è una vista, non un archivio** (`GET /api/righe-acquisti`, `frontend/src/pages/RigheAcquisti.jsx`): appiattisce le `linee` delle fatture canoniche mantenendo ID fattura/documento, hash e apertura dell'originale; 200 righe alla volta, più recenti prima. Codici articolo e sconti/maggiorazioni vengono conservati dal parser FatturaPA. Metodo dichiarato nell'XML, metodo previsto dal fornitore e metodo effettivamente provato restano tre campi distinti. Una classificazione non salvata sulla singola riga è sempre `DA_VERIFICARE`, mai ereditata dall'intero fornitore. Le classificazioni persistenti stanno in `righe_acquisti_classificazioni`: il giro `agenti_righe_acquisti` ogni 30 minuti tratta soltanto righe nuove o modificate, usa lo stesso `anthropic_llm_client.LlmChat` e salva **proposte**, mai scritture contabili; `AGENTI_AI_RIGHE_ACQUISTI=false` lo tiene spento finché il titolare non autorizza il consumo di quota. Una regola si riusa soltanto dopo conferma umana e solo per identità stabile P.IVA + codice articolo (o descrizione esatta); conferma, correzione e rifiuto sono per singola riga, con motivazione e audit prima/dopo/autore/data. **La classificazione si corregge dalla riga** (`services/righe_acquisti_lotti.py`, solo admin, dal riquadro «Classificazione della singola riga» del dettaglio): `GET /api/righe-acquisti/{id}/proposta-lotti` **propone** dal nome (associazione già in `nome_mapping`, poi `categoria_da_testo` del Dizionario, poi il materiale di consumo riconosciuto per parola; senza fonte i campi restano vuoti, mai inventati) e `POST /api/righe-acquisti/{id}/prodotto-lotti` salva ciò che il titolare ha corretto (articolo, categoria, natura, conto, centro di costo, destinazione, flag «non cespite»). Il salvataggio scrive in un colpo la conferma dell'articolo in `nome_mapping` (unico scrittore `articoli_fattura.conferma_articolo`, lo stesso di `/conferma-articolo`: Lotti popola magazzino, FIFO e lotti) e la classificazione confermata della riga, poi la estende alle altre righe dello **stesso fornitore con la stessa descrizione esatta** che non hanno già una decisione umana (`fonte=lotti_stessa_descrizione`). **Scelta la categoria, conto e centro di costo si propongono** (`GET /api/righe-acquisti/proposta-categoria`, `proposta_conto_centro`): prima la **regola per categoria** del titolare (`righe_acquisti_regole_categoria`, `GET/PUT /api/righe-acquisti/regole-categoria`, che parte **vuota**), poi le scelte **già in uso** nel codice (`mapping_piano_conti`: bevande → 55.01.07 Acquisti merci, alimentari e materie prime → 55.01.01, imballi 55.01.09, consumo 55.01.05; `CATEGORIA_TO_CDC` per il centro), mai una tabella nuova; dove il settore non è certo (pasta, burro, olio…) il centro resta vuoto. Il conto si sceglie fra i conti d'acquisto del piano CEE ufficiale (gruppo 55) e il centro fra i centri di costo, mai a testo libero. La proposta non salva niente: il titolare la conferma o la corregge, e un conto o centro scelto a mano non viene riscritto dal cambio categoria. L'articolo che si sta classificando resta in evidenza in cima al riquadro. **«Non è un cespite»** (shopper, buste, materiale di consumo) è un flag della classificazione confermata (`non_cespite`, incompatibile con natura `cespite`): lo leggono, con `chiavi_non_cespite`, **i due punti che creano cespiti** da una fattura (`handlers/cespiti.py` e lo scan manuale `/api/cespiti/scan-fatture`); i cespiti già nati da quelle righe si contano e si segnalano, non si cancellano. Una proposta superata da una modifica della riga non si può confermare; per un `cespite` serve anche la regola fiscale esplicita. Per TD04/TD08 il riferimento cerca l'originale su tutti gli anni per P.IVA e numero normalizzato: trovato non significa collegato; se manca, la UI chiede di recuperare numero e data senza creare acquisti, ricavi o copie dell'XML.
+- **Collettore di pagamento di un gruppo = stesso soggetto** (`identity_matching._COLLETTORI_DI_GRUPPO`, titolare 02/10/2026): «AMAZON PAYMENTS EUROPE S.C.A.» incassa SDD e dispone i rimborsi per ogni società Amazon («Amazon Business EU S.a.r.l», «Amazon EU S.a r.l.»), quindi l'SDD Amazon si abbina da solo e non va in «Scegli fattura»; fuori dalla tabella un solo marchio in comune resta un soggetto diverso («ALFA PAYMENTS EUROPE» per «Alfa Forniture Srl»: proposta). Amazon paga sempre con metodo tracciato: il fornitore ha metodo «banca».
+- **Fattura emessa = cedente è la nostra P.IVA** (`FISCAL_COMPANY_ID`), da ogni ingresso: `fatture_emesse`
+  (`services/fatture_emesse.py`), mai `invoices`. Fatta dopo lo scontrino: **non aumenta ricavi, IVA né crediti**; si
+  aggancia al corrispettivo del giorno dello scontrino (dalla causale, se no data fattura) se unico; clienti per P.IVA→C.F.
+
+## PartenoPay, verbali e flotta
+
+- Conservare email, verbale, avviso, ricevuta PagoPA/PayPal e movimento banca
+  come prove separate.
+- Stati e motore dei verbali in un posto solo: `app/constants/stati_verbale.py`
+  (nove aperti — fra cui `fattura_ricevuta`, quello di tutte le righe vere — e
+  tre con prova, in maiuscolo e minuscolo: un filtro li elenca entrambi; `quarantena` non è né aperto né pagato, `e_chiuso` li unisce) e
+  `riconcilia_verbali_strict`, che esige riferimento strutturato **e** importo
+  uguale al centesimo, mai solo importo o data vicina. L'importo si legge dal
+  PDF. `pagato_attesa_fattura` è il legacy di `pagato_attesa_quietanza`.
+- Gli importi dei verbali si confrontano in **centesimi** (`amount_to_cents`/`money_cents`), mai con un float; il verbale porta `importo_centesimi`. `POST /api/verbali-noleggio/correggi-importo/{numero}` (admin, con audit) è una **conferma dell'operatore**: scrive `importo_verificato` e `importo_stato=CONFERMATO_OPERATORE`, e solo così la ricevuta pagoPA o il bonifico si riconciliano al verbale. La data dell'infrazione si legge anche in forma `gg/mm/aaaa` (`_giorno_iso`), mai come istante illeggibile. «Pulisci duplicati» mette le copie in `stato=quarantena` per id con `doppione_di` e `motivo_quarantena`, mai `delete_many`.
+- Associazione automatica driver: targa normalizzata più data/ora infrazione
+  più storico assegnazioni (`assegnazioni` del veicolo, `driver_alla_data`): il
+  driver è quello attivo **alla data/ora del fatto**. Se targa, driver, verbale
+  o pagamento non sono univoci, conservare il documento e chiedere una scelta.
+  **`driver_alla_data` (`noleggio/controlli.py`) è l'unico motore**: lo storico sta solo sul veicolo
+  (`veicoli_noleggio.assegnazioni`, dal/al), la collezione `storico_assegnazioni_veicoli` non esiste più; con uno
+  storico che non copre la data il driver è «da assegnare», mai quello di oggi. **La data dell'infrazione è
+  `data_violazione`** (`verbali_evidence.data_violazione_verbale`; `data_infrazione` è un alias di vecchie righe,
+  mai più scritto); `data_verbale` è la data dell'atto redatto, un'altra cosa (`data_evento_verbale` dice quale
+  delle due si sta usando).
+- **Il PDF di un verbale si legge in un posto solo**, `verbali_document_import.leggi_documento_verbale` (numero,
+  IUV, targa, importo, data dal **contenuto**, mai dal nome file): `process_verbale_document` lo chiama e scrive,
+  la ricostruzione lo chiama e non scrive. **Nessun lettore AI nel motore** (02/10/2026: tolti il ripiego vision e
+  `llm_document_parser`, che scriveva targa e driver «di oggi» sul verbale): una scansione senza testo resta «da revisionare»,
+  la propone l'agente (settore verbali) e la conferma del titolare porta al motore numero, IUV, targa e importo
+  (`metadata_da_proposta`, `campi_da_proposta_agente` sulla riga; anche sul verbale già archiviato), mai la «data» generica
+  della proposta; se anche così manca numero e IUV la proposta resta aperta. Il numero può avere barre («111/V/2025», «2025/000123»; una data dopo
+  «verbale» non è un numero), IUV e codice avviso sono **sempre testo** (`normalizza_iuv`: un intero ha perso lo
+  zero iniziale, un float le cifre: non si indovinano). L'**originale resta sul verbale** (`pdf_data`, `pdf_hash`,
+  `pdf_filename`; il payload finisce in `gestionale.blobs`): la copia in `documents_inbox` sparisce quando l'inbox si svuota.
+- **Un solo collegamento verbale → fattura** (`verbali_collegamento_fattura.py`): `fattura_id`, `fattura_numero` e
+  la provenienza `fattura_collegamento`; data, fornitore e importo si leggono dalla fattura. I campi
+  `fattura_associata_*` e `numero_fattura` non si scrivono più (si leggono solo come ripiego, `fattura_id_del_verbale`),
+  la fattura non porta una seconda copia (`verbali_collegati` non si scrive più).
+- **Ricostruzione dei verbali dal PDF** (`verbali_ricostruzione.py`, `POST /api/verbali-noleggio/ricostruisci-da-pdf`, admin,
+  `dry_run` per difetto, in sottofondo, stato in `sistema_stato` chiave `verbali_ricostruzione`, `GET …/stato`): riempie
+  **solo i campi vuoti** di un verbale con lo stesso numero; un valore diverso è un conflitto (candidato, mai applicato);
+  due verbali con lo stesso numero sono ambigui e non si toccano; mai per solo importo, mai una cancellazione (le righe
+  `VERB-…` restano; con `crea_da_pec` la copia conforme senza verbale vero apre il verbale dalla pipeline); porta su
+  `fattura_id` e `data_violazione` i campi legacy; il secondo giro dà `da_fare = 0`; non scrive in contabilità. Un verbale
+  senza originale (`senza_originale`) si ricarica da Documenti > Import, che lo riconosce per numero o IUV e ora conserva l'originale.
+- **Pacchetto PartenoPay** (`partenopay_archive_import.py`): hash di ogni file contro `data.json` **e** contro
+  `MANIFEST_SHA256.csv` (file fuori manifest o con hash diverso = errore che blocca; manifest vuoto = avviso, non prova);
+  l'import che scrive passa solo da Documenti > Import (lo smistatore riconosce lo ZIP), `POST /api/verbali-noleggio/import-partenopay`
+  è **solo anteprima**; secondo giro `nuovi = 0`, scadenza operativa e promemoria nascono una volta alla scoperta, un
+  verbale già riconciliato o in quarantena non torna indietro.
+- `POST /api/verbali-noleggio/{id}/upload-quietanza` (solo admin): `importo_pagato` e `data_pagamento` obbligatori, importo
+  Decimal al centesimo e uguale a quello del verbale (altrimenti 409), PDF con hash; con il PDF il verbale è «pagato»,
+  senza «pagato_attesa_quietanza»; stessa quietanza due volte = nessuna seconda nota presenze né seconda proposta di trattenuta.
+- **Documenti Drive di un verbale dal foglio dei collegamenti** (`verbali_documenti_drive.py`, `POST /api/verbali-noleggio/documenti-drive/collega`, solo admin, `dry_run` per difetto): il foglio «Collegamenti» di un xlsx (colonne `numero_verbale`, `drive_id`, `tipo`, `nome_file`, `sha256`, lette per intestazione) scrive sul verbale (in tutte e due le collezioni dove esiste) l'elenco `documenti_drive`; il verbale si trova solo per numero (o, se non ne ha, col suo `id` `verbale_<hash>`), lo stesso `drive_id` non si aggiunge due volte, il `tipo` `fattura` è l'XML della fattura del noleggiatore che cita il verbale (spese di notifica o gestione multa: si apre con lo stesso `ApriOriginale`, non crea fatture né scritture), un verbale mancante si elenca e non si crea. Non scarica né sposta niente: il dettaglio apre ogni voce con `ApriOriginale driveId`, cioè l'endpoint unico, che accetta solo i file della cartella unica (ELABORATE, ERRORI, ARRETRATO) o dell'inventario Drive.
+- **Importo atteso del verbale** (`verbali_importo_atteso.py`, giro `verbali_notifications` 07:10 e all'arrivo della PEC): passati 5 giorni dalla notifica provata dalla PEC (`data_notifica_fonte="pec"`) l'atteso passa da solo all'`importo_ordinario` letto dal PDF (`importo_atteso` Decimal, `importo_atteso_fonte="ordinario_dopo_5_giorni"`), il ridotto resta in `importo_ridotto` e nello `storico`, l'alert `VERBALE_IMPORTO_ORDINARIO` e il promemoria dicono «scaduti i 5 giorni: importo ordinario»; un verbale pagato, chiuso o in quarantena non cambia, senza ordinario letto non si inventa niente, secondo giro = 0 (titolare, 02/10/2026).
+- **Una ricevuta pagoPA non crea mai un verbale**: senza un verbale con lo stesso numero o IUV resta in `ricevute_pagopa` con `stato_verbale="senza_verbale"` e alert `RICEVUTA_PAGOPA_SENZA_VERBALE`; all'arrivo del verbale `process_verbale_document` la aggancia con importo al centesimo (`aggancia_ricevute_in_attesa`) e chiude l'alert; stesso numero con importo diverso è «importo non coincide», non «senza verbale».
+- **Assegnazioni veicolo→driver con data e ora**: `veicoli_noleggio.assegnazioni[].dal/al` sono `AAAA-MM-GG` (giorno intero) o `AAAA-MM-GGTHH:MM`; `driver_alla_data` sceglie il driver attivo alla data **e ora** dell'infrazione (`data_ora_evento_verbale`, `ora_violazione` dal PDF); un evento senza ora nel giorno del passaggio dà i candidati e non sceglie; il PUT valida e normalizza (400 su data illeggibile o `al` < `dal`) e il cambio driver chiude/apre il periodo allo stesso minuto.
+- **La trattenuta in busta per un verbale nasce in un posto solo**, `trattenute_verbali_service.proponi_trattenuta_verbale_pagato`, e solo a verbale pagato con quietanza (PDF caricato o ricevuta pagoPA/PayPal) e importo certo, stato `proposta` finché il titolare non conferma; l'assegnazione del driver, un pagamento dichiarato senza PDF e la sola prova bancaria non aprono nulla.
+- Il verbale genera un promemoria operativo a 5 giorni dalla scoperta. **La PEC di notifica è la prova della notifica** (`notifiche_pec_verbali.py`): la data della PEC è `data_notifica`, da cui 5 giorni (ridotto), 30 (Giudice di Pace) e 60 (Prefetto); il numero si legge dalla copia conforme, mai dal nome file, e la notifica si aggancia al verbale vero con quel numero (`notifiche_pec`, allegati nel fascicolo), mai a un secondo verbale; senza verbale resta «da agganciare» (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run` per difetto).
+- **Le PEC di notifica si agganciano da sole** nel giro giornaliero dei verbali delle 07:10 (`verbali_notifications`: prima `giro_aggancio_automatico` di `notifiche_pec_verbali.py` con `dry_run=False`, poi l'importo atteso, poi i promemoria): una PEC si lega solo al verbale vero con lo stesso numero letto dalla copia conforme; senza verbale o con due verbali veri resta `da_agganciare` col motivo (`senza_verbale`|`verbali_ambigui`), nessun verbale nasce, secondo giro = 0; l'esito dell'ultimo giro sta in `sistema_stato` (`notifiche_pec_verbali_ultimo_giro`), niente bottone né PIN (l'endpoint `…/notifiche-pec/aggancia` resta per l'anteprima). **La nota per il consulente** della trattenuta (`note_presenze_consulente`, archivio del gestionale, mese successivo alla quietanza) parte con le presenze del mese da entrambi gli invii (HR «Invia» e Pacchetto commercialista: `presenze_consulente.note_consulente_mese`, riga nel corpo dell'email e CSV `note_presenze_AAAA_MM.csv`) e dopo un invio riuscito `registra_invio` la segna `inviato_consulente`.
+- **Posizione auto/driver in un posto solo**: `app/services/noleggio/posizione.py`
+  (`GET /api/noleggio/posizione`, tab «Posizione auto e driver»). DARE = costi documentati
+  (fatture per categoria, verbali con importo verificato); AVERE = **solo prove strutturate**
+  (allocazioni bancarie confermate, Prima Nota Banca **con** estratto conto, quietanze
+  PartenoPay/Mooney/PayPal/PagoPA agganciate al verbale). Prima Nota senza estratto conto =
+  dichiarato, non chiude il saldo. Un SDD cumulativo si spartisce con le quote delle allocazioni
+  al centesimo; il pagamento pesa sul driver **alla data del costo**. Un'uscita verso noleggiatore
+  o Comune di Napoli senza relazione resta candidato, mai attribuita.
+- Lo scan fatture noleggio legge solo le fatture attive (`FILTRO_FATTURA_ATTIVA`: fuori
+  `archived`/`archiviata`/`deleted`, archivio storico, collisioni): ogni fattura 2026 esisteva in
+  due copie e i costi erano doppi. Aliquota 0 (bollo, N1) resta 0: `0.0 or 22` inventava il 22%.
+
+## Sicurezza
+
+- Segreti solo nelle variabili d'ambiente di Render.
+- Non stampare, committare o trasferire credenziali.
+- Non spostare né cancellare email e documenti originali.
+- Eliminazioni reali, pagamenti e associazioni definitive ambigue richiedono
+  conferma esplicita al momento dell'azione.
+- Telegram è l'unico canale attivo per alert e notifiche operative: non
+  registrare router, webhook o fallback WhatsApp.
+- **Ogni route è autenticata, e una nuova senza token non entra in silenzio.** L'ERP è chiuso dal middleware globale per tutto `/api/` fuori da
+  `PUBLIC_PATHS` (login, liveness, callback banca col suo `state`, pagine legali); HR, Lotti e Menu vivono fuori da `/api/` e si proteggono con le
+  proprie dipendenze (`require_*`, `auth_dependency`, `verify_token`). `tests/runtime/test_p2_admin_guards.py` costruisce l'inventario da `app.main:app`
+  (mount compresi) e fallisce per ogni route raggiungibile senza token che non sia in una lista bianca **con il motivo**; vale anche per ogni voce nuova di
+  `PUBLIC_PATHS`. I dati finanziari (Mutui, letture comprese, e il parser dei piani) hanno la guardia admin sul router. Un ordine anonimo del Menu è sempre
+  «cliente» e non pagato: `cassa` e `pagato` li dichiara solo chi porta il token dello staff. Ogni route di `/api/agenti` è solo admin (segnalazioni, stato, run, decisioni, automazioni, cash-flow, settori e proposte).
+
+## Dominio per app
+
+### HR — contratto, accessi, turni
+
+- **CCNL applicato: Pubblici Esercizi, Ristorazione Collettiva e Commerciale e
+  Turismo** (Confcommercio-FIPE), codice CNEL **H05Y**, rinnovo 5/6/2024.
+  **Non è il Terziario.** 40 ore settimanali, 14 mensilità (tredicesima a
+  dicembre, quattordicesima a luglio), 26 giorni di ferie, enti EBNT/EBT,
+  Fondo EST per la sanità, Fon.Te. per la previdenza complementare.
+- **Login dipendente = tocca il tuo nome + PIN**: su un dispositivo condiviso
+  in negozio digitare il cognome a ogni apertura era scomodissimo, e i nomi non
+  sono un segreto. L'accesso amministratore è una voce a parte, non la scheda
+  di un dipendente.
+- Sessione lunga e persistente (7 giorni) per cucina e pasticceria: il portale
+  riapre senza PIN finché il token è valido. «Esci» chiude subito.
+- **Turni data-driven**, un solo punto di configurazione: per ogni dipendente
+  modalità sala o barista, giorno di riposo fisso, giorni di Lunga, onomastico,
+  flag «può coprire il bar». Nessun nome cablato nel codice. La preferenza di
+  riposo scelta dal dipendente vince sul riposo fisso per quella settimana.
+- **Timbrature solo in sede**: geofencing sulla sede in `impostazioni`
+  (Ceraldi Caffè, Piazza Carità 14, Napoli, circa 40.842949 / 14.2489, raggio
+  200 metri).
+
+### Lotti — HACCP, magazzino, prezzi
+
+- **Un solo punto d'ingresso per le fatture** e deduplica sempre attiva: numero + P.IVA **oppure** numero + fornitore + data (una P.IVA troncata nell'import di gennaio creava doppioni). Il
+  ponte dal gestionale vede **tutte** le fatture dell'anno: il tetto per giro vale sulle **ancora da
+  prendere**, mai sull'elenco intero, che arriva ordinato per data — tagliarlo butta le più recenti (erano
+  444 dal 30/06) e il buco cresce da solo. Quante restano lo dice `arretrato`.
+- **Una fattura che entra nel gestionale alimenta Lotti subito**: l'handler `fattura.created` importa
+  **quella sola** fattura (mai un ripasso d'archivio: il giro Drive ne porta 25 per volta). Lotti è a
+  valle: un suo guasto o la sua lentezza non fermano l'import contabile (coda in sottofondo). Il giro dei 15 minuti è la rete.
+- **«Fattura attiva» si decide in un posto solo**, e per Lotti vale lo stesso criterio del libro giornale:
+  fuori `deleted`, `archived`/`archiviata`, `archivio_storico` e le collisioni di identità aperte. Un
+  filtro parallelo che guardava solo `deleted` mandava a Lotti 1.444 fatture invece di 889.
+- **Il registro delle ricevute non è una prova di presenza**: vale solo se la fattura esiste ancora in
+  `fatture`. **Un'impronta cambiata non è un conflitto** (il gestionale arricchisce righe e stati): conflitto è solo
+  XML diverso con la fattura già in Lotti; se manca si importa. Un fornitore fuori dal magazzino si salta, non è un errore. **Nel magazzino / fuori dal magazzino ha una scelta sola**, `fornitori.esclude_magazzino` dell'anagrafica ERP per P.IVA (`services/magazzino_fornitore.py`): motivo a chip (mai testo libero, «Altro» è l'eccezione), data, chi, `storico_magazzino`, anteprima coi conteggi prima di confermare (`GET/PUT /api/suppliers/{id}/magazzino[/anteprima]`, solo admin). Il ponte e l'handler `fattura.created` leggono prima quella; dove l'anagrafica non ha mai deciso vale la decisione già presa in Lotti (`fornitori`/`fornitori_decisioni`, per nome, e un omonimo con altra P.IVA non eredita); se nessuno ha deciso il fornitore è **incluso** e la scheda dice «non deciso» (mai «escluso» d'ufficio: il vecchio `not inventory_enabled` lo faceva per 197 fornitori su 198, campo che non esiste più). Lotti riceve una **proiezione** (`imposta_esclusione`, usata anche da `/escludi`, `/approva`, `/tipo-fornitura`, qualifica e auto-classifica) e ogni scelta fatta lì torna nell'anagrafica (`registra_decisione_da_lotti`); la qualifica automatica non riporta dentro chi il titolare ha messo fuori. Escludere o includere **non cancella niente** (fatture contabili, lotti e inventario restano); includere accoda le sole fatture ancora da prendere, con l'import idempotente di sempre. `POST /api/suppliers/magazzino/allinea` (admin, `dry_run`) porta sull'anagrafica le decisioni di Lotti dove manca la scelta.
+- **Un numero che non si conosce non è zero**: KPI senza fonte = «Dato non disponibile»; spesa = `total_amount` del gestionale per identità (`spesa_da_gestionale`); costo lotto = consumo × prezzo di fattura (`costo_da_consumo`), altrimenti `None` col motivo; spese, sconti e trasporto non entrano in giacenza. Dose e righe-intestazione in un posto solo (`servizi/ingredienti_ricetta.py`): un ingrediente senza dose si dichiara (`ingredienti_senza_dose`), mai saltato in silenzio; la merce mai scaricata la chiude solo il titolare (`servizi/merce_ferma.py`: simulazione, conferma, riapribile, niente si cancella). Lievito di birra: un solo motore (`servizi/lievitazione.py`) per dose, produzione e calcolatore impasti; si scala dal `lievitazione_riferimento` della ricetta alle ore/temperature di oggi e senza riferimento non si ricalcola; la produzione scarica e registra il lievito realmente usato.
+- **Prezzi da acquisti reali in fattura XML, oppure da listino del fornitore dichiarato come tale.** Gli ordini hanno totali veri: prezzo di riga, aliquota
+  IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel PDF.
+- **Listini** (`servizi/listino_fornitore.py`, `POST /catalogo-forno/importa-listino`, Excel/CSV letto per intestazione): prezzo
+  che il fornitore dichiara oggi (Barone: catalogo riservato, bundlato in `data/listino_barone_2026-09-28.json` e caricato
+  all'avvio solo se piu' nuovo di quello in archivio; stessa strada per `data/listini_catalogo_ceraldi_2026-07.json`, catalogo bar del vecchio archivio con un listino per fornitore, prezzi IVA esclusa, codici `CC-nnnn`). Vivono in `catalogo_forno_prodotti` (`fonte_catalogo="listino"`,
+  `prezzo_listino` stringa Decimal per l'unita' «12 PZ») con la fonte `tipo="listino"` in `fonti_catalogo_esterne`; un articolo
+  uscito dal listino resta con `nel_listino=False`. Nel confronto compaiono con scritta «listino» e data, mai come prezzo pagato.
+- **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →
+  articolo in `nome_mapping` (`servizi/articoli_fattura.py`): vince la riga **confermata** (Dizionario, «Proposte web»);
+  senza conferme, parola intera e fuori i lotti che una prova dice altro («olive in acqua e sale» non è sale).
+- **Bevande e alcolici del bar** (acqua, birre, vino, prosecco, liquori, amari, sciroppi, succhi, bibite) si confrontano
+  a cartone o a pezzo, **mai a chilo o a litro**. Miglior fornitore: `servizi/confronto_fornitori.py`, **motore unico** per confronto,
+  cataloghi e carrello (righe XML + listini, fornitore = P.IVA). Vetro e lattina non si uniscono mai, nemmeno passando per una
+  descrizione che il contenitore non lo dice. Accorpamento: certo per testo, EAN o **lettura AI** (`servizi/lettura_articoli_ai.py`,
+  collezione `articoli_letti_ai`, giro orario 06-22 e 3 minuti dopo l'avvio: marca, prodotto, variante, formato; misura e pezzi solo
+  se scritti nella descrizione), dichiarato `abbinato_ai` e separabile con «diverso»; il resto lo decide una persona.
+  `nome_mapping` resta l'ingrediente per le ricette, non l'articolo da ordinare. **Scelto un prodotto (catalogo, Ordini o
+  confronto), la riga del carrello va al fornitore che costa meno** (`GET /confronto-fornitori/migliore`) e il toast lo dice;
+  un cartone fatturato senza i pezzi scritti prende il numero dal listino dello stesso articolo, con la nota «da verificare».
+- **Il web identifica i prodotti con un motore solo** (`servizi/lettura_articoli_ai.py`): `cerca_sul_web` è l'unica chiamata allo strumento server-side di ricerca (`LlmChat.cerca_sul_web`, stessa chiave, la usa anche la ricerca delle schede tecniche); `identifica_col_web` (giro `lotti_identifica_col_web` ogni 25 min, 5 righe, tetto 120 chiamate al giorno contate nel registro unico con scopo `lotti_web`, `web_cercato_at` = 30 giorni di pausa) dà una categoria del Dizionario da sola **solo** se il web (alta confidenza, almeno una fonte) e il testo di fattura concordano e la categoria è in `CATEGORIE` (`categoria_fonte="web"`, `abbinato_ai`, fonti); il resto è proposta `nome_mapping` fonte `web`.
+- Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili col peso del pezzo.
+- Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
+  colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e
+  quantità di riordino a 1.
+- Campi vincolanti: `ingredienti_dettaglio[].unita_misura` (non `unita`), `lotti.data_scadenza` gg/mm/aaaa,
+  `fornitori` per `nome` e non `id`.
+- **Schede tecniche ME.PA.** (`servizi/schede_fornitore.py`, `routers/schede_tecniche.py`): la descrizione
+  nella mail è la riga di fattura e fa da chiave. L'import manuale è multiplo e in due fasi
+  (anteprima/conferma): SHA-256 prima di ogni scrittura, un originale Drive e un `documento_id` per contenuto,
+  occorrenze duplicate conservate nell'indice Supabase. L'associazione automatica richiede codice fornitore o
+  nome nel PDF con identità esatta; la correzione umana deve indicare un nome esatto già nel dizionario,
+  altrimenti resta `DA_VERIFICARE`. Produttore, composizione, conservazione, shelf-life, confezionamento,
+  data e revisione sono conservati soltanto quando espliciti. Una `X` estratta senza la coordinata della
+  colonna non prova presenza/assenza/traccia. Il PDF per l'ASL non si elimina né si sovrascrive; allergeni e
+  valori per 100 g solo se scritti, in etichetta solo da articolo confermato o lotto consumato con la stessa
+  descrizione. Ricette e ingredienti risolvono lo stesso originale autenticato per identità esatta o
+  `nome_mapping` confermato e univoco. Le nuove schede email passano a Drive prima che il Base64 temporaneo sia
+  rimosso dal record. Lotti senza configurazione Supabase fallisce chiuso; il mock in memoria richiede
+  `LOTTI_TEST_MEMORY=1` ed è riservato alla suite.
+- Spostando un lotto si scrivono **sempre** sia `posizione` sia `frigo_numero`; per azioni reali sui lotti
+  di un'attrezzatura si usa il match esatto sul nome, mai uno snapshot troncato («Frigorifero N°2» e «N°9»
+  si confondono). La produzione sceglie con **un solo tocco** banco oppure un apparecchio attivo censito: niente destinazione predefinita, testo libero, ripiani o «senza posizione»; il banco passa sempre dal prelievo canonico, il lotto non resta disponibile anche nel registro banco e ogni cambio posizione ha audit.
+- Foto ricette: archivio unico Supabase Storage, anche per il cestino e le copie delle varianti; Drive si **legge** soltanto (foto già collegate, cartella scritta sul record), mai si scrive. La copia in `GESTIONALE/FOTO E IMMAGINI/RICETTE` la scrive dal PC `scripts/esporta_foto_ricette.py` (Drive Desktop): l'account di servizio non ha spazio nel Drive del titolare.
+- `prodotti_master` è il catalogo canonico e `magazzino_unificato` il magazzino canonico;
+  `prodotti_vendita` e `sconti_merce` sono domini diversi e non si fondono.
+- **Il registro HACCP non si scrive da solo.** Alle 07:00 il turno *apre* la casella del giorno su ogni
+  apparecchio attivo (mai su uno `fuori_servizio`) e ci mette il responsabile assegnato
+  (`attrezzature_config.operatore_id`, nome da HR): `temp` resta `None`, stato `da_rilevare`. Se il titolare
+  dichiara di fare lui il controllo visivo (`controllo_visivo_responsabile`), il turno annota l'**esito** —
+  «conforme, entro le soglie della scheda», firmato col suo nome — e **mai un valore numerico**: quello si
+  scrive solo quando c'è un'anomalia, e lo scrive lui (valore vero, fuori servizio, assistenza).
+  La misura la fa una persona dal tablet, e **la firma è il PIN**
+  (`servizi/firma_dipendente.py`): col PIN il nome arriva da HR e il record è `firma_verificata`; con un PIN
+  sbagliato la rilevazione **non si salva**, perché una firma falsa è peggio di una registrazione mancante.
+  Un giorno senza lettura si **dichiara** «non rilevato», mai riempito d'ufficio; lo storico **senza firma** resta
+  ma vale «n.a.» (`servizi/haccp_attendibilita.py`). Mai `random` né codice morto in HACCP (`test_haccp_niente_evidenze_finte.py`). Apparecchi di un anno = censiti + chi ha rilevazioni (`schede_temperature.py`), mai 12 fissi; un GET non crea schede (le crea il turno); il giorno è quello di Roma; «conforme», «non rilevato» e «da rilevare» si vedono diversi anche in stampa.
+- **Il responsabile di ogni frigorifero e congelatore senza assegnazione è il titolare** (decisione del 02/10/2026): il turno delle 07:00 scrive sulla casella `operatore_id="titolare"` e il nome di `responsabile_haccp` delle Impostazioni azienda (`AZIENDA_RESP_HACCP` come default), mai cablato; senza quel nome l'apparecchio resta in `senza_responsabile`, non si inventa. L'assegnazione per apparecchio è `PUT /attrezzature/{tipo}/{numero}/responsabile` (id HR, `titolare` o vuoto; nome sempre da HR o dalle Impostazioni), tendina «Responsabile» nella pagina Apparecchi. Un solo motore: `servizi/responsabile_haccp.py`. **La sessione amministratore del Gestionale firma le rilevazioni** (`firma_registrazione`: `firma_verificata`, `firma_via=sessione_admin`, nome dal token se porta l'identità HR, altrimenti dalle Impostazioni); «Amministratore» non è un nome e il ruolo `automazione` non firma mai; un PIN sbagliato resta 401. **Dichiarare la conformità e aprire le caselle si fa dai registri** (card «Controlli di oggi», `shared/TurnoHaccpOggi.jsx`, sopra Frigoriferi e Congelatori, anche sul tablet): «Dichiaro conformi i controlli di oggi» → `POST /haccp-auto/dichiara-conformi-oggi` (prima il numero di caselle aperte, poi conferma; 409 senza controllo visivo, 401 senza firma; scrive `stato=conforme`, `temp=None`), «Apri le caselle di oggi» → `POST /haccp-auto/apri-rilevazioni-oggi` solo se `turno-oggi` dà `quante_senza_casella > 0`.
+- Stampa: coda più print agent locale sul PC del negozio (`scripts/print_agent.py`, PIN in `LOTTI_PRINT_AGENT_PIN`,
+  variabile **locale**, mai su Render), stampante scelta per tipo di documento, token solo in `Authorization` e solo verso Lotti. Il fascicolo per un'ispezione si compone da
+  `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore
+  sa produrre — un test lo verifica) e il frontespizio con i dati dell'azienda c'è sempre.
+- **Un PIN per entrare, non per ogni sezione**: magazzino e portale dipendenti condividono la verifica (`services/workforce_tokens.py`,
+  prova `LOTTI_AUTH_SECRET` e `HR_JWT_SECRET`); l'ERP contabile resta fuori. La traduzione dei ruoli è **direzionale**
+  (`operatore`↔`dipendente`), mai verso `admin`, e un token **senza** ruolo non ne riceve uno di ripiego: fallisce chiuso. Ruoli di Lotti (`servizi/ruoli.py`) sulla scheda HR (`lotti_ruolo`, `lotti_reparti`): **HACCP** registri, anomalie, conformità, apparecchi, smaltimento; **caporeparto** ricette e annullo produzione del suo reparto, smaltimento. Il token resta da operatore: `require_permesso` rilegge il ruolo a ogni scrittura (403 `RUOLO_NON_AUTORIZZATO`).
+- Piano di sanificazione per area (`/sanificazione/piano`): frequenza, prodotto, diluizione, tempo di
+  contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
+  non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
+- Accessi: token 12 h, rinnovi al massimo 7 giorni dal PIN (admin 24 h, `auth_at`); PIN sbagliati contati in `pin_tentativi`, per client **e** globali; sui tablet condivisi il magazzino chiude dopo 10 minuti. Ogni scrittura o dipende da `require_admin` o è fra le operazioni di reparto di `test_scritture_riservate.py`; un URL da fuori si scarica solo con `servizi/fetch_sicuro.py`. Il JWT solo nell'header, **mai in `?token=`**: i documenti con `apriDocumentoAutenticato`.
+- Backup Lotti: mai sul disco del servizio. Parti verificate (SHA-256) in `gestionale.blobs` più manifesto (`servizi/backup_archivio.py`, registro `backup_registro`); il ripristino è simulazione → backup di sicurezza verificato → sostituzione per id. Navigazione: ogni reparto del tablet ha la stessa `BarraReparto` (Indietro, Reparti, Gestionale solo titolare, Cambia operatore), ogni pagina il suo `ErrorBoundary`, un indirizzo sconosciuto «Pagina non trovata», la configurazione passa da `#impostazioni`.
+
+### Menu — allergeni
+
+- Gli allergeni sono un obbligo di legge, non una cortesia: **Regolamento UE 1169/2011** e **D.Lgs. 231/2017**
+  impongono di dichiarare i 14 allergeni principali per ogni prodotto. Il dato vive in
+  `menu.menu_products.allergens` con i 14 id UE in `menu.menu_allergens`: **non in un file**.
+- Il menu vero si gestisce su Qromo (`ceraldicaffe.qromo.it`): la sync sostituisce per intero categorie,
+  sottocategorie e prodotti con `origine IS NULL`, e riduce gli allergeni ai 14 UE.
+- **È Lotti a spingere nel Menu, non il Menu a pescare dalle ricette**, ed è
+  l'unica strada ricetta → prodotto (il «Collega a una ricetta» dell'admin
+  Menu era un doppione dal lato sbagliato, rimosso). Ogni ricetta la replica
+  il ponte `app/lotti/servizi/menu_bridge.py` con la stessa foto
+  (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` → `visible`,
+  `menu_bb` → `menu_bb`):
+  le righe di Lotti sopravvivono alla sync Qromo e l'esito `menu_sync` non fa
+  mai fallire l'endpoint Lotti. Pregresso con
+  `POST /api/ricette-ripubblica-menu` (admin, in background). La visibilita'
+  pubblica delle nuove ricette e' spuntata per default; `pubblica_tutte=true`
+  spunta anche l'archivio esistente e conserva i valori precedenti nello stato del giro.
+- **Il menu pubblico non mostra categorie e sottocategorie senza prodotti
+  visibili** (`menu_routes._build_hierarchy`): un riquadro vuoto in home ha
+  l'immagine rotta e «0 prodotti». Il filtro sta in lettura perché è l'unico
+  punto che copre anche le categorie già vuote in produzione, e perché
+  `menu_products.subcategory_id` è NOT NULL (una riga nascosta la sua sezione
+  deve comunque averla). Una categoria con prodotti in una sola sottocategoria
+  resta visibile.
+- **Le righe `origine = "lotti"` le possiede Lotti**: `PUT
+  /api/menu/admin/products/{id}` le rifiuta con 409 (il ponte le riscrive
+  intere a ogni salvataggio della ricetta, una correzione fatta nel Menu
+  sparirebbe senza avviso).
+- **ID prodotto unico `PRD-000123`** (titolare, 05/10/2026): lo stesso codice in Menu, B&B e Lotti, **assegnato solo dal database** (`menu.menu_products.codice_prodotto`, trigger `trg_codice_prodotto`, mai scritto da app né da PostgREST: `trg_codice_prodotto_fisso` lo blocca) e tenuto in `menu.prodotti_codici`, un registro che **non si cancella mai**. Una ricetta si riconosce per `lotti_ref`, mai per `id` (un id Menu si può riusare): ricreare la riga Menu di una ricetta non cambia il codice; un prodotto Qromo lo tiene per il suo id Qromo, stabile fra le sync (che cancellano e reinseriscono). `bb_prodotti.id` è lo stesso `menu_products.id`; il B&B legge il codice dalla carta (`cod`), Lotti da `GET /api/prodotti-codici` (`{ricetta_id: codice}`, sola lettura) e lo mostra sulla card ricetta; ricerca per codice in Lotti, Menu admin e compositore B&B; la carta pubblica lo mostra nel dettaglio del prodotto. Il gateway `public.menu_products` è una vista `select *` espansa alla creazione: una colonna nuova su `menu.menu_products` richiede di **rifarla**.
+- La ricetta ha **due prezzi**: `prezzo_vendita` è quello **al banco** (base di
+  food cost e margine), `prezzo_tavolo` quello **al tavolo**, mostrato dal Menu
+  digitale. Finché il tavolo non è deciso il Menu espone il banco e il ripiego
+  resta visibile (`prezzo_tavolo_impostato`): non si copia l'uno nell'altro, o
+  un prezzo mai scelto sembrerebbe deciso. **Valido solo se finito e maggiore
+  di zero**: negativi, `nan` e `inf` sono 400 all'ingresso, `0` significa
+  «togli il prezzo». Una ricetta **senza nessuno dei due** compare nella carta
+  `/menu/carta/index.html` con **Prezzo da definire**; le API dei prodotti
+  ordinabili continuano a richiedere un prezzo valido. Il backfill conta
+  `senza_prezzo`, senza inventare un ripiego.
+- In Lotti, **Ricette → Menu e prezzi → Prezzi da completare** permette all'amministratore di
+  inserire il prezzo al tavolo accanto a foto e prodotto, senza aprire la scheda.
+  Usa il solo endpoint canonico `PUT /api/ricette/{id}/prezzo-tavolo`: non cambia
+  banco o ingredienti. La riga scompare dopo salvataggio e sincronizzazione Menu;
+  un errore resta visibile e si puo' riprovare. Ricerca e reparto filtrano i dati gia' letti.
+- Le spunte di Ricette **Rosticceria del giorno** e **Pasticceria classica**
+  usano `categorie_rapide`, senza un secondo archivio di produzione. Sono gruppi
+  operativi modificabili (non si azzerano a mezzanotte): compaiono anche in Produci.
+  La scelta esplicita salva anche il reparto tramite il writer parziale canonico
+  e aggiorna il Menu (Food/Dolci); Rosticceria esclude Colazioni
+  e Pasticceria classica. Nessun lotto o quantitativo nasce dalla sola spunta.
+- La carta riunisce Colazione/Dolci di «Bar & Dolci» e Pasticceria di Lotti
+  nella card **Dolci**; bevande in **Bar**, Rosticceria in **Food**. Il reparto
+  misto Altro resta in **Altri prodotti**, senza dedurre il reparto dal nome.
+  E' un raggruppamento di presentazione: ID, prezzi e categorie sorgenti restano intatti.
+- **Un solo editor per la produzione:** Menu admin → Prodotti → Ricetta apre
+  `/lotti/#ricette/<id>`, non un secondo form. Nella ricetta le tre spunte
+  indipendenti decidono menu pubblico, catalogo B&B e ricette operative
+  (`visibile_tablet`; le escluse restano recuperabili). Il Menu legge il
+  proprio catalogo replicato dal ponte, non rilegge le ricette per B&B.
+  Composizione colazioni, assegnazione hotel e carta ospite usano la stessa
+  destinazione `bb`; le RPC esistenti conservano autorizzazioni e prezzi hotel.
+  Il frontend B&B legge `/menu/api/menu/carta?destinazione=bb`, sotto la
+  sub-app Menu: il prefisso ERP `/api/` richiede invece la sessione ERP.
+  `#in_menu` resta un alias di `#ricette/prezzi`, non una seconda pagina.
+- In Menu admin → Prodotti, la **X nasconde**, non cancella: resta per Qromo
+  e aggiorna `visible`; per Lotti la scelta sta nella ricetta.
+  La sync Qromo conserva i false gia' salvati sullo stesso ID. «Mostra anche nascosti»
+  permette il ripristino. «Possibili doppioni» confronta solo il nome, mai fonde o elimina automaticamente.
+- La categoria delle ricette nel Menu e' «Produzione Ceraldi» piu' la
+  sottocategoria derivata dal reparto. Le categorie si leggono e si creano da Lotti con
+  `/api/menu-categorie`, sempre con `origine` valorizzata; se esiste già una
+  categoria con quel nome di **altra** origine la creazione riesce ma la
+  risposta porta un `avviso` (due riquadri «Bar» in home). **Una categoria di
+  Qromo (`origine IS NULL`) non è agganciabile**: la sync la cancella e un
+  prodotto di Lotti appeso lì farebbe fallire la cancellazione per chiave
+  esterna.
+- Bibite e liquori non compaiono nella lista di lavoro degli allergeni;
+  il filtro non cancella allergeni registrati e non attesta la loro assenza.
+  Le ulteriori esclusioni manuali, per prodotto o reparto, vivono in
+  `menu.menu_allergeni_esclusioni`, **non** in una colonna di `menu_products`:
+  la sync Qromo cancellerebbe qualunque flag messo lì, mentre gli id Qromo
+  restano stabili. L'esclusione manuale conserva motivo e revoca; non nasconde
+  il prodotto dal Menu.
+
+- **Colazione del reparto:** la configurazione stagionale separa Pasticceria,
+  Rosticceria, Acquaviva e altri fornitori, con filtri sulle categorie richieste.
+  I filtri ricavati dal nome sono soltanto di presentazione, non assegnano
+  gruppi operativi persistenti. I salati rimandano alla produzione di
+  Rosticceria. L'azione esplicita «Tutte le 4 stagioni» aggiunge il singolo
+  prodotto in modo idempotente, conserva quantità esistenti e chiede conferma.
+  Il caricamento fallito non viene rappresentato come un menu vuoto.
+  Dopo il PIN personale il router conserva la sottopagina richiesta
+  (Colazione o Produci), soltanto nello stesso reparto; la navigazione dopo
+  l'accesso ha un unico proprietario, `TabletHome`, senza un secondo rinvio
+  al cruscotto in `KioskLayout`.
+
+### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
+
+- **Condivisione inviti:** il testo contiene il link una volta sola; se il modello personalizzato non usa `{link}`, il collegamento viene aggiunto prima di condividere o copiare. La barra dell'albergatore resta una griglia compatta anche su desktop; l'area hotel usa il tema chiaro indipendentemente dal tema del dispositivo.
+- Il compositore «Prodotto dal menu» legge il catalogo canonico con
+  `/menu/api/menu/carta?destinazione=bb`, tutte le categorie, ricerca e
+  paginazione; non mantiene una seconda lista né inventa prezzi mancanti.
+  «Usa come prezzo» aggiorna i nomi automatici «Colazione da €…» e conserva
+  i nomi personalizzati. Le spunte B&B dei prodotti Lotti arrivano dal ponte.
+
+- **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
+  Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
+  la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
+  La catena e' completa fino a v28: v1-4, 7, 8, 10 e 13-28 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
+  in `supabase/migrations/` come `…_colazioni_bb_vN_*.sql`; sono gia' applicate, i file non vanno rieseguiti.
+- **Tre ruoli, tre link**: titolare (`#/titolare`), albergatore (`#/hotel/<accesso>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**). Il QR del voucher è il link ospite completo e lo scanner accetta codice o link; «Copia link per NFC» copia il link ospite, «Copia link recensioni» è un bottone a parte.
+- **Audit del 02/10/2026** (`supabase/migrations/20261002132237_colazioni_audit_02_10.sql`, applicata a pezzi): gli ordini mattutini dell'albergatore (`/api/colazioni/ordini-prodotti/albergatore[/elenco]`) sono in `PUBLIC_PATHS` col motivo (la credenziale è il token `tk:` di Supabase, verificato dall'handler con `bb_alb_stato`, 401 se il database lo rifiuta; ogni altro `/api/colazioni/*` resta chiuso dal middleware, `test_colazioni_accesso.py`). **Extra per giorno** (titolare): `bb_vouchers.extra` è `[{giorno, voci, totale}]`, l'incasso è per giorno (`extra_pagati_giorni`, `bb_tit_extra_incassato(p,vid,pgiorno)`), l'ospite ordina per il giorno scelto (`bb_ospite_salva(…,pgiorno)`: mai passato né fuori soggiorno; un giorno incassato non cambia più), Produzione e scanner mostrano solo gli extra del giorno, la differenza senza glutine è una voce del giorno in cui l'ospite salva; prezzi sempre dal catalogo, mai dal browser; la colonna `extra_pagato` resta inerte. **Annullo**: l'albergatore rimborsa solo entro `data_fine`, dopo decide il titolare con motivo a chip (`bb_tit_annulla(p,vid,pmotivo)`; `annullo_motivo/annullato_da/annullato_il`). `bb_ospite_salva` valida `richieste` (solo `allergie` = id di `menu.menu_allergens`, `nota` ≤500, `modifiche` con chiavi note) e la pagina legge ogni lista con `Array.isArray`; un codice sconosciuto dà `{errore}`, non un'eccezione, così il conteggio per IP resta scritto. Codice voucher a 16 caratteri (i vecchi a 10 restano validi); `bb_ospite`/`bb_ospite_salva` limitate per IP (`ospite:<ip>`, 60 in 10 minuti, 15 di blocco); `bb_ip()` ricade su `x-real-ip`/`cf-connecting-ip` e la soglia per IP vale solo con IP noto. Il titolare non cambia il PIN dell'albergatore (`bb_tit_struttura_salva` tocca solo nome, indirizzo, telefono, email); una struttura si **disattiva** con `bb_tit_struttura_disattiva(p,sid,pmotivo)` (PIN e inviti azzerati, sessioni fatte scadere, link recensioni spento; borsellino e storico restano) e si riattiva solo con un nuovo invito (`bb_tit_invito_rigenera`); una struttura `demo` deve prima registrare il gestore (v24: `registrazione_richiesta`). Recensioni: senza `recensioni_informativa_url` nessun consenso può essere «sì» (RPC e UI); il consenso registra la `fonte` della visita; con `bar_lat/bar_lon/bar_raggio_m` in `bb_config` ogni posizione porta `distanza_m` e `in_sede` (null se mancano), solo informazione, mai un blocco. La pagina ha una CSP (`connect-src` solo Supabase e `self`), `integrity` su qrcodejs e nessun valore interpolato dentro un `onclick` (id/`data-*` più listener). **Le vecchie firme sono rinominate `*_v23` e chiuse ad anon, non eliminate** (`bb_alb_crea_voucher`, `bb_alb_crea_batch`, `bb_tit_menu_*`, `bb_tit_bar_set`, `bb_tit_voci_salva`, `bb_pin_stato`, `bb_tit_tavolo_set` e le firme precedenti di `bb_annulla`, `bb_tit_annulla`, `bb_ospite_salva`, `bb_tit_extra_incassato`, `bb_tit_struttura_salva`, `bb_recensioni_posizione`): lo strumento di sessione blocca ogni cancellazione, e una chiusura di sessione è `scade=now()`. `gc_assert_runtime_secret` e le colonne `bb_prodotti.descrizione_lunga/materiali` sono ora nel registro delle migrazioni.
+- **Titolare: nessun PIN suo, vale quello del gestionale.** La pagina chiama `POST /api/colazioni/accesso` (`app/routers/colazioni.py`, solo admin,
+  cookie o Bearer dell'ERP, MFA compresa); il backend chiede al database `bb_tit_sessione_apri` con la chiave di runtime `x-gc-api-key`
+  (la stessa di `gc_assert_runtime_secret`) e restituisce un token `tk:…` valido 12 ore, che la pagina passa come `p` alle RPC. Se il gestionale
+  non e' aperto, la pagina chiede il PIN e lo verifica con `/api/auth/pin-login`. Cambiare o resettare il PIN del titolare = farlo nel gestionale.
+- **Albergatore: PIN suo.** Lo sceglie con l'invito (`#/invito/<token>`, e' la registrazione) e riceve un **codice di recupero** (8 caratteri, si vede una sola volta,
+  in `bb_strutture.recupero_hash`). PIN perso: `#/recupero/<accesso>` con codice e nuovo PIN; senza codice, «Chiedi aiuto al bar» crea una richiesta
+  (`bb_richieste_pin`) che compare nel Cruscotto e si chiude mandando un nuovo invito. Dal Profilo cambia il PIN e rigenera il codice.
+  L'accesso passa da `bb_alb_login`, che dopo 5 errori blocca per 15 minuti (`bb_tentativi`, anche per IP): le altre RPC accettano solo il token di sessione
+  (`bb_sessioni`, 12 ore) e mai il PIN, perche' un'eccezione annulla il conteggio dei tentativi. Non esistono piu' una «modalita' prova senza PIN» ne' un PIN
+  del titolare nel database (`supabase-21.sql`): `bb_check_*` non sono chiamabili dall'esterno e `bb_pin_off()` risponde sempre falso.
+- **Colazioni per struttura**: ogni hotel ha le sue colazioni (`bb_colazioni`, con nome, prezzo a persona e voci dal catalogo o libere).
+  Le **standard** sono le stesse righe con `struttura_id` nullo: si importano in una struttura e poi si personalizzano, senza legame.
+  L'albergatore compila una pagina sola: camere, ospiti, dal/al, colazione. Un voucher vale per tutto il soggiorno (massimo 31 giorni),
+  fino a tanti ritiri al giorno quanti sono gli ospiti. Ogni camera ha il proprio valore predefinito `servizio_tavolo`, modificabile
+  nella singola prenotazione: solo le righe spuntate aggiungono al prezzo dell'hotel il supplemento configurato
+  (`bb_config.supplemento_tavolo`, 1,50 € a persona per colazione); le altre restano al banco.
+- **Fatture delle ricariche**: ogni ricarica che diventa confermata (carta SumUp, contanti al bar, ricarica registrata a mano) crea una riga in `bb_fatture_da_emettere`
+  (trigger `bb_trg_fattura_ricarica`, una sola riga per movimento). L'albergatore inserisce i **dati fiscali** (ragione sociale, P.IVA o C.F., indirizzo, codice destinatario/PEC) in registrazione o nel Profilo
+  (`bb_alb_fiscali_salva`, validati lato server); senza dati completi non puo' ricaricare con carta. Il titolare le lavora nel tab **Fatture**: copia i dati, emette la fattura da SumUp Fatture
+  (l'API pubblica di SumUp **non ha** endpoint per le fatture: provati `/v0.1/me/invoices` e simili, tutti 404) e segna numero e data; «Non dovuta» chiude le prove. Aliquota IVA e momento dell'emissione
+  (buono corrispettivo monouso: IVA gia' alla vendita?) li decide il commercialista: l'app non calcola l'IVA.
+- **Ordini prodotti dell'hotel** (tab «Prodotti ordinabili dall'hotel» del titolare, sezione «Prodotti e ordini» dell'albergatore): ogni ordine ha giorno e **orario di ritiro** (fasce scelte dal titolare in Impostazioni › «Fasce orarie di ritiro», chiave `ordini_fasce_ritiro` di `bb_config` letta con `bb_ordini_fasce_ritiro()`; senza scelta valgono quelle da 30 minuti, 06:00–11:30, `FASCE_RITIRO`) e si chiude alle **14:00 del giorno prima** della consegna, ora di Roma (`limite_ordine`, `verifica_termini` in `ordini_hotel.py`: ordine di oggi entro le 14 per domani, dopo le 14 solo dal giorno dopo; il server decide, la pagina riceve `prima_consegna` dall'elenco). Pagamento a scelta: **borsellino** (`pagamento_metodo=borsellino`: addebito atomico e idempotente per ordine con `bb_ordine_prodotti_addebita`, riga `prenotazione` «Ordine prodotti OH-…», ordine subito `incassato`; saldo insufficiente = ordine rifiutato; se il salvataggio dell'ordine fallisce l'addebito si storna) oppure **in loco** (`da_incassare`, incassa il titolare). L'annullo di un ordine pagato dal borsellino rimborsa prima (`bb_ordine_prodotti_rimborsa`, riga `rimborso`), poi annulla; entrambe le RPC vogliono il segreto di runtime e non sono chiamabili dal browser.
+- **Borsellino**: il saldo e' la somma dei movimenti confermati (`bb_saldo`); annullare un voucher rimborsa le non ritirate.
+  Ricarica con SumUp (checkout ospitato lato server, `bb_sumup_verifica` accredita solo con stato PAID e importo e riferimento uguali;
+  la chiave sta nel vault `sumup_api_key`) o in contanti al bar (il titolare conferma). **SumUp non e' ancora attivato**: manca la chiave.
+- **Menu**: catalogo proprio `bb_prod_cat`/`bb_prod_sub`/`bb_prodotti` importato da Qromo, **separato** da `menu.*` che non si tocca.
+  I prezzi in uso sono quelli **banco** (i prezzi tavolo restano in `prezzo_tavolo`); gli allergeni sono l'unione di Qromo e del gestionale.
+  Foto, testi lunghi e ingredienti sono file statici in `frontend_colazioni/menu-img/` (`extra.json`). Extra dell'ospite: prezzi calcolati
+  dal server, si pagano al bar; le versioni senza glutine (`bb_senza_glutine`) aggiungono solo la differenza.
+- **Scelte giornaliere dell'ospite** (v27-v28): il QR resta unico per tutto il soggiorno; extra e incassi usano il formato giornaliero
+  verificato dall'audit, mentre modifiche e sostituzioni sono in `bb_voucher_giorni` per la singola data. Lo stesso QR propone oggi e
+  consente di preparare i giorni futuri con tre sole azioni (cambia prodotto, aggiungi extra, allergie). Produzione e scanner leggono
+  esclusivamente la scelta del giorno; limiti per IP, validazione server e prezzi da catalogo restano obbligatori.
+- **Avvisi operativi esterni** (v26-v28): la prenotazione dell'albergatore e ogni nuova composizione di extra dell'ospite accodano una
+  notifica idempotente. Lo scheduler la invia al Telegram del titolare senza dipendere dall'app aperta e senza mostrarla all'albergatore;
+  il testo non contiene il nome dell'ospite e l'extra indica la data a cui appartiene.
+- **Dati esterni** (navi e scioperi) in cache `bb_esterni`, aggiornata dal database con l'estensione `http` (Guardia Costiera EMSWe per le navi,
+  RSS del MIT per gli scioperi), al massimo ogni 20 minuti.
+- **Recensioni post-consumo** (v23): dalla scheda di ogni struttura il titolare genera i link QR/NFC/Wi-Fi
+  `#/recensioni/<token>/<fonte>`. Geolocalizzazione e WhatsApp sono scelte esplicite, separate e mai preselezionate;
+  ogni consenso, diniego e revoca conserva timestamp, struttura, fonte e versione informativa. Solo l'opt-in WhatsApp
+  con numero valido crea una riga in `bb_recensioni_inviti` dopo la conferma di fine colazione. Lo scheduler la invia
+  con un template Meta approvato e ricontrolla l'ultimo consenso prima di acquisirla. URL Google/Tripadvisor, informativa
+  e ritardo si configurano dalla scheda; token e phone number id Meta restano nelle variabili Render.
+
+## Stato attuale (al 02/10/2026 — riscrivere sul posto)
+
+- Ogni merge su `main` fa ridistribuire Render: per qualche minuto la produzione può essere `degraded`. Non si accodano merge. La health del commit `0187a45f`, letta il 30/09 alle 17:54 UTC, dichiarava `hydrated_rows=249598`, `hydration_errors=0`; il vecchio valore ~77.000 non è una misura corrente.
+- TFR: la lettura RPC del runtime il 30/09 misura **1.239** righe in `tfr_accantonamenti`. L'assenza nel deposito relazionale HR, l'importo aggregato e lo stato dell'ingest posta restano baseline da riconfermare; non sono stati interrogati nell'audit in sola lettura.
+- **Spento**: il giro completo del protocollo, `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica Drive, giro incrementale del protocollo (ogni 20 minuti), ponte pagamenti HR, dedup fatture.
+- Fatture: lettura RPC del 30/09, **1.539** righe, **1.526 del 2026** e 13 precedenti (8 del 2024, 2 del 2019, 2 del 2022, 1 del 2025). `invoice_date`, `invoice_number`, `total_amount` presenti su tutte; `id` testuale su 753, numerico su 786. Orfani e collisioni non rimisurati: non assumere zero. Il pre-2026 non è quindi interamente fuori archivio.
+- **Gli XML di fattura 2026 arrivano su Drive a blocchi manuali** dal portale AdE: il ritardo è a monte.
+- **Numia dismesso** dal 05/09/2026: dal 01/08 al 04/09 le chiusure Numia vengono dagli accrediti in banca (50 giornate 2026 ancora da ricostruire al 28/09, 43.115,18 €: le fa il job bancario corto). POS corrente = solo SumUp (API).
+- **Estratto ufficiale BPM**: in archivio fino al 31/03/2026; il PDF al 30/06/2026 va caricato in Documenti > Import (lettore corretto il 28/09); operativo fino al 28/09 da CSV e Enable Banking.
+- **Import minisito Drive completato** (dichiarazioni fiscali 826: 770, Redditi SC, IRAP, IVA, LIPE; F24 unificati 263; quietanze 548). Le dichiarazioni importate prima del 30/09 non hanno i quadri né le coordinate: si ripassano da Documenti > Import. Le IRAP `IRA_T…` e gli UNICO si riconoscono per nome e per il quadro IR/IS, mai come F24 anche se citano «Versato in F24».
+- **Corrispettivi XML fino al 21/09/2026** (letto il 01/10; la copia serale RT è ferma dal 28/08); il CSV AdE di settembre copre il 23–30/09 come provvisorio. 08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
+- **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
+- Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. DRV-16 chiuso nel codice: nessuna lettura di `GOOGLE_DRIVE_*_FOLDER_ID` per sezione, `DRIVE_*_FOLDER_ID`, `DRIVE_FOLDER_REGISTRY_JSON`, `GOOGLE_SERVICE_ACCOUNT_JSON_*`, `DRIVE_SIMULAZIONE_{BATCH,EDIZIONE,SOLO_TIPO}`, `ADMIN_PASSWORD(_HASH)`; su Render si cancellano a mano. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
+- Lettura del Menu pubblico del 30/09: **323** prodotti, **108** con allergeni e **215** senza elenco. Le esclusioni motivate e le conferme «nessuno» richiedono il controllo riservato prima di classificare tutti i 215 come violazioni.
+  Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social in `collegamentiPubblici.js`, privacy e cookie sono pagine del Menu (`/menu/privacy`, `/menu/cookie`) col titolare da `/api/menu/titolare`.
+- **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
+
+Correzioni dell'audit del 30/09 preparate nel workspace, **non pubblicate**:
+GitHub nega push e apertura PR con HTTP 403. Il ponte Lotti verifica che
+l'ID restituito dall'importatore esista prima di creare la ricevuta; una
+ricevuta incompleta o riferita a fattura eliminata resta recuperabile. HR e
+Lotti verificano stato/PIN nell'anagrafica anche sui token già emessi; il
+rinnovo conserva l'istante dell'autenticazione originale. Il responsabile
+turni accede alle operazioni Turni, non a PIN, paghe e fascicoli; un 403 non
+cancella la sessione. `GET turni-config` non scrive e non sceglie omonimi.
+La carta clienti del Menu legge gli stessi `menu_*` dell'admin e di Lotti,
+con prezzi pubblicabili e categorie non vuote; i prodotti Lotti si
+modificano nella ricetta. Qromo resta fonte di dettagli, orari e ordine,
+senza sostituire i dati canonici aggiornati. Il router Mutui richiede admin
+anche per le letture. I dati storici non sono stati riparati o migrati.
+
+Giornale, lettura RPC del 30/09 alle 18:37 UTC: **1.801** scritture, **1.786
+attive** secondo il predicato canonico; **1.746 quadrate** e **40 non
+quadrate** (una è uno storno), con differenze assolute complessive **848,25
+€**. Il valore non è un saldo da rettificare automaticamente. Tutte le
+attive hanno `idempotency_key`, senza gruppi duplicati. La verifica definitiva
+dei protocolli per anno e la ricostruzione da fonti restano aperte.
+
+Collaudo locale delle patch: **6.439 test backend passati**, **337 saltati**
+(332 HTTP senza backend dedicato, 4 PDF campione assenti, 1 parametro vuoto
+nel controllo palette). Frontend: ERP 564, HR 19, Lotti 169, Menu 24 passati.
+E2E ERP: 74 schermate e operazioni Cassa/Banca/Provvisori; HR: turno
+gestione↔portale; Menu: admin↔carta e pubblicazione. Queste prove usano fixture,
+non certificano tutte le relazioni del deposito reale. Runner backend:
+`python scripts/collaudo_isolato.py -q`; gli E2E HR/Menu controllano host
+locale e marker fixture prima delle scritture.
+
+## Aperto (togliere la voce quando si chiude)
+
+- **Credenziali vere nella cronologia git** (`backend/.env` in 23 commit, `memory/test_credentials.md`, `memoria/DIARIO.md`, `push_impeccable.py`, fra febbraio e aprile 2026, visibili finché il repository era pubblico; oggi non sono in `main`). Prima il titolare **ruota** tutto ciò che c'era (token GitHub, PEC Aruba, password app Gmail/IMAP, client secret PayPal, URI MongoDB Atlas, token WhatsApp, `SECRET_KEY`/`CRON_SECRET`, password admin, codice gestione riservata, chiave Emergent); poi, **solo col suo ok**, la cronologia si riscrive con `git filter-repo --invert-paths` su quei quattro percorsi, push forzato di `main`, tutti i branch e i tag, e ogni checkout si riclona (il PC del titolare compreso). Mai riscrivere la cronologia prima della rotazione: la riscrittura non revoca niente.
+
+- **Lotti, due giri di ricerca web sulle descrizioni di fattura**: `identifica_col_web` (`lettura_articoli_ai.py`, giro `lotti_identifica_col_web`, categoria del Dizionario, `web_cercato_at`) e la campagna `ricerca_web_prodotti` (`app/lotti/routers/scheduler.py`, schede e `nome_mapping`, `ricerca_web_tentativi`, mai un tentativo registrato). Condividono l'helper `cerca_sul_web` ma sono due code e due contatori: fonderli in un giro solo.
+
+- **Lettori AI doppi, da fondere**: il client è uno solo (fatto), ma i lettori restano più d'uno per lo stesso documento: `ai_document_parser` (vision, catena `mittenti_email_sync`, coda `/ai-parser/da-rivedere`, `BatchProcessor.jsx autoMode`; il suo `PROMPT_VERBALE` resta raggiungibile solo da `ripielaborazione_documenti`), `enhanced_document_parser` (cedolini), `document_ai_extractor` (fatture estere), `fiscal_agents`: due lettori per cedolini e fatture (i verbali sono fatti: lettore unico senza AI, proposte dell'agente), tre pipeline di classificazione dell'inbox (`documents_inbox_classify.auto_classify`, `ai_integration_service`, proposte). La strada canonica è quella delle proposte degli agenti (lettura → proposta → conferma → motore deterministico): gli altri lettori si tolgono quando il loro ingresso passa da lì, un flusso alla volta e con il titolare che decide quale tenere. **Dopo il deploy**: `POST /api/agenti/proposte/giro` (admin) per il primo lotto, poi in `/agenti` › Settori provare che «Vedi» apra un file in `ERRORI` e che una conferma lo sposti davvero in `ELABORATE`.
+- **Fornitori, da lanciare dopo il merge** (admin, prima `dry_run`): `POST /api/suppliers/magazzino/allinea` (le 88 esclusioni di Lotti sull'anagrafica); per BIG FOOD SRL `POST /api/suppliers/{id}/applica-metodo-dal` dopo aver messo «Metodo valido dal» 01/01/2025 sulla scheda (oggi è 30/09/2026 per un salvataggio della scheda). Le 6 fatture BIG FOOD già pagate con assegno, banca o dichiarazione in banca (2.711,38 €) restano dove sono finché il titolare non dice diversamente.
+
+- **ID prodotto unico, resto della catena** (piatto → prezzo → reparto → ingredienti → allergeni → varianti → aggiunte/rimozioni → costo → food cost → disponibilità → foto → valori nutrizionali → sala → delivery → QR): l'ID c'è; prezzi, reparto, ingredienti, allergeni, food cost, foto e varianti di ricetta esistono già in Lotti. Mancano come dato unico per `codice_prodotto`: aggiunte/rimozioni, disponibilità (oggi solo giacenza lotti), valori nutrizionali collegati al piatto, canale sala/delivery, QR per singolo prodotto. **Da applicare** (admin, a database scarico: la vista fa ricaricare PostgREST) la migrazione `supabase/migrations/20261005150000_menu_codice_prodotto.sql`; se il registro delle migrazioni assegna un'altra versione, rinominare il file. Collaudata su Postgres 16 locale (backfill 8/8 distinti, ricetta ricreata = stesso codice, id riusato = codice nuovo, codice non forzabile), mai su produzione.
 - **Termini di recupero**: la regola dei termini vive in una vista SQL (`verifica.tabulato_tributi_termini`, migrazioni `…013008` e `…013741`), non in Python con test: se cresce o va corretta, portarla in `termini_recupero.py` con i casi del foglio del 01/10/2026 (27 righe ancora recuperabili su 98 senza versamento al 01/10).
 
 - `legacy_staging` (5 tabelle, ~1 MB; le altre 51 sono state cancellate: gia' nel gestionale al centesimo): restano i dati che il gestionale non puo' ricevere senza una via con admin.

@@ -44,7 +44,9 @@ describe("testata di Lotti", () => {
     expect(onTabChange).toHaveBeenCalledWith("dashboard");
 
     const impostazioni = testata.querySelector('[data-testid="impostazioni-gestionale-link"]');
-    expect(impostazioni.getAttribute("href")).toBe("/admin/app");
+    expect(impostazioni.getAttribute("href")).toBeNull();
+    await act(async () => impostazioni.click());
+    expect(onTabChange).toHaveBeenCalledWith("impostazioni");
   });
 
   test("il Backoffice non sta più sotto «Altro»", async () => {
