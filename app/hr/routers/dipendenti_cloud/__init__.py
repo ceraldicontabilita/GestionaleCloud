@@ -742,29 +742,33 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
 
 @router.get("/bonifici-da-associare")
 async def lista_bonifici_da_associare():
-    """Elenco leggero (senza il PDF) di chi aspetta un'assegnazione manuale."""
-    from app.services.candidati_bonifico import arricchisci_coda
+    """Pagina unica delle assegnazioni manuali, comprese le distinte."""
+    from app.database import Database as DatabaseGestionale
+    from app.services.candidati_bonifico import arricchisci_coda, integra_dettagli_distinta
+    from app.services.distinte_bonifici import elenco_distinte
 
     db = get_db()
     righe = await db.bonifici_da_associare.find(
         {"stato": "da_associare"}, {"_id": 0, "pdf_data": 0}).to_list(500)
     righe.sort(key=lambda r: r.get("data") or "", reverse=True)
+    # «Distinte bonifici» era una seconda pagina sulla stessa coda. I dettagli
+    # specifici (estratto, ricevuta, commissione e suggerimenti) entrano ora
+    # nella pagina unica, riusando le righe gia' lette da Supabase.
+    distinte = await elenco_distinte(DatabaseGestionale.get_db(), db, coda=righe)
+    distinte_per_id = {r["id"]: r.get("distinta") for r in distinte}
     # Ogni riga porta i candidati (fino a 10, mai applicati), l'avviso
     # multi-dipendente, `rif_banca` e `cro`: chi sceglie vede da dove viene il bonifico.
-    return await arricchisci_coda(db, righe)
+    arricchite = await arricchisci_coda(db, righe)
+    for riga in arricchite:
+        if riga.get("id") in distinte_per_id:
+            integra_dettagli_distinta(riga, distinte_per_id[riga["id"]])
+    return arricchite
 
 
 @router.get("/bonifici-da-associare/distinte")
 async def distinte_da_associare():
-    """Le distinte «beneficiari vari» ancora da associare, con tutti i dati che
-    il sistema ne sa (estratto, ricevuta, commissione, nota, suggerimento).
-    L'associazione si fa con lo stesso `associa` della coda."""
-    from app.database import Database as DatabaseGestionale
-    from app.services.candidati_bonifico import arricchisci_distinte
-    from app.services.distinte_bonifici import elenco_distinte
-
-    righe = await elenco_distinte(DatabaseGestionale.get_db(), get_db())
-    return await arricchisci_distinte(get_db(), righe)
+    """Alias API compatibile: la logica vive nella pagina unica."""
+    return [r for r in await lista_bonifici_da_associare() if r.get("distinta")]
 
 
 @router.get("/paghe/pagamento-esito/{key}/pdf")

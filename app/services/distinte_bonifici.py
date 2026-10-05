@@ -116,17 +116,23 @@ def suggerimento_da_nota(indici: Dict[str, Any], nota: Optional[str]) -> Optiona
             "motivo": motivo, "nota": nota}
 
 
-async def elenco_distinte(db_gest, db_hr, indici: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+async def elenco_distinte(db_gest, db_hr, indici: Optional[Dict[str, Any]] = None,
+                          coda: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
     """Una riga per distinta ancora da associare, con tutti i dati estratti."""
-    if indici is None:
-        indici = await _indici_hr(db_hr)
-    coda = await db_hr["bonifici_da_associare"].find(
-        {"stato": "da_associare"}, {"_id": 0, "pdf_data": 0}).to_list(2000)
+    if coda is None:
+        coda = await db_hr["bonifici_da_associare"].find(
+            {"stato": "da_associare"}, {"_id": 0, "pdf_data": 0}).to_list(2000)
+    if not coda:
+        return []
     coda_per_rif: Dict[str, List[Dict[str, Any]]] = {}
     for c in coda:
         rif = c.get("rif_banca")
         if rif:
             coda_per_rif.setdefault(str(rif).upper(), []).append(c)
+    if not coda_per_rif:
+        return []
+    if indici is None:
+        indici = await _indici_hr(db_hr)
 
     movimenti = await db_gest["estratto_conto_movimenti"].find(
         {"descrizione": {"$regex": r"BENEFICIARI\s+(VARI|DIVERSI)", "$options": "i"}},

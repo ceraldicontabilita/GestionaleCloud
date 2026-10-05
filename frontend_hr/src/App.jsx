@@ -211,7 +211,6 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     { id: "timbrature", label: "Timbrature", icon: Clock, section: "DIPENDENTI" },
     { id: "paghe-bonifici", label: "Archivio paghe", icon: Link2, section: "DIPENDENTI" },
     { id: "bonifici-da-associare", label: "Bonifici da associare", icon: Inbox, section: "DIPENDENTI" },
-    { id: "distinte-da-associare", label: "Distinte bonifici", icon: Inbox, section: "DIPENDENTI" },
     { id: "posizione-dipendente", label: "Posizione dipendente", icon: Scale, section: "DIPENDENTI" },
     { id: "mensilita-aggiuntive", label: "13ª e 14ª", icon: Euro, section: "DIPENDENTI" },
     { id: "tfr", label: "TFR", icon: Wallet, section: "DIPENDENTI" },
@@ -230,7 +229,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     timbrature: "Timbrature",
     "paghe-bonifici": "Archivio paghe",
     "bonifici-da-associare": "Bonifici da associare",
-    "distinte-da-associare": "Distinte bonifici",
+    "distinte-da-associare": "Bonifici da associare",
     "posizione-dipendente": "Posizione dipendente",
     "mensilita-aggiuntive": "13ª e 14ª",
     tfr: "TFR",
@@ -269,10 +268,9 @@ export default function DipendentiCloudApp({ page: pageProp }) {
       case "buste-paga":  // vecchio indirizzo (pagina unificata il 14/09/2026)
       case "paghe-bonifici":
         return <PagheBonificiPage dipendenti={activeDipendenti} />;
+      case "distinte-da-associare":  // vecchio indirizzo: stessa pagina e stessa coda
       case "bonifici-da-associare":
         return <BonificiDaAssociarePage dipendenti={dipendenti} />;
-      case "distinte-da-associare":
-        return <BonificiDaAssociarePage dipendenti={dipendenti} distinte />;
       case "posizione-dipendente":
         return <PosizioneDipendentePage dipendenti={dipendenti} />;
       case "mensilita-aggiuntive":
@@ -4274,7 +4272,7 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
 // addebito cumulativo su piu' persone, senza nominarne nessuna nel PDF —
 // nessun algoritmo puo' indovinare a chi vanno. Qui si guarda il documento
 // (importo, data, causale) e si assegna a mano dipendente + mese.
-function BonificiDaAssociarePage({ dipendenti, distinte = false }) {
+function BonificiDaAssociarePage({ dipendenti }) {
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
   // Che cosa e' il bonifico: decide dove finisce (busta, acconti, conciliazione).
   const TIPI = [
@@ -4296,7 +4294,7 @@ function BonificiDaAssociarePage({ dipendenti, distinte = false }) {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${API}/bonifici-da-associare${distinte ? "/distinte" : ""}`);
+      const r = await axios.get(`${API}/bonifici-da-associare`);
       setRighe(r.data || []);
       // anno e mese partono da quelli della data del bonifico: si possono cambiare
       const iniziale = {};
@@ -4313,6 +4311,8 @@ function BonificiDaAssociarePage({ dipendenti, distinte = false }) {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+  const numeroDistinte = righe.filter(b => b.distinta).length;
+  const mostraDistinte = numeroDistinte > 0;
 
   const caricaConciliazioni = async (dipId) => {
     if (!dipId || concPerDip[dipId]) return;
@@ -4413,9 +4413,8 @@ function BonificiDaAssociarePage({ dipendenti, distinte = false }) {
     <div className="dc-page">
       <div className="dc-page-header">
         <div>
-          <h1>{distinte ? "Distinte bonifici" : "Bonifici da associare"}</h1>
-          {distinte ? <p>{righe.length} distinte "beneficiari vari" da associare. La banca non dice a chi vanno: qui vedi tutto quello che si sa (estratto, ricevuta, commissione, nota, suggerimento) e scegli tu dipendente, tipo e mese. Niente si assegna da solo.</p> :
-          <p>{righe.length} bonifici cumulativi ("beneficiari diversi") in attesa di essere assegnati a un dipendente. L'import dalla cartella Drive si fa da "Cedolini &amp; Bonifici" — arrivano qui solo quelli che non si possono assegnare da soli.</p>}
+          <h1>Bonifici da associare</h1>
+          <p>{righe.length} bonifici in attesa di assegnazione{numeroDistinte ? `, di cui ${numeroDistinte} distinte “beneficiari vari”` : ""}. Qui trovi in un solo posto candidati, estratto, ricevuta, commissione e suggerimenti disponibili; dipendente, tipo e mese restano sempre una scelta manuale.</p>
         </div>
         {proposteIntatte.length > 0 && (
           <button type="button" className="dc-btn dc-btn-primary" style={{ minHeight: 44 }} disabled={!!avanzamento || !!busy} onClick={confermaProposte}>
@@ -4437,7 +4436,7 @@ function BonificiDaAssociarePage({ dipendenti, distinte = false }) {
         <table className="dc-table dc-table--cards">
           <thead>
             <tr>
-              <th>Data</th><th>Importo</th><th>Causale</th><th>Riferimenti</th>{distinte && <th>Dati della distinta</th>}<th>PDF</th>
+              <th>Data</th><th>Importo</th><th>Causale</th><th>Riferimenti</th>{mostraDistinte && <th>Dati della distinta</th>}<th>PDF</th>
               <th>Dipendente</th><th>Tipo</th><th>Periodo</th><th></th>
             </tr>
           </thead>
@@ -4466,8 +4465,9 @@ function BonificiDaAssociarePage({ dipendenti, distinte = false }) {
                     )}
                   </td>
                   <td data-label="Riferimenti"><CodaRiferimenti b={b} /></td>
-                  {distinte && b.distinta && (
+                  {mostraDistinte && (
                     <td data-label="Dati della distinta" style={{ fontSize: 12, whiteSpace: "normal", maxWidth: 260 }}>
+                      {!b.distinta ? <span className="dc-muted">—</span> : <>
                       {b.distinta.commissione != null && <div>Commissione € {eur(b.distinta.commissione)}</div>}
                       {b.distinta.nota && <div><b>Nota:</b> {b.distinta.nota}</div>}
                       <div className="dc-muted">{b.distinta.ufficiale ? "Estratto ufficiale" : "Solo export CSV (provvisorio)"}{b.distinta.estratto ? ` · ${b.distinta.estratto}` : ""}</div>
@@ -4490,6 +4490,7 @@ function BonificiDaAssociarePage({ dipendenti, distinte = false }) {
                           </button>
                         </div>
                       )}
+                      </>}
                     </td>
                   )}
                   <td data-label="PDF">

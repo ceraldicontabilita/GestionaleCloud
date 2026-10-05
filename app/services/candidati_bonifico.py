@@ -283,6 +283,15 @@ async def arricchisci_coda(db, righe: List[Dict[str, Any]]) -> List[Dict[str, An
 
 
 
+def integra_dettagli_distinta(riga: Dict[str, Any], distinta: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiunge i dati della distinta senza trasformare una nota di terzi in proposta."""
+    riga["distinta"] = distinta
+    if distinta.get("suggerimento_nota"):
+        riga.update({"avviso_multi_dipendente": True, "avviso_motivo": AVVISO_NOTA_DI_TERZI,
+                     "proposta": None})
+    return riga
+
+
 async def arricchisci_distinte(db, righe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Alle righe della pagina «Distinte» (una per distinta ancora da associare)
     aggiunge gli stessi campi della coda: candidati, avviso, ``cro``, ``rif_banca``.
@@ -301,6 +310,5 @@ async def arricchisci_distinte(db, righe: List[Dict[str, Any]]) -> List[Dict[str
         riga.update({k: voce.get(k) for k in (
             "candidati", "avviso_multi_dipendente", "avviso_motivo", "proposta", "cro", "rif_banca",
             "gia_confermato_altrove")})
-        if (riga.get("distinta") or {}).get("suggerimento_nota"):
-            riga.update({"avviso_multi_dipendente": True, "avviso_motivo": AVVISO_NOTA_DI_TERZI, "proposta": None})
+        integra_dettagli_distinta(riga, riga.get("distinta") or {})
     return righe
