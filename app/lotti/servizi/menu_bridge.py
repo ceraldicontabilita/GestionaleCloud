@@ -149,6 +149,15 @@ def prezzo_menu(prezzo: Any) -> Optional[str]:
     return f"{valore:.2f}€"
 
 
+def prezzo_banco_da_ricetta(ricetta: dict) -> Optional[float]:
+    """Prezzo al banco della ricetta (``prezzo_vendita``) come numero; None se non c'e' o non e' valido."""
+    try:
+        valore = float(ricetta.get("prezzo_vendita"))
+    except (TypeError, ValueError):
+        return None
+    return round(valore, 2) if valore == valore and 0 < valore < float("inf") else None
+
+
 def prezzo_per_menu(ricetta: dict) -> tuple[Optional[str], str]:
     """Prezzo da esporre nel Menu digitale e da dove viene.
 
@@ -340,7 +349,7 @@ def _destinazione_menu(ricetta: dict) -> tuple[int, int, str]:
 
 # Scheda vendita: canali sala/delivery, esaurito, aggiunte (prezzo in centesimi) e rimozioni di ingredienti.
 # Vive sulla ricetta e il ponte la replica nel Menu (colonne della migrazione `menu_codice_prodotto`).
-CAMPI_SCHEDA_VENDITA = ("vendita_sala", "vendita_delivery", "disponibile", "aggiunte", "rimozioni")
+CAMPI_SCHEDA_VENDITA = ("vendita_sala", "vendita_delivery", "disponibile", "aggiunte", "rimozioni", "prezzo_banco")
 
 
 def scheda_vendita_da_ricetta(ricetta: dict) -> dict:
@@ -447,6 +456,8 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         "lotti_ref": lotti_ref,
         "visible": visibile_effettivo,
         "menu_bb": ricetta.get("menu_bb") is not False,
+        # prodotto unico: il prezzo AL BANCO della ricetta (base del food cost) va nel prodotto, accanto a quello al tavolo
+        "prezzo_banco": prezzo_banco_da_ricetta(ricetta),
         **scheda_vendita_da_ricetta(ricetta),
     }
 

@@ -66,3 +66,14 @@ def test_la_migrazione_non_si_puo_aggirare():
     assert "delete from menu.prodotti_codici" not in SQL
     # una ricetta si riconosce per lotti_ref, mai per un id che si puo' riusare
     assert "where lotti_ref = new.lotti_ref" in SQL
+
+
+def test_il_ponte_manda_nel_prodotto_anche_il_prezzo_al_banco_della_ricetta():
+    from app.lotti.servizi import menu_bridge as mb
+    assert mb.prezzo_banco_da_ricetta({"prezzo_vendita": 3.5}) == 3.5
+    assert mb.prezzo_banco_da_ricetta({"prezzo_vendita": "2.456"}) == 2.46
+    for assente in ({}, {"prezzo_vendita": None}, {"prezzo_vendita": 0}, {"prezzo_vendita": -1}, {"prezzo_vendita": "boh"},
+                    {"prezzo_vendita": float("nan")}, {"prezzo_vendita": float("inf")}):
+        assert mb.prezzo_banco_da_ricetta(assente) is None
+    # senza la colonna (migrazione non ancora applicata) il ponte pubblica lo stesso: il campo cade con la scheda di vendita
+    assert "prezzo_banco" in mb.CAMPI_SCHEDA_VENDITA and "prezzo_banco" not in mb._senza_scheda({"prezzo_banco": 1, "name": "x"})

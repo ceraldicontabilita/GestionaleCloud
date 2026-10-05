@@ -93,9 +93,13 @@ const ProductManager = () => {
     setSaving(true);
     try {
       const { id, name, nameIT, price, description, descriptionIT, allergens, image, visible } = editingProduct;
+      // Prezzo al banco: vuoto = non deciso (si manda 0 solo per toglierne uno gia' deciso), mai un valore di ripiego
+      const testoBanco = String(editingProduct.prezzo_banco ?? '').replace(',', '.').trim();
+      const aveva = products.find((p) => p.id === id)?.prezzo_banco != null;
+      const prezzo_banco = testoBanco === '' ? (aveva ? 0 : undefined) : Number(testoBanco);
       await axios.put(
         `${BACKEND_URL}/api/menu/admin/products/${id}`,
-        { name, nameIT, price, description, descriptionIT, allergens: allergens || [], image, visible },
+        { name, nameIT, price, description, descriptionIT, allergens: allergens || [], image, visible, prezzo_banco },
         { headers: authHeaders() }
       );
       toast({ title: 'Salvato', description: `${nameIT} aggiornato nel menu` });
@@ -270,13 +274,25 @@ const ProductManager = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="prodotto-prezzo">Prezzo</Label>
+                <Label htmlFor="prodotto-prezzo">Prezzo al tavolo</Label>
                 <Input
                     id="prodotto-prezzo"
                   value={editingProduct.price}
                   onChange={(e) => setEditingProduct({...editingProduct, price: e.target.value})}
                 />
                 <p className="text-xs text-gray-600">Un prodotto senza un prezzo positivo al centesimo resta nascosto ai clienti.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="prodotto-prezzo-banco">Prezzo al banco (€)</Label>
+                <Input
+                  id="prodotto-prezzo-banco"
+                  inputMode="decimal"
+                  placeholder="non deciso"
+                  value={editingProduct.prezzo_banco ?? ''}
+                  onChange={(e) => setEditingProduct({...editingProduct, prezzo_banco: e.target.value})}
+                />
+                <p className="text-xs text-gray-600">Lo usano il B&B e la Cassa. Vuoto = non deciso: non si copia mai il prezzo al tavolo.</p>
               </div>
 
               <div className="space-y-2">

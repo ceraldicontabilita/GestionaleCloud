@@ -21,6 +21,8 @@ class ProductBase(BaseModel):
     image: Optional[str] = None
     # False = nascosto dal menu pubblico (resta visibile nell'area admin).
     visible: bool = True
+    # Prezzo AL BANCO (``price`` e' quello al tavolo). Vuoto = non deciso, mai un valore di ripiego.
+    prezzo_banco: Optional[float] = None
 
 
 class Product(ProductBase):
@@ -47,6 +49,8 @@ class ProductUpdate(BaseModel):
     allergens: Optional[List[str]] = None
     image: Optional[str] = None
     visible: Optional[bool] = None
+    # > 0 = prezzo al banco; 0 = togli il prezzo al banco
+    prezzo_banco: Optional[float] = None
 
 
 class SubcategoryBase(BaseModel):
