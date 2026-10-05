@@ -168,3 +168,41 @@ def test_riga_non_cespite_non_compare_nello_scan_manuale(monkeypatch):
                               alimentare=False, non_cespite=True))
     dopo = _run(mod.scan_fatture_per_cespiti(soglia_valore=516.46, dry_run=True))
     assert dopo["num_potenziali_cespiti"] == 0
+
+
+def test_proposta_conto_e_centro_dalle_scelte_in_uso_e_regola_del_titolare():
+    erp, _ = _db()
+    # Bevande: conto acquisti merci e centro bar, dalle tabelle già in uso.
+    p = _run(srv.proposta_conto_centro(erp, "Bevande"))
+    assert (p["conto"], p["centro_costo"], p["fonte"]) == ("55.01.07", "CDC-01", "regole_in_uso")
+    assert "Acquisti merci" in p["spiegazione"] and "BAR" in p["spiegazione"]
+    # Materia prima senza settore certo: conto sì, centro vuoto (non si inventa).
+    p = _run(srv.proposta_conto_centro(erp, "Olio"))
+    assert p["conto"] == "55.01.01" and p["centro_costo"] is None
+    # Non alimentare e categoria sconosciuta: niente.
+    assert _run(srv.proposta_conto_centro(erp, "Non Alimentare"))["conto"] is None
+    assert _run(srv.proposta_conto_centro(erp, ""))["fonte"] is None
+    # La regola del titolare vince sulle scelte in uso.
+    _run(srv.salva_regola(erp, "Bevande", "55.01.01", "CDC-02", "t"))
+    p = _run(srv.proposta_conto_centro(erp, "Bevande"))
+    assert (p["conto"], p["centro_costo"], p["fonte"]) == ("55.01.01", "CDC-02", "regola_titolare")
+
+
+def test_proponi_porta_conto_e_centro_anche_per_il_consumo():
+    erp, lotti = _db()
+    _run(erp["invoices"].insert_one(_fattura("F7", "07489941216", ["SHOPPERS SOLE 365 BIOCOMP.", "DETERSIVO PIATTI"])))
+    p = _run(srv.proponi(erp, lotti, "F1:1"))
+    assert p["categoria"] == "Carni e Salumi" and p["conto"] == "55.01.01" and p["centro_costo"] == "CDC-04"
+    s = _run(srv.proponi(erp, lotti, "F7:1"))
+    assert s["non_cespite"] is True and s["conto"] == "55.01.09" and s["centro_costo"] == "CDC-04"
+    d = _run(srv.proponi(erp, lotti, "F7:2"))
+    assert d["natura"] == "pulizia" and d["conto"] == "55.01.05" and d["centro_costo"] == "CDC-99"
+
+
+def test_i_centri_standard_si_accettano_anche_senza_collezione():
+    erp, lotti = _db()
+    esito = _run(srv.assegna_prodotto(erp, lotti, "F1:1", "Petto di pollo", "Carni e Salumi", "t",
+                                      conto="55.01.01", centro_costo="CDC-04"))
+    assert esito["classificazione"]["conto"] == "55.01.01" and esito["classificazione"]["centro_costo"] == "CDC-04"
+    with pytest.raises(srv.SceltaNonValida):
+        _run(srv.assegna_prodotto(erp, lotti, "F1:1", "Petto di pollo", "Carni e Salumi", "t", conto="merce"))

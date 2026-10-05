@@ -82,10 +82,16 @@ describe('Righe acquisti', () => {
     api.get.mockImplementation(url => Promise.resolve({ data: url.includes('/proposta-lotti')
       ? {
         nome_canc: 'Bacon a fette', categoria: 'Salumi', natura: 'ingrediente', alimentare: true,
-        non_cespite: false, fonte: 'dal_nome', spiegazione: 'Il nome dice «Salumi».', conto: null, centro_costo: null,
+        non_cespite: false, fonte: 'dal_nome', spiegazione: 'Il nome dice «Salumi».', conto: '55.01.01', centro_costo: 'CDC-04',
       }
-      : url.includes('/prodotti-lotti')
-        ? { prodotti: [{ nome_canc: 'Bacon a fette', categoria: 'Salumi' }], categorie: ['Salumi', 'Pasta'], centri_costo: [{ codice: 'CDC-01', nome: 'Bar' }] }
+      : url.includes('/proposta-categoria')
+        ? { conto: '55.01.07', centro_costo: 'CDC-01', fonte: 'regole_in_uso', spiegazione: 'Proposta dalle scelte già in uso per «Bevande»: conto 55.01.07 Acquisti merci e centro CDC-01 BAR / CAFFETTERIA.' }
+        : url.includes('/prodotti-lotti')
+          ? {
+            prodotti: [{ nome_canc: 'Bacon a fette', categoria: 'Salumi' }], categorie: ['Salumi', 'Bevande', 'Pasta'],
+            centri_costo: [{ codice: 'CDC-01', nome: 'Bar' }, { codice: 'CDC-04', nome: 'Rosticceria' }],
+            conti: [{ codice: '55.01.01', descrizione: 'Acquisti di materie prime' }, { codice: '55.01.07', descrizione: 'Acquisti merci' }],
+          }
         : url.endsWith('/stato') ? { abilitato: false, proposte_aperte: 0 }
           : { righe: [riga], totale: 1, da_verificare: 1, anomalie: 0, has_more: false } }));
     api.post.mockResolvedValue({ data: { righe_estese: 2, cespiti_gia_creati: 1 } });
@@ -97,17 +103,25 @@ describe('Righe acquisti', () => {
     await waitFor(() => expect(screen.getByLabelText('Categoria Lotti')).toHaveValue('Salumi'));
     expect(screen.getByLabelText('Natura')).toHaveValue('ingrediente');
     expect(screen.getByLabelText('Articolo di Lotti')).toHaveValue('Bacon a fette');
-    // Il titolare corregge da qui e spunta «non cespite».
-    fireEvent.change(screen.getByLabelText('Conto'), { target: { value: '33.03.01' } });
-    fireEvent.change(screen.getByLabelText('Centro di costo'), { target: { value: 'CDC-01' } });
+    // L'articolo che sto classificando resta in evidenza in cima al riquadro.
+    expect(screen.getByTestId('articolo-in-classificazione')).toHaveTextContent('Pentola a pressione Lagostina');
+    // La proposta porta anche conto e centro di costo.
+    await waitFor(() => expect(screen.getByLabelText('Conto')).toHaveValue('55.01.01'));
+    expect(screen.getByLabelText('Centro di costo')).toHaveValue('CDC-04');
+    // Cambiando categoria, conto e centro si riproporranno dalle scelte in uso.
+    fireEvent.change(screen.getByLabelText('Categoria Lotti'), { target: { value: 'Bevande' } });
+    await waitFor(() => expect(screen.getByLabelText('Conto')).toHaveValue('55.01.07'));
+    expect(screen.getByLabelText('Centro di costo')).toHaveValue('CDC-01');
+    expect(await screen.findByText(/Acquisti merci e centro CDC-01/)).toBeInTheDocument();
+    // Il titolare spunta «non cespite».
     fireEvent.click(screen.getByLabelText('Non è un cespite'));
     fireEvent.click(screen.getByRole('button', { name: /Salva e aggiorna le righe uguali/ }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/api/righe-acquisti/f-1%3A1/prodotto-lotti',
       expect.objectContaining({
-        nome_canc: 'Bacon a fette', categoria: 'Salumi', alimentare: true, natura: 'ingrediente',
-        conto: '33.03.01', centro_costo: 'CDC-01', non_cespite: true,
+        nome_canc: 'Bacon a fette', categoria: 'Bevande', alimentare: true, natura: 'ingrediente',
+        conto: '55.01.07', centro_costo: 'CDC-01', non_cespite: true,
       }),
     ));
     // L'esito dice quante righe uguali sono state aggiornate e avvisa dei cespiti già nati.
@@ -129,5 +143,21 @@ describe('Righe acquisti', () => {
     fireEvent.click(screen.getByLabelText('Non è un cespite'));
     expect(await screen.findByRole('alert')).toHaveTextContent(/non possono stare insieme/);
     expect(screen.getByRole('button', { name: /Salva e aggiorna le righe uguali/ })).toBeDisabled();
+  });
+
+  it('mostra dentro il riquadro l\'errore del salvataggio, senza chiudere la finestra', async () => {
+    api.get.mockImplementation(url => Promise.resolve({ data: url.includes('/proposta-lotti')
+      ? { nome_canc: 'Bacon a fette', categoria: 'Salumi', natura: 'ingrediente', alimentare: true, non_cespite: false, fonte: 'dal_nome', spiegazione: 'Il nome dice «Salumi».', conto: null, centro_costo: null }
+      : url.includes('/prodotti-lotti') ? { prodotti: [{ nome_canc: 'Bacon a fette' }], categorie: ['Salumi'], centri_costo: [], conti: [] }
+        : url.endsWith('/stato') ? { abilitato: false, proposte_aperte: 0 }
+          : { righe: [riga], totale: 1, da_verificare: 1, anomalie: 0, has_more: false } }));
+    api.post.mockRejectedValue({ response: { data: { detail: 'conto fuori dal piano dei conti ufficiale' } } });
+    render(<RigheAcquisti />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Dettagli' }));
+    await waitFor(() => expect(screen.getByLabelText('Categoria Lotti')).toHaveValue('Salumi'));
+    fireEvent.click(screen.getByRole('button', { name: /Salva e aggiorna le righe uguali/ }));
+    expect(await screen.findByText('conto fuori dal piano dei conti ufficiale')).toBeInTheDocument();
+    expect(screen.getByTestId('articolo-in-classificazione')).toBeInTheDocument();
   });
 });
