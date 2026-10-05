@@ -70,4 +70,19 @@ describe('DettaglioVerbale viewer PDF', () => {
     expect(await screen.findByRole('button', { name: 'Trova dalla fattura noleggio' })).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/api/dipendenti');
   });
+
+  it('apre i documenti Drive collegati dal foglio con l endpoint unico per id Drive', async () => {
+    api.get.mockImplementation(url => Promise.resolve({
+      data: url === '/api/dipendenti' ? [] : {
+        numero_verbale: 'V-TEST-001', pdf_disponibili: [],
+        documenti_drive: [{ drive_id: '1AbCdEfGhIjKlMnOpQrStUv', tipo: 'bonifico', nome: 'Bonifico_12_11_2022.pdf' }],
+      },
+    }));
+    render(<DettaglioVerbale />);
+    expect(await screen.findByText('Documenti collegati (Drive)')).toBeInTheDocument();
+    expect(screen.getByText('Bonifico_12_11_2022.pdf')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('apri-drive-1AbCdEfGhIjKlMnOpQrStUv'));
+    expect((await screen.findByTestId('verbale-viewer')).getAttribute('data-url'))
+      .toBe('/api/originale?drive_id=1AbCdEfGhIjKlMnOpQrStUv');
+  });
 });
