@@ -108,8 +108,20 @@ def data_violazione_verbale(record: Dict[str, Any]) -> Optional[str]:
     for chiave in ("data_violazione", "data_infrazione"):
         valore = str(record.get(chiave) or "").strip()
         if valore:
-            return valore[:10]
+            return _giorno_iso(valore)
     return None
+
+
+def _giorno_iso(valore: str) -> str:
+    """``gg/mm/aaaa`` (come lo scrive un import vecchio) diventa ``aaaa-mm-gg``.
+
+    Con la data in forma italiana il driver alla data riceveva ``01/08/2026T16:15``, un
+    istante illeggibile, e il verbale restava «da assegnare» pur con lo storico giusto.
+    """
+    m = re.fullmatch(r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})", valore[:10])
+    if m:
+        return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    return valore[:10]
 
 
 def data_evento_verbale(record: Dict[str, Any]) -> tuple[Optional[str], str]:
@@ -123,7 +135,7 @@ def data_evento_verbale(record: Dict[str, Any]) -> tuple[Optional[str], str]:
         return violazione, "violazione"
     redatto = str(record.get("data_verbale") or "").strip()
     if redatto:
-        return redatto[:10], "data_verbale"
+        return _giorno_iso(redatto), "data_verbale"
     return None, "assente"
 
 
