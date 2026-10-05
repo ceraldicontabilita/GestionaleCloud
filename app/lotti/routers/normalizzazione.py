@@ -1249,41 +1249,13 @@ async def conferma_articolo(payload: dict = Body(...), _admin=Depends(require_ad
     Da qui il FIFO scarica quei lotti per gli ingredienti indicati, e i lotti
     con quella descrizione ricevono il nome canonico. Aggiorna solo per id.
     """
-    from app.lotti.servizi.articoli_fattura import (
-        chiave_descrizione, ingredienti_da_testo, invalida_cache,
-    )
-    chiave = chiave_descrizione(payload.get("descrizione") or payload.get("descrizione_key"))
+    from app.lotti.servizi.articoli_fattura import conferma_articolo as scrivi_conferma
     alimentare = payload.get("alimentare") is not False
-    nome = str(payload.get("nome_canc") or "").strip()
-    if not chiave or (alimentare and not nome):
-        raise HTTPException(status_code=400, detail="descrizione e nome_canc obbligatori")
-    adesso = datetime.now(timezone.utc).isoformat()
-    ingredienti = ingredienti_da_testo(payload.get("ingredienti_ricetta"))
-    if alimentare and nome.lower() not in ingredienti:
-        ingredienti.insert(0, nome.lower())
-    await db.nome_mapping.update_one(
-        {"descrizione_key": chiave},
-        {"$set": {
-            "descrizione_key": chiave,
-            "nome_canc": nome or "Non alimentare",
-            "ingredienti_ricetta": ingredienti if alimentare else [],
-            "alimentare": alimentare,
-            "confermato": True,
-            "confermato_at": adesso,
-            "aggiornato_at": adesso,
-        }},
-        upsert=True,
+    esito = await scrivi_conferma(
+        db, payload.get("descrizione") or payload.get("descrizione_key"), payload.get("nome_canc"),
+        ingredienti=payload.get("ingredienti_ricetta"), alimentare=alimentare,
     )
-    invalida_cache()
-    # I lotti con questa descrizione prendono il nome canonico (per id).
-    aggiornati = 0
-    lotti = await db.lotti_fornitori.find({}, {"_id": 0, "id": 1, "prodotto_nome": 1}).to_list(20000)
-    for lotto in lotti:
-        if lotto.get("id") and chiave_descrizione(lotto.get("prodotto_nome")) == chiave:
-            await db.lotti_fornitori.update_one(
-                {"id": lotto["id"]},
-                {"$set": {"nome_canonico": nome if alimentare else "", "articolo_confermato": alimentare}},
-            )
-            aggiornati += 1
-    return {"success": True, "descrizione_key": chiave, "nome_canc": nome,
-            "ingredienti_ricetta": ingredienti, "lotti_aggiornati": aggiornati}
+    if not esito.get("chiave"):
+        raise HTTPException(status_code=400, detail="descrizione e nome_canc obbligatori")
+    return {"success": True, "descrizione_key": esito["chiave"], "nome_canc": esito["nome_canc"],
+            "ingredienti_ricetta": esito["ingredienti_ricetta"], "lotti_aggiornati": esito["lotti_aggiornati"]}

@@ -77,4 +77,27 @@ describe('Righe acquisti', () => {
       { azione: 'conferma', motivazione: 'Verificata sul documento', regola_fiscale: '' },
     ));
   });
+
+  it('associa la riga a un articolo di Lotti scegliendo da tendine', async () => {
+    api.get.mockImplementation(url => Promise.resolve({ data: url.includes('/prodotti-lotti')
+      ? { prodotti: [{ nome_canc: 'Petto di pollo', categoria: 'Carni e Salumi' }], categorie: ['Carni e Salumi', 'Pasta'] }
+      : url.endsWith('/stato') ? { abilitato: false, proposte_aperte: 0 }
+        : { righe: [riga], totale: 1, da_verificare: 1, anomalie: 0, has_more: false } }));
+    api.post.mockResolvedValue({ data: { righe_estese: 2 } });
+    render(<RigheAcquisti />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Dettagli' }));
+    const associa = await screen.findByRole('button', { name: /Associa a Lotti/ });
+    expect(associa).toBeDisabled();
+    await screen.findByRole('option', { name: 'Petto di pollo' });
+    fireEvent.change(screen.getByLabelText('Articolo di Lotti'), { target: { value: 'Petto di pollo' } });
+    // La categoria si propone dall'articolo scelto.
+    await waitFor(() => expect(screen.getByLabelText('Categoria Lotti')).toHaveValue('Carni e Salumi'));
+    fireEvent.click(associa);
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/righe-acquisti/f-1%3A1/prodotto-lotti',
+      { nome_canc: 'Petto di pollo', categoria: 'Carni e Salumi', alimentare: true },
+    ));
+  });
 });

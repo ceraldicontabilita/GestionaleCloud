@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Ban, Check, ExternalLink, Filter, Pencil, Search, TriangleAlert, X } from 'lucide-react';
+import { Ban, Check, ExternalLink, Filter, Link2, Pencil, Search, Settings, TriangleAlert, X } from 'lucide-react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
@@ -56,7 +56,159 @@ function SelectFiltro({ label, value, onChange, children }) {
   );
 }
 
-function DettaglioRiga({ riga, onClose, onDecision, busy }) {
+
+const ALTRO = '__altro__';
+
+const stileSelect = {
+  minHeight: 42, border: `1px solid ${COLORS.border}`, borderRadius: 9, padding: '0 10px',
+  background: COLORS.card, color: COLORS.text,
+};
+
+/** Scelta dell'articolo di Lotti per la riga: popola Lotti e conferma la classificazione. */
+function ArticoloLotti({ riga, onAssegna, busy }) {
+  const [prodotti, setProdotti] = useState([]);
+  const [categorie, setCategorie] = useState([]);
+  const [ricerca, setRicerca] = useState('');
+  const [scelto, setScelto] = useState('');
+  const [nuovoNome, setNuovoNome] = useState('');
+  const [categoria, setCategoria] = useState('');
+  const [errore, setErrore] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      api.get('/api/righe-acquisti/prodotti-lotti', { params: { q: ricerca } })
+        .then(({ data }) => {
+          if (!active) return;
+          setProdotti(data.prodotti || []);
+          setCategorie(data.categorie || []);
+        })
+        .catch(() => { if (active) setErrore('Elenco articoli di Lotti non disponibile.'); });
+    }, 200);
+    return () => { active = false; clearTimeout(timer); };
+  }, [ricerca]);
+
+  const nome = scelto === ALTRO ? nuovoNome.trim() : scelto;
+  const scegliArticolo = valore => {
+    setScelto(valore);
+    const noto = prodotti.find(p => p.nome_canc === valore);
+    if (noto?.categoria && categorie.includes(noto.categoria)) setCategoria(noto.categoria);
+  };
+  const pronto = !!nome && !!categoria;
+
+  return (
+    <Card style={{ padding: 14 }}>
+      <strong>Articolo in Lotti</strong>
+      <div style={{ marginTop: 6, fontSize: 12, color: COLORS.textMuted }}>
+        Scegli l'articolo di casa: Lotti lo usa per magazzino e lotti, e la classificazione di questa riga
+        (e delle righe uguali dello stesso fornitore) viene confermata.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginTop: 10 }}>
+        <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+          Cerca articolo
+          <Input aria-label="Cerca articolo di Lotti" value={ricerca} onChange={event => setRicerca(event.target.value)} />
+        </label>
+        <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+          Articolo
+          <select aria-label="Articolo di Lotti" value={scelto} onChange={event => scegliArticolo(event.target.value)} style={stileSelect}>
+            <option value="">Scegli…</option>
+            {prodotti.map(p => <option key={p.nome_canc} value={p.nome_canc}>{p.nome_canc}</option>)}
+            <option value={ALTRO}>Altro (scrivi tu)</option>
+          </select>
+        </label>
+        {scelto === ALTRO && (
+          <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+            Nome del nuovo articolo
+            <Input aria-label="Nome del nuovo articolo" value={nuovoNome} onChange={event => setNuovoNome(event.target.value)} />
+          </label>
+        )}
+        <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+          Categoria
+          <select aria-label="Categoria Lotti" value={categoria} onChange={event => setCategoria(event.target.value)} style={stileSelect}>
+            <option value="">Scegli…</option>
+            {categorie.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+      </div>
+      {errore && <div role="alert" style={{ marginTop: 8, fontSize: 12, color: COLORS.danger }}>{errore}</div>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        <Button type="button" disabled={busy || !pronto} onClick={() => onAssegna({ nome_canc: nome, categoria, alimentare: true })} style={{ minHeight: 44 }}>
+          <Link2 size={16} /> Associa a Lotti
+        </Button>
+        <Button type="button" variant="secondary" disabled={busy} onClick={() => onAssegna({ alimentare: false })} style={{ minHeight: 44 }}>
+          Non è merce alimentare
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/** Conto e centro di costo per categoria di Lotti: partono vuoti, li decide il titolare. */
+function RegoleCategoria() {
+  const [aperto, setAperto] = useState(false);
+  const [dati, setDati] = useState(null);
+  const [bozze, setBozze] = useState({});
+  const [messaggio, setMessaggio] = useState('');
+
+  useEffect(() => {
+    if (!aperto || dati) return;
+    api.get('/api/righe-acquisti/regole-categoria')
+      .then(({ data }) => setDati(data))
+      .catch(() => setMessaggio('Regole non disponibili.'));
+  }, [aperto, dati]);
+
+  const valore = (r, campo) => (bozze[r.categoria]?.[campo] ?? r[campo] ?? '');
+  const cambia = (r, campo, v) => setBozze(c => ({ ...c, [r.categoria]: { ...(c[r.categoria] || {}), [campo]: v } }));
+  const salva = async r => {
+    setMessaggio('');
+    try {
+      await api.put(`/api/righe-acquisti/regole-categoria/${encodeURIComponent(r.categoria)}`, {
+        conto: valore(r, 'conto'), centro_costo: valore(r, 'centro_costo'),
+      });
+      setDati(null);
+      setBozze(c => { const n = { ...c }; delete n[r.categoria]; return n; });
+      setMessaggio(`Regola «${r.categoria}» salvata.`);
+    } catch (error) {
+      setMessaggio(error?.response?.data?.detail || 'Regola non salvata.');
+    }
+  };
+
+  return (
+    <Card style={{ padding: 12, fontSize: 13 }}>
+      <Button type="button" variant="secondary" onClick={() => setAperto(v => !v)} style={{ minHeight: 44 }}>
+        <Settings size={16} /> Conto e centro di costo per categoria
+      </Button>
+      {aperto && (
+        <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+          <div style={{ color: COLORS.textMuted, fontSize: 12 }}>
+            Quando associ un articolo di Lotti a una riga, conto e centro di costo si compilano da qui.
+            Una categoria senza regola lascia i due campi «Da verificare».
+          </div>
+          {(dati?.regole || []).map(r => (
+            <div key={r.categoria} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, alignItems: 'end' }}>
+              <strong style={{ alignSelf: 'center' }}>{r.categoria}</strong>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+                Conto (es. 33.03.01)
+                <Input aria-label={`Conto ${r.categoria}`} value={valore(r, 'conto')} onChange={event => cambia(r, 'conto', event.target.value)} />
+              </label>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+                Centro di costo
+                <select aria-label={`Centro di costo ${r.categoria}`} value={valore(r, 'centro_costo')} onChange={event => cambia(r, 'centro_costo', event.target.value)} style={stileSelect}>
+                  <option value="">Nessuno</option>
+                  {(dati?.centri_costo || []).map(c => <option key={c.codice} value={c.codice}>{c.codice}{c.nome ? ` · ${c.nome}` : ''}</option>)}
+                </select>
+              </label>
+              <Button type="button" variant="secondary" onClick={() => salva(r)} style={{ minHeight: 44 }}>Salva</Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {messaggio && <div role="status" style={{ marginTop: 8, fontSize: 12 }}>{messaggio}</div>}
+    </Card>
+  );
+}
+
+function DettaglioRiga({ riga, onClose, onDecision, onAssegna, busy }) {
   const ai = riga.classificazione || {};
   const codici = (riga.codici_articolo || []).map(item => [item.tipo, item.valore].filter(Boolean).join(': '));
   const [motivazione, setMotivazione] = useState('');
@@ -168,6 +320,8 @@ function DettaglioRiga({ riga, onClose, onDecision, busy }) {
               </div>
             )}
           </Card>
+
+          <ArticoloLotti riga={riga} onAssegna={onAssegna} busy={busy} />
 
           <Card style={{ padding: 14 }}>
             <strong>Pagamenti: dichiarato, previsto ed effettivo restano distinti</strong>
@@ -310,6 +464,20 @@ export default function RigheAcquisti() {
     }
   };
 
+  const assegnaLotti = async scelta => {
+    setDecisioneBusy(true);
+    setErrore('');
+    try {
+      await api.post(`/api/righe-acquisti/${encodeURIComponent(dettaglio.id)}/prodotto-lotti`, scelta);
+      setDettaglio(null);
+      setReloadKey(value => value + 1);
+    } catch (error) {
+      setErrore(error?.response?.data?.detail || 'Associazione a Lotti non salvata. Riprova.');
+    } finally {
+      setDecisioneBusy(false);
+    }
+  };
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div>
@@ -334,6 +502,8 @@ export default function RigheAcquisti() {
           </div>
         </Card>
       )}
+
+      <RegoleCategoria />
 
       <Card style={{ padding: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}><Filter size={17} /><strong>Filtri</strong></div>
@@ -410,7 +580,7 @@ export default function RigheAcquisti() {
       ) : null}
 
       {meta.has_more && <Button type="button" variant="secondary" disabled={loading} onClick={mostraAltre} style={{ justifySelf: 'center', minHeight: 44 }}>Mostra altre 200</Button>}
-      {dettaglio && <DettaglioRiga riga={dettaglio} onClose={() => setDettaglio(null)} onDecision={decidi} busy={decisioneBusy} />}
+      {dettaglio && <DettaglioRiga onAssegna={assegnaLotti} riga={dettaglio} onClose={() => setDettaglio(null)} onDecision={decidi} busy={decisioneBusy} />}
     </div>
   );
 }

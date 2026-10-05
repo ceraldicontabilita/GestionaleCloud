@@ -17,7 +17,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from app.database import Database
-from app.services import agenti_proposte
+from app.services import agenti_proposte, righe_acquisti_lotti
 from app.utils.dependencies import get_current_admin_user
 
 
@@ -451,3 +451,63 @@ async def decidi_classificazione_riga(
     except agenti_proposte.PropostaNonApplicabile as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"classificazione": record}
+
+
+@router.get("/prodotti-lotti")
+async def prodotti_lotti(
+    q: str = Query("", max_length=80),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Gli articoli di casa già noti a Lotti e le sue categorie, per la tendina."""
+    from app.lotti.db import database as db_lotti
+
+    return {
+        "prodotti": await righe_acquisti_lotti.prodotti_lotti(db_lotti, q),
+        "categorie": righe_acquisti_lotti.categorie_lotti(),
+    }
+
+
+@router.get("/regole-categoria")
+async def regole_categoria(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Conto e centro di costo per categoria di Lotti: vuoti finché non li dice il titolare."""
+    db = Database.get_db()
+    centri = await db["centri_costo"].find({}, {"_id": 0, "codice": 1, "nome": 1}).to_list(200)
+    return {"regole": await righe_acquisti_lotti.elenco_regole(db), "centri_costo": centri}
+
+
+@router.put("/regole-categoria/{categoria}")
+async def salva_regola_categoria(
+    categoria: str,
+    body: Dict[str, Any] = Body(...),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    utente = str(admin.get("email") or admin.get("user_id") or "admin")
+    try:
+        regola = await righe_acquisti_lotti.salva_regola(
+            Database.get_db(), categoria, body.get("conto"), body.get("centro_costo"), utente,
+        )
+    except righe_acquisti_lotti.SceltaNonValida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"regola": regola}
+
+
+@router.post("/{riga_id:path}/prodotto-lotti")
+async def assegna_prodotto_lotti(
+    riga_id: str,
+    body: Dict[str, Any] = Body(...),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Collega la riga a un articolo di Lotti e ne conferma la classificazione."""
+    from app.lotti.db import database as db_lotti
+
+    utente = str(admin.get("email") or admin.get("user_id") or "admin")
+    try:
+        return await righe_acquisti_lotti.assegna_prodotto(
+            Database.get_db(), db_lotti, riga_id,
+            str(body.get("nome_canc") or ""), str(body.get("categoria") or ""), utente,
+            alimentare=body.get("alimentare") is not False,
+        )
+    except righe_acquisti_lotti.SceltaNonValida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
