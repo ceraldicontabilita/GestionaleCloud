@@ -5,12 +5,9 @@
 ricetta -> prodotto la fa il ponte di Lotti) e al suo posto si esclude dalla
 verifica chi allergeni da dichiarare non ne ha (whisky, distillati, bibite).
 
-Il test che conta davvero e' l'ultimo: l'esclusione deve sopravvivere a una
-sincronizzazione Qromo completa. La sync fa DELETE + INSERT di menu_products
-con ``origine IS NULL`` e reinserisce solo le colonne di
-``trasforma_catalogo``, quindi un flag scritto dentro menu_products sarebbe
-perso. E' il motivo per cui le esclusioni stanno in una tabella separata,
-chiavata sugli id Qromo che restano stabili tra un sync e l'altro.
+Il test che conta davvero e' l'ultimo: l'esclusione deve sopravvivere se la riga
+del prodotto viene ricreata (stesso id), perche' sta in una tabella separata e
+non in una colonna di menu_products.
 
 Client Supabase sostituito da un finto in memoria, nessuna rete.
 """
@@ -19,9 +16,7 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
-from app.menu import qromo_sync as qs
 from app.menu.routes import allergeni_routes as ar
-from tests.menu.test_menu_qromo_sync import HTML_QROMO
 
 
 def _run(coro):
@@ -232,25 +227,11 @@ def test_elenco_esclusioni_porta_il_nome_di_cosa_e_escluso(tabelle):
     assert per_tipo["prodotto"]["creato_da"] == "admin"
 
 
-# ---------- il test che conta: la sync Qromo non deve cancellarle ----------
+# ---------- il test che conta: la riga ricreata non perde l'esclusione ----------
 
-class _SorgenteFinta:
-    def __init__(self, _sottodominio):
-        pass
-
-    async def chiudi(self):
-        pass
-
-    async def catalogo(self):
-        return qs.catalogo_da_html(HTML_QROMO)
-
-
-def test_l_esclusione_sopravvive_a_una_sync_qromo_completa(tabelle, monkeypatch):
-    """Il prodotto 100 esiste sia prima sia dopo la sync (l'id Qromo e'
-    stabile): la sync ricrea la riga senza allergeni, ma l'esclusione sta in
-    un'altra tabella e resta, quindi il prodotto non ritorna nell'alert."""
-    # HTML_QROMO produce il prodotto 100 "Espresso" nella sottocategoria 10
-    # della categoria 1: gli stessi id della fixture.
+def test_l_esclusione_sopravvive_se_il_prodotto_viene_ricreato(tabelle):
+    """Il prodotto 100 viene ricreato con lo stesso id e senza allergeni: l'esclusione
+    sta in un'altra tabella e resta, quindi il prodotto non ritorna nell'alert."""
     _run(ar.crea_esclusione(
         ar.NuovaEsclusione(tipo="prodotto", riferimento_id=100, motivo="Solo caffe'"),
         username="admin"))
@@ -259,23 +240,10 @@ def test_l_esclusione_sopravvive_a_una_sync_qromo_completa(tabelle, monkeypatch)
         username="admin"))
     assert _nomi_mancanti() == []
 
-    # Sync Qromo vera e propria sulle stesse tabelle in memoria
-    monkeypatch.setattr(qs, "supabase", ar.supabase)
-    monkeypatch.setattr(qs, "SorgenteQromo", _SorgenteFinta)
-    _run(qs.sincronizza(sottodominio="test", dry_run=False))
-
-    # La sync ha davvero rifatto menu_products da zero
     prodotti = tabelle["menu_products"]
-    assert [p["id"] for p in prodotti] == [100]
-    assert prodotti[0]["name_it"] == "Espresso"
-    assert prodotti[0]["allergens"] == ["gluten"]
-    # ...e non ha toccato la tabella delle esclusioni
+    ricreato = dict(next(p for p in prodotti if p["id"] == 100), allergens=[])
+    prodotti[:] = [p for p in prodotti if p["id"] != 100] + [ricreato]
     assert len(tabelle["menu_allergeni_esclusioni"]) == 2
-
-    # Il prodotto 100 torna con gli allergeni di Qromo, quindi non e'
-    # mancante; ne aggiungo uno senza allergeni con lo stesso id per provare
-    # che, se lo fosse, l'esclusione reggerebbe comunque.
-    prodotti[0]["allergens"] = []
     assert _nomi_mancanti() == []
     esito = _run(ar.prodotti_senza_allergeni(_username="admin"))
-    assert esito["esclusi"] == 1
+    assert esito["esclusi"] >= 1

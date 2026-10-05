@@ -561,7 +561,7 @@ async def catalogo_menu_ospite(richiesta: MenuOspiteRequest) -> Dict[str, Any]:
     )
     if not isinstance(assegnati, dict) or assegnati.get("errore"):
         raise HTTPException(status_code=404, detail=(assegnati or {}).get("errore", "Codice non valido"))
-    from app.menu.carta_qromo import carta_pubblica
+    from app.menu.carta_menu import carta_pubblica
 
     carta = await carta_pubblica(destinazione="bb")
     prezzi = {

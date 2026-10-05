@@ -10,19 +10,19 @@ MENU_CATEGORIES = [
         "id": 1,
         "name": "Bar & Desserts",
         "nameIT": "Bar e Dolci",
-        "image": "https://img.qromo.io/businesses/1LjmB37KIM7oGD7-full.jpeg"
+        "image": None
     },
     {
         "id": 2,
         "name": "Food",
         "nameIT": "Cibo",
-        "image": "https://img.qromo.io/businesses/glj0JlFiYPmeSp3-full.jpeg"
+        "image": None
     },
     {
         "id": 3,
         "name": "Cocktails, Beers & Spirits",
         "nameIT": "Cocktail, Birre e Liquori",
-        "image": "https://img.qromo.io/businesses/xKqXA9ChObqmoy6-full.jpeg"
+        "image": None
     }
 ]
 
@@ -37,9 +37,9 @@ SUBCATEGORIES = [
     {"id": 23, "category_id": 2, "name": "English Breakfast", "nameIT": "Colazione Inglese", "image": "https://ceraldicaffe.it/wp-content/uploads/2019/03/1_food-1-1013x1024.jpg"},
     # Cocktails
     {"id": 31, "category_id": 3, "name": "Signature Cocktails", "nameIT": "Cocktail Signature", "image": "https://ceraldicaffe.it/wp-content/uploads/2019/02/1_aperitivi-1024x682.jpg"},
-    {"id": 32, "category_id": 3, "name": "Classic Cocktails", "nameIT": "Cocktail Classici", "image": "https://img.qromo.io/businesses/xKqXA9ChObqmoy6-full.jpeg"},
-    {"id": 33, "category_id": 3, "name": "Beers & Spirits", "nameIT": "Birre e Liquori", "image": "https://img.qromo.io/businesses/xKqXA9ChObqmoy6-full.jpeg"},
-    {"id": 34, "category_id": 3, "name": "Soft Drinks", "nameIT": "Bibite", "image": "https://img.qromo.io/businesses/xKqXA9ChObqmoy6-full.jpeg"}
+    {"id": 32, "category_id": 3, "name": "Classic Cocktails", "nameIT": "Cocktail Classici", "image": None},
+    {"id": 33, "category_id": 3, "name": "Beers & Spirits", "nameIT": "Birre e Liquori", "image": None},
+    {"id": 34, "category_id": 3, "name": "Soft Drinks", "nameIT": "Bibite", "image": None}
 ]
 
 PRODUCTS = [

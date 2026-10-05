@@ -11,7 +11,7 @@ const FOCUS_SALVIA =
 // Informativa privacy e cookie del menu clienti. Il testo descrive cio' che
 // questo codice fa davvero (campi dell'ordine in `app/menu/models`, chiavi
 // salvate da `lib/preferenzeCliente.js`, font da Google Fonts in `index.css`,
-// foto Qromo come URL esterni in `app/menu/qromo_sync.py`):
+// foto dei prodotti ancora ospitate su server esterni):
 // se cambia il codice, cambia anche qui. Il titolare arriva dall'anagrafica
 // azienda unica (`GET /api/menu/titolare`), mai scritto a mano: se non si
 // legge, la pagina lo dice invece di inventarlo.
@@ -88,8 +88,8 @@ function TestoPrivacy({ t, titolare, stato }) {
         </p>
         <p>
           {t(
-            "Il carattere tipografico della pagina è caricato da Google Fonts e parte delle foto dei prodotti dai server di Qromo, il servizio del menu digitale del locale: per consegnarli, quei server ricevono l'indirizzo IP del tuo dispositivo.",
-            'The page typeface is loaded from Google Fonts and some product photos from the servers of Qromo, the venue digital menu service: to deliver them, those servers receive your device IP address.'
+            "Il carattere tipografico della pagina è caricato da Google Fonts e parte delle foto dei prodotti da server esterni di immagini: per consegnarli, quei server ricevono l'indirizzo IP del tuo dispositivo.",
+            'The page typeface is loaded from Google Fonts and some product photos from external image servers: to deliver them, those servers receive your device IP address.'
           )}
         </p>
       </Sezione>
@@ -145,8 +145,8 @@ function TestoCookie({ t, titolare, stato }) {
       <Sezione titolo={t('Servizi esterni', 'External services')}>
         <p>
           {t(
-            "Il carattere tipografico arriva da Google Fonts e parte delle foto dei prodotti da Qromo: quei server ricevono l'indirizzo IP del dispositivo. I pulsanti Facebook e Instagram sono semplici link: solo se li apri passi ai loro siti, con le loro regole sui cookie.",
-            'The typeface comes from Google Fonts and some product photos from Qromo: those servers receive the device IP address. The Facebook and Instagram buttons are plain links: only if you open them do you move to their sites, under their cookie rules.'
+            "Il carattere tipografico arriva da Google Fonts e parte delle foto dei prodotti da server esterni: quei server ricevono l'indirizzo IP del dispositivo. I pulsanti Facebook e Instagram sono semplici link: solo se li apri passi ai loro siti, con le loro regole sui cookie.",
+            'The typeface comes from Google Fonts and some product photos from external servers: those servers receive the device IP address. The Facebook and Instagram buttons are plain links: only if you open them do you move to their sites, under their cookie rules.'
           )}
         </p>
       </Sezione>

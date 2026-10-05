@@ -52,9 +52,9 @@ CATEGORIA_NOME = "Ceraldi Production"
 CATEGORIA_NOME_IT = "Produzione Ceraldi"
 
 # Gli id di menu_* sono assegnati dall'app (max(id)+1, come in
-# menu_routes.py). Le righe importate da Qromo usano gli id di Qromo: per non
-# collidere con un futuro prodotto Qromo, le righe create da Lotti partono da
-# una base alta.
+# menu_routes.py). I prodotti gia' presenti nel Menu hanno id bassi (quelli
+# scaricati in origine arrivano a 858503): le righe create da Lotti partono da
+# una base alta per non collidere.
 ID_MINIMO_LOTTI = 1_000_000
 
 # Quante volte rileggere max(id) e riprovare l'insert quando un altro thread
@@ -304,28 +304,36 @@ def _sottocategoria_lotti_id(categoria_id: int, reparto: Any) -> int:
     })
 
 
-def _categoria_di_lotti(categoria_id: int) -> Optional[dict]:
-    """La categoria Menu con quell'id, solo se e' una categoria che Lotti
-    possiede (``origine`` valorizzata).
-
-    Una categoria di Qromo (``origine IS NULL``) non e' agganciabile: la sync
-    Qromo la cancella e la reinserisce a ogni giro
-    (``app/menu/qromo_sync.py::_sostituisci_tabelle``), e una sottocategoria o
-    un prodotto di Lotti che la referenzia farebbe fallire quella
-    cancellazione per vincolo di chiave esterna."""
+def _categoria_menu(categoria_id: int) -> Optional[dict]:
+    """La categoria Menu con quell'id, se esiste."""
     res = (
         supabase.table(TABELLA_CATEGORIE).select("id,name,name_it,origine")
         .eq("id", categoria_id).limit(1).execute()
     )
-    riga = res.data[0] if res.data else None
-    return riga if riga and riga.get("origine") else None
+    return res.data[0] if res.data else None
+
+
+def _sottocategoria_menu(sottocategoria_id: int) -> Optional[dict]:
+    res = (
+        supabase.table(TABELLA_SOTTOCATEGORIE).select("id,category_id,name,name_it")
+        .eq("id", sottocategoria_id).limit(1).execute()
+    )
+    return res.data[0] if res.data else None
 
 
 def _destinazione_menu(ricetta: dict) -> tuple[int, int, str]:
     """(category_id, subcategory_id, origine_della_scelta).
 
-    La destinazione dipende soltanto dal reparto canonico della ricetta. I
-    vecchi campi di scelta non sono letti."""
+    Se la ricetta porta la categoria e la sottocategoria scelte dal titolare
+    (``menu_categoria_id`` / ``menu_sottocategoria_id``) e la coppia esiste
+    ancora nel Menu, vale quella (``scelta``). Altrimenti la destinazione
+    dipende soltanto dal reparto canonico (``automatica``)."""
+    categoria_scelta = _intero(ricetta.get("menu_categoria_id"))
+    sottocategoria_scelta = _intero(ricetta.get("menu_sottocategoria_id"))
+    if categoria_scelta is not None and sottocategoria_scelta is not None:
+        sotto = _sottocategoria_menu(sottocategoria_scelta)
+        if sotto and int(sotto.get("category_id") or 0) == categoria_scelta and _categoria_menu(categoria_scelta):
+            return categoria_scelta, sottocategoria_scelta, "scelta"
     categoria_id = _categoria_lotti_id()
     return categoria_id, _sottocategoria_lotti_id(categoria_id, ricetta.get("reparto")), "automatica"
 
@@ -366,6 +374,21 @@ def _riga_esistente(lotti_ref: str) -> Optional[dict]:
     return res.data[0] if res.data else None
 
 
+def _riga_agganciata(ricetta: dict, lotti_ref: str) -> Optional[dict]:
+    """Il prodotto del Menu a cui il titolare ha unito la ricetta (``menu_prodotto_id``).
+
+    Vale solo se la riga esiste e non e' gia' di un'altra ricetta: la ricetta ne
+    prende il posto (stesso id, stesso codice PRD) invece di crearne un doppione."""
+    prodotto_id = _intero(ricetta.get("menu_prodotto_id"))
+    if prodotto_id is None:
+        return None
+    res = supabase.table(TABELLA_PRODOTTI).select("*").eq("id", prodotto_id).limit(1).execute()
+    riga = res.data[0] if res.data else None
+    if riga and riga.get("lotti_ref") not in (None, "", lotti_ref):
+        return None
+    return riga
+
+
 def _carica_immagine(foto: dict) -> str:
     """Copia i byte della foto Lotti nel bucket del Menu e restituisce l'URL pubblico."""
     mime = str(foto.get("mime") or "image/jpeg")
@@ -397,7 +420,7 @@ def _immagine_per_prodotto(ricetta: dict, foto: Optional[dict], esistente: Optio
 
 def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
     lotti_ref = lotti_ref_ricetta(str(ricetta["id"]))
-    esistente = _riga_esistente(lotti_ref)
+    esistente = _riga_esistente(lotti_ref) or _riga_agganciata(ricetta, lotti_ref)
     categoria_id, sottocategoria_id, categoria_origine = _destinazione_menu(ricetta)
     nome = str(ricetta.get("nome") or "").strip() or f"Ricetta {ricetta['id']}"
     descrizione = _descrizione(ricetta)
@@ -584,14 +607,7 @@ class MenuNonConfigurato(RuntimeError):
 
 
 class CategoriaMenuNonValida(ValueError):
-    """Categoria inesistente, oppure di Qromo e quindi non agganciabile."""
-
-
-MOTIVO_QROMO = (
-    "Categoria importata da Qromo: la sincronizzazione Qromo la cancella e la "
-    "reinserisce a ogni giro, quindi Lotti non puo' appenderci i suoi prodotti. "
-    "Crea qui una categoria di Lotti."
-)
+    """Categoria, sottocategoria o prodotto del Menu inesistente o non valido."""
 
 
 def _esigi_configurato() -> None:
@@ -600,14 +616,11 @@ def _esigi_configurato() -> None:
 
 
 def _voce_categoria(riga: dict, sottocategorie: list) -> dict:
-    selezionabile = bool(riga.get("origine"))
     return {
         "id": int(riga["id"]),
         "name": riga.get("name"),
         "name_it": riga.get("name_it"),
         "origine": riga.get("origine"),
-        "selezionabile": selezionabile,
-        "motivo": None if selezionabile else MOTIVO_QROMO,
         "sottocategorie": sottocategorie,
     }
 
@@ -626,22 +639,20 @@ def _elenco_categorie_sync() -> dict:
             "name": s.get("name"),
             "name_it": s.get("name_it"),
             "origine": s.get("origine"),
-            "selezionabile": bool(s.get("origine")),
         })
 
     voci = [_voce_categoria(c, per_categoria.get(int(c["id"]), [])) for c in categorie]
-    return {"categorie": voci, "totale": len(voci),
-            "selezionabili": sum(1 for v in voci if v["selezionabile"])}
+    return {"categorie": voci, "totale": len(voci)}
 
 
 def _avviso_omonimia(nome_it: str) -> Optional[str]:
     """Avviso quando nel Menu esiste gia' una categoria con quel nome ma di
-    un'altra origine (tipicamente Qromo).
+    un'altra origine (creata a mano nell'admin o gia' presente).
 
-    L'idempotenza sul nome copre solo le categorie di Lotti: creare una "Bar"
-    di Lotti quando Qromo ha gia' una "Bar" riesce, e il cliente si trova due
-    riquadri identici nella home. Non si blocca — il titolare potrebbe volerne
-    davvero una sua, separata da quella di Qromo — ma la risposta lo dice."""
+    L'idempotenza sul nome copre solo le categorie create da Lotti: creare una
+    "Bar" quando ce n'e' gia' una riesce, e il cliente si trova due riquadri
+    identici nella home. Non si blocca — il titolare potrebbe volerne davvero
+    una sua — ma la risposta lo dice."""
     righe = (
         supabase.table(TABELLA_CATEGORIE).select("id,name,name_it,origine")
         .eq("name_it", nome_it).execute().data or []
@@ -649,7 +660,7 @@ def _avviso_omonimia(nome_it: str) -> Optional[str]:
     omonime = [r for r in righe if (r.get("origine") or None) != ORIGINE_LOTTI]
     if not omonime:
         return None
-    provenienze = sorted({str(r.get("origine") or "Qromo") for r in omonime})
+    provenienze = sorted({str(r.get("origine") or "menu") for r in omonime})
     identificativi = ", ".join(str(r["id"]) for r in omonime)
     return (
         f"Nel Menu esiste gia' una categoria «{nome_it}» ({'/'.join(provenienze)}, "
@@ -678,8 +689,8 @@ def _crea_categoria_sync(nome_it: str, nome: str, immagine: Optional[str]) -> di
 
 def _crea_sottocategoria_sync(categoria_id: int, nome_it: str, nome: str,
                               immagine: Optional[str]) -> dict:
-    if not _categoria_di_lotti(categoria_id):
-        raise CategoriaMenuNonValida(MOTIVO_QROMO)
+    if not _categoria_menu(categoria_id):
+        raise CategoriaMenuNonValida("Categoria inesistente nel Menu")
     esistente = (
         supabase.table(TABELLA_SOTTOCATEGORIE).select("id,category_id,name,name_it,origine")
         .eq("origine", ORIGINE_LOTTI).eq("category_id", categoria_id)
@@ -694,7 +705,7 @@ def _crea_sottocategoria_sync(categoria_id: int, nome_it: str, nome: str,
 
 
 async def elenco_categorie_menu() -> dict:
-    """Categorie e sottocategorie del Menu, con il flag ``selezionabile``.
+    """Categorie e sottocategorie del Menu.
 
     A differenza del resto del ponte queste funzioni SOLLEVANO: servono un
     endpoint interattivo, dove un errore deve arrivare al titolare invece di
@@ -723,3 +734,63 @@ async def crea_sottocategoria_menu(categoria_id: int, nome_it: str,
     return await asyncio.to_thread(
         _crea_sottocategoria_sync, int(categoria_id), nome_it,
         (nome or nome_it).strip(), immagine)
+
+
+def _prodotti_agganciabili_sync(ricetta_id: str, testo: str, limite: int) -> list:
+    """Prodotti gia' nel Menu non ancora di nessuna ricetta (``lotti_ref`` assente),
+    piu' quello gia' unito a questa ricetta, con categoria e sottocategoria."""
+    righe = (
+        supabase.table(TABELLA_PRODOTTI)
+        .select("id,name_it,name,price,category_id,subcategory_id,lotti_ref,codice_prodotto,visible")
+        .order("name_it").limit(5000).execute().data or []
+    )
+    mio = lotti_ref_ricetta(ricetta_id)
+    cerca = str(testo or "").strip().casefold()
+    liberi = [r for r in righe if not r.get("lotti_ref") or r.get("lotti_ref") == mio]
+    if cerca:
+        liberi = [r for r in liberi if cerca in str(r.get("name_it") or r.get("name") or "").casefold()]
+    categorie = {int(c["id"]): c.get("name_it") or c.get("name")
+                 for c in supabase.table(TABELLA_CATEGORIE).select("id,name,name_it").execute().data or []}
+    sotto = {int(c["id"]): c.get("name_it") or c.get("name")
+             for c in supabase.table(TABELLA_SOTTOCATEGORIE).select("id,name,name_it").execute().data or []}
+    return [{
+        "id": int(r["id"]),
+        "nome": r.get("name_it") or r.get("name"),
+        "prezzo": r.get("price") or "",
+        "codice": r.get("codice_prodotto"),
+        "categoria": categorie.get(int(r.get("category_id") or 0)),
+        "sottocategoria": sotto.get(int(r.get("subcategory_id") or 0)),
+        "visibile": r.get("visible") is not False,
+        "gia_unito": r.get("lotti_ref") == mio,
+    } for r in liberi[:limite]]
+
+
+async def prodotti_agganciabili(ricetta_id: str, testo: str = "", limite: int = 60) -> list:
+    _esigi_configurato()
+    return await asyncio.to_thread(_prodotti_agganciabili_sync, ricetta_id, testo, limite)
+
+
+def _valida_destinazione_sync(categoria_id: Optional[int], sottocategoria_id: Optional[int],
+                              prodotto_id: Optional[int], ricetta_id: str) -> None:
+    if (categoria_id is None) != (sottocategoria_id is None):
+        raise CategoriaMenuNonValida("Categoria e sottocategoria vanno scelte insieme")
+    if categoria_id is not None:
+        sotto = _sottocategoria_menu(sottocategoria_id)
+        if not _categoria_menu(categoria_id):
+            raise CategoriaMenuNonValida("Categoria inesistente nel Menu")
+        if not sotto or int(sotto.get("category_id") or 0) != categoria_id:
+            raise CategoriaMenuNonValida("La sottocategoria non appartiene alla categoria scelta")
+    if prodotto_id is not None:
+        res = supabase.table(TABELLA_PRODOTTI).select("id,lotti_ref").eq("id", prodotto_id).limit(1).execute()
+        riga = res.data[0] if res.data else None
+        if not riga:
+            raise CategoriaMenuNonValida("Prodotto inesistente nel Menu")
+        if riga.get("lotti_ref") not in (None, "", lotti_ref_ricetta(ricetta_id)):
+            raise CategoriaMenuNonValida("Il prodotto e' gia' unito a un'altra ricetta")
+
+
+async def valida_destinazione(ricetta_id: str, categoria_id: Optional[int],
+                              sottocategoria_id: Optional[int], prodotto_id: Optional[int]) -> None:
+    """Solleva ``CategoriaMenuNonValida`` se la scelta del titolare non regge."""
+    _esigi_configurato()
+    await asyncio.to_thread(_valida_destinazione_sync, categoria_id, sottocategoria_id, prodotto_id, ricetta_id)

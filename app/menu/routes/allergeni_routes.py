@@ -10,15 +10,11 @@ categoria/sottocategoria - dalla verifica. L'esclusione dice "non richiede la
 dichiarazione allergeni", NON "nascondilo dal menu": e' un dato di
 conformita', quindi si conserva, si vede e si puo' revocare.
 
-Perche' le esclusioni stanno in una tabella a parte
+Le esclusioni stanno in una tabella a parte
 (``menu.menu_allergeni_esclusioni``) e non in una colonna di
-``menu_products``: la sync Qromo (``app/menu/qromo_sync.py``) cancella e
-reinserisce tutte le righe con ``origine IS NULL``, e le righe reinserite
-portano solo le colonne di ``trasforma_catalogo``. Un flag dentro
-``menu_products`` sparirebbe alla prima sincronizzazione - e' gia' cosi' che
-si perdono gli allergeni scritti a mano su un prodotto Qromo. Gli id Qromo
-sono invece stabili tra un sync e l'altro, quindi un'esclusione chiavata su
-quell'id sopravvive.
+``menu_products``: il prodotto puo' essere ricreato (ricetta ripubblicata,
+riga riassegnata) e un flag dentro la riga andrebbe perso, mentre
+un'esclusione chiavata sull'id resta.
 
 "Collega a una ricetta" non vive piu' qui: la strada ricetta -> prodotto del
 Menu e' quella del ponte ``app/lotti/servizi/menu_bridge.py``, che pubblica la

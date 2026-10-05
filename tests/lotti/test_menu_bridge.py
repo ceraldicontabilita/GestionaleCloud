@@ -59,8 +59,7 @@ class _Query:
         return self
 
     def is_(self, colonna, valore):
-        # Solo ``is_("colonna", "null")``: e' l'unico uso reale (la sync Qromo
-        # cancella cio' che non ha ``origine``).
+        # Solo ``is_("colonna", "null")``: e' l'unico uso reale.
         assert valore == "null", valore
         self._nulli.append(colonna)
         return self

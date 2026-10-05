@@ -35,19 +35,19 @@ def test_catalogo_bb_montato_non_richiede_la_sessione_erp(monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from app.middleware.authentication import AuthenticationMiddleware
-    from app.menu import carta_qromo
+    from app.menu import carta_menu
 
-    async def dataset():
-        return carta_qromo._seme()
+    def dataset():
+        return carta_menu._seme()
 
     async def catalogo(**kwargs):
         assert kwargs == {"catalogo_bb": True}
         return [], [], []
 
-    monkeypatch.setattr(carta_qromo, "_dataset", dataset)
-    monkeypatch.setattr(carta_qromo.menu_routes, "_fetch_all", catalogo)
+    monkeypatch.setattr(carta_menu, "_dataset", dataset)
+    monkeypatch.setattr(carta_menu.menu_routes, "_fetch_all", catalogo)
     menu = FastAPI()
-    menu.include_router(carta_qromo.router_pubblico)
+    menu.include_router(carta_menu.router_pubblico)
     erp = FastAPI()
     erp.add_middleware(AuthenticationMiddleware)
     erp.mount("/menu", menu)
@@ -68,7 +68,7 @@ def test_ricette_nuove_sono_preselezionate_per_il_menu():
 
 def test_catalogo_ospite_filtra_la_carta_e_applica_il_prezzo_hotel(monkeypatch):
     from app.routers import colazioni
-    from app.menu import carta_qromo
+    from app.menu import carta_menu
 
     async def rpc(_fn, _args):
         return {"struttura": "Hotel Prova", "prodotti": [{"prodotto_id": 20, "prezzo": "2.50"}]}
@@ -82,7 +82,7 @@ def test_catalogo_ospite_filtra_la_carta_e_applica_il_prezzo_hotel(monkeypatch):
         }
 
     monkeypatch.setattr(colazioni, "_rpc_bb", rpc)
-    monkeypatch.setattr(carta_qromo, "carta_pubblica", carta)
+    monkeypatch.setattr(carta_menu, "carta_pubblica", carta)
     risposta = asyncio.run(colazioni.catalogo_menu_ospite(
         colazioni.MenuOspiteRequest(codice="ABCD", giorno="2026-10-03")
     ))

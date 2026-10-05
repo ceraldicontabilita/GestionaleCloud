@@ -93,7 +93,7 @@ def _prodotto(id_, sub, nome, **extra):
     return riga
 
 
-def test_x_qromo_nasconde_e_ripristina_senza_cancellare(finto):
+def test_x_nasconde_e_ripristina_senza_cancellare(finto):
     assert _run(mr.imposta_visibilita_prodotto(100, ProductVisibility(visible=False), "admin"))["success"]
     assert finto.tabelle["menu_products"][0]["visible"] is False
     assert len(finto.tabelle["menu_products"]) == 3

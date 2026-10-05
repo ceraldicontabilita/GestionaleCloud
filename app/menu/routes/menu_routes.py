@@ -148,7 +148,7 @@ def _build_hierarchy(categories, subcategories, products):
 
     Il filtro sta **in lettura** e non in scrittura perche' e' l'unico punto
     che copre anche le categorie gia' vuote oggi in produzione (comprese
-    quelle arrivate da Qromo) e perche' ``menu_products.subcategory_id`` e'
+    quelle create a mano nell'admin) e perche' ``menu_products.subcategory_id`` e'
     NOT NULL: una riga di Lotti la sua sottocategoria deve comunque averla,
     anche quando resta nascosta. Una categoria con prodotti in una sola delle
     sue sottocategorie resta visibile: si tolgono solo le sezioni vuote."""

@@ -2719,6 +2719,50 @@ async def set_scheda_vendita(ricetta_id: str, dati: SchedaVendita, _admin=Depend
     return {"ok": True, **campi, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
+class DestinazioneMenu(BaseModel):
+    """Dove sta la ricetta nel Menu: tutti i campi sono facoltativi; ``0`` toglie la scelta."""
+    categoria_id: Optional[int] = Field(None, ge=0)
+    sottocategoria_id: Optional[int] = Field(None, ge=0)
+    prodotto_id: Optional[int] = Field(None, ge=0)
+
+
+@router.put("/ricette/{ricetta_id}/destinazione-menu")
+async def set_destinazione_menu(ricetta_id: str, dati: DestinazioneMenu, _admin=Depends(require_admin)):
+    """Categoria e sottocategoria del Menu dove compare la ricetta, e il prodotto gia' nel Menu a cui unirla.
+
+    Unire una ricetta a un prodotto esistente ne prende il posto (stesso id e stesso codice PRD):
+    nessun doppione. Un prodotto e' unito a una sola ricetta."""
+    from app.lotti.servizi import menu_bridge
+
+    campi = dati.model_dump(exclude_unset=True)
+    if not campi:
+        raise HTTPException(400, "Nessun campo da salvare")
+    ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0, "id": 1})
+    if not ricetta:
+        raise HTTPException(404, "Ricetta non trovata")
+    corrente = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0, "menu_categoria_id": 1, "menu_sottocategoria_id": 1, "menu_prodotto_id": 1}) or {}
+    def scelto(chiave_in, chiave_db):
+        if chiave_in in campi:
+            return campi[chiave_in] or None
+        return corrente.get(chiave_db)
+    categoria = scelto("categoria_id", "menu_categoria_id")
+    sotto = scelto("sottocategoria_id", "menu_sottocategoria_id")
+    prodotto = scelto("prodotto_id", "menu_prodotto_id")
+    if prodotto is not None:
+        altra = await db.ricette.find_one({"menu_prodotto_id": prodotto, "id": {"$ne": ricetta_id}}, {"_id": 0, "nome": 1})
+        if altra:
+            raise HTTPException(409, f"Il prodotto e' gia' unito alla ricetta «{altra.get('nome')}»")
+    try:
+        await menu_bridge.valida_destinazione(ricetta_id, categoria, sotto, prodotto)
+    except menu_bridge.MenuNonConfigurato:
+        raise HTTPException(503, "Menu digitale non configurato su questo ambiente")
+    except menu_bridge.CategoriaMenuNonValida as exc:
+        raise HTTPException(400, str(exc))
+    salva = {"menu_categoria_id": categoria, "menu_sottocategoria_id": sotto, "menu_prodotto_id": prodotto}
+    await db.ricette.update_one({"id": ricetta_id}, {"$set": salva})
+    return {"ok": True, **salva, "menu_sync": await _sincronizza_menu(ricetta_id)}
+
+
 @router.put("/ricette/{ricetta_id}/reparto")
 async def aggiorna_reparto(ricetta_id: str, reparto: str = Query(...), _ruolo=Depends(require_permesso("ricette"))):
     # `bar` era accettato dal form e mappato dal ponte verso il Menu, ma qui

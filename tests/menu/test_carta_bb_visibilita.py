@@ -1,5 +1,5 @@
 import asyncio
-from app.menu import carta_qromo as carta
+from app.menu import carta_menu as carta
 
 
 def test_destinazione_bb_rispetta_spunta_indipendente_dal_pubblico(monkeypatch):

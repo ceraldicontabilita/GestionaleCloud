@@ -148,7 +148,7 @@ function goHome(){current=null;setState(null);(scroller.scrollTo?scroller:window
 $$('.multi-menu-back-button').forEach(b=>{b.style.cursor='pointer';b.addEventListener('click',()=>{if(current){try{history.back()}catch(e){goHome()}}})});
 window.addEventListener('popstate',()=>{if(current)goHome()});
 
-// ---------- ricerca (come Qromo: evidenzia le categorie, Invio passa al risultato dopo) ----------
+// ---------- ricerca (evidenzia le categorie, Invio passa al risultato dopo) ----------
 const sc=absBar.querySelector('.search-container'), q=$('#q'), rn=absBar.querySelector('.results-num');
 let hits=[],hitIdx=0;
 function closeSearch(){if(!sc)return;sc.classList.remove('open');q.value='';rn.classList.remove('visible');$$('.category-head.notRelevant').forEach(h=>h.classList.remove('notRelevant'));$$('.cc-hit').forEach(x=>{x.classList.remove('cc-hit');x.style.outline=''});hits=[]}

@@ -18,9 +18,7 @@ from app.menu.routes.seed_routes import router as seed_router
 from app.menu.routes.order_routes import router as order_router
 from app.menu.routes.warehouse_routes import router as warehouse_router
 from app.menu.routes.sale_routes import router as sale_router
-from app.menu.qromo_sync import router as qromo_sync_router
-from app.menu.carta_qromo import router_pubblico as carta_pubblica_router, router_admin as carta_admin_router
-from app.menu.qromo_auto_sync import avvia_sync_qromo_background
+from app.menu.carta_menu import router_pubblico as carta_pubblica_router, router_admin as carta_admin_router
 from app.menu.supabase_client import _leggi_env, get_supabase
 from app.services.health_probe import ProbeUnica, risposta_salute
 
@@ -52,14 +50,8 @@ app.include_router(seed_router)
 app.include_router(order_router)
 app.include_router(warehouse_router)
 app.include_router(sale_router)
-app.include_router(qromo_sync_router)
 app.include_router(carta_pubblica_router)
 app.include_router(carta_admin_router)
-
-# Durante la migrazione Qromo resta la fonte di verita' del menu clienti.
-# Il riallineamento parte in background: non rallenta e non blocca l'avvio
-# del gestionale, ma aggiorna categorie, prodotti, prezzi, allergeni e foto.
-avvia_sync_qromo_background()
 
 # ================== Health check ==================
 # Stesso contratto di /api/health dell'ERP: commit pubblicato, database,
