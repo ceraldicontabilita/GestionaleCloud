@@ -124,7 +124,7 @@ def test_un_token_finto_dell_albergatore_e_rifiutato_dall_handler(monkeypatch):
 
     domani = (datetime.now(ZoneInfo("Europe/Rome")).date() + timedelta(days=1)).isoformat()
     r = c.post("/api/colazioni/ordini-prodotti/albergatore",
-               json={"sid": "hotel-1", "p": "tk:finto", "data_consegna": domani,
+               json={"sid": "hotel-1", "p": "tk:finto", "data_consegna": domani, "ora_ritiro": "07:00",
                      "righe": [{"chiave": "interno:p1", "quantita": 1}]})
     assert r.status_code == 401, r.text
 

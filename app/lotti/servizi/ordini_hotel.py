@@ -13,9 +13,10 @@ import hashlib
 import re
 import unicodedata
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Iterable, Mapping
+from typing import Any, Awaitable, Callable, Iterable, Mapping
+from zoneinfo import ZoneInfo
 
 from pymongo.errors import DuplicateKeyError
 
@@ -29,6 +30,41 @@ from app.lotti.servizi.catalogo_acquaviva_hotel import (
 
 STATI_ORDINE = ("ricevuto", "confermato", "in_preparazione", "pronto", "consegnato", "annullato")
 STATI_PAGAMENTO = ("da_incassare", "incassato")
+METODI_PAGAMENTO = ("in_loco", "borsellino")
+ORA_LIMITE_ORDINE = 14
+FASCE_RITIRO = tuple(f"{h:02d}:{m:02d}" for h in range(6, 12) for m in (0, 30))
+_ROMA = ZoneInfo("Europe/Rome")
+
+
+def limite_ordine(data_consegna: date) -> datetime:
+    """Si ordina entro le 14:00 del giorno prima della consegna (ora di Roma)."""
+    return datetime.combine(data_consegna - timedelta(days=1), time(ORA_LIMITE_ORDINE), tzinfo=_ROMA)
+
+
+def prima_consegna_possibile(adesso: datetime | None = None) -> date:
+    adesso = (adesso or datetime.now(_ROMA)).astimezone(_ROMA)
+    giorno = adesso.date() + timedelta(days=1)
+    return giorno if adesso < limite_ordine(giorno) else giorno + timedelta(days=1)
+
+
+def fasce_valide(configurate: Iterable[Any] | None) -> tuple[str, ...]:
+    """Fasce scelte dal titolare (HH:MM); se non ce n'e' nessuna valgono quelle predefinite."""
+    pulite = sorted({str(x).strip() for x in (configurate or []) if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(x).strip())})
+    return tuple(pulite) or FASCE_RITIRO
+
+
+def verifica_termini(data_consegna: date, ora_ritiro: str, adesso: datetime | None = None,
+                     fasce: Iterable[str] | None = None) -> None:
+    adesso = (adesso or datetime.now(_ROMA)).astimezone(_ROMA)
+    if ora_ritiro not in fasce_valide(fasce):
+        raise ValueError("Scegli un orario di ritiro dall'elenco")
+    if adesso >= limite_ordine(data_consegna):
+        primo = prima_consegna_possibile(adesso)
+        raise ValueError(
+            f"Per ricevere i prodotti il {data_consegna.strftime('%d/%m/%Y')} si ordina entro le "
+            f"{ORA_LIMITE_ORDINE}:00 del giorno prima. Prima consegna possibile: {primo.strftime('%d/%m/%Y')}")
+    if data_consegna > adesso.date() + timedelta(days=30):
+        raise ValueError("La consegna deve essere entro i prossimi 30 giorni")
 _FORNITORE_VDM = re.compile(r"vand(?:e)?moo?rte?le|vandermortel", re.IGNORECASE)
 
 
@@ -164,7 +200,12 @@ async def _arricchisci_riga(catalogo: Mapping[str, Any], quantita: int,
 
 async def crea_ordine(*, struttura_id: str, struttura_nome: str, data_consegna: str,
                        catalogo: Mapping[str, Mapping[str, Any]], righe: list[dict[str, Any]],
-                       nota: str = "", idempotenza: str = "") -> dict[str, Any]:
+                       nota: str = "", idempotenza: str = "", ora_ritiro: str = "",
+                       pagamento_metodo: str = "in_loco",
+                       addebita: Callable[[str, Decimal], Awaitable[None]] | None = None,
+                       storna: Callable[[str, Decimal], Awaitable[None]] | None = None) -> dict[str, Any]:
+    if pagamento_metodo not in METODI_PAGAMENTO:
+        raise ValueError("Metodo di pagamento non valido")
     if idempotenza:
         esistente = await db.ordini_hotel.find_one(
             {"struttura_id": struttura_id, "idempotenza": idempotenza}, {"_id": 0})
@@ -185,30 +226,46 @@ async def crea_ordine(*, struttura_id: str, struttura_nome: str, data_consegna: 
     if not dettagli:
         raise ValueError("Il carrello e vuoto")
     ora = datetime.now(timezone.utc).isoformat()
+    ordine_id = "OH-" + uuid.uuid4().hex[:12].upper()
+    totale = sum((_money(x["totale"]) for x in dettagli), Decimal("0"))
+    con_borsellino = pagamento_metodo == "borsellino"
+    if con_borsellino:
+        if addebita is None:
+            raise ValueError("Pagamento dal borsellino non disponibile")
+        await addebita(ordine_id, totale)
     documento = {
         "_id": f"ordine_hotel:{struttura_id}:{idempotenza}" if idempotenza else f"ordine_hotel:{uuid.uuid4().hex}",
-        "id": "OH-" + uuid.uuid4().hex[:12].upper(),
+        "id": ordine_id,
         "idempotenza": idempotenza or uuid.uuid4().hex,
         "struttura_id": struttura_id,
         "struttura_nome": struttura_nome,
         "data_consegna": data_consegna,
+        "ora_ritiro": ora_ritiro,
+        "pagamento_metodo": pagamento_metodo,
         "nota": nota.strip()[:500],
         "righe": dettagli,
-        "totale": float(sum((_money(x["totale"]) for x in dettagli), Decimal("0"))),
+        "totale": float(totale),
         "stato": "ricevuto",
-        "pagamento": "da_incassare",
+        "pagamento": "incassato" if con_borsellino else "da_incassare",
         "origine": "convenzioni_hotel",
         "creato_il": ora,
         "aggiornato_il": ora,
-        "audit": [{"quando": ora, "azione": "ordine_ricevuto", "da": "albergatore"}],
+        "audit": [{"quando": ora, "azione": "ordine_ricevuto", "da": "albergatore",
+                   "pagamento_metodo": pagamento_metodo, "ora_ritiro": ora_ritiro}],
     }
     try:
         await db.ordini_hotel.insert_one(documento.copy())
     except DuplicateKeyError:
+        if con_borsellino and storna:
+            await storna(ordine_id, totale)
         esistente = await db.ordini_hotel.find_one(
             {"struttura_id": struttura_id, "idempotenza": idempotenza}, {"_id": 0})
         if esistente:
             return esistente
+        raise
+    except Exception:
+        if con_borsellino and storna:
+            await storna(ordine_id, totale)
         raise
     return _senza_mongo(documento)
 

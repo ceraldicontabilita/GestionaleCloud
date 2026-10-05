@@ -53,6 +53,8 @@ class OrdineHotelRequest(BaseModel):
     sid: str = Field(min_length=1, max_length=80)
     p: str = Field(min_length=1, max_length=300)
     data_consegna: date
+    ora_ritiro: str = Field(min_length=4, max_length=5)
+    pagamento_metodo: str = Field(default="in_loco", max_length=20)
     righe: List[RigaOrdineHotel]
     nota: str = Field(default="", max_length=500)
     idempotenza: str = Field(default="", max_length=80)
@@ -608,16 +610,55 @@ async def _contesto_ordine_albergatore(sid: str, token: str) -> tuple[dict[str, 
     return {str(x.get("chiave") or ""): x for x in prodotti}, stato
 
 
+def _importo_cents(importo: Decimal) -> Decimal:
+    return importo.quantize(Decimal("0.01"))
+
+
+async def _movimento_borsellino(fn: str, sid: str, importo: Decimal, ordine_id: str) -> Dict[str, Any]:
+    risultato = await _rpc_runtime_bb(
+        fn, {"psid": sid, "pimporto": str(_importo_cents(importo)), "priferimento": ordine_id})
+    if not isinstance(risultato, dict):
+        raise HTTPException(status_code=502, detail="Borsellino non raggiungibile")
+    return risultato
+
+
+async def _fasce_ritiro() -> tuple[str, ...]:
+    """Fasce di ritiro del titolare (bb_config); se mancano o il database non risponde, quelle predefinite."""
+    from app.lotti.servizi.ordini_hotel import fasce_valide
+    try:
+        configurate = await _rpc_bb("bb_ordini_fasce_ritiro", {})
+    except HTTPException as exc:
+        logger.warning("Fasce di ritiro non lette (%s): uso le predefinite", exc.detail)
+        configurate = []
+    return fasce_valide(configurate if isinstance(configurate, list) else [])
+
+
 @router.post("/ordini-prodotti/albergatore", summary="Invia un ordine mattutino dall'hotel")
 async def crea_ordine_prodotti_hotel(richiesta: OrdineHotelRequest) -> Dict[str, Any]:
-    oggi = datetime.now(ZoneInfo("Europe/Rome")).date()
-    if richiesta.data_consegna < oggi or richiesta.data_consegna > oggi + timedelta(days=30):
-        raise HTTPException(status_code=422, detail="La consegna deve essere tra oggi e i prossimi 30 giorni")
+    from app.lotti.servizi.ordini_hotel import crea_ordine, verifica_termini
+    catalogo, stato = await _contesto_ordine_albergatore(richiesta.sid, richiesta.p)
+    try:
+        verifica_termini(richiesta.data_consegna, richiesta.ora_ritiro, fasce=await _fasce_ritiro())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not richiesta.righe or len(richiesta.righe) > 100:
         raise HTTPException(status_code=422, detail="Il carrello deve contenere da 1 a 100 prodotti")
-    catalogo, stato = await _contesto_ordine_albergatore(richiesta.sid, richiesta.p)
     struttura = stato.get("struttura") or {}
-    from app.lotti.servizi.ordini_hotel import crea_ordine
+    saldo_dopo: Dict[str, Any] = {}
+
+    async def addebita(ordine_id: str, totale: Decimal) -> None:
+        esito = await _movimento_borsellino("bb_ordine_prodotti_addebita", richiesta.sid, totale, ordine_id)
+        if esito.get("errore"):
+            raise ValueError(str(esito["errore"]))
+        saldo_dopo["saldo"] = esito.get("saldo")
+
+    async def storna(ordine_id: str, totale: Decimal) -> None:
+        try:
+            esito = await _movimento_borsellino("bb_ordine_prodotti_rimborsa", richiesta.sid, totale, ordine_id)
+            saldo_dopo["saldo"] = esito.get("saldo")
+        except HTTPException as exc:
+            logger.error("Rimborso borsellino non riuscito per l'ordine %s: %s", ordine_id, exc.detail)
+
     try:
         ordine = await crea_ordine(
             struttura_id=richiesta.sid,
@@ -627,18 +668,30 @@ async def crea_ordine_prodotti_hotel(richiesta: OrdineHotelRequest) -> Dict[str,
             righe=[r.model_dump() if hasattr(r, "model_dump") else r.dict() for r in richiesta.righe],
             nota=richiesta.nota,
             idempotenza=richiesta.idempotenza,
+            ora_ritiro=richiesta.ora_ritiro,
+            pagamento_metodo=richiesta.pagamento_metodo,
+            addebita=addebita,
+            storna=storna,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"ok": True, "ordine": ordine}
+    return {"ok": True, "ordine": ordine, "saldo": saldo_dopo.get("saldo")}
 
 
 @router.post("/ordini-prodotti/albergatore/elenco", summary="Storico ordini mattutini dell'hotel")
 async def elenco_ordini_prodotti_hotel(richiesta: ElencoOrdiniHotelRequest) -> Dict[str, Any]:
     await _contesto_ordine_albergatore(richiesta.sid, richiesta.p)
     from app.lotti.servizi.ordini_hotel import lista_ordini
+    from app.lotti.servizi.ordini_hotel import ORA_LIMITE_ORDINE, prima_consegna_possibile
     ordini = await lista_ordini({"struttura_id": richiesta.sid}, 100)
-    return {"ordini": ordini}
+    return {
+        "ordini": ordini,
+        "termini": {
+            "prima_consegna": prima_consegna_possibile().isoformat(),
+            "ora_limite": f"{ORA_LIMITE_ORDINE}:00",
+            "fasce_ritiro": list(await _fasce_ritiro()),
+        },
+    }
 
 
 @router.get("/ordini-prodotti", summary="Ordini mattutini ricevuti dagli hotel")
@@ -658,7 +711,17 @@ async def aggiorna_ordine_prodotti_titolare(
     richiesta: AggiornaOrdineHotelRequest,
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
-    from app.lotti.servizi.ordini_hotel import aggiorna_ordine
+    from app.lotti.servizi.ordini_hotel import aggiorna_ordine, lista_ordini
+    if richiesta.stato == "annullato":
+        # Il rimborso viene prima dell'annullo: se il borsellino non risponde l'ordine resta com'e'.
+        attuali = await lista_ordini({"id": ordine_id}, 1)
+        attuale = attuali[0] if attuali else None
+        if attuale and attuale.get("pagamento_metodo") == "borsellino" and attuale.get("stato") != "annullato":
+            esito = await _movimento_borsellino(
+                "bb_ordine_prodotti_rimborsa", str(attuale["struttura_id"]),
+                Decimal(str(attuale.get("totale") or 0)), ordine_id)
+            if esito.get("errore"):
+                raise HTTPException(status_code=502, detail="Rimborso sul borsellino non riuscito")
     try:
         ordine = await aggiorna_ordine(
             ordine_id, stato=richiesta.stato, pagamento=richiesta.pagamento, da="titolare_convenzioni")
