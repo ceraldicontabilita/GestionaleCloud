@@ -130,3 +130,12 @@ def test_verbale_senza_numero_si_collega_con_il_suo_id():
     assert _run(collega_documenti_drive(db, righe, dry_run=False))["collegati"] == 1
     assert _run(collega_documenti_drive(db, righe, dry_run=False))["collegati"] == 0
     assert _run(db["verbali_noleggio"].find_one({"id": "verbale_abc123"}))["documenti_drive"][0]["drive_id"] == ID1
+
+
+def test_tipo_fattura_resta_fattura_e_non_diventa_altro():
+    db = ClientArchivioMemoria()["drive"]
+    _run(db["verbali_noleggio"].insert_one({"id": "v9", "numero_verbale": "A24110270032"}))
+    righe = [{"numero_verbale": "A24110270032", "drive_id": ID1, "tipo": "fattura", "nome_file": "Fattura FIR012266 (XML)"}]
+    assert _run(collega_documenti_drive(db, righe, dry_run=False))["collegati"] == 1
+    doc = _run(db["verbali_noleggio"].find_one({"id": "v9"}))
+    assert doc["documenti_drive"][0]["tipo"] == "fattura"
