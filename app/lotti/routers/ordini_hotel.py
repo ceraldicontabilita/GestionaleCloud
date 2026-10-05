@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.lotti.auth import require_permesso
+from app.lotti.servizi.lotto_acquaviva import sposta_fattura_in_uso, stato_fattura_in_uso
 from app.lotti.servizi.ordini_hotel import (
     aggiorna_ordine,
     associa_lotto,
@@ -19,6 +20,10 @@ router = APIRouter(prefix="/ordini-hotel", tags=["Ordini Hotel"])
 class StatoOrdine(BaseModel):
     stato: Optional[str] = None
     pagamento: Optional[str] = None
+
+
+class SpostaFattura(BaseModel):
+    azione: str = Field(pattern="^(successiva|precedente)$")
 
 
 class AssociaLotto(BaseModel):
@@ -39,6 +44,21 @@ async def riepilogo(_ruolo=Depends(require_permesso("produzione"))):
         float(o.get("totale") or 0) for o in ordini if o.get("pagamento") != "incassato"
     )
     return {"pendenti": len(ordini), "da_incassare": round(da_incassare, 2)}
+
+
+@router.get("/acquaviva/fattura-in-uso")
+async def fattura_acquaviva_in_uso(_ruolo=Depends(require_permesso("produzione"))):
+    """Fattura Acquaviva da cui nascono i lotti automatici, con la precedente e la successiva."""
+    return await stato_fattura_in_uso()
+
+
+@router.post("/acquaviva/fattura-in-uso")
+async def sposta_fattura_acquaviva(body: SpostaFattura, _ruolo=Depends(require_permesso("produzione"))):
+    try:
+        return await sposta_fattura_in_uso(
+            body.azione, da=str((_ruolo or {}).get("nome") or (_ruolo or {}).get("ruolo") or "operatore_lotti"))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.patch("/{ordine_id}")

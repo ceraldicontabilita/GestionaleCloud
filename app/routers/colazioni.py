@@ -76,6 +76,11 @@ class AggiornaOrdineHotelRequest(BaseModel):
     pagamento: Optional[str] = None
 
 
+class ProdottoAcquavivaRequest(BaseModel):
+    prodotto_id: int = Field(gt=0)
+    attivo: bool
+
+
 class MenuOspiteRequest(BaseModel):
     codice: str = Field(min_length=4, max_length=80)
     giorno: date
@@ -732,3 +737,21 @@ async def aggiorna_ordine_prodotti_titolare(
     if not ordine:
         raise HTTPException(status_code=404, detail="Ordine non trovato")
     return {"ok": True, "ordine": ordine}
+
+
+@router.get("/prodotti-acquaviva", summary="Prodotti del Menu segnati come Acquaviva")
+async def elenco_prodotti_acquaviva(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    from app.lotti.servizi.lotto_acquaviva import prodotti_acquaviva
+    return {"prodotti": sorted(await prodotti_acquaviva(), key=int)}
+
+
+@router.put("/prodotti-acquaviva", summary="Segna o toglie il fornitore Acquaviva a un prodotto del Menu")
+async def segna_prodotto_acquaviva(
+    richiesta: ProdottoAcquavivaRequest,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    from app.lotti.servizi.lotto_acquaviva import imposta_prodotto_acquaviva
+    await imposta_prodotto_acquaviva(richiesta.prodotto_id, richiesta.attivo, da="titolare_convenzioni")
+    return {"ok": True, "prodotto_id": richiesta.prodotto_id, "attivo": richiesta.attivo}

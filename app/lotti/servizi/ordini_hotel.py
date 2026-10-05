@@ -22,6 +22,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.lotti.allergeni import normalizza_allergeni
 from app.lotti.db import database as db
+from app.lotti.servizi.lotto_acquaviva import e_prodotto_acquaviva, lotto_per_prodotto
 from app.lotti.servizi.catalogo_acquaviva_hotel import (
     digest_identita,
     identita_riga,
@@ -141,7 +142,8 @@ async def _fatture_vandemoortele_per_chiavi(chiavi: Iterable[str]) -> dict[str, 
 
 
 async def _arricchisci_riga(catalogo: Mapping[str, Any], quantita: int,
-                            fatture_vdm: Mapping[str, list[dict[str, Any]]]) -> dict[str, Any]:
+                            fatture_vdm: Mapping[str, list[dict[str, Any]]],
+                            giorno: str = "") -> dict[str, Any]:
     chiave = str(catalogo.get("chiave") or "")
     origine = str(catalogo.get("origine") or "")
     allergeni = normalizza_allergeni(catalogo.get("allergeni") or [])
@@ -186,6 +188,8 @@ async def _arricchisci_riga(catalogo: Mapping[str, Any], quantita: int,
             "tracciabilita_tipo": "lotto_produzione" if ricetta_id else "da_classificare",
             "tracciabilita_stato": "produzione_da_registrare" if ricetta_id else "origine_da_verificare",
         })
+        if not ricetta_id and giorno and await e_prodotto_acquaviva(riga["menu_prodotto_id"]):
+            await _lotto_acquaviva_automatico(riga, giorno)
     else:
         digest = chiave.split(":", 1)[1] if ":" in chiave else ""
         prove = list(fatture_vdm.get(digest) or [])
@@ -196,6 +200,30 @@ async def _arricchisci_riga(catalogo: Mapping[str, Any], quantita: int,
             "prova_acquisto": "fattura_vandemoortele" if prove else "da_verificare",
         })
     return riga
+
+
+async def _lotto_acquaviva_automatico(riga: dict[str, Any], giorno: str) -> None:
+    """Prodotto segnato Acquaviva: lotto = nome + giorno + numero della fattura in uso (FIFO)."""
+    esito = await lotto_per_prodotto(str(riga.get("nome") or ""), giorno)
+    riga.update({"tracciabilita_tipo": "lotto_fornitore", "fornitore_lotto": "acquaviva"})
+    if not esito:
+        riga.update({"tracciabilita_stato": "lotto_fornitore_da_associare", "prova_acquisto": "da_verificare",
+                     "lotto_automatico_motivo": "nessuna fattura Acquaviva nel gestionale"})
+        return
+    lotto, fattura = esito["lotto"], esito["fattura"]
+    riga.update({
+        "fatture_origine": [{
+            "fattura_id": fattura["fattura_id"], "numero_fattura": fattura["numero_fattura"],
+            "data_fattura": fattura["data_fattura"], "fornitore": fattura["fornitore"],
+            "descrizione_riga": str(riga.get("nome") or ""), "codice_articolo": "",
+        }],
+        "prova_acquisto": "fattura_acquaviva_in_uso",
+        "lotti_associati": [{"id": str(lotto.get("id") or ""), "numero_lotto": lotto["numero_lotto"],
+                             "prodotto": str(riga.get("nome") or "")}],
+        "tracciabilita_stato": "lotto_associato",
+        "lotto_creato_automaticamente": True,
+        "fattura_scelta_automatica": bool(esito["automatica"]),
+    })
 
 
 async def crea_ordine(*, struttura_id: str, struttura_nome: str, data_consegna: str,
@@ -223,7 +251,7 @@ async def crea_ordine(*, struttura_id: str, struttura_nome: str, data_consegna: 
         quantita = int(richiesta.get("quantita") or 0)
         if quantita < 1 or quantita > 200:
             raise ValueError("Quantita prodotto non valida (1-200)")
-        dettagli.append(await _arricchisci_riga(prodotto, quantita, fatture_vdm))
+        dettagli.append(await _arricchisci_riga(prodotto, quantita, fatture_vdm, data_consegna))
     if not dettagli:
         raise ValueError("Il carrello e vuoto")
     ora = datetime.now(timezone.utc).isoformat()

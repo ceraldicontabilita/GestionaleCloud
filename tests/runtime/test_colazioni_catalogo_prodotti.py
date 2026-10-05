@@ -359,7 +359,7 @@ def test_ordine_pagato_dal_borsellino_addebita_e_storna_se_il_salvataggio_fallis
         async def insert_one(self, doc):
             raise RuntimeError("database giu")
 
-    async def riga(prodotto, quantita, fatture):
+    async def riga(prodotto, quantita, fatture, giorno=""):
         return {"totale": "7.50", "nome": "x"}
 
     async def senza_fatture(chiavi):
@@ -440,3 +440,11 @@ def test_logo_dell_hotel_sta_sopra_i_bottoni_in_tutte_le_sezioni():
     html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
     assert 'app.innerHTML=hero(s.nome,HOT&&HOT.sfondo,sec==="home"?s.benvenuto:"")+tabsHtml(tabs,sec,"albergatore")+body;' in html
     assert 'app.innerHTML=(sec==="home"?hero(' not in html
+
+
+def test_tab_prodotti_ha_il_tasto_fornitore_acquaviva_e_lotti_mostra_la_fattura_in_uso():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    assert "/api/colazioni/prodotti-acquaviva" in html and "Fornitore: Acquaviva" in html and "cpAcq(" in html
+    lotti = (ROOT / "frontend_lotti" / "src" / "components" / "haccp" / "OrdiniHotelView.jsx").read_text(encoding="utf-8")
+    assert "FatturaAcquavivaInUso" in lotti and "/ordini-hotel/acquaviva/fattura-in-uso" in lotti
+    assert "creato in automatico dalla fattura Acquaviva" in lotti
