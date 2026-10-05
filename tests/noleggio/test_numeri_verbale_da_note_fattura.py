@@ -26,3 +26,14 @@ def test_piu_numeri_senza_doppioni_e_senza_codici_che_non_sono_verbali():
 
 def test_senza_numero_non_ne_inventa():
     assert estrai_numeri_verbale("CAUSALE: Addebito spese amministrative per infrazioni") == []
+
+
+def test_la_riga_verbale_della_fattura_porta_numeri_e_data():
+    from app.services.noleggio.processors import _aggiungi_verbale
+
+    veicolo = {"verbali": [], "totale_verbali": 0}
+    fattura = {"invoice_date": "2026-06-26", "invoice_number": "0000202611025701", "invoice_id": "f1", "supplier": "Leasys"}
+    _aggiungi_verbale(veicolo, fattura, "HB411GV X3", 10.0, 2.2,
+                      {"numero_verbale": "20260200899", "numeri_verbale": ["20260200899"], "data_verbale": "29/04/2026"})
+    riga = veicolo["verbali"][0]
+    assert riga["numeri_verbale"] == ["20260200899"] and riga["data_verbale"] == "29/04/2026"

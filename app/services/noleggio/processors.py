@@ -449,6 +449,7 @@ def _aggiungi_verbale(veicolo: dict, invoice_data: dict, desc: str, importo: flo
         "pagato": invoice_data.get("pagato", False),
         "pagato_confermato_banca": invoice_data.get("pagato_confermato_banca", False),
         "numero_verbale": metadata.get("numero_verbale"),
+        "numeri_verbale": metadata.get("numeri_verbale") or ([metadata["numero_verbale"]] if metadata.get("numero_verbale") else []),
         "data_verbale": metadata.get("data_verbale")
     }
     

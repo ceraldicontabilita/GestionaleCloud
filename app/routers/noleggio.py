@@ -380,7 +380,10 @@ async def get_veicoli(
     
     # Quali dei numeri letti nelle fatture hanno il verbale in archivio: solo quelli si aprono
     # con un clic (gli altri restano scritti, con la dicitura «non ancora in archivio»).
-    numeri_in_fattura = {n for v in risultato for r in (v.get("verbali") or []) for n in (r.get("numeri_verbale") or [])}
+    def _numeri(r):
+        return r.get("numeri_verbale") or ([r["numero_verbale"]] if r.get("numero_verbale") else [])
+
+    numeri_in_fattura = {n for v in risultato for r in (v.get("verbali") or []) for n in _numeri(r)}
     in_archivio: set = set()
     if numeri_in_fattura:
         for collezione in ("verbali_noleggio", "verbali_noleggio_completi"):
@@ -389,8 +392,9 @@ async def get_veicoli(
                 in_archivio.add(doc.get("numero_verbale"))
     for v in risultato:
         for r in v.get("verbali") or []:
-            if r.get("numeri_verbale"):
-                r["verbali_in_archivio"] = [n for n in r["numeri_verbale"] if n in in_archivio]
+            if _numeri(r):
+                r["numeri_verbale"] = _numeri(r)
+                r["verbali_in_archivio"] = [n for n in _numeri(r) if n in in_archivio]
 
     # ── ARRICCHISCI CON I VERBALI (motore centralizzato, entrambe le fonti) ──
     # Per ogni veicolo del risultato, unisce verbali_noleggio (posta/PEC) e
