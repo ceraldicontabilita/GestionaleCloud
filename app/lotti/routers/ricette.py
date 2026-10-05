@@ -38,6 +38,7 @@ import hashlib
 import logging
 import json
 import math
+from decimal import Decimal
 import unicodedata
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import re
@@ -2654,6 +2655,68 @@ async def set_prezzo_tavolo(ricetta_id: str, prezzo: float = Query(...), _admin=
         raise HTTPException(404, "Ricetta non trovata")
     return {"ok": True, "prezzo_tavolo": valore, "prezzo_rimosso": valore is None,
             "menu_sync": await _sincronizza_menu(ricetta_id)}
+
+
+class AggiuntaProdotto(BaseModel):
+    nome: str = Field(..., min_length=1, max_length=60)
+    prezzo: float = Field(..., ge=0, description="Euro, 0 = gratis")
+
+    @field_validator("prezzo")
+    @classmethod
+    def _prezzo_finito(cls, valore: float) -> float:
+        if not math.isfinite(valore):
+            raise ValueError("prezzo non valido: serve un numero finito in euro")
+        return valore
+
+
+class SchedaVendita(BaseModel):
+    """Cosa si vende, dove e come: ogni campo e' facoltativo, quello assente non si tocca."""
+    vendita_sala: Optional[bool] = None
+    vendita_delivery: Optional[bool] = None
+    esaurito: Optional[bool] = None
+    aggiunte: Optional[List[AggiuntaProdotto]] = Field(None, max_length=20)
+    rimozioni: Optional[List[str]] = Field(None, max_length=30)
+
+
+@router.put("/ricette/{ricetta_id}/scheda-vendita")
+async def set_scheda_vendita(ricetta_id: str, dati: SchedaVendita, _admin=Depends(require_admin)):
+    """Canali sala/delivery, esaurito, aggiunte con prezzo e ingredienti che si possono togliere.
+
+    Le rimozioni si scelgono fra gli ingredienti della ricetta (mai testo libero) e le aggiunte
+    hanno nome e prezzo. Il Menu le riceve dal ponte, con lo stesso ID prodotto."""
+    ricetta = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0, "ingredienti_dettaglio": 1})
+    if not ricetta:
+        raise HTTPException(404, "Ricetta non trovata")
+    campi: dict = {}
+    for chiave in ("vendita_sala", "vendita_delivery", "esaurito"):
+        valore = getattr(dati, chiave)
+        if valore is not None:
+            campi[chiave] = valore
+    if dati.aggiunte is not None:
+        viste: set = set()
+        aggiunte = []
+        for a in dati.aggiunte:
+            nome = a.nome.strip()
+            if not nome or nome.casefold() in viste:
+                raise HTTPException(400, f"Aggiunta ripetuta o vuota: «{a.nome}»")
+            viste.add(nome.casefold())
+            aggiunte.append({"nome": nome, "prezzo_centesimi": int((Decimal(str(a.prezzo)) * 100).quantize(Decimal(1)))})
+        campi["aggiunte"] = aggiunte
+    if dati.rimozioni is not None:
+        ingredienti = {str(i.get("nome") or "").strip().casefold(): str(i.get("nome") or "").strip()
+                       for i in ricetta.get("ingredienti_dettaglio") or [] if str(i.get("nome") or "").strip()}
+        rimozioni = []
+        for nome in dati.rimozioni:
+            chiave = str(nome or "").strip().casefold()
+            if chiave not in ingredienti:
+                raise HTTPException(400, f"«{nome}» non e' un ingrediente di questa ricetta")
+            if ingredienti[chiave] not in rimozioni:
+                rimozioni.append(ingredienti[chiave])
+        campi["rimozioni"] = rimozioni
+    if not campi:
+        raise HTTPException(400, "Nessun campo da salvare")
+    await db.ricette.update_one({"id": ricetta_id}, {"$set": campi})
+    return {"ok": True, **campi, "menu_sync": await _sincronizza_menu(ricetta_id)}
 
 
 @router.put("/ricette/{ricetta_id}/reparto")

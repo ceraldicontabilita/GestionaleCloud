@@ -72,6 +72,12 @@ def prod_out(row: dict) -> dict:
         "lotti_ref": row.get("lotti_ref"),
         # ID prodotto unico (PRD-000123): lo stesso in Menu, B&B e Lotti; lo assegna il database
         "codice_prodotto": row.get("codice_prodotto"),
+        # scheda vendita (la scrive il ponte Lotti): canali, disponibilita', aggiunte e rimozioni
+        "vendita_sala": row.get("vendita_sala") is not False,
+        "vendita_delivery": row.get("vendita_delivery") is not False,
+        "disponibile": row.get("disponibile") is not False,
+        "aggiunte": row.get("aggiunte") or [],
+        "rimozioni": row.get("rimozioni") or [],
         "menu_bb": row.get("menu_bb") is not False,
     }
 

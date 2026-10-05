@@ -330,6 +330,37 @@ def _destinazione_menu(ricetta: dict) -> tuple[int, int, str]:
     return categoria_id, _sottocategoria_lotti_id(categoria_id, ricetta.get("reparto")), "automatica"
 
 
+# Scheda vendita: canali sala/delivery, esaurito, aggiunte (prezzo in centesimi) e rimozioni di ingredienti.
+# Vive sulla ricetta e il ponte la replica nel Menu (colonne della migrazione `menu_codice_prodotto`).
+CAMPI_SCHEDA_VENDITA = ("vendita_sala", "vendita_delivery", "disponibile", "aggiunte", "rimozioni")
+
+
+def scheda_vendita_da_ricetta(ricetta: dict) -> dict:
+    """I cinque campi di vendita che il Menu riceve. Assente = valore di partenza (venduto ovunque, disponibile)."""
+    aggiunte = []
+    for voce in ricetta.get("aggiunte") or []:
+        nome = str((voce or {}).get("nome") or "").strip()
+        centesimi = _intero((voce or {}).get("prezzo_centesimi"))
+        if nome and centesimi is not None and centesimi >= 0:
+            aggiunte.append({"nome": nome, "prezzo_centesimi": centesimi})
+    return {
+        "vendita_sala": ricetta.get("vendita_sala") is not False,
+        "vendita_delivery": ricetta.get("vendita_delivery") is not False,
+        "disponibile": ricetta.get("esaurito") is not True,
+        "aggiunte": aggiunte,
+        "rimozioni": [str(r).strip() for r in (ricetta.get("rimozioni") or []) if str(r).strip()],
+    }
+
+
+def _e_colonna_scheda_mancante(errore: Exception) -> bool:
+    testo = str(errore)
+    return any(campo in testo for campo in CAMPI_SCHEDA_VENDITA)
+
+
+def _senza_scheda(riga: dict) -> dict:
+    return {k: v for k, v in riga.items() if k not in CAMPI_SCHEDA_VENDITA}
+
+
 def _riga_esistente(lotti_ref: str) -> Optional[dict]:
     res = supabase.table(TABELLA_PRODOTTI).select("*").eq("lotti_ref", lotti_ref).limit(1).execute()
     return res.data[0] if res.data else None
@@ -393,14 +424,29 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         "lotti_ref": lotti_ref,
         "visible": visibile_effettivo,
         "menu_bb": ricetta.get("menu_bb") is not False,
+        **scheda_vendita_da_ricetta(ricetta),
     }
 
+    # Migrazione `menu_codice_prodotto` non ancora applicata: le colonne di vendita non ci sono, e la
+    # ricetta deve arrivare nel Menu lo stesso (senza canali/aggiunte, che arrivano appena la colonna c'e').
     if esistente:
         prodotto_id = int(esistente["id"])
-        supabase.table(TABELLA_PRODOTTI).update(riga).eq("id", prodotto_id).execute()
+        try:
+            supabase.table(TABELLA_PRODOTTI).update(riga).eq("id", prodotto_id).execute()
+        except Exception as errore:  # noqa: BLE001
+            if not _e_colonna_scheda_mancante(errore):
+                raise
+            logger.warning("Lotti->Menu: colonne di vendita assenti (%s), pubblico senza", type(errore).__name__)
+            supabase.table(TABELLA_PRODOTTI).update(_senza_scheda(riga)).eq("id", prodotto_id).execute()
         esito = "aggiornato"
     else:
-        prodotto_id = _inserisci_con_id(TABELLA_PRODOTTI, riga)
+        try:
+            prodotto_id = _inserisci_con_id(TABELLA_PRODOTTI, riga)
+        except Exception as errore:  # noqa: BLE001
+            if not _e_colonna_scheda_mancante(errore):
+                raise
+            logger.warning("Lotti->Menu: colonne di vendita assenti (%s), pubblico senza", type(errore).__name__)
+            prodotto_id = _inserisci_con_id(TABELLA_PRODOTTI, _senza_scheda(riga))
         esito = "pubblicato"
 
     return {
@@ -431,6 +477,40 @@ def _codici_prodotti_sync() -> dict:
     prefisso = lotti_ref_ricetta("")
     return {r["lotti_ref"][len(prefisso):]: r["codice_prodotto"]
             for r in righe if r.get("codice_prodotto") and str(r.get("lotti_ref") or "").startswith(prefisso)}
+
+
+def _codice_di_ricetta_sync(ricetta_id: str) -> Optional[str]:
+    righe = (supabase.table(TABELLA_PRODOTTI).select("codice_prodotto")
+             .eq("lotti_ref", lotti_ref_ricetta(ricetta_id)).limit(1).execute().data or [])
+    return righe[0].get("codice_prodotto") if righe else None
+
+
+def _ricetta_di_codice_sync(codice: str) -> Optional[str]:
+    righe = (supabase.table(TABELLA_PRODOTTI).select("lotti_ref")
+             .eq("codice_prodotto", codice).limit(1).execute().data or [])
+    riferimento = str(righe[0].get("lotti_ref") or "") if righe else ""
+    prefisso = lotti_ref_ricetta("")
+    return riferimento[len(prefisso):] if riferimento.startswith(prefisso) else None
+
+
+def _url_menu_sync() -> Optional[str]:
+    righe = supabase.table("menu_qrcode_config").select("menu_url").eq("id", "qrcode_config").limit(1).execute().data or []
+    return (righe[0].get("menu_url") or None) if righe else None
+
+
+async def codice_di_ricetta(ricetta_id: str) -> Optional[str]:
+    _esigi_configurato()
+    return await asyncio.to_thread(_codice_di_ricetta_sync, ricetta_id)
+
+
+async def ricetta_di_codice(codice: str) -> Optional[str]:
+    _esigi_configurato()
+    return await asyncio.to_thread(_ricetta_di_codice_sync, codice)
+
+
+async def url_menu_pubblico() -> Optional[str]:
+    _esigi_configurato()
+    return await asyncio.to_thread(_url_menu_sync)
 
 
 async def codici_prodotti_ricette() -> dict:

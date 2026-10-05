@@ -1,5 +1,5 @@
-const CC_PARAMS=new URLSearchParams(location.search),CC_BB=(CC_PARAMS.get('bb')||'').trim(),CC_GIORNO=CC_PARAMS.get('giorno')||'';
-const CC_DATI=CC_BB?fetch('/api/colazioni/menu-ospite/catalogo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codice:CC_BB,giorno:CC_GIORNO})}):fetch('../api/menu/carta',{cache:'no-store'});
+const CC_PARAMS=new URLSearchParams(location.search),CC_BB=(CC_PARAMS.get('bb')||'').trim(),CC_GIORNO=CC_PARAMS.get('giorno')||'',CC_CANALE=['sala','delivery'].includes(CC_PARAMS.get('canale'))?CC_PARAMS.get('canale'):'',CC_COD=(CC_PARAMS.get('p')||'').trim();
+const CC_DATI=CC_BB?fetch('/api/colazioni/menu-ospite/catalogo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codice:CC_BB,giorno:CC_GIORNO})}):fetch('../api/menu/carta'+(CC_CANALE?'?canale='+CC_CANALE:''),{cache:'no-store'});
 CC_DATI.then(async r=>{if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.detail||r.status)}return r.json()}).then(D=>{
 const TPL=JSON.parse(document.getElementById('tpl').textContent);
 const ICONS=JSON.parse(document.getElementById('icons').textContent);
@@ -100,7 +100,8 @@ function itemEl(i){
     const add=document.createElement('button');add.className='cc-add';add.type='button';add.textContent='＋ Aggiungi';add.setAttribute('aria-label','Aggiungi '+i.n+' al carrello');
     add.addEventListener('click',e=>{e.stopPropagation();cartQ(i.id,1)});el.appendChild(add);
   }
-  if(i.deep||i.lists){el.addEventListener('click',()=>openItem(i.id));el.tabIndex=0;el.addEventListener('keydown',e=>{if(e.key==='Enter')openItem(i.id)})}
+  if(i.disp===0){const tt=el.querySelector('.title span');const b=document.createElement('small');b.className='cc-esaurito';b.textContent=' · Esaurito';b.style.cssText='font-weight:700;color:#d35f4e';tt.after(b);el.style.opacity='.6';const ad=el.querySelector('.cc-add');ad&&ad.remove()}
+  if(i.deep||i.lists||i.cod||(i.ag&&i.ag.length)||(i.rm&&i.rm.length)){el.addEventListener('click',()=>openItem(i.id));el.tabIndex=0;el.addEventListener('keydown',e=>{if(e.key==='Enter')openItem(i.id)})}
   else el.classList.add('noDeep');
   return el;
 }
@@ -226,6 +227,9 @@ function openItem(id){
   if(i.long) blocks.push(['Descrizione lunga',i.long]);
   if(i.mat) blocks.push(['Ingredienti',i.mat]);
   if(!blocks.length&&i.d&&!i.lists) blocks.push(['Descrizione',i.d]);
+  if(i.disp===0) blocks.push(['Disponibilità','Esaurito oggi']);
+  if(i.ag&&i.ag.length) blocks.push(['Aggiunte',i.ag.map(a=>a.n+(a.p!=null?' (+'+eur(a.p)+')':'')).join(', ')]);
+  if(i.rm&&i.rm.length) blocks.push(['Si può togliere',i.rm.join(', ')]);
   if(i.cod) blocks.push(['Codice prodotto',i.cod]);
   blocks.forEach((b,k)=>{if(k)dc.appendChild(frag(tplLine));const el=frag(tplD);el.querySelector('.description-title').textContent=b[0];el.querySelector('.description-value').textContent=b[1];dc.appendChild(el)});
   if(!blocks.length) dc.remove();
@@ -265,4 +269,6 @@ function refresh(){ if(current){const open=$$('.page-content.active-page .menu-c
 
 // ---------- avvio ----------
 renderMenus(); syncFilter(); setState(null);initCart();
+// QR del singolo prodotto: ?p=PRD-000123 apre la sua scheda
+if(CC_COD){const it=D.items.find(x=>x.cod===CC_COD);if(it)openItem(it.id)}
 }).catch(e=>{document.querySelector('.menus-container').textContent='Menu non disponibile, riprova tra poco.';console.error(e)});

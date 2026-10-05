@@ -109,6 +109,7 @@ from app.lotti.routers.controllo_dati import router as r_controllo_dati
 from app.lotti.routers.backup import router as r_backup
 from app.lotti.routers.supervisor_operativo import router as r_supervisor
 from app.lotti.routers.tablet_operatori import router as r_tablet_operatori
+from app.lotti.routers.scheda_prodotto import router as r_scheda_prodotto
 from app.lotti.routers.log_attivita import router as r_log_attivita
 from app.lotti.routers.utils import router as r_utils
 from app.lotti.routers.ordini_app import router as r_ordini_app
@@ -137,7 +138,7 @@ for r in [
     r_gestionale_fatture,
     r_ordini_fornitori, r_email_ordini, r_ordini_hotel, r_saima, r_saima_ricettari,
     r_mepa, r_cataloghi_arricchimento, r_costi_giornalieri, r_corrispettivi, r_attrezzature, r_pipeline, r_scheduler,
-    r_controllo_dati, r_backup, r_supervisor, r_tablet_operatori, r_log_attivita, r_utils, r_stampanti,
+    r_controllo_dati, r_backup, r_supervisor, r_tablet_operatori, r_scheda_prodotto, r_log_attivita, r_utils, r_stampanti,
     r_gelati, r_auth, r_digest, r_catalogo_forno, r_cataloghi_prezzi, r_fornitori_rivendita, r_fonti_catalogo, r_collaudi,
     r_produzione_consigliata, r_ricerca_globale,
     r_menu_categorie,

@@ -120,11 +120,22 @@ async def _dataset() -> Dict[str, Any]:
 
 
 @router_pubblico.get("/carta")
-async def carta_pubblica(destinazione: str = "pubblico"):
+async def carta_pubblica(destinazione: str = "pubblico", canale: Optional[str] = None):
+    """``canale`` = ``sala`` | ``delivery``: la stessa carta, senza i prodotti non venduti in quel canale."""
     if destinazione not in {"pubblico", "bb"}:
         raise HTTPException(400, "Destinazione non valida")
+    if canale not in {None, "", "sala", "delivery"}:
+        raise HTTPException(400, "Canale non valido")
     dati = await _dataset()
-    return await _carta_dai_dati(dati, destinazione=destinazione)
+    carta = await _carta_dai_dati(dati, destinazione=destinazione)
+    if canale:
+        chiave = "sala" if canale == "sala" else "dlv"
+        carta["items"] = [i for i in carta["items"] if i.get(chiave, 1)]
+        in_uso = {i["c"] for i in carta["items"]}
+        carta["cats"] = [c for c in carta["cats"] if c["id"] in in_uso]
+        menu_in_uso = {c["m"] for c in carta["cats"]}
+        carta["menus"] = [m for m in carta["menus"] if m["id"] in menu_in_uso]
+    return carta
 
 
 async def _carta_dai_dati(dati, *, destinazione="pubblico"):
@@ -187,6 +198,12 @@ def carta_da_menu(categorie, sottocategorie, prodotti, dettagli, imgmap):
             "t": extra.get("t"), "deep": extra.get("deep", 0) if testo_invariato else 0,
             "long": extra.get("long") if testo_invariato else None,
             "mat": extra.get("mat") if testo_invariato else None, "lists": extra.get("lists"),
+            # scheda vendita: canali, esaurito, aggiunte (prezzo in centesimi) e rimozioni
+            "sala": 1 if p.get("vendita_sala") is not False else 0,
+            "dlv": 1 if p.get("vendita_delivery") is not False else 0,
+            "disp": 0 if p.get("disponibile") is False else 1,
+            "ag": [{"n": a.get("nome"), "p": a.get("prezzo_centesimi")} for a in (p.get("aggiunte") or []) if a.get("nome")],
+            "rm": [r for r in (p.get("rimozioni") or []) if r],
         })
     sub_piene = {i["c"] for i in items}
     foto_sub = {}

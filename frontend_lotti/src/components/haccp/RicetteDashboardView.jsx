@@ -3,6 +3,7 @@ import { Pencil, Plus, Printer, RefreshCw, Save, Search, Trash2, X } from "lucid
 import { toast } from "sonner";
 import axios from "axios";
 import ModalRevisioneDizionario from "./shared/ModalRevisioneDizionario";
+import SchedaProdottoModal from "./SchedaProdottoModal";
 import { API } from "../../utils/constants";
 
 const repartoLabel = (r) => ({ pasticceria: "Pasticceria", rosticceria: "Rosticceria", altro: "Altro", tutti: "Tutte" }[r] || "Altro");
@@ -93,7 +94,7 @@ function CategoryStrip({ active, setActive, counts }) {
   );
 }
 
-function RecipeCard({ r, codice, onOpen, onClone, onScheda, onCompila }) {
+function RecipeCard({ r, codice, onOpen, onClone, onScheda, onCompila, onProdotto }) {
   const ing = r.ingredienti_dettaglio?.length || r.ingredienti?.length || 0;
   const allergeni = r.allergeni?.length || r.allergeni_auto?.length || 0;
   const reparto = r.reparto || "altro";
@@ -117,6 +118,7 @@ function RecipeCard({ r, codice, onOpen, onClone, onScheda, onCompila }) {
           <button onClick={() => onClone(r)} className="rounded-full bg-[#e8efe9] px-3 py-1.5 text-xs font-black text-[#3f5a4e]">Clona</button>
           <button onClick={() => onCompila(r)} className="flex items-center gap-1 rounded-full bg-stone-100 px-3 py-1.5 text-xs font-black text-stone-700"><Pencil size={12} /> Compila</button>
           <button onClick={() => onScheda(r)} className="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-black text-emerald-800">Stampa scheda</button>
+          <button onClick={() => onProdotto(r)} data-testid="apri-scheda-prodotto" className="rounded-full bg-[#e8efe9] px-3 py-1.5 text-xs font-black text-[#3f5a4e]">Scheda prodotto</button>
         </div>
       </div>
     </div>
@@ -341,6 +343,7 @@ export default function RicetteDashboardView({ ricette = [], loadingRicette = fa
   const [revisione, setRevisione] = useState(false);
   const [scheda, setScheda] = useState(null);
   const [editor, setEditor] = useState(null);
+  const [prodotto, setProdotto] = useState(null);
   const q = (searchRicette || "").toLowerCase().trim();
   // ID prodotto unico (PRD-000123) assegnato dal Menu: si legge, non si scrive
   const [codici, setCodici] = useState({});
@@ -383,6 +386,7 @@ export default function RicetteDashboardView({ ricette = [], loadingRicette = fa
 
       {revisione && <ModalRevisioneDizionario onClose={() => setRevisione(false)} />}
       {scheda && <SchedaModal ricetta={scheda} onClose={() => setScheda(null)} />}
+      {prodotto && <SchedaProdottoModal ricetta={prodotto} onClose={() => setProdotto(null)} onSaved={onRicetteUpdate} />}
       {editor && <SchedaEditorModal ricetta={editor} onClose={() => setEditor(null)} onSaved={onRicetteUpdate} onAnteprima={(r) => { setEditor(null); setScheda(r); }} />}
 
       <CategoryStrip active={categoria} setActive={setCategoria} counts={counts} />
@@ -397,7 +401,7 @@ export default function RicetteDashboardView({ ricette = [], loadingRicette = fa
       <div id="lista-ricette" className="rounded-[30px] border border-stone-200 bg-white/95 p-4 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="m-0 text-xl font-black text-stone-900">Ricette operative</h2><p className="m-0 text-sm font-semibold text-stone-500">Tocca una ricetta per produrla o modificarla.</p></div><button onClick={onNuovaRicetta} className="rounded-2xl bg-[#5b7a6b] px-4 py-3 text-sm font-black text-white shadow-sm"><Plus size={16} className="inline" /> Nuova ricetta</button></div>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} /><input value={searchRicette || ""} onChange={e => setSearchRicette(e.target.value)} placeholder="Cerca ricetta..." className="w-full rounded-2xl border border-stone-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#dce8e0]" /></div><div className="flex flex-wrap gap-2">{reparti.map(r => <button key={r} onClick={() => setFiltro(r)} className={`rounded-2xl border px-3 py-2 text-xs font-black ${filtro === r ? "border-[#b8d0c2] bg-[#e8efe9] text-[#3f5a4e]" : "border-stone-200 bg-white text-stone-600"}`}>{repartoLabel(r)}</button>)}</div></div>
-        {loadingRicette ? <div className="py-12 text-center text-stone-400"><RefreshCw className="mx-auto mb-2 animate-spin" />Caricamento ricette...</div> : filtrate.length === 0 ? <div className="py-12 text-center text-stone-400">Nessuna ricetta trovata.</div> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{filtrate.map(r => <RecipeCard key={r.id || r.nome} r={r} codice={codici[r.id]} onOpen={onOpenRicetta} onClone={onCloneRicetta} onScheda={setScheda} onCompila={setEditor} />)}</div>}
+        {loadingRicette ? <div className="py-12 text-center text-stone-400"><RefreshCw className="mx-auto mb-2 animate-spin" />Caricamento ricette...</div> : filtrate.length === 0 ? <div className="py-12 text-center text-stone-400">Nessuna ricetta trovata.</div> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{filtrate.map(r => <RecipeCard key={r.id || r.nome} r={r} codice={codici[r.id]} onOpen={onOpenRicetta} onClone={onCloneRicetta} onScheda={setScheda} onCompila={setEditor} onProdotto={setProdotto} />)}</div>}
       </div>
     </div>
   );

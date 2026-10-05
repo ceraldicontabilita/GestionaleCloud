@@ -65,5 +65,14 @@ drop trigger if exists trg_codice_prodotto_fisso on menu.menu_products;
 create trigger trg_codice_prodotto_fisso before update on menu.menu_products
   for each row execute function menu.blocca_cambio_codice_prodotto();
 
+-- Scheda vendita del prodotto (la scrive il ponte Lotti dalla ricetta; i prodotti Qromo tengono i valori di partenza):
+-- canali sala/delivery, disponibilita' (esaurito si decide in Lotti), aggiunte con prezzo e rimozioni di ingredienti.
+alter table menu.menu_products
+  add column if not exists vendita_sala     boolean not null default true,
+  add column if not exists vendita_delivery boolean not null default true,
+  add column if not exists disponibile      boolean not null default true,
+  add column if not exists aggiunte         jsonb   not null default '[]'::jsonb,
+  add column if not exists rimozioni        jsonb   not null default '[]'::jsonb;
+
 -- il gateway pubblico e' una vista `select *` espansa alla creazione: va rifatta per vedere la colonna nuova
 create or replace view public.menu_products with (security_invoker = true) as select * from menu.menu_products;
