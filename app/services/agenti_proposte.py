@@ -658,7 +658,7 @@ def valida_classificazione_riga(grezzo: Dict[str, Any], *, rigorosa: bool = Fals
         confidenza = max(0.0, min(1.0, float(grezzo.get("confidenza") or 0)))
     except (TypeError, ValueError):
         confidenza = 0.0
-    return {
+    esito = {
         "natura": natura,
         "categoria": str(grezzo.get("categoria") or "").strip()[:120] or None,
         "conto": str(grezzo.get("conto") or "").strip()[:120] or None,
@@ -669,6 +669,10 @@ def valida_classificazione_riga(grezzo: Dict[str, Any], *, rigorosa: bool = Fals
         "regola": str(grezzo.get("regola") or "").strip()[:500],
         "versione": VERSIONE_PROMPT_RIGHE,
     }
+    # «Non entra nei cespiti» (shopper, buste…): lo dice solo il titolare.
+    if grezzo.get("non_cespite") is True:
+        esito["non_cespite"] = True
+    return esito
 
 
 def _array_json(testo: str) -> List[Dict[str, Any]]:

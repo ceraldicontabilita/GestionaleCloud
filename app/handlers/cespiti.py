@@ -30,6 +30,7 @@ async def handler_auto_cespite_da_fattura(payload: Dict[str, Any], db) -> Dict[s
         return {"skipped": True, "reason": "db non disponibile"}
 
     from app.routers.cespiti import classify_asset, CATEGORIE_CESPITI, _source_key_fattura
+    from app.services.righe_acquisti_lotti import esclusa_dai_cespiti
 
     righe = payload.get("righe_linee") or []
     if not righe:
@@ -51,6 +52,15 @@ async def handler_auto_cespite_da_fattura(payload: Dict[str, Any], db) -> Dict[s
         return {"skipped": True, "reason": "data_documento mancante o non valida"}
     anno_acquisto = int(data_acquisto[:4])
 
+    # «Non è un cespite» dichiarato dal titolare (shopper, buste…): non nasce mai.
+    try:
+        from app.services.righe_acquisti_lotti import chiavi_non_cespite
+        esclusi = await chiavi_non_cespite(db)
+    except Exception as exc:  # noqa: BLE001 - un guasto di lettura non ferma il giro, si vede nel log
+        logger.error("[HandlerCespiti] esclusioni «non cespite» non lette per la fattura %s: %s: %s",
+                     fattura_id, type(exc).__name__, exc)
+        esclusi = {}
+
     creati = []
     occorrenze = {}
     for riga in righe:
@@ -60,6 +70,8 @@ async def handler_auto_cespite_da_fattura(payload: Dict[str, Any], db) -> Dict[s
         except (TypeError, ValueError):
             continue
         if not descrizione or prezzo <= SOGLIA_CESPITE_TUIR:
+            continue
+        if esclusa_dai_cespiti(esclusi, fattura_id, descrizione):
             continue
 
         categoria = classify_asset(descrizione, prezzo)
