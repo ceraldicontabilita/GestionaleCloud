@@ -2,11 +2,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { PageLayout, PageSection } from '../components/PageLayout';
-import { VisoreOriginale } from '../components/ApriOriginale';
+import ApriOriginale, { VisoreOriginale } from '../components/ApriOriginale';
 import { urlOriginale, euroOppure } from '../lib/vista';
 import { formatDateIT, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { Button, Badge } from '../components/ds';
 import { toast } from 'sonner';
+
+const ETICHETTE_DOCUMENTO_DRIVE = {
+  verbale: 'Verbale', notifica: 'Notifica', quietanza: 'Quietanza', bonifico: 'Bonifico',
+  avviso_pagopa: 'Avviso pagoPA', ricevuta: 'Ricevuta', altro: 'Documento',
+};
 
 export default function DettaglioVerbale() {
   const { numeroVerbale, prefisso, numero } = useParams();
@@ -295,6 +300,22 @@ export default function DettaglioVerbale() {
           Le quattro prove restano separate: la quietanza non sostituisce il movimento bancario e un movimento bancario non sostituisce la quietanza.
         </div>
       </PageSection>
+
+      {(verbale?.documenti_drive?.length || 0) > 0 && (
+        <PageSection title="Documenti collegati (Drive)">
+          <div style={{ display: 'grid', gap: 8 }} data-testid="documenti-drive">
+            {verbale.documenti_drive.map((d) => (
+              <div key={d.drive_id} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md, padding: '8px 12px' }}>
+                <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                  <Badge variant="neutral">{ETICHETTE_DOCUMENTO_DRIVE[d.tipo] || 'Documento'}</Badge>{' '}
+                  <span style={{ fontSize: 13 }}>{d.nome || d.drive_id}</span>
+                </div>
+                <ApriOriginale driveId={d.drive_id} titolo={d.nome || 'Documento'} documentType="verbale" testId={`apri-drive-${d.drive_id}`} />
+              </div>
+            ))}
+          </div>
+        </PageSection>
+      )}
 
       <PageSection title="Trasgressore indicato nel verbale">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
