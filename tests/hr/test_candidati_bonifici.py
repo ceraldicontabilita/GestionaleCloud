@@ -397,3 +397,25 @@ def test_distinta_con_nota_che_nomina_una_persona_e_nota_di_terzi_senza_proposta
     assert r["avviso_multi_dipendente"] is True and r["avviso_motivo"] == AVVISO_NOTA_DI_TERZI
     assert r["proposta"] is None and r["cro"] == "CRO-Q2" and r["rif_banca"] == "MB0B00000002"
     assert isinstance(r["candidati"], list)
+
+
+def test_pagina_unica_include_bonifici_normali_e_dettagli_delle_distinte(hr, monkeypatch):
+    from app.database import Database as DatabaseGestionale
+    from app.hr.routers.dipendenti_cloud import lista_bonifici_da_associare
+
+    _coda(hr, "q-normale", causale="Bonifico senza distinta", importo=700.0)
+    _coda(hr, "q-distinta", rif_banca="MB0B00000009", importo=1234.0,
+          data="2026-07-10", causale="VS.DISP.")
+    _run(hr.gest.estratto_conto_movimenti.insert_one({
+        "id": "m-distinta", "data": "2026-07-10", "importo": -1234.0,
+        "descrizione": "VS.DISP. RIF. MB0B00000009/9044 FAVORE BENEFICIARI VARI DISTINTA - ADD.TOT",
+        "livello_evidenza": "ufficiale"}))
+    monkeypatch.setattr(DatabaseGestionale, "get_db", classmethod(lambda cls: hr.gest))
+
+    righe = _run(lista_bonifici_da_associare())
+
+    per_id = {r["id"]: r for r in righe}
+    assert set(per_id) == {"q-normale", "q-distinta"}
+    assert "distinta" not in per_id["q-normale"]
+    assert per_id["q-distinta"]["distinta"]["rif"] == "MB0B00000009"
+    assert per_id["q-distinta"]["distinta"]["ufficiale"] is True

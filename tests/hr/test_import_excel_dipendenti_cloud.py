@@ -167,8 +167,10 @@ class GestionaleCloudImportCompatibilityTests(unittest.TestCase):
         self.assertTrue(result["dry_run"])
         self.assertEqual(result["foglio"], "Anagrafiche Dipendenti")
         self.assertEqual(result["conteggi"]["aggiornabile"], 1)
+        self.assertEqual(result["conteggi"]["conflitto"], 1)
         self.assertEqual(result["aggiornati"], 0)
-        self.assertEqual(result["righe"][0]["campi"], ["data_assunzione", "iban"])
+        self.assertEqual(result["righe"][0]["campi"], ["data_assunzione"])
+        self.assertEqual(result["righe"][0]["conflitti"], ["iban"])
         self.assertIn("Ferie residue", result["colonne_ignorate"])
         self.assertEqual(database.dipendenti.updates, [])
 
@@ -194,22 +196,47 @@ class GestionaleCloudImportCompatibilityTests(unittest.TestCase):
         self.assertEqual(result["aggiornati"], 1)
         self.assertEqual(len(database.dipendenti.updates), 1)
         written = database.dipendenti.updates[0][1]["$set"]
-        self.assertEqual(written, {
-            "iban": "IT60X0542811101000000123456",
-            "data_assunzione": "2024-03-21",
-        })
+        self.assertEqual(written["data_assunzione"], "2024-03-21")
+        self.assertIn("updated_at", written)
+        self.assertNotIn("iban", written)
         self.assertEqual(database.dipendenti.documents[0]["nome_completo"], "Rossi Mario")
 
-    def test_anagrafica_without_named_sheet_rejects_payroll_summary(self):
+    def test_consolidated_payroll_summary_is_safe_anagrafica_source(self):
         data = workbook_bytes(
             ["Dipendente", "Codice fiscale", "IBAN", "Paga giornaliera"],
             [["ROSSI MARIO", "RSSMRA80A01H501U", "IT60X0542811101000000123456", 55]],
             sheet_name="Riepilogo Consulente",
         )
         upload = UploadFile(filename="riepilogo.xlsx", file=io.BytesIO(data))
-        with self.assertRaises(HTTPException) as caught:
-            asyncio.run(dipendenti_cloud.importa_anagrafica(upload, applica=False))
-        self.assertEqual(caught.exception.status_code, 400)
+        database = SafeAnagraficaDatabase()
+        with patch.object(dipendenti_cloud, "get_db", return_value=database):
+            result = asyncio.run(dipendenti_cloud.importa_anagrafica(upload, applica=False))
+        self.assertEqual(result["foglio"], "Riepilogo Consulente")
+        self.assertEqual(result["conteggi"]["conflitto"], 1)
+        self.assertEqual(result["righe"][0]["conflitti"], ["iban"])
+        self.assertIn("Paga giornaliera", result["colonne_ignorate"])
+        self.assertEqual(database.dipendenti.updates, [])
+
+    def test_duplicate_tax_code_blocks_every_duplicate_row(self):
+        data = workbook_bytes(
+            ["Dipendente", "Codice fiscale", "IBAN"],
+            [
+                ["ROSSI MARIO", "RSSMRA80A01H501U", "IT60X0542811101000000123456"],
+                ["ROSSI MARIO", "RSSMRA80A01H501U", "IT60X0542811101000000123456"],
+            ],
+            sheet_name="Riepilogo Consulente",
+        )
+        database = SafeAnagraficaDatabase()
+        with patch.object(dipendenti_cloud, "get_db", return_value=database):
+            result = asyncio.run(dipendenti_cloud.importa_anagrafica(
+                UploadFile(filename="duplicati.xlsx", file=io.BytesIO(data)),
+                applica=True,
+                conferma_hash=hashlib.sha256(data).hexdigest(),
+            ))
+        self.assertEqual(result["conteggi"]["conflitto"], 2)
+        self.assertEqual(result["aggiornati"], 0)
+        self.assertTrue(all("duplicato nel file" in r["motivi"][0] for r in result["righe"]))
+        self.assertEqual(database.dipendenti.updates, [])
 
     def test_numeric_month_and_separate_payments_are_aggregated(self):
         data = workbook_bytes(

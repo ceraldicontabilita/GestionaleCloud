@@ -742,29 +742,33 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
 
 @router.get("/bonifici-da-associare")
 async def lista_bonifici_da_associare():
-    """Elenco leggero (senza il PDF) di chi aspetta un'assegnazione manuale."""
-    from app.services.candidati_bonifico import arricchisci_coda
+    """Pagina unica delle assegnazioni manuali, comprese le distinte."""
+    from app.database import Database as DatabaseGestionale
+    from app.services.candidati_bonifico import arricchisci_coda, integra_dettagli_distinta
+    from app.services.distinte_bonifici import elenco_distinte
 
     db = get_db()
     righe = await db.bonifici_da_associare.find(
         {"stato": "da_associare"}, {"_id": 0, "pdf_data": 0}).to_list(500)
     righe.sort(key=lambda r: r.get("data") or "", reverse=True)
+    # «Distinte bonifici» era una seconda pagina sulla stessa coda. I dettagli
+    # specifici (estratto, ricevuta, commissione e suggerimenti) entrano ora
+    # nella pagina unica, riusando le righe gia' lette da Supabase.
+    distinte = await elenco_distinte(DatabaseGestionale.get_db(), db, coda=righe)
+    distinte_per_id = {r["id"]: r.get("distinta") for r in distinte}
     # Ogni riga porta i candidati (fino a 10, mai applicati), l'avviso
     # multi-dipendente, `rif_banca` e `cro`: chi sceglie vede da dove viene il bonifico.
-    return await arricchisci_coda(db, righe)
+    arricchite = await arricchisci_coda(db, righe)
+    for riga in arricchite:
+        if riga.get("id") in distinte_per_id:
+            integra_dettagli_distinta(riga, distinte_per_id[riga["id"]])
+    return arricchite
 
 
 @router.get("/bonifici-da-associare/distinte")
 async def distinte_da_associare():
-    """Le distinte «beneficiari vari» ancora da associare, con tutti i dati che
-    il sistema ne sa (estratto, ricevuta, commissione, nota, suggerimento).
-    L'associazione si fa con lo stesso `associa` della coda."""
-    from app.database import Database as DatabaseGestionale
-    from app.services.candidati_bonifico import arricchisci_distinte
-    from app.services.distinte_bonifici import elenco_distinte
-
-    righe = await elenco_distinte(DatabaseGestionale.get_db(), get_db())
-    return await arricchisci_distinte(get_db(), righe)
+    """Alias API compatibile: la logica vive nella pagina unica."""
+    return [r for r in await lista_bonifici_da_associare() if r.get("distinta")]
 
 
 @router.get("/paghe/pagamento-esito/{key}/pdf")
@@ -3742,10 +3746,12 @@ def _mappa_header_anagrafica(row: tuple) -> Dict[str, int]:
 
 
 def _trova_foglio_anagrafica(wb):
-    """Sceglie il foglio esplicito; il fallback richiede CF + Nome + Cognome.
+    """Sceglie il foglio esplicito o un riepilogo consolidato identificabile.
 
-    Non usa il primo foglio alla cieca: nel consolidato il primo e' il riepilogo
-    paghe e contiene CF/importi, ma non e' un tracciato anagrafico importabile.
+    Il riepilogo e' ammesso soltanto se ogni riga porta il codice fiscale e
+    almeno un campo anagrafico aggiornabile (IBAN o data di assunzione). Gli
+    importi di paga, ferie e ratei restano colonne ignorate: non identificano
+    la persona e hanno fonti canoniche diverse nell'HR.
     """
     preferiti = [ws for ws in wb.worksheets if _testo_header(ws.title) == "anagrafiche dipendenti"]
     candidati = preferiti or list(wb.worksheets)
@@ -3754,11 +3760,13 @@ def _trova_foglio_anagrafica(wb):
             mappa = _mappa_header_anagrafica(row)
             if "codice_fiscale" not in mappa:
                 continue
-            if preferiti or ("nome" in mappa and "cognome" in mappa):
+            identificazione_visibile = "nome_file" in mappa or ("nome" in mappa and "cognome" in mappa)
+            campo_aggiornabile = "iban" in mappa or "data_assunzione" in mappa
+            if preferiti or (identificazione_visibile and campo_aggiornabile):
                 return ws, numero, mappa, row
     raise HTTPException(
         400,
-        "Foglio anagrafico non trovato: usa 'Anagrafiche Dipendenti' oppure un foglio con Nome, Cognome e Codice fiscale.",
+        "Foglio anagrafico non trovato: usa 'Anagrafiche Dipendenti' oppure un riepilogo con Dipendente, Codice fiscale e IBAN/Data assunzione.",
     )
 
 
@@ -3835,6 +3843,26 @@ def _normalizza_riga_anagrafica(row: tuple, mappa: Dict[str, int]) -> tuple[Dict
     return out, errori
 
 
+def _valore_anagrafico_vuoto(value: Any) -> bool:
+    return value is None or value == "" or value == []
+
+
+def _valori_anagrafici_equivalenti(campo: str, corrente: Any, nuovo: Any) -> bool:
+    """Confronta il significato, evitando conflitti dovuti al solo formato."""
+    if _valore_anagrafico_vuoto(corrente) or _valore_anagrafico_vuoto(nuovo):
+        return corrente == nuovo
+    if campo == "iban":
+        return re.sub(r"\s+", "", str(corrente)).upper() == re.sub(r"\s+", "", str(nuovo)).upper()
+    if campo in ("data_nascita", "data_assunzione"):
+        try:
+            return _data_iso_anagrafica(corrente) == _data_iso_anagrafica(nuovo)
+        except ValueError:
+            return False
+    if isinstance(corrente, str) or isinstance(nuovo, str):
+        return _testo_header(corrente) == _testo_header(nuovo)
+    return corrente == nuovo
+
+
 @router.post("/dipendenti/importa-anagrafica")
 async def importa_anagrafica(
     file: UploadFile = File(...), applica: bool = False, conferma_hash: Optional[str] = None,
@@ -3873,21 +3901,28 @@ async def importa_anagrafica(
             per_cf.setdefault(cf, []).append(dip)
 
     righe = []
-    visti_file: Dict[str, int] = {}
+    righe_sorgente = []
+    occorrenze_cf: Dict[str, List[int]] = {}
     for numero, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
         dati, errori = _normalizza_riga_anagrafica(row, mappa)
         cf = dati.get("codice_fiscale")
         nominativo = _valore_riga(row, mappa.get("nome_file"))
         if not dati and not nominativo:
             continue
+        righe_sorgente.append((numero, dati, errori, nominativo))
+        if cf:
+            occorrenze_cf.setdefault(cf, []).append(numero)
+
+    for numero, dati, errori, nominativo in righe_sorgente:
+        cf = dati.get("codice_fiscale")
         if not cf:
             righe.append({"riga": numero, "stato": "da_verificare", "motivi": errori or ["codice fiscale mancante"]})
             continue
-        if cf in visti_file:
+        if len(occorrenze_cf[cf]) > 1:
             righe.append({"riga": numero, "codice_fiscale": cf, "stato": "conflitto",
-                          "motivi": [f"codice fiscale duplicato nel file (prima riga {visti_file[cf]})"]})
+                          "motivi": ["codice fiscale duplicato nel file alle righe " +
+                                      ", ".join(str(riga) for riga in occorrenze_cf[cf])]})
             continue
-        visti_file[cf] = numero
         if errori:
             righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare", "motivi": errori})
             continue
@@ -3897,23 +3932,43 @@ async def importa_anagrafica(
             righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare", "motivi": [motivo]})
             continue
         dip = candidati[0]
-        modifiche = {k: v for k, v in dati.items() if k != "codice_fiscale" and dip.get(k) != v}
+        modifiche: Dict[str, Any] = {}
+        conflitti_campo: List[str] = []
+        for campo, valore in dati.items():
+            if campo == "codice_fiscale":
+                continue
+            corrente = dip.get(campo)
+            if _valore_anagrafico_vuoto(corrente):
+                modifiche[campo] = valore
+            elif not _valori_anagrafici_equivalenti(campo, corrente, valore):
+                conflitti_campo.append(campo)
         if "nome" in modifiche or "cognome" in modifiche:
             nome = modifiche.get("nome", dip.get("nome") or "")
             cognome = modifiche.get("cognome", dip.get("cognome") or "")
             nome_completo = f"{cognome} {nome}".strip()
-            if nome_completo:
+            if nome_completo and _valore_anagrafico_vuoto(dip.get("nome_completo")):
                 modifiche["nome_completo"] = nome_completo
         stato = "aggiornabile" if modifiche else "invariato"
+        if conflitti_campo and not modifiche:
+            stato = "conflitto"
         voce = {"riga": numero, "dipendente_id": dip.get("id"), "codice_fiscale": cf,
                 "nome": dip.get("nome_completo") or nominativo or "", "stato": stato,
                 "campi": sorted(modifiche)}
+        if conflitti_campo:
+            voce["conflitti"] = sorted(conflitti_campo)
+            voce["motivi"] = ["valori HR gia' presenti e diversi: " + ", ".join(sorted(conflitti_campo))]
         righe.append(voce)
         if applica and modifiche:
-            await db.dipendenti.update_one({"id": dip["id"]}, {"$set": modifiche})
+            await db.dipendenti.update_one(
+                {"id": dip["id"]},
+                {"$set": {**modifiche, "updated_at": now_iso()}},
+            )
 
     conteggi = {stato: sum(1 for r in righe if r["stato"] == stato)
-                for stato in ("aggiornabile", "invariato", "da_verificare", "conflitto")}
+                for stato in ("aggiornabile", "invariato", "da_verificare")}
+    conteggi["conflitto"] = sum(
+        1 for r in righe if r["stato"] == "conflitto" or r.get("conflitti")
+    )
     return {
         "dry_run": not applica, "hash_sha256": impronta, "foglio": ws.title,
         "riga_intestazioni": header_row, "righe_lette": len(righe),
