@@ -269,7 +269,11 @@ async def get_veicoli(
             linee_per_cat[categoria]["imponibile"] += importo
             linee_per_cat[categoria]["iva"] += iva_linea
             for k, v in metadata.items():
-                if k not in linee_per_cat[categoria]["metadata"]:
+                if k == "numeri_verbale":
+                    # una fattura puo' riaddebitare piu' verbali (una riga ciascuno): si tengono tutti
+                    gia = linee_per_cat[categoria]["metadata"].setdefault("numeri_verbale", [])
+                    gia.extend(n for n in v if n not in gia)
+                elif k not in linee_per_cat[categoria]["metadata"]:
                     linee_per_cat[categoria]["metadata"][k] = v
         
         for categoria, dati in linee_per_cat.items():
@@ -288,6 +292,8 @@ async def get_veicoli(
             }
             if categoria == "verbali" and dati["metadata"]:
                 record["numero_verbale"] = dati["metadata"].get("numero_verbale")
+                record["numeri_verbale"] = dati["metadata"].get("numeri_verbale") or (
+                    [record["numero_verbale"]] if record["numero_verbale"] else [])
                 record["data_verbale"] = dati["metadata"].get("data_verbale")
             
             veicoli_fatture[target_targa][categoria].append(record)
@@ -328,6 +334,8 @@ async def get_veicoli(
             veicolo["potenza_kw"] = salvato.get("potenza_kw") or veicolo.get("potenza_kw")
             veicolo["cilindrata"] = salvato.get("cilindrata") or veicolo.get("cilindrata")
             veicolo["telaio"] = salvato.get("telaio") or veicolo.get("telaio")
+            veicolo["data_immatricolazione"] = salvato.get("data_immatricolazione") or veicolo.get("data_immatricolazione")
+            veicolo["potenza_cv"] = salvato.get("potenza_cv") or veicolo.get("potenza_cv")
             # Specifica Noleggio 10-07-2026: stato contratto (deciso solo
             # dall'utente), canone previsto, fringe benefit, storico driver
             veicolo["stato_contratto"] = salvato.get("stato_contratto") or "attivo"
@@ -370,6 +378,20 @@ async def get_veicoli(
                 "totale_generale": 0
             })
     
+    # Quali dei numeri letti nelle fatture hanno il verbale in archivio: solo quelli si aprono
+    # con un clic (gli altri restano scritti, con la dicitura «non ancora in archivio»).
+    numeri_in_fattura = {n for v in risultato for r in (v.get("verbali") or []) for n in (r.get("numeri_verbale") or [])}
+    in_archivio: set = set()
+    if numeri_in_fattura:
+        for collezione in ("verbali_noleggio", "verbali_noleggio_completi"):
+            async for doc in db[collezione].find({"numero_verbale": {"$in": sorted(numeri_in_fattura)}},
+                                                 {"_id": 0, "numero_verbale": 1}):
+                in_archivio.add(doc.get("numero_verbale"))
+    for v in risultato:
+        for r in v.get("verbali") or []:
+            if r.get("numeri_verbale"):
+                r["verbali_in_archivio"] = [n for n in r["numeri_verbale"] if n in in_archivio]
+
     # ── ARRICCHISCI CON I VERBALI (motore centralizzato, entrambe le fonti) ──
     # Per ogni veicolo del risultato, unisce verbali_noleggio (posta/PEC) e
     # verbali_noleggio_completi (estratti dalle fatture) deduplicati per

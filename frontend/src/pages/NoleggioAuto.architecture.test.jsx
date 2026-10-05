@@ -26,8 +26,9 @@ describe('confini operativi della pagina Noleggio', () => {
 
   it('apre il verbale dalla tabella del veicolo: numero cliccabile e colonna Vedi', () => {
     expect(source).toContain('const apriVerbale = (numero) => navigate(`/verbali-noleggio/${encodeURIComponent(String(numero))}`)');
-    expect(source).toContain('data-testid={`apri-verbale-${s.numero_verbale}`}');
-    expect(source).toContain('data-testid={`vedi-verbale-${s.numero_verbale}`}');
+    expect(source).toContain('data-testid={`apri-verbale-${numero}`}');
+    expect(source).toContain('data-testid={`verbale-non-in-archivio-${numero}`}');
+    expect(source).toContain('data-testid={`vedi-verbale-${numero}`}');
   });
 
   it('rende cliccabili le fatture delle tabelle del veicolo', () => {
