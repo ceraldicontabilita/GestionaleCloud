@@ -206,7 +206,7 @@ def test_frontend_e_migrazione_espongono_selezione_per_struttura():
         / "20261001113247_colazioni_servizio_tavolo_per_camera.sql"
     ).read_text(encoding="utf-8")
 
-    assert '"prodotti","Prodotti hotel"' in html
+    assert '"prodotti","Prodotti ordinabili dall’hotel"' in html
     assert '"prodotti","Prodotti e ordini"' in html
     assert "bb_tit_menu_prodotti_salva" in html
     assert "bb_alb_prodotti" in html

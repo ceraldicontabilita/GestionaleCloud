@@ -849,7 +849,7 @@ async function doTit(){
 const pinStrict=()=>sess.p;
 let TIT=null;
 async function ordiniHotelTitolare(){try{const t=localStorage.getItem("auth_token"),r=await fetch("/api/colazioni/ordini-prodotti",{credentials:"same-origin",headers:t?{Authorization:"Bearer "+t}:{}});if(!r.ok)return[];const j=await r.json();return j.ordini||[]}catch(e){return[]}}
-const TABS=[["cruscotto","Cruscotto"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini colazioni"],["forniture","Ordini prodotti"],["strutture","Strutture"],["prodotti","Prodotti hotel"],["fatture","Fatture"],["menu","Menù"],["impostazioni","Impostazioni"]];
+const TABS=[["cruscotto","Cruscotto"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini colazioni"],["forniture","Ordini prodotti"],["strutture","Strutture"],["prodotti","Prodotti ordinabili dall’hotel"],["fatture","Fatture"],["menu","Menù"],["impostazioni","Impostazioni"]];
 const supTxt=()=>eur(+String((TIT.config||{}).supplemento_tavolo||"1.5").replace(",","."));
 const fasceMenu=()=>Object.keys(TIT.menu).map(Number).sort((a,b)=>a-b);
 const barNome=()=>TIT.bar.bar_nome||"Bar Pasticceria Ceraldi";
@@ -1136,7 +1136,7 @@ const catalogDescrizione=p=>p.descrizione&&catalogParole(p.descrizione)!==catalo
 const cpNomePulito=s=>cpNorm(s).replace(/\b(prodotto|senza glutine)\b/g," ").replace(/\s+/g," ").trim();
 function cpVoceMenu(p,listino){return listino.find(x=>cpNorm(x.nome)===cpNorm(p.nome))||listino.find(x=>cpNomePulito(x.nome)===cpNomePulito(p.nome))}
 function pProdottiHotel(id){
- return `<div class="card"><h2 style="margin:0 0 6px">Menu per l’hotel</h2><p class="mute">È lo stesso Menu digitale pubblico, con le stesse sezioni, foto e allergeni. Scegli l’hotel, abilita sezioni o singoli prodotti, indica il prezzo concordato e salva.</p><div id="cp_head"><p class="mute">Caricamento Menu digitale…</p></div></div><div id="cp_body"></div>`}
+ return `<div class="card"><h2 style="margin:0 0 6px">Prodotti ordinabili dall’hotel</h2><p class="mute">È lo stesso Menu digitale pubblico, con le stesse sezioni, foto e allergeni. Scegli l’hotel, abilita sezioni o singoli prodotti, indica il prezzo concordato e salva.</p><div id="cp_head"><p class="mute">Caricamento Menu digitale…</p></div></div><div id="cp_body"></div>`}
 pProdottiHotel.after=id=>cpAvvia(id);
 async function cpAvvia(id){
  if(!CP.base){
