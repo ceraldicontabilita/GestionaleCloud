@@ -333,3 +333,30 @@ def test_una_categoria_torna_visibile_appena_ha_un_prodotto(finto_con_vuote):
     produzione = menu["categories"][2]
     # Solo la sezione che ha davvero un prodotto
     assert [s["nameIT"] for s in produzione["subcategories"]] == ["Pasticceria"]
+
+
+# ── Prodotto unico: prezzo al banco accanto a quello al tavolo ────────────────────────────────
+def test_prezzo_banco_valido_accetta_solo_valori_veri():
+    assert mr.prezzo_banco_valido(None) is None
+    assert mr.prezzo_banco_valido(0) is None                  # 0 = togli il prezzo
+    assert mr.prezzo_banco_valido("2.5") == 2.5 and mr.prezzo_banco_valido(1.234) == 1.23
+    for male in (-1, float("nan"), float("inf"), "abc"):
+        with pytest.raises(HTTPException) as e:
+            mr.prezzo_banco_valido(male)
+        assert e.value.status_code == 400
+
+
+def test_prezzo_banco_si_scrive_e_si_legge_senza_toccare_il_prezzo_al_tavolo(finto):
+    _run(mr.update_product(100, ProductUpdate(prezzo_banco=0.8), "admin"))
+    riga = finto.tabelle["menu_products"][0]
+    assert riga["prezzo_banco"] == 0.8 and riga["price"] == "1.00€"
+    assert mr.prod_out(riga)["prezzo_banco"] == 0.8
+    _run(mr.update_product(100, ProductUpdate(prezzo_banco=0), "admin"))     # 0 = nessun prezzo al banco
+    assert finto.tabelle["menu_products"][0]["prezzo_banco"] is None
+    assert mr.prod_out(_prodotto(1, 10, "x"))["prezzo_banco"] is None       # mai un ripiego
+
+
+def test_prod_in_scrive_il_prezzo_banco_solo_se_c_e():
+    base = {"name": "A", "nameIT": "A", "price": "2.00€"}
+    assert "prezzo_banco" not in mr.prod_in(dict(base))
+    assert mr.prod_in({**base, "prezzo_banco": 1.5})["prezzo_banco"] == 1.5

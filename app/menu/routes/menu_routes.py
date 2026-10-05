@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Optional
 from decimal import Decimal, InvalidOperation
 
 from app.menu.supabase_client import supabase
@@ -70,6 +70,8 @@ def prod_out(row: dict) -> dict:
         # visible = scelta del titolare in Lotti ("menu_pubblico").
         "visible": _visibile(row), "pubblicabile": _pubblicabile(row), "origine": row.get("origine"),
         "lotti_ref": row.get("lotti_ref"),
+        # prezzo AL BANCO (price e' quello al tavolo): None = non deciso
+        "prezzo_banco": float(row["prezzo_banco"]) if row.get("prezzo_banco") is not None else None,
         # ID prodotto unico (PRD-000123): lo stesso in Menu, B&B e Lotti; lo assegna il database
         "codice_prodotto": row.get("codice_prodotto"),
         # scheda vendita (la scrive il ponte Lotti): canali, disponibilita', aggiunte e rimozioni
@@ -82,6 +84,19 @@ def prod_out(row: dict) -> dict:
     }
 
 
+def prezzo_banco_valido(valore) -> Optional[float]:
+    """Prezzo al banco in euro: >0 e finito; 0 o assente = nessun prezzo. Negativi, nan e inf sono 400."""
+    if valore is None:
+        return None
+    try:
+        v = float(valore)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Prezzo al banco non valido")
+    if v != v or v in (float("inf"), float("-inf")) or v < 0:
+        raise HTTPException(status_code=400, detail="Prezzo al banco non valido")
+    return round(v, 2) if v > 0 else None
+
+
 def prod_in(data: dict) -> dict:
     out = {
         "name": data["name"], "name_it": data["nameIT"], "price": data["price"],
@@ -90,6 +105,9 @@ def prod_in(data: dict) -> dict:
         "image": data.get("image"),
         "visible": data.get("visible") is not False,
     }
+    banco = prezzo_banco_valido(data.get("prezzo_banco"))
+    if banco:
+        out["prezzo_banco"] = banco
     if "category_id" in data and data["category_id"] is not None:
         out["category_id"] = data["category_id"]
     if "subcategory_id" in data and data["subcategory_id"] is not None:
@@ -424,6 +442,9 @@ async def update_product(product_id: int, product: ProductUpdate, username: str 
     for api_field, db_field in field_map.items():
         if api_field in data:
             update_data[db_field] = data[api_field]
+    if "prezzo_banco" in data:
+        # 0 toglie il prezzo al banco; un valore non valido e' un errore, mai un ripiego
+        update_data["prezzo_banco"] = prezzo_banco_valido(data["prezzo_banco"]) or None
 
     result = supabase.table("menu_products").update(update_data).eq("id", product_id).execute()
     if not result.data:
