@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "serve_ingrediente",
     "esclude_ingrediente",
     "ingredienti_da_testo",
+    "conferma_articolo",
 ]
 
 _TTL_SECONDI = 60.0
@@ -140,3 +142,49 @@ def esclude_ingrediente(associazione: Optional[Dict[str, Any]], nome_ing: str, c
     if associazione.get("confermato"):
         return True
     return associazione.get("fonte") == "web" and associazione.get("confidenza") == "alta"
+
+
+async def conferma_articolo(
+    db, descrizione: Any, nome_canc: Any, *, ingredienti: Optional[Iterable[Any]] = None,
+    alimentare: bool = True,
+) -> Dict[str, Any]:
+    """Scrive la conferma dell'articolo di una descrizione di fattura.
+
+    Unico scrittore della conferma: lo chiamano ``/conferma-articolo`` di
+    Lotti e la pagina Righe acquisti dell'ERP. I lotti con quella descrizione
+    prendono il nome canonico (aggiornamento per id). Ritorna ``None`` in
+    ``chiave`` se la descrizione o il nome mancano.
+    """
+    chiave = chiave_descrizione(descrizione)
+    nome = str(nome_canc or "").strip()
+    if not chiave or (alimentare and not nome):
+        return {"chiave": None}
+    adesso = datetime.now(timezone.utc).isoformat()
+    elenco = ingredienti_da_testo(ingredienti)
+    if alimentare and nome.lower() not in elenco:
+        elenco.insert(0, nome.lower())
+    await db.nome_mapping.update_one(
+        {"descrizione_key": chiave},
+        {"$set": {
+            "descrizione_key": chiave,
+            "nome_canc": nome or "Non alimentare",
+            "ingredienti_ricetta": elenco if alimentare else [],
+            "alimentare": alimentare,
+            "confermato": True,
+            "confermato_at": adesso,
+            "aggiornato_at": adesso,
+        }},
+        upsert=True,
+    )
+    invalida_cache()
+    aggiornati = 0
+    lotti = await db.lotti_fornitori.find({}, {"_id": 0, "id": 1, "prodotto_nome": 1}).to_list(20000)
+    for lotto in lotti:
+        if lotto.get("id") and chiave_descrizione(lotto.get("prodotto_nome")) == chiave:
+            await db.lotti_fornitori.update_one(
+                {"id": lotto["id"]},
+                {"$set": {"nome_canonico": nome if alimentare else "", "articolo_confermato": alimentare}},
+            )
+            aggiornati += 1
+    return {"chiave": chiave, "nome_canc": nome, "ingredienti_ricetta": elenco,
+            "lotti_aggiornati": aggiornati}
