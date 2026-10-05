@@ -380,6 +380,67 @@ async def aggiungi_prodotto_a_preset(data: dict = Body(...), _admin=Depends(requ
 
 
 # ── POST: registra tutti gli item attivi come vendita al banco ────────────────
+# ── Coppie «stesso prodotto, due fonti» (Acquaviva o nostra produzione) ───────
+# Il titolare dichiara le coppie (mai per somiglianza di nome): es. la nostra
+# ricetta «Graffa Napoletana» e la «Ciambella maxi» di Acquaviva. La mattina,
+# toccando il prodotto, l'operatore sceglie la fonte di oggi.
+def _oggi_roma() -> str:
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
+
+
+def _coppia_per_item(coppie: list, prodotto_id) -> Optional[dict]:
+    pid = str(prodotto_id)
+    for c in coppie:
+        if pid == str(c.get("ricetta_id")) or pid in [str(x) for x in (c.get("acquaviva_ids") or [])]:
+            return c
+    return None
+
+
+async def _scelte_oggi() -> dict:
+    righe = await db.colazione_fonte_scelta.find({"data": _oggi_roma()}, {"_id": 0}).to_list(200)
+    return {r["coppia_id"]: r["fonte"] for r in righe if r.get("coppia_id") and r.get("fonte")}
+
+
+@router.get("/coppie")
+async def lista_coppie():
+    coppie = await db.colazione_coppie.find({}, {"_id": 0}).to_list(200)
+    return {"coppie": coppie, "scelte_oggi": await _scelte_oggi(), "data": _oggi_roma()}
+
+
+@router.put("/coppie")
+async def salva_coppia(data: dict = Body(...), _admin=Depends(require_admin)):
+    nome = str(data.get("nome") or "").strip()
+    ricetta_id = str(data.get("ricetta_id") or "").strip()
+    ids = [str(x).strip() for x in (data.get("acquaviva_ids") or []) if str(x).strip()]
+    if not nome or not ricetta_id or not ids:
+        raise HTTPException(status_code=400, detail="Servono nome, ricetta_id e almeno un acquaviva_id")
+    cid = str(data.get("id") or uuid.uuid4())
+    doc = {"id": cid, "nome": nome, "ricetta_id": ricetta_id, "acquaviva_ids": ids,
+           "acquaviva_nome": str(data.get("acquaviva_nome") or "").strip() or nome}
+    await db.colazione_coppie.update_one({"id": cid}, {"$set": doc}, upsert=True)
+    return doc
+
+
+@router.post("/scelta-fonte")
+async def scegli_fonte(data: dict = Body(...)):
+    """L'operatore sceglie per oggi: «acquaviva» (lotto da fattura) o «casa» (nostra produzione)."""
+    coppia_id = str(data.get("coppia_id") or "")
+    fonte = str(data.get("fonte") or "")
+    if fonte not in ("acquaviva", "casa"):
+        raise HTTPException(status_code=400, detail="Fonte non valida: acquaviva o casa")
+    if not await db.colazione_coppie.find_one({"id": coppia_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(status_code=404, detail="Coppia non trovata")
+    oggi = _oggi_roma()
+    chiave = f"{oggi}:{coppia_id}"
+    await db.colazione_fonte_scelta.update_one(
+        {"id": chiave},
+        {"$set": {"id": chiave, "data": oggi, "coppia_id": coppia_id, "fonte": fonte,
+                  "aggiornato_il": datetime.now(timezone.utc).isoformat()}},
+        upsert=True)
+    return {"coppia_id": coppia_id, "fonte": fonte, "data": oggi}
+
+
 @router.post("/registra")
 async def registra_colazione(data: dict = None):
     """
@@ -403,6 +464,9 @@ async def registra_colazione(data: dict = None):
     ora_now = datetime.now(timezone.utc).isoformat()
     registrati = []
     errori = []
+    oggi_roma = _oggi_roma()
+    coppie = await db.colazione_coppie.find({}, {"_id": 0}).to_list(200)
+    scelte = await _scelte_oggi() if coppie else {}
 
     for item in items_attivi:
         try:
@@ -410,6 +474,23 @@ async def registra_colazione(data: dict = None):
             prod_nome = item["prodotto_nome"]
             pezzi = item["pezzi"]
             prezzo = item.get("prezzo_vendita", 0) or 0
+
+            # Doppia fonte (Acquaviva / nostra produzione): la scelta di oggi decide nome e lotto
+            fonte_scelta = None
+            lotto_acq = None
+            coppia = _coppia_per_item(coppie, prod_id)
+            if coppia:
+                fonte_scelta = scelte.get(coppia["id"])
+                if not fonte_scelta:
+                    raise ValueError(f"Scegli prima «Acquaviva» o «nostra produzione» per {coppia.get('nome')}")
+                if fonte_scelta == "acquaviva":
+                    prod_nome = coppia.get("acquaviva_nome") or prod_nome
+                    from app.lotti.servizi.lotto_acquaviva import lotto_per_prodotto
+                    lotto_acq = await lotto_per_prodotto(prod_nome, oggi_roma)
+                    if not lotto_acq:
+                        raise ValueError("Nessuna fattura Acquaviva disponibile: il lotto non si inventa")
+                else:
+                    prod_nome = coppia.get("nome") or prod_nome
 
             # ── 1. Vendita al banco ────────────────────────────────────────────
             record_banco = {
@@ -430,8 +511,8 @@ async def registra_colazione(data: dict = None):
 
             # ── 2. Produzione (storico produzioni) ─────────────────────────────
             # Cerca la ricetta collegata per food cost
-            ricetta = await db.ricette.find_one(
-                {"nome": {"$regex": prod_nome, "$options": "i"}},
+            ricetta = None if fonte_scelta == "acquaviva" else await db.ricette.find_one(
+                {"nome": {"$regex": re.escape(prod_nome), "$options": "i"}},
                 {"_id": 0, "id": 1, "costo_totale": 1, "pezzi_produzione": 1},
             )
             costo_totale_prod = 0.0
@@ -458,6 +539,8 @@ async def registra_colazione(data: dict = None):
 
             # ── 3. Lotto tracciabilità ─────────────────────────────────────────
             lotto_id = f"COL-{oggi.replace('-','')}-{prod_nome[:6].upper().replace(' ','')}"
+            if lotto_acq:
+                lotto_id = lotto_acq["lotto"]["numero_lotto"]
             await db.lotti.update_one(
                 {"lotto_id": lotto_id},
                 {
@@ -470,6 +553,8 @@ async def registra_colazione(data: dict = None):
                         "data_produzione": oggi,
                         "reparto": "pasticceria",
                         "fonte": "colazione",
+                        "origine_prodotto": fonte_scelta or "",
+                        "fattura_ref": (lotto_acq or {}).get("fattura", {}).get("numero_fattura", ""),
                         "produzione_id": produzione_id,
                         "created_at": ora_now,
                     }
@@ -489,6 +574,7 @@ async def registra_colazione(data: dict = None):
                     "prezzo_unitario": prezzo,
                     "valore_totale": round(prezzo * pezzi, 2),
                     "lotto_id": lotto_id,
+                    "origine_prodotto": fonte_scelta or "",
                 }
             )
         except Exception as e:

@@ -23,6 +23,7 @@ OPERAZIONI_DI_REPARTO = {
     "anomalie:registra_anomalia",
     "anomalie:sposta_lotti_massivo",
     "colazione:registra_colazione",
+    "colazione:scegli_fonte",
     "controllo_olio:registra_controllo_olio",
     "controllo_olio:aggiorna_controllo_olio",
     "disinfestazione:registra_intervento",
