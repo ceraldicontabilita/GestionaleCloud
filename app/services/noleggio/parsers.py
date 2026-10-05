@@ -3,7 +3,7 @@ Funzioni di parsing per il modulo Noleggio Auto.
 Estrae informazioni da fatture XML: targhe, verbali, categorie spese, etc.
 """
 import re
-from typing import Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any
 
 from .constants import (
     FORNITORI_NOLEGGIO,
@@ -161,6 +161,28 @@ def estrai_numero_verbale(descrizione: str) -> Optional[str]:
     return None
 
 
+def estrai_numeri_verbale(*testi: str) -> List[str]:
+    """Tutti i numeri di verbale scritti nei testi, nell'ordine in cui compaiono, senza doppioni.
+
+    Il numero deve avere almeno 8 cifre (anche con una o due lettere davanti): «n. verbale
+    20260200899», «Verbale Nr: A25111540620». Una fattura Leasys di spese amministrative
+    porta il numero nelle NOTE di riga, non nella descrizione.
+    """
+    trovati: List[str] = []
+    schemi = (
+        r'verbale\s*(?:nr|n\.?|num\.?|numero)?\s*[:.]?\s*([A-Z]{0,2}\d{8,12})\b',
+        r'\bn[r.]?\s*verbale\s*[:.]?\s*([A-Z]{0,2}\d{8,12})\b',
+        r'\b([AB]\d{10,11})\b',
+    )
+    for testo in testi:
+        for schema in schemi:
+            for m in re.finditer(schema, testo or "", re.I):
+                numero = m.group(1).upper()
+                if numero not in trovati:
+                    trovati.append(numero)
+    return trovati
+
+
 def estrai_data_verbale(descrizione: str) -> Optional[str]:
     """
     Estrae la data del verbale dalla descrizione.
@@ -169,6 +191,10 @@ def estrai_data_verbale(descrizione: str) -> Optional[str]:
     match = re.search(r'Data\s+Verbale[\s:]*(\d{2}/\d{2}/\d{2,4})', descrizione, re.I)
     if match:
         return match.group(1).strip()
+    # Leasys, nelle NOTE di riga: «data del verbale 29.04.2026» (la «data notifica del verbale» e' un'altra data)
+    match = re.search(r'(?<!notifica )data\s+del\s+verbale[\s:]*(\d{2})[./](\d{2})[./](\d{4})', descrizione, re.I)
+    if match:
+        return f"{match.group(1)}/{match.group(2)}/{match.group(3)}"
     return None
 
 
@@ -227,11 +253,14 @@ def categorizza_spesa(
         "riaddebito verbale", "rifatturazione verbale"
     ]
     if any(kw in desc_lower for kw in verbali_keywords):
-        num_verbale = estrai_numero_verbale(descrizione) or estrai_numero_verbale_completo(descrizione)
-        data_verbale = estrai_data_verbale(descrizione)
+        numeri = estrai_numeri_verbale(descrizione, note_extra)
+        num_verbale = estrai_numero_verbale(descrizione) or estrai_numero_verbale_completo(descrizione) \
+            or (numeri[0] if numeri else None)
+        data_verbale = estrai_data_verbale(descrizione) or estrai_data_verbale(note_extra)
         if num_verbale:
             metadata["numero_verbale"] = num_verbale
             metadata["descrizione_ricerca"] = f"Verbale {num_verbale}"
+            metadata["numeri_verbale"] = numeri or [num_verbale]
         if data_verbale:
             metadata["data_verbale"] = data_verbale
         return ("verbali", importo_finale, metadata)

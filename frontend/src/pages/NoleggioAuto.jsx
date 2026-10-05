@@ -51,6 +51,9 @@ export default function NoleggioAuto() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   // Il verbale si apre nel suo dettaglio: li' stanno i documenti Drive collegati (verbale, quietanza, bonifico).
+  const numeriDelVerbale = (riga) => (riga?.numeri_verbale?.length ? riga.numeri_verbale : (riga?.numero_verbale ? [riga.numero_verbale] : []));
+  // Un numero letto dalla fattura si apre solo se il verbale e' in archivio; i verbali gia' in archivio (posta, PEC) si aprono sempre.
+  const verbaleApribile = (riga, numero) => !riga?.verbali_in_archivio || riga.verbali_in_archivio.includes(numero);
   const apriVerbale = (numero) => navigate(`/verbali-noleggio/${encodeURIComponent(String(numero))}`);
   // Anno unico e globale (barra di navigazione in alto) → nessun selettore
   // locale duplicato: una pagina con un filtro anno proprio, indipendente
@@ -901,17 +904,26 @@ export default function NoleggioAuto() {
                                   color: s.numero_verbale ? COLORS.danger : COLORS.textSubtle,
                                 }}
                               >
-                                {s.numero_verbale ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => apriVerbale(s.numero_verbale)}
-                                    data-testid={`apri-verbale-${s.numero_verbale}`}
-                                    aria-label={`Apri il verbale ${s.numero_verbale}`}
-                                    style={{ background: 'none', border: 'none', padding: 0, minHeight: 44, cursor: 'pointer', font: 'inherit', color: 'inherit', textDecoration: 'underline' }}
-                                  >
-                                    {s.numero_verbale}
-                                  </button>
-                                ) : '-'}
+                                {numeriDelVerbale(s).length > 0 ? numeriDelVerbale(s).map((numero) => (
+                                  verbaleApribile(s, numero) ? (
+                                    <div key={numero}>
+                                      <button
+                                        type="button"
+                                        onClick={() => apriVerbale(numero)}
+                                        data-testid={`apri-verbale-${numero}`}
+                                        aria-label={`Apri il verbale ${numero}`}
+                                        style={{ background: 'none', border: 'none', padding: 0, minHeight: 44, cursor: 'pointer', font: 'inherit', color: 'inherit', textDecoration: 'underline' }}
+                                      >
+                                        {numero}
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div key={numero} title="Verbale non ancora in archivio: carica il PDF o la PEC di notifica" data-testid={`verbale-non-in-archivio-${numero}`}>
+                                      {numero}
+                                      <span style={{ display: 'block', fontSize: 9, color: COLORS.textMuted }}>non ancora in archivio</span>
+                                    </div>
+                                  )
+                                )) : '-'}
                                 {s.data_verbale && (
                                   <div style={{ fontSize: 10, color: COLORS.textMuted }}>
                                     {formatDate(s.data_verbale)}
@@ -1018,23 +1030,24 @@ export default function NoleggioAuto() {
                                   onClick={() => setFatturaView({ id: s.fattura_id, numero: s.numero_fattura })}
                                   aria-label={`Vedi la fattura ${s.numero_fattura || ''}`}
                                   data-testid={`vedi-fattura-${s.fattura_id}`}
-                                  style={{ minHeight: 44, marginRight: cat.key === 'verbali' && s.numero_verbale ? 6 : 0 }}
+                                  style={{ minHeight: 44, marginRight: cat.key === 'verbali' && numeriDelVerbale(s).length ? 6 : 0 }}
                                 >
                                   <Eye size={14} aria-hidden="true" /> Fattura
                                 </Button>
                               )}
-                              {cat.key === 'verbali' && s.numero_verbale && (
+                              {cat.key === 'verbali' && numeriDelVerbale(s).filter((n) => verbaleApribile(s, n)).slice(0, 1).map((numero) => (
                                 <Button
+                                  key={numero}
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => apriVerbale(s.numero_verbale)}
-                                  aria-label={`Vedi il verbale ${s.numero_verbale}`}
-                                  data-testid={`vedi-verbale-${s.numero_verbale}`}
+                                  onClick={() => apriVerbale(numero)}
+                                  aria-label={`Vedi il verbale ${numero}`}
+                                  data-testid={`vedi-verbale-${numero}`}
                                   style={{ minHeight: 44 }}
                                 >
                                   <Eye size={14} aria-hidden="true" /> Verbale
                                 </Button>
-                              )}
+                              ))}
                             </Td>
                           </tr>
                         ))}
