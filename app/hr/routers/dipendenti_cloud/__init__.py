@@ -90,6 +90,16 @@ class DipendenteCloud(BaseModel):
     matricola: Optional[str] = None
     codice_fiscale: Optional[str] = None
     data_nascita: Optional[str] = None
+    codice_fiscale_azienda: Optional[str] = None
+    sesso: Optional[str] = None
+    regione_residenza: Optional[str] = None
+    provincia_residenza: Optional[str] = None
+    comune_residenza: Optional[str] = None
+    regione_domicilio: Optional[str] = None
+    provincia_domicilio: Optional[str] = None
+    comune_domicilio: Optional[str] = None
+    cittadinanza: Optional[str] = None
+    titolo_studio: Optional[str] = None
     email: Optional[str] = None
     telefono: Optional[str] = None
     indirizzo: Optional[str] = None
@@ -187,6 +197,16 @@ def _vista_dipendente(d: dict) -> dict:
         "codice_fiscale": d.get("codice_fiscale", ""),
         "matricola": d.get("matricola") or "",
         "data_nascita": d.get("data_nascita") or "",
+        "codice_fiscale_azienda": d.get("codice_fiscale_azienda") or "",
+        "sesso": d.get("sesso") or "",
+        "regione_residenza": d.get("regione_residenza") or "",
+        "provincia_residenza": d.get("provincia_residenza") or "",
+        "comune_residenza": d.get("comune_residenza") or "",
+        "regione_domicilio": d.get("regione_domicilio") or "",
+        "provincia_domicilio": d.get("provincia_domicilio") or "",
+        "comune_domicilio": d.get("comune_domicilio") or "",
+        "cittadinanza": d.get("cittadinanza") or "",
+        "titolo_studio": d.get("titolo_studio") or "",
         "indirizzo": d.get("indirizzo") or "",
         # ruolo/contratto: prima il valore inserito a mano, poi quello letto
         # dall'UNILAV (qualifica_unilav / tipo_contratto) — MAI un default fisso:
@@ -272,6 +292,10 @@ def _campi_anagrafici(dip: DipendenteCloud, esclusi=("stato",)) -> dict:
         dati.pop(k, None)
     if "codice_fiscale" in dati and dati["codice_fiscale"]:
         dati["codice_fiscale"] = str(dati["codice_fiscale"]).strip().upper()
+    if "codice_fiscale_azienda" in dati and dati["codice_fiscale_azienda"]:
+        dati["codice_fiscale_azienda"] = str(dati["codice_fiscale_azienda"]).strip().upper()
+    if "sesso" in dati and dati["sesso"]:
+        dati["sesso"] = str(dati["sesso"]).strip().upper()
     if "nome" in dati or "cognome" in dati:
         dati["nome"] = str(dati.get("nome") or "").strip()
         dati["cognome"] = str(dati.get("cognome") or "").strip()
@@ -3671,8 +3695,18 @@ _ANAGRAFICA_HEADER = {
     "nome": {"nome"},
     "cognome": {"cognome"},
     "nome_file": {"dipendente", "nome completo", "nominativo"},
-    "codice_fiscale": {"cf", "codice fiscale"},
+    "codice_fiscale": {"cf", "codice fiscale", "codice fiscale lavoratore"},
     "data_nascita": {"data nascita", "data di nascita", "nascita"},
+    "codice_fiscale_azienda": {"cf azienda", "codice fiscale azienda"},
+    "sesso": {"sesso"},
+    "regione_residenza": {"regione di residenza", "regione residenza"},
+    "provincia_residenza": {"provincia di residenza", "provincia residenza"},
+    "comune_residenza": {"comune di residenza", "comune residenza"},
+    "regione_domicilio": {"regione di domicilio compilare se diversa da regione di residenza", "regione di domicilio", "regione domicilio"},
+    "provincia_domicilio": {"provincia di domicilio compilare se diversa da regione di residenza", "provincia di domicilio", "provincia domicilio"},
+    "comune_domicilio": {"comune di domicilio compilare se diversa da regione di residenza", "comune di domicilio", "comune domicilio"},
+    "cittadinanza": {"cittadinanza"},
+    "titolo_studio": {"titolo studio", "titolo di studio"},
     "mansione": {"mansione", "ruolo"},
     "telefono": {"telefono", "cellulare", "cell"},
     "email": {"email", "e mail", "mail"},
@@ -3683,6 +3717,9 @@ _ANAGRAFICA_HEADER = {
 _ANAGRAFICA_CAMPI_SCRIVIBILI = (
     "nome", "cognome", "codice_fiscale", "data_nascita", "mansione",
     "telefono", "email", "indirizzo", "iban", "data_assunzione",
+    "codice_fiscale_azienda", "sesso", "regione_residenza", "provincia_residenza",
+    "comune_residenza", "regione_domicilio", "provincia_domicilio", "comune_domicilio",
+    "cittadinanza", "titolo_studio",
 )
 
 
@@ -3783,6 +3820,14 @@ def _normalizza_riga_anagrafica(row: tuple, mappa: Dict[str, int]) -> tuple[Dict
             except ValueError:
                 errori.append(f"{campo.replace('_', ' ')} non valida")
                 continue
+        elif campo == "sesso":
+            valore = str(valore).strip().upper()
+            if valore not in {"M", "F"}:
+                errori.append("sesso non valido (atteso M o F)")
+        elif campo == "codice_fiscale_azienda":
+            valore = re.sub(r"\s+", "", str(valore)).upper()
+            if not re.fullmatch(r"(?:\d{11}|[A-Z0-9]{16})", valore):
+                errori.append("codice fiscale azienda non valido")
         else:
             valore = str(valore).strip()
         if valore not in (None, ""):

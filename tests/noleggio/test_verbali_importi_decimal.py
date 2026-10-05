@@ -77,6 +77,8 @@ def test_la_correzione_a_mano_salva_centesimi_dal_decimal(monkeypatch):
     assert esito["importo"] == 12.34
     v = _run(db["verbali_noleggio"].find_one({"id": "v1"}, {"_id": 0}))
     assert v["importo"] == 12.34 and v["importo_centesimi"] == 1234 and v["importo_precedente"] == 10.0
+    # La conferma dell'operatore rende l'importo operativo (riconciliazione col pagamento).
+    assert v["importo_verificato"] is True and v["importo_stato"] == "CONFERMATO_OPERATORE"
 
     with pytest.raises(HTTPException) as exc:
         _run(rotta.correggi_importo_verbale("A1", {"importo": "abc"}, admin))
@@ -84,3 +86,11 @@ def test_la_correzione_a_mano_salva_centesimi_dal_decimal(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         _run(rotta.correggi_importo_verbale("A1", {"importo": 0}, admin))
     assert exc.value.status_code == 400
+
+
+def test_data_violazione_in_forma_italiana_diventa_iso():
+    from app.services.verbali_evidence import data_ora_evento_verbale, data_violazione_verbale
+
+    assert data_violazione_verbale({"data_violazione": "01/08/2026"}) == "2026-08-01"
+    assert data_violazione_verbale({"data_violazione": "2026-08-01"}) == "2026-08-01"
+    assert data_ora_evento_verbale({"data_violazione": "01/08/2026", "ora_violazione": "16:15"})[0] == "2026-08-01T16:15"

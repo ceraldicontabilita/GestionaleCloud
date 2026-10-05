@@ -177,6 +177,10 @@ async def correggi_importo_verbale(
     now = datetime.now(timezone.utc).isoformat()
     previous = verbale.get("importo")
     update = {"importo": amount, "importo_centesimi": amount_cents, "importo_fonte": "correzione_manuale_da_pdf",
+              # La correzione di un admin, con audit, e' una conferma: senza questi due campi
+              # `describe_verbale_amount` resta «da verificare» e il pagamento (ricevuta pagoPA,
+              # bonifico) non si riconcilia mai al verbale.
+              "importo_verificato": True, "importo_stato": "CONFERMATO_OPERATORE",
               "importo_precedente": previous, "importo_corretto_at": now,
               "importo_corretto_da": admin.get("email") or admin.get("user_id"), "updated_at": now}
     query = {"id": verbale.get("id")} if verbale.get("id") else {"numero_verbale": verbale.get("numero_verbale")}

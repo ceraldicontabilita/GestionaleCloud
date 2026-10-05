@@ -778,7 +778,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   `riconcilia_verbali_strict`, che esige riferimento strutturato **e** importo
   uguale al centesimo, mai solo importo o data vicina. L'importo si legge dal
   PDF. `pagato_attesa_fattura` è il legacy di `pagato_attesa_quietanza`.
-- Gli importi dei verbali si confrontano in **centesimi** (`amount_to_cents`/`money_cents`), mai con un float; il verbale porta `importo_centesimi`. «Pulisci duplicati» mette le copie in `stato=quarantena` per id con `doppione_di` e `motivo_quarantena`, mai `delete_many`.
+- Gli importi dei verbali si confrontano in **centesimi** (`amount_to_cents`/`money_cents`), mai con un float; il verbale porta `importo_centesimi`. `POST /api/verbali-noleggio/correggi-importo/{numero}` (admin, con audit) è una **conferma dell'operatore**: scrive `importo_verificato` e `importo_stato=CONFERMATO_OPERATORE`, e solo così la ricevuta pagoPA o il bonifico si riconciliano al verbale. La data dell'infrazione si legge anche in forma `gg/mm/aaaa` (`_giorno_iso`), mai come istante illeggibile. «Pulisci duplicati» mette le copie in `stato=quarantena` per id con `doppione_di` e `motivo_quarantena`, mai `delete_many`.
 - Associazione automatica driver: targa normalizzata più data/ora infrazione
   più storico assegnazioni (`assegnazioni` del veicolo, `driver_alla_data`): il
   driver è quello attivo **alla data/ora del fatto**. Se targa, driver, verbale
