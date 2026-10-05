@@ -444,7 +444,8 @@ async function pfFiscali(){
  const profilo=await run("bb_alb_profilo_salva",{sid:sess.s,p:sess.p,pbenvenuto:$("#pf_b").value,psfondo:PF.cambiato?PF.sfondo:null,pindirizzo:$("#pf_a").value,ptelefono:$("#pf_t").value});if(!profilo)return;
  const r=await run("bb_alb_fiscali_salva",{sid:sess.s,p:sess.p,pdati:fiscaliLeggi()});if(!r||r===true)return;
  if(!r.ok)return toast(r.msg||"Dati non validi");HOT=null;toast("Profilo e dati per la fattura salvati ✓");alb("profilo")}
-const fiscBanner=()=>ALB.fiscali&&!ALB.fiscali.completi?`<div class="alert"><b>🧾 Completa i dati per la fattura</b> — ti servono per ricaricare con carta. <a href="#/albergatore/profilo">Vai al Profilo</a></div>`:"";
+/* La ricarica con carta non richiede piu' i dati per la fattura: il bar emette lo scontrino fiscale; i dati restano facoltativi nel Profilo. */
+const fiscBanner=()=>"";
 const statoFatt=f=>f.stato==="emessa"?`<span class="pill p-ok">emessa${f.numero?" n. "+esc(f.numero):""}</span>`:f.stato==="non_dovuta"?`<span class="pill">non dovuta</span>`:`<span class="pill p-warn">in preparazione</span>`;
 let ALB=null,HOT=null,PF={};
 async function pinCambia(){
@@ -461,19 +462,19 @@ function pfHtml(s){
  return `<div class="card"><h3>La tua schermata di benvenuto</h3><p class="mute">È quella che vedi tu quando entri e che vedono i tuoi ospiti quando aprono il link della colazione.</p>
  <div id="pf_h"></div>
  <label>Messaggio di benvenuto (facoltativo)</label><input id="pf_b" maxlength="200" value="${esc(s.benvenuto)}" oninput="pfPrev()" placeholder="es. Buongiorno! La colazione vi aspetta da Ceraldi">
- <label>Immagine di sfondo</label><input id="pf_f" type="file" accept="image/*" onchange="pfFile(this)"> <button class="btn sm sec" onclick="PF.sfondo='';PF.img=null;PF.cambiato=true;pfPrev();pfPos()">Rimuovi immagine</button>
- <div class="mute" style="margin:4px 0 8px">Con un'immagine il testo di benvenuto non compare: l'immagine parla da sola. Formato consigliato: largo (3 a 1).</div>
+ <label>Logo o immagine dell'hotel (facoltativa)</label><input id="pf_f" type="file" accept="image/*" onchange="pfFile(this)"> <button class="btn sm sec" onclick="PF.sfondo='';PF.img=null;PF.cambiato=true;pfPrev();pfPos()">Rimuovi immagine</button>
+ <div class="mute" style="margin:4px 0 8px">Se la carichi compare in alto, sopra i bottoni. Senza immagine non compare nessuna card. Formato consigliato: largo (3 a 1).</div>
  <div id="pf_pos" hidden><label>Sposta l'immagine: sinistra ⟷ destra</label><input type="range" min="0" max="100" value="50" id="pf_px" oninput="PF.px=+this.value;pfRitaglia()"><label>Sposta l'immagine: alto ⟷ basso</label><input type="range" min="0" max="100" value="50" id="pf_py" oninput="PF.py=+this.value;pfRitaglia()"><button class="btn sm sec" onclick="PF.px=50;PF.py=50;$('#pf_px').value=50;$('#pf_py').value=50;pfRitaglia()">Centra</button></div>
  <label>Indirizzo</label><input id="pf_a" value="${esc(s.indirizzo)}"><label>Telefono</label><input id="pf_t" type="tel" value="${esc(s.telefono)}">
  <button class="btn" onclick="pfSalva()">Salva profilo e immagine</button></div>
- <div class="card"><h3>🧾 Dati per la fattura</h3>${fiscaliForm(ALB.fiscali)}<button class="btn" onclick="pfFiscali()">Salva dati fiscali e profilo</button></div>
+ <div class="card"><h3>🧾 Dati per la fattura <span class="mute">(facoltativi)</span></h3><p class="mute">Servono solo se vuoi la fattura invece dello scontrino.</p>${fiscaliForm(ALB.fiscali)}<button class="btn" onclick="pfFiscali()">Salva dati fiscali e profilo</button></div>
  <div class="card"><h3>🔐 Sicurezza</h3><label>PIN attuale</label><input id="sp0" type="password" autocomplete="current-password"><label>Nuovo PIN (almeno 4 caratteri)</label><input id="sp1" type="password" autocomplete="new-password"><label>Ripeti il nuovo PIN</label><input id="sp2" type="password" autocomplete="new-password">
  <button class="btn" onclick="pinCambia()">Cambia PIN</button>
  <p class="mute" style="margin-top:14px">Il codice di recupero serve se perdi il PIN. Se non lo hai più, ne puoi creare uno nuovo (il vecchio smette di funzionare).</p>
  <button class="btn sec" onclick="recuperoNuovo()">Crea un nuovo codice di recupero</button></div>
- <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(link)}</p>
+ <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div>
  <button class="btn sm sec" id="pf_copy">Copia link</button></div>`}
-function pfPrev(){const e=$("#pf_h");if(e)e.innerHTML=hero(ALB.struttura.nome,PF.sfondo,$("#pf_b")?$("#pf_b").value:"")}
+function pfPrev(){const e=$("#pf_h");if(e)e.innerHTML=PF.sfondo?hero(ALB.struttura.nome,PF.sfondo,""):`<p class="mute">Nessuna immagine: in alto resta solo il nome dell'hotel.</p>`}
 const pfPos=()=>{const e=$("#pf_pos");if(e)e.hidden=!PF.img};
 function pfFile(el){
  const f=el.files[0];if(!f)return;const img=new Image(),rd=new FileReader();
@@ -532,7 +533,8 @@ async function alb(sec){
   <h3>Movimenti del credito</h3><div class="card scroll"><table>${ALB.movimenti.filter(m=>m.confermato).map(m=>`<tr><td>${new Date(m.t).toLocaleDateString("it-IT")}</td><td>${esc(m.nota)}</td><td style="text-align:right;color:${m.importo<0?"var(--bad)":"var(--ok)"}">${eur(m.importo)}</td></tr>`).join("")}</table></div>
   ${(ALB.fatture||[]).length?`<h3>Le tue fatture</h3><div class="card scroll"><table>${ALB.fatture.map(f=>`<tr><td>${new Date(f.pagata_il).toLocaleDateString("it-IT")}</td><td>Ricarica ${eur(f.importo)}</td><td style="text-align:right">${statoFatt(f)}</td></tr>`).join("")}</table></div><p class="mute">La fattura ti arriva dal bar via email o PEC.</p>`:""}`;
  }
- app.innerHTML=(sec==="home"?hero(s.nome,HOT&&HOT.sfondo,s.benvenuto):"")+tabsHtml(tabs,sec,"albergatore")+body;
+ /* Il logo/immagine dell'hotel, se caricato dal Profilo, sta sopra i bottoni; senza immagine nessuna card (il nome e' gia' nella barra in alto). */
+ app.innerHTML=(HOT&&HOT.sfondo?hero(s.nome,HOT.sfondo,""):"")+tabsHtml(tabs,sec,"albergatore")+body;
  if(sec==="profilo"){pfPrev();const e=$("#pf_q");if(e)qr(e,base()+"#/hotel/"+s.accesso,140);const cb=$("#pf_copy");if(cb)cb.onclick=()=>navigator.clipboard.writeText(base()+"#/hotel/"+s.accesso).then(()=>toast("Link copiato"))}
  if(sec==="nuova"&&$("#nt")){ntTab();ricalcNuova()}
  if(sec==="lista")filtraAlb();
@@ -631,11 +633,18 @@ function stampaIds(ids){stampa(ids.map(id=>cardVoucher(ALB.vouchers.find(x=>x.id
 function statoRicarica(r){const m={PAID:["Pagata","p-ok"],PENDING:["In attesa","p-warn"],CREATA:["In preparazione","p-warn"],EXPIRED:["Scaduta",""],FAILED:["Non riuscita","p-bad"],ERROR:["Da verificare","p-bad"],PARTIALLY_REFUNDED:["Rimborso parziale","p-warn"],REFUNDED:["Rimborsata",""]},x=m[r.stato]||[r.stato,""];return `<span class="pill ${x[1]}">${esc(x[0])}</span>`}
 let WSYNC=0;
 async function sincronizzaRicariche(){if(Date.now()-WSYNC<5000)return;WSYNC=Date.now();try{const r=await fetch("/api/colazioni/ricariche/sumup/sincronizza",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p})}),j=await r.json().catch(()=>({}));if(r.ok&&j.aggiornate>0)alb("borsellino")}catch(e){}}
+const fiscCompleti=()=>{const f=ALB&&ALB.fiscali;if(!f)return false;if(f.completi!==undefined)return !!f.completi;return !!(f.ragione_sociale&&(f.piva||f.codice_fiscale)&&f.indirizzo&&f.cap&&f.comune&&f.provincia&&(f.codice_destinatario||f.pec))};
+function fiscScelta(i){return new Promise(ok=>{const d=document.createElement("div");d.style.cssText="position:fixed;inset:0;background:rgba(42,51,41,.55);z-index:99;display:flex;align-items:center;justify-content:center;padding:16px";
+ d.innerHTML=`<div class="card" style="max-width:420px;width:100%"><h3>Ricarica di ${eur(i)}</h3><p class="mute">Mancano i dati per la fattura. Come preferisci procedere?</p>
+ <button class="btn" style="width:100%;margin:6px 0;min-height:48px" data-s="dati">Compila i dati per la fatturazione</button>
+ <button class="btn sec" style="width:100%;margin:6px 0;min-height:48px" data-s="scontrino">Acquista con scontrino fiscale</button>
+ <button class="btn sec" style="width:100%;margin:6px 0;min-height:48px" data-s="annulla">Annulla</button></div>`;
+ d.onclick=e=>{const b=e.target.closest("[data-s]");if(!b)return;d.remove();ok(b.dataset.s)};document.body.appendChild(d)})}
 async function ricaricaSumup(imp){
- if(ALB.fiscali&&!ALB.fiscali.completi){toast("Prima inserisci i dati per la fattura");go("#/albergatore/profilo");return}
  const i=imp!==undefined?+imp:+$("#r_i").value;if(!(i>=ALB.config.ricarica_min))return toast("Importo minimo "+eur(ALB.config.ricarica_min));
  if(i>ALB.config.ricarica_max)return toast("Importo massimo "+eur(ALB.config.ricarica_max));
- if(!confirm("Ricaricare "+eur(i)+" con SumUp?"))return;
+ if(!fiscCompleti()){const sc=await fiscScelta(i);if(sc==="dati")return go("#/albergatore/profilo");if(sc!=="scontrino")return}
+ else if(!confirm("Ricaricare "+eur(i)+" con SumUp?"))return;
  document.querySelectorAll(".recharge-choice,.wallet-custom button").forEach(b=>b.disabled=true);
  try{const r=await fetch("/api/colazioni/ricariche/sumup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p,importo:i,idempotenza:crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random()})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Pagamento non disponibile");if(j.url)location.href=j.url;else throw new Error("Pagina SumUp non disponibile")}catch(e){toast(e.message);document.querySelectorAll(".recharge-choice,.wallet-custom button").forEach(b=>b.disabled=false)}}
 async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
@@ -1070,7 +1079,7 @@ function pInvito(id){
  return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2><span class="pill ${s.attivo?"p-ok":"p-warn"}">${s.attivo?"attivo":"in attesa di attivazione"}</span></div>
  ${registrazione?`<div class="card"><h3>Registrazione del gestore</h3><p class="mute">Condividi l'invito: il gestore si registra e sceglie un PIN personale. Non deve usare il PIN di prova.</p>
   <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
-  ${s.invito_token?`<div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div><p class="mute" style="word-break:break-all">${esc(linkInvito(s))}</p></div>`:`<p class="mute">Il link di registrazione verrà creato quando tocchi Condividi.</p>`}</div>`:""}
+  ${s.invito_token?`<div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div></div>`:`<p class="mute">Il link di registrazione verrà creato quando tocchi Condividi.</p>`}</div>`:""}
  ${!registrazione?`<div class="card"><h3>Condividi l'accesso con ${esc(s.nome)}</h3><p class="mute">Il gestore è già registrato: questo collegamento apre l'accesso con il suo PIN personale.</p>
   <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
   <div style="text-align:center;margin-top:12px"><div class="qr" id="accqr2" style="display:inline-flex"></div></div></div>`:""}
@@ -1177,9 +1186,16 @@ async function cpAvvia(id){
  $("#cp_head").innerHTML=TIT.strutture.length?`<label>Hotel</label><select id="cp_sid" onchange="cpCarica(this.value)">${TIT.strutture.map(s=>`<option value="${s.id}" ${s.id===scelta?"selected":""}>${esc(s.nome)}${s.demo?" (DEMO)":""}</option>`).join("")}</select><div class="catalog-tools"><input id="cp_q" placeholder="Cerca nel Menu digitale…" oninput="CP.q=this.value;cpDisegna()"><select id="cp_o" aria-label="Sezione del Menu" onchange="CP.sezione=this.value;cpDisegna()"><option value="tutte">Tutte le sezioni</option>${sez.map(x=>`<option>${esc(x)}</option>`).join("")}</select><button class="btn sm sec" onclick="cpSezione(true)">Spunta sezione</button><button class="btn sm sec" onclick="cpSezione(false)">Togli sezione</button><button class="btn" onclick="cpSalva()">Salva per l’hotel</button></div><div id="cp_stat" class="mute"></div>`:`<div class="alert">Prima crea almeno una struttura.</div>`;
  if(scelta)await cpCarica(scelta);
 }
+let CPACQ=null;
+const authAdmin=()=>{const t=localStorage.getItem("auth_token");return t?{Authorization:"Bearer "+t}:{}};
+async function cpAcquaviva(){if(CPACQ)return CPACQ;try{const r=await fetch("/api/colazioni/prodotti-acquaviva",{headers:authAdmin()}),j=await r.json().catch(()=>({}));CPACQ=new Set(r.ok?(j.prodotti||[]).map(String):[])}catch(e){CPACQ=new Set()}return CPACQ}
+async function cpAcq(i){const p=CP.lista[i],attivo=!(CPACQ&&CPACQ.has(String(p.prodotto_id)));
+ try{const r=await fetch("/api/colazioni/prodotti-acquaviva",{method:"PUT",headers:{"Content-Type":"application/json",...authAdmin()},body:JSON.stringify({prodotto_id:+p.prodotto_id,attivo})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Non salvato");
+  if(attivo)CPACQ.add(String(p.prodotto_id));else CPACQ.delete(String(p.prodotto_id));toast(attivo?"Fornitore Acquaviva: i lotti nascono dalla fattura":"Acquaviva tolto");cpDisegna()}catch(e){toast(e.message)}}
 async function cpCarica(sid){
  CP.sid=sid;$("#cp_body").innerHTML=`<p class="mute">Caricamento selezioni…</p>`;
  const assegnati=await run("bb_tit_menu_prodotti_struttura",{p:sess.p,sid});if(!Array.isArray(assegnati))return;
+ await cpAcquaviva();
  const perId=new Map(assegnati.map(x=>[+x.prodotto_id,x]));
  CP.lista=CP.base.map(x=>{const a=perId.get(+x.prodotto_id);return {...x,on:!!a,prezzo:a?+a.prezzo:(x.prezzo?+x.prezzo:0)}});
  cpDisegna();
@@ -1188,7 +1204,7 @@ function cpDisegna(){
  const q=cpNorm(CP.q),vis=CP.lista.filter(p=>(CP.sezione==="tutte"||p.categoria+" · "+p.sezione===CP.sezione)&&(!q||cpNorm([p.nome,p.descrizione,p.categoria,p.sezione].join(" ")).includes(q)));
  const scelti=CP.lista.filter(p=>p.on),mancanti=scelti.filter(p=>!(p.prezzo>0));
  if($("#cp_stat"))$("#cp_stat").innerHTML=`${scelti.length} selezionati${mancanti.length?` · <b>${mancanti.length} senza prezzo</b>`:""} · ${vis.length} mostrati`;
- $("#cp_body").innerHTML=vis.length?`<div class="catalog-grid">${vis.map(p=>{const i=CP.lista.indexOf(p);return `<article class="catalog-card ${p.on?"selected":""}">${catalogFoto(p)}<div><div class="mute" style="font-size:12px">${esc(p.categoria)} · ${esc(p.sezione)}</div><label style="display:flex;gap:7px;align-items:flex-start;color:var(--ink)"><input type="checkbox" ${p.on?"checked":""} onchange="cpSel(${i},this.checked)"><b class="catalog-title">${esc(p.nome)}</b></label>${catalogDescrizione(p)}${catalogAllergeni(p)}<div class="catalog-price-row"><label>Prezzo hotel (€)</label><input type="number" min="0" step="0.10" value="${p.prezzo||""}" placeholder="€ 0,00" aria-label="Prezzo hotel per ${esc(p.nome)}" oninput="CP.lista[${i}].prezzo=+this.value;cpAggiornaStat()"></div></div></article>`}).join("")}</div>`:`<div class="card"><p class="mute">Nessun prodotto corrisponde ai filtri.</p></div>`;
+ $("#cp_body").innerHTML=vis.length?`<div class="catalog-grid">${vis.map(p=>{const i=CP.lista.indexOf(p);return `<article class="catalog-card ${p.on?"selected":""}">${catalogFoto(p)}<div><div class="mute" style="font-size:12px">${esc(p.categoria)} · ${esc(p.sezione)}</div><label style="display:flex;gap:7px;align-items:flex-start;color:var(--ink)"><input type="checkbox" ${p.on?"checked":""} onchange="cpSel(${i},this.checked)"><b class="catalog-title">${esc(p.nome)}</b></label>${catalogDescrizione(p)}${catalogAllergeni(p)}<div style="margin:6px 0"><button type="button" class="btn sm ${CPACQ&&CPACQ.has(String(p.prodotto_id))?"":"sec"}" style="min-height:44px" aria-pressed="${!!(CPACQ&&CPACQ.has(String(p.prodotto_id)))}" onclick="cpAcq(${i})">${CPACQ&&CPACQ.has(String(p.prodotto_id))?"✓ Fornitore: Acquaviva (lotto automatico)":"Fornitore: Acquaviva?"}</button></div><div class="catalog-price-row"><label>Prezzo hotel (€)</label><input type="number" min="0" step="0.10" value="${p.prezzo||""}" placeholder="€ 0,00" aria-label="Prezzo hotel per ${esc(p.nome)}" oninput="CP.lista[${i}].prezzo=+this.value;cpAggiornaStat()"></div></div></article>`}).join("")}</div>`:`<div class="card"><p class="mute">Nessun prodotto corrisponde ai filtri.</p></div>`;
 }
 function cpAggiornaStat(){const s=CP.lista.filter(p=>p.on),m=s.filter(p=>!(p.prezzo>0));if($("#cp_stat"))$("#cp_stat").innerHTML=`${s.length} selezionati${m.length?` · <b>${m.length} senza prezzo</b>`:""}`}
 function cpSel(i,v){CP.lista[i].on=v;cpDisegna()}

@@ -359,7 +359,7 @@ def test_ordine_pagato_dal_borsellino_addebita_e_storna_se_il_salvataggio_fallis
         async def insert_one(self, doc):
             raise RuntimeError("database giu")
 
-    async def riga(prodotto, quantita, fatture):
+    async def riga(prodotto, quantita, fatture, giorno=""):
         return {"totale": "7.50", "nome": "x"}
 
     async def senza_fatture(chiavi):
@@ -425,3 +425,27 @@ def test_dopo_l_ordine_l_albergatore_vede_conferma_pagamento_e_saldo():
     assert "Pagato dal borsellino:" in html and "saldo residuo" in html
     assert "e invia l'ordine" in html and "paghi in loco" in html
     assert "AP.esito={id:j.ordine.id" in html
+
+
+def test_ricarica_con_carta_non_richiede_i_dati_fiscali_e_sotto_i_qr_non_c_e_il_link():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    assert "Prima inserisci i dati per la fattura" not in html
+    assert 'const fiscBanner=()=>"";' in html
+    assert "(facoltativi)" in html
+    assert 'id="pf_q" style="display:inline-flex"></div><p' not in html
+    assert 'id="invqr" style="display:inline-flex"></div><p' not in html
+
+
+def test_logo_dell_hotel_se_caricato_sta_sopra_i_bottoni_e_senza_immagine_nessuna_card():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    assert 'app.innerHTML=(HOT&&HOT.sfondo?hero(s.nome,HOT.sfondo,""):"")+tabsHtml(tabs,sec,"albergatore")+body;' in html
+    assert 'app.innerHTML=(sec==="home"?hero(' not in html
+    assert "Logo o immagine dell'hotel (facoltativa)" in html
+
+
+def test_tab_prodotti_ha_il_tasto_fornitore_acquaviva_e_lotti_mostra_la_fattura_in_uso():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    assert "/api/colazioni/prodotti-acquaviva" in html and "Fornitore: Acquaviva" in html and "cpAcq(" in html
+    lotti = (ROOT / "frontend_lotti" / "src" / "components" / "haccp" / "OrdiniHotelView.jsx").read_text(encoding="utf-8")
+    assert "FatturaAcquavivaInUso" in lotti and "/ordini-hotel/acquaviva/fattura-in-uso" in lotti
+    assert "creato in automatico dalla fattura Acquaviva" in lotti
