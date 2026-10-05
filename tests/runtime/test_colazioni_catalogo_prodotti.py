@@ -310,3 +310,78 @@ def test_albergatore_puo_ordinare_prodotti_e_il_titolare_riceve_avviso():
     assert "lotto_fornitore_da_associare" in servizio
     assert "Apri ricetta / Produci" in vista_lotti
     assert "Associa lotto" in vista_lotti
+
+
+def test_ordine_prodotti_si_chiude_alle_14_del_giorno_prima():
+    from datetime import date, datetime
+    from zoneinfo import ZoneInfo
+
+    import pytest
+
+    from app.lotti.servizi.ordini_hotel import prima_consegna_possibile, verifica_termini
+
+    roma = ZoneInfo("Europe/Rome")
+    ore_1359 = datetime(2026, 10, 5, 13, 59, tzinfo=roma)
+    ore_1400 = datetime(2026, 10, 5, 14, 0, tzinfo=roma)
+
+    verifica_termini(date(2026, 10, 6), "07:00", ore_1359)  # oggi entro le 14 -> domani alle 7
+    with pytest.raises(ValueError, match="entro le 14:00"):
+        verifica_termini(date(2026, 10, 6), "07:00", ore_1400)
+    verifica_termini(date(2026, 10, 7), "07:00", ore_1400)
+    assert prima_consegna_possibile(ore_1359) == date(2026, 10, 6)
+    assert prima_consegna_possibile(ore_1400) == date(2026, 10, 7)
+    with pytest.raises(ValueError, match="orario di ritiro"):
+        verifica_termini(date(2026, 10, 7), "03:15", ore_1359)
+    with pytest.raises(ValueError, match="30 giorni"):
+        verifica_termini(date(2026, 12, 1), "07:00", ore_1359)
+
+
+def test_ordine_pagato_dal_borsellino_addebita_e_storna_se_il_salvataggio_fallisce(monkeypatch):
+    import asyncio
+    from decimal import Decimal
+
+    import pytest
+
+    from app.lotti.servizi import ordini_hotel
+
+    movimenti = []
+
+    async def addebita(ordine_id, totale):
+        movimenti.append(("addebito", ordine_id, totale))
+
+    async def storna(ordine_id, totale):
+        movimenti.append(("storno", ordine_id, totale))
+
+    class Raccolta:
+        async def find_one(self, *a, **k):
+            return None
+
+        async def insert_one(self, doc):
+            raise RuntimeError("database giu")
+
+    async def riga(prodotto, quantita, fatture):
+        return {"totale": "7.50", "nome": "x"}
+
+    async def senza_fatture(chiavi):
+        return {}
+
+    monkeypatch.setattr(ordini_hotel.db, "ordini_hotel", Raccolta(), raising=False)
+    monkeypatch.setattr(ordini_hotel, "_arricchisci_riga", riga)
+    monkeypatch.setattr(ordini_hotel, "_fatture_vandemoortele_per_chiavi", senza_fatture)
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(ordini_hotel.crea_ordine(
+            struttura_id="s1", struttura_nome="Hotel", data_consegna="2026-10-07",
+            catalogo={"k": {"nome": "x"}}, righe=[{"chiave": "k", "quantita": 1}], ora_ritiro="07:00",
+            pagamento_metodo="borsellino", addebita=addebita, storna=storna))
+    assert [m[0] for m in movimenti] == ["addebito", "storno"]
+    assert movimenti[0][1] == movimenti[1][1] and movimenti[0][2] == Decimal("7.50")
+
+
+def test_frontend_e_migrazione_ordini_prodotti_con_orario_e_borsellino():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    sql = (ROOT / "supabase" / "migrations" / "20261005090000_colazioni_ordini_prodotti_borsellino.sql").read_text(encoding="utf-8")
+    assert "Orario di ritiro" in html and "Paga dal borsellino" in html and "Paga in loco" in html
+    assert "pagamento_metodo:AP.met" in html and "ora_ritiro:AP.ora" in html
+    assert "gc_assert_runtime_secret" in sql and "for update" in sql
+    assert "bb_ordine_prodotti_addebita" in sql and "bb_ordine_prodotti_rimborsa" in sql
