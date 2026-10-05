@@ -23,4 +23,15 @@ describe('confini operativi della pagina Noleggio', () => {
     expect(source).toContain('Impossibile caricare tutti i casi');
     expect(source).toContain('La conferma resta sempre manuale.');
   });
+
+  it('apre il verbale dalla tabella del veicolo: numero cliccabile e colonna Vedi', () => {
+    expect(source).toContain('const apriVerbale = (numero) => navigate(`/verbali-noleggio/${encodeURIComponent(String(numero))}`)');
+    expect(source).toContain('data-testid={`apri-verbale-${s.numero_verbale}`}');
+    expect(source).toContain('data-testid={`vedi-verbale-${s.numero_verbale}`}');
+  });
+
+  it('rende cliccabili le fatture delle tabelle del veicolo', () => {
+    expect(source).toContain('data-testid={`apri-fattura-${s.fattura_id}`}');
+    expect(source).toContain('data-testid={`vedi-fattura-${s.fattura_id}`}');
+  });
 });

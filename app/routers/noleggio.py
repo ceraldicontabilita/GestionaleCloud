@@ -1003,7 +1003,7 @@ async def update_veicolo(
                   "codice_cliente", "centro_fatturazione",
                   "data_inizio", "data_fine", "note", "fornitore_noleggio", "fornitore_piva",
                   "canone_mensile", "anno_immatricolazione", "alimentazione",
-                  "potenza_kw", "cilindrata",
+                  "potenza_kw", "potenza_cv", "cilindrata", "telaio", "data_immatricolazione",
                   "stato_contratto", "stato_veicolo", "canone_previsto",
                   "fringe_benefit"]:
         if campo in data:

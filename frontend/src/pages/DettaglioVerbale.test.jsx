@@ -11,6 +11,9 @@ vi.mock('react-router-dom', async importOriginal => ({
   useParams: () => ({ numeroVerbale: 'V-TEST-001' }),
   useNavigate: () => vi.fn(),
 }));
+vi.mock('../components/ModalFattura', () => ({
+  default: ({ fatturaId, numero }) => <div data-testid="modal-fattura" data-id={fatturaId}>{numero}</div>,
+}));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 vi.mock('../components/DocumentViewerModal', () => ({
   default: ({ title, fetchUrl, onClose }) => (
@@ -84,5 +87,17 @@ describe('DettaglioVerbale viewer PDF', () => {
     fireEvent.click(screen.getByTestId('apri-drive-1AbCdEfGhIjKlMnOpQrStUv'));
     expect((await screen.findByTestId('verbale-viewer')).getAttribute('data-url'))
       .toBe('/api/originale?drive_id=1AbCdEfGhIjKlMnOpQrStUv');
+  });
+
+  it('apre la fattura collegata al verbale', async () => {
+    api.get.mockImplementation(url => Promise.resolve({
+      data: url === '/api/dipendenti' ? [] : {
+        numero_verbale: 'V-TEST-001', pdf_disponibili: [], fattura_id: 'f-77', fattura_numero: '0000202610615118',
+      },
+    }));
+    render(<DettaglioVerbale />);
+    expect(await screen.findByText('Fattura collegata')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('apri-fattura-collegata'));
+    expect((await screen.findByTestId('modal-fattura')).getAttribute('data-id')).toBe('f-77');
   });
 });
