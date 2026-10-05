@@ -50,6 +50,8 @@ export default function NoleggioAuto() {
   const isMobile = useIsMobile();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  // Il verbale si apre nel suo dettaglio: li' stanno i documenti Drive collegati (verbale, quietanza, bonifico).
+  const apriVerbale = (numero) => navigate(`/verbali-noleggio/${encodeURIComponent(String(numero))}`);
   // Anno unico e globale (barra di navigazione in alto) → nessun selettore
   // locale duplicato: una pagina con un filtro anno proprio, indipendente
   // da quello globale, dava l'impressione che cambiare l'anno in alto non
@@ -879,7 +881,17 @@ export default function NoleggioAuto() {
                                 fontSize: 11,
                               }}
                             >
-                              {s.numero_fattura || '-'}
+                              {s.fattura_id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setFatturaView({ id: s.fattura_id, numero: s.numero_fattura })}
+                                  data-testid={`apri-fattura-${s.fattura_id}`}
+                                  aria-label={`Apri la fattura ${s.numero_fattura || ''}`}
+                                  style={{ background: 'none', border: 'none', padding: 0, minHeight: 44, cursor: 'pointer', font: 'inherit', color: COLORS.primary, textDecoration: 'underline' }}
+                                >
+                                  {s.numero_fattura || 'Fattura'}
+                                </button>
+                              ) : (s.numero_fattura || '-')}
                             </Td>
                             {cat.key === 'verbali' && (
                               <Td
@@ -889,7 +901,17 @@ export default function NoleggioAuto() {
                                   color: s.numero_verbale ? COLORS.danger : COLORS.textSubtle,
                                 }}
                               >
-                                {s.numero_verbale || '-'}
+                                {s.numero_verbale ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => apriVerbale(s.numero_verbale)}
+                                    data-testid={`apri-verbale-${s.numero_verbale}`}
+                                    aria-label={`Apri il verbale ${s.numero_verbale}`}
+                                    style={{ background: 'none', border: 'none', padding: 0, minHeight: 44, cursor: 'pointer', font: 'inherit', color: 'inherit', textDecoration: 'underline' }}
+                                  >
+                                    {s.numero_verbale}
+                                  </button>
+                                ) : '-'}
                                 {s.data_verbale && (
                                   <div style={{ fontSize: 10, color: COLORS.textMuted }}>
                                     {formatDate(s.data_verbale)}
@@ -986,6 +1008,32 @@ export default function NoleggioAuto() {
                                 <div style={{ color: COLORS.textSubtle, fontSize: 9, marginTop: 2 }}>
                                   posta + fattura
                                 </div>
+                              )}
+                            </Td>
+                            <Td align="center">
+                              {s.fattura_id && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setFatturaView({ id: s.fattura_id, numero: s.numero_fattura })}
+                                  aria-label={`Vedi la fattura ${s.numero_fattura || ''}`}
+                                  data-testid={`vedi-fattura-${s.fattura_id}`}
+                                  style={{ minHeight: 44, marginRight: cat.key === 'verbali' && s.numero_verbale ? 6 : 0 }}
+                                >
+                                  <Eye size={14} aria-hidden="true" /> Fattura
+                                </Button>
+                              )}
+                              {cat.key === 'verbali' && s.numero_verbale && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => apriVerbale(s.numero_verbale)}
+                                  aria-label={`Vedi il verbale ${s.numero_verbale}`}
+                                  data-testid={`vedi-verbale-${s.numero_verbale}`}
+                                  style={{ minHeight: 44 }}
+                                >
+                                  <Eye size={14} aria-hidden="true" /> Verbale
+                                </Button>
                               )}
                             </Td>
                           </tr>

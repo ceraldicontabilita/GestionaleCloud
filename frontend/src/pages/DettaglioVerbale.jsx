@@ -6,6 +6,7 @@ import ApriOriginale, { VisoreOriginale } from '../components/ApriOriginale';
 import { urlOriginale, euroOppure } from '../lib/vista';
 import { formatDateIT, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { Button, Badge } from '../components/ds';
+import ModalFattura from '../components/ModalFattura';
 import { toast } from 'sonner';
 
 const ETICHETTE_DOCUMENTO_DRIVE = {
@@ -21,6 +22,7 @@ export default function DettaglioVerbale() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pdfViewer, setPdfViewer] = useState(null);
+  const [fatturaAperta, setFatturaAperta] = useState(false);
   const [pdfUploading, setPdfUploading] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [drivers, setDrivers] = useState([]);
@@ -317,6 +319,20 @@ export default function DettaglioVerbale() {
         </PageSection>
       )}
 
+      {verbale?.fattura_id && (
+        <PageSection title="Fattura collegata">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13 }} data-testid="fattura-collegata">
+              Fattura {verbale.fattura_numero || verbale.fattura_info?.invoice_number || verbale.fattura_id}
+              {verbale.fattura_info?.supplier_name ? ` · ${verbale.fattura_info.supplier_name}` : ''}
+            </span>
+            <Button variant="outline" size="sm" style={{ minHeight: 44 }} onClick={() => setFatturaAperta(true)} data-testid="apri-fattura-collegata">
+              Apri fattura
+            </Button>
+          </div>
+        </PageSection>
+      )}
+
       <PageSection title="Trasgressore indicato nel verbale">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <input
@@ -411,6 +427,14 @@ export default function DettaglioVerbale() {
             )}
           </div>
         </PageSection>
+      )}
+
+      {fatturaAperta && verbale?.fattura_id && (
+        <ModalFattura
+          fatturaId={verbale.fattura_id}
+          numero={verbale.fattura_numero || verbale.fattura_info?.invoice_number}
+          onClose={() => setFatturaAperta(false)}
+        />
       )}
 
       {pdfViewer && (
