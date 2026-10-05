@@ -434,3 +434,9 @@ def test_ricarica_con_carta_non_richiede_i_dati_fiscali_e_sotto_i_qr_non_c_e_il_
     assert "(facoltativi)" in html
     assert 'id="pf_q" style="display:inline-flex"></div><p' not in html
     assert 'id="invqr" style="display:inline-flex"></div><p' not in html
+
+
+def test_logo_dell_hotel_sta_sopra_i_bottoni_in_tutte_le_sezioni():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    assert 'app.innerHTML=hero(s.nome,HOT&&HOT.sfondo,sec==="home"?s.benvenuto:"")+tabsHtml(tabs,sec,"albergatore")+body;' in html
+    assert 'app.innerHTML=(sec==="home"?hero(' not in html

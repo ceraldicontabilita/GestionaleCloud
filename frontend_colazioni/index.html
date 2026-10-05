@@ -533,7 +533,8 @@ async function alb(sec){
   <h3>Movimenti del credito</h3><div class="card scroll"><table>${ALB.movimenti.filter(m=>m.confermato).map(m=>`<tr><td>${new Date(m.t).toLocaleDateString("it-IT")}</td><td>${esc(m.nota)}</td><td style="text-align:right;color:${m.importo<0?"var(--bad)":"var(--ok)"}">${eur(m.importo)}</td></tr>`).join("")}</table></div>
   ${(ALB.fatture||[]).length?`<h3>Le tue fatture</h3><div class="card scroll"><table>${ALB.fatture.map(f=>`<tr><td>${new Date(f.pagata_il).toLocaleDateString("it-IT")}</td><td>Ricarica ${eur(f.importo)}</td><td style="text-align:right">${statoFatt(f)}</td></tr>`).join("")}</table></div><p class="mute">La fattura ti arriva dal bar via email o PEC.</p>`:""}`;
  }
- app.innerHTML=(sec==="home"?hero(s.nome,HOT&&HOT.sfondo,s.benvenuto):"")+tabsHtml(tabs,sec,"albergatore")+body;
+ /* il logo/immagine dell'hotel sta sempre sopra i bottoni (Riepilogo, Nuova colazione…); il messaggio di benvenuto solo nel Riepilogo */
+ app.innerHTML=hero(s.nome,HOT&&HOT.sfondo,sec==="home"?s.benvenuto:"")+tabsHtml(tabs,sec,"albergatore")+body;
  if(sec==="profilo"){pfPrev();const e=$("#pf_q");if(e)qr(e,base()+"#/hotel/"+s.accesso,140);const cb=$("#pf_copy");if(cb)cb.onclick=()=>navigator.clipboard.writeText(base()+"#/hotel/"+s.accesso).then(()=>toast("Link copiato"))}
  if(sec==="nuova"&&$("#nt")){ntTab();ricalcNuova()}
  if(sec==="lista")filtraAlb();
