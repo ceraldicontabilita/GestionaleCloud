@@ -426,6 +426,21 @@ def _rimuovi_sync(lotti_ref: str) -> dict:
     return {"esito": "rimosso", "lotti_ref": lotti_ref, "rimossi": rimossi}
 
 
+def _codici_prodotti_sync() -> dict:
+    righe = supabase.table(TABELLA_PRODOTTI).select("lotti_ref,codice_prodotto").limit(5000).execute().data or []
+    prefisso = lotti_ref_ricetta("")
+    return {r["lotti_ref"][len(prefisso):]: r["codice_prodotto"]
+            for r in righe if r.get("codice_prodotto") and str(r.get("lotti_ref") or "").startswith(prefisso)}
+
+
+async def codici_prodotti_ricette() -> dict:
+    """ID prodotto unico (PRD-000123) di ogni ricetta: {ricetta_id: codice}.
+
+    Lo assegna il database alla riga Menu e non cambia mai: Lotti lo legge, non lo scrive."""
+    _esigi_configurato()
+    return await asyncio.to_thread(_codici_prodotti_sync)
+
+
 # ================== API asincrona usata dal router ricette ==================
 
 async def _foto_ricetta(ricetta: dict, db: Any) -> Optional[dict]:

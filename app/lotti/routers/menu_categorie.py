@@ -46,6 +46,15 @@ def _errore_menu(exc: Exception) -> HTTPException:
     return HTTPException(502, f"Menu digitale non raggiungibile: {exc}")
 
 
+@router.get("/prodotti-codici")
+async def codici_prodotti():
+    """{ricetta_id: «PRD-000123»}: l'ID prodotto unico, lo stesso in Menu, B&B e Lotti."""
+    try:
+        return await menu_bridge.codici_prodotti_ricette()
+    except Exception as exc:  # noqa: BLE001 - tradotto in errore HTTP parlante
+        raise _errore_menu(exc) from exc
+
+
 @router.get("/menu-categorie")
 async def elenco_categorie_menu():
     """Categorie e sottocategorie del Menu digitale.

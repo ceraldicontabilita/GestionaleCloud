@@ -100,6 +100,7 @@ const ProductManager = () => {
     return (mostraNascosti || product.visible !== false) && (!soloDoppioni || nomi[nomeConfronto(product)] > 1) && (
       (product.nameIT || '').toLowerCase().includes(search) ||
       (product.name || '').toLowerCase().includes(search) ||
+      (product.codice_prodotto || '').toLowerCase().includes(search) ||
       (product.price || '').toLowerCase().includes(search)
     );
   }).sort((a, b) => nomeConfronto(a).localeCompare(nomeConfronto(b), 'it'));
@@ -212,6 +213,9 @@ const ProductManager = () => {
                     )}
                     <div className="flex-1 min-w-0 break-words">
                       <h4 className="font-semibold text-gray-900">{product.nameIT}</h4>
+                      {product.codice_prodotto && (
+                        <p className="text-xs font-bold tracking-wide text-gray-500 tabular-nums" data-testid="codice-prodotto">{product.codice_prodotto}</p>
+                      )}
                       <p className="text-xs text-gray-600">
                         {product.visible === false ? 'Nascosto ai clienti'
                           : product.pubblicabile === false ? (daLotti(product) ? 'Nella carta: Prezzo da definire' : 'Nascosto: prezzo da completare') : 'Visibile ai clienti'}

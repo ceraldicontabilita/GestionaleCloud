@@ -226,6 +226,7 @@ function openItem(id){
   if(i.long) blocks.push(['Descrizione lunga',i.long]);
   if(i.mat) blocks.push(['Ingredienti',i.mat]);
   if(!blocks.length&&i.d&&!i.lists) blocks.push(['Descrizione',i.d]);
+  if(i.cod) blocks.push(['Codice prodotto',i.cod]);
   blocks.forEach((b,k)=>{if(k)dc.appendChild(frag(tplLine));const el=frag(tplD);el.querySelector('.description-title').textContent=b[0];el.querySelector('.description-value').textContent=b[1];dc.appendChild(el)});
   if(!blocks.length) dc.remove();
   if(i.lists){

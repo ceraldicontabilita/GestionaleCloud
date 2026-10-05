@@ -181,7 +181,7 @@ def carta_da_menu(categorie, sottocategorie, prodotti, dettagli, imgmap):
         # Un testo aggiornato dall'admin non deve aprire gli ingredienti vecchi.
         testo_invariato = descrizione == extra.get("d")
         items.append({
-            **extra, "id": p["id"], "c": p["subcategory_id"], "n": p["nameIT"] or p["name"],
+            **extra, "id": p["id"], "cod": p.get("codice_prodotto"), "c": p["subcategory_id"], "n": p["nameIT"] or p["name"],
             "p": prezzo, "fp": prezzo, "pic": foto(p), "d": descrizione, "on": 1,
             "a": [ALLERGENI_CARTA.get(a, a) for a in p.get("allergens", [])],
             "t": extra.get("t"), "deep": extra.get("deep", 0) if testo_invariato else 0,

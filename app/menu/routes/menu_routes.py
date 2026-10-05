@@ -70,6 +70,8 @@ def prod_out(row: dict) -> dict:
         # visible = scelta del titolare in Lotti ("menu_pubblico").
         "visible": _visibile(row), "pubblicabile": _pubblicabile(row), "origine": row.get("origine"),
         "lotti_ref": row.get("lotti_ref"),
+        # ID prodotto unico (PRD-000123): lo stesso in Menu, B&B e Lotti; lo assegna il database
+        "codice_prodotto": row.get("codice_prodotto"),
         "menu_bb": row.get("menu_bb") is not False,
     }
 
