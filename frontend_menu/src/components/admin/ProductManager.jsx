@@ -7,7 +7,7 @@ import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { toast } from '../../hooks/use-toast';
-import { Edit, Save, X, Search, RefreshCw, ExternalLink } from 'lucide-react';
+import { Edit, Save, X, Search, ExternalLink } from 'lucide-react';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
@@ -24,7 +24,6 @@ const ProductManager = () => {
   const [saving, setSaving] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [syncingQromo, setSyncingQromo] = useState(false);
   const [soloDoppioni, setSoloDoppioni] = useState(false);
   const [mostraNascosti, setMostraNascosti] = useState(false);
   const [visibilitaInCorso, setVisibilitaInCorso] = useState(null);
@@ -50,33 +49,6 @@ const ProductManager = () => {
   }, []);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
-
-  // Aggiunta GestionaleCloud: replica il menu pubblicato su Qromo nelle tabelle menu_*
-  const handleSyncQromo = async () => {
-    setSyncingQromo(true);
-    try {
-      const token = localStorage.getItem('admin_token');
-      const response = await axios.post(
-        `${BACKEND_URL}/api/admin/sync-qromo`,
-        { dry_run: false },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const d = response.data;
-      toast({
-        title: 'Sincronizzazione da Qromo completata',
-        description: `${d.categories} categorie, ${d.subcategories} sottocategorie, ${d.products} prodotti`
-      });
-      loadProducts();
-    } catch (error) {
-      toast({
-        title: 'Errore',
-        description: error.response?.data?.detail || 'Sincronizzazione da Qromo non riuscita',
-        variant: 'destructive'
-      });
-    } finally {
-      setSyncingQromo(false);
-    }
-  };
 
   const nomeConfronto = p => (p.nameIT || p.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
   const nomi = products.filter(p => p.visible !== false).reduce((m, p) => {
@@ -186,13 +158,9 @@ const ProductManager = () => {
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center justify-between gap-4">
             <span>Tutti i Prodotti ({loading ? '…' : filteredProducts.length})</span>
-            <Button size="sm" variant="outline" onClick={handleSyncQromo} disabled={syncingQromo}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${syncingQromo ? 'animate-spin' : ''}`} />
-              {syncingQromo ? 'Sincronizzazione...' : 'Sincronizza da Qromo'}
-            </Button>
           </CardTitle>
           <p className="text-sm text-gray-600">
-            Sincronizza da Qromo sostituisce prezzi e allergeni del catalogo Qromo, ma conserva i prodotti nascosti con la X sullo stesso ID. Le ricette di Lotti restano gestite in Lotti.
+            Il menu è questo: prezzi, allergeni e visibilità si modificano qui. Le ricette di Lotti restano gestite in Lotti.
           </p>
         </CardHeader>
         <CardContent>

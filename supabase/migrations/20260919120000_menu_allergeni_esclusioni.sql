@@ -1,16 +1,9 @@
 -- Esclusioni dalla verifica allergeni del Menu.
 --
--- Perche' una tabella separata e non una colonna su menu.menu_products: la
--- sincronizzazione Qromo (app/menu/qromo_sync.py::_sostituisci_tabelle)
--- cancella e reinserisce per intero le righe con ``origine IS NULL``, e le
--- righe reinserite portano solo le colonne prodotte da ``trasforma_catalogo``
--- (id/category_id/subcategory_id/name/name_it/price/description/
--- description_it/allergens/image). Qualunque flag scritto dentro
--- menu_products verrebbe perso alla prima sincronizzazione: e' gia' quello
--- che succede agli allergeni messi a mano su un prodotto Qromo.
--- Gli id di Qromo (menu_item_id, menu_id, menu_category_id) sono invece
--- stabili tra una sync e l'altra, quindi un'esclusione chiavata su
--- quell'id, in una tabella che la sync non tocca, sopravvive.
+-- Perche' una tabella separata e non una colonna su menu.menu_products: un
+-- prodotto puo' essere ricreato (ricetta ripubblicata, riga riassegnata) e un
+-- flag scritto dentro la riga andrebbe perso. Un'esclusione chiavata sull'id
+-- (menu_item_id, menu_id, menu_category_id), in una tabella a parte, resta.
 --
 -- Semantica: "questo prodotto / questa categoria NON richiede la
 -- dichiarazione allergeni" (distillati, bibite in bottiglia...). Non e'

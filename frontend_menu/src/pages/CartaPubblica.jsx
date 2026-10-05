@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 /**
- * Il menu pubblico e' la replica del menu Qromo (public/carta/): pagina statica
+ * Il menu pubblico e' la carta in public/carta/: pagina statica
  * che legge la carta da `/api/menu/carta`. Il QR dei clienti punta a `/menu/`,
  * che qui rimanda a quella pagina.
  */

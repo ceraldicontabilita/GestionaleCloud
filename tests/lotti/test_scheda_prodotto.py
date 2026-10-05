@@ -8,7 +8,7 @@ from mongomock_motor import AsyncMongoMockClient
 from app.lotti.routers import ricette as ricette_router
 from app.lotti.routers import scheda_prodotto
 from app.lotti.servizi import menu_bridge
-from app.menu import carta_qromo
+from app.menu import carta_menu
 from app.menu.qr_prodotto import url_prodotto
 from app.menu.routes import menu_routes
 
@@ -174,7 +174,7 @@ def test_la_carta_porta_codice_canali_disponibilita_aggiunte_e_rimozioni():
                                          aggiunte=[{"nome": "Panna", "prezzo_centesimi": 50}], rimozioni=["Rum"])]
     sub = [{"id": 2, "category_id": 1, "name": "Pastry", "nameIT": "Pasticceria"}]
     cat = [{"id": 1, "name": "Produzione Ceraldi", "nameIT": "Produzione Ceraldi"}]
-    carta = carta_qromo.carta_da_menu(cat, sub, prodotti, {"menus": [], "cats": [], "items": []}, {})
+    carta = carta_menu.carta_da_menu(cat, sub, prodotti, {"menus": [], "cats": [], "items": []}, {})
     a, b = carta["items"]
     assert (a["sala"], a["dlv"], a["disp"], a["ag"], a["rm"]) == (1, 1, 1, [], [])
     assert (b["sala"], b["dlv"], b["disp"]) == (1, 0, 0)
@@ -185,20 +185,20 @@ def test_il_canale_delivery_toglie_i_prodotti_non_venduti(monkeypatch):
     items = [{"id": 1, "c": 2, "dlv": 1, "sala": 1}, {"id": 2, "c": 3, "dlv": 0, "sala": 1}]
     carta = {"menus": [{"id": 9}], "cats": [{"id": 2, "m": 9}, {"id": 3, "m": 9}], "items": items}
 
-    async def _dati():
+    def _dati():
         return {"pub": {}, "extras": {}}
 
     async def _carta(dati, destinazione="pubblico"):
         return {k: list(v) for k, v in carta.items()}
 
-    monkeypatch.setattr(carta_qromo, "_dataset", _dati)
-    monkeypatch.setattr(carta_qromo, "_carta_dai_dati", _carta)
-    d = _run(carta_qromo.carta_pubblica(canale="delivery"))
+    monkeypatch.setattr(carta_menu, "_dataset", _dati)
+    monkeypatch.setattr(carta_menu, "_carta_dai_dati", _carta)
+    d = _run(carta_menu.carta_pubblica(canale="delivery"))
     assert [i["id"] for i in d["items"]] == [1] and [c["id"] for c in d["cats"]] == [2]
-    s = _run(carta_qromo.carta_pubblica(canale="sala"))
+    s = _run(carta_menu.carta_pubblica(canale="sala"))
     assert len(s["items"]) == 2
     with pytest.raises(HTTPException):
-        _run(carta_qromo.carta_pubblica(canale="tavolo"))
+        _run(carta_menu.carta_pubblica(canale="tavolo"))
 
 
 # ---------- la scheda intera ----------

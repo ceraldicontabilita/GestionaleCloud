@@ -1,6 +1,6 @@
 -- ID prodotto unico (PRD-000123): lo stesso codice in Menu, B&B e Lotti.
--- Registro che non si cancella mai: la sync Qromo cancella e reinserisce i prodotti
--- (stesso id Qromo) e Lotti ricrea la riga Menu di una ricetta; il codice resta.
+-- Registro che non si cancella mai: Lotti ricrea la riga Menu di una ricetta
+-- e un prodotto gia' nel Menu puo' essere unito a una ricetta; il codice resta.
 create table if not exists menu.prodotti_codici (
   seq             bigint generated always as identity primary key,
   menu_product_id integer unique,
@@ -30,7 +30,7 @@ begin
       update menu.prodotti_codici set menu_product_id = new.id where seq = v_seq;
     end if;
   else
-    -- prodotto Qromo: l'id Qromo e' stabile fra una sync e l'altra
+    -- prodotto senza ricetta: il codice segue l'id della riga
     select seq into v_seq from menu.prodotti_codici where menu_product_id = new.id and lotti_ref is null;
     if v_seq is null then
       insert into menu.prodotti_codici (menu_product_id) values (new.id)
@@ -42,11 +42,25 @@ begin
   return new;
 end $$;
 
+-- una ricetta unita a un prodotto esistente ne prende il posto: il codice del prodotto diventa quello della ricetta
+create or replace function menu.aggancia_codice_ricetta() returns trigger
+language plpgsql security definer set search_path = menu, pg_temp as $$
+begin
+  if new.lotti_ref is not null and old.lotti_ref is null
+     and not exists (select 1 from menu.prodotti_codici where lotti_ref = new.lotti_ref) then
+    update menu.prodotti_codici set lotti_ref = new.lotti_ref where menu_product_id = new.id and lotti_ref is null;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_codice_aggancio on menu.menu_products;
+create trigger trg_codice_aggancio after update of lotti_ref on menu.menu_products
+  for each row execute function menu.aggancia_codice_ricetta();
+
 drop trigger if exists trg_codice_prodotto on menu.menu_products;
 create trigger trg_codice_prodotto before insert on menu.menu_products
   for each row execute function menu.assegna_codice_prodotto();
 
--- arretrato: Lotti prima (ordine per id), poi Qromo; un solo passaggio, idempotente
+-- arretrato: Lotti prima (ordine per id), poi gli altri; un solo passaggio, idempotente
 insert into menu.prodotti_codici (menu_product_id, lotti_ref)
   select id, lotti_ref from menu.menu_products
   where codice_prodotto is null order by (origine is null), id
@@ -65,7 +79,7 @@ drop trigger if exists trg_codice_prodotto_fisso on menu.menu_products;
 create trigger trg_codice_prodotto_fisso before update on menu.menu_products
   for each row execute function menu.blocca_cambio_codice_prodotto();
 
--- Scheda vendita del prodotto (la scrive il ponte Lotti dalla ricetta; i prodotti Qromo tengono i valori di partenza):
+-- Scheda vendita del prodotto (la scrive il ponte Lotti dalla ricetta; i prodotti senza ricetta tengono i valori di partenza):
 -- canali sala/delivery, disponibilita' (esaurito si decide in Lotti), aggiunte con prezzo e rimozioni di ingredienti.
 alter table menu.menu_products
   add column if not exists vendita_sala     boolean not null default true,

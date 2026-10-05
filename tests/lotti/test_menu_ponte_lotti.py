@@ -185,30 +185,92 @@ def test_categoria_automatica_usa_il_reparto(ambiente):
     assert _riga_menu(finto)["category_id"] == produzione["id"]
 
 
-def test_categoria_di_qromo_non_viene_mai_letta_dalla_ricetta(ambiente):
-    """Una categoria senza ``origine`` viene cancellata e reinserita a ogni
-    sync Qromo: appenderci un prodotto di Lotti farebbe fallire quella
-    cancellazione per vincolo di chiave esterna."""
+def _destinazione(ricette, ricetta_id, **campi):
+    return run(ricette.set_destinazione_menu(
+        ricetta_id, ricette.DestinazioneMenu(**campi), _admin=None))
+
+
+def test_la_categoria_scelta_dal_titolare_decide_dove_compare_la_ricetta(ambiente):
+    ricette, _, finto = ambiente
+    categoria_id = run(menu_bridge.crea_categoria_menu("Colazioni"))["categoria"]["id"]
+    sotto_id = run(menu_bridge.crea_sottocategoria_menu(categoria_id, "Sfogliate"))["sottocategoria"]["id"]
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Sfogliatella riccia"))))
+
+    esito = _destinazione(ricette, creata["id"], categoria_id=categoria_id, sottocategoria_id=sotto_id)
+
+    assert esito["menu_sync"]["categoria_origine"] == "scelta"
+    riga = [p for p in finto.tabelle["menu_products"] if p.get("lotti_ref") == f"ricetta:{creata['id']}"][0]
+    assert riga["category_id"] == categoria_id and riga["subcategory_id"] == sotto_id
+
+    # Togliere la scelta riporta la ricetta alla destinazione del reparto
+    esito = _destinazione(ricette, creata["id"], categoria_id=0, sottocategoria_id=0)
+    assert esito["menu_sync"]["categoria_origine"] == "automatica"
+
+
+def test_una_categoria_gia_nel_menu_si_puo_scegliere(ambiente):
+    ricette, _, finto = ambiente
+    finto.tabelle["menu_categories"] = [{"id": 7, "name": "Bar", "name_it": "Bar", "image": None, "origine": None}]
+    finto.tabelle["menu_subcategories"] = [
+        {"id": 70, "category_id": 7, "name": "Caffe", "name_it": "Caffe", "image": None, "origine": None}]
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Caffe speciale"))))
+
+    esito = _destinazione(ricette, creata["id"], categoria_id=7, sottocategoria_id=70)
+
+    assert esito["menu_sync"]["categoria_origine"] == "scelta"
+    riga = [p for p in finto.tabelle["menu_products"] if p.get("lotti_ref") == f"ricetta:{creata['id']}"][0]
+    assert (riga["category_id"], riga["subcategory_id"]) == (7, 70)
+
+
+def test_scelta_incoerente_e_rifiutata(ambiente):
     ricette, _, finto = ambiente
     finto.tabelle["menu_categories"] = [
-        {"id": 7, "name": "Bar", "name_it": "Bar", "image": None, "origine": None}]
+        {"id": 7, "name": "Bar", "name_it": "Bar", "origine": None},
+        {"id": 8, "name": "Food", "name_it": "Food", "origine": None}]
+    finto.tabelle["menu_subcategories"] = [
+        {"id": 70, "category_id": 7, "name": "Caffe", "name_it": "Caffe", "origine": None}]
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Caffe speciale"))))
 
-    creata = run(ricette.create_ricetta(ricette.RicettaCreate(
-        **_payload(menu_category_id=7))))
-    assert creata["menu_sync"]["categoria_origine"] == "automatica"
-    nomi = [c["name_it"] for c in finto.tabelle["menu_categories"]]
-    assert "Produzione Ceraldi" in nomi
-    assert _riga_menu(finto)["category_id"] != 7
-
-    # E l'elenco lo dice esplicitamente al frontend
-    elenco = run(menu_bridge.elenco_categorie_menu())
-    qromo = [c for c in elenco["categorie"] if c["id"] == 7][0]
-    assert qromo["selezionabile"] is False and qromo["motivo"]
-    lotti = [c for c in elenco["categorie"] if c["name_it"] == "Produzione Ceraldi"][0]
-    assert lotti["selezionabile"] is True and lotti["motivo"] is None
+    for campi in ({"categoria_id": 8, "sottocategoria_id": 70},   # sottocategoria di un'altra categoria
+                  {"categoria_id": 99, "sottocategoria_id": 70},  # categoria inesistente
+                  {"categoria_id": 7},                           # una sola delle due
+                  {"prodotto_id": 4242}):                        # prodotto inesistente
+        with pytest.raises(HTTPException) as errore:
+            _destinazione(ricette, creata["id"], **campi)
+        assert errore.value.status_code == 400
 
 
-def test_creazione_categoria_idempotente_e_sottocategoria_su_qromo_rifiutata(ambiente):
+def test_la_ricetta_si_unisce_a_un_prodotto_gia_nel_menu_senza_doppioni(ambiente):
+    ricette, _, finto = ambiente
+    finto.tabelle["menu_categories"] = [{"id": 1, "name": "Bar", "name_it": "Bar", "origine": None}]
+    finto.tabelle["menu_subcategories"] = [
+        {"id": 10, "category_id": 1, "name": "Dolci", "name_it": "Dolci", "origine": None}]
+    finto.tabelle["menu_products"] = [
+        {"id": 152788, "category_id": 1, "subcategory_id": 10, "name": "Sfogliatella", "name_it": "Sfogliatella",
+         "price": "2.00€", "origine": None, "codice_prodotto": "PRD-000007"}]
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Sfogliatella riccia"))))
+    assert len(finto.tabelle["menu_products"]) == 2  # la pubblicazione automatica ha creato la sua riga
+    run(menu_bridge.rimuovi_prodotto_dal_menu(f"ricetta:{creata['id']}"))
+    assert len(finto.tabelle["menu_products"]) == 1
+
+    elenco = run(menu_bridge.prodotti_agganciabili(creata["id"], "sfoglia"))
+    assert [p["id"] for p in elenco] == [152788] and elenco[0]["codice"] == "PRD-000007"
+
+    esito = _destinazione(ricette, creata["id"], prodotto_id=152788)
+
+    prodotti = finto.tabelle["menu_products"]
+    assert len(prodotti) == 1, "nessun doppione: la ricetta prende il posto del prodotto"
+    assert prodotti[0]["id"] == 152788 and prodotti[0]["lotti_ref"] == f"ricetta:{creata['id']}"
+    assert prodotti[0]["origine"] == "lotti" and prodotti[0]["codice_prodotto"] == "PRD-000007"
+    assert esito["menu_sync"]["menu_product_id"] == 152788
+    # un prodotto gia' unito non e' piu' agganciabile da un'altra ricetta
+    assert run(menu_bridge.prodotti_agganciabili("altra", "sfoglia")) == []
+    altra = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Altra ricetta"))))
+    with pytest.raises(HTTPException) as errore:
+        _destinazione(ricette, altra["id"], prodotto_id=152788)
+    assert errore.value.status_code in (400, 409)
+
+
+def test_creazione_categoria_idempotente_e_sottocategoria_su_categoria_esistente(ambiente):
     _, _, finto = ambiente
     prima = run(menu_bridge.crea_categoria_menu("Colazioni"))
     seconda = run(menu_bridge.crea_categoria_menu("Colazioni"))
@@ -218,51 +280,9 @@ def test_creazione_categoria_idempotente_e_sottocategoria_su_qromo_rifiutata(amb
 
     finto.tabelle["menu_categories"].append(
         {"id": 7, "name": "Bar", "name_it": "Bar", "image": None, "origine": None})
+    assert run(menu_bridge.crea_sottocategoria_menu(7, "Caffetteria"))["creata"] is True
     with pytest.raises(menu_bridge.CategoriaMenuNonValida):
-        run(menu_bridge.crea_sottocategoria_menu(7, "Caffetteria"))
-
-
-def test_categoria_creata_da_lotti_sopravvive_alla_sync_qromo(ambiente, monkeypatch):
-    """Simulazione della sostituzione integrale fatta da Qromo
-    (``app/menu/qromo_sync.py::_sostituisci_tabelle``): cancella solo cio' che
-    ha ``origine IS NULL``."""
-    from app.menu import qromo_sync as qs
-
-    ricette, _, finto = ambiente
-    monkeypatch.setattr(qs, "supabase", finto)
-
-    categoria_id = run(menu_bridge.crea_categoria_menu("Colazioni"))["categoria"]["id"]
-    assert finto.tabelle["menu_categories"][0]["origine"] == "lotti"
-    creata = run(ricette.create_ricetta(ricette.RicettaCreate(
-        **_payload(nome="Sfogliatella riccia", menu_category_id=categoria_id))))
-
-    # Righe di Qromo (senza origine), come le scriverebbe la sincronizzazione
-    finto.tabelle["menu_categories"].append(
-        {"id": 1, "name": "Bar", "name_it": "Bar", "image": None, "origine": None})
-    finto.tabelle["menu_subcategories"].append(
-        {"id": 10, "category_id": 1, "name": "Caffetteria", "name_it": "Caffetteria",
-         "image": None, "origine": None})
-    finto.tabelle["menu_products"].append(
-        {"id": 100, "category_id": 1, "subcategory_id": 10, "name": "Espresso",
-         "name_it": "Espresso", "price": "1.20€", "origine": None})
-
-    qs._sostituisci_tabelle({
-        "categories": [{"id": 1, "name": "Bar", "name_it": "Bar", "image": None}],
-        "subcategories": [{"id": 10, "category_id": 1, "name": "Caffetteria",
-                           "name_it": "Caffetteria", "image": None}],
-        "products": [{"id": 100, "category_id": 1, "subcategory_id": 10,
-                      "name": "Espresso", "name_it": "Espresso", "price": "1.20€"}],
-    })
-
-    categorie = {c["name_it"]: c for c in finto.tabelle["menu_categories"]}
-    assert categorie["Colazioni"]["origine"] == "lotti"
-    assert categorie["Colazioni"]["id"] == categoria_id
-    nostri = [p for p in finto.tabelle["menu_products"]
-              if p.get("lotti_ref") == f"ricetta:{creata['id']}"]
-    assert len(nostri) == 1
-    assert nostri[0]["category_id"] == categorie["Produzione Ceraldi"]["id"]
-    # La categoria di Qromo e' stata sostituita, non duplicata
-    assert sum(1 for c in finto.tabelle["menu_categories"] if c["id"] == 1) == 1
+        run(menu_bridge.crea_sottocategoria_menu(999, "Inesistente"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -704,10 +724,10 @@ def test_il_task_del_backfill_resta_referenziato(ambiente):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 10) Categoria omonima di una di Qromo: avviso, non blocco
+# 10) Categoria omonima di una gia' presente: avviso, non blocco
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_categoria_omonima_di_qromo_crea_ma_avvisa(ambiente):
+def test_categoria_omonima_di_una_gia_presente_crea_ma_avvisa(ambiente):
     _, _, finto = ambiente
     finto.tabelle["menu_categories"] = [
         {"id": 7, "name": "Bar", "name_it": "Bar", "image": None, "origine": None}]

@@ -1,11 +1,11 @@
-"""La carta del menu: tre livelli come nella replica Qromo, dati dal repository o dall'admin."""
+"""La carta del menu: tre livelli, dettagli dal dataset del repository e prodotti dalle tabelle del Menu."""
 import asyncio
 import json
 from copy import deepcopy
 
 import pytest
 
-from app.menu import carta_qromo as carta
+from app.menu import carta_menu as carta
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 
 
@@ -49,12 +49,7 @@ def test_card_dolci_senza_produzione_e_food_non_perde_prodotti():
 @pytest.fixture
 def db(monkeypatch):
     finto = ClientArchivioMemoria()["carta_test"]
-
-    async def _finto():
-        return finto
-
-    monkeypatch.setattr(carta, "_db", _finto)
-    from app.menu.qromo_sync import trasforma_catalogo
+    from tests.menu.seme_catalogo import trasforma_catalogo
     from tests.menu.test_menu_public_visible import _FakeSupabase
     righe = trasforma_catalogo(carta._seme()["pub"])
     client = _FakeSupabase({"menu_categories": righe["categories"],
@@ -85,15 +80,11 @@ def test_ogni_foto_indicata_esiste_nei_file_statici(db):
     assert not mancanti
 
 
-def test_la_scelta_dell_admin_cambia_prezzo_e_disponibilita_e_sopravvive_all_import(db):
+def test_la_scelta_dell_admin_cambia_prezzo_e_disponibilita(db):
     _run(carta.imposta_prodotto(152788, carta.SceltaProdotto(prezzo_centesimi=300), "admin"))
     dati = _run(carta.carta_pubblica())
     p = next(i for i in dati["items"] if i["id"] == 152788)
     assert p["p"] == 300 and p["on"] == 1
-    seme = carta._seme()
-    _run(carta.importa(carta.Importa(**seme), "admin"))
-    p = next(i for i in _run(carta.carta_pubblica())["items"] if i["id"] == 152788)
-    assert p["p"] == 300 and p["on"] == 1, "un nuovo import non cancella le scelte"
     _run(carta.imposta_prodotto(152788, carta.SceltaProdotto(disponibile=False), "admin"))
     assert not any(i["id"] == 152788 for i in _run(carta.carta_pubblica())["items"])
 
@@ -103,18 +94,6 @@ def test_il_vecchio_reset_non_cancella_dati_e_indica_la_modifica_canonica(db):
     with pytest.raises(HTTPException) as e:
         _run(carta.toglie_override(152788, "admin"))
     assert e.value.status_code == 410
-
-
-def test_import_dettagli_dichiara_che_non_cambia_catalogo(db):
-    from copy import deepcopy
-    dati = deepcopy(carta._seme())
-    p = next(p for p in dati["pub"]["menusItems"] if p["menu_item_id"] == 152788)
-    p.update(name="Nome importato di prova", price=666)
-    risposta = _run(carta.importa(carta.Importa(**dati), "admin"))
-    assert risposta["ok"] is True
-    assert risposta["ambito"] == "dettagli_carta" and risposta["catalogo_aggiornato"] is False
-    prodotto = next(p for p in _run(carta.carta_pubblica())["items"] if p["id"] == 152788)
-    assert prodotto["p"] == 250 and prodotto["n"] != "Nome importato di prova"
 
 
 def test_salvataggio_admin_compare_nella_carta_usata_dai_clienti(db):
@@ -156,18 +135,14 @@ def test_carta_include_lotti_senza_prezzo_ma_non_li_rende_ordinabili(db):
     assert e.value.status_code == 409
 
 
-def test_prodotto_inesistente_e_import_incompleto_sono_rifiutati(db):
+def test_prodotto_inesistente_e_rifiutato(db):
     from fastapi import HTTPException
     with pytest.raises(HTTPException) as e:
         _run(carta.imposta_prodotto(1, carta.SceltaProdotto(disponibile=True), "admin"))
     assert e.value.status_code == 404
-    with pytest.raises(HTTPException) as e:
-        _run(carta.importa(carta.Importa(pub={"menus": []}), "admin"))
-    assert e.value.status_code == 422
-    assert _run(carta.stato("admin"))["fonte"] == "seme"
 
 
-def test_carta_non_espone_listini_banco_o_prodotti_qromo_non_attivi(db):
+def test_carta_non_espone_listini_banco_o_prodotti_non_attivi(db):
     pub = carta._seme()["pub"]
     menus = {m["menu_id"]: m for m in pub["menus"]}
     categorie = {c["menu_category_id"]: c for c in pub["menusCategories"]}
@@ -180,9 +155,6 @@ def test_carta_non_espone_listini_banco_o_prodotti_qromo_non_attivi(db):
     }
     risultato = _run(carta.carta_pubblica())
     assert {i["id"] for i in risultato["items"]} == attesi
-    stato = _run(carta.stato("admin"))
-    assert stato["prodotti"] == len(attesi)
-    assert stato["catalogo"] == "menu_products"
 
 
 def test_tutti_i_quattordici_allergeni_ue_arrivano_ai_filtri_della_carta():

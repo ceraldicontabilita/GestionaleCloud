@@ -1,25 +1,18 @@
 """Categorie del Menu digitale viste e create da Lotti.
 
-Richiesta del titolare (19/09/2026): sulla ricetta si sceglie «la categoria
-dove inserirla, che recuperi da Menu o si creano in Lotti». Il Menu smette di
-pescare dalle ricette: e' Lotti a spingere nel Menu, e la ricetta porta con se'
-la destinazione.
+Sulla ricetta si sceglie la categoria e la sottocategoria dove metterla nel
+Menu e, se il prodotto c'e' gia', a quale prodotto del Menu unirla (stesso id,
+stesso codice PRD, nessun doppione). Il Menu e' nostro: e' Lotti a spingere nel
+Menu, e la ricetta porta con se' la destinazione.
 
 GET  /api/menu-categorie                          — categorie e sottocategorie del Menu
-POST /api/menu-categorie                          — crea una categoria di Lotti
+POST /api/menu-categorie                          — crea una categoria
 POST /api/menu-categorie/{id}/sottocategorie      — crea una sua sottocategoria
+GET  /api/ricette/{id}/menu-prodotti              — prodotti del Menu a cui si puo' unire la ricetta
 
 Tutto passa dal client del ponte (``app/lotti/servizi/menu_bridge.py``):
-nessuna seconda connessione al progetto Supabase del Menu.
-
-**Selezionabili solo le categorie di Lotti** (``origine`` valorizzata). Le
-categorie che arrivano da Qromo sono elencate ma non agganciabili: la
-sincronizzazione Qromo cancella e reinserisce tutto cio' che ha
-``origine IS NULL`` (``app/menu/qromo_sync.py::_sostituisci_tabelle``), e un
-prodotto o una sottocategoria di Lotti appesi a una di quelle categorie
-farebbero fallire quella cancellazione per vincolo di chiave esterna. Per
-questo ogni riga creata da qui nasce con ``origine = "lotti"``: e' cio' che la
-fa sopravvivere alla sincronizzazione.
+nessuna seconda connessione al progetto Supabase del Menu. Ogni riga creata da
+qui nasce con ``origine = "lotti"``.
 """
 from typing import Optional
 
@@ -57,10 +50,7 @@ async def codici_prodotti():
 
 @router.get("/menu-categorie")
 async def elenco_categorie_menu():
-    """Categorie e sottocategorie del Menu digitale.
-
-    Ogni voce porta ``selezionabile``: vale ``False`` per le categorie di Qromo,
-    con il ``motivo`` da mostrare a schermo."""
+    """Categorie e sottocategorie del Menu digitale."""
     try:
         return await menu_bridge.elenco_categorie_menu()
     except Exception as exc:  # noqa: BLE001 - tradotto in errore HTTP parlante
@@ -75,7 +65,7 @@ async def crea_categoria_menu(body: CategoriaMenuCreate, _admin=Depends(require_
     creata con ``creata: false``, non un doppione.
 
     Se nel Menu esiste gia' una categoria con quel nome ma di **altra
-    origine** (tipicamente Qromo) la creazione riesce lo stesso — il titolare
+    origine** la creazione riesce lo stesso — il titolare
     potrebbe volerne davvero una sua — ma la risposta porta ``avviso``: senza,
     i clienti si troverebbero due riquadri «Bar» identici nella home."""
     try:
@@ -89,9 +79,18 @@ async def crea_categoria_menu(body: CategoriaMenuCreate, _admin=Depends(require_
 async def crea_sottocategoria_menu(
     categoria_id: int, body: CategoriaMenuCreate, _admin=Depends(require_admin),
 ):
-    """Crea una sottocategoria dentro una categoria di Lotti. Idempotente sul nome."""
+    """Crea una sottocategoria dentro una categoria del Menu. Idempotente sul nome."""
     try:
         return await menu_bridge.crea_sottocategoria_menu(
             categoria_id, body.nome, nome=body.nome_en, immagine=body.immagine)
+    except Exception as exc:  # noqa: BLE001
+        raise _errore_menu(exc) from exc
+
+
+@router.get("/ricette/{ricetta_id}/menu-prodotti")
+async def prodotti_menu_agganciabili(ricetta_id: str, q: str = "", _admin=Depends(require_admin)):
+    """Prodotti gia' nel Menu non ancora di nessuna ricetta, per unirli a questa."""
+    try:
+        return {"prodotti": await menu_bridge.prodotti_agganciabili(ricetta_id, q)}
     except Exception as exc:  # noqa: BLE001
         raise _errore_menu(exc) from exc

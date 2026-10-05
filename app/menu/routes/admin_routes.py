@@ -10,8 +10,7 @@ from app.menu.routes.qrcode_routes import verify_token
 from app.menu.supabase_client import supabase
 
 # Le immagini caricate dallo staff vengono salvate su Supabase Storage
-# (bucket pubblico "menu-images", stesso bucket usato per le immagini migrate
-# da Qromo/sito esterno) cosi' da restare disponibili anche dopo un nuovo
+# (bucket pubblico "menu-images", stesso bucket delle foto dei prodotti) cosi' da restare disponibili anche dopo un nuovo
 # deploy su Render, dove il disco locale del servizio viene azzerato.
 STORAGE_BUCKET = "menu-images"
 UPLOAD_PREFIX = "uploads"

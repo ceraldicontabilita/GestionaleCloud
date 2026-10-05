@@ -9,6 +9,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Check, Plus, RefreshCw, Save, X } from "lucide-react";
 import { API } from "../../utils/constants";
 import { apiError } from "../../utils/apiError";
+import PosizioneMenu from "./PosizioneMenu";
 
 const SALVIA = "#5b7a6b";
 const SALVIA_SCURO = "#3f5a4e";
@@ -130,6 +131,10 @@ export default function SchedaProdottoModal({ ricetta, onClose, onSaved }) {
               <p className="m-0 text-sm text-stone-700">{scheda.ingredienti.length ? scheda.ingredienti.map((i) => i.nome).join(", ") : "Nessun ingrediente inserito"}</p>
               <p className="m-0 mt-1 text-sm text-stone-700">Allergeni: <b>{scheda.allergeni.length ? scheda.allergeni.join(", ") : "nessuno dichiarato"}</b></p>
               {scheda.varianti.length > 0 && <p className="m-0 mt-1 text-sm text-stone-700">Varianti: {scheda.varianti.map((v) => `${v.nome}${v.codice_prodotto ? ` (${v.codice_prodotto})` : ""}`).join(", ")}</p>}
+            </Blocco>
+
+            <Blocco titolo="Posizione nel Menu">
+              <PosizioneMenu ricetta={ricetta} onSaved={() => { onSaved?.(); carica(); }} />
             </Blocco>
 
             <Blocco titolo="Si vende in">

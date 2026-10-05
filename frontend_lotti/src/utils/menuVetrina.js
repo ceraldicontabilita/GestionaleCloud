@@ -101,11 +101,22 @@ export function prezzoPerMenu(ricetta) {
 }
 
 /**
- * Dove finisce la ricetta nel Menu — gemello di `menu_bridge._destinazione_menu`.
- * @returns {{origine: "automatica",
+ * Dove finisce la ricetta nel Menu — gemello di `menu_bridge._destinazione_menu`:
+ * la coppia categoria/sottocategoria scelta dal titolare se esiste ancora nel
+ * Menu, altrimenti quella del reparto.
+ * @returns {{origine: "scelta"|"automatica",
  *            categoria: string, sottocategoria: string}}
  */
-export function destinazioneMenu(ricetta) {
+export function destinazioneMenu(ricetta, indice) {
+  const categoriaId = intero(ricetta?.menu_categoria_id);
+  const sottoId = intero(ricetta?.menu_sottocategoria_id);
+  if (categoriaId !== null && sottoId !== null && indice) {
+    const categoria = indice.perId?.get(categoriaId);
+    const sotto = indice.sottoPerId?.get(sottoId);
+    if (categoria && sotto && sotto.category_id === categoriaId) {
+      return { origine: "scelta", categoria: nomeCategoria(categoria), sottocategoria: nomeCategoria(sotto) };
+    }
+  }
   return {
     categoria: CATEGORIA_PREDEFINITA,
     sottocategoria: sottocategoriaPerReparto(ricetta?.reparto),

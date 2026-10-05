@@ -3,7 +3,7 @@ import asyncio
 from pathlib import Path
 
 from app.lotti.servizi import menu_bridge
-from app.menu import carta_qromo
+from app.menu import carta_menu
 from app.menu.routes import menu_routes
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,7 +37,7 @@ class _Supabase:
         return _Tabella(self.righe)
 
 
-def test_lotti_legge_il_codice_per_ricetta_e_ignora_i_prodotti_qromo(monkeypatch):
+def test_lotti_legge_il_codice_per_ricetta_e_ignora_i_prodotti_senza_ricetta(monkeypatch):
     monkeypatch.setenv("MENU_SUPABASE_URL", "https://menu.test.supabase.co")
     monkeypatch.setattr(menu_bridge, "supabase", _Supabase([
         {"lotti_ref": "ricetta:abc", "codice_prodotto": "PRD-000007"},
@@ -54,7 +54,7 @@ def test_il_menu_espone_il_codice_e_la_carta_lo_porta_agli_item():
     assert menu_routes.prod_out(riga)["codice_prodotto"] == "PRD-000007"
     sub = [{"id": 2, "category_id": 1, "name": "Pastry", "nameIT": "Pasticceria"}]
     cat = [{"id": 1, "name": "Produzione Ceraldi", "nameIT": "Produzione Ceraldi"}]
-    carta = carta_qromo.carta_da_menu(cat, sub, [menu_routes.prod_out(riga)], {"menus": [], "cats": [], "items": []}, {})
+    carta = carta_menu.carta_da_menu(cat, sub, [menu_routes.prod_out(riga)], {"menus": [], "cats": [], "items": []}, {})
     assert [i["cod"] for i in carta["items"]] == ["PRD-000007"]
 
 

@@ -1,15 +1,13 @@
-"""La carta pubblica del menu, nella forma della replica del menu Qromo.
+"""La carta pubblica del menu.
 
-I prodotti pubblici provengono dalle stesse tabelle ``menu_*`` dell'admin e
-del ponte Lotti. Il catalogo Qromo (``menu_carta`` o seme) aggiunge solamente
-colori, foto locali, orari e dettagli non modificati: non decide prezzo,
-allergeni o pubblicazione. Non si espongono listini interni o prodotti
-rimossi usando una seconda copia del catalogo.
+I prodotti pubblici provengono dalle tabelle ``menu_*`` dell'admin e del
+ponte Lotti. I dettagli di presentazione (colori, foto locali, orari) stanno nel
+dataset versionato in ``dati_carta/``: non decidono prezzo, allergeni o
+pubblicazione. Non si espongono listini interni o prodotti rimossi usando una
+seconda copia del catalogo.
 
 Endpoint:
     GET  /api/menu/carta                     pubblico, per la pagina /menu/carta/
-    GET  /api/admin/carta/stato              admin
-    POST /api/admin/carta/importa            admin, {"pub":…, "extras":…, "imgmap":…}
     PUT  /api/admin/carta/prodotti/{id}      admin, {"disponibile":bool?, "prezzo_centesimi":int?}
     DELETE /api/admin/carta/prodotti/{id}    410, usare la modifica canonica
 """
@@ -17,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from functools import lru_cache
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -30,14 +28,13 @@ from app.menu.routes import menu_routes
 from app.menu.models.menu_models import ProductUpdate
 
 DATI = Path(__file__).resolve().parent / "dati_carta"
-COLLEZIONE = "menu_carta"
-ID_DATASET = "qromo"
 PREFISSO_FOTO = "/menu/carta/"
 
 router_pubblico = APIRouter(prefix="/api/menu", tags=["Carta"])
 router_admin = APIRouter(prefix="/api/admin/carta", tags=["Carta"])
 
 
+@lru_cache(maxsize=1)
 def _seme() -> Dict[str, Any]:
     return {nome: json.loads((DATI / f"{nome}.json").read_text(encoding="utf-8"))
             for nome in ("pub", "extras", "imgmap")}
@@ -108,15 +105,8 @@ def costruisci_carta(pub: Dict[str, Any], extras: Dict[str, Any], imgmap: Dict[s
     return {"menus": menus, "cats": cats, "items": items}
 
 
-async def _db():
-    from app.database import Database
-    return Database.get_db()
-
-
-async def _dataset() -> Dict[str, Any]:
-    db = await _db()
-    salvato = await db[COLLEZIONE].find_one({"id": ID_DATASET}, {"_id": 0})
-    return salvato if salvato and salvato.get("pub") else _seme()
+def _dataset() -> Dict[str, Any]:
+    return _seme()
 
 
 @router_pubblico.get("/carta")
@@ -126,7 +116,7 @@ async def carta_pubblica(destinazione: str = "pubblico", canale: Optional[str] =
         raise HTTPException(400, "Destinazione non valida")
     if canale not in {None, "", "sala", "delivery"}:
         raise HTTPException(400, "Canale non valido")
-    dati = await _dataset()
+    dati = _dataset()
     carta = await _carta_dai_dati(dati, destinazione=destinazione)
     if canale:
         chiave = "sala" if canale == "sala" else "dlv"
@@ -162,7 +152,7 @@ ALLERGENI_CARTA = {
 
 
 def carta_da_menu(categorie, sottocategorie, prodotti, dettagli, imgmap):
-    """La carta e l'admin leggono le stesse righe; Qromo aggiunge solo dettagli.
+    """La carta e l'admin leggono le stesse righe; il dataset aggiunge solo dettagli.
 
     Nomi, prezzi, visibilita', allergeni, foto e gerarchia non provengono dal
     seme statico. La stessa lettura include i prodotti pubblicati da Lotti.
@@ -227,12 +217,12 @@ def carta_da_menu(categorie, sottocategorie, prodotti, dettagli, imgmap):
 
 def _raggruppa_carta(carta):
     """Organizzazione della carta, non un secondo catalogo: conserva gli ID
-    prodotto e non modifica le categorie operative o gli originali Qromo."""
+    prodotto e non modifica le categorie operative o gli originali."""
     menus, cats, items = carta["menus"], carta["cats"], carta["items"]
     produzione = next((m for m in menus if m["n"].casefold() == "produzione ceraldi"), None)
     bar = next((m for m in menus if m["n"].casefold() == "bar & dolci"), None)
     food = next((m for m in menus if m["n"].casefold() == "food"), None)
-    dolci_qromo = next((c for c in cats if bar and c["m"] == bar["id"] and c["n"].casefold() == "dolci"), None)
+    dolci_bar = next((c for c in cats if bar and c["m"] == bar["id"] and c["n"].casefold() == "dolci"), None)
     colazioni = [c for c in cats if bar and c["m"] == bar["id"] and c["n"].casefold() in {"dolci", "colazione"}]
     if not produzione and not colazioni:
         return carta
@@ -248,10 +238,10 @@ def _raggruppa_carta(carta):
         if not produzione or c["m"] != produzione["id"] or c in colazioni:
             continue
         if c["n"].casefold() == "pasticceria":
-            if dolci_qromo:
+            if dolci_bar:
                 for i in items:
                     if i["c"] == c["id"]:
-                        i["c"] = dolci_qromo["id"]
+                        i["c"] = dolci_bar["id"]
             continue
         if c["n"].casefold() == "rosticceria":
             if not food:
@@ -276,50 +266,6 @@ def _raggruppa_carta(carta):
             # Non usare la foto della rosticceria per la nuova card dei dolci.
             m["pic"] = next((i["pic"] for i in items if i.get("pic") and i["c"] in {c["id"] for c in cats if c["m"] == m["id"]}), None)
     return {"menus": menus, "cats": cats, "items": items}
-
-
-class Importa(BaseModel):
-    pub: Dict[str, Any]
-    extras: Dict[str, Any] = Field(default_factory=dict)
-    imgmap: Dict[str, str] = Field(default_factory=dict)
-
-
-def _controlla(pub: Dict[str, Any]) -> None:
-    mancanti = [k for k in ("menus", "menusCategories", "menusItems", "allergens", "menusItemsAllergens",
-                            "menusCategoriesTimes", "menusItemsTimes") if not isinstance(pub.get(k), list)]
-    if mancanti:
-        raise HTTPException(422, f"pub.json incompleto: mancano {', '.join(mancanti)}")
-
-
-@router_admin.get("/stato")
-async def stato(_utente: str = Depends(verify_token)):
-    db = await _db()
-    salvato = await db[COLLEZIONE].find_one({"id": ID_DATASET}, {"_id": 0, "importato_il": 1})
-    dati = await _dataset()
-    carta = await _carta_dai_dati(dati)
-    return {
-        "fonte": "importato" if salvato else "seme",
-        "catalogo": "menu_products",
-        "importato_il": (salvato or {}).get("importato_il"),
-        "menu": len(carta["menus"]), "categorie": len(carta["cats"]), "prodotti": len(carta["items"]),
-    }
-
-
-@router_admin.post("/importa")
-async def importa(corpo: Importa, _utente: str = Depends(verify_token)):
-    _controlla(corpo.pub)
-    carta = costruisci_carta(corpo.pub, corpo.extras, corpo.imgmap)
-    db = await _db()
-    await db[COLLEZIONE].replace_one(
-        {"id": ID_DATASET},
-        {"id": ID_DATASET, "pub": corpo.pub, "extras": corpo.extras, "imgmap": corpo.imgmap,
-         "importato_il": datetime.now(timezone.utc).isoformat()},
-        upsert=True,
-    )
-    return {"ok": True, "menu": len(carta["menus"]), "categorie": len(carta["cats"]),
-            "prodotti": len(carta["items"]), "ambito": "dettagli_carta",
-            "catalogo_aggiornato": False,
-            "messaggio": "Importati i dettagli della carta. Nomi, prezzi, allergeni e pubblicazione restano quelli del catalogo Menu; il catalogo Qromo si importa con Sincronizza da Qromo."}
 
 
 class SceltaProdotto(BaseModel):

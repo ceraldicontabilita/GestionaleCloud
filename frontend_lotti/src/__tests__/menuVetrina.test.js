@@ -14,12 +14,12 @@ const {
   sottocategoriaPerReparto,
 } = require("../utils/menuVetrina");
 
-// Due categorie di Lotti (selezionabili) e una di Qromo (non agganciabile).
+// Due categorie create da Lotti e una già presente nel Menu: tutte si possono scegliere.
 const CATEGORIE = indicizzaCategorie({
   categorie: [
     {
       id: 1000001, name: "Ceraldi Production", name_it: "Produzione Ceraldi",
-      origine: "lotti", selezionabile: true, motivo: null,
+      origine: "lotti",
       sottocategorie: [
         { id: 1000002, category_id: 1000001, name: "Pastry", name_it: "Pasticceria", origine: "lotti", selezionabile: true },
         { id: 1000003, category_id: 1000001, name: "Bar", name_it: "Bar", origine: "lotti", selezionabile: true },
@@ -27,14 +27,13 @@ const CATEGORIE = indicizzaCategorie({
     },
     {
       id: 1000010, name: "Breakfast", name_it: "Colazioni",
-      origine: "lotti", selezionabile: true, motivo: null,
+      origine: "lotti",
       sottocategorie: [
         { id: 1000011, category_id: 1000010, name: "Pastry", name_it: "Sfogliate", origine: "lotti", selezionabile: true },
       ],
     },
     {
       id: 7, name: "Drinks", name_it: "Bevande", origine: null,
-      selezionabile: false, motivo: "Categoria importata da Qromo: crea qui una categoria di Lotti.",
       sottocategorie: [],
     },
   ],
@@ -78,6 +77,16 @@ describe("dove finisce la ricetta nel Menu", () => {
   test("i vecchi campi manuali non cambiano la destinazione", () => {
     expect(destinazioneMenu(sfogliatella({ menu_category_id: 7, menu_subcategory_id: 1000002 }), CATEGORIE))
       .toEqual({ origine: "automatica", categoria: CATEGORIA_PREDEFINITA, sottocategoria: "Pasticceria" });
+  });
+
+  test("la categoria scelta dal titolare vale se esiste ancora nel Menu", () => {
+    expect(destinazioneMenu(sfogliatella({ menu_categoria_id: 1000010, menu_sottocategoria_id: 1000011 }), CATEGORIE))
+      .toEqual({ origine: "scelta", categoria: "Colazioni", sottocategoria: "Sfogliate" });
+    // sottocategoria di un'altra categoria o categoria sparita: si torna al reparto
+    expect(destinazioneMenu(sfogliatella({ menu_categoria_id: 7, menu_sottocategoria_id: 1000011 }), CATEGORIE).origine)
+      .toBe("automatica");
+    expect(destinazioneMenu(sfogliatella({ menu_categoria_id: 999, menu_sottocategoria_id: 1 }), CATEGORIE).origine)
+      .toBe("automatica");
   });
 
   test("un reparto sconosciuto finisce nella sezione Altro", () => {

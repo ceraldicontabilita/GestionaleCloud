@@ -66,4 +66,29 @@ describe("Scheda prodotto", () => {
     expect(node.querySelectorAll('[data-testid="qr"]').length).toBe(0);
     expect(node.textContent).toContain("indirizzo pubblico del menu non ancora scelto");
   });
+
+  test("sceglie categoria e prodotto del Menu e salva la posizione", async () => {
+    axios.get.mockImplementation((url) => {
+      if (url.includes("/menu-categorie")) return Promise.resolve({ data: { categorie: [
+        { id: 7, name_it: "Bar", sottocategorie: [{ id: 70, category_id: 7, name_it: "Dolci" }] }] } });
+      if (url.includes("/menu-prodotti")) return Promise.resolve({ data: { prodotti: [
+        { id: 152788, nome: "Sfogliatella", prezzo: "2.00€", categoria: "Bar", codice: "PRD-000009" }] } });
+      return Promise.resolve({ data: SCHEDA });
+    });
+    const cambia = async (el, valore) => act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+      set.call(el, valore);
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await apri();
+    await cambia(node.querySelector('[data-testid="menu-categoria"]'), "7");
+    await cambia(node.querySelector('[data-testid="menu-sottocategoria"]'), "70");
+    await cambia(node.querySelector('[data-testid="menu-prodotto"]'), "152788");
+    await act(async () => node.querySelector('[data-testid="menu-posizione-salva"]').click());
+    expect(axios.put).toHaveBeenCalledWith(
+      expect.stringContaining("/ricette/r1/destinazione-menu"),
+      { categoria_id: 7, sottocategoria_id: 70, prodotto_id: 152788 },
+      expect.anything(),
+    );
+  });
 });
