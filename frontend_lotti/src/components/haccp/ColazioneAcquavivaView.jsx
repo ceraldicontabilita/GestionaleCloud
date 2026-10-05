@@ -35,6 +35,10 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
   const salvatoRef = React.useRef("");
   const operazioneRef = React.useRef(false);
   const [popolandoAcquisti, setPopolandoAcquisti] = useState(false);
+  // Doppia fonte: coppie dichiarate dal titolare (Acquaviva o nostra produzione) e scelta di oggi
+  const [coppie, setCoppie]           = useState([]);
+  const [scelteOggi, setScelteOggi]   = useState({});
+  const [sceltaAperta, setSceltaAperta] = useState(null); // coppia in attesa di scelta
   // La lista scorre: quando cambia la ricerca si torna in cima (23/07/2026:
   // "se faccio cerca esco giù a tutto")
   const listaRef = React.useRef(null);
@@ -60,6 +64,29 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
     }
   }, []);
 
+  const caricaCoppie = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API}/colazione-acquaviva/coppie`);
+      setCoppie(r.data?.coppie || []);
+      setScelteOggi(r.data?.scelte_oggi || {});
+    } catch (e) {
+      toast.error("Doppia fonte non disponibile: " + apiError(e));
+    }
+  }, []);
+
+  const coppiaDi = (prodottoId) => coppie.find(c =>
+    String(c.ricetta_id) === String(prodottoId) || (c.acquaviva_ids || []).map(String).includes(String(prodottoId)));
+
+  const scegliFonte = async (coppia, fonte) => {
+    try {
+      await axios.post(`${API}/colazione-acquaviva/scelta-fonte`, { coppia_id: coppia.id, fonte });
+      setScelteOggi(prev => ({ ...prev, [coppia.id]: fonte }));
+      setSceltaAperta(null);
+    } catch (e) {
+      toast.error("Scelta non salvata: " + apiError(e));
+    }
+  };
+
   const carica = useCallback(async () => {
     setLoading(true);
     setErroreCaricamento("");
@@ -80,13 +107,14 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
       if (!primo) throw new Error("Nessuna stagione disponibile: verifica i menu colazione.");
       setPresetSel(primo);
       await caricaPreset(primo);
+      await caricaCoppie();
     } catch (e) {
       setErroreCaricamento(apiError(e));
       toast.error("Errore caricamento: " + apiError(e));
     } finally {
       setLoading(false);
     }
-  }, [caricaPreset]);
+  }, [caricaPreset, caricaCoppie]);
 
   const aggiungiTutteStagioni = async (prod) => {
     if (operazioneRef.current || prod.ammesso_colazione === false) return;
@@ -277,6 +305,12 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
     if (registrando || loading || erroreCaricamento || !presetSel) return;
     const attivi = template.items.filter(i => i.attivo);
     if (attivi.length === 0) { toast.error("Seleziona almeno un prodotto"); return; }
+    const senzaScelta = attivi.map(i => coppiaDi(i.prodotto_id)).filter(c => c && !scelteOggi[c.id]);
+    if (senzaScelta.length) {
+      toast.error(`Scegli Acquaviva o nostra produzione per ${senzaScelta[0].nome}`);
+      setSceltaAperta(senzaScelta[0]);
+      return;
+    }
     setRegistrando(true);
     try {
       await axios.put(`${API}/colazione-acquaviva`, { ...template, nome: presetSel });
@@ -707,10 +741,16 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
                         </div>
 
                         {/* Nome */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ flex: 1, minWidth: 0, cursor: coppiaDi(item.prodotto_id) ? "pointer" : "default" }}
+                          onClick={() => { const c = coppiaDi(item.prodotto_id); if (c) setSceltaAperta(c); }}>
                           <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#3f5a4e", lineHeight: 1.3 }}>
-                            {item.prodotto_nome}
+                            {(() => { const c = coppiaDi(item.prodotto_id); const f = c && scelteOggi[c.id];
+                              return f === "acquaviva" ? (c.acquaviva_nome || item.prodotto_nome) : f === "casa" ? (c.nome || item.prodotto_nome) : item.prodotto_nome; })()}
                           </p>
+                          {(() => { const c = coppiaDi(item.prodotto_id); if (!c) return null; const f = scelteOggi[c.id];
+                            return <p style={{ margin: "2px 0 0", fontSize: 12, fontWeight: 800, color: f ? "var(--success)" : "var(--warning-text)" }}>
+                              {f === "acquaviva" ? "Di Acquaviva" : f === "casa" ? "Nostra produzione" : "Tocca per scegliere: Acquaviva o nostra produzione"}
+                            </p>; })()}
                           {item.prezzo_vendita > 0 && (
                             <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--warning-text)", fontWeight: 600 }}>
                               €{((item.prezzo_vendita || 0) * item.pezzi).toFixed(2)} valore
@@ -756,6 +796,28 @@ const ColazioneAcquavivaView = ({ onClose, modoTablet = false }) => {
             </>
           )}
         </div>
+
+        {sceltaAperta && (
+          <div role="dialog" aria-modal="true" aria-label="Scegli la fonte" onClick={() => setSceltaAperta(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(42,51,41,0.55)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: "#fffefb", borderRadius: 20, padding: 20, width: "100%", maxWidth: 420 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800, color: "#2a3329" }}>{sceltaAperta.nome}</p>
+              <p style={{ margin: "0 0 14px", fontSize: 14, color: "#6b7669" }}>Questa mattina è di Acquaviva o di nostra produzione?</p>
+              <button onClick={() => scegliFonte(sceltaAperta, "acquaviva")}
+                style={{ width: "100%", minHeight: 56, marginBottom: 10, borderRadius: 14, border: "none", background: "var(--warning)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>
+                Di Acquaviva · {sceltaAperta.acquaviva_nome}
+              </button>
+              <button onClick={() => scegliFonte(sceltaAperta, "casa")}
+                style={{ width: "100%", minHeight: 56, marginBottom: 10, borderRadius: 14, border: "none", background: "#3f5a4e", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>
+                Nostra produzione
+              </button>
+              <button onClick={() => setSceltaAperta(null)}
+                style={{ width: "100%", minHeight: 44, borderRadius: 14, border: "2px solid #e6e0d4", background: "#faf7f0", color: "#3f5a4e", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Footer con bottone Avvia ── */}
         {modalita === "avvia" && !loading && !erroreCaricamento && attivi.length > 0 && (
