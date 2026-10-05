@@ -139,6 +139,25 @@ async def imposta_prodotto_acquaviva(prodotto_id: int, attivo: bool, *, da: str 
     )
 
 
+async def nome_fattura_prodotto(prodotto_id: Any, ripiego: str = "") -> str:
+    """Nome del prodotto come sta nelle fatture Acquaviva: e' il nome del LOTTO (uso interno).
+
+    Ai clienti il Menu mostra il nome semplice; il nome di fattura sta solo qui, accanto al segno
+    «Fornitore: Acquaviva». Senza nome di fattura vale il nome del Menu."""
+    doc = await db[COLL_PRODOTTI].find_one({"id": f"menu:{prodotto_id}"}, {"_id": 0, "nome_fattura": 1})
+    return str((doc or {}).get("nome_fattura") or "").strip() or str(ripiego or "")
+
+
+async def imposta_nome_fattura(prodotto_id: int, nome: str, *, da: str = "titolare") -> None:
+    chiave = f"menu:{int(prodotto_id)}"
+    await db[COLL_PRODOTTI].update_one(
+        {"id": chiave},
+        {"$set": {"id": chiave, "prodotto_id": str(int(prodotto_id)), "nome_fattura": str(nome or "").strip(),
+                  "aggiornato_il": datetime.now(timezone.utc).isoformat(), "da": da}},
+        upsert=True,
+    )
+
+
 async def e_prodotto_acquaviva(prodotto_id: Any) -> bool:
     doc = await db[COLL_PRODOTTI].find_one({"id": f"menu:{prodotto_id}"}, {"_id": 0, "fornitore": 1})
     return bool(doc and doc.get("fornitore") == "acquaviva")

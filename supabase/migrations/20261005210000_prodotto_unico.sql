@@ -42,10 +42,6 @@ insert into menu.menu_categories (id, name, name_it, origine)
 insert into menu.menu_subcategories (id, category_id, name, name_it, origine)
   select s.id, s.cat_id, s.nome, s.nome, null from public.bb_prod_sub s
   where not exists (select 1 from menu.menu_subcategories m where m.id = s.id);
--- e viceversa: la sottocategoria creata nel Menu per la colazione esterna deve esistere anche per il B&B
-insert into public.bb_prod_sub (id, cat_id, nome, ordine, attivo)
-  select s.id, s.category_id, s.name, 0, true from menu.menu_subcategories s
-  where s.id = 102288 and not exists (select 1 from public.bb_prod_sub b where b.id = s.id);
 
 -- 4) i prodotti che esistevano solo nel B&B entrano nel Menu (stesso id; il codice PRD lo assegna il database)
 insert into menu.menu_products
