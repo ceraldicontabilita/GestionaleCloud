@@ -384,17 +384,25 @@ async def get_veicoli(
         return r.get("numeri_verbale") or ([r["numero_verbale"]] if r.get("numero_verbale") else [])
 
     numeri_in_fattura = {n for v in risultato for r in (v.get("verbali") or []) for n in _numeri(r)}
-    in_archivio: set = set()
+    # Leasys scrive in fattura il «Registro n.» del Comune, non il numero del verbale (A...): il verbale
+    # in archivio porta tutti e due (`numero_registro`), quindi il numero della fattura si risolve nel verbale vero.
+    risolti: Dict[str, str] = {}
     if numeri_in_fattura:
+        elenco = sorted(numeri_in_fattura)
         for collezione in ("verbali_noleggio", "verbali_noleggio_completi"):
-            async for doc in db[collezione].find({"numero_verbale": {"$in": sorted(numeri_in_fattura)}},
+            async for doc in db[collezione].find({"numero_verbale": {"$in": elenco}},
                                                  {"_id": 0, "numero_verbale": 1}):
-                in_archivio.add(doc.get("numero_verbale"))
+                risolti.setdefault(doc.get("numero_verbale"), doc.get("numero_verbale"))
+            async for doc in db[collezione].find({"numero_registro": {"$in": elenco}},
+                                                 {"_id": 0, "numero_verbale": 1, "numero_registro": 1}):
+                if doc.get("numero_verbale"):
+                    risolti.setdefault(str(doc.get("numero_registro")), doc["numero_verbale"])
     for v in risultato:
         for r in v.get("verbali") or []:
             if _numeri(r):
                 r["numeri_verbale"] = _numeri(r)
-                r["verbali_in_archivio"] = [n for n in _numeri(r) if n in in_archivio]
+                r["verbali_risolti"] = {n: risolti[n] for n in _numeri(r) if n in risolti}
+                r["verbali_in_archivio"] = [n for n in _numeri(r) if n in risolti]
 
     # ── ARRICCHISCI CON I VERBALI (motore centralizzato, entrambe le fonti) ──
     # Per ogni veicolo del risultato, unisce verbali_noleggio (posta/PEC) e
