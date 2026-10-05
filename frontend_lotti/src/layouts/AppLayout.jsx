@@ -1,7 +1,7 @@
 // Layout dell'app principale: header, barra di navigazione e cornice pagina.
 // Estratto da App.js (fase 2 ristrutturazione 24/07/2026) — SOLO presentazione:
 // stato e logica restano in App.js / useAppNavigation.
-import { ArrowLeft, FileText, HelpCircle, LogOut, Settings, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, FileText, HelpCircle, LogOut, Settings, ShieldCheck, Snowflake, Thermometer } from "lucide-react";
 import SelettoreSezioni from "../components/shared/SelettoreSezioni";
 import { isAdmin, logout } from "../auth";
 import { esciDalGruppo } from "../../../frontend_shared/SessioneGruppo";
@@ -50,6 +50,15 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
               Reparti
             </button>
           )}
+          {/* Indietro/Avanti: si torna sempre da dove si viene, senza uscire dalla sezione. */}
+          <button type="button" onClick={() => window.history.back()} data-testid="btn-indietro" title="Indietro" aria-label="Indietro"
+            style={{ ...btnHeaderStyle, minHeight: 44, minWidth: 44, justifyContent: "center", padding: "7px 8px" }}>
+            <ChevronLeft size={20} aria-hidden="true" />
+          </button>
+          <button type="button" onClick={() => window.history.forward()} data-testid="btn-avanti" title="Avanti" aria-label="Avanti"
+            style={{ ...btnHeaderStyle, minHeight: 44, minWidth: 44, justifyContent: "center", padding: "7px 8px" }}>
+            <ChevronRight size={20} aria-hidden="true" />
+          </button>
           <button
             type="button"
             onClick={() => onTabChange("dashboard")}
@@ -112,17 +121,18 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
         )}
         {amministratore && (
           <div className="g-header-ingranaggio" style={{ flexShrink: 0 }}>
-            <a
-              href="/admin/app"
+            <button
+              type="button"
+              onClick={() => onTabChange("impostazioni")}
               data-testid="impostazioni-gestionale-link"
-              aria-label="Impostazioni centralizzate nel Gestionale"
-              title="Impostazioni centralizzate nel Gestionale"
+              aria-label="Impostazioni"
+              title="Impostazioni di Lotti"
               className="g-impostazioni-btn"
-              style={{ ...btnHeaderStyle, minHeight: 44, textDecoration: "none" }}
+              style={{ ...btnHeaderStyle, minHeight: 44 }}
             >
               <Settings size={15} />
               <span className="g-header-btn-label" style={{ whiteSpace: "nowrap" }}>Impostazioni</span>
-            </a>
+            </button>
           </div>
         )}
       </header>
@@ -171,6 +181,17 @@ export default function AppLayout({ activeTab, onTabChange, ordiniPendenti, onSu
             })()}
             colore={(PAGE_META[activeTab] || {}).colore}
           />
+        )}
+        {(activeTab === "temp_positive" || activeTab === "temp_negative") && (
+          <div role="tablist" aria-label="Registro temperature" data-testid="selettore-temperature" style={{ display: "flex", gap: 8, margin: "12px 0" }}>
+            {[["temp_positive", "Frigoriferi", Thermometer], ["temp_negative", "Congelatori", Snowflake]].map(([id, label, Ico]) => (
+              <button key={id} type="button" role="tab" aria-selected={activeTab === id} onClick={() => onTabChange(id)}
+                style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 44, padding: "0 16px", borderRadius: 12, fontWeight: 800, fontSize: 14, fontFamily: "inherit", cursor: "pointer",
+                  border: `1px solid ${activeTab === id ? "#3f5a4e" : "#e6e0d4"}`, background: activeTab === id ? "#5b7a6b" : "#fffefb", color: activeTab === id ? "#fff" : "#2a3329" }}>
+                <Ico size={16} aria-hidden="true" /> {label}
+              </button>
+            ))}
+          </div>
         )}
         {children}
       </div>

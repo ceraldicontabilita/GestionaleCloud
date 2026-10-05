@@ -17,6 +17,9 @@ import os
 from app.lotti.db import database as db
 from app.lotti.azienda import get_azienda
 
+import logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/manuale-haccp", tags=["Manuale HACCP"])
 
 # ==================== DATI AZIENDA ====================
@@ -859,12 +862,25 @@ async def _genera_manuale_impl(
     temp_html = ""
     if includi("temperature"):
         async def _tabella_temp(coll, titolo, campo_nome):
+            # Solo gli anni del periodo e nessun tetto: con `find({})` e 200
+            # schede i frigoriferi (12+ per anno) uscivano dalla stampa.
+            filtro_anni = {}
             try:
-                schede = await db[coll].find({}, {"_id": 0}).to_list(200)
-            except Exception:
+                anni = [
+                    _parse_data_qualsiasi(x).year
+                    for x in (data_da, data_a) if x and _parse_data_qualsiasi(x)
+                ]
+                if anni:
+                    filtro_anni = {"anno": {"$in": list(range(min(anni), max(anni) + 1))}}
+            except Exception as exc:
+                logger.warning("Registro temperature: periodo illeggibile (%s: %s)", type(exc).__name__, exc)
+            try:
+                schede = await db[coll].find(filtro_anni, {"_id": 0}).to_list(None)
+            except Exception as exc:
+                logger.warning("Registro temperature %s non letto (%s: %s)", coll, type(exc).__name__, exc)
                 schede = []
             righe = ""
-            for s in schede:
+            for s in sorted(schede, key=lambda x: (x.get("anno") or 0, x.get("frigorifero_numero") or x.get("congelatore_numero") or 0)):
                 nome = s.get(campo_nome) or s.get("frigorifero_nome") or s.get("congelatore_nome") or s.get("nome", "")
                 anno_scheda = s.get("anno", anno)
                 # Struttura reale: temperature = { "mese": { "giorno": valore } }
