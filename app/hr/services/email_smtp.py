@@ -13,6 +13,7 @@ allegato. Quando c'è un allegato serve SMTP:
      ingresso) → smtp.gmail.com:465
 Credenziali SOLO nelle env di Render, mai nel codice/chat.
 """
+import logging
 import os
 import smtplib
 import ssl
@@ -20,6 +21,8 @@ from email.message import EmailMessage
 from typing import Optional, Sequence, Tuple
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 def _credenziali_relay() -> Optional[dict]:
@@ -112,8 +115,17 @@ def invia_email(destinatario: str, oggetto: str, corpo: str,
         return
     relay = _credenziali_relay()
     if relay:
-        _invia_via_relay(relay, destinatario, oggetto, corpo)
-        return
+        try:
+            _invia_via_relay(relay, destinatario, oggetto, corpo)
+            return
+        except Exception as exc:
+            # Il relay (Apps Script) puo' sparire o rispondere 404: se c'e' un SMTP si ripiega, altrimenti l'errore resta quello del relay.
+            cred = credenziali_smtp()
+            if not cred:
+                raise
+            logger.warning("Relay email non disponibile (%s): invio con SMTP", type(exc).__name__)
+            _invia_via_smtp(cred, destinatario, oggetto, corpo)
+            return
     cred = credenziali_smtp()
     if not cred:
         raise RuntimeError("Email non configurata su Render (mancano GMAIL_RELAY_URL/SECRET, "
