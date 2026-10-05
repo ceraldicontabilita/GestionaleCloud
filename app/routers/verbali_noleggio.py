@@ -41,6 +41,31 @@ async def _find_verbale(db, numero_verbale: str):
     return None, None
 
 
+@router.post("/documenti-drive/collega")
+@handle_errors
+async def collega_documenti_drive_dal_foglio(
+    file: UploadFile = File(...),
+    dry_run: bool = True,
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Registra sui verbali i file Drive indicati dal foglio «Collegamenti» (xlsx).
+
+    Non scarica né sposta niente: il dettaglio del verbale apre ogni file per id Drive con
+    l'endpoint unico degli originali. `dry_run` per difetto: mostra cosa si collegherebbe.
+    """
+    from app.services.verbali_documenti_drive import collega_documenti_drive, righe_da_xlsx
+
+    contenuto = await file.read()
+    if not contenuto:
+        raise HTTPException(status_code=400, detail="File vuoto")
+    try:
+        righe = righe_da_xlsx(contenuto)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Foglio non leggibile: {type(exc).__name__}: {exc}") from exc
+    return await collega_documenti_drive(
+        Database.get_db(), righe, dry_run=dry_run, autore=admin.get("email") or admin.get("user_id"))
+
+
 @router.post("/notifiche-pec/aggancia")
 @handle_errors
 async def aggancia_notifiche_pec_ai_verbali(
