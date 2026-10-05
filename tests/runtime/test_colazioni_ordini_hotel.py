@@ -122,3 +122,69 @@ def test_annullo_ordine_pagato_dal_borsellino_rimborsa_prima_di_annullare(monkey
         "OH-1", colazioni.AggiornaOrdineHotelRequest(stato="annullato"), _admin={}))
     assert ordine["ordine"]["stato"] == "annullato"
     assert chiamate == [("bb_ordine_prodotti_rimborsa", "hotel-1", "9.60", "OH-1")]
+
+
+def test_ordine_nuovo_avvisa_telegram_non_silenzioso_e_email_ma_la_ripetizione_no(monkeypatch):
+    from app.services import colazioni_ordini_notifiche as notifiche
+
+    db = AsyncMongoMockClient()["endpoint_ordini_hotel_avviso_test"]
+    monkeypatch.setattr(servizio, "db", db)
+
+    async def contesto(_sid, _token):
+        return ({"interno:p1": {"chiave": "interno:p1", "origine": "produzione_interna",
+                                "nome": "Sfogliatella", "prezzo": 2.4, "allergeni": []}},
+                {"struttura": {"nome": "Hotel Centro"}})
+
+    avvisi = []
+    monkeypatch.setattr(colazioni, "_contesto_ordine_albergatore", contesto)
+    monkeypatch.setattr(colazioni, "avvisa_in_background", lambda o: avvisi.append(o["id"]))
+
+    def richiesta():
+        return colazioni.OrdineHotelRequest(
+            sid="hotel-1", p="x", data_consegna=servizio.prima_consegna_possibile(), ora_ritiro="07:00",
+            righe=[colazioni.RigaOrdineHotel(chiave="interno:p1", quantita=2)], idempotenza="avviso-1")
+
+    primo = asyncio.run(colazioni.crea_ordine_prodotti_hotel(richiesta()))
+    asyncio.run(colazioni.crea_ordine_prodotti_hotel(richiesta()))
+    assert avvisi == [primo["ordine"]["id"]]
+
+
+def test_avviso_ordine_manda_telegram_con_push_e_email_al_bar_e_un_guasto_non_ferma_l_altro(monkeypatch):
+    import asyncio as _a
+
+    from app.services import colazioni_ordini_notifiche as n
+
+    ordine = {"id": "OH-X1", "struttura_nome": "Hotel <enzo>", "data_consegna": "2026-10-07", "ora_ritiro": "07:00",
+              "totale": 10.0, "pagamento_metodo": "borsellino", "nota": "reception",
+              "righe": [{"nome": "Croissant", "quantita": 2, "totale": 5.0}]}
+    inviati = {}
+
+    async def telegram(testo, disable_notification=True, **k):
+        inviati["telegram"] = (testo, disable_notification)
+        return {"success": True}
+
+    def posta(dest, oggetto, corpo, *a, **k):
+        inviati["email"] = (dest, oggetto, corpo)
+
+    async def dest():
+        return "bar@esempio.it"
+
+    monkeypatch.setattr(n, "is_configured", lambda: True)
+    monkeypatch.setattr(n, "send_notification", telegram)
+    monkeypatch.setattr(n, "_destinatario_bar", dest)
+    import app.hr.services.email_smtp as smtp
+    monkeypatch.setattr(smtp, "invia_email", posta)
+
+    esito = _a.run(n.notifica_ordine_prodotti(ordine))
+    assert esito == {"telegram": True, "email": True}
+    testo, silenziosa = inviati["telegram"]
+    assert silenziosa is False and "Hotel &lt;enzo&gt;" in testo and "PAGATO dal borsellino" in testo and "07/10/2026" in testo
+    assert inviati["email"][0] == "bar@esempio.it" and "OH-X1" in inviati["email"][1] and "2× Croissant" in inviati["email"][2]
+
+    async def telegram_ko(*a, **k):
+        raise RuntimeError("rete")
+
+    monkeypatch.setattr(n, "send_notification", telegram_ko)
+    inviati.clear()
+    esito = _a.run(n.notifica_ordine_prodotti(ordine))
+    assert esito == {"telegram": False, "email": True} and "email" in inviati

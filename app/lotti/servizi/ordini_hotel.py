@@ -203,7 +203,8 @@ async def crea_ordine(*, struttura_id: str, struttura_nome: str, data_consegna: 
                        nota: str = "", idempotenza: str = "", ora_ritiro: str = "",
                        pagamento_metodo: str = "in_loco",
                        addebita: Callable[[str, Decimal], Awaitable[None]] | None = None,
-                       storna: Callable[[str, Decimal], Awaitable[None]] | None = None) -> dict[str, Any]:
+                       storna: Callable[[str, Decimal], Awaitable[None]] | None = None,
+                       su_creato: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     if pagamento_metodo not in METODI_PAGAMENTO:
         raise ValueError("Metodo di pagamento non valido")
     if idempotenza:
@@ -267,7 +268,15 @@ async def crea_ordine(*, struttura_id: str, struttura_nome: str, data_consegna: 
         if con_borsellino and storna:
             await storna(ordine_id, totale)
         raise
-    return _senza_mongo(documento)
+    creato = _senza_mongo(documento)
+    if su_creato:
+        # solo per un ordine nuovo (non per la stessa richiesta ripetuta); un guasto qui non tocca l'ordine
+        try:
+            su_creato(creato)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error("Avviso ordine %s non avviato: %s: %s", ordine_id, type(exc).__name__, exc)
+    return creato
 
 
 async def lista_ordini(query: Mapping[str, Any] | None = None, limite: int = 300) -> list[dict[str, Any]]:

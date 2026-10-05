@@ -32,6 +32,7 @@ from app.lotti.servizi.catalogo_acquaviva_hotel import (
     identita_riga,
     presentazione_fattura,
 )
+from app.services.colazioni_ordini_notifiche import avvisa_in_background
 from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
@@ -672,6 +673,7 @@ async def crea_ordine_prodotti_hotel(richiesta: OrdineHotelRequest) -> Dict[str,
             pagamento_metodo=richiesta.pagamento_metodo,
             addebita=addebita,
             storna=storna,
+            su_creato=avvisa_in_background,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
