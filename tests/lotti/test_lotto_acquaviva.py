@@ -113,3 +113,24 @@ def test_prodotto_acquaviva_senza_fatture_resta_da_associare_con_il_motivo(monke
         assert "nessuna fattura" in r["lotto_automatico_motivo"]
 
     asyncio.run(prova())
+
+
+def test_il_lotto_porta_il_nome_di_fattura_e_i_clienti_vedono_il_nome_del_menu(monkeypatch):
+    db = _db(monkeypatch, "lotto_acq_nome_fattura")
+
+    async def prova():
+        await _carica(db, [_fattura("8528027010", "23/09/2026")])
+        await la.imposta_prodotto_acquaviva(152788, True)
+        await la.imposta_nome_fattura(152788, "Cornetto Calise dritto vuoto 95 g")
+        assert await la.e_prodotto_acquaviva(152788) is True                      # il nome non cancella il segno
+        assert await la.nome_fattura_prodotto(152788, "Croissant Vuoto") == "Cornetto Calise dritto vuoto 95 g"
+        assert await la.nome_fattura_prodotto(999, "Nome del Menu") == "Nome del Menu"   # senza nome di fattura vale il Menu
+        catalogo = {"menu:152788": {"chiave": "menu:152788", "nome": "Croissant Vuoto", "prezzo": 2.5}}
+        ordine = await oh.crea_ordine(struttura_id="s", struttura_nome="Hotel", data_consegna="2026-10-07",
+                                      catalogo=catalogo, righe=[{"chiave": "menu:152788", "quantita": 1}], ora_ritiro="07:00")
+        riga = ordine["righe"][0]
+        assert riga["nome"] == "Croissant Vuoto"
+        assert riga["lotti_associati"][0]["numero_lotto"].startswith("CORNETTO-CALISE-DRITTO-VUOTO-95-G")
+        assert riga["fatture_origine"][0]["descrizione_riga"] == "Cornetto Calise dritto vuoto 95 g"
+
+    asyncio.run(prova())

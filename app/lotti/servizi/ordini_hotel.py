@@ -22,7 +22,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.lotti.allergeni import normalizza_allergeni
 from app.lotti.db import database as db
-from app.lotti.servizi.lotto_acquaviva import e_prodotto_acquaviva, lotto_per_prodotto
+from app.lotti.servizi.lotto_acquaviva import e_prodotto_acquaviva, lotto_per_prodotto, nome_fattura_prodotto
 from app.lotti.servizi.catalogo_acquaviva_hotel import (
     digest_identita,
     identita_riga,
@@ -204,7 +204,9 @@ async def _arricchisci_riga(catalogo: Mapping[str, Any], quantita: int,
 
 async def _lotto_acquaviva_automatico(riga: dict[str, Any], giorno: str) -> None:
     """Prodotto segnato Acquaviva: lotto = nome + giorno + numero della fattura in uso (FIFO)."""
-    esito = await lotto_per_prodotto(str(riga.get("nome") or ""), giorno)
+    # il lotto porta il nome di FATTURA (uso interno); la riga dell'ordine e il PDF mostrano il nome del Menu
+    nome_lotto = await nome_fattura_prodotto(riga.get("menu_prodotto_id"), str(riga.get("nome") or ""))
+    esito = await lotto_per_prodotto(nome_lotto, giorno)
     riga.update({"tracciabilita_tipo": "lotto_fornitore", "fornitore_lotto": "acquaviva"})
     if not esito:
         riga.update({"tracciabilita_stato": "lotto_fornitore_da_associare", "prova_acquisto": "da_verificare",
@@ -215,11 +217,11 @@ async def _lotto_acquaviva_automatico(riga: dict[str, Any], giorno: str) -> None
         "fatture_origine": [{
             "fattura_id": fattura["fattura_id"], "numero_fattura": fattura["numero_fattura"],
             "data_fattura": fattura["data_fattura"], "fornitore": fattura["fornitore"],
-            "descrizione_riga": str(riga.get("nome") or ""), "codice_articolo": "",
+            "descrizione_riga": nome_lotto, "codice_articolo": "",
         }],
         "prova_acquisto": "fattura_acquaviva_in_uso",
         "lotti_associati": [{"id": str(lotto.get("id") or ""), "numero_lotto": lotto["numero_lotto"],
-                             "prodotto": str(riga.get("nome") or "")}],
+                             "prodotto": nome_lotto}],
         "tracciabilita_stato": "lotto_associato",
         "lotto_creato_automaticamente": True,
         "fattura_scelta_automatica": bool(esito["automatica"]),
