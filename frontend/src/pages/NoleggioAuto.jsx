@@ -739,9 +739,10 @@ export default function NoleggioAuto() {
                   {selectedVeicolo.potenza_cv ? ` • ${selectedVeicolo.potenza_cv} CV` : ''}
                   {selectedVeicolo.cilindrata ? ` • ${selectedVeicolo.cilindrata} cc` : ''}
                 </div>
-                {selectedVeicolo.telaio && (
+                {(selectedVeicolo.telaio || selectedVeicolo.data_immatricolazione) && (
                   <div style={{ fontSize: 12, color: COLORS.textSubtle }}>
-                    Telaio: <span style={{ fontFamily: 'monospace' }}>{selectedVeicolo.telaio}</span>
+                    {selectedVeicolo.telaio && <>Telaio: <span style={{ fontFamily: 'monospace' }}>{selectedVeicolo.telaio}</span></>}
+                    {selectedVeicolo.data_immatricolazione ? `${selectedVeicolo.telaio ? ' • ' : ''}Immatricolata il ${formatDate(selectedVeicolo.data_immatricolazione)}` : ''}
                   </div>
                 )}
               </div>

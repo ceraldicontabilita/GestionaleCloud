@@ -334,6 +334,8 @@ async def get_veicoli(
             veicolo["potenza_kw"] = salvato.get("potenza_kw") or veicolo.get("potenza_kw")
             veicolo["cilindrata"] = salvato.get("cilindrata") or veicolo.get("cilindrata")
             veicolo["telaio"] = salvato.get("telaio") or veicolo.get("telaio")
+            veicolo["data_immatricolazione"] = salvato.get("data_immatricolazione") or veicolo.get("data_immatricolazione")
+            veicolo["potenza_cv"] = salvato.get("potenza_cv") or veicolo.get("potenza_cv")
             # Specifica Noleggio 10-07-2026: stato contratto (deciso solo
             # dall'utente), canone previsto, fringe benefit, storico driver
             veicolo["stato_contratto"] = salvato.get("stato_contratto") or "attivo"
