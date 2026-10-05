@@ -121,3 +121,12 @@ def test_il_foglio_legge_la_colonna_azione():
     contenuto = _xlsx([("B22122949454", ID1, "ricevuta", "e.pdf", None, "rimuovi")],
                       intestazione=("numero_verbale", "drive_id", "tipo", "nome_file", "sha256", "azione"))
     assert righe_da_xlsx(contenuto)[0]["azione"] == "rimuovi"
+
+
+def test_verbale_senza_numero_si_collega_con_il_suo_id():
+    db = ClientArchivioMemoria()["drive"]
+    _run(db["verbali_noleggio"].insert_one({"id": "verbale_abc123", "numero_verbale": None, "iuv": "00826230000901780"}))
+    righe = [{"numero_verbale": "verbale_abc123", "drive_id": ID1, "tipo": "ricevuta", "nome_file": "r.pdf"}]
+    assert _run(collega_documenti_drive(db, righe, dry_run=False))["collegati"] == 1
+    assert _run(collega_documenti_drive(db, righe, dry_run=False))["collegati"] == 0
+    assert _run(db["verbali_noleggio"].find_one({"id": "verbale_abc123"}))["documenti_drive"][0]["drive_id"] == ID1
