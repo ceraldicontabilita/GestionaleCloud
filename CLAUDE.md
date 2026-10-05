@@ -1094,7 +1094,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 - **Albergatore: PIN suo.** Lo sceglie con l'invito (`#/invito/<token>`, e' la registrazione) e riceve un **codice di recupero** (8 caratteri, si vede una sola volta,
   in `bb_strutture.recupero_hash`). PIN perso: `#/recupero/<accesso>` con codice e nuovo PIN; senza codice, «Chiedi aiuto al bar» crea una richiesta
   (`bb_richieste_pin`) che compare nel Cruscotto e si chiude mandando un nuovo invito. Dal Profilo cambia il PIN e rigenera il codice.
-  L'accesso passa da `bb_alb_login`, che dopo 5 errori blocca per 15 minuti (`bb_tentativi`, anche per IP): le altre RPC accettano solo il token di sessione
+  L'accesso passa da `bb_alb_login`, che dopo 5 errori blocca per 15 minuti (`bb_tentativi`, anche per IP): la pagina mostra un **conto alla rovescia** (`bloccoAvvia`: secondi da `bloccato`, 900 alla quinta password sbagliata, ricordato in `sessionStorage` per il ricaricamento) sull'accesso e sul recupero, con campi e bottone disattivati finché non scade; il server resta l'unica autorità: le altre RPC accettano solo il token di sessione
   (`bb_sessioni`, 12 ore) e mai il PIN, perche' un'eccezione annulla il conteggio dei tentativi. Non esistono piu' una «modalita' prova senza PIN» ne' un PIN
   del titolare nel database (`supabase-21.sql`): `bb_check_*` non sono chiamabili dall'esterno e `bb_pin_off()` risponde sempre falso.
 - **Colazioni per struttura**: ogni hotel ha le sue colazioni (`bb_colazioni`, con nome, prezzo a persona e voci dal catalogo o libere).

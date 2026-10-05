@@ -348,6 +348,26 @@ async function recApri(token,destinazione,url){
  location.href=url}
 
 /* ============ ACCESSO DELL'ALBERGATORE (link personale e invito) ============ */
+/* Conto alla rovescia quando il PIN e' bloccato: il server decide (5 errori = 15 minuti), qui si mostra soltanto. */
+const BLOCCO_PIN_SEC=900;
+let BLK={t:null,fine:0,chiave:"",ids:[]};
+const mmss=s=>String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+function bloccoSalva(chiave,fine){try{sessionStorage.setItem("bb_blocco_"+chiave,String(fine))}catch(e){}}
+function bloccoLeggi(chiave){try{const v=+sessionStorage.getItem("bb_blocco_"+chiave);return v>Date.now()?v:0}catch(e){return 0}}
+function bloccoSecondi(r){return r&&r.bloccato>0?Math.ceil(r.bloccato):(r&&r.restanti===0?BLOCCO_PIN_SEC:0)}
+function bloccoFerma(){if(BLK.t){clearInterval(BLK.t);BLK.t=null}}
+function bloccoAvvia(chiave,sec,ids,boxId){
+ bloccoFerma();BLK.chiave=chiave;BLK.fine=Date.now()+sec*1000;BLK.ids=ids;bloccoSalva(chiave,BLK.fine);
+ const tick=()=>{const box=$("#"+boxId);if(!box){bloccoFerma();return}
+  const resto=Math.max(0,Math.ceil((BLK.fine-Date.now())/1000)),blocca=resto>0;
+  ids.forEach(i=>{const e=$("#"+i);if(e)e.disabled=blocca});
+  box.hidden=false;box.className="alert"+(blocca?"":" ok");
+  box.innerHTML=blocca?`<b>Accesso bloccato per troppi tentativi.</b><br>Riprova tra <b style="font-size:20px;font-variant-numeric:tabular-nums">${mmss(resto)}</b>`:`<b>Puoi riprovare ora.</b>`;
+  if(!blocca){bloccoFerma();try{sessionStorage.removeItem("bb_blocco_"+chiave)}catch(e){}}};
+ tick();BLK.t=setInterval(tick,1000)}
+const bloccoBox='<div id="blocco_pin" class="alert" role="status" aria-live="polite" hidden></div>';
+function bloccoRipristina(chiave,ids){const fine=bloccoLeggi(chiave);if(fine)bloccoAvvia(chiave,Math.ceil((fine-Date.now())/1000),ids,"blocco_pin")}
+
 async function hotelLogin(cod){
  $("#ttl").textContent="☕ Colazioni B&B";loading();
  const h=await rpc("bb_hotel_info",{codice:cod||""}).catch(()=>null);
@@ -356,13 +376,13 @@ async function hotelLogin(cod){
  if(h.disattivata){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">Questo accesso è stato disattivato dal bar. Per informazioni contatta ${esc((h.bar&&h.bar.bar_nome)||"il bar")}.</div>`;return}
  if(h.demo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card"><h3>Registrazione del gestore richiesta</h3><p>Questo collegamento appartiene ancora ai dati di prova. Non inserire il PIN dimostrativo: chiedi al bar di condividere il link di registrazione, poi scegli il tuo PIN personale.</p></div>`;return}
  if(!h.attivo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">L'accesso non è ancora attivo. Usa il <b>link di invito</b> che ti ha inviato il bar.</div>`;return}
- app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card"><label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password"><button class="btn" id="lp_btn">Entra</button>
+ app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card"><label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password"><button class="btn" id="lp_btn">Entra</button>${bloccoBox}
   <p style="text-align:center;margin:12px 0 0"><a href="#/recupero/${esc(cod)}">Ho perso il PIN</a></p></div>`;
- $("#lp").onkeydown=e=>{if(e.key==="Enter")hotelEntra(h.id,cod)};$("#lp_btn").onclick=()=>hotelEntra(h.id,cod)}
+ $("#lp").onkeydown=e=>{if(e.key==="Enter")hotelEntra(h.id,cod)};$("#lp_btn").onclick=()=>hotelEntra(h.id,cod);bloccoRipristina("alb:"+cod,["lp","lp_btn"])}
 async function hotelEntra(id,cod){
  const pin=$("#lp")?$("#lp").value:"";if(!pin)return toast("Scrivi il tuo PIN");
  const r=await run("bb_alb_login",{paccesso:cod,ppin:pin});if(!r||r===true)return;
- if(!r.ok){toast(r.msg||"PIN errato");if($("#lp"))$("#lp").value="";return}
+ if(!r.ok){if($("#lp"))$("#lp").value="";const sec=bloccoSecondi(r);if(sec)return bloccoAvvia("alb:"+cod,sec,["lp","lp_btn"],"blocco_pin");toast(r.msg||"PIN errato");return}
  setSess({r:"alb",s:r.sid,p:r.token,c:cod});go("#/albergatore/home")}
 /* --- recupero del PIN: codice di recupero, oppure richiesta al bar --- */
 async function recupero(cod){
@@ -373,15 +393,15 @@ async function recupero(cod){
   <p class="mute">Scrivi il <b>codice di recupero</b> che hai ricevuto quando hai attivato l'accesso (sono 8 caratteri, per esempio K7QM-2XPD) e scegli un nuovo PIN.</p>
   <label>Codice di recupero</label><input id="rc" autocapitalize="characters" autocomplete="off" placeholder="XXXX-XXXX">
   <label>Nuovo PIN (almeno 4 caratteri)</label><input id="rp" type="password" autocomplete="new-password"><label>Ripeti il nuovo PIN</label><input id="rp2" type="password" autocomplete="new-password">
-  <button class="btn" id="rc_btn">Imposta il nuovo PIN</button></div>
+  <button class="btn" id="rc_btn">Imposta il nuovo PIN</button>${bloccoBox}</div>
   <div class="card"><h3>Non trovi il codice?</h3><p class="mute">Chiedi al bar: ti manda un nuovo link per scegliere un PIN.</p>
   <label>Un recapito (facoltativo)</label><input id="ra" placeholder="il tuo numero, se diverso da quello del bar"><button class="btn sec" id="ra_btn">Chiedi aiuto al bar</button>
   <p style="text-align:center;margin:12px 0 0"><a href="#/hotel/${esc(cod)}">← Torna all'accesso</a></p></div>`;
- $("#rc_btn").onclick=()=>recuperoOk(cod);$("#ra_btn").onclick=()=>recuperoAiuto(cod)}
+ $("#rc_btn").onclick=()=>recuperoOk(cod);$("#ra_btn").onclick=()=>recuperoAiuto(cod);bloccoRipristina("rec:"+cod,["rc","rp","rp2","rc_btn"])}
 async function recuperoOk(cod){
  const n=$("#rp").value;if(n!==$("#rp2").value)return toast("I due PIN non coincidono");
  const r=await run("bb_alb_recupera",{paccesso:cod,pcodice:$("#rc").value,pnuovo:n});if(!r||r===true)return;
- if(!r.ok)return toast(r.msg||"Codice errato");
+ if(!r.ok){const sec=bloccoSecondi(r);if(sec)return bloccoAvvia("rec:"+cod,sec,["rc","rp","rp2","rc_btn"],"blocco_pin");return toast(r.msg||"Codice errato")}
  setSess({r:"alb",s:r.sid,p:r.token,c:cod});codiceRecupero(r.recupero,"Nuovo PIN impostato ✓")}
 async function recuperoAiuto(cod){
  if(await run("bb_alb_richiedi_aiuto",{paccesso:cod,pnota:$("#ra").value}))app.innerHTML=`<div class="card"><h3>Richiesta inviata ✓</h3><p>Il bar l'ha ricevuta: ti manderà un nuovo link per scegliere il PIN. Quando lo apri, potrai impostarlo subito.</p><a class="btn" style="display:inline-block;text-decoration:none" href="#/hotel/${esc(cod)}">Torna all'accesso</a></div>`}

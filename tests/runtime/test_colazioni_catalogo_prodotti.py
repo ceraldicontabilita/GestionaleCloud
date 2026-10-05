@@ -410,3 +410,10 @@ def test_impostazioni_permettono_di_scegliere_le_fasce_di_ritiro():
     sql = (ROOT / "supabase" / "migrations" / "20261005042530_colazioni_ordini_prodotti_borsellino.sql").read_text(encoding="utf-8")
     assert "Fasce orarie di ritiro degli ordini prodotti" in html and "ordini_fasce_ritiro" in html
     assert "bb_ordini_fasce_ritiro" in sql and "'ordini_fasce_ritiro') then raise" in sql
+
+
+def test_pin_bloccato_mostra_il_conto_alla_rovescia_per_accesso_e_recupero():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    assert "function bloccoAvvia(" in html and "Riprova tra" in html
+    assert 'bloccoAvvia("alb:"+cod' in html and 'bloccoAvvia("rec:"+cod' in html
+    assert "r.bloccato" in html and "BLOCCO_PIN_SEC=900" in html
