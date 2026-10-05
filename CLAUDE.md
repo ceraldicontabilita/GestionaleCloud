@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-10-01
+reviewed_at: 2026-10-05
 storage_architecture: supabase
 -->
 
-Aggiornato il 03/10/2026 sul codice di `main` del repository canonico
+Aggiornato il 05/10/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file e `README.md`. `CLAUDE.md` è l'unica
@@ -636,6 +636,11 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   inviati**. La revoca, la chiusura dei contratti, il rifiuto delle richieste di assenza future e
   l'annullamento delle partite stipendio residue stanno tutti in un punto solo, `on_dipendente_cessato`:
   le pagine si limitano a pubblicare `dipendente.cessato`, non ripetono la pulizia a mano.
+- **Import anagrafica Excel** (`POST /dipendenti-cloud/dipendenti/importa-anagrafica`): anteprima per
+  difetto e conferma sullo stesso SHA-256; identità solo per codice fiscale esatto, mai per nome o importo.
+  Non crea persone, compila soltanto campi HR vuoti e lascia ogni valore già presente e diverso come
+  conflitto. Nel riepilogo consolidato usa solo CF e campi anagrafici verificabili; paga, ferie, ratei e
+  importi restano nelle loro fonti canoniche. Un CF duplicato nel file blocca tutte le sue righe.
 - **Un PIN per persona, nella scheda HR**: vale per il portale e per firmare in Lotti (bcrypt più impronta
   HMAC; mai due persone in forza con lo stesso PIN; mai un cessato). Il **PIN amministratore è uno solo
   per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, `app/services/admin_pin.py`) e si digita **solo nel login ERP**:

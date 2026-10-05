@@ -1116,7 +1116,7 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                 border: "1px solid #d9b98c", borderRadius: 10, background: "#fff6e8", color: "#7d5526" }}>
                 <AlertTriangle size={17} />
                 <span><b>Colonne non importate:</b> {anagPreview.colonne_ignorate.join(", ")}.
-                  Ferie, paga e ratei restano fuori dall'anagrafica finché non è definita la loro fonte canonica.</span>
+                  Ferie, paga e ratei restano nelle rispettive fonti HR e non vengono copiati nell'anagrafica.</span>
               </div>
             )}
             <div style={{ maxHeight: "52vh", overflow: "auto" }}>
@@ -1132,14 +1132,19 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                           {r.stato.replaceAll("_", " ")}
                         </Badge>
                       </td>
-                      <td data-label="Campi / motivo">{(r.campi || r.motivi || []).join(", ") || "—"}</td>
+                      <td data-label="Campi / motivo">
+                        {(r.campi || []).length > 0 ? `Compila: ${r.campi.join(", ")}` : ""}
+                        {(r.campi || []).length > 0 && (r.conflitti || r.motivi || []).length > 0 ? " · " : ""}
+                        {(r.conflitti || []).length > 0 ? `Non sovrascrive: ${r.conflitti.join(", ")}` : (!(r.campi || []).length ? (r.motivi || []).join(", ") : "")}
+                        {!(r.campi || []).length && !(r.conflitti || r.motivi || []).length ? "—" : ""}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             <p className="dc-muted" style={{ fontSize: 12 }}>
-              L'aggiornamento usa soltanto il codice fiscale esatto, non crea nuovi dipendenti e non cancella valori esistenti con celle vuote.
+              L'aggiornamento usa soltanto il codice fiscale esatto, non crea nuovi dipendenti e compila solo campi HR vuoti. I valori già presenti e diversi restano invariati e sono segnalati come conflitti.
             </p>
             <div className="dc-modal-footer">
               <button type="button" className="dc-btn" onClick={chiudiAnteprimaAnagrafica} disabled={anagBusy}>Annulla</button>
