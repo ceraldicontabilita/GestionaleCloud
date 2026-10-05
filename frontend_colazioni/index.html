@@ -462,8 +462,8 @@ function pfHtml(s){
  return `<div class="card"><h3>La tua schermata di benvenuto</h3><p class="mute">È quella che vedi tu quando entri e che vedono i tuoi ospiti quando aprono il link della colazione.</p>
  <div id="pf_h"></div>
  <label>Messaggio di benvenuto (facoltativo)</label><input id="pf_b" maxlength="200" value="${esc(s.benvenuto)}" oninput="pfPrev()" placeholder="es. Buongiorno! La colazione vi aspetta da Ceraldi">
- <label>Immagine di sfondo</label><input id="pf_f" type="file" accept="image/*" onchange="pfFile(this)"> <button class="btn sm sec" onclick="PF.sfondo='';PF.img=null;PF.cambiato=true;pfPrev();pfPos()">Rimuovi immagine</button>
- <div class="mute" style="margin:4px 0 8px">Con un'immagine il testo di benvenuto non compare: l'immagine parla da sola. Formato consigliato: largo (3 a 1).</div>
+ <label>Logo o immagine dell'hotel (facoltativa)</label><input id="pf_f" type="file" accept="image/*" onchange="pfFile(this)"> <button class="btn sm sec" onclick="PF.sfondo='';PF.img=null;PF.cambiato=true;pfPrev();pfPos()">Rimuovi immagine</button>
+ <div class="mute" style="margin:4px 0 8px">Se la carichi compare in alto, sopra i bottoni. Senza immagine non compare nessuna card. Formato consigliato: largo (3 a 1).</div>
  <div id="pf_pos" hidden><label>Sposta l'immagine: sinistra ⟷ destra</label><input type="range" min="0" max="100" value="50" id="pf_px" oninput="PF.px=+this.value;pfRitaglia()"><label>Sposta l'immagine: alto ⟷ basso</label><input type="range" min="0" max="100" value="50" id="pf_py" oninput="PF.py=+this.value;pfRitaglia()"><button class="btn sm sec" onclick="PF.px=50;PF.py=50;$('#pf_px').value=50;$('#pf_py').value=50;pfRitaglia()">Centra</button></div>
  <label>Indirizzo</label><input id="pf_a" value="${esc(s.indirizzo)}"><label>Telefono</label><input id="pf_t" type="tel" value="${esc(s.telefono)}">
  <button class="btn" onclick="pfSalva()">Salva profilo e immagine</button></div>
@@ -474,7 +474,7 @@ function pfHtml(s){
  <button class="btn sec" onclick="recuperoNuovo()">Crea un nuovo codice di recupero</button></div>
  <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div>
  <button class="btn sm sec" id="pf_copy">Copia link</button></div>`}
-function pfPrev(){const e=$("#pf_h");if(e)e.innerHTML=hero(ALB.struttura.nome,PF.sfondo,$("#pf_b")?$("#pf_b").value:"")}
+function pfPrev(){const e=$("#pf_h");if(e)e.innerHTML=PF.sfondo?hero(ALB.struttura.nome,PF.sfondo,""):`<p class="mute">Nessuna immagine: in alto resta solo il nome dell'hotel.</p>`}
 const pfPos=()=>{const e=$("#pf_pos");if(e)e.hidden=!PF.img};
 function pfFile(el){
  const f=el.files[0];if(!f)return;const img=new Image(),rd=new FileReader();
@@ -533,8 +533,8 @@ async function alb(sec){
   <h3>Movimenti del credito</h3><div class="card scroll"><table>${ALB.movimenti.filter(m=>m.confermato).map(m=>`<tr><td>${new Date(m.t).toLocaleDateString("it-IT")}</td><td>${esc(m.nota)}</td><td style="text-align:right;color:${m.importo<0?"var(--bad)":"var(--ok)"}">${eur(m.importo)}</td></tr>`).join("")}</table></div>
   ${(ALB.fatture||[]).length?`<h3>Le tue fatture</h3><div class="card scroll"><table>${ALB.fatture.map(f=>`<tr><td>${new Date(f.pagata_il).toLocaleDateString("it-IT")}</td><td>Ricarica ${eur(f.importo)}</td><td style="text-align:right">${statoFatt(f)}</td></tr>`).join("")}</table></div><p class="mute">La fattura ti arriva dal bar via email o PEC.</p>`:""}`;
  }
- /* il logo/immagine dell'hotel sta sempre sopra i bottoni (Riepilogo, Nuova colazione…); il messaggio di benvenuto solo nel Riepilogo */
- app.innerHTML=hero(s.nome,HOT&&HOT.sfondo,sec==="home"?s.benvenuto:"")+tabsHtml(tabs,sec,"albergatore")+body;
+ /* Il logo/immagine dell'hotel, se caricato dal Profilo, sta sopra i bottoni; senza immagine nessuna card (il nome e' gia' nella barra in alto). */
+ app.innerHTML=(HOT&&HOT.sfondo?hero(s.nome,HOT.sfondo,""):"")+tabsHtml(tabs,sec,"albergatore")+body;
  if(sec==="profilo"){pfPrev();const e=$("#pf_q");if(e)qr(e,base()+"#/hotel/"+s.accesso,140);const cb=$("#pf_copy");if(cb)cb.onclick=()=>navigator.clipboard.writeText(base()+"#/hotel/"+s.accesso).then(()=>toast("Link copiato"))}
  if(sec==="nuova"&&$("#nt")){ntTab();ricalcNuova()}
  if(sec==="lista")filtraAlb();

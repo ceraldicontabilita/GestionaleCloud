@@ -436,10 +436,11 @@ def test_ricarica_con_carta_non_richiede_i_dati_fiscali_e_sotto_i_qr_non_c_e_il_
     assert 'id="invqr" style="display:inline-flex"></div><p' not in html
 
 
-def test_logo_dell_hotel_sta_sopra_i_bottoni_in_tutte_le_sezioni():
+def test_logo_dell_hotel_se_caricato_sta_sopra_i_bottoni_e_senza_immagine_nessuna_card():
     html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
-    assert 'app.innerHTML=hero(s.nome,HOT&&HOT.sfondo,sec==="home"?s.benvenuto:"")+tabsHtml(tabs,sec,"albergatore")+body;' in html
+    assert 'app.innerHTML=(HOT&&HOT.sfondo?hero(s.nome,HOT.sfondo,""):"")+tabsHtml(tabs,sec,"albergatore")+body;' in html
     assert 'app.innerHTML=(sec==="home"?hero(' not in html
+    assert "Logo o immagine dell'hotel (facoltativa)" in html
 
 
 def test_tab_prodotti_ha_il_tasto_fornitore_acquaviva_e_lotti_mostra_la_fattura_in_uso():
