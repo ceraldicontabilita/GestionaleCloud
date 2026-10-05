@@ -103,6 +103,12 @@ def _e_documento_trasporto(doc: dict) -> bool:
     return bool(normalizzati & {"ddt", "documento di trasporto", "delivery note"})
 
 
+def _piva_senza_prefisso(valore: Any) -> str:
+    """P.IVA confrontabile: maiuscola, senza separatori e senza prefisso IT."""
+    piva = re.sub(r"[^A-Z0-9]", "", str(valore or "").upper())
+    return piva[2:] if piva.startswith("IT") and len(piva) == 13 else piva
+
+
 def _supplier_counter_key(fattura: dict) -> str:
     """Identita' conservativa per il solo contatore dei fornitori.
 
@@ -784,7 +790,23 @@ async def get_fornitori(
             {"partita_iva": {"$regex": search, "$options": "i"}}
         ]
     if con_fatture:
-        query["fatture_count"] = {"$gt": 0}
+        # «Ha fatture» si ricava dalle fatture attive (la stessa vista del
+        # contatore della pagina), non dal contatore salvato `fatture_count`,
+        # che solo 22 fornitori su 202 portavano.
+        attive = await db["invoices"].find(
+            {"$and": [dict(FILTRO_FATTURA_ATTIVA), filtro_escludi_emesse()]},
+            {"_id": 0, "supplier_vat": 1, "cedente_piva": 1},
+        ).to_list(20000)
+        con_piva = {
+            _piva_senza_prefisso(f.get(campo))
+            for f in attive for campo in ("supplier_vat", "cedente_piva")
+        } - {""}
+        elenco = await db[COL_FORNITORI].find(query, {"_id": 0}).sort("ragione_sociale", 1).to_list(5000)
+        fornitori = [
+            f for f in elenco
+            if _piva_senza_prefisso(f.get("partita_iva")) in con_piva
+        ][:limit]
+        return {"items": fornitori, "total": len(fornitori)}
 
     fornitori = await db[COL_FORNITORI].find(query, {"_id": 0}).sort("ragione_sociale", 1).limit(limit).to_list(limit)
     return {"items": fornitori, "total": len(fornitori)}
