@@ -6131,8 +6131,8 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
   const massRef = useRef(null);
   const [massBusy, setMassBusy] = useState(false);
   const [massMsg, setMassMsg] = useState(null);
-  const ETICHETTA = { UNILAV: "Unilav", CERTIFICAZIONE_UNICA: "Certificazione Unica (CU)", CONTRATTO: "Contratti", DIMISSIONI: "Dimissioni / cessazione", LICENZIAMENTO: "Lettere di licenziamento", RIDUZIONE_ORARIO: "Riduzione orario", BONIFICO: "Bonifici", CODICE_FISCALE: "Codice fiscale / Tessera sanitaria", CARTA_IDENTITA: "Carta d'identità", BUSTA_PAGA: "Buste paga", CERTIFICATO: "Certificati", ALTRO: "Da classificare" };
-  const TIPI_NUOVO = ["Contratto", "UNILAV", "Dimissioni / cessazione", "Lettera di licenziamento", "CUD", "Certificato", "Altro"];
+  const ETICHETTA = { UNILAV: "Unilav", CERTIFICAZIONE_UNICA: "Certificazione Unica (CU)", CONTRATTO: "Contratti", DIMISSIONI: "Dimissioni / cessazione", LICENZIAMENTO: "Lettere di licenziamento", RIDUZIONE_ORARIO: "Riduzione orario", BONIFICO: "Bonifici", CODICE_FISCALE: "Codice fiscale / Tessera sanitaria", CARTA_IDENTITA: "Carta d'identità", BUSTA_PAGA: "Buste paga", CERTIFICATO: "Certificati", ATTESTATO_HACCP: "Attestati di formazione (HACCP)", ALTRO: "Da classificare" };
+  const TIPI_NUOVO = ["Contratto", "UNILAV", "Dimissioni / cessazione", "Lettera di licenziamento", "CUD", "Certificato", "Attestato HACCP", "Altro"];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -6172,6 +6172,35 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
       setMassBusy(false);
       if (massRef.current) massRef.current.value = "";
     }
+  };
+
+  // Attestati HACCP: PDF con più persone, diviso pagina per pagina e abbinato dal contenuto.
+  const attestatiRef = useRef(null);
+  const importaAttestati = async (e) => {
+    const file = e.target.files?.[0];
+    if (attestatiRef.current) attestatiRef.current.value = "";
+    if (!file) return;
+    setMassBusy(true); setMassMsg(null);
+    try {
+      const url = "/hr/api/portale/documenti/admin/attestati-haccp";
+      const invia = async (dry, scelte) => {
+        const fd = new FormData();
+        fd.append("file", file); fd.append("dry_run", dry ? "true" : "false");
+        if (scelte) fd.append("assegnazioni", JSON.stringify(scelte));
+        return (await axios.post(url, fd, { timeout: 180000 })).data;
+      };
+      const prova = await invia(true);
+      const q = prova.riepilogo;
+      const elenco = prova.righe.map(r => `pag. ${r.pagina}: ${r.dipendente || "DA ASSEGNARE"}${r.esito === "gia_presente" ? " (già presente)" : ""}`).join("\n");
+      if (!window.confirm(`${q.pagine} pagine: ${q.nuovi} da allegare, ${q.gia_presenti} già presenti, ${q.da_assegnare} da assegnare.\n\n${elenco}\n\nAllegare gli attestati ai dipendenti?`)) return;
+      const fatto = await invia(false);
+      const r2 = fatto.riepilogo;
+      setMassMsg({ caricati: r2.nuovi, duplicati: Array(r2.gia_presenti).fill(0), non_assegnati: Array(r2.da_assegnare).fill(0), dettaglio: [], _gmail: true });
+      toast(`Attestati: ${r2.nuovi} allegati${r2.da_assegnare ? `, ${r2.da_assegnare} da assegnare dalla sezione Lotti › Personale` : ""}`);
+      reload();
+    } catch (err) {
+      setMassMsg({ errore: err?.response?.data?.detail || "Importazione attestati non riuscita" });
+    } finally { setMassBusy(false); }
   };
 
   const importaGmail = async () => {
@@ -6216,6 +6245,10 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
           <input ref={massRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.zip,.docx" onChange={handleMassUpload} style={{ display: "none" }} />
           <button onClick={() => massRef.current?.click()} disabled={massBusy} className="dc-btn dc-btn-primary" title="Carica più documenti: l'app riconosce il tipo e li mette nella cartella del dipendente">
             {massBusy ? "Carico…" : "📂 Carica documenti (auto)"}
+          </button>
+          <input ref={attestatiRef} type="file" accept=".pdf" onChange={importaAttestati} style={{ display: "none" }} />
+          <button onClick={() => attestatiRef.current?.click()} disabled={massBusy} className="dc-btn" title="PDF con gli attestati di più persone: si divide pagina per pagina e ogni attestato va nella cartella del dipendente giusto (letto dal contenuto)">
+            {massBusy ? "Attendi…" : "Importa attestati HACCP"}
           </button>
           <button onClick={importaGmail} disabled={massBusy} className="dc-btn" title="Cerca i documenti negli allegati Gmail e li archivia nelle cartelle dei dipendenti">
             {massBusy ? "Attendi…" : "📧 Importa da Gmail"}

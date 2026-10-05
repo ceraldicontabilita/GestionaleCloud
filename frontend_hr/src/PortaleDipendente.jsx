@@ -758,6 +758,13 @@ function Documenti() {
       </div>
 
       <div className="card">
+        <h3 style={{marginTop:0}}>Attestati di formazione (HACCP)</h3>
+        {perTipo("attestato_haccp").length===0
+          ? <div className="muted" style={{fontSize:13}}>Nessun attestato caricato dall'azienda.</div>
+          : perTipo("attestato_haccp").map((d)=><FileRow key={d.id} d={d}/>)}
+      </div>
+
+      <div className="card">
         <h3 style={{marginTop:0}}>Certificazione Unica (CU)</h3>
         {perTipo("certificazione_unica").length===0
           ? <div className="muted" style={{fontSize:13}}>Nessuna CU caricata dall'azienda.</div>

@@ -4761,7 +4761,7 @@ async def get_documenti(dipendente_id: Optional[str] = None):
 TIPI_DOCUMENTO_MANUALE = {
     "Contratto": "CONTRATTO", "CUD": "CERTIFICAZIONE_UNICA", "Certificato": "CERTIFICATO",
     "Dimissioni / cessazione": "DIMISSIONI", "UNILAV": "UNILAV",
-    "Lettera di licenziamento": "LICENZIAMENTO", "Altro": "ALTRO",
+    "Lettera di licenziamento": "LICENZIAMENTO", "Attestato HACCP": "ATTESTATO_HACCP", "Altro": "ALTRO",
 }
 
 
@@ -4820,7 +4820,7 @@ async def delete_documento(documento_id: str):
 _CF_DOC_RE = re.compile(r'\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b')
 CATEGORIE_DOC = ["UNILAV", "CERTIFICAZIONE_UNICA", "CONTRATTO", "RIDUZIONE_ORARIO", "DIMISSIONI",
                  "LICENZIAMENTO", "BONIFICO", "CODICE_FISCALE", "CARTA_IDENTITA", "BUSTA_PAGA",
-                 "CERTIFICATO", "ALTRO"]
+                 "CERTIFICATO", "ATTESTATO_HACCP", "ALTRO"]
 
 
 def classifica_documento(text: str, filename: str = "") -> str:

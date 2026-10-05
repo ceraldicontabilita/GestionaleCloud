@@ -711,6 +711,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   vengono sovrascritte dalla sincronizzazione.
 - **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni** dalla decorrenza
   (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015 art. 26).
+- **Attestati di formazione alimentarista (HACCP)** (`hr/services/attestati_haccp.py`, categoria `ATTESTATO_HACCP` in `documenti_cloud`): sono documenti del dipendente, visibili a lui nel portale e all'amministratore in HR › Documenti e in Lotti › Personale (un solo posto dove vivono, due viste dello stesso record). Un PDF con più attestati si divide per pagina e ogni pagina si riconosce **dal contenuto** (nome e cognome scritti, data del corso, ore; OCR se manca il livello testo) e si abbina solo se **un** dipendente è compatibile per nome e cognome (anche cessato); altrimenti resta «da assegnare» e sceglie il titolare. Anteprima (`dry_run`) per difetto, stesso SHA-256 o stessa data di corso = già presente (secondo giro `nuovi=0`). Numero attestato (scritto a mano) e scadenza non si leggono e restano vuoti.
 - **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026 e ferie 15–23/08/2026
   non sono corrispettivi mancanti.
 - **Dello storico interessano solo cedolini e F24**: fatture e corrispettivi precedenti all'anno attivo

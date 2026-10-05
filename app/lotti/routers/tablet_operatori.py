@@ -33,7 +33,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import json
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.lotti.auth import check_lock, clear_fails, ip_richiesta, make_token, register_fail, require_admin
@@ -540,3 +543,51 @@ async def operatore_per_id(operatore_id: str) -> Optional[Dict[str, Any]]:
         if persona.get("id") == operatore_id:
             return persona if persona.get("stato") == "attivo" else None
     return None
+
+
+# ── Attestati di formazione alimentarista (HACCP) ────────────────────────────
+# Documenti del dipendente in HR (`documenti_cloud`): li vede lui nel portale e
+# l'amministratore da qui e da HR. Un solo servizio, `hr/services/attestati_haccp`.
+
+@router.get("/attestati/elenco")
+async def attestati_elenco(_admin=Depends(require_admin)):
+    from app.hr.services.attestati_haccp import lista_per_dipendente
+    return await lista_per_dipendente()
+
+
+@router.get("/attestati/{doc_id}/file")
+async def attestato_file(doc_id: str, _admin=Depends(require_admin)):
+    from app.hr.services.attestati_haccp import leggi_file
+    f = await leggi_file(doc_id)
+    if not f:
+        raise HTTPException(404, "Attestato non trovato")
+    return Response(content=f["contenuto"], media_type=f["mime"],
+                    headers={"Content-Disposition": f'inline; filename="{f["nome_file"]}"'})
+
+
+@router.post("/attestati/importa")
+async def attestati_importa(
+    file: UploadFile = File(...), dry_run: bool = Form(True), assegnazioni: str = Form(""),
+    _admin=Depends(require_admin),
+):
+    """PDF con più attestati: si divide e ogni pagina si abbina dal contenuto. Anteprima per difetto."""
+    from app.hr.services.attestati_haccp import importa_pdf
+    try:
+        return await importa_pdf(await file.read(), dry_run=dry_run, assegnazioni=json.loads(assegnazioni) if assegnazioni else {})
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/{dipendente_id}/attestato")
+async def attestato_allega(dipendente_id: str, file: UploadFile = File(...), _admin=Depends(require_admin)):
+    from app.hr.services.attestati_haccp import MAX_BYTES, salva_attestato
+    contenuto = await file.read()
+    if not contenuto:
+        raise HTTPException(400, "File vuoto")
+    if len(contenuto) > MAX_BYTES:
+        raise HTTPException(413, "File troppo grande (max 12 MB)")
+    esito = await salva_attestato(dipendente_id, contenuto, {}, nome_file=file.filename or "attestato.pdf",
+                                  mime=file.content_type or "application/pdf", fonte="caricato_dalla_scheda")
+    if esito["esito"] == "dipendente_non_trovato":
+        raise HTTPException(404, "Dipendente non trovato")
+    return esito
