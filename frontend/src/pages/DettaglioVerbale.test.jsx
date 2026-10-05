@@ -89,6 +89,18 @@ describe('DettaglioVerbale viewer PDF', () => {
       .toBe('/api/originale?drive_id=1AbCdEfGhIjKlMnOpQrStUv');
   });
 
+  it('mostra la fattura del noleggiatore (XML) con la sua etichetta', async () => {
+    api.get.mockImplementation(url => Promise.resolve({
+      data: url === '/api/dipendenti' ? [] : {
+        numero_verbale: 'V-TEST-001', pdf_disponibili: [],
+        documenti_drive: [{ drive_id: '1FatturaXmlAbCdEfGhIjK', tipo: 'fattura', nome: 'Fattura FIR012266 (XML)' }],
+      },
+    }));
+    render(<DettaglioVerbale />);
+    expect(await screen.findByText('Fattura del noleggiatore')).toBeInTheDocument();
+    expect(screen.getByTestId('apri-drive-1FatturaXmlAbCdEfGhIjK')).toBeInTheDocument();
+  });
+
   it('apre la fattura collegata al verbale', async () => {
     api.get.mockImplementation(url => Promise.resolve({
       data: url === '/api/dipendenti' ? [] : {
