@@ -876,6 +876,9 @@ async def scan_fatture_per_cespiti(
 
     nuovi_cespiti: List[Dict[str, Any]] = []
     seen = set()
+    # «Non è un cespite» dichiarato dal titolare dalla riga acquisto: non nasce mai.
+    from app.services.righe_acquisti_lotti import chiavi_non_cespite, esclusa_dai_cespiti
+    esclusi = await chiavi_non_cespite(db)
 
     # Itera le fatture passive non annullate — collezione canonica unica invoices
     # (§5.4: fatture_passive consolidata in invoices).
@@ -926,6 +929,8 @@ async def scan_fatture_per_cespiti(
                 except (TypeError, ValueError):
                     continue
                 if not descrizione or prezzo <= soglia_valore:
+                    continue
+                if esclusa_dai_cespiti(esclusi, fattura_id, descrizione):
                     continue
 
                 categoria = classify_asset(descrizione, prezzo)

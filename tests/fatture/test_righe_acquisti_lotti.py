@@ -88,3 +88,83 @@ def test_scelta_incompleta_o_riga_inesistente():
         _run(srv.assegna_prodotto(erp, lotti, "F1:1", "Pollo", "Boh", "t"))
     with pytest.raises(srv.SceltaNonValida):
         _run(srv.assegna_prodotto(erp, lotti, "F9:1", "Pollo", "Carni e Salumi", "t"))
+
+
+def test_proposta_dal_nome_conosciuto_e_consumo():
+    erp, lotti = _db()
+    _run(erp["invoices"].insert_one(_fattura("F4", "07489941216", ["SHOPPERS SOLE 365 BIOCOMP.", "VINO ROSSO XYZ"])))
+    # Il nome dice la categoria con certezza: proposta, non scritta.
+    p = _run(srv.proponi(erp, lotti, "F1:1"))
+    assert p["categoria"] == "Carni e Salumi" and p["natura"] == "ingrediente" and p["non_cespite"] is False
+    assert p["fonte"] == "dal_nome"
+    # Materiale di consumo: non alimentare e non cespite, da confermare.
+    c = _run(srv.proponi(erp, lotti, "F4:1"))
+    assert c["alimentare"] is False and c["non_cespite"] is True and c["natura"] == "altro"
+    # Nessuna fonte: tutto vuoto, mai inventato.
+    n = _run(srv.proponi(erp, lotti, "F4:2"))
+    assert n["categoria"] is None and n["nome_canc"] is None and n["non_cespite"] is False
+    assert _run(erp["righe_acquisti_classificazioni"].find({}).to_list(None)) == []
+    # Un articolo già confermato in Lotti torna come tale.
+    _run(srv.assegna_prodotto(erp, lotti, "F1:1", "Petto di pollo", "Carni e Salumi", "t"))
+    assert _run(srv.proponi(erp, lotti, "F2:1"))["fonte"] == "lotti_confermato"
+
+
+def test_correzioni_dai_campi_e_flag_non_cespite_sulle_righe_uguali():
+    erp, lotti = _db()
+    conto = next(iter(srv.CONTI_UFFICIALI))
+    esito = _run(srv.assegna_prodotto(
+        erp, lotti, "F1:1", "Petto di pollo", "Carni e Salumi", "t",
+        natura="servizio", conto=conto, destinazione_operativa="", non_cespite=True,
+    ))
+    cl = esito["classificazione"]
+    assert cl["natura"] == "servizio" and cl["conto"] == conto and cl["non_cespite"] is True
+    assert cl["destinazione_operativa"] is None  # vuoto scelto dal titolare: non si riempie
+    esclusi = _run(srv.chiavi_non_cespite(erp))
+    assert esclusi == {"F1": {"petto di pollo a fette"}, "F2": {"petto di pollo a fette"}}
+    assert srv.esclusa_dai_cespiti(esclusi, "F1", "PETTO DI POLLO A FETTE")
+    assert not srv.esclusa_dai_cespiti(esclusi, "F1", "RANA LASAGNE")
+    with pytest.raises(srv.SceltaNonValida):
+        _run(srv.assegna_prodotto(erp, lotti, "F1:1", "Pollo", "Carni e Salumi", "t",
+                                  natura="cespite", non_cespite=True))
+
+
+def test_riga_non_cespite_non_genera_il_cespite_dall_handler():
+    from app.handlers.cespiti import handler_auto_cespite_da_fattura
+
+    erp, lotti = _db()
+    _run(erp["invoices"].insert_one({
+        "id": "F5", "invoice_number": "F5", "invoice_date": "2026-10-03", "supplier_vat": "07489941216",
+        "supplier_name": "AP SRL", "content_hash": "h5",
+        "linee": [{"numero_linea": "1", "descrizione": "FORNO ELETTRICO PROFESSIONALE", "prezzo_totale": "900.00",
+                   "aliquota_iva": "22.00"}],
+    }))
+    payload = {"fattura_id": "F5", "data_documento": "2026-10-03", "fornitore_ragione_sociale": "AP SRL",
+               "tipo_documento": "TD01", "righe_linee": [
+                   {"descrizione": "FORNO ELETTRICO PROFESSIONALE", "prezzo_totale": 900.0}]}
+    _run(srv.assegna_prodotto(erp, lotti, "F5:1", "Forno", "Non Alimentare", "t",
+                              alimentare=False, non_cespite=True))
+    esito = _run(handler_auto_cespite_da_fattura(payload, erp))
+    assert esito.get("skipped") and _run(erp["cespiti"].find({}).to_list(None)) == []
+    # Senza il flag lo stesso payload crea il cespite.
+    erp2 = ArchivioDocumenti("erp2")
+    esito2 = _run(handler_auto_cespite_da_fattura(payload, erp2))
+    assert len(esito2["cespiti_creati"]) == 1
+
+
+def test_riga_non_cespite_non_compare_nello_scan_manuale(monkeypatch):
+    from app.routers import cespiti as mod
+
+    erp, lotti = _db()
+    _run(erp["invoices"].insert_one({
+        "id": "F6", "invoice_number": "F6", "invoice_date": "2026-10-03", "supplier_vat": "07489941216",
+        "supplier_name": "AP SRL", "total_amount": 900.0, "content_hash": "h6",
+        "linee": [{"numero_linea": "1", "descrizione": "FORNO ELETTRICO PROFESSIONALE", "prezzo_totale": "900.00",
+                   "aliquota_iva": "22.00"}],
+    }))
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: erp))
+    prima = _run(mod.scan_fatture_per_cespiti(soglia_valore=516.46, dry_run=True))
+    assert prima["num_potenziali_cespiti"] == 1
+    _run(srv.assegna_prodotto(erp, lotti, "F6:1", "Forno", "Non Alimentare", "t",
+                              alimentare=False, non_cespite=True))
+    dopo = _run(mod.scan_fatture_per_cespiti(soglia_valore=516.46, dry_run=True))
+    assert dopo["num_potenziali_cespiti"] == 0

@@ -461,9 +461,11 @@ async def prodotti_lotti(
     """Gli articoli di casa già noti a Lotti e le sue categorie, per la tendina."""
     from app.lotti.db import database as db_lotti
 
+    centri = await Database.get_db()["centri_costo"].find({}, {"_id": 0, "codice": 1, "nome": 1}).to_list(200)
     return {
         "prodotti": await righe_acquisti_lotti.prodotti_lotti(db_lotti, q),
         "categorie": righe_acquisti_lotti.categorie_lotti(),
+        "centri_costo": centri,
     }
 
 
@@ -508,6 +510,23 @@ async def assegna_prodotto_lotti(
             Database.get_db(), db_lotti, riga_id,
             str(body.get("nome_canc") or ""), str(body.get("categoria") or ""), utente,
             alimentare=body.get("alimentare") is not False,
+            natura=body.get("natura"), conto=body.get("conto"), centro_costo=body.get("centro_costo"),
+            destinazione_operativa=body.get("destinazione_operativa"),
+            non_cespite=body.get("non_cespite") is True,
         )
     except righe_acquisti_lotti.SceltaNonValida as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{riga_id:path}/proposta-lotti")
+async def proposta_lotti(
+    riga_id: str,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Cosa dice il nome della riga (articolo, categoria, natura, «non cespite»): una proposta."""
+    from app.lotti.db import database as db_lotti
+
+    try:
+        return await righe_acquisti_lotti.proponi(Database.get_db(), db_lotti, riga_id)
+    except righe_acquisti_lotti.SceltaNonValida as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

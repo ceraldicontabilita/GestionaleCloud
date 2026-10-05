@@ -64,15 +64,27 @@ const stileSelect = {
   background: COLORS.card, color: COLORS.text,
 };
 
-/** Scelta dell'articolo di Lotti per la riga: popola Lotti e conferma la classificazione. */
-function ArticoloLotti({ riga, onAssegna, busy }) {
+/**
+ * Classificazione della riga, modificabile da qui: propone dal nome (articolo,
+ * categoria, natura), il titolare corregge ogni campo e salva. Il salvataggio
+ * popola Lotti e aggiorna tutte le righe dello stesso fornitore con lo stesso nome.
+ */
+function ClassificazioneRiga({ riga, ai, onAssegna, busy }) {
   const [prodotti, setProdotti] = useState([]);
   const [categorie, setCategorie] = useState([]);
+  const [centri, setCentri] = useState([]);
   const [ricerca, setRicerca] = useState('');
-  const [scelto, setScelto] = useState('');
-  const [nuovoNome, setNuovoNome] = useState('');
-  const [categoria, setCategoria] = useState('');
+  const [proposta, setProposta] = useState(null);
+  const [toccato, setToccato] = useState(false);
   const [errore, setErrore] = useState('');
+  const [f, setF] = useState({
+    scelto: '', nuovoNome: '', categoria: '', natura: '', conto: '', centro_costo: '',
+    destinazione: '', nonCespite: false, alimentare: true,
+  });
+  const imposta = (campi, daUtente = true) => {
+    if (daUtente) setToccato(true);
+    setF(corrente => ({ ...corrente, ...campi }));
+  };
 
   useEffect(() => {
     let active = true;
@@ -82,64 +94,136 @@ function ArticoloLotti({ riga, onAssegna, busy }) {
           if (!active) return;
           setProdotti(data.prodotti || []);
           setCategorie(data.categorie || []);
+          setCentri(data.centri_costo || []);
         })
         .catch(() => { if (active) setErrore('Elenco articoli di Lotti non disponibile.'); });
     }, 200);
     return () => { active = false; clearTimeout(timer); };
   }, [ricerca]);
 
-  const nome = scelto === ALTRO ? nuovoNome.trim() : scelto;
-  const scegliArticolo = valore => {
-    setScelto(valore);
-    const noto = prodotti.find(p => p.nome_canc === valore);
-    if (noto?.categoria && categorie.includes(noto.categoria)) setCategoria(noto.categoria);
-  };
-  const pronto = !!nome && !!categoria;
+  useEffect(() => {
+    let active = true;
+    api.get(`/api/righe-acquisti/${encodeURIComponent(riga.id)}/proposta-lotti`)
+      .then(({ data }) => { if (active) setProposta(data); })
+      .catch(() => { if (active) setProposta(null); });
+    return () => { active = false; };
+  }, [riga.id]);
+
+  // La proposta (o la classificazione già confermata) riempie il form finché il titolare non lo tocca.
+  useEffect(() => {
+    if (!proposta || toccato) return;
+    const confermata = ai.stato === 'CONFERMATA';
+    const base = confermata ? ai : proposta;
+    setF({
+      scelto: proposta.nome_canc || '', nuovoNome: '', categoria: base.categoria || '',
+      natura: base.natura || '', conto: base.conto || '', centro_costo: base.centro_costo || '',
+      destinazione: (confermata ? ai.destinazione_operativa : (proposta.alimentare ? 'magazzino_lotti' : '')) || '',
+      nonCespite: confermata ? ai.non_cespite === true : proposta.non_cespite === true,
+      alimentare: proposta.alimentare !== false,
+    });
+  }, [proposta, toccato, ai]);
+
+  const nome = f.scelto === ALTRO ? f.nuovoNome.trim() : f.scelto;
+  const elencoArticoli = prodotti.some(p => p.nome_canc === f.scelto) || !f.scelto || f.scelto === ALTRO
+    ? prodotti : [{ nome_canc: f.scelto }, ...prodotti];
+  const pronto = !f.alimentare || (!!nome && !!f.categoria);
+  const incoerente = f.nonCespite && f.natura === 'cespite';
+  const etichetta = ({ lotti_confermato: 'Lotti conosce già questo articolo', lotti_proposta: 'Proposta di Lotti', dal_nome: 'Dal nome della riga' })[proposta?.fonte];
 
   return (
-    <Card style={{ padding: 14 }}>
-      <strong>Articolo in Lotti</strong>
-      <div style={{ marginTop: 6, fontSize: 12, color: COLORS.textMuted }}>
-        Scegli l'articolo di casa: Lotti lo usa per magazzino e lotti, e la classificazione di questa riga
-        (e delle righe uguali dello stesso fornitore) viene confermata.
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginTop: 10 }}>
-        <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
-          Cerca articolo
-          <Input aria-label="Cerca articolo di Lotti" value={ricerca} onChange={event => setRicerca(event.target.value)} />
-        </label>
-        <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
-          Articolo
-          <select aria-label="Articolo di Lotti" value={scelto} onChange={event => scegliArticolo(event.target.value)} style={stileSelect}>
-            <option value="">Scegli…</option>
-            {prodotti.map(p => <option key={p.nome_canc} value={p.nome_canc}>{p.nome_canc}</option>)}
-            <option value={ALTRO}>Altro (scrivi tu)</option>
-          </select>
-        </label>
-        {scelto === ALTRO && (
-          <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
-            Nome del nuovo articolo
-            <Input aria-label="Nome del nuovo articolo" value={nuovoNome} onChange={event => setNuovoNome(event.target.value)} />
-          </label>
+    <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+      {proposta?.fonte && !toccato && ai.stato !== 'CONFERMATA' && (
+        <div role="status" style={{ fontSize: 12, padding: '8px 10px', borderRadius: 9, background: COLORS.bgSecondary || COLORS.card, border: `1px solid ${COLORS.border}` }}>
+          <strong>Proposta · {etichetta}.</strong> {proposta.spiegazione} Correggi i campi e salva.
+        </div>
+      )}
+      {proposta && !proposta.fonte && ai.stato !== 'CONFERMATA' && (
+        <div style={{ fontSize: 12, color: COLORS.textMuted }}>{proposta.spiegazione}</div>
+      )}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, minHeight: 44 }}>
+        <input type="checkbox" aria-label="Non è merce alimentare" checked={!f.alimentare} onChange={event => imposta({ alimentare: !event.target.checked })} />
+        Non è merce alimentare (non va a magazzino in Lotti)
+      </label>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+        {f.alimentare && (
+          <>
+            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+              Cerca articolo
+              <Input aria-label="Cerca articolo di Lotti" value={ricerca} onChange={event => setRicerca(event.target.value)} />
+            </label>
+            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+              Articolo di Lotti
+              <select aria-label="Articolo di Lotti" value={f.scelto} onChange={event => imposta({ scelto: event.target.value })} style={stileSelect}>
+                <option value="">Da verificare</option>
+                {elencoArticoli.map(p => <option key={p.nome_canc} value={p.nome_canc}>{p.nome_canc}</option>)}
+                <option value={ALTRO}>Altro (scrivi tu)</option>
+              </select>
+            </label>
+            {f.scelto === ALTRO && (
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+                Nome del nuovo articolo
+                <Input aria-label="Nome del nuovo articolo" value={f.nuovoNome} onChange={event => imposta({ nuovoNome: event.target.value })} />
+              </label>
+            )}
+            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+              Categoria
+              <select aria-label="Categoria Lotti" value={f.categoria} onChange={event => imposta({ categoria: event.target.value })} style={stileSelect}>
+                <option value="">Da verificare</option>
+                {categorie.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+          </>
         )}
         <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
-          Categoria
-          <select aria-label="Categoria Lotti" value={categoria} onChange={event => setCategoria(event.target.value)} style={stileSelect}>
-            <option value="">Scegli…</option>
-            {categorie.map(c => <option key={c} value={c}>{c}</option>)}
+          Natura
+          <select aria-label="Natura" value={f.natura} onChange={event => imposta({ natura: event.target.value })} style={stileSelect}>
+            <option value="">Da verificare</option>
+            {NATURE_RIGA.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+          Conto (es. 33.03.01)
+          <Input aria-label="Conto" value={f.conto} placeholder="Da verificare" onChange={event => imposta({ conto: event.target.value })} />
+        </label>
+        <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+          Centro di costo
+          <select aria-label="Centro di costo" value={f.centro_costo} onChange={event => imposta({ centro_costo: event.target.value })} style={stileSelect}>
+            <option value="">Da verificare</option>
+            {centri.map(c => <option key={c.codice} value={c.codice}>{c.codice}{c.nome ? ` · ${c.nome}` : ''}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
+          Destinazione operativa
+          <select aria-label="Destinazione operativa" value={f.destinazione} onChange={event => imposta({ destinazione: event.target.value })} style={stileSelect}>
+            <option value="">Da verificare</option>
+            <option value="magazzino_lotti">Magazzino Lotti</option>
           </select>
         </label>
       </div>
-      {errore && <div role="alert" style={{ marginTop: 8, fontSize: 12, color: COLORS.danger }}>{errore}</div>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-        <Button type="button" disabled={busy || !pronto} onClick={() => onAssegna({ nome_canc: nome, categoria, alimentare: true })} style={{ minHeight: 44 }}>
-          <Link2 size={16} /> Associa a Lotti
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, minHeight: 44 }}>
+        <input type="checkbox" aria-label="Non è un cespite" checked={f.nonCespite} onChange={event => imposta({ nonCespite: event.target.checked })} />
+        Non è un cespite (shopper, buste, materiale di consumo: non entra mai nei cespiti)
+      </label>
+      {incoerente && <div role="alert" style={{ fontSize: 12, color: COLORS.danger }}>«Non è un cespite» e natura «cespite» non possono stare insieme.</div>}
+      {errore && <div role="alert" style={{ fontSize: 12, color: COLORS.danger }}>{errore}</div>}
+      <div>
+        <Button
+          type="button"
+          disabled={busy || !pronto || incoerente}
+          onClick={() => onAssegna({
+            nome_canc: nome, categoria: f.categoria, alimentare: f.alimentare, natura: f.natura,
+            conto: f.conto, centro_costo: f.centro_costo, destinazione_operativa: f.destinazione,
+            non_cespite: f.nonCespite,
+          })}
+          style={{ minHeight: 44 }}
+        >
+          <Link2 size={16} /> Salva e aggiorna le righe uguali
         </Button>
-        <Button type="button" variant="secondary" disabled={busy} onClick={() => onAssegna({ alimentare: false })} style={{ minHeight: 44 }}>
-          Non è merce alimentare
-        </Button>
+        <div style={{ marginTop: 6, fontSize: 12, color: COLORS.textMuted }}>
+          Vale anche per le altre righe dello stesso fornitore con lo stesso nome (quelle già decise da te non si toccano) e popola Lotti.
+        </div>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -264,7 +348,8 @@ function DettaglioRiga({ riga, onClose, onDecision, onAssegna, busy }) {
           <Card style={{ padding: 14 }}>
             <strong>Classificazione della singola riga</strong>
             <div style={{ marginTop: 8 }}><Badge variant={badgeAI(ai.stato).variant}>{badgeAI(ai.stato).label}</Badge></div>
-            <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
+            {ai.stato === 'PROPOSTA' && (
+              <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
               <div>Natura: {ai.natura || 'DA_VERIFICARE'}</div>
               <div>Categoria: {ai.categoria || 'DA_VERIFICARE'}</div>
               <div>Conto: {ai.conto || 'DA_VERIFICARE'}</div>
@@ -274,6 +359,8 @@ function DettaglioRiga({ riga, onClose, onDecision, onAssegna, busy }) {
               <div>Spiegazione: {ai.spiegazione || 'Nessuna proposta salvata per questa riga.'}</div>
               <div>Regola/versione: {[ai.regola, ai.versione].filter(Boolean).join(' · ') || 'non disponibile'}</div>
             </div>
+            )}
+            <ClassificazioneRiga riga={riga} ai={ai} onAssegna={onAssegna} busy={busy} />
             {ai.stato === 'PROPOSTA' && (
               <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
                 {correggi && (
@@ -320,8 +407,6 @@ function DettaglioRiga({ riga, onClose, onDecision, onAssegna, busy }) {
               </div>
             )}
           </Card>
-
-          <ArticoloLotti riga={riga} onAssegna={onAssegna} busy={busy} />
 
           <Card style={{ padding: 14 }}>
             <strong>Pagamenti: dichiarato, previsto ed effettivo restano distinti</strong>
@@ -386,6 +471,7 @@ export default function RigheAcquisti() {
   const [dettaglio, setDettaglio] = useState(null);
   const [aiStato, setAiStato] = useState(null);
   const [decisioneBusy, setDecisioneBusy] = useState(false);
+  const [esitoLotti, setEsitoLotti] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -468,7 +554,13 @@ export default function RigheAcquisti() {
     setDecisioneBusy(true);
     setErrore('');
     try {
-      await api.post(`/api/righe-acquisti/${encodeURIComponent(dettaglio.id)}/prodotto-lotti`, scelta);
+      const { data } = await api.post(`/api/righe-acquisti/${encodeURIComponent(dettaglio.id)}/prodotto-lotti`, scelta);
+      const uguali = data?.righe_estese || 0;
+      const cespiti = data?.cespiti_gia_creati || 0;
+      setEsitoLotti(
+        `Salvato: ${uguali ? `aggiornate anche ${uguali} righe uguali` : 'nessun\'altra riga uguale da aggiornare'}.`
+        + (cespiti ? ` Attenzione: da queste righe risultano già ${cespiti} cespiti creati; verificali in Cespiti (non li ho toccati).` : ''),
+      );
       setDettaglio(null);
       setReloadKey(value => value + 1);
     } catch (error) {
@@ -502,6 +594,8 @@ export default function RigheAcquisti() {
           </div>
         </Card>
       )}
+
+      {esitoLotti && <Card style={{ padding: 12, fontSize: 13 }}><div role="status">{esitoLotti}</div></Card>}
 
       <RegoleCategoria />
 
