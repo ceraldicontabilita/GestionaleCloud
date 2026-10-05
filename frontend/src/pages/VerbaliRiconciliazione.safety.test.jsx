@@ -17,4 +17,11 @@ describe('verbali: dati probatori e conferma esplicita', () => {
     expect(source).not.toContain('{v.importo ? formatEuro(v.importo)');
     expect(source).not.toContain('Riconcilia Automatico');
   });
+
+  it('tiene il dettaglio in vista mentre si scorre la lista (fisso su schermo largo, in vista su telefono)', () => {
+    expect(source).toContain('data-testid="dettaglio-verbale-pannello"');
+    expect(source).toContain("position: 'sticky'");
+    expect(source).toContain("maxHeight: 'calc(100vh - 24px)'");
+    expect(source).toContain("scrollIntoView({ behavior: 'smooth', block: 'start' })");
+  });
 });
