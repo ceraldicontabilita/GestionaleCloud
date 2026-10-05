@@ -66,16 +66,22 @@ const stileSelect = {
 
 /**
  * Classificazione della riga, modificabile da qui: propone dal nome (articolo,
- * categoria, natura), il titolare corregge ogni campo e salva. Il salvataggio
- * popola Lotti e aggiorna tutte le righe dello stesso fornitore con lo stesso nome.
+ * categoria, natura, conto, centro di costo), il titolare corregge ogni campo e
+ * salva. Scegliendo la categoria, conto e centro si propongono dalle scelte già
+ * in uso (o dalla regola del titolare). Il salvataggio popola Lotti e aggiorna
+ * tutte le righe dello stesso fornitore con lo stesso nome.
  */
 function ClassificazioneRiga({ riga, ai, onAssegna, busy }) {
   const [prodotti, setProdotti] = useState([]);
   const [categorie, setCategorie] = useState([]);
   const [centri, setCentri] = useState([]);
+  const [conti, setConti] = useState([]);
   const [ricerca, setRicerca] = useState('');
   const [proposta, setProposta] = useState(null);
+  const [suggerimento, setSuggerimento] = useState('');
   const [toccato, setToccato] = useState(false);
+  const [contoToccato, setContoToccato] = useState(false);
+  const [centroToccato, setCentroToccato] = useState(false);
   const [errore, setErrore] = useState('');
   const [f, setF] = useState({
     scelto: '', nuovoNome: '', categoria: '', natura: '', conto: '', centro_costo: '',
@@ -95,6 +101,7 @@ function ClassificazioneRiga({ riga, ai, onAssegna, busy }) {
           setProdotti(data.prodotti || []);
           setCategorie(data.categorie || []);
           setCentri(data.centri_costo || []);
+          setConti(data.conti || []);
         })
         .catch(() => { if (active) setErrore('Elenco articoli di Lotti non disponibile.'); });
     }, 200);
@@ -123,17 +130,58 @@ function ClassificazioneRiga({ riga, ai, onAssegna, busy }) {
     });
   }, [proposta, toccato, ai]);
 
+  // Scelta la categoria: conto e centro di costo si propongono, salvo quelli già scelti a mano.
+  const scegliCategoria = async categoria => {
+    imposta({ categoria });
+    setSuggerimento('');
+    if (!categoria) return;
+    try {
+      const { data } = await api.get('/api/righe-acquisti/proposta-categoria', { params: { categoria } });
+      setF(corrente => ({
+        ...corrente,
+        conto: contoToccato ? corrente.conto : (data.conto || ''),
+        centro_costo: centroToccato ? corrente.centro_costo : (data.centro_costo || ''),
+      }));
+      setSuggerimento(data.spiegazione || '');
+    } catch (error) {
+      setSuggerimento('');
+    }
+  };
+
   const nome = f.scelto === ALTRO ? f.nuovoNome.trim() : f.scelto;
   const elencoArticoli = prodotti.some(p => p.nome_canc === f.scelto) || !f.scelto || f.scelto === ALTRO
     ? prodotti : [{ nome_canc: f.scelto }, ...prodotti];
+  const contoNoto = !f.conto || conti.some(c => c.codice === f.conto);
   const pronto = !f.alimentare || (!!nome && !!f.categoria);
   const incoerente = f.nonCespite && f.natura === 'cespite';
-  const etichetta = ({ lotti_confermato: 'Lotti conosce già questo articolo', lotti_proposta: 'Proposta di Lotti', dal_nome: 'Dal nome della riga' })[proposta?.fonte];
+  const etichetta = ({ lotti_confermato: 'Lotti conosce già questo articolo', lotti_proposta: 'Proposta di Lotti', dal_nome: 'Dal nome della riga', regole_in_uso: 'Dalle scelte già in uso', regola_titolare: 'Dalla tua regola' })[proposta?.fonte];
+
+  const salva = async () => {
+    setErrore('');
+    const messaggio = await onAssegna({
+      nome_canc: nome, categoria: f.categoria, alimentare: f.alimentare, natura: f.natura,
+      conto: f.conto, centro_costo: f.centro_costo, destinazione_operativa: f.destinazione,
+      non_cespite: f.nonCespite,
+    });
+    if (messaggio) setErrore(messaggio);
+  };
 
   return (
     <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+      <div
+        data-testid="articolo-in-classificazione"
+        style={{ padding: '10px 12px', borderRadius: 10, background: COLORS.primarySoft, border: `2px solid ${COLORS.primary}` }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: COLORS.primary }}>
+          Stai classificando
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 800, marginTop: 2, overflowWrap: 'anywhere' }}>{riga.descrizione_originale || 'Descrizione assente'}</div>
+        <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+          {[riga.fornitore, riga.numero_fattura ? `fattura ${riga.numero_fattura}` : '', riga.imponibile != null ? euro(riga.imponibile) : ''].filter(Boolean).join(' · ')}
+        </div>
+      </div>
       {proposta?.fonte && !toccato && ai.stato !== 'CONFERMATA' && (
-        <div role="status" style={{ fontSize: 12, padding: '8px 10px', borderRadius: 9, background: COLORS.bgSecondary || COLORS.card, border: `1px solid ${COLORS.border}` }}>
+        <div role="status" style={{ fontSize: 12, padding: '8px 10px', borderRadius: 9, background: COLORS.bgAlt, border: `1px solid ${COLORS.border}` }}>
           <strong>Proposta · {etichetta}.</strong> {proposta.spiegazione} Correggi i campi e salva.
         </div>
       )}
@@ -167,7 +215,7 @@ function ClassificazioneRiga({ riga, ai, onAssegna, busy }) {
             )}
             <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
               Categoria
-              <select aria-label="Categoria Lotti" value={f.categoria} onChange={event => imposta({ categoria: event.target.value })} style={stileSelect}>
+              <select aria-label="Categoria Lotti" value={f.categoria} onChange={event => scegliCategoria(event.target.value)} style={stileSelect}>
                 <option value="">Da verificare</option>
                 {categorie.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -182,12 +230,26 @@ function ClassificazioneRiga({ riga, ai, onAssegna, busy }) {
           </select>
         </label>
         <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
-          Conto (es. 33.03.01)
-          <Input aria-label="Conto" value={f.conto} placeholder="Da verificare" onChange={event => imposta({ conto: event.target.value })} />
+          Conto
+          <select
+            aria-label="Conto"
+            value={f.conto}
+            onChange={event => { setContoToccato(true); imposta({ conto: event.target.value }); }}
+            style={stileSelect}
+          >
+            <option value="">Da verificare</option>
+            {conti.map(c => <option key={c.codice} value={c.codice}>{c.codice} · {c.descrizione}</option>)}
+            {!contoNoto && <option value={f.conto}>{f.conto}</option>}
+          </select>
         </label>
         <label style={{ display: 'grid', gap: 4, fontSize: 12, color: COLORS.textMuted }}>
           Centro di costo
-          <select aria-label="Centro di costo" value={f.centro_costo} onChange={event => imposta({ centro_costo: event.target.value })} style={stileSelect}>
+          <select
+            aria-label="Centro di costo"
+            value={f.centro_costo}
+            onChange={event => { setCentroToccato(true); imposta({ centro_costo: event.target.value }); }}
+            style={stileSelect}
+          >
             <option value="">Da verificare</option>
             {centri.map(c => <option key={c.codice} value={c.codice}>{c.codice}{c.nome ? ` · ${c.nome}` : ''}</option>)}
           </select>
@@ -200,23 +262,15 @@ function ClassificazioneRiga({ riga, ai, onAssegna, busy }) {
           </select>
         </label>
       </div>
+      {suggerimento && <div role="status" style={{ fontSize: 12, color: COLORS.textMuted }}>{suggerimento}</div>}
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, minHeight: 44 }}>
         <input type="checkbox" aria-label="Non è un cespite" checked={f.nonCespite} onChange={event => imposta({ nonCespite: event.target.checked })} />
         Non è un cespite (shopper, buste, materiale di consumo: non entra mai nei cespiti)
       </label>
       {incoerente && <div role="alert" style={{ fontSize: 12, color: COLORS.danger }}>«Non è un cespite» e natura «cespite» non possono stare insieme.</div>}
-      {errore && <div role="alert" style={{ fontSize: 12, color: COLORS.danger }}>{errore}</div>}
+      {errore && <div role="alert" style={{ fontSize: 13, color: COLORS.danger }}>{errore}</div>}
       <div>
-        <Button
-          type="button"
-          disabled={busy || !pronto || incoerente}
-          onClick={() => onAssegna({
-            nome_canc: nome, categoria: f.categoria, alimentare: f.alimentare, natura: f.natura,
-            conto: f.conto, centro_costo: f.centro_costo, destinazione_operativa: f.destinazione,
-            non_cespite: f.nonCespite,
-          })}
-          style={{ minHeight: 44 }}
-        >
+        <Button type="button" disabled={busy || !pronto || incoerente} onClick={salva} style={{ minHeight: 44 }}>
           <Link2 size={16} /> Salva e aggiorna le righe uguali
         </Button>
         <div style={{ marginTop: 6, fontSize: 12, color: COLORS.textMuted }}>
@@ -313,7 +367,7 @@ function DettaglioRiga({ riga, onClose, onDecision, onAssegna, busy }) {
       style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(18,18,17,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
     >
       <div onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: 720, maxHeight: '90vh', overflowY: 'auto', background: COLORS.card, borderRadius: BORDER_RADIUS.lg, padding: 18 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', position: 'sticky', top: -18, zIndex: 2, background: COLORS.card, margin: '-18px -18px 0', padding: '14px 18px 10px', borderBottom: `1px solid ${COLORS.border}` }}>
           <div>
             <div style={{ fontSize: 12, color: COLORS.textMuted }}>Riga {riga.numero_linea} · fattura {riga.numero_fattura}</div>
             <h2 style={{ margin: '4px 0 0', fontSize: 19 }}>{riga.descrizione_originale || 'Descrizione assente'}</h2>
@@ -563,8 +617,10 @@ export default function RigheAcquisti() {
       );
       setDettaglio(null);
       setReloadKey(value => value + 1);
+      return '';
     } catch (error) {
-      setErrore(error?.response?.data?.detail || 'Associazione a Lotti non salvata. Riprova.');
+      // L'errore si mostra dentro il riquadro, davanti agli occhi di chi sta compilando.
+      return error?.response?.data?.detail || 'Associazione a Lotti non salvata. Riprova.';
     } finally {
       setDecisioneBusy(false);
     }

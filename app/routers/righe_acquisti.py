@@ -465,8 +465,18 @@ async def prodotti_lotti(
     return {
         "prodotti": await righe_acquisti_lotti.prodotti_lotti(db_lotti, q),
         "categorie": righe_acquisti_lotti.categorie_lotti(),
-        "centri_costo": centri,
+        "centri_costo": centri or righe_acquisti_lotti.centri_standard(),
+        "conti": righe_acquisti_lotti.conti_acquisto(),
     }
+
+
+@router.get("/proposta-categoria")
+async def proposta_categoria(
+    categoria: str = Query("", max_length=80),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Conto e centro di costo proposti per una categoria di Lotti (regola del titolare, poi scelte in uso)."""
+    return await righe_acquisti_lotti.proposta_conto_centro(Database.get_db(), categoria)
 
 
 @router.get("/regole-categoria")
@@ -476,7 +486,9 @@ async def regole_categoria(
     """Conto e centro di costo per categoria di Lotti: vuoti finché non li dice il titolare."""
     db = Database.get_db()
     centri = await db["centri_costo"].find({}, {"_id": 0, "codice": 1, "nome": 1}).to_list(200)
-    return {"regole": await righe_acquisti_lotti.elenco_regole(db), "centri_costo": centri}
+    return {"regole": await righe_acquisti_lotti.elenco_regole(db),
+            "centri_costo": centri or righe_acquisti_lotti.centri_standard(),
+            "conti": righe_acquisti_lotti.conti_acquisto()}
 
 
 @router.put("/regole-categoria/{categoria}")

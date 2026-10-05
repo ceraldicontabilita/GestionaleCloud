@@ -46,15 +46,90 @@ _ESCLUDI = {"_id": 0, "xml_raw": 0, "xml_content": 0, "fattura_allegata": 0,
 #: Materiale di consumo che dal nome non è merce alimentare né un bene
 #: ammortizzabile. Sono **proposte** (il titolare le conferma): una parola
 #: all'inizio di parola, mai dentro una più lunga.
+#: (natura, conto CEE, chiave di CATEGORIA_TO_CDC, parole): imballi → 55.01.09
+#: Confezioni e imballi, pulizia → 55.01.05 Acquisti materiali di consumo.
 _CONSUMO = [
-    ("pulizia", ["detersiv", "sgrassat", "igienizz", "sanific", "candeggin", "detergent"]),
-    ("altro", ["shopper", "busta", "buste", "sacchett", "imball", "tovagliol", "cannuc",
-               "bicchier", "pellicola", "vaschett", "guant"]),
+    ("pulizia", "55.01.05", "pulizia", ["detersiv", "sgrassat", "igienizz", "sanific", "candeggin", "detergent"]),
+    ("altro", "55.01.09", "imballaggi", ["shopper", "busta", "buste", "sacchett", "imball", "tovagliol",
+                                          "cannuc", "bicchier", "pellicola", "vaschett", "guant"]),
 ]
 _CONSUMO_RX = [
-    (natura, re.compile(r"(?<![a-zà-ÿ])(?:" + "|".join(re.escape(p) for p in parole) + ")", re.IGNORECASE))
-    for natura, parole in _CONSUMO
+    (natura, conto, chiave, re.compile(r"(?<![a-zà-ÿ])(?:" + "|".join(re.escape(p) for p in parole) + ")", re.IGNORECASE))
+    for natura, conto, chiave, parole in _CONSUMO
 ]
+
+
+#: Categoria di Lotti → (conto CEE, chiave di ``CATEGORIA_TO_CDC``). Non è una
+#: regola nuova: ripete le scelte già in uso, `mapping_piano_conti` (bevande →
+#: 55.01.07 Acquisti merci; alimentari e materie prime → 55.01.01) e
+#: `CATEGORIA_TO_CDC` dei centri di costo. Dove il settore non è certo il centro
+#: resta vuoto («Da verificare»): meglio vuoto che plausibile. La regola per
+#: categoria impostata dal titolare vince sempre.
+_ALIMENTARE_SENZA_SETTORE = (
+    "Pasta", "Burro o margarina", "Formaggi", "Olio", "Condimenti", "Conserve e Condimenti",
+    "Frutta Secca", "Bagne e Aromi", "Lieviti e Addensanti", "Varie Alimentari",
+)
+_PROPOSTA_CATEGORIA: Dict[str, tuple] = {
+    "Bevande": ("55.01.07", "bevande"),
+    "Alcolici e Liquori": ("55.01.07", "bevande_alcoliche"),
+    "Farine e Cereali": ("55.01.01", "farine"),
+    "Zuccheri": ("55.01.01", "zucchero"),
+    "Dolcificanti": ("55.01.01", "zucchero"),
+    "Uova": ("55.01.01", "uova"),
+    "Cioccolato e Cacao": ("55.01.01", "cioccolato"),
+    "Latticini": ("55.01.01", "latticini"),
+    "Carni e Salumi": ("55.01.01", "carne"),
+    "Salumi": ("55.01.01", "salumi"),
+    "Pesce": ("55.01.01", "pesce"),
+    "Frutta e Verdura": ("55.01.01", "frutta"),
+    "Semilavorati Pasticceria": ("55.01.01", "pasticceria"),
+    "Decorazioni": ("55.01.01", "pasticceria"),
+    **{c: ("55.01.01", None) for c in _ALIMENTARE_SENZA_SETTORE},
+}
+
+
+def conti_acquisto() -> List[Dict[str, str]]:
+    """I conti d'acquisto del piano CEE ufficiale (gruppo 55, foglie), per la tendina."""
+    return [
+        {"codice": cod, "descrizione": desc}
+        for cod, desc in sorted(CONTI_UFFICIALI.items())
+        if cod.startswith("55.") and cod.count(".") == 2
+    ]
+
+
+def centri_standard() -> List[Dict[str, str]]:
+    from app.routers.accounting.centri_costo import CDC_STANDARD
+    return [{"codice": cod, "nome": d["nome"]} for cod, d in sorted(CDC_STANDARD.items())]
+
+
+async def proposta_conto_centro(db, categoria: Optional[str]) -> Dict[str, Any]:
+    """Conto e centro di costo per una categoria: regola del titolare, poi le scelte già in uso."""
+    from app.routers.accounting.centri_costo import CATEGORIA_TO_CDC, CDC_STANDARD
+
+    categoria = str(categoria or "").strip()
+    esito: Dict[str, Any] = {"categoria": categoria or None, "conto": None, "centro_costo": None,
+                             "fonte": None, "spiegazione": "Nessuna proposta per questa categoria."}
+    if not categoria:
+        return esito
+    regola = next((r for r in await elenco_regole(db) if r["categoria"] == categoria), {})
+    conto, chiave = _PROPOSTA_CATEGORIA.get(categoria, (None, None))
+    centro = CATEGORIA_TO_CDC.get(chiave) if chiave else None
+    esito["conto"] = regola.get("conto") or conto
+    esito["centro_costo"] = regola.get("centro_costo") or centro
+    if regola.get("conto") or regola.get("centro_costo"):
+        esito["fonte"] = "regola_titolare"
+        esito["spiegazione"] = f"Dalla tua regola per «{categoria}»."
+    elif esito["conto"] or esito["centro_costo"]:
+        esito["fonte"] = "regole_in_uso"
+        pezzi = []
+        if esito["conto"]:
+            pezzi.append(f"conto {esito['conto']} {CONTI_UFFICIALI.get(esito['conto'], '')}".strip())
+        if esito["centro_costo"]:
+            pezzi.append(f"centro {esito['centro_costo']} {CDC_STANDARD.get(esito['centro_costo'], {}).get('nome', '')}".strip())
+        esito["spiegazione"] = (f"Proposta dalle scelte già in uso per «{categoria}»: " + " e ".join(pezzi)
+                                + (". Il settore non è certo: scegli tu il centro." if not esito["centro_costo"] else ".")
+                                + " Da confermare col commercialista.")
+    return esito
 
 
 class SceltaNonValida(ValueError):
@@ -89,7 +164,7 @@ async def _controlla_conto_e_centro(db, conto: Optional[str], centro_costo: Opti
         raise SceltaNonValida("conto fuori dal piano dei conti ufficiale")
     if centro_costo:
         trovato = await db["centri_costo"].find_one({"codice": centro_costo}, {"_id": 0, "codice": 1})
-        if not trovato:
+        if not trovato and centro_costo not in {c["codice"] for c in centri_standard()}:
             raise SceltaNonValida("centro di costo inesistente")
 
 
@@ -176,18 +251,25 @@ async def proponi(db, db_lotti, riga_id: str) -> Dict[str, Any]:
                           "spiegazione": f"Il nome dice «{categoria}»."})
     if not esito["nome_canc"] and not esito["categoria"]:
         testo = " ".join(str(descrizione).lower().split())
-        for natura, rx in _CONSUMO_RX:
+        from app.routers.accounting.centri_costo import CATEGORIA_TO_CDC
+        for natura, conto, chiave, rx in _CONSUMO_RX:
             if rx.search(testo):
                 esito.update({
                     "alimentare": False, "natura": natura, "non_cespite": True,
                     "categoria": "Non Alimentare", "nome_canc": "Non alimentare", "fonte": "dal_nome",
-                    "spiegazione": "Dal nome sembra materiale di consumo: non è merce di magazzino né un cespite.",
+                    "conto": conto, "centro_costo": CATEGORIA_TO_CDC.get(chiave),
+                    "spiegazione": f"Dal nome sembra materiale di consumo: non è merce di magazzino né un cespite "
+                                   f"(conto {conto} {CONTI_UFFICIALI.get(conto, '')}).",
                 })
                 break
     if esito["alimentare"] and esito["categoria"]:
         esito["natura"] = esito["natura"] or "ingrediente"
-    regola = next((r for r in await elenco_regole(db) if r["categoria"] == esito["categoria"]), {})
-    esito["conto"], esito["centro_costo"] = regola.get("conto"), regola.get("centro_costo")
+    if esito["alimentare"] or not esito.get("conto"):
+        base = await proposta_conto_centro(db, esito["categoria"])
+        esito["conto"] = esito.get("conto") or base["conto"]
+        esito["centro_costo"] = esito.get("centro_costo") or base["centro_costo"]
+        if base["fonte"] and esito["fonte"] is None:
+            esito["fonte"] = base["fonte"]
     return esito
 
 
