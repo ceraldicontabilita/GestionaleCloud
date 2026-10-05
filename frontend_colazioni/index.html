@@ -1283,7 +1283,7 @@ async function ceDel(i){
 
 /* --- Impostazioni --- */
 function pImpostazioni(){
- const c=TIT.config||{},demo=TIT.strutture.filter(s=>s.demo).length;
+ FR=null;const c=TIT.config||{},demo=TIT.strutture.filter(s=>s.demo).length;
  const f=(k,l,ph,tipo="text",nota="")=>`<label>${l}</label><input type="${tipo}" value="${esc(c[k]||"")}" placeholder="${esc(ph)}" onchange="salvaCfg('${k}',this.value)">${nota?`<div class="mute" style="margin:-6px 0 10px">${nota}</div>`:""}`;
  return `<div class="card"><h3>🏪 Dati del bar</h3><p class="mute">Compaiono nella pagina che vede l'ospite. Le modifiche si salvano da sole.</p>
  ${f("bar_nome","Nome del locale","Bar Pasticceria Ceraldi")}${f("bar_indirizzo","Indirizzo","Via …, Napoli")}${f("bar_tel","Telefono","+39 …","tel")}${f("bar_whatsapp","WhatsApp (con prefisso, senza spazi)","39333…","tel")}${f("bar_email","Email","info@…","email")}${f("bar_orari","Orari di apertura","es. 7:00–14:00")}${f("bar_maps","Link Google Maps (facoltativo)","https://maps.app.goo.gl/…","url","Se lo lasci vuoto uso indirizzo e nome del bar.")}</div>
@@ -1291,6 +1291,10 @@ function pImpostazioni(){
  ${f("ricarica_min","Ricarica minima (€)","5","number")}${f("ricarica_max","Ricarica massima (€)","2000","number")}${f("anticipo_max_giorni","Giorni massimi di anticipo per prenotare","60","number")}
  ${f("supplemento_tavolo","Supplemento servizio al tavolo (€ a persona, per colazione)","es. 1,50","text","Si aggiunge solo alle camere o prenotazioni con Tavolo spuntato. Vale per le prenotazioni nuove.")}
  ${f("ordini_limite_ora","Orario limite per ordinare il giorno prima","es. 20:00","time","Vuoto = nessun limite. Con 20:00, le colazioni per domani si possono creare fino alle 20:00 di oggi (e quindi mai per lo stesso giorno).")}</div>
+ <div class="card"><h3>🕖 Fasce orarie di ritiro degli ordini prodotti</h3><p class="mute">Sono gli orari che l'albergatore può scegliere quando ordina i prodotti per il giorno dopo. Tocca per accendere o spegnere un orario, poi premi Salva. Se non ne scegli nessuno valgono le fasce ogni mezz'ora dalle 06:00 alle 11:30.</p>
+ <div id="fr_chip" class="chips">${frChips()}</div>
+ <div class="filters" style="margin-top:8px"><div><label>Altro orario</label><input id="fr_altro" type="time"></div><div style="align-self:end"><button class="btn sec" onclick="frAggiungi()">Aggiungi orario</button></div></div>
+ <button class="btn" onclick="frSalva()">Salva fasce di ritiro</button> <button class="btn sec" onclick="frPredefinite()">Usa le predefinite</button></div>
  <div class="card"><h3>📍 Posizione del bar</h3><p class="mute">Serve solo per dire, nelle visite recensione con consenso alla posizione, se il cliente era in sede o fuori sede. Nessun blocco. Gradi decimali, es. 40.842949 e 14.2489.</p>
  ${f("bar_lat","Latitudine","40.842949")}${f("bar_lon","Longitudine","14.2489")}${f("bar_raggio_m","Raggio «in sede» (metri)","300","number","Da 10 a 5000 metri.")}</div>
  <div class="card"><h3>💬 Messaggio all'ospite</h3><p class="mute">Testo proposto quando l'albergatore preme "Invia all'ospite". Puoi usare <b>{ospite}</b>, <b>{bar}</b> e <b>{link}</b>.</p>
@@ -1308,6 +1312,15 @@ function pImpostazioni(){
  <div class="card"><h3>🔒 Accesso</h3><p class="mute">Il titolare entra con lo stesso PIN del gestionale: per cambiarlo si usa il gestionale. Gli albergatori scelgono il PIN da soli quando attivano l'accesso e possono recuperarlo con il loro codice di recupero. Se lo perdono del tutto, ti arriva una richiesta nel Cruscotto.</p></div>
  <div class="card"><h3>🧪 Dati di prova</h3><p class="mute">${demo?`Ci sono ${demo} strutture dimostrative (PIN 1111, 2222, 3333) con ordini fittizi. Quando inizi con i dati veri, eliminale.`:"Nessun dato di prova presente."}</p>
  ${demo?`<button class="btn bad" onclick="eliminaDemo()">Elimina tutti i dati di prova</button>`:""}</div>`}
+let FR=null;
+function frCorrenti(){if(FR===null)FR=String((TIT.config||{}).ordini_fasce_ritiro||"").split(",").map(x=>x.trim()).filter(Boolean);return FR}
+function frChips(){const sel=new Set(frCorrenti()),base=[];for(let m=5*60;m<=13*60+30;m+=30)base.push(String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0"));
+ const tutte=[...new Set([...base,...sel])].sort();return tutte.map(h=>`<button type="button" class="btn sm ${sel.has(h)?"":"sec"}" aria-pressed="${sel.has(h)}" style="min-height:44px" onclick="frToggle('${h}')">${h}</button>`).join("")}
+function frDisegna(){const e=$("#fr_chip");if(e)e.innerHTML=frChips()}
+function frToggle(h){const l=frCorrenti(),i=l.indexOf(h);if(i>=0)l.splice(i,1);else l.push(h);frDisegna()}
+function frAggiungi(){const v=($("#fr_altro")||{}).value;if(!v)return toast("Scegli un orario");const l=frCorrenti();if(!l.includes(v))l.push(v);$("#fr_altro").value="";frDisegna()}
+async function frSalva(){const l=[...new Set(frCorrenti())].sort();if(l.length>24)return toast("Al massimo 24 orari");if(await run("bb_tit_config_set",{p:sess.p,pk:"ordini_fasce_ritiro",pv:l.join(",")},"Fasce di ritiro salvate")!==undefined){TIT.config.ordini_fasce_ritiro=l.join(",");FR=l;frDisegna()}}
+async function frPredefinite(){if(await run("bb_tit_config_set",{p:sess.p,pk:"ordini_fasce_ritiro",pv:""},"Fasce predefinite ripristinate")!==undefined){TIT.config.ordini_fasce_ritiro="";FR=[];frDisegna()}}
 const salvaCfg=async(k,v)=>{if(await run("bb_tit_config_set",{p:sess.p,pk:k,pv:v},"Salvato")!==undefined&&TIT.config)TIT.config[k]=v.trim()};
 async function diagnostica(){
  $("#dg").innerHTML=`<span class="mute">Controllo in corso…</span>`;

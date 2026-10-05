@@ -622,12 +622,23 @@ async def _movimento_borsellino(fn: str, sid: str, importo: Decimal, ordine_id: 
     return risultato
 
 
+async def _fasce_ritiro() -> tuple[str, ...]:
+    """Fasce di ritiro del titolare (bb_config); se mancano o il database non risponde, quelle predefinite."""
+    from app.lotti.servizi.ordini_hotel import fasce_valide
+    try:
+        configurate = await _rpc_bb("bb_ordini_fasce_ritiro", {})
+    except HTTPException as exc:
+        logger.warning("Fasce di ritiro non lette (%s): uso le predefinite", exc.detail)
+        configurate = []
+    return fasce_valide(configurate if isinstance(configurate, list) else [])
+
+
 @router.post("/ordini-prodotti/albergatore", summary="Invia un ordine mattutino dall'hotel")
 async def crea_ordine_prodotti_hotel(richiesta: OrdineHotelRequest) -> Dict[str, Any]:
     from app.lotti.servizi.ordini_hotel import crea_ordine, verifica_termini
     catalogo, stato = await _contesto_ordine_albergatore(richiesta.sid, richiesta.p)
     try:
-        verifica_termini(richiesta.data_consegna, richiesta.ora_ritiro)
+        verifica_termini(richiesta.data_consegna, richiesta.ora_ritiro, fasce=await _fasce_ritiro())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not richiesta.righe or len(richiesta.righe) > 100:
@@ -671,14 +682,14 @@ async def crea_ordine_prodotti_hotel(richiesta: OrdineHotelRequest) -> Dict[str,
 async def elenco_ordini_prodotti_hotel(richiesta: ElencoOrdiniHotelRequest) -> Dict[str, Any]:
     await _contesto_ordine_albergatore(richiesta.sid, richiesta.p)
     from app.lotti.servizi.ordini_hotel import lista_ordini
-    from app.lotti.servizi.ordini_hotel import FASCE_RITIRO, ORA_LIMITE_ORDINE, prima_consegna_possibile
+    from app.lotti.servizi.ordini_hotel import ORA_LIMITE_ORDINE, prima_consegna_possibile
     ordini = await lista_ordini({"struttura_id": richiesta.sid}, 100)
     return {
         "ordini": ordini,
         "termini": {
             "prima_consegna": prima_consegna_possibile().isoformat(),
             "ora_limite": f"{ORA_LIMITE_ORDINE}:00",
-            "fasce_ritiro": list(FASCE_RITIRO),
+            "fasce_ritiro": list(await _fasce_ritiro()),
         },
     }
 

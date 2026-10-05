@@ -47,9 +47,16 @@ def prima_consegna_possibile(adesso: datetime | None = None) -> date:
     return giorno if adesso < limite_ordine(giorno) else giorno + timedelta(days=1)
 
 
-def verifica_termini(data_consegna: date, ora_ritiro: str, adesso: datetime | None = None) -> None:
+def fasce_valide(configurate: Iterable[Any] | None) -> tuple[str, ...]:
+    """Fasce scelte dal titolare (HH:MM); se non ce n'e' nessuna valgono quelle predefinite."""
+    pulite = sorted({str(x).strip() for x in (configurate or []) if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(x).strip())})
+    return tuple(pulite) or FASCE_RITIRO
+
+
+def verifica_termini(data_consegna: date, ora_ritiro: str, adesso: datetime | None = None,
+                     fasce: Iterable[str] | None = None) -> None:
     adesso = (adesso or datetime.now(_ROMA)).astimezone(_ROMA)
-    if ora_ritiro not in FASCE_RITIRO:
+    if ora_ritiro not in fasce_valide(fasce):
         raise ValueError("Scegli un orario di ritiro dall'elenco")
     if adesso >= limite_ordine(data_consegna):
         primo = prima_consegna_possibile(adesso)

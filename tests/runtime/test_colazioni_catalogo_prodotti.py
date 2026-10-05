@@ -380,8 +380,33 @@ def test_ordine_pagato_dal_borsellino_addebita_e_storna_se_il_salvataggio_fallis
 
 def test_frontend_e_migrazione_ordini_prodotti_con_orario_e_borsellino():
     html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
-    sql = (ROOT / "supabase" / "migrations" / "20261005090000_colazioni_ordini_prodotti_borsellino.sql").read_text(encoding="utf-8")
+    sql = (ROOT / "supabase" / "migrations" / "20261005042530_colazioni_ordini_prodotti_borsellino.sql").read_text(encoding="utf-8")
     assert "Orario di ritiro" in html and "Paga dal borsellino" in html and "Paga in loco" in html
     assert "pagamento_metodo:AP.met" in html and "ora_ritiro:AP.ora" in html
     assert "gc_assert_runtime_secret" in sql and "for update" in sql
     assert "bb_ordine_prodotti_addebita" in sql and "bb_ordine_prodotti_rimborsa" in sql
+
+
+def test_fasce_di_ritiro_configurate_dal_titolare_valgono_al_posto_delle_predefinite():
+    from datetime import date, datetime
+    from zoneinfo import ZoneInfo
+
+    import pytest
+
+    from app.lotti.servizi.ordini_hotel import FASCE_RITIRO, fasce_valide, verifica_termini
+
+    adesso = datetime(2026, 10, 5, 10, 0, tzinfo=ZoneInfo("Europe/Rome"))
+    assert fasce_valide([]) == FASCE_RITIRO and fasce_valide(None) == FASCE_RITIRO
+    assert fasce_valide(["08:00", "07:00", "07:00", "25:00", "x"]) == ("07:00", "08:00")
+
+    verifica_termini(date(2026, 10, 6), "07:15", adesso, fasce=["07:15", "08:15"])
+    with pytest.raises(ValueError, match="orario di ritiro"):
+        verifica_termini(date(2026, 10, 6), "07:00", adesso, fasce=["07:15", "08:15"])
+    verifica_termini(date(2026, 10, 6), "07:00", adesso)  # senza configurazione: predefinite
+
+
+def test_impostazioni_permettono_di_scegliere_le_fasce_di_ritiro():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    sql = (ROOT / "supabase" / "migrations" / "20261005042530_colazioni_ordini_prodotti_borsellino.sql").read_text(encoding="utf-8")
+    assert "Fasce orarie di ritiro degli ordini prodotti" in html and "ordini_fasce_ritiro" in html
+    assert "bb_ordini_fasce_ritiro" in sql and "'ordini_fasce_ritiro') then raise" in sql
