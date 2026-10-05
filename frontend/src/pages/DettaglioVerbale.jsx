@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 
 const ETICHETTE_DOCUMENTO_DRIVE = {
   verbale: 'Verbale', notifica: 'Notifica', quietanza: 'Quietanza', bonifico: 'Bonifico',
-  avviso_pagopa: 'Avviso pagoPA', ricevuta: 'Ricevuta', altro: 'Documento',
+  avviso_pagopa: 'Avviso pagoPA', ricevuta: 'Ricevuta di pagamento', presa_in_carico: 'Presa in carico', altro: 'Documento',
 };
 
 export default function DettaglioVerbale() {
@@ -210,14 +210,16 @@ export default function DettaglioVerbale() {
     {
       key: 'verbale', title: 'Verbale originale',
       present: hasStructuredFile ? fascicolo.verbale?.presente : pdfCount > 0,
-      detail: fascicolo.verbale?.documento?.filename || 'PDF originale non ancora collegato',
+      detail: fascicolo.verbale?.documento?.filename || fascicolo.verbale?.documenti_drive?.[0]?.nome || 'PDF originale non ancora collegato',
       document: fascicolo.verbale?.documento || (!hasStructuredFile ? verbale?.pdf_disponibili?.[0] : null),
+      driveDocs: fascicolo.verbale?.documenti_drive || [],
     },
     {
       key: 'notifica', title: 'Notifica scaricata',
       present: fascicolo.notifica?.presente,
-      detail: fascicolo.notifica?.documento?.filename || fascicolo.notifica?.riferimento_archivio || fascicolo.notifica?.data || 'Non presente',
+      detail: fascicolo.notifica?.documento?.filename || fascicolo.notifica?.documenti_drive?.[0]?.nome || fascicolo.notifica?.riferimento_archivio || fascicolo.notifica?.data || 'Non presente',
       document: fascicolo.notifica?.documento,
+      driveDocs: fascicolo.notifica?.documenti_drive || [],
     },
     {
       key: 'banca', title: 'Pagamento in banca',
@@ -229,8 +231,9 @@ export default function DettaglioVerbale() {
     {
       key: 'quietanza', title: 'Quietanza PartenoPay / PagoPA',
       present: fascicolo.quietanza?.presente,
-      detail: fascicolo.quietanza?.documento?.filename || fascicolo.quietanza?.riferimento_archivio || fascicolo.quietanza?.fonte || 'Non presente',
+      detail: fascicolo.quietanza?.documento?.filename || fascicolo.quietanza?.documenti_drive?.[0]?.nome || fascicolo.quietanza?.riferimento_archivio || fascicolo.quietanza?.fonte || 'Non presente',
       document: fascicolo.quietanza?.documento,
+      driveDocs: fascicolo.quietanza?.documenti_drive || [],
     },
   ];
 
@@ -295,6 +298,13 @@ export default function DettaglioVerbale() {
                   Apri documento
                 </Button>
               )}
+              {(item.driveDocs || []).map((d) => (
+                <div key={d.drive_id} style={{ marginTop: 8 }}>
+                  <ApriOriginale driveId={d.drive_id} titolo={d.nome || 'Documento'} documentType="verbale" testId={`fascicolo-drive-${d.drive_id}`}>
+                    Apri {String(d.nome || 'documento').slice(0, 38)}
+                  </ApriOriginale>
+                </div>
+              ))}
             </div>
           ))}
         </div>

@@ -100,4 +100,20 @@ describe('DettaglioVerbale viewer PDF', () => {
     fireEvent.click(screen.getByTestId('apri-fattura-collegata'));
     expect((await screen.findByTestId('modal-fattura')).getAttribute('data-id')).toBe('f-77');
   });
+
+  it('mostra i documenti Drive nella casella del fascicolo del loro tipo', async () => {
+    api.get.mockImplementation(url => Promise.resolve({
+      data: url === '/api/dipendenti' ? [] : {
+        numero_verbale: 'V-TEST-001', pdf_disponibili: [],
+        fascicolo: {
+          verbale: { presente: false, documento: null, documenti_drive: [] },
+          notifica: { presente: false, documento: null, documenti_drive: [] },
+          pagamento_banca: { presente: false },
+          quietanza: { presente: true, documento: null, documenti_drive: [{ drive_id: '1QuietanzaAbCdEfGhIjKl', tipo: 'quietanza', nome: 'Attestazione.pdf' }] },
+        },
+      },
+    }));
+    render(<DettaglioVerbale />);
+    expect(await screen.findByTestId('fascicolo-drive-1QuietanzaAbCdEfGhIjKl')).toBeInTheDocument();
+  });
 });

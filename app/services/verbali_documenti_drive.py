@@ -7,9 +7,12 @@ niente: scrive sul verbale l'elenco ``documenti_drive`` e il dettaglio lo apre c
 l'endpoint unico degli originali (``/api/originale?drive_id=``), che accetta solo i file
 della cartella unica o dell'inventario Drive.
 
+Una riga con ``azione`` = «rimuovi» scollega il file dal verbale (il file su Drive non si tocca; il collegamento
+togliere resta in ``documenti_drive_rimossi`` con data e motivo).
+
 Regole: ``dry_run`` per difetto; un verbale si trova solo per numero (mai per targa o
-importo); lo stesso ``drive_id`` non si aggiunge due volte; un collegamento esistente non
-si sovrascrive; un verbale senza riga nel gestionale resta nell'elenco «non trovati».
+importo); lo stesso ``drive_id`` non si aggiunge due volte; se il foglio dice un altro tipo o nome per un file
+gia' collegato, li corregge (il tipo si legge dal contenuto, il tipo precedente resta in ``tipo_precedente``); un verbale senza riga nel gestionale resta nell'elenco «non trovati».
 """
 from __future__ import annotations
 
@@ -23,12 +26,13 @@ logger = logging.getLogger(__name__)
 
 COLLEZIONI_VERBALI = ("verbali_noleggio", "verbali_noleggio_completi")
 FOGLIO = "Collegamenti"
-TIPI = ("verbale", "notifica", "quietanza", "bonifico", "avviso_pagopa", "ricevuta", "altro")
+TIPI = ("verbale", "notifica", "quietanza", "bonifico", "avviso_pagopa", "ricevuta", "presa_in_carico", "altro")
 _COLONNE = {"numero_verbale": ("numero_verbale", "verbale", "numero"),
             "drive_id": ("drive_id", "id_drive"),
             "tipo": ("tipo", "tipo_documento"),
             "nome_file": ("nome_file", "nome", "file"),
-            "sha256": ("sha256", "impronta")}
+            "sha256": ("sha256", "impronta"),
+            "azione": ("azione",)}
 _DRIVE_ID = re.compile(r"^[A-Za-z0-9_-]{15,80}$")
 
 
@@ -84,7 +88,7 @@ async def collega_documenti_drive(db, righe: Iterable[Dict[str, Any]], *, dry_ru
                                   autore: Optional[str] = None) -> Dict[str, Any]:
     """Aggiunge ``documenti_drive`` ai verbali nominati dalle righe; idempotente."""
     adesso = datetime.now(timezone.utc).isoformat()
-    esito: Dict[str, Any] = {"dry_run": dry_run, "righe": 0, "collegati": 0, "gia_collegati": 0,
+    esito: Dict[str, Any] = {"dry_run": dry_run, "righe": 0, "collegati": 0, "corretti": 0, "rimossi": 0, "gia_collegati": 0,
                              "non_trovati": [], "non_validi": [], "verbali_toccati": 0}
     per_verbale: Dict[str, List[Dict[str, Any]]] = {}
     for riga in righe:
@@ -98,7 +102,8 @@ async def collega_documenti_drive(db, righe: Iterable[Dict[str, Any]], *, dry_ru
             continue
         if tipo not in TIPI:
             tipo = "altro"
-        voce = {"drive_id": drive_id, "tipo": tipo, "nome": str(riga.get("nome_file") or "").strip() or None,
+        azione = _chiave(riga.get("azione"))
+        voce = {"azione": "rimuovi" if azione == "rimuovi" else "collega", "drive_id": drive_id, "tipo": tipo, "nome": str(riga.get("nome_file") or "").strip() or None,
                 "sha256": (str(riga.get("sha256") or "").strip().lower() or None),
                 "fonte": "foglio_collegamenti"}
         per_verbale.setdefault(numero, []).append(voce)
@@ -110,33 +115,51 @@ async def collega_documenti_drive(db, righe: Iterable[Dict[str, Any]], *, dry_ru
             continue
         toccato = False
         for collezione, doc in trovati:
-            presenti = {str(d.get("drive_id")) for d in (doc.get("documenti_drive") or []) if isinstance(d, dict)}
-            nuovi = []
+            attuali = [dict(d) for d in (doc.get("documenti_drive") or []) if isinstance(d, dict)]
+            per_id = {str(d.get("drive_id")): d for d in attuali}
+            nuovi, corretti, rimossi_ora = [], 0, []
             for voce in voci:
-                if voce["drive_id"] in presenti:
+                esistente = per_id.get(voce["drive_id"])
+                if voce["azione"] == "rimuovi":
+                    # Si scollega il collegamento (il file su Drive non si tocca); resta traccia in documenti_drive_rimossi.
+                    if esistente is not None:
+                        per_id.pop(voce["drive_id"])
+                        rimossi_ora.append({**esistente, "rimosso_il": adesso, "rimosso_da": autore,
+                                            "motivo_rimozione": "duplicato (scelta del titolare)"})
                     continue
-                presenti.add(voce["drive_id"])
-                nuovi.append({**voce, "collegato_il": adesso, "collegato_da": autore})
+                if esistente is None:
+                    nuovo = {**voce, "collegato_il": adesso, "collegato_da": autore}
+                    per_id[voce["drive_id"]] = nuovo
+                    nuovi.append(nuovo)
+                elif (esistente.get("tipo"), esistente.get("nome")) != (voce["tipo"], voce["nome"]):
+                    # Il foglio e' la fonte: una riga con lo stesso file corregge tipo e nome (il tipo si legge dal contenuto).
+                    esistente["tipo_precedente"] = esistente.get("tipo")
+                    esistente.update(tipo=voce["tipo"], nome=voce["nome"], corretto_il=adesso)
+                    corretti += 1
+            da_collegare = [v for v in voci if v["azione"] != "rimuovi"]
             if collezione == trovati[0][0]:
-                esito["gia_collegati"] += len(voci) - len(nuovi)
+                esito["gia_collegati"] += len(da_collegare) - len(nuovi) - corretti
                 esito["collegati"] += len(nuovi)
-            if not nuovi:
+                esito["corretti"] += corretti
+                esito["rimossi"] += len(rimossi_ora)
+            if not nuovi and not corretti and not rimossi_ora:
                 continue
             toccato = True
             if dry_run:
                 continue
             filtro = {"id": doc["id"]} if doc.get("id") else {"numero_verbale": doc.get("numero_verbale")}
-            await db[collezione].update_one(
-                filtro, {"$set": {"documenti_drive": (doc.get("documenti_drive") or []) + nuovi,
-                                  "updated_at": adesso}})
+            aggiorna = {"documenti_drive": [per_id[k] for k in per_id], "updated_at": adesso}
+            if rimossi_ora:
+                aggiorna["documenti_drive_rimossi"] = (doc.get("documenti_drive_rimossi") or []) + rimossi_ora
+            await db[collezione].update_one(filtro, {"$set": aggiorna})
         if toccato:
             esito["verbali_toccati"] += 1
-    if not dry_run and esito["collegati"]:
+    if not dry_run and (esito["collegati"] or esito["corretti"] or esito["rimossi"]):
         try:
             await db["audit_log"].insert_one({
                 "id": f"verbali_documenti_drive_{adesso}", "modulo": "verbali_noleggio",
                 "azione": "collega_documenti_drive", "utente": autore, "created_at": adesso,
-                "collegati": esito["collegati"], "verbali_toccati": esito["verbali_toccati"]})
+                "collegati": esito["collegati"], "corretti": esito["corretti"], "rimossi": esito["rimossi"], "verbali_toccati": esito["verbali_toccati"]})
         except Exception as exc:
             logger.warning("Collegamenti Drive: audit non scritto (%s)", type(exc).__name__)
     return esito

@@ -404,36 +404,42 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
     ))
     risultato["pdf_disponibili"] = documenti
 
-    def _documento_per(*termini: str):
-        for documento in documenti:
-            testo = " ".join(str(documento.get(campo) or "") for campo in (
-                "tipo", "filename", "descrizione", "source"
-            )).casefold()
-            if any(termine in testo for termine in termini):
-                return documento
-        return None
+    def _testo_ruolo(documento) -> str:
+        # Il ruolo di un file lo dicono il suo tipo e il suo nome: l'origine («source») puo' contenere
+        # «verbale» per un file che e' una ricevuta, e farebbe finire lo stesso PDF in due caselle.
+        return " ".join(str(documento.get(campo) or "") for campo in ("tipo", "filename")).casefold()
+
+    _TERMINI_QUIETANZA = ("quietanz", "ricevut", "partenopay", "pagopa", "attestazione", "pagamento")
+    # Ogni file ha UN solo ruolo: prima quietanza, poi notifica, il resto e' il verbale.
+    documento_quietanza = next((d for d in documenti if any(t in _testo_ruolo(d) for t in _TERMINI_QUIETANZA)), None)
+    documento_notifica = next((d for d in documenti if d is not documento_quietanza and "notific" in _testo_ruolo(d)), None)
+    restanti = [d for d in documenti if d is not documento_quietanza and d is not documento_notifica
+                and not any(t in _testo_ruolo(d) for t in _TERMINI_QUIETANZA)]
+    documento_verbale = next((d for d in restanti if "verbale" in _testo_ruolo(d)), None) or (restanti[0] if restanti else None)
 
     source_files = [str(path) for path in (verbale.get("source_files") or [])]
     quietanza_archivio = next((path for path in source_files if any(
         token in path.casefold() for token in ("quietanz", "ricevut", "pagamento")
     )), None)
     notifica_archivio = next((path for path in source_files if "notific" in path.casefold()), None)
-    documento_quietanza = _documento_per("quietanz", "ricevut", "partenopay", "pagopa")
-    documento_notifica = _documento_per("notific")
-    documento_verbale = _documento_per("verbale") or next((
-        documento for documento in documenti
-        if documento is not documento_quietanza and documento is not documento_notifica
-    ), None)
+
+    # Documenti Drive collegati dal foglio dei collegamenti: ognuno nella casella del suo tipo (letto dal contenuto).
+    def _drive(*tipi: str):
+        return [d for d in (verbale.get("documenti_drive") or []) if isinstance(d, dict) and d.get("tipo") in tipi]
+
+    drive_verbale, drive_notifica, drive_quietanza = _drive("verbale"), _drive("notifica"), _drive("quietanza", "ricevuta")
 
     risultato["fascicolo"] = {
         "verbale": {
-            "presente": bool(documento_verbale),
+            "presente": bool(documento_verbale or drive_verbale),
             "documento": documento_verbale,
+            "documenti_drive": drive_verbale,
         },
         "notifica": {
-            "presente": bool(documento_notifica or notifica_archivio or verbale.get("data_ricezione_notifica")),
+            "presente": bool(documento_notifica or drive_notifica or notifica_archivio or verbale.get("data_ricezione_notifica")),
             "data": verbale.get("data_ricezione_notifica") or verbale.get("data_notifica"),
             "documento": documento_notifica,
+            "documenti_drive": drive_notifica,
             "riferimento_archivio": notifica_archivio,
         },
         "pagamento_banca": {
@@ -442,9 +448,10 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
             "movimento": risultato.get("movimento_info"),
         },
         "quietanza": {
-            "presente": bool(documento_quietanza or quietanza_archivio or verbale.get("quietanza_ricevuta")),
+            "presente": bool(documento_quietanza or drive_quietanza or quietanza_archivio or verbale.get("quietanza_ricevuta")),
             "fonte": verbale.get("psp") or verbale.get("fonte_pagamento"),
             "documento": documento_quietanza,
+            "documenti_drive": drive_quietanza,
             "riferimento_archivio": quietanza_archivio,
             "pagamento_documentale_verificato": bool(verbale.get("pagato_documentalmente")),
         },

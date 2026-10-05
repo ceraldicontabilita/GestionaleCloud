@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
@@ -55,6 +55,13 @@ export default function VerbaliRiconciliazione() {
   const [soloRiconciliare, setSoloRiconciliare] = useState(false);
   const [ordinamento, setOrdinamento] = useState('data_verbale');
   const [selectedVerbale, setSelectedVerbale] = useState(null);
+  const dettaglioRef = useRef(null);
+  // Su telefono la lista e il dettaglio sono impilati: alla scelta di un verbale il dettaglio si porta in vista.
+  useEffect(() => {
+    if (isMobile && selectedVerbale && dettaglioRef.current?.scrollIntoView) {
+      dettaglioRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [isMobile, selectedVerbale?.numero_verbale]);
   const [scanning, setScanning] = useState(false);
   const [collegandoDriver, setCollegandoDriver] = useState(false);
   const [error, setError] = useState('');
@@ -880,6 +887,15 @@ export default function VerbaliRiconciliazione() {
 
           {/* Dettaglio Verbale */}
           {selectedVerbale && (
+            // Su schermo largo il pannello resta in vista mentre si scorre la lista (non si perde piu' in cima);
+            // su telefono si porta in vista alla scelta del verbale (vedi l'effetto sopra).
+            <div
+              ref={dettaglioRef}
+              data-testid="dettaglio-verbale-pannello"
+              style={isMobile
+                ? { scrollMarginTop: 72 }
+                : { position: 'sticky', top: 12, alignSelf: 'start', maxHeight: 'calc(100vh - 24px)', overflowY: 'auto' }}
+            >
             <Card>
               <div
                 style={{
@@ -1010,6 +1026,7 @@ export default function VerbaliRiconciliazione() {
                 </Button>
               </div>
             </Card>
+            </div>
           )}
         </div>
 

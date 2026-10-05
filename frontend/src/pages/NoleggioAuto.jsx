@@ -54,6 +54,8 @@ export default function NoleggioAuto() {
   const numeriDelVerbale = (riga) => (riga?.numeri_verbale?.length ? riga.numeri_verbale : (riga?.numero_verbale ? [riga.numero_verbale] : []));
   // Un numero letto dalla fattura si apre solo se il verbale e' in archivio; i verbali gia' in archivio (posta, PEC) si aprono sempre.
   const verbaleApribile = (riga, numero) => !riga?.verbali_in_archivio || riga.verbali_in_archivio.includes(numero);
+  // Il numero scritto in fattura puo' essere il «Registro n.» del Comune: il verbale vero e' quello risolto dal server.
+  const verbaleVero = (riga, numero) => riga?.verbali_risolti?.[numero] || numero;
   const apriVerbale = (numero) => navigate(`/verbali-noleggio/${encodeURIComponent(String(numero))}`);
   // Anno unico e globale (barra di navigazione in alto) → nessun selettore
   // locale duplicato: una pagina con un filtro anno proprio, indipendente
@@ -910,13 +912,16 @@ export default function NoleggioAuto() {
                                     <div key={numero}>
                                       <button
                                         type="button"
-                                        onClick={() => apriVerbale(numero)}
+                                        onClick={() => apriVerbale(verbaleVero(s, numero))}
                                         data-testid={`apri-verbale-${numero}`}
                                         aria-label={`Apri il verbale ${numero}`}
                                         style={{ background: 'none', border: 'none', padding: 0, minHeight: 44, cursor: 'pointer', font: 'inherit', color: 'inherit', textDecoration: 'underline' }}
                                       >
                                         {numero}
                                       </button>
+                                      {verbaleVero(s, numero) !== numero && (
+                                        <span style={{ display: 'block', fontSize: 10, color: COLORS.textMuted }}>verbale {verbaleVero(s, numero)}</span>
+                                      )}
                                     </div>
                                   ) : (
                                     <div key={numero} title="Verbale non ancora in archivio: carica il PDF o la PEC di notifica" data-testid={`verbale-non-in-archivio-${numero}`}>
@@ -1041,7 +1046,7 @@ export default function NoleggioAuto() {
                                   key={numero}
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => apriVerbale(numero)}
+                                  onClick={() => apriVerbale(verbaleVero(s, numero))}
                                   aria-label={`Vedi il verbale ${numero}`}
                                   data-testid={`vedi-verbale-${numero}`}
                                   style={{ minHeight: 44 }}

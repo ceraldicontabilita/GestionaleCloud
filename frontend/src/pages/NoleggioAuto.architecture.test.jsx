@@ -35,4 +35,9 @@ describe('confini operativi della pagina Noleggio', () => {
     expect(source).toContain('data-testid={`apri-fattura-${s.fattura_id}`}');
     expect(source).toContain('data-testid={`vedi-fattura-${s.fattura_id}`}');
   });
+
+  it('apre il verbale vero quando la fattura cita il Registro n. del Comune', () => {
+    expect(source).toContain('const verbaleVero = (riga, numero) => riga?.verbali_risolti?.[numero] || numero;');
+    expect(source).toContain('apriVerbale(verbaleVero(s, numero))');
+  });
 });
