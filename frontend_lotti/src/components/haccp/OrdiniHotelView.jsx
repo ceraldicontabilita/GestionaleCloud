@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Hotel, Link2, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, FileText, Hotel, Link2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { API, formatDate } from "../../utils/constants";
 
@@ -95,6 +95,14 @@ export default function OrdiniHotelView({ onNavigate }) {
     try { await axios.patch(`${API}/ordini-hotel/${id}`, body); toast.success("Ordine aggiornato"); carica(); }
     catch (e) { toast.error(e.response?.data?.detail || "Aggiornamento non riuscito"); }
   };
+  const consegna = async (o, solo_pdf = false) => {
+    try {
+      const r = await axios.post(`${API}/ordini-hotel/${o.id}/consegna`, { solo_pdf });
+      if (r.data?.email_inviata) toast.success(`Consegnato. PDF inviato a ${r.data.a}`);
+      else toast.warning(`${solo_pdf ? "PDF non inviato" : "Consegnato, ma PDF non inviato"}: ${r.data?.errore || "email non disponibile"}`);
+      carica();
+    } catch (e) { toast.error(e.response?.data?.detail || "Consegna non registrata"); }
+  };
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-3 sm:p-5">
       <div className="rounded-2xl bg-gradient-to-br from-[#5b7a6b] to-[#34493f] p-5 text-white shadow-lg">
@@ -108,6 +116,13 @@ export default function OrdiniHotelView({ onNavigate }) {
           <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-black text-stone-900">{o.struttura_nome} · {o.id}</h2><p className="text-sm text-stone-500">Consegna {formatDate(o.data_consegna)} · creato {formatDate(o.creato_il, true)}</p></div><div className="text-right"><div className="text-xl font-black text-[#5b7a6b]">{euro(o.totale)}</div><span className={`text-xs font-bold ${o.pagamento === "incassato" ? "text-emerald-700" : "text-amber-700"}`}>{o.pagamento === "incassato" ? "Incassato" : "Da incassare"}</span></div></div>
           {o.nota && <div className="mt-3 flex gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><AlertTriangle size={17}/>{o.nota}</div>}
           <div className="mt-3 space-y-2">{(o.righe || []).map((r) => <Riga key={r.chiave} ordine={o} riga={r} onAggiornato={carica} onNavigate={onNavigate}/>)}</div>
+          {o.stato !== "annullato" && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {o.stato !== "consegnato" && <button className="flex min-h-[48px] items-center gap-2 rounded-xl bg-[#5b7a6b] px-5 text-sm font-black text-white" onClick={() => consegna(o)}><FileText size={18}/> Consegnato · invia PDF all'albergatore</button>}
+              {o.stato === "consegnato" && <button className="flex min-h-[44px] items-center gap-2 rounded-xl border border-[#5b7a6b] px-4 text-sm font-bold text-[#3f5a4e]" onClick={() => consegna(o, true)}><FileText size={16}/> Rinvia il PDF</button>}
+              {o.consegna_pdf && <span className={`text-xs ${o.consegna_pdf.inviato ? "text-emerald-700" : "text-amber-800"}`}>{o.consegna_pdf.inviato ? `PDF inviato a ${o.consegna_pdf.a} il ${formatDate(o.consegna_pdf.quando, true)}` : `PDF non inviato: ${o.consegna_pdf.errore}`}</span>}
+            </div>
+          )}
           <div className="mt-4 flex flex-wrap items-center gap-2"><select className="rounded-lg border border-stone-300 px-3 py-2 text-sm" value={o.stato} onChange={(e) => aggiorna(o.id, { stato: e.target.value })}>{STATI.map((s) => <option key={s} value={s}>{label(s)}</option>)}</select><button className={`flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-bold ${o.pagamento === "incassato" ? "border border-emerald-600 text-emerald-700" : "bg-emerald-600 text-white"}`} onClick={() => aggiorna(o.id, { pagamento: o.pagamento === "incassato" ? "da_incassare" : "incassato" })}><CheckCircle2 size={16}/> {o.pagamento === "incassato" ? "Incassato" : "Segna incassato"}</button></div>
         </article>
       ))}
