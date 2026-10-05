@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 COLLEZIONI_VERBALI = ("verbali_noleggio", "verbali_noleggio_completi")
 FOGLIO = "Collegamenti"
-TIPI = ("verbale", "notifica", "quietanza", "bonifico", "avviso_pagopa", "ricevuta", "presa_in_carico", "altro")
+TIPI = ("verbale", "notifica", "quietanza", "bonifico", "avviso_pagopa", "ricevuta", "presa_in_carico", "fattura", "altro")
 _COLONNE = {"numero_verbale": ("numero_verbale", "verbale", "numero"),
             "drive_id": ("drive_id", "id_drive"),
             "tipo": ("tipo", "tipo_documento"),
