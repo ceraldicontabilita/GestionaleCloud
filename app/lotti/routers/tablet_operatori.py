@@ -72,6 +72,24 @@ def postazione_da_ruolo(ruolo: str) -> str:
     return ""
 
 
+# Card del tablet che ogni postazione puo' aprire. Solo il titolare le vede tutte;
+# chi vuole un altro reparto esce e rimette il PIN. Postazione vuota = non
+# deducibile dalla mansione: nessuna restrizione inventata, il tablet lo dice.
+REPARTI_PER_POSTAZIONE = {
+    "pasticceria": ["pasticceria"],
+    "laboratorio": ["rosticceria"],
+    "bar": ["magazzino", "ordini"],
+    "sala": ["magazzino", "ordini"],
+}
+
+
+def reparti_ammessi(postazione: Any, mansione: Any) -> List[str]:
+    """Card di reparto del tablet per una persona: la postazione scelta dal titolare
+    comanda, altrimenti la mansione della scheda HR."""
+    chiave = str(postazione or "").strip().lower() or postazione_da_ruolo(str(mansione or ""))
+    return list(REPARTI_PER_POSTAZIONE.get(chiave, []))
+
+
 def _norm(value: Any) -> str:
     clean = unicodedata.normalize("NFKD", str(value or ""))
     clean = "".join(c for c in clean if not unicodedata.combining(c))
@@ -316,7 +334,10 @@ def _op_response(doc):
     # solo i comandi che la persona puo' usare.
     profilo = ruoli.profilo_ruolo(ruoli.normalizza_ruolo(doc.get("ruolo_lotti")),
                                   ruoli.normalizza_reparti(doc.get("reparti_lotti")))
-    return {"ok": True, "token": token, "operatore": {**op, "profilo": profilo}}
+    # Il titolare non ha restrizioni: la lista serve solo a chi non e' amministratore.
+    ammessi = [] if ruolo == "amministratore" else reparti_ammessi(doc.get("postazione"), doc.get("mansione"))
+    return {"ok": True, "token": token,
+            "operatore": {**op, "profilo": profilo, "reparti_ammessi": ammessi}}
 
 
 async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
@@ -338,10 +359,12 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
         for p in persone:
             op = await db.tablet_operatori.find_one(
                 {"attivo": True, "$or": [{"hr_id": p["id"]}, {"gestionale_dipendente_id": p["id"]}]},
-                {"_id": 0, "nome": 1, "ruolo": 1, "ruolo_lotti": 1, "reparti_lotti": 1})
+                {"_id": 0, "nome": 1, "ruolo": 1, "ruolo_lotti": 1, "reparti_lotti": 1,
+                                 "postazione": 1, "mansione": 1})
             if op:
                 trovati.append({"dipendente_id": p["id"], "nome": op.get("nome"), "ruolo": op.get("ruolo"),
                                 "ruolo_lotti": op.get("ruolo_lotti"), "reparti_lotti": op.get("reparti_lotti"),
+                                "postazione": op.get("postazione"), "mansione": op.get("mansione"),
                                 "pin_version": versione_pin(p)})
         if len(trovati) == len(persone) or tentativo:
             break

@@ -29,12 +29,12 @@ const inCampi = (c) => Object.fromEntries(Object.keys(CAMPI_VUOTI)
 const numero = (v) => (v === null || v === undefined ? "—" : Number(v).toLocaleString("it-IT", { maximumFractionDigits: 2 }));
 
 function Campo({ id, etichetta, unita, valore, onChange }) {
-  return <label htmlFor={id} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: "#2a3329", minWidth: 0 }}>
+  return <label htmlFor={id} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: "#2a3329", minWidth: 0 }}>
     {etichetta}
     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <input id={id} type="number" inputMode="decimal" step="0.5" value={valore}
         onChange={(e) => onChange(e.target.value)}
-        style={{ width: "100%", minWidth: 0, minHeight: 44, fontSize: 17, fontWeight: 700, textAlign: "center",
+        style={{ width: "100%", minWidth: 0, minHeight: 36, fontSize: 14, fontWeight: 700, textAlign: "center",
           border: "1px solid #e6e0d4", borderRadius: 10, background: "#fffefb" }} />
       <span style={{ color: "#6b6456", whiteSpace: "nowrap" }}>{unita}</span>
     </span>
@@ -44,7 +44,7 @@ function Campo({ id, etichetta, unita, valore, onChange }) {
 export function CampiLievitazione({ prefisso, valori, setValori }) {
   const set = (k) => (v) => setValori({ ...valori, [k]: v });
   const conFrigo = Number(valori.ore_frigo) > 0;
-  return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
+  return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 6 }}>
     <Campo id={`${prefisso}-ore`} etichetta="Ore a temperatura ambiente" unita="ore" valore={valori.ore_ambiente} onChange={set("ore_ambiente")} />
     <Campo id={`${prefisso}-temp`} etichetta="Temperatura del laboratorio" unita="°C" valore={valori.temperatura_c} onChange={set("temperatura_c")} />
     <Campo id={`${prefisso}-frigo`} etichetta="Ore in frigo (se ci va)" unita="ore" valore={valori.ore_frigo} onChange={set("ore_frigo")} />
@@ -115,48 +115,48 @@ export default function PannelloLievito({ ricetta, pezzi, onCambia, mostraDosi =
   const descriviRif = (r) => `${numero(r.ore_ambiente)} ore a ${numero(r.temperatura_c)} °C`
     + (r.ore_frigo ? ` più ${numero(r.ore_frigo)} ore in frigo a ${numero(r.temperatura_frigo_c)} °C` : "");
 
-  return <section aria-label="Lievito di oggi" style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, padding: 12, marginBottom: 12 }}>
-    <h4 style={{ margin: "0 0 4px", fontSize: 15, color: "#3f5a4e" }}>Lievito di oggi</h4>
+  return <section aria-label="Lievito di oggi" style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, padding: 8, marginBottom: 8 }}>
+    <h4 style={{ margin: "0 0 4px", fontSize: 11, color: "#3f5a4e" }}>Lievito di oggi</h4>
 
-    {rif && !modificaRif ? <p style={{ margin: "0 0 10px", fontSize: 13, color: "#6b6456" }}>
+    {rif && !modificaRif ? <p style={{ margin: "0 0 10px", fontSize: 11, color: "#6b6456" }}>
       La dose della ricetta vale per {descriviRif(rif)}.{" "}
       <button type="button" onClick={() => { setBozzaRif(inCampi(rif)); setModificaRif(true); }}
-        style={{ background: "none", border: 0, padding: 0, color: "#3f5a4e", textDecoration: "underline", cursor: "pointer", fontSize: 13 }}>
+        style={{ background: "none", border: 0, padding: 0, color: "#3f5a4e", textDecoration: "underline", cursor: "pointer", fontSize: 11 }}>
         Cambia
       </button>
     </p> : <div style={{ background: "#f7f1e6", border: "1px solid #e6e0d4", borderRadius: 10, padding: 10, margin: "0 0 12px" }}>
-      <p style={{ margin: "0 0 8px", fontSize: 13 }}>
+      <p style={{ margin: "0 0 8px", fontSize: 11 }}>
         {rif ? "Per quale lievitazione vale il lievito scritto in ricetta?"
           : "La ricetta non dice per quale lievitazione vale la sua dose di lievito, quindi non posso adeguarla. Indicala una volta sola:"}
       </p>
       <CampiLievitazione prefisso={`rif-${ricetta.id}`} valori={bozzaRif} setValori={setBozzaRif} />
       <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
         <button type="button" onClick={salvaRiferimento} disabled={salvando}
-          style={{ minHeight: 44, padding: "0 16px", borderRadius: 10, border: 0, background: "#5b7a6b", color: "#fff", fontWeight: 800, cursor: "pointer" }}>
+          style={{ minHeight: 36, padding: "0 16px", borderRadius: 10, border: 0, background: "#5b7a6b", color: "#fff", fontWeight: 800, cursor: "pointer" }}>
           {salvando ? "Salvataggio…" : "Salva nella ricetta"}
         </button>
         {rif && <button type="button" onClick={() => setModificaRif(false)}
-          style={{ minHeight: 44, padding: "0 14px", borderRadius: 10, border: "1px solid #e6e0d4", background: "#fffefb", cursor: "pointer" }}>Annulla</button>}
-        {erroreRif && <span role="alert" style={{ color: "#8f3829", fontSize: 13 }}>{erroreRif}</span>}
+          style={{ minHeight: 36, padding: "0 14px", borderRadius: 10, border: "1px solid #e6e0d4", background: "#fffefb", cursor: "pointer" }}>Annulla</button>}
+        {erroreRif && <span role="alert" style={{ color: "#8f3829", fontSize: 11 }}>{erroreRif}</span>}
       </div>
     </div>}
 
     {rif && <>
-      <p style={{ margin: "0 0 8px", fontSize: 13 }}>Come lieviterà oggi?</p>
+      <p style={{ margin: "0 0 8px", fontSize: 11 }}>Come lieviterà oggi?</p>
       <CampiLievitazione prefisso={`oggi-${ricetta.id}`} valori={oggi} setValori={setOggi} />
     </>}
 
-    {errore && <p role="alert" style={{ color: "#8f3829", margin: "10px 0 0", fontSize: 13 }}>{errore}</p>}
+    {errore && <p role="alert" style={{ color: "#8f3829", margin: "10px 0 0", fontSize: 11 }}>{errore}</p>}
 
     {mostraDosi && esito.stato === "ricalcolato" && <div style={{ marginTop: 12 }}>
       {esito.righe.map((r, i) => <div key={`${r.nome}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 0", borderTop: "1px solid #eee7dd" }}>
         <span>{r.nome}<br /><span style={{ fontSize: 12, color: "#6b6456" }}>in ricetta {numero(r.ricetta)} {r.unita}</span></span>
-        <strong style={{ fontSize: 20, color: "#3f5a4e", whiteSpace: "nowrap" }}>{numero(r.oggi)} {r.unita}</strong>
+        <strong style={{ fontSize: 15, color: "#3f5a4e", whiteSpace: "nowrap" }}>{numero(r.oggi)} {r.unita}</strong>
       </div>)}
     </div>}
-    {!mostraDosi && esito.stato === "ricalcolato" && <p style={{ margin: "10px 0 0", fontSize: 13, color: "#3f5a4e" }}>
+    {!mostraDosi && esito.stato === "ricalcolato" && <p style={{ margin: "10px 0 0", fontSize: 11, color: "#3f5a4e" }}>
       Lievito × {numero(esito.fattore)} rispetto alla ricetta: la dose qui sotto è già quella di oggi.
     </p>}
-    {(esito.avvisi || []).map((a) => <p key={a} role="status" style={{ margin: "8px 0 0", fontSize: 13, color: "#8a5a1f" }}>{a}</p>)}
+    {(esito.avvisi || []).map((a) => <p key={a} role="status" style={{ margin: "8px 0 0", fontSize: 11, color: "#8a5a1f" }}>{a}</p>)}
   </section>;
 }

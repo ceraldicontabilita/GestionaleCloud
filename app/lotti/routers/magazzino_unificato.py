@@ -327,6 +327,7 @@ async def prodotti_unificati(
     solo_disponibili: bool = False,  # default false: mostra anche stock zero
     gestione: bool = False,          # True = vista gestione admin: mostra TUTTO (anche non-food) per poterlo flaggare
     anno: Optional[int] = None,      # giacenze per anno di fatturazione (23/07/2026): solo lotti da fatture di quell'anno
+    anche_esauriti: bool = False,    # per ORDINARE: un prodotto finito va ritrovato, non sparire
 ):
     items = []
     ov_map = await _overrides_map()
@@ -358,7 +359,7 @@ async def prodotti_unificati(
 
     # ── Fornitori (lotti_fornitori) — tutti, non solo stock > 0 ──────────────
     if source in (None, "fornitori"):
-        q = {"esaurito": {"$ne": True}}
+        q = {} if anche_esauriti else {"esaurito": {"$ne": True}}
         if anno and anno > 0:
             # data_fattura in formati misti: ISO (anno in testa) o dd/mm/yyyy
             y = str(int(anno))

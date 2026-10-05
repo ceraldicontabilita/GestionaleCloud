@@ -139,6 +139,9 @@ def test_login_tablet_usa_il_pin_della_scheda_hr(basi):
     # Lesina entra col PIN migrato (bcrypt, senza impronta -> ripara e la salva)
     res = run(t.login_pin(t.PinLogin(pin=PIN_A)))
     profilo = res["operatore"].pop("profilo")
+    # Lesina e' barista: al tablet le spettano Magazzino e Ordini
+    ammessi = res["operatore"].pop("reparti_ammessi")
+    assert ammessi == ["magazzino", "ordini"]
     assert res["operatore"] == {"dipendente_id": "hr-lesina", "nome": "Lesina Angela", "ruolo": "operatore"} and res["token"]
     # senza ruolo sulla scheda HR si e' operatori, senza permessi in piu'
     assert profilo["ruolo"] == "operatore" and profilo["permessi"] == []
@@ -388,3 +391,14 @@ def test_il_titolare_imposta_il_pin_da_lotti_nella_scheda_hr(basi):
     with pytest.raises(HTTPException) as exc:
         run(t.imposta_pin_operatore("hr-moscato", t.PinOperatore(pin="7777"), _admin=None))
     assert exc.value.status_code == 404
+
+
+def test_reparti_ammessi_dalla_postazione_o_dalla_mansione():
+    import app.lotti.routers.tablet_operatori as t
+    assert t.reparti_ammessi("", "6.5.1.3.1 - Pasticcieri e cioccolatai") == ["pasticceria"]
+    assert t.reparti_ammessi("", "5.2.2.1.0.11 - cuoco di partita di rosticceria") == ["rosticceria"]
+    assert t.reparti_ammessi("", "5.2.2.4.0.5 - barista") == ["magazzino", "ordini"]
+    # la postazione scelta dal titolare vince sulla mansione
+    assert t.reparti_ammessi("pasticceria", "barista") == ["pasticceria"]
+    # mansione non deducibile: nessuna restrizione inventata
+    assert t.reparti_ammessi("", "") == []

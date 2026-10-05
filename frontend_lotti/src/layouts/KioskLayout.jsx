@@ -7,7 +7,7 @@ import TabletHome, { REPARTI_SOLO_ADMIN } from "../components/haccp/TabletHome";
 import { VenditaBancoView } from "../components/haccp/VenditaBancoView";
 import MagazzinoBarView from "../components/haccp/MagazzinoBarView";
 import OrdiniView from "../components/haccp/OrdiniView";
-import { clearTabletSession, getTabletSession, moveTabletSessionTo, sessioneTitolareAttiva } from "../utils/tabletSession";
+import { clearTabletSession, getTabletSession, moveTabletSessionTo, repartiAmmessi, sessioneTitolareAttiva } from "../utils/tabletSession";
 import BarraReparto from "../components/haccp/tablet/BarraReparto";
 import ErrorBoundary from "../components/ErrorBoundary";
 import RegistriHaccpTablet from "../components/haccp/tablet/RegistriHaccpTablet";
@@ -47,7 +47,14 @@ export default function KioskLayout({ hash }) {
   // provano la sessione del Gestionale o rimandano al suo login.
   // L'identità del dipendente non si cancella: può continuare negli altri
   // reparti senza reinserire il PIN.
-  if (REPARTI_SOLO_ADMIN.includes(reparto)) {
+  // Chi non e' il titolare apre solo le card della sua mansione: un indirizzo
+  // diretto verso un altro reparto riporta alle sue card.
+  const ammessi = repartiAmmessi(opObj);
+  if (ammessi && !ammessi.includes(reparto)) {
+    return <TabletHome />;
+  }
+
+  if (REPARTI_SOLO_ADMIN.includes(reparto) && !ammessi?.includes(reparto)) {
     // Con una persona identificata sul tablet conta la sua identità, non il
     // ruolo salvato nel browser.
     const titolare = opObj ? opObj.ruolo === "amministratore" : sessioneTitolareAttiva();

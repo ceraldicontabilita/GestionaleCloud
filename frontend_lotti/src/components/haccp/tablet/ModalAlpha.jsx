@@ -4,7 +4,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { API } from "../../../utils/constants";
 
-export function ModalAlpha({ onClose, modo = "ordine" }) {
+export function ModalAlpha({ onClose, modo = "ordine", operatoreNome = "" }) {
   const isBanco = modo === "banco";
   const [prodotti, setProdotti] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,23 +57,21 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
     setSaving(false);
   };
 
+  // Il pezzo mandato al banco si scala dal magazzino (lotti di fattura, FIFO).
   const mandaAlBanco = async () => {
     if (!prodottoOrdine || cartoniOrdine < 1) return;
     setSaving(true);
     try {
-      await axios.post(`${API}/vendita-banco/registra`, {
-        prodotto_id: String(prodottoOrdine.id || prodottoOrdine.codice || prodottoOrdine.nome),
-        prodotto_nome: prodottoOrdine.nome,
-        reparto: "pasticceria",
-        pezzi_prodotti: cartoniOrdine,
-        foto_url: prodottoOrdine.foto_url || null,
-        consumo_immediato: true,
+      const { data } = await axios.post(`${API}/acquaviva/prodotti/senza-glutine/${prodottoOrdine.id}/al-banco`, {
+        quantita: cartoniOrdine, operatore_nome: operatoreNome,
       });
-      toast.success(`${cartoniOrdine}\u00d7 ${prodottoOrdine.nome} inviato al banco`);
+      toast.success(`${cartoniOrdine}\u00d7 ${prodottoOrdine.nome} al banco · in magazzino ne restano ${data?.giacenza_residua ?? 0}`);
+      setProdotti(lista => lista.map(p => p.id === prodottoOrdine.id
+        ? { ...p, giacenza: Math.max(0, Number(data?.giacenza_residua ?? 0)) } : p));
       setProdottoOrdine(null);
       setCartoniOrdine(1);
     } catch (e) {
-      toast.error("Errore: " + apiError(e));
+      toast.error(apiError(e, "Non registrato"));
     }
     setSaving(false);
   };
@@ -157,7 +155,12 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
                         €{prod.prezzo_singolo.toFixed(2)}/pz
                       </span>
                     )}
-                    {prod.pz_confezione > 0 && (
+                    {isBanco && (
+                      <span style={{ fontSize: 11, fontWeight: 800, color: prod.giacenza > 0 ? "var(--success-dark)" : "var(--danger, #d35f4e)" }}>
+                        {prod.giacenza > 0 ? `${prod.giacenza} in magazzino` : "esaurito"}
+                      </span>
+                    )}
+                    {!isBanco && prod.pz_confezione > 0 && (
                       <span style={{ fontSize: 10, color: "#6b7669" }}>{prod.pz_confezione} pz/conf</span>
                     )}
                   </div>
@@ -204,7 +207,7 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 13, fontWeight: 600, color: "#495247", display: "block", marginBottom: 6 }}>
-                {isBanco ? "Pezzi da mandare al banco:" : "Cartoni da ordinare:"}
+                {isBanco ? `Pezzi da mandare al banco (in magazzino: ${prodottoOrdine.giacenza || 0}):` : "Cartoni da ordinare:"}
               </label>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <button onClick={() => setCartoniOrdine(Math.max(1, cartoniOrdine - 1))}
@@ -212,7 +215,7 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
                 <input type="number" min={1} value={cartoniOrdine}
                   onChange={e => setCartoniOrdine(Math.max(1, parseInt(e.target.value) || 1))}
                   style={{ flex: 1, textAlign: "center", fontSize: 28, fontWeight: 800, border: "2px solid #c7cfc2", borderRadius: 12, padding: "6px 0", outline: "none" }} />
-                <button onClick={() => setCartoniOrdine(cartoniOrdine + 1)}
+                <button onClick={() => setCartoniOrdine(isBanco && prodottoOrdine.giacenza > 0 ? Math.min(prodottoOrdine.giacenza, cartoniOrdine + 1) : cartoniOrdine + 1)}
                   style={{ width: 44, height: 44, borderRadius: 12, border: "2px solid #e6e0d4", background: "#faf7f0", fontSize: 22, cursor: "pointer" }}>+</button>
               </div>
             </div>
@@ -222,7 +225,7 @@ export function ModalAlpha({ onClose, modo = "ordine" }) {
                   flex: 1, padding: "14px", borderRadius: 12, border: "2px solid #e6e0d4",
                   background: "#faf7f0", fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#6b7669"
                 }}>Annulla</button>
-              <button onClick={isBanco ? mandaAlBanco : aggiungiAOrdine} disabled={saving}
+              <button onClick={isBanco ? mandaAlBanco : aggiungiAOrdine} disabled={saving || (isBanco && !(prodottoOrdine.giacenza >= cartoniOrdine))}
                 style={{
                   flex: 2, padding: "14px", borderRadius: 12, border: "none",
                   background: saving ? "#9aa593" : "linear-gradient(135deg, var(--success-text), var(--success-dark))",

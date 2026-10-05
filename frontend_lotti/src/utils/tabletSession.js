@@ -81,3 +81,19 @@ export function allineaSessioneTitolare(titolare, reparto) {
   clearTabletSession();
   return null;
 }
+
+/**
+ * Card di reparto che questa persona puo' aprire dal tablet. null = nessuna
+ * restrizione (titolare, o mansione non riconosciuta). Chi entra col PIN su una
+ * card che non e' della sua mansione vede solo quella: per cambiare reparto
+ * esce e rimette il PIN. Il backend ricontrolla comunque ogni operazione.
+ */
+export function repartiAmmessi(sessione = getTabletSession()) {
+  if (!sessione || sessione.ruolo === "amministratore") return null;
+  const lista = sessione.reparti_ammessi;
+  if (!Array.isArray(lista) || lista.length === 0) return null;
+  const scelto = sessione.reparto_pin;
+  const base = scelto && !lista.includes(scelto) ? [scelto] : [...lista];
+  if (sessione.profilo?.permessi?.includes("haccp_registri")) base.push("haccp");
+  return base;
+}

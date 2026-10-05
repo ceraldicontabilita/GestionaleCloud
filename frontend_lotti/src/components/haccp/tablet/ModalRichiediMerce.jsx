@@ -26,16 +26,21 @@ export default function ModalRichiediMerce({ operatoreNome = "", reparto = "", o
   const [inviando, setInviando] = useState(false);
   const [destinazione, setDestinazione] = useState("lavagna");
 
+  // Per il carrello si ordina anche cio' che e' finito: l'olio a scorta zero
+  // deve comparire, e' proprio quello che serve comprare.
   useEffect(() => {
+    setLoading(true);
     (async () => {
       try {
-        const r = await axios.get(`${API}/magazzino/prodotti-unificati`, { timeout: 15000 });
+        const r = await axios.get(`${API}/magazzino/prodotti-unificati`, {
+          timeout: 15000, params: destinazione === "carrello" ? { anche_esauriti: true } : {},
+        });
         const list = Array.isArray(r.data) ? r.data : (r.data?.prodotti || r.data?.items || []);
         setProdotti(list);
       } catch (e) { toast.error(apiError(e, "Errore caricamento prodotti")); }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [destinazione]);
 
   const matches = useMemo(() => {
     const q = norm(search.trim());
