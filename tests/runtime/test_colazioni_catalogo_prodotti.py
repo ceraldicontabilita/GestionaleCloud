@@ -417,3 +417,11 @@ def test_pin_bloccato_mostra_il_conto_alla_rovescia_per_accesso_e_recupero():
     assert "function bloccoAvvia(" in html and "Riprova tra" in html
     assert 'bloccoAvvia("alb:"+cod' in html and 'bloccoAvvia("rec:"+cod' in html
     assert "r.bloccato" in html and "BLOCCO_PIN_SEC=900" in html
+
+
+def test_dopo_l_ordine_l_albergatore_vede_conferma_pagamento_e_saldo():
+    html = (ROOT / "frontend_colazioni" / "index.html").read_text(encoding="utf-8")
+    assert "function apTesta()" in html and "Saldo borsellino" in html
+    assert "Pagato dal borsellino:" in html and "saldo residuo" in html
+    assert "e invia l'ordine" in html and "paghi in loco" in html
+    assert "AP.esito={id:j.ordine.id" in html
