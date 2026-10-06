@@ -35,7 +35,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from decimal import Decimal, ROUND_HALF_UP
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.database import Database
@@ -864,10 +864,16 @@ async def scadenze_imminenti(
 
 
 @router.get("/calendario/{anno}")
-async def calendario_fiscale(anno: int) -> Dict[str, Any]:
+async def calendario_fiscale(anno: int, request: Request) -> Dict[str, Any]:
     """Legge il calendario fiscale senza modificare il database."""
     db = Database.get_db()
+    from app.services.calendario_piano import collega_al_piano
+
     existing = await _leggi_calendario_anno(db, anno)
+    # I codici attesi e le prove F24 del Piano tributi sono dati riservati all'admin (come il Piano).
+    # Il ruolo lo ha gia' deciso il middleware (token o cookie di sessione): non si rilegge il solo Bearer.
+    if getattr(request.state, "user_role", None) == "admin":
+        existing = await collega_al_piano(db, anno, existing)
 
     # Raggruppa per mese
     per_mese = {}

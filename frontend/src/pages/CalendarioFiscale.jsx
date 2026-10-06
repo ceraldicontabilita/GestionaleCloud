@@ -556,6 +556,29 @@ export default function CalendarioFiscale() {
                               Applicabilita da verificare
                             </div>
                           )}
+                          {scad.piano_voci?.length > 0 && (
+                            <div
+                              data-testid="codici-attesi"
+                              style={{ fontSize: 12, color: '#4a4740', marginTop: 6 }}
+                            >
+                              {scad.piano_voci.map(v => (
+                                <div key={v.voce_id}>
+                                  Codici attesi <strong>{v.codici.join(', ')}</strong>
+                                  {' · '}
+                                  {v.etichetta_stato}
+                                  {v.giorni_scaduto ? ` da ${v.giorni_scaduto} giorni` : ''}
+                                </div>
+                              ))}
+                              {scad.conferma_senza_f24 && (
+                                <div style={{ color: '#b45309', fontWeight: 600 }}>
+                                  Confermata a mano ma nessun F24 con questi codici in archivio
+                                </div>
+                              )}
+                              <Link to="/situazione-fiscale/piano" style={{ fontSize: 11 }}>
+                                Apri Piano tributi
+                              </Link>
+                            </div>
+                          )}
                         </td>
                         <td data-label="Tipo" style={{ padding: '12px 16px', textAlign: 'center' }}>
                           <span

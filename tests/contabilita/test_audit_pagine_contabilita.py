@@ -10,6 +10,12 @@ from app.routers.accounting import centri_costo
 from app.routers import fiscalita_italiana
 
 
+def _richiesta_admin():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(state=SimpleNamespace(user_role="admin"))
+
+
 def _run(coro):
     loop = asyncio.new_event_loop()
     try:
@@ -109,7 +115,7 @@ def test_calendario_get_e_sola_lettura_e_preserva_evidenza(monkeypatch):
         staticmethod(lambda: db),
     )
 
-    result = _run(fiscalita_italiana.calendario_fiscale(2026))
+    result = _run(fiscalita_italiana.calendario_fiscale(2026, _richiesta_admin()))
     iva_gennaio = next(s for s in result["scadenze"] if s["id"] == "iva_liq_2026_01")
 
     assert result["modalita_lettura"] == "sola_lettura"
