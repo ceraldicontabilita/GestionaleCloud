@@ -296,3 +296,13 @@ def test_i_documenti_f24_sono_ordinati_per_data_dal_piu_recente_e_senza_data_in_
     righe = [riga("a", "2026-01-16", "a.pdf"), riga("b", None, "b.pdf"),
              riga("c", "2026-08-20", "c.pdf"), riga("d", "2026-03-16", "d.pdf")]
     assert [d["filename"] for d in documenti_f24(righe)] == ["c.pdf", "d.pdf", "a.pdf", "b.pdf"]
+
+
+def test_modello_superato_o_in_quarantena_non_e_un_modello_del_registro():
+    """«Versione superata» lascia lo stato `da_pagare`: la vecchia stampa non deve far risultare il mese non pagato."""
+    from app.services.f24_controllo_incrociato import modello_attivo
+
+    assert modello_attivo({"id": "a", "status": "da_pagare"})
+    assert not modello_attivo({"id": "b", "status": "da_pagare", "superato_da": "a", "motivo_quarantena": "versione_superata"})
+    assert not modello_attivo({"id": "c", "status": "da_pagare", "motivo_quarantena": "doppione"})
+    assert not modello_attivo({"id": "d", "entity_status": "deleted"})
