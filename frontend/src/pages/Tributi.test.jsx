@@ -131,7 +131,7 @@ describe('Tributi', () => {
     expect(await screen.findByTestId('credito-sezione_erario|6099|2025')).toHaveTextContent('Ha pagato: 9001 2023');
     fireEvent.click(screen.getByText('Deleghe F24'));
     expect(await screen.findByText('Saldo zero · tutto in compensazione')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Arrivato da'), { target: { value: 'drive' } });
+    fireEvent.change(screen.getAllByLabelText('Arrivato da').at(-1), { target: { value: 'drive' } });
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/f24/tributi/versamenti?origine=drive'));
   });
 

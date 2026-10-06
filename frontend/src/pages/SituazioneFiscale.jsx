@@ -1,11 +1,11 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
 import { VisoreOriginale } from '../components/ApriOriginale';
 import { urlOriginale } from '../lib/vista';
-import { Badge, Button, Card, PageLoader, StatCard } from '../components/ds';
+import { Badge, Button, Card, HubTabs, PageLoader, StatCard } from '../components/ds';
 import './SituazioneFiscale.css';
 
 // Le schede che erano pagine a se' (Piano tributi, Tributi per codice, Ritenute): qui si
@@ -87,12 +87,14 @@ export const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}, elenco = 
 const TUTTE_LE_SCHEDE = [...SCHEDE_INCORPORATE.map(([id, label]) => [id, label]), ...TABS];
 
 function SchedeFiscali({ tab }) {
+  const navigate = useNavigate();
   return (
-    <nav aria-label="Sezioni situazione fiscale" className="fiscal-tabs">
-      {TUTTE_LE_SCHEDE.map(([id, label]) => <Link key={id} to={`/situazione-fiscale/${id}`}
-        style={{ padding: '8px 12px', borderRadius: 8, textDecoration: 'none', fontWeight: 700,
-          background: tab === id ? '#c15f3c' : '#e6e3d9', color: tab === id ? '#fff' : '#c15f3c' }}>{label}</Link>)}
-    </nav>
+    <HubTabs
+      testIdPrefix="tab-fiscale"
+      activeId={tab}
+      onSelect={t => navigate(`/situazione-fiscale/${t.id}`)}
+      tabs={TUTTE_LE_SCHEDE.map(([id, label]) => ({ id, label }))}
+    />
   );
 }
 
@@ -778,10 +780,9 @@ export default function SituazioneFiscale() {
   if (!incorporata) return <ElenchiFiscali />;
   const [id, , Scheda] = incorporata;
   return (
-    <PageLayout title="Situazione fiscale"
-      subtitle="Obblighi, pagamenti, cartelle e prove restano distinti e verificabili">
+    <div style={{ width: '100%' }}>
       <SchedeFiscali tab={id} />
       <Suspense fallback={<PageLoader />}><Scheda /></Suspense>
-    </PageLayout>
+    </div>
   );
 }

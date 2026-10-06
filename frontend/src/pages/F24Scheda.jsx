@@ -97,6 +97,11 @@ function Riscontro({ stato, f24Id, onConfermato }) {
 
 export default function F24Scheda() {
   const { id } = useParams();
+  return <F24Dettaglio id={id} />;
+}
+
+// `incorporato`: dentro il pannello laterale della pagina Tributi, senza la testata di pagina.
+export function F24Dettaglio({ id, incorporato = false }) {
   const isMobile = useIsMobile(900);
   const [righe, setRighe] = useState(null);
   const [errore, setErrore] = useState('');
@@ -151,8 +156,8 @@ export default function F24Scheda() {
   const canale = dettaglio?.canale ? (CANALI[dettaglio.canale] || dettaglio.canale) : null;
 
   return (
-    <div style={paginaStile} data-testid="vista-f24">
-      <PageHeader
+    <div style={incorporato ? { display: 'grid', gap: 14 } : paginaStile} data-testid="vista-f24">
+      {!incorporato && <PageHeader
         title={testata ? `${titolo} del ${dataOppure(testata.payment_date)}` : 'F24'}
         famiglia={{ titolo: 'FISCALE', colore: COLORS.primary }}
         subtitle="Righe tributo, originale e riscontro con l'addebito in banca. Un modello non prova il pagamento: lo prova l'addebito."
@@ -160,7 +165,7 @@ export default function F24Scheda() {
           { etichetta: 'Saldo da versare', valore: euroOppure(totali.saldo), nota: 'debiti meno crediti delle righe' },
           { etichetta: 'Righe tributo', valore: String(righe.length), nota: eQuietanza ? 'lette dalla quietanza' : 'lette dal modello' },
         ] : null}
-      />
+      />}
 
       {errore && <Messaggio tono="errore" testId="f24-errore">{errore}</Messaggio>}
       {!righe && !errore && <PageLoader />}
@@ -251,7 +256,7 @@ export default function F24Scheda() {
         </Riquadro>
       </>)}
 
-      <LegendaRegole gruppo="f24" />
+      {!incorporato && <LegendaRegole gruppo="f24" />}
     </div>
   );
 }

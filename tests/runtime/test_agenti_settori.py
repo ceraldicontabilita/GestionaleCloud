@@ -82,7 +82,7 @@ def test_conteggi_per_settore(monkeypatch):
     f24 = per_id["f24"]
     assert _coda(f24, "File in ERRORI su Drive")["conteggio"] == 3
     assert _coda(f24, "F24 non quadrati")["conteggio"] == 1
-    assert _coda(f24, "F24 non quadrati")["rotta_pagina"] == "/documenti/drive"
+    assert _coda(f24, "F24 non quadrati")["rotta_pagina"] == "/documenti/import"
     assert f24["proposte_in_attesa"] == 1
     giro = next(g for g in f24["giri"] if g["chiave"] == "riconciliazione_ultimo_giro")
     assert giro["at"] == "2026-10-02T05:30:00+00:00" and giro["conteggi"] == {"associati": 2}

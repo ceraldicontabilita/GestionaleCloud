@@ -127,7 +127,7 @@ function Codici({ dati, isMobile }) {
   );
 }
 
-function Crediti({ dati, onApri }) {
+function Crediti({ dati, onApri, onDettaglio }) {
   const crediti = dati.crediti || [];
   if (!crediti.length) return <Vuoto testo="Nessun credito usato in compensazione in questo anno." />;
   return (
@@ -146,7 +146,7 @@ function Crediti({ dati, onApri }) {
           </div>
           {k.utilizzi.map((u, i) => (
             <div key={`${u.protocollo}-${i}`} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}`, fontSize: 12.5, lineHeight: 1.5 }}>
-              <strong>{dataIt(u.data)}</strong> · protocollo {u.protocollo || '—'} · usati {euro(u.importo_cents)}
+              <strong>{dataIt(u.data)}</strong> · <Protocollo numero={u.protocollo} pdfUrl={u.pdf_url} quietanzaId={u.quietanza_id} onApri={onApri} onDettaglio={onDettaglio} /> · usati {euro(u.importo_cents)}
               {' '}(progressivo {euro(u.utilizzato_progressivo_cents)}) · <Origini origini={u.origini} />
               {u.compensazione_totale && <Badge variant="info">F24 a saldo zero</Badge>}
               <div>Ha pagato: {u.debiti_compensati.map(d => `${d.codice} ${d.periodo} ${euro(d.importo_cents)}`).join(' · ') || '—'}
@@ -166,7 +166,25 @@ function Crediti({ dati, onApri }) {
   );
 }
 
-function Deleghe({ dati, onApri }) {
+// Il protocollo e' il modo di arrivare all'originale: se c'e' il PDF si apre da qui.
+export function Protocollo({ numero, pdfUrl, quietanzaId, onApri, onDettaglio }) {
+  if (!pdfUrl && !(quietanzaId && onDettaglio)) return <>protocollo {numero || '—'}</>;
+  const apri = e => {
+    e.stopPropagation();
+    if (quietanzaId && onDettaglio) onDettaglio(quietanzaId, `F24 · protocollo ${numero || ''}`);
+    else onApri(pdfUrl, `Quietanza ${numero || ''}`);
+  };
+  return (
+    <>protocollo{' '}
+      <span role="link" tabIndex={0} onClick={apri}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apri(e); } }}
+        title="Apri il dettaglio dell'F24" data-testid="apri-protocollo"
+        style={{ color: COLORS.primary, textDecoration: 'underline', cursor: 'pointer' }}>{numero || '—'}</span>
+    </>
+  );
+}
+
+function Deleghe({ dati, onApri, onDettaglio }) {
   const [aperta, setAperta] = useState(null);
   const deleghe = dati.deleghe || [];
   if (!deleghe.length) return <Vuoto testo="Nessun F24 quietanzato con questi filtri." />;
@@ -178,7 +196,7 @@ function Deleghe({ dati, onApri }) {
             style={{ all: 'unset', display: 'block', width: '100%', cursor: 'pointer', minHeight: 44 }} data-testid={`delega-${d.chiave}`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <div>
-                <strong>{dataIt(d.data)}</strong> · protocollo {d.protocollo || '—'}
+                <strong>{dataIt(d.data)}</strong> · <Protocollo numero={d.protocollo} pdfUrl={d.pdf_url} quietanzaId={d.quietanza_id} onApri={onApri} onDettaglio={onDettaglio} />
                 <div style={{ marginTop: 2 }}><Origini origini={d.origini} />
                   {d.compensazione_totale && <Badge variant="info">Saldo zero · tutto in compensazione</Badge>}</div>
               </div>
@@ -213,7 +231,7 @@ function Vuoto({ testo }) {
   return <div style={{ ...riquadro, padding: 30, textAlign: 'center', color: COLORS.textMuted }}>{testo}</div>;
 }
 
-export default function RegistroVersamenti({ vista, anno, origine, imposta, onApri }) {
+export default function RegistroVersamenti({ vista, anno, origine, imposta, onApri, onDettaglio }) {
   const isMobile = useIsMobile(1024);
   const [dati, setDati] = useState(null);
   const [errore, setErrore] = useState('');
@@ -254,8 +272,8 @@ export default function RegistroVersamenti({ vista, anno, origine, imposta, onAp
             {t.codici_con_mancanti > 0 && <span style={{ color: COLORS.danger }}><strong>{t.codici_con_mancanti}</strong> codici con mesi non pervenuti</span>}
           </div>
           {vista === 'versamenti' && <Codici dati={dati} isMobile={isMobile} />}
-          {vista === 'crediti' && <Crediti dati={dati} onApri={onApri} />}
-          {vista === 'deleghe' && <Deleghe dati={dati} onApri={onApri} />}
+          {vista === 'crediti' && <Crediti dati={dati} onApri={onApri} onDettaglio={onDettaglio} />}
+          {vista === 'deleghe' && <Deleghe dati={dati} onApri={onApri} onDettaglio={onDettaglio} />}
         </>
       )}
     </div>

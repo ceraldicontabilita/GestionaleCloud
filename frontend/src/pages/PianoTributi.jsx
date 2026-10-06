@@ -344,7 +344,7 @@ export default function PianoTributi() {
   const sottotitolo = periodo === 'anno' ? `${anno}` : (periodo === 'tutti' ? 'tutti gli anni' : `${Math.max(2019, Number(anno) - 2)}-${anno}`);
 
   return (
-    <div style={{ padding: isMobile ? '0 0 24px' : '0 16px 24px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ width: '100%', paddingBottom: 24 }}>
       <PageHeader
         title="Piano tributi"
         subtitle={`${sottotitolo}: i tributi che devono arrivare, quelli pagati e quelli che mancano`}

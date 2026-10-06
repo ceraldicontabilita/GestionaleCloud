@@ -63,7 +63,7 @@ export default function Ritenute() {
     : tutteLeRighe.filter(r => r.stato === filtroStato);
 
   return (
-    <div style={{ padding: '14px clamp(10px, 3vw, 28px)', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
       <PageHeader
         title="Ritenute"
         actions={

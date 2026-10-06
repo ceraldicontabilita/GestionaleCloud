@@ -398,266 +398,7 @@ export default function NoleggioAuto() {
     alert_aperti: 'Apri il registro degli alert per leggere la prova mancante e l’eventuale azione consentita.',
   };
 
-  return (
-    <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-      {/* Pannello Controlli — cruscotto "cosa richiede attenzione".
-          Compare solo se c'è almeno una segnalazione; API in errore o
-          vuota → nessun render (optional chaining ovunque). */}
-      {totaleControlli > 0 && (
-        <div
-          style={{
-            background: COLORS.card,
-            border: `1px solid ${COLORS.border}`,
-            borderLeft: `4px solid ${COLORS.primary}`,
-            borderRadius: BORDER_RADIUS.md,
-            boxShadow: SHADOWS.sm,
-            padding: '12px 16px',
-            marginBottom: 20,
-          }}
-          data-testid="noleggio-controlli"
-        >
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: COLORS.primary,
-              marginBottom: 8,
-            }}
-          >
-            <Search size={14} aria-hidden="true" style={ICO} /> Controlli — {totaleControlli} da verificare
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {controlliChips.map(chip => {
-              const count = controlli?.[chip.key]?.count || 0;
-              if (count <= 0) return null;
-              const attivo = controlloAperto === chip.key;
-              return (
-                <button
-                  key={chip.key}
-                  onClick={() =>
-                    chip.onClick
-                      ? chip.onClick()
-                      : attivo
-                        ? setControlloAperto(null)
-                        : loadControllo(chip.key)
-                  }
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 12px',
-                    borderRadius: 999,
-                    border: `1px solid ${chip.color}`,
-                    background: attivo ? chip.color : chip.bg,
-                    color: attivo ? '#fff' : chip.color,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: FONT.family,
-                  }}
-                  data-testid={`controllo-chip-${chip.key}`}
-                >
-                  {chip.label}
-                  <span
-                    style={{
-                      background: attivo ? 'rgba(255,255,255,0.25)' : chip.color,
-                      color: '#fff',
-                      borderRadius: 999,
-                      padding: '1px 7px',
-                      fontSize: 11,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {controlloAperto && (controlli?.[controlloAperto]?.items || []).length > 0 && (
-            <div
-              style={{
-                marginTop: 10,
-                borderTop: `1px solid ${COLORS.border}`,
-                paddingTop: 8,
-              }}
-            >
-              {istruzioneControllo[controlloAperto] && (
-                <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>
-                  {istruzioneControllo[controlloAperto]}
-                  {controlloAperto === 'trattenute_da_confermare' && (
-                    <button type="button" onClick={() => navigate('/noleggio/verbali')} style={{ marginLeft: 8, border: 0, background: 'transparent', color: COLORS.primary, fontWeight: 700, cursor: 'pointer' }}>Apri Verbali</button>
-                  )}
-                  {controlloAperto === 'alert_aperti' && (
-                    <button type="button" onClick={() => navigate('/dashboard/alerts')} style={{ marginLeft: 8, border: 0, background: 'transparent', color: COLORS.primary, fontWeight: 700, cursor: 'pointer' }}>Apri alert</button>
-                  )}
-                </div>
-              )}
-              {(controlli?.[controlloAperto]?.items || []).map((item, i) => (
-                <div
-                  key={item?.id || i}
-                  style={{
-                    fontSize: 12,
-                    color: COLORS.text,
-                    padding: '4px 0',
-                    borderBottom: `1px solid ${COLORS.gray[100]}`,
-                  }}
-                >
-                  <span>{descriviVoceControllo(controlloAperto, item)}</span>
-                  {controlloAperto === 'pagamenti_non_riconciliati' && item?.id && (
-                    <button
-                      type="button"
-                      onClick={() => setFatturaPagamento({
-                        fattura_id: item.id,
-                        fattura_numero: item.invoice_number,
-                        fornitore: item.supplier_name,
-                        importo: item.total_amount,
-                      })}
-                      style={{
-                        marginLeft: 10, padding: '5px 9px', borderRadius: 7,
-                        border: `1px solid ${COLORS.primary}`, background: '#fff',
-                        color: COLORS.primary, fontWeight: 700, cursor: 'pointer',
-                      }}
-                    >
-                      Verifica pagamento
-                    </button>
-                  )}
-                </div>
-              ))}
-              {(controlli?.[controlloAperto]?.count || 0) >
-                (controlli?.[controlloAperto]?.items || []).length && (
-                <button
-                  type="button"
-                  disabled={controlloLoading}
-                  onClick={() => loadControllo(controlloAperto, true)}
-                  style={{ marginTop: 8, padding: '6px 10px', borderRadius: 7, border: `1px solid ${COLORS.primary}`, background: '#fff', color: COLORS.primary, fontWeight: 700, cursor: controlloLoading ? 'wait' : 'pointer' }}
-                >
-                  {controlloLoading ? 'Caricamento…' : `Mostra altri ${(controlli?.[controlloAperto]?.count || 0) - (controlli?.[controlloAperto]?.items || []).length} casi`}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {fatturaPagamento && (
-        <AssociaMovimentoBanca
-          fattura={fatturaPagamento}
-          onChiudi={() => setFatturaPagamento(null)}
-          onAssociato={async () => {
-            setFatturaPagamento(null);
-            await Promise.all([fetchVeicoli(), fetchControlli()]);
-          }}
-        />
-      )}
-
-      {/* Azioni */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 10,
-          marginBottom: 20,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-        }}
-      >
-        <Button
-          onClick={fetchVeicoli}
-          variant="secondary"
-          data-testid="noleggio-refresh-btn"
-        >
-          <RefreshCw size={14} aria-hidden="true" style={ICO} /> Aggiorna
-        </Button>
-        <span style={{ fontSize: 13, color: COLORS.textMuted }}>
-          I veicoli vengono compilati automaticamente dalle fatture di noleggio.
-        </span>
-      </div>
-
-      {err && (
-        <div
-          style={{
-            padding: 12,
-            background: COLORS.dangerLight,
-            border: `1px solid ${COLORS.dangerLight}`,
-            borderRadius: BORDER_RADIUS.md,
-            color: COLORS.danger,
-            marginBottom: 20,
-          }}
-          data-testid="noleggio-error"
-        >
-          <X size={14} aria-hidden="true" style={ICO} /> {err}
-        </div>
-      )}
-
-      {/* Riepilogo Totali - Se veicolo selezionato mostra i suoi dati, altrimenti totale generale */}
-      {veicoli.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          {selectedVeicolo && (
-            <div
-              style={{
-                padding: '8px 16px',
-                background: COLORS.infoLight,
-                borderRadius: `${BORDER_RADIUS.md}px ${BORDER_RADIUS.md}px 0 0`,
-                color: COLORS.info,
-                fontWeight: 'bold',
-                fontSize: 14,
-              }}
-            >
-              <ChartColumn size={14} aria-hidden="true" style={ICO} /> Riepilogo: {selectedVeicolo.marca} {selectedVeicolo.modello || ''} -{' '}
-              {selectedVeicolo.targa}
-            </div>
-          )}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-              gap: 16,
-              padding: selectedVeicolo ? '16px' : 0,
-              background: selectedVeicolo ? COLORS.bgAlt : 'transparent',
-              borderRadius: selectedVeicolo ? `0 0 ${BORDER_RADIUS.md}px ${BORDER_RADIUS.md}px` : 0,
-            }}
-          >
-            {categorie.map(cat => {
-              // Se c'è un veicolo selezionato, mostra i suoi totali, altrimenti il totale generale
-              const valore = selectedVeicolo
-                ? selectedVeicolo[`totale_${cat.key}`] ||
-                  (selectedVeicolo[cat.key] || []).reduce((a, s) => a + (s.totale || 0), 0)
-                : statistiche[`totale_${cat.key}`] || 0;
-
-              return (
-                <StatCard
-                  key={cat.key}
-                  accent="none"
-                  style={{ padding: '10px 12px', borderLeft: `3px solid ${cat.color}` }}
-                  label={<span style={{ color: COLORS.textMuted }}><cat.icon size={14} aria-hidden="true" style={ICO} /> {cat.label}</span>}
-                  value={<span style={{ fontSize: 16, color: cat.color }}>{formatEuro(valore)}</span>}
-                />
-              );
-            })}
-            <div
-              style={{
-                background: COLORS.primary,
-                borderRadius: BORDER_RADIUS.md,
-                padding: '10px 12px',
-                boxShadow: SHADOWS.sm,
-                color: 'white',
-              }}
-            >
-              <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}><Wallet size={14} aria-hidden="true" style={ICO} /> TOTALE</div>
-              <div style={{ fontSize: 16, fontWeight: 'bold' }}>
-                {formatEuro(
-                  selectedVeicolo
-                    ? selectedVeicolo.totale_generale
-                    : statistiche.totale_generale || 0
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Dettaglio Veicolo Selezionato */}
-      {selectedVeicolo && (
+  const pannelloDettaglio = selectedVeicolo ? (
         <div
           style={{
             ...STYLES.card,
@@ -1114,7 +855,266 @@ export default function NoleggioAuto() {
             </div>
           )}
         </div>
+  ) : null;
+
+  return (
+    <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+      {/* Pannello Controlli — cruscotto "cosa richiede attenzione".
+          Compare solo se c'è almeno una segnalazione; API in errore o
+          vuota → nessun render (optional chaining ovunque). */}
+      {totaleControlli > 0 && (
+        <div
+          style={{
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderLeft: `4px solid ${COLORS.primary}`,
+            borderRadius: BORDER_RADIUS.md,
+            boxShadow: SHADOWS.sm,
+            padding: '12px 16px',
+            marginBottom: 20,
+          }}
+          data-testid="noleggio-controlli"
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: COLORS.primary,
+              marginBottom: 8,
+            }}
+          >
+            <Search size={14} aria-hidden="true" style={ICO} /> Controlli — {totaleControlli} da verificare
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {controlliChips.map(chip => {
+              const count = controlli?.[chip.key]?.count || 0;
+              if (count <= 0) return null;
+              const attivo = controlloAperto === chip.key;
+              return (
+                <button
+                  key={chip.key}
+                  onClick={() =>
+                    chip.onClick
+                      ? chip.onClick()
+                      : attivo
+                        ? setControlloAperto(null)
+                        : loadControllo(chip.key)
+                  }
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 12px',
+                    borderRadius: 999,
+                    border: `1px solid ${chip.color}`,
+                    background: attivo ? chip.color : chip.bg,
+                    color: attivo ? '#fff' : chip.color,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: FONT.family,
+                  }}
+                  data-testid={`controllo-chip-${chip.key}`}
+                >
+                  {chip.label}
+                  <span
+                    style={{
+                      background: attivo ? 'rgba(255,255,255,0.25)' : chip.color,
+                      color: '#fff',
+                      borderRadius: 999,
+                      padding: '1px 7px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {controlloAperto && (controlli?.[controlloAperto]?.items || []).length > 0 && (
+            <div
+              style={{
+                marginTop: 10,
+                borderTop: `1px solid ${COLORS.border}`,
+                paddingTop: 8,
+              }}
+            >
+              {istruzioneControllo[controlloAperto] && (
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>
+                  {istruzioneControllo[controlloAperto]}
+                  {controlloAperto === 'trattenute_da_confermare' && (
+                    <button type="button" onClick={() => navigate('/noleggio/verbali')} style={{ marginLeft: 8, border: 0, background: 'transparent', color: COLORS.primary, fontWeight: 700, cursor: 'pointer' }}>Apri Verbali</button>
+                  )}
+                  {controlloAperto === 'alert_aperti' && (
+                    <button type="button" onClick={() => navigate('/dashboard/alerts')} style={{ marginLeft: 8, border: 0, background: 'transparent', color: COLORS.primary, fontWeight: 700, cursor: 'pointer' }}>Apri alert</button>
+                  )}
+                </div>
+              )}
+              {(controlli?.[controlloAperto]?.items || []).map((item, i) => (
+                <div
+                  key={item?.id || i}
+                  style={{
+                    fontSize: 12,
+                    color: COLORS.text,
+                    padding: '4px 0',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
+                  }}
+                >
+                  <span>{descriviVoceControllo(controlloAperto, item)}</span>
+                  {controlloAperto === 'pagamenti_non_riconciliati' && item?.id && (
+                    <button
+                      type="button"
+                      onClick={() => setFatturaPagamento({
+                        fattura_id: item.id,
+                        fattura_numero: item.invoice_number,
+                        fornitore: item.supplier_name,
+                        importo: item.total_amount,
+                      })}
+                      style={{
+                        marginLeft: 10, padding: '5px 9px', borderRadius: 7,
+                        border: `1px solid ${COLORS.primary}`, background: '#fff',
+                        color: COLORS.primary, fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >
+                      Verifica pagamento
+                    </button>
+                  )}
+                </div>
+              ))}
+              {(controlli?.[controlloAperto]?.count || 0) >
+                (controlli?.[controlloAperto]?.items || []).length && (
+                <button
+                  type="button"
+                  disabled={controlloLoading}
+                  onClick={() => loadControllo(controlloAperto, true)}
+                  style={{ marginTop: 8, padding: '6px 10px', borderRadius: 7, border: `1px solid ${COLORS.primary}`, background: '#fff', color: COLORS.primary, fontWeight: 700, cursor: controlloLoading ? 'wait' : 'pointer' }}
+                >
+                  {controlloLoading ? 'Caricamento…' : `Mostra altri ${(controlli?.[controlloAperto]?.count || 0) - (controlli?.[controlloAperto]?.items || []).length} casi`}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
+
+      {fatturaPagamento && (
+        <AssociaMovimentoBanca
+          fattura={fatturaPagamento}
+          onChiudi={() => setFatturaPagamento(null)}
+          onAssociato={async () => {
+            setFatturaPagamento(null);
+            await Promise.all([fetchVeicoli(), fetchControlli()]);
+          }}
+        />
+      )}
+
+      {/* Azioni */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          marginBottom: 20,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
+        <Button
+          onClick={fetchVeicoli}
+          variant="secondary"
+          data-testid="noleggio-refresh-btn"
+        >
+          <RefreshCw size={14} aria-hidden="true" style={ICO} /> Aggiorna
+        </Button>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>
+          I veicoli vengono compilati automaticamente dalle fatture di noleggio.
+        </span>
+      </div>
+
+      {err && (
+        <div
+          style={{
+            padding: 12,
+            background: COLORS.dangerLight,
+            border: `1px solid ${COLORS.dangerLight}`,
+            borderRadius: BORDER_RADIUS.md,
+            color: COLORS.danger,
+            marginBottom: 20,
+          }}
+          data-testid="noleggio-error"
+        >
+          <X size={14} aria-hidden="true" style={ICO} /> {err}
+        </div>
+      )}
+
+      {/* Riepilogo Totali - Se veicolo selezionato mostra i suoi dati, altrimenti totale generale */}
+      {veicoli.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          {selectedVeicolo && (
+            <div
+              style={{
+                padding: '8px 16px',
+                background: COLORS.infoLight,
+                borderRadius: `${BORDER_RADIUS.md}px ${BORDER_RADIUS.md}px 0 0`,
+                color: COLORS.info,
+                fontWeight: 'bold',
+                fontSize: 14,
+              }}
+            >
+              <ChartColumn size={14} aria-hidden="true" style={ICO} /> Riepilogo: {selectedVeicolo.marca} {selectedVeicolo.modello || ''} -{' '}
+              {selectedVeicolo.targa}
+            </div>
+          )}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: 16,
+              padding: selectedVeicolo ? '16px' : 0,
+              background: selectedVeicolo ? COLORS.bgAlt : 'transparent',
+              borderRadius: selectedVeicolo ? `0 0 ${BORDER_RADIUS.md}px ${BORDER_RADIUS.md}px` : 0,
+            }}
+          >
+            {categorie.map(cat => {
+              // Se c'è un veicolo selezionato, mostra i suoi totali, altrimenti il totale generale
+              const valore = selectedVeicolo
+                ? selectedVeicolo[`totale_${cat.key}`] ||
+                  (selectedVeicolo[cat.key] || []).reduce((a, s) => a + (s.totale || 0), 0)
+                : statistiche[`totale_${cat.key}`] || 0;
+
+              return (
+                <StatCard
+                  key={cat.key}
+                  accent="none"
+                  style={{ padding: '10px 12px', borderLeft: `3px solid ${cat.color}` }}
+                  label={<span style={{ color: COLORS.textMuted }}><cat.icon size={14} aria-hidden="true" style={ICO} /> {cat.label}</span>}
+                  value={<span style={{ fontSize: 16, color: cat.color }}>{formatEuro(valore)}</span>}
+                />
+              );
+            })}
+            <div
+              style={{
+                background: COLORS.primary,
+                borderRadius: BORDER_RADIUS.md,
+                padding: '10px 12px',
+                boxShadow: SHADOWS.sm,
+                color: 'white',
+              }}
+            >
+              <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}><Wallet size={14} aria-hidden="true" style={ICO} /> TOTALE</div>
+              <div style={{ fontSize: 16, fontWeight: 'bold' }}>
+                {formatEuro(
+                  selectedVeicolo
+                    ? selectedVeicolo.totale_generale
+                    : statistiche.totale_generale || 0
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Lista Veicoli */}
       <div
@@ -1181,6 +1181,9 @@ export default function NoleggioAuto() {
                     <Pencil size={14} aria-hidden="true" style={ICO} /> Modifica
                   </Button>
                 </div>
+                {selectedVeicolo?.targa === v.targa && (
+                  <div onClick={e => e.stopPropagation()} style={{ marginTop: 12, cursor: 'default' }}>{pannelloDettaglio}</div>
+                )}
               </div>
             ))}
           </div>
@@ -1235,8 +1238,8 @@ export default function NoleggioAuto() {
               </thead>
               <tbody>
                 {veicoli.slice(0, limiteVeicoli).map((v, i) => (
+                  <React.Fragment key={v.targa || i}>
                   <tr
-                    key={v.targa || i}
                     style={{
                       borderBottom: `1px solid ${COLORS.gray[100]}`,
                       background: selectedVeicolo?.targa === v.targa ? COLORS.infoLight : 'transparent',
@@ -1302,6 +1305,12 @@ export default function NoleggioAuto() {
                       </RowActions>
                     </Td>
                   </tr>
+                  {selectedVeicolo?.targa === v.targa && (
+                    <tr>
+                      <td colSpan={11} style={{ padding: 16, background: COLORS.bgAlt }}>{pannelloDettaglio}</td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

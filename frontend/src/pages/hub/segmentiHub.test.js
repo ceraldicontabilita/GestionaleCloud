@@ -10,7 +10,6 @@ import {
 describe('segmentiHub', () => {
   it('documenti', () => {
     expect(sezioneDocumenti('/documenti/atti')).toBe('atti');
-    expect(sezioneDocumenti('/documenti/drive')).toBe('drive');
     expect(sezioneDocumenti('/import-documenti')).toBe('import');
     expect(sezioneDocumenti('/documenti/atti-extra')).toBe('import');
   });

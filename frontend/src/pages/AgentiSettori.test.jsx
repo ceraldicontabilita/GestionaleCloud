@@ -18,8 +18,8 @@ const SETTORI = {
       id: 'f24', nome: 'F24 e tributi',
       giri: [{ chiave: 'riconciliazione_ultimo_giro', etichetta: 'Riconciliazione (30 min)', at: '2026-10-02T05:30:00+00:00', conteggi: { associati: 4 }, errore: null, mai_eseguito: false }],
       code_ferme: [
-        { nome: 'File in ERRORI su Drive', conteggio: 175, rotta_pagina: '/documenti/drive', motivo: 'riconosciuti ma non registrati' },
-        { nome: 'F24 non quadrati', conteggio: 54, rotta_pagina: '/documenti/drive', motivo: 'saldo stampato diverso dalle righe lette' },
+        { nome: 'File in ERRORI su Drive', conteggio: 175, rotta_pagina: '/documenti/import', motivo: 'riconosciuti ma non registrati' },
+        { nome: 'F24 non quadrati', conteggio: 54, rotta_pagina: '/documenti/import', motivo: 'saldo stampato diverso dalle righe lette' },
       ],
       proposte_in_attesa: 2,
     },
@@ -73,7 +73,7 @@ describe('Scheda Settori del cruscotto Agenti', () => {
     expect(await screen.findByTestId('settore-f24')).toBeInTheDocument();
     expect(screen.getByText('F24 non quadrati')).toBeInTheDocument();
     expect(screen.getByText('54')).toBeInTheDocument();
-    expect(screen.getByText('F24 non quadrati').closest('a')).toHaveAttribute('href', '/documenti/drive');
+    expect(screen.getByText('F24 non quadrati').closest('a')).toHaveAttribute('href', '/documenti/import');
     expect(screen.getByText(/associati 4/)).toBeInTheDocument();
     // cedolini: conteggio assente e giro mai eseguito
     const cedolini = screen.getByTestId('settore-cedolini');

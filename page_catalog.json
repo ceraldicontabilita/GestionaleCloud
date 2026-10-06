@@ -804,22 +804,6 @@
       "route_kind": "tab"
     },
     {
-      "id": 62,
-      "label": "Indice documentale Drive",
-      "path": "/documenti/drive",
-      "component": "frontend/src/pages/DriveDocumentIndex.jsx",
-      "entry": "frontend/src/pages/hub/DocumentiHub.jsx",
-      "access": "authenticated",
-      "audit_status": "in_review",
-      "allowed_api_statuses": [
-        503
-      ],
-      "module": "documenti",
-      "documentation_file": "memoria/pagine/documenti-drive.json",
-      "component_status": "reachable_from_router",
-      "route_kind": "tab"
-    },
-    {
       "id": 63,
       "label": "Atti amministrativi",
       "path": "/documenti/atti",

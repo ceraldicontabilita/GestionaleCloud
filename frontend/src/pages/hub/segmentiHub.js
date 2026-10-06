@@ -9,7 +9,7 @@ export function primoSegmentoDopo(pathname, prefisso, ids, fallback) {
 export function sezioneDocumenti(pathname = '') {
   const p = String(pathname);
   if (p === '/import-documenti' || p.startsWith('/import-documenti/')) return 'import';
-  return primoSegmentoDopo(p, '/documenti', ['atti', 'drive', 'archivio', 'import'], 'import');
+  return primoSegmentoDopo(p, '/documenti', ['atti', 'archivio', 'import'], 'import');
 }
 
 export function sezioneStrumenti(pathname = '') {
