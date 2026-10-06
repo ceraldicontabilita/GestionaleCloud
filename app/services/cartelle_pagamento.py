@@ -14,6 +14,7 @@ lo stesso IUV e importo diverso resta ``DA_VERIFICARE``.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import logging
@@ -204,13 +205,23 @@ async def registra_cartella(
     if not dati["importi_quadrano"]:
         # Le somme non tornano: si conserva, ma non si dichiara un dovuto certo.
         documento["expectation_status"] = ExpectationStatus.DA_VERIFICARE.value
-    contenuto_b64 = base64.b64encode(contenuto).decode("ascii")
     archivio = _archivio()
     if getattr(archivio, "persistent", False):
-        documento["blob_key"] = PREFISSO_BLOB + impronta
-        await archivio.put(documento["blob_key"], contenuto_b64)
+        if not drive_file_id:
+            from app.services.email_drive_archive import archive_binary_copy
+
+            esito = await asyncio.to_thread(
+                archive_binary_copy, contenuto, nome,
+                source="cartelle_pagamento", area=COLL,
+            )
+            if esito.get("status") not in {"archived", "duplicate"}:
+                raise RuntimeError("Cartella non verificata su Drive")
+            drive_file_id = esito["drive_file_id"]
+            documento["drive_md5"] = esito.get("md5")
+        documento["drive_file_id"] = drive_file_id
+        documento["drive_archive_status"] = "verified"
     else:
-        documento["contenuto_b64"] = contenuto_b64
+        documento["contenuto_b64"] = base64.b64encode(contenuto).decode("ascii")
     await db[COLL].insert_one(documento)
     verbali = await collega_verbali(db, id_cartella)
     ricevuta = await chiudi_da_ricevuta_esistente(db, id_cartella)
@@ -307,6 +318,12 @@ async def contenuto(db, cartella_id: str) -> Optional[Tuple[bytes, str]]:
     doc = await db[COLL].find_one({"id": cartella_id}, {"_id": 0})
     if not doc:
         return None
+    if doc.get("drive_file_id"):
+        from app.services.drive_download import scarica_originale
+
+        originale = await scarica_originale(str(doc["drive_file_id"]), md5=doc.get("drive_md5"))
+        if originale:
+            return originale, doc.get("nome") or f"cartella_{cartella_id[-12:]}.pdf"
     dati = doc.get("contenuto_b64")
     if not dati and doc.get("blob_key"):
         dati = await _archivio().get(doc["blob_key"])

@@ -138,12 +138,31 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
     if route is None:
         return {"status": "ignored", "reason": "tipo_non_rilevante"}
     area, _label = route
+    return archive_binary_copy(
+        _decode_content(doc),
+        str(doc.get("filename") or f"documento-{doc.get('id', 'email')}.pdf").strip(),
+        source=str(doc.get("source") or "email"),
+        area=area,
+    )
+
+
+def archive_binary_copy(
+    content: bytes,
+    filename: str,
+    *,
+    source: str = "gestionale",
+    area: str = "documenti",
+) -> dict[str, Any]:
+    """Salva e verifica un originale binario nella cartella unica Drive.
+
+    E' il percorso comune usato anche dal runtime Drive-only: un upload senza
+    id, MD5 o rilettura identica non e' considerato riuscito.
+    """
     from app.services import drive_cartella_unica as cu
 
     root_id = cu.radice()
     if not root_id:
         return {"status": "not_configured", "area": area}
-    content = _decode_content(doc)
     if not content:
         return {"status": "error", "area": area, "reason": "contenuto_mancante"}
     service = _drive_service()
@@ -151,12 +170,14 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
         return {"status": "not_configured", "area": area}
     folder_id = cu._cartella(service, root_id, cu.ARCHIVIO)
 
-    filename = str(doc.get("filename") or f"documento-{doc.get('id', 'email')}.pdf").strip()
+    filename = str(filename or "documento.pdf").strip()
     digest = hashlib.sha256(content).hexdigest()
+    content_md5 = hashlib.md5(content, usedforsecurity=False).hexdigest()
     existing = _already_archived(service, folder_id, filename, digest, content)
     if existing:
         return {"status": "duplicate", "area": area, "drive_file_id": existing.get("id"),
-                "sha256": digest, "archived_at": datetime.now(timezone.utc).isoformat()}
+                "sha256": digest, "md5": content_md5, "bytes": len(content),
+                "archived_at": datetime.now(timezone.utc).isoformat()}
 
     from googleapiclient.http import MediaIoBaseUpload
     mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -167,10 +188,10 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
                 "name": filename,
                 "parents": [folder_id],
                 "appProperties": {"gestionale_sha256": digest,
-                                  "gestionale_source": str(doc.get("source") or "email")[:40]},
+                                  "gestionale_source": str(source or "gestionale")[:40]},
             },
             media_body=media,
-            fields="id",
+            fields="id,md5Checksum",
             supportsAllDrives=True,
         ).execute()
     except Exception as exc:
@@ -183,5 +204,17 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
             return {"status": "blocked_owner_auth", "area": area,
                     "reason": "drive_permission_denied"}
         raise
-    return {"status": "archived", "area": area, "drive_file_id": created.get("id"),
-            "sha256": digest, "archived_at": datetime.now(timezone.utc).isoformat()}
+    drive_id = created.get("id")
+    drive_md5 = created.get("md5Checksum")
+    if not drive_id or drive_md5 != content_md5:
+        return {"status": "error", "area": area, "reason": "verifica_md5_fallita"}
+    try:
+        originale = service.files().get_media(fileId=drive_id).execute()
+    except Exception as exc:
+        logger.warning("Originale Drive %s non rileggibile: %s", drive_id, type(exc).__name__)
+        return {"status": "error", "area": area, "reason": "rilettura_fallita"}
+    if hashlib.sha256(originale).hexdigest() != digest:
+        return {"status": "error", "area": area, "reason": "verifica_sha256_fallita"}
+    return {"status": "archived", "area": area, "drive_file_id": drive_id,
+            "sha256": digest, "md5": content_md5, "bytes": len(content),
+            "archived_at": datetime.now(timezone.utc).isoformat()}

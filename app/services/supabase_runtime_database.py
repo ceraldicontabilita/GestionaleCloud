@@ -546,7 +546,9 @@ class SupabaseTable(CollezioneDocumenti):
                 if self._hydrate_successi >= _HYDRATE_GROWTH_AFTER:
                     self._hydrate_chunk = min(_MAX_EXACT_LOOKUP_VALUES, chunk * 2)
                     self._hydrate_successi = 0
-        return [_normalise_document(document) for document in documents]
+        normalised = [_normalise_document(document) for document in documents]
+        from app.services.pdf_drive_only import hydrate_documents
+        return await hydrate_documents(self.name, normalised, excluded_fields)
 
     async def _cached_snapshot(self, *, richiede_stato: bool = False) -> list[dict[str, Any]] | None:
         """Documenti leggeri allineati allo stato remoto, senza il lock operativo.
@@ -662,6 +664,10 @@ class SupabaseTable(CollezioneDocumenti):
                 excluded_fields=_excluded_projection_fields(projection),
             )
             self._documents = [_normalise_document(document) for document in documents]
+            if _projection_needs_payload(projection, self._payload_fields):
+                from app.services.pdf_drive_only import hydrate_documents
+                self._documents = await hydrate_documents(
+                    self.name, self._documents, _excluded_projection_fields(projection))
             return
         if leggero is not None:
             documents = await self._cached_snapshot(richiede_stato=richiede_stato)
@@ -692,6 +698,10 @@ class SupabaseTable(CollezioneDocumenti):
         # Con esclusioni la RPC allega il marcatore di presenza: resta un
         # dettaglio dell'adattatore, mai nei documenti restituiti.
         self._documents = [_senza_stato(_normalise_document(document)) for document in documents]
+        if _projection_needs_payload(projection, self._payload_fields):
+            from app.services.pdf_drive_only import hydrate_documents
+            self._documents = await hydrate_documents(
+                self.name, self._documents, _excluded_projection_fields(projection))
         if self._cache is not None and not _excluded_projection_fields(projection):
             # Lettura completa gia' pagata: aggiorna la cache gratis.
             for document in self._documents:
@@ -738,9 +748,13 @@ class SupabaseTable(CollezioneDocumenti):
                     self.name, field=field, values=values,
                     excluded_fields=_excluded_projection_fields(projection),
                 )
+                normalised = [_normalise_document(row) for row in rows]
+                from app.services.pdf_drive_only import hydrate_documents
+                normalised = await hydrate_documents(
+                    self.name, normalised, _excluded_projection_fields(projection))
                 return CursoreDocumenti([
                     apply_projection(document, projection)
-                    for document in (_normalise_document(row) for row in rows)
+                    for document in normalised
                     if matches_filter(document, selector)
                 ])
             leggero, richiede_stato = self._selettore_cache(selector)
@@ -1457,6 +1471,8 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
                 [str(document.get("_id")) for document in before],
             )
             return
+        from app.services.pdf_drive_only import externalize_documents
+        await externalize_documents(collection_name, after)
         rifiuti = await self._upsert_documents(collection_name, after)
         if rifiuti:
             # Il chiamante e' ancora in attesa della mutazione: l'eccezione
