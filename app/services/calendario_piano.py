@@ -22,16 +22,18 @@ _MENSILI = (
     (re.compile(r"^inps_\d{4}_(\d{2})$"), "inps_dm10"),
     (re.compile(r"^iva_liq_\d{4}_(\d{2})$"), "iva_mensile"),
 )
+# Voci annuali: periodo None = l'unica casella della voce, qualunque scadenza abbia configurato il titolare.
 _ANNUALI = {
-    "ires_saldo": [("ires_saldo", "06"), ("ires_acconto_1", "06")],
-    "irap_saldo": [("irap_saldo", "06"), ("irap_acconto_1", "06")],
-    "ires_acconto2": [("ires_acconto_2", "11")],
-    "irap_acconto2": [("irap_acconto_2", "11")],
+    "ires_saldo": [("ires_saldo", None), ("ires_acconto_1", None)],
+    "irap_saldo": [("irap_saldo", None), ("irap_acconto_1", None)],
+    "ires_acconto2": [("ires_acconto_2", None)],
+    "irap_acconto2": [("irap_acconto_2", None)],
 }
-_STATI_SENZA_F24 = {piano_tributi.MANCA_F24, piano_tributi.SCADUTO_NON_PAGATO}
+# Solo «nessun F24 in archivio»: un modello presente ma non pagato ha il suo stato («Scaduto, non pagato»).
+_STATI_SENZA_F24 = {piano_tributi.MANCA_F24}
 
 
-def voci_della_scadenza(scadenza_id: str) -> List[Tuple[str, str]]:
+def voci_della_scadenza(scadenza_id: str) -> List[Tuple[str, Optional[str]]]:
     """Voce del Piano e periodo per una scadenza del calendario, o [] se non c'e' un codice da attendere."""
     for regola, voce in _MENSILI:
         m = regola.match(scadenza_id or "")
@@ -43,11 +45,20 @@ def voci_della_scadenza(scadenza_id: str) -> List[Tuple[str, str]]:
     return []
 
 
+def _codici_del_periodo(voce: Dict[str, Any], periodo: Optional[str]) -> List[str]:
+    """IVA mensile: del Piano resta solo il codice del mese della casella (6002 per febbraio)."""
+    codici = list(voce.get("codici") or [])
+    if voce.get("id") == "iva_mensile" and periodo:
+        solo = [c for c in codici if c == f"60{periodo}"]
+        return solo or codici
+    return codici
+
+
 def _sintesi(casella: Dict[str, Any], voce: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "voce_id": voce["id"],
         "etichetta": voce["etichetta"],
-        "codici": list(voce.get("codici") or []),
+        "codici": _codici_del_periodo(voce, casella.get("periodo")),
         "obbligatorio": bool(voce.get("obbligatorio", True)),
         "stato": casella["stato"],
         "etichetta_stato": casella["etichetta_stato"],
@@ -63,11 +74,13 @@ def _sintesi(casella: Dict[str, Any], voce: Dict[str, Any]) -> Dict[str, Any]:
 
 def collega_scadenze(scadenze: List[Dict[str, Any]], griglia: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Aggiunge a ogni scadenza con codici attesi il riscontro del Piano (funzione pura)."""
-    indice: Dict[Tuple[str, str], Tuple[Dict[str, Any], Dict[str, Any]]] = {}
+    indice: Dict[Tuple[str, Optional[str]], Tuple[Dict[str, Any], Dict[str, Any]]] = {}
     for riga in griglia.get("voci") or []:
         voce = riga["voce"]
         for casella in riga["caselle"]:
             indice[(voce["id"], casella["periodo"])] = (voce, casella)
+        if len(riga["caselle"]) == 1:
+            indice[(voce["id"], None)] = (voce, riga["caselle"][0])
 
     for scadenza in scadenze:
         trovate = []
@@ -91,7 +104,7 @@ def collega_scadenze(scadenze: List[Dict[str, Any]], griglia: Dict[str, Any]) ->
 async def collega_al_piano(db, anno: int, scadenze: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Un guasto del Piano non rompe il calendario: le scadenze restano com'erano."""
     try:
-        griglia = await piano_tributi.griglia(db, anno)
+        griglia = await piano_tributi.griglia(db, anno, scrivi=False)
     except Exception as exc:
         logger.warning("Calendario: Piano tributi non leggibile per %s: %s %s", anno, type(exc).__name__, exc)
         return scadenze

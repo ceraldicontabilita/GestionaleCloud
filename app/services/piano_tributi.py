@@ -191,14 +191,20 @@ def _serializza(voce: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-async def voci_piano(db) -> List[Dict[str, Any]]:
-    """Le voci salvate; al primo uso si scrive il piano di base, una volta."""
+async def voci_piano(db, *, scrivi: bool = True) -> List[Dict[str, Any]]:
+    """Le voci salvate; al primo uso si scrive il piano di base, una volta.
+
+    Con ``scrivi=False`` (letture di una pagina «sola lettura») le voci di base mai
+    salvate si compongono in memoria e non si inseriscono.
+    """
     salvate = await db[COLL_PIANO].find({}, {"_id": 0}).to_list(500)
     noti = {v.get("id") for v in salvate}
     # Si aggiungono solo le voci di base mai salvate: una voce che il titolare
     # ha modificato o spento resta com'e'.
     mancanti = [_serializza(v) for v in PIANO_BASE if v["id"] not in noti]
-    if mancanti:
+    if mancanti and not scrivi:
+        salvate = salvate + mancanti
+    elif mancanti:
         ora = datetime.now(timezone.utc).isoformat()
         await db[COLL_PIANO].insert_many([{**v, "creato_il": ora, "origine": "base"} for v in mancanti])
         salvate = await db[COLL_PIANO].find({}, {"_id": 0}).to_list(500)
@@ -562,10 +568,10 @@ def _griglia_anno(voci, registro, modelli, anno: int, oggi: date,
     }
 
 
-async def griglia(db, anno: int, oggi: Optional[date] = None) -> Dict[str, Any]:
+async def griglia(db, anno: int, oggi: Optional[date] = None, *, scrivi: bool = True) -> Dict[str, Any]:
     """Il piano dell'anno con lo stato di ogni casella, in una sola lettura del registro."""
     oggi = oggi or datetime.now(timezone.utc).date()
-    voci = [v for v in await voci_piano(db) if v.get("attivo", True)]
+    voci = [v for v in await voci_piano(db, scrivi=scrivi) if v.get("attivo", True)]
     registro = await registro_f24.carica_registro(db)
     return _griglia_anno(voci, registro, _modelli_con_righe(registro), anno, oggi, await attesi_dai_prospetti(db))
 

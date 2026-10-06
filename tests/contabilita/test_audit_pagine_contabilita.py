@@ -109,7 +109,7 @@ def test_calendario_get_e_sola_lettura_e_preserva_evidenza(monkeypatch):
         staticmethod(lambda: db),
     )
 
-    result = _run(fiscalita_italiana.calendario_fiscale(2026))
+    result = _run(fiscalita_italiana.calendario_fiscale(2026, utente={"role": "admin"}))
     iva_gennaio = next(s for s in result["scadenze"] if s["id"] == "iva_liq_2026_01")
 
     assert result["modalita_lettura"] == "sola_lettura"

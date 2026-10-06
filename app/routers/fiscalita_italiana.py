@@ -35,10 +35,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from decimal import Decimal, ROUND_HALF_UP
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.database import Database
+from app.utils.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -864,13 +865,17 @@ async def scadenze_imminenti(
 
 
 @router.get("/calendario/{anno}")
-async def calendario_fiscale(anno: int) -> Dict[str, Any]:
+async def calendario_fiscale(
+    anno: int, utente: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
     """Legge il calendario fiscale senza modificare il database."""
     db = Database.get_db()
     from app.services.calendario_piano import collega_al_piano
 
-    # Solo la pagina del calendario chiede i codici attesi al Piano tributi (una lettura del registro).
-    existing = await collega_al_piano(db, anno, await _leggi_calendario_anno(db, anno))
+    existing = await _leggi_calendario_anno(db, anno)
+    # I codici attesi e le prove F24 del Piano tributi sono dati riservati all'admin (come il Piano).
+    if (utente or {}).get("role") == "admin":
+        existing = await collega_al_piano(db, anno, existing)
 
     # Raggruppa per mese
     per_mese = {}
