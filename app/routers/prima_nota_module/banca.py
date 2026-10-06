@@ -3,7 +3,7 @@ Prima Nota Module - Operazioni Prima Nota Banca.
 CRUD e operazioni per movimenti bancari.
 """
 from fastapi import HTTPException, Query, Body
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import re
@@ -466,6 +466,8 @@ async def list_prima_nota_sumup(
     for giorno in giorni:
         giorno["importo"] = round(giorno["importo"], 2)
 
+    accrediti_non_collegati = _collega_vendite_e_accrediti(giornate_vendite, transazioni, movimenti, giorni)
+
     movimenti_conto = await _movimenti_conto_sumup(db, dal, al)
     quadratura = await _quadratura_estratto_sumup(db, movimenti_conto)
 
@@ -483,6 +485,7 @@ async def list_prima_nota_sumup(
         "totale_netto_vendite": totale_netto_vendite,
         "numero_transazioni": sum(int(g["transazioni"]) for g in giornate_vendite),
         "giornate_vendite": giornate_vendite,
+        "accrediti_non_collegati": accrediti_non_collegati,
         "credito_sumup_aperto": credito_sumup_aperto,
         "credito_sumup_coperto": credito_coperto,
         "fonte_credito_sumup": "transazioni_e_payout_riconciliati",
@@ -1174,3 +1177,48 @@ async def candidati_banca_per_fattura(fattura_id: str) -> Dict[str, Any]:
         "nota": ("L'associazione la confermi tu: il gestionale mostra cosa "
                  "combacia, non decide al posto tuo."),
     }
+
+
+
+def _collega_vendite_e_accrediti(
+    giornate_vendite: List[Dict[str, Any]], transazioni: List[Dict[str, Any]],
+    movimenti: List[Dict[str, Any]], giorni: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Ogni giornata di vendita porta il suo accredito: il collegamento e' il `payout_id` delle transazioni.
+
+    Niente date «giorno dopo» supposte: il payout lo dice la transazione stessa. Un payout che copre piu'
+    giornate (es. un fine settimana) non si divide per giornata: `payout_condiviso`, senza ricevuto.
+    Una giornata senza payout o con payout non ancora accreditato e' `in_attesa`. Ritorna gli accrediti
+    che nessuna giornata acquisita richiama (vendite precedenti alla sincronizzazione).
+    """
+    payout_per_giornata: Dict[str, set] = {}
+    giornate_per_payout: Dict[str, set] = {}
+    for t in transazioni:
+        pid = str(t.get("payout_id") or "")
+        if pid and t.get("data"):
+            payout_per_giornata.setdefault(t["data"], set()).add(pid)
+            giornate_per_payout.setdefault(pid, set()).add(t["data"])
+    accredito: Dict[str, Dict[str, Any]] = {}
+    for m in movimenti:
+        pid = str(m.get("payout_id") or "")
+        data = str(m.get("data") or "")[:10]
+        if pid and data:
+            a = accredito.setdefault(pid, {"data": data, "importo": 0.0})
+            a["importo"] += abs(float(m.get("importo") or 0))
+    for g in giornate_vendite:
+        pids = sorted(payout_per_giornata.get(g["data"], set()))
+        g["payout_ids"] = pids
+        arrivati = [p for p in pids if p in accredito]
+        g["accredito_data"] = max((accredito[p]["data"] for p in arrivati), default=None)
+        g["ricevuto"] = None
+        g["differenza"] = None
+        g["payout_condiviso"] = any(len(giornate_per_payout[p]) > 1 for p in pids)
+        g["in_attesa"] = not pids or len(arrivati) < len(pids)
+        if arrivati and not g["in_attesa"] and not g["payout_condiviso"]:
+            g["ricevuto"] = round(sum(accredito[p]["importo"] for p in arrivati), 2)
+            g["differenza"] = round(float(g["netto"]) - g["ricevuto"], 2)
+    return [
+        {**giorno, "payout_ids": [p for p in giorno.get("payout_ids", []) if p not in giornate_per_payout]}
+        for giorno in giorni
+        if any(p not in giornate_per_payout for p in giorno.get("payout_ids", []))
+    ]

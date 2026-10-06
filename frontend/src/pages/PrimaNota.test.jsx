@@ -51,12 +51,12 @@ describe('Conto SumUp separato dalla Banca', () => {
       }}
     />);
 
-    expect(screen.getByRole('heading', { name: 'Accrediti giornalieri Mastercard SumUp' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Accrediti non collegati a vendite acquisite' })).toBeInTheDocument();
     expect(screen.getByText('PID1, PID2')).toBeInTheDocument();
     expect(screen.getByText('PID3')).toBeInTheDocument();
     expect(screen.getByText('€ 834,20')).toBeInTheDocument();
     expect(screen.getByText('€ 100,00')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Vendite SumUp acquisite' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Vendite e accrediti SumUp' })).toBeInTheDocument();
     expect(screen.getByText('11/08/2026')).toBeInTheDocument();
     expect(screen.getAllByText('€ 116,90').length).toBeGreaterThan(0);
   });
