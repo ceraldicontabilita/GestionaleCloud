@@ -38,6 +38,9 @@ DOCUMENT_PAYLOAD_FIELDS: Mapping[str, tuple[str, ...]] = {
     "bonifici_email_attachments": ("pdf_data",),
     "dichiarazioni_iva_email_attachments": ("pdf_data",),
     "cartelle_email_attachments": ("pdf_data",),
+    "atti_giudiziari": ("contenuto_b64",),
+    "cartelle_pagamento": ("contenuto_b64",),
+    "estratti_conto_originali": ("contenuto_b64",),
     COLL_INVOICES: (
         "fattura_allegata",
         "document_original_ref",

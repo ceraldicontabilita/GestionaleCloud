@@ -10,6 +10,7 @@ l'elenco li mostra tutti insieme, ognuno col suo modo di riaverlo.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import logging
@@ -65,15 +66,29 @@ async def conserva_originale(
             "mime": mime_per_nome(nome), "caricato_il": ora, "ultimo_caricamento": ora,
             "drive_file_id": drive_file_id, "righe": righe,
         }
-        dati = base64.b64encode(contenuto).decode("ascii")
         archivio = _archivio()
         if getattr(archivio, "persistent", False):
-            chiave = PREFISSO_BLOB + impronta
-            await archivio.put(chiave, dati)
-            documento["blob_key"] = chiave
+            if documento["mime"] == "application/pdf":
+                if not drive_file_id:
+                    from app.services.email_drive_archive import archive_binary_copy
+
+                    esito = await asyncio.to_thread(
+                        archive_binary_copy, contenuto, nome,
+                        source="estratti_conto", area=COLL,
+                    )
+                    if esito.get("status") not in {"archived", "duplicate"}:
+                        raise RuntimeError("Estratto PDF non verificato su Drive")
+                    drive_file_id = esito["drive_file_id"]
+                    documento["drive_md5"] = esito.get("md5")
+                documento["drive_file_id"] = drive_file_id
+                documento["drive_archive_status"] = "verified"
+            else:
+                chiave = PREFISSO_BLOB + impronta
+                await archivio.put(chiave, base64.b64encode(contenuto).decode("ascii"))
+                documento["blob_key"] = chiave
         else:
             # Senza Supabase (test, sviluppo) il contenuto resta nel registro.
-            documento["contenuto_b64"] = dati
+            documento["contenuto_b64"] = base64.b64encode(contenuto).decode("ascii")
         await db[COLL].insert_one(documento)
         return impronta
     except Exception as exc:  # noqa: BLE001 - i movimenti restano importati
@@ -106,6 +121,13 @@ async def contenuto(db, voce_id: str) -> Optional[Tuple[bytes, str, str]]:
     """(byte, nome, tipo) dell'originale, o None se non c'e'."""
     doc = await db[COLL].find_one({"id": voce_id}, {"_id": 0})
     if doc:
+        if doc.get("drive_file_id"):
+            from app.services.drive_download import scarica_originale
+
+            originale = await scarica_originale(str(doc["drive_file_id"]), md5=doc.get("drive_md5"))
+            if originale:
+                nome = doc.get("nome") or f"estratto_{voce_id[:12]}"
+                return originale, nome, doc.get("mime") or mime_per_nome(nome)
         dati = doc.get("contenuto_b64")
         if not dati and doc.get("blob_key"):
             dati = await _archivio().get(doc["blob_key"])
@@ -114,6 +136,12 @@ async def contenuto(db, voce_id: str) -> Optional[Tuple[bytes, str, str]]:
         nome = doc.get("nome") or f"estratto_{voce_id[:12]}"
         return base64.b64decode(dati), nome, doc.get("mime") or mime_per_nome(nome)
     nexi = await db["estratto_conto_nexi"].find_one({"id": voce_id}, {"_id": 0})
+    if nexi and nexi.get("drive_file_id"):
+        from app.services.drive_download import scarica_originale
+
+        originale = await scarica_originale(str(nexi["drive_file_id"]), md5=nexi.get("drive_md5"))
+        if originale:
+            return originale, nexi.get("filename") or "estratto_nexi.pdf", "application/pdf"
     if nexi and nexi.get("pdf_data"):
         nome = nexi.get("filename") or "estratto_nexi.pdf"
         return base64.b64decode(nexi["pdf_data"]), nome, "application/pdf"
