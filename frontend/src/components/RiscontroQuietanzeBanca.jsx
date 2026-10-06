@@ -27,7 +27,7 @@ const LIVELLI = {
   CERTO: 'Certo',
   PROBABILE: 'Probabile',
   PARZIALE: 'Parziale',
-  NESSUN_MATCH: 'Nessun match',
+  NESSUN_MATCH: 'Pagato, senza addebito in banca',
   MOVIMENTO_ORFANO: 'Movimento orfano',
 };
 

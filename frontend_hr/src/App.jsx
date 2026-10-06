@@ -6196,7 +6196,7 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
       const fatto = await invia(false);
       const r2 = fatto.riepilogo;
       setMassMsg({ caricati: r2.nuovi, duplicati: Array(r2.gia_presenti).fill(0), non_assegnati: Array(r2.da_assegnare).fill(0), dettaglio: [], _gmail: true });
-      toast(`Attestati: ${r2.nuovi} allegati${r2.da_assegnare ? `, ${r2.da_assegnare} da assegnare dalla sezione Lotti › Personale` : ""}`);
+      toast(`Attestati: ${r2.nuovi} allegati${r2.da_assegnare ? `, ${r2.da_assegnare} da assegnare (nome non riconosciuto: controlla l'anagrafica e ripeti l'importazione)` : ""}`);
       reload();
     } catch (err) {
       setMassMsg({ errore: err?.response?.data?.detail || "Importazione attestati non riuscita" });

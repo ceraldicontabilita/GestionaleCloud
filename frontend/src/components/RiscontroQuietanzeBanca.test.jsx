@@ -146,7 +146,7 @@ describe('Quietanze F24 e addebiti in banca', () => {
     expect(screen.getByTestId('livello-da_verificare:p2').textContent).toContain('Livello: Parziale');
     expect(screen.getByTestId('livello-da_verificare:p2').textContent).toContain('differenza');
     expect(screen.getByTestId('livello-quietanze_senza_estratto:p3').textContent)
-      .toContain('Livello: Nessun match');
+      .toContain('Livello: Pagato, senza addebito in banca');
     expect(screen.getByTestId('filtro-quietanze_senza_estratto').textContent).toContain('(1)');
   });
 });

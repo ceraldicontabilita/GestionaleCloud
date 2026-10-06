@@ -33,7 +33,6 @@ DATI_AZIENDA_DEFAULT = {
     "pec": "ceraldigroupsrl@legalmail.it",
     "partita_iva": "04523831214",
     "codice_fiscale": "04523831214",
-    "codice_destinatario": "USAL8PV",
     "responsabile_haccp": "",
     "attivita": "Pasticceria e Rosticceria",
     "studio_consulenza": "",
@@ -755,7 +754,6 @@ async def _genera_manuale_impl(
             <tr><td><strong>PEC</strong></td><td>{DATI_AZIENDA['pec']}</td></tr>
             <tr><td><strong>P.IVA</strong></td><td>{DATI_AZIENDA['partita_iva']}</td></tr>
             <tr><td><strong>Codice Fiscale</strong></td><td>{DATI_AZIENDA['codice_fiscale']}</td></tr>
-            <tr><td><strong>Codice Destinatario SDI</strong></td><td>{DATI_AZIENDA.get('codice_destinatario', '')}</td></tr>
             <tr><td><strong>Attività</strong></td><td>{DATI_AZIENDA['attivita']}</td></tr>
             <tr><td><strong>Responsabile HACCP</strong></td><td>{DATI_AZIENDA['responsabile_haccp']}</td></tr>
             <tr><td><strong>Studio Consulenza</strong></td><td>{DATI_AZIENDA['studio_consulenza']}</td></tr>

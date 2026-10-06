@@ -594,8 +594,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
 
 ### F24, tributi, dichiarazioni
 
-- F24, righe tributo, quietanza e movimento bancario sono entità distinte. La quietanza documenta il pagamento ma **non
-  sostituisce la prova bancaria** né ricostruisce il modello (senza modello → alert «F24 mancante»); stato e residuo **per
+- F24, righe tributo, quietanza e movimento bancario sono entità distinte. **La quietanza (filigrana e protocollo telematico) è essa stessa la prova del pagamento: un F24 con quietanza è sempre pagato** (titolare, 06/10/2026); l'addebito in banca è un riscontro in più, mai una condizione, e la sua assenza si dice «pagato, senza addebito in banca», non «pagamento mancante». La quietanza non ricostruisce il modello (senza modello → alert «F24 mancante»); stato e residuo **per
   riga tributo**. **Un solo motore F24 ↔ banca, a livelli** (`riconcilia_f24_banca` in `f24_controllo_incrociato.py`, job
   `f24_quietanze_banca`, arrivo di quietanza o modello con `riconcilia_f24_arrivato`): ogni coppia pagamento ↔ addebito ha
   `livello` e `motivazione`. **CERTO** = importo al centesimo, addebito entro 2 giorni lavorativi (festivi in

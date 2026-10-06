@@ -404,8 +404,22 @@ async def cerca_stipendi_per_associazione(
     # letto dal PDF lo si dice chiaramente; i bonifici già trovati in
     # estratto conto sono riportati. Le righe senza dipendente né importo
     # non potranno mai essere associate: escluse dalla lista.
+    # Una attesa la cui busta non esiste piu' non si conferma: non c'e'
+    # nessun documento da mostrare al titolare. Si dichiara (`senza_busta`),
+    # la ritira la bonifica per id (mai nascosta in silenzio).
+    from app.services.bonifica_prima_nota_salari_doppioni import (
+        attesa_senza_busta, indice_buste_esistenti,
+    )
+    from app.services.prima_nota_salari_chiave import carica_indice_dipendenti, chiave_logica_riga
+
+    ids_buste, chiavi_buste = await indice_buste_esistenti(db)
+    indice_dip = await carica_indice_dipendenti(db)
+    senza_busta = 0
     visibili = []
     for s in stipendi:
+        if attesa_senza_busta(s, chiave_logica_riga(s, indice_dip), ids_buste, chiavi_buste):
+            senza_busta += 1
+            continue
         nome = (s.get("dipendente") or s.get("dipendente_nome") or "").strip()
         busta = float(s.get("importo_busta") or s.get("importo") or 0)
         bonifici = float(s.get("importo_bonifico") or 0)
@@ -421,7 +435,7 @@ async def cerca_stipendi_per_associazione(
                             f" · {' · '.join(dettagli)}")
         visibili.append(s)
 
-    return {"stipendi": visibili, "totale": len(visibili)}
+    return {"stipendi": visibili, "totale": len(visibili), "senza_busta": senza_busta}
 
 
 async def cerca_f24_per_associazione(

@@ -126,8 +126,7 @@ def test_nessun_match_dice_se_l_estratto_del_periodo_c_e():
     assert senza_estratto["quietanze_senza_addebito"] == []
     [s] = senza_estratto["quietanze_senza_estratto"]
     assert s["estratto_periodo_presente"] is False
-    assert "estratto conto del periodo assente" in s["motivazione"]
-    assert "non si puo' dire se il pagamento manchi" in s["motivazione"]
+    assert "manca solo l'estratto conto del periodo" in s["motivazione"]
 
 
 def test_movimento_orfano_e_probabile_quietanza_da_riscaricare():

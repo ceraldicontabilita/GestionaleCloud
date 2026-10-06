@@ -50,6 +50,7 @@ from app.services.entity_relations import revoke_entity_relation
 from app.services.accounting_relation_writers import record_salary_reconciliation
 from app.services.prima_nota_salari_chiave import (
     ChiaveSalario,
+    tipo_cedolino_canonico,
     carica_indice_dipendenti,
     chiave_logica_riga,
     importo_atteso_riga,
@@ -62,6 +63,7 @@ from app.services.stipendi_bonifici import campi_riga_da_movimenti_stipendio
 logger = logging.getLogger(__name__)
 
 MOTIVO_BONIFICA = "bonifica_prima_nota_salari_doppioni_2026-09-04"
+MOTIVO_SENZA_BUSTA = "attesa_senza_busta_2026-10-06"
 COLLECTION = "prima_nota_salari"
 
 
@@ -97,6 +99,52 @@ async def _righe_attive(db) -> List[Dict[str, Any]]:
     if hasattr(cursor, "to_list"):
         return await cursor.to_list(None)
     return [riga async for riga in cursor]
+
+
+async def indice_buste_esistenti(db) -> Tuple[set, set]:
+    """Id e identita' logica (CF, anno, mese, tipo) delle buste che ci sono davvero.
+
+    Una attesa di stipendio nasce da una busta: se la busta non c'e' piu'
+    (riletta, sostituita, scartata) l'attesa non ha niente da mostrare e il
+    titolare non puo' confermarla con un documento davanti.
+    """
+    righe = await db["cedolini"].find(
+        {}, {"_id": 0, "id": 1, "codice_fiscale": 1, "anno": 1, "mese": 1, "tipo": 1,
+             "status": 1, "entity_status": 1},
+    ).to_list(None)
+    ids: set = set()
+    chiavi: set = set()
+    for busta in righe:
+        if "deleted" in (str(busta.get("status") or "").lower(), str(busta.get("entity_status") or "").lower()):
+            continue
+        if busta.get("id"):
+            ids.add(str(busta["id"]))
+        cf = str(busta.get("codice_fiscale") or "").strip().upper()
+        try:
+            anno, mese = int(busta.get("anno")), int(busta.get("mese"))
+        except (TypeError, ValueError):
+            continue
+        if cf:
+            chiavi.add((cf, anno, mese, tipo_cedolino_canonico(busta.get("tipo"))))
+    return ids, chiavi
+
+
+def attesa_senza_busta(
+    riga: Dict[str, Any], chiave: Optional[ChiaveSalario], ids: set, chiavi: set,
+) -> bool:
+    """Vero solo se NIENTE prova la busta e NIENTE prova un pagamento.
+
+    Con un bonifico agganciato o gia' riconciliata la riga resta com'e': il
+    pagamento e' un fatto, e la busta mancante e' un problema da segnalare,
+    non da ritirare. Senza identita' risolta non si decide.
+    """
+    if chiave is None or riga.get("riconciliato"):
+        return False
+    if _movimento_ids(riga) or float(riga.get("importo_bonifico") or 0) > 0:
+        return False
+    if str(riga.get("cedolino_id") or "") in ids:
+        return False
+    return chiave not in chiavi
 
 
 async def analizza(db) -> Dict[str, Any]:
@@ -175,6 +223,15 @@ async def analizza(db) -> Dict[str, Any]:
         if divergente:
             da_riallineare.append({**_sintesi(riga), "_riga": riga})
 
+    ids_buste, chiavi_buste = await indice_buste_esistenti(db)
+    gia_marcate = {r["id"] for g in gruppi_doppioni for r in g["_marcate"]}
+    senza_busta: List[Dict[str, Any]] = []
+    for riga in righe:
+        if riga.get("id") in gia_marcate:
+            continue
+        if attesa_senza_busta(riga, chiave_logica_riga(riga, indice), ids_buste, chiavi_buste):
+            senza_busta.append(_sintesi(riga))
+
     gruppi_doppioni.sort(key=lambda g: (g["anno"], g["mese"], g["codice_fiscale"]))
     ambigue_importo_diverso.sort(key=lambda g: (g["anno"], g["mese"], g["codice_fiscale"]))
 
@@ -189,6 +246,8 @@ async def analizza(db) -> Dict[str, Any]:
             len(g["righe"]) for g in ambigue_importo_diverso
         ),
         "totale_righe_da_riallineare_pagamento": len(da_riallineare),
+        "totale_attese_senza_busta": len(senza_busta),
+        "attese_senza_busta": senza_busta,
         "gruppi_doppioni": gruppi_doppioni,
         "ambigue_importo_diverso": ambigue_importo_diverso,
         "da_riallineare_pagamento": da_riallineare,
@@ -319,10 +378,27 @@ async def applica(db, actor: Optional[str] = None) -> Dict[str, Any]:
             await db[COLLECTION].update_one({"id": riga["id"]}, {"$set": campi})
             righe_riallineate += 1
 
+    # Attese di pagamento la cui busta non esiste piu' e che non hanno nessun
+    # pagamento: ritirate per id (mai cancellate), col motivo, reversibili.
+    attese_ritirate = 0
+    for voce in analisi["attese_senza_busta"]:
+        await db[COLLECTION].update_one(
+            {"id": voce["id"]},
+            {"$set": {
+                "entity_status": "deleted",
+                "status": "deleted",
+                "deleted_reason": MOTIVO_SENZA_BUSTA,
+                "deleted_at": adesso,
+                "updated_at": adesso,
+            }},
+        )
+        attese_ritirate += 1
+
     esito = _pubblica(analisi)
     esito.update({
         "dry_run": False,
         "eseguita_at": adesso,
+        "attese_ritirate_senza_busta": attese_ritirate,
         "righe_marcate": righe_marcate,
         "righe_pagamento_riallineate": righe_riallineate,
         "relazioni_revocate": relazioni_revocate_tot,
