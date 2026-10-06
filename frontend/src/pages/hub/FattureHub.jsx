@@ -1,8 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { FileOutput, FileStack, ShoppingCart, Wallet } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
-import { HubTabs, PageLoader } from '../../components/ds';
+import { PageLoader } from '../../components/ds';
 import { PageHeader } from '../../components/ds/PageHeader';
 import { sezioneFatture } from './segmentiHub';
 
@@ -21,7 +20,6 @@ const SEZIONI = {
 export default function FattureHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
-  const navigate = useNavigate();
   const sezione = sezioneFatture(location.pathname);
 
   // Una sezione gia' aperta resta montata (si torna senza ricaricare);
@@ -40,17 +38,6 @@ export default function FattureHub() {
     <div style={{ width: '100%' }}>
       {/* Corrispettivi e fatture emesse hanno la loro testata; l'archivio la prende qui. */}
       {sezione === 'archivio' && <PageHeader title="Fatture ricevute" style={{ marginBottom: 14 }} />}
-      <HubTabs
-        testIdPrefix="tab-fatture"
-        activeId={sezione}
-        onSelect={tab => navigate(tab.to)}
-        tabs={[
-          { id: 'archivio', label: 'Fatture ricevute', Icon: FileStack, to: '/fatture' },
-          { id: 'righe', label: 'Righe acquisti', Icon: ShoppingCart, to: '/fatture/righe' },
-          { id: 'emesse', label: 'Fatture emesse', Icon: FileOutput, to: '/fatture/emesse' },
-          { id: 'corrispettivi', label: 'Corrispettivi', Icon: Wallet, to: '/fatture/corrispettivi' },
-        ]}
-      />
       {Object.entries(SEZIONI).map(([id, Contenuto]) => (
         <div key={id} style={{ display: sezione === id ? 'block' : 'none' }}>
           <Suspense fallback={<PageLoader />}>
