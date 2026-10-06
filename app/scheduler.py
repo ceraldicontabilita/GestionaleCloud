@@ -816,6 +816,16 @@ def start_scheduler():
                 len(r.get("giornate") or []), r.get("totale_lordo", 0),
                 r.get("totale_netto", 0),
             )
+            # Dopo il giro normale, un mese di storico dal 01/01/2026 (cursore in sistema_stato).
+            try:
+                storico = await sumup_sync.recupera_storico(Database.get_db())
+                if not storico.get("completato"):
+                    logger.info("[SCHEDULER-SUMUP] storico %s -> %s: giornate con dati=%s",
+                                storico.get("dal"), storico.get("al"), storico.get("giornate"))
+            except sumup_sync.SumUpNonConfigurato:
+                raise
+            except Exception as exc:  # il giro normale e' gia' fatto: lo storico riprova al prossimo
+                logger.error("[SCHEDULER-SUMUP] storico non riuscito: %s: %s", type(exc).__name__, exc)
         except sumup_sync.SumUpNonConfigurato:
             logger.info("[SCHEDULER-SUMUP] credenziali non configurate")
         except Exception as e:

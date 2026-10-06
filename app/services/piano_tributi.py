@@ -41,6 +41,7 @@ QUIETANZA_SENZA_BANCA = "quietanza_senza_banca"
 DA_PAGARE = "da_pagare"
 SCADUTO_NON_PAGATO = "scaduto_non_pagato"
 MANCA_F24 = "manca_f24"
+NESSUN_F24 = "nessun_f24"  # voce non obbligatoria: nessun F24 trovato, senza dichiararlo dovuto
 FUTURO = "futuro"
 DA_VERIFICARE_A_MANO = "da_verificare_a_mano"
 CREDITO_USATO = "credito_usato"
@@ -53,6 +54,7 @@ ETICHETTE = {
     DA_PAGARE: "F24 arrivato, da pagare",
     SCADUTO_NON_PAGATO: "F24 scaduto, nessun pagamento",
     MANCA_F24: "Manca F24",
+    NESSUN_F24: "Nessun F24 in archivio",
     FUTURO: "Non ancora scaduto",
     DA_VERIFICARE_A_MANO: "Fuori F24: da verificare",
     CREDITO_USATO: "Credito usato",
@@ -67,6 +69,7 @@ _STATO_ATTESA = {
     DA_PAGARE: ExpectationStatus.ATTESO.value,
     SCADUTO_NON_PAGATO: ExpectationStatus.ATTESO.value,
     MANCA_F24: ExpectationStatus.ATTESO.value,
+    NESSUN_F24: ExpectationStatus.ATTESO.value,
     FUTURO: ExpectationStatus.ATTESO.value,
     CREDITO_USATO: ExpectationStatus.NON_APPLICABILE.value,
     CREDITO_ASSENTE: ExpectationStatus.NON_APPLICABILE.value,
@@ -96,7 +99,7 @@ PIANO_BASE: List[Dict[str, Any]] = [
     _voce("inps_dm10", "INPS", "Contributi dipendenti (DM10)", ["DM10"],
           periodo="mese", mesi=MESI_TUTTI, anno_offset=0),
     _voce("inps_cxx", "INPS", "Gestione separata (CXX)", ["CXX"],
-          periodo="mese", mesi=MESI_TUTTI, anno_offset=0),
+          periodo="mese", mesi=MESI_TUTTI, anno_offset=0, obbligatorio=False),
     _voce("add_regionale_3802", "Regione", "Addizionale regionale, rate del saldo", ["3802"],
           periodo="mese", mesi=MESI_RATE_SALDO, anno_offset=-1),
     _voce("add_comunale_saldo_3848", "Comune", "Addizionale comunale, rate del saldo", ["3848"],
@@ -332,7 +335,12 @@ def _casella(
     elif voce.get("periodo") == "manuale":
         stato = DA_VERIFICARE_A_MANO
     elif not versamenti:
-        stato = MANCA_F24 if scadenza and scadenza < oggi else FUTURO
+        # Una voce non obbligatoria (es. Gestione separata: si versa solo se nel mese ci sono compensi)
+        # non e' «mancante»: l'archivio non ha un F24 e basta.
+        if scadenza and scadenza < oggi:
+            stato = MANCA_F24 if voce.get("obbligatorio", True) else NESSUN_F24
+        else:
+            stato = FUTURO
     else:
         # Piu' versamenti diversi nello stesso periodo (es. un ravvedimento):
         # la casella prende lo stato peggiore, perche' uno non basta a
@@ -354,6 +362,7 @@ def _casella(
         "giorni_scaduto": (
             (oggi - scadenza).days
             if not versamenti and scadenza and scadenza < oggi and voce.get("periodo") != "manuale" and not credito
+            and voce.get("obbligatorio", True)
             else None),
         "stato": stato,
         "etichetta_stato": ETICHETTE[stato],

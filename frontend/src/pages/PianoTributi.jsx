@@ -18,6 +18,7 @@ const VARIANTE = {
   da_pagare: 'accent',
   scaduto_non_pagato: 'danger',
   manca_f24: 'danger',
+  nessun_f24: 'neutral',
   futuro: 'neutral',
   credito_usato: 'info',
   credito_assente: 'neutral',
@@ -121,6 +122,9 @@ function DettaglioCasella({ voce, casella }) {
       {voce.nota && <div style={{ marginTop: 6 }}>{voce.nota}</div>}
       {!casella.modelli.length && casella.stato === 'manca_f24' && (
         <div style={{ marginTop: 6 }}>Nessun F24 in archivio per questo periodo: la scadenza e' passata.</div>
+      )}
+      {!casella.modelli.length && casella.stato === 'nessun_f24' && (
+        <div style={{ marginTop: 6 }}>Nessun F24 in archivio per questo periodo. Questa voce non e' obbligatoria ogni mese: si versa solo se c'e' qualcosa di dovuto.</div>
       )}
       {casella.modelli.map(m => (
         <div key={m.f24_id} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}` }}>

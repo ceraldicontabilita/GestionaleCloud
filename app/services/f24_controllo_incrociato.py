@@ -372,12 +372,25 @@ def _movimento_libero(m: Dict[str, Any]) -> bool:
 
 # ── caricamento del registro ─────────────────────────────────────────────────
 
+def modello_attivo(f24: Dict[str, Any]) -> bool:
+    """Un modello in quarantena o sostituito da una versione piu' recente non e' un modello del registro.
+
+    La quarantena dei doppioni mette `status=eliminato`; una «versione superata» (decisione del titolare)
+    puo' lasciare lo stato com'era e scrivere solo `motivo_quarantena` e `superato_da`: senza questo
+    controllo la vecchia versione resta un F24 da pagare e il Piano tributi dice «scaduto, nessun
+    pagamento» per un mese che invece e' pagato dalla versione nuova.
+    """
+    if f24.get("entity_status") == "deleted":
+        return False
+    return not (f24.get("superato_da") or f24.get("motivo_quarantena"))
+
+
 async def carica_registro(db) -> Dict[str, Any]:
     """Legge una volta sola modelli, quietanze e addebiti bancari F24."""
     modelli = await db[COLL_F24].find(
         {"status": {"$ne": "eliminato"}}, {"_id": 0, "pdf_data": 0},
     ).to_list(5000)
-    modelli = [f for f in modelli if f.get("entity_status") != "deleted"]
+    modelli = [f for f in modelli if modello_attivo(f)]
 
     quietanze: List[Dict[str, Any]] = []
     fiscal = await db[COLL_FISCAL_DOCUMENTS].find(

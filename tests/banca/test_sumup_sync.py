@@ -375,3 +375,28 @@ def test_senza_credenziali_si_ferma_invece_di_scrivere_a_vuoto(monkeypatch):
     with pytest.raises(sumup_sync.SumUpNonConfigurato):
         _sincronizza(db, [_tx("t1", 100.0)])
     assert _run(db.chiusure_pos_manuali.find({}).to_list(10)) == []
+
+
+def test_storico_parte_dal_primo_gennaio_a_blocchi_e_non_scrive_i_giorni_vuoti(monkeypatch):
+    """Il recupero storico riempie dal 01/01/2026 un mese per giro, col cursore, e non materializza gli zeri."""
+    from datetime import date
+
+    db = _db()
+    chiamate = []
+
+    async def finta(db_, dal, al, **kw):
+        chiamate.append((dal, al, kw))
+        return {"giornate": []}
+
+    monkeypatch.setattr(sumup_sync, "sincronizza", finta)
+    oggi = date(2026, 10, 6)
+    primo = _run(sumup_sync.recupera_storico(db, oggi=oggi))
+    assert (primo["dal"], primo["al"]) == ("2026-01-01", "2026-01-31")
+    secondo = _run(sumup_sync.recupera_storico(db, oggi=oggi))
+    assert secondo["dal"] == "2026-02-01"
+    assert all(kw["materializza_zeri"] is False for _, _, kw in chiamate)
+    # Arrivato alla finestra del giro normale (oggi - 31 giorni) si ferma.
+    for _ in range(20):
+        esito = _run(sumup_sync.recupera_storico(db, oggi=oggi))
+    assert esito["completato"] is True
+    assert max(al for _, al, _ in chiamate) == "2026-09-05"
