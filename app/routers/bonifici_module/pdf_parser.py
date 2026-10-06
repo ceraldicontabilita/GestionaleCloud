@@ -1,6 +1,7 @@
 """
 Bonifici Module - PDF extraction e parsing.
 """
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import io
@@ -279,9 +280,72 @@ def estrai_rif_interno(text: str) -> str | None:
             return m.group(1).upper()
     return None
 
+_MESI_EN = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+
+
+def _extract_sumup_receipt(lines: List[str]) -> Dict[str, Any]:
+    """«Ricevuta di bonifico» di SumUp (conto/carta SumUp): mittente prima, beneficiario dopo.
+
+    Il lettore generico prendeva il primo IBAN (quello di SumUp, il mittente) per il
+    beneficiario, il nome dal nome file e come causale «pagamento». Qui i campi si leggono
+    dalle etichette: «Causale pagamento <data>» + riga dopo, «Nome <mittente>» + riga
+    del beneficiario, IBAN in ordine mittente → beneficiario. Il «Riferimento esterno»
+    identifica l'operazione: due PDF scaricati in giorni diversi sono lo stesso bonifico.
+    """
+    testo = "\n".join(lines)
+    if "Ricevuta di bonifico" not in testo or "SUMU" not in testo.upper().replace(" ", ""):
+        return {}
+    out: Dict[str, Any] = {}
+    for i, riga in enumerate(lines):
+        m = re.match(r"Causale pagamento\s+(\d{1,2})\s+([A-Za-z]{3})\w*\s+(\d{4})", riga)
+        if m and m.group(2).lower() in _MESI_EN:
+            out["data"] = datetime(int(m.group(3)), _MESI_EN[m.group(2).lower()], int(m.group(1)))
+            if i + 1 < len(lines):
+                out["causale"] = normalize_str(lines[i + 1])
+        if riga == "Riferimento esterno" and i + 1 < len(lines):
+            out["cro_trn"] = lines[i + 1].strip()
+        m = re.match(r"Nome\s+(.+)$", riga)
+        if m and "ordinante_nome" not in out:
+            out["ordinante_nome"] = normalize_str(m.group(1))
+            if i + 1 < len(lines) and not re.match(r"IBAN\b", lines[i + 1]):
+                out["beneficiario_nome"] = normalize_str(lines[i + 1])
+    ibans = []
+    for riga in lines:
+        candidato = re.sub(r"\s+", "", re.sub(r"^IBAN\b", "", riga)).upper()
+        if IBAN_RE.fullmatch(candidato):
+            ibans.append(candidato)
+    if len(ibans) >= 2:
+        out["ordinante_iban"], out["beneficiario_iban"] = ibans[0], ibans[1]
+    importo = re.search(r"Importo\s*[^\d\s]?\s*(\d[\d.,]*)", testo)  # il simbolo «€» puo' uscire storpiato
+    if importo:
+        raw = importo.group(1)
+        out["importo"] = round(float(raw.replace(",", "")), 2)  # SumUp scrive «€1,234.56»
+    return out
+
+
 def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str, Any]]:
     """Estrae bonifici dal testo PDF."""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    sumup = _extract_sumup_receipt(lines)
+    if sumup.get("importo") and sumup.get("beneficiario_iban"):
+        return [{
+            'data': sumup.get("data") or parse_date(text),
+            'importo': sumup["importo"],
+            'valuta': 'EUR',
+            'ordinante': {'nome': sumup.get("ordinante_nome"), 'iban': sumup.get("ordinante_iban")},
+            'beneficiario': {'nome': sumup.get("beneficiario_nome"), 'iban': sumup["beneficiario_iban"]},
+            'causale': sumup.get("causale"),
+            'direzione': 'uscita',
+            'cro_trn': sumup.get("cro_trn"),
+            'rif_interno': None,
+            'banca': None,
+            'note': None,
+            'periodo_mese': None,
+            'periodo_anno': None,
+            'mese_pagamento_file': extract_filename_metadata(filename).get('mese_pagamento_file'),
+            'anno_pagamento_file': extract_filename_metadata(filename).get('anno_pagamento_file'),
+        }]
     table_row = _extract_transfer_table_row(lines)
 
     results: List[Dict[str, Any]] = []

@@ -12,6 +12,7 @@ import logging
 from app.database import Database, Collections
 from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.utils.id_fattura import filtro_id
 from app.services.payment_document_links import (
     collega_bonifico_fatture,
     valuta_fattura_bonifico,
@@ -50,11 +51,19 @@ async def associa_fattura_a_bonifico(
             ),
         )
 
-    fattura = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0})
+    # Su `invoices` l'id e' un numero su meta' delle righe: si cerca con testo e intero.
+    fattura = await db[Collections.INVOICES].find_one(filtro_id(fattura_id), {"_id": 0})
     if not fattura:
         raise HTTPException(404, "Fattura non trovata")
     compatibilita = _valuta_fattura_bonifico(bonifico, fattura)
-    if not compatibilita["compatibile"]:
+    # Scelta esplicita del titolare fra i candidati: senza il numero in causale bastano
+    # identita' del fornitore e importo al centesimo (mai solo l'importo).
+    scelta_dal_titolare = (
+        not compatibilita["compatibile"]
+        and "importo_esatto" in compatibilita["evidenze"]
+        and "identita_fornitore" in compatibilita["evidenze"]
+    )
+    if not compatibilita["compatibile"] and not scelta_dal_titolare:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -73,7 +82,9 @@ async def associa_fattura_a_bonifico(
         )
 
     if existing:
-        await collega_bonifico_fatture(db, bonifico, [fattura], auto=False)
+        await collega_bonifico_fatture(
+            db, bonifico, [fattura], auto=False,
+            evidenze=compatibilita["evidenze"] if scelta_dal_titolare else None)
         return {"success": True, "message": "Fattura associata al bonifico (transfers)"}
 
     # 2) Registro storico: gli identificativi sono normalizzati a stringa.
@@ -352,8 +363,19 @@ async def get_fatture_compatibili(bonifico_id: str) -> Dict[str, Any]:
     fatture = []
     for f in fatture_raw:
         valutazione = _valuta_fattura_bonifico(bonifico, f)
-        if not valutazione["compatibile"]:
+        evidenze_f = valutazione["evidenze"]
+        # Senza il numero in causale (es. «Preventivo N 1908» pagato, fattura emessa dopo)
+        # restano candidati da scegliere: stessa identita' del fornitore e importo al
+        # centesimo. Mai applicati da soli (score 60 = proposta).
+        solo_candidato = (
+            not valutazione["compatibile"]
+            and "importo_esatto" in evidenze_f
+            and "identita_fornitore" in evidenze_f
+        )
+        if not valutazione["compatibile"] and not solo_candidato:
             continue
+        if solo_candidato:
+            valutazione = {**valutazione, "score": 60}
         importo_f = valutazione["importo_fattura"]
         fatture.append({
             "id": f.get("id"),

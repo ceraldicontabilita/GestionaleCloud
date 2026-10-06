@@ -30,6 +30,7 @@ agganciati; qui le righe che ha marcato passano nella cartella.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections import defaultdict
@@ -215,6 +216,111 @@ async def _prima_nota_salari(db, *, dry_run: bool, actor: str) -> Dict[str, Any]
                                                   if not isinstance(v, list)}, "spostate": spostate}
 
 
+async def _rileggi_ricevute_sumup(db, *, dry_run: bool) -> Dict[str, Any]:
+    """Ricevute SumUp lette col beneficiario sbagliato: si rileggono per id, solo se non collegate.
+
+    Il lettore vecchio prendeva il primo IBAN (quello SumUp, il mittente) per il beneficiario.
+    Si ripara quando la rilettura dice un beneficiario diverso da quello salvato; un transfer
+    gia' agganciato (stipendio, fattura, movimento, HR) si elenca e non si tocca.
+    """
+    import base64
+
+    from app.routers.bonifici_module.common import build_dedup_key
+    from app.routers.bonifici_module.pdf_parser import extract_transfers_from_text, read_pdf_bytes
+    from app.services.bonifici_pdf_ingest import transfer_collegato
+
+    righe = await db["bonifici_transfers"].find(
+        {}, {"_id": 0, "id": 1, "beneficiario": 1, "ordinante": 1, "salario_associato": 1,
+             "fattura_associata": 1, "fatture_associate": 1, "fattura_id": 1, "fattura_associata_id": 1,
+             "fattura_ids": 1, "movimento_estratto_conto_id": 1, "hr_deposito": 1}).to_list(None)
+
+    def _sumup(r) -> bool:
+        return any("SUMU" in str((r.get(k) or {}).get("iban") or "").upper()
+                   for k in ("beneficiario", "ordinante"))
+
+    sumup = [r for r in righe if _sumup(r)]
+    da_rivedere = [r["id"] for r in sumup if transfer_collegato(r)]
+    ids = [r["id"] for r in sumup if r["id"] not in da_rivedere]
+    corrette = 0
+    for rid in ids:
+        completa = await db["bonifici_transfers"].find_one({"id": rid}, {"_id": 0})
+        dati = (completa or {}).get("pdf_data")
+        if not dati:
+            continue
+        try:
+            testo = await asyncio.to_thread(read_pdf_bytes, base64.b64decode(dati))
+            letto = extract_transfers_from_text(testo, filename=completa.get("source_file") or "")[0]
+        except Exception as exc:
+            logger.warning("[doppioni] ricevuta SumUp %s illeggibile: %s %s", rid, type(exc).__name__, exc)
+            continue
+        iban_letto = str((letto.get("beneficiario") or {}).get("iban") or "")
+        if not letto.get("cro_trn") or iban_letto == str((completa.get("beneficiario") or {}).get("iban") or ""):
+            continue  # non e' una ricevuta SumUp da correggere, o e' gia' giusta
+        corrette += 1
+        if not dry_run:
+            data = letto.get("data")
+            campi = {
+                "beneficiario": letto["beneficiario"], "ordinante": letto["ordinante"],
+                "causale": letto["causale"], "cro_trn": letto["cro_trn"],
+                **({"data": data.isoformat()} if hasattr(data, "isoformat") else {}),
+                "updated_at": _ora(),
+            }
+            # La chiave di deduplica segue l'identita' corretta (importo, beneficiario, data, causale).
+            campi["dedup_key"] = build_dedup_key({
+                "iban_beneficiario": iban_letto, "importo": completa.get("importo"),
+                "data_esecuzione": data, "causale": letto["causale"]})
+            await db["bonifici_transfers"].update_one(
+                {"id": rid}, {"$set": campi, "$unset": {"hr_deposito": ""}})  # HR lo rilegge col beneficiario giusto
+    return {"collezione": "bonifici_transfers", "ricevute_sumup_da_rileggere": len(ids), "corrette": corrette,
+            "gia_collegate_da_rivedere": da_rivedere[:20]}
+
+
+async def _stampe_fattura_tra_bonifici(db, *, dry_run: bool, actor: str) -> Dict[str, Any]:
+    """Stampe PDF di fatture entrate come bonifici (importo = imponibile): in quarantena per id.
+
+    Chi controllare lo sceglie l'assenza di un riferimento di banca; la decisione e' del contenuto del PDF.
+    """
+    import base64
+
+    from app.routers.bonifici_module.pdf_parser import read_pdf_bytes
+    from app.services.bonifici_pdf_ingest import e_stampa_fattura
+
+    # Il contenuto decide; per non rileggere ogni PDF si guardano i transfer senza
+    # riferimento di banca (CRO/TRN/rif. interno): una ricevuta vera ne porta uno.
+    from app.services.bonifici_pdf_ingest import transfer_collegato
+
+    candidati = [
+        r for r in await db["bonifici_transfers"].find(
+            {}, {"_id": 0, "id": 1, "cro_trn": 1, "rif_interno": 1, "salario_associato": 1,
+                 "fattura_associata": 1, "fatture_associate": 1, "fattura_id": 1,
+                 "fattura_associata_id": 1, "fattura_ids": 1, "movimento_estratto_conto_id": 1,
+                 "hr_deposito": 1}).to_list(None)
+        if not r.get("cro_trn") and not r.get("rif_interno") and not transfer_collegato(r)
+    ]
+    trovati: List[str] = []
+    for cand in candidati:
+        completa = await db["bonifici_transfers"].find_one({"id": cand["id"]}, {"_id": 0})
+        dati = (completa or {}).get("pdf_data")
+        if not dati:
+            continue
+        try:
+            testo = await asyncio.to_thread(read_pdf_bytes, base64.b64decode(dati))
+        except Exception as exc:
+            logger.warning("[doppioni] stampa fattura %s illeggibile: %s %s", cand["id"], type(exc).__name__, exc)
+            continue
+        if not e_stampa_fattura(testo):
+            continue
+        trovati.append(cand["id"])
+        if not dry_run:
+            from app.services.bonifici_pdf_ingest import togli_code_hr_e_inbox
+
+            await togli_code_hr_e_inbox(db, cand["id"])
+            await sposta_nella_cartella(
+                db, "bonifici_transfers", completa, None,
+                motivo="stampa PDF di una fattura, non un bonifico", actor=actor)
+    return {"collezione": "bonifici_transfers", "stampe_fattura": len(trovati), "ids": trovati[:20]}
+
+
 async def ripulisci(db, *, dry_run: bool = True, actor: str = "sistema") -> Dict[str, Any]:
     """Cedolini, Prima Nota salari, quietanze F24, bonifici e F24: un giro solo."""
     return {
@@ -226,7 +332,9 @@ async def ripulisci(db, *, dry_run: bool = True, actor: str = "sistema") -> Dict
         "quietanze_f24": await _tratta(db, "quietanze_f24", identita_quietanza, _punteggio_quietanza,
                                        dry_run=dry_run, actor=actor,
                                        riferimenti=(("f24_unificato", "quietanza_id"),)),
+        "bonifici_sumup_riletti": await _rileggi_ricevute_sumup(db, dry_run=dry_run),
         "bonifici_transfers": await _tratta(db, "bonifici_transfers", identita_bonifico,
                                             _punteggio_bonifico, dry_run=dry_run, actor=actor),
+        "bonifici_stampe_fattura": await _stampe_fattura_tra_bonifici(db, dry_run=dry_run, actor=actor),
         "f24_unificato": await _f24_gia_in_quarantena(db, dry_run=dry_run, actor=actor),
     }

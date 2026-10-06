@@ -324,6 +324,34 @@ ANNI_ACCREDITI_NON_REGISTRATI = frozenset({2023})
 STATO_NON_REGISTRATO = "non_registrato"
 
 
+CAMPI_COLLEGAMENTO = (
+    "salario_associato", "fattura_associata", "fatture_associate", "fattura_id",
+    "fattura_associata_id", "fattura_ids", "movimento_estratto_conto_id",
+)
+
+
+def transfer_collegato(transfer: Dict[str, Any]) -> bool:
+    """Gia' agganciato a uno stipendio, a una fattura o a un movimento, o depositato in HR come pagamento.
+
+    Un transfer cosi' ha collegamenti derivati dalla sua identita': non si corregge ne' si
+    toglie dall'archivio da un ripasso, perche' i collegamenti resterebbero attaccati ai dati vecchi.
+    """
+    return bool(
+        any(transfer.get(c) for c in CAMPI_COLLEGAMENTO)
+        or (transfer.get("hr_deposito") or {}).get("esito") in {"depositato", "arricchito"}
+    )
+
+
+def e_stampa_fattura(testo: str) -> bool:
+    """Stampa di una fattura elettronica, riconosciuta dal contenuto (mai dal nome)."""
+    compatto = re.sub(r"\s+", " ", (testo or "").upper())
+    return (
+        "CEDENTE" in compatto
+        and "CESSIONARIO" in compatto
+        and ("IMPONIBILE" in compatto or "TOTALE DOCUMENTO" in compatto)
+    )
+
+
 def accredito_non_registrabile(parsed: Dict[str, Any]) -> bool:
     """Vero per un bonifico ricevuto (``direzione='entrata'``) di un anno escluso."""
     if parsed.get("direzione") != "entrata":
@@ -346,6 +374,24 @@ def _esito_non_registrato(parsed: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+async def togli_code_hr_e_inbox(db, transfer_id: str) -> None:
+    """Toglie, per id, la riga «da associare» di HR e la copia in inbox che citano un transfer."""
+    from app.services.hr_pagamenti_deposito import _db_hr
+
+    db_hr = _db_hr()
+    if db_hr is not None:
+        async for riga in db_hr.bonifici_da_associare.find(
+            {"gestionale_transfer_id": transfer_id}, {"_id": 0, "id": 1, "stato": 1}
+        ):
+            if riga.get("id") and riga.get("stato") == "da_associare":
+                await db_hr.bonifici_da_associare.delete_one({"id": riga["id"]})
+    async for doc in db["documents_inbox"].find(
+        {"bonifico_transfer_id": transfer_id}, {"_id": 0, "id": 1}
+    ):
+        if doc.get("id"):
+            await db["documents_inbox"].delete_one({"id": doc["id"]})
+
+
 async def _togli_accredito_registrato(db, transfer: Dict[str, Any]) -> bool:
     """Toglie, per id, un accredito escluso gia' registrato e la sua coda HR.
 
@@ -366,20 +412,7 @@ async def _togli_accredito_registrato(db, transfer: Dict[str, Any]) -> bool:
             "Accredito escluso %s non tolto: gia' collegato (hr=%s)", transfer_id, esito_hr
         )
         return False
-    from app.services.hr_pagamenti_deposito import _db_hr
-
-    db_hr = _db_hr()
-    if db_hr is not None:
-        async for riga in db_hr.bonifici_da_associare.find(
-            {"gestionale_transfer_id": transfer_id}, {"_id": 0, "id": 1, "stato": 1}
-        ):
-            if riga.get("id") and riga.get("stato") == "da_associare":
-                await db_hr.bonifici_da_associare.delete_one({"id": riga["id"]})
-    async for doc in db["documents_inbox"].find(
-        {"bonifico_transfer_id": transfer_id}, {"_id": 0, "id": 1}
-    ):
-        if doc.get("id"):
-            await db["documents_inbox"].delete_one({"id": doc["id"]})
+    await togli_code_hr_e_inbox(db, transfer_id)
     await db["bonifici_transfers"].delete_one({"id": transfer_id})
     return True
 
@@ -400,6 +433,10 @@ async def importa_pdf_bonifico(
     (ponte HR, ``hr_pagamenti_deposito.fascicolo_persona``)."""
     if not content.startswith(b"%PDF"):
         return {"status": "error", "message": "Il file non e' un PDF valido"}
+    if e_stampa_fattura(await asyncio.to_thread(read_pdf_bytes, content)):
+        # La stampa di una fattura dice «Bonifico» e IBAN, ma non e' un pagamento.
+        return {"status": "non_bonifico",
+                "message": "Stampa PDF di una fattura: la fattura entra dall'XML dello SDI"}
     digest = hashlib.sha256(content).hexdigest()
     esistente = await db["bonifici_transfers"].find_one(
         {"document_hash": digest}, {"_id": 0}
@@ -410,6 +447,11 @@ async def importa_pdf_bonifico(
         # PDF originale e correggiamo i soli metadati estratti.
         text = await asyncio.to_thread(read_pdf_bytes, content)
         reparsed = extract_transfers_from_text(text, filename=filename)[0]
+        if transfer_collegato(esistente):
+            # La stessa ricevuta ricaricata non riscrive l'identita' di un pagamento gia' agganciato.
+            return {"status": "duplicate", "transfer_id": esistente.get("id"),
+                    "associato": bool(esistente.get("salario_associato") or esistente.get("fattura_associata")),
+                    "motivo": "transfer_collegato_non_riletto"}
         beneficiario = reparsed.get("beneficiario") or {}
         metadata_file = extract_filename_metadata(filename)
         if not beneficiario.get("nome"):
@@ -550,6 +592,17 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
             status = result.get("status")
             if status == STATO_NON_REGISTRATO:
                 await db["documents_inbox"].delete_one(document_filter)
+                continue
+            if status == "non_bonifico":
+                # Stampa di una fattura: non e' un bonifico, non resta in coda come tale.
+                await db["documents_inbox"].update_one(
+                    document_filter,
+                    {"$set": {
+                        "category": "fattura_pdf", "processed": True, "status": "fuori_contabilita",
+                        "processing_error": result.get("message"),
+                        "processed_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
                 continue
             if status == "saved":
                 stats["salvati"] += 1

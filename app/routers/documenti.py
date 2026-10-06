@@ -2099,6 +2099,17 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     ):
         return "avviso_pagopa"
 
+    # Stampa PDF di una fattura elettronica: dice «Bonifico» e IBAN nelle condizioni
+    # di pagamento, ma e' la fattura, non una prova di pagamento. Letta come bonifico
+    # prendeva l'imponibile (parcella Marotta 1.612,00 invece di 1.966,64 - ritenuta).
+    if (
+        lower.endswith(".pdf")
+        and "CEDENTE" in compact_pdf_text
+        and "CESSIONARIO" in compact_pdf_text
+        and ("IMPONIBILE" in compact_pdf_text or "TOTALE DOCUMENTO" in compact_pdf_text)
+    ):
+        return "fattura"
+
     # Segnali espliciti nel nome, dal piu specifico al piu generico.
     if "identita" in lower or "identity_card" in lower:
         return "documento_identita"
@@ -3953,6 +3964,14 @@ async def upload_documento_automatico(
             ingest = await importa_pdf_bonifico(
                 db, content, filename, source="upload_manuale_import_documenti"
             )
+            if ingest.get("status") == "non_bonifico":
+                await db["documents_inbox"].delete_one({"id": doc_id})
+                result["success"] = False
+                result["tipo_rilevato"] = "fattura_pdf"
+                result["fuori_contabilita"] = (
+                    "copia PDF di una fattura italiana: la fattura entra dall'XML dello SDI")
+                result["message"] = ingest.get("message")
+                return result
             if ingest.get("status") in {STATO_NON_REGISTRATO, "duplicate"}:
                 # Accredito di un anno che non si registra, o ricevuta gia' in
                 # archivio: la copia appena messa in inbox non serve a nessuno,
