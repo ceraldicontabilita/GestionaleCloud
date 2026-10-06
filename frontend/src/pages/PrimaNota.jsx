@@ -406,6 +406,8 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
 export function CartaSumUp({ dati, anno }) {
   const giorni = dati?.giorni || [];
   const vendite = dati?.giornate_vendite || [];
+  // Senza il collegamento per payout (risposta vecchia) tutti i payout restano elencati a parte.
+  const nonCollegati = dati?.accrediti_non_collegati ?? giorni;
   const creditoNegativo = Number(dati?.credito_sumup_aperto || 0) < 0;
   return (
     <section aria-labelledby="titolo-conto-sumup" style={{ display: 'grid', gap: 12 }}>
@@ -435,22 +437,26 @@ export function CartaSumUp({ dati, anno }) {
 
       <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e6e3d9' }}>
-          <h2 style={{ margin: 0, fontSize: 16, color: TERRACOTTA }}>Vendite SumUp acquisite</h2>
+          <h2 id="titolo-conto-sumup" style={{ margin: 0, fontSize: 16, color: TERRACOTTA }}>Vendite e accrediti SumUp</h2>
           <p style={{ margin: '4px 0 0', color: '#7a776e', fontSize: 13 }}>
-            Transazioni archiviate dall'ultima sincronizzazione SumUp; non sono ancora accrediti bancari.
+            Ogni giornata di vendita con il suo accredito sulla Mastercard, collegati dal payout che SumUp scrive su ogni transazione.
+            La differenza è ciò che SumUp ha trattenuto (commissioni comprese): è una differenza, non una commissione dichiarata.
           </p>
         </div>
         {vendite.length === 0 ? (
           <div style={{ padding: 22, textAlign: 'center', color: '#7a776e' }}>Nessuna vendita SumUp acquisita nel {anno}.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }} data-testid="vendite-e-accrediti-sumup">
               <thead><tr style={{ background: '#f6f4ee', color: '#5f5c55', fontSize: 12 }}>
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'left' }}>Data vendita</th>
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'center' }}>Transazioni</th>
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Vendite</th>
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Rimborsi</th>
                 <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Netto</th>
+                <th scope="col" style={{ padding: '9px 14px', textAlign: 'left' }}>Accredito</th>
+                <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Ricevuto</th>
+                <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Differenza</th>
               </tr></thead>
               <tbody>{vendite.map(giorno => (
                 <tr key={giorno.data} style={{ borderTop: '1px solid #f6f4ee', color: '#4c4a44', fontSize: 13 }}>
@@ -459,6 +465,21 @@ export function CartaSumUp({ dati, anno }) {
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>{eur(giorno.vendite)}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>{eur(giorno.rimborsi)}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800 }}>{eur(giorno.netto)}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    {giorno.accredito_data ? (
+                      <>
+                        {formatDateIT(giorno.accredito_data)}
+                        <div style={{ fontSize: 11, color: '#7a776e' }}>{(giorno.payout_ids || []).join(', ')}</div>
+                      </>
+                    ) : (giorno.in_attesa === undefined ? '—' : 'In attesa')}
+                    {giorno.payout_condiviso && <div style={{ fontSize: 11, color: '#c4894a' }}>Payout su più giornate</div>}
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, color: VERDE, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                    {giorno.ricevuto != null ? eur(giorno.ricevuto) : '—'}
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                    {giorno.differenza != null ? eur(giorno.differenza) : '—'}
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
@@ -466,20 +487,14 @@ export function CartaSumUp({ dati, anno }) {
         )}
       </div>
 
-      <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e6e3d9' }}>
-          <h2 id="titolo-conto-sumup" style={{ margin: 0, fontSize: 16, color: TERRACOTTA }}>
-            Accrediti giornalieri Mastercard SumUp
-          </h2>
-          <p style={{ margin: '4px 0 0', color: '#7a776e', fontSize: 13 }}>
-            Solo payout effettivamente ricevuti. Vendite, crediti verso SumUp e commissioni restano separati.
-          </p>
-        </div>
-        {giorni.length === 0 ? (
-          <div style={{ padding: 22, textAlign: 'center', color: '#7a776e' }}>
-            Nessun payout SumUp ricevuto nel {anno}.
+      {nonCollegati.length > 0 && (
+        <div style={{ background: 'white', border: '1px solid #e6e3d9', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid #e6e3d9' }}>
+            <h2 style={{ margin: 0, fontSize: 16, color: TERRACOTTA }}>Accrediti non collegati a vendite acquisite</h2>
+            <p style={{ margin: '4px 0 0', color: '#7a776e', fontSize: 13 }}>
+              Payout ricevuti per vendite che il gestionale non ha (ancora) scaricato da SumUp.
+            </p>
           </div>
-        ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
@@ -491,7 +506,7 @@ export function CartaSumUp({ dati, anno }) {
                 </tr>
               </thead>
               <tbody>
-                {giorni.map(giorno => (
+                {nonCollegati.map(giorno => (
                   <tr key={giorno.data} style={{ borderTop: '1px solid #f6f4ee', color: '#4c4a44', fontSize: 13 }}>
                     <td style={{ padding: '10px 14px' }}>{formatDateIT(giorno.data)}</td>
                     <td style={{ padding: '10px 14px' }}>{(giorno.payout_ids || []).join(', ') || '—'}</td>
@@ -504,8 +519,8 @@ export function CartaSumUp({ dati, anno }) {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

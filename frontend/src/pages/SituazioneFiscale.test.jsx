@@ -15,16 +15,15 @@ describe('Situazione fiscale dal registro F24', () => {
 
     render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi']}><SituazioneFiscale /></MemoryRouter>);
 
-    expect(await screen.findByRole('heading', { name: 'Da pagare' })).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=0');
-    expect(screen.getByRole('tab', { name: 'Pagati con quietanza' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Tutti i tributi F24' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Tributi F24' })).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/api/fiscal/obligations?raggruppa=true&limit=200&offset=0');
+    expect(screen.getByRole('tab', { name: 'Tributi F24' })).toBeInTheDocument();
   });
 
   it('Piano tributi, Tributi e Ritenute sono schede della stessa pagina', async () => {
     api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary' ? { counts: {} } : { items: [] } }));
     render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi']}><SituazioneFiscale /></MemoryRouter>);
-    await screen.findByRole('heading', { name: 'Da pagare' });
+    await screen.findByRole('heading', { name: 'Tributi F24' });
     expect(screen.getByRole('tab', { name: 'Piano tributi' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Tributi' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Ritenute' })).toBeInTheDocument();
@@ -158,7 +157,7 @@ describe('Situazione fiscale dal registro F24', () => {
       return Promise.resolve({ data: { items: [] } });
     });
 
-    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi-pagati']}><SituazioneFiscale /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi']}><SituazioneFiscale /></MemoryRouter>);
 
     expect(await screen.findByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
     expect(screen.getByText('Protocollo 24111809324228190')).toBeInTheDocument();
@@ -174,7 +173,7 @@ describe('Situazione fiscale dal registro F24', () => {
     // La ricerca la fa il server: il testo parte dopo una breve pausa.
     expect(await screen.findByText('Nessun risultato con questi filtri.')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith(
-      '/api/fiscal/obligations?status=PAID_ON_TIME&raggruppa=true&limit=200&offset=0&cerca=inesistente',
+      '/api/fiscal/obligations?raggruppa=true&limit=200&offset=0&cerca=inesistente',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Azzera filtri' }));
     expect(await screen.findByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
@@ -191,7 +190,7 @@ describe('Situazione fiscale dal registro F24', () => {
       return Promise.resolve({ data: { items: [] } });
     });
 
-    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi-pagati']}><SituazioneFiscale /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi']}><SituazioneFiscale /></MemoryRouter>);
 
     expect(await screen.findByText('Tributo pagato verificato')).toBeInTheDocument();
     expect(api.get).not.toHaveBeenCalledWith('/api/fiscal/review');
@@ -206,7 +205,7 @@ describe('Situazione fiscale dal registro F24', () => {
       return Promise.resolve({ data: { items: [] } });
     });
 
-    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi-pagati']}><SituazioneFiscale /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi']}><SituazioneFiscale /></MemoryRouter>);
 
     expect(await screen.findByText('Pagamento ancora consultabile')).toBeInTheDocument();
     expect(screen.getByText('Riepilogo temporaneamente non disponibile; i dati della sezione restano consultabili.')).toBeInTheDocument();
@@ -369,10 +368,10 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     vi.clearAllMocks();
     api.get.mockImplementation(path => {
       if (path === '/api/fiscal/summary') return Promise.resolve({ data: { counts: {} } });
-      if (path.startsWith('/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=200')) {
+      if (path.startsWith('/api/fiscal/obligations?raggruppa=true&limit=200&offset=200')) {
         return Promise.resolve({ data: { items: [documento(200)], total: 201 } });
       }
-      if (path.startsWith('/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=0')) {
+      if (path.startsWith('/api/fiscal/obligations?raggruppa=true&limit=200&offset=0')) {
         return Promise.resolve({ data: {
           items: Array.from({ length: 200 }, (_, i) => documento(i)),
           total: 201, total_groups: 201, total_rows: 201,
@@ -387,7 +386,7 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
   it('endpoint dei documenti F24: raggruppati, a pagine e filtrati sul server', () => {
     expect(endpointFor('f24', { year: '2025', creditsOnly: true }, {}, { cerca: ' 1001 ', offset: 200 }))
       .toBe('/api/fiscal/f24-rows?year=2025&credits_only=true&raggruppa=true&limit=200&offset=200&cerca=1001');
-    expect(endpointFor('tutti-tributi', {}, {}, { anno: '2024', stato: 'QUIETANZA_PRESENTE' }))
+    expect(endpointFor('tributi', {}, {}, { anno: '2024', stato: 'QUIETANZA_PRESENTE' }))
       .toBe('/api/fiscal/obligations?raggruppa=true&limit=200&offset=0&anno_documento=2024&stato_documento=QUIETANZA_PRESENTE');
   });
 
@@ -402,7 +401,7 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
 
     fireEvent.click(bottone);
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(
-      '/api/fiscal/obligations?status=TO_PAY&raggruppa=true&limit=200&offset=200',
+      '/api/fiscal/obligations?raggruppa=true&limit=200&offset=200',
     ));
     expect((await screen.findAllByText(/Tributo 200/)).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.queryByTestId('fiscal-mostra-altre')).not.toBeInTheDocument());

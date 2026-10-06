@@ -21,9 +21,7 @@ const SCHEDE_INCORPORATE = [
 ];
 
 const TABS = [
-  ['tributi', 'Da pagare'],
-  ['tributi-pagati', 'Pagati con quietanza'],
-  ['tutti-tributi', 'Tutti i tributi F24'],
+  ['tributi', 'Tributi F24'],
   ['dichiarazioni', 'Dichiarazioni'],
   ['confronto-fonti', 'Confronto fonti'],
   ['f24', 'F24 e crediti'],
@@ -37,7 +35,7 @@ const TABS = [
 // raggruppamento, filtri, conteggi e totali li fa il server
 // (registro_fiscale_f24.pagina_documenti_f24), che rende 200 documenti alla
 // volta. Le altre schede restano piccole e si filtrano qui.
-const SERVER_TABS = new Set(['tributi', 'tributi-pagati', 'tutti-tributi', 'f24']);
+const SERVER_TABS = new Set(['tributi', 'f24']);
 const RIGHE_PER_PAGINA = 200;
 
 export const parametriElenco = ({ cerca = '', anno = '', stato = '', offset = 0 } = {}) => {
@@ -74,9 +72,8 @@ export const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}, elenco = 
     return `/api/documenti/tax-codes?${params.toString()}`;
   }
   return ({
-    tributi: `/api/fiscal/obligations?status=TO_PAY&${parametriElenco(elenco)}`,
-    'tributi-pagati': `/api/fiscal/obligations?status=PAID_ON_TIME&${parametriElenco(elenco)}`,
-    'tutti-tributi': `/api/fiscal/obligations?${parametriElenco(elenco)}`,
+    // Una lista sola: «da pagare», «pagati con quietanza» e il resto sono valori del filtro Stato.
+    tributi: `/api/fiscal/obligations?${parametriElenco(elenco)}`,
     'confronto-fonti': '/api/fiscal/source-certainty',
     'crosswalk-riscossione': '/api/fiscal/crosswalk',
     riscossione: '/api/fiscal/collections',
@@ -673,7 +670,7 @@ function ElenchiFiscali() {
                 <div className="fiscal-f24-mark" aria-hidden="true">F24</div>
                 <div className="fiscal-f24-identity">
                   <small>{item.documentary_payment_status === 'QUIETANZA_PRESENTE' ? 'Quietanza F24' : 'Modello F24'}</small>
-                  <strong>Protocollo {item.protocol || 'non indicato'}</strong>
+                  <strong>Protocollo {item.protocol || item.protocollo_quietanza || 'non indicato'}</strong>
                   <span>{item.payment_date || 'Data non indicata'} · {item.rows.length} righe tributo</span>
                 </div>
                 <div className="fiscal-f24-totals"><span><small>Totale debiti</small><strong>{euro(item.debit_amount)}</strong></span><span><small>Totale crediti</small><strong>{euro(item.credit_amount)}</strong></span><span><small>Saldo delega</small><strong>{euro(item.net_amount)}</strong></span></div>
@@ -695,7 +692,7 @@ function ElenchiFiscali() {
           const technicalLabel = String(labelForClaim(item) || '');
           const title = tab === 'f24' ? `${item.tax_code || item.section || 'Riga F24'} · ${item.reference_period || 'periodo non indicato'}`
             : tab === 'dichiarazioni' ? `${item.document_type} · ${item.filing_year || 'anno da verificare'}`
-              : ((tab === 'tributi' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && item.source_kind === F24_ROW) ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`
+              : (tab === 'tributi' && item.source_kind === F24_ROW) ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`
                 : (technicalLabel.startsWith('drive-f24-row:') ? (item.description || item.tax_code || 'Tributo F24') : (technicalLabel || item.code || item.version_id || 'Record fiscale'));
           return <article key={entityId} className="fiscal-record">
             <div className="fiscal-record-header"><strong>{title}</strong>
@@ -715,9 +712,9 @@ function ElenchiFiscali() {
               {item.filename && <div style={{ marginTop: 4 }}>{item.filename}</div>}
               {item.evidence_state && <div style={{ marginTop: 4 }}><strong>{item.evidence_state === 'MODELLO_F24_NON_PROVA_BANCARIA' ? 'Modello F24: pagamento bancario da verificare' : 'Quietanza documentale: banca da verificare'}</strong></div>}
             </div>}
-            {(tab === 'tributi' || tab === 'tributi-pagati' || tab === 'tutti-tributi') && item.source_kind === F24_ROW && <div className="fiscal-record-body">
+            {tab === 'tributi' && item.source_kind === F24_ROW && <div className="fiscal-record-body">
               <div className="fiscal-data-grid"><span><small>Periodo</small><strong>{item.reference_period || 'Non indicato'}</strong></span><span><small>Debito</small><strong>{euro(item.debit_amount)}</strong></span><span><small>Credito</small><strong>{euro(item.credit_amount)}</strong></span><span><small>Data</small><strong>{item.payment_date || 'Non indicata'}</strong></span></div>
-              <div className="fiscal-file" title={item.filename}>{item.filename || 'Nome file non disponibile'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
+              <div className="fiscal-file" title={item.filename}>{item.filename || 'Nome file non disponibile'}{(item.protocol || item.protocollo_quietanza) && <> · protocollo {item.protocol || item.protocollo_quietanza}</>}</div>
               <div className="fiscal-evidence"><strong>{item.documentary_payment_status === 'QUIETANZA_PRESENTE' ? 'Quietanza documentale presente' : 'Modello F24 presente'} · riscontro bancario da verificare</strong></div>
               {item.pdf_url && <div className="fiscal-actions"><Button size="sm" variant="secondary" onClick={() => openF24Pdf(item.pdf_url)}>Apri PDF</Button></div>}
             </div>}
@@ -776,6 +773,10 @@ export default function SituazioneFiscale() {
   const senzaScheda = !TABS.some(([id]) => pathname.endsWith(`/${id}`)) && !incorporata;
   if (senzaScheda && /^\/situazione-fiscale\/?$/.test(pathname)) {
     return <Navigate to={`/situazione-fiscale/piano${search || ''}`} replace />;
+  }
+  // Le vecchie schede «Da pagare», «Pagati con quietanza» e «Tutti i tributi F24» sono una lista sola.
+  if (/\/(tributi-pagati|tutti-tributi)\/?$/.test(pathname)) {
+    return <Navigate to={`/situazione-fiscale/tributi${search || ''}`} replace />;
   }
   if (!incorporata) return <ElenchiFiscali />;
   const [id, , Scheda] = incorporata;

@@ -256,6 +256,58 @@ async def conferma_quietanza_banca(
                                code=exc.code, correlation_id=cid)
 
 
+@router.get("/modello/{f24_id}/quietanze-candidate")
+async def quietanze_candidate_modello(
+    f24_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Quietanze che pagano righe del modello per stesso codice e periodo, anche con importo diverso.
+
+    Sola lettura (`f24_proposte_quietanza.proponi_quietanze`): per ogni candidata le righe in comune
+    con la differenza di importo, le righe non trovate e il link all'originale; niente si collega da solo.
+    """
+    import uuid as _uuid
+
+    from app.services.f24_proposte_quietanza import CollegamentoNonAmmesso, proposte_per_modello
+
+    try:
+        return await proposte_per_modello(Database.get_db(), f24_id)
+    except CollegamentoNonAmmesso as exc:
+        return risposta_errore(exc.stato, message=exc.message, detail=exc.message, details=exc.details,
+                               code=exc.code, correlation_id=_uuid.uuid4().hex[:12])
+
+
+@router.post("/modello/{f24_id}/quietanze-candidate/conferma")
+async def conferma_quietanza_candidata(
+    f24_id: str,
+    body: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Il titolare collega il modello alla quietanza scelta fra le candidate per codice e periodo.
+
+    Body: `{"quietanza_id": "...", "motivo": "<chiave di MOTIVI_COLLEGAMENTO>", "motivo_testo": "..." (solo «altro»)}`.
+    Una quietanza non candidata e' 409, un motivo fuori elenco 422. Non prova la banca.
+    """
+    import uuid as _uuid
+
+    from app.services.f24_proposte_quietanza import CollegamentoNonAmmesso, conferma_collegamento_quietanza
+
+    quietanza_id = str(body.get("quietanza_id") or "").strip()
+    cid = _uuid.uuid4().hex[:12]
+    if not quietanza_id:
+        return risposta_errore(422, message="quietanza_id obbligatorio", detail="quietanza_id obbligatorio",
+                               code="QUIETANZA_OBBLIGATORIA", correlation_id=cid)
+    try:
+        return await conferma_collegamento_quietanza(
+            Database.get_db(), f24_id=f24_id, quietanza_id=quietanza_id,
+            motivo=str(body.get("motivo") or ""), motivo_testo=body.get("motivo_testo"),
+            utente=str(_admin.get("email") or _admin.get("user_id") or ""),
+        )
+    except CollegamentoNonAmmesso as exc:
+        logger.warning("[%s] collegamento F24 %s con quietanza %s rifiutato: %s", cid, f24_id, quietanza_id, exc.code)
+        return risposta_errore(exc.stato, message=exc.message, detail=exc.message, details=exc.details,
+                               code=exc.code, correlation_id=cid)
+
+
 @router.get("/stato-riconciliazione")
 async def get_stato_riconciliazione():
     """

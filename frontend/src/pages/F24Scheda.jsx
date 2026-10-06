@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Badge, PageHeader, PageLoader } from '../components/ds';
 import ApriOriginale from '../components/ApriOriginale';
 import ConfermaAddebitoF24 from '../components/ConfermaAddebitoF24';
+import CollegaQuietanzaF24 from '../components/CollegaQuietanzaF24';
 import LegendaRegole from '../components/vista/LegendaRegole';
 import { Campo, GrigliaCampi, Messaggio, Riquadro, paginaStile } from '../components/vista/Elementi';
 import { CANALI, LIVELLI_RISCONTRO } from '../lib/legendaRegole';
@@ -254,6 +255,12 @@ export function F24Dettaglio({ id, incorporato = false }) {
         <Riquadro titolo="Riscontro con la banca" testId="f24-riscontro">
           <Riscontro stato={riscontro} f24Id={id} onConfermato={() => setVersioneRiscontro(v => v + 1)} />
         </Riquadro>
+
+        {!eQuietanza && (
+          <Riquadro titolo="Quietanza trovata per tributo e periodo" testId="f24-quietanza-candidata">
+            <CollegaQuietanzaF24 f24Id={id} onCollegata={() => setVersioneRiscontro(v => v + 1)} />
+          </Riquadro>
+        )}
       </>)}
 
       {!incorporato && <LegendaRegole gruppo="f24" />}
