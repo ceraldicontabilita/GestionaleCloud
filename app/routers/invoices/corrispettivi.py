@@ -219,11 +219,17 @@ async def upload_corrispettivo_xml(
         "updated": "aggiornato",
         "duplicate": "già presente (ignorato)",
     }.get(ingest["action"], ingest["action"])
+    scartato = ingest["action"] == "scartato"
+    motivo = ingest.get("motivo")
 
     return {
-        "success": True,
+        "success": not scartato,
         "action": ingest["action"],
-        "message": f"Corrispettivo del {ingest.get('data','?')} {action_msg}",
+        "message": (
+            f"Corrispettivo del {ingest.get('data','?')} scartato: {motivo}"
+            if scartato else f"Corrispettivo del {ingest.get('data','?')} {action_msg}"
+        ),
+        "motivo": motivo,
         "corrispettivo_id": ingest.get("corrispettivo_id"),
         "prima_nota_cassa_id": ingest.get("prima_nota_cassa_id"),
         "prima_nota_banca_id": ingest.get("prima_nota_banca_id"),
@@ -283,7 +289,11 @@ async def upload_corrispettivi_xml_bulk(
                 update_if_exists=force_update,
             )
             item = {"filename": file.filename, "data": ingest.get("data"), "totale": ingest.get("totale")}
-            if ingest["action"] == "duplicate":
+            if ingest["action"] == "scartato":
+                item.update({"motivo": ingest.get("motivo"), "error": ingest.get("motivo")})
+                results["errors"].append(item)
+                results["failed"] += 1
+            elif ingest["action"] == "duplicate":
                 results["duplicates"].append(item)
                 results["skipped"] += 1
             elif ingest["action"] == "updated":
@@ -582,7 +592,11 @@ async def upload_corrispettivi_zip(file: UploadFile = File(...)) -> Dict[str, An
                         "totale": ingest.get("totale"),
                         "matricola": parsed.get("matricola_rt"),
                     }
-                    if ingest["action"] == "duplicate":
+                    if ingest["action"] == "scartato":
+                        item.update({"motivo": ingest.get("motivo"), "error": ingest.get("motivo")})
+                        results["errors"].append(item)
+                        results["failed"] += 1
+                    elif ingest["action"] == "duplicate":
                         results["duplicates"].append(item)
                         results["skipped_duplicates"] += 1
                     else:

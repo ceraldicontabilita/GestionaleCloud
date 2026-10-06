@@ -3246,7 +3246,6 @@ async def upload_documento_automatico(
                     pass
                 else:
                     parsed["sha256"] = hashlib.sha256(content).hexdigest()
-                    parsed["parser_version"] = "corrispettivi_xml_v2_cents"
                     ingest = await ingest_corrispettivo_parsed(db, parsed, filename=filename, source="xml")
                     result["action"] = ingest["action"]
                     result["corrispettivo_id"] = ingest.get("corrispettivo_id")

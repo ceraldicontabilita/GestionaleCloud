@@ -526,6 +526,63 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
     return result
 
 
+def _parse_zucchetti_worked_layout(page_words) -> Dict[str, float]:
+    """Legge Giorni/Ore ordinarie nella tabella LAVORATO dalle celle.
+
+    Settimane e ore INPS appartengono ad altre colonne, anche quando il
+    testo estratto le mette prima dei valori lavorati. Una cella vuota o
+    ambigua resta assente; lo zero stampato e le frazioni di ora si tengono.
+    """
+    for words in page_words:
+        normalizzati = [tuple(w[:5]) for w in words]
+        for ore in normalizzati:
+            if str(ore[4]).upper() != "ORE":
+                continue
+            ordinarie = [
+                w for w in normalizzati
+                if str(w[4]).upper() == "ORDINARIE"
+                and abs(float(w[1]) - float(ore[1])) <= 2.5
+                and float(ore[2]) <= float(w[0]) <= float(ore[2]) + 12
+            ]
+            if not ordinarie:
+                continue
+            ordinaria = min(ordinarie, key=lambda w: float(w[0]))
+            parent = [
+                w for w in normalizzati
+                if str(w[4]).upper() == "LAVORATO"
+                and 0 <= float(ore[1]) - float(w[1]) <= 18
+                and float(w[0]) - 10 <= float(ore[0]) <= float(w[2]) + 10
+            ]
+            if not parent:
+                continue
+            giorni = [
+                w for w in normalizzati
+                if str(w[4]).upper() == "GIORNI"
+                and abs(float(w[1]) - float(ore[1])) <= 2.5
+                and 0 < float(ore[0]) - float(w[2]) <= 55
+            ]
+            colonne = {"ore_lavorate": (ore[0], ordinaria[2], ore[3])}
+            if giorni:
+                giorno = max(giorni, key=lambda w: float(w[0]))
+                colonne["giorni_lavorati"] = (giorno[0], giorno[2], giorno[3])
+            letti: Dict[str, float] = {}
+            for campo, (x0, x1, y1) in colonne.items():
+                candidati = [
+                    w for w in normalizzati
+                    if re.fullmatch(r'\d+(?:[.,]\d+)?', str(w[4]))
+                    and float(y1) <= float(w[1]) <= float(y1) + 18
+                    and float(x0) - 4 <= (float(w[0]) + float(w[2])) / 2 <= float(x1) + 4
+                ]
+                if not candidati:
+                    continue
+                primo_y = min(float(w[1]) for w in candidati)
+                valori = {parse_importo(str(w[4])) for w in candidati if abs(float(w[1]) - primo_y) <= 2.5}
+                if len(valori) == 1:
+                    letti[campo] = valori.pop()
+            return letti
+    return {}
+
+
 def _parse_teamsystem_layout(page_words) -> Dict[str, float]:
     """Legge i totali TeamSystem dalle celle, non dall'ordine del testo.
 
@@ -780,16 +837,16 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
     if pt_match:
         result["dipendente"]["part_time_perc"] = parse_importo(pt_match.group(1))
 
-    # ORE e GIORNI lavorati (cerca dopo "LAVORATO")
-    lavorato_match = re.search(r'LAVORATO.*?(\d+)\s+(\d+)\s+(\d+)\s+(\d+)', text, re.DOTALL)
-    if lavorato_match:
-        result["periodo"]["ore_lavorate"] = int(lavorato_match.group(1))
-        result["periodo"]["giorni_lavorati"] = int(lavorato_match.group(2))
-
-    # Pattern alternativo per ore: "135,00000 ORE" o "135,00 ORE"
-    ore_match = re.search(r'(\d+)[,\.]\d+\s*ORE', text)
-    if ore_match and "ore_lavorate" not in result["periodo"]:
-        result["periodo"]["ore_lavorate"] = int(ore_match.group(1))
+    # L'ordine del testo PDF non segue le colonne LAVORATO: il primo numero
+    # può essere quello delle settimane INPS. Le celle si leggono sotto le
+    # loro etichette nel parser PDF. Nel testo è ammessa solo la quantità
+    # della voce esplicita di retribuzione, non un generico numero di ORE.
+    ore_match = re.search(
+        r'\bZ00001\s+Retribuzione[^\n]*?\s([\d.,]+)\s*ORE\b', text,
+        re.IGNORECASE,
+    )
+    if ore_match:
+        result["periodo"]["ore_lavorate"] = parse_importo(ore_match.group(1))
 
     # TOTALE COMPETENZE - cerca valore numerico che termina con cifre grandi
     # Pattern: cerca riga con solo numero grande (>500) che potrebbe essere competenze
@@ -837,9 +894,13 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
         result["totali"]["inps_dipendente"] = parse_importo(ivs_match.group(1))
 
     # TFR
-    tfr_quota = re.search(r'Quota T\.?F\.?R\.?\s*([\d.,]+)', text)
-    if tfr_quota:
-        result["tfr"]["quota_anno"] = parse_importo(tfr_quota.group(1))
+    tfr_anno = re.search(r'Quota\s*(?:T\.?F\.?R\.?\s*)?anno\b\s*:?\s*([\d.,]+)', text, re.IGNORECASE)
+    if tfr_anno:
+        result["tfr"]["quota_anno"] = parse_importo(tfr_anno.group(1))
+
+    tfr_mese = re.search(r'(?:T\.?F\.?R\.?\s*(?:del\s*)?mese|Quota\s*(?:T\.?F\.?R\.?\s*)?(?:del\s*)?mese)\b\s*:?\s*([\d.,]+)', text, re.IGNORECASE)
+    if tfr_mese:
+        result["tfr"]["quota_mese"] = parse_importo(tfr_mese.group(1))
 
     tfr_fondo = re.search(r'F\.?do 31/12\s*([\d.,]+)', text)
     if tfr_fondo:
@@ -1119,6 +1180,7 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
         _applica_cella_netto(result, page_words[cedolino_page_idx:])
     elif template == "zucchetti_new":
         result = parse_template_zucchetti_new(cedolino_text)
+        result["periodo"].update(_parse_zucchetti_worked_layout(page_words[cedolino_page_idx:]))
         _applica_cella_netto(result, page_words[cedolino_page_idx:])
     elif template == "teamsystem":
         result = parse_template_teamsystem(cedolino_text)
@@ -1335,14 +1397,15 @@ def extract_summary(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         "netto_letto": totali.get("netto_letto"),
         "netto_calcolato": totali.get("netto_calcolato"),
         "retribuzione": parsed_data.get("retribuzione") or {},
-        "ore_lavorate": periodo.get("ore_lavorate") or ore_ferie.get("ore_lavorate_mese"),
-        "giorni_lavorati": periodo.get("giorni_lavorati") or ore_ferie.get("giorni_lavorati_mese"),
+        "ore_lavorate": (periodo.get("ore_lavorate") if periodo.get("ore_lavorate") is not None
+                          else ore_ferie.get("ore_lavorate_mese")),
+        "giorni_lavorati": (periodo.get("giorni_lavorati") if periodo.get("giorni_lavorati") is not None
+                            else ore_ferie.get("giorni_lavorati_mese")),
         "inps_dipendente": totali.get("inps_dipendente"),
         "irpef": parsed_data.get("irpef", {}).get("ritenute"),
-        "tfr_quota": (
-            parsed_data.get("tfr", {}).get("quota_mese")
-            or parsed_data.get("tfr", {}).get("quota_anno")
-        ),
+        # tfr_quota è la quota mensile; il progressivo annuo non la sostituisce.
+        "tfr_quota": parsed_data.get("tfr", {}).get("quota_mese"),
+        "tfr_quota_anno": parsed_data.get("tfr", {}).get("quota_anno"),
         # Dati ferie/permessi
         "ferie_residuo": ferie.get("ferie_residuo") or ore_ferie.get("ferie_residuo"),
         "ferie_godute": ferie.get("ferie_godute") or ore_ferie.get("ferie_godute"),

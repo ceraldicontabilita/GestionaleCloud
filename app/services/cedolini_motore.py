@@ -95,6 +95,7 @@ def _summary_cedolino(
         "netto_calcolato": summary.get("netto_calcolato"),
         "totale_trattenute": summary.get("trattenute"),
         "tfr_quota": summary.get("tfr_quota"),
+        "tfr_quota_anno": summary.get("tfr_quota_anno"),
         "ore_lavorate": summary.get("ore_lavorate"),
         "giorni_lavorati": summary.get("giorni_lavorati"),
         "livello": summary.get("livello"),
@@ -301,7 +302,8 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
     # Ferie, ROL, contributi e TFR letti dal testo: vanno nella scheda
     # Markdown, cosi' la ricarica non ha bisogno del PDF.
     extra = {k: v for k, v in (estrai_ferie_rol_from_text(testo) if testo else {}).items()
-             if isinstance(v, (int, float)) and not isinstance(v, bool)}
+             if (isinstance(v, (int, float)) and not isinstance(v, bool))
+             or (k in {"tfr_mese", "tfr_quota_anno"} and v is None)}
     if extra:
         busta["dati_extra"] = extra
     if busta.get("_pdf_data"):

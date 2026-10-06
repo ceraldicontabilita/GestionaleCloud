@@ -74,7 +74,8 @@ def estrai_ferie_rol_from_text(text: str) -> Dict[str, Any]:
         "addizionale_regionale": 0,
         "addizionale_comunale": 0,
         "bonus_renzi_trattamento": 0,
-        "tfr_mese": 0,
+        "tfr_mese": None,
+        "tfr_quota_anno": None,
         "tfr_accantonato": 0,
         "inail": 0,
         "totale_competenze": 0,
@@ -173,7 +174,12 @@ def estrai_ferie_rol_from_text(text: str) -> Dict[str, Any]:
         result["bonus_renzi_trattamento"] = parse_importo(bonus.group(1))
     
     # === TFR ===
-    tfr_mese = re.search(r'(?:Quota\s*anno|T\.?F\.?R\.?\s*mese|Accant.*TFR)\s*[:\s]*([\d.,]+)', text, re.IGNORECASE)
+    # Quota anno è un progressivo, mai una quota mensile da sommare.
+    tfr_anno = re.search(r'Quota\s*(?:T\.?F\.?R\.?\s*)?anno\b\s*:?\s*([\d.,]+)', text, re.IGNORECASE)
+    if tfr_anno:
+        result["tfr_quota_anno"] = parse_importo(tfr_anno.group(1))
+
+    tfr_mese = re.search(r'(?:T\.?F\.?R\.?\s*(?:del\s*)?mese|Quota\s*(?:T\.?F\.?R\.?\s*)?(?:del\s*)?mese|Accant(?:onamento)?\s*T\.?F\.?R\.?\s*(?:del\s*)?mese)\b\s*:?\s*([\d.,]+)', text, re.IGNORECASE)
     if tfr_mese:
         result["tfr_mese"] = parse_importo(tfr_mese.group(1))
     
@@ -483,7 +489,10 @@ async def processa_cedolino_v2(
             "rol_residuo": dati_extra.get("rol_residuo", 0),
             "permessi_ex_fest": dati_extra.get("permessi_ex_fest_residui", 0),
             # TFR
-            "tfr_mese": dati_extra.get("tfr_mese") or cedolino_data.get("tfr_quota", 0),
+            "tfr_mese": (dati_extra.get("tfr_mese") if dati_extra.get("tfr_mese") is not None
+                         else cedolino_data.get("tfr_quota")),
+            "tfr_quota_anno": (dati_extra.get("tfr_quota_anno") if dati_extra.get("tfr_quota_anno") is not None
+                               else cedolino_data.get("tfr_quota_anno")),
             "tfr_accantonato": dati_extra.get("tfr_accantonato", 0),
             # Ore
             "ore_lavorate": cedolino_data.get("ore_lavorate", 0),
@@ -705,10 +714,10 @@ async def processa_cedolino_v2(
                 "anno": int(anno),
                 "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),
                 "cedolino_dedup_key": cedolino_dedup_key,
-                # TFR letto dal cedolino (regex "Quota anno/TFR mese" sul PDF,
-                # vedi cedolino_record["tfr_mese"] sopra): handler_aggiorna_tfr
-                # lo usa al posto della stima lordo/13.5 quando disponibile.
+                # Mensile e progressivo annuale restano distinti. None dichiara
+                # che la quota mensile non è stampata: il handler non la stima.
                 "tfr_quota_mese": cedolino_record["tfr_mese"],
+                "tfr_quota_anno": cedolino_record["tfr_quota_anno"],
                 # Testo grezzo del PDF: usato dal handler per verificare la
                 # presenza delle voci di trattenuta verbale (evento in-memory,
                 # non viene persistito).
