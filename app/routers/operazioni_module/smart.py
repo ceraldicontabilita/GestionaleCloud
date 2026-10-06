@@ -396,11 +396,6 @@ async def cerca_stipendi_per_associazione(
             {"dipendente": {"$regex": dipendente, "$options": "i"}}
         ]
     
-    # Le attese senza busta si scartano DOPO la lettura: si legge piu' in la'
-    # per non restituire una lista vuota quando le piu' recenti sono fantasmi.
-    letti = max(limit * 10, 200)
-    stipendi = await db.prima_nota_salari.find(query, {"_id": 0}).sort("data", -1).limit(letti).to_list(letti)
-
     # Leggibilità (segnalazione utente 18/07/2026: "€0,00, non capisco se
     # sono bonifici o cedolini"): queste righe sono ATTESE DI PAGAMENTO
     # generate dai cedolini. importo = netto busta; se il netto non è stato
@@ -417,14 +412,30 @@ async def cerca_stipendi_per_associazione(
 
     ids_buste, chiavi_buste = await indice_buste_esistenti(db)
     indice_dip = await carica_indice_dipendenti(db)
+
+    async def righe_in_ordine():
+        """Pagine di 200 righe, dalla piu' recente, finche' ce ne sono: lo scarto
+        delle attese senza busta avviene dopo la lettura, quindi si continua
+        a leggere fino a riempire `limit` righe visibili."""
+        pagina = 200
+        saltate = 0
+        while True:
+            blocco = await (db.prima_nota_salari.find(query, {"_id": 0})
+                            .sort("data", -1).skip(saltate).limit(pagina).to_list(pagina))
+            for riga in blocco:
+                yield riga
+            if len(blocco) < pagina:
+                return
+            saltate += pagina
+
     senza_busta = 0
     visibili = []
-    for s in stipendi:
+    async for s in righe_in_ordine():
+        if len(visibili) >= limit:
+            break
         if attesa_senza_busta(s, chiave_logica_riga(s, indice_dip), ids_buste, chiavi_buste):
             senza_busta += 1
             continue
-        if len(visibili) >= limit:
-            break
         nome = (s.get("dipendente") or s.get("dipendente_nome") or "").strip()
         busta = float(s.get("importo_busta") or s.get("importo") or 0)
         bonifici = float(s.get("importo_bonifico") or 0)

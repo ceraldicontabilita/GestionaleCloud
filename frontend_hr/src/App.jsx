@@ -6195,11 +6195,15 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
       if (!window.confirm(`${q.pagine} pagine: ${q.nuovi} da allegare, ${q.gia_presenti} già presenti, ${q.da_assegnare} da assegnare.\n\n${elenco}\n\nAllegare gli attestati ai dipendenti?`)) return;
       // Pagine con più persone compatibili: si sceglie qui, da un elenco numerato (0 = lascia da assegnare).
       const scelte = {};
-      for (const r of prova.righe.filter(x => x.esito === "da_assegnare" && (x.candidati || []).length)) {
-        const voci = r.candidati.map((c, i) => `${i + 1} = ${c.nome}`).join("\n");
+      const tutti = (dipendenti || []).map(d => ({ id: d.id, nome: `${d.cognome || ""} ${d.nome || ""}`.trim() })).filter(d => d.id && d.nome);
+      for (const r of prova.righe.filter(x => x.esito === "da_assegnare")) {
+        // Nessun candidato (nome illeggibile o sconosciuto): si sceglie fra tutti i dipendenti.
+        const elenco = (r.candidati || []).length ? r.candidati : tutti;
+        if (!elenco.length) continue;
+        const voci = elenco.map((c, i) => `${i + 1} = ${c.nome}`).join("\n");
         const risposta = window.prompt(`Pagina ${r.pagina}: a chi appartiene l'attestato?\n${voci}\n0 = lascia da assegnare`, "0");
         const n = Number(risposta);
-        if (Number.isInteger(n) && n >= 1 && n <= r.candidati.length) scelte[String(r.pagina)] = r.candidati[n - 1].id;
+        if (Number.isInteger(n) && n >= 1 && n <= elenco.length) scelte[String(r.pagina)] = elenco[n - 1].id;
       }
       const fatto = await invia(false, scelte);
       const r2 = fatto.riepilogo;

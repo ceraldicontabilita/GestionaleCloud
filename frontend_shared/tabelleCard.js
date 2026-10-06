@@ -60,10 +60,20 @@ export function applicaCard(radice = document) {
     const righeTesta = tabella.querySelectorAll("thead tr");
     if (righeTesta.length !== 1 || righeTesta[0].querySelector("[colspan],[rowspan]")) return;
     const etichette = Array.from(righeTesta[0].children).map((th) => (th.textContent || "").trim());
+    const etichetta = (cella, i) => {
+      if (!etichette[i]) return;
+      if (cella.getAttribute("data-label") !== etichette[i]) cella.setAttribute("data-label", etichette[i]);
+    };
     tabella.querySelectorAll("tbody tr").forEach((riga) => {
       if (Array.from(riga.children).some((c) => c.hasAttribute("colspan"))) return;
-      Array.from(riga.children).forEach((cella, i) => {
-        if (!cella.hasAttribute("data-label") && etichette[i]) cella.setAttribute("data-label", etichette[i]);
+      Array.from(riga.children).forEach(etichetta);
+    });
+    // Righe dei totali: l'etichetta segue la colonna coperta, anche con colspan.
+    tabella.querySelectorAll("tfoot tr").forEach((riga) => {
+      let colonna = 0;
+      Array.from(riga.children).forEach((cella) => {
+        etichetta(cella, colonna);
+        colonna += Number(cella.getAttribute("colspan")) || 1;
       });
     });
     tabella.dataset.card = "si";
@@ -78,7 +88,7 @@ export function avviaTabelleCard() {
     pianificato = true;
     requestAnimationFrame(() => { pianificato = false; applicaCard(); });
   };
-  new MutationObserver(rinvia).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(rinvia).observe(document.body, { childList: true, subtree: true, characterData: true });
   window.addEventListener("resize", rinvia);
   rinvia();
 }

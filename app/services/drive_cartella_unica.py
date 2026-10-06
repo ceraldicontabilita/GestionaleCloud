@@ -543,8 +543,10 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
 
 # Tipi che il motore di Documenti > Import ricostruisce nel gestionale (fatture,
 # corrispettivi, estratti conto). F24, quietanze, bonifici e buste non si toccano.
-TIPI_DA_RIPASSARE = ("fattura", "corrispettivo", "estratto_conto", "estratto_conto_nexi",
-                     "estratto_conto_paypal", "estratto_conto_mutuo", "contabile_filiale")
+TIPI_DA_RIPASSARE = ("fattura", "fattura_estera_pdf", "corrispettivo", "corrispettivi_csv_ade",
+                     "estratto_conto", "estratto_conto_nexi", "estratto_conto_paypal",
+                     "estratto_conto_mutuo", "estratto_conto_sumup", "pos_terminal",
+                     "contabile_filiale")
 _ripasso: Dict[str, Any] = {"in_corso": False}
 
 

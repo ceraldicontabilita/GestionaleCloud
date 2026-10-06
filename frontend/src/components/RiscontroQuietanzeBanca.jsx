@@ -31,6 +31,10 @@ const LIVELLI = {
   MOVIMENTO_ORFANO: 'Movimento orfano',
 };
 
+// Senza protocollo la quietanza non prova da sola il pagamento: resta da verificare.
+const etichettaLivello = r =>
+  (r.livello === 'NESSUN_MATCH' && !r.protocollo ? 'Nessun match, da verificare' : (LIVELLI[r.livello] || r.livello));
+
 const GRUPPI = [
   { chiave: 'riscontrati', etichetta: 'Riscontrati', esito: 'chiuso', testo: 'Riscontrato' },
   { chiave: 'da_verificare', etichetta: 'Da verificare', esito: 'verificare', testo: 'Da verificare' },
@@ -158,7 +162,7 @@ export default function RiscontroQuietanzeBanca({ anno }) {
           <Esito esito={r._gruppo.esito} data-testid={`esito-${r._id}`}>{r._gruppo.testo}</Esito>
           {r.livello && (
             <span style={{ fontSize: 11.5, color: COLORS.textMuted }} data-testid={`livello-${r._id}`}>
-              Livello: {LIVELLI[r.livello] || r.livello}
+              Livello: {etichettaLivello(r)}
               {r.differenza ? ` · differenza ${formatEuro(r.differenza)}` : ''}
             </span>
           )}

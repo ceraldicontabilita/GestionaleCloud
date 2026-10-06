@@ -130,6 +130,16 @@ async def indice_buste_esistenti(db) -> Tuple[set, set]:
     return ids, chiavi
 
 
+def riga_ancora_senza_pagamento(riga: Dict[str, Any]) -> bool:
+    return (
+        riga.get("entity_status") != "deleted"
+        and riga.get("status") not in ("deleted", "archived")
+        and not riga.get("riconciliato")
+        and not _movimento_ids(riga)
+        and float(riga.get("importo_bonifico") or 0) <= 0
+    )
+
+
 def attesa_senza_busta(
     riga: Dict[str, Any], chiave: Optional[ChiaveSalario], ids: set, chiavi: set,
 ) -> bool:
@@ -389,8 +399,16 @@ async def applica(db, actor: Optional[str] = None) -> Dict[str, Any]:
     # pagamento: ritirate per id (mai cancellate), col motivo, reversibili.
     attese_ritirate = 0
     for voce in analisi["attese_senza_busta"]:
+        # Si rilegge la riga: nel frattempo un giro bancario puo' averla pagata.
+        attuale = await db[COLLECTION].find_one({"id": voce["id"]})
+        if not attuale or not riga_ancora_senza_pagamento(attuale):
+            continue
         await db[COLLECTION].update_one(
-            {"id": voce["id"]},
+            {
+                "id": voce["id"],
+                "riconciliato": {"$ne": True},
+                "entity_status": {"$ne": "deleted"},
+            },
             {"$set": {
                 "entity_status": "deleted",
                 "status": "deleted",

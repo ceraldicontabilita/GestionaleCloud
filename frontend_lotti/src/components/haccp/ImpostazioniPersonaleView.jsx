@@ -285,7 +285,7 @@ export default function ImpostazioniPersonaleView() {
     return (
       <div style={{ marginBottom: 10 }} data-testid={`attestati-${d.dipendente_id}`}>
         <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: 4 }}>
-          <GraduationCap size={11} style={{ verticalAlign: "middle" }} aria-hidden="true" /> Attestati di formazione (li carica il dipendente dal suo portale, qui sola lettura)
+          <GraduationCap size={11} style={{ verticalAlign: "middle" }} aria-hidden="true" /> Attestati di formazione (li carica l'amministratore da HR › Documenti, qui sola lettura; il dipendente li vede nel portale)
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           {lista.length === 0 && <span style={pill("#fbf0dd", WARN)}>nessun attestato</span>}
