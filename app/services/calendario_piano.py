@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services import piano_tributi
@@ -54,6 +55,30 @@ def _codici_del_periodo(voce: Dict[str, Any], periodo: Optional[str]) -> List[st
     return codici
 
 
+def _giorni(testo: Any) -> Optional[int]:
+    try:
+        return date.fromisoformat(str(testo)[:10]).toordinal()
+    except ValueError:
+        return None
+
+
+def _casella_annuale(voce_caselle, data_calendario) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    """Casella annuale del Piano per la scadenza del calendario: l'unica, o quella a data piu' vicina."""
+    if not voce_caselle or not voce_caselle[1]:
+        return None
+    voce, caselle = voce_caselle
+    if len(caselle) == 1:
+        return voce, caselle[0]
+    giorno = _giorni(data_calendario)
+    if giorno is None:
+        return None
+    candidate = [(abs(_giorni(c.get("scadenza")) - giorno), i, c) for i, c in enumerate(caselle)
+                 if _giorni(c.get("scadenza")) is not None]
+    if not candidate:
+        return None
+    return voce, min(candidate, key=lambda x: (x[0], x[1]))[2]
+
+
 def _sintesi(casella: Dict[str, Any], voce: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "voce_id": voce["id"],
@@ -75,21 +100,20 @@ def _sintesi(casella: Dict[str, Any], voce: Dict[str, Any]) -> Dict[str, Any]:
 def collega_scadenze(scadenze: List[Dict[str, Any]], griglia: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Aggiunge a ogni scadenza con codici attesi il riscontro del Piano (funzione pura)."""
     indice: Dict[Tuple[str, Optional[str]], Tuple[Dict[str, Any], Dict[str, Any]]] = {}
+    per_voce: Dict[str, Tuple[Dict[str, Any], List[Dict[str, Any]]]] = {}
     for riga in griglia.get("voci") or []:
         voce = riga["voce"]
         for casella in riga["caselle"]:
             indice[(voce["id"], casella["periodo"])] = (voce, casella)
-        if len(riga["caselle"]) == 1:
-            indice[(voce["id"], None)] = (voce, riga["caselle"][0])
+        per_voce[voce["id"]] = (voce, riga["caselle"])
 
     for scadenza in scadenze:
         trovate = []
-        mese_data = str(scadenza.get("data") or "")[5:7]
         for voce_id, periodo in voci_della_scadenza(str(scadenza.get("id") or "")):
-            coppia = indice.get((voce_id, periodo))
-            if coppia is None and periodo is None and mese_data:
-                # Voce annuale con piu' scadenze configurate: la casella del mese della scadenza del calendario.
-                coppia = indice.get((voce_id, mese_data))
+            if periodo is None:
+                coppia = _casella_annuale(per_voce.get(voce_id), scadenza.get("data"))
+            else:
+                coppia = indice.get((voce_id, periodo))
             if coppia:
                 trovate.append(_sintesi(coppia[1], coppia[0]))
         if not trovate:

@@ -46,7 +46,8 @@ def test_iva_mensile_porta_solo_il_codice_del_mese():
 
 def test_annuale_segue_la_scadenza_configurata_e_modello_non_pagato_non_e_mancante():
     voce = {"id": "ires_saldo", "etichetta": "IRES saldo", "codici": ["2003"], "obbligatorio": True}
-    casella = {"periodo": "07", "stato": pt.SCADUTO_NON_PAGATO, "etichetta_stato": "x", "modelli": []}
+    casella = {"periodo": "07", "scadenza": "2026-07-31", "stato": pt.SCADUTO_NON_PAGATO,
+               "etichetta_stato": "x", "modelli": []}
     s = [{"id": "ires_saldo_2025", "completato": True, "provenienza_stato": "conferma_manuale"}]
     out = collega_scadenze(s, {"voci": [{"voce": voce, "caselle": [casella]}]})[0]
     assert out["codici_attesi"] == ["2003"]
@@ -56,8 +57,8 @@ def test_annuale_segue_la_scadenza_configurata_e_modello_non_pagato_non_e_mancan
 def test_annuale_con_due_scadenze_configurate_sceglie_il_mese_del_calendario():
     voce = {"id": "ires_saldo", "etichetta": "IRES saldo", "codici": ["2003"], "obbligatorio": True}
     caselle = [
-        {"periodo": "06", "stato": pt.PAGATO_QUIETANZA, "etichetta_stato": "ok", "modelli": []},
-        {"periodo": "07", "stato": pt.SCADUTO_NON_PAGATO, "etichetta_stato": "no", "modelli": []},
+        {"periodo": "06", "scadenza": "2026-06-16", "stato": pt.SCADUTO_NON_PAGATO, "etichetta_stato": "no", "modelli": []},
+        {"periodo": "06", "scadenza": "2026-06-30", "stato": pt.PAGATO_QUIETANZA, "etichetta_stato": "ok", "modelli": []},
     ]
     s = [{"id": "ires_saldo_2025", "data": "2026-06-30"}]
     out = collega_scadenze(s, {"voci": [{"voce": voce, "caselle": caselle}]})[0]
