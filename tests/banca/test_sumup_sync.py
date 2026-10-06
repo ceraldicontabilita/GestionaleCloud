@@ -279,6 +279,51 @@ def test_prima_acquisizione_sumup_scrive_un_unico_batch():
     assert mutazioni == []
 
 
+def test_risincronizzare_payout_non_riscrive_le_stesse_transazioni(monkeypatch):
+    mutazioni = []
+
+    async def registra_mutazione(collection, metodo, prima, dopo):
+        if collection == "sumup_transactions":
+            mutazioni.append((metodo, len(prima), len(dopo)))
+
+    async def registra_payout_finto(db, payout, *, transazioni, actor=None):
+        return {"stato_riconciliazione": "riconciliato", "quadra": True}
+
+    from app.services import sumup_payout
+    monkeypatch.setattr(sumup_payout, "registra_payout", registra_payout_finto)
+
+    db = ArchivioDocumenti("sumup_payout_idempotente", mutation_hook=registra_mutazione)
+    _run(db.sumup_transactions.insert_one({
+        "chiave": f"{MERCHANT}:tx-1",
+        "transaction_id": "tx-1",
+        "transaction_code": "CODE-1",
+        "payout_id": "",
+    }))
+    mutazioni.clear()
+    righe = [{
+        "id": "row-1",
+        "type": "PAYOUT",
+        "reference": "PAYOUT-1",
+        "date": "2026-08-07",
+        "amount": 98.0,
+        "fee": 2.0,
+        "currency": "EUR",
+        "status": "SUCCESSFUL",
+        "transaction_code": "CODE-1",
+    }]
+
+    primo = _run(sumup_sync.sincronizza_payouts(
+        db, "2026-08-01", "2026-08-31", righe=righe,
+    ))
+    secondo = _run(sumup_sync.sincronizza_payouts(
+        db, "2026-08-01", "2026-08-31", righe=righe,
+    ))
+
+    assert primo["transazioni_collegate"] == 1
+    assert secondo["transazioni_collegate"] == 0
+    assert mutazioni == [("update_many", 1, 1)]
+
+
 def test_vendita_sumup_116_90_crea_credito_atteso_non_accredito_reale():
     db = _db()
 

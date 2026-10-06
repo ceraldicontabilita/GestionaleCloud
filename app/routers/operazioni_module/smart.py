@@ -1,6 +1,8 @@
 """
 Operazioni Module - Riconciliazione Smart (banca veloce, analisi, associazioni).
 """
+import asyncio
+
 from fastapi import HTTPException
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -36,32 +38,37 @@ async def banca_veloce(
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
 
-    movimenti = await db.estratto_conto_movimenti.find(
-        query,
-        {"_id": 0}
-    ).sort("data", -1).limit(limit).to_list(limit)
-
     assegni_query = {"stato": {"$nin": ["incassato", "annullato", "stornato"]}, "confermato": {"$ne": True}}
     if anno:
         assegni_query["data_emissione"] = {"$regex": f"^{anno}"}
-    assegni = await db.assegni.find(
-        assegni_query,
-        {"_id": 0}
-    ).sort("data_emissione", -1).limit(50).to_list(50)
-
     fatture_query = {**QUERY_FATTURA_NON_PAGATA, "metodo_pagamento": {"$nin": [None, "", "contanti"]}}
     if anno:
         fatture_query["invoice_date"] = {"$regex": f"^{anno}"}
-    fatture_da_pagare = await db.invoices.find(
-        fatture_query,
-        {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1, "supplier_name": 1, "total_amount": 1}
-    ).sort("invoice_date", -1).limit(50).to_list(50)
-
     conta_movimenti_query = {**ESCLUDI_CARTA_CREDITO, **({"data": {"$regex": f"^{anno}"}} if anno else {})}
-    tot_non_ric = await db.estratto_conto_movimenti.count_documents({
-        **conta_movimenti_query, **FILTRO_NON_IGNORATO, "riconciliato": {"$ne": True},
-    })
-    tot_ric = await db.estratto_conto_movimenti.count_documents({**conta_movimenti_query, "riconciliato": True})
+    # Le cinque letture sono indipendenti e riguardano collezioni diverse.
+    # In sequenza la pagina pagava anche le attese dei job che scrivevano su
+    # ciascuna collezione; in parallelo il tempo e' quello della lettura piu'
+    # lenta, senza cambiare filtri o risultati.
+    movimenti, assegni, fatture_da_pagare, tot_non_ric, tot_ric = await asyncio.gather(
+        db.estratto_conto_movimenti.find(
+            query, {"_id": 0},
+        ).sort("data", -1).limit(limit).to_list(limit),
+        db.assegni.find(
+            assegni_query, {"_id": 0},
+        ).sort("data_emissione", -1).limit(50).to_list(50),
+        db.invoices.find(
+            fatture_query,
+            {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+             "supplier_name": 1, "total_amount": 1},
+        ).sort("invoice_date", -1).limit(50).to_list(50),
+        db.estratto_conto_movimenti.count_documents({
+            **conta_movimenti_query, **FILTRO_NON_IGNORATO,
+            "riconciliato": {"$ne": True},
+        }),
+        db.estratto_conto_movimenti.count_documents({
+            **conta_movimenti_query, "riconciliato": True,
+        }),
+    )
     
     return {
         "movimenti": movimenti,
@@ -88,10 +95,37 @@ async def analizza_movimenti_smart(
     from app.services.riconciliazione_smart import analizza_estratto_conto_batch
     
     try:
-        risultati = await analizza_estratto_conto_batch(limit, solo_non_riconciliati, anno=anno)
+        # Render interrompeva questa richiesta a 120 s. Dopo 20 s si libera il
+        # worker web e si restituiscono comunque i movimenti: la UI li ha gia'
+        # mostrati dal percorso veloce e mantiene disabilitata la conferma finche'
+        # i suggerimenti non sono disponibili.
+        risultati = await asyncio.wait_for(
+            analizza_estratto_conto_batch(limit, solo_non_riconciliati, anno=anno),
+            timeout=20,
+        )
+        return risultati
+    except TimeoutError:
+        logger.warning(
+            "Analisi smart oltre 20 s; restituisco la coda senza suggerimenti "
+            "(limit=%s anno=%s)", limit, anno,
+        )
+        risultati = await banca_veloce(limit, solo_non_riconciliati, anno)
+        risultati["movimenti"] = [
+            {
+                **movimento,
+                "movimento_id": movimento.get("movimento_id") or movimento.get("id"),
+                "descrizione": movimento.get("descrizione")
+                or movimento.get("descrizione_originale")
+                or movimento.get("causale")
+                or "-",
+                "suggerimenti": [],
+            }
+            for movimento in risultati.get("movimenti", [])
+        ]
+        risultati["analisi_non_disponibile"] = True
         return risultati
     except Exception as e:
-        logger.error(f"Errore analisi smart: {e}")
+        logger.error("Errore analisi smart (%s): %s", type(e).__name__, e)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

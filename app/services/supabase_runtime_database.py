@@ -1375,6 +1375,34 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
             raise RuntimeError("gc_termini_recupero: risposta non valida (attesa una lista)")
         return [riga for riga in risultato if isinstance(riga, dict)]
 
+    async def outbox_claim(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Prenota eventi inter-dominio pronti tramite l'RPC protetta.
+
+        Il token di lock resta opaco all'applicazione ed e' obbligatorio per
+        completare o fallire l'evento: un worker che perde il lease non puo'
+        quindi confermare il lavoro di un worker successivo.
+        """
+        risultato = await self._rpc("gc_outbox_claim", {"p_limit": limit})
+        if not isinstance(risultato, list):
+            raise RuntimeError("gc_outbox_claim: risposta non valida (attesa una lista)")
+        return [evento for evento in risultato if isinstance(evento, dict)]
+
+    async def outbox_complete(self, event_id: str, lock_token: str) -> bool:
+        return bool(await self._rpc(
+            "gc_outbox_complete",
+            {"p_event_id": str(event_id), "p_lock_token": str(lock_token)},
+        ))
+
+    async def outbox_fail(self, event_id: str, lock_token: str, error: str) -> bool:
+        return bool(await self._rpc(
+            "gc_outbox_fail",
+            {
+                "p_event_id": str(event_id),
+                "p_lock_token": str(lock_token),
+                "p_error": str(error)[:1000],
+            },
+        ))
+
     @asynccontextmanager
     async def scheduler_lease(self, job_id: str, ttl_seconds: int = 900):
         """Lease distribuita rinnovata finche il job resta in esecuzione.

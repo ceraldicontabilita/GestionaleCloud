@@ -47,6 +47,33 @@ verificato vive in «Stato attuale» e il lavoro residuo in «Aperto».
 - Le attività concluse si tolgono da «Aperto»: commit, PR, CI e cronaca del
   rilascio restano nella storia di GitHub, non in questo file.
 
+### Proprietà dei domini
+
+La cartella in cui vive il codice non assegna la proprietà del dato. La
+proprietà è del dominio e comporta che **solo quel dominio decide e scrive il
+fatto canonico**; gli altri ricevono un riferimento, una proiezione
+rigenerabile o un evento idempotente.
+
+| Dominio | Fatti canonici | Gli altri domini |
+| --- | --- | --- |
+| ERP / Finanza | fatture e righe, movimenti bancari, pagamenti e incassi, contabilità, fiscalità, fornitore commerciale | leggono proiezioni o collegano gli ID; non copiano il fatto contabile |
+| HR / Persone | persona, dipendente, rapporto di lavoro, organizzazione, presenze, turni, ferie, payroll e cedolino | ERP collega il pagamento; Lotti usa identità e abilitazioni |
+| Lotti / Operazioni | ricetta tecnica e versione, ingrediente, produzione, lotto, movimento e giacenza, HACCP e firma operativa | pubblica al Catalogo; non possiede fattura o prodotto commerciale |
+| Catalogo / Menu | `product_id`, presentazione commerciale, categoria, immagine, prezzo e disponibilità per canale, allergeni pubblicati, ordine Menu | riceve dati tecnici da Lotti; serve Menu, B&B e Cassa |
+| B&B / Hospitality | struttura partner, soggiorno, wallet, ricarica, voucher, utilizzo, extra, recensione e richiesta fiscale | legge il Catalogo e invia l'effetto economico all'ERP |
+| Piattaforma | identità tecnica, sessione, policy, audit, `document_id`, relazioni documentali, job, notifiche, errori e outbox | non contiene regole contabili, HR, HACCP o commerciali |
+
+Identificativi condivisi: `person_id`, `employee_id`, `supplier_id`,
+`product_id`, `document_id`, `invoice_id`, `invoice_line_id` e
+`transaction_id`. Nascono dal proprietario canonico con UUID, identity o
+sequence del database, mai con `max(id)+1`.
+
+I soli accessi cross-domain diretti ammessi sono quelli transitori elencati
+nei guardrail di `tests/runtime/test_ristrutturazione_guardrail.py`; l'elenco
+può soltanto diminuire. Un nuovo caso non si aggiunge all'elenco: si introduce
+il contratto del proprietario. I bridge transitori non diventano una fonte
+autorevole e ogni loro proiezione deve poter essere rigenerata.
+
 ## Il gruppo Ceraldi è un solo servizio
 
 Un unico servizio Render (`gestionalecloud.onrender.com`, anche su `impresasemplice.online`; deploy

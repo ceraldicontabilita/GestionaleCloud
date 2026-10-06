@@ -125,6 +125,23 @@ WRITE_METHODS = {
 }
 
 
+# Confini temporanei fra i domini. Questi accessi diretti sono debito noto:
+# l'elenco puo' soltanto diminuire mentre i bridge vengono sostituiti da
+# contratti del proprietario (servizi applicativi/outbox). Un nuovo file non
+# va aggiunto qui per far passare il test.
+IMPORT_CLIENT_MENU_CROSS_DOMAIN_TEMPORANEI = {
+    "app/lotti/servizi/menu_bridge.py",
+    "app/lotti/servizi/supabase_foto_ricette.py",
+    "app/services/foto_assegni.py",
+}
+
+ACCESSI_DSN_HR_CROSS_DOMAIN_TEMPORANEI = {
+    "app/services/hr_cedolini_deposito.py",
+    "app/services/postgres_diretto.py",
+    "app/services/salari_sync_hr.py",
+}
+
+
 def _subscript_name(node: ast.AST) -> tuple[str | None, str | None]:
     """Ritorna (stringa_collection, costante_Collections) se riconoscibile."""
     if not isinstance(node, ast.Subscript):
@@ -173,6 +190,52 @@ def test_erp_non_scrive_sulle_collezioni_giacenza_legacy_neanche_via_alias():
     assert not offenders, (
         "Scritture ERP vietate sulla vecchia giacenza o fuori dai writer "
         "canonici transitori di warehouse_inventory:\n" + "\n".join(offenders)
+    )
+
+
+def _moduli_importati(source: str, filename: str) -> set[str]:
+    tree = ast.parse(source, filename=filename)
+    moduli = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            moduli.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            moduli.add(node.module)
+    return moduli
+
+
+def test_il_client_database_menu_non_esce_dal_dominio_senza_bridge_censito():
+    trovati = set()
+    for path in APP.rglob("*.py"):
+        rel = path.relative_to(ROOT).as_posix()
+        if rel.startswith("app/menu/"):
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "app.menu.supabase_client" in _moduli_importati(source, rel):
+            trovati.add(rel)
+
+    assert trovati == IMPORT_CLIENT_MENU_CROSS_DOMAIN_TEMPORANEI, (
+        "Gli accessi diretti al database/Storage del Menu devono diminuire, "
+        "non crescere. Differenza rispetto ai bridge censiti: "
+        + ", ".join(sorted(trovati ^ IMPORT_CLIENT_MENU_CROSS_DOMAIN_TEMPORANEI))
+    )
+
+
+def test_la_dsn_hr_non_acquisisce_nuovi_consumatori_cross_domain():
+    trovati = set()
+    marcatori = ("HR_SUPABASE_DB_URL", "APPDIPENDENTI_DB_URL")
+    for path in APP.rglob("*.py"):
+        rel = path.relative_to(ROOT).as_posix()
+        if rel.startswith("app/hr/"):
+            continue
+        source = path.read_text(encoding="utf-8")
+        if any(marcatore in source for marcatore in marcatori):
+            trovati.add(rel)
+
+    assert trovati == ACCESSI_DSN_HR_CROSS_DOMAIN_TEMPORANEI, (
+        "La connessione diretta allo schema HR e' transitoria e non deve "
+        "acquisire nuovi consumatori. Differenza: "
+        + ", ".join(sorted(trovati ^ ACCESSI_DSN_HR_CROSS_DOMAIN_TEMPORANEI))
     )
 
 

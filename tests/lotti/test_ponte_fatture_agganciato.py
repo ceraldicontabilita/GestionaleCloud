@@ -471,6 +471,34 @@ def test_l_handler_non_fa_fallire_l_import_se_lotti_non_risponde(monkeypatch):
     assert esito == {"action": "lotti_accodato", "fattura_id": "f-1"}
 
 
+def test_l_handler_supabase_si_affida_alla_outbox_durevole(monkeypatch):
+    """In produzione il trigger DB ha gia' accodato l'evento: niente doppia
+    esecuzione in RAM, che verrebbe persa durante un deploy."""
+    from app.services.handlers import fattura_handlers
+
+    chiamate = []
+
+    async def non_deve_partire(source_id):
+        chiamate.append(source_id)
+        return {"stato": "alimentata"}
+
+    class BackendConOutbox:
+        async def outbox_claim(self, _limit):
+            return []
+
+    monkeypatch.setattr(
+        "app.lotti.routers.gestionale_fatture.alimenta_lotti_da_fattura",
+        non_deve_partire,
+    )
+
+    esito = run(fattura_handlers.on_fattura_created_alimenta_lotti(
+        {"fattura_id": "f-outbox"}, db=BackendConOutbox(),
+    ))
+
+    assert esito == {"action": "lotti_outbox", "fattura_id": "f-outbox"}
+    assert chiamate == []
+
+
 def test_l_handler_lavora_una_sola_fattura(monkeypatch):
     """Il controllo che protegge dal guasto del 20/09: `fattura.created` nasce
     una volta per fattura e il giro Drive ne importa 25 alla volta. Un motore

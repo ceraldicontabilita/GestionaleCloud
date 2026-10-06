@@ -10,6 +10,7 @@ Pattern riconosciuti:
 5. ADDEBITO DIRETTO SDD + fornitore → fattura antecedente più prossima
 6. Leasing (Leasys, ARVAL, Ald) → multi-fattura con somma
 """
+import asyncio
 import re
 import logging
 from typing import Dict, Any, List, Optional, Tuple
@@ -822,26 +823,25 @@ async def analizza_estratto_conto_batch(
     
     # === CONTROLLO ATOMICO: Pre-carica ID movimenti già elaborati ===
     
-    # 1. Movimenti già collegati a Prima Nota Banca (tramite estratto_conto_id)
-    pn_banca_ids = await db.prima_nota_banca.distinct(
-        "estratto_conto_id",
-        {"estratto_conto_id": {"$exists": True, "$ne": None}}
+    # Le letture di esclusione sono indipendenti: eseguirle in sequenza
+    # amplificava la contesa con gli scheduler sulle cache del runtime.
+    pn_banca_ids, pn_cassa_ids, assegni_elaborati = await asyncio.gather(
+        db.prima_nota_banca.distinct(
+            "estratto_conto_id",
+            {"estratto_conto_id": {"$exists": True, "$ne": None}},
+        ),
+        db.prima_nota_cassa.distinct(
+            "estratto_conto_id",
+            {"estratto_conto_id": {"$exists": True, "$ne": None}},
+        ),
+        db.assegni.find(
+            {"$or": [
+                {"stato": "incassato"},
+                {"fattura_id": {"$exists": True, "$ne": None}, "confermato": True},
+            ]},
+            {"numero": 1, "_id": 0},
+        ).to_list(1000),
     )
-    
-    # 2. Movimenti già collegati a Prima Nota Cassa (tramite estratto_conto_id)  
-    pn_cassa_ids = await db.prima_nota_cassa.distinct(
-        "estratto_conto_id",
-        {"estratto_conto_id": {"$exists": True, "$ne": None}}
-    )
-    
-    # 3. Assegni già incassati o confermati con fattura - ottieni i numeri assegno
-    assegni_elaborati = await db.assegni.find(
-        {"$or": [
-            {"stato": "incassato"},
-            {"fattura_id": {"$exists": True, "$ne": None}, "confermato": True}
-        ]},
-        {"numero": 1, "_id": 0}
-    ).to_list(1000)
     numeri_assegni_elaborati = set(a.get("numero", "") for a in assegni_elaborati if a.get("numero"))
     
     # Combina tutti gli ID da escludere
@@ -911,41 +911,32 @@ async def analizza_estratto_conto_batch(
             movimenti.append(mov)
     
     # === PRE-CARICA DATI PER EVITARE N+1 ===
-    
-    # Pre-carica dipendenti (per stipendi)
-    dipendenti = await db.employees.find({}, {"_id": 0}).to_list(500)
+    # Le cinque sorgenti non dipendono fra loro. La concorrenza qui riduce il
+    # tempo di attesa senza aumentare il numero di query o cambiare i dati.
+    dipendenti, f24_list, assegni, fatture, fornitori = await asyncio.gather(
+        db.employees.find({}, {"_id": 0}).to_list(500),
+        db["f24_unificato"].find(
+            {"pagato": {"$ne": True}}, {"_id": 0},
+        ).sort("data_scadenza", 1).to_list(500),
+        db.assegni.find({}, {"_id": 0}).to_list(1000),
+        db.invoices.find(
+            {
+                **FILTRO_NON_PAGATE,
+                "stato_pagamento": {"$nin": ["pagata", "sospesa"]},
+            },
+            {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+             "supplier_vat": 1, "total_amount": 1, "invoice_date": 1,
+             "pagata": 1, "importo_pagato": 1, "payment_allocations": 1,
+             "assegni_collegati": 1},
+        ).sort("invoice_date", -1).limit(1000).to_list(1000),
+        db.fornitori.find(
+            {"metodo_pagamento": {"$exists": True}},
+            {"_id": 0, "partita_iva": 1, "ragione_sociale": 1,
+             "metodo_pagamento": 1, "iban": 1},
+        ).limit(500).to_list(500),
+    )
     dipendenti_map = {(d.get("nome_completo") or d.get("full_name") or "").lower(): d for d in dipendenti}
-    
-    # Pre-carica F24 non pagati — collezione canonica f24_unificato (era
-    # db.f24_models letterale, che non riceve più i nuovi F24). Vedi P1 §5.1.
-    f24_list = await db["f24_unificato"].find(
-        {"pagato": {"$ne": True}},
-        {"_id": 0}
-    ).sort("data_scadenza", 1).to_list(500)
-    
-    # Pre-carica assegni
-    assegni = await db.assegni.find({}, {"_id": 0}).to_list(1000)
     assegni_map = {a.get("numero", ""): a for a in assegni}
-    
-    # Pre-carica le fatture non pagate, le piu' recenti prima. Nessun limite
-    # di data: le fatture fornitore non hanno scadenza e il titolare decide
-    # quando pagarle, quindi una fattura di quattro mesi fa pagata oggi deve
-    # poter essere proposta. Il tetto resta, ordinato per data decrescente.
-    fatture = await db.invoices.find(
-        {
-            **FILTRO_NON_PAGATE,
-            "stato_pagamento": {"$nin": ["pagata", "sospesa"]},
-        },
-        {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, "supplier_vat": 1, 
-         "total_amount": 1, "invoice_date": 1, "pagata": 1,
-         "importo_pagato": 1, "payment_allocations": 1, "assegni_collegati": 1}
-    ).sort("invoice_date", -1).limit(1000).to_list(1000)
-    
-    # Pre-carica fornitori con metodo pagamento (usa collection corretta)
-    fornitori = await db.fornitori.find(
-        {"metodo_pagamento": {"$exists": True}},
-        {"_id": 0, "partita_iva": 1, "ragione_sociale": 1, "metodo_pagamento": 1, "iban": 1}
-    ).limit(500).to_list(500)
     fornitori_map = {f.get("partita_iva", ""): f for f in fornitori}
     
     # Prepara cache per analisi

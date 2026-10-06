@@ -163,6 +163,39 @@ def test_bank_api_reports_loaded_rows_separately_from_real_total(monkeypatch):
     run(scenario())
 
 
+def test_smart_analysis_timeout_returns_usable_queue(monkeypatch):
+    async def scenario():
+        from app.routers.operazioni_module import smart
+
+        async def fake_wait_for(coro, timeout):
+            assert timeout == 20
+            coro.close()
+            raise TimeoutError
+
+        async def fake_fast_queue(limit, solo_non_riconciliati, anno):
+            assert (limit, solo_non_riconciliati, anno) == (25, True, 2026)
+            return {
+                "movimenti": [{"id": "M1", "descrizione_originale": "BONIFICO"}],
+                "stats": {"totale_righe": 1},
+            }
+
+        monkeypatch.setattr(smart.asyncio, "wait_for", fake_wait_for)
+        monkeypatch.setattr(smart, "banca_veloce", fake_fast_queue)
+
+        result = await smart.analizza_movimenti_smart(limit=25, anno=2026)
+
+        assert result["analisi_non_disponibile"] is True
+        assert result["movimenti"] == [{
+            "id": "M1",
+            "movimento_id": "M1",
+            "descrizione_originale": "BONIFICO",
+            "descrizione": "BONIFICO",
+            "suggerimenti": [],
+        }]
+
+    run(scenario())
+
+
 def test_import_orchestrator_can_apply_unique_referenced_invoice_set(monkeypatch):
     async def scenario():
         db = ClientArchivioMemoria()["bank_auto_many"]
