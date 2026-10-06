@@ -727,17 +727,17 @@ function DashboardPage({ stats, dipendenti, ferie, missioni, getDipendente }) {
         const correnti = pendenze.righe.filter(x => !x.storico);
         const storiche = pendenze.righe.filter(x => x.storico);
         const Tabella = ({ righe, storico }) => (
-          <div style={{ overflowX: "auto" }}>
-            <table className="dc-table" style={{ minWidth: 480 }}>
+          <div>
+            <table className="dc-table dc-table--cards">
               <thead><tr><th>Dipendente</th><th>Periodo</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>{storico ? "Non agganciato €" : "Manca €"}</th><th>Stato</th></tr></thead>
               <tbody>
                 {righe.slice(0, 30).map((x, i) => (
                   <tr key={i}>
                     <td>{x.dipendente}</td>
-                    <td>{mesiIt[(x.mese || 1) - 1]} {x.anno}</td>
-                    <td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
-                    <td style={{ textAlign: "right", color: storico ? "#7d5526" : "#d35f4e", fontWeight: 700 }}>{eur(x.saldo)}</td>
-                    <td><Badge variant={storico ? "default" : x.stato === "parziale" ? "warning" : "danger"}>{storico ? "bonifico non agganciato" : x.stato === "parziale" ? "parziale" : "da pagare"}</Badge></td>
+                    <td data-label="Periodo">{mesiIt[(x.mese || 1) - 1]} {x.anno}</td>
+                    <td data-label="Busta €" style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
+                    <td data-label={storico ? "Non agganciato €" : "Manca €"} style={{ textAlign: "right", color: storico ? "#7d5526" : "#d35f4e", fontWeight: 700 }}>{eur(x.saldo)}</td>
+                    <td data-label="Stato"><Badge variant={storico ? "default" : x.stato === "parziale" ? "warning" : "danger"}>{storico ? "bonifico non agganciato" : x.stato === "parziale" ? "parziale" : "da pagare"}</Badge></td>
                   </tr>
                 ))}
               </tbody>
