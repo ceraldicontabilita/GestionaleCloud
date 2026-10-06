@@ -216,6 +216,42 @@ async def _prima_nota_salari(db, *, dry_run: bool, actor: str) -> Dict[str, Any]
                                                   if not isinstance(v, list)}, "spostate": spostate}
 
 
+async def _rileggi_ricevute_sumup(db, *, dry_run: bool) -> Dict[str, Any]:
+    """Ricevute SumUp lette col beneficiario sbagliato (IBAN SumUp, nome dal file): si rileggono per id."""
+    import base64
+
+    from app.routers.bonifici_module.pdf_parser import extract_transfers_from_text, read_pdf_bytes
+
+    righe = await db["bonifici_transfers"].find({}, {"_id": 0, "id": 1, "beneficiario": 1}).to_list(None)
+    ids = [r["id"] for r in righe
+           if str((r.get("beneficiario") or {}).get("iban") or "").upper().startswith("IE")
+           and "SUMU" in str((r.get("beneficiario") or {}).get("iban") or "").upper()]
+    corrette = 0
+    for rid in ids:
+        completa = await db["bonifici_transfers"].find_one({"id": rid}, {"_id": 0})
+        dati = (completa or {}).get("pdf_data")
+        if not dati:
+            continue
+        try:
+            testo = await asyncio.to_thread(read_pdf_bytes, base64.b64decode(dati))
+            letto = extract_transfers_from_text(testo, filename=completa.get("source_file") or "")[0]
+        except Exception as exc:
+            logger.warning("[doppioni] ricevuta SumUp %s illeggibile: %s %s", rid, type(exc).__name__, exc)
+            continue
+        if str((letto.get("beneficiario") or {}).get("iban") or "").upper().startswith("IE"):
+            continue
+        corrette += 1
+        if not dry_run:
+            data = letto.get("data")
+            await db["bonifici_transfers"].update_one({"id": rid}, {"$set": {
+                "beneficiario": letto["beneficiario"], "ordinante": letto["ordinante"],
+                "causale": letto["causale"], "cro_trn": letto["cro_trn"],
+                **({"data": data.isoformat()} if hasattr(data, "isoformat") else {}),
+                "updated_at": _ora(),
+            }})
+    return {"collezione": "bonifici_transfers", "ricevute_sumup_da_rileggere": len(ids), "corrette": corrette}
+
+
 async def _stampe_fattura_tra_bonifici(db, *, dry_run: bool, actor: str) -> Dict[str, Any]:
     """Stampe PDF di fatture entrate come bonifici (importo = imponibile): in quarantena per id.
 
@@ -263,6 +299,7 @@ async def ripulisci(db, *, dry_run: bool = True, actor: str = "sistema") -> Dict
         "quietanze_f24": await _tratta(db, "quietanze_f24", identita_quietanza, _punteggio_quietanza,
                                        dry_run=dry_run, actor=actor,
                                        riferimenti=(("f24_unificato", "quietanza_id"),)),
+        "bonifici_sumup_riletti": await _rileggi_ricevute_sumup(db, dry_run=dry_run),
         "bonifici_transfers": await _tratta(db, "bonifici_transfers", identita_bonifico,
                                             _punteggio_bonifico, dry_run=dry_run, actor=actor),
         "bonifici_stampe_fattura": await _stampe_fattura_tra_bonifici(db, dry_run=dry_run, actor=actor),

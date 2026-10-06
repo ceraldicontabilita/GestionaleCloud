@@ -40,3 +40,38 @@ def test_detect_document_type_la_manda_alle_fatture():
     from app.routers.documenti import detect_document_type
 
     assert detect_document_type("FPR 31_26.pdf", _pdf(RIGHE)) == "fattura"
+
+
+SUMUP = """Ricevuta di bonifico 07 Aug 2026, 10:45 GMT
+Dettagli bonifico
+Riferimento esterno
+40eebd7002774b00a91f24dfd2cbf6c2
+Riferimento interno
+40eebd70-0277-4b00-a91f-24dfd2cbf6c2
+Data
+Causale pagamento 07 Aug 2026, 10:43 GMT
+Preventivo N 1908 del 07/08/2026
+Importo €214.40
+StatoRiuscito
+Dati mittente
+Dati beneficiario
+Nome
+Nome ceraldi group srl
+Today Service S.r.l.
+IBAN
+IBAN IE21SUMU99036513164215
+IT87M0303203406010000002929
+BICSUMUIE22XXX
+SumUp Limited Block 8, Dublino"""
+
+
+def test_ricevuta_sumup_beneficiario_causale_e_riferimento():
+    from app.routers.bonifici_module.pdf_parser import extract_transfers_from_text
+
+    t = extract_transfers_from_text(SUMUP, filename="2026-08-07_ceraldigroupsrl@gmail.com_20260807_Ricevuta_bonifico.pdf")[0]
+    assert t["importo"] == 214.40
+    assert t["beneficiario"] == {"nome": "Today Service S.r.l.", "iban": "IT87M0303203406010000002929"}
+    assert t["ordinante"]["iban"] == "IE21SUMU99036513164215"
+    assert t["causale"] == "Preventivo N 1908 del 07/08/2026"
+    assert t["cro_trn"] == "40eebd7002774b00a91f24dfd2cbf6c2"
+    assert (t["data"].year, t["data"].month, t["data"].day) == (2026, 8, 7)

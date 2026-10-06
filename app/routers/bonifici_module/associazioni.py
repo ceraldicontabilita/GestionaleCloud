@@ -352,8 +352,19 @@ async def get_fatture_compatibili(bonifico_id: str) -> Dict[str, Any]:
     fatture = []
     for f in fatture_raw:
         valutazione = _valuta_fattura_bonifico(bonifico, f)
-        if not valutazione["compatibile"]:
+        evidenze_f = valutazione["evidenze"]
+        # Senza il numero in causale (es. «Preventivo N 1908» pagato, fattura emessa dopo)
+        # restano candidati da scegliere: stessa identita' del fornitore e importo al
+        # centesimo. Mai applicati da soli (score 60 = proposta).
+        solo_candidato = (
+            not valutazione["compatibile"]
+            and "importo_esatto" in evidenze_f
+            and "identita_fornitore" in evidenze_f
+        )
+        if not valutazione["compatibile"] and not solo_candidato:
             continue
+        if solo_candidato:
+            valutazione = {**valutazione, "score": 60}
         importo_f = valutazione["importo_fattura"]
         fatture.append({
             "id": f.get("id"),
