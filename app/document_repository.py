@@ -1,9 +1,9 @@
 """Regole comuni per leggere il registro documentale senza allegati pesanti.
 
-I documenti completi restano autorevoli in Supabase.  Liste, dashboard e
-riconciliazioni lavorano sui soli metadati; dettaglio e download richiedono
-invece esplicitamente i campi originali.  Tenere questa mappa in un unico
-punto evita che ogni router inventi una proiezione diversa.
+Gli originali PDF restano autorevoli su Drive; Supabase conserva metadati e
+riferimenti verificabili. Liste e dashboard lavorano sui soli metadati, mentre
+il runtime ricostruisce temporaneamente il payload soltanto per i lettori che
+lo chiedono esplicitamente.
 """
 from __future__ import annotations
 
@@ -23,12 +23,21 @@ DOCUMENT_PAYLOAD_FIELDS: Mapping[str, tuple[str, ...]] = {
     "protocollo_personale": ("testo_ocr",),
     # PDF originale del verbale (AV3-09: ~346 KB in base64 su 141 righe, circa 49 MB):
     # una lista di verbali non lo porta, si legge per id.
-    "verbali_noleggio": ("pdf_data", "quietanza_pdf"),
+    "verbali_noleggio": ("pdf_data", "pdf_quietanza", "quietanza_pdf"),
     COLL_DOCUMENTS_INBOX: ("pdf_data",),
     COLL_CEDOLINI: ("pdf_data",),
     COLL_QUIETANZE_F24: ("pdf_data",),
     COLL_BONIFICI_TRANSFERS: ("pdf_data",),
     COLL_F24_UNIFICATO: ("pdf_data",),
+    "verbali_email_attachments": ("pdf_data",),
+    "f24_email_attachments": ("pdf_data",),
+    "ricevute_pagopa": ("pdf_data",),
+    "documenti_non_associati": ("pdf_data",),
+    "estratto_conto_nexi": ("pdf_data",),
+    "schede_tecniche_email_attachments": ("pdf_data",),
+    "bonifici_email_attachments": ("pdf_data",),
+    "dichiarazioni_iva_email_attachments": ("pdf_data",),
+    "cartelle_email_attachments": ("pdf_data",),
     COLL_INVOICES: (
         "fattura_allegata",
         "document_original_ref",

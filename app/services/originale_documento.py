@@ -7,9 +7,8 @@ la sola risposta alla domanda «dov'e' l'originale di questo documento?»:
 
 * si indica **tipo + id** (la collezione la sceglie il tipo) oppure un
   ``drive_id`` / uno SHA-256;
-* i byte si cercano nell'ordine ``payload sul record`` (``pdf_data`` e
-  parenti, che il runtime idrata da ``gestionale.blobs``), ``blob_key``,
-  Drive per id (``drive_download.scarica_originale``: la credenziale provata
+* i byte si cercano prima su Drive, poi nei payload storici e nei blob non
+  ancora migrati (``drive_download.scarica_originale``: la credenziale provata
   sulla cartella unica);
 * se non si trova niente la risposta e' ``OriginaleNonDisponibile`` con
   l'elenco di cio' che si e' provato: **mai** un 200 vuoto, mai un file
@@ -140,6 +139,29 @@ def _archivio_blob():
 
 async def byte_dal_record(doc: Dict[str, Any], tentati: List[str]) -> Optional[Tuple[bytes, str]]:
     """(byte, fonte) dai campi di un record, o ``None``. Aggiunge a ``tentati``."""
+    refs = doc.get("_drive_payloads") or {}
+    candidati_drive = []
+    refs_ordinati = []
+    if isinstance(refs, dict):
+        if isinstance(refs.get("pdf_data"), dict):
+            refs_ordinati.append(refs["pdf_data"])
+        refs_ordinati.extend(
+            ref for field, ref in refs.items()
+            if field != "pdf_data" and isinstance(ref, dict)
+        )
+    for ref in refs_ordinati:
+        if isinstance(ref, dict) and ref.get("drive_file_id"):
+            candidati_drive.append((ref.get("drive_file_id"), ref.get("md5")))
+    for campo in CAMPI_DRIVE:
+        if doc.get(campo):
+            candidati_drive.insert(0, (doc[campo], doc.get("drive_md5") or doc.get("md5")))
+    for file_id, md5 in candidati_drive:
+        from app.services.drive_download import scarica_originale
+
+        contenuto = await scarica_originale(str(file_id), md5=md5)
+        if contenuto:
+            return contenuto, "drive"
+        tentati.append(f"drive_file_id:{file_id}")
     for campo in CAMPI_BASE64:
         dati = doc.get(campo)
         if dati:
@@ -161,14 +183,6 @@ async def byte_dal_record(doc: Dict[str, Any], tentati: List[str]) -> Optional[T
             if contenuto:
                 return contenuto, "blob"
         tentati.append("blob_key")
-    for campo in CAMPI_DRIVE:
-        if doc.get(campo):
-            from app.services.drive_download import scarica_originale
-
-            contenuto = await scarica_originale(str(doc[campo]), md5=doc.get("drive_md5") or doc.get("md5"))
-            if contenuto:
-                return contenuto, "drive"
-            tentati.append(f"{campo}:{doc[campo]}")
     return None
 
 
