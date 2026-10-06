@@ -31,6 +31,7 @@ _ANNUALI = {
     "irap_acconto2": [("irap_acconto_2", None)],
 }
 # Solo «nessun F24 in archivio»: un modello presente ma non pagato ha il suo stato («Scaduto, non pagato»).
+TOLLERANZA_GIORNI = 5
 _STATI_SENZA_F24 = {piano_tributi.MANCA_F24}
 
 
@@ -67,8 +68,6 @@ def _casella_annuale(voce_caselle, data_calendario) -> Optional[Tuple[Dict[str, 
     if not voce_caselle or not voce_caselle[1]:
         return None
     voce, caselle = voce_caselle
-    if len(caselle) == 1:
-        return voce, caselle[0]
     giorno = _giorni(data_calendario)
     if giorno is None:
         return None
@@ -76,7 +75,11 @@ def _casella_annuale(voce_caselle, data_calendario) -> Optional[Tuple[Dict[str, 
                  if _giorni(c.get("scadenza")) is not None]
     if not candidate:
         return None
-    return voce, min(candidate, key=lambda x: (x[0], x[1]))[2]
+    distanza, _, casella = min(candidate, key=lambda x: (x[0], x[1]))
+    # Una scadenza che il titolare ha spostato di settimane non e' quella del calendario:
+    # niente aggancio (la riga resta com'era) invece di uno stato su una data sbagliata.
+    # Qualche giorno di scarto e' lo slittamento di festivi e fine settimana.
+    return (voce, casella) if distanza <= TOLLERANZA_GIORNI else None
 
 
 def _sintesi(casella: Dict[str, Any], voce: Dict[str, Any]) -> Dict[str, Any]:

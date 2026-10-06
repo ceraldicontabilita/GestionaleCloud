@@ -48,10 +48,14 @@ def test_annuale_segue_la_scadenza_configurata_e_modello_non_pagato_non_e_mancan
     voce = {"id": "ires_saldo", "etichetta": "IRES saldo", "codici": ["2003"], "obbligatorio": True}
     casella = {"periodo": "07", "scadenza": "2026-07-31", "stato": pt.SCADUTO_NON_PAGATO,
                "etichetta_stato": "x", "modelli": []}
-    s = [{"id": "ires_saldo_2025", "completato": True, "provenienza_stato": "conferma_manuale"}]
+    s = [{"id": "ires_saldo_2025", "data": "2026-07-30", "completato": True,
+          "provenienza_stato": "conferma_manuale"}]
     out = collega_scadenze(s, {"voci": [{"voce": voce, "caselle": [casella]}]})[0]
     assert out["codici_attesi"] == ["2003"]
     assert out["conferma_senza_f24"] is False
+    # scadenza spostata di un mese rispetto al calendario: nessun aggancio
+    lontana = [{"id": "ires_saldo_2025", "data": "2026-06-30"}]
+    assert "piano_voci" not in collega_scadenze(lontana, {"voci": [{"voce": voce, "caselle": [casella]}]})[0]
 
 
 def test_annuale_con_due_scadenze_configurate_sceglie_il_mese_del_calendario():
