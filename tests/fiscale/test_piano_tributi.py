@@ -318,3 +318,13 @@ def test_gestione_separata_non_e_obbligatoria_nessun_f24_non_e_manca_f24():
     assert not any(m["codici"] == ["CXX"] for m in g["mancano"])
     # le voci obbligatorie restano «Manca F24»
     assert _mese(g, "ritenute_1001", 6)["stato"] == piano.MANCA_F24
+
+
+def test_stessa_delega_senza_data_di_versamento_non_si_somma_alla_copia_pagata():
+    # Stesso saldo e stessa riga 1001: una copia ha la data (quietanza), l'altra no. E' un versamento solo.
+    pagato = _f24("f-a", "2026-05-18", saldo=787627, erario=[("1001", 4, 2026, 94079, 0)],
+                  movimento_bancario_id="m", data_pagamento_effettivo="2026-06-17")
+    senza_data = _f24("f-b", None, saldo=787627, erario=[("1001", 4, 2026, 94079, 0)])
+    g = run(piano.griglia(_db(pagato, senza_data), 2026, oggi=OGGI))
+    aprile = _mese(g, "ritenute_1001", 4)
+    assert aprile["importo"] == "940.79" and aprile["modelli_doppi"] == 1

@@ -322,12 +322,23 @@ def _casella(
             "quietanze": [q["quietanza_id"] for q in prove["quietanze"] if q.get("quietanza_id")],
             "pdf_url": registro_f24.PDF_F24_URL.format(f24_id=f24.get("id")),
             "_doppione": _chiave_doppione(f24),
+            "_firma": tuple(sorted((r["codice"], r.get("anno"), r.get("mese"), r["importo_debito_cents"],
+                                    r["importo_credito_cents"]) for r in righe)),
         })
     # Due modelli con stessa data e stesso saldo sono lo stesso versamento
     # registrato due volte: contano una volta, e la casella lo dice.
+    # Stesso saldo e stesse righe del tributo = lo stesso versamento. La data decide solo se entrambi la
+    # portano: il modello senza data di versamento (non ancora pagato) e la sua copia con la data della
+    # quietanza sono la stessa delega, non due versamenti da sommare.
     per_chiave: Dict[Tuple[Any, Any], List[Dict[str, Any]]] = {}
     for m in modelli:
-        per_chiave.setdefault(m["_doppione"], []).append(m)
+        data_m, saldo_m = m["_doppione"]
+        chiave = next((k for k in per_chiave
+                       if k[0][1] == saldo_m and k[1] == m["_firma"]
+                       and (k[0][0] == data_m or data_m is None or k[0][0] is None)), None)
+        if chiave is None:
+            chiave = (m["_doppione"], m["_firma"])
+        per_chiave.setdefault(chiave, []).append(m)
     versamenti = []
     doppioni = 0
     for gruppo in per_chiave.values():
@@ -336,6 +347,7 @@ def _casella(
         doppioni += len(gruppo) - 1
     for m in modelli:
         m.pop("_doppione", None)
+        m.pop("_firma", None)
 
     if credito:
         stato = CREDITO_USATO if versamenti else CREDITO_ASSENTE
