@@ -231,7 +231,7 @@ export default function Tributi() {
   const apri = voce => setAperta(a => (a === voce.chiave ? null : voce.chiave));
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', fontFamily: FONT.family }}>
+    <div style={{ width: '100%', fontFamily: FONT.family }}>
       <PageHeader title="Tributi" pastiglie={vista === 'codici' ? pastiglie : []} style={{ marginBottom: 14 }} />
 
       <Tabs

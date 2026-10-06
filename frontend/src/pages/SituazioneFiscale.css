@@ -1,5 +1,3 @@
-.fiscal-tabs { display:flex; gap:8px; overflow-x:auto; padding:2px 0 10px; margin-bottom:12px; scrollbar-width:thin; }
-.fiscal-tabs a { flex:0 0 auto; }
 .fiscal-stats { display:grid; grid-template-columns:repeat(5,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
 .fiscal-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
 .fiscal-section-heading h3 { margin:0; font-size:1.25rem; }
