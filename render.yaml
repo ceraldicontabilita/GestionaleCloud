@@ -146,6 +146,11 @@ services:
       # giorno; vuota = spento. Id cartella, non un segreto. Proprietario: titolare.
       - key: DRIVE_IMPORT_CARTELLE_ID
         sync: false
+      # Ricostruzione una tantum delle fatture dagli XML gia' in ELABORATE (il registro li dichiara
+      # `fattura`): true = il giro delle 10 minuti riprende dal cursore fino a «completato»; vuota/false
+      # = spento. Non e' un segreto. Proprietario: titolare. Si toglie a lavoro finito.
+      - key: RICOSTRUZIONE_FATTURE_DA_REGISTRO
+        sync: false
       # Radice Drive della cartella GESTIONALE percorsa dal censimento doppioni
       # (il nome viene dalla simulazione della migrazione, conclusa e tolta).
       # Id cartella, non un segreto; vuota = censimento spento. Proprietario: titolare.

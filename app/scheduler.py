@@ -738,6 +738,16 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-IMPORT-CARTELLE-DRIVE] errore: {type(e).__name__}: {e}")
 
+    async def _fatture_da_registro_job():
+        # Ricostruzione una tantum delle fatture dagli XML gia' letti (solo se acceso da variabile).
+        from app.database import Database
+        try:
+            from app.services.fatture_da_registro import giro_schedulato
+            esito = await giro_schedulato(Database.get_db())
+            logger.info("[SCHEDULER-FATTURE-DA-REGISTRO] %s", esito)
+        except Exception as e:
+            logger.error(f"[SCHEDULER-FATTURE-DA-REGISTRO] errore: {type(e).__name__}: {e}")
+
     async def _controlli_incrociati_job():
         # Segnali, mai correzioni: beneficiario diverso, fattura pagata due
         # volte, importo anomalo, mesi di estratto mancanti, RT dimenticata.
@@ -1424,6 +1434,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="import_cartelle_drive", name="Import cartelle Drive in sola lettura (ogni 30 minuti, se configurato)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _fatture_da_registro_job,
+        "interval", minutes=10,
+        next_run_time=avvio + timedelta(minutes=6),
+        misfire_grace_time=300,
+        coalesce=True,
+        id="fatture_da_registro", name="Fatture dagli XML gia' letti (ogni 10 minuti, solo se acceso)",
         replace_existing=True,
     )
 
