@@ -322,12 +322,17 @@ def _casella(
             "quietanze": [q["quietanza_id"] for q in prove["quietanze"] if q.get("quietanza_id")],
             "pdf_url": registro_f24.PDF_F24_URL.format(f24_id=f24.get("id")),
             "_doppione": _chiave_doppione(f24),
+            "_firma": tuple(sorted((r["codice"], r.get("anno"), r.get("mese"), r["importo_debito_cents"],
+                                    r["importo_credito_cents"]) for r in righe)),
         })
     # Due modelli con stessa data e stesso saldo sono lo stesso versamento
     # registrato due volte: contano una volta, e la casella lo dice.
-    per_chiave: Dict[Tuple[Any, Any], List[Dict[str, Any]]] = {}
+    # Stesse righe del tributo (codice, periodo, importi) = la stessa delega. Ne' la data ne' il saldo
+    # decidono: la data scritta sul modello e' la scadenza teorica (la data vera arriva solo dalla
+    # quietanza) e il saldo cambia con i crediti compensati. Di due copie conta la piu' provata.
+    per_chiave: Dict[Any, List[Dict[str, Any]]] = {}
     for m in modelli:
-        per_chiave.setdefault(m["_doppione"], []).append(m)
+        per_chiave.setdefault(m["_firma"], []).append(m)
     versamenti = []
     doppioni = 0
     for gruppo in per_chiave.values():
@@ -336,6 +341,7 @@ def _casella(
         doppioni += len(gruppo) - 1
     for m in modelli:
         m.pop("_doppione", None)
+        m.pop("_firma", None)
 
     if credito:
         stato = CREDITO_USATO if versamenti else CREDITO_ASSENTE
