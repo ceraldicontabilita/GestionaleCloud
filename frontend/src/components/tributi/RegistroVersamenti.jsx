@@ -146,7 +146,7 @@ function Crediti({ dati, onApri }) {
           </div>
           {k.utilizzi.map((u, i) => (
             <div key={`${u.protocollo}-${i}`} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}`, fontSize: 12.5, lineHeight: 1.5 }}>
-              <strong>{dataIt(u.data)}</strong> · protocollo {u.protocollo || '—'} · usati {euro(u.importo_cents)}
+              <strong>{dataIt(u.data)}</strong> · <Protocollo numero={u.protocollo} pdfUrl={u.pdf_url} onApri={onApri} /> · usati {euro(u.importo_cents)}
               {' '}(progressivo {euro(u.utilizzato_progressivo_cents)}) · <Origini origini={u.origini} />
               {u.compensazione_totale && <Badge variant="info">F24 a saldo zero</Badge>}
               <div>Ha pagato: {u.debiti_compensati.map(d => `${d.codice} ${d.periodo} ${euro(d.importo_cents)}`).join(' · ') || '—'}
@@ -166,6 +166,20 @@ function Crediti({ dati, onApri }) {
   );
 }
 
+// Il protocollo e' il modo di arrivare all'originale: se c'e' il PDF si apre da qui.
+function Protocollo({ numero, pdfUrl, onApri }) {
+  if (!pdfUrl) return <>protocollo {numero || '—'}</>;
+  const apri = e => { e.stopPropagation(); onApri(pdfUrl, `Quietanza ${numero || ''}`); };
+  return (
+    <>protocollo{' '}
+      <span role="link" tabIndex={0} onClick={apri}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apri(e); } }}
+        title="Apri la delega originale" data-testid="apri-protocollo"
+        style={{ color: COLORS.primary, textDecoration: 'underline', cursor: 'pointer' }}>{numero || '—'}</span>
+    </>
+  );
+}
+
 function Deleghe({ dati, onApri }) {
   const [aperta, setAperta] = useState(null);
   const deleghe = dati.deleghe || [];
@@ -178,7 +192,7 @@ function Deleghe({ dati, onApri }) {
             style={{ all: 'unset', display: 'block', width: '100%', cursor: 'pointer', minHeight: 44 }} data-testid={`delega-${d.chiave}`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <div>
-                <strong>{dataIt(d.data)}</strong> · protocollo {d.protocollo || '—'}
+                <strong>{dataIt(d.data)}</strong> · <Protocollo numero={d.protocollo} pdfUrl={d.pdf_url} onApri={onApri} />
                 <div style={{ marginTop: 2 }}><Origini origini={d.origini} />
                   {d.compensazione_totale && <Badge variant="info">Saldo zero · tutto in compensazione</Badge>}</div>
               </div>
