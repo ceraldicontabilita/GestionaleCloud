@@ -30,6 +30,13 @@ async def handler_aggiorna_tfr(payload: Dict[str, Any], db) -> Dict[str, Any]:
     if not dipendente_id or not anno or not mese:
         return {"skipped": True, "reason": "dati insufficienti"}
 
+    # I lettori dichiarano la quota mensile sconosciuta con None e tengono
+    # Quota anno separata. Un valore mancante/zero esplicito non autorizza una
+    # stima; i vecchi eventi privi del campo conservano il percorso storico.
+    if "tfr_quota_mese" in payload and tfr_da_pdf <= 0:
+        reason = "quota mensile non disponibile" if payload["tfr_quota_mese"] is None else "quota TFR zero"
+        return {"skipped": True, "reason": reason}
+
     # Anti-duplicato: un accantonamento per mese/anno/dipendente
     esistente = await db["tfr_accantonamenti"].find_one({
         "dipendente_id": dipendente_id,
