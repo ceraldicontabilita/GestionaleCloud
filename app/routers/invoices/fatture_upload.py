@@ -2151,21 +2151,15 @@ async def process_xml_bytes(
             # correggibile (a differenza dell'archivio storico, pensato per
             # sola consultazione).
             if anno_fattura and anno_fattura != anno_attivo:
-                # Decisione del titolare (20/09/2026): nel gestionale resta
-                # SOLO l'anno attivo. Prima queste fatture entravano in
-                # `invoices` come `archivio_storico` (richiesta del 14/07/2026,
-                # «consultabile per visione personale»): 1.127 documenti e
-                # 52 MB che non entravano in nessun conto e non generavano
-                # nessun alert, ma riempivano le liste — e che tornavano da
-                # soli a ogni giro di ricostruzione Drive.
-                # L'originale non si perde: l'XML resta su Drive, che è la
-                # fonte documentale, e il file viene comunque spostato in
-                # `Elaborate` dal chiamante.
+                # Decisione del titolare (06/10/2026, supera quella del 20/09): le
+                # fatture di un altro anno entrano in `invoices` come
+                # `archivio_storico`, sola consultazione. Niente Prima Nota, partite,
+                # giornale, IVA, magazzino, alert ne' costi: i filtri di
+                # «fattura attiva» le escludono (`STATI_IMPORT_NON_ATTIVI`).
                 logger.info(
-                    "[Fatture] %s è del %s, l'anno attivo è %s: non entra in "
-                    "archivio, l'originale resta su Drive",
-                    filename, anno_fattura, anno_attivo)
-                # Titolare, 28/09/2026: quella dell'anno prima resta un debito
+                    "[Fatture] %s è del %s, l'anno attivo è %s: archivio storico, "
+                    "solo consultazione", filename, anno_fattura, anno_attivo)
+                # Titolare, 28/09/2026: quella dell'anno prima resta anche un debito
                 # da chiudere col bonifico dell'anno attivo (niente costo né IVA).
                 debito = None
                 from app.services import debiti_anno_precedente as dap
@@ -2176,14 +2170,12 @@ async def process_xml_bytes(
                     except Exception as exc:  # noqa: BLE001 - non blocca l'import
                         logger.warning("[Fatture] %s: debito anno precedente non registrato (%s: %s)",
                                        filename, type(exc).__name__, exc)
-                return {
-                    "debito_anno_precedente": debito,
-                    "status": "skipped_altro_anno",
-                    "filename": filename,
-                    "invoice_number": p.get("invoice_number"),
-                    "anno": anno_fattura,
-                    "anno_attivo": anno_attivo,
-                }
+                kwargs = {"xml_raw": xml_content, "stato_import": STATO_ARCHIVIO_STORICO}
+                if source_metadata is not None:
+                    kwargs["source_metadata"] = source_metadata
+                esito = await import_parsed_invoice(db, p, filename, source, **kwargs)
+                return {**esito, "debito_anno_precedente": debito,
+                        "archivio_storico": True, "anno": anno_fattura, "anno_attivo": anno_attivo}
 
         if replay_storico:
             kwargs = {"xml_raw": xml_content, "replay_storico": True}
@@ -2227,11 +2219,9 @@ async def process_xml_bytes(
     return risultato
 
 
-# `archivia_fattura_storica` rimossa il 20/09/2026: nel gestionale resta
-# solo l'anno attivo, quindi una fattura di un altro anno non entra piu'
-# nemmeno come archivio. Per rivedere un anno intero: cambiare l'anno
-# attivo (`/api/config-import/anno`) e rilanciare la ricostruzione Drive,
-# che rilegge tutti gli XML dal cursore e li importa nel flusso attivo.
+# Le fatture di un altro anno entrano come `archivio_storico` (06/10/2026): stessa
+# pipeline di `import_parsed_invoice`, ma si ferma dopo aver scritto il documento.
+STATO_ARCHIVIO_STORICO = "archivio_storico"
 
 
 async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, source: str,
@@ -2239,7 +2229,8 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
                                  piva_validator=_piva_plausibile,
                                  replay_storico: bool = False,
                                  existing_invoice_id: Optional[str] = None,
-                                 source_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                                 source_metadata: Optional[Dict[str, Any]] = None,
+                                 stato_import: Optional[str] = None) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una fattura già "parsata" in un dict
     con lo schema di `parse_fattura_xml` (invoice_number/supplier_vat/...).
 
@@ -2346,8 +2337,8 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "importo_totale": float(parsed.get("total_amount", 0) or 0),
         "anno": int(invoice_date[:4]) if invoice_date[:4].isdigit() else None,
         "replay_storico": replay_storico,
-        "stato_derivati": "da_ricalcolare",
-        "stato_import": "promosso_da_archivio" if existing_invoice_id else "attivo",
+        "stato_derivati": "non_applicabile" if stato_import == STATO_ARCHIVIO_STORICO else "da_ricalcolare",
+        "stato_import": stato_import or ("promosso_da_archivio" if existing_invoice_id else "attivo"),
         "promotion_source": source if existing_invoice_id else None,
         "promoted_at": datetime.now(timezone.utc).isoformat() if existing_invoice_id else None,
         "duplicate_review_required": False,
@@ -2368,7 +2359,8 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     try:
         from app.routers.ritenute import upsert_ritenuta_da_fattura
 
-        await upsert_ritenuta_da_fattura(db, invoice)
+        if stato_import != STATO_ARCHIVIO_STORICO:
+            await upsert_ritenuta_da_fattura(db, invoice)
     except Exception as exc:
         logger.warning(
             "Proiezione Ritenute non aggiornata per la fattura %s (%s): %s",
@@ -2389,14 +2381,15 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     # documento canonico, senza riattivare in blocco magazzino, alert,
     # scadenzario e riconciliazioni storiche. Questi derivati vengono
     # ricalcolati in una fase dedicata e idempotente.
-    if replay_storico:
+    if replay_storico or stato_import == STATO_ARCHIVIO_STORICO:
         return {
             "status": "imported",
             "filename": filename,
             "invoice_number": parsed.get("invoice_number"),
             "supplier": parsed.get("supplier_name"),
             "id": invoice["id"],
-            "replay_storico": True,
+            "replay_storico": bool(replay_storico),
+            "archivio_storico": stato_import == STATO_ARCHIVIO_STORICO,
         }
 
     # Giacenze magazzino: aggiornate qui sotto tramite l'event bus (punto 7,
