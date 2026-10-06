@@ -1,1316 +1,5271 @@
-# Istruzioni per Claude — GestionaleCloud (Ceraldi ERP)
+# Istruzioni per Claude — GestionaleCloud / Ceraldi ERP
 
 <!-- gestionalecloud-doc
 status: current
 reviewed_at: 2026-10-06
 storage_architecture: supabase
+consolidated_source: single-claude-md
 -->
 
-Aggiornato il 06/10/2026 sul codice di `main` del repository canonico
-`ceraldicontabilita/GestionaleCloud`.
+Repository canonico:
 
-**Gli unici documenti sono questo file e `README.md`. `CLAUDE.md` è l'unica
-fonte normativa e l'unica memoria del repository.** Il README è soltanto una
-guida d'ingresso. Audit, piani separati, mappe generate, changelog e diari
-raccontano com'erano le cose in una certa data e impediscono di capire quali
-logiche siano in vigore: non si tengono.
+`ceraldicontabilita/GestionaleCloud`
 
-## Come si tiene questo file
+Produzione:
 
-- Qui stanno **regole, architettura e stato attuale**. La cronaca di una
-  sessione (cosa si è trovato, i numeri del giorno, le PR) **non si scrive**:
-  sta nella storia di git, dove nessuno la confonde con una regola.
-- «Stato attuale» e «Aperto» **si riscrivono sul posto**: un fatto superato si
-  sostituisce, non gli si affianca la correzione. Una voce chiusa si toglie.
-- Una regola nuova nata da un incidente entra nella sezione giusta, in una o
-  due righe, senza il racconto di come ci si è arrivati.
-- Non creare altri `.md`, né cartelle di documentazione, né report generati da
-  script. `tests/runtime/test_claude_md.py` fa rispettare data dell'intestazione,
-  divieto di capitoli datati e divieto di nuovi `.md`. **Non c'è un tetto di lunghezza**
-  (decisione del titolare, 30/09/2026): si scrive quanto serve, senza ripetere la stessa regola due volte.
-- Il codice, i test e la configurazione live vincono sempre su questo file.
-  Se trovi una contraddizione, **correggi questo file** nello stesso commit.
+`https://gestionalecloud.onrender.com`
 
-## Direzione della ristrutturazione
+---
 
-La ristrutturazione resta aperta, ma non ha un secondo documento: lo stato
-verificato vive in «Stato attuale» e il lavoro residuo in «Aperto».
+# 1. Scopo di questo file
 
-- Procedere per micro-tranche verificabili, mai con una riscrittura unica.
-- Ordine: infrastruttura e identità canonica; fatture e inventario; cedolini e
-  HR; Lotti; Menu; frontend e toolchain unici; ritiro delle compatibilità.
-- Prima di eliminare un percorso verificare import statici e dinamici, route,
-  frontend, job, API esterne e dati persistiti. Un test che cita un modulo non
-  dimostra che il modulo sia raggiungibile in produzione.
-- Il target resta un solo servizio, una sessione e gestione accessi coerente,
-  un writer per fatto, una build frontend e nessun bridge transitorio.
-- Le attività concluse si tolgono da «Aperto»: commit, PR, CI e cronaca del
-  rilascio restano nella storia di GitHub, non in questo file.
+Questo file è la **fonte normativa del repository**.
 
-### Proprietà dei domini
+Contiene:
 
-La cartella in cui vive il codice non assegna la proprietà del dato. La
-proprietà è del dominio e comporta che **solo quel dominio decide e scrive il
-fatto canonico**; gli altri ricevono un riferimento, una proiezione
-rigenerabile o un evento idempotente.
+1. regole architetturali;
+2. regole di dominio;
+3. comportamento che il codice deve rispettare;
+4. stato di produzione realmente verificato;
+5. incoerenze note;
+6. lavoro ancora aperto.
 
-| Dominio | Fatti canonici | Gli altri domini |
+Il `README.md` è soltanto una guida d'ingresso.
+
+Il codice, i test, le migrazioni realmente applicate e la configurazione live vincono sempre sulla documentazione.
+
+Se codice e questo file non concordano:
+
+- verificare quale sia la realtà;
+- correggere il codice se viola una regola;
+- correggere questo file se descrive uno stato non più vero;
+- fare entrambe le modifiche nello stesso intervento quando necessario.
+
+Non creare altri documenti permanenti di stato, audit, roadmap o memoria.
+
+La cronologia delle modifiche appartiene a Git.
+
+---
+
+# 2. Come leggere questo file
+
+Ogni area distingue sempre tre concetti.
+
+## REGOLA
+
+Comportamento vincolante del sistema.
+
+## PRODUZIONE
+
+Ciò che risulta realmente attivo e verificato.
+
+## APERTO
+
+Ciò che non rispetta ancora completamente la regola o deve essere completato.
+
+Non trasformare una voce di **APERTO** in realtà acquisita.
+
+Non descrivere come esistente una migrazione che non è stata ancora applicata in produzione.
+
+---
+
+# 3. Principio architetturale fondamentale
+
+GestionaleCloud deve convergere verso:
+
+- un solo servizio;
+- una sola fonte autorevole per ogni fatto;
+- un solo writer per ogni fatto;
+- un solo motore per ogni regola;
+- identificatori stabili;
+- relazioni esplicite;
+- proiezioni rigenerabili;
+- nessuna duplicazione di logica;
+- nessun dato inventato.
+
+La cartella in cui si trova il codice non assegna la proprietà del dato.
+
+La proprietà appartiene al dominio.
+
+---
+
+# 4. Domini canonici
+
+| Dominio | Possiede |
+| --- | --- |
+| ERP / Finanza | fatture, righe fatture, fornitori commerciali, movimenti bancari, pagamenti, incassi, contabilità, fiscalità |
+| HR / Persone | persona, dipendente, rapporto di lavoro, presenze, turni, ferie, payroll, cedolino |
+| Lotti / Operazioni | ricette tecniche, ingredienti, produzione, lotto, giacenza, HACCP, firme operative |
+| Catalogo / Menu | prodotto commerciale, categoria, immagine, prezzi, disponibilità per canale, allergeni pubblicati |
+| B&B / Hospitality | struttura, soggiorno, wallet, voucher, utilizzi, extra, recensioni, richieste fiscali |
+| Piattaforma | identità tecnica, sessione, audit, documenti, relazioni, job, notifiche, errori, outbox |
+
+Gli altri domini possono:
+
+- leggere;
+- collegare un ID;
+- ricevere una proiezione;
+- ricevere un evento idempotente.
+
+Non devono copiare il fatto canonico.
+
+---
+
+# 5. Identificatori
+
+Identificatori condivisi:
+
+- `person_id`
+- `employee_id`
+- `supplier_id`
+- `product_id`
+- `document_id`
+- `invoice_id`
+- `invoice_line_id`
+- `transaction_id`
+
+Gli identificativi nuovi devono nascere dal proprietario canonico.
+
+Preferire UUID, identity o sequence del database.
+
+Mai:
+
+`max(id) + 1`
+
+## APERTO
+
+Le fatture storiche contengono ancora ID numerici e testuali.
+
+Finché la migrazione non è completata usare esclusivamente gli helper canonici che gestiscono entrambe le varianti.
+
+Non introdurre nuovo codice che presuma un solo tipo storico di `invoice_id`.
+
+---
+
+# 6. Un solo servizio
+
+## REGOLA
+
+Un unico servizio Render serve l'intero gruppo.
+
+Host principale:
+
+`https://gestionalecloud.onrender.com`
+
+Dominio alternativo:
+
+`impresasemplice.online`
+
+Applicazioni:
+
+| Area | Rotta | Codice |
 | --- | --- | --- |
-| ERP / Finanza | fatture e righe, movimenti bancari, pagamenti e incassi, contabilità, fiscalità, fornitore commerciale | leggono proiezioni o collegano gli ID; non copiano il fatto contabile |
-| HR / Persone | persona, dipendente, rapporto di lavoro, organizzazione, presenze, turni, ferie, payroll e cedolino | ERP collega il pagamento; Lotti usa identità e abilitazioni |
-| Lotti / Operazioni | ricetta tecnica e versione, ingrediente, produzione, lotto, movimento e giacenza, HACCP e firma operativa | pubblica al Catalogo; non possiede fattura o prodotto commerciale |
-| Catalogo / Menu | `product_id`, presentazione commerciale, categoria, immagine, prezzo e disponibilità per canale, allergeni pubblicati, ordine Menu | riceve dati tecnici da Lotti; serve Menu, B&B e Cassa |
-| B&B / Hospitality | struttura partner, soggiorno, wallet, ricarica, voucher, utilizzo, extra, recensione e richiesta fiscale | legge il Catalogo e invia l'effetto economico all'ERP |
-| Piattaforma | identità tecnica, sessione, policy, audit, `document_id`, relazioni documentali, job, notifiche, errori e outbox | non contiene regole contabili, HR, HACCP o commerciali |
-
-Identificativi condivisi: `person_id`, `employee_id`, `supplier_id`,
-`product_id`, `document_id`, `invoice_id`, `invoice_line_id` e
-`transaction_id`. Nascono dal proprietario canonico con UUID, identity o
-sequence del database, mai con `max(id)+1`.
-
-I soli accessi cross-domain diretti ammessi sono quelli transitori elencati
-nei guardrail di `tests/runtime/test_ristrutturazione_guardrail.py`; l'elenco
-può soltanto diminuire. Un nuovo caso non si aggiunge all'elenco: si introduce
-il contratto del proprietario. I bridge transitori non diventano una fonte
-autorevole e ogni loro proiezione deve poter essere rigenerata.
-
-## Il gruppo Ceraldi è un solo servizio
-
-Un unico servizio Render (`gestionalecloud.onrender.com`, anche su `impresasemplice.online`; deploy
-automatico da `main`, health check `/api/health`) e un unico progetto Supabase servono tutto:
-
-| Cosa | Dove vive | Codice |
-| --- | --- | --- |
-| ERP / contabilità | `/` | `app/` + `frontend/` |
-| HR, portale dipendenti | `/hr`, `/hr/portale` | `app/hr/` + `frontend_hr/` |
-| Menu pubblico e admin | `/menu`, `/menu/admin` | `app/menu/` + `frontend_menu/` |
-| Lotti (HACCP) | `/lotti` | `app/lotti/` + `frontend_lotti/` |
-| Colazioni B&B | `/convenzioni` (il vecchio `/colazioni` rimanda qui) | `frontend_colazioni/` (pagina statica, nessun backend in `app/`) |
-
-Il `Mount` di Starlette esige la barra finale: il prefisso **nudo** va
-rimandato a `/<prefisso>/` fra i mount e il catch-all, o cade nella SPA
-dell'ERP e chi apre `/lotti` si ritrova nel gestionale.
-
-- Repository: `https://github.com/ceraldicontabilita/GestionaleCloud`.
-  Checkout canonico Windows: `C:\Users\ceral\Documents\GESTIONALE CLOUD 2`.
-- **L'unico repository vivo è questo.** `AppDipendenti`, `Lotti` e `Menu` sono
-  l'archivio del sorgente originale; `Gestionale` una riscrittura abbandonata.
-- **Siti spenti, da non riaprire né citare**: `appdipendenti.onrender.com`,
-  `lotti-frontend.onrender.com`, `lotti-backend-2wwb.onrender.com`, `www.ceraldiapp.it`.
-  `impresasemplice.online` invece è vivo: dominio dello stesso servizio.
-- Prima di intervenire confronta sempre `HEAD` con `origin/main`. Il worktree
-  può contenere modifiche dell'utente: non cancellarle, non ripristinarle e
-  non includerle nei commit. **Mai `git add -A`**: solo i file pertinenti.
-
-## Direttive permanenti del titolare
-
-Valgono su tutte e quattro le app, sempre, anche quando non sono ripetute nel
-resto del file.
-
-### Metodo
-- Rispondere e ragionare **in italiano**, risultati prima delle spiegazioni.
-- **Tutto va portato su `main`**: si sviluppa su un branch, ma il lavoro non è
-  consegnato finché non è unito su `main` e deployato. Render pubblica solo da `main`.
-- Le funzionalità **si collaudano davvero** (dati di prova reali sul backend
-  live, poi ripuliti), non si dichiarano a posto leggendo il codice. Se il
-  titolare mostra uno screenshot con il bug ancora presente dopo un fix, il fix
-  non ha coperto quel caso: si indaga da zero sui dati reali.
-- Non dichiarare completato un flusso basandoti su HTTP 200, build o presenza
-  della pagina. Verifica dati, relazioni, deduplica e risultato live.
-- Se un problema non si risolve subito, **cercare come lo risolvono altri
-  progetti reali** e integrare la soluzione, invece di descrivere il problema.
-- Se trovi errori, **correggili**: non limitarti a segnalarli.
-- Esponi il risultato e gli eventuali blocchi, non una sequenza di pulsanti
-  tecnici da premere. **Quando c'è una scelta, fai la domanda** al titolare con le opzioni (la consigliata per prima).
-- Chiudere ogni sessione con il link di produzione:
-  **https://gestionalecloud.onrender.com**
-
-### Dati e prestazioni
-- **Niente doppioni, codice morto o sistemi paralleli: un solo sistema per
-  funzione.** Quando ne compare un secondo, si elimina, non si affianca.
-- **Non inventare numeri.** Importi tabellari (CCNL, prezzi, aliquote) vanno
-  presi dalla fonte o dichiarati da verificare. Se manca il dato: campo vuoto e
-  segnalazione, mai un valore plausibile.
-- I dati già letti **si tengono in memoria**: ogni rilettura inutile di
-  Supabase o Drive è un costo.
-
-### Credenziali
-- Token, PIN, password e chiavi **solo nelle variabili d'ambiente di Render**
-  (`render.yaml` le dichiara con `sync: false`). Mai nel codice, mai nei file
-  di memoria, mai in chat, nemmeno mascherati.
-- Per le azioni live che richiedono il PIN, usarlo inline in un singolo
-  comando e non scriverlo su disco.
-- Ogni variabile nuova richiede descrizione, default sicuro, proprietario,
-  rotazione se segreta, e va tolta quando non ha più consumatori.
-
-### Design (salvia per HR, Menu e Lotti; l'ERP ha i colori dell'artefatto)
-- Salvia `#5b7a6b` (scuro `#3f5a4e`) su crema `#faf7f0`; card `#fffefb`,
-  bordi sabbia `#e6e0d4`, inchiostro `#2a3329`.
-- Semantici caldi: pericolo `#d35f4e`, avviso `#c4894a`, successo `#3d8168`,
-  informazione `#8a6f47`.
-- **Vietati blu, indaco, viola e ciano**, sia come classi Tailwind sia come
-  hex negli stili inline: si rimappano su salvia o sabbia. **Vietati anche i
-  grigi freddi**: `gray` e `slate` di Tailwind sono blu-tinte, e un `#64748b`
-  a mano stona sulla crema. `frontend_lotti` e `frontend_menu` rimappano nel
-  loro `tailwind.config.js` le scale fredde su sabbia e
-  `gray`/`slate`/`zinc`/`neutral` su una neutra calda dai token (`stone` e
-  `amber` sono gia' caldi). Scansione dopo ogni modifica frontend, **sui
-  bundle compilati** (un remap del config si vede solo li'):
-  `grep -rEn "5D29C7|1E1B4B|7c3aed|8b5cf6|6366f1|4f46e5|violet-|indigo-|bg-blue-|bg-sky-|text-blue-|border-blue-|3b82f6|2563eb|1d4ed8|F1F5F9|E2E8F0|CBD5E1|94A3B8|64748B|475569|0F172A|1E293B|6B7280|9CA3AF|D1D5DB|E5E7EB|374151|111827"`
-- **Un solo font per tutte e quattro le app, ERP compreso: Plus Jakarta Sans**
-  (400-800, da Google Fonts). Non introdurre una seconda famiglia: un titolo
-  si distingue dal **peso** (700/800) e dalla spaziatura (`-0.02em`), mai dal
-  carattere. `mono` resta solo per le colonne di importi (`tabular-nums`).
-- Il colore non e' mai un nome: una variabile o una costante si chiama per
-  quello che contiene (`SALVIA`, `--primary`), mai `NAVY` o `--violet` con
-  dentro il verde. Una classe Tailwind non si costruisce a runtime
-  (`bg-${x}-100`): il JIT non la genera e l'elemento resta senza stile.
-- Icone Lucide, mai emoji nelle interfacce nuove (su Android rendono con
-  colori di sistema non controllabili).
-- Ogni pagina centrata, **mai scroll orizzontale su smartphone**: le tabelle
-  larghe diventano card impilate. Tocco minimo 44px.
-  In HR, Lotti e Menu lo fa `frontend_shared/tabelleCard.js` (avviato da `main.jsx`/`index.js`: stesse regole, `data-card="no"` per tenere una matrice; HR mantiene anche le sue `dc-table--cards` scritte a mano); `frontend_colazioni` è una pagina statica senza build e non lo usa.
-  Nell'ERP lo fa un meccanismo solo, `frontend/src/lib/tabelleCard.js` + regole `table[data-card="si"]` in `index.css`: sotto i 768px ogni `<table>` (anche con
-  intestazione a più livelli: vale la cella più in basso che copre la colonna) diventa una card per riga con l'etichetta della colonna (`data-label`, sopra al valore se supera 22 caratteri); `data-card="no"` tiene una matrice com'è. Non scrivere
-  card a mano per una tabella semplice.
-- L'ERP segue l'**artefatto «Gestore Attività»** (titolare, 26/09/2026): crema `#faf9f5`, inchiostro `#141413`, terracotta `#c15f3c`
-  per azioni e stato attivo (il pulsante `Button` è terracotta in ogni variante tranne `danger`: `success`/`info`/`warning` disegnano il primario, il colore dell'esito sta nei badge); token solo in `lib/utils.js` e `index.css`, niente Tailwind né `gs-`; vietati anche qui blu, viola e grigi
-  freddi; il colore non è mai l'unica informazione (ogni badge ha testo). Ogni pagina: `PageHeader` (famiglia, titolo, perché, pastiglie), una riga di filtri, una tabella, 200 righe con «Mostra altre».
-- Le app portate pari pari mantengono il loro aspetto: nessuna contaminazione
-  con il layout dell'ERP.
-
-### Le mani sporche
-Il pasticcere e il banconista hanno **sempre le mani sporche**: nei flussi
-operativi si sceglie da tendine, chip e bottoni grandi, non si scrive a
-tastiera. Ogni campo di testo libero (motivi, azioni correttive, note) va
-sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
-
-## Convenzioni tecniche trasversali
-
-- **Importi sempre `Decimal`** con valuta esplicita, mai `float`.
-- **Hash degli originali SHA-256.** L'MD5 si usa solo dove lo fornisce l'API
-  Drive per trovare copie identiche, mai per una decisione nuova.
-- **Date**: backend ISO-8601 con timezone, interfaccia sempre `gg/mm/aaaa`.
-- Gli scheduler girano sul fuso **`Europe/Rome`**.
-- Il codice tributo è **sempre una stringa**, mai convertito a numero. Lo
-  stesso vale per codice avviso e IUV.
-- Errori API con `code`, `message`, `details`, `correlation_id`; paginazione e
-  limiti dichiarati. **L'autorizzazione sta nel backend**, mai solo nella UI.
-- Il dato più recente si mostra per primo.
-- Un comando di import **salva sempre**; una modalità di sola anteprima va
-  etichettata esplicitamente come simulazione (`dry_run`).
-- Endpoint senza frontend, scheduler, integrazione o test restano in
-  quarantena e non si ricreano; un alias legacy reindirizza al canonico, mai
-  con una risposta finta.
-- **Niente «legacy»: una sola collezione, un solo sistema per funzione.** Una collezione, un alias, un endpoint, un campo o uno
-  script di migrazione «vecchio» si **toglie nello stesso commit** che ne toglie l'ultimo lettore, ma solo dopo aver **contato sul
-  database** che in produzione non ha righe (mai presumerlo: `piano_conti` ha dati, `attendance_presenze_calendario` e
-  `email_fornitori` hanno ancora un writer vivo). Una migrazione una tantum si cancella a migrazione fatta; una lettura «in
-  transizione» che unisce la vecchia e la nuova collezione conta due volte lo stesso dato. Una collezione senza righe non resta
-  come costante «deprecata»: non c'è. I test che vietano scritture su un nome morto usano la stringa, non una costante.
-- **Due copie dello stesso modulo non si tengono allineate a mano.** Quando un
-  sottopercorso esiste sia in `app/` sia in `app/hr/`, la logica va in un
-  modulo solo sotto `app/` e il lato HR diventa un **re-export** (solo import,
-  docstring e `__all__`). Prima di fondere, il diff si **classifica riga per
-  riga**: ogni differenza è una correzione presente da un lato solo oppure una
-  divergenza voluta, e va detto quale. Nessuna copia si cancella «perché
-  sembra vecchia».
-- Prima di dichiarare morto un modulo, la prova è la **raggiungibilità reale**,
-  non il nome: gli import relativi (`from .routers import x`) e quelli dentro
-  una funzione contano, e `tests/runtime/test_fork_app_hr.py` nomina i
-  duplicati **perché** lo sono, quindi non vale come citazione.
-
-## Archivio dati e architettura
-
-- **Supabase è l'unico archivio, senza eccezioni**: un solo progetto
-  `GestionaleCloud`, `render.yaml` impone `DATA_BACKEND=supabase` ed è
-  l'unico valore accettato dal codice. Drive resta la fonte degli
-  **originali documentali**, non il database.
-- Schemi: `gestionale` (ERP: `documents`, `blobs`, `collection_versions`,
-  `protocollo_drive`, `runtime_scheduler_leases`), `hr` (tabelle `app_*`,
-  `id text` + `doc jsonb`), `lotti` (`lotti_documents` + RPC `lotti_*`),
-  `menu` (tabelle + bucket `menu-images`), `legacy_staging` (resto
-  dell'archivio CeraldiFatture, 5 tabelle da migrare, **staccato**: nessun codice lo legge). Solo `menu` e `public`
-  sono raggiungibili da `anon`/`authenticated`.
-- I PDF HR vivono in `gestionale.blobs` (chiave = SHA-256, conteggio dei
-  riferimenti): si caricano su richiesta, mai idratati in memoria.
-- **Cache incrementale del runtime** (ERP `supabase_runtime_database.py`, HR
-  `app/hr/db_supabase.py`): ogni collezione letta resta in memoria nella
-  versione leggera (senza XML/PDF/foto); una firma per tutte le collezioni al
-  più ogni 15 s, poi solo i delta; finestra di grazia 120 s se la firma
-  fallisce. `GC_RUNTIME_CACHE=0` / `HR_RUNTIME_CACHE=0` la spengono. Il buffer `_documents` di una collezione vale solo per l'operazione e si svuota alla fine (tenuto, ogni collezione conservava il suo ultimo lotto col payload fino all'OOM a 2 GB); `memoria_processo.py` limita le arene malloc e restituisce al sistema la memoria liberata ogni 5 minuti. **Istantanee**: i riepiloghi in sola lettura (`@istantanea`, `middleware/performance.py`) si servono pronti e si ricalcolano in sottofondo; ogni scrittura riuscita o «Rileggi» (`X-Rileggi`) le svuota; nel browser la copia della sessione è `getConCopia` (`lib/cacheGuscio.js`), mai un secondo meccanismo. Con `@istantanea(persistente=True)` l'ultimo riepilogo sopravvive al riavvio in `sistema_stato` (max 200 KB, mai oltre 7 giorni): dopo un rilascio si serve subito marcato `in_aggiornamento`/`da_copia_salvata` e si ricalcola; una scrittura la invalida (`istantanee_svuotate`), mai una copia precedente al salvataggio dell'utente. Finanziaria dice «aggiornato al» per ogni conto e avvisa se estratto conto, corrispettivi o SumUp sono fermi.
-- `/api/health` di ERP, HR e Menu risponde entro 2 s anche con la probe appesa (`degraded`, non 503; `?strict=true`
-  per il 503), una sola probe in volo (`services/health_probe.py`); il commit per tutte e quattro da `services/deploy_info.py`.
-- Gli scheduler acquisiscono una lease distribuita su Supabase: il lock locale
-  resta solo come riserva prima che la connessione sia disponibile (avvio,
-  test). **La lease si restituisce allo spegnimento**
-  (`rilascia_lease_attive`), non si lascia scadere: un processo che muore
-  tenendola blocca il suo job per tutto il TTL (900 s) e chi subentra può solo
-  saltare il turno. Per lo stesso motivo `stop_scheduler` chiude con
-  `shutdown(wait=False)`: i job sono coroutine dello stesso event loop, e
-  aspettarli da dentro il loop impedisce allo spegnimento di arrivare in fondo.
-- Il download di un file Drive sta in un posto solo, `drive_download.py` (`scarica_originale` per id). Un solo service account (`GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`), provato sulla cartella unica da ogni servizio Drive (`drive_credential_probe.py`).
-- PostgREST esegue le RPC del runtime come ruolo `anon`, con
-  `statement_timeout` 20 s; `authenticator` resta a 8 s. Compute **Small** (90 connessioni,
-  database ~2,2 GB): i timeout si rivedono se si riduce il payload di `documents`.
-
-### Regole per chi scrive codice sui dati
-
-1. Liste, conteggi e lookup usano sempre una proiezione senza payload
-   (`metadata_projection(collection)`): viene servita dalla cache senza RPC.
-2. Il payload si legge **per id** (`find_one({"id": …})`), mai con `find({})`.
-3. «Ha il PDF / senza XML» si filtra sul marcatore `_payload_stato`, non sul
-   contenuto.
-4. Un endpoint che lavora su un'intera collezione fa **un prefetch unico** e
-   gira **in background** con stato in `sistema_stato`: oltre i 5 minuti il
-   proxy Render taglia la richiesta. Lo stesso motore non si chiama **da un
-   handler per-documento**: `fattura.created` nasce una volta per fattura e il
-   giro Drive ne importa 25, quindi il costo si moltiplica per il lotto. Il
-   ripasso completo sta solo in `riconcilia_documenti_e_pagamenti`, nel giro
-   dei 30 minuti; l'estratto conto lo **accoda in sottofondo**, mai lo aspetta.
-5. Migrazioni DDL su `gestionale.documents` a database scarico o con
-   `create index concurrently`. Ogni DDL fa ricaricare lo schema a PostgREST
-   (503 per minuti): l'HR fa DDL solo se la tabella manca davvero. Ogni migrazione applicata al progetto si salva nello stesso giorno in `supabase/migrations/<versione>_<nome>.sql`, con la versione del registro `supabase_migrations.schema_migrations` (letta dal registro, mai inventata: tre file del 01/10 con una versione a mano erano doppioni del registro); il file e' l'unico modo di ricostruire il database da zero.
-6. **Nessuna cancellazione con filtro**: solo per id, con
-   `gc_delete_documents` / `gc_delete_blobs` / `lotti_delete_*`. `DELETE` e
-   `TRUNCATE` a mano sono bloccati su `gestionale.documents`, `.blobs`,
-   `lotti.lotti_documents` e `legacy_staging`; per una manutenzione voluta,
-   `select gestionale.consenti_cancellazione();` e prima un backup.
-7. Nessun agente e nessuna sessione automatica deve avere la password
-   Postgres: solo l'API con il segreto runtime. Il ruolo dell'app è `hr_app`.
-8. Un protocollo non dimentica: un file sparito da Drive diventa
-   `stato='rimosso'`, un doppione va in quarantena su richiesta esplicita, una
-   scrittura contabile sbagliata si **storna**, non si cancella.
-9. Il secondo ingest della stessa fonte deve dare **`nuovi=0`** e zero nuove
-   scritture contabili: è il criterio di collaudo dell'idempotenza.
-10. **I due archivi non usano la stessa chiave.** Il runtime dell'ERP
-    (`services/supabase_runtime_database.py`) indicizza i documenti per `_id`,
-    l'adattatore HR (`app/hr/db_supabase.py`) per `id`, e in HR gli
-    identificativi sono **testo** (UUID), mai `ObjectId`. Un codice condiviso
-    fra i due rami filtra per entrambi i campi; `bson`/`motor` non devono
-    comparire in codice nuovo.
-11. Un nome di campo sbagliato non dà errore, dà silenzio: `{"campo": {"$ne":
-    True}}` su una chiave inesistente passa **sempre**. Prima di fidarsi di un
-    filtro, contare sul database quante righe hanno davvero quella chiave.
-    Vale anche fra due funzioni: `supplier_result["nuovo"]` al posto di
-    `supplier_created` dava sempre `False`, e un alert non è mai partito. `$in: [None, …]` **non** prende il campo assente: «non ancora collegato» si scrive con `pagopa_receipts.non_collegato`.
-12. **Su `invoices` i campi canonici sono quelli inglesi**: `invoice_date`,
-    `total_amount`, `invoice_number`. `data_documento` e `totale` sono derivati
-    e mancano sulle fatture che il motore IVA non ha toccato: filtrarci o
-    sommarci perde righe in silenzio. `iva` e `imponibile` ci sono sempre. L'`id` è un **numero** su 786 righe di 1.532: cercare per id con `{"$in": [testo, int]}`, cioè con l'helper unico `app/utils/id_fattura.py` (`filtro_id`, `varianti_id`): una ricerca o un aggiornamento col solo testo non trova la fattura e non dà errore.
-13. Un conteggio che torna zero tondo, o uguale al totale su ogni colonna, si
-    tratta come un errore di lettura finché non è smentito. Lo stesso per uno
-    stato: in archivio convivono `archived` e `archiviata`, e un filtro che ne
-    conosce una sola include documenti che doveva escludere.
-14. **`except Exception: pass` è vietato dove si contano euro** e non cresce
-    altrove (`tests/runtime/test_guasti_muti.py`): il log dice *quale dato non
-    c'è più*, non «errore». Vale per un `%s` senza argomento (riga mai scritta) e
-    per `str(exc)` da solo: molte eccezioni vere hanno messaggio vuoto e lasciano
-    «Lettura fonte: ». Nel log ci va sempre anche `type(exc).__name__`.
-15. **Un operatore di aggregazione non implementato non dà un valore sbagliato:
-    fa fallire l'intera pipeline.** `$trim` mancava, e con lui sono morte per mesi
-    la ricerca web prodotti (644 giri falliti di fila) e gli sconti merce: prima di
-    usarne uno nuovo, `archivio_documenti_memoria.evaluate_expression` deve conoscerlo.
-16. **Il calcolo puro su una collezione intera non gira sull'event loop**: oltre 5 s di loop bloccato l'health check di Render scade e
-    il servizio si riavvia, azzerando i timer di tutti i giri lunghi (un giro che parte «18 minuti dopo l'avvio» non parte mai se si
-    riavvia ogni 20). Si porta in `asyncio.to_thread` (`collega_ravvedimenti`: 10 s di calcolo, causa dei riavvii del 01/10/2026; la lettura delle ricevute `parse_receipt_pdf`, con l'OCR di un PDF scansionato, dal giro della cartella unica: un riavvio ogni 20 minuti fino al 02/10/2026);
-    il segnale è `[loop bloccato] ripartito dopo N s` in `sorveglianza_loop`.
-
-## Identità, prove e attese
-
-- Nessuna entità si associa per solo importo: servono identità/provenienza coerente e importo al centesimo (anche per gli **acconti**: 2–4 bonifici allo stesso fornitore che sommano una sola fattura aperta, entro 90 giorni, `reconcile_acconti_fornitore`, nel job bancario corto). Unica
-  eccezione, regola del titolare: un assegno paga la fattura di pari importo emessa nei 15 giorni prima dell'addebito,
-  se è l'unica (`REGOLA_TITOLARE_GIORNI_PRECEDENTI`); il numero scritto nel report «Fatture ricevute» vince sempre.
-- Nei casi ambigui mostra i candidati (`Scegli fattura`, `Scegli driver`,
-  `Scegli verbale`) e non applicare il collegamento. Una proposta aperta il cui movimento è poi riconciliato (da un giro o da un altro motore) si chiude `superata` per id (`chiudi_proposte_superate`, a ogni giro bancario e a ogni abbinamento), mai cancellata: in «Scegli fattura» restano solo le domande vive. L'aggiornamento richiede ancora `stato=da_confermare` e conta soltanto le righe modificate, preservando le decisioni concorrenti del titolare.
-- Fattura, disposizione, ricevuta, quietanza e movimento bancario sono prove
-  **distinte**, collegate da `operation_id`, mai fuse in un solo record.
-- I documenti originali restano immutabili: hash, fonte, versione, timestamp e
-  log. I duplicati si marcano, non si eliminano in modo permanente.
-- Ogni documento importato (F24, quietanza, LIPE, cedolino, ricevuta di bonifico) nasce con `canale` ∈ `posta|drive|caricato|altro`
-  (`app/constants/canale_documento.py`, `canale_obbligatorio`: l'etichetta che dice il canale vince, l'id Drive decide solo se manca; la prima copia arrivata lo fissa) e con uno stato
-  esplicito (LIPE `canonica`+`sostituisce`, bonifico `stato_riconciliazione`, alert `aperto|risolto|ignorato`). Il dettaglio grezzo resta nel
-  campo storico di ogni collezione (`import_source`, `fonte`, `source`, `origine`); `canali_documento` lo riduce per l'archivio senza `canale`. **Le buste già in archivio senza `canale`** si bonificano con `POST /api/cedolini/canale/bonifica` (admin, `dry_run`, in sottofondo, `limite`; gestionale per `id` e HR per `id` testo): `canale_ricavabile` (stesso normalizzatore) dà prima il canale già scritto (non si cambia: la prima copia lo fissa), poi un'etichetta di provenienza (i nomi di motore o archivio come `cedolino_v2` e `gestionale_cloud` non sono canali), la posta (`email_info`, nome file `AAAA-MM-GG_mittente@…`), Drive (id Drive o cartella `DA ELABORARE`/`ELABORATE`); se nessun campo lo dice resta vuoto (`non_ricavabile`). Non tocca netto né `netto_fonte`.
-- **Una prova successiva non crea mai l'obbligo che dovrebbe dimostrare.** Il
-  fatto autorevole crea subito l'attesa; la prova la soddisfa o la lascia
-  `DA_VERIFICARE`.
-- Stati fissi delle attese: aperti `ATTESO`, `DA_VERIFICARE`,
-  `IN_ELABORAZIONE`, `ERRORE`; terminali positivi `SODDISFATTO`,
-  `NON_APPLICABILE`, `SUPERATO`. `ERRORE` non chiude il processo e non vale
-  come `NON_APPLICABILE`. Un processo è chiuso solo quando ogni attesa
-  obbligatoria è terminale positiva (`app/services/expectation_policy.py`).
-- Ogni attesa nasce con tipo, owner e `source_fact_id` obbligatori.
-- Per ogni modifica a un flusso con attese serve un test che provi: il fatto
-  crea l'attesa prima della prova; il reimport non duplica; la prova certa
-  conserva gli ID; la prova ambigua non inventa dati; la chiusura fallisce con
-  un'attesa aperta.
-- Un alert mostra sempre l'elenco dei record coinvolti (la lista ricava il link da `entita_collection`/`entita_id`); alert falsi e verbali nati da un numero di fattura li chiude o mette in quarantena `bonifiche_automatiche.py` nel job bancario corto, per id e col motivo. Segnali incrociati in un modulo solo (`controlli_incrociati.py`, ogni mattina): beneficiario «FAVORE» diverso dal fornitore, fattura con due uscite intere, importo oltre 4× la mediana del fornitore, mese d'estratto senza movimenti (BPM, SumUp, Numia), RT dimenticata; un avviso ignorato non rinasce. Un comando di manutenzione che l'utente deve ripetere
-  per correggere duplicati prevedibili è un difetto: la prevenzione per ID/hash sta nel flusso di importazione.
-- **L'abbinamento parte all'arrivo del secondo pezzo, in tutti e due i sensi**, mai aspettando un giro: F24 ↔ quietanza ↔ banca (`cerca_controparti_f24`), fattura ↔ report del titolare ↔ banca (`applica_per_fattura_arrivata`, `riprocessa_estratto_dopo_import_fattura`). I giri restano solo come rete.
-
-## Ingresso documenti
-
-- **Un file si riconosce dal contenuto, mai dal titolo** (regola del titolare, 02/10/2026). Il tipo, il periodo, il conto e l'identità di un PDF o di un XML li decidono le parole, le cifre e la struttura **dentro** il documento (intestazione dell'emittente, numeri, righe, coordinate); il nome del file, la cartella e la data di modifica non decidono mai un tipo, un periodo o un esito, e non provano che un file sia già stato letto: possono solo **ordinare** il lavoro (cosa leggere prima) o spiegarlo in un messaggio. Un titolo come «Estratto_Conto (13)» o «marzo nexi» non dice niente: «Milano, 31 Agosto 2026 … Nexi … carta 9998» sì. Conseguenza: **un file entra nel gestionale solo se passa dallo smistatore** (cartella unica `DA ELABORARE` o radice, oppure Documenti > Import); un file messo a mano in `ELABORATE`, `DOPPIONI`, `ARRETRATO` o `ERRORI` **non è stato letto**, e «sta in ELABORATE» non prova che il gestionale lo conosca: la prova è la riga nel registro con il suo SHA-256. Un file in `ELABORATE` senza riga nel registro si rimette in coda e si rilegge, mai si dà per fatto.
-- **Ricostruire il gestionale = rimettere i file in coda, mai un secondo importatore** (titolare, 06/10/2026): il percorso è sempre `DA ELABORARE → motore Documenti > Import → registrazione nel gestionale → ELABORATE`. Dopo un azzeramento di fatture, corrispettivi o estratti, `POST /api/admin/documenti/rimetti-in-coda` (admin, `dry_run` per difetto, in sottofondo) sposta su Drive da ELABORATE a DA ELABORARE i soli file di quei tipi (`TIPI_DA_RIPASSARE`) e li rilegge il giro normale; un documento già presente dà `nuovi=0`. Niente lettore «dal registro» parallelo.
-- `Documenti > Import` è l'unico ingresso manuale operativo, e lo stesso smistatore serve la cartella unica
-  Drive (`DA ELABORARE | ELABORATE | ERRORI`); il suo id sta su Render, non in questo file.
-- **Report «Fatture ricevute»** (`fatture_report_ae.py`): indice, mai fattura. Due formati nella stessa collezione `fatture_report_ae`: l'xlsx del titolare e l'export csv grezzo del portale AdE (`;`, apici; `e_csv_ade`, solo numero, data, fornitore, imponibile, imposta, SdI; importi senza segno anche per le note di credito, totale documento derivato e marcato `totale_derivato`); il csv non sovrascrive metodo, netto o stato di pagamento già scritti dall'xlsx, e il secondo import dà `imported=0`.
-- Le fatture elettroniche arrivano dal canale Drive/SDI configurato. Una
-  fattura italiana trovata per email è un'anomalia, non una seconda fonte. Una fattura **estera** arriva in PDF (SumUp, Irlanda): Documenti > Import la passa al lettore unico `process_fattura_estera_pdf` solo se il testo porta una partita IVA UE non italiana, e un fornitore italiano letto dal PDF non si importa mai; resta «da verificare» e le sue righe sono solo testo (`descrizione_righe_ai`), mai importi, lette anche dal giornale; la conferma del titolare rifà classificazione e scrittura (storno e nuova registrazione, mai correzione sul posto). Dopo la conferma la fattura resta in «Confermate» col suo pagamento: senza prova elenca i PayPal con lo stesso importo al centesimo e il titolare sceglie (`collega_paypal_scelto_dal_titolare`: la sua parola sostituisce nome e numero, mai importo o valuta); un addebito bancario ufficiale già legato al PayPal chiude la catena anche se l'estratto PDF ha rimesso `riconciliato=False` (`finalizza_transazione_paypal_se_completa`).
-- Gmail/IMAP acquisisce F24, quietanze, cedolini, verbali e schede tecniche **solo** dai
-  mittenti autorizzati, mai cablati nel codice: regole versionate su indirizzo, dominio, oggetto,
-  intestazioni PEC e tipo di allegato (`app/services/mittenti.py`; i builtin sono una base rigenerabile). Un
-  solo downloader: la scansione `ALL_FOLDERS` di `email_full_download.py`, mai uno su `INBOX`: ogni ora, cursore UID per cartella in `sistema_stato` (nuovi, poi lo storico fino al primo messaggio), cartella in sola lettura e `BODY.PEEK`; credenziali solo da `gmail_credentials.py`; login rifiutato = alert `POSTA_NON_RAGGIUNGIBILE` + Telegram.
-- Le ricerche email usano `in:anywhere`, preservano message ID, thread ID e
-  SHA-256, e **non spostano né cancellano gli originali**. Mai marcare letto,
-  etichettare o rispondere automaticamente. Paginare fino a esaurimento, mai
-  la sola prima pagina; ogni giro registra letti/nuovi/aggiornati/ambigui/
-  errori e l'ultimo cursore.
-- Un errore di parsing **conserva email e allegato** e crea una coda visibile:
-  non si scarta nulla.
-- **ZIP oltre 100 MB**: restano su Drive e si importano con `POST /api/admin/documenti/import-zip-drive?file_id=…` (`drive_zip_import.py`, `dry_run` per difetto = solo anteprima): indice e voci a intervalli di byte, ogni voce dallo smistatore della cartella unica (stessi doppioni), cursore in `sistema_stato`, si riprende dopo un riavvio; niente si sposta né si cancella su Drive. Avanzamento: `GET …/stato`. Lo stesso endpoint importa una **cartella** Drive con le sottocartelle (in sola lettura: lo smistatore della cartella unica non ci scende); `DRIVE_IMPORT_CARTELLE_ID` la fa girare da sola, un controllo al giorno. **Ripasso degli errori**: ogni correzione a un lettore alza `VERSIONE_RIPASSO`; al primo giro dopo il deploy la cartella già completata rilegge **solo i file in errore** (non l'intera cartella), una volta per versione, salvando l'avanzamento ogni 10 file (un deploy lo interrompe e riprende). Un file «non quadrato» non si forza mai: si corregge il lettore e si ripassa. **Un guasto transitorio non è un errore del file**: timeout di una RPC Supabase, 5xx, memoria esaurita per l'OCR e il NUL nel testo (tolto dal payload in `_rpc`, Postgres lo rifiuta nel jsonb) restano in coda (`e_guasto_transitorio`, un solo meccanismo con i rinvii dello svuotamento: `rinvii` nel registro, al massimo `MAX_RINVII` volte, anche per le righe ERRORI nate così, rimesse in coda dal registro); poi il file resta in ERRORI col suo motivo, e il secondo giro non sposta niente. Il motivo di un F24 non quadrato porta righe lette, saldo stampato e `x1 d/c` (bordo destro in punti degli importi letti come debito e credito).
-- **Cruscotto Agenti** (`/agenti`, voce «Agenti» ne «I controlli», solo admin, `routers/agenti.py`): la scheda «Settori» (`services/agenti_settori.py`, `GET /api/agenti/settori`, `@istantanea` persistente) dice per verbali, cedolini, bonifici, fatture, corrispettivi e F24 l'ultimo giro (da `sistema_stato`) e le **code ferme** con numero, link alla pagina e motivo: file in `ERRORI` per tipo, F24 non quadrati, chiusure RT scartate, verbali aperti senza driver, buste senza netto verificato, varianti da decidere, bonifici HR da associare, banca senza categoria, fatture aperte senza metodo, letture AI da rivedere; un conteggio che fallisce è `None` («Dato non disponibile»), mai zero. **Gli agenti AI non scrivono dati: scrivono proposte** (`services/agenti_proposte.py`, giro `agenti_proposte` ogni 30 minuti con lease, lotti da 10): leggono i file fermi in `ERRORI` della cartella unica e l'inbox senza categoria e salvano in `agenti_proposte` tipo dello smistatore, campi, confidenza e prove (JSON validato: tipo fuori lista = `non_riconosciuto`, importi in centesimi, codici tributo stringhe). Il titolare conferma (`POST /api/agenti/proposte/{id}/conferma`, «Conferma tutte le sicure» solo ad alta confidenza) e la conferma applica il **motore deterministico del tipo** (Drive → `drive_cartella_unica.rielabora_con_tipo`, lo stesso `_smista` con `tipo_rilevato_noto`; inbox → `upload_documento_automatico`, poi `categoria`/`processed` come la classificazione esistente; i `campi` della proposta viaggiano in `campi_proposta` del contesto e li usa solo il motore che sa cosa farne: oggi i verbali), o rifiuta con motivo a chip (`tipo_sbagliato|dati_sbagliati|non_contabile|doppione|altro`); una proposta decisa non si riapplica (`gia_decisa`), un motore che fallisce la lascia aperta col motivo, ogni esito va in `audit_log`. **Un solo client**, `anthropic_llm_client.LlmChat`, per tutte e quattro le app (`tests/runtime/test_ai_client_unico.py`: nessun altro modulo importa `anthropic`, chiama `api.anthropic.com` o cabla un modello): timeout, 3 tentativi solo su 429/5xx/rete, chiamata fuori dal loop, `send_message` per un messaggio con immagini o PDF, `crea_messaggio` per conversazioni a turni, strumenti propri (la chat) e server-side (`cerca_sul_web`, ricerca web di Lotti). Modelli solo da `document_model_name()` (`ANTHROPIC_MODEL`, letture documentali) e `modello_veloce()` (`ANTHROPIC_MODEL_VELOCE`, classificazioni brevi), mai uno snapshot datato nel codice. **Registro unico** `agenti_ai_chiamate` (giorno di Roma, `scopo`, modello, token, esito; un solo scrittore, `registra_chiamata`) e **tetto** `AI_TETTO_GIORNALIERO` (1.000, tutti gli scopi: `TettoRaggiunto` prima di chiamare); gli agenti tengono il loro tetto `AGENTI_AI_TETTO_GIORNALIERO` (200) sullo scopo `agenti_proposte`, con cache per SHA-256 + `VERSIONE_PROMPT` (la copia identica non richiama il modello); `AGENTI_AI=false` spegne il giro, senza `ANTHROPIC_API_KEY` non fa nulla e lo scrive nello stato (`sistema_stato`, `agenti_proposte`). Nessun altro lettore AI va aggiunto: quelli esistenti sono doppioni da ridurre (vedi «Aperto»).
-- Gli ZIP si validano prima dell'estrazione (path traversal, zip-bomb,
-  estensioni vietate, limite di dimensione), poi si deduplicano e inventariano.
-- Deduplica documentale certa solo con SHA-256 **e** confronto byte; mai per
-  nome, dimensione, data o importo. Per i PDF amministrativi serve anche
-  l'identità business (beneficiario/CRO, dipendente/periodo, F24/codici
-  tributo, verbale/targa). Dedup in ingresso: hash del contenuto più
-  nome+dimensione con tolleranza 10%; un documento non classificato genera un
-  alert, non viene assegnato a caso.
-- Pulizia Drive: solo copie esatte, **Cestino mai eliminazione permanente**,
-  con anteprima e autorizzazione esplicita.
-- Estratti conto: inbox unica per sei fonti; il **contenuto** decide (SumUp → Nexi → PayPal → mutuo → banca), mai percorso né nome file (vedi «Un file si riconosce dal contenuto»; il codice oggi li consulta ancora prima: vedi «Aperto»). «estratto conto» da solo non è un
-  segno. Il nome della banca (una bolletta Enel che scrive «addebito presso Banco BPM») e il titolo (un sollecito «INVIO ESTRATTO CONTO - FATTURE SCADUTE») da soli non fanno un estratto: serve la forma, cioè i saldi, le colonne data contabile/valuta o il titolo con l'ABI 05034 (`ha_struttura_di_estratto`); il «Dettaglio movimento» dell'home banking prova un movimento, non è un estratto. La stampa PDF di una fattura italiana va in `ARRETRATO` (`fuori_contabilita`), mai in `ERRORI`; un file in `ERRORI` letto con `REGOLE_CLASSIFICAZIONE` più vecchia si rilegge una volta sola. Il PDF ufficiale BPM cambia impaginazione dal trimestre al 30/06/2026 (tre date — contabile, valuta, disponibile — poi l'importo: con la descrizione sulla stessa riga per le entrate, nelle righe dopo per le uscite; la data in coda è del movimento successivo): `parsers/estratto_conto_bpm_parser.py` le conosce entrambe, e la prova è l'archivio riga per riga (844 su 844 al 30/06/2026). All'import ufficiale anche le righe riconosciute solo per giorno, verso e importo (`accoppia`: la causale del PDF non ha il prefisso dell'export) si promuovono a ufficiali. La quietanza di rata «Mutui - Quietanza di pagamento_…» ha una colonna «totale netto»: si riconosce prima della guardia busta paga e va al modulo mutui. Non riconosciuto → cartella Errori col motivo scritto, **mai
-  indovinato**: indovinare significa registrare le spese Nexi come uscite dal
-  conto. Lo statement Nexi (`estratto_conto_nexi`: PDF, `content_sha256`, `totale_transazioni`) e le sue righe (`estratto_conto_movimenti`, `tipo=carta_credito`, `estratto_id`) portano il `drive_file_id` del file di origine quando arriva dalla cartella unica (le righe già scritte non si riscrivono); sullo statement già noto lo si aggiunge una volta sola, mai sovrascritto (`importa_estratto_nexi_pdf`). Arretrato fermo per scelta del titolare: nella cartella unica un estratto (le sei fonti) con anno provato da
-  nome o contenuto sotto `DRIVE_ESTRATTI_ANNO_MINIMO` (difetto 2025: l'anno prima si legge per riconciliare; 0 = nessun filtro) va in `ARRETRATO`, non si registra.
-- **CSV «Corrispettivi» del portale AdE = dato provvisorio** (`corrispettivi_service.importa_csv_ade`, da Documenti > Import o `POST /api/corrispettivi/import-csv?dry_run=`): «Ammontare delle vendite» è l'**imponibile** (coincide al centesimo con l'XML di settembre) e «Imposta» l'IVA; il totale è derivato (`totale_derivato`) e contanti/POS restano `None`, mai per differenza. Le giornate già `definitivo_xml` non si toccano (si dichiara solo la discordanza di imponibile), una riga manuale è un conflitto, un invio = una riga (`id_invio`: secondo import `nuovi=0`, due chiusure dello stesso giorno restano due). Né Prima Nota, né giornale, né evento finché non arriva l'XML: data + matricola lo agganciano, `stato` diventa `definitivo_xml` e importi e quote si sovrascrivono (il CSV resta in `csv_ade` come storico).
-- Corrispettivi: la via **primaria** è l'import degli XML (Documenti > Import, cartella unica); la copia serale RT è
-  **supplementare**. Render non raggiunge la rete del locale, quindi `scripts/sync_rt_to_drive.py` gira sul **PC del
-  titolare** (attività pianificata da `scripts/installa_sync_rt.ps1`, ogni sera e all'accensione) e copia in
-  `DA ELABORARE` le giornate dall'ultima copiata in poi (ignora gli XML `ESITO`, SHA-256, copia atomica dei soli file
-  nuovi). `RT_LOCAL_BASE_URL` e `RT_DRIVE_INBOX` sono variabili **locali**: mai su Render. **Se quel
-  programma si ferma nessuno se ne accorge**: il gestionale vede solo l'assenza
-  di file, e l'assenza di incassi somiglia a un locale chiuso. Il segnale da
-  guardare è l'ultima giornata in `corrispettivi`, non la coda Drive: `fonti_ferme.py` avvisa (anche su
-  Telegram, una volta) dopo **2 giorni d'apertura** senza chiusura RT, tolte le `chiusure_attivita`.
-- **Protocollo personale e familiare** (`protocollo_personale.py`, `/api/protocollo-personale`, solo admin; collezione `protocollo_personale`, distinta dall'inventario Drive `protocollo_drive`): il foglio `REGISTRO_PROTOCOLLO` dell'xlsx del titolare su Drive si legge **per intestazione**, mai per posizione, con `POST …/import?file_id=` (`dry_run` per difetto, in sottofondo, stato in `sistema_stato`; secondo giro `nuovi=0`). Il numero `AAAA/NNNNNN` è unico e immutabile: lo stesso numero con un altro SHA-256 è `in_conflitto` e lo decide il titolare. **Niente si cancella**: `rimuovi` dà `stato='rimosso'` con motivo, l'import non lo riattiva né lo toglie perché sparito dal foglio. Ricerca AND senza accenti né maiuscole (targa anche con spazi), filtro anno (quello del documento se c'è, altrimenti del protocollo), snippet a segmenti `{t, hit}` (mai HTML), 200 righe per pagina; `testo_ocr` è payload e si legge per id, la ricerca lavora su `testo_indice` (primi 8.000 caratteri). Il testo di un PDF si aggancia solo se il suo SHA-256 è quello registrato. **Il ponte verso la contabilità è solo informativo e non ha viste proprie** (`documenti_collegati`: stessi SHA-256 nei documenti già in archivio e relazioni `entity_relations` con target `documento`): per ogni corrispondenza restituisce collezione, id e la **rotta della sezione esistente** (Tributi, PagoPA e cartelle, Verbali, Atti, Archivio documenti, `/fatture?invoice_id=`), mai i dati; non scrive relazioni, scritture né pagamenti. Una riga `personale_familiare` è `accounting_excluded`: nessun modulo contabile legge `protocollo_personale` (un test lo fissa), quindi Prima Nota, giornale, IVA, bilancio, incroci e alert non la vedono. L'OCR delle scansioni è lo stesso motore delle ricevute Mooney (`_righe_ocr_per_posizione`). Nei log solo contatori: il registro contiene nomi e codici fiscali.
-
-### Drive, struttura canonica
-
-- **Cartella unica** (decisione del 25/09/2026, sostituisce l'albero a 6 aree del §7-bis): «DATI SOCIETA CERALDI» con `DA ELABORARE | ELABORATE | ERRORI` (`GOOGLE_DRIVE_DATI_FOLDER_ID`); ogni file passa dallo smistatore di Documenti > Import, prima **sciolto nella radice** (il calderone del titolare) poi da `DA ELABORARE`, con le buste paga in testa (tre insieme, scritte una alla volta per dipendente e periodo), poi gli estratti conto, poi gli XML dai più recenti; ogni giro va avanti fino a coda vuota (lotto `DRIVE_CARTELLA_UNICA_BATCH`, difetto 100; fuori dalle buste l'elaborazione resta **un file alla volta**, ma i download dei successivi corrono in anticipo, `DRIVE_PRECARICA_PARALLELI` 4 e tetto `DRIVE_PRECARICA_MB` 48 sui byte scaricati e non ancora elaborati, sempre nell'ordine della coda: `precarica_in_ordine`), **Il tipo si legge una volta sola**: lo rileva il precarico (`DRIVE_PRECARICA_RILEVA`, difetto 1) mentre il file davanti si registra, e lo smistatore lo riceve gia' deciso (`tipo_rilevato_noto`); prima ogni file riconosciuto veniva letto due volte, OCR compreso. **Cache fra i giri**: id delle cartelle (1 h) ed elenco di ELABORATE (intero ogni 30 min, nel mezzo i soli file nuovi per `createdTime`; un candidato sparito si scarta al 404, mai ERRORI); la rilettura di ERRORI/ARRETRATO per le rimesse in coda ogni 10 min. **Ogni chiamata Drive riprova con backoff esponenziale** su 429, 5xx, 403 di quota e rete (`drive_download.riprova`), e `svuota` riprova un giro non partito (20, 60, 120 s). Un guasto passeggero di Supabase (5xx, schema cache) **non manda il file in ERRORI**: resta in coda, massimo 3 rinvii (`rinvii` nel registro), e le righe ERRORI nate cosi' si rimettono in coda da sole. I tempi per fase (`tempi_s`/`tempi_n`: elenco, scarico, hash, confronto doppioni, smista, sposta, registro, `attesa_precarico`) stanno in `sistema_stato` (`drive_cartella_unica_last_sync`): `attesa_precarico` alta = il collo e' il download, bassa = e' l'elaborazione.
-  una copia byte-identica di un originale va nel Cestino (in `DOPPIONI` se il file è del titolare: Drive nega il Cestino al service account), «vedi documento» legge da `ELABORATE` e, per id, dai file fermi in `ERRORI`/`ARRETRATO` (`drive_cartella_unica.py`). Un file che nessun lettore riconosce va in `ARRETRATO` se è una stampa PDF di fattura XML, un formato non contabile o porta nel nome un anno passato (`motivo_fuori_contabilita`); gli altri restano in `ERRORI`. Dentro `GESTIONALE` restano solo lei e `FOTO E IMMAGINI` (immagini, cartella a parte): le cartelle dei canali sotto non esistono piu'. Le copie degli allegati email vanno in `ELABORATE` (`email_drive_archive.py`), mai in `DA ELABORARE`: lo smistatore le registrerebbe due volte. La pausa dell'import è `DRIVE_CARTELLA_UNICA_IMPORT=false`, **mai** togliere la cartella: le credenziali si provano su di lei.
-- **Censimento doppioni** della cartella GESTIONALE (`drive_censimento_doppioni.py`, `DRIVE_CENSIMENTO_DOPPIONI`
-  off|censisci|marca): copie esatte (MD5 + dimensione Drive) e file tecnici si **rinominano soltanto**
-  («DUPLICATO DA ELIMINARE - …», «FILE TECNICO DA ELIMINARE - …»), li elimina il titolare; resta l'originale in
-  `ELABORATE`, poi il più vecchio senza «(2)»; dai file che restano si toglie «(N)»/«(dupN)» (se il nome c'è già
-  nella cartella diventa «nome - N»; radice `DRIVE_SIMULAZIONE_RADICE`). Lo smistatore non tocca i file marcati.
-- **Apertura dell'originale: un endpoint e un componente** (DRV-04). `GET /api/originale/{tipo}/{id}` (`?indice=` per il secondo PDF di un verbale o l'allegato di una fattura, `?scarica=true`) oppure `GET /api/originale?drive_id=…|sha256=…`: solo admin, sola lettura, `app/routers/originale.py` sul servizio `app/services/originale_documento.py`, che trova i byte dove stanno (payload sul record e `blob_key` di `gestionale.blobs`, poi Drive per id con `drive_download.scarica_originale`) e risponde col tipo vero dei byte, `X-Originale-Fonte` e `X-Originale-Sha256`. Tipi: `f24`, `quietanza`, `cedolino`, `ricevuta_pagopa`, `cartella`, `documento` (deposito Documenti e allegati di posta), `documento_fiscale`, `atto`, `estratto`, `verbale`, `fattura` (XML senza busta .p7m), `allegato_fattura`, `fattura_emessa`, `bonifico`, `protocollo`, `drive`. Un lettore per famiglia (atti, estratti, cartelle, verbali, XML delle fatture) resta dov'è e il servizio lo **chiama**. Se l'originale manca è un 404 con `code` (`DOCUMENTO_NON_TROVATO`, `ORIGINALE_NON_DISPONIBILE` con l'elenco di ciò che si è provato, `ORIGINALE_NON_CORRISPONDENTE` 409), `message`, `details`, `correlation_id`: **mai un 200 vuoto**. Un `drive_id` si apre solo se è in `ELABORATE`, fermo in `ERRORI`/`ARRETRATO` (per id, mai per impronta: il titolare deve vedere il file per decidere la proposta dell'agente) o nell'inventario `protocollo_drive`, mai da un id qualunque; il **protocollo personale** si apre solo se il registro ha lo SHA-256 e i byte lo rispettano (altro file = 409, senza SHA-256 = non disponibile). I servizi che scrivono un link lo costruiscono con `url_originale()`; i vecchi indirizzi con link già in circolazione (`/api/f24-public/pdf/{id}`, `/api/f24-riconciliazione/commercialista/{id}/pdf`, `/api/documenti/documento/{id}/download`, `/api/fiscal/documents/{id}/content`, `/api/archivio-bonifici/transfers/{id}/pdf`) sono **alias 307** verso il canonico; gli altri (`/api/download`, `/api/documenti/originale`, `/api/cedolini/{id}/pdf`, PagoPA, atti, estratti, verbali, `xml-originale`) non esistono più. Nel frontend l'unico componente è `components/ApriOriginale.jsx` (`ApriOriginale` per un bottone, `VisoreOriginale` per l'elenco con un proprio stato «documento aperto»; `urlOriginale` in `lib/vista.js`): «Scarica», errore leggibile col riferimento, mai un indirizzo Drive aperto da fuori. Un file nuovo che apre un originale passa da qui: un `window.open` su un indirizzo di file o un secondo endpoint di apertura è un doppione. Prove: `tests/documenti/test_originale_documento.py`, `ApriOriginale.test.jsx`, `frontend/scripts/audit-originale.cjs`.
-- Il protocollo Drive (`gestionale.protocollo_drive`, tabella relazionale, non
-  `documents`) riconcilia Drive con l'inventario: file nuovo → riga nuova,
-  cambiato → aggiornata, sparito → `stato='rimosso'` con la data. Le impronte
-  collegano ogni file al documento **per contenuto**, mai per nome, e una
-  stessa impronta in più posizioni non crea un secondo documento: le
-  provenienze stanno in `source_occurrences`. **Due giri, un solo protocollo**: il
-  completo (`sincronizza`: percorre tutto l'albero, ~23.000 file in memoria, vede
-  anche i file spariti; spento per la RAM, `PROTOCOLLO_DRIVE_ENABLED=false`) e
-  l'**incrementale** (`sincronizza_incrementale`, ogni 20 minuti, `PROTOCOLLO_DRIVE_INCREMENTALE`
-  acceso per difetto): solo i file creati o modificati dall'ultimo giro riuscito (meno 10
-  minuti), una pagina da 1.000 alla volta, percorso dalle cartelle fino alla radice; non vede
-  i file spariti o spostati fuori (li segna solo il completo) e non rifa duplicati e
-  collegamenti se non ha scritto niente. Un giro `in_corso` da oltre 3 ore e' di un processo
-  morto e si chiude `interrotto`. Dopo ogni giro `riallinea_prove` riscrive (marcatore
-  `prova_riallineata_il`) i documenti `senza_origine` il cui file e' ora nel protocollo: la prova
-  la rifa il trigger `prova_origine` (`prova_calcola`, per MD5 o id Drive: si sceglie con le **stesse chiavi** che il trigger usa, `chiavi_prova`; un documento gia'
-  riscritto e ancora senza origine non si ritocca). Senza il file nel
-  protocollo la prova dice la verita' («nessun file Drive con la stessa impronta»), mai un'origine
-  inventata: dal 17/09 al 01/10/2026 il protocollo non ha visto nessun file nuovo. **Il collegamento protocollo ↔ documento ha due
-  chiavi**: l'impronta (`SQL_COLLEGA`, per MD5) e il `drive_file_id` scritto su F24 e quietanze
-  (`gestionale.collega_protocollo_per_drive_file_id()`, SECURITY DEFINER perché `hr_app` non legge `documents`;
-  `drive_protocollo.collega_per_drive_file_id`, idempotente): lo chiama lo svuotamento della cartella unica appena ha
-  elaborato un file (`protocollo_collegati` nell'esito) e il giro incrementale dopo le impronte. Senza la seconda chiave
-  le quietanze arrivate dopo il 15/09 restavano scollegate anche col file nel protocollo.
-- **I canali Drive per sezione non esistono piu'** (DRV-16): moduli `drive_*_ingest`, router `/drive/sync|quadratura`,
-  registro JSON delle cartelle e credenziali per canale tolti; lo smistatore non ne usava i parser. Restano la
-  cartella unica e le foto ricette di Lotti; `fonti_ferme` e `cedolini_bloccati` (`cedolini_bloccati.py`) hanno un job proprio.
-- **Corrispettivi: una riga senza `progressivo` né `id_dispositivo` non è una
-  chiusura**, è una giornata senza documento, e il suo XML la **sostituisce** quando i contanti
-  coincidono al centesimo (il totale no: lo storico sommava imponibile e IVA); due chiusure vere dello
-  stesso giorno — chiavi XML diverse, anche sullo stesso RT — invece si sommano. Confonderli conta i
-  ricavi due volte, o li raddoppia dentro una riga sola.
-- Il parser legge il **non riscosso solo dalle voci che l'RT scrive** (`NonRiscosso*`, `PagatoNonRiscosso`); contanti + POS + non riscosso devono fare imponibile + IVA al centesimo, altrimenti la giornata si scarta con motivo (`non_riscosso_non_dichiarato` / `non_riscosso_non_quadrato`, file in ERRORI), mai `totale − (contanti + POS)`; nessun endpoint ricalcola il non riscosso. Le strade che scrivono `corrispettivi` sono **due**: `ingest_corrispettivo_parsed` (chiusure, con Prima Nota e giornale) e `importa_csv_ade` (riga provvisoria, mai Prima Nota); `CorrispettiviService` non esiste più.
-- **«Processo interrotto durante il parsing» non è un errore del file**: è il
-  marcatore che la ricostruzione scrive quando il worker muore mentre lo legge,
-  e subito dopo sposta il cursore oltre. Quei file sono fatture **sane** da
-  rileggere, non scarti: cercarli fra gli errori è cercarli nel posto sbagliato.
-- **Un documento di un'altra sezione arrivato nel canale sbagliato non è un
-  errore.** Una chiusura RT (`DatiCorrispettivi`) finita fra le fatture si
-  riconosce dalla radice dell'XML — mai dal nome, che ha la stessa forma — e si
-  consegna a `ingest_corrispettivo_parsed`, l'unico motore che la sa
-  registrare. Trattarla da XML rotto la spediva in `Errori`, da dove nessun
-  giro la ripesca: così 19 chiusure sono rimaste ferme e tre giornate di
-  incasso sono rimaste fuori dai conti. Ogni punto che smista un esito deve
-  conoscere tutti gli stati: quello sconosciuto cade nel ramo «errore».
-
-## Regole contabili vincolanti
-
-- Piano dei conti: solo CEE ufficiale in
-  `app/services/piano_conti_ufficiale.py`; conversioni tramite
-  `app/services/mapping_piano_conti.py`. La vecchia collezione `piano_conti` è
-  dismessa: i codici storici sono alias e un conto fuori tabella viene
-  **rifiutato** dal motore.
-- **Un solo event bus**: `app/services/event_bus.py`, registrato all'avvio da
-  `app/main.py`. `app/hr/services/event_bus.py` e' un re-export, non un
-  secondo registro: un bus con handler propri che nessuno collega fa sparire
-  gli eventi in silenzio. Un fatto si pubblica **una volta sola**.
-- Motore unico Prima Nota: `app/services/scritture_contabili.py`. Non creare
-  nuovi `insert_one` diretti per scritture contabili.
-- Libro giornale in partita doppia (`movimenti_contabili`): motore unico
-  `app/services/registrazione_contabile.py`, alimentato automaticamente
-  all'import di fatture e corrispettivi RT (idempotente per documento con
-  `idempotency_key = reg:<tipo>:<id>`, mai bloccante, esito negativo annotato
-  in `registrazione_contabile_esito`). Una fattura rifiutata per IVA non classificata rientra da sola dopo la
-  classificazione (`registra_fatture_rimaste_fuori`, job bancario corto, 40 a giro); il resto del pregresso con
-  `POST /api/piano-conti/registra-pregresso` (admin, in background). Non
-  aggiungere altri punti di scrittura.
-- **Ogni scrittura quadra Dare = Avere al centesimo esatto**, altrimenti non si salva: lo scarto fino a 0,01 € degli arrotondamenti IVA va su una riga propria «Arrotondamento IVA» (`arrotondamento: True`) nel conto CEE 53.01.29 (DARE eccede, provento) o 71.03.17 (AVERE eccede, onere), scritta da `_scrivi_movimento` per fatture, corrispettivi e scritture semplici (un punto solo); oltre 0,01 € la scrittura è rifiutata; lo storno riporta anche quella riga (titolare, 02/10/2026).
-- Il protocollo `numero_registrazione` è unico e progressivo **per anno**
-  (riparte da 1 a ogni anno solare) e immutabile una volta assegnato.
-- Il giornale sopravvive all'azzeramento delle fatture e si riaggancia al
-  reimport con la chiave stabile della fattura; export e import sono idempotenti.
-- Ogni riga di Prima Nota porta `conto_contabile` di tesoreria (19.01.01
-  banca, 19.03.03 cassa, 19.01.05 Mastercard SumUp, crediti 15.07.x) **e**
-  `conto_contropartita` CEE per categoria (33.03.01 fornitori, 39.07.01
-  stipendi, 39.07.05 TFR, 75.01.07.x commissioni, 31.03.15 finanziamento soci,
-  47.01.03 corrispettivi). I 9 conti POS articolano voci già in bilancio per
-  tenere separati Numia, SumUp e PayPal: non sono conti nuovi.
-- **Competenza e pagamento sono due date**: il costo e l'IVA seguono la competenza (`data_competenza`, `periodo_iva_attribuito`, anno/mese della busta), il pagamento (F24, bonifico, assegno) chiude un **debito** e non genera mai un costo. F24, ritenute, contributi e saldo IVA non sono costi; il costo del personale è il lordo della busta per il mese di competenza, mai la data del bonifico. Un test end-to-end deve provare che un F24 o una ritenuta pagati non alterano `costi.totale_costi` del bilancio.
-- Ammortamenti: scrittura semplice DARE 05.04.01 / AVERE 01.05.01; il
-  risultato d'esercizio resta con segno, con guardia anti-doppia chiusura. Un cespite nasce da una riga fattura solo per parola intera («inCONDIZIONATo» non è un climatizzatore), mai da una nota di credito né da uno sconto.
-- Ricavi: **solo corrispettivi RT**, all'imponibile e col filtro unico di `conto_economico_gestionale.py`, che dà anche il
-  personale (lordo buste; contributi `None`). Le fatture ricevute sono costi; accrediti POS e payout non sono ricavi.
-- Corrispettivi: in cassa entra **solo la quota contanti**, la quota POS va in Prima Nota Banca. Mai il
-  totale; la chiusura POS reale **non riscrive** i contanti dell'entrata Cassa (il terminale si annota in `pos_reale_giorno`: sottrarlo dalla riga li rendeva negativi) e lo scontrino li legge dal corrispettivo. Mai il
-  totale. Il **non riscosso** (sospesi, buoni, fattura) è ricavo ma non è denaro: terza gamba del DARE sui
-  crediti (`01.02.01` → CEE 15.05), e solo se il documento lo **dichiara** e cassa + POS + non riscosso fa il
-  totale al centesimo — mai per differenza, o un incasso non registrato sparisce lì dentro. Ignorarlo scarta
-  la giornata intera, non una riga. Il totale del corrispettivo XML è l'**incassato** (contanti +
-  elettronico): lo scarto verso imponibile + IVA senza voce dichiarata si scarta.
-  Nei riepiloghi COR10 `ImportoParziale`, anche zero, è la base netta di resi e annulli: il lordo aggiunge solo l'`Imposta` XML, senza sottrarre resi/annulli di nuovo. Le componenti fiscali per aliquota non supportate restano `da verificare`, mai crediti ricavati per differenza; le voci lorde legacy in `Totali` conservano la loro quadratura.
-- **Il reimport di un corrispettivo non cancella una prova già arrivata**: il credito POS riconciliato con l'accredito resta (se la giornata è sostituita dall'XML passa alla chiusura nuova), e una chiusura del terminale non si aggancia mai a una riga ritirata (`FILTRO_CORRISPETTIVO_ATTIVO`). L'XML promuove anche la chiusura manuale serale con un totale digitato diverso da quello dell'RT, altrimenti i contanti entrano due volte in cassa. Con due attese Numia lo stesso giorno l'accredito non ne sceglie una (`attese_pos_ambigue`), e una chiusura corretta dopo l'accredito riapre le righe d'estratto che non quadrano più. Il CSV AdE segue l'anno attivo come l'XML.
-- **POS dell'XML senza chiusura del terminale** (titolare, 02/10/2026): l'XML apre comunque il credito verso il gestore per il suo `pagato_elettronico` (`_apri_credito_pos_da_xml`: conto 15.07 di gruppo, `gestore=pos_da_xml`, `fonte_credito="xml"`, `senza_chiusura_terminale`, chiave `corr:<id>:banca_credito:pos_da_xml`: il reimport non ne scrive una seconda; mai da una riga storica o manuale). La chiusura del terminale lo **sostituisce** (`_sostituisci_credito_xml`: somma dei circuiti = XML al centesimo → riga XML `archived` con `sostituito_da`, la prova bancaria passa al terminale), altrimenti resta con `differenza_terminale`; l'accredito in banca al centesimo lo chiude (`attese_pos_numia_del_giorno`: prima il credito NUMIA, se manca quello da XML); Coerenza POS lo espone in `credito_pos_da_xml` e `fase2_crediti_xml_*`. Niente doppio credito e niente ricavo in più: il ricavo è già nel corrispettivo.
-- POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre
-  fatti distinti. Coerenza XML↔POS (`controllo-due-fasi`): un giorno con POS e **senza XML** non è uno scarto — se l'RT l'ha chiuso col giorno dopo si confronta con quella chiusura (`_giornate_senza_xml`), altrimenti resta «attendo XML», fuori dal saldo (anche nel mensile). Un Numia senza chiusura letto dall'accredito vale per la fase 1, mai come prova contro BPM (`senza_chiusura_terminale`). SumUp corrente dall'API; Numia corrente dalla chiusura
-  manuale serale; Numia storico ricostruito dagli export del gestore,
-  deduplicati e accorpati per giorno. **Numia è dismesso dal 05/09/2026** (titolare, 28/09/2026): l'ultima vendita accreditata è del 04/09. Le chiusure Numia mancanti le ricostruisce dagli accrediti dell'estratto conto il job bancario corto (`ricostruzione_pos_estratto_conto.py`, salta i giorni già coperti); `fonti_ferme` misura il fermo Numia fino all'ultima vendita accreditata, non a oggi: un terminale spento non è una fonte ferma. Tutte e tre creano l'attesa bancaria;
-  l'estratto conto può soltanto riconciliarla. **Storico SumUp dal 01/01/2026** (`sumup_sync.recupera_storico`, nel giro orario dopo il giro normale: un mese per giro, cursore `sumup_storico` in `sistema_stato`, fermo a 31 giorni da oggi; i giorni senza dati non si scrivono). In Prima Nota › SumUp ogni giornata di vendita porta il suo accredito, collegati dal `payout_id` delle transazioni (`_collega_vendite_e_accrediti`): un payout su più giornate non si divide, la differenza non è dichiarata commissione. Una vendita SumUp si conta una volta: la copia `LEGACY-SUMUP-…` (codice in `id_trans`) cede alla gemella dell'API (`transazioni_del_periodo`); le chiusure oltre la finestra dei 30 giorni si riallineano ogni giorno (`riallinea_chiusure_da_archivio`), e la risincronizzazione non stacca mai una vendita dal suo `payout_id` (l'API delle vendite non lo riporta).
-- Accredito POS in banca riconosciuto solo con causale del circuito più il
-  giorno operativo `DEL gg/mm/aa`; **Numia e Nexi sono lo stesso circuito**;
-  commissioni e fatture del gestore escluse; attesa mancante o multipla →
-  `DA_VERIFICARE`, la banca non crea la chiusura. L'accredito ricostruito
-  dalla causale è **derivato**: l'export del terminale vince.
-- Versamento/prelievo contanti: uscita Cassa ed entrata Banca (o viceversa), stesso `operation_id`, collegate da
-  `trasferimento_collegato_id`, categoria `trasferimento_interno`. È **un'operazione della banca, non una riga
-  d'archivio**: le copie (vecchio archivio, CSV, Enable Banking) fanno una coppia sola, il numero vero è il massimo
-  per fonte nello stesso giorno e importo (`versamenti_contanti.py`); le gambe in più dei motori si tolgono per id. La «Contabile di filiale» BPM (ricevuta di sportello) è una prova, non un movimento: `contabili_filiale.py` la attacca alla riga d'estratto con verso, importo al centesimo, 0–3 giorni e natura (versamento o parola della causale), e la riprova nel job bancario corto.
-  Lo stesso per `proiezione_bancaria.py` (stipendi — lo stesso bonifico nelle copie si riconosce dal riferimento `MB…`, e «ADD.SPE» è una commissione, non uno stipendio —, commissioni, PayPal, soci, **rata mutuo** sul 31.03.05 dal numero del mutuo, quote dalla quietanza o dal piano d'ammortamento a importo identico, altrimenti `da_verificare`) e per gli assegni, presi dal giro dei 30 minuti anche da CSV e banca diretta (identità = numero, riga `provvisoria` fino al PDF ufficiale). **Assegni: un motore solo abbina** (identità + importo al centesimo, `assegni_fattura_intent`/`assegni_auto_match`; anche `/incassa` esige l'importo del movimento): niente abbinamento per importo con tolleranza, niente schede nate da una causale (`arricchisci_pagamenti_banca`), niente cancellazione per filtro. Gli stati stanno solo in `constants/stati_assegno.py`: un numero uscito dal carnet non si elimina né torna «vuoto». Numero e carnet in `carnet_assegni.py`: 10 cifre (lo zero perso si rimette, un frammento no), carnet BPM da 10 da «…1» a «…0», ricavato dal numero e mai scritto. Collegare una fattura all'intero importo di un assegno (`PUT /assegni/{id}/fatture-collegate`) la dichiara pagata subito, con lo stesso motore del report titolare (`dichiara_pagamento_banca`, `pagamenti_dichiarati_titolare.py`): riga Prima Nota Banca `dichiarato_titolare`, poi solo il riscontro dell'estratto conto. Annullo, storno o un nuovo collegamento che sostituisce il precedente ritirano la dichiarazione non ancora provata (`ritira_dichiarazione_banca`) e riaprono la fattura; una dichiarazione già sostituita dalla riga con la prova bancaria non si tocca.
-- **Mutui: la rata ha una prova, non un solo «Pagata»** (`routers/mutui.py`, `services/mutui_rate_dichiarate.py`). Prove in ordine di forza:
-  riga di Prima Nota Banca `rata_mutuo` (`banca`), quietanza, estratto annuale della banca (`estratto_annuale`), dichiarazione del titolare,
-  «Pagata» scritto sul piano PDF (`piano`, un'istantanea, non una prova); l'identità è **numero del mutuo + scadenza**, ma **l'importo pagato deve tornare**:
-  `valuta_prove` confronta in `Decimal`, al centesimo, il pagamento letto (riga di banca, quietanza, estratto) con la rata, ammettendo lo scarto del tasso variabile
-  entro `TOLLERANZA_IMPORTO_CENTS` (5,00 €; sul mutuo Retail lo scarto reale è 2,75 € costante) e mostrandolo (`differenza_importo_cents`). Oltre la tolleranza, o con un importo
-  illeggibile da una parte, la rata è **«Da verificare»** con la differenza, mai «Pagata» (nemmeno per la dichiarazione o per il «Pagata» del piano), resta nel residuo e
-  l'anteprima della dichiarazione non la include; due pagamenti distinti della stessa fonte che sommano la rata la reggono.
-  `stato_piano` conserva quello del PDF, `stato` è l'effettivo e `prova` dice chi lo regge; il residuo si calcola sullo stato effettivo.
-  **«Segna le rate passate come pagate»** (`POST /api/mutui/{id}/rate-dichiarate`, admin, `dry_run` per difetto, conferma forte con la frase dell'anteprima; `…/ritira`):
-  le rate scadute senza prova diventano `pagata_dichiarata_titolare` in `mutui_rate_dichiarate` (una riga per mutuo e rata, con `dichiarato_da`, motivo a scelta e `storico`), mai dentro il piano
-  (un nuovo PDF la cancellerebbe); le future restano fuori, una rata già provata non si tocca e una prova arrivata dopo **sostituisce** la dichiarazione (`sostituita_da_prova`, `assorbi_dichiarazioni_rate` da «Riconcilia»).
-  Nessuna scrittura in giornale né Prima Nota, nemmeno per l'anno attivo: la dichiarazione non è un movimento e l'importo del piano è una stima; il movimento vero nasce dalla proiezione bancaria.
-- **PayPal pagato dal conto (non da carta)**: la transazione si collega a mano a un addebito dell'estratto, quindi alla Prima Nota Banca (`GET/POST /api/paypal-statements/transazione/{id}/candidati-banca|collega-banca`, solo admin): candidati = uscite non collegate con lo stesso importo in euro al centesimo, da 3 giorni prima a 20 dopo, anche senza «PayPal» in causale; la scelta è del titolare (mai automatica), un movimento non candidato è 409, una transazione già provata non si ricollega; in valuta estera serve la gamba di conversione in euro. Scrive i due lati come il motore automatico (`tipo_riconciliazione=paypal_scelto_dal_titolare`). La pagina mostra una card per transazione a ogni larghezza (ID intero, mai colonne strette). **L'abbinamento PayPal ↔ banca non si fa a mano e non parte all'apertura della pagina**: il giro `paypal_automatico` (`services/paypal_automatico.py`, ore 3:20 e 14:20) sincronizza l'API Reporting (finestra chiusa 3 ore prima di adesso: PayPal pubblica con ritardo, un 404 non è un guasto e non sposta il checkpoint), abbina banca, fatture e posta. Un addebito SDD si abbina con importo al centesimo, segno e data entro 10 giorni se la coppia è biunivoca (soglia `SOGLIA_SCORE_MATCH_BANCA`); N addebiti e N pagamenti dello stesso importo si abbinano in ordine di data; l'accredito «BON.DA PayPal» si abbina al prelievo T04 (o, se non è nel report, all'incasso/rimborso positivo) entro 20 giorni, mai a entrambi.
-- Stipendi, PayPal e assegni in Prima Nota Banca sono **riconciliati** solo quando il loro movimento sta nell'estratto ufficiale, con giorno e importo al centesimo (`riscontro_estratto_prima_nota.py`, job bancario corto): l'export CSV non basta, e il movimento resta libero per il motore degli stipendi. Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è nota la causale contabile oppure
-  appartiene alle categorie bancarie senza documento ammesse dal codice. Anche i movimenti letti dalla banca (Enable Banking, `services/enable_banking.py`,
-  flag `ENABLE_BANKING_ENABLED`, sessione cifrata col solo `session_id`) vanno in `estratto_conto_movimenti` (`accoppia`), mai in Prima Nota; entrano da soli alle 07:15 e 09:00 (`giro_automatico`), «Aggiorna ora» è in Prima Nota › Banca. **Spese di lite** (`atti_giudiziari.py`): sentenza, precetto, relata e attestazione entrano da Documenti > Import, originale in `gestionale.blobs`, apribile accanto al pagamento; un'uscita va nel fascicolo solo se la causale cita sentenza o R.G. o il titolare la dichiara (`fascicolo_dichiarato`), mai per importo o controparte, e in Banca è «Spese legali e contenzioso» su 71.03 (da confermare col commercialista).
-- Riga bancaria canonica = riferimento esterno **oppure** fingerprint data+valuta+importo+causale+progressivo;
-  due export **dello stesso conto** con parole diverse si confrontano per giorno, segno, importo e conteggio
-  (`doppioni_estratto_conto.accoppia`), prima per **riferimento banca** (in ordine, due commissioni uguali si incrociano); `unifica_copie` (job bancario corto) lo rifà su **tutto** l'archivio: una riga per movimento, copia in quarantena, Prima Nota riagganciata. Assegni con numero diverso **non sono duplicati**; stesso numero e importo è lo stesso assegno, una scheda sola (`assegni_doppioni.py`, copia in `assegni_quarantena`), e la banca lega un addebito all'assegno solo se numero **e** importo coincidono. Un numero emesso non torna disponibile; annullo e storno hanno un motivo e riaprono le fatture; ogni modifica va nello `storico`. Le regole SDD
-  creano un pagamento solo con identità, periodo e importo compatibili; altrimenti candidati.
-- Categorizzazione movimenti banca: un solo motore, `app/services/categorizzazione_movimenti.py` (causali BPM non ambigue: F24,
-  commissioni, utenze, fatture, POS, assegni, versamenti, PayPal, rata mutuo, CBILL AdE «Rateizzazioni AdE», saldo Nexi «Addebito carta
-  di credito» — giroconto, non costo; la copia di un altro export presta la sua; `categoria_dal_collegamento`: uscita con una sola fattura o
-  un solo dipendente → «Fatture»/«Stipendi», socio → «Finanziamento soci»; in **entrata** rimborso/Amazon «Rimborso», torte «Acconti
-  clienti», mai ricavi). Sopra le parole chiave, **regole imparate** dal titolare (`app/services/regole_riconoscimento_banca.py`,
-  `/riconciliazione/regole-banca`): un pattern estratto da una causale reale
-  vince sul generico, ma un pattern di solo vocabolario bancario comune (es.
-  "COMMISSIONI SU BONIFICI", senza un nome di fornitore) è rifiutato alla
-  creazione. Eliminare una regola non tocca i movimenti già categorizzati. L'**indice operazioni** (`operation_index.py`, Movimenti › Classifica) è un'altra cosa: una natura senza documento (commissione, trasferimento, altro) si applica anche ai movimenti della stessa **famiglia di causale** (`famiglia_causale`: il testo prima del trattino, senza numeri), solo dopo averli visti e spuntati; una natura con documento (fattura, cedolino…) è di un movimento solo.
-- **«Movimenti da insegnare» (Regole banca)**: il motore unico riconosce da solo l'«ADDEBITO NEXI - SDD CORE» (= addebito carta, riscontro con l'estratto Nexi del mese prima) e i giroconti della società («Giroconto», «Mastercard SumUp», «BON.DA ceraldi group srl» → categoria `Giroconto`, mai un fornitore). Per il resto la pagina non chiede «a chi appartiene»: `GET /api/regole-riconoscimento-banca/proposte/{id}` (sola lettura, admin) dice cosa legge il motore e elenca i candidati per importo al centesimo (verbali, cartelle, fatture non pagate), e la scelta si fa in «Classifica e collega»; la regola per fornitore resta il modo di insegnare una famiglia di causali.
-- Pagamenti stipendio via nome: regola in «Personale». Qui vale solo il
-  corollario bancario — un professionista omonimo di un dipendente, o un
-  pagamento occasionale a lui, non entra nel fascicolo stipendi
-  (`_ESCLUSIONE_RE` in `hr_pagamenti_deposito.py`).
-- Le simulazioni non scrivono sul consuntivo. La chiusura d'esercizio richiede
-  checklist, anteprima, conferma forte, audit e rollback.
-- **Area Commercialista** (`commercialista_pacchetto.py`, `/api/commercialista/pacchetto`, `/invia-pacchetto`, solo admin): il periodo è un intervallo `dal`/`al` (`intervallo_periodo`, un punto solo) e ogni scheda (banca, PayPal, SumUp, bonifici, corrispettivi, fatture per metodo, F24, stipendi, cassa, carnet, presenze) legge le sue fonti esistenti; una voce vuota o guasta si dichiara, mai riempita. Un invio = una email con un allegato per voce (`invia_email`), registrato in `commercialista_invii`. Le presenze le costruisce `hr/services/presenze_consulente.py` e il registro è uno solo, `presenze_invii`: un mese già inviato non parte due volte senza «Rinvia». L'IBAN esce sempre mascherato e il carnet assegni non ha colonna «Beneficiario» (mancante = «Da collegare»).
-- Navigazione tra contropartite: un solo componente
-  `frontend/src/components/LinkContropartita.jsx`; i deep-link letti dalle
-  pagine sono `/fatture?invoice_id=`, `/riconciliazione/banca?movimento=`,
-  `/prima-nota#sezione=banca&selected=`, `/contabilita/verifica?conto=`,
-  `/contabilita/giornale?conto=|scrittura=`.
-
-### IVA
-
-- Il periodo non è il mese di ricezione: comanda `periodo_iva_attribuito`, e
-  il flag `iva_utilizzata` impedisce la seconda detrazione.
-- **`iva_detraibile` assente non vuol dire zero, vuol dire non deciso**, e
-  `campi_iva_da_fattura` non lo scrive finché nessuno l'ha valutato: è
-  l'unica guardia del libro giornale (`registra_fattura` rifiuta con «IVA
-  detraibile non classificata»), e uno `0,00` di comodo la disarma
-  registrando tutta l'IVA come costo indetraibile. All'import il campo lo
-  valorizza `handlers/learning.handler_classifica_cdc`, registrato sullo
-  stesso evento **dopo** il motore IVA, che subito ricalcola i campi IVA (`iva_detraibilita.py`); l'arretrato lo smaltisce il job bancario corto.
-- Regola del 15: operazione del mese precedente ricevuta **e** annotata entro
-  il 15 → liquidazione del mese precedente, solo nello stesso anno solare.
-  Ricevuta dopo il 15 → mese di ricezione. Operazione dell'anno precedente →
-  **mai** retroattribuzione a dicembre: è un blocco, non un avviso.
-- **Codici IVA**: 6001–6012 sono i mesi gennaio–dicembre (6012 = dicembre), 6031–6033 i trimestrali, 6013 l'acconto di dicembre, 6099 il saldo annuale di dichiarazione. Il calcolo di 6013 (metodi storico, previsionale, analitico, soglia minima, esclusioni) e di 6099 (con maggiorazione dell'1% al mese dopo il 16/03) **non esiste ancora**: le soglie e le percentuali si prendono dalla norma, non si inventano (vedi «Aperto»). Credito e debito di dicembre passano a gennaio; oggi il riporto è solo mese su mese (`_credito_precedente`), senza credito da dichiarazione né compensazione orizzontale (soglia 25.000 € con visto di conformità).
-- I 12 giorni sono un controllo sull'emissione del fornitore, mai una
-  tolleranza di detrazione per noi.
-- Una liquidazione confermata non si sovrascrive: ogni ricalcolo è una nuova
-  versione, la riapertura è esplicita e motivata. Il calcolo annuale parte
-  dalle liquidazioni confermate e dallo stato d'uso, non dalle date.
-- **La LIPE è il documento canonico dell'IVA mensile**: se il nostro numero
-  diverge da quello trasmesso dal commercialista, il giusto è il suo e lo
-  scarto è un difetto nostro. Si legge **per posizione**
-  (`app/services/lipe_parser.py`): nel livello testo del PDF le celle si
-  mescolano alle caselle di spunta, e in ordine `18.058,92` diventa
-  `218.058,92`. La prova è l'aritmetica del quadro VP **a segni** (credito negativo): `VP6 = VP4 − VP5`,
-  `VP14 = VP6 + VP7 − VP8 − VP9 − VP10 − VP11 + VP12 − VP13`; un periodo che non quadra **non viene
-  depositato** e non fa da fonte. VP13 si legge solo a destra (a sinistra c'è «Metodo»). Una comunicazione
-  ritrasmessa (protocollo più alto, anche in `LIPE_2024_Itrim_<prot>.pdf`) sostituisce la precedente.
-- Il confronto mensile gestionale ↔ LIPE ↔ F24 è
-  `GET /api/iva/confronto-commercialista/{anno}`: non aggiusta niente, dice
-  dove si diverge. Un mese che non sappiamo calcolare è un «non lo so», non
-  uno scostamento; una LIPE **a credito** non deve avere nessun F24, e il
-  caso da segnalare è l'opposto.
-
-### F24, tributi, dichiarazioni
-
-- F24, righe tributo, quietanza e movimento bancario sono entità distinte. **La quietanza (filigrana e protocollo telematico) è essa stessa la prova del pagamento: un F24 con quietanza è sempre pagato** (titolare, 06/10/2026); l'addebito in banca è un riscontro in più, mai una condizione, e la sua assenza si dice «pagato, senza addebito in banca», non «pagamento mancante». La quietanza non ricostruisce il modello (senza modello → alert «F24 mancante»); stato e residuo **per
-  riga tributo**. **Un solo motore F24 ↔ banca, a livelli** (`riconcilia_f24_banca` in `f24_controllo_incrociato.py`, job
-  `f24_quietanze_banca`, arrivo di quietanza o modello con `riconcilia_f24_arrivato`): ogni coppia pagamento ↔ addebito ha
-  `livello` e `motivazione`. **CERTO** = importo al centesimo, addebito entro 2 giorni lavorativi (festivi in
-  `calendario_lavorativo.py`), causale di delega e, per una quietanza, «DATA INCASSO» (troncata → copia in quarantena) = data
-  della quietanza; un modello senza quietanza è provato da un addebito certo, uno con quietanza dall'addebito della quietanza se il
-  saldo torna. **PROBABILE** (causale senza data d'incasso, o più candidati: si mostrano tutti), **PARZIALE** (differenza sotto 5 €, con la
-  differenza), **NESSUN_MATCH** (con «estratto del periodo presente sì/no»: senza estratto non si dice che il pagamento manca),
-  **MOVIMENTO_ORFANO** (alert, quietanza da riscaricare). Solo il CERTO scrive il pagamento; gli altri una relazione `pending` in
-  `entity_relations`. Protocollo = giorno d'invio; stessa riga due volte nel giorno → alert.
-- **Modello senza prova → quietanza per codice tributo e periodo** (`services/f24_proposte_quietanza.py`, `GET /api/f24-riconciliazione/modello/{id}/quietanze-candidate`, `POST …/conferma`, componente `CollegaQuietanzaF24`, nella scheda e nel pannello F24): per ogni riga a debito cerca nelle quietanze lo stesso codice e lo stesso periodo, **anche con importo diverso** (ravvedimento, pagamento spezzato) e mostra la differenza riga per riga con i due originali apribili; mai per solo importo (una sola riga in comune basta solo se il modello ne ha due o meno). Sono proposte: scrive solo la conferma del titolare, scegliendo fra i candidati con un motivo a chip, con `patch_quietanza_associata` (il collegamento non prova la banca).
-- **PROBABILE e PARZIALE li chiude solo il titolare**: `POST /api/f24-riconciliazione/quietanze-banca/{id}/conferma` (admin; `id` del modello o della quietanza) sceglie **fra i candidati del motore** (altro movimento = 409) con un motivo a chip (`MOTIVI_CONFERMA_TITOLARE`, «altro» con testo) e scrive con lo stesso writer del CERTO; relazione `confirmed` con `actor=titolare` e motivo, per il PARZIALE `differenza_banca_cents` registrata, mai un conguaglio; nel frontend l'unico componente è `ConfermaAddebitoF24`. **`f24.acquisito` nasce in `salva_f24`**, una volta per modello alla prima scrittura (payload di `f24_evento_acquisito.costruisci_evento_f24_acquisito`, scadenza da `scadenza_modello`), mai da una quietanza; pregresso con `POST /api/admin/f24/ripubblica-evento-acquisito` (`dry_run`, in sottofondo, salta i modelli già provati in banca). La quietanza si riconosce per **SHA-256** (`pdf_hash`), l'MD5 sta in `pdf_hash_md5` solo per la copia identica su Drive (una riga con l'MD5 in `pdf_hash` si promuove alla prima rilettura). La quietanza abbinata al suo unico modello segna la scadenza del calendario fiscale (`_marca_scadenze_calendario`, `completato_da=quietanza_f24`, upsert per id e anno): non è una scrittura contabile.
-- Il saldo F24 non è mai un costo: ritenute 1001/1002/1012, addizionali 3802/3847/3848 e quote a carico del lavoratore
-  sono debiti verso enti. La sezione INPS non è tutta deducibile: la quota datoriale viene dalle paghe.
-- RC01 regolarizza un periodo precedente: non è costo del mese in cui si paga, e si collega al DM10 di quel periodo senza sommare due volte i tributi.
-- F24 ↔ cedolini si associano solo con soggetto, periodo, posizione
-  contributiva e causali coerenti; la tolleranza vale solo sulla data di
-  pagamento (mese successivo).
-- Da un PDF fiscale si costruisce solo una `journal_proposal` versionata, mai
-  una scrittura definitiva. Un codice tributo assente dal registro versionato
-  blocca la contabilizzazione fino a validazione. La deducibilità è un esito
-  versionato (`DEDUCIBILE|INDEDUCIBILE|LIMITATA|DA_VERIFICARE`): le sanzioni
-  sono indeducibili, 1701/1704 sono crediti, non IVA né costo.
-- IRAP è un motore separato da IRES, non sottrae mai l'intero F24, e le
-  aliquote sono versionate per periodo d'imposta.
-- **I righi delle dichiarazioni si leggono per posizione** (`services/dichiarazioni_quadri.py`: VL32/VL33/VX1/VX2, RN1/RN2/RN17, IR26/IR27, esito ISA), perché il livello testo accoda i valori in fondo alla pagina senza etichette; casella vuota = `None`, mai 0; due valori diversi = `campi_da_verificare`. Prove in `fiscal_evidence` (id stabile), riepilogo in `fiscal_documents.quadri`; le coordinate (`layout_words`) si conservano solo sulle pagine dei quadri e della LIPE. Ripasso: `POST /api/fiscale/dichiarazioni/estrai-quadri` (admin, `dry_run`), che rilegge le coordinate dall'originale se lo trova. Un «Esito versamento unificato» (protocollo senza righe) non è una quietanza.
-- **Incroci fiscali in un motore solo** (`services/incroci_fiscali.py`, `GET /api/fiscale/incroci`, giro `incroci_fiscali` alle 06:50): LIPE canonica (solo `quadratura_ok`, non sostituita) contro F24 60MM dello stesso anno/mese (soglia 1,00 €: OK, MANCANTE, PARZIALE, ECCEDENTE), IRAP IR26 contro 3800, IVA annuale VX1 contro 6099, comunicazioni 54-bis per codice e anno. Alert solo con `genera_alert` (`IVA_PAGAMENTO_MANCANTE_O_PARZIALE`, `IRAP_SALDO_MANCANTE_O_PARZIALE`, `IVA_ANNUALE_SALDO_DA_VERIFICARE`, `COMUNICAZIONE_54BIS_NON_PAGATA`), chiusi dal motore quando la condizione non vale più; `POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE` e `POSSIBILE_COMPENSAZIONE_6099` (±3,00 €) restano indizi, mai alert. Un VP14 non letto è «non determinabile», mai zero; F24 non quadrati e LIPE non quadrate restano fuori con il motivo.
-- **Viste per id** (solo admin, sola lettura): `/fiscale/f24/:id` (`F24Scheda`), `/fiscale/tributi/:codice` (`TributoCodice`), `/personale/cedolini/:id` (`CedolinoScheda`), `/protocollo/AAAA/NNNNNN` (`ProtocolloScheda`, anche `/protocollo/:id`). Leggono i motori che ci sono, non ne hanno di propri: `/api/fiscal/f24-rows` e `/api/f24-riconciliazione/quietanze-banca` (livelli CERTO/PROBABILE/…), `/api/f24/tributi` con `/api/fiscale/incroci` (60MM↔LIPE, 3800, 6099), `GET /api/cedolini/{id}` (`cedolino_scheda.py`: netto, `netto_fonte`, canale, versioni e decisione di `cedolini_versioni`, `/versioni` resta fisso), `/api/protocollo-personale/{anno}/{progressivo}`. I vecchi `/f24/:id`, `/tributi/:codice`, `/cedolini/:id` li rimanda `LegacyRouteResolver` (un solo punto di compatibilità, `main.jsx` non cresce: tetto di 40 `path:`). Il filtro anno è quello globale (`useAnnoVista`, `?anno=tutti` nell'indirizzo). Un valore mancante è «Dato non disponibile», mai zero (`lib/vista.js`; 0 sulle colonne di importo è «—»). **L'originale si apre solo con `ApriOriginale`** (vedi «Apertura dell'originale»). La legenda in italiano semplice sta in `lib/legendaRegole.js`, la stessa fonte delle etichette dei badge. E2E con API finte: `frontend/scripts/audit-viste-fiscali.cjs` e `audit-originale.cjs` (job «browser»).
-- **Situazione fiscale legge il registro unico F24** (`registro_fiscale_f24.py`), mai l'indice Excel su Drive; un quadro del 770 caricato da solo (`componenti_770.py`) si aggancia al 770 intero per «Identificativo dichiarazione», mai per nome o importo.
-- **Ricevute di pagamento pagoPA** (`pagopa_receipts.py`, un lettore per famiglia: BPM, Mooney via OCR, «Attestazione di pagamento» AdER): ogni voce «etichetta: € importo» si legge e la somma deve fare il totale al centesimo, altrimenti resta `DA_VERIFICARE` (una voce nuova non si ignora; «Importo originario» non è una voce). Stesso IUV, data e importo = stesso pagamento, un secondo file non duplica. La ricevuta non dice **che cosa** si è pagato: la natura (tributo, rata, diritti/oneri, sanzione) la sceglie il titolare (`PUT /api/pagopa/ricevute/{id}/natura`) o la dicono i soli diritti di notifica; scegliere «diritti o oneri» o «sanzione o interessi» la segna **associata** (`NATURE_ASSOCIATE`, `associata_per_natura`, titolare 06/10/2026: non hanno un movimento da cercare), senza toccare `movimento_id`; la Mooney si aggancia al PayPal per ID transazione, mai per importo.
-- **Cartella di pagamento** (`cartelle_pagamento.py`, Documenti > Import, pagina PagoPA): fatto autorevole, apre subito l'attesa `CARTELLA_DA_PAGARE`. Il termine è 60 giorni dalla **notifica**, che nel PDF non c'è: la scadenza resta vuota finché il titolare non dice la data. La chiude solo la ricevuta con lo stesso IUV e importo al centesimo (altrimenti `DA_VERIFICARE`); il verbale si aggancia solo se univoco per numero e targa. La data di notifica la scrive da sola il giro `pec_cartelle_notifiche` (ogni 6 ore, cerca in tutta la casella le PEC «Notifica cartella di pagamento n. <20 cifre>», sola lettura): la riga in archivio ha un id UUID e il numero in `source_fact_id` (`cartella:<numero>`), quindi si cerca per `source_fact_id`, mai per solo `id`.
-- Il catalogo dei codici tributo è consultivo: una ricerca non crea F24, pagamenti o scritture. **Le
-  descrizioni vengono solo da `services/codici_tributo_f24.py`**, causali INPS comprese (RC01 è la
-  regolarizzazione, non gli artigiani); `services/codici_tributo_db.py` aggiunge le scadenze. Parser e router
-  non tengono tabelle proprie (`test_codici_tributo_registro_unico.py`); `test_codici_tributo_coerenti.py`
-  fissa la fonte AdE: IRES 2001 acconto I, 2002 acconto II, 2003 saldo; 3802 sostituto, 3801 autotassazione;
-  TEFA/TEFN/TEFZ (Ris. 5/E 2021). Un testo «di produzione» non vale come fonte: su entrambi era sbagliato.
-- **Piano tributi** (`services/piano_tributi.py`, `/api/f24/piano-tributi`): le voci ricorrenti
-  del titolare aprono un'attesa per periodo; la soddisfa una quietanza che contiene il codice («Pagato (quietanza)»: la banca addebita l'intera delega, mai la sola riga del codice,
-  titolare 06/10/2026) o l'addebito agganciato («Pagato (banca)»); un addebito compatibile ma non agganciato resta `DA_VERIFICARE`. Legge il registro unico F24, non ne tiene un secondo; l'importo
-  viene dal modello arrivato, mai stimato. 3802/3848 sono rate del saldo dell'anno prima. **Prospetti paghe del consulente = cosa l'F24 dovrà versare** (`services/prospetti_contabili.py`, due formati letti dal contenuto da Documenti > Import: il vecchio «Prospetto contabile» e il «Prospetto riepilogativo elaborazione paghe» di Paghe Infinity): dalla sezione «Riepilogo importi a debito/credito» si preleva l'**atteso** solo per le voci che coincidono con una riga F24 (INPS dipendenti 9001 → DM10; se i contributi si pagano in ritardo la causale è RC01 sullo stesso periodo (non un alias: è il ravvedimento, esito `RAVVEDUTO` con sanzioni e interessi = differenza dall'atteso, mai «ASSENTE»), e gestione separata 9005 → CXX); IRPEF e addizionali si dividono nell'F24 su più codici e anni, quindi restano in `non_mappate`, visibili e mai usate. Un riepilogo deposita solo se netti + importi a debito = totale complessivo al centesimo; il Piano tributi mostra «atteso» sulla casella e la differenza con l'F24 arrivato (`atteso_da_buste`). L'**«Elenco netti»** (`services/elenchi_netti.py`) è la lista dei netti da bonificare per dipendente (codice dipendente dello studio, importo, IBAN): si deposita solo se ogni ripartizione e il totale aziendale quadrano; non scrive in Prima Nota né sui cedolini ed è prima del lettore cedolini (non è una busta). Il Piano tributi lo mostra come «Stipendi da pagare» (`GET /api/f24/piano-tributi/stipendi-da-pagare`, `elenchi_netti.stipendi_da_pagare`, sola lettura): il dipendente si riconosce solo per **nome completo** stampato, il pagato è quello di `paghe_mensili` confrontato al centesimo, IBAN mascherato; un nome non univoco è «da associare». Il **Calendario fiscale** (`/contabilita/calendario`) resta una pagina a sé, accanto al Piano tributi (titolare, 06/10/2026: nel Piano non si vedono le scadenze dell'anno); nel Piano la voce «IVA mensile» rimanda a Gestione IVA. Il calendario **legge i codici attesi dal Piano** (`services/calendario_piano.py`, solo la pagina `GET /api/fiscalita/calendario/{anno}`: ritenute 1001, INPS DM10, IVA 6001–6012, saldo e acconti IRES/IRAP): ogni scadenza porta `codici_attesi`, lo stato della casella del Piano e `conferma_senza_f24` se una conferma manuale ha una voce obbligatoria scaduta senza F24; non cambia mai `completato` (la conferma resta del titolare) e non ha un elenco di codici proprio. Una voce **non obbligatoria** (Gestione separata CXX: si versa solo se nel mese ci sono compensi) senza F24 è «Nessun F24 in archivio», mai «Manca F24» e senza giorni di scaduto (titolare, 06/10/2026); i modelli con `superato_da` o `motivo_quarantena` non sono modelli del registro (`modello_attivo`). Due modelli con le stesse righe del tributo in una casella sono la stessa delega e contano una volta (conta la copia più provata): la data scritta sul modello è la scadenza teorica, la data vera arriva solo dalla quietanza (titolare, 06/10/2026), e il saldo cambia con i crediti compensati.
-- Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`, `mese`), non sul modello né nella data di pagamento;
-  l'IVA mensile sono i codici 6001–6012. «00MM» è il mese, «NNRR» la rata: «0101» è la rata unica, mai gennaio (`tributi_engine.mese_da_rateazione`). Una riga d'avviso non trovata mostra gli indizi `POSSIBILE_COMPENSAZIONE_6099` / `POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE` (±1,00 €), mai un aggancio. **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è autorizzato.
-- **Dilazione INPS** (`dilazioni_inps.py`, PEC INPS con `Allegato.zip` o Import): il piano apre una rata per scadenza; la paga la quietanza con sede, causale,
-  matricola, periodo e importo al centesimo, dopo la domanda, in ordine; l'addebito è quello della quietanza. Rata scaduta senza quietanza → alert.
-- **Tributi** (`tributi_per_codice.py`, `/api/f24/tributi`, pagina `/tributi`): sola lettura per codice e periodo sul registro unico; colonne inviato dal commercialista, quietanza, ravvedimento (solo periodi con sanzione/interessi nella delega), credito compensato, ritenute attese; resta = max(modello, attese) − pagato.
-- **F24 a saldo zero** = pagato tutto in compensazione, mai scartato: `saldo_quietanza_cents` legge lo 0 (non «saldo non letto»), `pagamenti_da_quietanze` lo marca `compensazione_totale`, il riscontro banca lo mette in `compensate_saldo_zero` (nessun addebito atteso), l'import lo salva `QUIETANZA_COMPENSAZIONE_TOTALE` senza alert bloccante, Tributi lo conta in `compensazione_cents` (stato COMPENSATO). Un PDF senza righe tributo (ricevuta mutuo/bonifico) non è una quietanza: l'import lo rifiuta (`NON_QUIETANZA_F24`).
-- **Registro versamenti** (`registro_versamenti_f24.py`, `/api/f24/tributi/versamenti`, tab della pagina Tributi): il Cassetto interno, fonte solo le quietanze. Per anno di versamento: codici con debito/credito mese per mese e mesi di riferimento «non pervenuti» (codici versati ≥3 mesi, periodo scaduto il 16 del mese dopo); crediti per codice+anno con gli F24 che li hanno usati; deleghe con origine (`origini_documento`: Posta, Drive, Caricato).
-- **Alert «F24 in scadenza»** (`FiscaleSentinella`): nessun F24 ha `data_scadenza`, la scadenza è la più vicina fra le righe a debito dalla regola del codice (`scadenza_modello`, mai inventata) e l'alert parte a 15 giorni solo per un modello `da_pagare` **senza** quietanza in archivio (chi ha la quietanza ha già versato, anche se la banca non l'ha ancora provato).
-- **Alert `F24_PAGAMENTO_IN_RITARDO`** (`f24_scadenze_notifiche.segnala_f24_in_ritardo`, dentro il job `f24_scadenze_check` delle 08:00/14:00, mai un giro a parte): il giorno DOPO la scadenza (`data_scadenza` del modello o regola del codice, festivi inclusi) per un modello a debito senza quietanza né addebito CERTO; il messaggio porta i giorni di ritardo e il ravvedimento dello scadenzario (`ravvedimento_atteso_modello`: sanzione ridotta per fascia + interessi legali, INPS/INAIL «da verificare») e si aggiorna ogni giorno sullo stesso alert; si chiude da solo con la quietanza o l'addebito certo; un alert ignorato non rinasce; oltre 365 giorni (`FINESTRA_RITARDO_GIORNI`) i modelli storici si contano, non si segnalano (titolare, 02/10/2026).
-- **Scadenzario tributi** (`scadenzario_tributi.py`, collezione `scadenzario_tributi`, `/api/f24/tributi/scadenzario`, tab Scadenzario): per ogni riga a debito di ogni quietanza, scadenza (modello del commercialista, altrimenti regola del codice con festivi e proroga di Ferragosto; senza regola resta vuota), giorni di ritardo, ravvedimento confrontato per delega+periodo con quello di legge (sanzione 30% previgente / 25% dal 01/09/2024 ridotta per fascia; interessi legali per anno, tabella `TASSI_LEGALI` da aggiornare ogni gennaio). Esiti PUNTUALE, RAVVEDUTO, RAVVEDIMENTO_INSUFFICIENTE, RITARDO_NON_RAVVEDUTO, RITARDO_DA_VERIFICARE, SCADENZA_NON_DETERMINATA. Aggiornato a ogni quietanza importata e dal giro F24 dei 30 minuti (che allinea anche le quietanze a saldo zero già importate).
-- **Avviso bonario**: `controlla_avviso` aggiunge per riga il verdetto dello scadenzario (`verdetto_riga`: NON_DOVUTO con la prova, DOVUTO, DOVUTO_DIFFERENZA, DA_VERIFICARE; data AdE diversa dalla quietanza → nota di sgravio) e il verdetto dell'avviso («Avviso n. … non dovuto: F24 pagati regolarmente con sanzioni e interessi»). La lettura automatica del PDF dell'avviso non c'è ancora: manca un esempio reale.
-- **Termini di recupero** (`termini_recupero.py`, `GET /api/f24/tributi/termini`, tab della pagina Tributi, solo admin): sola lettura sulla vista `verifica.tabulato_tributi_termini`, **unica fonte dei termini** (il servizio non applica nessuna regola di legge: porta l'importo in centesimi, conta i giorni sul fuso Roma, ordina). Lo schema `verifica` non e' leggibile dal ruolo applicativo: l'ingresso e' `public.gc_termini_recupero()` (segreto runtime come le altre `gc_*`), letta da `SupabaseRuntimeDatabase.termini_recupero`; la vista costa ~5 s, quindi `@istantanea`. Predefinito: tributi senza versamento (`MANCANTE`, `F24_SENZA_QUIETANZA`), prima gli «ancora recuperabili» dalla data piu' vicina; sotto 120 giorni la riga e' rossa **e** porta la scritta; senza termine = «da verificare», mai «recuperabile». I termini sono **indicativi** (atti gia' notificati, sospensioni, denuncia del lavoratore, ruoli AdER 2020-2021 con +24 mesi): il banner «da confermare con il commercialista» e' fisso.
-- **Doppio pagamento F24** (`services/f24_anomalie.py`, motore `tributi_engine.rileva_doppio_pagamento`): una riga per coppia in `f24_anomalie_doppio_pagamento` con `stato` (`da_verificare`, `confermato_doppio_pagamento`, `non_duplicato`, `rimborsato_compensato`, `chiuso_dal_consulente`) e `storico`; il titolare cambia stato con `PUT /api/f24-analisi/doppi-pagamenti/{id}/stato` (motivo obbligatorio), l'alert `POSSIBILE_DOPPIO_PAGAMENTO_F24` si chiude quando lo stato esce da `da_verificare`, una coppia decisa non si riapre. Controlli di forma (`controlli_f24`: Regione/Comune assenti o fuori tabella, riga INAIL incompleta, causale INPS sconosciuta) in un solo alert `F24_CONTROLLO_DA_VERIFICARE` per modello. Il motore F24 legge la **vista canonica** delle righe (`normalize_f24_evidence_rows`), mai le sezioni grezze: un modello importato prima dei fix di lettura si legge giusto lo stesso. Debito e credito di una riga si decidono dal **bordo destro** dell'importo (le colonne sono allineate a destra: «5.024,76» parte più a sinistra di «667,40»).
-- **Ritenute**: le chiude anche la sola quietanza (1040 del periodo: riga uguale e univoca, o somma delle righe = totale del periodo; due candidate → nessuna scelta); al primo versamento Telegram «Ritenuta pagata» col protocollo, una volta (`avviso_versamento_at`), muto oltre 45 giorni.
-- **Il periodo del 1040 di una parcella con ritenuta è il mese del PAGAMENTO al professionista** (`data_pagamento` della fattura, solo se `e_pagata`), versamento entro il 16 del mese dopo (`ritenute.periodo_da_pagamento`); finché la fattura non è pagata periodo e scadenza restano vuoti (`in_attesa_pagamento`), mai il mese della fattura, e nessun F24 si aggancia; il periodo si riallinea dalle fatture nel giro F24, all'import delle quietanze e all'apertura della pagina Ritenute (`_allinea_periodo_al_pagamento`). Le descrizioni e le scadenze di 1001, 1012, 3802 e DM10 (tutti al 16 del mese successivo) sono quelle AdE in `codici_tributo_f24.py`, confermate dal titolare il 02/10/2026 (`test_codici_tributo_coerenti.py` le fissa); un codice fuori dal registro versionato blocca la `journal_proposal` (`CODICE_TRIBUTO_NON_VALIDATO`).
-- **F24 del 2018-2019 senza protocollo** (modulo con i dati sovrapposti, nome `NN_…_A0GHE_…`): `parse_quietanza_f24` legge data (una cifra per casella) e totale in alto, righe per coordinate, mese scritto «00MM». Senza protocollo la quietanza è il suo contenuto (`firma_contenuto`: data, saldo, righe): la stessa stampata due volte è una sola. Un guscio vuoto già in archivio (stesso `pdf_hash`, nessuna riga) si rilegge sul posto, mai «già importato».
-- **F24 ravveduto** (`f24_ravvedimento.py`): l'originale del commercialista resta; modello o quietanza con sanzioni gli si affianca
-  (RAVVEDIMENTO) se ogni riga codice+periodo torna al centesimo, o è maggiore solo nel periodo sanzionato (interessi cumulati).
-- **Un F24 è il suo contenuto fiscale** (contribuente, data di versamento, saldo, righe codice/periodo/importo), non il PDF: `salva_f24`
-  non crea un secondo modello da un'altra copia del file e ne annota la provenienza (`f24_doppioni.py`). I doppioni vanno in quarantena
-  reversibile (`status=eliminato`, `motivo_quarantena`, `doppione_di`), la copia pagata in banca resta; `F24_QUARANTENA_DOPPIONI` accende il giro. **Modello e quietanza si confrontano riga per riga sulla stessa vista** (`normalize_f24_evidence_rows`): «01 / 01 2021» è la rata unica, mai gennaio, e una riga INPS (sede, causale, matricola) che il modello del commercialista lascia in Erario col codice = anno torna in INPS. Senza questi due riallineamenti la quietanza restava «non corrispondente» a un modello uguale.
-- **Lettura degli importi F24** (`parser_f24._importo_cents_da_token`): certi PDF perdono la virgola nel livello testo, quindi «1.03712» è 1.037,12 e «99035» è 990,35 (senza virgola le ultime due cifre sono sempre i centesimi; letto come 1.037 × 100 il saldo sbagliava di centinaia di migliaia di euro). Il codice 4xxx (es. 4731) è un codice Erario come 1xxx/2xxx; il periodo INPS può essere scritto unito («072022») e il comune dei tributi locali in una parola («F839»). Una delega su più pagine **senza «MOD NUM»** ha un saldo per pagina (si confronta pagina per pagina, mai la somma di tutto col saldo della prima). Un F24 che non quadra non si salva, e l'errore elenca saldo stampato e righe lette (`f24_canonico._dettaglio_quadratura`): la causa si legge da lì, non riaprendo il PDF. **Il reimport dello stesso modello rinfresca le righe e non riscrive lo stato**: un modello già pagato in banca o in quarantena resta com'è (`f24_canonico`). Un modello che è esso stesso un ravvedimento (righe 89xx/19xx, `e_modello_di_ravvedimento`) non fa da modello del commercialista: la sua data è il giorno del versamento, mai la scadenza.
-
-- **Indice relazionale e relazioni documentali** (`indice_relazionale.py`, `relazioni_documentali.py`, `/api/indice-relazionale`, solo admin): l'indice è una vista di sola lettura su `entity_relations`, non un secondo registro (filtri anche per `documento` = `drive_id`; il riepilogo dice per regola e per motivo). Export csv/json/xlsx **riproducibile** (righe per chiave, nessuna data di generazione, importi `Decimal`, gg/mm/aaaa in csv/xlsx). Un originale su Drive è la relazione `has_source_document` verso target `documento` (id = `drive_id`); `POST …/relazioni-documentali/backfill` è `dry_run` per difetto, in sottofondo (`sistema_stato`, chiave `relazioni_documentali`), a lotti (`limite`, si ripete finché `restanti`=0), il secondo giro dà 0, una relazione revocata non rinasce. Fonti, lette una volta (un prefetch): `drive_file_id` del documento (se c'è vale solo quello); poi, dove manca, l'**impronta del file** (SHA-256 col registro `drive_cartella_unica` solo in `ELABORATE` — `registro_originali.py`: fra copie identiche l'originale è l'unico non `gia_presente`, altrimenti `pending` `impronta_su_piu_file_identici`; MD5 col protocollo, solo per ritrovare la copia identica) su fatture, F24, quietanze, buste, inbox, bonifici, ricevute PagoPA, cartelle, estratti conto (originali, Nexi, PayPal, SumUp, mutui); i `collegamento_*` del protocollo verso entità vive (le id HR si verificano in `hr.app_cedolini`/`app_bonifici`, chiave `id` testo; se l'HR non risponde si dichiara `non_verificato`, non si scarta); le **occorrenze** (`source_occurrences`: copie dello stesso contenuto che il motore ha visto arrivare, confermate, non ambiguità). Mai per nome o importo. `pending` (DA_VERIFICARE): entità con più file non attestati, file con più fatture/F24/quietanze; busta e cedolino HR possono avere più file e condividerli (documento combinato). **Il `drive_file_id` del cedolino** si scrive (solo con `dry_run=false`, mai sovrascritto) quando l'originale è uno: l'impronta propria della busta o l'unico file in cui compare; con più copie senza impronta propria resta vuoto (`drive_file_id_da_verificare`) e le copie restano relazioni. **Collegamenti del protocollo verso entità sparite** (la quietanza fusa con una copia ha cambiato id): `POST …/protocollo-collegamenti/bonifica` (`protocollo_collegamenti.py`, `dry_run`, per `drive_id` e solo se il collegamento è ancora quello letto) riaggancia solo con MD5 del file fra le occorrenze (o la propria impronta) di **una sola** entità viva, o con `doppione_di` dichiarato; zero o più candidati si elencano e non si toccano.
-
-## Personale: un solo sistema per funzione
-
-- **L'anagrafica HR comanda** (`hr.app_dipendenti`): Lotti ne legge una proiezione
-  (`sincronizza_operatori_da_hr`), il gestionale si riallinea a HR. Un solo stato del rapporto: `attivo` |
-  `cessato` con data e motivo; la cessazione revoca il PIN. `PUT /dipendenti/{id}` aggiorna **solo i campi
-  inviati**. La revoca, la chiusura dei contratti, il rifiuto delle richieste di assenza future e
-  l'annullamento delle partite stipendio residue stanno tutti in un punto solo, `on_dipendente_cessato`:
-  le pagine si limitano a pubblicare `dipendente.cessato`, non ripetono la pulizia a mano.
-- **Import anagrafica Excel** (`POST /dipendenti-cloud/dipendenti/importa-anagrafica`): anteprima per
-  difetto e conferma sullo stesso SHA-256; identità solo per codice fiscale esatto, mai per nome o importo.
-  Non crea persone, compila soltanto campi HR vuoti e lascia ogni valore già presente e diverso come
-  conflitto. Nel riepilogo consolidato usa solo CF e campi anagrafici verificabili; paga, ferie, ratei e
-  importi restano nelle loro fonti canoniche. Un CF duplicato nel file blocca tutte le sue righe.
-- **Un PIN per persona, nella scheda HR**: vale per il portale e per firmare in Lotti (bcrypt più impronta
-  HMAC; mai due persone in forza con lo stesso PIN; mai un cessato). Il **PIN amministratore è uno solo
-  per ERP, Menu, Lotti e HR** (`PIN_HASH_ADMIN`, `app/services/admin_pin.py`) e si digita **solo nel login ERP**:
-  HR, Lotti e Menu leggono quel cookie (`group_session.py`, `/auth/session`), senza login admin proprio (PIN, password,
-  Google). Il login email + password (`/api/auth/login`, `ADMIN_PASSWORD_HASH`) non esiste piu'. Il token ERP porta un `sid` stabile nei rinnovi; i token derivati lo copiano e il logout lo revoca per
-  tutte (`token_di_gruppo_ammesso`): un token admin non nato da lì non apre HR/Menu/ERP.
-  Solo Lotti accetta il PIN personale del titolare col ruolo amministratore: richiede ID HR canonico,
-  ruolo admin e stato attivo correnti, abilitazione Lotti e versione valida del PIN anche sulle letture.
-  Il PIN centrale condiviso e i vecchi token admin senza versione del PIN restano esclusi.
-- **Cedolini**: il gestionale li scarica (Drive e posta) e ne ricava la Prima Nota salari; l'archivio che
-  si vede è **solo in HR** (`hr_cedolini_deposito`, richiamato dopo ogni scrittura, dedup per chiave o per
-  CF+anno+mese+tipo, mai sovrascrittura; 13ª e 14ª restano buste distinte). Una 13ª/14ª salvata come «mensile» nell'ERP si riconosce solo rileggendo il PDF (`cedolini_tipo_dal_pdf.py`: busta con stesso CF, anno e netto al centesimo), mai dal mese; da solo si applica solo mensile → 13ª/14ª, il verso contrario resta `da_decidere` al titolare. Nelle buste CSC la 13ª/14ª è la voce a codice «850 13 MENSILITA'»/«852 14A MENSILITA'» quando è l'unica competenza.
-- Il netto si legge solo dalla cella graficamente associata a `TOTALE NETTO` / `NETTO DEL MESE` / `NETTO
-  IN BUSTA`: mai da `ARR. PREC.`, competenze, trattenute, TFR, arrotondamenti o dal nome file. Cella vuota
-  → nullo, **mai zero**. Stati: `NETTO_VERIFICATO_DA_CEDOLINO`, `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`,
-  `MULTIPLE_NETS_DA_VERIFICARE`, `ERRORE_PARSER` (in `app/constants/stati_netto.py`); solo il primo
-  alimenta Salari e bonifici, e la decisione si prende **solo** con `alimenta_salari()`, che fallisce
-  **chiuso**: uno stato assente, vuoto o sconosciuto non passa. Su un dato che diventa un bonifico
-  l'assenza di prova non vale come prova.
-  Zucchetti/CSC: cella **sotto** l'etichetta (`_netto_dalla_cella`); competenze − trattenute è solo un controllo, e i totali si leggono come righe intere (le trattenute «6.691,15» non sono «691,15»). I netti HR si rileggono dal PDF della riga (`cedolini_hr_riverifica.py`, un lotto ogni 20 min): cambia solo un netto verificato, il vecchio resta in `storico_netto`. In HR il netto è quello della busta **più l'acconto già recuperato** (`acconti.acconto_recuperato`, decisione del titolare del 28/09/2026): il totale del mese, non un errore di lettura.
-- Le ore Zucchetti si leggono dalle celle `LAVORATO` / `Giorni` / `Ore ordinarie`, mai dalle settimane INPS. La quota TFR annuale resta distinta dalla mensile: una quota mensile assente è nulla, uno zero stampato resta zero; un evento che dichiara questi valori non autorizza stime o accantonamenti.
-- Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il femminile non esiste su nessun
-  documento e un filtro che lo cerca passa sempre.
-- **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi` (identità completa, acconti,
-  residuo). Nessun percorso può cercarsi da solo «il primo movimento con importo vicino e il nome nella
-  descrizione»: un omonimo o due buste uguali nello stesso mese bastano ad attaccare il movimento
-  sbagliato. Lo stesso per gli F24: `riconcilia_f24_banca`. Un movimento vale come prova solo se
-  ha **evidenza bancaria ufficiale** e non è `in_attesa_estratto_ufficiale`.
-- **Un solo motore per ogni cedolino** (posta, Drive, Documenti > Import, pipeline email): legge
-  `services/cedolini_motore.leggi_pdf` (Zucchetti classico e «s», Libro Unico, Teamsystem anche 13ª/14ª
-  «14a MENS.», CSC), scrive solo `cedolini_manager.processa_tutti_cedolini_pdf`. Niente Document AI, regex
-  storico o Libro Unico a parte. L'esito è sempre dichiarato: `buste`, `presenze` (foglio Aut. 301, non è
-  una busta), `fuori_periodo` (prima del 2018), `non_cedolino` (contratti), `illeggibile`. Una busta con
-  la cella del netto vuota entra **solo in HR** col netto nullo, mai in Prima Nota. Voci codificate e
-  **dati chiave** (ratei 13ª e 14ª, L.207/24, trattamento integrativo L.21) da `parsers/cedolino_voci.py`.
-- **Ogni PDF letto è una scheda Markdown** (`schede_markdown.py`); registro per anno riscritto a ogni scheda; ricarica dalle schede, mai dai PDF.
-- **Doppioni d'archivio** (`doppioni_archivio.py`): stessa busta (CF, periodo, tipo, netto, lordo, trattenute), quietanza
-  (protocollo **e** saldo: col saldo diverso è un'altra delega, `protocollo_condiviso_con`) o bonifico (CRO+importo; il RIF. INTERNO BPM «MB…», quello dell'estratto conto, è `rif_interno`) non si riscrive; le copie vanno in `<collezione>_quarantena`, resta la pagata. Una busta già in archivio è un esito (`gia_presenti` → ELABORATE), mai un errore; la «STAMPA DI CONTROLLO» con la definitiva identica (CF, periodo, netto) va nel Cestino (`cedolini_stampe_controllo.py`).
-- **Versioni della stessa busta** (`cedolini_versioni.py`, stessi CF, anno, mese e tipo con netti diversi): la definitiva batte la «STAMPA DI CONTROLLO», la «Variante N» più alta batte le altre; senza marcatore nessuno decide (`varianti_da_decidere`, decide il titolare). La perdente resta in archivio con `status=sostituito` (mai costo, Prima Nota, HR o dovuto), la vincente porta `versioni_scartate`, `rettificato` e `storico_netto`; una perdente pagata o già in Prima Nota salari blocca il gruppo. All'arrivo la busta perdente si salva subito sostituita, mai come secondo cedolino attivo. Rapporto `GET /api/cedolini/versioni`, applicazione `POST …/applica` (`dry_run` per difetto, in sottofondo). Ogni busta porta `netto_fonte` (`cella` | `non_letto_da_lul` | assente, `constants/stati_netto.py`): competenze − trattenute non diventa mai il netto, e la pagina del Libro Unico in cui sotto «NETTO» non c'è nessun valore resta `non_letto_da_lul` col netto nullo. Il lettore per posizione del LUL **è `_netto_dalla_cella`** (CSC 2011–2020, Zucchetti 2023–2025, provato su campioni reali: ogni cella stampata si legge, una vuota è vuota davvero: mese a zero, cassa integrazione a pagamento diretto, stampa di controllo senza totali); le buste anteriori al 2018 sono `fuori_periodo` (`PAYROLL_MIN_YEAR`) e non entrano in archivio.
-- Una cessazione letta in una busta vale solo se non esiste una busta successiva della stessa persona.
-- **Pagamenti stipendio**: un solo ponte gestionale→HR (`hr_pagamenti_deposito`). Dipendente da CF → nome
-  completo univoco → cognome univoco (in banca in testa al beneficiario dopo «FAVORE»): la corrispondenza univoca **basta da sola** («il nome di un
-  dipendente è un dipendente»: non serve la parola «stipendio» in causale né un lotto paghe). Resta il
-  veto: TFR, fatture, commissioni e fornitori non entrano mai, nemmeno in coda, **anche con un nome
-  dipendente dentro** la causale — l'esclusione vince sul nome (anche «ADD.SPE», giroconti a Ceraldi Group, società semplici e aziende agricole). Ambiguo o `BENEFICIARI VARI` → coda, **una riga per bonifico**: il RIF. INTERNO «MB…» (`rif_banca`) unisce ricevuta ed estratto, la seconda prova completa la riga. Il
-  **lotto paghe** (≥3 dipendenti lo stesso giorno) resta un segnale per i casi non risolti altrimenti.
-  Competenza da causale o nome file, altrimenti **regola del giorno 25**: prima del 25 = mese precedente,
-  dal 25 = corrente. Stesso pagamento da PDF e da banca (dipendente, importo, data ±3 gg) → un solo esito,
-  arricchito, mai duplicato.
-- **Contanti dipendenti dal 01/07/2018** (`hr/services/regole_pagamenti_dipendenti.py`): non entrano nel
-  saldo durante un rapporto in corso. Sono ammessi solo se l'anagrafica e' cessata, porta una data di fine
-  rapporto e il pagamento non la precede; la data di cessazione resta copiata sulla prova. La bonifica
-  idempotente sposta gli acconti non ammessi in `acconti_scartati_regola_2018` (mai cancellazione senza
-  storico). Un PDF di bonifico o una riga dell'estratto che cita CF/nome completo/cognome univoco del
-  dipendente rende l'associazione certa; esclusioni TFR/fatture/commissioni/fornitori e beneficiari vari
-  continuano a prevalere. Il mese e' `bonifico_riconciliato_auto` solo se tutte le sue prove sono certe.
-- **Stato del mese, TFR e cessazione**: lo stato di `paghe_mensili` conta gli acconti di `acconti_dipendenti` come la posizione (`acconti_registro_del_mese`), e l'associazione di un acconto lo ricalcola subito. Il veto TFR copre anche «T.F.R.» e «trattamento di fine rapporto»; l'acconto TFR e l'accantonamento scrivono il **giornale del gestionale** (29.01.01 / 39.07.05), mai quello dello schema HR, e un acconto eliminato o corretto si storna con `acconto_tfr_rettifica`. `on_dipendente_cessato` lavora ciascun archivio dove vive la sua collezione: contratti e assenze in HR, partite stipendio nel gestionale.
-- **Acconto TFR, un motore solo** (`services/tfr_acconti.py`, usato da `app/routers/tfr.py` e `app/hr/routers/tfr.py`): scala `tfr_accantonato` nell'archivio dell'anagrafica e scrive nel giornale **del gestionale** DARE 29.01.01 / AVERE 39.07.05; una correzione o l'eliminazione **storna** (`acconto_tfr_rettifica`, per differenza), mai cancella. Accantonamento (67.01.07.01 / 29.01.01, idempotente per dipendente+anno, totale ≤ 0 rifiutato) e liquidazione (29.01.01 / 39.07.05, ritenute 39.07.05 / 35.03.15) usano gli stessi conti nei due router; i conti 05.03.03, 02.04.01, 02.02.01 non esistono più in `registrazione_contabile`. **L'anticipo TFR pagato dentro la busta** (Zucchetti, voce `000081 Anticipazione T.F.R.`, tassato a parte: il netto lo contiene già, nessun bonifico da cercare) lo legge `cedolino_voci.anticipo_tfr_in_busta` (`dati_chiave.anticipo_tfr_busta` e `anticipo_tfr_voce`, importo della competenza lorda, mai l'imponibile T.F.R. né il progressivo «TFR a fondi Anticipi») e lo registra `services/tfr_anticipo_busta.py` con lo stesso motore: acconto `tipo=tfr` con id `tfr-busta-<CF>-<AAAAMM>-<voce>`, data = ultimo giorno del mese, `tfr_registrato` come guardia (il motore scala il fondo a ogni chiamata: si chiama una volta sola, sotto il lock della busta in `cedolini_manager.registra_busta`); le buste già in HR le recupera il ripasso `cedolini_hr_riverifica` (v4, prime le più recenti, un primo lotto 7 minuti dopo l'avvio). La pagina TFR di HR mostra le **quote da buste** del gestionale (`services/tfr_quote_buste.py`: righe mensili di `tfr_accantonamenti`, dipendente per CF o stesso id, mai per nome) accanto al valore HR senza sommarle: `tfr_fonte` ∈ `manuale|buste|nessuna`, il manuale vince, senza nessuno dei due `tfr_accantonato` è `null`, mai zero.
-- **`cedolini.pagato` ha un solo scrittore**, `services/cedolini_pagamento.py` (`segna_cedolino_pagato`/`riapri_cedolino`: voce in `pagamenti[]` con `riferimento` univoco, `importo_pagato` = somma, `pagato` al centesimo o dichiarato): lo usano il motore automatico (`salari_unificati_v2`), il pagamento manuale e l'HR. L'associazione manuale di un bonifico stipendio (`/bonifici-da-associare/{id}/associa`, `/paghe/conferma-associazione`) porta sul cedolino del gestionale lo stato di `paghe_mensili.stato_pagamento` (per `gestionale_cedolino_id`, altrimenti CF+anno+mese+tipo; una versione `sostituito` non conta, due attivi non si scelgono); `/ritira-conferma` lo riapre; un gestionale non raggiungibile non blocca l'HR (esito in `cedolino_gestionale`).
-- **«Pagato» del mese si decide in un posto solo**, `stato_paga_mese` (`constants/stati_associazione_bonifico.py`), in `Decimal` e **al centesimo**: nessuna tolleranza (titolare 02/10/2026; prima 0,50 € in tre copie), nemmeno nei filtri dei pannelli e del frontend. Un bonifico di stipendio arrivato **prima della busta** lascia il mese `in_attesa_busta` (`paghe_mensili` senza `importo_busta`, mai 0, saldo nullo), visibile in Archivio paghe e fuori da «in attesa di pagamento»; all'arrivo del cedolino `sincronizza_paghe_mensili` gli dà la busta e il pagamento già depositato lo chiude da solo, secondo giro a zero. Un pagamento di conciliazione copre la parte scelta **al centesimo**; l'eccedenza va in `eccedenze_pagamenti` `da_attribuire` (riga con avviso nella posizione, mai in dare/avere) e la destinazione (stipendio, acconto o bonus della stessa conciliazione solo se ci sta al centesimo) la sceglie il titolare con `POST /hr/api/posizione-dipendente/eccedenze/{id}/attribuisci`; mai in automatico, una attribuita non si tocca.
-- **Posizione dipendente** (`services/posizione_dipendente.py`, pagina HR, solo admin; «Prima nota» di Archivio paghe è la stessa, per mese): DARE = netto di ogni busta **più l'acconto recuperato in busta** (voci `cedolino_voci.VOCI_ACCONTO_RECUPERATO`, poi `acconti.acconto_recuperato`, poi competenze − trattenute oltre 1,00 €), 13ª/14ª, parte non bonus delle conciliazioni; AVERE = bonifici, contanti, acconti fuori busta (`acconti_dipendenti`: pagamento, mai sommato a un netto). Saldo con riporto d'anno.
-  Conciliazioni (`conciliazioni`, verbale in `gestionale.blobs`): totale = somma delle voci al centesimo, «importi non compilati» = totale nullo, mai inventato; il **bonus** ha un conto suo, fuori dalle paghe. In «Bonifici da associare» si sceglie il tipo: stipendio, acconto, conciliazione o bonus. Un pagamento in contanti o scritto a mano si corregge (data, importo, parte; il prima resta in `storico`), uno provato dal bonifico mai.
-- **Bonifico associato a mano = `confermato_manuale`** (`services/conferma_bonifico.py`, `constants/stati_associazione_bonifico.py`): segna riga in coda, bonifico, esito e movimento; nessun motore automatico lo riassegna (`associa_bonifici_stipendi`, riallineamento competenza, ponte HR) e sparisce dai candidati degli altri dipendenti; `POST /bonifici-da-associare/{id}/ritira-conferma` (solo stipendi, con `storico`). La coda mostra fino a **10 candidati** (`services/candidati_bonifico.py`: CF > nome completo > cognome con importo uguale al residuo > importo con periodo scritto in causale; cognome condiviso elenca tutti senza proposta; **l'importo da solo non produce candidati**, nessun candidato si applica da sé), l'**avviso multi-dipendente** calcolato (nota di terzi, beneficiari vari, cognome condiviso, stesso importo su più buste) e CRO + rif. banca. Il **riscontro per busta** (`services/riscontro_bonifici.py`: confermato, da_verificare, differenza, nessun_bonifico_trovato, non_riscontrabile; priorità manuale > ricevuta > estratto) è di sola lettura: `GET /hr/api/posizione-dipendente/riscontro-bonifici`.
-- **Il bonifico PDF si abbina da solo al suo movimento d'estratto** (`bonifici_da_estratto.py`, giro ogni 30 minuti, il primo 4 minuti dopo l'avvio: con deploy ravvicinati un primo giro tardivo non parte mai): il «Rif. interno» della ricevuta (`MBVT…`) è nella causale della riga d'estratto, e con l'importo al centesimo vale come identità (senza riferimento: nome completo del beneficiario in causale, importo al centesimo, al massimo 3 giorni, un solo candidato). Dal movimento il PDF eredita la fattura che il motore bancario ha individuato (`candidate_fattura_id`: attiva, non legata ad altro bonifico, importo al netto della ritenuta uguale; se punta una copia archiviata vale la gemella attiva con stessi numero, totale e P.IVA, solo se unica; la stessa operazione letta da due fonti — stesso riferimento e importo — vale con la copia che porta la fattura, se le copie non ne indicano due diverse; più bonifici dello stesso fornitore sulla stessa fattura, acconti, si collegano solo se con quelli già legati sommano il totale al centesimo, ognuno col suo riferimento banca; il riferimento è `MBVT…` o `MB0B…`; l'`id` della fattura può essere un numero, quindi si cerca e si aggiorna con testo e intero, e ogni giro rimette sulla fattura il `bonifico_ids` che il solo lato del bonifico aveva perso) o una destinazione senza documento (`destinazione_automatica`, categoria letta dall'estratto); le prove dichiarate sono quelle vere (`rif_banca_in_estratto`, mai «numero in causale»). Gli stipendi restano al motore HR. In Archivio bonifici gli esiti HR `arricchito`/`depositato` contano come associati, i `duplicato` non compaiono, e la colonna del salario non dice nulla su un pagamento che non è di un dipendente.
-- **La stampa PDF di una fattura non è un bonifico** (cita «Bonifico» e IBAN nelle condizioni di pagamento): `e_stampa_fattura` (`bonifici_pdf_ingest.py`, cedente + cessionario + imponibile/totale documento, dal contenuto) la manda alle fatture in `detect_document_type` e `importa_pdf_bonifico` la rifiuta (`non_bonifico`); le già entrate (importo = imponibile, es. Marotta FPR 31/26 1.612,00) le mette in quarantena per id `POST /api/doppioni/ripulisci` (`bonifici_stampe_fattura`, prima `dry_run`). Per una parcella con ritenuta il bonifico atteso è totale documento − ritenuta (1.966,64 − 310,00 = 1.656,64), mai l'imponibile.
-- **Ricevuta di bonifico SumUp** (`pdf_parser._extract_sumup_receipt`, «Ricevuta di bonifico … SumUp Limited»): mittente prima, beneficiario dopo; causale = riga dopo «Causale pagamento <data>», `cro_trn` = «Riferimento esterno» (due PDF scaricati in giorni diversi sono lo stesso bonifico e `/api/doppioni/ripulisci` li fonde); il pregresso letto col beneficiario sbagliato lo rilegge lo stesso comando (`bonifici_sumup_riletti`). In «Scegli fattura» un fornitore con la stessa identità e l'importo al centesimo è **candidato** anche senza il numero in causale (score 60, mai applicato da solo).
-- «Bonifici da assegnare» è una proposta di importo dovuto, stato iniziale `DA_ASSEGNARE`: non imposta
-  bonifico eseguito, movimento, data di pagamento né riconciliazione.
-- Cedolini e bonifici salario si associano per dipendente, periodo e regole temporali: non si richiedono
-  importi identici quando esistono acconti o trattenute. Le correzioni a mano in «Paghe e bonifici» non
-  vengono sovrascritte dalla sincronizzazione.
-- **Dimissioni telematiche** (PDF o PEC): alert critico più scadenza UNILAV di cessazione a **5 giorni** dalla decorrenza
-  (D.Lgs. 181/2000 art. 4-bis); revoca del lavoratore entro 7 giorni (D.Lgs. 151/2015 art. 26).
-- **Attestati di formazione alimentarista (HACCP)** (`hr/services/attestati_haccp.py`, categoria `ATTESTATO_HACCP` in `documenti_cloud`): sono documenti del dipendente, visibili a lui nel portale e all'amministratore in HR › Documenti e in Lotti › Personale (un solo posto dove vivono, due viste dello stesso record). Un PDF con più attestati si divide per pagina e ogni pagina si riconosce **dal contenuto** (nome e cognome scritti, data del corso, ore; OCR se manca il livello testo) e si abbina solo se **un** dipendente è compatibile per nome e cognome (anche cessato); altrimenti resta «da assegnare» e sceglie il titolare. Anteprima (`dry_run`) per difetto, stesso SHA-256 o stessa data di corso = già presente (secondo giro `nuovi=0`). Numero attestato (scritto a mano) e scadenza non si leggono e restano vuoti.
-- **Giorni di chiusura** (`chiusure_attivita`): ristrutturazione 26/01–08/03/2026 e ferie 15–23/08/2026
-  non sono corrispettivi mancanti.
-- **Le fatture di un altro anno entrano come archivio storico** (titolare, 06/10/2026: «ho caricato due anni di XML, perché non ci sono?»; supera la decisione del 20/09): dalla cartella Drive una fattura il cui anno non è quello attivo si scrive in `invoices` con `stato_import="archivio_storico"` e `stato_derivati="non_applicabile"` (`import_parsed_invoice(..., stato_import=…)`), solo consultazione: niente Prima Nota, partite, giornale, IVA, magazzino, alert né costi (`STATI_IMPORT_NON_ATTIVI` e i filtri di «fattura attiva» la escludono), niente proiezione Ritenute; il secondo ingest dà `duplicate`. I **corrispettivi** di un anno passato invece restano fuori (la regola «solo anno attivo» vale per loro). Per far entrare davvero un anno nei conti: cambiare l'anno attivo e rilanciare (`promuovi_archivio_anno` ripassa l'XML salvato). Eccezione 1: la **parcella con ritenuta** (`DatiRitenuta`) di qualunque anno entra come fattura intera da Documenti > Import (`_e_parcella_con_ritenuta`, decisione del 29/09/2026: ogni 1040 ha la prova della sua fattura). Eccezione 2: la fattura dell'**anno prima** pagata quest'anno è anche un **debito** (`debiti_anno_precedente.py`: niente
-  costo né IVA; il bonifico la chiude per fornitore e importo al centesimo, debiti uguali in ordine di data, entro 180 giorni; un importo che il fornitore fattura anche quest'anno è un canone e vuole il numero in causale; va in Prima Nota Banca su 33.03.01). Gli **accrediti in entrata del 2023** (ricevuta «A VOSTRO CREDITO»: Satispay, giroconti, rimborsi)
-  non si registrano (`ANNI_ACCREDITI_NON_REGISTRATI`); i bonifici disposti di ogni anno restano. Dello storico per cedolini e F24 vale ogni anno.
-- Modali HR: solo il componente `Modal` di `frontend_hr/src/App.jsx` (WCAG 2.1 AA: focus intrappolato, Esc, focus restituito). Campi dentro `<label>`, `aria-label` sui bottoni ripetuti, focus visibile salvia.
-
-## Fatture: identità e duplicati
-
-- Fornitore univoco per P.IVA → CF → id esterno verificato; gli alias sono solo di supporto.
-  `canonical_id` stabile: un cambio di ragione sociale non crea una seconda anagrafica, e un merge
-  conserva alias, IBAN, id precedenti, documenti e audit.
-- **Doppioni fornitori: un motore solo** (`services/fornitori_dedupe.py`; la P.IVA si valida e normalizza solo in `piva_validazione.py`: Luhn, prefisso IT, zeri, IdPaese UE). Il giro delle 06:20 (`unifica_fornitori_duplicati_task`) fonde da solo i **certi** (stessa P.IVA normalizzata o stesso CF) e i **probabili** (nome uguale/contenuto/con refuso, perdente senza P.IVA né CF, un solo candidato forte); il resto è «da decidere» (`GET /api/suppliers/duplicati/da-decidere`, card nella pagina Fornitori). **Due P.IVA valide diverse non si fondono mai**, nemmeno a mano. La fusione è soft (`status='unificato'`, `merged_into`, mai DELETE): ripunta per id fatture, scadenze, acquisti, metodi, parole chiave, alert, movimenti e proposte, `partite_aperte.controparte_id`, per P.IVA Prima Nota/assegni/pagamenti, e lascia alias, `iban_alternativi`, `id_precedenti`, `storico_fusioni`. Un fornitore senza P.IVA la riceve dalle sue fatture solo se è una sola e valida (`piva_fonte='fatture'`); una P.IVA che non torna resta com'è e la scheda dice «P.IVA da verificare» (`vista_piva`), mai corretta. L'import fatture cerca la P.IVA in tutte le sue scritture e il CF, e non riattiva un fornitore unificato. Lotti tiene i suoi `fornitori` per nome (decisioni di esclusione): non si fondono da qui.
-- **Il metodo del fornitore ha una data** (`metodo_pagamento_dal`, ISO nel database, gg/mm/aaaa in pagina, la stessa dello storico): lo stampa a oggi solo un cambio di metodo, mai un semplice salvataggio della scheda. «Sempre per cassa dal 01/01/2025» si applica alle fatture già importate con `POST /api/suppliers/{id}/applica-metodo-dal` (`services/metodo_fornitore_dal.py`, admin, `dry_run` per difetto, in background, stato in `sistema_stato`): usa la stessa conferma di Prima Nota Cassa (`conferma_fattura_provvisoria`, la parola del titolare è l'approvazione), non un motore nuovo; solo per la Cassa. Non tocca una fattura con prova in banca, un assegno o una dichiarazione in banca del titolare (le elenca come conflitto), né note di credito, estere, rate multiple e pagamenti parziali; il secondo giro chiude zero.
-- Il metodo del fornitore ha **un solo scrittore**, `update_supplier` (`PUT /api/suppliers/{id}`); `PUT …/metodo-pagamento` è un alias che lo chiama: data «dal» e storico vengono sempre da lì. `data_pagamento` di una fattura pagata con assegno è la data dell'addebito in banca (`fatture_pagate_con_assegno`, `data_pagamento_fonte=addebito_banca`); prima dell'addebito è quella dichiarata (`data_pagamento_fonte=dichiarata`), mai la data di compilazione.
-- Il metodo di pagamento si legge **solo dall'anagrafica fornitore**, mai dedotto dalla fattura; se non configurato
-  la fattura resta `sospesa`, mai con un default «bonifico» **né un ripiego in cassa**: le righe storiche di quel
-  ripiego restano per audit, fuori da elenchi e saldi (`SOURCES_ESCLUSE` in `prima_nota_module/common.py`).
-- **Come è stata pagata una fattura lo dice il titolare** (report «Fatture ricevute» con colonne metodo/carta/assegno,
-  Documenti > Import): `pagamenti_dichiarati_titolare.py` usa solo i motori esistenti; il metodo del fornitore (uno → quello, più → `misto`) lo scrive **solo se manca**. Fino all'ultima data del report (`data_limite_dichiarazioni`) comanda il report, poi il fornitore. La cassa d'ufficio `metodo_fornitore_assente_provvisorio` non prova un pagamento.
-  Banca/carta/PayPal/assegno dichiarati: riga Prima Nota Banca `dichiarato_titolare`, fattura pagata e `in_attesa_riscontro_banca`; il movimento trovato la **sostituisce** (`assorbi_righe_dichiarate`), mai affianca.
-- «Metodo di pagamento non configurato» ha un vocabolario solo, `app/constants/metodi_pagamento.py`:
-  `sospesa` (quello che scrive l'import), `da_configurare`, `none`, vuoto e campo assente valgono uguale.
-  Chi tiene la propria lista si perde il caso più frequente.
-- **Le fatture fornitore non hanno scadenza.** Decisione del titolare (19/09/2026): «decido io quando
-  pagare». Non si leggono le condizioni di pagamento dell'XML, non si leggono le date sul documento e non
-  si inventa un «+30»: `data_scadenza` resta vuota. Il piano rate si conserva come dato dell'originale ma
-  non guida niente. `check_scadenze_partite_task` salta le partite fornitore e `FAT_DA_PAGARE_SCADUTA` non
-  nasce più; F24 e stipendi, che una scadenza vera ce l'hanno, restano invariati.
-- **«È pagata?» si chiede in un posto solo**: `e_pagata` / `FILTRO_NON_PAGATE` di
-  `app/services/stato_pagamento_fattura.py`, e `ePagata` di `frontend/src/utils/statoFattura.js`. Lo stato
-  vive in cinque campi (`stato`, `stato_pagamento`, `payment_status`, `pagato`, `paid`) e nessuno copre
-  l'archivio: leggerne uno solo dichiarava non pagate 639 fatture da 311.838,20 €, e `{"pagato": {"$ne":
-  True}}` le riportava tutte fra le aperte. In archivio una fattura aperta si dichiara pagata da **una tendina sola** («Pagata con…», `ScegliPagamentoFattura.jsx`: cassa con data → `provvisori/conferma`, banca → estratto conto, assegno → registro assegni): nessun motore nuovo, e su una fattura già in Cassa o Banca non compare. `status` è lo stato del documento e `stato_finanziario` quello
-  della riconciliazione: nessuno dei due dice se è pagata. Pagata con assegni addebitati (prova ufficiale, quote = totale al centesimo): i cinque campi e `data_pagamento` si allineano alla banca (`fatture_pagate_con_assegno`, job bancario corto).
-- Il payload di `fattura.created` si costruisce solo con
-  `app/services/eventi_fattura.py::costruisci_evento_fattura_created`, così import e recupero del
-  pregresso propagano lo stesso evento.
-- Un import che **non** pubblica `fattura.created` lascia la fattura senza partita aperta, senza alert e
-  senza audit: nessun errore, nessuna traccia. Il recupero è `POST
-  /api/admin/fatture/ripubblica-evento-created` (admin, background, `dry_run` per difetto), sugli stessi
-  handler idempotenti.
-- Spostare una fattura fra Cassa e Banca cambia metodo, relazioni e scritture **con lo stesso ID**. Lo spostamento riallinea anche il conto di tesoreria (19.03.03 cassa, 19.01.01 banca) e `metodo_pagamento_effettivo`, e una riga banca con prova d'estratto non si sposta in cassa (409): sarebbe un'uscita doppia. Il ripasso `ripristina_provvisori_metodo_errato` (cambio metodo del fornitore) non tocca mai una riga con prova bancaria né la fattura che ne è provata. Parcella con ritenuta: al fornitore esce il **netto** (`importo_ritenuta` dal `DatiRitenuta`), la ritenuta va in F24 (all'arrivo alert `RITENUTA_DA_VERSARE` più Telegram, chiuso dal 1040 versato); una riga con prova bancaria non si declassa mai a dichiarata.
-- `app/services/fatture_identita.py` ricava l'identità dall'XML con lo stesso parser dell'import.
-  L'impronta del **contenuto** (`content_hash_canonico`, prefisso di versione `c2:`, insensibile a BOM, a
-  capo, codifica e caratteri non ASCII) prova che due XML sono la stessa fattura. La dedup tiene la copia
-  già nel giornale e **storna** la scrittura del doppione. Collisioni aperte = `stato_import` di
-  collisione **e** `status` non archiviato.
-- **Una fattura con la stessa chiave contabile si decide in un posto solo**, `decidi_stessa_chiave` (`fatture_upload.py`), per Drive **e** Documenti > Import: stesso originale (SHA-256 o impronta canonica) = già presente, `nuovi=0`; originale diverso = collisione (`stato_import=collisione_identita_da_verificare`, `status=da_verificare`, derivati bloccati, alert `FATTURA_IDENTITA_DA_VERIFICARE`), mai scartata in silenzio. Anche l'import manuale salva `content_hash` e `content_hash_canonico`.
-- Note di credito ricevute (TD04/TD08, `TIPI_NOTA_CREDITO`): non costi; ledger (`prima_nota_module/sync.py`) e giornale
-  (`registra_fattura`) leggono `tipo_documento` e scrivono l'inverso (meno costo, IVA a credito e debito, mai cespite). **Il rimborso in banca chiude la nota di credito** (`services/rimborsi_note_credito.py`, nel motore bancario sulle entrate, prima di POS e versamenti): bonifico in entrata con l'ordinante dopo `BON.DA` (letto dal lettore unico `soggetto_causale_bancaria`) coerente col fornitore della nota, importo al centesimo, da 0 a 62 giorni dopo la nota; un solo candidato si applica, più note uguali dello stesso fornitore si chiudono in ordine di data, fornitori diversi con lo stesso importo non si scelgono. Scrive con `registra_pagamento_fattura` (entrata «Nota credito fornitore» con la prova), la riga dichiarata dal titolare lascia il posto (`assorbi_righe_dichiarate`) e la riga Cassa provvisoria nata dal metodo del fornitore si ritira per id con motivo (mai una confermata).
-- **Righe acquisti è una vista, non un archivio** (`GET /api/righe-acquisti`, `frontend/src/pages/RigheAcquisti.jsx`): appiattisce le `linee` delle fatture canoniche mantenendo ID fattura/documento, hash e apertura dell'originale; 200 righe alla volta, più recenti prima. Codici articolo e sconti/maggiorazioni vengono conservati dal parser FatturaPA. Metodo dichiarato nell'XML, metodo previsto dal fornitore e metodo effettivamente provato restano tre campi distinti. Una classificazione non salvata sulla singola riga è sempre `DA_VERIFICARE`, mai ereditata dall'intero fornitore. Le classificazioni persistenti stanno in `righe_acquisti_classificazioni`: il giro `agenti_righe_acquisti` ogni 30 minuti tratta soltanto righe nuove o modificate, usa lo stesso `anthropic_llm_client.LlmChat` e salva **proposte**, mai scritture contabili; `AGENTI_AI_RIGHE_ACQUISTI=false` lo tiene spento finché il titolare non autorizza il consumo di quota. Una regola si riusa soltanto dopo conferma umana e solo per identità stabile P.IVA + codice articolo (o descrizione esatta); conferma, correzione e rifiuto sono per singola riga, con motivazione e audit prima/dopo/autore/data. **La classificazione si corregge dalla riga** (`services/righe_acquisti_lotti.py`, solo admin, dal riquadro «Classificazione della singola riga» del dettaglio): `GET /api/righe-acquisti/{id}/proposta-lotti` **propone** dal nome (associazione già in `nome_mapping`, poi `categoria_da_testo` del Dizionario, poi il materiale di consumo riconosciuto per parola; senza fonte i campi restano vuoti, mai inventati) e `POST /api/righe-acquisti/{id}/prodotto-lotti` salva ciò che il titolare ha corretto (articolo, categoria, natura, conto, centro di costo, destinazione, flag «non cespite»). Il salvataggio scrive in un colpo la conferma dell'articolo in `nome_mapping` (unico scrittore `articoli_fattura.conferma_articolo`, lo stesso di `/conferma-articolo`: Lotti popola magazzino, FIFO e lotti) e la classificazione confermata della riga, poi la estende alle altre righe dello **stesso fornitore con la stessa descrizione esatta** che non hanno già una decisione umana (`fonte=lotti_stessa_descrizione`). **Scelta la categoria, conto e centro di costo si propongono** (`GET /api/righe-acquisti/proposta-categoria`, `proposta_conto_centro`): prima la **regola per categoria** del titolare (`righe_acquisti_regole_categoria`, `GET/PUT /api/righe-acquisti/regole-categoria`, che parte **vuota**), poi le scelte **già in uso** nel codice (`mapping_piano_conti`: bevande → 55.01.07 Acquisti merci, alimentari e materie prime → 55.01.01, imballi 55.01.09, consumo 55.01.05; `CATEGORIA_TO_CDC` per il centro), mai una tabella nuova; dove il settore non è certo (pasta, burro, olio…) il centro resta vuoto. Il conto si sceglie fra i conti d'acquisto del piano CEE ufficiale (gruppo 55) e il centro fra i centri di costo, mai a testo libero. La proposta non salva niente: il titolare la conferma o la corregge, e un conto o centro scelto a mano non viene riscritto dal cambio categoria. L'articolo che si sta classificando resta in evidenza in cima al riquadro. **«Non è un cespite»** (shopper, buste, materiale di consumo) è un flag della classificazione confermata (`non_cespite`, incompatibile con natura `cespite`): lo leggono, con `chiavi_non_cespite`, **i due punti che creano cespiti** da una fattura (`handlers/cespiti.py` e lo scan manuale `/api/cespiti/scan-fatture`); i cespiti già nati da quelle righe si contano e si segnalano, non si cancellano. Una proposta superata da una modifica della riga non si può confermare; per un `cespite` serve anche la regola fiscale esplicita. Per TD04/TD08 il riferimento cerca l'originale su tutti gli anni per P.IVA e numero normalizzato: trovato non significa collegato; se manca, la UI chiede di recuperare numero e data senza creare acquisti, ricavi o copie dell'XML.
-- **Collettore di pagamento di un gruppo = stesso soggetto** (`identity_matching._COLLETTORI_DI_GRUPPO`, titolare 02/10/2026): «AMAZON PAYMENTS EUROPE S.C.A.» incassa SDD e dispone i rimborsi per ogni società Amazon («Amazon Business EU S.a.r.l», «Amazon EU S.a r.l.»), quindi l'SDD Amazon si abbina da solo e non va in «Scegli fattura»; fuori dalla tabella un solo marchio in comune resta un soggetto diverso («ALFA PAYMENTS EUROPE» per «Alfa Forniture Srl»: proposta). Amazon paga sempre con metodo tracciato: il fornitore ha metodo «banca».
-- **Fattura emessa = cedente è la nostra P.IVA** (`FISCAL_COMPANY_ID`), da ogni ingresso: `fatture_emesse`
-  (`services/fatture_emesse.py`), mai `invoices`. Fatta dopo lo scontrino: **non aumenta ricavi, IVA né crediti**; si
-  aggancia al corrispettivo del giorno dello scontrino (dalla causale, se no data fattura) se unico; clienti per P.IVA→C.F.
-
-## PartenoPay, verbali e flotta
-
-- Conservare email, verbale, avviso, ricevuta PagoPA/PayPal e movimento banca
-  come prove separate.
-- Stati e motore dei verbali in un posto solo: `app/constants/stati_verbale.py`
-  (nove aperti — fra cui `fattura_ricevuta`, quello di tutte le righe vere — e
-  tre con prova, in maiuscolo e minuscolo: un filtro li elenca entrambi; `quarantena` non è né aperto né pagato, `e_chiuso` li unisce) e
-  `riconcilia_verbali_strict`, che esige riferimento strutturato **e** importo
-  uguale al centesimo, mai solo importo o data vicina. L'importo si legge dal
-  PDF. `pagato_attesa_fattura` è il legacy di `pagato_attesa_quietanza`.
-- Gli importi dei verbali si confrontano in **centesimi** (`amount_to_cents`/`money_cents`), mai con un float; il verbale porta `importo_centesimi`. `POST /api/verbali-noleggio/correggi-importo/{numero}` (admin, con audit) è una **conferma dell'operatore**: scrive `importo_verificato` e `importo_stato=CONFERMATO_OPERATORE`, e solo così la ricevuta pagoPA o il bonifico si riconciliano al verbale. La data dell'infrazione si legge anche in forma `gg/mm/aaaa` (`_giorno_iso`), mai come istante illeggibile. «Pulisci duplicati» mette le copie in `stato=quarantena` per id con `doppione_di` e `motivo_quarantena`, mai `delete_many`.
-- Associazione automatica driver: targa normalizzata più data/ora infrazione
-  più storico assegnazioni (`assegnazioni` del veicolo, `driver_alla_data`): il
-  driver è quello attivo **alla data/ora del fatto**. Se targa, driver, verbale
-  o pagamento non sono univoci, conservare il documento e chiedere una scelta.
-  **`driver_alla_data` (`noleggio/controlli.py`) è l'unico motore**: lo storico sta solo sul veicolo
-  (`veicoli_noleggio.assegnazioni`, dal/al), la collezione `storico_assegnazioni_veicoli` non esiste più; con uno
-  storico che non copre la data il driver è «da assegnare», mai quello di oggi. **La data dell'infrazione è
-  `data_violazione`** (`verbali_evidence.data_violazione_verbale`; `data_infrazione` è un alias di vecchie righe,
-  mai più scritto); `data_verbale` è la data dell'atto redatto, un'altra cosa (`data_evento_verbale` dice quale
-  delle due si sta usando).
-- **Il PDF di un verbale si legge in un posto solo**, `verbali_document_import.leggi_documento_verbale` (numero,
-  IUV, targa, importo, data dal **contenuto**, mai dal nome file): `process_verbale_document` lo chiama e scrive,
-  la ricostruzione lo chiama e non scrive. **Nessun lettore AI nel motore** (02/10/2026: tolti il ripiego vision e
-  `llm_document_parser`, che scriveva targa e driver «di oggi» sul verbale): una scansione senza testo resta «da revisionare»,
-  la propone l'agente (settore verbali) e la conferma del titolare porta al motore numero, IUV, targa e importo
-  (`metadata_da_proposta`, `campi_da_proposta_agente` sulla riga; anche sul verbale già archiviato), mai la «data» generica
-  della proposta; se anche così manca numero e IUV la proposta resta aperta. Il numero può avere barre («111/V/2025», «2025/000123»; una data dopo
-  «verbale» non è un numero), IUV e codice avviso sono **sempre testo** (`normalizza_iuv`: un intero ha perso lo
-  zero iniziale, un float le cifre: non si indovinano). L'**originale resta sul verbale** (`pdf_data`, `pdf_hash`,
-  `pdf_filename`; il payload finisce in `gestionale.blobs`): la copia in `documents_inbox` sparisce quando l'inbox si svuota.
-- **Un solo collegamento verbale → fattura** (`verbali_collegamento_fattura.py`): `fattura_id`, `fattura_numero` e
-  la provenienza `fattura_collegamento`; data, fornitore e importo si leggono dalla fattura. I campi
-  `fattura_associata_*` e `numero_fattura` non si scrivono più (si leggono solo come ripiego, `fattura_id_del_verbale`),
-  la fattura non porta una seconda copia (`verbali_collegati` non si scrive più).
-- **Ricostruzione dei verbali dal PDF** (`verbali_ricostruzione.py`, `POST /api/verbali-noleggio/ricostruisci-da-pdf`, admin,
-  `dry_run` per difetto, in sottofondo, stato in `sistema_stato` chiave `verbali_ricostruzione`, `GET …/stato`): riempie
-  **solo i campi vuoti** di un verbale con lo stesso numero; un valore diverso è un conflitto (candidato, mai applicato);
-  due verbali con lo stesso numero sono ambigui e non si toccano; mai per solo importo, mai una cancellazione (le righe
-  `VERB-…` restano; con `crea_da_pec` la copia conforme senza verbale vero apre il verbale dalla pipeline); porta su
-  `fattura_id` e `data_violazione` i campi legacy; il secondo giro dà `da_fare = 0`; non scrive in contabilità. Un verbale
-  senza originale (`senza_originale`) si ricarica da Documenti > Import, che lo riconosce per numero o IUV e ora conserva l'originale.
-- **Pacchetto PartenoPay** (`partenopay_archive_import.py`): hash di ogni file contro `data.json` **e** contro
-  `MANIFEST_SHA256.csv` (file fuori manifest o con hash diverso = errore che blocca; manifest vuoto = avviso, non prova);
-  l'import che scrive passa solo da Documenti > Import (lo smistatore riconosce lo ZIP), `POST /api/verbali-noleggio/import-partenopay`
-  è **solo anteprima**; secondo giro `nuovi = 0`, scadenza operativa e promemoria nascono una volta alla scoperta, un
-  verbale già riconciliato o in quarantena non torna indietro.
-- `POST /api/verbali-noleggio/{id}/upload-quietanza` (solo admin): `importo_pagato` e `data_pagamento` obbligatori, importo
-  Decimal al centesimo e uguale a quello del verbale (altrimenti 409), PDF con hash; con il PDF il verbale è «pagato»,
-  senza «pagato_attesa_quietanza»; stessa quietanza due volte = nessuna seconda nota presenze né seconda proposta di trattenuta.
-- **Documenti Drive di un verbale dal foglio dei collegamenti** (`verbali_documenti_drive.py`, `POST /api/verbali-noleggio/documenti-drive/collega`, solo admin, `dry_run` per difetto): il foglio «Collegamenti» di un xlsx (colonne `numero_verbale`, `drive_id`, `tipo`, `nome_file`, `sha256`, lette per intestazione) scrive sul verbale (in tutte e due le collezioni dove esiste) l'elenco `documenti_drive`; il verbale si trova solo per numero (o, se non ne ha, col suo `id` `verbale_<hash>`), lo stesso `drive_id` non si aggiunge due volte, il `tipo` `fattura` è l'XML della fattura del noleggiatore che cita il verbale (spese di notifica o gestione multa: si apre con lo stesso `ApriOriginale`, non crea fatture né scritture), un verbale mancante si elenca e non si crea. Non scarica né sposta niente: il dettaglio apre ogni voce con `ApriOriginale driveId`, cioè l'endpoint unico, che accetta solo i file della cartella unica (ELABORATE, ERRORI, ARRETRATO) o dell'inventario Drive.
-- **Importo atteso del verbale** (`verbali_importo_atteso.py`, giro `verbali_notifications` 07:10 e all'arrivo della PEC): passati 5 giorni dalla notifica provata dalla PEC (`data_notifica_fonte="pec"`) l'atteso passa da solo all'`importo_ordinario` letto dal PDF (`importo_atteso` Decimal, `importo_atteso_fonte="ordinario_dopo_5_giorni"`), il ridotto resta in `importo_ridotto` e nello `storico`, l'alert `VERBALE_IMPORTO_ORDINARIO` e il promemoria dicono «scaduti i 5 giorni: importo ordinario»; un verbale pagato, chiuso o in quarantena non cambia, senza ordinario letto non si inventa niente, secondo giro = 0 (titolare, 02/10/2026).
-- **Una ricevuta pagoPA non crea mai un verbale**: senza un verbale con lo stesso numero o IUV resta in `ricevute_pagopa` con `stato_verbale="senza_verbale"` e alert `RICEVUTA_PAGOPA_SENZA_VERBALE`; all'arrivo del verbale `process_verbale_document` la aggancia con importo al centesimo (`aggancia_ricevute_in_attesa`) e chiude l'alert; stesso numero con importo diverso è «importo non coincide», non «senza verbale».
-- **Assegnazioni veicolo→driver con data e ora**: `veicoli_noleggio.assegnazioni[].dal/al` sono `AAAA-MM-GG` (giorno intero) o `AAAA-MM-GGTHH:MM`; `driver_alla_data` sceglie il driver attivo alla data **e ora** dell'infrazione (`data_ora_evento_verbale`, `ora_violazione` dal PDF); un evento senza ora nel giorno del passaggio dà i candidati e non sceglie; il PUT valida e normalizza (400 su data illeggibile o `al` < `dal`) e il cambio driver chiude/apre il periodo allo stesso minuto.
-- **La trattenuta in busta per un verbale nasce in un posto solo**, `trattenute_verbali_service.proponi_trattenuta_verbale_pagato`, e solo a verbale pagato con quietanza (PDF caricato o ricevuta pagoPA/PayPal) e importo certo, stato `proposta` finché il titolare non conferma; l'assegnazione del driver, un pagamento dichiarato senza PDF e la sola prova bancaria non aprono nulla.
-- Il verbale genera un promemoria operativo a 5 giorni dalla scoperta. **La PEC di notifica è la prova della notifica** (`notifiche_pec_verbali.py`): la data della PEC è `data_notifica`, da cui 5 giorni (ridotto), 30 (Giudice di Pace) e 60 (Prefetto); il numero si legge dalla copia conforme, mai dal nome file, e la notifica si aggancia al verbale vero con quel numero (`notifiche_pec`, allegati nel fascicolo), mai a un secondo verbale; senza verbale resta «da agganciare» (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run` per difetto).
-- **Le PEC di notifica si agganciano da sole** nel giro giornaliero dei verbali delle 07:10 (`verbali_notifications`: prima `giro_aggancio_automatico` di `notifiche_pec_verbali.py` con `dry_run=False`, poi l'importo atteso, poi i promemoria): una PEC si lega solo al verbale vero con lo stesso numero letto dalla copia conforme; senza verbale o con due verbali veri resta `da_agganciare` col motivo (`senza_verbale`|`verbali_ambigui`), nessun verbale nasce, secondo giro = 0; l'esito dell'ultimo giro sta in `sistema_stato` (`notifiche_pec_verbali_ultimo_giro`), niente bottone né PIN (l'endpoint `…/notifiche-pec/aggancia` resta per l'anteprima). **La nota per il consulente** della trattenuta (`note_presenze_consulente`, archivio del gestionale, mese successivo alla quietanza) parte con le presenze del mese da entrambi gli invii (HR «Invia» e Pacchetto commercialista: `presenze_consulente.note_consulente_mese`, riga nel corpo dell'email e CSV `note_presenze_AAAA_MM.csv`) e dopo un invio riuscito `registra_invio` la segna `inviato_consulente`.
-- **Posizione auto/driver in un posto solo**: `app/services/noleggio/posizione.py`
-  (`GET /api/noleggio/posizione`, tab «Posizione auto e driver»). DARE = costi documentati
-  (fatture per categoria, verbali con importo verificato); AVERE = **solo prove strutturate**
-  (allocazioni bancarie confermate, Prima Nota Banca **con** estratto conto, quietanze
-  PartenoPay/Mooney/PayPal/PagoPA agganciate al verbale). Prima Nota senza estratto conto =
-  dichiarato, non chiude il saldo. Un SDD cumulativo si spartisce con le quote delle allocazioni
-  al centesimo; il pagamento pesa sul driver **alla data del costo**. Un'uscita verso noleggiatore
-  o Comune di Napoli senza relazione resta candidato, mai attribuita.
-- Lo scan fatture noleggio legge solo le fatture attive (`FILTRO_FATTURA_ATTIVA`: fuori
-  `archived`/`archiviata`/`deleted`, archivio storico, collisioni): ogni fattura 2026 esisteva in
-  due copie e i costi erano doppi. Aliquota 0 (bollo, N1) resta 0: `0.0 or 22` inventava il 22%.
-
-## Sicurezza
-
-- Segreti solo nelle variabili d'ambiente di Render.
-- Non stampare, committare o trasferire credenziali.
-- Non spostare né cancellare email e documenti originali.
-- Eliminazioni reali, pagamenti e associazioni definitive ambigue richiedono
-  conferma esplicita al momento dell'azione.
-- Telegram è l'unico canale attivo per alert e notifiche operative: non
-  registrare router, webhook o fallback WhatsApp.
-- **Ogni route è autenticata, e una nuova senza token non entra in silenzio.** L'ERP è chiuso dal middleware globale per tutto `/api/` fuori da
-  `PUBLIC_PATHS` (login, liveness, callback banca col suo `state`, pagine legali); HR, Lotti e Menu vivono fuori da `/api/` e si proteggono con le
-  proprie dipendenze (`require_*`, `auth_dependency`, `verify_token`). `tests/runtime/test_p2_admin_guards.py` costruisce l'inventario da `app.main:app`
-  (mount compresi) e fallisce per ogni route raggiungibile senza token che non sia in una lista bianca **con il motivo**; vale anche per ogni voce nuova di
-  `PUBLIC_PATHS`. I dati finanziari (Mutui, letture comprese, e il parser dei piani) hanno la guardia admin sul router. Un ordine anonimo del Menu è sempre
-  «cliente» e non pagato: `cassa` e `pagato` li dichiara solo chi porta il token dello staff. Ogni route di `/api/agenti` è solo admin (segnalazioni, stato, run, decisioni, automazioni, cash-flow, settori e proposte).
-
-## Dominio per app
-
-### HR — contratto, accessi, turni
-
-- **CCNL applicato: Pubblici Esercizi, Ristorazione Collettiva e Commerciale e
-  Turismo** (Confcommercio-FIPE), codice CNEL **H05Y**, rinnovo 5/6/2024.
-  **Non è il Terziario.** 40 ore settimanali, 14 mensilità (tredicesima a
-  dicembre, quattordicesima a luglio), 26 giorni di ferie, enti EBNT/EBT,
-  Fondo EST per la sanità, Fon.Te. per la previdenza complementare.
-- **Login dipendente = tocca il tuo nome + PIN**: su un dispositivo condiviso
-  in negozio digitare il cognome a ogni apertura era scomodissimo, e i nomi non
-  sono un segreto. L'accesso amministratore è una voce a parte, non la scheda
-  di un dipendente.
-- Sessione lunga e persistente (7 giorni) per cucina e pasticceria: il portale
-  riapre senza PIN finché il token è valido. «Esci» chiude subito.
-- **Turni data-driven**, un solo punto di configurazione: per ogni dipendente
-  modalità sala o barista, giorno di riposo fisso, giorni di Lunga, onomastico,
-  flag «può coprire il bar». Nessun nome cablato nel codice. La preferenza di
-  riposo scelta dal dipendente vince sul riposo fisso per quella settimana.
-- **Timbrature solo in sede**: geofencing sulla sede in `impostazioni`
-  (Ceraldi Caffè, Piazza Carità 14, Napoli, circa 40.842949 / 14.2489, raggio
-  200 metri).
-
-### Lotti — HACCP, magazzino, prezzi
-
-- **Un solo punto d'ingresso per le fatture** e deduplica sempre attiva: numero + P.IVA **oppure** numero + fornitore + data (una P.IVA troncata nell'import di gennaio creava doppioni). Il
-  ponte dal gestionale vede **tutte** le fatture dell'anno: il tetto per giro vale sulle **ancora da
-  prendere**, mai sull'elenco intero, che arriva ordinato per data — tagliarlo butta le più recenti (erano
-  444 dal 30/06) e il buco cresce da solo. Quante restano lo dice `arretrato`.
-- **Una fattura che entra nel gestionale alimenta Lotti subito**: l'handler `fattura.created` importa
-  **quella sola** fattura (mai un ripasso d'archivio: il giro Drive ne porta 25 per volta). Lotti è a
-  valle: un suo guasto o la sua lentezza non fermano l'import contabile (coda in sottofondo). Il giro dei 15 minuti è la rete.
-- **«Fattura attiva» si decide in un posto solo**, e per Lotti vale lo stesso criterio del libro giornale:
-  fuori `deleted`, `archived`/`archiviata`, `archivio_storico` e le collisioni di identità aperte. Un
-  filtro parallelo che guardava solo `deleted` mandava a Lotti 1.444 fatture invece di 889.
-- **Il registro delle ricevute non è una prova di presenza**: vale solo se la fattura esiste ancora in
-  `fatture`. **Un'impronta cambiata non è un conflitto** (il gestionale arricchisce righe e stati): conflitto è solo
-  XML diverso con la fattura già in Lotti; se manca si importa. Un fornitore fuori dal magazzino si salta, non è un errore. **Nel magazzino / fuori dal magazzino ha una scelta sola**, `fornitori.esclude_magazzino` dell'anagrafica ERP per P.IVA (`services/magazzino_fornitore.py`): motivo a chip (mai testo libero, «Altro» è l'eccezione), data, chi, `storico_magazzino`, anteprima coi conteggi prima di confermare (`GET/PUT /api/suppliers/{id}/magazzino[/anteprima]`, solo admin). Il ponte e l'handler `fattura.created` leggono prima quella; dove l'anagrafica non ha mai deciso vale la decisione già presa in Lotti (`fornitori`/`fornitori_decisioni`, per nome, e un omonimo con altra P.IVA non eredita); se nessuno ha deciso il fornitore è **incluso** e la scheda dice «non deciso» (mai «escluso» d'ufficio: il vecchio `not inventory_enabled` lo faceva per 197 fornitori su 198, campo che non esiste più). Lotti riceve una **proiezione** (`imposta_esclusione`, usata anche da `/escludi`, `/approva`, `/tipo-fornitura`, qualifica e auto-classifica) e ogni scelta fatta lì torna nell'anagrafica (`registra_decisione_da_lotti`); la qualifica automatica non riporta dentro chi il titolare ha messo fuori. Escludere o includere **non cancella niente** (fatture contabili, lotti e inventario restano); includere accoda le sole fatture ancora da prendere, con l'import idempotente di sempre. `POST /api/suppliers/magazzino/allinea` (admin, `dry_run`) porta sull'anagrafica le decisioni di Lotti dove manca la scelta.
-- **Un numero che non si conosce non è zero**: KPI senza fonte = «Dato non disponibile»; spesa = `total_amount` del gestionale per identità (`spesa_da_gestionale`); costo lotto = consumo × prezzo di fattura (`costo_da_consumo`), altrimenti `None` col motivo; spese, sconti e trasporto non entrano in giacenza. Dose e righe-intestazione in un posto solo (`servizi/ingredienti_ricetta.py`): un ingrediente senza dose si dichiara (`ingredienti_senza_dose`), mai saltato in silenzio; la merce mai scaricata la chiude solo il titolare (`servizi/merce_ferma.py`: simulazione, conferma, riapribile, niente si cancella). Lievito di birra: un solo motore (`servizi/lievitazione.py`) per dose, produzione e calcolatore impasti; si scala dal `lievitazione_riferimento` della ricetta alle ore/temperature di oggi e senza riferimento non si ricalcola; la produzione scarica e registra il lievito realmente usato.
-- **Prezzi da acquisti reali in fattura XML, oppure da listino del fornitore dichiarato come tale.** Gli ordini hanno totali veri: prezzo di riga, aliquota
-  IVA dall'XML, imponibile, IVA e totale che si ricalcolano a ogni variazione, con le stesse colonne nel PDF.
-- **Listini** (`servizi/listino_fornitore.py`, `POST /catalogo-forno/importa-listino`, Excel/CSV letto per intestazione): prezzo
-  che il fornitore dichiara oggi (Barone: catalogo riservato, bundlato in `data/listino_barone_2026-09-28.json` e caricato
-  all'avvio solo se piu' nuovo di quello in archivio; stessa strada per `data/listini_catalogo_ceraldi_2026-07.json`, catalogo bar del vecchio archivio con un listino per fornitore, prezzi IVA esclusa, codici `CC-nnnn`). Vivono in `catalogo_forno_prodotti` (`fonte_catalogo="listino"`,
-  `prezzo_listino` stringa Decimal per l'unita' «12 PZ») con la fonte `tipo="listino"` in `fonti_catalogo_esterne`; un articolo
-  uscito dal listino resta con `nel_listino=False`. Nel confronto compaiono con scritta «listino» e data, mai come prezzo pagato.
-- **FIFO: il lotto con la fattura più vecchia**, fra tutti i fornitori dello stesso articolo. Descrizione di fattura →
-  articolo in `nome_mapping` (`servizi/articoli_fattura.py`): vince la riga **confermata** (Dizionario, «Proposte web»);
-  senza conferme, parola intera e fuori i lotti che una prova dice altro («olive in acqua e sale» non è sale).
-- **Bevande e alcolici del bar** (acqua, birre, vino, prosecco, liquori, amari, sciroppi, succhi, bibite) si confrontano
-  a cartone o a pezzo, **mai a chilo o a litro**. Miglior fornitore: `servizi/confronto_fornitori.py`, **motore unico** per confronto,
-  cataloghi e carrello (righe XML + listini, fornitore = P.IVA). Vetro e lattina non si uniscono mai, nemmeno passando per una
-  descrizione che il contenitore non lo dice. Accorpamento: certo per testo, EAN o **lettura AI** (`servizi/lettura_articoli_ai.py`,
-  collezione `articoli_letti_ai`, giro orario 06-22 e 3 minuti dopo l'avvio: marca, prodotto, variante, formato; misura e pezzi solo
-  se scritti nella descrizione), dichiarato `abbinato_ai` e separabile con «diverso»; il resto lo decide una persona.
-  `nome_mapping` resta l'ingrediente per le ricette, non l'articolo da ordinare. **Scelto un prodotto (catalogo, Ordini o
-  confronto), la riga del carrello va al fornitore che costa meno** (`GET /confronto-fornitori/migliore`) e il toast lo dice;
-  un cartone fatturato senza i pezzi scritti prende il numero dal listino dello stesso articolo, con la nota «da verificare».
-- **Il web identifica i prodotti con un motore solo** (`servizi/lettura_articoli_ai.py`): `cerca_sul_web` è l'unica chiamata allo strumento server-side di ricerca (`LlmChat.cerca_sul_web`, stessa chiave, la usa anche la ricerca delle schede tecniche); `identifica_col_web` (giro `lotti_identifica_col_web` ogni 25 min, 5 righe, tetto 120 chiamate al giorno contate nel registro unico con scopo `lotti_web`, `web_cercato_at` = 30 giorni di pausa) dà una categoria del Dizionario da sola **solo** se il web (alta confidenza, almeno una fonte) e il testo di fattura concordano e la categoria è in `CATEGORIE` (`categoria_fonte="web"`, `abbinato_ai`, fonti); il resto è proposta `nome_mapping` fonte `web`.
-- Conversioni reali: uovo 60 g, tuorlo 19 g, albume 33 g; pezzi e chili col peso del pezzo.
-- Ogni riga d'ordine dice **chi l'ha inserita** (dipendente, lavagna, riordino automatico, produzione,
-  colazione). Le righe-nota (omaggi, riferimenti) non diventano prodotti di magazzino. Soglia minima e
-  quantità di riordino a 1.
-- Campi vincolanti: `ingredienti_dettaglio[].unita_misura` (non `unita`), `lotti.data_scadenza` gg/mm/aaaa,
-  `fornitori` per `nome` e non `id`.
-- **Schede tecniche ME.PA.** (`servizi/schede_fornitore.py`, `routers/schede_tecniche.py`): la descrizione
-  nella mail è la riga di fattura e fa da chiave. L'import manuale è multiplo e in due fasi
-  (anteprima/conferma): SHA-256 prima di ogni scrittura, un originale Drive e un `documento_id` per contenuto,
-  occorrenze duplicate conservate nell'indice Supabase. L'associazione automatica richiede codice fornitore o
-  nome nel PDF con identità esatta; la correzione umana deve indicare un nome esatto già nel dizionario,
-  altrimenti resta `DA_VERIFICARE`. Produttore, composizione, conservazione, shelf-life, confezionamento,
-  data e revisione sono conservati soltanto quando espliciti. Una `X` estratta senza la coordinata della
-  colonna non prova presenza/assenza/traccia. Il PDF per l'ASL non si elimina né si sovrascrive; allergeni e
-  valori per 100 g solo se scritti, in etichetta solo da articolo confermato o lotto consumato con la stessa
-  descrizione. Ricette e ingredienti risolvono lo stesso originale autenticato per identità esatta o
-  `nome_mapping` confermato e univoco. Le nuove schede email passano a Drive prima che il Base64 temporaneo sia
-  rimosso dal record. Lotti senza configurazione Supabase fallisce chiuso; il mock in memoria richiede
-  `LOTTI_TEST_MEMORY=1` ed è riservato alla suite.
-- Spostando un lotto si scrivono **sempre** sia `posizione` sia `frigo_numero`; per azioni reali sui lotti
-  di un'attrezzatura si usa il match esatto sul nome, mai uno snapshot troncato («Frigorifero N°2» e «N°9»
-  si confondono). La produzione sceglie con **un solo tocco** banco oppure un apparecchio attivo censito: niente destinazione predefinita, testo libero, ripiani o «senza posizione»; il banco passa sempre dal prelievo canonico, il lotto non resta disponibile anche nel registro banco e ogni cambio posizione ha audit.
-- Foto ricette: archivio unico Supabase Storage, anche per il cestino e le copie delle varianti; Drive si **legge** soltanto (foto già collegate, cartella scritta sul record), mai si scrive. La copia in `GESTIONALE/FOTO E IMMAGINI/RICETTE` la scrive dal PC `scripts/esporta_foto_ricette.py` (Drive Desktop): l'account di servizio non ha spazio nel Drive del titolare.
-- `prodotti_master` è il catalogo canonico e `magazzino_unificato` il magazzino canonico;
-  `prodotti_vendita` e `sconti_merce` sono domini diversi e non si fondono.
-- **Il registro HACCP non si scrive da solo.** Alle 07:00 il turno *apre* la casella del giorno su ogni
-  apparecchio attivo (mai su uno `fuori_servizio`) e ci mette il responsabile assegnato
-  (`attrezzature_config.operatore_id`, nome da HR): `temp` resta `None`, stato `da_rilevare`. Se il titolare
-  dichiara di fare lui il controllo visivo (`controllo_visivo_responsabile`), il turno annota l'**esito** —
-  «conforme, entro le soglie della scheda», firmato col suo nome — e **mai un valore numerico**: quello si
-  scrive solo quando c'è un'anomalia, e lo scrive lui (valore vero, fuori servizio, assistenza).
-  La misura la fa una persona dal tablet, e **la firma è il PIN**
-  (`servizi/firma_dipendente.py`): col PIN il nome arriva da HR e il record è `firma_verificata`; con un PIN
-  sbagliato la rilevazione **non si salva**, perché una firma falsa è peggio di una registrazione mancante.
-  Un giorno senza lettura si **dichiara** «non rilevato», mai riempito d'ufficio; lo storico **senza firma** resta
-  ma vale «n.a.» (`servizi/haccp_attendibilita.py`). Mai `random` né codice morto in HACCP (`test_haccp_niente_evidenze_finte.py`). Apparecchi di un anno = censiti + chi ha rilevazioni (`schede_temperature.py`), mai 12 fissi; un GET non crea schede (le crea il turno); il giorno è quello di Roma; «conforme», «non rilevato» e «da rilevare» si vedono diversi anche in stampa.
-- **Il responsabile di ogni frigorifero e congelatore senza assegnazione è il titolare** (decisione del 02/10/2026): il turno delle 07:00 scrive sulla casella `operatore_id="titolare"` e il nome di `responsabile_haccp` delle Impostazioni azienda (`AZIENDA_RESP_HACCP` come default), mai cablato; senza quel nome l'apparecchio resta in `senza_responsabile`, non si inventa. L'assegnazione per apparecchio è `PUT /attrezzature/{tipo}/{numero}/responsabile` (id HR, `titolare` o vuoto; nome sempre da HR o dalle Impostazioni), tendina «Responsabile» nella pagina Apparecchi. Un solo motore: `servizi/responsabile_haccp.py`. **La sessione amministratore del Gestionale firma le rilevazioni** (`firma_registrazione`: `firma_verificata`, `firma_via=sessione_admin`, nome dal token se porta l'identità HR, altrimenti dalle Impostazioni); «Amministratore» non è un nome e il ruolo `automazione` non firma mai; un PIN sbagliato resta 401. **Dichiarare la conformità e aprire le caselle si fa dai registri** (card «Controlli di oggi», `shared/TurnoHaccpOggi.jsx`, sopra Frigoriferi e Congelatori, anche sul tablet): «Dichiaro conformi i controlli di oggi» → `POST /haccp-auto/dichiara-conformi-oggi` (prima il numero di caselle aperte, poi conferma; 409 senza controllo visivo, 401 senza firma; scrive `stato=conforme`, `temp=None`), «Apri le caselle di oggi» → `POST /haccp-auto/apri-rilevazioni-oggi` solo se `turno-oggi` dà `quante_senza_casella > 0`.
-- Stampa: coda più print agent locale sul PC del negozio (`scripts/print_agent.py`, PIN in `LOTTI_PRINT_AGENT_PIN`,
-  variabile **locale**, mai su Render), stampante scelta per tipo di documento, token solo in `Authorization` e solo verso Lotti. Il fascicolo per un'ispezione si compone da
-  `/lotti/api/manuale-haccp/stampa`: si spuntano le pagine (`SEZIONI_MANUALE`, le stesse che il generatore
-  sa produrre — un test lo verifica) e il frontespizio con i dati dell'azienda c'è sempre.
-- **Un PIN per entrare, non per ogni sezione**: magazzino e portale dipendenti condividono la verifica (`services/workforce_tokens.py`,
-  prova `LOTTI_AUTH_SECRET` e `HR_JWT_SECRET`); l'ERP contabile resta fuori. La traduzione dei ruoli è **direzionale**
-  (`operatore`↔`dipendente`), mai verso `admin`, e un token **senza** ruolo non ne riceve uno di ripiego: fallisce chiuso. Ruoli di Lotti (`servizi/ruoli.py`) sulla scheda HR (`lotti_ruolo`, `lotti_reparti`): **HACCP** registri, anomalie, conformità, apparecchi, smaltimento; **caporeparto** ricette e annullo produzione del suo reparto, smaltimento. Il token resta da operatore: `require_permesso` rilegge il ruolo a ogni scrittura (403 `RUOLO_NON_AUTORIZZATO`).
-- Piano di sanificazione per area (`/sanificazione/piano`): frequenza, prodotto, diluizione, tempo di
-  contatto. Niente valori di ripiego — un detergente scritto a caso rimanda a una scheda di sicurezza che
-  non c'entra. `/sanificazione/scadute` dice cosa è in ritardo e cosa è ancora da compilare.
-- Accessi: token 12 h, rinnovi al massimo 7 giorni dal PIN (admin 24 h, `auth_at`); PIN sbagliati contati in `pin_tentativi`, per client **e** globali; sui tablet condivisi il magazzino chiude dopo 10 minuti. Ogni scrittura o dipende da `require_admin` o è fra le operazioni di reparto di `test_scritture_riservate.py`; un URL da fuori si scarica solo con `servizi/fetch_sicuro.py`. Il JWT solo nell'header, **mai in `?token=`**: i documenti con `apriDocumentoAutenticato`.
-- Backup Lotti: mai sul disco del servizio. Parti verificate (SHA-256) in `gestionale.blobs` più manifesto (`servizi/backup_archivio.py`, registro `backup_registro`); il ripristino è simulazione → backup di sicurezza verificato → sostituzione per id. Navigazione: ogni reparto del tablet ha la stessa `BarraReparto` (Indietro, Reparti, Gestionale solo titolare, Cambia operatore), ogni pagina il suo `ErrorBoundary`, un indirizzo sconosciuto «Pagina non trovata», la configurazione passa da `#impostazioni`.
-
-### Menu — allergeni
-
-- Gli allergeni sono un obbligo di legge, non una cortesia: **Regolamento UE 1169/2011** e **D.Lgs. 231/2017**
-  impongono di dichiarare i 14 allergeni principali per ogni prodotto. Il dato vive in
-  `menu.menu_products.allergens` con i 14 id UE in `menu.menu_allergens`: **non in un file**.
-- **Il Menu è nostro e vive qui**: categorie, sottocategorie e prodotti stanno in `menu_*` e si modificano
-  solo dall'admin Menu o da Lotti (la ricetta). Non esiste nessuna sincronizzazione, importazione o
-  aggiornamento da un sito esterno e non va ricreata; i prodotti `origine IS NULL` sono prodotti normali
-  del nostro Menu (modificabili in Menu admin, agganciabili a una ricetta di Lotti).
-- **È Lotti a spingere nel Menu, non il Menu a pescare dalle ricette**, ed è
-  l'unica strada ricetta → prodotto (il «Collega a una ricetta» dell'admin
-  Menu era un doppione dal lato sbagliato, rimosso). Ogni ricetta la replica
-  il ponte `app/lotti/servizi/menu_bridge.py` con la stessa foto
-  (`origine = "lotti"`, `lotti_ref` idempotente, `menu_pubblico` → `visible`,
-  `menu_bb` → `menu_bb`):
-  l'esito `menu_sync` non fa
-  mai fallire l'endpoint Lotti. Pregresso con
-  `POST /api/ricette-ripubblica-menu` (admin, in background). La visibilita'
-  pubblica delle nuove ricette e' spuntata per default; `pubblica_tutte=true`
-  spunta anche l'archivio esistente e conserva i valori precedenti nello stato del giro.
-- **Il menu pubblico non mostra categorie e sottocategorie senza prodotti
-  visibili** (`menu_routes._build_hierarchy`): un riquadro vuoto in home ha
-  l'immagine rotta e «0 prodotti». Il filtro sta in lettura perché è l'unico
-  punto che copre anche le categorie già vuote in produzione, e perché
-  `menu_products.subcategory_id` è NOT NULL (una riga nascosta la sua sezione
-  deve comunque averla). Una categoria con prodotti in una sola sottocategoria
-  resta visibile.
-- **Le righe `origine = "lotti"` le possiede Lotti**: `PUT
-  /api/menu/admin/products/{id}` le rifiuta con 409 (il ponte le riscrive
-  intere a ogni salvataggio della ricetta, una correzione fatta nel Menu
-  sparirebbe senza avviso).
-- **ID prodotto unico `PRD-000123`** (titolare, 05/10/2026): lo stesso codice in Menu, B&B e Lotti, **assegnato solo dal database** (`menu.menu_products.codice_prodotto`, trigger `trg_codice_prodotto`, mai scritto da app né da PostgREST: `trg_codice_prodotto_fisso` lo blocca) e tenuto in `menu.prodotti_codici`, un registro che **non si cancella mai**. Una ricetta si riconosce per `lotti_ref`, mai per `id` (un id Menu si può riusare): ricreare la riga Menu di una ricetta non cambia il codice; un prodotto senza ricetta lo tiene per il suo id, e una ricetta unita a un prodotto esistente (trigger `trg_codice_aggancio`) ne eredita il codice. `bb_prodotti.id` è lo stesso `menu_products.id`; il B&B legge il codice dalla carta (`cod`), Lotti da `GET /api/prodotti-codici` (`{ricetta_id: codice}`, sola lettura) e lo mostra sulla card ricetta; ricerca per codice in Lotti, Menu admin e compositore B&B; la carta pubblica lo mostra nel dettaglio del prodotto. Il gateway `public.menu_products` è una vista `select *` espansa alla creazione: una colonna nuova su `menu.menu_products` richiede di **rifarla**.
-- **Scheda prodotto: la catena del piatto sotto il suo ID** (titolare, 05/10/2026: piatto → prezzo → reparto → ingredienti → allergeni → varianti → aggiunte/rimozioni → costo → food cost → disponibilità → foto → valori nutrizionali → sala → delivery → QR). `GET /api/prodotti/{PRD-000123 o id ricetta}/scheda` (Lotti, `routers/scheda_prodotto.py`, solo admin) **non ha motori propri**: food cost dagli stessi campi di `/ricette-prezzi` (`costo_totale`/porzioni su prezzo al banco, `None` col motivo se manca uno dei due), giacenza da `verifica_disponibilita_ricetta`, valori da `get_nutrizionali`, codice e indirizzo dal ponte Menu; un anello che non si legge è `None` col motivo, mai un valore plausibile. **Dato nuovo, sulla ricetta** (`PUT /api/ricette/{id}/scheda-vendita`, solo admin, campi facoltativi): `vendita_sala`, `vendita_delivery`, `esaurito`, `aggiunte` (nome + prezzo, salvato in centesimi, niente doppioni, max 20) e `rimozioni` (scelte **fra gli ingredienti della ricetta**, mai testo libero); il ponte le replica nel Menu (`vendita_sala`, `vendita_delivery`, `disponibile`, `aggiunte`, `rimozioni`: `scheda_vendita_da_ricetta`, un solo punto). **Disponibilità = «Esaurito oggi» deciso dal titolare**; la giacenza degli ingredienti è un'informazione accanto, non cambia il Menu da sola. La carta (`/menu/api/menu/carta`, item `cod`, `sala`, `dlv`, `disp`, `ag`, `rm`) accetta `?canale=sala|delivery` e toglie i prodotti non venduti in quel canale; la carta pubblica mostra «Esaurito», le aggiunte e le rimozioni nel dettaglio, e `?p=PRD-000123` apre la scheda del prodotto. **QR per prodotto**: l'indirizzo lo costruisce `app/menu/qr_prodotto.py` da `menu_qrcode_config.menu_url` (`/menu/carta/?p=…`, con `&canale=`), il QR lo disegna il browser; senza indirizzo pubblico del menu il QR non c'è e lo dice (`GET /api/qrcode/prodotto/{codice}`). **I valori nutrizionali sono una stima da tabelle standard**: stanno nella scheda interna con la copertura degli ingredienti e **non si pubblicano ai clienti** finché non c'è un'analisi che li renda dichiarabili (Reg. UE 1169/2011).
-- La ricetta ha **due prezzi**: `prezzo_vendita` è quello **al banco** (base di
-  food cost e margine), `prezzo_tavolo` quello **al tavolo**, mostrato dal Menu
-  digitale. Finché il tavolo non è deciso il Menu espone il banco e il ripiego
-  resta visibile (`prezzo_tavolo_impostato`): non si copia l'uno nell'altro, o
-  un prezzo mai scelto sembrerebbe deciso. **Valido solo se finito e maggiore
-  di zero**: negativi, `nan` e `inf` sono 400 all'ingresso, `0` significa
-  «togli il prezzo». Una ricetta **senza nessuno dei due** compare nella carta
-  `/menu/carta/index.html` con **Prezzo da definire**; le API dei prodotti
-  ordinabili continuano a richiedere un prezzo valido. Il backfill conta
-  `senza_prezzo`, senza inventare un ripiego.
-- In Lotti, **Ricette → Menu e prezzi → Prezzi da completare** permette all'amministratore di
-  inserire il prezzo al tavolo accanto a foto e prodotto, senza aprire la scheda.
-  Usa il solo endpoint canonico `PUT /api/ricette/{id}/prezzo-tavolo`: non cambia
-  banco o ingredienti. La riga scompare dopo salvataggio e sincronizzazione Menu;
-  un errore resta visibile e si puo' riprovare. Ricerca e reparto filtrano i dati gia' letti.
-- Le spunte di Ricette **Rosticceria del giorno** e **Pasticceria classica**
-  usano `categorie_rapide`, senza un secondo archivio di produzione. Sono gruppi
-  operativi modificabili (non si azzerano a mezzanotte): compaiono anche in Produci.
-  La scelta esplicita salva anche il reparto tramite il writer parziale canonico
-  e aggiorna il Menu (Food/Dolci); Rosticceria esclude Colazioni
-  e Pasticceria classica. Nessun lotto o quantitativo nasce dalla sola spunta.
-- La carta riunisce Colazione/Dolci di «Bar & Dolci» e Pasticceria di Lotti
-  nella card **Dolci**; bevande in **Bar**, Rosticceria in **Food**. Il reparto
-  misto Altro resta in **Altri prodotti**, senza dedurre il reparto dal nome.
-  E' un raggruppamento di presentazione: ID, prezzi e categorie sorgenti restano intatti.
-- **Un solo editor per la produzione:** Menu admin → Prodotti → Ricetta apre
-  `/lotti/#ricette/<id>`, non un secondo form. Nella ricetta le tre spunte
-  indipendenti decidono menu pubblico, catalogo B&B e ricette operative
-  (`visibile_tablet`; le escluse restano recuperabili). Il Menu legge il
-  proprio catalogo replicato dal ponte, non rilegge le ricette per B&B.
-  Composizione colazioni, assegnazione hotel e carta ospite usano la stessa
-  destinazione `bb`; le RPC esistenti conservano autorizzazioni e prezzi hotel.
-  Il frontend B&B legge `/menu/api/menu/carta?destinazione=bb`, sotto la
-  sub-app Menu: il prefisso ERP `/api/` richiede invece la sessione ERP.
-  `#in_menu` resta un alias di `#ricette/prezzi`, non una seconda pagina.
-- In Menu admin → Prodotti, la **X nasconde**, non cancella: aggiorna `visible`
-  (per una ricetta di Lotti la scelta sta nella ricetta). «Mostra anche nascosti»
-  permette il ripristino. «Possibili doppioni» confronta solo il nome, mai fonde o elimina automaticamente.
-- La categoria delle ricette nel Menu e' «Produzione Ceraldi» piu' la
-  sottocategoria derivata dal reparto. Le categorie si leggono e si creano da Lotti con
-  `/api/menu-categorie`, sempre con `origine` valorizzata; se esiste già una
-  categoria con quel nome di **altra** origine la creazione riesce ma la
-  risposta porta un `avviso` (due riquadri «Bar» in home).
-  **Categorie sulla ricetta** (`PUT /api/ricette/{id}/destinazione-menu`, solo admin, tendine in Scheda prodotto › «Posizione nel Menu»,
-  `PosizioneMenu.jsx`): `menu_categoria_id` + `menu_sottocategoria_id` (insieme, la sottocategoria deve appartenere alla categoria, tutte le
-  categorie del Menu sono selezionabili) decidono dove compare la ricetta; se mancano o non esistono più vale il reparto
-  (`categoria_origine` = `scelta` | `automatica`). `menu_prodotto_id` **unisce la ricetta a un prodotto già nel Menu** (`GET
-  /api/ricette/{id}/menu-prodotti` li elenca): la riga prende `lotti_ref` e `origine="lotti"` e **resta la stessa** (stesso id, stesso
-  codice PRD, stesso `bb_prodotti.id`), mai un doppione; un prodotto si unisce a una sola ricetta (409/400 altrimenti) e da quel momento
-  lo possiede Lotti (il PUT admin lo rifiuta con 409). `0` toglie la scelta.
-- Bibite e liquori non compaiono nella lista di lavoro degli allergeni;
-  il filtro non cancella allergeni registrati e non attesta la loro assenza.
-  Le ulteriori esclusioni manuali, per prodotto o reparto, vivono in
-  `menu.menu_allergeni_esclusioni`, **non** in una colonna di `menu_products`:
-  una riga ricreata perderebbe qualunque flag messo lì, mentre l'id resta
-  stabile. L'esclusione manuale conserva motivo e revoca; non nasconde
-  il prodotto dal Menu.
-
-- **Colazione del reparto:** la configurazione stagionale separa Pasticceria,
-  Rosticceria, Acquaviva e altri fornitori, con filtri sulle categorie richieste.
-  I filtri ricavati dal nome sono soltanto di presentazione, non assegnano
-  gruppi operativi persistenti. I salati rimandano alla produzione di
-  Rosticceria. L'azione esplicita «Tutte le 4 stagioni» aggiunge il singolo
-  prodotto in modo idempotente, conserva quantità esistenti e chiede conferma.
-  Il caricamento fallito non viene rappresentato come un menu vuoto.
-  Dopo il PIN personale il router conserva la sottopagina richiesta
-  (Colazione o Produci), soltanto nello stesso reparto; la navigazione dopo
-  l'accesso ha un unico proprietario, `TabletHome`, senza un secondo rinvio
-  al cruscotto in `KioskLayout`.
-
-### Colazioni B&B — colazioni prepagate per gli ospiti dei B&B partner
-
-- **Condivisione inviti:** il testo contiene il link una volta sola; se il modello personalizzato non usa `{link}`, il collegamento viene aggiunto prima di condividere o copiare. La barra dell'albergatore resta una griglia compatta anche su desktop; l'area hotel usa il tema chiaro indipendentemente dal tema del dispositivo.
-- Il compositore «Prodotto dal menu» legge il catalogo canonico con
-  `/menu/api/menu/carta?destinazione=bb`, tutte le categorie, ricerca e
-  paginazione; non mantiene una seconda lista né inventa prezzi mancanti.
-  «Usa come prezzo» aggiorna i nomi automatici «Colazione da €…» e conserva
-  i nomi personalizzati. Le spunte B&B dei prodotti Lotti arrivano dal ponte.
-
-- **Una pagina sola** (`frontend_colazioni/index.html`, JS senza build) servita da `/convenzioni/` con `StaticFiles`.
-  Parla con Supabase solo tramite funzioni RPC `bb_*` `SECURITY DEFINER`; le tabelle `bb_*` hanno RLS attiva **senza policy**:
-  la chiave pubblicabile non legge niente da sola. Le funzioni sono in `frontend_colazioni/sql/` (`supabase.sql`, poi `supabase-N.sql`).
-  La catena e' completa fino a v28: v1-4, 7, 8, 10 e 13-28 in `frontend_colazioni/sql/`, le cinque che mancavano (v5, v6, v9, v11, v12)
-  in `supabase/migrations/` come `…_colazioni_bb_vN_*.sql`; sono gia' applicate, i file non vanno rieseguiti.
-- **Tre ruoli, tre link**: titolare (`#/titolare`), albergatore (`#/hotel/<accesso>`), ospite (`#/ospite/<codice>`, un QR per camera, **mai prezzi**). Il QR del voucher è il link ospite completo e lo scanner accetta codice o link; «Copia link per NFC» copia il link ospite, «Copia link recensioni» è un bottone a parte.
-- **Audit del 02/10/2026** (`supabase/migrations/20261002132237_colazioni_audit_02_10.sql`, applicata a pezzi): gli ordini mattutini dell'albergatore (`/api/colazioni/ordini-prodotti/albergatore[/elenco]`) sono in `PUBLIC_PATHS` col motivo (la credenziale è il token `tk:` di Supabase, verificato dall'handler con `bb_alb_stato`, 401 se il database lo rifiuta; ogni altro `/api/colazioni/*` resta chiuso dal middleware, `test_colazioni_accesso.py`). **Extra per giorno** (titolare): `bb_vouchers.extra` è `[{giorno, voci, totale}]`, l'incasso è per giorno (`extra_pagati_giorni`, `bb_tit_extra_incassato(p,vid,pgiorno)`), l'ospite ordina per il giorno scelto (`bb_ospite_salva(…,pgiorno)`: mai passato né fuori soggiorno; un giorno incassato non cambia più), Produzione e scanner mostrano solo gli extra del giorno, la differenza senza glutine è una voce del giorno in cui l'ospite salva; prezzi sempre dal catalogo, mai dal browser; la colonna `extra_pagato` resta inerte. **Annullo**: l'albergatore rimborsa solo entro `data_fine`, dopo decide il titolare con motivo a chip (`bb_tit_annulla(p,vid,pmotivo)`; `annullo_motivo/annullato_da/annullato_il`). `bb_ospite_salva` valida `richieste` (solo `allergie` = id di `menu.menu_allergens`, `nota` ≤500, `modifiche` con chiavi note) e la pagina legge ogni lista con `Array.isArray`; un codice sconosciuto dà `{errore}`, non un'eccezione, così il conteggio per IP resta scritto. Codice voucher a 16 caratteri (i vecchi a 10 restano validi); `bb_ospite`/`bb_ospite_salva` limitate per IP (`ospite:<ip>`, 60 in 10 minuti, 15 di blocco); `bb_ip()` ricade su `x-real-ip`/`cf-connecting-ip` e la soglia per IP vale solo con IP noto. Il titolare non cambia il PIN dell'albergatore (`bb_tit_struttura_salva` tocca solo nome, indirizzo, telefono, email); una struttura si **disattiva** con `bb_tit_struttura_disattiva(p,sid,pmotivo)` (PIN e inviti azzerati, sessioni fatte scadere, link recensioni spento; borsellino e storico restano) e si riattiva solo con un nuovo invito (`bb_tit_invito_rigenera`); una struttura `demo` deve prima registrare il gestore (v24: `registrazione_richiesta`). Recensioni: senza `recensioni_informativa_url` nessun consenso può essere «sì» (RPC e UI); il consenso registra la `fonte` della visita; con `bar_lat/bar_lon/bar_raggio_m` in `bb_config` ogni posizione porta `distanza_m` e `in_sede` (null se mancano), solo informazione, mai un blocco. La pagina ha una CSP (`connect-src` solo Supabase e `self`), `integrity` su qrcodejs e nessun valore interpolato dentro un `onclick` (id/`data-*` più listener). **Le vecchie firme sono rinominate `*_v23` e chiuse ad anon, non eliminate** (`bb_alb_crea_voucher`, `bb_alb_crea_batch`, `bb_tit_menu_*`, `bb_tit_bar_set`, `bb_tit_voci_salva`, `bb_pin_stato`, `bb_tit_tavolo_set` e le firme precedenti di `bb_annulla`, `bb_tit_annulla`, `bb_ospite_salva`, `bb_tit_extra_incassato`, `bb_tit_struttura_salva`, `bb_recensioni_posizione`): lo strumento di sessione blocca ogni cancellazione, e una chiusura di sessione è `scade=now()`. `gc_assert_runtime_secret` e le colonne `bb_prodotti.descrizione_lunga/materiali` sono ora nel registro delle migrazioni.
-- **Titolare: nessun PIN suo, vale quello del gestionale.** La pagina chiama `POST /api/colazioni/accesso` (`app/routers/colazioni.py`, solo admin,
-  cookie o Bearer dell'ERP, MFA compresa); il backend chiede al database `bb_tit_sessione_apri` con la chiave di runtime `x-gc-api-key`
-  (la stessa di `gc_assert_runtime_secret`) e restituisce un token `tk:…` valido 12 ore, che la pagina passa come `p` alle RPC. Se il gestionale
-  non e' aperto, la pagina chiede il PIN e lo verifica con `/api/auth/pin-login`. Cambiare o resettare il PIN del titolare = farlo nel gestionale.
-- **Albergatore: PIN suo.** Lo sceglie con l'invito (`#/invito/<token>`, e' la registrazione) e riceve un **codice di recupero** (8 caratteri, si vede una sola volta,
-  in `bb_strutture.recupero_hash`). PIN perso: `#/recupero/<accesso>` con codice e nuovo PIN; senza codice, «Chiedi aiuto al bar» crea una richiesta
-  (`bb_richieste_pin`) che compare nel Cruscotto e si chiude mandando un nuovo invito. Dal Profilo cambia il PIN e rigenera il codice.
-  L'accesso passa da `bb_alb_login`, che dopo 5 errori blocca per 15 minuti (`bb_tentativi`, anche per IP): la pagina mostra un **conto alla rovescia** (`bloccoAvvia`: secondi da `bloccato`, 900 alla quinta password sbagliata, ricordato in `sessionStorage` per il ricaricamento) sull'accesso e sul recupero, con campi e bottone disattivati finché non scade; il server resta l'unica autorità: le altre RPC accettano solo il token di sessione
-  (`bb_sessioni`, 12 ore) e mai il PIN, perche' un'eccezione annulla il conteggio dei tentativi. Non esistono piu' una «modalita' prova senza PIN» ne' un PIN
-  del titolare nel database (`supabase-21.sql`): `bb_check_*` non sono chiamabili dall'esterno e `bb_pin_off()` risponde sempre falso.
-- **Colazioni per struttura**: ogni hotel ha le sue colazioni (`bb_colazioni`, con nome, prezzo a persona e voci dal catalogo o libere).
-  Le **standard** sono le stesse righe con `struttura_id` nullo: si importano in una struttura e poi si personalizzano, senza legame.
-  L'albergatore compila una pagina sola: camere, ospiti, dal/al, colazione. Un voucher vale per tutto il soggiorno (massimo 31 giorni),
-  fino a tanti ritiri al giorno quanti sono gli ospiti. Ogni camera ha il proprio valore predefinito `servizio_tavolo`, modificabile
-  nella singola prenotazione: solo le righe spuntate aggiungono al prezzo dell'hotel il supplemento configurato
-  (`bb_config.supplemento_tavolo`, 1,50 € a persona per colazione); le altre restano al banco.
-- **Fatture delle ricariche**: ogni ricarica che diventa confermata (carta SumUp, contanti al bar, ricarica registrata a mano) crea una riga in `bb_fatture_da_emettere`
-  (trigger `bb_trg_fattura_ricarica`, una sola riga per movimento). L'albergatore inserisce i **dati fiscali** (ragione sociale, P.IVA o C.F., indirizzo, codice destinatario/PEC) in registrazione o nel Profilo
-  (`bb_alb_fiscali_salva`, validati lato server); i dati sono **facoltativi**: la ricarica con carta non li esige: se mancano, la pagina chiede «Compila i dati per la fatturazione» (apre il Profilo) oppure «Acquista con scontrino fiscale» (prosegue; il bar emette lo scontrino; la riga «da emettere» in Fatture si chiude con «Non dovuta» e il Profilo non mostra più il banner «Completa i dati»), servono solo a chi vuole la fattura. Sotto i QR dell'accesso (Profilo dell'albergatore, invito del titolare) non si scrive il link. Il titolare le lavora nel tab **Fatture**: copia i dati, emette la fattura da SumUp Fatture
-  (l'API pubblica di SumUp **non ha** endpoint per le fatture: provati `/v0.1/me/invoices` e simili, tutti 404) e segna numero e data; «Non dovuta» chiude le prove. Aliquota IVA e momento dell'emissione
-  (buono corrispettivo monouso: IVA gia' alla vendita?) li decide il commercialista: l'app non calcola l'IVA.
-- **Ordini prodotti dell'hotel** (tab «Prodotti ordinabili dall'hotel» del titolare, sezione «Prodotti e ordini» dell'albergatore): ogni ordine ha giorno e **orario di ritiro** (fasce scelte dal titolare in Impostazioni › «Fasce orarie di ritiro», chiave `ordini_fasce_ritiro` di `bb_config` letta con `bb_ordini_fasce_ritiro()`; senza scelta valgono quelle da 30 minuti, 06:00–11:30, `FASCE_RITIRO`) e si chiude alle **14:00 del giorno prima** della consegna, ora di Roma (`limite_ordine`, `verifica_termini` in `ordini_hotel.py`: ordine di oggi entro le 14 per domani, dopo le 14 solo dal giorno dopo; il server decide, la pagina riceve `prima_consegna` dall'elenco). Pagamento a scelta: **borsellino** (`pagamento_metodo=borsellino`: addebito atomico e idempotente per ordine con `bb_ordine_prodotti_addebita`, riga `prenotazione` «Ordine prodotti OH-…», ordine subito `incassato`; saldo insufficiente = ordine rifiutato; se il salvataggio dell'ordine fallisce l'addebito si storna) oppure **in loco** (`da_incassare`, incassa il titolare). **Ogni ordine nuovo avvisa subito il bar** (`services/colazioni_ordini_notifiche.py`, in sottofondo dopo il salvataggio, mai nel percorso dell'ordine né per la stessa richiesta ripetuta): messaggio Telegram **non silenzioso** (push sul telefono del titolare) e email all'indirizzo `bar_email` delle Impostazioni (l'invio prova prima il relay Apps Script e, se risponde errore, **ripiega da solo su SMTP** con l'account Gmail già usato per la posta: `email_smtp.invia_email`) (letto con `bb_ordini_contatti_bar()`; senza indirizzo, l'account di posta aziendale); se un canale fallisce l'altro parte lo stesso e l'errore va nel log. L'annullo di un ordine pagato dal borsellino rimborsa prima (`bb_ordine_prodotti_rimborsa`, riga `rimborso`), poi annulla; entrambe le RPC vogliono il segreto di runtime e non sono chiamabili dal browser.
-- **Borsellino**: il saldo e' la somma dei movimenti confermati (`bb_saldo`); annullare un voucher rimborsa le non ritirate.
-  Ricarica con SumUp (checkout ospitato lato server, `bb_sumup_verifica` accredita solo con stato PAID e importo e riferimento uguali;
-  la chiave sta nel vault `sumup_api_key`) o in contanti al bar (il titolare conferma). **SumUp non e' ancora attivato**: manca la chiave.
-- **Consegna con PDF** (`app/lotti/servizi/consegna_hotel.py`, `POST /ordini-hotel/{id}/consegna`, tasto «Consegnato · invia PDF all'albergatore» in Lotti › Ordini hotel): segna l'ordine `consegnato` e manda all'email della struttura (`bb_ordini_contatti_struttura(psid)`, segreto di runtime) un PDF con prodotti, allergeni, lotto e fattura, totale e metodo di pagamento, riquadri firma. L'email non blocca la consegna: se manca o fallisce l'ordine resta consegnato, l'esito sta in `consegna_pdf` (con audit) e «Rinvia il PDF» (`solo_pdf`) non cambia lo stato; un ordine annullato non si consegna.
-- **Lotto automatico dei prodotti Acquaviva** (`app/lotti/servizi/lotto_acquaviva.py`, usato da `ordini_hotel._arricchisci_riga`; lo stesso motore servirà per la colazione del mattino quando il titolare lo autorizza): un prodotto del Menu è Acquaviva **solo se il titolare lo segna**; **ai clienti il Menu mostra il nome semplice, il nome di fattura sta solo nel segno** (`nome_fattura` in `menu_prodotti_fornitore`, titolare 05/10/2026) e dà il nome del lotto e la descrizione della fattura d'origine; «Acquaviva» e «Colazione esterna» sono etichette interne, non sezioni del Menu pubblico; (tasto «Fornitore: Acquaviva» nella tab «Prodotti ordinabili dall'hotel», `PUT /api/colazioni/prodotti-acquaviva`, collezione `menu_prodotti_fornitore`: mai per somiglianza di nome, che con le righe di fattura non coincide). All'ordine la riga nasce con il **lotto già associato**: numero `NOME-PRODOTTO-AAAAMMGG-NUMEROFATTURA` (giorno di consegna, fattura Acquaviva/Vandemoortele in uso), salvato in `lotti_fornitori` (`origine=automatico_acquaviva`, `fattura_ref`, `data_fattura`), idempotente (stesso prodotto, giorno e fattura = un lotto solo) e visibile in Lotti › Ordini hotel. La fattura in uso è la **più vecchia ancora da usare** (FIFO): la sposta il titolare con «Precedente» / «Merce finita: successiva» in Lotti (`GET/POST /ordini-hotel/acquaviva/fattura-in-uso`, stato in `acquaviva_fattura_in_uso`); finché nessuno la sceglie vale l'ultima fattura arrivata fino a quel giorno e la pagina lo dice. Le quantità delle fatture (cartoni) non si confrontano con i pezzi serviti: non si inventano. Senza nessuna fattura Acquaviva la riga resta «da associare» con il motivo, mai un lotto inventato; l'associazione a mano resta possibile.
-- **Colazione del mattino con doppia fonte** (`routers/colazione.py`, `colazione_coppie`, `colazione_fonte_scelta`; Lotti › Colazione › Avvia): il titolare dichiara le **coppie** «stesso prodotto, due fonti» (`PUT /colazione-acquaviva/coppie`: ricetta nostra + id del prodotto Acquaviva; mai per somiglianza di nome; la prima è «Graffa Napoletana» ↔ «Ciambella maxi zuccherata 100 g»). Toccando la riga, un pop-up chiede «Di Acquaviva» o «Nostra produzione» (`POST /scelta-fonte`, vale per il giorno di Roma). **Acquaviva** → nome della fattura e lotto automatico nome+giorno+fattura in uso (`lotto_per_prodotto`, nessuna fattura = errore, mai un lotto inventato); **nostra produzione** → il lotto `COL-…` di sempre (la registrazione del mattino non scala ingredienti: lo fa «Produci»). Senza scelta la riga non si registra e dice perché; il tasto Avvia chiede la scelta. La Graffa Napoletana nostra resta una ricetta di banco e **non è nel menu pubblico**: nel Menu c'è solo la Ciambella maxi di Acquaviva.
-- **Prodotto unico** (titolare, 05/10/2026: «Menu, B&B e Cassa sono lo stesso prodotto»): il prodotto vive **solo** in `menu.menu_products` (stesso id e codice PRD per tutti). Ha **due prezzi**: `price` (testo «2.50€») è quello **al tavolo**, `prezzo_banco` (numerico, nullo = non deciso, mai copiato dall'altro) quello **al banco**; il ponte Lotti ci scrive il `prezzo_vendita` della ricetta, il Menu admin ha il campo «Prezzo al banco». Gli allergeni sono uno solo (nella migrazione l'unione dei due elenchi). Ciò che è solo del B&B (visibilità per gli hotel, ordine, etichette, varianti, testi lunghi, descrizione propria) sta in `menu.prodotti_bb`, **una riga per prodotto**: un prodotto è nel catalogo B&B solo se ha quella riga. **`public.bb_prodotti` è una vista** (stesse colonne di prima: `cat_id`/`sub_id` sono quelli del Menu, `prezzo` = banco, `prezzo_tavolo` dal testo del Menu), non una tabella: nessuno la scrive, la leggono `bb_catalogo`, `bb_prodotti_disponibili` e le funzioni `cassa.*` (le quattro chiavi `cassa.righe|movimenti|prezzi|prodotti` puntano a `menu.menu_products`). Categorie e sottocategorie sono quelle del Menu (stessi id del B&B: `bb_prod_cat`/`bb_prod_sub` restano solo per i flag `ospiti`/`attivo`/`ordine`; una sottocategoria nuova del Menu va aggiunta anche lì per comparire raggruppata). Il nome, il prezzo o gli allergeni si cambiano **una volta sola**, nel Menu admin o nella ricetta di Lotti; mai a mano nel database.
-  Foto, testi lunghi e ingredienti sono file statici in `frontend_colazioni/menu-img/` (`extra.json`). Extra dell'ospite: prezzi calcolati
-  dal server, si pagano al bar; le versioni senza glutine (`bb_senza_glutine`) aggiungono solo la differenza.
-- **Scelte giornaliere dell'ospite** (v27-v28): il QR resta unico per tutto il soggiorno; extra e incassi usano il formato giornaliero
-  verificato dall'audit, mentre modifiche e sostituzioni sono in `bb_voucher_giorni` per la singola data. Lo stesso QR propone oggi e
-  consente di preparare i giorni futuri con tre sole azioni (cambia prodotto, aggiungi extra, allergie). Produzione e scanner leggono
-  esclusivamente la scelta del giorno; limiti per IP, validazione server e prezzi da catalogo restano obbligatori.
-- **Avvisi operativi esterni** (v26-v28): la prenotazione dell'albergatore e ogni nuova composizione di extra dell'ospite accodano una
-  notifica idempotente. Lo scheduler la invia al Telegram del titolare senza dipendere dall'app aperta e senza mostrarla all'albergatore;
-  il testo non contiene il nome dell'ospite e l'extra indica la data a cui appartiene.
-- **Dati esterni** (navi e scioperi) in cache `bb_esterni`, aggiornata dal database con l'estensione `http` (Guardia Costiera EMSWe per le navi,
-  RSS del MIT per gli scioperi), al massimo ogni 20 minuti.
-- **Recensioni post-consumo** (v23): dalla scheda di ogni struttura il titolare genera i link QR/NFC/Wi-Fi
-  `#/recensioni/<token>/<fonte>`. Geolocalizzazione e WhatsApp sono scelte esplicite, separate e mai preselezionate;
-  ogni consenso, diniego e revoca conserva timestamp, struttura, fonte e versione informativa. Solo l'opt-in WhatsApp
-  con numero valido crea una riga in `bb_recensioni_inviti` dopo la conferma di fine colazione. Lo scheduler la invia
-  con un template Meta approvato e ricontrolla l'ultimo consenso prima di acquisirla. URL Google/Tripadvisor, informativa
-  e ritardo si configurano dalla scheda; token e phone number id Meta restano nelle variabili Render.
-
-## Stato attuale (al 02/10/2026 — riscrivere sul posto)
-
-- Ogni merge su `main` fa ridistribuire Render: per qualche minuto la produzione può essere `degraded`. Non si accodano merge. La health del commit `0187a45f`, letta il 30/09 alle 17:54 UTC, dichiarava `hydrated_rows=249598`, `hydration_errors=0`; il vecchio valore ~77.000 non è una misura corrente.
-- TFR: la lettura RPC del runtime il 30/09 misura **1.239** righe in `tfr_accantonamenti`. L'assenza nel deposito relazionale HR, l'importo aggregato e lo stato dell'ingest posta restano baseline da riconfermare; non sono stati interrogati nell'audit in sola lettura.
-- **Spento**: il giro completo del protocollo, `PROTOCOLLO_DRIVE_ENABLED=false` (RAM a 1,57 GB su 2). **Acceso**: scheduler, cartella unica Drive, giro incrementale del protocollo (ogni 20 minuti), ponte pagamenti HR, dedup fatture.
-- Fatture: lettura del 06/10/2026, `invoices` ha **0 righe** (il 30/09 erano 1.539), i corrispettivi **11** (dal 23/09), i movimenti d'estratto **56** (dal 03/08) e il giornale **11** scritture (il 30/09 erano 1.801); F24, quietanze, bonifici e buste sono intatti. I file risultano già in `ELABORATE` (3.626 fatture, 1.306 corrispettivi): si ricostruisce con `POST /api/admin/documenti/rimetti-in-coda` (vedi «Ingresso documenti»), non con un secondo importatore. Chi ha azzerato l'archivio non risulta dai log.
-- **Gli XML di fattura li carica il titolare su Drive in `DA ELABORARE`** (titolare, 06/10/2026): un ritardo delle fatture nel gestionale non è «a monte», è del flusso `DA ELABORARE → Documenti > Import → ELABORATE`; se una fattura manca si guarda il registro `drive_cartella_unica` per `drive_file_id`, non si presume che l'XML non sia arrivato.
-- **Numia dismesso** dal 05/09/2026: dal 01/08 al 04/09 le chiusure Numia vengono dagli accrediti in banca (50 giornate 2026 ancora da ricostruire al 28/09, 43.115,18 €: le fa il job bancario corto). POS corrente = solo SumUp (API).
-- **Estratto ufficiale BPM**: in archivio fino al 31/03/2026; il PDF al 30/06/2026 va caricato in Documenti > Import (lettore corretto il 28/09); operativo fino al 28/09 da CSV e Enable Banking.
-- **Import minisito Drive completato** (dichiarazioni fiscali 826: 770, Redditi SC, IRAP, IVA, LIPE; F24 unificati 263; quietanze 548). Le dichiarazioni importate prima del 30/09 non hanno i quadri né le coordinate: si ripassano da Documenti > Import. Le IRAP `IRA_T…` e gli UNICO si riconoscono per nome e per il quadro IR/IS, mai come F24 anche se citano «Versato in F24».
-- **Corrispettivi XML fino al 21/09/2026** (letto il 01/10; la copia serale RT è ferma dal 28/08); il CSV AdE di settembre copre il 23–30/09 come provvisorio. 08, 10, 14 e 17/09 non sono buchi: l'RT le ha chiuse col giorno dopo (progressivi consecutivi).
-- **Nessuna liquidazione IVA calcolata**: `/api/iva/liquidazioni` torna vuoto; giugno e luglio sono calcolabili ma con **zero** acquisti (tutti `detraibilita_da_verificare`). LIPE 2026 (tre periodi, quadrati): marzo combacia al centesimo, a gennaio mancano **5.005,88 €** di IVA detraibile. Nessun F24 IVA 2026.
-- Foto ricette Lotti: 20 su Storage, 307 su Drive in `FOTO E IMMAGINI/ricette_immagini_per_nome` (ricollegate per ID da `Mappa_immagini_ricette.csv`); da portare su Storage. DRV-16 chiuso nel codice: nessuna lettura di `GOOGLE_DRIVE_*_FOLDER_ID` per sezione, `DRIVE_*_FOLDER_ID`, `DRIVE_FOLDER_REGISTRY_JSON`, `GOOGLE_SERVICE_ACCOUNT_JSON_*`, `DRIVE_SIMULAZIONE_{BATCH,EDIZIONE,SOLO_TIPO}`, `ADMIN_PASSWORD(_HASH)`; su Render si cancellano a mano. La radice di `DATI SOCIETA CERALDI` conteneva ~5.500 file sciolti (3.717 PDF, 1.375 XML): li smaltisce lo smistatore a lotti.
-- Lettura del Menu pubblico del 30/09: **323** prodotti, **108** con allergeni e **215** senza elenco. Le esclusioni motivate e le conferme «nessuno» richiedono il controllo riservato prima di classificare tutti i 215 come violazioni.
-  Menu clienti: il QR legge solo `menu_qrcode_config.menu_url`; social in `collegamentiPubblici.js`, privacy e cookie sono pagine del Menu (`/menu/privacy`, `/menu/cookie`) col titolare da `/api/menu/titolare`.
-- **Lotti indietro**: 163 fatture alimentari da giugno bloccate dal ponte (conflitti d'impronta), ultimo lotto 14/09. 119 lotti su 344 in unità non convertibili (95 KAR); 320 descrizioni con proposta web da confermare; scadenza su 15 lotti su 580, lotto vero su 27.
-
-Correzioni dell'audit del 30/09 preparate nel workspace, **non pubblicate**:
-GitHub nega push e apertura PR con HTTP 403. Il ponte Lotti verifica che
-l'ID restituito dall'importatore esista prima di creare la ricevuta; una
-ricevuta incompleta o riferita a fattura eliminata resta recuperabile. HR e
-Lotti verificano stato/PIN nell'anagrafica anche sui token già emessi; il
-rinnovo conserva l'istante dell'autenticazione originale. Il responsabile
-turni accede alle operazioni Turni, non a PIN, paghe e fascicoli; un 403 non
-cancella la sessione. `GET turni-config` non scrive e non sceglie omonimi.
-La carta clienti del Menu legge gli stessi `menu_*` dell'admin e di Lotti,
-con prezzi pubblicabili e categorie non vuote; i prodotti Lotti si
-modificano nella ricetta. I dettagli di presentazione (colori, foto locali, orari,
-ordine) stanno nel dataset versionato `app/menu/dati_carta/` (`carta_menu.py`) e non sostituiscono i dati canonici. Il router Mutui richiede admin
-anche per le letture. I dati storici non sono stati riparati o migrati.
-
-Giornale, lettura RPC del 30/09 alle 18:37 UTC: **1.801** scritture, **1.786
-attive** secondo il predicato canonico; **1.746 quadrate** e **40 non
-quadrate** (una è uno storno), con differenze assolute complessive **848,25
-€**. Il valore non è un saldo da rettificare automaticamente. Tutte le
-attive hanno `idempotency_key`, senza gruppi duplicati. La verifica definitiva
-dei protocolli per anno e la ricostruzione da fonti restano aperte.
-
-Collaudo locale delle patch: **6.439 test backend passati**, **337 saltati**
-(332 HTTP senza backend dedicato, 4 PDF campione assenti, 1 parametro vuoto
-nel controllo palette). Frontend: ERP 564, HR 19, Lotti 169, Menu 24 passati.
-E2E ERP: 74 schermate e operazioni Cassa/Banca/Provvisori; HR: turno
-gestione↔portale; Menu: admin↔carta e pubblicazione. Queste prove usano fixture,
-non certificano tutte le relazioni del deposito reale. Runner backend:
-`python scripts/collaudo_isolato.py -q`; gli E2E HR/Menu controllano host
-locale e marker fixture prima delle scritture.
-
-## Aperto (togliere la voce quando si chiude)
-
-- **Credenziali vere nella cronologia git** (`backend/.env` in 23 commit, `memory/test_credentials.md`, `memoria/DIARIO.md`, `push_impeccable.py`, fra febbraio e aprile 2026, visibili finché il repository era pubblico; oggi non sono in `main`). Prima il titolare **ruota** tutto ciò che c'era (token GitHub, PEC Aruba, password app Gmail/IMAP, client secret PayPal, URI MongoDB Atlas, token WhatsApp, `SECRET_KEY`/`CRON_SECRET`, password admin, codice gestione riservata, chiave Emergent); poi, **solo col suo ok**, la cronologia si riscrive con `git filter-repo --invert-paths` su quei quattro percorsi, push forzato di `main`, tutti i branch e i tag, e ogni checkout si riclona (il PC del titolare compreso). Mai riscrivere la cronologia prima della rotazione: la riscrittura non revoca niente.
-
-- **Lotti, due giri di ricerca web sulle descrizioni di fattura**: `identifica_col_web` (`lettura_articoli_ai.py`, giro `lotti_identifica_col_web`, categoria del Dizionario, `web_cercato_at`) e la campagna `ricerca_web_prodotti` (`app/lotti/routers/scheduler.py`, schede e `nome_mapping`, `ricerca_web_tentativi`, mai un tentativo registrato). Condividono l'helper `cerca_sul_web` ma sono due code e due contatori: fonderli in un giro solo.
-
-- **Lettori AI doppi, da fondere**: il client è uno solo (fatto), ma i lettori restano più d'uno per lo stesso documento: `ai_document_parser` (vision, catena `mittenti_email_sync`, coda `/ai-parser/da-rivedere`, `BatchProcessor.jsx autoMode`; il suo `PROMPT_VERBALE` resta raggiungibile solo da `ripielaborazione_documenti`), `enhanced_document_parser` (cedolini), `document_ai_extractor` (fatture estere), `fiscal_agents`: due lettori per cedolini e fatture (i verbali sono fatti: lettore unico senza AI, proposte dell'agente), tre pipeline di classificazione dell'inbox (`documents_inbox_classify.auto_classify`, `ai_integration_service`, proposte). La strada canonica è quella delle proposte degli agenti (lettura → proposta → conferma → motore deterministico): gli altri lettori si tolgono quando il loro ingresso passa da lì, un flusso alla volta e con il titolare che decide quale tenere. **Dopo il deploy**: `POST /api/agenti/proposte/giro` (admin) per il primo lotto, poi in `/agenti` › Settori provare che «Vedi» apra un file in `ERRORI` e che una conferma lo sposti davvero in `ELABORATE`.
-- **Fornitori, da lanciare dopo il merge** (admin, prima `dry_run`): `POST /api/suppliers/magazzino/allinea` (le 88 esclusioni di Lotti sull'anagrafica); per BIG FOOD SRL `POST /api/suppliers/{id}/applica-metodo-dal` dopo aver messo «Metodo valido dal» 01/01/2025 sulla scheda (oggi è 30/09/2026 per un salvataggio della scheda). Le 6 fatture BIG FOOD già pagate con assegno, banca o dichiarazione in banca (2.711,38 €) restano dove sono finché il titolare non dice diversamente.
-
-- **ID prodotto unico e categorie delle ricette: da applicare le migrazioni, in quest'ordine** (admin, a database scarico, la sera: la vista `public.menu_products` fa ricaricare PostgREST e `bb_prodotti` diventa una vista) `supabase/migrations/20261005150000_menu_codice_prodotto.sql` (registro codici, colonne di vendita, trigger di aggancio ricetta→prodotto) e poi `20261005210000_prodotto_unico.sql` (prezzo al banco, `menu.prodotti_bb`, 116 prodotti solo-B&B nel Menu, allergeni in unione, `bb_prodotti` vista, chiavi della Cassa sul prodotto unico; collaudata su Postgres 16 locale con uno schema di prova, **mai sul database vero**: il collaudo in transazione non è stato autorizzato); se il registro assegna altre versioni, rinominare i file. **Dopo**: confrontare vista e `bb_prodotti_prima_unificazione` (stesse righe e colonne, solo `prezzo_tavolo` 0→nullo per «Comunicazioni»), provare un voucher e un ordine hotel, poi togliere la vecchia tabella. Gli schemi `cassa` e `catalogo` (Cassa del titolare, 24 tabelle, vuota: 0 scontrini) sono nel database con migrazioni del 03-04/10 **che non sono in `supabase/migrations/`**: da esportare nel repository. Finché non c'è il ponte pubblica lo stesso senza le colonne di vendita e la scheda dice «ID non ancora assegnato». Collaudata su Postgres 16 locale, mai su produzione. **Dopo**: `POST /api/ricette-ripubblica-menu` (admin), poi in Lotti › Scheda prodotto › «Posizione nel Menu» scegliere categoria/sottocategoria di ogni ricetta e unire quelle che hanno già un prodotto nel Menu (le ~323 voci `origine IS NULL`), controllando che il codice PRD resti lo stesso in Menu, B&B e Lotti.
-- **Termini di recupero**: la regola dei termini vive in una vista SQL (`verifica.tabulato_tributi_termini`, migrazioni `…013008` e `…013741`), non in Python con test: se cresce o va corretta, portarla in `termini_recupero.py` con i casi del foglio del 01/10/2026 (27 righe ancora recuperabili su 98 senza versamento al 01/10).
-
-- `legacy_staging` (5 tabelle, ~1 MB; le altre 51 sono state cancellate: gia' nel gestionale al centesimo): restano i dati che il gestionale non puo' ricevere senza una via con admin.
-  `residui_fatture_2026` (le 21 righe gia' nel gestionale per numero e importo non ci sono piu'; restano **8 parcelle FPR pagate** nel 2026 senza XML: Carini 3.206,40, Marotta 1.122,24 + 1.517,70 + 1.656,64,
-  Ferrantini 1.122,24 ×3, Graziuso 2.300,00 contanti — servono gli XML dal portale AdE), `catalogo_ceraldi` (caricato in produzione come listini, vedi «Listini»: 808 righe verificate; la tabella si cancella con `select gestionale.consenti_cancellazione();` e `drop table legacy_staging.catalogo_ceraldi;`), `movimenti_carta`
-  (34 movimenti carta gen–giu 2026, 18 con fattura collegata a mano: le righe sono già tutte in `estratto_conto_movimenti`, ritrovate per data e importo 34 su 34; la tabella si cancella), `presenze_acconti` (ratei 13ª/14ª e pagamenti luglio–agosto non migrati; l'acconto TFR di 1.800 € a Capezzuto nasce dalla busta di luglio, voce 000081: la tabella si cancella dopo aver verificato l'acconto) e `presenze_profili` (14 profili dell'app vecchia con email, telefono e consensi privacy: Murolo e gli IBAN sono già in HR; si cancella dopo aver confermato che tutti i dipendenti attivi hanno email e telefono in HR).
-  Si migrano con le vie normali (mai con SQL a mano: l'acconto TFR scrive anche il giornale), poi lo schema si cancella.
-- **Collaudo funzionale dei flussi, resto**: HR — `riepilogo-aziendale` HR filtra `status` dove l'anagrafica usa `stato` (da verificare), la liquidazione TFR di HR attinge solo dal valore manuale e non dalle quote da buste, il percorso HR «Buste da email» (`/paghe/importa-email`) ha un lettore proprio fuori dal motore unico dei cedolini; corrispettivi — unificare la dedup delle due strade (`ingest_corrispettivo_parsed`, `importa_csv_ade`); F24 — all'import di un modello l'addebito si cerca due volte con la stessa funzione idempotente (`cerca_controparti_f24` e handler `on_f24_acquisito_riprocessa`): togliere il passo `banca` dal primo. **Da lanciare dopo il deploy** (admin, prima `dry_run`): `POST /api/admin/f24/ripubblica-evento-acquisito`. Decisioni del titolare in attesa: nessuna (le dodici del 02/10/2026 sono nel codice; Flotta: targhe→driver→dal da scrivere quando il titolare è al PC).
-- **Riconoscimento dal contenuto, dove il codice ancora guarda il titolo o la cartella** (regola «Un file si riconosce dal contenuto»): `detect_document_type` (`routers/documenti.py`) decide `documento_identita`, `visura_camerale` e `tari_istanza_compensazione` dal solo nome del PDF, e `commissioni_` nel nome esclude un POS; l'estratto conto passa ancora per percorso e nome prima del contenuto. Da fare: togliere le decisioni per nome (lasciando il nome solo per ordinare la coda) e verificare se un file messo a mano in `ELABORATE` senza riga nel registro `drive_cartella_unica` viene mai riletto (la riga del registro ha un id interno, l'id Drive sta in `drive_file_id`: si cerca per quello). **Il registro `drive_cartella_unica` si cerca per `drive_file_id`, mai per `id`** (l'`id` della riga è interno): cercare per `id` fece dichiarare «mai letti» quattro estratti Nexi che il registro conosceva.
-- **Residui «legacy» con dati o writer vivi** (da decidere uno a uno, non si cancellano alla cieca): `piano_conti` (31 righe, letta da `_conti_operativi_legacy` in `routers/accounting/piano_conti.py`; il piano ufficiale è in Python), `attendance_presenze_calendario` (HR, `set-presenza` la scrive ancora), `email_fornitori` (Lotti, `email_ordini.py` la scrive e la elenca), `hash_pin_legacy` (HR: i PIN col vecchio hash restano validi finché ogni persona non ne imposta uno nuovo), `extracted_documents` (vuota; `/da-rivedere` e `/da-rivedere/{id}/classifica` in `ai_parser.py` da verificare), gli alias 307 e `LegacyRouteResolver` (indirizzi già in circolazione), e i rami «schema legacy» di `alerts.py`, `scadenze.py`, `fiscalita_italiana.py`, `suppliers_module/base.py` (`_legacy_supplier_view`): togliere ognuno solo dopo aver contato le righe con quello schema.
-- **Da lanciare**: `registra-pregresso` per le **21 giornate** 31/03–30/07 tenute fuori dal giornale dal
-  non riscosso (67.856,00 €); fuori restano 3 giornate a incasso zero (giusto) e il **02/08**, XML che non quadra di 0,90 €.
-- **All'avvio un solo `server_failed`** (02/10/2026, dopo #1020 e #1021): nei primi 5 minuti i giri di recupero partono insieme (quietanze orfane, lettura articoli AI di Lotti, letture `ssl`/`aiohttp decompress_sync` del caricamento cache) e il loop resta fermo 4-6 s; il riavvio ogni 20 minuti è chiuso, resta da scaglionare i giri d'avvio o portarli in thread.
-- Endpoint sincroni oltre i 5 minuti, da portare a lotti riprendibili: `/api/paypal-api/riconcilia`, `/account-ids-non-mappati`, `riallinea-pagamenti-fatture`.
-- Note di credito TD04 legacy (~20): costo/IVA/debito aumentati anziché ridotti.
-- **Estratto conto SumUp** (conto 19.01.05, PDF o CSV «Resoconto transazioni»): un lettore solo (`sumup_conto.py`, saldi verificati riga per riga) scrive in `sumup_conto_movimenti`, **mai** in `estratto_conto_movimenti` (lì i motori lo leggerebbero come BPM su 19.01.01); il payout si cita per `payout_id`, il bonifico a Ceraldi Group è un giroconto a due gambe verso BPM. Stipendi e fatture si abbinano con **gli stessi motori** del conto BPM puntati sulla carta (`abbina_movimenti_sumup`: dopo l'import, nel job bancario corto `banca_versamenti_proiezione` — il giro lungo ogni deploy lo interrompe — e all'arrivo di un cedolino); la collezione la dice l'id (`collezione_del_movimento`); un bonifico che cita le sue fatture in causale le paga se la somma torna al centesimo, anche in più bonifici dello stesso fornitore ripartiti per data (`reconcile_cited_invoices`), e una riga del vecchio import (`sumupbiz_…` su 19.01.01) passa sul conto della carta. Prima Nota > SumUp mostra la quadratura con l'estratto (righe da registrare, scritture che l'estratto non ha). Aperto: la coda «Scegli fattura» non apre ancora i movimenti della carta, e la «Deduzione SumUp» di 1,01 € del 03/08 (`rettifica_payout`) scrive un'uscita sulla Mastercard che l'estratto non ha.
-- **L'export «Spese» di SumUp (xlsx: Importo netto, Importo IVA, Fornitore, Stato del pagamento) non è un estratto BPM**: il parser generico prendeva l'ultima colonna «importo» (l'IVA) e il 29/09 scrisse 25 righe con 0,00 e la categoria al posto della causale. Ora `e_export_spese_sumup` lo riconosce e il parser bancario lo rifiuta (422); da Documenti > Import (`spese_sumup`) `arricchisci_da_spese_sumup` aggiunge fornitore, categoria e IVA ai movimenti SumUp che l'estratto ha già (lordo = netto + IVA al centesimo, entro 3 giorni, uscita, un solo candidato; ambigui e senza movimento si elencano, mai creati). Le 25 righe già scritte (`expenses_2026-08-01_2026-09-22.xlsx`) le mette in quarantena una sola volta l'avvio (`doppioni_estratto_conto._applica_import_errati`, marcatore in `migration_runs`, per id e col motivo; stesso comando manuale `POST /api/estratto-conto-movimenti/quarantena-import-errato?source_filename=…&dry_run=` per un altro file). Lo stesso avvio fa, con un marcatore per file (`IMPORT_ERRATI_AUTORIZZATI`), per le 242 righe dell'export «Elenco Entrate Uscite» senza segno, tutte entrate come «entrata» (`segno_assente` ora lo rifiuta): la gemella corretta c'è già in archivio, la Prima Nota nata dalle righe sbagliate si storna.
-- **Bonifico con la fattura nella causale**: `classifica_destinazione_dipendente` non lo tratta da stipendio nemmeno col nome di un dipendente (`causale_fattura`, salvo parole di stipendio/TFR); l'Archivio bonifici mostra il numero della fattura e `fattura_esito` (`intero`, `acconto`, `eccede`: importo contro il dovuto netto di ritenuta) e non propone «Scegli periodo» a un bonifico con la fattura collegata o esito HR `non_stipendio`.
-- **Pregresso fatture**: 299 attive (173.184,83 €, gennaio–maggio) senza partita: le rigioca il job bancario corto (`ripubblica_a_lotti`). Con `dry_run`: `azzera-scadenze` (642 fatture,
-  971 partite inventate), `lipe/importa`.
-- Riconciliazione: 158 fatture `riconciliata` con movimento non riconciliato, 180 righe hub senza `fattura_id`, ~260 movimenti banca senza categoria (bonifici disposti e SDD: si chiudono solo abbinandoli).
-- HR: 38 bonifici con `cedolino_id` orfano, 138 in «bonifici da associare» (120 con proposta da confermare; 18 senza prova), 10 tabelle attese dall'app
-  assenti (turni_config, onomastici, richieste…), Iazzetta con l'IBAN preso dalla ricevuta del bonifico del 06/08/2026 (non dall'elenco del titolare); Sankapala da cessare dalla scheda HR (scadenza del 12/06/2026); Appuhamy, Aurigemma, Vitiello,
-  Dell'Aquila da creare cessati; UNILAV Moscato e Pocci.
-- Noleggio: `veicoli_noleggio` è **vuota** in produzione (nessun driver né storico; le 4 targhe GX037HJ
-  ALD, GW980EP Arval, HB411GV Leasys, GG782PN cessata vivono solo nelle fatture); bonifici al Comune e pagamenti
-  Mooney via PayPal sono candidati senza verbale. `verbali_noleggio` ha 347 righe (lettura del 01/10): 132 `VERB-…` nate dalla PEC, 141 con
-  il PDF salvato sul verbale (`pdf_data`, le 132 PEC più 9), 69 in quarantena e il resto letto dal PDF o nato da un numero di fattura
-  (`fattura_ricevuta`). Per le righe lette dal PDF il `source_document_id` non è più in `documents_inbox` e senza `pdf_data` non hanno l'originale. Da fare con l'autorizzazione del titolare: l'anteprima
-  `POST /api/verbali-noleggio/ricostruisci-da-pdf`, poi `dry_run=false`; ricaricare da Documenti > Import gli originali dei
-  105 (le ricevute e gli avvisi PartenoPay sono su Drive); il pacchetto `PARTENOPAY_NAVIGABILE_PRONTO.zip` non è stato
-  trovato su Drive, va caricato da Documenti > Import (prima l'anteprima `…/import-partenopay`).
-- A mano, dal titolare: **installare la copia serale RT sul suo PC** (`scripts/installa_sync_rt.ps1`, recupera da sola le giornate dal 28/08); password Postgres; DNS ceraldiapp.it.
-- Fork `app/hr/`: **quattro** sottopercorsi ancora duplicati (`routers/employees/dipendenti.py`, `routers/pin_login.py`,
-  `routers/tfr.py`, `utils/dependencies.py`): ogni correzione va cercata anche nel gemello.
-- **Minisito fiscale**: la cartella Drive è stata letta per intero (5.111 file: 348 nuovi, 4.472 già presenti, 154 non riconosciuti, 80 in errore); i PDF non riconosciuti sono soprattutto ISA e quadri sciolti e documenti 2006–2011. Al 01/10/2026 in `drive_cartella_unica` restano **175 F24 e 66 quietanze** in errore (non i «circa 40» di prima: i 40 erano solo i non quadrati con dettaglio), per causa: F24 — 54 non quadrati salvati prima del dettaglio (il ripasso li spiega), 25 nessuna riga letta dal modello, 24 con righe lette ma differenza da guardare, 20 con la sola riga DM10 letta e le altre sezioni perse (stampe «Converted from …/stp/…», formato banca 2020–2021), 12 righe 9001–9958 (rate e sanzioni), 11 con saldo 0 e anno/periodo letti come importo (2006–2018), 9 senza righe tributo (non sono un modello), 8 tributi locali/TEFA con l'importo letto nel credito, 6 PDF non apribili, 3 senza testo, 3 con anno/periodo letti come importo; quietanze — 27 non quadrate senza dettaglio, 20 senza livello testo (scansioni), 18 senza righe tributo (non sono una quietanza), 1 transitoria. **Nessuna di queste cause è un caso risolto senza il PDF**: il lettore legge per coordinate e le coordinate di quelle famiglie non si ricavano dall'errore (il lettore si corregge con un PDF di ognuna, mai forzando); il nuovo ripasso (`VERSIONE_RIPASSO` 2026-10-01) scrive nell'errore anche il bordo destro degli importi letti (`x1 d/c`), che dice dove cadono le colonne. I 58 errori transitori (56 dichiarazioni fiscali con timeout di Supabase, NUL nel testo OCR o memoria esaurita, 1 quietanza, 1 altro file) si rileggono da soli (vedi «Ingresso documenti»). «Giugno 2026» resta bloccato: il credito di 63,28 € della pagina 2 non è nel saldo stampato (decide il titolare). Saldo IRAP 2024 (5.164,00 €) e acconto IRAP 2025 (4.238,00 €) senza quietanza: da verificare col commercialista. **18 quietanze doppie** (17 protocolli, stesso protocollo e stesso saldo, 21.727,35 €; verificato in sola lettura il 01/10: nessuna in quarantena, nessun doppione fra le 293 senza protocollo) da mettere in quarantena con `/api/doppioni/ripulisci` (prima `dry_run`, poi `dry_run=false` con l'autorizzazione del titolare). Le due quietanze del 16/09/2026 (invio `26091616120422319`, `/000001` 9.421,15 € e `/000002` 104,54 €) sono già in archivio col riscontro CERTO sull'addebito del 17/09 e senza modello (`f24_mancante`: il modello del commercialista non è arrivato).
-- `gestionale.blobs`: oltre ai backup di Lotti, 216 PDF che **nessun documento cita**; come `bank_reconciliation_hub` (2.017 righe), scritta da un trigger e letta da nessuno.
-
-- **Relazioni documentali (DRV-03)**: da lanciare, in quest'ordine e sempre prima `dry_run`: `POST /api/indice-relazionale/protocollo-collegamenti/bonifica` (103 collegamenti del protocollo verso quietanze fuse con una copia: 102 riagganciabili con l'MD5 del file, 1 senza entità), `POST /api/cedolini/canale/bonifica` (buste senza `canale`), `POST /api/indice-relazionale/relazioni-documentali/backfill` (poi ripetere finché `restanti`=0). Restano: l'originale delle buste con molte copie e nessuna impronta propria (nessuna prova dice quale sia «il» file: decide il titolare o un nuovo lettore), `drive_file_id` sulle righe HR, la vista «documenti collegati» (DRV-04, MINI-08) e le fonti senza impronta né `drive_file_id` (estratti conto bancari BPM, inbox senza hash).
-- **Protocollo personale**: il registro xlsx su Drive non è ancora importato (prima `dry_run`, poi l'import autorizzato); manca la ricerca sull'intero testo (colonna indicizzata, DRV-02), la lettura dalla pipeline invece di un `file_id` dato a mano (DRV-05); la pagina React c'è (`/protocollo/AAAA/NNNNNN`).
-- **Notifiche PEC dei verbali**: circa 136 PEC in archivio (`verbali_email_attachments`) non sono ancora agganciate ai verbali veri, e nate come righe `VERB-…` senza targa né importo: prima l'anteprima (`POST /api/verbali-noleggio/notifiche-pec/aggancia`, `dry_run`), poi l'aggancio. Le righe `VERB-…` non si cancellano; si decide dopo l'anteprima se metterle in quarantena. La ricostruzione dal PDF (sopra) completa i campi del verbale vero dalla copia conforme.
-- **IVA, cosa manca** (verificato sul codice): acconto 6013 e saldo 6099 come calcolo, maggiorazione 1% dopo il 16/03, credito annuale da dichiarazione e compensazione orizzontale (soglia 25.000 €), conguaglio di dicembre; il confronto con la LIPE non copre 6013, 6099, trimestrali e credito riportato. La scadenza fissa del 27/12 (`fiscalita_italiana.py`) non si sposta al lunedì. `schemas/accounting_rules.py` descrive 6001/6002 come «saldo» e «acconto» ma sono gennaio e febbraio. `_credito_precedente` esiste in due copie (`routers/iva.py`, `iva_liquidation_query.py`): ridurle a una.
-- **Bilancio e competenza**: `routers/accounting/bilancio.py` seleziona i costi per data documento **oppure** data ricezione e ignora `data_competenza` (una fattura di dicembre ricevuta a gennaio può finire nell'esercizio sbagliato o in due); il debito nello stato patrimoniale usa lo stato «pagata» di oggi, non la data di pagamento rispetto a fine esercizio; il costo del personale è il solo lordo (contributi `None`).
-- **Chiusura dei debiti**: il pagamento di F24, stipendi e fatture aggiorna la Prima Nota ma non scrive in `movimenti_contabili` lo storno del debito (33.03.01, debiti tributari, stipendi); il debito nello stato patrimoniale è un flag, non un saldo di conto. Il vecchio motore isolato che simulava queste scritture è stato eliminato perché non aveva chiamanti: l'implementazione futura deve entrare nel motore canonico e ricordare che il saldo F24 non è un costo. Imposte, IVA e contributi confluiscono tutti su `CONTO_ERARIO_IMPOSTE`. Da concordare col commercialista.
-- **Apertura dell'originale, resto**: il portale HR e l'HR admin hanno i loro indirizzi di file (`/hr/api/portale/buste/{id}/pdf`, `…/documenti/{id}/file`, `cedolini/{id}/download`, contratti, esiti paghe), con le regole del portale (un dipendente vede solo le sue buste) che l'endpoint unico, riservato all'admin dell'ERP, non ha: restano finché non si decide come far valere lo stesso servizio con un token da operatore. `drive_document_index` (indice Excel) non alimenta più nessuna scheda, ma lo leggono ancora `AttiAmministrativi` (`list_administrative_documents`), `/drive/fiscal/sync` e i due upload `drive_f24_model_upload`/`drive_declaration_upload`, che lo aggiornano: va tolto con loro (DRV-16).
-- **F24 e banca**: il motore a livelli confronta il saldo intero, non il codice tributo (l'allocazione per singola riga è stata tolta: 0 modelli l'avevano); un modello senza data di versamento (285 su 341 modelli attivi al 01/10, quasi tutti storici) o senza saldo letto non si confronta con la banca e ora lo **dichiara** (`non_riscontrabili`, esiti `data_versamento_assente` e `saldo_assente`, nei conteggi di `riscontri_modelli_banca` e in `quietanze-banca`) senza cambiare le regole d'abbinamento. Le quietanze provate dall'addebito non promuovono ancora da sole il modello a «pagato in banca» se il saldo differisce (ravvedimenti). L'F24 del consulente del lavoro non ha un flusso separato: ritenute 1001/1012 si confrontano con i cedolini solo per somma di periodo, senza collegamento salvato; DM10, INAIL e addizionali non hanno riscontro per dipendente.
-- **Colazioni B&B, da chiudere**: attivare SumUp incollando la chiave in Impostazioni; dall'SQL Editor applicare `bb_recensioni_revoca` dell'audit del 02/10 (in produzione resta la v23: contiene la cancellazione delle posizioni che lo strumento di sessione blocca) ed eliminare le funzioni `*_v23` e la colonna `bb_vouchers.extra_pagato`; «Esci» del titolare non revoca ancora la sessione DB; configurare i due URL recensione e l'informativa dalla scheda
-  struttura, poi impostare su Render `WHATSAPP_CLOUD_PHONE_NUMBER_ID` e `WHATSAPP_CLOUD_ACCESS_TOKEN` e approvare
-  il template `ceraldi_review_invite` con i parametri nome struttura e link;
-  emissione automatica delle fatture: serve un servizio SDI con accesso da programma (SumUp Fatture non ne ha; da chiedere all'assistenza SumUp o al commercialista);
-  inserire dati veri del bar (orari, WhatsApp, email) e i B&B reali; far rivedere composizioni, ingredienti e allergeni delle colazioni standard;
-  varianti di prodotto (latte vegetale, gusti del gelato) salvate ma non ancora scelte dall'ospite; per gli alberghi con servizio al tavolo gli extra usano ancora i prezzi banco;
-  il banner «VERSIONE DI PROVA» va tolto al lancio; eliminare i B&B demo (`bb_tit_elimina_demo`).
-
-## Logica dentro al database
-
-Su Supabase ci sono **trigger PL/pgSQL che scrivono dati contabili**: leggere il
-codice non basta per sapere cosa succede a una riga. Elenco, ruolo di ognuno e
-query su `pg_trigger` stanno in `database/trg_bank_ec_before_write.sql`. La
-regola: **una regola contabile si scrive in Python, versionata e testata** — per
-questo `trg_bank_ec_before_write` non c'è più, duplicava `proiezione_bancaria.py`
-e vinceva perché girava prima. Restano le guardie anti-cancellazione, quelle su
-`updated_at` e `trg_bank_ec_after_write`, che alimenta `entity_relations`.
-
-## Verifica e pubblicazione
+| ERP | `/` | `app/` + `frontend/` |
+| HR | `/hr`, `/hr/portale` | `app/hr/` + `frontend_hr/` |
+| Menu | `/menu`, `/menu/admin` | `app/menu/` + `frontend_menu/` |
+| Lotti | `/lotti` | `app/lotti/` + `frontend_lotti/` |
+| B&B / Colazioni | `/convenzioni/` | `frontend_colazioni/` + API/RPC esistenti |
+
+Il vecchio `/colazioni` reindirizza a `/convenzioni`.
+
+Il catch-all della SPA ERP deve essere registrato dopo le sotto-app.
+
+Il prefisso nudo di un `Mount` deve essere reindirizzato alla versione con `/`.
+
+---
+
+# 7. Repository
+
+Repository vivo:
+
+`https://github.com/ceraldicontabilita/GestionaleCloud`
+
+Checkout canonico Windows del titolare:
+
+`C:\Users\ceral\Documents\GESTIONALE CLOUD 2`
+
+Vecchi repository non sono fonti vive.
+
+Non riattivare sistemi paralleli.
+
+Prima di intervenire:
+
+1. confrontare `HEAD` con `origin/main`;
+2. controllare modifiche locali;
+3. non cancellare lavoro non proprio;
+4. non includere file estranei.
+
+Mai:
+
+`git add -A`
+
+Aggiungere solo i file pertinenti.
+
+---
+
+# 8. Metodo di lavoro
+
+- Rispondere e ragionare in italiano.
+- Risultati prima delle spiegazioni.
+- Correggere i difetti trovati, non limitarsi a descriverli.
+- Procedere per micro-tranche verificabili.
+- Non riscrivere l'intero sistema in una volta.
+- Prima di eliminare un percorso controllare import statici e dinamici, route, frontend, job, API e dati persistiti.
+- Un test che cita un modulo non dimostra che il modulo sia raggiungibile in produzione.
+- Una risposta HTTP 200 non dimostra che il flusso funzioni.
+- Testare dati, relazioni, deduplica e stato finale.
+- Quando serve una scelta del titolare, proporre opzioni e mettere per prima quella consigliata.
+- Chiudere il lavoro con verifica live quando possibile e sicura.
+
+---
+
+# 9. Supabase e Drive
+
+## REGOLA
+
+Supabase è l'archivio strutturato applicativo.
+
+Backend ammesso:
+
+`DATA_BACKEND=supabase`
+
+Schemi principali:
+
+- `gestionale`
+- `hr`
+- `lotti`
+- `menu`
+
+`legacy_staging` è transitorio.
+
+Google Drive conserva gli originali documentali.
+
+Drive non è il database.
+
+Sintesi:
+
+`Supabase = dati, stato e relazioni`
+
+`Drive = originali documentali`
+
+---
+
+# 10. Migrazioni database
+
+Ogni migrazione realmente applicata deve esistere in:
+
+`supabase/migrations/`
+
+La versione deve corrispondere al registro reale delle migrazioni.
+
+Non inventare numeri di versione.
+
+Il repository deve permettere di ricostruire il database.
+
+DDL pesanti su `gestionale.documents`:
+
+- a database scarico;
+- oppure con strategie non bloccanti quando possibili.
+
+Una modifica dello schema può invalidare temporaneamente la cache PostgREST.
+
+## APERTO
+
+Esistono strutture/migrazioni Cassa e Catalogo applicate al database che devono ancora essere esportate correttamente nel repository.
+
+Questa incoerenza va eliminata.
+
+---
+
+# 11. Cache e prestazioni
+
+Le liste e i conteggi devono usare proiezioni leggere.
+
+Il payload completo si legge per ID.
+
+Mai caricare l'intera collezione con payload se non strettamente necessario.
+
+Per un'intera collezione:
+
+- un prefetch;
+- calcolo in background;
+- stato in `sistema_stato`;
+- operazione riprendibile se lunga.
+
+Il puro calcolo CPU lungo non deve bloccare l'event loop.
+
+Usare thread per parsing o calcolo CPU quando necessario.
+
+Un job superiore al timeout del proxy non deve vivere dentro una richiesta sincrona.
+
+---
+
+# 12. Importi, date e codici
+
+- Importi: `Decimal`.
+- Mai `float` per denaro.
+- Valuta esplicita.
+- Backend date: ISO-8601.
+- UI: `gg/mm/aaaa`.
+- Scheduler: `Europe/Rome`.
+- Codici tributo, IUV e codici avviso: stringhe.
+- Mai convertire identificatori con zeri iniziali in numeri.
+- Dato sconosciuto: `None` / vuoto / “Dato non disponibile”.
+- Mai inventare uno zero.
+
+---
+
+# 13. Errori
+
+Le API devono restituire quando applicabile:
+
+- `code`
+- `message`
+- `details`
+- `correlation_id`
+
+`except Exception: pass` è vietato dove si contano soldi.
+
+Il log deve contenere almeno:
+
+- tipo eccezione;
+- contesto;
+- dato o record coinvolto quando sicuro.
+
+Non affidarsi solo a `str(exc)`.
+
+---
+
+# 14. Cancellazioni e storico
+
+Un fatto amministrativo non scompare senza storia.
+
+Preferire:
+
+- storno;
+- quarantena;
+- revoca;
+- sostituzione;
+- `rimosso`;
+- `archived`.
+
+Un file sparito da Drive deve diventare `rimosso`, quando il protocollo ha realmente la capacità di rilevarlo.
+
+Una scrittura contabile sbagliata si storna.
+
+Non si cancella.
+
+Nessuna cancellazione massiva per filtro.
+
+Le cancellazioni reali richiedono i meccanismi protetti previsti.
+
+---
+
+# 15. Catena canonica dei fatti
+
+Ogni flusso economico deve convergere a:
+
+DOCUMENTO  
+↓  
+FATTO CANONICO  
+↓  
+OBBLIGO / CREDITO  
+↓  
+PAGAMENTO  
+↓  
+PROVA  
+↓  
+SCRITTURA CONTABILE  
+↓  
+RICONCILIAZIONE  
+↓  
+PROIEZIONE / UI
+
+Ogni passaggio deve usare ID reali e relazioni persistenti.
+
+Non rappresentare un processo complesso con booleani scollegati.
+
+---
+
+# 16. Prove e documenti
+
+Fattura, disposizione, quietanza, ricevuta e movimento bancario sono prove diverse.
+
+Un PDF di bonifico dimostra una disposizione/documentazione.
+
+Non dimostra automaticamente l'addebito sul conto.
+
+La prova bancaria è il movimento compatibile dell'estratto ufficiale.
+
+Una prova successiva non deve creare l'obbligo che dovrebbe dimostrare.
+
+L'obbligo nasce dal fatto autorevole.
+
+---
+
+# 17. Stati delle attese
+
+Stati aperti:
+
+- `ATTESO`
+- `DA_VERIFICARE`
+- `IN_ELABORAZIONE`
+- `ERRORE`
+
+Stati terminali positivi:
+
+- `SODDISFATTO`
+- `NON_APPLICABILE`
+- `SUPERATO`
+
+`ERRORE` non chiude il processo.
+
+Ogni attesa deve avere:
+
+- tipo;
+- owner;
+- `source_fact_id`.
+
+La prova ambigua non inventa un collegamento.
+
+---
+
+---
+
+# 17A. Regola generale del motore di riconciliazione
+
+> **Contratto comune.** Le regole di questa sezione valgono per tutti i domini di riconciliazione. Quando una sezione specialistica successiva è più restrittiva o usa una prova più forte, prevale la regola specialistica. Non creare un secondo motore generale in parallelo ai motori canonici esistenti.
+
+
+Il gestionale deve trattare ogni operazione amministrativa utilizzando una catena di prove.
+
+La struttura fondamentale è:
+
+**OBBLIGAZIONE → DOCUMENTO → ISTRUZIONE DI PAGAMENTO → PAGAMENTO → INTERMEDIARIO EVENTUALE → BANCA → RICONCILIAZIONE**
+
+Non bisogna mai confondere questi elementi.
+
+### 1. PRINCIPIO ASSOLUTO
+
+Un documento non equivale automaticamente a un pagamento.
+
+Una ricevuta di pagamento non equivale automaticamente a un movimento bancario.
+
+Un pagamento effettuato tramite POS, PayPal, Nexi, Numia, SumUp o altro intermediario non equivale automaticamente all'accredito bancario.
+
+Un F24 predisposto non equivale automaticamente a un F24 addebitato.
+
+Una rata prevista non equivale automaticamente a una rata pagata.
+
+Una cartella con piano di rateizzazione non equivale automaticamente a un debito regolare.
+
+Il gestionale deve sapere sempre:
+
+1. **cosa doveva essere pagato;**
+2. **perché doveva essere pagato;**
+3. **a quale soggetto o ente;**
+4. **entro quale data;**
+5. **con quale identificativo;**
+6. **quanto è stato effettivamente pagato;**
+7. **attraverso quale canale;**
+8. **se esiste una ricevuta;**
+9. **se esiste la prova finanziaria;**
+10. **a quale movimento bancario corrisponde.**
+
+---
+
+## 2. MODELLO UNIVERSALE
+
+Ogni elemento deve appartenere a una categoria precisa.
+
+#### A. OBBLIGAZIONE
+
+Esempi:
+
+- fattura fornitore;
+- F24;
+- avviso bonario;
+- cartella esattoriale;
+- rata INPS;
+- ravvedimento;
+- rottamazione;
+- rata Agenzia Entrate-Riscossione;
+- bollettino pagoPA;
+- stipendio;
+- contributi;
+- imposta;
+- tributo locale.
+
+L'obbligazione rappresenta:
+
+**“Quanto devo, a chi, perché e quando.”**
+
+#### B. DOCUMENTO
+
+È la fonte che descrive l'obbligazione.
+
+Può essere:
+
+- PDF;
+- XML;
+- avviso;
+- F24;
+- cartella;
+- piano di ammortamento;
+- prospetto;
+- cedolino;
+- ricevuta;
+- comunicazione dell'ente.
+
+#### C. PAGAMENTO
+
+Descrive l'operazione eseguita:
+
+- bonifico;
+- assegno;
+- pagoPA;
+- carta;
+- PayPal;
+- F24 telematico;
+- addebito diretto;
+- bollettino;
+- RAV;
+- MAV;
+- altro strumento.
+
+#### D. PROVA DI PAGAMENTO
+
+Può essere:
+
+- ricevuta pagoPA;
+- quietanza F24;
+- ricevuta PayPal;
+- ricevuta POS;
+- ricevuta telematica;
+- attestazione dell'ente.
+
+Questa prova permette di dire:
+
+**“Il pagamento risulta eseguito/documentato.”**
+
+Non sempre permette di dire:
+
+**“Il relativo denaro è già stato verificato sul conto corrente.”**
+
+#### E. PROVA FINANZIARIA
+
+La prova finanziaria principale rimane:
+
+**movimento bancario reale/importato dall'estratto conto.**
+
+---
+
+## 3. LIVELLI DI CERTEZZA
+
+Il motore non deve usare solamente PAGATO / NON PAGATO.
+
+Deve utilizzare livelli.
+
+#### PREVISTO
+
+Esiste l'obbligazione ma non risulta ancora un pagamento.
+
+#### PREDISPOSTO
+
+È stato preparato un pagamento ma non esiste ancora prova della sua esecuzione.
+
+#### DOCUMENTATO
+
+Esiste una ricevuta o quietanza.
+
+#### TROVATO IN BANCA
+
+Esiste un movimento finanziario compatibile.
+
+#### RICONCILIATO
+
+Documento, importo, identificativi e prova finanziaria risultano coerenti.
+
+#### PARZIALMENTE RICONCILIATO
+
+Solo una parte dell'importo è stata provata.
+
+#### DA VERIFICARE
+
+Esistono elementi compatibili ma anche discrepanze.
+
+---
+
+## 4. PAGOPA
+
+Per ogni bollettino pagoPA il gestionale deve estrarre quando disponibili:
+
+- IUV;
+- codice avviso;
+- ente creditore;
+- codice fiscale/P.IVA debitore;
+- causale;
+- importo;
+- data scadenza;
+- data pagamento;
+- PSP;
+- identificativo transazione;
+- ricevuta;
+- eventuali commissioni.
+
+L'identificativo principale deve essere:
+
+**IUV / Codice Avviso**
+
+e non semplicemente:
+
+**importo + data.**
+
+Esempio:
+
+Avviso:
+
+**IUV 12345678901234567  
+Comune X  
+€432,00**
+
+Ricevuta:
+
+**IUV 12345678901234567  
+Pagato €432,00**
+
+Il collegamento è forte.
+
+Se successivamente viene trovato anche il movimento:
+
+**Pagamento pagoPA €432**
+
+la catena diventa:
+
+**Avviso → IUV → Ricevuta → Movimento bancario**
+
+e può essere considerata riconciliata.
+
+Se esiste la ricevuta ma il movimento bancario non è ancora individuato:
+
+**DOCUMENTATO, NON ANCORA RICONCILIATO CON BANCA**
+
+---
+
+## 5. PARTENOPAY
+
+PartenoPay non deve avere una logica contabile indipendente.
+
+Deve essere trattato come:
+
+**PORTALE / ORIGINE DEL PAGAMENTO PAGOPA**
+
+Pertanto:
+
+**PartenoPay → pagoPA → IUV/Codice Avviso → Ricevuta → eventuale movimento bancario**
+
+Il gestionale deve conservare "PartenoPay" come:
+
+- portale;
+- origine;
+- ente/servizio;
+- metadato.
+
+Ma utilizzare il motore pagoPA per la riconciliazione.
+
+---
+
+## 6. PAYPAL
+
+PayPal deve essere trattato come un **conto/intermediario finanziario**, non come banca e non semplicemente come POS.
+
+Per ogni operazione PayPal memorizzare:
+
+- transaction ID;
+- data;
+- soggetto;
+- importo lordo;
+- commissione;
+- importo netto;
+- valuta;
+- tipo operazione;
+- eventuale rimborso;
+- eventuale storno;
+- stato;
+- eventuale documento collegato.
+
+Esempio:
+
+Vendita: €100
+
+Commissione PayPal: €3
+
+Saldo PayPal: €97
+
+Successivamente:
+
+Trasferimento PayPal → banca €497
+
+Quel bonifico potrebbe contenere più operazioni.
+
+NON bisogna cercare:
+
+**vendita €100 = accredito banca €100**
+
+perché potrebbe non esistere.
+
+La catena corretta è:
+
+**Operazioni PayPal → saldo PayPal → trasferimento aggregato → conto corrente**
+
+Le commissioni devono essere registrate separatamente.
+
+---
+
+## 7. NEXI / NUMIA / SUMUP
+
+Nexi, Numia e SumUp devono essere trattati come **acquirer / intermediari POS**.
+
+Non bisogna riconciliare ogni vendita direttamente con l'estratto conto.
+
+La catena deve essere:
+
+**Corrispettivi → transazioni POS → chiusura/settlement → commissioni → accredito banca**
+
+Esempio:
+
+Vendite elettroniche RT:
+
+€1.000
+
+Transazioni POS:
+
+€1.000
+
+Commissioni:
+
+€8
+
+Accredito banca:
+
+€992
+
+La riconciliazione corretta è:
+
+**€1.000 POS = €992 banca + €8 commissioni**
+
+e non:
+
+**€1.000 POS ≠ €992 banca → errore**
+
+Devono essere supportati:
+
+- accrediti aggregati;
+- accrediti di più giornate;
+- commissioni;
+- storni;
+- chargeback;
+- rimborsi;
+- accrediti ritardati.
+
+---
+
+## 8. CARTELLE ESATTORIALI
+
+Una cartella deve diventare una **posizione debitoria strutturata**.
+
+Estrarre almeno:
+
+- ente creditore;
+- numero cartella;
+- data;
+- contribuente;
+- importo originario;
+- sanzioni;
+- interessi;
+- spese;
+- totale;
+- eventuali tributi contenuti;
+- eventuali codici tributo;
+- scadenze;
+- stato;
+- eventuale piano di rateizzazione.
+
+Il sistema non deve trasformare automaticamente l'importo totale della cartella in un'unica uscita se è presente un piano.
+
+Deve creare:
+
+**Cartella → Piano → Rate**
+
+Esempio:
+
+Cartella €12.000
+
+12 rate da €1.000
+
+Il database deve avere:
+
+**Debito principale €12.000**
+
+e sotto:
+
+Rata 1  
+Rata 2  
+Rata 3  
+...
+
+Ogni rata deve essere riconciliabile indipendentemente.
+
+---
+
+## 9. RATEIZZAZIONI AGENZIA ENTRATE-RISCOSSIONE
+
+Ogni piano deve avere una propria anagrafica:
+
+**PIANO RATEALE**
+
+contenente:
+
+- identificativo;
+- posizione originaria;
+- importo iniziale;
+- numero rate;
+- capitale;
+- interessi;
+- spese;
+- data concessione;
+- scadenze;
+- rate pagate;
+- rate residue;
+- debito residuo.
+
+Ogni rata:
+
+**PIANO → RATA → PAGAMENTO → BANCA**
+
+Non basta trovare un'uscita dello stesso importo.
+
+Quando possibile utilizzare:
+
+- numero documento;
+- identificativo rata;
+- codice pagamento;
+- RAV/pagoPA;
+- riferimento presente nella causale.
+
+---
+
+## 10. ROTTAMAZIONI
+
+La rottamazione deve essere trattata come un particolare piano di definizione del debito.
+
+Il gestionale deve conservare separatamente:
+
+**Debito originario**
+
+e
+
+**Debito definito tramite rottamazione**
+
+Non cancellare il debito originario.
+
+Creare invece una relazione:
+
+**Posizioni originarie → Definizione agevolata → Piano → Rate**
+
+Ogni rata deve avere:
+
+- numero rata;
+- importo;
+- scadenza;
+- identificativo pagamento;
+- stato;
+- ricevuta;
+- movimento bancario.
+
+---
+
+## 11. DILAZIONI INPS
+
+Stessa architettura:
+
+**Debito INPS → Piano dilazione → Rate**
+
+Memorizzare:
+
+- matricola/posizione;
+- periodo contributivo;
+- debito;
+- sanzioni/accessori;
+- piano;
+- numero rate;
+- scadenze;
+- importi;
+- pagamento prima rata;
+- stato del piano;
+- rate pagate;
+- rate mancanti;
+- debito residuo.
+
+Il motore non deve codificare permanentemente nel software quantità massime di rate o regole normative.
+
+Queste devono essere gestite attraverso:
+
+**tabelle normative versionate per data di validità.**
+
+---
+
+## 12. AVVISI BONARI
+
+L'avviso bonario deve diventare una posizione debitoria autonoma collegata alla dichiarazione o periodo fiscale di origine.
+
+Memorizzare:
+
+- numero comunicazione;
+- Agenzia delle Entrate;
+- anno fiscale;
+- imposte interessate;
+- importo richiesto;
+- sanzioni;
+- interessi;
+- data notifica/comunicazione;
+- scadenza;
+- eventuale piano rateale;
+- modalità di pagamento;
+- F24 collegati.
+
+Se rateizzato:
+
+**Avviso → Piano → Rate → F24 → Banca**
+
+---
+
+## 13. RATEIZZAZIONE AVVISO BONARIO
+
+Non creare tanti debiti indipendenti.
+
+Creare:
+
+**un debito principale**
+
+con:
+
+**un piano di pagamento**
+
+contenente N rate.
+
+Il totale delle rate deve poter essere confrontato con:
+
+**capitale + sanzioni + interessi + eventuali accessori**
+
+Ogni rata può generare un F24 distinto.
+
+Quindi:
+
+**Avviso bonario → rata 3 → F24 → codici tributo → addebito banca**
+
+---
+
+## 14. RAVVEDIMENTO OPEROSO
+
+Il ravvedimento non deve essere interpretato come un semplice pagamento.
+
+Il sistema deve sapere quale obbligazione originaria viene regolarizzata.
+
+Esempio:
+
+IVA originaria
+
++
+
+tributo
+
++
+
+sanzione ravvedimento
+
++
+
+interessi
+
+=
+
+F24 ravvedimento
+
+Il sistema deve collegare:
+
+**Obbligazione originaria → Ravvedimento → F24 → righe tributo → pagamento bancario**
+
+Quindi non deve confondere:
+
+- imposta principale;
+- sanzione;
+- interessi.
+
+Devono restare classificati separatamente.
+
+---
+
+## 15. CODICI TRIBUTO AGENZIA DELLE ENTRATE
+
+Questa è una regola fondamentale.
+
+Il codice tributo NON deve essere usato da solo per riconciliare con la banca.
+
+Il codice tributo serve a capire:
+
+**CHE COSA È STATO PAGATO**
+
+mentre il movimento bancario dimostra:
+
+**CHE IL MODELLO F24 È STATO ADDEBITATO**
+
+La gerarchia deve essere:
+
+**Movimento bancario → F24 → righe F24 → codici tributo**
+
+E NON:
+
+**Movimento bancario → singolo codice tributo**
+
+Esempio:
+
+F24 totale €10.000
+
+composto da:
+
+IVA €5.000  
+ritenute €2.000  
+INPS €2.500  
+interessi €100  
+sanzioni €400
+
+La banca mostrerà eventualmente:
+
+**ADDEBITO F24 €10.000**
+
+Il gestionale riconcilia l'addebito di €10.000 con il MODELLO.
+
+Dopo la riconciliazione del modello distribuisce contabilmente i €10.000 sulle relative righe.
+
+Quindi:
+
+**BANCA €10.000**
+
+↓
+
+**F24 €10.000**
+
+↓
+
+- codice tributo A €5.000
+- codice tributo B €2.000
+- codice INPS €2.500
+- interessi €100
+- sanzione €400
+
+---
+
+## 16. ANAGRAFICA CODICI TRIBUTO
+
+Creare una tabella centrale:
+
+**CODICI TRIBUTO**
+
+con:
+
+- codice;
+- descrizione;
+- ente;
+- sezione F24;
+- natura;
+- categoria contabile;
+- imposta;
+- sanzione/interesse/capitale;
+- periodicità;
+- anno di riferimento richiesto;
+- eventuale collegamento con altri codici;
+- validità dal;
+- validità al.
+
+Non affidarsi esclusivamente all'intelligenza artificiale.
+
+Claude può suggerire una classificazione, ma la fonte principale deve essere la tabella ufficiale/versionata.
+
+---
+
+## 17. COMPENSAZIONI F24
+
+Il gestionale deve comprendere anche i crediti.
+
+Esempio:
+
+Debiti F24: €10.000
+
+Credito compensato: €3.000
+
+Saldo da pagare:
+
+€7.000
+
+La banca dovrà essere confrontata con:
+
+**€7.000**
+
+e non con €10.000.
+
+Ma contabilmente devono restare visibili:
+
+**debiti €10.000**
+
+**crediti utilizzati €3.000**
+
+**saldo €7.000**
+
+Quindi:
+
+**Totale debiti − totale crediti = saldo finale F24**
+
+Solo il saldo finale deve essere confrontato con l'addebito finanziario.
+
+---
+
+## 18. CALENDARIO FISCALE PREVISIONALE
+
+Il calendario fiscale non deve essere un semplice calendario manuale.
+
+Deve essere generato automaticamente utilizzando almeno quattro fonti.
+
+#### FONTE 1: SCADENZE NORMATIVE
+
+Scadenze fiscali previste dalla normativa.
+
+#### FONTE 2: STORICO AZIENDALE
+
+Esempio:
+
+se ogni mese vengono versate ritenute, il sistema può prevedere l'obbligazione del mese successivo.
+
+#### FONTE 3: DOCUMENTI REALI
+
+Quando arriva:
+
+- F24;
+- piano INPS;
+- cartella;
+- avviso;
+- rata;
+- comunicazione;
+
+la previsione diventa una **scadenza certa/documentata**.
+
+#### FONTE 4: DATI OPERATIVI
+
+Cedolini, fatture, IVA, corrispettivi, personale, contributi e altri dati possono generare previsioni.
+
+---
+
+## 19. DIFFERENZA TRA PREVISIONE E SCADENZA CERTA
+
+Fondamentale.
+
+Il calendario deve mostrare chiaramente:
+
+#### PREVISTA
+
+Generata dal gestionale.
+
+#### CALCOLATA
+
+Derivata dai dati disponibili.
+
+#### DOCUMENTATA
+
+Esiste un documento che conferma importo/scadenza.
+
+#### PAGAMENTO PREDISPOSTO
+
+Esiste un F24 o altra disposizione.
+
+#### PAGATA
+
+Esiste prova di pagamento.
+
+#### RICONCILIATA
+
+Esiste anche la prova bancaria coerente.
+
+Non trasformare automaticamente una previsione in un debito certo.
+
+---
+
+## 20. CALENDARIO FINANZIARIO PREVISIONALE
+
+Il calendario fiscale deve alimentare anche la tesoreria.
+
+Esempio:
+
+15 novembre
+
+Stipendi previsti: €35.000
+
+16 novembre
+
+Ritenute previste: €9.000
+
+INPS previsto: €14.000
+
+30 novembre
+
+Rata cartella: €5.000
+
+Il gestionale può prevedere:
+
+**uscite finanziarie future €63.000**
+
+e confrontarle con:
+
+**liquidità prevista**
+
+Questo permette al CFO Agent/Tesoreria di segnalare preventivamente eventuali carenze di liquidità.
+
+---
+
+## 21. PROSPETTI PAGA
+
+I prospetti paga hanno una funzione molto più importante del semplice archivio PDF.
+
+Devono servire al gestionale per conoscere anticipatamente il costo e gli obblighi relativi al personale.
+
+Il prospetto deve alimentare almeno:
+
+- dipendente;
+- periodo;
+- retribuzione lorda;
+- netto;
+- contributi;
+- ritenute;
+- eventuali trattenute;
+- TFR;
+- ferie/permessi se disponibili;
+- costo aziendale quando ricavabile;
+- importo da pagare al dipendente;
+- importi da versare successivamente a enti e fisco.
+
+---
+
+## 22. PROSPETTO PAGA ≠ PAGAMENTO DIPENDENTE
+
+Il cedolino/prospetto paga dice:
+
+**quanto deve essere pagato.**
+
+Il bonifico dice:
+
+**quanto è stato disposto.**
+
+La banca dice:
+
+**quanto è stato realmente addebitato.**
+
+La catena corretta è:
+
+**Prospetto paga → Cedolino → Dipendente → Bonifico → Estratto conto**
+
+Solo alla fine:
+
+**PAGATO E RICONCILIATO**
+
+---
+
+## 23. PROSPETTI PAGA E F24
+
+Il motore deve inoltre utilizzare i prospetti paga per creare collegamenti con gli obblighi successivi.
+
+Per esempio:
+
+**Prospetti paga ottobre**
+
+↓
+
+ritenute dipendenti
+
+↓
+
+contributi
+
+↓
+
+F24 novembre
+
+Quindi il gestionale può sapere che un F24 contenente determinate componenti deriva, almeno in parte, dal ciclo paghe.
+
+La relazione deve essere:
+
+**Periodo paghe → obblighi fiscali/previdenziali → F24 → banca**
+
+Non:
+
+**Cedolino → F24 direttamente pagato**
+
+---
+
+## 24. RICONCILIAZIONE MULTILIVELLO
+
+Claude deve cercare i collegamenti in quest'ordine:
+
+#### LIVELLO 1 - IDENTIFICATORE UNIVOCO
+
+Esempi:
+
+- IUV;
+- codice avviso;
+- transaction ID;
+- numero assegno;
+- CRO/TRN;
+- identificativo F24;
+- numero cartella;
+- identificativo rata;
+- identificativo piano.
+
+Se corrisponde, la probabilità è elevata.
+
+#### LIVELLO 2 - IMPORTO
+
+Controllare importo.
+
+#### LIVELLO 3 - DATA
+
+Controllare data/scadenza/intervallo compatibile.
+
+#### LIVELLO 4 - SOGGETTO
+
+Controllare:
+
+- beneficiario;
+- ente;
+- fornitore;
+- dipendente;
+- PSP;
+- intermediario.
+
+#### LIVELLO 5 - CAUSALE
+
+Analizzare descrizione del movimento.
+
+#### LIVELLO 6 - RELAZIONI GIÀ CONOSCIUTE
+
+Esempio:
+
+Nexi → specifico conto corrente
+
+PayPal → specifico conto corrente
+
+numero assegno → fornitore
+
+piano rateale → rata prevista
+
+IUV → avviso specifico.
+
+---
+
+## 25. CERTEZZA MATEMATICA E CERTEZZA PROBABILISTICA
+
+Il gestionale deve distinguere.
+
+#### CERTEZZA FORTE
+
+Identificativo univoco + importo coerente.
+
+Esempio:
+
+IUV coincidente + €512,37 coincidente.
+
+#### CERTEZZA MOLTO FORTE
+
+Identificativo + importo + soggetto + documento tutti coerenti.
+
+#### PROPOSTA PROBABILE
+
+Importo + data + causale simili ma nessun identificativo certo.
+
+#### AMBIGUA
+
+Più documenti possono corrispondere allo stesso movimento.
+
+In questo caso:
+
+**NON RICONCILIARE AUTOMATICAMENTE.**
+
+Mostrare:
+
+**Da verificare**
+
+con candidati suggeriti.
+
+---
+
+## 26. NON FORZARE MAI LA RICONCILIAZIONE
+
+Claude non deve utilizzare la logica:
+
+“Questo sembra quello più probabile, quindi lo considero pagato.”
+
+Deve invece utilizzare:
+
+“Questo è il candidato più probabile, ma mancano prove sufficienti.”
+
+Le proposte AI devono restare separate dalle prove documentali.
+
+---
+
+## 27. RICONCILIAZIONI UNO-A-MOLTI
+
+Il motore deve supportare:
+
+**1 movimento bancario → più documenti**
+
+Esempio:
+
+un bonifico paga 3 fatture.
+
+Oppure:
+
+un accredito Nexi contiene 250 transazioni POS.
+
+---
+
+## 28. RICONCILIAZIONI MOLTI-A-UNO
+
+Supportare:
+
+**più movimenti → 1 obbligazione**
+
+Esempio:
+
+fattura pagata con acconto + saldo.
+
+Oppure:
+
+debito pagato parzialmente con più versamenti.
+
+---
+
+## 29. RICONCILIAZIONI MOLTI-A-MOLTI
+
+Supportare anche:
+
+**più pagamenti → più documenti**
+
+senza perdere le allocazioni.
+
+Creare quindi una tabella:
+
+**ALLOCATIONS / RICONCILIAZIONI**
+
+contenente:
+
+- origine;
+- destinazione;
+- importo allocato;
+- data;
+- tipo relazione;
+- livello certezza;
+- metodo di riconciliazione;
+- utente/algoritmo;
+- timestamp.
+
+---
+
+## 30. NESSUNA CANCELLAZIONE DELLA STORIA
+
+Se una posizione viene:
+
+- corretta;
+- rateizzata;
+- rottamata;
+- annullata;
+- sostituita;
+- riconciliata;
+- disassociata;
+
+non cancellare la storia.
+
+Creare un log:
+
+**evento precedente → evento successivo**
+
+Il gestionale deve poter ricostruire sempre:
+
+**perché oggi una posizione risulta in quello stato.**
+
+---
+
+## 31. REGOLA DEL DATABASE
+
+Non creare una tabella indipendente e scollegata per ogni nuovo tipo di documento.
+
+Utilizzare entità comuni:
+
+- obligations
+- documents
+- payment_instructions
+- payments
+- payment_receipts
+- bank_transactions
+- intermediary_transactions
+- settlement_batches
+- tax_lines
+- installment_plans
+- installments
+- reconciliations
+- allocations
+- deadlines
+- audit_logs
+
+e collegare tutto tramite ID e relazioni.
+
+---
+
+## 32. REGOLA FINALE
+
+Per qualsiasi documento o pagamento il sistema deve essere capace di rispondere a queste domande:
+
+**CHE COS'È?**
+
+**CHI DEVE PAGARE?**
+
+**A CHI?**
+
+**PERCHÉ?**
+
+**QUANTO?**
+
+**QUANDO?**
+
+**CON QUALE IDENTIFICATIVO?**
+
+**ESISTE IL DOCUMENTO?**
+
+**ESISTE UNA RICEVUTA?**
+
+**ESISTE IL MOVIMENTO FINANZIARIO?**
+
+**È STATO RICONCILIATO?**
+
+**CON QUALE LIVELLO DI CERTEZZA?**
+
+Se una di queste informazioni manca, non inventarla.
+
+Utilizzare:
+
+**NON DISPONIBILE / DA VERIFICARE / IN ATTESA DI RICONCILIAZIONE.**
+
+L'intelligenza artificiale deve aumentare la capacità di trovare collegamenti.
+
+Non deve sostituire la prova
+
+---
+
+# 18. Ingresso documenti
+
+## REGOLA
+
+Un documento viene riconosciuto dal contenuto.
+
+Non dal titolo.
+
+Non dalla cartella.
+
+Non dalla data modifica.
+
+Nome e percorso possono aiutare solo a ordinare il lavoro.
+
+Un file entra nel gestionale solo se passa dallo smistatore previsto.
+
+Ingressi principali:
+
+- Documenti > Import;
+- cartella unica Drive.
+
+Cartella unica:
+
+- `DA ELABORARE`
+- `ELABORATE`
+- `ERRORI`
+
+Eventuali stati come `ARRETRATO` seguono le regole specifiche.
+
+La presenza in `ELABORATE` non dimostra che il documento sia stato acquisito correttamente.
+
+Serve il registro applicativo.
+
+## APERTO
+
+Esistono ancora classificazioni che consultano nome file o percorso prima del contenuto.
+
+Devono essere eliminate una alla volta.
+
+---
+
+# 19. Deduplica documentale
+
+## Duplicato certo
+
+Solo:
+
+- SHA-256 uguale;
+- byte identici.
+
+Nome, dimensione, data e importo non sono prova sufficiente.
+
+## Possibile duplicato
+
+Può essere individuato con identità business coerente.
+
+Esempi:
+
+- fattura: P.IVA + numero + data;
+- bonifico: CRO/TRN + importo;
+- quietanza: protocollo + saldo;
+- cedolino: CF + periodo + tipo + valori;
+- verbale: numero/IUV/targa.
+
+I possibili duplicati non vengono eliminati automaticamente.
+
+---
+
+# 20. Originali documentali
+
+L'ERP deve usare il servizio canonico per l'apertura degli originali.
+
+Nuovi endpoint alternativi sono vietati.
+
+Gli endpoint storici possono esistere soltanto come alias compatibili.
+
+## APERTO
+
+HR mantiene endpoint propri per proteggere documenti visibili al singolo dipendente.
+
+Non considerarli nuovi sistemi da copiare.
+
+Devono essere consolidati solo quando esiste una soluzione che preserva gli stessi permessi.
+
+---
+
+# 21. Protocollo Drive
+
+Il protocollo registra:
+
+- file nuovo;
+- file modificato;
+- file rimosso quando rilevabile;
+- impronta;
+- provenienze.
+
+Una stessa impronta in più posizioni non crea un nuovo documento.
+
+Le posizioni sono `source_occurrences`.
+
+## PRODUZIONE
+
+Il protocollo incrementale è attivo.
+
+Il giro completo è spento per motivi di memoria.
+
+## CONSEGUENZA
+
+Lo stato del protocollo non può essere considerato fotografia completa delle eliminazioni/spostamenti su Drive finché il giro completo resta spento.
+
+Non affermare il contrario.
+
+---
+
+# 22. Event bus
+
+Esiste un solo event bus:
+
+`app/services/event_bus.py`
+
+Il ramo HR deve usare il re-export.
+
+Un fatto si pubblica una volta sola.
+
+Non creare un secondo registro eventi.
+
+---
+
+# 23. Prima Nota
+
+Motore canonico:
+
+`app/services/scritture_contabili.py`
+
+Non creare nuovi `insert_one` diretti per scritture di Prima Nota.
+
+Prima Nota non è la copia dell'estratto conto.
+
+Una riga entra quando possiede significato contabile sufficiente.
+
+---
+
+# 24. Libro giornale
+
+Motore:
+
+`app/services/registrazione_contabile.py`
+
+Ogni scrittura:
+
+`DARE = AVERE`
+
+al centesimo.
+
+Tolleranza arrotondamento IVA:
+
+massimo 0,01 €, attraverso la riga canonica prevista.
+
+Oltre la tolleranza la scrittura viene rifiutata.
+
+---
+
+# 25. Competenza e pagamento
+
+La competenza economica e il pagamento sono fatti distinti.
+
+## Fattura
+
+DARE:
+
+- costo;
+- IVA se applicabile.
+
+AVERE:
+
+- debito fornitore.
+
+## Pagamento
+
+DARE:
+
+- debito fornitore.
+
+AVERE:
+
+- banca/cassa.
+
+Il pagamento non genera nuovamente il costo.
+
+Stessa logica per:
+
+- stipendi;
+- F24;
+- contributi;
+- ritenute;
+- altri debiti.
+
+## APERTO CRITICO
+
+Il pagamento di fatture, stipendi e F24 non chiude ancora in modo uniforme il debito nel libro giornale.
+
+Questa è una priorità architetturale.
+
+La futura implementazione deve entrare nel motore contabile canonico.
+
+Non creare un motore parallelo.
+
+---
+
+# 26. Bilancio
+
+Il bilancio deve usare la competenza.
+
+Non la data di pagamento.
+
+Non lo stato attuale della fattura per ricostruire automaticamente la situazione di un esercizio precedente.
+
+## APERTO CRITICO
+
+Il bilancio attuale non usa ancora correttamente `data_competenza` in tutti i percorsi.
+
+Il debito dello stato patrimoniale non è ancora completamente derivato dai saldi contabili.
+
+Prima di considerare affidabile una chiusura di esercizio correggere questi punti.
+
+---
+
+# 27. Fatture ricevute
+
+Le fatture appartengono all'ERP.
+
+Campi canonici:
+
+- `invoice_date`
+- `invoice_number`
+- `total_amount`
+
+Non usare come fonte principale campi derivati storici come:
+
+- `data_documento`
+- `totale`
+
+quando possono mancare.
+
+Per cercare ID fattura storici usare gli helper canonici.
+
+---
+
+# 28. Stato pagamento fattura
+
+La domanda “è pagata?” ha un solo motore logico.
+
+Non leggere isolatamente campi storici concorrenti.
+
+L'archivio contiene ancora:
+
+- `stato`
+- `stato_pagamento`
+- `payment_status`
+- `pagato`
+- `paid`
+
+Il codice deve passare dagli helper canonici.
+
+## TARGET
+
+Ridurre progressivamente la persistenza a un modello coerente e derivare le viste.
+
+Non aggiungere un sesto campo.
+
+---
+
+# 29. Metodo di pagamento fornitore
+
+Il metodo previsto viene dall'anagrafica fornitore.
+
+Non viene dedotto dalla fattura.
+
+Se manca:
+
+fattura `sospesa`.
+
+Mai default automatico “bonifico”.
+
+Mai ripiego automatico “cassa”.
+
+Metodo previsto e pagamento effettivamente provato sono concetti distinti.
+
+---
+
+# 30. Fatture e scadenze
+
+Le fatture fornitore non hanno una scadenza operativa automatica.
+
+Il titolare decide quando pagare.
+
+Non inventare:
+
+- +30 giorni;
+- scadenza XML;
+- condizioni commerciali trasformate in agenda.
+
+F24 e stipendi mantengono le proprie scadenze reali.
+
+---
+
+# 31. Fatture e partite aperte
+
+`fattura.created` deve produrre gli effetti previsti in modo idempotente.
+
+Una fattura senza evento può restare senza:
+
+- partita;
+- alert;
+- audit;
+- flussi a valle.
+
+## APERTO
+
+Esiste pregresso senza partita aperta.
+
+Usare il recupero canonico.
+
+Non creare partite manualmente con SQL.
+
+---
+
+# 32. Note di credito
+
+TD04/TD08:
+
+- non sono costo;
+- invertono la scrittura;
+- diminuiscono costo, IVA a credito e debito;
+- eventuale rimborso chiude la nota di credito.
+
+## APERTO CRITICO
+
+Esistono note di credito storiche contabilizzate col segno errato.
+
+Devono essere rettificate con storni/scritture corrette, non cancellate.
+
+---
+
+# 33. Fornitori
+
+Identità:
+
+1. P.IVA valida;
+2. CF;
+3. id esterno verificato.
+
+Un cambio ragione sociale non crea un nuovo fornitore.
+
+Doppioni certi e probabili sono gestiti dal motore canonico.
+
+Due P.IVA valide diverse non si fondono.
+
+La fusione è soft e mantiene storico.
+
+---
+
+# 34. Righe acquisti
+
+`GET /api/righe-acquisti` è una vista.
+
+Non un secondo archivio.
+
+Le classificazioni persistenti stanno nella collezione dedicata.
+
+Una classificazione non confermata resta:
+
+`DA_VERIFICARE`
+
+La classificazione AI produce proposte.
+
+Non scritture contabili.
+
+---
+
+# 35. Movimenti bancari
+
+La riga bancaria canonica è identificata da:
+
+- riferimento esterno;
+- oppure fingerprint canonico.
+
+Doppioni fra export dello stesso conto devono convergere in una riga.
+
+Un movimento bancario non si associa per solo importo.
+
+Servono identità e contesto.
+
+---
+
+# 36. Categorizzazione banca
+
+Motore unico.
+
+Le regole apprese dal titolare possono prevalere sulle regole generiche.
+
+Non creare motori locali nelle pagine.
+
+Un movimento senza categoria resta una coda da classificare.
+
+Non inventare una categoria per far sparire la coda.
+
+---
+
+# 37. Riconciliazione fatture ↔ banca
+
+Una fattura bancaria è riconciliata solo se esiste una prova coerente.
+
+Importo al centesimo.
+
+Identità coerente.
+
+Quando ambiguo mostrare candidati.
+
+Non applicare.
+
+## APERTO CRITICO
+
+Esistono fatture marcate riconciliate senza movimento riconciliato.
+
+Questi stati devono essere riallineati.
+
+Lo stato della fattura deve diventare derivato dalla catena di prove, non un booleano indipendente.
+
+---
+
+# 38. Bonifici
+
+Il PDF del bonifico è una prova documentale.
+
+Non prova l'addebito.
+
+Il movimento bancario ufficiale completa la prova.
+
+La stampa PDF di una fattura non è un bonifico.
+
+Una parcella con ritenuta usa il netto dovuto al fornitore.
+
+---
+
+# 39. Gestione Assegni
+La Gestione Assegni è una **pre-registrazione di un futuro movimento bancario**.
+
+Non serve soltanto a censire i numeri utilizzati.
+
+Quando l'utente emette un assegno, comunica in anticipo al gestionale quale movimento dovrà comparire successivamente sul conto corrente.
+
+La catena canonica è:
+
+**Carnet → Assegno → Beneficiario → Fattura/obbligo → Movimento bancario → Riconciliazione**
+
+---
+
+## Carnet
+
+Il carnet contiene una sequenza di numeri assegno.
+
+Il numero è sempre testo.
+
+Gli zeri iniziali sono significativi.
+
+Esempio:
+
+`00004581`
+
+non deve diventare:
+
+`4581`
+
+---
+
+## Creazione carnet
+
+L'amministratore può creare un carnet indicando:
+
+- banca;
+- conto corrente;
+- primo numero assegno;
+- quantità assegni.
+
+Esempio:
+
+Primo numero:
+
+`004581`
+
+Quantità:
+
+`20`
+
+Il gestionale genera:
+
+- 004581
+- 004582
+- 004583
+- …
+- 004600
+
+Stato iniziale:
+
+`DISPONIBILE`
+
+La generazione deve controllare che i numeri non esistano già per lo stesso conto/carnet.
+
+Non creare duplicati.
+
+---
+
+## Stati canonici dell'assegno
+
+| Stato | Significato |
+| --- | --- |
+| `DISPONIBILE` | numero presente nel carnet e mai utilizzato |
+| `EMESSO` | assegno compilato, movimento bancario ancora assente |
+| `COLLEGATO` | associato a una fattura o altra obbligazione |
+| `DA_VERIFICARE` | dati incompatibili, incompleti o ambigui |
+| `TROVATO_IN_BANCA` | numero identificato nell'estratto ma catena non ancora completamente verificata |
+| `RICONCILIATO` | assegno, importo, banca e obbligazione risultano coerenti |
+| `ANNULLATO` | numero inutilizzabile conservato nella sequenza |
+
+Gli stati devono avere un solo registro canonico.
+
+Frontend e backend non mantengono liste proprie.
+
+---
+
+## Emissione dell'assegno
+
+Quando un assegno viene utilizzato si registrano, quando disponibili:
+
+- numero assegno;
+- carnet;
+- conto corrente;
+- beneficiario;
+- fornitore;
+- importo;
+- data emissione;
+- causale;
+- `fattura_id`;
+- numero fattura;
+- data fattura;
+- eventuale altro documento/obbligazione collegato.
+
+Lo stato passa almeno:
+
+`DISPONIBILE → EMESSO`
+
+Se viene collegato a un'obbligazione:
+
+`EMESSO → COLLEGATO`
+
+Il collegamento a una fattura può dichiararne il pagamento secondo le regole del titolare, ma il riscontro bancario resta ancora atteso.
+
+---
+
+## Attesa bancaria
+
+L'emissione crea una previsione/attesa di movimento bancario.
+
+Concettualmente:
+
+> Attendo sul conto X un addebito per assegno N, importo Y.
+
+L'attesa deve conservare almeno:
+
+- conto;
+- numero assegno;
+- importo;
+- data emissione;
+- beneficiario;
+- obbligazione collegata.
+
+L'assegno non crea un movimento dell'estratto conto.
+
+La banca deve fornirlo realmente.
+
+---
+
+## Identificazione nell'estratto conto
+
+Quando arriva una fonte bancaria ufficiale, il motore assegni cerca il numero dell'assegno nei dati strutturati e nella causale disponibile.
+
+Esempio assegno:
+
+`004581`
+
+Estratto:
+
+`ADDEBITO ASSEGNO 004581`
+
+Il numero costituisce l'identità principale.
+
+Per una riconciliazione automatica certa serve anche:
+
+`importo bancario = importo assegno`
+
+al centesimo.
+
+Quando numero e importo coincidono:
+
+**Movimento bancario → Assegno**
+
+può essere determinato automaticamente se non esistono ambiguità.
+
+---
+
+## Numero uguale, importo diverso
+
+Se il numero viene trovato ma l'importo non coincide:
+
+`DA_VERIFICARE`
+
+Messaggio:
+
+**Assegno identificato, ma importo non coerente.**
+
+Non modificare automaticamente l'importo dell'assegno.
+
+Non forzare la riconciliazione.
+
+Mostrare:
+
+- importo registrato;
+- importo banca;
+- differenza;
+- movimento candidato.
+
+---
+
+## Movimento bancario con assegno non registrato
+
+Se l'estratto contiene:
+
+`ASSEGNO 004593`
+
+ma nel sistema non esiste il numero:
+
+segnalare:
+
+`ASSEGNO_BANCA_NON_REGISTRATO`
+
+Non creare automaticamente beneficiario o fattura.
+
+Se il numero appartiene a un carnet censito ed è ancora `DISPONIBILE`, segnalare l'anomalia con priorità alta.
+
+Esempio:
+
+> Assegno 004593 transitato in banca ma ancora disponibile nel carnet.
+
+---
+
+## Assegno emesso non transitato
+
+Un assegno `EMESSO` o `COLLEGATO` non ancora trovato in banca resta aperto.
+
+Il sistema può segnalarlo dopo un periodo significativo, senza dichiararlo errore automaticamente.
+
+Esempio:
+
+> Assegno 004587 emesso il 10/09/2026 e non ancora rilevato nell'estratto conto.
+
+Non inventare una data di addebito.
+
+---
+
+## Modifica prima della riconciliazione
+
+Finché non esiste una riconciliazione bancaria definitiva, l'utente può correggere i dati registrati.
+
+Sono modificabili almeno:
+
+- importo;
+- beneficiario/fornitore;
+- fattura;
+- data fattura;
+- data emissione;
+- causale;
+- collegamento all'obbligazione.
+
+Non è necessario cancellare e ricreare l'assegno.
+
+Il numero assegno conserva la sua identità nel carnet.
+
+---
+
+## Storico modifiche
+
+Ogni modifica amministrativa deve lasciare uno storico.
+
+Registrare:
+
+- campo modificato;
+- valore precedente;
+- nuovo valore;
+- data/ora;
+- utente;
+- eventuale motivo.
+
+Esempio:
+
+`importo: 2350,00 → 2420,00`
+
+`fattura: FT 125/2026 → FT 128/2026`
+
+Non sovrascrivere in modo invisibile i valori precedenti.
+
+---
+
+## Effetti della modifica
+
+Se l'assegno aveva dichiarato una fattura come pagata ma non possiede ancora prova bancaria, una modifica del collegamento deve:
+
+1. ritirare la precedente dichiarazione;
+2. riaprire l'obbligazione precedente quando necessario;
+3. collegare la nuova obbligazione;
+4. ricreare/aggiornare l'attesa bancaria;
+5. mantenere lo stesso assegno e il suo storico.
+
+Mai lasciare contemporaneamente pagate sia la vecchia sia la nuova fattura.
+
+---
+
+## Assegno già riconciliato
+
+Quando l'assegno è `RICONCILIATO`, non consentire modifiche silenziose ai campi che compongono la riconciliazione:
+
+- numero;
+- importo;
+- beneficiario;
+- fattura;
+- conto;
+- data emissione quando rilevante.
+
+Mostrare:
+
+> Questo assegno è già riconciliato con un movimento bancario. La modifica renderebbe incoerente la prova esistente.
+
+La procedura normale è:
+
+**disassocia/storna la riconciliazione**
+→ **correggi l'assegno**
+→ **riesegui la riconciliazione**
+
+Ogni passaggio deve essere tracciato.
+
+Una prova bancaria non viene cancellata.
+
+Si ritira il collegamento.
+
+---
+
+## Annullamento
+
+Un assegno può essere annullato.
+
+L'annullamento:
+
+- non elimina il record;
+- non elimina il numero dal carnet;
+- non rende nuovamente disponibile quel numero;
+- conserva lo storico.
+
+Stato:
+
+`ANNULLATO`
+
+Motivi predefiniti:
+
+- errore di compilazione;
+- deteriorato;
+- beneficiario errato;
+- importo errato;
+- sostituito con altro assegno;
+- altro.
+
+`Altro` permette testo libero.
+
+---
+
+## Assegno annullato già collegato
+
+L'annullamento deve ritirare eventuali dichiarazioni di pagamento non ancora provate.
+
+La fattura viene riaperta quando necessario.
+
+Se esiste già una prova bancaria ufficiale, l'annullamento semplice non è ammesso.
+
+Serve prima gestire la riconciliazione esistente attraverso il percorso amministrativo previsto.
+
+---
+
+## Numero annullato
+
+Un assegno annullato non torna `DISPONIBILE`.
+
+La sequenza del carnet deve restare:
+
+- 004581 RICONCILIATO
+- 004582 ANNULLATO
+- 004583 DISPONIBILE
+
+Non:
+
+- 004581
+- 004583
+
+Il numero 004582 deve restare visibile.
+
+---
+
+## Collegamento alla fattura
+
+La fattura collegata deve essere identificata tramite il suo ID canonico.
+
+Numero fattura e data possono essere conservati come presentazione/prova, ma non sostituiscono `fattura_id`.
+
+Quando l'assegno è collegato all'intero dovuto di una fattura, la dichiarazione del titolare può segnalarla come pagata secondo il motore canonico.
+
+Fino al riscontro nell'estratto:
+
+stato finanziario:
+
+**pagamento dichiarato, in attesa di riscontro bancario**
+
+Dopo il riscontro:
+
+**pagamento provato in banca**
+
+---
+
+## Pagamenti parziali e più fatture
+
+Un assegno può essere associato a più obbligazioni soltanto se il sistema conserva le quote.
+
+La somma delle quote deve essere:
+
+`= importo assegno`
+
+al centesimo.
+
+Se non quadra:
+
+`DA_VERIFICARE`
+
+Non distribuire automaticamente una differenza.
+
+---
+
+## Controlli carnet
+
+La pagina Gestione Assegni deve evidenziare almeno:
+
+- disponibili;
+- emessi;
+- collegati;
+- da verificare;
+- trovati in banca;
+- riconciliati;
+- annullati;
+- emessi non transitati;
+- numeri mancanti;
+- duplicazioni;
+- movimenti bancari con assegno non registrato;
+- assegni transitati ma ancora `DISPONIBILE`;
+- assegni con importo diverso dalla banca.
+
+---
+
+## Numerazione carnet BPM
+
+Quando la banca utilizza carnet con regole specifiche già conosciute dal sistema, usare il motore canonico esistente.Non duplicare la logica della numerazione nei router o nel frontend.
+
+Gli zeri persi possono essere ricostruiti solo quando la regola del carnet rende l'identità deterministica.
+
+Un frammento incompleto non deve essere indovinato.
+
+---
+
+## Writer unico
+
+Un solo servizio deve governare:
+
+- emissione;
+- modifica;
+- annullamento;
+- collegamento fatture;
+- associazione banca;
+- riconciliazione;
+- storico.
+
+Router, pagine e job devono chiamare quel motore.
+
+Non creare un secondo matching assegni per importo o data.
+
+---
+
+## Principio generale assegni
+
+La Gestione Assegni anticipa un movimento futuro senza inventarlo.
+
+L'utente dichiara:
+
+> Ho emesso l'assegno 004581 a Fornitore Alfa per € 2.350,00.
+
+Il gestionale conserva:
+
+**004581 → Fornitore Alfa → € 2.350 → FT 125/2026**
+
+Quando la banca restituisce:
+
+> ASSEGNO 004581 - € 2.350,00
+
+il motore può ricostruire:
+
+**Movimento bancario**
+→ **Assegno 004581**
+→ **Fornitore Alfa**
+→ **FT 125/2026**
+
+La banca costituisce la prova finale del transito.
+
+La registrazione preventiva serve a rendere quella riconciliazione semplice, deterministica e verificabile.
+
+---
+
+# 40. Trasferimenti interni
+
+Versamento/prelievo contanti:
+
+- uscita da un conto;
+- entrata nell'altro;
+- stesso `operation_id`;
+- categoria `trasferimento_interno`.
+
+Non è costo.
+
+Non è ricavo.
+
+---
+
+# 41. POS e Coerenza POS–Corrispettivi
+
+Corrispettivo RT, chiusura del terminale POS e accredito bancario sono **tre fatti distinti**.
+
+La catena di verifica è:
+
+**Corrispettivo RT → Chiusura POS → Accredito bancario**
+
+Il gestionale non deve saltare nessuno dei tre passaggi e non deve trasformare una corrispondenza presunta in una riconciliazione bancaria.
+
+## Prima prova: RT ↔ POS
+
+Il corrispettivo RT dichiara quanto è stato incassato elettronicamente nella giornata.
+
+La chiusura del terminale POS documenta quanto è realmente transitato sul terminale.
+
+Il primo controllo è quindi:
+
+`elettronico dichiarato dal RT ↔ totale transato dai POS`
+
+Esempio:
+
+| Fonte | Importo |
+| --- | ---: |
+| Corrispettivo elettronico RT | € 1.250,00 |
+| Totale POS giornata | € 1.250,00 |
+
+Se coincidono al centesimo:
+
+**RT ✓ → POS ✓**
+
+La giornata è coerente fra registratore telematico e terminale.
+
+Questo **non significa ancora che il denaro sia stato accreditato in banca**.
+
+## Stati da individuare
+
+### RT > POS
+
+Nel registratore telematico risultano più pagamenti elettronici di quelli realmente passati dal terminale.
+
+Possibili cause:
+
+- tasto carta utilizzato per errore;
+- pagamento classificato male;
+- chiusura POS incompleta;
+- terminale non acquisito.
+
+Stato:
+
+`DA_VERIFICARE_RT_POS`
+
+Non correggere automaticamente né RT né POS.
+
+### POS > RT
+
+Sul terminale risultano più transazioni di quelle dichiarate elettroniche dal registratore telematico.
+
+Possibili cause:
+
+- pagamento elettronico registrato come contante;
+- chiusura RT errata;
+- transazione appartenente a un'altra giornata operativa;
+- terminale o documento POS duplicato.
+
+Stato:
+
+`DA_VERIFICARE_RT_POS`
+
+### RT = POS, banca assente
+
+Registratore e terminale coincidono.
+
+Il pagamento elettronico è verificato fino al POS, ma manca ancora la prova bancaria.
+
+Stato funzionale:
+
+**POS verificato, accredito da riconciliare**
+
+Non:
+
+**Incassato in banca**
+
+La mancanza dell'accredito non è automaticamente un'anomalia perché il gestore può accreditare successivamente.
+
+### RT = POS, banca presente
+
+Se anche l'accredito bancario è stato identificato e la quadratura economica è corretta:
+
+**RT ✓ → POS ✓ → BANCA ✓**
+
+Il ciclo è completamente riconciliato.
+
+---
+
+## Seconda prova: POS ↔ banca
+
+L'importo accreditato in banca non deve necessariamente essere identico al lordo POS.
+
+Il gestore può:
+
+- trattenere commissioni;
+- accorpare più giornate;
+- dividere una giornata in più accrediti;
+- regolare commissioni separatamente.
+
+Esempio:
+
+| Componente | Importo |
+| --- | ---: |
+| Transato POS | € 1.000,00 |
+| Accredito bancario | € 994,00 |
+| Commissioni documentate | € 6,00 |
+| Quadratura | € 1.000,00 |
+
+La quadratura corretta è:
+
+`accrediti bancari + commissioni documentate = transato POS`
+
+al centesimo.
+
+Non considerare automaticamente anomalo:
+
+`POS ≠ accredito`
+
+prima di aver verificato commissioni, payout e aggregazioni.
+
+## Accredito bancario
+
+Il gestionale **non inventa mai l'accredito**.
+
+Anche quando:
+
+`RT = POS`
+
+lo stato bancario resta aperto finché il movimento reale non compare nella fonte bancaria ammessa.
+
+Una chiusura POS non crea artificialmente una riga bancaria.
+
+L'estratto conto può soltanto soddisfare un'attesa già esistente.
+
+---
+
+## Più terminali e più circuiti
+
+Quando nella stessa giornata esistono più terminali o circuiti, il controllo deve conservare le componenti.
+
+Esempio:
+
+`RT elettronico = € 1.500`
+
+può corrispondere a:
+
+- SumUp € 500;
+- altro circuito € 1.000.
+
+Non forzare un'unica chiusura POS se esistono più prove distinte.
+
+La somma delle chiusure compatibili deve quadrarne il totale.
+
+---
+
+## Semaforo Coerenza POS
+
+La pagina Coerenza POS deve mostrare chiaramente i tre anelli:
+
+**RT → POS → BANCA**
+
+con stato separato per ciascuno.
+
+Esempi:
+
+`RT ✓ | POS ✓ | BANCA …`
+
+= terminale verificato, accredito ancora da trovare.
+
+`RT ✓ | POS ⚠ | BANCA …`
+
+= differenza fra registratore e terminale.
+
+`RT ✓ | POS ✓ | BANCA ✓`
+
+= ciclo completamente riconciliato.
+
+`RT ? | POS ✓ | BANCA ✓`
+
+= manca o non è determinabile la prova RT.
+
+Il colore non deve essere l'unica informazione: mostrare sempre stato e motivo testuale.
+
+---
+
+## Principio contabile
+
+Il ricavo nasce dal documento fiscale del corrispettivo secondo le regole del dominio.
+
+La chiusura POS e l'accredito bancario **non generano un secondo ricavo**.
+
+Sono prove e movimenti finanziari.
+
+---
+
+---
+
+# 42. Corrispettivi
+
+Via primaria:
+
+XML RT.
+
+CSV AdE:
+
+dato provvisorio.
+
+Non genera Prima Nota o giornale fino al documento definitivo.
+
+Il non riscosso si legge solo dalle voci esplicite del documento.
+
+Mai:
+
+`totale - contanti - POS`
+
+per inventare il non riscosso.
+
+---
+
+# 43. Ricavi e fatture emesse
+
+I ricavi del bar derivano dalle vendite fiscalmente registrate.
+
+La fonte ordinaria è costituita dai **corrispettivi RT**.
+
+Le **fatture emesse relative a vendite già comprese nei corrispettivi non generano un secondo ricavo**.
+
+La fattura emessa deve essere collegata al corrispettivo che contiene già quella vendita.
+
+La catena è:
+
+**Vendita → Corrispettivo → eventuale fattura emessa**
+
+e non:
+
+**Corrispettivo + fattura emessa = due ricavi**
+
+## Fattura emessa dopo scontrino
+
+Se la fattura è stata emessa per una vendita già battuta nel registratore telematico:
+
+- conserva il documento fiscale;
+- collega la fattura al corrispettivo;
+- non aumenta nuovamente i ricavi;
+- non aumenta nuovamente l'IVA;
+- non crea un nuovo credito cliente per lo stesso incasso.
+
+L'identità aziendale stabilisce se una fattura è emessa:
+
+`cedente = FISCAL_COMPANY_ID`
+
+Le fatture emesse non vanno nella collezione delle fatture fornitori.
+
+---
+
+## Vendite fatturate non comprese nei corrispettivi
+
+Se esiste un caso reale in cui una fattura emessa rappresenta una vendita **non già compresa nei corrispettivi**, il sistema non deve ignorarla.
+
+Deve prima dimostrare che manca il corrispettivo collegabile.
+
+Solo allora quella fattura può concorrere autonomamente ai ricavi secondo la sua corretta disciplina contabile e fiscale.
+
+Mai decidere soltanto dal tipo di documento.
+
+La regola è:
+
+**una vendita reale = un solo ricavo**
+
+indipendentemente dal numero di documenti che la rappresentano.
+
+---
+
+## Non sono ricavi
+
+Non costituiscono nuovi ricavi:
+
+- accrediti POS;
+- payout SumUp;
+- accrediti PayPal;
+- giroconti;
+- trasferimenti interni;
+- versamenti di contanti;
+- rimborsi;
+- movimenti bancari che costituiscono soltanto regolazione di un credito già registrato.
+
+---
+
+---
+
+# 44. SumUp e Numia
+
+SumUp e conto BPM sono conti/fonti distinti.
+
+I movimenti SumUp restano nella collezione prevista.
+
+Numia è dismesso.
+
+Non segnalarlo come fonte corrente ferma oltre la sua ultima attività.
+
+---
+
+# 45. PayPal
+
+PayPal si riconcilia con banca e documenti usando il motore previsto.
+
+L'utente può scegliere fra candidati quando necessario.
+
+La scelta manuale non autorizza modifica di importo o valuta.
+
+---
+
+# 46. Mutui
+
+Una rata ha prove di forza diversa:
+
+1. banca;
+2. quietanza;
+3. estratto annuale;
+4. dichiarazione del titolare;
+5. stato stampato sul piano.
+
+Non usare un generico “Pagata” senza indicare la prova.
+
+Se l'importo non torna secondo la tolleranza prevista:
+
+`DA_VERIFICARE`
+
+---
+
+# 47. IVA
+
+`iva_detraibile` assente significa:
+
+**non deciso**
+
+Non zero.
+
+Lo zero è un dato vero soltanto se determinato.
+
+Una fattura senza classificazione IVA non deve essere fatta passare artificialmente come classificata.
+
+Periodo:
+
+`periodo_iva_attribuito`
+
+---
+
+# 48. Regola del 15
+
+Operazione mese precedente ricevuta e annotata entro il 15:
+
+può competere al mese precedente solo nello stesso anno.
+
+Operazione anno precedente:
+
+mai retroattribuzione automatica a dicembre.
+
+---
+
+# 49. LIPE — confronto IVA, controllo del commercialista e ricostruzione delle attese
+
+## Principio vincolante: la LIPE non “vince” sul nostro calcolo
+
+La LIPE **non deve vincere automaticamente sul calcolo IVA del gestionale**. È il riferimento indipendente del commercialista con cui confrontare il nostro risultato.
+
+- Se coincide, il periodo è coerente rispetto alla LIPE.
+- Se esiste un piccolo scostamento, il sistema lascia il nostro calcolo invariato e mostra un avviso con la differenza e le componenti che la spiegano.
+- Se lo scostamento è significativo, il sistema apre una verifica e cerca fatture, note di credito, periodi IVA e altri documenti che possano spiegare la divergenza.
+- La LIPE non modifica automaticamente fatture, IVA detraibile, periodi o liquidazioni per far tornare i numeri.
+- Se manca l'F24, una LIPE valida può generare **l'attesa del tributo**. La quietanza Agenzia delle Entrate con protocollo può soddisfare documentalmente quell'attesa quando codice, periodo e importo sono coerenti.
+- Questa catena **non crea retroattivamente un F24 mai acquisito**: il modello continua a risultare mancante e, se arriva in seguito, viene inserito nella catena già esistente senza duplicare pagamento o quietanza.
+
+
+La LIPE non serve soltanto come documento fiscale da archiviare.
+
+Serve come **prova esterna del calcolo IVA trasmesso dal commercialista** e come strumento di controllo incrociato fra:
+
+1. IVA calcolata dal gestionale;
+2. IVA dichiarata dal commercialista;
+3. F24;
+4. quietanze Agenzia delle Entrate;
+5. banca.
+
+La LIPE non sostituisce i documenti sorgente del gestionale e non modifica automaticamente le fatture.
+
+Serve a capire se i due sistemi stanno descrivendo la stessa posizione IVA.
+
+---
+
+## Catena di controllo
+
+La catena attesa è:
+
+**Fatture + corrispettivi → calcolo IVA Gestionale**
+
+confrontato con:
+
+**LIPE del commercialista**
+
+e successivamente, quando esiste un versamento:
+
+**F24 → quietanza AdE con protocollo → movimento bancario**
+
+La LIPE costituisce quindi un ponte di controllo fra la nostra contabilità e quella del commercialista.
+
+---
+
+## LIPE ↔ calcolo IVA Gestionale
+
+Per ogni periodo il sistema deve confrontare almeno:
+
+- operazioni attive;
+- operazioni passive;
+- IVA a debito;
+- IVA detraibile;
+- debito/credito del periodo;
+- credito precedente;
+- importo finale dovuto o a credito;
+- eventuali altri campi VP realmente leggibili e rilevanti.
+
+Il confronto non deve limitarsi all'importo finale.
+
+Deve permettere di capire **dove nasce la differenza**.
+
+---
+
+## Coincidenza
+
+Se Gestionale e LIPE coincidono secondo i valori rilevanti:
+
+`COINCIDE`
+
+È la situazione migliore.
+
+Il sistema può considerare il periodo verificato rispetto alla contabilità trasmessa dal commercialista.
+
+---
+
+## Piccolo scostamento
+
+Una differenza piccola non deve necessariamente bloccare il periodo.
+
+Deve però essere visibile.
+
+Stato:
+
+`COINCIDE_CON_SCOSTAMENTO`
+
+con:
+
+- valore gestionale;
+- valore LIPE;
+- differenza;
+- percentuale quando utile;
+- componenti che producono lo scarto.
+
+Lo scostamento non viene corretto automaticamente.
+
+Non modificare fatture o liquidazioni per farle coincidere artificialmente.
+
+La soglia oltre la quale uno scostamento smette di essere “piccolo” deve essere una regola configurata/versionata e non un numero inventato nel codice.
+
+---
+
+## Scostamento significativo
+
+Se lo scostamento supera la soglia prevista:
+
+`DA_VERIFICARE`
+
+Il gestionale deve aiutare a determinare la causa.
+
+Una delle verifiche principali è:
+
+**Il commercialista ha registrato tutte le fatture che risultano nel gestionale?**
+
+Il controllo deve quindi evidenziare, quando i dati disponibili lo consentono:
+
+- fatture presenti nel gestionale che potrebbero mancare nella contabilità del commercialista;
+- differenze nell'IVA acquisti;
+- differenze nell'IVA vendite;
+- note di credito;
+- documenti attribuiti a un periodo diverso;
+- fatture ricevute dopo il termine;
+- documenti esclusi o ancora `DA_VERIFICARE`.
+
+Non dichiarare automaticamente che l'errore è del commercialista.
+
+Il sistema segnala la divergenza e le possibili cause.
+
+---
+
+## LIPE non quadrata
+
+Una LIPE che non supera i controlli aritmetici del quadro VP:
+
+- viene conservata come documento;
+- conserva l'originale;
+- porta il motivo dell'errore;
+- non diventa fonte canonica del confronto numerico.
+
+Stato:
+
+`LIPE_DA_VERIFICARE`
+
+Non usare valori non affidabili per generare attese fiscali.
+
+---
+
+## LIPE come fonte per ricostruire ciò che ci aspettiamo di trovare
+
+Quando manca il modello F24, i dati affidabili della LIPE possono essere utilizzati per creare o arricchire una **attesa fiscale**, mai un F24 inventato.
+
+Esempio:
+
+la LIPE dimostra un debito IVA mensile/trimestrale.
+
+Il gestionale può sapere:
+
+- periodo;
+- natura IVA;
+- importo dichiarato;
+- codice tributo teoricamente atteso quando determinabile dalle regole fiscali versionate.
+
+Il sistema può quindi creare:
+
+`TRIBUTO_ATTESO_DA_LIPE`
+
+con:
+
+- periodo;
+- importo;
+- codice tributo atteso;
+- fonte = LIPE;
+- protocollo LIPE;
+- documento origine.
+
+Ma non deve creare un falso modello F24.
+
+---
+
+## LIPE → codice tributo atteso
+
+Il codice tributo deriva dalla regola fiscale versionata.
+
+Esempi, quando applicabili:
+
+- IVA mensile: 6001–6012;
+- trimestrali: codici previsti dal registro fiscale;
+- altri casi soltanto se la norma e il motore li conoscono.
+
+La LIPE fornisce il **dato economico dichiarato**.
+
+Il registro fiscale fornisce il **codice tributo atteso**.
+
+Non dedurre un codice sconosciuto per somiglianza.
+
+---
+
+## Assenza del modello F24
+
+Se:
+
+- la LIPE valida indica un debito;
+- il codice tributo atteso è determinabile;
+- il modello F24 non è presente;
+
+il sistema non deve fermarsi.
+
+Deve cercare le prove successive disponibili, in particolare:
+
+**quietanza Agenzia delle Entrate**
+
+con:
+
+- protocollo;
+- data;
+- righe tributo;
+- periodo;
+- importi.
+
+La quietanza può quindi essere confrontata con l'attesa derivata dalla LIPE.
+
+---
+
+## LIPE ↔ quietanza in assenza di F24
+
+Quando manca il modello F24, è ammesso il collegamento:
+
+**LIPE → tributo atteso → quietanza AdE**
+
+solo se:
+
+- periodo coerente;
+- codice tributo coerente;
+- importo coerente secondo le regole applicabili;
+- protocollo della quietanza disponibile;
+- nessuna ambiguità significativa.
+
+Questo collegamento significa:
+
+**il versamento atteso dalla LIPE trova riscontro nella quietanza**
+
+Non significa:
+
+**abbiamo ricostruito il modello F24 originale**
+
+Il modello F24 continua a risultare mancante.
+
+---
+
+## Quietanza con protocollo
+
+Il protocollo della quietanza Agenzia delle Entrate è una parte importante dell'identità documentale.
+
+Va conservato e mostrato nel collegamento.
+
+La catena può diventare:
+
+**LIPE**
+→ periodo IVA e importo dichiarato  
+→ **tributo atteso**
+→ codice tributo  
+→ **quietanza AdE con protocollo**
+→ **movimento bancario**
+
+Se arriva successivamente il modello F24, viene inserito nella catena senza creare un secondo pagamento.
+
+---
+
+## Quietanza non equivale a banca
+
+Anche quando LIPE e quietanza coincidono:
+
+**versamento documentato ≠ movimento bancario verificato**
+
+Lo stato deve distinguere:
+
+- importo atteso;
+- quietanza trovata;
+- banca da verificare;
+- banca riconciliata.
+
+Esempio:
+
+`LIPE ✓ → QUIETANZA ✓ → BANCA …`
+
+---
+
+## Finalità di controllo del commercialista
+
+Una funzione esplicita della LIPE è permettere di controllare la completezza reciproca dei dati.
+
+Il sistema deve aiutare a rispondere a domande come:
+
+- Il nostro totale IVA coincide con quello trasmesso?
+- Il commercialista ha probabilmente acquisito tutte le nostre fatture?
+- Quali fatture o note di credito possono spiegare la differenza?
+- Il periodo è stato attribuito nello stesso modo?
+- Esiste una quietanza coerente col debito dichiarato?
+- Esiste l'addebito bancario?
+- Manca soltanto il modello F24?
+
+La LIPE è quindi una **fonte di confronto e riconciliazione fiscale**, non un comando che sovrascrive la nostra contabilità.
+
+---
+
+---
+
+# 50. F24
+
+Modello, righe tributo, quietanza e movimento bancario sono entità distinte.
+
+Livelli:
+
+- `CERTO`
+- `PROBABILE`
+- `PARZIALE`
+- `NESSUN_MATCH`
+- `MOVIMENTO_ORFANO`
+
+Solo `CERTO` scrive automaticamente il pagamento.
+
+`PROBABILE` e `PARZIALE` richiedono conferma del titolare.
+
+---
+
+# 51. Stato F24
+
+Distinguere:
+
+- da pagare;
+- versamento documentato;
+- banca da verificare;
+- riscontrato in banca;
+- compensato.
+
+La quietanza dimostra il versamento.
+
+Non sostituisce il riscontro bancario quando richiesto.
+
+---
+
+# 52. F24 e costi
+
+Il saldo F24 non è un costo.
+
+Ritenute, addizionali, contributi, IVA e altri debiti chiudono posizioni verso enti.
+
+Non registrare l'intero F24 a costo.
+
+---
+
+# 53. Codici tributo
+
+Descrizioni e regole vengono dal registro canonico.
+
+Non duplicare tabelle nei parser.
+
+Codice tributo sempre stringa.
+
+Un codice sconosciuto blocca la contabilizzazione definitiva.
+
+---
+
+# 54. F24 saldo zero
+
+Saldo zero significa:
+
+**compensazione totale**
+
+Non errore.
+
+Nessun addebito bancario atteso.
+
+---
+
+# 55. Ritenute 1040
+
+Il periodo del 1040 segue il mese del pagamento al professionista.
+
+Non il mese della fattura.
+
+Finché la fattura non è pagata:
+
+- periodo vuoto;
+- scadenza vuota;
+- nessun F24 agganciato automaticamente.
+
+---
+
+# 56. HR come fonte persone
+
+Anagrafica canonica:
+
+`hr.app_dipendenti`
+
+Lotti legge una proiezione.
+
+ERP collega il pagamento.
+
+Non creare una seconda anagrafica.
+
+Stati:
+
+- `attivo`
+- `cessato`
+
+---
+
+# 57. PIN
+
+Un PIN personale per persona.
+
+Un solo PIN amministratore centrale, salvo eccezioni esplicite Lotti.
+
+Non creare login admin paralleli.
+
+---
+
+# 58. Cedolini
+
+Un solo motore di lettura.
+
+Il netto si legge dalla cella esplicitamente associata a:
+
+- `TOTALE NETTO`
+- `NETTO DEL MESE`
+- `NETTO IN BUSTA`
+
+Mai ricostruire il netto da competenze meno trattenute come fonte autorevole.
+
+Valore mancante:
+
+`None`
+
+Mai zero.
+
+---
+
+# 59. Stati netto
+
+- `NETTO_VERIFICATO_DA_CEDOLINO`
+- `NETTO_NON_PRESENTE_O_NON_LEGGIBILE`
+- `MULTIPLE_NETS_DA_VERIFICARE`
+- `ERRORE_PARSER`
+
+Solo il primo alimenta automaticamente i flussi economici.
+
+---
+
+# 60. Acconti recuperati in busta
+
+Separare:
+
+`netto_pdf`
+
+`acconto_recuperato`
+
+`dovuto_mese`
+
+Non sommare l'acconto in più moduli.
+
+## APERTO
+
+Verificare che Posizione dipendente e deposito HR non lo conteggino due volte.
+
+---
+
+# 61. Pagamento stipendio
+
+Un solo motore associa bonifico e stipendio.
+
+Niente primo movimento con importo vicino e nome simile.
+
+Identità e periodo devono essere coerenti.
+
+Il movimento vale come prova bancaria solo se proviene dalla fonte ufficiale prevista.
+
+---
+
+# 62. Bonifico prima del cedolino
+
+Se arriva prima il bonifico:
+
+`in_attesa_busta`
+
+Importo busta:
+
+null.
+
+Mai zero.
+
+All'arrivo della busta il mese viene ricalcolato.
+
+---
+
+# 63. Posizione dipendente
+
+DARE:
+
+- dovuto da buste;
+- 13ª;
+- 14ª;
+- conciliazioni non bonus.
+
+AVERE:
+
+- bonifici;
+- acconti;
+- contanti ammessi;
+- altri pagamenti provati.
+
+Non confondere pagamento dichiarato e pagamento bancariamente provato.
+
+---
+
+# 64. TFR
+
+Un solo motore.
+
+Le correzioni si stornano.
+
+Il giornale è quello del gestionale.
+
+Non creare un secondo giornale HR.
+
+---
+
+# 65. Fork HR
+
+Due copie dello stesso modulo non si mantengono manualmente.
+
+## APERTO
+
+Esistono ancora duplicazioni sotto `app/hr/`.
+
+Ogni modifica deve controllare il gemello finché non viene consolidato.
+
+---
+
+---
+
+# 65A. HR — Cedolini, pagamenti, acconti e riconciliazione
+
+## Obiettivo della pagina
+
+Archivio paghe deve mostrare, per dipendente, rapporto di lavoro e periodo:
+
+- documenti retributivi e relative fonti;
+- netto stampato sul cedolino;
+- acconti recuperati in busta;
+- totale dovuto del periodo;
+- pagamenti verificati e attribuiti;
+- residuo, eccedenze e anomalie.
+
+Ogni importo deve essere spiegabile aprendo il documento che lo prova.
+Cedolino presente, documento verificato e retribuzione pagata sono fatti
+distinti. Nessuno dei tre implica automaticamente gli altri.
+
+Drive conserva gli originali; Supabase conserva dati, stati e relazioni.
+Excel è un formato di importazione, non un secondo archivio operativo.
+
+## Identità, rapporto e periodo
+
+- Leggere dal PDF datore di lavoro, nome, codice fiscale, matricola,
+  periodo retributivo, assunzione ed eventuale cessazione.
+- Non dedurre identità o competenza dal nome del file.
+- Collegare il documento all'anagrafica tramite identità verificata.
+  Omonimie e corrispondenze incomplete restano `DA_VERIFICARE`.
+- Distinguere i rapporti della stessa persona: una riassunzione non
+  sovrascrive la precedente assunzione o cessazione.
+- La competenza del cedolino, la data di emissione e la data del pagamento
+  sono campi distinti.
+- Lo storico richiesto parte dal 01/01/2017. Il limite deve essere coerente
+  fra import Excel, lettura PDF, sincronizzazione e visualizzazione.
+- Conservare il periodo civile originale delle mensilità aggiuntive.
+  I mesi tecnici 13 e 14 sono classificazioni del registro, non date.
+
+## Campi da estrarre
+
+Leggere i valori nelle rispettive caselle o voci del documento:
+
+- netto del mese;
+- totale competenze;
+- totale trattenute;
+- imponibile INPS;
+- contributi e ritenute previdenziali del dipendente;
+- imponibile IRPEF;
+- ritenute IRPEF, rimborsi e addizionali;
+- arrotondamenti;
+- retribuzione utile TFR;
+- quote TFR, anticipazioni e liquidazioni, quando presenti;
+- ore ordinarie mensili;
+- ratei e componenti di tredicesima e quattordicesima;
+- acconti recuperati, con codice voce, descrizione, segno e importo.
+
+Non confondere:
+
+- imponibile INPS con ritenute previdenziali;
+- imponibile IRPEF con imposta trattenuta;
+- retribuzione utile TFR con quota maturata, fondo o liquidazione;
+- valori mensili con progressivi annuali;
+- ore retribuite con presenze effettivamente lavorate;
+- lordo, netto e importo del bonifico.
+
+Il netto si legge esclusivamente nella casella graficamente associata
+all'etichetta del netto. Competenze meno trattenute è un controllo:
+non sostituisce il netto stampato.
+
+Campo vuoto o illeggibile significa dato mancante, mai zero.
+Uno zero verificato si mostra come `€ 0,00`.
+
+Ogni valore verificato conserva fonte, pagina, etichetta o codice voce,
+metodo di estrazione e versione del parser. OCR e letture ambigue
+richiedono verifica visiva prima di alimentare importi certi.
+
+## Classificazione dei documenti
+
+Distinguere almeno:
+
+1. cedolino ordinario;
+2. tredicesima autonoma;
+3. quattordicesima autonoma;
+4. cedolino misto;
+5. documento di fine rapporto, liquidazione o TFR;
+6. documento autonomo di arretrati o conguaglio.
+
+La classificazione deve essere provata dal contenuto.
+
+Una quota di tredicesima, quattordicesima, arretrati o TFR dentro una busta
+non crea automaticamente un secondo cedolino o un secondo debito.
+
+Formato del produttore, tipo retributivo e stato documentale sono distinti.
+Zucchetti, TeamSystem e CSC identificano famiglie di lettura.
+Definitivo, rettificato, sostituito e stampa di controllo identificano stati
+o versioni, non nuove mensilità.
+
+Un foglio di sole presenze non è un cedolino retributivo.
+Una stampa di controllo non alimenta automaticamente il dovuto definitivo.
+
+## Fascicoli, copie e versioni
+
+- Segmentare i fascicoli per identità, rapporto, periodo e documento.
+- Conservare tutte le pagine appartenenti allo stesso cedolino.
+- Un netto ripetuto su più pagine si conta una volta sola.
+- Netti discordanti nello stesso documento restano `DA_VERIFICARE`.
+- Stesso dipendente, periodo e tipo non costituiscono da soli una chiave
+  univoca: possono esistere documenti aggiuntivi legittimi.
+- Distinguere copia dello stesso documento, continuazione, documento
+  aggiuntivo e versione sostitutiva.
+- Conservare SHA-256 del documento corrente, hash del fascicolo sorgente,
+  pagine originarie e identificativi Drive.
+- Sostituire un collegamento multipagina con un PDF individuale aggiorna
+  la fonte del record esistente: non crea un secondo cedolino.
+- Non sostituire fonti definitive con stampe di controllo.
+- Non scegliere una versione soltanto perché più recente.
+- Documenti già pagati o contabilizzati richiedono una rettifica tracciata,
+  non una sovrascrittura silenziosa.
+- Gli originali non si cancellano come conseguenza automatica del cambio
+  di collegamento.
+
+## Importazione Excel e PDF
+
+L'Excel operativo contiene due fogli: `Cedolini` e `Pagamenti`.
+Non aggiungere fogli tecnici al file destinato all'importazione.
+
+`Cedolini` contiene una riga per documento retributivo distinto:
+identità, rapporto, periodo, tipo, importi, stato di verifica, nome file,
+ID/link Drive, SHA-256 e pagine sorgente.
+
+`Pagamenti` contiene una riga per operazione distinta:
+beneficiario, importo, valuta, data, causale, riferimenti bancari,
+stato di esecuzione e fonte documentale.
+
+I campi relativi agli acconti devono avere un mapping esplicito:
+non possono essere ignorati dall'importatore.
+
+Flusso obbligatorio:
+
+1. anteprima senza scritture;
+2. controllo di duplicati, conflitti, anagrafiche e dati mancanti;
+3. conferma riferita allo stesso file verificato tramite SHA-256;
+4. importazione delle sole righe ammesse;
+5. deposito dei pagamenti nella coda di riconciliazione.
+
+Non modificare automaticamente anagrafiche, presenze, dati corretti,
+associazioni confermate o scritture contabili esistenti.
+
+La seconda importazione della stessa fonte deve produrre zero nuovi
+documenti, zero nuovi pagamenti e zero nuovi debiti.
+
+## Prova del pagamento e riconciliazione
+
+Cedolino, disposizione bancaria, ricevuta, distinta ed estratto conto
+sono evidenze differenti.
+
+Una disposizione prenotata, revocata, annullata o non eseguita non prova
+il pagamento. La firma sulla busta paga non sostituisce la prova bancaria.
+
+La riconciliazione verifica:
+
+- identità del beneficiario e rapporto;
+- riferimento dell'operazione;
+- competenza e destinazione;
+- importo attribuito;
+- esecuzione del pagamento;
+- assenza di associazioni incompatibili.
+
+Importo uguale, cognome o vicinanza di date non bastano da soli.
+Una proposta non è un'associazione confermata.
+
+Ricevuta ed estratto della stessa operazione completano un unico pagamento:
+non producono due accrediti nel registro del dipendente.
+
+Sono ammesse relazioni uno-a-molti e molti-a-uno soltanto con quote
+documentate e confermate. Le quote non possono superare l'importo
+disponibile del pagamento.
+
+Una distinta con beneficiari vari richiede il dettaglio dei beneficiari
+e delle quote. Non inventare una ripartizione.
+
+Commissioni, fatture, giroconti, rimborsi spese, TFR e conciliazioni
+non diventano automaticamente stipendi ordinari.
+
+Un pagamento ricevuto prima del cedolino resta `IN_ATTESA_CEDOLINO`:
+dovuto e residuo sono sconosciuti, non zero.
+
+Il saldo si verifica in Decimal al centesimo. Differenze ed eccedenze
+restano visibili; non vengono assorbite da tolleranze o assegnate
+automaticamente al mese successivo.
+
+## Acconti stipendio
+
+Distinguere due fatti:
+
+- acconto effettivamente versato;
+- recupero dell'acconto dichiarato nel cedolino.
+
+L'acconto versato conserva dipendente, importo, data, natura,
+periodo di destinazione e prova del pagamento.
+Se la competenza è sconosciuta, resta da attribuire.
+
+Un bonifico già importato si classifica come acconto:
+non si ricrea come movimento manuale.
+
+Il recupero si legge da una voce esplicita e verificata del cedolino.
+Una differenza aritmetica non prova l'esistenza di un acconto.
+La voce di recupero non prova da sola il precedente versamento.
+
+Se il netto stampato è già ridotto dall'acconto recuperato:
+
+    dovuto del periodo = netto stampato + acconto recuperato verificato
+    pagato = somma dei pagamenti verificati attribuiti, contati una volta
+    residuo = dovuto del periodo - pagato
+
+Esempio: netto stampato 900,00 €, recupero acconto 300,00 €,
+dovuto 1.200,00 €. Acconto bancario 300,00 € e saldo bancario 900,00 €
+chiudono il periodo. Non sottrarre nuovamente l'acconto dal netto stampato.
+
+Se il cedolino non recupera l'acconto, il dovuto resta il netto stampato;
+l'acconto verificato concorre fra i pagamenti attribuiti.
+
+Non sommare due volte l'acconto quando un dato storico contiene già
+il totale comprensivo del recupero. Conservare separatamente
+`netto_stampato`, `acconto_recuperato` e `dovuto_periodo`.
+
+## TFR e altri anticipi
+
+Acconto stipendio, anticipo TFR, prestito e anticipo spese sono distinti.
+
+Se un'anticipazione TFR è già compresa nel netto della busta,
+non aggiungerla nuovamente al dovuto o ai pagamenti.
+Conservare la componente TFR e il relativo trattamento separatamente.
+
+Non considerare un pagamento diretto in contanti automaticamente regolare
+perché registrato a mano o perché il dipendente è cessato.
+Applicare le regole di tracciabilità pertinenti al rapporto e alla data.
+
+## Mesi mancanti e collegamento con Presenze
+
+La copertura documentale distingue:
+
+- cedolino verificato presente;
+- cedolino presente con netto mancante;
+- cedolino con netto zero verificato;
+- sole presenze;
+- sola stampa di controllo;
+- documento mancante durante un rapporto attivo;
+- periodo esterno al rapporto;
+- rapporto o periodo da verificare.
+
+Calcolare i buchi documentali interni senza inventare mesi precedenti
+all'assunzione o successivi alla cessazione.
+
+Un documento TFR non dimostra da solo che tutti i mesi intermedi siano
+correttamente assenti. Ricostruire cessazioni e riassunzioni con le fonti.
+
+Cedolini e Presenze usano la stessa anagrafica e lo stesso rapporto.
+Le differenze fra ore retribuite e presenze si segnalano:
+non si correggono automaticamente.
+
+## Stati, audit e criterio di completamento
+
+Tenere separati stato del documento, verifica degli importi,
+copertura del periodo e stato del pagamento.
+
+Un cedolino con netto zero verificato può non avere un importo da erogare:
+non richiede un pagamento fittizio per risultare completo.
+
+Ogni associazione, ripartizione, rettifica o revoca conserva autore,
+data, motivo, valore precedente e fonti.
+Le conferme manuali non vengono riassegnate da processi automatici.
+
+Un solo motore possiede le regole di deduplica, attribuzione e saldo:
+importatori, sincronizzazioni e frontend non devono duplicarle.
+
+Il flusso è completo solo dopo verifica di:
+
+- apertura delle fonti corrette;
+- identità, periodo, tipo e pagine;
+- importi e distinzione fra zero e dato mancante;
+- idempotenza;
+- assenza di doppio conteggio degli acconti;
+- relazioni reciproche fra cedolino, pagamento e prova;
+- residui ed eccedenze al centesimo;
+- conservazione delle decisioni dopo ricarica e sincronizzazione.
+
+Importazione riuscita, HTTP 200 o pagina renderizzata non costituiscono
+da soli prova di una riconciliazione corretta.
+
+## Relazione con le regole HR sintetiche
+
+Questa sezione dettaglia e completa le sezioni HR precedenti. In caso di apparente conflitto, applicare la formulazione che conserva più prove, distingue meglio dato mancante da zero e impedisce doppio conteggio o riconciliazione automatica ambigua.
+
+
+---
+
+# 66. Lotti — chi entra, magazzino, FIFO, ordini, prezzi e nomi
+
+## A cosa serve e a cosa è collegato
+
+Lotti è il modulo operativo di laboratorio e magazzino per:
+
+- HACCP e tracciabilità;
+- giacenze;
+- produzione;
+- ordini ai fornitori.
+
+Lotti è **a valle del Gestionale**: le fatture XML arrivano dal Gestionale e alimentano Lotti tramite i flussi previsti.
+
+Lotti legge da HR:
+
+- persone;
+- PIN personali;
+- ruoli;
+- mansioni;
+- permessi.
+
+Lotti **non mantiene una propria anagrafica persone parallela**.
+
+Lotti spinge le ricette nel Menu attraverso il ponte previsto.
+
+Un guasto o una lentezza di Lotti **non deve mai fermare l'import contabile** del Gestionale.
+
+---
+
+## Chi entra e cosa vede
+
+### Titolare
+
+Il titolare entra dalla sessione amministratore del Gestionale e vede tutto, comprese:
+
+- le temperature da rilevare;
+- i registri;
+- le funzioni amministrative;
+- il pulsante per tornare al Gestionale.
+
+Il Gestionale e i comandi riservati restano protetti anche lato server.
+
+### Operatore
+
+L'operatore entra dal tablet con il proprio PIN personale.
+
+Vede soltanto le card previste dalla sua mansione e dai suoi permessi.
+
+Un indirizzo diretto verso un reparto non autorizzato non deve aggirare la navigazione: l'operatore viene ricondotto alle card disponibili per il suo profilo.
+
+### Mansione e postazione
+
+Comanda prima la postazione esplicitamente scelta dal titolare.
+
+Se non esiste una postazione specifica, vale la mansione della scheda HR.
+
+Mappatura operativa:
+
+- `pasticcere` → **Pasticceria**;
+- `rosticcere`, `cuoco`, `laboratorio` → **Rosticceria**;
+- `barista`, `sala` → **Magazzino e Ordini**;
+- chi possiede il permesso `haccp_registri` vede anche i registri HACCP.
+
+Se la mansione non è deducibile:
+
+- non inventare una restrizione;
+- mostrare soltanto le funzioni che il profilo può usare con certezza;
+- non mostrare il Gestionale;
+- non mostrare le temperature riservate al titolare.
+
+### Passaggio a un altro reparto
+
+Per operare come un'altra persona o in un'altra mansione si usa:
+
+**Cambia operatore**
+
+poi si inserisce nuovamente il PIN.
+
+Un PIN inserito da una card che non appartiene alla mansione dell'operatore non concede accesso generale: apre soltanto l'azione esplicitamente autorizzata, se il server la consente.
+
+### Controllo lato server
+
+La UI non è mai una barriera di sicurezza sufficiente.
+
+Il backend deve continuare a usare le guardie canoniche, compresi quando applicabili:
+
+- `require_admin`;
+- `require_permesso`.
+
+Il Gestionale e i comandi riservati restano accessibili soltanto al titolare/amministratore anche se qualcuno tenta di richiamare direttamente l'endpoint.
+
+---
+
+## Magazzino e FIFO
+
+### Origine della giacenza
+
+La giacenza nasce dalle righe delle fatture alimentari.
+
+Ogni riga ammessa genera il relativo lotto in:
+
+`lotti_fornitori`
+
+salvo che il fornitore sia escluso dal magazzino secondo la decisione canonica del Gestionale.
+
+La fattura resta un fatto contabile ERP: Lotti riceve soltanto ciò che gli serve per magazzino e tracciabilità.
+
+### Vista magazzino
+
+Chi preleva deve vedere **una riga per prodotto**.
+
+Righe con:
+
+- stesso prodotto;
+- stessa unità di misura compatibile;
+
+possono essere aggregate nella vista.
+
+L'aggregazione della vista non elimina i lotti sottostanti e non cancella le loro provenienze.
+
+### Scarico
+
+L'endpoint/motore canonico di scarico è:
+
+`/magazzino/scarico`
+
+Non creare un secondo motore di scarico in router, ricette, ordini o frontend.
+
+### FIFO
+
+Il FIFO consuma prima il lotto con `data_fattura` più vecchia fra **tutti i fornitori dello stesso prodotto compatibile**, poi passa ai lotti successivi.
+
+La scelta non dipende dal fornitore più recente né dal prezzo più basso.
+
+### Unità e confezionamento
+
+Lo scarico ragiona sempre nell'unità mostrata all'operatore, ad esempio:
+
+- pezzi;
+- kg.
+
+Ogni lotto conserva il proprio fattore di confezionamento/collo.
+
+Lotti con confezionamenti differenti non devono essere sommati come se fossero identici.
+
+Esempio:
+
+- X24;
+- X12.
+
+Questi due confezionamenti restano distinti se il fattore di conversione non consente una rappresentazione coerente nella stessa unità.
+
+### Oltre la giacenza
+
+Se la quantità richiesta supera la giacenza disponibile:
+
+- risposta di errore;
+- mostrare la quantità realmente disponibile;
+- non scrivere nessun movimento parziale nascosto;
+- non portare la giacenza sotto zero.
+
+### Movimento di magazzino
+
+Ogni lotto realmente consumato deve lasciare un movimento con almeno:
+
+- lotto;
+- quantità;
+- unità;
+- operatore;
+- data/ora;
+- origine dell'operazione;
+- metodo `fifo` quando lo scarico è FIFO.
+
+### Ricette
+
+Per una ricetta il FIFO deve utilizzare prima i lotti la cui associazione con l'ingrediente è **confermata** secondo le regole della sezione Nomi.
+
+Una semplice proposta di matching non autorizza lo scarico automatico.
+
+### Stock zero
+
+Una merce arrivata a giacenza zero **non deve sparire dall'universo ordinabile**.
+
+Nel magazzino operativo può risultare esaurita, ma il Carrello ordini deve poterla ritrovare tramite:
+
+`anche_esauriti`
+
+Questa possibilità è riservata al flusso Carrello e non trasforma lo zero in giacenza disponibile.
+
+---
+
+## Senza glutine
+
+### Catalogo
+
+Il catalogo usa:
+
+`acquaviva_prodotti`
+
+La fonte dei fornitori abilitati deriva dal registro:
+
+`fornitori_rivendita`
+
+con flag:
+
+`senza_glutine`
+
+Il catalogo si riallinea dalle fatture XML dal 2026 dei fornitori che possiedono quel flag.
+
+Regole:
+
+- un prodotto per descrizione canonica;
+- prezzo preso dall'ultima fattura compatibile;
+- secondo giro idempotente con `nuovi=0`.
+
+### Comando amministratore
+
+Comando canonico:
+
+`POST /acquaviva/prodotti/senza-glutine/importa-da-fatture?dry_run=`
+
+Usare anteprima quando prevista prima della scrittura reale.
+
+### Identità del fornitore
+
+Il fornitore si riconosce per identità/nome completo normalizzato.
+
+Mai per semplice sottostringa.
+
+Esempio:
+
+`progetto alpha`
+
+non equivale automaticamente a qualsiasi soggetto contenente soltanto:
+
+`alfa`
+
+perché un soggetto come `Alfa Service` può vendere prodotti completamente differenti, ad esempio cannucce e bicchieri.
+
+### Invio al banco
+
+Un prodotto senza glutine mandato al banco deve prima essere scaricato dal magazzino attraverso il FIFO.
+
+Endpoint previsto:
+
+`POST /acquaviva/prodotti/senza-glutine/{id}/al-banco`
+
+Sequenza:
+
+**scarico FIFO → registrazione al banco**
+
+Se la giacenza è assente o insufficiente:
+
+- risposta `409`;
+- nessuna vendita/uscita al banco viene registrata;
+- nessuna giacenza negativa viene inventata.
+
+---
+
+## Ordini
+
+### Richiesta merce
+
+Ogni reparto può chiedere merce attraverso:
+
+**Richiedi merce**
+
+La richiesta deve conservare chi l'ha inserita.
+
+### Lavagna
+
+La Lavagna rappresenta consegna dalla scorta interna.
+
+Usa soltanto prodotti disponibili nel magazzino bar secondo le regole del flusso.
+
+Non è un ordine automatico al fornitore.
+
+### Carrello ordini
+
+Il Carrello ordini raccoglie le richieste che il titolare deve valutare prima dell'acquisto.
+
+Restano riservati al titolare anche lato server:
+
+- conferma ordine;
+- modifica quantità definitiva;
+- scelta/invio al fornitore;
+- operazioni amministrative equivalenti.
+
+### Righe ordine
+
+Ogni riga deve conservare almeno:
+
+- chi l'ha inserita;
+- prodotto/articolo;
+- quantità;
+- unità;
+- fornitore quando scelto;
+- prezzo di riga;
+- aliquota IVA;
+- imponibile;
+- IVA;
+- totale.
+
+I valori economici derivano dalle fonti ammesse e devono essere ricalcolati a ogni variazione della quantità o delle condizioni della riga.
+
+Non conservare totali incoerenti dopo una modifica.
+
+---
+
+## Confronto prezzi
+
+### Motore unico
+
+Motore canonico:
+
+`servizi/confronto_fornitori.py`
+
+Identità fornitore:
+
+P.IVA canonica quando disponibile.
+
+Non creare confronti paralleli in Catalogo, Ordini o frontend.
+
+### Prezzo pagato
+
+Un prezzo realmente pagato deriva soltanto dalle **righe XML delle fatture**.
+
+Un listino non diventa prezzo pagato.
+
+### Listino
+
+Il listino rappresenta il prezzo che il fornitore dichiara in una certa data.
+
+Deve essere mostrato sempre con:
+
+- indicazione `listino`;
+- data della fonte.
+
+Mai presentarlo come prezzo effettivamente pagato.
+
+### Unità di confronto
+
+Per bevande e prodotti equivalenti il confronto commerciale deve avvenire per pezzo/confezione coerente.
+
+Non confrontare automaticamente bevande a kg o litro quando l'unità commerciale reale è il pezzo/cartone.
+
+### Cartone
+
+Il prezzo fattura vale come prezzo del cartone quando:
+
+- l'unità della riga è un cartone;
+- oppure la confezione dichiara `N` pezzi e la quantità fatturata è compatibile con il cartone secondo la regola del motore.
+
+Non dividere arbitrariamente un prezzo senza una confezione determinabile.
+
+### Prezzi troppo distanti
+
+Se, nello stesso gruppo candidato, i prezzi per pezzo differiscono di oltre **3×** fra minimo e massimo:
+
+- dichiarare l'anomalia del gruppo;
+- non scegliere automaticamente il fornitore migliore;
+- richiedere verifica della normalizzazione/confezione.
+
+Questo controllo serve a intercettare articoli accorpati male o confezioni diverse.
+
+### Scelta fornitore
+
+Quando un prodotto è correttamente identificato e i prezzi sono confrontabili, la riga del carrello viene proposta al fornitore che costa meno.
+
+La scelta automatica è ammessa solo se il confronto è realmente omogeneo.
+
+---
+
+## Nomi: normalizzazione e matching
+
+Nome commerciale, descrizione di fattura e ingrediente di ricetta sono **tre concetti distinti**.
+
+Non devono essere fusi indiscriminatamente.
+
+La catena è:
+
+**descrizione fattura → articolo da ordinare / articolo di casa → ingrediente di ricetta**
+
+con motori e conferme distinti.
+
+### Articolo da ordinare
+
+L'articolo commerciale deve essere identificato dal testo tramite almeno:
+
+**marca + prodotto + formato + confezione**
+
+quando questi elementi sono presenti.
+
+Esempi di normalizzazione formato/confezione:
+
+- `CL.50` = `50CL` = `ML500`;
+- `LT.1,5` = `CL.150`;
+- `KG.3X6` conserva quantità e confezionamento;
+- `CTX24` / `X24` = confezione da 24 pezzi.
+
+Lotti, scadenze, gradi alcolici, percentuali e altri dati contingenti non fanno parte dell'identità base dell'articolo, salvo quando sono realmente distintivi del prodotto.
+
+### Rumore
+
+La normalizzazione può togliere elementi di rumore non distintivi, ad esempio:
+
+- `VAP`;
+- marcatori di confezione già interpretati come `CTX`;
+- origine geografica quando non identifica la variante commerciale.
+
+Parole troppo generiche come:
+
+- ACQUA;
+- BIRRA;
+- VINO;
+
+non sono da sole sufficienti per stabilire che due descrizioni rappresentino lo stesso articolo.
+
+### Match certo
+
+Stesso formato normalizzato e stesse parole distintive significative possono produrre un match certo quando non esistono elementi incompatibili.
+
+### Match probabile
+
+Se tutte le parole distintive di una descrizione sono contenute nell'altra, ma una descrizione contiene parole aggiuntive potenzialmente non distintive:
+
+- classificare come `probabile`;
+- non accorpare automaticamente;
+- mostrare la scelta a una persona.
+
+Decisioni umane:
+
+- `stesso`;
+- `diverso`.
+
+### Materiale/contenitore incompatibile
+
+Vetro e lattina non si uniscono automaticamente.
+
+Un'informazione di confezione/materiale incompatibile prevale sulla somiglianza del nome.
+
+---
+
+## Lettura AI degli articoli
+
+Motore:
+
+`servizi/lettura_articoli_ai.py`
+
+La lettura AI si esegue una volta per descrizione/versione secondo il sistema di cache previsto.
+
+Può estrarre:
+
+- marca;
+- prodotto;
+- variante;
+- formato;
+- confezione.
+
+Misura e numero pezzi si acquisiscono **solo se scritti nel testo**.
+
+Mai indovinarli.
+
+Due descrizioni con la stessa lettura strutturata possono essere dichiarate:
+
+`abbinato_ai`
+
+quando le altre regole di compatibilità sono rispettate.
+
+L'abbinamento AI deve restare separabile/revocabile se una persona dimostra che i prodotti sono diversi.
+
+---
+
+## Descrizione fattura → ingrediente di ricetta
+
+Esiste una sola tabella di mapping:
+
+`nome_mapping`
+
+Chiave:
+
+`descrizione_key`
+
+La chiave deriva dalla descrizione normalizzata secondo `chiave_descrizione`, mantenendo il criterio canonico previsto, inclusi minuscolo e spazi normalizzati.
+
+Ogni riga deve poter conservare almeno:
+
+- `nome_canc`;
+- `ingredienti_ricetta`;
+- `alimentare`;
+- `confermato`;
+- `fonte`;
+- prove e riferimenti necessari.
+
+### Conferma umana
+
+Una proposta non autorizza lo scarico merce.
+
+Per lo scarico automatico prevale il mapping `confermato` da una persona.
+
+### Ripiego senza conferma
+
+Quando manca un mapping confermato, il sistema può usare soltanto regole conservative a parola intera ed escludere lotti per i quali esistono prove incompatibili.
+
+Esempi da non confondere:
+
+- `olive in acqua e sale` non significa che il prodotto sia `sale`;
+- `nuova Biancalieve` non significa `uova`;
+- `granella di pistacchio` non è automaticamente `crema di pistacchio`.
+
+`nome_mapping` identifica l'ingrediente utile alle ricette.
+
+Non è il registro canonico dell'articolo commerciale da ordinare.
+
+---
+
+## Catalogo fornitore → riga fattura
+
+Il collegamento del catalogo/listino del fornitore con le righe XML usa:
+
+`applica_prezzo_da_fatture`
+
+Ordine di affidabilità:
+
+1. codice articolo della riga XML;
+2. nome normalizzato esatto o alias dichiarato;
+3. forte sovrapposizione di parole, soltanto quando una riga di fattura porta a un unico prodotto compatibile.
+
+Mai collegare per semplice sottostringa.
+
+Ciò che non si aggancia con sufficiente certezza resta:
+
+- senza prezzo pagato;
+- senza stato `già acquistato`.
+
+Non inventare il collegamento per rendere completa la UI.
+
+---
+
+## Web
+
+Un solo ingresso di ricerca web:
+
+`cerca_sul_web`
+
+Non creare una seconda chiamata parallela per la stessa descrizione.
+
+Una categoria può essere assegnata automaticamente soltanto quando:
+
+- il web ha confidenza alta;
+- esiste almeno una fonte;
+- il risultato web concorda con il testo della fattura;
+- la categoria appartiene al dizionario ammesso.
+
+Negli altri casi il risultato web è una **proposta** che attende conferma.
+
+L'AI e il web aiutano a trovare il collegamento.
+
+Non sostituiscono la prova né la decisione umana nei casi ambigui.
+
+---
+
+# 71. Ricette e disponibilità
+
+Disponibilità commerciale ≠ giacenza teorica.
+
+“Esaurito oggi” è una scelta commerciale esplicita.
+
+---
+
+# 72. HACCP
+
+Mai generare valori finti.
+
+Mai:
+
+- random;
+- temperature plausibili;
+- firme false.
+
+La misura arriva da una persona.
+
+La firma richiede identità valida.
+
+---
+
+# 73. Menu
+
+Lotti spinge nel Menu.
+
+Il Menu non è un secondo proprietario della ricetta.
+
+Le righe `origine="lotti"` sono gestite da Lotti.
+
+---
+
+# 74. Prodotto unico Menu / B&B / Cassa
+
+## TARGET
+
+Stesso prodotto per:
+
+- Menu;
+- Lotti;
+- B&B;
+- Cassa.
+
+Stesso:
+
+- ID;
+- PRD;
+- nome;
+- allergeni;
+- prezzi canonici;
+- categorie.
+
+## PRODUZIONE
+
+Non assumere completata l'unificazione finché le relative migrazioni non risultano applicate e verificate sul database reale.
+
+---
+
+# 75. Codice prodotto
+
+Formato:
+
+`PRD-000123`
+
+Assegnato dal database.
+
+Mai dall'app.
+
+Mai `max + 1`.
+
+---
+
+# 76. Prezzi Menu
+
+Distinguere:
+
+- banco;
+- tavolo.
+
+Un prezzo non deciso resta non deciso.
+
+Non copiare automaticamente uno nell'altro.
+
+---
+
+# 77. Allergeni
+
+Dato mancante ≠ nessun allergene.
+
+Distinguere:
+
+- esclusione motivata;
+- conferma “nessuno”;
+- dato mancante.
+
+---
+
+# 78. B&B / Colazioni
+
+Applicazione:
+
+`/convenzioni/`
+
+Ruoli:
+
+- titolare;
+- albergatore;
+- ospite.
+
+La sessione titolare deriva dal gestionale.
+
+L'albergatore ha il proprio PIN.
+
+---
+
+# 79. Wallet B&B
+
+Saldo:
+
+somma movimenti confermati.
+
+Ricariche e rimborsi idempotenti.
+
+Ordine wallet:
+
+addebito atomico.
+
+Fallimento ordine:
+
+storno.
+
+---
+
+# 80. Fatture B&B
+
+Non automatizzare emissione fiscale con API inesistenti.
+
+La ricarica che richiede fattura apre la relativa attesa.
+
+---
+
+# 81. Ordini hotel
+
+Ogni ordine ha:
+
+- giorno;
+- orario;
+- metodo pagamento;
+- stato;- righe.
+
+Il server decide la scadenza.
+
+Non il browser.
+
+---
+
+# 82. Flotta aziendale a noleggio
+
+## REGOLA
+
+Le auto gestite dal sistema sono veicoli a **noleggio a lungo termine**.
+
+Ceraldi Group S.r.l. è intestataria dei contratti e destinataria dei verbali.
+
+Il proprietario/fatturante è il noleggiatore.
+
+Il gestionale deve distinguere:
+
+- veicolo;
+- targa;
+- noleggiatore;
+- contratto;
+- periodo contratto;
+- assegnazioni nel tempo;
+- utilizzatore alla data.
+
+Non dedurre proprietà aziendale dal fatto che il veicolo compare in fattura.
+
+---
+
+## Flotta documentata
+
+| Targa | Veicolo | Noleggiatore | Contratto | Dal | Al | Utilizzatore |
+| --- | --- | --- | --- | --- | --- | --- |
+| FR788JG | Peugeot 3008 | LeasePlan | 5665218 | 07/07/2018 | 06/01/2022 da confermare | Valerio Ceraldi |
+| FS135MG | Ford Edge | ALD | 40254099 | 11/10/2018 | 31/01/2020 | Vincenzo Ceraldi |
+| GA304TA | DS7 Crossback | PSA Renting / Free2Move | 7507840825 | 13/05/2020 ricavata, da confermare | 20/05/2021 | Vincenzo Ceraldi |
+| GA308TA | DS7 Crossback | PSA Renting / Free2Move | 7507840835 | 01/07/2020 | 20/05/2021 | Giuseppina Pane |
+| GE911SC | Mazda CX-5 | ALD | 40634991 | 08/03/2021 | in corso | Valerio fino 26/10/2021; Marina Liuzza fino 26/12/2023; Giuseppina Pane fino 30/04/2024; poi pool |
+| GG262JA | Mazda CX-5 | Arval | 1568555 | 13/07/2021 | 11/11/2024 | Valerio Ceraldi |
+| GG782PN | Alfa Romeo Stelvio | Leasys | 1202101854 e altri documenti | 24/09/2022 | 04/12/2025 | Vincenzo Ceraldi |
+| GW980EP | Mazda CX-60 | Arval | 2637658 | 09/08/2024 | in corso | Antonietta Ceraldi |
+| GX037HJ | BMW X1 | ALD / Ayvens | 6074667 | 11/01/2025 | 10/01/2029 | Valerio Ceraldi |
+| HB411GV | BMW X3 | Leasys | 1203652735 | 04/12/2025 | 04/12/2028 | Vincenzo Ceraldi |
+
+Questi dati provengono dai documenti esaminati e vanno trattati con il relativo grado di certezza.
+
+---
+
+## Correzioni e anomalie note della flotta
+
+- `QW980EP` è errore di battitura di `GW980EP`, non una seconda auto.
+- `GG473WT` compare in un verbale ma non risulta fra le auto aziendali documentate.
+- la data iniziale di `GA304TA` è ricavata dalla durata contrattuale e resta da confermare;
+- la fine effettiva di `FR788JG` resta da confermare;
+- Giuseppina Pane può comparire nello storico assegnazioni anche se non presente nell'anagrafica HR attuale;
+- i verbali personali della targa `DW730ZF` non appartengono alla flotta aziendale e restano esclusi.
+
+Non correggere automaticamente una targa simile senza prova documentale.
+
+---
+
+# 83. Verbali e conducente
+
+Il verbale è intestato alla società quando la società è intestataria del veicolo/contratto.
+
+Il conducente non è necessariamente la società né l'utilizzatore attuale.
+
+Il conducente si determina dalla:
+
+- targa;
+- data infrazione;
+- ora infrazione quando presente;
+- storico delle assegnazioni.
+
+Il motore deve scegliere l'utilizzatore **alla data e ora del fatto**.
+
+Non quello di oggi.
+
+---
+
+## Veicolo in pool
+
+Se alla data del verbale il veicolo è in `pool` o non esiste una assegnazione univoca:
+
+`DA_ASSEGNARE`
+
+Non scegliere automaticamente una persona.
+
+La decisione è del titolare.
+
+---
+
+## Cambio conducente nello stesso giorno
+
+Se il verbale non contiene un'ora sufficiente e il giorno coincide con un cambio di assegnazione:
+
+mostrare i candidati.
+
+Non scegliere.
+
+---
+
+# 84. Verbale ↔ fattura
+
+Esiste un solo collegamento canonico fra verbale e fattura.
+
+Il verbale porta il riferimento alla fattura.
+
+Non mantenere sul lato fattura una seconda lista concorrente se non necessaria.
+
+La fattura collegata può essere:
+
+- fattura del noleggiatore;
+- spesa di rinotifica;
+- spesa di gestione multa;
+- altra spesa documentata collegata al verbale.
+
+Il collegamento della fattura **non prova il pagamento del verbale**.
+
+---
+
+# 85. Verbale, pagamento e spese del noleggiatore
+
+Sono fatti distinti:
+
+1. verbale;
+2. pagamento del verbale;
+3. spese bancarie;
+4. fattura del noleggiatore per gestione/rinotifica.
+
+Il noleggiatore può fatturare alla società spese proprie, ad esempio:
+
+- gestione pratica;
+- rinotifica;
+- trasmissione dati conducente.
+
+Queste spese non sono l'importo della sanzione.
+
+Devono restare collegate al verbale ma contabilmente distinte.
+
+---
+
+# 86. Importo ridotto e importo ordinario
+
+Il verbale può prevedere un importo ridotto entro il termine previsto dalla notifica e un importo ordinario successivo.
+
+La data di riferimento è la **notifica provata**.
+
+Non la data del verbale.
+
+Non inventare la data di notifica quando manca.
+
+Scaduto il termine del ridotto, il sistema può proporre l'importo ordinario soltanto se letto dal documento.
+
+Mai inventarlo.
+
+---
+
+# 87. Pagamento del verbale
+
+Il verbale deve essere considerato **pagato e provato** solo con una prova documentale valida.
+
+Prove ammesse secondo il flusso:
+
+- ricevuta PagoPA;
+- quietanza;
+- ricevuta PayPal;
+- bonifico documentato secondo le regole del dominio.
+
+L'importo deve coincidere con quello dovuto al centesimo.
+
+Un pagamento solo dichiarato non basta per il recupero sul dipendente.
+
+La sola riga bancaria non basta, se manca la prova documentale richiesta dal flusso di recupero.
+
+---
+
+# 88. Recupero del verbale al conducente
+
+Il recupero verso il conducente segue questa sequenza:
+
+1. verbale certo;
+2. targa certa;
+3. conducente certo alla data/ora;
+4. pagamento del verbale provato;
+5. importo certo;
+6. proposta di trattenuta;
+7. conferma del titolare;
+8. nota al consulente del lavoro;
+9. eventuale recepimento in busta secondo il processo paghe.
+
+La trattenuta **non parte automaticamente**.
+
+Il gestionale produce una proposta.
+
+Solo il titolare può confermarla.
+
+---
+
+# 89. Trattenuta verbale
+
+La proposta nasce soltanto quando:
+
+- il verbale è pagato;
+- esiste prova valida;
+- l'importo è certo;
+- il conducente è certo.
+
+Non nasce da:
+
+- semplice assegnazione del veicolo;
+- movimento bancario isolato;
+- pagamento dichiarato senza prova;
+- fattura del noleggiatore;
+- sola presenza di una multa.
+
+Stato iniziale:
+
+`PROPOSTA`
+
+---
+
+# 90. Nota al consulente del lavoro
+
+Dopo la conferma della trattenuta, il gestionale prepara la nota per il consulente.
+
+La nota appartiene al **mese successivo al pagamento del verbale**.
+
+Viene trasmessa insieme alle presenze del mese attraverso i flussi previsti.
+
+Dopo invio riuscito:
+
+`inviato_consulente`
+
+---
+
+## Contenuto minimo della nota
+
+La nota deve contenere:
+
+- numero verbale;
+- targa;
+- data infrazione;
+- ora infrazione se disponibile;
+- importo pagato;
+- data pagamento;
+- IUV o riferimento della prova;
+- conducente alla data;
+- eventuale riferimento alla quietanza;
+- eventuali riferimenti documentali utili.
+
+Il consulente deve poter capire esattamente quale verbale viene recuperato.
+
+---
+
+# 91. Verbali e presenze
+
+## PRODUZIONE ATTUALE
+
+Il gestionale **non usa oggi il foglio presenze per stabilire chi guidava il veicolo**.
+
+Il conducente viene determinato dallo storico di assegnazione del veicolo.
+
+Il foglio presenze svolge un'altra funzione:
+
+porta al consulente la nota del recupero nel mese successivo al pagamento.
+
+Non confondere i due flussi.
+
+---
+
+## FUTURO CONTROLLO POSSIBILE
+
+Un controllo incrociato con le presenze può essere utile come **segnalazione**, non come sostituto dello storico veicolo.
+
+Esempio:
+
+- conducente veicolo = Mario;
+- presenze = Mario assente/ferie nella data del verbale.
+
+Il sistema potrebbe generare:
+
+`ASSEGNAZIONE_AUTO_DA_VERIFICARE`
+
+ma non cambiare automaticamente il conducente.
+
+Lo storico del veicolo e la scelta del titolare restano autorevoli.
+
+---
+
+# 92. PagoPA
+
+Una ricevuta PagoPA prova il pagamento.
+
+Non prova automaticamente la natura.
+
+La natura viene dal documento quando esplicita o dalla scelta del titolare.
+
+Una ricevuta PagoPA non crea un verbale.
+
+Senza verbale compatibile resta in attesa.
+
+---
+
+# 93. Cartella di pagamento
+
+La cartella crea l'obbligo.
+
+La ricevuta lo soddisfa se:
+
+- stesso IUV;
+- importo al centesimo.
+
+La scadenza dipende dalla notifica reale.
+
+Non inventare data notifica dal PDF.
+
+---
+
+# 94. Sicurezza
+
+Segreti solo in ambienti sicuri.
+
+Mai in:
+
+- codice;
+- repository;
+- documenti;
+- chat;
+- file di memoria.
+
+Ogni route nuova deve essere protetta.
+
+Autorizzazione sempre backend.
+
+---
+
+# 95. Sessioni
+
+ERP fornisce la sessione amministratore comune.
+
+HR, Menu e Lotti la riutilizzano quando previsto.
+
+Non creare login admin indipendenti.
+
+---
+
+# 96. MFA
+
+Non dichiarare MFA universale se non implementata universalmente.
+
+Applicare MFA dove previsto dalle operazioni sensibili e dalle policy reali.
+
+---
+
+# 97. Telegram
+
+Telegram è il canale operativo attivo per gli alert previsti.
+
+Non reintrodurre sistemi paralleli salvo flussi espressamente autorizzati.
+
+---
+
+# 98. Design ERP
+
+ERP:
+
+- crema;
+- inchiostro;
+- terracotta;
+- niente blu/viola/freddi;
+- `PageHeader`;
+- filtri;
+- tabella;
+- caricamento progressivo;
+- card mobile automatiche.
+
+Plus Jakarta Sans.
+
+Icone Lucide.
+
+Niente emoji nelle nuove interfacce applicative.
+
+---
+
+# 99. Design HR / Menu / Lotti
+
+Palette salvia/crema.
+
+Niente blu, indaco, viola, ciano o grigi freddi.
+
+Usare i token esistenti.
+
+Non introdurre un secondo design system.
+
+---
+
+# 100. Mobile
+
+Nessuno scroll orizzontale su smartphone.
+
+Le tabelle semplici ERP usano il meccanismo canonico di trasformazione in card.
+
+Tocco minimo:
+
+44 px.
+
+---
+
+# 101. Flussi operativi
+
+Pasticcere e banconista non devono digitare testo quando può essere evitato.
+
+Preferire:
+
+- tendine;
+- chip;
+- bottoni;
+- selezioni.
+
+Testo libero solo come eccezione “Altro”.
+
+---
+
+# 102. AI
+
+Un solo client.
+
+AI:
+
+- legge;
+- classifica;
+- propone.
+
+Non scrive direttamente fatti contabili.
+
+La conferma applica il motore deterministico.
+
+---
+
+# 103. Lettori AI
+
+Un documento deve avere un percorso canonico.
+
+AI produce proposta.
+
+Il parser deterministico scrive il fatto.
+
+## APERTO
+
+Esistono ancora lettori AI duplicati.
+
+Consolidare un flusso alla volta.
+
+Non crearne altri.
+
+---
+
+# 104. Ricerca web Lotti
+
+Un solo motore finale.
+
+## APERTO
+
+Esistono ancora due code/giri.
+
+Fonderli.
+
+---
+
+# 105. Legacy
+
+“Legacy” non è una giustificazione per mantenere due sistemi.
+
+Un percorso vecchio resta solo finché esistono:
+
+- dati;
+- lettori;
+- writer;
+- URL necessari.
+
+Prima di eliminare:
+
+contare i dati reali.
+
+---
+
+# 106. legacy_staging
+
+Schema transitorio.
+
+Migrare tramite vie normali.
+
+Mai SQL diretto se il flusso applicativo produce anche:
+
+- audit;
+- giornale;
+- eventi;
+- relazioni.
+
+Dopo migrazione verificata:
+
+eliminare lo schema.
+
+---
+
+# 107. Stato produzione verificato
+
+Questa sezione contiene solo ciò che serve a capire il comportamento corrente.
+
+Non è un diario.
+
+## Servizio
+
+- Render serve `main`.
+- Supabase è backend dati.
+- cartella Drive unica attiva.
+- scheduler attivo.
+- protocollo incrementale attivo.
+- protocollo completo spento per memoria.
+
+## Fatture
+
+Persistono ID storici misti testo/numero.
+
+Il pregresso non è completamente normalizzato.
+
+Esistono partite e relazioni da riallineare.
+
+## Banca
+
+Persistono:
+
+- movimenti senza categoria;
+- relazioni incomplete;
+- fatture con stato di riconciliazione incoerente.
+
+## Contabilità
+
+Persistono scritture storiche non quadrate.
+
+Il pagamento non chiude ancora tutti i debiti nel giornale.
+
+Il bilancio non usa ancora la competenza in tutti i percorsi.
+
+## HR
+
+Persistono:
+
+- bonifici da associare;
+- riferimenti cedolino orfani;
+- moduli duplicati.
+
+## Menu / prodotto unico
+
+Non considerare completata l'unificazione finché le migrazioni non risultano applicate e collaudate sul database reale.
+
+## Drive
+
+L'incrementale non vede tutte le eliminazioni/spostamenti.
+
+## AI
+
+Client unico raggiunto.
+
+Pipeline duplicate ancora presenti.
+
+## Flotta / verbali
+
+Lo storico dei veicoli e degli utilizzatori deve essere completato e consolidato nel gestionale.
+
+Le assegnazioni storiche documentate sono la base per individuare il conducente alla data del verbale.
+
+Le presenze non sono oggi una fonte per decidere il conducente.
+
+---
+
+# 108. Aperto — priorità critica
+
+## P1 — Contabilità
+
+1. Fare in modo che ogni pagamento chiuda il debito nel libro giornale.
+2. Correggere il bilancio affinché usi `data_competenza`.
+3. Ricostruire debiti/crediti alla data di chiusura.
+4. Rettificare note di credito storiche errate.
+5. Analizzare scritture non quadrate.
+
+---
+
+# 109. Aperto — fatture e banca
+
+1. Riallineare fatture riconciliate senza prova coerente.
+2. Riparare relazioni senza `fattura_id`.
+3. Recuperare fatture senza partita.
+4. Ridurre stati pagamento duplicati.
+5. Uniformare gli ID futuri.
+6. Classificare movimenti senza categoria.
+
+---
+
+# 110. Aperto — documenti
+
+1. Eliminare decisioni basate sul nome file.
+2. Completare backfill relazioni.
+3. Bonificare collegamenti protocollo.
+4. Verificare blob non referenziati.
+5. Non creare nuovi endpoint originali paralleli.
+
+---
+
+# 111. Aperto — HR
+
+1. Eliminare fork residui.
+2. Riparare bonifici con cedolino orfano.
+3. Ridurre coda bonifici.
+4. Verificare doppio conteggio acconto.
+5. Portare tutti gli ingressi cedolino sul motore unico.
+
+---
+
+# 112. Aperto — Menu / B&B / Cassa
+
+1. Applicare migrazioni prodotto unico.
+2. Verificare registro migrazioni.
+3. Verificare `public.menu_products`.
+4. Verificare `bb_prodotti`.
+5. Verificare codice PRD.
+6. Provare voucher.
+7. Provare ordine hotel.
+8. Ripubblicare Menu da Lotti.
+9. Collegare ricette senza doppioni.
+10. Esportare migrazioni Cassa/Catalogo mancanti.
+
+---
+
+# 113. Aperto — IVA / LIPE
+
+1. Completare 6013.
+2. Completare 6099.
+3. Credito annuale.
+4. Compensazione orizzontale.
+5. Conguaglio dicembre.
+6. Unificare credito precedente.
+7. Implementare confronto LIPE con soglia di piccolo scostamento configurata.
+8. Evidenziare le componenti dello scarto.
+9. Creare attese tributo da LIPE quando F24 manca.
+10. Collegare quietanza con protocollo alle attese LIPE senza creare F24 fittizi.
+
+---
+
+# 114. Aperto — F24
+
+1. Consolidare F24 ↔ banca.
+2. Eliminare matching duplicati.
+3. Gestire modelli senza data/saldo.
+4. Completare riscontro contributi.
+5. Correggere parser storici solo con PDF reali.
+6. Mai forzare F24 non quadrato.
+
+---
+
+# 115. Aperto — Drive
+
+1. Rendere sostenibile una verifica completa periodica.
+2. Continuare bonifica relazioni.
+3. Collegare originali HR quando determinabili.
+4. Eliminare vecchi sync non canonici.
+
+---
+
+# 116. Aperto — Lotti
+
+1. Smaltire arretrato.
+2. Consolidare ricerca web.
+3. Risolvere unità non convertibili.
+4. Confermare mapping.
+5. Migrare foto residue a Storage.
+6. Non inventare scadenze o lotti.
+
+---
+
+# 117. Aperto — Flotta e verbali
+
+1. Popolare l'anagrafica veicoli con i contratti documentati.
+2. Registrare lo storico assegnazioni con `dal/al`.
+3. Marcare `GW980EP` come targa corretta e non creare `QW980EP`.
+4. Tenere `GG473WT` da verificare perché compare in un verbale ma non nella flotta nota.
+5. Escludere i verbali personali `DW730ZF`.
+6. Confermare le date non provate, in particolare GA304TA e FR788JG.
+7. Collegare le fatture del noleggiatore ai relativi verbali quando documentato.
+8. Conservare separate sanzione e spesa gestione/rinotifica.
+9. Generare proposta trattenuta soltanto dopo pagamento documentato e conducente certo.
+10. Inviare al consulente la nota nel mese successivo al pagamento.
+11. Valutare in futuro un controllo presenze come alert, mai come assegnazione automatica del conducente.
+
+---
+
+# 118. Aperto — B&B
+
+1. Attivare SumUp solo con chiave configurata.
+2. Chiudere SQL obsolete quando possibile.
+3. Logout sessione titolare DB.
+4. Configurare URL recensioni.
+5. Configurare WhatsApp solo per recensioni.
+6. Completare varianti.
+7. Rivedere prezzi extra tavolo.
+8. Rimuovere demo al lancio.
+
+---
+
+# 119. Aperto — sicurezza Git
+
+Nella cronologia sono esistiti segreti reali.
+
+Prima:
+
+ruotare credenziali.
+
+Solo dopo autorizzazione:
+
+eventuale riscrittura cronologia.
+
+Riscrivere Git non revoca le credenziali.
+
+---
+
+---
+
+# 119A. Aperto — motore universale di riconciliazione
+
+1. Uniformare i livelli `PREVISTO`, `PREDISPOSTO`, `DOCUMENTATO`, `TROVATO_IN_BANCA`, `PARZIALMENTE_RICONCILIATO`, `RICONCILIATO`, `DA_VERIFICARE` senza cancellare gli stati specialistici già necessari ai domini.
+2. Rendere esplicite le allocazioni uno-a-molti, molti-a-uno e molti-a-molti con importo allocato al centesimo, fonte, destinazione, certezza, metodo, autore/algoritmo e timestamp.
+3. Trattare PartenoPay come origine/portale del flusso pagoPA, non come motore contabile indipendente.
+4. Modellare cartelle, rottamazioni, dilazioni INPS e avvisi bonari come posizione principale → eventuale piano → rate → pagamento/prova → banca, senza trasformare ogni rata in un debito scollegato.
+5. Versionare le regole normative che cambiano nel tempo, incluse scadenze e condizioni delle rateizzazioni; non cablare nel codice limiti che dipendono dalla normativa vigente.
+6. Collegare il calendario fiscale previsionale a scadenze normative, storico aziendale, documenti reali e dati operativi, distinguendo sempre previsione, calcolo, documentazione, predisposizione, pagamento e riconciliazione.
+7. Fare alimentare alla tesoreria le uscite fiscali e finanziarie previste senza trasformarle in debiti certi prima della prova o del documento autorevole.
+
+
+---
+
+# 120. Verifica delle modifiche
 
 Per ogni modifica pertinente:
 
 1. test mirati;
-2. `python -m pytest -q` quando il cambiamento backend lo richiede;
-3. `yarn test` e `yarn build` in `frontend/` quando coinvolge il frontend;
-4. `git diff --check`; commit dei soli file pertinenti, mai `git add -A`;
-5. **revisione avversariale del proprio diff prima di unire**: cercarvi cosa
-   è sbagliato, non la conferma che funziona. Dal 19/09/2026 non c'è più un
-   revisore esterno (bot Codex rimosso) e i test provano solo ciò che qualcuno
-   ha pensato di scrivere. Tre domande: la chiave che leggo esiste sui dati
-   veri? cosa ho dichiarato fatto senza riguardarlo? questo motore c'è già
-   altrove? Da lì sono usciti l'IRES ruotata e l'email F24 mai partita. Un
-   censimento di moduli mai importati conta solo se risolve gli import
-   relativi **e** quelli dinamici (`__import__("app.x")`) su tutto il
-   repository: cercarli nel solo `app/` più `tests/` li sovrastima di tre
-   volte, e un file in più cancellato è un guasto in produzione;
-6. unione su `main` (è la consegna: Render pubblica solo da lì);
-7. CI verde e verifica `/api/health` sul commit pubblicato;
-8. controllo live del flusso interessato senza mutare dati non autorizzati.
+2. suite backend quando necessaria;
+3. test frontend;
+4. build;
+5. `git diff --check`;
+6. revisione avversariale;
+7. commit dei soli file pertinenti;
+8. push branch;
+9. PR finale;
+10. merge su `main`;
+11. verifica CI;
+12. verifica health;
+13. verifica commit pubblicato;
+14. controllo live del flusso.
 
-**I minuti di GitHub Actions sono a consumo** (repository privato; il 02/10/2026 il limite di spesa ha fermato ogni run, anche su `main`), e sono l'unica voce che cresce col numero di PR: Render e Supabase hanno un canone fisso e un deploy in più non costa niente. Regole del titolare (02/10/2026): **una PR solo a lavoro finito** e collaudato in locale (test backend, test e build dei quattro frontend), mai una per ogni pezzo; sulla PR gira solo `ci.yml`, mentre `produzione.yml` (E2E col browser, audit layout, verifica live) gira **solo su `main`** o a mano; **ogni sessione finisce con un push sul branch di salvataggio** `<branch>-lavori` (un push su un branch senza PR non fa partire nessun workflow: è gratis), perché il contenitore cloud della sessione è temporaneo e il PC del titolare può essere spento: ciò che non è pushato è perso, e la sessione successiva — da PC o da telefono — riparte da `git pull` dello stesso branch, mai da un secondo tronco. Un commit di salvataggio può contenere lavoro a metà; la PR finale no.
+---
 
-**Segreti**: `ci.yml` ha il job «Segreti (gitleaks)» (binario fissato, `.gitleaks.toml` con i soli falsi positivi noti: chiavi di idempotenza, fixture, chiave pubblicabile Supabase, nomi delle variabili in `render.yaml`). Scansiona i file presenti, non la cronologia. Un segreto vero non si aggiunge mai alla lista bianca: si toglie dal codice e si ruota.
+# 121. Revisione avversariale
 
-Produzione: **https://gestionalecloud.onrender.com**
+Prima del merge chiedersi:
+
+1. La chiave esiste sui dati reali?
+2. Ho dichiarato fatto qualcosa che non ho verificato?
+3. Esiste già un altro motore?
+4. Sto trasformando un dato sconosciuto in zero?
+5. Sto usando il nome file come prova?
+6. Sto creando una seconda fonte?
+7. Ho aggiornato fatto e relazioni?
+8. Il secondo giro resta idempotente?
+9. Una prova documentale viene confusa con una prova bancaria?
+10. Una proiezione UI viene confusa con il fatto canonico?
+
+---
+
+# 122. Idempotenza
+
+Il secondo ingest della stessa fonte deve produrre:
+
+`nuovi = 0`
+
+e nessuna nuova scrittura contabile.
+
+Se crea un secondo fatto:
+
+il flusso è difettoso.
+
+---
+
+# 123. Verifica live
+
+Non dichiarare completato perché:
+
+- compila;
+- test verdi;
+- HTTP 200;
+- pagina visibile.
+
+Verificare:
+
+- fatto;
+- relazioni;
+- deduplica;
+- stato;
+- pagamento;
+- prova;
+- scrittura;
+- risultato UI.
+
+---
+
+# 124. Regola finale
+
+Prima di creare qualcosa di nuovo chiedersi:
+
+**“Esiste già il motore che dovrebbe fare questa cosa?”**
+
+Se sì:
+
+**correggere quello.**
+
+Non aggiungere:
+
+- secondo parser;
+- secondo writer;
+- secondo stato;
+- secondo archivio;
+- seconda riconciliazione;
+- seconda fonte autorevole;
+- secondo endpoint equivalente.
+
+L'obiettivo di GestionaleCloud è che ogni evento reale esista una sola volta e che documenti, obblighi, pagamenti, prove, contabilità e interfaccia siano collegati attraverso la stessa catena di dati.
