@@ -107,3 +107,19 @@ async def nuova_voce(
         return {"voce": await piano.aggiungi_voce(Database.get_db(), body.model_dump())}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/piano-tributi/stipendi-da-pagare", summary="Netti dell'Elenco netti del consulente e stato dei bonifici")
+async def stipendi_da_pagare(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
+    """Sola lettura: l'ultimo elenco netti canonico contro i pagamenti che HR ha gia' depositato."""
+    from app.services import elenchi_netti
+    from app.services.hr_pagamenti_deposito import _db_hr
+
+    db_hr = _db_hr()
+    indici: Dict[str, Any] = {}
+    if db_hr is not None:
+        from app.hr.routers.dipendenti_cloud import _indici_dipendenti
+        indici = await _indici_dipendenti(db_hr)
+    esito = await elenchi_netti.stipendi_da_pagare(Database.get_db(), db_hr, indici)
+    esito["hr_disponibile"] = db_hr is not None
+    return esito

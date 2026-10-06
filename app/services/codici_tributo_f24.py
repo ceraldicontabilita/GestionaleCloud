@@ -2159,9 +2159,11 @@ CODICI_TRIBUTO_F24 = {
 # la regolarizzazione contributiva di un periodo precedente.
 CAUSALI_INPS: Dict[str, str] = {
     "DM10": "Contributi INPS lavoratori dipendenti (DM10)",
-    "RC01": "Regolarizzazione contributiva di periodi pregressi",
+    "RC01": "Contributi INPS lavoratori dipendenti pagati in ritardo / regolarizzazione (ravvedimento del DM10 dello stesso periodo)",
     "C10": "Gestione separata committenti - aliquota piena",
     "CXX": "Gestione separata committenti - aliquota ridotta",
+    "P10": "Gestione separata liberi professionisti - aliquota piena",
+    "PXX": "Gestione separata liberi professionisti - aliquota ridotta",
 }
 
 

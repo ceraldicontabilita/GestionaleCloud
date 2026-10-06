@@ -62,11 +62,21 @@ _RE_DITTA = re.compile(r"DITTA\s*:\s*(.+?)\s+CODICE\s*:\s*(\d+)")
 _RE_STAMPA = re.compile(r"STAMPATO\s+IL\s*:\s*(\d{2})/(\d{2})/(\d{4})\s+ALLE\s*:\s*(\d{2}):(\d{2})")
 
 
-def riconosci(testo: str) -> bool:
-    """Il prospetto: intestazione «PROSPETTO CONTABILE», la ditta e almeno una voce dei conti."""
+def e_riepilogo_paghe(testo: str) -> bool:
+    """Il «Prospetto riepilogativo elaborazione paghe» (Paghe Infinity): il riepilogo mensile del consulente."""
     t = re.sub(r"\s+", " ", (testo or "").upper())
-    return "*** PROSPETTO CONTABILE ***" in t and "DITTA :" in t and (
-        "RITENUTE FISCALI" in t or "SALDO DM10" in t or "TOTALE RETRIBUZIONI LORDE" in t)
+    return "PROSPETTO RIEPILOGATIVO ELABORAZIONE PAGHE" in t and "RIEPILOGO IMPORTI A DEBITO/CREDITO" in t
+
+
+def riconosci(testo: str) -> bool:
+    """Il prospetto del consulente, in uno dei due formati.
+
+    Vecchio: intestazione «PROSPETTO CONTABILE», la ditta e almeno una voce dei conti.
+    Nuovo (Paghe Infinity): «Prospetto riepilogativo elaborazione paghe» con il riepilogo debiti/crediti.
+    """
+    t = re.sub(r"\s+", " ", (testo or "").upper())
+    return e_riepilogo_paghe(testo) or ("*** PROSPETTO CONTABILE ***" in t and "DITTA :" in t and (
+        "RITENUTE FISCALI" in t or "SALDO DM10" in t or "TOTALE RETRIBUZIONI LORDE" in t))
 
 
 def _cents(valore: str) -> int:
@@ -77,8 +87,66 @@ def _etichetta(testo: str) -> str:
     return re.sub(r"\s+", " ", testo).strip(" |.")
 
 
+# Riepilogo paghe nuovo formato: le voci della sezione «RIEPILOGO IMPORTI A DEBITO/CREDITO».
+# Si mappano sull'F24 solo le due che coincidono al centesimo con una riga F24 (INPS dipendenti e
+# gestione separata); IRPEF e addizionali si dividono nell'F24 su piu' codici e periodi (3847/3848,
+# anni diversi): si vedono, non si usano (mai un conto inventato).
+_RE_RP_PERIODO = re.compile(r"\bAL\s+([A-Z]+)\s+(\d{4})\s+NORM", re.I)
+_RE_RP_AZIENDA = re.compile(r"^\s*(\d{6})\s+(\S.*?)\s*$", re.M)
+_RE_RP_VOCE = re.compile(rf"^(.+?)\s+({_IMPORTO})\s+PERIODO\s+VERSAMENTO\s+(\d{{2}})/(\d{{4}})\s*$", re.I | re.M)
+_RE_RP_NETTI = re.compile(rf"TOTALE\s+NETTI\s+({_IMPORTO})", re.I)
+_RE_RP_TOTALE = re.compile(rf"TOTALE\s+COMPLESSIVO\s+({_IMPORTO})", re.I)
+_ATTESI_RIEPILOGO: List[Tuple[str, str, str, str]] = [
+    # (inizio etichetta, codice, sezione F24, lato)
+    ("9001 I.N.P.S. ID.", "DM10", "sezione_inps", "debito"),
+    ("9005 I.N.P.S. - GESTIONE SEPARATA", "CXX", "sezione_inps", "debito"),
+]
+
+
+def _leggi_riepilogo_paghe(testo: str) -> Dict[str, Any]:
+    """Il riepilogo mensile paghe come dati; deve quadrare: netti + importi a debito = totale complessivo."""
+    periodo = _RE_RP_PERIODO.search(testo)
+    mese = _MESI.get(periodo.group(1).upper()) if periodo else None
+    anno = int(periodo.group(2)) if periodo else None
+    azienda = _RE_RP_AZIENDA.search(testo)
+    netti = _RE_RP_NETTI.search(testo)
+    totale = _RE_RP_TOTALE.search(testo)
+    voci: List[Dict[str, Any]] = []
+    for m in _RE_RP_VOCE.finditer(testo):
+        voci.append({"etichetta": _etichetta(m.group(1)), "importo_cents": _cents(m.group(2)), "segno": "+",
+                     "periodo_versamento": f"{m.group(3)}/{m.group(4)}"})
+    attesi: List[Dict[str, Any]] = []
+    usate = set()
+    for inizio, codice, sezione, lato in _ATTESI_RIEPILOGO:
+        v = next((x for x in voci if x["etichetta"].upper().startswith(inizio)), None)
+        if v and mese and anno and v["periodo_versamento"] == f"{mese:02d}/{anno}" and v["importo_cents"] > 0:
+            usate.add(v["etichetta"])
+            attesi.append({"codice": codice, "sezione": sezione, "lato": lato, "mese": mese, "anno": anno,
+                           "importo_cents": v["importo_cents"], "etichetta": v["etichetta"]})
+    netti_cents = _cents(netti.group(1)) if netti else None
+    totale_cents = _cents(totale.group(1)) if totale else None
+    mancanti = [nome for nome, valore in (("periodo", mese), ("ditta", azienda), ("totale_complessivo", totale_cents),
+                                          ("totale_netti", netti_cents)) if not valore]
+    # La prova che si e' letto tutto: netti + tutti gli importi a debito = totale complessivo, al centesimo.
+    if not mancanti and netti_cents + sum(v["importo_cents"] for v in voci) != totale_cents:
+        mancanti.append("quadratura")
+    return {
+        "formato": "riepilogo_paghe",
+        "ditta": azienda.group(2).strip() if azienda else None,
+        "codice_ditta": azienda.group(1) if azienda else None,
+        "mese": mese, "anno": anno,
+        "stampato_il": None,    # il riepilogo non porta la data di stampa: l'ultimo arrivato vale
+        "voci": voci, "attesi": attesi,
+        "non_mappate": [v for v in voci if v["etichetta"] not in usate],
+        "netti_cents": netti_cents, "totale_complessivo_cents": totale_cents,
+        "mancanti": mancanti,
+    }
+
+
 def leggi_prospetto(testo: str) -> Dict[str, Any]:
     """Il prospetto come dati; cio' che non si legge resta ``None`` e va in ``mancanti``."""
+    if e_riepilogo_paghe(testo):
+        return _leggi_riepilogo_paghe(testo)
     t = (testo or "").upper()
     periodo = _RE_PERIODO.search(t)
     ditta = _RE_DITTA.search(t)
@@ -142,11 +210,24 @@ def valuta_modello(attesi: List[Dict[str, Any]], righe: List[Dict[str, Any]]) ->
     for a in attesi:
         d, c = somme.get((a["codice"], a["mese"], a["anno"]), (0, 0))
         trovato = d if a["lato"] == "debito" else c
+        voce = {k: a[k] for k in ("codice", "mese", "anno", "lato", "importo_cents")}
+        if a["codice"] == "DM10" and not trovato:
+            # RC01 non e' un altro nome del DM10: e' lo stesso contributo del periodo versato in ritardo,
+            # con sanzioni e interessi. Pagato per intero + sanzioni = RAVVEDUTO; meno dell'atteso = DIFFERENZA.
+            rd, rc = somme.get(("RC01", a["mese"], a["anno"]), (0, 0))
+            ravveduto = rd if a["lato"] == "debito" else rc
+            if ravveduto:
+                voce.update({
+                    "trovato_cents": ravveduto, "codice_trovato": "RC01",
+                    "esito": "RAVVEDUTO" if ravveduto >= a["importo_cents"] else "DIFFERENZA",
+                    "sanzioni_interessi_cents": ravveduto - a["importo_cents"],
+                })
+                dettaglio.append(voce)
+                continue
         esito = ("OK" if trovato == a["importo_cents"] else
                  "DIFFERENZA" if trovato else "ASSENTE")
-        dettaglio.append({**{k: a[k] for k in ("codice", "mese", "anno", "lato", "importo_cents")},
-                          "trovato_cents": trovato or None, "esito": esito})
-    return {"ok": sum(1 for d in dettaglio if d["esito"] == "OK"), "dettaglio": dettaglio}
+        dettaglio.append({**voce, "trovato_cents": trovato or None, "esito": esito})
+    return {"ok": sum(1 for d in dettaglio if d["esito"] in ("OK", "RAVVEDUTO")), "dettaglio": dettaglio}
 
 
 def _scegli_modello(attesi, modelli) -> Tuple[Optional[Dict[str, Any]], List[str], Dict[str, Any]]:
@@ -245,6 +326,8 @@ async def deposita_prospetto(db, prospetto: Dict[str, Any], *, documento_id: Opt
         "ditta": prospetto["ditta"], "codice_ditta": prospetto["codice_ditta"],
         "mese": prospetto["mese"], "anno": prospetto["anno"], "stampato_il": prospetto["stampato_il"],
         "attesi": prospetto["attesi"], "non_mappate": prospetto["non_mappate"], "voci": prospetto["voci"],
+        "formato": prospetto.get("formato", "prospetto_contabile"),
+        "netti_cents": prospetto.get("netti_cents"), "totale_complessivo_cents": prospetto.get("totale_complessivo_cents"),
         "stato": CANONICA if nuova_e_piu_recente else SUPERATO,
         "versione": len(stesse) + 1,
         "sostituisce": canonica["id"] if canonica and nuova_e_piu_recente else None,
