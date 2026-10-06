@@ -867,7 +867,10 @@ async def scadenze_imminenti(
 async def calendario_fiscale(anno: int) -> Dict[str, Any]:
     """Legge il calendario fiscale senza modificare il database."""
     db = Database.get_db()
-    existing = await _leggi_calendario_anno(db, anno)
+    from app.services.calendario_piano import collega_al_piano
+
+    # Solo la pagina del calendario chiede i codici attesi al Piano tributi (una lettura del registro).
+    existing = await collega_al_piano(db, anno, await _leggi_calendario_anno(db, anno))
 
     # Raggruppa per mese
     per_mese = {}
