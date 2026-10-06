@@ -3,18 +3,18 @@ import { sezioneStrumenti } from './segmentiHub';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { PageLoader } from '../../components/ds';
-import { COLORS } from '../../lib/utils';
 
 const VerificaContent = lazy(() => import('../VerificaCoerenza.jsx'));
 const CommercialistaContent = lazy(() => import('../Commercialista.jsx'));
 const PianificazioneContent = lazy(() => import('../Pianificazione.jsx'));
 const VisureContent = lazy(() => import('../Visure.jsx'));
 
+// Quattro pagine distinte: ognuna ha la sua voce nel menu laterale, nessuna barra di schede in alto.
 const TABS = [
-  { id: 'verifica', label: 'Verifica coerenza', color: COLORS.primary },
-  { id: 'commercialista', label: 'Commercialista', color: COLORS.primary },
-  { id: 'pianificazione', label: 'Pianificazione', color: COLORS.primary },
-  { id: 'visure', label: 'Visure', color: COLORS.primary },
+  { id: 'verifica', label: 'Verifica coerenza' },
+  { id: 'commercialista', label: 'Commercialista' },
+  { id: 'pianificazione', label: 'Pianificazione' },
+  { id: 'visure', label: 'Visure' },
 ];
 
 const getTabFromPath = sezioneStrumenti;
@@ -24,7 +24,6 @@ export default function StrumentiHub() {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(() => getTabFromPath(location.pathname));
-  const [error, setError] = useState(null);
   const [visitedTabs, setVisitedTabs] = useState(
     () => new Set([getTabFromPath(location.pathname)])
   );
@@ -48,17 +47,6 @@ export default function StrumentiHub() {
     });
   }, [location.pathname]);
 
-  const handleTabChange = tabId => {
-    setError(null);
-    setActiveTab(tabId);
-    setVisitedTabs(prev => {
-      const n = new Set(prev);
-      n.add(tabId);
-      return n;
-    });
-    navigate(tabId === 'verifica' ? '/strumenti' : `/strumenti/${tabId}`);
-  };
-
   const CONTENTS = {
     verifica: VerificaContent,
     commercialista: CommercialistaContent,
@@ -68,45 +56,7 @@ export default function StrumentiHub() {
 
   return (
     <div style={{ width: '100%' }}>
-      <div
-        style={{
-          display: 'flex',
-          gap: 6,
-          padding: '8px 16px',
-          background: 'white',
-          borderBottom: '1px solid #e6e3d9',
-          borderRadius: '8px 8px 0 0',
-          flexWrap: 'wrap',
-        }}
-      >
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            data-testid={`tab-strumenti-${tab.id}`}
-            onClick={() => handleTabChange(tab.id)}
-            style={{
-              minHeight: 44,
-              padding: '7px 13px',
-              borderRadius: 6,
-              border: `1px solid ${activeTab === tab.id ? tab.color : '#e6e3d9'}`,
-              fontWeight: activeTab === tab.id ? 700 : 500,
-              fontSize: 12,
-              cursor: 'pointer',
-              background: activeTab === tab.id ? tab.color : '#ffffff',
-              color: activeTab === tab.id ? 'white' : '#7a776e',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       <div style={{ padding: '16px 0 0 0' }}>
-        {error && (
-          <div role="alert" style={{ padding: 16, background: '#fef2f2', color: '#b0362b', borderRadius: 8, marginBottom: 16 }}>
-            Errore caricamento: {error}
-          </div>
-        )}
         {TABS.map(tab => {
           const C = CONTENTS[tab.id];
           return (
