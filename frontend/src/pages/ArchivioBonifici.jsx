@@ -27,6 +27,94 @@ import { toast } from 'sonner';
 
 const formatDate = formatDateIT;
 
+/**
+ * Card di un bonifico: una sola lettura dall'alto in basso.
+ *  1. chi e quanto (beneficiario, importo, data)
+ *  2. perche (causale intera, mai troncata)
+ *  3. a che punto e (UNA riga di stato con l'azione da fare)
+ *  4. in piccolo: riferimenti di banca, PDF, nota, elimina
+ * I controlli (scelta fattura/stipendio, nota, elimina) sono gli stessi della tabella: `r` ne e la mappa.
+ */
+function CardBonifico({ t, r, inHr, onPdf }) {
+  const eStipendio = Boolean(t.destinazione_dipendente || inHr || t.salario_associato);
+  const collegato = Boolean(
+    t.salario_associato || t.fattura_associata || t.destinazione_automatica || inHr
+  );
+  const etichetta = { fontSize: 11, color: COLORS.textSubtle, fontWeight: 600, letterSpacing: '0.02em' };
+  const riga = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 };
+  return (
+    <div style={{ display: 'grid', gap: 8, ...(t.riconciliato ? { background: '#f4f8f5' } : null) }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: '#141413', overflowWrap: 'anywhere' }}>
+            {t.beneficiario?.nome || 'Beneficiario non letto'}
+          </div>
+          <div style={{ fontSize: 12, color: COLORS.textSubtle, marginTop: 2 }}>
+            {formatDate(t.data) || '-'}
+          </div>
+        </div>
+        <div
+          style={{
+            fontWeight: 800, fontSize: 18, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+            color: '#141413',
+          }}
+        >
+          {euroOppure(t.importo)}
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, color: COLORS.textMuted, overflowWrap: 'anywhere' }}>
+        <span style={etichetta}>CAUSALE </span>
+        {t.causale || 'non indicata'}
+      </div>
+
+      <div
+        style={{
+          ...riga, padding: '8px 10px', borderRadius: 8,
+          background: collegato ? '#eef3ef' : '#fbf3e4',
+          border: `1px solid ${collegato ? '#d5e3da' : '#efdcb4'}`,
+        }}
+      >
+        <span style={{ ...etichetta, color: collegato ? '#3d8168' : '#8a6410' }}>
+          {collegato ? 'COLLEGATO A' : 'DA COLLEGARE'}
+        </span>
+        {eStipendio ? r.salario(t) : r.fattura(t)}
+        {t.riconciliato && (
+          <span
+            title={t.movimento_descrizione || 'Trovato in estratto conto'}
+            style={{ ...riga, gap: 4, color: '#3d8168', fontSize: 12, fontWeight: 700, marginLeft: 'auto' }}
+          >
+            <Check size={14} aria-hidden="true" /> In banca
+          </span>
+        )}
+      </div>
+
+      <div style={{ ...riga, justifyContent: 'space-between', fontSize: 11, color: COLORS.textSubtle }}>
+        <span style={{ fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
+          {t.cro_trn ? `CRO ${t.cro_trn}` : 'CRO non presente'}
+          {t.rif_interno && t.rif_interno !== t.cro_trn ? ` · Rif. ${t.rif_interno}` : ''}
+        </span>
+        <span style={{ ...riga, gap: 10 }}>
+          <button
+            type="button"
+            data-testid={`bonifico-pdf-${t.id}`}
+            onClick={onPdf}
+            aria-label={`Vedi e scarica il PDF del bonifico ${t.cro_trn || t.id}`}
+            style={{
+              minHeight: 36, padding: '4px 12px', border: '1px solid #c15f3c', borderRadius: 6,
+              background: 'white', color: '#c15f3c', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            PDF
+          </button>
+          {r.note(t)}
+          {r.elimina(t)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function ArchivioBonifici() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
@@ -121,7 +209,10 @@ export default function ArchivioBonifici() {
   useEffect(() => {
     if (!initialized.current) return;
     const timer = setTimeout(() => {
+      // Elenco, conteggio e riconciliazione dello stesso anno (filtro manuale o anno globale).
       loadTransfers();
+      loadCount();
+      loadRiconciliazioneStats();
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,7 +245,7 @@ export default function ArchivioBonifici() {
 
   const loadCount = async () => {
     try {
-      const res = await api.get(`/api/archivio-bonifici/transfers/count?anno=${anno}`);
+      const res = await api.get(`/api/archivio-bonifici/transfers/count?anno=${yearFilter || anno}`);
       setCount(res.data?.count || 0);
     } catch (error) {
       console.error('Error loading count:', error);
@@ -163,7 +254,7 @@ export default function ArchivioBonifici() {
 
   const loadRiconciliazioneStats = async () => {
     try {
-      const res = await api.get(`/api/archivio-bonifici/stato-riconciliazione?anno=${anno}`);
+      const res = await api.get(`/api/archivio-bonifici/stato-riconciliazione?anno=${yearFilter || anno}`);
       setRiconciliazioneStats(res.data);
     } catch (error) {
       console.error('Error loading riconciliazione stats:', error);
@@ -448,201 +539,59 @@ export default function ArchivioBonifici() {
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px' }} ref={dropdownRef}>
       {/* Action bar senza titolo duplicato */}
+      {/* Riepilogo compatto: una riga di numeri e le tre azioni, la lista resta in vista */}
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          marginBottom: 16,
-          gap: 10,
-          flexWrap: 'wrap',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+          flexWrap: 'wrap', marginBottom: 12,
         }}
       >
-        <button
-          onClick={handleSyncIbanToAnagrafica}
-          style={{
-            padding: '8px 14px',
-            minHeight: 40,
-            background: '#c15f3c',
-            color: 'white',
-            fontWeight: 600,
-            fontSize: 13,
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-          }}
-          title="Sincronizza gli IBAN dei bonifici nell'anagrafica dipendenti"
-        >
-          Sync IBAN
-        </button>
-        <button
-          onClick={() => {
-            loadTransfers();
-                    loadCount();
-          }}
-          style={{
-            padding: '8px 14px',
-            minHeight: 40,
-            background: 'white',
-            color: '#2c2b28',
-            border: '1px solid #e6e3d9',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontSize: 13,
-          }}
-        >
-          Aggiorna
-        </button>
-      </div>
-
-      {/* Stats Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        <div
-          style={{
-            background: 'white',
-            padding: 16,
-            borderRadius: 8,
-            border: '1px solid #e6e3d9',
-            borderLeft: '4px solid #c15f3c',
-          }}
-        >
-          <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
-            Bonifici Totali in DB
-          </div>
-          <div
+        <div style={{ fontSize: 13, color: '#4a4740', lineHeight: 1.5 }}>
+          <strong style={{ fontSize: 15, color: '#141413' }}>{transfers.length}</strong> bonifici
+          {count && count !== transfers.length ? ` (su ${count} in archivio)` : ''}
+          {' · '}totale <strong style={{ color: '#141413' }}>{formatEuro(totaleImporto)}</strong>
+          {' · '}trovati in banca{' '}
+          <strong style={{ color: riconciliazioneStats?.riconciliati > 0 ? '#3d8168' : '#b45309' }}>
+            {riconciliazioneStats?.riconciliati || 0} su {riconciliazioneStats?.totale || 0}
+          </strong>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={handleRiconcilia}
+            disabled={riconciliando}
             style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: '#2c2b28',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              padding: '8px 14px', minHeight: 40, borderRadius: 6, border: 'none',
+              background: riconciliando ? '#a19d92' : '#c15f3c', color: 'white', fontWeight: 700,
+              fontSize: 13, cursor: riconciliando ? 'not-allowed' : 'pointer',
+            }}
+            title="Confronta i bonifici con i movimenti dell'estratto conto per verificare i pagamenti effettivi"
+            data-testid="riconcilia-bonifici-btn"
+          >
+            {riconciliando ? 'Riconciliazione in corso...' : 'Controlla con la banca'}
+          </button>
+          <button
+            onClick={handleSyncIbanToAnagrafica}
+            style={{
+              padding: '8px 14px', minHeight: 40, background: 'white', color: '#2c2b28',
+              border: '1px solid #e6e3d9', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+            }}
+            title="Sincronizza gli IBAN dei bonifici nell'anagrafica dipendenti"
+          >
+            Sync IBAN
+          </button>
+          <button
+            onClick={() => {
+              loadTransfers();
+              loadCount();
+            }}
+            style={{
+              padding: '8px 14px', minHeight: 40, background: 'white', color: '#2c2b28',
+              border: '1px solid #e6e3d9', borderRadius: 6, cursor: 'pointer', fontSize: 13,
             }}
           >
-            {count}
-          </div>
+            Aggiorna
+          </button>
         </div>
-        <div
-          style={{
-            background: 'white',
-            padding: 16,
-            borderRadius: 8,
-            border: '1px solid #e6e3d9',
-            borderLeft: '4px solid #c15f3c',
-          }}
-        >
-          <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
-            Bonifici Filtrati
-          </div>
-          <div
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: '#2c2b28',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            }}
-          >
-            {transfers.length}
-          </div>
-        </div>
-        <div
-          style={{
-            background: 'white',
-            padding: 16,
-            borderRadius: 8,
-            border: '1px solid #e6e3d9',
-            borderLeft: '4px solid #c15f3c',
-          }}
-        >
-          <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
-            Totale Importi Filtrati
-          </div>
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 700,
-              color: '#2c2b28',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            }}
-          >
-            {formatEuro(totaleImporto)}
-          </div>
-        </div>
-        {/* Card Riconciliazione */}
-        <div
-          style={{
-            background: 'white',
-            padding: 16,
-            borderRadius: 8,
-            border: '1px solid #e6e3d9',
-            borderLeft: '4px solid #c15f3c',
-          }}
-        >
-          <div style={{ fontSize: 11, color: '#7a776e', textTransform: 'uppercase' }}>
-            Riconciliati
-          </div>
-          <div
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: riconciliazioneStats?.riconciliati > 0 ? '#16a34a' : '#dc2626',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            }}
-          >
-            {riconciliazioneStats?.riconciliati || 0}/{riconciliazioneStats?.totale || 0}
-          </div>
-          <div style={{ fontSize: 12, color: '#7a776e', marginTop: 4 }}>
-            {riconciliazioneStats?.percentuale || 0}%
-          </div>
-        </div>
-      </div>
-
-      {/* Pulsante Riconciliazione */}
-      <div
-        style={{
-          background: '#c15f3c',
-          padding: 16,
-          borderRadius: 8,
-          marginBottom: 24,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 12,
-          color: 'white',
-        }}
-      >
-        <div>
-          <div style={{ fontWeight: 'bold', fontSize: 16 }}>
-            Riconciliazione con Estratto Conto
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.9 }}>
-            Confronta i bonifici con i movimenti bancari per verificare i pagamenti effettivi
-          </div>
-        </div>
-        <button
-          onClick={handleRiconcilia}
-          disabled={riconciliando}
-          style={{
-            padding: '12px 24px',
-            minHeight: 40,
-            borderRadius: 6,
-            background: riconciliando ? '#a19d92' : 'white',
-            color: '#141413',
-            border: 'none',
-            cursor: riconciliando ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold',
-            fontSize: 13,
-          }}
-          data-testid="riconcilia-bonifici-btn"
-        >
-          {riconciliando ? 'Riconciliazione in corso...' : 'Avvia Riconciliazione'}
-        </button>
       </div>
 
       {/* Filters */}
@@ -858,13 +807,8 @@ export default function ArchivioBonifici() {
           </div>
         ) : (
           <div style={{ padding: isMobile ? 10 : 0 }}>
-            <ListaAdattiva
-              testId="bonifici-table"
-              cardBreakpoint={100000}
-              dati={transfersToShow}
-              pageSize={50}
-              chiave={(t, idx) => t.id || idx}
-              colonne={[
+            {(() => {
+              const colonne = [
                 {
                   key: 'riconciliato',
                   label: 'Riconciliato',
@@ -1045,7 +989,7 @@ export default function ArchivioBonifici() {
                             }}
                             data-testid={`btn-associa-${t.id}`}
                           >
-                            {associaDropdown === t.id ? 'Chiudi periodi' : 'Scegli periodo'}
+                            {associaDropdown === t.id ? 'Chiudi' : 'Associa stipendio'}
                           </button>
                           {/* Dropdown operazioni */}
                           {associaDropdown === t.id && (
@@ -1255,7 +1199,7 @@ export default function ArchivioBonifici() {
                             }}
                             data-testid={`btn-associa-fattura-${t.id}`}
                           >
-                            {associaFatturaDropdown === t.id ? 'Scegli' : 'Fattura'}
+                            {associaFatturaDropdown === t.id ? 'Chiudi' : 'Associa fattura'}
                           </button>
                           {/* Dropdown fatture */}
                           {associaFatturaDropdown === t.id && (
@@ -1476,8 +1420,30 @@ export default function ArchivioBonifici() {
                     </button>
                   ),
                 },
-              ]}
-            />
+              ];
+              const r = {};
+              colonne.forEach(c => {
+                r[c.key] = c.render;
+              });
+              return (
+                <ListaAdattiva
+                  testId="bonifici-table"
+                  cardBreakpoint={100000}
+                  dati={transfersToShow}
+                  pageSize={50}
+                  chiave={(t, idx) => t.id || idx}
+                  colonne={colonne}
+                  renderCard={t => (
+                    <CardBonifico
+                      t={t}
+                      r={r}
+                      inHr={stipendioGiaInHr(t)}
+                      onPdf={() => setBonificoPdf(t)}
+                    />
+                  )}
+                />
+              );
+            })()}
           </div>
         )}
       </div>
