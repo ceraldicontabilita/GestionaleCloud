@@ -8,9 +8,15 @@ import asyncio
 import inspect
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+import os
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
+
+
+def _sync_acceso(nome: str) -> bool:
+    """Interruttore di un giro che legge da un'API esterna: acceso se la variabile manca."""
+    return os.getenv(nome, "true").strip().lower() not in ("false", "0", "no")
 
 logger = logging.getLogger(__name__)
 
@@ -780,6 +786,9 @@ def start_scheduler():
         from app.database import Database
         from app.services import sumup_sync
 
+        if not _sync_acceso("SUMUP_SYNC_ENABLED"):
+            logger.info("[SCHEDULER-SUMUP] sincronizzazione spenta (SUMUP_SYNC_ENABLED)")
+            return
         try:
             oggi = datetime.now().date()
             # Prima il riallineamento, che legge solo il database e dura
@@ -2085,6 +2094,9 @@ def start_scheduler():
     async def _paypal_automatico_job():
         from app.database import Database
         from app.services.paypal_automatico import giro_paypal
+        if not _sync_acceso("PAYPAL_SYNC_ENABLED"):
+            logger.info("[SCHEDULER-PAYPAL] giro automatico spento (PAYPAL_SYNC_ENABLED)")
+            return
         await giro_paypal(Database.get_db())
 
     scheduler.add_job(
