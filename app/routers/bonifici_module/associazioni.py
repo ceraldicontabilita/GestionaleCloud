@@ -54,7 +54,14 @@ async def associa_fattura_a_bonifico(
     if not fattura:
         raise HTTPException(404, "Fattura non trovata")
     compatibilita = _valuta_fattura_bonifico(bonifico, fattura)
-    if not compatibilita["compatibile"]:
+    # Scelta esplicita del titolare fra i candidati: senza il numero in causale bastano
+    # identita' del fornitore e importo al centesimo (mai solo l'importo).
+    scelta_dal_titolare = (
+        not compatibilita["compatibile"]
+        and "importo_esatto" in compatibilita["evidenze"]
+        and "identita_fornitore" in compatibilita["evidenze"]
+    )
+    if not compatibilita["compatibile"] and not scelta_dal_titolare:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -73,7 +80,9 @@ async def associa_fattura_a_bonifico(
         )
 
     if existing:
-        await collega_bonifico_fatture(db, bonifico, [fattura], auto=False)
+        await collega_bonifico_fatture(
+            db, bonifico, [fattura], auto=False,
+            evidenze=compatibilita["evidenze"] if scelta_dal_titolare else None)
         return {"success": True, "message": "Fattura associata al bonifico (transfers)"}
 
     # 2) Registro storico: gli identificativi sono normalizzati a stringa.

@@ -222,10 +222,19 @@ async def _rileggi_ricevute_sumup(db, *, dry_run: bool) -> Dict[str, Any]:
 
     from app.routers.bonifici_module.pdf_parser import extract_transfers_from_text, read_pdf_bytes
 
-    righe = await db["bonifici_transfers"].find({}, {"_id": 0, "id": 1, "beneficiario": 1}).to_list(None)
-    ids = [r["id"] for r in righe
-           if str((r.get("beneficiario") or {}).get("iban") or "").upper().startswith("IE")
-           and "SUMU" in str((r.get("beneficiario") or {}).get("iban") or "").upper()]
+    righe = await db["bonifici_transfers"].find(
+        {}, {"_id": 0, "id": 1, "beneficiario": 1, "salario_associato": 1, "fattura_associata": 1,
+             "fatture_associate": 1, "hr_deposito": 1}).to_list(None)
+    sbagliate = [r for r in righe
+                 if str((r.get("beneficiario") or {}).get("iban") or "").upper().startswith("IE")
+                 and "SUMU" in str((r.get("beneficiario") or {}).get("iban") or "").upper()]
+    # Un transfer gia' agganciato a uno stipendio o a una fattura (o depositato in HR) ha
+    # collegamenti derivati dal beneficiario sbagliato: non si ritocca qui, si elenca per la
+    # revisione del titolare (sciogliere un'associazione e' una decisione sua).
+    da_rivedere = [r["id"] for r in sbagliate if (
+        r.get("salario_associato") or r.get("fattura_associata") or r.get("fatture_associate")
+        or (r.get("hr_deposito") or {}).get("esito") in {"depositato", "arricchito"})]
+    ids = [r["id"] for r in sbagliate if r["id"] not in da_rivedere]
     corrette = 0
     for rid in ids:
         completa = await db["bonifici_transfers"].find_one({"id": rid}, {"_id": 0})
@@ -249,7 +258,8 @@ async def _rileggi_ricevute_sumup(db, *, dry_run: bool) -> Dict[str, Any]:
                 **({"data": data.isoformat()} if hasattr(data, "isoformat") else {}),
                 "updated_at": _ora(),
             }})
-    return {"collezione": "bonifici_transfers", "ricevute_sumup_da_rileggere": len(ids), "corrette": corrette}
+    return {"collezione": "bonifici_transfers", "ricevute_sumup_da_rileggere": len(ids), "corrette": corrette,
+            "gia_collegate_da_rivedere": da_rivedere[:20]}
 
 
 async def _stampe_fattura_tra_bonifici(db, *, dry_run: bool, actor: str) -> Dict[str, Any]:

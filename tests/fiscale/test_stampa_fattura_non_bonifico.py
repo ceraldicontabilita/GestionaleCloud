@@ -109,3 +109,16 @@ def test_inbox_riclassifica_la_stampa_invece_di_marcarla_elaborata():
     doc = asyncio.run(db["documents_inbox"].find_one({"id": "d1"}))
     assert doc["category"] == "fattura_pdf" and doc["status"] == "fuori_contabilita"
     assert not doc.get("bonifico_transfer_id")
+
+
+def test_ricevuta_sumup_gia_collegata_non_si_ritocca():
+    from mongomock_motor import AsyncMongoMockClient
+
+    from app.services.doppioni_archivio import _rileggi_ricevute_sumup
+
+    db = AsyncMongoMockClient()["t"]
+    asyncio.run(db["bonifici_transfers"].insert_one({
+        "id": "s1", "beneficiario": {"iban": "IE21SUMU99036513164215", "nome": "Mario Rossi"},
+        "salario_associato": True}))
+    esito = asyncio.run(_rileggi_ricevute_sumup(db, dry_run=False))
+    assert esito["gia_collegate_da_rivedere"] == ["s1"] and esito["corrette"] == 0
