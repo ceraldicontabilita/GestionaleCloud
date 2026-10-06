@@ -170,7 +170,7 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
 }
 
 
-function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita, ricette = [] }) {
+function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita, ricette = [], incorporata = false }) {
   const [form, setForm] = useState(() => {
     if (!ricetta) {
       return { nome:"", reparto:"pasticceria", porzioni:"", peso_pezzo_g:"", peso_uovo_g:"", metodo_conservazione:"frigo",
@@ -617,7 +617,10 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     finally { setSaving(false); }
   };
 
-  return (
+  // `incorporata`: il form sta dentro la scheda ricetta (nessun overlay, nessuna fascia: la scheda ha la sua).
+  const avvolgi = (contenuto) => incorporata ? (
+    <div data-testid="form-ricetta-incorporato">{contenuto}</div>
+  ) : (
     <div
       onClick={(e) => {
         // Chiudi solo se il click parte e finisce sul backdrop stesso (non sul
@@ -629,8 +632,14 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       }}
       style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"18px 10px"}}>
     <div onClick={e=>e.stopPropagation()} style={{background:"var(--card)",borderRadius:16,boxShadow:"0 24px 70px rgba(0,0,0,.45)",overflow:"hidden",overflowY:"auto",width:"100%",maxWidth:620,maxHeight:"94vh"}}>
+      {contenuto}
+    </div>
+    </div>
+  );
+
+  return avvolgi(<>
       {/* Fascia EVIDENTE: stai modificando questa ricetta (colore del reparto) */}
-      <div style={{position:"sticky",top:0,zIndex:5,background:bannerColor,color:"#fff",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+      {!incorporata && <div style={{position:"sticky",top:0,zIndex:5,background:bannerColor,color:"#fff",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
         <div style={{minWidth:0}}>
           <div style={{fontSize:11,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",opacity:.85}}>
             {ricetta?.id ? "✏️ Stai modificando la ricetta" : "✨ Nuova ricetta"}
@@ -659,9 +668,17 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
             ✕ Chiudi
           </button>
         </div>
-      </div>
+      </div>}
 
-      <div style={{padding:24}}>
+      {incorporata && ricetta?.id && (
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+          <button type="button" onClick={stampaScheda}
+            style={{padding:"9px 14px",border:"1.5px solid var(--border)",borderRadius:10,background:"var(--card)",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer"}}>
+            🖨️ Stampa
+          </button>
+        </div>
+      )}
+      <div style={{padding:incorporata?0:24}}>
 
       {/* Foto ricetta — anche su ricetta NUOVA: la scelta resta in anteprima
           e la foto parte insieme al Salva */}
@@ -1023,9 +1040,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       </button>
 
       </div>
-    </div>
-    </div>
-  );
+  </>);
 }
 
 export default FormRicetta;

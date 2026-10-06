@@ -4,7 +4,6 @@ import axios from "axios";
 import BackofficeView from "../components/haccp/BackofficeView";
 import GruppiProduzioneRicette, { categorieConGruppo } from "../components/haccp/GruppiProduzioneRicette";
 
-jest.mock("../components/haccp/backoffice/ImportaFotoRicette", () => () => null);
 jest.mock("../components/haccp/backoffice/toastBackoffice", () => ({ toast: jest.fn() }));
 global.IS_REACT_ACT_ENVIRONMENT = true;
 

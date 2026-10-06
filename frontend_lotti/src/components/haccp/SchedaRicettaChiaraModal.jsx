@@ -17,7 +17,7 @@ const righe = (value) => String(value || "").split(/\r?\n/).map(x => x.trim()).f
  * oppure rapida qui dentro (`modificaRapida`, tablet), mai tutte e due.
  */
 export default function SchedaRicettaChiaraModal({
-  ricetta: ricettaData, ricettaId, nome, onClose, onProduci, onModifica,
+  ricetta: ricettaData, ricettaId, nome, onClose, onProduci, onModifica, renderForm,
   modificaRapida = false, onSalvato, onVisibilita, cambiandoVisibilita = false,
 }) {
   const [caricata, setCaricata] = useState(null);
@@ -51,7 +51,7 @@ export default function SchedaRicettaChiaraModal({
   const allergeni = Array.isArray(ricetta?.allergeni) ? ricetta.allergeni.filter(Boolean) : [];
   const fonteWeb = ricetta?.procedimento_origine === "web" ? (ricetta.procedimento_fonte || {}) : null;
   const daVerificare = Boolean(fonteWeb) && ricetta?.procedimento_da_verificare !== false && !confermato;
-  const puoConfermare = Boolean(onModifica || modificaRapida);
+  const puoConfermare = Boolean(onModifica || renderForm || modificaRapida);
   const confermaProcedimento = async () => {
     setConfermando(true);
     setErroreConferma("");
@@ -96,6 +96,12 @@ export default function SchedaRicettaChiaraModal({
           </div>
         ) : (
           <div className="grid gap-7 p-5 md:grid-cols-[.9fr_1.1fr] md:p-8">
+            {renderForm && !soloLettura && (
+              <section className="md:col-span-2" data-testid="scheda-dati-ricetta">
+                <h3 className="mb-3 font-serif text-xl font-bold text-stone-900">Dati, foto e Menu</h3>
+                {renderForm(ricetta)}
+              </section>
+            )}
             <section>
               <h3 className="mb-3 font-serif text-xl font-bold text-stone-900">Ingredienti</h3>
               {!soloLettura ? <DosiRicetta ricetta={ricetta} /> : dallaFonte.length ? (
