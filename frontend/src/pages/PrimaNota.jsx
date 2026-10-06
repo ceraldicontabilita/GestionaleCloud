@@ -405,7 +405,24 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
 /* ------------------------- conto Mastercard SumUp ------------------------ */
 const GIORNI_SUMUP_PER_BLOCCO = 31;
 
+/* Una riga «etichetta: valore» delle card SumUp su telefono. */
+function CoppiaSumUp({ etichetta, valore, forte, colore }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 11, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.3 }}>{etichetta}</div>
+      <div style={{
+        fontSize: 14, fontWeight: forte ? 800 : 600, color: colore || COLORS.text,
+        fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
+      }}
+      >
+        {valore}
+      </div>
+    </div>
+  );
+}
+
 export function CartaSumUp({ dati, anno }) {
+  const isMobile = useIsMobile();
   const giorni = dati?.giorni || [];
   const venditeTutte = dati?.giornate_vendite || [];
   // Ultimi 31 giorni, poi «Mostra altre»: la lista arriva con il giorno più recente per primo.
@@ -451,6 +468,40 @@ export function CartaSumUp({ dati, anno }) {
         </div>
         {venditeTutte.length === 0 ? (
           <div style={{ padding: 22, textAlign: 'center', color: '#7a776e' }}>Nessuna vendita SumUp acquisita nel {anno}.</div>
+        ) : isMobile ? (
+          <div data-testid="vendite-e-accrediti-sumup" style={{ display: 'grid' }}>
+            {vendite.map(giorno => (
+              <div
+                key={giorno.data}
+                data-testid="giorno-vendite-sumup"
+                style={{ padding: '12px 14px', borderTop: '1px solid #f6f4ee', display: 'grid', gap: 10 }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                  <strong style={{ fontSize: 15, color: '#4c4a44' }}>{formatDateIT(giorno.data)}</strong>
+                  <strong style={{ fontSize: 15, color: '#4c4a44', fontVariantNumeric: 'tabular-nums' }}>{eur(giorno.netto)}</strong>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px' }}>
+                  <CoppiaSumUp etichetta="Transazioni" valore={giorno.transazioni} />
+                  <CoppiaSumUp etichetta="Vendite" valore={eur(giorno.vendite)} />
+                  <CoppiaSumUp etichetta="Rimborsi" valore={eur(giorno.rimborsi)} />
+                  <CoppiaSumUp
+                    etichetta="Accredito"
+                    valore={giorno.accredito_data
+                      ? formatDateIT(giorno.accredito_data)
+                      : (giorno.in_attesa === undefined ? '—' : 'In attesa')}
+                  />
+                  <CoppiaSumUp etichetta="Ricevuto" valore={giorno.ricevuto != null ? eur(giorno.ricevuto) : '—'} forte colore={VERDE} />
+                  <CoppiaSumUp etichetta="Differenza" valore={giorno.differenza != null ? eur(giorno.differenza) : '—'} />
+                </div>
+                {(giorno.payout_ids || []).length > 0 && (
+                  <div style={{ fontSize: 11, color: '#7a776e', overflowWrap: 'anywhere' }}>
+                    Payout: {(giorno.payout_ids || []).join(', ')}
+                  </div>
+                )}
+                {giorno.payout_condiviso && <div style={{ fontSize: 11, color: '#c4894a' }}>Payout su più giornate</div>}
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }} data-testid="vendite-e-accrediti-sumup">
@@ -517,6 +568,24 @@ export function CartaSumUp({ dati, anno }) {
               Payout ricevuti per vendite che il gestionale non ha (ancora) scaricato da SumUp.
             </p>
           </div>
+          {isMobile ? (
+            <div data-testid="accrediti-non-collegati-sumup" style={{ display: 'grid' }}>
+              {nonCollegati.map(giorno => (
+                <div
+                  key={giorno.data}
+                  style={{ padding: '12px 14px', borderTop: '1px solid #f6f4ee', display: 'grid', gap: 6 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                    <strong style={{ fontSize: 15, color: '#4c4a44' }}>{formatDateIT(giorno.data)}</strong>
+                    <strong style={{ fontSize: 15, color: VERDE, fontVariantNumeric: 'tabular-nums' }}>{eur(giorno.importo)}</strong>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#7a776e', overflowWrap: 'anywhere' }}>
+                    {giorno.numero_payout} payout · {(giorno.payout_ids || []).join(', ') || '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead>
@@ -541,6 +610,7 @@ export function CartaSumUp({ dati, anno }) {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
     </section>
@@ -2303,6 +2373,7 @@ export function FattureAtteseNelRegistroBanca({ fatture = [], mese, onGestisci }
 
 /* -------------------------------- pagina -------------------------------- */
 export default function PrimaNota() {
+  const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   const [hs, setHs] = useHashState({ sezione: 'cassa', mese: '' });
   const sezione = hs.sezione || 'cassa';
@@ -2531,7 +2602,8 @@ export default function PrimaNota() {
       aria-selected={sezione === chiave}
       onClick={() => setHs('sezione', chiave)}
       style={{
-        minHeight: 44, padding: '10px 14px', fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
+        minHeight: 44, padding: '10px 14px', fontSize: 14, cursor: 'pointer',
+        whiteSpace: isMobile ? 'normal' : 'nowrap', textAlign: isMobile ? 'center' : 'left',
         background: 'transparent', border: 'none', marginBottom: -1,
         borderBottom: `2px solid ${sezione === chiave ? TERRACOTTA : 'transparent'}`,
         color: sezione === chiave ? COLORS.text : COLORS.textMuted,
@@ -2554,7 +2626,10 @@ export default function PrimaNota() {
       <div
         role="tablist"
         aria-label="Conto della prima nota"
-        style={{
+        style={isMobile ? {
+          display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, marginBottom: 14,
+          borderBottom: `1px solid ${COLORS.border}`,
+        } : {
           display: 'flex', gap: 4, marginBottom: 14, flexWrap: 'wrap',
           borderBottom: `1px solid ${COLORS.border}`,
         }}
