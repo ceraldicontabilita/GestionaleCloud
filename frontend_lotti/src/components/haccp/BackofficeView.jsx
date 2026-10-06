@@ -17,7 +17,6 @@ import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";
 import { SchedaEditorModal } from "./RicetteDashboardView";
 import SchedaRicettaChiaraModal from "./SchedaRicettaChiaraModal";
 import RicetteCestino from "./backoffice/RicetteCestino";
-import ImportaFotoRicette from "./backoffice/ImportaFotoRicette";
 import FormRicetta, { REPARTI } from "./backoffice/FormRicetta";
 import TabProdotti from "./backoffice/TabProdotti";
 import TabFornitori from "./backoffice/TabFornitori";
@@ -106,7 +105,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
     (async () => {
       try {
         const r = await axios.get(`${API}/ricette/${id}`);
-        if (r.data) { setEditRicetta(r.data); setShowForm(true); }
+        if (r.data) setDettaglioR(r.data);
       } catch { /* ignora */ }
     })();
   }, [solaLetturaOperatore, mostraPrezzi]);
@@ -297,9 +296,6 @@ function TabRicette({ solaLetturaOperatore = false }) {
         ))}
       </div>
 
-      {!solaLetturaOperatore && !mostraCestino && !loading && !errore &&
-        <ImportaFotoRicette ricette={ricette} onCompletata={carica} />}
-
       {mostraCestino ? <RicetteCestino onRipristinata={carica} /> : loading ? (
         <div style={{textAlign:"center",padding:"40px",color:"var(--text-3)"}}>Caricamento…</div>
       ) : errore ? (
@@ -427,7 +423,16 @@ function TabRicette({ solaLetturaOperatore = false }) {
           ricetta={dettaglioR}
           onClose={() => setDettaglioR(null)}
           onProduci={(r) => { setDettaglioR(null); setProduciR(r); }}
-          onModifica={solaLetturaOperatore ? undefined : (r) => { setDettaglioR(null); setEditRicetta(r); setShowForm(true); }}
+          renderForm={solaLetturaOperatore ? undefined : (r) => (
+            <FormRicetta
+              incorporata
+              key={r.id}
+              ricetta={r}
+              ricette={ricette.filter(x => !(x.origine === "archivio" || x.sola_lettura))}
+              onSalvato={() => { setDettaglioR(null); carica(); }}
+              onAnnulla={() => setDettaglioR(null)}
+            />
+          )}
           onVisibilita={solaLetturaOperatore ? undefined : async (r) => {
             const aggiornata = await impostaVisibilita(r, r.visibile_tablet === false);
             if (aggiornata) setDettaglioR(null);

@@ -58,3 +58,23 @@ test("la scheda raccoglie modifica e visibilita senza duplicare azioni sulla car
     node.remove();
   }
 });
+
+test("la scheda ricetta contiene i dati, la foto e il Menu della ricetta (nessun passaggio in più)", async () => {
+  const node = document.createElement("div");
+  document.body.appendChild(node);
+  const root = createRoot(node);
+  try {
+    await act(async () => root.render(<SchedaRicettaChiaraModal
+      ricetta={{ id: "cer-3", nome: "Arancini", ingredienti: [] }}
+      onClose={() => {}}
+      renderForm={(r) => <div data-testid="form-incorporato">{r.nome}</div>}
+    />));
+    const sezione = node.querySelector('[data-testid="scheda-dati-ricetta"]');
+    expect(sezione).not.toBeNull();
+    expect(sezione.querySelector('[data-testid="form-incorporato"]').textContent).toBe("Arancini");
+    expect(node.textContent).not.toContain("Modifica nome e ingredienti");
+  } finally {
+    await act(async () => root.unmount());
+    node.remove();
+  }
+});
