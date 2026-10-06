@@ -1956,6 +1956,11 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
 
     if lower.endswith(".pdf") and e_prospetto_contabile(pdf_text):
         return TIPO_PROSPETTO
+    # «Elenco netti» delle paghe: i netti da bonificare, non una busta paga (prima del lettore cedolini).
+    from app.services.elenchi_netti import TIPO as TIPO_ELENCO_NETTI, riconosci as e_elenco_netti
+
+    if lower.endswith(".pdf") and e_elenco_netti(compact_pdf_text):
+        return TIPO_ELENCO_NETTI
     if any(marker in compact_pdf_text for marker in (
         "NOTA DI RETTIFICA", "STAMPA SINTESI RETTIFICA", "MODELLO DMRA",
         "DIFFERENZE CONTRIBUTIVE",
@@ -3370,6 +3375,15 @@ async def upload_documento_automatico(
             from app.services.dilazioni_inps import archivia_dilazione
 
             return await archivia_dilazione(
+                db, filename=filename, content=content,
+                testo=await asyncio.to_thread(_pdf_text_for_detection, content),
+                source_context=source_context,
+            )
+
+        elif tipo_rilevato == 'elenco_netti':
+            from app.services.elenchi_netti import archivia_elenco
+
+            return await archivia_elenco(
                 db, filename=filename, content=content,
                 testo=await asyncio.to_thread(_pdf_text_for_detection, content),
                 source_context=source_context,

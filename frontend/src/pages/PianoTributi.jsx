@@ -94,6 +94,11 @@ function Casella({ voce, casella, aperta, onApri }) {
           {casella.importo ? importo(casella.importo) : `credito ${importo(casella.credito)}`}
         </div>
       )}
+      {casella.atteso_da_buste && (
+        <div style={{ fontSize: 10.5, fontFamily: FONT.mono, fontVariantNumeric: 'tabular-nums', color: COLORS.textMuted }} data-testid="atteso-da-buste">
+          atteso {importo(casella.atteso_da_buste.importo)}
+        </div>
+      )}
       {casella.modelli_doppi > 0 && (
         <div style={{ fontSize: 10, color: COLORS.warning, fontWeight: 700 }}>F24 doppio</div>
       )}
@@ -112,6 +117,16 @@ function DettaglioCasella({ voce, casella }) {
         Scadenza: {casella.scadenza ? dataIt(casella.scadenza) : 'da impostare'}
         {' · '}Codici: {(voce.codici || []).join(', ') || 'nessuno (fuori F24)'}
       </div>
+      {casella.atteso_da_buste && (
+        <div style={{ marginTop: 6 }} data-testid="atteso-da-buste-dettaglio">
+          Atteso dal prospetto paghe del consulente: <strong>{importo(casella.atteso_da_buste.importo)}</strong>
+          {casella.atteso_da_buste.differenza_cents != null && (
+            casella.atteso_da_buste.differenza_cents === 0
+              ? ' · l\'F24 arrivato è uguale, al centesimo'
+              : <> · l'F24 arrivato differisce di <strong>{importo(casella.atteso_da_buste.differenza_cents / 100)}</strong></>
+          )}
+        </div>
+      )}
       {casella.slittamento && (
         <div style={{ marginTop: 6 }}>
           Il {dataIt(casella.scadenza_nominale)} cade in {casella.slittamento === 'proroga di agosto'
