@@ -184,3 +184,25 @@ def test_attesa_senza_busta_si_ritira_per_id_e_con_pagamento_o_busta_resta():
         assert (await esegui(db, dry_run=True))["totale_attese_senza_busta"] == 0
 
     _run(scenario())
+
+
+def test_attesa_senza_busta_non_tocca_righe_hr_ambigue_e_conta_solo_buste_attive():
+    async def scenario():
+        db = _db("senza_busta_guardie")
+        await _popola_dipendente(db, id_="dip-4", nome="ANTONIO", cognome="PARISI", cf="PRSNTN80R12F839X")
+        base = {"codice_fiscale": "PRSNTN80R12F839X", "dipendente_id": "dip-4", "importo_bonifico": 0,
+                "tipo": "stipendio", "tipo_cedolino": "mensile", "dipendente": "PARISI ANTONIO"}
+        # Riga nata dall'archivio HR: la busta vive solo li', non si ritira.
+        await db["prima_nota_salari"].insert_one({**base, "id": "pn-hr", "anno": 2026, "mese": 3, "source": "hr_cedolini_sync",
+                                                  "hr_cedolino_id": "hr-1", "importo_busta": 100.0})
+        # Stessa identita' con importi diversi: anomalia, mai ritirata qui.
+        for i, imp in (("pn-a", 1231.0), ("pn-b", 1129.0)):
+            await db["prima_nota_salari"].insert_one({**base, "id": i, "anno": 2026, "mese": 5, "importo_busta": imp})
+        # Busta solo "sostituito": non e' una busta viva.
+        await db["prima_nota_salari"].insert_one({**base, "id": "pn-sost", "anno": 2026, "mese": 6, "importo_busta": 900.0})
+        await db["cedolini"].insert_one({"id": "c-s", "codice_fiscale": "PRSNTN80R12F839X", "anno": 2026, "mese": 6,
+                                         "status": "sostituito"})
+        analisi = await esegui(db, dry_run=True)
+        assert [v["id"] for v in analisi["attese_senza_busta"]] == ["pn-sost"]
+
+    _run(scenario())

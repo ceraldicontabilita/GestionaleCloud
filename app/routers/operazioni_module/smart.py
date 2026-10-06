@@ -396,7 +396,10 @@ async def cerca_stipendi_per_associazione(
             {"dipendente": {"$regex": dipendente, "$options": "i"}}
         ]
     
-    stipendi = await db.prima_nota_salari.find(query, {"_id": 0}).sort("data", -1).limit(limit).to_list(limit)
+    # Le attese senza busta si scartano DOPO la lettura: si legge piu' in la'
+    # per non restituire una lista vuota quando le piu' recenti sono fantasmi.
+    letti = max(limit * 10, 200)
+    stipendi = await db.prima_nota_salari.find(query, {"_id": 0}).sort("data", -1).limit(letti).to_list(letti)
 
     # Leggibilità (segnalazione utente 18/07/2026: "€0,00, non capisco se
     # sono bonifici o cedolini"): queste righe sono ATTESE DI PAGAMENTO
@@ -420,6 +423,8 @@ async def cerca_stipendi_per_associazione(
         if attesa_senza_busta(s, chiave_logica_riga(s, indice_dip), ids_buste, chiavi_buste):
             senza_busta += 1
             continue
+        if len(visibili) >= limit:
+            break
         nome = (s.get("dipendente") or s.get("dipendente_nome") or "").strip()
         busta = float(s.get("importo_busta") or s.get("importo") or 0)
         bonifici = float(s.get("importo_bonifico") or 0)

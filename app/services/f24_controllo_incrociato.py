@@ -1118,6 +1118,13 @@ def _vista_addebito(m: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def prova_quietanza(p) -> str:
+    """Il protocollo e' la prova del pagamento: senza, la quietanza resta da verificare."""
+    if p.get("protocollo"):
+        return "pagato per quietanza (il protocollo la prova)"
+    return "quietanza senza protocollo: pagamento da verificare"
+
+
 def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "chiave": p["chiave"],
@@ -1295,13 +1302,13 @@ def riscontri_quietanze_banca(
                     "estratto_periodo_presente": coperto}
             if coperto:
                 senza_addebito.append({**voce, "motivazione": (
-                    "pagato per quietanza (il protocollo la prova); nessun addebito F24 di pari importo (o entro "
+                    f"{prova_quietanza(p)}; nessun addebito F24 di pari importo (o entro "
                     f"{SOGLIA_PARZIALE_CENTS / 100:.0f} EUR) entro {GIORNI_LAVORATIVI_ADDEBITO} giorni "
                     "lavorativi; estratto del periodo presente: si'. Possibile: pagato da un altro "
                     f"conto o pagamento mai transitato ({NOTA_COMMERCIALISTA})")})
             else:
                 senza_estratto.append({**voce, "motivazione": (
-                    "pagato per quietanza (il protocollo la prova); manca solo l'estratto conto del "
+                    f"{prova_quietanza(p)}; manca solo l'estratto conto del "
                     "periodo per il riscontro in banca: caricare l'estratto del periodo")})
 
     usati = set(per_addebito)

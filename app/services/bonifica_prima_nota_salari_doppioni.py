@@ -63,6 +63,7 @@ from app.services.stipendi_bonifici import campi_riga_da_movimenti_stipendio
 logger = logging.getLogger(__name__)
 
 MOTIVO_BONIFICA = "bonifica_prima_nota_salari_doppioni_2026-09-04"
+STATI_BUSTA_NON_ATTIVA = {"deleted", "archived", "archiviata", "sostituito"}
 MOTIVO_SENZA_BUSTA = "attesa_senza_busta_2026-10-06"
 COLLECTION = "prima_nota_salari"
 
@@ -110,12 +111,12 @@ async def indice_buste_esistenti(db) -> Tuple[set, set]:
     """
     righe = await db["cedolini"].find(
         {}, {"_id": 0, "id": 1, "codice_fiscale": 1, "anno": 1, "mese": 1, "tipo": 1,
-             "status": 1, "entity_status": 1},
+             "tipo_cedolino": 1, "status": 1, "entity_status": 1},
     ).to_list(None)
     ids: set = set()
     chiavi: set = set()
     for busta in righe:
-        if "deleted" in (str(busta.get("status") or "").lower(), str(busta.get("entity_status") or "").lower()):
+        if {str(busta.get("status") or "").lower(), str(busta.get("entity_status") or "").lower()} & STATI_BUSTA_NON_ATTIVA:
             continue
         if busta.get("id"):
             ids.add(str(busta["id"]))
@@ -125,7 +126,7 @@ async def indice_buste_esistenti(db) -> Tuple[set, set]:
         except (TypeError, ValueError):
             continue
         if cf:
-            chiavi.add((cf, anno, mese, tipo_cedolino_canonico(busta.get("tipo"))))
+            chiavi.add((cf, anno, mese, tipo_cedolino_canonico(busta.get("tipo_cedolino") or busta.get("tipo"))))
     return ids, chiavi
 
 
@@ -139,6 +140,10 @@ def attesa_senza_busta(
     non da ritirare. Senza identita' risolta non si decide.
     """
     if chiave is None or riga.get("riconciliato"):
+        return False
+    # Attese nate dall'archivio HR (hr_cedolini_sync): la busta vive solo in
+    # HR, qui non si puo' dire che manchi.
+    if riga.get("hr_cedolino_id") or riga.get("source") == "hr_cedolini_sync":
         return False
     if _movimento_ids(riga) or float(riga.get("importo_bonifico") or 0) > 0:
         return False
@@ -225,6 +230,8 @@ async def analizza(db) -> Dict[str, Any]:
 
     ids_buste, chiavi_buste = await indice_buste_esistenti(db)
     gia_marcate = {r["id"] for g in gruppi_doppioni for r in g["_marcate"]}
+    # Stessa identita' con importi diversi: anomalia da capire, mai ritirata qui.
+    gia_marcate |= {r["id"] for g in ambigue_importo_diverso for r in g["righe"]}
     senza_busta: List[Dict[str, Any]] = []
     for riga in righe:
         if riga.get("id") in gia_marcate:

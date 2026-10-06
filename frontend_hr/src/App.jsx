@@ -6193,7 +6193,15 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
       const q = prova.riepilogo;
       const elenco = prova.righe.map(r => `pag. ${r.pagina}: ${r.dipendente || "DA ASSEGNARE"}${r.esito === "gia_presente" ? " (già presente)" : ""}`).join("\n");
       if (!window.confirm(`${q.pagine} pagine: ${q.nuovi} da allegare, ${q.gia_presenti} già presenti, ${q.da_assegnare} da assegnare.\n\n${elenco}\n\nAllegare gli attestati ai dipendenti?`)) return;
-      const fatto = await invia(false);
+      // Pagine con più persone compatibili: si sceglie qui, da un elenco numerato (0 = lascia da assegnare).
+      const scelte = {};
+      for (const r of prova.righe.filter(x => x.esito === "da_assegnare" && (x.candidati || []).length)) {
+        const voci = r.candidati.map((c, i) => `${i + 1} = ${c.nome}`).join("\n");
+        const risposta = window.prompt(`Pagina ${r.pagina}: a chi appartiene l'attestato?\n${voci}\n0 = lascia da assegnare`, "0");
+        const n = Number(risposta);
+        if (Number.isInteger(n) && n >= 1 && n <= r.candidati.length) scelte[String(r.pagina)] = r.candidati[n - 1].id;
+      }
+      const fatto = await invia(false, scelte);
       const r2 = fatto.riepilogo;
       setMassMsg({ caricati: r2.nuovi, duplicati: Array(r2.gia_presenti).fill(0), non_assegnati: Array(r2.da_assegnare).fill(0), dettaglio: [], _gmail: true });
       toast(`Attestati: ${r2.nuovi} allegati${r2.da_assegnare ? `, ${r2.da_assegnare} da assegnare (nome non riconosciuto: controlla l'anagrafica e ripeti l'importazione)` : ""}`);
