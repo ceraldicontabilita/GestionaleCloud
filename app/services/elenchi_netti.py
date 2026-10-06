@@ -166,3 +166,52 @@ async def archivia_elenco(db, *, filename: str, content: bytes, testo: str,
         ),
     })
     return archiviato
+
+
+def _iban_mascherato(iban: Optional[str]) -> Optional[str]:
+    return f"{iban[:4]}…{iban[-4:]}" if iban and len(iban) > 8 else iban
+
+
+async def stipendi_da_pagare(db, db_hr, indici: Dict[str, Any]) -> Dict[str, Any]:
+    """L'ultimo elenco netti canonico confrontato con cio' che HR sa del mese. Sola lettura.
+
+    Il dipendente si riconosce solo per **nome completo** stampato (mai per importo, mai per cognome
+    da solo: un omonimo resta «da associare»). Il pagato e' quello di `paghe_mensili` (bonifici e acconti
+    gia' depositati dal motore unico), confrontato al centesimo con il netto dell'elenco.
+    """
+    from app.services.hr_pagamenti_deposito import dipendenti_citati
+
+    elenchi = await db[COLL_ELENCHI_NETTI].find({"stato": CANONICA}, {"_id": 0}).to_list(200)
+    if not elenchi:
+        return {"elenco": None, "righe": []}
+    elenco = max(elenchi, key=lambda e: (e.get("anno") or 0, e.get("mese") or 0))
+    paghe: Dict[Any, Dict[str, Any]] = {}
+    if db_hr is not None:
+        async for p in db_hr.paghe_mensili.find({"anno": elenco["anno"], "mese": elenco["mese"]}, {"_id": 0}):
+            paghe[p.get("dipendente_id")] = p
+    righe: List[Dict[str, Any]] = []
+    for rip in elenco.get("ripartizioni") or []:
+        for r in rip.get("righe") or []:
+            livello, trovati = dipendenti_citati(indici, r["nome"])
+            dip = trovati[0] if livello == "nome" and len(trovati) == 1 else None
+            pagato = None
+            stato = "da_associare"
+            if dip is not None:
+                p = paghe.get(dip.get("id"))
+                pagato = round(float((p or {}).get("bonifico_importo") or 0) * 100) + sum(
+                    round(float(a.get("importo") or 0) * 100) for a in ((p or {}).get("acconti") or []))
+                stato = ("pagato" if pagato == r["importo_cents"] else
+                         "da_pagare" if pagato == 0 else
+                         "parziale" if pagato < r["importo_cents"] else "eccedente")
+            righe.append({
+                "cod_dip": r["cod_dip"], "nome": r["nome"], "importo_cents": r["importo_cents"],
+                "iban": _iban_mascherato(r.get("iban")), "tipo_pagamento": rip.get("tipo_pagamento"),
+                "dipendente_id": dip.get("id") if dip else None, "pagato_cents": pagato, "stato": stato,
+            })
+    return {
+        "elenco": {"id": elenco["id"], "mese": elenco["mese"], "anno": elenco["anno"],
+                   "totale_cents": elenco["totale_cents"], "filename": elenco.get("filename")},
+        "righe": righe,
+        "da_pagare_cents": sum(r["importo_cents"] - (r["pagato_cents"] or 0) for r in righe
+                               if r["stato"] in ("da_pagare", "parziale")),
+    }

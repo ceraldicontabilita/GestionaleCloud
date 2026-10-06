@@ -134,7 +134,7 @@ function DettaglioCasella({ voce, casella }) {
           {' '}senza ravvedimento (fino a {giorni(Math.max(0, Math.round((new Date(casella.scadenza) - new Date(casella.scadenza_nominale)) / 86400000)))} dopo la data scritta).
         </div>
       )}
-      {voce.nota && <div style={{ marginTop: 6 }}>{voce.nota}</div>}
+      {voce.nota && <div style={{ marginTop: 6 }}>{voce.nota}{voce.rimando && <> <Link to={voce.rimando.to}>{voce.rimando.label}</Link></>}</div>}
       {!casella.modelli.length && casella.stato === 'manca_f24' && (
         <div style={{ marginTop: 6 }}>Nessun F24 in archivio per questo periodo: la scadenza e' passata.</div>
       )}
@@ -325,6 +325,52 @@ const parametroAnni = (periodo, anno) => {
   return String(anno);
 };
 
+const ETICHETTA_STIPENDIO = {
+  pagato: ['Pagato', 'success'], da_pagare: ['Da pagare', 'accent'], parziale: ['Pagato in parte', 'warning'],
+  eccedente: ['Pagato più del netto', 'warning'], da_associare: ['Dipendente da associare', 'neutral'],
+};
+
+// Netti dell'«Elenco netti» del consulente: cosa va bonificato ai dipendenti e cosa HR ha già come pagato.
+function StipendiDaPagare() {
+  const [dati, setDati] = useState(null);
+  useEffect(() => {
+    let attivo = true;
+    Promise.resolve(api.get('/api/f24/piano-tributi/stipendi-da-pagare'))
+      .then(r => { if (attivo && r?.data?.elenco) setDati(r.data); })
+      .catch(() => {});
+    return () => { attivo = false; };
+  }, []);
+  if (!dati) return null;
+  const { elenco, righe } = dati;
+  return (
+    <Card style={{ marginBottom: 16 }} data-testid="stipendi-da-pagare">
+      <div style={{ fontWeight: 700 }}>Stipendi da pagare · {String(elenco.mese).padStart(2, '0')}/{elenco.anno}</div>
+      <div style={{ fontSize: 13, color: COLORS.textMuted, margin: '4px 0 10px' }}>
+        Dall'Elenco netti del consulente: totale {formatEuro(elenco.totale_cents / 100)}
+        {dati.da_pagare_cents > 0 && <> · ancora da bonificare <strong>{formatEuro(dati.da_pagare_cents / 100)}</strong></>}.
+        Il pagato viene dai bonifici già associati in HR, mai dall'importo da solo.
+      </div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {righe.map(r => {
+          const [testo, variante] = ETICHETTA_STIPENDIO[r.stato] || [r.stato, 'neutral'];
+          return (
+            <div key={r.cod_dip} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.border}`, paddingTop: 8 }}>
+              <div>
+                <strong>{r.nome}</strong>
+                {r.iban && <span style={{ marginLeft: 8, fontSize: 12, color: COLORS.textMuted, fontFamily: FONT.mono }}>{r.iban}</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <span style={{ fontFamily: FONT.mono }}>{formatEuro(r.importo_cents / 100)}</span>
+                <Badge variant={variante}>{testo}</Badge>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 export default function PianoTributi() {
   const { anno } = useAnnoGlobale();
   const [periodo, setPeriodo] = useState('anno');
@@ -451,6 +497,8 @@ export default function PianoTributi() {
               {dati.modelli_doppi} F24 risultano registrati due volte: nel piano contano una volta sola.
             </div>
           )}
+
+          <StipendiDaPagare />
 
           <RicercaCodice anno={anno} />
 

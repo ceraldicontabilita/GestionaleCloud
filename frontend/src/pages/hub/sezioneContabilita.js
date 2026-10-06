@@ -1,5 +1,5 @@
 export const SEZIONI_CONTABILITA = [
-  'piano-conti', 'bilancio', 'verifica', 'giornale', 'controllo', 'calendario',
+  'piano-conti', 'bilancio', 'verifica', 'giornale', 'controllo',
   'cespiti', 'finanziaria', 'chiusura', 'budget', 'mutui', 'avanzata', 'utile',
   'previsioni-acquisti', 'dati-isa',
 ];
@@ -8,7 +8,6 @@ const ALIAS = {
   'piano-dei-conti': 'piano-conti',
   'bilancio-verifica': 'verifica',
   'controllo-mensile': 'controllo',
-  'calendario-fiscale': 'calendario',
   'contabilita-avanzata': 'avanzata',
   'utile-obiettivo': 'utile',
 };

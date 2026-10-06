@@ -209,15 +209,25 @@ def valuta_modello(attesi: List[Dict[str, Any]], righe: List[Dict[str, Any]]) ->
     dettaglio = []
     for a in attesi:
         d, c = somme.get((a["codice"], a["mese"], a["anno"]), (0, 0))
-        if a["codice"] == "DM10" and not (d or c):
-            # Dal 2026 il consulente versa i contributi dei dipendenti con la causale RC01 sullo stesso periodo.
-            d, c = somme.get(("RC01", a["mese"], a["anno"]), (0, 0))
         trovato = d if a["lato"] == "debito" else c
+        voce = {k: a[k] for k in ("codice", "mese", "anno", "lato", "importo_cents")}
+        if a["codice"] == "DM10" and not trovato:
+            # RC01 non e' un altro nome del DM10: e' lo stesso contributo del periodo versato in ritardo,
+            # con sanzioni e interessi. Pagato per intero + sanzioni = RAVVEDUTO; meno dell'atteso = DIFFERENZA.
+            rd, rc = somme.get(("RC01", a["mese"], a["anno"]), (0, 0))
+            ravveduto = rd if a["lato"] == "debito" else rc
+            if ravveduto:
+                voce.update({
+                    "trovato_cents": ravveduto, "codice_trovato": "RC01",
+                    "esito": "RAVVEDUTO" if ravveduto >= a["importo_cents"] else "DIFFERENZA",
+                    "sanzioni_interessi_cents": ravveduto - a["importo_cents"],
+                })
+                dettaglio.append(voce)
+                continue
         esito = ("OK" if trovato == a["importo_cents"] else
                  "DIFFERENZA" if trovato else "ASSENTE")
-        dettaglio.append({**{k: a[k] for k in ("codice", "mese", "anno", "lato", "importo_cents")},
-                          "trovato_cents": trovato or None, "esito": esito})
-    return {"ok": sum(1 for d in dettaglio if d["esito"] == "OK"), "dettaglio": dettaglio}
+        dettaglio.append({**voce, "trovato_cents": trovato or None, "esito": esito})
+    return {"ok": sum(1 for d in dettaglio if d["esito"] in ("OK", "RAVVEDUTO")), "dettaglio": dettaglio}
 
 
 def _scegli_modello(attesi, modelli) -> Tuple[Optional[Dict[str, Any]], List[str], Dict[str, Any]]:

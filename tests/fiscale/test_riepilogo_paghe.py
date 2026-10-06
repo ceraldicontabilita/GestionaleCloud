@@ -99,3 +99,18 @@ def test_elenco_netti_riconosciuto_dal_contenuto_e_quadrato():
     primo = run(en.deposita_elenco(db, e, documento_id=None, filename="e.pdf", sha256="a"))
     assert run(en.deposita_elenco(db, e, documento_id=None, filename="e.pdf", sha256="a")) == primo
     assert run(db["elenchi_netti"].count_documents({})) == 1
+
+
+def test_rc01_e_il_ravvedimento_del_dm10_non_un_alias():
+    from app.services.prospetti_contabili import valuta_modello
+    atteso = [{"codice": "DM10", "mese": 5, "anno": 2026, "lato": "debito", "importo_cents": 100000}]
+    riga = lambda cod, imp: {"codice": cod, "mese": 5, "anno": 2026, "importo_debito_cents": imp, "importo_credito_cents": 0}
+    # Pagato in ritardo: RC01 con sanzioni e interessi -> ravveduto, la differenza e' dichiarata.
+    v = valuta_modello(atteso, [riga("RC01", 101500)])
+    d = v["dettaglio"][0]
+    assert d["esito"] == "RAVVEDUTO" and d["codice_trovato"] == "RC01" and d["sanzioni_interessi_cents"] == 1500
+    assert v["ok"] == 1
+    # Meno dell'atteso non e' un ravvedimento: differenza.
+    assert valuta_modello(atteso, [riga("RC01", 90000)])["dettaglio"][0]["esito"] == "DIFFERENZA"
+    # Pagamento regolare: DM10 al centesimo.
+    assert valuta_modello(atteso, [riga("DM10", 100000)])["dettaglio"][0]["esito"] == "OK"

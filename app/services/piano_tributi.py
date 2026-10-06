@@ -96,10 +96,15 @@ def _voce(id_: str, gruppo: str, etichetta: str, codici: List[str], **kw: Any) -
 PIANO_BASE: List[Dict[str, Any]] = [
     _voce("ritenute_1001", "Erario", "Ritenute lavoro dipendente", ["1001"],
           periodo="mese", mesi=MESI_TUTTI, anno_offset=0),
-    _voce("inps_dm10", "INPS", "Contributi dipendenti (DM10)", ["DM10"],
+    _voce("inps_dm10", "INPS", "Contributi dipendenti (DM10, RC01 se in ritardo)", ["DM10", "RC01"],
           periodo="mese", mesi=MESI_TUTTI, anno_offset=0),
     _voce("inps_cxx", "INPS", "Gestione separata (CXX)", ["CXX"],
           periodo="mese", mesi=MESI_TUTTI, anno_offset=0, obbligatorio=False),
+    _voce("iva_mensile", "Erario", "IVA mensile (6001-6012)",
+          [f"60{m:02d}" for m in range(1, 13)],
+          periodo="mese", mesi=MESI_TUTTI, anno_offset=0, obbligatorio=False,
+          nota="Si versa solo se la liquidazione del mese e' a debito: importo e calcolo in Gestione IVA.",
+          rimando={"to": "/iva", "label": "Apri Gestione IVA"}),
     _voce("add_regionale_3802", "Regione", "Addizionale regionale, rate del saldo", ["3802"],
           periodo="mese", mesi=MESI_RATE_SALDO, anno_offset=-1),
     _voce("add_comunale_saldo_3848", "Comune", "Addizionale comunale, rate del saldo", ["3848"],
@@ -521,7 +526,7 @@ def _griglia_anno(voci, registro, modelli, anno: int, oggi: date,
         tutte.extend(caselle)
         righe_griglia.append({
             "voce": {k: voce.get(k) for k in (
-                "id", "gruppo", "etichetta", "codici", "periodo", "obbligatorio", "natura", "nota")},
+                "id", "gruppo", "etichetta", "codici", "periodo", "obbligatorio", "natura", "nota", "rimando")},
             "caselle": caselle,
         })
 
