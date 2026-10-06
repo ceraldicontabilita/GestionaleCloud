@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-10-05
+reviewed_at: 2026-10-06
 storage_architecture: supabase
 -->
 
-Aggiornato il 05/10/2026 sul codice di `main` del repository canonico
+Aggiornato il 06/10/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
 **Gli unici documenti sono questo file e `README.md`. `CLAUDE.md` è l'unica
@@ -465,6 +465,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   totale al centesimo — mai per differenza, o un incasso non registrato sparisce lì dentro. Ignorarlo scarta
   la giornata intera, non una riga. Il totale del corrispettivo XML è l'**incassato** (contanti +
   elettronico): lo scarto verso imponibile + IVA senza voce dichiarata si scarta.
+  Nei riepiloghi COR10 `ImportoParziale`, anche zero, è la base netta di resi e annulli: il lordo aggiunge solo l'`Imposta` XML, senza sottrarre resi/annulli di nuovo. Le componenti fiscali per aliquota non supportate restano `da verificare`, mai crediti ricavati per differenza; le voci lorde legacy in `Totali` conservano la loro quadratura.
 - **Il reimport di un corrispettivo non cancella una prova già arrivata**: il credito POS riconciliato con l'accredito resta (se la giornata è sostituita dall'XML passa alla chiusura nuova), e una chiusura del terminale non si aggancia mai a una riga ritirata (`FILTRO_CORRISPETTIVO_ATTIVO`). L'XML promuove anche la chiusura manuale serale con un totale digitato diverso da quello dell'RT, altrimenti i contanti entrano due volte in cassa. Con due attese Numia lo stesso giorno l'accredito non ne sceglie una (`attese_pos_ambigue`), e una chiusura corretta dopo l'accredito riapre le righe d'estratto che non quadrano più. Il CSV AdE segue l'anno attivo come l'XML.
 - **POS dell'XML senza chiusura del terminale** (titolare, 02/10/2026): l'XML apre comunque il credito verso il gestore per il suo `pagato_elettronico` (`_apri_credito_pos_da_xml`: conto 15.07 di gruppo, `gestore=pos_da_xml`, `fonte_credito="xml"`, `senza_chiusura_terminale`, chiave `corr:<id>:banca_credito:pos_da_xml`: il reimport non ne scrive una seconda; mai da una riga storica o manuale). La chiusura del terminale lo **sostituisce** (`_sostituisci_credito_xml`: somma dei circuiti = XML al centesimo → riga XML `archived` con `sostituito_da`, la prova bancaria passa al terminale), altrimenti resta con `differenza_terminale`; l'accredito in banca al centesimo lo chiude (`attese_pos_numia_del_giorno`: prima il credito NUMIA, se manca quello da XML); Coerenza POS lo espone in `credito_pos_da_xml` e `fase2_crediti_xml_*`. Niente doppio credito e niente ricavo in più: il ricavo è già nel corrispettivo.
 - POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre
@@ -662,6 +663,7 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   **chiuso**: uno stato assente, vuoto o sconosciuto non passa. Su un dato che diventa un bonifico
   l'assenza di prova non vale come prova.
   Zucchetti/CSC: cella **sotto** l'etichetta (`_netto_dalla_cella`); competenze − trattenute è solo un controllo, e i totali si leggono come righe intere (le trattenute «6.691,15» non sono «691,15»). I netti HR si rileggono dal PDF della riga (`cedolini_hr_riverifica.py`, un lotto ogni 20 min): cambia solo un netto verificato, il vecchio resta in `storico_netto`. In HR il netto è quello della busta **più l'acconto già recuperato** (`acconti.acconto_recuperato`, decisione del titolare del 28/09/2026): il totale del mese, non un errore di lettura.
+- Le ore Zucchetti si leggono dalle celle `LAVORATO` / `Giorni` / `Ore ordinarie`, mai dalle settimane INPS. La quota TFR annuale resta distinta dalla mensile: una quota mensile assente è nulla, uno zero stampato resta zero; un evento che dichiara questi valori non autorizza stime o accantonamenti.
 - Sulla collection `cedolini` il campo è **`pagato`**, non `pagata`: il femminile non esiste su nessun
   documento e un filtro che lo cerca passa sempre.
 - **Un solo motore abbina bonifico e stipendio**: `associa_bonifici_stipendi` (identità completa, acconti,
