@@ -189,7 +189,7 @@ const AREAS = [
   {
     id: 'fiscale',
     title: 'Fiscale',
-    route: '/situazione-fiscale/piano',
+    route: '/contabilita/calendario',
     Icon: ReceiptText,
     color: '#be123c',
     group: 'Fisco',

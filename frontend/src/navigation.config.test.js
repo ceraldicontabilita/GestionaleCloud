@@ -32,9 +32,9 @@ describe('navigation.config', () => {
     }
   });
 
-  it('le quattordici sezioni di Contabilità stanno tutte nella colonna', () => {
+  it('le quindici sezioni di Contabilità stanno tutte nella colonna', () => {
     const contabilita = NAV_TUTTE.filter(v => v.to?.startsWith('/contabilita'));
-    expect(contabilita).toHaveLength(14);
+    expect(contabilita).toHaveLength(15);
   });
 
   it('la voce attiva è quella col prefisso più lungo', () => {

@@ -239,7 +239,7 @@ export default function Scadenze() {
                   label="F24 da Pagare"
                   value={alertWidget?.f24?.da_pagare_30gg}
                   accent="danger"
-                  onClick={() => navigate('/situazione-fiscale/piano')}
+                  onClick={() => navigate('/contabilita/calendario')}
                 />
               )}
               {alertWidget.fiscali?.prossime > 0 && (
