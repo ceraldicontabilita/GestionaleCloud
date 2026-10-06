@@ -169,11 +169,11 @@ resto del file.
   colori di sistema non controllabili).
 - Ogni pagina centrata, **mai scroll orizzontale su smartphone**: le tabelle
   larghe diventano card impilate. Tocco minimo 44px.
-  Nell'ERP lo fa un meccanismo solo, `frontend/src/lib/tabelleCard.js` + regole `table[data-card="si"]` in `index.css`: sotto i 768px ogni `<table>` con
-  intestazione a una riga diventa una card per riga con l'etichetta della colonna (`data-label`); `data-card="no"` tiene una matrice com'è. Non scrivere
+  Nell'ERP lo fa un meccanismo solo, `frontend/src/lib/tabelleCard.js` + regole `table[data-card="si"]` in `index.css`: sotto i 768px ogni `<table>` (anche con
+  intestazione a più livelli: vale la cella più in basso che copre la colonna) diventa una card per riga con l'etichetta della colonna (`data-label`, sopra al valore se supera 22 caratteri); `data-card="no"` tiene una matrice com'è. Non scrivere
   card a mano per una tabella semplice.
 - L'ERP segue l'**artefatto «Gestore Attività»** (titolare, 26/09/2026): crema `#faf9f5`, inchiostro `#141413`, terracotta `#c15f3c`
-  per azioni e stato attivo; token solo in `lib/utils.js` e `index.css`, niente Tailwind né `gs-`; vietati anche qui blu, viola e grigi
+  per azioni e stato attivo (il pulsante `Button` è terracotta in ogni variante tranne `danger`: `success`/`info`/`warning` disegnano il primario, il colore dell'esito sta nei badge); token solo in `lib/utils.js` e `index.css`, niente Tailwind né `gs-`; vietati anche qui blu, viola e grigi
   freddi; il colore non è mai l'unica informazione (ogni badge ha testo). Ogni pagina: `PageHeader` (famiglia, titolo, perché, pastiglie), una riga di filtri, una tabella, 200 righe con «Mostra altre».
 - Le app portate pari pari mantengono il loro aspetto: nessuna contaminazione
   con il layout dell'ERP.

@@ -10,31 +10,64 @@
  * colspan nell'intestazione resta com'è (scroll di riserva).
  */
 export const BREAKPOINT_CARD = 768;
+const ETICHETTA_LUNGA = 22;
 
-function celleIntestazione(tabella) {
+function righeIntestazione(tabella) {
   const righe = tabella.tHead ? [...tabella.tHead.rows] : [];
-  if (righe.length === 1) return [...righe[0].cells];
-  if (righe.length === 0) {
-    const prima = tabella.rows[0];
-    if (prima && [...prima.cells].every(c => c.tagName === 'TH')) return [...prima.cells];
-  }
+  if (righe.length) return righe.length <= 3 ? righe : null;
+  const prima = tabella.rows[0];
+  if (prima && [...prima.cells].every(c => c.tagName === 'TH')) return [prima];
   return null;
+}
+
+/**
+ * Etichetta di ogni colonna, anche con intestazione a più livelli (rowspan/colspan):
+ * vale la cella più in basso che copre la colonna (la «foglia»), quella del gruppo
+ * («Registratore contro terminali») resta solo dove sotto non c'è altro.
+ */
+function etichetteColonne(righe) {
+  const occupata = [];
+  const foglia = [];
+  righe.forEach((riga, r) => {
+    let c = 0;
+    for (const cella of riga.cells) {
+      while (occupata[r] && occupata[r][c]) c += 1;
+      const rs = cella.rowSpan || 1;
+      const cs = cella.colSpan || 1;
+      const testo = (cella.textContent || '').replace(/\s+/g, ' ').trim();
+      for (let dr = 0; dr < rs; dr += 1) {
+        occupata[r + dr] = occupata[r + dr] || [];
+        for (let dc = 0; dc < cs; dc += 1) occupata[r + dr][c + dc] = true;
+      }
+      for (let dc = 0; dc < cs; dc += 1) {
+        if (testo || foglia[c + dc] === undefined) foglia[c + dc] = testo;
+      }
+      c += cs;
+    }
+  });
+  return foglia.map(x => x || '');
 }
 
 export function etichettaTabella(tabella) {
   if (!tabella || tabella.dataset.card === 'no') return;
-  const testa = celleIntestazione(tabella);
-  if (!testa || testa.some(c => c.colSpan > 1)) return;
-  const etichette = testa.map(c => (c.textContent || '').replace(/\s+/g, ' ').trim());
+  const testa = righeIntestazione(tabella);
+  if (!testa) return;
+  const etichette = etichetteColonne(testa);
+  if (!etichette.length) return;
+  const intestazioni = new Set(testa);
   for (const riga of tabella.rows) {
-    if (riga.parentElement === tabella.tHead || riga === tabella.rows[0] && !tabella.tHead) continue;
+    if (intestazioni.has(riga)) continue;
     let colonna = 0;
     for (const cella of riga.cells) {
       const etichetta = cella.colSpan > 1 ? '' : etichette[colonna] || '';
       if (etichetta) {
         if (cella.dataset.label !== etichetta) cella.dataset.label = etichetta;
+        // Etichetta lunga: il CSS la mette sopra al valore.
+        if (etichetta.length > ETICHETTA_LUNGA) cella.dataset.lungo = '';
+        else delete cella.dataset.lungo;
       } else if (cella.dataset.label !== undefined) {
         delete cella.dataset.label;
+        delete cella.dataset.lungo;
       }
       colonna += cella.colSpan || 1;
     }

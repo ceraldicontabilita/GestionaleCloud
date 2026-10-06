@@ -48,11 +48,14 @@ export function Button({
       color: COLORS.primary,
       borderColor: COLORS.primary,
     },
-    success: { background: COLORS.success, color: '#fff', borderColor: COLORS.success },
     danger: { background: COLORS.danger, color: '#fff', borderColor: COLORS.danger },
-    info: { background: COLORS.info, color: '#fff', borderColor: COLORS.info },
-    warning: { background: COLORS.warning, color: '#fff', borderColor: COLORS.warning },
   };
+  // Un'azione e' sempre terracotta (artefatto «Gestore Attivita'»): i vecchi nomi success/info/warning
+  // restano accettati dalle pagine ma disegnano il pulsante primario. Il verde, il giallo e l'azzurro
+  // dicono un ESITO (badge, stato), non un'azione. Solo `danger` resta a parte (cancella, annulla).
+  variants.success = variants.primary;
+  variants.info = variants.primary;
+  variants.warning = variants.primary;
 
   return (
     <button
