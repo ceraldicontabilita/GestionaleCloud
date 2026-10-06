@@ -37,7 +37,9 @@ const formatDate = formatDateIT;
  */
 function CardBonifico({ t, r, inHr, onPdf }) {
   const eStipendio = Boolean(t.destinazione_dipendente || inHr || t.salario_associato);
-  const collegato = Boolean(t.salario_associato || t.fattura_associata || t.destinazione_automatica);
+  const collegato = Boolean(
+    t.salario_associato || t.fattura_associata || t.destinazione_automatica || inHr
+  );
   const etichetta = { fontSize: 11, color: COLORS.textSubtle, fontWeight: 600, letterSpacing: '0.02em' };
   const riga = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 };
   return (
@@ -207,7 +209,10 @@ export default function ArchivioBonifici() {
   useEffect(() => {
     if (!initialized.current) return;
     const timer = setTimeout(() => {
+      // Elenco, conteggio e riconciliazione dello stesso anno (filtro manuale o anno globale).
       loadTransfers();
+      loadCount();
+      loadRiconciliazioneStats();
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -240,7 +245,7 @@ export default function ArchivioBonifici() {
 
   const loadCount = async () => {
     try {
-      const res = await api.get(`/api/archivio-bonifici/transfers/count?anno=${anno}`);
+      const res = await api.get(`/api/archivio-bonifici/transfers/count?anno=${yearFilter || anno}`);
       setCount(res.data?.count || 0);
     } catch (error) {
       console.error('Error loading count:', error);
@@ -249,7 +254,7 @@ export default function ArchivioBonifici() {
 
   const loadRiconciliazioneStats = async () => {
     try {
-      const res = await api.get(`/api/archivio-bonifici/stato-riconciliazione?anno=${anno}`);
+      const res = await api.get(`/api/archivio-bonifici/stato-riconciliazione?anno=${yearFilter || anno}`);
       setRiconciliazioneStats(res.data);
     } catch (error) {
       console.error('Error loading riconciliazione stats:', error);
