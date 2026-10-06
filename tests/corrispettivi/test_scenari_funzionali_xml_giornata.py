@@ -55,6 +55,7 @@ def test_xml_giornata_cassa_solo_contanti_e_giornale_quadrato(monkeypatch):
     (corr,) = run(attive(db, "corrispettivi"))
     assert corr["pos_stato"] == "attende_chiusura_pos_reale"
     assert corr["stato"] == "definitivo_xml" and corr["source"] == "xml"
+    assert corr["parser_version"] == "corrispettivi_xml_v3_importo_parziale"
 
     # Libro giornale: una scrittura quadrata, ricavi all'IMPONIBILE.
     (scrittura,) = run(attive(db, "movimenti_contabili"))
