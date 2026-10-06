@@ -1000,3 +1000,29 @@ describe('Registro a pagine dal server', () => {
       .toHaveTextContent('250 movimenti a marzo, mostrati i primi 50'));
   });
 });
+
+
+describe('Vendite e accrediti SumUp: ultimi 31 giorni', () => {
+  const giornate = Array.from({ length: 70 }, (_, i) => ({
+    data: `2026-09-${String(30 - (i % 30)).padStart(2, '0')}`, transazioni: 1, vendite: 10, rimborsi: 0,
+    netto: 10, accredito_data: null, payout_ids: [], ricevuto: null, differenza: null,
+  }));
+
+  it('mostra 31 giorni e aggiunge gli altri con «Mostra altre»', () => {
+    render(<CartaSumUp anno={2026} dati={{ giornate_vendite: giornate }} />);
+    const righe = () => screen.getByTestId('vendite-e-accrediti-sumup').querySelectorAll('tbody tr');
+    expect(righe()).toHaveLength(31);
+    const bottone = screen.getByTestId('mostra-altre-sumup');
+    expect(bottone).toHaveTextContent('Mostra altre 31 · 39 rimanenti');
+    fireEvent.click(bottone);
+    expect(righe()).toHaveLength(62);
+    fireEvent.click(screen.getByTestId('mostra-altre-sumup'));
+    expect(righe()).toHaveLength(70);
+    expect(screen.queryByTestId('mostra-altre-sumup')).toBeNull();
+  });
+
+  it('con meno di 31 giorni non mostra il bottone', () => {
+    render(<CartaSumUp anno={2026} dati={{ giornate_vendite: giornate.slice(0, 5) }} />);
+    expect(screen.queryByTestId('mostra-altre-sumup')).toBeNull();
+  });
+});

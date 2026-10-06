@@ -603,8 +603,8 @@ sostituito con opzioni predefinite più «Altro (scrivi tu)» come eccezione.
   fissa la fonte AdE: IRES 2001 acconto I, 2002 acconto II, 2003 saldo; 3802 sostituto, 3801 autotassazione;
   TEFA/TEFN/TEFZ (Ris. 5/E 2021). Un testo «di produzione» non vale come fonte: su entrambi era sbagliato.
 - **Piano tributi** (`services/piano_tributi.py`, `/api/f24/piano-tributi`): le voci ricorrenti
-  del titolare aprono un'attesa per periodo; la soddisfa solo l'addebito in banca, la quietanza
-  la lascia `DA_VERIFICARE`. Legge il registro unico F24, non ne tiene un secondo; l'importo
+  del titolare aprono un'attesa per periodo; la soddisfa una quietanza che contiene il codice («Pagato (quietanza)»: la banca addebita l'intera delega, mai la sola riga del codice,
+  titolare 06/10/2026) o l'addebito agganciato («Pagato (banca)»); un addebito compatibile ma non agganciato resta `DA_VERIFICARE`. Legge il registro unico F24, non ne tiene un secondo; l'importo
   viene dal modello arrivato, mai stimato. 3802/3848 sono rate del saldo dell'anno prima. Una voce **non obbligatoria** (Gestione separata CXX: si versa solo se nel mese ci sono compensi) senza F24 è «Nessun F24 in archivio», mai «Manca F24» e senza giorni di scaduto (titolare, 06/10/2026); i modelli con `superato_da` o `motivo_quarantena` non sono modelli del registro (`modello_attivo`).
 - Il **periodo di riferimento di un tributo sta sulla sua riga** (`anno`, `mese`), non sul modello né nella data di pagamento;
   l'IVA mensile sono i codici 6001–6012. «00MM» è il mese, «NNRR» la rata: «0101» è la rata unica, mai gennaio (`tributi_engine.mese_da_rateazione`). Una riga d'avviso non trovata mostra gli indizi `POSSIBILE_COMPENSAZIONE_6099` / `POSSIBILE_ERRORE_PERIODO_IMPUTAZIONE` (±1,00 €), mai un aggancio. **Nessun F24 ricostruito in automatico.** Nessun pagamento automatico è autorizzato.

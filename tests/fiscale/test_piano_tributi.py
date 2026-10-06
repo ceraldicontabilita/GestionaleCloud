@@ -75,12 +75,13 @@ def test_la_prova_bancaria_soddisfa_e_conserva_gli_id():
     assert maggio["modelli"][0]["f24_id"] == "f-mag"
 
 
-def test_la_sola_quietanza_non_vale_come_banca():
+def test_la_quietanza_con_il_codice_dentro_vale_pagato():
     f = _f24("f-apr", "2026-05-18", erario=[("1001", 4, 2026, 94079, 0)], quietanza_id="q-1")
     g = run(piano.griglia(_db(f), 2026, oggi=OGGI))
     aprile = _mese(g, "ritenute_1001", 4)
-    assert aprile["stato"] == piano.QUIETANZA_SENZA_BANCA
-    assert aprile["expectation_status"] == ExpectationStatus.DA_VERIFICARE.value
+    assert aprile["stato"] == piano.PAGATO_QUIETANZA
+    assert aprile["etichetta_stato"] == "Pagato (quietanza)"
+    assert aprile["expectation_status"] == ExpectationStatus.SODDISFATTO.value
 
 
 def test_f24_arrivato_e_non_pagato_dopo_la_scadenza():

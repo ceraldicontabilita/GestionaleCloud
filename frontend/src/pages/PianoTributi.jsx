@@ -13,7 +13,7 @@ const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ot
 const VARIANTE = {
   pagato: 'success',
   da_confermare_banca: 'warning',
-  quietanza_senza_banca: 'warning',
+  pagato_quietanza: 'success',
   da_verificare_a_mano: 'warning',
   da_pagare: 'accent',
   scaduto_non_pagato: 'danger',
@@ -209,8 +209,8 @@ function RicercaCodice({ anno }) {
               <div key={r.f24_id} style={PICCOLA_CARD}>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>F24 del {r.data_versamento_it || 'data non letta'}</div>
                 <div style={{ margin: '4px 0' }}>
-                  <Badge variant={r.pagamento_verificato_banca ? 'success' : r.quietanze.length ? 'warning' : 'danger'}>
-                    {r.pagamento_verificato_banca ? 'Pagato (banca)' : r.quietanze.length ? 'Quietanza, banca da verificare' : 'Nessun pagamento trovato'}
+                  <Badge variant={r.pagamento_verificato_banca || r.quietanze.length ? 'success' : 'danger'}>
+                    {r.pagamento_verificato_banca ? 'Pagato (banca)' : r.quietanze.length ? 'Pagato (quietanza)' : 'Nessun pagamento trovato'}
                   </Badge>
                 </div>
                 {r.righe.map((riga, i) => (
@@ -338,8 +338,8 @@ export default function PianoTributi() {
   const anni = dati ? (dati.multi ? dati.anni : [dati]) : [];
   const conta = stato => (dati?.conteggi?.[stato] || 0);
   const STATI_FILTRO = {
-    pagato: { etichetta: 'Pagati (banca)', stati: ['pagato'] },
-    verifica: { etichetta: 'Da verificare', stati: ['quietanza_senza_banca', 'da_confermare_banca', 'da_verificare_a_mano'] },
+    pagato: { etichetta: 'Pagati', stati: ['pagato', 'pagato_quietanza'] },
+    verifica: { etichetta: 'Da verificare', stati: ['da_confermare_banca', 'da_verificare_a_mano'] },
     mancano: { etichetta: 'Mancano o scaduti', stati: [...new Set((dati?.mancano || []).map(m => m.stato))] },
     futuro: { etichetta: 'Non ancora scaduti', stati: ['futuro', 'da_pagare'] },
   };
@@ -385,8 +385,8 @@ export default function PianoTributi() {
       {dati && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? 120 : 160}px, 1fr))`, gap: isMobile ? 8 : 12, marginBottom: 12 }}>
-            <StatCard label="Pagati (banca)" value={conta('pagato')} accent="success" onClick={() => scegliFiltro('pagato')} style={filtro === 'pagato' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
-            <StatCard label="Da verificare" value={conta('quietanza_senza_banca') + conta('da_confermare_banca') + conta('da_verificare_a_mano')} accent="warning" onClick={() => scegliFiltro('verifica')} style={filtro === 'verifica' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
+            <StatCard label="Pagati" value={conta('pagato') + conta('pagato_quietanza')} accent="success" onClick={() => scegliFiltro('pagato')} style={filtro === 'pagato' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
+            <StatCard label="Da verificare" value={conta('da_confermare_banca') + conta('da_verificare_a_mano')} accent="warning" onClick={() => scegliFiltro('verifica')} style={filtro === 'verifica' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
             <StatCard label="Mancano o scaduti" value={(dati.mancano || []).length} accent="danger" onClick={() => scegliFiltro('mancano')} style={filtro === 'mancano' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
             <StatCard label="Non ancora scaduti" value={conta('futuro') + conta('da_pagare')} accent="none" onClick={() => scegliFiltro('futuro')} style={filtro === 'futuro' ? { outline: `2px solid ${COLORS.primary}` } : undefined} />
           </div>
