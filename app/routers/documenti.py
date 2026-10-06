@@ -3964,6 +3964,14 @@ async def upload_documento_automatico(
             ingest = await importa_pdf_bonifico(
                 db, content, filename, source="upload_manuale_import_documenti"
             )
+            if ingest.get("status") == "non_bonifico":
+                await db["documents_inbox"].delete_one({"id": doc_id})
+                result["success"] = False
+                result["tipo_rilevato"] = "fattura_pdf"
+                result["fuori_contabilita"] = (
+                    "copia PDF di una fattura italiana: la fattura entra dall'XML dello SDI")
+                result["message"] = ingest.get("message")
+                return result
             if ingest.get("status") in {STATO_NON_REGISTRATO, "duplicate"}:
                 # Accredito di un anno che non si registra, o ricevuta gia' in
                 # archivio: la copia appena messa in inbox non serve a nessuno,

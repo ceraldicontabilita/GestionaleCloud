@@ -255,17 +255,22 @@ async def _rileggi_ricevute_sumup(db, *, dry_run: bool) -> Dict[str, Any]:
 async def _stampe_fattura_tra_bonifici(db, *, dry_run: bool, actor: str) -> Dict[str, Any]:
     """Stampe PDF di fatture entrate come bonifici (importo = imponibile): in quarantena per id.
 
-    Il nome file sceglie solo chi controllare; la decisione e' del contenuto del PDF.
+    Chi controllare lo sceglie l'assenza di un riferimento di banca; la decisione e' del contenuto del PDF.
     """
     import base64
-    import re
 
     from app.routers.bonifici_module.pdf_parser import read_pdf_bytes
     from app.services.bonifici_pdf_ingest import e_stampa_fattura
 
+    # Il contenuto decide; per non rileggere ogni PDF si guardano i transfer senza
+    # riferimento di banca (CRO/TRN/rif. interno): una ricevuta vera ne porta uno.
     candidati = [
-        r for r in await db["bonifici_transfers"].find({}, {"_id": 0, "id": 1, "source_file": 1}).to_list(None)
-        if re.search(r"\.xml(\.p7m)?\b", str(r.get("source_file") or ""), re.IGNORECASE)
+        r for r in await db["bonifici_transfers"].find(
+            {}, {"_id": 0, "id": 1, "cro_trn": 1, "rif_interno": 1,
+                 "salario_associato": 1, "fattura_associata": 1, "hr_deposito": 1}).to_list(None)
+        if not r.get("cro_trn") and not r.get("rif_interno")
+        and not r.get("salario_associato") and not r.get("fattura_associata")
+        and (r.get("hr_deposito") or {}).get("esito") not in {"depositato", "arricchito"}
     ]
     trovati: List[str] = []
     for cand in candidati:
@@ -282,6 +287,9 @@ async def _stampe_fattura_tra_bonifici(db, *, dry_run: bool, actor: str) -> Dict
             continue
         trovati.append(cand["id"])
         if not dry_run:
+            from app.services.bonifici_pdf_ingest import togli_code_hr_e_inbox
+
+            await togli_code_hr_e_inbox(db, cand["id"])
             await sposta_nella_cartella(
                 db, "bonifici_transfers", completa, None,
                 motivo="stampa PDF di una fattura, non un bonifico", actor=actor)

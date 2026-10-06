@@ -356,6 +356,24 @@ def _esito_non_registrato(parsed: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+async def togli_code_hr_e_inbox(db, transfer_id: str) -> None:
+    """Toglie, per id, la riga «da associare» di HR e la copia in inbox che citano un transfer."""
+    from app.services.hr_pagamenti_deposito import _db_hr
+
+    db_hr = _db_hr()
+    if db_hr is not None:
+        async for riga in db_hr.bonifici_da_associare.find(
+            {"gestionale_transfer_id": transfer_id}, {"_id": 0, "id": 1, "stato": 1}
+        ):
+            if riga.get("id") and riga.get("stato") == "da_associare":
+                await db_hr.bonifici_da_associare.delete_one({"id": riga["id"]})
+    async for doc in db["documents_inbox"].find(
+        {"bonifico_transfer_id": transfer_id}, {"_id": 0, "id": 1}
+    ):
+        if doc.get("id"):
+            await db["documents_inbox"].delete_one({"id": doc["id"]})
+
+
 async def _togli_accredito_registrato(db, transfer: Dict[str, Any]) -> bool:
     """Toglie, per id, un accredito escluso gia' registrato e la sua coda HR.
 
@@ -376,20 +394,7 @@ async def _togli_accredito_registrato(db, transfer: Dict[str, Any]) -> bool:
             "Accredito escluso %s non tolto: gia' collegato (hr=%s)", transfer_id, esito_hr
         )
         return False
-    from app.services.hr_pagamenti_deposito import _db_hr
-
-    db_hr = _db_hr()
-    if db_hr is not None:
-        async for riga in db_hr.bonifici_da_associare.find(
-            {"gestionale_transfer_id": transfer_id}, {"_id": 0, "id": 1, "stato": 1}
-        ):
-            if riga.get("id") and riga.get("stato") == "da_associare":
-                await db_hr.bonifici_da_associare.delete_one({"id": riga["id"]})
-    async for doc in db["documents_inbox"].find(
-        {"bonifico_transfer_id": transfer_id}, {"_id": 0, "id": 1}
-    ):
-        if doc.get("id"):
-            await db["documents_inbox"].delete_one({"id": doc["id"]})
+    await togli_code_hr_e_inbox(db, transfer_id)
     await db["bonifici_transfers"].delete_one({"id": transfer_id})
     return True
 
@@ -564,6 +569,17 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
             status = result.get("status")
             if status == STATO_NON_REGISTRATO:
                 await db["documents_inbox"].delete_one(document_filter)
+                continue
+            if status == "non_bonifico":
+                # Stampa di una fattura: non e' un bonifico, non resta in coda come tale.
+                await db["documents_inbox"].update_one(
+                    document_filter,
+                    {"$set": {
+                        "category": "fattura_pdf", "processed": True, "status": "fuori_contabilita",
+                        "processing_error": result.get("message"),
+                        "processed_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
                 continue
             if status == "saved":
                 stats["salvati"] += 1

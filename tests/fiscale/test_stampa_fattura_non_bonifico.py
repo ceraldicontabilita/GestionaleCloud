@@ -75,3 +75,37 @@ def test_ricevuta_sumup_beneficiario_causale_e_riferimento():
     assert t["causale"] == "Preventivo N 1908 del 07/08/2026"
     assert t["cro_trn"] == "40eebd7002774b00a91f24dfd2cbf6c2"
     assert (t["data"].year, t["data"].month, t["data"].day) == (2026, 8, 7)
+
+
+def test_ripulisci_mette_in_quarantena_la_stampa_anche_con_nome_generico():
+    import base64
+
+    from mongomock_motor import AsyncMongoMockClient
+
+    from app.services.doppioni_archivio import _stampe_fattura_tra_bonifici
+
+    db = AsyncMongoMockClient()["t"]
+    asyncio.run(db["bonifici_transfers"].insert_one({
+        "id": "t1", "source_file": "FPR 31_26.pdf", "importo": 1612,
+        "pdf_data": base64.b64encode(_pdf(RIGHE)).decode()}))
+    esito = asyncio.run(_stampe_fattura_tra_bonifici(db, dry_run=False, actor="test"))
+    assert esito["stampe_fattura"] == 1
+    assert asyncio.run(db["bonifici_transfers"].count_documents({})) == 0
+    assert asyncio.run(db["bonifici_transfers_quarantena"].count_documents({"id": "t1"})) == 1
+
+
+def test_inbox_riclassifica_la_stampa_invece_di_marcarla_elaborata():
+    import base64
+
+    from mongomock_motor import AsyncMongoMockClient
+
+    from app.services.bonifici_pdf_ingest import processa_inbox_bonifici
+
+    db = AsyncMongoMockClient()["t"]
+    asyncio.run(db["documents_inbox"].insert_one({
+        "id": "d1", "category": "bonifico", "status": "da_processare", "processed": False,
+        "filename": "FPR 31_26.pdf", "pdf_data": base64.b64encode(_pdf(RIGHE)).decode()}))
+    asyncio.run(processa_inbox_bonifici(db))
+    doc = asyncio.run(db["documents_inbox"].find_one({"id": "d1"}))
+    assert doc["category"] == "fattura_pdf" and doc["status"] == "fuori_contabilita"
+    assert not doc.get("bonifico_transfer_id")
