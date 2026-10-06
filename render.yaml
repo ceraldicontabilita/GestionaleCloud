@@ -183,6 +183,12 @@ services:
         sync: false
       - key: SUMUP_MERCHANT_CODE
         sync: false
+      # Interruttori dei soli giri automatici che leggono da SumUp e PayPal (ore 3:20 e 14:20
+      # per PayPal): «false» li ferma, le credenziali restano. Assenti = acceso. Proprietario: titolare.
+      - key: SUMUP_SYNC_ENABLED
+        sync: false
+      - key: PAYPAL_SYNC_ENABLED
+        sync: false
       # --- Inviti recensione Colazioni B&B. Il template Meta deve avere due
       # parametri nel corpo: nome struttura e link recensione. Proprietario:
       # titolare; il token si ruota da Meta Business. Se assenti, nessun invio.
