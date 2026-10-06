@@ -2383,6 +2383,9 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
                 return "pagamenti_buoni"
             if all(m in content_str for m in ("ID INVIO", "MATRICOLA DISPOSITIVO", "AMMONTARE DELLE VENDITE")):
                 return "corrispettivi_csv_ade"
+            from app.services.fatture_report_ae import e_csv_ade
+            if e_csv_ade(file_content, filename):
+                return "report_fatture_ricevute"
         if all(marker in content_str for marker in ("IMPORTO NETTO", "IMPORTO IVA", "FORNITORE", "STATO DEL PAGAMENTO")):
             return "spese_sumup"
         if all(marker in content_str for marker in (

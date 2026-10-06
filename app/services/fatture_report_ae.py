@@ -217,6 +217,72 @@ def _read_report(content: bytes, filename: str) -> pd.DataFrame:
     return frame
 
 
+# Intestazioni dell'export grezzo «Fatture ricevute» del portale AdE (csv con
+# `;` e valori tra apici): e' lo stesso indice, con meno colonne dell'xlsx del
+# titolare (niente metodo di pagamento, nome file, totale documento).
+COLONNE_CSV_ADE = {
+    "tipo documento", "numero fattura / documento", "data emissione",
+    "partita iva fornitore", "denominazione fornitore", "sdi/file",
+    "imponibile/importo (totale in euro)", "imposta (totale in euro)",
+}
+
+
+def _valore_csv_ade(value: Any) -> str:
+    testo = _text(value).strip("'").strip()
+    return "" if testo.lower() == "non presente" else testo
+
+
+def e_csv_ade(content: bytes, filename: str) -> bool:
+    """True se e' l'export csv del portale AdE (riconosciuto dalle intestazioni)."""
+    if Path(filename or "").suffix.lower() != ".csv":
+        return False
+    prima_riga = content[:4096].decode("utf-8-sig", errors="ignore").splitlines()[:1]
+    if not prima_riga:
+        return False
+    colonne = {_nome_colonna(c) for c in prima_riga[0].split(";")}
+    return COLONNE_CSV_ADE.issubset(colonne)
+
+
+def _read_csv_ade(content: bytes) -> pd.DataFrame:
+    """Porta l'export csv AdE sui nomi di colonna del report xlsx.
+
+    Gli importi del portale sono senza segno anche per le note di credito: il
+    tipo documento resta quello scritto nel file. Il totale documento non e'
+    nel file e non si inventa qui: lo deriva l'import (imponibile + imposta).
+    """
+    try:
+        grezzo = pd.read_csv(
+            io.BytesIO(content), sep=";", dtype=str, keep_default_na=False,
+            encoding="utf-8-sig",
+        )
+    except Exception as exc:
+        raise ValueError(f"Export fatture AdE non leggibile: {exc}") from exc
+    grezzo.columns = [_nome_colonna(c) for c in grezzo.columns]
+    mancanti = sorted(COLONNE_CSV_ADE - set(grezzo.columns))
+    if mancanti:
+        raise ValueError(
+            "Il csv non e' l'export Fatture ricevute AdE: colonne mancanti "
+            + ", ".join(mancanti)
+        )
+
+    def col(nome: str):
+        return grezzo[nome] if nome in grezzo.columns else [""] * len(grezzo)
+
+    return pd.DataFrame({
+        "Numero": [_valore_csv_ade(v) for v in col("numero fattura / documento")],
+        "Nome file": "",
+        "ID SdI": [_valore_csv_ade(v) for v in col("sdi/file")],
+        "Data documento": [_valore_csv_ade(v) for v in col("data emissione")],
+        "Fornitore": [_valore_csv_ade(v) for v in col("denominazione fornitore")],
+        "P.IVA": [_valore_csv_ade(v) for v in col("partita iva fornitore")],
+        "Codice Fiscale": [_valore_csv_ade(v) for v in col("codice fiscale fornitore")],
+        "Tipo documento": [_valore_csv_ade(v) for v in col("tipo documento")],
+        "Data ricezione": [_valore_csv_ade(v) for v in col("data ricezione")],
+        "Totale imponibile": [_valore_csv_ade(v) for v in col("imponibile/importo (totale in euro)")],
+        "Totale IVA": [_valore_csv_ade(v) for v in col("imposta (totale in euro)")],
+    }, dtype=object)
+
+
 def report_headers_match(content: bytes, filename: str) -> bool:
     """Riconosce il formato senza modificare dati."""
     try:
@@ -237,7 +303,8 @@ async def importa_report_fatture_ricevute(
     e non deve generare IVA, Prima Nota o pagamenti come se fosse una fattura
     completa.
     """
-    frame = _read_report(content, filename)
+    da_csv_ade = e_csv_ade(content, filename)
+    frame = _read_csv_ade(content) if da_csv_ade else _read_report(content, filename)
     source_hash = hashlib.sha256(content).hexdigest()
     now = datetime.now(timezone.utc).isoformat()
 
@@ -324,9 +391,24 @@ async def importa_report_fatture_ricevute(
             "last_seen_at": now,
             **titolare,
         }
+        insert_only = {"created_at": now}
+        if da_csv_ade:
+            # Il csv non ha metodo, netto, stato di pagamento, nome file: se la
+            # riga c'e' gia' dall'xlsx del titolare quei campi non si toccano.
+            # Il totale documento qui e' derivato, mai sovrascrive un valore letto.
+            for chiave in (
+                "metodo_pagamento_dichiarato", "modalita_pagamento_xml",
+                "netto_pagare", "stato_pagamento_report", "data_pagamento_report",
+                "stato_lettura_report", "filename_xml", "totale_documento", "source",
+            ):
+                insert_only[chiave] = document.pop(chiave)
+            insert_only["totale_derivato"] = True
+            insert_only["totale_documento"] = round(document["imponibile"] + document["iva"], 2)
+            insert_only["source"] = "agenzia_entrate_csv_fatture_ricevute"
+            document["fonte_csv_ade"] = True
         result = await db[COLLECTION_REPORT].update_one(
             {"report_key": report_key},
-            {"$set": document, "$setOnInsert": {"created_at": now}},
+            {"$set": document, "$setOnInsert": insert_only},
             upsert=True,
         )
         if result.upserted_id is not None:

@@ -310,3 +310,52 @@ def test_registra_hash_e_riepilogo_dell_import():
     riga = _run(db[report_ae.COLLECTION_REPORT].find_one({}))
     assert riga["source_hash"] == log["source_hash"]
     assert riga["source_report_filename"] == "Fatture ricevute.xlsx"
+
+
+# --- Export csv grezzo del portale AdE ------------------------------------
+
+_CSV_ADE = (
+    "Tipo fattura;Tipo documento;Numero fattura / Documento;Data emissione;"
+    "Data trasmissione;Codice fiscale fornitore;Partita IVA fornitore;"
+    "Denominazione fornitore;Codice fiscale cliente;Partita IVA cliente;"
+    "Denominazione cliente;Imponibile/Importo (totale in euro);"
+    "Imposta (totale in euro);Sdi/file;Fatture consegnate;Data ricezione;"
+    "Bollo virtuale\n"
+    "'Fattura tra privati';Fattura;'0070010590';31/03/2026;01/04/2026;"
+    "'Non presente';'01238591216';'KIMBO S.P.A.';'Non presente';'04523831214';"
+    "'CERALDI GROUP SRL';000000002047,03;000000000449,91;17001430848;"
+    "Consegnata;01/04/2026;Si\n"
+).encode("utf-8")
+
+
+def test_csv_ade_e_indice_senza_fattura_e_secondo_import_a_zero():
+    db = _db()
+    assert report_ae.e_csv_ade(_CSV_ADE, "fatture.csv") is True
+    assert report_ae.e_csv_ade(_CSV_ADE, "fatture.xlsx") is False
+
+    primo = _run(report_ae.importa_report_fatture_ricevute(db, _CSV_ADE, "fatture.csv"))
+    assert (primo["imported"], primo["xml_missing"], primo["invalid"]) == (1, 1, 0)
+    secondo = _run(report_ae.importa_report_fatture_ricevute(db, _CSV_ADE, "fatture.csv"))
+    assert (secondo["imported"], secondo["updated"]) == (0, 1)
+
+    riga = _run(db[report_ae.COLLECTION_REPORT].find_one({}))
+    assert riga["numero_fattura"] == "0070010590"
+    assert riga["data_documento"] == "2026-03-31"
+    assert riga["supplier_vat"] == "01238591216"
+    assert riga["supplier_cf"] == ""
+    assert (riga["imponibile"], riga["iva"]) == (2047.03, 449.91)
+    assert riga["totale_documento"] == 2496.94 and riga["totale_derivato"] is True
+    # indice, mai fattura
+    assert _run(db["invoices"].count_documents({})) == 0
+
+
+def test_csv_ade_non_sovrascrive_metodo_dell_xlsx_del_titolare():
+    db = _db()
+    _run(report_ae.importa_report_fatture_ricevute(
+        db, _xlsx([_riga(numero="0070010590", sdi="17001430848", data="2026-03-31",
+                         piva="01238591216", totale=2500.0, netto=2500.0)]), "r.xlsx"))
+    _run(report_ae.importa_report_fatture_ricevute(db, _CSV_ADE, "fatture.csv"))
+    riga = _run(db[report_ae.COLLECTION_REPORT].find_one({}))
+    assert riga["metodo_pagamento_dichiarato"] == "MP02 - Assegno"
+    assert riga["totale_documento"] == 2500.0
+    assert _run(db[report_ae.COLLECTION_REPORT].count_documents({})) == 1
