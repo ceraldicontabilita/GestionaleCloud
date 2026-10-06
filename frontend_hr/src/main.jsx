@@ -6,7 +6,7 @@ import PortaleDipendente from './PortaleDipendente.jsx'
 import Landing from './Landing.jsx'
 import { entraDalGestionale, loginGestionale } from './sessioneGruppo.js'
 import './index.css'
-import { avviaTabelleCard } from './tabelleCard.js'
+import { avviaTabelleCard } from '../../frontend_shared/tabelleCard'
 
 // Legge la scadenza (exp) dal JWT senza verificarne la firma (la verifica vera
 // è lato server). Serve solo a riportare al PIN quando la sessione è scaduta.

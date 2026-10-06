@@ -169,6 +169,7 @@ resto del file.
   colori di sistema non controllabili).
 - Ogni pagina centrata, **mai scroll orizzontale su smartphone**: le tabelle
   larghe diventano card impilate. Tocco minimo 44px.
+  In HR, Lotti e Menu lo fa `frontend_shared/tabelleCard.js` (avviato da `main.jsx`/`index.js`: stesse regole, `data-card="no"` per tenere una matrice; HR mantiene anche le sue `dc-table--cards` scritte a mano); `frontend_colazioni` è una pagina statica senza build e non lo usa.
   Nell'ERP lo fa un meccanismo solo, `frontend/src/lib/tabelleCard.js` + regole `table[data-card="si"]` in `index.css`: sotto i 768px ogni `<table>` (anche con
   intestazione a più livelli: vale la cella più in basso che copre la colonna) diventa una card per riga con l'etichetta della colonna (`data-label`, sopra al valore se supera 22 caratteri); `data-card="no"` tiene una matrice com'è. Non scrivere
   card a mano per una tabella semplice.
