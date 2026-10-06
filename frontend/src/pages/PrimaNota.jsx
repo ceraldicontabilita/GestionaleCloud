@@ -403,9 +403,15 @@ export function MovimentiContoSumUp({ movimenti = [], anno }) {
 }
 
 /* ------------------------- conto Mastercard SumUp ------------------------ */
+const GIORNI_SUMUP_PER_BLOCCO = 31;
+
 export function CartaSumUp({ dati, anno }) {
   const giorni = dati?.giorni || [];
-  const vendite = dati?.giornate_vendite || [];
+  const venditeTutte = dati?.giornate_vendite || [];
+  // Ultimi 31 giorni, poi «Mostra altre»: la lista arriva con il giorno più recente per primo.
+  const [giorniVisibili, setGiorniVisibili] = useState(GIORNI_SUMUP_PER_BLOCCO);
+  const vendite = venditeTutte.slice(0, giorniVisibili);
+  const venditeRimanenti = Math.max(0, venditeTutte.length - vendite.length);
   // Senza il collegamento per payout (risposta vecchia) tutti i payout restano elencati a parte.
   const nonCollegati = dati?.accrediti_non_collegati ?? giorni;
   const creditoNegativo = Number(dati?.credito_sumup_aperto || 0) < 0;
@@ -443,7 +449,7 @@ export function CartaSumUp({ dati, anno }) {
             La differenza è ciò che SumUp ha trattenuto (commissioni comprese): è una differenza, non una commissione dichiarata.
           </p>
         </div>
-        {vendite.length === 0 ? (
+        {venditeTutte.length === 0 ? (
           <div style={{ padding: 22, textAlign: 'center', color: '#7a776e' }}>Nessuna vendita SumUp acquisita nel {anno}.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -483,6 +489,22 @@ export function CartaSumUp({ dati, anno }) {
                 </tr>
               ))}</tbody>
             </table>
+          </div>
+        )}
+        {venditeRimanenti > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 12, borderTop: '1px solid #f6f4ee' }}>
+            <button
+              type="button"
+              data-testid="mostra-altre-sumup"
+              onClick={() => setGiorniVisibili(n => n + GIORNI_SUMUP_PER_BLOCCO)}
+              style={{
+                minHeight: 44, padding: '10px 18px', borderRadius: 10, cursor: 'pointer',
+                background: COLORS.card, color: COLORS.text, border: `1px solid ${COLORS.borderDark}`,
+                fontSize: 13, fontWeight: 700,
+              }}
+            >
+              {`Mostra altre ${Math.min(GIORNI_SUMUP_PER_BLOCCO, venditeRimanenti)} · ${venditeRimanenti.toLocaleString('it-IT')} rimanenti`}
+            </button>
           </div>
         )}
       </div>

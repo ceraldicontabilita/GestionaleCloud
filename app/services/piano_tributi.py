@@ -8,9 +8,11 @@ prove successive possono soltanto soddisfare:
 
 * nessun F24 e scadenza passata → «manca F24»;
 * F24 arrivato senza prova di pagamento → «da pagare» (o in ritardo);
-* sola quietanza, o addebito compatibile non ancora agganciato →
-  ``DA_VERIFICARE``: la quietanza non sostituisce la banca;
-* addebito bancario agganciato al modello → ``SODDISFATTO``.
+* quietanza che contiene il codice del tributo → ``SODDISFATTO`` («Pagato
+  (quietanza)»): il codice fa parte della delega e la banca addebita l'intera
+  delega, mai la sola riga del codice (titolare, 06/10/2026);
+* solo un addebito compatibile non ancora agganciato → ``DA_VERIFICARE``;
+* addebito bancario agganciato al modello → ``SODDISFATTO`` («Pagato (banca)»).
 
 L'importo non si stima mai: e' quello delle righe del modello arrivato,
 altrimenti resta vuoto. Nessuna scrittura sui modelli F24: il piano legge il
@@ -37,7 +39,7 @@ OWNER_ATTESA = "fiscale"
 # Stati di una casella, con la parola che la pagina scrive accanto al colore.
 PAGATO = "pagato"
 DA_CONFERMARE_BANCA = "da_confermare_banca"
-QUIETANZA_SENZA_BANCA = "quietanza_senza_banca"
+PAGATO_QUIETANZA = "pagato_quietanza"
 DA_PAGARE = "da_pagare"
 SCADUTO_NON_PAGATO = "scaduto_non_pagato"
 MANCA_F24 = "manca_f24"
@@ -50,7 +52,7 @@ CREDITO_ASSENTE = "credito_assente"
 ETICHETTE = {
     PAGATO: "Pagato (banca)",
     DA_CONFERMARE_BANCA: "Addebito da confermare",
-    QUIETANZA_SENZA_BANCA: "Quietanza, banca da verificare",
+    PAGATO_QUIETANZA: "Pagato (quietanza)",
     DA_PAGARE: "F24 arrivato, da pagare",
     SCADUTO_NON_PAGATO: "F24 scaduto, nessun pagamento",
     MANCA_F24: "Manca F24",
@@ -64,7 +66,7 @@ ETICHETTE = {
 _STATO_ATTESA = {
     PAGATO: ExpectationStatus.SODDISFATTO.value,
     DA_CONFERMARE_BANCA: ExpectationStatus.DA_VERIFICARE.value,
-    QUIETANZA_SENZA_BANCA: ExpectationStatus.DA_VERIFICARE.value,
+    PAGATO_QUIETANZA: ExpectationStatus.SODDISFATTO.value,
     DA_VERIFICARE_A_MANO: ExpectationStatus.DA_VERIFICARE.value,
     DA_PAGARE: ExpectationStatus.ATTESO.value,
     SCADUTO_NON_PAGATO: ExpectationStatus.ATTESO.value,
@@ -280,16 +282,16 @@ def _chiave_doppione(f24: Dict[str, Any]) -> Tuple[Any, Any]:
 def _stato_da_prove(prove: Dict[str, Any], scadenza: Optional[date], oggi: date) -> str:
     if prove["pagato_banca"]:
         return PAGATO
+    if prove["quietanza_presente"]:
+        return PAGATO_QUIETANZA
     if prove["addebito_compatibile_non_agganciato"]:
         return DA_CONFERMARE_BANCA
-    if prove["quietanza_presente"]:
-        return QUIETANZA_SENZA_BANCA
     if scadenza and scadenza < oggi:
         return SCADUTO_NON_PAGATO
     return DA_PAGARE
 
 
-_PRIORITA = [PAGATO, DA_CONFERMARE_BANCA, QUIETANZA_SENZA_BANCA, SCADUTO_NON_PAGATO, DA_PAGARE]
+_PRIORITA = [PAGATO, PAGATO_QUIETANZA, DA_CONFERMARE_BANCA, SCADUTO_NON_PAGATO, DA_PAGARE]
 
 
 def _casella(

@@ -93,7 +93,12 @@ async def list_ricevute(
     ricevute = await db[COLLECTION_RICEVUTE].find(
         query, {"_id": 0, "pdf_data": 0}
     ).sort("data_pagamento", -1).limit(limit).to_list(limit)
-    
+
+    from app.services.pagopa_receipts import NATURE_ASSOCIATE
+
+    for ricevuta in ricevute:
+        ricevuta["associata_per_natura"] = ricevuta.get("natura") in NATURE_ASSOCIATE
+
     return ricevute
 
 
@@ -183,7 +188,7 @@ async def imposta_natura(ricevuta_id: str, data: Dict[str, Any]) -> Dict[str, An
     Non cambia importi, banca o collegamenti: registra la scelta, con chi e
     quando, e conserva la precedente nello storico.
     """
-    from app.services.pagopa_receipts import NATURE_RICEVUTA
+    from app.services.pagopa_receipts import NATURE_ASSOCIATE, NATURE_RICEVUTA
 
     natura = str(data.get("natura") or "").strip()
     if natura not in NATURE_RICEVUTA:
@@ -206,7 +211,8 @@ async def imposta_natura(ricevuta_id: str, data: Dict[str, Any]) -> Dict[str, An
         "natura_scelta_il": ora, "storico_natura": storico, "updated_at": ora,
     }})
     return {"success": True, "ricevuta_id": ricevuta_id, "natura": natura,
-            "natura_label": NATURE_RICEVUTA[natura]}
+            "natura_label": NATURE_RICEVUTA[natura],
+            "associata_per_natura": natura in NATURE_ASSOCIATE}
 
 
 @router.post("/ricevute/associa-manuale")
@@ -472,8 +478,17 @@ async def stats_pagopa(anno: int = None) -> Dict[str, Any]:
         query_ric["data_pagamento"] = {"$regex": f"^{anno}"}
     tot_ricevute = await db[COLLECTION_RICEVUTE].count_documents(query_ric)
     
-    query_ric["movimento_id"] = {"$exists": True, "$ne": None}
-    ricevute_associate = await db[COLLECTION_RICEVUTE].count_documents(query_ric)
+    # Associata = movimento di banca trovato, oppure natura che non ne ha bisogno
+    # (diritti, oneri, sanzioni: scelta del titolare).
+    from app.services.pagopa_receipts import NATURE_ASSOCIATE
+
+    ricevute_associate = await db[COLLECTION_RICEVUTE].count_documents({
+        **query_ric,
+        "$or": [
+            {"movimento_id": {"$exists": True, "$ne": None}},
+            {"natura": {"$in": list(NATURE_ASSOCIATE)}},
+        ],
+    })
     
     # Totale importi
     pipeline = [

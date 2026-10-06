@@ -61,11 +61,15 @@ export default function GestionePagoPA() {
   const impostaNatura = async (ricevuta, natura) => {
     if (!natura) return;
     try {
-      await api.put(`/api/pagopa/ricevute/${ricevuta.id}/natura`, { natura });
+      const { data } = await api.put(`/api/pagopa/ricevute/${ricevuta.id}/natura`, { natura });
       const scelta = nature.find(n => n.id === natura);
       setRicevute(lista => lista.map(r => (r.id === ricevuta.id
-        ? { ...r, natura, natura_label: scelta?.label || natura } : r)));
+        ? {
+          ...r, natura, natura_label: scelta?.label || natura,
+          associata_per_natura: Boolean(data?.associata_per_natura),
+        } : r)));
       toast.success('Natura del pagamento salvata');
+      fetchStats();
     } catch (error) {
       toast.error(error.response?.data?.detail?.message || 'Non sono riuscito a salvare la natura');
     }
@@ -123,8 +127,9 @@ export default function GestionePagoPA() {
         return false;
       }
     }
-    if (statoFiltro === 'associati' && !r.movimento_id) return false;
-    if (statoFiltro === 'non_associati' && r.movimento_id) return false;
+    const associata = Boolean(r.movimento_id || r.associata_per_natura);
+    if (statoFiltro === 'associati' && !associata) return false;
+    if (statoFiltro === 'non_associati' && associata) return false;
     return true;
   });
 
@@ -173,7 +178,22 @@ export default function GestionePagoPA() {
                           <span style={{ fontSize: 11, color: '#166534', fontWeight: 700 }}>
                             Versamento documentato
                           </span>
-                          {ricevuta.movimento_id ? (
+                          {ricevuta.associata_per_natura && !ricevuta.movimento_id ? (
+                            <span
+                              data-testid={`associata-natura-${ricevuta.id}`}
+                              title="Associata dalla natura scelta: diritti, oneri e sanzioni non hanno un movimento da cercare"
+                              style={{
+                                padding: '4px 8px',
+                                background: '#e2f0e7',
+                                color: '#166534',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Associata · {ricevuta.natura_label || 'natura scelta'}
+                            </span>
+                          ) : ricevuta.movimento_id ? (
                             <>
                               <span
                                 style={{
