@@ -2,7 +2,7 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
 import {
@@ -1024,5 +1024,39 @@ describe('Vendite e accrediti SumUp: ultimi 31 giorni', () => {
   it('con meno di 31 giorni non mostra il bottone', () => {
     render(<CartaSumUp anno={2026} dati={{ giornate_vendite: giornate.slice(0, 5) }} />);
     expect(screen.queryByTestId('mostra-altre-sumup')).toBeNull();
+  });
+});
+
+
+describe('SumUp su telefono: card, mai una tabella da scorrere di lato', () => {
+  const larghezzaIniziale = window.innerWidth;
+  afterEach(() => { window.innerWidth = larghezzaIniziale; });
+
+  it('mostra una card per giornata con tutti i valori e senza tabella', () => {
+    window.innerWidth = 390;
+    render(<CartaSumUp
+      anno={2026}
+      dati={{
+        giornate_vendite: [{
+          data: '2026-10-05', transazioni: 199, vendite: 2538.9, rimborsi: 0, netto: 2538.9,
+          accredito_data: '2026-10-06', payout_ids: ['P1', 'P2'], ricevuto: 2500, differenza: 38.9,
+        }],
+        accrediti_non_collegati: [{ data: '2026-10-03', numero_payout: 1, payout_ids: ['PX'], importo: 100 }],
+      }}
+    />);
+    expect(screen.queryByRole('table')).toBeNull();
+    const card = screen.getByTestId('giorno-vendite-sumup');
+    expect(card).toHaveTextContent('05/10/2026');
+    ['Transazioni', 'Vendite', 'Rimborsi', 'Accredito', 'Ricevuto', 'Differenza'].forEach(e => {
+      expect(card).toHaveTextContent(e);
+    });
+    expect(card).toHaveTextContent('Payout: P1, P2');
+    expect(screen.getByTestId('accrediti-non-collegati-sumup')).toHaveTextContent('PX');
+  });
+
+  it('su schermo largo resta la tabella', () => {
+    window.innerWidth = 1280;
+    render(<CartaSumUp anno={2026} dati={{ giornate_vendite: [{ data: '2026-10-05', transazioni: 1, vendite: 1, rimborsi: 0, netto: 1 }] }} />);
+    expect(screen.getByTestId('vendite-e-accrediti-sumup').tagName).toBe('TABLE');
   });
 });
