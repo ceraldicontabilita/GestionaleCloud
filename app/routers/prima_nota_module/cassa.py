@@ -9,7 +9,7 @@ import uuid
 import logging
 
 from app.database import Database, Collections
-from app.services.scritture_contabili import scrivi_movimento
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_movimento
 from . import registro
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, aggrega_saldo_prima_nota,
@@ -226,13 +226,16 @@ async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str,
         "fornitore_piva": data.get("fornitore_piva"),
         "fattura_id": data.get("fattura_id"),
         "note": data.get("note"),
-        "source": source or ("manuale" if inserimento_manuale else None),
+        "source": source or ("manuale" if inserimento_manuale else "azione"),
         "inserimento_manuale": inserimento_manuale,
         "origine": "manuale" if inserimento_manuale else (source or "azione"),
         "created_at": now
     }
 
-    await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
+    try:
+        await scrivi_movimento(db, "cassa", movimento)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # La registrazione manuale del versamento crea subito la gamba bancaria
     # come ATTESA. Non e' ancora prova di accredito: solo l'estratto conto

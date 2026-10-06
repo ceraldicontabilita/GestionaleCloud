@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import uuid
 
 from app.database import Database
+from app.services.scritture_contabili import scrivi_movimento
 from app.utils.id_fattura import filtro_id, varianti_id
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger,
@@ -354,7 +355,7 @@ async def regenerate_from_invoices(anno: int = Query(...)) -> Dict:
             }
 
             if metodo in ["cassa", "contanti"]:
-                await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
+                await scrivi_movimento(db, "cassa", movimento)
                 created_cassa += 1
             else:
                 lasciate_provvisorie += 1

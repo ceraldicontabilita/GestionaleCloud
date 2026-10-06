@@ -106,10 +106,10 @@ async def rapido_apporto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     # Il frontend invia conto_dare='BANCA'/'CASSA' in base al toggle
     # "Destinazione": prima veniva ignorato e l'apporto finiva sempre in cassa
     # anche scegliendo "Banca".
-    collection = "prima_nota_banca" if payload.get("conto_dare") == "BANCA" else "prima_nota_cassa"
+    registro_apporto = "banca" if payload.get("conto_dare") == "BANCA" else "cassa"
 
     mov_id = str(uuid.uuid4())
-    await db[collection].insert_one({
+    await scrivi_movimento(db, registro_apporto, {
         "id": mov_id,
         "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
         "tipo": "entrata", "importo": importo,

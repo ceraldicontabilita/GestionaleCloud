@@ -18,6 +18,7 @@ import logging
 import uuid
 
 from app.database import Database, Collections
+from app.services.scritture_contabili import scrivi_movimento
 from app.services.stato_pagamento_fattura import con_non_pagate
 from app.engines.prima_nota_engine import decide_destinazione_fattura
 
@@ -96,7 +97,7 @@ class DataPropagationService:
         }
         
         try:
-            await self.db[collection].insert_one(movement.copy())
+            await scrivi_movimento(self.db, destinazione, movement)
             results["movement_created"] = True
             results["movement_id"] = movement_id
             results["movement_collection"] = collection

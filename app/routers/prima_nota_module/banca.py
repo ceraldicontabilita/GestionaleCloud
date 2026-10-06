@@ -11,6 +11,7 @@ import uuid
 
 from app.database import Database, Collections
 from app.services import conti_pos, sumup_sync
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_movimento
 from app.services.payment_document_links import payment_document_ref
 from app.services.payment_allocation_validator import allocation_summary
 from . import registro
@@ -697,7 +698,10 @@ async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(movimento.copy())
+    try:
+        await scrivi_movimento(db, "banca", movimento)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Stesso bug/fix di cassa.py::create_prima_nota_cassa (15/07/2026): un'uscita
     # banca collegata a una fattura deve marcarla pagata, altrimenti resta
