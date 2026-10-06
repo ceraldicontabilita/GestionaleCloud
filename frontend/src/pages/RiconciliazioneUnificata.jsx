@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { tabUnificataDaPath } from './hub/segmentiHub';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '../api';
@@ -296,6 +296,8 @@ export default function RiconciliazioneUnificata() {
   // Riepilogo dei collegamenti già presenti: è informativo e non avvia
   // correzioni o riconciliazioni automatiche.
   const [reconciliationStats, setReconciliationStats] = useState({ matched: 0, pending: 0 });
+  const loadAbortRef = useRef(null);
+  const loadSequenceRef = useRef(0);
 
   // Applica filtri ai movimenti
   const applyFilters = movimenti => {
@@ -333,45 +335,57 @@ export default function RiconciliazioneUnificata() {
 
   useEffect(() => {
     loadAllData();
+    return () => loadAbortRef.current?.abort();
   }, [anno]);
 
   const loadAllData = async (limit = 50) => {
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const sequence = ++loadSequenceRef.current;
+    const isCurrent = () => sequence === loadSequenceRef.current && !controller.signal.aborted;
     setLoading(true);
     setLoadError(null);
     try {
-      // Carica dati primari: usa /smart/analizza per suggerimenti + assegni da banca-veloce.
-      // Ogni chiamata ha un fallback silenzioso (pagina comunque utilizzabile se una sola
-      // fonte fallisce), ma se TUTTE falliscono l'utente deve saperlo: prima la pagina
-      // restava semplicemente vuota in ogni tab, senza nessuna indicazione dell'errore.
+      // I movimenti sono la parte necessaria per usare la pagina: arrivano dal
+      // percorso veloce e vengono mostrati subito. I suggerimenti, piu' costosi,
+      // si innestano dopo senza tenere bloccata tutta la schermata.
       const erroriCaricamento = [];
-      const [analizzaRes, assegniRes, stipendiRes] = await Promise.all([
+      const [bancaRes, stipendiRes] = await Promise.all([
         api
-          .get(`/api/operazioni-da-confermare/smart/analizza?limit=${limit}&anno=${anno}`)
+          .get(`/api/operazioni-da-confermare/smart/banca-veloce?limit=${limit}&anno=${anno}`, {
+            signal: controller.signal,
+          })
           .catch(e => {
-            erroriCaricamento.push(e.response?.data?.detail || e.message);
-            return { data: { movimenti: [], stats: {} } };
-          }),
-        api
-          .get(`/api/operazioni-da-confermare/smart/banca-veloce?limit=50&anno=${anno}`)
-          .catch(e => {
+            if (controller.signal.aborted) throw e;
             erroriCaricamento.push(e.response?.data?.detail || e.message);
             return { data: { movimenti: [], stats: {}, assegni: [] } };
           }),
         api
-          .get('/api/operazioni-da-confermare/smart/cerca-stipendi')
+          .get('/api/operazioni-da-confermare/smart/cerca-stipendi', {
+            signal: controller.signal,
+          })
           .catch(e => {
+            if (controller.signal.aborted) throw e;
             erroriCaricamento.push(e.response?.data?.detail || e.message);
             return { data: { stipendi: [] } };
           }),
       ]);
+      if (!isCurrent()) return;
       if (erroriCaricamento.length > 0) {
         setLoadError(
-          `Alcuni dati non si sono caricati correttamente (${erroriCaricamento.length}/3 sorgenti in errore): ${erroriCaricamento[0]}`
+          `Alcuni dati non si sono caricati correttamente (${erroriCaricamento.length}/2 sorgenti in errore): ${erroriCaricamento[0]}`
         );
       }
 
-      const movimenti = analizzaRes.data?.movimenti || [];
-      const assegniDaApi = (assegniRes.data?.assegni || []).map(a => ({
+      const movimentiBase = (bancaRes.data?.movimenti || []).map(m => ({
+        ...m,
+        movimento_id: m.movimento_id || m.id,
+        descrizione: m.descrizione || m.descrizione_originale || m.causale || '-',
+        suggerimenti: m.suggerimenti || [],
+        analisi_in_corso: true,
+      }));
+      const assegniDaApi = (bancaRes.data?.assegni || []).map(a => ({
         ...a,
         numero_assegno: a.numero_assegno || a.numero,
         data: a.data || a.data_emissione,
@@ -383,15 +397,14 @@ export default function RiconciliazioneUnificata() {
       }));
 
       const totalRows = Number(
-        analizzaRes.data?.stats?.totale_righe ?? assegniRes.data?.stats?.totale_righe ?? movimenti.length
+        bancaRes.data?.stats?.totale_righe ?? movimentiBase.length
       );
-      setHasMore(movimenti.length < totalRows);
+      setHasMore(movimentiBase.length < totalRows);
       setCurrentLimit(limit);
-      setStats(assegniRes.data?.stats || analizzaRes.data?.stats || {});
 
       // Movimenti banca (escludi prelievi assegno)
       setMovimentiBanca(
-        movimenti.filter(m => !m.descrizione?.toUpperCase()?.includes('PRELIEVO ASSEGNO'))
+        movimentiBase.filter(m => !m.descrizione?.toUpperCase()?.includes('PRELIEVO ASSEGNO'))
       );
 
       // Assegni da riconciliare (già filtrati dal backend)
@@ -403,29 +416,58 @@ export default function RiconciliazioneUnificata() {
 
       // Aggiorna stats iniziali (F24 caricato su richiesta)
       setStats({
-        ...(analizzaRes.data?.stats || {}),
+        ...(bancaRes.data?.stats || {}),
         totale: totalRows,
         totale_righe: totalRows,
-        righe_caricate: movimenti.length,
+        righe_caricate: movimentiBase.length,
         banca: totalRows,
         assegni: assegniDaApi.length,
         f24: 0, // Caricato su richiesta manuale
         stipendi: stipendi.length,
         documenti: 0, // Caricato dopo
-        fatture_da_pagare: assegniRes.data?.stats?.fatture_da_pagare || 0,
+        fatture_da_pagare: bancaRes.data?.stats?.fatture_da_pagare || 0,
       });
 
       // Conteggio read-only dei collegamenti già registrati.
       setReconciliationStats({
-        matched: analizzaRes.data?.stats?.riconciliati || assegniRes.data?.stats?.riconciliati || 0,
-        pending:
-          analizzaRes.data?.stats?.totale_righe ||
-          analizzaRes.data?.stats?.non_riconciliati ||
-          assegniRes.data?.stats?.non_riconciliati ||
-          0,
+        matched: bancaRes.data?.stats?.riconciliati || 0,
+        pending: bancaRes.data?.stats?.non_riconciliati || totalRows,
       });
 
       setLoading(false);
+
+      api
+        .get(`/api/operazioni-da-confermare/smart/analizza?limit=${limit}&anno=${anno}`, {
+          signal: controller.signal,
+        })
+        .then(analizzaRes => {
+          if (!isCurrent()) return;
+          const analizzati = analizzaRes.data?.movimenti || [];
+          if (analizzati.length) {
+            setMovimentiBanca(
+              analizzati
+                .map(m => ({
+                  ...m,
+                  analisi_in_corso: false,
+                  analisi_non_disponibile: Boolean(analizzaRes.data?.analisi_non_disponibile),
+                }))
+                .filter(m => !m.descrizione?.toUpperCase()?.includes('PRELIEVO ASSEGNO'))
+            );
+          }
+          if (analizzaRes.data?.analisi_non_disponibile) {
+            setLoadError('Movimenti caricati; i suggerimenti hanno superato il tempo massimo. Usa Rileggi per riprovare.');
+          }
+          setStats(prev => ({ ...prev, ...(analizzaRes.data?.stats || {}) }));
+          setReconciliationStats(prev => ({
+            matched: analizzaRes.data?.stats?.riconciliati ?? prev.matched,
+            pending: analizzaRes.data?.stats?.totale_righe ?? prev.pending,
+          }));
+        })
+        .catch(e => {
+          if (!controller.signal.aborted && isCurrent()) {
+            setLoadError(`Movimenti caricati; suggerimenti temporaneamente non disponibili: ${e.response?.data?.detail || e.message}`);
+          }
+        });
 
       // F24: RIMOSSO dal caricamento automatico (prendeva ~35s e causava un "reload visivo")
       // Caricato solo quando l'utente apre il tab F24 — vedi loadF24OnDemand()
@@ -450,6 +492,7 @@ export default function RiconciliazioneUnificata() {
         })
         .catch(() => {});
     } catch (e) {
+      if (controller.signal.aborted) return;
       console.error('Errore caricamento:', e);
       setLoading(false);
     }
@@ -461,9 +504,15 @@ export default function RiconciliazioneUnificata() {
     setLoadingMore(true);
     try {
       const bancaRes = await api.get(
-        `/api/operazioni-da-confermare/smart/analizza?limit=${newLimit}&anno=${anno}`
+        `/api/operazioni-da-confermare/smart/banca-veloce?limit=${newLimit}&anno=${anno}`
       );
-      const movimenti = bancaRes.data?.movimenti || [];
+      const movimenti = (bancaRes.data?.movimenti || []).map(m => ({
+        ...m,
+        movimento_id: m.movimento_id || m.id,
+        descrizione: m.descrizione || m.descrizione_originale || m.causale || '-',
+        suggerimenti: m.suggerimenti || [],
+        analisi_in_corso: true,
+      }));
       const totalRows = Number(bancaRes.data?.stats?.totale_righe ?? movimenti.length);
       setHasMore(movimenti.length < totalRows);
       setCurrentLimit(newLimit);
@@ -1295,6 +1344,8 @@ function MovimentiTab({
   // Azioni per riga: stessi bottoni (e stili) di MovimentoCard
   const renderAzioni = m => {
     const inCorso = processing === m.movimento_id || processing === m.id;
+    const analisiInCorso = Boolean(m.analisi_in_corso);
+    const analisiNonDisponibile = Boolean(m.analisi_non_disponibile);
     const automatic = m.decisione === 'automatica';
     const primaryLabel = automatic
       ? 'Vedi prova'
@@ -1307,7 +1358,7 @@ function MovimentiTab({
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <button
           onClick={() => automatic && onVediProva ? onVediProva(m) : onConferma(m)}
-          disabled={inCorso}
+          disabled={inCorso || analisiInCorso || analisiNonDisponibile}
           style={{
             padding: '8px 16px',
             minHeight: 40,
@@ -1320,7 +1371,7 @@ function MovimentiTab({
             fontSize: 13,
           }}
         >
-          {inCorso ? 'Attendi...' : primaryLabel}
+          {inCorso ? 'Attendi...' : analisiInCorso ? 'Analisi…' : analisiNonDisponibile ? 'Analisi non disponibile' : primaryLabel}
         </button>
         <button
           onClick={() => onIgnora(m)}
@@ -1578,6 +1629,8 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
   const suggerimento = movimento.suggerimenti?.[0];
   const hasMatch = movimento.associazione_automatica && suggerimento;
   const automatic = movimento.decisione === 'automatica';
+  const analisiInCorso = Boolean(movimento.analisi_in_corso);
+  const analisiNonDisponibile = Boolean(movimento.analisi_non_disponibile);
   const primaryLabel = automatic
     ? 'Vedi prova'
     : movimento.decisione === 'proposta'
@@ -1871,7 +1924,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             onClick={() => automatic && onVediProva ? onVediProva(movimento) : onConferma(movimento)}
-            disabled={processing}
+            disabled={processing || analisiInCorso || analisiNonDisponibile}
             style={{
               padding: '8px 16px',
               minHeight: 40,
@@ -1884,7 +1937,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
               fontSize: 13,
             }}
           >
-            {processing ? 'Attendi...' : primaryLabel}
+            {processing ? 'Attendi...' : analisiInCorso ? 'Analisi…' : analisiNonDisponibile ? 'Analisi non disponibile' : primaryLabel}
           </button>
           <button
             onClick={() => onIgnora(movimento)}

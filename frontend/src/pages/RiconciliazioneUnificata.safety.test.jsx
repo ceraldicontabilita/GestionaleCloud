@@ -41,4 +41,12 @@ describe('sicurezza della pagina Riconciliazione', () => {
     expect(source).toContain('quota_cents');
     expect(source).toContain('stats.banca || movimentiBanca.length');
   });
+
+  it('mostra prima la coda veloce e cancella i caricamenti superati', () => {
+    expect(source).toContain('new AbortController()');
+    expect(source).toContain('loadAbortRef.current?.abort()');
+    expect(source).toContain('/smart/banca-veloce?limit=${limit}');
+    expect(source).toContain('analisi_in_corso: true');
+    expect(source).toContain("analisiInCorso ? 'Analisi…'");
+  });
 });

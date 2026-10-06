@@ -724,9 +724,17 @@ async def sincronizza_payouts(
             copia = {**transazione, "payout_id": payout_id}
             transazioni_collegate.append(copia)
 
-        if codici:
+        codici_da_collegare = sorted({
+            str(transazione.get("transaction_code") or "").strip()
+            for transazione in transazioni
+            if (
+                transazione.get("payout_id") != payout_id
+                or transazione.get("payout_date") != gruppo.get("date")
+            )
+        } - {""})
+        if codici_da_collegare:
             esito_update = await db[COLL_TRANSAZIONI].update_many(
-                {"transaction_code": {"$in": codici}},
+                {"transaction_code": {"$in": codici_da_collegare}},
                 {"$set": {
                     "payout_id": payout_id,
                     "payout_date": gruppo.get("date"),
