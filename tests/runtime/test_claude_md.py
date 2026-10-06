@@ -39,18 +39,24 @@ def test_nessun_capitolo_datato() -> None:
     assert not datati, f"La cronaca datata sta in git, non qui: {datati}"
 
 
-def test_data_intestazione_non_precede_lo_stato() -> None:
-    ita = re.search(r"^Aggiornato il (\d{2})/(\d{2})/(\d{4})", TESTO, re.MULTILINE)
-    stato = re.search(r"^## Stato attuale \(al (\d{2})/(\d{2})/(\d{4})", TESTO, re.MULTILINE)
-    assert ita and stato
-    assert ita.groups()[::-1] >= stato.groups()[::-1], (
-        "«Stato attuale» e' piu' recente di «Aggiornato il»: aggiorna l'intestazione"
-    )
+def test_intestazione_con_data_di_revisione_valida() -> None:
+    """Il blocco `gestionalecloud-doc` porta `reviewed_at` ISO e mai nel futuro."""
+    from datetime import date
+
+    blocco = re.search(r"<!-- gestionalecloud-doc\n(.*?)-->", TESTO, re.DOTALL)
+    assert blocco, "manca il blocco <!-- gestionalecloud-doc ... -->"
+    rev = re.search(r"^reviewed_at: (\d{4})-(\d{2})-(\d{2})$", blocco.group(1), re.MULTILINE)
+    assert rev, "manca `reviewed_at: AAAA-MM-GG` nel blocco di intestazione"
+    assert date(*map(int, rev.groups())) <= date.today(), "reviewed_at e' nel futuro"
 
 
 def test_sezioni_vive_presenti() -> None:
-    for titolo in ("## Stato attuale", "## Aperto", "## Come si tiene questo file"):
-        assert titolo in TESTO, titolo
+    for titolo in (
+        "# 107. Stato produzione verificato",
+        "# 108. Aperto",
+        "# 124. Regola finale",
+    ):
+        assert re.search(rf"^{re.escape(titolo)}", TESTO, re.MULTILINE), titolo
 
 
 def test_nessun_sito_spento_nel_codice() -> None:
