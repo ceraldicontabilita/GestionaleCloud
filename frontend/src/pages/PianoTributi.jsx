@@ -439,6 +439,7 @@ export default function PianoTributi() {
         >
           {scaricando ? 'Preparo il file...' : 'Scarica Excel'}
         </Button>
+        <Link to="/contabilita/calendario" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 14px', fontWeight: 600 }}>Calendario fiscale</Link>
       </div>
       {carico && <PageLoader />}
       {errore && <div role="alert" style={{ padding: 12, color: COLORS.danger }}>Errore: {errore}</div>}
