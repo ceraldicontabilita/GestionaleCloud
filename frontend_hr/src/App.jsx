@@ -727,17 +727,17 @@ function DashboardPage({ stats, dipendenti, ferie, missioni, getDipendente }) {
         const correnti = pendenze.righe.filter(x => !x.storico);
         const storiche = pendenze.righe.filter(x => x.storico);
         const Tabella = ({ righe, storico }) => (
-          <div style={{ overflowX: "auto" }}>
-            <table className="dc-table" style={{ minWidth: 480 }}>
+          <div>
+            <table className="dc-table dc-table--cards">
               <thead><tr><th>Dipendente</th><th>Periodo</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>{storico ? "Non agganciato €" : "Manca €"}</th><th>Stato</th></tr></thead>
               <tbody>
                 {righe.slice(0, 30).map((x, i) => (
                   <tr key={i}>
                     <td>{x.dipendente}</td>
-                    <td>{mesiIt[(x.mese || 1) - 1]} {x.anno}</td>
-                    <td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
-                    <td style={{ textAlign: "right", color: storico ? "#7d5526" : "#d35f4e", fontWeight: 700 }}>{eur(x.saldo)}</td>
-                    <td><Badge variant={storico ? "default" : x.stato === "parziale" ? "warning" : "danger"}>{storico ? "bonifico non agganciato" : x.stato === "parziale" ? "parziale" : "da pagare"}</Badge></td>
+                    <td data-label="Periodo">{mesiIt[(x.mese || 1) - 1]} {x.anno}</td>
+                    <td data-label="Busta €" style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
+                    <td data-label={storico ? "Non agganciato €" : "Manca €"} style={{ textAlign: "right", color: storico ? "#7d5526" : "#d35f4e", fontWeight: 700 }}>{eur(x.saldo)}</td>
+                    <td data-label="Stato"><Badge variant={storico ? "default" : x.stato === "parziale" ? "warning" : "danger"}>{storico ? "bonifico non agganciato" : x.stato === "parziale" ? "parziale" : "da pagare"}</Badge></td>
                   </tr>
                 ))}
               </tbody>
@@ -6193,10 +6193,22 @@ function DocumentiPage({ dipendenti, documenti, reload, getDipendente }) {
       const q = prova.riepilogo;
       const elenco = prova.righe.map(r => `pag. ${r.pagina}: ${r.dipendente || "DA ASSEGNARE"}${r.esito === "gia_presente" ? " (già presente)" : ""}`).join("\n");
       if (!window.confirm(`${q.pagine} pagine: ${q.nuovi} da allegare, ${q.gia_presenti} già presenti, ${q.da_assegnare} da assegnare.\n\n${elenco}\n\nAllegare gli attestati ai dipendenti?`)) return;
-      const fatto = await invia(false);
+      // Pagine con più persone compatibili: si sceglie qui, da un elenco numerato (0 = lascia da assegnare).
+      const scelte = {};
+      const tutti = (dipendenti || []).map(d => ({ id: d.id, nome: `${d.cognome || ""} ${d.nome || ""}`.trim() })).filter(d => d.id && d.nome);
+      for (const r of prova.righe.filter(x => x.esito === "da_assegnare")) {
+        // Nessun candidato (nome illeggibile o sconosciuto): si sceglie fra tutti i dipendenti.
+        const elenco = (r.candidati || []).length ? r.candidati : tutti;
+        if (!elenco.length) continue;
+        const voci = elenco.map((c, i) => `${i + 1} = ${c.nome}`).join("\n");
+        const risposta = window.prompt(`Pagina ${r.pagina}: a chi appartiene l'attestato?\n${voci}\n0 = lascia da assegnare`, "0");
+        const n = Number(risposta);
+        if (Number.isInteger(n) && n >= 1 && n <= elenco.length) scelte[String(r.pagina)] = elenco[n - 1].id;
+      }
+      const fatto = await invia(false, scelte);
       const r2 = fatto.riepilogo;
       setMassMsg({ caricati: r2.nuovi, duplicati: Array(r2.gia_presenti).fill(0), non_assegnati: Array(r2.da_assegnare).fill(0), dettaglio: [], _gmail: true });
-      toast(`Attestati: ${r2.nuovi} allegati${r2.da_assegnare ? `, ${r2.da_assegnare} da assegnare dalla sezione Lotti › Personale` : ""}`);
+      toast(`Attestati: ${r2.nuovi} allegati${r2.da_assegnare ? `, ${r2.da_assegnare} da assegnare (nome non riconosciuto: controlla l'anagrafica e ripeti l'importazione)` : ""}`);
       reload();
     } catch (err) {
       setMassMsg({ errore: err?.response?.data?.detail || "Importazione attestati non riuscita" });

@@ -135,7 +135,7 @@ describe('Quietanze F24 e addebiti in banca', () => {
         motivazione: 'differenza +3.00 EUR: da verificare con il commercialista',
       }],
       quietanze_senza_estratto: [{
-        chiave: 'p3', data: '2025-05-16', importo: 777, livello: 'NESSUN_MATCH',
+        chiave: 'p3', data: '2025-05-16', importo: 777, livello: 'NESSUN_MATCH', protocollo: '23122739372449851',
         estratto_periodo_presente: false, quietanze: [{ id: 'q3', filename: 'q3.pdf' }],
         motivazione: 'estratto conto del periodo assente: non si puo\' dire se il pagamento manchi',
       }],
@@ -146,7 +146,7 @@ describe('Quietanze F24 e addebiti in banca', () => {
     expect(screen.getByTestId('livello-da_verificare:p2').textContent).toContain('Livello: Parziale');
     expect(screen.getByTestId('livello-da_verificare:p2').textContent).toContain('differenza');
     expect(screen.getByTestId('livello-quietanze_senza_estratto:p3').textContent)
-      .toContain('Livello: Nessun match');
+      .toContain('Livello: Pagato, senza addebito in banca');
     expect(screen.getByTestId('filtro-quietanze_senza_estratto').textContent).toContain('(1)');
   });
 });

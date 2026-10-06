@@ -19,7 +19,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 import { PageLayout } from '../components/PageLayout';
-import { VisoreOriginale } from '../components/ApriOriginale';
+import ApriOriginale, { VisoreOriginale } from '../components/ApriOriginale';
 import { urlOriginale, euroOppure } from '../lib/vista';
 import AvvisoBonarioF24 from '../components/AvvisoBonarioF24';
 import RiscontroQuietanzeBanca from '../components/RiscontroQuietanzeBanca';
@@ -1373,6 +1373,9 @@ function MovimentiTab({
         >
           {inCorso ? 'Attendi...' : analisiInCorso ? 'Analisi…' : analisiNonDisponibile ? 'Analisi non disponibile' : primaryLabel}
         </button>
+        {m.cedolino_id && !m.movimento_id && (
+          <ApriOriginale tipo="cedolino" id={m.cedolino_id} titolo="Busta paga" />
+        )}
         <button
           onClick={() => onIgnora(m)}
           disabled={inCorso}
@@ -1939,6 +1942,9 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processin
           >
             {processing ? 'Attendi...' : analisiInCorso ? 'Analisi…' : analisiNonDisponibile ? 'Analisi non disponibile' : primaryLabel}
           </button>
+          {movimento.cedolino_id && !movimento.movimento_id && (
+            <ApriOriginale tipo="cedolino" id={movimento.cedolino_id} titolo="Busta paga" />
+          )}
           <button
             onClick={() => onIgnora(movimento)}
             disabled={processing}

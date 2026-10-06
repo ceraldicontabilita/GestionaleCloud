@@ -40,8 +40,22 @@ export default function BancaDiretta() {
   if (stato.errore) {
     return <div style={S.box} data-testid="banca-diretta"><div style={S.errore} role="alert">{stato.errore}</div></div>;
   }
-  // Lettura diretta spenta su Render: nessun riquadro, la banca arriva dal CSV.
-  if (!stato.attivo) return null;
+  // Lettura diretta spenta su Render: il riquadro resta e dice perche' (prima spariva
+  // e nessuno capiva dove fosse «Aggiorna ora»).
+  if (!stato.attivo) {
+    return (
+      <section style={S.box} data-testid="banca-diretta">
+        <div style={S.testata}>
+          <Landmark size={16} color={COLORS.primary} />
+          <strong style={S.titolo}>Banco BPM · movimenti dalla banca</strong>
+        </div>
+        <div style={S.testo}>
+          Lettura diretta spenta: su Render manca <strong>ENABLE_BANKING_ENABLED=true</strong>.
+          Finché è spenta i movimenti arrivano solo dall'estratto conto caricato a mano.
+        </div>
+      </section>
+    );
+  }
 
   const collega = async () => {
     setLavoro(true);

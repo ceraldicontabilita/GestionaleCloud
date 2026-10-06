@@ -7,9 +7,8 @@ nei singoli router.
 
 I valori di default arrivano dalle env (con fallback ai dati reali) e possono
 essere sovrascritti dalle Impostazioni, persistiti su Mongo nella collection
-'impostazioni' (documento _id='azienda'). Il campo piu' usato e'
-codice_destinatario (SDI): cambia quando cambia il gestore dell'interscambio di
-fatturazione, e aggiornarlo qui aggiorna automaticamente tutti i PDF.
+'impostazioni' (documento _id='azienda'). La fatturazione elettronica (codice
+destinatario SDI) non e' di Lotti: sta nel gestionale.
 """
 
 import os
@@ -28,7 +27,6 @@ DEFAULT_AZIENDA = {
     "indirizzo": os.environ.get("AZIENDA_INDIRIZZO", "Piazza Carità 14, 80134 Napoli (NA)"),
     "partita_iva": os.environ.get("AZIENDA_PIVA", "04523831214"),
     "codice_fiscale": os.environ.get("AZIENDA_CF", "04523831214"),
-    "codice_destinatario": os.environ.get("AZIENDA_CODICE_DESTINATARIO", "USAL8PV"),
     "email": os.environ.get("AZIENDA_EMAIL", ""),
     "telefono": os.environ.get("AZIENDA_TEL", ""),
     "attivita": os.environ.get("AZIENDA_ATTIVITA", "Pasticceria e Rosticceria"),
@@ -50,7 +48,6 @@ CAMPI_MODIFICABILI = [
     "indirizzo",
     "partita_iva",
     "codice_fiscale",
-    "codice_destinatario",
     "email",
     "telefono",
     "attivita",
@@ -89,12 +86,11 @@ async def set_azienda(campi: dict) -> dict:
 
 
 def riga_dettaglio(a: dict) -> str:
-    """Riga unica: 'Indirizzo · P.IVA … · Cod. Dest. … · tel · email'."""
+    """Riga unica: 'Indirizzo · P.IVA … · tel · email'."""
     a = a or {}
     parti = [
         a.get("indirizzo", ""),
         (f"P.IVA {a['partita_iva']}" if a.get("partita_iva") else ""),
-        (f"Cod. Dest. {a['codice_destinatario']}" if a.get("codice_destinatario") else ""),
         a.get("telefono", ""),
         a.get("email", ""),
     ]
@@ -133,5 +129,5 @@ async def leggi_azienda():
 
 @router.put("")
 async def aggiorna_azienda(payload: dict = Body(...), _admin=Depends(require_admin)):
-    """Aggiorna i dati azienda (incl. il codice destinatario SDI)."""
+    """Aggiorna i dati azienda usati nei PDF di Lotti."""
     return await set_azienda(payload)

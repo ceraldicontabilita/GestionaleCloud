@@ -541,6 +541,55 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
     return rimessi
 
 
+# Tipi che il motore di Documenti > Import ricostruisce nel gestionale (fatture,
+# corrispettivi, estratti conto). F24, quietanze, bonifici e buste non si toccano.
+TIPI_DA_RIPASSARE = ("fattura", "fattura_estera_pdf", "corrispettivo", "corrispettivi_csv_ade",
+                     "estratto_conto", "estratto_conto_nexi", "estratto_conto_paypal",
+                     "estratto_conto_mutuo", "estratto_conto_sumup", "pos_terminal",
+                     "contabile_filiale")
+_ripasso: Dict[str, Any] = {"in_corso": False}
+
+
+async def rimetti_in_coda_per_tipo(db, tipi=TIPI_DA_RIPASSARE, *, dry_run: bool = True,
+                                   limite: Optional[int] = None) -> Dict[str, Any]:
+    """Riporta in DA ELABORARE i file di ELABORATE di certi tipi, perche' il gestionale
+    li rilegga con il motore unico (DA ELABORARE → Documenti > Import → registrazione →
+    ELABORATE). Serve quando l'archivio del gestionale e' stato azzerato e i file
+    risultano gia' elaborati. Niente si cancella: si spostano file su Drive, e un
+    secondo ingest di un documento gia' presente da' `nuovi=0` (idempotenza)."""
+    righe = await db[REGISTRO].find(
+        {"cartella": ARCHIVIO, "tipo": {"$in": list(tipi)}},
+        {"_id": 0, "id": 1, "nome": 1, "tipo": 1},
+    ).to_list(None)
+    per_tipo: Dict[str, int] = {}
+    for r in righe:
+        per_tipo[r.get("tipo") or "?"] = per_tipo.get(r.get("tipo") or "?", 0) + 1
+    if dry_run:
+        return {"dry_run": True, "da_rimettere": len(righe), "per_tipo": per_tipo}
+    if _ripasso["in_corso"]:
+        return {"saltato": "ripasso_in_corso"}
+    _ripasso["in_corso"] = True
+    rimessi = falliti = 0
+    try:
+        service = await asyncio.to_thread(_service)
+        cartelle = await _cartelle_in_cache(service)
+        for riga in righe[: limite if limite is not None else None]:
+            try:
+                await asyncio.to_thread(_sposta, service, riga["id"], cartelle[ARCHIVIO],
+                                        cartelle[INBOX], "da rileggere: archivio gestionale azzerato")
+                await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
+                                motivo="ricostruzione dell'archivio: si rilegge dal motore unico")
+                rimessi += 1
+            except Exception as exc:
+                falliti += 1
+                logger.warning("[cartella-unica] %s non rimesso in coda: %s: %s",
+                               riga.get("nome") or riga["id"], type(exc).__name__, exc)
+        _azzera_cache()
+        return {"dry_run": False, "rimessi": rimessi, "falliti": falliti, "per_tipo": per_tipo}
+    finally:
+        _ripasso["in_corso"] = False
+
+
 @contextmanager
 def _fase(esito: Dict[str, Any], nome: str):
     """Cronometra una fase del giro: secondi e conteggio in ``tempi_s`` / ``tempi_n``

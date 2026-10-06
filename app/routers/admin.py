@@ -1,6 +1,6 @@
 """Admin router - Administrative functions."""
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
-from typing import Dict, Any, List
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Path, Query
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
 import asyncio
@@ -539,6 +539,33 @@ async def fatture_pagamenti_dichiarati_stato(
     from app.services import pagamenti_dichiarati_titolare
 
     return await pagamenti_dichiarati_titolare.stato(Database.get_db())
+
+
+@router.post(
+    "/documenti/rimetti-in-coda",
+    summary="Rimette in DA ELABORARE i file gia' elaborati di fatture, corrispettivi ed estratti",
+)
+async def documenti_rimetti_in_coda(
+    background_tasks: BackgroundTasks,
+    dry_run: bool = Query(True, description="Se True conta soltanto cosa si rimetterebbe in coda"),
+    limite: Optional[int] = Query(None, ge=1, le=10000),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Per ricostruire il gestionale dopo un azzeramento: i file tornano in DA ELABORARE
+    e li rilegge il motore unico di Documenti > Import (nessun secondo importatore).
+    Non cancella niente su Drive; un documento gia' presente non si duplica."""
+    richiedi_admin(current_user)
+    from app.services import drive_cartella_unica
+
+    db = Database.get_db()
+    if dry_run:
+        return await drive_cartella_unica.rimetti_in_coda_per_tipo(db, dry_run=True)
+
+    async def _lavora() -> None:
+        await drive_cartella_unica.rimetti_in_coda_per_tipo(db, dry_run=False, limite=limite)
+
+    background_tasks.add_task(_lavora)
+    return {"avviato": True, "nota": "Gira in sottofondo; il giro della cartella unica rilegge i file man mano."}
 
 
 @router.post(

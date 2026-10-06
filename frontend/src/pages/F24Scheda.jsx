@@ -26,7 +26,7 @@ import api from '../api';
 
 const VARIANTE_LIVELLO = {
   CERTO: 'success', PROBABILE: 'warning', PARZIALE: 'warning',
-  NESSUN_MATCH: 'danger', MOVIMENTO_ORFANO: 'danger',
+  NESSUN_MATCH: 'warning', MOVIMENTO_ORFANO: 'danger',
 };
 
 const RIGHE_PER_PAGINA = 200;

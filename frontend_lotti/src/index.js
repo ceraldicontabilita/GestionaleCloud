@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "@/index.css";
 import App from "@/App";
+import { avviaTabelleCard } from "../../frontend_shared/tabelleCard";
 import { setupAxiosAuth, startTokenAutoRefresh } from "@/auth";
 import LoginGate from "@/components/auth/LoginGate";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -49,3 +50,4 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>,
 );
+avviaTabelleCard();

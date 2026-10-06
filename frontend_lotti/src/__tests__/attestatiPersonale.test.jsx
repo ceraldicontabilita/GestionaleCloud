@@ -30,7 +30,9 @@ describe("attestati di formazione nel Personale", () => {
     const riga = node.querySelector('[data-testid="attestati-hr-1"]');
     expect(riga).not.toBeNull();
     expect(riga.textContent).toContain("10/06/2026");
-    expect(riga.textContent).toContain("Allega attestato");
-    expect(node.querySelector('[data-testid="importa-attestati"]')).not.toBeNull();
+    // Il caricamento è del dipendente (portale) e dell'amministratore (HR): in Lotti si guarda soltanto.
+    expect(riga.textContent).not.toContain("Allega attestato");
+    expect(node.querySelector('[data-testid="importa-attestati"]')).toBeNull();
+    expect(node.textContent).not.toContain("Codice destinatario SDI");
   });
 });

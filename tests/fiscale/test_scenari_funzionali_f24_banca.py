@@ -278,7 +278,7 @@ def test_nessun_addebito_dice_se_l_estratto_del_periodo_c_e_ed_e_un_alert_solo_s
         "id": "m0", "data": "2026-01-16", "importo": -10.0, "tipo": "uscita", "descrizione": causale_i24("16/01/2026")}))
     esito2 = run(reg.riconcilia_f24_banca(db2))
     [s] = esito2["quietanze_senza_estratto"]
-    assert s["estratto_periodo_presente"] is False and "non si puo' dire se il pagamento manchi" in s["motivazione"]
+    assert s["estratto_periodo_presente"] is False and "manca solo l'estratto conto del periodo" in s["motivazione"]
     assert esito2["quietanze_senza_addebito"] == []
     assert run(db2["alerts"].find({"codice": reg.ALERT_QUIETANZA_SENZA_ADDEBITO}).to_list(10)) == []
 
