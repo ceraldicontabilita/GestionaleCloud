@@ -306,3 +306,14 @@ def test_modello_superato_o_in_quarantena_non_e_un_modello_del_registro():
     assert not modello_attivo({"id": "b", "status": "da_pagare", "superato_da": "a", "motivo_quarantena": "versione_superata"})
     assert not modello_attivo({"id": "c", "status": "da_pagare", "motivo_quarantena": "doppione"})
     assert not modello_attivo({"id": "d", "entity_status": "deleted"})
+
+
+def test_gestione_separata_non_e_obbligatoria_nessun_f24_non_e_manca_f24():
+    """CXX si versa solo se nel mese ci sono compensi: l'assenza dell'F24 non e' una mancanza dichiarata."""
+    g = run(piano.griglia(_db(), 2026, oggi=OGGI))
+    gennaio = _mese(g, "inps_cxx", 1)
+    assert gennaio["stato"] == piano.NESSUN_F24 and gennaio["etichetta_stato"] == "Nessun F24 in archivio"
+    assert gennaio["giorni_scaduto"] is None and gennaio["mandatory"] is False
+    assert not any(m["codici"] == ["CXX"] for m in g["mancano"])
+    # le voci obbligatorie restano «Manca F24»
+    assert _mese(g, "ritenute_1001", 6)["stato"] == piano.MANCA_F24
