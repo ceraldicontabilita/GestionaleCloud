@@ -15,6 +15,7 @@ import { Toaster } from "./components/ui/sonner.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Login from "./pages/Login.jsx";
 import { COLORS } from "./lib/utils.js";
+import { avviaTabelleCard } from "./lib/tabelleCard.js";
 
 const PageLoader = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 16 }}>
@@ -134,6 +135,8 @@ const router = createBrowserRouter([
 // React.StrictMode RIMOSSO: in dev mode causava mount→unmount→remount su ogni componente,
 // facendo eseguire tutti i useEffect DUE VOLTE (spinner → dati → spinner → dati).
 // L'utente vedeva un "reload" ad ogni navigazione. Non ha effetto sui build di produzione.
+avviaTabelleCard();
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
