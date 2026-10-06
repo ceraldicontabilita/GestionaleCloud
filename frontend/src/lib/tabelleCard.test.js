@@ -26,13 +26,21 @@ describe('etichettaTabella', () => {
     expect(t.querySelector('td').dataset.label).toBeUndefined();
   });
 
-  it('lascia stare intestazioni a più livelli, colspan nell’intestazione e data-card="no"', () => {
-    const due = monta(`<table><thead><tr><th>A</th></tr><tr><th>B</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table>`);
-    etichettaTabella(due);
-    expect(due.dataset.card).toBeUndefined();
+  it('intestazione a più livelli: etichetta = cella più in basso, il gruppo solo dove non c\'è altro', () => {
+    const t = monta(`<table><thead>
+      <tr><th rowspan="2">Data</th><th colspan="2">Registratore</th></tr>
+      <tr><th>Corrispettivo</th><th>Elettronico</th></tr></thead>
+      <tbody><tr><td>01/01</td><td>10</td><td>20</td></tr></tbody></table>`);
+    etichettaTabella(t);
+    expect(t.dataset.card).toBe('si');
+    const td = t.querySelectorAll('tbody td');
+    expect([...td].map(c => c.dataset.label)).toEqual(['Data', 'Corrispettivo', 'Elettronico']);
+  });
+
+  it('colspan nell\'intestazione senza foglia: etichetta del gruppo; data-card="no" resta com\'è', () => {
     const span = monta(`<table><thead><tr><th colspan="2">A</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>`);
     etichettaTabella(span);
-    expect(span.dataset.card).toBeUndefined();
+    expect(span.querySelectorAll('td')[1].dataset.label).toBe('A');
     const no = monta(`<table data-card="no"><thead><tr><th>A</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table>`);
     etichettaTabella(no);
     expect(no.querySelector('td').dataset.label).toBeUndefined();
