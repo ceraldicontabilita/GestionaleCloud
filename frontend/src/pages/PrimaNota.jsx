@@ -71,6 +71,14 @@ const CATEGORIE = {
     'Pagamento PayPal', 'Rimborso', 'Stipendi', 'Commissioni bancarie', 'Assegni', 'F24', 'Altro'],
 };
 
+// Il valore salvato resta «Corrispettivi POS» (lo scrivono e lo filtrano molti punti del backend):
+// cambia solo il nome che si vede.
+const ETICHETTE_CATEGORIA = {
+  'Corrispettivi POS': 'Incasso Pos',
+  'POS SUMUP Verso Banca': 'POS SUMUP → credito gestore',
+};
+const etichettaCategoria = c => ETICHETTE_CATEGORIA[c] || c;
+
 const eur = v => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? NON_DISPONIBILE : formatEuroD(v));
 
 export function normalizzaDescrizioneMovimento(descrizione) {
@@ -221,10 +229,7 @@ function FiltriFattura({
 }
 
 export function BadgeCategoria({ categoria }) {
-  const etichette = {
-    'POS SUMUP Verso Banca': 'POS SUMUP → credito gestore',
-  };
-  const testo = etichette[categoria] || categoria || '—';
+  const testo = etichettaCategoria(categoria) || '—';
   const lower = testo.toLowerCase();
   let Icona = FileText;
   let colore = '#5f5c55';
@@ -653,7 +658,7 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
             onChange={e => setForm({ ...form, descrizione: e.target.value })} style={campo}
           />
           <select value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value })} style={campo}>
-            {categorie.map(c => <option key={c} value={c}>{c}</option>)}
+            {categorie.map(c => <option key={c} value={c}>{etichettaCategoria(c)}</option>)}
           </select>
           {tipo === 'banca' && (
             <input
@@ -1076,7 +1081,7 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
           <option value="">Tutte le categorie</option>
           {categorieUsate.map(c => (
             <option key={c} value={c}>
-              {c === CATEGORIA_STORICA ? 'Movimenti storici importati' : c}
+              {c === CATEGORIA_STORICA ? 'Movimenti storici importati' : etichettaCategoria(c)}
             </option>
           ))}
         </select>
