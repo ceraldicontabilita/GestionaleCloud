@@ -84,8 +84,12 @@ def collega_scadenze(scadenze: List[Dict[str, Any]], griglia: Dict[str, Any]) ->
 
     for scadenza in scadenze:
         trovate = []
+        mese_data = str(scadenza.get("data") or "")[5:7]
         for voce_id, periodo in voci_della_scadenza(str(scadenza.get("id") or "")):
             coppia = indice.get((voce_id, periodo))
+            if coppia is None and periodo is None and mese_data:
+                # Voce annuale con piu' scadenze configurate: la casella del mese della scadenza del calendario.
+                coppia = indice.get((voce_id, mese_data))
             if coppia:
                 trovate.append(_sintesi(coppia[1], coppia[0]))
         if not trovate:
