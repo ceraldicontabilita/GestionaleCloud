@@ -32,7 +32,6 @@ export default function ArchivioBonifici() {
   const { anno } = useAnnoGlobale();
   const confirm = useConfirm();
   const [transfers, setTransfers] = useState([]);
-  const [summary, setSummary] = useState({});
   const [count, setCount] = useState(0);
   const [search, setSearch] = useState('');
   const [yearFilter, setYearFilter] = useState('');
@@ -110,7 +109,6 @@ export default function ArchivioBonifici() {
     initialized.current = true;
 
     loadTransfers();
-    loadSummary();
     loadCount();
     loadRiconciliazioneStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,7 +133,7 @@ export default function ArchivioBonifici() {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       // yearFilter è un override manuale opzionale; di default segue
-      // l'anno globale come tutto il resto della pagina (summary/count).
+      // l'anno globale come tutto il resto della pagina (count).
       const annoEffettivo = yearFilter || anno;
       if (annoEffettivo) params.append('year', annoEffettivo);
       if (ordinanteFilter) params.append('ordinante', ordinanteFilter);
@@ -153,14 +151,6 @@ export default function ArchivioBonifici() {
     }
   };
 
-  const loadSummary = async () => {
-    try {
-      const res = await api.get(`/api/archivio-bonifici/transfers/summary?anno=${anno}`);
-      setSummary(res.data || {});
-    } catch (error) {
-      console.error('Error loading summary:', error);
-    }
-  };
 
   const loadCount = async () => {
     try {
@@ -488,8 +478,7 @@ export default function ArchivioBonifici() {
         <button
           onClick={() => {
             loadTransfers();
-            loadSummary();
-            loadCount();
+                    loadCount();
           }}
           style={{
             padding: '8px 14px',
@@ -655,54 +644,6 @@ export default function ArchivioBonifici() {
           {riconciliando ? 'Riconciliazione in corso...' : 'Avvia Riconciliazione'}
         </button>
       </div>
-
-      {/* Riepilogo informativo per anno */}
-      {Object.keys(summary).length > 0 && (
-        <div
-          style={{
-            background: 'white',
-            padding: 16,
-            borderRadius: 8,
-            border: '1px solid #e6e3d9',
-            marginBottom: 24,
-          }}
-        >
-          <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#141413' }}>
-            Riepilogo per Anno
-          </h3>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {Object.entries(summary)
-              .sort(([a], [b]) => b.localeCompare(a))
-              .map(([year, data]) => (
-                <div
-                  key={year}
-                  style={{
-                    background: 'white',
-                    padding: '8px 16px',
-                    minHeight: 40,
-                    borderRadius: 6,
-                    border: '1px solid #e6e3d9',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 'bold',
-                      color: '#141413',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    {year}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#7a776e' }}>
-                    {data.count} bonifici • {euroOppure(data.total)}
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
 
       {/* Filters */}
       <div
@@ -919,15 +860,16 @@ export default function ArchivioBonifici() {
           <div style={{ padding: isMobile ? 10 : 0 }}>
             <ListaAdattiva
               testId="bonifici-table"
+              cardBreakpoint={100000}
               dati={transfersToShow}
               pageSize={50}
               chiave={(t, idx) => t.id || idx}
               colonne={[
                 {
                   key: 'riconciliato',
-                  label: 'Riconc.',
+                  label: 'Riconciliato',
                   align: 'center',
-                  ruoloCard: 'omesso',
+                  ruoloCard: 'dettaglio',
                   tdStyle: sfondoRic,
                   render: t =>
                     t.riconciliato ? (
@@ -936,6 +878,7 @@ export default function ArchivioBonifici() {
                         title={`Riconciliato: ${t.movimento_descrizione || 'Trovato in estratto conto'}`}
                       >
                         <Check size={16} role="img" aria-label="Riconciliato" />
+                        <span style={{ marginLeft: 4, fontSize: 12 }}>Sì</span>
                       </span>
                     ) : (
                       <span style={{ color: '#d0ccbe', fontSize: 14 }}>—</span>

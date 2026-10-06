@@ -129,24 +129,6 @@ async def count_transfers(
     return {'count': count}
 
 
-async def transfers_summary() -> Dict[str, Any]:
-    """Riepilogo per anno."""
-    db = Database.get_db()
-    
-    pipeline = [
-        {'$addFields': {'year': {'$substr': ['$data', 0, 4]}}},
-        {'$group': {
-            '_id': '$year',
-            'count': {'$sum': 1},
-            'total': {'$sum': '$importo'}
-        }},
-        {'$sort': {'_id': -1}}
-    ]
-    
-    results = await db.bonifici_transfers.aggregate(pipeline).to_list(100)
-    return {r['_id']: {'count': r['count'], 'total': round(r['total'] or 0, 2)} for r in results if r['_id']}
-
-
 async def delete_transfer(transfer_id: str) -> Dict[str, bool]:
     """Elimina un bonifico."""
     db = Database.get_db()
