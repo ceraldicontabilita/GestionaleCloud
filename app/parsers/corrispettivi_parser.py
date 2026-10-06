@@ -49,6 +49,9 @@ def clean_xml_namespaces(xml_content: str) -> str:
 MOTIVO_NON_RISCOSSO_NON_DICHIARATO = "non_riscosso_non_dichiarato"
 #: Il non riscosso e' dichiarato ma contanti + POS + non riscosso non fanno il lordo.
 MOTIVO_NON_RISCOSSO_NON_QUADRATO = "non_riscosso_non_quadrato"
+#: Componenti COR10 che il modello contabile attuale non sa ripartire.
+#: I valori nei Riepilogo sono imponibili, non crediti lordi da sommare al POS.
+MOTIVO_COMPONENTI_FISCALI_NON_SUPPORTATE = "componenti_fiscali_da_verificare"
 
 #: Nomi locali delle voci con cui il tracciato COR10 dichiara il non riscosso.
 _VOCI_NON_RISCOSSO = ("NonRiscossoServizi", "NonRiscossoFatture", "NonRiscossoDCRaSSN",
@@ -72,21 +75,22 @@ def _non_riscosso_dichiarato(totali, dati_rt) -> tuple:
     (tracciati che lo spezzano per aliquota). Mai in entrambi: lo stesso
     importo si conterebbe due volte. Nessuna voce = non dichiarato.
     """
-    for radice in (totali, dati_rt):
+    for blocco, radice in (("Totali", totali), ("Riepilogo", dati_rt)):
         if radice is None:
             continue
         voci = []
         for el in radice.iter():
             nome = el.tag.split('}')[-1] if '}' in el.tag else el.tag
             if nome in _VOCI_NON_RISCOSSO or nome.startswith("NonRiscosso"):
-                voci.append({"voce": nome, "importo_cents": _cents(el.text)})
+                voci.append({"voce": nome, "importo_cents": _cents(el.text), "blocco": blocco})
         if voci:
             return sum(v["importo_cents"] for v in voci), voci
     return 0, []
 
 
 def _motivo_scarto_giornata(*, lordo_riepiloghi: float, contanti: float, elettronico: float,
-                            non_riscosso_cents: int, dichiarato: bool) -> Optional[str]:
+                            non_riscosso_cents: int, dichiarato: bool,
+                            pagamenti_presenti: bool = False) -> Optional[str]:
     """Il motivo per cui la giornata non si registra, oppure None.
 
     Vale solo quando il documento ripartisce il pagamento (contanti o POS
@@ -95,11 +99,9 @@ def _motivo_scarto_giornata(*, lordo_riepiloghi: float, contanti: float, elettro
     lordo dei riepiloghi al centesimo: lo scarto non e' un non riscosso.
     """
     incassato = _cents(contanti) + _cents(elettronico)
-    if incassato <= 0:
+    if incassato <= 0 and not pagamenti_presenti:
         return None
     lordo = _cents(round(lordo_riepiloghi, 2))
-    if lordo <= 0:
-        return None
     if incassato + non_riscosso_cents == lordo:
         return None
     return MOTIVO_NON_RISCOSSO_NON_QUADRATO if dichiarato else MOTIVO_NON_RISCOSSO_NON_DICHIARATO
@@ -223,32 +225,65 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
         totale_imponibile = 0.0
         totale_imposta = 0.0
         totale_ammontare_lordo = 0.0  # Per scorporo IVA se necessario
+        componenti_da_verificare = []
         
-        for riepilogo in find_all_elements(dati_rt, 'Riepilogo'):
+        riepiloghi_xml = find_all_elements(dati_rt, 'Riepilogo')
+        for riepilogo in riepiloghi_xml:
             iva_el = find_element(riepilogo, 'IVA')
             aliquota = get_text(iva_el, 'AliquotaIVA', '0')
             imposta_raw = get_text(iva_el, 'Imposta', '')
             imposta = get_float(iva_el, 'Imposta')
             ammontare = get_float(riepilogo, 'Ammontare')
+            importo_parziale_raw = get_text(riepilogo, 'ImportoParziale', '')
             importo_parziale = get_float(riepilogo, 'ImportoParziale')
             natura = get_text(riepilogo, 'Natura')
+            ventilazione = get_text(riepilogo, 'VentilazioneIVA').upper() == 'SI'
+
+            # AdE, Allegato Tipi Dati per i Corrispettivi v7 (giugno 2020),
+            # campi 4.1.1.2 e 4.1.6: ImportoParziale e' l'imponibile gia'
+            # netto di resi/annulli, e Imposta e' l'IVA relativa. Lo zero
+            # esplicito e' un valore fiscale: non sostituirlo con Ammontare.
+            # Natura e Ventilazione non richiedono di aggiungere/scorporare IVA.
+            imponibile_netto = importo_parziale if importo_parziale_raw else ammontare
+            imposta = 0.0 if natura or ventilazione else imposta
+            importo_lordo = (_cents(imponibile_netto) + _cents(imposta)) / 100
+
+            for el in riepilogo:
+                nome = el.tag.split('}')[-1]
+                importo_cents = _cents(el.text)
+                # I non riscossi COR10 non hanno tutti la stessa semantica:
+                # servizi/fatture sono esclusi da ImportoParziale; omaggi
+                # inclusi. Il modello attuale non ne registra le controparti.
+                if importo_cents and (
+                    nome.startswith('NonRiscosso') or nome in
+                    ('PagatoNonRiscosso', 'BeniInSospeso', 'TotaleDaFattureRT') or
+                    (not importo_parziale_raw and nome in
+                     ('TotaleAmmontareResi', 'TotaleAmmontareAnnulli'))
+                ):
+                    componenti_da_verificare.append({
+                        'voce': nome, 'importo_cents': importo_cents, 'blocco': 'Riepilogo',
+                    })
             
-            # Calcola importo lordo del riepilogo
-            importo_lordo = importo_parziale if importo_parziale > 0 else (ammontare + imposta)
-            
-            if ammontare > 0 or imposta > 0 or importo_parziale > 0:
+            if any(_cents(v) for v in (ammontare, imposta, importo_parziale)):
                 riepilogo_iva.append({
                     "aliquota_iva": aliquota,
                     "imposta": imposta,
                     "imposta_presente": bool(imposta_raw),
-                    "ammontare": ammontare,  # Imponibile
+                    "ammontare": imponibile_netto,  # Base fiscale netta usata a valle
+                    "ammontare_xml": ammontare,  # Valore originale, prima delle esclusioni COR10
                     "importo_parziale": importo_parziale,
+                    "importo_parziale_presente": bool(importo_parziale_raw),
                     "importo_lordo": importo_lordo,
                     "natura": natura,
+                    "ventilazione_iva": ventilazione,
                 })
-                totale_imponibile += ammontare
+                totale_imponibile += imponibile_netto
                 totale_imposta += imposta
                 totale_ammontare_lordo += importo_lordo
+
+        totale_imponibile = sum(_cents(r['ammontare']) for r in riepilogo_iva) / 100
+        totale_imposta = sum(_cents(r['imposta']) for r in riepilogo_iva) / 100
+        totale_ammontare_lordo = sum(_cents(r['importo_lordo']) for r in riepilogo_iva) / 100
         
         # ========== TOTALI - PAGAMENTI ==========
         totali = find_element(dati_rt, 'Totali')
@@ -285,6 +320,17 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
         # `NonRiscossoDCRaSSN`, `NonRiscossoOmaggio`, `PagatoNonRiscosso`);
         # lo scarto che resta e' un motivo di scarto, mai un importo.
         non_riscosso_cents, voci_non_riscosso = _non_riscosso_dichiarato(totali, dati_rt)
+        # Il supporto legacy provato espone importi lordi nel blocco Totali.
+        # Le voci COR10 per aliquota sono basi nette e non diventano crediti
+        # lordi: si conservano come evidenza e la giornata resta da verificare.
+        if any(v['blocco'] == 'Riepilogo' for v in voci_non_riscosso):
+            non_riscosso_cents = 0
+        for nome in ('ScontoApagare', 'PagatoTicket'):
+            valore = get_float(totali, nome)
+            if _cents(valore):
+                componenti_da_verificare.append({
+                    'voce': nome, 'importo_cents': _cents(valore), 'blocco': 'Totali',
+                })
         pagato_non_riscosso = non_riscosso_cents / 100
 
         # Totale corrispettivi = incassato (contanti + elettronico) piu' il non
@@ -297,11 +343,21 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
             totale_corrispettivi = totale_ammontare_lordo or totale_generico
 
         totale_lordo_riepiloghi = sum(r.get('importo_lordo', 0) for r in riepilogo_iva)
+        pagamenti_presenti = any(
+            find_element(totali, nome) is not None
+            for nome in ('PagatoContanti', 'PagatoElettronico')
+        )
+        quadratura_pagamenti_eseguita = bool(riepiloghi_xml) and (
+            pagamenti_presenti or _cents(pagato_contanti) + _cents(pagato_elettronico) > 0
+        )
         motivo_scarto = _motivo_scarto_giornata(
             lordo_riepiloghi=totale_lordo_riepiloghi,
             contanti=pagato_contanti, elettronico=pagato_elettronico,
             non_riscosso_cents=non_riscosso_cents, dichiarato=bool(voci_non_riscosso),
-        )
+            pagamenti_presenti=pagamenti_presenti,
+        ) if riepiloghi_xml else None
+        if componenti_da_verificare:
+            motivo_scarto = MOTIVO_COMPONENTI_FISCALI_NON_SUPPORTATE
 
         # L'IVA assente non viene inventata mediante scorporo. Il documento
         # resta importabile come evidenza RT, ma la quadratura IVA viene
@@ -350,6 +406,12 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
             "pagato_non_riscosso": pagato_non_riscosso,
             "non_riscosso_dichiarato": bool(voci_non_riscosso),
             "non_riscosso_voci": voci_non_riscosso,
+            "componenti_fiscali_da_verificare": componenti_da_verificare,
+            "quadratura_pagamenti_status": (
+                "NON_VERIFICABILE" if componenti_da_verificare
+                else "ERRORE" if motivo_scarto else "VERIFICATA" if quadratura_pagamenti_eseguita
+                else "NON_VERIFICABILE"
+            ),
             "lordo_riepiloghi": round(totale_lordo_riepiloghi, 2),
             # Valorizzato solo quando la giornata non si puo' registrare: il
             # motore unico la scarta con questo motivo, mai la fa quadrare.
@@ -367,7 +429,7 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
             
             # Metadata
             "raw_xml_parsed": True,
-            "parser_version": "corrispettivi_xml_v2_cents",
+            "parser_version": "corrispettivi_xml_v3_importo_parziale",
             "versione": get_text(root, 'versione') or "COR10",
             "periodo_inattivo": find_element(root, 'PeriodoInattivo') is not None,
         }
