@@ -213,6 +213,35 @@ def test_la_natura_la_sceglie_il_titolare_senza_toccare_importi_ne_collegamenti(
     assert salvata.get("movimento_id") == ricevuta.get("movimento_id")
 
 
+def test_oneri_e_sanzioni_associano_la_ricevuta_senza_movimento_di_banca(monkeypatch):
+    """Scelta del titolare 06/10/2026: oneri e sanzioni bastano a dirla «associata»; tributo no."""
+    from app.database import Database
+    from app.routers import pagopa as router
+
+    db = _db("natura_associata")
+    esito = _run(import_receipt(db, content=_cbill(), filename="a.pdf", company_id="c"))
+    ricevuta = esito["receipt"]
+    _run(db["ricevute_pagopa"].update_one({"id": ricevuta["id"]}, {"$set": {"movimento_id": None}}))
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+    app = FastAPI()
+    app.include_router(router.router, prefix="/api/pagopa")
+    client = TestClient(app)
+    url = f"/api/pagopa/ricevute/{ricevuta['id']}/natura"
+
+    def stato():
+        riga = next(r for r in client.get("/api/pagopa/ricevute").json() if r["id"] == ricevuta["id"])
+        return riga["associata_per_natura"], client.get("/api/pagopa/stats").json()["ricevute_associate"]
+
+    assert client.put(url, json={"natura": "tributo"}).json()["associata_per_natura"] is False
+    assert stato() == (False, 0)
+    assert client.put(url, json={"natura": "onere_pratica"}).json()["associata_per_natura"] is True
+    assert stato() == (True, 1)
+    assert client.put(url, json={"natura": "sanzione_interessi"}).json()["associata_per_natura"] is True
+    assert stato() == (True, 1)
+    assert client.put(url, json={"natura": "altro"}).json()["associata_per_natura"] is False
+    assert stato() == (False, 0)
+
+
 # ── IUV sempre testo ─────────────────────────────────────────────────────────────────────
 
 def test_iuv_con_zero_iniziale_resta_testo_dal_pdf_all_archivio():

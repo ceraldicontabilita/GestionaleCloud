@@ -80,6 +80,34 @@ describe('Ricevuta: che cosa hai pagato', () => {
   });
 });
 
+describe('Ricevuta: oneri e sanzioni la associano', () => {
+  it('dopo la scelta mostra «Associata» al posto di «Da Associare», e dopo il ricaricamento resta', async () => {
+    const nature = { nature: [
+      { id: 'tributo', label: 'Tributo' }, { id: 'onere_pratica', label: 'Diritti o oneri di una pratica' },
+    ] };
+    const risposte = ricevute => url => {
+      if (url === '/api/pagopa/nature') return Promise.resolve({ data: nature });
+      if (url === '/api/pagopa/ricevute') return Promise.resolve({ data: ricevute });
+      return Promise.resolve({ data: {} });
+    };
+    api.get.mockImplementation(risposte([{ id: 'ric-5', iuv: 'IUV5', beneficiario: 'ADER', movimento_id: null }]));
+    api.put.mockResolvedValue({ data: { success: true, associata_per_natura: true } });
+
+    const { unmount } = render(<MemoryRouter><GestionePagoPA /></MemoryRouter>);
+    expect(await screen.findByText('Da Associare', { selector: 'span' })).toBeInTheDocument();
+    fireEvent.change(await screen.findByTestId('natura-ric-5'), { target: { value: 'onere_pratica' } });
+    expect(await screen.findByTestId('associata-natura-ric-5')).toHaveTextContent('Associata · Diritti o oneri di una pratica');
+
+    unmount();
+    api.get.mockImplementation(risposte([{
+      id: 'ric-5', iuv: 'IUV5', beneficiario: 'ADER', movimento_id: null,
+      natura: 'onere_pratica', natura_label: 'Diritti o oneri di una pratica', associata_per_natura: true,
+    }]));
+    render(<MemoryRouter><GestionePagoPA /></MemoryRouter>);
+    expect(await screen.findByTestId('associata-natura-ric-5')).toBeInTheDocument();
+  });
+});
+
 describe('GestionePagoPA - semantica documentale', () => {
   it('distingue le famiglie CBILL, MAV, RAV e bollettino postale', () => {
     expect(paymentKindLabel('RICEVUTA_CBILL')).toBe('CBILL');

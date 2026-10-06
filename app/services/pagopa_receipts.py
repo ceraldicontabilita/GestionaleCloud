@@ -48,6 +48,10 @@ NATURE_RICEVUTA = {
     "sanzione_interessi": "Sanzione o interessi",
     "altro": "Altro",
 }
+# Per queste nature la scelta del titolare basta a dire che la ricevuta e' «associata»
+# (decisione del 06/10/2026): diritti, oneri e sanzioni non hanno una riga propria da
+# cercare nell'estratto. Lo stato di banca (`movimento_id`) resta un'altra cosa.
+NATURE_ASSOCIATE = ("onere_pratica", "sanzione_interessi")
 PARSER_VERSION = "payment-receipt-layout-v5"
 
 
