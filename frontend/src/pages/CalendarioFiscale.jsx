@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { SeScrittura } from '../contexts/AuthContext';
 import {
   PageLayout,
   PageSection,
@@ -54,7 +55,11 @@ export default function CalendarioFiscale() {
     { id: '12', label: 'Dicembre' },
   ];
 
+  const richiestaCorrente = useRef(0);
+
   const loadCalendario = async () => {
+    const richiesta = ++richiestaCorrente.current;
+    const superata = () => richiesta !== richiestaCorrente.current;
     setLoading(true);
     setError(null);
     setNotificheError(null);
@@ -64,6 +69,7 @@ export default function CalendarioFiscale() {
         api.get(`/api/fiscalita/notifiche-scadenze?anno=${selectedYear}&giorni=30`),
       ]);
 
+      if (superata()) return;
       if (calRes.status === 'fulfilled' && calRes.value.data?.success) {
         setCalendario(calRes.value.data);
       } else {
@@ -89,7 +95,7 @@ export default function CalendarioFiscale() {
       console.error('Errore caricamento calendario:', err);
       setError(err.message || 'Errore di connessione');
     } finally {
-      setLoading(false);
+      if (!superata()) setLoading(false);
     }
   };
 
@@ -307,7 +313,7 @@ export default function CalendarioFiscale() {
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 {notifiche.urgenti?.slice(0, 1).map((s, idx) => (
-                  <Button
+                  <SeScrittura key={idx}><Button
                     key={idx}
                     variant="secondary"
                     size="sm"
@@ -316,7 +322,7 @@ export default function CalendarioFiscale() {
                   >
                     <Bell size={14} style={{ marginRight: 4 }} />
                     Notifica
-                  </Button>
+                  </Button></SeScrittura>
                 ))}
               </div>
             </div>
@@ -428,14 +434,14 @@ export default function CalendarioFiscale() {
                           SCADUTA
                         </span>
                       )}
-                      <Button
+                      <SeScrittura><Button
                         size="sm"
                         variant="outline"
                         onClick={() => completaScadenza(scad)}
                         disabled={completando === scad.id}
                       >
                         {completando === scad.id ? 'Salvo...' : 'Conferma con prova'}
-                      </Button>
+                      </Button></SeScrittura>
                     </div>
                   </div>
                 ))}
@@ -613,7 +619,7 @@ export default function CalendarioFiscale() {
                           </span>
                         </td>
                         <td data-label="Azioni" style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          {!scad.completato ? (
+                          <SeScrittura>{!scad.completato ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -633,7 +639,7 @@ export default function CalendarioFiscale() {
                             </Button>
                           ) : (
                             <span style={{ fontSize: 12, color: '#7a776e' }}>Protetta da F24</span>
-                          )}
+                          )}</SeScrittura>
                         </td>
                       </tr>
                     ))}

@@ -12,6 +12,9 @@ vi.mock('../api', () => ({
 vi.mock('../contexts/AnnoContext', () => ({
   useAnnoGlobale: () => ({ anno: 2026 }),
 }));
+vi.mock('../contexts/AuthContext', () => ({
+  SeScrittura: ({ children }) => children,
+}));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
