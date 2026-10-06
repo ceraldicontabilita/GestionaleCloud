@@ -178,6 +178,7 @@ def costruisci(
                 "saldo_delega_cents": p.get("importo_cents"),
                 "compensazione_totale": bool(p.get("compensazione_totale")),
                 "debiti_compensati": debiti, "origini": p.get("origini") or [],
+                "quietanza_id": ((p.get("quietanze") or [{}])[0]).get("id"),
                 "pdf_url": ((p.get("quietanze") or [{}])[0]).get("pdf_url"),
             })
     lista_crediti = sorted(

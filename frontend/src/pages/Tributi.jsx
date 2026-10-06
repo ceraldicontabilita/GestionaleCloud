@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import PannelloF24 from '../components/tributi/PannelloF24';
 import { ChevronDown } from 'lucide-react';
 import { Badge, Button, PageHeader, PageLoader } from '../components/ds';
 import RegistroVersamenti from '../components/tributi/RegistroVersamenti';
@@ -195,6 +196,7 @@ export default function Tributi() {
   const [aperta, setAperta] = useState(null);
   const [mostrate, setMostrate] = useState(RIGHE_PER_PAGINA);
   const [pdf, setPdf] = useState(null);
+  const [pannello, setPannello] = useState(null);
   const [cercaTesto, setCercaTesto] = useState(params.get('cerca') || '');
 
   const anno = params.get('anno') || '';
@@ -247,6 +249,7 @@ export default function Tributi() {
   ] : [];
 
   const apriPdf = (url, titolo) => setPdf({ url, titolo });
+  const apriPannello = (id, titolo) => setPannello({ id, titolo });
   const apri = voce => setAperta(a => (a === voce.chiave ? null : voce.chiave));
 
   return (
@@ -305,7 +308,7 @@ export default function Tributi() {
                   ))}
                 </div>
               </button>
-              {aperta === v.chiave && <Dettaglio voce={v} onApri={apriPdf} />}
+              {aperta === v.chiave && <Dettaglio voce={v} onApri={apriPdf} onDettaglio={apriPannello} />}
             </div>
           ))}
         </div>
@@ -362,7 +365,7 @@ export default function Tributi() {
                     </tr>
                     {aperta === v.chiave && (
                       <tr><td colSpan={3 + COLONNE.length} style={{ padding: '0 14px', background: COLORS.bgAlt }}>
-                        <Dettaglio voce={v} onApri={apriPdf} />
+                        <Dettaglio voce={v} onApri={apriPdf} onDettaglio={apriPannello} />
                       </td></tr>
                     )}
                   </React.Fragment>
@@ -383,11 +386,13 @@ export default function Tributi() {
       )}
 
       </Sezione>
-      <Sezione id="versamenti" label="Registro versamenti" open={aperte.has('versamenti')} onToggle={alterna}><RegistroVersamenti vista="versamenti" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} /></Sezione>
-      <Sezione id="crediti" label="Crediti e compensazioni" open={aperte.has('crediti')} onToggle={alterna}><RegistroVersamenti vista="crediti" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} /></Sezione>
-      <Sezione id="deleghe" label="Deleghe F24" open={aperte.has('deleghe')} onToggle={alterna}><RegistroVersamenti vista="deleghe" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} /></Sezione>
-      <Sezione id="scadenzario" label="Scadenzario" open={aperte.has('scadenzario')} onToggle={alterna}><Scadenzario anno={anno} stato={stato} imposta={imposta} /></Sezione>
+      <Sezione id="versamenti" label="Registro versamenti" open={aperte.has('versamenti')} onToggle={alterna}><RegistroVersamenti vista="versamenti" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} onDettaglio={apriPannello} /></Sezione>
+      <Sezione id="crediti" label="Crediti e compensazioni" open={aperte.has('crediti')} onToggle={alterna}><RegistroVersamenti vista="crediti" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} onDettaglio={apriPannello} /></Sezione>
+      <Sezione id="deleghe" label="Deleghe F24" open={aperte.has('deleghe')} onToggle={alterna}><RegistroVersamenti vista="deleghe" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} onDettaglio={apriPannello} /></Sezione>
+      <Sezione id="scadenzario" label="Scadenzario" open={aperte.has('scadenzario')} onToggle={alterna}><Scadenzario anno={anno} stato={stato} imposta={imposta} onApri={apriPdf} onDettaglio={apriPannello} /></Sezione>
       <Sezione id="termini" label="Termini di recupero" open={aperte.has('termini')} onToggle={alterna}><TerminiRecupero /></Sezione>
+
+      {pannello && <PannelloF24 id={pannello.id} titolo={pannello.titolo} onClose={() => setPannello(null)} />}
 
       {pdf && (
         <VisoreOriginale title={pdf.titolo} url={pdf.url} documentType="documento_fiscale" onClose={() => setPdf(null)} />

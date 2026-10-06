@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Badge, PageLoader } from '../ds';
 import { COLORS, FONT, formatEuro } from '../../lib/utils';
 import api from '../../api';
+import { Protocollo } from './RegistroVersamenti';
 
 /**
  * Scadenzario tributi (richiesta del 30/09/2026): per ogni codice e periodo
@@ -29,7 +30,7 @@ const selettore = {
   background: COLORS.card, fontSize: 14, fontFamily: FONT.family, color: COLORS.text,
 };
 
-export default function Scadenzario({ anno, stato, imposta }) {
+export default function Scadenzario({ anno, stato, imposta, onApri = () => {}, onDettaglio }) {
   const [dati, setDati] = useState(null);
   const [errore, setErrore] = useState('');
   const [aperta, setAperta] = useState(null);
@@ -80,7 +81,7 @@ export default function Scadenzario({ anno, stato, imposta }) {
             {aperta === v.chiave && (v.pagamenti || []).map((p, i) => (
               <div key={`${p.protocollo}-${i}`} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}`, fontSize: 12.5, lineHeight: 1.5 }}
                 data-testid="scad-pagamento">
-                <strong>{dataIt(p.data)}</strong> · protocollo {p.protocollo || '—'} · {euro(p.importo_cents)}
+                <strong>{dataIt(p.data)}</strong> · <Protocollo numero={p.protocollo} pdfUrl={p.pdf_url} quietanzaId={p.quietanza_id} onApri={onApri} onDettaglio={onDettaglio} /> · {euro(p.importo_cents)}
                 {p.giorni_ritardo > 0 && <> · <strong style={{ color: COLORS.warning }}>{p.giorni_ritardo} giorni di ritardo</strong></>}
                 {p.compensazione_totale && <> · in compensazione</>}
                 <div>{p.motivazione}</div>
