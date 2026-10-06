@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Badge, Button, PageHeader, PageLoader, Tabs } from '../components/ds';
+import { ChevronDown } from 'lucide-react';
+import { Badge, Button, PageHeader, PageLoader } from '../components/ds';
 import RegistroVersamenti from '../components/tributi/RegistroVersamenti';
 import Scadenzario from '../components/tributi/Scadenzario';
 import TerminiRecupero from '../components/tributi/TerminiRecupero';
@@ -171,6 +172,21 @@ const COLONNE = [
   { id: 'residuo_cents', label: 'Resta da pagare' },
 ];
 
+function Sezione({ id, label, open, onToggle, children }) {
+  return (
+    <section style={{ marginBottom: 12, background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12 }}>
+      <button
+        type="button" onClick={() => onToggle(id)} aria-expanded={open} data-testid={`sezione-${id}`}
+        style={{ all: 'unset', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 48, padding: '0 16px', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}
+      >
+        <span>{label}</span>
+        <ChevronDown size={18} aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+      </button>
+      {open && <div style={{ padding: '0 16px 16px' }}>{children}</div>}
+    </section>
+  );
+}
+
 export default function Tributi() {
   const isMobile = useIsMobile(1024);
   const [params, setParams] = useSearchParams();
@@ -185,7 +201,10 @@ export default function Tributi() {
   const stato = params.get('stato') || '';
   const sezione = params.get('sezione') || '';
   const cerca = params.get('cerca') || '';
-  const vista = params.get('vista') || 'codici';
+  // Una pagina sola: le sei viste sono sezioni che si aprono e si chiudono. Un vecchio
+  // indirizzo con ?vista= apre quella sezione.
+  const [aperte, setAperte] = useState(() => new Set([params.get('vista') || 'codici']));
+  const alterna = id => setAperte(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const origine = params.get('origine') || '';
 
   const imposta = (chiave, valore) => {
@@ -208,12 +227,12 @@ export default function Tributi() {
     if (stato) qs.set('stato', stato);
     if (sezione) qs.set('sezione', sezione);
     if (cerca) qs.set('cerca', cerca);
-    if (vista !== 'codici') return () => { attivo = false; };
+    if (!aperte.has('codici')) return () => { attivo = false; };
     api.get(`/api/f24/tributi?${qs}`)
       .then(r => { if (attivo) { setDati(r.data); setMostrate(RIGHE_PER_PAGINA); } })
       .catch(e => { if (attivo) setErrore(e.response?.data?.detail || e.message || 'Lettura non riuscita'); });
     return () => { attivo = false; };
-  }, [anno, stato, sezione, cerca, vista]);
+  }, [anno, stato, sezione, cerca, aperte.has('codici')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const voci = dati?.voci || [];
   const totali = dati?.totali || {};
@@ -232,31 +251,10 @@ export default function Tributi() {
 
   return (
     <div style={{ width: '100%', fontFamily: FONT.family }}>
-      <PageHeader title="Tributi" pastiglie={vista === 'codici' ? pastiglie : []} style={{ marginBottom: 14 }} />
+      <PageHeader title="Tributi" pastiglie={aperte.has('codici') ? pastiglie : []} style={{ marginBottom: 14 }} />
 
-      <Tabs
-        value={vista}
-        onChange={v => { const n = new URLSearchParams(); n.set('vista', v); setParams(n, { replace: true }); setCercaTesto(''); }}
-        items={[
-          { key: 'codici', label: 'Per codice e periodo' },
-          { key: 'versamenti', label: 'Registro versamenti' },
-          { key: 'crediti', label: 'Crediti e compensazioni' },
-          { key: 'deleghe', label: 'Deleghe F24' },
-          { key: 'scadenzario', label: 'Scadenzario' },
-          { key: 'termini', label: 'Termini di recupero' },
-        ]}
-        style={{ marginBottom: 12 }}
-      />
+      <Sezione id="codici" label="Per codice e periodo" open={aperte.has('codici')} onToggle={alterna}>
 
-      {vista === 'scadenzario' && <Scadenzario anno={anno} stato={stato} imposta={imposta} />}
-
-      {vista === 'termini' && <TerminiRecupero />}
-
-      {['versamenti', 'crediti', 'deleghe'].includes(vista) && (
-        <RegistroVersamenti vista={vista} anno={anno} origine={origine} imposta={imposta} onApri={(url, titolo) => setPdf({ url, titolo })} />
-      )}
-
-      {vista === 'codici' && (<>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }} data-testid="filtri-tributi">
         <select aria-label="Anno di riferimento" value={anno} onChange={e => imposta('anno', e.target.value)} style={selettore}>
@@ -384,7 +382,12 @@ export default function Tributi() {
         </div>
       )}
 
-      </>)}
+      </Sezione>
+      <Sezione id="versamenti" label="Registro versamenti" open={aperte.has('versamenti')} onToggle={alterna}><RegistroVersamenti vista="versamenti" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} /></Sezione>
+      <Sezione id="crediti" label="Crediti e compensazioni" open={aperte.has('crediti')} onToggle={alterna}><RegistroVersamenti vista="crediti" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} /></Sezione>
+      <Sezione id="deleghe" label="Deleghe F24" open={aperte.has('deleghe')} onToggle={alterna}><RegistroVersamenti vista="deleghe" anno={anno} origine={origine} imposta={imposta} onApri={apriPdf} /></Sezione>
+      <Sezione id="scadenzario" label="Scadenzario" open={aperte.has('scadenzario')} onToggle={alterna}><Scadenzario anno={anno} stato={stato} imposta={imposta} /></Sezione>
+      <Sezione id="termini" label="Termini di recupero" open={aperte.has('termini')} onToggle={alterna}><TerminiRecupero /></Sezione>
 
       {pdf && (
         <VisoreOriginale title={pdf.titolo} url={pdf.url} documentType="documento_fiscale" onClose={() => setPdf(null)} />
