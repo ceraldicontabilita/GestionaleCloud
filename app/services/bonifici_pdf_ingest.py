@@ -324,6 +324,24 @@ ANNI_ACCREDITI_NON_REGISTRATI = frozenset({2023})
 STATO_NON_REGISTRATO = "non_registrato"
 
 
+CAMPI_COLLEGAMENTO = (
+    "salario_associato", "fattura_associata", "fatture_associate", "fattura_id",
+    "fattura_associata_id", "fattura_ids", "movimento_estratto_conto_id",
+)
+
+
+def transfer_collegato(transfer: Dict[str, Any]) -> bool:
+    """Gia' agganciato a uno stipendio, a una fattura o a un movimento, o depositato in HR come pagamento.
+
+    Un transfer cosi' ha collegamenti derivati dalla sua identita': non si corregge ne' si
+    toglie dall'archivio da un ripasso, perche' i collegamenti resterebbero attaccati ai dati vecchi.
+    """
+    return bool(
+        any(transfer.get(c) for c in CAMPI_COLLEGAMENTO)
+        or (transfer.get("hr_deposito") or {}).get("esito") in {"depositato", "arricchito"}
+    )
+
+
 def e_stampa_fattura(testo: str) -> bool:
     """Stampa di una fattura elettronica, riconosciuta dal contenuto (mai dal nome)."""
     compatto = re.sub(r"\s+", " ", (testo or "").upper())
@@ -429,6 +447,11 @@ async def importa_pdf_bonifico(
         # PDF originale e correggiamo i soli metadati estratti.
         text = await asyncio.to_thread(read_pdf_bytes, content)
         reparsed = extract_transfers_from_text(text, filename=filename)[0]
+        if transfer_collegato(esistente):
+            # La stessa ricevuta ricaricata non riscrive l'identita' di un pagamento gia' agganciato.
+            return {"status": "duplicate", "transfer_id": esistente.get("id"),
+                    "associato": bool(esistente.get("salario_associato") or esistente.get("fattura_associata")),
+                    "motivo": "transfer_collegato_non_riletto"}
         beneficiario = reparsed.get("beneficiario") or {}
         metadata_file = extract_filename_metadata(filename)
         if not beneficiario.get("nome"):

@@ -317,7 +317,7 @@ def _extract_sumup_receipt(lines: List[str]) -> Dict[str, Any]:
             ibans.append(candidato)
     if len(ibans) >= 2:
         out["ordinante_iban"], out["beneficiario_iban"] = ibans[0], ibans[1]
-    importo = re.search(r"Importo\s*€\s*([\d.,]+)", testo)
+    importo = re.search(r"Importo\s*[^\d\s]?\s*(\d[\d.,]*)", testo)  # il simbolo «€» puo' uscire storpiato
     if importo:
         raw = importo.group(1)
         out["importo"] = round(float(raw.replace(",", "")), 2)  # SumUp scrive «€1,234.56»

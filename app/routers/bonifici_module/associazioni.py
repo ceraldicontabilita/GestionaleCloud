@@ -12,6 +12,7 @@ import logging
 from app.database import Database, Collections
 from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.utils.id_fattura import filtro_id
 from app.services.payment_document_links import (
     collega_bonifico_fatture,
     valuta_fattura_bonifico,
@@ -50,7 +51,8 @@ async def associa_fattura_a_bonifico(
             ),
         )
 
-    fattura = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0})
+    # Su `invoices` l'id e' un numero su meta' delle righe: si cerca con testo e intero.
+    fattura = await db[Collections.INVOICES].find_one(filtro_id(fattura_id), {"_id": 0})
     if not fattura:
         raise HTTPException(404, "Fattura non trovata")
     compatibilita = _valuta_fattura_bonifico(bonifico, fattura)

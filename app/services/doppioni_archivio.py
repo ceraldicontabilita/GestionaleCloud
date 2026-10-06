@@ -217,24 +217,30 @@ async def _prima_nota_salari(db, *, dry_run: bool, actor: str) -> Dict[str, Any]
 
 
 async def _rileggi_ricevute_sumup(db, *, dry_run: bool) -> Dict[str, Any]:
-    """Ricevute SumUp lette col beneficiario sbagliato (IBAN SumUp, nome dal file): si rileggono per id."""
+    """Ricevute SumUp lette col beneficiario sbagliato: si rileggono per id, solo se non collegate.
+
+    Il lettore vecchio prendeva il primo IBAN (quello SumUp, il mittente) per il beneficiario.
+    Si ripara quando la rilettura dice un beneficiario diverso da quello salvato; un transfer
+    gia' agganciato (stipendio, fattura, movimento, HR) si elenca e non si tocca.
+    """
     import base64
 
+    from app.routers.bonifici_module.common import build_dedup_key
     from app.routers.bonifici_module.pdf_parser import extract_transfers_from_text, read_pdf_bytes
+    from app.services.bonifici_pdf_ingest import transfer_collegato
 
     righe = await db["bonifici_transfers"].find(
-        {}, {"_id": 0, "id": 1, "beneficiario": 1, "salario_associato": 1, "fattura_associata": 1,
-             "fatture_associate": 1, "hr_deposito": 1}).to_list(None)
-    sbagliate = [r for r in righe
-                 if str((r.get("beneficiario") or {}).get("iban") or "").upper().startswith("IE")
-                 and "SUMU" in str((r.get("beneficiario") or {}).get("iban") or "").upper()]
-    # Un transfer gia' agganciato a uno stipendio o a una fattura (o depositato in HR) ha
-    # collegamenti derivati dal beneficiario sbagliato: non si ritocca qui, si elenca per la
-    # revisione del titolare (sciogliere un'associazione e' una decisione sua).
-    da_rivedere = [r["id"] for r in sbagliate if (
-        r.get("salario_associato") or r.get("fattura_associata") or r.get("fatture_associate")
-        or (r.get("hr_deposito") or {}).get("esito") in {"depositato", "arricchito"})]
-    ids = [r["id"] for r in sbagliate if r["id"] not in da_rivedere]
+        {}, {"_id": 0, "id": 1, "beneficiario": 1, "ordinante": 1, "salario_associato": 1,
+             "fattura_associata": 1, "fatture_associate": 1, "fattura_id": 1, "fattura_associata_id": 1,
+             "fattura_ids": 1, "movimento_estratto_conto_id": 1, "hr_deposito": 1}).to_list(None)
+
+    def _sumup(r) -> bool:
+        return any("SUMU" in str((r.get(k) or {}).get("iban") or "").upper()
+                   for k in ("beneficiario", "ordinante"))
+
+    sumup = [r for r in righe if _sumup(r)]
+    da_rivedere = [r["id"] for r in sumup if transfer_collegato(r)]
+    ids = [r["id"] for r in sumup if r["id"] not in da_rivedere]
     corrette = 0
     for rid in ids:
         completa = await db["bonifici_transfers"].find_one({"id": rid}, {"_id": 0})
@@ -247,17 +253,24 @@ async def _rileggi_ricevute_sumup(db, *, dry_run: bool) -> Dict[str, Any]:
         except Exception as exc:
             logger.warning("[doppioni] ricevuta SumUp %s illeggibile: %s %s", rid, type(exc).__name__, exc)
             continue
-        if str((letto.get("beneficiario") or {}).get("iban") or "").upper().startswith("IE"):
-            continue
+        iban_letto = str((letto.get("beneficiario") or {}).get("iban") or "")
+        if not letto.get("cro_trn") or iban_letto == str((completa.get("beneficiario") or {}).get("iban") or ""):
+            continue  # non e' una ricevuta SumUp da correggere, o e' gia' giusta
         corrette += 1
         if not dry_run:
             data = letto.get("data")
-            await db["bonifici_transfers"].update_one({"id": rid}, {"$set": {
+            campi = {
                 "beneficiario": letto["beneficiario"], "ordinante": letto["ordinante"],
                 "causale": letto["causale"], "cro_trn": letto["cro_trn"],
                 **({"data": data.isoformat()} if hasattr(data, "isoformat") else {}),
                 "updated_at": _ora(),
-            }})
+            }
+            # La chiave di deduplica segue l'identita' corretta (importo, beneficiario, data, causale).
+            campi["dedup_key"] = build_dedup_key({
+                "iban_beneficiario": iban_letto, "importo": completa.get("importo"),
+                "data_esecuzione": data, "causale": letto["causale"]})
+            await db["bonifici_transfers"].update_one(
+                {"id": rid}, {"$set": campi, "$unset": {"hr_deposito": ""}})  # HR lo rilegge col beneficiario giusto
     return {"collezione": "bonifici_transfers", "ricevute_sumup_da_rileggere": len(ids), "corrette": corrette,
             "gia_collegate_da_rivedere": da_rivedere[:20]}
 
@@ -274,13 +287,15 @@ async def _stampe_fattura_tra_bonifici(db, *, dry_run: bool, actor: str) -> Dict
 
     # Il contenuto decide; per non rileggere ogni PDF si guardano i transfer senza
     # riferimento di banca (CRO/TRN/rif. interno): una ricevuta vera ne porta uno.
+    from app.services.bonifici_pdf_ingest import transfer_collegato
+
     candidati = [
         r for r in await db["bonifici_transfers"].find(
-            {}, {"_id": 0, "id": 1, "cro_trn": 1, "rif_interno": 1,
-                 "salario_associato": 1, "fattura_associata": 1, "hr_deposito": 1}).to_list(None)
-        if not r.get("cro_trn") and not r.get("rif_interno")
-        and not r.get("salario_associato") and not r.get("fattura_associata")
-        and (r.get("hr_deposito") or {}).get("esito") not in {"depositato", "arricchito"}
+            {}, {"_id": 0, "id": 1, "cro_trn": 1, "rif_interno": 1, "salario_associato": 1,
+                 "fattura_associata": 1, "fatture_associate": 1, "fattura_id": 1,
+                 "fattura_associata_id": 1, "fattura_ids": 1, "movimento_estratto_conto_id": 1,
+                 "hr_deposito": 1}).to_list(None)
+        if not r.get("cro_trn") and not r.get("rif_interno") and not transfer_collegato(r)
     ]
     trovati: List[str] = []
     for cand in candidati:

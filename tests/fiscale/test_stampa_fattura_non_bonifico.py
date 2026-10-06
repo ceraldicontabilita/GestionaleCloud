@@ -122,3 +122,25 @@ def test_ricevuta_sumup_gia_collegata_non_si_ritocca():
         "salario_associato": True}))
     esito = asyncio.run(_rileggi_ricevute_sumup(db, dry_run=False))
     assert esito["gia_collegate_da_rivedere"] == ["s1"] and esito["corrette"] == 0
+
+
+def test_ricevuta_sumup_non_collegata_si_ripara_con_chiave_e_hr_rilanciati():
+    import base64
+
+    from mongomock_motor import AsyncMongoMockClient
+
+    from app.services.doppioni_archivio import _rileggi_ricevute_sumup
+
+    db = AsyncMongoMockClient()["t"]
+    asyncio.run(db["bonifici_transfers"].insert_one({
+        "id": "s2", "importo": 214.4, "dedup_key": "vecchia", "source_file": "x.pdf",
+        "beneficiario": {"iban": "IE21SUMU99036513164215", "nome": "ceraldigroupsrl gmail com Ricevuta"},
+        "ordinante": {"iban": "IT87M0303203406010000002929", "nome": None},
+        "hr_deposito": {"esito": "non_dipendente"},
+        "pdf_data": base64.b64encode(_pdf(SUMUP.splitlines())).decode()}))
+    esito = asyncio.run(_rileggi_ricevute_sumup(db, dry_run=False))
+    t = asyncio.run(db["bonifici_transfers"].find_one({"id": "s2"}))
+    assert esito["corrette"] == 1
+    assert t["beneficiario"]["iban"] == "IT87M0303203406010000002929"
+    assert t["causale"].startswith("Preventivo N 1908") and t["dedup_key"] != "vecchia"
+    assert "hr_deposito" not in t
