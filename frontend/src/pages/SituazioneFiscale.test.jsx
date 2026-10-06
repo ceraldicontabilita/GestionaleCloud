@@ -36,8 +36,8 @@ describe('Situazione fiscale dal registro F24', () => {
       : { counts: {}, items: [] } }));
     render(<MemoryRouter initialEntries={['/situazione-fiscale']}><SituazioneFiscale /></MemoryRouter>);
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/api/f24/piano-tributi')));
-    expect(screen.getByRole('link', { name: 'Tributi' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ritenute' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Tributi' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Ritenute' })).toBeInTheDocument();
   });
 
   it('la scheda Piano tributi mostra il piano senza passare dagli elenchi F24', async () => {
