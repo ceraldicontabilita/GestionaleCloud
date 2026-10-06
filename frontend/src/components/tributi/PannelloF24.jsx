@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { PageLoader } from '../ds';
+import { ScadenzaF24 } from './Scadenzario';
 import { COLORS, FONT } from '../../lib/utils';
 
 const F24Dettaglio = lazy(() => import('../../pages/F24Scheda.jsx').then(m => ({ default: m.F24Dettaglio })));
@@ -48,6 +49,10 @@ export default function PannelloF24({ id, titolo = 'Dettaglio F24', onClose }) {
         </div>
         <div style={{ padding: 16 }}>
           <Suspense fallback={<PageLoader />}><F24Dettaglio id={id} incorporato /></Suspense>
+          <section style={{ marginTop: 14 }} aria-label="Scadenza e ravvedimento">
+            <h3 style={{ margin: '0 0 8px', fontSize: 15 }}>Scadenza e ravvedimento</h3>
+            <ScadenzaF24 id={id} />
+          </section>
         </div>
       </aside>
     </div>

@@ -30,6 +30,72 @@ const selettore = {
   background: COLORS.card, fontSize: 14, fontFamily: FONT.family, color: COLORS.text,
 };
 
+/**
+ * Scadenza e ravvedimento di UN F24 (pannello di dettaglio): le voci dello
+ * scadenzario i cui pagamenti vengono da questa quietanza. Nessun calcolo qui:
+ * legge lo stesso endpoint dello Scadenzario e filtra per id.
+ */
+export function ScadenzaF24({ id }) {
+  const [voci, setVoci] = useState(null);
+  const [errore, setErrore] = useState('');
+  useEffect(() => {
+    let attivo = true;
+    setVoci(null); setErrore('');
+    api.get('/api/f24/tributi/scadenzario')
+      .then(r => {
+        if (!attivo) return;
+        const mie = [];
+        (r.data?.voci || []).forEach(v => {
+          const p = (v.pagamenti || []).find(x => String(x.quietanza_id) === String(id));
+          if (p) mie.push({ v, p });
+        });
+        setVoci(mie);
+      })
+      .catch(e => { if (attivo) setErrore(e.response?.data?.detail || e.message || 'Lettura non riuscita'); });
+    return () => { attivo = false; };
+  }, [id]);
+
+  if (errore) return <div role="alert" style={{ color: COLORS.danger }}>Scadenzario non disponibile: {errore}</div>;
+  if (!voci) return <PageLoader />;
+  if (!voci.length) {
+    return <p data-testid="scadenza-vuota" style={{ margin: 0, color: COLORS.textMuted, fontSize: 14 }}>
+      Nessuna scadenza calcolata per questo F24 (serve la quietanza con le righe a debito).
+    </p>;
+  }
+  return (
+    <div style={{ display: 'grid', gap: 10 }} data-testid="scadenza-f24">
+      {voci.map(({ v, p }) => {
+        const ravvedimento = p.giorni_ritardo > 0;
+        return (
+          <div key={v.chiave} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: '10px 12px', fontSize: 13 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <strong>{v.codice} · {v.periodo}</strong>
+              <Badge variant={VARIANTE[p.stato] || 'neutral'}>{v.stato_label || p.stato}</Badge>
+            </div>
+            <div style={{ marginTop: 4, color: COLORS.textMuted }}>
+              Scadenza {dataIt(v.scadenza)}{v.scadenza_fonte ? ` (${v.scadenza_fonte})` : ''} · pagato il {dataIt(p.data)} · {euro(p.importo_cents)}
+              {ravvedimento && <> · <strong style={{ color: COLORS.warning }}>{p.giorni_ritardo} giorni di ritardo</strong></>}
+            </div>
+            {ravvedimento && (
+              <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '2px 14px' }} data-testid="ravvedimento-f24">
+                <span />
+                <strong style={{ fontSize: 11, color: COLORS.textMuted }}>VERSATO</strong>
+                <strong style={{ fontSize: 11, color: COLORS.textMuted }}>ATTESO</strong>
+                <span>Sanzioni</span><span>{euro(p.sanzioni_periodo_cents)}</span><span>{euro(p.sanzioni_periodo_attese_cents)}</span>
+                <span>Interessi</span><span>{euro(p.interessi_periodo_cents)}</span><span>{euro(p.interessi_periodo_attesi_cents)}</span>
+              </div>
+            )}
+            {(p.fascia || p.regime) && ravvedimento && (
+              <div style={{ marginTop: 4, fontSize: 12, color: COLORS.textMuted }}>{[p.fascia, p.regime].filter(Boolean).join(' · ')}</div>
+            )}
+            {p.motivazione && <div style={{ marginTop: 4, fontSize: 12.5 }}>{p.motivazione}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Scadenzario({ anno, stato, imposta, onApri = () => {}, onDettaglio }) {
   const [dati, setDati] = useState(null);
   const [errore, setErrore] = useState('');
