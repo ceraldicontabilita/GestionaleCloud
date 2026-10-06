@@ -867,9 +867,9 @@ export default function ArchivioBonifici() {
               colonne={[
                 {
                   key: 'riconciliato',
-                  label: 'Riconc.',
+                  label: 'Riconciliato',
                   align: 'center',
-                  ruoloCard: 'omesso',
+                  ruoloCard: 'dettaglio',
                   tdStyle: sfondoRic,
                   render: t =>
                     t.riconciliato ? (
@@ -878,6 +878,7 @@ export default function ArchivioBonifici() {
                         title={`Riconciliato: ${t.movimento_descrizione || 'Trovato in estratto conto'}`}
                       >
                         <Check size={16} role="img" aria-label="Riconciliato" />
+                        <span style={{ marginLeft: 4, fontSize: 12 }}>Sì</span>
                       </span>
                     ) : (
                       <span style={{ color: '#d0ccbe', fontSize: 14 }}>—</span>
