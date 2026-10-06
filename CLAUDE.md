@@ -142,6 +142,9 @@ resto del file.
   colori di sistema non controllabili).
 - Ogni pagina centrata, **mai scroll orizzontale su smartphone**: le tabelle
   larghe diventano card impilate. Tocco minimo 44px.
+  Nell'ERP lo fa un meccanismo solo, `frontend/src/lib/tabelleCard.js` + regole `table[data-card="si"]` in `index.css`: sotto i 768px ogni `<table>` con
+  intestazione a una riga diventa una card per riga con l'etichetta della colonna (`data-label`); `data-card="no"` tiene una matrice com'è. Non scrivere
+  card a mano per una tabella semplice.
 - L'ERP segue l'**artefatto «Gestore Attività»** (titolare, 26/09/2026): crema `#faf9f5`, inchiostro `#141413`, terracotta `#c15f3c`
   per azioni e stato attivo; token solo in `lib/utils.js` e `index.css`, niente Tailwind né `gs-`; vietati anche qui blu, viola e grigi
   freddi; il colore non è mai l'unica informazione (ogni badge ha testo). Ogni pagina: `PageHeader` (famiglia, titolo, perché, pastiglie), una riga di filtri, una tabella, 200 righe con «Mostra altre».
