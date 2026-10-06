@@ -16,7 +16,7 @@ from .jobs import (
     create_job, list_jobs, get_job, upload_files
 )
 from .transfers import (
-    list_transfers, count_transfers, transfers_summary,
+    list_transfers, count_transfers,
     delete_transfer, get_bonifico_pdf, bulk_delete, update_transfer,
     download_zip_by_year
 )
@@ -35,7 +35,6 @@ router.add_api_route("/jobs", list_jobs, methods=["GET"])
 # Transfers - Liste e statistiche
 router.add_api_route("/transfers", list_transfers, methods=["GET"])
 router.add_api_route("/transfers/count", count_transfers, methods=["GET"])
-router.add_api_route("/transfers/summary", transfers_summary, methods=["GET"])
 router.add_api_route("/transfers/bulk", bulk_delete, methods=["DELETE"])
 
 # Export
