@@ -81,7 +81,7 @@ TIPI_PER_SETTORE: Dict[str, tuple] = {
     "corrispettivi": ("corrispettivo", "corrispettivi_csv_ade", "pos_terminal"),
     "f24": ("f24", "quietanza_f24", "dichiarazione_fiscale", "cartella_pagamento"),
 }
-ROTTA_ERRORI = "/documenti/drive"
+ROTTA_ERRORI = "/documenti/import"
 ROTTA_INBOX = "/documenti/archivio"
 PREFISSO_F24_NON_QUADRATO = "F24 non quadrato"
 
