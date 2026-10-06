@@ -20,7 +20,7 @@ const EXACT_REDIRECTS = {
   '/mutui': '/contabilita/mutui',
   '/piano-dei-conti': '/contabilita',
   '/controllo-mensile': '/contabilita/controllo',
-  '/calendario-fiscale': '/contabilita/calendario',
+  '/calendario-fiscale': '/situazione-fiscale/piano',
   '/cespiti': '/contabilita/cespiti',
   '/finanziaria': '/contabilita/finanziaria',
   '/chiusura-esercizio': '/contabilita/chiusura',
@@ -52,7 +52,7 @@ const EXACT_REDIRECTS = {
   '/pagopa': '/integrazioni/pagopa',
   '/batch-reprocessing': '/admin/batch-reprocessing',
   '/batch-processor': '/admin/batch-processor',
-  '/fisco': '/contabilita/calendario',
+  '/fisco': '/situazione-fiscale/piano',
   '/riconciliazione-unificata': '/riconciliazione',
   // Piano tributi, Tributi e Ritenute sono schede della Situazione fiscale.
   '/fiscale/tributi': '/situazione-fiscale/tributi-per-codice',
@@ -90,7 +90,7 @@ const PREFIX_REDIRECTS = [
   ['/pianificazione/', '/strumenti/pianificazione'],
   ['/integrazioni-openapi/', '/integrazioni'],
   ['/pagopa/', '/integrazioni/pagopa'],
-  ['/fisco/', '/contabilita/calendario'],
+  ['/fisco/', '/situazione-fiscale/piano'],
 ];
 
 // Viste per id (MINI-08): il vecchio indirizzo porta l'identificativo, che si tiene.

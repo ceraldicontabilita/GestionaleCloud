@@ -98,10 +98,15 @@ def _voce(id_: str, gruppo: str, etichetta: str, codici: List[str], **kw: Any) -
 PIANO_BASE: List[Dict[str, Any]] = [
     _voce("ritenute_1001", "Erario", "Ritenute lavoro dipendente", ["1001"],
           periodo="mese", mesi=MESI_TUTTI, anno_offset=0),
-    _voce("inps_dm10", "INPS", "Contributi dipendenti (DM10)", ["DM10"],
+    _voce("inps_dm10", "INPS", "Contributi dipendenti (DM10, RC01 se in ritardo)", ["DM10", "RC01"],
           periodo="mese", mesi=MESI_TUTTI, anno_offset=0),
     _voce("inps_cxx", "INPS", "Gestione separata (CXX)", ["CXX"],
           periodo="mese", mesi=MESI_TUTTI, anno_offset=0, obbligatorio=False),
+    _voce("iva_mensile", "Erario", "IVA mensile (6001-6012)",
+          [f"60{m:02d}" for m in range(1, 13)],
+          periodo="mese", mesi=MESI_TUTTI, anno_offset=0, obbligatorio=False,
+          nota="Si versa solo se la liquidazione del mese e' a debito: importo e calcolo in Gestione IVA.",
+          rimando={"to": "/iva", "label": "Apri Gestione IVA"}),
     _voce("add_regionale_3802", "Regione", "Addizionale regionale, rate del saldo", ["3802"],
           periodo="mese", mesi=MESI_RATE_SALDO, anno_offset=-1),
     _voce("add_comunale_saldo_3848", "Comune", "Addizionale comunale, rate del saldo", ["3848"],
@@ -368,6 +373,7 @@ def _casella(
             else None),
         "stato": stato,
         "etichetta_stato": ETICHETTE[stato],
+        "debito_cents": debito if versamenti else None,
         "importo": _euro(debito) if versamenti and debito else None,
         "credito": _euro(credito_cents) if versamenti and credito_cents else None,
         "modelli": modelli,
@@ -471,15 +477,58 @@ def _codici_fuori_piano(voci, modelli, anno: int) -> List[Dict[str, Any]]:
     return sorted(trovati.values(), key=lambda v: v["codice"])
 
 
-def _griglia_anno(voci, registro, modelli, anno: int, oggi: date) -> Dict[str, Any]:
+def _con_atteso_dalle_buste(voce: Dict[str, Any], anno: int, caselle: List[Dict[str, Any]],
+                            attesi: Optional[Dict[Tuple[str, int, int], Dict[str, Any]]]) -> None:
+    """L'importo che il prospetto paghe del consulente dice di versare, accanto a quello dell'F24 arrivato.
+
+    Solo dove il prospetto lo dice per quel codice e quel periodo (`prospetti_contabili`): mai stimato,
+    mai calcolato. Con l'F24 gia' arrivato porta anche la differenza al centesimo.
+    """
+    if not attesi or voce.get("periodo") != "mese":
+        return
+    anno_riga = _anno_riga(voce, anno)
+    if anno_riga is None:
+        return
+    for c in caselle:
+        try:
+            mese = int(c["periodo"])
+        except (TypeError, ValueError):
+            continue
+        trovati = [attesi[(codice, anno_riga, mese)] for codice in voce.get("codici") or []
+                   if (codice, anno_riga, mese) in attesi]
+        if not trovati:
+            continue
+        cents = sum(t["importo_cents"] for t in trovati)
+        c["atteso_da_buste"] = {
+            "importo_cents": cents, "importo": _euro(cents), "prospetto_id": trovati[0]["prospetto_id"],
+            "differenza_cents": (c["debito_cents"] - cents) if c.get("debito_cents") is not None else None,
+        }
+
+
+async def attesi_dai_prospetti(db) -> Dict[Tuple[str, int, int], Dict[str, Any]]:
+    """(codice, anno, mese) -> importo atteso, dai prospetti paghe canonici (il piu' recente per mese)."""
+    from app.services.prospetti_contabili import CANONICA, COLL_PROSPETTI
+
+    attesi: Dict[Tuple[str, int, int], Dict[str, Any]] = {}
+    for p in await db[COLL_PROSPETTI].find({"stato": CANONICA}, {"_id": 0}).to_list(2000):
+        for a in p.get("attesi") or []:
+            if a.get("lato") == "debito" and isinstance(a.get("importo_cents"), int):
+                attesi[(str(a["codice"]), int(a["anno"]), int(a["mese"]))] = {
+                    "importo_cents": a["importo_cents"], "prospetto_id": p.get("id")}
+    return attesi
+
+
+def _griglia_anno(voci, registro, modelli, anno: int, oggi: date,
+                  attesi: Optional[Dict[Tuple[str, int, int], Dict[str, Any]]] = None) -> Dict[str, Any]:
     righe_griglia = []
     tutte: List[Dict[str, Any]] = []
     for voce in voci:
         caselle = caselle_voce(voce, anno, modelli, registro, oggi)
+        _con_atteso_dalle_buste(voce, anno, caselle, attesi)
         tutte.extend(caselle)
         righe_griglia.append({
             "voce": {k: voce.get(k) for k in (
-                "id", "gruppo", "etichetta", "codici", "periodo", "obbligatorio", "natura", "nota")},
+                "id", "gruppo", "etichetta", "codici", "periodo", "obbligatorio", "natura", "nota", "rimando")},
             "caselle": caselle,
         })
 
@@ -512,7 +561,7 @@ async def griglia(db, anno: int, oggi: Optional[date] = None) -> Dict[str, Any]:
     oggi = oggi or datetime.now(timezone.utc).date()
     voci = [v for v in await voci_piano(db) if v.get("attivo", True)]
     registro = await registro_f24.carica_registro(db)
-    return _griglia_anno(voci, registro, _modelli_con_righe(registro), anno, oggi)
+    return _griglia_anno(voci, registro, _modelli_con_righe(registro), anno, oggi, await attesi_dai_prospetti(db))
 
 
 ANNO_PRIMO_PIANO = 2019
@@ -553,9 +602,10 @@ async def griglia_anni(db, testo: Optional[str], oggi: Optional[date] = None) ->
     registro = await registro_f24.carica_registro(db)
     modelli = _modelli_con_righe(registro)
     anni = anni_richiesti(testo, modelli, oggi)
+    attesi = await attesi_dai_prospetti(db)
     if len(anni) == 1:
-        return _griglia_anno(voci, registro, modelli, anni[0], oggi)
-    per_anno = [_griglia_anno(voci, registro, modelli, a, oggi) for a in anni]
+        return _griglia_anno(voci, registro, modelli, anni[0], oggi, attesi)
+    per_anno = [_griglia_anno(voci, registro, modelli, a, oggi, attesi) for a in anni]
     conteggi: Dict[str, int] = {}
     for g in per_anno:
         for stato, n in g["conteggi"].items():

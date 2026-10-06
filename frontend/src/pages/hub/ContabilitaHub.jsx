@@ -12,7 +12,6 @@ const BilancioContent = lazy(() => import('../Bilancio.jsx'));
 const BilancioVerContent = lazy(() => import('../BilancioVerifica.jsx'));
 const LibroGiornaleContent = lazy(() => import('../LibroGiornale.jsx'));
 const ControlloContent = lazy(() => import('../ControlloMensile.jsx'));
-const CalendarioContent = lazy(() => import('../CalendarioFiscale.jsx'));
 const CespitiContent = lazy(() => import('../GestioneCespiti.jsx'));
 const FinanziariaContent = lazy(() => import('../Finanziaria.jsx'));
 const ChiusuraContent = lazy(() => import('../ChiusuraEsercizio.jsx'));
@@ -75,7 +74,6 @@ export default function ContabilitaHub() {
           { id: 'verifica', C: BilancioVerContent },
           { id: 'giornale', C: LibroGiornaleContent },
           { id: 'controllo', C: ControlloContent },
-          { id: 'calendario', C: CalendarioContent },
           { id: 'cespiti', C: CespitiContent },
           { id: 'finanziaria', C: FinanziariaContent },
           { id: 'chiusura', C: ChiusuraContent },

@@ -47,3 +47,23 @@ describe('Piano tributi: card cliccabili', () => {
     expect(card).toHaveAttribute('href', '/situazione-fiscale/tributi-per-codice?cerca=1001');
   });
 });
+
+describe('Piano tributi: atteso dal prospetto paghe', () => {
+  it('mostra l\'importo atteso dalle buste sulla casella e la differenza con l\'F24 nel dettaglio', async () => {
+    api.get.mockResolvedValue({ data: {
+      anno: 2026, oggi: '2026-09-26', conteggi: { pagato: 1 }, etichette: { pagato: 'Pagato (banca)' }, mancano: [], fuori_piano: [],
+      voci: [{
+        voce: { id: 'inps_cxx', gruppo: 'INPS', etichetta: 'Gestione separata (CXX)', codici: ['CXX'], periodo: 'mese', obbligatorio: false },
+        caselle: [{
+          periodo: '06', etichetta_periodo: '06/2026', stato: 'pagato', etichetta_stato: 'Pagato (banca)', scadenza: '2026-07-16',
+          modelli: [], importo: '1050.90', credito: null, giorni_ritardo: 0, giorni_scaduto: null, modelli_doppi: 0,
+          atteso_da_buste: { importo: '1050.90', importo_cents: 105090, differenza_cents: 0, prospetto_id: 'p1' },
+        }],
+      }],
+    } });
+    render(<MemoryRouter><PianoTributi /></MemoryRouter>);
+    expect(await screen.findByTestId('atteso-da-buste')).toHaveTextContent('atteso');
+    fireEvent.click(screen.getByRole('button', { name: /Gestione separata \(CXX\) 06\/2026/ }));
+    expect(await screen.findByTestId('atteso-da-buste-dettaglio')).toHaveTextContent('uguale, al centesimo');
+  });
+});
