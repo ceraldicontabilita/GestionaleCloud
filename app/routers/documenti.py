@@ -2099,6 +2099,17 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     ):
         return "avviso_pagopa"
 
+    # Stampa PDF di una fattura elettronica: dice «Bonifico» e IBAN nelle condizioni
+    # di pagamento, ma e' la fattura, non una prova di pagamento. Letta come bonifico
+    # prendeva l'imponibile (parcella Marotta 1.612,00 invece di 1.966,64 - ritenuta).
+    if (
+        lower.endswith(".pdf")
+        and "CEDENTE" in compact_pdf_text
+        and "CESSIONARIO" in compact_pdf_text
+        and ("IMPONIBILE" in compact_pdf_text or "TOTALE DOCUMENTO" in compact_pdf_text)
+    ):
+        return "fattura"
+
     # Segnali espliciti nel nome, dal piu specifico al piu generico.
     if "identita" in lower or "identity_card" in lower:
         return "documento_identita"

@@ -30,6 +30,7 @@ agganciati; qui le righe che ha marcato passano nella cartella.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections import defaultdict
@@ -215,6 +216,42 @@ async def _prima_nota_salari(db, *, dry_run: bool, actor: str) -> Dict[str, Any]
                                                   if not isinstance(v, list)}, "spostate": spostate}
 
 
+async def _stampe_fattura_tra_bonifici(db, *, dry_run: bool, actor: str) -> Dict[str, Any]:
+    """Stampe PDF di fatture entrate come bonifici (importo = imponibile): in quarantena per id.
+
+    Il nome file sceglie solo chi controllare; la decisione e' del contenuto del PDF.
+    """
+    import base64
+    import re
+
+    from app.routers.bonifici_module.pdf_parser import read_pdf_bytes
+    from app.services.bonifici_pdf_ingest import e_stampa_fattura
+
+    candidati = [
+        r for r in await db["bonifici_transfers"].find({}, {"_id": 0, "id": 1, "source_file": 1}).to_list(None)
+        if re.search(r"\.xml(\.p7m)?\b", str(r.get("source_file") or ""), re.IGNORECASE)
+    ]
+    trovati: List[str] = []
+    for cand in candidati:
+        completa = await db["bonifici_transfers"].find_one({"id": cand["id"]}, {"_id": 0})
+        dati = (completa or {}).get("pdf_data")
+        if not dati:
+            continue
+        try:
+            testo = await asyncio.to_thread(read_pdf_bytes, base64.b64decode(dati))
+        except Exception as exc:
+            logger.warning("[doppioni] stampa fattura %s illeggibile: %s %s", cand["id"], type(exc).__name__, exc)
+            continue
+        if not e_stampa_fattura(testo):
+            continue
+        trovati.append(cand["id"])
+        if not dry_run:
+            await sposta_nella_cartella(
+                db, "bonifici_transfers", completa, None,
+                motivo="stampa PDF di una fattura, non un bonifico", actor=actor)
+    return {"collezione": "bonifici_transfers", "stampe_fattura": len(trovati), "ids": trovati[:20]}
+
+
 async def ripulisci(db, *, dry_run: bool = True, actor: str = "sistema") -> Dict[str, Any]:
     """Cedolini, Prima Nota salari, quietanze F24, bonifici e F24: un giro solo."""
     return {
@@ -228,5 +265,6 @@ async def ripulisci(db, *, dry_run: bool = True, actor: str = "sistema") -> Dict
                                        riferimenti=(("f24_unificato", "quietanza_id"),)),
         "bonifici_transfers": await _tratta(db, "bonifici_transfers", identita_bonifico,
                                             _punteggio_bonifico, dry_run=dry_run, actor=actor),
+        "bonifici_stampe_fattura": await _stampe_fattura_tra_bonifici(db, dry_run=dry_run, actor=actor),
         "f24_unificato": await _f24_gia_in_quarantena(db, dry_run=dry_run, actor=actor),
     }

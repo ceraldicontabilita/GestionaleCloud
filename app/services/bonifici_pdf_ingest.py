@@ -324,6 +324,16 @@ ANNI_ACCREDITI_NON_REGISTRATI = frozenset({2023})
 STATO_NON_REGISTRATO = "non_registrato"
 
 
+def e_stampa_fattura(testo: str) -> bool:
+    """Stampa di una fattura elettronica, riconosciuta dal contenuto (mai dal nome)."""
+    compatto = re.sub(r"\s+", " ", (testo or "").upper())
+    return (
+        "CEDENTE" in compatto
+        and "CESSIONARIO" in compatto
+        and ("IMPONIBILE" in compatto or "TOTALE DOCUMENTO" in compatto)
+    )
+
+
 def accredito_non_registrabile(parsed: Dict[str, Any]) -> bool:
     """Vero per un bonifico ricevuto (``direzione='entrata'``) di un anno escluso."""
     if parsed.get("direzione") != "entrata":
@@ -400,6 +410,10 @@ async def importa_pdf_bonifico(
     (ponte HR, ``hr_pagamenti_deposito.fascicolo_persona``)."""
     if not content.startswith(b"%PDF"):
         return {"status": "error", "message": "Il file non e' un PDF valido"}
+    if e_stampa_fattura(await asyncio.to_thread(read_pdf_bytes, content)):
+        # La stampa di una fattura dice «Bonifico» e IBAN, ma non e' un pagamento.
+        return {"status": "non_bonifico",
+                "message": "Stampa PDF di una fattura: la fattura entra dall'XML dello SDI"}
     digest = hashlib.sha256(content).hexdigest()
     esistente = await db["bonifici_transfers"].find_one(
         {"document_hash": digest}, {"_id": 0}
