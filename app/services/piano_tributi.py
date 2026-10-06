@@ -327,18 +327,12 @@ def _casella(
         })
     # Due modelli con stessa data e stesso saldo sono lo stesso versamento
     # registrato due volte: contano una volta, e la casella lo dice.
-    # Stesso saldo e stesse righe del tributo = lo stesso versamento. La data decide solo se entrambi la
-    # portano: il modello senza data di versamento (non ancora pagato) e la sua copia con la data della
-    # quietanza sono la stessa delega, non due versamenti da sommare.
-    per_chiave: Dict[Tuple[Any, Any], List[Dict[str, Any]]] = {}
+    # Stesse righe del tributo (codice, periodo, importi) = la stessa delega. Ne' la data ne' il saldo
+    # decidono: la data scritta sul modello e' la scadenza teorica (la data vera arriva solo dalla
+    # quietanza) e il saldo cambia con i crediti compensati. Di due copie conta la piu' provata.
+    per_chiave: Dict[Any, List[Dict[str, Any]]] = {}
     for m in modelli:
-        data_m, saldo_m = m["_doppione"]
-        chiave = next((k for k in per_chiave
-                       if k[0][1] == saldo_m and k[1] == m["_firma"]
-                       and (k[0][0] == data_m or data_m is None or k[0][0] is None)), None)
-        if chiave is None:
-            chiave = (m["_doppione"], m["_firma"])
-        per_chiave.setdefault(chiave, []).append(m)
+        per_chiave.setdefault(m["_firma"], []).append(m)
     versamenti = []
     doppioni = 0
     for gruppo in per_chiave.values():
