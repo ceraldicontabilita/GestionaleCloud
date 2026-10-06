@@ -28,6 +28,11 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 GESTORE = "sumup"
+# Primo giorno da cui il gestionale vuole i dati SumUp (decisione del titolare, 06/10/2026):
+# l'archivio si riempie da qui, un mese per giro. Dove SumUp non ha niente non si scrive niente.
+DATA_INIZIO_STORICO = date(2026, 1, 1)
+CHIAVE_STATO_STORICO = "sumup_storico"
+GIORNI_PER_GIRO_STORICO = 31
 COLL_TRANSAZIONI = "sumup_transactions"
 COLL_PAYOUT = "sumup_payouts"
 
@@ -787,7 +792,8 @@ async def sincronizza_payouts(
 
 async def sincronizza(db, dal: str, al: str,
                       *, grezze: Optional[Iterable[Dict[str, Any]]] = None,
-                      actor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                      actor: Optional[Dict[str, Any]] = None,
+                      materializza_zeri: bool = True) -> Dict[str, Any]:
     """Scarica e archivia le transazioni SumUp dell'intervallo.
 
     Rieseguirla sullo stesso intervallo non produce duplicati: le transazioni
@@ -815,9 +821,11 @@ async def sincronizza(db, dal: str, al: str,
     # dell'intervallo richiesto: la pagina puo' distinguere "0,00 SumUp" da
     # "API non ancora sincronizzata". Una sincronizzazione successiva della
     # stessa giornata aggiorna lo zero in modo idempotente se arrivano vendite.
+    # Il recupero storico (`materializza_zeri=False`) non scrive i giorni senza dati: una giornata
+    # che SumUp non ha non diventa una chiusura a zero.
     corrente = date.fromisoformat(dal)
     ultimo = date.fromisoformat(al)
-    while corrente <= ultimo:
+    while materializza_zeri and corrente <= ultimo:
         giorno = corrente.isoformat()
         giornate.setdefault(giorno, {
             "data": giorno,
@@ -880,3 +888,35 @@ async def sincronizza(db, dal: str, al: str,
         "totale_netto": round(sum(g["netto"] for g in scritte), 2),
         "payouts": payouts,
     }
+
+
+async def recupera_storico(db, *, oggi: Optional[date] = None) -> Dict[str, Any]:
+    """Riempie l'archivio SumUp dal 01/01/2026 fino alla finestra del giro normale, un mese per volta.
+
+    Il cursore sta in `sistema_stato` (`sumup_storico`): ogni giro riparte da dove si era fermato e lo
+    avanza solo a intervallo scaricato, quindi un riavvio o un errore dell'API non fanno saltare giorni.
+    Rieseguire un intervallo e' idempotente (vedi `sincronizza`). Si ferma 31 giorni prima di oggi:
+    da li' in poi lavora il giro normale. Nessuna giornata senza dati viene scritta.
+    """
+    oggi = oggi or datetime.now(FUSO_NEGOZIO).date()
+    limite = oggi - timedelta(days=GIORNI_PER_GIRO_STORICO)
+    stato = await db["sistema_stato"].find_one({"chiave": CHIAVE_STATO_STORICO}, {"_id": 0}) or {}
+    try:
+        da = date.fromisoformat(str(stato.get("prossimo_giorno") or ""))
+    except ValueError:
+        da = DATA_INIZIO_STORICO
+    da = max(da, DATA_INIZIO_STORICO)
+    if da > limite:
+        return {"success": True, "completato": True, "prossimo_giorno": da.isoformat()}
+    a = min(da + timedelta(days=GIORNI_PER_GIRO_STORICO - 1), limite)
+    esito = await sincronizza(db, da.isoformat(), a.isoformat(), materializza_zeri=False)
+    await db["sistema_stato"].update_one(
+        {"chiave": CHIAVE_STATO_STORICO},
+        {"$set": {"chiave": CHIAVE_STATO_STORICO, "prossimo_giorno": (a + timedelta(days=1)).isoformat(),
+                  "ultimo_intervallo": [da.isoformat(), a.isoformat()],
+                  "giornate_con_dati": len(esito.get("giornate") or []),
+                  "aggiornato_il": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"success": True, "completato": False, "dal": da.isoformat(), "al": a.isoformat(),
+            "giornate": len(esito.get("giornate") or [])}
