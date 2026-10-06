@@ -1027,7 +1027,7 @@ if os.path.isdir(_LOTTI_SAIMA):
     app.mount("/saima", StaticFiles(directory=_LOTTI_SAIMA), name="lotti-saima")
 
 # App Menu (menu digitale Ceraldi Caffe') portata pari pari: backend originale
-# (app/menu, proprio login admin username/password) montato a /menu ->
+# (app/menu, sessione admin derivata dall'ERP) montato a /menu ->
 # /menu/api/...; il build CRA di frontend_menu (PUBLIC_URL=/menu) e' servito
 # dalla stessa sub-app (app/menu/server.py monta da solo il build se la
 # cartella esiste all'import: qui si registra solo l'esito nel log).
