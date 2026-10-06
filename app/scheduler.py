@@ -525,6 +525,13 @@ def start_scheduler():
     logger.info("🚀 [SCHEDULER] Configurazione scheduler...")
     avvio = datetime.now()
 
+    async def _domain_outbox_job():
+        from app.services.domain_outbox_worker import processa_domain_outbox
+
+        esito = await processa_domain_outbox(limit=20)
+        if esito.get("presi"):
+            logger.info("[SCHEDULER-OUTBOX] %s", esito)
+
     async def _tesoreria_shadow_job():
         from app.agents.orchestrator import run_agenti
         from app.database import Database
@@ -1262,6 +1269,17 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-PAYPAL-ASSOCIA] errore: {e}")
 
+    scheduler.add_job(
+        _domain_outbox_job,
+        "interval", minutes=1,
+        next_run_time=avvio + timedelta(seconds=20),
+        misfire_grace_time=60,
+        coalesce=True,
+        max_instances=1,
+        id="domain_outbox",
+        name="Eventi durevoli tra domini (ogni minuto)",
+        replace_existing=True,
+    )
     scheduler.add_job(
         _sumup_sync_job,
         "interval", minutes=60,

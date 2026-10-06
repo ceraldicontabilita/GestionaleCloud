@@ -385,12 +385,19 @@ async def on_fattura_created_alimenta_lotti(event: Dict[str, Any], db) -> Option
     sua indisponibilita' non deve far fallire la registrazione della fattura.
     Nemmeno la sua lentezza: il 23/09/2026 uno ZIP di 400 fatture e' rimasto
     fermo 14 minuti su una sola fattura perche' il bus aspetta ogni handler e
-    Lotti ricalcolava le ricette. Qui la fattura si accoda e l'import prosegue;
-    la coda lavora una fattura alla volta, in sottofondo.
+    Lotti ricalcolava le ricette. Nel runtime Supabase la scrittura accoda
+    transactionalmente l'evento nel database; il fallback in RAM resta solo
+    per installazioni legacy e test.
     """
     fattura_id = event.get("fattura_id")
     if not fattura_id:
         return None
+    # Nel runtime Supabase il trigger sulla stessa scrittura ha gia' inserito
+    # l'evento nella transactional outbox. Non creare una seconda coda in RAM:
+    # andrebbe persa al deploy e farebbe lavorare Lotti due volte. Il fallback
+    # resta per test e installazioni legacy prive delle RPC outbox.
+    if callable(getattr(db, "outbox_claim", None)):
+        return {"action": "lotti_outbox", "fattura_id": fattura_id}
     task = asyncio.create_task(_alimenta_lotti(str(fattura_id)))
     _CODA_LOTTI.add(task)
     task.add_done_callback(_CODA_LOTTI.discard)
