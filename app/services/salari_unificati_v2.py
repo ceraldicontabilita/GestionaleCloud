@@ -257,8 +257,12 @@ def _cedolino_document_key(cedolino_data: Dict[str, Any], pdf_data: str = None) 
     if pdf_data:
         try:
             identity["file_hash"] = hashlib.md5(base64.b64decode(pdf_data)).hexdigest()
-        except Exception:
-            pass
+        except Exception as exc:
+            # Senza hash la deduplica per file e' piu' debole: va segnalato.
+            logger.warning(
+                "Hash PDF cedolino non calcolabile (%s: %s): deduplica "
+                "senza file_hash", type(exc).__name__, exc,
+            )
     return chiave_cedolino(identity)
 
 

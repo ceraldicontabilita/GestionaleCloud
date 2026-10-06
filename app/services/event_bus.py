@@ -188,8 +188,13 @@ async def propagate_event(
                     },
                     upsert=True,
                 )
-            except Exception:
-                pass
+            except Exception as seg_exc:
+                logger.warning(
+                    "Segnalazione handler fallito non scritta: evento=%s "
+                    "handler=%s (%s: %s)",
+                    event_type, handler.__name__,
+                    type(seg_exc).__name__, seg_exc,
+                )
     
     logger.info(
         f"Evento '{event_type}' propagato: "
