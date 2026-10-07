@@ -1,17 +1,19 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
-import { Braces, Mail } from 'lucide-react';
+import { Braces, Mail, Inbox } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HubTabs, PageLoader } from '../../components/ds';
 
 const OpenAPIContent = lazy(() => import('../IntegrazioniOpenAPI.jsx'));
 const MittentiEmailContent = lazy(() => import('../MittentiEmail.jsx'));
+const ACubeContent = lazy(() => import('../IntegrazioneACube.jsx'));
 
 export default function IntegrazioniHub() {
   const navigate = useNavigate();
   const location = useLocation();
   const path = location.pathname;
   const isMittenti = path.includes('/mittenti-email');
-  const activeTab = isMittenti ? 'mittenti-email' : 'openapi';
+  const isACube = path.includes('/acube');
+  const activeTab = isACube ? 'acube' : isMittenti ? 'mittenti-email' : 'openapi';
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([activeTab]));
 
   useEffect(() => {
@@ -29,6 +31,7 @@ export default function IntegrazioniHub() {
   const tabs = [
     { id: 'openapi', label: 'OpenAPI', Icon: Braces, to: '/integrazioni' },
     { id: 'mittenti-email', label: 'Mittenti Email', Icon: Mail, to: '/integrazioni/mittenti-email' },
+    { id: 'acube', label: 'A-Cube fatture', Icon: Inbox, to: '/integrazioni/acube' },
   ];
 
   return (
@@ -44,6 +47,9 @@ export default function IntegrazioniHub() {
       </div>
       <div style={{ display: activeTab === 'mittenti-email' ? 'block' : 'none' }}>
         <Suspense fallback={<PageLoader />}>{visitedTabs.has('mittenti-email') && <MittentiEmailContent />}</Suspense>
+      </div>
+      <div style={{ display: activeTab === 'acube' ? 'block' : 'none' }}>
+        <Suspense fallback={<PageLoader />}>{visitedTabs.has('acube') && <ACubeContent />}</Suspense>
       </div>
     </div>
   );

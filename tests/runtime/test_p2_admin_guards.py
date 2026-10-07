@@ -124,6 +124,7 @@ _ERP_SENZA_TOKEN = {
     "/api/colazioni/ricariche/sumup": ({"POST"}, "token dell'albergatore verificato dalla preparazione atomica della ricarica"),
     "/api/colazioni/ricariche/sumup/sincronizza": ({"POST"}, "token dell'albergatore verificato da bb_alb_portafoglio"),
     "/api/colazioni/ricariche/sumup/webhook": ({"POST"}, "notifica SumUp non fidata: checkout riletto dall'API SumUp autenticata"),
+    "/api/acube/webhook": ({"POST"}, "segreto nell'header Authorization; fattura riletta dall'API A-Cube autenticata"),
     "/api/colazioni/menu-ospite/catalogo": ({"POST"}, "codice voucher e giornata verificati da bb_menu_ospite"),
     "/api/colazioni/menu-ospite/ordine": ({"POST"}, "codice voucher, giornata e prezzi verificati da bb_ospite_menu_salva"),
     "/privacy": ({"GET"}, "pagina legale"),

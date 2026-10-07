@@ -183,6 +183,14 @@ services:
         sync: false
       - key: SUMUP_MERCHANT_CODE
         sync: false
+      # A-Cube (fatture passive via API, app/services/acube.py). ACUBE_ENV:
+      # sandbox | production. Il segreto del webhook nasce nel database.
+      - key: ACUBE_EMAIL
+        sync: false
+      - key: ACUBE_PASSWORD
+        sync: false
+      - key: ACUBE_ENV
+        sync: false
       # Interruttori dei soli giri automatici che leggono da SumUp e PayPal (ore 3:20 e 14:20
       # per PayPal): «false» li ferma, le credenziali restano. Assenti = acceso. Proprietario: titolare.
       - key: SUMUP_SYNC_ENABLED
