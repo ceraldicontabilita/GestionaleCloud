@@ -8,6 +8,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import Portal from '../components/Portal';
 import ModalFattura from '../components/ModalFattura';
 import { PageHeader } from '../components/ds/PageHeader';
+import { MenuOperazioni } from '../components/ds/MenuOperazioni';
 import {
   formatDateIT,
   STYLES,
@@ -2024,14 +2025,17 @@ export default function Fornitori() {
           title="Fornitori"
           actions={
             <>
-              <Button
-                variant="secondary"
-                onClick={reloadData}
-                disabled={loading}
-                style={{ minHeight: 40 }}
-              >
-                {loading ? 'Caricamento...' : 'Aggiorna'}
-              </Button>
+              <MenuOperazioni
+                size="md"
+                voci={[
+                  { id: 'btn-aggiorna-fornitori', label: loading ? 'Caricamento...' : 'Aggiorna', Icon: RefreshCw, onClick: reloadData, disabled: loading },
+                  {
+                    id: 'btn-popola-tutti-xml', label: popolandoTutti ? 'Popolamento...' : 'Popola dati mancanti da XML',
+                    Icon: FileText, onClick: handlePopolaTuttiXml, disabled: popolandoTutti,
+                    title: 'Rilegge le fatture XML dei fornitori con dati mancanti e completa email, telefono, comune, indirizzo — non tocca i campi già valorizzati',
+                  },
+                ]}
+              />
               <Button
                 variant="primary"
                 onClick={() => {
@@ -2283,17 +2287,6 @@ export default function Fornitori() {
               />
               <TriangleAlert size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> Senza metodo
             </label>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handlePopolaTuttiXml}
-              disabled={popolandoTutti}
-              title="Rilegge le fatture XML dei fornitori con dati mancanti e completa email, telefono, comune, indirizzo — non tocca i campi già valorizzati"
-              data-testid="btn-popola-tutti-xml"
-            >
-              {popolandoTutti ? 'Popolamento...' : 'Popola dati mancanti da XML'}
-            </Button>
 
             <CopyLinkButton style={{ flexShrink: 0 }} />
           </div>

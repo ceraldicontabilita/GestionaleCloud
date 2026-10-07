@@ -14,7 +14,7 @@ import {
   RG,
   pagePad,
 } from '../lib/utils';
-import { ListaAdattiva } from '../components/ds';
+import { ListaAdattiva, MenuOperazioni } from '../components/ds';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
@@ -834,7 +834,7 @@ export default function RiconciliazioneUnificata() {
           </button>
         </div>
       )}
-      {/* Action Bar - senza cornice blu */}
+      {/* Barra: il menu' unico delle operazioni automatiche e i filtri */}
       <div
         style={{
           marginBottom: 16,
@@ -845,37 +845,16 @@ export default function RiconciliazioneUnificata() {
           gap: 8,
         }}
       >
-        <button
-          type="button"
-          onClick={handleAnalizzaAnomalie}
-          disabled={processing === 'analizza-anomalie'}
-          style={{
-            padding: '8px 14px', minHeight: 40, background: '#fff', color: '#141413',
-            border: '1px solid #c15f3c', borderRadius: 6, cursor: 'pointer',
-            fontWeight: 700, whiteSpace: 'nowrap',
-          }}
-        >
-          {processing === 'analizza-anomalie' ? 'Analisi...' : 'Analizza anomalie'}
-        </button>
-        <button
-          onClick={() => loadAllData(currentLimit)}
-          disabled={processing}
-          style={{
-            padding: '8px 14px',
-            minHeight: 40,
-            flex: isMobile ? '1 1 auto' : '0 1 auto',
-            background: 'white',
-            color: '#141413',
-            border: '1px solid #e6e3d9',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontWeight: 600,
-            fontSize: 13,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <RefreshCw size={14} aria-hidden="true" style={ICO} /> Aggiorna
-        </button>
+        <MenuOperazioni
+          size="md"
+          voci={[
+            {
+              id: 'analizza-anomalie-btn', label: processing === 'analizza-anomalie' ? 'Analisi...' : 'Analizza anomalie',
+              Icon: Search, onClick: handleAnalizzaAnomalie, disabled: processing === 'analizza-anomalie',
+            },
+            { id: 'aggiorna-riconciliazione-btn', label: 'Aggiorna', Icon: RefreshCw, onClick: () => loadAllData(currentLimit), disabled: !!processing },
+          ]}
+        />
 
         {/* Bottone Filtri */}
         <button
