@@ -222,6 +222,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Comunicazione di irregolarita' (art. 54-bis) non pagata",
         "condizione_chiusura": "Codici della comunicazione versati per il suo totale entro 1,00 EUR"
     },
+    "NOTA_RETTIFICA_INPS_NON_PAGATA": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "Nota di rettifica INPS (Mod. DMRA) senza versamento",
+        "condizione_chiusura": "Causale DMRA del periodo versata per il totale della nota entro 1,00 EUR, o periodo coperto da una dilazione"
+    },
 
     # --- Cedolini ---
     "CED_TIPO_NON_RICONOSCIUTO": {

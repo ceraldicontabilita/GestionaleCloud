@@ -43,6 +43,8 @@ from app.constants.canale_documento import (
 )
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 from app.db_collections import COLL_FISCAL_DOCUMENTS, COLL_FISCAL_PAGES
+import re as reg_re
+
 from app.services import f24_controllo_incrociato as reg
 from app.services import lipe_deposito
 from app.services.alert_engine import COLL_ALERTS
@@ -90,7 +92,10 @@ ALERT_IVA_MENSILE = "IVA_PAGAMENTO_MANCANTE_O_PARZIALE"
 ALERT_IRAP = "IRAP_SALDO_MANCANTE_O_PARZIALE"
 ALERT_IVA_ANNUALE = "IVA_ANNUALE_SALDO_DA_VERIFICARE"
 ALERT_54BIS = "COMUNICAZIONE_54BIS_NON_PAGATA"
-CODICI_ALERT = (ALERT_IVA_MENSILE, ALERT_IRAP, ALERT_IVA_ANNUALE, ALERT_54BIS)
+ALERT_NOTA_INPS = "NOTA_RETTIFICA_INPS_NON_PAGATA"
+CODICI_ALERT = (ALERT_IVA_MENSILE, ALERT_IRAP, ALERT_IVA_ANNUALE, ALERT_54BIS, ALERT_NOTA_INPS)
+#: Causale INPS con cui si versa una nota di rettifica (Mod. DMRA).
+CAUSALE_NOTA_RETTIFICA = "DMRA"
 
 MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio",
         "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
@@ -491,6 +496,99 @@ def _comunicazione_54bis(doc: Dict[str, Any], versamenti: List[Dict[str, Any]],
     }
 
 
+# ── note di rettifica INPS (Mod. DMRA) ───────────────────────────────────────
+
+def _chiave_periodo_inps(valore: Any) -> Optional[Tuple[int, int]]:
+    m = reg_re.fullmatch(r"(\d{2})/(\d{4})", str(valore or "").strip())
+    return (int(m.group(2)), int(m.group(1))) if m else None
+
+
+def _ordine_nota(nota: Dict[str, Any]) -> Tuple[str, str, str]:
+    meta = nota.get("parsed_metadata") or {}
+    return (str(meta.get("data_emissione") or ""), str(meta.get("data_scadenza") or ""),
+            str(nota.get("downloaded_at") or nota.get("created_at") or ""))
+
+
+def note_rettifica_inps(note: Iterable[Dict[str, Any]], versamenti: List[Dict[str, Any]],
+                        dilazioni: Iterable[Dict[str, Any]], oggi: date) -> List[Dict[str, Any]]:
+    """Per ogni periodo di competenza l'ultima nota di rettifica emessa (le
+    precedenti sono sostituite, non cancellate), i versamenti DMRA di quel
+    periodo e le dilazioni INPS che lo coprono. Funzione pura.
+
+    Stati: PAGATA (DMRA del periodo = totale della nota entro la soglia),
+    PARZIALE, PAGATA_IMPORTO_DIVERSO (versato di piu': nota ricalcolata o
+    altra nota non in archivio), IN_DILAZIONE_DA_VERIFICARE (nessun DMRA ma
+    una dilazione copre il periodo: il piano non dice quali note contiene),
+    NON_PAGATA, DA_VERIFICARE (nota senza totale o periodo).
+    """
+    per_periodo: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
+    senza_periodo: List[Dict[str, Any]] = []
+    for n in note:
+        meta = n.get("parsed_metadata") or {}
+        chiave = _chiave_periodo_inps(meta.get("periodo_competenza"))
+        (per_periodo.setdefault(chiave, []) if chiave else senza_periodo).append(n)
+
+    piani = [d for d in dilazioni if d.get("entity_status") != "deleted"]
+    esiti: List[Dict[str, Any]] = []
+    for (anno, mese), gruppo in sorted(per_periodo.items()):
+        ordinate = sorted(gruppo, key=_ordine_nota)
+        ultima, sostituite = ordinate[-1], ordinate[:-1]
+        meta = ultima.get("parsed_metadata") or {}
+        totale_cents = _cents(meta.get("importo_totale"))
+        coppie = _righe_codice(versamenti, CAUSALE_NOTA_RETTIFICA, anno, mese)
+        versato_cents = _somma_debito(coppie)
+        confronto = confronta_importi(totale_cents, versato_cents)
+        copertura = [
+            {"rif": d.get("rif"), "stato": d.get("stato"), "causale": d.get("causale"),
+             "periodo_da": d.get("periodo_da"), "periodo_a": d.get("periodo_a"),
+             "totale": _euro(d.get("totale_debito_cents")), "data_domanda": d.get("data_domanda")}
+            for d in piani
+            if (_chiave_periodo_inps(d.get("periodo_da")) or (9999, 99)) <= (anno, mese)
+            <= (_chiave_periodo_inps(d.get("periodo_a")) or (0, 0))
+            and (not meta.get("matricola_inps") or str(d.get("matricola") or "") == str(meta.get("matricola_inps")))
+        ]
+        if confronto["stato"] == STATO_NON_DETERMINABILE:
+            stato = "DA_VERIFICARE"
+        elif confronto["stato"] == STATO_OK:
+            stato = "PAGATA"
+        elif confronto["stato"] == STATO_ECCEDENTE:
+            stato = "PAGATA_IMPORTO_DIVERSO"
+        elif confronto["stato"] == STATO_PARZIALE:
+            stato = "PARZIALE"
+        elif copertura:
+            stato = "IN_DILAZIONE_DA_VERIFICARE"
+        else:
+            stato = "NON_PAGATA"
+        scadenza = reg._data_iso(meta.get("data_scadenza"))
+        esiti.append({
+            "document_id": ultima.get("id"), "filename": ultima.get("filename"),
+            "periodo": f"{mese:02d}/{anno}", "anno": anno, "mese": mese,
+            "matricola": meta.get("matricola_inps"), "data_emissione": meta.get("data_emissione"),
+            "scadenza": scadenza,
+            "differenze_contributive": meta.get("differenze_contributive"), "sanzioni_civili": meta.get("sanzioni_civili"),
+            "importo_totale": _euro(totale_cents), "importo_versato": _euro(versato_cents),
+            "mancante": _euro(confronto["mancante_cents"]), "differenza": _euro(confronto["differenza_cents"]),
+            "stato": stato, "pagata": stato == "PAGATA",
+            "giorni_oltre_scadenza": (
+                (oggi - date.fromisoformat(scadenza)).days if scadenza and stato in ("NON_PAGATA", "PARZIALE") else None
+            ),
+            "f24_versamenti": [_vista_versamento(v, r) for v, r in coppie],
+            "dilazioni_che_coprono_il_periodo": copertura,
+            "note_sostituite": [
+                {"document_id": n.get("id"), "filename": n.get("filename"),
+                 "data_emissione": (n.get("parsed_metadata") or {}).get("data_emissione"),
+                 "importo_totale": (n.get("parsed_metadata") or {}).get("importo_totale")}
+                for n in sostituite
+            ],
+        })
+    for n in senza_periodo:
+        esiti.append({"document_id": n.get("id"), "filename": n.get("filename"), "periodo": None, "anno": None,
+                      "mese": None, "stato": "DA_VERIFICARE", "pagata": False,
+                      "nota": "periodo di competenza non letto dalla nota", "f24_versamenti": [],
+                      "dilazioni_che_coprono_il_periodo": [], "note_sostituite": []})
+    return esiti
+
+
 # ── file rotti ───────────────────────────────────────────────────────────────
 
 async def _file_rotti(db) -> List[Dict[str, Any]]:
@@ -562,6 +660,22 @@ def _alert_previsti(esito: Dict[str, Any]) -> List[Dict[str, Any]]:
             "extra": {"anno": r["anno_imposta"], "stato": r["stato"], "importo_dovuto": r["importo_dichiarato"],
                       "importo_versato": r["importo_versato"], "importo_mancante": r["mancante"],
                       "dich_source": r["dich_source"], "f24_sources": r["f24_sources"]},
+        })
+    for r in esito.get("note_rettifica_inps") or []:
+        if r["stato"] not in ("NON_PAGATA", "PARZIALE"):
+            continue
+        scaduta = f", da versare entro il {reg.data_italiana(r['scadenza'])}" if r.get("scadenza") else ""
+        previsti.append({
+            "codice": ALERT_NOTA_INPS, "entita_collection": "documents_inbox", "entita_id": str(r["document_id"]),
+            "dettaglio": (
+                f"Nota di rettifica INPS (Mod. DMRA) competenza {r['periodo']} ({r['filename']}) non risulta versata: "
+                f"dovuti {_euro_it(_cents(r['importo_totale']))} €{scaduta}, versati con causale DMRA "
+                f"{_euro_it(_cents(r['importo_versato']))} € -> mancano {_euro_it(_cents(r['mancante']))} €"
+                + (f"; {len(r['note_sostituite'])} note precedenti sullo stesso periodo sostituite" if r["note_sostituite"] else "")
+            ),
+            "extra": {"anno": r["anno"], "mese": r["mese"], "stato": r["stato"], "importo_dovuto": r["importo_totale"],
+                      "importo_versato": r["importo_versato"], "importo_mancante": r["mancante"],
+                      "scadenza": r.get("scadenza"), "f24_sources": [v["filename"] for v in r["f24_versamenti"]]},
         })
     for r in esito["comunicazioni_54bis"]:
         if r["stato"] not in ("NON_PAGATA", "PARZIALE"):
@@ -636,6 +750,16 @@ async def incroci(db, *, anni: Optional[Iterable[int]] = None, oggi: Optional[da
             continue
         comunicazioni_54bis.append(voce)
 
+    note_inps = await db["documents_inbox"].find(
+        {"document_type": {"$in": ["nota_rettifica_inps", "NOTA_RETTIFICA_INPS"]}},
+        {"_id": 0, "pdf_data": 0, "_drive_payloads": 0},
+    ).to_list(2000)
+    dilazioni = await db["dilazioni_inps"].find({}, {"_id": 0, "rate": 0, "piano": 0}).to_list(500)
+    note_rettifica = [
+        r for r in note_rettifica_inps(note_inps, versamenti, dilazioni, oggi)
+        if not anni_scelti or r["anno"] is None or r["anno"] in anni_scelti
+    ]
+
     conteggi_mensili: Dict[str, int] = {}
     for r in mensili:
         conteggi_mensili[r["stato"]] = conteggi_mensili.get(r["stato"], 0) + 1
@@ -651,6 +775,7 @@ async def incroci(db, *, anni: Optional[Iterable[int]] = None, oggi: Optional[da
         "iva_annuale_riscontro": iva_annuale,
         "comunicazioni_54bis": comunicazioni_54bis,
         "comunicazioni_senza_righe_strutturate": senza_righe,
+        "note_rettifica_inps": note_rettifica,
         "guardia": {"lipe_escluse": lipe_escluse, "f24_esclusi": fonti["esclusi"]},
         "file_rotti": await _file_rotti(db),
         "fonti": {
@@ -661,6 +786,7 @@ async def incroci(db, *, anni: Optional[Iterable[int]] = None, oggi: Optional[da
             "versamenti_da_modello": sum(1 for v in versamenti if not v["quietanza"]),
             "dichiarazioni_irap": len(irap), "dichiarazioni_iva": len(iva),
             "comunicazioni_54bis": len(comunicazioni_54bis),
+            "note_rettifica_inps": len(note_rettifica), "dilazioni_inps": len(dilazioni),
         },
         "sola_lettura": True,
     }
@@ -721,6 +847,7 @@ async def esegui_incroci(db, *, anni: Optional[Iterable[int]] = None) -> Dict[st
         "irap": {r["anno_imposta"]: r["stato"] for r in esito["irap_riscontro"]},
         "iva_annuale": {r["anno_imposta"]: r["stato"] for r in esito["iva_annuale_riscontro"]},
         "comunicazioni_54bis": {r["numero_comunicazione"]: r["stato"] for r in esito["comunicazioni_54bis"]},
+        "note_rettifica_inps": {r["periodo"] or r["filename"]: r["stato"] for r in esito["note_rettifica_inps"]},
         "guardia": {k: len(v) for k, v in esito["guardia"].items()},
         "file_rotti": len(esito["file_rotti"]),
         "alert": alert,
