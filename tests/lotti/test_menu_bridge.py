@@ -105,16 +105,10 @@ class _Query:
         raise AssertionError(self.op)
 
     def _id_dal_database(self, righe):
-        """Il database assegna l'id a un insert che non lo porta.
-
-        Con ``identity`` (migrazione 20261007051337_menu_id_dal_database
-        applicata) e' una sequenza per tabella che parte oltre il massimo;
-        senza, Postgres rifiuta la riga con la violazione NOT NULL (23502)
-        e nulla viene scritto, come sul database vero."""
-        if self.finto is None or not self.finto.identity:
-            raise RuntimeError(
-                f'null value in column "id" of relation "{self.nome}" violates '
-                "not-null constraint (code 23502)")
+        """Il database assegna l'id a un insert che non lo porta: identity
+        (migrazione 20261007051337_menu_id_dal_database) = una sequenza per
+        tabella che parte oltre il massimo."""
+        assert self.finto is not None, "insert senza id su un finto senza sequenze"
         sequenze = self.finto.sequenze
         if self.nome not in sequenze:
             sequenze[self.nome] = max([int(r["id"]) for r in righe if r.get("id") is not None] or [0]) + 1
@@ -156,14 +150,13 @@ class _Storage:
 
 
 class _FakeSupabase:
-    """``identity=False`` simula il database PRIMA della migrazione
-    20261007051337_menu_id_dal_database: l'insert senza id viene rifiutato."""
+    """Client PostgREST finto: tabelle in memoria con identity sull'``id``
+    (come il database dopo la migrazione 20261007051337_menu_id_dal_database)."""
 
-    def __init__(self, identity=True):
+    def __init__(self):
         self.tabelle = {}
         self.upload = []
         self.storage = _Storage(self.upload)
-        self.identity = identity
         self.sequenze = {}
         self.id_assegnati = []      # (tabella, id) generati dal "database"
         self.letture_massimo = []   # tabelle su cui l'app ha letto max(id)

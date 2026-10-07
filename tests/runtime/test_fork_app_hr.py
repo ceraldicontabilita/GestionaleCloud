@@ -49,6 +49,10 @@ FORK_NOTO = {
     # Fork veri, da consolidare (vedi «Aperto» in CLAUDE.md).
     "routers/employees/dipendenti.py",
     "routers/pin_login.py",
+    # Non e' piu' un fork di logica (07/10/2026): il lato ERP tiene solo due
+    # letture del fondo sull'archivio del gestionale per Gestione Cespiti e
+    # re-esporta il resto da app/hr/routers/tfr.py. Resta qui finche' il fondo
+    # TFR del gestionale non viene letto dall'anagrafica canonica HR.
     "routers/tfr.py",
     "utils/dependencies.py",
 }

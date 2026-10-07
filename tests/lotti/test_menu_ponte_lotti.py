@@ -578,14 +578,14 @@ def test_prezzo_non_valido_rifiutato_anche_da_patch_e_dal_modello(ambiente):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8) Assegnazione id: la decide il database (CLAUDE.md §5); il ripiego
-#    max(id)+1 vale solo finche' la migrazione menu_id_dal_database non c'e'
+# 8) Assegnazione id: la decide il database (CLAUDE.md §5, migrazione
+#    menu_id_dal_database applicata); il ponte non ha piu' alcun ripiego
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_id_dal_database_nessuna_lettura_del_massimo_nessun_id_calcolato(ambiente):
-    """Con l'identity il ponte inserisce senza id e usa quello restituito: non
-    legge mai max(id), non lo calcola, non ritenta. Vale per prodotto,
-    categoria e sottocategoria."""
+    """Il ponte inserisce senza id e usa quello restituito: non legge mai
+    max(id), non lo calcola, non ritenta. Vale per prodotto, categoria e
+    sottocategoria."""
     ricette, _, finto = ambiente
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
     cat = run(menu_bridge.crea_categoria_menu("Colazioni"))["categoria"]
@@ -597,32 +597,43 @@ def test_id_dal_database_nessuna_lettura_del_massimo_nessun_id_calcolato(ambient
     assert ("menu_products", creata["menu_sync"]["menu_product_id"]) in generati
     assert ("menu_categories", cat["id"]) in generati
     assert ("menu_subcategories", sotto["id"]) in generati
-    # id del database, non la base alta dell'app
-    assert creata["menu_sync"]["menu_product_id"] < menu_bridge.ID_MINIMO_LOTTI
+    # L'unico percorso di insert e' quello canonico: nessun ripiego nel modulo.
+    for nome in ("_inserisci_con_id", "_prossimo_id", "_e_collisione_di_id",
+                 "ID_MINIMO_LOTTI", "TENTATIVI_ID"):
+        assert not hasattr(menu_bridge, nome), nome
 
 
-def test_senza_identity_il_ponte_ripiega_su_max_id_e_lo_dice(ambiente, monkeypatch, caplog):
-    """Migrazione non ancora applicata: l'insert senza id e' rifiutato senza
-    scrivere nulla, il ponte ripiega sul vecchio percorso con base alta e la
-    ricetta arriva nel Menu una volta sola. Il ripiego resta visibile nel log."""
-    ricette, _, _ = ambiente
-    finto = _FakeSupabase(identity=False)
-    monkeypatch.setattr(menu_bridge, "supabase", finto)
+def test_rifiuto_del_database_sull_id_si_propaga_senza_scritture_ne_ritentativi(ambiente):
+    """Se il database rifiuta l'insert sull'``id`` (23502, identity assente o
+    rotta) il ponte NON ripiega su un id calcolato: un solo tentativo, nessuna
+    lettura di max(id), nessuna riga scritta, esito ``errore`` con il motivo."""
+    ricette, database, finto = ambiente
+    tentativi = []
 
-    with caplog.at_level("WARNING", logger="uvicorn.error"):
-        creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
+    class _IdRifiutato(_Query):
+        def execute(self):
+            if self.op == "insert" and self.nome == "menu_products":
+                tentativi.append(dict(self.payload))
+                raise RuntimeError(
+                    'null value in column "id" of relation "menu_products" violates '
+                    "not-null constraint (code 23502)")
+            return super().execute()
 
-    assert creata["menu_sync"]["esito"] == "pubblicato"
-    prodotti = finto.tabelle["menu_products"]
-    assert len(prodotti) == 1 and prodotti[0]["id"] >= menu_bridge.ID_MINIMO_LOTTI
-    assert finto.id_assegnati == []
-    assert "menu_products" in finto.letture_massimo
-    assert any("menu_id_dal_database" in r.getMessage() for r in caplog.records)
+    finto.table = lambda nome: _IdRifiutato(finto.tabelle, nome, finto)
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
+
+    assert creata["menu_sync"]["esito"] == "errore"
+    assert "23502" in creata["menu_sync"]["errore"]
+    assert len(tentativi) == 1 and "id" not in tentativi[0]
+    assert finto.letture_massimo == []
+    assert finto.tabelle["menu_products"] == []
+    # La ricetta di Lotti resta salvata: il ponte non blocca mai Lotti.
+    assert run(database.ricette.count_documents({"id": creata["id"]})) == 1
 
 
 def test_insert_riuscito_senza_id_in_risposta_non_viene_ripetuto():
     """Se la riga e' stata scritta ma la risposta non porta l'id, reinserire
-    creerebbe un doppione: l'errore risale e il ripiego NON parte."""
+    creerebbe un doppione: l'errore risale senza un secondo insert."""
     from app.menu.supabase_client import inserisci_con_id_del_database
 
     class _Muto:
@@ -644,120 +655,31 @@ def test_insert_riuscito_senza_id_in_risposta_non_viene_ripetuto():
     assert _Muto.inserimenti == 1
 
 
-def test_un_errore_diverso_dal_default_mancante_non_attiva_il_ripiego(ambiente, monkeypatch):
-    """Il ripiego scatta solo per la NOT NULL su ``id`` (23502): un'altra NOT
-    NULL, o la collisione su ``lotti_ref``, risale come errore del ponte senza
-    letture di max(id)."""
-    from app.menu.supabase_client import _e_id_senza_default
+def test_qualunque_rifiuto_del_database_resta_un_errore_visibile_anche_nel_backfill(ambiente, monkeypatch):
+    """Un'altra NOT NULL o la collisione su ``lotti_ref`` risalgono come errore
+    del ponte, una sola volta, senza letture di max(id) e senza righe scritte;
+    il backfill li conta invece di nasconderli."""
+    ricette, database, finto = ambiente
+    inserimenti = []
 
-    assert _e_id_senza_default(RuntimeError('null value in column "id" of relation "menu_products" violates not-null constraint')) is True
-    assert _e_id_senza_default(RuntimeError('null value in column "name" of relation "menu_products" violates not-null constraint')) is False
-    assert _e_id_senza_default(RuntimeError('duplicate key value violates unique constraint "menu_products_lotti_ref_uidx"')) is False
-    assert _e_id_senza_default(RuntimeError("connessione persa")) is False
-
-    ricette, _, finto = ambiente
-
-    class _NomeNullo(_Query):
+    class _Rifiuta(_Query):
         def execute(self):
             if self.op == "insert" and self.nome == "menu_products":
-                raise RuntimeError('null value in column "name" of relation "menu_products" violates not-null constraint (code 23502)')
+                inserimenti.append(self.nome)
+                raise RuntimeError('duplicate key value violates unique constraint "menu_products_lotti_ref_uidx" (code 23505)')
             return super().execute()
 
-    finto.table = lambda nome: _NomeNullo(finto.tabelle, nome, finto)
+    finto.table = lambda nome: _Rifiuta(finto.tabelle, nome, finto)
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
     assert creata["menu_sync"]["esito"] == "errore"
+    assert len(inserimenti) == 1
     assert finto.letture_massimo == []
     assert finto.tabelle["menu_products"] == []
-
-
-class _QueryInCorsa(_Query):
-    """Come il finto normale (senza identity: e' il ripiego), ma con la primary
-    key applicata davvero e con un «altro thread» che si prende l'id appena
-    letto da ``max(id)``."""
-
-    def __init__(self, finto, nome):
-        super().__init__(finto.tabelle, nome, finto)
-        self.finto = finto
-
-    def execute(self):
-        finto = self.finto
-        contesa = self.nome == finto.tabella_contesa
-        if (self.op == "select" and contesa and self._order == ("id", True)
-                and finto.intrusioni < finto.max_intrusioni):
-            risultato = super().execute()
-            massimo = int(risultato.data[0]["id"]) if risultato.data else 0
-            preso = max(massimo + 1, menu_bridge.ID_MINIMO_LOTTI)
-            # L'altro thread inserisce PRIMA di noi con lo stesso id
-            self.tabelle.setdefault(self.nome, []).append(
-                {"id": preso, "name_it": "riga di un altro thread"})
-            finto.intrusioni += 1
-            return risultato
-        if self.op == "insert":
-            righe = self.tabelle.setdefault(self.nome, [])
-            nuove = self.payload if isinstance(self.payload, list) else [self.payload]
-            if any(any(e.get("id") == n.get("id") for e in righe) for n in nuove):
-                finto.collisioni += 1
-                raise RuntimeError(
-                    "duplicate key value violates unique constraint "
-                    f'"{self.nome}_pkey" (code 23505)')
-        return super().execute()
-
-
-class _SupabaseInCorsa(_FakeSupabase):
-    def __init__(self, tabella_contesa, max_intrusioni=1):
-        super().__init__(identity=False)
-        self.tabella_contesa = tabella_contesa
-        self.max_intrusioni = max_intrusioni
-        self.intrusioni = 0
-        self.collisioni = 0
-
-    def table(self, nome):
-        return _QueryInCorsa(self, nome)
-
-
-def test_collisione_di_id_ritentata_e_la_ricetta_arriva_nel_menu(ambiente, monkeypatch):
-    """Solo nel ripiego (identity assente). Il backfill cicla per minuti mentre
-    il form continua a salvare: le due `select max(id)` tornavano lo stesso
-    valore e la seconda insert violava la primary key, con la ricetta appena
-    salvata persa nel Menu."""
-    ricette, _, _ = ambiente
-    finto = _SupabaseInCorsa("menu_products", max_intrusioni=1)
-    monkeypatch.setattr(menu_bridge, "supabase", finto)
-
-    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
-    assert creata["menu_sync"]["esito"] == "pubblicato"
-    assert finto.collisioni == 1
-
-    nostre = [p for p in finto.tabelle["menu_products"] if p.get("lotti_ref")]
-    assert len(nostre) == 1
-    identificativi = [p["id"] for p in finto.tabelle["menu_products"]]
-    assert len(identificativi) == len(set(identificativi)) == 2
-
-
-def test_collisione_persistente_resta_un_errore_visibile(ambiente, monkeypatch):
-    """Ripiego: il ciclo e' limitato, non gira all'infinito e il fallimento non sparisce."""
-    ricette, database, _ = ambiente
-    finto = _SupabaseInCorsa("menu_products", max_intrusioni=99)
-    monkeypatch.setattr(menu_bridge, "supabase", finto)
-
-    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
-    assert creata["menu_sync"]["esito"] == "errore"
-    assert finto.collisioni == menu_bridge.TENTATIVI_ID
 
     esito = run(menu_backfill.ripubblica_menu(database))
     assert esito["errori"] == 1
     assert esito["campioni_errori"][0]["esito"] == "errore"
-
-
-def test_la_collisione_su_lotti_ref_non_viene_ritentata():
-    """L'unico altro indice unico di `menu_products`: li' ritentare non serve,
-    l'errore deve uscire subito."""
-    pkey = RuntimeError('duplicate key value violates unique constraint "menu_products_pkey"')
-    ref = RuntimeError('duplicate key value violates unique constraint "menu_products_lotti_ref_uidx"')
-    altro = RuntimeError("connessione persa")
-    assert menu_bridge._e_collisione_di_id(pkey) is True
-    assert menu_bridge._e_collisione_di_id(ref) is False
-    assert menu_bridge._e_collisione_di_id(altro) is False
+    assert len(inserimenti) == 2
 
 
 # ─────────────────────────────────────────────────────────────────────────────

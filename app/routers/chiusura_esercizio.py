@@ -179,7 +179,9 @@ async def verifica_preliminare_chiusura(anno: int) -> Dict[str, Any]:
             "tipo": "tfr_non_accantonato",
             "messaggio": "TFR non accantonato per l'anno",
             "gravita": "alta",
-            "azione": "Eseguire il calcolo TFR batch dall'endpoint /api/tfr/calcola-batch/{anno}"
+            "azione": ("Acquisire i cedolini dell'anno da Documenti: il TFR del gestionale "
+                       "si accantona dalle buste. Il calcolo batch manuale e' nel modulo HR "
+                       "(/hr/api/tfr/calcola-batch/{anno}) e scrive l'archivio HR")
         })
     elif tfr_anno:
         completamenti.append("TFR accantonato")

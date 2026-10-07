@@ -1,14 +1,15 @@
-"""Acconto TFR: un motore solo per il router del gestionale e per quello HR.
+"""Acconto TFR: il motore contabile dell'acconto, usato dal router TFR HR.
 
 Un acconto TFR scala il TFR accantonato del dipendente (``tfr_accantonato``,
-nell'archivio dove vive la sua anagrafica: gestionale o HR) e scrive nel libro
-giornale **del gestionale** una scrittura in partita doppia sui conti CEE
-ufficiali: DARE 29.01.01 Fondo TFR, AVERE 39.07.05 Personale c/liquidazione.
+nell'archivio HR dove vive la sua anagrafica) e scrive nel libro giornale
+**del gestionale** una scrittura in partita doppia sui conti CEE ufficiali:
+DARE 29.01.01 Fondo TFR, AVERE 39.07.05 Personale c/liquidazione.
 Una correzione o l'eliminazione dell'acconto **storna** (``acconto_tfr_rettifica``,
 gambe invertite se diminuisce), mai cancella la scrittura originale.
 
-I due router (``app/routers/tfr.py`` e ``app/hr/routers/tfr.py``) chiamano
-queste funzioni: nessuno dei due tiene conti, descrizioni o storni propri.
+Il router (``app/hr/routers/tfr.py``, l'unico che scrive acconti) chiama
+queste funzioni: non tiene conti, descrizioni o storni propri. I due archivi
+restano parametri (``anagrafica``, ``giornale``) perche' sono davvero due.
 """
 from __future__ import annotations
 

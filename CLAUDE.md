@@ -140,7 +140,9 @@ Finché la migrazione non è completata usare esclusivamente gli helper canonici
 
 Non introdurre nuovo codice che presuma un solo tipo storico di `invoice_id`.
 
-Gli id di `menu.menu_categories`, `menu_subcategories` e `menu_products` nascono dal database con la migrazione `20261007051337_menu_id_dal_database` (identity BY DEFAULT), non ancora applicata: ponte Lotti e admin Menu inseriscono senza id tramite `app/menu/supabase_client.py::inserisci_con_id_del_database` e, solo se il database rifiuta l'insert per `id` NOT NULL, ripiegano sul vecchio `max(id)+1`; applicata la migrazione, rimuovere i ripieghi (`menu_bridge._inserisci_con_id`, `menu_routes._crea_riga`).
+## PRODUZIONE
+
+Gli id di `menu.menu_categories`, `menu_subcategories` e `menu_products` nascono dal database (identity BY DEFAULT, migrazione `20261007051337_menu_id_dal_database` applicata il 07/10/2026). Ponte Lotti e admin Menu inseriscono senza id tramite `app/menu/supabase_client.py::inserisci_con_id_del_database`; nessun ripiego su `max(id)+1`.
 
 ---
 
@@ -3415,11 +3417,15 @@ Non creare un secondo giornale HR.
 
 Due copie dello stesso modulo non si mantengono manualmente.
 
+## PRODUZIONE
+
+Il router TFR è uno solo: `app/hr/routers/tfr.py` (montato su `/hr/api/tfr`). `app/routers/tfr.py` espone soltanto due letture del fondo sull'archivio del gestionale per Gestione Cespiti e re-esporta il resto; non scrive.
+
 ## APERTO
 
-Esistono ancora duplicazioni sotto `app/hr/`.
+Fork di logica residui fra `app/` e `app/hr/` (stesso sottopercorso, nessun re-export; `tests/runtime/test_fork_app_hr.py` ne impedisce la crescita): `routers/employees/dipendenti.py`, `routers/pin_login.py`, `utils/dependencies.py`. Il fondo TFR letto dal gestionale (`gestionale.dipendenti.tfr_maturato`) non deriva ancora dall'anagrafica canonica HR.
 
-Ogni modifica deve controllare il gemello finché non viene consolidato.
+Ogni modifica a quei tre file deve controllare il gemello finché non viene consolidato.
 
 ---
 

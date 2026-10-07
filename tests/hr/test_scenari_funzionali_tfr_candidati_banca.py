@@ -4,10 +4,7 @@ Il filtro lavorava su `data_contabile_obj`, un campo che nessun importer scrive:
 la lista dei candidati era sempre vuota. La data dei movimenti e' la stringa
 `data` (YYYY-MM-DD).
 """
-import asyncio
-
 import pytest
-from mongomock_motor import AsyncMongoMockClient
 
 from tests.hr.scenari_base import mondo, run  # noqa: F401
 
@@ -34,21 +31,6 @@ def test_hr_candidati_banca_trova_il_movimento_per_data_stringa(mondo):
     ids = [c["movimento_id"] for c in r.json()["candidati"]]
     assert ids == ["m-giusto"]
     assert r.json()["candidati"][0]["data"] == "2026-07-31"
-
-
-def test_gestionale_candidati_banca_trova_il_movimento_per_data_stringa(monkeypatch):
-    from app.database import Database
-    from app.routers import tfr
-
-    db = AsyncMongoMockClient()["gest_tfr_candidati"]
-    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))
-    asyncio.run(db["acconti_dipendenti"].insert_one({
-        "id": "a1", "dipendente_nome": "Capezzuto Mario", "importo": 1800.0,
-        "data": "2026-07-31", "stato": "registrato"}))
-    for m in _movimenti():
-        asyncio.run(db["estratto_conto_movimenti"].insert_one(dict(m)))
-    esito = asyncio.run(tfr.candidati_banca_per_acconto("a1"))
-    assert [c["movimento_id"] for c in esito["candidati"]] == ["m-giusto"]
 
 
 def test_hr_saldo_tfr_non_sottrae_due_volte_gli_acconti(mondo):

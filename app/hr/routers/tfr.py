@@ -47,9 +47,11 @@ async def _ricalcola_mese_acconto(db, acconto: Dict[str, Any]) -> None:
     await _ricalcola_stato_paga(db, acconto["dipendente_id"], anno, mese)
 
 
+# Questo e' l'unico router TFR (CLAUDE.md §64): ``app/routers/tfr.py`` espone
+# soltanto due letture del fondo sull'archivio del gestionale per Gestione
+# Cespiti e re-esporta da qui costanti e lettura dell'acconto in busta.
 # L'acconto TFR (fondo del dipendente + giornale 29.01.01 / 39.07.05, storno
-# mai cancellazione) vive in ``app/services/tfr_acconti.py``, lo stesso motore
-# del router del gestionale.
+# mai cancellazione) vive in ``app/services/tfr_acconti.py``.
 
 # Cartella upload buste paga
 PAYSLIPS_FOLDER = "/app/uploads/paghe"
@@ -926,7 +928,7 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
     await _ricalcola_mese_acconto(db, acconto)
 
     # Acconto TFR: scala il fondo del dipendente (HR) e scrive il giornale del
-    # gestionale (29.01.01 / 39.07.05) col motore unico dei due router.
+    # gestionale (29.01.01 / 39.07.05) col motore unico ``tfr_acconti``.
     if input_data.tipo == "tfr":
         from app.services.tfr_acconti import registra_acconto_tfr
 

@@ -25,8 +25,8 @@ class _Res:
 
 
 class _Query:
-    def __init__(self, tabelle, registro, nome, identity=True):
-        self.tabelle, self.registro, self.nome, self.identity = tabelle, registro, nome, identity
+    def __init__(self, tabelle, registro, nome):
+        self.tabelle, self.registro, self.nome = tabelle, registro, nome
         self.op, self.filtri, self.payload, self._limit = "select", [], None, None
         self._order = None
 
@@ -63,11 +63,7 @@ class _Query:
             self.registro.append(("insert", self.nome, self.payload))
             riga = dict(self.payload)
             if riga.get("id") is None:
-                # Il database assegna l'id (identity, migrazione menu_id_dal_database);
-                # senza identity rifiuta la riga con la NOT NULL su id e non scrive nulla.
-                if not self.identity:
-                    raise RuntimeError(
-                        f'null value in column "id" of relation "{self.nome}" violates not-null constraint (code 23502)')
+                # Il database assegna l'id (identity, migrazione menu_id_dal_database).
                 riga["id"] = max([int(r["id"]) for r in righe if r.get("id") is not None] or [0]) + 1
             righe.append(riga)
             return _Res([dict(riga)])
@@ -84,13 +80,12 @@ class _Query:
 
 
 class _FakeSupabase:
-    def __init__(self, tabelle, identity=True):
+    def __init__(self, tabelle):
         self.tabelle = tabelle
         self.chiamate = []
-        self.identity = identity
 
     def table(self, nome):
-        return _Query(self.tabelle, self.chiamate, nome, self.identity)
+        return _Query(self.tabelle, self.chiamate, nome)
 
 
 def _prodotto(id_, sub, nome, **extra):
@@ -229,26 +224,41 @@ def test_admin_create_e_update_accettano_visible(finto):
     assert nascosto.value.status_code == 404
 
 
-def test_admin_senza_identity_ripiega_su_max_id_una_sola_riga(finto, monkeypatch):
-    """Migrazione menu_id_dal_database non ancora applicata: il database rifiuta
-    l'insert senza id senza scrivere nulla, l'admin ripiega sul vecchio
-    max(id)+1 e la riga nasce una volta sola. Vale per prodotto, sottocategoria
-    e categoria."""
-    finto.identity = False
-    creato = _run(mr.create_product(
-        ProductCreate(category_id=1, subcategory_id=10, name="Nuovo", nameIT="Nuovo", price="2.00€"),
-        username="admin",
-    ))
-    assert creato["id"] == 1000001
-    inseriti = [p for op, tab, p in finto.chiamate if op == "insert" and tab == "menu_products"]
-    assert [("id" in p) for p in inseriti] == [False, True]
-    assert [p["id"] for p in finto.tabelle["menu_products"]].count(1000001) == 1
-
+def test_admin_crea_categoria_e_sottocategoria_con_id_del_database(finto):
+    """Stesso percorso del prodotto: insert senza id, nessuna lettura di max(id)."""
     from app.menu.models.menu_models import CategoryCreate, SubcategoryCreate
     sotto = _run(mr.create_subcategory(SubcategoryCreate(category_id=1, name="Dolci", nameIT="Dolci"), username="admin"))
     assert sotto["id"] == 11 and finto.tabelle["menu_subcategories"][-1]["id"] == 11
     cat = _run(mr.create_category(CategoryCreate(name="Lunch", nameIT="Pranzo"), username="admin"))
     assert cat["id"] == 2 and finto.tabelle["menu_categories"][-1]["id"] == 2
+    inseriti = [p for op, _tab, p in finto.chiamate if op == "insert"]
+    assert len(inseriti) == 2 and all("id" not in p for p in inseriti)
+
+
+def test_admin_rifiuto_del_database_sull_id_si_propaga_senza_scritture_ne_ritentativi(finto):
+    """Se il database rifiuta l'insert sull'``id`` (23502) l'admin NON ripiega su
+    max(id)+1: un solo insert, nessun secondo tentativo con id calcolato,
+    nessuna riga scritta, errore propagato al chiamante."""
+    class _IdRifiutato(_Query):
+        def execute(self):
+            if self.op == "insert":
+                self.registro.append(("insert", self.nome, self.payload))
+                raise RuntimeError(
+                    f'null value in column "id" of relation "{self.nome}" violates not-null constraint (code 23502)')
+            return super().execute()
+
+    finto.table = lambda nome: _IdRifiutato(finto.tabelle, finto.chiamate, nome)
+    prima = [dict(p) for p in finto.tabelle["menu_products"]]
+    with pytest.raises(RuntimeError, match="23502"):
+        _run(mr.create_product(
+            ProductCreate(category_id=1, subcategory_id=10, name="Nuovo", nameIT="Nuovo", price="2.00€"),
+            username="admin",
+        ))
+    inseriti = [p for op, tab, p in finto.chiamate if op == "insert" and tab == "menu_products"]
+    assert len(inseriti) == 1 and "id" not in inseriti[0]
+    assert finto.tabelle["menu_products"] == prima
+    # Nessuna lettura di max(id): il registro contiene solo l'unico insert.
+    assert [c[0] for c in finto.chiamate] == ["insert"]
 
 
 def test_admin_del_menu_non_puo_modificare_una_riga_di_lotti(finto):
