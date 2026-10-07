@@ -684,6 +684,19 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-STAMPE-CONTROLLO] errore: {type(e).__name__}: {e}")
 
+    async def _acube_controllo_job():
+        # Riserva del webhook A-Cube: fatture passive degli ultimi giorni non
+        # ancora registrate. Solo i giorni recenti, mai lo storico.
+        from app.database import Database
+        from app.services import acube
+        if not acube.configurato():
+            return
+        try:
+            esito = await acube.controlla(Database.get_db())
+            logger.info(f"[SCHEDULER-ACUBE] {esito}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-ACUBE] errore: {type(e).__name__}: {e}")
+
     async def _drive_censimento_doppioni_job():
         # Censimento della cartella GESTIONALE richiesto dal titolare: elenca
         # le copie identiche e, in modalita' «marca», le rinomina soltanto.
@@ -1424,6 +1437,16 @@ def start_scheduler():
         misfire_grace_time=300,
         coalesce=True,
         id="import_cartelle_drive", name="Import cartelle Drive in sola lettura (ogni 30 minuti, se configurato)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _acube_controllo_job,
+        CronTrigger(hour=6, minute=20, timezone="Europe/Rome"),
+        misfire_grace_time=3600,
+        coalesce=True,
+        id="acube_controllo",
+        name="A-Cube: fatture passive degli ultimi 5 giorni (ogni giorno)",
         replace_existing=True,
     )
 

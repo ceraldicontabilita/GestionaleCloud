@@ -149,6 +149,8 @@ def _register_bank(app: FastAPI):
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])
     app.include_router(nexi_carta.router, prefix="/api/nexi", tags=["Carta Nexi"])
     app.include_router(sumup.router, prefix="/api/sumup", tags=["SumUp"])
+    from app.routers import acube as acube_router
+    app.include_router(acube_router.router, prefix="/api/acube", tags=["A-Cube"])
     from app.routers import distinta_bonifici as distinta_bonifici_router
     app.include_router(distinta_bonifici_router.router, prefix="/api/distinta-bonifici", tags=["Distinta bonifici"])
     # Il router POS accredito legacy e' eliminato; la logica viva resta in

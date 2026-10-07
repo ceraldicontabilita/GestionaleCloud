@@ -75,6 +75,10 @@ PUBLIC_PATHS = {
     # Il webhook non si fida del corpo ricevuto: il backend rilegge sempre il
     # checkout con la propria chiave SumUp prima di accreditare il portafoglio.
     "/api/colazioni/ricariche/sumup/webhook",
+    # Webhook A-Cube (fatture passive): verifica da se' il segreto
+    # nell'header Authorization e del corpo usa solo l'uuid, rileggendo la
+    # fattura da A-Cube con la propria credenziale (app/services/acube.py).
+    "/api/acube/webhook",
     # L'ospite arriva dal QR e non possiede un JWT ERP. Il codice voucher e
     # la giornata vengono verificati dalle RPC Supabase prima di restituire il
     # listino o accettare il carrello; codici falsi/scaduti restano chiusi.

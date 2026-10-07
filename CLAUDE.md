@@ -1827,6 +1827,29 @@ Per cercare ID fattura storici usare gli helper canonici.
 
 ---
 
+# 27A. A-Cube — fatture passive via API
+
+## REGOLA
+
+Codice: `app/services/acube.py`, `app/routers/acube.py`, pagina Integrazioni › A-Cube fatture (`/integrazioni/acube`).
+
+- Il webhook `POST /api/acube/webhook` è pubblico ma protetto dal segreto nell'header `Authorization`; il segreto nasce nel database (`sistema_stato`, chiave `acube_webhook`) e non esce mai.
+- Del corpo del webhook si usa solo l'`uuid`: la fattura si rilegge sempre da A-Cube con la credenziale del gestionale.
+- Registro del canale: collezione `acube_fatture` (una riga per `uuid`, idempotente).
+- In `ACUBE_ENV=sandbox` le fatture sono simulate: si registrano e si vedono, ma non entrano mai in contabilità.
+- In produzione l'originale passa dallo smistatore dei documenti (`_smista`, lo stesso della cartella unica Drive) con `channel: "acube"`: nessun secondo writer delle fatture. `ACUBE_IMPORT=false` ferma il solo import.
+- Controllo di riserva ogni giorno alle 6:20 (Europe/Rome) sugli ultimi 5 giorni, mai sullo storico.
+
+## PRODUZIONE
+
+Variabili su Render: `ACUBE_EMAIL`, `ACUBE_PASSWORD`, `ACUBE_ENV=sandbox` (07/10/2026). Scheda della società creata nella sandbox A-Cube con ricezione fatture passive attiva.
+
+## APERTO
+
+Produzione A-Cube e Cassetto fiscale (fatture, F24, corrispettivi) da attivare con il commerciale A-Cube (ticket 334300): accesso tramite incaricato, non delega (la delega non scarica gli F24).
+
+---
+
 # 28. Stato pagamento fattura
 
 La domanda “è pagata?” ha un solo motore logico.

@@ -175,6 +175,10 @@ class TestAllowlistCongelata:
         # gestionale; vale solo con lo state monouso generato da «Collega»
         # (15 minuti, impronta SHA-256), e non espone dati.
         "/api/banca/enable-banking/callback",
+        # Webhook A-Cube delle fatture passive: segreto nell'header
+        # Authorization (nato nel database), del corpo usa solo l'uuid e
+        # rilegge la fattura da A-Cube con la propria credenziale.
+        "/api/acube/webhook",
     }
 
     ALLOWLIST_PREFISSI_ATTESA = ["/docs", "/redoc"]
