@@ -37,11 +37,7 @@ import logging
 import os
 from typing import Any, Optional
 
-from app.menu.supabase_client import (
-    IdNonAssegnatoDalDatabase,
-    inserisci_con_id_del_database,
-    supabase,
-)
+from app.menu.supabase_client import inserisci_con_id_del_database, supabase
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -56,18 +52,9 @@ CATEGORIA_NOME = "Ceraldi Production"
 CATEGORIA_NOME_IT = "Produzione Ceraldi"
 
 # Gli id di menu_* li assegna il database (identity BY DEFAULT, migrazione
-# 20261007051337_menu_id_dal_database): l'insert parte senza id e legge quello
-# restituito (``_inserisci``). Finche' quella migrazione non e' applicata
-# l'insert senza id viene rifiutato (23502) e il ponte ripiega sul vecchio
-# percorso max(id)+1 con base alta e ritentativo (``_inserisci_con_id``): i
-# prodotti scaricati in origine arrivano a 858503, le righe create da Lotti
-# partono da 1.000.000 per non collidere. Applicata la migrazione, il ripiego
-# non viene piu' raggiunto e va rimosso.
-ID_MINIMO_LOTTI = 1_000_000
-
-# Quante volte rileggere max(id) e riprovare l'insert quando un altro thread
-# ha preso lo stesso id nel frattempo (solo nel ripiego ``_inserisci_con_id``).
-TENTATIVI_ID = 5
+# 20261007051337_menu_id_dal_database, applicata in produzione): l'insert parte
+# senza id e legge quello restituito (``_inserisci``). Il ponte non legge ne'
+# calcola mai un id; se il database rifiuta l'insert l'errore risale cosi' com'e'.
 
 # reparto Lotti -> sottocategoria Menu (name, name_it)
 SOTTOCATEGORIE_REPARTO = {
@@ -244,70 +231,10 @@ def _descrizione(ricetta: dict) -> Optional[str]:
 def _inserisci(tabella: str, riga: dict) -> int:
     """Inserisce lasciando l'``id`` al database e restituisce quello generato.
 
-    Percorso principale: ``inserisci_con_id_del_database`` (nessuna lettura di
-    ``max(id)``, nessun ritentativo). Solo se il database rifiuta l'insert
-    perche' la colonna ``id`` non ha ancora un default — migrazione
-    ``20261007051337_menu_id_dal_database`` non applicata, nessuna riga
-    scritta — si ripiega sul vecchio ``_inserisci_con_id``."""
-    try:
-        return inserisci_con_id_del_database(supabase, tabella, riga)
-    except IdNonAssegnatoDalDatabase as errore:
-        logger.warning(
-            "Lotti->Menu: %s; ripiego su max(id)+1 (migrazione menu_id_dal_database non applicata)",
-            errore,
-        )
-        return _inserisci_con_id(tabella, riga)
-
-
-def _prossimo_id(tabella: str) -> int:
-    ultimo = supabase.table(tabella).select("id").order("id", desc=True).limit(1).execute()
-    massimo = int(ultimo.data[0]["id"]) if ultimo.data else 0
-    return max(massimo + 1, ID_MINIMO_LOTTI)
-
-
-def _e_collisione_di_id(errore: Exception) -> bool:
-    """Vero solo per la violazione della PRIMARY KEY (``<tabella>_pkey``).
-
-    L'altro unico indice unico di ``menu_products`` e' quello su ``lotti_ref``:
-    se a collidere e' quello il problema non e' l'id, ritentare non serve e
-    l'errore deve uscire subito."""
-    testo = str(errore).lower()
-    if "23505" not in testo and "duplicate key" not in testo:
-        return False
-    return "_pkey" in testo or "primary key" in testo
-
-
-def _inserisci_con_id(tabella: str, riga: dict) -> int:
-    """RIPIEGO: inserisce assegnando ``max(id)+1`` e **ritenta sulla collisione**.
-
-    Vale solo finche' la colonna ``id`` non ha l'identity (vedi ``_inserisci``).
-    Senza una sequenza fra la ``select max(id)`` e la ``insert`` un altro thread puo' infilarsi
-    (``_pubblica_sync`` gira in ``asyncio.to_thread`` e il backfill cicla per
-    minuti mentre il form continua a salvare). Senza ritentativo la seconda
-    insert violava la primary key, il ponte restituiva ``errore`` e la ricetta
-    appena salvata non arrivava nel Menu.
-
-    Il ciclo e' limitato a ``TENTATIVI_ID`` giri e ogni giro rilegge il massimo:
-    esaurititi i tentativi l'eccezione risale, quindi un fallimento definitivo
-    resta visibile nell'esito del ponte e nei conteggi del backfill."""
-    ultimo_errore: Optional[Exception] = None
-    for tentativo in range(TENTATIVI_ID):
-        nuovo_id = _prossimo_id(tabella)
-        try:
-            supabase.table(tabella).insert({**riga, "id": nuovo_id}).execute()
-            return nuovo_id
-        except Exception as errore:  # noqa: BLE001 - rilanciata se non e' l'id
-            if not _e_collisione_di_id(errore):
-                raise
-            ultimo_errore = errore
-            logger.warning(
-                "Lotti->Menu: id %s gia' preso su %s, ritento (%s/%s)",
-                nuovo_id, tabella, tentativo + 1, TENTATIVI_ID,
-            )
-    raise RuntimeError(
-        f"Impossibile assegnare un id libero su {tabella} dopo {TENTATIVI_ID} "
-        f"tentativi: {ultimo_errore}"
-    )
+    Unico percorso: ``inserisci_con_id_del_database`` (nessuna lettura di
+    ``max(id)``, nessun id calcolato, nessun ritentativo). Un rifiuto del
+    database risale al chiamante cosi' com'e'."""
+    return inserisci_con_id_del_database(supabase, tabella, riga)
 
 
 def _categoria_lotti_id() -> int:

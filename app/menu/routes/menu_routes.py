@@ -2,13 +2,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 from decimal import Decimal, InvalidOperation
 
-import logging
-
-from app.menu.supabase_client import (
-    IdNonAssegnatoDalDatabase,
-    inserisci_con_id_del_database,
-    supabase,
-)
+from app.menu.supabase_client import inserisci_con_id_del_database, supabase
 from app.menu.models.menu_models import (
     Category, CategoryCreate, CategoryUpdate,
     SubcategoryCreate, SubcategoryUpdate,
@@ -17,26 +11,16 @@ from app.menu.models.menu_models import (
 )
 
 router = APIRouter(prefix="/api/menu", tags=["Menu"])
-logger = logging.getLogger("uvicorn.error")
 
 
-def _crea_riga(tabella: str, row: dict, primo_id: int) -> int:
+def _crea_riga(tabella: str, row: dict) -> int:
     """Crea una riga in ``menu_*`` lasciando l'``id`` al database (CLAUDE.md §5).
 
     Stesso percorso del ponte Lotti (``inserisci_con_id_del_database``): un solo
     modo di assegnare gli id, cosi' admin del Menu e Lotti non si contendono lo
-    stesso numero. Finche' la migrazione ``20261007051337_menu_id_dal_database``
-    non e' applicata il database rifiuta l'insert senza id (nessuna riga scritta)
-    e si ripiega sul vecchio ``max(id)+1``; applicata la migrazione il ripiego
-    non viene piu' raggiunto e va rimosso."""
-    try:
-        return inserisci_con_id_del_database(supabase, tabella, row)
-    except IdNonAssegnatoDalDatabase as errore:
-        logger.warning("Menu admin: %s; ripiego su max(id)+1 (migrazione menu_id_dal_database non applicata)", errore)
-        last = supabase.table(tabella).select("id").order("id", desc=True).limit(1).execute()
-        new_id = (last.data[0]['id'] + 1) if last.data else primo_id
-        supabase.table(tabella).insert({**row, 'id': new_id}).execute()
-        return new_id
+    stesso numero. L'identity e' quella della migrazione
+    ``20261007051337_menu_id_dal_database``; un rifiuto del database risale."""
+    return inserisci_con_id_del_database(supabase, tabella, row)
 
 
 # ================== Mappatura colonne DB (snake_case) <-> API (camelCase) ==================
@@ -319,7 +303,7 @@ from fastapi import Depends
 @router.post("/admin/categories")
 async def create_category(category: CategoryCreate, username: str = Depends(verify_token)):
     """Create a new category"""
-    new_id = _crea_riga("menu_categories", cat_in(category.model_dump()), 1)
+    new_id = _crea_riga("menu_categories", cat_in(category.model_dump()))
     return {"success": True, "id": new_id, "message": "Category created"}
 
 
@@ -365,7 +349,7 @@ async def create_subcategory(subcategory: SubcategoryCreate, username: str = Dep
     if not category.data:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    new_id = _crea_riga("menu_subcategories", subcat_in(subcategory.model_dump()), 10)
+    new_id = _crea_riga("menu_subcategories", subcat_in(subcategory.model_dump()))
     return {"success": True, "id": new_id, "message": "Subcategory created"}
 
 
@@ -411,7 +395,7 @@ async def create_product(product: ProductCreate, username: str = Depends(verify_
     if not subcategory.data:
         raise HTTPException(status_code=404, detail="Subcategory not found")
 
-    new_id = _crea_riga("menu_products", prod_in(product.model_dump()), 100)
+    new_id = _crea_riga("menu_products", prod_in(product.model_dump()))
     return {"success": True, "id": new_id, "message": "Product created"}
 
 
