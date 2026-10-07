@@ -30,6 +30,8 @@ LIMITE_PER_GIRO = 60
 _CAMPI_IMPRONTA = (
     "iva_detraibile", "stato_classificazione", "periodo_iva_attribuito",
     "invoice_date", "data_ricezione", "iva", "iva_utilizzata",
+    # Il dubbio fiscale si legge da questi (iva_fatture.motivo_detraibilita_in_dubbio).
+    "centro_costo_id", "classificazione_confidence", "classificazioni_righe",
 )
 
 

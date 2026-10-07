@@ -28,6 +28,61 @@ def _data_operazione_da_righe(linee: Optional[List[Dict[str, Any]]]) -> Optional
     return None
 
 
+#: Sotto questa confidenza la classificazione per centro di costo e' una
+#: proposta (stesso valore di `handlers/learning`: `richiede_verifica`).
+SOGLIA_CONFIDENZA_CDC = 0.6
+CDC_INDETERMINATO = "99_ALTRI_COSTI"
+
+
+def _detraibilita_cdc(cdc_id: Optional[str]) -> Optional[float]:
+    from app.services.learning_machine_cdc import risolvi_centro_costo
+
+    _, config = risolvi_centro_costo(cdc_id or "")
+    if not config:
+        return None
+    return config.get("detraibilita_iva")
+
+
+def motivo_detraibilita_in_dubbio(inv: Dict[str, Any]) -> Optional[str]:
+    """Perche' la percentuale di IVA detraibile non e' ancora affidabile (o None).
+
+    Il classificatore marca `stato_classificazione = da_verificare` per un
+    dubbio *analitico*: righe attribuite con poca confidenza, imponibile non
+    allocato, fornitore nuovo. Quel dubbio riguarda il centro di costo del
+    bilancio, non l'IVA: una fattura di materie prime resta al 100%
+    detraibile anche se non si sa in quale sottoconto va il costo. Il
+    dubbio diventa *fiscale* solo quando il centro di costo e' indeterminato
+    (99_ALTRI_COSTI: natura ignota, potrebbe essere auto o telefonia), quando
+    la testata applica una detraibilita' ridotta su una classificazione
+    incerta, o quando una riga classificata porta una percentuale diversa
+    dalla testata. In produzione il 07/10/2026 il dubbio analitico teneva
+    fuori dalla liquidazione 201 fatture su 265.
+    """
+    if str(inv.get("stato_classificazione") or "").lower() != "da_verificare":
+        return None
+    cdc = inv.get("centro_costo_id")
+    if not cdc or cdc == CDC_INDETERMINATO:
+        return "centro di costo non determinato: decidere la detraibilita'"
+    perc = _detraibilita_cdc(cdc)
+    if perc is None:
+        return f"centro di costo {cdc} senza regola di detraibilita' IVA"
+    try:
+        confidenza = float(inv.get("classificazione_confidence") or 0)
+    except (TypeError, ValueError):
+        confidenza = 0.0
+    if perc < 1.0 and confidenza < SOGLIA_CONFIDENZA_CDC:
+        return (f"detraibilita' ridotta al {perc:.0%} da una classificazione incerta "
+                f"({cdc}): confermare il centro di costo")
+    for riga in inv.get("classificazioni_righe") or []:
+        if not isinstance(riga, dict) or riga.get("richiede_verifica"):
+            continue
+        perc_riga = _detraibilita_cdc(riga.get("centro_costo_id"))
+        if perc_riga is not None and perc_riga != perc:
+            return (f"riga {riga.get('numero_linea') or '?'} con detraibilita' "
+                    f"{perc_riga:.0%} diversa dalla testata {perc:.0%}")
+    return None
+
+
 def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
     """Ritorna i campi IVA da aggiungere/aggiornare su una fattura di acquisto.
 
@@ -66,6 +121,7 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
     )
     gia_utilizzata = bool(inv.get("iva_utilizzata"))
 
+    motivo_dubbio: Optional[str] = None
     if gia_utilizzata:
         stato = "INSERITA_IN_LIQUIDAZIONE"
         # P1-b (fix 13/07/2026): una fattura la cui IVA è già stata usata in una
@@ -80,9 +136,12 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
     elif periodo_attribuito is None or not detraibilita_valutata:
         stato = "DA_VERIFICARE"
         periodo_attribuito_finale = periodo_attribuito
-    elif str(inv.get("stato_classificazione") or "").lower() == "da_verificare":
+        motivo_dubbio = ("periodo IVA non attribuibile" if periodo_attribuito is None
+                         else "detraibilita' non ancora valutata")
+    elif motivo_detraibilita_in_dubbio(inv):
         stato = "DA_VERIFICARE"
         periodo_attribuito_finale = periodo_attribuito
+        motivo_dubbio = motivo_detraibilita_in_dubbio(inv)
     else:
         # DA_VERIFICARE lo scrive solo questo motore, quando mancavano periodo o
         # detraibilita': ora ci sono, e tenerlo lo bloccava per sempre (il
@@ -112,6 +171,9 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
         "iva_utilizzata": gia_utilizzata,
         "periodo_iva_utilizzato": inv.get("periodo_iva_utilizzato"),
         "stato_detrazione_iva": inv.get("stato_detrazione_iva") if gia_utilizzata else stato,
+        # Perche' la fattura e' DA_VERIFICARE, a parole: la liquidazione lo
+        # mostra accanto all'esclusione. None quando non c'e' nulla da decidere.
+        "motivo_detraibilita_da_verificare": motivo_dubbio if stato == "DA_VERIFICARE" else None,
     }
     # `iva_detraibile` si scrive SOLO se la detraibilita' e' stata davvero
     # valutata. Scrivere `0.00` su una fattura mai classificata la fa sembrare

@@ -146,7 +146,10 @@ def seleziona_fatture_per_liquidazione(
             continue
         stato = f.get("stato_detrazione_iva")
         if stato is not None and stato not in STATI_DETRAZIONE_AMMESSI:
-            _escludi(f"Stato detrazione '{stato}' non ammesso nel calcolo")
+            motivo = f"Stato detrazione '{stato}' non ammesso nel calcolo"
+            if f.get("motivo_detraibilita_da_verificare"):
+                motivo += f": {f['motivo_detraibilita_da_verificare']}"
+            _escludi(motivo)
             continue
         if (abs(_iva_detraibile(f)) if e_nota_credito(f) else _iva_detraibile(f)) <= 0:
             _escludi("IVA detraibile nulla o negativa")
