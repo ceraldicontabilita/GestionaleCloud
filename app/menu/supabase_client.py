@@ -53,12 +53,12 @@ supabase = _LazySupabase()
 # ================== Insert con id assegnato dal database ==================
 # CLAUDE.md §5: gli id nuovi nascono dal proprietario canonico, mai max(id)+1.
 # Le tabelle menu_categories / menu_subcategories / menu_products hanno l'identity
-# dalla migrazione 20261007090000_menu_id_dal_database. Questo e' l'unico
+# dalla migrazione 20261007051337_menu_id_dal_database. Questo e' l'unico
 # percorso con cui ponte Lotti e admin del Menu creano righe in quelle tabelle.
 
 class IdNonAssegnatoDalDatabase(RuntimeError):
     """La colonna ``id`` non ha identity/sequence nel database (migrazione
-    ``20261007090000_menu_id_dal_database`` non ancora applicata): l'insert senza
+    ``20261007051337_menu_id_dal_database`` non ancora applicata): l'insert senza
     id e' stato rifiutato e **nessuna riga e' stata scritta**."""
 
 

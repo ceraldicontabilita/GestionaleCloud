@@ -56,7 +56,7 @@ CATEGORIA_NOME = "Ceraldi Production"
 CATEGORIA_NOME_IT = "Produzione Ceraldi"
 
 # Gli id di menu_* li assegna il database (identity BY DEFAULT, migrazione
-# 20261007090000_menu_id_dal_database): l'insert parte senza id e legge quello
+# 20261007051337_menu_id_dal_database): l'insert parte senza id e legge quello
 # restituito (``_inserisci``). Finche' quella migrazione non e' applicata
 # l'insert senza id viene rifiutato (23502) e il ponte ripiega sul vecchio
 # percorso max(id)+1 con base alta e ritentativo (``_inserisci_con_id``): i
@@ -247,7 +247,7 @@ def _inserisci(tabella: str, riga: dict) -> int:
     Percorso principale: ``inserisci_con_id_del_database`` (nessuna lettura di
     ``max(id)``, nessun ritentativo). Solo se il database rifiuta l'insert
     perche' la colonna ``id`` non ha ancora un default — migrazione
-    ``20261007090000_menu_id_dal_database`` non applicata, nessuna riga
+    ``20261007051337_menu_id_dal_database`` non applicata, nessuna riga
     scritta — si ripiega sul vecchio ``_inserisci_con_id``."""
     try:
         return inserisci_con_id_del_database(supabase, tabella, riga)

@@ -25,7 +25,7 @@ def _crea_riga(tabella: str, row: dict, primo_id: int) -> int:
 
     Stesso percorso del ponte Lotti (``inserisci_con_id_del_database``): un solo
     modo di assegnare gli id, cosi' admin del Menu e Lotti non si contendono lo
-    stesso numero. Finche' la migrazione ``20261007090000_menu_id_dal_database``
+    stesso numero. Finche' la migrazione ``20261007051337_menu_id_dal_database``
     non e' applicata il database rifiuta l'insert senza id (nessuna riga scritta)
     e si ripiega sul vecchio ``max(id)+1``; applicata la migrazione il ripiego
     non viene piu' raggiunto e va rimosso."""

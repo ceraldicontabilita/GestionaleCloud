@@ -107,7 +107,7 @@ class _Query:
     def _id_dal_database(self, righe):
         """Il database assegna l'id a un insert che non lo porta.
 
-        Con ``identity`` (migrazione 20261007090000_menu_id_dal_database
+        Con ``identity`` (migrazione 20261007051337_menu_id_dal_database
         applicata) e' una sequenza per tabella che parte oltre il massimo;
         senza, Postgres rifiuta la riga con la violazione NOT NULL (23502)
         e nulla viene scritto, come sul database vero."""
@@ -157,7 +157,7 @@ class _Storage:
 
 class _FakeSupabase:
     """``identity=False`` simula il database PRIMA della migrazione
-    20261007090000_menu_id_dal_database: l'insert senza id viene rifiutato."""
+    20261007051337_menu_id_dal_database: l'insert senza id viene rifiutato."""
 
     def __init__(self, identity=True):
         self.tabelle = {}
