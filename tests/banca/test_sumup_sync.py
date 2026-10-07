@@ -220,6 +220,13 @@ def _credenziali(monkeypatch):
     monkeypatch.setattr(sumup_sync.settings, "SUMUP_MERCHANT_CODE", MERCHANT,
                         raising=False)
 
+    async def payout_vuoti(dal, al):
+        return []
+
+    # Questi scenari forniscono vendite sintetiche, senza accrediti. Anche
+    # l'endpoint finanziario distinto va isolato; il motore payout resta reale.
+    monkeypatch.setattr(sumup_sync, "scarica_payouts", payout_vuoti)
+
 
 def test_risincronizzare_non_duplica_nulla():
     db = _db()

@@ -23,6 +23,14 @@ class _Coll:
                 return dict(d)
         return None
 
+    def find(self, query, proj=None):
+        async def matching_documents():
+            for doc in self.docs:
+                if all(doc.get(key) == value for key, value in query.items()):
+                    yield {key: doc[key] for key, included in (proj or {}).items()
+                           if included and key in doc} if proj else dict(doc)
+        return matching_documents()
+
 
 class _Db:
     def __init__(self):

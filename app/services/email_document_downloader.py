@@ -643,7 +643,7 @@ class EmailDocumentDownloader:
         if allowed_extensions is None:
             allowed_extensions = ['.pdf', '.xml', '.xlsx', '.xls', '.csv', '.p7m']
         if not self.connection:
-            return []
+            raise RuntimeError("Connessione email non disponibile per il download allegati")
 
         documents = []
 
@@ -651,7 +651,7 @@ class EmailDocumentDownloader:
             status, msg_data = self.connection.fetch(email_id, '(RFC822)')
 
             if status != 'OK':
-                return []
+                raise RuntimeError(f"Download messaggio email non riuscito: {status}")
 
             for response_part in msg_data:
                 if isinstance(response_part, tuple):
@@ -755,6 +755,9 @@ class EmailDocumentDownloader:
 
         except Exception as e:
             logger.error(f"Errore download allegati: {e}")
+            # Un guasto non equivale a un messaggio senza allegati. Non
+            # restituire risultati parziali che farebbero confermare l'email.
+            raise
 
         return documents
 
@@ -902,6 +905,7 @@ async def download_documents_from_email(
 
         # Scarica allegati solo per email nuove
         all_docs_raw = []
+        messages_to_index = []
         for email_id, msg_id in new_email_ids:
             docs = downloader.download_attachments_from_email(
                 email_id,
@@ -912,32 +916,19 @@ async def download_documents_from_email(
                 doc["email_message_id"] = msg_id or doc.get("email_message_id", "")
             all_docs_raw.extend(docs)
 
-            # Aggiungi al dizionario anche se non ha allegati (per non ri-controllare)
+            # Il Message-ID si conferma solo dopo il salvataggio degli allegati:
+            # un errore di persistenza deve permettere di riprovare la scansione.
             if msg_id:
-                subject = ""
-                sender = ""
-                if docs:
-                    subject = docs[0].get("email_subject", "")
-                    sender = docs[0].get("email_from", "")
-                try:
-                    await db["email_message_index"].update_one(
-                        {"message_id": msg_id},
-                        {"$set": {
-                            "message_id": msg_id,
-                            "seen_at": datetime.now(timezone.utc).isoformat(),
-                            "allegati": len(docs),
-                            "subject": subject[:100],
-                            "from": sender[:100]
-                        }},
-                        upsert=True
-                    )
-                    seen_message_ids.add(msg_id)
-                except Exception as e:
-                    logger.debug(f"Errore salvataggio dizionario: {e}")
+                messages_to_index.append({
+                    "message_id": msg_id,
+                    "allegati": len(docs),
+                    "subject": (docs[0].get("email_subject", "") if docs else "")[:100],
+                    "from": (docs[0].get("email_from", "") if docs else "")[:100],
+                })
 
         # Gli allegati senza una classificazione amministrativa certa non
-        # entrano nel gestionale. Il Message-ID e' gia' nel dizionario: il
-        # messaggio non verra' riscaricato a ogni scansione. I nomi FatturaPA
+        # entrano nel gestionale. Il Message-ID verra' comunque confermato:
+        # il messaggio non sara' riscaricato a ogni scansione. I nomi FatturaPA
         # SDI restano ammessi e vengono tipizzati per la pipeline XML.
         documenti_ignorati = sum(
             1 for doc in all_docs_raw if not is_relevant_email_document(doc)
@@ -960,52 +951,24 @@ async def download_documents_from_email(
             cat = doc.get("category", "altro")
             stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
 
-        # Salva nel database evitando duplicati con logica intelligente
+        # Un'unica deduplica per inbox e altri canali, verificata dal contenuto.
+        from app.services.deduplica import esiste_documento_cross_canale
+
         new_documents = []
         duplicates = 0
-        period_duplicates = 0
 
         for doc in all_docs_raw:
-            is_duplicate = False
-
-            # METODO 1: Controllo hash (file identico byte per byte)
-            existing_hash = await db["documents_inbox"].find_one({"file_hash": doc["file_hash"]})
-            if existing_hash:
-                is_duplicate = True
-
-            # METODO 1-bis (P2-1): dedup CROSS-CANALE — stesso md5 già scaricato
-            # nelle collezioni *_email_attachments dall'altra pipeline.
-            if not is_duplicate:
-                from app.services.deduplica import esiste_documento_cross_canale
-                altrove = await esiste_documento_cross_canale(
-                    db, doc["file_hash"], escludi_collezione="documents_inbox",
-                    contenuto=base64.b64decode(doc.get("pdf_data") or ""),
-                )
-                if altrove:
-                    is_duplicate = True
-                    logger.info(f"[dedup cross-canale] {doc['filename']} già "
-                                f"presente in {altrove['collezione']} — salto")
-
-            # METODO 2: Controllo periodo (stesso documento per stesso periodo)
-            if not is_duplicate and doc.get("identificatore_periodo"):
-                existing_period = await db["documents_inbox"].find_one({
-                    "category": doc["category"],
-                    "identificatore_periodo": doc["identificatore_periodo"],
-                    "$or": [
-                        {"filename": doc["filename"]},
-                        {"filename": {"$regex": doc["filename"].replace(".pdf", "").replace(".PDF", ""), "$options": "i"}}
-                    ]
-                })
-                if existing_period:
-                    size_diff = abs(existing_period.get("size_bytes", 0) - doc["size_bytes"])
-                    size_ratio = size_diff / max(existing_period.get("size_bytes", 1), doc["size_bytes"])
-                    if size_ratio < 0.1:
-                        is_duplicate = True
-                        period_duplicates += 1
-
-            if is_duplicate:
+            content = base64.b64decode(doc.get("pdf_data") or "")
+            existing = await esiste_documento_cross_canale(
+                db, doc["file_hash"], contenuto=content,
+            )
+            if existing:
+                logger.info(f"[dedup cross-canale] {doc['filename']} già "
+                            f"presente in {existing['collezione']} — salto")
                 duplicates += 1
                 continue
+
+            doc["content_sha256"] = hashlib.sha256(content).hexdigest()
 
             from app.constants.tipi_documento import set_tassonomia_documento
             doc_to_insert = set_tassonomia_documento(
@@ -1037,9 +1000,25 @@ async def download_documents_from_email(
 
             new_documents.append(doc)
 
+        # Anche email senza allegati rilevanti sono confermate. In caso di
+        # errore sopra nessun Message-ID del batch impedisce il nuovo tentativo;
+        # gli allegati gia' salvati vengono riconosciuti dalla deduplica.
+        for message in messages_to_index:
+            try:
+                await db["email_message_index"].update_one(
+                    {"message_id": message["message_id"]},
+                    {"$set": {
+                        **message,
+                        "seen_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True,
+                )
+            except Exception as e:
+                logger.debug(f"Errore salvataggio dizionario: {e}")
+
         stats["new_documents"] = len(new_documents)
         stats["duplicates_skipped"] = duplicates
-        stats["period_duplicates"] = period_duplicates
+        stats["period_duplicates"] = 0
         stats["search_keywords"] = search_keywords
 
         # === PARSING AUTOMATICO CON AI ===

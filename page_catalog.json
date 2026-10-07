@@ -2,9 +2,9 @@
   "schema_version": 3,
   "application": "GestionaleCloud - Ceraldi ERP",
   "production_url": "https://gestionalecloud.onrender.com",
-  "updated_at": "2026-08-20",
-  "source_revision": "40d3f109beacd897fc0d80a3a0eab5fc51612f2c",
-  "description": "Catalogo canonico delle 74 schermate. HTTP 200 non prova il funzionamento: componenti, route, dati e relazioni devono essere collaudati.",
+  "updated_at": "2026-10-07",
+  "source_revision": "a821ffb7dd433b29289a415a2ee8b7c2169499f1",
+  "description": "Catalogo canonico delle schermate raggiungibili. HTTP 200 non prova il funzionamento: componenti, route, dati e relazioni devono essere collaudati.",
   "pages": [
     {
       "id": 1,
@@ -390,15 +390,15 @@
     {
       "id": 30,
       "label": "Ritenute",
-      "path": "/ritenute",
+      "path": "/situazione-fiscale/ritenute",
       "component": "frontend/src/pages/Ritenute.jsx",
-      "entry": "frontend/src/main.jsx",
-      "access": "authenticated",
+      "entry": "frontend/src/pages/SituazioneFiscale.jsx",
+      "access": "admin",
       "audit_status": "unverified",
       "module": "personale",
       "documentation_file": "memoria/pagine/ritenute.json",
       "component_status": "reachable_from_router",
-      "route_kind": "page"
+      "route_kind": "tab"
     },
     {
       "id": 31,
@@ -822,7 +822,7 @@
       "path": "/situazione-fiscale",
       "component": "frontend/src/pages/SituazioneFiscale.jsx",
       "entry": "frontend/src/main.jsx",
-      "access": "authenticated",
+      "access": "admin",
       "audit_status": "in_review",
       "allowed_api_statuses": [
         503
@@ -861,28 +861,28 @@
     {
       "id": 67,
       "label": "Piano tributi",
-      "path": "/piano-tributi",
+      "path": "/situazione-fiscale/piano",
       "component": "frontend/src/pages/PianoTributi.jsx",
-      "entry": "frontend/src/main.jsx",
+      "entry": "frontend/src/pages/SituazioneFiscale.jsx",
       "access": "admin",
       "audit_status": "unverified",
       "module": "contabilita",
       "documentation_file": "memoria/pagine/piano-tributi.json",
       "component_status": "reachable_from_router",
-      "route_kind": "page"
+      "route_kind": "tab"
     },
     {
       "id": 68,
       "label": "Tributi",
-      "path": "/tributi",
+      "path": "/situazione-fiscale/tributi-per-codice",
       "component": "frontend/src/pages/Tributi.jsx",
-      "entry": "frontend/src/main.jsx",
+      "entry": "frontend/src/pages/SituazioneFiscale.jsx",
       "access": "admin",
       "audit_status": "unverified",
       "module": "contabilita",
       "documentation_file": "memoria/pagine/tributi.json",
       "component_status": "reachable_from_router",
-      "route_kind": "page"
+      "route_kind": "tab"
     },
     {
       "id": 69,
@@ -973,6 +973,30 @@
       "module": "protocollo",
       "component_status": "reachable_from_router",
       "route_kind": "detail"
+    },
+    {
+      "id": 75,
+      "label": "Righe acquisti",
+      "path": "/fatture/righe",
+      "component": "frontend/src/pages/RigheAcquisti.jsx",
+      "entry": "frontend/src/pages/hub/FattureHub.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "fatture",
+      "component_status": "reachable_from_router",
+      "route_kind": "tab"
+    },
+    {
+      "id": 76,
+      "label": "A-Cube fatture",
+      "path": "/integrazioni/acube",
+      "component": "frontend/src/pages/IntegrazioneACube.jsx",
+      "entry": "frontend/src/pages/hub/IntegrazioniHub.jsx",
+      "access": "authenticated",
+      "audit_status": "unverified",
+      "module": "integrazioni",
+      "component_status": "reachable_from_router",
+      "route_kind": "tab"
     }
   ],
   "redirects": [

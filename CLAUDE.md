@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-10-06
+reviewed_at: 2026-10-07
 storage_architecture: supabase
 consolidated_source: single-claude-md
 -->
@@ -1604,6 +1604,8 @@ La presenza in `ELABORATE` non dimostra che il documento sia stato acquisito cor
 
 Serve il registro applicativo.
 
+Il Message-ID dell'email si conferma solo dopo il salvataggio degli allegati: un guasto deve consentire un nuovo tentativo senza duplicare quelli già acquisiti.
+
 ## APERTO
 
 Esistono ancora classificazioni che consultano nome file o percorso prima del contenuto.
@@ -1636,6 +1638,8 @@ Esempi:
 - verbale: numero/IUV/targa.
 
 I possibili duplicati non vengono eliminati automaticamente.
+
+L'acquisizione email usa `app/services/deduplica.py::esiste_documento_cross_canale`, come gli altri ingressi: nessuna deduplica locale per nome, periodo o dimensione.
 
 ---
 
@@ -2044,6 +2048,8 @@ Una fattura bancaria è riconciliata solo se esiste una prova coerente.
 Importo al centesimo.
 
 Identità coerente.
+
+Un incasso o rimborso non salda un debito fornitore. La quota ammessa usa il netto da pagare della fattura; la ritenuta resta dovuta all'Erario. Un beneficiario o IBAN incompatibile impedisce la riconciliazione automatica anche quando il numero fattura coincide.
 
 Quando ambiguo mostrare candidati.
 
