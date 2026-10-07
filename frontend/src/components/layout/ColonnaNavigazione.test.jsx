@@ -24,19 +24,28 @@ describe('ColonnaNavigazione', () => {
     expect(container.querySelector('select')).toBeNull();
   });
 
-  it('accende una sola voce, quella della pagina aperta', () => {
+  it('accende una sola voce: il hub della pagina aperta', () => {
     ruolo = { isAdmin: true };
     const { container } = apri('/contabilita/controllo');
     const attive = container.querySelectorAll('[aria-current="page"]');
     expect(attive).toHaveLength(1);
-    expect(attive[0].textContent).toBe('Controllo mensile');
+    expect(attive[0].textContent).toBe('Controlli');
+    // Le pagine del hub non stanno in colonna: stanno nella riga di schede.
+    expect(screen.queryByText('Controllo mensile')).toBeNull();
+  });
+
+  it('mostra solo i hub: poche voci per gruppo', () => {
+    ruolo = { isAdmin: true };
+    const { container } = apri('/');
+    expect(container.querySelectorAll('.colonna-nav-voce').length).toBeLessThanOrEqual(20);
+    expect(screen.queryByText('Libro giornale')).toBeNull();
   });
 
   it('non mostra le voci riservate a chi non è amministratore', () => {
     ruolo = { isAdmin: false };
     apri('/');
-    expect(screen.queryByText('Utenti')).toBeNull();
-    expect(screen.queryByText('Situazione fiscale')).toBeNull();
+    expect(screen.queryByText('Impostazioni')).toBeNull();
+    expect(screen.queryByText('HR')).toBeNull();
     expect(screen.getByText('Fatture')).toBeTruthy();
   });
 });

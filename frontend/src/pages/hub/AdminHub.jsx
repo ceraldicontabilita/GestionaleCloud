@@ -1,7 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { Settings, ShieldCheck, Workflow } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { HubTabs, PageLoader } from '../../components/ds';
+import { PageLoader } from '../../components/ds';
 
 const AdminContent = lazy(() => import('../Admin.jsx'));
 const ElaborazioniContent = lazy(() => import('./AdminElaborazioni.jsx'));
@@ -34,21 +33,10 @@ export default function AdminHub() {
     }
   }, [path, navigate]);
 
-  const tabs = [
-    { id: 'admin', label: 'Sistema', Icon: Settings, to: '/admin' },
-    { id: 'mfa', label: 'Sicurezza MFA', Icon: ShieldCheck, to: '/admin/mfa' },
-    { id: 'elaborazioni', label: 'Elaborazioni', Icon: Workflow, to: '/admin/elaborazioni' },
-  ];
-  const activeTab = isElaborazioni ? 'elaborazioni' : isMfa ? 'mfa' : 'admin';
+  // Le schede (Sistema, Utenti, MFA, Elaborazioni, ...) le disegna SchedeHub dalla mappa unica.
 
   return (
     <div style={{ width: '100%' }}>
-      <HubTabs
-        testIdPrefix="tab-admin"
-        activeId={activeTab}
-        onSelect={tab => navigate(tab.to)}
-        tabs={tabs}
-      />
       <div style={{ display: isAdmin ? 'block' : 'none' }}>
         <Suspense fallback={<PageLoader />}>{visitedAdmin && <AdminContent />}</Suspense>
       </div>

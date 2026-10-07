@@ -6,18 +6,18 @@ import { gruppiVisibili, voceDi } from '../../navigation.config';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 
 /**
- * Colonna di navigazione a sinistra, sempre visibile su desktop: tutte le
- * sezioni in vista, raggruppate per momento del lavoro, senza menù a tendina.
- * Se non ci stanno, la colonna scorre per conto suo.
+ * Colonna di navigazione a sinistra, sempre visibile su desktop: solo i HUB,
+ * raggruppati per momento del lavoro, senza menù a tendina. Le pagine di ogni
+ * hub stanno nella riga di schede in cima alla pagina (SchedeHub), non qui.
  *
- * La voce attiva e' una sola, quella col prefisso d'indirizzo piu' lungo
- * (`voceDi`): su /riconciliazione/f24 e' accesa F24, non Riconciliazione.
- * Lo stato attivo e' `aria-current="page"`, e la grafica lo legge da li'.
+ * La voce attiva e' una sola: il hub della pagina aperta (`voceDi(...).hub`).
+ * Su /riconciliazione/f24 e' acceso «Fisco e scadenze», perche' F24 e' una sua
+ * scheda. Lo stato attivo e' `aria-current="page"`, e la grafica lo legge da li'.
  */
 const ColonnaNavigazione = memo(function ColonnaNavigazione() {
   const { pathname } = useLocation();
   const { isAdmin } = useAuth();
-  const attiva = voceDi(pathname)?.voce;
+  const attiva = voceDi(pathname)?.hub;
   const colonna = useRef(null);
 
   // La voce accesa resta in vista anche quando sta in fondo alla colonna.

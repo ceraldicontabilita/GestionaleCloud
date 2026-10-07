@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopNav from "./components/layout/TopNav";
 import ColonnaNavigazione from "./components/layout/ColonnaNavigazione";
+import SchedeHub from "./components/layout/SchedeHub";
 import { UploadProvider } from "./contexts/UploadContext";
 import { UploadStatusBar } from "./components/UploadStatusBar";
 import ChatIntelligente from "./components/ChatIntelligente";
@@ -21,7 +22,7 @@ export default function App() {
   // Voci solo-admin (Utenti, Admin) nascoste agli altri ruoli anche nel menù mobile.
   const gruppi = gruppiVisibili(isAdmin);
   const location = useLocation();
-  const attiva = voceDi(location.pathname)?.voce;
+  const attiva = voceDi(location.pathname)?.hub;
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { alertCommercialista: statoCommercialista } = useGuscio();
   const [, setChiusure] = useState(0);
@@ -204,6 +205,9 @@ export default function App() {
               </button>
             </div>
           )}
+
+          {/* Le schede del hub in cui ci si trova: una sola riga, letta dalla mappa unica */}
+          <SchedeHub />
 
           <ErrorBoundary message="Errore nel caricamento della pagina. Prova a ricaricare.">
             <Outlet />
