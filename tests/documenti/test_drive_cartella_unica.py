@@ -438,6 +438,24 @@ def test_gli_estratti_conto_passano_davanti_a_buste_xml_e_pdf():
     ]
 
 
+def test_fra_gli_xml_vince_la_data_del_file_non_quella_di_caricamento():
+    """07/10/2026: il vecchio archivio caricato in blocco il 29/09 aveva
+    createdTime piu' recente delle fatture 2026 caricate il 19-26/09, e il
+    giro scartava per anno centinaia di XML del 2020 prima di toccare il 2026."""
+    coda = [
+        {"name": "IT_2020_a.xml", "createdTime": "2026-09-29T05:47:10Z", "modifiedTime": "2020-02-18T12:16:50Z"},
+        {"name": "IT_2026_b.xml", "createdTime": "2026-09-19T07:20:15Z", "modifiedTime": "2026-09-19T07:13:23Z"},
+        {"name": "IT_2026_c.xml", "createdTime": "2026-09-26T16:22:52Z", "modifiedTime": "2026-09-26T16:49:49Z"},
+        {"name": "IT_senza_data.xml", "createdTime": "2026-10-01T00:00:00Z"},
+    ]
+    assert [f["name"] for f in cu.ordina_coda(coda)] == [
+        "IT_senza_data.xml",  # senza modifiedTime vale il createdTime
+        "IT_2026_c.xml",
+        "IT_2026_b.xml",
+        "IT_2020_a.xml",
+    ]
+
+
 def test_quietanza_mutuo_riconosciuta_prima_della_guardia_busta_paga():
     """La quietanza di rata ha la colonna «totale netto» come una busta paga:
     il nome della banca («Mutui - …») e l'intestazione «MUTUI: QUIETANZA»
