@@ -11,3 +11,4 @@ export { ListaAdattiva } from './ListaAdattiva';
 export { Card } from './Card';
 export { PageHeader } from './PageHeader';
 export { Table, TableWrap, Th, Td, RowActions, RowActionButton } from './Table';
+export { MenuOperazioni } from './MenuOperazioni';

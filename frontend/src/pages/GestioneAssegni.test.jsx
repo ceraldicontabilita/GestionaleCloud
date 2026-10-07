@@ -353,7 +353,7 @@ describe('Stati e resa responsive della pagina Assegni', () => {
       return rispostaPagina([])(url);
     });
     renderPagina();
-    fireEvent.click(await screen.findByTestId('altro-menu-btn'));
+    fireEvent.click(await screen.findByTestId('menu-operazioni-btn'));
     fireEvent.click(screen.getByTestId('ambigui-toggle'));
     expect(await screen.findByText(/rata 3\/4/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
@@ -376,7 +376,9 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     });
 
     renderPagina();
-    fireEvent.click(await screen.findByTestId('riprocessa-collegamenti-btn'));
+    // Le operazioni automatiche stanno nel menu' unico «Operazioni».
+    fireEvent.click(await screen.findByTestId('menu-operazioni-btn'));
+    fireEvent.click(screen.getByTestId('riprocessa-collegamenti-btn'));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/api/assegni/riprocessa-collegamenti?anno=2026'

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import jsPDF from 'jspdf';
@@ -9,14 +8,14 @@ import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
-import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva, Tabs } from '../components/ds';
+import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva, Tabs, MenuOperazioni } from '../components/ds';
 import { ePagata } from '../utils/statoFattura';
 import CarnetAssegni from '../components/assegni/CarnetAssegni';
 import CameraCattura from '../components/CameraCattura';
 import { VisoreOriginale } from '../components/ApriOriginale';
 import { euroOppure } from '../lib/vista';
 import { useScegliOpzione } from '../components/ScegliOpzione';
-import { BookOpen, CircleHelp, Bot, Brain, Building2, Camera, ChevronDown, ChevronUp, Circle, ChartColumn, Check, ClipboardList, Eye, FileText, Hourglass, Image as ImageIcon, Info, Landmark, Pencil, Printer, RefreshCw, Search, Settings, Trash2, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
+import { BookOpen, CircleHelp, Bot, Brain, Building2, Camera, ChevronDown, ChevronUp, Circle, ChartColumn, Check, ClipboardList, Eye, FileText, Hourglass, Image as ImageIcon, Info, Landmark, Pencil, Printer, RefreshCw, Search, Trash2, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
 
 const ICO = { verticalAlign: '-2px', flexShrink: 0 };
 
@@ -194,20 +193,6 @@ export default function GestioneAssegni() {
   const [fotoAperta, setFotoAperta] = useState(null);
   const [limiteAmbigui, setLimiteAmbigui] = useState(200);
   const [limiteFatture, setLimiteFatture] = useState(200);
-
-  // Menu " Altro" (azioni secondarie consolidate)
-  const [showAltroMenu, setShowAltroMenu] = useState(false);
-  const altroMenuRef = useRef(null);
-  useEffect(() => {
-    if (!showAltroMenu) return;
-    const handle = e => {
-      if (altroMenuRef.current && !altroMenuRef.current.contains(e.target)) {
-        setShowAltroMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showAltroMenu]);
 
   // Modale visualizzazione fattura in-page ({id, numero}) - niente nuove schede
   const [fatturaView, setFatturaView] = useState(null);
@@ -1403,19 +1388,6 @@ export default function GestioneAssegni() {
     setSelectedAssegni(new Set());
   };
 
-  // Stile voce del menu " Altro" (pattern dropdown TopNav)
-  const menuItemStyle = {
-    justifyContent: 'flex-start',
-    gap: 8,
-    width: '100%',
-    padding: '11px 16px',
-    minHeight: 44,
-    textAlign: 'left',
-    fontSize: 13,
-    fontWeight: 500,
-    color: COLORS.gray[700],
-  };
-
   return (
     <div
       style={{
@@ -1425,7 +1397,7 @@ export default function GestioneAssegni() {
         overflowX: 'hidden',
       }}
     >
-      {/* Action Bar consolidata: 3 azioni principali + menu " Altro" */}
+      {/* Barra: azione principale, filtri e il menu' unico delle operazioni */}
       <div
         style={{
           display: 'flex',
@@ -1444,19 +1416,6 @@ export default function GestioneAssegni() {
           + Genera Assegni
         </Button>
 
-        {/* Auto-Match rigoroso a 4 livelli (PROMPT_MASTER) */}
-        <Button
-          variant="success"
-          size="lg"
-          onClick={handleAutoAssocia}
-          disabled={autoAssociating}
-          data-testid="riprocessa-collegamenti-btn"
-          title="Rilegge l'estratto conto e collega automaticamente solo fatture univoche al centesimo"
-          style={{ boxShadow: SHADOWS.sm }}
-        >
-          {autoAssociating ? 'Riprocessamento…' : 'Riprocessa collegamenti'}
-        </Button>
-
         <Button
           variant={showFilters ? 'primary' : 'secondary'}
           size="lg"
@@ -1472,124 +1431,39 @@ export default function GestioneAssegni() {
             '●'}
         </Button>
 
-        {/* Menu " Altro": tutte le azioni secondarie consolidate qui */}
-        <div ref={altroMenuRef} style={{ position: 'relative' }}>
-          <Button
-            variant={showAltroMenu ? 'primary' : 'secondary'}
-            size="lg"
-            onClick={() => setShowAltroMenu(v => !v)}
-            aria-expanded={showAltroMenu}
-            data-testid="altro-menu-btn"
-          >
-            <Settings size={14} aria-hidden="true" style={ICO} /> Altro {showAltroMenu ? <ChevronUp size={14} aria-hidden="true" style={ICO} /> : <ChevronDown size={14} aria-hidden="true" style={ICO} />}
-          </Button>
-          {showAltroMenu && (
-            <div
-              data-testid="altro-menu"
-              style={{
-                position: 'absolute',
-                top: 'calc(100% + 6px)',
-                left: 0,
-                background: COLORS.card,
-                borderRadius: BORDER_RADIUS.lg,
-                boxShadow: SHADOWS.xl,
-                border: `1px solid ${COLORS.border}`,
-                minWidth: 240,
-                padding: '6px 0',
-                zIndex: 1500,
-                maxHeight: '70vh',
-                overflowY: 'auto',
-              }}
-            >
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  handleAutoAssocia();
-                }}
-                disabled={autoAssociating}
-                data-testid="auto-associa-btn"
-                style={menuItemStyle}
-              >
-                <RefreshCw size={14} aria-hidden="true" style={ICO} /> {autoAssociating ? 'Riprocessamento…' : 'Riprocessa storico'}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  handleAutoMatch();
-                }}
-                disabled={autoAssociating}
-                data-testid="auto-match-preview-btn"
-                title="Anteprima: mostra cosa collegherebbe senza scrivere sul DB"
-                style={menuItemStyle}
-              >
-                <Eye size={14} aria-hidden="true" style={ICO} /> Anteprima auto-match
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  generateSelectedPDF();
-                }}
-                disabled={selectedAssegni.size === 0}
-                data-testid="stampa-selezionati-btn"
-                style={{
-                  ...menuItemStyle,
-                  color: selectedAssegni.size === 0 ? COLORS.textSubtle : COLORS.gray[700],
-                }}
-              >
-                <Printer size={14} aria-hidden="true" style={ICO} /> Stampa Selezionati
-                {selectedAssegni.size > 0 ? ` (${selectedAssegni.size})` : ''}
-              </Button>
-              <div style={{ height: 1, background: COLORS.border, margin: '6px 0' }} />
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  handleLearn();
-                }}
-                disabled={learningLoading}
-                data-testid="learn-btn"
-                title="Apprende dai dati esistenti per migliorare le associazioni future"
-                style={menuItemStyle}
-              >
-                <Brain size={14} aria-hidden="true" style={ICO} /> {learningLoading ? 'Learning...' : 'Learn'}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  toggleAmbiguiSection();
-                }}
-                data-testid="ambigui-toggle"
-                style={menuItemStyle}
-              >
-                {ambiguiOpen ? 'Chiudi proposte fatture' : 'Verifica proposte fatture'}
-              </Button>
-              <Link
-                to="/learning-machine?tab=assegni"
-                onClick={() => setShowAltroMenu(false)}
-                title="Dashboard Learning Machine completa"
-                style={{ ...menuItemStyle, display: 'flex', alignItems: 'center', textDecoration: 'none' }}
-              >
-                <ChartColumn size={14} aria-hidden="true" style={ICO} /> Dashboard Learning
-              </Link>
-              <div style={{ height: 1, background: COLORS.border, margin: '6px 0' }} />
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  handleClearEmpty();
-                }}
-                data-testid="svuota-btn"
-                style={{ ...menuItemStyle, color: COLORS.danger }}
-              >
-                <Trash2 size={14} aria-hidden="true" style={ICO} /> Svuota (assegni vuoti)
-              </Button>
-            </div>
-          )}
-        </div>
+        {/* Un solo menu' per le operazioni automatiche (titolare, 07/10/2026):
+            in barra restano "Genera" e "Filtri". */}
+        <MenuOperazioni
+          voci={[
+            {
+              id: 'riprocessa-collegamenti-btn', label: autoAssociating ? 'Riprocessamento…' : 'Riprocessa collegamenti',
+              Icon: RefreshCw, onClick: handleAutoAssocia, disabled: autoAssociating,
+              title: "Rilegge l'estratto conto e collega automaticamente solo fatture univoche al centesimo",
+            },
+            {
+              id: 'auto-match-preview-btn', label: 'Anteprima auto-match', Icon: Eye, onClick: handleAutoMatch,
+              disabled: autoAssociating, title: 'Anteprima: mostra cosa collegherebbe senza scrivere sul DB',
+            },
+            {
+              id: 'ambigui-toggle', label: ambiguiOpen ? 'Chiudi proposte fatture' : 'Verifica proposte fatture',
+              Icon: ClipboardList, onClick: toggleAmbiguiSection,
+            },
+            { separatore: true },
+            {
+              id: 'learn-btn', label: learningLoading ? 'Learning...' : 'Learn', Icon: Brain, onClick: handleLearn,
+              disabled: learningLoading, title: 'Apprende dai dati esistenti per migliorare le associazioni future',
+            },
+            { id: 'dashboard-learning-link', label: 'Dashboard Learning', Icon: ChartColumn, to: '/learning-machine?tab=assegni',
+              title: 'Dashboard Learning Machine completa' },
+            { separatore: true },
+            {
+              id: 'stampa-selezionati-btn',
+              label: `Stampa selezionati${selectedAssegni.size > 0 ? ` (${selectedAssegni.size})` : ''}`,
+              Icon: Printer, onClick: generateSelectedPDF, disabled: selectedAssegni.size === 0,
+            },
+            { id: 'svuota-btn', label: 'Svuota (assegni vuoti)', Icon: Trash2, onClick: handleClearEmpty, pericolosa: true },
+          ]}
+        />
 
         {/* Anno: segue sempre il selettore globale in alto (barra di
             navigazione) — prima questa pagina aveva un secondo selettore
