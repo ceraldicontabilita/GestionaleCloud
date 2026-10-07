@@ -251,6 +251,24 @@ def test_cestino_vietato_la_copia_va_in_doppioni_non_in_errori(ambiente):
     assert run(cu.originale(db, drive_file_id="copia")) is None
 
 
+def test_file_riportato_a_mano_in_da_elaborare_non_e_copia_di_se_stesso(ambiente):
+    """Il titolare sposta a mano un XML da ELABORATE a DA ELABORARE per rileggerlo
+    (archivio azzerato): la cache dell'archivio lo elenca ancora, ma il giro non
+    deve cestinarlo come copia di se stesso. Si rilegge e torna in ELABORATE."""
+    drive, smistati, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    drive.aggiungi("f1", "fattura.xml", b"<xml>1</xml>", "inbox")
+    run(cu.giro(db))                       # elaborato: ora sta in ELABORATE e nella cache md5
+    assert drive.file["f1"]["parent"] == "elaborate" and len(smistati) == 1
+    drive.file["f1"]["parent"] = "inbox"   # spostato a mano dal titolare
+    esito = run(cu.giro(db))
+    assert esito["doppioni_cestinati"] == 0 and esito["elaborati"] == 1
+    assert not drive.cestinati and drive.file["f1"]["parent"] == "elaborate"
+    assert len(smistati) == 2
+    riga = run(db[cu.REGISTRO].find_one({"id": "f1"}))
+    assert riga["cartella"] == cu.ARCHIVIO and riga["esito"] == "elaborato"
+
+
 def test_originale_sparito_da_drive_diventa_rimosso(ambiente):
     drive, _, _ = ambiente
     db = AsyncMongoMockClient()["t"]
