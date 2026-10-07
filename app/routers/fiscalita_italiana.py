@@ -946,6 +946,11 @@ async def completa_scadenza(
     esito = await conferma_scadenza(db, anno=anno, scadenza_id=scadenza_id, note=note, template=template)
     if esito.get("esito") == "gia_completata":
         return {"success": True, "message": "Scadenza gia' completata", "idempotente": True}
+    if esito.get("esito") == "futura":
+        raise HTTPException(
+            status_code=409,
+            detail=f"La scadenza del {esito.get('data')} non e' ancora arrivata: non puo' risultare adempiuta",
+        )
     if not esito.get("success"):
         raise HTTPException(status_code=404, detail="Scadenza non trovata")
     return {

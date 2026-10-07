@@ -38,18 +38,26 @@ def _oggi() -> date:
 
 
 async def conferma_scadenza(db, *, anno: int, scadenza_id: str, note: Optional[str], template: Optional[Dict[str, Any]],
-                            fonte: str = FONTE_PAGINA, utente: str = "utente_autenticato") -> Dict[str, Any]:
+                            fonte: str = FONTE_PAGINA, utente: str = "utente_autenticato",
+                            oggi: Optional[date] = None) -> Dict[str, Any]:
     """Segna una scadenza come adempiuta per dichiarazione del titolare.
 
     Idempotente: una scadenza gia' completata (anche da quietanza) non si
     tocca. ``template`` e' la riga generata dal calendario, usata solo
-    all'inserimento; senza template la riga deve gia' esistere.
+    all'inserimento; senza template la riga deve gia' esistere. Una scadenza
+    con data oltre ``oggi`` non si conferma (``esito = futura``).
     """
     esistente = await db["calendario_fiscale"].find_one({"anno": anno, "id": scadenza_id}, {"_id": 0})
     if not template and not esistente:
         return {"success": False, "esito": "non_trovata"}
     if esistente and esistente.get("completato"):
         return {"success": True, "esito": "gia_completata", "completato_da": esistente.get("completato_da")}
+    # Una scadenza futura non puo' risultare adempiuta: il 06/10/2026 ventitre'
+    # scadenze da ottobre 2026 ad aprile 2027 (770, Redditi, IVA, INPS, ritenute,
+    # acconti) erano state confermate e lo scadenzario non le mostrava piu'.
+    data_scadenza = str((esistente or template or {}).get("data") or "")
+    if data_scadenza and data_scadenza > (oggi or _oggi()).isoformat():
+        return {"success": False, "esito": "futura", "data": data_scadenza}
 
     now = datetime.now(timezone.utc).isoformat()
     result = await db["calendario_fiscale"].update_one(

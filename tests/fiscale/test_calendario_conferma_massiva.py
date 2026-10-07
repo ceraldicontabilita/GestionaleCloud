@@ -75,3 +75,20 @@ def test_la_pagina_e_la_massiva_scrivono_la_stessa_riga():
     assert asyncio.run(cc.conferma_scadenza(db, anno=2024, scadenza_id="inesistente", note=None, template=None))["esito"] == "non_trovata"
     riga = asyncio.run(db["calendario_fiscale"].find_one({"id": template["id"]}, {"_id": 0}))
     assert riga["completato"] and riga["completato_da"] == "conferma_manuale" and riga["note_completamento"] == "a mano"
+
+
+def test_una_scadenza_futura_non_si_conferma():
+    """Il 06/10/2026 il 770/2026 (scadenza 02/11) risultava adempiuto e lo
+    scadenzario non lo mostrava piu': una data oltre oggi non si conferma."""
+    db = _db("futura")
+    futura = next(s for s in fi.genera_scadenze_anno(2026) if s["tipo"] == "770")
+    assert futura["data"] > OGGI.isoformat()
+    esito = asyncio.run(cc.conferma_scadenza(db, anno=2026, scadenza_id=futura["id"], note=None,
+                                             template=futura, oggi=OGGI))
+    assert esito == {"success": False, "esito": "futura", "data": futura["data"]}
+    assert asyncio.run(db["calendario_fiscale"].count_documents({})) == 0
+    assert asyncio.run(db["audit_log"].count_documents({})) == 0
+    # la stessa riga, quando la data e' arrivata, si conferma
+    dopo = asyncio.run(cc.conferma_scadenza(db, anno=2026, scadenza_id=futura["id"], note=None,
+                                            template=futura, oggi=date(2026, 11, 2)))
+    assert dopo["esito"] == "confermata"
