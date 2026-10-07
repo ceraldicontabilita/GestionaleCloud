@@ -3417,11 +3417,15 @@ Non creare un secondo giornale HR.
 
 Due copie dello stesso modulo non si mantengono manualmente.
 
+## PRODUZIONE
+
+Il router TFR è uno solo: `app/hr/routers/tfr.py` (montato su `/hr/api/tfr`). `app/routers/tfr.py` espone soltanto due letture del fondo sull'archivio del gestionale per Gestione Cespiti e re-esporta il resto; non scrive.
+
 ## APERTO
 
-Esistono ancora duplicazioni sotto `app/hr/`.
+Fork di logica residui fra `app/` e `app/hr/` (stesso sottopercorso, nessun re-export; `tests/runtime/test_fork_app_hr.py` ne impedisce la crescita): `routers/employees/dipendenti.py`, `routers/pin_login.py`, `utils/dependencies.py`. Il fondo TFR letto dal gestionale (`gestionale.dipendenti.tfr_maturato`) non deriva ancora dall'anagrafica canonica HR.
 
-Ogni modifica deve controllare il gemello finché non viene consolidato.
+Ogni modifica a quei tre file deve controllare il gemello finché non viene consolidato.
 
 ---
 

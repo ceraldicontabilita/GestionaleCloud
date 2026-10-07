@@ -1,5 +1,5 @@
-"""Il router TFR del gestionale (``app/routers/tfr.py``) scrive gli stessi conti CEE
-ufficiali del gemello HR, col motore unico ``app/services/tfr_acconti.py``:
+"""Il router TFR (``app/hr/routers/tfr.py``, l'unico: il lato ERP e' una proiezione
+in sola lettura) scrive i conti CEE ufficiali col motore unico ``app/services/tfr_acconti.py``:
 
 * acconto TFR: DARE 29.01.01 Fondo TFR / AVERE 39.07.05 Personale c/liquidazione
   (prima 02.04.01 / 01.01.02, conti operativi fuori dal piano ufficiale);
@@ -9,7 +9,7 @@ ufficiali del gemello HR, col motore unico ``app/services/tfr_acconti.py``:
 """
 import pytest
 
-from app.routers import tfr as mod
+from app.hr.routers import tfr as mod
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.piano_conti_ufficiale import CONTI_UFFICIALI
 from tests.hr.scenari_base import run
@@ -17,10 +17,15 @@ from tests.hr.scenari_base import run
 
 @pytest.fixture
 def db(monkeypatch):
-    from app.database import Database
+    from app.database import Database as DatabaseGest
+    from app.hr.database import Database as DatabaseHR
 
+    # Anagrafica HR e giornale del gestionale sono due archivi: qui lo stesso
+    # archivio in memoria risponde per entrambi, cosi' i controlli leggono
+    # fondo e scritture da un posto solo.
     archivio = ClientArchivioMemoria()["gest_tfr"]
-    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: archivio))
+    monkeypatch.setattr(DatabaseHR, "get_db", classmethod(lambda cls: archivio))
+    monkeypatch.setattr(DatabaseGest, "get_db", classmethod(lambda cls: archivio))
     run(archivio["dipendenti"].insert_one(
         {"id": "d1", "nome_completo": "Rossi Mario", "tfr_accantonato": 5000.0, "stato": "attivo"}))
     return archivio
@@ -133,14 +138,18 @@ def test_liquidazione_conti_ufficiali(db):
     assert _tfr(db) == 0.0
 
 
-def test_hr_e_gestionale_usano_lo_stesso_motore():
+def test_il_router_usa_il_motore_e_il_lato_erp_non_scrive():
     import inspect
 
-    from app.hr.routers import tfr as hr
+    from app.routers import tfr as erp
 
-    for modulo in (mod, hr):
-        sorgente = inspect.getsource(modulo)
-        assert "registra_acconto_tfr" in sorgente and "ritira_acconto_tfr" in sorgente
-        assert "correggi_importo_acconto_tfr" in sorgente
-        assert "acconto_tfr_rettifica" not in sorgente       # lo storno vive solo nel servizio
-        assert "_C_TFR_DEBITO" not in sorgente and "_C_BANCA" not in sorgente
+    sorgente = inspect.getsource(mod)
+    assert "registra_acconto_tfr" in sorgente and "ritira_acconto_tfr" in sorgente
+    assert "correggi_importo_acconto_tfr" in sorgente
+    assert "acconto_tfr_rettifica" not in sorgente       # lo storno vive solo nel servizio
+    assert "_C_TFR_DEBITO" not in sorgente and "_C_BANCA" not in sorgente
+    # Il lato ERP non e' un secondo writer: nessuna scrittura, nessun conto.
+    sorgente_erp = inspect.getsource(erp)
+    for vietato in ("insert_one", "update_one", "registra_scrittura_semplice",
+                    "registra_acconto_tfr", "29.01.01"):
+        assert vietato not in sorgente_erp, vietato

@@ -1430,7 +1430,7 @@ _C_AMMORTAMENTO = ("05.04.01", "Ammortamento immobilizzazioni")
 _C_FONDO_AMMORTAMENTO = ("01.05.01", "Fondo ammortamento")
 
 # Conti ufficiali (app/services/piano_conti_ufficiale.py) del TFR, gli stessi
-# per app/routers/tfr.py, app/hr/routers/tfr.py e app/services/tfr_acconti.py:
+# per app/hr/routers/tfr.py (l'unico router TFR) e app/services/tfr_acconti.py:
 # i conti operativi 05.03.03 / 02.04.01 / 02.02.01 non si usano piu'.
 _C_QUOTE_TFR = ("67.01.07.01", "Quote TFR dipend.ordinari (in azienda)")
 _C_FONDO_TFR = ("29.01.01", "Fondo TFR")
