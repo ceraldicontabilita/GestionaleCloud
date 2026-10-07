@@ -40,14 +40,14 @@ const Ticket = ({ order, onStart, onReady }) => {
       {order.status === 'nuovo' ? (
         <button
           onClick={() => onStart(order.id)}
-          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg py-2"
+          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg min-h-[44px] py-2"
         >
           Inizia preparazione
         </button>
       ) : (
         <button
           onClick={() => onReady(order.id)}
-          className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg py-2"
+          className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg min-h-[44px] py-2"
         >
           <CheckCircle2 className="w-5 h-5" /> Pronto
         </button>
@@ -106,7 +106,7 @@ const KitchenMonitorPage = () => {
   const inProgress = orders.filter((o) => o.status === 'in_corso');
 
   return (
-    <div className="min-h-screen bg-[#1a1a1a] p-6">
+    <div className="min-h-screen bg-[#1a1a1a] p-4 md:p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
           <ChefHat className="w-8 h-8 text-amber-400" /> Kitchen Monitor

@@ -66,7 +66,7 @@ const OrderCard = ({ order, onAdvance, onCancel }) => {
           {order.status !== 'completato' && (
             <button
               onClick={() => onCancel(order.id)}
-              className="text-red-500 hover:bg-red-50 rounded p-1.5"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-red-500 hover:bg-red-50 rounded"
               title="Annulla"
             >
               <X className="w-4 h-4" />
@@ -75,7 +75,7 @@ const OrderCard = ({ order, onAdvance, onCancel }) => {
           {next && (
             <button
               onClick={() => onAdvance(order.id, next)}
-              className="flex items-center gap-1 text-sm bg-[#4a5d4a] text-white rounded-lg px-3 py-1.5 hover:bg-[#3d4d3d]"
+              className="flex min-h-[44px] items-center gap-1 text-sm bg-[#4a5d4a] text-white rounded-lg px-4 hover:bg-[#3d4d3d]"
             >
               Avanza <ArrowRight className="w-3 h-3" />
             </button>

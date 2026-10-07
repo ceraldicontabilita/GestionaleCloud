@@ -1,0 +1,13 @@
+/* Telefono (regole del gruppo: nessuno scroll orizzontale, margine 16 px, tocco >= 44 px).
+   Sovrascrive soltanto le variabili e le misure di tocco di carta.css. */
+@media (max-width: 480px) {
+  :root { --padding-horizontal: 16px; --padding-horizontal-s: 16px; }
+  html, body { max-width: 100%; overflow-x: clip; }
+  a[href*="maps.google"] { display: flex; align-items: center; min-height: 44px; }
+  a[href*="facebook.com"], a[href*="instagram.com"] {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px;
+  }
+  .cc-legale a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; padding: 0 6px; }
+  #q { min-height: 44px; }
+  .cc-add { min-height: 44px; min-width: 44px; }
+}
