@@ -36,7 +36,7 @@ _NUMERO_ASSEGNO = re.compile(r"(?:ASSEGNO N\.?|NUM:)\s*(\d{6,})")
 def conto_del_movimento(mov: Dict[str, Any]) -> str:
     """Il conto a cui appartiene la riga: le carte non sono il conto BPM."""
     banca = str(mov.get("banca") or "").lower()
-    for conto in ("nexi", "paypal", "sumup"):
+    for conto in ("nexi", "paypal", "sumup", "bnl"):
         if conto in banca:
             return conto
     if mov.get("tipo") == "carta_credito":

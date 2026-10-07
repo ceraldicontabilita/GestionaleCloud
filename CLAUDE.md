@@ -1992,6 +1992,12 @@ Un movimento bancario non si associa per solo importo.
 
 Servono identità e contesto.
 
+## PRODUZIONE — conto BNL storico (4500/3192, chiuso)
+
+Gli estratti PDF BNL 2021-2023 si leggono con `app/services/estratto_conto_bnl_parser.py` (riconoscimento dal contenuto, mai dal nome) e si scrivono in `estratto_conto_movimenti` con `conto_contabile = conti_pos.CONTO_BNL` (19.01.02), `banca = BNL`, `fonte = estratto_bnl_pdf`, stessa chiave di deduplica del conto BPM. Il verso di ogni riga viene dalla colonna del PDF («PER UNA USCITA DI» / «PER UNA ENTRATA DI»), non dalla causale; l'estratto si rifiuta se `saldo iniziale + entrate − uscite ≠ saldo finale` o se i totali del riepilogo non coincidono con le righe lette.
+
+I movimenti BNL non si proiettano in Prima Nota: sono archivio bancario per riconciliare assegni, F24, cartelle e bonifici ai dipendenti di quegli anni. Per questo solo formato la soglia d'arretrato (`DRIVE_ESTRATTI_ANNO_MINIMO`) non si applica (titolare, 07/10/2026); gli altri estratti la seguono.
+
 ---
 
 # 36. Categorizzazione banca

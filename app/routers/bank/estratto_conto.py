@@ -24,6 +24,13 @@ from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattur
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
+from app.services.conti_pos import CONTI_SENZA_PROIEZIONE_PRIMA_NOTA
+from app.services.estratto_conto_bnl_parser import (
+    EstrattoBNLNonValido,
+    e_estratto_bnl_pdf,
+    leggi_estratto_bnl,
+    movimenti_per_archivio as movimenti_per_archivio_bnl,
+)
 from app.services.regole_riconoscimento_banca import carica_regole as _carica_regole_riconoscimento
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
@@ -259,6 +266,19 @@ def _float_from_spreadsheet(value: Any) -> Optional[float]:
 # sono entrati tutti come «entrata», addebiti SDD e prelievi assegno compresi.
 MIN_RIGHE_CONTROLLO_SEGNO = 10
 
+# Campi che una fonte scrive sul movimento tali e quali (conto BNL: conto
+# contabile, fonte, IBAN, causale ABI, estratto e impronta del PDF). Le fonti
+# che non li portano non li hanno: niente valori inventati.
+_CAMPI_PASSANTI_FONTE = (
+    "conto_contabile", "fonte", "source", "iban", "causale_abi", "numero_estratto",
+    "periodo_dal", "periodo_al", "file_sha256", "natura", "numero_assegno", "f24_info",
+)
+
+
+def _si_proietta_in_prima_nota(record: Dict[str, Any]) -> bool:
+    """Il conto BNL storico resta solo archivio bancario per le riconciliazioni."""
+    return record.get("conto_contabile") not in CONTI_SENZA_PROIEZIONE_PRIMA_NOTA
+
 
 def segno_assente(movimenti: List[Dict[str, Any]]) -> bool:
     """True se il file non distingue entrate e uscite (nessun importo negativo)."""
@@ -464,7 +484,27 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     movimenti = []
     segno_da_controllare = False
     
-    if filename.endswith('.pdf'):
+    if filename.endswith('.pdf') and e_estratto_bnl_pdf(contents):
+        # Conto BNL 4500/3192 (chiuso): il PDF si riconosce dal contenuto, il
+        # lettore prende il verso dalla colonna e rifiuta l'estratto se i saldi
+        # non tornano. Nessun ripiego sugli altri lettori: importerebbero
+        # righe col verso indovinato.
+        try:
+            estratto_bnl = leggi_estratto_bnl(contents)
+        except EstrattoBNLNonValido as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Estratto conto BNL non importato: {exc}",
+            ) from exc
+        movimenti.extend(movimenti_per_archivio_bnl(
+            estratto_bnl, sha256=hashlib.sha256(contents).hexdigest(),
+        ))
+        logger.info(
+            "[ESTRATTO-BNL] %s: estratto %s (%s → %s), %s righe, saldi verificati",
+            filename_originale, estratto_bnl.numero_estratto, estratto_bnl.periodo_dal,
+            estratto_bnl.periodo_al, len(estratto_bnl.righe),
+        )
+
+    elif filename.endswith('.pdf'):
         from app.parsers.estratto_conto_bpm_parser import parse_estratto_conto_bpm
         from app.parsers.estratto_conto_bnl_parser import parse_estratto_conto_bnl
         from app.parsers.estratto_conto_nexi_parser import EstrattoContoNexiParser
@@ -954,6 +994,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "hashtag": mov.get("hashtag"),
             "external_reference": mov.get("external_reference"),
             "numero_carta_mascherato": mov.get("numero_carta_mascherato"),
+            **{campo: mov[campo] for campo in _CAMPI_PASSANTI_FONTE if campo in mov},
             "tipo": tipo_mov,
             "descrizione_hash": desc_raw[:50],
             "fingerprint": fingerprint,
@@ -1212,9 +1253,12 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # contanti in cassa, un versamento li fa uscire dalla cassa verso banca).
     sync_generico = {"inseriti_banca": 0, "inseriti_cassa": 0}
     pos_storico = None
-    if records_to_insert:
+    # Il conto BNL storico non si proietta: le sue righe restano archivio
+    # bancario per assegni, F24, cartelle e bonifici ai dipendenti.
+    records_da_proiettare = [rec for rec in records_to_insert if _si_proietta_in_prima_nota(rec)]
+    if records_da_proiettare:
         try:
-            ec_ids = [m["id"] for m in records_to_insert]
+            ec_ids = [m["id"] for m in records_da_proiettare]
             stato_aggiornato: Dict[str, Any] = {}
             async for m in db["estratto_conto_movimenti"].find(
                 {"id": {"$in": ec_ids}},
@@ -1238,7 +1282,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             ec_da_marcare = []
             ec_pos_accrediti = []  # id EC accrediti POS (riconciliati senza duplicare)
             ec_in_attesa = []      # id EC che aspettano il documento a cui agganciarsi
-            for mov in records_to_insert:
+            for mov in records_da_proiettare:
                 mid = mov["id"]
                 stato = stato_aggiornato.get(mid, {})
                 if stato.get("riconciliato") or stato.get("riconciliato_paghe"):
@@ -1375,12 +1419,12 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # giorno vendita (causale DEL) e prova a soddisfare l'attesa POS gia'
     # generata dalla chiusura del terminale. L'estratto conto e' una prova:
     # non crea mai la chiusura o un credito POS mancante.
-    if fonte_ufficiale and records_to_insert:
+    if fonte_ufficiale and records_da_proiettare:
         try:
             from app.services.scritture_contabili import recupera_pos_storico_da_estratto
             anni_pos = sorted({
                 int(str(m.get("data") or "")[:4])
-                for m in records_to_insert
+                for m in records_da_proiettare
                 if str(m.get("data") or "")[:4].isdigit()
             })
             esiti_pos = [
