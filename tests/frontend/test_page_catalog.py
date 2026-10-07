@@ -18,9 +18,13 @@ REDIRECTS = CATALOG.get("redirects", [])
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
-def test_catalogo_contiene_esattamente_le_74_schermate_numerate():
-    assert [page["id"] for page in PAGES] == list(range(1, 75))
-    assert len({page["path"] for page in PAGES}) == 74
+def test_catalogo_ha_identita_e_indirizzi_unici():
+    # Gli id sono stabili: una schermata ritirata lascia un buco, non causa
+    # la rinumerazione delle altre. La copertura reale si verifica sotto.
+    ids = [page["id"] for page in PAGES]
+    assert ids == sorted(set(ids))
+    assert all(isinstance(page_id, int) and page_id > 0 for page_id in ids)
+    assert len({page["path"] for page in PAGES}) == len(PAGES)
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
 
@@ -37,8 +41,8 @@ def test_catalogo_dichiara_tipo_di_superficie_e_redirect():
     for page in PAGES:
         kind = page["route_kind"]
         if kind == "tab":
-            assert "/pages/hub/" in page["entry"], (
-                f"Pagina {page['id']} {page['path']}: route_kind=tab ma entry non e un Hub"
+            assert "/pages/hub/" in page["entry"] or page["entry"] == "frontend/src/pages/SituazioneFiscale.jsx", (
+                f"Pagina {page['id']} {page['path']}: route_kind=tab senza contenitore canonico"
             )
         elif kind == "detail":
             assert ":" in page["path"], (
@@ -97,10 +101,18 @@ def test_ogni_schermata_ha_un_componente_raggiungibile_dal_suo_entrypoint():
         assert entry.is_file(), f"Pagina {page['id']}: entrypoint assente {entry}"
 
         if component != entry:
-            component_name = component.name
             entry_source = entry.read_text(encoding="utf-8")
-            assert component_name in entry_source, (
-                f"Pagina {page['id']} {page['path']}: {component_name} non e importato "
+            imports = re.findall(r"import\(['\"]([^'\"]+)['\"]\)", entry_source)
+            imports += re.findall(r"\bfrom\s+['\"]([^'\"]+)['\"]", entry_source)
+            imported_paths = set()
+            for relative in imports:
+                candidate = entry.parent / relative
+                imported_paths.add(candidate.resolve())
+                if not candidate.suffix:
+                    imported_paths.add(candidate.with_suffix(".jsx").resolve())
+                    imported_paths.add(candidate.with_suffix(".js").resolve())
+            assert component.resolve() in imported_paths, (
+                f"Pagina {page['id']} {page['path']}: {component.name} non e importato "
                 f"da {entry.relative_to(ROOT)}"
             )
 
@@ -184,4 +196,4 @@ def test_tutte_le_route_del_catalogo_sono_coperte_da_una_route_react_reale():
 
 def test_vecchie_url_non_vengono_piu_spacciate_per_schermate_canoniche():
     paths = {page["path"] for page in PAGES}
-    assert paths.isdisjoint({"/magazzino", "/dipendenti", "/cedolini", "/salari", "/tracciabilita"})
+    assert paths.isdisjoint({"/magazzino", "/dipendenti", "/cedolini", "/salari", "/tracciabilita", "/ritenute", "/tributi", "/piano-tributi"})

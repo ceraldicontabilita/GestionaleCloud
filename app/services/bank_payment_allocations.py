@@ -54,6 +54,18 @@ def _e_spesa_con_carta(movement: Dict[str, Any]) -> bool:
     )
 
 
+def _e_uscita_fornitore(movement: Dict[str, Any]) -> bool:
+    """Verso finanziario, rispettando gli statement Nexi e gli EC storici."""
+    movement_type = str(movement.get("tipo") or "").strip().lower()
+    amount = to_cents(movement.get("importo"))
+    if movement_type in {"entrata", "accredito", "incasso"}:
+        return False
+    # Nexi usa spese positive e storni/rimborsi negativi (§ quadratura carta).
+    if movement_type == "carta_credito" or movement.get("banca") == "Nexi":
+        return amount > 0
+    return amount < 0 or amount > 0 and movement_type in {"uscita", "addebito", "pagamento"}
+
+
 def _metodo_pagamento(movement: Dict[str, Any]) -> str:
     from app.services.riconciliazione_bancaria import classifica_strumento_bancario
 
@@ -187,8 +199,7 @@ async def _proietta_prima_nota_banca(
     pn_id, _ = await scrivi_movimento_se_assente(db, "banca", pn_query, {
         "id": str(uuid4()),
         "data": str(movement.get("data") or "")[:10],
-        "tipo": "uscita" if to_cents(movement.get("importo")) < 0 or str(
-            movement.get("tipo") or "").lower() == "uscita" else "entrata",
+        "tipo": "uscita" if _e_uscita_fornitore(movement) else "entrata",
         "importo": abs(to_cents(movement.get("importo"))) / 100,
         "categoria": "Fatture",
         "descrizione": descrizione or (movement.get("descrizione_originale") or movement.get("descrizione")),
@@ -234,6 +245,11 @@ async def validate_bank_invoice_allocations(
     db, movement: Dict[str, Any], associations: Iterable[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """Valida l'intero prospetto prima di qualunque scrittura."""
+    if not _e_uscita_fornitore(movement):
+        raise HTTPException(
+            status_code=409,
+            detail="Un incasso o un movimento senza verso di uscita non paga una fattura fornitore",
+        )
     items = list(associations or [])
     if not items:
         raise HTTPException(status_code=409, detail="Selezionare almeno una fattura")
@@ -262,8 +278,16 @@ async def validate_bank_invoice_allocations(
         invoice = by_id[invoice_id]
         quota_cents = _requested_cents(item, invoice)
         allocation_id = f"bank:{movement.get('id')}:{invoice_id}"
+        # La quota paga il debito verso il fornitore. Il lordo della parcella
+        # comprende anche la ritenuta, che resta un'obbligazione verso l'Erario.
+        # Un totale documento nullo/negativo conserva il rifiuto del validatore.
+        invoice_for_validation = {
+            **invoice, "total_amount": min(
+                invoice_total_cents(invoice), invoice_payable_cents(invoice),
+            ) / 100,
+        }
         validation = validate_invoice_allocation(
-            invoice, quota_cents, allocation_id=allocation_id,
+            invoice_for_validation, quota_cents, allocation_id=allocation_id,
         )
         if not validation["allowed"]:
             raise HTTPException(
@@ -537,6 +561,49 @@ def _movement_text(movement: Dict[str, Any]) -> str:
     ))
 
 
+def _controparte_incompatibile(movement: Dict[str, Any], invoice: Dict[str, Any]) -> bool:
+    """Una controparte esplicita discordante prevale sul numero fattura."""
+    text = _compact(_movement_text(movement))
+    vat = _compact(invoice.get("supplier_vat") or invoice.get("fornitore_piva") or invoice.get("cedente_piva"))
+    iban = _compact(invoice.get("supplier_iban") or invoice.get("fornitore_iban") or invoice.get("iban"))
+    movement_iban = _compact(movement.get("iban_beneficiario") or movement.get("iban_controparte"))
+    # Il beneficiario/IBAN strutturato descrive la destinazione effettiva:
+    # una P.IVA citata nella causale non elimina una discordanza esplicita.
+    if len(iban) >= 15 and len(movement_iban) >= 15 and iban != movement_iban:
+        return True
+    supplier_name = str(
+        invoice.get("supplier_name") or invoice.get("fornitore")
+        or invoice.get("fornitore_ragione_sociale")
+        or invoice.get("cedente_denominazione") or invoice.get("cedente_nome") or ""
+    )
+    alias = alias_fornitore(invoice)
+    beneficiario = movement.get("beneficiario") or movement.get("controparte")
+    if beneficiario and soggetto_pagante_coerente(
+        supplier_name, f"BENEFICIARIO: {beneficiario}", alias=alias,
+    ) is False and not any(
+        _compact(nome) == _compact(beneficiario) for nome in (supplier_name, *alias)
+    ):
+        return True
+    # Conserva le identita' forti gia' ammesse in assenza di dati strutturati
+    # discordanti: P.IVA/IBAN, alias e collettori di gruppo canonici.
+    if (len(vat) >= 8 and vat in text) or (
+        len(iban) >= 15 and (iban == movement_iban or iban in text)
+    ):
+        return False
+    soggetto = soggetto_causale_bancaria(_movement_text(movement))
+    if not soggetto:
+        return False
+    # «FASTWEB SpA FATTURA M031962931»: il riferimento documentale in
+    # coda non e' parte del nome. I dati strutturati sono gia' verificati sopra.
+    nome_soggetto = re.split(
+        r"\s+(?:fattur[ae]|fatt|ft)\b\.?\s+(?:n(?:umero)?\.?\s*)?[A-Za-z]*\d",
+        soggetto, maxsplit=1, flags=re.IGNORECASE,
+    )[0]
+    return soggetto_pagante_coerente(
+        supplier_name, f"BENEFICIARIO: {nome_soggetto}", alias=alias,
+    ) is False
+
+
 def _is_outgoing_invoice_candidate(movement: Dict[str, Any]) -> bool:
     movement_type = str(movement.get("tipo") or "").strip().lower()
     if movement_type in {"entrata", "accredito", "incasso"}:
@@ -612,12 +679,11 @@ def _identity_evidence(
         "quota_cents": residual_cents,
         "proposta": False,
     }
-    if priority == 1:
-        # Audit 03/09/2026 (PR 4): con la sola identita' "token del fornitore"
-        # il soggetto pagante scritto in causale deve essere lo stesso
-        # fornitore della fattura. "AMAZON PAYMENTS EUROPE S.C.A." non paga
-        # in automatico una fattura di "Amazon Business EU S.a.r.l": resta
-        # una proposta da confermare in "Scegli fattura".
+    controparte_incompatibile = _controparte_incompatibile(movement, invoice)
+    if priority == 1 or controparte_incompatibile:
+        # Con i token del fornitore o un numero fattura non basta la quadratura:
+        # una controparte dichiarata incompatibile resta in "Scegli fattura".
+        # Alias e collettori di gruppo mantengono le regole canoniche condivise.
         movement_text = _movement_text(movement)
         supplier_name = str(
             invoice.get("supplier_name") or invoice.get("fornitore")
@@ -629,7 +695,7 @@ def _identity_evidence(
         )
         evidence["soggetto_causale"] = soggetto_causale_bancaria(movement_text)
         evidence["soggetto_coerente"] = coerente
-        if coerente is False:
+        if coerente is False or controparte_incompatibile:
             evidence.update({
                 "priority": 0,
                 "rule": "fornitore+importo:soggetto_pagante_diverso",
@@ -833,6 +899,8 @@ def _cifre_citate(numero: str, citati: set) -> bool:
 def _fornitore_del_movimento(movement: Dict[str, Any], invoice: Dict[str, Any]) -> bool:
     """Il beneficiario del bonifico e' il fornitore della fattura (IBAN,
     P.IVA o nome): senza, un numero uguale di un altro fornitore passerebbe."""
+    if _controparte_incompatibile(movement, invoice):
+        return False
     text = _compact(_movement_text(movement))
     iban = _compact(invoice.get("supplier_iban") or invoice.get("fornitore_iban") or invoice.get("iban"))
     movement_iban = _compact(movement.get("iban_beneficiario") or movement.get("iban_controparte"))
@@ -1182,6 +1250,9 @@ async def reconcile_deterministic_invoice_allocations(
                 ambiguous = True
                 break
             invoice = candidates[0]
+            if _controparte_incompatibile(movement, invoice):
+                ambiguous = True
+                break
             if str(invoice.get("invoice_date") or "")[:10] > str(movement.get("data") or "")[:10]:
                 ambiguous = True
                 break
