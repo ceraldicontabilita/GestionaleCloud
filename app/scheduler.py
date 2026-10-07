@@ -2000,6 +2000,7 @@ def start_scheduler():
     # Conferma massiva del calendario fiscale decisa dal titolare (07/10/2026):
     # una volta sola, con marcatore in sistema_stato; vedi calendario_conferme.
     async def _calendario_conferma_massiva_job():
+        from app.database import Database
         from app.services.calendario_conferme import conferma_massiva_una_volta
         try:
             r = await conferma_massiva_una_volta(Database.get_db())
