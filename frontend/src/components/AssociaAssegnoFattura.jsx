@@ -5,10 +5,20 @@ import { formatDateIT, formatEuroD } from '../lib/utils';
 import { useConfirm } from './ui/ConfirmDialog';
 
 
+// Le ultime cifre del numero assegno come le scrive il titolare sulla fattura:
+// «694-90», «7694-90» (quattro cifre prima del trattino) o «69490». Il
+// trattino resta dove lo mette lui; senza trattino, fino a cinque cifre si
+// mostrano nella guida storica «328-01». Il confronto lo fa il backend.
 export function formattaFinaleAssegno(input) {
-  const cifre = String(input ?? '').replace(/\D/g, '').slice(-5);
-  if (cifre.length <= 3) return cifre;
-  return `${cifre.slice(0, 3)}-${cifre.slice(3)}`;
+  const testo = String(input ?? '').replace(/[^\d-]/g, '');
+  const cifre = testo.replace(/-/g, '').slice(-10);
+  if (!testo.includes('-')) {
+    if (cifre.length <= 3 || cifre.length > 5) return cifre;
+    return `${cifre.slice(0, 3)}-${cifre.slice(3)}`;
+  }
+  const prima = testo.split('-')[0].replace(/\D/g, '').slice(0, 9);
+  const dopo = cifre.slice(prima.length);
+  return `${prima}-${dopo}`;
 }
 
 
@@ -184,9 +194,9 @@ export default function AssociaAssegnoFattura({
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             <input
               aria-label="Finale assegno nel formato 123-01"
-              placeholder="Es. 328-01"
+              placeholder="Es. 694-90"
               inputMode="numeric"
-              maxLength={6}
+              maxLength={11}
               value={frammento}
               onChange={e => setFrammento(formattaFinaleAssegno(e.target.value))}
               style={{
@@ -208,9 +218,10 @@ export default function AssociaAssegnoFattura({
             </button>
           </div>
           <div style={{ color: '#7a776e', marginTop: 6, fontSize: 11.5 }}>
-            Digita il finale come 328-01. Il sistema ritrova anche il numero BPM
-            completo 0208769328, che nell'estratto non contiene il suffisso del
-            foglio. Nessun collegamento viene creato sul solo importo.
+            Digita le ultime cifre del numero assegno come le hai scritte sulla
+            fattura: 694-90, 7694-90 o 328-01. Il sistema le confronta con la coda
+            del numero BPM completo (0208769490) nel registro e nell'estratto conto.
+            Nessun collegamento viene creato sul solo importo.
           </div>
           {errore && <div role="alert" style={{ color: '#b0362b', marginTop: 7 }}>{errore}</div>}
           {!loading && message && (
