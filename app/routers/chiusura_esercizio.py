@@ -421,6 +421,11 @@ async def esegui_chiusura_esercizio(input_data: ChiusuraEsercizioInput) -> Dict[
         righe,
         {"tipo": "chiusura_esercizio", "anno": input_data.anno},
     )
+    if movimento.get("stato") == "disattivato":
+        raise HTTPException(
+            status_code=409,
+            detail="Libro giornale spento (CLAUDE.md §24): la chiusura non registra scritture.",
+        )
 
     scrittura_chiusura = {
         "id": chiusura_id,
