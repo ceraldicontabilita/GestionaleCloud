@@ -16,9 +16,7 @@ _DIRETTO = re.compile(
 )
 
 # file -> numero di scritture dirette ancora ammesse (debito noto).
-RESIDUO = {
-    "app/routers/prima_nota_module/sync.py": 4,
-}
+RESIDUO: dict[str, int] = {}
 
 
 def _conteggi() -> dict[str, int]:
@@ -46,3 +44,23 @@ def test_il_debito_residuo_segue_la_realta() -> None:
     trovati = _conteggi()
     scesi = {f: (n, trovati.get(f, 0)) for f, n in RESIDUO.items() if trovati.get(f, 0) < n}
     assert not scesi, f"Debito sceso: aggiorna RESIDUO (ammesso, trovato): {scesi}"
+
+
+_DINAMICO = re.compile(r"\bdb\[\s*(?!\")(?!')(?!backup)[A-Za-z_]\w*\s*\]\.insert_(?:one|many)\(")
+_FILE_REGISTRI = (
+    "app/routers/prima_nota_module/sync.py",
+    "app/routers/prima_nota_module/cassa.py",
+    "app/routers/prima_nota_module/banca.py",
+    "app/routers/prima_nota_module/manutenzione.py",
+    "app/routers/sync_relazionale.py",
+    "app/routers/rapido.py",
+    "app/services/data_propagation.py",
+)
+
+
+def test_nei_file_dei_registri_niente_insert_su_collezione_variabile() -> None:
+    colpevoli = [
+        f for f in _FILE_REGISTRI
+        if _DINAMICO.search((ROOT / f).read_text(encoding="utf-8"))
+    ]
+    assert not colpevoli, f"insert su collezione in variabile (Prima Nota?): {colpevoli}"

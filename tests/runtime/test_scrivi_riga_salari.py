@@ -79,3 +79,15 @@ def test_lotto_scrive_le_valide_e_riporta_le_rifiutate():
     assert esito["scritte"] == 1
     assert esito["rifiutate"][0]["id"] == "x"
     assert len(db["prima_nota_salari"].docs) == 1
+
+
+def test_batch_movimenti_banca_scrive_validi_e_riporta_scartati():
+    from app.services.scritture_contabili import scrivi_movimenti_batch
+
+    ok = {"data": "2026-03-05", "tipo": "uscita", "importo": 10.0,
+          "categoria": "Bancario", "source": "estratto_conto_sync", "descrizione": "x"}
+    ko = dict(ok, importo=0, id="zero")
+    db = _Db()
+    esito = run(scrivi_movimenti_batch(db, "banca", [ok, ko]))
+    assert esito["scritte"] == 1 and esito["rifiutate"][0]["id"] == "zero"
+    assert db["prima_nota_banca"].docs[0]["conto_contabile"]

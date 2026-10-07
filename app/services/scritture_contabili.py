@@ -159,7 +159,7 @@ class ScritturaNonValida(ValueError):
     pass
 
 
-def _valida(mov: Dict[str, Any]) -> None:
+def _valida(mov: Dict[str, Any], richiedi_categoria: bool = True) -> None:
     data = str(mov.get("data") or "")
     if len(data) < 10 or data[4] != "-":
         raise ScritturaNonValida(f"data non valida: {data!r}")
@@ -167,13 +167,16 @@ def _valida(mov: Dict[str, Any]) -> None:
         raise ScritturaNonValida(f"importo non positivo: {mov.get('importo')!r}")
     if mov.get("tipo") not in ("entrata", "uscita"):
         raise ScritturaNonValida(f"tipo non valido: {mov.get('tipo')!r}")
-    if not mov.get("categoria"):
+    if richiedi_categoria and not mov.get("categoria"):
         raise ScritturaNonValida("categoria mancante")
     if not mov.get("source"):
         raise ScritturaNonValida("source mancante (tracciabilità obbligatoria)")
 
 
-def _prepara_documento(mov: Dict[str, Any], registro: Optional[str] = None) -> Dict[str, Any]:
+def _prepara_documento(
+    mov: Dict[str, Any], registro: Optional[str] = None,
+    richiedi_categoria: bool = True,
+) -> Dict[str, Any]:
     """Valida un movimento e riempie i campi con default stabili (id,
     alias amount/date/type/category/description, created_at). Estratta da
     scrivi_movimento per essere riusabile anche da chi deve scrivere con
@@ -186,14 +189,14 @@ def _prepara_documento(mov: Dict[str, Any], registro: Optional[str] = None) -> D
     (Fatture/Assegni/PayPal → 33.03.01, Stipendi → 39.07.01, Commissioni →
     75.01.07.xx, ...). Un conto fuori dal piano ufficiale viene rifiutato.
     """
-    _valida(mov)
+    _valida(mov, richiedi_categoria)
     doc = dict(mov)
     doc.setdefault("id", str(uuid.uuid4()))
     doc["importo"] = round(float(doc["importo"]), 2)
     doc.setdefault("amount", doc["importo"])
     doc.setdefault("date", doc["data"])
     doc.setdefault("type", doc["tipo"])
-    doc.setdefault("category", doc["categoria"])
+    doc.setdefault("category", doc.get("categoria"))
     doc.setdefault("description", doc.get("descrizione", ""))
     doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
     if registro:
@@ -205,12 +208,18 @@ def _prepara_documento(mov: Dict[str, Any], registro: Optional[str] = None) -> D
     return doc
 
 
-async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
+async def scrivi_movimento(
+    db, registro: str, mov: Dict[str, Any], session=None,
+    ricollocazione: bool = False,
+) -> str:
     """Unico punto di INSERT nei registri di Prima Nota: valida e scrive.
-    Ritorna l'id del movimento creato."""
+    Ritorna l'id del movimento creato. ``session`` serve a chi scrive dentro
+    una transazione gia' aperta. ``ricollocazione=True`` e' per la STESSA riga
+    spostata da un registro all'altro: una riga senza categoria resta nella
+    coda da classificare, non viene rifiutata ne' le si inventa una categoria."""
     if registro not in REGISTRI:
         raise ScritturaNonValida(f"registro sconosciuto: {registro}")
-    doc = _prepara_documento(mov, registro)
+    doc = _prepara_documento(mov, registro, richiedi_categoria=not ricollocazione)
     operation_hash = doc.get("operation_hash") or calcola_operation_hash(registro, doc)
     try:
         if operation_hash:
@@ -219,14 +228,14 @@ async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
             query = {"operation_hash": operation_hash, "status": {"$nin": ["deleted", "archived"]}}
             if hasattr(collection, "find_one_and_update"):
                 precedente = await collection.find_one_and_update(
-                    query, {"$setOnInsert": doc}, upsert=True,
+                    query, {"$setOnInsert": doc}, upsert=True, **_sessione(session),
                 )
             else:  # fake minimali dei test storici
                 precedente = await collection.find_one(query)
                 if precedente is None:
-                    await collection.insert_one(dict(doc))
+                    await collection.insert_one(dict(doc), **_sessione(session))
             return (precedente or doc).get("id")
-        await db[REGISTRI[registro]].insert_one(dict(doc))
+        await db[REGISTRI[registro]].insert_one(dict(doc), **_sessione(session))
         return doc["id"]
     except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave
         chiave = doc.get("idempotency_key")
@@ -242,6 +251,28 @@ async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
             registro, chiave, esistente,
         )
         return documento.get("id") or esistente
+
+
+async def scrivi_movimenti_batch(
+    db, registro: str, movimenti: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Scrive un lotto con una sola ``insert_many`` (import massivi da estratto
+    conto). Ogni riga e' validata e completata come in ``scrivi_movimento``;
+    le non valide non si scrivono e tornano con il motivo.
+    ``{"scritte": n, "rifiutate": [{"id", "motivo"}]}``.
+    """
+    if registro not in REGISTRI:
+        raise ScritturaNonValida(f"registro sconosciuto: {registro}")
+    valide: List[Dict[str, Any]] = []
+    rifiutate: List[Dict[str, Any]] = []
+    for mov in movimenti:
+        try:
+            valide.append(_prepara_documento(mov, registro))
+        except ScritturaNonValida as exc:
+            rifiutate.append({"id": mov.get("id"), "motivo": str(exc)})
+    if valide:
+        await db[REGISTRI[registro]].insert_many(valide)
+    return {"scritte": len(valide), "rifiutate": rifiutate}
 
 
 #: Registro stipendi: righe di competenza/dovuto per dipendente e periodo, non

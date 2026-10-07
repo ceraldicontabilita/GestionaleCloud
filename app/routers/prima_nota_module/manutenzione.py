@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import uuid
 
 from app.database import Database
-from app.services.scritture_contabili import scrivi_movimento
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_movimento
 from app.utils.id_fattura import filtro_id, varianti_id
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger,
@@ -1407,7 +1407,6 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
         raise HTTPException(status_code=400, detail="motivo richiesto per confermare la riclassificazione")
 
     source_coll = COLLECTION_PRIMA_NOTA_CASSA if da == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
-    dest_coll = COLLECTION_PRIMA_NOTA_CASSA if a == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
 
     # Cerca nella collection diretta
     mov = await db[source_coll].find_one({"id": movimento_id})
@@ -1447,7 +1446,11 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
                 "confermato_at": datetime.now(timezone.utc).isoformat(),
             }
             # Assicura che sia un'uscita (addebito) o entrata (accredito) coerente
-            await db[dest_coll].insert_one(mov)
+            mov.pop("operation_hash", None)
+            try:
+                await scrivi_movimento(db, a, mov, ricollocazione=True)
+            except ScritturaNonValida as exc:
+                raise HTTPException(status_code=409, detail=f"Riclassificazione rifiutata: {exc}") from exc
             await db["estratto_conto_movimenti"].update_one(
                 {"id": movimento_id},
                 {"$set": {
@@ -1497,7 +1500,13 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     # stessa riga, stesso id: ma conto di tesoreria e metodo sono quelli del registro di arrivo
     mov.update(campi_dopo_spostamento(mov, da, a))
 
-    await db[dest_coll].insert_one(mov)
+    mov.pop("operation_hash", None)
+    # Prima la scrittura nel registro di arrivo, poi la rimozione dall'origine:
+    # una riga rifiutata dal motore non sparisce da nessuna parte.
+    try:
+        await scrivi_movimento(db, a, mov, ricollocazione=True)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=409, detail=f"Riclassificazione rifiutata: {exc}") from exc
     await db[source_coll].delete_one({"id": movimento_id})
 
     # Aggiorna la FATTURA collegata: metodo e riferimenti prima nota devono
