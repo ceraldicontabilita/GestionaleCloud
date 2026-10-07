@@ -71,6 +71,19 @@ _CHIAVI_RIFERIMENTO = (
     "cedolino_id", "doc_id", "bonifico_transfer_id", "verbale_id", "movimento_id",
     "prima_nota_cassa_id", "prima_nota_banca_id",
 )
+# Chiavi che descrivono il record (numero e P.IVA della fattura): con l'id
+# permettono di rimettere in coda solo i file di una fattura sparita.
+_CHIAVI_RIFERIMENTO_DESCRITTIVE = ("invoice_number", "supplier_vat", "fatture_ids")
+
+
+def riferimenti_del_risultato(risultato: Dict[str, Any]) -> Dict[str, Any]:
+    """I riferimenti al record creato (o gia' presente) dal risultato dello
+    smistatore: solo le chiavi valorizzate, ``{}`` se il motore non ne porta."""
+    return {
+        k: risultato[k]
+        for k in _CHIAVI_RIFERIMENTO + _CHIAVI_RIFERIMENTO_DESCRITTIVE
+        if risultato.get(k)
+    }
 
 _lock = asyncio.Lock()
 
@@ -815,7 +828,7 @@ async def _giro(db) -> Dict[str, Any]:
             destinazione, motivo = esito_del_risultato(risultato)
             with _fase(esito, "sposta"):
                 await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[destinazione], motivo or None)
-            riferimenti = {k: risultato[k] for k in _CHIAVI_RIFERIMENTO if risultato.get(k)}
+            riferimenti = riferimenti_del_risultato(risultato)
             with _fase(esito, "registro"):
                 await _registra(
                     db, fid, nome=nome, sha256=sha256, md5=f.get("md5Checksum"),
@@ -1029,7 +1042,7 @@ async def rielabora_con_tipo(db, drive_file_id: str, tipo: str, *, deciso_da: st
     if destinazione != riga.get("cartella"):
         await asyncio.to_thread(_sposta, service, drive_file_id, cartelle[riga["cartella"]],
                                 cartelle[destinazione], motivo or None)
-    riferimenti = {k: risultato[k] for k in _CHIAVI_RIFERIMENTO if risultato.get(k)}
+    riferimenti = riferimenti_del_risultato(risultato)
     await _registra(
         db, drive_file_id, nome=nome, sha256=sha256, tipo=risultato.get("tipo_rilevato") or tipo,
         cartella=destinazione, esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),

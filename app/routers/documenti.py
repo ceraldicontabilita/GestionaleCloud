@@ -2823,6 +2823,37 @@ async def censimento_doppioni_drive_csv(
     )
 
 
+def _riferimenti_fattura(fattura: Dict[str, Any]) -> Dict[str, Any]:
+    """I riferimenti della fattura che il registro della cartella unica
+    conserva accanto al file: solo valori letti dal record, mai vuoti."""
+    coppie = (("fattura_id", fattura.get("id")),
+              ("invoice_number", fattura.get("invoice_number")),
+              ("supplier_vat", fattura.get("supplier_vat")))
+    return {chiave: valore for chiave, valore in coppie if valore}
+
+
+async def _riferimenti_fattura_gia_presente(db, parsed: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """La fattura gia' in archivio con la stessa chiave contabile del corpo
+    XML rifiutato come doppione; ``{}`` se non si trova (nessun id inventato)."""
+    if not parsed:
+        return {}
+    from app.routers.invoices.fatture_upload import generate_invoice_key
+
+    chiave = generate_invoice_key(
+        parsed.get("invoice_number", ""), parsed.get("supplier_vat", ""),
+        parsed.get("invoice_date", ""),
+    )
+    try:
+        esistente = await db["invoices"].find_one(
+            {"invoice_key": chiave}, {"_id": 0, "id": 1, "invoice_number": 1, "supplier_vat": 1},
+        )
+    except Exception as exc:  # noqa: BLE001 - un doppione resta un doppione, non diventa ERRORI
+        logger.warning("Riferimenti della fattura gia' presente non letti (chiave %s): %s: %s",
+                       chiave, type(exc).__name__, exc)
+        return {}
+    return _riferimenti_fattura(esistente) if esistente else {}
+
+
 def _e_parcella_con_ritenuta(fattura: Dict[str, Any]) -> bool:
     """Una parcella con ritenuta d'acconto entra anche se e' di un anno passato.
 
@@ -3255,6 +3286,7 @@ async def upload_documento_automatico(
 
                 anno_attivo = await get_anno_importazione_attivo(db)
                 altro_anno = []
+                corpo_duplicato = None
                 for body in [parsed] + altri_body:
                     data_fattura = str(body.get("invoice_date") or "")
                     anno_fattura = int(data_fattura[:4]) if data_fattura[:4].isdigit() else None
@@ -3269,8 +3301,16 @@ async def upload_documento_automatico(
                         if exc.status_code != 409:
                             raise
                         ultimo_errore_duplicato = exc
+                        corpo_duplicato = body
 
                 if importati:
+                    # L'id della fattura creata sale nel risultato: il registro
+                    # della cartella unica lo conserva in `riferimenti` (fino al
+                    # 07/10/2026 restava `{}` e il registro non sapeva quale
+                    # fattura avesse creato ogni file).
+                    result.update(_riferimenti_fattura(importati[0]))
+                    if len(importati) > 1:
+                        result["fatture_ids"] = [f.get("id") for f in importati if f.get("id")]
                     result["message"] = f"Fattura importata: {importati[0].get('invoice_number', 'N/A')}"
                     result["imported"] = len(importati)
                     if len(importati) > 1:
@@ -3298,6 +3338,9 @@ async def upload_documento_automatico(
                     result["action"] = "duplicate"
                     result["imported"] = 0
                     result["message"] = str(ultimo_errore_duplicato.detail)
+                    # Gia' presente: l'id e' quello della fattura in archivio
+                    # con la stessa chiave (letto, mai inventato).
+                    result.update(await _riferimenti_fattura_gia_presente(db, corpo_duplicato))
             else:
                 result["success"] = False
                 result["message"] = "Errore parsing XML fattura"
