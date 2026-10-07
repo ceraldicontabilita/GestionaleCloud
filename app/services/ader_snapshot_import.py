@@ -267,7 +267,10 @@ def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
     somma_rate = sum(i["amount_cents"] for i in installments) if installments else None
     somma_documenti = sum(d["amount_cents"] for d in documents) if documents else None
     return {
-        "id": stable_id("aderrateplan", company_id, plan_id, dataset_sha256),
+        # Un piano e' uno per identificativo: la stessa lettera arriva anche in
+        # piu' copie PDF (byte diversi, «(1)», «(2)»), e deve restare una riga
+        # con le sue rate; la copia si vede dalle fonti, non da un secondo piano.
+        "id": stable_id("aderrateplan", company_id, plan_id),
         "company_id": company_id,
         "plan_reference": plan_id,
         "application_date": datetime.strptime(match.group(2), "%d/%m/%Y").date().isoformat(),

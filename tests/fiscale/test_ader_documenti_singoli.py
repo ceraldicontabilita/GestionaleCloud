@@ -171,8 +171,9 @@ def test_dettaglio_e_piano_entrano_nelle_entita_canoniche_una_volta_sola(monkeyp
                                                    testo=_dettaglio(), source_context={"channel": "test"})
         piano = await ader.archivia_documento_ader(db, filename="Accoglimento_AR071904285.pdf", content=pdf_piano,
                                                    testo=ACCOGLIMENTO)
+        # stessa lettera in una seconda copia PDF con byte diversi: stesso piano, nessun doppione
         secondo_piano = await ader.archivia_documento_ader(db, filename="Accoglimento_AR071904285 (1).pdf",
-                                                           content=pdf_piano, testo=ACCOGLIMENTO)
+                                                           content=_pdf(ACCOGLIMENTO + "\n"), testo=ACCOGLIMENTO)
         altro = _dettaglio(numero="07120250145650421000", ente="AMMINISTRAZIONE FINANZIARIA DIR PROV LE",
                            notifica="19/09/2025", iniziale="7.496,28", da_pagare="1.255,14",
                            righe=[("380A", "IRAP ..... IRAP", "AMMINISTRAZIONE FINANZIARIA DIR PROV LE II NAPOLI",
