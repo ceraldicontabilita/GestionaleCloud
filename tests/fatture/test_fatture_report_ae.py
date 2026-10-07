@@ -312,6 +312,98 @@ def test_registra_hash_e_riepilogo_dell_import():
     assert riga["source_report_filename"] == "Fatture ricevute.xlsx"
 
 
+# --- Fatture sparite: la riga puntava a una fattura che non c'e' piu' -------
+
+def _riga_report(key, invoice_id, totale, **extra):
+    return {"report_key": key, "id": f"AEFR-{key}", "numero_fattura": key.upper(),
+            "supplier_vat": "06714021000", "supplier_name": "LEASYS", "data_documento": "2026-03-15",
+            "filename_xml": f"{key}.xml", "totale_documento": totale, "invoice_id": invoice_id,
+            "xml_presente": bool(invoice_id), **extra}
+
+
+def test_fatture_sparite_una_segnalazione_aggiornata_e_poi_risolta():
+    """06/10/2026: `invoices` azzerata e ricreata, 795 righe del report orfane,
+    nessun alert. Le orfane si contano (distinte dagli XML mai arrivati), la
+    segnalazione e' una sola, si aggiorna e si chiude da sola a zero."""
+    db = _db()
+    SEG = "agenti_segnalazioni"
+
+    async def scenario():
+        await db["invoices"].insert_one({"id": "inv-ok", "invoice_number": "A", "status": "imported"})
+        await db["invoices"].insert_one({"id": "inv-arch", "invoice_number": "D", "status": "archived"})
+        await db[report_ae.COLLECTION_REPORT].insert_one(_riga_report("a", "inv-ok", 100.0))
+        await db[report_ae.COLLECTION_REPORT].insert_one(_riga_report("b", "inv-sparita", 1220.5))
+        await db[report_ae.COLLECTION_REPORT].insert_one(_riga_report("c", None, 50.0))  # XML mai arrivato
+        await db[report_ae.COLLECTION_REPORT].insert_one(_riga_report("d", "inv-arch", 70.0))  # esiste, archiviata
+        primo = await report_ae.segnala_fatture_sparite(db)
+        secondo = await report_ae.segnala_fatture_sparite(db)
+        aperte_dopo_due = await db[SEG].find({"tipo": report_ae.TIPO_SEGNALAZIONE_FATTURE_SPARITE},
+                                             {"_id": 0}).to_list(10)
+        riga_b = await db[report_ae.COLLECTION_REPORT].find_one({"report_key": "b"}, {"_id": 0})
+        # Una seconda fattura sparisce: stessa segnalazione, conteggio 2.
+        await db[report_ae.COLLECTION_REPORT].insert_one(_riga_report("e", "inv-sparita-2", 9.5))
+        terzo = await report_ae.segnala_fatture_sparite(db)
+        aperte_dopo_tre = await db[SEG].find({"tipo": report_ae.TIPO_SEGNALAZIONE_FATTURE_SPARITE},
+                                             {"_id": 0}).to_list(10)
+        stato_aperto = await report_ae.stato_fatture_sparite(db)
+        # Gli XML tornano: conteggio 0, la segnalazione si chiude, non se ne crea un'altra.
+        await db["invoices"].insert_one({"id": "inv-sparita", "invoice_number": "B"})
+        await db["invoices"].insert_one({"id": "inv-sparita-2", "invoice_number": "E"})
+        quarto = await report_ae.segnala_fatture_sparite(db)
+        tutte = await db[SEG].find({"tipo": report_ae.TIPO_SEGNALAZIONE_FATTURE_SPARITE},
+                                   {"_id": 0}).to_list(10)
+        stato_chiuso = await report_ae.stato_fatture_sparite(db)
+        invoices = await db["invoices"].count_documents({})
+        return (primo, secondo, aperte_dopo_due, riga_b, terzo, aperte_dopo_tre,
+                stato_aperto, quarto, tutte, stato_chiuso, invoices)
+
+    (primo, secondo, aperte_dopo_due, riga_b, terzo, aperte_dopo_tre,
+     stato_aperto, quarto, tutte, stato_chiuso, invoices) = _run(scenario())
+
+    assert (primo["conteggio"], primo["totale_importo"], primo["segnalazione"]) == (1, 1220.5, "aperta")
+    assert primo["esempi"][0]["invoice_id"] == "inv-sparita"
+    assert secondo["conteggio"] == 1
+    assert len(aperte_dopo_due) == 1
+    seg = aperte_dopo_due[0]
+    assert seg["conteggio"] == 1 and seg["occorrenze"] == 2
+    assert seg["letta"] is False and seg["risolta"] is False and seg["id"]
+    assert "795" not in seg["descrizione"] and "sparita" in seg["descrizione"]
+    # La traccia resta sulla riga: non e' un XML mai arrivato.
+    assert riga_b["fattura_sparita_id"] == "inv-sparita"
+    assert terzo["conteggio"] == 2 and terzo["totale_importo"] == 1230.0
+    assert len(aperte_dopo_tre) == 1 and aperte_dopo_tre[0]["conteggio"] == 2
+    assert stato_aperto["conteggio"] == 2
+    assert quarto["conteggio"] == 0 and quarto["segnalazione"] == "risolta"
+    assert len(tutte) == 1 and tutte[0]["risolta"] is True and tutte[0]["conteggio"] == 0
+    assert stato_chiuso == {"conteggio": 0}
+    assert invoices == 4  # nessuna scrittura su invoices da parte del motore
+
+
+def test_il_riaggancio_marca_la_fattura_sparita_e_la_smarca_quando_torna():
+    db = _db()
+
+    async def scenario():
+        righe = [_riga_report("b", "inv-sparita", 10.0, filename_xml="IT_b.xml")]
+        await db[report_ae.COLLECTION_REPORT].insert_one(dict(righe[0]))
+        await report_ae.collega_righe_a_fatture(db, righe, salva=True)
+        dopo_perdita = await db[report_ae.COLLECTION_REPORT].find_one({"report_key": "b"}, {"_id": 0})
+        await db["invoices"].insert_one({"id": "inv-nuova", "filename": "IT_b.xml",
+                                         "invoice_number": "B", "status": "imported"})
+        await report_ae.collega_righe_a_fatture(db, righe, salva=True)
+        dopo_ritorno = await db[report_ae.COLLECTION_REPORT].find_one({"report_key": "b"}, {"_id": 0})
+        return dopo_perdita, dopo_ritorno
+
+    dopo_perdita, dopo_ritorno = _run(scenario())
+    assert dopo_perdita["invoice_id"] is None and dopo_perdita["xml_presente"] is False
+    assert dopo_perdita["fattura_sparita_id"] == "inv-sparita"
+    assert dopo_ritorno["invoice_id"] == "inv-nuova" and dopo_ritorno["fattura_sparita_id"] is None
+    # Gia' azzerata ma con la traccia: il conteggio la vede ancora come sparita.
+    db2 = _db()
+    _run(db2[report_ae.COLLECTION_REPORT].insert_one(
+        _riga_report("z", None, 5.0, fattura_sparita_id="inv-vecchia")))
+    assert _run(report_ae.rileva_fatture_sparite(db2))["conteggio"] == 1
+
+
 # --- Export csv grezzo del portale AdE ------------------------------------
 
 _CSV_ADE = (

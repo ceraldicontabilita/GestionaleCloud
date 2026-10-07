@@ -14,18 +14,28 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 import math
 import re
+import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple
 
 import pandas as pd
 
 from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
 
+logger = logging.getLogger(__name__)
+
 
 COLLECTION_REPORT = "fatture_report_ae"
+
+#: Segnalazione aggregata in ``agenti_segnalazioni``: righe del report il cui
+#: ``invoice_id`` puntava a una fattura che in ``invoices`` non c'e' piu' (una
+#: fattura «sparita», che non e' un XML mai arrivato). Una sola riga, aggiornata
+#: a ogni giro e chiusa quando il conteggio torna a zero.
+TIPO_SEGNALAZIONE_FATTURE_SPARITE = "fatture_report_ae_senza_fattura"
 
 REQUIRED_COLUMNS = {
     "Numero",
@@ -175,7 +185,7 @@ async def collega_righe_a_fatture(
     database; ritorna quante sono cambiate.
     """
     per_nome_file, per_identita = await _indice_fatture_attive(db)
-    cambiate = 0
+    nuovi: List[Tuple[Dict[str, Any], Any]] = []
     for riga in righe:
         naturale = (
             _vat(riga.get("supplier_vat")),
@@ -186,18 +196,165 @@ async def collega_righe_a_fatture(
             per_nome_file.get(_text(riga.get("filename_xml")).lower())
             or per_identita.get(naturale)
         )
-        invoice_id = trovata.get("id") if trovata else None
-        if invoice_id != riga.get("invoice_id"):
-            riga["invoice_id"] = invoice_id
-            riga["xml_presente"] = bool(invoice_id)
-            cambiate += 1
-            if not salva:
-                continue
+        nuovi.append((riga, trovata.get("id") if trovata else None))
+
+    # Una riga che perde l'aggancio non e' sempre «XML non ancora arrivato»:
+    # se l'id che aveva non esiste piu' in `invoices` (nessuno stato, nemmeno
+    # archiviata o cancellata) la fattura e' sparita. La traccia resta sulla
+    # riga (`fattura_sparita_id`), altrimenti dal giro dopo sarebbe
+    # indistinguibile da una fattura mai arrivata.
+    persi = [
+        riga.get("invoice_id") for riga, invoice_id in nuovi
+        if invoice_id is None and riga.get("invoice_id")
+    ]
+    presenti = await _ids_presenti_in_invoices(db, persi) if persi else set()
+    adesso = datetime.now(timezone.utc).isoformat()
+
+    cambiate = 0
+    for riga, invoice_id in nuovi:
+        precedente = riga.get("invoice_id")
+        aggiornamento: Dict[str, Any] = {}
+        if invoice_id != precedente:
+            aggiornamento.update({"invoice_id": invoice_id, "xml_presente": bool(invoice_id)})
+            if invoice_id is None and precedente and str(precedente) not in presenti:
+                aggiornamento["fattura_sparita_id"] = str(precedente)
+                aggiornamento["fattura_sparita_rilevata_il"] = adesso
+        if invoice_id and riga.get("fattura_sparita_id"):
+            # La fattura e' tornata (XML riacquisito): la traccia si chiude.
+            aggiornamento["fattura_sparita_id"] = None
+        if not aggiornamento:
+            continue
+        riga.update(aggiornamento)
+        cambiate += 1
+        if salva:
             await db[COLLECTION_REPORT].update_one(
-                {"report_key": riga["report_key"]},
-                {"$set": {"invoice_id": invoice_id, "xml_presente": bool(invoice_id)}},
+                {"report_key": riga["report_key"]}, {"$set": aggiornamento},
             )
     return cambiate
+
+
+async def _ids_presenti_in_invoices(db, ids: Iterable[Any]) -> Set[str]:
+    """Gli id (testo) che esistono in ``invoices`` in qualunque stato."""
+    from app.utils.id_fattura import filtro_id_in
+
+    cercati = list(dict.fromkeys(str(i) for i in ids if i))
+    presenti: Set[str] = set()
+    for inizio in range(0, len(cercati), 500):
+        blocco = cercati[inizio:inizio + 500]
+        trovate = await db["invoices"].find(
+            filtro_id_in(blocco), {"_id": 0, "id": 1},
+        ).to_list(len(blocco))
+        presenti.update(str(f.get("id")) for f in trovate if f.get("id") is not None)
+    return presenti
+
+
+async def rileva_fatture_sparite(db) -> Dict[str, Any]:
+    """Le righe del report la cui fattura non c'e' piu' in ``invoices``.
+
+    Due casi, entrambi «fattura sparita» e mai «XML non arrivato»:
+    - ``invoice_id`` valorizzato ma nessuna fattura con quell'id, in nessuno
+      stato (la riga non e' ancora passata da ``collega_righe_a_fatture``);
+    - ``invoice_id`` gia' azzerato dal riaggancio con la traccia
+      ``fattura_sparita_id`` lasciata da quel passaggio.
+
+    Marca il primo caso con ``fattura_sparita_id`` (la sola scrittura, sul
+    report: ``invoices`` non si tocca e niente si ricollega da solo).
+    """
+    righe = await db[COLLECTION_REPORT].find(
+        {}, {"_id": 0, "report_key": 1, "invoice_id": 1, "fattura_sparita_id": 1,
+             "totale_documento": 1, "supplier_name": 1, "numero_fattura": 1,
+             "data_documento": 1},
+    ).to_list(100000)
+    presenti = await _ids_presenti_in_invoices(
+        db, (r.get("invoice_id") for r in righe if r.get("invoice_id")),
+    )
+    adesso = datetime.now(timezone.utc).isoformat()
+    sparite: List[Dict[str, Any]] = []
+    for riga in righe:
+        invoice_id = riga.get("invoice_id")
+        if invoice_id:
+            if str(invoice_id) in presenti:
+                continue
+            if not riga.get("fattura_sparita_id"):
+                await db[COLLECTION_REPORT].update_one(
+                    {"report_key": riga["report_key"]},
+                    {"$set": {"fattura_sparita_id": str(invoice_id),
+                              "fattura_sparita_rilevata_il": adesso}},
+                )
+            sparite.append(riga)
+        elif riga.get("fattura_sparita_id"):
+            sparite.append(riga)
+    centesimi = sum(round(float(r.get("totale_documento") or 0) * 100) for r in sparite)
+    return {
+        "conteggio": len(sparite),
+        "totale_importo": round(centesimi / 100, 2),
+        "righe_report": len(righe),
+        "esempi": [
+            {"fornitore": r.get("supplier_name"), "numero": r.get("numero_fattura"),
+             "data": r.get("data_documento"), "totale": r.get("totale_documento"),
+             "invoice_id": r.get("invoice_id") or r.get("fattura_sparita_id")}
+            for r in sparite[:10]
+        ],
+    }
+
+
+async def segnala_fatture_sparite(db) -> Dict[str, Any]:
+    """Una segnalazione aggregata in ``agenti_segnalazioni`` (stesso registro
+    e stesso schema degli altri agenti: ``tipo``/``letta``/``risolta``, upsert
+    con contatore come ``event_bus``). Aggiornata a ogni giro, risolta quando
+    il conteggio torna a zero. Nessuna scrittura su ``invoices``."""
+    rilevazione = await rileva_fatture_sparite(db)
+    adesso = datetime.now(timezone.utc).isoformat()
+    aperta = {"tipo": TIPO_SEGNALAZIONE_FATTURE_SPARITE, "risolta": False}
+    conteggio = rilevazione["conteggio"]
+    if conteggio == 0:
+        esito = await db["agenti_segnalazioni"].update_one(
+            aperta,
+            {"$set": {"risolta": True, "risolta_at": adesso, "risolta_da": "giro_automatico",
+                      "conteggio": 0, "updated_at": adesso}},
+        )
+        return {**rilevazione, "segnalazione": "risolta" if esito.matched_count else "nessuna"}
+    descrizione = (
+        f"{conteggio} righe del report AdE «Fatture ricevute» puntano a fatture che "
+        f"non esistono piu' in invoices (totale € {rilevazione['totale_importo']:.2f}). "
+        "Non e' un XML mai arrivato: la fattura c'era ed e' sparita. Nessun "
+        "ricollegamento automatico: va deciso da dove riacquisire gli XML."
+    )
+    await db["agenti_segnalazioni"].update_one(
+        aperta,
+        {
+            "$set": {
+                "tipo": TIPO_SEGNALAZIONE_FATTURE_SPARITE,
+                "risolta": False,
+                "agente": "fatture_report_ae",
+                "priorita": "urgente",
+                "titolo": f"Fatture sparite: {conteggio} righe del report AdE senza fattura",
+                "descrizione": descrizione,
+                "conteggio": conteggio,
+                "totale_importo": rilevazione["totale_importo"],
+                "righe_report": rilevazione["righe_report"],
+                "esempi": rilevazione["esempi"],
+                "data_rilevazione": adesso,
+                "updated_at": adesso,
+            },
+            "$inc": {"occorrenze": 1},
+            "$setOnInsert": {"id": str(uuid.uuid4()), "letta": False, "created_at": adesso},
+        },
+        upsert=True,
+    )
+    return {**rilevazione, "segnalazione": "aperta"}
+
+
+async def stato_fatture_sparite(db) -> Dict[str, Any]:
+    """Sola lettura: il numero della segnalazione aperta (0 se non ce n'e')."""
+    seg = await db["agenti_segnalazioni"].find_one(
+        {"tipo": TIPO_SEGNALAZIONE_FATTURE_SPARITE, "risolta": False},
+        {"_id": 0, "id": 1, "conteggio": 1, "totale_importo": 1, "data_rilevazione": 1},
+    )
+    if not seg:
+        return {"conteggio": 0}
+    return {"conteggio": int(seg.get("conteggio") or 0), "totale_importo": seg.get("totale_importo"),
+            "data_rilevazione": seg.get("data_rilevazione"), "segnalazione_id": seg.get("id")}
 
 
 def _read_report(content: bytes, filename: str) -> pd.DataFrame:

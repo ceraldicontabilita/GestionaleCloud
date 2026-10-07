@@ -236,7 +236,10 @@ def test_gli_acconti_pagano_la_fattura_solo_se_la_somma_torna_al_centesimo(archi
 
 # ── 2b. cassa ────────────────────────────────────────────────────────────────
 
-def test_cassa_import_non_paga_la_conferma_scrive_una_sola_riga_di_cassa(archivio_scenari, ingresso):
+def test_cassa_import_paga_una_sola_riga_di_cassa_e_la_conferma_non_duplica(archivio_scenari, ingresso):
+    """CLAUDE.md §29 (titolare 07/10/2026): fornitore cassa -> il movimento in
+    Prima Nota Cassa nasce all'import con la data della fattura; una conferma
+    successiva in Provvisori non scrive un secondo pagamento."""
     db = archivio_scenari
 
     async def scenario():
@@ -244,35 +247,37 @@ def test_cassa_import_non_paga_la_conferma_scrive_una_sola_riga_di_cassa(archivi
         esito = await importa(db, xml_fattura(), ingresso)
         fid = esito["id"]
         app = app_prima_nota()
-        prima = {"fattura": await fattura(db, fid), "cassa": await tutti(db, "prima_nota_cassa"),
-                 "banca": await tutti(db, "prima_nota_banca")}
-        ok = await richiesta(app, "POST", "/api/prima-nota/provvisori/conferma",
-                             json={"fattura_id": fid, "metodo": "cassa", "data_pagamento": "2026-09-12"})
-        doppia = await richiesta(app, "POST", "/api/prima-nota/provvisori/conferma",
-                                 json={"fattura_id": fid, "metodo": "cassa", "data_pagamento": "2026-09-12"})
+        dopo_import = {"fattura": await fattura(db, fid), "cassa": await tutti(db, "prima_nota_cassa"),
+                       "banca": await tutti(db, "prima_nota_banca")}
+        conferma = await richiesta(app, "POST", "/api/prima-nota/provvisori/conferma",
+                                   json={"fattura_id": fid, "metodo": "cassa", "data_pagamento": "2026-09-12"})
         elenco = await richiesta(app, "GET", "/api/prima-nota/cassa?anno=2026&limit=100")
-        return {"prima": prima, "ok": ok, "doppia": doppia, "elenco": elenco.json(), "dopo": await fattura(db, fid),
+        return {"import": dopo_import, "conferma": conferma, "elenco": elenco.json(),
+                "dopo": await fattura(db, fid),
                 "cassa": await tutti(db, "prima_nota_cassa"), "banca": await tutti(db, "prima_nota_banca"),
-                "partite": await tutti(db, "partite_aperte"), "fid": fid}
+                "partite": await tutti(db, "partite_aperte"), "alerts": await tutti(db, "alerts"), "fid": fid}
 
     r = esegui(scenario())
-    from app.services.stato_pagamento_fattura import e_pagata
 
-    # all'import niente cassa e niente pagamento: il fatto autorevole e' la conferma del titolare
-    assert not e_pagata(r["prima"]["fattura"]) and r["prima"]["cassa"] == [] and r["prima"]["banca"] == []
-    assert r["ok"].status_code == 200, r["ok"].text
-    assert e_pagata_su_ogni_campo(r["dopo"]) and r["dopo"]["data_pagamento"] == "2026-09-12"
-    assert r["dopo"]["prima_nota_tipo"] == "cassa" and r["dopo"]["metodo_pagamento_effettivo"] == "cassa"
+    # all'import: pagata in cassa, data = data fattura (dichiarazione del titolare via anagrafica)
+    f = r["import"]["fattura"]
+    assert e_pagata_su_ogni_campo(f) and f["data_pagamento"] == "2026-09-10"
+    assert f["prima_nota_tipo"] == "cassa" and f["metodo_pagamento_effettivo"] == "cassa"
+    assert f["registrata_auto_da_metodo_fornitore"] is True and f["provvisorio"] is False
+    assert len(r["import"]["cassa"]) == 1 and r["import"]["banca"] == []
     # una riga in Cassa, importo al centesimo, conto di tesoreria della cassa; niente in Banca
-    assert len(r["cassa"]) == 1 and r["banca"] == []
-    riga = r["cassa"][0]
+    riga = r["import"]["cassa"][0]
     assert _d(riga["importo"]) == Decimal("122.00") and riga["fattura_id"] == r["fid"]
+    assert riga["data"] == "2026-09-10" and riga["source"] == "auto_metodo_fornitore"
     assert riga["conto_contabile"] == "19.03.03" and riga["conto_contropartita"] == "33.03.01"
     assert _d(r["elenco"]["saldo"]) == Decimal("-122.00")
-    # la seconda conferma e' rifiutata e non scrive un secondo pagamento
-    assert r["doppia"].status_code == 409
-    assert len(r["cassa"]) == 1
-    assert r["partite"][0]["stato"] == "chiusa"
+    # la conferma in Provvisori trova il pagamento gia' completo e non scrive un secondo movimento
+    assert r["conferma"].status_code == 409, r["conferma"].text
+    assert r["cassa"] == r["import"]["cassa"] and r["banca"] == []
+    assert e_pagata_su_ogni_campo(r["dopo"]) and r["dopo"]["data_pagamento"] == "2026-09-10"
+    # nessuna partita aperta e nessun alert «metodo non definito»
+    assert all(p["stato"] not in ("aperta", "parziale") for p in r["partite"])
+    assert not any(a["codice"] == "FAT_MP_NON_DEFINITO" for a in r["alerts"])
 
 
 def test_cassa_su_fornitore_a_banca_senza_approvazione_e_rifiutata(archivio_scenari):

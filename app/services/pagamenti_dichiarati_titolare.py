@@ -44,7 +44,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 
-from app.services.fatture_report_ae import COLLECTION_REPORT, collega_righe_a_fatture
+from app.services.fatture_report_ae import (
+    COLLECTION_REPORT,
+    collega_righe_a_fatture,
+    segnala_fatture_sparite,
+    stato_fatture_sparite,
+)
 from app.services.payment_allocation_validator import is_credit_note, to_cents
 from app.services.prima_nota_integrity import (
     SOURCES_NON_PAGAMENTO,
@@ -640,9 +645,17 @@ async def applica_pagamenti_dichiarati(
     righe = await db[COLLECTION_REPORT].find(filtro, {"_id": 0}).to_list(20000)
     risultato: Dict[str, Any] = {"dry_run": dry_run, "righe": len(righe)}
     if not righe:
+        if not dry_run and report_keys is None:
+            risultato["fatture_sparite"] = await _segnala_fatture_sparite(db)
         return risultato
 
     await collega_righe_a_fatture(db, righe, salva=not dry_run)
+    if not dry_run and report_keys is None:
+        # Dopo il riaggancio: le righe che hanno perso la fattura portano la
+        # traccia `fattura_sparita_id`, e il conteggio finisce in UNA
+        # segnalazione aggregata (il 06/10/2026 `invoices` e' stata azzerata
+        # e ricreata e nessun alert lo ha detto).
+        risultato["fatture_sparite"] = await _segnala_fatture_sparite(db)
 
     if aggiorna_fornitori and not solo_pendenti:
         risultato["fornitori"] = await _aggiorna_fornitori(db, righe, dry_run=dry_run)
@@ -688,9 +701,15 @@ async def applica_pagamenti_dichiarati(
             continue
         fattura_id = str(riga.get("invoice_id") or "")
         if not fattura_id or fattura_id not in per_id:
-            annota(riga, "fattura_non_ancora_arrivata", motivo="XML non ancora nel gestionale")
+            # Stesso esito aperto (il giro dei 30 minuti ripassa la riga), ma
+            # il motivo distingue la fattura sparita dall'XML mai arrivato.
+            sparita = riga.get("fattura_sparita_id")
+            motivo = (f"fattura sparita da invoices (era {sparita})" if sparita
+                      else "XML non ancora nel gestionale")
+            annota(riga, "fattura_non_ancora_arrivata", motivo=motivo)
             if not dry_run:
-                await _salva_esito(db, riga, "fattura_non_ancora_arrivata")
+                await _salva_esito(db, riga, "fattura_non_ancora_arrivata",
+                                   **({"motivo": motivo} if sparita else {}))
             continue
         fattura = aperte.get(fattura_id)
         doppione = fattura_id in fatture_viste
@@ -770,6 +789,17 @@ async def applica_pagamenti_dichiarati(
         "da_vedere": problemi,
     })
     return risultato
+
+
+async def _segnala_fatture_sparite(db) -> Dict[str, Any]:
+    """Best-effort: un guasto nel conteggio non ferma i pagamenti, ma si
+    legge nel log con tipo e contesto (§13), non sparisce."""
+    try:
+        return await segnala_fatture_sparite(db)
+    except Exception as exc:  # noqa: BLE001 - il giro dei pagamenti prosegue
+        logger.error("Fatture sparite dal report AdE: segnalazione non scritta (%s: %s)",
+                     type(exc).__name__, exc)
+        return {"errore": f"{type(exc).__name__}: {exc}"}
 
 
 async def applica_per_fattura_arrivata(db, fattura: Dict[str, Any]) -> Dict[str, Any]:
@@ -871,9 +901,14 @@ async def avvia(db, *, dry_run: bool = False) -> Dict[str, Any]:
 
 async def stato(db) -> Dict[str, Any]:
     documento = await db["sistema_stato"].find_one({"chiave": CHIAVE_JOB}, {"_id": 0})
+    # Il numero delle righe del report la cui fattura non c'e' piu' (dalla
+    # segnalazione aperta, sola lettura): il titolare lo vede qui senza
+    # aspettare il cruscotto agenti.
+    fatture_sparite = await stato_fatture_sparite(db)
     if not documento:
-        return {"stato": "mai_avviato"}
+        return {"stato": "mai_avviato", "fatture_sparite": fatture_sparite}
     documento.pop("chiave", None)
+    documento["fatture_sparite"] = fatture_sparite
     in_esecuzione = _job_lock.locked() or (_job_task is not None and not _job_task.done())
     if documento.get("stato") == "in_corso" and not in_esecuzione:
         # Un deploy riavvia il processo e uccide il giro a meta': lo stato

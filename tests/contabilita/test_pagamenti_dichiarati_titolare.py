@@ -373,6 +373,39 @@ def test_fattura_arrivata_dopo_il_report_viene_chiusa_dal_giro_automatico(db):
     assert riga["importo"] == 99.0
 
 
+def test_la_fattura_sparita_si_distingue_dall_xml_mai_arrivato_e_si_segnala(db):
+    """La riga del report puntava a una fattura che `invoices` non ha piu':
+    il giro la conta a parte, scrive UNA segnalazione e la espone nello stato."""
+    async def scenario():
+        await _prepara(db)
+        await report_ae.importa_report_fatture_ricevute(db, _xlsx(RIGHE), "r.xlsx")
+        # K-10 (XML mai arrivato) resta tale; la fattura di Leasys sparisce dall'archivio.
+        await db["invoices"].delete_one({"id": "f-leasys"})
+        primo = await pagamenti.applica_pagamenti_dichiarati(db)
+        await db["sistema_stato"].update_one(
+            {"chiave": pagamenti.CHIAVE_JOB},
+            {"$set": {"chiave": pagamenti.CHIAVE_JOB, "stato": "completato"}}, upsert=True)
+        stato = await pagamenti.stato(db)
+        secondo = await pagamenti.applica_pagamenti_dichiarati(db, solo_pendenti=True)
+        segnalazioni = await db["agenti_segnalazioni"].find(
+            {"tipo": report_ae.TIPO_SEGNALAZIONE_FATTURE_SPARITE}, {"_id": 0}).to_list(10)
+        riga = await db["fatture_report_ae"].find_one({"numero_fattura": "L-1"}, {"_id": 0})
+        return primo, stato, secondo, segnalazioni, riga
+
+    primo, stato, secondo, segnalazioni, riga = asyncio.run(scenario())
+    assert primo["conteggi"]["fattura_non_ancora_arrivata"] == 2  # K-10 + Leasys
+    assert primo["fatture_sparite"]["conteggio"] == 1
+    motivi = {p["numero"]: p["motivo"] for p in primo["da_vedere"]}
+    assert motivi["K-10"] == "XML non ancora nel gestionale"
+    assert motivi["L-1"] == "fattura sparita da invoices (era f-leasys)"
+    assert riga["fattura_sparita_id"] == "f-leasys" and riga["invoice_id"] is None
+    assert riga["pagamento_applicato"]["stato"] == "fattura_non_ancora_arrivata"
+    assert stato["fatture_sparite"]["conteggio"] == 1
+    assert secondo["fatture_sparite"]["conteggio"] == 1
+    assert len(segnalazioni) == 1 and segnalazioni[0]["occorrenze"] == 2
+    assert segnalazioni[0]["risolta"] is False
+
+
 def test_la_cassa_d_ufficio_non_prova_un_pagamento():
     async def scenario():
         db = ClientArchivioMemoria()["test_cassa_ufficio"]

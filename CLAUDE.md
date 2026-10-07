@@ -1859,6 +1859,26 @@ Mai ripiego automatico “cassa”.
 
 Metodo previsto e pagamento effettivamente provato sono concetti distinti.
 
+## REGOLA — registrazione all'import per metodo fornitore
+
+Oltre l'ultima data del report «Fatture ricevute» del titolare (`data_limite_dichiarazioni`) la fattura a rata unica di un fornitore non escluso si instrada all'import secondo il metodo dell'anagrafica, in un solo punto (`auto_registra_prima_nota`) e con il writer unico di Prima Nota:
+
+| Metodo fornitore | All'import |
+| --- | --- |
+| cassa | movimento in Prima Nota Cassa subito, data = data fattura, fattura pagata, `fattura.pagata` una volta sola |
+| banca | riga provvisoria in Prima Nota Banca = attesa dell'estratto conto; con riga EC univoca al centesimo → pagata e riconciliata |
+| assegno collegato o previsto | §39: pagamento dichiarato con assegno, in attesa di riscontro bancario; una sola riga di attesa |
+| misto | Provvisoria, decide l'operatore |
+| mancante | `sospesa_metodo_fornitore_mancante` + alert `FAT_MP_NON_DEFINITO`, nessun movimento |
+
+La data fattura del movimento cassa è la dichiarazione del titolare tramite anagrafica, non un dato inventato; senza data documento non si registra.
+
+Note di credito TD04/TD08 non generano un'entrata di cassa automatica (§32).
+
+Fino alla data limite comanda il report del titolare (`pagamenti_dichiarati_titolare`), non il metodo.
+
+Il secondo import della stessa fattura non produce un secondo movimento né un secondo evento (§122).
+
 ---
 
 # 30. Fatture e scadenze
@@ -2403,6 +2423,8 @@ stato finanziario:
 Dopo il riscontro:
 
 **pagamento provato in banca**
+
+All'import della fattura XML l'assegno collegato prevale sul metodo del fornitore (§29): la fattura resta `in_attesa_estratto_conto` con `metodo_pagamento_previsto = assegno`, senza decisione richiesta e con una sola riga di attesa in Prima Nota Banca marcata con l'`assegno_id`; il riscontro resta al motore dell'estratto conto.
 
 ---
 
@@ -4972,6 +4994,8 @@ Non è un diario.
 - protocollo completo spento per memoria.
 
 ## Fatture
+
+Il 06/10/2026 (02:14–03:18 UTC) le collezioni contabili `invoices`, `corrispettivi`, `movimenti_contabili`, `prima_nota_cassa` e `prima_nota_banca` sono state azzerate e ricreate da zero; la causa non è nel log applicativo. Al 07/10 `invoices` ha 21 fatture, il report AdE 2026 (`fatture_report_ae`) ne conta 902, di cui 795 con `invoice_id` che non esiste più e 888 con pagamento dichiarato dal titolare. Gli XML sono su Drive in `ELABORATE`: la ricostruzione passa da `POST /api/admin/documenti/rimetti-in-coda` (dry-run, poi reale) e dal giro della cartella unica; i pagamenti dichiarati si applicano da soli all'arrivo di ogni fattura. Non creare un secondo importatore.
 
 Persistono ID storici misti testo/numero.
 
