@@ -57,6 +57,7 @@ __all__ = [
     "estrai_quadri_pagine",
     "estrai_quadri_documento",
     "credito_iva_riportato",
+    "quadro_st",
     "avvia_estrazione_archivio",
     "stato_estrazione_archivio",
 ]
@@ -65,7 +66,7 @@ PARSER_VERSION = "dichiarazioni-quadri-v1"
 
 #: Tipi dell'archivio (`fiscal_documents.document_type`) che portano un quadro
 #: leggibile. Gli esiti ISA stanno sotto `REDDITI_SC`: e' il contenuto a dirlo.
-TIPI_CON_QUADRI = frozenset({"DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_IRAP", "ISA_ESITO"})
+TIPI_CON_QUADRI = frozenset({"DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_IRAP", "ISA_ESITO", "MODELLO_770"})
 
 #: rigo del modulo -> nome del campo, per tipo letto.
 CAMPI_PER_TIPO: Dict[str, Dict[str, str]] = {
@@ -113,6 +114,15 @@ _RE_IDENTIFICATIVO = re.compile(
     r"Identificativo dichiarazione:\s*(\d{11})\s*-\s*(\d{7})(?:\s+del\s+(\d{1,2}/\d{1,2}/\d{4}))?", re.I
 )
 _RE_ANNO_IMPOSTA = re.compile(r"PERIODO\s+D[’'`]\s*IMPOSTA\s+((?:19|20)\d{2})", re.I)
+# Il 770 stampa l'anno delle ritenute come «Anno 2024» (frontespizio) e il
+# modello come «MODELLO 770/2025»: il modello dell'anno N dichiara l'anno N-1.
+_RE_ANNO_770 = re.compile(r"\bAnno\s+((?:19|20)\d{2})\b")
+_RE_MODELLO_770 = re.compile(r"MODELLO\s*770\s*/\s*((?:19|20)\d{2})", re.I)
+_RE_RIGO_ST = re.compile(r"^ST(\d{1,2})$")
+# Una pagina del quadro ST: l'intestazione o le etichette dei righi (le
+# sezioni II-IV non ripetono «QUADRO ST»).
+_RE_PAGINA_ST = re.compile(r"QUADRO\s*ST\b|\bST(?:[2-9]|[1-4]\d)\b")
+_RE_IMPORTO_ST = re.compile(r"^\d{1,3}(?:\.\d{3})*,\d{2}$")
 _RE_MODELLO_REDDITI = re.compile(r"REDDITI\s*SC\s*((?:19|20)\d{2})", re.I)
 _RE_PROTOCOLLO = re.compile(r"Protocollo\s*\n?\s*(\d{20,26})")
 _RE_CODICE_ISA = re.compile(r"^[A-Z]{2}\d{2}[A-Z]$")
@@ -148,7 +158,8 @@ def pagina_con_quadro(testo: str) -> bool:
     `layout_words` questi righi non si leggono.
     """
     t = str(testo or "")
-    return bool(_ETICHETTE_QUADRO.search(t) or _RE_ISA.search(t) or _RE_ISA_FRONTESPIZIO.search(t))
+    return bool(_ETICHETTE_QUADRO.search(t) or _RE_ISA.search(t) or _RE_ISA_FRONTESPIZIO.search(t)
+                or _RE_PAGINA_ST.search(t))
 
 
 def riconosci_tipo(pagine: Iterable[Dict[str, Any]]) -> Optional[str]:
@@ -156,6 +167,10 @@ def riconosci_tipo(pagine: Iterable[Dict[str, Any]]) -> Optional[str]:
     testo = "\n".join(str(p.get("text") or "") for p in pagine)
     if _RE_ISA.search(testo) and re.search(r"\bISA\b|Isa\b", testo):
         return "ISA_ESITO"
+    # Il 770 porta il quadro ST (ritenute operate e versate): si riconosce
+    # prima dell'IVA perche' anche lui cita «modello» e «imposta».
+    if re.search(r"QUADRO\s*ST(?![A-Z0-9])|MODELLO\s*770", testo, re.I):
+        return "MODELLO_770"
     # L'OCR salda le parole («QUADROVX», «MODELLOIVA2024»): spazio facoltativo.
     if re.search(r"QUADRO\s*VX(?![A-Z0-9])|MODELLO\s*IVA\s*20\d{2}", testo, re.I):
         return "DICHIARAZIONE_IVA"
@@ -309,6 +324,162 @@ def _leggi_righi(pagine: List[Dict[str, Any]], righi: Dict[str, str]) -> Dict[st
     return campi
 
 
+# ── quadro ST del 770: ritenute operate e versate ───────────────────────────
+#
+# Ogni rigo (ST3, ST4, ...) occupa due righe grafiche. Sopra l'etichetta stanno
+# periodo e importi; sotto stanno ravvedimento (X), note, codice tributo e data
+# di versamento. Il modulo stampa in piccolo il numero di ogni casella
+# (1, 2, 6, 7, 8 sopra; 9, 10, 11, 13, 14, 15, 16 sotto): ogni valore
+# appartiene alla casella il cui numero sta alla sua sinistra. Si legge per
+# posizione: niente indovinato dal testo lineare.
+_CASELLE_ST = {
+    1: "periodo", 2: "ritenute_operate", 6: "crediti_scomputo", 7: "importo_versato",
+    8: "interessi", 9: "ravvedimento", 10: "note", 11: "codice_tributo", 13: "regione",
+    14: "data_versamento", 15: "nota", 16: "importo_sospeso",
+}
+# Fasce verticali rispetto a y0 dell'etichetta STn (punti PDF).
+_FASCIA_SOPRA_NUMERI = (-16.0, -9.5)
+_FASCIA_SOPRA_VALORI = (-9.5, 4.0)
+_FASCIA_SOTTO_NUMERI = (6.0, 26.0)
+
+
+def _sezione_st(numero: int) -> str:
+    if numero <= 13:
+        return "I"
+    if numero <= 25:
+        return "II"
+    if numero <= 37:
+        return "III"
+    return "IV"
+
+
+def _in_fascia(parola: Dict[str, Any], y: float, fascia: tuple) -> bool:
+    return fascia[0] <= _f(parola, "y0") - y < fascia[1]
+
+
+def _per_casella(valori: List[Dict[str, Any]], numeri: List[Dict[str, Any]]) -> Dict[int, List[str]]:
+    """Ogni valore va alla casella il cui numero e' l'ultimo a sinistra."""
+    ancore = sorted(((_f(n, "x0"), int(_testo(n))) for n in numeri), key=lambda a: a[0])
+    esito: Dict[int, List[str]] = {}
+    for v in sorted(valori, key=lambda w: _f(w, "x0")):
+        casella = None
+        for x_ancora, numero in ancore:
+            if x_ancora <= _f(v, "x0") + 3.0:
+                casella = numero
+        if casella is not None:
+            esito.setdefault(casella, []).append(_testo(v))
+    return esito
+
+
+def _cents_st(testo: Optional[str]) -> Optional[int]:
+    if not testo or not _RE_IMPORTO_ST.match(testo):
+        return None
+    return int(testo.replace(".", "").replace(",", ""))
+
+
+def _riga_st(etichetta: Dict[str, Any], parole: List[Dict[str, Any]], pagina: int) -> Optional[Dict[str, Any]]:
+    y = _f(etichetta, "y0")
+    x_min = _f(etichetta, "x1")
+    altre = [w for w in parole if w is not etichetta and _f(w, "x0") > x_min]
+    numero = lambda w: bool(re.fullmatch(r"\d{1,2}", _testo(w)))  # noqa: E731
+    sopra_numeri = [w for w in altre if _in_fascia(w, y, _FASCIA_SOPRA_NUMERI) and numero(w)]
+    sopra_valori = [w for w in altre if _in_fascia(w, y, _FASCIA_SOPRA_VALORI)]
+    # La riga sotto non sta a distanza fissa: nel primo rigo del modulo (ST2)
+    # fra l'etichetta e le caselle corrono le intestazioni di colonna. Si
+    # cercano i numeri delle caselle (9, 10, 11, ...) entro la fascia e i
+    # valori stanno subito sotto di loro.
+    candidati_numeri = [w for w in altre if _in_fascia(w, y, _FASCIA_SOTTO_NUMERI) and numero(w)
+                        and int(_testo(w)) >= 9]
+    if candidati_numeri:
+        y_numeri = sorted(_f(w, "y0") for w in candidati_numeri)[len(candidati_numeri) // 2]
+        sotto_numeri = [w for w in candidati_numeri if abs(_f(w, "y0") - y_numeri) <= 2.5]
+        sotto_valori = [w for w in altre if 2.5 < _f(w, "y0") - y_numeri <= 12.0]
+    else:
+        sotto_numeri, sotto_valori = [], []
+    if not sopra_valori and not sotto_valori:
+        return None
+    caselle = _per_casella(sopra_valori, sopra_numeri)
+    caselle.update(_per_casella(sotto_valori, sotto_numeri))
+    campi: Dict[str, Any] = {}
+    for n, testi in caselle.items():
+        nome = _CASELLE_ST.get(n)
+        if nome:
+            campi[nome] = testi
+    periodo = campi.get("periodo") or []
+    mese = anno = None
+    for t in periodo:
+        if re.fullmatch(r"\d{2}", t) and mese is None:
+            mese = int(t)
+        elif re.fullmatch(r"(?:19|20)\d{2}", t):
+            anno = int(t)
+    if mese is None or anno is None or not (1 <= mese <= 12):
+        return None
+    primo = lambda nome: (campi.get(nome) or [None])[0]  # noqa: E731
+    data_pezzi = campi.get("data_versamento") or []
+    data_iso = None
+    if len(data_pezzi) == 3 and all(re.fullmatch(r"\d{1,4}", t) for t in data_pezzi):
+        try:
+            data_iso = f"{int(data_pezzi[2]):04d}-{int(data_pezzi[1]):02d}-{int(data_pezzi[0]):02d}"
+            date_check = __import__("datetime").date.fromisoformat(data_iso)
+            data_iso = date_check.isoformat()
+        except ValueError:
+            data_iso = None
+    numero_rigo = int(_RE_RIGO_ST.match(_testo(etichetta)).group(1))
+    codice = primo("codice_tributo")
+    return {
+        "rigo": _testo(etichetta), "sezione": _sezione_st(numero_rigo), "pagina": pagina,
+        "mese": mese, "anno": anno, "periodo": f"{mese:02d}/{anno}",
+        "ritenute_operate_cents": _cents_st(primo("ritenute_operate")),
+        "crediti_scomputo_cents": _cents_st(primo("crediti_scomputo")),
+        "importo_versato_cents": _cents_st(primo("importo_versato")),
+        "interessi_cents": _cents_st(primo("interessi")),
+        "importo_sospeso_cents": _cents_st(primo("importo_sospeso")),
+        "ravvedimento": any(t.upper() == "X" for t in campi.get("ravvedimento") or []),
+        "note": primo("note"),
+        "nota": primo("nota"),
+        "regione": primo("regione"),
+        "codice_tributo": codice if codice and re.fullmatch(r"[0-9A-Z]{3,5}", codice) else None,
+        "data_versamento": data_iso,
+        "data_versamento_testo": " ".join(data_pezzi) if data_pezzi else None,
+        "caselle": {str(k): v for k, v in sorted(caselle.items())},
+    }
+
+
+def quadro_st(pagine: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    """Le righe del quadro ST (sezioni I-IV) di un 770, per posizione.
+
+    Ritorna ``{"righe": [...], "pagine_senza_coordinate": [...], "righe_incomplete": n}``.
+    Una riga vale se ha mese e anno; codice tributo e data possono mancare
+    (restano None, mai inventati). Le pagine senza coordinate si contano.
+    """
+    righe: List[Dict[str, Any]] = []
+    senza_coordinate: List[int] = []
+    incomplete = 0
+    for p in sorted((dict(x) for x in pagine), key=lambda x: int(x.get("page_number") or 0)):
+        testo = str(p.get("text") or "")
+        if not _RE_PAGINA_ST.search(testo):
+            continue
+        parole = p.get("layout_words") or []
+        numero = int(p.get("page_number") or 0)
+        if not parole:
+            # Conta solo se la pagina ha importi: le sezioni vuote del modulo
+            # (righi stampati senza valori) non sono righe perse.
+            if _RE_IMPORTO_ST.search(testo) or re.search(r"\d{1,3}(?:\.\d{3})*,\d{2}", testo):
+                senza_coordinate.append(numero)
+            continue
+        etichette = [w for w in parole if _RE_RIGO_ST.match(_testo(w)) and _f(w, "x0") <= _X_MAX_ETICHETTA]
+        for et in sorted(etichette, key=lambda w: _f(w, "y0")):
+            riga = _riga_st(et, parole, numero)
+            if riga is None:
+                continue
+            if riga["importo_versato_cents"] is None and riga["ritenute_operate_cents"] is None:
+                continue
+            if not riga["codice_tributo"] or not riga["data_versamento"]:
+                incomplete += 1
+            righe.append(riga)
+    return {"righe": righe, "pagine_senza_coordinate": senza_coordinate, "righe_incomplete": incomplete}
+
+
 def _isa(pagine: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """Punteggio, codice ISA e protocollo dell'esito del ricalcolo."""
     campi: Dict[str, Dict[str, Any]] = {}
@@ -402,6 +573,26 @@ def estrai_quadri_pagine(pagine: Iterable[Dict[str, Any]], document_type: Option
 
     if tipo is None:
         esito["motivo"] = "tipo_non_riconosciuto"
+        return esito
+    if tipo == "MODELLO_770":
+        st = quadro_st(elenco)
+        esito["st"] = {"righe_lette": len(st["righe"]), "righe_incomplete": st["righe_incomplete"],
+                       "pagine_senza_coordinate": st["pagine_senza_coordinate"]}
+        esito["st_righe"] = st["righe"]
+        m = _RE_MODELLO_770.search(testo)
+        if m:
+            esito["anno_modello"] = int(m.group(1))
+        if esito["anno_imposta"] is None:
+            m = _RE_ANNO_770.search(testo)
+            if m:
+                esito["anno_imposta"] = int(m.group(1))
+                esito["anno_imposta_fonte"] = "frontespizio_770_anno"
+            elif esito.get("anno_modello"):
+                esito["anno_imposta"] = esito["anno_modello"] - 1
+                esito["anno_imposta_fonte"] = "modello_770_anno_meno_uno"
+        esito["campi"] = {
+            "st_righe_lette": {"valore": str(len(st["righe"])), "motivo": None, "pagina": None},
+        }
         return esito
     if tipo == "ISA_ESITO":
         esito["campi"] = _isa(elenco)

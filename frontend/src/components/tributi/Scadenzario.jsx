@@ -19,7 +19,28 @@ const VARIANTE = {
   RITARDO_NON_RAVVEDUTO: 'danger',
   RITARDO_DA_VERIFICARE: 'warning',
   SCADENZA_NON_DETERMINATA: 'neutral',
+  DICHIARATO_770_SENZA_QUIETANZA: 'warning',
 };
+
+/** La riga del quadro ST del 770 agganciata alla voce: cosa il commercialista dichiara versato. */
+function Dichiarato770({ voce }) {
+  const righe = voce.dichiarato_770 || [];
+  if (!righe.length) return null;
+  const c = voce.confronto_770 || {};
+  const esito = c.importo === 'COINCIDE' ? 'coincide con le quietanze'
+    : c.importo === 'DIFFERENZA' ? `differenza ${euro(Math.abs(c.differenza_cents || 0))} rispetto alle quietanze`
+      : 'quietanza non in archivio';
+  return (
+    <div style={{ marginTop: 6, fontSize: 12.5, color: COLORS.textMuted }} data-testid="dichiarato-770">
+      {righe.map((d, i) => (
+        <div key={`${d.rigo}-${i}`}>
+          770 {d.fonte?.anno_imposta || ''} rigo {d.rigo}: ritenute operate {euro(d.ritenute_operate_cents)} · versato {euro(d.importo_versato_cents)}
+          {d.data_versamento ? ` il ${dataIt(d.data_versamento)}` : ''}{d.ravvedimento ? ' · ravvedimento (X)' : ''} · {esito}
+        </div>
+      ))}
+    </div>
+  );
+}
 const euro = cents => (cents ? formatEuro(cents / 100) : '—');
 const dataIt = iso => {
   const [a, m, g] = String(iso || '').slice(0, 10).split('-');
@@ -143,7 +164,11 @@ export default function Scadenzario({ anno, stato, imposta, onApri = () => {}, o
               <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 2 }}>
                 Scadenza {dataIt(v.scadenza)} · pagato {dataIt(v.ultimo_pagamento)} · {euro(v.pagato_cents)}
               </div>
+              <Dichiarato770 voce={v} />
             </button>
+            {aperta === v.chiave && !(v.pagamenti || []).length && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}`, fontSize: 12.5, lineHeight: 1.5 }}>{v.motivazione}</div>
+            )}
             {aperta === v.chiave && (v.pagamenti || []).map((p, i) => (
               <div key={`${p.protocollo}-${i}`} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}`, fontSize: 12.5, lineHeight: 1.5 }}
                 data-testid="scad-pagamento">
