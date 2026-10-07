@@ -37,7 +37,11 @@ import logging
 import os
 from typing import Any, Optional
 
-from app.menu.supabase_client import supabase
+from app.menu.supabase_client import (
+    IdNonAssegnatoDalDatabase,
+    inserisci_con_id_del_database,
+    supabase,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -51,14 +55,18 @@ TABELLA_PRODOTTI = "menu_products"
 CATEGORIA_NOME = "Ceraldi Production"
 CATEGORIA_NOME_IT = "Produzione Ceraldi"
 
-# Gli id di menu_* sono assegnati dall'app (max(id)+1, come in
-# menu_routes.py). I prodotti gia' presenti nel Menu hanno id bassi (quelli
-# scaricati in origine arrivano a 858503): le righe create da Lotti partono da
-# una base alta per non collidere.
+# Gli id di menu_* li assegna il database (identity BY DEFAULT, migrazione
+# 20261007090000_menu_id_dal_database): l'insert parte senza id e legge quello
+# restituito (``_inserisci``). Finche' quella migrazione non e' applicata
+# l'insert senza id viene rifiutato (23502) e il ponte ripiega sul vecchio
+# percorso max(id)+1 con base alta e ritentativo (``_inserisci_con_id``): i
+# prodotti scaricati in origine arrivano a 858503, le righe create da Lotti
+# partono da 1.000.000 per non collidere. Applicata la migrazione, il ripiego
+# non viene piu' raggiunto e va rimosso.
 ID_MINIMO_LOTTI = 1_000_000
 
 # Quante volte rileggere max(id) e riprovare l'insert quando un altro thread
-# ha preso lo stesso id nel frattempo (vedi ``_inserisci_con_id``).
+# ha preso lo stesso id nel frattempo (solo nel ripiego ``_inserisci_con_id``).
 TENTATIVI_ID = 5
 
 # reparto Lotti -> sottocategoria Menu (name, name_it)
@@ -233,6 +241,24 @@ def _descrizione(ricetta: dict) -> Optional[str]:
 
 # ================== Accesso al Menu (client sincrono, eseguito in thread) ==================
 
+def _inserisci(tabella: str, riga: dict) -> int:
+    """Inserisce lasciando l'``id`` al database e restituisce quello generato.
+
+    Percorso principale: ``inserisci_con_id_del_database`` (nessuna lettura di
+    ``max(id)``, nessun ritentativo). Solo se il database rifiuta l'insert
+    perche' la colonna ``id`` non ha ancora un default — migrazione
+    ``20261007090000_menu_id_dal_database`` non applicata, nessuna riga
+    scritta — si ripiega sul vecchio ``_inserisci_con_id``."""
+    try:
+        return inserisci_con_id_del_database(supabase, tabella, riga)
+    except IdNonAssegnatoDalDatabase as errore:
+        logger.warning(
+            "Lotti->Menu: %s; ripiego su max(id)+1 (migrazione menu_id_dal_database non applicata)",
+            errore,
+        )
+        return _inserisci_con_id(tabella, riga)
+
+
 def _prossimo_id(tabella: str) -> int:
     ultimo = supabase.table(tabella).select("id").order("id", desc=True).limit(1).execute()
     massimo = int(ultimo.data[0]["id"]) if ultimo.data else 0
@@ -252,10 +278,10 @@ def _e_collisione_di_id(errore: Exception) -> bool:
 
 
 def _inserisci_con_id(tabella: str, riga: dict) -> int:
-    """Inserisce assegnando ``max(id)+1`` e **ritenta sulla collisione**.
+    """RIPIEGO: inserisce assegnando ``max(id)+1`` e **ritenta sulla collisione**.
 
-    Gli id di ``menu_*`` sono assegnati dall'app, non da una sequenza: fra la
-    ``select max(id)`` e la ``insert`` un altro thread puo' infilarsi
+    Vale solo finche' la colonna ``id`` non ha l'identity (vedi ``_inserisci``).
+    Senza una sequenza fra la ``select max(id)`` e la ``insert`` un altro thread puo' infilarsi
     (``_pubblica_sync`` gira in ``asyncio.to_thread`` e il backfill cicla per
     minuti mentre il form continua a salvare). Senza ritentativo la seconda
     insert violava la primary key, il ponte restituiva ``errore`` e la ricetta
@@ -292,7 +318,7 @@ def _categoria_lotti_id() -> int:
     )
     if res.data:
         return int(res.data[0]["id"])
-    return _inserisci_con_id(TABELLA_CATEGORIE, {
+    return _inserisci(TABELLA_CATEGORIE, {
         "name": CATEGORIA_NOME, "name_it": CATEGORIA_NOME_IT,
         "image": None, "origine": ORIGINE_LOTTI,
     })
@@ -307,7 +333,7 @@ def _sottocategoria_lotti_id(categoria_id: int, reparto: Any) -> int:
     )
     if res.data:
         return int(res.data[0]["id"])
-    return _inserisci_con_id(TABELLA_SOTTOCATEGORIE, {
+    return _inserisci(TABELLA_SOTTOCATEGORIE, {
         "category_id": categoria_id, "name": nome, "name_it": nome_it,
         "image": None, "origine": ORIGINE_LOTTI,
     })
@@ -475,12 +501,12 @@ def _pubblica_sync(ricetta: dict, foto: Optional[dict], visibile: bool) -> dict:
         esito = "aggiornato"
     else:
         try:
-            prodotto_id = _inserisci_con_id(TABELLA_PRODOTTI, riga)
+            prodotto_id = _inserisci(TABELLA_PRODOTTI, riga)
         except Exception as errore:  # noqa: BLE001
             if not _e_colonna_scheda_mancante(errore):
                 raise
             logger.warning("Lotti->Menu: colonne di vendita assenti (%s), pubblico senza", type(errore).__name__)
-            prodotto_id = _inserisci_con_id(TABELLA_PRODOTTI, _senza_scheda(riga))
+            prodotto_id = _inserisci(TABELLA_PRODOTTI, _senza_scheda(riga))
         esito = "pubblicato"
 
     return {
@@ -693,7 +719,7 @@ def _crea_categoria_sync(nome_it: str, nome: str, immagine: Optional[str]) -> di
                 "avviso": avviso}
     riga = {"name": nome, "name_it": nome_it,
             "image": immagine or None, "origine": ORIGINE_LOTTI}
-    nuovo_id = _inserisci_con_id(TABELLA_CATEGORIE, riga)
+    nuovo_id = _inserisci(TABELLA_CATEGORIE, riga)
     return {"creata": True, "categoria": _voce_categoria({**riga, "id": nuovo_id}, []),
             "avviso": avviso}
 
@@ -711,7 +737,7 @@ def _crea_sottocategoria_sync(categoria_id: int, nome_it: str, nome: str,
         return {"creata": False, "sottocategoria": esistente.data[0]}
     riga = {"category_id": categoria_id, "name": nome,
             "name_it": nome_it, "image": immagine or None, "origine": ORIGINE_LOTTI}
-    nuovo_id = _inserisci_con_id(TABELLA_SOTTOCATEGORIE, riga)
+    nuovo_id = _inserisci(TABELLA_SOTTOCATEGORIE, riga)
     return {"creata": True, "sottocategoria": {**riga, "id": nuovo_id}}
 
 

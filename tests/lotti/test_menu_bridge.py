@@ -32,8 +32,8 @@ class _Res:
 
 
 class _Query:
-    def __init__(self, tabelle, nome):
-        self.tabelle, self.nome = tabelle, nome
+    def __init__(self, tabelle, nome, finto=None):
+        self.tabelle, self.nome, self.finto = tabelle, nome, finto
         self.op, self.filtri, self.payload = "select", [], None
         self._nulli = []
         self._order, self._limit = None, None
@@ -80,15 +80,20 @@ class _Query:
             and all(r.get(c) is None for c in self._nulli)
         ]
         if self.op == "select":
+            if self._order == ("id", True) and self.finto is not None:
+                self.finto.letture_massimo.append(self.nome)
             if self._order:
                 trovate.sort(key=lambda r: r[self._order[0]], reverse=self._order[1])
             if self._limit:
                 trovate = trovate[: self._limit]
             return _Res([dict(r) for r in trovate])
         if self.op == "insert":
-            nuove = self.payload if isinstance(self.payload, list) else [self.payload]
+            nuove = [dict(r) for r in (self.payload if isinstance(self.payload, list) else [self.payload])]
+            for r in nuove:
+                if r.get("id") is None:
+                    r["id"] = self._id_dal_database(righe)
             righe.extend(dict(r) for r in nuove)
-            return _Res(list(nuove))
+            return _Res([dict(r) for r in nuove])
         if self.op == "update":
             for r in trovate:
                 r.update(self.payload)
@@ -98,6 +103,25 @@ class _Query:
                 righe.remove(r)
             return _Res(trovate)
         raise AssertionError(self.op)
+
+    def _id_dal_database(self, righe):
+        """Il database assegna l'id a un insert che non lo porta.
+
+        Con ``identity`` (migrazione 20261007090000_menu_id_dal_database
+        applicata) e' una sequenza per tabella che parte oltre il massimo;
+        senza, Postgres rifiuta la riga con la violazione NOT NULL (23502)
+        e nulla viene scritto, come sul database vero."""
+        if self.finto is None or not self.finto.identity:
+            raise RuntimeError(
+                f'null value in column "id" of relation "{self.nome}" violates '
+                "not-null constraint (code 23502)")
+        sequenze = self.finto.sequenze
+        if self.nome not in sequenze:
+            sequenze[self.nome] = max([int(r["id"]) for r in righe if r.get("id") is not None] or [0]) + 1
+        nuovo = sequenze[self.nome]
+        sequenze[self.nome] = nuovo + 1
+        self.finto.id_assegnati.append((self.nome, nuovo))
+        return nuovo
 
 
 class _Bucket:
@@ -132,13 +156,20 @@ class _Storage:
 
 
 class _FakeSupabase:
-    def __init__(self):
+    """``identity=False`` simula il database PRIMA della migrazione
+    20261007090000_menu_id_dal_database: l'insert senza id viene rifiutato."""
+
+    def __init__(self, identity=True):
         self.tabelle = {}
         self.upload = []
         self.storage = _Storage(self.upload)
+        self.identity = identity
+        self.sequenze = {}
+        self.id_assegnati = []      # (tabella, id) generati dal "database"
+        self.letture_massimo = []   # tabelle su cui l'app ha letto max(id)
 
     def table(self, nome):
-        return _Query(self.tabelle, nome)
+        return _Query(self.tabelle, nome, self)
 
 
 class _SupabaseRotto:
@@ -277,7 +308,9 @@ def test_create_ricetta_pubblica_nel_menu_visibile_per_default(ambiente):
     assert riga["price"] == "3.50€"
     assert riga["description_it"] == "Babà classico napoletano"
     assert set(riga["allergens"]) == {"gluten", "milk", "eggs"}
-    assert riga["id"] >= menu_bridge.ID_MINIMO_LOTTI
+    # L'id lo assegna il database: il ponte non legge max(id) e non lo calcola.
+    assert ("menu_products", riga["id"]) in finto.id_assegnati
+    assert finto.letture_massimo == []
 
     categorie = finto.tabelle["menu_categories"]
     assert [c["name_it"] for c in categorie] == ["Produzione Ceraldi"]

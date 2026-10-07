@@ -48,3 +48,49 @@ class _LazySupabase:
 
 
 supabase = _LazySupabase()
+
+
+# ================== Insert con id assegnato dal database ==================
+# CLAUDE.md §5: gli id nuovi nascono dal proprietario canonico, mai max(id)+1.
+# Le tabelle menu_categories / menu_subcategories / menu_products hanno l'identity
+# dalla migrazione 20261007090000_menu_id_dal_database. Questo e' l'unico
+# percorso con cui ponte Lotti e admin del Menu creano righe in quelle tabelle.
+
+class IdNonAssegnatoDalDatabase(RuntimeError):
+    """La colonna ``id`` non ha identity/sequence nel database (migrazione
+    ``20261007090000_menu_id_dal_database`` non ancora applicata): l'insert senza
+    id e' stato rifiutato e **nessuna riga e' stata scritta**."""
+
+
+def _e_id_senza_default(errore: Exception) -> bool:
+    """Vero solo per la violazione NOT NULL sulla colonna ``id`` (SQLSTATE 23502)."""
+    testo = str(errore)
+    if "23502" not in testo and "not-null constraint" not in testo:
+        return False
+    return 'column "id"' in testo or "column 'id'" in testo
+
+
+def inserisci_con_id_del_database(client, tabella: str, riga: dict) -> int:
+    """Inserisce ``riga`` senza ``id`` e restituisce l'id generato dal database.
+
+    ``client`` e' il client PostgREST del modulo chiamante (``supabase``), passato
+    esplicitamente cosi' i test possono sostituirlo nel modulo che lo usa.
+    PostgREST restituisce la riga inserita (``return=representation``), quindi
+    l'id torna nella risposta. Se la colonna non ha un default l'insert viene
+    rifiutato prima di scrivere e si solleva ``IdNonAssegnatoDalDatabase``, che
+    il chiamante puo' usare per un ripiego esplicito. Se invece l'insert riesce
+    ma la risposta non porta l'id, la riga esiste gia': si solleva un
+    ``RuntimeError`` e NON si deve reinserire."""
+    senza_id = {k: v for k, v in riga.items() if k != "id"}
+    try:
+        res = client.table(tabella).insert(senza_id).execute()
+    except Exception as errore:  # noqa: BLE001 - rilanciata se non e' il default mancante
+        if _e_id_senza_default(errore):
+            raise IdNonAssegnatoDalDatabase(
+                f"{tabella}: la colonna id non ha un default nel database"
+            ) from errore
+        raise
+    righe = getattr(res, "data", None) or []
+    if righe and righe[0].get("id") is not None:
+        return int(righe[0]["id"])
+    raise RuntimeError(f"{tabella}: l'insert e' riuscito ma non ha restituito l'id generato")

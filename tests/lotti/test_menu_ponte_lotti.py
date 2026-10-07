@@ -578,15 +578,105 @@ def test_prezzo_non_valido_rifiutato_anche_da_patch_e_dal_modello(ambiente):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8) Assegnazione id: collisione ritentata, non perdita silenziosa
+# 8) Assegnazione id: la decide il database (CLAUDE.md §5); il ripiego
+#    max(id)+1 vale solo finche' la migrazione menu_id_dal_database non c'e'
 # ─────────────────────────────────────────────────────────────────────────────
 
+def test_id_dal_database_nessuna_lettura_del_massimo_nessun_id_calcolato(ambiente):
+    """Con l'identity il ponte inserisce senza id e usa quello restituito: non
+    legge mai max(id), non lo calcola, non ritenta. Vale per prodotto,
+    categoria e sottocategoria."""
+    ricette, _, finto = ambiente
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
+    cat = run(menu_bridge.crea_categoria_menu("Colazioni"))["categoria"]
+    sotto = run(menu_bridge.crea_sottocategoria_menu(cat["id"], "Sfogliate"))["sottocategoria"]
+
+    assert creata["menu_sync"]["esito"] == "pubblicato"
+    assert finto.letture_massimo == []
+    generati = set(finto.id_assegnati)
+    assert ("menu_products", creata["menu_sync"]["menu_product_id"]) in generati
+    assert ("menu_categories", cat["id"]) in generati
+    assert ("menu_subcategories", sotto["id"]) in generati
+    # id del database, non la base alta dell'app
+    assert creata["menu_sync"]["menu_product_id"] < menu_bridge.ID_MINIMO_LOTTI
+
+
+def test_senza_identity_il_ponte_ripiega_su_max_id_e_lo_dice(ambiente, monkeypatch, caplog):
+    """Migrazione non ancora applicata: l'insert senza id e' rifiutato senza
+    scrivere nulla, il ponte ripiega sul vecchio percorso con base alta e la
+    ricetta arriva nel Menu una volta sola. Il ripiego resta visibile nel log."""
+    ricette, _, _ = ambiente
+    finto = _FakeSupabase(identity=False)
+    monkeypatch.setattr(menu_bridge, "supabase", finto)
+
+    with caplog.at_level("WARNING", logger="uvicorn.error"):
+        creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
+
+    assert creata["menu_sync"]["esito"] == "pubblicato"
+    prodotti = finto.tabelle["menu_products"]
+    assert len(prodotti) == 1 and prodotti[0]["id"] >= menu_bridge.ID_MINIMO_LOTTI
+    assert finto.id_assegnati == []
+    assert "menu_products" in finto.letture_massimo
+    assert any("menu_id_dal_database" in r.getMessage() for r in caplog.records)
+
+
+def test_insert_riuscito_senza_id_in_risposta_non_viene_ripetuto():
+    """Se la riga e' stata scritta ma la risposta non porta l'id, reinserire
+    creerebbe un doppione: l'errore risale e il ripiego NON parte."""
+    from app.menu.supabase_client import inserisci_con_id_del_database
+
+    class _Muto:
+        inserimenti = 0
+
+        def table(self, _nome):
+            return self
+
+        def insert(self, riga):
+            assert "id" not in riga
+            return self
+
+        def execute(self):
+            _Muto.inserimenti += 1
+            return type("R", (), {"data": [{"name": "x"}]})()
+
+    with pytest.raises(RuntimeError, match="non ha restituito l'id"):
+        inserisci_con_id_del_database(_Muto(), "menu_products", {"id": 5, "name": "x"})
+    assert _Muto.inserimenti == 1
+
+
+def test_un_errore_diverso_dal_default_mancante_non_attiva_il_ripiego(ambiente, monkeypatch):
+    """Il ripiego scatta solo per la NOT NULL su ``id`` (23502): un'altra NOT
+    NULL, o la collisione su ``lotti_ref``, risale come errore del ponte senza
+    letture di max(id)."""
+    from app.menu.supabase_client import _e_id_senza_default
+
+    assert _e_id_senza_default(RuntimeError('null value in column "id" of relation "menu_products" violates not-null constraint')) is True
+    assert _e_id_senza_default(RuntimeError('null value in column "name" of relation "menu_products" violates not-null constraint')) is False
+    assert _e_id_senza_default(RuntimeError('duplicate key value violates unique constraint "menu_products_lotti_ref_uidx"')) is False
+    assert _e_id_senza_default(RuntimeError("connessione persa")) is False
+
+    ricette, _, finto = ambiente
+
+    class _NomeNullo(_Query):
+        def execute(self):
+            if self.op == "insert" and self.nome == "menu_products":
+                raise RuntimeError('null value in column "name" of relation "menu_products" violates not-null constraint (code 23502)')
+            return super().execute()
+
+    finto.table = lambda nome: _NomeNullo(finto.tabelle, nome, finto)
+    creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload(nome="Babà"))))
+    assert creata["menu_sync"]["esito"] == "errore"
+    assert finto.letture_massimo == []
+    assert finto.tabelle["menu_products"] == []
+
+
 class _QueryInCorsa(_Query):
-    """Come il finto normale, ma con la primary key applicata davvero e con un
-    «altro thread» che si prende l'id appena letto da ``max(id)``."""
+    """Come il finto normale (senza identity: e' il ripiego), ma con la primary
+    key applicata davvero e con un «altro thread» che si prende l'id appena
+    letto da ``max(id)``."""
 
     def __init__(self, finto, nome):
-        super().__init__(finto.tabelle, nome)
+        super().__init__(finto.tabelle, nome, finto)
         self.finto = finto
 
     def execute(self):
@@ -615,7 +705,7 @@ class _QueryInCorsa(_Query):
 
 class _SupabaseInCorsa(_FakeSupabase):
     def __init__(self, tabella_contesa, max_intrusioni=1):
-        super().__init__()
+        super().__init__(identity=False)
         self.tabella_contesa = tabella_contesa
         self.max_intrusioni = max_intrusioni
         self.intrusioni = 0
@@ -626,9 +716,10 @@ class _SupabaseInCorsa(_FakeSupabase):
 
 
 def test_collisione_di_id_ritentata_e_la_ricetta_arriva_nel_menu(ambiente, monkeypatch):
-    """Il backfill cicla per minuti mentre il form continua a salvare: le due
-    `select max(id)` tornavano lo stesso valore e la seconda insert violava la
-    primary key, con la ricetta appena salvata persa nel Menu."""
+    """Solo nel ripiego (identity assente). Il backfill cicla per minuti mentre
+    il form continua a salvare: le due `select max(id)` tornavano lo stesso
+    valore e la seconda insert violava la primary key, con la ricetta appena
+    salvata persa nel Menu."""
     ricette, _, _ = ambiente
     finto = _SupabaseInCorsa("menu_products", max_intrusioni=1)
     monkeypatch.setattr(menu_bridge, "supabase", finto)
@@ -644,7 +735,7 @@ def test_collisione_di_id_ritentata_e_la_ricetta_arriva_nel_menu(ambiente, monke
 
 
 def test_collisione_persistente_resta_un_errore_visibile(ambiente, monkeypatch):
-    """Il ciclo e' limitato: non gira all'infinito e il fallimento non sparisce."""
+    """Ripiego: il ciclo e' limitato, non gira all'infinito e il fallimento non sparisce."""
     ricette, database, _ = ambiente
     finto = _SupabaseInCorsa("menu_products", max_intrusioni=99)
     monkeypatch.setattr(menu_bridge, "supabase", finto)
