@@ -82,6 +82,7 @@ def parse_nota_rettifica_inps(content: bytes) -> dict[str, Any]:
 
     field_evidence = {}
     for field, value in {
+        "data_emissione": _iso_date(_group(r"nota\s+di\s+rettifica,\s+emessa\s+il\s+(\d{2}/\d{2}/\d{4})", compact)),
         "periodo_competenza": periodo,
         "matricola_inps": matricola,
         "data_scadenza": data_scadenza,
