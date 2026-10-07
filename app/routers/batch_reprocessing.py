@@ -2,8 +2,10 @@
 
 La rielaborazione ordinaria lavora dinamicamente sull'archivio documentale e
 non e piu limitata ai cedolini. L'endpoint specializzato sui cedolini resta per
-manutenzione mirata; quello sugli F24 non c'e' piu' (AV3-06: i modelli hanno un
-solo lettore e un solo ingresso, `f24_canonico.importa_modello_bytes`).
+manutenzione mirata e rilegge le buste col motore unico
+(`cedolini_motore.leggi_pdf`); quello sugli F24 non c'e' piu' (AV3-06: i
+modelli hanno un solo lettore e un solo ingresso,
+`f24_canonico.importa_modello_bytes`).
 """
 import asyncio
 import logging

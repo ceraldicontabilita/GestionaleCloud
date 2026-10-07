@@ -4892,7 +4892,9 @@ Il parser deterministico scrive il fatto.
 
 ## APERTO
 
-Esistono ancora lettori AI duplicati.
+Esistono ancora due lettori AI di documenti: `app/services/ai_document_parser.py` (immagini → AI: fattura, F24, busta paga) e `app/services/document_ai_extractor.py` (testo → AI, più tipi).
+
+I cedolini hanno un solo lettore, `app/services/cedolini_motore.py::leggi_pdf`: lo usano ingresso, riverifica HR e rilettura dell'archivio (`batch_reprocessing`). Non reintrodurre un lettore AI separato per i cedolini.
 
 Consolidare un flusso alla volta.
 
