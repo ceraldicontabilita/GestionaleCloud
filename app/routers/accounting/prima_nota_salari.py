@@ -22,6 +22,9 @@ from decimal import Decimal, InvalidOperation
 
 from app.constants.stati_netto import alimenta_salari
 from app.database import Collections, Database
+from app.services.scritture_contabili import (
+    ScritturaNonValida, scrivi_riga_salari, scrivi_righe_salari,
+)
 from app.services.salari_periodo import (
     filtro_periodo_prima_nota,
     periodo_ammesso_in_prima_nota,
@@ -695,10 +698,11 @@ async def import_paghe(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "progressivo": 0,
                 "riconciliato": False,
                 "tipo": "busta",
+                "source": "excel_buste_import",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
-            await db["prima_nota_salari"].insert_one(new_record.copy())
+            await scrivi_riga_salari(db, new_record)
             created += 1
             
         except Exception as e:
@@ -933,7 +937,7 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
-            await db["prima_nota_salari"].insert_one(new_record.copy())
+            await scrivi_riga_salari(db, new_record)
             created += 1
             
         except Exception as e:
@@ -1121,10 +1125,10 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
             errors.append(f"Riga {idx}: {exc}")
 
     if nuovi_record:
-        await db["prima_nota_salari"].insert_many(
-            [record.copy() for record in nuovi_record]
-        )
-        created = len(nuovi_record)
+        esito = await scrivi_righe_salari(db, nuovi_record)
+        created = esito["scritte"]
+        for rifiutata in esito["rifiutate"]:
+            errors.append(f"Riga {rifiutata['id']}: {rifiutata['motivo']}")
         totale = sum(float(record["importo_busta"]) for record in nuovi_record)
 
     return {
@@ -1378,12 +1382,16 @@ async def aggiungi_aggiustamento(
         "progressivo": 0,  # Verrà ricalcolato
         "riconciliato": False,
         "tipo": "aggiustamento",
+        "source": "aggiustamento_manuale",
         "descrizione": descrizione,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db["prima_nota_salari"].insert_one(new_record.copy())
+    try:
+        await scrivi_riga_salari(db, new_record)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     
     # Ricalcola i progressivi per questo dipendente
     await ricalcola_progressivi_tutti(db, None, dipendente)
@@ -1552,10 +1560,15 @@ async def consolida_record() -> Dict[str, Any]:
             "saldo": saldo,
             "progressivo": 0,
             "riconciliato": False,
+            "source": "aggregato_buste_bonifici",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        await db["prima_nota_salari"].insert_one(new_record.copy())
+        try:
+            await scrivi_riga_salari(db, new_record)
+        except ScritturaNonValida as exc:
+            logger.warning("Riga stipendi rifiutata (%s %s/%s): %s", dipendente, mese, anno, exc)
+            continue
         created += 1
     
     # Ricalcola progressivi

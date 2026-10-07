@@ -5,6 +5,7 @@ Gestisce deduplicazione e documenti non associati.
 """
 
 import asyncio
+from app.services.scritture_contabili import scrivi_riga_salari
 import imaplib
 import email
 from email.header import decode_header
@@ -1791,7 +1792,7 @@ async def process_cedolini_to_prima_nota(db: ArchivioDocumenti) -> Dict[str, Any
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
 
-                    await db["prima_nota_salari"].insert_one(salario_doc)
+                    await scrivi_riga_salari(db, salario_doc)
                     stats["created_prima_nota"] += 1
                     logger.info(f"Prima nota salari creata: {parsed_data['dipendente_nome']} {parsed_data.get('mese')}/{parsed_data.get('anno')} - €{parsed_data.get('netto')}")
 

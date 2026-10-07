@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 import uuid
 import logging
+from app.services.scritture_contabili import scrivi_riga_salari
 import asyncio
 import os
 
@@ -768,7 +769,7 @@ async def conferma_cedolino(stima: CedolinoStima) -> Dict[str, Any]:
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db["prima_nota_salari"].insert_one(movimento_salario.copy())
+    await scrivi_riga_salari(db, movimento_salario)
     
     # Aggiorna TFR dipendente
     await db["dipendenti"].update_one(
@@ -1470,7 +1471,7 @@ async def import_cedolini_da_gmail(
                         "source": "cedolino_gmail_import",
                         "imported_at": datetime.now(timezone.utc).isoformat(),
                     }
-                    await db["prima_nota_salari"].insert_one(movimento_salario.copy())
+                    await scrivi_riga_salari(db, movimento_salario)
             except Exception:
                 logger.exception("Errore creazione prima_nota_salari (canale B Gmail)")
 

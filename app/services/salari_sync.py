@@ -11,6 +11,8 @@ import base64
 import calendar
 import logging
 import uuid
+
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_riga_salari
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
@@ -221,7 +223,14 @@ async def sincronizza_prima_nota_da_cedolini(
             "source": "cedolino_sync",
             "created_at": now,
         }
-        await db["prima_nota_salari"].insert_one(dict(nuovo))
+        try:
+            await scrivi_riga_salari(db, nuovo)
+        except ScritturaNonValida as exc:
+            logger.warning(
+                "Riga stipendi rifiutata (cedolino %s, %s/%s): %s",
+                cedolino_id, mese, anno, exc,
+            )
+            continue
         per_cedolino[cedolino_id] = nuovo
         per_chiave[key] = nuovo
         usati.add(pn_id)

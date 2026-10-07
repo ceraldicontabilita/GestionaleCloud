@@ -17,14 +17,7 @@ _DIRETTO = re.compile(
 
 # file -> numero di scritture dirette ancora ammesse (debito noto).
 RESIDUO = {
-    "app/handlers/prima_nota.py": 1,
-    "app/hr/routers/cedolini.py": 2,
-    "app/routers/accounting/prima_nota_salari.py": 5,
-    "app/routers/prima_nota_module/salari.py": 1,
     "app/routers/prima_nota_module/sync.py": 4,
-    "app/services/email_full_download.py": 1,
-    "app/services/salari_sync.py": 1,
-    "app/services/salari_unificati_v2.py": 1,
 }
 
 

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from app.services.salari_periodo import periodo_ammesso_in_prima_nota
+from app.services.scritture_contabili import scrivi_riga_salari
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +66,6 @@ async def handler_prima_nota_cedolino(payload: Dict[str, Any], db) -> Dict[str, 
         if dedup_key
         else {"dipendente_id": dipendente_id, "mese": mese, "anno": anno}
     )
-    esistente = await db["prima_nota_salari"].find_one(anti_dup)
-    if esistente:
-        return {"skipped": True, "reason": "movimento già presente", "movimento_id": esistente["id"]}
 
     movimento = {
         "id":             str(uuid.uuid4()),
@@ -88,6 +86,8 @@ async def handler_prima_nota_cedolino(payload: Dict[str, Any], db) -> Dict[str, 
         "created_at":     datetime.now(timezone.utc).isoformat(),
     }
 
-    await db["prima_nota_salari"].insert_one(movimento.copy())
+    scritto = await scrivi_riga_salari(db, movimento, anti_duplicato=anti_dup)
+    if not scritto["creata"]:
+        return {"skipped": True, "reason": "movimento già presente", "movimento_id": scritto["id"]}
     logger.info(f"[HandlerPrimaNota] Cedolino {nome} {periodo} → prima_nota_salari €{netto}")
     return {"movimento_id": movimento["id"], "netto": netto, "periodo": periodo}

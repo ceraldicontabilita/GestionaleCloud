@@ -244,6 +244,76 @@ async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
         return documento.get("id") or esistente
 
 
+#: Registro stipendi: righe di competenza/dovuto per dipendente e periodo, non
+#: movimenti di tesoreria. Per questo non passa da ``scrivi_movimento`` (che
+#: pretende entrata/uscita e il conto di cassa o banca) ma ha lo stesso unico
+#: punto di INSERT.
+COLLEZIONE_SALARI = "prima_nota_salari"
+
+_CAMPI_IDENTITA_SALARI = (
+    "dipendente_id", "employee_id", "codice_fiscale", "dipendente_nome",
+    "nome_dipendente", "dipendente",
+)
+
+
+def _valida_riga_salari(riga: Dict[str, Any]) -> None:
+    if not riga.get("source"):
+        raise ScritturaNonValida("source mancante (tracciabilità obbligatoria)")
+    if not any(riga.get(c) for c in _CAMPI_IDENTITA_SALARI):
+        raise ScritturaNonValida("dipendente non identificato (id, codice fiscale o nome)")
+    anno, mese = riga.get("anno"), riga.get("mese")
+    data = str(riga.get("data") or "")
+    periodo_ok = bool(anno) and mese is not None
+    data_ok = len(data) >= 10 and data[4] == "-"
+    if not (periodo_ok or data_ok):
+        raise ScritturaNonValida("periodo mancante (anno/mese o data ISO)")
+
+
+async def scrivi_riga_salari(
+    db, riga: Dict[str, Any], anti_duplicato: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Unico punto di INSERT in ``prima_nota_salari``.
+
+    Valida (fonte, dipendente, periodo) e scrive. Se ``anti_duplicato`` e'
+    dato e una riga attiva lo soddisfa, non scrive: restituisce quella.
+    Gli importi non vengono toccati: un valore assente resta assente, mai
+    trasformato in zero. Ritorna ``{"id", "creata", "esistente"}``.
+    """
+    _valida_riga_salari(riga)
+    collezione = db[COLLEZIONE_SALARI]
+    if anti_duplicato:
+        esistente = await collezione.find_one(anti_duplicato)
+        if esistente:
+            return {"id": esistente.get("id"), "creata": False, "esistente": esistente}
+    doc = dict(riga)
+    doc.setdefault("id", str(uuid.uuid4()))
+    doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    await collezione.insert_one(dict(doc))
+    return {"id": doc["id"], "creata": True, "esistente": None}
+
+
+async def scrivi_righe_salari(db, righe: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Come ``scrivi_riga_salari`` per un lotto: una sola ``insert_many`` sulle
+    righe valide; le non valide non si scrivono e tornano con il motivo
+    (nessuna scrittura parziale nascosta). ``{"scritte": n, "rifiutate": [...]}``.
+    """
+    valide: List[Dict[str, Any]] = []
+    rifiutate: List[Dict[str, Any]] = []
+    for riga in righe:
+        try:
+            _valida_riga_salari(riga)
+        except ScritturaNonValida as exc:
+            rifiutate.append({"id": riga.get("id"), "motivo": str(exc)})
+            continue
+        doc = dict(riga)
+        doc.setdefault("id", str(uuid.uuid4()))
+        doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+        valide.append(doc)
+    if valide:
+        await db[COLLEZIONE_SALARI].insert_many(valide)
+    return {"scritte": len(valide), "rifiutate": rifiutate}
+
+
 FILTRO_MOVIMENTO_ATTIVO: Dict[str, Any] = {
     "status": {"$nin": ["deleted", "archived"]},
     "entity_status": {"$ne": "deleted"},
