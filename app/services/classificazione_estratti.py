@@ -294,6 +294,21 @@ def anni_del_documento(nome: str, contenuto: bytes) -> set[int]:
     return {int(match.group(0)) for match in _ANNO.finditer(testo)}
 
 
+def estratto_storico_ammesso(nome: str, contenuto: bytes) -> bool:
+    """Vero per gli estratti che si leggono anche se di anni vecchi.
+
+    Il conto BNL 4500/3192 e' chiuso: i suoi estratti sono storici per
+    definizione e servono a riconciliare assegni, F24, cartelle e bonifici
+    di quegli anni (decisione del titolare, 07/10/2026). Si riconoscono dal
+    contenuto, mai dal nome; gli altri formati seguono la soglia d'arretrato.
+    """
+    if not _pulisci(nome).endswith(".pdf"):
+        return False
+    from app.services.estratto_conto_bnl_parser import e_estratto_bnl
+
+    return e_estratto_bnl(_testo_del_pdf(contenuto))
+
+
 def anno_documento(nome: str, contenuto: bytes) -> Optional[int]:
     """Anno piu' recente provato dal nome o dal contenuto, se disponibile."""
     anni = anni_del_documento(nome, contenuto)

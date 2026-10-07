@@ -43,6 +43,12 @@ NEXI = NUMIA
 # Conto reale su cui il circuito accredita davvero.
 CONTO_BPM = "19.01.01"
 CONTO_SUMUP_MASTERCARD = "19.01.05"
+# Conto corrente BNL 4500/3192, chiuso: i suoi estratti PDF (2021-2023) si
+# leggono solo come archivio bancario per riconciliare assegni, F24, cartelle
+# e bonifici ai dipendenti. Non e' il conto BPM e non si proietta in Prima
+# Nota (decisione del titolare, 07/10/2026).
+CONTO_BNL = "19.01.02"
+CONTI_SENZA_PROIEZIONE_PRIMA_NOTA = (CONTO_BNL,)
 
 CIRCUITI: Dict[str, Dict[str, str]] = {
     NUMIA: {
@@ -121,7 +127,7 @@ def _verifica_piano() -> None:
     mancanti = [
         codice for codice in
         list(CONTI_CREDITO) + list(CONTI_COMMISSIONI)
-        + [CONTO_BPM, CONTO_SUMUP_MASTERCARD]
+        + [CONTO_BPM, CONTO_SUMUP_MASTERCARD, CONTO_BNL]
         if codice and codice not in CONTI_UFFICIALI
     ]
     if mancanti:

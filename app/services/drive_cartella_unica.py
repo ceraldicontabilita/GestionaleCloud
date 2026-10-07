@@ -355,8 +355,14 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any],
         # chiamano solo «Estratto_Conto.pdf»); senza anno il file prosegue.
         anno = await asyncio.to_thread(anno_documento, nome, contenuto)
         if anno is not None and anno < minimo:
-            return {"success": False, "tipo_rilevato": tipo, "arretrato": True,
-                    "anno": anno, "anno_minimo": minimo}
+            from app.services.classificazione_estratti import estratto_storico_ammesso
+
+            # L'estratto del conto BNL chiuso e' storico per definizione e si
+            # legge comunque: il suo lettore verifica i saldi e lo archivia
+            # senza proiezione in Prima Nota.
+            if not await asyncio.to_thread(estratto_storico_ammesso, nome, contenuto):
+                return {"success": False, "tipo_rilevato": tipo, "arretrato": True,
+                        "anno": anno, "anno_minimo": minimo}
     try:
         return await upload_documento_automatico(file=FileCaricato(nome, contenuto, contesto, tipo))
     except HTTPException as exc:

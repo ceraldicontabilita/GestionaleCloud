@@ -87,6 +87,9 @@ CONTI_UFFICIALI = {
     "19": "DISPONIBILITA' LIQUIDE",
     "19.01": 'BANCHE C/C E POSTA C/C',
     "19.01.01": 'Banca c/c',
+    # Conto corrente BNL 4500/3192 (chiuso): archivio storico 2021-2023 letto
+    # dagli estratti PDF per le riconciliazioni, distinto dal conto BPM.
+    "19.01.02": 'Banca BNL c/c (storico)',
     # Conto aziendale SumUp (Mastercard): i payout SumUp arrivano qui, non su
     # Banco BPM. E' un conto reale a tutti gli effetti, letto via API.
     "19.01.05": 'Mastercard SumUp',
