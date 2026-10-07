@@ -37,7 +37,7 @@ BANCA_BNL = "BNL"
 
 _DATA = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 _IMPORTO = re.compile(r"^\d{1,3}(?:\.\d{3})*,\d{2}$")
-_ABI = re.compile(r"^\d{2}$")
+_ABI = re.compile(r"^[0-9A-Z]{2}$")   # causale ABI: due cifre, o due lettere (es. «ZG» accredito derivati)
 # ABI 01005 = Banca Nazionale del Lavoro.
 _IBAN_BNL = re.compile(r"\bIT\d{2}[A-Z]01005\d{5}[0-9A-Z]{12}\b")
 _NUMERO_ESTRATTO = re.compile(r"ESTRATTO CONTO N\.\s*(\d+/\d{4})", re.IGNORECASE)
@@ -67,7 +67,7 @@ class EstrattoBNLNonValido(ValueError):
 class RigaBNL:
     data_contabile: str          # AAAA-MM-GG
     data_valuta: str             # AAAA-MM-GG
-    causale_abi: str             # due cifre, stringa
+    causale_abi: str             # due caratteri (cifre o lettere), stringa
     descrizione: str             # intera, continuazioni comprese
     importo: Decimal             # sempre positivo
     tipo: str                    # «entrata» | «uscita»

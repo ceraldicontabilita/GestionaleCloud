@@ -316,3 +316,18 @@ def test_il_riconoscimento_storico_vale_solo_per_i_pdf_bnl(monkeypatch):
     assert cls.estratto_storico_ammesso("Movimenti_BNL_BPM.xlsx", b"x") is False
     monkeypatch.setattr(cls, "_testo_del_pdf", lambda contenuto: "ESTRATTO CONTO BANCO BPM 05034")
     assert cls.estratto_storico_ammesso("Estratto_Conto.pdf", b"%PDF") is False
+
+
+def test_la_causale_abi_puo_essere_di_due_lettere():
+    """4/2022 reale: «ZG Accredito per operazioni su prodotti derivati» (6,48 €).
+    La causale resta una stringa di due caratteri, anche alfabetici."""
+    pagine = _pagine(entrate="+ 1.006,59", saldo_finale="+ 556,53")
+    pagine[1] = pagine[1] + _movimento(
+        120, "31/10/2022", "31/10/2022", "ZG",
+        "Accredito per operazioni su prodotti derivati", "6,48", "entrata")
+    pagine[1] = [p for p in pagine[1] if not (p["text"] == "550,05")] + _importo("556,53", 148.6, "entrata")
+    estratto = leggi_parole_bnl(pagine)
+    righe = {r.causale_abi: r for r in estratto.righe}
+    assert righe["ZG"].tipo == "entrata" and righe["ZG"].importo == Decimal("6.48")
+    from app.services.estratto_conto_bnl_parser import verifica_saldi
+    verifica_saldi(estratto)
