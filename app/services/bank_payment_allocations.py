@@ -590,7 +590,18 @@ def _controparte_incompatibile(movement: Dict[str, Any], invoice: Dict[str, Any]
         len(iban) >= 15 and (iban == movement_iban or iban in text)
     ):
         return False
-    return soggetto_pagante_coerente(supplier_name, _movement_text(movement), alias=alias) is False
+    soggetto = soggetto_causale_bancaria(_movement_text(movement))
+    if not soggetto:
+        return False
+    # «FASTWEB SpA FATTURA M031962931»: il riferimento documentale in
+    # coda non e' parte del nome. I dati strutturati sono gia' verificati sopra.
+    nome_soggetto = re.split(
+        r"\s+(?:fattur[ae]|fatt|ft)\b\.?\s+(?:n(?:umero)?\.?\s*)?[A-Za-z]*\d",
+        soggetto, maxsplit=1, flags=re.IGNORECASE,
+    )[0]
+    return soggetto_pagante_coerente(
+        supplier_name, f"BENEFICIARIO: {nome_soggetto}", alias=alias,
+    ) is False
 
 
 def _is_outgoing_invoice_candidate(movement: Dict[str, Any]) -> bool:

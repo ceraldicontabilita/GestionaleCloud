@@ -122,6 +122,7 @@ def test_uscita_con_importo_positivo_conserva_il_formato_storico(monkeypatch, ti
 @pytest.mark.parametrize("descrizione,controparte", [
     ("BONIFICO BETA ALIMENTARI SRL SALDO FATTURA 12345", {"beneficiario": "BETA ALIMENTARI SRL"}),
     ("SDD CORE: MANDATO123 BETA ALIMENTARI SRL - SALDO FATTURA 12345", {}),
+    ("SDD CORE: MANDATO123 BETA ALIMENTARI SRL FATTURA 12345", {}),
     ("BONIFICO SALDO FATTURA 12345", {"iban_beneficiario": "IT22B2222222222222222222222"}),
     ("BONIFICO SALDO FATTURA 12345 P.IVA 11111111111", {"iban_beneficiario": "IT22B2222222222222222222222"}),
     ("BONIFICO SALDO FATTURA 12345 P.IVA 11111111111", {"beneficiario": "BETA ALIMENTARI SRL"}),
@@ -141,6 +142,27 @@ def test_numero_fattura_non_prevale_sulla_controparte_incompatibile(descrizione,
             risultato = await reconcile_cited_invoices(db, [movimento])
             assert risultato["collegati_count"] == 0
         await _nessuna_scrittura(db)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("motore", ["deterministico", "fatture_citate"])
+def test_numero_fattura_in_coda_non_diventa_parte_del_nome_fornitore(motore):
+    async def scenario():
+        db = ClientArchivioMemoria()["guard_coda_documentale"]
+        await db.invoices.insert_one(_fattura(supplier_name="FASTWEB SpA"))
+        movimento = _movimento(
+            descrizione="SDD CORE: MANDATO123 FASTWEB SpA FATTURA 12345",
+        )
+        await db.estratto_conto_movimenti.insert_one(movimento)
+        if motore == "deterministico":
+            risultato = await reconcile_deterministic_invoice_allocations(db, movement_ids=["M1"])
+            assert risultato["allocati"] + risultato["allocati_identita"] == 1
+        else:
+            risultato = await reconcile_cited_invoices(db, [movimento])
+            assert risultato["collegati_count"] == 1
+        assert (await db.invoices.find_one({"id": "F1"}))["pagato"] is True
+        assert (await db.estratto_conto_movimenti.find_one({"id": "M1"}))["riconciliato"] is True
 
     asyncio.run(scenario())
 
