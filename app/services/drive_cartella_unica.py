@@ -297,12 +297,12 @@ def _sposta(service, file_id: str, da: str, a: str, motivo: Optional[str] = None
     ).execute(), quale="sposta")
 
 
-def _cestina(service, file_id: str, copia_di: str) -> bool:
+def _cestina(service, file_id: str, motivo: str) -> bool:
     """Cestino (mai eliminazione). Falso se Drive non lo consente (403)."""
     try:
         riprova(lambda: service.files().update(
             fileId=file_id, supportsAllDrives=True, fields="id, trashed",
-            body={"trashed": True, "description": f"Gestionale: copia identica di {copia_di}"},
+            body={"trashed": True, "description": f"Gestionale: {motivo}"},
         ).execute(), quale="cestina")
         return True
     except Exception as exc:
@@ -430,6 +430,16 @@ def motivo_fuori_contabilita_contenuto(contenuto: bytes) -> Optional[str]:
             continue
         return _RADICI_FUORI_CONTABILITA.get(radice)
     return None
+
+
+def file_tecnico_da_cestinare(contenuto: bytes) -> Optional[str]:
+    """Il motivo per cui il file va nel Cestino di Drive, o None.
+
+    Solo i file tecnici dello SdI e della PEC riconosciuti dall'elemento
+    radice: una fattura (anche .p7m: e' la fattura firmata, l'XML si estrae
+    da li') non e' mai un file tecnico. Il nome non conta.
+    """
+    return motivo_fuori_contabilita_contenuto(contenuto)
 
 
 def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
@@ -758,7 +768,7 @@ async def _giro(db) -> Dict[str, Any]:
     iniziato = datetime.now(timezone.utc).isoformat()
     t_giro = time.perf_counter()
     esito: Dict[str, Any] = {"letti": 0, "elaborati": 0, "errori": 0, "doppioni_cestinati": 0, "arretrati": 0,
-                             "dettagli": [], "iniziato_at": iniziato}
+                             "tecnici_cestinati": 0, "dettagli": [], "iniziato_at": iniziato}
     try:
         with _fase(esito, "servizio"):
             service = await asyncio.to_thread(_service)
@@ -843,7 +853,7 @@ async def _giro(db) -> Dict[str, Any]:
             if copia_di:
                 cartella = "CESTINO"
                 with _fase(esito, "sposta"):
-                    if not await asyncio.to_thread(_cestina, drive, fid, copia_di):
+                    if not await asyncio.to_thread(_cestina, drive, fid, f"copia identica di {copia_di}"):
                         cartella = DOPPIONI
                         await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[DOPPIONI],
                                                 f"copia identica di {copia_di}")
@@ -852,6 +862,26 @@ async def _giro(db) -> Dict[str, Any]:
                                     cartella=cartella, duplicato_di=copia_di)
                 esito["doppioni_cestinati"] += 1
                 esito["dettagli"].append({"file": nome, "esito": "doppione", "copia_di": copia_di,
+                                          "cartella": cartella})
+                return
+
+            tecnico = file_tecnico_da_cestinare(contenuto)
+            if tecnico:
+                # Metadati SdI e certificazioni PEC: accompagnano un documento,
+                # non lo sono. Il titolare li vuole via dal Drive (07/10/2026):
+                # Cestino di Drive (recuperabile), con il motivo nella descrizione
+                # e nel registro; se Drive rifiuta (403) restano in DOPPIONI.
+                cartella = "CESTINO"
+                with _fase(esito, "sposta"):
+                    if not await asyncio.to_thread(_cestina, drive, fid, tecnico):
+                        cartella = DOPPIONI
+                        await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[DOPPIONI], tecnico)
+                with _fase(esito, "registro"):
+                    await _registra(db, fid, nome=nome, sha256=sha256, esito="tecnico_cestinato",
+                                    cartella=cartella, motivo=tecnico,
+                                    regole_non_riconosciuti=REGOLE_NON_RICONOSCIUTI)
+                esito["tecnici_cestinati"] = esito.get("tecnici_cestinati", 0) + 1
+                esito["dettagli"].append({"file": nome, "esito": "tecnico_cestinato", "motivo": tecnico,
                                           "cartella": cartella})
                 return
 
@@ -997,7 +1027,7 @@ async def svuota(db, *, max_giri: int = 60) -> Dict[str, Any]:
     if _svuotamento.get("in_corso"):
         return {"saltato": "svuotamento_in_corso"}
     _svuotamento["in_corso"] = True
-    totale = {"giri": 0, "letti": 0, "elaborati": 0, "errori": 0, "doppioni_cestinati": 0}
+    totale = {"giri": 0, "letti": 0, "elaborati": 0, "errori": 0, "doppioni_cestinati": 0, "tecnici_cestinati": 0}
     errori_di_fila = 0
     try:
         for _ in range(max_giri):
@@ -1019,7 +1049,7 @@ async def svuota(db, *, max_giri: int = 60) -> Dict[str, Any]:
                 break
             errori_di_fila = 0
             totale["giri"] += 1
-            for chiave in ("letti", "elaborati", "errori", "doppioni_cestinati"):
+            for chiave in ("letti", "elaborati", "errori", "doppioni_cestinati", "tecnici_cestinati"):
                 totale[chiave] += int(esito.get(chiave) or 0)
             for chiave, valore in (esito.get("tempi_s") or {}).items():
                 _somma(totale, chiave, float(valore))

@@ -802,3 +802,21 @@ def test_i_metadati_sdi_e_i_daticert_pec_vanno_in_arretrato_non_in_errori(monkey
     # un XML qualsiasi senza radice nota resta un errore da guardare
     assert cu.esito_del_risultato(run(cu._smista("boh.xml", b"<?xml version='1.0'?><Verbale><n>1</n></Verbale>", {})))[0] == cu.ERRORI
     assert cu.motivo_fuori_contabilita_contenuto(b"%PDF-1.4 ...") is None
+
+
+def test_i_file_tecnici_sdi_vanno_nel_cestino_di_drive_e_le_fatture_p7m_no(ambiente, monkeypatch):
+    drive, smistati, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    metadati = (b'<?xml version="1.0" encoding="UTF-8"?>\n<ns2:MetadatiInvioFile xmlns:ns2="http://x" versione="1.0">'
+                b"<IdentificativoSdI>1</IdentificativoSdI></ns2:MetadatiInvioFile>")
+    drive.aggiungi("meta", "IT01234567890_00001_metaDato.xml", metadati, "inbox")
+    drive.aggiungi("pec", "daticert.xml", b'<?xml version="1.0"?><postacert tipo="accettazione"/>', "inbox")
+    drive.aggiungi("p7m", "IT01234567890_00001.xml.p7m", b"\x30\x82 firma CAdES con dentro la fattura", "inbox")
+
+    esito = run(cu.giro(db))
+    assert esito["tecnici_cestinati"] == 2 and esito["doppioni_cestinati"] == 0
+    assert sorted(drive.cestinati) == ["meta", "pec"] and drive.eliminati == []
+    registro = run(db[cu.REGISTRO].find_one({"id": "meta"}))
+    assert registro["esito"] == "tecnico_cestinato" and "MetadatiInvioFile" in registro["motivo"]
+    # la fattura firmata non e' un file tecnico: passa dallo smistatore come sempre
+    assert [n for n, _ in smistati] == ["IT01234567890_00001.xml.p7m"]
