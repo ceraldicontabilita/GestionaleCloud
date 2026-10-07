@@ -439,18 +439,25 @@ def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     Le buste vengono subito dopo (decisione del 28/09/2026): finche' la busta
     definitiva non e' in ELABORATE, la sua stampa di controllo resta su Drive.
     Un XML si registra in un attimo e fa i conti del mese; un PDF bancario puo'
-    tenere il giro per minuti. Fra gli XML vince l'ultimo caricato: nella radice
-    ce ne sono oltre mille di vecchi, e le fatture appena messe dal titolare non
-    devono aspettare quelle. Il resto mantiene l'ordine di elenco (radice prima
-    di DA ELABORARE, il piu' vecchio prima).
+    tenere il giro per minuti. Fra gli XML vince il piu' recente per data del
+    file (``modifiedTime``, che Drive conserva dall'originale), non per data di
+    caricamento: il 29/09/2026 il vecchio archivio e' stato caricato in blocco
+    e con ``createdTime`` oltre mille fatture del 2020 passavano davanti a
+    quelle del 2026 (07/10/2026: 196 XML scartati per anno, zero fatture
+    entrate). La data serve solo a ordinare il lavoro, non a classificare.
+    Il resto mantiene l'ordine di elenco (radice prima di DA ELABORARE, il
+    piu' vecchio prima).
     """
     def xml(f):
         return str(f.get("name") or "").lower().endswith(_ESTENSIONI_XML)
 
+    def data_file(f):
+        return (str(f.get("modifiedTime") or f.get("createdTime") or ""),
+                str(f.get("createdTime") or ""))
+
     buste = [f for f in coda if e_busta(f)]
     estratti = [f for f in coda if not e_busta(f) and e_estratto_conto(f)]
-    recenti = sorted((f for f in coda if xml(f)),
-                     key=lambda f: str(f.get("createdTime") or ""), reverse=True)
+    recenti = sorted((f for f in coda if xml(f)), key=data_file, reverse=True)
     return estratti + buste + recenti + [
         f for f in coda if not e_busta(f) and not e_estratto_conto(f) and not xml(f)]
 
@@ -736,7 +743,7 @@ async def _giro(db) -> Dict[str, Any]:
             with _fase(esito, "rimessa_in_coda"):
                 esito["buste_rimesse_in_coda"] = await rimetti_in_coda_buste_gia_presenti(db, service, cartelle)
             _cache["rimessa_ts"] = time.monotonic()
-        campi = "id, name, md5Checksum, size, mimeType, createdTime"
+        campi = "id, name, md5Checksum, size, mimeType, createdTime, modifiedTime"
         # Prima i file lasciati sciolti nella radice, poi DA ELABORARE
         # (decisione del titolare, 26/09/2026): la cartella unica si usa come
         # calderone e nessuno deve smistare a mano. Le sottocartelle restano
