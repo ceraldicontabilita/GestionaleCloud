@@ -1627,9 +1627,12 @@ def start_scheduler():
     )
     # Un primo lotto subito dopo l'avvio: le buste piu' recenti (con un eventuale
     # anticipo TFR) non aspettano la notte. Il giro e' idempotente.
+    # Il trigger «date» interpreta un orario senza fuso nel fuso dello
+    # scheduler (Europe/Rome): con l'orologio del server in UTC il giro
+    # risultava «mancato di due ore» e veniva scartato. Orario con fuso.
     scheduler.add_job(
         _cedolini_hr_riverifica_job,
-        'date', run_date=avvio + timedelta(minutes=7),
+        'date', run_date=datetime.now(timezone.utc) + timedelta(minutes=7),
         misfire_grace_time=600,
         id="cedolini_hr_riverifica_avvio",
         name="Netti HR riletti dal PDF della busta (primo lotto all'avvio)",
@@ -1947,7 +1950,7 @@ def start_scheduler():
         if _eb.attivo() and _eb.rilettura_dal():
             scheduler.add_job(
                 enable_banking_giro_task, "date",
-                run_date=avvio + timedelta(minutes=3),
+                run_date=datetime.now(timezone.utc) + timedelta(minutes=3),  # con fuso: vedi sopra
                 misfire_grace_time=600,
                 id="enable_banking_rilettura",
                 name=f"Banco BPM: rilettura dal {_eb.rilettura_dal()} (una volta)",
