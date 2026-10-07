@@ -393,7 +393,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
     <div style={{ background:C.bg, minHeight:"100dvh", fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif", color:C.ink }}>
       {/* Sotto-voci del gruppo "Compra" (2° livello): appaiono solo dentro Compra */}
       {COMPRA_TABS.includes(tab) && (
-        <div style={{ display:"flex", gap:6, overflowX:"auto", padding:"8px 10px", background:"#fff", borderBottom:`1px solid ${C.line}` }}>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, padding:"8px 16px", background:"#fff", borderBottom:`1px solid ${C.line}` }}>
           {[["riordini",`Riordini${nRiordini?" ("+nRiordini+")":""}`],["catalogo","Catalogo"],["confronto","Confronto"],["giacenze","Giacenze"]].map(([id,lbl])=>(
             <button key={id} onClick={()=>setTab(id)} style={{ flexShrink:0, border:`1px solid ${tab===id?C.brand:C.line}`, background:tab===id?C.brand:"#fff", color:tab===id?"#fff":C.muted, borderRadius:999, padding:"6px 14px", fontWeight:800, fontSize:13, cursor:"pointer" }}>{lbl}</button>
           ))}
@@ -401,7 +401,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
       )}
       {/* ricerca */}
       {tab==="catalogo" && (
-        <div style={{ background:"#fff", borderBottom:`1px solid ${C.line}`, padding:"10px 12px" }}>
+        <div style={{ background:"#fff", borderBottom:`1px solid ${C.line}`, padding:"10px 16px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, border:`2px solid ${C.line}`, borderRadius:14, padding:"10px 12px" }}>
             <Search size={18} color={C.muted}/>
             <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Cerca articolo… (es. margarina)"
@@ -435,7 +435,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
         </div>
       )}
 
-      <div style={{ padding:"14px 12px 90px" }}>
+      <div style={{ padding:"14px 16px 90px" }}>
         {loading && <div style={{ textAlign:"center", color:C.muted, padding:40 }}>Carico catalogo…</div>}
 
         {!loading && tab==="catalogo" && (<>
@@ -532,7 +532,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
 
 function Filtro({ label, valori, sel, onSel }) {
   return (
-    <div style={{ display:"flex", gap:8, overflowX:"auto", alignItems:"center", marginTop:8 }}>
+    <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center", marginTop:8 }}>
       <span style={{ flex:"0 0 auto", fontSize:11, fontWeight:800, color:C.muted, textTransform:"uppercase", letterSpacing:1, minWidth:70 }}>{label}</span>
       {valori.map(v=>(
         <button key={v} onClick={()=>onSel(v)} style={{ flex:"0 0 auto", height:34, padding:"0 14px", borderRadius:999, fontWeight:800, fontSize:13, cursor:"pointer", whiteSpace:"nowrap",

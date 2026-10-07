@@ -295,7 +295,7 @@ export default function MagazzinoBarView({ onBack, soloLavagna = false }) {
         <button onClick={onBack} style={{ border: "none", background: "rgba(255,255,255,.18)", color: "#fff", borderRadius: 18, padding: "12px 20px", fontWeight: 900 }}>← Reparti</button>
       </div>
 
-      <div style={{ display: "flex", background: "#3f5a4e" }}>
+      <div style={{ display: "flex", background: "#3f5a4e", padding: "0 16px" }}>
         {(soloLavagna ? [["rifornimenti", `📺 Lavagna (${richieste.length})`]] : [["rifornimenti", `📺 Lavagna (${richieste.length})`], ["preleva", "🛒 Preleva"]]).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{ flex: 1, padding: "14px 8px", border: "none", borderBottom: tab === id ? "4px solid #c59a5f" : "4px solid transparent", background: "transparent", color: tab === id ? "#c59a5f" : "#9aa593", fontWeight: 900 }}>
             {label}

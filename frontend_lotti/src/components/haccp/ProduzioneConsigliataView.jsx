@@ -123,7 +123,7 @@ export default function ProduzioneConsigliataView() {
           <h1 className="text-2xl font-black text-stone-900">Produzione consigliata</h1>
           <p className="text-sm text-stone-500">Cosa produrre, in base a storico, invenduto, festività e incassi</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-lg border border-stone-200 overflow-hidden">
             <button onClick={() => setData(oggiISO(0))} className={`px-3 py-1.5 text-sm font-semibold ${data === oggiISO(0) ? "bg-[#5b7a6b] text-white" : "bg-white text-stone-600"}`}>Oggi</button>
             <button onClick={() => setData(oggiISO(1))} className={`px-3 py-1.5 text-sm font-semibold ${data === oggiISO(1) ? "bg-[#5b7a6b] text-white" : "bg-white text-stone-600"}`}>Domani</button>

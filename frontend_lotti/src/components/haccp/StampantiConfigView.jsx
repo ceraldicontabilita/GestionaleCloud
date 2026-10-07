@@ -203,7 +203,7 @@ export default function StampantiConfigView() {
                   aria-label={`Nome della stampante ${s.nome || ""}`.trim()}
                   value={s.nome || ""}
                   onChange={(e) => aggiorna(s.id, "nome", e.target.value)}
-                  className="flex-1 text-lg font-semibold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-[#5b7a6b] outline-none px-1 py-1"
+                  className="flex-1 min-w-0 text-lg font-semibold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-[#5b7a6b] outline-none px-1 py-1"
                   placeholder="Nome stampante"
                 />
                 <label className="flex items-center gap-2 text-sm text-gray-600 mt-2">

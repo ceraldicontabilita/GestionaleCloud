@@ -359,10 +359,10 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
         <div style={{ fontSize: 12, color: "#8a8478", marginTop: 5 }}>{sessione ? `Seleziona reparto · ${sessione.nome}` : "Seleziona reparto e inserisci il tuo PIN"}</div>
       </div>
       <StatoGiorno attivo={!!sessione && titolareInSessione} />
-      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center", maxWidth: 760, marginBottom: 48 }}>
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center", width: "100%", maxWidth: 760, marginBottom: 48 }}>
         {REPARTI.filter(r => !ammessi || ammessi.includes(r.id)).map(r => (
           <button key={r.id} onClick={() => scegliReparto(r)}
-            style={{ position: "relative", width: 220, height: 200, borderRadius: 24, border: "none", background: r.grad, color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, boxShadow: `0 8px 32px ${r.shadow}`, fontFamily: "inherit" }}>
+            style={{ position: "relative", flex: "1 1 150px", maxWidth: 220, minWidth: 0, height: 200, padding: "0 8px", borderRadius: 24, border: "none", background: r.grad, color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, boxShadow: `0 8px 32px ${r.shadow}`, fontFamily: "inherit" }}>
             {r.soloAdmin && !ammessi?.includes(r.id) && (
               <span style={{ position: "absolute", top: 12, right: 12, display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(0,0,0,.35)", borderRadius: 999, padding: "4px 10px", fontSize: 11, fontWeight: 800, letterSpacing: .3 }}>
                 <Lock size={12} /> Solo titolare

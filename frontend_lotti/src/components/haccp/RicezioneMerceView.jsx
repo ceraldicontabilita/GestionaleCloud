@@ -282,7 +282,7 @@ export default function RicezioneMerceView() {
                 <div key={`${lotto.lotto_id}-${idx}`} className={`${haNonConf ? "bg-red-50" : "bg-white"}`}>
                   {/* Riga sommario: Conforme registra al volo, Non conforme apre il pannello */}
                   <div className="flex flex-wrap items-center gap-2 p-3 hover:bg-gray-50">
-                    <div className="flex flex-1 min-w-0 items-center gap-3 cursor-pointer"
+                    <div className="flex flex-1 basis-48 min-w-0 min-h-[44px] items-center gap-3 cursor-pointer"
                       onClick={() => setEspanso(e => ({...e, [lotto.lotto_id]: !e[lotto.lotto_id]}))}>
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${haNonConf ? "bg-red-100" : "bg-gray-100"}`}>
                         {haNonConf ? <AlertTriangle size={15} className="text-red-600" /> : <Truck size={15} className="text-gray-500" />}

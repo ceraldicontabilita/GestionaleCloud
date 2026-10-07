@@ -1012,6 +1012,41 @@ h1, .g-page-title { font-weight: 800; }
   }
 }
 
+
+/* ════════════════════════════════════════════════════
+   TELEFONO (≤ 640px) — area di tocco minima 44x44 su ogni controllo.
+   Regola unica e globale (CLAUDE.md §100): niente toppe per pagina.
+   ════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], summary,
+  select, textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]) {
+    min-height: 44px !important;
+  }
+  button, [role="button"], [role="tab"], [role="menuitem"], summary {
+    min-width: 44px !important;
+  }
+  a[href] {
+    display: inline-flex; align-items: center; min-height: 44px; min-width: 44px;
+  }
+  /* Casella/radio: l'area tattile è l'etichetta intera */
+  label:has(> input[type="checkbox"]), label:has(> input[type="radio"]),
+  label:has(input[type="checkbox"]):not(:has(input:not([type="checkbox"]))),
+  label:has(input[type="radio"]):not(:has(input:not([type="radio"]))) {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; min-width: 44px;
+  }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; flex-shrink: 0; }
+  [role="checkbox"], [role="radio"], [role="switch"] { min-height: 44px; min-width: 44px; }
+}
+
+/* Elenco backup: 4 colonne su schermo largo, 2 su telefono (niente scroll orizzontale) */
+.bk-riga { display: grid; grid-template-columns: minmax(0, 1fr) 90px 140px 140px; gap: 4px 8px; }
+@media (max-width: 640px) {
+  .bk-riga { grid-template-columns: minmax(0, 1fr) auto; }
+  .bk-riga > :first-child { grid-column: 1 / -1; }
+  .bk-head { display: none; }
+}
+
 /* ════════════════════════════════════════════════════
    PRINT
    ════════════════════════════════════════════════════ */
