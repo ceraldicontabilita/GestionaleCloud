@@ -462,7 +462,9 @@ def ordina_coda(coda: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         f for f in coda if not e_busta(f) and not e_estratto_conto(f) and not xml(f)]
 
 
-_ESTRATTO_CONTO = re.compile(r"ESTRATTO[\s_]*CONTO", re.IGNORECASE)
+# «Estratto conto …» BPM e «Estratto BNL 1-2022 …» del conto storico: la
+# precedenza serve a tutti gli estratti ufficiali (titolare, 07/10/2026).
+_ESTRATTO_CONTO = re.compile(r"ESTRATTO[\s_]*(?:CONTO|BNL)", re.IGNORECASE)
 
 
 def e_estratto_conto(f: Dict[str, Any]) -> bool:
