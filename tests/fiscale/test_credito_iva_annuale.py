@@ -117,3 +117,25 @@ def test_il_lettore_dei_quadri_legge_anche_vx5():
     esito = dq.estrai_quadri_pagine([_pagina(9, TESTO_VL, IVA22_VL), _pagina(11, TESTO_VX + "VX5\n", vx)])
     assert esito["campi"]["vx5_da_riportare"]["valore"] == "451.00"
     assert esito["campi"]["vx5_da_riportare"]["rigo"] == "VX5"
+
+
+def test_il_lettore_legge_i_righi_a_casella_singola_utili_alla_gestione_iva():
+    """Collaudato sulla dichiarazione IVA 2026 (periodo 2025) del titolare:
+    VE26 85.720, VF71 75.869, VL1 85.812, VL2 75.869, VL3 9.943, VL9 4.994,
+    VL25 2.790, VL33 = VL39 = VX2 = VX5 4.676. Qui le parole sono sintetiche,
+    nella geometria del modulo (etichetta a sinistra, «,00» a destra)."""
+    attesi = {"VE26": "85.720", "VF71": "75.869", "VL1": "85.812", "VL2": "75.869",
+              "VL3": "9.943", "VL9": "4.994", "VL25": "2.790", "VL39": "4.676"}
+    parole, testo, y = [], "QUADRO VL\nMODELLO IVA 2026\nPeriodo d’imposta 2025\n", 100.0
+    for rigo, valore in attesi.items():
+        parole += [[108.0, y, 126.0, y + 9, rigo], [549.5, y + 2, 559.6, y + 10, ",00"],
+                   [520.0, y - 1, 548.0, y + 11, valore]]
+        testo += rigo + "\n"
+        y += 24
+    from tests.fiscale.test_dichiarazioni_quadri import _pagina
+    esito = dq.estrai_quadri_pagine([_pagina(9, testo, parole)])
+    letti = {c["rigo"]: c["valore"] for c in esito["campi"].values() if c.get("valore") is not None}
+    assert letti == {r: f"{v.replace('.', '')}.00" for r, v in attesi.items()}
+    assert esito["campi"]["vl38_totale_iva_dovuta"]["motivo"] == "rigo_non_trovato"
+    assert set(dq.CAMPI_PER_TIPO["DICHIARAZIONE_IVA"]) >= {"VE26", "VF71", "VL1", "VL2", "VL3",
+                                                          "VL4", "VL9", "VL25", "VL38", "VL39", "VX5"}

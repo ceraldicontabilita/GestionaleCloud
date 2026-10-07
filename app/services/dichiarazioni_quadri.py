@@ -70,8 +70,21 @@ TIPI_CON_QUADRI = frozenset({"DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_I
 #: rigo del modulo -> nome del campo, per tipo letto.
 CAMPI_PER_TIPO: Dict[str, Dict[str, str]] = {
     "DICHIARAZIONE_IVA": {
+        # Righi a casella singola: il lettore per posizione prende la casella
+        # del rigo. Righi a piu' colonne (VE24, VF25, VL8, VL30, VX4) restano
+        # fuori finche' il lettore non distingue le colonne.
+        "VE26": "ve26_iva_vendite",          # totale imposta sulle operazioni attive
+        "VF71": "vf71_iva_ammessa_detrazione",
+        "VL1": "vl1_iva_debito_annua",
+        "VL2": "vl2_iva_detraibile_annua",
+        "VL3": "vl3_imposta_dovuta",
+        "VL4": "vl4_imposta_a_credito",
+        "VL9": "vl9_credito_compensato_f24",
+        "VL25": "vl25_eccedenza_credito_anno_precedente",
         "VL32": "vl32_iva_debito",
         "VL33": "vl33_iva_credito",
+        "VL38": "vl38_totale_iva_dovuta",
+        "VL39": "vl39_totale_iva_credito",
         "VX1": "vx1_da_versare",
         "VX2": "vx2_a_credito",
         # Il credito che passa all'anno dopo: VX2 e' «da ripartire» fra
@@ -89,7 +102,9 @@ CAMPI_PER_TIPO: Dict[str, Dict[str, str]] = {
     },
 }
 
-_ETICHETTE_QUADRO = re.compile(r"\b(VL32|VL33|VX1|VX2|VX5|RN1|RN2|RN17|IR26|IR27)\b")
+_ETICHETTE_QUADRO = re.compile(
+    r"\b(VE26|VF71|VL1|VL2|VL3|VL4|VL9|VL25|VL32|VL33|VL38|VL39|VX1|VX2|VX5|RN1|RN2|RN17|IR26|IR27)\b"
+)
 _RE_ISA = re.compile(r"Esito del ricalcolo|INDICE\s+SINTETICO\s+DI\s+AFFIDABILIT", re.I)
 #: Il frontespizio dell'esito ISA («DATI RICALCOLATI», motore «Il tuo Isa»)
 #: porta codice ISA e protocollo: le sue coordinate vanno conservate.
