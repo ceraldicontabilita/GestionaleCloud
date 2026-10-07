@@ -296,10 +296,21 @@ def test_giro_automatico_rilegge_dalla_data_chiesta_una_volta_sola(monkeypatch):
     ordinario = run(eb.giro_automatico(db, banca))
     assert ordinario["giorni"] == eb.GIORNI_GIRO and "rilettura_dal" not in ordinario
 
+    # Il giro «subito dopo l'avvio» a rilettura gia' fatta non chiama la banca:
+    # ogni riavvio consumava una lettura PSD2 e i giri del mattino finivano in limite_banca.
+    chiamate = len(banca.chiamate)
+    salto = run(eb.giro_di_rilettura(db, banca))
+    assert salto["saltato"] == "rilettura_gia_eseguita" and salto["eseguita_il"] == dal
+    assert len(banca.chiamate) == chiamate
+    # con una nuova data chiesta invece rilegge
+    nuova = (oggi - _dt.timedelta(days=30)).isoformat()
+    monkeypatch.setenv("ENABLE_BANKING_DAL", nuova)
+    assert run(eb.giro_di_rilettura(db, banca))["rilettura_dal"] == nuova
+
 
 def test_finestra_ordinaria_da_variabile_e_data_non_valida(monkeypatch):
     monkeypatch.delenv("ENABLE_BANKING_GIORNI_GIRO", raising=False)
-    assert eb.giorni_giro() == eb.GIORNI_GIRO == 7
+    assert eb.giorni_giro() == eb.GIORNI_GIRO == 3
     monkeypatch.setenv("ENABLE_BANKING_GIORNI_GIRO", "14")
     assert eb.giorni_giro() == 14
     monkeypatch.setenv("ENABLE_BANKING_GIORNI_GIRO", "x")

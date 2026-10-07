@@ -1972,6 +1972,20 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-BANCA] giro Enable Banking non riuscito: {type(e).__name__}: {e}")
 
+    async def enable_banking_rilettura_task():
+        """Banco BPM: la rilettura chiesta con ENABLE_BANKING_DAL, solo se ancora in attesa."""
+        try:
+            import httpx
+            from app.database import Database
+            from app.services import enable_banking as eb
+            if not eb.attivo():
+                return
+            async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
+                esito = await eb.giro_di_rilettura(Database.get_db(), client)
+            logger.info(f"[SCHEDULER-BANCA] rilettura Enable Banking: {esito}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-BANCA] rilettura Enable Banking non riuscita: {type(e).__name__}: {e}")
+
     scheduler.add_job(
         enable_banking_giro_task,
         OrTrigger([
@@ -2004,12 +2018,13 @@ def start_scheduler():
     )
 
     # Rilettura chiesta dal titolare (ENABLE_BANKING_DAL): un giro subito dopo
-    # l'avvio, non alla prossima finestra; il giro la esegue una volta sola.
+    # l'avvio, non alla prossima finestra; il giro la esegue una volta sola e
+    # a rilettura gia' fatta non consuma una lettura della banca.
     try:
         from app.services import enable_banking as _eb
         if _eb.attivo() and _eb.rilettura_dal():
             scheduler.add_job(
-                enable_banking_giro_task, "date",
+                enable_banking_rilettura_task, "date",
                 run_date=datetime.now(timezone.utc) + timedelta(minutes=3),  # con fuso: vedi sopra
                 misfire_grace_time=600,
                 id="enable_banking_rilettura",

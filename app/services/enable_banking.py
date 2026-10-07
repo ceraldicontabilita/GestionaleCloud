@@ -650,9 +650,11 @@ async def importa_nuovi(
 
 # Senza l'utente presente la banca concede poche letture al giorno (PSD2):
 # due giri bastano, e uno lasciato libero serve a «Aggiorna ora».
-# Una settimana indietro (titolare, 07/10/2026): ``ENABLE_BANKING_GIORNI_GIRO``
-# la cambia senza toccare il codice.
-GIORNI_GIRO = 7
+# Tre giorni indietro (titolare, 07/10/2026, dopo la rilettura dal 01/01/2026:
+# «porta la data di lettura a 3 giorni prima»); con due giri al giorno ogni
+# movimento viene letto piu' volte e il confronto con l'archivio evita i
+# doppioni. ``ENABLE_BANKING_GIORNI_GIRO`` la cambia senza toccare il codice.
+GIORNI_GIRO = 3
 GIORNI_PRIMO_GIRO = 90
 
 
@@ -685,6 +687,19 @@ def rilettura_in_attesa(stato: Dict[str, Any]) -> Optional[str]:
     if dal and stato.get("rilettura_dal") != dal:
         return dal
     return None
+
+
+async def giro_di_rilettura(db, client) -> Dict[str, Any]:
+    """Il giro «subito dopo l'avvio» chiesto da ``ENABLE_BANKING_DAL``: solo se
+    la rilettura e' ancora in attesa. Con la variabile lasciata su Render dopo
+    la rilettura, ogni riavvio (30 in un giorno il 07/10/2026) lanciava un
+    giro ordinario in piu' e la banca rispondeva ``limite_banca`` ai giri
+    delle 07:15 e 09:00: le letture PSD2 senza utente sono poche al giorno."""
+    stato = await leggi_sessione(db) if attivo() and configurato() else {}
+    if not rilettura_in_attesa(stato):
+        return {"saltato": "rilettura_gia_eseguita", "rilettura_dal": rilettura_dal(),
+                "eseguita_il": stato.get("rilettura_dal")}
+    return await giro_automatico(db, client)
 
 
 async def giro_automatico(db, client) -> Dict[str, Any]:
