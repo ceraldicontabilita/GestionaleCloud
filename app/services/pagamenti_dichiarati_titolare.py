@@ -32,6 +32,10 @@ future vanno in Provvisoria e sceglie il titolare.
 
 Idempotente: una fattura gia' pagata si salta, quindi il secondo giro da'
 ``registrate=0``.
+
+Un esito definitivo vale finche' esiste la sua prova (fattura e riga di Prima
+Nota): se sparisce, ``ritira_esiti_orfani`` lo ritira con storico e la riga
+torna applicabile all'arrivo dell'XML.
 """
 from __future__ import annotations
 
@@ -46,6 +50,7 @@ from fastapi import HTTPException
 
 from app.services.fatture_report_ae import (
     COLLECTION_REPORT,
+    _ids_presenti_in_invoices,
     collega_righe_a_fatture,
     segnala_fatture_sparite,
     stato_fatture_sparite,
@@ -71,6 +76,17 @@ CHIAVE_JOB = "pagamenti_dichiarati_titolare"
 # Esiti dopo i quali il giro automatico non ripassa la riga: o e' fatta, o
 # niente puo' cambiarla senza una decisione del titolare.
 ESITI_DEFINITIVI = {"registrata", "gia_pagata", "non_pagata", "da_decidere"}
+
+# Esiti definitivi che valgono solo finche' esiste la loro prova: la fattura
+# in `invoices` e, per `registrata`, la riga di Prima Nota che l'esito cita.
+# `non_pagata` e' la parola del titolare, non dipende da una prova e resta.
+ESITI_CON_PROVA = {"registrata", "gia_pagata", "da_decidere"}
+
+#: Esito con cui torna applicabile una riga il cui esito definitivo e' stato
+#: ritirato: lo stesso aperto che il giro usa quando la fattura manca.
+ESITO_RITIRATO = "fattura_non_ancora_arrivata"
+CAMPO_STORICO_ESITI = "pagamento_applicato_storico"
+MOTIVO_RITIRO = "fattura/riga Prima Nota non piu' presente"
 
 _PROIEZIONE = {"_id": 0, "xml_raw": 0, "xml_content": 0, "linee": 0}
 
@@ -622,6 +638,120 @@ async def _registra_banca_dichiarata(
                        prima_nota_banca_dichiarata_id=pn_id)
 
 
+_PN_ID_ESITO = ("prima_nota_id", "prima_nota_banca_id")
+
+
+async def _prime_note_attive(db, pn_ids: List[str]) -> set:
+    """Gli id di Prima Nota (cassa o banca) che esistono e non sono stornati."""
+    presenti: set = set()
+    cercati = list(dict.fromkeys(str(i) for i in pn_ids if i))
+    for collezione in ("prima_nota_cassa", "prima_nota_banca"):
+        for inizio in range(0, len(cercati), 500):
+            blocco = cercati[inizio:inizio + 500]
+            trovate = await db[collezione].find(
+                {"id": {"$in": blocco},
+                 "status": {"$nin": ["deleted", "archived"]},
+                 "entity_status": {"$ne": "deleted"}},
+                {"_id": 0, "id": 1},
+            ).to_list(len(blocco))
+            presenti.update(str(r["id"]) for r in trovate if r.get("id") is not None)
+    return presenti
+
+
+async def ritira_esiti_orfani(
+    db, *, dry_run: bool, report_keys: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Ritira, con storico, gli esiti definitivi rimasti senza prova.
+
+    Un esito ``registrata``/``gia_pagata``/``da_decidere`` vale finche' esiste
+    la fattura (``invoice_id`` in ``invoices``, in qualunque stato) e, se
+    l'esito cita una riga di Prima Nota (``prima_nota_id`` cassa o
+    ``prima_nota_banca_id``), finche' quella riga e' attiva. Il 06/10/2026
+    l'archivio e' stato azzerato: senza questo passaggio 773 pagamenti
+    dichiarati restavano «fatti» per sempre e la Prima Nota vuota (§16: la
+    prova che non c'e' piu' non vale).
+
+    L'esito orfano non si cancella (§14): l'oggetto corrente va in coda a
+    ``pagamento_applicato_storico`` con ``ritirato_at`` e ``motivo_ritiro``, e
+    ``pagamento_applicato`` torna all'esito aperto ``fattura_non_ancora_arrivata``
+    cosi' il giro la riapplica all'arrivo dell'XML. Nessuna scrittura su
+    ``invoices`` o Prima Nota. Idempotente: un esito ritirato non e' piu'
+    definitivo e non si ritira due volte; con la prova presente non si tocca.
+    ``dry_run`` conta soltanto.
+    """
+    filtro: Dict[str, Any] = {"pagamento_applicato.stato": {"$in": sorted(ESITI_CON_PROVA)}}
+    if report_keys is not None:
+        filtro["report_key"] = {"$in": list(report_keys)}
+    righe = await db[COLLECTION_REPORT].find(
+        filtro, {"_id": 0, "report_key": 1, "invoice_id": 1, "fattura_sparita_id": 1,
+                 "metodo_pagamento_titolare": 1, "pagamento_applicato": 1},
+    ).to_list(100000)
+    esito: Dict[str, Any] = {
+        "dry_run": dry_run, "esaminati": len(righe), "orfani": 0, "ritirati": 0,
+        "per_stato": {}, "per_metodo": {}, "per_motivo": {},
+    }
+    if not righe:
+        return esito
+
+    fatture_presenti = await _ids_presenti_in_invoices(
+        db, (r.get("invoice_id") for r in righe if r.get("invoice_id")),
+    )
+    pn_presenti = await _prime_note_attive(db, [
+        str(applicato.get(campo))
+        for r in righe
+        for applicato in [r.get("pagamento_applicato") or {}]
+        for campo in _PN_ID_ESITO
+        if applicato.get(campo)
+    ])
+    adesso = _oggi()
+    for riga in righe:
+        applicato = dict(riga.get("pagamento_applicato") or {})
+        stato = str(applicato.get("stato") or "")
+        invoice_id = riga.get("invoice_id")
+        motivi: List[str] = []
+        if not invoice_id or str(invoice_id) not in fatture_presenti:
+            era = invoice_id or riga.get("fattura_sparita_id")
+            motivi.append(f"fattura non piu' presente in invoices (era {era})"
+                          if era else "fattura non piu' presente in invoices")
+        for campo in _PN_ID_ESITO:
+            pn_id = applicato.get(campo)
+            if pn_id and str(pn_id) not in pn_presenti:
+                motivi.append(f"riga Prima Nota {pn_id} non piu' attiva")
+        if not motivi:
+            continue
+        esito["orfani"] += 1
+        metodo = applicato.get("metodo") or riga.get("metodo_pagamento_titolare") or ""
+        esito["per_stato"][stato] = esito["per_stato"].get(stato, 0) + 1
+        esito["per_metodo"][metodo] = esito["per_metodo"].get(metodo, 0) + 1
+        chiave_motivo = "fattura_assente" if motivi[0].startswith("fattura") else "prima_nota_assente"
+        esito["per_motivo"][chiave_motivo] = esito["per_motivo"].get(chiave_motivo, 0) + 1
+        if dry_run:
+            continue
+        motivo = f"{MOTIVO_RITIRO}: " + "; ".join(motivi)
+        await db[COLLECTION_REPORT].update_one(
+            {"report_key": riga["report_key"], "pagamento_applicato.stato": stato},
+            {
+                "$push": {CAMPO_STORICO_ESITI: {
+                    **applicato, "ritirato_at": adesso, "ritirato_da": ATTORE,
+                    "motivo_ritiro": motivo,
+                }},
+                "$set": {"pagamento_applicato": {
+                    "stato": ESITO_RITIRATO, "at": adesso,
+                    "motivo": f"esito ritirato: {motivo}",
+                    "esito_ritirato": stato,
+                }},
+            },
+        )
+        esito["ritirati"] += 1
+    if esito["orfani"]:
+        logger.warning(
+            "Pagamenti dichiarati: %s esiti definitivi senza prova (%s) %s",
+            esito["orfani"], esito["per_stato"],
+            "contati (dry run)" if dry_run else "ritirati con storico",
+        )
+    return esito
+
+
 async def applica_pagamenti_dichiarati(
     db, *, dry_run: bool = False, solo_pendenti: bool = False,
     aggiorna_fornitori: bool = True, report_keys: Optional[List[str]] = None,
@@ -637,13 +767,19 @@ async def applica_pagamenti_dichiarati(
         # Il giro lanciato dal caricamento del report e' in corso: due giri
         # insieme si contenderebbero le stesse fatture.
         return {"saltato": "giro_completo_in_corso"}
+    risultato: Dict[str, Any] = {"dry_run": dry_run}
+    if report_keys is None:
+        # Prima del filtro sugli esiti: un esito definitivo la cui prova e'
+        # sparita (fattura o riga di Prima Nota) torna aperto, cosi' questo
+        # stesso giro lo riapplica se l'XML e' rientrato.
+        risultato["esiti_ritirati"] = await ritira_esiti_orfani(db, dry_run=dry_run)
     filtro: Dict[str, Any] = {"metodo_pagamento_titolare": {"$nin": [None, ""]}}
     if solo_pendenti:
         filtro["pagamento_applicato.stato"] = {"$nin": sorted(ESITI_DEFINITIVI)}
     if report_keys is not None:
         filtro["report_key"] = {"$in": list(report_keys)}
     righe = await db[COLLECTION_REPORT].find(filtro, {"_id": 0}).to_list(20000)
-    risultato: Dict[str, Any] = {"dry_run": dry_run, "righe": len(righe)}
+    risultato["righe"] = len(righe)
     if not righe:
         if not dry_run and report_keys is None:
             risultato["fatture_sparite"] = await _segnala_fatture_sparite(db)
@@ -815,13 +951,27 @@ async def applica_per_fattura_arrivata(db, fattura: Dict[str, Any]) -> Dict[str,
     fattura_id = fattura.get("id")
     if not piva or not fattura_id:
         return {"applicate": 0, "motivo": "fattura_senza_piva_o_id"}
-    righe = [
+    del_fornitore = [
         r for r in await db[COLLECTION_REPORT].find(
-            {"metodo_pagamento_titolare": {"$nin": [None, ""]},
-             "pagamento_applicato.stato": {"$nin": sorted(ESITI_DEFINITIVI)}},
-            {"_id": 0},
+            {"metodo_pagamento_titolare": {"$nin": [None, ""]}}, {"_id": 0},
         ).to_list(20000)
         if _vat(r.get("supplier_vat")) == piva
+    ]
+    # Un esito definitivo rimasto senza prova (la fattura di prima e' sparita,
+    # questa e' la sua rilettura) si ritira adesso, senza aspettare il giro
+    # periodico: cosi' il pagamento dichiarato si applica all'arrivo dell'XML.
+    definitive = [
+        r["report_key"] for r in del_fornitore
+        if (r.get("pagamento_applicato") or {}).get("stato") in ESITI_CON_PROVA
+    ]
+    if definitive:
+        await ritira_esiti_orfani(db, dry_run=False, report_keys=definitive)
+        del_fornitore = await db[COLLECTION_REPORT].find(
+            {"report_key": {"$in": [r["report_key"] for r in del_fornitore]}}, {"_id": 0},
+        ).to_list(len(del_fornitore))
+    righe = [
+        r for r in del_fornitore
+        if (r.get("pagamento_applicato") or {}).get("stato") not in ESITI_DEFINITIVI
     ]
     if not righe:
         return {"applicate": 0}
@@ -905,10 +1055,17 @@ async def stato(db) -> Dict[str, Any]:
     # segnalazione aperta, sola lettura): il titolare lo vede qui senza
     # aspettare il cruscotto agenti.
     fatture_sparite = await stato_fatture_sparite(db)
+    # Gli esiti definitivi oggi senza prova (sola lettura: il ritiro lo fa il
+    # giro). Zero orfani = ogni esito «fatto» ha ancora fattura e riga.
+    esiti_orfani = await ritira_esiti_orfani(db, dry_run=True)
+    esiti_orfani.pop("dry_run", None)
+    esiti_orfani.pop("ritirati", None)
     if not documento:
-        return {"stato": "mai_avviato", "fatture_sparite": fatture_sparite}
+        return {"stato": "mai_avviato", "fatture_sparite": fatture_sparite,
+                "esiti_orfani": esiti_orfani}
     documento.pop("chiave", None)
     documento["fatture_sparite"] = fatture_sparite
+    documento["esiti_orfani"] = esiti_orfani
     in_esecuzione = _job_lock.locked() or (_job_task is not None and not _job_task.done())
     if documento.get("stato") == "in_corso" and not in_esecuzione:
         # Un deploy riavvia il processo e uccide il giro a meta': lo stato
