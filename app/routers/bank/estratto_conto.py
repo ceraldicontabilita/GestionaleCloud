@@ -286,6 +286,28 @@ def segno_assente(movimenti: List[Dict[str, Any]]) -> bool:
     return len(importi) >= MIN_RIGHE_CONTROLLO_SEGNO and all(float(i) > 0 for i in importi)
 
 
+# Macro-categorie che il portale Banco BPM assegna solo agli accrediti. Un
+# export filtrato «solo entrate» ha tutti gli importi positivi di suo: il
+# verso lo dichiara la banca riga per riga, non lo indoviniamo noi. Basta una
+# riga fuori da queste famiglie (Fornitori, Salari, Commissioni...) e il file
+# resta senza segno.
+CATEGORIE_BPM_SOLO_ENTRATE = (
+    "Ricavi - ",
+    "Intercompany in entrata - ",
+    "Patrimonio - fonti finanziamento - ",
+)
+
+
+def categorie_tutte_in_entrata(movimenti: List[Dict[str, Any]]) -> bool:
+    """True se ogni riga porta una categoria della banca riservata agli accrediti."""
+    if not movimenti:
+        return False
+    return all(
+        str(m.get("categoria") or "").strip().startswith(CATEGORIE_BPM_SOLO_ENTRATE)
+        for m in movimenti
+    )
+
+
 def parse_enti_file_contabili_xlsx(contents: bytes) -> Optional[List[Dict[str, Any]]]:
     """Legge l'export ``Enti_File_Contabili`` delle carte aziendali.
 
@@ -817,7 +839,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     else:
         raise HTTPException(status_code=400, detail="Formato non supportato. Usa PDF, CSV o Excel.")
     
-    if segno_da_controllare and segno_assente(movimenti):
+    if segno_da_controllare and segno_assente(movimenti) and not categorie_tutte_in_entrata(movimenti):
         # Mai indovinare il verso: registrare «entrata» un addebito gonfia il
         # saldo e riempie la coda di Prima Nota Banca di doppioni.
         raise HTTPException(
