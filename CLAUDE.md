@@ -4973,6 +4973,8 @@ Non è un diario.
 
 ## Fatture
 
+Il 06/10/2026 (02:14–03:18 UTC) le collezioni contabili `invoices`, `corrispettivi`, `movimenti_contabili`, `prima_nota_cassa` e `prima_nota_banca` sono state azzerate e ricreate da zero; la causa non è nel log applicativo. Al 07/10 `invoices` ha 21 fatture, il report AdE 2026 (`fatture_report_ae`) ne conta 902, di cui 795 con `invoice_id` che non esiste più e 888 con pagamento dichiarato dal titolare. Gli XML sono su Drive in `ELABORATE`: la ricostruzione passa da `POST /api/admin/documenti/rimetti-in-coda` (dry-run, poi reale) e dal giro della cartella unica; i pagamenti dichiarati si applicano da soli all'arrivo di ogni fattura. Non creare un secondo importatore.
+
 Persistono ID storici misti testo/numero.
 
 Il pregresso non è completamente normalizzato.
