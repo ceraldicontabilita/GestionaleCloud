@@ -132,9 +132,14 @@ def leggi_piano(testo: str) -> Dict[str, Any]:
     }
     somma = sum(r["importo_cents"] for r in rate)
     piano["somma_rate_cents"] = somma
-    piano["quadra"] = bool(
-        rate and piano["totale_debito_cents"] == somma
-        and piano["numero_rate_dichiarato"] in (None, len(rate))
+    # La prova del piano e' il totale: la somma delle rate lette deve essere
+    # il debito al centesimo. Il numero di rate stampato in lettera puo'
+    # contare anche la prima («12 rate» con una prima rata e 10 costanti,
+    # piano 14/02/2020): resta un'avvertenza visibile, non un rifiuto.
+    piano["quadra"] = bool(rate and piano["totale_debito_cents"] == somma)
+    piano["avvertenze"] = (
+        [f"rate dichiarate {piano['numero_rate_dichiarato']}, lette {len(rate)}"]
+        if rate and piano["numero_rate_dichiarato"] not in (None, len(rate)) else []
     )
     piano["mancanti"] = [k for k in ("rif", "codice_sede", "causale", "matricola", "periodo_da", "data_domanda")
                          if not piano[k]]
@@ -350,7 +355,7 @@ async def archivia_dilazione(db, *, filename: str, content: bytes, testo: str,
         "rif": piano["rif"], "matricola": piano["matricola"], "causale": piano["causale"],
         "periodo_da": piano["periodo_da"], "periodo_a": piano["periodo_a"],
         "numero_rate": len(piano["rate"]), "totale_debito_cents": piano["totale_debito_cents"],
-        "quadra": piano["quadra"], "mancanti": piano["mancanti"],
+        "quadra": piano["quadra"], "mancanti": piano["mancanti"], "avvertenze": piano["avvertenze"],
         # Il piano non e' un pagamento: gli obblighi sono le rate, in dilazioni_inps.
         "obligation_status": "APERTO",
         "relation_keys": {"rif_dilazione": piano["rif"], "matricola_inps": piano["matricola"]},
@@ -386,6 +391,59 @@ async def archivia_dilazione(db, *, filename: str, content: bytes, testo: str,
         "abbinamento": {k: v for k, v in (esito or {}).items() if k != "esiti"} or None,
     })
     return archiviato
+
+
+# Versione della ripresa: un piano «da verificare» si rilegge una volta per
+# versione del lettore, mai a ogni giro.
+RIPRESA_V = 1
+
+
+async def riprendi_da_verificare(db, *, limite: int = 5) -> Dict[str, Any]:
+    """Rilegge dall'originale i piani conservati in Documenti ma mai depositati
+    in ``dilazioni_inps`` (lettura precedente «non quadra»); deposita quelli
+    che oggi quadrano. Caso reale: il piano INPS.5100.14/02/2020.0079479,
+    11 rate lette e «12» dichiarate, fermo da ottobre 2026."""
+    import asyncio
+
+    from app.services.originale_documento import OriginaleErrore, apri_per_impronta
+
+    candidati = await db["documents_inbox"].find(
+        {"document_type": TIPO, "status": "da_verificare", "dilazione_id": {"$exists": False},
+         "ripresa_v": {"$ne": RIPRESA_V}},
+        {"_id": 0, "id": 1, "filename": 1, "sha256": 1, "file_hash": 1, "parsed_metadata": 1},
+    ).to_list(max(limite * 4, 20))
+    esito: Dict[str, Any] = {"candidati": len(candidati), "depositati": 0, "ancora_non_quadra": 0,
+                             "originale_assente": 0, "esiti": []}
+    for doc in candidati[:limite]:
+        sha = doc.get("sha256") or doc.get("file_hash")
+        try:
+            originale = await apri_per_impronta(db, sha)
+        except (OriginaleErrore, Exception) as exc:  # noqa: BLE001 - il documento resta, si segnala
+            esito["originale_assente"] += 1
+            esito["esiti"].append({"id": doc["id"], "filename": doc.get("filename"),
+                                   "esito": "originale_assente", "errore": f"{type(exc).__name__}: {exc}"[:200]})
+            await db["documents_inbox"].update_one({"id": doc["id"]}, {"$set": {"ripresa_v": RIPRESA_V}})
+            continue
+        from app.routers.documenti import _pdf_text_for_detection
+
+        testo = await asyncio.to_thread(_pdf_text_for_detection, originale.contenuto)
+        piano = leggi_piano(testo)
+        did = await deposita_piano(db, piano, documento_id=doc["id"], filename=doc.get("filename") or "",
+                                   sha256=sha)
+        metadata = {**(doc.get("parsed_metadata") or {}), "quadra": piano["quadra"],
+                    "mancanti": piano["mancanti"], "avvertenze": piano["avvertenze"],
+                    "numero_rate": len(piano["rate"]), "totale_debito_cents": piano["totale_debito_cents"]}
+        aggiornamento: Dict[str, Any] = {"ripresa_v": RIPRESA_V, "parsed_metadata": metadata}
+        if did:
+            aggiornamento.update({"status": "archiviato", "dilazione_id": did})
+            esito["depositati"] += 1
+        else:
+            esito["ancora_non_quadra"] += 1
+        esito["esiti"].append({"id": doc["id"], "filename": doc.get("filename"), "rif": piano.get("rif"),
+                               "esito": "depositato" if did else "non_quadra", "dilazione_id": did,
+                               "avvertenze": piano["avvertenze"], "mancanti": piano["mancanti"]})
+        await db["documents_inbox"].update_one({"id": doc["id"]}, {"$set": aggiornamento})
+    return esito
 
 
 def pdf_da_zip(contenuto: bytes) -> List[Tuple[str, bytes]]:

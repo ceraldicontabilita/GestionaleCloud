@@ -406,4 +406,31 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     expect((await screen.findAllByText(/Tributo 200/)).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.queryByTestId('fiscal-mostra-altre')).not.toBeInTheDocument());
   });
+
+  it('nella scheda AdeR una rata attesa non si presenta come pagamento documentato', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
+      ? { counts: {} }
+      : path.startsWith('/api/fiscal/ader-snapshots')
+        ? {
+          items: [], total: 0, latest_import: null, settlements: [],
+          rate_plans: [{
+            id: 'piano-1', plan_reference: 'AR071904285', installment_count: 6, total_plan_amount: 3777.64,
+            first_installment_amount: 644.11, first_installment_due_date: '2025-10-13', payment_modules: [],
+            reconciled_installments: [
+              { id: 'r1', installment_number: 1, amount: 644.11, due_date: '2025-10-13', status: 'PAID_DOCUMENTED', bank_verified: false },
+              { id: 'r2', installment_number: 2, amount: 625.46, due_date: '2025-11-13', status: 'EXPECTED', payment_evidence: false },
+            ],
+          }],
+        }
+        : { items: [] } }));
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/ader']}><SituazioneFiscale /></MemoryRouter>);
+    const rate = await screen.findAllByTestId('rata-piano');
+    expect(rate).toHaveLength(2);
+    expect(rate[0]).toHaveAttribute('data-stato', 'documentata');
+    expect(rate[0]).toHaveTextContent('Rata 1: pagamento documentato');
+    expect(rate[0]).toHaveTextContent('banca da verificare');
+    expect(rate[1]).toHaveAttribute('data-stato', 'attesa');
+    expect(rate[1]).toHaveTextContent('Rata 2: attesa, nessuna prova di pagamento');
+    expect(rate[1]).not.toHaveTextContent('documentato');
+  });
 });

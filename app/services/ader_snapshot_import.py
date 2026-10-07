@@ -259,6 +259,13 @@ def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
                           text, re.IGNORECASE)
     total_amounts = (re.findall(r"€\s*([\d.'’]+,\d{2})", total_row.group(1))
                      if total_row else [])
+    documents = _rate_plan_documents(text)
+    installments = _rate_plan_installments(text, first_summary)
+    total_plan_cents = _cents(_decimal(total_amounts[-1])) if total_amounts else None
+    rateizzato = re.search(r"Importo complessivo rateizzato:\s*€\s*([\d.'’]+,\d{2})", text, re.IGNORECASE)
+    rateizzato_cents = _cents(_decimal(rateizzato.group(1))) if rateizzato else None
+    somma_rate = sum(i["amount_cents"] for i in installments) if installments else None
+    somma_documenti = sum(d["amount_cents"] for d in documents) if documents else None
     return {
         "id": stable_id("aderrateplan", company_id, plan_id, dataset_sha256),
         "company_id": company_id,
@@ -274,6 +281,20 @@ def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
             else (datetime.strptime(first_row.group(1), "%d/%m/%Y").date().isoformat() if first_row else None)
         ),
         "total_plan_amount": _money(_decimal(total_amounts[-1])) if total_amounts else None,
+        "total_plan_cents": total_plan_cents,
+        "rateizzato_cents": rateizzato_cents,
+        # Il piano come posizione strutturata (§17A.9): ogni rata con scadenza e
+        # quote, i documenti rateizzati con l'importo stampato, e la quadratura
+        # fra le righe lette e i totali della lettera.
+        "documents": documents,
+        "installments": installments,
+        "quadratura": {
+            "rate_vs_totale_piano": (somma_rate == total_plan_cents) if None not in (somma_rate, total_plan_cents) else None,
+            "documenti_vs_rateizzato": ((somma_documenti == rateizzato_cents)
+                                        if None not in (somma_documenti, rateizzato_cents) else None),
+            "numero_rate": (len(installments) == int(count_match.group(1))) if count_match and installments else None,
+            "somma_rate_cents": somma_rate, "somma_documenti_cents": somma_documenti,
+        },
         "document_references": resolved,
         "requires_review": bool(unresolved),
         "unresolved_references": unresolved,
@@ -281,6 +302,64 @@ def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
         "source_document_id": stable_id("aderpdf", dataset_sha256, filename),
         "immutable": True,
     }
+
+
+_IMPORTO_ADER = r"[\d.'’]+,\d{2}"
+
+
+def _rate_plan_documents(text: str) -> list[dict[str, Any]]:
+    """«Documento n. / Importo» della lettera di accoglimento: il numero come
+    stampato (17 cifre, senza il suffisso del portale) e l'importo rateizzato."""
+    segmento = re.search(r"relativa ai seguenti documenti:(.*?)Le comunichiamo", text, re.IGNORECASE | re.DOTALL)
+    if not segmento:
+        return []
+    return [{"printed_reference": numero, "amount_cents": _cents(_decimal(importo))}
+            for numero, importo in re.findall(rf"\b(\d{{17,20}})\s+€\s*({_IMPORTO_ADER})", segmento.group(1))]
+
+
+def _rate_plan_installments(text: str, first_summary) -> list[dict[str, Any]]:
+    """Tutte le rate del prospetto: la prima con le sue componenti (capitale,
+    interessi, oneri, spese esecutive, diritti di notifica), le successive
+    dalla tabella «N. rata / Data scadenza / quote / Importo rata»."""
+    rate: list[dict[str, Any]] = []
+    prima = re.search(r"Prima scadenza di pagamento(.*?)Successive scadenze", text, re.IGNORECASE | re.DOTALL)
+    if prima and first_summary:
+        blocco = prima.group(1)
+
+        def _voce(etichetta: str) -> int | None:
+            m = re.search(rf"{etichetta}\d?\s*€\s*({_IMPORTO_ADER})", blocco, re.IGNORECASE)
+            return _cents(_decimal(m.group(1))) if m else None
+
+        rate.append({
+            "number": 1,
+            "due_date": datetime.strptime(first_summary.group(3), "%d/%m/%Y").date().isoformat(),
+            "amount_cents": _cents(_decimal(first_summary.group(2))),
+            "principal_cents": _voce("Quota capitale"),
+            "default_interest_cents": _voce("Quota interessi di mora"),
+            "plan_interest_cents": _voce("Quota interessi di rateizzazione"),
+            "collection_fees_cents": _voce("Quota oneri di riscossione"),
+            "enforcement_costs_cents": _voce("Spese esecutive"),
+            "notification_fees_cents": _voce("Diritti di notifica dei documenti"),
+        })
+    successive = re.search(r"Successive scadenze di pagamento(.*?)Totale piano", text, re.IGNORECASE | re.DOTALL)
+    if successive:
+        for numero, scadenza, capitale, mora, interessi, oneri, importo in re.findall(
+            rf"\b(\d{{1,2}})\s+(\d{{2}}/\d{{2}}/\d{{4}})\s+€\s*({_IMPORTO_ADER})\s+€\s*({_IMPORTO_ADER})"
+            rf"\s+€\s*({_IMPORTO_ADER})\s+€\s*({_IMPORTO_ADER})\s+€\s*({_IMPORTO_ADER})",
+            successive.group(1),
+        ):
+            n = int(numero)
+            if n != len(rate) + 1:
+                continue
+            rate.append({
+                "number": n, "due_date": datetime.strptime(scadenza, "%d/%m/%Y").date().isoformat(),
+                "amount_cents": _cents(_decimal(importo)), "principal_cents": _cents(_decimal(capitale)),
+                "default_interest_cents": _cents(_decimal(mora)), "plan_interest_cents": _cents(_decimal(interessi)),
+                "collection_fees_cents": _cents(_decimal(oneri)),
+            })
+    for r in rate:
+        r["amount"] = r["amount_cents"] / 100
+    return rate
 
 
 def parse_settlement(*, content: bytes, filename: str, company_id: str,
@@ -520,6 +599,7 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
         source = document_refs[module["source_filename"]]
         module["source_document_id"] = source["document_id"]
         modules_by_plan.setdefault(module.get("plan_reference") or "", []).append(module)
+    inserted_plans = 0
     for collection, items in ((COLL_TAX_RATE_PLANS, plan["rate_plans"]),
                               (COLL_TAX_SETTLEMENT_APPLICATIONS, plan["settlements"])):
         for original in items:
@@ -528,15 +608,18 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
             if collection == COLL_TAX_RATE_PLANS:
                 item["payment_modules"] = modules_by_plan.get(item.get("plan_reference") or "", [])
             item.update({"created_at": now, "created_by": actor})
-            await db[collection].update_one(
+            scrittura = await db[collection].update_one(
                 {"company_id": item["company_id"], "id": item["id"]},
                 {"$setOnInsert": item}, upsert=True,
             )
+            if collection == COLL_TAX_RATE_PLANS:
+                inserted_plans += int(getattr(scrittura, "upserted_id", None) is not None)
             entity_type = ("tax_rate_plan" if collection == COLL_TAX_RATE_PLANS
                            else "tax_settlement_application")
             await link_source(entity_type=entity_type, entity_id=item["id"],
                               source_filename=item["source_filename"])
             if collection == COLL_TAX_RATE_PLANS:
+                await _deposita_rate_attese(db, item, now=now)
                 for module in item["payment_modules"]:
                     await link_source(entity_type=entity_type, entity_id=item["id"],
                                       source_filename=module["source_filename"],
@@ -563,4 +646,301 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
     )
     return {"archive_id": plan["id"], "inserted_snapshots": inserted,
             "existing_snapshots": len(plan["analytics"]) - inserted,
-            "analytic_count": len(plan["analytics"]), "pdf_count": len(plan["pdfs"])}
+            "inserted_rate_plans": inserted_plans,
+            "existing_rate_plans": len(plan["rate_plans"]) - inserted_plans,
+            "analytic_count": len(plan["analytics"]), "pdf_count": len(plan["pdfs"]),
+            "documents": {name: {k: ref.get(k) for k in ("document_id", "version_id", "status")}
+                          for name, ref in document_refs.items()}}
+
+
+async def _deposita_rate_attese(db, plan_item: dict[str, Any], *, now: str) -> int:
+    """Una riga per rata del piano in ``tax_rate_installments``, stato
+    ``EXPECTED``: la rata e' l'obbligo (§17A.9), la prova arriva dopo. Lo stesso
+    id che usa la riconciliazione dei pagamenti, che sovrascrive lo stato con
+    ``PAID_DOCUMENTED``; qui si scrive solo all'inserimento."""
+    from app.db_collections import COLL_TAX_RATE_INSTALLMENTS
+
+    scritte = 0
+    for rata in plan_item.get("installments") or []:
+        rata_id = stable_id("aderinstallment", plan_item["company_id"], plan_item["id"], rata["number"])
+        esito = await db[COLL_TAX_RATE_INSTALLMENTS].update_one(
+            {"company_id": plan_item["company_id"], "id": rata_id},
+            {"$setOnInsert": {
+                "id": rata_id, "company_id": plan_item["company_id"], "rate_plan_id": plan_item["id"],
+                "plan_reference": plan_item.get("plan_reference"),
+                "installment_number": rata["number"], "due_date": rata["due_date"],
+                "amount": rata["amount"], "amount_cents": rata["amount_cents"],
+                "principal_cents": rata.get("principal_cents"),
+                "plan_interest_cents": rata.get("plan_interest_cents"),
+                "default_interest_cents": rata.get("default_interest_cents"),
+                "collection_fees_cents": rata.get("collection_fees_cents"),
+                "notification_fees_cents": rata.get("notification_fees_cents"),
+                "enforcement_costs_cents": rata.get("enforcement_costs_cents"),
+                "status": "EXPECTED", "payment_evidence": False, "bank_verified": False,
+                "source_document_id": plan_item.get("source_document_id"), "created_at": now,
+            }},
+            upsert=True,
+        )
+        scritte += int(getattr(esito, "upserted_id", None) is not None)
+    return scritte
+
+
+# ── documenti AdeR singoli (fuori dall'archivio ZIP) ────────────────────────
+#
+# Lettera di accoglimento della rateizzazione e stampa «Dettaglio tributi»
+# dell'area riservata: entrano dallo smistatore unico, riconosciuti dal
+# contenuto (§18), e scrivono nelle stesse entita' dell'import ZIP tramite
+# ``apply_ader_archive_plan``: nessun secondo writer.
+
+TIPO_PIANO = "ader_piano_rateizzazione"
+TIPO_DETTAGLIO = "ader_dettaglio_tributi"
+LAYOUT_DETTAGLIO = "PORTAL_DETAIL_PRINT"
+_RE_NUMERO_DOCUMENTO = re.compile(r"Dati documento\s+(\d{20})", re.IGNORECASE)
+
+
+def riconosci(testo_compatto: str) -> str | None:
+    """Il tipo AdeR dal testo (maiuscolo, spazi normalizzati), o None."""
+    t = (testo_compatto or "").upper()
+    if "ACCOGLIMENTO DELL'ISTANZA DI RATEIZZAZIONE" in t.replace("’", "'") and (
+            "AGENZIA DELLE ENTRATE-RISCOSSIONE" in t or "AGENZIA DELLE ENTRATE RISCOSSIONE" in t):
+        return TIPO_PIANO
+    if "AREA RISERVATA - CITTADINI E IMPRESE" in t and "DETTAGLIO TRIBUTI" in t and "DATI DOCUMENTO" in t:
+        return TIPO_DETTAGLIO
+    return None
+
+
+_RE_TESTATA_DETTAGLIO = re.compile(
+    rf"Dettagli\s+(?P<numero>\d{{20}})\s+(?P<tipo>Cartella|Avviso di addebito|Avviso di accertamento|Avviso)\s+"
+    rf"(?P<ente>.+?)\s+(?P<notifica>\d{{2}}/\d{{2}}/\d{{4}})\s+(?P<iniziale>{MONEY})\s+(?P<da_pagare>{MONEY})\s+"
+    r"Sospensione\s+(?P<sospensione>SI|NO)\s+Sgravio\s+(?P<sgravio>SI|NO)\s+Rateizzazione\s+(?P<rateizzazione>SI|NO)"
+    r"\s+(?P<procedure>.+?)\s+Gli importi indicati",
+    re.IGNORECASE,
+)
+_RE_RIGA_TRIBUTO = re.compile(
+    rf"(?:^|\s)(?P<codice>\d{{4}}|\d{{3}}[A-Z])\s+(?P<descrizione>.+?)\s+(?P<anno>(?:19|20)\d{{2}})\s+(?P<rateizzato>SI|NO)\s+"
+    rf"(?P<iniziale>{MONEY})\s+(?P<interessi>{MONEY})\s+(?P<sgravato>{MONEY})\s+(?P<sospesi>{MONEY})\s+(?P<residuo>{MONEY})(?=\s|$)",
+    re.IGNORECASE,
+)
+_RE_STAMPA = re.compile(r"(\d{2})/(\d{2})/(\d{2}),\s+\d{2}:\d{2}\s+Agenzia delle entrate-Riscossione", re.IGNORECASE)
+
+
+def parse_dettaglio_tributi(*, content: bytes, filename: str, dataset_sha256: str,
+                            threshold_cents: int = 500) -> dict[str, Any]:
+    """La stampa «Situazione debitoria › Dettaglio tributi» di un documento:
+    testata (numero, tipo, ente, notifica, iniziale, da pagare, sospensione,
+    sgravio, rateizzazione, procedure) e la lista dei tributi con codice,
+    anno e importi a ruolo. E' una fotografia del portale alla data di stampa,
+    nella stessa forma delle analitiche dell'archivio ZIP: non prova pagamenti."""
+    text = re.sub(r"\s+", " ", _pdf_text(content))
+    numero = _RE_NUMERO_DOCUMENTO.search(text)
+    if not numero:
+        raise ValueError(f"Numero documento AdeR non leggibile: {filename}")
+    document_number = numero.group(1)
+    testata = _RE_TESTATA_DETTAGLIO.search(text)
+    if not testata or testata.group("numero") != document_number:
+        raise ValueError(f"Testata del dettaglio tributi non leggibile: {filename}")
+    cf = re.search(r"Codice Fiscale/Partita IVA:\s*([A-Z0-9]{11,16})", text, re.IGNORECASE)
+    if not cf:
+        raise ValueError(f"Codice fiscale del contribuente non leggibile: {filename}")
+    company_id = cf.group(1).upper()
+    denominazione = re.search(r"Denominazione\s*:\s*(.+?)\s+<-", text)
+    stampa = _RE_STAMPA.search(text)
+    snapshot_date = (f"20{stampa.group(3)}-{stampa.group(2)}-{stampa.group(1)}" if stampa else None)
+    if not snapshot_date:
+        raise ValueError(f"Data di stampa del dettaglio tributi non leggibile: {filename}")
+    lista = text.split("Lista tributi", 1)[1] if "Lista tributi" in text else ""
+    ente_testata = re.sub(r"\s+", " ", testata.group("ente")).strip()
+    righe: list[dict[str, Any]] = []
+    for m in _RE_RIGA_TRIBUTO.finditer(lista):
+        blob = m.group("descrizione").strip()
+        ente = None
+        descrizione = blob
+        # L'ente impositore chiude la descrizione; in testata e' troncato
+        # («UFFICIO DIRITTO ANNU»): si cerca il suo inizio nel blob.
+        chiave = " ".join(ente_testata.split()[:3])
+        pos = blob.upper().rfind(chiave.upper()) if chiave else -1
+        if pos > 0:
+            descrizione, ente = blob[:pos].strip(), blob[pos:].strip()
+        righe.append({
+            "codice_tributo": m.group("codice").upper(),
+            "descrizione": descrizione, "ente_impositore": ente,
+            "anno": int(m.group("anno")), "rateizzato": m.group("rateizzato").upper() == "SI",
+            "iniziale_cents": _cents(_decimal(m.group("iniziale"))),
+            "interessi_maggior_rateizzazione_cents": _cents(_decimal(m.group("interessi"))),
+            "sgravato_cents": _cents(_decimal(m.group("sgravato"))),
+            "sospesi_cents": _cents(_decimal(m.group("sospesi"))),
+            "residuo_cents": _cents(_decimal(m.group("residuo"))),
+        })
+    # In testata l'ente e' troncato dal portale («UFFICIO DIRITTO ANNU»): se le
+    # righe portano l'ente intero con lo stesso inizio, vale quello.
+    enti_righe = [r["ente_impositore"] for r in righe if r.get("ente_impositore")]
+    if enti_righe and enti_righe[0].upper().startswith(ente_testata.upper()[:20]) and len(enti_righe[0]) > len(ente_testata):
+        ente_testata = enti_righe[0]
+    iniziale = _decimal(testata.group("iniziale"))
+    da_pagare = _decimal(testata.group("da_pagare"))
+    sospesi = sum(r["sospesi_cents"] for r in righe)
+    sgravato = sum(r["sgravato_cents"] for r in righe)
+    residuo_righe = sum(r["residuo_cents"] for r in righe)
+    procedure = re.sub(r"\s+", " ", testata.group("procedure")).strip()
+    bucket = "DA_SALDARE" if _cents(da_pagare) > 0 else "SALDATI"
+    status, closure_reason = _business_status(
+        net_cents=_cents(da_pagare), suspended_cents=sospesi, paid_cents=0,
+        portal_bucket=bucket, threshold_cents=threshold_cents,
+    )
+    if status == "PORTAL_CLOSED_PENDING_EVIDENCE" and testata.group("sgravio").upper() == "SI" and sgravato:
+        # Lo zero da pagare qui nasce da uno sgravio stampato riga per riga,
+        # non da un pagamento: la posizione e' chiusa dall'ente, non pagata.
+        status, closure_reason = "RELIEVED", "PORTAL_RELIEF"
+    tipo = testata.group("tipo").lower()
+    return {
+        "id": stable_id("adersnapshot", company_id, document_number, snapshot_date, dataset_sha256),
+        "company_id": company_id,
+        "company_name": denominazione.group(1).strip() if denominazione else None,
+        "snapshot_date": snapshot_date,
+        "source_document_id": stable_id("aderpdf", dataset_sha256, filename),
+        "source_archive_id": None,
+        "source_archive_sha256": dataset_sha256,
+        "source_filename": PurePosixPath(filename).name,
+        "document_number": document_number,
+        "document_type": "CARTELLA_ESATTORIALE" if tipo == "cartella" else "AVVISO_ADDEBITO",
+        "document_label": testata.group("tipo"),
+        "portal_bucket": bucket,
+        "creditor": ente_testata,
+        "notification_date": datetime.strptime(testata.group("notifica"), "%d/%m/%Y").date().isoformat(),
+        "initial_amount": _money(iniziale),
+        "relief_amount": sgravato / 100,
+        "paid_amount": None,
+        "settlement_amount": None,
+        "residual_principal": None,
+        "interest_amount": None,
+        "additional_sums": None,
+        "fees_amount": None,
+        "notification_costs": None,
+        "total_residual": _money(da_pagare),
+        "suspended_amount": sospesi / 100,
+        "net_payable_amount": _money(da_pagare),
+        "installment_status": "ACTIVE" if testata.group("rateizzazione").upper() == "SI" else "NONE",
+        "active_procedure": not procedure.upper().startswith("NESSUNA"),
+        "procedure_text": procedure,
+        "suspension": testata.group("sospensione").upper() == "SI",
+        "relief": testata.group("sgravio").upper() == "SI",
+        "settlement_status": "UNKNOWN",
+        "portal_status": bucket,
+        "calculated_business_status": status,
+        "closure_reason": closure_reason,
+        "payment_evidence": False,
+        "micro_residual_threshold_cents": threshold_cents,
+        "amounts_cents": {"initial": _cents(iniziale), "relief": sgravato, "paid": None, "settlement": None,
+                          "principal": None, "interest": None, "fees": None, "total": _cents(da_pagare),
+                          "suspended": sospesi, "net": _cents(da_pagare)},
+        "lines": righe,
+        "lines_quadrano": (residuo_righe == _cents(da_pagare)) if righe else None,
+        "lines_residual_cents": residuo_righe,
+        "source_layout": LAYOUT_DETTAGLIO,
+        "immutable": True,
+    }
+
+
+async def _numeri_documento_noti(db, company_id: str) -> list[str]:
+    from app.db_collections import COLL_TAX_COLLECTION_CLAIMS
+
+    righe = await db[COLL_TAX_COLLECTION_CLAIMS].find(
+        {"company_id": company_id}, {"_id": 0, "collection_number": 1}).to_list(5000)
+    return [r["collection_number"] for r in righe if r.get("collection_number")]
+
+
+async def _risolvi_piani_in_attesa(db, company_id: str, document_number: str, *, now: str) -> int:
+    """Un dettaglio appena entrato puo' dare il numero intero (20 cifre) a un
+    piano che citava il documento con 17: il riferimento si risolve e il
+    piano si collega alla posizione; mai inventando il suffisso."""
+    from app.db_collections import COLL_TAX_RATE_PLANS
+
+    piani = await db[COLL_TAX_RATE_PLANS].find(
+        {"company_id": company_id, "unresolved_references": {"$exists": True, "$ne": []}}, {"_id": 0}).to_list(500)
+    risolti = 0
+    for piano in piani:
+        irrisolti = [r for r in piano.get("unresolved_references") or [] if document_number.startswith(r)]
+        if not irrisolti:
+            continue
+        references = [
+            {**ref, "document_number": document_number} if ref.get("printed_reference") in irrisolti else ref
+            for ref in piano.get("document_references") or []
+        ]
+        restanti = [r for r in piano.get("unresolved_references") or [] if r not in irrisolti]
+        await db[COLL_TAX_RATE_PLANS].update_one(
+            {"company_id": company_id, "id": piano["id"]},
+            {"$set": {"document_references": references, "unresolved_references": restanti,
+                      "requires_review": bool(restanti), "updated_at": now}},
+        )
+        risolti += 1
+    return risolti
+
+
+async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: str,
+                                  source_context: dict[str, Any] | None = None,
+                                  threshold_cents: int = 500) -> dict[str, Any]:
+    """Un documento AdeR singolo entra nelle entita' dell'import ZIP tramite lo
+    stesso ``apply_ader_archive_plan``: originale in archivio fiscale, posizione
+    (claim) e fotografia per il dettaglio tributi, piano e rate attese per
+    l'accoglimento. Idempotente: stesso SHA-256, stesse righe."""
+    from app.config import settings
+
+    sha = hashlib.sha256(content).hexdigest()
+    compatto = re.sub(r"\s+", " ", testo or "")
+    tipo = riconosci(compatto)
+    if not tipo:
+        raise ValueError("Documento Agenzia delle entrate-Riscossione non riconosciuto dal contenuto")
+    company_id = settings.FISCAL_COMPANY_ID
+    plan: dict[str, Any] = {
+        "id": stable_id("aderdoc", company_id, sha), "company_id": company_id,
+        "source_archive_id": f"documento:{sha[:16]}", "source_sha256": sha, "dataset_sha256": sha,
+        "nested_archive_name": None, "analytics": [], "rate_plans": [], "settlements": [],
+        "payment_modules": [], "pdfs": [{"filename": filename, "content": content, "sha256": sha}],
+        "counts": {}, "pdf_count": 1, "analytic_count": 0, "requires_review": False,
+        "source_kind": "documento_singolo", "source_context": source_context or {},
+    }
+    if tipo == TIPO_DETTAGLIO:
+        riga = parse_dettaglio_tributi(content=content, filename=filename, dataset_sha256=sha,
+                                       threshold_cents=threshold_cents)
+        if riga["company_id"] != company_id:
+            raise ValueError(f"Dettaglio tributi di un altro contribuente ({riga['company_id']})")
+        plan.update({"analytics": [riga], "analytic_count": 1, "snapshot_date": riga["snapshot_date"],
+                     "counts": {riga["calculated_business_status"]: 1}})
+    else:
+        noti = await _numeri_documento_noti(db, company_id)
+        piano = parse_rate_plan(content=content, filename=filename, company_id=company_id,
+                                document_numbers=noti, dataset_sha256=sha)
+        plan.update({"rate_plans": [piano], "snapshot_date": piano["application_date"],
+                     "requires_review": piano["requires_review"]})
+    esito = await apply_ader_archive_plan(db=db, plan=plan, actor="smistatore_documenti")
+    now = _now_iso()
+    documento = esito.get("documents", {}).get(filename) or {}
+    risultato: dict[str, Any] = {
+        "success": True, "workflow": "ADER_DOCUMENTO", "tipo": tipo, "sha256": sha,
+        "duplicate": bool(esito.get("existing_snapshots")) if tipo == TIPO_DETTAGLIO else bool(esito.get("existing_rate_plans")),
+        "fiscal_document_id": documento.get("document_id"),
+    }
+    if tipo == TIPO_DETTAGLIO:
+        riga = plan["analytics"][0]
+        risultato["piani_collegati"] = await _risolvi_piani_in_attesa(db, company_id, riga["document_number"], now=now)
+        risultato["message"] = (
+            f"AdeR dettaglio tributi {riga['document_label'].lower()} {riga['document_number']} di {riga['creditor']}: "
+            f"da pagare {riga['net_payable_amount']:.2f} EUR al {riga['snapshot_date']}, "
+            f"{len(riga['lines'])} tributi"
+            + ("" if riga["lines_quadrano"] else " (righe e totale non coincidono: oneri accessori esclusi)")
+            + (" (fotografia gia' presente)" if risultato["duplicate"] else "")
+        )
+        risultato["data"] = {k: riga[k] for k in ("document_number", "document_type", "creditor", "notification_date",
+                                                   "net_payable_amount", "calculated_business_status", "snapshot_date")}
+    else:
+        piano = plan["rate_plans"][0]
+        risultato["message"] = (
+            f"AdeR rateizzazione {piano['plan_reference']} del {piano['application_date']}: "
+            f"{len(piano['installments'])} rate, totale {piano['total_plan_amount']} EUR"
+            + (f", {len(piano['unresolved_references'])} documenti senza posizione in archivio"
+               if piano["unresolved_references"] else "")
+            + (" (piano gia' presente)" if risultato["duplicate"] else "")
+        )
+        risultato["data"] = {k: piano[k] for k in ("plan_reference", "application_date", "installment_count",
+                                                    "total_plan_amount", "quadratura", "unresolved_references")}
+    return risultato

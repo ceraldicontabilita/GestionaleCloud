@@ -623,9 +623,14 @@ function ElenchiFiscali() {
               {(plan.payment_modules || []).map(module => <div key={module.id} style={{ marginTop: 5, color: '#5f5c55' }}>
                 Modulo {module.document_number || module.source_filename}: {(module.installments || []).map(rate => `${rate.number}ª ${rate.due_date} ${euro(rate.amount)}`).join(' · ') || 'rate non leggibili'}
               </div>)}
-              {(plan.reconciled_installments || []).map(rate => <div key={rate.id} style={{ marginTop: 7, padding: '7px 9px', borderRadius: 7, background: '#ecfdf5', color: '#166534' }}>
-                <strong>Rata {rate.installment_number}: pagamento documentato</strong> · {euro(rate.amount)} · {rate.due_date || 'scadenza non disponibile'} · {rate.bank_verified ? 'banca verificata' : 'banca da verificare'}
-              </div>)}
+              {(plan.reconciled_installments || []).map(rate => {
+                const pagata = rate.status === 'PAID_DOCUMENTED' || rate.payment_evidence;
+                return <div key={rate.id} data-testid="rata-piano" data-stato={pagata ? 'documentata' : 'attesa'} style={{ marginTop: 7, padding: '7px 9px', borderRadius: 7, background: pagata ? '#ecfdf5' : '#f7ebe4', color: pagata ? '#166534' : '#7a3b1e' }}>
+                  <strong>Rata {rate.installment_number}: {pagata ? 'pagamento documentato' : 'attesa, nessuna prova di pagamento'}</strong>
+                  {' · '}{euro(rate.amount)} · {rate.due_date || 'scadenza non disponibile'}
+                  {pagata ? ` · ${rate.bank_verified ? 'banca verificata' : 'banca da verificare'}` : ''}
+                </div>;
+              })}
               {plan.source_document_id && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openDocument(plan.source_document_id)}>Apri accoglimento</Button>}
             </div>)}
           </section>

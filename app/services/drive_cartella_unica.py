@@ -372,8 +372,9 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any],
 
 
 # Versione delle regole per i documenti non riconosciuti: un file gia' in
-# ERRORI con una versione piu' vecchia si rilegge una volta, mai a ogni giro.
-REGOLE_NON_RICONOSCIUTI = 1
+# ERRORI con una versione piu' vecchia si rilegge una volta, mai a ogni giro
+# (2: lettera di accoglimento rateizzazione e dettaglio tributi AdeR).
+REGOLE_NON_RICONOSCIUTI = 2
 # Versione della classificazione degli estratti conto e delle fatture PDF: un file in ERRORI
 # letto con una versione piu' vecchia si rilegge una volta (2: estratto = forma dell'estratto,
 # non la sola parola o il nome della banca; fattura PDF italiana = ARRETRATO).

@@ -993,7 +993,13 @@ def start_scheduler():
             logger.error("[SCHEDULER-F24] scadenzario: %s: %s", type(e).__name__, e)
         try:
             # Dopo il riscontro: la rata prende l'addebito dalla sua quietanza.
-            from app.services.dilazioni_inps import collega_dilazioni
+            # Prima, i piani conservati ma mai depositati si rileggono una volta.
+            from app.services.dilazioni_inps import collega_dilazioni, riprendi_da_verificare
+            ripresa = await riprendi_da_verificare(db)
+            if ripresa["candidati"]:
+                logger.info("[SCHEDULER-F24] dilazioni INPS da verificare=%s depositate=%s non quadrano=%s senza originale=%s",
+                            ripresa["candidati"], ripresa["depositati"], ripresa["ancora_non_quadra"],
+                            ripresa["originale_assente"])
             r = await collega_dilazioni(db)
             logger.info("[SCHEDULER-F24] dilazioni INPS=%s scritti=%s", r["dilazioni"], r.get("scritti"))
         except Exception as e:

@@ -1013,12 +1013,18 @@ async def estrai_quadri_archivio(db, *, dry_run: bool = True, company_id: Option
     return riepilogo
 
 
-async def estrai_quadri_arretrato(db, *, limite: int = 15, company_id: Optional[str] = None) -> Dict[str, Any]:
+async def estrai_quadri_arretrato(db, *, limite: int = 60, budget_secondi: float = 240.0,
+                                  company_id: Optional[str] = None) -> Dict[str, Any]:
     """Legge i quadri dei documenti non ancora passati dalla versione corrente
-    del lettore, pochi per giro (il giro F24 dei 30 minuti): la coda si
-    smaltisce da sola, senza ripassi a mano e senza un lotto che tiene la
-    memoria. Idempotente: il documento letto porta `quadri_controllati_v`."""
+    del lettore, un lotto per giro del job F24 (ogni ora) entro un budget di
+    tempo: la coda si smaltisce da sola, senza ripassi a mano e senza un
+    lotto che tiene la memoria (un documento alla volta, ~5 s ciascuno in
+    produzione). Idempotente: il documento letto porta `quadri_controllati_v`."""
+    import time
+
     from app.config import settings
+
+    partenza = time.monotonic()
 
     company_id = company_id or settings.FISCAL_COMPANY_ID
     arretrato = await db[COLL_FISCAL_DOCUMENTS].find(
@@ -1028,8 +1034,13 @@ async def estrai_quadri_arretrato(db, *, limite: int = 15, company_id: Optional[
     ).to_list(max(limite * 4, 50))
     arretrato = [d for d in arretrato if d.get("entity_status") != "deleted"]
     esito: Dict[str, Any] = {"arretrato": len(arretrato), "letti": 0, "tipo_non_riconosciuto": 0,
-                             "riclassificati": 0, "errori": 0, "pagine_assenti": 0}
+                             "riclassificati": 0, "errori": 0, "pagine_assenti": 0, "elaborati": 0,
+                             "budget_esaurito": False}
     for doc in arretrato[:limite]:
+        if time.monotonic() - partenza > budget_secondi:
+            esito["budget_esaurito"] = True
+            break
+        esito["elaborati"] += 1
         try:
             r = await estrai_quadri_documento(db, doc["id"], company_id=company_id)
         except Exception as exc:  # noqa: BLE001 - un documento non ferma il lotto
@@ -1055,7 +1066,7 @@ async def estrai_quadri_arretrato(db, *, limite: int = 15, company_id: Optional[
             esito["tipo_non_riconosciuto"] += 1
         if r.get("riclassificato"):
             esito["riclassificati"] += 1
-    esito["restanti"] = max(0, len(arretrato) - limite)
+    esito["restanti"] = max(0, len(arretrato) - esito["elaborati"])
     return esito
 
 

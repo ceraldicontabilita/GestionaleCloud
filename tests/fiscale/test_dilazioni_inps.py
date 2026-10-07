@@ -307,3 +307,81 @@ def test_uno_zip_con_un_percorso_e_rifiutato():
 def test_la_pec_dell_inps_e_un_mittente_autorizzato_per_le_dilazioni():
     assert {"pattern": di.MITTENTE_PEC, "tipo_documento": di.TIPO} in [
         {k: m[k] for k in ("pattern", "tipo_documento")} for m in BUILTIN_MITTENTI]
+
+
+# ── piano 14/02/2020: «12 rate» in lettera, 11 righe nel prospetto ─────────
+
+TESTO_2020 = """Rif:
+INPS.5100.14/02/2020.0079479
+Oggetto: Accoglimento richiesta rateazione
+Matricola 5124776507 Codice Fiscale 04523831214
+Data della 14/02/2020 domanda di dilazione:
+accolta autorizzando l'estinzione del seguente debito in rate mensili: 12
+Il versamento della prima rata di euro 2.601,00 che costituisce accettazione del piano di 10 rate costanti
+- TOTALE DEL DEBITO 15.721,00
+Data delibera di accoglimento 20/02/2020
+Piano di ammortamento
+Numero rata Quota capitale Quota interessi Totale rata Data scadenza
+1 2.560,66 40,34 2.601,00 01/03/2020
+2 1.249,79 62,21 1.312,00 01/04/2020
+3 1.255,88 56,12 1.312,00 01/05/2020
+4 1.261,99 50,01 1.312,00 01/06/2020
+5 1.268,14 43,86 1.312,00 01/07/2020
+6 1.274,31 37,69 1.312,00 01/08/2020
+7 1.280,52 31,48 1.312,00 01/09/2020
+8 1.286,75 25,25 1.312,00 01/10/2020
+9 1.293,02 18,98 1.312,00 01/11/2020
+10 1.299,32 12,68 1.312,00 01/12/2020
+11 1.305,64 6,36 1.312,00 01/01/2021
+Modalita di pagamento modello "F24" nella "SEZIONE INPS", i seguenti dati:
+10/2019 5100 RC01 5124776507 2.601,00 12/2019
+"""
+
+
+def test_il_totale_al_centesimo_fa_quadrare_anche_con_le_rate_dichiarate_diverse():
+    piano = di.leggi_piano(TESTO_2020)
+    assert piano["rif"] == "INPS.5100.14/02/2020.0079479" and len(piano["rate"]) == 11
+    assert piano["numero_rate_dichiarato"] == 12
+    assert piano["quadra"] and piano["somma_rate_cents"] == piano["totale_debito_cents"] == 1572100
+    assert piano["avvertenze"] == ["rate dichiarate 12, lette 11"]
+    # una rata in meno nel prospetto: la somma non torna e il piano non quadra
+    monco = di.leggi_piano(TESTO_2020.replace("11 1.305,64 6,36 1.312,00 01/01/2021\n", ""))
+    assert not monco["quadra"] and monco["avvertenze"] == ["rate dichiarate 12, lette 10"]
+
+
+def test_la_ripresa_deposita_il_piano_conservato_ma_mai_depositato(monkeypatch):
+    db = ClientArchivioMemoria()["ripresa"]
+    sha = "cc948d43283eb13c37bc8c07e78b443a8595633491b737fef66b8bc64489105c"
+    asyncio.run(db["documents_inbox"].insert_one({
+        "id": "inbox-2020", "document_type": di.TIPO, "status": "da_verificare", "sha256": sha,
+        "filename": "dilazione 14-02-2020.pdf", "parsed_metadata": {"quadra": False, "rif": "INPS.5100.14/02/2020.0079479"},
+    }))
+    asyncio.run(db["documents_inbox"].insert_one({
+        "id": "inbox-perso", "document_type": di.TIPO, "status": "da_verificare", "sha256": "0" * 64,
+        "filename": "perso.pdf", "parsed_metadata": {},
+    }))
+
+    class _Originale:
+        contenuto = b"%PDF finto"
+
+    async def _apri(_db, impronta):
+        if impronta == sha:
+            return _Originale()
+        from app.services.originale_documento import OriginaleNonDisponibile
+        raise OriginaleNonDisponibile("Originale non disponibile", {"sha256": impronta})
+
+    from app.services import originale_documento
+    monkeypatch.setattr(originale_documento, "apri_per_impronta", _apri)
+    monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: TESTO_2020)
+
+    esito = asyncio.run(di.riprendi_da_verificare(db))
+    assert (esito["candidati"], esito["depositati"], esito["originale_assente"]) == (2, 1, 1)
+    dil = asyncio.run(db[di.COLL_DILAZIONI_INPS].find_one({"rif": "INPS.5100.14/02/2020.0079479"}, {"_id": 0}))
+    assert dil and len(dil["piano"]) == 11 and dil["documento_id"] == "inbox-2020"
+    inbox = asyncio.run(db["documents_inbox"].find_one({"id": "inbox-2020"}, {"_id": 0}))
+    assert inbox["status"] == "archiviato" and inbox["dilazione_id"] == dil["id"]
+    assert inbox["parsed_metadata"]["quadra"] is True and inbox["parsed_metadata"]["avvertenze"] == ["rate dichiarate 12, lette 11"]
+    # il documento senza originale resta «da verificare» ma non si ritenta a ogni giro
+    perso = asyncio.run(db["documents_inbox"].find_one({"id": "inbox-perso"}, {"_id": 0}))
+    assert perso["status"] == "da_verificare" and perso["ripresa_v"] == di.RIPRESA_V
+    assert asyncio.run(di.riprendi_da_verificare(db))["candidati"] == 0
