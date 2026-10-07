@@ -9,6 +9,7 @@ from urllib.parse import quote
 import logging
 
 from app.database import Database
+from app.middleware.performance import istantanea
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -77,6 +78,7 @@ def arricchisci_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.get("/summary")
+@istantanea(ttl=30, max_eta=600)
 async def alerts_summary() -> Dict[str, Any]:
     """
     Summary degli alert APERTI del sistema relazionale, aggregati per severità e modulo.
