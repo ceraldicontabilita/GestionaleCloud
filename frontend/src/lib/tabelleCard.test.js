@@ -1,5 +1,46 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { etichettaTabella } from './tabelleCard';
+import { adattaTabella, BREAKPOINT_CARD, ciSta, etichettaTabella, FATTORE_LEGGIBILITA } from './tabelleCard';
+
+describe('ciSta: tabella o card misurato sullo spazio, non sul dispositivo', () => {
+  it('sotto il telefono e\' sempre card, anche se ci starebbe', () => {
+    expect(ciSta({ disponibile: 700, minima: 300, finestra: BREAKPOINT_CARD })).toBe(false);
+  });
+
+  it('su tablet e desktop conta solo lo spazio: ci sta con un po\' d\'aria oltre il minimo', () => {
+    // iPad con la colonna a sinistra (07/10/2026): 930 px per una tabella larga 850 al minimo
+    expect(ciSta({ disponibile: 930, minima: 850, finestra: 1194 })).toBe(false);
+    expect(ciSta({ disponibile: 1098, minima: 850, finestra: 1366 })).toBe(true);
+    expect(ciSta({ disponibile: Math.ceil(300 * FATTORE_LEGGIBILITA), minima: 300, finestra: 1024 })).toBe(true);
+    expect(ciSta({ disponibile: 300, minima: 300, finestra: 1024 })).toBe(false);
+  });
+
+  it('senza misura non decide: resta tabella', () => {
+    expect(ciSta({ disponibile: 0, minima: 0, finestra: 1024 })).toBe(true);
+  });
+});
+
+describe('adattaTabella', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('sotto il telefono marca la tabella stretta senza misurare; sopra, senza misura, la lascia tabella', () => {
+    document.body.innerHTML = '<div><table><thead><tr><th>A</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table></div>';
+    const t = document.querySelector('table');
+    etichettaTabella(t);
+    adattaTabella(t, 390);
+    expect(t.dataset.stretta).toBe('');
+    // jsdom non ha layout: clientWidth 0 = nessuna misura, quindi tabella
+    adattaTabella(t, 1366);
+    expect(t.dataset.stretta).toBeUndefined();
+    expect(t.style.width).toBe('');
+  });
+
+  it('non tocca una tabella non etichettata o con data-card="no"', () => {
+    document.body.innerHTML = '<div><table data-card="no"><tr><td>1</td></tr></table></div>';
+    const t = document.querySelector('table');
+    adattaTabella(t, 390);
+    expect(t.dataset.stretta).toBeUndefined();
+  });
+});
 
 const monta = html => {
   document.body.innerHTML = html;
