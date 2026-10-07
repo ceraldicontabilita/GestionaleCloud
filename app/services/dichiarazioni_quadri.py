@@ -57,13 +57,18 @@ __all__ = [
     "estrai_quadri_pagine",
     "estrai_quadri_documento",
     "credito_iva_riportato",
+    "estrai_quadri_arretrato",
     "quadro_st",
     "comunicazione_54bis",
     "avvia_estrazione_archivio",
     "stato_estrazione_archivio",
 ]
 
-PARSER_VERSION = "dichiarazioni-quadri-v1"
+# v2 (07/10/2026): VX5 e righi IVA a casella singola, quadro ST del 770,
+# comunicazioni 54-bis/36-bis. Il marcatore `quadri_controllati_v` sul
+# documento dice con quale versione e' stato letto: l'arretrato e' chi non
+# porta quella corrente.
+PARSER_VERSION = "dichiarazioni-quadri-v2"
 
 #: Tipo letto dal contenuto -> tipi d'archivio che quel contenuto corregge.
 #: Nessuna dichiarazione vera cambia tipo: solo i marcatori generici.
@@ -852,7 +857,13 @@ async def estrai_quadri_documento(db, document_id: str, *, company_id: Optional[
 
     letto = estrai_quadri_pagine(pagine, documento.get("document_type"))
     if not letto.get("tipo_letto") and documento.get("document_type") not in TIPI_CON_QUADRI:
-        # Una LIPE vera passata dal ripasso: nessun quadro da leggere, niente da scrivere.
+        # Una LIPE vera passata dal ripasso: nessun quadro da leggere; resta
+        # solo il marcatore della versione, cosi' l'arretrato non la ripassa.
+        if not dry_run:
+            await db[COLL_FISCAL_DOCUMENTS].update_one(
+                {"company_id": company_id, "id": document_id},
+                {"$set": {"quadri_controllati_v": PARSER_VERSION}},
+            )
         return {"document_id": document_id, "esito": "tipo_non_riconosciuto", "dry_run": dry_run,
                 "quadri": letto, "prove": 0, "riclassificato": None}
     quadri = {**letto, "estratto_at": _now(), "coordinate_rilette": rilette}
@@ -875,7 +886,8 @@ async def estrai_quadri_documento(db, document_id: str, *, company_id: Optional[
                 {"company_id": company_id, "id": prova["id"]},
                 {"$setOnInsert": prova}, upsert=True,
             )
-        aggiornamento: Dict[str, Any] = {"quadri": quadri, "updated_at": _now()}
+        aggiornamento: Dict[str, Any] = {"quadri": quadri, "updated_at": _now(),
+                                         "quadri_controllati_v": PARSER_VERSION}
         if letto.get("tipo_letto") == "COMUNICAZIONE_IRREGOLARITA":
             # La struttura che gli incroci confrontano con i versamenti.
             aggiornamento["comunicazione_54bis"] = letto.get("comunicazione_54bis") or {}
@@ -999,6 +1011,52 @@ async def estrai_quadri_archivio(db, *, dry_run: bool = True, company_id: Option
         if any(c.get("motivo") == "pagina_senza_coordinate" for c in (quadri.get("campi") or {}).values()):
             riepilogo["senza_coordinate"].append(doc.get("filename"))
     return riepilogo
+
+
+async def estrai_quadri_arretrato(db, *, limite: int = 15, company_id: Optional[str] = None) -> Dict[str, Any]:
+    """Legge i quadri dei documenti non ancora passati dalla versione corrente
+    del lettore, pochi per giro (il giro F24 dei 30 minuti): la coda si
+    smaltisce da sola, senza ripassi a mano e senza un lotto che tiene la
+    memoria. Idempotente: il documento letto porta `quadri_controllati_v`."""
+    from app.config import settings
+
+    company_id = company_id or settings.FISCAL_COMPANY_ID
+    arretrato = await db[COLL_FISCAL_DOCUMENTS].find(
+        {"company_id": company_id, "document_type": {"$in": sorted(TIPI_CON_QUADRI | {"LIPE"})},
+         "quadri_controllati_v": {"$ne": PARSER_VERSION}},
+        {"_id": 0, "id": 1, "filename": 1, "document_type": 1, "entity_status": 1},
+    ).to_list(max(limite * 4, 50))
+    arretrato = [d for d in arretrato if d.get("entity_status") != "deleted"]
+    esito: Dict[str, Any] = {"arretrato": len(arretrato), "letti": 0, "tipo_non_riconosciuto": 0,
+                             "riclassificati": 0, "errori": 0, "pagine_assenti": 0}
+    for doc in arretrato[:limite]:
+        try:
+            r = await estrai_quadri_documento(db, doc["id"], company_id=company_id)
+        except Exception as exc:  # noqa: BLE001 - un documento non ferma il lotto
+            esito["errori"] += 1
+            logger.warning("Quadri arretrato %s: %s: %s", doc.get("filename"), type(exc).__name__, exc)
+            # Il marcatore si scrive comunque: un PDF illeggibile non deve
+            # occupare il lotto a ogni giro; il ripasso completo lo ritenta.
+            await db[COLL_FISCAL_DOCUMENTS].update_one(
+                {"company_id": company_id, "id": doc["id"]},
+                {"$set": {"quadri_controllati_v": PARSER_VERSION,
+                          "quadri_errore": f"{type(exc).__name__}: {exc}"[:300]}},
+            )
+            continue
+        if r.get("esito") == "pagine_assenti":
+            esito["pagine_assenti"] += 1
+            await db[COLL_FISCAL_DOCUMENTS].update_one(
+                {"company_id": company_id, "id": doc["id"]},
+                {"$set": {"quadri_controllati_v": PARSER_VERSION}},
+            )
+        elif r.get("esito") == "letto":
+            esito["letti"] += 1
+        else:
+            esito["tipo_non_riconosciuto"] += 1
+        if r.get("riclassificato"):
+            esito["riclassificati"] += 1
+    esito["restanti"] = max(0, len(arretrato) - limite)
+    return esito
 
 
 async def _salva_stato(db, **campi) -> None:

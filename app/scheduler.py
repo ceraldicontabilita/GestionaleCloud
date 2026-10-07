@@ -950,6 +950,17 @@ def start_scheduler():
         except Exception as e:
             logger.error("[SCHEDULER-F24] ravvedimenti: %s: %s", type(e).__name__, e)
         try:
+            # Quadri delle dichiarazioni e lettere AdE non ancora letti dalla
+            # versione corrente del lettore (VX5, quadro ST del 770, 54-bis):
+            # pochi per giro, la coda si smaltisce da sola.
+            from app.services.dichiarazioni_quadri import estrai_quadri_arretrato
+            r = await estrai_quadri_arretrato(db)
+            if r["arretrato"]:
+                logger.info("[SCHEDULER-F24] quadri arretrato=%s letti=%s riclassificati=%s errori=%s restanti=%s",
+                            r["arretrato"], r["letti"], r["riclassificati"], r["errori"], r["restanti"])
+        except Exception as e:
+            logger.error("[SCHEDULER-F24] quadri arretrato: %s: %s", type(e).__name__, e)
+        try:
             from app.services.f24_controllo_incrociato import riconcilia_f24_banca
             r = await riconcilia_f24_banca(db)
             logger.info("[SCHEDULER-F24] quietanze/banca riscontrati=%s da_verificare=%s scritti=%s",

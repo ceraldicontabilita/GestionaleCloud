@@ -160,3 +160,35 @@ def test_incrocio_versamento_di_pari_importo_con_codici_diversi_e_da_verificare_
     prima = _versamento("q0", "2024-12-01", 163304, [("9001", 2024, 163304)])
     voce2 = inc._comunicazione_54bis(_doc54bis(), [prima], date(2026, 10, 7))
     assert voce2["stato"] == "NON_PAGATA" and voce2["candidati_per_importo"] == []
+
+
+def test_l_arretrato_dei_quadri_si_smaltisce_a_lotti_e_non_ripassa_il_gia_letto():
+    db = ClientArchivioMemoria()["arretrato"]
+    societa = "04523831214"
+
+    async def scenario():
+        for i in range(3):
+            await db["fiscal_documents"].insert_one({"id": f"cv{i}", "company_id": societa, "document_type": "LIPE",
+                                                     "filename": f"CV{i}.pdf", "current_version_id": f"v{i}"})
+            await db["fiscal_pages"].insert_one({"company_id": societa, "document_id": f"cv{i}", "version_id": f"v{i}",
+                                                 "page_number": 1, "text": TESTO_54BIS, "layout_words": []})
+        await db["fiscal_documents"].insert_one({"id": "lipe", "company_id": societa, "document_type": "LIPE",
+                                                 "filename": "LIPE.pdf", "current_version_id": "vl"})
+        await db["fiscal_pages"].insert_one({"company_id": societa, "document_id": "lipe", "version_id": "vl",
+                                             "page_number": 1, "text": TESTO_LIPE_VERA, "layout_words": []})
+        await db["fiscal_documents"].insert_one({"id": "senza_pagine", "company_id": societa,
+                                                 "document_type": "DICHIARAZIONE_IVA", "filename": "x.pdf"})
+        primo = await dq.estrai_quadri_arretrato(db, limite=2, company_id=societa)
+        secondo = await dq.estrai_quadri_arretrato(db, limite=10, company_id=societa)
+        terzo = await dq.estrai_quadri_arretrato(db, limite=10, company_id=societa)
+        docs = await db["fiscal_documents"].find({}, {"_id": 0}).to_list(10)
+        return primo, secondo, terzo, docs
+
+    primo, secondo, terzo, docs = asyncio.run(scenario())
+    assert primo["arretrato"] == 5 and primo["letti"] == 2 and primo["riclassificati"] == 2 and primo["restanti"] == 3
+    assert secondo["arretrato"] == 3 and secondo["letti"] == 1 and secondo["tipo_non_riconosciuto"] == 1
+    assert secondo["pagine_assenti"] == 1 and secondo["restanti"] == 0
+    assert terzo["arretrato"] == 0, "il secondo giro non ripassa niente"
+    assert all(d.get("quadri_controllati_v") == dq.PARSER_VERSION for d in docs)
+    tipi = {d["id"]: d["document_type"] for d in docs}
+    assert tipi["cv0"] == tipi["cv1"] == tipi["cv2"] == "COMUNICAZIONE_IRREGOLARITA" and tipi["lipe"] == "LIPE"
