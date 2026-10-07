@@ -38,6 +38,7 @@ importata e dal giro dei 30 minuti.
 """
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
@@ -46,6 +47,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 from app.services.calendario_lavorativo import e_festivo
 from app.services import f24_controllo_incrociato as reg
+from app.services.originale_documento import url_originale
 
 COLL = "scadenzario_tributi"
 
@@ -55,6 +57,11 @@ RAVVEDIMENTO_INSUFFICIENTE = "RAVVEDIMENTO_INSUFFICIENTE"
 RITARDO_NON_RAVVEDUTO = "RITARDO_NON_RAVVEDUTO"
 RITARDO_DA_VERIFICARE = "RITARDO_DA_VERIFICARE"
 SCADENZA_NON_DETERMINATA = "SCADENZA_NON_DETERMINATA"
+# Il 770 del commercialista dichiara ritenute operate e versamenti (quadro
+# ST, con la X del ravvedimento): e' la fonte di cosa aspettarsi nelle
+# quietanze degli anni passati. Una riga ST senza quietanza in archivio resta
+# un'attesa aperta, mai un pagamento.
+DICHIARATO_770_SENZA_QUIETANZA = "DICHIARATO_770_SENZA_QUIETANZA"
 
 ETICHETTE = {
     PUNTUALE: "Pagato nei termini",
@@ -63,6 +70,7 @@ ETICHETTE = {
     RITARDO_NON_RAVVEDUTO: "Pagato in ritardo, senza ravvedimento",
     RITARDO_DA_VERIFICARE: "In ritardo, ravvedimento da verificare",
     SCADENZA_NON_DETERMINATA: "Scadenza non determinata",
+    DICHIARATO_770_SENZA_QUIETANZA: "Dichiarato nel 770, quietanza non in archivio",
 }
 
 # Saggio degli interessi legali (art. 1284 c.c., decreti MEF annuali).
@@ -476,8 +484,135 @@ def calcola(pagamenti: Iterable[Dict[str, Any]],
     return risultato
 
 
+# ── 770: cosa il commercialista dichiara versato ─────────────────────────
+
+_SEZIONE_ST = {"I": "sezione_erario", "II": "sezione_regioni", "III": "sezione_erario", "IV": "sezione_erario"}
+
+
+def _data_presentazione(quadri: Dict[str, Any]) -> Tuple[int, int, int]:
+    """«6/10/2025» → (2025, 10, 6); senza data (0, 0, 0): l'ultima presentata vince."""
+    testo = str(quadri.get("data_presentazione") or "")
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", testo.strip())
+    return (int(m.group(3)), int(m.group(2)), int(m.group(1))) if m else (0, 0, 0)
+
+
+def dichiarazioni_770_canoniche(documenti: Iterable[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    """Per anno d'imposta la dichiarazione 770 presentata per ultima: una
+    correttiva o integrativa sostituisce la precedente. Le altre restano
+    elencate in ``sostituite`` (id, identificativo, data), nessuna si cancella."""
+    per_anno: Dict[int, List[Dict[str, Any]]] = {}
+    for doc in documenti:
+        quadri = doc.get("quadri") or {}
+        if quadri.get("tipo_letto") != "MODELLO_770" or not quadri.get("st_righe"):
+            continue
+        anno = quadri.get("anno_imposta")
+        if not isinstance(anno, int):
+            continue
+        per_anno.setdefault(anno, []).append(doc)
+    scelte: Dict[int, Dict[str, Any]] = {}
+    for anno, docs in per_anno.items():
+        ordinati = sorted(docs, key=lambda d: (_data_presentazione(d.get("quadri") or {}),
+                                               str((d.get("quadri") or {}).get("identificativo") or "")))
+        vincente = ordinati[-1]
+        scelte[anno] = {
+            "documento": vincente,
+            "sostituite": [
+                {"document_id": d.get("id"), "filename": d.get("filename"),
+                 "identificativo": (d.get("quadri") or {}).get("identificativo"),
+                 "data_presentazione": (d.get("quadri") or {}).get("data_presentazione")}
+                for d in ordinati[:-1]
+            ],
+        }
+    return scelte
+
+
+def righe_770(documenti: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Le righe ST delle dichiarazioni canoniche, con la fonte attaccata."""
+    righe: List[Dict[str, Any]] = []
+    for anno, scelta in sorted(dichiarazioni_770_canoniche(documenti).items()):
+        doc = scelta["documento"]
+        quadri = doc.get("quadri") or {}
+        fonte = {
+            "document_id": doc.get("id"), "filename": doc.get("filename"),
+            "identificativo": quadri.get("identificativo"), "data_presentazione": quadri.get("data_presentazione"),
+            "anno_imposta": anno, "pdf_url": url_originale("documento_fiscale", doc["id"]) if doc.get("id") else None,
+            "sostituite": scelta["sostituite"],
+        }
+        for r in quadri.get("st_righe") or []:
+            righe.append({**r, "fonte_770": fonte})
+    return righe
+
+
+def integra_770(voci: List[Dict[str, Any]], righe: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Attacca a ogni voce dello scadenzario la riga ST corrispondente del 770
+    (stessa sezione, codice, anno e mese) e confronta importo versato e
+    ravvedimento; una riga ST senza voce diventa un'attesa
+    ``DICHIARATO_770_SENZA_QUIETANZA``. Le righe senza codice tributo non si
+    agganciano: restano in ``senza_codice`` della voce di riepilogo, nessuna
+    chiave inventata."""
+    per_chiave = {v["chiave"]: v for v in voci}
+    nuove: List[Dict[str, Any]] = []
+    for r in righe:
+        codice = r.get("codice_tributo")
+        if not codice or not r.get("anno") or not r.get("mese"):
+            continue
+        sezione = _SEZIONE_ST.get(str(r.get("sezione") or "I"), "sezione_erario")
+        chiave = f"{sezione}|{codice}|{r['anno']}|{r['mese']}"
+        versato = r.get("importo_versato_cents")
+        dichiarato = {
+            "rigo": r.get("rigo"), "sezione_st": r.get("sezione"),
+            "ritenute_operate_cents": r.get("ritenute_operate_cents"),
+            "crediti_scomputo_cents": r.get("crediti_scomputo_cents"),
+            "importo_versato_cents": versato, "interessi_cents": r.get("interessi_cents"),
+            "data_versamento": r.get("data_versamento"), "ravvedimento": bool(r.get("ravvedimento")),
+            "note": r.get("note"), "fonte": r.get("fonte_770"),
+        }
+        voce = per_chiave.get(chiave)
+        if voce is not None:
+            voce.setdefault("dichiarato_770", []).append(dichiarato)
+            pagato = int(voce.get("pagato_cents") or 0)
+            somma_770 = sum(int(d.get("importo_versato_cents") or 0) for d in voce["dichiarato_770"])
+            differenza = pagato - somma_770
+            ravv_dichiarato = any(d["ravvedimento"] for d in voce["dichiarato_770"])
+            ravv_scadenzario = voce.get("stato") in (RAVVEDUTO, RAVVEDIMENTO_INSUFFICIENTE, RITARDO_NON_RAVVEDUTO,
+                                                      RITARDO_DA_VERIFICARE)
+            voce["confronto_770"] = {
+                "importo": "COINCIDE" if abs(differenza) <= TOLLERANZA_CENTS else "DIFFERENZA",
+                "differenza_cents": differenza,
+                "ravvedimento_dichiarato": ravv_dichiarato,
+                "ravvedimento_coerente": (ravv_dichiarato == ravv_scadenzario) if voce.get("pagamenti") else None,
+            }
+            continue
+        anno, mese = int(r["anno"]), int(r["mese"])
+        scad, fonte_scad = scadenza_da_regola(sezione, codice, anno, mese)
+        motivo = (
+            f"dichiarato nel 770 ({dichiarato['fonte'].get('identificativo') or 'identificativo non letto'}, "
+            f"rigo {r.get('rigo')}): ritenute operate "
+            f"{_euro_it(r.get('ritenute_operate_cents') or 0)}, versato "
+            f"{_euro_it(versato or 0)} il {_data_it(r.get('data_versamento'))} con codice {codice}"
+            + (", ravvedimento (X)" if r.get("ravvedimento") else "")
+            + "; nessuna quietanza in archivio per questo codice e periodo"
+        )
+        nuove.append({
+            "chiave": chiave, "sezione": sezione, "codice": codice, "anno": anno, "mese": mese,
+            "periodo": _periodo_testo(anno, mese),
+            "scadenza": scad.isoformat() if scad else None, "scadenza_fonte": fonte_scad,
+            "pagamenti": [], "stato": DICHIARATO_770_SENZA_QUIETANZA,
+            "stato_label": ETICHETTE[DICHIARATO_770_SENZA_QUIETANZA],
+            "pagato_cents": 0, "ultimo_pagamento": None, "motivazione": motivo,
+            "dichiarato_770": [dichiarato],
+            "confronto_770": {"importo": "QUIETANZA_MANCANTE", "differenza_cents": -(versato or 0),
+                              "ravvedimento_dichiarato": bool(r.get("ravvedimento")), "ravvedimento_coerente": None},
+        })
+    risultato = list(voci) + nuove
+    risultato.sort(key=lambda v: (-(v["anno"] or 0), -(v["mese"] or 0), v["codice"]))
+    return risultato
+
+
 async def carica(db) -> List[Dict[str, Any]]:
-    """Calcola dallo stesso registro unico di Tributi (modelli, quietanze, ritenute)."""
+    """Calcola dallo stesso registro unico di Tributi (modelli, quietanze, ritenute),
+    poi aggancia le righe ST dei 770 in archivio (attese e confronti)."""
+    from app.db_collections import COLL_FISCAL_DOCUMENTS
     from app.services import tributi_per_codice as tributi
 
     registro = await reg.carica_registro(db)
@@ -491,8 +626,22 @@ async def carica(db) -> List[Dict[str, Any]]:
             scadenze[k] = v["scadenza"]
         if v.get("dovuto_cents"):
             dovuti[k] = v["dovuto_cents"]
+    documenti_770 = [
+        d for d in await db[COLL_FISCAL_DOCUMENTS].find(
+            {"quadri.tipo_letto": "MODELLO_770"},
+            {"_id": 0, "id": 1, "filename": 1, "quadri": 1, "entity_status": 1},
+        ).to_list(2000)
+        if d.get("entity_status") != "deleted"
+    ]
+    righe_st = righe_770(documenti_770)
+    for r in righe_st:
+        # Le ritenute operate dichiarate sono il dovuto del periodo: servono a
+        # vedere gli interessi cumulati al tributo nelle quietanze in ritardo.
+        if r.get("codice_tributo") and r.get("ritenute_operate_cents"):
+            k = (_SEZIONE_ST.get(str(r.get("sezione") or "I"), "sezione_erario"), r["codice_tributo"], r["anno"], r["mese"])
+            dovuti.setdefault(k, int(r["ritenute_operate_cents"]))
     quietanze = [q for q in registro["quietanze"] if q.get("righe")]
-    return calcola(reg.pagamenti_da_quietanze(quietanze), scadenze, dovuti)
+    return integra_770(calcola(reg.pagamenti_da_quietanze(quietanze), scadenze, dovuti), righe_st)
 
 
 async def aggiorna(db) -> Dict[str, int]:
