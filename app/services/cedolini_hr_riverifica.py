@@ -74,13 +74,18 @@ def _intero(valore: Any) -> Optional[int]:
         return None
 
 
-def busta_della_riga(riga: Dict[str, Any], buste: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """La busta del PDF che corrisponde alla riga HR, o il motivo per cui non c'e'."""
+def buste_della_riga(riga: Dict[str, Any], buste: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Le buste lette dal PDF che hanno la stessa identita' della riga
+    (codice fiscale, anno, tipo e, per le mensili, mese).
+
+    E' il solo criterio di corrispondenza fra una riga d'archivio e una busta
+    riletta: lo usa anche la rilettura dell'archivio ERP (`batch_reprocessing`).
+    """
     cf = str(riga.get("cf") or "").upper()
     anno = _intero(riga.get("anno"))
     tipo = tipo_cedolino_hr(riga.get("tipo"))
     mese = _intero(riga.get("mese"))
-    candidate = [
+    return [
         b for b in buste
         if str(b.get("codice_fiscale") or "").upper() == cf
         and _intero(b.get("anno")) == anno
@@ -89,6 +94,11 @@ def busta_della_riga(riga: Dict[str, Any], buste: List[Dict[str, Any]]) -> Dict[
         # dicembre/luglio; basta il tipo. Le mensili vogliono il mese.
         and (tipo in ("tredicesima", "quattordicesima") or _intero(b.get("mese")) == mese)
     ]
+
+
+def busta_della_riga(riga: Dict[str, Any], buste: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """La busta del PDF che corrisponde alla riga HR, o il motivo per cui non c'e'."""
+    candidate = buste_della_riga(riga, buste)
     if not candidate:
         return {"esito": "non_ritrovata"}
     if len(candidate) > 1 and len({_cent(b.get("netto")) for b in candidate}) > 1:

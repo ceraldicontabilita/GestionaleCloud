@@ -57,12 +57,12 @@ class _Db:
 def test_i_tentativi_restano_contati_quando_il_parser_fallisce(monkeypatch):
     from app.services import batch_reprocessing as modulo
 
-    async def parser_in_errore(*_args, **_kwargs):
-        raise RuntimeError("modello non disponibile")
+    def lettore_in_errore(*_args, **_kwargs):
+        raise RuntimeError("PDF non apribile")
 
     db = _Db()
     monkeypatch.setattr(modulo.Database, "get_db", lambda: db)
-    monkeypatch.setattr(modulo, "parse_cedolino_enhanced", parser_in_errore)
+    monkeypatch.setattr(modulo, "leggi_pdf", lettore_in_errore)
 
     esito = asyncio.run(modulo.BatchReprocessingService().reprocess_all_cedolini(True))
 

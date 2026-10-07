@@ -140,6 +140,8 @@ Finché la migrazione non è completata usare esclusivamente gli helper canonici
 
 Non introdurre nuovo codice che presuma un solo tipo storico di `invoice_id`.
 
+Gli id di `menu.menu_categories`, `menu_subcategories` e `menu_products` nascono dal database con la migrazione `20261007051337_menu_id_dal_database` (identity BY DEFAULT), non ancora applicata: ponte Lotti e admin Menu inseriscono senza id tramite `app/menu/supabase_client.py::inserisci_con_id_del_database` e, solo se il database rifiuta l'insert per `id` NOT NULL, ripiegano sul vecchio `max(id)+1`; applicata la migrazione, rimuovere i ripieghi (`menu_bridge._inserisci_con_id`, `menu_routes._crea_riga`).
+
 ---
 
 # 6. Un solo servizio
@@ -4890,7 +4892,9 @@ Il parser deterministico scrive il fatto.
 
 ## APERTO
 
-Esistono ancora lettori AI duplicati.
+Esistono ancora due lettori AI di documenti: `app/services/ai_document_parser.py` (immagini → AI: fattura, F24, busta paga) e `app/services/document_ai_extractor.py` (testo → AI, più tipi).
+
+I cedolini hanno un solo lettore, `app/services/cedolini_motore.py::leggi_pdf`: lo usano ingresso, riverifica HR e rilettura dell'archivio (`batch_reprocessing`). Non reintrodurre un lettore AI separato per i cedolini.
 
 Consolidare un flusso alla volta.
 

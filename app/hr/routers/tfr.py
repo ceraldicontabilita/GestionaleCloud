@@ -1382,22 +1382,39 @@ async def annulla_riconciliazione_banca(acconto_id: str) -> Dict[str, Any]:
 # SCALATURA ACCONTI SU CEDOLINO PAGA (Task 3)
 # ============================================
 # Quando arriva il cedolino mensile di un dipendente, il sistema confronta
-# il valore "acconto_mese_precedente" (estratto dal PDF dal parser AI) con
-# il totale degli acconti `scalato_su_anno_mese == cedolino_periodo`
-# registrati per quel dipendente. Se quadra, marca tutti come scalati.
-# Se non quadra, restituisce la discrepanza per scelta manuale.
+# l'acconto gia' recuperato in busta (voce codificata letta dal motore unico
+# dei cedolini) con il totale degli acconti
+# `scalato_su_anno_mese == cedolino_periodo` registrati per quel dipendente.
+# Se quadra, marca tutti come scalati. Se non quadra, restituisce la
+# discrepanza per scelta manuale.
 
 def _estrai_acconto_da_cedolino(cedolino: Dict[str, Any]) -> Optional[float]:
     """Estrae il valore 'acconto già erogato' dal cedolino salvato.
 
-    Cerca in vari campi possibili (dipende dal flusso di import):
-    - cedolino.enhanced_parsing.importi_finali.acconto_mese_precedente (parser AI)
-    - cedolino.acconto_mese_precedente (campo flat se promosso)
-    - cedolino.importi_finali.acconto_mese_precedente (legacy)
+    Nell'ordine, come `posizione_dipendente.acconto_in_busta`:
+    - cedolino.dati_chiave.acconto_recuperato_busta (voce codificata del
+      motore unico `cedolini_motore`, scritta all'ingresso o dalla rilettura
+      `batch_reprocessing`);
+    - cedolino.acconti.acconto_recuperato (vecchio lettore);
+    - cedolino.enhanced_parsing.importi_finali.acconto_mese_precedente
+      (lettore AI ritirato il 07/10/2026: resta solo per i dati gia' scritti);
+    - cedolino.importi_finali.acconto_mese_precedente e campo flat (legacy).
 
-    Returns None se non disponibile (cedolino non parsato col parser AI).
+    Returns None se non disponibile: il dato mancante non e' zero.
     """
     candidates = []
+
+    dati_chiave = cedolino.get("dati_chiave") or {}
+    if isinstance(dati_chiave, dict):
+        v = dati_chiave.get("acconto_recuperato_busta")
+        if v is not None:
+            candidates.append(v)
+
+    acconti = cedolino.get("acconti") or {}
+    if isinstance(acconti, dict):
+        v = acconti.get("acconto_recuperato")
+        if v is not None:
+            candidates.append(v)
 
     enhanced = cedolino.get("enhanced_parsing") or {}
     if isinstance(enhanced, dict):
@@ -1467,7 +1484,7 @@ async def _trova_acconti_da_scalare(
 async def preview_scalatura_acconti(cedolino_id: str) -> Dict[str, Any]:
     """Anteprima della scalatura acconti per un cedolino (NON scrive sul DB).
 
-    Estrae da cedolino.enhanced_parsing.importi_finali.acconto_mese_precedente
+    Estrae da cedolino.dati_chiave.acconto_recuperato_busta (motore unico)
     il totale dichiarato dal cedolino. Confronta con la somma degli acconti
     registrati per quel dipendente con scalato_su_anno_mese == periodo.
 
@@ -1526,10 +1543,10 @@ async def preview_scalatura_acconti(cedolino_id: str) -> Dict[str, Any]:
     elif acconto_cedolino is None:
         stato_match = "nessun_dato_cedolino"
         messaggio = (
-            f"Il cedolino non riporta il valore 'acconto mese precedente' "
-            f"(probabilmente non parsato con AI), ma nel sistema risultano "
+            f"Il cedolino non riporta un acconto recuperato in busta, "
+            f"ma nel sistema risultano "
             f"{len(acconti)} acconti registrati per €{totale_registrati:.2f}. "
-            f"Riprocessa il cedolino con parser AI o scala manualmente."
+            f"Rileggi il cedolino col motore unico o scala manualmente."
         )
     elif not acconti:
         stato_match = "nessun_acconto"

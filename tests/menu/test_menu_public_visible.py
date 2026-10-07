@@ -25,8 +25,8 @@ class _Res:
 
 
 class _Query:
-    def __init__(self, tabelle, registro, nome):
-        self.tabelle, self.registro, self.nome = tabelle, registro, nome
+    def __init__(self, tabelle, registro, nome, identity=True):
+        self.tabelle, self.registro, self.nome, self.identity = tabelle, registro, nome, identity
         self.op, self.filtri, self.payload, self._limit = "select", [], None, None
         self._order = None
 
@@ -61,8 +61,16 @@ class _Query:
         trovate = [r for r in righe if all(r.get(c) == v for c, v in self.filtri)]
         if self.op == "insert":
             self.registro.append(("insert", self.nome, self.payload))
-            righe.append(dict(self.payload))
-            return _Res([self.payload])
+            riga = dict(self.payload)
+            if riga.get("id") is None:
+                # Il database assegna l'id (identity, migrazione menu_id_dal_database);
+                # senza identity rifiuta la riga con la NOT NULL su id e non scrive nulla.
+                if not self.identity:
+                    raise RuntimeError(
+                        f'null value in column "id" of relation "{self.nome}" violates not-null constraint (code 23502)')
+                riga["id"] = max([int(r["id"]) for r in righe if r.get("id") is not None] or [0]) + 1
+            righe.append(riga)
+            return _Res([dict(riga)])
         if self.op == "update":
             self.registro.append(("update", self.nome, self.payload, list(self.filtri)))
             for r in trovate:
@@ -76,12 +84,13 @@ class _Query:
 
 
 class _FakeSupabase:
-    def __init__(self, tabelle):
+    def __init__(self, tabelle, identity=True):
         self.tabelle = tabelle
         self.chiamate = []
+        self.identity = identity
 
     def table(self, nome):
-        return _Query(self.tabelle, self.chiamate, nome)
+        return _Query(self.tabelle, self.chiamate, nome, self.identity)
 
 
 def _prodotto(id_, sub, nome, **extra):
@@ -208,7 +217,9 @@ def test_admin_create_e_update_accettano_visible(finto):
     assert creato["success"] is True
     inserito = next(p for op, tab, p in finto.chiamate if op == "insert" and tab == "menu_products")
     assert inserito["visible"] is False
-    assert inserito["id"] == 1000001
+    # L'id non lo calcola l'app: l'insert parte senza id e torna quello del database
+    assert "id" not in inserito
+    assert creato["id"] == finto.tabelle["menu_products"][-1]["id"] == 1000001
 
     _run(mr.update_product(101, ProductUpdate(visible=False), username="admin"))
     aggiornamento = next(c for c in finto.chiamate if c[0] == "update")
@@ -216,6 +227,28 @@ def test_admin_create_e_update_accettano_visible(finto):
     with pytest.raises(HTTPException) as nascosto:
         _run(mr.get_product(101))
     assert nascosto.value.status_code == 404
+
+
+def test_admin_senza_identity_ripiega_su_max_id_una_sola_riga(finto, monkeypatch):
+    """Migrazione menu_id_dal_database non ancora applicata: il database rifiuta
+    l'insert senza id senza scrivere nulla, l'admin ripiega sul vecchio
+    max(id)+1 e la riga nasce una volta sola. Vale per prodotto, sottocategoria
+    e categoria."""
+    finto.identity = False
+    creato = _run(mr.create_product(
+        ProductCreate(category_id=1, subcategory_id=10, name="Nuovo", nameIT="Nuovo", price="2.00€"),
+        username="admin",
+    ))
+    assert creato["id"] == 1000001
+    inseriti = [p for op, tab, p in finto.chiamate if op == "insert" and tab == "menu_products"]
+    assert [("id" in p) for p in inseriti] == [False, True]
+    assert [p["id"] for p in finto.tabelle["menu_products"]].count(1000001) == 1
+
+    from app.menu.models.menu_models import CategoryCreate, SubcategoryCreate
+    sotto = _run(mr.create_subcategory(SubcategoryCreate(category_id=1, name="Dolci", nameIT="Dolci"), username="admin"))
+    assert sotto["id"] == 11 and finto.tabelle["menu_subcategories"][-1]["id"] == 11
+    cat = _run(mr.create_category(CategoryCreate(name="Lunch", nameIT="Pranzo"), username="admin"))
+    assert cat["id"] == 2 and finto.tabelle["menu_categories"][-1]["id"] == 2
 
 
 def test_admin_del_menu_non_puo_modificare_una_riga_di_lotti(finto):
