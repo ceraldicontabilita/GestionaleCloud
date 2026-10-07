@@ -26,6 +26,7 @@ via import pigro per evitare import circolari.
 """
 import asyncio
 import logging
+import os
 import uuid
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from datetime import datetime, timezone
@@ -39,6 +40,25 @@ logger = logging.getLogger(__name__)
 
 COLL_MOVIMENTI = "movimenti_contabili"
 COLL_PIANO_CONTI = "piano_conti"
+
+# Interruttore del libro giornale. Decisione del titolare (07/10/2026): il
+# libro giornale non gli serve e le registrazioni restano SPENTE; il registro
+# operativo e' la Prima Nota cassa/banca. Difetto spento: si accende solo con
+# ``LIBRO_GIORNALE_ATTIVO=true``. Le letture (pagina giornale, bilancio dai
+# movimenti esistenti) non cambiano; cambia solo che non si scrive nulla.
+MOTIVO_DISATTIVATO = "libro giornale spento (LIBRO_GIORNALE_ATTIVO)"
+
+
+def giornale_attivo() -> bool:
+    return os.getenv("LIBRO_GIORNALE_ATTIVO", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+def esito_disattivato(**extra: Any) -> Dict[str, Any]:
+    return {"stato": "disattivato", "motivo": MOTIVO_DISATTIVATO, **extra}
+
+
+class GiornaleDisattivato(RuntimeError):
+    """Qualcuno ha provato a scrivere nel giornale con l'interruttore spento."""
 
 # Audit 27/09/2026 (punto 4): una scrittura marcata cancellata non e' nel
 # libro giornale. 15 scritture con ``deleted: true`` (doppioni) venivano
@@ -348,6 +368,8 @@ async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[
     e la coppia originale + storno somma comunque a zero su ogni conto.
     """
     from app.routers.accounting.piano_conti import aggiorna_saldo_conto
+    if not giornale_attivo():
+        raise GiornaleDisattivato(MOTIVO_DISATTIVATO)
     saldi = list(saldi or [])
     if not movimento.get("storno_di"):
         righe = movimento.get("righe") or []
@@ -527,6 +549,8 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     """
     from app.routers.accounting.piano_conti import determina_conti_fattura
 
+    if not giornale_attivo():
+        return esito_disattivato()
     is_nota_credito = str(fattura.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO
 
     fattura_id = fattura.get("id")
@@ -775,6 +799,8 @@ async def _scrivi_storno(db, originale: Dict[str, Any], motivo: str, tipo: str,
 
 
 async def storna_registrazione_fattura(db, fattura_id: str, motivo: str) -> Dict[str, Any]:
+    if not giornale_attivo():
+        return esito_disattivato()
     """Storna la scrittura di una fattura acquisto che NON doveva stare nel
     libro giornale (17/09/2026: 9 fatture 2026 registrate due volte, copia
     legacy + copia Drive dello stesso XML; 13 fatture 2025 dell'archivio
@@ -818,6 +844,8 @@ async def storna_registrazione_fattura(db, fattura_id: str, motivo: str) -> Dict
 
 
 async def storna_registrazione_corrispettivo(db, corrispettivo_id: Any, motivo: str) -> Dict[str, Any]:
+    if not giornale_attivo():
+        return esito_disattivato()
     """Storna la scrittura di un corrispettivo sostituito (riga storica senza
     documento superata dalla chiusura XML). Stesse regole dello storno
     fattura: l'originale resta, marcato ``stornato``, e nasce la scrittura
@@ -851,6 +879,8 @@ async def storna_registrazione_corrispettivo(db, corrispettivo_id: Any, motivo: 
 async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = False) -> Dict[str, Any]:
     """Registra un corrispettivo (idempotente).
     DARE cassa/banca · AVERE ricavi + IVA a debito (scorporo aliquota storica)."""
+    if not giornale_attivo():
+        return esito_disattivato()
     corr_id = corr.get("id")
     if not corr_id:
         return {"stato": "saltato", "motivo": "corrispettivo senza id"}
@@ -1083,6 +1113,8 @@ async def registra_tutte_fatture(db, *, dry_run: bool = False, gia_registrate=No
                                  on_progress=None, pausa: float = 0.0) -> Dict[str, Any]:
     """Registra (idempotente) tutte le fatture attive non ancora nel libro
     giornale. ``dry_run=True`` conta soltanto, senza scrivere nulla."""
+    if not giornale_attivo():
+        return {"success": False, "dry_run": dry_run, "registrate": 0, "errori": [], **esito_disattivato()}
     fatture = await db["invoices"].find(
         dict(_FILTRO_FATTURE_DA_REGISTRARE), _PROIEZIONE_FATTURE_MASSIVA).to_list(5000)
     if dry_run:
@@ -1129,6 +1161,8 @@ async def registra_tutti_corrispettivi(db, *, dry_run: bool = False, gia_registr
                                        on_progress=None, pausa: float = 0.0) -> Dict[str, Any]:
     """Registra (idempotente) tutti i corrispettivi definitivi non ancora nel
     libro giornale. ``dry_run=True`` conta soltanto, senza scrivere nulla."""
+    if not giornale_attivo():
+        return {"success": False, "dry_run": dry_run, "registrati": 0, "errori": [], **esito_disattivato()}
     trovati = await db["corrispettivi"].find(
         dict(_FILTRO_CORRISPETTIVI_DA_REGISTRARE), {"_id": 0}).to_list(5000)
     corrispettivi = [c for c in trovati if _corrispettivo_registrabile(c)]
@@ -1177,6 +1211,8 @@ async def registra_pregresso(db, *, dry_run: bool = False, on_progress=None,
     """Recupero del pregresso non registrato: UN solo giro che riusa le due
     funzioni massive (fatture + corrispettivi). Idempotente: rilanciarlo non
     crea seconde scritture. ``dry_run`` restituisce solo i conteggi."""
+    if not giornale_attivo():
+        return {"success": False, "dry_run": dry_run, "registrate": 0, "errori": [], **esito_disattivato()}
     gia_fatture, gia_corrispettivi = ({}, {}) if dry_run else await _gia_registrati(db)
     fatture = await registra_tutte_fatture(
         db, dry_run=dry_run, gia_registrate=gia_fatture, on_progress=on_progress, pausa=pausa,
@@ -1247,7 +1283,7 @@ def avvia_pregresso_in_background(db) -> bool:
     """Il giro puo' durare piu' del timeout del gateway, quindi risponde subito e lo stato si
     segue con ``stato_pregresso``. Un secondo avvio mentre e' in corso non parte."""
     global _pregresso_task
-    if _pregresso_lock.locked():
+    if not giornale_attivo() or _pregresso_lock.locked():
         return False
     _pregresso_task = asyncio.create_task(_pregresso_in_background(db))
     return True
@@ -1271,6 +1307,8 @@ async def registra_documento_import(db, tipo_documento: str, documento: Dict[str
       ``da_verificare`` sul documento, perche' una correzione del libro
       giornale e' una scelta del contabile, non dell'import.
     """
+    if not giornale_attivo():
+        return esito_disattivato()
     collezione = _COLLEZIONE_PER_TIPO.get(tipo_documento)
     doc_id = (documento or {}).get("id")
     if not collezione or not doc_id:
@@ -1323,6 +1361,8 @@ async def registra_fatture_rimaste_fuori(db, limite: int = LIMITE_FUORI_GIORNALE
     """
     from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
 
+    if not giornale_attivo():
+        return {"candidate": 0, "registrate": 0, "ancora_fuori": 0, **esito_disattivato()}
     registrate = {
         str(m.get("fattura_id")) async for m in db[COLL_MOVIMENTI].find(
             {"tipo": "fattura_acquisto"}, {"_id": 0, "fattura_id": 1})
@@ -1462,6 +1502,8 @@ async def registra_scrittura_semplice(db, movimento: Dict[str, Any],
       importo, dettaglio, dipendente_id...): i lettori esistenti non cambiano.
     - Idempotente sulla `chiave_naturale` (es. {"tipo":..., "anno":...}).
     """
+    if not giornale_attivo():
+        return {"id": None, "gia_presente": False, **esito_disattivato()}
     esistente = await db[COLL_MOVIMENTI].find_one(chiave_naturale, {"_id": 0, "id": 1})
     if esistente:
         return {"id": esistente["id"], "gia_presente": True}

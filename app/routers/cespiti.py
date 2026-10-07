@@ -1132,6 +1132,11 @@ async def registra_ammortamenti_anno(anno: int, conferma: bool) -> Dict[str, Any
             ],
             chiave_naturale={"tipo": "ammortamento", "anno": anno},
         )
+        if movimento.get("stato") == "disattivato":
+            raise HTTPException(
+                status_code=409,
+                detail="Libro giornale spento (CLAUDE.md §24): gli ammortamenti non registrano scritture.",
+            )
 
     aggiornati = 0
     for amm in calcolo["ammortamenti"]:

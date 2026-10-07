@@ -1715,6 +1715,14 @@ Una riga entra quando possiede significato contabile sufficiente.
 
 # 24. Libro giornale
 
+## PRODUZIONE
+
+Il libro giornale è **spento** per decisione del titolare (07/10/2026): non gli serve. Il registro operativo è la Prima Nota cassa/banca (§23).
+
+Interruttore unico nel motore: `LIBRO_GIORNALE_ATTIVO` (difetto spento). Con l'interruttore spento `registra_fattura`, `registra_corrispettivo`, `registra_scrittura_semplice`, storni, pregresso e job rispondono `stato = disattivato` e non scrivono nulla; `_scrivi_movimento` rifiuta comunque (`GiornaleDisattivato`). Le letture delle scritture già esistenti non cambiano. I test accendono l'interruttore per collaudare il motore.
+
+Non riaccenderlo senza decisione del titolare. Le regole che seguono valgono quando è acceso.
+
 Motore:
 
 `app/services/registrazione_contabile.py`
@@ -5055,11 +5063,13 @@ Le presenze non sono oggi una fonte per decidere il conducente.
 
 ## P1 — Contabilità
 
-1. Fare in modo che ogni pagamento chiuda il debito nel libro giornale.
+Libro giornale spento dal 07/10/2026 (§24): i punti 1, 4 e 5 restano fermi finché il titolare non lo riaccende; la priorità operativa è la Prima Nota cassa/banca alimentata dalle fatture (§29) e dai pagamenti dichiarati.
+
+1. Fare in modo che ogni pagamento chiuda il debito nel libro giornale (sospeso: giornale spento).
 2. Correggere il bilancio affinché usi `data_competenza`.
 3. Ricostruire debiti/crediti alla data di chiusura.
-4. Rettificare note di credito storiche errate.
-5. Analizzare scritture non quadrate.
+4. Rettificare note di credito storiche errate (sospeso: giornale spento).
+5. Analizzare scritture non quadrate (sospeso: giornale spento).
 
 ---
 

@@ -14,6 +14,10 @@ from datetime import datetime, timezone
 # Il mock documentale e' una scelta esplicita della suite. Il runtime Lotti
 # senza Supabase deve invece fallire chiuso e non perdere dati al riavvio.
 os.environ.setdefault("LOTTI_TEST_MEMORY", "1")
+# Il libro giornale e' spento in produzione (CLAUDE.md §24, titolare 07/10/2026):
+# i test del motore lo accendono per collaudarne la logica; il difetto spento
+# e' verificato a parte in tests/contabilita/test_libro_giornale_spento.py.
+os.environ.setdefault("LIBRO_GIORNALE_ATTIVO", "true")
 
 # Aggiungi app al path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

@@ -1135,9 +1135,11 @@ async def registra_pregresso_contabilita(
     seguirne l'esito). Avanzamento ed esito finale: `GET .../registra-pregresso/stato`.
     """
     from app.services.registrazione_contabile import (
-        avvia_pregresso_in_background, registra_pregresso,
+        avvia_pregresso_in_background, esito_disattivato, giornale_attivo, registra_pregresso,
     )
     db = Database.get_db()
+    if not giornale_attivo():
+        return esito_disattivato()
     if dry_run is True:
         return await registra_pregresso(db, dry_run=True)
     if not avvia_pregresso_in_background(db):
