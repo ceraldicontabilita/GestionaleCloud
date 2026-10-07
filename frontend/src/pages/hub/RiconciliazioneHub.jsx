@@ -1,9 +1,8 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
-import { ArrowLeftRight, Banknote, CreditCard, Landmark, Receipt, ScrollText } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
-import { HubTabs, PageLoader } from '../../components/ds';
+import { PageLoader } from '../../components/ds';
 import { PageHeader } from '../../components/ds/PageHeader';
 import { sezioneRiconciliazione } from './sezioneRiconciliazione';
 
@@ -32,24 +31,15 @@ function intervalloAnno(anno) {
 export default function RiconciliazioneHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
-  const navigate = useNavigate();
   const sezione = sezioneRiconciliazione(location.pathname);
   const [paypalRefreshKey, setPaypalRefreshKey] = useState(0);
 
-  const tabs = [
-    { id: 'bancaria', label: 'Riepilogo', Icon: Landmark, to: '/riconciliazione' },
-    { id: 'banca', label: 'Banca', Icon: Landmark, to: '/riconciliazione/banca' },
-    { id: 'stipendi', label: 'Stipendi', Icon: Banknote, to: '/riconciliazione/stipendi' },
-    { id: 'documenti', label: 'Documenti', Icon: Receipt, to: '/riconciliazione/documenti' },
-    { id: 'f24', label: 'F24', Icon: Receipt, to: '/riconciliazione/f24' },
-    { id: 'movimenti-banca', label: 'Indice operazioni', Icon: Banknote, to: '/riconciliazione/movimenti-banca' },
-    { id: 'pagopa', label: 'PagoPA', Icon: Receipt, to: '/riconciliazione/pagopa' },
-    { id: 'bonifici', label: 'Bonifici', Icon: ArrowLeftRight, to: '/riconciliazione/archivio-bonifici' },
-    { id: 'assegni', label: 'Assegni', Icon: ScrollText, to: '/riconciliazione/assegni' },
-    { id: 'paypal', label: 'PayPal', Icon: CreditCard, to: '/riconciliazione/paypal' },
-    { id: 'coerenza-pos', label: 'Coerenza POS', Icon: Banknote, to: '/riconciliazione/coerenza-pos' },
-    { id: 'regole-banca', label: 'Regole banca', Icon: Banknote, to: '/riconciliazione/regole-banca' },
-  ];
+  // Le schede le disegna SchedeHub dalla mappa di navigazione; qui restano
+  // solo i nomi per la testata delle sezioni che non ne hanno una propria.
+  const nomiSezione = {
+    banca: 'Banca', stipendi: 'Stipendi', documenti: 'Documenti', f24: 'F24',
+    bonifici: 'Bonifici', assegni: 'Assegni', 'coerenza-pos': 'Coerenza POS',
+  };
 
   const activeTab = sezione === '' ? 'bancaria' : sezione;
   // Queste sezioni hanno gia' una testata loro (titolo, perche', pastiglie):
@@ -57,7 +47,7 @@ export default function RiconciliazioneHub() {
   const conTestataPropria = ['movimenti-banca', 'pagopa', 'paypal', 'regole-banca'].includes(activeTab);
   const titoloSezione = activeTab === 'bancaria'
     ? 'Riconciliazione'
-    : (tabs.find(t => t.id === activeTab)?.label || 'Riconciliazione');
+    : (nomiSezione[activeTab] || 'Riconciliazione');
 
   useEffect(() => {
     if (activeTab !== 'paypal') return undefined;
@@ -117,12 +107,6 @@ export default function RiconciliazioneHub() {
         `}</style>
       )}
       {!conTestataPropria && <PageHeader title={titoloSezione} style={{ marginBottom: 14 }} />}
-      <HubTabs
-        testIdPrefix="tab-riconciliazione"
-        activeId={activeTab}
-        onSelect={tab => navigate(tab.to)}
-        tabs={tabs}
-      />
       <Suspense fallback={<PageLoader />}>{getContent()}</Suspense>
     </div>
   );

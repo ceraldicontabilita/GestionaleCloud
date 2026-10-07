@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
-import { HubTabs, PageLoader } from '../../components/ds';
+import { PageLoader } from '../../components/ds';
 import {
   sezioneContabilita,
   sezioneContabilitaSconosciuta,
@@ -48,8 +48,6 @@ export default function ContabilitaHub() {
 
   return (
     <div style={{ width: '100%' }}>
-      <HubTabs testIdPrefix="tab-contabilita" style={{ marginBottom: 0 }} />
-
       <div style={{ padding: '16px 0 0 0' }}>
         {sezioneSconosciuta && (
           <div

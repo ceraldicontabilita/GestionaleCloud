@@ -3,26 +3,29 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { NAV_COLONNA } from '../../navigation.config';
+
 const hub = readFileSync(resolve(process.cwd(), 'src/pages/hub/RiconciliazioneHub.jsx'), 'utf8');
 const tabs = readFileSync(resolve(process.cwd(), 'src/components/ds/HubTabs.jsx'), 'utf8');
 
 describe('navigazione visibile della riconciliazione', () => {
-  it('espone le destinazioni principali senza select di navigazione', () => {
+  it('espone le destinazioni principali come schede della mappa unica, senza select', () => {
+    const schede = NAV_COLONNA.find(v => v.label === 'Riconciliazione').schede.map(s => s.label);
     for (const label of [
       'Riepilogo',
       'Banca',
       'Stipendi',
       'Documenti',
-      'Indice operazioni',
-      'F24',
       'PagoPA',
       'Bonifici',
       'Assegni',
       'PayPal',
       'Coerenza POS',
     ]) {
-      expect(hub).toContain(`label: '${label}'`);
+      expect(schede).toContain(label);
     }
+    // L'hub non disegna piu' una propria riga di schede: la disegna SchedeHub.
+    expect(hub).not.toContain('HubTabs');
     expect(tabs).toContain('role="tablist"');
     expect(tabs).toContain("flexWrap: 'wrap'");
     expect(tabs).not.toContain('<option');
