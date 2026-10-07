@@ -406,6 +406,162 @@ def test_la_fattura_sparita_si_distingue_dall_xml_mai_arrivato_e_si_segnala(db):
     assert segnalazioni[0]["risolta"] is False
 
 
+def _esito(db, numero):
+    return asyncio.run(db["fatture_report_ae"].find_one(
+        {"numero_fattura": numero}, {"_id": 0}))
+
+
+def test_un_esito_definitivo_senza_prova_si_ritira_con_storico_e_si_riapplica(db):
+    """Il 06/10/2026 `invoices` e la Prima Nota sono state azzerate: gli esiti
+    `registrata`/`da_decidere` del report restavano «fatti» per sempre e il
+    giro non li ripassava piu'. L'esito orfano si ritira (storico, non
+    cancellazione) e la riga torna applicabile; con la prova presente non si
+    tocca; il secondo giro non ritira di nuovo; dry_run conta soltanto."""
+    async def scenario():
+        await _prepara(db)
+        await report_ae.importa_report_fatture_ricevute(db, _xlsx(RIGHE), "r.xlsx")
+        primo = await pagamenti.applica_pagamenti_dichiarati(db)
+        integro = await pagamenti.ritira_esiti_orfani(db, dry_run=True)
+        # Azzeramento: sparisce la fattura cassa con la sua riga di Prima Nota,
+        # la fattura SumUp (da_decidere) e una delle due dell'assegno.
+        for fid in ("f-siro-cassa", "f-vande", "f-siro-a1"):
+            await db["invoices"].delete_one({"id": fid})
+        await db["prima_nota_cassa"].delete_one({"id": "pn-ufficio-1"})
+        prova = await pagamenti.applica_pagamenti_dichiarati(db, dry_run=True)
+        riga_dopo_dry = await db["fatture_report_ae"].find_one(
+            {"numero_fattura": "2/838"}, {"_id": 0})
+        giro = await pagamenti.applica_pagamenti_dichiarati(db, solo_pendenti=True)
+        secondo = await pagamenti.applica_pagamenti_dichiarati(db, solo_pendenti=True)
+        return primo, integro, prova, riga_dopo_dry, giro, secondo
+
+    primo, integro, prova, riga_dopo_dry, giro, secondo = asyncio.run(scenario())
+    assert primo["esiti_ritirati"]["orfani"] == 0
+    assert integro["orfani"] == 0 and integro["esaminati"] >= 4
+    # Dry run: conta ma non scrive.
+    assert prova["esiti_ritirati"] == {
+        **prova["esiti_ritirati"], "orfani": 3, "ritirati": 0, "dry_run": True,
+    }
+    assert riga_dopo_dry["pagamento_applicato"]["stato"] == "registrata"
+    assert "pagamento_applicato_storico" not in riga_dopo_dry
+    # Giro vero: i tre orfani si ritirano, per stato e per metodo.
+    ritirati = giro["esiti_ritirati"]
+    assert ritirati["orfani"] == 3 and ritirati["ritirati"] == 3
+    assert ritirati["per_stato"] == {"registrata": 2, "da_decidere": 1}
+    assert ritirati["per_metodo"] == {"cassa": 1, "assegno": 1, "sumup": 1}
+    assert ritirati["per_motivo"] == {"fattura_assente": 3}
+    cassa = _esito(db, "2/838")
+    assert cassa["pagamento_applicato"]["stato"] == "fattura_non_ancora_arrivata"
+    # Lo stesso giro l'ha gia' ripassata: il motivo e' quello della fattura sparita.
+    assert cassa["pagamento_applicato"]["motivo"] == "fattura sparita da invoices (era f-siro-cassa)"
+    assert cassa["invoice_id"] is None and cassa["fattura_sparita_id"] == "f-siro-cassa"
+    storico = cassa["pagamento_applicato_storico"]
+    assert len(storico) == 1
+    assert storico[0]["stato"] == "registrata"
+    assert storico[0]["prima_nota_id"] == "pn-ufficio-1"
+    assert storico[0]["ritirato_at"] and "non piu' presente" in storico[0]["motivo_ritiro"]
+    assert "f-siro-cassa" in storico[0]["motivo_ritiro"]
+    assert "pn-ufficio-1" in storico[0]["motivo_ritiro"]
+    # La fattura dell'assegno rimasta in archivio tiene il suo esito.
+    assert _esito(db, "2/1485")["pagamento_applicato"]["stato"] == "registrata"
+    assert "pagamento_applicato_storico" not in _esito(db, "2/1485")
+    # Secondo giro: niente da ritirare, lo storico non cresce.
+    assert secondo["esiti_ritirati"]["orfani"] == 0
+    assert len(_esito(db, "2/838")["pagamento_applicato_storico"]) == 1
+    assert secondo["esiti_ritirati"]["esaminati"] == giro["esiti_ritirati"]["esaminati"] - 3
+
+    # La fattura rientra dalla rilettura dell'XML con un id nuovo: il
+    # pagamento dichiarato (cassa) si applica, riga di Prima Nota compresa.
+    async def rientra():
+        nuova = _fattura("f-siro-cassa-bis", "2/838", SIRO, "SIRO S.R.L.", "2026-02-10", 145.09)
+        await db["invoices"].insert_one(dict(nuova))
+        return await pagamenti.applica_pagamenti_dichiarati(db, solo_pendenti=True)
+
+    giro_rientro = asyncio.run(rientra())
+    assert giro_rientro["conteggi"]["registrata"] == 1
+    riga_pn = asyncio.run(db["prima_nota_cassa"].find_one(
+        {"fattura_id": "f-siro-cassa-bis", "status": {"$nin": ["deleted", "archived"]}}))
+    assert riga_pn["importo"] == 145.09
+    cassa = _esito(db, "2/838")
+    assert cassa["pagamento_applicato"]["stato"] == "registrata"
+    assert cassa["pagamento_applicato"]["prima_nota_id"] == riga_pn["id"]
+    assert cassa["invoice_id"] == "f-siro-cassa-bis"
+    assert len(cassa["pagamento_applicato_storico"]) == 1
+
+
+def test_gia_pagata_con_fattura_sparita_si_ritira_e_lo_stato_la_conta(db):
+    _importa_e_applica(db)  # il secondo giro completo marca 2/838 `gia_pagata`
+    assert _esito(db, "2/838")["pagamento_applicato"]["stato"] == "gia_pagata"
+
+    async def scenario():
+        await db["invoices"].delete_one({"id": "f-siro-cassa"})
+        await db["sistema_stato"].update_one(
+            {"chiave": pagamenti.CHIAVE_JOB},
+            {"$set": {"chiave": pagamenti.CHIAVE_JOB, "stato": "completato"}}, upsert=True)
+        prima = await pagamenti.stato(db)
+        giro = await pagamenti.applica_pagamenti_dichiarati(db, solo_pendenti=True)
+        dopo = await pagamenti.stato(db)
+        return prima, giro, dopo
+
+    prima, giro, dopo = asyncio.run(scenario())
+    assert prima["esiti_orfani"]["orfani"] == 1
+    assert prima["esiti_orfani"]["per_stato"] == {"gia_pagata": 1}
+    assert "ritirati" not in prima["esiti_orfani"]           # sola lettura
+    assert giro["esiti_ritirati"]["per_stato"] == {"gia_pagata": 1}
+    riga = _esito(db, "2/838")
+    assert riga["pagamento_applicato"]["stato"] == "fattura_non_ancora_arrivata"
+    assert riga["pagamento_applicato_storico"][0]["stato"] == "gia_pagata"
+    assert dopo["esiti_orfani"]["orfani"] == 0
+
+
+def test_riga_prima_nota_stornata_toglie_la_prova_all_esito_registrata(db):
+    """Fattura ancora in archivio ma la riga di Prima Nota che l'esito cita
+    non e' piu' attiva: l'esito `registrata` non e' piu' vero."""
+    async def scenario():
+        await _prepara(db)
+        await report_ae.importa_report_fatture_ricevute(db, _xlsx(RIGHE), "r.xlsx")
+        await pagamenti.applica_pagamenti_dichiarati(db)
+        await db["prima_nota_cassa"].update_one(
+            {"id": "pn-ufficio-1"}, {"$set": {"status": "deleted"}})
+        return await pagamenti.ritira_esiti_orfani(db, dry_run=False)
+
+    esito = asyncio.run(scenario())
+    assert esito["orfani"] == 1 and esito["ritirati"] == 1
+    assert esito["per_motivo"] == {"prima_nota_assente": 1}
+    riga = _esito(db, "2/838")
+    assert riga["pagamento_applicato"]["stato"] == "fattura_non_ancora_arrivata"
+    assert riga["pagamento_applicato"]["esito_ritirato"] == "registrata"
+    assert riga["pagamento_applicato"]["motivo"].startswith("esito ritirato: ")
+    assert "pn-ufficio-1" in riga["pagamento_applicato_storico"][0]["motivo_ritiro"]
+
+
+def test_l_arrivo_dell_xml_ritira_l_esito_orfano_senza_aspettare_il_giro(db):
+    """La fattura rientra prima che il giro periodico sia passato: il ritiro
+    avviene all'arrivo e il pagamento dichiarato si applica subito."""
+    async def scenario():
+        await _prepara(db)
+        await report_ae.importa_report_fatture_ricevute(db, _xlsx(RIGHE), "r.xlsx")
+        await pagamenti.applica_pagamenti_dichiarati(db)
+        await db["invoices"].delete_one({"id": "f-siro-cassa"})
+        await db["prima_nota_cassa"].delete_one({"id": "pn-ufficio-1"})
+        nuova = _fattura("f-siro-cassa-bis", "2/838", SIRO, "SIRO S.R.L.", "2026-02-10", 145.09)
+        await db["invoices"].insert_one(dict(nuova))
+        esito = await pagamenti.applica_per_fattura_arrivata(db, nuova)
+        return esito, await db["prima_nota_cassa"].find_one(
+            {"fattura_id": "f-siro-cassa-bis", "status": {"$nin": ["deleted", "archived"]}})
+
+    esito, riga_pn = asyncio.run(scenario())
+    assert esito["applicate"] == 1
+    assert riga_pn is not None and riga_pn["importo"] == 145.09
+    riga = _esito(db, "2/838")
+    assert riga["pagamento_applicato"]["stato"] == "registrata"
+    assert riga["pagamento_applicato"]["prima_nota_id"] == riga_pn["id"]
+    assert riga["invoice_id"] == "f-siro-cassa-bis"
+    assert [s["stato"] for s in riga["pagamento_applicato_storico"]] == ["registrata"]
+    # Le altre righe definitive dello stesso fornitore, con la prova, non si toccano.
+    assert _esito(db, "2/1485")["pagamento_applicato"]["stato"] == "registrata"
+    assert "pagamento_applicato_storico" not in _esito(db, "2/1485")
+
+
 def test_la_cassa_d_ufficio_non_prova_un_pagamento():
     async def scenario():
         db = ClientArchivioMemoria()["test_cassa_ufficio"]
