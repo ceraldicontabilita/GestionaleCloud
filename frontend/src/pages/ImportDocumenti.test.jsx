@@ -348,3 +348,50 @@ describe('statoArchivio', () => {
       .toBe('Già in archivio');
   });
 });
+
+describe('Import documenti - anteprima scaduta', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('a token scaduto rifa l anteprima e riprova una volta sola', async () => {
+    let conferme = 0;
+    api.post.mockImplementation(url => {
+      if (url.endsWith('/preview')) {
+        return Promise.resolve({ data: {
+          success: true, preview_only: true, tipo_rilevato: 'estratto_conto',
+          confirmation_token: 'token-fresco', blocking_errors: [], duplicate: false,
+          file: { sha256: 'a'.repeat(64) }, parsed: {}, validation: {},
+        } });
+      }
+      conferme += 1;
+      if (conferme === 1) {
+        return Promise.reject({ response: { status: 428, data: {
+          detail: 'Anteprima obbligatoria mancante, scaduta o riferita a un file diverso.' } } });
+      }
+      return Promise.resolve({ data: {
+        success: true, tipo_rilevato: 'estratto_conto', status: 'completed',
+        result: { success: true, imported: 17, message: 'Estratto BNL registrato: 17 righe' },
+      } });
+    });
+    render(<ImportDocumenti />);
+
+    const pdf = new File(['%PDF-'], '2022-Q1 Estratto BNL 1-2022 (gen-mar) - cc 3192.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [pdf] } });
+    expect(await screen.findByText('1 file in coda')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('upload-btn'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByTestId('upload-btn'));
+
+    // conferma (428) → nuova anteprima → conferma riuscita
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(4));
+    expect(api.post.mock.calls.map(c => c[0])).toEqual([
+      '/api/documenti/upload-auto/preview',
+      '/api/documenti/upload-auto/queue',
+      '/api/documenti/upload-auto/preview',
+      '/api/documenti/upload-auto/queue',
+    ]);
+    expect(api.post.mock.calls[3][2].headers['X-Document-Preview-Token']).toBe('token-fresco');
+    expect(screen.queryByText(/Anteprima obbligatoria/)).not.toBeInTheDocument();
+  });
+});

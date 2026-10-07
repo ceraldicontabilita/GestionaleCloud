@@ -20,7 +20,12 @@ from app.services.document_hash_lookup import find_one_by_hashes
 
 
 PARSER_VERSION = "document-import-preview-v1"
-TOKEN_TTL_SECONDS = 30 * 60
+# Il token lega la conferma a cio' che il titolare ha visto in anteprima.
+# Due ore: con 30 minuti un lotto di estratti conto PDF (anteprima lenta,
+# poi lettura dell'esito) scadeva prima della conferma e tutti i file
+# tornavano «anteprima scaduta» (07/10/2026, nove estratti BNL). Il
+# frontend, a token scaduto, rifa' da solo l'anteprima e riprova una volta.
+TOKEN_TTL_SECONDS = 2 * 60 * 60
 
 
 def create_confirmation_token(sha256: str, document_type: str) -> str:

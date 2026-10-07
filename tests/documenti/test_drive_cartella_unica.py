@@ -438,6 +438,16 @@ def test_gli_estratti_conto_passano_davanti_a_buste_xml_e_pdf():
     ]
 
 
+def test_gli_estratti_bnl_del_conto_storico_passano_davanti_come_gli_altri():
+    coda = [
+        {"name": "IT_2026.xml", "createdTime": "2026-09-26T00:00:00Z"},
+        {"name": "2022-Q1 Estratto BNL 1-2022 (gen-mar) - cc 3192.pdf"},
+        {"name": "LUL_2026_08.pdf"},
+    ]
+    assert [f["name"] for f in cu.ordina_coda(coda)][0] == (
+        "2022-Q1 Estratto BNL 1-2022 (gen-mar) - cc 3192.pdf")
+
+
 def test_fra_gli_xml_vince_la_data_del_file_non_quella_di_caricamento():
     """07/10/2026: il vecchio archivio caricato in blocco il 29/09 aveva
     createdTime piu' recente delle fatture 2026 caricate il 19-26/09, e il

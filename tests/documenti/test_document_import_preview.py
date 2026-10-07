@@ -91,3 +91,20 @@ def test_nome_cedolino_vale_solo_per_i_pdf():
     from app.routers.documenti import detect_document_type
 
     assert detect_document_type("Indice_Cedolini_Gestionale.xlsx", b"PK\x03\x04") != "cedolino"
+
+
+def test_il_token_di_conferma_vale_due_ore(monkeypatch):
+    """07/10/2026: nove estratti BNL confermati dopo piu' di 30 minuti
+    dall'anteprima tornavano tutti «anteprima scaduta»."""
+    import time as _time
+    from app.services import document_import_preview as dip
+
+    adesso = 1_800_000_000
+    monkeypatch.setattr(dip.time, "time", lambda: adesso)
+    token = dip.create_confirmation_token("a" * 64, "estratto_conto")
+    monkeypatch.setattr(dip.time, "time", lambda: adesso + 90 * 60)
+    assert dip.verify_confirmation_token(token, "a" * 64, "estratto_conto")
+    assert not dip.verify_confirmation_token(token, "b" * 64, "estratto_conto")
+    monkeypatch.setattr(dip.time, "time", lambda: adesso + 3 * 60 * 60)
+    assert not dip.verify_confirmation_token(token, "a" * 64, "estratto_conto")
+    del _time

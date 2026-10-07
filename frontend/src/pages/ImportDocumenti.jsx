@@ -240,6 +240,28 @@ export default function ImportDocumenti() {
     setUploading(false);
   };
 
+  // L'anteprima vale due ore: se la conferma arriva dopo (HTTP 428, token
+  // scaduto) si rifa' l'anteprima dello stesso file e si riprova una volta,
+  // invece di marcare «errore» nove estratti conto buoni (07/10/2026).
+  const inviaConAnteprima = async (endpoint, formData, fileInfo) => {
+    const invia = token => api.post(endpoint, formData, {
+      headers: { 'Content-Type': 'multipart/form-data', 'X-Document-Preview-Token': token },
+    });
+    try {
+      return await invia(fileInfo.previewToken);
+    } catch (e) {
+      if (e.response?.status !== 428) throw e;
+      const anteprima = new FormData();
+      anteprima.append('file', fileInfo.file);
+      const res = await api.post('/api/documenti/upload-auto/preview', anteprima, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const nuovoToken = res.data?.confirmation_token;
+      if (!nuovoToken || (res.data?.blocking_errors || []).length > 0) throw e;
+      return await invia(nuovoToken);
+    }
+  };
+
   // Upload automatico - il backend rileva tutto
   const handleUpload = async () => {
     if (files.length === 0) return;
@@ -271,12 +293,7 @@ export default function ImportDocumenti() {
         const endpoint = usaCodaPos || usaCodaLunga
           ? '/api/documenti/upload-auto/queue'
           : '/api/documenti/upload-auto';
-        const res = await api.post(endpoint, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            'X-Document-Preview-Token': fileInfo.previewToken,
-          },
-        });
+        const res = await inviaConAnteprima(endpoint, formData, fileInfo);
 
         let importData = res.data || {};
         if (usaCodaLunga && importData.job_id) {
