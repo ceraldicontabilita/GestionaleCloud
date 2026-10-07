@@ -159,11 +159,79 @@ class ScritturaNonValida(ValueError):
     pass
 
 
+# ---------------------------------------------------------------------------
+# Denaro: SOLO Decimal (CLAUDE.md §12). I tre helper qui sotto sono l'unico
+# punto di contatto fra i documenti (JSON/PostgREST, che portano numeri) e
+# l'aritmetica del motore. Ogni somma, differenza, confronto o arrotondamento
+# intermedio passa da ``_decimale``/``_cents``; ``_euro`` e' l'UNICA conversione
+# Decimal -> float, da usare soltanto al momento di serializzare un campo.
+# ---------------------------------------------------------------------------
+_CENTESIMO = Decimal("0.01")
+_ZERO = Decimal("0.00")
+
+
+def _decimale(valore: Any) -> Optional[Decimal]:
+    """Importo al centesimo (ROUND_HALF_UP) come Decimal.
+
+    ``None`` e stringa vuota sono DATO MANCANTE e tornano ``None``: non
+    diventano mai uno zero. Un valore non numerico e' un errore di dato e
+    solleva ``ScritturaNonValida`` (un ``ValueError``, come il vecchio
+    ``float(...)``). Il passaggio da ``str`` evita di ereditare il rumore
+    binario di un float gia' in memoria (0.1 + 0.2 -> 0.30, non 0.30000000004).
+    """
+    if valore is None or (isinstance(valore, str) and not valore.strip()):
+        return None
+    if isinstance(valore, bool):
+        raise ScritturaNonValida(f"importo non numerico: {valore!r}")
+    try:
+        return Decimal(str(valore).strip()).quantize(_CENTESIMO, rounding=ROUND_HALF_UP)
+    except (ArithmeticError, ValueError) as exc:
+        raise ScritturaNonValida(f"importo non numerico: {valore!r}") from exc
+
+
+def _decimale_o_zero(valore: Any) -> Decimal:
+    """Come ``_decimale`` ma per gli ACCUMULI (somme di componenti), dove un
+    componente assente contribuisce esplicitamente zero. Non usarlo per un
+    importo che rappresenta un fatto sconosciuto."""
+    dec = _decimale(valore)
+    return _ZERO if dec is None else dec
+
+
+def _cents(valore: Any) -> int:
+    """Importo in centesimi interi, via Decimal: mai un confronto fra float.
+
+    Mantiene il contratto storico: dato mancante o non numerico -> 0
+    centesimi (i chiamanti confrontano gruppi letti dal database e un
+    rifiuto qui farebbe saltare l'intero riesame)."""
+    try:
+        dec = _decimale(valore)
+    except ScritturaNonValida:
+        return 0
+    return 0 if dec is None else int(dec.scaleb(2))
+
+
+def _euro(valore: Optional[Decimal]) -> Optional[float]:
+    """UNICA conversione Decimal -> float, SOLO per serializzare un campo
+    persistito o restituito via JSON (``importo`` resta un numero a 2
+    decimali per PostgREST e per il resto del sistema). Mai usarla per
+    calcolare: il risultato non si somma, non si confronta, non si arrotonda.
+    ``None`` resta ``None``: un dato mancante non si serializza come zero."""
+    if valore is None:
+        return None
+    return float(valore.quantize(_CENTESIMO, rounding=ROUND_HALF_UP))
+
+
+def _euro_da_cents(cents: int) -> float:
+    """Serializza centesimi interi come numero a 2 decimali (via ``_euro``)."""
+    return _euro(Decimal(int(cents)).scaleb(-2))
+
+
 def _valida(mov: Dict[str, Any], richiedi_categoria: bool = True) -> None:
     data = str(mov.get("data") or "")
     if len(data) < 10 or data[4] != "-":
         raise ScritturaNonValida(f"data non valida: {data!r}")
-    if float(mov.get("importo") or 0) <= 0:
+    importo = _decimale(mov.get("importo"))
+    if importo is None or importo <= _ZERO:
         raise ScritturaNonValida(f"importo non positivo: {mov.get('importo')!r}")
     if mov.get("tipo") not in ("entrata", "uscita"):
         raise ScritturaNonValida(f"tipo non valido: {mov.get('tipo')!r}")
@@ -192,7 +260,9 @@ def _prepara_documento(
     _valida(mov, richiedi_categoria)
     doc = dict(mov)
     doc.setdefault("id", str(uuid.uuid4()))
-    doc["importo"] = round(float(doc["importo"]), 2)
+    # Gia' validato > 0 da ``_valida``: qui si normalizza al centesimo e si
+    # serializza (unico punto Decimal -> float del documento).
+    doc["importo"] = _euro(_decimale(doc["importo"]))
     doc.setdefault("amount", doc["importo"])
     doc.setdefault("date", doc["data"])
     doc.setdefault("type", doc["tipo"])
@@ -605,7 +675,7 @@ STATO_CONFERMATO = "confermato"
 STATO_DIFFERENZA = "differenza_da_verificare"
 
 
-def valuta_evidenza(precedente: Optional[Dict[str, Any]], importo: float,
+def valuta_evidenza(precedente: Optional[Dict[str, Any]], importo: Any,
                     fonte: str) -> Dict[str, Any]:
     """Confronta la nuova evidenza con quella gia' registrata.
 
@@ -613,52 +683,58 @@ def valuta_evidenza(precedente: Optional[Dict[str, Any]], importo: float,
     i valori visti per fonte. Il valore precedente non viene mai perso: se le
     due evidenze divergono resta consultabile accanto alla nuova, e la
     giornata si dichiara da verificare invece di far sparire il disaccordo.
+
+    ``importo`` puo' arrivare come float, str o Decimal: i confronti e la
+    differenza sono calcolati in Decimal; i valori restituiti sono numeri a
+    2 decimali pronti per il documento (``_euro``).
     """
     fonte = str(fonte or FONTE_MANUALE).strip().lower()
-    importo = round(float(importo), 2)
+    importo_dec = _decimale(importo)
+    if importo_dec is None:
+        raise ScritturaNonValida("importo dell'evidenza POS mancante")
     valori = dict((precedente or {}).get("valori_per_fonte") or {})
     # Il documento precedente puo' essere anteriore a questa tracciatura:
     # senza questo innesto il valore gia' registrato andrebbe perso proprio
     # nel caso che conta, cioe' quando le due evidenze non coincidono.
     fonte_gia_nota = str((precedente or {}).get("fonte_dato") or "").strip().lower()
     if fonte_gia_nota and fonte_gia_nota not in valori:
-        precedente_importo = (precedente or {}).get("importo")
+        precedente_importo = _decimale((precedente or {}).get("importo"))
         if precedente_importo is not None:
-            valori[fonte_gia_nota] = round(float(precedente_importo), 2)
-    valori[fonte] = importo
+            valori[fonte_gia_nota] = _euro(precedente_importo)
+    valori[fonte] = _euro(importo_dec)
 
     fonte_prec = str((precedente or {}).get("fonte_dato") or "").strip().lower()
-    importo_prec = (precedente or {}).get("importo")
+    importo_prec = _decimale((precedente or {}).get("importo"))
     if precedente is None or importo_prec is None or not fonte_prec:
         stato = (STATO_PROVVISORIO if fonte == FONTE_MANUALE
                  else STATO_CONFERMATO)
-        return {"importo": importo, "fonte_dato": fonte, "stato_dato": stato,
-                "valori_per_fonte": valori, "differenza": None}
+        return {"importo": _euro(importo_dec), "fonte_dato": fonte,
+                "stato_dato": stato, "valori_per_fonte": valori,
+                "differenza": None}
 
-    importo_prec = round(float(importo_prec), 2)
-    differenza = round(importo - importo_prec, 2)
-    if fonte == fonte_prec or abs(differenza) <= 0.01:
+    differenza = importo_dec - importo_prec
+    if fonte == fonte_prec or abs(differenza) <= _CENTESIMO:
         # Stessa fonte che si corregge, oppure evidenza che conferma.
         stato = (STATO_PROVVISORIO if fonte == FONTE_MANUALE == fonte_prec
                  else STATO_CONFERMATO)
-        vincente = importo if fonte == fonte_prec else max(
-            (importo, fonte), (importo_prec, fonte_prec),
+        vincente = importo_dec if fonte == fonte_prec else max(
+            (importo_dec, fonte), (importo_prec, fonte_prec),
             key=lambda v: PRIORITA_FONTE.get(v[1], 0))[0]
-        return {"importo": vincente, "fonte_dato": fonte,
+        return {"importo": _euro(vincente), "fonte_dato": fonte,
                 "stato_dato": stato, "valori_per_fonte": valori,
-                "differenza": 0.0 if fonte != fonte_prec else None}
+                "differenza": _euro(_ZERO) if fonte != fonte_prec else None}
 
     # Fonti diverse con importi diversi: vince la piu' attendibile, ma il
     # disaccordo resta scritto e la giornata va verificata a mano.
     piu_attendibile = max(
-        (importo, fonte), (importo_prec, fonte_prec),
+        (importo_dec, fonte), (importo_prec, fonte_prec),
         key=lambda v: PRIORITA_FONTE.get(v[1], 0))
     return {
-        "importo": piu_attendibile[0],
+        "importo": _euro(piu_attendibile[0]),
         "fonte_dato": piu_attendibile[1],
         "stato_dato": STATO_DIFFERENZA,
         "valori_per_fonte": valori,
-        "differenza": differenza,
+        "differenza": _euro(differenza),
     }
 
 
@@ -681,7 +757,9 @@ async def pos_reale_del_giorno(db, data: str) -> Dict[str, Any]:
     quel caso ``totale_pos_reale`` e' None e la giornata resta in attesa,
     perche' un dato mancante non e' uno zero.
     """
-    per_circuito: Dict[str, float] = {}
+    # Accumuli in Decimal: una chiusura registrata senza importo contribuisce
+    # zero alla SOMMA del circuito (e' un componente, non un fatto ignoto).
+    per_circuito: Dict[str, Decimal] = {}
     trovata = False
     try:
         righe = await _leggi_tutti(db["chiusure_pos_manuali"].find(
@@ -700,14 +778,16 @@ async def pos_reale_del_giorno(db, data: str) -> Dict[str, Any]:
             override = next((c for c in reversed(componenti)
                              if c.get("source") == "inserimento_manuale_terminale"), None)
             if override is not None:
-                valore = override.get("importo")
-                parziale = float(valore if valore is not None
-                                 else override.get("totale") or 0)
+                valore = _decimale(override.get("importo"))
+                parziale = (valore if valore is not None
+                            else _decimale_o_zero(override.get("totale")))
             else:
-                parziale = sum(float(c.get("importo") or c.get("totale") or 0)
-                               for c in componenti)
-            per_circuito[circuito] = round(
-                per_circuito.get(circuito, 0.0) + parziale, 2)
+                parziale = sum(
+                    (_decimale(c.get("importo")) or _decimale_o_zero(c.get("totale"))
+                     for c in componenti),
+                    _ZERO,
+                )
+            per_circuito[circuito] = per_circuito.get(circuito, _ZERO) + parziale
         if not trovata:
             # Chiusure importate in prima_nota_banca con source
             # import_manuale_pos (vecchio flusso pos.xlsx). E' comunque una
@@ -716,25 +796,27 @@ async def pos_reale_del_giorno(db, data: str) -> Dict[str, Any]:
                     {"data": data, "source": "import_manuale_pos"},
                     {"_id": 0, "importo": 1})):
                 trovata = True
-                per_circuito[GESTORE_POS_DEFAULT] = round(
-                    per_circuito.get(GESTORE_POS_DEFAULT, 0.0)
-                    + float(c.get("importo") or 0), 2)
+                per_circuito[GESTORE_POS_DEFAULT] = (
+                    per_circuito.get(GESTORE_POS_DEFAULT, _ZERO)
+                    + _decimale_o_zero(c.get("importo")))
     except AttributeError:
         # backend/fake senza le collezioni delle chiusure
         return {"per_circuito": {}, "totale_pos_reale": None,
-                "disponibile": False, "nexi": None, "sumup": None, "altri": 0.0}
+                "disponibile": False, "nexi": None, "sumup": None,
+                "altri": _euro(_ZERO)}
 
     noti = set(conti_pos.circuiti_attivi())
+    # Serializzazione (numeri a 2 decimali): da qui in giu' niente aritmetica.
     esito: Dict[str, Any] = {
-        "per_circuito": dict(per_circuito),
+        "per_circuito": {c: _euro(v) for c, v in per_circuito.items()},
         # Zero e' un valore valido: significa che quel terminale non ha
         # incassato. Solo l'assenza totale di fonti lascia il dato indefinito.
-        "totale_pos_reale": round(sum(per_circuito.values()), 2) if trovata else None,
+        "totale_pos_reale": _euro(sum(per_circuito.values(), _ZERO)) if trovata else None,
         "disponibile": trovata,
-        "altri": round(sum(v for c, v in per_circuito.items() if c not in noti), 2),
+        "altri": _euro(sum((v for c, v in per_circuito.items() if c not in noti), _ZERO)),
     }
     for circuito in noti:
-        esito[circuito] = per_circuito.get(circuito)
+        esito[circuito] = _euro(per_circuito.get(circuito))
     return esito
 
 
@@ -750,15 +832,6 @@ def e_chiusura_xml(corr_doc: Dict[str, Any]) -> bool:
         return True
     nome_file = str(corr_doc.get("filename") or "").strip().lower()
     return bool(corr_doc.get("content_hash") and nome_file.endswith(".xml"))
-
-
-def _cents(valore: Any) -> int:
-    """Importo in centesimi, via Decimal: mai un confronto fra float."""
-    try:
-        return int((Decimal(str(valore if valore is not None else 0))
-                    .quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) * 100)
-    except (ArithmeticError, ValueError):
-        return 0
 
 
 async def crediti_pos_da_xml_del_giorno(db, data: str) -> List[Dict[str, Any]]:
@@ -792,11 +865,11 @@ async def _sostituisci_credito_xml(
         return None
     cents_xml = sum(_cents(r.get("importo")) for r in righe)
     cents_terminale = _cents(totale_terminale)
-    differenza = (cents_terminale - cents_xml) / 100
+    differenza = _euro_da_cents(cents_terminale - cents_xml)
     esito = {
-        "importo_xml": cents_xml / 100,
-        "importo_terminale": cents_terminale / 100,
-        "differenza": round(differenza, 2),
+        "importo_xml": _euro_da_cents(cents_xml),
+        "importo_terminale": _euro_da_cents(cents_terminale),
+        "differenza": differenza,
         "righe": [r.get("id") for r in righe],
     }
     if cents_xml == cents_terminale:
@@ -825,8 +898,8 @@ async def _sostituisci_credito_xml(
                 {"id": riga.get("id")},
                 {"$set": {
                     "stato_credito_xml": CREDITO_XML_DIFFERENZA,
-                    "differenza_terminale": round(differenza, 2),
-                    "importo_terminale": cents_terminale / 100,
+                    "differenza_terminale": differenza,
+                    "importo_terminale": _euro_da_cents(cents_terminale),
                     "updated_at": now,
                 }},
             )
@@ -905,11 +978,10 @@ async def registra_chiusura_pos_reale(
         datetime.strptime(data, "%Y-%m-%d")
     except (TypeError, ValueError) as exc:
         raise ScritturaNonValida(f"data non valida: {data!r}") from exc
-    try:
-        importo = round(float(importo), 2)
-    except (TypeError, ValueError) as exc:
-        raise ScritturaNonValida(f"importo non numerico: {importo!r}") from exc
-    if importo < 0:
+    importo_dec = _decimale(importo)
+    if importo_dec is None:
+        raise ScritturaNonValida(f"importo non numerico: {importo!r}")
+    if importo_dec < _ZERO:
         raise ScritturaNonValida("l'importo POS reale non puo' essere negativo")
 
     actor = actor or {}
@@ -929,15 +1001,18 @@ async def registra_chiusura_pos_reale(
     )
     # L'evidenza nuova non sovrascrive mai in silenzio quella gia' registrata:
     # conferma se coincide, segnala se no, e conserva entrambi i valori.
-    evidenza = valuta_evidenza(precedente_doc, importo, fonte)
+    evidenza = valuta_evidenza(precedente_doc, importo_dec, fonte)
+    # ``importo`` e' il valore serializzato (2 decimali) che finisce nei
+    # documenti; ogni confronto/differenza sotto passa da ``_cents``.
     importo = evidenza["importo"]
     importo_precedente = None
     if precedente_doc is not None:
-        importo_precedente = round(float(
-            precedente_doc.get("importo")
-            if precedente_doc.get("importo") is not None
-            else precedente_doc.get("totale") or 0
-        ), 2)
+        precedente_dec = _decimale(precedente_doc.get("importo"))
+        if precedente_dec is None:
+            # Chiusura storica senza ``importo``: il suo ``totale`` e' il dato;
+            # se manca anche quello, il precedente era registrato a zero.
+            precedente_dec = _decimale_o_zero(precedente_doc.get("totale"))
+        importo_precedente = _euro(precedente_dec)
 
     chiusura_id = (precedente_doc or {}).get("id") or str(uuid.uuid4())
     metadati_fonte = metadati_fonte_pos(evidenza["fonte_dato"], gestore)
@@ -974,8 +1049,10 @@ async def registra_chiusura_pos_reale(
         totale_giorno = importo
 
     action = "created" if importo_precedente is None else (
-        "noop" if abs(importo_precedente - importo) < 0.01 else "updated"
+        "noop" if _cents(importo_precedente) == _cents(importo) else "updated"
     )
+    # Delta per l'audit, in centesimi: un precedente assente e' "da zero".
+    delta_audit = _euro_da_cents(_cents(importo) - _cents(importo_precedente))
     if solo_evidenza:
         if action != "noop":
             try:
@@ -987,7 +1064,7 @@ async def registra_chiusura_pos_reale(
                     "action": action,
                     "importo_precedente": importo_precedente,
                     "importo_nuovo": importo,
-                    "delta": round(importo - (importo_precedente or 0), 2),
+                    "delta": delta_audit,
                     "user_id": user_id,
                     "user_email": user_email,
                     "user_name": user_name,
@@ -1083,7 +1160,7 @@ async def registra_chiusura_pos_reale(
     circuito = gestore.upper()
     # Zero archivia SOLO la coppia di questo circuito: se SumUp e' a zero ma
     # Nexi no, il trasferimento Nexi del giorno deve restare in piedi.
-    if importo == 0:
+    if _cents(importo) == 0:
         motivo = "chiusura_terminale_pos_zero"
         if cassa_mov:
             await db["prima_nota_cassa"].update_one(
@@ -1108,8 +1185,11 @@ async def registra_chiusura_pos_reale(
                           "deleted_at": now, "updated_at": now}},
             )
 
-        accreditato = round(float((banca_mov or {}).get("accreditato_ec") or 0), 2)
-        quadrato = accreditato > 0 and abs(accreditato - importo) <= 0.01
+        # Accredito gia' provato dall'estratto conto (assente = nessuno).
+        cents_accreditato = _cents((banca_mov or {}).get("accreditato_ec"))
+        # Tolleranza storica: il solo arrotondamento di un centesimo.
+        quadrato = (cents_accreditato > 0
+                    and abs(cents_accreditato - _cents(importo)) <= 1)
         # Non e' denaro in banca: e' un credito verso il gestore, con un conto
         # e un saldo propri. Diventera' liquidita' solo quando il gestore
         # versera' davvero — su BPM per Nexi, sulla Mastercard per SumUp.
@@ -1236,7 +1316,7 @@ async def registra_chiusura_pos_reale(
                 "action": action,
                 "importo_precedente": importo_precedente,
                 "importo_nuovo": importo,
-                "delta": round(importo - (importo_precedente or 0), 2),
+                "delta": delta_audit,
                 "user_id": user_id,
                 "user_email": user_email,
                 "user_name": user_name,
@@ -1261,13 +1341,13 @@ async def registra_chiusura_pos_reale(
         "chiusura_id": chiusura_id,
         "prima_nota_cassa_id": cassa_id,
         "prima_nota_banca_id": banca_id,
-        "trasferimento_id": trasferimento_id if totale_giorno > 0 else None,
+        "trasferimento_id": trasferimento_id if _cents(totale_giorno) > 0 else None,
         "credito_xml": credito_xml,
     }
 
 
 async def _apri_credito_pos_da_xml(
-    db, corr_doc: Dict[str, Any], data: str, elettronico: float,
+    db, corr_doc: Dict[str, Any], data: str, elettronico: Decimal,
     anno: int, mese: int,
 ) -> tuple:
     """Senza chiusura del terminale l'XML apre il credito verso il gestore.
@@ -1293,7 +1373,7 @@ async def _apri_credito_pos_da_xml(
     return await _scrivi_se_assente(db, "banca", query, {
         "corrispettivo_id": corr_id,
         **_campo_chiave(chiave_idempotenza_corrispettivo(corr_id, "banca_credito", circuito)),
-        "data": data, "tipo": "entrata", "importo": _cents(elettronico) / 100,
+        "data": data, "tipo": "entrata", "importo": _euro(_decimale(elettronico)),
         "descrizione": (f"Credito POS da XML — {conti_pos.data_italiana(data)} "
                         f"(senza chiusura terminale)"),
         "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
@@ -1337,12 +1417,16 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     # Le importazioni storiche non usano tutte gli stessi nomi di campo.  La
     # presenza esplicita di una quota a zero e' comunque informazione: non va
     # scambiata per un RT senza dettaglio e trasformata nel totale in Cassa.
-    def _quota(*campi: str) -> tuple[float, bool]:
+    # Tutto in Decimal (CLAUDE.md §12); i campi persistiti si serializzano
+    # con ``_euro`` solo al momento della scrittura.
+    def _quota(*campi: str) -> tuple[Decimal, bool]:
         for campo in campi:
-            valore = corr_doc.get(campo)
-            if valore not in (None, ""):
-                return float(valore or 0), True
-        return 0.0, False
+            valore = _decimale(corr_doc.get(campo))
+            if valore is not None:
+                return valore, True
+        # Quota non dichiarata da nessun campo: contribuisce zero al totale
+        # ricostruito, ma ``dichiarata=False`` dice che il dato manca.
+        return _ZERO, False
 
     contanti, contanti_dichiarati = _quota(
         "pagato_contanti", "contanti", "importo_contanti"
@@ -1350,10 +1434,16 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     elettronico, elettronico_dichiarato = _quota(
         "pagato_elettronico", "elettronico", "pagato_pos", "importo_pos"
     )
-    totale = float(corr_doc.get("totale") or corr_doc.get("totale_complessivo")
-                   or corr_doc.get("importo") or corr_doc.get("totale_giornaliero")
-                   or (contanti + elettronico) or 0)
-    if not contanti_dichiarati and not elettronico_dichiarato and totale > 0:
+    totale = next(
+        (valore for valore in (
+            _decimale(corr_doc.get("totale")),
+            _decimale(corr_doc.get("totale_complessivo")),
+            _decimale(corr_doc.get("importo")),
+            _decimale(corr_doc.get("totale_giornaliero")),
+        ) if valore),  # ``or`` storico: uno zero non e' un totale
+        contanti + elettronico,
+    )
+    if not contanti_dichiarati and not elettronico_dichiarato and totale > _ZERO:
         contanti = totale
 
     anno = int(data[:4]) if data[:4].isdigit() else datetime.now().year
@@ -1365,7 +1455,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         "prima_nota_cassa_uscita_pos_id": None,
         "prima_nota_banca_id": None,  # trasferimento speculare (se quota POS > 0)
     }
-    if not data or totale <= 0:
+    if not data or totale <= _ZERO:
         return esito
 
     # IDEMPOTENZA (stessa guardia storica, chiave data+matricola) — ERP-001
@@ -1376,7 +1466,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     # Un RT che dichiara contanti zero non genera una riga Cassa a zero.
     # La sua quota elettronica resta fiscale finche' non arriva la chiusura
     # reale del terminale, che viene trattata nel blocco POS seguente.
-    if contanti > 0:
+    if contanti > _ZERO:
         cassa_id, gia_esistente = await _scrivi_se_assente(
         db, "cassa",
         {
@@ -1402,16 +1492,18 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "corrispettivo_id": corr_doc.get("id"),
             **_campo_chiave(chiave_idempotenza_corrispettivo(
                 corr_doc.get("id"), "cassa_entrata")),
-            "data": data, "tipo": "entrata", "importo": round(contanti, 2),
+            "data": data, "tipo": "entrata", "importo": _euro(contanti),
             "descrizione": f"Corrispettivi contanti {data}",
             "categoria": "Corrispettivi", "source": "corrispettivo_import",
             "anno": anno, "mese": mese, "matricola_rt": matricola,
-            "imponibile": round(float(corr_doc.get("totale_imponibile") or 0), 2),
-            "iva": round(float(corr_doc.get("totale_iva") or 0), 2),
-            "contanti": round(contanti, 2), "elettronico": round(elettronico, 2),
-            "totale_corrispettivo": round(totale, 2),
-            "dettaglio": {"contanti": round(contanti, 2),
-                          "elettronico": round(elettronico, 2),
+            # Imponibile e IVA del documento RT: se il corrispettivo non li
+            # porta restano ``None`` (dato non disponibile), non uno zero.
+            "imponibile": _euro(_decimale(corr_doc.get("totale_imponibile"))),
+            "iva": _euro(_decimale(corr_doc.get("totale_iva"))),
+            "contanti": _euro(contanti), "elettronico": _euro(elettronico),
+            "totale_corrispettivo": _euro(totale),
+            "dettaglio": {"contanti": _euro(contanti),
+                          "elettronico": _euro(elettronico),
                           "matricola_rt": corr_doc.get("matricola_rt", ""),
                           "numero_documenti": corr_doc.get("numero_documenti", 0)},
         },
@@ -1438,7 +1530,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         # verso il gestore, senza circuito, marcato «senza chiusura
         # terminale». Solo per una chiusura del registratore con quota
         # elettronica dichiarata: mai per una riga storica o manuale.
-        if elettronico_dichiarato and elettronico > 0 and e_chiusura_xml(corr_doc):
+        if elettronico_dichiarato and elettronico > _ZERO and e_chiusura_xml(corr_doc):
             credito_id, gia = await _apri_credito_pos_da_xml(
                 db, corr_doc, data, elettronico, anno, mese)
             esito["prima_nota_banca_id"] = credito_id
@@ -1460,7 +1552,9 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     }
     scritti = {}
     for circuito, importo in sorted(reale["per_circuito"].items()):
-        if importo <= 0:
+        # ``importo`` e' gia' un numero a 2 decimali serializzato da
+        # ``pos_reale_del_giorno``: si confronta in centesimi e si persiste.
+        if _cents(importo) <= 0:
             continue
         # Ogni circuito ha il SUO trasferimento: Nexi e SumUp non ne
         # condividono mai uno, perche' li accreditano conti diversi.
@@ -1573,7 +1667,9 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
     if not _e_accredito_pos_numia_con_giorno(descr):
         return False
     giorno_vendita = _giorno_operazione_pos(descr, data_acc)
-    importo = abs(float(mov_ec.get("importo") or 0))
+    # Un accredito senza importo nell'estratto non esiste come prova: zero
+    # esplicito nel gruppo (comportamento storico), in Decimal.
+    importo = abs(_decimale_o_zero(mov_ec.get("importo")))
 
     candidati = await attese_pos_numia_del_giorno(db, giorno_vendita)
     if len(candidati) != 1:
@@ -1592,7 +1688,7 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
                     "evidenza_senza_attesa" if not candidati else "attese_pos_ambigue"),
                 "dettagli_riconciliazione": {
                     "giorno_vendita": giorno_vendita,
-                    "importo_accreditato": importo,
+                    "importo_accreditato": _euro(importo),
                     "attese_candidate": len(candidati),
                 },
             }},
@@ -1611,19 +1707,24 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
         {"_id": 0, "id": 1, "importo": 1},
     ).to_list(len(estratto_conto_ids))
     importi_per_id = {
-        str(riga.get("id")): abs(float(riga.get("importo") or 0))
+        str(riga.get("id")): abs(_decimale_o_zero(riga.get("importo")))
         for riga in accrediti_collegati
         if riga.get("id")
     }
     # Utile anche nei test e negli import transazionali, dove la riga appena
     # passata potrebbe non essere ancora riletta dalla query.
     importi_per_id.setdefault(str(ec_id), importo)
-    accreditato = round(sum(importi_per_id.values()), 2)
-    atteso = float(trasferimento.get("importo") or 0)
+    accreditato_dec = sum(importi_per_id.values(), _ZERO)
+    # Credito atteso: un trasferimento senza importo e' un'attesa a zero.
+    atteso_dec = _decimale_o_zero(trasferimento.get("importo"))
     # In contabilita una differenza non e una riconciliazione. La vecchia
     # tolleranza del 2% (minimo 5 euro) produceva falsi positivi anche per
     # scarti importanti. Ammettiamo solo l'arrotondamento di un centesimo.
-    riconciliato = abs(accreditato - atteso) <= 0.01
+    riconciliato = abs(accreditato_dec - atteso_dec) <= _CENTESIMO
+    # Da qui: solo valori serializzati (2 decimali) per documenti e dettagli.
+    accreditato = _euro(accreditato_dec)
+    atteso = _euro(atteso_dec)
+    differenza = _euro(accreditato_dec - atteso_dec)
     await db["prima_nota_banca"].update_one(
         {"id": trasferimento["id"]},
         {"$set": {"accreditato_ec": accreditato,
@@ -1638,9 +1739,9 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
 
     dettagli = {"prima_nota_id": trasferimento["id"],
                 "giorno_vendita": giorno_vendita,
-                "importo_atteso": round(atteso, 2),
+                "importo_atteso": atteso,
                 "importo_accreditato": accreditato,
-                "differenza": round(accreditato - atteso, 2)}
+                "differenza": differenza}
     if riconciliato:
         await db["estratto_conto_movimenti"].update_many(
             {"id": {"$in": estratto_conto_ids}},
@@ -1710,14 +1811,16 @@ def raggruppa_accrediti_pos_per_giorno(
         descr = str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
         if not _e_accredito_pos_numia_con_giorno(descr):
             continue
-        importo = abs(float(mov.get("importo") or mov.get("amount") or 0))
-        if importo <= 0:
+        # ``importo`` o alias ``amount``; una riga senza importo non e' un
+        # accredito utilizzabile e viene scartata come lo zero.
+        importo = abs(_decimale(mov.get("importo")) or _decimale_o_zero(mov.get("amount")))
+        if importo <= _ZERO:
             continue
         giorno = _giorno_operazione_pos(descr, str(mov.get("data") or ""))
         chiave = (
             str(mov.get("data") or mov.get("data_contabile") or "")[:10],
             giorno,
-            int(round(importo * 100)),
+            _cents(importo),
             re.sub(r"[^a-z0-9]+", "", descr.lower()),
             re.sub(r"[^a-z0-9]+", "", str(mov.get("rapporto") or "").lower()),
         )
@@ -1731,13 +1834,14 @@ def raggruppa_accrediti_pos_per_giorno(
     for mov in unici.values():
         descr = str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
         giorno = _giorno_operazione_pos(descr, str(mov.get("data") or ""))
-        item = out.setdefault(giorno, {"totale": 0.0, "estratto_conto_ids": []})
-        item["totale"] += abs(float(mov.get("importo") or mov.get("amount") or 0))
+        item = out.setdefault(giorno, {"totale": _ZERO, "estratto_conto_ids": []})
+        item["totale"] += abs(_decimale(mov.get("importo")) or _decimale_o_zero(mov.get("amount")))
         mov_id = str(mov.get("id") or mov.get("_id") or "")
         if mov_id and mov_id not in item["estratto_conto_ids"]:
             item["estratto_conto_ids"].append(mov_id)
     for item in out.values():
-        item["totale"] = round(item["totale"], 2)
+        # Serializzazione finale: il totale esce come numero a 2 decimali.
+        item["totale"] = _euro(item["totale"])
         item["estratto_conto_ids"].sort()
     return out
 
@@ -1948,9 +2052,15 @@ async def _bonifica_accrediti_pos_numia_impl(
         ids_canonici = sorted(set(evidenza.get("estratto_conto_ids") or []))
         ids_tutti = sorted(set(ids_per_giorno.get(giorno) or []))
         ids_duplicati = sorted(set(ids_tutti) - set(ids_canonici))
-        accreditato = round(float(evidenza.get("totale") or 0), 2)
-        atteso = round(float((trasferimento or {}).get("importo") or 0), 2)
-        quadrato = bool(trasferimento) and abs(accreditato - atteso) <= 0.01
+        # Gruppo EC e credito atteso in Decimal; senza trasferimento l'atteso
+        # e' zero esplicito (serve solo al dettaglio, ``quadrato`` resta False).
+        accreditato_dec = _decimale_o_zero(evidenza.get("totale"))
+        atteso_dec = _decimale_o_zero((trasferimento or {}).get("importo"))
+        quadrato = bool(trasferimento) and abs(accreditato_dec - atteso_dec) <= _CENTESIMO
+        # Valori serializzati per dettagli e documenti.
+        accreditato = _euro(accreditato_dec)
+        atteso = _euro(atteso_dec)
+        differenza = _euro(accreditato_dec - atteso_dec)
 
         if trasferimento_ambiguo:
             giornate_trasferimento_ambiguo += 1
@@ -1967,7 +2077,7 @@ async def _bonifica_accrediti_pos_numia_impl(
             "giorno_vendita": giorno,
             "importo_atteso": atteso,
             "importo_accreditato": accreditato,
-            "differenza": round(accreditato - atteso, 2),
+            "differenza": differenza,
             "righe_ec": len(ids_canonici),
             "righe_ec_duplicate_escluse": len(ids_duplicati),
             "trasferimenti_candidati": len(candidati_trasferimento),
@@ -1989,7 +2099,7 @@ async def _bonifica_accrediti_pos_numia_impl(
             "giorno_vendita": giorno,
             "importo_atteso": atteso,
             "importo_accreditato": accreditato,
-            "differenza": round(accreditato - atteso, 2),
+            "differenza": differenza,
             "righe_ec": len(ids_canonici),
         }
         # Il trasferimento e tutte le prove EC della giornata cambiano stato

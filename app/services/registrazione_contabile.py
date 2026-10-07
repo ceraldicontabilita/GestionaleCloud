@@ -100,24 +100,33 @@ _C_IVA_DEBITO = ("02.03.01", "IVA a debito")
 # in `mapping_piano_conti.OPERATIVO_A_UFFICIALE`: qui non si apre un conto
 # nuovo, si usa quello che c'era.
 _C_CREDITI = ("01.02.01", "Crediti v/clienti")
-_ALIQUOTA_CORRISPETTIVI = 0.10  # ristorazione (parametro storico, invariato)
+_ALIQUOTA_CORRISPETTIVI = Decimal("0.10")  # ristorazione (parametro storico, invariato)
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _primo_importo(doc: Dict[str, Any], *chiavi: str) -> float:
-    """Primo importo presente (non None) tra le chiavi indicate, come float."""
+def _importo_dichiarato(doc: Dict[str, Any], *chiavi: str) -> Optional[Decimal]:
+    """Primo importo DICHIARATO (non None/vuoto e numerico) fra le chiavi, al
+    centesimo. ``None`` se nessuna chiave porta un valore: il dato manca."""
     for chiave in chiavi:
         valore = doc.get(chiave)
         if valore is None or valore == "":
             continue
         try:
-            return float(valore)
-        except (TypeError, ValueError):
+            return Decimal(str(valore).strip()).quantize(_CENTESIMO, rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError, TypeError):
             continue
-    return 0.0
+    return None
+
+
+def _primo_importo(doc: Dict[str, Any], *chiavi: str) -> Decimal:
+    """Primo importo presente fra le chiavi, in Decimal; ``0.00`` se nessuna
+    chiave lo dichiara. Serve alle COMPONENTI di una ripartizione (contanti,
+    POS, non riscosso), dove una quota assente contribuisce zero alla somma."""
+    valore = _importo_dichiarato(doc, *chiavi)
+    return Decimal("0.00") if valore is None else valore
 
 
 def _anno_da_data(data: Optional[str]) -> Optional[int]:
@@ -221,11 +230,25 @@ class ScritturaNonQuadrata(ValueError):
 
 
 def _decimale(valore: Any) -> Decimal:
-    """Un importo al centesimo, via testo: mai la rappresentazione binaria."""
-    try:
-        return Decimal(str(valore or 0)).quantize(_CENTESIMO, rounding=ROUND_HALF_UP)
-    except InvalidOperation:
+    """Un importo al centesimo, via testo: mai la rappresentazione binaria.
+
+    Un valore assente o vuoto vale ``0.00``: questo helper serve alle somme
+    di righe DARE/AVERE, dove una cella vuota e' zero per costruzione. Per un
+    importo che puo' essere SCONOSCIUTO usare ``_importo_dichiarato``."""
+    if valore is None or valore == "":
         return Decimal("0.00")
+    try:
+        return Decimal(str(valore).strip()).quantize(_CENTESIMO, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal("0.00")
+
+
+def _euro(valore: Decimal) -> float:
+    """UNICA conversione Decimal -> float del motore, SOLO per serializzare
+    un campo del documento (``dare``, ``avere``, ``totale_*``, ``importo_*``
+    restano numeri a 2 decimali per PostgREST e per i lettori esistenti).
+    Mai usarla per calcolare: il risultato non si somma e non si confronta."""
+    return float(Decimal(valore).quantize(_CENTESIMO, rounding=ROUND_HALF_UP))
 
 
 def totali_decimali(righe: list) -> "tuple[Decimal, Decimal]":
@@ -238,9 +261,9 @@ def totali_decimali(righe: list) -> "tuple[Decimal, Decimal]":
 
 def totali_righe(righe: list) -> "tuple[float, float]":
     """Totali DARE e AVERE sommati dalle RIGHE (non dai campi di testata,
-    che un chiamante potrebbe aver calcolato a parte)."""
+    che un chiamante potrebbe aver calcolato a parte), serializzati."""
     dare, avere = totali_decimali(righe)
-    return float(dare), float(avere)
+    return _euro(dare), _euro(avere)
 
 
 def differenza_ammessa(dare: Decimal, avere: Decimal) -> bool:
@@ -288,9 +311,9 @@ def riga_arrotondamento(righe: list, tipo: Any = None) -> Optional[Dict[str, Any
         raise ScritturaNonQuadrata(
             f"Scrittura {tipo or ''} non quadrata: DARE {dare:.2f} != AVERE {avere:.2f}".replace("  ", " "))
     if scarto > 0:
-        conto, importo_dare, importo_avere = _C_ARROTONDAMENTI_ATTIVI, 0.0, float(scarto)
+        conto, importo_dare, importo_avere = _C_ARROTONDAMENTI_ATTIVI, 0.0, _euro(scarto)
     else:
-        conto, importo_dare, importo_avere = _C_ARROTONDAMENTI_PASSIVI, float(-scarto), 0.0
+        conto, importo_dare, importo_avere = _C_ARROTONDAMENTI_PASSIVI, _euro(-scarto), 0.0
     return {
         "conto_codice": conto[0], "conto_nome": conto[1],
         "dare": importo_dare, "avere": importo_avere,
@@ -339,8 +362,8 @@ async def _scrivi_movimento(db, movimento: Dict[str, Any], saldi: list) -> Dict[
         if riga_extra is not None:
             movimento["righe"] = [*righe, riga_extra]
             dare, avere = totali_decimali(movimento["righe"])
-            movimento["totale_dare"] = float(dare)
-            movimento["totale_avere"] = float(avere)
+            movimento["totale_dare"] = _euro(dare)
+            movimento["totale_avere"] = _euro(avere)
             if riga_extra["dare"]:
                 saldi.append((riga_extra["conto_codice"], riga_extra["dare"], "dare"))
             else:
@@ -403,8 +426,9 @@ async def _righe_capitalizzazione_cespiti(
     valorizzata (mai silenziosa: vedi la segnalazione scritta dal chiamante)
     se il valore dei cespiti collegati supera l'imponibile disponibile.
     """
+    zero = Decimal("0.00")
     if not fattura_id:
-        return 0.0, [], None
+        return zero, [], None
     try:
         cespiti = await db["cespiti"].find(
             {"fattura_id": fattura_id},
@@ -414,28 +438,30 @@ async def _righe_capitalizzazione_cespiti(
         logger.exception(
             "Lettura cespiti per fattura %s fallita: nessuna capitalizzazione applicata", fattura_id,
         )
-        return 0.0, [], None
+        return zero, [], None
     if not cespiti:
-        return 0.0, [], None
+        return zero, [], None
 
     from app.routers.cespiti import conto_attivo_per_categoria_cespite
 
-    per_categoria: Dict[str, float] = {}
+    budget = _decimale(budget)
+    # Somma per categoria in Decimal: un cespite senza valore contribuisce zero.
+    per_categoria: Dict[str, Decimal] = {}
     descrizioni: Dict[str, str] = {}
     for c in cespiti:
         categoria = c.get("categoria") or "altro"
-        per_categoria[categoria] = round(per_categoria.get(categoria, 0.0) + float(c.get("valore_acquisto") or 0), 2)
+        per_categoria[categoria] = per_categoria.get(categoria, zero) + _decimale(c.get("valore_acquisto"))
         descrizioni.setdefault(categoria, c.get("descrizione") or categoria)
 
-    quota_totale = round(sum(per_categoria.values()), 2)
+    quota_totale = sum(per_categoria.values(), zero)
     anomalia = None
-    if quota_totale > round(budget, 2) + 0.01:
+    if quota_totale > budget + _CENTESIMO:
         anomalia = (
             f"cespiti collegati alla fattura {fattura_id} per {quota_totale:.2f} € "
             f"superano l'imponibile registrabile ({budget:.2f} €): dato incoerente, "
             "capitalizzazione limitata al costo disponibile — verificare a mano."
         )
-        fattore = (budget / quota_totale) if quota_totale else 0.0
+        fattore = (budget / quota_totale) if quota_totale else zero
         scalati = {k: v * fattore for k, v in per_categoria.items()}
         # Audit 19/09/2026: arrotondare ogni categoria in modo indipendente
         # puo' sbilanciare la somma di qualche centesimo rispetto al budget
@@ -445,23 +471,23 @@ async def _righe_capitalizzazione_cespiti(
         # somma torna esattamente al budget e la scrittura quadra Dare=Avere.
         ordine = sorted(scalati, key=lambda k: scalati[k], reverse=True)
         per_categoria = {}
-        residuo = round(budget, 2)
+        residuo = budget
         for chiave in ordine[1:]:
-            valore = round(scalati[chiave], 2)
+            valore = _decimale(scalati[chiave])
             per_categoria[chiave] = valore
-            residuo = round(residuo - valore, 2)
+            residuo = residuo - valore
         if ordine:
-            per_categoria[ordine[0]] = round(max(0.0, residuo), 2)
-        quota_totale = round(sum(per_categoria.values()), 2)
+            per_categoria[ordine[0]] = max(zero, residuo)
+        quota_totale = sum(per_categoria.values(), zero)
 
     righe = []
     for categoria, valore in per_categoria.items():
-        if valore <= 0:
+        if valore <= zero:
             continue
         conto = conto_attivo_per_categoria_cespite(categoria)
         righe.append({
             "conto_codice": conto["codice"], "conto_nome": conto["nome"],
-            "dare": valore, "avere": 0, "centro_costo": centro_costo,
+            "dare": _euro(valore), "avere": 0, "centro_costo": centro_costo,
             "descrizione": (
                 f"Cespite: {str(descrizioni.get(categoria, categoria))[:120]} "
                 "(capitalizzato, non a costo pieno)"
@@ -513,22 +539,31 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         if esistente:
             return {"stato": "gia_registrato", "movimento_id": esistente.get("id")}
 
-    # importi robusti a schemi diversi
-    importo_totale = float(fattura.get("total_amount") or fattura.get("importo_totale") or 0)
-    iva = float(fattura.get("total_tax") or fattura.get("iva") or fattura.get("totale_iva") or 0)
+    # Importi robusti a schemi diversi, tutti in Decimal (CLAUDE.md §12).
+    # L'``or`` storico resta: uno zero dichiarato cede il passo all'alias.
+    zero = Decimal("0.00")
+    importo_totale = (_importo_dichiarato(fattura, "total_amount")
+                      or _importo_dichiarato(fattura, "importo_totale") or zero)
+    iva = (_importo_dichiarato(fattura, "total_tax") or _importo_dichiarato(fattura, "iva")
+           or _importo_dichiarato(fattura, "totale_iva") or zero)
     iva_detraibile_raw = fattura.get("iva_detraibile")
-    if iva > 0 and iva_detraibile_raw is None:
+    if iva > zero and iva_detraibile_raw is None:
         return {
             "stato": "da_verificare",
             "motivo": "IVA detraibile non classificata",
         }
-    iva_detraibile = float(iva_detraibile_raw or 0)
-    iva_detraibile = round(max(0.0, min(iva, iva_detraibile)), 2)
-    iva_indetraibile = round(max(0.0, iva - iva_detraibile), 2)
-    imponibile = float(fattura.get("imponibile") or (importo_totale - iva) or 0)
-    if importo_totale <= 0:
+    # ``iva_detraibile`` None con IVA zero: non c'e' nulla da detrarre. Un
+    # valore presente ma non numerico non e' uno zero: resta da verificare.
+    iva_detraibile_dec = _importo_dichiarato({"v": iva_detraibile_raw}, "v")
+    if iva_detraibile_raw not in (None, "") and iva_detraibile_dec is None:
+        return {"stato": "da_verificare", "motivo": "IVA detraibile non numerica"}
+    iva_detraibile = max(zero, min(iva, iva_detraibile_dec or zero))
+    iva_indetraibile = max(zero, iva - iva_detraibile)
+    imponibile = (_importo_dichiarato(fattura, "imponibile")
+                  or (importo_totale - iva) or zero)
+    if importo_totale <= zero:
         importo_totale = imponibile + iva
-    if importo_totale <= 0:
+    if importo_totale <= zero:
         return {"stato": "saltato", "motivo": "importo nullo"}
 
     if conti is None:
@@ -546,7 +581,7 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         return {"stato": "da_verificare",
                 "motivo": "fattura senza data documento: anno di registrazione ignoto"}
 
-    costo_contabile = round(imponibile + iva_indetraibile, 2)
+    costo_contabile = imponibile + iva_indetraibile
     if is_nota_credito:
         # Audit 19/09/2026 (punto 4, guardia difensiva): una nota di credito
         # ricevuta non capitalizza mai un cespite, nemmeno se un record
@@ -554,12 +589,13 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         # fattura_id — riduce un costo già registrato, non ne crea uno nuovo
         # da immobilizzare. Non si chiama nemmeno `_righe_capitalizzazione_cespiti`:
         # zero cespiti è garantito per costruzione, non da un controllo a valle.
-        quota_cespiti, righe_cespiti, anomalia_cespiti = 0.0, [], None
+        quota_cespiti, righe_cespiti, anomalia_cespiti = zero, [], None
     else:
         quota_cespiti, righe_cespiti, anomalia_cespiti = await _righe_capitalizzazione_cespiti(
             db, fattura_id, costo_contabile, centro_costo,
         )
-    costo_residuo = round(max(0.0, costo_contabile - quota_cespiti), 2)
+    quota_cespiti = _decimale(quota_cespiti)
+    costo_residuo = max(zero, costo_contabile - quota_cespiti)
 
     # Lato della riga costo/IVA a credito: DARE per una fattura normale,
     # AVERE per una nota di credito (riduce il costo e l'IVA a credito già
@@ -572,10 +608,10 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     prefisso_nc = "Nota di credito: " if is_nota_credito else ""
 
     righe = []
-    if costo_residuo > 0.005:
+    if costo_residuo > zero:
         descrizione_costo = prefisso_nc + (
             ("storno costo acquisto" if is_nota_credito else "Costo acquisto")
-            if iva_indetraibile == 0
+            if iva_indetraibile == zero
             else (
                 f"storno costo acquisto (incl. IVA indetraibile {iva_indetraibile:.2f})"
                 if is_nota_credito
@@ -584,16 +620,16 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         ) + (" al netto della quota capitalizzata come cespite" if righe_cespiti else "")
         righe.append({
             "conto_codice": conti["costo"]["codice"], "conto_nome": conti["costo"]["nome"],
-            "dare": costo_residuo if lato_costo == "dare" else 0,
-            "avere": costo_residuo if lato_costo == "avere" else 0,
+            "dare": _euro(costo_residuo) if lato_costo == "dare" else 0,
+            "avere": _euro(costo_residuo) if lato_costo == "avere" else 0,
             "centro_costo": centro_costo,
             "descrizione": descrizione_costo,
         })
     righe.extend(righe_cespiti)
     righe.append({
         "conto_codice": conti["iva_credito"]["codice"], "conto_nome": conti["iva_credito"]["nome"],
-        "dare": iva_detraibile if lato_costo == "dare" else 0,
-        "avere": iva_detraibile if lato_costo == "avere" else 0,
+        "dare": _euro(iva_detraibile) if lato_costo == "dare" else 0,
+        "avere": _euro(iva_detraibile) if lato_costo == "avere" else 0,
         "centro_costo": None,
         "descrizione": prefisso_nc + (
             "storno IVA a credito detraibile" if is_nota_credito else "IVA a credito detraibile"
@@ -601,8 +637,8 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     })
     righe.append({
         "conto_codice": conti["debito_fornitore"]["codice"], "conto_nome": conti["debito_fornitore"]["nome"],
-        "dare": importo_totale if lato_debito == "dare" else 0,
-        "avere": importo_totale if lato_debito == "avere" else 0,
+        "dare": _euro(importo_totale) if lato_debito == "dare" else 0,
+        "avere": _euro(importo_totale) if lato_debito == "avere" else 0,
         "centro_costo": None,
         "descrizione": prefisso_nc + (
             "riduzione debito v/fornitore" if is_nota_credito else "Debito v/fornitore"
@@ -623,7 +659,7 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         }
     now = _now()
     fornitore_nome = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
-    totale_lato_costo = round(costo_residuo + quota_cespiti + iva_detraibile, 2)
+    totale_lato_costo = _euro(costo_residuo + quota_cespiti + iva_detraibile)
     movimento = {
         "id": str(uuid.uuid4()),
         # Assegnato da _scrivi_movimento dopo la guardia di quadratura.
@@ -638,11 +674,13 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         "data_competenza": fattura.get("data_competenza") or data_doc,
         "data_registrazione": now,
         "anno": anno,
-        "importo_totale": importo_totale, "imponibile": imponibile, "iva": iva,
-        "iva_detraibile": iva_detraibile, "iva_indetraibile": iva_indetraibile,
+        # Serializzazione (numeri a 2 decimali): da qui niente aritmetica.
+        "importo_totale": _euro(importo_totale), "imponibile": _euro(imponibile),
+        "iva": _euro(iva),
+        "iva_detraibile": _euro(iva_detraibile), "iva_indetraibile": _euro(iva_indetraibile),
         "righe": righe,
-        "totale_dare": totale_lato_costo if lato_costo == "dare" else round(importo_totale, 2),
-        "totale_avere": round(importo_totale, 2) if lato_costo == "dare" else totale_lato_costo,
+        "totale_dare": totale_lato_costo if lato_costo == "dare" else _euro(importo_totale),
+        "totale_avere": _euro(importo_totale) if lato_costo == "dare" else totale_lato_costo,
         "stato": "registrato", "created_at": now,
         "idempotency_key": chiave_idempotenza("fattura", fattura_id),
     }
@@ -651,7 +689,7 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     if quota_cespiti:
         # Tracciato esplicito (audit 19/09/2026 punto 3): quanto di questa
         # fattura NON e' costo pieno perche' capitalizzato come cespite.
-        movimento["cespiti_capitalizzati"] = quota_cespiti
+        movimento["cespiti_capitalizzati"] = _euro(quota_cespiti)
     if extra_movimento:
         movimento.update(extra_movimento)
     saldi = [(riga["conto_codice"], riga["dare"] or riga["avere"],
@@ -687,8 +725,9 @@ async def _scrivi_storno(db, originale: Dict[str, Any], motivo: str, tipo: str,
     righe_storno = []
     saldi = []
     for riga in originale.get("righe") or []:
-        dare = float(riga.get("avere") or 0)
-        avere = float(riga.get("dare") or 0)
+        # Specchio al centesimo: una cella vuota della riga originale e' zero.
+        dare = _euro(_decimale(riga.get("avere")))
+        avere = _euro(_decimale(riga.get("dare")))
         righe_storno.append({**riga, "dare": dare, "avere": avere,
                              "descrizione": f"Storno: {riga.get('descrizione') or ''}".strip()})
         if dare:
@@ -822,8 +861,10 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
         if esistente:
             return {"stato": "gia_registrato", "movimento_id": esistente.get("id")}
 
-    totale = float(corr.get("totale", 0) or 0)
-    if totale <= 0:
+    zero = Decimal("0.00")
+    # Totale del documento in Decimal; assente o non numerico = nullo (storico).
+    totale = _decimale(corr.get("totale"))
+    if totale <= zero:
         return {"stato": "saltato", "motivo": "importo nullo"}
 
     iva_raw = corr.get("totale_iva")
@@ -835,19 +876,23 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
 
     # L'XML del corrispettivo e' la fonte dell'aliquota effettiva. Il 10%
     # resta solo un fallback per record storici privi del dettaglio fiscale.
+    # Un campo presente ma non numerico e' un dato da guardare, non uno zero.
     try:
-        iva = round(float(iva_raw), 2) if iva_raw is not None else None
-        imponibile = round(float(imponibile_raw), 2) if imponibile_raw is not None else None
-    except (TypeError, ValueError):
+        iva = (Decimal(str(iva_raw).strip()).quantize(_CENTESIMO, rounding=ROUND_HALF_UP)
+               if iva_raw is not None else None)
+        imponibile = (Decimal(str(imponibile_raw).strip()).quantize(_CENTESIMO, rounding=ROUND_HALF_UP)
+                      if imponibile_raw is not None else None)
+    except (InvalidOperation, TypeError, ValueError):
         return {"stato": "da_verificare", "motivo": "IVA o imponibile non numerico"}
     if iva is None and imponibile is None:
-        iva = round(totale * _ALIQUOTA_CORRISPETTIVI / (1 + _ALIQUOTA_CORRISPETTIVI), 2)
-        imponibile = round(totale - iva, 2)
+        iva = (totale * _ALIQUOTA_CORRISPETTIVI / (1 + _ALIQUOTA_CORRISPETTIVI)).quantize(
+            _CENTESIMO, rounding=ROUND_HALF_UP)
+        imponibile = totale - iva
     elif iva is None:
-        iva = round(totale - imponibile, 2)
+        iva = totale - imponibile
     elif imponibile is None:
-        imponibile = round(totale - iva, 2)
-    if iva < 0 or imponibile < 0 or abs(round(imponibile + iva - totale, 2)) > 0.01:
+        imponibile = totale - iva
+    if iva < zero or imponibile < zero or abs(imponibile + iva - totale) > _CENTESIMO:
         return {
             "stato": "da_verificare",
             "motivo": "totale, imponibile e IVA del corrispettivo non quadrano",
@@ -871,14 +916,14 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
     # riscosso. Le chiusure d'origine lo dichiarano gia' quadrato
     # (`differenza = 0`): cassa + POS + non riscosso = totale, al centesimo.
     non_riscosso = _primo_importo(corr, "non_riscosso", "pagato_non_riscosso")
-    if non_riscosso < 0:
+    if non_riscosso < zero:
         return {
             "stato": "da_verificare",
             "motivo": "non riscosso negativo sul corrispettivo",
         }
-    if cassa + pos + non_riscosso == 0:
+    if cassa + pos + non_riscosso == zero:
         cassa = totale
-    elif abs(round(cassa + pos + non_riscosso - totale, 2)) > 0.01:
+    elif abs(cassa + pos + non_riscosso - totale) > _CENTESIMO:
         # Lo scarto resta un rifiuto: il non riscosso entra come PROVA
         # dichiarata dal documento, non come tappabuchi calcolato dalla
         # differenza. Un totale che non torna nemmeno contandolo e' un dato
@@ -888,22 +933,25 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
             "motivo": "ripartizione contanti/POS non quadrata con il totale",
         }
 
+    # Serializzazione (numeri a 2 decimali) per righe, saldi e testata.
+    cassa_s, pos_s, non_riscosso_s = _euro(cassa), _euro(pos), _euro(non_riscosso)
+    imponibile_s, iva_s = _euro(imponibile), _euro(iva)
     righe = []
     saldi = []
-    if cassa > 0:
-        righe.append({"conto_codice": _C_CASSA[0], "conto_nome": _C_CASSA[1], "dare": cassa, "avere": 0, "centro_costo": None})
-        saldi.append((_C_CASSA[0], cassa, "dare"))
-    if pos > 0:
-        righe.append({"conto_codice": _C_BANCA[0], "conto_nome": _C_BANCA[1], "dare": pos, "avere": 0, "centro_costo": None})
-        saldi.append((_C_BANCA[0], pos, "dare"))
-    if non_riscosso > 0:
+    if cassa > zero:
+        righe.append({"conto_codice": _C_CASSA[0], "conto_nome": _C_CASSA[1], "dare": cassa_s, "avere": 0, "centro_costo": None})
+        saldi.append((_C_CASSA[0], cassa_s, "dare"))
+    if pos > zero:
+        righe.append({"conto_codice": _C_BANCA[0], "conto_nome": _C_BANCA[1], "dare": pos_s, "avere": 0, "centro_costo": None})
+        saldi.append((_C_BANCA[0], pos_s, "dare"))
+    if non_riscosso > zero:
         righe.append({"conto_codice": _C_CREDITI[0], "conto_nome": _C_CREDITI[1],
-                      "dare": non_riscosso, "avere": 0, "centro_costo": None})
-        saldi.append((_C_CREDITI[0], non_riscosso, "dare"))
-    righe.append({"conto_codice": _C_RICAVI[0], "conto_nome": _C_RICAVI[1], "dare": 0, "avere": imponibile, "centro_costo": None})
-    righe.append({"conto_codice": _C_IVA_DEBITO[0], "conto_nome": _C_IVA_DEBITO[1], "dare": 0, "avere": iva, "centro_costo": None})
-    saldi.append((_C_RICAVI[0], imponibile, "avere"))
-    saldi.append((_C_IVA_DEBITO[0], iva, "avere"))
+                      "dare": non_riscosso_s, "avere": 0, "centro_costo": None})
+        saldi.append((_C_CREDITI[0], non_riscosso_s, "dare"))
+    righe.append({"conto_codice": _C_RICAVI[0], "conto_nome": _C_RICAVI[1], "dare": 0, "avere": imponibile_s, "centro_costo": None})
+    righe.append({"conto_codice": _C_IVA_DEBITO[0], "conto_nome": _C_IVA_DEBITO[1], "dare": 0, "avere": iva_s, "centro_costo": None})
+    saldi.append((_C_RICAVI[0], imponibile_s, "avere"))
+    saldi.append((_C_IVA_DEBITO[0], iva_s, "avere"))
 
     data_corr = corr.get("data") or _now()[:10]
     anno = _anno_da_data(data_corr)
@@ -919,10 +967,10 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
         "data": data_corr, "data_documento": data_corr,
         "data_competenza": data_corr, "data_registrazione": now,
         "anno": anno,
-        "importo_totale": totale, "imponibile": imponibile, "iva": iva,
+        "importo_totale": _euro(totale), "imponibile": imponibile_s, "iva": iva_s,
         "righe": righe,
-        "totale_dare": round(cassa + pos + non_riscosso, 2),
-        "totale_avere": round(totale, 2),
+        "totale_dare": _euro(cassa + pos + non_riscosso),
+        "totale_avere": _euro(totale),
         "stato": "registrato", "created_at": now,
         "idempotency_key": chiave_idempotenza("corrispettivo", corr_id),
     }
@@ -1336,11 +1384,14 @@ async def _verifica_importo_scrittura(db, documento: Dict[str, Any], esito: Dict
         {"id": esito["movimento_id"]}, {"_id": 0, "importo_totale": 1, "id": 1})
     if not mov:
         return esito
-    importo_doc = float(
-        documento.get("totale") or documento.get("total_amount")
-        or documento.get("importo_totale") or 0)
-    importo_reg = float(mov.get("importo_totale") or 0)
-    if importo_doc > 0 and abs(round(importo_doc - importo_reg, 2)) > 0.01:
+    # Confronto in Decimal; un documento senza importo (None) non apre una
+    # verifica, come lo zero storico.
+    importo_doc = (_importo_dichiarato(documento, "totale")
+                   or _importo_dichiarato(documento, "total_amount")
+                   or _importo_dichiarato(documento, "importo_totale")
+                   or Decimal("0.00"))
+    importo_reg = _decimale(mov.get("importo_totale"))
+    if importo_doc > 0 and abs(importo_doc - importo_reg) > _CENTESIMO:
         return {
             "stato": "da_verificare",
             "movimento_id": esito["movimento_id"],
@@ -1387,11 +1438,13 @@ _C_PERSONALE_LIQUIDAZIONE = ("39.07.05", "Personale c/liquidazione")
 _C_ERARIO_TFR = ("35.03.15", "Erario c/imposte sostitutive su TFR")
 
 
-def riga(conto: tuple, dare: float = 0, avere: float = 0,
+def riga(conto: tuple, dare: Any = 0, avere: Any = 0,
          descrizione: str = "") -> Dict[str, Any]:
-    """Riga di partita doppia nello stesso schema delle scritture del motore."""
+    """Riga di partita doppia nello stesso schema delle scritture del motore.
+    Gli importi (float, str o Decimal) si arrotondano al centesimo HALF_UP
+    via Decimal e si serializzano a 2 decimali."""
     return {"conto_codice": conto[0], "conto_nome": conto[1],
-            "dare": round(float(dare), 2), "avere": round(float(avere), 2),
+            "dare": _euro(_decimale(dare)), "avere": _euro(_decimale(avere)),
             "centro_costo": None, "descrizione": descrizione}
 
 
