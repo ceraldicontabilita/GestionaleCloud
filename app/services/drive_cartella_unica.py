@@ -347,7 +347,7 @@ async def _smista(nome: str, contenuto: bytes, contesto: Dict[str, Any],
         tipo = await _rileva(nome, contenuto)
     if tipo == "auto":
         return {"success": False, "tipo_rilevato": "non_riconosciuto",
-                "fuori_contabilita": motivo_fuori_contabilita(nome)}
+                "fuori_contabilita": motivo_fuori_contabilita(nome) or motivo_fuori_contabilita_contenuto(contenuto)}
     if tipo in TIPI_ESTRATTO and (minimo := anno_minimo_estratti()):
         from app.services.classificazione_estratti import anno_documento
 
@@ -405,6 +405,30 @@ def motivo_fuori_contabilita(nome: str, *, anno_attivo: Optional[int] = None) ->
     anni = [int(a) for a in _ANNO_NEL_NOME.findall(nome or "")]
     if anni and max(anni) < anno_attivo:
         return f"documento del {max(anni)} che nessun lettore contabile riconosce"
+    return None
+
+
+_RADICE_XML = re.compile(rb"<\s*(?:[A-Za-z_][\w.-]*:)?([A-Za-z_][\w.-]*)[\s>/]")
+# File tecnici che accompagnano i documenti veri: riconosciuti dall'elemento
+# radice dell'XML, non dal nome. Il 07/10/2026 471 «_metaDato.xml» dello SdI
+# riempivano ERRORI come «non riconosciuto» accanto alle fatture gia' entrate.
+_RADICI_FUORI_CONTABILITA = {
+    "MetadatiInvioFile": "metadati SdI della fattura (MetadatiInvioFile): la fattura entra dal suo XML",
+    "postacert": "dati di certificazione PEC (daticert): non un documento contabile",
+    "daticert": "dati di certificazione PEC (daticert): non un documento contabile",
+}
+
+
+def motivo_fuori_contabilita_contenuto(contenuto: bytes) -> Optional[str]:
+    """Perche' un file e' fuori contabilita' dal suo contenuto, o None."""
+    testa = (contenuto or b"")[:4096]
+    if b"<" not in testa:
+        return None
+    for m in _RADICE_XML.finditer(testa):
+        radice = m.group(1).decode("ascii", "ignore")
+        if radice.lower().startswith("xml") or radice == "!DOCTYPE":
+            continue
+        return _RADICI_FUORI_CONTABILITA.get(radice)
     return None
 
 

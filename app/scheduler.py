@@ -1983,6 +1983,26 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Conferma massiva del calendario fiscale decisa dal titolare (07/10/2026):
+    # una volta sola, con marcatore in sistema_stato; vedi calendario_conferme.
+    async def _calendario_conferma_massiva_job():
+        from app.services.calendario_conferme import conferma_massiva_una_volta
+        try:
+            r = await conferma_massiva_una_volta(Database.get_db())
+            if r.get("eseguita"):
+                logger.info("[CALENDARIO] conferma massiva eseguita: %s", r)
+        except Exception as e:
+            logger.error("[CALENDARIO] conferma massiva: %s: %s", type(e).__name__, e)
+
+    scheduler.add_job(
+        _calendario_conferma_massiva_job, "date",
+        run_date=datetime.now(timezone.utc) + timedelta(minutes=3),
+        misfire_grace_time=600,
+        id="calendario_conferma_massiva",
+        name="Calendario fiscale: conferma massiva del titolare (una volta)",
+        replace_existing=True,
+    )
+
     # Rilettura chiesta dal titolare (ENABLE_BANKING_DAL): un giro subito dopo
     # l'avvio, non alla prossima finestra; il giro la esegue una volta sola.
     try:
