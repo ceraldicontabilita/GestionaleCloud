@@ -854,6 +854,11 @@ export function parametriRegistro({ anno, mese = null, skip = 0, filtri = {} }) 
 
 export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
+  // Nove o dieci colonne non ci stanno sotto i 1280 px (iPad con la colonna a
+  // sinistra, 07/10/2026: fornitori spezzati a meta' parola e importi fuori
+  // schermo): li' il registro usa le stesse card del telefono, mai lo scroll
+  // orizzontale. Misurato: a 1194 px la colonna Azioni resta ancora tagliata.
+  const tabellaStretta = useIsMobile(1280);
   const { fontiFerme, coperturaCategoria, errore: statoFontiErrore } = useStatoFonti();
   const coperturaSopraSoglia = !!coperturaCategoria?.sopra_soglia;
   const [cerca, setCerca] = useState(selectedId);
@@ -1294,8 +1299,8 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
         </div>
       )}
 
-      {isMobile ? (
-        /* ------------------- MOBILE: card per giornata ------------------- */
+      {(isMobile || tabellaStretta) ? (
+        /* ------------- MOBILE e schermi stretti: card per giornata ------------- */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {gruppiGiorno.map(g => {
             const netto = Number(g.righe[0]?.netto_giorno || 0);
@@ -1434,10 +1439,11 @@ export function Registro({ tipo, anno, dati, mese, onMese, selectedId = '', onRi
                   style={{ borderBottom: '1px solid #f2f0e9', background: i % 2 ? '#f6f4ee' : 'white' }}
                 >
                   <td style={{ padding: '7px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatDateIT(m.data)}</td>
-                  <td style={{ padding: '7px 10px', maxWidth: 230, fontWeight: 700, color: TERRACOTTA, wordBreak: 'break-word' }}>
+                  {/* Le parole non si spezzano a meta' ("AP COMMERC / IALE"): a capo solo fra parole. */}
+                  <td style={{ padding: '7px 10px', minWidth: 120, maxWidth: 230, fontWeight: 700, color: TERRACOTTA, overflowWrap: 'normal' }}>
                     {nomeFornitoreMovimento(m) || '—'}
                   </td>
-                  <td style={{ padding: '7px 10px', maxWidth: 180, fontFamily: 'ui-monospace, Menlo, monospace', wordBreak: 'break-all' }}>
+                  <td style={{ padding: '7px 10px', minWidth: 90, maxWidth: 180, fontFamily: 'ui-monospace, Menlo, monospace', overflowWrap: 'anywhere' }}>
                     {numeroFatturaMovimento(m) || '—'}
                   </td>
                   <td style={{ padding: '7px 10px' }}>
