@@ -48,10 +48,28 @@ function etichetteColonne(righe) {
   return foglia.map(x => x || '');
 }
 
+/**
+ * Tabella senza intestazione (elenco «voce | valore», riepiloghi): non ha etichette da
+ * copiare, ma resta una pila di righe invece di una tabella larga. Vale solo con poche
+ * colonne (al massimo 3): oltre, senza intestazione non si sa cosa significhi ogni cella.
+ */
+const COLONNE_MAX_SENZA_TESTA = 3;
+function senzaIntestazioneImpilabile(tabella) {
+  const righe = [...tabella.rows];
+  if (!righe.length) return false;
+  return righe.every(r => r.cells.length > 0 && r.cells.length <= COLONNE_MAX_SENZA_TESTA);
+}
+
 export function etichettaTabella(tabella) {
   if (!tabella || tabella.dataset.card === 'no') return;
   const testa = righeIntestazione(tabella);
-  if (!testa) return;
+  if (!testa) {
+    if (senzaIntestazioneImpilabile(tabella)) {
+      tabella.dataset.card = 'si';
+      tabella.dataset.chiaveValore = '';
+    }
+    return;
+  }
   const etichette = etichetteColonne(testa);
   if (!etichette.length) return;
   const intestazioni = new Set(testa);

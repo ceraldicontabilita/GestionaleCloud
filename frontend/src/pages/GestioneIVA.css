@@ -234,3 +234,8 @@
     display: none;
   }
 }
+
+/* Telefono: i periodi vanno a capo, nessuno scorrimento orizzontale. */
+@media (max-width: 768px) {
+  .iva-period-tabs { flex-wrap: wrap; overflow-x: visible; }
+}
