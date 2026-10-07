@@ -783,6 +783,12 @@ async def _giro(db) -> Dict[str, Any]:
             copia_di = None
             with _fase(esito, "confronto_doppioni"):
                 for candidato in list(per_md5.get(f.get("md5Checksum") or "", [])):
+                    if candidato == fid:
+                        # Il titolare ha riportato a mano il file da ELABORATE in DA ELABORARE:
+                        # la cache dell'archivio lo elenca ancora, ma un file non e' copia di
+                        # se stesso e non va nel cestino. Si rilegge come un file nuovo.
+                        per_md5[f["md5Checksum"]].remove(candidato)
+                        continue
                     try:
                         altro = await asyncio.to_thread(scarica_bytes, drive, candidato)
                     except Exception as exc:
