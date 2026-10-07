@@ -38,3 +38,20 @@ def test_archivi_hr_storici_hanno_rls_e_solo_policy_interna():
     assert "for all to hr_app using (true) with check (true)" in sql
     assert "to anon" not in sql
     assert "to authenticated" not in sql
+
+
+def test_outbox_fatture_pubblica_l_id_applicativo_non_quello_di_riga():
+    """07/10/2026: 69 eventi invoice.project falliti perche' il trigger
+    pubblicava l'id di riga (new.id) e il worker cerca data->>'id'."""
+    sql = (MIGRATIONS / "20261007093926_outbox_fattura_id_applicativo.sql").read_text(
+        encoding="utf-8"
+    ).lower()
+
+    assert "create or replace function gestionale.tg_invoice_projection_outbox()" in sql
+    assert "coalesce(nullif(new.data->>'id', ''), new.id::text)" in sql
+    assert "'invoice.project', 'invoice', v_fattura_id, v_source_version" in sql
+    assert "'source_id', v_fattura_id" in sql
+    # riallineamento una tantum degli eventi gia' in coda, senza doppioni
+    assert "set aggregate_id = d.data->>'id'" in sql
+    assert "status = 'pending', attempts = 0" in sql
+    assert "not exists" in sql
