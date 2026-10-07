@@ -894,10 +894,10 @@ function BusteAdmin() {
     <div className="card">
       <h3>Buste paga · tutti i dipendenti</h3>
       <div className="row" style={{ gap: 8, marginTop: 8 }}>
-        <select value={anno} onChange={e => setAnno(Number(e.target.value))}>
+        <select style={{ width: "auto", flex: "0 0 auto" }} value={anno} onChange={e => setAnno(Number(e.target.value))}>
           {Array.from({ length: 8 }, (_, i) => annoCorr - i).map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <input className="input" placeholder="Cerca dipendente…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
+        <input className="input" placeholder="Cerca dipendente…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1, minWidth: 0, marginTop: 0 }} />
       </div>
     </div>
     {!buste && <div className="spin">Caricamento…</div>}

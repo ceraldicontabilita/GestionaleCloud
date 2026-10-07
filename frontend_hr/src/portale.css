@@ -77,3 +77,13 @@ label{font-size:13px;font-weight:600;display:block;margin-top:10px}
 .pt-connerr button{background:#fff;color:var(--danger);border:none;border-radius:8px;padding:5px 10px;
   font-weight:700;font-size:12px;font-family:inherit}
 .spin{text-align:center;padding:30px;color:var(--muted)}
+
+/* Tocchi >= 44 px (telefono): tab, uscita, pulsanti compatti, campi e riassunti. */
+.pt-head .logout{min-height:44px;min-width:44px;top:10px;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.tab{min-height:44px;justify-content:center}
+.btn{min-height:44px}
+.btn.sm{min-height:44px;min-width:44px}
+.input,select,textarea{min-height:44px}
+.pt-root summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
+.pt-root label:has(> input[type="checkbox"]),.pt-root label:has(> input[type="radio"]){min-height:44px;display:flex;align-items:center;gap:8px}
+.pt-root input[type="checkbox"],.pt-root input[type="radio"]{width:auto;min-height:0;margin:0}
