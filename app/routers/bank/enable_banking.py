@@ -27,7 +27,7 @@ router = APIRouter()
 
 class ImportaMovimentiRequest(BaseModel):
     conferma: bool = False
-    giorni: int = Field(default=90, ge=1, le=180)
+    giorni: int = Field(default=90, ge=1, le=366)
 
 MESSAGGI = {
     "non_configurato": "Mancano Application ID e chiave privata di Enable Banking nelle variabili di Render.",
@@ -107,7 +107,7 @@ async def callback(request: Request) -> RedirectResponse:
 @router.get("/anteprima")
 async def anteprima(
     request: Request,
-    giorni: int = Query(90, ge=1, le=180),
+    giorni: int = Query(90, ge=1, le=366),
     _: Dict[str, Any] = Depends(richiedi_admin),
 ) -> Dict[str, Any]:
     """Legge dalla banca e confronta con l'archivio: nuovi / gia' presenti /

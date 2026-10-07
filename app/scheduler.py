@@ -1940,6 +1940,22 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Rilettura chiesta dal titolare (ENABLE_BANKING_DAL): un giro subito dopo
+    # l'avvio, non alla prossima finestra; il giro la esegue una volta sola.
+    try:
+        from app.services import enable_banking as _eb
+        if _eb.attivo() and _eb.rilettura_dal():
+            scheduler.add_job(
+                enable_banking_giro_task, "date",
+                run_date=avvio + timedelta(minutes=3),
+                misfire_grace_time=600,
+                id="enable_banking_rilettura",
+                name=f"Banco BPM: rilettura dal {_eb.rilettura_dal()} (una volta)",
+                replace_existing=True,
+            )
+    except Exception as e:  # noqa: BLE001 - un errore qui non deve fermare lo scheduler
+        logger.error(f"[SCHEDULER-BANCA] rilettura non programmata: {type(e).__name__}: {e}")
+
     async def controllo_canoni_noleggio_task():
         try:
             from app.services.noleggio import controlla_regolarita_canoni

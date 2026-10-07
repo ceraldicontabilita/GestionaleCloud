@@ -270,3 +270,55 @@ def test_riferimenti_della_banca_diversi_restano_da_verificare():
     api = [_b("2026-07-10", 500.0, "uscita", "BONIFICO RIF. MB0B22222222/90000002 BIANCHI")]
     esito = eb.confronta_con_archivio(api, archivio)
     assert len(esito["da_verificare"]) == 1 and esito["gia_presenti"] == []
+
+
+# ── rilettura da una data (archivio azzerato il 06/10/2026) e finestra ordinaria
+
+def test_giro_automatico_rilegge_dalla_data_chiesta_una_volta_sola(monkeypatch):
+    import datetime as _dt
+
+    db = AsyncMongoMockClient()["t"]
+    banca = Banca()
+    run(eb.avvia_collegamento(db, banca))
+    run(eb.completa_collegamento(db, banca, code="c", state=banca.state))
+    oggi = _dt.date.today()
+    banca.pagine = [[_tx(oggi.isoformat(), "5.00", False, "ACCREDITO", ref="RIF1")]]
+    run(eb.giro_automatico(db, banca))            # primo giro: 90 giorni
+
+    dal = (oggi - _dt.timedelta(days=200)).isoformat()
+    monkeypatch.setenv("ENABLE_BANKING_DAL", dal)
+    rilettura = run(eb.giro_automatico(db, banca))
+    assert rilettura["giorni"] == 201 and rilettura["rilettura_dal"] == dal
+    assert banca.chiamate[-1][2]["date_from"] <= dal   # la finestra copre la data chiesta
+    assert run(eb.leggi_sessione(db))["rilettura_dal"] == dal
+
+    # Stessa data chiesta ancora: non si rilegge, torna la finestra ordinaria.
+    ordinario = run(eb.giro_automatico(db, banca))
+    assert ordinario["giorni"] == eb.GIORNI_GIRO and "rilettura_dal" not in ordinario
+
+
+def test_finestra_ordinaria_da_variabile_e_data_non_valida(monkeypatch):
+    monkeypatch.delenv("ENABLE_BANKING_GIORNI_GIRO", raising=False)
+    assert eb.giorni_giro() == eb.GIORNI_GIRO == 7
+    monkeypatch.setenv("ENABLE_BANKING_GIORNI_GIRO", "14")
+    assert eb.giorni_giro() == 14
+    monkeypatch.setenv("ENABLE_BANKING_GIORNI_GIRO", "x")
+    assert eb.giorni_giro() == eb.GIORNI_GIRO
+    monkeypatch.setenv("ENABLE_BANKING_DAL", "01/01/2026")
+    assert eb.rilettura_dal() is None
+    monkeypatch.setenv("ENABLE_BANKING_DAL", "2026-01-01")
+    assert eb.rilettura_dal() == "2026-01-01"
+    assert eb.rilettura_in_attesa({"rilettura_dal": "2026-01-01"}) is None
+    assert eb.rilettura_in_attesa({}) == "2026-01-01"
+
+
+def test_rilettura_non_segnata_se_la_banca_rifiuta(monkeypatch):
+    db = AsyncMongoMockClient()["t"]
+    banca = Banca()
+    run(eb.avvia_collegamento(db, banca))
+    run(eb.completa_collegamento(db, banca, code="c", state=banca.state))
+    monkeypatch.setenv("ENABLE_BANKING_DAL", "2026-01-01")
+    banca.errori = [httpx.Response(429, json={"error": "ASPSP_RATE_LIMIT_EXCEEDED"})]
+    esito = run(eb.giro_automatico(db, banca))
+    assert esito["errore"] == "limite_banca" and esito["rilettura_dal"] == "2026-01-01"
+    assert run(eb.leggi_sessione(db))["rilettura_dal"] is None   # si riprova al prossimo giro
