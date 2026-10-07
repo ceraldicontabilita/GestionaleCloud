@@ -36,6 +36,9 @@ class DocumentType(StrEnum):
     CU = "CU"
     AVVISO_BONARIO = "AVVISO_BONARIO"
     COMUNICAZIONE_IRREGOLARITA = "COMUNICAZIONE_IRREGOLARITA"
+    # Lettera di compliance («possibile anomalia nel versamento», LIPE non
+    # pervenuta): invito a regolarizzare, senza somme liquidate ne' F24.
+    LETTERA_COMPLIANCE = "LETTERA_COMPLIANCE"
     CARTELLA_ADE_R = "CARTELLA_ADE_R"
     AVVISO_ADDEBITO_INPS = "AVVISO_ADDEBITO_INPS"
     QUIETANZA_ADE_R = "QUIETANZA_ADE_R"
@@ -115,6 +118,13 @@ _CLASSIFIERS: tuple[tuple[DocumentType, tuple[str, ...]], ...] = (
     (DocumentType.DEFINIZIONE_AGEVOLATA, ("definizione agevolata", "rottamazione")),
     (DocumentType.SOSPENSIONE, ("sospensione legale della riscossione", "provvedimento di sospensione")),
     (DocumentType.CARTELLA_ADE_R, ("cartella di pagamento", "cartella esattoriale", "agenzia entrate riscossione")),
+    # Le lettere dell'Agenzia citano «liquidazioni periodiche IVA» e «modello
+    # IVA»: vanno riconosciute prima della LIPE e della dichiarazione. La
+    # compliance prima della 54-bis, perche' cita anch'essa l'art. 54-bis.
+    (DocumentType.LETTERA_COMPLIANCE, ("possibile anomalia nel versamento", "adempimento spontaneo",
+                                       "non ci risulta pervenuta la sua comunicazione")),
+    (DocumentType.COMUNICAZIONE_IRREGOLARITA, ("comunicazione 54-bis", "prospetto delle somme",
+                                               "art. 36-bis del d.p.r.", "codice atto n")),
     (DocumentType.AVVISO_BONARIO, ("avviso bonario", "comunicazione di irregolarita")),
     (DocumentType.PIANO_RATEIZZAZIONE, ("piano di ammortamento", "piano rateizzazione")),
     (DocumentType.SGRAVIO, ("provvedimento di sgravio", "sgravio")),

@@ -1876,6 +1876,9 @@ def _tipo_dichiarazione(filename: str, pdf_text: str) -> str | None:
         DocumentType.MODELLO_770.value, DocumentType.DICHIARAZIONE_IVA.value,
         DocumentType.LIPE.value, DocumentType.DICHIARAZIONE_IRAP.value,
         DocumentType.REDDITI_SC.value,
+        # Lettere dell'Agenzia sul controllo delle dichiarazioni (54-bis,
+        # 36-bis, compliance): stesso archivio, cosi' gli incroci le vedono.
+        DocumentType.COMUNICAZIONE_IRREGOLARITA.value, DocumentType.LETTERA_COMPLIANCE.value,
     }:
         return "dichiarazione_fiscale"
     return None

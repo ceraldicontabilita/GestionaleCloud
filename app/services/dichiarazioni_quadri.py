@@ -58,15 +58,24 @@ __all__ = [
     "estrai_quadri_documento",
     "credito_iva_riportato",
     "quadro_st",
+    "comunicazione_54bis",
     "avvia_estrazione_archivio",
     "stato_estrazione_archivio",
 ]
 
 PARSER_VERSION = "dichiarazioni-quadri-v1"
 
+#: Tipo letto dal contenuto -> tipi d'archivio che quel contenuto corregge.
+#: Nessuna dichiarazione vera cambia tipo: solo i marcatori generici.
+RICLASSIFICABILI: Dict[str, frozenset] = {
+    "COMUNICAZIONE_IRREGOLARITA": frozenset({"LIPE", "DICHIARAZIONE_IVA", "ALTRO_FISCALE", None}),
+    "MODELLO_770": frozenset({"ALTRO_FISCALE", None}),
+}
+
 #: Tipi dell'archivio (`fiscal_documents.document_type`) che portano un quadro
 #: leggibile. Gli esiti ISA stanno sotto `REDDITI_SC`: e' il contenuto a dirlo.
-TIPI_CON_QUADRI = frozenset({"DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_IRAP", "ISA_ESITO", "MODELLO_770"})
+TIPI_CON_QUADRI = frozenset({"DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_IRAP", "ISA_ESITO", "MODELLO_770",
+                             "COMUNICAZIONE_IRREGOLARITA"})
 
 #: rigo del modulo -> nome del campo, per tipo letto.
 CAMPI_PER_TIPO: Dict[str, Dict[str, str]] = {
@@ -119,6 +128,13 @@ _RE_ANNO_IMPOSTA = re.compile(r"PERIODO\s+D[’'`]\s*IMPOSTA\s+((?:19|20)\d{2})"
 _RE_ANNO_770 = re.compile(r"\bAnno\s+((?:19|20)\d{2})\b")
 _RE_MODELLO_770 = re.compile(r"MODELLO\s*770\s*/\s*((?:19|20)\d{2})", re.I)
 _RE_RIGO_ST = re.compile(r"^ST(\d{1,2})$")
+_RE_COMUNICAZIONE = re.compile(
+    r"Comunicazione\s+54-bis|Prospetto\s+delle\s+somme\s+(?:periodiche\s+)?che\s+risultano\s+dovute"
+    r"|art\.\s*36-bis\s+del\s+d\.?P\.?R", re.I)
+_MESI_IT = {m: i + 1 for i, m in enumerate(
+    ["GENNAIO", "FEBBRAIO", "MARZO", "APRILE", "MAGGIO", "GIUGNO", "LUGLIO", "AGOSTO", "SETTEMBRE",
+     "OTTOBRE", "NOVEMBRE", "DICEMBRE"])}
+_TRIMESTRI_IT = {"I": 1, "II": 2, "III": 3, "IV": 4, "PRIMO": 1, "SECONDO": 2, "TERZO": 3, "QUARTO": 4}
 # Una pagina del quadro ST: l'intestazione o le etichette dei righi (le
 # sezioni II-IV non ripetono «QUADRO ST»).
 _RE_PAGINA_ST = re.compile(r"QUADRO\s*ST\b|\bST(?:[2-9]|[1-4]\d)\b")
@@ -167,6 +183,10 @@ def riconosci_tipo(pagine: Iterable[Dict[str, Any]]) -> Optional[str]:
     testo = "\n".join(str(p.get("text") or "") for p in pagine)
     if _RE_ISA.search(testo) and re.search(r"\bISA\b|Isa\b", testo):
         return "ISA_ESITO"
+    # Le comunicazioni di irregolarita' (54-bis sulla LIPE, 36-bis sulla
+    # dichiarazione IVA) citano il modello IVA: prima della dichiarazione.
+    if _RE_COMUNICAZIONE.search(testo):
+        return "COMUNICAZIONE_IRREGOLARITA"
     # Il 770 porta il quadro ST (ritenute operate e versate): si riconosce
     # prima dell'IVA perche' anche lui cita «modello» e «imposta».
     if re.search(r"QUADRO\s*ST(?![A-Z0-9])|MODELLO\s*770", testo, re.I):
@@ -322,6 +342,120 @@ def _leggi_righi(pagine: List[Dict[str, Any]], righi: Dict[str, str]) -> Dict[st
         else:
             campi[nome] = _campo(None, "rigo_non_trovato", None, rigo)
     return campi
+
+
+# ── comunicazioni 54-bis / 36-bis: somme dovute per periodo ───────────────────
+
+def _importo_cents_it(testo: Optional[str]) -> Optional[int]:
+    m = re.fullmatch(r"\s*(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\s*", str(testo or ""))
+    return int(m.group(1).replace(".", "")) * 100 + int(m.group(2)) if m else None
+
+
+def _euro_str(cents: Optional[int]) -> Optional[str]:
+    return None if cents is None else f"{Decimal(cents) / 100:.2f}"
+
+
+def _periodo_comunicazione(etichetta: str, anno: Optional[int]) -> Dict[str, Any]:
+    e = etichetta.strip().upper()
+    if e in _MESI_IT:
+        return {"periodo": e.capitalize(), "mese": _MESI_IT[e], "trimestre": None, "anno": anno}
+    m = re.match(r"^(I{1,3}|IV|PRIMO|SECONDO|TERZO|QUARTO)\s+TRIMESTRE$", e)
+    if m:
+        return {"periodo": e.capitalize(), "mese": None, "trimestre": _TRIMESTRI_IT[m.group(1)], "anno": anno}
+    return {"periodo": etichetta.strip(), "mese": None, "trimestre": None, "anno": anno}
+
+
+# Sul testo con gli spazi normalizzati (il PDF spezza le colonne in righe
+# diverse): «GIUGNO Codice tributo Importo Imposta a debito 1.463,15 ...».
+_RE_BLOCCO_PERIODO = re.compile(
+    r"\b((?:GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE)"
+    r"|(?:I{1,3}|IV|PRIMO|SECONDO|TERZO|QUARTO) TRIMESTRE) Codice tributo Importo\b")
+_RIGHE_COMUNICAZIONE = (
+    ("imposta_a_debito", r"Imposta a debito ([\d\.]+,\d{2})"),
+    ("imposta_versata", r"Imposta versata[^0-9]*?([\d\.]+,\d{2})"),
+    ("imposta_recuperata", r"Imposta recuperata ([\d\.]+,\d{2})"),
+    ("imposta_da_versare", r"Imposta da versare (\d{4}) ([\d\.]+,\d{2})"),
+    ("sanzioni", r"Sanzioni (\d{4}) ([\d\.]+,\d{2})"),
+    ("interessi", r"Interessi (\d{4}) ([\d\.]+,\d{2})"),
+    ("totale", r"TOTALE ([\d\.]+,\d{2})"),
+)
+
+
+def comunicazione_54bis(pagine: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    """Legge dal testo una comunicazione di irregolarita' dell'Agenzia
+    (54-bis sulla LIPE, 36-bis sulla dichiarazione IVA): numero, codice atto,
+    data di elaborazione, modello e anno, importo totale e, per ogni periodo
+    del prospetto, imposta da versare, sanzioni e interessi con i codici
+    tributo stampati (9035, 9034, 9033). Il formato e' quello che
+    `incroci_fiscali._comunicazione_54bis` confronta con i versamenti.
+
+    Niente si deduce: senza prospetto i periodi restano vuoti e la
+    comunicazione resta «senza righe strutturate».
+    """
+    elenco = sorted((dict(p) for p in pagine), key=lambda p: int(p.get("page_number") or 0))
+    testo = "\n".join(str(p.get("text") or "") for p in elenco)
+    piatto = re.sub(r"\s+", " ", testo)
+
+    m = re.search(r"Comunicazione(?:\s+54-bis)?\s+n\.\s*(\d{8,16})", piatto)
+    numero = m.group(1) if m else None
+    m = re.search(r"Codice atto\s+n\.\s*(\d{8,16})", piatto)
+    codice_atto = m.group(1) if m else None
+    m = re.search(r"elaborata il\s+(\d{2})-(\d{2})-(\d{4})", piatto)
+    data_elaborazione = f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else None
+    m = re.search(r"somma di euro\s+([\d\.]+,\d{2})", piatto)
+    importo_totale = _importo_cents_it(m.group(1)) if m else None
+    # La lettera 36-bis cita anche il 54-bis nelle avvertenze: decide l'intestazione.
+    if re.search(r"Comunicazione 54-bis", piatto):
+        norma = "54-bis"
+    elif re.search(r"36-bis", piatto):
+        norma = "36-bis"
+    else:
+        norma = "54-bis" if re.search(r"54-bis", piatto) else None
+
+    tipo_modello = anno_modello = anno_imposta = None
+    m = re.search(r"Liquidazioni periodiche IVA\s+(20\d{2})", piatto)
+    if m:
+        tipo_modello, anno_imposta = "LIPE", int(m.group(1))
+    else:
+        m = re.search(r"modello IVA (20\d{2})", piatto, re.I) or re.search(r"\bIVA (20\d{2}) Prospetto", piatto)
+        if m:
+            tipo_modello, anno_modello = "IVA", int(m.group(1))
+            anno_imposta = anno_modello - 1   # il modello IVA dell'anno N dichiara l'anno N-1
+    m = re.search(r"\b(I{1,3}|IV) trimestre (20\d{2})", piatto)
+    trimestre_lettera = {"trimestre": _TRIMESTRI_IT[m.group(1)], "anno": int(m.group(2))} if m else None
+
+    periodi: List[Dict[str, Any]] = []
+    blocchi = list(_RE_BLOCCO_PERIODO.finditer(piatto))
+    for i, b in enumerate(blocchi):
+        fine = blocchi[i + 1].start() if i + 1 < len(blocchi) else len(piatto)
+        corpo = piatto[b.start():fine]
+        riga: Dict[str, Any] = _periodo_comunicazione(b.group(1), anno_imposta)
+        for nome, pattern in _RIGHE_COMUNICAZIONE:
+            mm = re.search(pattern, corpo)
+            if not mm:
+                riga[nome] = None
+                continue
+            if len(mm.groups()) == 2:
+                riga[nome] = _euro_str(_importo_cents_it(mm.group(2)))
+                riga[f"codice_tributo_{'da_versare' if nome == 'imposta_da_versare' else nome}"] = mm.group(1)
+            else:
+                riga[nome] = _euro_str(_importo_cents_it(mm.group(1)))
+        riga["totale_cents"] = _importo_cents_it(re.search(r"TOTALE ([\d\.]+,\d{2})", corpo).group(1)) \
+            if re.search(r"TOTALE ([\d\.]+,\d{2})", corpo) else None
+        periodi.append(riga)
+
+    somma = sum(p.get("totale_cents") or 0 for p in periodi)
+    quadratura = None
+    if periodi and importo_totale is not None:
+        quadratura = {"ok": somma == importo_totale, "somma_periodi": _euro_str(somma),
+                      "importo_totale": _euro_str(importo_totale)}
+    return {
+        "norma": norma, "numero_comunicazione": numero, "codice_atto": codice_atto,
+        "data_elaborazione": data_elaborazione, "data_notifica": None,
+        "tipo_modello": tipo_modello, "anno_modello": anno_modello, "anno_imposta": anno_imposta,
+        "trimestre_lettera": trimestre_lettera,
+        "importo_totale": _euro_str(importo_totale), "periodi": periodi, "quadratura": quadratura,
+    }
 
 
 # ── quadro ST del 770: ritenute operate e versate ───────────────────────────
@@ -574,6 +708,22 @@ def estrai_quadri_pagine(pagine: Iterable[Dict[str, Any]], document_type: Option
     if tipo is None:
         esito["motivo"] = "tipo_non_riconosciuto"
         return esito
+    if tipo == "COMUNICAZIONE_IRREGOLARITA":
+        com = comunicazione_54bis(elenco)
+        esito["comunicazione_54bis"] = com
+        if esito["anno_imposta"] is None and com.get("anno_imposta"):
+            esito["anno_imposta"] = com["anno_imposta"]
+            esito["anno_imposta_fonte"] = "comunicazione"
+        if com.get("numero_comunicazione") and not esito["identificativo"]:
+            esito["identificativo"] = com["numero_comunicazione"]
+        esito["campi"] = {
+            "importo_totale": {"valore": com.get("importo_totale"), "motivo": None if com.get("importo_totale") else "non_trovato",
+                               "pagina": None},
+            "periodi_letti": {"valore": str(len(com["periodi"])), "motivo": None, "pagina": None},
+        }
+        if com.get("quadratura") and not com["quadratura"]["ok"]:
+            esito["campi_da_verificare"] = ["importo_totale"]
+        return esito
     if tipo == "MODELLO_770":
         st = quadro_st(elenco)
         esito["st"] = {"righe_lette": len(st["righe"]), "righe_incomplete": st["righe_incomplete"],
@@ -701,6 +851,10 @@ async def estrai_quadri_documento(db, document_id: str, *, company_id: Optional[
     pagine, rilette = await _pagine_con_coordinate(db, documento, pagine, company_id, dry_run=dry_run)
 
     letto = estrai_quadri_pagine(pagine, documento.get("document_type"))
+    if not letto.get("tipo_letto") and documento.get("document_type") not in TIPI_CON_QUADRI:
+        # Una LIPE vera passata dal ripasso: nessun quadro da leggere, niente da scrivere.
+        return {"document_id": document_id, "esito": "tipo_non_riconosciuto", "dry_run": dry_run,
+                "quadri": letto, "prove": 0, "riclassificato": None}
     quadri = {**letto, "estratto_at": _now(), "coordinate_rilette": rilette}
     prove = []
     for nome, campo in letto["campi"].items():
@@ -721,12 +875,29 @@ async def estrai_quadri_documento(db, document_id: str, *, company_id: Optional[
                 {"company_id": company_id, "id": prova["id"]},
                 {"$setOnInsert": prova}, upsert=True,
             )
+        aggiornamento: Dict[str, Any] = {"quadri": quadri, "updated_at": _now()}
+        if letto.get("tipo_letto") == "COMUNICAZIONE_IRREGOLARITA":
+            # La struttura che gli incroci confrontano con i versamenti.
+            aggiornamento["comunicazione_54bis"] = letto.get("comunicazione_54bis") or {}
+        tipo_archivio = documento.get("document_type")
+        if letto.get("tipo_letto") in RICLASSIFICABILI and tipo_archivio in RICLASSIFICABILI[letto["tipo_letto"]]:
+            # Il contenuto vince sul marcatore d'ingresso: una comunicazione
+            # 54-bis entrata come «LIPE» (cita le liquidazioni periodiche) o un
+            # 770 entrato come «altro» si riclassifica dal testo, con traccia.
+            aggiornamento["document_type"] = letto["tipo_letto"]
+            aggiornamento["riclassificazione"] = {
+                "da": tipo_archivio, "a": letto["tipo_letto"], "il": _now(),
+                "fonte": "dichiarazioni_quadri.riconosci_tipo (contenuto)",
+            }
         await db[COLL_FISCAL_DOCUMENTS].update_one(
-            {"company_id": company_id, "id": document_id},
-            {"$set": {"quadri": quadri, "updated_at": _now()}},
+            {"company_id": company_id, "id": document_id}, {"$set": aggiornamento},
         )
     return {
         "document_id": document_id,
+        "riclassificato": (
+            letto.get("tipo_letto") if letto.get("tipo_letto") in RICLASSIFICABILI
+            and documento.get("document_type") in RICLASSIFICABILI[letto["tipo_letto"]] else None
+        ),
         "esito": "letto" if letto.get("tipo_letto") else "tipo_non_riconosciuto",
         "dry_run": dry_run,
         "quadri": quadri,
@@ -795,8 +966,11 @@ async def estrai_quadri_archivio(db, *, dry_run: bool = True, company_id: Option
     from app.config import settings
 
     company_id = company_id or settings.FISCAL_COMPANY_ID
+    # Anche le LIPE: fra loro stanno le comunicazioni 54-bis entrate col
+    # marcatore «liquidazioni periodiche» (5 in archivio il 07/10/2026); una
+    # LIPE vera non ha quadri e resta «tipo_non_riconosciuto», senza scrivere.
     documenti = await db[COLL_FISCAL_DOCUMENTS].find(
-        {"company_id": company_id, "document_type": {"$in": sorted(TIPI_CON_QUADRI)}},
+        {"company_id": company_id, "document_type": {"$in": sorted(TIPI_CON_QUADRI | {"LIPE"})}},
         {"_id": 0, "id": 1, "filename": 1, "document_type": 1},
     ).to_list(10000)
     riepilogo: Dict[str, Any] = {

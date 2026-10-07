@@ -69,6 +69,9 @@ SOGLIA_CENTS = 100
 #: Giorni dalla notifica per pagare una comunicazione 54-bis con la sanzione
 #: ridotta a un terzo (art. 2, c. 2, D.Lgs. 462/1997).
 GIORNI_PAGAMENTO_54BIS = 30
+#: Finestra entro cui un versamento di pari importo dopo l'elaborazione vale
+#: come candidato (60 giorni del pagamento ridotto piu' margine di notifica).
+GIORNI_FINESTRA_CANDIDATI = 120
 
 STATO_OK = "OK"
 STATO_MANCANTE = "MANCANTE"
@@ -434,6 +437,33 @@ def _comunicazione_54bis(doc: Dict[str, Any], versamenti: List[Dict[str, Any]],
     esito = confronta_importi(totale_cents, versato_cents)
     stato = {STATO_OK: "PAGATA", STATO_ECCEDENTE: "PAGATA", STATO_MANCANTE: "NON_PAGATA",
              STATO_PARZIALE: "PARZIALE", STATO_NON_DETERMINABILE: "DA_VERIFICARE"}[esito["stato"]]
+    # Senza riga con i codici della comunicazione, un versamento dello stesso
+    # importo al centesimo dopo l'elaborazione e' un candidato (importo e
+    # data, nessun identificativo: proposta probabile, §17A.25), mai una prova.
+    candidati = []
+    data_el = reg._data_iso(dati.get("data_elaborazione"))
+    if stato == "NON_PAGATA" and totale_cents and data_el:
+        # Solo con la data di elaborazione: la finestra e' quella del pagamento
+        # con sanzione ridotta (60 giorni, piu' il margine delle rate).
+        limite = (date.fromisoformat(data_el) + timedelta(days=GIORNI_FINESTRA_CANDIDATI)).isoformat()
+        for v in versamenti:
+            if v.get("saldo_cents") != totale_cents or not v.get("data_versamento"):
+                continue
+            giorno = str(v["data_versamento"])[:10]
+            if giorno < data_el or giorno > limite:
+                continue
+            candidati.append({
+                "fonte": v["fonte"], "id": v["id"], "filename": v["filename"], "protocollo": v["protocollo"],
+                "data_versamento": v["data_versamento"], "importo": _euro(v["saldo_cents"]),
+                "codici_tributo": sorted({r["codice"] for r in v["righe"]}),
+            })
+        if candidati:
+            stato = "DA_VERIFICARE"
+            nota = ((nota + "; ") if nota else "") + (
+                f"nessuna riga con i codici {', '.join(codici)}, ma {len(candidati)} versamento/i di pari importo "
+                f"({_euro_it(totale_cents)} €) dopo l'elaborazione: da verificare, i codici tributo letti sulla "
+                "quietanza non coincidono"
+            )
     # Il totale della comunicazione comanda (gli interessi maturano dopo i
     # periodi stampati): la differenza resta scritta in `nota`.
     data_notifica = reg._data_iso(dati.get("data_notifica") or doc.get("data_notifica"))
@@ -450,6 +480,8 @@ def _comunicazione_54bis(doc: Dict[str, Any], versamenti: List[Dict[str, Any]],
         "importo_totale": _euro(totale_cents), "importo_versato": _euro(versato_cents),
         "mancante": _euro(esito["mancante_cents"]), "stato": stato, "pagata": stato == "PAGATA",
         "nota": nota, "periodi": periodi,
+        "codice_atto": dati.get("codice_atto"), "data_elaborazione": dati.get("data_elaborazione"),
+        "candidati_per_importo": candidati,
         "data_notifica": data_notifica, "scadenza": scadenza,
         "scadenza_motivo": None if scadenza else "data di notifica non nota: il termine di 30 giorni non si calcola",
         "giorni_oltre_scadenza": (
