@@ -6,7 +6,8 @@ import { useConfirm } from './ui/ConfirmDialog';
 
 
 // Le ultime cifre del numero assegno come le scrive il titolare sulla fattura:
-// «694-90», «7694-90» (quattro cifre prima del trattino) o «69490». Il
+// «694-90» (coda del numero) o «9490-07» (quattro cifre di coda e foglio,
+// come sulla matrice 0208769490-07). Il
 // trattino resta dove lo mette lui; senza trattino, fino a cinque cifre si
 // mostrano nella guida storica «328-01». Il confronto lo fa il backend.
 export function formattaFinaleAssegno(input) {
@@ -219,8 +220,9 @@ export default function AssociaAssegnoFattura({
           </div>
           <div style={{ color: '#7a776e', marginTop: 6, fontSize: 11.5 }}>
             Digita le ultime cifre del numero assegno come le hai scritte sulla
-            fattura: 694-90, 7694-90 o 328-01. Il sistema le confronta con la coda
-            del numero BPM completo (0208769490) nel registro e nell'estratto conto.
+            fattura: 694-90 oppure 9490-07 (coda e foglio, come sulla matrice
+            0208769490-07). Il sistema le confronta con il numero BPM completo nel
+            registro e nell'estratto conto, che non riporta il foglio.
             Nessun collegamento viene creato sul solo importo.
           </div>
           {errore && <div role="alert" style={{ color: '#b0362b', marginTop: 7 }}>{errore}</div>}

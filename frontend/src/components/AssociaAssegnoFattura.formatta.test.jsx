@@ -4,7 +4,7 @@ import { formattaFinaleAssegno } from './AssociaAssegnoFattura';
 describe('formattaFinaleAssegno', () => {
   it('conserva il trattino dove lo scrive il titolare', () => {
     expect(formattaFinaleAssegno('694-90')).toBe('694-90');
-    expect(formattaFinaleAssegno('7694-90')).toBe('7694-90');
+    expect(formattaFinaleAssegno('9490-07')).toBe('9490-07');
     expect(formattaFinaleAssegno('694-')).toBe('694-');
   });
 

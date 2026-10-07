@@ -331,15 +331,17 @@ def _frammento_assegno_valido(frammento: str) -> bool:
 def _numero_assegno_corrisponde_frammento(numero: Any, frammento: str) -> bool:
     """Confronta le ultime cifre scritte sulla fattura con il numero completo.
 
-    Sulla fattura il titolare annota la coda del numero BPM come gli viene:
-    ``694-90``, ``7694-90`` (quattro cifre prima del trattino, 07/10/2026)
-    o ``69490``. Il trattino e' un separatore di scrittura, non un dato:
-    tolte le cifre dal frammento, il numero bancario (``0208769490``) deve
-    finire con quelle cifre. Resta valida la guida storica ``328-01``:
-    tre cifre di coda del numero bancario piu' il foglio del carnet, per i
-    numeri di registro che portano il suffisso (``0208770000-01``); gli
-    estratti BPM non espongono il foglio, e ``328-01`` ritrova comunque
-    ``0208769328``. I vecchi suffissi senza zero (``-1``) restano leggibili.
+    La matrice BPM porta ``0208769490-07``: numero continuo e foglio del
+    carnet. Sulla fattura il titolare annota la coda come gli viene
+    (07/10/2026): ``694-90`` (ultime cifre del numero, trattino di
+    scrittura) oppure ``9490-07`` (quattro cifre di coda e foglio). Prima
+    prova: tolte le cifre dal frammento, il numero bancario deve finire con
+    quelle cifre. Seconda prova, la guida storica ``328-01``/``9490-07``:
+    la parte prima del trattino (almeno tre cifre) e' la coda del numero
+    bancario, quella dopo e' il foglio; gli estratti BPM non espongono il
+    foglio, e ``328-01`` ritrova comunque ``0208769328``; i numeri di
+    registro con suffisso (``0208770000-01``) devono avere lo stesso foglio.
+    I vecchi suffissi senza zero (``-1``) restano leggibili.
     Non e' un match sul solo importo: il candidato resta vincolato al numero.
     """
     base, suffisso = _parti_numero_assegno(numero)

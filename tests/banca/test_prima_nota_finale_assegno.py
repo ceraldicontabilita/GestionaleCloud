@@ -37,7 +37,11 @@ def test_finale_assegno_accetta_le_ultime_cifre_col_trattino_dove_le_scrive_il_t
     # Sulla fattura 1588 del 30/09/2026 il titolare ha scritto «694-90»:
     # il trattino e' un separatore, l'assegno BPM e' 0208769490.
     assert _numero_assegno_corrisponde_frammento("0208769490", "694-90")
-    assert _numero_assegno_corrisponde_frammento("0208769490", "7694-90")  # quattro cifre prima del trattino
+    # ...oppure «9490-07»: quattro cifre di coda e foglio, come sulla matrice.
+    assert _numero_assegno_corrisponde_frammento("0208769490", "9490-07")
+    assert _numero_assegno_corrisponde_frammento("0208769490-07", "9490-07")
+    assert not _numero_assegno_corrisponde_frammento("0208769490-08", "9490-07")
+    assert _numero_assegno_corrisponde_frammento("0208769490", "7694-90")  # trattino spostato: stesse cifre
     assert _numero_assegno_corrisponde_frammento("0208769490", "69490")
     assert _numero_assegno_corrisponde_frammento("0208769490", "8769490")
     assert not _numero_assegno_corrisponde_frammento("0208769491", "694-90")
