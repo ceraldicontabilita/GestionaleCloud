@@ -56,6 +56,7 @@ __all__ = [
     "valore_rigo",
     "estrai_quadri_pagine",
     "estrai_quadri_documento",
+    "credito_iva_riportato",
     "avvia_estrazione_archivio",
     "stato_estrazione_archivio",
 ]
@@ -69,10 +70,26 @@ TIPI_CON_QUADRI = frozenset({"DICHIARAZIONE_IVA", "REDDITI_SC", "DICHIARAZIONE_I
 #: rigo del modulo -> nome del campo, per tipo letto.
 CAMPI_PER_TIPO: Dict[str, Dict[str, str]] = {
     "DICHIARAZIONE_IVA": {
+        # Righi a casella singola: il lettore per posizione prende la casella
+        # del rigo. Righi a piu' colonne (VE24, VF25, VL8, VL30, VX4) restano
+        # fuori finche' il lettore non distingue le colonne.
+        "VE26": "ve26_iva_vendite",          # totale imposta sulle operazioni attive
+        "VF71": "vf71_iva_ammessa_detrazione",
+        "VL1": "vl1_iva_debito_annua",
+        "VL2": "vl2_iva_detraibile_annua",
+        "VL3": "vl3_imposta_dovuta",
+        "VL4": "vl4_imposta_a_credito",
+        "VL9": "vl9_credito_compensato_f24",
+        "VL25": "vl25_eccedenza_credito_anno_precedente",
         "VL32": "vl32_iva_debito",
         "VL33": "vl33_iva_credito",
+        "VL38": "vl38_totale_iva_dovuta",
+        "VL39": "vl39_totale_iva_credito",
         "VX1": "vx1_da_versare",
         "VX2": "vx2_a_credito",
+        # Il credito che passa all'anno dopo: VX2 e' «da ripartire» fra
+        # rimborso (VX4), detrazione/compensazione (VX5) e consolidato (VX6).
+        "VX5": "vx5_da_riportare",
     },
     "REDDITI_SC": {
         "RN1": "rn1_reddito",
@@ -85,7 +102,9 @@ CAMPI_PER_TIPO: Dict[str, Dict[str, str]] = {
     },
 }
 
-_ETICHETTE_QUADRO = re.compile(r"\b(VL32|VL33|VX1|VX2|RN1|RN2|RN17|IR26|IR27)\b")
+_ETICHETTE_QUADRO = re.compile(
+    r"\b(VE26|VF71|VL1|VL2|VL3|VL4|VL9|VL25|VL32|VL33|VL38|VL39|VX1|VX2|VX5|RN1|RN2|RN17|IR26|IR27)\b"
+)
 _RE_ISA = re.compile(r"Esito del ricalcolo|INDICE\s+SINTETICO\s+DI\s+AFFIDABILIT", re.I)
 #: Il frontespizio dell'esito ISA («DATI RICALCOLATI», motore «Il tuo Isa»)
 #: porta codice ISA e protocollo: le sue coordinate vanno conservate.
@@ -522,6 +541,62 @@ async def estrai_quadri_documento(db, document_id: str, *, company_id: Optional[
         "quadri": quadri,
         "prove": len(prove),
     }
+
+
+async def credito_iva_riportato(db, anno_imposta: int, *, company_id: Optional[str] = None) -> Dict[str, Any]:
+    """Il credito IVA che la dichiarazione annuale di `anno_imposta` riporta
+    all'anno dopo (rigo VX5), letto dall'archivio fiscale.
+
+    E' il «credito precedente» di gennaio quando non esiste la liquidazione
+    confermata di dicembre. Ritorna ``{"credito": "4676.00"|None, "motivo",
+    "fonte"}``: `credito` e' None, con il motivo, quando la dichiarazione non
+    e' in archivio, quando VX5 non e' stato letto (lettore precedente a
+    questo rigo: rilanciare `estrai_quadri_archivio`) o quando due copie
+    dichiarano importi diversi. Casella VX5 vuota con il quadro VX letto e'
+    uno zero vero: nessun credito riportato.
+    """
+    from app.config import settings
+
+    company_id = company_id or settings.FISCAL_COMPANY_ID
+    documenti = await db[COLL_FISCAL_DOCUMENTS].find(
+        {"company_id": company_id, "document_type": "DICHIARAZIONE_IVA",
+         "quadri.anno_imposta": int(anno_imposta)},
+        {"_id": 0, "id": 1, "filename": 1, "quadri": 1},
+    ).to_list(50)
+    if not documenti:
+        return {"credito": None, "motivo": "dichiarazione_non_in_archivio", "fonte": None}
+
+    letture: Dict[str, Dict[str, Any]] = {}
+    non_letti: List[str] = []
+    for doc in documenti:
+        campi = (doc.get("quadri") or {}).get("campi") or {}
+        vx5 = campi.get("vx5_da_riportare")
+        if vx5 is None:
+            non_letti.append(doc.get("filename") or doc.get("id"))
+            continue
+        valore = vx5.get("valore")
+        if valore is None:
+            vx2 = campi.get("vx2_a_credito") or {}
+            quadro_letto = vx5.get("motivo") == "casella_vuota" and (
+                vx2.get("valore") is not None or vx2.get("motivo") == "casella_vuota"
+            )
+            if not quadro_letto:
+                non_letti.append(doc.get("filename") or doc.get("id"))
+                continue
+            valore = "0.00"
+        letture[str(Decimal(valore).quantize(Decimal("0.01")))] = {
+            "document_id": doc.get("id"), "filename": doc.get("filename"), "rigo": "VX5",
+            "identificativo": (doc.get("quadri") or {}).get("identificativo"),
+            "anno_imposta": int(anno_imposta),
+        }
+    if len(letture) > 1:
+        return {"credito": None, "motivo": "dichiarazioni_discordanti",
+                "candidati": sorted(letture), "fonte": None}
+    if not letture:
+        return {"credito": None, "motivo": "vx5_non_letto_rilanciare_quadri",
+                "documenti": non_letti, "fonte": None}
+    credito, fonte = next(iter(letture.items()))
+    return {"credito": credito, "motivo": None, "fonte": fonte}
 
 
 async def estrai_quadri_archivio(db, *, dry_run: bool = True, company_id: Optional[str] = None) -> Dict[str, Any]:

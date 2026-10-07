@@ -10,7 +10,7 @@ riapertura e rettifica. Montato sotto /api/iva.
 import uuid
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -357,16 +357,36 @@ async def _fatture_del_periodo(db, periodo: str) -> List[Dict[str, Any]]:
         {"periodo_iva_attribuito": periodo, **FILTRO_FATTURA_ATTIVA}, proj).to_list(5000)
 
 
-async def _credito_precedente(db, periodo: str) -> float:
-    """Credito IVA riportato dalla liquidazione confermata del mese precedente."""
+async def _credito_precedente(db, periodo: str) -> Tuple[float, Dict[str, Any]]:
+    """Credito IVA riportato nel periodo, con la sua fonte.
+
+    Dalla liquidazione confermata del mese precedente; a gennaio, senza una
+    liquidazione di dicembre confermata, dal rigo VX5 della dichiarazione
+    annuale dell'anno prima in archivio (§113.3). Senza nessuna delle due il
+    credito e' 0.0 ma la fonte dice `non_disponibile` con il motivo: lo zero
+    non e' un dato, e' l'assenza del dato.
+    """
+    from app.services.dichiarazioni_quadri import credito_iva_riportato
+
     prev = _periodo_precedente(periodo)
     doc = await db[COLL_LIQ].find_one(
         {"periodo": prev, "stato": {"$in": [liq.CONFERMATA, liq.TRASMESSA]}},
         sort=[("versione", -1)],
     )
-    if not doc:
-        return 0.0
-    return round(float(doc.get("credito_periodo") or 0), 2)
+    if doc:
+        return round(float(doc.get("credito_periodo") or 0), 2), {
+            "tipo": "liquidazione_confermata", "periodo": prev, "liquidazione_id": doc.get("id"),
+        }
+    if periodo.endswith("-01"):
+        esito = await credito_iva_riportato(db, int(periodo[:4]) - 1)
+        if esito.get("credito") is not None:
+            return round(float(esito["credito"]), 2), {
+                "tipo": "dichiarazione_annuale", **(esito.get("fonte") or {}),
+            }
+        return 0.0, {"tipo": "non_disponibile", "motivo": esito.get("motivo"),
+                     "dettaglio": esito.get("candidati") or esito.get("documenti")}
+    return 0.0, {"tipo": "non_disponibile", "motivo": "liquidazione_precedente_non_confermata",
+                 "periodo": prev}
 
 
 async def _componi_liquidazione(
@@ -375,7 +395,7 @@ async def _componi_liquidazione(
     """Costruisce (senza persistere) il documento liquidazione per il periodo."""
     fatture = await _fatture_del_periodo(db, periodo)
     incluse, escluse = liq.seleziona_fatture_per_liquidazione(fatture, periodo)
-    credito_prec = await _credito_precedente(db, periodo)
+    credito_prec, fonte_credito = await _credito_precedente(db, periodo)
     totali = liq.calcola_totali(incluse, iva_vendite, credito_prec)
     ora = datetime.now(timezone.utc).isoformat()
     # Una fattura con IVA e detraibilita' non decisa resta fuori dal calcolo:
@@ -395,6 +415,7 @@ async def _componi_liquidazione(
         "iva_vendite": totali["iva_vendite"],
         "iva_acquisti": totali["iva_acquisti"],
         "credito_precedente": totali["credito_precedente"],
+        "credito_precedente_fonte": fonte_credito,
         "saldo": totali["saldo"],
         "debito_periodo": totali["debito_periodo"],
         "credito_periodo": totali["credito_periodo"],

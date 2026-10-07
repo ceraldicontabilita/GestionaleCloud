@@ -1027,18 +1027,35 @@ class CollezioneDocumenti:
         self._indexes.pop(name, None)
 
     def aggregate(self, pipeline: list[dict[str, Any]], *args, **kwargs) -> CursoreDocumenti:
-        documents = [_clone(document) for document in self._documents]
+        # Niente copie finche' nessuna fase scrive: `$match`, `$skip`, `$limit`,
+        # `$count` e `$group` leggono soltanto, e un `$match` in testa lascia
+        # quasi sempre pochi documenti. Copiare tutta la collezione prima di
+        # filtrare costava, su 18.000 alert, centinaia di MB di copie e 2-5 s
+        # di event loop a ogni apertura della campana (07/10/2026, OOM a 2 GB).
+        # Le fasi che modificano i documenti copiano prima, una volta sola; il
+        # cursore copia comunque in uscita (`_page`/`to_list`).
+        documents = list(self._documents)
+        copiati = False
+
+        def _copia_prima_di_scrivere() -> None:
+            nonlocal documents, copiati
+            if not copiati:
+                documents = [_clone(document) for document in documents]
+                copiati = True
+
         for stage in pipeline:
             operator, value = next(iter(stage.items()))
             if operator == "$match":
                 documents = [document for document in documents if matches_filter(document, value)]
             elif operator == "$sort":
                 documents = CursoreDocumenti(documents).sort(list(value.items()))._page()
+                copiati = True
             elif operator == "$skip":
                 documents = documents[int(value):]
             elif operator == "$limit":
                 documents = documents[:int(value)]
             elif operator == "$project":
+                _copia_prima_di_scrivere()
                 documents = [apply_projection(document, value) for document in documents]
             elif operator in {"$addFields", "$set"}:
                 updated = []
@@ -1048,12 +1065,15 @@ class CollezioneDocumenti:
                         set_path(result, path, evaluate_expression(expression, document))
                     updated.append(result)
                 documents = updated
+                copiati = True
             elif operator == "$unset":
+                _copia_prima_di_scrivere()
                 fields = [value] if isinstance(value, str) else list(value)
                 for document in documents:
                     for path in fields:
                         unset_path(document, path)
             elif operator == "$unwind":
+                _copia_prima_di_scrivere()
                 config = {"path": value} if isinstance(value, str) else value
                 path = str(config.get("path") or "").lstrip("$")
                 preserve = bool(config.get("preserveNullAndEmptyArrays"))
@@ -1106,6 +1126,9 @@ class CollezioneDocumenti:
                                     result[field].append(item)
                     results.append(result)
                 documents = results
+                # I gruppi sono documenti nuovi, ma i valori raccolti ($first,
+                # $push...) possono puntare dentro gli originali: resta
+                # `copiati = False`, cosi' una fase che scrive copia prima.
             elif operator == "$count":
                 documents = [{str(value): len(documents)}] if documents else []
             elif operator == "$lookup":
@@ -1130,6 +1153,7 @@ class CollezioneDocumenti:
             elif operator in {"$replaceRoot", "$replaceWith"}:
                 expression = value.get("newRoot") if operator == "$replaceRoot" else value
                 documents = [evaluate_expression(expression, document) or {} for document in documents]
+                copiati = False
             else:
                 raise NotImplementedError(f"Fase di aggregazione non supportata: {operator}")
         return CursoreDocumenti(documents)
