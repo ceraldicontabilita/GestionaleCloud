@@ -1981,6 +1981,14 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     # Cartella di pagamento dell'Agente della riscossione: obbligo da pagare, non un pagamento.
     if lower.endswith(".pdf") and e_cartella_pagamento(compact_pdf_text):
         return "cartella_pagamento"
+    # Agenzia delle entrate-Riscossione: lettera di accoglimento della
+    # rateizzazione (piano e rate attese) e stampa «Dettaglio tributi»
+    # dell'area riservata (fotografia della posizione). Riconosciuti dal
+    # contenuto; prima finivano in ERRORI «non riconosciuto».
+    from app.services.ader_snapshot_import import riconosci as e_documento_ader
+
+    if lower.endswith(".pdf") and (tipo_ader := e_documento_ader(compact_pdf_text)):
+        return tipo_ader
     if _e_contratto_di_lavoro(compact_pdf_text):
         # Un contratto cita la busta paga ma non e' un cedolino: resta un
         # documento da classificare, non una busta da leggere.
@@ -3426,6 +3434,17 @@ async def upload_documento_automatico(
                 "Dichiarazione fiscale già archiviata"
                 if is_duplicate
                 else "Dichiarazione fiscale archiviata e agganciata a F24/quietanze"
+            )
+
+        elif tipo_rilevato in ('ader_piano_rateizzazione', 'ader_dettaglio_tributi'):
+            from app.config import settings
+            from app.services.ader_snapshot_import import archivia_documento_ader
+
+            return await archivia_documento_ader(
+                db, filename=filename, content=content,
+                testo=await asyncio.to_thread(_pdf_text_for_detection, content),
+                source_context=source_context,
+                threshold_cents=settings.ADER_MICRO_RESIDUAL_THRESHOLD_CENTS,
             )
 
         elif tipo_rilevato == 'dilazione_inps':

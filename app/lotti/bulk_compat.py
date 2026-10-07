@@ -19,8 +19,11 @@ from typing import Any, Iterable
 #: lavora in memoria: un ``update_one`` non attende niente di reale, e 500
 #: upsert di fila tenevano fermo l'event loop per ~10 s (07/10/2026: Render
 #: non riceveva /api/health e riavviava l'istanza, uccidendo il giro della
-#: cartella unica). Con una pausa ogni poche operazioni il servizio risponde.
-OPERAZIONI_PER_RESPIRO = 25
+#: cartella unica). Con 25 operazioni per pausa il loop restava ancora fermo
+#: 1-3 s per volta (un update_one con $set su mongomock scorre la collezione:
+#: decine di millisecondi l'uno) e i riavvii sono continuati, 30 in un giorno:
+#: si cede il loop a ogni operazione.
+OPERAZIONI_PER_RESPIRO = 1
 
 
 @dataclass

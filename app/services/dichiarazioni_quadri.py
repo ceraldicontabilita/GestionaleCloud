@@ -68,7 +68,7 @@ __all__ = [
 # comunicazioni 54-bis/36-bis. Il marcatore `quadri_controllati_v` sul
 # documento dice con quale versione e' stato letto: l'arretrato e' chi non
 # porta quella corrente.
-PARSER_VERSION = "dichiarazioni-quadri-v2"
+PARSER_VERSION = "dichiarazioni-quadri-v3"
 
 #: Tipo letto dal contenuto -> tipi d'archivio che quel contenuto corregge.
 #: Nessuna dichiarazione vera cambia tipo: solo i marcatori generici.
@@ -193,8 +193,14 @@ def riconosci_tipo(pagine: Iterable[Dict[str, Any]]) -> Optional[str]:
     if _RE_COMUNICAZIONE.search(testo):
         return "COMUNICAZIONE_IRREGOLARITA"
     # Il 770 porta il quadro ST (ritenute operate e versate): si riconosce
-    # prima dell'IVA perche' anche lui cita «modello» e «imposta».
-    if re.search(r"QUADRO\s*ST(?![A-Z0-9])|MODELLO\s*770", testo, re.I):
+    # prima dell'IVA perche' anche lui cita «modello» e «imposta». Serve
+    # pero' la testata «MODELLO 770/anno» oppure il quadro con i suoi righi
+    # (ST1…): il quadro RU dei Redditi SC cita «(quadro ST del modello 770)»
+    # in una nota e un Redditi 2021 era entrato come 770 (07/10/2026).
+    if _RE_MODELLO_770.search(testo) or (
+            re.search(r"QUADRO\s*ST(?![A-Z0-9])", testo, re.I)
+            and re.search(r"\bST\d{1,2}\b", testo)
+            and re.search(r"RITENUTE\s+OPERATE|IMPORTO\s+VERSATO", testo, re.I)):
         return "MODELLO_770"
     # L'OCR salda le parole («QUADROVX», «MODELLOIVA2024»): spazio facoltativo.
     if re.search(r"QUADRO\s*VX(?![A-Z0-9])|MODELLO\s*IVA\s*20\d{2}", testo, re.I):
@@ -1013,12 +1019,18 @@ async def estrai_quadri_archivio(db, *, dry_run: bool = True, company_id: Option
     return riepilogo
 
 
-async def estrai_quadri_arretrato(db, *, limite: int = 15, company_id: Optional[str] = None) -> Dict[str, Any]:
+async def estrai_quadri_arretrato(db, *, limite: int = 60, budget_secondi: float = 240.0,
+                                  company_id: Optional[str] = None) -> Dict[str, Any]:
     """Legge i quadri dei documenti non ancora passati dalla versione corrente
-    del lettore, pochi per giro (il giro F24 dei 30 minuti): la coda si
-    smaltisce da sola, senza ripassi a mano e senza un lotto che tiene la
-    memoria. Idempotente: il documento letto porta `quadri_controllati_v`."""
+    del lettore, un lotto per giro del job F24 (ogni ora) entro un budget di
+    tempo: la coda si smaltisce da sola, senza ripassi a mano e senza un
+    lotto che tiene la memoria (un documento alla volta, ~5 s ciascuno in
+    produzione). Idempotente: il documento letto porta `quadri_controllati_v`."""
+    import time
+
     from app.config import settings
+
+    partenza = time.monotonic()
 
     company_id = company_id or settings.FISCAL_COMPANY_ID
     arretrato = await db[COLL_FISCAL_DOCUMENTS].find(
@@ -1028,8 +1040,13 @@ async def estrai_quadri_arretrato(db, *, limite: int = 15, company_id: Optional[
     ).to_list(max(limite * 4, 50))
     arretrato = [d for d in arretrato if d.get("entity_status") != "deleted"]
     esito: Dict[str, Any] = {"arretrato": len(arretrato), "letti": 0, "tipo_non_riconosciuto": 0,
-                             "riclassificati": 0, "errori": 0, "pagine_assenti": 0}
+                             "riclassificati": 0, "errori": 0, "pagine_assenti": 0, "elaborati": 0,
+                             "budget_esaurito": False}
     for doc in arretrato[:limite]:
+        if time.monotonic() - partenza > budget_secondi:
+            esito["budget_esaurito"] = True
+            break
+        esito["elaborati"] += 1
         try:
             r = await estrai_quadri_documento(db, doc["id"], company_id=company_id)
         except Exception as exc:  # noqa: BLE001 - un documento non ferma il lotto
@@ -1055,7 +1072,7 @@ async def estrai_quadri_arretrato(db, *, limite: int = 15, company_id: Optional[
             esito["tipo_non_riconosciuto"] += 1
         if r.get("riclassificato"):
             esito["riclassificati"] += 1
-    esito["restanti"] = max(0, len(arretrato) - limite)
+    esito["restanti"] = max(0, len(arretrato) - esito["elaborati"])
     return esito
 
 

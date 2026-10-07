@@ -993,7 +993,13 @@ def start_scheduler():
             logger.error("[SCHEDULER-F24] scadenzario: %s: %s", type(e).__name__, e)
         try:
             # Dopo il riscontro: la rata prende l'addebito dalla sua quietanza.
-            from app.services.dilazioni_inps import collega_dilazioni
+            # Prima, i piani conservati ma mai depositati si rileggono una volta.
+            from app.services.dilazioni_inps import collega_dilazioni, riprendi_da_verificare
+            ripresa = await riprendi_da_verificare(db)
+            if ripresa["candidati"]:
+                logger.info("[SCHEDULER-F24] dilazioni INPS da verificare=%s depositate=%s non quadrano=%s senza originale=%s",
+                            ripresa["candidati"], ripresa["depositati"], ripresa["ancora_non_quadra"],
+                            ripresa["originale_assente"])
             r = await collega_dilazioni(db)
             logger.info("[SCHEDULER-F24] dilazioni INPS=%s scritti=%s", r["dilazioni"], r.get("scritti"))
         except Exception as e:
@@ -1966,6 +1972,20 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-BANCA] giro Enable Banking non riuscito: {type(e).__name__}: {e}")
 
+    async def enable_banking_rilettura_task():
+        """Banco BPM: la rilettura chiesta con ENABLE_BANKING_DAL, solo se ancora in attesa."""
+        try:
+            import httpx
+            from app.database import Database
+            from app.services import enable_banking as eb
+            if not eb.attivo():
+                return
+            async with httpx.AsyncClient(timeout=90.0, follow_redirects=False) as client:
+                esito = await eb.giro_di_rilettura(Database.get_db(), client)
+            logger.info(f"[SCHEDULER-BANCA] rilettura Enable Banking: {esito}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-BANCA] rilettura Enable Banking non riuscita: {type(e).__name__}: {e}")
+
     scheduler.add_job(
         enable_banking_giro_task,
         OrTrigger([
@@ -1977,13 +1997,35 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # Conferma massiva del calendario fiscale decisa dal titolare (07/10/2026):
+    # una volta sola, con marcatore in sistema_stato; vedi calendario_conferme.
+    async def _calendario_conferma_massiva_job():
+        from app.database import Database
+        from app.services.calendario_conferme import conferma_massiva_una_volta
+        try:
+            r = await conferma_massiva_una_volta(Database.get_db())
+            if r.get("eseguita"):
+                logger.info("[CALENDARIO] conferma massiva eseguita: %s", r)
+        except Exception as e:
+            logger.error("[CALENDARIO] conferma massiva: %s: %s", type(e).__name__, e)
+
+    scheduler.add_job(
+        _calendario_conferma_massiva_job, "date",
+        run_date=datetime.now(timezone.utc) + timedelta(minutes=3),
+        misfire_grace_time=600,
+        id="calendario_conferma_massiva",
+        name="Calendario fiscale: conferma massiva del titolare (una volta)",
+        replace_existing=True,
+    )
+
     # Rilettura chiesta dal titolare (ENABLE_BANKING_DAL): un giro subito dopo
-    # l'avvio, non alla prossima finestra; il giro la esegue una volta sola.
+    # l'avvio, non alla prossima finestra; il giro la esegue una volta sola e
+    # a rilettura gia' fatta non consuma una lettura della banca.
     try:
         from app.services import enable_banking as _eb
         if _eb.attivo() and _eb.rilettura_dal():
             scheduler.add_job(
-                enable_banking_giro_task, "date",
+                enable_banking_rilettura_task, "date",
                 run_date=datetime.now(timezone.utc) + timedelta(minutes=3),  # con fuso: vedi sopra
                 misfire_grace_time=600,
                 id="enable_banking_rilettura",

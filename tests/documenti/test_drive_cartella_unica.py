@@ -786,3 +786,37 @@ def test_svuota_collega_il_protocollo_dopo_un_giro_con_file_elaborati(monkeypatc
 def test_svuota_senza_file_elaborati_non_tocca_il_protocollo(monkeypatch):
     totale, chiamate = _svuota_con_giri(monkeypatch, [{"letti": 0, "elaborati": 0, "restanti": 0}])
     assert "protocollo_collegati" not in totale and chiamate == []
+
+
+def test_i_metadati_sdi_e_i_daticert_pec_vanno_in_arretrato_non_in_errori(monkeypatch):
+    import app.routers.documenti as documenti
+
+    monkeypatch.setattr(documenti, "detect_document_type", lambda nome, contenuto: "auto")
+    metadati = (b'<?xml version="1.0" encoding="UTF-8"?>\n<ns2:MetadatiInvioFile xmlns:ns2="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/messaggi/v1.0" versione="1.0">'
+                b"<IdentificativoSdI>1234567</IdentificativoSdI><NomeFile>IT01234567890_00001.xml</NomeFile></ns2:MetadatiInvioFile>")
+    esito = run(cu._smista("IT01234567890_00001_metaDato.xml", metadati, {}))
+    cartella, motivo = cu.esito_del_risultato(esito)
+    assert cartella == cu.ARRETRATO and "MetadatiInvioFile" in motivo
+    daticert = b'<?xml version="1.0"?><postacert tipo="accettazione" errore="nessuno"><intestazione/></postacert>'
+    assert cu.esito_del_risultato(run(cu._smista("daticert 123.xml", daticert, {})))[0] == cu.ARRETRATO
+    # un XML qualsiasi senza radice nota resta un errore da guardare
+    assert cu.esito_del_risultato(run(cu._smista("boh.xml", b"<?xml version='1.0'?><Verbale><n>1</n></Verbale>", {})))[0] == cu.ERRORI
+    assert cu.motivo_fuori_contabilita_contenuto(b"%PDF-1.4 ...") is None
+
+
+def test_i_file_tecnici_sdi_vanno_nel_cestino_di_drive_e_le_fatture_p7m_no(ambiente, monkeypatch):
+    drive, smistati, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    metadati = (b'<?xml version="1.0" encoding="UTF-8"?>\n<ns2:MetadatiInvioFile xmlns:ns2="http://x" versione="1.0">'
+                b"<IdentificativoSdI>1</IdentificativoSdI></ns2:MetadatiInvioFile>")
+    drive.aggiungi("meta", "IT01234567890_00001_metaDato.xml", metadati, "inbox")
+    drive.aggiungi("pec", "daticert.xml", b'<?xml version="1.0"?><postacert tipo="accettazione"/>', "inbox")
+    drive.aggiungi("p7m", "IT01234567890_00001.xml.p7m", b"\x30\x82 firma CAdES con dentro la fattura", "inbox")
+
+    esito = run(cu.giro(db))
+    assert esito["tecnici_cestinati"] == 2 and esito["doppioni_cestinati"] == 0
+    assert sorted(drive.cestinati) == ["meta", "pec"] and drive.eliminati == []
+    registro = run(db[cu.REGISTRO].find_one({"id": "meta"}))
+    assert registro["esito"] == "tecnico_cestinato" and "MetadatiInvioFile" in registro["motivo"]
+    # la fattura firmata non e' un file tecnico: passa dallo smistatore come sempre
+    assert [n for n, _ in smistati] == ["IT01234567890_00001.xml.p7m"]

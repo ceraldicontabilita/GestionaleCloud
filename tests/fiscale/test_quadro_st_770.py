@@ -93,6 +93,19 @@ def test_pagina_st_senza_coordinate_si_conta_solo_se_ha_importi():
     assert dq.riconosci_tipo([{"text": "MODELLO 770/2025\nQUADRO ST"}]) == "MODELLO_770"
 
 
+def test_il_redditi_che_cita_il_quadro_st_del_770_non_e_un_770():
+    # Quadro RU dei Redditi SC 2021 (caso reale 760_T2109…): la nota «(quadro ST
+    # del modello 770)» non fa del documento un 770; il quadro RN lo dice Redditi.
+    redditi = ("Totale dei crediti da quadro RU utilizzati in compensazione per il versamento delle ritenute "
+               "(quadro ST del modello 770) ,00\nQUADRO RN DETERMINAZIONE DELL'IRES\nRN1 Reddito")
+    assert dq.riconosci_tipo([{"text": redditi}]) == "REDDITI_SC"
+    # il quadro ST senza frontespizio si riconosce dai righi e dalle colonne
+    solo_st = "QUADRO ST RITENUTE OPERATE, TRATTENUTE PER ASSISTENZA FISCALE\nST1 01 2024 1.200,00 1.200,00 16/02/2024"
+    assert dq.riconosci_tipo([{"text": solo_st}]) == "MODELLO_770"
+    # la testata telematica basta anche senza quadri
+    assert dq.riconosci_tipo([{"text": "MODELLO 770/2024 Periodo d'imposta 2023"}]) == "MODELLO_770"
+
+
 # ── scadenzario ───────────────────────────────────────────────────────────
 
 def _doc770(doc_id, anno, righe, data_presentazione="6/10/2025", identificativo="18045028409 - 0000001"):

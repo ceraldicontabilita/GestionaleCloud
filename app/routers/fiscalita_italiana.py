@@ -35,10 +35,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from decimal import Decimal, ROUND_HALF_UP
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.database import Database
+from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -919,7 +920,10 @@ async def completa_scadenza(
     anno: int = Query(None),
     note: str = Query(None, max_length=500),
 ) -> Dict[str, Any]:
-    """Conferma manuale esplicita, tracciata e idempotente."""
+    """Conferma manuale esplicita, tracciata e idempotente (writer unico in
+    ``calendario_conferme``, lo stesso della conferma massiva)."""
+    from app.services.calendario_conferme import conferma_scadenza
+
     db = Database.get_db()
 
     esistente = await db["calendario_fiscale"].find_one(
@@ -939,47 +943,40 @@ async def completa_scadenza(
     )
     if not template and not esistente:
         raise HTTPException(status_code=404, detail="Scadenza non trovata")
-    if esistente and esistente.get("completato"):
+    esito = await conferma_scadenza(db, anno=anno, scadenza_id=scadenza_id, note=note, template=template)
+    if esito.get("esito") == "gia_completata":
         return {"success": True, "message": "Scadenza gia' completata", "idempotente": True}
-
-    now = datetime.now(timezone.utc).isoformat()
-    result = await db["calendario_fiscale"].update_one(
-        {"anno": anno, "id": scadenza_id},
-        {
-            "$setOnInsert": {
-                **(template or {}),
-                "anno": anno,
-                "id": scadenza_id,
-                "created_at": now,
-            },
-            "$set": {
-                "completato": True,
-                "data_completamento": now,
-                "note_completamento": note,
-                "completato_da": "conferma_manuale",
-                "updated_at": now,
-            },
-        },
-        upsert=True,
-    )
-
-    from app.services.audit_logger import log_evento
-    await log_evento(
-        modulo="calendario_fiscale",
-        azione="scadenza_confermata_manualmente",
-        entita_id=scadenza_id,
-        entita_collection="calendario_fiscale",
-        vecchio_stato={"completato": False},
-        nuovo_stato={"completato": True, "anno": anno, "note": note},
-        fonte="pagina_calendario_fiscale",
-        utente="utente_autenticato",
-        db=db,
-    )
+    if not esito.get("success"):
+        raise HTTPException(status_code=404, detail="Scadenza non trovata")
     return {
         "success": True,
         "message": "Scadenza confermata manualmente",
-        "modificati": result.modified_count,
+        "modificati": esito.get("modificati", 0),
     }
+
+
+@router.post("/calendario/conferma-massiva")
+async def conferma_massiva_calendario(
+    dal: int = Query(..., ge=2000, le=2100),
+    al: int = Query(None, ge=2000, le=2100),
+    escludi: str = Query("INTRASTAT", description="Tipi da non confermare, separati da virgola"),
+    note: str = Query(None, max_length=500),
+    dry_run: bool = Query(True),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Conferma in blocco le scadenze passate degli anni indicati (titolare).
+
+    Con ``dry_run`` (predefinito) elenca cosa verrebbe confermato senza
+    scrivere. Le scadenze future, i tipi esclusi e quelle gia' completate
+    non si toccano.
+    """
+    from app.services.calendario_conferme import conferma_massiva
+
+    escludi_tipi = [t.strip() for t in (escludi or "").split(",") if t.strip()]
+    return await conferma_massiva(
+        Database.get_db(), dal=dal, al=al, escludi_tipi=escludi_tipi, note=note,
+        utente=str(_admin.get("user_id") or _admin.get("username") or "admin"), dry_run=dry_run,
+    )
 
 
 @router.post("/calendario/riapri/{scadenza_id}")
