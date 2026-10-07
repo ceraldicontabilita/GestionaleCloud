@@ -379,7 +379,35 @@ export default function RegistroAllergeniView() {
       </div>
 
       {/* Tabella matrice */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+      {/* Telefono: una card per ricetta con i suoi allergeni (la matrice a 14 colonne non sta in 390 px) */}
+      <ul className="md:hidden print:hidden m-0 list-none space-y-2 p-0 no-print" data-testid="allergeni-card-mobile">
+        {ricette.length === 0 && <li className="py-6 text-center text-sm text-gray-400">Nessuna ricetta trovata</li>}
+        {ricette.map((r) => {
+          const alls = r.allergeni || [];
+          return (
+            <li key={r.id} className={`rounded-xl border border-gray-200 p-3 ${alls.length === 0 ? "bg-orange-50/40" : "bg-white"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 text-sm font-semibold text-gray-800">
+                  {r.nome}
+                  {r.categoria && <span className="ml-1 text-[11px] font-normal text-gray-500">({r.categoria})</span>}
+                </div>
+                <button type="button" onClick={() => setQrRicetta(r)} aria-label={`QR code allergeni di ${r.nome}`}
+                  className="flex shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-[#f2f6f3]">
+                  <QrCode size={18} />
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {alls.length === 0
+                  ? <span className="text-xs font-medium text-orange-600">Nessun allergene indicato: da verificare</span>
+                  : ALLERGENI_14.filter((a) => alls.includes(a.id)).map((a) => (
+                    <span key={a.id} className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">{a.id}</span>
+                  ))}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="hidden md:block print:block overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
         <table className="text-xs w-full border-collapse print-table">
           <thead>
             <tr className="bg-gray-800 text-white">

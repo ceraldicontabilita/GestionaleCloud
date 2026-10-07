@@ -635,7 +635,7 @@ const AnomalieView = () => {
       )}
 
       {/* Filtri */}
-      <div className="flex gap-3 items-center">
+      <div className="flex flex-wrap gap-3 items-center">
         <select
           value={filtroStato}
           onChange={(e) => setFiltroStato(e.target.value)}

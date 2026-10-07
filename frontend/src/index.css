@@ -115,8 +115,43 @@ button { font-family: inherit; font-size: inherit; color: inherit; max-width: 10
    quando una tabella o una toolbar usa dimensioni compatte. min-* prevale
    sulle vecchie width/height inline senza alterare il layout desktop. */
 @media (max-width: 768px) {
-  button, [role="button"], select { min-width: 44px !important; min-height: 44px !important; }
+  button, [role="button"], [role="tab"], [role="menuitem"], summary, select { min-width: 44px !important; min-height: 44px !important; }
   a[data-testid="nav-brand"], .fiscal-tabs a, a[data-testid^="link-"] { display: inline-flex; align-items: center; justify-content: center; min-width: 44px !important; min-height: 44px !important; }
+  /* Collegamenti: area di tocco 44x44 anche se il testo e' corto (inline-flex: l'area cresce senza cambiare il testo). */
+  a[href], a[role="button"] { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; box-sizing: border-box; }
+  .page-content a[style*="display: block"], .page-content a[style*="display:block"] { display: flex; }
+  /* Campi di testo, date, numeri, aree di testo, file: altezza minima 44. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]):not([type="color"]),
+  textarea { min-height: 44px !important; box-sizing: border-box; }
+  input[type="range"] { min-height: 44px; }
+  /* Spunte e radio: l'area di tocco e' 44x44, il segno disegnato resta 22px; il margine
+     negativo mantiene l'ingombro di prima (nessuno spostamento del layout). */
+  input[type="checkbox"], input[type="radio"] {
+    -webkit-appearance: none; appearance: none; flex: 0 0 auto;
+    width: 44px !important; height: 44px !important; min-width: 44px !important; min-height: 44px !important;
+    margin: -11px !important; padding: 0; border: 0 !important; background-color: transparent;
+    background-repeat: no-repeat; background-position: center; background-size: 22px 22px; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect x='1' y='1' width='20' height='20' rx='5' fill='white' stroke='%23a19d92' stroke-width='2'/%3E%3C/svg%3E");
+  }
+  input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect x='1' y='1' width='20' height='20' rx='5' fill='%23c15f3c' stroke='%23c15f3c' stroke-width='2'/%3E%3Cpath d='M6 11.5l3.5 3.5L16 8' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  input[type="checkbox"]:indeterminate {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect x='1' y='1' width='20' height='20' rx='5' fill='%23c15f3c' stroke='%23c15f3c' stroke-width='2'/%3E%3Cpath d='M6 11h10' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  }
+  input[type="radio"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Ccircle cx='11' cy='11' r='10' fill='white' stroke='%23a19d92' stroke-width='2'/%3E%3C/svg%3E");
+  }
+  input[type="radio"]:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Ccircle cx='11' cy='11' r='10' fill='white' stroke='%23c15f3c' stroke-width='2'/%3E%3Ccircle cx='11' cy='11' r='5' fill='%23c15f3c'/%3E%3C/svg%3E");
+  }
+  input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
+  input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outline: 2px solid var(--c-primary-light); outline-offset: -6px; border-radius: var(--radius-md); }
+  /* Etichetta di una spunta/radio: tutta la riga e' bersaglio di tocco, alta almeno 44. */
+  label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box;
+  }
+  label[style*="display: block"]:has(> input[type="checkbox"]), label[style*="display: block"]:has(> input[type="radio"]) { display: flex; }
 }
 
 img, video, svg, iframe, canvas { max-width: 100%; height: auto; }
@@ -193,7 +228,7 @@ code {
   .page-content [style*="overflow-x: auto"] thead th,
   .page-content .table-scroll thead th { top: 0; }
 }
-@media (max-width: 768px) { .topnav-layout .page-content { padding: 10px 12px 150px 12px; padding-top: calc(var(--topnav-height) + 8px); } }
+@media (max-width: 768px) { .topnav-layout .page-content { padding: 10px 16px 150px 16px; padding-top: calc(var(--topnav-height) + 12px); } }
 
 /* Barra in alto fissa, chiara come la colonna */
 .topnav-primary {
@@ -322,7 +357,7 @@ table td.text-right, table th.text-right { text-align: right; }
   flex-wrap: wrap; align-items: center; max-width: 100%;
 }
 @media (max-width: 768px) {
-  .tab-bar { padding: 6px 10px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .tab-bar { padding: 6px 10px; flex-wrap: wrap; }
   .tab-bar::-webkit-scrollbar { display: none; }
 }
 .tab {
@@ -394,10 +429,17 @@ table td.text-right, table th.text-right { text-align: right; }
   /* Nota: <nav> reale ha solo data-testid="topnav-primary", non la classe
      .topnav-primary — teniamo entrambi i selettori. */
   .topnav-primary,
-  [data-testid="topnav-primary"] { padding-left: 10px !important; padding-right: 10px !important; gap: 6px !important; }
+  [data-testid="topnav-primary"] { padding-left: 16px !important; padding-right: 16px !important; gap: 6px !important; }
   .page-content > * { min-width: 0; max-width: 100%; }
   select, input[type="text"], input[type="number"], input[type="search"],
   input[type="email"], input[type="date"], textarea { width: 100%; max-width: 100%; min-width: 0 !important; }
+  /* Griglie dichiarate in linea (1fr 1fr, repeat(...)): i figli possono restringersi, mai spingere la pagina oltre il bordo. */
+  .page-content [style*="grid-template-columns"] > * { min-width: 0; overflow-wrap: anywhere; }
+  .page-content [style*="display: grid"]:not([style*="grid-template-columns"]):not([style*="grid-template-areas"]):not([style*="grid-auto-flow: column"]) { grid-template-columns: minmax(0, 1fr); }
+  .page-content [style*="display: grid"] > * { min-width: 0; }
+  /* Righe flessibili dichiarate in linea: se non ci stanno vanno a capo (mai oltre il bordo). */
+  .page-content [style*="display: flex"]:not([style*="flex-direction: column"]):not([style*="flex-wrap"]):not([style*="overflow"]) { flex-wrap: wrap; row-gap: 8px; }
+  .page-content [style*="display: flex"] > * { min-width: 0; }
   .grid-cols-3, .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .page-content table {
     display: block; width: 100%; max-width: 100%;
@@ -455,6 +497,22 @@ table td.text-right, table th.text-right { text-align: right; }
   .page-content table[data-card="si"] td:empty { display: none; }
   .page-content table[data-card="si"] td button,
   .page-content table[data-card="si"] td a { min-height: 36px; }
+}
+
+/* Tabella senza intestazione («voce | valore»): una riga per voce, etichetta a sinistra, valore a destra. */
+@media (max-width: 768px) {
+  .page-content table[data-card="si"][data-chiave-valore] tr {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px;
+    margin: 0; padding: 0 12px; border-radius: 0; border-width: 0 0 1px; background: transparent;
+  }
+  .page-content table[data-card="si"][data-chiave-valore] tr:last-child { border-bottom-width: 0; }
+  .page-content table[data-card="si"][data-chiave-valore] td,
+  .page-content table[data-card="si"][data-chiave-valore] th {
+    display: block; flex: 0 1 auto; width: auto !important; padding: 8px 0 !important; border: 0 !important;
+    min-height: 0; text-align: right !important; overflow-wrap: anywhere; background: transparent;
+  }
+  .page-content table[data-card="si"][data-chiave-valore] td:first-child,
+  .page-content table[data-card="si"][data-chiave-valore] th:first-child { flex: 1 1 40%; text-align: left !important; }
 }
 
 /* Barra in alto sul telefono: marchio, anno, avvisi e uscita devono stare tutti nella riga.

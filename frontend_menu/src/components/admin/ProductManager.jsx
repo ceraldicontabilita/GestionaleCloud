@@ -342,7 +342,7 @@ const ProductManager = () => {
                     <button
                       key={allergen.id}
                       onClick={() => toggleAllergen(allergen.id)}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      className={`min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                         editingProduct.allergens?.includes(allergen.id)
                           ? 'bg-[#d4af37] text-black'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'

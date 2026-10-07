@@ -37,7 +37,7 @@ const STILE = `
   table[data-card="si"] td:not([data-label]) { text-align: left !important; }
   table[data-card="si"] td:not([data-label])::before { display: none; }
   table[data-card="si"] td:empty { display: none !important; }
-  table[data-card="si"] td button, table[data-card="si"] td a { min-height: 36px; }
+  table[data-card="si"] td button, table[data-card="si"] td a { min-height: 44px; }
 }
 `;
 

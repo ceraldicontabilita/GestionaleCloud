@@ -150,7 +150,7 @@ const CounterPage = () => {
                 <button
                   key={p.id}
                   onClick={() => addToCart(p)}
-                  className="text-left border rounded-lg p-2 hover:bg-[#4a5d4a]/10 hover:border-[#4a5d4a] transition-colors"
+                  className="text-left min-h-[44px] border rounded-lg p-2 hover:bg-[#4a5d4a]/10 hover:border-[#4a5d4a] transition-colors"
                 >
                   <p className="text-sm font-medium truncate">{p.nameIT || p.name}</p>
                   <p className="text-xs text-gray-500">{p.price}</p>
@@ -172,7 +172,7 @@ const CounterPage = () => {
             ) : (
               <div className="space-y-2">
                 {unpaid.map((o) => (
-                  <div key={o.id} className="flex items-center justify-between border rounded-lg p-3">
+                  <div key={o.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border rounded-lg p-3">
                     <div>
                       <p className="text-sm font-medium">
                         {o.table ? `Tavolo ${o.table}` : o.id}{o.sala_nome ? ` — ${o.sala_nome}` : ''}
@@ -238,15 +238,15 @@ const CounterPage = () => {
                 {cart.map((item) => (
                   <div key={item.product_id} className="flex items-center justify-between text-sm">
                     <span className="flex-1 truncate">{item.name}</span>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => updateQty(item.product_id, item.quantity - 1)} className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => updateQty(item.product_id, item.quantity - 1)} className="w-11 h-11 rounded bg-gray-100 flex items-center justify-center">
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="w-5 text-center">{item.quantity}</span>
-                      <button onClick={() => updateQty(item.product_id, item.quantity + 1)} className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center">
+                      <span className="w-6 text-center">{item.quantity}</span>
+                      <button onClick={() => updateQty(item.product_id, item.quantity + 1)} className="w-11 h-11 rounded bg-gray-100 flex items-center justify-center">
                         <Plus className="w-3 h-3" />
                       </button>
-                      <button onClick={() => updateQty(item.product_id, 0)} className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-red-500 ml-1">
+                      <button onClick={() => updateQty(item.product_id, 0)} className="w-11 h-11 rounded bg-gray-100 flex items-center justify-center text-red-500 ml-1">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </div>

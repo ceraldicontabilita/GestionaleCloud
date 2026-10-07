@@ -80,11 +80,20 @@ class EstrattoContoNexiParser:
                 parts = date_match.group(1).lower().split()
                 if len(parts) == 3:
                     giorno = parts[0].zfill(2)
-                    mese = mesi.get(parts[1], "01")
+                    mese = mesi.get(parts[1])
                     anno = parts[2]
-                    self.metadata["data_estratto_iso"] = f"{anno}-{mese}-{giorno}"
-            except Exception:
-                pass
+                    # Mese sconosciuto: dato non disponibile, mai inventato.
+                    if mese:
+                        self.metadata["data_estratto_iso"] = f"{anno}-{mese}-{giorno}"
+                    else:
+                        logger.warning(
+                            "Mese estratto Nexi non riconosciuto: '%s'", parts[1]
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "Data estratto Nexi non interpretabile '%s' (%s: %s)",
+                    date_match.group(1), type(exc).__name__, exc,
+                )
         
         # Numero carta (mascherato)
         card_match = re.search(r'\*{4}\s*\*{4}\s*\*{4}\s*(\d{4})', text)
@@ -240,8 +249,11 @@ class EstrattoContoNexiParser:
                 if len(year) == 2:
                     year = "20" + year if int(year) < 50 else "19" + year
                 return f"{year}-{month}-{day}"
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Data transazione Nexi non interpretabile '%s' (%s: %s)",
+                date_str, type(exc).__name__, exc,
+            )
         return date_str
     
     def _parse_amount(self, amount_str: str) -> float:

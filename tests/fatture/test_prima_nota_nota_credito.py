@@ -55,6 +55,9 @@ class _FakeCollection:
             if _matches(d, query):
                 d.update(update.get("$set", {}))
                 return dict(d)
+        if k.get("upsert") and update.get("$setOnInsert"):
+            # come il database vero: nessun match + upsert = riga inserita
+            self.docs.append(dict(update["$setOnInsert"]))
         return None
 
     async def update_one(self, query, update, *a, **k):

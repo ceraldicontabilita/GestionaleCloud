@@ -363,7 +363,7 @@ const TemperatureNegativeView = () => {
           </h2>
           <p className="text-sm text-gray-500">{AZIENDA_INFO.nome} • Range: -22°C / -18°C</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => cambiaMese(-1)} className="p-2 hover:bg-gray-100 rounded"><ChevronLeft size={20}/></button>
           <span className="font-semibold min-w-[150px] text-center">{MESI_IT[mese-1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="p-2 hover:bg-gray-100 rounded"><ChevronRight size={20}/></button>

@@ -26,7 +26,7 @@ from typing import Optional
 import csv
 import io
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from app.utils.numeri_italiani import parse_importo_ita
 
@@ -88,9 +88,10 @@ def parse_date_it(date_str: str) -> Optional[str]:
     try:
         parts = date_str.strip().split('/')
         if len(parts) == 3:
-            return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-    except Exception:
-        pass
+            # Validazione reale: una data impossibile e' dato mancante.
+            return date(int(parts[2]), int(parts[1]), int(parts[0])).isoformat()
+    except (ValueError, TypeError) as exc:
+        logger.warning("Data distinta non valida '%s': %s", date_str, exc)
     return None
 
 

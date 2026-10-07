@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 # effettiva viene confermata confrontando il cedente con l'azienda.
 TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
-from app.services.scritture_contabili import scrivi_movimento
+from app.services.scritture_contabili import (
+    ScritturaNonValida, scrivi_movimento, scrivi_movimenti_batch,
+)
 from app.services.mapping_piano_conti import completa_conti_prima_nota
 from app.services.prima_nota_integrity import (
     CAMPI_EVIDENZA_BANCA,
@@ -1020,7 +1022,13 @@ async def registra_pagamento_fattura(
         mov.update(completa_conti_prima_nota(
             "cassa" if collection == COLLECTION_PRIMA_NOTA_CASSA else "banca", mov,
         ))
-        await db[collection].insert_one(mov.copy(), session=session)
+        try:
+            await scrivi_movimento(
+                db, "cassa" if collection == COLLECTION_PRIMA_NOTA_CASSA else "banca",
+                mov, session=session,
+            )
+        except ScritturaNonValida as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return (mov["id"], False)
 
     canonico = normalizza_metodo_pagamento(metodo_pagamento)
@@ -1617,11 +1625,11 @@ async def sync_estratto_conto_to_banca(anno: int = Query(...)) -> Dict:
         
         # Insert in batches of 500
         if len(batch) >= 500:
-            await db[COLLECTION_PRIMA_NOTA_BANCA].insert_many(batch)
+            await _scrivi_lotto_banca(db, batch)
             batch = []
     
     if batch:
-        await db[COLLECTION_PRIMA_NOTA_BANCA].insert_many(batch)
+        await _scrivi_lotto_banca(db, batch)
     
     return {
         "message": f"Sincronizzati {importati} movimenti estratto conto → prima nota banca {anno}",
@@ -3430,18 +3438,21 @@ async def sposta_scrittura_prima_nota(data: Dict = Body(...)) -> Dict:
                     "Per cambiare destinazione si annulla prima l'associazione con la banca."),
         )
 
-    # Rimuovi dalla collection originale
     coll_origine = COLLECTION_PRIMA_NOTA_CASSA if origine == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
-    await db[coll_origine].delete_one({"id": movimento_id})
-    
-    # Inserisci nella nuova collection
-    coll_dest = COLLECTION_PRIMA_NOTA_CASSA if nuova_destinazione == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
     movimento.pop("_id", None)
     movimento["spostato_da"] = origine
     movimento["spostato_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
     # stessa riga, stesso id: conto di tesoreria e metodo sono quelli del registro di arrivo
     movimento.update(campi_dopo_spostamento(movimento, origine, nuova_destinazione))
-    await db[coll_dest].insert_one(movimento)
+    # L'identita' dell'operazione include il registro: si ricalcola in arrivo.
+    movimento.pop("operation_hash", None)
+    # Prima si scrive nel registro di arrivo, poi si toglie dall'origine: una
+    # riga rifiutata dal motore non deve sparire da nessuna parte.
+    try:
+        await scrivi_movimento(db, nuova_destinazione, movimento, ricollocazione=True)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=409, detail=f"Spostamento rifiutato: {exc}") from exc
+    await db[coll_origine].delete_one({"id": movimento_id})
     
     # Aggiorna la fattura collegata
     fattura_id = movimento.get("fattura_id")
@@ -3467,6 +3478,15 @@ async def sposta_scrittura_prima_nota(data: Dict = Body(...)) -> Dict:
     }
 
 
+async def _scrivi_lotto_banca(db, batch: list) -> None:
+    esito = await scrivi_movimenti_batch(db, "banca", batch)
+    for rifiutata in esito["rifiutate"]:
+        logger.warning(
+            "Riga estratto conto non scritta in Prima Nota banca (%s): %s",
+            rifiutata["id"], rifiutata["motivo"],
+        )
+
+
 async def import_prima_nota_batch(data: Dict = Body(...)) -> Dict:
     """Importa batch di movimenti."""
     db = Database.get_db()
@@ -3490,7 +3510,7 @@ async def import_prima_nota_batch(data: Dict = Body(...)) -> Dict:
                 "source": mov.get("source", "excel_import"),
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
+            await scrivi_movimento(db, "cassa", movimento)
             created_cassa += 1
         except Exception as e:
             errors.append(f"Cassa: {str(e)}")
@@ -3510,7 +3530,7 @@ async def import_prima_nota_batch(data: Dict = Body(...)) -> Dict:
                 "source": mov.get("source", "excel_import"),
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(movimento.copy())
+            await scrivi_movimento(db, "banca", movimento)
             created_banca += 1
         except Exception as e:
             errors.append(f"Banca: {str(e)}")
@@ -3545,6 +3565,7 @@ async def create_movimento_generico(data: Dict = Body(...)) -> Dict:
         "riferimento": data.get("riferimento"),
         "fornitore_piva": data.get("fornitore_piva"),
         "fonte": data.get("fonte", "manual_entry"),
+        "source": data.get("source") or data.get("fonte") or "manual_entry",
         "riconciliato": data.get("riconciliato", False),
         "note": data.get("note"),
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -3578,7 +3599,10 @@ async def create_movimento_generico(data: Dict = Body(...)) -> Dict:
         except Exception:
             logger.exception(f"Errore generazione alert CAS_DUPLICATO per {movimento['id']}")
 
-    await db[collection].insert_one(movimento.copy())
+    try:
+        await scrivi_movimento(db, "banca" if tipo_nota == "banca" else "cassa", movimento)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"message": f"Movimento {tipo_nota} creato", "id": movimento["id"]}
 

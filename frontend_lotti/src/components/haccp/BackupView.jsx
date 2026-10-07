@@ -182,10 +182,9 @@ export default function BackupView({ onBack }) {
           background: "#3f5a4e", borderRadius: 16,
           border: "1px solid #56442d", overflow: "hidden"
         }}>
-        <div style={{ overflowX: "auto" }}>
+        <div>
           {/* Header tabella */}
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 90px 140px 140px",
+          <div className="bk-riga bk-head" style={{
             padding: "10px 18px",
             borderBottom: "1px solid #56442d",
             background: "#2a3329"
@@ -211,8 +210,7 @@ export default function BackupView({ onBack }) {
           ) : lista.map((b, idx) => (
             <div key={b.file}>
               {/* Riga backup */}
-              <div style={{
-                display: "grid", gridTemplateColumns: "1fr 90px 140px 140px",
+              <div className="bk-riga" style={{
                 padding: "13px 18px", alignItems: "center",
                 borderBottom: idx < lista.length - 1 ? "1px solid #3f5a4e" : "none",
                 background: idx === 0 ? "rgba(138,111,71,0.06)" : "transparent",

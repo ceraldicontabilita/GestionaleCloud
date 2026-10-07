@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import uuid
 
 from app.database import Database
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_riga_salari
 from .common import COLLECTION_PRIMA_NOTA_SALARI, logger
 
 # Le copie marcate dalla bonifica doppioni e le righe eliminate restano per
@@ -113,7 +114,10 @@ async def create_prima_nota_salari(data: Dict[str, Any] = Body(...)) -> Dict[str
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db[COLLECTION_PRIMA_NOTA_SALARI].insert_one(movimento.copy())
+    try:
+        await scrivi_riga_salari(db, movimento)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     logger.info(f"Prima Nota Salari: creato movimento {movimento['id']}")
     
     return {"message": "Movimento salari creato", "id": movimento["id"]}

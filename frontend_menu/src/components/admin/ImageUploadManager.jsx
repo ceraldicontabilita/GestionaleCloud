@@ -254,12 +254,12 @@ const ImageUploadManager = () => {
                     </p>
                     <p className="text-xs text-gray-500">{formatFileSize(image.size)}</p>
                   </div>
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-1 right-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                     <Button
                       size="sm"
                       variant="destructive"
                       onClick={() => handleDelete(image.filename)}
-                      className="h-8 w-8 p-0"
+                      className="h-11 w-11 p-0"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>

@@ -34,6 +34,8 @@ import base64
 import hashlib
 import logging
 import uuid
+
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_riga_salari
 import re
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -257,8 +259,12 @@ def _cedolino_document_key(cedolino_data: Dict[str, Any], pdf_data: str = None) 
     if pdf_data:
         try:
             identity["file_hash"] = hashlib.md5(base64.b64decode(pdf_data)).hexdigest()
-        except Exception:
-            pass
+        except Exception as exc:
+            # Senza hash la deduplica per file e' piu' debole: va segnalato.
+            logger.warning(
+                "Hash PDF cedolino non calcolabile (%s: %s): deduplica "
+                "senza file_hash", type(exc).__name__, exc,
+            )
     return chiave_cedolino(identity)
 
 
@@ -638,8 +644,15 @@ async def processa_cedolino_v2(
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             
-            await db["prima_nota_salari"].insert_one(dict(pn_record).copy())
-            result["prima_nota_id"] = pn_id
+            try:
+                await scrivi_riga_salari(db, pn_record)
+            except ScritturaNonValida as exc:
+                logger.warning(
+                    "Riga stipendi rifiutata (cedolino %s, %s/%s): %s",
+                    cedolino_id, mese, anno, exc,
+                )
+            else:
+                result["prima_nota_id"] = pn_id
         elif periodo_contabile:
             # Completa anche le vecchie righe create prima che il nome e il
             # collegamento al PDF fossero sempre persistiti. L'identita'

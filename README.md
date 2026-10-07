@@ -354,7 +354,7 @@ In particolare sono ancora oggetto di bonifica o completamento:
 - alcune scritture contabili precedenti non quadrate;
 - relazioni documentali non ancora completamente ricostruite.
 
-Per valori, quantità e stato puntuale aggiornato consultare esclusivamente la sezione **Stato attuale** e **Aperto** di `CLAUDE.md`.
+Per valori, quantità e stato puntuale aggiornato consultare esclusivamente la sezioni **Stato produzione verificato** e **Aperto** di `CLAUDE.md`.
 
 Non copiare nel README conteggi destinati a diventare rapidamente obsoleti.
 

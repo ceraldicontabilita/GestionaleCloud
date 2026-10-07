@@ -22,7 +22,7 @@ import logging
 
 from app.database import Database
 from app.engines.prima_nota_engine import decide_destinazione_fattura
-from app.services.scritture_contabili import scrivi_movimento
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sync", tags=["Sincronizzazione Dati"])
@@ -103,7 +103,11 @@ async def sync_fattura_to_prima_nota(fattura_id: str, db) -> Dict[str, Any]:
         # Crea nuovo
         movimento_data["id"] = str(uuid.uuid4())
         movimento_data["created_at"] = datetime.now(timezone.utc).isoformat()
-        await db[collection].insert_one(movimento_data.copy())
+        movimento_data.setdefault("source", "sync_relazionale_fattura")
+        try:
+            await scrivi_movimento(db, destinazione, movimento_data)
+        except ScritturaNonValida as exc:
+            return {"success": False, "error": str(exc)}
         return {"success": True, "action": "created", "collection": collection}
 
 

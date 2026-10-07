@@ -206,8 +206,11 @@ def extract_f24_info(descrizione: str, data: datetime) -> Dict[str, Any]:
     if data_match:
         try:
             info["data_incasso"] = datetime.strptime(data_match.group(1), "%d/%m/%Y").strftime("%Y-%m-%d")
-        except Exception:
-            pass
+        except ValueError as exc:
+            logger.warning(
+                "DATA INCASSO non valida '%s' in descrizione movimento: %s",
+                data_match.group(1), exc,
+            )
     
     # Estrai riferimento (timestamp univoco)
     ref_match = re.search(r'(\d{4}-\d{2}-\d{2}-\d{2}\.\d{2}\.\d{2}\.\d+)', descrizione)

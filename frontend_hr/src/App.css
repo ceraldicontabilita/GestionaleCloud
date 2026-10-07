@@ -1343,3 +1343,41 @@ label.dc-form-group { cursor: default; }
   .dc-coda-chip { flex: 1 1 100%; }
   .dc-table--cards td .dc-coda-rif, .dc-table--cards td .dc-coda-cand { text-align: left; align-items: flex-start; }
 }
+
+/* ── Telefono (390 px): margine 16 px per lato e tocchi >= 44 px ───────────
+   Regole globali: valgono per tutte le pagine HR, non per una sola. */
+@media (max-width: 768px) {
+  .dc-content { padding: 16px; }
+  .dc-sidebar-item { min-height: 44px; align-items: center; }
+  .dc-app a.dc-btn, .dc-app summary, .dc-app select, .dc-app .dc-select,
+  .dc-app textarea, .dc-app input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) {
+    min-height: 44px;
+  }
+  .dc-app summary { display: flex; align-items: center; cursor: pointer; }
+  .dc-app a.dc-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .dc-app .dc-cell-btn.dc-cell-btn-presenza { min-width: 44px; min-height: 44px; }
+  .dc-app label:has(> input[type="checkbox"]), .dc-app label:has(> input[type="radio"]) {
+    min-height: 44px; display: inline-flex; align-items: center; gap: 8px;
+  }
+}
+
+/* Dentro le card-tabella (frontend_shared/tabelleCard.js imposta 36 px): tocco 44 px. */
+@media (max-width: 768px) {
+  .dc-app table[data-card="si"] td button, .dc-app table[data-card="si"] td a,
+  .dc-app table[data-card="si"] td select, .dc-app table[data-card="si"] td input:not([type="checkbox"]):not([type="radio"]) {
+    min-height: 44px; min-width: 44px;
+  }
+}
+
+/* Turni, vista semplice su telefono: un blocco per giorno invece della griglia 7 colonne. */
+.dc-turni-giorno { margin-bottom: 12px; padding: 12px 14px; }
+.dc-turni-giorno-testa { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid #f0ece2; }
+.dc-turni-giorno-testa b { flex: 1; }
+.dc-turni-giorno-riga { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.dc-turni-giorno-nome { flex: 1; min-width: 0; font-weight: 600; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Griglie con colonne minime fisse: mai oltre la larghezza dello schermo. */
+@media (max-width: 768px) {
+  .dc-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  .dc-app [style*="grid-column: span"] { grid-column: 1 / -1 !important; }
+}

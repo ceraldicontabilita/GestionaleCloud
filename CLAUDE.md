@@ -4832,13 +4832,20 @@ Non introdurre un secondo design system.
 
 # 100. Mobile
 
-Nessuno scroll orizzontale su smartphone.
+## REGOLA
 
-Le tabelle semplici ERP usano il meccanismo canonico di trasformazione in card.
+Vale per tutte e quattro le app (ERP, HR, Menu, Lotti), per ogni pagina, a **390 px** di larghezza:
 
-Tocco minimo:
+- nessuno scroll orizzontale (`scrollWidth` ≤ 390 e nessun elemento che sporga);
+- contenuto centrato con margine di **16 px per lato**;
+- le tabelle diventano card impilate con il meccanismo canonico (`tabelleCard`): non se ne crea un secondo;
+- ogni elemento interattivo ha area di tocco minima di **44 × 44 px**.
 
-44 px.
+## VERIFICA
+
+Una pagina non è conforme perché «sembra a posto»: si misura a 390 px con il browser (screenshot prima e dopo, misure di larghezza, margini, tabelle non trasformate, tocchi sotto 44 px) e si riporta pagina per pagina.
+
+Le liste vuote non dimostrano la trasformazione in card: servono righe reali o di prova.
 
 ---
 

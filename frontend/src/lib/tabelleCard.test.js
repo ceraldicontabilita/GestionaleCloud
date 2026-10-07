@@ -52,4 +52,14 @@ describe('etichettaTabella', () => {
     expect(t.rows[1].cells[1].dataset.label).toBe('Y');
     expect(t.rows[0].cells[0].dataset.label).toBeUndefined();
   });
+
+  it('tabella senza intestazione con poche colonne: pila chiave-valore; con molte colonne resta com\'e\'', () => {
+    const kv = monta(`<table><tbody><tr><td>Cassa</td><td>10,00</td></tr><tr><td>Banca</td><td>5,00</td></tr></tbody></table>`);
+    etichettaTabella(kv);
+    expect(kv.dataset.card).toBe('si');
+    expect(kv.dataset.chiaveValore).toBeDefined();
+    const larga = monta(`<table><tbody><tr><td>1</td><td>2</td><td>3</td><td>4</td></tr></tbody></table>`);
+    etichettaTabella(larga);
+    expect(larga.dataset.card).toBeUndefined();
+  });
 });

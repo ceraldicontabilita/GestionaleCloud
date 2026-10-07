@@ -185,8 +185,8 @@ const SanificazioneView = () => {
       {viewMode === "attrezzature" ? (
         <>
           {/* Pulsanti rapidi */}
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            <span className="text-sm text-gray-500 py-1">Marca tutto:</span>
+          <div className="flex flex-wrap gap-2 pb-2">
+            <span className="w-full text-sm text-gray-500 py-1 sm:w-auto">Marca tutto:</span>
             {Array.from({length: numGiorni}, (_, i) => (
               <button
                 key={i+1}

@@ -450,7 +450,7 @@ const DisinfestazioneView = () => {
                   const isCurrentMese = meseNum === mese;
                   return (
                     <td key={idx}
-                      className={`px-2 py-2 text-center border-t cursor-pointer transition-colors ${isCurrentMese ? "bg-orange-50" : "hover:bg-gray-50"}`}
+                      className={`px-2 py-2 min-h-[44px] text-center border-t cursor-pointer transition-colors ${isCurrentMese ? "bg-orange-50" : "hover:bg-gray-50"}`}
                       onClick={() => { setMese(meseNum); }}>
                       {int ? (
                         <div className="flex flex-col items-center">

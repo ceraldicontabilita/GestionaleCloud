@@ -40,7 +40,7 @@ export default function RegistriHaccpTablet() {
   const attiva = SEZIONI_REGISTRI.find((s) => s.id === sezione) || SEZIONI_REGISTRI[0];
   return (
     <div style={{ minHeight: "100vh", background: "#faf7f0" }}>
-      <div role="tablist" aria-label="Registri HACCP" style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "12px 12px 0" }}>
+      <div role="tablist" aria-label="Registri HACCP" style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "12px 16px 0" }}>
         {SEZIONI_REGISTRI.map((s) => (
           <button key={s.id} type="button" role="tab" aria-selected={s.id === attiva.id} onClick={() => setSezione(s.id)}
             style={{
@@ -52,7 +52,7 @@ export default function RegistriHaccpTablet() {
           </button>
         ))}
       </div>
-      <div style={{ padding: 12 }}>
+      <div style={{ padding: "12px 16px" }}>
         <ErrorBoundary key={attiva.id}>{attiva.render()}</ErrorBoundary>
       </div>
     </div>

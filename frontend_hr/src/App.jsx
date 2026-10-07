@@ -2379,7 +2379,21 @@ function FeriePage({ dipendenti, ferie, reload, getDipendente }) {
 }
 
 // Turni Page
+// true su telefono/tablet stretto: serve dove la stessa vista cambia struttura (non solo stile).
+function useStretto(max = 768) {
+  const q = `(max-width: ${max}px)`;
+  const [s, setS] = useState(() => typeof window !== "undefined" && window.matchMedia(q).matches);
+  useEffect(() => {
+    const m = window.matchMedia(q);
+    const f = () => setS(m.matches);
+    f(); m.addEventListener("change", f);
+    return () => m.removeEventListener("change", f);
+  }, [q]);
+  return s;
+}
+
 function TurniPage({ dipendenti, turni, reload }) {
+  const stretto = useStretto();
   const [assegnazioni, setAssegnazioni] = useState([]);
   const [busy, setBusy] = useState(false);
   const [evid, setEvid] = useState(null);
@@ -3228,7 +3242,30 @@ function TurniPage({ dipendenti, turni, reload }) {
         </div>
       )}
 
-      {vista === "semplice" ? (
+      {vista === "semplice" && stretto ? (
+      <div className="dc-turni-giorni">
+        {giorni.map((g, i) => { const c = coperturaDi(g); return (
+          <section key={g} className="dc-card dc-turni-giorno">
+            <header className="dc-turni-giorno-testa">
+              <b>{g} {dataDi(i)}</b>
+              <span style={{ fontWeight: 700, color: c.mattina ? "#3f5a4e" : "#b3261e" }}>☀️ {c.mattina}</span>
+              <span style={{ fontWeight: 700, color: c.pomeriggio ? "#8a6d3b" : "#b3261e" }}>🌆 {c.pomeriggio}</span>
+            </header>
+            {dipTurni.map(dip => { const ass = getAssegnazione(dip.id, g); const t = ass ? getTurno(ass.turno_id) : null; return (
+              <div key={dip.id} className="dc-turni-giorno-riga">
+                <Avatar nome={dip.nome} cognome={dip.cognome} size="sm" />
+                <span className="dc-turni-giorno-nome">{dip.cognome ? `${dip.cognome} ${dip.nome?.[0] || ""}.` : dip.nome}</span>
+                <button type="button" onClick={() => ciclaTurno(dip, g)}
+                  aria-label={`${dip.cognome || dip.nome}, ${g}: turno successivo`}
+                  style={{ border: `2px solid ${t ? t.colore : "#e6e0d4"}`, background: t ? t.colore + "30" : "#fffefb", color: "#2a3329",
+                    borderRadius: 10, fontWeight: 700, fontSize: 13, minWidth: 110, minHeight: 44, cursor: "pointer" }}>
+                  {ass?.motivo === "onomastico" ? "🎂 " : ""}{t ? t.nome : "—"}
+                </button>
+              </div>); })}
+          </section>); })}
+        <p className="dc-muted" style={{ fontSize: 12 }}>Tocca la casella: turno successivo tra le sponde del dipendente (poi Riposo, Ferie, vuoto).</p>
+      </div>
+      ) : vista === "semplice" ? (
       <div className="dc-card dc-scroll-x" style={{ paddingBottom: 8 }}>
         <div style={{ display: "grid", gridTemplateColumns: "180px repeat(7, minmax(88px, 1fr))", gap: 6, minWidth: 860, alignItems: "stretch" }}>
           <div style={{ alignSelf: "end", fontSize: 12, color: "#6b7669", fontWeight: 700, padding: "0 4px 6px" }}>Copertura ☀️ / 🌆 →</div>
