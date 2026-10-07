@@ -32,7 +32,7 @@ import os
 import re
 import secrets
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from urllib.parse import quote
@@ -368,6 +368,7 @@ async def leggi_sessione(db) -> Dict[str, Any]:
         "ultimo_import": doc.get("ultimo_import"),
         "ultimo_import_esito": doc.get("ultimo_import_esito"),
         "giro_automatico": doc.get("giro_automatico"),
+        "rilettura_dal": doc.get("rilettura_dal"),
     }
 
 
@@ -649,8 +650,41 @@ async def importa_nuovi(
 
 # Senza l'utente presente la banca concede poche letture al giorno (PSD2):
 # due giri bastano, e uno lasciato libero serve a «Aggiorna ora».
-GIORNI_GIRO = 10
+# Una settimana indietro (titolare, 07/10/2026): ``ENABLE_BANKING_GIORNI_GIRO``
+# la cambia senza toccare il codice.
+GIORNI_GIRO = 7
 GIORNI_PRIMO_GIRO = 90
+
+
+def giorni_giro() -> int:
+    try:
+        return min(max(int(os.getenv("ENABLE_BANKING_GIORNI_GIRO", str(GIORNI_GIRO))), 1), 366)
+    except ValueError:
+        return GIORNI_GIRO
+
+
+def rilettura_dal() -> Optional[str]:
+    """``ENABLE_BANKING_DAL=AAAA-MM-GG``: il giro automatico rilegge la banca da
+    quella data, una volta sola per valore (archivio azzerato il 06/10/2026),
+    poi torna alla finestra ordinaria. Il confronto con l'archivio evita i
+    doppioni: rileggere non riscrive."""
+    valore = os.getenv("ENABLE_BANKING_DAL", "").strip()
+    if not valore:
+        return None
+    try:
+        date.fromisoformat(valore)
+    except ValueError:
+        logger.warning("[enable-banking] ENABLE_BANKING_DAL non e' una data ISO: %r", valore)
+        return None
+    return valore
+
+
+def rilettura_in_attesa(stato: Dict[str, Any]) -> Optional[str]:
+    """La data di rilettura chiesta e non ancora eseguita, altrimenti None."""
+    dal = rilettura_dal()
+    if dal and stato.get("rilettura_dal") != dal:
+        return dal
+    return None
 
 
 async def giro_automatico(db, client) -> Dict[str, Any]:
@@ -667,15 +701,25 @@ async def giro_automatico(db, client) -> Dict[str, Any]:
     elif not stato.get("collegata"):
         esito = {"eseguito_il": adesso, "saltato": "non_collegato"}
     else:
-        giorni = GIORNI_GIRO if stato.get("ultimo_import") else GIORNI_PRIMO_GIRO
+        giorni = giorni_giro() if stato.get("ultimo_import") else GIORNI_PRIMO_GIRO
+        dal = rilettura_in_attesa(stato)
+        if dal:
+            giorni = max(giorni, (date.today() - date.fromisoformat(dal)).days + 1)
         try:
             risultato = await importa_nuovi(db, client, giorni=giorni)
             esito = {"eseguito_il": adesso, "giorni": giorni,
                      "importati": risultato["importati"],
                      "gia_presenti": risultato["gia_presenti"],
                      "da_verificare_esclusi": risultato["da_verificare_esclusi"]}
+            if dal:
+                esito["rilettura_dal"] = dal
+                await db["sistema_stato"].update_one(
+                    {"chiave": CHIAVE_SESSIONE}, {"$set": {"rilettura_dal": dal}}, upsert=True,
+                )
         except ErroreLettura as exc:
             esito = {"eseguito_il": adesso, "giorni": giorni, "errore": exc.stato}
+            if dal:
+                esito["rilettura_dal"] = dal
             logger.warning("[enable-banking] giro automatico non riuscito: %s", exc)
     await db["sistema_stato"].update_one(
         {"chiave": CHIAVE_SESSIONE}, {"$set": {"giro_automatico": esito}}, upsert=True,

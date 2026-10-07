@@ -5013,6 +5013,8 @@ Esistono partite e relazioni da riallineare.
 
 ## Banca
 
+Banco BPM è collegato via Enable Banking (consenso PSD2 fino al 25/12/2026): il giro automatico delle 07:15 e 09:00 (Europe/Rome) legge gli ultimi `ENABLE_BANKING_GIORNI_GIRO` giorni (difetto 7) e importa solo i movimenti certamente nuovi; `ENABLE_BANKING_DAL=AAAA-MM-GG` fa rileggere da quella data una volta sola (usato dopo l'azzeramento del 06/10/2026 per il 2026 intero). La fonte API resta provvisoria finché non arriva l'estratto conto ufficiale.
+
 Persistono:
 
 - movimenti senza categoria;

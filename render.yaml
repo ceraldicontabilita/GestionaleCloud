@@ -220,5 +220,12 @@ services:
       # Deve coincidere con il redirect URL registrato nel pannello Enable Banking.
       - key: ENABLE_BANKING_REDIRECT_URL
         value: "https://gestionalecloud.onrender.com/api/banca/enable-banking/callback"
+      # Finestra del giro automatico in giorni (difetto 7). ENABLE_BANKING_DAL
+      # (AAAA-MM-GG) fa rileggere la banca da quella data una volta sola, al
+      # primo avvio dopo l'impostazione; poi si puo' togliere.
+      - key: ENABLE_BANKING_GIORNI_GIRO
+        sync: false
+      - key: ENABLE_BANKING_DAL
+        sync: false
       # Credenziali, archivio e integrazioni sono configurati nella dashboard.
       # Non aggiungere valori sensibili al repository.
