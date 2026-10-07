@@ -421,3 +421,44 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(lista).toHaveStyle({ display: 'flex', flexDirection: 'column' });
   });
 });
+
+describe('Carnet appena generato', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 });
+  });
+
+  it('compare in cima alla lista anche se ha numeri piu bassi dei carnet gia presenti', async () => {
+    // 60 fogli di carnet piu alti: senza il riordino il nuovo carnet
+    // (numeri piu bassi, elenco decrescente) finiva in seconda pagina.
+    const vecchi = Array.from({ length: 60 }, (_, i) => ({
+      id: `v${i}`, numero: `02087700${String(i + 1).padStart(2, '0')}`,
+      stato: 'vuoto', carnet: i < 50 ? '0208770001' : '0208770051', anno: 2026,
+    }));
+    const nuovi = Array.from({ length: 10 }, (_, i) => ({
+      id: `n${i}`, numero: `02087694${81 + i}`, stato: 'vuoto', carnet: '0208769481', anno: 2026,
+    }));
+    let generato = false;
+    api.get.mockImplementation(url => rispostaPagina(generato ? [...vecchi, ...nuovi] : vecchi)(url));
+    api.post.mockImplementation(() => {
+      generato = true;
+      return Promise.resolve({ data: {
+        generati: 10, primo: '0208769481', ultimo: '0208769490', numeri: nuovi.map(a => a.numero),
+      } });
+    });
+
+    renderPagina();
+    await screen.findByText('Lista Assegni (60)');
+    expect(screen.queryByText('0208769481')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('genera-assegni-btn'));
+    fireEvent.change(screen.getByTestId('numero-primo-input'), { target: { value: '0208769481' } });
+    expect(screen.getByTestId('numero-primo-input')).toHaveAttribute('inputmode', 'numeric');
+    fireEvent.click(screen.getByTestId('genera-salva-btn'));
+
+    await screen.findByText('Lista Assegni (70)');
+    expect(await screen.findByText('0208769481')).toBeInTheDocument();
+    expect(screen.getByText('0208769490')).toBeInTheDocument();
+    expect(screen.getByText('Nuovo carnet: 10 fogli')).toBeInTheDocument();
+  });
+});

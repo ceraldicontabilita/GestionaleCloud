@@ -1060,11 +1060,21 @@ export default function GestioneAssegni() {
       if (!groups[prefix]) groups[prefix] = [];
       groups[prefix].push(a);
     });
-    return groups;
+    // Il carnet appena generato va in cima: l'elenco e' per numero
+    // decrescente e un carnet con numeri piu' bassi dei precedenti finiva
+    // in seconda pagina (titolare, 07/10/2026: «ho inserito il carnet ma
+    // non lo vedo»).
+    if (newlyGeneratedNumbers.size === 0) return groups;
+    const nuovi = {};
+    const altri = {};
+    Object.entries(groups).forEach(([prefix, righe]) => {
+      (righe.some(a => newlyGeneratedNumbers.has(a.numero)) ? nuovi : altri)[prefix] = righe;
+    });
+    return { ...nuovi, ...altri };
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const carnets = useMemo(groupByCarnet, [filteredAssegni]);
+  const carnets = useMemo(groupByCarnet, [filteredAssegni, newlyGeneratedNumbers]);
 
   // Elenco piatto nell'ordine per carnet: stesse righe, nello stesso ordine,
   // della vecchia tabella desktop che iterava i gruppi carnet.
@@ -2008,6 +2018,7 @@ export default function GestioneAssegni() {
               </label>
               <Input
                 type="number"
+                inputMode="decimal"
                 value={filterImportoMin}
                 onChange={e => setFilterImportoMin(e.target.value)}
                 placeholder="0.00"
@@ -2021,6 +2032,7 @@ export default function GestioneAssegni() {
               </label>
               <Input
                 type="number"
+                inputMode="decimal"
                 value={filterImportoMax}
                 onChange={e => setFilterImportoMax(e.target.value)}
                 placeholder="99999"
@@ -2034,6 +2046,7 @@ export default function GestioneAssegni() {
               </label>
               <Input
                 type="text"
+                inputMode="numeric"
                 value={filterNumeroAssegno}
                 onChange={e => setFilterNumeroAssegno(e.target.value)}
                 placeholder="Cerca assegno..."
@@ -2588,6 +2601,7 @@ export default function GestioneAssegni() {
             testId="assegni-table"
             dati={listaAssegni}
             pageSize={50}
+            resetKey={`${filteredAssegni.length}|${[...newlyGeneratedNumbers].join(',')}`}
             chiave={(a, i) => a.id || i}
             colonne={[
               {
@@ -2770,6 +2784,7 @@ export default function GestioneAssegni() {
                   editingId === assegno.id ? (
                     <Input
                       type="number"
+                      inputMode="decimal"
                       step="0.01"
                       value={editForm.importo}
                       onChange={e =>
@@ -3148,6 +3163,7 @@ export default function GestioneAssegni() {
               </label>
               <Input
                 type="text"
+                inputMode="numeric"
                 value={generateForm.numero_primo}
                 onChange={e => setGenerateForm({ ...generateForm, numero_primo: e.target.value })}
                 placeholder="0208770985 oppure 0208770000-01"
@@ -3162,6 +3178,7 @@ export default function GestioneAssegni() {
               </label>
               <Input
                 type="number"
+                inputMode="numeric"
                 min="1"
                 max="100"
                 step="1"
