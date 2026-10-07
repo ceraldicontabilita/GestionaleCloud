@@ -68,7 +68,7 @@ __all__ = [
 # comunicazioni 54-bis/36-bis. Il marcatore `quadri_controllati_v` sul
 # documento dice con quale versione e' stato letto: l'arretrato e' chi non
 # porta quella corrente.
-PARSER_VERSION = "dichiarazioni-quadri-v2"
+PARSER_VERSION = "dichiarazioni-quadri-v3"
 
 #: Tipo letto dal contenuto -> tipi d'archivio che quel contenuto corregge.
 #: Nessuna dichiarazione vera cambia tipo: solo i marcatori generici.
@@ -193,8 +193,14 @@ def riconosci_tipo(pagine: Iterable[Dict[str, Any]]) -> Optional[str]:
     if _RE_COMUNICAZIONE.search(testo):
         return "COMUNICAZIONE_IRREGOLARITA"
     # Il 770 porta il quadro ST (ritenute operate e versate): si riconosce
-    # prima dell'IVA perche' anche lui cita «modello» e «imposta».
-    if re.search(r"QUADRO\s*ST(?![A-Z0-9])|MODELLO\s*770", testo, re.I):
+    # prima dell'IVA perche' anche lui cita «modello» e «imposta». Serve
+    # pero' la testata «MODELLO 770/anno» oppure il quadro con i suoi righi
+    # (ST1…): il quadro RU dei Redditi SC cita «(quadro ST del modello 770)»
+    # in una nota e un Redditi 2021 era entrato come 770 (07/10/2026).
+    if _RE_MODELLO_770.search(testo) or (
+            re.search(r"QUADRO\s*ST(?![A-Z0-9])", testo, re.I)
+            and re.search(r"\bST\d{1,2}\b", testo)
+            and re.search(r"RITENUTE\s+OPERATE|IMPORTO\s+VERSATO", testo, re.I)):
         return "MODELLO_770"
     # L'OCR salda le parole («QUADROVX», «MODELLOIVA2024»): spazio facoltativo.
     if re.search(r"QUADRO\s*VX(?![A-Z0-9])|MODELLO\s*IVA\s*20\d{2}", testo, re.I):
