@@ -15,8 +15,10 @@ Step eseguiti in sequenza:
   6. fornitori      → aggiorna statistiche fornitori (num fatture, ultima data)
 """
 
+import asyncio
 import re
 import logging
+import time
 from datetime import datetime, timezone, timedelta, date
 from fastapi import APIRouter
 
@@ -418,6 +420,50 @@ async def esegui_pipeline_post_import(motivo: str = "manuale"):
 # ─────────────────────────────────────────────────────────────────────────────
 #  ENDPOINT REST
 # ─────────────────────────────────────────────────────────────────────────────
+#: Secondi di quiete dopo l'ultima fattura importata prima di far partire la
+#: pipeline. Le fatture arrivano a ondate (giro della cartella unica, ponte
+#: dal Gestionale): una pipeline per fattura — ~210 s l'una, con la
+#: ricostruzione completa di prodotti_master — le sovrapponeva a decine,
+#: teneva fermo il loop e Render riavviava l'istanza (07/10/2026).
+QUIETE_PIPELINE_S = 120.0
+_richiesta: dict = {"task": None, "ultima": 0.0, "motivi": []}
+
+
+def richiedi_pipeline_post_import(motivo: str = "import") -> bool:
+    """Chiede la pipeline una volta per ondata di import, non per fattura.
+
+    Parte quando non arrivano richieste da ``QUIETE_PIPELINE_S`` secondi;
+    le richieste arrivate mentre gira si servono con un solo giro in piu'.
+    Torna ``True`` se ha avviato il compito d'attesa, ``False`` se ha solo
+    accodato il motivo a un compito gia' in attesa.
+    """
+    _richiesta["ultima"] = time.monotonic()
+    _richiesta["motivi"].append(str(motivo or "import"))
+    compito = _richiesta.get("task")
+    if compito is not None and not compito.done():
+        return False
+    _richiesta["task"] = asyncio.create_task(_pipeline_dopo_la_quiete())
+    return True
+
+
+async def _pipeline_dopo_la_quiete():
+    while True:
+        trascorsi = time.monotonic() - _richiesta["ultima"]
+        if trascorsi < QUIETE_PIPELINE_S:
+            await asyncio.sleep(QUIETE_PIPELINE_S - trascorsi)
+            continue
+        motivi = _richiesta["motivi"]
+        _richiesta["motivi"] = []
+        try:
+            await esegui_pipeline_post_import(
+                motivo=f"import_coalescato_{len(motivi)}_richieste")
+        except Exception as exc:  # noqa: BLE001 - la pipeline logga da se'
+            logger.warning("[PIPELINE] giro coalescato fallito: %s: %s",
+                           type(exc).__name__, exc)
+        if not _richiesta["motivi"]:
+            return
+
+
 @router.post("/esegui")
 async def trigger_pipeline(motivo: str = "manuale", _admin=Depends(require_admin)):
     """Esegue l'intera pipeline di auto-miglioramento."""
