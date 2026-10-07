@@ -1121,14 +1121,13 @@ async def importa_fattura_xml(
     # Trigger pipeline + aggiornamento ricette automatico
     if ids_completi:
         try:
-            from app.lotti.routers.pipeline import esegui_pipeline_post_import
+            from app.lotti.routers.pipeline import richiedi_pipeline_post_import
             from app.lotti.routers.ricette import collega_ingredienti_canonico
-            import asyncio
 
-            asyncio.create_task(
-                esegui_pipeline_post_import(
-                    motivo=f"xml_manuale_{len(ids_completi)}_fatture"
-                )
+            # Una pipeline per ondata di fatture, dopo un periodo di quiete:
+            # non un compito per fattura (si sovrapponevano a decine).
+            richiedi_pipeline_post_import(
+                motivo=f"xml_manuale_{len(ids_completi)}_fatture"
             )
 
             # Il collegamento salvato sulla ricetta usa il matcher canonico

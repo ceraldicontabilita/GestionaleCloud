@@ -318,25 +318,40 @@ def _parti_numero_assegno(valore: Any) -> tuple[str, str]:
     return match.group(1), match.group(2) or ""
 
 
-def _numero_assegno_corrisponde_frammento(numero: Any, frammento: str) -> bool:
-    """Confronta il finale guidato ``123-01`` con il numero completo.
+def _cifre_frammento_assegno(frammento: str) -> str:
+    return re.sub(r"\D", "", str(frammento or ""))
 
-    Le tre cifre prima del trattino identificano la coda del numero bancario;
-    le due successive identificano il foglio del carnet. Gli estratti BPM
-    riportano pero' soltanto il numero bancario completo (``0208769328``),
-    senza il suffisso del foglio: in quel caso il finale ``328-01`` deve
-    comunque ritrovare il movimento ufficiale. Non e' un match sul solo
-    importo: il candidato resta vincolato al numero estratto dalla causale,
-    all'importo esatto e al movimento bancario ufficiale. I vecchi dati con
-    suffisso non riempito di zeri (``-1``) restano leggibili.
+
+def _frammento_assegno_valido(frammento: str) -> bool:
+    """Da 3 a 10 cifre, con al massimo un trattino dove lo mette chi scrive."""
+    testo = re.sub(r"\s+", "", str(frammento or ""))
+    return bool(re.fullmatch(r"\d+(?:-\d+)?", testo)) and 3 <= len(_cifre_frammento_assegno(testo)) <= 10
+
+
+def _numero_assegno_corrisponde_frammento(numero: Any, frammento: str) -> bool:
+    """Confronta le ultime cifre scritte sulla fattura con il numero completo.
+
+    La matrice BPM porta ``0208769490-07``: numero continuo e foglio del
+    carnet. Sulla fattura il titolare annota la coda come gli viene
+    (07/10/2026): ``694-90`` (ultime cifre del numero, trattino di
+    scrittura) oppure ``9490-07`` (quattro cifre di coda e foglio). Prima
+    prova: tolte le cifre dal frammento, il numero bancario deve finire con
+    quelle cifre. Seconda prova, la guida storica ``328-01``/``9490-07``:
+    la parte prima del trattino (almeno tre cifre) e' la coda del numero
+    bancario, quella dopo e' il foglio; gli estratti BPM non espongono il
+    foglio, e ``328-01`` ritrova comunque ``0208769328``; i numeri di
+    registro con suffisso (``0208770000-01``) devono avere lo stesso foglio.
+    I vecchi suffissi senza zero (``-1``) restano leggibili.
+    Non e' un match sul solo importo: il candidato resta vincolato al numero.
     """
     base, suffisso = _parti_numero_assegno(numero)
-    frag_base, frag_suffisso = _parti_numero_assegno(frammento)
-    if (
-        not base or len(frag_base) != 3 or len(frag_suffisso) != 2
-    ):
+    if not base or not _frammento_assegno_valido(frammento):
         return False
-    if not base.endswith(frag_base):
+    cifre = _cifre_frammento_assegno(frammento)
+    if base.endswith(cifre):
+        return True
+    frag_base, frag_suffisso = _parti_numero_assegno(frammento)
+    if not frag_suffisso or len(frag_base) < 3 or not base.endswith(frag_base):
         return False
     # Il PDF/CSV BPM non espone il numero del foglio dopo il trattino. In
     # assenza di tale dato non lo inventiamo: conserviamo il numero ufficiale
@@ -474,10 +489,10 @@ async def _candidati_assegno_per_fattura(
                 "gia_collegato_fattura_id": None,
             })
     if frammento:
-        if not re.fullmatch(r"\d{3}-\d{2}", re.sub(r"\s+", "", frammento)):
+        if not _frammento_assegno_valido(frammento):
             raise HTTPException(
                 status_code=400,
-                detail="Inserisci il finale dell'assegno nel formato 123-01.",
+                detail="Inserisci le ultime cifre dell'assegno (da 3 a 10), per esempio 694-90 o 328-01.",
             )
         candidati = [
             candidato for candidato in candidati
@@ -513,7 +528,9 @@ async def proponi_assegni_fattura(
         "message": (
             "Numero assegno completo trovato. Verifica e conferma il collegamento."
             if len(candidati) == 1 else
-            "Nessun assegno compatibile trovato."
+            "Nessun assegno compatibile: nessun assegno di questo importo con quel numero "
+            "nel registro ne' nell'estratto conto. Se e' stato emesso e non ancora incassato, "
+            "registralo in Gestione Assegni con il numero completo."
             if not candidati else
             f"Trovati {len(candidati)} assegni dello stesso importo: inserisci il finale, per esempio 123-01."
         ),
