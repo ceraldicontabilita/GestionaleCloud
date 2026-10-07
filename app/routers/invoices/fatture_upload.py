@@ -690,22 +690,205 @@ async def find_ec_match_for_invoice(
     return forti[0] if len(forti) == 1 else None
 
 
+#: Stato finanziario della fattura il cui fornitore non ha un metodo in
+#: anagrafica (CLAUDE.md §29): resta sospesa e non suggerisce la Cassa.
+STATO_SOSPESA_METODO_MANCANTE = "sospesa_metodo_fornitore_mancante"
+#: Stato finanziario dell'attesa bancaria: la riga provvisoria in Prima Nota
+#: Banca e' gia' l'attesa, l'estratto conto la chiude. Lo scrive anche
+#: ``assegni_fattura_intent._collega`` per l'assegno (§39).
+STATO_IN_ATTESA_ESTRATTO_CONTO = "in_attesa_estratto_conto"
+#: Origine della riga Prima Nota scritta dall'import per metodo fornitore.
+SOURCE_AUTO_METODO_FORNITORE = "auto_metodo_fornitore"
+#: Origine della riga di attesa bancaria creata per l'assegno collegato.
+SOURCE_ATTESA_ASSEGNO = "assegno_compilato_attesa_banca"
+
+
+async def _pubblica_fattura_pagata(
+    db, fattura_id: Any, *, metodo: str, data_pagamento: Optional[str],
+    importo: float, movimento_id: Optional[str], source_module: str,
+) -> None:
+    """Stesso evento `fattura.pagata` del bonifico, dell'assegno in banca e
+    della conferma in Provvisori: chiude partita aperta e alert. Mai
+    bloccante: la scrittura contabile e' gia' fatta."""
+    try:
+        from app.services.event_bus import EventTypes, propagate_event
+        await propagate_event(EventTypes.FATTURA_PAGATA, {
+            "fattura_id": fattura_id,
+            "metodo_pagamento": metodo,
+            "data_pagamento": data_pagamento,
+            "movimento_id": movimento_id,
+            "importo": importo,
+        }, db, source_module=source_module)
+    except Exception as exc:  # noqa: BLE001 - un handler rotto non annulla la scrittura
+        logger.exception(
+            "fattura.pagata non propagata per %s (%s)", fattura_id, type(exc).__name__,
+        )
+
+
+async def _registra_cassa_da_metodo_fornitore(
+    db, invoice: Dict[str, Any], data_fattura: str, session=None,
+) -> Optional[Dict[str, Any]]:
+    """Fornitore «cassa» in anagrafica: il movimento in Prima Nota Cassa nasce
+    all'import (decisione del titolare 07/10/2026). La data e' quella della
+    fattura: e' la dichiarazione del titolare tramite anagrafica, non un dato
+    inventato. Idempotente: il writer canonico non scrive due righe per la
+    stessa fattura e l'evento `fattura.pagata` parte una sola volta."""
+    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+    from app.services.stato_pagamento_fattura import PAGATA
+
+    fattura_id = invoice.get("id") or invoice.get("invoice_key")
+    esito = await registra_pagamento_fattura(
+        invoice, "cassa", source=SOURCE_AUTO_METODO_FORNITORE, session=session,
+    )
+    mov_id = esito.get("cassa")
+    if not mov_id:
+        return None
+    totale = round(abs(float(
+        invoice.get("total_amount") or invoice.get("importo_totale") or 0
+    )), 2)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if not esito.get("duplicato"):
+        # Perche' questa riga esiste e da dove viene la sua data: resta
+        # leggibile sul movimento, non solo nel codice.
+        await db["prima_nota_cassa"].update_one(
+            {"id": mov_id},
+            {"$set": {
+                "fonte_data": "data_fattura",
+                "motivo": (
+                    "Metodo cassa impostato dal titolare nell'anagrafica fornitore: "
+                    "registrazione automatica all'import della fattura"
+                ),
+            }},
+            session=session,
+        )
+    update: Dict[str, Any] = {
+        "pagato": True,
+        "paid": True,
+        "stato_pagamento": PAGATA,
+        "payment_status": "paid",
+        "stato_finanziario": "pagata",
+        "metodo_pagamento_effettivo": "cassa",
+        "metodo_pagamento_previsto": "cassa",
+        "data_pagamento": data_fattura,
+        "fonte_data_pagamento": "data_fattura",
+        "importo_pagato": totale,
+        "totale_pagato": totale,
+        "importo_residuo": 0,
+        "residuo_da_pagare": 0,
+        "provvisorio": False,
+        "decisione_pagamento_richiesta": False,
+        "prima_nota_id": mov_id,
+        "prima_nota_tipo": "cassa",
+        "prima_nota_cassa_id": mov_id,
+        "registrata_auto_da_metodo_fornitore": True,
+        "updated_at": now_iso,
+    }
+    if fattura_id:
+        await db[Collections.INVOICES].update_one(
+            {"id": fattura_id}, {"$set": update}, session=session
+        )
+    # Il dict in memoria deve dire «pagata» prima che parta `fattura.created`:
+    # il payload chiede `e_pagata(invoice)` e non apre la partita.
+    invoice.update(update)
+    if not esito.get("duplicato"):
+        await _pubblica_fattura_pagata(
+            db, fattura_id, metodo="cassa", data_pagamento=data_fattura,
+            importo=totale, movimento_id=mov_id,
+            source_module="fatture_upload_metodo_fornitore_cassa",
+        )
+    return update
+
+
+async def _garantisci_attesa_banca_assegno(
+    db, invoice: Dict[str, Any], session=None,
+) -> Optional[str]:
+    """Una sola riga di attesa in Prima Nota Banca per la fattura pagata con
+    assegno (§39): se l'assegno ne ha gia' una (riscontro EC, riga
+    provvisoria precedente) la riusa, altrimenti la crea con il writer
+    canonico e la marca con il numero dell'assegno, cosi'
+    ``assegni_estratto_conto._garantisci_prima_nota`` la ritrova per
+    ``assegno_id`` invece di scriverne una seconda."""
+    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+
+    fattura_id = invoice.get("id") or invoice.get("invoice_key")
+    link_assegni = [
+        link for link in (invoice.get("assegni_collegati") or [])
+        if isinstance(link, dict) and link.get("assegno_id")
+    ]
+    assegno_ids = [str(link["assegno_id"]) for link in link_assegni]
+    if assegno_ids:
+        # Assegno gia' transitato in banca: il completamento e' di
+        # `collega_assegno_riconciliato_a_fattura`, non serve un'attesa.
+        gia_in_banca = await db["assegni"].find_one(
+            {"id": {"$in": assegno_ids}, "$or": [
+                {"movimento_estratto_conto_id": {"$nin": [None, ""]}},
+                {"movimento_id": {"$nin": [None, ""]}},
+            ]},
+            {"_id": 0, "id": 1},
+            session=session,
+        )
+        if gia_in_banca:
+            return None
+    condizioni: list = []
+    if fattura_id:
+        condizioni += [{"fattura_id": fattura_id}, {"riferimento": f"FATT-{fattura_id}"}]
+    if assegno_ids:
+        condizioni.append({"assegno_id": {"$in": assegno_ids}})
+    if condizioni:
+        esistente = await db["prima_nota_banca"].find_one(
+            {"$or": condizioni, "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1},
+            session=session,
+        )
+        if esistente:
+            return esistente.get("id")
+    esito = await registra_pagamento_fattura(
+        invoice, "banca", source=SOURCE_ATTESA_ASSEGNO,
+        session=session, allow_provisional_bank=True,
+    )
+    mov_id = esito.get("banca")
+    if mov_id and len(link_assegni) == 1:
+        await db["prima_nota_banca"].update_one(
+            {"id": mov_id},
+            {"$set": {
+                "assegno_id": link_assegni[0]["assegno_id"],
+                "assegno_numero": link_assegni[0].get("numero"),
+                "numero_assegno": link_assegni[0].get("numero"),
+                "metodo_pagamento_previsto": "assegno",
+                "motivo_provvisorio": "assegno_in_attesa_estratto_conto",
+            }},
+            session=session,
+        )
+    return mov_id
+
+
 async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento: str,
                                    session=None) -> Optional[Dict[str, Any]]:
-    """Applica la regola corrente di instradamento Prima Nota all'import.
+    """Instrada la fattura appena importata in Prima Nota per metodo fornitore.
 
-    REGOLA (utente, 03/08/2026): quando la fattura XML entra nel gestionale,
-      - metodo univoco cassa/contanti -> Prima Nota Cassa;
-      - metodo banca -> Prima Nota Banca solo con una riga reale, univoca e
-        forte dell'estratto conto; in assenza resta Provvisoria;
-      - metodo assente -> riga Cassa provvisoria e alert per decisione utente;
-      - metodo misto o ambiguo -> Provvisoria.
+    REGOLA (titolare, 07/10/2026; CLAUDE.md §29 e §39): oltre la data limite
+    del report «Fatture ricevute» comanda il metodo impostato in anagrafica.
+      - cassa -> movimento in Prima Nota Cassa subito, data fattura, fattura
+        pagata (`fattura.pagata` una sola volta);
+      - banca -> riga provvisoria in Prima Nota Banca che e' l'attesa
+        dell'estratto conto; con riga EC univoca e forte -> pagata e
+        riconciliata;
+      - assegno collegato o previsto -> pagamento dichiarato con assegno, in
+        attesa di riscontro bancario (stati di `assegni_fattura_intent`),
+        una sola riga di attesa; il riscontro resta ad
+        `assegni_estratto_conto`;
+      - misto -> Provvisoria; metodo mancante -> sospesa con alert, senza
+        suggerire la Cassa come ripiego.
+    Fino alla data limite comanda il report del titolare
+    (`pagamenti_dichiarati_titolare`), non il metodo.
 
     La scrittura usa il writer canonico registra_pagamento_fattura
     (idempotente per fattura: riferimento FATT-{id}, mai due movimenti per
     la stessa fattura). Ritorna il dict di update applicato alla fattura
     (già persistito), oppure None se resta provvisoria.
     """
+    from app.services.stato_pagamento_fattura import e_pagata
+
     # Un piano XML a piu' rate non e' una prova di pagamento: anche per un
     # fornitore configurato "cassa" resta provvisorio finche' ogni quota non
     # viene confermata con la relativa evidenza.
@@ -714,6 +897,11 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
 
     piva = (invoice.get("supplier_vat") or invoice.get("cedente_piva") or "").strip()
     if not piva:
+        return None
+
+    # Gia' pagata (report del titolare, storia ripristinata, assegno gia' in
+    # banca): nessun secondo pagamento da un altro canale.
+    if e_pagata(invoice):
         return None
 
     # Regola del titolare: fino all'ultima operazione del suo report
@@ -749,39 +937,55 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
 
     # Senza un fornitore identificato univocamente non si crea alcun movimento:
     # nome/importo da soli non sono identita'. Se il fornitore esiste ma non ha
-    # metodo, invece, la richiesta operativa e' una Cassa provvisoria visibile.
-    if not forn:
+    # metodo, invece, la fattura resta sospesa con alert (§29). Il confronto
+    # e' con None: la proiezione di un fornitore senza metodo ne' flag e' un
+    # dict vuoto, e `not forn` lo scambiava per «fornitore assente».
+    if forn is None:
         return None
 
+    fattura_id = invoice.get("id") or invoice.get("invoice_key")
     metodo = ((forn or {}).get("metodo_pagamento") or "").strip().lower()
     assegno_specifico = bool(
         invoice.get("metodo_pagamento_previsto") == "assegno"
         or invoice.get("metodo_pagamento_override_source") == "assegno_compilato"
         or invoice.get("assegni_collegati")
     )
+
     if assegno_specifico:
-        metodo = "assegno"
-    metodo_assente = not metodo
+        # §39: l'assegno compilato e' la pre-registrazione dell'addebito
+        # futuro e prevale sul metodo del fornitore. La fattura e' «pagamento
+        # dichiarato con assegno, in attesa di riscontro bancario»: gli stati
+        # sono quelli gia' scritti da assegni_fattura_intent._collega, la
+        # riga di attesa in Prima Nota Banca e' una sola e la chiusura spetta
+        # all'estratto conto (assegni_estratto_conto). Nessuna decisione da
+        # chiedere: la decisione l'ha gia' presa chi ha compilato l'assegno.
+        mov_id = await _garantisci_attesa_banca_assegno(db, invoice, session=session)
+        update: Dict[str, Any] = {
+            "stato_finanziario": STATO_IN_ATTESA_ESTRATTO_CONTO,
+            "metodo_pagamento_previsto": "assegno",
+            "metodo_pagamento_effettivo": None,
+            "provvisorio": True,
+            "decisione_pagamento_richiesta": False,
+            "registrata_auto_da_metodo_fornitore": False,
+        }
+        if mov_id:
+            update.update({
+                "prima_nota_id": mov_id,
+                "prima_nota_tipo": "banca",
+                "prima_nota_banca_id": mov_id,
+            })
+        if fattura_id:
+            await db[Collections.INVOICES].update_one(
+                {"id": fattura_id}, {"$set": update}, session=session
+            )
+        invoice.update(update)
+        return update
 
-    metodo_canonico = normalizza_metodo_pagamento(metodo)
-    if metodo_assente:
-        metodo_canonico = "cassa_provvisoria"
-    if metodo_canonico not in ("cassa", "banca"):
-        if metodo_canonico != "cassa_provvisoria":
-            return None
-
-    if metodo_canonico in ("cassa", "cassa_provvisoria"):
-        # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 2): niente
-        # riga automatica in prima_nota_cassa e nessun flag pagato/
-        # stato_pagamento=pagata/data_pagamento all'import — ne' per un
-        # fornitore con metodo cassa ne' per un fornitore senza metodo.
-        # La fattura resta con stato_finanziario="da_confermare_cassa" e
-        # compare nei Provvisori con suggerimento cassa; solo una conferma
-        # esplicita di chi tiene la cassa (conferma_fattura_provvisoria)
-        # scrive davvero il movimento.
-        fattura_id = invoice.get("id") or invoice.get("invoice_key")
+    if not metodo:
+        # §29: metodo mancante -> fattura sospesa con alert. Nessun ripiego
+        # automatico su Cassa, nemmeno come suggerimento di stato.
         update = {
-            "stato_finanziario": "da_confermare_cassa",
+            "stato_finanziario": STATO_SOSPESA_METODO_MANCANTE,
             "provvisorio": True,
             "metodo_pagamento_effettivo": None,
             "decisione_pagamento_richiesta": True,
@@ -790,19 +994,42 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
             await db[Collections.INVOICES].update_one(
                 {"id": fattura_id}, {"$set": update}, session=session
             )
-            if metodo_assente:
-                try:
-                    from app.services.alert_engine import genera_alert
-                    await genera_alert(
-                        "FAT_MP_NON_DEFINITO", fattura_id, Collections.INVOICES,
-                        f"Fattura {invoice.get('invoice_number', '?')}: confermare Cassa o spostare in Banca",
-                        db,
-                    )
-                except Exception:
-                    logger.exception("Creazione alert metodo pagamento mancante non riuscita")
+            try:
+                from app.services.alert_engine import genera_alert
+                await genera_alert(
+                    "FAT_MP_NON_DEFINITO", fattura_id, Collections.INVOICES,
+                    f"Fattura {invoice.get('invoice_number', '?')}: impostare il metodo "
+                    "di pagamento del fornitore (Cassa o Banca)",
+                    db,
+                )
+            except Exception:
+                logger.exception("Creazione alert metodo pagamento mancante non riuscita")
+        invoice.update(update)
         return update
 
-    movimento_bancario = None
+    metodo_canonico = normalizza_metodo_pagamento(metodo)
+    if metodo_canonico not in ("cassa", "banca"):
+        # Misto o non riconosciuto: resta Provvisoria, decide l'operatore.
+        return None
+
+    if metodo_canonico == "cassa":
+        data_fattura_iso = str(data_fattura or "")[:10]
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", data_fattura_iso):
+            # Senza data documento non si inventa una data di pagamento.
+            return None
+        from app.routers.prima_nota_module.sync import determina_tipo_movimento_fattura
+        tipo_movimento, _, _ = determina_tipo_movimento_fattura(invoice)
+        if tipo_movimento != "uscita":
+            # Nota di credito (TD04/TD08) o importo negativo: non e' un
+            # pagamento al fornitore. Un'entrata di cassa automatica
+            # sarebbe un rimborso inventato (§32: la nota chiude con il
+            # rimborso reale o compensando la fattura originale). Resta
+            # provvisoria.
+            return None
+        return await _registra_cassa_da_metodo_fornitore(
+            db, invoice, data_fattura_iso, session=session,
+        )
+
     movimento_bancario = await find_ec_match_for_invoice(
         db,
         float(invoice.get("total_amount") or invoice.get("importo_totale") or 0),
@@ -821,7 +1048,7 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     esito = await registra_pagamento_fattura(
         invoice,
         destinazione,
-        source=("estratto_conto_auto" if movimento_bancario else "auto_metodo_fornitore"),
+        source=("estratto_conto_auto" if movimento_bancario else SOURCE_AUTO_METODO_FORNITORE),
         movimento_bancario=movimento_bancario,
         session=session,
         allow_provisional_bank=not bool(movimento_bancario),
@@ -833,6 +1060,7 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     update: Dict[str, Any] = {
         "prima_nota_id": mov_id,
         "prima_nota_tipo": destinazione,
+        "prima_nota_banca_id": mov_id,
         "registrata_auto_da_metodo_fornitore": True,
     }
     if movimento_bancario:
@@ -841,10 +1069,11 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
             "paid": True,
             "stato_pagamento": "pagata",
             "stato_finanziario": "pagata_banca",
-            "metodo_pagamento": "assegno" if assegno_specifico else "bonifico",
+            "metodo_pagamento": "bonifico",
             "metodo_pagamento_effettivo": "banca",
             "data_pagamento": movimento_bancario.get("data"),
             "provvisorio": False,
+            "decisione_pagamento_richiesta": False,
             "riconciliato": True,
             "riconciliato_con_ec": True,
             "riconciliato_automaticamente": True,
@@ -853,21 +1082,30 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
             "match_tipo": movimento_bancario.get("match_tipo"),
         })
     else:
+        # La riga provvisoria in Prima Nota Banca e' gia' l'attesa
+        # dell'estratto conto: non c'e' nessuna decisione da chiedere.
         update.update({
-            "stato_finanziario": "in_attesa_estratto_conto",
-            "metodo_pagamento_previsto": "assegno" if assegno_specifico else "banca",
+            "stato_finanziario": STATO_IN_ATTESA_ESTRATTO_CONTO,
+            "metodo_pagamento_previsto": "banca",
             "metodo_pagamento_effettivo": None,
             "provvisorio": True,
-            "decisione_pagamento_richiesta": True,
+            "decisione_pagamento_richiesta": False,
         })
-    update[
-        "prima_nota_cassa_id" if destinazione == "cassa" else "prima_nota_banca_id"
-    ] = mov_id
 
-    fattura_id = invoice.get("id") or invoice.get("invoice_key")
     if fattura_id:
         await db[Collections.INVOICES].update_one(
             {"id": fattura_id}, {"$set": update}, session=session
+        )
+    invoice.update(update)
+    if movimento_bancario and not esito.get("duplicato"):
+        await _pubblica_fattura_pagata(
+            db, fattura_id, metodo="banca",
+            data_pagamento=movimento_bancario.get("data"),
+            importo=round(abs(float(
+                invoice.get("total_amount") or invoice.get("importo_totale") or 0
+            )), 2),
+            movimento_id=mov_id,
+            source_module="fatture_upload_estratto_conto_auto",
         )
     return update
 
@@ -1291,8 +1529,9 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
                 invoice.get("invoice_number"), intento_assegno.get("assegno_id"),
             )
 
-        # AUTO-REGISTRA in Prima Nota: sempre provvisoria, conferma manuale
-        # dell'utente da Prima Nota → Provvisori (vedi auto_registra_prima_nota).
+        # AUTO-REGISTRA in Prima Nota per metodo del fornitore (§29): cassa
+        # scrive subito, banca/assegno attendono l'estratto conto, misto e
+        # metodo mancante restano in Provvisori (vedi auto_registra_prima_nota).
         prima_nota_update = await auto_registra_prima_nota(
             db, invoice, metodo_pagamento, session=session,
         )
@@ -2398,8 +2637,9 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     # commento diceva erroneamente che l'import fatture non tocca mai
     # warehouse_inventory; in realtà l'handler dell'event bus lo aggiorna.
 
-    # 6. Prima Nota: sempre provvisoria, conferma manuale dell'utente da
-    #    Prima Nota → Provvisori (vedi auto_registra_prima_nota).
+    # 6. Prima Nota per metodo del fornitore (§29): cassa scrive subito,
+    #    banca/assegno attendono l'estratto conto, misto e metodo mancante
+    #    restano in Provvisori (vedi auto_registra_prima_nota).
     derivati_errori = []
     try:
         await auto_registra_prima_nota(db, invoice, metodo_pagamento)

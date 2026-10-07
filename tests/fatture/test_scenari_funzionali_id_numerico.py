@@ -43,7 +43,18 @@ def test_ogni_azione_sulla_fattura_con_id_numerico_la_trova(archivio_scenari, me
     db = archivio_scenari
 
     async def scenario():
-        await crea_fornitore(db, metodo="contanti", iban=None)
+        # La fattura deve restare da pagare perche' ogni azione, «paga» ed
+        # «elimina» comprese, sia provabile: un fornitore cassa la pagherebbe
+        # gia' all'import (CLAUDE.md §29). Per «paga» (che instrada solo la
+        # cassa) il fornitore resta cassa e la fattura rientra nella data
+        # coperta dal report del titolare, dove comanda il report e non il
+        # metodo; per le altre azioni basta un fornitore a bonifico.
+        if url.endswith("/paga"):
+            await crea_fornitore(db, metodo="contanti", iban=None)
+            await db["fatture_report_ae"].insert_one(
+                {"report_key": "r-limite", "data_documento": "2026-09-10", "pagata_titolare": True})
+        else:
+            await crea_fornitore(db, metodo="bonifico")
         esito = await importa(db, xml_fattura(), "drive")
         # su meta' delle righe di produzione l'id e' un numero
         await db["invoices"].update_one({"id": esito["id"]}, {"$set": {"id": ID}})
@@ -74,11 +85,15 @@ def _con_id_numerico(db, esito_id):
 
 
 def test_paga_manuale_in_cassa_con_id_numerico(archivio_scenari):
-    """«Paga» da Scadenze o da Fornitori: l'id arriva come numero dal JSON della pagina."""
+    """«Paga» da Scadenze o da Fornitori: l'id arriva come numero dal JSON della pagina.
+
+    Fornitore «misto»: all'import la fattura resta provvisoria (un fornitore
+    cassa sarebbe gia' pagato, CLAUDE.md §29) e il pagamento in cassa e' una
+    scelta dell'operatore."""
     db = archivio_scenari
 
     async def scenario():
-        await crea_fornitore(db, metodo="contanti", iban=None)
+        await crea_fornitore(db, metodo="misto", iban=None)
         esito = await importa(db, xml_fattura(), "drive")
         await _con_id_numerico(db, esito["id"])
         risposta = await richiesta(_app_pagamenti(), "POST", "/api/fatture-ricevute/paga-manuale", json={

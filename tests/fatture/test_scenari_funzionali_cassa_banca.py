@@ -32,11 +32,12 @@ def _corpo(endpoint: str, movimento_id: str, da: str, a: str) -> dict:
 async def _fattura_pagata_in_cassa(db):
     await crea_fornitore(db, metodo="contanti", iban=None)
     esito = await importa(db, xml_fattura(), "drive")
-    app = app_prima_nota()
-    ok = await richiesta(app, "POST", "/api/prima-nota/provvisori/conferma",
-                         json={"fattura_id": esito["id"], "metodo": "cassa", "data_pagamento": "2026-09-12"})
-    assert ok.status_code == 200, ok.text
-    return esito["id"], app
+    # CLAUDE.md §29 (titolare 07/10/2026): fornitore cassa -> la riga in Prima
+    # Nota Cassa nasce all'import con la data della fattura, senza conferma.
+    f = await fattura(db, esito["id"])
+    assert e_pagata_su_ogni_campo(f) and f["prima_nota_tipo"] == "cassa", f
+    assert f["data_pagamento"] == "2026-09-10"
+    return esito["id"], app_prima_nota()
 
 
 @pytest.mark.parametrize("endpoint", ENDPOINT)
@@ -71,9 +72,11 @@ def test_cassa_verso_banca_stesso_id_una_riga_e_conti_del_registro_di_arrivo(arc
     assert f["prima_nota_id"] == riga["id"] and not f.get("prima_nota_cassa_id")
     assert f["metodo_pagamento_effettivo"] == "banca", f["metodo_pagamento_effettivo"]
     assert e_pagata_su_ogni_campo(f)
-    # la cassa non conta piu' il pagamento e la partita non si e' riaperta
+    # la cassa non conta piu' il pagamento e nessuna partita si e' (ri)aperta:
+    # pagata all'import, `fattura.created` non apre la partita (handler
+    # on_fattura_created_crea_partita, «già pagata»)
     assert r["saldo_cassa"] == Decimal("0.00")
-    assert r["partite"][0]["stato"] == "chiusa"
+    assert all(p["stato"] not in ("aperta", "parziale") for p in r["partite"])
 
 
 @pytest.mark.parametrize("endpoint", ENDPOINT)
