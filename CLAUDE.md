@@ -3533,6 +3533,34 @@ distinti. Nessuno dei tre implica automaticamente gli altri.
 Drive conserva gli originali; Supabase conserva dati, stati e relazioni.
 Excel è un formato di importazione, non un secondo archivio operativo.
 
+### Griglia ed esportazione dell'Archivio paghe
+
+La griglia distingue dipendente, anno e mese tecnico (1–14), anche con
+«Tutti gli anni». Le celle separano dovuto, pagamenti attribuiti, residuo e
+stato documentale; si aprono sugli stessi dati e originali dell'elenco.
+Scelta della vista e misura visualizzata persistono durante la navigazione.
+Un importo non letto resta «Da leggere»; uno zero effettivo resta zero.
+I totali delle celle incomplete sono esplicitamente parziali. Una seconda
+riga della stessa chiave non sovrascrive silenziosamente la prima.
+
+L'esportazione di controllo, distinta dal file destinato all'importazione,
+usa gli stessi filtri del reader e quattro fogli: `Importi cedolini`,
+`Pagamenti recuperati`, `Cedolini mancanti`, `Mesi riconciliati`.
+Riporta netto PDF, netto confermato da elenco e recupero acconto separati.
+Il foglio pagamenti contiene solo le operazioni attribuite ai periodi
+esportati: per l'archivio completo usare i collegamenti al gestionale.
+I mesi mancanti hanno dati di periodo ma nessun riferimento all'originale;
+un buco del calendario non diventa automaticamente una busta mancante.
+Il foglio riconciliati esclude mere uguaglianze di importo, associazioni non
+confermate, importi da leggere, anomalie e mesi privi di PDF o riscontro
+bancario. Un’associazione manuale senza tale riscontro resta da verificare.
+I contatori e gli importi del riepilogo rispettano il medesimo filtro stato.
+
+I report ricostruiti dagli allegati dell'utente affiancano le fonti originali:
+il foglio «Cedolini» dell'allegato con i pagamenti del mese successivo è una
+ricostruzione delle attribuzioni, non prova del netto retributivo.
+Un'autorizzazione di distinta non dimostra da sola l'addebito sul conto.
+
 ## Identità, rapporto e periodo
 
 - Leggere dal PDF datore di lavoro, nome, codice fiscale, matricola,

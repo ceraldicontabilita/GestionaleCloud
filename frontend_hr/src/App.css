@@ -1381,3 +1381,19 @@ label.dc-form-group { cursor: default; }
   .dc-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
   .dc-app [style*="grid-column: span"] { grid-column: 1 / -1 !important; }
 }
+/* Archivio paghe: etichette e anno restano visibili durante lo scorrimento. */
+.paghe-grid { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.paghe-grid th, .paghe-grid td { padding: 8px; border-bottom: 1px solid #e6e0d4; text-align: right; min-width: 104px; vertical-align: top; }
+.paghe-grid thead th { position: sticky; top: 0; z-index: 2; background: #f7f4ec; }
+.paghe-grid th:first-child { position: sticky; left: 0; text-align: left; min-width: 170px; background: #fffefb; z-index: 1; }
+.paghe-grid thead th:first-child { z-index: 3; }
+.paghe-grid small { display: block; font-size: 11px; font-weight: 400; margin-top: 4px; }
+.paghe-grid-name { border: 0; padding: 0; background: none; text-align: left; color: #426054; text-decoration: underline; cursor: pointer; }
+.paghe-grid-cell { background: #f7f4ec; border: 1px solid #e6e0d4; border-radius: 6px; padding: 8px; width: 100%; min-height: 65px; text-align: right; cursor: pointer; font: inherit; color: #2a3329; }
+.paghe-grid-cell:hover, .paghe-grid-cell:focus-visible { outline: 2px solid #5b7a6b; outline-offset: 1px; }
+.paghe-grid-cell.is-warning { background: #fff3df; color: #7d5526; }
+.paghe-grid-cell.is-reconciled { background: #e5f0e9; color: #32634f; }
+.paghe-grid-overlay { position: fixed; inset: 0; background: #0007; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.paghe-grid-dialog { background: #fffefb; border-radius: 12px; padding: 24px; width: min(520px, 100%); max-height: 90vh; overflow: auto; }
+.paghe-grid-values { display: grid; grid-template-columns: 1fr auto; gap: 12px; }
+.paghe-grid-values dd { margin: 0; font-weight: 600; text-align: right; }

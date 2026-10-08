@@ -9,6 +9,7 @@ import Sortable from "sortablejs";
 import { isIntentionalPaintDrag } from "./presenzeSelection";
 import { buildPresenzePrintHtml } from "./presenzePrint";
 import { buildPresenzeCsv } from "./presenzeCsv";
+import GrigliaPaghe from "./GrigliaPaghe";
 import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
 import { 
   Users, Calendar, Clock, FileText, Briefcase, Home, 
@@ -5401,7 +5402,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
   // voci di busta, simulazione F24, griglia annuale.
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
   const annoCorr = new Date().getFullYear();
-  const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [], anno: 0, mese: 0, filtroStato: "" });
+  const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [], anno: 0, mese: 0, filtroStato: "", griglia: false, misuraGriglia: "dovuto" });
   const { anno, mese, filtroStato } = importSession.state;
   const setAnno = value => importSession.setField('anno', value);
   const setMese = value => importSession.setField('mese', value);
@@ -5416,7 +5417,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [exportBusy, setExportBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [cedSyncBusy, setCedSyncBusy] = useState(false);
-  const [griglia, setGriglia] = useState(false);
+  const griglia = Boolean(importSession.state.griglia);
+  const setGriglia = value => importSession.setField("griglia", value);
   // Import (ex pagina Buste Paga)
   const [showImport, setShowImport] = useState(false);
   const { importing, pnMsg, csvMsg, storicoMsg } = importSession.state;
@@ -5802,17 +5804,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const msgCard = (m) => ({ marginBottom: 16, borderLeft: `4px solid ${m?.errore || m?.errori?.length || m?.success === false ? '#d35f4e' : '#3d8168'}` });
   const nomeBtn = { background: "none", border: "none", color: "#5b7a6b", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 };
 
-  // Griglia annuale (dipendente × mese) calcolata dalle stesse righe
-  const grigliaRighe = (() => {
-    if (!griglia) return [];
-    const perDip = {};
-    for (const r of data.righe) {
-      const g = perDip[r.dipendente_id] || (perDip[r.dipendente_id] = { dipendente: r.dipendente, id: r.dipendente_id, mesi: {}, busta: 0, erogato: 0 });
-      if (r.mese >= 1 && r.mese <= 12) g.mesi[r.mese] = r;
-      g.busta += r.busta; g.erogato += r.erogato;
-    }
-    return Object.values(perDip).sort((a, b) => a.dipendente.localeCompare(b.dipendente));
-  })();
 
   return (
     <div style={{ maxWidth: 1280 }}>
@@ -5820,10 +5811,9 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <div>
           <h2 style={{ margin: 0, color: "#2a3329" }}>Archivio paghe</h2>
           <p className="dc-muted" style={{ marginTop: 4 }}>
-            Per ogni busta: importo dal cedolino, <b>bonifici realmente pagati</b> (banca), eventuali contanti ammessi e saldo.
-            Una sola pagina, un solo motore: i bonifici arrivano da soli dal gestionale (fascicoli Drive ed estratto conto),
-            quelli da decidere a mano stanno in «Bonifici da associare». Dal 1 luglio 2018 i contanti sono ammessi solo
-            dopo una cessazione registrata con data. Clicca il nome per la prima nota del dipendente.
+            Consulta cedolini, recuperi acconto e pagamenti attribuiti a ciascun periodo.
+            I pagamenti ancora senza collegamento sono in «Bonifici da associare».
+            Il saldo del registro può cambiare quando vengono verificate altre prove di pagamento.
           </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }} aria-label="Archivi collegati">
             <a href="/hr/portale" className="dc-btn" title="Apre il minisito mobile con PIN usato dai collaboratori">
@@ -6041,7 +6031,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
         <select style={sel} aria-label="Anno" value={anno} onChange={e => setAnno(Number(e.target.value))}>
           <option value={0}>Tutti gli anni</option>
-          {Array.from({ length: annoCorr + 2 - 2018 }, (_, i) => annoCorr + 1 - i).map(a => <option key={a} value={a}>{a}</option>)}
+          {Array.from({ length: annoCorr + 2 - 2017 }, (_, i) => annoCorr + 1 - i).map(a => <option key={a} value={a}>{a}</option>)}
         </select>
         <select style={sel} aria-label="Mese" value={mese} onChange={e => setMese(Number(e.target.value))}>
           <option value={0}>Tutto l'anno</option>
@@ -6057,68 +6047,40 @@ function PagheBonificiPage({ dipendenti = [] }) {
           <option value="da_pagare">Da pagare</option>
           <option value="in_attesa_busta">In attesa della busta</option>
         </select>
-        <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 13 }}><input type="checkbox" checked={griglia && Boolean(anno)} disabled={!anno} onChange={e => setGriglia(e.target.checked)} /> Griglia annuale</label>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 13 }}><input type="checkbox" checked={griglia} onChange={e => setGriglia(e.target.checked)} /> Griglia annuale</label>
         <button className="dc-btn" onClick={load} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <RefreshCw size={15} /> Aggiorna
         </button>
       </div>
 
       {loadError && <div role="alert" className="dc-card" style={{ color: "#b04a3a" }}>{loadError}</div>}
-      {!loading && data.cedolini_da_verificare?.length > 0 && <div className="dc-card">
-        <strong>PDF acquisiti: netto da verificare ({data.cedolini_da_verificare.length})</strong>
+      {!loading && data.cedolini_da_verificare?.length > 0 && <details className="dc-card">
+        <summary style={{ cursor: "pointer", fontWeight: 700 }}>PDF acquisiti: netto da verificare ({data.cedolini_da_verificare.length})</summary>
         <p>Questi cedolini sono conservati. L'importo non è stato letto con certezza e non viene conteggiato come zero.</p>
         {data.cedolini_da_verificare.map(r => <div key={r.cedolino_id} style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
           <span>{r.dipendente} · {mesi[r.mese - 1] || r.mese} {r.anno}</span>
           <button className="dc-btn" onClick={() => apriCedolino(r)}>Apri PDF da verificare</button>
         </div>)}
-      </div>}
+      </details>}
       {/* Riepilogo */}
       <div style={cardWrap}>
-        <div style={card}><div style={lbl}>Totale buste</div><div style={val}>€ {eur(t.buste)}</div></div>
-        <div style={card}><div style={lbl}>Bonifici</div><div style={{ ...val, color: "#3d8168" }}>€ {eur(t.bonifici)}</div></div>
-        <div style={card}><div style={lbl}>Acconti</div><div style={val}>€ {eur(t.acconti)}</div></div>
-        <div style={card}><div style={lbl}>Saldo da pagare</div><div style={{ ...val, color: (t.saldo > 0 ? "#b04a3a" : "#3d8168") }}>€ {eur(t.saldo)}</div></div>
+        <div style={card}><div style={lbl}>Dovuto cedolini</div><div style={val}>€ {eur(t.buste)}</div></div>
+        <div style={card}><div style={lbl}>Bonifici attribuiti</div><div style={{ ...val, color: "#3d8168" }}>€ {eur(t.bonifici)}</div></div>
+        <div style={card}><div style={lbl}>Acconti registrati</div><div style={val}>€ {eur(t.acconti)}</div></div>
+        <div style={card}><div style={lbl}>Residuo in registro</div><div style={{ ...val, color: (t.saldo > 0 ? "#b04a3a" : "#3d8168") }}>€ {eur(t.saldo)}</div></div>
         <div style={card}><div style={lbl}>Pagati</div><div style={{ ...val, color: "#3d8168" }}>{t.pagati || 0}</div></div>
         <div style={card}><div style={lbl}>Da pagare</div><div style={{ ...val, color: "#b04a3a" }}>{t.da_pagare || 0}</div></div>
         <div style={card}><div style={lbl}>Da verificare</div><div style={{ ...val, color: "#7a3b32" }}>{t.da_verificare || 0}</div></div>
       </div>
 
-      {griglia && Boolean(anno) && (
-        <div style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead><tr><th style={th}>Dipendente</th>{mesi.map((m, i) => <th key={i} style={{ ...th, textAlign: "center" }} title={m}>{m.slice(0, 3)}</th>)}<th style={{ ...th, textAlign: "right" }}>Buste</th><th style={{ ...th, textAlign: "right" }}>Erogato</th><th style={{ ...th, textAlign: "right" }}>Differenza</th></tr></thead>
-              <tbody>
-                {grigliaRighe.length === 0 && <tr><td style={td} colSpan={16}>Nessuna busta nell'anno.</td></tr>}
-                {grigliaRighe.map(g => (
-                  <tr key={g.id}>
-                    <td style={{ ...td, fontWeight: 600 }}><button style={nomeBtn} onClick={() => apriPrimaNota(g.id, g.dipendente)}>{g.dipendente}</button></td>
-                    {mesi.map((m, i) => {
-                      const r = g.mesi[i + 1];
-                      let txt = "·", col = "#cbd2c9", title = `${m}: nessun dato`;
-                      if (r) {
-                        if (r.stato === "pagato") { txt = "✓"; col = "#3d8168"; title = `${m}: pagato (busta € ${eur(r.busta)})`; }
-                        else if (r.stato === "in_attesa_busta") { txt = "+" + eur(r.erogato); col = "#7d5526"; title = `${m}: erogato € ${eur(r.erogato)}, in attesa della busta`; }
-                        else if (r.stato === "da_verificare") { txt = "?"; col = "#7a3b32"; title = `${m}: da verificare (erogato € ${eur(r.erogato)} su busta € ${eur(r.busta)})`; }
-                        else if (r.saldo > 0) { txt = eur(r.saldo); col = "#d35f4e"; title = `${m}: manca € ${eur(r.saldo)} (busta € ${eur(r.busta)}, erogato € ${eur(r.erogato)})`; }
-                        else { txt = "+" + eur(-r.saldo); col = "#7d5526"; title = `${m}: eccedenza € ${eur(-r.saldo)}`; }
-                      }
-                      return <td key={i} style={{ ...td, textAlign: "right", color: col, fontWeight: 700 }} title={title}>{txt}</td>;
-                    })}
-                    <td style={{ ...td, textAlign: "right" }}>{eur(g.busta)}</td>
-                    <td style={{ ...td, textAlign: "right" }}>{eur(g.erogato)}</td>
-                    <td style={{ ...td, textAlign: "right", fontWeight: 700, color: g.busta - g.erogato > 0 ? "#d35f4e" : "#3d8168" }}>{eur(g.erogato - g.busta)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="dc-muted" style={{ fontSize: 12, margin: "8px 12px" }}>✓ pagato · importo rosso = manca · + = eccedenza · ? = pagamento da confermare. Fa fede l'elenco qui sotto.</p>
-        </div>
-      )}
+      {griglia && <GrigliaPaghe righe={data.righe} daLeggere={data.cedolini_da_verificare}
+        loading={loading} misura={importSession.state.misuraGriglia || "dovuto"}
+        onMisura={value => importSession.setField("misuraGriglia", value)}
+        onPdf={apriCedolino} onDipendente={apriPrimaNota}
+        onElenco={r => { setGriglia(false); setAnno(r.anno); setMese(r.mese); setFiltroStato(""); setAperta(keyOf(r)); }} />}
 
       {/* Tabella */}
-      <div style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, overflow: "hidden" }}>
+      <div hidden={griglia} style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
