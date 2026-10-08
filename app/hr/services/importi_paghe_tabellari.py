@@ -58,7 +58,10 @@ def leggi(content: bytes):
         except (BadZipFile, KeyError, OSError, ValueError) as exc:
             raise ValueError("File Excel non valido: carica un .xlsx leggibile") from exc
         try:
-            ws = wb["Salari"] if "Salari" in wb.sheetnames else wb[wb.sheetnames[0]]
+            # Gli estratti della chat contengono prima «Pagamenti», poi
+            # «Cedolini»: i bonifici singoli non sono importi netti di busta.
+            nome_foglio = next((s for nome in ("salari", "cedolini") for s in wb.sheetnames if normalizza(s) == nome), wb.sheetnames[0])
+            ws = wb[nome_foglio]
             if ws.max_row > 10001:
                 raise ValueError("Massimo 10.000 righe per import")
             rows = list(ws.iter_rows(values_only=True))
@@ -139,18 +142,20 @@ def leggi(content: bytes):
 def avvisi(paga):
     if not paga.get("importi_excel"):
         return []
-    current = euro(paga.get("importo_busta"), allow_negative=True)
     out = []
     for entry in paga.get("importi_excel") or []:
+        # Confrontare un netto con il netto del PDF, una ricostruzione dei
+        # pagamenti con il dovuto (netto + recupero): grandezze distinte.
+        current = euro(paga.get("netto_stampato") if entry.get("tipo") == "netto" and paga.get("netto_stampato") is not None and (not paga.get("importo_busta_manuale") or paga.get("netto_confermato") is not None) else paga.get("importo_busta"), allow_negative=True)
         expected = euro(entry.get("importo"))
         conflict = current is not None and expected != current
-        if not conflict and entry.get("tipo") == "netto":
+        if not conflict and current is not None and entry.get("tipo") == "netto":
             continue
-        if entry.get("verificato") and entry.get("verificato_importo") == paga.get("importo_busta"):
+        if entry.get("verificato") and entry.get("verificato_importo") == paga.get("importo_busta") and (entry.get("tipo") != "netto" or entry.get("verificato_netto") == paga.get("netto_stampato")):
             continue
         out.append({**entry, "busta_attuale": float(current) if current is not None else None,
                     "differenza": float(expected - current) if current is not None else None,
-                    "motivo": "Importo diverso dal cedolino" if conflict else "Importo ricostruito dai pagamenti: verificare il cedolino"})
+                    "motivo": "Importi discordanti nello stesso file: verificare il periodo" if entry.get("conflitto_file") else "Importo diverso dal cedolino" if conflict else "Netto da verificare" if entry.get("tipo") == "netto" else "Importo ricostruito dai pagamenti: verificare il cedolino"})
     return out
 
 
@@ -176,7 +181,8 @@ async def importa(db, content: bytes, filename: str, *, applica=False):
                     if key: indexes[k].setdefault(key, set()).add(d["id"])
         existing = {(p.get("dipendente_id"), p.get("anno"), p.get("mese")): p
                     async for p in db.paghe_mensili.find({}, {"_id": 0})}
-        seen = set()
+        resolved = []
+        netti_file = {}
         for row in rows:
             matches = indexes["nome"].get(normalizza(row["nome"]), set())
             if row["cf"]:
@@ -189,20 +195,29 @@ async def importa(db, content: bytes, filename: str, *, applica=False):
                 result["nomi_non_trovati"].append(row["nome"])
                 continue
             dip = next(iter(matches))
+            resolved.append((row, dip))
+            if row["tipo"] == "netto":
+                netti_file.setdefault((dip, row["anno"], row["mese"]), set()).add(euro(row["importo"]))
+        seen = set()
+        for row, dip in resolved:
             key = (dip, row["anno"], row["mese"])
             old = existing.get(key, {})
             identity = hashlib.sha256(json.dumps([*key, row["tipo"], str(euro(row["importo"]))]).encode()).hexdigest()
             entries = list(old.get("importi_excel") or [])
-            if identity in seen or any(e.get("id") == identity for e in entries) or (row["tipo"] == "netto" and euro(old.get("importo_busta"), allow_negative=True) == euro(row["importo"])):
+            netto_attuale = old.get("netto_stampato") if old.get("netto_stampato") is not None and not old.get("importo_busta_manuale") else old.get("importo_busta")
+            if identity in seen or any(e.get("id") == identity for e in entries) or (row["tipo"] == "netto" and euro(netto_attuale, allow_negative=True) == euro(row["importo"])):
                 result["duplicati"] += 1
                 continue
             seen.add(identity)
             entry = {k: row[k] for k in ("importo", "tipo", "nota", "riga")}
+            if len(netti_file.get(key, ())) > 1:
+                entry["conflitto_file"] = True
             entry.update(id=identity, file=filename, sha256=file_hash)
             entries.append(entry)
             patch = {"dipendente_id": dip, "anno": row["anno"], "mese": row["mese"], "importi_excel": entries}
-            if row["tipo"] == "netto" and old.get("importo_busta") is None:
+            if row["tipo"] == "netto" and old.get("importo_busta") is None and not entry.get("conflitto_file"):
                 patch.update(importo_busta=row["importo"], origine="excel_cedolino", importo_busta_manuale=True,
+                             netto_confermato=row["importo"],
                              importo_busta_nota=f"Import Excel: {filename}, riga {row['riga']}")
             updated = {**old, **patch}
             alerts = avvisi(updated)

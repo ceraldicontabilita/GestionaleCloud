@@ -5946,7 +5946,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </Modal>}
       {confrontoImporto && <Modal title="Verifica importo del cedolino" onClose={() => setConfrontoImporto(null)}>
         <p>{confrontoImporto.dipendente} · {mesi[confrontoImporto.mese - 1] || confrontoImporto.mese} {confrontoImporto.anno}</p>
-        <p>Netto nel gestionale: {confrontoImporto.busta == null ? 'non disponibile' : `€ ${eur(confrontoImporto.busta)}`}</p>
+        <p>Dovuto nel gestionale: {confrontoImporto.busta == null ? 'non disponibile' : `€ ${eur(confrontoImporto.busta)}`}</p>
+        {confrontoImporto.acconto_recuperato > 0 && <p>Netto PDF € {eur(confrontoImporto.netto_stampato)} · recupero acconto € {eur(confrontoImporto.acconto_recuperato)}</p>}
         {confrontoImporto.avvisi_importo.map(a => <div key={a.id} className="dc-card">
           <strong>{a.motivo}: € {eur(a.importo)}</strong>
           <p>{a.tipo === 'netto' ? 'Netto dichiarato nel file' : 'Importo attribuito dai pagamenti, non netto del cedolino'} · {a.file}, riga {a.riga}</p>
@@ -5954,7 +5955,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
           <button className="dc-btn" disabled={confrontoImporto.busta == null} onClick={() => confermaVerificaImporto(confrontoImporto, a)}>Ho verificato: mantieni il valore nel gestionale</button>
         </div>)}
         {confrontoImporto.cedolino_id && <button className="dc-btn" onClick={() => apriCedolino(confrontoImporto)}>Apri PDF cedolino</button>}
-        <p>Se il netto è errato, correggilo con la matita accanto all'importo dopo aver controllato il documento.</p>
+        <p>Se il dovuto è errato, correggilo con la matita accanto all'importo dopo aver controllato il documento. Il netto del PDF resta separato dal recupero acconto.</p>
       </Modal>}
       {csvMsg && (
         <div className="dc-card" style={msgCard(csvMsg)}>
@@ -6124,7 +6125,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
               <tr>
                 <th style={th}>Dipendente</th>
                 <th style={th}>Periodo</th>
-                <th style={{ ...th, textAlign: "right" }}>Busta</th>
+                <th style={{ ...th, textAlign: "right" }}>Dovuto cedolino</th>
                 <th style={{ ...th, textAlign: "right" }}>Bonifico</th>
                 <th style={{ ...th, textAlign: "right" }}>Acconti</th>
                 <th style={{ ...th, textAlign: "right" }}>Saldo</th>
@@ -6167,6 +6168,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
                               aria-label={`Correggi importo busta ${r.mese}/${r.anno} di ${r.dipendente_nome || ""}`}
                               style={{ fontSize: 11, padding: "1px 6px", marginLeft: 6, color: r.busta_manuale ? "#8a6f47" : undefined }}>✎</button>
                             {r.busta_manuale && <div style={{ fontSize: 10, color: "#8a6f47" }}>corretto a mano</div>}
+                            {r.netto_confermato != null && <div style={{ fontSize: 11 }}>Netto confermato € {eur(r.netto_confermato)}</div>}
+                            {r.acconto_recuperato > 0 && <div style={{ fontSize: 11, fontWeight: 400, marginTop: 5, whiteSpace: "normal" }}>
+                              Netto PDF € {eur(r.netto_stampato)}<br />
+                              Recupero acconto € {eur(r.acconto_recuperato)}
+                            </div>}
+                            {r.acconto_da_verificare && <div style={{ color: '#9a531b', fontSize: 11 }}>Recupero acconto da verificare nel PDF</div>}
                           </span>
                         )}
                       </td>
@@ -6214,6 +6221,10 @@ function PagheBonificiPage({ dipendenti = [] }) {
                     {exp && (
                       <tr>
                         <td style={{ ...td, background: "#f7f4ec" }} colSpan={10}>
+                          {r.acconto_recuperato > 0 && <p style={{ fontSize: 13 }}>
+                            Netto stampato € {eur(r.netto_stampato)} · recupero acconto € {eur(r.acconto_recuperato)} ({r.fonte_acconto_recuperato}) · dovuto del periodo € {eur(r.busta)}{r.busta_manuale ? " (corretto a mano)" : " (netto + recupero)"}.
+                            Il recupero è una trattenuta del cedolino: i pagamenti si verificano separatamente con la banca.
+                          </p>}
                           {r.bonifici.length > 0 && (<>
                             <div style={{ fontSize: 12, color: "#7a8576", marginBottom: 6 }}>
                               Un bonifico arrivato nel mese sbagliato (es. il 1° gennaio per la busta di dicembre) si sposta con <b>Sposta / modifica</b>: il sistema ricalcola entrambi i mesi.
