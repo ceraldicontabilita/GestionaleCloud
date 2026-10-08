@@ -57,7 +57,11 @@ async function loadAuthenticatedBridge(status = 200, user = { email: 'test@examp
     fetch: async (url, opts) => {
       calls.push({ url: String(url), opts });
       const endpoint = new URL(url, location.origin).pathname;
-      if (Object.hasOwn(responses, endpoint)) return new Response(JSON.stringify(responses[endpoint]), { status: 200 });
+      if (Object.hasOwn(responses, endpoint)) {
+        const route = responses[endpoint];
+        const payload = typeof route === 'function' ? await route(url, opts) : route;
+        return payload instanceof Response ? payload : new Response(JSON.stringify(payload), { status: 200 });
+      }
       return new Response(JSON.stringify(endpoint === '/api/auth/verify' ? { ok: status === 200, user } : []), { status });
     },
   };
@@ -412,6 +416,121 @@ test('401 opens the shared login with an explicit return path, while 503 keeps a
   assert.equal(unavailable.initialized(), 0);
   assert.deepEqual(unavailable.redirects, []);
   assert.match(unavailable.elements.get('ceraldiSessionGate').innerHTML, /temporaneamente non disponibile/);
+});
+
+test('an endpoint 401 preserves a verified shared session and never retries a rejected write', async () => {
+  const endpoint = '/api/fatture-ricevute/fattura/auth-fixture';
+  const current = await loadAuthenticatedBridge(200, undefined, {
+    [endpoint]: () => new Response(JSON.stringify({ detail: 'Credenziale locale richiesta' }), { status: 401 }),
+  });
+  await current.bridge.bootstrap();
+  const response = await current.bridge.api(endpoint, { method: 'PUT', body: JSON.stringify({ note: 'Una sola scrittura' }) });
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { detail: 'Credenziale locale richiesta' });
+  assert.equal(current.bridge.authorized, true);
+  assert.equal(current.elements.has('ceraldiSessionGate'), false);
+  assert.equal(current.calls.filter(call => new URL(call.url, 'https://gestionale.example').pathname === endpoint).length, 1, 'a writer must not be resubmitted after its error');
+  const verifies = current.calls.filter(call => new URL(call.url, 'https://gestionale.example').pathname === '/api/auth/verify');
+  assert.equal(verifies.length, 2, 'the endpoint error must verify the shared cookie before revoking it');
+  assert.equal(verifies.at(-1).opts.credentials, 'same-origin');
+  assert.equal(verifies.at(-1).opts.cache, 'no-store');
+});
+
+test('an endpoint 401 revokes access only after the shared verifier returns 401 or an unauthorized role', async () => {
+  for (const verifierStatus of [401, 403]) {
+    let verifies = 0;
+    const current = await loadAuthenticatedBridge(200, undefined, {
+      '/api/auth/verify': () => ++verifies === 1
+        ? { ok: true, user: { email: 'test@example.invalid', role: 'admin' } }
+        : new Response(JSON.stringify({ detail: verifierStatus === 403 ? 'Ruolo account non autorizzato' : 'Sessione terminata' }), { status: verifierStatus }),
+      '/api/invoices': () => new Response(JSON.stringify({ detail: 'Autenticazione richiesta' }), { status: 401 }),
+    });
+    await current.bridge.bootstrap();
+    assert.equal(current.bridge.authorized, true);
+    assert.equal((await current.bridge.api('/api/invoices')).status, 401);
+    assert.equal(current.bridge.authorized, false, 'the authoritative verifier must close the shared session');
+    assert.equal(verifies, 2);
+    assert.equal(current.elements.has('ceraldiSessionGate'), true);
+    const before = current.calls.length;
+    await assert.rejects(current.bridge.api('/api/suppliers'), error => error.status === 401);
+    assert.equal(current.calls.length, before, 'a revoked session must not send another protected request');
+    if (verifierStatus === 403) assert.match(current.elements.get('ceraldiSessionGate').innerHTML, /account.*non.*autorizzat/i);
+  }
+});
+
+test('a core endpoint 403 stays a local permission error without revoking or reverifying the shared session', async () => {
+  const current = await loadAuthenticatedBridge(200, undefined, {
+    '/api/invoices': () => new Response(JSON.stringify({ detail: 'Permesso locale assente' }), { status: 403 }),
+  });
+  await current.bridge.bootstrap();
+  const response = await current.bridge.api('/api/invoices');
+  assert.equal(response.status, 403);
+  assert.equal(current.bridge.authorized, true);
+  assert.equal(current.elements.has('ceraldiSessionGate'), false);
+  assert.equal(current.calls.filter(call => new URL(call.url, 'https://gestionale.example').pathname === '/api/auth/verify').length, 1);
+});
+
+test('a temporarily unavailable verifier does not turn a local 401 into a declared shared-session expiration', async () => {
+  for (const unavailable of ['http-503', 'network-error']) {
+    let verifies = 0;
+    const current = await loadAuthenticatedBridge(200, undefined, {
+      '/api/auth/verify': () => {
+        if (++verifies === 1) return { ok: true, user: { email: 'test@example.invalid', role: 'admin' } };
+        if (unavailable === 'network-error') throw new TypeError('Verificatore non raggiungibile');
+        return new Response(JSON.stringify({ detail: 'Verificatore temporaneamente non disponibile' }), { status: 503 });
+      },
+      '/api/invoices': () => new Response(JSON.stringify({ detail: 'Errore originale endpoint' }), { status: 401 }),
+    });
+    await current.bridge.bootstrap();
+    const response = await current.bridge.api('/api/invoices');
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { detail: 'Errore originale endpoint' });
+    assert.equal(current.bridge.authorized, true);
+    assert.equal(current.elements.has('ceraldiSessionGate'), false);
+    assert.equal(verifies, 2);
+    assert.equal((await current.bridge.api('/api/suppliers')).status, 200, 'other authorized modules remain usable');
+  }
+});
+
+test('a subsystem permission rejection verifies the ERP session and preserves its valid in-memory token', async () => {
+  let requests = 0;
+  const current = await loadAuthenticatedBridge(200, undefined, {
+    '/hr/api/auth/session': { access_token: 'test-derived-hr-token' },
+    '/hr/api/dipendenti': () => ++requests === 1
+      ? new Response(JSON.stringify({ detail: 'Accesso locale HR negato' }), { status: 403 }) : [],
+  });
+  await current.runScript('ceraldi-paghe.js');
+  await current.bridge.bootstrap();
+  await assert.rejects(current.bridge.api('/hr/api/dipendenti'), error => error.status === 403);
+  assert.equal(current.bridge.authorized, true);
+  assert.equal(current.elements.has('ceraldiSessionGate'), false);
+  assert.equal(requests, 1, 'a permission rejection must not retry the module request');
+  assert.equal(current.calls.filter(call => new URL(call.url, 'https://gestionale.example').pathname === '/api/auth/verify').length, 2);
+  assert.equal((await current.bridge.api('/hr/api/dipendenti')).status, 200);
+  assert.equal(current.calls.filter(call => new URL(call.url, 'https://gestionale.example').pathname === '/hr/api/auth/session').length, 1, 'the still-valid derived token remains in memory');
+});
+
+test('a subsystem writer 401 is never replayed and an explicit later submission obtains a fresh token', async () => {
+  const endpoint = '/hr/api/dipendenti-cloud/paghe/conferma-associazione';
+  let writes = 0, exchanges = 0;
+  const current = await loadAuthenticatedBridge(200, undefined, {
+    '/hr/api/auth/session': () => ({ access_token: 'test-derived-hr-token-' + ++exchanges }),
+    [endpoint]: () => ++writes === 1
+      ? new Response(JSON.stringify({ detail: 'Token HR non valido' }), { status: 401 }) : { success: true },
+  });
+  await current.runScript('ceraldi-paghe.js');
+  await current.bridge.bootstrap();
+  const submission = { method: 'POST', body: JSON.stringify({ dipendente_id: 'employee-text-id', movimento_id: 'statement-text-id' }) };
+  await assert.rejects(current.bridge.api(endpoint, submission), error => error.status === 401);
+  assert.equal(writes, 1, 'an authentication error must not resend the writer automatically');
+  assert.equal(exchanges, 1, 'the failure may invalidate the token but must not start a second submission');
+  assert.equal(current.bridge.authorized, true);
+  assert.equal(current.elements.has('ceraldiSessionGate'), false);
+  assert.equal((await current.bridge.api(endpoint, submission)).status, 200);
+  assert.equal(writes, 2);
+  assert.equal(exchanges, 2, 'a later explicit attempt must obtain a fresh derived session');
+  const calls = current.calls.filter(call => new URL(call.url, 'https://gestionale.example').pathname === endpoint);
+  assert.deepEqual(calls.map(call => call.opts.headers.get('Authorization')), ['Bearer test-derived-hr-token-1', 'Bearer test-derived-hr-token-2']);
 });
 
 test('shared session enables only authenticated API calls and isolates old project cache', async () => {

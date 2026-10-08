@@ -34,6 +34,7 @@
   ];
   const derivedSessions = new Map();
   const sessionRequests = new Map();
+  let sharedSessionCheck = null;
 
   function error(message, status, code) {
     const value = new Error(message);
@@ -64,11 +65,26 @@
   }
   function subsystem(url) { return ['hr', 'lotti', 'menu'].find(name => url.pathname.startsWith('/' + name + '/api/')); }
   function exchangePath(name) { return name === 'menu' ? '/menu/api/qrcode/session' : '/' + name + '/api/auth/session'; }
+  async function confirmSharedSession() {
+    // A module can reject its own authentication while the ERP cookie is valid.
+    // Only the central verification can establish that the shared login expired.
+    if (!sharedSessionCheck) sharedSessionCheck = (async () => {
+      let verify;
+      try { verify = await nativeFetch('/api/auth/verify', { credentials: 'same-origin', cache: 'no-store' }); }
+      catch (_) { return null; }
+      if ([401, 403].includes(verify.status)) {
+        state.authorized = false;
+        derivedSessions.clear();
+        showGate(verify.status === 403 ? 'Questo account non è autorizzato al gestionale.' : 'La sessione del gestionale è terminata. Accedi per continuare.', true);
+      }
+      return verify.status;
+    })();
+    const pending = sharedSessionCheck;
+    try { return await pending; }
+    finally { if (sharedSessionCheck === pending) sharedSessionCheck = null; }
+  }
   async function checkGroupSession(status, name) {
-    if (status === 401 || status === 403) {
-      const verify = await nativeFetch('/api/auth/verify', { credentials: 'same-origin' });
-      if ([401, 403].includes(verify.status)) { state.authorized = false; derivedSessions.clear(); showGate('La sessione del gestionale è terminata.', true); }
-    }
+    if (status === 401 || status === 403) await confirmSharedSession();
     throw error('La sessione ' + name + ' non è disponibile per questo account.', status, 'SESSIONE_MODULO_NON_DISPONIBILE');
   }
   async function deriveToken(name) {
@@ -108,13 +124,15 @@
     let response = await nativeFetch(url.href, opts);
     if (name && response.status === 401 && !exchange && !explicitToken) {
       derivedSessions.delete(name);
-      headers.set('Authorization', 'Bearer ' + await deriveToken(name));
-      response = await nativeFetch(url.href, opts);
+      // Refresh reads transparently; a rejected writer requires a user retry.
+      if (['GET', 'HEAD'].includes(method)) {
+        headers.set('Authorization', 'Bearer ' + await deriveToken(name));
+        response = await nativeFetch(url.href, opts);
+      }
     }
     if (name && [401, 403].includes(response.status)) await checkGroupSession(response.status, name);
     if (!name && response.status === 401 && url.pathname !== '/api/auth/verify') {
-      state.authorized = false;
-      showGate('La sessione è terminata. Accedi dal gestionale per continuare.', true);
+      await confirmSharedSession();
     }
     return response;
   }
