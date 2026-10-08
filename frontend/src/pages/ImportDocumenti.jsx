@@ -954,6 +954,11 @@ export default function ImportDocumenti() {
                         Apri archivio documenti
                       </a>
                     )}
+                    {r.details?.receipt_id && (
+                      <a href="/riconciliazione/pagopa" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600 }}>
+                        Apri ricevute di pagamento
+                      </a>
+                    )}
                     {r.tipo === 'fattura_estera_pdf' && ['success', 'duplicate'].includes(r.status) && (
                       // I dati letti dall'AI li conferma il titolare: senza un
                       // collegamento qui la coda restava introvabile.

@@ -3322,7 +3322,12 @@ async def upload_documento_automatico(
                 company_id=settings.FISCAL_COMPANY_ID,
                 source="documenti_upload_auto",
             )
-            result["data"] = receipt
+            # La risposta contiene i riferimenti, non una seconda copia del PDF.
+            receipt_doc = receipt.get("receipt") or {}
+            result["data"] = {
+                **receipt,
+                "receipt": {k: v for k, v in receipt_doc.items() if k != "pdf_data"},
+            }
             receipt_kind = (receipt.get("receipt") or {}).get("document_kind")
             result["workflow"] = (
                 "PAGOPA_CBILL_CANONICO"
@@ -3340,6 +3345,28 @@ async def upload_documento_automatico(
                 )
                 if fiscal_match.get("matched"):
                     result["message"] += ", rata e cartelle AdeR collegate"
+                if receipt_doc.get("id"):
+                    result["receipt_id"] = receipt_doc["id"]
+                    try:
+                        # Un precedente tentativo non riconosciuto conserva il
+                        # proprio originale, ma ora punta al record canonico.
+                        await db["documents_inbox"].update_many(
+                            {"sha256": hashlib.sha256(content).hexdigest(),
+                             "category": "altro", "processed": {"$ne": True}},
+                            {"$set": {
+                                "category": "ricevuta_pagopa",
+                                "category_label": "Ricevute di pagamento",
+                                "status": "processato", "processed": True,
+                                "processed_to": "ricevute_pagopa",
+                                "receipt_id": receipt_doc["id"],
+                                "document_date": receipt_doc.get("data_pagamento"),
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            }},
+                        )
+                    except Exception:
+                        logger.exception("Originale inbox non collegato alla ricevuta %s", receipt_doc["id"])
+                        result["partial"] = True
+                        result["message"] += "; collegamento dell'originale in inbox da riprovare"
             else:
                 if receipt.get("document_kind") == "ESITO_PAGOPA_NEGATIVO":
                     return await _archive_non_payment_document(
