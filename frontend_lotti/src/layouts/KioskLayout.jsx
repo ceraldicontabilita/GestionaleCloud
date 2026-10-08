@@ -68,7 +68,7 @@ export default function KioskLayout({ hash }) {
     opObj = moveTabletSessionTo(reparto);
   }
 
-  if (!opObj && !REPARTI_SOLO_ADMIN.includes(reparto)) {
+  if (!opObj && !sessioneTitolareAttiva() && !REPARTI_SOLO_ADMIN.includes(reparto)) {
     // Nessuna sessione (o reparto diverso) → home con reparto pre-selezionato
     return <TabletHome preselectReparto={reparto} hashRichiesto={hash} />;
   }

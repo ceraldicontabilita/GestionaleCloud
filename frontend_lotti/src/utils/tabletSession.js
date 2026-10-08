@@ -71,8 +71,8 @@ export function sessioneTitolareAttiva() {
  * Dopo l'ingresso dal Gestionale il token e' del titolare: la persona del
  * tablet deve essere la stessa, o un dipendente rimasto identificato
  * firmerebbe col token del titolare. Se il titolare ha una scheda HR diventa
- * lui l'operatore; altrimenti l'operatore si azzera e la prossima card di
- * reparto chiede il PIN.
+ * lui l'operatore; altrimenti l'operatore si azzera, ma il token ERP consente
+ * al titolare di aprire i reparti. Non si inventa un'identità HR per le firme.
  */
 export function allineaSessioneTitolare(titolare, reparto) {
   if (titolare?.dipendente_id) {

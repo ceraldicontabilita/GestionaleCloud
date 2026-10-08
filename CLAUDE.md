@@ -3854,6 +3854,16 @@ Il Gestionale e i comandi riservati restano protetti anche lato server.
 
 L'operatore entra dal tablet con il proprio PIN personale.
 
+Correzione accesso Lotti (08/10/2026): con HR vuoto il PIN centrale del
+Gestionale non è un PIN personale e non può identificare un dipendente.
+Il titolare apre anche i reparti ordinari tramite la sessione ERP, senza
+scheda HR fittizia; le firme personali continuano a richiedere un'identità HR.
+Il tastierino offre «Sono il titolare: entra dal Gestionale», non reinvia
+richieste concorrenti e annulla quelle pendenti quando viene chiuso.
+Un archivio HR vuoto/non configurato non incrementa i tentativi di PIN errato.
+Il blocco PIN conserva la protezione server e restituisce Retry-After; il
+tablet mostra il conto alla rovescia reale e consente di riprovare alla scadenza.
+
 Vede soltanto le card previste dalla sua mansione e dai suoi permessi.
 
 Un indirizzo diretto verso un reparto non autorizzato non deve aggirare la navigazione: l'operatore viene ricondotto alle card disponibili per il suo profilo.
