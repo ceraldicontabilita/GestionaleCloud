@@ -7,15 +7,11 @@ import { Globe } from "lucide-react";
 import { conferma } from "../../../utils/conferma";
 import { stampaDoc } from "../../../utils/stampa";
 import { isAdmin, vaiAlLoginGestionale } from "../../../auth";
+import { API, fotoSrc } from "../../../utils/constants";
 
 // Riga breve mostrata nel Menu digitale: una frase, non un tema. Oltre questa
 // misura il testo sborda dalla card del Menu su telefono.
 export const MAX_DESCRIZIONE_MENU = 140;
-
-const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
-const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
-// foto_url è relativo (/api/foto/..): per <img>/background va reso assoluto sul backend.
-const fotoSrc = (u) => (u ? (/^https?:/.test(u) ? u : BACKEND + u) : "");
 
 const toast = (msg, tipo = "ok") => {
   const div = document.createElement("div");
@@ -596,7 +592,8 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       if (fotoPending && idFoto) {
         try {
           const fd = new FormData(); fd.append("file", fotoPending);
-          await axios.post(`${API}/ricette/${idFoto}/upload-foto`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+          const fotoSalvata = await axios.post(`${API}/ricette/${idFoto}/upload-foto`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+          menuSync = fotoSalvata.data?.menu_sync || menuSync;
         } catch {
           toast("Ricetta salvata, ma la foto non è partita: riaprila e ricaricala", "warn");
         }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { AlertTriangle, ChefHat, ExternalLink, Pencil, X } from "lucide-react";
-import { API } from "../../utils/constants";
+import { API, fotoSrc } from "../../utils/constants";
 import { apiError } from "../../utils/apiError";
 import DosiRicetta from "./shared/DosiRicetta";
 import ModificaRicettaKiosk from "./tablet/ModificaRicettaKiosk";
@@ -68,11 +68,12 @@ export default function SchedaRicettaChiaraModal({
 
   return (
     <div className="fixed inset-0 z-[500] flex items-end justify-center bg-black/55 p-2 md:items-center md:p-6" onClick={() => { if (!inModifica) onClose(); }}>
-      <article className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-t-[28px] bg-[#fffdf8] shadow-2xl md:rounded-[28px]" onClick={e => e.stopPropagation()}>
-        <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#ded4c7] bg-[#fffdf8]/95 px-5 py-4 backdrop-blur md:px-8">
+      <article role="dialog" aria-modal="true" aria-label={ricetta?.nome || nome || "Scheda ricetta"} className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-t-[28px] bg-[#fffdf8] shadow-2xl md:rounded-[28px]" onClick={e => e.stopPropagation()}>
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[#ded4c7] bg-[#fffdf8]/95 px-4 py-3 backdrop-blur md:px-6">
+          {ricetta?.foto_url && <img src={fotoSrc(ricetta.foto_url)} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" />}
           <div>
             <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#5b7a6b]">{fonte}</p>
-            <h2 className="m-0 mt-1 font-serif text-2xl font-bold text-stone-900 md:text-4xl">{ricetta?.nome || nome || "Ricetta"}</h2>
+            <h2 className="m-0 mt-1 font-serif text-xl font-bold text-stone-900 md:text-3xl">{ricetta?.nome || nome || "Ricetta"}</h2>
             <p className="m-0 mt-1 text-sm font-semibold text-stone-500">
               {inModifica ? "Modifica ricetta ufficiale"
                 : soloLettura ? (ricetta.tipo_archivio === "component" ? "Preparazione base" : `Ricetta tecnica${ricetta.numero_archivio ? ` n. ${ricetta.numero_archivio}` : ""}`)
@@ -95,12 +96,14 @@ export default function SchedaRicettaChiaraModal({
             />
           </div>
         ) : (
-          <div className="grid gap-7 p-5 md:grid-cols-[.9fr_1.1fr] md:p-8">
+          <div className="grid gap-4 p-4 md:grid-cols-[.9fr_1.1fr] md:p-6">
             {renderForm && !soloLettura && (
-              <section className="md:col-span-2" data-testid="scheda-dati-ricetta">
-                <h3 className="mb-3 font-serif text-xl font-bold text-stone-900">Dati, foto e Menu</h3>
-                {renderForm(ricetta)}
-              </section>
+              <details className="rounded-xl border border-[#ded4c7] bg-white p-3 md:col-span-2" data-testid="scheda-dati-ricetta">
+                <summary className="min-h-11 cursor-pointer font-bold text-stone-900">Modifica dati, foto e destinazioni
+                  <span className="mt-1 block text-xs font-normal text-stone-500">Menu: {ricetta.menu_pubblico !== false ? "sì" : "no"} · B&B: {ricetta.menu_bb !== false ? "sì" : "no"} · Reparti: {ricetta.visibile_tablet !== false ? "sì" : "no"}</span>
+                </summary>
+                <div className="mt-3">{renderForm(ricetta)}</div>
+              </details>
             )}
             <section>
               <h3 className="mb-3 font-serif text-xl font-bold text-stone-900">Ingredienti</h3>
@@ -124,7 +127,7 @@ export default function SchedaRicettaChiaraModal({
               )}
             </section>
 
-            <section className="space-y-6">
+            <section className="space-y-4">
               <div>
                 <h3 className="mb-3 font-serif text-xl font-bold text-stone-900">Modo di preparazione</h3>
                 {fonteWeb && (
@@ -147,7 +150,7 @@ export default function SchedaRicettaChiaraModal({
                     {erroreConferma && <div role="alert" className="mt-1 text-[#8f3829]">{erroreConferma}</div>}
                   </div>
                 )}
-                <p className="m-0 whitespace-pre-line rounded-2xl border border-[#e7ddd0] bg-white p-5 text-[15px] leading-7 text-stone-700">{procedimento}</p>
+                <p className="m-0 whitespace-pre-line rounded-2xl border border-[#e7ddd0] bg-white p-3 text-sm leading-6 text-stone-700">{procedimento}</p>
               </div>
               {note && <div><h3 className="mb-2 font-serif text-lg font-bold">Note</h3><p className="m-0 whitespace-pre-line rounded-2xl bg-[#f2eee6] p-4 text-sm leading-6 text-stone-700">{note}</p></div>}
               {provenienza.sheet && (
