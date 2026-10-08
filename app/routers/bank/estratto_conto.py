@@ -7,6 +7,7 @@ from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timezone
 import logging
+import math
 import io
 import re
 import csv
@@ -266,8 +267,12 @@ _CAMPI_PASSANTI_FONTE = (
 
 
 def _si_proietta_in_prima_nota(record: Dict[str, Any]) -> bool:
-    """Il conto BNL storico resta solo archivio bancario per le riconciliazioni."""
-    return record.get("conto_contabile") not in CONTI_SENZA_PROIEZIONE_PRIMA_NOTA
+    """Carte: il conto corrente registra l'addebito mensile, non ogni acquisto."""
+    return (
+        record.get("conto_contabile") not in CONTI_SENZA_PROIEZIONE_PRIMA_NOTA
+        and record.get("tipo") != "carta_credito"
+        and not str(record.get("banca") or "").startswith("Nexi")
+    )
 
 
 def segno_assente(movimenti: List[Dict[str, Any]]) -> bool:
@@ -452,9 +457,59 @@ def estrai_fornitore_pulito(descrizione: str) -> Optional[str]:
     return None
 
 
+def _dettaglio_carta_xlsx(contents: bytes):
+    """Export carta Business: importo EUR e segno del debito, non ultimo 'importo'."""
+    import openpyxl
+
+    wb = openpyxl.load_workbook(io.BytesIO(contents), read_only=True, data_only=True)
+    try:
+        sheet = wb.active
+        # Alcuni export dichiarano A1:A1 pur contenendo tutte le colonne.
+        sheet.reset_dimensions()
+        rows = sheet.iter_rows(values_only=True)
+        headers = [str(v or "").strip().lower() for v in next(rows, ())]
+        richiesti = {"codice carta", "data del movimento", "causale movimento", "segno del movimento", "importo spesa in euro", "insegna"}
+        if not richiesti.issubset(headers):
+            return None
+        # Le intestazioni Data valuta/Importo sono ripetute in sezioni accessorie.
+        indici = {h: headers.index(h) for h in set(headers)}
+        movimenti = []
+        for numero, values in enumerate(rows, 2):
+            if not any(v is not None for v in values):
+                continue
+            def valore(h):
+                index = indici.get(h)
+                return values[index] if index is not None and index < len(values) else None
+            data = _date_from_spreadsheet(valore("data del movimento"))
+            importo = _float_from_spreadsheet(valore("importo spesa in euro"))
+            segno = str(valore("segno del movimento") or "").strip()
+            carta = str(valore("codice carta") or "").strip()
+            causale = str(valore("causale movimento") or "").strip().upper()
+            if not data or importo is None or not math.isfinite(importo) or segno not in {"+", "-"} or not carta:
+                raise ValueError(f"Riga carta {numero}: data, importo, segno o carta mancanti/non validi")
+            if causale not in {"SPESO", "STORNO", "RIMBORSO", "ACCREDITO"}:
+                raise ValueError(f"Riga carta {numero}: causale {causale!r} da verificare")
+            if importo < 0 or (causale == "SPESO" and segno != "+") or (causale != "SPESO" and segno != "-"):
+                raise ValueError(f"Riga carta {numero}: segno e causale non coerenti")
+            insegna = str(valore("insegna") or "").strip()
+            if not insegna:
+                raise ValueError(f"Riga carta {numero}: esercente mancante")
+            movimenti.append({
+                "data": data, "data_pagamento": _date_from_spreadsheet(valore("data valuta")),
+                "importo": -importo if segno == "+" else importo,
+                "descrizione_originale": insegna, "identity_description": insegna,
+                "fornitore": insegna, "tipo": "carta_credito", "categoria": "",
+                "banca": "Carta Business", "rapporto": carta,
+                "numero_carta_mascherato": carta, "divisa": "EUR",
+            })
+        return movimenti
+    finally:
+        wb.close()
+
+
 @router.post("/import")
 @handle_errors
-async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = False) -> Dict[str, Any]:
     """
     Importa estratto conto bancario e salva tutti i movimenti con campi strutturati.
     
@@ -486,12 +541,6 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     evidenza = campi_evidenza(filename_originale)
     fonte_ufficiale = evidenza["livello_evidenza"] == EVIDENZA_UFFICIALE
     contents = await file.read()
-    # L'originale si conserva sempre, per poterlo rivedere e riscaricare.
-    from app.services.estratti_originali import conserva_originale
-    originale_id = await conserva_originale(
-        db, contents, filename_originale, fonte="import_estratto_conto",
-        drive_file_id=drive_file_id,
-    )
     
     movimenti = []
     segno_da_controllare = False
@@ -733,8 +782,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 raise HTTPException(status_code=422, detail=(
                     "Questo e' l'export Spese di SumUp (netto, IVA, fornitore), non un estratto conto BPM: "
                     "caricalo da Documenti > Import, arricchisce i movimenti SumUp gia' presenti."))
-            enti_rows = parse_enti_file_contabili_xlsx(contents)
-            if enti_rows is not None:
+            carta_rows = _dettaglio_carta_xlsx(contents)
+            enti_rows = None if carta_rows is not None else parse_enti_file_contabili_xlsx(contents)
+            if carta_rows is not None:
+                movimenti.extend(carta_rows)
+            elif enti_rows is not None:
                 movimenti.extend(enti_rows)
             else:
                 segno_da_controllare = True
@@ -849,11 +901,17 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     gia_ufficiali = 0
     
     if not movimenti:
-        return {
-            "success": True,
-            "stats": {"nuovi": 0, "duplicati": 0, "totale_letti": 0},
-            "message": "Nessun movimento trovato nel file."
-        }
+        raise HTTPException(status_code=422, detail="Nessun movimento leggibile: documento non importato.")
+
+    if dry_run:
+        return {"preview_only": True, "movimenti_letti": len(movimenti)}
+
+    # Solo dopo la validazione: l'anteprima non scrive originali o movimenti.
+    from app.services.estratti_originali import conserva_originale
+    originale_id = await conserva_originale(
+        db, contents, filename_originale, fonte="import_estratto_conto",
+        drive_file_id=drive_file_id,
+    )
     
     # Ordina per data contabile ASCENDENTE prima di inserire
     movimenti.sort(key=lambda x: x["data"].isoformat()[:10] if hasattr(x["data"], "isoformat") else str(x["data"]))
@@ -919,7 +977,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         
         # Le carte possono arrivare sia dal PDF Nexi sia dal foglio contabile:
         # entrambi devono produrre la stessa identita' e non due movimenti.
-        is_card_movement = str(mov.get("banca") or "").startswith("Nexi")
+        is_card_movement = mov.get("tipo") == "carta_credito" or str(mov.get("banca") or "").startswith("Nexi")
+        card_amount = -mov["importo"] if is_card_movement else None
+        if is_card_movement:
+            tipo_mov = "carta_credito"
         identity_description = mov.get("identity_description") or (
             mov.get("descrizione_originale") or mov.get("descrizione") or ""
         )
@@ -929,14 +990,14 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 
         if is_card_movement:
             card_base = (
-                data_str, int(round(importo_abs * 100)),
+                data_str, int(round(card_amount * 100)),
                 _nexi_description(identity_description),
             )
             occurrence_counter_key = ("nexi", card_base)
             incoming_occurrences[occurrence_counter_key] += 1
             occurrence = incoming_occurrences[occurrence_counter_key]
             operation_key, operation_id = nexi_operation_identity(
-                data_str, importo_abs, identity_description, occurrence,
+                data_str, card_amount, identity_description, occurrence,
             )
             existing_rows = existing_card_by_base.get(card_base, [])
             identity_version = "nexi_v2"
@@ -994,7 +1055,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "data": data_str,
             "ragione_sociale": mov.get("ragione_sociale"),
             "fornitore": mov.get("fornitore"),
-            "importo": importo_abs,
+            "importo": card_amount if is_card_movement else importo_abs,
             "numero_fattura": mov.get("numero_fattura"),
             "data_pagamento": mov["data_pagamento"].isoformat() if mov.get("data_pagamento") else None,
             **campi_categoria,

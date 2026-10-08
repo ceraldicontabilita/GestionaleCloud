@@ -5,6 +5,7 @@ import { API, fotoSrc } from "../../utils/constants";
 import { apiError } from "../../utils/apiError";
 import DosiRicetta from "./shared/DosiRicetta";
 import ModificaRicettaKiosk from "./tablet/ModificaRicettaKiosk";
+import AcquistiSemilavorato from "./AcquistiSemilavorato";
 
 const righe = (value) => String(value || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
 
@@ -40,13 +41,14 @@ export default function SchedaRicettaChiaraModal({
   }, [daCaricare, ricettaId]);
 
   const ricetta = ricettaData || caricata;
+  const semilavorato = (ricetta?.categorie_rapide || []).includes("semilavorati");
   const soloLettura = Boolean(ricetta && (ricetta.origine === "archivio" || ricetta.sola_lettura));
   const dallaFonte = righe(ricetta?.ingredienti_testo);
   const procedimento = soloLettura
     ? (ricetta?.procedimento_testo || "Procedimento non indicato nella fonte.")
     : (ricetta?.procedimento_testo || "Procedimento non ancora indicato.");
   const note = ricetta?.note || ricetta?.note_archivio || "";
-  const fonte = ricetta?.fonte_archivio || "Ricetta Ceraldi";
+  const fonte = ricetta?.fonte_archivio || (semilavorato ? "Semilavorato acquistato" : "Ricetta Ceraldi");
   const provenienza = ricetta?.provenienza_archivio || {};
   const allergeni = Array.isArray(ricetta?.allergeni) ? ricetta.allergeni.filter(Boolean) : [];
   const fonteWeb = ricetta?.procedimento_origine === "web" ? (ricetta.procedimento_fonte || {}) : null;
@@ -77,7 +79,7 @@ export default function SchedaRicettaChiaraModal({
             <p className="m-0 mt-1 text-sm font-semibold text-stone-500">
               {inModifica ? "Modifica ricetta ufficiale"
                 : soloLettura ? (ricetta.tipo_archivio === "component" ? "Preparazione base" : `Ricetta tecnica${ricetta.numero_archivio ? ` n. ${ricetta.numero_archivio}` : ""}`)
-                : "Ricetta Ceraldi operativa"}
+                : semilavorato ? "Prodotto acquistato · dati e destinazioni" : "Ricetta Ceraldi operativa"}
             </p>
           </div>
           <button onClick={onClose} aria-label="Chiudi" className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-stone-200 bg-white text-stone-600"><X size={19} /></button>
@@ -97,6 +99,7 @@ export default function SchedaRicettaChiaraModal({
           </div>
         ) : (
           <div className="grid gap-4 p-4 md:grid-cols-[.9fr_1.1fr] md:p-6">
+            {semilavorato && ricetta.id && Boolean(renderForm || onModifica) && <AcquistiSemilavorato ricetta={ricetta} />}
             {renderForm && !soloLettura && (
               <details className="rounded-xl border border-[#ded4c7] bg-white p-3 md:col-span-2" data-testid="scheda-dati-ricetta">
                 <summary className="min-h-11 cursor-pointer font-bold text-stone-900">Modifica dati, foto e destinazioni

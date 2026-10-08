@@ -12,6 +12,7 @@ import axios from "axios";
 import { getOperatoreNome, loginGestionale } from "../../auth";
 import { CATEGORIE_PRODOTTI, categorieProdotto } from "../../utils/categorieProdotti";
 import { apiError } from "../../utils/apiError";
+import { API, fotoSrc } from "../../utils/constants";
 import { stampaDoc } from "../../utils/stampa";
 import { ModalRegistraLotto } from "./tablet/ModalRegistraLotto";
 import { SchedaEditorModal } from "./RicetteDashboardView";
@@ -24,10 +25,6 @@ import { toast } from "./backoffice/toastBackoffice";
 import GruppiProduzioneRicette, { GRUPPI_PRODUZIONE, categorieConGruppo } from "./GruppiProduzioneRicette";
 import MenuVetrinaView from "./MenuVetrinaView";
 
-const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
-const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
-// foto_url è relativo (/api/foto/..): per <img>/background va reso assoluto sul backend.
-const fotoSrc = (u) => (u ? (/^https?:/.test(u) ? u : BACKEND + u) : "");
 const ORIGINI_FORNITORE = new Set(["saima", "mepa", "acquaviva", "vandemoortele", "tremarie", "tre_marie", "sammontana", "bindi", "alfa", "alpha", "il_pasticcere"]);
 const riferimentoFornitoreNonAttivo = (r) =>
   r?.ricetta_operativa !== true && r?.visibile_tablet !== true && (
@@ -39,12 +36,26 @@ const CATEGORIE_RAPIDE = [
   { id: "dolci_secchi", label: "Dolci secchi", breve: "Secchi", icona: "🍪" },
   { id: "natale", label: "Natale", breve: "Natale", icona: "🎄" },
   { id: "pasqua", label: "Pasqua", breve: "Pasqua", icona: "🐣" },
+  { id: "semilavorati", label: "Semilavorati", breve: "Semilavorati", icona: "📦" },
+  { id: "bagne", label: "Bagne", breve: "Bagne", icona: "💧" },
+  { id: "panini", label: "Panini", breve: "Panini", icona: "🥪" },
+  { id: "insalate", label: "Insalate", breve: "Insalate", icona: "🥗" },
+  { id: "primi_piatti", label: "Primi piatti", breve: "Primi piatti", icona: "🍝" },
+  { id: "contorni", label: "Contorni", breve: "Contorni", icona: "🥦" },
   ...GRUPPI_PRODUZIONE,
 ];
 const TAB_CATEGORIE_RAPIDE = [
   { id: "tutte", label: "Tutte" },
-  ...CATEGORIE_PRODOTTI.map(c => ({ ...c, id: c.id === "pasticceria_classica" ? "categoria_pasticceria" : c.id })),
+  ...CATEGORIE_PRODOTTI.map(c => ({ ...c, label: c.id === "biscotti" ? "Dolci secchi" : c.label, id: c.id === "pasticceria_classica" ? "categoria_pasticceria" : c.id })),
 ];
+
+function corrispondeCategoria(ricetta, filtro) {
+  if (filtro === "tutte") return true;
+  if (GRUPPI_PRODUZIONE.some(g => g.id === filtro)) return (ricetta.categorie_rapide || []).includes(filtro);
+  const categorie = categorieProdotto(ricetta);
+  if (filtro === "ricorrenze") return categorie.some(c => ["ricorrenze", "natale", "pasqua"].includes(c));
+  return categorie.includes(filtro === "categoria_pasticceria" ? "pasticceria_classica" : filtro);
+}
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -64,6 +75,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const [search,     setSearch]     = useState("");
   const [repFiltro,  setRepFiltro]  = useState("tutti");
   const [categoriaFiltro, setCategoriaFiltro] = useState("tutte");
+  const [fornitoreFiltro, setFornitoreFiltro] = useState("");
   const [statoFiltro,setStatoFiltro]= useState("attive");
   const [editRicetta,setEditRicetta]= useState(null);   // null=lista, {}=nuova, {id}=modifica
   const [showForm,   setShowForm]   = useState(false);
@@ -71,6 +83,8 @@ function TabRicette({ solaLetturaOperatore = false }) {
   const [schedaR,    setSchedaR]    = useState(null);   // ricetta di cui compilare la scheda
   const [dettaglioR, setDettaglioR] = useState(null);   // scheda chiara unica
   const [cambiandoVisibilita, setCambiandoVisibilita] = useState(null);
+  const categorieInVolo = useRef(new Set());
+  const [cambiandoCategorie, setCambiandoCategorie] = useState(new Set());
   const [eliminandoRicetta, setEliminandoRicetta] = useState(null);
   const [mostraCestino, setMostraCestino] = useState(false);
   // Frigoriferi/congelatori REALI configurati (Attrezzature), non la lista
@@ -123,15 +137,36 @@ function TabRicette({ solaLetturaOperatore = false }) {
   };
 
   const impostaCategoriaRapida = async (ricetta, categoria, attiva) => {
-    if (!ricetta?.id || cambiandoVisibilita) return;
+    if (!ricetta?.id || cambiandoVisibilita === ricetta.id || categorieInVolo.current.has(ricetta.id)) return;
     const correnti = Array.isArray(ricetta.categorie_rapide) ? ricetta.categorie_rapide : [];
     const categorie = categorieConGruppo(correnti, categoria, attiva);
-    setCambiandoVisibilita(ricetta.id);
+    categorieInVolo.current.add(ricetta.id);
+    setCambiandoCategorie(new Set(categorieInVolo.current));
     try {
       const { data } = await axios.put(`${API}/ricette/${encodeURIComponent(ricetta.id)}/categorie-rapide`, { categorie });
-      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, categorie_rapide:data.categorie_rapide, ...(data.reparto ? {reparto:data.reparto} : {})} : r));
-    } catch { toast("Impossibile aggiornare la categoria rapida", "err"); }
-    finally { setCambiandoVisibilita(null); }
+      const modifica = { categorie_rapide:data.categorie_rapide,
+        categorie_rapide_aggiornate_il:data.categorie_rapide_aggiornate_il,
+        ...(data.reparto ? {reparto:data.reparto} : {}) };
+      const aggiornata = { ...ricetta, ...modifica };
+      setRicette(elenco => elenco.map(r => r.id === ricetta.id ? {...r, ...modifica} : r));
+      // Una nuova assegnazione non deve far sparire la card. Conserva invece
+      // un filtro scelto dall'utente mentre il salvataggio era in corso.
+      if (attiva) {
+        if (repFiltro !== "tutti" && aggiornata.reparto !== repFiltro) {
+          setRepFiltro(corrente => corrente === repFiltro ? "tutti" : corrente);
+        }
+        if (!corrispondeCategoria(aggiornata, categoriaFiltro)) {
+          setCategoriaFiltro(corrente => corrente === categoriaFiltro ? "tutte" : corrente);
+        }
+      }
+      const etichetta = CATEGORIE_RAPIDE.find(c => c.id === categoria)?.breve || categoria;
+      toast(`${ricetta.nome}: ${attiva ? "aggiunta a" : "tolta da"} ${etichetta}`);
+      if (data.menu_sync?.esito === "errore") toast("Categoria salvata; aggiornamento Menu non riuscito", "warn");
+    } catch (e) { toast(apiError(e, "Impossibile aggiornare la categoria rapida"), "err"); }
+    finally {
+      categorieInVolo.current.delete(ricetta.id);
+      setCambiandoCategorie(new Set(categorieInVolo.current));
+    }
   };
 
   const eliminaRicetta = async (ricetta) => {
@@ -216,15 +251,11 @@ function TabRicette({ solaLetturaOperatore = false }) {
 
   const filtrate = ricette.filter(r => {
     if (repFiltro !== "tutti" && r.reparto !== repFiltro) return false;
+    if (categoriaFiltro === "semilavorati" && fornitoreFiltro && r.fornitore_rivendita !== fornitoreFiltro) return false;
     const esclusa = r.visibile_tablet === false && !riferimentoFornitoreNonAttivo(r);
     if (statoFiltro === "attive" && esclusa) return false;
     if (statoFiltro === "escluse" && !esclusa) return false;
-    const operative = Array.isArray(r.categorie_rapide) ? r.categorie_rapide : [];
-    const categorie = categorieProdotto(r);
-    if (GRUPPI_PRODUZIONE.some(g => g.id === categoriaFiltro)) return operative.includes(categoriaFiltro) && (!search || r.nome?.toLowerCase().includes(search.toLowerCase()));
-    if (categoriaFiltro === "categoria_pasticceria" && !categorie.includes("pasticceria_classica")) return false;
-    if (categoriaFiltro === "ricorrenze" && !categorie.some(c => ["ricorrenze", "natale", "pasqua"].includes(c))) return false;
-    if (!["tutte", "ricorrenze", "categoria_pasticceria"].includes(categoriaFiltro) && !categorie.includes(categoriaFiltro)) return false;
+    if (!corrispondeCategoria(r, categoriaFiltro)) return false;
     if (search && !r.nome?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }).sort((a,b) => (a.nome||"").localeCompare(b.nome||"","it"));
@@ -252,9 +283,9 @@ function TabRicette({ solaLetturaOperatore = false }) {
             </button>
           ))}
         </div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <div role="group" aria-label="Reparto ricette" style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {["tutti",...REPARTI].map(r=>(
-            <button key={r} onClick={()=>setRepFiltro(r)}
+            <button key={r} aria-pressed={repFiltro===r} onClick={()=>setRepFiltro(r)}
               style={{padding:"7px 12px",borderRadius:10,border:"1.5px solid",fontFamily:"var(--font)",fontSize:12,fontWeight:600,cursor:"pointer",
                 background:repFiltro===r?"var(--primary)":"var(--card)",
                 color:repFiltro===r?"#fff":"var(--text-2)",
@@ -288,13 +319,27 @@ function TabRicette({ solaLetturaOperatore = false }) {
       <div role="tablist" aria-label="Categorie rapide ricette" style={{display:"flex",gap:7,flexWrap:"wrap",paddingBottom:10,marginBottom:8}}>
         {TAB_CATEGORIE_RAPIDE.map(c => (
           <button key={c.id} type="button" role="tab" aria-selected={categoriaFiltro===c.id}
-            onClick={() => setCategoriaFiltro(c.id)}
+            onClick={() => { setCategoriaFiltro(c.id); setRepFiltro("tutti"); }}
             style={{padding:"9px 14px",borderRadius:999,border:"1.5px solid",whiteSpace:"nowrap",fontFamily:"var(--font)",fontSize:13,fontWeight:800,cursor:"pointer",
               background:categoriaFiltro===c.id?"var(--primary)":"var(--card)",color:categoriaFiltro===c.id?"#fff":"var(--text-2)",borderColor:categoriaFiltro===c.id?"var(--primary)":"var(--border)"}}>
             {c.icona ? `${c.icona} ` : ""}{c.label}
           </button>
         ))}
       </div>
+
+      {categoriaFiltro === "semilavorati" && <section aria-label="Gestione semilavorati" style={{padding:14,marginBottom:14,background:"var(--primary-soft)",borderRadius:12}}>
+        <p style={{margin:"0 0 10px",fontSize:13}}>Prodotti acquistati dai fornitori. Nella scheda scegli foto, prezzi e visibilità in Menu, Colazioni B&B e Lotti.</p>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <select aria-label="Fornitore semilavorati" value={fornitoreFiltro} onChange={e => setFornitoreFiltro(e.target.value)} style={{padding:10,borderRadius:8,border:"1px solid var(--border)",background:"var(--card)"}}>
+            <option value="">Tutti i fornitori</option>
+            {[...new Set(ricette.filter(r => (r.categorie_rapide || []).includes("semilavorati")).map(r => r.fornitore_rivendita).filter(Boolean))].sort((a,b) => a.localeCompare(b,"it")).map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+          {!solaLetturaOperatore && <button type="button" onClick={() => {
+            setEditRicetta({nome:"",reparto:"pasticceria",ingredienti:[],categorie_rapide:["semilavorati"],fornitore_rivendita:fornitoreFiltro,origine_ingredienti:"manuale"});
+            setShowForm(true);
+          }} style={{padding:"10px 14px",borderRadius:8,border:0,background:"var(--primary)",color:"white",fontWeight:700}}>+ Aggiungi semilavorato</button>}
+        </div>
+      </section>}
 
       {mostraCestino ? <RicetteCestino onRipristinata={carica} /> : loading ? (
         <div style={{textAlign:"center",padding:"40px",color:"var(--text-3)"}}>Caricamento…</div>
@@ -345,6 +390,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   {r.ingredienti?.length > 0 && <span>· {r.ingredienti.length} ingr.</span>}
                   {r.prezzo_vendita > 0 && <span>· €{r.prezzo_vendita}</span>}
                   {r.fonte_archivio && <span>· {r.fonte_archivio}</span>}
+                  {r.fornitore_rivendita && <span>Fornitore: {r.fornitore_rivendita}</span>}
                 </div>
                 {riferimentoFornitore && <div style={{fontSize:11,fontWeight:800,color:"#8a5a14",background:"#fff4d8",border:"1px solid #ead19a",borderRadius:8,padding:"6px 8px"}}>
                   Ricetta fornitore: non compare in produzione finché non la adatti e salvi
@@ -352,7 +398,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
                 {esclusa && <div style={{fontSize:12,fontWeight:800,color:"#3f5a4e",background:"#edf4ef",borderRadius:8,padding:"6px 8px"}}>Esclusa dalle card dei reparti</div>}
                 {!solaLetturaOperatore && !riferimentoFornitore && <label style={{display:"flex",alignItems:"center",gap:7,fontSize:12,fontWeight:800,color:"var(--text-2)",cursor:"pointer"}}>
                   <input type="checkbox" checked={r.visibile_tablet !== false}
-                    disabled={cambiandoVisibilita===r.id}
+                    disabled={cambiandoVisibilita===r.id || cambiandoCategorie.has(r.id)}
                     onChange={e => impostaVisibilita(r, e.target.checked)} />
                   In uso nei reparti
                 </label>}
@@ -360,7 +406,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
                   {CATEGORIE_RAPIDE.map(c => {
                     const attiva = (r.categorie_rapide || []).includes(c.id);
                     return <label key={c.id} title={`Mostra in ${c.label}`} style={{display:"flex",alignItems:"center",gap:3,padding:"4px 6px",minHeight:44,borderRadius:7,border:`1px solid ${attiva?"#9db9a8":"var(--border)"}`,background:attiva?"#edf4ef":"#fff",fontSize:10,fontWeight:800,color:attiva?"#3f5a4e":"var(--text-3)",cursor:"pointer"}}>
-                      <input type="checkbox" checked={attiva} disabled={cambiandoVisibilita===r.id}
+                      <input type="checkbox" checked={attiva} disabled={cambiandoVisibilita===r.id || cambiandoCategorie.has(r.id)}
                         onChange={e => impostaCategoriaRapida(r, c.id, e.target.checked)} style={{width:12,height:12}} />
                       {c.Icona ? <c.Icona size={14} aria-hidden="true" /> : c.icona} {c.breve}
                     </label>;
@@ -402,7 +448,13 @@ function TabRicette({ solaLetturaOperatore = false }) {
           key={editRicetta?.id || "nuova"}
           ricetta={editRicetta}
           ricette={ricette.filter(r => !(r.origine === "archivio" || r.sola_lettura))}
-          onSalvato={() => { setShowForm(false); carica(); }}
+          onSalvato={() => {
+            setShowForm(false);
+            if (!editRicetta?.id && editRicetta?.categorie_rapide?.includes("semilavorati")) {
+              setCategoriaFiltro("semilavorati"); setRepFiltro("tutti"); setFornitoreFiltro(""); setSearch(""); setStatoFiltro("tutte");
+            }
+            carica();
+          }}
           onAnnulla={() => setShowForm(false)}
           onApriScheda={(r) => { setShowForm(false); setSchedaR(r); }}
           onVisibilita={async (r) => {

@@ -4386,6 +4386,43 @@ Disponibilità commerciale ≠ giacenza teorica.
 
 “Esaurito oggi” è una scelta commerciale esplicita.
 
+Le categorie rapide si salvano per singola ricetta: una richiesta in corso
+blocca solo quella card, senza ignorare i clic sulle altre. Ogni salvataggio
+conferma nome e categoria. Assegnare una categoria mantiene la card visibile,
+allargando soltanto i filtri che la escluderebbero; un filtro cambiato durante
+la richiesta non viene sovrascritto. Aprire una categoria azzera il filtro
+reparto, così i due filtri non nascondono le ricette appena classificate.
+
+Le scelte manuali prevalgono sulle deduzioni dal nome, anche dopo aver tolto
+l'ultima spunta: `categorie_rapide_aggiornate_il` distingue questa scelta da
+una ricetta mai classificata. Il catalogo Colazione conserva questo campo.
+«Secchi» alimenta il filtro «Dolci secchi». Pasticceria classica e Rosticceria
+del giorno aggiornano anche il reparto; Natale, Pasqua, Colazione e Secchi
+sono categorie, non ordini di produzione.
+
+«Semilavorati» raccoglie prodotti acquistati, con filtro per fornitore e
+«Aggiungi semilavorato». Riusa la scheda e il writer delle ricette: il
+fornitore è obbligatorio, foto e tre visibilità restano quelle canoniche e
+indipendenti. La creazione invia `categorie_rapide=["semilavorati"]`; le
+modifiche successive della scheda non riscrivono le categorie dalla copia
+caricata in precedenza. Nessuna proposta automatica degli ingredienti.
+Non importa interi cataloghi e non crea nuovi prodotti nel database per prova.
+
+Categorie aggiunte: Bagne, Panini, Insalate, Primi piatti e Contorni.
+La scheda Semilavorati conserva anche confezione, P.IVA del fornitore in
+fattura e codice articolo. «Acquisti dal gestionale» legge `invoices` in
+sola lettura, con guardia amministratore, nell'anno `annoGlobale` condiviso
+con ERP. Collega soltanto P.IVA e codice esatti: il marchio del prodotto
+non basta. Il link apre la fattura canonica nell'anno corretto. Nessun
+risultato è trasformato in pagamento, giacenza o acquisto confermato quando
+la fattura è ancora da verificare.
+
+Collegamento ai cataloghi da completare: «Usa nelle ricette» di Acquaviva e
+Sammontana alimenta il dizionario ingredienti, non il ricettario pubblicabile.
+Un futuro «Aggiungi ai Semilavorati» deve essere distinto, conservare codice
+e riferimento al prodotto fornitore e riusare la scheda già collegata ai tre
+canali, senza duplicarla a ogni importazione.
+
 ---
 
 # 72. HACCP
@@ -5079,7 +5116,7 @@ Verificato il 08/10/2026 sul progetto Supabase `lohczjdiawjryuopncwc`.
 
 ## Dati operativi
 
-Il database Gestionale è intenzionalmente vergine: non contiene fatture, movimenti bancari, Prima Nota, F24, documenti o dati payroll da riparare. Restano soltanto configurazioni necessarie (`mittenti_email`, `piano_tributi`, `sistema_stato`, `system_config`).
+Il database era stato azzerato. Dall'08/10/2026 pomeriggio contiene anche gli originali reali e i dati importati per la verifica richiesta dal titolare (§108, audit import). **Non eliminarli**: il titolare ha chiesto di conservarli fino a una successiva pulizia esplicitamente autorizzata. Non descrivere più l'archivio come vuoto.
 
 Conseguenze obbligatorie:
 
@@ -5115,7 +5152,7 @@ Il controllo Supabase rimane informativo su 108 tabelle RLS senza policy (access
 
 ## Verifiche che richiedono dati reali
 
-Con archivio vergine non esistono arretrati da riallineare. Dopo il nuovo import controllare, senza correggere per supposizione:
+Sul nuovo popolamento controllare, senza correggere per supposizione:
 
 1. documenti non classificabili dal contenuto;
 2. associazioni bancarie o fiscali ambigue;
@@ -5133,7 +5170,7 @@ Con archivio vergine non esistono arretrati da riallineare. Dopo il nuovo import
 
 # 108. Audit critico del monorepo — revisione 08/10/2026
 
-Il perimetro è il gestionale ERP, HR, Lotti/HACCP, Menu/Cassa e Convenzioni B&B, non la sola anteprima `frontend_colazioni/index.html`. `CODEX.md` non esiste in questo checkout: le regole confrontate sono quelle di questo documento. Le correzioni dell'audit sono state pubblicate il 08/10/2026 dopo CI verde, con controllo del commit servito da ERP, HR, Lotti e Menu. Il database reale non è stato ripopolato durante le verifiche.
+Il perimetro è il gestionale ERP, HR, Lotti/HACCP, Menu/Cassa e Convenzioni B&B, non la sola anteprima `frontend_colazioni/index.html`. `CODEX.md` non esiste in questo checkout: le regole confrontate sono quelle di questo documento. Le prime correzioni dell'audit sono state pubblicate il 08/10/2026 dopo CI verde, con controllo del commit servito da ERP, HR, Lotti e Menu. Le prime verifiche non avevano ripopolato il database; le successive prove di import qui sotto usano invece dati reali da conservare.
 
 ## Difetti dimostrati e correzioni
 
@@ -5160,6 +5197,40 @@ Il perimetro è il gestionale ERP, HR, Lotti/HACCP, Menu/Cassa e Convenzioni B&B
 | ERP Tabelle / Tablet / Telefono | La PR #1158 adattava le tabelle allo spazio disponibile ma non rilevava il solo ridimensionamento del contenitore | Modifiche grafiche conservate per scelta esplicita del titolare. Aggiunto ResizeObserver sulla larghezza, aggiornamento delle etichette quando cambia il testo e disconnessione degli osservatori. Prova Chromium con CSS compilato: 390–1600 px, contenitore 300–1200 px, matrici escluse, nessun overflow orizzontale nei casi verificati e nessun errore JavaScript. Non è una verifica di ogni pagina autenticata. |
 
 ## Cosa non è dimostrato
+
+### Audit import con originali reali — 08/10/2026 pomeriggio
+
+Fonte autorizzata: cartella Drive `1ez8hULDsBzZMyQpiPq5AftICmBaOKgvZ`.
+Le prove browser usano i componenti React effettivi in un adattatore locale,
+con writer canonici sul Supabase reale; dove indicato, il writer è quello
+pubblicato su Render, chiamato con la credenziale di ingest già configurata.
+Non è una sessione amministratore del sito pubblico: non prova login/PIN,
+né tutti i pulsanti del gestionale. Nessun dato sintetico è stato scritto
+nel database reale; le prove di errore e dei collegamenti usano memoria isolata.
+
+| Pagina / originale / azione | Evidenza e correzione | Limite / destinazione |
+|---|---|---|
+| Importa → XML 2025 `IT0526289001425121_9OV5Y.xml` | Log Render delle 15:35 UTC: anteprima e conferma HTTP 200, nessuna fattura persistita. Il writer manuale applicava l'anno automatico 2026 e rispondeva successo con zero importati. Eliminato il filtro dai caricamenti manuali, anche ZIP; rimane sui canali automatici. | Il contenuto di quello specifico XML non è stato recuperato da Drive: non dichiararlo ripristinato. Routing 2025/2026 e ZIP verificato in memoria. Il risultato XML collega la fattura e imposta il suo anno globale. |
+| Importa → SumUp `1000492833`, 22/09/2026, €454 | Clic reali anteprima/conferma, writer locale con database reale: fattura `157d5e6f-fa05-4be3-9f7c-8805896fbc77`. Corretto riconoscimento PDF estero; conservati hash e collegamento all'originale Drive. | Visibile nella coda Fatture estere da verificare. La lettura AI non è una conferma del titolare o una prova bancaria. Le nuove fatture AI attendono conferma prima dei derivati contabili. |
+| Importa → bonifico 07/01/2025 €1.500 | Clic e writer pubblicato: transfer `149e5fd8-2bff-4e39-ba93-651d95cd7083`, data/importo verificati in Supabase. Il writer rifiuta esiti di archiviazione falliti; il reimport riusa l'inbox del transfer senza creare/eliminare copie provvisorie. | Beneficiario/associazione HR da verificare; non riconciliato in banca. Commissione €1,10 distinta dall'importo. |
+| Importa → `Dettaglio_Movimenti_04523831214_20260923.xlsx` | Writer pubblicato iniziale: 0 letti, falso successo. Lettore corretto per intestazioni ripetute, importo EUR, data e segno esplicito dell'export Carta Business. Clic anteprima/conferma con coda canonica locale: 1 movimento reale €527,40 del 10/08/2026; job completato, originale conservato. | `EC-2026-08-10-527.40-08f2cdcc964f`, tipo carta_credito, evidenza provvisoria, non riconciliato. Le spese carta non generano anche uscite sul conto corrente; rimborsi mantengono segno opposto. |
+| Importa → secondo caricamento / coda | La coda riusava il vecchio risultato «1 importato», anche senza nuovi inserimenti. Ora dichiara duplicato e zero nuovi; un vecchio job completato con errore, parziale o zero letti è riprovabile. | Nessuna cancellazione delle prove conservate. Restano separati tentativo corrente e primo risultato persistito. |
+| Importa → `movimenti_carta_credito_Nexi.xlsx` | 402 righe, di cui 359 importi positivi, nessuna uscita con segno; include saldi precedenti. L'anteprima ora esegue la stessa validazione del writer e blocca prima della conferma. | Nessun movimento importato da questo riepilogo ambiguo; serve l'originale della carta con verso/importi verificabili. Non convertire tutto in entrate o negare tutti gli importi per supposizione. |
+| Importa → PDF Ayvens FIR0133977, 22/12/2025 | Numero `FIR0133977` erroneamente compatibile col vecchio riconoscitore di P.IVA finlandese. Regex per formati nazionali corretta; anteprima blocca la copia PDF italiana e richiede XML/P7M. | Nessuna fattura artificiale derivata dalla copia di cortesia. |
+| Importa → dimissioni del 2023 | Clic e writer pubblicato: originale `upload_dimissioni_telematiche_84a981c86e0a04ea` conservato, CF estratto; HR risponde dipendente_non_trovato. Corretto esito UI: documento archiviato ma collegamento HR parziale, con motivo. | Nessuna nuova anagrafica inventata. L'attuale motore scadenze può creare una scadenza arretrata per persona non presente: caso da riesaminare, non attestazione di un adempimento ancora dovuto. |
+| Importa → Ceraldi Valerio, LUL giugno 2022 | Clic e writer pubblicato: cedolino ERP `7b0a59e5-0fd8-4a81-9cd6-1aa91d15b62b`, proiezione HR `5c72d369-597e-437d-91db-31b8b9d3272b`; netto €902 e periodo 06/2022 verificati contro il PDF e le due basi dati. | Nessuna Prima Nota salari creata e nessun pagamento dedotto dal cedolino; l'anagrafica HR non è ancora collegata. |
+| Importa → PagoPA €124,60 del 23/08/2026 | Il writer pubblicato archiviava soltanto un documento non riconosciuto. Corretto riconoscimento del riepilogo checkout e lettore deterministico: €123,10 ente + €1,50 commissione = €124,60; codice avviso, data e transazione letti dal contenuto. | Originale iniziale conservato. Il parsing deve quadrare al centesimo; non crea una prova bancaria. Conferma del writer corretto da verificare dopo rilascio. |
+| Importa → `DetF24Sel_04523831214 (4).pdf` | Anteprima pubblicata bloccata: nessuna riga tributo, differenza −€2.153. È la stampa Cassetto sulla griglia F24: il lettore quietanza ora riusa il lettore canonico della griglia, con stesso CF e quadratura obbligatori. | Verifica locale: una riga 3931, anno 2019, €2.153; pagamento 14/11/2019 distinto dalla stampa 16/01/2025. Conferma del writer corretto da verificare dopo rilascio. |
+| Importa → `estratto_conto_unico_aggiornato.xlsx` | Il contenuto è un riepilogo fornitore di canoni/contratti/NC, non un estratto bancario. | Non importato come movimenti bancari. Manca un flusso guidato dedicato alla riconciliazione di questo riepilogo. |
+| Lotti → Ricette → categorie / scheda | 12 categorie verificate nel browser, assegnazione/rimozione/reload, richieste concorrenti, errori remoti, scheda e tre flag indipendenti. Semilavorati conserva fornitore, foto, confezione, P.IVA e codice articolo. | Prove su API simulate e writer in memoria: nessuna ricetta di prova inserita nel catalogo reale. |
+| ERP ↔ Lotti → Acquisti semilavorato | Nuova lettura amministratore delle fatture canoniche nell'anno globale ERP, con P.IVA e codice articolo esatti. Escluse cancellate, archiviate, collisioni, DDT, emesse e AI da verificare anche dal feed ERP→Lotti. | Non associa per marchio o somiglianza del nome; senza identità esplicita mostra i campi da completare. Non è una prova di pagamento o giacenza. |
+| Lotti ↔ Menu ↔ B&B | Le nuove categorie mantengono i tre flag canonici; il catalogo Colazione riceve le categorie manuali e il fornitore. Errori del ponte Menu restano visibili nel salvataggio. | Ordini, cassa, stampa e voucher B&B con dati reali non sono certificati da questi controlli; nessun acquisto o ordine cliente simulato in produzione. |
+
+La matrice rimane aperta per gli altri layout F24/quietanze/PagoPA e LUL,
+corrispettivi, export POS, posta e giro Drive completo con dati reali. Non avviare un giro
+massivo che sposta/elimina file per chiamarlo «test di ogni pulsante».
+Registrare per ogni prova originale, writer, destinazione, esito e limiti.
+
 
 ### Verifica mirata TFR dell'08/10/2026
 

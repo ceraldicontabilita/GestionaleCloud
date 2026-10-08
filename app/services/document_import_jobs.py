@@ -132,7 +132,19 @@ async def _enqueue(
     active = _ACTIVE_TASKS.get(job_id)
 
     if existing and existing.get("status") == "completed":
-        return {"queued": False, **(public_job(existing) or {})}
+        precedente = existing.get("result") or {}
+        # Una vecchia risposta 200 con zero letti o import parziale non deve
+        # impedire di riprovare lo stesso originale dopo la correzione.
+        acquisiti = int(precedente.get("imported") or precedente.get("inserted") or 0)
+        duplicati = int(precedente.get("duplicates") or precedente.get("unchanged") or 0)
+        if precedente.get("success") is not False and not precedente.get("partial") and acquisiti + duplicati > 0:
+            return {"queued": False, **(public_job(existing) or {}), "reused": True,
+                    "result": {**precedente, "imported": 0, "inserted": 0,
+                               "duplicates": acquisiti + duplicati, "unchanged": acquisiti + duplicati,
+                               **({"movimenti_nuovi": 0, "duplicati_saltati": acquisiti + duplicati}
+                                  if "movimenti_nuovi" in precedente else {}),
+                               "action": "duplicate", "duplicate": True,
+                               "message": "File già elaborato: nessun nuovo dato inserito."}}
     if active is not None and not active.done():
         visible = _PENDING_JOBS.get(job_id) or existing or {"job_id": job_id}
         return {"queued": True, **(public_job(visible) or {"job_id": job_id})}

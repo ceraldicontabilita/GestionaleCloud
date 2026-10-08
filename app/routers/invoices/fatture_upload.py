@@ -957,6 +957,9 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     """
     from app.services.stato_pagamento_fattura import e_pagata
 
+    if invoice.get("verifica_ai") == "in_attesa":
+        return None
+
     # Un piano XML a piu' rate non e' una prova di pagamento: anche per un
     # fornitore configurato "cassa" resta provvisorio finche' ogni quota non
     # viene confermata con la relativa evidenza.
@@ -2082,6 +2085,7 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 
 _SOURCE_METADATA_FIELDS = (
+    "documento_inbox_id",
     "source_document_id",
     "drive_file_id",
     "source_parent_id",
@@ -2559,6 +2563,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
                 )
             return {
                 "status": "duplicate", "filename": filename,
+                "id": existing_invoice.get("id"),
                 "invoice_number": parsed.get("invoice_number"),
                 "derivati_incompleti": existing_invoice.get("stato_derivati") in {
                     "da_ricalcolare", "errore",
@@ -2647,6 +2652,9 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         **_source_metadata_fields(source_metadata, base_existing),
         **(campi_collisione_identita(identity_collision_ids) if identity_collision_ids else {}),
     }
+    if parsed.get("verifica_ai") == "in_attesa":
+        invoice["verifica_ai"] = "in_attesa"
+        invoice["stato_derivati"] = "in_attesa_verifica_ai"
     if existing_invoice_id:
         await db[Collections.INVOICES].update_one(
             {"id": existing_invoice_id}, {"$set": invoice}
@@ -2654,6 +2662,11 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     else:
         await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
+
+    if invoice.get("verifica_ai") == "in_attesa":
+        return {"status": "imported", "filename": filename, "id": invoice["id"],
+                "invoice_number": invoice.get("invoice_number"), "supplier": invoice.get("supplier_name"),
+                "stato_derivati": "in_attesa_verifica_ai"}
 
     # Anche da qui (Drive, cartella unica) la ritenuta della parcella entra
     # nella proiezione Ritenute: prima la alimentava solo l'upload manuale.
@@ -2808,12 +2821,9 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
     """Fattura ESTERA arrivata come PDF via email (mai XML: lo SDI è solo
     italiano). Estrae i dati con l'AI già usata per gli altri documenti
     (`document_ai_extractor`, stessa ANTHROPIC_API_KEY già configurata) e la
-    importa con la pipeline condivisa `import_parsed_invoice` — stessa
-    dedup, stesso fornitore, stessa prima nota provvisoria — così il
-    matching PayPal (`auto_associa_transazioni`) e bonifico
-    (`riconcilia_movimenti_banca`), e l'alert di scadenza
-    `FAT_DA_PAGARE_SCADUTA` già esistenti la prendono in carico da soli,
-    senza nessun codice nuovo lato riconciliazione.
+    importa con la pipeline condivisa `import_parsed_invoice`: stessa
+    deduplica e stesso fornitore, ma i derivati contabili attendono la
+    conferma esplicita dei dati nella pagina di verifica.
 
     Se l'estrazione fallisce o non legge né numero né importo, non crea
     nulla: meglio lasciare il PDF solo archiviato (comportamento di prima)
@@ -2825,6 +2835,31 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
     conferma o corregge i dati letti (scelta utente 14/07/2026, per avere
     un rating di affidabilità della lettura AI per fornitore).
     """
+    # Conserva la prova prima dell'estrazione: anche un errore del lettore
+    # deve lasciare l'originale consultabile, non una fattura senza PDF.
+    import base64
+    from app.utils.upload_validation import verifica_pdf_reale
+
+    content = base64.b64decode(pdf_base64, validate=True)
+    verifica_pdf_reale(content, filename)
+    digest = hashlib.sha256(content).hexdigest()
+    existing = await db[Collections.INVOICES].find_one(
+        {"file_hash": digest, "entity_status": {"$ne": "deleted"}, "status": {"$ne": "deleted"}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1},
+    )
+    if existing:
+        return {"status": "duplicate", "filename": filename, "id": existing.get("id"),
+                "invoice_number": existing.get("invoice_number"), "supplier": existing.get("supplier_name")}
+    if not documento_inbox_id:
+        inbox = await db["documents_inbox"].find_one({"sha256": digest}, {"_id": 0, "id": 1})
+        documento_inbox_id = (inbox or {}).get("id") or f"fattura-pdf-{digest}"
+        if not inbox:
+            await db["documents_inbox"].insert_one({
+                "id": documento_inbox_id, "filename": filename, "sha256": digest,
+                "pdf_data": pdf_base64, "category": "fattura", "status": "da_verificare",
+                "processed": False, "source": source,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
     try:
         from app.services.document_ai_extractor import process_document_from_base64
         result = await process_document_from_base64(pdf_base64, filename, document_type="fattura")
@@ -2838,6 +2873,7 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
                 "error": structured.get("error") or (result or {}).get("error") or "estrazione non riuscita"}
 
     parsed = _ai_fattura_a_parsed(structured.get("data") or {})
+    parsed["verifica_ai"] = "in_attesa"
 
     if not parsed.get("invoice_number") and not parsed.get("total_amount"):
         return {"status": "dati_insufficienti", "filename": filename}
@@ -2849,7 +2885,13 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
                 "error": "fornitore italiano: la fattura arriva come XML dallo SDI"}
 
     esito = await import_parsed_invoice(db, parsed, filename, source, xml_raw=None,
-                                         piva_validator=_piva_estera_plausibile)
+                                         piva_validator=_piva_estera_plausibile,
+                                         source_metadata={"file_hash": digest, "documento_inbox_id": documento_inbox_id})
+
+    if esito.get("id"):
+        await db["documents_inbox"].update_one({"id": documento_inbox_id}, {"$set": {
+            "invoice_id": esito["id"], "processed": True, "status": "elaborato",
+        }})
 
     if esito.get("status") == "imported":
         try:

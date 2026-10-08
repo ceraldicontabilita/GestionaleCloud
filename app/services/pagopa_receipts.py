@@ -52,7 +52,7 @@ NATURE_RICEVUTA = {
 # (decisione del 06/10/2026): diritti, oneri e sanzioni non hanno una riga propria da
 # cercare nell'estratto. Lo stato di banca (`movimento_id`) resta un'altra cosa.
 NATURE_ASSOCIATE = ("onere_pratica", "sanzione_interessi")
-PARSER_VERSION = "payment-receipt-layout-v5"
+PARSER_VERSION = "payment-receipt-layout-v6"
 
 
 def _money_decimal(value: str | None) -> Decimal | None:
@@ -698,13 +698,61 @@ def _pdf_page_count(content: bytes) -> int | None:
             return None
 
 
+def _parse_checkout_pagopa(text: str) -> dict[str, Any]:
+    """Riepilogo checkout pagoPA: importo ente e commissione distinti."""
+    compact = re.sub(r"\s+", " ", text).strip()
+    if not ("pagopa" in compact.lower() and re.search(r"pagamento\s+è\s+andato\s+a\s+buon\s+fine", compact, re.I)):
+        return {}
+
+    def campo(pattern):
+        match = re.search(pattern, compact, re.I)
+        return match.group(1).strip() if match else None
+
+    importo = _money_decimal(campo(r"Codice avviso\s+\d{18}\s+Importo\s+([\d.]+,\d{2})"))
+    commissione = _money_decimal(campo(r"Commissione\s*\([^)]*\)\s*([\d.]+,\d{2})"))
+    totale = _money_decimal(campo(r"\bTotale\s+([\d.]+,\d{2})"))
+    codice = campo(r"Codice avviso\s+(\d{18})\b")
+    data = re.search(r"Data e ora\s+(\d{1,2})\s+([a-zà]+)\s+(\d{4}),\s*(\d{2}:\d{2}:\d{2})", compact, re.I)
+    mesi = "gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre dicembre".split()
+    data_pagamento = None
+    if data and data.group(2).lower() in mesi:
+        try:
+            data_pagamento = datetime(int(data.group(3)), mesi.index(data.group(2).lower()) + 1, int(data.group(1))).date().isoformat()
+        except ValueError:
+            pass
+    quadra = all(v is not None for v in (importo, commissione, totale)) and importo + commissione == totale
+    parsed = {
+        "document_kind": "RICEVUTA_PAGOPA", "parser_version": PARSER_VERSION,
+        "identificativo_bolletta": codice, "codice_avviso": codice,
+        "data_pagamento": data_pagamento, "ora_pagamento": data.group(4) if data else None,
+        "beneficiario": campo(r"Ente creditore\s+(.+?)\s+Codice Fiscale ente"),
+        "ente_creditore": campo(r"Codice Fiscale ente\s+(\d{11})\b"),
+        "metodo_pagamento": campo(r"Metodo di pagamento\s+(.+?)\s+Gestore della transazione"),
+        "intermediario": campo(r"Gestore della transazione\s*\(PSP\)\s+(.+?)\s+Data e ora"),
+        "transaction_code": campo(r"Codice transazione:\s*([a-z0-9]+)"),
+        "causale": campo(r"Oggetto del pagamento\s+(.+?)\s+Indirizzo email"),
+        "importi_quadrano": bool(quadra),
+        "is_payment_receipt": bool(quadra and codice and data_pagamento),
+    }
+    for name, value in (("operation_amount", importo), ("fee_amount", commissione), ("bank_debit_total", totale)):
+        parsed[name] = float(value) if value is not None else None
+        parsed[name + "_cents"] = int(value * 100) if value is not None else None
+    parsed["field_evidence"] = {
+        key: {"page_number": 1, "source_text": str(value), "normalized_value": value, "parser_version": PARSER_VERSION}
+        for key, value in parsed.items() if value is not None and key in {
+            "identificativo_bolletta", "operation_amount", "fee_amount", "bank_debit_total", "transaction_code",
+        }
+    }
+    return parsed
+
+
 def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, Any]:
     text, ocr_used = _extract_receipt_text(content)
     page_count = _pdf_page_count(content)
     compact = re.sub(r"\s+", " ", text)
     upper = compact.upper()
     marker_text = re.sub(r"[^A-Z0-9]", "", upper)
-    bpm_payment = (_parse_bpm_payment(text) or _parse_mooney_payment(text)
+    bpm_payment = (_parse_checkout_pagopa(text) or _parse_bpm_payment(text) or _parse_mooney_payment(text)
                    or _parse_ader_attestazione(text))
     if bpm_payment:
         _attach_pdf_coordinates(content, bpm_payment)
