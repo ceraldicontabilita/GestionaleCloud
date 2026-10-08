@@ -4412,6 +4412,33 @@ Il Menu non è un secondo proprietario della ricetta.
 
 Le righe `origine="lotti"` sono gestite da Lotti.
 
+Le tre scelte della ricetta sono indipendenti: `menu_pubblico` controlla la
+carta pubblica, `menu_bb` il catalogo colazioni e `visibile_tablet` le ricette
+operative. Bevande, liquori e cocktail senza ricetta restano prodotti gestiti
+dal Menu. Il ponte usa la stessa foto Storage, senza ripristinare Qromo.
+
+Il riallineamento massivo deve conservare anche `menu_bb`, gli ID di
+associazione e destinazione Menu, canali di vendita, esaurito, aggiunte e
+rimozioni: omettere questi campi dalla proiezione riapplica i default invece
+delle scelte del titolare. Gli import Excel, CSV, tracciabilità e Cartel1
+avviano il riallineamento canonico in background, senza `pubblica_tutte=true`.
+Se un import termina durante un giro già in corso, viene accodato un altro
+giro per includere gli aggiornamenti successivi alla prima lettura.
+
+La migrazione `20261008131251_complete_recipe_menu_sales_bridge.sql`,
+applicata e verificata il 08/10/2026, completa prezzo al banco, canali,
+disponibilità, aggiunte e rimozioni e aggiorna la vista pubblica con
+`security_invoker=true`, conservando le policy del backend. I prezzi mancanti
+restano mancanti. Il B&B ricarica il catalogo Menu all'apertura delle pagine
+di composizione colazioni e selezione prodotti hotel.
+
+«Apri scheda» mostra ingredienti e preparazione, con dati/foto/destinazioni
+in una sezione espandibile. Il form usa l'API canonica di Lotti anche senza
+variabile di build. Verificate le 25 chiamate dei componenti di scheda,
+modifica, dosaggio e produzione rispetto ai router montati; controllati in
+browser layout a 390/1024 px, espansione, Produci e payload del salvataggio.
+Questi controlli non registrano produzioni o operazioni reali per prova.
+
 ---
 
 # 74. Prodotto unico Menu / B&B / Cassa

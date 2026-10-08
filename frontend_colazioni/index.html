@@ -1173,6 +1173,7 @@ function pProdottiHotel(id){
  return `<div class="card"><h2 style="margin:0 0 6px">Prodotti ordinabili dall’hotel</h2><p class="mute">È lo stesso Menu digitale pubblico, con le stesse sezioni, foto e allergeni. Scegli l’hotel, abilita sezioni o singoli prodotti, indica il prezzo concordato e salva.</p><div id="cp_head"><p class="mute">Caricamento Menu digitale…</p></div></div><div id="cp_body"></div>`}
 pProdottiHotel.after=id=>cpAvvia(id);
 async function cpAvvia(id){
+ CP.base=null; // Le ricette e le spunte possono cambiare da Lotti nel frattempo.
  if(!CP.base){
   try{
    const r=await fetch("/menu/api/menu/carta?destinazione=bb",{cache:"no-store"});
@@ -1230,11 +1231,11 @@ async function glSalva(){const n=await run("bb_tit_glutine_salva",{p:sess.p,righ
 
 let CE=[],CESAVED=[],CEOPEN=-1,CESID=null,CATA=null,CEJ=null,CECATLOAD=null,CELIMIT=60;
 const ceCopy=x=>JSON.parse(JSON.stringify(x));
-function ceInit(sid,open=-1){CESID=sid;CESAVED=ceCopy(sid==="std"?(TIT.standard||[]):sid?((TIT.colazioni||{})[sid]||[]):[]);CE=ceCopy(CESAVED);CEOPEN=open;ceTab();ceCat()}
+function ceInit(sid,open=-1){CATA=null;CESID=sid;CESAVED=ceCopy(sid==="std"?(TIT.standard||[]):sid?((TIT.colazioni||{})[sid]||[]):[]);CE=ceCopy(CESAVED);CEOPEN=open;ceTab();ceCat()}
 function ceCatalogoCarta(carta){
  const menus=new Map(carta.menus.map(m=>[m.id,m])),cats=new Map(carta.cats.map(c=>[c.id,c]));
  return carta.items.filter(p=>p.on!==0&&cats.has(p.c)).map(p=>{const c=cats.get(p.c);return {id:p.id,nome:p.n,desc:p.d||"",prezzo:Number.isFinite(p.p)&&p.p>0?p.p/100:null,allergeni:p.allergeni_menu||[],cod:p.cod||null,disp:p.disp===0?0:1,cat:(menus.get(c.m)||{}).n||"Altro",sub:c.n,img:p.pic||null}}).sort((a,b)=>a.nome.localeCompare(b.nome,"it"))}
-async function ceCat(){if(CATA)return CATA;if(!CECATLOAD)CECATLOAD=fetch("/menu/api/menu/carta?destinazione=bb",{credentials:"same-origin"}).then(r=>{if(!r.ok)throw Error("Catalogo non disponibile");return r.json()}).then(c=>{CATA=ceCatalogoCarta(c);loadXtra();ceTab();return CATA}).finally(()=>{CECATLOAD=null});try{return await CECATLOAD}catch(e){toast("Catalogo non disponibile: riprova da Prodotto dal menù");return null}}
+async function ceCat(){if(CATA)return CATA;if(!CECATLOAD)CECATLOAD=fetch("/menu/api/menu/carta?destinazione=bb",{credentials:"same-origin",cache:"no-store"}).then(r=>{if(!r.ok)throw Error("Catalogo non disponibile");return r.json()}).then(c=>{CATA=ceCatalogoCarta(c);loadXtra();ceTab();return CATA}).finally(()=>{CECATLOAD=null});try{return await CECATLOAD}catch(e){toast("Catalogo non disponibile: riprova da Prodotto dal menù");return null}}
 const ceList=v=>{const p=CATA&&v.prodotto_id?CATA.find(x=>x.id===v.prodotto_id):null;return p?p.prezzo:null};
 const cePz=v=>v.prezzo!=null?v.prezzo:ceList(v);
 const ceSomma=c=>Math.round(c.voci.reduce((a,v)=>a+(cePz(v)||0)*v.qta,0)*100)/100;

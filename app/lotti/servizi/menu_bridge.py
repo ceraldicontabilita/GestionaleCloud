@@ -4,15 +4,15 @@ Menu con le stesse immagini e scelgo io se far comparire nel menu pubblico".
 
 La fonte e' la ricetta di Lotti (collezione ``ricette``): ogni ricetta viene
 SEMPRE replicata in ``menu_products`` (tabelle del Menu, progetto Supabase
-``Lotti-HACCP``, client PostgREST sincrono di ``app.menu.supabase_client``)
+``GestionaleCloud``, client PostgREST sincrono di ``app.menu.supabase_client``)
 con ``origine = "lotti"`` e chiave idempotente ``lotti_ref = "ricetta:<id>"``.
 La colonna ``visible`` replica il flag ``menu_pubblico`` della ricetta: il
 titolare la vede nell'area admin del Menu e decide se mostrarla ai clienti.
 
 Immagini: i nuovi upload di Lotti sono persistiti direttamente nel bucket
 Supabase Storage ``menu-images`` sotto ``lotti/ricette`` e il prodotto Menu
-usa lo stesso oggetto, senza copie concorrenti. Il lettore Drive resta solo
-per le immagini storiche finche' la loro migrazione non e' completata.
+usa lo stesso oggetto, senza copie concorrenti. Il ponte non recupera immagini
+da Drive o dal progetto Qromo eliminato.
 
 Prezzo (decisione del titolare 19/09/2026): la ricetta ha due prezzi, al banco
 (``prezzo_vendita``, quello del food cost) e al tavolo (``prezzo_tavolo``). Il
@@ -21,9 +21,9 @@ stato deciso si continua a esporre quello al banco (vedi ``prezzo_per_menu``).
 Una ricetta senza prezzo compare nella carta con «Prezzo da definire».
 Le API del catalogo ordinabile la escludono finche' non ha un prezzo valido.
 
-Categoria: ogni ricetta operativa va nella categoria canonica "Produzione
-Ceraldi" e nella sottocategoria derivata dal reparto. Non esiste una seconda
-classificazione manuale concorrente.
+Categoria: rispetta la coppia categoria/sottocategoria Menu scelta in Lotti;
+in assenza di una scelta valida usa "Produzione Ceraldi" e il reparto.
+I prodotti senza ricetta, come bevande e cocktail, restano gestibili dal Menu.
 
 Il ponte non deve MAI far fallire un endpoint di Lotti: le funzioni pubbliche
 restituiscono sempre un dizionario ``{"esito": ...}`` e non sollevano

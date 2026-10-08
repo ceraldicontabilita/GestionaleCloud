@@ -500,9 +500,11 @@ async def _importa_ricettario_excel(
             await _clona_foto_tra_ricette(
                 item["campi"]["ricetta_base_id"], item["id"], fonte="import_ricettario_excel"
             )
+    from app.lotti.servizi.menu_backfill import richiedi_riallineamento_dopo_import
     return {
         "ok": True,
         "anteprima": False,
+        "menu_sync": richiedi_riallineamento_dopo_import(db) if changed else None,
         "bundle_sha256": bundle_hash,
         "backup_id": backup_id,
         **summary,
@@ -1576,8 +1578,10 @@ async def import_csv_ricette(
             plan["errori"].append(f"Errore aggiornamento '{item['nome']}': {e}")
             err_count += 1
 
+    from app.lotti.servizi.menu_backfill import richiedi_riallineamento_dopo_import
     return {
         "successo": True,
+        "menu_sync": richiedi_riallineamento_dopo_import(db) if create_count or update_count else None,
         "create": create_count,
         "aggiornate": update_count,
         "saltate": len(plan["saltate"]),
@@ -2008,7 +2012,9 @@ async def importa_tracciabilita(sostituisci: bool = Query(True), _admin=Depends(
             create += 1
             dettaglio.append({"nome": nome, "azione": "creata", "ingredienti": len(nomi)})
 
+    from app.lotti.servizi.menu_backfill import richiedi_riallineamento_dopo_import
     return {"ok": True, "totale_nel_foglio": len(ricette),
+            "menu_sync": richiedi_riallineamento_dopo_import(db) if create or aggiornate else None,
             "create": create, "aggiornate": aggiornate, "saltate": saltate,
             "dettaglio": dettaglio[:200]}
 
@@ -2226,7 +2232,9 @@ async def importa_cartel1(
                 **doc_set,
             })
 
+    from app.lotti.servizi.menu_backfill import richiedi_riallineamento_dopo_import
     return {"ok": True, "anteprima": False, "source_sha256": source_hash,
+            "menu_sync": richiedi_riallineamento_dopo_import(db) if changed_operations else None,
             "backup_id": backup_id, **summary, "dettaglio": public_detail}
 
 
