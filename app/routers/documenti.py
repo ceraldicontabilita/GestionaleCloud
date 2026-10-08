@@ -2472,7 +2472,13 @@ async def stato_cartella_unica(
     conteggi = {}
     for cartella in (cu.ARCHIVIO, cu.ERRORI, cu.DOPPIONI, cu.ARRETRATO, "CESTINO", "RIMOSSO"):
         conteggi[cartella] = await db[cu.REGISTRO].count_documents({"cartella": cartella})
+    from app.scheduler import scheduler
+
+    job = scheduler.get_job("drive_cartella_unica") if scheduler.running else None
+    prossimo = getattr(job, "next_run_time", None)
     return {"attiva": cu.attivo(),
+            "automatico_attivo": bool(cu.attivo() and job and prossimo),
+            "prossimo_giro": prossimo.isoformat() if prossimo else None,
             "giro_in_corso": cu._lock.locked() or cu.svuotamento_in_corso(),
             "ultimo_giro": stato, "registro": conteggi}
 

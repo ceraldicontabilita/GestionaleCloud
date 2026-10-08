@@ -1994,6 +1994,8 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
 
     db = get_db()
     associati, duplicati, da_controllare = [], [], []
+    sincronizzazione = None
+    da_sincronizzare = False
     for nome, pdf_bytes in pdf_items:
         try:
             esito = await libro_unico_bundle.dividi_e_registra(
@@ -2003,6 +2005,10 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
             errori.append(f"{nome}: {exc}")
             continue
         errori.extend(f"{nome}: {errore}" for errore in esito.get("errori") or [])
+        if esito.get("sincronizzazione_paghe") is not None:
+            sincronizzazione = esito["sincronizzazione_paghe"]
+        elif esito.get("inseriti") or esito.get("gia_presenti"):
+            da_sincronizzare = True
         for record in esito.get("inseriti") or []:
             tipo = record.get("tipo_cedolino") or "ordinario"
             mese = 13 if tipo == "tredicesima" else 14 if tipo == "quattordicesima" else None
@@ -2020,8 +2026,7 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
         da_controllare.extend(esito.get("senza_pagina_retributiva") or [])
         da_controllare.extend(esito.get("senza_anagrafica") or [])
 
-    sincronizzazione = None
-    if associati or duplicati:
+    if da_sincronizzare:
         try:
             sincronizzazione = await sincronizza_paghe_mensili.sincronizza(db)
         except Exception as exc:
@@ -4286,6 +4291,10 @@ async def bonifica_regole_pagamento(dry_run: bool = True, force: bool = False):
 
 async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: Optional[int] = None,
                                          stato: Optional[str] = None):
+    from app.hr.db_supabase import SupabaseDatabase
+
+    if isinstance(db, SupabaseDatabase):
+        await db.refresh_collections("cedolini", "paghe_mensili", "dipendenti", "pagamenti_esiti")
     q = {}
     if anno:
         q["anno"] = int(anno)
@@ -4323,9 +4332,16 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     # da qui basta sapere che il cedolino esiste (has_pdf = bool(ced)).
     cedolini_lista: List[Dict[str, Any]] = []
     ced_by_periodo: Dict[tuple, Dict[str, Any]] = {}
+    ced_by_id = {}
+    from app.hr.services.sincronizza_paghe_mensili import _mese_registro
     async for c in db.cedolini.find({}, {"_id": 0, "pdf_data": 0}):
         cedolini_lista.append(c)
-        chiave = (c.get("dipendente_id"), c.get("mese"), c.get("anno"))
+        ced_by_id[c.get("id")] = c
+        try:
+            mese_cedolino = _mese_registro(c)
+        except (KeyError, TypeError, ValueError):
+            continue
+        chiave = (c.get("dipendente_id"), mese_cedolino, c.get("anno"))
         ced_by_periodo.setdefault(chiave, c)
 
     def trova_cedolino(dip_id, cognome, mese_p, anno_p):
@@ -4356,7 +4372,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         acc_list, acc_scartati = filtra_acconti_contanti(dip, p.get("acconti") or [])
         acc_dec = sum((_dec(a.get("importo")) or ZERO for a in acc_list), ZERO)
         acc = float(acc_dec)
-        if busta <= 0 and bon <= 0 and acc <= 0:
+        if busta_dec is None and bon <= 0 and acc <= 0:
             continue
 
         nome = f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip() or dip_id
@@ -4444,7 +4460,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 
         # Esiste il cedolino per questo periodo? (il PDF non è stato letto qui,
         # vedi nota sul prefetch sopra — quasi ogni cedolino importato ne ha uno)
-        ced = trova_cedolino(dip_id, dip.get("cognome"), p.get("mese"), p.get("anno"))
+        ced = ced_by_id.get(p.get("cedolino_id"))
+        if not ced or ced.get("dipendente_id") != dip_id:
+            ced = trova_cedolino(dip_id, dip.get("cognome"), p.get("mese"), p.get("anno"))
         has_pdf = bool(ced)
         cedolino_id = ced.get("id") if ced else None
 
@@ -4491,7 +4509,24 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     righe.sort(key=lambda r: ((r["anno"] or 0), (r["mese"] or 0), r["dipendente"]), reverse=True)
     for k in ("buste", "bonifici", "acconti", "saldo"):
         tot[k] = round(tot[k], 2)
-    return {"righe": righe, "totali": tot, "count": len(righe)}
+    # Un PDF acquisito senza netto leggibile rimane visibile, ma non crea
+    # una busta da zero euro né un debito inventato.
+    da_leggere = []
+    for c in cedolini_lista:
+        if c.get("netto") is not None:
+            continue
+        if anno and c.get("anno") != int(anno):
+            continue
+        if mese and c.get("mese") != int(mese):
+            continue
+        dip = dip_map.get(c.get("dipendente_id")) or {}
+        da_leggere.append({
+            "cedolino_id": c.get("id"), "dipendente_id": c.get("dipendente_id"),
+            "dipendente": f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
+                or c.get("nome_dipendente") or "Dipendente da associare",
+            "anno": c.get("anno"), "mese": c.get("mese"),
+        })
+    return {"righe": righe, "totali": tot, "count": len(righe), "cedolini_da_verificare": da_leggere}
 
 
 @router.get("/paghe/associazioni-bonifici/export-excel")

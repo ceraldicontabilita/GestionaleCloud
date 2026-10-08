@@ -308,7 +308,18 @@ async def processa_tutti_cedolini_pdf(
     canale = canale_obbligatorio(fonte or source_container, drive_file_id=drive_file_id)
     drive_md5 = None
     blob_key = None
-    if lettura["esito"] == ESITO_BUSTE and not drive_file_id:
+    if lettura["esito"] == ESITO_BUSTE and not drive_file_id and canale == "caricato":
+        # Upload manuale: deposito persistente diretto, una sola copia per SHA.
+        # Evita quattro chiamate Drive e un tentativo di upload senza quota
+        # prima di salvare ogni PDF. I file ricevuti da Drive restano su Drive.
+        from app.services.cedolino_originale import conserva_originale
+        try:
+            blob_key = await conserva_originale(db, file_content)
+        except Exception as exc:
+            results.update(success=False, motivo="Impossibile conservare il PDF originale")
+            results["errori"].append(f"{results['motivo']}: {exc}")
+            return results
+    if lettura["esito"] == ESITO_BUSTE and not drive_file_id and not blob_key:
         from app.services.email_drive_archive import archive_binary_copy
 
         try:
@@ -357,6 +368,17 @@ async def processa_tutti_cedolini_pdf(
         ced_pdf_text = ced.pop("_raw_text", "")
         await registra_busta(db, ced, filename=filename, pdf_data=cedolino_pdf_data,
                              pdf_text=ced_pdf_text, results=results)
+
+    # Anche Drive e Import ERP devono aggiornare subito l'Archivio paghe:
+    # il deposito SQL HR da solo non aggiorna la proiezione mensile.
+    from app.hr.database import Database as HRDatabase
+    from app.hr.services.sincronizza_paghe_mensili import sincronizza
+
+    if HRDatabase.db is not None and HRDatabase.backend == "supabase":
+        try:
+            results["sincronizzazione_paghe"] = await sincronizza(HRDatabase.get_db())
+        except Exception as exc:
+            results["errori"].append(f"Buste archiviate, aggiornamento Paghe non completato: {exc}")
 
     # Una busta gia' in archivio e' un esito, non un guasto: la copia di un
     # PDF gia' letto finiva in ERRORI come «1 buste lette» e non ne usciva.

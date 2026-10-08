@@ -5271,8 +5271,9 @@ I log di produzione mostravano ripetuti `service_account_storage_quota`:
 ogni pagina retributiva del Libro Unico tentava di creare una copia Drive.
 Il riepilogo HR nascondeva gli errori e presentava «20 documenti, 2 buste»
 come successo completo. La correzione conserva un solo originale per PDF;
-se è già su Drive lo riusa, altrimenti, quando Drive non permette la copia,
-usa `gestionale.blobs`, deposito protetto già presente, con chiave SHA-256.
+se arriva da Drive ne riusa il riferimento. L'upload manuale usa direttamente
+`gestionale.blobs`, deposito protetto già presente, con chiave SHA-256:
+non attende ricerche e tentativi di upload Drive destinati al rifiuto per quota.
 Questa eccezione al Drive-only è necessaria per il caricamento manuale
 richiesto dal titolare. Il binario non viene copiato su ciascuna busta né
 nei JSON HR; ogni cedolino conserva solo riferimento e intervallo di pagine.
@@ -5326,6 +5327,36 @@ anche se l'interruttore generale resta spento. Gli altri job e gli scheduler
 HR/Lotti restano sospesi. Drive unico ogni 15 minuti, cartelle configurate
 ogni 30 minuti, Banca alle 07:15 e 09:00 Europe/Rome. Il job bancario richiede
 anche credenziali e consenso valido: abilitare il job non ricollega un conto.
+
+Rilascio PR #1168 (`4899691`) live alle 18:17 UTC, health ERP/HR/Lotti/Menu
+allineati e CI/controllo produzione verdi. Reimport reale di Ceraldi Valerio
+06/2022: una busta già presente, zero duplicati nuovi, netto €902 invariato,
+legame HR prima assente ora presente. Il successivo caricamento manuale
+ha usato realmente il deposito protetto; snapshot Supabase: 20 cedolini,
+tutti collegati all'anagrafica. Non è il conteggio di un singolo batch utente.
+Prova Chromium con 655 file e un 429 superata, inclusa persistenza dopo reload.
+Scheduler selettivo avviato nei log; consenso Banca assente nel database.
+La scheda Drive legge lo stato del job e la prossima esecuzione effettiva:
+non deve mostrare una frase fissa che dice «automatico disattivato».
+
+Difetto verificato dopo il rilascio: il deposito SQL dei cedolini non
+invalidava la cache HR di 15 secondi; la sincronizzazione immediata poteva
+ignorare la busta appena acquisita. Un import successivo la recuperava,
+rendendo il risultato intermittente. Sincronizzazione e lettura Archivio paghe
+rileggono ora le collection interessate. Anche l'ingestione ERP/Drive aggiorna
+il registro mensile; le righe invariate non vengono riscritte. La pagina
+conserva anno/mese/stato, offre Tutti gli anni dal 2018 e ignora risposte
+arrivate dopo un cambio di filtro. I PDF senza netto restano consultabili
+separatamente e non sono descritti come buste da zero euro. Il PDF di ogni
+riga segue il cedolino collegato, comprese 13a e 14a.
+
+Prova isolata con snapshot reale di 27 cedolini: cache inizialmente calda,
+inserimento SQL esterno di Ariante 08/2022, sincronizzazione e risposta della
+pagina restituiscono €251 con PDF. Secondo giro: zero scritture su 19 righe.
+Chromium sul componente reale verifica Ariante, cambio rapido 2026/2022,
+persistenza filtri, import seguito dal periodo corretto e anno 2018.
+Questa prova usa dati reali copiati e API locali; non equivale a una sessione
+amministratore aperta nel browser di produzione.
 
 ### Verifica mirata TFR dell'08/10/2026
 
