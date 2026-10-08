@@ -9,6 +9,7 @@ import Sortable from "sortablejs";
 import { isIntentionalPaintDrag } from "./presenzeSelection";
 import { buildPresenzePrintHtml } from "./presenzePrint";
 import { buildPresenzeCsv } from "./presenzeCsv";
+import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
 import { 
   Users, Calendar, Clock, FileText, Briefcase, Home, 
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
@@ -5418,10 +5419,14 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [griglia, setGriglia] = useState(false);
   // Import (ex pagina Buste Paga)
   const [showImport, setShowImport] = useState(false);
-  const { importing, importMsg, pnMsg, csvMsg, storicoMsg } = importSession.state;
+  const { importing, pnMsg, csvMsg, storicoMsg } = importSession.state;
+  const importMsg = normalizzaEsitoImportPaghe(importSession.state.importMsg);
   const setImporting = value => importSession.setField('importing', value);
   const setImportMsg = value => importSession.setField('importMsg', value);
   const setPnMsg = value => importSession.setField('pnMsg', value);
+  const [testoImporti, setTestoImporti] = useState("");
+  const [incollaImporti, setIncollaImporti] = useState(false);
+  const [confrontoImporto, setConfrontoImporto] = useState(null);
   const setCsvMsg = value => importSession.setField('csvMsg', value);
   const setStoricoMsg = value => importSession.setField('storicoMsg', value);
   const fileRef = useRef(null); const excelRef = useRef(null); const csvRef = useRef(null); const storicoRef = useRef(null);
@@ -5629,7 +5634,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
             if (Date.now() > deadline) throw new Error('Import ancora in coda: premi Riprendi per controllare il risultato.');
             await new Promise(resolve => setTimeout(resolve, 2000));
           }
-          const done = job.result || {};
+          const done = normalizzaEsitoImportPaghe(job.result) || {};
           result.file_pdf += done.file_pdf || 1;
           result.totale_associati += done.totale_associati || 0;
           for (const field of ['associati', 'errori', 'duplicati', 'mesi', 'da_controllare', 'saltati_presenze']) result[field].push(...(done[field] || []));
@@ -5660,15 +5665,52 @@ function PagheBonificiPage({ dipendenti = [] }) {
     finally { setImporting(false); }
   };
   const handleImportPrimaNota = async (e) => {
-    const fl = (e.target.files || [])[0];
-    if (!fl) return;
+    const fl = e instanceof File ? e : (e.target.files || [])[0];
+    if (!fl || importing || !importSession.ready) return;
     setImporting(true); setPnMsg(null);
+    importSession.setField('excelPending', null);
+    importSession.setField('excelJob', null);
     try {
       const fd = new FormData(); fd.append("file", fl);
-      const r = await axios.post(`${API}/paghe/importa-prima-nota`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setPnMsg(r.data); await load();
+      const r = await axios.post(`${API}/paghe/importa-prima-nota?applica=false`, fd);
+      importSession.setField('excelPending', fl);
+      setPnMsg(r.data); setIncollaImporti(false);
     } catch (err) { setPnMsg({ errore: err?.response?.data?.detail || "Errore import Prima Nota" }); }
     finally { setImporting(false); if (excelRef.current) excelRef.current.value = ""; }
+  };
+  const confermaImporti = async () => {
+    if (importing) return;
+    setImporting(true);
+    try {
+      let jobId = importSession.state.excelJob;
+      let job;
+      if (!jobId) {
+        const fd = new FormData(); fd.append('file', importSession.state.excelPending);
+        job = (await axios.post(`${API}/paghe/importa-prima-nota?applica=true`, fd)).data;
+        jobId = job.job_id;
+        importSession.setField('excelJob', jobId);
+      }
+      setPnMsg({ in_corso: true });
+      const deadline = Date.now() + 30 * 60 * 1000;
+      while (job?.status !== 'completed') {
+        job = (await axios.get(`${API}/paghe/importa-libro-unico-coda/${encodeURIComponent(jobId)}`)).data;
+        if (job.status === 'failed') { importSession.setField('excelJob', null); throw new Error(job.error || 'Import non riuscito'); }
+        if (job.status === 'completed') break;
+        if (Date.now() > deadline) throw new Error('Import ancora in corso: usa Riprendi per controllare il risultato.');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      setPnMsg(job.result);
+      importSession.setField('excelPending', null);
+      importSession.setField('excelJob', null);
+      if (job.result?.mesi?.length) vaiAlMese(job.result);
+    } catch (err) { setPnMsg({ errore: err.response?.data?.detail || err.message }); }
+    finally { setImporting(false); }
+  };
+  const confermaVerificaImporto = async (r, a) => {
+    try {
+      await axios.post(`${API}/paghe/verifica-importo-excel`, { dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, confronto_id: a.id, busta_attuale: r.busta });
+      setConfrontoImporto(null); await load();
+    } catch (err) { toast(err.response?.data?.detail || 'Verifica non salvata', 'err'); }
   };
   const handleImportPagamenti = async (e) => {
     const fl = (e.target.files || [])[0];
@@ -5797,7 +5839,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", position: "relative" }}>
           <input ref={fileRef} type="file" accept=".pdf,.zip,application/pdf,application/zip,application/x-zip-compressed" multiple onChange={handleImportLul} style={{ display: "none" }} />
-          <input ref={excelRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleImportPrimaNota} style={{ display: "none" }} />
+          <input ref={excelRef} type="file" accept=".xlsx,.csv,.tsv,.txt" onChange={handleImportPrimaNota} style={{ display: "none" }} />
           <input ref={csvRef} type="file" accept=".csv,text/csv" onChange={handleImportPagamenti} style={{ display: "none" }} />
           <input ref={storicoRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleImportStorico} style={{ display: "none" }} />
           <div style={{ position: "relative" }}>
@@ -5808,7 +5850,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
               <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, minWidth: 300, overflow: "hidden" }}>
                 {[["Libro Unico (PDF/ZIP)", () => fileRef.current?.click()],
                   ["Buste da email", handleImportEmail],
-                  ["Prima Nota (Excel)", () => excelRef.current?.click()],
+                  ["Importi cedolini (Excel / CSV / testo)", () => excelRef.current?.click()],
+                  ["Incolla tabella importi", () => setIncollaImporti(true)],
                   ["Pagamenti banca (CSV)", () => csvRef.current?.click()],
                   ["Archivio storico pagamenti ante-app (Excel)", () => storicoRef.current?.click()]].map(([label, fn], i, arr) => (
                   <button key={i} onClick={() => { setShowImport(false); fn(); }}
@@ -5876,20 +5919,43 @@ function PagheBonificiPage({ dipendenti = [] }) {
       )}
       {pnMsg && (
         <div className="dc-card" style={msgCard(pnMsg)}>
-          {pnMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {pnMsg.errore}</div> : (
+          {pnMsg.in_corso ? <div>Import importi in corso. Puoi cambiare pagina: la coda è conservata.</div> : pnMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {pnMsg.errore}</div> : (
             <div>
-              <div style={{ fontWeight: 700 }}>✓ Prima Nota importata: {pnMsg.aggiornati} mesi/dipendente aggiornati su {pnMsg.righe_aggregate} totali.</div>
+              <div style={{ fontWeight: 700 }}>{pnMsg.anteprima ? 'Anteprima' : 'Import completato'}: {pnMsg.aggiornati} righe {pnMsg.anteprima ? 'da acquisire' : 'acquisite'}, {pnMsg.duplicati || 0} duplicate saltate, {pnMsg.da_verificare || 0} da verificare.</div>
+              <p>Il netto già registrato viene conservato. Gli importi ricostruiti dai pagamenti sono proposte da verificare e non generano bonifici né saldi pagati.</p>
+              {pnMsg.errori?.map((errore, i) => <div key={i} role="alert">{errore}</div>)}
               {pnMsg.non_trovati > 0 && <div style={{ marginTop: 6, fontSize: 13, color: "#7d5526" }}>⚠ {pnMsg.non_trovati} voci con dipendente non in anagrafica (non importate): {(pnMsg.nomi_non_trovati || []).join(", ")}</div>}
               {pnMsg.discrepanze?.length > 0 && (
                 <div style={{ marginTop: 8, fontSize: 13 }}>
                   <div style={{ fontWeight: 700, color: "#7d5526" }}>Differenze importo busta (app vs Excel) — {pnMsg.discrepanze.length}:</div>
-                  {pnMsg.discrepanze.slice(0, 60).map((x, i) => <div key={i}>{x.dipendente} · {mesi[x.mese - 1]} {x.anno}: app € {eur(x.busta_app)} · Excel € {eur(x.busta_excel)}</div>)}
+                  {pnMsg.discrepanze.slice(0, 60).map((x, i) => <div key={i}>{x.dipendente} · {mesi[x.mese - 1]} {x.anno}: app {x.busta_app == null ? 'netto mancante' : `€ ${eur(x.busta_app)}`} · file € {eur(x.busta_excel)}</div>)}
                 </div>
               )}
             </div>
           )}
         </div>
       )}
+      {!importing && (importSession.state.excelPending || importSession.state.excelJob) && <div className="dc-card">
+        <button className="dc-btn dc-btn-primary" onClick={confermaImporti}>{importSession.state.excelJob ? 'Riprendi import importi' : 'Conferma importazione importi'}</button>
+        {!importSession.state.excelJob && <button className="dc-btn" onClick={() => { importSession.setField('excelPending', null); setPnMsg(null); }}>Annulla anteprima</button>}
+      </div>}
+      {incollaImporti && <Modal title="Incolla tabella importi" onClose={() => setIncollaImporti(false)}>
+        <p>Incolla anche le intestazioni: Dipendente, Competenza (oppure Mese e Anno), Netto oppure Importo attribuito EUR.</p>
+        <textarea aria-label="Tabella importi" value={testoImporti} onChange={e => setTestoImporti(e.target.value)} rows={12} style={{ width: '100%' }} />
+        <button className="dc-btn dc-btn-primary" disabled={!testoImporti.trim() || importing} onClick={() => handleImportPrimaNota(new File([testoImporti], 'importi-incollati.txt', { type: 'text/plain' }))}>Controlla anteprima</button>
+      </Modal>}
+      {confrontoImporto && <Modal title="Verifica importo del cedolino" onClose={() => setConfrontoImporto(null)}>
+        <p>{confrontoImporto.dipendente} · {mesi[confrontoImporto.mese - 1] || confrontoImporto.mese} {confrontoImporto.anno}</p>
+        <p>Netto nel gestionale: {confrontoImporto.busta == null ? 'non disponibile' : `€ ${eur(confrontoImporto.busta)}`}</p>
+        {confrontoImporto.avvisi_importo.map(a => <div key={a.id} className="dc-card">
+          <strong>{a.motivo}: € {eur(a.importo)}</strong>
+          <p>{a.tipo === 'netto' ? 'Netto dichiarato nel file' : 'Importo attribuito dai pagamenti, non netto del cedolino'} · {a.file}, riga {a.riga}</p>
+          {a.nota && <p>{a.nota}</p>}
+          <button className="dc-btn" disabled={confrontoImporto.busta == null} onClick={() => confermaVerificaImporto(confrontoImporto, a)}>Ho verificato: mantieni il valore nel gestionale</button>
+        </div>)}
+        {confrontoImporto.cedolino_id && <button className="dc-btn" onClick={() => apriCedolino(confrontoImporto)}>Apri PDF cedolino</button>}
+        <p>Se il netto è errato, correggilo con la matita accanto all'importo dopo aver controllato il documento.</p>
+      </Modal>}
       {csvMsg && (
         <div className="dc-card" style={msgCard(csvMsg)}>
           {csvMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {csvMsg.errore}</div> : (
@@ -6082,7 +6148,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                   <Fragment key={k}>
                     <tr style={{ background: exp ? "#f7f4ec" : "transparent" }}>
                       <td style={{ ...td, fontWeight: 600 }}><button style={nomeBtn} title="Prima nota / saldo progressivo" onClick={() => apriPrimaNota(r.dipendente_id, r.dipendente)}>{r.dipendente}</button></td>
-                      <td style={td}>{periodoLbl}</td>
+                      <td style={td}>{periodoLbl}{r.avvisi_importo?.length > 0 && <div><button className="dc-btn" style={{ color: '#9a531b' }} onClick={() => setConfrontoImporto(r)}>⚠ Verifica importo ({r.avvisi_importo.length})</button></div>}</td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {editBusta && editBusta.k === k ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
@@ -6097,7 +6163,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                           <span>
                             {r.busta != null ? `€ ${eur(r.busta)}` : "—"}
                             <button className="dc-btn" title={r.busta_manuale ? `Importo corretto a mano (prima: € ${eur(r.busta_originale)})${r.busta_nota ? " — " + r.busta_nota : ""}` : "Correggi l'importo della busta se non torna col cedolino"}
-                              onClick={() => setEditBusta({ k, dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, importo: r.busta || "", nota: r.busta_nota || "" })}
+                              onClick={() => setEditBusta({ k, dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, importo: r.busta ?? "", nota: r.busta_nota || "" })}
                               aria-label={`Correggi importo busta ${r.mese}/${r.anno} di ${r.dipendente_nome || ""}`}
                               style={{ fontSize: 11, padding: "1px 6px", marginLeft: 6, color: r.busta_manuale ? "#8a6f47" : undefined }}>✎</button>
                             {r.busta_manuale && <div style={{ fontSize: 10, color: "#8a6f47" }}>corretto a mano</div>}

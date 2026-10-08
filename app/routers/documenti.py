@@ -3849,7 +3849,13 @@ async def _importa_libro_unico_hr(filename: str, content: bytes) -> Dict[str, An
     return await importa_libro_unico_canonico(files=[UploadFile(filename=filename, file=io.BytesIO(content))])
 
 
+async def _importa_importi_tabellari_hr(filename: str, content: bytes):
+    from app.hr.services.importi_paghe_tabellari import elabora_file
+    return await elabora_file(filename, content)
+
+
 ELABORATORI_IN_CODA = {
+    "hr_importi_tabellari": _importa_importi_tabellari_hr,
     "archivio_zip": _process_zip_upload_a_blocchi,
     "estratto_conto": _importa_estratto_conto_file,
     "cedolino": _importa_cedolino_file,
