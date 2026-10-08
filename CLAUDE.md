@@ -5271,6 +5271,10 @@ errore, senza simulare salvataggi riusciti.
 Il pannello Automazioni mostra esiti e log dei motori esistenti, le relative
 anteprime e i comandi disponibili. Non avvia un secondo scheduler o un secondo
 writer nel browser. Aggiornamenti periodici dei pannelli sono solo letture.
+Lo stato dello scheduler distingue esplicitamente l'esecuzione periodica
+attiva da quella sospesa; una risposta HTTP riuscita non significa che i job
+siano attivi. Il mancato accesso a un singolo endpoint non chiude la sessione
+ERP finché la verifica centrale non conferma che non è più autorizzata.
 La cancellazione definitiva automatica del vecchio cestino è disabilitata:
 si usano archivio, storno o quarantena canonici.
 
@@ -5295,6 +5299,10 @@ aggancio NC e paginazione sono incluse in CI. Nessun test inventa una prova
 bancaria a partire da uno stato legacy. La build ERP include la pagina e i
 moduli statici. La verifica con dati operativi richiede una sessione del
 titolare; non è dimostrata dai soli test con fixture.
+La dependency di autenticazione ERP accetta il cookie httpOnly già usato dal
+middleware, con precedenza al Bearer esplicito e senza ripiegare su cookie se
+l'header è invalido. I reader HR applicano filtro, ordinamento, offset e limite
+nel cursore Supabase; l'archivio vuoto non deve generare un errore di pagina.
 
 ## APERTO
 
@@ -5305,6 +5313,10 @@ i moduli canonici disponibili, oppure adattare il motore esistente prima di
 abilitare un comando. Le elaborazioni HR massive e la fiscalità avanzata si
 aprono nei rispettivi moduli canonici. Le relazioni NC nel pannello di stato
 sono limitate alle ultime 100 fatture, con perimetro esplicito.
+L'archivio legacy `incassi` rappresenta transazioni POS SumUp/Numia: i
+riepiloghi giornalieri canonici non sono singole transazioni e le entrate
+contanti di Prima Nota non possono sostituirle. Finché manca un reader delle
+transazioni originali, questo collegamento resta esplicitamente indisponibile.
 I riepiloghi originali sommano soltanto importi disponibili: se mancano
 importi documentali, la pagina segnala che i totali sono parziali e il valore
 del documento rimane assente. Per una quadratura definitiva completare gli

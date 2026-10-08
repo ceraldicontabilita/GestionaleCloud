@@ -353,6 +353,7 @@ class _Cursore:
     def __init__(self, coll, filtro, proj, limite=None, ordina=None):
         self._coll, self._filtro, self._proj = coll, filtro, proj
         self._limite, self._ordina = limite, ordina
+        self._skip = 0
         self._iter = None
 
     def sort(self, chiave, direzione=1):
@@ -367,6 +368,15 @@ class _Cursore:
         self._limite = n
         return self
 
+    def skip(self, n):
+        """Offset della pagina, applicato dopo sort e prima di limit."""
+        if not isinstance(n, int):
+            raise TypeError("skip deve essere un intero")
+        if n < 0:
+            raise ValueError("skip non puo' essere negativo")
+        self._skip = n
+        return self
+
     async def _materializza(self) -> List[Dict[str, Any]]:
         escludi = self._coll._escludibili(self._filtro, self._proj)
         # Un campo su cui si ordina va letto, anche se la proiezione lo esclude:
@@ -378,6 +388,8 @@ class _Cursore:
         for chiave, direzione in reversed(self._ordina or []):
             docs.sort(key=lambda d, k=chiave: _chiave_ordine(_get(d, k)),
                       reverse=direzione < 0)
+        if self._skip:
+            docs = docs[self._skip:]
         if self._limite:
             docs = docs[: self._limite]
         return [_proietta(d, self._proj) for d in docs]

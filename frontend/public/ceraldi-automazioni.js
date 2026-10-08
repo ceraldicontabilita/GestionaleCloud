@@ -243,7 +243,7 @@
     const heading = node('div', 'section-hdr');
     heading.append(node('h2', 'section-title', 'Automazioni'));
     root.append(heading);
-    const intro = node('p', '', 'Gli automatismi lavorano nel Gestionale anche con questa pagina chiusa. Qui leggi lo stato reale, verifichi gli errori e richiami lo stesso motore.');
+    const intro = node('p', '', 'Qui leggi lo stato dei motori del Gestionale, verifichi gli errori e richiami le elaborazioni. Gli automatismi all’import e i job periodici hanno stati distinti: un job sospeso non viene eseguito automaticamente.');
     intro.style.cssText = 'color:var(--ink3);font-size:13px;line-height:1.5;margin:0 0 16px;';
     root.append(intro);
     const controls = node('div', 'gc-auto-controls');
@@ -298,7 +298,10 @@
       if (output.state === 'da_verificare') label = 'Esito con anomalie: verifica il risultato';
       if (output.state === 'verifica_esito_non_disponibile') label = 'Richiesta inviata; rilettura dell’esito non disponibile';
       const current = output.persisted_state || output.result || {};
-      if (current.running || current.in_progress) label += ' · In elaborazione';
+      if (id === 'produzioni' && output.action === 'status') {
+        if (current.running === false) label += ' · Esecuzione periodica sospesa';
+        else if (current.running === true) label += ' · Esecuzione periodica attiva';
+      } else if (current.running || current.in_progress) label += ' · In elaborazione';
       if (current.ultimo === null && output.action === 'status') label += ' · Nessuna esecuzione registrata';
       record.state.textContent = label + (date ? ' · Ultimo dato: ' + formatDate(date) : ' · Data ultimo esito non disponibile');
       if (record.details) record.details.remove();
